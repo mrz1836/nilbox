@@ -14,7 +14,7 @@ import { LineComment } from './LineComment'
 import { MergeConfirmDialog, mergeVerb } from './MergeConfirmDialog'
 import { commentFirst, heldBack, needsText, replyActionOf, sendsText } from './ReviewComposer'
 import { ReviewHeader } from './ReviewHeader'
-import { areasText, checksText, Readiness, ReviewSummary } from './ReviewSummary'
+import { areasText, checksSummary, Readiness, ReviewSummary } from './ReviewSummary'
 
 vi.mock('../../platform', () => import('../../test/platform').then((fake) => fake.platform))
 
@@ -100,7 +100,7 @@ describe('ReviewSummary', () => {
       within(ran as HTMLElement)
         .getAllByRole('listitem')
         .map((li) => li.textContent),
-    ).toEqual(['●e2erequired', '●build', '●lint'])
+    ).toEqual(['e2erequired', 'build', 'lint'])
 
     // The checks skipped, and any GitHub reports otherwise, fold away below the ones that ran.
     const skipped = screen.getByText('2 skipped').closest('details')
@@ -125,7 +125,62 @@ describe('ReviewSummary', () => {
 
     expect(screen.getByText('No checks on this commit.')).toBeInTheDocument()
     expect(screen.queryByText('No longer open')).not.toBeInTheDocument()
-    expect(checksText([])).toBe('0 checks')
+    expect(checksSummary([])).toEqual({ counts: '0 checks', running: '' })
+  })
+
+  it('marks each check running, queued or in progress, with a ring, and their count too', () => {
+    const check = (name: string, state: string, outcome: string) => ({
+      name,
+      workflow: '',
+      state,
+      outcome,
+      url: '',
+      required: false,
+    })
+    const ring = (el: Element | null) => el?.querySelector('.motion-safe\\:animate-ping') ?? null
+    const { rerender } = render(
+      <ReviewSummary
+        review={review({
+          checks: [
+            check('lint', 'SUCCESS', 'passed'),
+            check('build', 'IN_PROGRESS', 'pending'),
+            check('e2e', 'FAILURE', 'failed'),
+            check('deploy', 'QUEUED', 'pending'),
+            check('docs', 'SKIPPED', 'skipped'),
+          ],
+        })}
+        item={undefined}
+      />,
+    )
+
+    // The failing first, then those running, then those passed.
+    const [ran] = screen.getAllByRole('list')
+    const rows = within(ran as HTMLElement).getAllByRole('listitem')
+    expect(rows.map((li) => [li.textContent, ring(li) !== null])).toEqual([
+      ['e2e', false],
+      ['build', true],
+      ['deploy', true],
+      ['lint', false],
+    ])
+    const skipped = screen.getByText('1 skipped').closest('details')
+    expect(skipped).toHaveTextContent('docs')
+    expect(ring(skipped)).toBeNull()
+
+    // The count, which stays in view with the list folded, has the ring too.
+    const summary = screen.getByText('5 checks · 1 failing · 2 running')
+    expect(summary.tagName).toBe('SUMMARY')
+    expect(ring(summary)).not.toBeNull()
+
+    rerender(
+      <ReviewSummary
+        review={review({ checks: [check('lint', 'SUCCESS', 'passed'), check('e2e', 'FAILURE', 'failed')] })}
+        item={undefined}
+      />,
+    )
+    // With nothing running, nothing moves.
+    const finished = screen.getByText('2 checks · 1 failing')
+    expect(finished.tagName).toBe('SUMMARY')
+    expect(ring(finished.closest('details'))).toBeNull()
   })
 
   it('says how close it is to merging, in a line of its own', () => {

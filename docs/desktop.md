@@ -1114,7 +1114,11 @@ Every card gets it, in any list.
   (as in `golang.org/x/net 0.30.0 → 0.31.0 · minor`, a major in amber); the checks, listed open
   with the failing ones first, then those running, then those passed, the required ones marked,
   and the skipped ones folded away below them under their count (click a count to open or fold
-  it); the card's sensitive-file chip; and each reviewer's latest review.
+  it); the card's sensitive-file chip; and each reviewer's latest review. A check that is queued
+  or in progress has a ring swelling slowly out of its amber dot, as a working session's dot
+  does on its card, and so does the count of those running (**43 checks · 5 failing · 5
+  running**), so a folded list still shows that CI is at work. With reduced motion, the dots
+  hold still.
 - **The latest agent session** on the pull request, with what it last said. **Show all** reads
   the whole message from the agent's own files on this Mac, and **Use as review comment** puts it
   into your review's text, to edit before you send it.

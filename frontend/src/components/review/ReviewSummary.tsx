@@ -1,10 +1,11 @@
 import { counted } from '../../lib/format'
-import { toneText, type Tone } from '../../lib/signals'
+import { toneDot, toneText, type Tone } from '../../lib/signals'
 import type { InboxItem, ReadyState, Review, ReviewCheck, ReviewEntry } from '../../platform'
 import { openExternal } from '../../platform'
 import { chipClass } from '../controls'
 import { Markdown } from '../Markdown'
 import { SensitiveFiles } from '../SensitiveFiles'
+import { StatusDot } from '../StatusDot'
 
 export interface ReviewSummaryProps {
   review: Review
@@ -55,21 +56,30 @@ function checkTone(check: ReviewCheck): Tone {
   }
 }
 
-// checksText sums up the checks, as in "12 checks · 1 failing".
-export function checksText(checks: readonly ReviewCheck[]): string {
+// running reports a check GitHub has not finished: queued or in progress.
+function running(check: ReviewCheck): boolean {
+  return check.outcome === 'pending'
+}
+
+// CheckDot is a check's dot, in its tone: a ring swells slowly out of it while the check
+// runs, as out of a working session's.
+function CheckDot({ check }: { check: ReviewCheck }) {
+  return <StatusDot color={toneDot[checkTone(check)]} ping={running(check)} />
+}
+
+// checksSummary sums up the checks: how many there are and how many fail, as in "12 checks ·
+// 1 failing", and how many run, as in "2 running", or '' while none does, which the summary
+// marks with a running check's dot.
+export function checksSummary(checks: readonly ReviewCheck[]): { counts: string; running: string } {
   const failing = checks.filter((c) => c.outcome === 'failed').length
-  const pending = checks.filter((c) => c.outcome === 'pending').length
+  const pending = checks.filter(running).length
   const parts = [counted(checks.length, 'check', 'checks')]
 
   if (failing > 0) {
     parts.push(`${String(failing)} failing`)
   }
 
-  if (pending > 0) {
-    parts.push(`${String(pending)} running`)
-  }
-
-  return parts.join(' · ')
+  return { counts: parts.join(' · '), running: pending > 0 ? `${String(pending)} running` : '' }
 }
 
 // BumpChip says what a dependency update changes: the dependency and its versions, and how
@@ -111,13 +121,14 @@ export function areasText(areas: readonly string[]): string {
   return names.length < 2 || last === undefined ? names.join('') : `${names.slice(0, -1).join(', ')} and ${last}`
 }
 
-// CheckList lists checks, each with whether it is required; each opens its page.
+// CheckList lists checks, each with its dot and whether it is required; each opens its
+// page.
 function CheckList({ checks }: { checks: readonly ReviewCheck[] }) {
   return (
     <ul className="mt-1 space-y-0.5">
       {checks.map((c, i) => (
         <li key={`${c.name}-${String(i)}`} className="flex min-w-0 items-center gap-1.5">
-          <span className={`shrink-0 ${toneText[checkTone(c)]}`}>●</span>
+          <CheckDot check={c} />
           {c.url === '' ? (
             <span className="truncate">{c.name}</span>
           ) : (
@@ -141,7 +152,8 @@ function CheckList({ checks }: { checks: readonly ReviewCheck[] }) {
 
 // Checks lists the head commit's checks that ran: the failing ones first, then those
 // running, then those passed. The ones skipped, which say nothing about the change, fold
-// away below them under their count. The list starts open, and folds away under its count.
+// away below them under their count. The list starts open, and folds away under its count,
+// which marks the checks running with their dot, so a folded list still shows CI at work.
 function Checks({ checks }: { checks: readonly ReviewCheck[] }) {
   if (checks.length === 0) {
     return <p className="text-xs text-muted">No checks on this commit.</p>
@@ -150,10 +162,19 @@ function Checks({ checks }: { checks: readonly ReviewCheck[] }) {
   const order = { failed: 0, pending: 1, passed: 2 } as Record<string, number>
   const ran = checks.filter((c) => c.outcome in order).sort((a, b) => (order[a.outcome] ?? 0) - (order[b.outcome] ?? 0))
   const skipped = checks.filter((c) => !(c.outcome in order))
+  const summary = checksSummary(checks)
 
   return (
     <details open className="text-xs">
-      <summary className="cursor-default text-muted select-none">{checksText(checks)}</summary>
+      <summary className="cursor-default text-muted select-none">
+        {summary.counts}
+        {summary.running !== '' && (
+          <>
+            {' · '}
+            <StatusDot color={toneDot.warning} ping /> {summary.running}
+          </>
+        )}
+      </summary>
       <CheckList checks={ran} />
       {skipped.length > 0 && (
         <details className="mt-1">
