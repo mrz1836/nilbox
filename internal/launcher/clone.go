@@ -48,6 +48,12 @@ type CloneTarget struct {
 	// Taken reports that a repository without a clone cannot get one at Dir, because
 	// something is already there. Clone refuses it.
 	Taken bool `json:"taken"`
+
+	// Elsewhere is, for a repository without a clone in the repository locations, the
+	// clone the app last remembered for it, with ~, when it is still one but no location
+	// holds it, as after the clone root changed; "" otherwise. The window offers to use it
+	// (LinkClone).
+	Elsewhere string `json:"elsewhere"`
 }
 
 // CloneTarget reports whether an item's repository has a local clone and, when it has
@@ -136,6 +142,10 @@ func (s *Service) cloneTarget(ctx context.Context, itemID int64) (CloneTarget, r
 
 	if !errors.Is(err, localrepos.ErrCloneNotFound) {
 		return CloneTarget{}, repoRef{}, err
+	}
+
+	if old, ok := s.cloneAt(ctx, ref); ok {
+		t.Elsewhere = paths.Tilde(old.Dir, s.home)
 	}
 
 	// New clones go in the clone root, whatever other locations there are.

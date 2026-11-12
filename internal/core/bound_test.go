@@ -449,6 +449,7 @@ func unreachedBound() map[string]string {
 		"inbox.Service.CheckFiles":          "reads GitHub; nil for an item whose files are not checked",
 		"inbox.Service.StoredFiles":         "nil for an item whose files are not checked",
 		"launcher.Service.Preview":          "needs a clone; its resolution is built as Resolve's",
+		"launcher.Service.LinkClone":        "needs a clone's remotes; its location is built as settings' PreviewCloneLocation's",
 		"launcher.Service.Launch":           "opens a terminal",
 		"launcher.Service.Resume":           "opens a terminal",
 		"worktrees.Service.Remove":          "needs a worktree to remove; its result starts its lists empty, as RemoveAllClean's",

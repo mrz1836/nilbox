@@ -841,11 +841,12 @@ func (l LaunchSettings) roots(home string) (localrepos.Roots, error) {
 	return localrepos.NewRoots(l.CloneRoot, l.CloneLocations, home)
 }
 
-// resolveClone finds the clone a launch starts in. A cached path is used while it is
-// still a clone of the repository; otherwise the repository locations are scanned and
-// the match is cached for next time.
+// resolveClone finds the clone a launch starts in. A cached path is used while the
+// repository locations hold it and it is still a clone of the repository; otherwise the
+// locations are scanned and the match is cached for next time. A launch so never starts in
+// a clone, nor makes a worktree beside one, that no listing or sweep sees.
 func (s *Service) resolveClone(ctx context.Context, ref repoRef, roots localrepos.Roots) (Clone, error) {
-	if clone, ok := s.cachedClone(ctx, ref); ok {
+	if clone, ok := s.cachedClone(ctx, ref, roots); ok {
 		return clone, nil
 	}
 
@@ -865,9 +866,19 @@ func (s *Service) resolveClone(ctx context.Context, ref repoRef, roots localrepo
 	return Clone{Dir: match.Repo.Path, Remote: match.MatchedRemote}, nil
 }
 
-// cachedClone validates the cached clone path: it must still be a git working tree with
-// a remote that points at the repository.
-func (s *Service) cachedClone(ctx context.Context, ref repoRef) (Clone, bool) {
+// cachedClone validates the cached clone path: the repository locations must hold it,
+// which costs no git, and it must still be a git working tree with a remote that points at
+// the repository.
+func (s *Service) cachedClone(ctx context.Context, ref repoRef, roots localrepos.Roots) (Clone, bool) {
+	if ref.localPath == "" || !roots.Holds(ref.localPath) {
+		return Clone{}, false
+	}
+
+	return s.cloneAt(ctx, ref)
+}
+
+// cloneAt reads the cached clone path as a clone of the repository, wherever it is.
+func (s *Service) cloneAt(ctx context.Context, ref repoRef) (Clone, bool) {
 	if ref.localPath == "" {
 		return Clone{}, false
 	}
