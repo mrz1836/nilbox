@@ -6,13 +6,13 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"syscall"
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/mrz1836/nilbox/internal/clonelock"
@@ -140,14 +140,20 @@ func (h *harness) record(id int64) Record {
 func (h *harness) logText(id int64) string {
 	h.t.Helper()
 
-	body, err := os.ReadFile(h.e.files.log(id))
-	if errors.Is(err, os.ErrNotExist) {
-		return ""
-	}
-
+	text, err := h.readLog(id)
 	require.NoError(h.t, err)
 
-	return string(body)
+	return text
+}
+
+// readLog returns the run's log, or "" when there is none.
+func (h *harness) readLog(id int64) (string, error) {
+	body, err := os.ReadFile(h.e.files.log(id))
+	if errors.Is(err, os.ErrNotExist) {
+		return "", nil
+	}
+
+	return string(body), err
 }
 
 // readyLine is what a fake run prints once it is going, which waitReady waits for.
@@ -158,8 +164,11 @@ const readyLine = "ready\n"
 func (h *harness) waitReady(id int64) {
 	h.t.Helper()
 
-	require.Eventually(h.t, func() bool { return strings.Contains(h.logText(id), "ready") }, wait, poll,
-		"run %d is ready", id)
+	require.EventuallyWithT(h.t, func(c *assert.CollectT) {
+		text, err := h.readLog(id)
+		require.NoError(c, err)
+		assert.Contains(c, text, "ready")
+	}, wait, poll, "run %d is ready", id)
 }
 
 // count returns how many runs the history holds.
@@ -170,6 +179,17 @@ func (h *harness) count() int {
 	require.NoError(h.t, err)
 
 	return len(recs)
+}
+
+// waitCount waits for the history to hold n runs.
+func (h *harness) waitCount(n int, msgAndArgs ...any) {
+	h.t.Helper()
+
+	require.EventuallyWithT(h.t, func(c *assert.CollectT) {
+		recs, err := h.e.store.list(h.t.Context())
+		require.NoError(c, err)
+		assert.Len(c, recs, n)
+	}, wait, poll, msgAndArgs...)
 }
 
 // insertRow records a run as going, as an earlier start of the app did, with its process.

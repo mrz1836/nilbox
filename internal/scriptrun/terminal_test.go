@@ -35,6 +35,17 @@ func (h *harness) terminalSpec(run testutil.FakeRun) Spec {
 	return spec
 }
 
+// waitPID waits for the run's shell's PID to be recorded.
+func (h *harness) waitPID(id int64) {
+	h.t.Helper()
+
+	require.EventuallyWithT(h.t, func(c *assert.CollectT) {
+		rec, err := h.e.store.get(h.t.Context(), id)
+		require.NoError(c, err)
+		assert.Positive(c, rec.PID)
+	}, wait, poll, "the shell's PID is recorded")
+}
+
 func TestATerminalRunIsFollowedToItsExitFile(t *testing.T) {
 	t.Parallel()
 
@@ -66,7 +77,7 @@ func TestATerminalRunIsFollowedToItsExitFile(t *testing.T) {
 	assert.False(t, h.e.Active(), "a run in the terminal doesn't keep the app from quitting")
 	assert.True(t, h.e.InUse("mage-x"), "but it uses its tool")
 
-	require.Eventually(t, func() bool { return h.record(id).PID > 0 }, wait, poll, "the shell's PID is recorded")
+	h.waitPID(id)
 
 	rec := h.record(id)
 	assert.False(t, rec.ProcStartedAt.IsZero(), "with its start time")
@@ -113,7 +124,7 @@ func TestATerminalClosedMidRunIsInterrupted(t *testing.T) {
 
 	id := h.start(spec)
 
-	require.Eventually(t, func() bool { return h.record(id).PID > 0 }, wait, poll, "the shell's PID is recorded")
+	h.waitPID(id)
 
 	testutil.WriteFile(t, proceed, "") // the tool ends, and the shell with it, leaving no exit file
 
@@ -229,7 +240,7 @@ func TestATerminalRunThatFailsIsTold(t *testing.T) {
 	proceed := filepath.Join(t.TempDir(), "proceed")
 	closed := h.start(h.terminalSpec(testutil.FakeRun{Sleep: time.Minute, WaitFor: proceed}))
 
-	require.Eventually(t, func() bool { return h.record(closed).PID > 0 }, wait, poll, "the shell's PID is recorded")
+	h.waitPID(closed)
 	testutil.WriteFile(t, proceed, "")
 	assert.Equal(t, StatusInterrupted, h.ended(closed).Status)
 

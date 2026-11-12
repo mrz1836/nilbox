@@ -109,8 +109,11 @@ func (h *harness) run(id int64) Run {
 func (h *harness) waitProgress(id int64, want Progress) {
 	h.t.Helper()
 
-	require.Eventually(h.t, func() bool { return h.run(id).Progress == want }, wait, poll,
-		"run %d reads as %+v", id, want)
+	require.EventuallyWithT(h.t, func(c *assert.CollectT) {
+		got, err := h.s.Run(h.t.Context(), id)
+		require.NoError(c, err)
+		assert.Equal(c, want, got.Progress)
+	}, wait, poll, "run %d reads as %+v", id, want)
 }
 
 func TestStopIsRefusedWhileTheKindSaysSo(t *testing.T) {
