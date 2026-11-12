@@ -173,12 +173,12 @@ export function SettingsView({
             key={group.sections.join(' ')}
             role={group.heading === '' ? undefined : 'group'}
             aria-labelledby={group.heading === '' ? undefined : `${headingId}-${group.heading}`}
-            className={`flex flex-col gap-0.5 ${i > 0 ? 'pt-3' : ''}`.trim()}
+            className={`flex flex-col gap-0.5 ${i > 0 ? 'pt-4' : ''}`.trim()}
           >
             {group.heading !== '' && (
               <p
                 id={`${headingId}-${group.heading}`}
-                className="px-2.5 pb-1 text-[0.6875rem] font-semibold tracking-wide text-muted uppercase"
+                className="mx-2.5 mb-1 border-b border-border pb-1.5 text-[0.6875rem] font-semibold tracking-wider text-text uppercase"
               >
                 {group.heading}
               </p>
