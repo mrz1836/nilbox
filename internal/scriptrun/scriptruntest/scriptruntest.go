@@ -72,17 +72,19 @@ func New(t testing.TB, home string, logger *slog.Logger) *Harness {
 // Ended waits for the run id to end and let go of its clone, and returns it as the window
 // reads it. It looks again each time the engine says the runs changed, which it does once
 // a run's end is recorded and the run has let go of its clone, and fails the test when
-// the run hasn't ended within Wait.
+// the run hasn't ended within Wait, saying where the run stands and why the wait most
+// likely ran out.
 func (h *Harness) Ended(id int64) scriptrun.Run {
 	h.t.Helper()
 
 	return h.ended(h.Runs, id)
 }
 
-// Await waits until cond holds, and fails the test with msgAndArgs when it hasn't within
-// Wait. It looks again each time the engine says the runs changed, so cond must hold
-// once that is told: a run started, its end recorded or refused, its clone let go of, or
-// what its kind's Released did, all of which come before the engine tells it.
+// Await waits until cond holds, and fails the test with msgAndArgs, and why the wait most
+// likely ran out, when it hasn't within Wait. It looks again each time the engine says
+// the runs changed, so cond must hold once that is told: a run started, its end recorded
+// or refused, its clone let go of, or what its kind's Released did, all of which come
+// before the engine tells it.
 func (h *Harness) Await(cond func() bool, msgAndArgs ...any) {
 	h.t.Helper()
 
@@ -179,12 +181,20 @@ func (h *Harness) ended(runs *scriptrun.Service, id int64) scriptrun.Run {
 }
 
 // await waits until cond holds, looking again each time the runs change, and fails the
-// test with what failure says, and msgAndArgs, once the harness's wait is up.
+// test once the harness's wait is up with what failure says, why the wait most likely ran
+// out (stalled), and msgAndArgs.
 func (h *Harness) await(cond func() bool, failure func() string, msgAndArgs ...any) {
 	h.t.Helper()
 
+	began := time.Now()
+
 	timer := time.NewTimer(h.wait)
 	defer timer.Stop()
+
+	var (
+		told       int           // the changes the engine told while the wait went on
+		lastChange time.Duration // how far into the wait the last one came
+	)
 
 	for {
 		// Taken before cond looks, so a change while it looks still wakes the wait.
@@ -196,11 +206,33 @@ func (h *Harness) await(cond func() bool, failure func() string, msgAndArgs ...a
 
 		select {
 		case <-changed:
+			told++
+			lastChange = time.Since(began)
 		case <-timer.C:
-			require.FailNow(h.t, failure()+" within "+h.wait.String(), msgAndArgs...)
+			why := stalled(cond, told, lastChange) // first, as its look updates what failure says
+
+			require.FailNow(h.t, failure()+" within "+h.wait.String()+"; "+why, msgAndArgs...)
 
 			return
 		}
+	}
+}
+
+// stalled says why a wait that ran out most likely did, from one last look at cond and
+// the changes the engine told while it waited (told, the last lastChange into the wait):
+// cond holds now, so the engine told no change once it did; the engine told no change at
+// all, so the wait looked only once; or cond still didn't hold after the last change.
+func stalled(cond func() bool, told int, lastChange time.Duration) string {
+	switch {
+	case cond():
+		return "it holds now, but the engine told no change once it did, so the wait never looked again: " +
+			"what makes it hold must come before a change the engine tells"
+	case told == 0:
+		return "the engine told no change while it waited, so it looked only once: " +
+			"the run never moved on, or what it waits for is nothing the engine tells"
+	default:
+		return fmt.Sprintf("it still didn't hold after the last of the %d changes the engine told, %s into the wait",
+			told, lastChange.Round(time.Millisecond))
 	}
 }
 

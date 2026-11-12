@@ -193,6 +193,63 @@ func TestAwaitLooksAgainAsTheRunsChange(t *testing.T) {
 	assert.Contains(t, said, "the sky holds")
 }
 
+func TestAWaitThatRunsOutSaysWhyItMostLikelyDid(t *testing.T) {
+	t.Parallel()
+
+	// awaited fails a wait of 20ms on cond, and returns what the harness said.
+	awaited := func(t *testing.T, cond func(h *Harness) bool) string {
+		t.Helper()
+
+		ft := &failingTest{TB: t}
+		h := New(ft, testutil.RealTempDir(t), nil)
+		h.wait = 20 * time.Millisecond
+
+		h.Await(func() bool { return cond(h) })
+
+		failed, said := ft.failure()
+		require.True(t, failed)
+
+		return said
+	}
+
+	t.Run("no change told", func(t *testing.T) {
+		t.Parallel()
+
+		said := awaited(t, func(*Harness) bool { return false })
+		assert.Contains(t, said, "the condition never held within 20ms; the engine told no change while it waited, "+
+			"so it looked only once")
+	})
+
+	t.Run("still not holding after the last change", func(t *testing.T) {
+		t.Parallel()
+
+		looks := 0
+		said := awaited(t, func(h *Harness) bool {
+			if looks++; looks == 1 {
+				h.changes.tell() // one change, which wakes the wait to look again
+			}
+
+			return false
+		})
+		assert.Contains(t, said, "the condition never held within 20ms; it still didn't hold after the last of the 1 "+
+			"changes the engine told, ")
+		assert.Contains(t, said, " into the wait")
+	})
+
+	t.Run("holding with no change told since", func(t *testing.T) {
+		t.Parallel()
+
+		looks := 0
+		said := awaited(t, func(*Harness) bool {
+			looks++
+
+			return looks > 1 // it comes to hold, but nothing tells the wait to look again
+		})
+		assert.Contains(t, said, "the condition never held within 20ms; it holds now, but the engine told no change "+
+			"once it did, so the wait never looked again")
+	})
+}
+
 // verified is a Verifier whose runs say they were verified on the next start.
 type verified struct{}
 
