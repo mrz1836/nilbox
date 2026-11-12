@@ -856,19 +856,20 @@ func TestListTellsTheWindowHowFarItHasGot(t *testing.T) {
 	require.NoError(t, err)
 
 	listing := func(done int) event.WorktreesProgress {
-		return event.WorktreesProgress{Phase: event.WorktreesListing, Done: done, Total: 2}
+		return event.WorktreesProgress{Phase: event.WorktreesListing, Done: done, Total: 1}
 	}
 	checking := func(done int) event.WorktreesProgress {
-		return event.WorktreesProgress{Phase: event.WorktreesChecking, Done: done, Total: 3}
+		return event.WorktreesProgress{Phase: event.WorktreesChecking, Done: done, Total: 2}
 	}
 
 	assert.Equal(t, []event.WorktreesProgress{
 		{Phase: event.WorktreesFindingClones},
-		listing(0), listing(1), listing(2),
-		checking(0), checking(1), checking(2), checking(3),
+		listing(0), listing(1),
+		checking(0), checking(1), checking(2),
 		{Phase: event.WorktreesAskingGitHub, Total: 1},
 		{Phase: event.WorktreesAskingGitHub, Done: 1, Total: 1},
-	}, toldProgress(events), "the clones, then each one's worktrees, then each worktree, then GitHub")
+	}, toldProgress(events), "the clones, then each one's worktrees, then each worktree, then GitHub; "+
+		"other-repo, with no worktrees, isn't listed")
 
 	before := len(events.All())
 

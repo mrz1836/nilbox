@@ -2334,7 +2334,9 @@ names a location it couldn't read, such as a drive that isn't plugged in. It loa
 it or click **Refresh**, and again after the automatic cleanup, not on the inbox's five-minute
 timer. While any listing runs, the toolbar says how far it has got: finding the clones, listing
 each clone's worktrees ("3 of 12 clones", with a bar), checking each worktree, and asking GitHub
-about their pull requests and issues. Otherwise it says when the list was last checked. Each
+about their pull requests and issues. Otherwise it says when the list was last checked. It runs
+git only in the clones whose git folder registers a linked worktree or can't be read, and in
+those an app record names; any other clone has nothing to list, and is only looked at. Each
 row shows the repository,
 the path, the branch (or "detached"), clean or dirty with the count of uncommitted files
 (untracked files included), how many commits are not on GitHub, whether it is locked and by

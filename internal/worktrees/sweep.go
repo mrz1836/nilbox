@@ -3,6 +3,7 @@ package worktrees
 import (
 	"context"
 	"errors"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"slices"
@@ -147,7 +148,7 @@ func (s *Service) sweepAgentWork(ctx context.Context, g git, roots localrepos.Ro
 		return nil
 	}
 
-	snap, err := s.assessClones(ctx, g, roots, clones, rules, nil)
+	snap, err := s.assessClones(ctx, g, roots, clones, records, rules, nil)
 	if err != nil {
 		report.Error = uierr.Message(err)
 
@@ -257,29 +258,51 @@ func countWorktrees(clones []string) int {
 	count := 0
 
 	for _, dir := range clones {
-		common := localrepos.CommonDir(dir)
-		if common == "" || seen[common] {
+		common, linked, known := linkedWorktrees(dir)
+		if !known || seen[common] {
 			continue
 		}
 
 		seen[common] = true
-		count += registeredWorktrees(common)
+		count += linked
 	}
 
 	return count
 }
 
+// linkedWorktrees returns the common git directory of the clone at dir and how many linked
+// worktrees it registers, read without running git, as the sweep counts them and a listing
+// picks the clones worth listing. known is false when the common git directory can't be
+// found or read, which only git can say why.
+func linkedWorktrees(dir string) (common string, linked int, known bool) {
+	common = localrepos.CommonDir(dir)
+	if common == "" {
+		return "", 0, false
+	}
+
+	linked, known = registeredWorktrees(common)
+
+	return common, linked, known
+}
+
 // registeredWorktrees counts the linked worktrees registered in a common git directory:
-// the entries of its worktrees directory that hold a non-empty gitdir file.
-func registeredWorktrees(common string) int {
+// the entries of its worktrees directory that hold a non-empty gitdir file. known is false
+// when the directory isn't a folder, or its worktrees directory can't be read.
+func registeredWorktrees(common string) (count int, known bool) {
+	if info, err := os.Stat(common); err != nil || !info.IsDir() {
+		return 0, false
+	}
+
 	dir := filepath.Join(common, "worktrees")
 
 	entries, err := os.ReadDir(dir)
-	if err != nil {
-		return 0
-	}
 
-	count := 0
+	switch {
+	case errors.Is(err, fs.ErrNotExist):
+		return 0, true
+	case err != nil:
+		return 0, false
+	}
 
 	for _, e := range entries {
 		info, statErr := os.Stat(filepath.Join(dir, e.Name(), "gitdir"))
@@ -288,7 +311,7 @@ func registeredWorktrees(common string) int {
 		}
 	}
 
-	return count
+	return count, true
 }
 
 // Sweeper runs a Service's sweeps on a timer. It is kept apart from Service, every

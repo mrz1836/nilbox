@@ -259,7 +259,9 @@ app:lint` reads.
   the clone root), records them in `internal/worklog`, checks every record against git on each
   listing and sweep (a record whose clone's folder is gone too, as on a drive unplugged, is
   kept), and removes
-  them safely. Only `internal/worktrees/create.go` fetches or runs `git worktree add` (Repo
+  them safely. A listing runs git only in the clones worth listing (`worthListing`): one whose
+  common git folder registers a linked worktree or can't be read, and one a record names, read
+  without git by `linkedWorktrees`, which the sweep's count shares. Only `internal/worktrees/create.go` fetches or runs `git worktree add` (Repo
   scripts' pull, below, fetches only as `git pull` itself does), and nothing the app runs
   changes a clone's own checkout; `TestNoGitCommandChangesAClone` in `internal/repoguard` fails
   the build otherwise. There are two exceptions, each on the user's click. A tool the user

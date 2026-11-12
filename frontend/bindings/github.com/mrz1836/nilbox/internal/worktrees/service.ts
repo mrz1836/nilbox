@@ -79,6 +79,11 @@ export function LastSweep(): $CancellablePromise<$models.SweepReport> {
  * repository that git cannot read is listed with an error rather than hiding the rest. A
  * clone that is itself a linked worktree of another clone is folded into that repository.
  * It tells the window how far it has got as it goes (event.WorktreesProgress).
+ *
+ * git runs only in the clones worth listing (see worthListing): those whose git folder
+ * registers a linked worktree, can't be found, or can't be read, and those a record names.
+ * A clone with none of these runs no git at all, so one with no worktrees whose git folder
+ * is there but which git can't read shows no error.
  */
 export function List(): $CancellablePromise<$models.Snapshot> {
     return $Call.ByID(3590969184);

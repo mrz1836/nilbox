@@ -524,6 +524,9 @@ func seedBound(t *testing.T) (*Core, seededItems) {
 	repo := filepath.Join(home, "projects", "example-repo")
 	testutil.MakeClaudeDirs(t, home, ".claude", "projects/example-repo/.git",
 		"projects/example-repo/.claude/worktrees/scratch", "work/web/.git", "src/acme-org/tool/.git")
+	// The linked worktree git registers, which tells the listing the clone is worth listing.
+	testutil.WriteFile(t, filepath.Join(repo, ".git", "worktrees", "scratch", "gitdir"),
+		filepath.Join(repo, ".claude", "worktrees", "scratch", ".git")+"\n")
 	// A go-pre-commit config, so the Hooks page lists the clone.
 	testutil.WriteFile(t, filepath.Join(repo, ".github", ".env.base"), "ENABLE_GO_PRE_COMMIT=true\n")
 	// A t3.json, so Repo scripts lists a script.
