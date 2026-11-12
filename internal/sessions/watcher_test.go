@@ -148,17 +148,23 @@ type watched struct {
 	toggle    *toggle
 }
 
-func newWatched(t *testing.T) *watched {
+func newWatched(t *testing.T, tweaks ...func(*sessions.WatcherConfig)) *watched {
 	t.Helper()
 
 	w := &watched{
 		store: sessions.NewStore(testutil.DB(t)), claude: newFakeObserver(), codex: newFakeObserver(),
 		attention: &fakeAttention{}, events: &testutil.Events{}, toggle: &toggle{on: true},
 	}
-	w.watcher = sessions.NewWatcher(sessions.WatcherConfig{
+
+	cfg := sessions.WatcherConfig{
 		Store: w.store, Observers: map[agent.ID]sessions.Observer{agent.Claude: w.claude, agent.Codex: w.codex},
 		Switch: w.toggle, Attention: w.attention, Events: w.events,
-	})
+	}
+	for _, tweak := range tweaks {
+		tweak(&cfg)
+	}
+
+	w.watcher = sessions.NewWatcher(cfg)
 	w.ledger = sessions.NewLedger(sessions.Config{Store: w.store, Watcher: w.watcher, Switch: w.toggle, Events: w.events})
 
 	return w
@@ -205,8 +211,17 @@ func (w *watched) run(t *testing.T) {
 func TestWatcherSleepsUntilASessionStarts(t *testing.T) {
 	t.Parallel()
 
+	// A short revive window, so the window ends after a few looks rather than a day's
+	// worth of them; TestWatcherRevivesWithinTheDefaultWindow covers the default.
+	const (
+		reviveTick   = 30 * time.Second
+		reviveWindow = 4 * reviveTick
+	)
+
 	synctest.Test(t, func(t *testing.T) {
-		w := newWatched(t)
+		w := newWatched(t, func(cfg *sessions.WatcherConfig) {
+			cfg.ReviveTick, cfg.ReviveWindow = reviveTick, reviveWindow
+		})
 		w.run(t)
 
 		time.Sleep(time.Hour)
@@ -240,24 +255,52 @@ func TestWatcherSleepsUntilASessionStarts(t *testing.T) {
 
 		assert.Equal(t, sessions.StateEnded, w.state(t, "s1"))
 
-		time.Sleep(3 * sessions.ReviveTick)
+		time.Sleep(3 * reviveTick)
 		synctest.Wait()
 
 		calls, _ = w.claude.counts()
 		assert.Equal(t, 8, calls, "nothing runs, so only a slow look for the session resumed elsewhere")
 
-		time.Sleep(sessions.ReviveWindow)
+		time.Sleep(reviveWindow)
 		synctest.Wait()
 
 		calls, closes = w.claude.counts()
+		assert.Equal(t, 9, calls, "looked for until the window ends")
 
 		time.Sleep(time.Hour)
 		synctest.Wait()
 
 		again, _ := w.claude.counts()
-		assert.Equal(t, calls, again, "a day after it ended, nothing is asked")
+		assert.Equal(t, calls, again, "once the window after it ended passed, nothing is asked")
 		assert.Equal(t, 1, closes, "and the observer let go")
 	})
+}
+
+func TestWatcherRevivesWithinTheDefaultWindow(t *testing.T) {
+	t.Parallel()
+
+	w := newWatched(t)
+	clk := testutil.NewClock(launched())
+	w.watcher = sessions.NewWatcher(sessions.WatcherConfig{
+		Store: w.store, Observers: map[agent.ID]sessions.Observer{agent.Claude: w.claude}, Clock: clk,
+	})
+
+	require.NoError(t, w.store.Insert(t.Context(), record("s1", 12)))
+	_, err := w.store.Apply(t.Context(), launched(), []sessions.Observation{{ID: "s1", State: sessions.StateEnded}})
+	require.NoError(t, err)
+
+	clk.Set(launched().Add(sessions.ReviveWindow))
+	assert.Equal(t, sessions.ReviveTick, w.watcher.Reconcile(t.Context()), "an ended session is looked for once a revive tick")
+
+	calls, _ := w.claude.counts()
+	assert.Equal(t, 1, calls, "until the default window after it ended passed")
+
+	clk.Set(launched().Add(sessions.ReviveWindow + time.Second))
+	assert.Zero(t, w.watcher.Reconcile(t.Context()), "then it waits to be woken")
+
+	calls, closes := w.claude.counts()
+	assert.Equal(t, 1, calls, "and asks nothing")
+	assert.Equal(t, 1, closes, "the observer let go")
 }
 
 func TestWatcherFollowsASessionResumedOutsideTheApp(t *testing.T) {
