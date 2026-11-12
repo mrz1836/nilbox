@@ -336,15 +336,16 @@ func argvLiteral(words ...string) *regexp.Regexp {
 	return regexp.MustCompile(`(^|[\s,({])"(` + strings.Join(quoted, "|") + `)"`)
 }
 
-// productionGoHits returns "file:line: text" for every line of a non-test Go file that
-// pattern matches, skipping the files in exempt.
+// productionGoHits returns "file:line: text" for every line pattern matches in a Go file
+// the app is built from, neither a test nor the test support only tests import, skipping
+// the files in exempt.
 func productionGoHits(t *testing.T, pattern *regexp.Regexp, exempt ...string) []string {
 	t.Helper()
 
 	var found []string
 
 	for _, rel := range goFiles(t) {
-		if strings.HasSuffix(rel, "_test.go") || slices.Contains(exempt, rel) {
+		if strings.HasSuffix(rel, "_test.go") || inTestSupport(rel) || slices.Contains(exempt, rel) {
 			continue
 		}
 

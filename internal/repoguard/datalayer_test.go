@@ -174,10 +174,11 @@ func TestNoORM(t *testing.T) {
 	assert.Empty(t, drivers, "only internal/store opens the database, so only it imports the SQLite driver")
 }
 
-// sqlExempt reports whether the Go file rel may hold SQL: a test, the database plumbing
-// under internal/store, or an owner's generated query package.
+// sqlExempt reports whether the Go file rel may hold SQL: a test, or the test support only
+// tests import, the database plumbing under internal/store, or an owner's generated query
+// package.
 func sqlExempt(rel string) bool {
-	if strings.HasSuffix(rel, "_test.go") {
+	if strings.HasSuffix(rel, "_test.go") || inTestSupport(rel) {
 		return true
 	}
 
@@ -270,6 +271,25 @@ func TestSQLOnlyInQueryPackages(t *testing.T) {
 	assert.Empty(t, found,
 		"SQL lives in the table owners' query files (internal/<owner>/internal/queries/*.sql, "+
 			"generated with magex db:generate) and in internal/store; call the owner's API instead")
+}
+
+func TestSQLExempt(t *testing.T) {
+	t.Parallel()
+
+	for rel, want := range map[string]bool{
+		"internal/inbox/store_test.go":                 true,
+		"internal/testutil/db.go":                      true,
+		"internal/scriptrun/scriptruntest/harness.go":  true,
+		"internal/store/tx.go":                         true,
+		"internal/store/migrate/migrate.go":            true,
+		"internal/inbox/internal/queries/items.sql.go": true,
+		"internal/inbox/store.go":                      false,
+		"internal/testutilx/db.go":                     false,
+		"internal/storex/db.go":                        false,
+		"cmd/app/main.go":                              false,
+	} {
+		assert.Equal(t, want, sqlExempt(rel), rel)
+	}
 }
 
 func TestSQLStatement(t *testing.T) {
