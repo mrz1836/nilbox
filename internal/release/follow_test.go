@@ -1107,10 +1107,13 @@ func TestAReleaseIsFollowedInItsRunsRecordAcrossARestart(t *testing.T) {
 	// The first start polls, then quits.
 	stop := runFollower(t, fastFollower(r.svc))
 
-	require.Eventually(t, func() bool {
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
 		got, err := r.runs.Run(t.Context(), run.ID)
+		require.NoError(c, err)
 
-		return err == nil && resultOf(t, got).Follow.Polls > 0
+		follow := resultOf(c, got).Follow
+		require.NotNil(c, follow)
+		assert.Positive(c, follow.Polls)
 	}, runWait, runPoll, "the poll is written into the run's record")
 
 	gh.mu.Lock()
@@ -1125,15 +1128,15 @@ func TestAReleaseIsFollowedInItsRunsRecordAcrossARestart(t *testing.T) {
 	stop = runFollower(t, fastFollower(next))
 	defer stop()
 
-	require.Eventually(t, func() bool {
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
 		got, err := r.runs.Run(t.Context(), run.ID)
-		if err != nil {
-			return false
-		}
+		require.NoError(c, err)
 
 		run = got
 
-		return resultOf(t, got).Follow.State == FollowPublished
+		follow := resultOf(c, got).Follow
+		require.NotNil(c, follow)
+		assert.Equal(c, FollowPublished, follow.State)
 	}, runWait, runPoll, "the next start finds it published")
 
 	assert.Equal(t, "v1.4.3 is published.", run.Summary, "the run's result says so")

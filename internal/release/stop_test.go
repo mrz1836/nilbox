@@ -73,8 +73,11 @@ func (r *releaseRig) killOnCleanup(id int64) {
 func (r *releaseRig) waitProgress(id int64, want scriptrun.Progress) {
 	r.t.Helper()
 
-	require.Eventually(r.t, func() bool { return r.run(id).Progress == want }, runWait, runPoll,
-		"run %d reads as %+v", id, want)
+	require.EventuallyWithT(r.t, func(c *assert.CollectT) {
+		got, err := r.runs.Run(r.t.Context(), id)
+		require.NoError(c, err)
+		assert.Equal(c, want, got.Progress)
+	}, runWait, runPoll, "run %d reads as %+v", id, want)
 }
 
 func TestStopIsRefusedWhileMagexSwitchesOrPulls(t *testing.T) {

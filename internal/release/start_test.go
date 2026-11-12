@@ -264,8 +264,15 @@ func (r *releaseRig) tagged(tag, commit string, sent bool) func(context.Context)
 	}
 }
 
+// testingT is what a helper needs of a test: the test itself, or the *assert.CollectT an
+// EventuallyWithT condition is given, in which a failure fails only that look.
+type testingT interface {
+	require.TestingT
+	Helper()
+}
+
 // resultOf reads a release run's result.
-func resultOf(t *testing.T, run scriptrun.Run) Result {
+func resultOf(t testingT, run scriptrun.Run) Result {
 	t.Helper()
 
 	data, err := json.Marshal(run.Result.Outcome)
