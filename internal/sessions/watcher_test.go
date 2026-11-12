@@ -170,7 +170,8 @@ func newWatched(t *testing.T, tweaks ...func(*sessions.WatcherConfig)) *watched 
 	return w
 }
 
-// start records a session launched now.
+// start records a session launched now. Inside a synctest bubble with the Watcher
+// running, call it only once the Watcher is idle (after synctest.Wait), as run explains.
 func (w *watched) start(t *testing.T, id string) {
 	t.Helper()
 
@@ -189,7 +190,11 @@ func (w *watched) state(t *testing.T, id string) sessions.State {
 	return r.State
 }
 
-// run runs the Watcher until the test ends.
+// run runs the Watcher until the test ends, in the test's synctest bubble, and returns
+// once its first reconcile, which forgets old sessions in a write, is done. A test never
+// writes while the Watcher may: SQLite waits out the other's lock by sleeping on the
+// bubble's clock, which synctest counts as durably blocked, so a synctest.Wait could
+// return before the Watcher had stored what it saw.
 func (w *watched) run(t *testing.T) {
 	t.Helper()
 
@@ -206,6 +211,8 @@ func (w *watched) run(t *testing.T) {
 		cancel()
 		<-done
 	})
+
+	synctest.Wait()
 }
 
 func TestWatcherSleepsUntilASessionStarts(t *testing.T) {
@@ -366,6 +373,7 @@ func TestWatcherDebouncesWhatNeedsTheUser(t *testing.T) {
 		w.claude.set("quick", sessions.StateWorking)
 		w.claude.set("slow", sessions.StateWorking)
 		w.start(t, "quick")
+		synctest.Wait()
 		w.start(t, "slow")
 		synctest.Wait()
 
@@ -531,6 +539,7 @@ func TestWatcherTakesAMomentItCouldNotAskForNoChange(t *testing.T) {
 		w.claude.set("s1", sessions.StateNeedsApproval)
 		w.claude.set("s2", sessions.StateWorking)
 		w.start(t, "s1")
+		synctest.Wait()
 		w.start(t, "s2")
 		synctest.Wait()
 
