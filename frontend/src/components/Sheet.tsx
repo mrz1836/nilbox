@@ -25,8 +25,11 @@ export function Sheet({ labelledBy, onClose, children }: SheetProps) {
       aria-modal="true"
       aria-labelledby={labelledBy}
       onCancel={cancel}
-      // The backdrop's color is spelled out, as ConfirmDialog's is, for older Safari.
-      className="m-auto h-[calc(100%-3rem)] max-h-none w-[calc(100%-3rem)] max-w-none overflow-hidden rounded-xl border border-border bg-surface p-0 text-text shadow-xl backdrop:bg-[rgb(0_0_0/0.4)] open:flex open:flex-col"
+      // The backdrop's color is spelled out, as ConfirmDialog's is, for older Safari. The
+      // sheet cuts off what runs past it with overflow: clip, never hidden, which would
+      // leave the sheet itself scrollable: a file picked in its list (scrollIntoView) could
+      // then scroll the header away. Only its own panes scroll, as in App's window column.
+      className="m-auto h-[calc(100%-3rem)] max-h-none w-[calc(100%-3rem)] max-w-none overflow-clip rounded-xl border border-border bg-surface p-0 text-text shadow-xl backdrop:bg-[rgb(0_0_0/0.4)] open:flex open:flex-col"
     >
       <div ref={bodyRef} tabIndex={-1} className="relative flex min-h-0 flex-1 flex-col outline-none">
         {children}

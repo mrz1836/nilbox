@@ -108,6 +108,19 @@ describe('ReviewSheet', () => {
     expect(await actionButton('Approve & squash-merge')).toBeEnabled()
   })
 
+  it('scrolls the diff to a file picked in the list, and clips rather than scrolls the sheet around its header', async () => {
+    const scrolled = vi.spyOn(Element.prototype, 'scrollIntoView')
+    render(<Harness />)
+
+    await userEvent.click(within(await screen.findByRole('navigation', { name: 'Files' })).getByTitle('cache/cache.go'))
+
+    expect(scrolled).toHaveBeenCalledWith({ block: 'start' })
+    // jsdom lays nothing out, so this pins what keeps the header in place: the sheet clips
+    // what runs past it, which nothing can scroll, where hidden would leave it scrollable.
+    expect(sheet()).toHaveClass('overflow-clip')
+    expect(sheet()).not.toHaveClass('overflow-hidden')
+  })
+
   it('says what it reads from GitHub while the pull request loads, and that it has no description', async () => {
     platform.openReview.mockReturnValue(new Promise(() => undefined))
     platform.refreshReview.mockReturnValue(new Promise(() => undefined))

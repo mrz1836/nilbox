@@ -751,8 +751,16 @@ export function App() {
     }
   }
 
+  // The window is one column the height of the screen: the toolbar, then the page area,
+  // which alone scrolls (a page scrolls in it, or in panes of its own), so the toolbar never
+  // leaves the window. The column is the containing block of everything absolutely
+  // positioned inside it that no nearer box holds, and clips it. Such an element, like a
+  // label only screen readers see, sits where it would with every pane scrolled to its top,
+  // so one far down a long page (the protected branches in Settings → Worktrees) reached
+  // past the window and let the document scroll, toolbar and all. Clip, where hidden would
+  // leave the column itself scrollable, leaves scrollIntoView and focus nothing to scroll.
   return (
-    <div className="flex h-screen flex-col bg-background text-text">
+    <div className="relative flex h-screen flex-col overflow-clip bg-background text-text">
       <AppHeader
         view={view}
         onViewChange={changeView}

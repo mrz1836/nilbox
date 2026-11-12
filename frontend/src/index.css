@@ -68,6 +68,13 @@
     color: var(--color-text);
   }
 
+  /* Only the page area scrolls (App's window column), so the document never does, and it
+     doesn't bounce either: a fling past the end of a page leaves the window, toolbar
+     included, where it is. */
+  html {
+    overscroll-behavior: none;
+  }
+
   body {
     margin: 0;
     font-family:
