@@ -14,6 +14,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/clonelock"
 	"github.com/mrz1836/nilbox/internal/integrationprefs"
 	"github.com/mrz1836/nilbox/internal/integrations"
+	"github.com/mrz1836/nilbox/internal/localrepos"
 	"github.com/mrz1836/nilbox/internal/paths"
 	"github.com/mrz1836/nilbox/internal/repo"
 	"github.com/mrz1836/nilbox/internal/scriptrun"
@@ -647,10 +648,18 @@ func (c clone) label(home string) string {
 	return paths.Tilde(c.dir, home)
 }
 
-// cloneAt finds the clone a request names by its folder, as the page lists it, with ~:
-// only a clone directly under the clone root is one.
+// folders finds the clone a request names by its folder, as the page lists it, with ~:
+// only a clone directly under the clone root is one. Its repository is the one the last
+// scan read for it, else its origin's.
+func (s *Service) folders() localrepos.ByFolder {
+	return localrepos.ByFolder{
+		Clones: s.clones, Home: s.home, Invalid: ErrInvalidRequest, NoClone: ErrNoClone, Known: s.scannedName,
+	}
+}
+
+// cloneAt finds the clone a request names by its folder (see folders).
 func (s *Service) cloneAt(ctx context.Context, shown string) (clone, error) {
-	l, err := s.listClones(ctx)
+	l, err := s.folders().List(ctx)
 	if err != nil {
 		return clone{}, err
 	}
@@ -658,55 +667,14 @@ func (s *Service) cloneAt(ctx context.Context, shown string) (clone, error) {
 	return s.cloneIn(ctx, shown, l)
 }
 
-// listing is the clone root as set when it was read, and the clones under it.
-type listing struct {
-	root string
-	dirs []string
-}
-
-// listClones reads the clone root as set now and lists the clones under it.
-func (s *Service) listClones(ctx context.Context) (listing, error) {
-	root, err := s.clones.Root(ctx)
+// cloneIn finds the clone shown names among l's (see folders).
+func (s *Service) cloneIn(ctx context.Context, shown string, l localrepos.Listing) (clone, error) {
+	p, err := s.folders().Pick(ctx, shown, l)
 	if err != nil {
-		return listing{}, fmt.Errorf("read the clone root: %w", err)
+		return clone{}, err
 	}
 
-	dirs, err := s.clones.Dirs(ctx, root)
-	if err != nil {
-		return listing{}, fmt.Errorf("list the clones: %w", err)
-	}
-
-	return listing{root: root, dirs: dirs}, nil
-}
-
-// cloneIn finds the clone shown names among l's: the folder itself, else one that is the
-// same through a link. Its repository is the one the last scan read for it, else its
-// origin's.
-func (s *Service) cloneIn(ctx context.Context, shown string, l listing) (clone, error) {
-	dir, err := paths.ExpandHome(shown, s.home)
-	if err != nil {
-		return clone{}, fmt.Errorf("%w: the folder %q: %w", ErrInvalidRequest, shown, err)
-	}
-
-	i := slices.Index(l.dirs, dir)
-	if i < 0 {
-		i = slices.IndexFunc(l.dirs, func(d string) bool { return paths.Same(d, dir) })
-	}
-
-	if i < 0 {
-		return clone{}, uierr.New(fmt.Sprintf("%s isn't a clone in %s.", paths.Tilde(dir, s.home),
-			paths.Tilde(l.root, s.home)), fmt.Errorf("%w: %s", ErrNoClone, dir))
-	}
-
-	c := clone{dir: l.dirs[i]}
-
-	if name, known := s.scannedName(c.dir); known {
-		c.name = name
-	} else if name, onHub, originErr := s.clones.Origin(ctx, c.dir); originErr == nil && onHub {
-		c.name = name
-	}
-
-	return c, nil
+	return clone{dir: p.Dir, name: p.Name}, nil
 }
 
 // scannedName returns the repository the last scan read for the clone at dir, the zero
@@ -852,7 +820,7 @@ func (s *Service) InstallAll(ctx context.Context, dirs []string) (InstallAllResu
 	}
 
 	// The clone root and the clones under it are read once for every clone asked.
-	l, err := s.listClones(ctx)
+	l, err := s.folders().List(ctx)
 	if err != nil {
 		return InstallAllResult{}, err
 	}
@@ -877,7 +845,7 @@ func (s *Service) InstallAll(ctx context.Context, dirs []string) (InstallAllResu
 
 // installOne installs or updates the hook in the clone shown, unless it is one to skip,
 // and waits for the run to end.
-func (s *Service) installOne(ctx context.Context, shown string, l listing, tool ToolFacts, done map[string]string,
+func (s *Service) installOne(ctx context.Context, shown string, l localrepos.Listing, tool ToolFacts, done map[string]string,
 ) InstallLine {
 	line := InstallLine{Name: filepath.Base(shown), Dir: shown, Outcome: OutcomeSkipped}
 
