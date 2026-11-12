@@ -282,6 +282,47 @@ func TestAgentRunnerPutsTheCommandsDirectoryFirstOnThePath(t *testing.T) {
 	assert.Contains(t, string(stdout), os.Getenv("PATH"), "the rest of the search path follows")
 }
 
+func TestAgentRunnerReplacesThePathOfTheEnvironmentItIsGiven(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	command := filepath.Join(dir, "claude")
+	require.NoError(t, os.WriteFile(command, []byte("#!/bin/sh\nprintf '%s|%s' \"$KEPT\" \"$PATH\"\n"), 0o700)) //nolint:gosec // a command must be executable
+
+	env := []string{"PATH=/first", "KEPT=yes", "PATH=/second"}
+	runner := agentRunner{search: execpath.Search{}, env: env}
+
+	stdout, _, err := runner.Run(t.Context(), command, "--version")
+	require.NoError(t, err)
+
+	assert.Equal(t, "yes|"+dir+string(os.PathListSeparator)+os.Getenv("PATH"), string(stdout),
+		"every PATH it had gives way to the command's directory, then this process's search path")
+	assert.Equal(t, []string{"PATH=/first", "KEPT=yes", "PATH=/second"}, env, "the runner's own environment is left alone")
+}
+
+func TestWorktreeRunnerTurnsGitsTerminalPromptsOff(t *testing.T) {
+	t.Setenv("GIT_TERMINAL_PROMPT", "1")
+
+	search := execpath.Search{Path: "/opt/fake/bin"}
+	runner := worktreeRunner(search)
+
+	assert.Equal(t, search, runner.Search)
+	require.NotEmpty(t, runner.Env)
+	assert.Equal(t, "GIT_TERMINAL_PROMPT=0", runner.Env[len(runner.Env)-1], "set last")
+
+	var prompts []string
+
+	for _, kv := range runner.Env {
+		if strings.HasPrefix(kv, "GIT_TERMINAL_PROMPT=") {
+			prompts = append(prompts, kv)
+		}
+	}
+
+	assert.Equal(t, []string{"GIT_TERMINAL_PROMPT=0"}, prompts, "in place of the process's own")
+	assert.Len(t, runner.Env, len(os.Environ()), "the rest of the process's environment, as it is")
+	assert.Contains(t, runner.Env, "PATH="+os.Getenv("PATH"))
+}
+
 func TestMergedPullRequestsKeyEachAnswerByRepositoryAndBranch(t *testing.T) {
 	t.Parallel()
 
