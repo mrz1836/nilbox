@@ -198,8 +198,8 @@ app:lint` reads.
   into the one `event.Sink` they are given. `internal/desktop/` is the shell's logic: it hears
   those events, keeps the menu bar current with what `internal/menubar` works out, runs the
   scheduler, the checks follower (`inbox.ChecksFollower`: the listed pull requests whose
-  checks were running, read in one request through `(*github.Client).FetchItems`, and
-  nothing while none runs), the sweeper (these three as often as Settings → Refreshing
+  checks were running, but a muted repository's, read in one request through
+  `(*github.Client).FetchItems`, and nothing while none runs), the sweeper (these three as often as Settings → Refreshing
   says, through `periodic.RunEvery`, which core wakes on the Go-only
   `event.IntervalsChanged` the settings setter emits, so a change applies at once), the budget's `Saver`, the sessions watcher, the Release page's
   refresher, and the Hooks page's scans as tracked work, starts the deferred work
@@ -398,6 +398,17 @@ app:lint` reads.
   `Merges` the repository, without waiting (core: the Release page's `Refresher`, which reads
   that repository's row again); a close tells it nothing. Nothing here lets an agent approve,
   merge, or close.
+- `internal/reporules/` holds the pinned and muted repositories and orgs (`repos.pinned` and
+  `repos.muted`, each a list of `owner` or `owner/name`, a target in one list at most), which
+  settings alone writes (`SetRepoRule`, emitting the Go-only `event.RepoRulesChanged`, which
+  core turns into an `event.InboxUpdated` and the Release `Refresher`'s `RulesChanged`) and
+  the inbox and Release read; `Rules.For` gives a repository's own rule before its org's. In
+  the inbox, each snapshot item carries its `RepoRule` (the rules are in the snapshot cache's
+  `settingsKey`, so a change rebuilds it), a pinned repository's items come after the items
+  pinned themselves, and a muted one's are in each list's Muted tab, never `NeedsYou` (so
+  out of the menu bar's count), told in no arrival, followed by no checks follower, and
+  given no file check by a refresh, though their details still come with it. It is a leaf:
+  it imports only `internal/repo` and `prefval`.
 - `internal/bump/` reads a dependency update from a bot's pull request title into an `Update`,
   for the review sheet and the `.Dependency` prompt variables. It is pure and imports no
   service.
@@ -657,8 +668,12 @@ app:lint` reads.
   origin not answering in time. `ValidBranch` is the branch rule a command's argument must
   pass.
 - `internal/release/` is the Release page's service. `Candidates` lists every clone in the
-  repository locations whose origin is on GitHub, grouped as unreleased, up to date, no releases yet, or
-  can't release here, from two rounds of batched GraphQL (`(*github.Client).FetchReleaseStatus`,
+  repository locations whose origin is on GitHub, grouped as unreleased, up to date, no releases yet,
+  can't release here, or muted (`GroupMuted`: a clone of a repository muted as the list is read
+  is listed with its name and folder alone and never asked about, a row muted later keeps what
+  GitHub said and is served regrouped, through `arranged`, which also puts pinned ones first in
+  their group, and unmuting a row never read reads that repository alone, as a release's patch
+  does, `liftMuted`; the rules are read through its `RuleSource` on every call), from two rounds of batched GraphQL (`(*github.Client).FetchReleaseStatus`,
   then `FetchReleaseCompare` for the repositories with a version, 15 to a query, adapted in core),
   and reads each unreleased clone's state with `gitread`, never asking origin. It serves the
   last list however old it is: the whole list is read again only on the page's **Read GitHub
@@ -996,7 +1011,7 @@ package imports the driver, and nothing imports an ORM (`internal/repoguard` enf
   pool-backed store from inside an open transaction: it waits on the lock the transaction holds.
 - **Prefs.** `internal/prefs` owns the `prefs` table. Any package reads any key, but each key has
   exactly one writer: settings writes the user's settings, including the rule keys that the trust,
-  snooze, sensitive, notifyprefs, branchrules, and integrationprefs packages declare; inbox
+  snooze, sensitive, notifyprefs, branchrules, reporules, and integrationprefs packages declare; inbox
   writes `inbox.*`; prompts writes `prompts.*` (the package doc has the full list). Settings and
   those leaves write a switch and a list of strings one way, through the leaf
   `internal/prefs/prefval` (`Bool` and `EncodeBool`, `List` and `EncodeList`, which stores a nil

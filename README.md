@@ -237,8 +237,9 @@ Account** shows whether projects are on.
 The **Inbox** tab shows three lists, **Review requested**, **Authored**, and **Assigned**, drawn
 from every repository your account can see and refreshed every five minutes (**Settings →
 Refreshing** sets how often). **Snooze** an item (3 days by default), **dismiss** it, or **pin**
-it to the top. Each card's **⋯** menu gathers those, opens or copies the item's link, and, when
-you're assigned or asked to review, takes you off it on GitHub. Press **⌘F** to filter the inbox:
+it to the top, and **pin** or **mute** a whole repository or org. Each card's **⋯** menu gathers
+those, opens or copies the item's link, and, when you're assigned or asked to review, takes you
+off it on GitHub. Press **⌘F** to filter the inbox:
 type a few words, or pick `repo:`, `label:`, `author:`, and more from the field's list.
 
 Click a pull request's title to review it without leaving the app: its diff, description, checks,
@@ -339,9 +340,9 @@ More in [Inbox cards](docs/desktop.md#inbox-cards).
 - **⌘F** or **/** focuses the toolbar's field, which filters the page you're on: the inbox, the
   worktrees, or the settings.
 - **Words and keys:** every word must appear (`"a phrase"` matches as one, `-word` leaves out),
-  and keys narrow by what an item has: `is:pr`, `is:issue`, `is:draft`, `is:pinned`,
-  `is:conflict`, `repo:`, `org:`, `author:@me`, `label:`, `status:`, `project:`,
-  `checks:failing`, and `review:approved`, among others. `-key:value` leaves out, `key:a,b`
+  and keys narrow by what an item has: `is:pr`, `is:issue`, `is:draft`, `is:pinned` (pinned
+  itself, or with its repository or org), `is:conflict`, `repo:`, `org:`, `author:@me`, `label:`,
+  `status:`, `project:`, `checks:failing`, and `review:approved`, among others. `-key:value` leaves out, `key:a,b`
   means either, and `#123` finds an item by its number.
 - **Suggestions with counts** as you type, each counted among what the rest of your query already
   matches, and keys the page understands are tinted.
@@ -380,7 +381,7 @@ More in [Issue projects](docs/desktop.md#issue-projects).
 </details>
 
 <details>
-<summary>💤 <strong>Triage that stays on your Mac</strong>: snooze, dismiss, or pin, with wake rules that end a snooze early, and a party at inbox nil</summary>
+<summary>💤 <strong>Triage that stays on your Mac</strong>: snooze, dismiss, or pin, pin or mute whole repositories and orgs, with wake rules that end a snooze early, and a party at inbox nil</summary>
 <br/>
 
 - **Snooze** an item for 1 day, 2 days, 3 days, 1 week, 2 weeks, or 30 days (3 days by default).
@@ -388,14 +389,19 @@ More in [Issue projects](docs/desktop.md#issue-projects).
   day after.
 - **Dismiss** an item until you restore it, however much it changes on GitHub.
 - **Pin** an item to the top of every list it's in. A pin outlasts a snooze or a dismissal.
-- **Undo** is in the toast that confirms each snooze and dismissal.
+- **Pin or mute a repository or an org** from a card's menu or **Settings → Repositories**. A
+  pinned one's items come right after the items you pinned, and match `is:pinned`. A muted one's
+  wait in each list's **Muted** tab, out of the counts, the menu bar, and the notifications, and
+  nothing follows their checks. A repository's own rule wins over its org's, so you can mute an
+  org and pin one of its repositories.
+- **Undo** is in the toast that confirms each snooze, dismissal, pin, and mute.
 - **Wake rules** end a snooze early when new commits (any push, by default), reviews (an approval
   or a request for changes, by default), or comments reach your thresholds in **Settings →
   Snoozing**, and the card says why, as in **Back early: approved, 2 new commits**.
 - **Inbox nil:** empty every list and the inbox throws a party, with confetti, a terminal that
   checks off each list, and **Achievement unlocked** when you get there while you watch. With
   Reduce motion on, it holds still.
-- Snoozes, dismissals, and pins live in the local database. GitHub never hears about them.
+- Snoozes, dismissals, pins, and mutes live on your Mac. GitHub never hears about them.
 
 More in [Snooze, dismiss, and pin](docs/desktop.md#snooze-dismiss-and-pin) and
 [Inbox nil](docs/desktop.md#inbox-nil).
@@ -693,8 +699,9 @@ More in [The Worktrees view](docs/desktop.md#the-worktrees-view) and
 <br/>
 
 - **Every clone, one list:** each clone in your repository locations whose `origin` is on GitHub, grouped
-  into **Unreleased changes** (newest commit first), **Up to date**, **No releases yet**, and
-  **Can't release here**. Each row shows the newest version, the commits since it, the checks on
+  into **Unreleased changes** (newest commit first), **Up to date**, **No releases yet**,
+  **Can't release here**, and **Muted**, the repositories you muted, which GitHub isn't asked
+  about. A pinned repository comes first in its group. Each row shows the newest version, the commits since it, the checks on
   the newest commit, and what matters about your clone, such as being on another branch or having
   uncommitted files. Groups stay open or folded as you left them.
 - **Read once, then kept:** the list is read from GitHub in a few batched requests and kept as it
@@ -921,8 +928,8 @@ More in [The window](docs/desktop.md#the-window).
 | ✅ OpenAI Codex                       | **Supported** | The same, with a switch on each launch and defaults per repo or org |
 | ✅ iTerm2 and Terminal.app            | **Supported** | iTerm2 by default                                                   |
 | ✅ mage-x and go-pre-commit           | **Supported** | Releases, Git hooks, and repository scripts in the Scripts tab      |
+| ✅ Mute or pin repositories and orgs  | **Supported** | Hide or raise everything from a repository or org at once           |
 | 🚧 First-run setup                   | **Planned**   | A GitHub CLI check, plus agent and terminal preferences             |
-| 🚧 Mute or pin repositories and orgs | **Planned**   | Hide or raise everything from a repository or org at once           |
 | 🚧 Security alert sweeps             | **Planned**   | Sweep security alerts across every repository                       |
 | 🚧 More coding agents and terminals  | **Planned**   | Beyond Claude Code, Codex, iTerm2, and Terminal.app                 |
 | 🚧 More integrations                 | **Planned**   | Beyond mage-x and go-pre-commit                                     |
