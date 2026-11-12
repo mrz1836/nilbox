@@ -417,7 +417,11 @@ itself never tags or pushes: magex does, when you click a button that names the 
   (1.30.0 or later, with `expect=`); before that its card says so, with **Update magex in
   Settings**. Choosing Major asks you to type the exact version, with an empty field every time,
   and, for a Go module whose `go.mod` doesn't name the new major, to tick **Release anyway: this
-  module isn't meant to be imported**. The service checks both again.
+  module isn't meant to be imported**. The service checks both again. Under the cards, a hint
+  reads the commits' conventional-commit prefixes: *2 commits start with feat:, which usually
+  means a minor release.*, or, for a commit marked breaking (`feat!:`, `fix(api)!:`, or a
+  headline starting `BREAKING CHANGE:`), that it usually means a major one. It never changes
+  the choice.
 - **Runs in:** the app or your terminal, as Settings → Integrations sets, or the other one for
   this release only.
 - **The sentence** says exactly what will happen, and **Command** shows the exact command, to
