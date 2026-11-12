@@ -4,13 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"maps"
 	"slices"
 	"strings"
 	"time"
 	"unicode/utf8"
-
-	"golang.org/x/sync/errgroup"
 
 	"github.com/mrz1836/nilbox/internal/repo"
 )
@@ -59,29 +56,12 @@ func MergedKey(r repo.Name, branch string) string {
 // is not valid UTF-8 is never asked about, so it is left out too: a query could only ask
 // about it rewritten, and so about another branch.
 func (c *Client) FetchMergedPullRequests(ctx context.Context, tok Token, queries []BranchQuery) (map[string][]MergedPR, error) {
-	requests := mergedRequests(queries)
-	answers := make([]map[string][]MergedPR, len(requests))
-
-	g, gctx := errgroup.WithContext(ctx)
-	g.SetLimit(mergedParallel)
-
-	for i, req := range requests {
-		g.Go(func() error {
-			var err error
-
-			answers[i], err = c.fetchMerged(gctx, tok, req)
-
-			return err
+	out, err := fanOut(ctx, mergedRequests(queries), mergedParallel,
+		func(ctx context.Context, asks []mergedAsk) (map[string][]MergedPR, error) {
+			return c.fetchMerged(ctx, tok, asks)
 		})
-	}
-
-	if err := g.Wait(); err != nil {
+	if err != nil {
 		return nil, Redact(err, tok)
-	}
-
-	out := map[string][]MergedPR{}
-	for _, answer := range answers {
-		maps.Copy(out, answer)
 	}
 
 	return out, nil

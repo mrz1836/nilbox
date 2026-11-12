@@ -1,10 +1,14 @@
 package github
 
 import (
+	"context"
+	"errors"
 	"flag"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -176,4 +180,61 @@ func TestBatchedQueriesRefuseValuesThatAreNotUTF8(t *testing.T) {
 			assert.Empty(t, query)
 		})
 	}
+}
+
+// errBatchFailed is a request fanOut sends failing.
+var errBatchFailed = errors.New("fake: the batch failed")
+
+// TestFanOut holds fanOut to its contract: every request is sent, at most limit at once,
+// and the answers merge in the requests' order, a later request's answer under a key
+// winning, however the sends finish; the first failure fails the call; and no requests
+// merge to an empty answer, never nil.
+func TestFanOut(t *testing.T) {
+	t.Parallel()
+
+	t.Run("merges in order", func(t *testing.T) {
+		t.Parallel()
+
+		var inFlight, most atomic.Int32
+
+		got, err := fanOut(t.Context(), []int{0, 1, 2, 3, 4, 5}, 2, func(_ context.Context, req int) (map[string]int, error) {
+			now := inFlight.Add(1)
+			defer inFlight.Add(-1)
+
+			for seen := most.Load(); now > seen && !most.CompareAndSwap(seen, now); seen = most.Load() {
+			}
+
+			return map[string]int{"last": req, strconv.Itoa(req): req}, nil
+		})
+		require.NoError(t, err)
+		assert.Equal(t, map[string]int{"last": 5, "0": 0, "1": 1, "2": 2, "3": 3, "4": 4, "5": 5}, got)
+		assert.LessOrEqual(t, most.Load(), int32(2), "at most limit requests are in flight at once")
+	})
+
+	t.Run("fails on the first failure", func(t *testing.T) {
+		t.Parallel()
+
+		got, err := fanOut(t.Context(), []int{0, 1, 2}, 1, func(_ context.Context, req int) (map[string]int, error) {
+			if req == 1 {
+				return nil, errBatchFailed
+			}
+
+			return map[string]int{strconv.Itoa(req): req}, nil
+		})
+		require.ErrorIs(t, err, errBatchFailed)
+		assert.Nil(t, got)
+	})
+
+	t.Run("no requests", func(t *testing.T) {
+		t.Parallel()
+
+		got, err := fanOut(t.Context(), []int(nil), 4, func(context.Context, int) (map[string]int, error) {
+			t.Error("nothing is sent")
+
+			return nil, errBatchFailed
+		})
+		require.NoError(t, err)
+		assert.NotNil(t, got)
+		assert.Empty(t, got)
+	})
 }
