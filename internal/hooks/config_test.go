@@ -104,20 +104,3 @@ func TestConfigFlags(t *testing.T) {
 		assert.Equal(t, want, cfg.enabled(), "ENABLE_GO_PRE_COMMIT=%q", value)
 	}
 }
-
-func TestReadSmallReadsOnlyRegularFiles(t *testing.T) {
-	t.Parallel()
-
-	dir := t.TempDir()
-	writeFile(t, dir, "big.env", strings.Repeat("x", 100), 0o600)
-
-	got, err := readSmall(filepath.Join(dir, "big.env"), 10)
-	require.NoError(t, err)
-	assert.Len(t, got, 10, "a file is read up to the limit")
-
-	_, err = readSmall(dir, 10)
-	require.ErrorIs(t, err, errNotAFile)
-
-	_, err = readSmall(filepath.Join(dir, "missing"), 10)
-	require.ErrorIs(t, err, os.ErrNotExist)
-}

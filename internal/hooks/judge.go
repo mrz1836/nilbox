@@ -13,6 +13,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/execpath"
 	"github.com/mrz1836/nilbox/internal/integrationprefs"
 	"github.com/mrz1836/nilbox/internal/integrations"
+	"github.com/mrz1836/nilbox/internal/paths"
 	"github.com/mrz1836/nilbox/internal/uierr"
 )
 
@@ -102,7 +103,7 @@ func (s *Service) judgeBytes(ctx context.Context, hook hookFile, tool ToolFacts)
 // readJudged reads hook's bytes for status to judge, and reports whether they are the bytes
 // it was read with: a hook that changed since, or is too big to be one, isn't judged.
 func readJudged(hook hookFile) ([]byte, bool) {
-	data, err := readSmall(hook.path, hookLimit)
+	data, err := paths.ReadHead(hook.path, hookLimit)
 	sum := sha256.Sum256(data)
 
 	return data, err == nil && hex.EncodeToString(sum[:]) == hook.sha

@@ -12,6 +12,8 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+
+	"github.com/mrz1836/nilbox/internal/paths"
 )
 
 // hookHead caps how much of a hook is kept to read its text: its marker, and the lines
@@ -61,10 +63,10 @@ func readHook(path string) hookFile {
 	case err != nil:
 		return hookFile{path: path, present: true, err: err}
 	case !info.Mode().IsRegular():
-		return hookFile{path: path, present: true, err: errNotAFile}
+		return hookFile{path: path, present: true, err: paths.ErrNotRegular}
 	}
 
-	f, err := openChecked(path)
+	f, err := paths.OpenRegular(path)
 	if err != nil {
 		return hookFile{path: path, present: true, err: err}
 	}

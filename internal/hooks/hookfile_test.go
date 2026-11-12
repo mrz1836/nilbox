@@ -10,6 +10,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/mrz1836/nilbox/internal/paths"
 )
 
 func TestReadHook(t *testing.T) {
@@ -47,7 +49,7 @@ func TestReadHook(t *testing.T) {
 
 	folder := readHook(filepath.Join(dir, "folder"))
 	assert.True(t, folder.present)
-	require.ErrorIs(t, folder.err, errNotAFile)
+	require.ErrorIs(t, folder.err, paths.ErrNotRegular)
 }
 
 func TestReadHookHashesAWholeLongFile(t *testing.T) {

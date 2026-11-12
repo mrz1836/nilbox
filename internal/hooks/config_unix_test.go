@@ -10,6 +10,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/mrz1836/nilbox/internal/paths"
 )
 
 // fifo makes a named pipe at path, which nothing ever writes to: opening it to read the
@@ -36,21 +38,21 @@ func inTime(t *testing.T, what string, fn func()) {
 	waitFor(t, done, what+" hung on a named pipe")
 }
 
-func TestOpenCheckedNeverWaitsOnAPipe(t *testing.T) {
+func TestNoReadOfAHookFileWaitsOnAPipe(t *testing.T) {
 	t.Parallel()
 
 	path := filepath.Join(t.TempDir(), "pipe.env")
 	fifo(t, path)
 
 	inTime(t, "opening a pipe", func() {
-		_, err := openChecked(path)
-		assert.ErrorIs(t, err, errNotAFile)
+		_, err := paths.OpenRegular(path)
+		assert.ErrorIs(t, err, paths.ErrNotRegular)
 	})
 
 	inTime(t, "reading a hook that is a pipe", func() {
 		h := readHook(path)
 		assert.True(t, h.present)
-		assert.ErrorIs(t, h.err, errNotAFile)
+		assert.ErrorIs(t, h.err, paths.ErrNotRegular)
 	})
 
 	inTime(t, "hashing a dirty file that is a pipe", func() {
