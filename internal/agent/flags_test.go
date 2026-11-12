@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/mrz1836/nilbox/internal/agent"
+	"github.com/mrz1836/nilbox/internal/textutil"
 )
 
 func TestValidateEffort(t *testing.T) {
@@ -304,5 +305,9 @@ func FuzzSplitJoin(f *testing.F) {
 		got, err := agent.Split(agent.Join(args))
 		require.NoError(t, err)
 		assert.Equal(t, args, got)
+
+		got, err = agent.Split(textutil.ShellQuote(a) + " " + textutil.ShellQuote(b))
+		require.NoError(t, err)
+		assert.Equal(t, args, got, "Split reads words that are always quoted back too")
 	})
 }
