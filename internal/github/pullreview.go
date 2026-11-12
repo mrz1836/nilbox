@@ -11,10 +11,10 @@ import (
 // pullReviewQuery reads what the review sheet shows about one pull request, by node ID,
 // in one request of about one point: what the item query reads (ItemFields and
 // DetailFields), so the inbox card is rewritten from the same answer, and ReviewFields:
-// the description, the base branch, the merge state, what the viewer may do, the
-// viewer's own latest review and pending reviews, auto-merge, the latest review of each
-// reviewer with its words, the first commit's message, which holds Dependabot's metadata,
-// and the head commit's checks, each with whether it is required.
+// the description, the base branch, the merge state, what the viewer may do (close it
+// included), the viewer's own latest review and pending reviews, auto-merge, the latest
+// review of each reviewer with its words, the first commit's message, which holds
+// Dependabot's metadata, and the head commit's checks, each with whether it is required.
 //
 // Fields DetailFields asks for with other arguments are aliased: GitHub refuses one name
 // asked for twice with different arguments.
@@ -28,7 +28,7 @@ const pullReviewQuery = `query PullReview($id: ID!) {
 const reviewFieldsFragment = `
 fragment ReviewFields on PullRequest {
   body baseRefName mergeStateStatus isMergeQueueEnabled
-  viewerDidAuthor viewerCanUpdateBranch viewerCanEnableAutoMerge viewerCanMergeAsAdmin
+  viewerDidAuthor viewerCanUpdateBranch viewerCanEnableAutoMerge viewerCanMergeAsAdmin viewerCanClose
   viewerLatestReview { state commit { oid } }
   pendingReviews: reviews(states: [PENDING]) { totalCount }
   autoMergeRequest { mergeMethod enabledAt enabledBy { login } }
@@ -125,6 +125,10 @@ type PullReview struct {
 	// ViewerCanBypass says whether GitHub lets the viewer merge past the branch's rules, as
 	// a repository admin can, without waiting for what they require.
 	ViewerCanBypass bool
+
+	// ViewerCanClose says whether GitHub lets the viewer close the pull request (its
+	// Closable viewerCanClose).
+	ViewerCanClose bool
 
 	// ViewerReview is the viewer's own latest review: its state and the commit it was left
 	// on; zero when the viewer has not reviewed.
@@ -335,6 +339,7 @@ type reviewNode struct {
 	ViewerCanUpdateBranch    bool   `json:"viewerCanUpdateBranch"`
 	ViewerCanEnableAutoMerge bool   `json:"viewerCanEnableAutoMerge"`
 	ViewerCanMergeAsAdmin    bool   `json:"viewerCanMergeAsAdmin"`
+	ViewerCanClose           bool   `json:"viewerCanClose"`
 	ViewerLatestReview       *struct {
 		State  string         `json:"state"`
 		Commit *graphQLCommit `json:"commit"`
@@ -410,6 +415,7 @@ func (n *reviewNode) fill(r *PullReview) {
 	r.ViewerCanUpdateBranch = n.ViewerCanUpdateBranch
 	r.ViewerCanEnableAutoMerge = n.ViewerCanEnableAutoMerge
 	r.ViewerCanBypass = n.ViewerCanMergeAsAdmin
+	r.ViewerCanClose = n.ViewerCanClose
 	r.PendingReviews = max(n.PendingReviews.TotalCount, 0)
 	r.AutoMerge = n.AutoMergeRequest.autoMerge()
 	r.Reviews = n.reviews()

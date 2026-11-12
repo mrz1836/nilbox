@@ -23,9 +23,11 @@ import * as $models from "./models.js";
  * no review of its own posts the user's text and line comments, when there are any, as a
  * comment once that read says GitHub would merge (or, for auto-merge, that the pull request
  * is open at the head the user saw), the way a comment is posted, and then merges as it
- * would without them. A step GitHub made stands, so an approval or a comment GitHub took
- * and a merge it would not make yet is a result, not an error, and once a merge's comment
- * is posted nothing that fails after it is an error either.
+ * would without them. A close reads the pull request first, and closes only one still open
+ * at the head the user saw, posting the text and line comments first the same way. A step
+ * GitHub made stands, so an approval or a comment GitHub took and a merge it would not
+ * make yet is a result, not an error, and once a merge's or a close's comment is posted
+ * nothing that fails after it is an error either.
  */
 export function Act(req: $models.ActRequest): $CancellablePromise<$models.Result> {
     return $Call.ByID(1916819644, req);

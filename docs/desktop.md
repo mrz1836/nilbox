@@ -1076,8 +1076,8 @@ one. Each is made with your `gh` token, and GitHub's answer is checked before th
 A combined action, such as **Approve & merge**, makes its changes one at a time and costs the sum
 of their rows, and so does a merge that posts your text as a comment first (Merge when ready
 then reads the merge state before the comment, 1 GraphQL point more). Nilbox never goes past branch protection on its own (only **Merge past the
-rules** does, when you choose it), and no agent ever approves or merges: every approval and
-merge happens only because you clicked.
+rules** does, when you choose it), and no agent ever approves, merges, or closes: every
+approval, merge, and close happens only because you clicked.
 
 | Change | Where | Cost |
 |---|---|---|
@@ -1090,6 +1090,7 @@ merge happens only because you clicked.
 | Turn on auto-merge | The review sheet, after you confirm | 1 GraphQL point |
 | Update branch | The review sheet | 1 REST point |
 | Ask Dependabot to rebase (a `@dependabot rebase` comment) | The review sheet | 1 REST point |
+| Close pull request | The review sheet's menu, after you confirm | 1 GraphQL point to check nothing was pushed, then 1 REST point (1 more for your comment) |
 
 From the card's menu, once GitHub has taken you off, the item leaves that list (and the inbox,
 when it is in no other), and a toast confirms it. When GitHub refuses, or answers without making
@@ -1228,6 +1229,26 @@ check is expected**, and the text leaves your draft, so a second try doesn't pos
 While you have a review of the pull request started on GitHub, which holds back every comment,
 the button waits and says so: submit or discard that review there, or clear your text.
 
+**Closing without merging.** The menu offers **Close pull request**, set apart at its foot, on
+an open pull request GitHub says you may close (your own, or anyone's where you have triage
+access or more). Until the sheet has read the pull request from GitHub, it waits, greyed. It is
+never the button: picking it from the menu opens its confirmation at once, it never becomes the
+action the button runs, **⌘↩** never closes, and when nothing else can run, the sheet still
+says **Nothing to do here now.**, with the close in a menu beside it. Text you wrote in **Your
+review**, or a reply you picked, goes with it, along with any line comments, as a comment
+posted before it closes, the way a merge posts one: to the commit you saw, and never as an
+approval. A default reply you never touched doesn't go. The confirmation names the pull
+request, says when your text is posted as a comment first, and notes that you can reopen it on
+GitHub. **Cancel** and Escape close nothing. GitHub takes no commit to pin a close to, so Nilbox
+reads the pull request first (1 GraphQL point), and again before a second try with a fresh
+token: one closed, merged, or pushed to since you opened it gets neither the comment nor the
+close. If the comment fails, nothing closes. If the close then fails, or a push lands before a
+second try, the toast says the comment is posted and why it didn't close, as in **Commented on
+acme-org/api#212, but it wasn't closed: It was pushed to since you opened it**, and the text
+leaves your draft. GitHub's refusal reads as one of a close, as in **GitHub wouldn't close
+acme-org/api#212: …**. Otherwise the toast says **Closed acme-org/api#212 with your comment**
+(or **Closed acme-org/api#212**).
+
 **Merge method.** **Settings → Reviewing** chooses the method the confirmation starts on: **As
 each repository offers first** (the default, GitHub's own first choice for you there), **Squash
 and merge**, **Create a merge commit**, or **Rebase and merge**. A repository that doesn't allow
@@ -1272,8 +1293,8 @@ never lost.
 **After acting** the sheet closes and the inbox's toast reports what happened, as in **Merged
 acme-org/api#212 (squash)**, **Commented and merged acme-org/api#212 (squash)**, or **Approved
 acme-org/api#212 · auto-merge is on**. A review takes the
-pull request out of **Review requested**, and a merge out of every list, at once, with no extra
-request.
+pull request out of **Review requested**, and a merge or a close out of every list, at once, with
+no extra request.
 
 **Line comments.** Click a line number in the diff to comment on that line; shift-click another
 in the same part of the diff for a range. **Suggest a change** (on the new version only) starts

@@ -143,7 +143,7 @@ func (f *fakeInbox) Act(
 		tries++
 	}
 
-	if f.recordErr != nil && (acted.Reviewed || acted.Merged) {
+	if f.recordErr != nil && (acted.Reviewed || acted.Merged || acted.Closed) {
 		err = errors.Join(err, uierr.New(
 			"GitHub made the change, but the inbox could not record it. The next refresh catches it up.", f.recordErr,
 		))
@@ -175,6 +175,7 @@ const (
 	callAuto    = "auto"
 	callUpdate  = "update"
 	callComment = "comment"
+	callClose   = "close"
 )
 
 // fakeGitHub answers the sheet's requests and counts them.
@@ -197,6 +198,8 @@ type fakeGitHub struct {
 	autoErr    error
 	updateErr  error
 	commentErr error
+	closeErr   error
+	closeOnce  error
 
 	calls map[string]int
 	// order names every request, in the order they came.
@@ -357,6 +360,22 @@ func (g *fakeGitHub) AddComment(_ context.Context, _ github.Token, _ item.Ref, b
 	return &github.Comment{ID: 1}, nil
 }
 
+func (g *fakeGitHub) ClosePull(context.Context, github.Token, item.Ref) error {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+
+	g.count(callClose)
+
+	if g.closeOnce != nil {
+		err := g.closeOnce
+		g.closeOnce = nil
+
+		return err
+	}
+
+	return g.closeErr
+}
+
 func (g *fakeGitHub) count(name string) {
 	if g.calls == nil {
 		g.calls = map[string]int{}
@@ -477,7 +496,7 @@ func (h *harness) refreshed(t *testing.T) Review {
 }
 
 // pullReview is what GitHub says about #7 at head in merge state status, which the user may
-// update while it is behind.
+// update while it is behind, and close.
 func pullReview(head, status string) *github.PullReview {
 	return &github.PullReview{
 		Update: github.ItemUpdate{
@@ -489,7 +508,7 @@ func pullReview(head, status string) *github.PullReview {
 			Details: github.ItemDetails{HeadOID: head},
 		},
 		Body: "Adds a cache.\n\n![chart](https://example.com/x.png)", BaseRef: "main", MergeState: status,
-		ViewerCanEnableAutoMerge: true, ViewerCanUpdateBranch: status == github.MergeStateBehind,
+		ViewerCanEnableAutoMerge: true, ViewerCanUpdateBranch: status == github.MergeStateBehind, ViewerCanClose: true,
 		Reviews: []github.Review{{Author: "octo-reviewer", State: "APPROVED", Commit: headB, SubmittedAt: testNow}},
 		Checks: []github.Check{
 			{Kind: github.CheckKindRun, Name: "test", State: "SUCCESS", Outcome: github.CheckPassed, Required: true},

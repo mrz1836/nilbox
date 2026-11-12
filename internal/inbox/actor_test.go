@@ -64,6 +64,20 @@ func TestActRecordsAReviewAndAMerge(t *testing.T) {
 	assert.Equal(t, [3]bool{false, false, false}, h.reasons(t, 1))
 }
 
+func TestActRecordsAClose(t *testing.T) {
+	t.Parallel()
+
+	h, id := itemHarness(t)
+
+	snap, err := NewActor(h.svc).Act(t.Context(), id, func(context.Context, github.Token, PullTarget) (Acted, error) {
+		return Acted{Reviewed: true, Closed: true}, nil
+	})
+	require.NoError(t, err)
+	assert.Equal(t, []int{2}, numbers(snap.ReviewRequested), "a close takes it out of every list at once")
+	assert.Empty(t, snap.Assigned.Items)
+	assert.Equal(t, [3]bool{false, false, false}, h.reasons(t, 1))
+}
+
 func TestActKeepsWhatGitHubDidWhenAStepFails(t *testing.T) {
 	t.Parallel()
 

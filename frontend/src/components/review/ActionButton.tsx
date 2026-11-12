@@ -15,28 +15,62 @@ export interface ActionButtonProps {
   blocked: (action: ReviewAction) => string
 }
 
+// menuOnly reports an action that runs only when picked from the menu, on purpose: a close.
+// Picking it runs it (it asks first), so it is never the button, never the action the sheet
+// keeps chosen, never run by ⌘↩, and never counts as something to do.
+export function menuOnly(action: ReviewAction): boolean {
+  return action === 'close'
+}
+
 // ActionButton is the review sheet's split button: the action it runs, labelled with
 // exactly what happens, as in "Approve & squash-merge", and a menu of every action the
 // sheet offers, with why each one that can't run now can't. With no action to run on its
 // own (no primary, and none chosen) but some the user may pick, such as a write to the
 // branch that is never the button by default, it reads "Choose an action" and only opens
-// the menu.
+// the menu. A close sits apart at the menu's foot and runs when picked; with nothing else
+// to do, the sheet says so and keeps the close in a menu beside the words.
 export function ActionButton({ offers, selected, onSelect, onRun, busy, blocked }: ActionButtonProps) {
-  const offer = offers.find((o) => o.action === selected)
+  const offer = menuOnly(selected) ? undefined : offers.find((o) => o.action === selected)
   const items = (): MenuItem[] =>
-    offers.map((o) => ({
-      label: o.label,
-      icon: o.action === selected ? <CheckIcon className="size-3.5 text-accent" /> : <span className="size-3.5" />,
-      disabled: !o.enabled,
-      title: o.enabled ? undefined : o.reason,
-      onSelect: () => {
-        onSelect(o.action)
-      },
-    }))
+    offers.map((o) => {
+      if (menuOnly(o.action)) {
+        const reason = o.enabled ? blocked(o.action) : o.reason
+
+        return {
+          label: o.label,
+          icon: <span className="size-3.5" />,
+          disabled: busy || !o.enabled || reason !== '',
+          title: reason === '' ? undefined : reason,
+          divided: true,
+          onSelect: () => {
+            onRun(o.action)
+          },
+        }
+      }
+
+      return {
+        label: o.label,
+        icon: o.action === selected ? <CheckIcon className="size-3.5 text-accent" /> : <span className="size-3.5" />,
+        disabled: !o.enabled,
+        title: o.enabled ? undefined : o.reason,
+        onSelect: () => {
+          onSelect(o.action)
+        },
+      }
+    })
 
   if (offer === undefined) {
-    if (!offers.some((o) => o.enabled)) {
-      return <p className="text-xs text-muted">Nothing to do here now.</p>
+    if (!offers.some((o) => o.enabled && !menuOnly(o.action))) {
+      return (
+        <div className="flex items-center gap-2">
+          <p className="text-xs text-muted">Nothing to do here now.</p>
+          {offers.some((o) => o.enabled && menuOnly(o.action)) && (
+            <MenuButton label="More review actions" items={items} className={buttonClass}>
+              More <ChevronDownIcon className="size-3.5" />
+            </MenuButton>
+          )}
+        </div>
+      )
     }
 
     return (

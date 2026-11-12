@@ -314,11 +314,26 @@ app:lint` reads.
   auto-merge fallback, and `merge_bypass` still needs its rules accepted. A comment that fails
   merges nothing, and once one is posted nothing after it is an error: a merge GitHub won't make,
   or any failure, is `commented_not_merged`, a result whose words, like `Result.Commented`, say
-  the comment was posted, so the sheet drops the text and never posts it twice. It owns `review_diffs` and
+  the comment was posted, so the sheet drops the text and never posts it twice. A close
+  (`close`) is offered on an open pull request, held back ("Wait for it to load") until the
+  sheet read it, then only when GitHub's own `viewerCanClose` says so (`Facts.CanClose`, read
+  by the review query and kept in the cache), and always confirmed. It is never the button:
+  the window runs it only when picked from the menu (`menuOnly`), never keeps it as the chosen
+  action or runs it with ⌘↩, counts it as nothing to do, and sends with it only text the user
+  wrote or picked, never a default reply. GitHub takes no head to pin a close to, so every try
+  (a retry with a fresh token included) reads the head first (`FetchMergeState`): one no
+  longer open is refused, and one pushed to is `pushed_since` with nothing sent, or, after the
+  comment, `commented_not_closed`. Then it posts the text and line comments as a COMMENT
+  review the same way, and closes with one REST `PATCH` (`(*github.Client).ClosePull`, whose
+  refusals `closeError` words as a close, never as a merge or a push). A comment that fails
+  closes nothing, and anything that fails after it is `commented_not_closed`, decided in one
+  place (`failedAfterComment`). A merge or a close takes the pull request out of every list
+  (`Acted.Merged`, `Acted.Closed`) and drops its cache. It owns `review_diffs` and
   `review_diff_files`, a bounded cache of the diffs it read (per pull request, in all, and by
   age), pruned in the same transaction that writes. A merge that went through tells its
   `Merges` the repository, without waiting (core: the Release page's `Refresher`, which reads
-  that repository's row again). Nothing here lets an agent approve or merge.
+  that repository's row again); a close tells it nothing. Nothing here lets an agent approve,
+  merge, or close.
 - `internal/bump/` reads a dependency update from a bot's pull request title (and Dependabot's
   commit trailer) into an `Update`, for the review sheet and the `.Dependency` prompt variables.
   It is pure and imports no service.

@@ -26,9 +26,10 @@ import { ActionProgress } from './ActionProgress'
 import { AgentVerdict } from './AgentVerdict'
 import { DiffView } from './DiffView'
 import { FileList } from './FileList'
+import { menuOnly } from './ActionButton'
 import { ActionConfirmDialog } from './ActionConfirmDialog'
 import { MergeConfirmDialog, merges } from './MergeConfirmDialog'
-import { commentFirst, heldBack, ReviewComposer, sendsText, useReplyBody } from './ReviewComposer'
+import { commentFirst, heldBack, ReviewComposer, sendsText, sentText, useReplyBody } from './ReviewComposer'
 import { ReviewHeader } from './ReviewHeader'
 import { DescriptionSkeleton, DiffSkeleton, FileListSkeleton, ReadingBanner, SummarySkeleton } from './ReviewLoading'
 import { Readiness, ReviewSummary } from './ReviewSummary'
@@ -54,11 +55,16 @@ export interface ReviewSheetProps {
 }
 
 // selectedAction is the action the sheet's button runs: the one the user chose, while the
-// sheet still offers it enabled, else the sheet's primary.
+// sheet still offers it enabled, else the sheet's primary; never one that runs only from
+// the menu, such as a close.
 export function selectedAction(review: Review, chosen: ReviewAction): ReviewAction {
   const offer = review.offers.find((o) => o.action === chosen)
 
-  return chosen !== '' && offer?.enabled === true ? chosen : review.primary
+  if (chosen !== '' && !menuOnly(chosen) && offer?.enabled === true) {
+    return chosen
+  }
+
+  return menuOnly(review.primary) ? '' : review.primary
 }
 
 // keepsDraft reports an outcome that leaves the draft for another try: an action refused
@@ -132,8 +138,8 @@ export function ReviewSheet({
 
   const send = async (r: Review, action: ReviewAction, method: MergeMethod, accept: boolean) => {
     const offer = r.offers.find((o) => o.action === action)
-    // A review sends the text and line comments, and so does a merge with no review of its
-    // own, which posts them as a comment first when there are any, as the offer says.
+    // A review sends the text and line comments, and so do a merge with no review of its own
+    // and a close, which post them as a comment first when there are any, as the offer says.
     const text = sendsText(offer)
 
     setProgress({ title: offer?.label ?? 'Working', target: `${r.repo}#${String(r.number)}`, steps: [] })
@@ -142,7 +148,7 @@ export function ReviewSheet({
       itemId: id,
       action,
       head: r.head,
-      body: text ? reply.body : '',
+      body: text ? sentText(action, draft, reply.body) : '',
       comments: text
         ? draft.comments.map((c) => ({
             path: c.path,
@@ -166,7 +172,8 @@ export function ReviewSheet({
     if (result.data.outcome === 'pushed_since') {
       if (result.data.commented) {
         // The merge posted the text and line comments before it found the push, so the
-        // draft keeps the chosen action and nothing that would post them twice.
+        // draft keeps the chosen action and nothing that would post them twice. (A close
+        // reads the head before its comment, so it never gets here having posted one.)
         drafts.update(id, (d) => ({ ...d, body: '', edited: true, replyId: 0, comments: [] }))
       }
 
@@ -453,6 +460,7 @@ export function ReviewSheet({
           <ActionConfirmDialog
             review={review}
             offer={confirming}
+            comment={commentFirst(confirming, sentText(confirming.action, draft, reply.body), draft.comments.length)}
             onCancel={() => {
               setConfirming(null)
             }}

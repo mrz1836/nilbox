@@ -281,7 +281,7 @@ requests that merged, never touching `main`, `master`, or any branch you protect
 - **Cards that answer "is it ready?"** — checks, reviews, comments, size grade, labels, and Draft, Conflicts, and Auto-merge tags
 - **Issue projects** — each issue's GitHub project, its status and priority and size there, and its sub-issue progress, one click from the board, plus a status sort in your own order
 - **Local triage** — snooze, dismiss, or pin; wake rules end a snooze early when something changes
-- **Review without leaving** — a pull request's diff, checks, and what it still needs in one sheet; approve, merge, request changes with line comments, or update the branch, each pinned to the commit you saw and never going past branch protection unless you choose to
+- **Review without leaving** — a pull request's diff, checks, and what it still needs in one sheet; approve, merge, request changes with line comments, update the branch, or close it with a comment, each pinned to the commit you saw and never going past branch protection unless you choose to
 - **Edits when you ask** — take yourself off an item's assignees or a pull request's reviewers from the card's menu, paced within your API budget
 - **One-click agent launch** — Claude Code or OpenAI Codex in iTerm2 or Terminal.app, in the item's own worktree
 - **Follow every session** — each card shows what its agent is doing (working, waiting for your approval, done) and what it last said, with Show in terminal and Resume, read from the agent on your Mac
@@ -395,17 +395,20 @@ More in [The item menu and edits on GitHub](docs/desktop.md#the-item-menu-and-ed
 - **Every merge asks first,** with the methods the repository allows and any warnings to accept.
   Approve, Comment, Request changes, and Update branch are one click (Update branch asks first on
   a Dependabot pull request, which Dependabot stops rebasing once someone else changes it).
+- **Close without merging:** the menu offers **Close pull request** wherever GitHub says you may
+  close it. It is never the button: picking it asks first, and it posts the text you wrote and
+  your line comments as a comment before it closes, once it checked that nothing was pushed.
 - **Safe by construction:** every write is pinned to the commit you saw: a merge after a push is
   refused, and an approval checks nothing was pushed before it goes, so you never approve code
   you didn't see. A fresh merge-state read comes before every merge, so an admin's
   token never merges past branch protection on its own; **Merge past the rules** does, only
-  from the menu, with each rule it skips to accept. No agent ever approves or merges.
+  from the menu, with each rule it skips to accept. No agent ever approves, merges, or closes.
 - **Line comments and suggestions** on the diff, checked against it before GitHub sees them, and
   a draft per pull request that survives closing the sheet.
 - **Ask Claude** from the sheet, and use the latest session's verdict as your review's text.
 - **Cheap:** opening is instant and free, a refresh with nothing pushed costs one GraphQL point,
-  and each write costs one point, plus one to check the head before an approval and one to three
-  for the merge-state read before a merge.
+  and each write costs one point, plus one to check the head before an approval or a close and
+  one to three for the merge-state read before a merge.
 
 More in [Reviewing a pull request](docs/desktop.md#reviewing-a-pull-request).
 

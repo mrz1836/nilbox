@@ -180,6 +180,7 @@
             "viewerCanUpdateBranch": false,
             "viewerCanEnableAutoMerge": false,
             "viewerCanMergeAsAdmin": true,
+            "viewerCanClose": true,
             "viewerLatestReview": {
                 "state": "COMMENTED",
                 "commit": {
