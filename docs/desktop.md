@@ -394,9 +394,10 @@ isn't shown on Scripts: each page searches in itself.
 
 ## Release
 
-**Release** lists every clone under the clone root whose `origin` is on GitHub, which is where
-magex pushes, and releases a new version of any of them with magex's `version:bump`. The app
-itself never tags or pushes: magex does, when you click a button that names the version.
+**Release** lists every clone in the [repository locations](#repository-locations) whose `origin`
+is on GitHub, which is where magex pushes, and releases a new version of any of them with magex's
+`version:bump`. The app itself never tags or pushes: magex does, when you click a button that
+names the version.
 
 **The page.**
 
@@ -420,7 +421,7 @@ itself never tags or pushes: magex does, when you click a button that names the 
   repositories…*, then *Checking your clones: 3 of 12…*.
 - **After a restart,** the page shows the list from the last time it was read at once, marked
   *From 2h ago · checking again…*, while it reads GitHub again behind it, and then replaces it.
-  A list read from another clone root isn't shown.
+  A list read from other repository locations isn't shown.
 - **Recent** lists the last 10 releases started from the app, with how each came out (*on
   GitHub*, *on GitHub, following its workflow*, *published*, *release workflow failed*, *on
   GitHub, not published*, *not pushed*, *failed*, *not checked on GitHub*); each opens its run.
@@ -534,11 +535,11 @@ workflow failed** once its workflow says so.
 
 ## Hooks
 
-**Hooks** lists every clone under the clone root with a go-pre-commit config inside it (a
-`.github/env/*.env` file, or `.github/.env.base`), installs and updates go-pre-commit's
-`pre-commit` hook in them, and runs the checks. The app itself never writes a hook or fixes a
-file: go-pre-commit does, when you click a button that says what will change. The page never
-asks GitHub, so it works offline and signed out.
+**Hooks** lists every clone in the [repository locations](#repository-locations) with a
+go-pre-commit config inside it (a `.github/env/*.env` file, or `.github/.env.base`), installs and
+updates go-pre-commit's `pre-commit` hook in them, and runs the checks. The app itself never
+writes a hook or fixes a file: go-pre-commit does, when you click a button that says what will
+change. The page never asks GitHub, so it works offline and signed out.
 
 **The page.**
 
@@ -606,10 +607,12 @@ origin, with one `git ls-remote` whose answer is kept five minutes.
 
 **The page.**
 
-- **The picker** lists the clones under the clone root, the ones a script ran in most recently
-  first, and the page starts on the one you chose last, even after a restart. Beside it: the
-  repository, the folder, and the branch, with *From branch feature-x* when the clone isn't on
-  its default branch, since a branch can change what the files say.
+- **The picker** lists the clones in the [repository locations](#repository-locations), the ones
+  a script ran in most recently first, and the page starts on the one you chose last, even after a
+  restart. Two clones with the same name in different locations show their folder, as
+  *example-repo (~/work)*. Beside it: the repository, the folder, and the branch, with *From
+  branch feature-x* when the clone isn't on its default branch, since a branch can change what
+  the files say.
 - **The branch check** beside the branch says whether origin has newer commits on the branch it
   follows: **Up to date**, or **Update available** with **Pull**, which fast-forwards the branch
   (`git pull --ff-only`, never a merge or a rebase) as a run in the app, whose progress shows in
@@ -718,8 +721,9 @@ the filter gives way first.
 
 **Tab counts.** **Inbox** counts the items in your lists, leaving out what is snoozed or
 dismissed. An item in two lists, such as a pull request you opened and are assigned, counts
-once. **Worktrees** counts the linked worktrees on disk across every clone under the clone root,
-main worktrees aside, with an amber dot while some are done on GitHub but still on disk.
+once. **Worktrees** counts the linked worktrees on disk across every clone in the repository
+locations, main worktrees aside, with an amber dot while some are done on GitHub but still on
+disk.
 **Scripts** counts the runs going, with a red dot after a run failed until you open it, and an
 amber dot while a tool that's on can't be used. Hover a tab for what its number or dot means.
 **Prompts** has no count.
@@ -822,13 +826,13 @@ the default coding agent, each agent's default profile, the default prompt for p
 for issues, the worktree default, and following agent sessions), worktrees (whether to [clean up
 worktrees after merging](#the-worktrees-view), which branches go with them, and protected
 branches), [coding agents and profiles](#coding-agents-and-profiles),
-repositories (the clone root and the [launch
-defaults](#launch-defaults) for orgs and repositories), trust (the [trusted
+repositories (the clone root, the other [repository locations](#repository-locations), and the
+[launch defaults](#launch-defaults) for orgs and repositories), trust (the [trusted
 bots](#outside-contributors)), [sensitive files](#sensitive-files),
 [integrations](#tools-the-app-finds-and-installs) (mage-x, go-pre-commit, and Scripts), and the
-app's version. Each change is
-saved as you make it, except the clone root and launch defaults, which are saved with their
-**Save** buttons. Escape or the back arrow returns to the view you came from.
+app's version. Each change is saved as you make it, except the clone root, which its **Save**
+button saves (or **Choose…**, as soon as it picks a folder), and launch defaults, which are saved
+with theirs. Escape or the back arrow returns to the view you came from.
 
 <br>
 
@@ -1997,8 +2001,45 @@ Choose the terminal under **Settings → Launching**, and the clone root (the di
 children are your clones, initially `~/projects`) under **Settings → Repositories**. A launch
 whose agent isn't installed says so, as in "Codex isn't installed (codex wasn't found)."
 
-**Clones.** The item's clone is found by scanning the clone root one level deep and matching
-each repository's git remotes. The match is remembered and checked again on the next launch. To
+### Repository locations
+
+The clone root is the primary: new clones go in it, and it is looked in first. Clones anywhere
+else are found through the **other repository locations** under **Settings → Repositories**,
+each one of two kinds, worked out once as you add it:
+
+- **A folder** is looked into one level deep, as the clone root is: each folder inside it that
+  holds a `.git` is a clone. No folder is searched any deeper.
+- **A single clone** counts as that one repository, wherever it is.
+
+Type a path or click **Choose…**. The folder is looked at before it is added, and the app
+suggests a better choice where it finds one:
+
+- **A folder with no clones directly inside,** such as `~/src` in a `~/src/<owner>/<repo>`
+  layout: it names the folders inside it that have some, *~/src has no clones directly inside;
+  ~/src/acme-org (4) and ~/src/tools (2) do*, and offers **Add those** or **Add ~/src anyway**.
+  It looks at no more than 100 folders and 5,000 entries.
+- **A clone whose folder holds other clones:** it offers that folder, *~/Desktop/exp is a clone.
+  Its folder, ~/Desktop, holds 3 other clones*, or **Add only this clone**.
+- **A folder the locations already cover** (the clone root, a listed location, or a clone directly
+  inside one) is refused, and so are hidden folders, anything inside a `.nilbox` or `.git`
+  folder, and a linked worktree, whose clone is the one to add. A folder added drops the single
+  clones inside it, which it now covers.
+
+Each location shows what it is now: *folder · 6 clones*, *clone · acme-org/example-repo*, or a
+warning such as *Not found* (a drive that isn't plugged in), *No longer a clone*, *Now a clone
+itself* (a folder someone ran `git init` in, which is still looked into), or *Already in
+~/projects*, with **Check again**. Every page and launch reads every location at once, and a
+location that can't be read is skipped and named: the launch's message says so, and the
+Worktrees view says which it couldn't read. A clone two locations reach is listed once.
+
+Removing a location leaves its clones and their worktrees as they are, but nothing lists, sweeps,
+or cleans them up until you add it again, and their worktree records are kept. Worktrees stay
+beside their clone, under its folder's `.nilbox/worktrees/<repo>`, wherever it is.
+
+**Clones.** The item's clone is found by scanning the clone root and each folder location one
+level deep, and each clone location, and matching each repository's git remotes: a clone whose
+`origin` is the repository wins, and a tie goes to the clone root's. The match is remembered and
+checked again on the next launch, while a location still holds it. To
 find and check clones, the launcher runs only the read-only `git -C <clone> config --get-regexp`
 remote lookup. No git command the app runs changes a clone's own checkout: no checkout, stash,
 pull, reset, or branch switch, with one exception you click: Repo scripts' **Pull**, which
@@ -2014,7 +2055,12 @@ removals, prunes, and unlocks, with the [branch deletions](#branches) you confir
 
 **A repository with no clone.** When a launch finds no clone of the item's repository, the row
 says so and offers **Clone into ~/projects/&lt;name&gt;**: the clone root, then the repository's
-name. Confirm, and the app runs `gh repo clone <owner>/<name> ~/projects/<name>` as a program
+name. It also offers **It's cloned elsewhere…**: pick the clone's folder, and the app checks it is
+a clone of the repository (refusing, say, *~/x isn't a clone of acme-org/example-repo; its origin
+is acme-org/other*), adds it as a repository location, or offers its folder when that holds other
+clones, and continues the launch. A clone the app remembered that no location holds now, as after
+the clone root changed, is offered as **Use ~/old/&lt;name&gt;**. Confirm the clone, and the app
+runs `gh repo clone <owner>/<name> ~/projects/<name>` as a program
 with arguments, never through a shell. It then remembers the new clone and continues the launch
 with the same choices. The clone uses the GitHub CLI's own sign-in and its git protocol setting.
 This is the only time the app creates a clone, and it never writes into an existing directory.
@@ -2034,7 +2080,8 @@ same way, and the launch script stays a plain `cd` and `exec`.
 - **Beside the clone, not in it:** `~/projects/.nilbox/worktrees/<repo>/pr-<n>` or `issue-<n>`,
   on the item's own branch, `worktree-pr-<n>` or `worktree-issue-<n>`. Outside the clone, an
   agent never finds the copy while searching or loading the clone's instructions, the clone needs
-  no ignore rule, and the clone root's scan skips the hidden folder.
+  no ignore rule, and a location's scan skips the hidden folder. A clone in another location
+  keeps its worktrees beside it in the same way.
 
 A launch finds the item's worktree, or makes it, in this order:
 
@@ -2279,8 +2326,9 @@ last message keeps its first 500 characters.
 
 ## The Worktrees view
 
-The **Worktrees** tab lists every linked worktree of every git repository one level under the
-clone root, including worktrees from sessions started outside the app. It loads when you open
+The **Worktrees** tab lists every linked worktree of every git repository in the [repository
+locations](#repository-locations), including worktrees from sessions started outside the app. It
+names a location it couldn't read, such as a drive that isn't plugged in. It loads when you open
 it or click **Refresh**, and again after the automatic cleanup, not on the inbox's five-minute
 timer. While any listing runs, the toolbar says how far it has got: finding the clones, listing
 each clone's worktrees ("3 of 12 clones", with a bar), checking each worktree, and asking GitHub
