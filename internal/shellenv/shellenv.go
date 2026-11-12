@@ -202,13 +202,42 @@ func (r *Reader) Path() string {
 
 // Lookup returns key's value in env, the last one when it repeats, or "".
 func Lookup(env []string, key string) string {
+	value, _ := LookupOK(env, key)
+
+	return value
+}
+
+// LookupOK returns key's value in env, the last one when it repeats, and whether env sets
+// key at all, even to "". An entry sets key when it begins with key and "=": one without
+// "=" sets nothing.
+func LookupOK(env []string, key string) (string, bool) {
 	for _, e := range slices.Backward(env) {
-		if k, v, ok := strings.Cut(e, "="); ok && k == key {
-			return v
+		if value, ok := strings.CutPrefix(e, key+"="); ok {
+			return value, true
 		}
 	}
 
-	return ""
+	return "", false
+}
+
+// Without returns a copy of env, in its order, without every entry that sets one of keys
+// (as LookupOK reads one). env itself is never changed, and the copy is never nil.
+func Without(env []string, keys ...string) []string {
+	out := make([]string, 0, len(env)+1)
+
+	for _, e := range env {
+		if !slices.ContainsFunc(keys, func(key string) bool { return strings.HasPrefix(e, key+"=") }) {
+			out = append(out, e)
+		}
+	}
+
+	return out
+}
+
+// With returns a copy of env with key set to value, last, in place of every entry that set
+// it before (Without). env itself is never changed.
+func With(env []string, key, value string) []string {
+	return append(Without(env, key), key+"="+value)
 }
 
 // Shell returns the user's login shell: $SHELL from the app's environment when it is a
@@ -261,15 +290,8 @@ func (r *Reader) read(ctx context.Context) ([]string, error) {
 // fallback is the app's own environment with the fallback PATH.
 func (r *Reader) fallback() []string {
 	own := r.environ()
-	env := make([]string, 0, len(own)+1)
 
-	for _, kv := range own {
-		if !strings.HasPrefix(kv, "PATH=") {
-			env = append(env, kv)
-		}
-	}
-
-	return append(env, "PATH="+execpath.FallbackPath(r.home, Lookup(own, "PATH")))
+	return With(own, "PATH", execpath.FallbackPath(r.home, Lookup(own, "PATH")))
 }
 
 // newMarker returns a marker no startup file prints by chance.
