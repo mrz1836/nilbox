@@ -14,6 +14,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/mrz1836/nilbox/internal/shellenv"
 	"github.com/mrz1836/nilbox/internal/testutil"
 )
 
@@ -44,20 +45,22 @@ func setupClone(t *testing.T) (dir, global string, env []string) {
 func configOf(t *testing.T, env []string) []string {
 	t.Helper()
 
-	count := lookupVar(env, configCountVar)
-	require.NotNil(t, count, "the settings are passed through the environment")
+	count, ok := shellenv.LookupOK(env, configCountVar)
+	require.True(t, ok, "the settings are passed through the environment")
 
-	n, err := strconv.Atoi(*count)
+	n, err := strconv.Atoi(count)
 	require.NoError(t, err)
 
 	out := make([]string, 0, n)
 
 	for i := range n {
-		key, value := lookupVar(env, configKeyVar+strconv.Itoa(i)), lookupVar(env, configValueVar+strconv.Itoa(i))
-		require.NotNil(t, key)
-		require.NotNil(t, value)
+		key, keySet := shellenv.LookupOK(env, configKeyVar+strconv.Itoa(i))
+		require.True(t, keySet)
 
-		out = append(out, *key+"="+*value)
+		value, valueSet := shellenv.LookupOK(env, configValueVar+strconv.Itoa(i))
+		require.True(t, valueSet)
+
+		out = append(out, key+"="+value)
 	}
 
 	return out

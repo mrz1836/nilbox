@@ -12,6 +12,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/integrations"
 	"github.com/mrz1836/nilbox/internal/paths"
 	"github.com/mrz1836/nilbox/internal/scriptrun"
+	"github.com/mrz1836/nilbox/internal/shellenv"
 	"github.com/mrz1836/nilbox/internal/textutil"
 	"github.com/mrz1836/nilbox/internal/uierr"
 )
@@ -228,7 +229,7 @@ func (s *Service) spec(ctx context.Context, c clone, in Intent, asked integratio
 	case SourceMagex:
 		spec.Tool = string(integrationprefs.MageX)
 	case SourceYours:
-		spec.Env = withVars(spec.Env, s.repoVars(ctx, c))
+		spec.Env = append(shellenv.Without(spec.Env, Variables()...), s.repoVars(ctx, c)...)
 	case SourceT3, SourceTasks:
 	}
 

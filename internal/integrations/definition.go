@@ -3,10 +3,10 @@ package integrations
 import (
 	"maps"
 	"slices"
-	"strings"
 
 	"github.com/mrz1836/nilbox/internal/integrationprefs"
 	"github.com/mrz1836/nilbox/internal/repo"
+	"github.com/mrz1836/nilbox/internal/shellenv"
 )
 
 // Feature is an upstream change a tool gained in some release, which the app uses once
@@ -118,16 +118,10 @@ func (d Definition) RunEnv(base []string, runsIn integrationprefs.RunsIn) []stri
 	set := map[string]string{"GIT_TERMINAL_PROMPT": "0"}
 	maps.Copy(set, d.QuietEnv)
 
-	out := make([]string, 0, len(base)+len(set))
+	keys := slices.Sorted(maps.Keys(set))
+	out := shellenv.Without(base, keys...)
 
-	for _, kv := range base {
-		key, _, _ := strings.Cut(kv, "=")
-		if _, replaced := set[key]; !replaced {
-			out = append(out, kv)
-		}
-	}
-
-	for _, k := range slices.Sorted(maps.Keys(set)) {
+	for _, k := range keys {
 		out = append(out, k+"="+set[k])
 	}
 

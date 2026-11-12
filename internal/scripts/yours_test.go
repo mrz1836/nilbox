@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -796,10 +797,33 @@ func TestYourStoreWritesThatFail(t *testing.T) {
 	assert.Equal(t, []string{firstName, "Second"}, r.order(), "each change undone whole")
 }
 
-func TestWithVars(t *testing.T) {
+func TestAUserScriptsVariablesTakeThePlaceOfTheShells(t *testing.T) {
 	t.Parallel()
 
-	assert.Equal(t, []string{"PATH=/bin", "A=new", "B="}, withVars([]string{"A=old", "PATH=/bin", "B=x"},
-		[]string{"A=new", "B="}), "each set in place of the value it had")
-	assert.Equal(t, []string{"A=1"}, withVars(nil, []string{"A=1"}))
+	r := newRig(t)
+	r.git.set("main")
+	dir := r.clone("sdk", "acme-org/sdk", nil)
+	u := r.save(fixAll())
+	names := Variables()
+
+	r.mu.Lock()
+	r.env = append(r.env, names[0]+"=acme-org/stale", "KEPT=1", names[1]+"=/elsewhere", names[0]+"=again", names[2]+"=")
+	r.mu.Unlock()
+
+	got := &specs{}
+	svc := r.service(got)
+
+	_, err := svc.Run(t.Context(), RunRequest{Dir: r.shown(dir), Ref: yoursRef(u.ID)})
+	require.NoError(t, err)
+
+	env := got.last().Env
+	require.GreaterOrEqual(t, len(env), len(names))
+	assert.Equal(t, []string{names[0] + "=acme-org/sdk", names[1] + "=" + dir, names[2] + "=main"}, env[len(env)-len(names):],
+		"last, each in place of every value the shell gave it")
+	assert.Contains(t, env, "KEPT=1", "the rest of the shell's environment stays")
+
+	for _, name := range names {
+		set := slices.DeleteFunc(slices.Clone(env), func(kv string) bool { return !strings.HasPrefix(kv, name+"=") })
+		assert.Len(t, set, 1, name)
+	}
 }

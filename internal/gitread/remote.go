@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/mrz1836/nilbox/internal/execpath"
+	"github.com/mrz1836/nilbox/internal/shellenv"
 	"github.com/mrz1836/nilbox/internal/textutil"
 )
 
@@ -309,7 +310,7 @@ func (g *Git) readScoped(ctx context.Context, dir string, env []string) ([]scope
 // the user's own GIT_ALLOW_PROTOCOL, as remoteGuard describes.
 func guard(env []string, settings []scopedSetting, userAllow *string) (remoteSetup, error) {
 	setup := remoteSetup{
-		env: withVar(sshEnvironment(env, settings), allowProtocolVar, allowList(settings, userAllow)),
+		env: shellenv.With(sshEnvironment(env, settings), allowProtocolVar, allowList(settings, userAllow)),
 	}
 
 	cookies, err := cookieSettings(settings)
@@ -475,7 +476,7 @@ func sshEnvironment(env []string, settings []scopedSetting) []string {
 	case userChose:
 		return append(env, sshCommandVar+"="+chosen)
 	case hasVar(env, sshVar):
-		return append(env, sshCommandVar+"="+textutil.ShellQuote(varValue(env, sshVar)))
+		return append(env, sshCommandVar+"="+textutil.ShellQuote(shellenv.Lookup(env, sshVar)))
 	default:
 		return append(env, sshCommandVar+"="+batchSSH)
 	}
@@ -490,7 +491,7 @@ func askPassSettings(env []string, settings []scopedSetting) ([]string, error) {
 
 	chosen, ok := lastTrusted(settings, askPassKey)
 	if !ok {
-		chosen = varValue(env, sshAskPassVar)
+		chosen = shellenv.Lookup(env, sshAskPassVar)
 	}
 
 	return configSetting(askPassKey, chosen)
@@ -629,31 +630,12 @@ func isHelperKey(key string) bool {
 	return strings.HasPrefix(key, helperPrefix) && strings.HasSuffix(key, helperSuffix)
 }
 
-// varValue returns the value env gives key, or "".
-func varValue(env []string, key string) string {
-	for _, kv := range slices.Backward(env) {
-		if value, ok := strings.CutPrefix(kv, key+"="); ok {
-			return value
-		}
-	}
-
-	return ""
-}
-
-// lookupVar returns the value env gives key, or nil when it sets none.
-func lookupVar(env []string, key string) *string {
-	for _, kv := range slices.Backward(env) {
-		if value, ok := strings.CutPrefix(kv, key+"="); ok {
-			return &value
-		}
+// userAllowOf returns the user's own GIT_ALLOW_PROTOCOL, as base, their environment, sets
+// it, or nil when it sets none.
+func userAllowOf(base []string) *string {
+	if allow, ok := shellenv.LookupOK(base, allowProtocolVar); ok {
+		return &allow
 	}
 
 	return nil
-}
-
-// withVar returns env with key set to value, in place of any value it had.
-func withVar(env []string, key, value string) []string {
-	out := slices.DeleteFunc(slices.Clone(env), func(kv string) bool { return strings.HasPrefix(kv, key+"=") })
-
-	return append(out, key+"="+value)
 }

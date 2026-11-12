@@ -39,6 +39,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/scripts"
 	"github.com/mrz1836/nilbox/internal/sessions"
 	"github.com/mrz1836/nilbox/internal/settings"
+	"github.com/mrz1836/nilbox/internal/shellenv"
 	"github.com/mrz1836/nilbox/internal/uierr"
 	"github.com/mrz1836/nilbox/internal/workspacetrust"
 	"github.com/mrz1836/nilbox/internal/worktrees"
@@ -167,9 +168,7 @@ func trusters(home string, logger *slog.Logger) map[agent.ID]launcher.Truster {
 // execpath.Exec with git's terminal prompts off, so a fetch that needs a password fails at
 // once rather than waiting for an answer no one can give.
 func worktreeRunner(search execpath.Search) execpath.Exec {
-	env := slices.DeleteFunc(os.Environ(), func(kv string) bool { return strings.HasPrefix(kv, "GIT_TERMINAL_PROMPT=") })
-
-	return execpath.Exec{Search: search, Env: append(env, "GIT_TERMINAL_PROMPT=0")}
+	return execpath.Exec{Search: search, Env: shellenv.With(os.Environ(), "GIT_TERMINAL_PROMPT", "0")}
 }
 
 // agentRunner runs a coding agent's command, for its --version or for the state of its
@@ -191,9 +190,8 @@ func (r agentRunner) Run(ctx context.Context, name string, args ...string) (stdo
 	}
 
 	path := strings.Join([]string{filepath.Dir(name), os.Getenv("PATH")}, string(os.PathListSeparator))
-	env := slices.DeleteFunc(slices.Clone(base), func(kv string) bool { return strings.HasPrefix(kv, "PATH=") })
 
-	return execpath.Exec{Search: r.search, Env: append(env, "PATH="+path)}.Run(ctx, name, args...)
+	return execpath.Exec{Search: r.search, Env: shellenv.With(base, "PATH", path)}.Run(ctx, name, args...)
 }
 
 // followSwitch passes the settings service's events on, wakes what reads things again on

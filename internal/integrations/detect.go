@@ -209,7 +209,7 @@ func (s *Service) addGoEnv(ctx context.Context, env []string, dirs *searchDirs) 
 	ctx, cancel := context.WithTimeout(ctx, versionTimeout)
 	defer cancel()
 
-	stdout, _, err := s.run(ctx, goPath, []string{"env", "GOBIN", "GOPATH"}, withVar(env, "GOTOOLCHAIN", "local"))
+	stdout, _, err := s.run(ctx, goPath, []string{"env", "GOBIN", "GOPATH"}, shellenv.With(env, "GOTOOLCHAIN", "local"))
 
 	gobin, gopath, ok := parseGoEnv(stdout)
 	if err != nil || !ok {
@@ -245,13 +245,6 @@ func parseGoEnv(out []byte) (gobin, gopath string, ok bool) {
 	}
 
 	return lines[0], lines[1], true
-}
-
-// withVar returns env with key set to value, in place of any it had.
-func withVar(env []string, key, value string) []string {
-	out := slices.DeleteFunc(slices.Clone(env), func(kv string) bool { return strings.HasPrefix(kv, key+"=") })
-
-	return append(out, key+"="+value)
 }
 
 // absDirs keeps the absolute folders of dirs, cleaned, each once.

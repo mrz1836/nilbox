@@ -295,22 +295,3 @@ func Variables() []string {
 
 	return []string{p + "_REPO", p + "_REPO_DIR", p + "_DEFAULT_BRANCH"}
 }
-
-// withVars returns env with each of vars, KEY=value, set in place of any value it had.
-func withVars(env, vars []string) []string {
-	keys := make([]string, 0, len(vars))
-	for _, kv := range vars {
-		key, _, _ := strings.Cut(kv, "=")
-		keys = append(keys, key)
-	}
-
-	out := make([]string, 0, len(env)+len(vars))
-
-	for _, kv := range env {
-		if key, _, _ := strings.Cut(kv, "="); !slices.Contains(keys, key) {
-			out = append(out, kv)
-		}
-	}
-
-	return append(out, vars...)
-}
