@@ -377,12 +377,19 @@ describe('InboxView', () => {
 
     expect(await screen.findByText('5m ago')).toBeInTheDocument()
 
+    // The clock starts its minute interval once something subscribes, in an effect that
+    // can land after the text shows on a loaded machine; advancing before then would move
+    // nothing. So the interval is waited for, and the tick's render after it.
+    await vi.waitFor(() => {
+      expect(vi.getTimerCount()).toBeGreaterThan(0)
+    })
+
     current = fromNow(60_000)
     act(() => {
       vi.advanceTimersByTime(60_000)
     })
 
-    expect(screen.getByText('6m ago')).toBeInTheDocument()
+    expect(await screen.findByText('6m ago')).toBeInTheDocument()
   })
 })
 
