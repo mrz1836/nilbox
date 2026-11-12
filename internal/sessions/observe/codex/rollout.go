@@ -11,8 +11,9 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
-	"syscall"
 	"time"
+
+	"github.com/mrz1836/nilbox/internal/paths"
 )
 
 const (
@@ -163,18 +164,15 @@ func dayDirs(root string, from, now time.Time) []string {
 
 // readMeta reads a rollout file's first line, and returns what it said, and false when
 // the line is not whole yet, so it may still change. It never waits on a file that is not
-// a regular one, such as a FIFO put where a rollout was listed.
+// a regular one, such as a FIFO put where a rollout was listed: paths.OpenRegular refuses
+// it.
 func readMeta(path string) (rolloutEntry, bool) {
-	f, err := os.OpenFile(path, os.O_RDONLY|syscall.O_NONBLOCK, 0) //nolint:gosec // a rollout file under the Codex home
+	f, err := paths.OpenRegular(path)
 	if err != nil {
 		return rolloutEntry{}, false
 	}
 
 	defer func() { _ = f.Close() }()
-
-	if info, statErr := f.Stat(); statErr != nil || !info.Mode().IsRegular() {
-		return rolloutEntry{}, false
-	}
 
 	line, whole := firstLine(f)
 	if line == nil {

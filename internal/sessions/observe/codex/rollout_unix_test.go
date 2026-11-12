@@ -22,16 +22,22 @@ func TestReadMetaNeverWaitsOnAFIFO(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "rollout-2026-11-09T00-17-28-x.jsonl")
 	require.NoError(t, syscall.Mkfifo(path, 0o600))
 
-	done := make(chan rolloutEntry, 1)
+	type read struct {
+		entry rolloutEntry
+		whole bool
+	}
+
+	done := make(chan read, 1)
 
 	go func() {
-		entry, _ := readMeta(path)
-		done <- entry
+		entry, whole := readMeta(path)
+		done <- read{entry, whole}
 	}()
 
 	select {
-	case entry := <-done:
-		assert.False(t, entry.ok, "a FIFO is no rollout")
+	case got := <-done:
+		assert.False(t, got.entry.ok, "a FIFO is no rollout")
+		assert.False(t, got.whole, "and is read again next time, in case a rollout takes its place")
 	case <-time.After(5 * time.Second):
 		require.Fail(t, "reading a FIFO hung")
 	}
