@@ -5,9 +5,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mrz1836/nilbox/internal/textutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/mrz1836/nilbox/internal/textutil"
 )
 
 // awkwardScriptPath has a space, a single quote, a double quote, and a backslash.
