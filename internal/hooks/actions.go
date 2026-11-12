@@ -527,8 +527,8 @@ func (s *Service) judgeUninstall(run *actionRun, res *ActionResult) {
 // end wasn't seen, which the engine's own outcome says.
 func actionOutcome(res ActionResult, said actionOutput, engine scriptrun.Outcome) scriptrun.Outcome {
 	out := scriptrun.Outcome{
-		Status: scriptrun.StatusFailed, Summary: res.Message, Warnings: said.warnings, Unrecognized: said.unrecognized,
-		UnrecognizedCount: said.unrecognizedCount, Detail: res,
+		Status: scriptrun.StatusFailed, Summary: res.Message, Warnings: said.Warnings, Unrecognized: said.Unrecognized,
+		UnrecognizedCount: said.UnrecognizedCount, Detail: res,
 	}
 
 	switch {

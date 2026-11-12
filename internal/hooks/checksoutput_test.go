@@ -114,7 +114,7 @@ func TestChecksReaderReadsEveryRecording(t *testing.T) {
 		assert.False(t, got.fromJSON, name)
 
 		if name != "run-installs-tools" {
-			assert.Empty(t, got.unrecognized, "%s: only three checks failing at once leave lines it can't place", name)
+			assert.Empty(t, got.Unrecognized, "%s: only three checks failing at once leave lines it can't place", name)
 		}
 	}
 }
@@ -221,7 +221,7 @@ func TestChecksReaderInProgramOrder(t *testing.T) {
 		CheckEOF: CheckPassed, CheckFumpt: CheckFailed, CheckLint: CheckFailed, CheckGitleaks: CheckSkipped,
 	}, states(got))
 	assert.Equal(t, totals{known: true, passed: 1, failed: 2, skipped: 1, files: 6, durationMs: 72000}, got.totals)
-	assert.Empty(t, got.unrecognized)
+	assert.Empty(t, got.Unrecognized)
 
 	fumpt := checkNamed(t, got, CheckFumpt)
 	assert.Equal(t, "command 'gofumpt' failed", fumpt.Error)
@@ -256,8 +256,8 @@ func TestChecksReaderKeepsWhatItCantPlace(t *testing.T) {
 	}, "\n")+"\n", false)
 
 	assert.Equal(t, []string{"failed to load configuration"}, got.errors)
-	assert.Equal(t, []string{"a warning of its own"}, got.warnings)
-	assert.Equal(t, []string{"one", "fix one", "a loose detail", "a line it never saw"}, got.unrecognized,
+	assert.Equal(t, []string{"a warning of its own"}, got.Warnings)
+	assert.Equal(t, []string{"one", "fix one", "a loose detail", "a line it never saw"}, got.Unrecognized,
 		"with two failed checks, the loose lines can't be placed")
 
 	// With one failed check whose own words differ, the loose ones are kept too.
@@ -274,7 +274,7 @@ func TestChecksReaderKeepsWhatItCantPlace(t *testing.T) {
 	eof := checkNamed(t, got, CheckEOF)
 	assert.Equal(t, "its own", eof.Error)
 	assert.Equal(t, "its own fix", eof.Suggestion)
-	assert.Equal(t, []string{"another", "another fix"}, got.unrecognized)
+	assert.Equal(t, []string{"another", "another fix"}, got.Unrecognized)
 }
 
 func TestChecksReaderSnapshotSharesNothing(t *testing.T) {
@@ -327,9 +327,9 @@ func TestChecksReaderReadsTheJSONReport(t *testing.T) {
 	require.True(t, got.fromJSON)
 	assert.Equal(t, totals{known: true, passed: 1, failed: 1, skipped: 1, files: 2, durationMs: 9}, got.totals)
 	assert.Equal(t, map[Check]CheckState{CheckEOF: CheckPassed, CheckLint: CheckSkipped, CheckWhitespace: CheckFailed}, states(got))
-	assert.Empty(t, got.unrecognized)
+	assert.Empty(t, got.Unrecognized)
 	assert.Equal(t, []string{"golangci-lint config not found, using defaults", "lint skipped: golangci-lint not found"},
-		got.warnings, "a warning both said is kept once")
+		got.Warnings, "a warning both said is kept once")
 
 	ws := checkNamed(t, got, CheckWhitespace)
 	assert.Equal(t, CheckResult{
@@ -355,15 +355,15 @@ func TestChecksReaderReadsJSONEdges(t *testing.T) {
 
 	broken := readChecks("{\n  \"version\": \"1.14.1\",\n  \"result\": \n}\n", true)
 	assert.False(t, broken.fromJSON)
-	assert.Equal(t, []string{"{", `  "version": "1.14.1",`, `  "result":`, "}"}, broken.unrecognized)
+	assert.Equal(t, []string{"{", `  "version": "1.14.1",`, `  "result":`, "}"}, broken.Unrecognized)
 
 	notReport := readChecks("{\n  \"other\": 1\n}\n", true)
 	assert.False(t, notReport.fromJSON)
-	assert.Len(t, notReport.unrecognized, 3)
+	assert.Len(t, notReport.Unrecognized, 3)
 
 	// A brace on its own in a run without --json is just a line.
 	text := readChecks("{\n}\n", false)
-	assert.Equal(t, []string{"{", "}"}, text.unrecognized)
+	assert.Equal(t, []string{"{", "}"}, text.Unrecognized)
 }
 
 func TestDurationsAsGoPreCommitPrintsThem(t *testing.T) {

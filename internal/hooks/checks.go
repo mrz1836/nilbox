@@ -274,8 +274,8 @@ func (s *Service) finishChecks(ctx context.Context, run *checksRun, reader *chec
 	status, summary := checksStatus(ok, res.Message, end, engine)
 
 	return scriptrun.Outcome{
-		Status: status, Summary: summary, Warnings: said.warnings, Unrecognized: said.unrecognized,
-		UnrecognizedCount: said.unrecognizedCount, Detail: res,
+		Status: status, Summary: summary, Warnings: said.Warnings, Unrecognized: said.Unrecognized,
+		UnrecognizedCount: said.UnrecognizedCount, Detail: res,
 	}
 }
 
