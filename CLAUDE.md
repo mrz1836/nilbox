@@ -170,6 +170,11 @@ app:lint` reads.
   for every word of a script the app writes and of the ssh command it hands git, and
   `textutil.ShellWord`, which leaves a word plain only when every POSIX shell reads it as
   itself (ASCII letters, digits, and `=-_./:,+@%`, not starting with `=`).
+  A file a repository or an agent controls (a clone's `go.mod`, `t3.json`, `tasks.json`,
+  magefiles, go-pre-commit config and hooks, the signing files, an agent's transcript) is read
+  only through `paths.OpenRegular` (`ReadHead`, `ReadTail`): a regular file, or a link to one,
+  opened without waiting and checked again once open, so a named pipe swapped in is refused
+  (`paths.ErrNotRegular`) rather than hanging the read.
   `internal/testutil` holds the fakes and fixtures the test suites
   share (a fresh database, an isolated git, a runner, finder, clock, event sink, log, and fake
   tools); only tests may import it. `internal/scriptrun/scriptruntest` holds the runner the
@@ -709,8 +714,8 @@ app:lint` reads.
   (missing, go-pre-commit's by its marker, or another tool's, named husky, pre-commit, or
   lefthook from its text), and `ENABLE_GO_PRE_COMMIT` and the checks' switches from the config
   files themselves. Only a regular file, or a link to one, is read, a config file and a hook
-  alike, and each is opened without waiting and checked again once open, so a named pipe swapped
-  in never hangs a scan. A hooks folder outside both the clone's git folder and its work tree is
+  alike, and each is opened without waiting and checked again once open (`paths.OpenRegular`),
+  so a named pipe swapped in never hangs a scan. A hooks folder outside both the clone's git folder and its work tree is
   shared, and the scan counts the clones that use it. Only go-pre-commit's `status` says whether
   its own hook is current, a byte comparison, so it runs in a scratch repository of the app's own
   that holds the hook's bytes, never in a clone, whose `.env` files go-pre-commit would load into

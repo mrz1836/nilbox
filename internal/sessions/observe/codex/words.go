@@ -4,15 +4,13 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
-	"io"
 	"io/fs"
-	"os"
 	"path/filepath"
 	"slices"
 	"strings"
 
+	"github.com/mrz1836/nilbox/internal/paths"
 	"github.com/mrz1836/nilbox/internal/sessions"
 )
 
@@ -23,9 +21,6 @@ const wordsTailBytes = 4 << 20
 // rolloutDepth is how deep a Codex home's rollout files sit under its sessions folder:
 // YYYY/MM/DD.
 const rolloutDepth = 3
-
-// errNotRegular is returned for a rollout path that is not a regular file.
-var errNotRegular = errors.New("the rollout file is not a regular file")
 
 // Words reads a Codex session's last message in full from its rollout file, for
 // sessions.Service.LastWords.
@@ -48,9 +43,25 @@ func (w Words) LastWords(_ context.Context, r sessions.Record) (string, error) {
 		return "", sessions.ErrNoWords
 	}
 
-	data, cut, err := readRolloutTail(path, wordsTailBytes)
+	text, err := lastAgentText(path, wordsTailBytes)
 	if err != nil {
 		return "", err
+	}
+
+	if text == "" {
+		return "", sessions.ErrNoWords
+	}
+
+	return text, nil
+}
+
+// lastAgentText returns the last message the agent wrote in the rollout file at path, read
+// from its last n bytes, or "" when they hold none. Only a regular file, or a link to one,
+// is read (paths.ReadTail), so a pipe never blocks the read.
+func lastAgentText(path string, n int64) (string, error) {
+	data, cut, err := paths.ReadTail(path, n)
+	if err != nil {
+		return "", fmt.Errorf("read the rollout file: %w", err)
 	}
 
 	lines := bytes.Split(data, []byte("\n"))
@@ -64,7 +75,7 @@ func (w Words) LastWords(_ context.Context, r sessions.Record) (string, error) {
 		}
 	}
 
-	return "", sessions.ErrNoWords
+	return "", nil
 }
 
 // findRollout returns the rollout file of the thread with id under root, a Codex home's
@@ -158,33 +169,4 @@ func (l rolloutLine) outputText() string {
 	}
 
 	return strings.Join(parts, "\n")
-}
-
-// readRolloutTail reads up to n bytes from the end of the regular file at path, and
-// whether that is not the whole file.
-func readRolloutTail(path string, n int64) ([]byte, bool, error) {
-	f, err := os.Open(path) //nolint:gosec // a rollout file under the agent's own home
-	if err != nil {
-		return nil, false, fmt.Errorf("open the rollout file: %w", err)
-	}
-
-	defer func() { _ = f.Close() }()
-
-	info, err := f.Stat()
-	if err != nil {
-		return nil, false, fmt.Errorf("read the rollout file: %w", err)
-	}
-
-	if !info.Mode().IsRegular() {
-		return nil, false, errNotRegular
-	}
-
-	offset := max(info.Size()-n, 0)
-
-	data := make([]byte, info.Size()-offset)
-	if _, err = f.ReadAt(data, offset); err != nil && !errors.Is(err, io.EOF) {
-		return nil, false, fmt.Errorf("read the rollout file: %w", err)
-	}
-
-	return data, offset > 0, nil
 }

@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/mrz1836/nilbox/internal/paths"
 	"github.com/mrz1836/nilbox/internal/sessions"
 )
 
@@ -78,19 +79,28 @@ func TestWordsReadsOnlyTheTailOfALongRollout(t *testing.T) {
 	t.Parallel()
 
 	home := t.TempDir()
-	writeRollout(t, home, `{"type":"event_msg","payload":{"type":"agent_message","message":"Old."}}`)
+	older := `{"type":"event_msg","payload":{"type":"agent_message","message":"Older."}}`
+	last := `{"type":"event_msg","payload":{"type":"agent_message","message":"Old."}}`
+	writeRollout(t, home, older, last)
 
 	path := findRollout(filepath.Join(home, rolloutsDir), wordsThread)
 	require.NotEmpty(t, path)
 
-	data, cut, err := readRolloutTail(path, 10)
+	text, err := lastAgentText(path, int64(len(last)+2)) // the line, its newline, and the one before it
 	require.NoError(t, err)
-	assert.True(t, cut)
-	assert.Len(t, data, 10)
+	assert.Equal(t, "Old.", text, "a whole line at the tail's start")
 
-	_, _, err = readRolloutTail(filepath.Join(home, "missing"), 10)
+	text, err = lastAgentText(path, int64(len(last)+10))
+	require.NoError(t, err)
+	assert.Equal(t, "Old.", text, "a line the tail cut into is dropped")
+
+	text, err = lastAgentText(path, 10)
+	require.NoError(t, err)
+	assert.Empty(t, text, "only the end of a line is read, which is no message")
+
+	_, err = lastAgentText(filepath.Join(home, "missing"), 10)
 	require.Error(t, err)
 
-	_, _, err = readRolloutTail(home, 10)
-	require.ErrorIs(t, err, errNotRegular, "a folder")
+	_, err = lastAgentText(home, 10)
+	require.ErrorIs(t, err, paths.ErrNotRegular, "a folder")
 }
