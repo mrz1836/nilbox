@@ -111,6 +111,36 @@ func TestClosedDBRefusesQueries(t *testing.T) {
 	require.Error(t, err)
 }
 
+func TestExecRunsAStatement(t *testing.T) {
+	t.Parallel()
+
+	db := testutil.DB(t)
+	testutil.Exec(t, db, `INSERT INTO prefs (key, value, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP)`,
+		"example.key", "kept")
+
+	var value string
+	require.NoError(t, db.QueryRowContext(t.Context(), "SELECT value FROM prefs WHERE key = 'example.key'").Scan(&value))
+	assert.Equal(t, "kept", value)
+}
+
+func TestExecFailsTheTestWhenTheStatementFails(t *testing.T) {
+	t.Parallel()
+
+	tb := &failureTB{TB: t}
+	db := testutil.ClosedDB(t)
+	done := make(chan struct{})
+
+	go func() {
+		defer close(done)
+
+		testutil.Exec(tb, db, "DELETE FROM prefs")
+	}()
+
+	<-done
+
+	assert.True(t, tb.Failed(), "a statement that fails fails the test")
+}
+
 func TestRequireGitReturnsAnExecutable(t *testing.T) {
 	t.Parallel()
 
@@ -160,6 +190,23 @@ func TestRunGitCommitsAsTheTestIdentity(t *testing.T) {
 	assert.Empty(t, testutil.RunGit(t, dir, "config", "--global", "--list"), "no global configuration is read")
 }
 
+func TestCommitCommitsTheFileUnderItsName(t *testing.T) {
+	t.Parallel()
+
+	dir := filepath.Join(t.TempDir(), "example-repo")
+	testutil.InitRepo(t, dir)
+
+	first := testutil.Commit(t, dir, "notes/a.txt", "a\n")
+	assert.Equal(t, strings.TrimSpace(testutil.RunGit(t, dir, "rev-parse", "HEAD")), first, "the new commit")
+	assert.Equal(t, "a\n", testutil.RunGit(t, dir, "show", "HEAD:notes/a.txt"))
+	assert.Equal(t, "notes/a.txt\n", testutil.RunGit(t, dir, "log", "-1", "--format=%s"), "the file's name is the message")
+
+	second := testutil.Commit(t, dir, "notes/a.txt", "b\n")
+	assert.Equal(t, first+"\n", testutil.RunGit(t, dir, "rev-parse", second+"^"), "a later commit is on top")
+	assert.Equal(t, "b\n", testutil.RunGit(t, dir, "show", "HEAD:notes/a.txt"), "the file is written again")
+	assert.Empty(t, testutil.RunGit(t, dir, "status", "--porcelain"), "nothing is left uncommitted")
+}
+
 func TestGitRunsAnIsolatedCommand(t *testing.T) {
 	t.Parallel()
 
@@ -187,6 +234,31 @@ func TestWriteFileCreatesItsDirectory(t *testing.T) {
 	if runtime.GOOS != "windows" {
 		assert.Equal(t, os.FileMode(0o600), info.Mode().Perm())
 	}
+}
+
+func TestWriteFileModeLeavesExactlyTheMode(t *testing.T) {
+	t.Parallel()
+
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX file modes")
+	}
+
+	path := filepath.Join(t.TempDir(), "a", "b", "notes.txt")
+	testutil.WriteFileMode(t, path, "hello", 0o750)
+
+	body, err := os.ReadFile(path) //nolint:gosec // a path the test itself created
+	require.NoError(t, err)
+	assert.Equal(t, "hello", string(body))
+
+	info, err := os.Stat(path)
+	require.NoError(t, err)
+	assert.Equal(t, os.FileMode(0o750), info.Mode().Perm())
+
+	testutil.WriteFileMode(t, path, "again", 0o604)
+
+	info, err = os.Stat(path)
+	require.NoError(t, err)
+	assert.Equal(t, os.FileMode(0o604), info.Mode().Perm(), "the mode of a file already there is set too")
 }
 
 func TestWriteExecutableRuns(t *testing.T) {

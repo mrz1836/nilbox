@@ -89,6 +89,19 @@ func RunGit(t testing.TB, dir string, args ...string) string {
 	return stdout.String()
 }
 
+// Commit writes content to the file name in the repository at dir, creating its
+// directory, adds it, and commits it with name as the message, isolated as Git
+// describes. It returns the new commit.
+func Commit(t testing.TB, dir, name, content string) string {
+	t.Helper()
+
+	WriteFile(t, filepath.Join(dir, name), content)
+	RunGit(t, dir, "add", name)
+	RunGit(t, dir, "commit", "-q", "-m", name)
+
+	return strings.TrimSpace(RunGit(t, dir, "rev-parse", "HEAD"))
+}
+
 // InitRepo creates dir, when it is missing, as a new git repository whose first branch
 // is main.
 func InitRepo(t testing.TB, dir string) {

@@ -107,6 +107,16 @@ func DBAt(t testing.TB, path string) *sql.DB {
 	return opened.DB
 }
 
+// Exec runs a statement on db that the code under test has no call for, such as a row
+// written by hand or a trigger that makes a write fail, and fails the test, naming the
+// statement, when it fails.
+func Exec(t testing.TB, db *sql.DB, query string, args ...any) {
+	t.Helper()
+
+	_, err := db.ExecContext(t.Context(), query, args...)
+	require.NoError(t, err, query)
+}
+
 // ClosedDB returns a migrated database that is already closed, so every query on it
 // fails, for testing how code reports a database it cannot use.
 func ClosedDB(t testing.TB) *sql.DB {
