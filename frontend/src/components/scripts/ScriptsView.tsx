@@ -3,7 +3,7 @@ import { useRef, useState, type ReactNode } from 'react'
 import { counted, formatCount } from '../../lib/format'
 import { attentionCount } from '../../lib/hooks'
 import { unreleasedCount, type ReleaseRequest } from '../../lib/release'
-import { isLive } from '../../lib/scriptRuns'
+import { isLive, type RunRequest } from '../../lib/scriptRuns'
 import { scriptsOn, toolOf, usable } from '../../lib/scriptsTab'
 import type { SettingsSection } from '../../lib/settingsIndex'
 import { useHooks } from '../../lib/useHooks'
@@ -108,8 +108,10 @@ export interface ScriptsViewProps {
   scriptsSwitch: IntegrationSwitch
   runs: ScriptRunsState
   // request asks for a repository's release sheet, as a merge's toast does; each new one
-  // opens Release and the sheet.
+  // opens Release and the sheet. runRequest asks for a run, as a failed run's notification
+  // does; each new one opens Runs with the run in its panel.
   request: ReleaseRequest | null
+  runRequest?: RunRequest | null
   // onOpenSettings opens the settings at a section: Integrations, or Repositories for the
   // clone root.
   onOpenSettings: (section: SettingsSection) => void
@@ -137,6 +139,7 @@ export default function ScriptsView({
   scriptsSwitch,
   runs,
   request,
+  runRequest = null,
   onOpenSettings,
   lastPage,
   lastRepo,
@@ -184,15 +187,29 @@ export default function ScriptsView({
   }
   const [repoRun, setRepoRun] = useState<number | null>(null)
   const [sheet, setSheet] = useState<OpenSheet | null>(null)
-  // handled is the last request opened, so each opens once; opens numbers the sheets the
-  // page's rows open, below every request's number, so each opens afresh.
+  // handled and handledRun are the last release and run requests opened, so each opens
+  // once; opens numbers the sheets the page's rows open, below every request's number, so
+  // each opens afresh.
   const [handled, setHandled] = useState(0)
+  const [handledRun, setHandledRun] = useState(0)
   const opens = useRef(0)
 
   if (request !== null && request.seq !== handled) {
     setHandled(request.seq)
     setPage('release')
     setSheet({ target: { repo: request.repo, dir: request.dir, branch: request.branch }, key: request.seq })
+  }
+
+  // openRun shows a run in the Runs page's panel.
+  const openRun = (id: number) => {
+    setSheet(null)
+    setSelectedRun(id)
+    setPage('runs')
+  }
+
+  if (runRequest !== null && runRequest.seq !== handledRun) {
+    setHandledRun(runRequest.seq)
+    openRun(runRequest.id)
   }
 
   const going = runs.runs?.filter((run) => isLive(run.status)).length ?? 0
@@ -240,13 +257,6 @@ export default function ScriptsView({
       counts: (n) => counted(n, 'run in progress', 'runs in progress'),
     },
   ]
-
-  // openRun shows a run in the Runs page's panel.
-  const openRun = (id: number) => {
-    setSheet(null)
-    setSelectedRun(id)
-    setPage('runs')
-  }
 
   const openIntegrations = () => {
     onOpenSettings('integrations')

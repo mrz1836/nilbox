@@ -9,10 +9,12 @@ import (
 	"strconv"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"time"
 
 	"github.com/mrz1836/nilbox/internal/brand"
 	"github.com/mrz1836/nilbox/internal/execpath"
+	"github.com/mrz1836/nilbox/internal/repo"
 )
 
 // The summaries of runs whose end the app couldn't see.
@@ -27,13 +29,18 @@ const (
 
 // live is a run the engine follows: one it started, or one from before the app restarted.
 type live struct {
-	id       int64
-	kind     Kind
-	runsIn   RunsIn
-	tool     string
-	dir      string
-	repo     string
-	title    string
+	id     int64
+	kind   Kind
+	runsIn RunsIn
+	tool   string
+	dir    string
+	title  string
+
+	// name is its clone's repository on GitHub, or the zero Name for a folder that isn't
+	// one, and repo names its clone for the user: that repository, or else its folder.
+	name repo.Name
+	repo string
+
 	timeout  time.Duration
 	output   io.Writer
 	finish   func(ctx context.Context, end Ending, out Outcome) Outcome
@@ -68,6 +75,9 @@ type live struct {
 	// shows no progress, uses no tool, and doesn't keep the app from quitting. The engine's
 	// mu guards it.
 	ended bool
+
+	// unstarted marks a run that couldn't start, whose failure the start's error tells.
+	unstarted bool
 
 	// stopped, timedOut, and quit say what ended it, when the engine did.
 	stopped  atomic.Bool
@@ -399,16 +409,21 @@ func (e *Engine) end(ctx context.Context, l *live, end Ending) {
 	e.record(ctx, l, end.ExitCode, out, size)
 }
 
-// failStart records a run that couldn't start as failed, saying why.
+// failStart records a run that couldn't start as failed, saying why. Failed isn't told:
+// the start's error already reaches whoever asked for the run.
 func (e *Engine) failStart(ctx context.Context, l *live, summary string) {
+	l.unstarted = true
+
 	e.record(ctx, l, nil, Outcome{Status: StatusFailed, Summary: summary}, e.files.size(l.id))
 }
 
 // record records a run's end and, once it is recorded, marks the run ended and removes
 // what it kept beside its record, tells its kind's Recorded, lets go of it and then tells
-// its Released, logs it, applies the retention, and tells Changed. A run whose end couldn't
-// be recorded isn't marked, and keeps its state: its record still says it goes, and the
-// next start settles it.
+// its Released and, for a run that failed, Failed, logs it, applies the retention, and
+// tells Changed. A run whose end couldn't be recorded isn't marked, tells none of them but
+// Released, and keeps its state: its record still says it goes, and the next start settles
+// it. The record changes only a run recorded as going, so of every record of one run's end,
+// only one holds, and the run's end is told once.
 func (e *Engine) record(ctx context.Context, l *live, exitCode *int, out Outcome, size int64) {
 	unrecognized := out.Unrecognized
 	if len(unrecognized) > MaxUnrecognized {
@@ -442,9 +457,52 @@ func (e *Engine) record(ctx context.Context, l *live, exitCode *int, out Outcome
 		l.released(l.id)
 	}
 
+	// Told once the run has let go of its clone and its slot, so a slow write or banner
+	// never keeps the clone busy.
+	if err == nil {
+		e.tellFailure(ctx, l, exitCode, out)
+	}
+
 	e.logEnd(ctx, l, exitCode, out.Status, result)
 	e.prune(ctx)
 	e.notify()
+}
+
+// tellFailure tells Failed of a run whose end was just recorded as out, with exitCode, when
+// out is a failure: the run's title, its folder when it has no repository, and its summary,
+// or, for a run stopped at its time limit, how long that was. A run that never started, and
+// one the user or the quit stopped, tell nothing, whatever its kind made of its end; so does
+// one a signal ended (stoppedBySignal), as Control-C ends a run in the terminal, unless the
+// engine sent it at the run's time limit.
+func (e *Engine) tellFailure(ctx context.Context, l *live, exitCode *int, out Outcome) {
+	switch {
+	case e.failed == nil, out.Status != StatusFailed, l.unstarted, l.stopped.Load(), l.quit.Load():
+		return
+	case exitCode != nil && stoppedBySignal(*exitCode) && !l.timedOut.Load():
+		return // the user stopped it; the engine's own stop at the time limit ends a run so too
+	}
+
+	folder := ""
+	if !l.name.Valid() {
+		folder = l.repo
+	}
+
+	f := Failure{
+		ID: l.id, Started: l.started, Repo: l.name, Title: failureTitle(l.kind, l.title, folder), Body: out.Summary,
+	}
+
+	if l.timedOut.Load() {
+		f.Body = "Timed out after " + durationText(l.timeout) + "."
+	}
+
+	e.failed(ctx, f)
+}
+
+// stoppedBySignal reports an exit status a shell gives a command a hang-up (129), Control-C
+// (130), or SIGTERM (143) ended: the user stopped it, as in the terminal, where the app
+// can't tell a stop from a failure otherwise.
+func stoppedBySignal(code int) bool {
+	return code == 128+int(syscall.SIGHUP) || code == 128+int(syscall.SIGINT) || code == 128+int(syscall.SIGTERM)
 }
 
 // markEnded marks a run whose end is recorded as ended.

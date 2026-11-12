@@ -158,6 +158,8 @@ export function notification(overrides: Partial<AppNotification> = {}): AppNotif
     url: 'https://github.com/acme-org/example-repo/pull/7',
     author: 'octo-other',
     detail: '',
+    runId: 0,
+    runStarted: '',
     ...overrides,
   }
 }

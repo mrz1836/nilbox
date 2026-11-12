@@ -73,6 +73,33 @@ func TestABannerForAnEntryAboutNoItem(t *testing.T) {
 	assert.Equal(t, "1 review request, 1 assignment, 1 back from snooze, 2 releases", sum[0].Body)
 }
 
+func TestABannerForAFailedRun(t *testing.T) {
+	t.Parallel()
+
+	got := Banners([]Notification{{
+		ID: 6, Kind: KindRunFailed, Title: "A script failed in ~/projects/notes: lint", Detail: "It exited with status 1.",
+		RunID: 42,
+	}}, nil)
+
+	require.Len(t, got, 1)
+	assert.Equal(t, Banner{
+		ID: brand.Slug + "-6", Title: "Run failed", Body: "A script failed in ~/projects/notes: lint\nIt exited with status 1.",
+		Thread: string(KindRunFailed), RunID: 42,
+	}, got[0], "no repository for a folder that isn't one, which the title names; a click opens the run")
+
+	assert.Empty(t, Banners([]Notification{{ID: 6, Kind: KindRunFailed}}, []notifyprefs.Kind{KindRunFailed}),
+		"none while its kind is off")
+
+	sum := Banners([]Notification{
+		row(1, KindReviewRequested, 1),
+		{ID: 2, Kind: KindRunFailed},
+		{ID: 3, Kind: KindRunFailed},
+		{ID: 4, Kind: KindRunFailed},
+	}, nil)
+	require.Len(t, sum, 1)
+	assert.Equal(t, "1 review request, 3 failed runs", sum[0].Body)
+}
+
 func TestManyBannersAreSummedUp(t *testing.T) {
 	t.Parallel()
 

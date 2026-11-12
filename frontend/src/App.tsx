@@ -23,7 +23,9 @@ import { attempt } from './lib/call'
 import { filterInbox, inboxItems, inboxSpec, inboxSuggestions } from './lib/inboxFilter'
 import { isFindKey, isTyping } from './lib/keys'
 import { toggleFilter } from './lib/query'
+import { opensRun } from './lib/notifications'
 import type { ReleaseRequest } from './lib/release'
+import type { RunRequest } from './lib/scriptRuns'
 import { foundToolsText, scriptsBadge, showsScripts } from './lib/scriptsTab'
 import { matchSettings } from './lib/settingsIndex'
 import { itemWorktrees } from './lib/itemWorktrees'
@@ -48,6 +50,7 @@ import { useTriage } from './lib/useTriage'
 import { filterWorktrees, worktreeSpec, worktreeSuggestions } from './lib/worktreeFilter'
 import type { Summary } from './lib/worktreeSummary'
 import {
+  getScriptRun,
   lastWorktreeSweep,
   on,
   openExternal,
@@ -155,8 +158,13 @@ function useWorktreeSweeps() {
 // useReveal shows an item in the inbox when asked: by the menu bar, a notification, or an
 // entry in the notification history. An item no longer in the inbox opens on GitHub
 // instead. show opens the inbox at the item, so reveal is the request the inbox view
-// follows; clear drops it once another view opens.
-function useReveal(snapshot: InboxSnapshot | null, openInbox: () => void) {
+// follows; clear drops it once another view opens. A notification about a run, as a
+// failed run's banner is, opens the run with openRun instead.
+function useReveal(
+  snapshot: InboxSnapshot | null,
+  openInbox: () => void,
+  openRun: (id: number, started: string) => void,
+) {
   const [reveal, setReveal] = useState<Reveal | null>(null)
   // requests numbers the requests, so asking for the same item again shows it again.
   const requests = useRef(0)
@@ -176,14 +184,20 @@ function useReveal(snapshot: InboxSnapshot | null, openInbox: () => void) {
   }
 
   // The menu bar's request is read against the inbox as shown when it arrives.
-  const showOnRequest = useEffectEvent((itemId: number, url: string) => {
+  const showOnRequest = useEffectEvent((itemId: number, url: string, runId: number, runStarted: string) => {
+    if (runId > 0) {
+      openRun(runId, runStarted)
+
+      return
+    }
+
     show(itemId, url)
   })
 
   useEffect(
     () =>
-      on('inbox:reveal', ({ itemId, url }) => {
-        showOnRequest(itemId, url)
+      on('inbox:reveal', ({ itemId, url, runId, runStarted }) => {
+        showOnRequest(itemId, url, runId, runStarted)
       }),
     [],
   )
@@ -391,7 +405,50 @@ export function App() {
   const openInbox = () => {
     go({ type: 'reveal' })
   }
-  const revealer = useReveal(inbox.snapshot, openInbox)
+
+  // releaseRequest is the release sheet a merge's toast asked for last, and runRequest the
+  // run a failed run's notification asked for last, which the Scripts tab opens; requests
+  // numbers them.
+  const [releaseRequest, setReleaseRequest] = useState<ReleaseRequest | null>(null)
+  const [runRequest, setRunRequest] = useState<RunRequest | null>(null)
+  const requests = useRef(0)
+
+  // changes numbers the toasts the window raises itself, counting down, so they never meet
+  // a sweep toast's: a change made in the Worktrees view, or a run a notification asked for
+  // that can't open.
+  const changes = useRef(0)
+
+  // runToast says why the run a failed run's notification asked for didn't open.
+  const [runToast, setRunToast] = useState<ToastMessage | null>(null)
+  const sayOfRun = (text: string) => {
+    changes.current -= 1
+    setRunToast({ id: changes.current, text, tone: 'warning' })
+  }
+
+  // openRun opens Scripts → Runs with a run in its panel, as a failed run's notification
+  // asks, once the run with that id says it started when the notification says: the history
+  // hands an id out again once it is cleared, and a later run must never open in its place.
+  // With the Scripts tab gone, or the run no longer in the history, a toast says so instead.
+  const openRun = (id: number, started: string) => {
+    if (!scriptsShown) {
+      sayOfRun('Turn on an integration in Settings to see your runs.')
+
+      return
+    }
+
+    void attempt(getScriptRun(id)).then((result) => {
+      if (!result.ok || started === '' || result.data.startedAt !== started) {
+        sayOfRun('That run is no longer in the history.')
+
+        return
+      }
+
+      requests.current += 1
+      setRunRequest({ id, seq: requests.current })
+      go({ type: 'show', view: 'scripts' })
+    })
+  }
+  const revealer = useReveal(inbox.snapshot, openInbox, openRun)
   const { clear: clearReveal, show: showItem } = revealer
 
   const changeView = (next: View) => {
@@ -417,7 +474,6 @@ export function App() {
   // or why it failed. It shows over a sweep's toast, and offers View once another view is
   // open.
   const [changeToast, setChangeToast] = useState<ToastMessage | null>(null)
-  const changes = useRef(0)
 
   const reportChange = (summary: Summary) => {
     // Its ids count down, so they never meet a sweep toast's.
@@ -429,10 +485,6 @@ export function App() {
     setChangeToast(null)
   }
 
-  // releaseRequest is the release sheet a merge's toast asked for last, which the Scripts
-  // tab opens; requests numbers them.
-  const [releaseRequest, setReleaseRequest] = useState<ReleaseRequest | null>(null)
-  const requests = useRef(0)
   // openRelease opens Scripts → Release at a repository's sheet, as a merge offers.
   const [openRelease] = useState(() => (offer: AfterMerge) => {
     requests.current += 1
@@ -470,8 +522,20 @@ export function App() {
               },
             },
           }
-  const shownToast = foundToast ?? changeShown
-  const closeToast = foundToast !== null ? found.close : changeToast === null ? closeSweepToast : closeChangeToast
+  // A run that couldn't open is said over a change's or a sweep's toast, as it answers the
+  // click just made.
+  const closeRunToast = () => {
+    setRunToast(null)
+  }
+  const shownToast = foundToast ?? runToast ?? changeShown
+  const closeToast =
+    foundToast !== null
+      ? found.close
+      : runToast !== null
+        ? closeRunToast
+        : changeToast === null
+          ? closeSweepToast
+          : closeChangeToast
 
   const openSettings = () => {
     go({ type: 'settings', section: 'account' })
@@ -497,8 +561,14 @@ export function App() {
     go({ type: 'settings', section: 'notifications' })
   }
 
-  // openNotification shows a history entry's item.
+  // openNotification shows a history entry's item, or opens its page or its run.
   const openNotification = (entry: AppNotification) => {
+    if (opensRun(entry)) {
+      openRun(entry.runId, entry.runStarted)
+
+      return
+    }
+
     showItem(entry.itemId, entry.url)
   }
 
@@ -776,6 +846,7 @@ export function App() {
                   scriptsSwitch={config.settings?.integrations.switches.scripts ?? 'auto'}
                   runs={scriptRuns}
                   request={releaseRequest}
+                  runRequest={runRequest}
                   onOpenSettings={openSettingsAt}
                   lastPage={config.settings?.integrations.lastPage ?? ''}
                   lastRepo={config.settings?.integrations.lastRepo ?? ''}

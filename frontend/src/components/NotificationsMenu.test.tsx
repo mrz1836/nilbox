@@ -151,6 +151,57 @@ describe('NotificationsMenu', () => {
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   })
 
+  it('shows a failed run as a failure, and opens it', async () => {
+    const failed = notification({
+      id: 5,
+      kind: 'run_failed',
+      itemId: 0,
+      itemKind: '',
+      repo: 'acme-org/example-repo',
+      number: 0,
+      title: 'Checks failed: Checks · all files',
+      url: '',
+      detail: '4 passed, 1 failed: whitespace.',
+      runId: 9,
+    })
+    const elsewhere = notification({
+      id: 6,
+      kind: 'run_failed',
+      itemId: 0,
+      itemKind: '',
+      repo: '',
+      number: 0,
+      title: 'A script failed in ~/projects/notes: lint',
+      url: '',
+      detail: '',
+      runId: 10,
+    })
+    render(
+      <NotificationsMenu
+        notifications={state({ log: { items: [failed, elsewhere], unread: 0 } })}
+        onOpen={onOpen}
+        onSettings={onSettings}
+      />,
+    )
+
+    const panel = await open()
+    const entry = panel.getByRole('button', { name: /Checks failed/ })
+
+    expect(entry).toHaveTextContent('Run failed')
+    expect(entry).toHaveTextContent('example-repo · 4 passed, 1 failed: whitespace.')
+    expect(entry.querySelector('.text-danger svg')).not.toBeNull()
+
+    // A run in a folder that isn't a repository leaves no empty line under its title.
+    const folder = panel.getByRole('button', { name: /A script failed/ })
+
+    expect(folder).not.toHaveTextContent('·')
+    expect(folder).not.toHaveAttribute('title')
+
+    await userEvent.click(entry)
+
+    expect(onOpen).toHaveBeenCalledWith(failed)
+  })
+
   it('says when there is nothing yet, and opens the settings', async () => {
     render(<NotificationsMenu notifications={state()} onOpen={onOpen} onSettings={onSettings} />)
 

@@ -78,14 +78,21 @@ func (b base) bannersOff(ctx context.Context) ([]notifyprefs.Kind, error) {
 
 // Dispatcher records the inbox's arrivals and shows their banners. It is the inbox's
 // inbox.ArrivalSink. It also records the notifications about no item, such as a release
-// that reached GitHub, and shows theirs (Notify). It is not bound to the window.
+// that reached GitHub, and shows theirs (Notify), or a run that failed, whose banners it
+// gathers (Gather). It is not bound to the window.
 type Dispatcher struct {
 	base
+
+	// held holds the banners Gather was given.
+	held *gathering
 }
 
 // NewDispatcher returns a Dispatcher.
 func NewDispatcher(cfg Config) *Dispatcher {
-	return &Dispatcher{base: newBase(cfg)}
+	d := &Dispatcher{base: newBase(cfg)}
+	d.held = newGathering(d.show)
+
+	return d
 }
 
 // Arrived records a notification for each arrival, tells the window, and shows banners for
@@ -120,6 +127,31 @@ func (d *Dispatcher) Notify(ctx context.Context, entry Entry) {
 
 	d.notify()
 	d.show(ctx, []Notification{row})
+}
+
+// Gather records entry, a notification about no item, and tells the window at once, as
+// Notify does, but holds its banner for GatherWindow with those of every entry gathered
+// meanwhile, and then shows them as one batch: one banner each, or past MaxBanners one that
+// sums them up, as one refresh's arrivals are. A failure to record is logged, and holds
+// nothing.
+func (d *Dispatcher) Gather(ctx context.Context, entry Entry) {
+	row, err := d.store.RecordEvent(ctx, d.clock.Now(), entry)
+	if err != nil {
+		d.logger.WarnContext(ctx, "could not record the notification", "kind", string(entry.Kind), "error", err)
+
+		return
+	}
+
+	d.notify()
+	d.held.add(row)
+}
+
+// Close drops the banners Gather holds, and holds none after: the history keeps their
+// entries, and what Gather records later shows no banner. It returns once a batch already
+// showing has been shown, so nothing reads the database after it: core calls it before it
+// closes the database.
+func (d *Dispatcher) Close() {
+	d.held.stop()
 }
 
 // show posts the banners for recorded notifications, of the kinds that are on, when the

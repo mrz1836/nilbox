@@ -69,9 +69,9 @@ export function NotificationsSection({ settings: stored, onSaved }: SectionProps
       </Group>
       <div className="flex flex-col gap-3">
         <SectionIntro title="Banners">
-          After each refresh, {brand.name} can show a banner for what newly needs you, and when a release you started
-          reaches GitHub. More than three at once arrive as one banner that sums them up. Clicking a banner shows its
-          item here, or a release on GitHub.
+          After each refresh, {brand.name} can show a banner for what newly needs you, when a release you started
+          reaches GitHub, and when a run from the Scripts tab fails. More than three at once arrive as one banner that
+          sums them up. Clicking a banner shows its item here, a release on GitHub, or a failed run in Scripts › Runs.
         </SectionIntro>
         {statusText !== '' && (
           <p className="rounded-md border border-warning px-3 py-2 text-xs text-warning">{statusText}</p>

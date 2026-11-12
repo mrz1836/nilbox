@@ -200,7 +200,7 @@ func (e *Engine) resumeTerminal(ctx context.Context, rec Record) *settled {
 // from its start.
 func (e *Engine) liveOf(rec Record) *live {
 	l := &live{
-		id: rec.ID, kind: rec.Kind, runsIn: rec.RunsIn, tool: rec.Result.Tool, dir: rec.Dir,
+		id: rec.ID, kind: rec.Kind, runsIn: rec.RunsIn, tool: rec.Result.Tool, dir: rec.Dir, name: rec.Repo,
 		repo: e.where(rec.Repo, rec.Dir), title: rec.Title, intent: rec.Result.Intent, pid: rec.PID, pgid: rec.PGID,
 		procStart: rec.ProcStartedAt, started: rec.StartedAt, done: make(chan struct{}), abandon: make(chan struct{}),
 	}

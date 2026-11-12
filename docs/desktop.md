@@ -339,6 +339,20 @@ one runner, which keeps a record of each run and its whole output.
   while the run's kind refuses it (a release while magex switches branches and pulls), and asks
   first, in the kind's own words, while stopping would leave something behind. A run in your
   terminal has no **Stop**: the panel says to press Control-C there.
+- **A run that fails tells you.** Once a run's end is recorded as failed, or as stopped at its
+  time limit, the [notification history](#menu-bar-and-notifications) gets one **Run failed**
+  entry for it, with a banner while that kind is on: *Checks failed: Checks · all files* under
+  its repository, then the run's result (*4 passed, 1 failed: whitespace.*) or *Timed out
+  after 30 minutes.* A run in a folder that isn't a GitHub clone, as a tool's update is, names
+  the folder in the title instead. It covers every kind of run, in the app or in your
+  terminal, and one from before a restart that the app settles as failed once it starts again.
+  A run that couldn't start (the window already says why), one you stopped, from the app or
+  with Control-C in your terminal, one a quit or a restart interrupted, and one that succeeded
+  tell nothing, and no run tells twice. Failures that come within 2 seconds of each other, as
+  **Install all** or a restart can make, show their banners together, and more than three as
+  one that sums them up; the history keeps each. Clicking the entry or its banner opens the run
+  here, in Runs, while the history still holds it: once it doesn't, as after **Clear
+  history**, a toast says so.
 - **History.** The newest 200 runs are kept, with up to 512 MB of logs in all; older runs go with
   their logs, and a run still going is never dropped. A finished log over 16 MB keeps its first
   4 MB and its last 12 MB.
@@ -1368,7 +1382,7 @@ its **Open Nilbox**, or the Dock icon brings the window back; quit from the icon
 ⌘Q. Turn the icon off in Settings → Notifications, and closing the window quits the app.
 
 **What is notified.** After each refresh, the app compares the lists with the last refresh's
-and records what newly needs you:
+and records what newly needs you; a release or a run is recorded as it ends:
 
 | Kind | When |
 |---|---|
@@ -1376,6 +1390,7 @@ and records what newly needs you:
 | Assigned to you | An issue or pull request someone else opened is newly assigned to you |
 | Back from snooze | New activity ends a snooze early under your [wake rules](#waking-a-snooze-early); it says what was new |
 | Released | A release you started reaches GitHub; it names the version and the commit it tagged |
+| Run failed | A run from the Scripts tab (a release, a hook change, checks, a script, a tool's update, or a pull), in the app or in your terminal, fails or runs past its time limit; it names the run and its repository (or its folder) and says how it ended. One that couldn't start, one you stopped (Control-C in your terminal included), and one a quit or a restart interrupted never notify |
 
 Nothing is recorded for the first refresh of an account (everything in it would be new), for
 an item you dismissed or that is still snoozed, or for a refresh that failed. A list that shows
@@ -1386,10 +1401,13 @@ changed since the last refresh. Refreshing a single card never notifies.
 latest 200. Its badge counts the unread ones; opening it marks them read, and they stay marked
 until it closes. Click an entry to show its item in the inbox, or on GitHub once the item has
 left the inbox. An entry about no item, such as a release, names its repository alone, and a
-click opens its page on GitHub. **Clear** empties the history. It lives in the local database (the
-`notifications` table), whether or not a banner was shown.
+click opens its page on GitHub. A failed run's entry, marked with a red cross, opens Scripts →
+Runs with the run in its panel; a toast says why it can't when the run is no longer in the
+history, or the Scripts tab is gone (*Turn on an integration in Settings to see your runs.*).
+**Clear** empties the history. It lives in the local database (the `notifications` table),
+whether or not a banner was shown.
 
-**Banners.** Each kind can also show a native macOS banner. All four are on by default, and
+**Banners.** Each kind can also show a native macOS banner. All five are on by default, and
 each has its own switch in Settings → Notifications. Two more switches there show a banner when
 an [agent session](#following-a-session) waits for you or finishes its turn; those start off,
 and the history doesn't keep them. A banner gives the kind, the repository
@@ -1397,7 +1415,10 @@ and number, and the title; a snooze that ended early adds what was new. When one
 more than three, a single banner sums them up, such as **5 new in your inbox: 3 review
 requests, 2 assignments**. Clicking a banner brings the window forward with its item in view.
 A release is about no item: its banner gives the repository and the version, and clicking it
-opens the tag on GitHub.
+opens the tag on GitHub. So is a failed run: its banner gives the repository (none for a folder
+that isn't one), what failed, and how it ended, and clicking it opens the run in Scripts → Runs.
+Failed runs that come within 2 seconds of each other show their banners together, and more
+than three as one, such as **5 new notifications: 5 failed runs**.
 
 The first time the app starts, macOS asks whether to allow its notifications. **Send a test**
 in Settings shows a sample banner, asking first if macOS never has. If notifications are

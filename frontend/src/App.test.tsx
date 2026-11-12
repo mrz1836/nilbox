@@ -885,7 +885,7 @@ describe('App', () => {
     // bar or on a notification.
     function reveal(itemId: number, url = '') {
       act(() => {
-        emit('inbox:reveal', { itemId, url })
+        emit('inbox:reveal', { itemId, url, runId: 0, runStarted: '' })
       })
     }
 
@@ -1015,7 +1015,7 @@ describe('App’s filter field', () => {
 
   function reveal(itemId: number) {
     act(() => {
-      emit('inbox:reveal', { itemId, url: '' })
+      emit('inbox:reveal', { itemId, url: '', runId: 0, runStarted: '' })
     })
   }
 
@@ -1443,5 +1443,118 @@ describe('the Scripts tab', () => {
 
     await userEvent.click(entry)
     expect(platform.openExternal).toHaveBeenCalledWith('https://github.com/acme-org/sdk/releases/tag/v1.4.3')
+  })
+
+  // failedRun is run 7, checks that failed in acme-org/example-repo, and failedEntry its
+  // notification, which names the run and when it started.
+  const failedRun = () => scriptRun({ id: 7, kind: 'checks', title: 'Checks · all files', status: 'failed' })
+  const failedEntry = () =>
+    notification({
+      kind: 'run_failed',
+      itemId: 0,
+      itemKind: '',
+      number: 0,
+      title: 'Checks failed: Checks · all files',
+      url: '',
+      detail: '4 passed, 1 failed: whitespace.',
+      runId: 7,
+      runStarted: '2026-11-10T16:00:00Z',
+    })
+
+  // openFailedEntry opens the bell and clicks the failed run's entry.
+  async function openFailedEntry() {
+    await userEvent.click(await screen.findByRole('button', { name: 'Notifications, 1 unread' }))
+
+    const entry = screen.getByRole('button', { name: /Checks failed: Checks · all files/ })
+
+    expect(entry).toHaveTextContent('Run failed')
+    expect(entry).toHaveTextContent('example-repo · 4 passed, 1 failed: whitespace.')
+    await userEvent.click(entry)
+  }
+
+  it('opens a failed run’s notification at the run, in Scripts → Runs', async () => {
+    platform.listScriptRuns.mockResolvedValue([failedRun()])
+    platform.getScriptRun.mockResolvedValue(failedRun())
+    platform.listNotifications.mockResolvedValue({ items: [failedEntry()], unread: 1 })
+    await renderApp()
+
+    await openFailedEntry()
+
+    expect(await screen.findByRole('heading', { name: 'Checks · all files', level: 2 })).toBeInTheDocument()
+    expect(views().getByRole('button', { name: 'Scripts' })).toHaveAttribute('aria-pressed', 'true')
+    expect(
+      within(screen.getByRole('navigation', { name: 'Scripts' })).getByRole('button', { name: /^Runs/ }),
+    ).toHaveAttribute('aria-current', 'page')
+    expect(platform.getScriptRun).toHaveBeenCalledWith(7)
+    expect(platform.openExternal).not.toHaveBeenCalled()
+  })
+
+  it('opens the run a failed run’s banner asks for', async () => {
+    platform.listScriptRuns.mockResolvedValue([failedRun()])
+    platform.getScriptRun.mockResolvedValue(failedRun())
+    await renderApp()
+
+    await views().findByRole('button', { name: 'Scripts' })
+    act(() => {
+      emit('inbox:reveal', { itemId: 0, url: '', runId: 7, runStarted: '2026-11-10T16:00:00Z' })
+    })
+
+    expect(await screen.findByRole('heading', { name: 'Checks · all files', level: 2 })).toBeInTheDocument()
+    expect(views().getByRole('button', { name: 'Scripts' })).toHaveAttribute('aria-pressed', 'true')
+  })
+
+  it('opens no later run that took a failed run’s id, and says the run is gone', async () => {
+    // The history was cleared, and a run that started later was given id 7.
+    const later = scriptRun({ id: 7, title: 'magex test', startedAt: '2026-11-11T09:00:00Z' })
+
+    platform.listScriptRuns.mockResolvedValue([later])
+    platform.getScriptRun.mockResolvedValue(later)
+    platform.listNotifications.mockResolvedValue({ items: [failedEntry()], unread: 1 })
+    await renderApp()
+
+    await views().findByRole('button', { name: 'Scripts' })
+    await openFailedEntry()
+
+    expect(within(await toast()).getByText('That run is no longer in the history.')).toBeInTheDocument()
+    expect(views().getByRole('button', { name: 'Inbox' })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.queryByRole('heading', { name: 'magex test', level: 2 })).not.toBeInTheDocument()
+  })
+
+  it('says a failed run’s run is gone once the history no longer holds it', async () => {
+    platform.getScriptRun.mockRejectedValue(new Error('the run is no longer recorded: 7'))
+    platform.listNotifications.mockResolvedValue({ items: [failedEntry()], unread: 1 })
+    await renderApp()
+
+    await views().findByRole('button', { name: 'Scripts' })
+    await openFailedEntry()
+
+    expect(within(await toast()).getByText('That run is no longer in the history.')).toBeInTheDocument()
+    expect(views().getByRole('button', { name: 'Inbox' })).toHaveAttribute('aria-pressed', 'true')
+  })
+
+  it('says how to see a failed run while the Scripts tab is gone', async () => {
+    platform.listIntegrations.mockResolvedValue(
+      integrationTools({
+        tools: [integrationTool({ switch: 'off', on: false }), goPreCommitTool({ switch: 'off', on: false })],
+      }),
+    )
+    platform.listNotifications.mockResolvedValue({ items: [failedEntry()], unread: 1 })
+    await renderApp()
+
+    await screen.findByRole('region', { name: 'Review requested' })
+    await openFailedEntry()
+
+    expect(within(await toast()).getByText('Turn on an integration in Settings to see your runs.')).toBeInTheDocument()
+    expect(views().queryByRole('button', { name: 'Scripts' })).not.toBeInTheDocument()
+    expect(views().getByRole('button', { name: 'Inbox' })).toHaveAttribute('aria-pressed', 'true')
+    expect(platform.getScriptRun).not.toHaveBeenCalled()
+
+    // The banner's click says so too.
+    await userEvent.click(within(await toast()).getByRole('button', { name: 'Close' }))
+    act(() => {
+      emit('inbox:reveal', { itemId: 0, url: '', runId: 7, runStarted: '2026-11-10T16:00:00Z' })
+    })
+
+    expect(within(await toast()).getByText('Turn on an integration in Settings to see your runs.')).toBeInTheDocument()
   })
 })

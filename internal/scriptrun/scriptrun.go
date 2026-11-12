@@ -376,6 +376,65 @@ type Outcome struct {
 	Unsettled bool
 }
 
+// Failure is a run whose end is recorded as failed, as Config.Failed is told of it: what
+// the user is told, a notification in the log and its banner (run_failed in core), and
+// the run a click on it opens.
+type Failure struct {
+	// ID is the run's, which a click on the notification opens, and Started when the run
+	// started, as its record holds it, which tells it from a later run given its ID once the
+	// history was cleared.
+	ID      int64
+	Started time.Time
+
+	// Repo is the clone's repository on GitHub, or the zero Name for a folder that isn't
+	// one, which Title then names instead.
+	Repo repo.Name
+
+	// Title names what failed and the run's own title, as the Runs page lists it, and the
+	// run's folder when it has no repository: "Checks failed: Checks · all files", "A
+	// tool's update failed in ~/go/bin: Update magex". Body says how it ended: its summary
+	// ("It exited with status 1."), or, for a run stopped at its time limit, "Timed out
+	// after 30 minutes."
+	Title string
+	Body  string
+}
+
+// failureNoun names a kind of run as a failure's title says it: "A release", "Checks".
+func (k Kind) failureNoun() string {
+	switch k {
+	case KindRelease:
+		return "A release"
+	case KindHooks:
+		return "A hook change"
+	case KindChecks:
+		return "Checks"
+	case KindScript:
+		return "A script"
+	case KindUpdate:
+		return "A tool's update"
+	case KindPull:
+		return "A pull"
+	default:
+		return "A run"
+	}
+}
+
+// failureTitle names a failed run of kind, called title, in folder: the folder, with ~, of
+// a run with no repository, or "" for one whose repository the notification names already.
+// "A script failed: lint", "A tool's update failed in ~/go/bin: Update magex".
+func failureTitle(kind Kind, title, folder string) string {
+	out := kind.failureNoun() + " failed"
+	if folder != "" {
+		out += " in " + folder
+	}
+
+	if title != "" {
+		out += ": " + title
+	}
+
+	return out
+}
+
 // Result is a run's result, as recorded.
 type Result struct {
 	// Tool is the integration it used, or "".

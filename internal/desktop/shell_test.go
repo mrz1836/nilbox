@@ -66,13 +66,15 @@ func TestARevealBringsTheWindowForward(t *testing.T) {
 	s.Emit(event.RevealItem{ItemID: 7, URL: exampleURL})
 	s.Emit(event.RevealItem{ItemID: 8})
 	s.Emit(event.RevealItem{URL: exampleURL})
+	s.Emit(event.RevealItem{RunID: 42, RunStarted: "2026-11-10T16:00:00Z"})
 	s.Emit(event.RevealItem{})
 
-	assert.Equal(t, 4, r.window.shown(), "every request brings the window forward")
+	assert.Equal(t, 5, r.window.shown(), "every request brings the window forward")
 	assert.Equal(t, []event.WindowEvent{
 		event.RevealItem{ItemID: 7, URL: exampleURL},
 		event.RevealItem{ItemID: 8},
 		event.RevealItem{URL: exampleURL},
+		event.RevealItem{RunID: 42, RunStarted: "2026-11-10T16:00:00Z"},
 	}, r.page.events(), "a request that names nothing is not passed on")
 }
 

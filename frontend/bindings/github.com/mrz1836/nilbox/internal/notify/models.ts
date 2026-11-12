@@ -53,7 +53,7 @@ export interface Notification {
     "id": number;
 
     /**
-     * Kind is KindReviewRequested, KindAssigned, KindWoke, or KindReleaseDone.
+     * Kind is KindReviewRequested, KindAssigned, KindWoke, KindReleaseDone, or KindRunFailed.
      */
     "kind": notifyprefs$0.Kind;
 
@@ -95,4 +95,13 @@ export interface Notification {
      * KindWoke; an entry's body ("Tagged a1b2c3d on master."); and "" otherwise.
      */
     "detail": string;
+
+    /**
+     * RunID is the run an entry is about, which a click on it opens in Scripts → Runs, or 0
+     * for none: every entry but a KindRunFailed one. RunStarted is when that run started, as
+     * RFC 3339, or "": the window opens the run only while the run with that id started then,
+     * since the history hands an id out again once it is cleared.
+     */
+    "runId": number;
+    "runStarted": string;
 }
