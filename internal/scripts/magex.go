@@ -23,6 +23,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/brand"
 	"github.com/mrz1836/nilbox/internal/integrationprefs"
 	"github.com/mrz1836/nilbox/internal/integrations"
+	"github.com/mrz1836/nilbox/internal/paths"
 	"github.com/mrz1836/nilbox/internal/textutil"
 )
 
@@ -436,10 +437,11 @@ func linkTarget(p string) (string, fs.FileInfo, error) {
 	return link, info, err
 }
 
-// sumFile returns the SHA-256 of the file at path, taking what it read from budget, and
-// fails once budget runs out.
+// sumFile returns the SHA-256 of the regular file at path, taking what it read from
+// budget, and fails once budget runs out. Anything else, a pipe swapped in included, is
+// refused (paths.OpenRegular).
 func sumFile(path string, budget *int64) (string, error) {
-	f, err := os.Open(path) //nolint:gosec // a file under the clone's magefiles
+	f, err := paths.OpenRegular(path)
 	if err != nil {
 		return "", err
 	}

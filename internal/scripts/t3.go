@@ -3,12 +3,11 @@ package scripts
 import (
 	"errors"
 	"fmt"
-	"io"
 	"io/fs"
-	"os"
 	"path/filepath"
 	"strings"
 
+	"github.com/mrz1836/nilbox/internal/paths"
 	"github.com/mrz1836/nilbox/internal/textutil"
 	"github.com/mrz1836/nilbox/internal/uierr"
 )
@@ -94,27 +93,13 @@ func readSource(dir, rel string) (data []byte, found bool, err error) {
 
 // readLimited reads the regular file at path, which the error calls name, refusing one
 // over maxFile. A file that isn't regular, such as a pipe, which would block the read, is
-// refused before it is opened.
+// refused, even one swapped in as it is opened (paths.OpenRegular).
 func readLimited(path, name string) ([]byte, error) {
-	info, err := os.Stat(path)
+	data, err := paths.ReadHead(path, maxFile+1)
 
 	switch {
-	case err != nil:
-		return nil, readFailed(name, err)
-	case !info.Mode().IsRegular():
+	case errors.Is(err, paths.ErrNotRegular):
 		return nil, uierr.New(name+" isn't a file.", fmt.Errorf("%w: %s isn't a file", ErrCantRun, name))
-	}
-
-	f, err := os.Open(path) //nolint:gosec // a file of the clone the page names
-	if err != nil {
-		return nil, readFailed(name, err)
-	}
-
-	defer func() { _ = f.Close() }()
-
-	data, err := io.ReadAll(io.LimitReader(f, maxFile+1))
-
-	switch {
 	case err != nil:
 		return nil, readFailed(name, err)
 	case len(data) > maxFile:
