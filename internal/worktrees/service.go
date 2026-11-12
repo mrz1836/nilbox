@@ -867,11 +867,13 @@ func (s *Service) checkSessions(ctx context.Context, dir string, strict bool) er
 }
 
 // markSessions fills in the sessions working in each linked worktree, naming the agent of
-// each the app follows.
+// each the app follows. Each process's directory is resolved once for the whole listing.
 func markSessions(repos []Repo, running []procs.Process, agents map[int]agent.ID) {
+	located := procs.Locate(running)
+
 	for _, wt := range rows(repos) {
 		if !wt.Main && !wt.Prunable {
-			wt.InUse = sessionsOf(procs.Within(running, wt.Path), agents)
+			wt.InUse = sessionsOf(located.Within(wt.Path), agents)
 		}
 	}
 }

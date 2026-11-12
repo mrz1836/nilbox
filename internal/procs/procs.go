@@ -69,21 +69,70 @@ func (s System) Processes(ctx context.Context) ([]Process, error) {
 // and each process's directory are compared with symbolic links resolved where they can
 // be, so a link to a worktree still counts.
 func Within(list []Process, dir string) []Process {
+	return Locate(list).Within(dir)
+}
+
+// Located is a list of processes whose working directories are resolved once, the first
+// time it is asked of a folder, and reused for every folder after: a listing that asks of
+// each worktree resolves every process's directory once, not once per worktree. It is
+// not safe for concurrent use.
+type Located struct {
+	list []Process
+
+	// dirs holds each process's directory resolved, in list's order, or "" for a process
+	// with none; nil until the first Within.
+	dirs []string
+}
+
+// Locate returns list ready to be asked which of its processes work in a folder. It
+// resolves nothing until it is first asked.
+func Locate(list []Process) *Located {
+	return &Located{list: list}
+}
+
+// Within returns the processes whose working directory is dir or inside it, by PID,
+// compared as the package's Within compares them, with each process's directory as it
+// resolved the first time l was asked.
+func (l *Located) Within(dir string) []Process {
+	if len(l.list) == 0 {
+		return nil
+	}
+
+	dirs := l.resolvedDirs()
 	root := resolved(dir)
+	inside := root + string(filepath.Separator)
 
 	var out []Process
 
-	for _, p := range list {
+	for i, p := range l.list {
 		if p.Dir == "" {
 			continue
 		}
 
-		if d := resolved(p.Dir); d == root || strings.HasPrefix(d, root+string(filepath.Separator)) {
+		if d := dirs[i]; d == root || strings.HasPrefix(d, inside) {
 			out = append(out, p)
 		}
 	}
 
 	return out
+}
+
+// resolvedDirs returns each process's directory resolved, in list's order, resolving
+// them the first time it is called.
+func (l *Located) resolvedDirs() []string {
+	if l.dirs != nil {
+		return l.dirs
+	}
+
+	l.dirs = make([]string, len(l.list))
+
+	for i, p := range l.list {
+		if p.Dir != "" {
+			l.dirs[i] = resolved(p.Dir)
+		}
+	}
+
+	return l.dirs
 }
 
 // In returns the processes whose working directory is dir itself, not one inside it, by
