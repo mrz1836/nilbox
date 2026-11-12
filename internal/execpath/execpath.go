@@ -12,6 +12,7 @@ package execpath
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -150,6 +151,10 @@ type Exec struct {
 	// reads the repository it runs in, such as go-pre-commit, takes it from there. "" runs
 	// it in this process's folder.
 	Dir string
+
+	// waitDelay, when set, takes runWaitDelay's place, so a test of a descendant holding
+	// a program's output need not wait as long.
+	waitDelay time.Duration
 }
 
 // Run runs name with args and returns what it wrote to stdout and stderr. The error is the
@@ -173,13 +178,19 @@ func (r Exec) Run(ctx context.Context, name string, args ...string) (stdout, std
 	cmd.Dir = r.Dir
 	cmd.Stdout = &outBuf
 	cmd.Stderr = &errBuf
-	cmd.WaitDelay = runWaitDelay
+	cmd.WaitDelay = r.descendantWait()
 
 	if err = cmd.Run(); err != nil && !errors.Is(err, exec.ErrWaitDelay) {
 		return outBuf.Bytes(), errBuf.Bytes(), fmt.Errorf("run %s: %w", filepath.Base(path), err)
 	}
 
 	return outBuf.Bytes(), errBuf.Bytes(), nil
+}
+
+// descendantWait returns how long Run waits, once its program has exited, for a
+// descendant still holding the program's output: waitDelay, or else runWaitDelay.
+func (r Exec) descendantWait() time.Duration {
+	return cmp.Or(r.waitDelay, runWaitDelay)
 }
 
 // ExitCode returns the status a program exited with when err holds its exit (a non-zero
