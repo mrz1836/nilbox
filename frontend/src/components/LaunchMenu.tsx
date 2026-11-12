@@ -43,9 +43,10 @@ export interface LaunchMenuProps {
 const sectionTitle = 'px-2 pb-1 text-[0.6875rem] font-semibold tracking-wide text-muted uppercase'
 
 // saveButtonClass is the footer's save buttons: small, but outlined, so they read as
-// buttons beside the dialog's own.
+// buttons beside the dialog's own. Each may shrink, its name cut short, so a long
+// repository or owner never pushes the footer's buttons over.
 const saveButtonClass =
-  'inline-flex max-w-40 items-center gap-1 rounded-md border border-border px-2 py-0.5 text-xs font-medium text-text transition-colors hover:bg-raised disabled:cursor-default disabled:opacity-50 disabled:hover:bg-transparent'
+  'inline-flex max-w-40 min-w-0 items-center gap-1 rounded-md border border-border px-2 py-0.5 text-xs font-medium text-text transition-colors hover:bg-raised disabled:cursor-default disabled:opacity-50 disabled:hover:bg-transparent'
 const overrideHelp = "Lifts the outside-contributor restriction; keeps the profile's plan and permission settings."
 
 // defaultLabel names a setting's default: its value and where it comes from.
@@ -388,7 +389,9 @@ export function LaunchMenu({
           <span className="text-[0.6875rem] text-muted">
             {savable ? 'Save these choices as the default for' : 'Change a choice above to save it as the default for'}
           </span>
-          <span className="flex gap-1.5">
+          {/* The two wrap onto two lines when the footer is short of room, rather than run
+              under Cancel. */}
+          <span className="flex min-w-0 flex-wrap gap-1.5">
             <button
               type="button"
               disabled={saving || !savable}
