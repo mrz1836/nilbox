@@ -64,6 +64,26 @@ func TestGitTemplateBuildsOnceAndCopiesIntoEachTest(t *testing.T) {
 		"a push to one copy's origin leaves the other's as it was")
 }
 
+func TestGitTemplateRefreshesALinkedWorktreesIndex(t *testing.T) {
+	t.Parallel()
+
+	tpl := testutil.NewGitTemplate(func(b *testutil.GitBuild) struct{} {
+		originAndClone(b)
+		b.Git("clone", "worktree", "add", "-q", "-b", "feature", filepath.Join(b.Root, "linked"))
+
+		return struct{}{}
+	})
+
+	dir := testutil.RealTempDir(t)
+	tpl.Copy(t, dir)
+
+	linked := filepath.Join(dir, "linked")
+	testutil.RunGit(t, linked, "diff-files", "--quiet") // the linked worktree's index was refreshed too
+	assert.Empty(t, testutil.RunGit(t, linked, "status", "--porcelain"))
+	assert.Contains(t, testutil.RunGit(t, filepath.Join(dir, "clone"), "worktree", "list", "--porcelain"),
+		"worktree "+linked+"\n", "the clone lists its copy's linked worktree")
+}
+
 func TestGitTemplateCommitsAreTheSameInEveryBuild(t *testing.T) {
 	t.Parallel()
 

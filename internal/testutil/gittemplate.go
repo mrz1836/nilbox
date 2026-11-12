@@ -13,6 +13,7 @@ import (
 	"sync"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"github.com/stretchr/testify/require"
 )
@@ -25,8 +26,18 @@ const templateDate = "1767323045 +0000"
 // templateBuildLimit bounds how long a template's build may run.
 const templateBuildLimit = 2 * time.Minute
 
-// errTemplateEntry is a template holding something other than folders and regular files.
-var errTemplateEntry = errors.New("a git template holds only folders and regular files")
+// The ways a template's build fails once its steps have run: it holds something other
+// than folders and regular files, a file other than text names the folder it was built
+// in, which a copy can't rewrite without breaking the file, or an index whose work tree a
+// copy can't find to refresh.
+var (
+	errTemplateEntry    = errors.New("a git template holds only folders and regular files")
+	errTemplateBinary   = errors.New("a git template names the folder it was built in only in text files")
+	errTemplateWorkTree = errors.New("a git template refreshes only the indexes of work trees inside it")
+)
+
+// indexSignature is how every git index file begins.
+var indexSignature = []byte("DIRC") //nolint:gochecknoglobals // a constant byte string
 
 // GitTemplate is a folder of git repositories, such as an origin and its clone, built once
 // per test binary, the first time a test asks for a copy, and copied whole into each test
@@ -47,8 +58,8 @@ func NewGitTemplate[V any](build func(b *GitBuild) V) *GitTemplate[V] {
 // Copy copies the template into dir, which may already exist but must hold none of the
 // template's files, and returns what its build returned. Every file that named the folder
 // the template was built in, such as a clone's config naming its origin, names dir in its
-// place, and each work tree's index is refreshed, as the copy gave every file new times.
-// It skips the test without git.
+// place, and each work tree's index, a linked worktree's included, is refreshed, as the
+// copy gave every file new times. It skips the test without git.
 func (g *GitTemplate[V]) Copy(t testing.TB, dir string) V {
 	t.Helper()
 
@@ -107,6 +118,14 @@ func (s *GitTemplates[K, V]) template(key K) *GitTemplate[V] {
 // describes, which dates every commit and tag alike, at 2026-01-02 03:04:05 UTC. A build
 // is its steps in order: once one fails, the rest do nothing, and the build fails with
 // that first failure.
+//
+// What a build may leave has limits, as a copy works without git but for refreshing an
+// index, and the build fails, naming the file, past any of them. Root holds only folders
+// and regular files, no link. Only text, UTF-8 with no NUL byte, names Root, since a copy
+// writes its own folder's path in place of Root's: never an index, a pack, or another file
+// whose length or checksum a rewrite would break. And every index belongs to a work tree
+// inside Root, a clone's own (<work tree>/.git/index) or a linked worktree's
+// (<git folder>/worktrees/<name>/index), never a submodule's.
 type GitBuild struct {
 	// Root is the template: everything under it is copied.
 	Root string
@@ -263,14 +282,8 @@ func (tree *gitTree[V]) read(path string, d fs.DirEntry) error {
 	switch {
 	case d.IsDir():
 	case info.Mode().IsRegular():
-		if entry.data, err = os.ReadFile(path); err != nil { //nolint:gosec // the template this binary just built
+		if entry.data, entry.named, err = tree.readFile(path, rel); err != nil {
 			return err
-		}
-
-		entry.named = bytes.Contains(entry.data, []byte(tree.root))
-
-		if d.Name() == "index" && filepath.Base(filepath.Dir(rel)) == ".git" {
-			tree.workTrees = append(tree.workTrees, filepath.Dir(filepath.Dir(rel)))
 		}
 	default:
 		return fmt.Errorf("%w: %s", errTemplateEntry, rel)
@@ -279,6 +292,85 @@ func (tree *gitTree[V]) read(path string, d fs.DirEntry) error {
 	tree.entries = append(tree.entries, entry)
 
 	return nil
+}
+
+// readFile reads the file at path, rel in the template, and reports whether it names the
+// folder the template was built in, which only text may, and notes the work tree of a git
+// index for a copy to refresh.
+func (tree *gitTree[V]) readFile(path, rel string) ([]byte, bool, error) {
+	data, err := os.ReadFile(path) //nolint:gosec // the template this binary just built
+	if err != nil {
+		return nil, false, err
+	}
+
+	named := bytes.Contains(data, []byte(tree.root))
+	if named && !isText(data) {
+		return nil, false, fmt.Errorf("%w: %s names it and isn't text", errTemplateBinary, rel)
+	}
+
+	if err = tree.noteIndex(rel, data); err != nil {
+		return nil, false, err
+	}
+
+	return data, named, nil
+}
+
+// isText reports whether data is text, UTF-8 with no NUL byte, in which a copy can put
+// its own folder's path in place of another's without breaking the file.
+func isText(data []byte) bool {
+	return utf8.Valid(data) && bytes.IndexByte(data, 0) < 0
+}
+
+// noteIndex notes, for a copy to refresh, the work tree of the git index at rel, which
+// holds data: a clone's own index, <work tree>/.git/index, or a linked worktree's,
+// <git folder>/worktrees/<name>/index, which begins as every git index does. Any other git
+// index, such as a submodule's, fails the build, and any other file, one called index that
+// a work tree holds among them, is none.
+func (tree *gitTree[V]) noteIndex(rel string, data []byte) error {
+	admin := filepath.Dir(rel)
+
+	switch {
+	case filepath.Base(rel) != "index":
+	case filepath.Base(admin) == ".git":
+		tree.workTrees = append(tree.workTrees, filepath.Dir(admin))
+	case !bytes.HasPrefix(data, indexSignature):
+	case filepath.Base(filepath.Dir(admin)) == "worktrees":
+		work, err := tree.linkedWorkTree(admin)
+		if err != nil {
+			return err
+		}
+
+		tree.workTrees = append(tree.workTrees, work)
+	default:
+		return fmt.Errorf("%w: %s indexes no work tree a copy can find", errTemplateWorkTree, rel)
+	}
+
+	return nil
+}
+
+// linkedWorkTree returns the work tree, relative to the template, of the linked worktree
+// whose folder in its clone's git folder is admin: the folder of the .git file that
+// admin's gitdir file names, taken from admin when it is relative. One outside the
+// template fails the build, as a copy would hold no work tree to refresh.
+func (tree *gitTree[V]) linkedWorkTree(admin string) (string, error) {
+	dir := filepath.Join(tree.root, admin)
+
+	data, err := os.ReadFile(filepath.Join(dir, "gitdir")) //nolint:gosec // the template this binary just built
+	if err != nil {
+		return "", fmt.Errorf("%w: %s: %w", errTemplateWorkTree, admin, err)
+	}
+
+	dotGit := strings.TrimSpace(string(data))
+	if !filepath.IsAbs(dotGit) {
+		dotGit = filepath.Join(dir, dotGit)
+	}
+
+	work, err := filepath.Rel(tree.root, filepath.Dir(dotGit))
+	if err != nil || !filepath.IsLocal(work) {
+		return "", fmt.Errorf("%w: %s works in %s, outside it", errTemplateWorkTree, admin, filepath.Dir(dotGit))
+	}
+
+	return work, nil
 }
 
 // copyTo writes the template into dir, each file with its own mode and never over a file
