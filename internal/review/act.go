@@ -15,6 +15,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/item"
 	"github.com/mrz1836/nilbox/internal/repo"
 	"github.com/mrz1836/nilbox/internal/sensitive"
+	"github.com/mrz1836/nilbox/internal/textutil"
 	"github.com/mrz1836/nilbox/internal/uierr"
 )
 
@@ -886,7 +887,7 @@ func (a *action) result(requested bool) Result {
 	}
 
 	r := Result{
-		Outcome: a.outcome, Reason: a.reason, Steps: nonNil(a.steps), LeftReview: a.acted.Reviewed && requested,
+		Outcome: a.outcome, Reason: a.reason, Steps: textutil.NonNil(a.steps), LeftReview: a.acted.Reviewed && requested,
 		LeftInbox: a.gone(), Message: a.message(), Commented: a.commentedFirst(),
 	}
 
@@ -974,7 +975,7 @@ func pushedSinceResult(ref string, a *action) Result {
 	}
 
 	if a != nil {
-		r.Steps, r.LeftReview, r.Commented = nonNil(a.steps), a.acted.Reviewed, a.commentedFirst()
+		r.Steps, r.LeftReview, r.Commented = textutil.NonNil(a.steps), a.acted.Reviewed, a.commentedFirst()
 
 		if a.reviewed != nil {
 			r.Message = reviewStep(a.reviewAs) + ", but " + ref + " was pushed to since you opened it, so it wasn't merged."

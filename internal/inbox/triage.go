@@ -3,7 +3,6 @@ package inbox
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
@@ -188,19 +187,9 @@ func (w *writer) wakeSnoozed(ctx context.Context) error {
 func (w *writer) wake(ctx context.Context, rules snooze.Rules, r queries.ListRunningSnoozesRow) error {
 	now := snoozedActivity(r)
 
-	var then snooze.State
-	if r.SnoozeBaseline == nil || json.Unmarshal([]byte(*r.SnoozeBaseline), &then) != nil {
-		baseline, err := encodeJSON(now)
-		if err != nil {
-			return err
-		}
-
-		err = w.q.SetSnoozeBaseline(ctx, queries.SetSnoozeBaselineParams{SnoozeBaseline: baseline, ItemID: r.ItemID})
-		if err != nil {
-			return fmt.Errorf("record the snooze baseline: %w", err)
-		}
-
-		return nil
+	then, err := store.DecodeJSON[snooze.State](store.Deref(r.SnoozeBaseline))
+	if r.SnoozeBaseline == nil || err != nil {
+		return w.recordBaseline(ctx, r.ItemID, now)
 	}
 
 	bot := trust.Author{Type: r.AuthorType}.IsBot()
@@ -227,6 +216,22 @@ func (w *writer) wake(ctx context.Context, rules snooze.Rules, r queries.ListRun
 	}
 
 	w.woke[r.ItemID] = reasons
+
+	return nil
+}
+
+// recordBaseline records now as the activity the item's snooze compares with, when none
+// is recorded or the one recorded can't be read.
+func (w *writer) recordBaseline(ctx context.Context, id int64, now snooze.State) error {
+	baseline, err := encodeJSON(now)
+	if err != nil {
+		return err
+	}
+
+	err = w.q.SetSnoozeBaseline(ctx, queries.SetSnoozeBaselineParams{SnoozeBaseline: baseline, ItemID: id})
+	if err != nil {
+		return fmt.Errorf("record the snooze baseline: %w", err)
+	}
 
 	return nil
 }

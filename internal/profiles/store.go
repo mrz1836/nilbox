@@ -39,15 +39,9 @@ func (s *Store) All(ctx context.Context) ([]Profile, error) {
 		return nil, fmt.Errorf("list profiles: %w", err)
 	}
 
-	profiles := make([]Profile, 0, len(rows))
-
-	for _, row := range rows {
-		p, decodeErr := fromRow(row)
-		if decodeErr != nil {
-			return nil, fmt.Errorf("list profiles: %w", decodeErr)
-		}
-
-		profiles = append(profiles, p)
+	profiles, err := store.ConvertRows(rows, fromRow)
+	if err != nil {
+		return nil, fmt.Errorf("list profiles: %w", err)
 	}
 
 	sortProfiles(profiles)

@@ -37,6 +37,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/logging"
 	"github.com/mrz1836/nilbox/internal/repo"
 	"github.com/mrz1836/nilbox/internal/sensitive"
+	"github.com/mrz1836/nilbox/internal/textutil"
 	"github.com/mrz1836/nilbox/internal/uierr"
 )
 
@@ -503,7 +504,7 @@ func build(pull StoredPull, c *cached, matcher *sensitive.Matcher, pref MethodPr
 		ID: pull.ID, Repo: pull.ref().Repo.String(), Number: pull.Number, Title: pull.Title, URL: pull.URL,
 		State: github.StateOpen, Author: pull.AuthorLogin, IsBot: strings.EqualFold(pull.AuthorType, "Bot"),
 		Mine: strings.EqualFold(pull.AuthorLogin, pull.Viewer), Draft: pull.IsDraft, HeadRef: pull.HeadRef,
-		BaseRef: pull.DefaultBranch, ReviewRequested: pull.ReviewRequested, Labels: nonNil(pull.Labels),
+		BaseRef: pull.DefaultBranch, ReviewRequested: pull.ReviewRequested, Labels: textutil.NonNil(pull.Labels),
 		Additions: pull.Additions, Deletions: pull.Deletions, Commits: pull.Commits, Comments: pull.Comments,
 		AutoMerge: MergeMethod(pull.AutoMerge), Head: pull.HeadOID, Files: []File{}, Checks: []Check{},
 		Reviews: []ReviewEntry{}, TotalFiles: pull.ChangedFiles, Stale: true,
@@ -520,7 +521,7 @@ func build(pull StoredPull, c *cached, matcher *sensitive.Matcher, pref MethodPr
 	r.Change = changeOf(r.Files, r.Bump != nil)
 
 	plan := Decide(factsOf(pull, c, r), pref)
-	r.Offers, r.Primary, r.Readiness = nonNil(plan.Offers), plan.Primary, plan.Readiness
+	r.Offers, r.Primary, r.Readiness = textutil.NonNil(plan.Offers), plan.Primary, plan.Readiness
 	r.MergeMethods, r.DefaultMethod = plan.Methods, plan.Method
 
 	return r
@@ -532,7 +533,7 @@ func (r *Review) fill(c *cached, matcher *sensitive.Matcher) {
 	r.Head, r.State, r.Body, r.Stale = c.head, cmp.Or(pc.State, github.StateOpen), pc.Body, !strings.EqualFold(c.head, r.Head)
 	r.Mine = r.Mine || pc.Mine
 	r.TotalFiles, r.FilesComplete = c.total, c.complete
-	r.Checks = nonNil(pc.Checks)
+	r.Checks = textutil.NonNil(pc.Checks)
 
 	if pc.BaseRef != "" {
 		r.BaseRef = pc.BaseRef
@@ -683,13 +684,4 @@ func methodsOf(pull StoredPull) []MergeMethod {
 	}
 
 	return out
-}
-
-// nonNil returns s, or an empty slice for nil.
-func nonNil[T any](s []T) []T {
-	if s == nil {
-		return []T{}
-	}
-
-	return s
 }

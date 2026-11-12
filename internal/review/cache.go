@@ -179,7 +179,7 @@ func (c *cacheStore) load(ctx context.Context, id, budget int64) (*cached, error
 
 	out := &cached{
 		head: row.HeadOID, total: int(row.Total), complete: row.Complete, context: pc,
-		contextAt: value(row.ContextAt), fetchedAt: value(row.FetchedAt), files: make([]cachedFile, 0, len(rows)),
+		contextAt: store.Deref(row.ContextAt), fetchedAt: store.Deref(row.FetchedAt), files: make([]cachedFile, 0, len(rows)),
 	}
 
 	for _, r := range rows {
@@ -393,15 +393,4 @@ func (c *cacheStore) drop(ctx context.Context, id int64) error {
 	}
 
 	return nil
-}
-
-// value returns what p points to, or T's zero value when p is nil.
-func value[T any](p *T) T {
-	if p == nil {
-		var zero T
-
-		return zero
-	}
-
-	return *p
 }

@@ -269,7 +269,7 @@ func pullTargetOfRow(row queries.GetEditItemRow) PullTarget {
 		Ref: item.Ref{
 			Repo: repo.Name{Owner: row.RepoOwner, Repo: row.RepoName}, Number: int(row.Number), Kind: item.Kind(row.Kind),
 		},
-		NodeID: row.NodeID, Login: row.AccountLogin, Head: value(row.HeadOID), UpdatedAt: row.ItemUpdatedAt.UTC(),
+		NodeID: row.NodeID, Login: row.AccountLogin, Head: store.Deref(row.HeadOID), UpdatedAt: row.ItemUpdatedAt.UTC(),
 		ReviewRequested: row.ReasonReviewRequested, Authored: row.ReasonAuthored, Assigned: row.ReasonAssigned,
 	}
 }

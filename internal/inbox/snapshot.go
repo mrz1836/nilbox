@@ -3,7 +3,6 @@ package inbox
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"strconv"
@@ -17,6 +16,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/sensitive"
 	"github.com/mrz1836/nilbox/internal/snooze"
 	"github.com/mrz1836/nilbox/internal/store"
+	"github.com/mrz1836/nilbox/internal/textutil"
 	"github.com/mrz1836/nilbox/internal/trust"
 )
 
@@ -533,17 +533,20 @@ func itemRowOf(r queries.ListItemsRow) (itemRow, error) {
 		HeadRef: r.HeadRef, ItemUpdatedAt: r.ItemUpdatedAt, ReasonReviewRequested: r.ReasonReviewRequested,
 		ReasonAuthored: r.ReasonAuthored, ReasonAssigned: r.ReasonAssigned,
 
-		HasDetails: r.DetailsItemID != nil, Labels: labels, Projects: projects, Comments: int(value(r.Comments)),
-		Additions: int(value(r.Additions)), Deletions: int(value(r.Deletions)),
-		ChangedFiles: int(value(r.ChangedFiles)), Commits: int(value(r.Commits)), Mergeable: value(r.Mergeable),
-		ChecksState: value(r.ChecksState), ChecksPassed: int(value(r.ChecksPassed)),
-		ChecksFailed: int(value(r.ChecksFailed)), ChecksPending: int(value(r.ChecksPending)),
-		ChecksSkipped: int(value(r.ChecksSkipped)), ReviewDecision: value(r.ReviewDecision),
-		Reviewers: int(value(r.Reviewers)), Reviewed: int(value(r.Reviewed)), Approvals: int(value(r.Approvals)),
-		ChangesRequested: int(value(r.ChangesRequested)), DetailsFetchedAt: r.DetailsFetchedAt,
-		SubIssues: SubIssues{Total: int(value(r.SubIssuesTotal)), Completed: int(value(r.SubIssuesCompleted))},
-		HeadOID:   value(r.HeadOID), AutoMerge: value(r.AutoMergeMethod), ReviewUsers: reviewUsers,
-		ReviewTeams: reviewTeams,
+		HasDetails: r.DetailsItemID != nil, Labels: labels, Projects: projects,
+		Comments: int(store.Deref(r.Comments)), Additions: int(store.Deref(r.Additions)),
+		Deletions: int(store.Deref(r.Deletions)), ChangedFiles: int(store.Deref(r.ChangedFiles)),
+		Commits: int(store.Deref(r.Commits)), Mergeable: store.Deref(r.Mergeable),
+		ChecksState: store.Deref(r.ChecksState), ChecksPassed: int(store.Deref(r.ChecksPassed)),
+		ChecksFailed: int(store.Deref(r.ChecksFailed)), ChecksPending: int(store.Deref(r.ChecksPending)),
+		ChecksSkipped: int(store.Deref(r.ChecksSkipped)), ReviewDecision: store.Deref(r.ReviewDecision),
+		Reviewers: int(store.Deref(r.Reviewers)), Reviewed: int(store.Deref(r.Reviewed)),
+		Approvals: int(store.Deref(r.Approvals)), ChangesRequested: int(store.Deref(r.ChangesRequested)),
+		DetailsFetchedAt: r.DetailsFetchedAt, HeadOID: store.Deref(r.HeadOID), AutoMerge: store.Deref(r.AutoMergeMethod),
+		SubIssues: SubIssues{
+			Total: int(store.Deref(r.SubIssuesTotal)), Completed: int(store.Deref(r.SubIssuesCompleted)),
+		},
+		ReviewUsers: reviewUsers, ReviewTeams: reviewTeams,
 
 		Stored: stored,
 
@@ -582,7 +585,7 @@ func (r *itemRow) item(scope fileScope, viewer string) Item {
 		PinnedAt:          formatOptionalTime(r.PinnedAt),
 		Assigned:          r.ReasonAssigned,
 		ReviewRequest:     r.reviewRequest(viewer),
-		ReviewTeams:       nonNil(r.ReviewTeams),
+		ReviewTeams:       textutil.NonNil(r.ReviewTeams),
 	}
 }
 
@@ -640,8 +643,8 @@ func decodeReasons(raw *string) *snooze.Reasons {
 		return nil
 	}
 
-	var reasons snooze.Reasons
-	if json.Unmarshal([]byte(*raw), &reasons) != nil {
+	reasons, err := store.DecodeJSON[snooze.Reasons](*raw)
+	if err != nil {
 		return nil
 	}
 
@@ -722,15 +725,9 @@ func loadItems(ctx context.Context, q *queries.Queries, accountID int64) ([]item
 		return nil, fmt.Errorf("read the inbox items: %w", err)
 	}
 
-	rows := make([]itemRow, 0, len(stored))
-
-	for _, r := range stored {
-		row, rowErr := itemRowOf(r)
-		if rowErr != nil {
-			return nil, fmt.Errorf("read the inbox items: %w", rowErr)
-		}
-
-		rows = append(rows, row)
+	rows, err := store.ConvertRows(stored, itemRowOf)
+	if err != nil {
+		return nil, fmt.Errorf("read the inbox items: %w", err)
 	}
 
 	return rows, nil

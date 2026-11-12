@@ -954,6 +954,8 @@ package imports the driver, and nothing imports an ORM (`internal/repoguard` enf
   driver stores every `time.Time` as UTC text (`2006-01-02 15:04:05.999999999+00:00`), so
   stamps compare and sort as text in time order.
   JSON columns are TEXT, written with `store.EncodeJSON` and read with `store.DecodeJSON[T]`.
+  An owner converts its query rows with `store.ConvertRows`, whose list is never nil, and reads
+  a nullable or LEFT JOIN column with `store.Deref`.
 - **Self-heal.** `store.Open` backs the database up before applying pending migrations. A file
   that is not a database or is damaged, a schema the migrations did not create, or a history this
   build disagrees with is renamed, with its `-wal` and `-shm` files, to
