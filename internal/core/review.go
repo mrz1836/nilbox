@@ -75,12 +75,7 @@ func (r reviewSettings) MergeMethod(ctx context.Context) (review.MethodPref, err
 
 // Sensitive returns which files are sensitive.
 func (r reviewSettings) Sensitive(ctx context.Context) (sensitive.Config, error) {
-	all, err := r.settings.Get(ctx)
-	if err != nil {
-		return sensitive.Config{}, err
-	}
-
-	return all.SensitiveFiles, nil
+	return settingsPart(ctx, r.settings, func(s settings.Settings) sensitive.Config { return s.SensitiveFiles })
 }
 
 // reviewReplies hands the review sheet the review replies of the prompt library, filled in

@@ -54,14 +54,20 @@ type settingsView[T any] struct {
 
 // Get reads the settings and returns the part.
 func (v settingsView[T]) Get(ctx context.Context) (T, error) {
-	all, err := v.settings.Get(ctx)
+	return settingsPart(ctx, v.settings, v.part)
+}
+
+// settingsPart reads the settings as they are now and returns the part of them pick takes,
+// or T's zero value and the error when they can't be read.
+func settingsPart[T any](ctx context.Context, s *settings.Service, pick func(settings.Settings) T) (T, error) {
+	all, err := s.Get(ctx)
 	if err != nil {
 		var zero T
 
 		return zero, err
 	}
 
-	return v.part(all), nil
+	return pick(all), nil
 }
 
 // ShellSettings are the settings the desktop shell reads when the app launches: the theme,
@@ -845,22 +851,14 @@ type releaseSettings struct {
 
 // Where returns where runs go.
 func (p releaseSettings) Where(ctx context.Context) (release.Where, error) {
-	all, err := p.settings.Get(ctx)
-	if err != nil {
-		return release.Where{}, err
-	}
-
-	return release.Where{RunsIn: all.Integrations.RunsIn, Terminal: terminal.Name(all.Terminal)}, nil
+	return settingsPart(ctx, p.settings, func(s settings.Settings) release.Where {
+		return release.Where{RunsIn: s.Integrations.RunsIn, Terminal: terminal.Name(s.Terminal)}
+	})
 }
 
 // OfferAfterMerge returns the integrations.offerAfterMerge setting.
 func (p releaseSettings) OfferAfterMerge(ctx context.Context) (bool, error) {
-	all, err := p.settings.Get(ctx)
-	if err != nil {
-		return false, err
-	}
-
-	return all.Integrations.OfferAfterMerge, nil
+	return settingsPart(ctx, p.settings, func(s settings.Settings) bool { return s.Integrations.OfferAfterMerge })
 }
 
 // releaseNotices tells the user of a release with a notification about no item, and its
@@ -978,22 +976,12 @@ type integrationSettings struct {
 
 // Integrations returns the integrations' settings.
 func (p integrationSettings) Integrations(ctx context.Context) (integrationprefs.Config, error) {
-	all, err := p.settings.Get(ctx)
-	if err != nil {
-		return integrationprefs.Config{}, err
-	}
-
-	return all.Integrations, nil
+	return settingsPart(ctx, p.settings, func(s settings.Settings) integrationprefs.Config { return s.Integrations })
 }
 
 // RunsIn returns the integrations.runsIn setting.
 func (p integrationSettings) RunsIn(ctx context.Context) (integrationprefs.RunsIn, error) {
-	all, err := p.Integrations(ctx)
-	if err != nil {
-		return "", err
-	}
-
-	return all.RunsIn, nil
+	return settingsPart(ctx, p.settings, func(s settings.Settings) integrationprefs.RunsIn { return s.Integrations.RunsIn })
 }
 
 // releaseSignedOut marks gh's "no one is signed in" as release.ErrSignedOut. A missing gh
