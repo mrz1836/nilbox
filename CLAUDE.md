@@ -75,7 +75,10 @@ This deliberately overrides the synced
 A test that runs real git isolates it through the runner, not the process: hand the service
 under test `execpath.Exec{Env: testutil.GitEnv(home)}` (or `testutil.Git(t)` for a fresh home),
 which reads none of the user's git configuration, and run fixture commands with
-`testutil.RunGit`. A test that runs an external tool runs a fake one: `testutil.FakeTool`
+`testutil.RunGit`. A suite whose rigs start from the same repositories builds them once per
+test binary with `testutil.GitTemplate` (or `GitTemplates`, one per key) and copies them into
+each test, and `testutil.DB` likewise hands each test a copy of a database migrated once per
+test binary. A test that runs an external tool runs a fake one: `testutil.FakeTool`
 links the tool's name to the test binary, which replays a recorded run or a scripted behavior
 when the package's `TestMain` calls `testutil.FakeToolMain` first, so no test writes a script
 to run.
@@ -179,13 +182,17 @@ app:lint` reads.
   only through `paths.OpenRegular` (`ReadHead`, `ReadTail`): a regular file, or a link to one,
   opened without waiting and checked again once open, so a named pipe swapped in is refused
   (`paths.ErrNotRegular`) rather than hanging the read.
-  `internal/testutil` holds the fakes and fixtures the test suites
-  share (a fresh database, an isolated git, a runner, finder, clock, event sink, log, and fake
-  tools); only tests may import it. `internal/scriptrun/scriptruntest` holds the runner the
+  `internal/testutil` holds the fakes and fixtures the test suites share (a fresh database, an
+  isolated git, `Commit` for a fixture file, git templates built once per test binary, the
+  `Planter`, which plants fake programs in a clone's own config for the guard tests, recorded
+  runs of real tools, a runner, finder, clock, event sink, log, and fake tools); only tests
+  may import it. `internal/scriptrun/scriptruntest` holds the runner the
   hooks, scripts, and release suites share, built on it: a real `scriptrun.Engine` and its
   Service over a fresh database, the next start over the same history (`Restart`, `Next`),
   and `Ended` and `Await`, which look again only when the engine's `Changed` says the runs
-  changed, never on a timer; only tests may import it either.
+  changed, never on a timer; only tests may import it either. The repoguard guards on SQL and
+  on the git verbs the app runs treat both test-support packages as they treat `_test.go`
+  files.
 - `internal/event/` holds the app's events, one Go type each with its name; services emit them
   into the one `event.Sink` they are given. `internal/desktop/` is the shell's logic: it hears
   those events, keeps the menu bar current with what `internal/menubar` works out, runs the
