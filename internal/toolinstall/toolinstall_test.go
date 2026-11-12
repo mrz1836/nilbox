@@ -101,6 +101,20 @@ func (zeros) Read(p []byte) (int, error) {
 	return len(p), nil
 }
 
+// unpackedSize returns how many bytes the .tar.gz archive unpacks to, counting no further
+// than 16 MiB, far past any test archive.
+func unpackedSize(t *testing.T, archive []byte) int64 {
+	t.Helper()
+
+	gz, err := gzip.NewReader(bytes.NewReader(archive))
+	require.NoError(t, err)
+
+	n, err := io.Copy(io.Discard, io.LimitReader(gz, 16<<20))
+	require.NoError(t, err)
+
+	return n
+}
+
 // sha returns data's SHA-256 in hex.
 func sha(data []byte) string {
 	sum := sha256.Sum256(data)
@@ -408,10 +422,28 @@ func TestAFailedRollBackSaysSo(t *testing.T) {
 func TestEveryRefusalLeavesNothingBehind(t *testing.T) {
 	t.Parallel()
 
-	// The bomb holds the program and unpacks to more than twice the cap its case sets, so
-	// only the cap refuses it. Its subtests share the one archive.
+	// The bomb holds the program and unpacks to more than twice the cap its case sets,
+	// bombCap, and installs under a cap of its whole unpacked size, so only the cap refuses
+	// it. Its subtests share the one archive.
+	const bombCap = 64 << 10
+
 	bombArchive := makeArchive(t, entry{name: testBinary, body: goodProgram}, entry{name: "padding", size: 128 << 10})
 	bomb := func(*testing.T) []byte { return bombArchive }
+
+	bombSize := unpackedSize(t, bombArchive)
+	require.Greater(t, bombSize, int64(2*bombCap))
+
+	t.Run("the bomb under a cap it fits in installs", func(t *testing.T) {
+		t.Parallel()
+
+		s := newSetup(t, bombArchive)
+		s.in.maxUnpacked = bombSize
+
+		placed, err := s.in.Install(t.Context(), s.request(""))
+		require.NoError(t, err, "a good release but for its size")
+		assert.Equal(t, sha([]byte(goodProgram)), placed.SHA256)
+		assert.Empty(t, s.leftovers(t))
+	})
 
 	tests := []struct {
 		name    string
@@ -468,7 +500,7 @@ func TestEveryRefusalLeavesNothingBehind(t *testing.T) {
 			return makeArchive(t, entry{name: testBinary, body: goodProgram}, entry{name: "./" + testBinary, body: goodProgram})
 		}, want: ErrArchive},
 		{name: "an oversized entry", change: func(s *setup, _ *Request) { s.in.maxProgram = 4 }, want: ErrArchive},
-		{name: "a gzip bomb", archive: bomb, change: func(s *setup, _ *Request) { s.in.maxUnpacked = 64 << 10 }, want: ErrArchive},
+		{name: "a gzip bomb", archive: bomb, change: func(s *setup, _ *Request) { s.in.maxUnpacked = bombCap }, want: ErrArchive},
 		{name: "a download that won't run", archive: func(t *testing.T) []byte {
 			t.Helper()
 
