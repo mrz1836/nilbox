@@ -90,7 +90,7 @@ type Dispatcher struct {
 // NewDispatcher returns a Dispatcher.
 func NewDispatcher(cfg Config) *Dispatcher {
 	d := &Dispatcher{base: newBase(cfg)}
-	d.held = newGathering(d.show)
+	d.held = newGathering(d.showGathered)
 
 	return d
 }
@@ -155,16 +155,29 @@ func (d *Dispatcher) Close() {
 }
 
 // show posts the banners for recorded notifications, of the kinds that are on, when the
-// user allows banners. Once ctx ends it posts no more, and says nothing of a read it cut
-// short.
+// user allows banners. Arrived and Notify show with their callers' contexts, which carry
+// the read of the settings alone: a banner is posted whatever becomes of them.
 func (d *Dispatcher) show(ctx context.Context, rows []Notification) {
+	d.post(ctx, rows, func() error { return nil })
+}
+
+// showGathered is show for a batch Gather held, which shows within the gathering's
+// lifetime, ctx: once that ends, as Close ends it, it posts no more, and says nothing of a
+// read it cut short.
+func (d *Dispatcher) showGathered(ctx context.Context, rows []Notification) {
+	d.post(ctx, rows, ctx.Err)
+}
+
+// post posts rows' banners as show says, reading the settings within ctx. Once ended
+// returns an error it posts no more, and says nothing of a read that failed.
+func (d *Dispatcher) post(ctx context.Context, rows []Notification, ended func() error) {
 	if d.poster == nil || d.poster.Status() != StatusOn {
 		return
 	}
 
 	off, err := d.bannersOff(ctx)
 	if err != nil {
-		if ctx.Err() == nil {
+		if ended() == nil {
 			d.logger.WarnContext(ctx, "could not read which banners are on", "error", err)
 		}
 
@@ -172,7 +185,7 @@ func (d *Dispatcher) show(ctx context.Context, rows []Notification) {
 	}
 
 	for _, b := range Banners(rows, off) {
-		if ctx.Err() != nil {
+		if ended() != nil {
 			return
 		}
 

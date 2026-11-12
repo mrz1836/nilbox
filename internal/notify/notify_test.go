@@ -1,6 +1,7 @@
 package notify
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"fmt"
@@ -862,6 +863,52 @@ func TestTheQuitCutsShortABatchShowing(t *testing.T) {
 	log, err := NewStore(f.pool).Log(t.Context())
 	require.NoError(t, err)
 	assert.Len(t, log.Items, MaxBanners+1, "the history keeps every entry")
+}
+
+// askedPoster answers Status as fakePoster does, after running before.
+type askedPoster struct {
+	*fakePoster
+
+	before func()
+}
+
+func (p askedPoster) Status() BannerStatus {
+	p.before()
+
+	return p.fakePoster.Status()
+}
+
+func TestOnlyTheQuitCutsShortTheBannersShowing(t *testing.T) {
+	t.Parallel()
+
+	t.Run("the arrivals show every banner once their caller's context ends", func(t *testing.T) {
+		t.Parallel()
+
+		f := newFixture(t, 2)
+		ctx, cancel := context.WithCancel(t.Context())
+		cfg := f.config()
+		cfg.Poster = endingPoster{fakePoster: f.poster, after: cancel} // the caller's context ends as the first banner shows
+		d := NewDispatcher(cfg)
+
+		d.Arrived(ctx, []inbox.Arrival{f.arrival(0, KindReviewRequested), f.arrival(1, KindAssigned)})
+		assert.Len(t, f.poster.posted(), 2, "the caller's context isn't the quit")
+	})
+
+	t.Run("an entry's read its caller's context cut short is a failure", func(t *testing.T) {
+		t.Parallel()
+
+		f := newFixture(t, 0)
+		logs := &testutil.Logs{}
+		ctx, cancel := context.WithCancel(t.Context())
+		cfg := f.config()
+		cfg.Logger = logs.Logger()
+		cfg.Poster = askedPoster{fakePoster: f.poster, before: cancel} // the caller's context ends once the entry is recorded
+		d := NewDispatcher(cfg)
+
+		d.Notify(ctx, releaseEntry())
+		assert.Empty(t, f.poster.posted(), "the settings couldn't be read")
+		assert.Contains(t, logs.String(), "could not read which banners are on", "and that is told, as any failure is")
+	})
 }
 
 func TestTheDispatcherSurvivesFailures(t *testing.T) {
