@@ -2,7 +2,6 @@ package release
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -22,6 +21,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/integrationprefs"
 	"github.com/mrz1836/nilbox/internal/integrations"
 	"github.com/mrz1836/nilbox/internal/scriptrun"
+	"github.com/mrz1836/nilbox/internal/scriptrun/scriptruntest"
 	"github.com/mrz1836/nilbox/internal/testutil"
 	"github.com/mrz1836/nilbox/internal/uierr"
 )
@@ -62,16 +62,18 @@ type releaseRig struct {
 	second string
 
 	github  *fakeGitHub
-	locks   *clonelock.Set
 	logs    *testutil.Logs
-	db      *sql.DB
-	logDir  string
-	engine  *scriptrun.Engine
-	runs    *scriptrun.Service
 	svc     *Service
 	after   *afterGit
 	notices *fakeNotifier
 	events  *testutil.Events
+
+	// runner is the real runner, whose history and logs the next start reads; locks,
+	// engine, and runs are its clone locks, its Engine, and its Service.
+	runner *scriptruntest.Harness
+	locks  *clonelock.Set
+	engine *scriptrun.Engine
+	runs   *scriptrun.Service
 
 	tool     ToolFacts
 	magexEnv string
@@ -82,10 +84,7 @@ type releaseRig struct {
 func newReleaseRig(t *testing.T, opts rigOptions) *releaseRig {
 	t.Helper()
 
-	r := &releaseRig{
-		t: t, env: testutil.Git(t), root: realTempDir(t), locks: clonelock.New(), logs: &testutil.Logs{},
-		db: testutil.DB(t), logDir: filepath.Join(t.TempDir(), "script-runs"),
-	}
+	r := &releaseRig{t: t, env: testutil.Git(t), root: realTempDir(t), logs: &testutil.Logs{}}
 	r.origin, r.clone = filepath.Join(r.root, "origin.git"), filepath.Join(r.root, "sdk")
 
 	testutil.RunGit(t, r.root, "-c", "init.defaultBranch=master", "init", "-q", "--bare", r.origin)
@@ -106,12 +105,8 @@ func newReleaseRig(t *testing.T, opts rigOptions) *releaseRig {
 		Permission: "WRITE", DefaultBranch: branchMaster, HeadOID: r.second, Checks: ChecksSuccess,
 	}}}
 
-	r.engine = scriptrun.NewEngine(scriptrun.Config{
-		DB: r.db, Locks: r.locks, LogDir: r.logDir, Home: r.root, Logger: r.logs.Logger(),
-	})
-	t.Cleanup(r.engine.StopAll)
-
-	r.runs = scriptrun.NewService(r.engine)
+	r.runner = scriptruntest.New(t, r.root, r.logs.Logger())
+	r.locks, r.engine, r.runs = r.runner.Locks, r.runner.Engine, r.runner.Runs
 	r.notices, r.events = &fakeNotifier{}, &testutil.Events{}
 	r.magex("1.30.2", testutil.FakeRun{})
 
@@ -191,20 +186,7 @@ func (r *releaseRig) release() int64 {
 func (r *releaseRig) ended(id int64) scriptrun.Run {
 	r.t.Helper()
 
-	var run scriptrun.Run
-
-	require.Eventually(r.t, func() bool {
-		got, err := r.runs.Run(r.t.Context(), id)
-		if err != nil || got.Status.Live() {
-			return false
-		}
-
-		run = got
-		_, held := r.locks.Holder(r.clone)
-
-		return !held
-	}, runWait, runPoll, "run %d ends", id)
-
+	run := r.runner.Ended(id)
 	require.NoError(r.t, r.after.failure(), "what magex would have done")
 
 	return run
@@ -993,7 +975,7 @@ func (r *releaseRig) insertRelease(in Intent, log []byte) int64 {
 	})
 	require.NoError(r.t, err)
 
-	got, err := r.db.ExecContext(r.t.Context(), `INSERT INTO script_runs (kind, title, repo_owner, repo_name, dir,
+	got, err := r.runner.DB.ExecContext(r.t.Context(), `INSERT INTO script_runs (kind, title, repo_owner, repo_name, dir,
 		argv, command, runs_in, status, result, started_at) VALUES ('release', 'Release v1.4.3', 'acme-org', 'sdk', ?,
 		'["/opt/tools/magex"]', 'magex', 'app', 'running', ?, ?)`, r.clone, string(result), time.Now().UTC())
 	require.NoError(r.t, err)
@@ -1001,8 +983,8 @@ func (r *releaseRig) insertRelease(in Intent, log []byte) int64 {
 	id, err := got.LastInsertId()
 	require.NoError(r.t, err)
 
-	require.NoError(r.t, os.MkdirAll(r.logDir, 0o700))
-	require.NoError(r.t, os.WriteFile(filepath.Join(r.logDir, fmt.Sprintf("%d.log", id)), log, 0o600))
+	require.NoError(r.t, os.MkdirAll(r.runner.LogDir, 0o700))
+	require.NoError(r.t, os.WriteFile(filepath.Join(r.runner.LogDir, fmt.Sprintf("%d.log", id)), log, 0o600))
 
 	return id
 }
@@ -1136,31 +1118,7 @@ func TestAReleaseCutOffAsTheAppQuitsIsVerifiedOnTheNextStart(t *testing.T) {
 	// magex had pushed the tag; the next start finds it.
 	require.NoError(t, r.tagged(recVersion, r.second, true)(t.Context()))
 
-	next := scriptrun.NewEngine(scriptrun.Config{
-		DB: r.db, Locks: r.locks, LogDir: r.logDir, Home: r.root, Logger: r.logs.Logger(),
-	})
-	next.RegisterVerifier(scriptrun.KindRelease, NewVerifier(r.svc))
-
-	ctx, cancel := context.WithCancel(t.Context())
-	done := make(chan struct{})
-
-	go func() {
-		defer close(done)
-
-		next.Run(ctx)
-	}()
-
-	runs := scriptrun.NewService(next)
-
-	require.Eventually(t, func() bool {
-		got, err := runs.Run(t.Context(), id)
-		run = got
-
-		return err == nil && !got.Status.Live()
-	}, runWait, runPoll)
-
-	cancel()
-	<-done
+	run = r.runner.Restart(id, map[scriptrun.Kind]scriptrun.Verifier{scriptrun.KindRelease: NewVerifier(r.svc)})
 
 	assert.Equal(t, scriptrun.StatusSucceeded, run.Status)
 	assert.Equal(t, "v1.4.3 is on GitHub.", run.Summary)

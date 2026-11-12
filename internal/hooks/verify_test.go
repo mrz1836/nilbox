@@ -24,12 +24,12 @@ import (
 func (r *rig) refuseEnds() func() {
 	r.t.Helper()
 
-	_, err := r.db.ExecContext(r.t.Context(), `CREATE TRIGGER refuse_finish BEFORE UPDATE ON script_runs
+	_, err := r.runner.DB.ExecContext(r.t.Context(), `CREATE TRIGGER refuse_finish BEFORE UPDATE ON script_runs
 		WHEN NEW.finished_at IS NOT NULL BEGIN SELECT RAISE(ABORT, 'refused by the test'); END`)
 	require.NoError(r.t, err)
 
 	return func() {
-		_, err := r.db.ExecContext(r.t.Context(), `DROP TRIGGER refuse_finish`)
+		_, err := r.runner.DB.ExecContext(r.t.Context(), `DROP TRIGGER refuse_finish`)
 		require.NoError(r.t, err)
 	}
 }
@@ -41,11 +41,11 @@ func (r *rig) refuseEnds() func() {
 func (r *rig) leftGoing(id int64, dir string, told int) scriptrun.Run {
 	r.t.Helper()
 
-	require.Eventually(r.t, func() bool {
+	r.runner.Await(func() bool {
 		_, held := r.locks.Holder(dir)
 
 		return !held && r.events.Count() > told
-	}, runWait, runPoll, "run %d lets go of its clone", id)
+	}, "run %d lets go of its clone", id)
 
 	runs, err := r.runs.Runs(r.t.Context(), scriptrun.Filter{})
 	require.NoError(r.t, err)
@@ -62,37 +62,11 @@ func (r *rig) leftGoing(id int64, dir string, told int) scriptrun.Run {
 func (r *rig) restart(id int64) scriptrun.Run {
 	r.t.Helper()
 
-	next := scriptrun.NewEngine(scriptrun.Config{
-		DB: r.db, Locks: r.locks, LogDir: r.logDir, Home: r.home, Logger: r.logs.Logger(),
-	})
 	verify := NewVerifier(r.svc)
-	next.RegisterVerifier(scriptrun.KindHooks, verify)
-	next.RegisterVerifier(scriptrun.KindChecks, verify)
 
-	ctx, cancel := context.WithCancel(r.t.Context())
-	done := make(chan struct{})
-
-	go func() {
-		defer close(done)
-
-		next.Run(ctx)
-	}()
-
-	runs := scriptrun.NewService(next)
-
-	var run scriptrun.Run
-
-	require.Eventually(r.t, func() bool {
-		got, err := runs.Run(r.t.Context(), id)
-		run = got
-
-		return err == nil && !got.Status.Live()
-	}, runWait, runPoll, "run %d is settled on the next start", id)
-
-	cancel()
-	<-done
-
-	return run
+	return r.runner.Restart(id, map[scriptrun.Kind]scriptrun.Verifier{
+		scriptrun.KindHooks: verify, scriptrun.KindChecks: verify,
+	})
 }
 
 // keeps reports whether the run id keeps anything beside its record.
@@ -111,7 +85,7 @@ func (r *rig) keeps(id int64) bool {
 func (r *rig) keptFiles() []string {
 	r.t.Helper()
 
-	names, err := filepath.Glob(filepath.Join(r.logDir, "*.kept"))
+	names, err := filepath.Glob(filepath.Join(r.runner.LogDir, "*.kept"))
 	require.NoError(r.t, err)
 
 	return names

@@ -3,7 +3,6 @@ package hooks
 import (
 	"cmp"
 	"context"
-	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -24,6 +23,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/integrations"
 	"github.com/mrz1836/nilbox/internal/repo"
 	"github.com/mrz1836/nilbox/internal/scriptrun"
+	"github.com/mrz1836/nilbox/internal/scriptrun/scriptruntest"
 	"github.com/mrz1836/nilbox/internal/testutil"
 )
 
@@ -123,20 +123,20 @@ type rig struct {
 	clones *fakeClones
 	tools  *fakeTools
 	status *fakeStatus
-	locks  *clonelock.Set
-	engine *scriptrun.Engine
-	runs   *scriptrun.Service
 	memory *fakeMemory
 	events *testutil.Events
 	logs   *testutil.Logs
 	svc    *Service
 
+	// runner is the real runner, whose history and logs the next start reads; locks,
+	// engine, and runs are its clone locks, its Engine, and its Service.
+	runner *scriptruntest.Harness
+	locks  *clonelock.Set
+	engine *scriptrun.Engine
+	runs   *scriptrun.Service
+
 	// scratch is where go-pre-commit's status judges hooks.
 	scratch string
-
-	// db and logDir are the runner's history and its logs, which the next start reads.
-	db     *sql.DB
-	logDir string
 }
 
 // newRig builds a rig with go-pre-commit 1.13.1 replaying nothing, or skips the test
@@ -147,23 +147,19 @@ func newRig(t *testing.T) *rig {
 	testutil.RequireGit(t)
 
 	home := testutil.RealTempDir(t)
+	logs := &testutil.Logs{}
+	runner := scriptruntest.New(t, home, logs.Logger())
 	r := &rig{
 		t: t, home: home, root: filepath.Join(home, "projects"), env: testutil.GitEnv(home),
-		tools: &fakeTools{}, status: &fakeStatus{}, locks: clonelock.New(),
-		memory: &fakeMemory{values: map[string]string{}}, events: &testutil.Events{}, logs: &testutil.Logs{},
-		scratch: filepath.Join(t.TempDir(), "scratch"), db: testutil.DB(t), logDir: filepath.Join(t.TempDir(), "script-runs"),
+		tools: &fakeTools{}, status: &fakeStatus{}, memory: &fakeMemory{values: map[string]string{}},
+		events: &testutil.Events{}, logs: logs, runner: runner, locks: runner.Locks, engine: runner.Engine,
+		runs: runner.Runs, scratch: filepath.Join(t.TempDir(), "scratch"),
 	}
 	require.NoError(t, os.MkdirAll(r.root, 0o700))
 
 	r.git = gitread.New(gitread.Config{Env: func() []string { return r.env }})
 	r.clones = &fakeClones{root: r.root, origins: map[string]repo.Name{}}
 
-	r.engine = scriptrun.NewEngine(scriptrun.Config{
-		DB: r.db, Locks: r.locks, LogDir: r.logDir, Home: home, Logger: r.logs.Logger(),
-	})
-	t.Cleanup(r.engine.StopAll)
-
-	r.runs = scriptrun.NewService(r.engine)
 	r.tool("1.13.1", testutil.FakeRun{})
 
 	r.svc = NewService(Config{
@@ -278,22 +274,7 @@ func (r *rig) shown(dir string) string {
 func (r *rig) ended(id int64) scriptrun.Run {
 	r.t.Helper()
 
-	var run scriptrun.Run
-
-	require.Eventually(r.t, func() bool {
-		got, err := r.runs.Run(r.t.Context(), id)
-		if err != nil || got.Status.Live() {
-			return false
-		}
-
-		run = got
-
-		_, busy := r.locks.Holder(filepath.Join(r.home, strings.TrimPrefix(got.Dir, "~/")))
-
-		return !busy
-	}, runWait, runPoll, "run %d never ended", id)
-
-	return run
+	return r.runner.Ended(id)
 }
 
 // page returns the page, failing the test when it can't be read.

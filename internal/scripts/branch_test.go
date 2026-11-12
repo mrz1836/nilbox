@@ -69,7 +69,7 @@ func newGitRig(t *testing.T) *gitRig {
 	g.asked = &countingGit{BranchGit: gitread.New(gitread.Config{Env: g.environ})}
 	g.branch = NewService(Config{
 		Clones: r.clones, BranchGit: g.asked, Tools: r.tools, Settings: r.settings, Runs: r.engine, History: r.runs,
-		DB: r.db, Env: func() ([]string, bool) { return g.environ(), true }, Home: r.home, Clock: g.clock,
+		DB: r.runner.DB, Env: func() ([]string, bool) { return g.environ(), true }, Home: r.home, Clock: g.clock,
 	})
 	r.engine.RegisterRerunner(scriptrun.KindPull, NewRerunner(g.branch))
 
