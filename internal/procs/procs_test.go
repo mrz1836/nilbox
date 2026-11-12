@@ -103,7 +103,7 @@ func TestLocatedAnswersAsWithinDoes(t *testing.T) {
 	assert.Nil(t, procs.Within(nil, root))
 }
 
-func TestLocatedAnswersAsInDoes(t *testing.T) {
+func TestLocatedInAnswersEachFolder(t *testing.T) {
 	t.Parallel()
 
 	root := testutil.RealTempDir(t)
@@ -144,7 +144,7 @@ func TestLocatedAnswersAsInDoes(t *testing.T) {
 
 	for dir, want := range folders {
 		got := located.In(dir)
-		assert.Equal(t, procs.In(list, dir), got, "asked of %q", dir)
+		assert.Equal(t, procs.In(list, dir), got, "asked of %q, as a fresh Located answers", dir)
 
 		if want == nil {
 			assert.Nil(t, got, "none in %q", dir)
