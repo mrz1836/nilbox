@@ -21,6 +21,12 @@ var fixedTextSize = regexp.MustCompile(strings.Join([]string{
 	`\blineHeight\s*:\s*['"][0-9.]+px`,
 }, "|"))
 
+// fixesTextSize reports whether line fixes a text size in px, as fixedTextSize matches.
+// Every match holds "px" or "fontSize", so a line holding neither is not matched.
+func fixesTextSize(line string) bool {
+	return (strings.Contains(line, "px") || strings.Contains(line, "fontSize")) && fixedTextSize.MatchString(line)
+}
+
 func TestFixedTextSizePattern(t *testing.T) {
 	t.Parallel()
 
@@ -50,6 +56,7 @@ func TestFixedTextSizePattern(t *testing.T) {
 
 	for line, want := range cases {
 		assert.Equal(t, want, fixedTextSize.MatchString(line), line)
+		assert.Equal(t, want, fixesTextSize(line), line)
 	}
 }
 
@@ -68,7 +75,7 @@ func TestFrontendTextFollowsTheTextSize(t *testing.T) {
 			continue
 		}
 
-		found = append(found, hits(rel, text, fixedTextSize.MatchString)...)
+		found = append(found, hits(rel, text, fixesTextSize)...)
 	}
 
 	assert.Empty(t, found, "size text in rem (text-[0.6875rem], not text-[11px]), so it follows the text size setting")

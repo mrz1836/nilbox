@@ -124,28 +124,31 @@ func TestNoAbsoluteHomePaths(t *testing.T) {
 	// keeps URL path segments (such as example.com/home/page) from matching.
 	pattern := regexp.MustCompile(`(^|[^A-Za-z0-9._~-])/(` + "Us" + "ers" + "|" + "ho" + "me" + `)/([^/\s"'` + "`" + `)]+)`)
 
+	// Every match holds one of these, so a file without either is not matched line by
+	// line.
+	homes := []string{"/" + "Us" + "ers" + "/", "/" + "ho" + "me" + "/"}
+
 	placeholders := map[string]bool{
 		"me": true, "you": true, "user": true, "username": true, "runner": true, "example": true,
 		"USER": true, "<user>": true, "<username>": true, "$USER": true, "${USER}": true,
 	}
 
+	realHome := func(line string) bool {
+		for _, m := range pattern.FindAllStringSubmatch(line, -1) {
+			if !placeholders[m[3]] {
+				return true
+			}
+		}
+
+		return false
+	}
+
 	var found []string
 
 	for _, rel := range repoFiles(t) {
-		text, ok := readText(t, rel)
-		if !ok {
-			continue
+		if text, ok := readText(t, rel); ok && containsAny(text, homes) {
+			found = append(found, hits(rel, text, realHome)...)
 		}
-
-		found = append(found, hits(rel, text, func(line string) bool {
-			for _, m := range pattern.FindAllStringSubmatch(line, -1) {
-				if !placeholders[m[3]] {
-					return true
-				}
-			}
-
-			return false
-		})...)
 	}
 
 	assert.Empty(t, found, "use ~/projects or a placeholder home directory, never a real one")
