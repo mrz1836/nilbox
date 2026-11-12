@@ -168,7 +168,7 @@ func (r *rig) entry(dir, ref string) Entry {
 		}
 	}
 
-	r.t.Fatalf("no entry %s", ref)
+	require.Failf(r.t, "no entry", "%s", ref)
 
 	return Entry{}
 }
