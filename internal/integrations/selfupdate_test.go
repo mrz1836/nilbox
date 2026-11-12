@@ -782,7 +782,7 @@ func TestAnUpdateCutOffAsTheAppQuitsIsLeftForTheNextStart(t *testing.T) {
 
 	h := newUpdateHarness(t, nil)
 	path := h.m.put(h.m.pathB, magexSays(recordedMagex))
-	r := &selfRun{def: MageX(), intent: updateIntent{Tool: integrationprefs.MageX, Path: path, From: recordedMagex}, reader: newUpdateReader()}
+	r := &selfRun{def: MageX(), intent: updateIntent{Tool: integrationprefs.MageX, Path: path, From: recordedMagex}, reader: &updateReader{}}
 
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
@@ -908,10 +908,23 @@ func TestRunEnvPutsTheQuietVariablesOverTheShells(t *testing.T) {
 	assert.Equal(t, []string{}, Definition{}.RunEnv(base, integrationprefs.RunsInTerminal))
 }
 
+func TestUpdateReaderZeroValueIsReady(t *testing.T) {
+	t.Parallel()
+
+	// Each method works as the first call on a zero value.
+	for name, call := range map[string]func(r *updateReader){
+		"Write":    func(r *updateReader) { _, _ = r.Write([]byte("partial")) },
+		"Flush":    func(r *updateReader) { r.Flush() },
+		"snapshot": func(r *updateReader) { _ = r.snapshot() },
+	} {
+		assert.NotPanics(t, func() { call(new(updateReader)) }, name)
+	}
+}
+
 func TestUpdateReaderReadsTheUpdatersLines(t *testing.T) {
 	t.Parallel()
 
-	r := newUpdateReader()
+	var r updateReader
 
 	for _, part := range []string{
 		"\n=== Installing ", "Update ===\n12:00:00 [WARN] first\r\n",

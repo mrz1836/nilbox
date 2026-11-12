@@ -10,6 +10,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"unicode/utf8"
 
 	"github.com/mrz1836/nilbox/internal/brand"
@@ -142,7 +143,7 @@ func (v Verifier) Verify(run scriptrun.Record) scriptrun.Verification {
 		return scriptrun.Verification{}
 	}
 
-	r := &selfRun{def: def, intent: in, reader: newUpdateReader(), id: run.ID}
+	r := &selfRun{def: def, intent: in, reader: &updateReader{}, id: run.ID}
 
 	return scriptrun.Verification{Callbacks: v.s.updateCallbacks(r, true)}
 }
@@ -210,7 +211,7 @@ func (s *Service) claimUpdate(ctx context.Context, def Definition) (*selfRun, bo
 	r := &selfRun{
 		def:    def,
 		intent: updateIntent{Tool: def.ID, Path: c.Path, From: c.Version.Raw, Installed: c.Source == SourceApp},
-		env:    def.RunEnv(env, integrationprefs.RunsInApp), reader: newUpdateReader(), running: true,
+		env:    def.RunEnv(env, integrationprefs.RunsInApp), reader: &updateReader{}, running: true,
 	}
 
 	s.mu.Lock()
@@ -582,25 +583,39 @@ type updateOutput struct {
 }
 
 // updateReader reads a tool's own updater's output as it arrives, each line as a terminal
-// shows it (see scriptrun.LineWriter).
+// shows it (see scriptrun.LineWriter). The zero value is ready.
 type updateReader struct {
-	*scriptrun.LineWriter
+	// lines hands r.line each whole line under its lock, which every method takes. It is
+	// made on first use (writer).
+	linesOnce sync.Once
+	lines     *scriptrun.LineWriter
 
 	said updateOutput
 }
 
-// newUpdateReader returns a reader that has read nothing.
-func newUpdateReader() *updateReader {
-	r := &updateReader{}
-	r.LineWriter = scriptrun.NewLineWriter(r.line)
+// Write reads p, which may end anywhere. It never fails.
+func (r *updateReader) Write(p []byte) (int, error) {
+	return r.writer().Write(p)
+}
 
-	return r
+// Flush reads a last line that has no newline.
+func (r *updateReader) Flush() {
+	r.writer().Flush()
+}
+
+// writer returns the LineWriter that hands r each line, made on first use.
+func (r *updateReader) writer() *scriptrun.LineWriter {
+	r.linesOnce.Do(func() { r.lines = scriptrun.NewLineWriter(r.line) })
+
+	return r.lines
 }
 
 // snapshot returns what was read so far.
 func (r *updateReader) snapshot() updateOutput {
-	r.Lock()
-	defer r.Unlock()
+	w := r.writer()
+
+	w.Lock()
+	defer w.Unlock()
 
 	out := r.said
 	out.warnings = append([]string{}, r.said.warnings...)

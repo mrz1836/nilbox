@@ -6,6 +6,7 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+	"sync"
 	"unicode"
 
 	"github.com/mrz1836/nilbox/internal/scriptrun"
@@ -231,14 +232,17 @@ func cloneOutputLines(lines []string) []string {
 // Spec.Output, fed the log's bytes in order and split anywhere (scriptrun.LineWriter). It
 // reads whole lines, ended by \r\n or \n, a bare \r overwriting the line as a terminal
 // does, and color escapes removed. Snapshot returns what it has read, and is safe to call
-// while it reads.
+// while it reads. The zero value is ready, as NewOutputReader's is.
 //
 // A line it doesn't recognize leaves the step as it was and is kept for the result. It
 // knows the lines of magex 1.29.5 and 1.30.2, recorded in testdata/magex-1.29.5 and
 // testdata/magex-1.30.2, ff-only's among them, and the JSON result that json=true adds
 // from 1.30.1.
 type OutputReader struct {
-	*scriptrun.LineWriter
+	// lines hands r.read each whole line under its lock, which every method takes. It is
+	// made on first use (writer), so the zero value is ready.
+	linesOnce sync.Once
+	lines     *scriptrun.LineWriter
 
 	out Output
 
@@ -254,10 +258,28 @@ type OutputReader struct {
 
 // NewOutputReader returns a reader that has read nothing.
 func NewOutputReader() *OutputReader {
-	r := &OutputReader{}
-	r.LineWriter = scriptrun.NewLineWriter(r.read)
+	return &OutputReader{}
+}
 
-	return r
+// Write reads p, the next part of the output. It never fails.
+func (r *OutputReader) Write(p []byte) (int, error) {
+	return r.writer().Write(p)
+}
+
+// Flush reads the last line when the output ended without a newline. Call it once the
+// output has ended.
+func (r *OutputReader) Flush() {
+	r.writer().Flush()
+}
+
+// Lock takes the lock no line is read without, so what the reader kept can be read.
+func (r *OutputReader) Lock() {
+	r.writer().Lock()
+}
+
+// Unlock lets the lock go.
+func (r *OutputReader) Unlock() {
+	r.writer().Unlock()
 }
 
 // Snapshot returns what the reader has read so far. A line still missing its newline is
@@ -267,6 +289,13 @@ func (r *OutputReader) Snapshot() Output {
 	defer r.Unlock()
 
 	return r.out.clone()
+}
+
+// writer returns the LineWriter that hands r each line, made on first use.
+func (r *OutputReader) writer() *scriptrun.LineWriter {
+	r.linesOnce.Do(func() { r.lines = scriptrun.NewLineWriter(r.read) })
+
+	return r.lines
 }
 
 // plainOutputText returns a magex message without the indentation, emoji, or bullet it

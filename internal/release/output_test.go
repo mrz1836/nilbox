@@ -623,6 +623,30 @@ func TestOutputReadsAnUnfinishedLastLineOnFlush(t *testing.T) {
 	assert.Equal(t, []string{"cut sh"}, r.Snapshot().Errors)
 }
 
+func TestOutputReaderZeroValueIsReady(t *testing.T) {
+	t.Parallel()
+
+	// Each method works as the first call on a zero value.
+	for name, call := range map[string]func(r *OutputReader){
+		"Write":    func(r *OutputReader) { _, _ = r.Write([]byte("partial")) },
+		"Flush":    func(r *OutputReader) { r.Flush() },
+		"Snapshot": func(r *OutputReader) { _ = r.Snapshot() },
+		"Progress": func(r *OutputReader) { _ = r.Progress(Intent{}) },
+	} {
+		assert.NotPanics(t, func() { call(new(OutputReader)) }, name)
+	}
+
+	whole := loadRecording(t, "patch-feature-behind").log("\n")
+
+	var r OutputReader
+
+	_, err := r.Write(whole)
+	require.NoError(t, err)
+	r.Flush()
+
+	assert.Equal(t, readOutput(whole), r.Snapshot(), "a zero value reads as NewOutputReader's does")
+}
+
 func TestOutputSnapshotsShareNothing(t *testing.T) {
 	t.Parallel()
 
