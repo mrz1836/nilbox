@@ -924,7 +924,7 @@ Measured on an Apple Silicon Mac (M1 Max) running macOS 15, against the producti
 |--------------------------------|--------:|---------:|
 | Cold start to first paint      |   < 1 s |   0.54 s |
 | Inbox refresh                  |   < 3 s |   2.30 s |
-| App binary size                | < 30 MB |  17.0 MB |
+| App binary size                | < 30 MB |  21.6 MB |
 | API budget at 5-minute cadence |   < 2 % |   1.20 % |
 
 Re-measure everything (size, startup, live read-only refreshes, and a real launch in iTerm2):
