@@ -445,13 +445,13 @@ func failedChecksMessage(res ChecksResult) string {
 
 // passedChecksMessage says every check that ran passed, on how many files, how fast.
 func passedChecksMessage(res ChecksResult) string {
-	text := "All " + plural(res.Passed, "check") + " passed"
+	text := "All " + textutil.Counted(res.Passed, "check", "checks") + " passed"
 	if res.Passed == 1 {
 		text = "The check passed"
 	}
 
 	if res.Files > 0 {
-		text += " on " + plural(res.Files, "file")
+		text += " on " + textutil.Counted(res.Files, "file", "files")
 	}
 
 	if res.DurationMs > 0 {
@@ -459,15 +459,6 @@ func passedChecksMessage(res ChecksResult) string {
 	}
 
 	return text + "."
-}
-
-// plural writes n with its noun, in the plural unless n is 1.
-func plural(n int, noun string) string {
-	if n == 1 {
-		return "1 " + noun
-	}
-
-	return fmt.Sprintf("%d %ss", n, noun)
 }
 
 // secondsText writes a duration the way the result says it: "350 ms", "2.6 s", "38 s".

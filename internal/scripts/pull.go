@@ -387,19 +387,10 @@ func (s *Service) pulled(ctx context.Context, run *pullRun, after string) string
 	text := "Updated " + run.intent.Branch + " from " + short(run.intent.Before) + " to " + short(after)
 
 	if n, err := s.branchGit.CommitsBetween(ctx, run.c.dir, run.intent.Before, after); err == nil {
-		text += fmt.Sprintf(", %d new commit%s", n, plural(n))
+		text += ", " + textutil.Counted(n, "new commit", "new commits")
 	}
 
 	return text + "."
-}
-
-// plural is the "s" a count other than one takes.
-func plural(n int) string {
-	if n == 1 {
-		return ""
-	}
-
-	return "s"
 }
 
 // pullArgs is git's pull of origin's branch upstream into the branch the clone is on, the

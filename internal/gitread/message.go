@@ -84,17 +84,14 @@ func cloneConfigText(keys []string) string {
 		"git config, with an includeIf, instead."
 }
 
-// listed words names as a list ("a", "a and b", "a, b, and c"), with the verb and the
-// pronoun that go with that many.
+// listed words names as a list (textutil.Series: "a", "a and b", "a, b, and c"), with the
+// verb and the pronoun that go with that many.
 func listed(names []string) (list, verb, them string) {
-	switch n := len(names); n {
-	case 1:
+	if len(names) == 1 {
 		return names[0], "isn't", "it"
-	case 2:
-		return names[0] + " and " + names[1], "aren't", "them"
-	default:
-		return strings.Join(names[:n-1], ", ") + ", and " + names[n-1], "aren't", "them"
 	}
+
+	return textutil.Series(names), "aren't", "them"
 }
 
 // gitSaid is what git said in a failure, without the command and the exit status, or the

@@ -564,7 +564,7 @@ func (d decider) localOnlyCheck() (Check, bool) {
 	}
 
 	text := fmt.Sprintf("%s %s on GitHub. %s would skip %s and leave a gap. Push %s or delete %s in your terminal:",
-		listed(only), is, magexName, it, it, it)
+		textutil.Series(only), is, magexName, it, it, it)
 
 	out := checkBlock(CheckLocalOnly, text, FixOpenTerminal)
 	for _, tag := range only {
@@ -996,15 +996,6 @@ func moduleFor(path string, major int) string {
 // isDigits reports a non-empty run of decimal digits.
 func isDigits(s string) bool {
 	return s != "" && strings.Trim(s, "0123456789") == ""
-}
-
-// listed joins names as a sentence lists them: "a", "a and b", "a, b, and c".
-func listed(names []string) string {
-	if len(names) < 3 {
-		return strings.Join(names, " and ")
-	}
-
-	return strings.Join(names[:len(names)-1], ", ") + ", and " + names[len(names)-1]
 }
 
 // checksURL is the page of a commit's checks on GitHub.

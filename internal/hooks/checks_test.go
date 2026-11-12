@@ -358,7 +358,7 @@ func TestSecondsText(t *testing.T) {
 	assert.Equal(t, "350 ms", secondsText(350))
 	assert.Equal(t, "2.6 s", secondsText(2600))
 	assert.Equal(t, "38 s", secondsText(37600))
-	assert.Equal(t, "1 file", plural(1, "file"))
+	assert.Equal(t, "All 2 checks passed on 1 file.", passedChecksMessage(ChecksResult{Passed: 2, Files: 1}))
 	assert.Equal(t, "Checks · all files", checksTitle(ChecksIntent{Scope: ScopeAll}))
 	assert.True(t, ScopeStaged.Valid())
 	assert.False(t, Scope("x").Valid())

@@ -1064,12 +1064,3 @@ func TestModuleFor(t *testing.T) {
 		assert.Equal(t, tc.want, moduleFor(tc.path, tc.major), "%s to v%d", tc.path, tc.major)
 	}
 }
-
-func TestListed(t *testing.T) {
-	t.Parallel()
-
-	assert.Empty(t, listed(nil))
-	assert.Equal(t, "a", listed([]string{"a"}))
-	assert.Equal(t, "a and b", listed([]string{"a", "b"}))
-	assert.Equal(t, "a, b, and c", listed([]string{"a", "b", "c"}))
-}
