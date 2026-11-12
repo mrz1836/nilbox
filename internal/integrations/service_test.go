@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -302,13 +303,101 @@ func TestAFailedUpdateCheckKeepsTheLastAnswer(t *testing.T) {
 	h.clock.Advance(25 * time.Hour)
 
 	require.ErrorIs(t, h.svc.checkUpdates(t.Context(), updateEvery), errOffline)
-	assert.Contains(t, h.logs.String(), "couldn't check the tools for updates")
+	assert.NotContains(t, h.logs.String(), updateCheckFailed, "the caller that goes on without it logs it")
+
+	h.svc.checkUpdatesLogged(t.Context(), updateEvery)
+	assert.Equal(t, 1, strings.Count(h.logs.String(), updateCheckFailed))
+	assert.Contains(t, h.logs.String(), "check for updates: offline")
 
 	_, tools := h.list(t)
 	assert.Equal(t, "1.30.2", tools["mage-x"].Latest.Version, "the last answer stays")
 
 	_, err := h.svc.CheckAgain(t.Context())
 	require.NoError(t, err, "a failed check isn't the settings' failure")
+}
+
+// updateCheckFailed is the log's line for an update check that failed.
+const updateCheckFailed = "couldn't check the tools for updates"
+
+func TestEveryFailedUpdateCheckIsLoggedOnce(t *testing.T) {
+	t.Parallel()
+
+	t.Run("GitHub didn't answer", func(t *testing.T) {
+		t.Parallel()
+
+		h := newHarness(t)
+		h.releases.mu.Lock()
+		h.releases.err = ErrSignedOut
+		h.releases.mu.Unlock()
+
+		h.svc.checkUpdatesLogged(t.Context(), 0)
+
+		logs := h.logs.String()
+		assert.Equal(t, 1, strings.Count(logs, updateCheckFailed), logs)
+		assert.Contains(t, logs, "level=INFO", "a routine note")
+		assert.Contains(t, logs, "check for updates: "+ErrSignedOut.Error())
+	})
+
+	t.Run("the last answer couldn't be read", func(t *testing.T) {
+		t.Parallel()
+
+		h := newHarness(t)
+		h.svc.prefs = prefs.New(testutil.ClosedDB(t), h.clock)
+
+		h.svc.checkUpdatesLogged(t.Context(), 0)
+
+		logs := h.logs.String()
+		assert.Equal(t, 1, strings.Count(logs, updateCheckFailed), logs)
+		assert.Contains(t, logs, "level=WARN")
+		assert.Contains(t, logs, "read the latest releases")
+		assert.Zero(t, h.releases.count(), "GitHub isn't asked")
+	})
+
+	t.Run("the answer couldn't be kept", func(t *testing.T) {
+		t.Parallel()
+
+		h := newHarness(t)
+		db := testutil.DB(t)
+		h.svc.prefs = prefs.New(db, h.clock)
+
+		_, err := db.ExecContext(t.Context(), `CREATE TRIGGER refuse_latest BEFORE INSERT ON prefs
+			BEGIN SELECT RAISE(ABORT, 'refused'); END`)
+		require.NoError(t, err)
+
+		h.svc.checkUpdatesLogged(t.Context(), 0)
+
+		logs := h.logs.String()
+		assert.Equal(t, 1, strings.Count(logs, updateCheckFailed), logs)
+		assert.Contains(t, logs, "level=WARN")
+		assert.Contains(t, logs, "keep the latest releases")
+		assert.Equal(t, 1, h.releases.count())
+		assert.Empty(t, h.events.All(), "nothing kept, so nothing to tell the window")
+	})
+
+	t.Run("cut short", func(t *testing.T) {
+		t.Parallel()
+
+		h := newHarness(t)
+		h.releases.mu.Lock()
+		h.releases.err = errOffline
+		h.releases.mu.Unlock()
+
+		ctx, cancel := context.WithCancel(t.Context())
+		cancel()
+
+		h.svc.checkUpdatesLogged(ctx, 0)
+		assert.NotContains(t, h.logs.String(), updateCheckFailed, "a check the quit ended isn't a failure to tell")
+	})
+
+	t.Run("checked", func(t *testing.T) {
+		t.Parallel()
+
+		h := newHarness(t)
+		h.svc.checkUpdatesLogged(t.Context(), 0)
+
+		assert.Equal(t, 1, h.releases.count())
+		assert.NotContains(t, h.logs.String(), updateCheckFailed)
+	})
 }
 
 func TestNoUpdateCheckWithoutGitHub(t *testing.T) {

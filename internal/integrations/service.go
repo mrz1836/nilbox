@@ -295,7 +295,7 @@ func (s *Service) CheckAgain(ctx context.Context) (Tools, error) {
 	go func() {
 		defer close(checked)
 
-		_ = s.checkUpdates(ctx, recheckAfter) // a failed check is logged, and keeps the last answer
+		s.checkUpdatesLogged(ctx, recheckAfter) // a failed check keeps the last answer
 	}()
 
 	_ = s.env.Read(ctx) // a failed read is logged, and keeps the last good environment
@@ -461,9 +461,28 @@ func (s *Service) keep(ctx context.Context, got map[string]detection, now time.T
 	return found, nil
 }
 
+// checkUpdatesLogged is checkUpdates for a caller that goes on without its answer, as
+// every caller does: a failure keeps the last answer, so the next look tries again, and is
+// logged here, once, unless ctx ended: GitHub not answering (offline, signed out) as
+// information, and the preferences failing as a warning.
+func (s *Service) checkUpdatesLogged(ctx context.Context, maxAge time.Duration) {
+	err := s.checkUpdates(ctx, maxAge)
+
+	switch {
+	case err == nil || ctx.Err() != nil:
+	case errors.Is(err, errUpdateCheck):
+		s.logger.InfoContext(ctx, "couldn't check the tools for updates", "error", err)
+	default:
+		s.logger.WarnContext(ctx, "couldn't check the tools for updates", "error", err)
+	}
+}
+
+// errUpdateCheck marks a check for updates that GitHub didn't answer.
+var errUpdateCheck = errors.New("check for updates")
+
 // checkUpdates looks up every tool's latest release and keeps it, unless every tool was
-// checked within maxAge. A failure is logged and keeps the last answer, so the next look
-// tries again.
+// checked within maxAge. A failure keeps the last answer, logs nothing, and is returned:
+// one that GitHub's answer caused wraps errUpdateCheck.
 func (s *Service) checkUpdates(ctx context.Context, maxAge time.Duration) error {
 	if s.releases == nil {
 		return nil
@@ -499,11 +518,7 @@ func (s *Service) checkUpdates(ctx context.Context, maxAge time.Duration) error 
 	s.mu.Unlock()
 
 	if err != nil {
-		if ctx.Err() == nil {
-			s.logger.InfoContext(ctx, "couldn't check the tools for updates", "error", err)
-		}
-
-		return fmt.Errorf("check for updates: %w", err)
+		return fmt.Errorf("%w: %w", errUpdateCheck, err)
 	}
 
 	if err = s.keepLatest(ctx, got, now); err != nil {
@@ -584,7 +599,7 @@ func (w *Worker) Run(ctx context.Context) {
 
 	w.detect(ctx)
 	w.s.cleanup()
-	_ = w.s.checkUpdates(ctx, updateEvery) // logged; the next tick tries again
+	w.s.checkUpdatesLogged(ctx, updateEvery) // the next tick tries again
 
 	ticker := time.NewTicker(w.tick)
 	defer ticker.Stop()
@@ -596,7 +611,7 @@ func (w *Worker) Run(ctx context.Context) {
 		case <-w.s.wake:
 			w.detect(ctx)
 		case <-ticker.C:
-			_ = w.s.checkUpdates(ctx, updateEvery) // logged; the next tick tries again
+			w.s.checkUpdatesLogged(ctx, updateEvery) // the next tick tries again
 		}
 	}
 }

@@ -169,7 +169,7 @@ func (s *Service) install(ctx context.Context, id integrationprefs.ID) (InstallR
 		return InstallResult{}, err
 	}
 
-	_ = s.checkUpdates(ctx, latestFreshFor) // a failure keeps the last answer, which the plan then says is missing
+	s.checkUpdatesLogged(ctx, latestFreshFor) // a failure keeps the last answer, which the plan then says is missing
 
 	plan, latest, _, err := s.planFor(ctx, def)
 	if err != nil {
