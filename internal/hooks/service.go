@@ -113,7 +113,7 @@ type Config struct {
 	// Terminal opens the user's terminal in a clone, for a row's Open in terminal, and
 	// Reveal shows a clone's config in Finder, for its Open the config. Without them,
 	// each says it can't.
-	Terminal FolderOpener
+	Terminal scriptrun.FolderOpener
 	Reveal   Revealer
 
 	Home   string
@@ -235,7 +235,7 @@ type Service struct {
 	ready    func() <-chan struct{}
 	runner   func(env []string, dir string) execpath.Runner
 	scratch  string
-	terminal FolderOpener
+	terminal scriptrun.FolderOpener
 	reveal   Revealer
 	home     string
 	clock    clock.Clock

@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/mrz1836/nilbox/internal/brand"
+	"github.com/mrz1836/nilbox/internal/scriptrun"
 	"github.com/mrz1836/nilbox/internal/uierr"
 )
 
@@ -66,7 +67,7 @@ func TestOpenTerminalOpensTheCloneAndRunsNothing(t *testing.T) {
 	opener := &fakeOpener{}
 
 	require.NoError(t, openService(r, opener).OpenTerminal(t.Context(), "~/projects/web"))
-	assert.Equal(t, []opened{{name: terminalScript, path: dir}}, opener.folder)
+	assert.Equal(t, []opened{{name: scriptrun.FolderScript, path: dir}}, opener.folder)
 	assert.Empty(t, opener.shown)
 }
 
@@ -78,7 +79,7 @@ func TestOpenTerminalOpensACloneWithoutAConfigOrAGitHubOrigin(t *testing.T) {
 	opener := &fakeOpener{}
 
 	require.NoError(t, openService(r, opener).OpenTerminal(t.Context(), r.shown(dir)))
-	assert.Equal(t, []opened{{name: terminalScript, path: dir}}, opener.folder)
+	assert.Equal(t, []opened{{name: scriptrun.FolderScript, path: dir}}, opener.folder)
 }
 
 func TestOpenTerminalRefusesAFolderThatIsntAClone(t *testing.T) {
@@ -103,7 +104,7 @@ func TestOpenTerminalSaysWhenItCant(t *testing.T) {
 
 	err := openService(r, nil).OpenTerminal(t.Context(), "~/projects/web")
 
-	require.ErrorIs(t, err, ErrNoTerminal)
+	require.ErrorIs(t, err, scriptrun.ErrNoFolderTerminal)
 	assert.Equal(t, "Your terminal can't be opened here.", uierr.Message(err))
 }
 
