@@ -2,8 +2,6 @@ package release
 
 import (
 	"testing"
-	"testing/synctest"
-	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -73,60 +71,4 @@ func TestARefreshWithNothingToCompareOrCheckSaysSo(t *testing.T) {
 		{Phase: event.ReleasesAskingGitHub, Total: 7},
 		{Phase: event.ReleasesAskingGitHub, Done: 7, Total: 7},
 	}, told(r.events), "no round without repositories to count")
-}
-
-func TestProgressIsToldAFewTimesASecond(t *testing.T) {
-	t.Parallel()
-
-	synctest.Test(t, func(t *testing.T) {
-		events := &testutil.Events{}
-		p := newListProgress(events, progressEvery)
-
-		p.start(event.ReleasesAskingGitHub, 151)
-		assert.Len(t, told(events), 1, "the first is told at once")
-
-		// A batch answered every 50 ms for two seconds.
-		for range 40 {
-			time.Sleep(50 * time.Millisecond)
-			p.add(3)
-		}
-
-		time.Sleep(progressEvery)
-		synctest.Wait()
-
-		got := told(events)
-		assert.LessOrEqual(t, len(got), 1+int(2*time.Second/progressEvery)+1, "at most four times a second")
-		assert.Equal(t, event.ReleasesProgress{Phase: event.ReleasesAskingGitHub, Done: 120, Total: 151}, got[len(got)-1],
-			"the latest counts are told once the wait is over")
-
-		p.add(1000)
-		synctest.Wait()
-
-		last := told(events)
-		if len(last) > len(got) {
-			assert.Equal(t, 151, last[len(last)-1].Done, "never past the total")
-		}
-	})
-}
-
-func TestProgressEndsWithItsRefresh(t *testing.T) {
-	t.Parallel()
-
-	synctest.Test(t, func(t *testing.T) {
-		events := &testutil.Events{}
-		p := newListProgress(events, progressEvery)
-
-		p.start(event.ReleasesCheckingClones, 3)
-		p.add(1)
-		p.end()
-
-		time.Sleep(2 * progressEvery)
-		synctest.Wait()
-		assert.Equal(t, []event.ReleasesProgress{{Phase: event.ReleasesCheckingClones, Total: 3}}, told(events),
-			"a count held back is dropped once the refresh ends")
-
-		p.add(1)
-		p.start(event.ReleasesAskingGitHub, 2)
-		assert.Len(t, told(events), 1, "and nothing more is told")
-	})
 }

@@ -78,6 +78,7 @@ export function LastSweep(): $CancellablePromise<$models.SweepReport> {
  * with the status of each worktree and the pull request or issue it was made for. A
  * repository that git cannot read is listed with an error rather than hiding the rest. A
  * clone that is itself a linked worktree of another clone is folded into that repository.
+ * It tells the window how far it has got as it goes (event.WorktreesProgress).
  */
 export function List(): $CancellablePromise<$models.Snapshot> {
     return $Call.ByID(3590969184);

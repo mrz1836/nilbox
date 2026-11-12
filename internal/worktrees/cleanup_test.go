@@ -17,6 +17,7 @@ import (
 
 	"github.com/mrz1836/nilbox/internal/agent"
 	"github.com/mrz1836/nilbox/internal/branchrules"
+	"github.com/mrz1836/nilbox/internal/event"
 	"github.com/mrz1836/nilbox/internal/execpath"
 	"github.com/mrz1836/nilbox/internal/item"
 	"github.com/mrz1836/nilbox/internal/procs"
@@ -824,4 +825,57 @@ func normalizeResult(r RemoveResult) RemoveResult {
 	r.Path = resolvedPath(r.Path)
 
 	return r
+}
+
+// toldProgress returns the listing progress among events, in order.
+func toldProgress(events *testutil.Events) []event.WorktreesProgress {
+	var out []event.WorktreesProgress
+
+	for _, e := range events.All() {
+		if p, ok := e.(event.WorktreesProgress); ok {
+			out = append(out, p)
+		}
+	}
+
+	return out
+}
+
+func TestListTellsTheWindowHowFarItHasGot(t *testing.T) {
+	t.Parallel()
+
+	e := newEnv(t)
+	repo := e.newGitHubRepo(t, "example-repo")
+	e.newGitHubRepo(t, "other-repo")
+	_, head := agentWorktree(t, repo, "pr-1")
+
+	events := &testutil.Events{}
+	gh := &fakeGitHub{states: map[string]ItemState{refKey("acme-org", "example-repo", 1): pr(ItemOpen, head)}}
+	svc := e.linked(linkDeps{gh: gh, events: events})
+	svc.progressEvery = 0
+
+	_, err := svc.List(t.Context())
+	require.NoError(t, err)
+
+	listing := func(done int) event.WorktreesProgress {
+		return event.WorktreesProgress{Phase: event.WorktreesListing, Done: done, Total: 2}
+	}
+	checking := func(done int) event.WorktreesProgress {
+		return event.WorktreesProgress{Phase: event.WorktreesChecking, Done: done, Total: 3}
+	}
+
+	assert.Equal(t, []event.WorktreesProgress{
+		{Phase: event.WorktreesFindingClones},
+		listing(0), listing(1), listing(2),
+		checking(0), checking(1), checking(2), checking(3),
+		{Phase: event.WorktreesAskingGitHub, Total: 1},
+		{Phase: event.WorktreesAskingGitHub, Done: 1, Total: 1},
+	}, toldProgress(events), "the clones, then each one's worktrees, then each worktree, then GitHub")
+
+	before := len(events.All())
+
+	svc.Sweep(t.Context())
+
+	for _, ev := range events.All()[before:] {
+		assert.NotEqual(t, event.NameWorktreesProgress, ev.Name(), "a sweep's listing tells the window nothing")
+	}
 }

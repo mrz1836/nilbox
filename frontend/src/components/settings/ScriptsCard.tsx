@@ -5,6 +5,7 @@ import { useSettingsSave } from '../../lib/useSettingsSave'
 import {
   setIntegrationEnabled,
   setScriptSources,
+  setShowRuns,
   type IntegrationSwitch,
   type IntegrationTools,
   type ScriptSources,
@@ -45,14 +46,15 @@ export interface ScriptsCardProps {
 
 // ScriptsCard is the Scripts integration's card: what it is for, its switch (automatic,
 // the default, is on while mage-x or go-pre-commit is), and which sources Repo scripts
-// reads: magex's targets, and the commands in a repository's own files. Each change is
+// reads: magex's targets, and the commands in a repository's own files; and whether a run
+// Repo scripts starts opens beside the scripts at once, off by default. Each change is
 // saved as soon as it is made.
 export function ScriptsCard({ settings: stored, onSaved, tools }: ScriptsCardProps) {
   const id = useId()
   const [marks, match] = useSetting('Scripts')
   const { settings, save, error } = useSettingsSave(stored, onSaved)
   // changed is what was changed last, beside which its refusal shows.
-  const [changed, setChanged] = useState<'switch' | 'sources'>('switch')
+  const [changed, setChanged] = useState<'switch' | 'sources' | 'runs'>('switch')
   const { integrations } = settings
   const set = integrations.switches.scripts ?? 'auto'
   const on = scriptsOn(tools, set)
@@ -63,6 +65,7 @@ export function ScriptsCard({ settings: stored, onSaved, tools }: ScriptsCardPro
   const sources = integrations.scriptSources
   const switchError = changed === 'switch' ? error : ''
   const sourcesError = changed === 'sources' ? error : ''
+  const runsError = changed === 'runs' ? error : ''
 
   // flip stores the opposite of what the switch shows, for good: on or off, never
   // automatic again. It is only offered while what the switch shows is known.
@@ -73,6 +76,11 @@ export function ScriptsCard({ settings: stored, onSaved, tools }: ScriptsCardPro
     void save({ integrations: { ...integrations, switches: { ...integrations.switches, scripts: next } } }, () =>
       setIntegrationEnabled('scripts', next),
     )
+  }
+
+  const showRuns = (checked: boolean) => {
+    setChanged('runs')
+    void save({ integrations: { ...integrations, showRuns: checked } }, () => setShowRuns(checked))
   }
 
   const choose = (key: keyof ScriptSources, checked: boolean) => {
@@ -139,6 +147,25 @@ export function ScriptsCard({ settings: stored, onSaved, tools }: ScriptsCardPro
           ))}
         </div>
         <ErrorText id={`${id}-sources-error`} error={sourcesError} />
+        <label className="flex cursor-pointer items-start gap-2 pt-1 text-sm">
+          <input
+            type="checkbox"
+            checked={integrations.showRuns}
+            aria-describedby={joinIds(`${id}-runs-help`, runsError !== '' && `${id}-runs-error`)}
+            onChange={(e) => {
+              showRuns(e.target.checked)
+            }}
+            className="checkbox mt-0.5"
+          />
+          <span>
+            Open a run beside Repo scripts as it starts
+            <span id={`${id}-runs-help`} className="block text-xs text-muted">
+              Off, the page says the run started, with a way to show it, and a pull shows in the branch’s status. Every
+              run is in Runs either way.
+            </span>
+          </span>
+        </label>
+        <ErrorText id={`${id}-runs-error`} error={runsError} />
       </div>
     </section>
   )

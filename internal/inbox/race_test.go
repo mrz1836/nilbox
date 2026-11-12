@@ -117,6 +117,24 @@ func (c *raceClient) FetchItem(
 	}, nil
 }
 
+// FetchItems answers that each item is open and unchanged, as FetchItem does.
+func (c *raceClient) FetchItems(
+	ctx context.Context, tok github.Token, ids []string, opts github.DetailOptions,
+) (*github.ItemUpdates, error) {
+	out := &github.ItemUpdates{Items: map[string]github.ItemUpdate{}}
+
+	for _, id := range ids {
+		update, err := c.FetchItem(ctx, tok, id, opts)
+		if err != nil {
+			return nil, err
+		}
+
+		out.Items[id], out.RateLimit = *update, update.RateLimit
+	}
+
+	return out, nil
+}
+
 func (c *raceClient) FetchPullHead(context.Context, github.Token, item.Ref) (*github.PullHead, error) {
 	return nil, errNotAsked
 }

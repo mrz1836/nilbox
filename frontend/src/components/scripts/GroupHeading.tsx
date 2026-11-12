@@ -19,23 +19,31 @@ export interface GroupHeadingProps {
   children?: ReactNode
 }
 
-// GroupHeading heads one of a Scripts page's groups of repositories: a button that opens
-// or folds the group, with its title and how many it holds, and whatever acts on the whole
-// group beside it.
+// GroupHeading heads one of a Scripts page's groups: a button that opens or folds the
+// group, with its title and how many it holds, over a rule that sets the group apart from
+// the one before, and whatever acts on the whole group beside it.
 export function GroupHeading({ id, title, count, open, disabled, onToggle, note, children }: GroupHeadingProps) {
   return (
-    <div className="flex items-center gap-2">
+    <div className="flex items-center gap-2 border-b border-border pb-1">
       <h3 id={id} className="min-w-0 flex-1">
         <button
           type="button"
           aria-expanded={open}
           disabled={disabled}
           onClick={onToggle}
-          className="flex w-full items-center gap-1.5 rounded-md px-1 py-1 text-left text-[0.6875rem] font-semibold tracking-wide text-muted uppercase hover:text-text disabled:hover:text-muted"
+          className="flex w-full items-center gap-1.5 rounded-md px-1 py-1 text-left text-xs font-semibold tracking-wide text-text uppercase transition-colors hover:bg-raised disabled:hover:bg-transparent"
         >
-          {open ? <ChevronDownIcon className="size-3.5" /> : <ChevronRightIcon className="size-3.5" />}
-          {title} · {formatCount(count)}
-          {note !== undefined && <span className="ml-2 truncate font-normal tracking-normal normal-case">{note}</span>}
+          {open ? (
+            <ChevronDownIcon className="size-3.5 shrink-0 text-muted" />
+          ) : (
+            <ChevronRightIcon className="size-3.5 shrink-0 text-muted" />
+          )}
+          <span className="truncate">
+            {title} · {formatCount(count)}
+          </span>
+          {note !== undefined && (
+            <span className="ml-2 truncate font-normal tracking-normal text-muted normal-case">{note}</span>
+          )}
         </button>
       </h3>
       {children}

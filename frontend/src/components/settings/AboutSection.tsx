@@ -129,7 +129,11 @@ export function AboutSection() {
       </section>
       {info !== null && (
         <div className="flex items-center justify-between gap-6">
-          <p className="text-sm text-muted">Found a bug? Open a report on GitHub with these versions filled in.</p>
+          <p className="text-sm text-muted">
+            Found a bug? Open a report on GitHub with these versions, your settings, and your integrations filled in,
+            folded away under the versions. Nothing personal goes in it: no account, repository, path, or name of your
+            own. You read it on GitHub before you send it.
+          </p>
           <button
             type="button"
             onClick={() => {

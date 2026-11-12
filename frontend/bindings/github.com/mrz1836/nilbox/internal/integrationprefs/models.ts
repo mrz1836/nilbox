@@ -44,6 +44,18 @@ export interface Config {
      */
     "lastPage": ScriptsPage;
     "lastRepo": string;
+
+    /**
+     * Sections are the Scripts tab's sections the user opened (true) or folded (false);
+     * one left out shows as its page starts it.
+     */
+    "sections": { [_ in ScriptsSection]?: boolean } | null;
+
+    /**
+     * ShowRuns reports whether a run Repo scripts starts shows beside its scripts at once;
+     * off, the page says the run started, with a way to show it.
+     */
+    "showRuns": boolean;
 }
 
 /**
@@ -141,6 +153,58 @@ export const ScriptsPage = {
      * PageRuns is Runs.
      */
     PageRuns: "runs",
+} as const;
+
+/**
+ * ScriptsSection is one of the sections the Scripts tab's pages open and fold.
+ */
+export type ScriptsSection = "hooks.attention" | "hooks.ready" | "hooks.off" | "hooks.notSetUp" | "scripts.yours" | "scripts.t3" | "scripts.tasks" | "scripts.magex";
+
+/**
+ * The values of ScriptsSection, by the names of their Go constants.
+ */
+export const ScriptsSection = {
+    /**
+     * The Scripts tab's sections, by page.
+     *
+     * SectionHooksAttention is Hooks' clones that need attention.
+     */
+    SectionHooksAttention: "hooks.attention",
+
+    /**
+     * SectionHooksReady is Hooks' clones that are ready.
+     */
+    SectionHooksReady: "hooks.ready",
+
+    /**
+     * SectionHooksOff is Hooks' clones whose repository turns go-pre-commit off.
+     */
+    SectionHooksOff: "hooks.off",
+
+    /**
+     * SectionHooksNotSetUp is Hooks' clones without a go-pre-commit config.
+     */
+    SectionHooksNotSetUp: "hooks.notSetUp",
+
+    /**
+     * SectionScriptsYours is Repo scripts' scripts of the user's own.
+     */
+    SectionScriptsYours: "scripts.yours",
+
+    /**
+     * SectionScriptsT3 is Repo scripts' commands from t3.json.
+     */
+    SectionScriptsT3: "scripts.t3",
+
+    /**
+     * SectionScriptsTasks is Repo scripts' tasks from .vscode/tasks.json.
+     */
+    SectionScriptsTasks: "scripts.tasks",
+
+    /**
+     * SectionScriptsMagex is Repo scripts' magex targets.
+     */
+    SectionScriptsMagex: "scripts.magex",
 } as const;
 
 /**

@@ -24,6 +24,7 @@ import {
   cloneTarget,
   focusSession,
   launch,
+  removeLaunchDefaults,
   resolveLaunch,
   saveLaunchDefaults,
   type AgentInfo,
@@ -80,23 +81,14 @@ type LaunchState =
   | { kind: 'failed'; message: string }
   | { kind: 'noClone'; target: CloneTarget; request: LaunchRequest }
 
-// worktreeActions word what a launch did to its item's worktree.
-const worktreeActions: Readonly<Record<string, string>> = {
-  create: 'made',
-  resume: 'resumed',
-  adopt: 'taken over',
-  attach: 'made again',
-}
-
-// launchedText summarizes a started launch for the row.
-function launchedText(result: LaunchResult, agent: string): string {
-  const where =
-    result.worktree === ''
-      ? result.clonePath
-      : `${result.dir} (worktree ${worktreeActions[result.worktreeAction] ?? result.worktreeAction})`
-  const notice = result.notice === '' ? '' : ` · ${result.notice}`
-
-  return `Opened “${result.prompt}” in ${agent} in ${result.terminal}: ${where} · ${result.profile} · ${result.permission}${notice}`
+// Saved is the last save of a launch's choices as defaults, which Undo takes back: the
+// defaults it saved over (owner and name; name is '' for the owner's), what was stored
+// there before, or undefined for nothing, and the choices it saved, which Undo brings back.
+interface Saved {
+  owner: string
+  name: string
+  previous: LaunchDefaults | undefined
+  choices: Choices
 }
 
 // LaunchControls is one row's "Open in Claude" or "Open in Codex" split button. The
@@ -111,6 +103,11 @@ function launchedText(result: LaunchResult, agent: string): string {
 // any differs from the defaults. While a launch or a clone runs, the button, the arrow,
 // and the dialog's Open all wait. A launch that finds no local clone offers to clone the
 // repository into the clone root and, once confirmed, continues with the same choices.
+//
+// A launch that starts says nothing on the row: the card's session tag, and the button
+// turned to Show in terminal, follow the session, and the tag's panel says what it started
+// with. Only what a launch worked around shows, as a warning, since the user should know
+// it whether or not the app follows sessions.
 //
 // It renders two grid children: the button, and below the row's content, the launch's
 // outcome, which runs to the card's right edge. The inbox row is the grid that places
@@ -136,6 +133,8 @@ export function LaunchControls({
   const [state, setState] = useState<LaunchState>({ kind: 'idle' })
   const [confirmingClone, setConfirmingClone] = useState(false)
   const [status, setStatus] = useState<SaveStatus | null>(null)
+  // saved is the last save, while Undo can still take it back.
+  const [saved, setSaved] = useState<Saved | null>(null)
 
   const untrusted = !item.trusted
   const problem = resolution?.problem ?? ''
@@ -180,6 +179,13 @@ export function LaunchControls({
     await saveLaunchDefaults(input)
     await onDefaultsSaved()
   })
+  // undoer puts back what a save replaced: the defaults stored before it, or none.
+  const undoer = useMutation(async (last: Saved) => {
+    await (last.previous === undefined
+      ? removeLaunchDefaults(last.owner, last.name)
+      : saveLaunchDefaults(defaultsInput(last.previous)))
+    await onDefaultsSaved()
+  })
 
   // run launches request. A launch the app holds back asks the user to confirm; when the
   // launch fails, it asks whether the repository has a local clone, and offers to clone
@@ -212,6 +218,7 @@ export function LaunchControls({
     setState({ kind: 'launched', result })
     setChoices(start)
     setStatus(null)
+    setSaved(null)
   }
 
   // close hides the launch options, keeping the choices for the next launch.
@@ -278,6 +285,26 @@ export function LaunchControls({
     if (result.ok) {
       setChoices({ ...start, override: choices.override })
       setStatus(report)
+      setSaved({ owner: base.owner, name, previous: stored, choices })
+    } else {
+      setStatus({ tone: 'error', text: result.error })
+      setSaved(null)
+    }
+  }
+
+  // undo takes the last save back and brings its choices back, so the user can save them
+  // somewhere else instead.
+  const undo = async () => {
+    if (saved === null) {
+      return
+    }
+
+    const result = await undoer.run(saved)
+
+    if (result.ok) {
+      setChoices(saved.choices)
+      setStatus({ tone: 'success', text: 'Undone: the defaults are as they were.' })
+      setSaved(null)
     } else {
       setStatus({ tone: 'error', text: result.error })
     }
@@ -382,6 +409,7 @@ export function LaunchControls({
                 onChoices={(next) => {
                   setChoices(next)
                   setStatus(null)
+                  setSaved(null)
                 }}
                 agents={agents}
                 profiles={profiles}
@@ -392,8 +420,15 @@ export function LaunchControls({
                 onSave={(scope) => {
                   void save(scope)
                 }}
-                saving={saver.pending}
+                saving={saver.pending || undoer.pending}
                 status={status}
+                onUndo={
+                  saved === null
+                    ? null
+                    : () => {
+                        void undo()
+                      }
+                }
                 resolveError={resolveError}
                 onManagePrompts={() => {
                   close()
@@ -405,13 +440,10 @@ export function LaunchControls({
           </LaunchDialog>
         )}
       </div>
-      {state.kind === 'launched' && (
-        <p
-          role="status"
-          title={launchedText(state.result, agentLabel(agents, state.result.agent))}
-          className="col-[2/-1] mt-1.5 truncate text-xs text-success"
-        >
-          {launchedText(state.result, agentLabel(agents, state.result.agent))}
+      {state.kind === 'launched' && state.result.notice !== '' && (
+        <p role="status" className="col-[2/-1] mt-1.5 flex items-start gap-1.5 text-xs text-warning">
+          <AlertIcon className="mt-0.5 size-3.5 shrink-0" />
+          <span>{state.result.notice}</span>
         </p>
       )}
       {state.kind === 'failed' && (

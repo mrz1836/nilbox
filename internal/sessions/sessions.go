@@ -104,6 +104,32 @@ func (s State) Phrase() string {
 	}
 }
 
+// WorktreeAction is what a session's launch did to its item's worktree.
+type WorktreeAction string
+
+// What a launch did to give its item a worktree, as the launcher names it.
+const (
+	// WorktreeNone is a session in the clone, or one recorded before the action was kept.
+	WorktreeNone WorktreeAction = ""
+
+	// WorktreeResume reused the item's worktree.
+	WorktreeResume WorktreeAction = "resume"
+
+	// WorktreeAdopt took over a worktree found on the item's branch somewhere else.
+	WorktreeAdopt WorktreeAction = "adopt"
+
+	// WorktreeAttach made a worktree again on the item's branch left from an earlier one.
+	WorktreeAttach WorktreeAction = "attach"
+
+	// WorktreeCreate made a new worktree.
+	WorktreeCreate WorktreeAction = "create"
+)
+
+// Valid reports whether a is one of the actions, WorktreeNone included.
+func (a WorktreeAction) Valid() bool {
+	return slices.Contains([]WorktreeAction{WorktreeNone, WorktreeResume, WorktreeAdopt, WorktreeAttach, WorktreeCreate}, a)
+}
+
 // Session is one session as the window shows it. Every field is a plain value.
 type Session struct {
 	// ID is the app's own ID of the session.
@@ -137,6 +163,15 @@ type Session struct {
 	// there, or "" when it runs in the clone.
 	Dir      string `json:"dir"`
 	Worktree string `json:"worktree"`
+
+	// WorktreeAction is what its launch did to that worktree, or "" in the clone or when
+	// not known.
+	WorktreeAction WorktreeAction `json:"worktreeAction"`
+
+	// Permission summarizes the permissions it started with, such as "full access", and
+	// Notice says what its launch worked around; each is "" when not known.
+	Permission string `json:"permission"`
+	Notice     string `json:"notice"`
 
 	// State is what it is doing, Detail says more where the agent did, and StateAt is
 	// when it came to that state, as RFC 3339.

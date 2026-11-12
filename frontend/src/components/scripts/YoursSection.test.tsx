@@ -30,6 +30,7 @@ function renderPage(runsIn: RunsIn = 'app') {
         cloneRoot="~/projects"
         onOpenRelease={null}
         onOpenSettings={vi.fn()}
+        showRuns
       />
     )
   }

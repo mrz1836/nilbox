@@ -150,6 +150,11 @@ type Core struct {
 	Scheduler *inbox.Scheduler
 	Sweeper   worktrees.Sweeper
 
+	// ChecksFollower reads again, every 45 seconds, the pull requests whose checks were
+	// still running, in one request, and nothing while none runs; the desktop shell runs
+	// it with the scheduler.
+	ChecksFollower *inbox.ChecksFollower
+
 	// Watcher follows the agent sessions launches start, once Run is called; the desktop
 	// shell runs it with the other work. ShellSessions are the sessions the menu bar
 	// lists, and the terminals a click on one brings forward. Neither is bound.
@@ -588,6 +593,7 @@ func assemble(pool *sql.DB, info startup, opts Options, logger *slog.Logger) *Co
 			Finder:    search,
 			Runner:    versionRunner,
 			Home:      opts.Home,
+			State:     bugReportState{settings: prefs, tools: tools, logger: logger},
 		}),
 		Budget: budget.NewService(budget.Config{
 			Tracker: tracker, Reader: rateReader{tokens: tokens, client: client}, Clock: opts.Clock,
@@ -604,6 +610,7 @@ func assemble(pool *sql.DB, info startup, opts Options, logger *slog.Logger) *Co
 		ShellSettings:    newShellSettings(prefs, pool, opts.Clock),
 		ProfileStore:     profileStore,
 		Scheduler:        inbox.NewScheduler(inboxSvc, logger),
+		ChecksFollower:   inbox.NewChecksFollower(inboxSvc, logger),
 		Sweeper:          worktrees.NewSweeper(sweeps, worktrees.DefaultSweepInterval),
 		Timing:           recorder,
 		ShellEnv:         shellEnv,
@@ -776,7 +783,7 @@ func followSessions(
 
 	cfg := sessions.Config{
 		Store: store, Watcher: watcher, Switch: prefs, Focuser: terminalFocuser{registry: registry}, PS: runner,
-		Home: opts.Home, Events: opts.Events, Clock: opts.Clock, Logger: logger,
+		Reveal: revealer(runner), Home: opts.Home, Events: opts.Events, Clock: opts.Clock, Logger: logger,
 		Words: map[agent.ID]sessions.WordsReader{
 			agent.Claude: claude.Words{Home: opts.Home}, agent.Codex: codex.Words{Home: opts.Home},
 		},

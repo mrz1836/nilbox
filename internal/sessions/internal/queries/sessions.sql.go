@@ -27,7 +27,8 @@ func (q *Queries) CountLiveConversation(ctx context.Context, agentSessionID stri
 const endedSince = `-- name: EndedSince :many
 SELECT id, agent_session_id, resumed_from, agent, profile, config_dir, prompt, prompt_head, terminal,
     item_id, owner, name, kind, number, title, url, dir, clone_path, worktree, pid,
-    state, state_detail, last_message, launched_at, linked_at, state_at, ended_at
+    state, state_detail, last_message, launched_at, linked_at, state_at, ended_at, permission, worktree_action,
+    launch_notice
 FROM agent_sessions
 WHERE state = 'ended' AND agent_session_id <> '' AND ended_at >= ?1
 ORDER BY ended_at DESC, id DESC
@@ -78,6 +79,9 @@ func (q *Queries) EndedSince(ctx context.Context, arg EndedSinceParams) ([]Agent
 			&i.LinkedAt,
 			&i.StateAt,
 			&i.EndedAt,
+			&i.Permission,
+			&i.WorktreeAction,
+			&i.LaunchNotice,
 		); err != nil {
 			return nil, err
 		}
@@ -95,7 +99,8 @@ func (q *Queries) EndedSince(ctx context.Context, arg EndedSinceParams) ([]Agent
 const getSession = `-- name: GetSession :one
 SELECT id, agent_session_id, resumed_from, agent, profile, config_dir, prompt, prompt_head, terminal,
     item_id, owner, name, kind, number, title, url, dir, clone_path, worktree, pid,
-    state, state_detail, last_message, launched_at, linked_at, state_at, ended_at
+    state, state_detail, last_message, launched_at, linked_at, state_at, ended_at, permission, worktree_action,
+    launch_notice
 FROM agent_sessions
 WHERE id = ?1
 `
@@ -132,6 +137,9 @@ func (q *Queries) GetSession(ctx context.Context, id string) (AgentSession, erro
 		&i.LinkedAt,
 		&i.StateAt,
 		&i.EndedAt,
+		&i.Permission,
+		&i.WorktreeAction,
+		&i.LaunchNotice,
 	)
 	return i, err
 }
@@ -140,13 +148,15 @@ const insertSession = `-- name: InsertSession :exec
 INSERT INTO agent_sessions (
     id, agent_session_id, resumed_from, agent, profile, config_dir, prompt, prompt_head, terminal,
     item_id, owner, name, kind, number, title, url, dir, clone_path, worktree, pid,
-    state, state_detail, last_message, launched_at, linked_at, state_at, ended_at
+    state, state_detail, last_message, launched_at, linked_at, state_at, ended_at, permission, worktree_action,
+    launch_notice
 ) VALUES (
     ?1, ?2, ?3, ?4, ?5,
     ?6, ?7, ?8, ?9,
     ?10, ?11, ?12, ?13, ?14, ?15,
     ?16, ?17, ?18, ?19, 0,
-    ?20, '', '', ?21, ?22, ?21, NULL
+    ?20, '', '', ?21, ?22, ?21, NULL,
+    ?23, ?24, ?25
 )
 `
 
@@ -173,6 +183,9 @@ type InsertSessionParams struct {
 	State          string
 	LaunchedAt     time.Time
 	LinkedAt       *time.Time
+	Permission     string
+	WorktreeAction string
+	LaunchNotice   string
 }
 
 // InsertSession records a session the app just launched.
@@ -200,6 +213,9 @@ func (q *Queries) InsertSession(ctx context.Context, arg InsertSessionParams) er
 		arg.State,
 		arg.LaunchedAt,
 		arg.LinkedAt,
+		arg.Permission,
+		arg.WorktreeAction,
+		arg.LaunchNotice,
 	)
 	return err
 }
@@ -207,7 +223,8 @@ func (q *Queries) InsertSession(ctx context.Context, arg InsertSessionParams) er
 const liveSessions = `-- name: LiveSessions :many
 SELECT id, agent_session_id, resumed_from, agent, profile, config_dir, prompt, prompt_head, terminal,
     item_id, owner, name, kind, number, title, url, dir, clone_path, worktree, pid,
-    state, state_detail, last_message, launched_at, linked_at, state_at, ended_at
+    state, state_detail, last_message, launched_at, linked_at, state_at, ended_at, permission, worktree_action,
+    launch_notice
 FROM agent_sessions
 WHERE state <> 'ended'
 ORDER BY launched_at, id
@@ -251,6 +268,9 @@ func (q *Queries) LiveSessions(ctx context.Context) ([]AgentSession, error) {
 			&i.LinkedAt,
 			&i.StateAt,
 			&i.EndedAt,
+			&i.Permission,
+			&i.WorktreeAction,
+			&i.LaunchNotice,
 		); err != nil {
 			return nil, err
 		}
@@ -300,7 +320,8 @@ func (q *Queries) PruneItemExcess(ctx context.Context, keep int64) (int64, error
 const recentSessions = `-- name: RecentSessions :many
 SELECT id, agent_session_id, resumed_from, agent, profile, config_dir, prompt, prompt_head, terminal,
     item_id, owner, name, kind, number, title, url, dir, clone_path, worktree, pid,
-    state, state_detail, last_message, launched_at, linked_at, state_at, ended_at
+    state, state_detail, last_message, launched_at, linked_at, state_at, ended_at, permission, worktree_action,
+    launch_notice
 FROM agent_sessions
 WHERE state <> 'ended' OR launched_at >= ?1
 ORDER BY launched_at DESC, id DESC
@@ -351,6 +372,9 @@ func (q *Queries) RecentSessions(ctx context.Context, arg RecentSessionsParams) 
 			&i.LinkedAt,
 			&i.StateAt,
 			&i.EndedAt,
+			&i.Permission,
+			&i.WorktreeAction,
+			&i.LaunchNotice,
 		); err != nil {
 			return nil, err
 		}

@@ -81,6 +81,13 @@ type Record struct {
 	ClonePath string
 	Worktree  string
 
+	// WorktreeAction is what the launch did to that worktree, Permission summarizes the
+	// permissions it started with, and Notice says what the launch worked around; each is
+	// "" when there is nothing to say or it was recorded before they were kept.
+	WorktreeAction WorktreeAction
+	Permission     string
+	Notice         string
+
 	// PID is the agent's process, or 0 while unknown.
 	PID int
 
@@ -107,8 +114,9 @@ func (r Record) Session(home string) Session {
 	return Session{
 		ID: r.ID, AgentSessionID: r.AgentSessionID, ResumedFrom: r.ResumedFrom, Agent: r.Agent, Profile: r.Profile,
 		Prompt: r.Prompt, Terminal: r.Terminal, ItemID: r.ItemID, Repo: r.Repo(), Kind: r.Kind, Number: r.Number,
-		Title: r.Title, URL: r.URL, Dir: paths.Tilde(r.Dir, home), Worktree: r.Worktree, State: r.State,
-		Detail: r.Detail, StateAt: stamp(r.StateAt), LastMessage: r.LastMessage, LaunchedAt: stamp(r.LaunchedAt),
+		Title: r.Title, URL: r.URL, Dir: paths.Tilde(r.Dir, home), Worktree: r.Worktree,
+		WorktreeAction: r.WorktreeAction, Permission: r.Permission, Notice: r.Notice, State: r.State, Detail: r.Detail,
+		StateAt: stamp(r.StateAt), LastMessage: r.LastMessage, LaunchedAt: stamp(r.LaunchedAt),
 		EndedAt: stamp(r.EndedAt), CanFocus: r.State.Live() && r.PID > 0,
 		CanResume: !r.State.Live() && r.AgentSessionID != "",
 	}
@@ -196,7 +204,8 @@ func (s *Store) Insert(ctx context.Context, r Record) error {
 		Profile: r.Profile, ConfigDir: r.ConfigDir, Prompt: r.Prompt, PromptHead: r.PromptHead, Terminal: r.Terminal,
 		ItemID: r.ItemID, Owner: r.Owner, Name: r.Name, Kind: string(r.Kind), Number: int64(r.Number), Title: r.Title,
 		URL: r.URL, Dir: r.Dir, ClonePath: r.ClonePath, Worktree: r.Worktree, State: string(r.State),
-		LaunchedAt: r.LaunchedAt.UTC(),
+		LaunchedAt: r.LaunchedAt.UTC(), Permission: r.Permission, WorktreeAction: string(r.WorktreeAction),
+		LaunchNotice: r.Notice,
 	}
 
 	if r.AgentSessionID != "" {
@@ -462,12 +471,17 @@ func fromRow(row queries.AgentSession) Record {
 		Profile: row.Profile, ConfigDir: row.ConfigDir, Prompt: row.Prompt, PromptHead: row.PromptHead,
 		Terminal: row.Terminal, ItemID: row.ItemID, Owner: row.Owner, Name: row.Name, Kind: item.Kind(row.Kind),
 		Number: int(row.Number), Title: row.Title, URL: row.URL, Dir: row.Dir, ClonePath: row.ClonePath,
-		Worktree: row.Worktree, PID: int(row.Pid), State: State(row.State), Detail: row.StateDetail,
+		Worktree: row.Worktree, WorktreeAction: WorktreeAction(row.WorktreeAction), Permission: row.Permission,
+		Notice: row.LaunchNotice, PID: int(row.Pid), State: State(row.State), Detail: row.StateDetail,
 		LastMessage: row.LastMessage, LaunchedAt: row.LaunchedAt, StateAt: row.StateAt,
 	}
 
 	if !r.State.Valid() {
 		r.State = StateUnknown
+	}
+
+	if !r.WorktreeAction.Valid() {
+		r.WorktreeAction = WorktreeNone
 	}
 
 	if row.LinkedAt != nil {

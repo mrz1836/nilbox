@@ -4,9 +4,10 @@ import { formatCount } from '../../lib/format'
 import { argsOf, magexTargets, matchTargets } from '../../lib/repoScripts'
 import type { ScriptAsk } from '../../lib/useScriptRun'
 import type { RunsIn, ScriptEntry, ScriptSection } from '../../platform'
-import { captionClass, chipClass, fieldClass } from '../controls'
+import { chipClass, fieldClass } from '../controls'
 import { AlertIcon, ChevronDownIcon, ChevronRightIcon, InfoIcon, TagIcon } from '../icons'
 import { MenuButton } from '../Menu'
+import { GroupHeading } from './GroupHeading'
 import { RepoSearch } from './RepoSearch'
 import { argsFor, releaseWords, scriptMenu, ScriptRow, type ScriptMenuProps } from './ScriptRow'
 
@@ -57,6 +58,9 @@ export interface MagexSectionProps {
   section: ScriptSection
   // headingId is the section's heading's.
   headingId: string
+  // open shows the targets under the heading, and onToggle opens or folds them.
+  open: boolean
+  onToggle: () => void
   // other is the place runs don't go, as set, and otherName its name.
   other: RunsIn
   otherName: string
@@ -69,8 +73,25 @@ export interface MagexSectionProps {
 // its target at once, the repository's own targets, and every built-in, both folded and
 // searchable together, with an Arguments field for the built-ins' key=value pairs, and the
 // note that magex targets run the repository's own code and its .github/env settings.
-// While magex can't run, it says why in place of the targets.
-export function MagexSection({ section, headingId, ...place }: MagexSectionProps) {
+// While magex can't run, it says why in place of the targets. Its heading folds it all.
+export function MagexSection({ section, headingId, open: shown, onToggle, ...place }: MagexSectionProps) {
+  return (
+    <section aria-labelledby={headingId} className="flex flex-col gap-2">
+      <GroupHeading
+        id={headingId}
+        title={section.title}
+        count={section.entries.length}
+        open={shown}
+        disabled={false}
+        onToggle={onToggle}
+      />
+      {shown && <MagexBody section={section} {...place} />}
+    </section>
+  )
+}
+
+// MagexBody is the magex section's targets under its heading, while it is open.
+function MagexBody({ section, ...place }: Omit<MagexSectionProps, 'headingId' | 'open' | 'onToggle'>) {
   const id = useId()
   const [argsText, setArgsText] = useState('')
   const [search, setSearch] = useState('')
@@ -85,10 +106,7 @@ export function MagexSection({ section, headingId, ...place }: MagexSectionProps
   const listed = section.entries.length > 0
 
   return (
-    <section aria-labelledby={headingId} className="flex flex-col gap-2">
-      <h3 id={headingId} className={`${captionClass} px-1`}>
-        {section.title}
-      </h3>
+    <>
       {section.note !== '' && (
         <p className="flex items-start gap-1.5 px-1 text-xs text-muted">
           <InfoIcon className="mt-px size-3.5 shrink-0 text-info" />
@@ -183,6 +201,6 @@ export function MagexSection({ section, headingId, ...place }: MagexSectionProps
           </div>
         )
       })}
-    </section>
+    </>
   )
 }

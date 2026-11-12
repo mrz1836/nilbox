@@ -50,7 +50,26 @@ func TestLaunchRecordsTheSessionInTheLedger(t *testing.T) {
 	assert.Equal(t, worktreeOf(WorktreeRequest{Clone: h.clone, Kind: item.KindPR, Number: 7}), got.Dir)
 	assert.Equal(t, h.clone, got.ClonePath)
 	assert.Equal(t, "pr-7", got.Worktree)
+	assert.Equal(t, WorktreeCreate, got.WorktreeAction)
+	assert.Equal(t, "full access", got.Permission)
+	assert.Equal(t, res.Permission, got.Permission, "the ledger keeps the launch's own words")
+	assert.Empty(t, got.Notice)
 	assert.Equal(t, fixedNow(), got.LaunchedAt)
+}
+
+func TestLaunchRecordsWhatItWorkedAround(t *testing.T) {
+	t.Parallel()
+
+	h := newLaunchHarness(t)
+	h.maker.notice = "Couldn't fetch origin/main, so the worktree starts from the last fetched copy."
+
+	res, _ := h.launch(t, LaunchRequest{ItemID: h.issue})
+
+	started := h.ledger.all()
+	require.Len(t, started, 1)
+	assert.Equal(t, h.maker.notice, res.Notice)
+	assert.Equal(t, h.maker.notice, started[0].Notice, "the session's panel says so after the launch")
+	assert.Equal(t, WorktreeCreate, started[0].WorktreeAction)
 }
 
 func TestLaunchLeavesACodexSessionToBeLinked(t *testing.T) {

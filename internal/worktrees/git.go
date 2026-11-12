@@ -401,11 +401,8 @@ func (g git) do(ctx context.Context, dir string, args ...string) (stdout, stderr
 		return g.local(ctx, dir, args)
 	}
 
-	safe := hardening()
-	argv := make([]string, 0, len(safe)+len(args)+2)
-	argv = append(argv, "-C", dir)
-	argv = append(argv, safe...)
-	argv = append(argv, args...)
+	// slices.Concat sizes the argv and checks that size for overflow.
+	argv := slices.Concat([]string{"-C", dir}, hardening(), args)
 
 	if g.guard != nil {
 		// A read runs with gitread's read environment (readOnly).

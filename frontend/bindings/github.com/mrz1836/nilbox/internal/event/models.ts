@@ -171,6 +171,53 @@ export interface ToolsUpdated {
 }
 
 /**
+ * WorktreesPhase is how far a listing of the worktrees has got.
+ */
+export type WorktreesPhase = "clones" | "listing" | "checking" | "github";
+
+/**
+ * The values of WorktreesPhase, by the names of their Go constants.
+ */
+export const WorktreesPhase = {
+    /**
+     * The phases of a listing of the worktrees, in order.
+     *
+     * WorktreesFindingClones is the clone root being searched for clones.
+     */
+    WorktreesFindingClones: "clones",
+
+    /**
+     * WorktreesListing is each clone's worktrees being listed.
+     */
+    WorktreesListing: "listing",
+
+    /**
+     * WorktreesChecking is each worktree being read: its changes, its branch, and its
+     * commits.
+     */
+    WorktreesChecking: "checking",
+
+    /**
+     * WorktreesAskingGitHub is GitHub being asked about the pull requests and issues the
+     * worktrees belong to.
+     */
+    WorktreesAskingGitHub: "github",
+} as const;
+
+/**
+ * WorktreesProgress says how far the window's listing of the worktrees has got, while it
+ * runs: its phase, and how many of the phase's clones, worktrees, or pull requests and
+ * issues are done. Finding the clones counts nothing. It comes a few times a second at
+ * most, and the listing's own answer follows it; a listing another job runs, such as the
+ * sweep, tells nothing.
+ */
+export interface WorktreesProgress {
+    "phase": WorktreesPhase;
+    "done": number;
+    "total": number;
+}
+
+/**
  * WorktreesUpdated says an automatic worktree sweep removed a worktree or changed how many
  * need attention: the window reads the latest sweep.
  */

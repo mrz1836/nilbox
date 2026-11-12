@@ -110,31 +110,43 @@ func itemUpdate(r *graphQLResponse[itemData]) (*ItemUpdate, error) {
 		return update, nil
 	}
 
+	item, details, err := decodeItemNode(r.Data.Node)
+	if err != nil {
+		return nil, err
+	}
+
+	update.Found, update.Item, update.Details = true, item, details
+
+	return update, nil
+}
+
+// decodeItemNode decodes one item node, which holds both the inbox's item fields and the
+// details.
+func decodeItemNode(raw json.RawMessage) (Item, ItemDetails, error) {
 	var (
 		node    graphQLNode
 		details detailsNode
 	)
 
-	if err := json.Unmarshal(r.Data.Node, &node); err != nil {
-		return nil, fmt.Errorf("%w: decode the item: %w", ErrMalformedResponse, err)
+	if err := json.Unmarshal(raw, &node); err != nil {
+		return Item{}, ItemDetails{}, fmt.Errorf("%w: decode the item: %w", ErrMalformedResponse, err)
 	}
 
-	if err := json.Unmarshal(r.Data.Node, &details); err != nil {
-		return nil, fmt.Errorf("%w: decode the item's details: %w", ErrMalformedResponse, err)
+	if err := json.Unmarshal(raw, &details); err != nil {
+		return Item{}, ItemDetails{}, fmt.Errorf("%w: decode the item's details: %w", ErrMalformedResponse, err)
 	}
 
 	item, ok := node.item()
 	if !ok {
-		return nil, fmt.Errorf("%w: the ID is not a pull request or an issue", ErrMalformedResponse)
+		return Item{}, ItemDetails{}, fmt.Errorf("%w: the ID is not a pull request or an issue", ErrMalformedResponse)
 	}
 
-	if _, update.Details, ok = details.details(); !ok {
-		return nil, fmt.Errorf("%w: the item has no details", ErrMalformedResponse)
+	_, itemDetails, ok := details.details()
+	if !ok {
+		return Item{}, ItemDetails{}, fmt.Errorf("%w: the item has no details", ErrMalformedResponse)
 	}
 
-	update.Found, update.Item = true, item
-
-	return update, nil
+	return item, itemDetails, nil
 }
 
 // goneNode reports a null node GitHub could not find, which is an item that is gone; a

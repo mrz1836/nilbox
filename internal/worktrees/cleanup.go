@@ -76,7 +76,7 @@ func (s *Service) CleanUpFinished(ctx context.Context, picks []Pick) ([]RemoveRe
 	s.act.Lock()
 	defer s.act.Unlock()
 
-	snap, err := s.List(ctx)
+	snap, err := s.list(ctx, nil)
 	if err != nil {
 		return nil, err
 	}

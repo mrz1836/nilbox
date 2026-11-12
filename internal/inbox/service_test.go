@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"sync"
 	"testing"
 	"time"
@@ -85,6 +86,7 @@ type fakeClient struct {
 	avatarURLs  []string
 	detailsIDs  [][]string
 	itemIDs     []string
+	itemsIDs    [][]string
 
 	// projects holds each issue's projects by node ID, answered only when a request asks
 	// for them. refuseProjects answers such a request as the real client does once GitHub
@@ -214,6 +216,39 @@ func (c *fakeClient) FetchItem(
 	answer.ProjectsRefused = opts.Projects && c.refuseProjects
 
 	return &answer, nil
+}
+
+// FetchItems answers, in one request, with the canned update of each ID it holds one
+// for, as FetchItem would, and leaves out the rest, as GitHub's nulls are.
+func (c *fakeClient) FetchItems(
+	_ context.Context, tok github.Token, ids []string, opts github.DetailOptions,
+) (*github.ItemUpdates, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	c.gotTokens = append(c.gotTokens, tok.Reveal())
+	c.itemsIDs = append(c.itemsIDs, slices.Clone(ids))
+	c.itemOpts = append(c.itemOpts, opts)
+
+	if c.itemErr != nil {
+		return nil, github.Redact(c.itemErr, tok)
+	}
+
+	out := &github.ItemUpdates{Items: map[string]github.ItemUpdate{}, ProjectsRefused: opts.Projects && c.refuseProjects}
+
+	for _, id := range ids {
+		update := c.items[id]
+		if update == nil || !update.Found {
+			continue
+		}
+
+		answer := *update
+		answer.Details.Projects = c.projectsOf(id, opts)
+		out.Items[id] = answer
+		out.RateLimit = answer.RateLimit
+	}
+
+	return out, nil
 }
 
 // FetchPullHead answers with the head of the canned files.

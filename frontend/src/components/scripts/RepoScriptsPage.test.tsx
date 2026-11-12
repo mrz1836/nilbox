@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from 'vitest'
 
 import { brand } from '../../generated/brand'
 import type { SettingsSection } from '../../lib/settingsIndex'
+import type { OnSection, StoredSections } from '../../lib/useSections'
 import type { RepoScripts, RunsIn, ScriptSection, ScriptStart, TerminalID } from '../../platform'
 import {
   branchStatus,
@@ -26,21 +27,35 @@ interface PageProps {
   runsIn?: RunsIn
   terminal?: TerminalID | null
   release?: boolean
+  // showRuns opens a run beside the scripts as it starts; the tests of the run panel turn
+  // it on, as the user can in Settings.
+  showRuns?: boolean
+  sections?: StoredSections
 }
 
-// renderPage renders the page as the tab shows it, remembering the clone chosen and the
-// run followed, with Release on unless release is false.
-function renderPage({ runsIn = 'app', terminal = 'iterm2', release = true }: PageProps = {}) {
+// renderPage renders the page as the tab shows it, remembering the clone chosen, the run
+// followed, the sections opened or folded, and whether runs show beside the scripts, with
+// Release on unless release is false.
+function renderPage({
+  runsIn = 'app',
+  terminal = 'iterm2',
+  release = true,
+  showRuns: showAtFirst = true,
+  sections: storedAtFirst = {},
+}: PageProps = {}) {
   const handlers = {
     onDir: vi.fn<(dir: string) => void>(),
     onFollow: vi.fn<(id: number | null) => void>(),
     onOpenRelease: vi.fn<() => void>(),
     onOpenSettings: vi.fn<(section: SettingsSection) => void>(),
+    onSection: vi.fn<OnSection>(),
+    onShowRuns: vi.fn<(on: boolean) => void>(),
   }
 
   function Page() {
     const [dir, setDir] = useState('')
     const [followed, setFollowed] = useState<number | null>(null)
+    const [showRuns, setShowRuns] = useState(showAtFirst)
 
     return (
       <RepoScriptsPage
@@ -59,6 +74,13 @@ function renderPage({ runsIn = 'app', terminal = 'iterm2', release = true }: Pag
         cloneRoot="~/projects"
         onOpenRelease={release ? handlers.onOpenRelease : null}
         onOpenSettings={handlers.onOpenSettings}
+        sections={storedAtFirst}
+        onSection={handlers.onSection}
+        showRuns={showRuns}
+        onShowRuns={(on) => {
+          handlers.onShowRuns(on)
+          setShowRuns(on)
+        }}
       />
     )
   }
@@ -115,10 +137,10 @@ describe('RepoScriptsPage', () => {
       'docs: watch',
     ])
     expect(screen.getAllByRole('heading', { level: 3 }).map((h) => h.textContent)).toEqual([
-      'Yours',
-      'From t3.json',
-      'From .vscode/tasks.json',
-      'magex',
+      'Yours · 0',
+      'From t3.json · 3',
+      'From .vscode/tasks.json · 5',
+      'magex · 6',
     ])
     expect(screen.getByText('Save a command you run often with New script, and it shows here.')).toBeInTheDocument()
     expect(screen.getByRole('combobox', { name: 'Repository' })).toHaveValue('~/projects/sdk')
@@ -1022,6 +1044,81 @@ describe('RepoScriptsPage', () => {
     })
     expect(platform.listRepoScripts).toHaveBeenLastCalledWith('~/projects/sdk', false)
     expect(platform.getBranchStatus).toHaveBeenLastCalledWith('~/projects/sdk', false)
+  })
+
+  it('folds a source’s section, remembering it, and opens on the sections as the user left them', async () => {
+    const { onSection } = renderPage({ sections: { 'scripts.magex': false } })
+
+    expect(await names('From t3.json')).toEqual(['Fix all', 'Test', 'Version: bump patch'])
+    expect(screen.getByRole('button', { name: 'magex · 6' })).toHaveAttribute('aria-expanded', 'false')
+    expect(screen.queryByRole('textbox', { name: 'Arguments' })).not.toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: 'From t3.json · 3' }))
+
+    expect(onSection).toHaveBeenCalledExactlyOnceWith('scripts.t3', false)
+    expect(screen.getByRole('button', { name: 'From t3.json · 3' })).toHaveAttribute('aria-expanded', 'false')
+    expect(screen.queryByRole('list', { name: 'From t3.json' })).not.toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: 'magex · 6' }))
+
+    expect(onSection).toHaveBeenLastCalledWith('scripts.magex', true)
+    expect(screen.getByRole('textbox', { name: 'Arguments' })).toBeInTheDocument()
+  })
+
+  it('says a run started, with a way to show it, without opening it beside the scripts by default', async () => {
+    const { onFollow, onShowRuns } = renderPage({ showRuns: false })
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Run magex test' }))
+
+    const note = await screen.findByRole('status')
+    expect(note).toHaveTextContent('The run started.')
+    expect(onFollow).not.toHaveBeenCalled()
+    expect(screen.queryByRole('region', { name: 'magex lint' })).not.toBeInTheDocument()
+
+    await userEvent.click(within(note).getByRole('button', { name: 'Show it' }))
+
+    expect(onFollow).toHaveBeenCalledExactlyOnceWith(31)
+    expect(await screen.findByRole('region', { name: 'magex lint' })).toBeInTheDocument()
+    expect(onShowRuns).not.toHaveBeenCalled()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Close the run' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Run magex test' }))
+    await userEvent.click(
+      within(await screen.findByRole('status')).getByRole('button', { name: 'Always show runs here' }),
+    )
+
+    expect(onShowRuns).toHaveBeenCalledExactlyOnceWith(true)
+    expect(onFollow).toHaveBeenLastCalledWith(31)
+
+    await userEvent.click(screen.getByRole('button', { name: 'Close the run' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Run magex test' }))
+
+    expect(onFollow).toHaveBeenLastCalledWith(31)
+    expect(screen.queryByText('The run started.')).not.toBeInTheDocument()
+  })
+
+  it('shows a pull only in the branch’s status by default', async () => {
+    const pull = { id: 51, kind: 'gitPull' as const, title: 'Pull master', repo: 'acme-org/sdk', dir: '~/projects/sdk' }
+    platform.getBranchStatus.mockResolvedValue(
+      branchStatus({ state: 'behind', origin: '5d6e7f8', note: 'origin/master has newer commits.' }),
+    )
+    platform.getScriptRun.mockResolvedValue(scriptRun({ ...pull, status: 'running', summary: '', finishedAt: '' }))
+    const { onFollow } = renderPage({ showRuns: false })
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Pull master' }))
+
+    expect(platform.pullBranch).toHaveBeenCalledExactlyOnceWith('~/projects/sdk')
+    expect(onFollow).not.toHaveBeenCalled()
+    expect(screen.queryByText('The run started.')).not.toBeInTheDocument()
+
+    platform.getBranchStatus.mockResolvedValue(branchStatus())
+    platform.getScriptRun.mockResolvedValue(scriptRun({ ...pull, summary: 'Updated master.' }))
+    act(() => {
+      emit('scriptruns:updated')
+    })
+
+    expect(await screen.findByText('Up to date')).toBeInTheDocument()
+    expect(screen.queryByRole('region', { name: 'Pull master' })).not.toBeInTheDocument()
   })
 
   it('fills in a release task’s choice with its first value when its default isn’t one', async () => {

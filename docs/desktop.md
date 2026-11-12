@@ -546,7 +546,8 @@ asks GitHub, so it works offline and signed out.
   one that isn't executable, another tool's, or one in a hooks folder other repositories share),
   open; **Ready** (go-pre-commit's current hook), open; and **Turned off in the repository**
   (`ENABLE_GO_PRE_COMMIT=false` in its config), collapsed. **Not set up** lists the clones
-  without a config, collapsed, with **Set up go-pre-commit** linking to its README.
+  without a config, collapsed, with **Set up go-pre-commit** linking to its README. A group you
+  open or fold stays that way, when you come back to the page and after a restart.
 - **Each row** shows the repository and its hook, ✓ ⚠ or ✗ with words (*No hook yet*, *Outdated
   hook*, *Another tool's hook is there (husky)*, *Shared hooks folder ~/.githooks (6 repos)*),
   and how its last checks went, which opens their run. Below it, when true: the other hook types
@@ -611,8 +612,8 @@ origin, with one `git ls-remote` whose answer is kept five minutes.
   its default branch, since a branch can change what the files say.
 - **The branch check** beside the branch says whether origin has newer commits on the branch it
   follows: **Up to date**, or **Update available** with **Pull**, which fast-forwards the branch
-  (`git pull --ff-only`, never a merge or a rebase) as a run beside the scripts, in the app, and
-  reads the scripts again once it ends. It asks origin about that one branch, with one `git
+  (`git pull --ff-only`, never a merge or a rebase) as a run in the app, whose progress shows in
+  the branch check, and reads the scripts again once it ends. It asks origin about that one branch, with one `git
   ls-remote`, and never fetches; the answer is kept five minutes, and its refresh button asks
   again, while a pull keeps the commit it fetched without counting as a new ask. A clone whose
   origin isn't on GitHub reads **Origin not checked** with a **Check** button: Nilbox asks no host
@@ -691,9 +692,14 @@ origin, with one `git ls-remote` whose answer is kept five minutes.
   never ask. A clone whose origin isn't on GitHub asks every time.
 - **What runs is what you saw:** the app reads the command again under the clone's lock and
   refuses one that changed after you confirmed it, saying so rather than asking again.
-- **Each run** shows beside the scripts, with its log, in the app or your terminal as **Runs
-  in** says; the page stays as you left it, the arguments and the search included, and Runs
-  lists the run too.
+- **The sections** (Yours, t3.json, VS Code tasks, and magex) each have a heading with how many
+  commands they hold, which opens or folds the section; each stays as you left it, across
+  restarts.
+- **Each run** goes in the app or your terminal as **Runs in** says, and Runs lists it. The page
+  says *The run started*, with **Show it**, which opens the run, with its log, beside the
+  scripts, and **Always show runs here**; turn on **Open a run beside Repo scripts as it
+  starts** in Settings → Integrations to have every run open there at once. Either way the page
+  stays as you left it, the arguments and the search included.
 - **A clone with nothing to show** says why: its `t3.json` or `.vscode/tasks.json` lists no
   commands, it has neither file, or the sources are turned off in Settings → Integrations, with
   **Open Settings**.
@@ -758,6 +764,14 @@ itself spent, and says **Nilbox 3 since it opened** instead.
 GraphQL budget and how many items it tracked, and what that comes to in an hour at one refresh
 every five minutes, as a share of the budget. Each refresh reads every tracked item, so more
 items, or issues read with their [project fields](#issue-projects), cost more.
+
+**Checks that are running.** A pull request whose checks were still running (a yellow count,
+such as 12/18) when the inbox last read it is read again every 45 seconds, so its card shows
+the checks end about as soon as GitHub's own page does, rather than at the next five-minute
+refresh. Every such pull request is read in one request, about one point a round, and none is
+read while no checks run: at most some 80 points an hour, and only while checks run. One stops
+being read as soon as its checks end, passed or failed, and a dismissed or snoozed one isn't
+read at all.
 
 **Changes on GitHub.** The panel also counts the [edits](#the-item-menu-and-edits-on-github)
 Nilbox made on GitHub for you in the last hour, says how it paces them, and, while GitHub has
@@ -993,13 +1007,19 @@ settings choose, as in **Review · default**, and opens the launch menu:
   request's head or the default branch, or resumes it, with its uncommitted files), the
   permissions, and the command line.
 - **Save these choices as the default for** the repository, or for all of its owner's
-  repositories, then **Open in Claude** or **Open in Codex**.
+  repositories, then **Open in Claude** or **Open in Codex**. The two save buttons wait until a
+  choice differs from the defaults. A save takes one click, since it changes only the defaults
+  on this Mac, and its line offers **Undo**, which puts back what was stored before (or removes
+  the new defaults) and brings the choices back, so they can be saved for the other scope.
 
 A choice applies to the next launch only; afterwards every choice returns to the item's
 settings. The arrow shows a dot while any choice differs from them, and picking the default
 again clears the choice. Choosing another agent, prompt, or profile resolves the settings again,
-so each default shown is the one that would really apply, such as a prompt's own model. The
-launch's outcome appears below the card. An item no prompt applies to shows **No prompt** and
+so each default shown is the one that would really apply, such as a prompt's own model. A
+launch that starts adds nothing below the card: the card's session tag follows the session,
+and its panel says what it started with. Only a failure, or what a launch worked around (a
+worktree started from the last fetched copy of the default branch, say), shows below the
+card. An item no prompt applies to shows **No prompt** and
 says why. A card whose item already has a worktree says so, with its uncommitted changes and
 the agent and time of its latest session.
 
@@ -1163,8 +1183,10 @@ approval, merge, and close happens only because you clicked.
 From the card's menu, once GitHub has taken you off, the item leaves that list (and the inbox,
 when it is in no other), and a toast confirms it. When GitHub refuses, or answers without making
 the change, as it does for an account that may not edit the item, the card stays as it was and
-the toast says why. While an edit runs, the card's **⋯** turns into a spinner and the card's
-other GitHub actions wait for it.
+the toast says why. While an edit runs, the card fades and blurs under a note saying what
+GitHub is doing ("Removing you as a reviewer on GitHub…") and takes no clicks, however slow
+the network, its **⋯** turns into a spinner, and its other GitHub actions wait for it. A card
+the item stays in comes back as it was.
 
 - **Unassign me** takes you, and nobody else, off the item's assignees.
 - **Remove me as reviewer** takes back the request for your review by name. A request made only
@@ -2158,8 +2180,9 @@ stays on the card for a day.
 | Ended | The agent quit |
 
 **The panel.** Click the tag for every session of the item, newest first: its agent, profile,
-and prompt, what it is doing and since when, the folder it runs in, and the start of what the
-agent last said. Each has its actions:
+and prompt, what it is doing and since when, the permissions it started with and where it runs
+(**full access · new worktree**, or **in the clone**), the folder, anything its launch worked
+around, and the start of what the agent last said. Each has its actions:
 
 - **Show in terminal** brings forward the tab the session runs in, found by its terminal
   device (`ps -o tty=`). iTerm2 uses the Automation permission you gave at the first launch;
@@ -2172,6 +2195,8 @@ agent last said. Each has its actions:
   [files](#sensitive-files), as last checked, change agent configuration; it asks GitHub
   nothing. A conversation that already runs again, resumed from the app or outside it, offers
   no Resume.
+- **Show in Finder** shows the folder the session runs in, its worktree or the clone, whether or
+  not it still runs, and says so when the folder is gone.
 - **Copy session ID** copies the agent's own ID, to resume or look the session up yourself.
 
 **How it is read.** The app asks each agent through the interface it supports for this, and
@@ -2249,7 +2274,11 @@ last message keeps its first 500 characters.
 
 The **Worktrees** tab lists every linked worktree of every git repository one level under the
 clone root, including worktrees from sessions started outside the app. It loads when you open
-it or click **Refresh**, not on the inbox's five-minute timer. Each row shows the repository,
+it or click **Refresh**, and again after the automatic cleanup, not on the inbox's five-minute
+timer. While any listing runs, the toolbar says how far it has got: finding the clones, listing
+each clone's worktrees ("3 of 12 clones", with a bar), checking each worktree, and asking GitHub
+about their pull requests and issues. Otherwise it says when the list was last checked. Each
+row shows the repository,
 the path, the branch (or "detached"), clean or dirty with the count of uncommitted files
 (untracked files included), how many commits are not on GitHub, whether it is locked and by
 whom, whether its directory is gone, the age of its last commit, and who made it: **made by

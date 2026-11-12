@@ -1,15 +1,18 @@
 // Package integrationprefs declares the integrations' preference keys and decodes and
 // encodes their values: whether each integration is on, off, or automatic, which copy of
 // a tool to use, where the runs go, whether a merge offers a release, which sources Repo
-// scripts lists, and the window's memory of the Scripts tab (whether it was announced, and
-// the page and clone it reopens on). The settings package writes them, and the
+// scripts lists, whether a run Repo scripts starts shows beside its scripts, and the
+// window's memory of the Scripts tab (whether it was announced, the page and clone it
+// reopens on, and the sections the user opened or folded). The settings package writes them, and the
 // integrations, release, and scripts packages read them. It imports nothing of the app's,
 // so settings never depends on the integrations package, nor through it on the GitHub
 // client.
 package integrationprefs
 
 import (
+	"encoding/json"
 	"errors"
+	"fmt"
 	"path/filepath"
 	"slices"
 	"strconv"
@@ -51,9 +54,62 @@ const (
 	// when unset.
 	KeyLastRepo = "scripts.lastRepo"
 
+	// KeySections is the preference key holding which of the Scripts tab's sections the
+	// user opened or folded: a JSON object of each ScriptsSection to whether it is open,
+	// each section left out at its page's own default.
+	KeySections = "scripts.sections"
+
+	// KeyShowRuns is the preference key holding whether a run Repo scripts starts, a
+	// script's or a pull's, shows beside its scripts at once: "true" or "false", off when
+	// unset.
+	KeyShowRuns = "scripts.showRuns"
+
 	// maxRepoLen is the longest clone folder KeyLastRepo holds.
 	maxRepoLen = 4096
 )
+
+// ScriptsSection is one of the sections the Scripts tab's pages open and fold.
+type ScriptsSection string
+
+// The Scripts tab's sections, by page.
+const (
+	// SectionHooksAttention is Hooks' clones that need attention.
+	SectionHooksAttention ScriptsSection = "hooks.attention"
+
+	// SectionHooksReady is Hooks' clones that are ready.
+	SectionHooksReady ScriptsSection = "hooks.ready"
+
+	// SectionHooksOff is Hooks' clones whose repository turns go-pre-commit off.
+	SectionHooksOff ScriptsSection = "hooks.off"
+
+	// SectionHooksNotSetUp is Hooks' clones without a go-pre-commit config.
+	SectionHooksNotSetUp ScriptsSection = "hooks.notSetUp"
+
+	// SectionScriptsYours is Repo scripts' scripts of the user's own.
+	SectionScriptsYours ScriptsSection = "scripts.yours"
+
+	// SectionScriptsT3 is Repo scripts' commands from t3.json.
+	SectionScriptsT3 ScriptsSection = "scripts.t3"
+
+	// SectionScriptsTasks is Repo scripts' tasks from .vscode/tasks.json.
+	SectionScriptsTasks ScriptsSection = "scripts.tasks"
+
+	// SectionScriptsMagex is Repo scripts' magex targets.
+	SectionScriptsMagex ScriptsSection = "scripts.magex"
+)
+
+// Sections returns every section, in page order.
+func Sections() []ScriptsSection {
+	return []ScriptsSection{
+		SectionHooksAttention, SectionHooksReady, SectionHooksOff, SectionHooksNotSetUp,
+		SectionScriptsYours, SectionScriptsT3, SectionScriptsTasks, SectionScriptsMagex,
+	}
+}
+
+// Valid reports whether s is one of Sections.
+func (s ScriptsSection) Valid() bool {
+	return slices.Contains(Sections(), s)
+}
 
 // ScriptsPage is one of the Scripts tab's pages, which the tab reopens on.
 type ScriptsPage string
@@ -143,6 +199,9 @@ var (
 	// ErrInvalidRepo is returned for a clone folder to reopen Repo scripts on that isn't
 	// an absolute or ~ path on one line.
 	ErrInvalidRepo = errors.New("invalid clone folder")
+
+	// ErrInvalidSection is returned for a ScriptsSection that is not one of Sections.
+	ErrInvalidSection = errors.New("unknown Scripts section")
 )
 
 // Config is how the user set the integrations up, as the settings show it. Every
@@ -172,6 +231,14 @@ type Config struct {
 	// showed last, with ~: where each reopens, none until the user picks one.
 	LastPage ScriptsPage `json:"lastPage"`
 	LastRepo string      `json:"lastRepo"`
+
+	// Sections are the Scripts tab's sections the user opened (true) or folded (false);
+	// one left out shows as its page starts it.
+	Sections map[ScriptsSection]bool `json:"sections"`
+
+	// ShowRuns reports whether a run Repo scripts starts shows beside its scripts at once;
+	// off, the page says the run started, with a way to show it.
+	ShowRuns bool `json:"showRuns"`
 }
 
 // ScriptSources are the sources Repo scripts lists besides the user's own scripts: magex's
@@ -235,7 +302,7 @@ func Keys() []string {
 	}
 
 	return append(keys, KeyRunsIn, KeyOfferAfterMerge, KeyMagexTargets, KeyRepoFiles, KeyAnnounced, KeyLastPage,
-		KeyLastRepo)
+		KeyLastRepo, KeySections, KeyShowRuns)
 }
 
 // Decode reads the integrations' settings from the stored preferences. A switch that is
@@ -254,6 +321,8 @@ func Decode(stored map[string]string) Config {
 		Announced: decodeOff(stored[KeyAnnounced]),
 		LastPage:  DecodeLastPage(stored[KeyLastPage]),
 		LastRepo:  DecodeLastRepo(stored[KeyLastRepo]),
+		Sections:  DecodeSections(stored[KeySections]),
+		ShowRuns:  decodeOff(stored[KeyShowRuns]),
 	}
 
 	for _, id := range IDs() {
@@ -385,6 +454,47 @@ func EncodeLastPage(p ScriptsPage) (string, error) {
 	}
 
 	return string(p), nil
+}
+
+// DecodeSections reads the sections the user opened or folded: each of Sections the stored
+// JSON object names with a boolean; any other entry, or a value that isn't an object, is
+// dropped.
+func DecodeSections(stored string) map[ScriptsSection]bool {
+	out := map[ScriptsSection]bool{}
+
+	var read map[string]any
+	if stored == "" || json.Unmarshal([]byte(stored), &read) != nil {
+		return out
+	}
+
+	for name, value := range read {
+		if open, ok := value.(bool); ok && ScriptsSection(name).Valid() {
+			out[ScriptsSection(name)] = open
+		}
+	}
+
+	return out
+}
+
+// EncodeSections returns the stored form of the sections the user opened or folded: a
+// JSON object, "" for none. A section that isn't one of Sections is refused.
+func EncodeSections(sections map[ScriptsSection]bool) (string, error) {
+	if len(sections) == 0 {
+		return "", nil
+	}
+
+	for section := range sections {
+		if !section.Valid() {
+			return "", ErrInvalidSection
+		}
+	}
+
+	out, err := json.Marshal(sections)
+	if err != nil {
+		return "", fmt.Errorf("encode the sections: %w", err)
+	}
+
+	return string(out), nil
 }
 
 // DecodeLastRepo reads the clone Repo scripts reopens on: as stored, when it reads as one

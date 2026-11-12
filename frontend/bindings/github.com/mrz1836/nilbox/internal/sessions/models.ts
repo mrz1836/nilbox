@@ -59,6 +59,19 @@ export interface Session {
     "worktree": string;
 
     /**
+     * WorktreeAction is what its launch did to that worktree, or "" in the clone or when
+     * not known.
+     */
+    "worktreeAction": WorktreeAction;
+
+    /**
+     * Permission summarizes the permissions it started with, such as "full access", and
+     * Notice says what its launch worked around; each is "" when not known.
+     */
+    "permission": string;
+    "notice": string;
+
+    /**
      * State is what it is doing, Detail says more where the agent did, and StateAt is
      * when it came to that state, as RFC 3339.
      */
@@ -166,3 +179,40 @@ export interface Words {
      */
     "partial": boolean;
 }
+
+/**
+ * WorktreeAction is what a session's launch did to its item's worktree.
+ */
+export type WorktreeAction = "" | "resume" | "adopt" | "attach" | "create";
+
+/**
+ * The values of WorktreeAction, by the names of their Go constants.
+ */
+export const WorktreeAction = {
+    /**
+     * What a launch did to give its item a worktree, as the launcher names it.
+     *
+     * WorktreeNone is a session in the clone, or one recorded before the action was kept.
+     */
+    WorktreeNone: "",
+
+    /**
+     * WorktreeResume reused the item's worktree.
+     */
+    WorktreeResume: "resume",
+
+    /**
+     * WorktreeAdopt took over a worktree found on the item's branch somewhere else.
+     */
+    WorktreeAdopt: "adopt",
+
+    /**
+     * WorktreeAttach made a worktree again on the item's branch left from an earlier one.
+     */
+    WorktreeAttach: "attach",
+
+    /**
+     * WorktreeCreate made a new worktree.
+     */
+    WorktreeCreate: "create",
+} as const;

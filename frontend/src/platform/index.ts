@@ -131,6 +131,7 @@ export type ScriptRunChunk = NonNullLists<scriptrun.Chunk>
 export type ScriptRunProgress = NonNullLists<scriptrun.Progress>
 export type ScriptSources = NonNullLists<integrationprefs.ScriptSources>
 export type ScriptsPage = integrationprefs.ScriptsPage
+export type ScriptsSection = integrationprefs.ScriptsSection
 
 // UserScript is one of the user's own scripts, as saved: its scope, which clones it shows
 // in, and its icon, each a closed set, and its place, where runs go, or '' for where the
@@ -325,6 +326,7 @@ export type AgentSession = NonNullLists<sessions.Session>
 export type SessionWords = NonNullLists<sessions.Words>
 export type SessionsSnapshot = NonNullLists<sessions.Snapshot>
 export type SessionState = sessions.State
+export type SessionWorktreeAction = sessions.WorktreeAction
 
 export type Settings = NonNullLists<settings.Settings>
 export type InboxOrder = NonNullLists<settings.InboxOrder>
@@ -343,6 +345,10 @@ export type LinkedItem = NonNullLists<worktrees.LinkedItem>
 export type RemoveResult = NonNullLists<worktrees.RemoveResult>
 export type WorktreeRepo = NonNullLists<worktrees.Repo>
 export type WorktreesSnapshot = NonNullLists<worktrees.Snapshot>
+// WorktreesProgress is how far the window's listing of the worktrees has got, as the
+// "worktrees:progress" event says.
+export type WorktreesProgress = Events.CustomEvents['worktrees:progress']
+export type WorktreesPhase = WorktreesProgress['phase']
 export type SweepReport = NonNullLists<worktrees.SweepReport>
 export type Worktree = NonNullLists<worktrees.Worktree>
 export type WorktreeBranch = NonNullLists<worktrees.Branch>
@@ -394,7 +400,12 @@ export const {
   Resume: resumeSession,
 } = narrow(launcher.Service)
 
-export const { List: listSessions, Focus: focusSession, LastWords: sessionLastWords } = narrow(sessions.Service)
+export const {
+  List: listSessions,
+  Focus: focusSession,
+  LastWords: sessionLastWords,
+  ShowFolder: showSessionFolder,
+} = narrow(sessions.Service)
 
 export const {
   Open: openReview,
@@ -473,6 +484,8 @@ export const {
   SetIntegrationsAnnounced: setIntegrationsAnnounced,
   SetScriptsLastPage: setScriptsLastPage,
   SetScriptsLastRepo: setScriptsLastRepo,
+  SetScriptsSectionOpen: setScriptsSectionOpen,
+  SetShowRuns: setShowRuns,
 } = narrow(settings.Service)
 
 // The tools the app finds, installs, and runs for the user. List never waits for a

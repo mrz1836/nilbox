@@ -76,6 +76,9 @@ const (
 
 	// NameHooksUpdated is HooksUpdated's name.
 	NameHooksUpdated = "hooks:updated"
+
+	// NameWorktreesProgress is WorktreesProgress's name.
+	NameWorktreesProgress = "worktrees:progress"
 )
 
 // Event is something that happened, or was asked for, that another part of the app
@@ -127,6 +130,7 @@ func WindowEvents() []WindowEvent {
 		ReleasesUpdated{},
 		ReleasesProgress{},
 		HooksUpdated{},
+		WorktreesProgress{},
 	}
 }
 
@@ -368,6 +372,42 @@ type HooksUpdated struct{}
 func (HooksUpdated) Name() string { return NameHooksUpdated }
 
 func (HooksUpdated) window() {}
+
+// WorktreesPhase is how far a listing of the worktrees has got.
+type WorktreesPhase string
+
+// The phases of a listing of the worktrees, in order.
+const (
+	// WorktreesFindingClones is the clone root being searched for clones.
+	WorktreesFindingClones WorktreesPhase = "clones"
+
+	// WorktreesListing is each clone's worktrees being listed.
+	WorktreesListing WorktreesPhase = "listing"
+
+	// WorktreesChecking is each worktree being read: its changes, its branch, and its
+	// commits.
+	WorktreesChecking WorktreesPhase = "checking"
+
+	// WorktreesAskingGitHub is GitHub being asked about the pull requests and issues the
+	// worktrees belong to.
+	WorktreesAskingGitHub WorktreesPhase = "github"
+)
+
+// WorktreesProgress says how far the window's listing of the worktrees has got, while it
+// runs: its phase, and how many of the phase's clones, worktrees, or pull requests and
+// issues are done. Finding the clones counts nothing. It comes a few times a second at
+// most, and the listing's own answer follows it; a listing another job runs, such as the
+// sweep, tells nothing.
+type WorktreesProgress struct {
+	Phase WorktreesPhase `json:"phase"`
+	Done  int            `json:"done"`
+	Total int            `json:"total"`
+}
+
+// Name returns NameWorktreesProgress.
+func (WorktreesProgress) Name() string { return NameWorktreesProgress }
+
+func (WorktreesProgress) window() {}
 
 // Discard is a Sink that drops every event.
 type Discard struct{}

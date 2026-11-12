@@ -247,3 +247,39 @@ func TestTheScriptsTabsMemoryIsKept(t *testing.T) {
 	assert.Empty(t, got.Integrations.LastRepo, "an empty folder forgets it")
 	assert.Zero(t, events.Count(), "only the window reads them")
 }
+
+func TestTheScriptsTabsSectionsAndRunsAreKept(t *testing.T) {
+	t.Parallel()
+
+	events := &testutil.Events{}
+	svc := serviceOver(t, testutil.DB(t), t.TempDir(), WithEvents(events))
+
+	fresh, err := svc.Get(t.Context())
+	require.NoError(t, err)
+	assert.Empty(t, fresh.Integrations.Sections)
+	assert.False(t, fresh.Integrations.ShowRuns)
+
+	got, err := svc.SetScriptsSectionOpen(t.Context(), integrationprefs.SectionHooksReady, false)
+	require.NoError(t, err)
+	assert.Equal(t, map[integrationprefs.ScriptsSection]bool{integrationprefs.SectionHooksReady: false},
+		got.Integrations.Sections)
+
+	got, err = svc.SetScriptsSectionOpen(t.Context(), integrationprefs.SectionScriptsMagex, true)
+	require.NoError(t, err)
+	assert.Equal(t, map[integrationprefs.ScriptsSection]bool{
+		integrationprefs.SectionHooksReady: false, integrationprefs.SectionScriptsMagex: true,
+	}, got.Integrations.Sections, "the others stay as they were")
+
+	_, err = svc.SetScriptsSectionOpen(t.Context(), "hooks.someday", true)
+	require.ErrorIs(t, err, integrationprefs.ErrInvalidSection)
+
+	got, err = svc.SetShowRuns(t.Context(), true)
+	require.NoError(t, err)
+	assert.True(t, got.Integrations.ShowRuns)
+
+	reread, err := svc.Get(t.Context())
+	require.NoError(t, err)
+	assert.Len(t, reread.Integrations.Sections, 2, "a refused section stored nothing")
+	assert.True(t, reread.Integrations.ShowRuns)
+	assert.Zero(t, events.Count(), "only the window reads them")
+}

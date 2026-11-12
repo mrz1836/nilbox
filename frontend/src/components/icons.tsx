@@ -563,3 +563,12 @@ export function BoxIcon(props: IconProps) {
     </Icon>
   )
 }
+
+// FolderIcon stands for a folder shown in Finder.
+export function FolderIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M3.5 7A1.5 1.5 0 0 1 5 5.5h4.5l2 2.5H19a1.5 1.5 0 0 1 1.5 1.5V17a1.5 1.5 0 0 1-1.5 1.5H5A1.5 1.5 0 0 1 3.5 17z" />
+    </Icon>
+  )
+}

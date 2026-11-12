@@ -110,6 +110,67 @@ describe('SessionTag', () => {
     expect(within(older).getByRole('button', { name: 'Resume' })).toBeEnabled()
   })
 
+  it('says what each session started with, where, and what its launch worked around', async () => {
+    const user = userEvent.setup()
+    const notice = 'Couldn’t fetch origin/main, so the worktree starts from the last fetched copy: timed out'
+    const sessions = [
+      agentSession({ id: 'made', notice }),
+      agentSession({ id: 'reused', worktreeAction: 'resume', terminal: 'terminal' }),
+      agentSession({ id: 'clone', worktree: '', worktreeAction: '', permission: 'plan mode (outside contributor)' }),
+      agentSession({ id: 'before', worktreeAction: '', permission: '', terminal: 'example-terminal' }),
+    ]
+
+    renderTag(sessions)
+    await user.click(screen.getByRole('button', { name: /Claude session/ }))
+
+    const [made = document.body, reused = document.body, clone = document.body, before = document.body] = entries(4)
+
+    expect(made).toHaveTextContent('full access · new worktree')
+    expect(made).toHaveTextContent(notice)
+    expect(within(made).getByRole('button', { name: 'Show in terminal' })).toHaveAttribute(
+      'title',
+      'Bring forward the iTerm2 tab it runs in',
+    )
+    expect(reused).toHaveTextContent('full access · worktree reused')
+    expect(reused).not.toHaveTextContent(notice)
+    expect(within(reused).getByRole('button', { name: 'Show in terminal' })).toHaveAttribute(
+      'title',
+      'Bring forward the Terminal tab it runs in',
+    )
+    expect(clone).toHaveTextContent('plan mode (outside contributor) · in the clone')
+    // A session recorded before its launch's facts were kept says only where it runs.
+    expect(before).toHaveTextContent('in its worktree')
+    expect(before).not.toHaveTextContent('full access')
+    expect(within(before).getByRole('button', { name: 'Show in terminal' })).toHaveAttribute(
+      'title',
+      'Bring forward the terminal tab it runs in',
+    )
+  })
+
+  it('shows a session’s folder in Finder, and says why it couldn’t', async () => {
+    const user = userEvent.setup()
+    const ended = agentSession({ id: 'older', state: 'ended', endedAt: '2026-06-15T10:00:00Z', canFocus: false })
+
+    renderTag([agentSession(), ended])
+    await user.click(screen.getByRole('button', { name: /Claude session/ }))
+
+    const [running = document.body, done = document.body] = entries(2)
+
+    const show = within(running).getByRole('button', { name: 'Show in Finder' })
+    expect(show).toHaveAttribute('title', `Show ~/projects/.${brand.slug}/worktrees/example-repo/pr-7 in Finder`)
+    await user.click(show)
+    expect(platform.showSessionFolder).toHaveBeenCalledWith('0f8c1e2a-5b4d-4c3e-9a1f-2b3c4d5e6f70')
+    expect(within(running).queryByRole('alert')).toBeNull()
+
+    platform.showSessionFolder.mockRejectedValueOnce(
+      new Error(`~/projects/.${brand.slug}/worktrees/example-repo/pr-7 isn't there anymore.`),
+    )
+    await user.click(within(done).getByRole('button', { name: 'Show in Finder' }))
+
+    expect(platform.showSessionFolder).toHaveBeenLastCalledWith('older')
+    expect(await within(done).findByRole('alert')).toHaveTextContent("isn't there anymore.")
+  })
+
   it('shows the terminal, resumes, and copies the session ID', async () => {
     const user = userEvent.setup()
     const ended = agentSession({ id: 'older', state: 'ended', endedAt: '2026-06-15T10:00:00Z', canResume: true })

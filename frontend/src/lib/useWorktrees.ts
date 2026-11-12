@@ -7,6 +7,7 @@ import {
   deleteBranches,
   forceRemoveWorktree,
   listWorktrees,
+  on,
   pruneWorktrees,
   recentCleanups,
   removeAllCleanWorktrees,
@@ -19,6 +20,7 @@ import {
   type WorktreePick,
   type WorktreeCleanup,
   type WorktreeRepo,
+  type WorktreesProgress,
   type WorktreesSnapshot,
 } from '../platform'
 import { useMutation } from './useMutation'
@@ -99,6 +101,11 @@ export interface WorktreesState {
   // loading reports a listing that holds the actions: the first one, or one asked for
   // here, by Refresh or after a change.
   loading: boolean
+  // checking reports any listing under way, a quiet one after a background sweep or as
+  // the page opens included, and progress how far it has got, or null before it first
+  // says, or while none runs.
+  checking: boolean
+  progress: WorktreesProgress | null
   // disabled holds the actions while a change, or a listing that holds them, runs.
   disabled: boolean
   // loadError is why the latest listing failed, or ''.
@@ -255,6 +262,27 @@ export function useWorktrees({
   const history = cleanups.data ?? null
   const loading = state.refreshing || (listing.data === undefined && listing.error === '')
   const busy = changer.pending || bulker.pending || brancher.pending
+  const checking = listing.pending
+  // heard is the latest progress the listing under way told; what an earlier listing
+  // told is dropped once it ends, so the next starts from nothing.
+  const [heard, setHeard] = useState<WorktreesProgress | null>(null)
+  const [wasChecking, setWasChecking] = useState(checking)
+
+  if (wasChecking !== checking) {
+    setWasChecking(checking)
+
+    if (!checking) {
+      setHeard(null)
+    }
+  }
+
+  useEffect(
+    () =>
+      on('worktrees:progress', (progress) => {
+        setHeard(progress)
+      }),
+    [],
+  )
 
   // Each listing is reported, to the latest onSnapshot, so a new callback never lists
   // again.
@@ -378,6 +406,8 @@ export function useWorktrees({
     history,
     historyRef,
     loading,
+    checking,
+    progress: checking ? heard : null,
     disabled: busy || loading,
     loadError: listing.error,
     error: bulker.error !== '' ? bulker.error : brancher.error !== '' ? brancher.error : listing.error,

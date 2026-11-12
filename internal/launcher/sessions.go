@@ -82,6 +82,14 @@ type StartedSession struct {
 	ClonePath string
 	Worktree  string
 
+	// WorktreeAction is what the launch did to that worktree, or "" in the clone.
+	WorktreeAction WorktreeAction
+
+	// Permission summarizes the permissions the session starts with, and Notice says what
+	// the launch worked around, or is "": the launch's own words for them (LaunchResult).
+	Permission string
+	Notice     string
+
 	// LaunchedAt is when the terminal was asked to start the session.
 	LaunchedAt time.Time
 }
@@ -354,7 +362,12 @@ func (s *Service) recordStarted(ctx context.Context, p planned, ref sessionRef, 
 		Dir:         p.plan.Dir,
 		ClonePath:   p.clone.Dir,
 		Worktree:    p.worktreeName(),
+		Permission:  p.plan.Permission,
 		LaunchedAt:  at,
+	}
+
+	if p.worktree != nil {
+		started.WorktreeAction, started.Notice = p.worktree.Action, p.worktree.Notice
 	}
 
 	switch {

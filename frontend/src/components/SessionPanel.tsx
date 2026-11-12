@@ -1,20 +1,21 @@
 import { useRef, useState } from 'react'
 
 import { agentName } from '../lib/launch'
-import { sinceWhen, stateLabel } from '../lib/sessions'
+import { setupWords, sinceWhen, stateLabel, terminalName } from '../lib/sessions'
 import { formatAgo, formatFull } from '../lib/time'
 import { useMutation } from '../lib/useMutation'
 import {
   copyText,
   focusSession,
   resumeSession,
+  showSessionFolder,
   type AgentInfo,
   type AgentSession,
   type LaunchHold,
   type ResumeRequest,
 } from '../platform'
 import { quietButtonClass } from './controls'
-import { CheckIcon, CopyIcon, PlayIcon, TerminalIcon } from './icons'
+import { AlertIcon, CheckIcon, CopyIcon, FolderIcon, PlayIcon, TerminalIcon } from './icons'
 import { LaunchHoldDialog } from './LaunchHoldDialog'
 import { RelativeTime } from './RelativeTime'
 import { SessionDot } from './SessionDot'
@@ -48,7 +49,7 @@ function StateLine({ session }: { session: AgentSession }) {
 }
 
 // Action is one of a session's buttons.
-type Action = 'focus' | 'resume' | 'copy'
+type Action = 'focus' | 'resume' | 'folder' | 'copy'
 
 // Held is a resume held back for the user to confirm, with the request to send again,
 // once confirmed.
@@ -63,13 +64,17 @@ function confirmed({ hold, request }: Held): ResumeRequest {
   return hold.reason === 'running' ? { ...request, alongside: hold.key } : { ...request, confirmed: hold.key }
 }
 
-// SessionEntry is one session: who ran it with what, what it is doing, where, what it last
-// said, and what can be done with it from here.
+// SessionEntry is one session: who ran it with what, what it is doing, what it started
+// with and where, what its launch worked around, what it last said, and what can be done
+// with it from here.
 function SessionEntry({ session, agents }: { session: AgentSession; agents: readonly AgentInfo[] }) {
   const focus = useMutation((id: string) => focusSession(id))
   const resume = useMutation((request: ResumeRequest) => resumeSession(request))
+  const folder = useMutation((id: string) => showSessionFolder(id))
   const copy = useMutation(() => copyText(session.agentSessionId))
-  const actions = { focus, resume, copy }
+  const actions = { focus, resume, folder, copy }
+  const terminal = terminalName(session)
+  const setup = setupWords(session)
   // copied is whether the ID was just copied; it clears on the next copy.
   const [copied, setCopied] = useState(false)
   // last is the button pressed last. Only its outcome shows, so one that works clears
@@ -118,6 +123,11 @@ function SessionEntry({ session, agents }: { session: AgentSession; agents: read
     }
   }
 
+  const showFolder = () => {
+    press('folder')
+    void folder.run(session.id)
+  }
+
   const copyID = async () => {
     press('copy')
     setCopied(false)
@@ -134,9 +144,16 @@ function SessionEntry({ session, agents }: { session: AgentSession; agents: read
         </span>
       </div>
       <StateLine session={session} />
+      {setup !== '' && <p className="truncate text-[0.6875rem] text-muted">{setup}</p>}
       <p className="truncate font-mono text-[0.6875rem] text-muted" title={session.dir}>
         {session.dir}
       </p>
+      {session.notice !== '' && (
+        <p className="flex items-start gap-1.5 text-xs text-warning">
+          <AlertIcon className="mt-0.5 size-3.5 shrink-0" />
+          <span>{session.notice}</span>
+        </p>
+      )}
       {session.lastMessage !== '' && (
         <blockquote className="line-clamp-4 border-l-2 border-border pl-2 text-xs leading-relaxed whitespace-pre-line text-text">
           {session.lastMessage}
@@ -144,7 +161,13 @@ function SessionEntry({ session, agents }: { session: AgentSession; agents: read
       )}
       <div className="flex flex-wrap items-center gap-1">
         {session.canFocus && (
-          <button type="button" disabled={focus.pending} onClick={showTerminal} className={quietButtonClass}>
+          <button
+            type="button"
+            disabled={focus.pending}
+            onClick={showTerminal}
+            title={`Bring forward the ${terminal === '' ? 'terminal' : terminal} tab it runs in`}
+            className={quietButtonClass}
+          >
             <TerminalIcon className="size-3.5" />
             Show in terminal
           </button>
@@ -162,6 +185,16 @@ function SessionEntry({ session, agents }: { session: AgentSession; agents: read
             {resume.pending ? 'Resuming…' : 'Resume'}
           </button>
         )}
+        <button
+          type="button"
+          disabled={folder.pending}
+          onClick={showFolder}
+          title={`Show ${session.dir} in Finder`}
+          className={quietButtonClass}
+        >
+          <FolderIcon className="size-3.5" />
+          Show in Finder
+        </button>
         {session.agentSessionId !== '' && (
           <button
             type="button"
@@ -216,8 +249,10 @@ export interface SessionPanelProps {
 }
 
 // SessionPanel lists an item's agent sessions, newest first: each one's agent, profile,
-// and prompt, what it is doing and for how long, the folder it runs in, what the agent
-// last said, and buttons to show its terminal, resume it once it ended, and copy its ID.
+// and prompt, what it is doing and for how long, the permissions it started with, the
+// folder it runs in and what its launch did to the item's worktree, what the launch
+// worked around, what the agent last said, and buttons to show its terminal, resume it
+// once it ended, show its folder in Finder, and copy its ID.
 export function SessionPanel({ sessions, agents }: SessionPanelProps) {
   return (
     <div className="flex flex-col gap-2.5">

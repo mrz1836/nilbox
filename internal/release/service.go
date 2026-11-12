@@ -343,7 +343,7 @@ func (s *Service) refresh(ctx context.Context, root string) (Candidates, error) 
 		err = ctx.Err() // a list read as the call ended holds clones marked unreadable
 	}
 
-	progress.end()
+	progress.End()
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -400,7 +400,7 @@ func (s *Service) doneReading() {
 // gather lists the clones, asks GitHub about their origins, and reads the clones whose
 // repository has changes to release, telling progress of each phase.
 func (s *Service) gather(ctx context.Context, root string, progress *listProgress) (Candidates, error) {
-	progress.start(event.ReleasesFindingClones, 0)
+	progress.Start(event.ReleasesFindingClones, 0)
 
 	all, err := s.clones.Clones(ctx, root)
 	if err != nil {
@@ -449,9 +449,9 @@ func (s *Service) askGitHub(
 ) (map[string]RepoStatus, map[string]Compare, error) {
 	repos := uniqueRepos(listed)
 
-	progress.start(event.ReleasesAskingGitHub, len(repos))
+	progress.Start(event.ReleasesAskingGitHub, len(repos))
 
-	statuses, err := s.github.ReleaseStatus(ctx, repos, progress.add)
+	statuses, err := s.github.ReleaseStatus(ctx, repos, progress.Add)
 	if err != nil {
 		return nil, nil, wordGitHub(err)
 	}
@@ -461,9 +461,9 @@ func (s *Service) askGitHub(
 		return statuses, map[string]Compare{}, nil
 	}
 
-	progress.start(event.ReleasesComparing, len(reqs))
+	progress.Start(event.ReleasesComparing, len(reqs))
 
-	compares, err := s.github.ReleaseCompare(ctx, reqs, progress.add)
+	compares, err := s.github.ReleaseCompare(ctx, reqs, progress.Add)
 	if err != nil {
 		return nil, nil, wordGitHub(err)
 	}
@@ -542,7 +542,7 @@ func (s *Service) checkClones(
 		return
 	}
 
-	progress.start(event.ReleasesCheckingClones, unreleased)
+	progress.Start(event.ReleasesCheckingClones, unreleased)
 
 	var wg sync.WaitGroup
 
@@ -563,7 +563,7 @@ func (s *Service) checkClones(
 			state := s.checker.CloneState(ctx, list[i].dir, status.DefaultBranch, status.HeadOID, status.Tags)
 			list[i].Clone = &state
 
-			progress.add(1)
+			progress.Add(1)
 		})
 	}
 

@@ -74,6 +74,11 @@ export const SessionsUpdated = "sessions:updated";
 export const ToolsUpdated = "tools:updated";
 
 /**
+ * Name of the custom event "worktrees:progress".
+ */
+export const WorktreesProgress = "worktrees:progress";
+
+/**
  * Name of the custom event "worktrees:updated".
  */
 export const WorktreesUpdated = "worktrees:updated";

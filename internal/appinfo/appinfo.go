@@ -4,7 +4,9 @@
 // them. Info also carries what a bug report needs, the build's versions and the system it
 // runs on; AgentVersions reads the installed coding agents' versions, ToolVersions the
 // other tools' (the GitHub CLI), and BugReportURL opens a new bug report with all of them
-// filled in. When the
+// filled in, and with the app's state as its StateReader words it: the settings and the
+// integrations, with nothing personal in them. The user reads the report on GitHub before
+// sending it, and the app sends nothing itself. When the
 // database could not be read at startup and was set aside, or the prompt library and
 // launch defaults were brought back into a new one, Info says so, so the window can tell the user once it
 // loads: the window does not exist yet when that happens, so an event would be lost. When the window has painted its first frame, the frontend calls
@@ -108,6 +110,21 @@ const (
 	ResetHistory ResetReason = "history"
 )
 
+// StateReader words what a bug report says of the app's state, for whoever reads the
+// report: the settings and the integrations, as sections of Markdown lines, each with
+// nothing personal in it, so no account, repository, organization, profile name, path,
+// or pattern of the user's own. Core adapts the settings and integrations services.
+type StateReader interface {
+	BugReportState(ctx context.Context) []StateSection
+}
+
+// StateSection is one part of a bug report's state, such as the settings: its title and
+// its lines, each a Markdown list item's text.
+type StateSection struct {
+	Title string
+	Lines []string
+}
+
 // FirstPaintRecorder records the first paint once. *timing.Recorder implements it.
 type FirstPaintRecorder interface {
 	FirstPaint() (m timing.Measurement, first bool, err error)
@@ -150,6 +167,10 @@ type Config struct {
 
 	// Home is the user's home directory, shown as ~ in a command's path.
 	Home string
+
+	// State words the app's state for a bug report; without it, a report holds only the
+	// versions.
+	State StateReader
 }
 
 // Service serves the app's identity and the coding agents' and tools' versions, and
@@ -159,6 +180,7 @@ type Service struct {
 	recorder FirstPaintRecorder
 	events   event.Sink
 	versions *versions
+	state    StateReader
 }
 
 // NewService returns a Service over cfg.
@@ -182,7 +204,7 @@ func NewService(cfg Config) *Service {
 
 	return &Service{
 		info: info, recorder: cfg.Recorder, events: event.Or(cfg.Events),
-		versions: &versions{finder: cfg.Finder, run: cfg.Runner, home: cfg.Home},
+		versions: &versions{finder: cfg.Finder, run: cfg.Runner, home: cfg.Home}, state: cfg.State,
 	}
 }
 
@@ -208,14 +230,21 @@ func (s *Service) ToolVersions(ctx context.Context) []ToolVersion {
 }
 
 // BugReportURL returns the link that opens a new bug report on GitHub with the app's
-// versions, the system, and each coding agent's and tool's version filled in.
+// versions, the system, each coding agent's and tool's version, and the app's settings
+// and integrations filled in.
 func (s *Service) BugReportURL(ctx context.Context) string {
-	return bugReportURL(s.info, s.versions.all(ctx), s.versions.tools(ctx))
+	var state []StateSection
+	if s.state != nil {
+		state = s.state.BugReportState(ctx)
+	}
+
+	return bugReportURL(s.info, s.versions.all(ctx), s.versions.tools(ctx), state)
 }
 
 // environment returns the details a bug report needs about the build, the system, the
-// coding agents, and the tools, as a Markdown list.
-func environment(info Info, agents []AgentVersion, tools []ToolVersion) string {
+// coding agents, and the tools, as a Markdown list, and then the app's state, folded
+// away under a summary so the report stays short to read.
+func environment(info Info, agents []AgentVersion, tools []ToolVersion, state []StateSection) string {
 	var b strings.Builder
 
 	fmt.Fprintf(&b, "- Version: %s (%s)\n- Commit: %s\n- System: %s, %s\n",
@@ -229,15 +258,31 @@ func environment(info Info, agents []AgentVersion, tools []ToolVersion) string {
 		fmt.Fprintf(&b, "- %s: %s\n", t.Name, versionText(t.Installed, t.Version))
 	}
 
+	if len(state) == 0 {
+		return b.String()
+	}
+
+	b.WriteString("\n<details><summary>Settings and integrations</summary>\n")
+
+	for _, section := range state {
+		fmt.Fprintf(&b, "\n**%s**\n\n", section.Title)
+
+		for _, line := range section.Lines {
+			fmt.Fprintf(&b, "- %s\n", line)
+		}
+	}
+
+	b.WriteString("\n</details>\n")
+
 	return b.String()
 }
 
 // bugReportURL returns the link that opens a new bug report with the environment field
 // filled in from info and the agents' and tools' versions.
-func bugReportURL(info Info, agents []AgentVersion, tools []ToolVersion) string {
+func bugReportURL(info Info, agents []AgentVersion, tools []ToolVersion, state []StateSection) string {
 	q := url.Values{}
 	q.Set("template", bugReportTemplate)
-	q.Set(environmentField, environment(info, agents, tools))
+	q.Set(environmentField, environment(info, agents, tools, state))
 
 	return brand.Repository + "/issues/new?" + q.Encode()
 }

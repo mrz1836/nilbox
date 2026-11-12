@@ -153,3 +153,55 @@ func TestListOffersNoResumeForAConversationStillRunning(t *testing.T) {
 		assert.False(t, s.CanResume, "%s: its conversation runs on in the session resumed from it", s.ID)
 	}
 }
+
+// fakeRevealer records the paths it was asked to show.
+type fakeRevealer struct {
+	mu    sync.Mutex
+	shown []string
+	err   error
+}
+
+func (f *fakeRevealer) Reveal(_ context.Context, path string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	f.shown = append(f.shown, path)
+
+	return f.err
+}
+
+func TestShowFolder(t *testing.T) {
+	t.Parallel()
+
+	store := sessions.NewStore(testutil.DB(t))
+	home := t.TempDir()
+
+	here := record("s1", 12)
+	here.Dir = t.TempDir()
+	gone := record("s2", 12)
+	gone.Dir = home + "/projects/.wt/pr-12"
+
+	for _, r := range []sessions.Record{here, gone} {
+		require.NoError(t, store.Insert(t.Context(), r))
+	}
+
+	reveal := &fakeRevealer{}
+	svc := sessions.NewService(sessions.Config{Store: store, Reveal: reveal, Home: home})
+
+	require.NoError(t, svc.ShowFolder(t.Context(), "s1"))
+	assert.Equal(t, []string{here.Dir}, reveal.shown)
+
+	err := svc.ShowFolder(t.Context(), "s2")
+	require.ErrorIs(t, err, sessions.ErrNoFolder)
+	assert.Equal(t, "~/projects/.wt/pr-12 isn't there anymore.", uierr.Message(err))
+
+	require.ErrorIs(t, svc.ShowFolder(t.Context(), "missing"), sessions.ErrNotFound)
+
+	reveal.err = assert.AnError
+	require.ErrorIs(t, svc.ShowFolder(t.Context(), "s1"), assert.AnError)
+
+	noFinder := sessions.NewService(sessions.Config{Store: store, Home: home})
+	err = noFinder.ShowFolder(t.Context(), "s1")
+	require.ErrorIs(t, err, sessions.ErrNoFinder)
+	assert.Contains(t, uierr.Message(err), "can't open Finder here")
+}

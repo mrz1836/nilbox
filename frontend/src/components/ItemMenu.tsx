@@ -1,4 +1,4 @@
-import type { RowWork, StartWork } from '../lib/rowWork'
+import { leaving, workWords, type RowWork, type StartWork } from '../lib/rowWork'
 import { isPinned, type TriageTab } from '../lib/triage'
 import { openExternal, type InboxItem } from '../platform'
 import {
@@ -50,13 +50,6 @@ const iconClass = 'size-3.5 shrink-0 text-muted'
 // githubSection captions the edits, which change GitHub where the rest change only the
 // inbox on this Mac.
 const githubSection = 'On GitHub'
-
-// workTitle says what a busy row is doing, for its menu button.
-const workTitle: Readonly<Record<Exclude<RowWork, null>, string>> = {
-  refresh: 'Refreshing from GitHub…',
-  unassign: 'Unassigning you on GitHub…',
-  review: 'Removing you as a reviewer on GitHub…',
-}
 
 // teamsText names the teams a pull request asks to review: "the @backend team", or "the
 // @backend and @infra teams".
@@ -231,13 +224,13 @@ export function ItemMenu({ item, tab, triage, edits, work, start }: ItemMenuProp
     },
     ...githubEdits(item, edits, work, start),
   ]
-  const editing = work === 'unassign' || work === 'review'
+  const editing = leaving(work)
 
   return (
     <div className={hoverClass(work)}>
       <MenuButton
         label="More actions"
-        title={work === null ? 'More actions' : workTitle[work]}
+        title={work === null ? 'More actions' : workWords[work]}
         items={items}
         className={`${ghostClass} px-1`}
       >

@@ -27,7 +27,8 @@ export function AgentVersions(): $CancellablePromise<$models.AgentVersion[] | nu
 
 /**
  * BugReportURL returns the link that opens a new bug report on GitHub with the app's
- * versions, the system, and each coding agent's and tool's version filled in.
+ * versions, the system, each coding agent's and tool's version, and the app's settings
+ * and integrations filled in.
  */
 export function BugReportURL(): $CancellablePromise<string> {
     return $Call.ByID(3058153242);

@@ -310,9 +310,22 @@ describe('LaunchControls', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Open in Claude' }))
 
     expect(platform.launch).toHaveBeenCalledWith(defaultRequest)
-    expect(await screen.findByRole('status')).toHaveTextContent(
-      `Opened “Review” in Claude in iterm2: ~/projects/.${brand.slug}/worktrees/example-repo/pr-7 (worktree made) · default · full access`,
-    )
+    // The card's session tag follows the session it started, so the row says nothing more.
+    expect(await screen.findByRole('button', { name: 'Open in Claude' })).toBeEnabled()
+    expect(screen.queryByRole('status')).not.toBeInTheDocument()
+  })
+
+  it('says what a launch worked around, as a warning', async () => {
+    const notice = 'Couldn’t fetch origin/main, so the worktree starts from the last fetched copy: timed out'
+    platform.launch.mockResolvedValue(launchResult({ notice }))
+    render(<LaunchControls {...props()} />)
+
+    await userEvent.click(screen.getByRole('button', { name: 'Open in Claude' }))
+
+    const status = await screen.findByRole('status')
+    expect(status).toHaveTextContent(notice)
+    expect(status).toHaveClass('text-warning')
+    expect(status).not.toHaveTextContent('Opened')
   })
 
   it('shows why a launch failed', async () => {
@@ -360,9 +373,8 @@ describe('LaunchControls', () => {
     await userEvent.click(dialog.getByRole('button', { name: 'Clone and open' }))
 
     expect(platform.cloneRepo).toHaveBeenCalledWith(1)
-    expect(await screen.findByRole('status')).toHaveTextContent(
-      `Opened “Review” in Claude in iterm2: ~/projects/.${brand.slug}/worktrees/example-repo/pr-7`,
-    )
+    expect(await screen.findByRole('button', { name: 'Open in Claude' })).toBeEnabled()
+    expect(screen.queryByRole('status')).not.toBeInTheDocument()
     expect(platform.launch).toHaveBeenCalledTimes(2)
     expect(platform.launch).toHaveBeenNthCalledWith(1, { ...defaultRequest, profile: 'work' })
     expect(platform.launch).toHaveBeenNthCalledWith(2, { ...defaultRequest, profile: 'work' })
@@ -675,14 +687,65 @@ describe('LaunchControls', () => {
 
     const menu = await openMenu()
 
-    await userEvent.click(menu.getByRole('button', { name: 'example-repo' }))
-    expect(menu.getByText('Choose something different first.')).toBeInTheDocument()
+    expect(menu.getByRole('button', { name: 'example-repo' })).toBeDisabled()
     expect(platform.saveLaunchDefaults).not.toHaveBeenCalled()
 
     await userEvent.click(menu.getByRole('radio', { name: 'work' }))
     await userEvent.click(menu.getByRole('button', { name: 'example-repo' }))
     expect(await menu.findByRole('alert')).toHaveTextContent('the launch defaults can’t be saved')
     expect(menu.getByRole('alert')).toHaveClass('text-danger')
+    expect(menu.queryByRole('button', { name: 'Undo' })).not.toBeInTheDocument()
+  })
+
+  it('undoes a save where nothing was stored by removing it, and brings the choices back', async () => {
+    const onDefaultsSaved = vi.fn(() => Promise.resolve())
+    render(<LaunchControls {...props({ onDefaultsSaved })} />)
+
+    const menu = await openMenu()
+
+    await userEvent.click(menu.getByRole('radio', { name: 'work' }))
+    await userEvent.click(menu.getByRole('button', { name: 'example-repo' }))
+    expect(await menu.findByText('Saved as the default for acme-org/example-repo.')).toBeInTheDocument()
+
+    await userEvent.click(menu.getByRole('button', { name: 'Undo' }))
+
+    expect(platform.removeLaunchDefaults).toHaveBeenCalledWith('acme-org', 'example-repo')
+    expect(await menu.findByRole('status')).toHaveTextContent('Undone: the defaults are as they were.')
+    expect(onDefaultsSaved).toHaveBeenCalledTimes(2)
+    expect(menu.queryByRole('button', { name: 'Undo' })).not.toBeInTheDocument()
+    // The choice comes back, so it can be saved for the owner instead.
+    expect(menu.getByRole('radio', { name: 'work' })).toBeChecked()
+    expect(menu.getByRole('button', { name: 'all of acme-org' })).toBeEnabled()
+  })
+
+  it('undoes a save over stored defaults by saving them back', async () => {
+    const stored = launchDefaults({ effort: 'max' })
+    render(<LaunchControls {...props({ launchDefaults: [stored] })} />)
+
+    const menu = await openMenu()
+
+    await userEvent.click(menu.getByRole('radio', { name: /Quick look/ }))
+    await userEvent.click(menu.getByRole('button', { name: 'all of acme-org' }))
+    await userEvent.click(await menu.findByRole('button', { name: 'Undo' }))
+
+    expect(platform.saveLaunchDefaults).toHaveBeenLastCalledWith(
+      expect.objectContaining({ owner: 'acme-org', name: '', effort: 'max', prPromptId: stored.prPromptId }),
+    )
+    expect(platform.removeLaunchDefaults).not.toHaveBeenCalled()
+  })
+
+  it('shows a failed undo, and still offers it', async () => {
+    platform.removeLaunchDefaults.mockRejectedValueOnce(new Error('database is locked'))
+    render(<LaunchControls {...props()} />)
+
+    const menu = await openMenu()
+
+    await userEvent.click(menu.getByRole('radio', { name: 'work' }))
+    await userEvent.click(menu.getByRole('button', { name: 'example-repo' }))
+    await userEvent.click(await menu.findByRole('button', { name: 'Undo' }))
+
+    expect(await menu.findByRole('alert')).toHaveTextContent('database is locked')
+    expect(menu.getByRole('button', { name: 'Undo' })).toBeEnabled()
   })
 
   it('previews exactly what the launch runs', async () => {
@@ -824,7 +887,10 @@ describe('LaunchControls', () => {
     await userEvent.click(await screen.findByRole('button', { name: 'Start another' }))
 
     expect(platform.launch).toHaveBeenLastCalledWith({ ...defaultRequest, alongside: hold.key })
-    expect(await screen.findByRole('status')).toHaveTextContent('Opened “Review”')
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Show in terminal' })).toBeEnabled()
+    })
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   })
 
   it('names the item a session running in the same clone was started on', async () => {
@@ -887,7 +953,7 @@ describe('LaunchControls', () => {
 
     expect(platform.launch).toHaveBeenNthCalledWith(1, { ...defaultRequest, fullAccessOverride: false })
     expect(platform.launch).toHaveBeenNthCalledWith(2, { ...defaultRequest, confirmed: hold.key })
-    expect(await screen.findByRole('status')).toHaveTextContent('Opened “Review”')
+    expect(await screen.findByRole('button', { name: 'Open in Claude' })).toBeEnabled()
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   })
 
@@ -1125,14 +1191,5 @@ describe('LaunchControls with more than one agent', () => {
     await userEvent.click(menu.getByRole('button', { name: 'Open in Codex' }))
 
     expect(platform.launch).toHaveBeenLastCalledWith({ ...defaultRequest, agent: 'codex', fast: true })
-  })
-
-  it('names the agent a launch started', async () => {
-    platform.launch.mockResolvedValue(launchResult({ agent: 'codex', worktreeAction: 'resume' }))
-    render(<LaunchControls {...props()} />)
-
-    await userEvent.click(screen.getByRole('button', { name: 'Open in Claude' }))
-
-    expect(await screen.findByRole('status')).toHaveTextContent(/in Codex in iterm2: .*worktree resumed/)
   })
 })

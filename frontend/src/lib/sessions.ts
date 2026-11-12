@@ -2,8 +2,16 @@
 // service's latest list (useSessions), which session a card shows, and how each state
 // reads. The backend names the states (internal/sessions); this file only words them.
 
-import type { AgentSession, InboxItem, SessionState, SessionsSnapshot } from '../platform'
+import type {
+  AgentSession,
+  InboxItem,
+  SessionState,
+  SessionsSnapshot,
+  SessionWorktreeAction,
+  TerminalID,
+} from '../platform'
 import { itemKey } from './itemWorktrees'
+import { terminalNames } from './terminals'
 
 // noSessions is the empty map, shared so it stays the same object.
 export const noSessions: ReadonlyMap<string, readonly AgentSession[]> = new Map()
@@ -147,4 +155,31 @@ export function pulses(state: SessionState): boolean {
 // state it is in.
 export function sinceWhen(s: AgentSession): string {
   return s.endedAt === '' ? s.stateAt : s.endedAt
+}
+
+// worktreeWords say what a session's launch did to its item's worktree.
+const worktreeWords: Readonly<Record<SessionWorktreeAction, string>> = {
+  '': 'in its worktree',
+  create: 'new worktree',
+  resume: 'worktree reused',
+  adopt: 'worktree taken over',
+  attach: 'worktree made again',
+}
+
+// whereWords says where a session runs: in the clone, or in the item's worktree and what
+// its launch did to it, "new worktree".
+export function whereWords(s: AgentSession): string {
+  return s.worktree === '' ? 'in the clone' : worktreeWords[s.worktreeAction]
+}
+
+// setupWords says what a session started with: its permissions, as the launch worded
+// them, and where it runs, "full access · new worktree".
+export function setupWords(s: AgentSession): string {
+  return [s.permission, whereWords(s)].filter((part) => part !== '').join(' · ')
+}
+
+// terminalName names the terminal app a session runs in, "iTerm2", or '' for one this
+// build doesn't know.
+export function terminalName(s: AgentSession): string {
+  return Object.hasOwn(terminalNames, s.terminal) ? terminalNames[s.terminal as TerminalID] : ''
 }

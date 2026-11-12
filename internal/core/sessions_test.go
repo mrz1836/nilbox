@@ -30,7 +30,8 @@ func TestSessionLedgerRecordsWhatTheLauncherStarted(t *testing.T) {
 		Prompt: "Review", PromptHead: "Review it", Terminal: "iterm2", ItemID: 7, Owner: boundOwner,
 		Name: "example-repo", Kind: item.KindPR, Number: 12, Title: "Fix the widget",
 		URL: "https://github.com/acme-org/example-repo/pull/12", Dir: "/srv/wt/example-repo/pr-12",
-		ClonePath: "/srv/projects/example-repo", Worktree: "pr-12", LaunchedAt: at,
+		ClonePath: "/srv/projects/example-repo", Worktree: "pr-12", WorktreeAction: launcher.WorktreeAdopt,
+		Permission: "full access", Notice: "Started from the last fetched copy.", LaunchedAt: at,
 	}
 
 	require.NoError(t, l.Started(t.Context(), started))
@@ -47,6 +48,9 @@ func TestSessionLedgerRecordsWhatTheLauncherStarted(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "/opt/profiles/work", stored.ConfigDir)
 	assert.Equal(t, "Review it", stored.PromptHead)
+	assert.Equal(t, sessions.WorktreeAdopt, stored.WorktreeAction, "the two packages name the actions alike")
+	assert.Equal(t, "full access", stored.Permission)
+	assert.Equal(t, "Started from the last fetched copy.", stored.Notice)
 
 	_, err = l.Resumable(t.Context(), "missing")
 	require.ErrorIs(t, err, sessions.ErrNotFound)
@@ -108,4 +112,14 @@ func TestShellSessions(t *testing.T) {
 	assert.Empty(t, got)
 
 	require.ErrorIs(t, s.Focus(t.Context(), "missing"), sessions.ErrNotFound)
+}
+
+func TestSessionsKnowEveryWorktreeActionTheLauncherTakes(t *testing.T) {
+	t.Parallel()
+
+	for _, a := range []launcher.WorktreeAction{
+		launcher.WorktreeResume, launcher.WorktreeAdopt, launcher.WorktreeAttach, launcher.WorktreeCreate,
+	} {
+		assert.True(t, sessions.WorktreeAction(a).Valid(), a)
+	}
 }

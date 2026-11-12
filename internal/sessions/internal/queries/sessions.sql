@@ -3,20 +3,23 @@
 INSERT INTO agent_sessions (
     id, agent_session_id, resumed_from, agent, profile, config_dir, prompt, prompt_head, terminal,
     item_id, owner, name, kind, number, title, url, dir, clone_path, worktree, pid,
-    state, state_detail, last_message, launched_at, linked_at, state_at, ended_at
+    state, state_detail, last_message, launched_at, linked_at, state_at, ended_at, permission, worktree_action,
+    launch_notice
 ) VALUES (
     sqlc.arg(id), sqlc.arg(agent_session_id), sqlc.arg(resumed_from), sqlc.arg(agent), sqlc.arg(profile),
     sqlc.arg(config_dir), sqlc.arg(prompt), sqlc.arg(prompt_head), sqlc.arg(terminal),
     sqlc.arg(item_id), sqlc.arg(owner), sqlc.arg(name), sqlc.arg(kind), sqlc.arg(number), sqlc.arg(title),
     sqlc.arg(url), sqlc.arg(dir), sqlc.arg(clone_path), sqlc.arg(worktree), 0,
-    sqlc.arg(state), '', '', sqlc.arg(launched_at), sqlc.narg(linked_at), sqlc.arg(launched_at), NULL
+    sqlc.arg(state), '', '', sqlc.arg(launched_at), sqlc.narg(linked_at), sqlc.arg(launched_at), NULL,
+    sqlc.arg(permission), sqlc.arg(worktree_action), sqlc.arg(launch_notice)
 );
 
 -- name: GetSession :one
 -- GetSession returns one session by the app's id.
 SELECT id, agent_session_id, resumed_from, agent, profile, config_dir, prompt, prompt_head, terminal,
     item_id, owner, name, kind, number, title, url, dir, clone_path, worktree, pid,
-    state, state_detail, last_message, launched_at, linked_at, state_at, ended_at
+    state, state_detail, last_message, launched_at, linked_at, state_at, ended_at, permission, worktree_action,
+    launch_notice
 FROM agent_sessions
 WHERE id = sqlc.arg(id);
 
@@ -24,7 +27,8 @@ WHERE id = sqlc.arg(id);
 -- LiveSessions returns every session that has not ended, oldest first.
 SELECT id, agent_session_id, resumed_from, agent, profile, config_dir, prompt, prompt_head, terminal,
     item_id, owner, name, kind, number, title, url, dir, clone_path, worktree, pid,
-    state, state_detail, last_message, launched_at, linked_at, state_at, ended_at
+    state, state_detail, last_message, launched_at, linked_at, state_at, ended_at, permission, worktree_action,
+    launch_notice
 FROM agent_sessions
 WHERE state <> 'ended'
 ORDER BY launched_at, id;
@@ -34,7 +38,8 @@ ORDER BY launched_at, id;
 -- time, newest first, up to row_limit.
 SELECT id, agent_session_id, resumed_from, agent, profile, config_dir, prompt, prompt_head, terminal,
     item_id, owner, name, kind, number, title, url, dir, clone_path, worktree, pid,
-    state, state_detail, last_message, launched_at, linked_at, state_at, ended_at
+    state, state_detail, last_message, launched_at, linked_at, state_at, ended_at, permission, worktree_action,
+    launch_notice
 FROM agent_sessions
 WHERE state <> 'ended' OR launched_at >= sqlc.arg(since)
 ORDER BY launched_at DESC, id DESC
@@ -72,7 +77,8 @@ DELETE FROM agent_sessions WHERE state = 'ended' AND (
 -- end first, up to row_limit.
 SELECT id, agent_session_id, resumed_from, agent, profile, config_dir, prompt, prompt_head, terminal,
     item_id, owner, name, kind, number, title, url, dir, clone_path, worktree, pid,
-    state, state_detail, last_message, launched_at, linked_at, state_at, ended_at
+    state, state_detail, last_message, launched_at, linked_at, state_at, ended_at, permission, worktree_action,
+    launch_notice
 FROM agent_sessions
 WHERE state = 'ended' AND agent_session_id <> '' AND ended_at >= sqlc.arg(since)
 ORDER BY ended_at DESC, id DESC

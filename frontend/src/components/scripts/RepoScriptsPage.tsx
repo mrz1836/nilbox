@@ -6,6 +6,7 @@ import type { SettingsSection } from '../../lib/settingsIndex'
 import { terminalNames } from '../../lib/terminals'
 import { useMutation } from '../../lib/useMutation'
 import { useQuery } from '../../lib/useQuery'
+import { useSections, type OnSection, type Sections, type StoredSections } from '../../lib/useSections'
 import { newUserScript, placeName, placeOf } from '../../lib/userScripts'
 import { useScriptRun, type ScriptAsk, type ScriptRunState } from '../../lib/useScriptRun'
 import {
@@ -14,15 +15,17 @@ import {
   type RepoScripts,
   type RunsIn,
   type ScriptClone,
+  type ScriptsSection,
   type TerminalID,
   type UserScript,
 } from '../../platform'
-import { buttonClass, captionClass, quietButtonClass } from '../controls'
+import { buttonClass, quietButtonClass } from '../controls'
 import { ErrorBanner } from '../ErrorBanner'
 import { AlertIcon, InfoIcon, PlusIcon, RefreshIcon } from '../icons'
 import { ErrorText } from '../settings/rows'
 import { Spinner } from '../Spinner'
 import { BranchCheck } from './BranchCheck'
+import { GroupHeading } from './GroupHeading'
 import { MagexSection } from './MagexSection'
 import { RunPanel } from './RunPanel'
 import { ScriptEditor } from './ScriptEditor'
@@ -71,6 +74,8 @@ interface PlaceProps {
 interface ScriptsProps extends PlaceProps {
   page: RepoScripts
   run: ScriptRunState
+  // folds keeps each source's section open or folded as the user left it.
+  folds: Sections
   onOpenSettings: (section: SettingsSection) => void
   // onEdit opens the editor on one of the user's scripts; onChange makes a change to
   // them, after which the page reads its scripts again.
@@ -111,7 +116,17 @@ function Empty({ page, onOpenSettings }: { page: RepoScripts; onOpenSettings: (s
 // none of the repository's says why not. Beside them, the confirmation one of the user's
 // scripts asks first when it says to, the form a task's inputs open first, and the
 // question a repository command asks before it runs.
-function Scripts({ page, run, onOpenSettings, onEdit, onChange, setting, terminalName, ...place }: ScriptsProps) {
+function Scripts({
+  page,
+  run,
+  folds,
+  onOpenSettings,
+  onEdit,
+  onChange,
+  setting,
+  terminalName,
+  ...place
+}: ScriptsProps) {
   const id = useId()
   const yours = yoursSection(page)
   const sections = shownSections(page)
@@ -128,6 +143,10 @@ function Scripts({ page, run, onOpenSettings, onEdit, onChange, setting, termina
           page={page}
           section={yours}
           headingId={`${id}-yours`}
+          open={folds.isOpen('scripts.yours')}
+          onToggle={() => {
+            folds.toggle('scripts.yours')
+          }}
           pending={run.pending}
           onRun={onRun}
           setting={setting}
@@ -140,6 +159,11 @@ function Scripts({ page, run, onOpenSettings, onEdit, onChange, setting, termina
       {sections.length === 0 && <Empty page={page} onOpenSettings={onOpenSettings} />}
       {sections.map((section) => {
         const headingId = `${id}-${section.source}`
+        const key: ScriptsSection = `scripts.${section.source}`
+        const open = folds.isOpen(key)
+        const toggle = () => {
+          folds.toggle(key)
+        }
 
         if (section.source === 'magex') {
           return (
@@ -147,6 +171,8 @@ function Scripts({ page, run, onOpenSettings, onEdit, onChange, setting, termina
               key={section.source}
               section={section}
               headingId={headingId}
+              open={open}
+              onToggle={toggle}
               pending={run.pending}
               onRun={onRun}
               {...place}
@@ -156,16 +182,21 @@ function Scripts({ page, run, onOpenSettings, onEdit, onChange, setting, termina
 
         return (
           <section key={section.source} aria-labelledby={headingId} className="flex flex-col gap-1">
-            <h3 id={headingId} className={`${captionClass} px-1`}>
-              {section.title}
-            </h3>
-            {section.error !== '' && (
+            <GroupHeading
+              id={headingId}
+              title={section.title}
+              count={section.entries.length}
+              open={open}
+              disabled={false}
+              onToggle={toggle}
+            />
+            {open && section.error !== '' && (
               <p className="flex items-start gap-1.5 px-1 text-xs text-warning">
                 <AlertIcon className="mt-px size-3.5 shrink-0" />
                 {section.error}
               </p>
             )}
-            {section.entries.length > 0 && (
+            {open && section.entries.length > 0 && (
               <ul aria-label={section.title} className="flex flex-col">
                 {section.entries.map((entry) => (
                   <ScriptRow
@@ -225,8 +256,14 @@ interface ClonePageProps extends PlaceProps {
   clone: ScriptClone
   // picker is the clone picker, which heads the clone's header.
   picker: ReactNode
-  // onStarted shows a run that started.
+  // onStarted hears of a script's run that started, and onPull of a pull's.
   onStarted: (id: number) => void
+  onPull: (id: number) => void
+  // folds keeps each source's section open or folded as the user left it.
+  folds: Sections
+  // note says a run started that doesn't show beside the scripts, with a way to show it,
+  // or is null.
+  note: ReactNode
   onOpenSettings: (section: SettingsSection) => void
 }
 
@@ -235,7 +272,7 @@ interface ClonePageProps extends PlaceProps {
 // it is on another branch than the default, New script and Read again, and its scripts,
 // with the editor of the user's own. A pull shows as a run, and once it ends the scripts
 // are read again, since the files they come from may have moved with the branch.
-function ClonePage({ clone, picker, onStarted, onOpenSettings, ...place }: ClonePageProps) {
+function ClonePage({ clone, picker, onStarted, onPull, folds, note, onOpenSettings, ...place }: ClonePageProps) {
   // read counts the reads of the clone's scripts after the first: Read again, which
   // lists magex's targets afresh (refresh), and each change to the user's own scripts,
   // which doesn't. The query shows only the newest read's answer, so one still under way
@@ -298,6 +335,7 @@ function ClonePage({ clone, picker, onStarted, onOpenSettings, ...place }: Clone
       <Scripts
         page={page}
         run={run}
+        folds={folds}
         onOpenSettings={onOpenSettings}
         onEdit={(script) => {
           setEditing({ script, variables: page.variables })
@@ -367,7 +405,7 @@ function ClonePage({ clone, picker, onStarted, onOpenSettings, ...place }: Clone
                     <span aria-hidden="true">·</span>
                     <BranchCheck
                       dir={clone.dir}
-                      onStarted={onStarted}
+                      onStarted={onPull}
                       onPulled={() => {
                         readAgain(false)
                       }}
@@ -391,6 +429,7 @@ function ClonePage({ clone, picker, onStarted, onOpenSettings, ...place }: Clone
           />
           <ErrorText error={run.failed === null ? '' : `Couldn’t run ${run.failed.name}: ${run.failed.error}`} />
           <ErrorText error={change.error === '' ? '' : `Couldn’t change your scripts: ${change.error}`} />
+          {note}
         </>
       }
     >
@@ -430,6 +469,14 @@ export interface RepoScriptsPageProps {
   // onOpenRelease opens the Release page, or is null while it isn't on.
   onOpenRelease: (() => void) | null
   onOpenSettings: (section: SettingsSection) => void
+  // sections are the sections the user opened or folded, kept across starts, and
+  // onSection stores another.
+  sections?: StoredSections
+  onSection?: OnSection
+  // showRuns reports whether a run that starts shows beside the scripts at once, and
+  // onShowRuns changes it.
+  showRuns?: boolean
+  onShowRuns?: (on: boolean) => void
 }
 
 // RepoScriptsPage is the Scripts tab's Repo scripts page: a picker of the clones under the
@@ -439,8 +486,10 @@ export interface RepoScriptsPageProps {
 // .vscode/tasks.json, and magex, each with Run and a menu that runs it in the other place.
 // A script of the user's set to ask before running asks first, a task with inputs asks
 // for them first, and a command from the repository's own files asks before its first
-// run and whenever it changes. A run that starts shows beside the scripts, which stay as
-// they were. Nothing here asks GitHub's API: only the chosen clone's branch check asks its
+// run and whenever it changes. Each source's section opens and folds, and stays as the user
+// left it across starts. A run that starts shows beside the scripts, which stay as they
+// were, when showRuns says so; otherwise a script's run says it started, with a way to show
+// it, and a pull shows only in the branch's status. Nothing here asks GitHub's API: only the chosen clone's branch check asks its
 // origin, one ls-remote whose answer is kept five minutes.
 export function RepoScriptsPage({
   dir,
@@ -452,8 +501,46 @@ export function RepoScriptsPage({
   cloneRoot,
   onOpenRelease,
   onOpenSettings,
+  sections = {},
+  onSection = () => undefined,
+  showRuns = false,
+  onShowRuns = () => undefined,
 }: RepoScriptsPageProps) {
   const id = useId()
+  const folds = useSections(sections, onSection)
+  // started is the run a script started that doesn't show beside the scripts, while the
+  // page says so, or null.
+  const [started, setStarted] = useState<number | null>(null)
+  const follow = (run: number) => {
+    setStarted(null)
+    onFollow(run)
+  }
+  const note =
+    started === null || followed !== null ? null : (
+      <p role="status" className="flex flex-wrap items-center gap-x-1.5 text-xs text-muted">
+        <span>The run started.</span>
+        <button
+          type="button"
+          onClick={() => {
+            follow(started)
+          }}
+          className="font-medium text-accent hover:underline"
+        >
+          Show it
+        </button>
+        <span aria-hidden="true">·</span>
+        <button
+          type="button"
+          onClick={() => {
+            onShowRuns(true)
+            follow(started)
+          }}
+          className="font-medium text-accent hover:underline"
+        >
+          Always show runs here
+        </button>
+      </p>
+    )
   const repos = useQuery(() => listScriptRepos(), [])
   const clones = repos.data ?? null
   const chosen = clones?.find((c) => c.dir === dir) ?? clones?.[0]
@@ -538,7 +625,20 @@ export function RepoScriptsPage({
         setting={runsIn}
         terminalName={terminalName}
         onOpenRelease={onOpenRelease}
-        onStarted={onFollow}
+        onStarted={(run) => {
+          if (showRuns) {
+            follow(run)
+          } else {
+            setStarted(run)
+          }
+        }}
+        onPull={(run) => {
+          if (showRuns) {
+            follow(run)
+          }
+        }}
+        folds={folds}
+        note={note}
         onOpenSettings={onOpenSettings}
       />
     )

@@ -110,6 +110,7 @@ func TestPrefDefaults(t *testing.T) {
 			RunsIn:          integrationprefs.RunsInApp,
 			OfferAfterMerge: true,
 			ScriptSources:   integrationprefs.ScriptSources{MagexTargets: true, RepoFiles: true},
+			Sections:        map[integrationprefs.ScriptsSection]bool{},
 		},
 
 		DefaultProtectedBranches: []string{"main", "master"},
@@ -275,6 +276,7 @@ func TestSettersPersist(t *testing.T) {
 			RunsIn:          integrationprefs.RunsInApp,
 			OfferAfterMerge: true,
 			ScriptSources:   integrationprefs.ScriptSources{MagexTargets: false, RepoFiles: true},
+			Sections:        map[integrationprefs.ScriptsSection]bool{},
 		},
 
 		DefaultProtectedBranches: branchrules.DefaultProtected(),

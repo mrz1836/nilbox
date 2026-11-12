@@ -117,7 +117,10 @@ Files the shared source doesn't have, such as `.github/workflows/frontend.yml` a
 `.github/workflows/sqlc.yml`, are left alone.
 
 Settings → About's **Report a bug** opens `.github/ISSUE_TEMPLATE/bug_report.yml` and fills in its
-`environment` field. The form is synced, so if a sync renames that field, the button stops filling
+`environment` field: the versions, then the settings and integrations, which core words
+(`internal/core/bugreport.go`, `appinfo.StateReader`) with nothing personal in them, a name or
+path of the user's own told only as the default or the user's own, or counted; its test fails on
+any. The form is synced, so if a sync renames that field, the button stops filling
 it in. The `internal/appinfo` tests read the form and fail when that happens. The `magefiles`
 tests likewise fail if the synced `10-mage-x.env` stops pinning golangci-lint, which `magex
 app:lint` reads.
@@ -158,15 +161,19 @@ app:lint` reads.
   (`TestOnlyExecpathStartsProcesses`, with named exceptions), and nothing runs `go install` or
   `sudo` (`TestNoGoInstall`, `TestNoSudo`); `internal/shellenv` reads the user's login shell's
   environment, after the first paint, and never logs a variable's name or value; and
-  `internal/clock`, `internal/periodic`, `internal/flight`, `internal/paths`, and
-  `internal/textutil` hold the clock (and `clock.Sleep`, the shared wait that ends with its
-  context), the interval runner, one call per key at a time, `~` paths, and text helpers. `internal/testutil` holds the fakes and fixtures the test suites
+  `internal/clock`, `internal/periodic`, `internal/flight`, `internal/paths`,
+  `internal/progress`, and `internal/textutil` hold the clock (and `clock.Sleep`, the shared
+  wait that ends with its context), the interval runner, one call per key at a time, `~`
+  paths, a long read's progress told to the window a few times a second (the Release page's
+  list and the window's worktrees listing, `event.WorktreesProgress`), and text helpers. `internal/testutil` holds the fakes and fixtures the test suites
   share (a fresh database, an isolated git, a runner, finder, clock, event sink, log, and fake
   tools); only tests may import it.
 - `internal/event/` holds the app's events, one Go type each with its name; services emit them
   into the one `event.Sink` they are given. `internal/desktop/` is the shell's logic: it hears
   those events, keeps the menu bar current with what `internal/menubar` works out, runs the
-  scheduler, the sweeper, the budget's `Saver`, the sessions watcher, the Release page's
+  scheduler, the checks follower (`inbox.ChecksFollower`: every 45 seconds, the listed pull
+  requests whose checks were running, read in one request through
+  `(*github.Client).FetchItems`, and nothing while none runs), the sweeper, the budget's `Saver`, the sessions watcher, the Release page's
   refresher, and the Hooks page's scans as tracked work, starts the deferred work
   (`core.Deferred`: the login-shell read first; the tool finder, the runs, and the release
   `Follower` beside it) once after the first paint, never on the cold
@@ -285,7 +292,10 @@ app:lint` reads.
   rollout files. Each observer degrades to `StateUnknown` rather than guess, and a session's
   process says whether it still runs. Following never sends a session anything, and nothing here
   reaches the network. `LastWords` reads a session's whole last message from the agent's own
-  files, on demand, for the review sheet.
+  files, on demand, for the review sheet. Each record keeps what its launch reported (the
+  permissions it started with, what it did to the item's worktree, and what it worked around),
+  which the card's sessions panel shows in place of a line on the row after the launch, and
+  `ShowFolder` shows a session's folder in Finder through core's `open -R` Revealer.
 - `internal/review/` is the review sheet's service. `Decide` is pure: from a pull request's
   facts it works out every action's offer and the one primary, and `Act` runs it again before
   any write. An offer with warnings asks first (`offers` sets `Offer.Confirm` for it), since
@@ -359,8 +369,10 @@ app:lint` reads.
   app control Finder; `Reveal` shows such a copy in Finder (`open -R`). It writes the
   `tools.*` preferences and only reads `integrations.*`, which settings writes through the leaf `internal/integrationprefs`
   (the switches, automatic, on, or off, and the chosen copies; the leaf also declares the
-  window's memory of the Scripts tab, `integrations.announced`, `scripts.lastPage`, and
-  `scripts.lastRepo`, which settings stores for the window alone), so settings never imports
+  window's memory of the Scripts tab, `integrations.announced`, `scripts.lastPage`,
+  `scripts.lastRepo`, and `scripts.sections` (the Hooks and Repo scripts sections the user
+  opened or folded), and `scripts.showRuns`, whether a run Repo scripts starts opens beside
+  it, off by default, which settings stores for the window alone), so settings never imports
   integrations. One rule says which folders are go install's (`goFolders`), for a copy's
   source and for its own updater alike: `$GOBIN`, each `$GOPATH` folder's bin, and
   `~/go/bin`, from the shell's environment and, while `go` is on its `PATH`, from `go env

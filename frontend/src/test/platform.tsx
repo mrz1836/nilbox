@@ -138,6 +138,7 @@ function answers(subscribe: Loose<Platform['on']>): { [K in keyof Platform]: Loo
 
     listSessions: () => Promise.resolve(sessionsSnapshot()),
     focusSession: done,
+    showSessionFolder: done,
     sessionLastWords: () => Promise.resolve({ text: 'The change looks good.', partial: false }),
 
     openReview: () => Promise.resolve(review()),
@@ -216,6 +217,9 @@ function answers(subscribe: Loose<Platform['on']>): { [K in keyof Platform]: Loo
     setIntegrationsAnnounced: (announced) => stored({ integrations: integrationsConfig({ announced }) }),
     setScriptsLastPage: (lastPage) => stored({ integrations: integrationsConfig({ lastPage }) }),
     setScriptsLastRepo: (lastRepo) => stored({ integrations: integrationsConfig({ lastRepo }) }),
+    setScriptsSectionOpen: (section, open) =>
+      stored({ integrations: integrationsConfig({ sections: { [section]: open } }) }),
+    setShowRuns: (showRuns) => stored({ integrations: integrationsConfig({ showRuns }) }),
 
     listIntegrations: () => Promise.resolve(integrationTools()),
     checkIntegrationsAgain: () => Promise.resolve(integrationTools()),

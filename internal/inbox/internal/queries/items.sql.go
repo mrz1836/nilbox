@@ -665,6 +665,69 @@ func (q *Queries) ListListedNodeIDs(ctx context.Context, login string) ([]string
 	return items, nil
 }
 
+const listRunningChecks = `-- name: ListRunningChecks :many
+SELECT i.id, i.account_id, i.node_id
+FROM items i
+JOIN accounts a ON a.id = i.account_id
+JOIN item_details d ON d.item_id = i.id
+LEFT JOIN item_local_state l ON l.item_id = i.id
+WHERE a.login = ?1
+  AND i.kind = 'pr'
+  AND i.node_id <> ''
+  AND (i.reason_review_requested = 1 OR i.reason_authored = 1 OR i.reason_assigned = 1)
+  AND d.checks_state IN ('PENDING', 'EXPECTED')
+  AND d.fetched_at < ?2
+  AND l.dismissed_at IS NULL
+  AND (l.snoozed_until IS NULL OR l.snoozed_until <= ?3)
+ORDER BY d.fetched_at, i.id
+LIMIT ?4
+`
+
+type ListRunningChecksParams struct {
+	Login      string
+	ReadBefore time.Time
+	Now        *time.Time
+	RowLimit   int64
+}
+
+type ListRunningChecksRow struct {
+	ID        int64
+	AccountID int64
+	NodeID    string
+}
+
+// ListRunningChecks returns the listed open pull requests of the account with login whose
+// checks were running (PENDING or EXPECTED) when their details were last read, before
+// read_before, neither dismissed nor snoozed at now, the longest unread first, up to
+// row_limit: the ones the inbox follows until their checks end.
+func (q *Queries) ListRunningChecks(ctx context.Context, arg ListRunningChecksParams) ([]ListRunningChecksRow, error) {
+	rows, err := q.db.QueryContext(ctx, listRunningChecks,
+		arg.Login,
+		arg.ReadBefore,
+		arg.Now,
+		arg.RowLimit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListRunningChecksRow{}
+	for rows.Next() {
+		var i ListRunningChecksRow
+		if err := rows.Scan(&i.ID, &i.AccountID, &i.NodeID); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const unlistItem = `-- name: UnlistItem :exec
 UPDATE items
 SET reason_review_requested = 0, reason_authored = 0, reason_assigned = 0, fetched_at = ?

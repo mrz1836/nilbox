@@ -1,9 +1,12 @@
 import type { ReactNode } from 'react'
 
 import { useWorktrees, type WorktreesOptions } from '../lib/useWorktrees'
+import { formatAgo } from '../lib/time'
 import { filterWorktrees } from '../lib/worktreeFilter'
-import type { AgentID, BranchRules, LinkedItem } from '../platform'
+import { progressStep } from '../lib/worktreeProgress'
+import type { AgentID, BranchRules, LinkedItem, WorktreesProgress } from '../platform'
 import { ErrorBanner } from './ErrorBanner'
+import { RelativeTime } from './RelativeTime'
 import { Spinner } from './Spinner'
 import { BranchResults } from './worktrees/BranchResults'
 import { BulkResults } from './worktrees/BulkResults'
@@ -32,9 +35,32 @@ export type WorktreesViewProps = WorktreesOptions & {
   query?: string | undefined
 }
 
+// Checking says a listing is under way, whichever started it, and how far it has got:
+// the phase in words, with a thin bar for a phase that counts its clones or worktrees.
+function Checking({ progress, root }: { progress: WorktreesProgress | null; root: string }) {
+  const step = progressStep(progress, root)
+
+  return (
+    <span role="status" className="flex min-w-0 items-center gap-2 text-muted">
+      <Spinner className="size-3.5" />
+      <span className="truncate">{step.text}</span>
+      {step.share !== null && (
+        <span aria-hidden="true" className="h-1 w-20 shrink-0 overflow-hidden rounded-full bg-border">
+          <span
+            className="block h-full rounded-full bg-accent transition-[width] duration-200"
+            style={{ width: `${String(Math.round(step.share * 100))}%` }}
+          />
+        </span>
+      )}
+    </span>
+  )
+}
+
 // WorktreesView lists the git worktrees of every clone under the clone root and removes
 // them safely. It loads when it opens, when its Refresh button is clicked, and when
 // reloadKey changes, never on a timer of its own: a listing runs git in every clone.
+// Whatever starts a listing, a quiet one after a background sweep included, the toolbar
+// says it is checking and how far it has got; otherwise, when the list was checked.
 // Removal follows what the backend allows, and every removal and cleanup asks first,
 // showing a box for each worktree and branch it would take.
 //
@@ -55,6 +81,8 @@ export function WorktreesView({
     history,
     historyRef,
     loading,
+    checking,
+    progress,
     disabled,
     loadError,
     error,
@@ -77,7 +105,16 @@ export function WorktreesView({
         <button type="button" disabled={disabled} onClick={actions.refresh} className={plainButton}>
           {loading ? 'Refreshing…' : 'Refresh'}
         </button>
-        {snapshot !== null && <span className="text-muted">Worktrees of the clones under {snapshot.root}</span>}
+        {checking && snapshot !== null ? (
+          <Checking progress={progress} root={snapshot.root} />
+        ) : (
+          snapshot !== null && (
+            <span className="text-muted">
+              Worktrees of the clones under {snapshot.root} · checked{' '}
+              <RelativeTime iso={now.toISOString()} show={formatAgo} />
+            </span>
+          )
+        )}
         <span className="ml-auto flex flex-wrap items-center gap-2">
           <button
             type="button"
@@ -123,9 +160,8 @@ export function WorktreesView({
       {branchResults !== null && <BranchResults results={branchResults} onDismiss={actions.dismiss} />}
       {snapshot === null
         ? loadError === '' && (
-            <p className="flex items-center gap-2 text-sm text-muted">
-              <Spinner />
-              Listing the worktrees…
+            <p className="text-sm">
+              <Checking progress={progress} root="" />
             </p>
           )
         : repos.length === 0 && (

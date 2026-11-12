@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from 'vitest'
 
 import { brand } from '../../generated/brand'
 import type { SettingsSection } from '../../lib/settingsIndex'
+import type { OnSection, StoredSections } from '../../lib/useSections'
 import { useHooks } from '../../lib/useHooks'
 import type { HookInstallAllResult, IntegrationTool, ScriptRun } from '../../platform'
 import { at } from '../../test/clock'
@@ -18,6 +19,8 @@ interface PageProps {
   runs?: readonly ScriptRun[] | null
   onOpenRun: (id: number) => void
   onOpenSettings: (section: SettingsSection) => void
+  sections?: StoredSections
+  onSection?: OnSection
 }
 
 // Page is the page as the tab shows it, reading the list itself.
@@ -49,6 +52,35 @@ function rows(title: string): string[] {
 }
 
 describe('HooksPage', () => {
+  it('keeps each group open or folded as the user left it, across starts', async () => {
+    const onSection = vi.fn<OnSection>()
+    const { unmount } = render(
+      <Page
+        tool={goPreCommitTool()}
+        onOpenRun={vi.fn()}
+        onOpenSettings={vi.fn()}
+        sections={{ 'hooks.attention': false, 'hooks.off': true }}
+        onSection={onSection}
+      />,
+      { wrapper: at() },
+    )
+
+    await screen.findByRole('list', { name: 'Ready' })
+    expect(group(/^Needs attention · 4/)).toHaveAttribute('aria-expanded', 'false')
+    expect(screen.queryByRole('list', { name: 'Needs attention' })).not.toBeInTheDocument()
+    expect(group(/^Turned off in the repository · 1/)).toHaveAttribute('aria-expanded', 'true')
+
+    await userEvent.click(group(/^Ready · 1/))
+
+    expect(onSection).toHaveBeenCalledExactlyOnceWith('hooks.ready', false)
+    expect(group(/^Ready · 1/)).toHaveAttribute('aria-expanded', 'false')
+
+    await userEvent.click(group(/^Not set up/))
+    expect(onSection).toHaveBeenLastCalledWith('hooks.notSetUp', true)
+
+    unmount()
+  })
+
   it('lists the repositories needing attention and the ready ones open, and the rest collapsed', async () => {
     renderPage()
 

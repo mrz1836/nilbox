@@ -13,9 +13,9 @@ import {
   type ScriptSection,
   type UserScript,
 } from '../../platform'
-import { captionClass } from '../controls'
 import { ConfirmDialog } from '../ConfirmDialog'
 import { AlertIcon } from '../icons'
+import { GroupHeading } from './GroupHeading'
 import { ScriptRow } from './ScriptRow'
 import { commandClass } from './TrustDialog'
 
@@ -26,6 +26,9 @@ export interface YoursSectionProps {
   page: RepoScripts
   section: ScriptSection
   headingId: string
+  // open shows the scripts under the heading, and onToggle opens or folds them.
+  open: boolean
+  onToggle: () => void
   // pending holds the Run buttons while a run is being asked for; onRun asks for one.
   pending: boolean
   onRun: (ask: ScriptAsk) => void
@@ -49,6 +52,8 @@ export function YoursSection({
   page,
   section,
   headingId,
+  open,
+  onToggle,
   pending,
   onRun,
   setting,
@@ -62,16 +67,21 @@ export function YoursSection({
 
   return (
     <section aria-labelledby={headingId} className="flex flex-col gap-1">
-      <h3 id={headingId} className={`${captionClass} px-1`}>
-        {section.title}
-      </h3>
-      {section.error !== '' && (
+      <GroupHeading
+        id={headingId}
+        title={section.title}
+        count={entries.length}
+        open={open}
+        disabled={false}
+        onToggle={onToggle}
+      />
+      {open && section.error !== '' && (
         <p className="flex items-start gap-1.5 px-1 text-xs text-warning">
           <AlertIcon className="mt-px size-3.5 shrink-0" />
           {section.error}
         </p>
       )}
-      {entries.length > 0 && (
+      {open && entries.length > 0 && (
         <ul aria-label={section.title} className="flex flex-col">
           {entries.map((entry, i) => {
             const { mine } = entry
@@ -130,7 +140,7 @@ export function YoursSection({
           })}
         </ul>
       )}
-      {entries.length === 0 && section.error === '' && (
+      {open && entries.length === 0 && section.error === '' && (
         <p className="px-1 text-sm text-muted">
           {section.found
             ? `None of your scripts show in ${page.name}.`

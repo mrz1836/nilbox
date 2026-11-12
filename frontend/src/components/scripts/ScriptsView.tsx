@@ -10,6 +10,7 @@ import { useHooks } from '../../lib/useHooks'
 import type { IntegrationsState } from '../../lib/useIntegrations'
 import { useReleaseCandidates } from '../../lib/useReleaseCandidates'
 import type { ScriptRunsState } from '../../lib/useScriptRuns'
+import type { OnSection, StoredSections } from '../../lib/useSections'
 import type { IntegrationSwitch, IntegrationTool, RunsIn, ScriptsPage as StoredPage, TerminalID } from '../../platform'
 import {
   AlertIcon,
@@ -121,6 +122,14 @@ export interface ScriptsViewProps {
   lastRepo: string
   onPage: (page: ScriptsPage) => void
   onRepo: (dir: string) => void
+  // sections are the sections the user opened or folded, kept across starts, and
+  // onSection stores another.
+  sections?: StoredSections
+  onSection?: OnSection
+  // showRuns reports whether a run Repo scripts starts shows beside its scripts at once,
+  // and onShowRuns changes it.
+  showRuns?: boolean
+  onShowRuns?: (on: boolean) => void
 }
 
 // ScriptsView is the Scripts tab: a rail of its pages, each with what it counts, and at
@@ -145,6 +154,10 @@ export default function ScriptsView({
   lastRepo,
   onPage,
   onRepo,
+  sections = {},
+  onSection = () => undefined,
+  showRuns = false,
+  onShowRuns = () => undefined,
 }: ScriptsViewProps) {
   const { tools, error } = integrations
   const mageX = toolOf(tools, 'mage-x')
@@ -352,6 +365,8 @@ export default function ScriptsView({
             runsIn={runsIn}
             onOpenRun={openRun}
             onOpenSettings={onOpenSettings}
+            sections={sections}
+            onSection={onSection}
           />
         ) : shown === 'scripts' ? (
           <RepoScriptsPage
@@ -370,6 +385,10 @@ export default function ScriptsView({
                 : null
             }
             onOpenSettings={onOpenSettings}
+            sections={sections}
+            onSection={onSection}
+            showRuns={showRuns}
+            onShowRuns={onShowRuns}
           />
         ) : (
           <RunsPage {...runs} terminal={terminal} selected={selectedRun} onSelect={setSelectedRun} />

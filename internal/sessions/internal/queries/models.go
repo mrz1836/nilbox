@@ -36,4 +36,7 @@ type AgentSession struct {
 	LinkedAt       *time.Time
 	StateAt        time.Time
 	EndedAt        *time.Time
+	Permission     string
+	WorktreeAction string
+	LaunchNotice   string
 }

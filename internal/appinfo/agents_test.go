@@ -151,7 +151,7 @@ func TestAgentVersionsSaysWhyAVersionIsMissing(t *testing.T) {
 	s.AgentVersions(t.Context())
 	assert.Equal(t, 1, script.count("claude"), "a build that fails, fails again, so it is not run again")
 
-	report := environment(Info{}, got, nil)
+	report := environment(Info{}, got, nil, nil)
 	assert.Contains(t, report, "- Claude: unknown\n")
 	assert.NotContains(t, report, "--version", "a report never carries the error")
 }
@@ -188,7 +188,7 @@ func TestToolVersionsWithoutTheirCommands(t *testing.T) {
 	got := s.ToolVersions(t.Context())
 	require.Len(t, got, 1)
 	assert.False(t, got[0].Installed)
-	assert.Contains(t, environment(Info{}, nil, got), "- GitHub CLI: not installed\n")
+	assert.Contains(t, environment(Info{}, nil, got, nil), "- GitHub CLI: not installed\n")
 }
 
 func TestAgentVersionsWithoutTheirCommands(t *testing.T) {
