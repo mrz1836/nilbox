@@ -4,8 +4,6 @@ import (
 	"cmp"
 	"context"
 	"errors"
-	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -547,9 +545,9 @@ func (g *Gatherer) within(ctx context.Context, dir, local, head string) (ancesto
 }
 
 // modulePath returns the module path the go.mod at the clone's root names, or "" when
-// there is none or it can't be read.
+// there is none or it can't be read: anything but a regular file, or a link to one, isn't.
 func modulePath(dir string) string {
-	data, err := readHead(filepath.Join(dir, goModFile), goModLimit)
+	data, err := paths.ReadHead(filepath.Join(dir, goModFile), goModLimit)
 	if err != nil {
 		return ""
 	}
@@ -576,23 +574,6 @@ func parseModulePath(data []byte) string {
 	}
 
 	return ""
-}
-
-// readHead reads up to limit bytes of the file at path.
-func readHead(path string, limit int64) ([]byte, error) {
-	f, err := os.Open(path) //nolint:gosec // a file in the clone or the user's own config, only read
-	if err != nil {
-		return nil, err
-	}
-
-	defer func() { _ = f.Close() }()
-
-	data, err := io.ReadAll(io.LimitReader(f, limit))
-	if err != nil {
-		return nil, fmt.Errorf("read %s: %w", filepath.Base(path), err)
-	}
-
-	return data, nil
 }
 
 // branchFacts is what the clone has of the release's branch.

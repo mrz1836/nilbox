@@ -184,7 +184,7 @@ func publicKeyID(line string) string {
 
 // readPublicKey returns the public key in the file at path, as publicKeyID, or "".
 func readPublicKey(path string) string {
-	data, err := readHead(path, goModLimit)
+	data, err := paths.ReadHead(path, goModLimit)
 	if err != nil {
 		return ""
 	}
@@ -198,7 +198,7 @@ func readPublicKey(path string) string {
 // pinentry that asks in a window. Without one, gpg-agent runs its default, which on a Mac
 // without GPG Suite asks in a terminal.
 func windowPinentry(home string) bool {
-	data, err := readHead(filepath.Join(home, gpgAgentConf), goModLimit)
+	data, err := paths.ReadHead(filepath.Join(home, gpgAgentConf), goModLimit)
 	if err != nil {
 		return false
 	}
