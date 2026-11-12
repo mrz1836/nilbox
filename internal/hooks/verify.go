@@ -48,8 +48,8 @@ func (v Verifier) Verify(run scriptrun.Record) scriptrun.Verification {
 // verifyAction is Verify for a hooks action: its Finish judges it from the hooks its Before
 // kept, and its Released has the page scan the clone again, as an action's Spec does.
 func (s *Service) verifyAction(rec scriptrun.Record) scriptrun.Verification {
-	var in ActionIntent
-	if err := decodeIntent(rec.Result.Intent, &in); err != nil || !in.Action.Valid() {
+	in, err := scriptrun.Decode[ActionIntent](rec.Result.Intent)
+	if err != nil || !in.Action.Valid() {
 		s.logger.Warn("a hooks action from before the app restarted can't be checked", "run", rec.ID)
 
 		return scriptrun.Verification{}
@@ -97,8 +97,8 @@ func (s *Service) finishKept(ctx context.Context, id int64, run *actionRun, read
 // window, as a checks run's Spec does. A record that ran go-pre-commit with --json is read as
 // JSON.
 func (s *Service) verifyChecks(rec scriptrun.Record) scriptrun.Verification {
-	var in ChecksIntent
-	if err := decodeIntent(rec.Result.Intent, &in); err != nil || checkIntent(in) != nil {
+	in, err := scriptrun.Decode[ChecksIntent](rec.Result.Intent)
+	if err != nil || checkIntent(in) != nil {
 		s.logger.Warn("a checks run from before the app restarted can't be checked", "run", rec.ID)
 
 		return scriptrun.Verification{}

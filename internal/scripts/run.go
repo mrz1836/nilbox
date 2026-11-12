@@ -3,7 +3,6 @@ package scripts
 import (
 	"cmp"
 	"context"
-	"encoding/json"
 	"fmt"
 	"regexp"
 	"slices"
@@ -529,16 +528,16 @@ func (r Rerunner) pull(ctx context.Context, run scriptrun.Record) (scriptrun.Spe
 		return scriptrun.Spec{}, ErrNotSetUp
 	}
 
-	var in PullIntent
-	if err := decodeIntent(run.Result.Intent, &in); err != nil {
-		return scriptrun.Spec{}, err
+	in, err := scriptrun.Decode[PullIntent](run.Result.Intent)
+	if err != nil {
+		return scriptrun.Spec{}, fmt.Errorf("%w: the run's intent: %w", ErrInvalidRequest, err)
 	}
 
 	if in.Branch == "" {
 		return scriptrun.Spec{}, fmt.Errorf("%w: a pull of no branch", ErrInvalidRequest)
 	}
 
-	if err := r.s.pullsOff(ctx); err != nil {
+	if err = r.s.pullsOff(ctx); err != nil {
 		return scriptrun.Spec{}, err
 	}
 
@@ -552,9 +551,9 @@ func (r Rerunner) pull(ctx context.Context, run scriptrun.Record) (scriptrun.Spe
 
 // script returns the spec of a script again.
 func (r Rerunner) script(ctx context.Context, run scriptrun.Record) (scriptrun.Spec, error) {
-	var in Intent
-	if err := decodeIntent(run.Result.Intent, &in); err != nil {
-		return scriptrun.Spec{}, err
+	in, err := scriptrun.Decode[Intent](run.Result.Intent)
+	if err != nil {
+		return scriptrun.Spec{}, fmt.Errorf("%w: the run's intent: %w", ErrInvalidRequest, err)
 	}
 
 	c, err := r.s.cloneAt(ctx, paths.Tilde(run.Dir, r.s.home))
@@ -568,19 +567,4 @@ func (r Rerunner) script(ctx context.Context, run scriptrun.Record) (scriptrun.S
 	}
 
 	return r.s.spec(ctx, c, in, cmp.Or(run.RunsIn, integrationprefs.RunsInApp), cfg, confirmation{rerun: true})
-}
-
-// decodeIntent reads a run's intent back from its record, where it was decoded as plain
-// JSON values.
-func decodeIntent(recorded, into any) error {
-	data, err := json.Marshal(recorded)
-	if err == nil {
-		err = json.Unmarshal(data, into)
-	}
-
-	if err != nil {
-		return fmt.Errorf("%w: the run's intent: %w", ErrInvalidRequest, err)
-	}
-
-	return nil
 }

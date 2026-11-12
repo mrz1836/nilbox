@@ -3,7 +3,6 @@ package release
 import (
 	"cmp"
 	"context"
-	"encoding/json"
 	"fmt"
 	"net/url"
 	"strings"
@@ -531,13 +530,8 @@ func (s *Service) awaitShell(ctx context.Context) {
 // intentOf reads a release's intent back from its record, where it was decoded as plain
 // JSON values, and reports whether it names a version.
 func intentOf(recorded any) (Intent, bool) {
-	data, err := json.Marshal(recorded)
+	in, err := scriptrun.Decode[Intent](recorded)
 	if err != nil {
-		return Intent{}, false
-	}
-
-	var in Intent
-	if err = json.Unmarshal(data, &in); err != nil {
 		return Intent{}, false
 	}
 

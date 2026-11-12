@@ -465,8 +465,8 @@ func (v Verifier) Verify(rec scriptrun.Record) scriptrun.Verification {
 		return scriptrun.Verification{}
 	}
 
-	var in PullIntent
-	if err := decodeIntent(rec.Result.Intent, &in); err != nil || !gitread.ValidBranch(in.Branch) || v.s.branchGit == nil {
+	in, err := scriptrun.Decode[PullIntent](rec.Result.Intent)
+	if err != nil || !gitread.ValidBranch(in.Branch) || v.s.branchGit == nil {
 		v.s.logger.Warn("a pull from before the app restarted can't be checked", "run", rec.ID)
 
 		return scriptrun.Verification{Callbacks: scriptrun.Callbacks{Progress: pullProgress}}

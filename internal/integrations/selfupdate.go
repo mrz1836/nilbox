@@ -3,7 +3,6 @@ package integrations
 import (
 	"cmp"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -518,13 +517,7 @@ func (s *Service) releasedUpdate(r *selfRun) {
 // values, with the tool it names; ok is false for one that can't be read, or names no tool
 // the app knows.
 func (s *Service) intentOf(recorded any) (Definition, updateIntent, bool) {
-	var in updateIntent
-
-	data, err := json.Marshal(recorded)
-	if err == nil {
-		err = json.Unmarshal(data, &in)
-	}
-
+	in, err := scriptrun.Decode[updateIntent](recorded)
 	def, known := s.definition(in.Tool)
 
 	return def, in, err == nil && known && filepath.IsAbs(in.Path)
