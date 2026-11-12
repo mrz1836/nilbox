@@ -400,6 +400,48 @@ func TestLookupReadsTheLastEntryThatSetsTheVariable(t *testing.T) {
 	assert.False(t, set)
 }
 
+func TestLookupReadsAKeyUpToItsEntrysFirstEquals(t *testing.T) {
+	t.Parallel()
+
+	// A repository's ${env:NAME} hands Lookup a name it chose, which may hold "=".
+	env := []string{"LS_COLORS=di=34:ln=35", "A=first", "BARE", "A=last", "A=B=c"}
+
+	for _, tc := range []struct {
+		key   string
+		value string
+		set   bool
+	}{
+		{key: "LS_COLORS", value: "di=34:ln=35", set: true},
+		{key: "LS_COLORS=di", value: "", set: false},
+		{key: "LS_COLORS=", value: "", set: false},
+		{key: "A=B", value: "", set: false},
+		{key: "A", value: "B=c", set: true},
+		{key: "BARE", value: "", set: false},
+	} {
+		value, set := shellenv.LookupOK(env, tc.key)
+		assert.Equal(t, tc.value, value, tc.key)
+		assert.Equal(t, tc.set, set, tc.key)
+		assert.Equal(t, tc.value, shellenv.Lookup(env, tc.key), tc.key)
+	}
+
+	assert.Equal(t, "last", shellenv.Lookup([]string{"A=first", "B=x", "A=last", "BARE"}, "A"), "the last entry wins")
+
+	value, set := shellenv.LookupOK([]string{"A=first", "A="}, "A")
+	assert.True(t, set)
+	assert.Empty(t, value, "an empty last entry wins too")
+}
+
+func TestWithoutDropsABareKeyAndEveryRepeat(t *testing.T) {
+	t.Parallel()
+
+	env := []string{"BARE", "A=1", "BARE=x", "A=B=2", "A", "BAREST=y", "A=3"}
+
+	assert.Equal(t, []string{"BAREST=y"}, shellenv.Without(env, "A", "BARE"),
+		"every repeat goes, an entry with no = when its whole text is the key, and a value holding =")
+	assert.Equal(t, env, shellenv.Without(env, "A=B", "BARE="), "a key holding = names no entry")
+	assert.Equal(t, []string{"A=1", "A=B=2", "A", "BAREST=y", "A=3", "BARE=new"}, shellenv.With(env, "BARE", "new"))
+}
+
 func TestWithoutDropsEveryEntryThatSetsAKey(t *testing.T) {
 	t.Parallel()
 
@@ -407,7 +449,7 @@ func TestWithoutDropsEveryEntryThatSetsAKey(t *testing.T) {
 	before := slices.Clone(env)
 
 	assert.Equal(t, []string{"PATH=/bin", "BARE", "AB=3", "a=4"}, shellenv.Without(env, "A", "B"),
-		"in order, every repeat, a name only when it is the whole name, case and all; an entry without = sets nothing")
+		"in order, every repeat, a name only when it is the whole name, case and all; a bare entry of another key stays")
 	assert.Equal(t, before, env, "env itself is left alone")
 	assert.Equal(t, env, shellenv.Without(env))
 

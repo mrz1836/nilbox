@@ -208,11 +208,12 @@ func Lookup(env []string, key string) string {
 }
 
 // LookupOK returns key's value in env, the last one when it repeats, and whether env sets
-// key at all, even to "". An entry sets key when it begins with key and "=": one without
+// key at all, even to "". An entry's key is its text up to its first "=", and its value
+// the rest: a key holding "=" is never set (a value may hold one), and an entry without
 // "=" sets nothing.
 func LookupOK(env []string, key string) (string, bool) {
 	for _, e := range slices.Backward(env) {
-		if value, ok := strings.CutPrefix(e, key+"="); ok {
+		if k, value, ok := strings.Cut(e, "="); ok && k == key {
 			return value, true
 		}
 	}
@@ -220,13 +221,14 @@ func LookupOK(env []string, key string) (string, bool) {
 	return "", false
 }
 
-// Without returns a copy of env, in its order, without every entry that sets one of keys
-// (as LookupOK reads one). env itself is never changed, and the copy is never nil.
+// Without returns a copy of env, in its order, without every entry whose key is one of
+// keys: its text up to its first "=", or its whole text when it has none, so a bare KEY
+// goes too. env itself is never changed, and the copy is never nil.
 func Without(env []string, keys ...string) []string {
 	out := make([]string, 0, len(env)+1)
 
 	for _, e := range env {
-		if !slices.ContainsFunc(keys, func(key string) bool { return strings.HasPrefix(e, key+"=") }) {
+		if k, _, _ := strings.Cut(e, "="); !slices.Contains(keys, k) {
 			out = append(out, e)
 		}
 	}
@@ -234,8 +236,8 @@ func Without(env []string, keys ...string) []string {
 	return out
 }
 
-// With returns a copy of env with key set to value, last, in place of every entry that set
-// it before (Without). env itself is never changed.
+// With returns a copy of env with key set to value, last, in place of every entry that
+// named it before (Without). env itself is never changed.
 func With(env []string, key, value string) []string {
 	return append(Without(env, key), key+"="+value)
 }
