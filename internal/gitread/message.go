@@ -97,9 +97,10 @@ func listed(names []string) (list, verb, them string) {
 	}
 }
 
-// gitSaid is what git said in a failure, without the command and the exit status, or that
-// origin didn't answer an ls-remote within RemoteTimeout, or that git ran out of time
-// otherwise.
+// gitSaid is what git said in a failure, without the command and the exit status, or the
+// command when git said nothing worth showing, read from the *commandError in err's
+// chain, however a caller wraps it; or that origin didn't answer an ls-remote within
+// RemoteTimeout, or that git ran out of time otherwise; or else textSaid.
 func gitSaid(err error) string {
 	switch {
 	case errors.Is(err, ErrRemoteTimeout):
@@ -108,6 +109,23 @@ func gitSaid(err error) string {
 		return "git didn't finish in time"
 	}
 
+	if failed, ok := errors.AsType[*commandError](err); ok {
+		if failed.said == "" {
+			return "git " + failed.cmd
+		}
+
+		return failed.said
+	}
+
+	return textSaid(err)
+}
+
+// textSaid is what an error that holds no *commandError says, read from its text: its own
+// words, without those of the error it wraps, as a file gitread couldn't look for is
+// "look for index.lock"; and, in a failure's shape, "git <command>: <said>", what follows
+// the command, as a refused command (ErrGitCommandNotAllowed) gives what was refused, and
+// as a git failure built elsewhere in that shape gives what git said.
+func textSaid(err error) string {
 	text := err.Error()
 	if inner := errors.Unwrap(err); inner != nil {
 		text = strings.TrimSuffix(text, ": "+inner.Error())

@@ -545,16 +545,33 @@ func (g *Git) ask(ctx context.Context, dir string, args []string) ([]byte, bool,
 	}
 }
 
-// failure wraps err from the command args with the line of stderr worth showing. A
-// refused command's error is returned as it is.
+// failure wraps err from the command args with the line of stderr worth showing, as a
+// *commandError. A refused command's error is returned as it is.
 func failure(args []string, stderr []byte, err error) error {
 	if errors.Is(err, ErrGitCommandNotAllowed) {
 		return err
 	}
 
-	if msg := execpath.GitMessage(stderr); msg != "" {
-		return fmt.Errorf("git %s: %s: %w", args[0], msg, err)
+	return &commandError{cmd: args[0], said: execpath.GitMessage(stderr), err: err}
+}
+
+// commandError is a git command's failure: cmd is the command's first word, said the
+// line of standard error worth showing, "" when git said nothing worth it, and err what
+// it failed with. Message reads what git said from it, however a caller wraps it.
+type commandError struct {
+	cmd  string
+	said string
+	err  error
+}
+
+// Error returns "git <cmd>: <said>: <err>", without said when git said nothing.
+func (e *commandError) Error() string {
+	if e.said == "" {
+		return "git " + e.cmd + ": " + e.err.Error()
 	}
 
-	return fmt.Errorf("git %s: %w", args[0], err)
+	return "git " + e.cmd + ": " + e.said + ": " + e.err.Error()
 }
+
+// Unwrap returns what the command failed with.
+func (e *commandError) Unwrap() error { return e.err }

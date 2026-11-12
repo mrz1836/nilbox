@@ -147,18 +147,19 @@ func TestMessage(t *testing.T) {
 			want: "look for index.lock",
 		},
 		{err: fmt.Errorf("fetch: %w", errUnread), want: "fetch"},
+		{err: fmt.Errorf("git config: bad config line 3 in file .git/config: %w", inner), want: "bad config line 3 in file .git/config"},
 
-		// A caller's wrap of a git command's failure.
+		// A caller's wrap of a git command's failure changes none of its words.
 		{
 			err:  fmt.Errorf("read the branch: %w", failure([]string{revParse}, []byte("fatal: not a git repository\n"), inner)),
-			want: "read the branch",
+			want: "not a git repository",
 		},
-		{err: fmt.Errorf("read the branch: %w", failure([]string{statusCmd}, nil, inner)), want: "read the branch"},
+		{err: fmt.Errorf("read the branch: %w", failure([]string{statusCmd}, nil, inner)), want: "git status"},
 		{
 			err: fmt.Errorf("ask origin: %w", failure([]string{lsRemote}, []byte("fatal: Repository not found.\n"),
 				&SetAsideError{Err: inner, Settings: []string{SetAsideHelpers}})),
-			want: "ask origin. This clone's own credential.helper isn't used to reach origin, which may be why: set " +
-				"it for this folder in your global git config, with an includeIf.",
+			want: "Repository not found. This clone's own credential.helper isn't used to reach origin, which may be " +
+				"why: set it for this folder in your global git config, with an includeIf.",
 		},
 	}
 
