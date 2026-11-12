@@ -136,7 +136,9 @@ func FuzzWSHandshake(f *testing.F) {
 			require.ErrorIs(t, err, errHandshake)
 		} else {
 			status, _, _ := strings.Cut(string(answer), "\n")
-			assert.Equal(t, "101", strings.Fields(status)[1])
+			fields := strings.Fields(status)
+			require.GreaterOrEqual(t, len(fields), 2, "a taken answer's status line holds the status: %q", status)
+			assert.Equal(t, "101", fields[1])
 			assert.Contains(t, string(answer), accept)
 		}
 
