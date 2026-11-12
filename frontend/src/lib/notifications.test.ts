@@ -19,6 +19,8 @@ describe('notifications', () => {
       'assigned',
       'woke',
       'release_done',
+      'release_published',
+      'release_failed',
       'run_failed',
       'session_needs_you',
       'session_finished',
@@ -30,6 +32,8 @@ describe('notifications', () => {
     expect(kindTitle('assigned')).toBe('Assigned to you')
     expect(kindTitle('woke')).toBe('Back from snooze')
     expect(kindTitle('release_done')).toBe('Released')
+    expect(kindTitle('release_published')).toBe('Published')
+    expect(kindTitle('release_failed')).toBe('Release workflow failed')
     expect(kindTitle('run_failed')).toBe('Run failed')
     // A kind another build stored, outside the ones this build knows.
     expect(kindTitle('mentions' as unknown as NotificationKind)).toBe('Notification')

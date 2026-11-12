@@ -11,6 +11,29 @@ import (
 	"time"
 )
 
+const amendRun = `-- name: AmendRun :execrows
+UPDATE script_runs SET
+    summary = ?1,
+    result = ?2
+WHERE id = ?3 AND status NOT IN ('running', 'orphaned')
+`
+
+type AmendRunParams struct {
+	Summary string
+	Result  string
+	ID      int64
+}
+
+// AmendRun rewrites the summary and the result of a run that has finished, as a release does
+// while it follows its workflow on GitHub. A run still going is left as it is.
+func (q *Queries) AmendRun(ctx context.Context, arg AmendRunParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, amendRun, arg.Summary, arg.Result, arg.ID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
 const deleteRuns = `-- name: DeleteRuns :exec
 DELETE FROM script_runs WHERE status NOT IN ('running', 'orphaned') AND id IN (/*SLICE:ids*/?)
 `
@@ -29,6 +52,60 @@ func (q *Queries) DeleteRuns(ctx context.Context, ids []int64) error {
 	}
 	_, err := q.db.ExecContext(ctx, query, queryParams...)
 	return err
+}
+
+const endedRunsOfKind = `-- name: EndedRunsOfKind :many
+SELECT id, kind, title, source, repo_owner, repo_name, dir, argv, command, runs_in, status, exit_code, pid, pgid,
+       proc_started_at, summary, result, log_bytes, seen_at, started_at, finished_at
+FROM script_runs
+WHERE kind = ?1 AND status NOT IN ('running', 'orphaned')
+ORDER BY started_at, id
+`
+
+// EndedRunsOfKind returns the runs of a kind that have finished, oldest first.
+func (q *Queries) EndedRunsOfKind(ctx context.Context, kind string) ([]ScriptRun, error) {
+	rows, err := q.db.QueryContext(ctx, endedRunsOfKind, kind)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ScriptRun{}
+	for rows.Next() {
+		var i ScriptRun
+		if err := rows.Scan(
+			&i.ID,
+			&i.Kind,
+			&i.Title,
+			&i.Source,
+			&i.RepoOwner,
+			&i.RepoName,
+			&i.Dir,
+			&i.Argv,
+			&i.Command,
+			&i.RunsIn,
+			&i.Status,
+			&i.ExitCode,
+			&i.Pid,
+			&i.Pgid,
+			&i.ProcStartedAt,
+			&i.Summary,
+			&i.Result,
+			&i.LogBytes,
+			&i.SeenAt,
+			&i.StartedAt,
+			&i.FinishedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const finishRun = `-- name: FinishRun :execrows

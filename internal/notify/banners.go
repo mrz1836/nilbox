@@ -73,22 +73,26 @@ type Poster interface {
 //
 //nolint:gochecknoglobals // a fixed table
 var kindTitles = map[notifyprefs.Kind]string{
-	KindReviewRequested: "Review requested",
-	KindAssigned:        "Assigned to you",
-	KindWoke:            "Back from snooze",
-	KindReleaseDone:     "Released",
-	KindRunFailed:       "Run failed",
+	KindReviewRequested:  "Review requested",
+	KindAssigned:         "Assigned to you",
+	KindWoke:             "Back from snooze",
+	KindReleaseDone:      "Released",
+	KindReleasePublished: "Published",
+	KindReleaseFailed:    "Release workflow failed",
+	KindRunFailed:        "Run failed",
 }
 
 // summaryNouns name each kind in a summary banner, singular and plural.
 //
 //nolint:gochecknoglobals // a fixed table
 var summaryNouns = map[notifyprefs.Kind][2]string{
-	KindReviewRequested: {"review request", "review requests"},
-	KindAssigned:        {"assignment", "assignments"},
-	KindWoke:            {"back from snooze", "back from snooze"},
-	KindReleaseDone:     {"release", "releases"},
-	KindRunFailed:       {"failed run", "failed runs"},
+	KindReviewRequested:  {"review request", "review requests"},
+	KindAssigned:         {"assignment", "assignments"},
+	KindWoke:             {"back from snooze", "back from snooze"},
+	KindReleaseDone:      {"release", "releases"},
+	KindReleasePublished: {"release published", "releases published"},
+	KindReleaseFailed:    {"release workflow failed", "release workflows failed"},
+	KindRunFailed:        {"failed run", "failed runs"},
 }
 
 // maxTitleRunes bounds an item title in a banner body; the system wraps and cuts the rest.

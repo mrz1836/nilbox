@@ -214,6 +214,7 @@ func TestServicesListsBoundServices(t *testing.T) {
 
 	assert.NotNil(t, c.ToolFinder)
 	assert.NotNil(t, c.Runs)
+	assert.NotNil(t, c.ReleaseFollower)
 	assert.NotNil(t, c.Scheduler)
 	assert.NotNil(t, c.Watcher)
 	assert.NotNil(t, c.Timing)

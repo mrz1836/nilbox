@@ -8,7 +8,7 @@ import type { NotificationsState } from '../lib/useNotifications'
 import { usePopover } from '../lib/usePopover'
 import type { AppNotification, NotificationKind } from '../platform'
 import { quietButtonClass } from './controls'
-import { AssignIcon, BellIcon, ClockIcon, EyeIcon, SlidersIcon, TagIcon, XIcon } from './icons'
+import { AssignIcon, BellIcon, CircleCheckIcon, ClockIcon, EyeIcon, SlidersIcon, TagIcon, XIcon } from './icons'
 import { PopoverPanel } from './PopoverPanel'
 import { RelativeTime } from './RelativeTime'
 
@@ -28,12 +28,15 @@ const kindIcons: Readonly<Partial<Record<NotificationKind, (props: { className?:
   assigned: AssignIcon,
   woke: ClockIcon,
   release_done: TagIcon,
+  release_published: CircleCheckIcon,
+  release_failed: XIcon,
   run_failed: XIcon,
 }
 
 // kindTones color the icon of a kind that tells of something gone wrong, as the Runs page
 // marks a failed run; every other kind's icon is muted.
 const kindTones: Readonly<Partial<Record<NotificationKind, string>>> = {
+  release_failed: 'text-danger',
   run_failed: 'text-danger',
 }
 

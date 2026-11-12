@@ -277,10 +277,15 @@ func resultOf(t *testing.T, run scriptrun.Run) Result {
 	return res
 }
 
-// fakeNotifier keeps the notices of releases that reached GitHub.
+// fakeNotifier keeps the notices of releases that reached GitHub, and of those their
+// workflow published or failed, with whether each of the latter came with its context
+// ended.
 type fakeNotifier struct {
-	mu   sync.Mutex
-	told []Notice
+	mu        sync.Mutex
+	told      []Notice
+	published []Notice
+	failed    []Notice
+	ctxErrs   []error
 }
 
 func (f *fakeNotifier) Released(_ context.Context, n Notice) {
@@ -290,12 +295,46 @@ func (f *fakeNotifier) Released(_ context.Context, n Notice) {
 	f.told = append(f.told, n)
 }
 
-// all returns the notices told so far.
+func (f *fakeNotifier) Published(ctx context.Context, n Notice) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	f.published = append(f.published, n)
+	f.ctxErrs = append(f.ctxErrs, ctx.Err())
+}
+
+func (f *fakeNotifier) WorkflowFailed(ctx context.Context, n Notice) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	f.failed = append(f.failed, n)
+	f.ctxErrs = append(f.ctxErrs, ctx.Err())
+}
+
+// endedContexts returns, for each notice of a release published or failed, its context's
+// error as it was told: nil while it went on.
+func (f *fakeNotifier) endedContexts() []error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	return slices.Clone(f.ctxErrs)
+}
+
+// all returns the notices of releases that reached GitHub told so far.
 func (f *fakeNotifier) all() []Notice {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
 	return slices.Clone(f.told)
+}
+
+// followed returns the notices of releases published, and of failed workflows, told so
+// far.
+func (f *fakeNotifier) followed() (published, failed []Notice) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	return slices.Clone(f.published), slices.Clone(f.failed)
 }
 
 // rigTools is magex as the rig has it now.

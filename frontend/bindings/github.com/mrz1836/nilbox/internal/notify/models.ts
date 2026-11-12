@@ -53,7 +53,8 @@ export interface Notification {
     "id": number;
 
     /**
-     * Kind is KindReviewRequested, KindAssigned, KindWoke, KindReleaseDone, or KindRunFailed.
+     * Kind is KindReviewRequested, KindAssigned, KindWoke, one of a release's kinds
+     * (KindReleaseDone, KindReleasePublished, or KindReleaseFailed), or KindRunFailed.
      */
     "kind": notifyprefs$0.Kind;
 

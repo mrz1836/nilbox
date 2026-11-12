@@ -40,6 +40,18 @@ export const notificationKinds: readonly KindDescription[] = [
     description: 'A release you started from the Scripts tab reaches GitHub: its tag is on origin.',
   },
   {
+    kind: 'release_published',
+    title: 'Published',
+    label: 'Releases published',
+    description: 'The release workflow on GitHub publishes a release you started from the Scripts tab.',
+  },
+  {
+    kind: 'release_failed',
+    title: 'Release workflow failed',
+    label: 'Release workflows failing',
+    description: 'A workflow the tag of a release you started from the Scripts tab runs on GitHub fails.',
+  },
+  {
     kind: 'run_failed',
     title: 'Run failed',
     label: 'Failed runs',
@@ -66,8 +78,8 @@ export const notificationKinds: readonly KindDescription[] = [
 export const sessionBannerHint = 'Claude Code and Codex can already notify through your terminal, so these start off.'
 
 // inboxKinds and sessionKinds are the kinds of notification the history keeps (the
-// inbox's, a release reaching GitHub, and a run that failed), and those about the agent
-// sessions, which it does not.
+// inbox's, a release's (reaching GitHub, published, or its workflow failing), and a run that
+// failed), and those about the agent sessions, which it does not.
 export const inboxKinds = notificationKinds.filter((k) => k.session !== true)
 export const sessionKinds = notificationKinds.filter((k) => k.session === true)
 

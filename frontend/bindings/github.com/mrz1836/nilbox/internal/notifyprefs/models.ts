@@ -6,7 +6,7 @@
  * inbox.Arrival), a moment an agent session needs the user, or an event about no item,
  * such as a release that reached GitHub or a run that failed.
  */
-export type Kind = "review_requested" | "assigned" | "woke" | "session_needs_you" | "session_finished" | "release_done" | "run_failed";
+export type Kind = "review_requested" | "assigned" | "woke" | "session_needs_you" | "session_finished" | "release_done" | "release_published" | "release_failed" | "run_failed";
 
 /**
  * The values of Kind, by the names of their Go constants.
@@ -43,6 +43,16 @@ export const Kind = {
      * KindReleaseDone is a release whose tag reached GitHub.
      */
     KindReleaseDone: "release_done",
+
+    /**
+     * KindReleasePublished is a release its workflow on GitHub published.
+     */
+    KindReleasePublished: "release_published",
+
+    /**
+     * KindReleaseFailed is a release whose workflow on GitHub failed.
+     */
+    KindReleaseFailed: "release_failed",
 
     /**
      * KindRunFailed is a run from the Scripts tab that failed or ran past its time limit.

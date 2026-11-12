@@ -3,7 +3,7 @@ import { useEffect, useEffectEvent, useId, useRef, useState, type ReactNode } fr
 import { brand } from '../../generated/brand'
 import { prefersReducedMotion } from '../../lib/motion'
 import { shortCommit } from '../../lib/git'
-import { intentOf, resultHeading } from '../../lib/release'
+import { followLine, followState, intentOf, resultHeading, type FollowLine } from '../../lib/release'
 import { useMutation } from '../../lib/useMutation'
 import { useQuery } from '../../lib/useQuery'
 import {
@@ -122,6 +122,36 @@ function resultLines(result: Result, branch: string): Line[] {
   return [...lines, ...cloneLines(result)]
 }
 
+// WorkflowLine says how the release's workflow on GitHub goes, as the app follows it,
+// with a View link to the release, the failed run, or the tag's runs.
+function WorkflowLine({ line }: { line: FollowLine }) {
+  return (
+    <p className="flex items-start gap-2 text-sm text-text">
+      {toneIcons[line.tone]}
+      <span>
+        <span className="sr-only">{toneWords[line.tone]} </span>
+        <span>{line.text}</span>
+        {line.url !== '' && (
+          <>
+            {' · '}
+            <button
+              type="button"
+              aria-label={line.label}
+              onClick={() => {
+                openExternal(line.url)
+              }}
+              className="inline-flex items-center gap-1 font-medium text-accent hover:underline"
+            >
+              View
+              <ExternalIcon className="size-3" />
+            </button>
+          </>
+        )}
+      </span>
+    </p>
+  )
+}
+
 // commandLabel says what a command the result offers does.
 function commandLabel(command: string): string {
   return command.startsWith('git push') ? 'To push it:' : 'To undo it:'
@@ -142,11 +172,13 @@ export interface ReleaseResultProps {
 // GitHub, with links to the tag and the release workflow and a burst of confetti (none
 // with reduced motion); tagged on this Mac only, with the commands to push or undo it,
 // which the app never runs; or failed, with what happened in words and the line of
-// magex's that says so. Each says where the clone is now. It is announced once as it
-// shows.
+// magex's that says so. Each says where the clone is now. A release on GitHub says, too,
+// how its workflow goes as the app follows it, read again each time that changes. It is
+// announced once as it shows.
 export function ReleaseResult({ run, repo, onTryAgain, onDone }: ReleaseResultProps) {
   const id = useId()
-  const query = useQuery(() => getReleaseResult(run.id), [run.id])
+  const following = followState(run)
+  const query = useQuery(() => getReleaseResult(run.id), [run.id, following])
   const result = query.data
   const intent = intentOf(run)
   const copy = useMutation((tag: string) => copyText(tag))
@@ -202,6 +234,7 @@ export function ReleaseResult({ run, repo, onTryAgain, onDone }: ReleaseResultPr
 
   const tag = result.tag === '' ? result.version : result.tag
   const lines = resultLines(result, intent.branch)
+  const workflow = followLine(result, repo)
   const { failure } = result
   const Icon = released ? CircleCheckIcon : result.kind === 'failed' ? XIcon : AlertIcon
   const iconTone = released ? 'text-success' : result.kind === 'failed' ? 'text-danger' : 'text-warning'
@@ -251,6 +284,7 @@ export function ReleaseResult({ run, repo, onTryAgain, onDone }: ReleaseResultPr
           ))}
         </ul>
       )}
+      {workflow !== null && <WorkflowLine line={workflow} />}
       {result.commands.length > 0 && (
         <div className="flex flex-col gap-1.5">
           {result.commands.map((command) => (

@@ -188,6 +188,9 @@ var (
 	// ErrNotRunning is returned when stopping a run that has ended.
 	ErrNotRunning = errors.New("the run has ended")
 
+	// ErrStillGoing is returned when amending a run that hasn't ended.
+	ErrStillGoing = errors.New("the run is still going")
+
 	// ErrNoStop is returned when stopping a run in the terminal, which stops there.
 	ErrNoStop = errors.New("a run in the terminal can't be stopped from the app")
 

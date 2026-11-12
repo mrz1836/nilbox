@@ -56,6 +56,7 @@ import type {
   ReleaseCandidate,
   ReleaseCandidates,
   ReleaseCheck,
+  ReleaseFollow,
   ReleaseOffer,
   ReleaseResult,
   RemoveResult,
@@ -1596,6 +1597,24 @@ export function releaseResult(overrides: Partial<ReleaseResult> = {}): ReleaseRe
     commands: [],
     failure: null,
     error: '',
+    follow: null,
+    ...overrides,
+  }
+}
+
+// releaseFollow is following acme-org/sdk v1.4.3's workflow, three polls in, from
+// FIXED_NOW for 45 minutes.
+export function releaseFollow(overrides: Partial<ReleaseFollow> = {}): ReleaseFollow {
+  return {
+    state: 'following',
+    since: '2026-06-15T12:00:00Z',
+    until: '2026-06-15T12:45:00Z',
+    ended: '',
+    minutes: 0,
+    polls: 3,
+    runsDone: false,
+    workflow: '',
+    url: '',
     ...overrides,
   }
 }

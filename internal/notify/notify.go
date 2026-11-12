@@ -49,6 +49,11 @@ const (
 	// KindReleaseDone is a release whose tag reached GitHub. It is about no item.
 	KindReleaseDone = notifyprefs.KindReleaseDone
 
+	// KindReleasePublished is a release its workflow on GitHub published, and
+	// KindReleaseFailed one whose workflow failed. Both are about no item.
+	KindReleasePublished = notifyprefs.KindReleasePublished
+	KindReleaseFailed    = notifyprefs.KindReleaseFailed
+
 	// KindRunFailed is a run from the Scripts tab that failed or ran past its time limit. It
 	// is about no item, and names the run.
 	KindRunFailed = notifyprefs.KindRunFailed
@@ -62,7 +67,8 @@ const Keep = 200
 type Notification struct {
 	ID int64 `json:"id"`
 
-	// Kind is KindReviewRequested, KindAssigned, KindWoke, KindReleaseDone, or KindRunFailed.
+	// Kind is KindReviewRequested, KindAssigned, KindWoke, one of a release's kinds
+	// (KindReleaseDone, KindReleasePublished, or KindReleaseFailed), or KindRunFailed.
 	Kind notifyprefs.Kind `json:"kind"`
 
 	// CreatedAt is when it was recorded, as RFC 3339.

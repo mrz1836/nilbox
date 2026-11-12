@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/mrz1836/nilbox/internal/clock"
 	"github.com/mrz1836/nilbox/internal/event"
 	"github.com/mrz1836/nilbox/internal/github"
 	"github.com/mrz1836/nilbox/internal/item"
@@ -664,7 +665,7 @@ func (a *action) guard(ctx context.Context, s *Service, tok github.Token) (*gith
 
 		a.step(s, "Waiting for GitHub to work out whether it can merge")
 
-		if err = wait(ctx, guardWait); err != nil {
+		if err = clock.Sleep(ctx, guardWait); err != nil {
 			return nil, err
 		}
 	}
@@ -680,19 +681,6 @@ func mergeableState(state *github.MergeState) error {
 		return uierr.New("It's a draft, or merges through a merge queue.",
 			fmt.Errorf("%w: draft or queue", github.ErrNotMergeable))
 	default:
-		return nil
-	}
-}
-
-// wait waits for d, or returns ctx's error once it ends.
-func wait(ctx context.Context, d time.Duration) error {
-	timer := time.NewTimer(d)
-	defer timer.Stop()
-
-	select {
-	case <-ctx.Done():
-		return ctx.Err()
-	case <-timer.C:
 		return nil
 	}
 }

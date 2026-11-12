@@ -480,6 +480,99 @@ export const Fix = {
 } as const;
 
 /**
+ * Follow is how following a release's workflow on GitHub goes. It is kept in the release's
+ * result (Result.Follow), in its run's record, so a follow resumes after a restart within
+ * the same limits.
+ */
+export interface Follow {
+    /**
+     * State is where it is.
+     */
+    "state": FollowState;
+
+    /**
+     * Since is when it started, Until when it stops at the latest, and Ended when it
+     * stopped, or "" while it goes on, each RFC 3339; Minutes is how long it went on, in
+     * whole minutes, once it stopped.
+     */
+    "since": string;
+    "until": string;
+    "ended": string;
+    "minutes": number;
+
+    /**
+     * Polls counts the polls it made.
+     */
+    "polls": number;
+
+    /**
+     * RunsDone reports the last poll found every one of the tag's runs ended well, and no
+     * release published: the next poll that finds no release published either stops the
+     * follow (FollowUnpublished).
+     */
+    "runsDone": boolean;
+
+    /**
+     * Workflow is the name of the tag's workflow that failed, for FollowFailed, or "".
+     */
+    "workflow": string;
+
+    /**
+     * URL is the page its line links to: the release's once published; the failed run's,
+     * or else the tag's Actions runs, once failed; the repository's releases once the tag's
+     * runs ended with none published; the tag's Actions runs once no workflow ran, or it
+     * stopped at its limits; and "" while it goes on.
+     */
+    "url": string;
+}
+
+/**
+ * FollowState is where following a release's workflow on GitHub is.
+ */
+export type FollowState = "following" | "published" | "failed" | "noWorkflow" | "unpublished" | "timedOut";
+
+/**
+ * The values of FollowState, by the names of their Go constants.
+ */
+export const FollowState = {
+    /**
+     * The states of a follow.
+     *
+     * FollowFollowing is a follow going on, within its limits.
+     */
+    FollowFollowing: "following",
+
+    /**
+     * FollowPublished is a release GitHub published: it has it, published, and not a draft.
+     */
+    FollowPublished: "published",
+
+    /**
+     * FollowFailed is a release one of whose tag's workflow runs failed, once all of them
+     * ended without it being published.
+     */
+    FollowFailed: "failed",
+
+    /**
+     * FollowNoWorkflow is a tag no workflow ran for by the third poll, with no release
+     * published: there's nothing to follow.
+     */
+    FollowNoWorkflow: "noWorkflow",
+
+    /**
+     * FollowUnpublished is a tag whose workflow runs all ended well, with no release
+     * published a poll later.
+     */
+    FollowUnpublished: "unpublished",
+
+    /**
+     * FollowTimedOut is a follow that reached its limits with none of those: nothing is
+     * assumed.
+     */
+    FollowTimedOut: "timedOut",
+} as const;
+
+/**
  * Group is where the Release page lists a repository.
  */
 export type Group = "unreleased" | "upToDate" | "noReleases" | "cantRelease";
@@ -709,6 +802,12 @@ export interface Result {
      * Error says why origin couldn't be asked, for ResultUnverified.
      */
     "error": string;
+
+    /**
+     * Follow is how following the release's workflow on GitHub goes, once it was released
+     * (Follower), or nil for a release that isn't followed.
+     */
+    "follow": Follow | null;
 }
 
 /**

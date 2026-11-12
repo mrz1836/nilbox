@@ -5,7 +5,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { brand } from '../../generated/brand'
 import type { ReleaseResult as Result, ScriptRun } from '../../platform'
 import { at } from '../../test/clock'
-import { releaseResult, releaseRun } from '../../test/fixtures'
+import { releaseFollow, releaseResult, releaseRun } from '../../test/fixtures'
 import { platform } from '../../test/platform'
 import { ReleaseResult } from './ReleaseResult'
 
@@ -252,5 +252,102 @@ describe('ReleaseResult', () => {
     renderResult(new Error('This release ended without a result to show.'), releaseRun({ summary: '' }))
 
     expect(await screen.findByRole('heading', { name: 'The release ended without a result' })).toBeInTheDocument()
+  })
+
+  it('says it follows the release workflow, with nothing to open yet', async () => {
+    renderResult({ follow: releaseFollow() })
+
+    const c = await card()
+
+    expect(c.getByText('Following the release workflow for acme-org/sdk v1.4.3…')).toBeInTheDocument()
+    expect(c.queryByRole('button', { name: /^View the/ })).not.toBeInTheDocument()
+  })
+
+  it.each([
+    {
+      state: 'published' as const,
+      text: 'The release workflow published acme-org/sdk v1.4.3',
+      url: 'https://github.com/acme-org/sdk/releases/tag/v1.4.3',
+      label: 'View the release',
+    },
+    {
+      state: 'failed' as const,
+      text: 'The goreleaser workflow failed for acme-org/sdk v1.4.3',
+      url: 'https://github.com/acme-org/sdk/actions/runs/7',
+      label: 'View the failed workflow',
+    },
+    {
+      state: 'noWorkflow' as const,
+      text: 'No workflow ran for the v1.4.3 tag, so there’s nothing to follow',
+      url: 'https://github.com/acme-org/sdk/actions?query=branch%3Av1.4.3',
+      label: 'View the tag’s workflow runs',
+    },
+    {
+      state: 'unpublished' as const,
+      text: 'The tag’s workflows finished, but GitHub hasn’t published a release for v1.4.3',
+      url: 'https://github.com/acme-org/sdk/releases',
+      label: 'View the releases',
+    },
+    {
+      state: 'timedOut' as const,
+      text: 'Stopped following acme-org/sdk v1.4.3 after 45 minutes',
+      url: 'https://github.com/acme-org/sdk/actions?query=branch%3Av1.4.3',
+      label: 'View the release workflow',
+    },
+  ])('says the workflow line once it is $state, and opens its page', async ({ state, text, url, label }) => {
+    renderResult({
+      follow: releaseFollow({ state, url, minutes: 45, ended: '2026-06-15T12:45:00Z', workflow: 'goreleaser' }),
+    })
+
+    const c = await card()
+
+    expect(c.getByText(text)).toBeInTheDocument()
+
+    await userEvent.click(c.getByRole('button', { name: label }))
+    expect(platform.openExternal).toHaveBeenLastCalledWith(url)
+  })
+
+  it('heads a published release as published', async () => {
+    renderResult({
+      follow: releaseFollow({ state: 'published', url: 'https://github.com/acme-org/sdk/releases/tag/v1.4.3' }),
+    })
+
+    const c = await card()
+
+    expect(c.getByRole('heading', { name: 'acme-org/sdk v1.4.3 is published' })).toBeInTheDocument()
+  })
+
+  it('reads the result again once its run says the follow moved on', async () => {
+    const following = (state: string) =>
+      releaseRun({ result: { ...releaseRun().result, outcome: { kind: 'released', follow: { state } } } })
+
+    platform.getReleaseResult.mockResolvedValue(releaseResult({ follow: releaseFollow() }))
+
+    const handlers = { onTryAgain: vi.fn<() => void>(), onDone: vi.fn<() => void>() }
+    const { rerender } = render(
+      <dialog open>
+        <ReleaseResult run={following('following')} repo="acme-org/sdk" {...handlers} />
+      </dialog>,
+      { wrapper: at() },
+    )
+
+    const c = await card()
+
+    expect(c.getByText('Following the release workflow for acme-org/sdk v1.4.3…')).toBeInTheDocument()
+
+    platform.getReleaseResult.mockResolvedValue(
+      releaseResult({
+        follow: releaseFollow({ state: 'published', url: 'https://github.com/acme-org/sdk/releases/tag/v1.4.3' }),
+      }),
+    )
+    rerender(
+      <dialog open>
+        <ReleaseResult run={following('published')} repo="acme-org/sdk" {...handlers} />
+      </dialog>,
+    )
+
+    expect(await c.findByText('The release workflow published acme-org/sdk v1.4.3')).toBeInTheDocument()
+    expect(c.getByRole('heading', { name: 'acme-org/sdk v1.4.3 is published' })).toBeInTheDocument()
+    expect(platform.getReleaseResult).toHaveBeenCalledTimes(2)
   })
 })

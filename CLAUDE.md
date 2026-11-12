@@ -158,8 +158,8 @@ app:lint` reads.
   `sudo` (`TestNoGoInstall`, `TestNoSudo`); `internal/shellenv` reads the user's login shell's
   environment, after the first paint, and never logs a variable's name or value; and
   `internal/clock`, `internal/periodic`, `internal/flight`, `internal/paths`, and
-  `internal/textutil` hold the clock, the interval runner, one call per key at a time, `~`
-  paths, and text helpers. `internal/testutil` holds the fakes and fixtures the test suites
+  `internal/textutil` hold the clock (and `clock.Sleep`, the one wait that ends with its
+  context), the interval runner, one call per key at a time, `~` paths, and text helpers. `internal/testutil` holds the fakes and fixtures the test suites
   share (a fresh database, an isolated git, a runner, finder, clock, event sink, log, and fake
   tools); only tests may import it.
 - `internal/event/` holds the app's events, one Go type each with its name; services emit them
@@ -167,7 +167,8 @@ app:lint` reads.
   those events, keeps the menu bar current with what `internal/menubar` works out, runs the
   scheduler, the sweeper, the sessions watcher, the Release page's refresher, and the Hooks
   page's scans as tracked work, starts the deferred work
-  (`core.Deferred`: the login-shell read first) once after the first paint, never on the cold
+  (`core.Deferred`: the login-shell read first; the tool finder, the runs, and the release
+  `Follower` beside it) once after the first paint, never on the cold
   start, and shuts down in order (timers, then the work, then the database). It declares small interfaces that the Wails glue
   in `cmd/nilbox` implements, and imports no Wails. A window event is registered in
   `main_desktop.go` with `application.RegisterEvent`, which generates its TypeScript type and
@@ -449,7 +450,10 @@ app:lint` reads.
   `ShowLog` shows a run's log in Finder, both by the run's ID alone. `InUse` tells an install a
   tool is running, never counting a `KindUpdate` run, which is the tool updating itself (it
   holds its copy's folder, not a clone, for up to ten minutes), and `Updating` names such a run
-  going now, one from before a restart included. The history keeps 200 runs and 512 MB of logs, and cuts a long log to its
+  going now, one from before a restart included. `Amend` rewrites an ended run's summary and
+  its kind's own result, in one transaction with the read its change is given, as a release's
+  follow of its workflow does, and `Ended` lists a kind's ended runs, from which that follow
+  resumes. The history keeps 200 runs and 512 MB of logs, and cuts a long log to its
   head and tail; Run again works the command out afresh from its source, never for a release
   or a tool's update.
 - `internal/gitread/` is the read-only git that release, hooks, and Repo scripts share: an exact-argv allowlist
@@ -641,6 +645,32 @@ app:lint` reads.
   `integrations.offerAfterMerge` setting, magex, the default branch the Release page or the
   inbox already holds, and a clone with that origin, from the page's list or else only the
   folders named as the repository is (one git command each), never a scan of the clone root.
+  The `Follower`, a deferred desktop worker, follows each release on GitHub to *published*: a
+  release's `Finish` (its `Verifier`'s too) starts a `Follow` in its `Result` (its state,
+  `until`, and `polls`) when the Service has `Workflows` and `Records`, and its `Recorded` hands
+  it to the `Follower` once the outcome is kept. It polls a minute after a follow starts or
+  resumes, then every three minutes, at most `FollowPolls` (20) over `FollowFor` (45 minutes),
+  on the real clock for its limits and its waits alike (`clock.Sleep`; tests run it in a
+  `testing/synctest` bubble). Each poll is `(*github.Client).FetchReleaseProgress` (core's
+  `ReleaseWorkflow`): the tag's release, one GraphQL query through `postGraphQL`, and, until
+  it is published, the tag's own workflow runs, one REST request through `do` (`GET
+  .../actions/runs` by the push event, the tag as the run's branch, and the tag's commit, each
+  checked again on the answer), so the budget counts both. *Published* (`publishedAt` set, not
+  a draft) wins; while one of the tag's runs goes on, the follow goes on; once they all ended,
+  one that failed, timed out, or never started ends it as failed, named by its workflow; all
+  of them ending well two polls in a row with no release published ends it as
+  `unpublished`, and no run of the tag's by the third poll as `noWorkflow`. Each poll that
+  leaves the follow going is written into the run's record with `scriptrun.Engine.Amend` (an
+  ended run's summary and outcome, in one transaction with its read, and only while the
+  record still says this follow goes on). An end is settled the same way, written again a
+  few times a moment apart without asking GitHub again, and, if it still can't be, logged
+  and let go of for the next start's resume. *Published* (`Notifier.Published`,
+  `release_published`, opening the release) and *failed* (`Notifier.WorkflowFailed`,
+  `release_failed`, opening the run, or else the tag's Actions runs) are told only once the
+  record holds them, with a context the quit doesn't end; `unpublished`, `noWorkflow`, and
+  the limits get the result's line alone, no banner. As it starts, it resumes every release
+  whose record says it follows (`Engine.Ended`, which reads only a kind's ended runs), within
+  the same limits; a quit leaves the follow recorded for the next start.
 - `internal/hooks/` is the Hooks page's service. `Repos` scans, four at a time, every clone
   under the clone root with a go-pre-commit config inside it (a `.github/env/*.env` file, or
   `.github/.env.base`): where git runs its hooks (gitread's `HookPaths`), its `pre-commit` hook

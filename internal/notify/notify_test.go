@@ -130,7 +130,7 @@ func TestKindsAreTheInboxArrivals(t *testing.T) {
 
 	assert.Equal(t, []notifyprefs.Kind{
 		KindReviewRequested, KindAssigned, KindWoke, KindSessionNeedsYou, KindSessionFinished, KindReleaseDone,
-		KindRunFailed,
+		KindReleasePublished, KindReleaseFailed, KindRunFailed,
 	}, notifyprefs.Kinds(),
 		"the kinds the settings list are the inbox's kinds of arrival, in order, then the sessions', a release's, and a failed run's")
 }

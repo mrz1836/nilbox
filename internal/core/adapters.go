@@ -744,6 +744,31 @@ func (r releaseGitHub) ReleaseCompare(
 	return out, nil
 }
 
+// ReleaseWorkflow reads how a release's workflow on GitHub goes, through the shared client,
+// so the budget counts it (release.Workflows): whether GitHub published the release, with
+// one query, and, until it has, the tag's own workflow runs, with one REST request.
+func (r releaseGitHub) ReleaseWorkflow(ctx context.Context, name repo.Name, tag, commit string) (release.Workflow, error) {
+	got, err := github.WithToken(ctx, r.tokens, func(tok github.Token) (*github.ReleaseProgress, error) {
+		return r.client.FetchReleaseProgress(ctx, tok, github.ProgressRequest{Repo: name, Tag: tag, Commit: commit})
+	})
+	if err != nil {
+		return release.Workflow{}, releaseSignedOut(err)
+	}
+
+	out := release.Workflow{Published: got.Published(), Runs: make([]release.TagRun, 0, len(got.Runs))}
+	if got.Release != nil {
+		out.ReleaseURL = got.Release.URL
+	}
+
+	for _, run := range got.Runs {
+		out.Runs = append(out.Runs, release.TagRun{
+			Workflow: run.Name, URL: run.URL, Done: run.Completed(), Failed: run.Failed(),
+		})
+	}
+
+	return out, nil
+}
+
 // releaseOrigins reads which GitHub repository a clone's origin is, with the read-only
 // remote lookup localrepos.Inspect runs (release.OriginReader).
 type releaseOrigins struct {
@@ -828,18 +853,35 @@ func (p releaseSettings) OfferAfterMerge(ctx context.Context) (bool, error) {
 	return all.Integrations.OfferAfterMerge, nil
 }
 
-// releaseNotices tells the user of a release that reached GitHub with a notification
-// about no item, release_done, and its banner when that kind is on (release.Notifier).
+// releaseNotices tells the user of a release with a notification about no item, and its
+// banner when that kind is on (release.Notifier): its tag reached GitHub (release_done),
+// its workflow published it (release_published), or its workflow failed (release_failed).
+// Each opens its page.
 type releaseNotices struct {
 	dispatcher *notify.Dispatcher
 }
 
-// Released records the notice and shows its banner.
+// Released records a release that reached GitHub, and shows its banner.
 func (n releaseNotices) Released(ctx context.Context, notice release.Notice) {
-	n.dispatcher.Notify(ctx, notify.Entry{
-		Kind: notify.KindReleaseDone, Title: notice.Title, Body: notice.Body, URL: notice.URL,
-		RepoOwner: notice.Repo.Owner, RepoName: notice.Repo.Repo,
-	})
+	n.notify(ctx, notify.Entry{Kind: notify.KindReleaseDone}, notice)
+}
+
+// Published records a release its workflow published, and shows its banner.
+func (n releaseNotices) Published(ctx context.Context, notice release.Notice) {
+	n.notify(ctx, notify.Entry{Kind: notify.KindReleasePublished}, notice)
+}
+
+// WorkflowFailed records a release whose workflow failed, and shows its banner.
+func (n releaseNotices) WorkflowFailed(ctx context.Context, notice release.Notice) {
+	n.notify(ctx, notify.Entry{Kind: notify.KindReleaseFailed}, notice)
+}
+
+// notify records notice as a notification of entry's kind, and shows its banner.
+func (n releaseNotices) notify(ctx context.Context, entry notify.Entry, notice release.Notice) {
+	entry.Title, entry.Body, entry.URL = notice.Title, notice.Body, notice.URL
+	entry.RepoOwner, entry.RepoName = notice.Repo.Owner, notice.Repo.Repo
+
+	n.dispatcher.Notify(ctx, entry)
 }
 
 // runFailures tells the user of a run that failed with a notification about no item,

@@ -291,7 +291,7 @@ requests that merged, never touching `main`, `master`, or any branch you protect
 - **Worktrees Nilbox keeps track of** — one per item, shared by every agent, resumed on the next launch, and removed only when nothing would be lost
 - **Menu bar and notifications** — a live count in the menu bar and native banners for what's new
 - **API budget gauge** — an always-visible, live dial for the GitHub budget closest to running out, counting every request the app makes
-- **Release in two clicks** — Scripts → Release lists every clone with unreleased changes; the sheet checks the clone, origin, and GitHub, names the exact version, and has magex tag and push it, in Nilbox or your terminal, then confirms GitHub has the tag. A merge in the review sheet offers it too
+- **Release in two clicks** — Scripts → Release lists every clone with unreleased changes; the sheet checks the clone, origin, and GitHub, names the exact version, and has magex tag and push it, in Nilbox or your terminal, then confirms GitHub has the tag and follows its release workflow until the release is published. A merge in the review sheet offers it too
 - **Your release tools, found and kept current** — mage-x and go-pre-commit found the way your terminal finds them, checked for updates once a day, updated by their own `magex update:install` or `go-pre-commit update` where they can update themselves, and otherwise installed from their GitHub release after a checksum check, never with `go install` or `sudo`
 - **Inbox nil** — empty every list and the inbox throws you a party
 
@@ -570,6 +570,10 @@ More in [The Worktrees view](docs/desktop.md#the-worktrees-view).
   the run. Either way, the result is what GitHub and your clone say once magex ends: the tag on
   GitHub, the branch your clone is back on, or, if the push didn't land, the commands to finish
   or undo it.
+- **Followed to published.** Once the tag is on GitHub, Nilbox follows the tag's release
+  workflow, at most 20 checks over 45 minutes, and says when the release is published, when
+  one of the tag's workflows failed, or why it stopped following, with a banner for the first
+  two. It picks up where it left off after a restart.
 - **After a merge,** the review sheet's toast offers **Release acme-org/sdk…**, behind a setting
   that's on by default. Nilbox never releases by itself.
 - **Hooks** lists every clone with a go-pre-commit config, grouped into needs attention (no hook
@@ -616,8 +620,9 @@ More in [The Scripts tab](docs/desktop.md#the-scripts-tab), [Release](docs/deskt
   refreshes the inbox, and opens any item in the window. While the icon is shown, closing the
   window keeps Nilbox running in the menu bar.
 - **Native banners** announce new review requests, new assignments, snoozes that end early,
-  releases you started that reach GitHub, and runs from the Scripts tab that fail, each kind with
-  its own switch. More than three at once are summed up in one banner.
+  releases you started that reach GitHub, are published, or whose release workflow fails, and
+  runs from the Scripts tab that fail, each kind with its own switch. More than three at once are
+  summed up in one banner.
 - A **notification history** behind the toolbar's bell keeps the newest 200.
 
 More in [Menu bar and notifications](docs/desktop.md#menu-bar-and-notifications).

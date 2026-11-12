@@ -46,6 +46,12 @@ const (
 	// KindReleaseDone is a release whose tag reached GitHub.
 	KindReleaseDone Kind = "release_done"
 
+	// KindReleasePublished is a release its workflow on GitHub published.
+	KindReleasePublished Kind = "release_published"
+
+	// KindReleaseFailed is a release whose workflow on GitHub failed.
+	KindReleaseFailed Kind = "release_failed"
+
 	// KindRunFailed is a run from the Scripts tab that failed or ran past its time limit.
 	KindRunFailed Kind = "run_failed"
 )
@@ -57,7 +63,7 @@ var ErrUnknownKind = errors.New("unknown kind of notification")
 func Kinds() []Kind {
 	return []Kind{
 		KindReviewRequested, KindAssigned, KindWoke, KindSessionNeedsYou, KindSessionFinished, KindReleaseDone,
-		KindRunFailed,
+		KindReleasePublished, KindReleaseFailed, KindRunFailed,
 	}
 }
 
