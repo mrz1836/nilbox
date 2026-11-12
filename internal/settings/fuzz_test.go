@@ -1,13 +1,16 @@
 package settings
 
 import (
+	"path/filepath"
 	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/mrz1836/nilbox/internal/prefs/prefval"
+	"github.com/mrz1836/nilbox/internal/store"
 )
 
 // FuzzDecodeWindowSize checks that a stored window size either is refused, as the zero
@@ -87,4 +90,37 @@ func checkDecodedSection(t *testing.T, list ListKey, stored string) {
 
 	written := map[string]string{collapsedKey(list): prefval.EncodeBool(len(collapsed) > 0)}
 	assert.Equal(t, collapsed, decodeCollapsed(written))
+}
+
+// FuzzDecodeCloneLocations checks that any stored text decodes to a list, never nil, of
+// locations each with a known kind and a path that is ~, ~-relative, or absolute, which,
+// written back the way the settings service writes it, decodes to itself.
+func FuzzDecodeCloneLocations(f *testing.F) {
+	for _, seed := range []string{
+		"",
+		"[]",
+		"null",
+		`[{"path":"~/work","kind":"folder"},{"path":"~/Desktop/exp","kind":"clone"}]`,
+		`[{"path":"relative","kind":"folder"},{"path":"/srv/x/","kind":"clone"}]`,
+		`[{"path":"~","kind":"folder"},{"path":"~user/x","kind":"folder"},{"path":"~/x","kind":"bucket"}]`,
+		`{"path":"~/work","kind":"folder"}`,
+		`[{"path":" ~/a/../b ","kind":"folder"}]`,
+	} {
+		f.Add(seed)
+	}
+
+	f.Fuzz(func(t *testing.T, stored string) {
+		list := decodeCloneLocations(stored)
+		require.NotNil(t, list)
+
+		for _, loc := range list {
+			assert.True(t, loc.Kind.Valid(), "kind %q", loc.Kind)
+			assert.True(t, loc.Path == "~" || strings.HasPrefix(loc.Path, "~/") || filepath.IsAbs(loc.Path),
+				"path %q", loc.Path)
+		}
+
+		written, err := store.EncodeJSON(list)
+		require.NoError(t, err)
+		assert.Equal(t, list, decodeCloneLocations(written))
+	})
 }

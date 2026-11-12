@@ -123,6 +123,18 @@ func boundCalls(t *testing.T) map[string]boundCall {
 		"settings.Service.SetCloneRoot": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
 			return c.Settings.SetCloneRoot(ctx, "~/projects")
 		},
+		"settings.Service.AddCloneLocations": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
+			return c.Settings.AddCloneLocations(ctx, []string{"~/work"})
+		},
+		"settings.Service.RemoveCloneLocation": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
+			return c.Settings.RemoveCloneLocation(ctx, "~/elsewhere")
+		},
+		"settings.Service.PreviewCloneLocation": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
+			return c.Settings.PreviewCloneLocation(ctx, "~/src")
+		},
+		"settings.Service.CheckCloneLocations": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
+			return c.Settings.CheckCloneLocations(ctx)
+		},
 		"settings.Service.SetTrustedBots": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
 			return c.Settings.SetTrustedBots(ctx, nil)
 		},
@@ -510,7 +522,7 @@ func seedBound(t *testing.T) (*Core, seededItems) {
 	home := testutil.RealTempDir(t)
 	repo := filepath.Join(home, "projects", "example-repo")
 	testutil.MakeClaudeDirs(t, home, ".claude", "projects/example-repo/.git",
-		"projects/example-repo/.claude/worktrees/scratch")
+		"projects/example-repo/.claude/worktrees/scratch", "work/web/.git", "src/acme-org/tool/.git")
 	// A go-pre-commit config, so the Hooks page lists the clone.
 	testutil.WriteFile(t, filepath.Join(repo, ".github", ".env.base"), "ENABLE_GO_PRE_COMMIT=true\n")
 	// A t3.json, so Repo scripts lists a script.

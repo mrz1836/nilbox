@@ -3,9 +3,10 @@
 //
 // Any package may read any key, but every key has exactly one writer:
 //
-//   - settings writes the user's settings, among them the rules that the trust, snooze,
-//     sensitive, notifyprefs, branchrules, and integrationprefs packages declare and
-//     decode (trust.*, snooze.*, files.*, notify.*, branches.*, integrations.*, and
+//   - settings writes the user's settings, among them the clone root and the other
+//     repository locations (clones.root and clones.locations), and the rules that the
+//     trust, snooze, sensitive, notifyprefs, branchrules, and integrationprefs packages
+//     declare and decode (trust.*, snooze.*, files.*, notify.*, branches.*, integrations.*, and
 //     scripts.*: the scripts.magexTargets and scripts.repoFiles switches of Repo scripts'
 //     sources, and scripts.lastPage and scripts.lastRepo, where the Scripts tab and Repo
 //     scripts reopen).
@@ -14,8 +15,8 @@
 //   - prompts writes prompts.*: the default prompts and the starters already added.
 //   - budget writes budget.*: the API budget's state between runs, through core's keeper.
 //   - integrations writes tools.*: each tool's last detection and latest release.
-//   - release writes release.*: the Release page's last list and the clone root it was
-//     read from, which the next start shows at once.
+//   - release writes release.*: the Release page's last list and the repository
+//     locations it was read from, which the next start shows at once.
 //   - hooks writes hooks.*: whether a checks run has ended, after which the Hooks page
 //     folds what it says about the tools the checks install.
 //

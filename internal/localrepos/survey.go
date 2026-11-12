@@ -87,7 +87,7 @@ func Survey(ctx context.Context, dir string, roots Roots, home string, git execp
 
 	p := Preview{Path: paths.Tilde(dir, home), Kind: kind, Inside: []Suggestion{}, Replaces: []string{}}
 
-	if p.Covered, p.CoveredBy = roots.covering(dir, kind, home); p.Covered != "" {
+	if p.Covered, p.CoveredBy = roots.Covering(dir, kind, home); p.Covered != "" {
 		return p, nil
 	}
 
@@ -116,9 +116,10 @@ func Survey(ctx context.Context, dir string, roots Roots, home string, git execp
 	return p, nil
 }
 
-// covering says why the locations already hold dir, of kind, and which location does,
-// with ~, or returns "" twice.
-func (r Roots) covering(dir string, kind Kind, home string) (why, by string) {
+// Covering says, in a sentence the window shows, why the locations already hold dir, of
+// kind, and which location does, with ~, or returns "" twice: dir is the clone root, one
+// of the locations, or a clone directly inside the clone root or a folder location.
+func (r Roots) Covering(dir string, kind Kind, home string) (why, by string) {
 	shown := paths.Tilde(dir, home)
 	resolved := paths.Resolved(dir)
 
