@@ -418,7 +418,7 @@ func TestTheSlotLimitHoldsAndAReleaseNeverWaits(t *testing.T) {
 
 	select {
 	case <-started:
-		t.Fatal("a fifth run started while four went")
+		require.FailNow(t, "a fifth run started while four went")
 	case <-time.After(300 * time.Millisecond):
 	}
 

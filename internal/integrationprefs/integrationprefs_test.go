@@ -155,12 +155,12 @@ func FuzzDecode(f *testing.F) {
 		})
 
 		if !got.Switches[integrationprefs.MageX].Valid() {
-			t.Fatalf("decoded an invalid switch from %q", sw)
+			require.Failf(t, "decoded an invalid switch", "from %q", sw)
 		}
 
 		if p := got.Paths[integrationprefs.MageX]; p != "" {
 			if _, err := integrationprefs.EncodePath(p); err != nil {
-				t.Fatalf("decoded a path EncodePath refuses: %q", p)
+				require.Failf(t, "decoded a path EncodePath refuses", "%q", p)
 			}
 		}
 	})

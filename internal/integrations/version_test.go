@@ -203,7 +203,7 @@ func FuzzParseVersions(f *testing.F) {
 			}
 
 			if v.Raw == "" {
-				t.Fatalf("parsed an empty version from %q", out)
+				require.Failf(t, "parsed an empty version", "from %q", out)
 			}
 
 			// Whatever was read compares without panicking.

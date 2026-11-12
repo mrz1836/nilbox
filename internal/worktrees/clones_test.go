@@ -278,7 +278,7 @@ func TestMakerWaitsForMaker(t *testing.T) {
 
 		select {
 		case got := <-done:
-			t.Fatalf("Ensure returned while another launch held the clone: %v", got.err)
+			require.Failf(t, "Ensure returned while another launch held the clone", "%v", got.err)
 		default:
 		}
 
@@ -324,7 +324,7 @@ func TestHoldCloneWaitsOnlyForWorktreeChanges(t *testing.T) {
 
 		select {
 		case holdErr := <-got:
-			t.Fatalf("holdClone returned while another worktree change held the clone: %v", holdErr)
+			require.Failf(t, "holdClone returned while another worktree change held the clone", "%v", holdErr)
 		default:
 		}
 

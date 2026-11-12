@@ -309,7 +309,7 @@ func TestTheSinkIsToldOutsideTheLock(t *testing.T) {
 	select {
 	case <-done:
 	case <-time.After(10 * time.Second):
-		t.Fatal("the sink was told while the refresh held the lock")
+		require.FailNow(t, "the sink was told while the refresh held the lock")
 	}
 
 	assert.True(t, sink.told)

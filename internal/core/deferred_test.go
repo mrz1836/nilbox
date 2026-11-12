@@ -45,7 +45,7 @@ func TestDeferredReadsTheShellEnvironment(t *testing.T) {
 	select {
 	case <-c.ShellEnv.Ready():
 	default:
-		t.Fatal("the deferred work read the shell's environment")
+		require.FailNow(t, "the deferred work read the shell's environment")
 	}
 
 	env, read := c.ShellEnv.Env()

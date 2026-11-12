@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/mrz1836/nilbox/internal/periodic"
 	"github.com/mrz1836/nilbox/internal/testutil"
@@ -110,7 +111,7 @@ func TestTheFirstRunStartsWithoutWaiting(t *testing.T) {
 		case at := <-ran:
 			assert.Equal(t, began, at, "the first run starts at once, before any interval passes")
 		default:
-			t.Fatal("the first run did not start at once")
+			require.FailNow(t, "the first run did not start at once")
 		}
 	})
 }
@@ -165,7 +166,7 @@ func TestTheRunInFlightIsWaitedForAndItsCancellationIsNotLogged(t *testing.T) {
 		select {
 		case <-sawCancel:
 		default:
-			t.Fatal("the loop returned before the run in flight did")
+			require.FailNow(t, "the loop returned before the run in flight did")
 		}
 
 		assert.NotContains(t, logs.String(), "fake job failed", "a canceled run is not a failure")

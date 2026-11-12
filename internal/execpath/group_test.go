@@ -259,7 +259,7 @@ func TestGroupReportsExitCodes(t *testing.T) {
 	select {
 	case <-proc.Done():
 	default:
-		t.Fatal("Done is closed once the program exited")
+		require.FailNow(t, "Done is closed once the program exited")
 	}
 
 	assert.Equal(t, proc.Pid(), proc.Pgid(), "the program leads its own group")

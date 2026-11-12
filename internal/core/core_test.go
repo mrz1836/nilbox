@@ -463,7 +463,7 @@ func TestInboxRefreshUsesInjectedRunner(t *testing.T) {
 	case errors.Is(err, github.ErrGHNotFound):
 		assert.Empty(t, programNames(runner))
 	default:
-		t.Fatalf("unexpected refresh error: %v", err)
+		require.Failf(t, "unexpected refresh error", "%v", err)
 	}
 
 	snap, err := c.Inbox.Snapshot(t.Context())

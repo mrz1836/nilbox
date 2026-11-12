@@ -153,7 +153,7 @@ func TestReadTimesOutAndFallsBack(t *testing.T) {
 		select {
 		case <-r.Ready():
 		default:
-			t.Fatal("Ready closes once the first read ends, even a failed one")
+			require.FailNow(t, "Ready closes once the first read ends, even a failed one")
 		}
 
 		env, ok := r.Env()
@@ -235,7 +235,7 @@ func TestEnvBeforeTheFirstReadIsTheFallback(t *testing.T) {
 
 	select {
 	case <-r.Ready():
-		t.Fatal("Ready closes only once a read ends")
+		require.FailNow(t, "Ready closes only once a read ends")
 	default:
 	}
 }
