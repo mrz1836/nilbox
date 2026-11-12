@@ -258,38 +258,42 @@ func TestCloseForgetsTheToken(t *testing.T) {
 	assert.Len(t, runner.Calls(), 2, "the token was forgotten when the app closed")
 }
 
+// TestAgentRunnerPutsTheCommandsDirectoryFirstOnThePath runs a runner with no environment
+// of its own, which passes on this process's, so the fake's entry goes there with
+// t.Setenv and the test runs serially.
 func TestAgentRunnerPutsTheCommandsDirectoryFirstOnThePath(t *testing.T) {
-	t.Parallel()
-
 	// An npm-installed agent's command is a script that finds node beside it.
-	dir := t.TempDir()
-	command := filepath.Join(dir, "codex")
-	require.NoError(t, os.WriteFile(command, []byte("#!/bin/sh\nprintf '%s' \"$PATH\"\n"), 0o700)) //nolint:gosec // a command must be executable
+	command, entry := testutil.FakeTool(t, "codex", testutil.FakeRun{ReportEnv: []string{"PATH"}})
+	key, value, _ := strings.Cut(entry, "=")
+	t.Setenv(key, value)
 
 	stdout, _, err := agentRunner{search: execpath.Search{}}.Run(t.Context(), command, "--version")
 	require.NoError(t, err)
 
-	first, _, _ := strings.Cut(string(stdout), string(os.PathListSeparator))
-	assert.Equal(t, dir, first)
-	assert.Contains(t, string(stdout), os.Getenv("PATH"), "the rest of the search path follows")
+	path, found := strings.CutPrefix(strings.TrimSuffix(string(stdout), "\n"), "PATH=")
+	require.True(t, found, "the fake reports its PATH: %q", stdout)
+
+	first, _, _ := strings.Cut(path, string(os.PathListSeparator))
+	assert.Equal(t, filepath.Dir(command), first)
+	assert.Contains(t, path, os.Getenv("PATH"), "the rest of the search path follows")
 }
 
 func TestAgentRunnerReplacesThePathOfTheEnvironmentItIsGiven(t *testing.T) {
 	t.Parallel()
 
-	dir := t.TempDir()
-	command := filepath.Join(dir, "claude")
-	require.NoError(t, os.WriteFile(command, []byte("#!/bin/sh\nprintf '%s|%s' \"$KEPT\" \"$PATH\"\n"), 0o700)) //nolint:gosec // a command must be executable
+	command, entry := testutil.FakeTool(t, "claude", testutil.FakeRun{ReportEnv: []string{"KEPT", "PATH"}})
 
-	env := []string{"PATH=/first", "KEPT=yes", "PATH=/second"}
+	env := []string{"PATH=/first", "KEPT=yes", "PATH=/second", entry}
 	runner := agentRunner{search: execpath.Search{}, env: env}
 
 	stdout, _, err := runner.Run(t.Context(), command, "--version")
 	require.NoError(t, err)
 
-	assert.Equal(t, "yes|"+dir+string(os.PathListSeparator)+os.Getenv("PATH"), string(stdout),
-		"every PATH it had gives way to the command's directory, then this process's search path")
-	assert.Equal(t, []string{"PATH=/first", "KEPT=yes", "PATH=/second"}, env, "the runner's own environment is left alone")
+	// A program reads the first of a variable's entries, so any PATH left would win.
+	assert.Equal(t, "KEPT=yes\nPATH="+filepath.Dir(command)+string(os.PathListSeparator)+os.Getenv("PATH")+"\n",
+		string(stdout), "every PATH it had gives way to the command's directory, then this process's search path")
+	assert.Equal(t, []string{"PATH=/first", "KEPT=yes", "PATH=/second", entry}, env,
+		"the runner's own environment is left alone")
 }
 
 func TestWorktreeRunnerTurnsGitsTerminalPromptsOff(t *testing.T) {
