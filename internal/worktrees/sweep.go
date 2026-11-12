@@ -319,10 +319,16 @@ func commonDir(dir string) string {
 	return paths.Resolved(gitDir)
 }
 
+// gitPointerLimit is the most of a one-line git file that is read, far more than the
+// longest path a system takes.
+const gitPointerLimit = 64 << 10
+
 // readGitPointer reads the path a one-line git file holds after prefix. A relative path
-// is taken from base, as git takes it.
+// is taken from base, as git takes it. Only a regular file, or a link to one, is read
+// (paths.ReadHead), so a named pipe put in its place never hangs the count, and reads as
+// a file that isn't there.
 func readGitPointer(file, base, prefix string) (string, bool) {
-	data, err := os.ReadFile(file) //nolint:gosec // a git file of a clone under the clone root
+	data, err := paths.ReadHead(file, gitPointerLimit)
 	if err != nil {
 		return "", false
 	}

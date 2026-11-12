@@ -178,7 +178,8 @@ app:lint` reads.
   itself (ASCII letters, digits, and `=-_./:,+@%`, not starting with `=`), for the commands
   the window shows or copies and the chain line's folders and arguments.
   A file a repository or an agent controls (a clone's `go.mod`, `t3.json`, `tasks.json`,
-  magefiles, go-pre-commit config and hooks, the signing files, an agent's transcript) is read
+  magefiles, go-pre-commit config and hooks, the signing files, the `.git` file and
+  `commondir` the sweep's count of worktrees follows, an agent's transcript) is read
   only through `paths.OpenRegular` (`ReadHead`, `ReadTail`): a regular file, or a link to one,
   opened without waiting and checked again once open, so a named pipe swapped in is refused
   (`paths.ErrNotRegular`) rather than hanging the read.
