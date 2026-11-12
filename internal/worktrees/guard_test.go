@@ -619,18 +619,12 @@ func TestEnsureNeverMovesARefThroughTheClonesOwnRefspecs(t *testing.T) {
 
 	r := newGuardRig(t)
 	testutil.RunGit(t, r.f.clone, "config", "remote.origin.fetch", "+refs/heads/*:refs/heads/*")
-	require.NoError(t, os.WriteFile(filepath.Join(r.f.clone, "mine.txt"), []byte("mine\n"), 0o600))
-	testutil.RunGit(t, r.f.clone, "add", "mine.txt")
-	testutil.RunGit(t, r.f.clone, "commit", "-q", "-m", "mine")
-	mine := strings.TrimSpace(testutil.RunGit(t, r.f.clone, "rev-parse", "HEAD"))
+	mine := testutil.Commit(t, r.f.clone, "mine.txt", "mine\n")
 
 	work := filepath.Join(r.e.home, "pusher")
 	testutil.RunGit(t, r.e.home, "clone", "-q", r.f.bare, work)
-	require.NoError(t, os.WriteFile(filepath.Join(work, "theirs.txt"), []byte("theirs\n"), 0o600))
-	testutil.RunGit(t, work, "add", "theirs.txt")
-	testutil.RunGit(t, work, "commit", "-q", "-m", "theirs")
+	theirs := testutil.Commit(t, work, "theirs.txt", "theirs\n")
 	testutil.RunGit(t, work, "push", "-q", "origin", "HEAD:main")
-	theirs := strings.TrimSpace(testutil.RunGit(t, work, "rev-parse", "HEAD"))
 
 	req := r.f.request(item.KindIssue, 4)
 	req.DefaultBranch = mainBranch

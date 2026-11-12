@@ -53,15 +53,15 @@ func newFixture(t *testing.T) fixture {
 	testutil.RunGit(t, root, "-c", "init.defaultBranch=main", "init", "-q", "--bare", f.origin)
 	testutil.InitRepo(t, f.clone)
 
-	f.first = commitFile(t, f.clone, "one.txt", "one")
+	f.first = testutil.Commit(t, f.clone, "one.txt", "one\n")
 	testutil.RunGit(t, f.clone, "tag", "-a", "v1.0.0", "-m", "v1.0.0")
-	f.second = commitFile(t, f.clone, "two.txt", "two")
+	f.second = testutil.Commit(t, f.clone, "two.txt", "two\n")
 	testutil.RunGit(t, f.clone, "tag", "v1.1.0")
 	testutil.RunGit(t, f.clone, "tag", "release-notes")
 	testutil.RunGit(t, f.clone, "remote", "add", "origin", f.origin)
 	testutil.RunGit(t, f.clone, "push", "-q", "-u", "origin", mainBranch, "--tags")
 
-	f.third = commitFile(t, f.clone, "three.txt", "three")
+	f.third = testutil.Commit(t, f.clone, "three.txt", "three\n")
 	testutil.RunGit(t, f.clone, "tag", "v1.2.0")
 
 	testutil.RunGit(t, f.clone, "worktree", "add", "-q", "-b", "feature", f.feature)
@@ -70,28 +70,10 @@ func newFixture(t *testing.T) fixture {
 	gitDir := strings.TrimSpace(testutil.RunGit(t, f.detached, "rev-parse", "--absolute-git-dir"))
 	require.NoError(t, os.WriteFile(filepath.Join(gitDir, "MERGE_HEAD"), []byte(f.third+"\n"), 0o600))
 
-	writeFile(t, f.clone, "one.txt", "changed")
-	writeFile(t, f.clone, "notes.txt", "untracked")
+	testutil.WriteFile(t, filepath.Join(f.clone, "one.txt"), "changed\n")
+	testutil.WriteFile(t, filepath.Join(f.clone, "notes.txt"), "untracked\n")
 
 	return f
-}
-
-// commitFile writes name in dir and commits it, returning the commit.
-func commitFile(t *testing.T, dir, name, text string) string {
-	t.Helper()
-
-	writeFile(t, dir, name, text)
-	testutil.RunGit(t, dir, "add", name)
-	testutil.RunGit(t, dir, "commit", "-q", "-m", name)
-
-	return strings.TrimSpace(testutil.RunGit(t, dir, "rev-parse", "HEAD"))
-}
-
-// writeFile writes text to name in dir.
-func writeFile(t *testing.T, dir, name, text string) {
-	t.Helper()
-
-	require.NoError(t, os.WriteFile(filepath.Join(dir, name), []byte(text+"\n"), 0o600))
 }
 
 // resolved returns path with every symbolic link resolved, as git prints a worktree's folder.
@@ -495,7 +477,7 @@ func TestReadsOriginHead(t *testing.T) {
 
 	testutil.RunGit(t, root, "-c", "init.defaultBranch=trunk", "init", "-q", "--bare", origin)
 	testutil.InitRepo(t, repo)
-	commitFile(t, repo, "one.txt", "one")
+	testutil.Commit(t, repo, "one.txt", "one\n")
 	testutil.RunGit(t, repo, "switch", "-q", "-c", "trunk")
 	testutil.RunGit(t, repo, "remote", "add", "origin", origin)
 	testutil.RunGit(t, repo, "push", "-q", "-u", "origin", "trunk")

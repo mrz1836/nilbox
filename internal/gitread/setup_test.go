@@ -453,7 +453,7 @@ func TestHardeningTurnsOffTheHooksAConfigNames(t *testing.T) {
 	ran := t.TempDir()
 
 	testutil.InitRepo(t, dir)
-	commitFile(t, dir, "a.txt", "a")
+	testutil.Commit(t, dir, "a.txt", "a\n")
 	testutil.RunGit(t, dir, "branch", "doomed")
 
 	for _, event := range []string{"post-index-change", "reference-transaction"} {
@@ -754,7 +754,7 @@ func blobless(t *testing.T) (dir string, env []string) {
 	dir = filepath.Join(root, "clone")
 
 	testutil.InitRepo(t, src)
-	commitFile(t, src, "a.txt", "a")
+	testutil.Commit(t, src, "a.txt", "a\n")
 	testutil.RunGit(t, root, "clone", "-q", "--bare", src, origin)
 	testutil.RunGit(t, origin, "config", "uploadpack.allowFilter", on)
 	testutil.RunGit(t, root, "clone", "-q", "--filter=blob:none", "--no-checkout", "file://"+filepath.ToSlash(origin), dir)

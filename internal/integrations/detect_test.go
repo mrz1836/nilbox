@@ -553,7 +553,7 @@ func TestDetectionRunsAtMostFourCopiesAtOnce(t *testing.T) {
 			dir := filepath.Join(m.root, "bin"+strconv.Itoa(i))
 			dirs = append(dirs, dir)
 			m.put(dir, magexSays(recordedMagex))
-			executable(t, filepath.Join(dir, "go-pre-commit"))
+			testutil.WriteFileMode(t, filepath.Join(dir, "go-pre-commit"), "", 0o700)
 		}
 
 		var (
@@ -583,12 +583,4 @@ func TestDetectionRunsAtMostFourCopiesAtOnce(t *testing.T) {
 		assert.Len(t, got["mage-x"].others, 5)
 		assert.Equal(t, versionParallel, most, "four at a time across both tools, never more")
 	})
-}
-
-// executable writes an empty executable file at path.
-func executable(t *testing.T, path string) {
-	t.Helper()
-
-	testutil.WriteFile(t, path, "")
-	require.NoError(t, os.Chmod(path, 0o700)) //nolint:gosec // a fake tool must be executable
 }

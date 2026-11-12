@@ -8,6 +8,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/mrz1836/nilbox/internal/testutil"
 )
 
 // fakeSQLCVersion is the sqlc version the db target tests pin.
@@ -26,7 +28,7 @@ func sqlcTools(t *testing.T, env, body string) string {
 
 	dir := inTempDir(t)
 	t.Setenv(sqlcVersionKey, "")
-	writeFile(t, filepath.Join(dir, projectEnvFile), env)
+	testutil.WriteFile(t, filepath.Join(dir, projectEnvFile), env)
 
 	return fakeLoggedTool(t, isolatedPath(t), "go", body)
 }

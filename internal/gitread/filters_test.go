@@ -89,8 +89,8 @@ func TestStatusRunsNoFilterTheCloneNames(t *testing.T) {
 	marker := filepath.Join(t.TempDir(), "ran")
 
 	testutil.InitRepo(t, dir)
-	writeFile(t, dir, ".gitattributes", "* filter=x")
-	commitFile(t, dir, "a.txt", "a")
+	testutil.WriteFile(t, filepath.Join(dir, ".gitattributes"), "* filter=x\n")
+	testutil.Commit(t, dir, "a.txt", "a\n")
 	testutil.RunGit(t, dir, "config", "filter.x.clean", "touch '"+marker+"'; cat")
 
 	later := time.Now().Add(time.Hour)
@@ -117,8 +117,8 @@ func TestEntriesRunNoFilterTheCloneNames(t *testing.T) {
 	marker := filepath.Join(t.TempDir(), "ran")
 
 	testutil.InitRepo(t, dir)
-	writeFile(t, dir, ".gitattributes", "* filter=x")
-	commitFile(t, dir, "a.txt", "a")
+	testutil.WriteFile(t, filepath.Join(dir, ".gitattributes"), "* filter=x\n")
+	testutil.Commit(t, dir, "a.txt", "a\n")
 	testutil.RunGit(t, dir, "config", "filter.x.clean", "touch '"+marker+"'; cat")
 
 	later := time.Now().Add(time.Hour)
@@ -166,9 +166,9 @@ func TestStatusRunsNoFilterASubmoduleNames(t *testing.T) {
 	marker := filepath.Join(t.TempDir(), "ran")
 
 	testutil.InitRepo(t, sub)
-	commitFile(t, sub, "a.txt", "a")
+	testutil.Commit(t, sub, "a.txt", "a\n")
 	testutil.InitRepo(t, super)
-	commitFile(t, super, "readme.txt", "readme")
+	testutil.Commit(t, super, "readme.txt", "readme\n")
 	testutil.RunGit(t, super, "-c", "protocol.file.allow=always", "submodule", "add", "-q", sub, "sub")
 	testutil.RunGit(t, super, "commit", "-q", "-m", "add sub")
 

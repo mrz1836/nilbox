@@ -48,16 +48,10 @@ func newRemoteFixture(t *testing.T, e *env) remoteFixture {
 
 	src := filepath.Join(e.home, "src")
 	testutil.InitRepo(t, src)
-	require.NoError(t, os.WriteFile(filepath.Join(src, "README.md"), []byte("example\n"), 0o600))
-	testutil.RunGit(t, src, "add", "README.md")
-	testutil.RunGit(t, src, "commit", "-q", "-m", "init")
-	main := strings.TrimSpace(testutil.RunGit(t, src, "rev-parse", "HEAD"))
+	main := testutil.Commit(t, src, "README.md", "example\n")
 
 	testutil.RunGit(t, src, "switch", "-q", "-c", "contributor-fix")
-	require.NoError(t, os.WriteFile(filepath.Join(src, "fix.txt"), []byte("fix\n"), 0o600))
-	testutil.RunGit(t, src, "add", "fix.txt")
-	testutil.RunGit(t, src, "commit", "-q", "-m", "fix")
-	prHead := strings.TrimSpace(testutil.RunGit(t, src, "rev-parse", "HEAD"))
+	prHead := testutil.Commit(t, src, "fix.txt", "fix\n")
 	testutil.RunGit(t, src, "switch", "-q", mainBranch)
 
 	bare := filepath.Join(e.home, "remote.git")
@@ -229,10 +223,7 @@ func TestEnsureAttachesALeftBehindBranch(t *testing.T) {
 	first, err := m.Ensure(t.Context(), f.request(item.KindPR, 7))
 	require.NoError(t, err)
 
-	require.NoError(t, os.WriteFile(filepath.Join(first.Path, "more.txt"), []byte("more\n"), 0o600))
-	testutil.RunGit(t, first.Path, "add", "more.txt")
-	testutil.RunGit(t, first.Path, "commit", "-q", "-m", "more")
-	work := strings.TrimSpace(testutil.RunGit(t, first.Path, "rev-parse", "HEAD"))
+	work := testutil.Commit(t, first.Path, "more.txt", "more\n")
 
 	// The worktree is removed outside the app; its branch stays.
 	testutil.RunGit(t, f.clone, "worktree", "remove", first.Path)
@@ -630,10 +621,7 @@ func TestRemoveKeepsABranchWithCommitsNotOnGitHub(t *testing.T) {
 
 	f, svc, issue, _ := removeFixture(t)
 
-	require.NoError(t, os.WriteFile(filepath.Join(issue.Path, "fix.go"), []byte("package fix\n"), 0o600))
-	testutil.RunGit(t, issue.Path, "add", "fix.go")
-	testutil.RunGit(t, issue.Path, "commit", "-q", "-m", "fix the thing")
-	work := strings.TrimSpace(testutil.RunGit(t, issue.Path, "rev-parse", "HEAD"))
+	work := testutil.Commit(t, issue.Path, "fix.go", "package fix\n")
 
 	snap, err := svc.List(t.Context())
 	require.NoError(t, err)

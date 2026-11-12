@@ -486,7 +486,7 @@ func newRemoteRig(t *testing.T) remoteRig {
 
 	testutil.RunGit(t, root, "-c", "init.defaultBranch=main", "init", "-q", "--bare", origin)
 	testutil.InitRepo(t, r.clone)
-	commitFile(t, r.clone, "a.txt", "a")
+	testutil.Commit(t, r.clone, "a.txt", "a\n")
 	testutil.RunGit(t, r.clone, "tag", "v1.0.0")
 	testutil.RunGit(t, r.clone, "remote", "add", "origin", origin)
 	testutil.RunGit(t, r.clone, "push", "-q", "origin", "HEAD:refs/heads/main", "--tags")

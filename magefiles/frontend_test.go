@@ -10,6 +10,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/mrz1836/nilbox/internal/testutil"
 )
 
 // fakePNPM puts a pnpm on an isolated PATH that appends its arguments to a log, runs
@@ -60,7 +62,7 @@ func TestRequirePNPM(t *testing.T) {
 			isolatedPath(t)
 
 			if tt.manifest != "" {
-				writeFile(t, filepath.Join(dir, frontendDir, "package.json"), tt.manifest)
+				testutil.WriteFile(t, filepath.Join(dir, frontendDir, "package.json"), tt.manifest)
 			}
 
 			err := requirePNPM()
@@ -166,7 +168,7 @@ func TestPnpmCommand(t *testing.T) {
 
 	t.Run("runs a launcher without a shebang through sh", func(t *testing.T) {
 		pnpm := filepath.Join(isolatedPath(t), "pnpm")
-		writeExecutable(t, pnpm, "exit 0\n")
+		testutil.WriteExecutable(t, pnpm, "exit 0\n")
 
 		cmd, err := pnpmCommand(t.Context(), frontendDir, "install")
 		require.NoError(t, err)

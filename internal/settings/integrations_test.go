@@ -1,7 +1,6 @@
 package settings
 
 import (
-	"os"
 	"path/filepath"
 	"testing"
 
@@ -13,14 +12,6 @@ import (
 	"github.com/mrz1836/nilbox/internal/testutil"
 	"github.com/mrz1836/nilbox/internal/uierr"
 )
-
-// executable writes an empty file at path and makes it executable.
-func executable(t *testing.T, path string) {
-	t.Helper()
-
-	testutil.WriteFile(t, path, "")
-	require.NoError(t, os.Chmod(path, 0o700)) //nolint:gosec // a fake tool must be executable
-}
 
 func TestSetIntegrationEnabled(t *testing.T) {
 	t.Parallel()
@@ -165,7 +156,7 @@ func TestSetIntegrationPath(t *testing.T) {
 	svc := serviceOver(t, db, home, WithEvents(events))
 
 	magex := filepath.Join(home, "tools", "magex")
-	executable(t, magex)
+	testutil.WriteFileMode(t, magex, "", 0o700)
 
 	got, err := svc.SetIntegrationPath(t.Context(), integrationprefs.MageX, " ~/tools/../tools/magex ")
 	require.NoError(t, err)

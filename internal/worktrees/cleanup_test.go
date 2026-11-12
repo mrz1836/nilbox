@@ -240,11 +240,8 @@ func agentWorktree(t *testing.T, repo, name string) (string, string) {
 	t.Helper()
 
 	path := addWorktree(t, repo, filepath.Join(repo, ".claude", "worktrees", name), ownBranchPrefix+name)
-	require.NoError(t, os.WriteFile(filepath.Join(path, "fix.txt"), []byte(name+"\n"), 0o600))
-	testutil.RunGit(t, path, "add", "fix.txt")
-	testutil.RunGit(t, path, "commit", "-q", "-m", "fix "+name)
 
-	return path, strings.TrimSpace(testutil.RunGit(t, path, "rev-parse", "HEAD"))
+	return path, testutil.Commit(t, path, "fix.txt", name+"\n")
 }
 
 // pushed records head on a remote-tracking branch, as a push and fetch would.
