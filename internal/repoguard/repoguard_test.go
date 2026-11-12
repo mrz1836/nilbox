@@ -762,34 +762,82 @@ func TestWailsAllowed(t *testing.T) {
 	}
 }
 
-// testSupportDir holds the test-support package: helpers and fakes the test suites share,
-// which must never reach the app.
-const testSupportDir = "internal/testutil"
+// testSupportDirs hold the test-support packages, which must never reach the app: the
+// helpers and fakes the test suites share, and the runner the suites of scriptrun's kinds
+// share, which builds on them.
+func testSupportDirs() []string {
+	return []string{"internal/testutil", "internal/scriptrun/scriptruntest"}
+}
+
+// inTestSupport reports whether rel, a path relative to the module, is in a test-support
+// package or under one.
+func inTestSupport(rel string) bool {
+	return slices.ContainsFunc(testSupportDirs(), func(dir string) bool {
+		return rel == dir || strings.HasPrefix(rel, dir+"/")
+	})
+}
+
+// testSupportImports returns the imports of a test-support package among imports, those
+// of a file in module.
+func testSupportImports(module string, imports []string) []string {
+	var found []string
+
+	for _, imp := range imports {
+		if rel, ok := strings.CutPrefix(imp, module+"/"); ok && inTestSupport(rel) {
+			found = append(found, imp)
+		}
+	}
+
+	return found
+}
 
 func TestOnlyTestsImportTestSupport(t *testing.T) {
 	t.Parallel()
 
 	root := moduleRoot(t)
-	testSupport := modulePath(t, root) + "/" + testSupportDir
+	module := modulePath(t, root)
 
-	require.DirExists(t, filepath.Join(root, filepath.FromSlash(testSupportDir)),
-		"%s is gone; update this guard", testSupportDir)
+	for _, dir := range testSupportDirs() {
+		require.DirExists(t, filepath.Join(root, filepath.FromSlash(dir)), "%s is gone; update this guard", dir)
+	}
 
 	var found []string
 
 	// Every Go file is parsed whatever its build tags, so a tagged file cannot hide an
-	// import from this check.
+	// import from this check. A test-support package may import another.
 	for _, rel := range goFiles(t) {
-		if strings.HasSuffix(rel, "_test.go") {
+		if strings.HasSuffix(rel, "_test.go") || inTestSupport(rel) {
 			continue
 		}
 
-		for _, imp := range fileImports(t, rel) {
-			if imp == testSupport || strings.HasPrefix(imp, testSupport+"/") {
-				found = append(found, rel+": "+imp)
-			}
+		for _, imp := range testSupportImports(module, fileImports(t, rel)) {
+			found = append(found, rel+": "+imp)
 		}
 	}
 
-	assert.Empty(t, found, "only _test.go files may import the test-support package")
+	assert.Empty(t, found, "only _test.go files may import the test-support packages")
+}
+
+func TestTestSupportImports(t *testing.T) {
+	t.Parallel()
+
+	for rel, want := range map[string]bool{
+		"internal/testutil":                                 true,
+		"internal/testutil/db.go":                           true,
+		"internal/scriptrun/scriptruntest":                  true,
+		"internal/scriptrun/scriptruntest/scriptruntest.go": true,
+		"internal/scriptrun/engine.go":                      false,
+		"internal/scriptrun":                                false,
+		"internal/testutilx/a.go":                           false,
+		"internal/hooks/helpers_test.go":                    false,
+	} {
+		assert.Equal(t, want, inTestSupport(rel), rel)
+	}
+
+	assert.Equal(t, []string{"example.com/m/internal/testutil", "example.com/m/internal/scriptrun/scriptruntest"},
+		testSupportImports("example.com/m", []string{
+			"example.com/m/internal/testutil", "example.com/m/internal/scriptrun",
+			"example.com/m/internal/scriptrun/scriptruntest", "example.com/other/internal/testutil", "testing",
+		}))
+	assert.Empty(t, testSupportImports("example.com/m", []string{"example.com/m/internal/testutilx"}))
 }

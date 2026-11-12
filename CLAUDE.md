@@ -172,7 +172,11 @@ app:lint` reads.
   itself (ASCII letters, digits, and `=-_./:,+@%`, not starting with `=`).
   `internal/testutil` holds the fakes and fixtures the test suites
   share (a fresh database, an isolated git, a runner, finder, clock, event sink, log, and fake
-  tools); only tests may import it.
+  tools); only tests may import it. `internal/scriptrun/scriptruntest` holds the runner the
+  hooks, scripts, and release suites share, built on it: a real `scriptrun.Engine` and its
+  Service over a fresh database, the next start over the same history (`Restart`, `Next`),
+  and `Ended` and `Await`, which look again only when the engine's `Changed` says the runs
+  changed, never on a timer; only tests may import it either.
 - `internal/event/` holds the app's events, one Go type each with its name; services emit them
   into the one `event.Sink` they are given. `internal/desktop/` is the shell's logic: it hears
   those events, keeps the menu bar current with what `internal/menubar` works out, runs the

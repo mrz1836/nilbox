@@ -3,8 +3,9 @@
 // personal home-directory paths, a data layer that needs CGO, tests that would call the
 // live GitHub API, any command that deletes a git branch, a clone created anywhere but the
 // launcher's confirmed clone of a missing repository, any git command that changes an
-// existing clone, the test-support package (internal/testutil) imported anywhere but a
-// _test.go file, production code that logs through slog's default logger or the
+// existing clone, a test-support package (internal/testutil, or the runner harness
+// internal/scriptrun/scriptruntest) imported anywhere but a _test.go file or another
+// test-support package, production code that logs through slog's default logger or the
 // standard log package instead of the logger it was given, frontend text sized in px,
 // which the text size setting cannot scale, and a shell, Python, or other script file
 // outside the directories go-broadcast syncs, where a magex target belongs instead.
