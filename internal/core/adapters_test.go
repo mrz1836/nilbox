@@ -21,11 +21,14 @@ import (
 	"github.com/mrz1836/nilbox/internal/execpath"
 	"github.com/mrz1836/nilbox/internal/github"
 	"github.com/mrz1836/nilbox/internal/inbox"
+	"github.com/mrz1836/nilbox/internal/integrationprefs"
 	"github.com/mrz1836/nilbox/internal/item"
 	"github.com/mrz1836/nilbox/internal/launcher"
 	"github.com/mrz1836/nilbox/internal/launcher/terminal"
+	"github.com/mrz1836/nilbox/internal/release"
 	"github.com/mrz1836/nilbox/internal/repo"
 	"github.com/mrz1836/nilbox/internal/scriptrun"
+	"github.com/mrz1836/nilbox/internal/sensitive"
 	"github.com/mrz1836/nilbox/internal/settings"
 	"github.com/mrz1836/nilbox/internal/testutil"
 	"github.com/mrz1836/nilbox/internal/uierr"
@@ -93,6 +96,59 @@ func TestSettingsViewReportsUnreadableSettings(t *testing.T) {
 	got, err := settingsView[launcher.LaunchSettings]{settings: prefs, part: launchSettings}.Get(t.Context())
 	require.Error(t, err)
 	assert.Zero(t, got)
+}
+
+func TestSettingsAdaptersReadTheirPartOfTheSettings(t *testing.T) {
+	t.Parallel()
+
+	ctx := t.Context()
+	db := testutil.DB(t)
+	prefs := settings.NewService(db, nil, t.TempDir())
+	places, review := releaseSettings{settings: prefs}, reviewSettings{settings: prefs}
+
+	where, err := places.Where(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, release.Where{RunsIn: integrationprefs.RunsInApp, Terminal: terminal.Name(terminal.ITerm2)}, where)
+
+	files, err := review.Sensitive(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, sensitive.DefaultConfig(), files)
+
+	require.NoError(t, testutil.ErrOf(prefs.SetRunsIn(ctx, integrationprefs.RunsInTerminal)))
+	require.NoError(t, testutil.ErrOf(prefs.SetTerminal(ctx, settings.TerminalApp)))
+	require.NoError(t, testutil.ErrOf(prefs.SetSensitiveScope(ctx, sensitive.ScopeOutside)))
+
+	where, err = places.Where(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, release.Where{
+		RunsIn: integrationprefs.RunsInTerminal, Terminal: terminal.Name(terminal.TerminalApp),
+	}, where, "a change reaches the next read")
+
+	files, err = review.Sensitive(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, sensitive.ScopeOutside, files.Scope)
+
+	require.NoError(t, db.Close())
+
+	where, err = places.Where(ctx)
+	require.Error(t, err)
+	assert.Zero(t, where, "settings that can't be read give no part")
+
+	files, err = review.Sensitive(ctx)
+	require.Error(t, err)
+	assert.Zero(t, files)
+
+	offer, err := places.OfferAfterMerge(ctx)
+	require.Error(t, err)
+	assert.False(t, offer)
+
+	cfg, err := integrationSettings{settings: prefs}.Integrations(ctx)
+	require.Error(t, err)
+	assert.Zero(t, cfg)
+
+	runsIn, err := integrationSettings{settings: prefs}.RunsIn(ctx)
+	require.Error(t, err)
+	assert.Zero(t, runsIn)
 }
 
 func TestLaunchItemsHandTheLauncherTheStoredItems(t *testing.T) {
