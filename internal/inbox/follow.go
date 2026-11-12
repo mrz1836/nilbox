@@ -16,16 +16,17 @@ import (
 // The follow of the pull requests whose checks are running: GitHub's own page updates
 // as the checks end, and the inbox's five-minute refresh would leave the card behind.
 const (
-	// FollowInterval is how often the follow reads again the pull requests whose checks
-	// were still running. A round asks GitHub one request for all of them, about a point,
+	// FollowInterval is how often, unless the settings say otherwise, the follow reads
+	// again the pull requests whose checks were still running. A round asks GitHub one request for all of them, about a point,
 	// and nothing while none runs: at most some 80 points an hour, a percent or two of
 	// the GraphQL budget, and only while checks run.
 	FollowInterval = 45 * time.Second
 
 	// followFresh is how recently a pull request's details must have been read for a
 	// round to leave it alone, as after a whole refresh or the round before: a little less
-	// than FollowInterval, so the round after reads it again.
-	followFresh = 40 * time.Second
+	// than the shortest interval the follow can be set to, so the round after reads it
+	// again.
+	followFresh = 25 * time.Second
 
 	// followMax is the most pull requests one round reads, the longest unread first.
 	followMax = 50
@@ -189,26 +190,47 @@ func (s *Service) fetchRunning(
 	return out, nil
 }
 
-// ChecksFollower reads again, every FollowInterval, the pull requests whose checks are
-// running (refreshRunning), as a desktop worker. It isn't bound, and neither is what it
-// calls: only it follows the checks. A round that arrives while one is still
+// ChecksFollower reads again, as often as its every says (the user's setting,
+// FollowInterval when nil; off at zero), the pull requests whose checks are running
+// (refreshRunning), as a desktop worker. Wake makes it read the setting again at once. It
+// isn't bound, and neither is what it calls: only it follows the checks. A round that arrives while one is still
 // running is skipped; failures are logged, and a panicking round is recovered, so it keeps
 // going until its context is canceled.
 type ChecksFollower struct {
-	follow   func(ctx context.Context) error
-	interval time.Duration
-	logger   *slog.Logger
+	follow func(ctx context.Context) error
+	every  periodic.Every
+	wake   chan struct{}
+	logger *slog.Logger
 }
 
-// NewChecksFollower returns a ChecksFollower over s, logging failures to logger. A nil
-// logger discards them.
-func NewChecksFollower(s *Service, logger *slog.Logger) *ChecksFollower {
-	return &ChecksFollower{follow: s.refreshRunning, interval: FollowInterval, logger: logger}
+// NewChecksFollower returns a ChecksFollower over s, as often as every says, logging
+// failures to logger. A nil every follows every FollowInterval, and a nil logger discards
+// the failures.
+func NewChecksFollower(s *Service, every periodic.Every, logger *slog.Logger) *ChecksFollower {
+	return newChecksFollower(s.refreshRunning, every, logger)
 }
 
-// Run follows now and on every tick until ctx is canceled, then waits for a round in
-// flight to return. Its first round finds nothing to read when a whole refresh read every
-// pull request a moment before.
+// newChecksFollower returns a ChecksFollower that follows through follow.
+func newChecksFollower(follow func(ctx context.Context) error, every periodic.Every, logger *slog.Logger,
+) *ChecksFollower {
+	if every == nil {
+		every = func(context.Context) time.Duration { return FollowInterval }
+	}
+
+	return &ChecksFollower{follow: follow, every: every, wake: make(chan struct{}, 1), logger: logger}
+}
+
+// Run follows now and then as often as every says until ctx is canceled, then waits for
+// a round in flight to return. Its first round finds nothing to read when a whole refresh
+// read every pull request a moment before.
 func (f *ChecksFollower) Run(ctx context.Context) {
-	periodic.Run(ctx, f.interval, followJob, f.follow, f.logger)
+	periodic.RunEvery(ctx, f.every, f.wake, followJob, f.follow, f.logger)
+}
+
+// Wake has the follower read how often to follow again, as when the user changed it.
+func (f *ChecksFollower) Wake() {
+	select {
+	case f.wake <- struct{}{}:
+	default:
+	}
 }

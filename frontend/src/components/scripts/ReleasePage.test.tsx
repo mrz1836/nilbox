@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 
 import type { SettingsSection } from '../../lib/settingsIndex'
+import type { OnSection } from '../../lib/useSections'
 import { useReleaseCandidates } from '../../lib/useReleaseCandidates'
 import type { IntegrationTool, ReleaseCandidate, ReleaseCandidates, ScriptRun } from '../../platform'
 import { at } from '../../test/clock'
@@ -67,6 +68,40 @@ function heldList(): (list: ReleaseCandidates) => void {
 }
 
 describe('ReleasePage', () => {
+  it('keeps each group open or folded as the user left it, across starts', async () => {
+    const onSection = vi.fn<OnSection>()
+    render(
+      <ReleasePage
+        candidates={{
+          list: releaseCandidates(),
+          error: '',
+          refreshing: false,
+          refreshError: '',
+          progress: null,
+          refresh: () => Promise.resolve(),
+        }}
+        tool={integrationTool()}
+        runs={[]}
+        cloneRoot="~/projects"
+        onRelease={vi.fn()}
+        onOpenRun={vi.fn()}
+        onOpenSettings={vi.fn()}
+        sections={{ 'release.unreleased': false, 'release.upToDate': true }}
+        onSection={onSection}
+      />,
+      { wrapper: at() },
+    )
+
+    expect(group(/^Unreleased changes · 1/)).toHaveAttribute('aria-expanded', 'false')
+    expect(screen.queryByRole('list', { name: 'Unreleased changes' })).not.toBeInTheDocument()
+    expect(group(/^Up to date · 1/)).toHaveAttribute('aria-expanded', 'true')
+
+    await userEvent.click(group(/^No releases yet · 1/))
+
+    expect(onSection).toHaveBeenCalledExactlyOnceWith('release.noReleases', true)
+    expect(group(/^No releases yet · 1/)).toHaveAttribute('aria-expanded', 'true')
+  })
+
   it('lists the unreleased repositories open, and the other groups collapsed with their counts', async () => {
     const { onRelease } = renderPage()
 

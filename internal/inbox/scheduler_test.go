@@ -54,7 +54,7 @@ func TestSchedulerRefreshesAndLogsUntilCanceled(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		r := &countingRefresher{}
 		logs := &syncBuffer{}
-		s := NewScheduler(r, slog.New(slog.NewTextHandler(logs, nil)))
+		s := NewScheduler(r, nil, slog.New(slog.NewTextHandler(logs, nil)))
 
 		ctx, cancel := context.WithCancel(t.Context())
 		done := make(chan struct{})
@@ -83,9 +83,51 @@ func TestSchedulerRefreshesAndLogsUntilCanceled(t *testing.T) {
 func TestNewSchedulerDefaults(t *testing.T) {
 	t.Parallel()
 
-	s := NewScheduler(&countingRefresher{}, nil)
+	s := NewScheduler(&countingRefresher{}, nil, nil)
 
-	assert.Equal(t, DefaultInterval, s.interval)
+	assert.Equal(t, DefaultInterval, s.every(t.Context()))
 	assert.Equal(t, 5*time.Minute, DefaultInterval)
-	assert.Nil(t, s.logger, "periodic.Run discards a nil logger's entries")
+	assert.Nil(t, s.logger, "periodic.RunEvery discards a nil logger's entries")
+}
+
+func TestSchedulerFollowsTheSettingAndWakesToAChange(t *testing.T) {
+	t.Parallel()
+
+	synctest.Test(t, func(t *testing.T) {
+		var every atomic.Int64
+
+		every.Store(int64(30 * time.Minute))
+
+		r := &countingRefresher{}
+		s := NewScheduler(r, func(context.Context) time.Duration { return time.Duration(every.Load()) }, nil)
+
+		ctx, cancel := context.WithCancel(t.Context())
+		done := make(chan struct{})
+
+		go func() {
+			defer close(done)
+
+			s.Run(ctx)
+		}()
+
+		synctest.Wait()
+		assert.Equal(t, int32(1), r.count.Load())
+
+		time.Sleep(5 * time.Minute)
+		synctest.Wait()
+		assert.Equal(t, int32(1), r.count.Load(), "not yet: it is set to half an hour")
+
+		every.Store(int64(2 * time.Minute))
+		s.Wake()
+		synctest.Wait()
+		assert.Equal(t, int32(2), r.count.Load(), "set shorter, a refresh already due runs at once")
+
+		s.Wake()
+		s.Wake() // a second wake while one waits is dropped, never blocks
+		synctest.Wait()
+		assert.Equal(t, int32(2), r.count.Load(), "a wake with nothing due runs nothing")
+
+		cancel()
+		<-done
+	})
 }

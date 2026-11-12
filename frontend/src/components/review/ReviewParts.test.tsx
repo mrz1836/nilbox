@@ -559,8 +559,9 @@ describe('ReviewComposer', () => {
     const { rerender } = render(composer(1))
 
     await userEvent.click(screen.getByRole('button', { name: /^Launch options/ }))
-    await userEvent.click(
-      within(screen.getByRole('dialog', { name: 'Launch options' })).getByRole('radio', { name: /Quick look/ }),
+    await userEvent.selectOptions(
+      within(screen.getByRole('dialog', { name: 'Launch options' })).getByRole('combobox', { name: 'Prompt' }),
+      'Quick look',
     )
     await userEvent.keyboard('{Escape}')
     expect(screen.getByRole('button', { name: /^Launch options/ })).toHaveAccessibleName(

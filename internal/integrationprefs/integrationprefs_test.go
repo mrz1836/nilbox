@@ -229,10 +229,12 @@ func TestTheSectionsTheUserOpenedOrFolded(t *testing.T) {
 	t.Parallel()
 
 	got := integrationprefs.Decode(map[string]string{
-		integrationprefs.KeySections: `{"hooks.ready":false,"scripts.magex":true,"hooks.someday":true,"scripts.t3":"x"}`,
+		integrationprefs.KeySections: `{"hooks.ready":false,"scripts.magex":true,"release.upToDate":true,` +
+			`"hooks.someday":true,"scripts.t3":"x"}`,
 	})
 	assert.Equal(t, map[integrationprefs.ScriptsSection]bool{
 		integrationprefs.SectionHooksReady: false, integrationprefs.SectionScriptsMagex: true,
+		integrationprefs.SectionReleaseUpToDate: true,
 	}, got.Sections, "a section the tab doesn't have is dropped")
 
 	for _, odd := range []string{"", "[]", "not json", `{"hooks.ready":"no"}`} {

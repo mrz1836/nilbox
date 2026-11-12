@@ -26,6 +26,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/release"
 	"github.com/mrz1836/nilbox/internal/repo"
 	"github.com/mrz1836/nilbox/internal/scriptrun"
+	"github.com/mrz1836/nilbox/internal/settings"
 	"github.com/mrz1836/nilbox/internal/testutil"
 )
 
@@ -56,6 +57,43 @@ func TestIntegrationsChangedWakesTheToolFinder(t *testing.T) {
 	assert.Equal(t, int32(1), tools.n.Load(), "a flipped switch changes no detection")
 	assert.Equal(t, []event.Event{event.ToolsUpdated{}, event.InboxUpdated{}}, events.All(),
 		"so the window hears at once that the list changed; the rest pass on")
+}
+
+func TestAChangedIntervalWakesWhatRefreshesAndStaysInGo(t *testing.T) {
+	t.Parallel()
+
+	events := &testutil.Events{}
+	inboxRefresh, checks, sweep := &countWakes{}, &countWakes{}, &countWakes{}
+	relay := &followSwitch{sink: events, intervals: []waker{inboxRefresh, checks, sweep}}
+
+	relay.Emit(event.IntervalsChanged{})
+
+	for _, w := range []*countWakes{inboxRefresh, checks, sweep} {
+		assert.Equal(t, int32(1), w.n.Load())
+	}
+
+	assert.Empty(t, events.All(), "the window has the settings from the setter already")
+}
+
+func TestRefreshEveryReadsTheSettingAsItIsNow(t *testing.T) {
+	t.Parallel()
+
+	c := bootstrap(t, Options{
+		Paths: appdata.NewPaths(filepath.Join(t.TempDir(), "data")), Home: t.TempDir(), Runner: &testutil.Runner{},
+	})
+	inboxEvery := refreshEvery(c.Settings, settings.RefreshInbox, nil)
+	checksEvery := refreshEvery(c.Settings, settings.RefreshChecks, nil)
+
+	assert.Equal(t, 5*time.Minute, inboxEvery(t.Context()))
+	assert.Equal(t, 45*time.Second, checksEvery(t.Context()))
+
+	_, err := c.Settings.SetRefreshInterval(t.Context(), settings.RefreshInbox, 900)
+	require.NoError(t, err)
+	_, err = c.Settings.SetRefreshInterval(t.Context(), settings.RefreshChecks, 0)
+	require.NoError(t, err)
+
+	assert.Equal(t, 15*time.Minute, inboxEvery(t.Context()))
+	assert.Zero(t, checksEvery(t.Context()), "off")
 }
 
 func TestLatestReleasesAdaptsGitHubsAnswer(t *testing.T) {
@@ -444,7 +482,7 @@ func TestReleaseGitHubReadsTheWorkflowAndTheBudgetCountsEveryPoll(t *testing.T) 
 		Runs: []release.TagRun{},
 	}, got)
 
-	gauge := c.Budget.Gauge()
+	gauge := c.Budget.Gauge(t.Context())
 	assert.Equal(t, 3, gauge.GraphQL.Spent, "the budget gauge counts every poll's point")
 	assert.Equal(t, 3, gauge.GraphQL.Requests)
 	assert.Equal(t, 2, gauge.Core.Spent, "and every runs request, none once it is published")

@@ -18,11 +18,12 @@ export interface LaunchDialogProps {
   children: ReactNode
 }
 
-// initialFocus is the control focus starts on: the chosen prompt, else the first chosen
-// option, else the first control, else the dialog's body, when it shows no options.
+// initialFocus is the control focus starts on: the one marked for it (the Prompt select),
+// else the first chosen option, else the first control, else the dialog's body, when it
+// shows no options.
 function initialFocus(body: HTMLElement | null): HTMLElement | null {
   return (
-    body?.querySelector<HTMLElement>('[data-initial-focus] input:checked') ??
+    body?.querySelector<HTMLElement>('select[data-initial-focus], [data-initial-focus] input:checked') ??
     body?.querySelector<HTMLElement>('input:checked') ??
     body?.querySelector<HTMLElement>('input') ??
     body

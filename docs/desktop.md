@@ -403,7 +403,7 @@ itself never tags or pushes: magex does, when you click a button that names the 
 - **Groups:** **Unreleased changes** (the default branch has commits since its newest version
   tag), open; **Up to date**, **No releases yet** (no `vX.Y.Z` tag), and **Can't release here**
   (archived, read-only to you, not found, or with no commits on GitHub yet), collapsed, each with
-  its count.
+  its count. A group you open or fold stays that way, when you come back and after a restart.
 - **Each row** shows the repository and its newest version, **+N** commits since it, the checks
   on the default branch's newest commit (passed, running, failing, or none) and that commit's
   age and headline, and what matters about your clone: the branch it's on when that isn't the
@@ -761,17 +761,23 @@ refilled, and what everything else signed in as you did, such as **Nilbox 45 · 
 itself spent, and says **Nilbox 3 since it opened** instead.
 
 **What the refreshes cost.** **Inbox refresh** shows what the last whole refresh spent of the
-GraphQL budget and how many items it tracked, and what that comes to in an hour at one refresh
-every five minutes, as a share of the budget. Each refresh reads every tracked item, so more
+GraphQL budget and how many items it tracked, and what that comes to in an hour at the interval
+set in **Settings → Refreshing** (every five minutes by default), as a share of the budget. Each refresh reads every tracked item, so more
 items, or issues read with their [project fields](#issue-projects), cost more.
 
 **Checks that are running.** A pull request whose checks were still running (a yellow count,
 such as 12/18) when the inbox last read it is read again every 45 seconds, so its card shows
-the checks end about as soon as GitHub's own page does, rather than at the next five-minute
-refresh. Every such pull request is read in one request, about one point a round, and none is
-read while no checks run: at most some 80 points an hour, and only while checks run. One stops
+the checks end about as soon as GitHub's own page does, rather than at the next whole refresh.
+Every such pull request is read in one request, about one point a round, and none is read while
+no checks run: at most some 80 points an hour, and only while checks run. One stops
 being read as soon as its checks end, passed or failed, and a dismissed or snoozed one isn't
 read at all.
+
+**How often.** **Settings → Refreshing** sets each interval: the inbox (every 2 minutes to every
+hour, five minutes by default), the running checks (off, or every 30 seconds to every 2 minutes,
+45 seconds by default), and the worktrees' sweep (every 5 minutes to every hour, five minutes by
+default). A change applies at once: a refresh already due under the new interval starts
+straight away, and otherwise the next waits the new interval from the last one's end.
 
 **Changes on GitHub.** The panel also counts the [edits](#the-item-menu-and-edits-on-github)
 Nilbox made on GitHub for you in the last hour, says how it paces them, and, while GitHub has
@@ -991,9 +997,10 @@ settings choose, as in **Review · default**, and opens the launch menu:
   with where it comes from. An agent whose program isn't installed is shown disabled, with why.
   Switching agents clears the profile, model, and extra-flag choices, since each agent has its
   own.
-- **Prompt:** every prompt for the item's kind, by nickname with its full title; the one the
-  settings choose is marked with where it comes from (app, org, or repo default). **Manage**
-  opens the Prompts tab.
+- **Prompt:** a select of every prompt for the item's kind, by nickname, so the dialog stays one
+  size however many there are; the one the settings choose is marked with where it comes from
+  (*Review · repo default*), and the chosen prompt's full title shows under it. **Manage** opens
+  the Prompts tab.
 - **Profile:** every profile of the chosen agent, the chosen one marked. A Codex profile that
   isn't signed in is marked **not signed in**.
 - **Model** and **Effort:** each offers its default first, with its value and source, as in
@@ -2365,7 +2372,7 @@ dismiss it or make the next change.
 
 **Cleaning up after a merge.** A worktree stays after its session ends, so the next launch on the
 item resumes it, and no agent removes one whose pull request merges later. So every five minutes
-the app checks the clones that have worktrees it or Claude Code made, or records, without listing
+(or as set in **Settings → Refreshing**) the app checks the clones that have worktrees it or Claude Code made, or records, without listing
 every clone, and, with **Clean up after merging** on (**Settings → Worktrees**, on by default),
 cleans up each finished worktree whose pull request merged or whose issue closed and that no
 session runs in, with the branches **Settings → Worktrees** deletes. It takes only worktrees the app launched a session in, or whose HEAD is the

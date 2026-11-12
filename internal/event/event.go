@@ -79,6 +79,9 @@ const (
 
 	// NameWorktreesProgress is WorktreesProgress's name.
 	NameWorktreesProgress = "worktrees:progress"
+
+	// NameIntervalsChanged is IntervalsChanged's name.
+	NameIntervalsChanged = "settings:intervalsChanged"
 )
 
 // Event is something that happened, or was asked for, that another part of the app
@@ -278,6 +281,14 @@ type IntegrationsChanged struct {
 
 // Name returns NameIntegrationsChanged.
 func (IntegrationsChanged) Name() string { return NameIntegrationsChanged }
+
+// IntervalsChanged says the user changed how often the app reads something again on its
+// own (the inbox, the running checks, the worktrees), and it was stored. It stays in Go:
+// core wakes what reads them again, which works its next wait out from the new interval.
+type IntervalsChanged struct{}
+
+// Name returns NameIntervalsChanged.
+func (IntervalsChanged) Name() string { return NameIntervalsChanged }
 
 // ScriptRunsUpdated says a run started, ended, or changed status, or the history changed:
 // the window lists the runs again and pulls what it shows. It never carries output.

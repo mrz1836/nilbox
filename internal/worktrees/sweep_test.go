@@ -392,7 +392,7 @@ func TestSweeperRunsUntilCanceled(t *testing.T) {
 		go func() {
 			defer close(done)
 
-			NewSweeper(svc, time.Hour).Run(ctx)
+			NewSweeper(svc, func(context.Context) time.Duration { return time.Hour }).Run(ctx)
 		}()
 
 		synctest.Wait()
@@ -430,7 +430,7 @@ func TestSweeperSurvivesAPanicAndLogsFailures(t *testing.T) {
 		go func() {
 			defer close(done)
 
-			NewSweeper(svc, time.Hour).Run(ctx)
+			NewSweeper(svc, func(context.Context) time.Duration { return time.Hour }).Run(ctx)
 		}()
 
 		time.Sleep(time.Hour + time.Second)

@@ -1,4 +1,13 @@
-import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+  type BoundFunctions,
+  type queries,
+} from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { Activity, StrictMode } from 'react'
 import { describe, expect, it, vi } from 'vitest'
@@ -76,6 +85,13 @@ async function openMenu() {
   return within(screen.getByRole('dialog', { name: 'Launch options' }))
 }
 
+// choosePrompt picks a prompt, by its nickname, in the launch options' Prompt select.
+async function choosePrompt(menu: BoundFunctions<typeof queries>, nickname: string) {
+  const select = menu.getByRole('combobox', { name: 'Prompt' })
+
+  await userEvent.selectOptions(select, within(select).getByRole('option', { name: new RegExp(`^${nickname}`) }))
+}
+
 // missingClone is where a repository with no local clone would be cloned.
 const missingClone = cloneTarget({ cloned: false })
 
@@ -111,7 +127,7 @@ describe('LaunchControls', () => {
     expect(optionsButton()).toHaveAttribute('aria-haspopup', 'dialog')
     expect(optionsButton()).toHaveAttribute('aria-expanded', 'true')
     expect(optionsButton()).toHaveAttribute('aria-controls', dialog.id)
-    expect(menu.getByRole('radio', { name: /Review/ })).toHaveFocus()
+    expect(menu.getByRole('combobox', { name: 'Prompt' })).toHaveFocus()
   })
 
   it('names an issue under the title', async () => {
@@ -139,7 +155,7 @@ describe('LaunchControls', () => {
 
     const menu = await openMenu()
 
-    await userEvent.click(menu.getByRole('radio', { name: /Quick look/ }))
+    await choosePrompt(menu, 'Quick look')
     await userEvent.click(menu.getByRole('radio', { name: 'work' }))
     expect(screen.getByRole('dialog', { name: 'Launch options' })).toBeInTheDocument()
 
@@ -156,8 +172,8 @@ describe('LaunchControls', () => {
     const again = await openMenu()
 
     expect(again.getByRole('radio', { name: 'Codex' })).toBeChecked()
-    expect(again.getByRole('radio', { name: /Quick look/ })).toBeChecked()
-    expect(again.getByRole('radio', { name: /Quick look/ })).toHaveFocus()
+    expect(again.getByRole('combobox', { name: 'Prompt' })).toHaveValue('2')
+    expect(again.getByRole('combobox', { name: 'Prompt' })).toHaveFocus()
 
     await userEvent.click(again.getByRole('button', { name: 'Open in Codex' }))
 
@@ -446,12 +462,13 @@ describe('LaunchControls', () => {
     render(<LaunchControls {...props()} />)
 
     const menu = await openMenu()
-    const group = within(menu.getByRole('radiogroup', { name: 'Prompt' }))
+    const select = menu.getByRole('combobox', { name: 'Prompt' })
+    const options = within(select).getAllByRole('option')
 
-    expect(group.getAllByRole('radio').map((r) => r.getAttribute('value'))).toEqual(['3', '2', '1', '5'])
-    expect(group.getByRole('radio', { name: /Review/ })).toBeChecked()
-    expect(group.getByRole('radio', { name: /Review/ })).toHaveFocus()
-    expect(group.getByRole('radio', { name: /Review/ }).closest('label')).toHaveTextContent('app default')
+    expect(options.map((o) => o.getAttribute('value'))).toEqual(['3', '2', '1', '5'])
+    expect(within(select).getByRole('option', { name: 'Review · app default' })).toHaveProperty('selected', true)
+    expect(select).toHaveFocus()
+    expect(select).toHaveAccessibleDescription('Review a pull request')
     expect(menu.queryByText('Work on it')).not.toBeInTheDocument()
   })
 
@@ -466,9 +483,13 @@ describe('LaunchControls', () => {
 
     expect(optionsButton()).toHaveAccessibleName('Launch options: Work on it · default')
 
-    const group = within((await openMenu()).getByRole('radiogroup', { name: 'Prompt' }))
+    const select = (await openMenu()).getByRole('combobox', { name: 'Prompt' })
 
-    expect(group.getAllByRole('radio').map((r) => r.getAttribute('value'))).toEqual(['4', '5'])
+    expect(
+      within(select)
+        .getAllByRole('option')
+        .map((o) => o.getAttribute('value')),
+    ).toEqual(['4', '5'])
   })
 
   it('re-resolves under another prompt and launches with the choices for this launch only', async () => {
@@ -482,7 +503,7 @@ describe('LaunchControls', () => {
 
     const menu = await openMenu()
 
-    await userEvent.click(menu.getByRole('radio', { name: /Quick look/ }))
+    await choosePrompt(menu, 'Quick look')
 
     expect(platform.resolveLaunch).toHaveBeenCalledWith({ ...defaultRequest, promptId: 2 })
     expect(optionsButton()).toHaveAccessibleName('Launch options: Quick look · default, changed for this launch')
@@ -606,7 +627,7 @@ describe('LaunchControls', () => {
 
     const menu = await openMenu()
 
-    await userEvent.click(menu.getByRole('radio', { name: /Quick look/ }))
+    await choosePrompt(menu, 'Quick look')
     await userEvent.click(menu.getByRole('button', { name: 'all of acme-org' }))
 
     expect(platform.saveLaunchDefaults).toHaveBeenCalledWith(
@@ -632,7 +653,7 @@ describe('LaunchControls', () => {
 
     const menu = await openMenu()
 
-    await userEvent.click(menu.getByRole('radio', { name: /Quick look/ }))
+    await choosePrompt(menu, 'Quick look')
     expect(await menu.findByRole('option', { name: 'Default · Sonnet (prompt)' })).toBeInTheDocument()
 
     await userEvent.selectOptions(menu.getByRole('combobox', { name: 'Model' }), 'opus')
@@ -669,7 +690,7 @@ describe('LaunchControls', () => {
 
     const menu = await openMenu()
 
-    await userEvent.click(menu.getByRole('radio', { name: /Quick look/ }))
+    await choosePrompt(menu, 'Quick look')
     expect(await menu.findByRole('option', { name: 'Default · Sonnet (prompt)' })).toBeInTheDocument()
 
     await userEvent.click(menu.getByRole('radio', { name: 'work' }))
@@ -724,7 +745,7 @@ describe('LaunchControls', () => {
 
     const menu = await openMenu()
 
-    await userEvent.click(menu.getByRole('radio', { name: /Quick look/ }))
+    await choosePrompt(menu, 'Quick look')
     await userEvent.click(menu.getByRole('button', { name: 'all of acme-org' }))
     await userEvent.click(await menu.findByRole('button', { name: 'Undo' }))
 

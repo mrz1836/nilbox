@@ -335,6 +335,7 @@ export type ListKey = settings.ListKey
 export type Theme = settings.Theme
 export type TextSize = settings.TextSize
 export type MergeMethodSetting = settings.MergeMethod
+export type RefreshKind = settings.RefreshKind
 
 export type SnoozeRules = NonNullLists<snooze.Rules>
 export type WakeReasons = NonNullLists<snooze.Reasons>
@@ -486,6 +487,7 @@ export const {
   SetScriptsLastRepo: setScriptsLastRepo,
   SetScriptsSectionOpen: setScriptsSectionOpen,
   SetShowRuns: setShowRuns,
+  SetRefreshInterval: setRefreshInterval,
 } = narrow(settings.Service)
 
 // The tools the app finds, installs, and runs for the user. List never waits for a

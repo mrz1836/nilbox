@@ -92,6 +92,54 @@ export const MergeMethod = {
 } as const;
 
 /**
+ * RefreshChoices are the intervals each can be set to, in seconds, shortest first.
+ */
+export interface RefreshChoices {
+    "inbox": number[] | null;
+    "checks": number[] | null;
+    "worktrees": number[] | null;
+}
+
+/**
+ * RefreshIntervals are how often, in seconds, the app reads each thing again on its own.
+ * The checks' 0 is off.
+ */
+export interface RefreshIntervals {
+    "inbox": number;
+    "checks": number;
+    "worktrees": number;
+}
+
+/**
+ * RefreshKind names one of the things the app reads again on its own, on a timer.
+ */
+export type RefreshKind = "inbox" | "checks" | "worktrees";
+
+/**
+ * The values of RefreshKind, by the names of their Go constants.
+ */
+export const RefreshKind = {
+    /**
+     * What the app reads again on its own.
+     *
+     * RefreshInbox is the whole inbox, from GitHub.
+     */
+    RefreshInbox: "inbox",
+
+    /**
+     * RefreshChecks is the pull requests whose checks are running, from GitHub, all in one
+     * request.
+     */
+    RefreshChecks: "checks",
+
+    /**
+     * RefreshWorktrees is the worktrees' sweep: each clone's worktrees, the pull requests
+     * and issues they belong to, and the automatic cleanup.
+     */
+    RefreshWorktrees: "worktrees",
+} as const;
+
+/**
  * Settings is the full set of preferences as the UI shows them. Every field is a plain
  * value.
  */
@@ -251,6 +299,13 @@ export interface Settings {
      * Integrations is each integration's switch, and the copy of each tool the user chose.
      */
     "integrations": integrationprefs$0.Config;
+
+    /**
+     * Refresh is how often, in seconds, the app reads the inbox, the running checks, and
+     * the worktrees again on its own, and RefreshChoices what each can be set to.
+     */
+    "refresh": RefreshIntervals;
+    "refreshChoices": RefreshChoices;
 }
 
 /**

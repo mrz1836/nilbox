@@ -806,7 +806,7 @@ describe('ReviewSheet', () => {
     const options = screen.getByRole<HTMLDialogElement>('dialog', { name: 'Launch options' })
     expect(isTopmost(options)).toBe(true)
     expect(within(options).getByRole('heading', { name: 'Open in Claude' })).toBeInTheDocument()
-    expect(within(options).getByRole('radio', { name: /Review/ })).toHaveFocus()
+    expect(within(options).getByRole('combobox', { name: 'Prompt' })).toHaveFocus()
 
     // Neither the arrows nor ⌘↩ reach the sheet behind the dialog.
     await userEvent.keyboard('{ArrowRight}')
@@ -886,7 +886,7 @@ describe('ReviewSheet', () => {
     await userEvent.click(screen.getByRole('button', { name: /^Launch options/ }))
 
     const options = within(screen.getByRole('dialog', { name: 'Launch options' }))
-    await userEvent.click(options.getByRole('radio', { name: /Quick look/ }))
+    await userEvent.selectOptions(options.getByRole('combobox', { name: 'Prompt' }), 'Quick look')
     await userEvent.click(options.getByRole('button', { name: 'Close' }))
     expect(screen.getByRole('button', { name: /^Launch options/ })).toHaveAccessibleName(
       'Launch options: Quick look · default, changed for this launch',

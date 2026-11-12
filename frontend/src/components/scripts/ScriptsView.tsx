@@ -356,6 +356,8 @@ export default function ScriptsView({
             }}
             onOpenRun={openRun}
             onOpenSettings={onOpenSettings}
+            sections={sections}
+            onSection={onSection}
           />
         ) : shown === 'hooks' ? (
           <HooksPage

@@ -45,7 +45,9 @@ func newTestService() (*Service, *fakeReader, *testutil.Clock) {
 	tr, clk, _ := newTestTracker()
 	reader := &fakeReader{tracker: tr}
 
-	return NewService(Config{Tracker: tr, Reader: reader, Clock: clk, RefreshInterval: 5 * time.Minute}), reader, clk
+	every := func(context.Context) time.Duration { return 5 * time.Minute }
+
+	return NewService(Config{Tracker: tr, Reader: reader, Clock: clk, RefreshEvery: every}), reader, clk
 }
 
 func TestCheckReadsEveryBudget(t *testing.T) {
@@ -103,5 +105,22 @@ func TestGaugeWithoutARefreshInterval(t *testing.T) {
 
 	tr, _, _ := newTestTracker()
 
-	assert.Zero(t, NewService(Config{Tracker: tr}).Gauge().RefreshesPerHour)
+	assert.Zero(t, NewService(Config{Tracker: tr}).Gauge(t.Context()).RefreshesPerHour)
+
+	off := func(context.Context) time.Duration { return 0 }
+	assert.Zero(t, NewService(Config{Tracker: tr, RefreshEvery: off}).Gauge(t.Context()).RefreshesPerHour)
+}
+
+func TestGaugeFollowsTheRefreshIntervalAsSet(t *testing.T) {
+	t.Parallel()
+
+	tr, _, _ := newTestTracker()
+	every := 5 * time.Minute
+	svc := NewService(Config{Tracker: tr, RefreshEvery: func(context.Context) time.Duration { return every }})
+
+	assert.Equal(t, 12, svc.Gauge(t.Context()).RefreshesPerHour)
+
+	every = 15 * time.Minute
+
+	assert.Equal(t, 4, svc.Gauge(t.Context()).RefreshesPerHour, "a changed setting shows at once")
 }

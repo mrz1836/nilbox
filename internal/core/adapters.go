@@ -30,6 +30,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/localrepos"
 	"github.com/mrz1836/nilbox/internal/notify"
 	"github.com/mrz1836/nilbox/internal/paths"
+	"github.com/mrz1836/nilbox/internal/periodic"
 	"github.com/mrz1836/nilbox/internal/prefs"
 	"github.com/mrz1836/nilbox/internal/release"
 	"github.com/mrz1836/nilbox/internal/repo"
@@ -188,7 +189,9 @@ func (r agentRunner) Run(ctx context.Context, name string, args ...string) (stdo
 	return execpath.Exec{Search: r.search, Env: append(env, "PATH="+path)}.Run(ctx, name, args...)
 }
 
-// followSwitch passes the settings service's events on, and wakes the sessions watcher
+// followSwitch passes the settings service's events on, wakes what reads things again on
+// its own when the user changes how often (an event.IntervalsChanged, which stays in Go),
+// and wakes the sessions watcher
 // when the user turns following on or off, which the settings service says with an
 // event.SessionsUpdated, so the watcher starts or stops following at once instead of at
 // its next look at the switch. An event.IntegrationsChanged stays in Go: a chosen copy of a
@@ -196,12 +199,14 @@ func (r agentRunner) Run(ctx context.Context, name string, args ...string) (stdo
 // switch, which changes no detection, tells the window at once. The watcher and the finder
 // are set once, before any setting can change.
 type followSwitch struct {
-	sink    event.Sink
-	watcher *sessions.Watcher
-	tools   waker
+	sink      event.Sink
+	watcher   *sessions.Watcher
+	tools     waker
+	intervals []waker
 }
 
-// waker is woken to look again: *integrations.Worker.
+// waker is woken to look again: *integrations.Worker, and what reads things again on its
+// own (*inbox.Scheduler, *inbox.ChecksFollower, worktrees.Sweeper).
 type waker interface {
 	Wake()
 }
@@ -210,6 +215,12 @@ type waker interface {
 // event.IntegrationsChanged into a wake of the tool finder or an event.ToolsUpdated.
 func (f *followSwitch) Emit(e event.Event) {
 	switch e := e.(type) {
+	case event.IntervalsChanged:
+		for _, w := range f.intervals {
+			w.Wake()
+		}
+
+		return
 	case event.SessionsUpdated:
 		if f.watcher != nil {
 			f.watcher.Wake()
@@ -995,4 +1006,23 @@ func releaseSignedOut(err error) error {
 	}
 
 	return err
+}
+
+// refreshEvery says how often the app reads kind again on its own, as the settings say
+// now; settings that can't be read count as the defaults, logged, so a passing problem
+// never stops the refreshes.
+func refreshEvery(prefs *settings.Service, kind settings.RefreshKind, logger *slog.Logger) periodic.Every {
+	return func(ctx context.Context) time.Duration {
+		s, err := prefs.Get(ctx)
+		if err != nil {
+			if ctx.Err() == nil {
+				logger.WarnContext(ctx, "could not read how often to refresh; using the default", "kind", kind,
+					"error", err)
+			}
+
+			return settings.DefaultRefreshIntervals().Every(kind)
+		}
+
+		return s.Refresh.Every(kind)
+	}
 }
