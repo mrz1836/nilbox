@@ -12,6 +12,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/integrations"
 	"github.com/mrz1836/nilbox/internal/paths"
 	"github.com/mrz1836/nilbox/internal/scriptrun"
+	"github.com/mrz1836/nilbox/internal/textutil"
 	"github.com/mrz1836/nilbox/internal/uierr"
 )
 
@@ -207,7 +208,7 @@ func (s *Service) spec(ctx context.Context, c clone, in Intent, asked integratio
 		return scriptrun.Spec{}, err
 	}
 
-	in.SHA256, in.Args = sc.hash, nonNil(in.Args)
+	in.SHA256, in.Args = sc.hash, textutil.NonNil(in.Args)
 	where := cmp.Or(asked, sc.place, cfg.RunsIn, integrationprefs.RunsInApp)
 
 	base, _ := s.env()
@@ -478,15 +479,6 @@ func runDisplay(sc script, v vars, args []string) string {
 	}
 
 	return strings.Join(shown, " && ")
-}
-
-// nonNil returns list, or an empty list for nil.
-func nonNil(list []string) []string {
-	if list == nil {
-		return []string{}
-	}
-
-	return list
 }
 
 // Rerunner works Run again out for script runs (scriptrun.Rerunner): the same script, with

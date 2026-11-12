@@ -22,22 +22,6 @@ import (
 
 var errScripted = errors.New("scripted failure")
 
-func TestDBIsMigratedAndFresh(t *testing.T) {
-	t.Parallel()
-
-	first, second := testutil.DB(t), testutil.DB(t)
-
-	var count int64
-	require.NoError(t, first.QueryRowContext(t.Context(), "SELECT COUNT(*) FROM schema_migrations").Scan(&count))
-	assert.Positive(t, count, "the schema is migrated")
-
-	_, err := first.ExecContext(t.Context(), `INSERT INTO accounts (login, created_at, updated_at)
-VALUES ('octo-user', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`)
-	require.NoError(t, err)
-	require.NoError(t, second.QueryRowContext(t.Context(), "SELECT COUNT(*) FROM accounts").Scan(&count))
-	assert.Zero(t, count, "each call opens its own database")
-}
-
 func TestDBAtReopensTheSameFile(t *testing.T) {
 	t.Parallel()
 

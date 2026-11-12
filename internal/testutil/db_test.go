@@ -88,11 +88,12 @@ func TestDBMatchesAFreshlyMigratedDatabase(t *testing.T) {
 	assert.Equal(t, fmt.Sprintf("%d %s %s", newest.Version, newest.Name, newest.Checksum), got.History[len(got.History)-1])
 }
 
-func TestDBsFromTheTemplateAreIndependent(t *testing.T) {
+func TestDBIsMigratedAndFresh(t *testing.T) {
 	t.Parallel()
 
 	first, second := testutil.DB(t), testutil.DB(t)
 	pristine := schemaOf(t, first)
+	assert.NotEmpty(t, pristine.History, "the schema is migrated")
 
 	_, err := first.ExecContext(t.Context(), `INSERT INTO prefs (key, value, updated_at)
 VALUES ('example.key', 'first', CURRENT_TIMESTAMP)`)

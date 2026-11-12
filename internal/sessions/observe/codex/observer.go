@@ -733,7 +733,8 @@ func idsOf(recs []sessions.Record) string {
 
 	var out strings.Builder
 	for _, id := range ids {
-		out.WriteString(id + ",")
+		out.WriteString(id)
+		out.WriteByte(',')
 	}
 
 	return out.String()

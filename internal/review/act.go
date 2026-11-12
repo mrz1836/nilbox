@@ -170,7 +170,7 @@ func (s *Service) prepare(ctx context.Context, req ActRequest, plan Plan, c *cac
 
 	method := cmp.Or(req.Method, plan.Method)
 
-	if req.Action.merges() && !containsMethod(plan.Methods, method) {
+	if req.Action.merges() && !slices.Contains(plan.Methods, method) {
 		return nil, uierr.New("The repository doesn't allow that merge method.",
 			fmt.Errorf("%w: merge method %q", ErrNotOffered, method))
 	}
@@ -287,11 +287,6 @@ func filesByPath(files []cachedFile) map[string]cachedFile {
 	}
 
 	return out
-}
-
-// containsMethod reports whether methods holds m.
-func containsMethod(methods []MergeMethod, m MergeMethod) bool {
-	return slices.Contains(methods, m)
 }
 
 // action is one action as it runs: what was asked for, and what GitHub made happen so far,
