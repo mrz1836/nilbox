@@ -140,7 +140,8 @@ app:lint` reads.
   `Info.plist` and the rendered icon set, `icons.icns`.
 - `internal/core/` assembles the app and builds every service the window binds: settings,
   profiles, prompts, launch defaults, inbox, review, launcher, worktrees, notifications, app
-  info, sessions, integrations, script runs, release, hooks, and repository scripts.
+  info, the API budget, sessions, integrations, script runs, release, hooks, and repository
+  scripts.
   Every `internal/*` package is plain Go, built and tested on Linux without CGO.
 - Services share their building blocks rather than keep copies: `internal/repo` and
   `internal/item` name repositories, pull requests and issues, and their worktrees;
@@ -158,15 +159,15 @@ app:lint` reads.
   `sudo` (`TestNoGoInstall`, `TestNoSudo`); `internal/shellenv` reads the user's login shell's
   environment, after the first paint, and never logs a variable's name or value; and
   `internal/clock`, `internal/periodic`, `internal/flight`, `internal/paths`, and
-  `internal/textutil` hold the clock (and `clock.Sleep`, the one wait that ends with its
+  `internal/textutil` hold the clock (and `clock.Sleep`, the shared wait that ends with its
   context), the interval runner, one call per key at a time, `~` paths, and text helpers. `internal/testutil` holds the fakes and fixtures the test suites
   share (a fresh database, an isolated git, a runner, finder, clock, event sink, log, and fake
   tools); only tests may import it.
 - `internal/event/` holds the app's events, one Go type each with its name; services emit them
   into the one `event.Sink` they are given. `internal/desktop/` is the shell's logic: it hears
   those events, keeps the menu bar current with what `internal/menubar` works out, runs the
-  scheduler, the sweeper, the sessions watcher, the Release page's refresher, and the Hooks
-  page's scans as tracked work, starts the deferred work
+  scheduler, the sweeper, the budget's `Saver`, the sessions watcher, the Release page's
+  refresher, and the Hooks page's scans as tracked work, starts the deferred work
   (`core.Deferred`: the login-shell read first; the tool finder, the runs, and the release
   `Follower` beside it) once after the first paint, never on the cold
   start, and shuts down in order (timers, then the work, then the database). It declares small interfaces that the Wails glue
@@ -292,7 +293,8 @@ app:lint` reads.
   methods and any other action with none. Asking Dependabot to rebase is offered on every open
   Dependabot pull request, enabled once the sheet read it, for a user with push access, while
   the branch is behind or has conflicts; Update branch whenever GitHub's `viewerCanUpdateBranch`
-  lets the user (with a warning on Dependabot's). Each is the primary only while the pull
+  lets the user (with a warning on Dependabot's), and, disabled with why, on any other pull
+  request GitHub reports as behind. Each is the primary only while the pull
   request is behind (the rebase also with conflicts), never as a fallback: with no primary and
   offers enabled, the sheet's button only opens the menu. Every write goes through the inbox's
   `Actor` (the item lock, the account check, and the token retry, never bound, since its
@@ -349,8 +351,13 @@ app:lint` reads.
   (`(*github.Client).FetchLatestReleases`, adapted in core; **Check again** reuses an answer
   less than ten minutes old). `Service.List` never waits: it
   serves the last detection kept in `tools.<id>.seen`, marked as checking, until this run's
-  ends, and `event.ToolsUpdated` tells the window. It writes the `tools.*` preferences and only
-  reads `integrations.*`, which settings writes through the leaf `internal/integrationprefs`
+  ends, and `event.ToolsUpdated` tells the window; a `List` that finds this run's detection
+  older than `staleAfter` (ten minutes) wakes the finder too. `Trash` moves a copy the last
+  detection found (the one in use when the app installed it, or any other) to the Trash
+  through Finder (`osascript`, the path passed as an argument, so Put Back works), never a
+  link or a Homebrew copy, and fails with `ErrAutomationDenied` while the user hasn't let the
+  app control Finder; `Reveal` shows such a copy in Finder (`open -R`). It writes the
+  `tools.*` preferences and only reads `integrations.*`, which settings writes through the leaf `internal/integrationprefs`
   (the switches, automatic, on, or off, and the chosen copies; the leaf also declares the
   window's memory of the Scripts tab, `integrations.announced`, `scripts.lastPage`, and
   `scripts.lastRepo`, which settings stores for the window alone), so settings never imports
@@ -422,8 +429,9 @@ app:lint` reads.
   summary or "Timed out after 30 minutes."), which core (`runFailures`) hands the notify
   `Dispatcher`'s `Gather` as a `run_failed` notification about no item: recorded at once, its
   banner held `GatherWindow` (2 s) with those of the failures that follow, so a burst past
-  `MaxBanners` (Install all, a restart's reconcile) shows one summary, under the same rules as
-  every kind's banner; core's `Close` shows what is still held before the database closes. The
+  `MaxBanners` (Install and update all, a restart's reconcile) shows one summary, under the
+  same rules as every kind's banner; core's `Close` drops the banners still held (the history
+  keeps their entries) and waits for a batch already showing, before the database closes. The
   entry keeps the run's ID and its recorded start as RFC 3339 (`notifications.run_id` and
   `run_started`, `Entry.RunID`/`RunStarted`, `Notification.RunID`/`RunStarted`, and
   `event.RevealItem`'s for a banner's click), and the window opens it in Scripts → Runs only
@@ -920,11 +928,13 @@ package imports the driver, and nothing imports an ORM (`internal/repoguard` enf
   pool-backed store from inside an open transaction: it waits on the lock the transaction holds.
 - **Prefs.** `internal/prefs` owns the `prefs` table. Any package reads any key, but each key has
   exactly one writer: settings writes the user's settings, including the rule keys that the trust,
-  snooze, sensitive, notifyprefs, and branchrules packages declare; inbox writes `inbox.*`; prompts writes
-  `prompts.*` (the package doc has the full list).
+  snooze, sensitive, notifyprefs, branchrules, and integrationprefs packages declare; inbox
+  writes `inbox.*`; prompts writes `prompts.*` (the package doc has the full list).
 - **Values.** Owners stamp `created_at`, `updated_at`, and every other time from their injected
-  `clock.Clock`; nothing fills them in. The driver stores every `time.Time` as UTC text
-  (`2006-01-02 15:04:05.999999999+00:00`), so stamps compare and sort as text in time order.
+  `clock.Clock`; nothing fills them in. The one exception is a release's follow, whose times in
+  its run's result come from the real clock its waits run on (see `internal/release/`). The
+  driver stores every `time.Time` as UTC text (`2006-01-02 15:04:05.999999999+00:00`), so
+  stamps compare and sort as text in time order.
   JSON columns are TEXT, written with `store.EncodeJSON` and read with `store.DecodeJSON[T]`.
 - **Self-heal.** `store.Open` backs the database up before applying pending migrations. A file
   that is not a database or is damaged, a schema the migrations did not create, or a history this

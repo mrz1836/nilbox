@@ -14,7 +14,7 @@ numbers with the `magex measure:*` targets.
 | Cold start to first paint | < 1 s | 544 ms | Met on the M1 Max; the M4 Pro build host measured 1013 ms with an earlier build, at the target rather than under it |
 | Inbox refresh | < 3 s | 2.30 s | Met once the inbox's items are known; the first refresh into an empty database takes 5–10 s |
 | Launch to prompt loaded | < 3 s | Not recorded yet | Pending: the build host cannot grant the Automation permission unattended, so the number needs a run on the maintainer's Mac |
-| App binary size | < 30 MB | 21.6 MB | Met (17.0 MB before the integrations: Release, Hooks, Repo scripts, and the tool installer) |
+| App binary size | < 30 MB | 21.7 MB | Met (17.0 MB before the integrations: Release, Hooks, Repo scripts, and the tool installer) |
 | API budget at 5-minute cadence | < 2% | 1.20% | Met, for an inbox of 43 items |
 
 Measured on an Apple Silicon Mac (M1 Max, 32 GB memory) running macOS 15.8, over its regular
@@ -184,14 +184,14 @@ number.
 ### App binary size
 
 `magex measure:size` reads the size of the production executable,
-`bin/Nilbox.app/Contents/MacOS/nilbox`: 21,610,320 bytes, or 21.6 MB in decimal megabytes. The
-whole bundle, the executable with its icon set and `Info.plist`, is 22.9 MB (22,886,717 bytes).
+`bin/Nilbox.app/Contents/MacOS/nilbox`: 21,709,552 bytes, or 21.7 MB in decimal megabytes. The
+whole bundle, the executable with its icon set and `Info.plist`, is 23.0 MB (22,985,949 bytes).
 The binary is built with `-tags desktop,production -trimpath -ldflags "-s -w"` and embeds the
-built frontend, about 1.14 MB without source maps: the 558 KB script the first paint needs
-(183 KB gzipped); the Scripts tab (135 KB), Settings (121 KB), Prompts (63 KB), and Worktrees
+built frontend, about 1.15 MB without source maps: the 562 KB script the first paint needs
+(184 KB gzipped); the Scripts tab (137 KB), Settings (121 KB), Prompts (63 KB), and Worktrees
 (53 KB) pages in scripts of their own, loaded the first time each opens, with three more
-shared by them (the dialogs, 81 KB; the run panel, 42 KB; the launch fields, 6 KB); and 77 KB
-of CSS. Measured on master after the Scripts tab's branch status and Pull (#58).
+shared by them (the dialogs, 81 KB; the run panel, 44 KB; the launch fields, 6 KB); and 78 KB
+of CSS. Measured once following a release to published landed.
 
 The build before the integrations (Release, Hooks, Repo scripts, the tool installer, and the
 run history) measured 17,013,376 bytes (17.0 MB), with an 18.3 MB bundle and a frontend of
@@ -203,9 +203,9 @@ a 16.4 MB bundle and a frontend of about 280 KB.
 
 ### Scripts tab, first open
 
-The Scripts tab's code loads the first time it opens, as a script of its own: 135.3 KB (41.4 KB
+The Scripts tab's code loads the first time it opens, as a script of its own: 137.3 KB (41.7 KB
 gzipped), from `vite build` (the `ScriptsView` chunk, with Release, its sheet, Hooks, Repo
-scripts, and Runs; the run panel and the log view are a shared 42.2 KB chunk, 15.1 KB
+scripts, and Runs; the run panel and the log view are a shared 44.3 KB chunk, 15.7 KB
 gzipped). It was 80.6 KB (25.9 KB gzipped) before Hooks and Repo scripts. The window already
 holds the tools and the run history it badges the tab with, so opening it lists nothing again. Release reads its list as it opens from the
 service's copy, however old; it reads GitHub for the whole list only on **Read GitHub again**,
@@ -253,8 +253,9 @@ budget: it reads only when you open a pull request, and nothing ahead of time.
 | Its refresh after a push | 1 GraphQL point, 1 REST request per 100 files, and 1 more to confirm the head when the file list doesn't name it |
 | Approve | 1 GraphQL point to check nothing was pushed since, then 1 REST request |
 | Request changes, Comment, Update branch, Ask Dependabot to rebase | 1 REST request each |
-| Merge, or merge past the rules | 1 GraphQL point per merge-state read (one, or up to three a second apart while GitHub works it out), then 1 REST request |
-| Turn on auto-merge | 1 GraphQL point |
+| Merge, or merge past the rules | 1 GraphQL point per merge-state read (one, or up to three a second apart while GitHub works it out), then 1 REST request, plus 1 REST request when your text is posted as a comment first |
+| Turn on auto-merge | 1 GraphQL point, plus 1 GraphQL point and 1 REST request when your text is posted as a comment first |
+| Close pull request | 1 GraphQL point to check nothing was pushed since, then 1 REST request, plus 1 more for your comment |
 | A merged pull request leaving the inbox | None |
 
 GitHub's file list names the commit it listed each file at, so a read whose files all name the
@@ -263,10 +264,11 @@ the pull request's sensitive-file check when one is due.
 
 [Following a release](desktop.md#release) to published costs at most 20 GraphQL points and 20
 REST requests per release: a check a minute after the release ends, then one every three
-minutes, each one GraphQL query of 1 point (P0 measured it) for the tag's release and, until it
-is published, one REST request for the tag's own workflow runs. It stops once the release is
-published, a workflow fails, the tag's runs end with no release, no workflow ran for the tag by
-the third check, or 45 minutes pass, which the schedule reaches after 16 checks. A follow
+minutes, each one GraphQL query of 1 point (measured) for the tag's release and, until it is
+published, one REST request for the tag's own workflow runs. It stops once the release is
+published, the tag's runs have all ended with one failed, they end with no release, no
+workflow ran for the tag by the third check, or 45 minutes pass, which the schedule reaches
+after 16 checks. A follow
 resumed after a restart keeps the count and the 45 minutes it started with. Every request goes
 through the shared client, so the API budget gauge counts it.
 
