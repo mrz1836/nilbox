@@ -168,9 +168,9 @@ app:lint` reads.
   list and the window's worktrees listing, `event.WorktreesProgress`), and text helpers,
   among them the app's one POSIX shell quoting: `textutil.ShellQuote`, which always quotes,
   for every word of a script the app writes and of the ssh command it hands git, and
-  `textutil.ShellWord`, which leaves a word
-  plain only when every POSIX shell reads it as itself (ASCII letters, digits, and
-  `=-_./:,+@%`, not starting with `=`). `internal/testutil` holds the fakes and fixtures the test suites
+  `textutil.ShellWord`, which leaves a word plain only when every POSIX shell reads it as
+  itself (ASCII letters, digits, and `=-_./:,+@%`, not starting with `=`).
+  `internal/testutil` holds the fakes and fixtures the test suites
   share (a fresh database, an isolated git, a runner, finder, clock, event sink, log, and fake
   tools); only tests may import it.
 - `internal/event/` holds the app's events, one Go type each with its name; services emit them
