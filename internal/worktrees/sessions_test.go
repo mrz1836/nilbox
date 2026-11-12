@@ -2,6 +2,8 @@ package worktrees
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"sync/atomic"
 	"testing"
 
@@ -146,4 +148,44 @@ func TestARefusalNamesTheFollowedAgent(t *testing.T) {
 
 	require.NoError(t, svc.checkSessions(t.Context(), t.TempDir(), true))
 	assert.Equal(t, int32(1), agents.calls.Load(), "with no process in the folder, the followed sessions are not read")
+}
+
+func TestListMatchesEachWorktreeToTheSessionsInIt(t *testing.T) {
+	t.Parallel()
+
+	e := newEnv(t)
+	repo := e.newRepo(t, "example-repo")
+	worktrees := filepath.Join(repo, ".claude", "worktrees")
+	first := addWorktree(t, repo, filepath.Join(worktrees, "wt-1"), ownBranchPrefix+"wt-1")
+	second := addWorktree(t, repo, filepath.Join(worktrees, "wt-2"), ownBranchPrefix+"wt-2")
+	idle := addWorktree(t, repo, filepath.Join(worktrees, "wt-3"), ownBranchPrefix+"wt-3")
+	require.NoError(t, os.MkdirAll(filepath.Join(second, "src"), 0o700))
+
+	link := filepath.Join(e.home, "second")
+	require.NoError(t, os.Symlink(second, link))
+
+	running := fakeRunning{list: []procs.Process{
+		{PID: 4000, PPID: 1, Command: "iTerm2", Dir: "/"},
+		{PID: 4100, PPID: 4000, Command: "fish", Dir: first},
+		{PID: 4200, PPID: 4000, Command: "vim", Dir: filepath.Join(link, "src")},
+		{PID: 4242, PPID: 4100, Command: claudeCmd, Dir: filepath.Join(first, "missing")},
+		{PID: 4300, PPID: 4000, Command: "node", Dir: first + "-other"},
+		{PID: 4400, PPID: 4000, Command: "make", Dir: repo},
+		{PID: 4500, PPID: 4000, Command: "none", Dir: ""},
+		{PID: 4600, PPID: 4000, Command: "go", Dir: second},
+	}}
+	svc := e.linked(linkDeps{running: running})
+	svc.agents = namedAgents{pids: map[int]agent.ID{4242: agent.Claude}}
+
+	snap, err := svc.List(t.Context())
+	require.NoError(t, err)
+	assert.False(t, snap.SessionsUnknown)
+
+	assert.Equal(t, []Session{{PID: 4242, Command: claudeCmd, Agent: agent.Claude}}, mustRow(t, snap, first).InUse,
+		"the followed agent stands for the shell it runs under, though its folder is gone")
+	assert.Equal(t, []Session{{PID: 4200, Command: "vim"}, {PID: 4600, Command: "go"}}, mustRow(t, snap, second).InUse,
+		"by PID, one of them through a link")
+	assert.Empty(t, mustRow(t, snap, idle).InUse, "a sibling's folder, the clone's, or none is no session here")
+	assert.NotNil(t, mustRow(t, snap, idle).InUse)
+	assert.Empty(t, mustRow(t, snap, repo).InUse, "the clone's own checkout is never marked")
 }
