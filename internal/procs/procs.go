@@ -118,6 +118,21 @@ func ValidPID(pid int) bool {
 	return pid > 0 && pid <= MaxPID
 }
 
+// Liveness is what Probe learned of a process ID.
+type Liveness int
+
+const (
+	// Unknown means it can't be told whether a process has the ID: one ValidPID refuses,
+	// an answer that says neither, or an OS where Probe doesn't ask.
+	Unknown Liveness = iota
+
+	// Running means a process has the ID, the user's own or another user's.
+	Running
+
+	// Gone means no process has the ID.
+	Gone
+)
+
 // ParseLsof reads `lsof -F pcRn` output: a "p<pid>" line starts each process, an
 // "R<ppid>" line gives its parent, a "c<command>" line names it, and the first "n<path>"
 // line after it is its working directory when lsof is asked for the cwd descriptor alone.
