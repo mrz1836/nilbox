@@ -283,30 +283,30 @@ func readMagefiles(dir string) magefiles {
 		return magefiles{}
 	}
 
-	base, paths, goFiles := filepath.Dir(root), []string{root}, []string{root}
+	base, files, goFiles := filepath.Dir(root), []string{root}, []string{root}
 
 	if !single {
 		var err error
-		if paths, err = walkFiles(root); err != nil {
+		if files, err = walkFiles(root); err != nil {
 			return magefiles{found: true, readErr: err}
 		}
 
-		base, goFiles = root, targetFiles(root, paths)
+		base, goFiles = root, targetFiles(root, files)
 	}
 
 	mf := magefiles{found: true}
 	mf.targets, mf.readErr = parseTargets(goFiles)
-	mf.files, mf.sumErr = sumFiles(base, paths)
+	mf.files, mf.sumErr = sumFiles(base, files)
 
 	return mf
 }
 
-// targetFiles returns the files of paths magex reads targets from: the .go files directly
-// in root, tests aside.
-func targetFiles(root string, paths []string) []string {
+// targetFiles returns those of files magex reads targets from: the .go files directly in
+// root, tests aside.
+func targetFiles(root string, files []string) []string {
 	var out []string
 
-	for _, p := range paths {
+	for _, p := range files {
 		if filepath.Dir(p) == root && strings.HasSuffix(p, ".go") && !strings.HasSuffix(p, "_test.go") {
 			out = append(out, p)
 		}
@@ -366,12 +366,12 @@ func walkFiles(root string) ([]string, error) {
 	return out, err
 }
 
-// sumFiles sums each file of paths, named relative to root.
-func sumFiles(root string, paths []string) ([]fileSum, error) {
-	out := make([]fileSum, 0, len(paths))
+// sumFiles sums each of files, named relative to root.
+func sumFiles(root string, files []string) ([]fileSum, error) {
+	out := make([]fileSum, 0, len(files))
 	budget := int64(maxMagefileBytes)
 
-	for _, p := range paths {
+	for _, p := range files {
 		sum, err := sumPath(root, p, &budget)
 		if err != nil {
 			return nil, err
