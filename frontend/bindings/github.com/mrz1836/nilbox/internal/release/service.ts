@@ -58,8 +58,9 @@ export function OfferAfterMerge(owner: string, name: string, base: string): $Can
 /**
  * OpenTerminal opens the terminal chosen for launches in the clone of repoText, the one
  * the page shows at dir (with ~ for home), for a check's Open in terminal: the user
- * commits, pushes, or deletes a tag there. The app runs nothing in it. Only a clone the
- * Release page lists, or the clone root holds, with that GitHub origin, is opened.
+ * commits, pushes, or deletes a tag there. The app runs nothing in it
+ * (scriptrun.OpenFolder). Only a clone the Release page lists, or the clone root holds,
+ * with that GitHub origin, is opened.
  */
 export function OpenTerminal(repoText: string, dir: string): $CancellablePromise<void> {
     return $Call.ByID(3630052473, repoText, dir);

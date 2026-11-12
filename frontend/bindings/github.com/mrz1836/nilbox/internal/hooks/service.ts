@@ -55,7 +55,8 @@ export function InstallAll(dirs: string[] | null): $CancellablePromise<$models.I
 /**
  * OpenTerminal opens the terminal chosen for launches in the clone the page lists at dir
  * (with ~), for a row's Open in terminal: the user looks at the clone or fixes it there.
- * The app runs nothing in it. Only a clone directly under the clone root is opened.
+ * The app runs nothing in it (scriptrun.OpenFolder). Only a clone directly under the clone
+ * root is opened.
  */
 export function OpenTerminal(dir: string): $CancellablePromise<void> {
     return $Call.ByID(1334707302, dir);
