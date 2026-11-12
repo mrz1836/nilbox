@@ -5,6 +5,7 @@ package scriptrun
 import (
 	"bytes"
 	"context"
+	"os"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -513,15 +514,29 @@ func TestQuitStopsARunThatEndsWhileHeldBackAsUsual(t *testing.T) {
 	t.Parallel()
 
 	h := newHarness(t)
-	h.e.quitKill = QuitKillAfter // time enough for it to end on its own while held back
+	h.e.quitKill = wait // time enough for it to end on its own while held back
 
+	// The tool runs until the quit has begun, so it is seen held back however long it takes
+	// to start, and it ends while the quit still holds it back.
+	proceed := filepath.Join(t.TempDir(), "proceed")
 	spec, _ := withKind(h.spec(testutil.FakeRun{
-		Stdout: "working updated\nrefuse " + rebaseRisk + "\n", Sleep: 150 * time.Millisecond, Exit: 1,
+		Stdout: "working updated\nrefuse " + rebaseRisk + "\n", WaitFor: proceed, Exit: 1,
 	}))
 	id := h.start(spec)
 	h.waitProgress(id, Progress{Working: "updated", StopRefused: rebaseRisk})
 
+	let := make(chan struct{})
+
+	go func() {
+		defer close(let)
+
+		if assert.Eventually(t, h.e.isClosed, wait, poll, "the quit begins") {
+			assert.NoError(t, os.WriteFile(proceed, nil, 0o600), "the tool ends")
+		}
+	}()
+
 	h.e.StopAll()
+	<-let
 
 	rec := h.record(id)
 	assert.Equal(t, StatusFailed, rec.Status, "it ended on its own, unsignaled, and its end is recorded")
