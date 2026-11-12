@@ -58,6 +58,10 @@ type pullContext struct {
 	CanAutoMerge    bool `json:"canAutoMerge"`
 	CanBypass       bool `json:"canBypass"`
 
+	// CanClose is GitHub's say that the viewer may close the pull request; false in a
+	// context an older build cached, until the sheet reads it again.
+	CanClose bool `json:"canClose"`
+
 	// ViewerReview is the state of the viewer's latest review and ViewerReviewAt the
 	// commit it was left on.
 	ViewerReview   string `json:"viewerReview"`
@@ -88,7 +92,7 @@ func contextOf(r *github.PullReview) pullContext {
 		MergeState: r.MergeState, MergeQueue: r.MergeQueue, Mine: r.ViewerDidAuthor,
 		CanUpdateBranch: r.ViewerCanUpdateBranch, CanAutoMerge: r.ViewerCanEnableAutoMerge, CanBypass: r.ViewerCanBypass,
 		ViewerReview: r.ViewerReview.State, ViewerReviewAt: r.ViewerReview.Commit, PendingReviews: r.PendingReviews,
-		AutoMerge: r.AutoMerge.Method, FirstCommit: r.FirstCommitMessage,
+		AutoMerge: r.AutoMerge.Method, FirstCommit: r.FirstCommitMessage, CanClose: r.ViewerCanClose,
 		Reviews: make([]contextReview, 0, len(r.Reviews)), Checks: make([]Check, 0, len(r.Checks)),
 	}
 

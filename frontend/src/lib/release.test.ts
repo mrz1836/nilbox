@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import type { ReleaseCloneState, ReleaseFollow, ScriptRunProgress } from '../platform'
 import { releaseCandidate, releaseFollow, releaseResult, releaseRun, scriptRun } from '../test/fixtures'
 import {
+  bumpHint,
   cloneNotes,
   commitChecksText,
   followLine,
@@ -302,5 +303,34 @@ describe('release', () => {
       followLine(releaseResult({ tag: '', follow: releaseFollow({ state: 'timedOut', minutes: 1 }) }), 'acme-org/sdk')
         ?.text,
     ).toBe('Stopped following acme-org/sdk v1.4.3 after 1 minute')
+  })
+})
+
+describe('bumpHint', () => {
+  it('suggests nothing for commits without a feature or a breaking change', () => {
+    expect(bumpHint([])).toBe('')
+    expect(bumpHint(['fix: retry on 502', 'chore(deps): bump x', '[Scripts] Save your own scripts (#46)'])).toBe('')
+    expect(bumpHint(['feature: not a prefix', 'feat without a colon'])).toBe('')
+  })
+
+  it('suggests a minor release for commits that start with feat:', () => {
+    expect(bumpHint(['feat: add a flag', 'fix: typo'])).toBe(
+      '1 commit starts with feat:, which usually means a minor release.',
+    )
+    expect(bumpHint(['feat(cli): add a flag', 'FEAT: shout', 'fix: typo'])).toBe(
+      '2 commits start with feat:, which usually means a minor release.',
+    )
+  })
+
+  it('suggests a major release for a commit marked breaking, over any feature', () => {
+    expect(bumpHint(['feat!: drop the old flag', 'feat: add a flag'])).toBe(
+      '1 commit is marked breaking (feat!:), which usually means a major release.',
+    )
+    expect(bumpHint(['fix(api)!: rename a field', 'refactor!: move things'])).toBe(
+      '2 commits are marked breaking (such as fix!:), which usually means a major release.',
+    )
+    expect(bumpHint(['BREAKING CHANGE: the config moved'])).toBe(
+      '1 commit is marked breaking (BREAKING CHANGE:), which usually means a major release.',
+    )
   })
 })

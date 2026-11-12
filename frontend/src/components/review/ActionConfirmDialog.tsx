@@ -9,6 +9,9 @@ export interface ActionConfirmDialogProps {
   offer: ReviewOffer
   onConfirm: () => void
   onCancel: () => void
+  // comment says what is posted as a comment before the action, as the composer says it,
+  // or '' when nothing is.
+  comment?: string
 }
 
 // actionText is the confirmation's title, what the action does, and the box that accepts
@@ -29,6 +32,17 @@ function actionText(review: Review, offer: ReviewOffer): { title: string; does: 
         ),
         accept: 'I’ve looked, update anyway',
       }
+    case 'close':
+      return {
+        title: `Close ${pull} without merging it?`,
+        does: (
+          <>
+            {`${review.repo}${pull}`}, “{review.title}”, closes unmerged. Nothing is sent if anything was pushed since
+            commit {commit}. You can reopen it on GitHub.
+          </>
+        ),
+        accept: 'I’ve looked, close anyway',
+      }
     default:
       return {
         title: `${offer.label} on ${pull}?`,
@@ -42,12 +56,13 @@ function actionText(review: Review, offer: ReviewOffer): { title: string; does: 
   }
 }
 
-// ActionConfirmDialog asks before an action that isn't a merge but asks first, as every
-// action with warnings to accept does, such as Update branch on Dependabot's pull request:
-// Dependabot stops rebasing a branch someone else changed. It names the action by its
-// offer's label, says what it does at which commit, and lists the warnings to accept; it
-// never offers merge methods. Cancel is the safe choice it starts on.
-export function ActionConfirmDialog({ review, offer, onConfirm, onCancel }: ActionConfirmDialogProps) {
+// ActionConfirmDialog asks before an action that isn't a merge but asks first: a close,
+// which always does, and every action with warnings to accept, such as Update branch on
+// Dependabot's pull request: Dependabot stops rebasing a branch someone else changed. It
+// names the action by its offer's label, says what it does at which commit, what it posts
+// as a comment first, if anything, and lists the warnings to accept; it never offers merge
+// methods. A close confirms in the danger tone. Cancel is the safe choice it starts on.
+export function ActionConfirmDialog({ review, offer, onConfirm, onCancel, comment = '' }: ActionConfirmDialogProps) {
   const [accepted, setAccepted] = useState(false)
   const text = actionText(review, offer)
 
@@ -55,13 +70,14 @@ export function ActionConfirmDialog({ review, offer, onConfirm, onCancel }: Acti
     <ConfirmDialog
       title={text.title}
       confirmLabel={offer.label}
-      tone="primary"
+      tone={offer.action === 'close' ? 'danger' : 'primary'}
       size="wide"
       confirmDisabled={offer.warnings.length > 0 && !accepted}
       onConfirm={onConfirm}
       onCancel={onCancel}
     >
       <p>{text.does}</p>
+      {comment !== '' && <p className="mt-2">{comment}</p>}
       <WarningsToAccept warnings={offer.warnings} accept={text.accept} accepted={accepted} onAccept={setAccepted} />
     </ConfirmDialog>
   )

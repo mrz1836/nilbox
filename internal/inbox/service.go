@@ -104,19 +104,19 @@ const (
 
 // Internal prefs keys for inbox status. The inbox writes them, and no other package.
 const (
-	prefViewer               = "inbox.viewer"
-	prefViewerName           = "inbox.viewer_name"
-	prefViewerURL            = "inbox.viewer_url"
-	prefViewerAvatarURL      = "inbox.viewer_avatar_url"
-	prefAvatar               = "inbox.avatar"
-	prefAvatarSource         = "inbox.avatar_source"
-	prefTotalReviewRequested = "inbox.total.review_requested"
-	prefTotalAuthored        = "inbox.total.authored"
-	prefTotalAssigned        = "inbox.total.assigned"
-	prefLastRefreshAt        = "inbox.last_refresh_at"
-	prefLastError            = "inbox.last_error"
-	prefScopeWarning         = "inbox.scope_warning"
-	prefProjects             = "inbox.projects"
+	prefViewer                = "inbox.viewer"
+	prefViewerName            = "inbox.viewer_name"
+	prefViewerURL             = "inbox.viewer_url"
+	prefViewerAvatarURL       = "inbox.viewer_avatar_url"
+	prefAvatar                = "inbox.avatar"
+	prefAvatarSource          = "inbox.avatar_source"
+	prefBeyondReviewRequested = "inbox.beyond.review_requested"
+	prefBeyondAuthored        = "inbox.beyond.authored"
+	prefBeyondAssigned        = "inbox.beyond.assigned"
+	prefLastRefreshAt         = "inbox.last_refresh_at"
+	prefLastError             = "inbox.last_error"
+	prefScopeWarning          = "inbox.scope_warning"
+	prefProjects              = "inbox.projects"
 )
 
 // ErrIncompleteFetch is returned when GitHub's answer lacks the signed-in account.
@@ -484,12 +484,13 @@ func (s *Service) fetch(ctx context.Context, tok github.Token, listed []string, 
 // dropArchived takes the items of archived repositories out of the inbox's lists and
 // returns them. The searches already leave archived repositories out (archived:false);
 // this covers a repository archived after GitHub indexed its items, so nothing about an
-// archived repository is listed, asked about, or launched. The lists' totals stay as
-// GitHub counted them.
+// archived repository is listed, asked about, or launched. Each list's total counts them
+// out too (countOut), so a list never reads as matching items it leaves out.
 func dropArchived(inbox *github.Inbox) []github.Item {
 	var dropped []github.Item
 
 	for _, list := range []*github.SearchResult{&inbox.ReviewRequested, &inbox.Authored, &inbox.Assigned} {
+		listed := len(list.Items)
 		kept := list.Items[:0]
 
 		for _, it := range list.Items {
@@ -503,6 +504,7 @@ func dropArchived(inbox *github.Inbox) []github.Item {
 		}
 
 		list.Items = kept
+		countOut(list, listed)
 	}
 
 	return dropped
@@ -512,11 +514,20 @@ func dropArchived(inbox *github.Inbox) []github.Item {
 // inbox's lists. The searches ask for open items only, but the index can trail a merge
 // or a close for a while; the state the query reads with each item does not. Like an
 // archived repository's items, they leave every list, so a refresh never brings back an
-// item that RefreshItem saw merged. The lists' totals stay as GitHub counted them.
+// item that RefreshItem saw merged, and each list's total counts them out too (countOut):
+// GitHub's count still has them, and a list of one would read "1 of 2".
 func dropClosed(inbox *github.Inbox) {
 	for _, list := range []*github.SearchResult{&inbox.ReviewRequested, &inbox.Authored, &inbox.Assigned} {
+		listed := len(list.Items)
 		list.Items = slices.DeleteFunc(list.Items, github.Item.Closed)
+		countOut(list, listed)
 	}
+}
+
+// countOut takes the items list returned but no longer holds, of the listed it did, out
+// of GitHub's match count, never below none.
+func countOut(list *github.SearchResult, listed int) {
+	list.IssueCount = max(list.IssueCount-(listed-len(list.Items)), 0)
 }
 
 // save stores what the refresh with seq read, in one transaction under the store lock:
@@ -598,17 +609,17 @@ func (w *writer) saveRefresh(ctx context.Context, got refreshed) ([]Arrival, err
 	}
 
 	status := map[string]string{
-		prefViewer:               inbox.Viewer.Login,
-		prefViewerName:           inbox.Viewer.Name,
-		prefViewerURL:            inbox.Viewer.URL,
-		prefViewerAvatarURL:      inbox.Viewer.AvatarURL,
-		prefTotalReviewRequested: strconv.Itoa(inbox.ReviewRequested.IssueCount),
-		prefTotalAuthored:        strconv.Itoa(inbox.Authored.IssueCount),
-		prefTotalAssigned:        strconv.Itoa(inbox.Assigned.IssueCount),
-		prefLastRefreshAt:        clock.Format(w.now),
-		prefLastError:            "",
-		prefScopeWarning:         string(got.warning),
-		prefProjects:             string(got.projects),
+		prefViewer:                inbox.Viewer.Login,
+		prefViewerName:            inbox.Viewer.Name,
+		prefViewerURL:             inbox.Viewer.URL,
+		prefViewerAvatarURL:       inbox.Viewer.AvatarURL,
+		prefBeyondReviewRequested: strconv.Itoa(beyond(inbox.ReviewRequested)),
+		prefBeyondAuthored:        strconv.Itoa(beyond(inbox.Authored)),
+		prefBeyondAssigned:        strconv.Itoa(beyond(inbox.Assigned)),
+		prefLastRefreshAt:         clock.Format(w.now),
+		prefLastError:             "",
+		prefScopeWarning:          string(got.warning),
+		prefProjects:              string(got.projects),
 	}
 
 	// The source is written with the picture, so it never names a picture not stored.
@@ -616,7 +627,37 @@ func (w *writer) saveRefresh(ctx context.Context, got refreshed) ([]Arrival, err
 		status[prefAvatar], status[prefAvatarSource] = a.dataURL, a.source
 	}
 
-	return arrivals, w.prefs.SetMany(ctx, status)
+	if err = w.prefs.SetMany(ctx, status); err != nil {
+		return nil, err
+	}
+
+	return arrivals, w.forgetRawTotals(ctx)
+}
+
+// beyond is how many items list's search matched past the ones it returned: GitHub
+// returns one page of a long list, and counts the rest. A list's total is the items it
+// shows and these (applyTotals), so an item that leaves a list between whole refreshes
+// (a merge, a review, a card's refresh) leaves its total too, and a list that fits a page
+// never reads as matching more than it shows.
+func beyond(list github.SearchResult) int {
+	return max(list.IssueCount-len(list.Items), 0)
+}
+
+// rawTotals are the keys a build before beyond kept GitHub's whole match counts under,
+// removed by the next whole refresh.
+func rawTotals() []string {
+	return []string{"inbox.total.review_requested", "inbox.total.authored", "inbox.total.assigned"}
+}
+
+// forgetRawTotals removes the keys rawTotals names.
+func (w *writer) forgetRawTotals(ctx context.Context) error {
+	for _, key := range rawTotals() {
+		if err := w.prefs.Delete(ctx, key); err != nil {
+			return fmt.Errorf("forget the old list total: %w", err)
+		}
+	}
+
+	return nil
 }
 
 // downloadAvatar downloads the viewer's avatar from avatarURL, unless the one cached

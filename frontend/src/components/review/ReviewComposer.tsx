@@ -54,6 +54,13 @@ export function replyActionOf(action: ReviewAction): ReplyAction {
   }
 }
 
+// sentText is the text an action sends, from the composer's body: all of it, but for a
+// close, which is never the button, and so never the action the composer's default reply
+// was filled in for: it sends only what the user wrote or picked, never that default.
+export function sentText(action: ReviewAction, draft: ReviewDraft, body: string): string {
+  return action !== 'close' || draft.edited ? body : ''
+}
+
 // needsText says why an action is held back for want of text: a request for changes or a
 // comment says something, in its text or in a line comment.
 export function needsText(action: ReviewAction, body: string, comments: number): string {
@@ -65,16 +72,16 @@ export function needsText(action: ReviewAction, body: string, comments: number):
 }
 
 // sendsText reports an offer whose action sends the text and line comments, as the backend
-// marks it: one that submits a review of its own, or a merge that posts them as a comment
-// first.
+// marks it: one that submits a review of its own, or a merge or a close that posts them as
+// a comment first.
 export function sendsText(offer: ReviewOffer | undefined): boolean {
   return offer !== undefined && (offer.reviews || offer.commentsFirst)
 }
 
-// commentFirst says what a merge with no review of its own posts as a comment before it
-// merges, as the backend marks its offer, or '' when it posts nothing: clearing the text,
+// commentFirst says what a merge with no review of its own, or a close, posts as a comment
+// first, as the backend marks its offer, or '' when it posts nothing: clearing the text,
 // and the line comments, skips the comment. While GitHub can't take the comment, it says
-// why instead, and how to merge without it, which holds the button back too (heldBack).
+// why instead, and how to go ahead without it, which holds the button back too (heldBack).
 export function commentFirst(offer: ReviewOffer | undefined, body: string, comments: number): string {
   const text = body.trim() !== ''
 
@@ -90,7 +97,8 @@ export function commentFirst(offer: ReviewOffer | undefined, body: string, comme
 }
 
 // heldBack says why the window holds an offer's action back, or '': a request for changes
-// or a comment with nothing to say, or a merge whose comment GitHub can't take now.
+// or a comment with nothing to say, or a merge or a close whose comment GitHub can't take
+// now.
 export function heldBack(offer: ReviewOffer | undefined, body: string, comments: number): string {
   if (offer === undefined) {
     return ''
@@ -235,7 +243,7 @@ export function ReviewComposer({
             onDraft((d) => ({ ...d, action }))
           }}
           onRun={onRun}
-          blocked={(action) => heldBack(offerOf(action), body, draft.comments.length)}
+          blocked={(action) => heldBack(offerOf(action), sentText(action, draft, body), draft.comments.length)}
         />
         {launch !== null && item !== undefined && (
           <LaunchControls

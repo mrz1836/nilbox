@@ -130,9 +130,9 @@ func TestKindsAreTheInboxArrivals(t *testing.T) {
 
 	assert.Equal(t, []notifyprefs.Kind{
 		KindReviewRequested, KindAssigned, KindWoke, KindSessionNeedsYou, KindSessionFinished, KindReleaseDone,
-		KindReleasePublished, KindReleaseFailed,
+		KindReleasePublished, KindReleaseFailed, KindRunFailed,
 	}, notifyprefs.Kinds(),
-		"the kinds the settings list are the inbox's kinds of arrival, in order, then the sessions', then a release's")
+		"the kinds the settings list are the inbox's kinds of arrival, in order, then the sessions', a release's, and a failed run's")
 }
 
 // releaseEntry is the entry for acme-org/sdk's v1.4.3 reaching GitHub.
@@ -184,6 +184,52 @@ func TestRecordEventStoresAnEntryAboutNoItem(t *testing.T) {
 	got, err = s.RecordEvent(t.Context(), testNow, repoless)
 	require.NoError(t, err)
 	assert.Empty(t, got.Repo, "no repository reads as none")
+}
+
+// runEntry is the entry for run 42, checks that failed in acme-org/sdk.
+func runEntry() Entry {
+	return Entry{
+		Kind: KindRunFailed, Title: "Checks failed: Checks · all files", Body: "4 passed, 1 failed: whitespace.",
+		RepoOwner: "acme-org", RepoName: "sdk", RunID: 42, RunStarted: "2026-03-04T11:59:00Z",
+	}
+}
+
+func TestRecordEventKeepsTheRunAnEntryIsAbout(t *testing.T) {
+	t.Parallel()
+
+	f := newFixture(t, 1)
+	s := NewStore(f.pool)
+
+	got, err := s.RecordEvent(t.Context(), testNow, runEntry())
+	require.NoError(t, err)
+
+	want := Notification{
+		ID: got.ID, Kind: KindRunFailed, CreatedAt: "2026-03-04T12:00:00Z", Repo: "acme-org/sdk",
+		Title: "Checks failed: Checks · all files", Detail: "4 passed, 1 failed: whitespace.", RunID: 42,
+		RunStarted: "2026-03-04T11:59:00Z",
+	}
+	assert.Equal(t, want, got, "no item and no page: the run is what a click opens, while it started then")
+
+	_, err = s.Record(t.Context(), testNow.Add(time.Minute), []inbox.Arrival{f.arrival(0, KindReviewRequested)})
+	require.NoError(t, err)
+
+	release, err := s.RecordEvent(t.Context(), testNow.Add(2*time.Minute), releaseEntry())
+	require.NoError(t, err)
+	assert.Zero(t, release.RunID, "an entry about no run names none")
+	assert.Empty(t, release.RunStarted)
+
+	log, err := s.Log(t.Context())
+	require.NoError(t, err)
+	require.Len(t, log.Items, 3)
+	assert.Equal(t, want, log.Items[2], "read back as stored")
+	assert.Zero(t, log.Items[1].RunID, "an arrival names no run")
+
+	negative := runEntry()
+	negative.RunID = -1
+
+	_, err = s.RecordEvent(t.Context(), testNow, negative)
+	require.Error(t, err, "a run's ID is never negative")
+	assert.Equal(t, 3, countNotifications(t, f.pool), "and nothing is stored")
 }
 
 func TestRecordEventKeepsOnlyTheNewest(t *testing.T) {
@@ -673,6 +719,111 @@ func TestTheDispatcherNotifiesOfAnEntryAboutNoItem(t *testing.T) {
 	d.Notify(t.Context(), Entry{Kind: "mentions"})
 	assert.Equal(t, 2, f.events.Count(), "an entry that can't be recorded tells nothing")
 	assert.Contains(t, logs.String(), "could not record the notification")
+}
+
+// gatheringDispatcher returns a Dispatcher over f whose gathered banners wait until the test
+// shows them (its held.flush, which the window's timer calls): the window itself is timed
+// in gather_test.go, in a synctest bubble.
+func gatheringDispatcher(f *fixture) *Dispatcher {
+	d := NewDispatcher(f.config())
+	d.held.window = time.Hour
+
+	return d
+}
+
+func TestTheDispatcherGathersAFailedRun(t *testing.T) {
+	t.Parallel()
+
+	f := newFixture(t, 0)
+	d := gatheringDispatcher(f)
+
+	d.Gather(t.Context(), runEntry())
+
+	log, err := NewStore(f.pool).Log(t.Context())
+	require.NoError(t, err)
+	require.Len(t, log.Items, 1, "recorded at once")
+	assert.Equal(t, 1, f.events.Count(), "and the window told")
+	assert.Empty(t, f.poster.posted(), "its banner waits for others")
+
+	d.held.flush()
+
+	assert.Equal(t, []Banner{{
+		ID: brand.Slug + "-" + strconv.FormatInt(log.Items[0].ID, 10), Title: "Run failed", Subtitle: "acme-org/sdk",
+		Body:   "Checks failed: Checks · all files\n4 passed, 1 failed: whitespace.",
+		Thread: string(KindRunFailed), RunID: 42, RunStarted: "2026-03-04T11:59:00Z",
+	}}, f.poster.posted(), "the repository as the subtitle, and a click opens the run")
+
+	d.Gather(t.Context(), runEntry())
+	d.Close()
+	d.Gather(t.Context(), runEntry())
+	d.held.flush()
+	assert.Len(t, f.poster.posted(), 1, "once closed, it drops what it held and holds nothing")
+	assert.Equal(t, 3, f.events.Count(), "but the log still keeps them")
+
+	d.Gather(t.Context(), Entry{Kind: "mentions"})
+	assert.Equal(t, 3, f.events.Count(), "an entry that can't be recorded tells nothing")
+}
+
+func TestTheDispatcherShowsABurstOfFailedRunsTogether(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		failures int
+		want     []string
+	}{
+		{failures: 1, want: []string{"Run failed"}},
+		{failures: 3, want: []string{"Run failed", "Run failed", "Run failed"}},
+		{failures: 4, want: []string{"4 new notifications"}},
+		{failures: 7, want: []string{"7 new notifications"}},
+	}
+
+	for _, tt := range tests {
+		t.Run(strconv.Itoa(tt.failures), func(t *testing.T) {
+			t.Parallel()
+
+			f := newFixture(t, 0)
+			d := gatheringDispatcher(f)
+
+			for range tt.failures {
+				d.Gather(t.Context(), runEntry())
+			}
+
+			d.held.flush()
+
+			titles := make([]string, 0, len(tt.want))
+			for _, b := range f.poster.posted() {
+				titles = append(titles, b.Title)
+			}
+
+			assert.Equal(t, tt.want, titles, "more than MaxBanners sum up in one")
+
+			log, err := NewStore(f.pool).Log(t.Context())
+			require.NoError(t, err)
+			assert.Len(t, log.Items, tt.failures, "the history keeps every one")
+		})
+	}
+}
+
+func TestTheDispatcherObeysTheBannerRulesForFailedRuns(t *testing.T) {
+	t.Parallel()
+
+	f := newFixture(t, 0)
+
+	require.NoError(t, prefs.New(f.pool, f.clock).Set(t.Context(), notifyprefs.KeyBannersOff, `["run_failed"]`))
+
+	d := gatheringDispatcher(f)
+	d.Gather(t.Context(), runEntry())
+	d.held.flush()
+	assert.Empty(t, f.poster.posted(), "its kind's banners are off")
+
+	require.NoError(t, prefs.New(f.pool, f.clock).Set(t.Context(), notifyprefs.KeyBannersOff, `[]`))
+	f.poster.status = StatusOff
+
+	d = gatheringDispatcher(f)
+	d.Gather(t.Context(), runEntry())
+	d.held.flush()
+	assert.Empty(t, f.poster.posted(), "no banner while the user doesn't allow them")
+	assert.Equal(t, 2, f.events.Count(), "the log still keeps both")
 }
 
 func TestTheDispatcherSurvivesFailures(t *testing.T) {

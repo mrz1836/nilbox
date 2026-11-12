@@ -23,7 +23,7 @@ const KeyBannersOn = "notify.bannersOn"
 
 // Kind is a kind of notification: one of the inbox's kinds of arrival (see
 // inbox.Arrival), a moment an agent session needs the user, or an event about no item,
-// such as a release that reached GitHub.
+// such as a release that reached GitHub or a run that failed.
 type Kind string
 
 // Kinds of notification.
@@ -51,6 +51,9 @@ const (
 
 	// KindReleaseFailed is a release whose workflow on GitHub failed.
 	KindReleaseFailed Kind = "release_failed"
+
+	// KindRunFailed is a run from the Scripts tab that failed or ran past its time limit.
+	KindRunFailed Kind = "run_failed"
 )
 
 // ErrUnknownKind is returned for a kind of notification that is not one of Kinds.
@@ -60,7 +63,7 @@ var ErrUnknownKind = errors.New("unknown kind of notification")
 func Kinds() []Kind {
 	return []Kind{
 		KindReviewRequested, KindAssigned, KindWoke, KindSessionNeedsYou, KindSessionFinished, KindReleaseDone,
-		KindReleasePublished, KindReleaseFailed,
+		KindReleasePublished, KindReleaseFailed, KindRunFailed,
 	}
 }
 

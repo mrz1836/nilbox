@@ -821,7 +821,7 @@ func TestSnapshotReportsNofM(t *testing.T) {
 	review := []github.Item{pr(1, "OWNER", false), pr(2, "OWNER", false)}
 	h.client.inbox = fetched(review, []github.Item{pr(3, "OWNER", false)}, nil)
 	h.client.inbox.ReviewRequested.IssueCount = 7
-	h.client.inbox.Authored.IssueCount = 0 // a total below what was shown falls back to it
+	h.client.inbox.Authored.IssueCount = 0 // a count below what was returned adds none
 
 	snap := h.refresh(t)
 	assert.Equal(t, 2, snap.ReviewRequested.Shown)
@@ -836,6 +836,64 @@ func TestSnapshotReportsNofM(t *testing.T) {
 	assert.Equal(t, snap, again)
 	assert.Equal(t, "2026-01-10T12:00:00Z", again.LastRefreshedAt)
 	assert.Equal(t, octoUser, again.Account.Login)
+}
+
+func TestAnItemThatLeavesAListLeavesItsTotal(t *testing.T) {
+	t.Parallel()
+
+	h, id := itemHarness(t)
+
+	// Review requested matched and returned #1 and #2; Assigned, #1 alone.
+	before, err := h.svc.Snapshot(t.Context())
+	require.NoError(t, err)
+	assert.Equal(t, 2, before.ReviewRequested.Total)
+
+	snap, err := NewActor(h.svc).Act(t.Context(), id, func(context.Context, github.Token, PullTarget) (Acted, error) {
+		return Acted{Reviewed: true}, nil
+	})
+	require.NoError(t, err)
+
+	assert.Equal(t, []int{2}, numbers(snap.ReviewRequested), "a review takes #1 out of Review requested")
+	assert.Equal(t, 1, snap.ReviewRequested.Total, "and out of its total, which reads 1, not 1 of 2")
+	assert.Equal(t, 1, snap.Assigned.Total, "the lists it stays in keep theirs")
+}
+
+func TestALongListKeepsWhatItsSearchMatchedPastOnePage(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	review := []github.Item{pr(1, "OWNER", false), pr(2, "OWNER", false)}
+	h.client.inbox = fetched(review, nil, nil)
+	h.client.inbox.ReviewRequested.IssueCount = 120
+
+	snap := h.refresh(t)
+	assert.Equal(t, 120, snap.ReviewRequested.Total, "the 2 returned and the 118 past them")
+
+	id := itemByNumber(t, snap.ReviewRequested, 1).ID
+	merged := pr(1, "OWNER", false)
+	merged.State = github.StateMerged
+	h.client.items = map[string]*github.ItemUpdate{nodeID(1): {Found: true, Item: merged, RateLimit: itemRate()}}
+
+	snap, err := h.svc.RefreshItem(t.Context(), id)
+	require.NoError(t, err)
+	assert.Equal(t, 1, snap.ReviewRequested.Shown)
+	assert.Equal(t, 119, snap.ReviewRequested.Total, "the merged item leaves the total; the 118 past the page stay")
+}
+
+func TestARefreshForgetsTheWholeCountsAnOlderBuildKept(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	require.NoError(t, h.svc.prefs.Set(t.Context(), "inbox.total.authored", "9"))
+
+	h.client.inbox = fetched(nil, []github.Item{pr(1, "OWNER", false)}, nil)
+	snap := h.refresh(t)
+
+	assert.Equal(t, 1, snap.Authored.Total, "an old whole count is never read as a count past the page")
+
+	_, found, err := h.svc.prefs.Get(t.Context(), "inbox.total.authored")
+	require.NoError(t, err)
+	assert.False(t, found, "and the next whole refresh removes it")
 }
 
 func TestRefreshNeverPersistsToken(t *testing.T) {
@@ -1558,5 +1616,6 @@ func TestDropArchived(t *testing.T) {
 	assert.Equal(t, []github.Item{keep}, inbox.ReviewRequested.Items)
 	assert.Empty(t, inbox.Authored.Items)
 	assert.Empty(t, inbox.Assigned.Items)
-	assert.Equal(t, 2, inbox.ReviewRequested.IssueCount, "totals stay as GitHub counted them")
+	assert.Equal(t, 1, inbox.ReviewRequested.IssueCount, "the archived item is counted out of GitHub's count")
+	assert.Equal(t, 0, inbox.Authored.IssueCount)
 }

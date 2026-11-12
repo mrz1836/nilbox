@@ -58,8 +58,9 @@ type Acted struct {
 	Reviewed   bool
 	ReviewedAt time.Time
 
-	// Merged reports a merge GitHub made.
+	// Merged reports a merge GitHub made, and Closed a close without one.
 	Merged bool
+	Closed bool
 }
 
 // with returns what a and b made happen together, as two tries of one action do.
@@ -67,13 +68,14 @@ func (a Acted) with(b Acted) Acted {
 	a.Reviewed = a.Reviewed || b.Reviewed
 	a.ReviewedAt = later(a.ReviewedAt, b.ReviewedAt)
 	a.Merged = a.Merged || b.Merged
+	a.Closed = a.Closed || b.Closed
 
 	return a
 }
 
 // any reports whether the action changed anything the inbox records.
 func (a Acted) any() bool {
-	return a.Reviewed || a.Merged
+	return a.Reviewed || a.Merged || a.Closed
 }
 
 // PullRead is what a caller's read of a pull request found: the item as GitHub answered,
@@ -101,7 +103,7 @@ func NewActor(s *Service) *Actor {
 // GitHub refuses is borrowed again once, and act runs again with it, so act must not
 // repeat a step it made. What act reports is recorded even when it also returns an error,
 // since a step GitHub made stands: a review takes the pull request out of the Review
-// requested list, and a merge out of every list, at once and with no request.
+// requested list, and a merge or a close out of every list, at once and with no request.
 func (a *Actor) Act(
 	ctx context.Context, id int64, act func(context.Context, github.Token, PullTarget) (Acted, error),
 ) (Snapshot, error) {
@@ -273,9 +275,9 @@ func pullTargetOfRow(row queries.GetEditItemRow) PullTarget {
 }
 
 // recordActed records what an action made happen on target: a review takes it out of the
-// Review requested list, stamped as an edit is (see UpsertItem), and a merge takes it out
-// of every list, as an item write numbered now, after GitHub's answer, so a refresh that
-// was fetching applies it again.
+// Review requested list, stamped as an edit is (see UpsertItem), and a merge or a close
+// takes it out of every list, as an item write numbered now, after GitHub's answer, so a
+// refresh that was fetching applies it again.
 func (s *Service) recordActed(ctx context.Context, target PullTarget, acted Acted) error {
 	if acted.Reviewed && target.ReviewRequested {
 		stamp := later(acted.ReviewedAt.UTC(), target.UpdatedAt)
@@ -288,9 +290,9 @@ func (s *Service) recordActed(ctx context.Context, target PullTarget, acted Acte
 		}
 	}
 
-	if acted.Merged {
+	if acted.Merged || acted.Closed {
 		if _, err := s.storeItemWrite(ctx, itemWrite{id: target.ID, seq: s.startFetch(), unlist: true}); err != nil {
-			return fmt.Errorf("record the merge: %w", err)
+			return fmt.Errorf("record the merge or close: %w", err)
 		}
 	}
 

@@ -65,7 +65,8 @@ type Account struct {
 	Avatar string `json:"avatar"`
 }
 
-// List is one inbox list. Total is GitHub's match count, which can exceed Shown.
+// List is one inbox list: its items, how many it shows, and Total, how many GitHub
+// matched, which exceeds Shown only when its search matched more than one page returns.
 type List struct {
 	Items []Item `json:"items"`
 	Shown int    `json:"shown"`
@@ -416,20 +417,21 @@ func (s *Snapshot) addItems(rows []itemRow, scope fileScope, viewer string) {
 	}
 }
 
-// applyTotals sets each list's Shown and Total. A stored total below the shown count
-// (or no stored total) falls back to the shown count.
+// applyTotals sets each list's Shown and Total: the items it shows, and those and the ones
+// its last whole refresh's search matched past the page GitHub returned (beyond). An item
+// that left the list since is counted out of both. A missing or bad count adds none.
 func (s *Snapshot) applyTotals(prefs map[string]string) {
 	for _, l := range []struct {
 		list *List
 		key  string
 	}{
-		{&s.ReviewRequested, prefTotalReviewRequested},
-		{&s.Authored, prefTotalAuthored},
-		{&s.Assigned, prefTotalAssigned},
+		{&s.ReviewRequested, prefBeyondReviewRequested},
+		{&s.Authored, prefBeyondAuthored},
+		{&s.Assigned, prefBeyondAssigned},
 	} {
 		l.list.Shown = len(l.list.Items)
-		total, _ := strconv.Atoi(prefs[l.key]) // a missing or bad total falls back to Shown
-		l.list.Total = max(total, l.list.Shown)
+		past, _ := strconv.Atoi(prefs[l.key]) // a missing or bad count adds none
+		l.list.Total = l.list.Shown + max(past, 0)
 	}
 }
 

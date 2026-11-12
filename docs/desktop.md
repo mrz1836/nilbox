@@ -270,7 +270,10 @@ it says which copy it uses, its version, and where it came from (a GitHub releas
   in `~/.local/bin`, and if your terminal still finds the old one first, the card says so and
   offers to move it to the Trash, through Finder, so **Put Back** works. The first time, macOS
   asks whether the app may control Finder; if you say no, it offers **Reveal in Finder** instead.
-  While a run uses the tool, neither kind of update starts.
+  Every other copy the card lists under **Other copies** (one the tool doesn't use, or one that
+  won't run) has **Move to the Trash** too, after you confirm, except a link, which Finder would
+  follow to what it points to, and a Homebrew copy, which Homebrew manages. While a run uses the
+  tool, neither kind of update starts.
 - **`~/.local/bin` and your `PATH`.** The app finds a tool it installed either way. If your shell's
   `PATH` doesn't include `~/.local/bin`, your terminal won't, and the card says so with the line to
   add to `~/.zprofile`: `export PATH="$HOME/.local/bin:$PATH"`. For go-pre-commit this matters
@@ -336,6 +339,20 @@ one runner, which keeps a record of each run and its whole output.
   while the run's kind refuses it (a release while magex switches branches and pulls), and asks
   first, in the kind's own words, while stopping would leave something behind. A run in your
   terminal has no **Stop**: the panel says to press Control-C there.
+- **A run that fails tells you.** Once a run's end is recorded as failed, or as stopped at its
+  time limit, the [notification history](#menu-bar-and-notifications) gets one **Run failed**
+  entry for it, with a banner while that kind is on: *Checks failed: Checks · all files* under
+  its repository, then the run's result (*4 passed, 1 failed: whitespace.*) or *Timed out
+  after 30 minutes.* A run in a folder that isn't a GitHub clone, as a tool's update is, names
+  the folder in the title instead. It covers every kind of run, in the app or in your
+  terminal, and one from before a restart that the app settles as failed once it starts again.
+  A run that couldn't start (the window already says why), one you stopped, from the app or
+  with Control-C in your terminal, one a quit or a restart interrupted, and one that succeeded
+  tell nothing, and no run tells twice. Failures that come within 2 seconds of each other, as
+  **Install all** or a restart can make, show their banners together, and more than three as
+  one that sums them up; the history keeps each. Clicking the entry or its banner opens the run
+  here, in Runs, while the history still holds it: once it doesn't, as after **Clear
+  history**, a toast says so.
 - **History.** The newest 200 runs are kept, with up to 512 MB of logs in all; older runs go with
   their logs, and a run still going is never dropped. A finished log over 16 MB keeps its first
   4 MB and its last 12 MB.
@@ -418,7 +435,11 @@ itself never tags or pushes: magex does, when you click a button that names the 
   (1.30.0 or later, with `expect=`); before that its card says so, with **Update magex in
   Settings**. Choosing Major asks you to type the exact version, with an empty field every time,
   and, for a Go module whose `go.mod` doesn't name the new major, to tick **Release anyway: this
-  module isn't meant to be imported**. The service checks both again.
+  module isn't meant to be imported**. The service checks both again. Under the cards, a hint
+  reads the commits' conventional-commit prefixes: *2 commits start with feat:, which usually
+  means a minor release.*, or, for a commit marked breaking (`feat!:`, `fix(api)!:`, or a
+  headline starting `BREAKING CHANGE:`), that it usually means a major one. It never changes
+  the choice.
 - **Runs in:** the app or your terminal, as Settings → Integrations sets, or the other one for
   this release only.
 - **The sentence** says exactly what will happen, and **Command** shows the exact command, to
@@ -579,7 +600,9 @@ origin, with one `git ls-remote` whose answer is kept five minutes.
   (`git pull --ff-only`, never a merge or a rebase) as a run beside the scripts, in the app, and
   reads the scripts again once it ends. It asks origin about that one branch, with one `git
   ls-remote`, and never fetches; the answer is kept five minutes, and its refresh button asks
-  again, while a pull keeps the commit it fetched without counting as a new ask. A branch ahead of
+  again, while a pull keeps the commit it fetched without counting as a new ask. A clone whose
+  origin isn't on GitHub reads **Origin not checked** with a **Check** button: Nilbox asks no host
+  but GitHub on its own, so that origin is asked only when you click. A branch ahead of
   origin, one that has diverged from it, one that tracks no branch on origin, a detached HEAD, or
   a merge or rebase in progress says so, and offers no pull. A pull refuses a clone that moved to
   another branch since the check, fails with git's own words on a branch with commits of its own,
@@ -680,8 +703,9 @@ main worktrees aside, with an amber dot while some are done on GitHub but still 
 amber dot while a tool that's on can't be used. Hover a tab for what its number or dot means.
 **Prompts** has no count.
 
-**Account menu.** Click your picture for who is signed in, **Settings** (also ⌘,), and **View
-GitHub profile**. After a refresh, the picture is downloaded from
+**Account menu.** Click your picture for who is signed in, **Settings** (also ⌘,), **View
+GitHub profile**, and **GitHub status**, which opens githubstatus.com in your browser, for when
+GitHub is having an incident and the inbox, reviews, or checks lag. After a refresh, the picture is downloaded from
 `avatars.githubusercontent.com` without your token and cached in the database, so it shows
 offline. It is downloaded again only when GitHub reports a new picture, such as after you
 change it or sign in as another account with `gh auth switch`. Until it arrives, the button
@@ -1101,8 +1125,8 @@ one. Each is made with your `gh` token, and GitHub's answer is checked before th
 A combined action, such as **Approve & merge**, makes its changes one at a time and costs the sum
 of their rows, and so does a merge that posts your text as a comment first (Merge when ready
 then reads the merge state before the comment, 1 GraphQL point more). Nilbox never goes past branch protection on its own (only **Merge past the
-rules** does, when you choose it), and no agent ever approves or merges: every approval and
-merge happens only because you clicked.
+rules** does, when you choose it), and no agent ever approves, merges, or closes: every
+approval, merge, and close happens only because you clicked.
 
 | Change | Where | Cost |
 |---|---|---|
@@ -1115,6 +1139,7 @@ merge happens only because you clicked.
 | Turn on auto-merge | The review sheet, after you confirm | 1 GraphQL point |
 | Update branch | The review sheet | 1 REST point |
 | Ask Dependabot to rebase (a `@dependabot rebase` comment) | The review sheet | 1 REST point |
+| Close pull request | The review sheet's menu, after you confirm | 1 GraphQL point to check nothing was pushed, then 1 REST point (1 more for your comment) |
 
 From the card's menu, once GitHub has taken you off, the item leaves that list (and the inbox,
 when it is in no other), and a toast confirms it. When GitHub refuses, or answers without making
@@ -1253,6 +1278,26 @@ check is expected**, and the text leaves your draft, so a second try doesn't pos
 While you have a review of the pull request started on GitHub, which holds back every comment,
 the button waits and says so: submit or discard that review there, or clear your text.
 
+**Closing without merging.** The menu offers **Close pull request**, set apart at its foot, on
+an open pull request GitHub says you may close (your own, or anyone's where you have triage
+access or more). Until the sheet has read the pull request from GitHub, it waits, greyed. It is
+never the button: picking it from the menu opens its confirmation at once, it never becomes the
+action the button runs, **⌘↩** never closes, and when nothing else can run, the sheet still
+says **Nothing to do here now.**, with the close in a menu beside it. Text you wrote in **Your
+review**, or a reply you picked, goes with it, along with any line comments, as a comment
+posted before it closes, the way a merge posts one: to the commit you saw, and never as an
+approval. A default reply you never touched doesn't go. The confirmation names the pull
+request, says when your text is posted as a comment first, and notes that you can reopen it on
+GitHub. **Cancel** and Escape close nothing. GitHub takes no commit to pin a close to, so Nilbox
+reads the pull request first (1 GraphQL point), and again before a second try with a fresh
+token: one closed, merged, or pushed to since you opened it gets neither the comment nor the
+close. If the comment fails, nothing closes. If the close then fails, or a push lands before a
+second try, the toast says the comment is posted and why it didn't close, as in **Commented on
+acme-org/api#212, but it wasn't closed: It was pushed to since you opened it**, and the text
+leaves your draft. GitHub's refusal reads as one of a close, as in **GitHub wouldn't close
+acme-org/api#212: …**. Otherwise the toast says **Closed acme-org/api#212 with your comment**
+(or **Closed acme-org/api#212**).
+
 **Merge method.** **Settings → Reviewing** chooses the method the confirmation starts on: **As
 each repository offers first** (the default, GitHub's own first choice for you there), **Squash
 and merge**, **Create a merge commit**, or **Rebase and merge**. A repository that doesn't allow
@@ -1297,8 +1342,8 @@ never lost.
 **After acting** the sheet closes and the inbox's toast reports what happened, as in **Merged
 acme-org/api#212 (squash)**, **Commented and merged acme-org/api#212 (squash)**, or **Approved
 acme-org/api#212 · auto-merge is on**. A review takes the
-pull request out of **Review requested**, and a merge out of every list, at once, with no extra
-request.
+pull request out of **Review requested**, and a merge or a close out of every list, at once, with
+no extra request.
 
 **Line comments.** Click a line number in the diff to comment on that line; shift-click another
 in the same part of the diff for a range. **Suggest a change** (on the new version only) starts
@@ -1370,7 +1415,7 @@ its **Open Nilbox**, or the Dock icon brings the window back; quit from the icon
 ⌘Q. Turn the icon off in Settings → Notifications, and closing the window quits the app.
 
 **What is notified.** After each refresh, the app compares the lists with the last refresh's
-and records what newly needs you:
+and records what newly needs you; a release or a run is recorded as it ends:
 
 | Kind | When |
 |---|---|
@@ -1380,6 +1425,7 @@ and records what newly needs you:
 | Released | A release you started reaches GitHub; it names the version and the commit it tagged |
 | Published | The release workflow on GitHub publishes a release you started (*acme-org/sdk v1.4.3 is published*) |
 | Release workflow failed | A workflow the tag of a release you started ran fails on GitHub (*The goreleaser workflow failed for acme-org/sdk v1.4.3*) |
+| Run failed | A run from the Scripts tab (a release, a hook change, checks, a script, a tool's update, or a pull), in the app or in your terminal, fails or runs past its time limit; it names the run and its repository (or its folder) and says how it ended. One that couldn't start, one you stopped (Control-C in your terminal included), and one a quit or a restart interrupted never notify |
 
 Nothing is recorded for the first refresh of an account (everything in it would be new), for
 an item you dismissed or that is still snoozed, or for a refresh that failed. A list that shows
@@ -1390,10 +1436,14 @@ changed since the last refresh. Refreshing a single card never notifies.
 latest 200. Its badge counts the unread ones; opening it marks them read, and they stay marked
 until it closes. Click an entry to show its item in the inbox, or on GitHub once the item has
 left the inbox. An entry about no item, such as a release, names its repository alone, and a
-click opens its page on GitHub. **Clear** empties the history. It lives in the local database (the
-`notifications` table), whether or not a banner was shown.
+click opens its page on GitHub; a release workflow that failed is marked with a red cross, and
+opens the failed run there. A failed run's entry, marked the same way, opens Scripts →
+Runs with the run in its panel; a toast says why it can't when the run is no longer in the
+history, or the Scripts tab is gone (*Turn on an integration in Settings to see your runs.*).
+**Clear** empties the history. It lives in the local database (the `notifications` table),
+whether or not a banner was shown.
 
-**Banners.** Each kind can also show a native macOS banner. All six are on by default, and
+**Banners.** Each kind can also show a native macOS banner. All seven are on by default, and
 each has its own switch in Settings → Notifications. Two more switches there show a banner when
 an [agent session](#following-a-session) waits for you or finishes its turn; those start off,
 and the history doesn't keep them. A banner gives the kind, the repository
@@ -1402,7 +1452,10 @@ more than three, a single banner sums them up, such as **5 new in your inbox: 3 
 requests, 2 assignments**. Clicking a banner brings the window forward with its item in view.
 A release is about no item: its banner gives the repository and the version, and clicking it
 opens the tag on GitHub, the release once it is published, or the failed run once its workflow
-failed.
+failed. So is a failed run: its banner gives the repository (none for a folder
+that isn't one), what failed, and how it ended, and clicking it opens the run in Scripts → Runs.
+Failed runs that come within 2 seconds of each other show their banners together, and more
+than three as one, such as **5 new notifications: 5 failed runs**.
 
 The first time the app starts, macOS asks whether to allow its notifications. **Send a test**
 in Settings shows a sample banner, asking first if macOS never has. If notifications are

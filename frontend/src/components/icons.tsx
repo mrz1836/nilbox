@@ -45,6 +45,15 @@ export function ExternalIcon(props: IconProps) {
   )
 }
 
+// PulseIcon stands for a service's health: GitHub's status page.
+export function PulseIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M3 12h4l3-7 4 14 3-7h4" />
+    </Icon>
+  )
+}
+
 // PersonIcon stands in for an account with no login yet.
 export function PersonIcon(props: IconProps) {
   return (

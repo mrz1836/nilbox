@@ -566,12 +566,12 @@ func (s *Shell) waitForWork() {
 	}
 }
 
-// reveal brings the window forward and, when the request names an item or its URL, asks
-// the page to show it.
+// reveal brings the window forward and, when the request names an item, its URL, or a run,
+// asks the page to show it.
 func (s *Shell) reveal(r event.RevealItem) {
 	s.window.Show()
 
-	if r.ItemID == 0 && r.URL == "" {
+	if r.ItemID == 0 && r.URL == "" && r.RunID == 0 {
 		return
 	}
 

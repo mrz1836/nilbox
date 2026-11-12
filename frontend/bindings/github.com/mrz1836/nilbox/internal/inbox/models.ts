@@ -223,7 +223,8 @@ export interface Label {
 }
 
 /**
- * List is one inbox list. Total is GitHub's match count, which can exceed Shown.
+ * List is one inbox list: its items, how many it shows, and Total, how many GitHub
+ * matched, which exceeds Shown only when its search matched more than one page returns.
  */
 export interface List {
     "items": Item[] | null;

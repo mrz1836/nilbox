@@ -22,8 +22,8 @@ export interface ActRequest {
 
     /**
      * Body is the review's or comment's text. A merge with no review of its own (merge now,
-     * past the rules, or when ready) posts it, with Comments, as a comment first, when
-     * either holds anything.
+     * past the rules, or when ready) and a close post it, with Comments, as a comment
+     * first, when either holds anything.
      */
     "body": string;
 
@@ -46,7 +46,7 @@ export interface ActRequest {
 /**
  * Action is something the review sheet can do with a pull request.
  */
-export type Action = "" | "approve" | "approve_merge" | "approve_auto_merge" | "merge_now" | "auto_merge" | "merge_bypass" | "request_changes" | "comment" | "update_branch" | "rebase_bot";
+export type Action = "" | "approve" | "approve_merge" | "approve_auto_merge" | "merge_now" | "auto_merge" | "merge_bypass" | "request_changes" | "comment" | "update_branch" | "rebase_bot" | "close";
 
 /**
  * The values of Action, by the names of their Go constants.
@@ -110,6 +110,12 @@ export const Action = {
      * ActionRebaseBot asks Dependabot to rebase its pull request, with a comment.
      */
     ActionRebaseBot: "rebase_bot",
+
+    /**
+     * ActionClose closes the pull request without merging it. It is never the sheet's
+     * button, and always asks first.
+     */
+    ActionClose: "close",
 } as const;
 
 /**
@@ -295,9 +301,10 @@ export interface Offer {
     "reviews": boolean;
 
     /**
-     * CommentsFirst reports a merge with no review of its own, which posts the text and line
-     * comments, when there are any, as a comment before it merges, and CommentBlocked why it
-     * can't post one now, with how to merge without it, or "" when it can.
+     * CommentsFirst reports an action with no review of its own, a merge or a close, which
+     * posts the text and line comments, when there are any, as a comment first, and
+     * CommentBlocked why it can't post one now, with how to go ahead without it, or "" when
+     * it can.
      */
     "commentsFirst": boolean;
     "commentBlocked": string;
@@ -306,7 +313,7 @@ export interface Offer {
 /**
  * Outcome is what an action came to.
  */
-export type Outcome = "reviewed" | "merged" | "auto_merge" | "approved_not_merged" | "commented_not_merged" | "branch_updating" | "asked_bot" | "pushed_since";
+export type Outcome = "reviewed" | "merged" | "auto_merge" | "approved_not_merged" | "commented_not_merged" | "closed" | "commented_not_closed" | "branch_updating" | "asked_bot" | "pushed_since";
 
 /**
  * The values of Outcome, by the names of their Go constants.
@@ -340,6 +347,18 @@ export const Outcome = {
      * a merge, or auto-merge, it would not make; Reason says why.
      */
     OutcomeCommentedNotMerged: "commented_not_merged",
+
+    /**
+     * OutcomeClosed is a pull request closed without merging, with the user's comment
+     * posted first or not.
+     */
+    OutcomeClosed: "closed",
+
+    /**
+     * OutcomeCommentedNotClosed is the comment a close posted first, which GitHub took, and
+     * a close that failed; Reason says why.
+     */
+    OutcomeCommentedNotClosed: "commented_not_closed",
 
     /**
      * OutcomeBranchUpdating is a branch update GitHub started.
@@ -488,7 +507,7 @@ export interface Result {
 
     /**
      * Reason says why GitHub would not merge, for OutcomeApprovedNotMerged and
-     * OutcomeCommentedNotMerged.
+     * OutcomeCommentedNotMerged, or why the close failed, for OutcomeCommentedNotClosed.
      */
     "reason": string;
 
@@ -498,15 +517,15 @@ export interface Result {
     "steps": string[] | null;
 
     /**
-     * Commented reports that a merge posted the user's text and line comments as a comment
-     * first, which GitHub took whatever the merge came to, so the draft no longer holds
-     * anything to send.
+     * Commented reports that a merge or a close posted the user's text and line comments as
+     * a comment first, which GitHub took whatever the merge or the close came to, so the
+     * draft no longer holds anything to send.
      */
     "commented": boolean;
 
     /**
      * LeftReview reports that the pull request left the Review requested list, and
-     * LeftInbox that it left every list.
+     * LeftInbox that it left every list, merged or closed.
      */
     "leftReview": boolean;
     "leftInbox": boolean;

@@ -22,24 +22,27 @@ func (q *Queries) ClearNotifications(ctx context.Context) error {
 
 const insertNotification = `-- name: InsertNotification :one
 INSERT INTO notifications (
-    kind, created_at, item_id, item_kind, repo_owner, repo_name, number, title, url, author, detail
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    kind, created_at, item_id, item_kind, repo_owner, repo_name, number, title, url, author, detail, run_id,
+    run_started
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 RETURNING id, kind, created_at, read_at, item_id, item_kind, repo_owner, repo_name, number, title, url,
-    author, detail
+    author, detail, run_id, run_started
 `
 
 type InsertNotificationParams struct {
-	Kind      string
-	CreatedAt time.Time
-	ItemID    *int64
-	ItemKind  string
-	RepoOwner string
-	RepoName  string
-	Number    int64
-	Title     string
-	URL       string
-	Author    string
-	Detail    string
+	Kind       string
+	CreatedAt  time.Time
+	ItemID     *int64
+	ItemKind   string
+	RepoOwner  string
+	RepoName   string
+	Number     int64
+	Title      string
+	URL        string
+	Author     string
+	Detail     string
+	RunID      int64
+	RunStarted string
 }
 
 // InsertNotification stores one notification and returns it as stored, with its id.
@@ -56,6 +59,8 @@ func (q *Queries) InsertNotification(ctx context.Context, arg InsertNotification
 		arg.URL,
 		arg.Author,
 		arg.Detail,
+		arg.RunID,
+		arg.RunStarted,
 	)
 	var i Notification
 	err := row.Scan(
@@ -72,13 +77,15 @@ func (q *Queries) InsertNotification(ctx context.Context, arg InsertNotification
 		&i.URL,
 		&i.Author,
 		&i.Detail,
+		&i.RunID,
+		&i.RunStarted,
 	)
 	return i, err
 }
 
 const listNotifications = `-- name: ListNotifications :many
 SELECT id, kind, created_at, read_at, item_id, item_kind, repo_owner, repo_name, number, title, url,
-    author, detail
+    author, detail, run_id, run_started
 FROM notifications
 ORDER BY created_at DESC, id DESC
 LIMIT ?1
@@ -109,6 +116,8 @@ func (q *Queries) ListNotifications(ctx context.Context, rowLimit int64) ([]Noti
 			&i.URL,
 			&i.Author,
 			&i.Detail,
+			&i.RunID,
+			&i.RunStarted,
 		); err != nil {
 			return nil, err
 		}

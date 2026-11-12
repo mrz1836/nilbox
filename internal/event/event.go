@@ -140,16 +140,23 @@ func (InboxUpdated) Name() string { return NameInboxUpdated }
 func (InboxUpdated) window() {}
 
 // RevealItem asks for the window to come forward with an item in view, for a click on
-// the item in the menu bar or on its notification. A request that names neither an item
-// nor a URL, such as a click on a banner that stands for many items, only brings the
-// window forward; the frontend is not told.
+// the item in the menu bar or on its notification, or with the run a notification is about
+// open in Scripts → Runs. A request that names no item, URL, or run, such as a click on a
+// banner that stands for many items, only brings the window forward; the frontend is not
+// told.
 type RevealItem struct {
 	// ItemID is the stored item to show, or 0 for none.
 	ItemID int64 `json:"itemId"`
 
 	// URL is the item on GitHub, which the window opens when the item is no longer in
-	// the inbox.
+	// the inbox, or the page of a notification about no item.
 	URL string `json:"url"`
+
+	// RunID is the run to open, which a failed run's notification names, or 0 for none, and
+	// RunStarted when it started, as RFC 3339: the window opens the run only while the run
+	// with that ID started then.
+	RunID      int64  `json:"runId"`
+	RunStarted string `json:"runStarted"`
 }
 
 // Name returns NameRevealItem.

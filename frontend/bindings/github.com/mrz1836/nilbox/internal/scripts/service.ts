@@ -23,8 +23,10 @@ import * as $models from "./models.js";
  * which it keeps for OriginKept: within it, nothing asks origin again unless refresh is
  * set. It never fetches. A clone that can't be read, or an origin that doesn't answer, is
  * a status that says why, not an error, and a clone whose own config a pull would refuse
- * says so (BranchRefused), asking origin nothing. While the Scripts integration is off, it
- * reads nothing and says so (BranchOff).
+ * says so (BranchRefused), asking origin nothing. An origin that isn't on GitHub is asked
+ * only with refresh, the user's click, and is otherwise BranchNotAsked unless an answer
+ * the user asked for is kept: unasked, the app reaches GitHub alone. While the Scripts
+ * integration is off, it reads nothing and says so (BranchOff).
  */
 export function BranchStatus(dir: string, refresh: boolean): $CancellablePromise<$models.BranchStatus> {
     return $Call.ByID(1698589688, dir, refresh);

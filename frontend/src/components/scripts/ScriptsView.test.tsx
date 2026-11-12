@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 
 import type { ReleaseRequest } from '../../lib/release'
+import type { RunRequest } from '../../lib/scriptRuns'
 import type { SettingsSection } from '../../lib/settingsIndex'
 import { useIntegrations } from '../../lib/useIntegrations'
 import { useScriptRuns } from '../../lib/useScriptRuns'
@@ -38,6 +39,7 @@ vi.mock('../../platform', () => import('../../test/platform').then((fake) => fak
 interface TabProps {
   terminal?: TerminalID | null
   request?: ReleaseRequest | null
+  runRequest?: RunRequest | null
   scriptsSwitch?: IntegrationSwitch
   lastPage?: StoredScriptsPage
   lastRepo?: string
@@ -50,6 +52,7 @@ interface TabProps {
 function Tab({
   terminal = 'iterm2',
   request = null,
+  runRequest = null,
   scriptsSwitch = 'auto',
   lastPage = '',
   lastRepo = '',
@@ -66,6 +69,7 @@ function Tab({
       scriptsSwitch={scriptsSwitch}
       runs={useScriptRuns()}
       request={request}
+      runRequest={runRequest}
       onOpenSettings={onOpenSettings}
       lastPage={lastPage}
       lastRepo={lastRepo}
@@ -388,6 +392,31 @@ describe('ScriptsView', () => {
 
     expect(onOpenSettings).toHaveBeenCalledExactlyOnceWith('integrations')
     expect(screen.getByRole('dialog', { name: 'Release acme-org/sdk' })).toBeInTheDocument()
+  })
+
+  it('opens Runs at the run a failed run’s notification asks for, closing a sheet, once for each request', async () => {
+    const failed = scriptRun({ id: 7, title: 'Checks · all files', kind: 'checks', status: 'failed' })
+
+    platform.listScriptRuns.mockResolvedValue([failed])
+    platform.getScriptRun.mockResolvedValue(failed)
+    const { view, onOpenSettings } = renderView({ request: request(1) })
+
+    await screen.findByRole('dialog', { name: 'Release acme-org/sdk' })
+
+    view.rerender(<Tab request={request(1)} runRequest={{ id: 7, seq: 2 }} onOpenSettings={onOpenSettings} />)
+
+    expect(await screen.findByRole('heading', { name: 'Checks · all files', level: 2 })).toBeInTheDocument()
+    expect(rail().getByRole('button', { name: /^Runs/ })).toHaveAttribute('aria-current', 'page')
+    expect(screen.queryByRole('dialog', { name: 'Release acme-org/sdk' })).not.toBeInTheDocument()
+
+    // The same request again opens nothing new; a new one opens the run again.
+    await userEvent.click(rail().getByRole('button', { name: /^Release/ }))
+    view.rerender(<Tab request={request(1)} runRequest={{ id: 7, seq: 2 }} onOpenSettings={onOpenSettings} />)
+    expect(rail().getByRole('button', { name: /^Release/ })).toHaveAttribute('aria-current', 'page')
+
+    view.rerender(<Tab request={request(1)} runRequest={{ id: 7, seq: 3 }} onOpenSettings={onOpenSettings} />)
+    expect(await screen.findByRole('heading', { name: 'Checks · all files', level: 2 })).toBeInTheDocument()
+    expect(rail().getByRole('button', { name: /^Runs/ })).toHaveAttribute('aria-current', 'page')
   })
 
   it('opens a recent release’s run in Runs', async () => {

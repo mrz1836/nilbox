@@ -15,7 +15,7 @@ func TestKinds(t *testing.T) {
 
 	assert.Equal(t, []notifyprefs.Kind{
 		"review_requested", "assigned", "woke", "session_needs_you", "session_finished", "release_done",
-		"release_published", "release_failed",
+		"release_published", "release_failed", "run_failed",
 	}, notifyprefs.Kinds())
 
 	for _, kind := range notifyprefs.Kinds() {
@@ -59,6 +59,10 @@ func TestDecodeBannersOff(t *testing.T) {
 		{
 			name: "the release workflow's kinds start on, and turn off", off: `["release_failed","release_published"]`,
 			want: append(slices.Clone(sessionKinds), notifyprefs.KindReleasePublished, notifyprefs.KindReleaseFailed),
+		},
+		{
+			name: "a failed run turned off", off: `["run_failed"]`,
+			want: append(slices.Clone(sessionKinds), notifyprefs.KindRunFailed),
 		},
 	}
 
@@ -138,7 +142,12 @@ func TestBannersRoundTrip(t *testing.T) {
 	assert.JSONEq(t, `["session_needs_you","session_finished"]`, storedOn)
 
 	for _, off := range [][]notifyprefs.Kind{
-		{}, {notifyprefs.KindWoke}, notifyprefs.Kinds(), {notifyprefs.KindSessionFinished}, {notifyprefs.KindReleaseDone},
+		{},
+		{notifyprefs.KindWoke},
+		notifyprefs.Kinds(),
+		{notifyprefs.KindSessionFinished},
+		{notifyprefs.KindReleaseDone},
+		{notifyprefs.KindRunFailed},
 	} {
 		assert.Equal(t, off, notifyprefs.DecodeBannersOff(notifyprefs.EncodeBanners(off)))
 	}

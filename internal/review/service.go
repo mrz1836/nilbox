@@ -1,7 +1,7 @@
 // Package review is the review sheet: it shows one pull request (what it changes, its
 // description, checks, reviews, and what it still needs to merge) and acts on it at the
 // user's click: approve, request changes, comment, merge, turn on auto-merge, update the
-// branch, or ask Dependabot to rebase.
+// branch, ask Dependabot to rebase, or close it.
 //
 // Open shows what the sheet read before, from its own cache, with no request; Refresh
 // reads the pull request again with one GraphQL request, and its files only when it was
@@ -137,6 +137,7 @@ type Acted struct {
 	Reviewed   bool
 	ReviewedAt time.Time
 	Merged     bool
+	Closed     bool
 }
 
 // PullRead is what a read found. Its fields match inbox.PullRead's.
@@ -166,6 +167,7 @@ type GitHub interface {
 	) (*github.AutoMerge, error)
 	UpdateBranch(ctx context.Context, tok github.Token, ref item.Ref, expectedHead string) (*github.BranchUpdate, error)
 	AddComment(ctx context.Context, tok github.Token, ref item.Ref, body string) (*github.Comment, error)
+	ClosePull(ctx context.Context, tok github.Token, ref item.Ref) error
 }
 
 // Settings reads the settings the sheet follows: how to merge, and which files are
@@ -626,7 +628,7 @@ func factsOf(pull StoredPull, c *cached, r Review) Facts {
 	pc := c.context
 	f.PendingReview, f.MergeState, f.MergeQueue = pc.PendingReviews > 0, pc.MergeState, pc.MergeQueue
 	f.CanUpdateBranch, f.CanAutoMerge = pc.CanUpdateBranch, pc.CanAutoMerge && pull.AutoMergeAllowed
-	f.CanBypass = pc.CanBypass
+	f.CanBypass, f.CanClose = pc.CanBypass, pc.CanClose
 	f.ApprovedAtHead = pc.ViewerReview == "APPROVED" && strings.EqualFold(pc.ViewerReviewAt, c.head)
 	f.countChecks(pc.Checks)
 

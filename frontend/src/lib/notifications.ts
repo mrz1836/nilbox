@@ -52,6 +52,13 @@ export const notificationKinds: readonly KindDescription[] = [
     description: 'A workflow the tag of a release you started from the Scripts tab runs on GitHub fails.',
   },
   {
+    kind: 'run_failed',
+    title: 'Run failed',
+    label: 'Failed runs',
+    description:
+      'A run from the Scripts tab fails or runs past its time limit, in the app or in your terminal. A run you stop never notifies.',
+  },
+  {
     kind: 'session_needs_you',
     session: true,
     title: 'Session waiting for you',
@@ -71,8 +78,8 @@ export const notificationKinds: readonly KindDescription[] = [
 export const sessionBannerHint = 'Claude Code and Codex can already notify through your terminal, so these start off.'
 
 // inboxKinds and sessionKinds are the kinds of notification the history keeps (the
-// inbox's, and a release's: reaching GitHub, published, or its workflow failing), and those
-// about the agent sessions, which it does not.
+// inbox's, a release's (reaching GitHub, published, or its workflow failing), and a run that
+// failed), and those about the agent sessions, which it does not.
 export const inboxKinds = notificationKinds.filter((k) => k.session !== true)
 export const sessionKinds = notificationKinds.filter((k) => k.session === true)
 
@@ -82,11 +89,24 @@ export function kindTitle(kind: NotificationKind): string {
 }
 
 // entryRef names an entry's item: "example-repo #12", or, for an entry about no item, as
-// a release is, its repository alone: "example-repo".
+// a release is, its repository alone: "example-repo", or '' for none, as a run in a
+// folder that isn't a repository has.
 export function entryRef(entry: AppNotification): string {
   const name = entry.repo.slice(entry.repo.lastIndexOf('/') + 1)
 
   return entry.itemKind === '' ? name : `${name} #${String(entry.number)}`
+}
+
+// entryWhere is an entry's line under its title: its item, then what it says besides, as
+// "sdk · Tagged a1b2c3d on master.", either alone when the other is ''.
+export function entryWhere(entry: AppNotification): string {
+  return [entryRef(entry), entry.detail].filter((part) => part !== '').join(' · ')
+}
+
+// opensRun reports an entry that opens a run, as a failed run's does: Scripts → Runs with
+// the run in its panel.
+export function opensRun(entry: AppNotification): boolean {
+  return entry.kind === 'run_failed' && entry.runId > 0
 }
 
 // entryTitle is an entry's full reference, for its tooltip: "acme-org/example-repo #12",

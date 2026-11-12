@@ -10,7 +10,8 @@
 // banner is shown, and whether or not the shell can show banners at all, so the window's
 // notification history always has every one. Only the newest Keep entries are kept.
 //
-// Some notifications are about no item: a release whose tag reached GitHub, for one. The
+// Some notifications are about no item: a release whose tag reached GitHub, for one, or a
+// run from the Scripts tab that failed, which names the run a click on it opens. The
 // Dispatcher's Notify records such an Entry and shows its banner the same way.
 //
 // Service is what the window binds: the log, marking it read, clearing it, the state of
@@ -52,6 +53,10 @@ const (
 	// KindReleaseFailed one whose workflow failed. Both are about no item.
 	KindReleasePublished = notifyprefs.KindReleasePublished
 	KindReleaseFailed    = notifyprefs.KindReleaseFailed
+
+	// KindRunFailed is a run from the Scripts tab that failed or ran past its time limit. It
+	// is about no item, and names the run.
+	KindRunFailed = notifyprefs.KindRunFailed
 )
 
 // Keep is how many notifications the log keeps; recording more drops the oldest.
@@ -62,8 +67,8 @@ const Keep = 200
 type Notification struct {
 	ID int64 `json:"id"`
 
-	// Kind is KindReviewRequested, KindAssigned, KindWoke, or one of a release's kinds:
-	// KindReleaseDone, KindReleasePublished, or KindReleaseFailed.
+	// Kind is KindReviewRequested, KindAssigned, KindWoke, one of a release's kinds
+	// (KindReleaseDone, KindReleasePublished, or KindReleaseFailed), or KindRunFailed.
 	Kind notifyprefs.Kind `json:"kind"`
 
 	// CreatedAt is when it was recorded, as RFC 3339.
@@ -92,10 +97,17 @@ type Notification struct {
 	// Detail is what ended a snooze early, in a few words ("approved, 2 new commits"), for
 	// KindWoke; an entry's body ("Tagged a1b2c3d on master."); and "" otherwise.
 	Detail string `json:"detail"`
+
+	// RunID is the run an entry is about, which a click on it opens in Scripts → Runs, or 0
+	// for none: every entry but a KindRunFailed one. RunStarted is when that run started, as
+	// RFC 3339, or "": the window opens the run only while the run with that id started then,
+	// since the history hands an id out again once it is cleared.
+	RunID      int64  `json:"runId"`
+	RunStarted string `json:"runStarted"`
 }
 
-// Entry is a notification about no item, as a release whose tag reached GitHub:
-// RecordEvent stores it.
+// Entry is a notification about no item, as a release whose tag reached GitHub or a run
+// that failed: RecordEvent stores it.
 type Entry struct {
 	// Kind is the kind of notification, one of notifyprefs.Kinds.
 	Kind notifyprefs.Kind
@@ -109,6 +121,11 @@ type Entry struct {
 	// RepoOwner and RepoName are the repository it is about, or "" for none.
 	RepoOwner string
 	RepoName  string
+
+	// RunID is the run it is about, which a click on it opens, or 0 for none, and RunStarted
+	// when that run started, as RFC 3339, which tells it from a later run given its id.
+	RunID      int64
+	RunStarted string
 }
 
 // Log is the notification history: the newest first, and how many are unread.
@@ -182,7 +199,8 @@ func (s *Store) RecordEvent(ctx context.Context, now time.Time, entry Entry) (No
 
 		row, err := q.InsertNotification(ctx, queries.InsertNotificationParams{
 			Kind: string(entry.Kind), CreatedAt: now.UTC(), RepoOwner: entry.RepoOwner, RepoName: entry.RepoName,
-			Title: entry.Title, URL: entry.URL, Detail: entry.Body,
+			Title: entry.Title, URL: entry.URL, Detail: entry.Body, RunID: entry.RunID,
+			RunStarted: entry.RunStarted,
 		})
 		if err != nil {
 			return err
@@ -255,7 +273,8 @@ func fromRow(r queries.Notification) Notification {
 	return Notification{
 		ID: r.ID, Kind: notifyprefs.Kind(r.Kind), CreatedAt: clock.Format(r.CreatedAt), Read: r.ReadAt != nil,
 		ItemID: itemID, ItemKind: item.Kind(r.ItemKind), Repo: repoName(r.RepoOwner, r.RepoName), Number: int(r.Number),
-		Title: r.Title, URL: r.URL, Author: r.Author, Detail: r.Detail,
+		Title: r.Title, URL: r.URL, Author: r.Author, Detail: r.Detail, RunID: r.RunID,
+		RunStarted: r.RunStarted,
 	}
 }
 

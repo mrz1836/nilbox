@@ -14,7 +14,7 @@ numbers with the `magex measure:*` targets.
 | Cold start to first paint | < 1 s | 544 ms | Met on the M1 Max; the M4 Pro build host measured 1013 ms with an earlier build, at the target rather than under it |
 | Inbox refresh | < 3 s | 2.30 s | Met once the inbox's items are known; the first refresh into an empty database takes 5–10 s |
 | Launch to prompt loaded | < 3 s | Not recorded yet | Pending: the build host cannot grant the Automation permission unattended, so the number needs a run on the maintainer's Mac |
-| App binary size | < 30 MB | 17.0 MB | Met |
+| App binary size | < 30 MB | 21.6 MB | Met (17.0 MB before the integrations: Release, Hooks, Repo scripts, and the tool installer) |
 | API budget at 5-minute cadence | < 2% | 1.20% | Met, for an inbox of 43 items |
 
 Measured on an Apple Silicon Mac (M1 Max, 32 GB memory) running macOS 15.8, over its regular
@@ -184,14 +184,18 @@ number.
 ### App binary size
 
 `magex measure:size` reads the size of the production executable,
-`bin/Nilbox.app/Contents/MacOS/nilbox`: 17,013,376 bytes, or 17.0 MB in decimal megabytes. The
-whole bundle, the executable with its icon set and `Info.plist`, is 18.3 MB. The binary is
-built with `-tags desktop,production -trimpath -ldflags "-s -w"` and embeds the built frontend,
-about 620 KB without source maps: the 420 KB script the first paint needs (135 KB gzipped), the
-Settings, Prompts, and Worktrees pages in scripts of their own (about 150 KB together), loaded
-the first time each opens, and 54 KB of CSS.
+`bin/Nilbox.app/Contents/MacOS/nilbox`: 21,610,320 bytes, or 21.6 MB in decimal megabytes. The
+whole bundle, the executable with its icon set and `Info.plist`, is 22.9 MB (22,886,717 bytes).
+The binary is built with `-tags desktop,production -trimpath -ldflags "-s -w"` and embeds the
+built frontend, about 1.14 MB without source maps: the 558 KB script the first paint needs
+(183 KB gzipped); the Scripts tab (135 KB), Settings (121 KB), Prompts (63 KB), and Worktrees
+(53 KB) pages in scripts of their own, loaded the first time each opens, with three more
+shared by them (the dialogs, 81 KB; the run panel, 42 KB; the launch fields, 6 KB); and 77 KB
+of CSS. Measured on master after the Scripts tab's branch status and Pull (#58).
 
-An earlier build of the same features, with an ORM over its database, measured 17,791,344
+The build before the integrations (Release, Hooks, Repo scripts, the tool installer, and the
+run history) measured 17,013,376 bytes (17.0 MB), with an 18.3 MB bundle and a frontend of
+about 620 KB. An earlier build of the same features, with an ORM over its database, measured 17,791,344
 bytes (17.8 MB), with a 19.1 MB bundle and a frontend of about 510 KB in one script. The first
 desktop build, before the card details, the prompt library, snoozing, the app icon, worktree
 cleanup, the sensitive-file check, and the menu bar, measured 16,446,784 bytes (16.4 MB), with
@@ -199,10 +203,11 @@ a 16.4 MB bundle and a frontend of about 280 KB.
 
 ### Scripts tab, first open
 
-The Scripts tab's code loads the first time it opens, as a script of its own: 80.6 KB (25.9 KB
-gzipped), from `vite build` (the `ScriptsView` chunk, with Release, its sheet, Runs, the run
-panel, and the log view). The window already holds the tools and the run history it badges the
-tab with, so opening it lists nothing again. Release reads its list as it opens from the
+The Scripts tab's code loads the first time it opens, as a script of its own: 135.3 KB (41.4 KB
+gzipped), from `vite build` (the `ScriptsView` chunk, with Release, its sheet, Hooks, Repo
+scripts, and Runs; the run panel and the log view are a shared 42.2 KB chunk, 15.1 KB
+gzipped). It was 80.6 KB (25.9 KB gzipped) before Hooks and Repo scripts. The window already
+holds the tools and the run history it badges the tab with, so opening it lists nothing again. Release reads its list as it opens from the
 service's copy, however old; it reads GitHub for the whole list only on **Read GitHub again**,
 the first time, or behind the list kept from the last start (about 4 points of GraphQL budget
 per 50 repositories per round), and for one repository after a release of it or a merge into

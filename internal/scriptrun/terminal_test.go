@@ -207,3 +207,34 @@ func TestATerminalRunClearsAForgottenRunsFiles(t *testing.T) {
 	require.NotNil(t, rec.ExitCode)
 	assert.Equal(t, 5, *rec.ExitCode, "a stale exit file never ends a new run")
 }
+
+func TestATerminalRunThatFailsIsTold(t *testing.T) {
+	t.Parallel()
+
+	term := newFakeTerminal(t)
+	h, got := failingHarness(t, func(cfg *Config) { cfg.Terminal = term })
+
+	failed := h.start(h.terminalSpec(testutil.FakeRun{Exit: 4}))
+	h.ended(failed)
+
+	// Control-C in the terminal stopped it: that tells nothing, though its record says failed.
+	interrupted := h.start(h.terminalSpec(testutil.FakeRun{Exit: 130}))
+	assert.Equal(t, StatusFailed, h.ended(interrupted).Status)
+
+	// A terminal that closed mid-run interrupted it: that tells nothing.
+	term.mu.Lock()
+	term.noExit = true
+	term.mu.Unlock()
+
+	proceed := filepath.Join(t.TempDir(), "proceed")
+	closed := h.start(h.terminalSpec(testutil.FakeRun{Sleep: time.Minute, WaitFor: proceed}))
+
+	require.Eventually(t, func() bool { return h.record(closed).PID > 0 }, wait, poll, "the shell's PID is recorded")
+	testutil.WriteFile(t, proceed, "")
+	assert.Equal(t, StatusInterrupted, h.ended(closed).Status)
+
+	h.settle()
+	assert.Equal(t, []failedCall{told(Failure{
+		ID: failed, Repo: testRepo(), Title: "A script failed: Lint", Body: "It exited with status 4.",
+	})}, got.all(), "a failure in the terminal is told as one in the app is")
+}

@@ -315,11 +315,26 @@ app:lint` reads.
   auto-merge fallback, and `merge_bypass` still needs its rules accepted. A comment that fails
   merges nothing, and once one is posted nothing after it is an error: a merge GitHub won't make,
   or any failure, is `commented_not_merged`, a result whose words, like `Result.Commented`, say
-  the comment was posted, so the sheet drops the text and never posts it twice. It owns `review_diffs` and
+  the comment was posted, so the sheet drops the text and never posts it twice. A close
+  (`close`) is offered on an open pull request, held back ("Wait for it to load") until the
+  sheet read it, then only when GitHub's own `viewerCanClose` says so (`Facts.CanClose`, read
+  by the review query and kept in the cache), and always confirmed. It is never the button:
+  the window runs it only when picked from the menu (`menuOnly`), never keeps it as the chosen
+  action or runs it with ⌘↩, counts it as nothing to do, and sends with it only text the user
+  wrote or picked, never a default reply. GitHub takes no head to pin a close to, so every try
+  (a retry with a fresh token included) reads the head first (`FetchMergeState`): one no
+  longer open is refused, and one pushed to is `pushed_since` with nothing sent, or, after the
+  comment, `commented_not_closed`. Then it posts the text and line comments as a COMMENT
+  review the same way, and closes with one REST `PATCH` (`(*github.Client).ClosePull`, whose
+  refusals `closeError` words as a close, never as a merge or a push). A comment that fails
+  closes nothing, and anything that fails after it is `commented_not_closed`, decided in one
+  place (`failedAfterComment`). A merge or a close takes the pull request out of every list
+  (`Acted.Merged`, `Acted.Closed`) and drops its cache. It owns `review_diffs` and
   `review_diff_files`, a bounded cache of the diffs it read (per pull request, in all, and by
   age), pruned in the same transaction that writes. A merge that went through tells its
   `Merges` the repository, without waiting (core: the Release page's `Refresher`, which reads
-  that repository's row again). Nothing here lets an agent approve or merge.
+  that repository's row again); a close tells it nothing. Nothing here lets an agent approve,
+  merge, or close.
 - `internal/bump/` reads a dependency update from a bot's pull request title (and Dependabot's
   commit trailer) into an `Update`, for the review sheet and the `.Dependency` prompt variables.
   It is pure and imports no service.
@@ -394,7 +409,27 @@ app:lint` reads.
   `event.ScriptRunProgress` (`scriptruns:progress`), never the whole list's
   `event.ScriptRunsUpdated`. A spec's `Recorded` is told the outcome only once the run's
   end is recorded, so a record that fails tells nothing twice, and its `Released` once the run
-  has let go of its clone, so a page that reads the clone again finds it free. A spec's `Keep`,
+  has let go of its clone, so a page that reads the clone again finds it free. After
+  `Released`, once the run has let go of its clone and its slot, the engine's own
+  `Config.Failed` hears each run whose end is recorded as failed (one stopped at its time limit
+  included), of every kind, in the app or the terminal, started now or settled after a restart
+  (by a `Verifier` or by how it ended), and never one that couldn't start (its start's error
+  says so), one the user or the quit stopped, one a hang-up, Control-C, or SIGTERM ended (exit
+  129, 130, or 143, unless the engine sent it at the time limit), one interrupted, one that
+  succeeded, or one left `Unsettled`: once, since the record that ends a run changes only a
+  row still recorded as going. It gets a `scriptrun.Failure`, worded there ("Checks failed:
+  Checks · all files", the run's folder in place of a repository it lacks, with the run's
+  summary or "Timed out after 30 minutes."), which core (`runFailures`) hands the notify
+  `Dispatcher`'s `Gather` as a `run_failed` notification about no item: recorded at once, its
+  banner held `GatherWindow` (2 s) with those of the failures that follow, so a burst past
+  `MaxBanners` (Install all, a restart's reconcile) shows one summary, under the same rules as
+  every kind's banner; core's `Close` shows what is still held before the database closes. The
+  entry keeps the run's ID and its recorded start as RFC 3339 (`notifications.run_id` and
+  `run_started`, `Entry.RunID`/`RunStarted`, `Notification.RunID`/`RunStarted`, and
+  `event.RevealItem`'s for a banner's click), and the window opens it in Scripts → Runs only
+  once the run with that ID says it started then, since Clear history lets an ID be handed out
+  again; otherwise, or while the Scripts tab is gone, a toast says why. scriptrun never imports
+  notify (the repoguard boundary test). A spec's `Keep`,
   which its `Before` may fill in, is written as JSON once `Before` has run into the run's own
   `<id>.kept` beside its log, never into its record or the window's view; `Engine.Kept` reads it
   back for a kind's `Verifier`, and it is removed once the run's end is recorded (it stays while
@@ -761,10 +796,12 @@ app:lint` reads.
   The bound `BranchStatus` tells the header beside the branch where the clone's branch
   stands against the branch it follows on origin (`BranchState`: up to date, behind, ahead,
   diverged, detached, no upstream on origin, git in the middle of something, unknown,
-  refused, or off while the Scripts integration is, which reads nothing, with a worded
-  note), read through its `BranchGit` (gitread) from the clone's own refs and one
+  refused, not asked, or off while the Scripts integration is, which reads nothing, with a
+  worded note), read through its `BranchGit` (gitread) from the clone's own refs and one
   `RemoteBranch` ls-remote of the followed branch alone (`ls-remote --heads origin
-  refs/heads/<branch>`, never every branch and tag), never a fetch; a clone the pull would
+  refs/heads/<branch>`, never every branch and tag), never a fetch, and only for an origin
+  on GitHub unless refresh is set (the user's click): another host's origin is
+  `BranchNotAsked` until the user checks, then served from the kept answer; a clone the pull would
   refuse for its own config (gitread's `CloneConfig`, read locally, before origin is asked)
   is `BranchRefused`; every note built from a gitread failure goes through `gitNote`
   (`uierr.New` of gitread's words, read with `uierr.Message`); origin's answer is kept per

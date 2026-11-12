@@ -48,6 +48,10 @@ const (
 
 	// ActionRebaseBot asks Dependabot to rebase its pull request, with a comment.
 	ActionRebaseBot Action = "rebase_bot"
+
+	// ActionClose closes the pull request without merging it. It is never the sheet's
+	// button, and always asks first.
+	ActionClose Action = "close"
 )
 
 // merges reports an action that merges the pull request, now or once it can: every one
@@ -65,12 +69,13 @@ func (a Action) reviews() bool {
 	}, a)
 }
 
-// commentsFirst reports a merge with no review of its own, which posts the user's text and
-// line comments, when there are any, as a comment before it merges: the user's own pull
-// request, where GitHub refuses an approval, then shows it was reviewed. Decide marks each
-// offer with it (Offer.CommentsFirst), which is what Act and the window go by.
+// commentsFirst reports an action with no review of its own that posts the user's text and
+// line comments, when there are any, as a comment first: a merge with no review, after
+// which the user's own pull request, where GitHub refuses an approval, shows it was
+// reviewed, and a close, which says why. Decide marks each offer with it
+// (Offer.CommentsFirst), which is what Act and the window go by.
 func (a Action) commentsFirst() bool {
-	return slices.Contains([]Action{ActionMerge, ActionMergeBypass, ActionAutoMerge}, a)
+	return slices.Contains([]Action{ActionMerge, ActionMergeBypass, ActionAutoMerge, ActionClose}, a)
 }
 
 // hasText reports text that says something: anything left once the white space the
@@ -145,6 +150,14 @@ const (
 	// OutcomeCommentedNotMerged is the comment a merge posted first, which GitHub took, and
 	// a merge, or auto-merge, it would not make; Reason says why.
 	OutcomeCommentedNotMerged Outcome = "commented_not_merged"
+
+	// OutcomeClosed is a pull request closed without merging, with the user's comment
+	// posted first or not.
+	OutcomeClosed Outcome = "closed"
+
+	// OutcomeCommentedNotClosed is the comment a close posted first, which GitHub took, and
+	// a close that failed; Reason says why.
+	OutcomeCommentedNotClosed Outcome = "commented_not_closed"
 
 	// OutcomeBranchUpdating is a branch update GitHub started.
 	OutcomeBranchUpdating Outcome = "branch_updating"
@@ -402,9 +415,10 @@ type Offer struct {
 	// comments go with.
 	Reviews bool `json:"reviews"`
 
-	// CommentsFirst reports a merge with no review of its own, which posts the text and line
-	// comments, when there are any, as a comment before it merges, and CommentBlocked why it
-	// can't post one now, with how to merge without it, or "" when it can.
+	// CommentsFirst reports an action with no review of its own, a merge or a close, which
+	// posts the text and line comments, when there are any, as a comment first, and
+	// CommentBlocked why it can't post one now, with how to go ahead without it, or "" when
+	// it can.
 	CommentsFirst  bool   `json:"commentsFirst"`
 	CommentBlocked string `json:"commentBlocked"`
 }
@@ -418,8 +432,8 @@ type ActRequest struct {
 	Head string `json:"head"`
 
 	// Body is the review's or comment's text. A merge with no review of its own (merge now,
-	// past the rules, or when ready) posts it, with Comments, as a comment first, when
-	// either holds anything.
+	// past the rules, or when ready) and a close post it, with Comments, as a comment
+	// first, when either holds anything.
 	Body string `json:"body"`
 
 	// Comments are the review's line comments.
@@ -441,19 +455,19 @@ type Result struct {
 	Message string `json:"message"`
 
 	// Reason says why GitHub would not merge, for OutcomeApprovedNotMerged and
-	// OutcomeCommentedNotMerged.
+	// OutcomeCommentedNotMerged, or why the close failed, for OutcomeCommentedNotClosed.
 	Reason string `json:"reason"`
 
 	// Steps are what happened, in order.
 	Steps []string `json:"steps"`
 
-	// Commented reports that a merge posted the user's text and line comments as a comment
-	// first, which GitHub took whatever the merge came to, so the draft no longer holds
-	// anything to send.
+	// Commented reports that a merge or a close posted the user's text and line comments as
+	// a comment first, which GitHub took whatever the merge or the close came to, so the
+	// draft no longer holds anything to send.
 	Commented bool `json:"commented"`
 
 	// LeftReview reports that the pull request left the Review requested list, and
-	// LeftInbox that it left every list.
+	// LeftInbox that it left every list, merged or closed.
 	LeftReview bool `json:"leftReview"`
 	LeftInbox  bool `json:"leftInbox"`
 

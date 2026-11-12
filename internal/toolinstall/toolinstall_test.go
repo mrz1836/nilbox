@@ -486,14 +486,27 @@ func TestEveryRefusalLeavesNothingBehind(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			refuse(t, tt.archive, tt.change, tt.want)
+			refuse(t, tt.archive, tt.change, tt.want, false)
+		})
+
+		if errors.Is(tt.want, ErrLinkTarget) {
+			continue // its target is the link it puts there
+		}
+
+		t.Run(tt.name+", over a copy already there", func(t *testing.T) {
+			t.Parallel()
+
+			refuse(t, tt.archive, tt.change, tt.want, true)
 		})
 	}
 }
 
 // refuse runs an install over the archive (a good one when nil) after change, and checks
-// it fails with want and leaves nothing behind.
-func refuse(t *testing.T, archive func(t *testing.T) []byte, change func(s *setup, req *Request), want error) {
+// it fails with want and leaves nothing behind. With existing, a copy is in place first,
+// and the refusal leaves it as it was: its bytes, its mode, and its modification time.
+func refuse(t *testing.T, archive func(t *testing.T) []byte, change func(s *setup, req *Request), want error,
+	existing bool,
+) {
 	t.Helper()
 
 	data := goodArchive(t)
@@ -503,6 +516,19 @@ func refuse(t *testing.T, archive func(t *testing.T) []byte, change func(s *setu
 
 	s := newSetup(t, data)
 	req := s.request("")
+	target := filepath.Join(s.dir, testBinary)
+
+	var before os.FileInfo
+
+	if existing {
+		require.NoError(t, os.MkdirAll(s.dir, 0o750))
+		require.NoError(t, os.WriteFile(target, []byte("the copy already here"), 0o755)) //nolint:gosec // a program
+
+		var err error
+
+		before, err = os.Stat(target)
+		require.NoError(t, err)
+	}
 
 	if change != nil {
 		change(s, &req)
@@ -512,6 +538,19 @@ func refuse(t *testing.T, archive func(t *testing.T) []byte, change func(s *setu
 	_, err := s.in.Install(t.Context(), req)
 	require.ErrorIs(t, err, want)
 	assert.Empty(t, s.leftovers(t), "nothing is left behind")
+
+	if existing {
+		got, readErr := os.ReadFile(target) //nolint:gosec // the test's own temporary folder
+		require.NoError(t, readErr)
+		assert.Equal(t, "the copy already here", string(got), "the copy in place is unchanged")
+
+		after, statErr := os.Stat(target)
+		require.NoError(t, statErr)
+		assert.Equal(t, before.Mode(), after.Mode())
+		assert.True(t, before.ModTime().Equal(after.ModTime()), "and untouched")
+
+		return
+	}
 
 	if info, statErr := os.Lstat(filepath.Join(s.dir, testBinary)); statErr == nil {
 		assert.NotZero(t, info.Mode()&os.ModeSymlink, "only the link that was there is there")

@@ -367,7 +367,7 @@ func (s *Service) listedNodeIDs(ctx context.Context) ([]string, error) {
 func readStatus(ctx context.Context, p *prefs.Store) (map[string]string, error) {
 	status, err := p.GetMany(ctx,
 		prefViewer, prefViewerName, prefViewerURL, prefViewerAvatarURL, prefAvatar, prefAvatarSource,
-		prefTotalReviewRequested, prefTotalAuthored, prefTotalAssigned,
+		prefBeyondReviewRequested, prefBeyondAuthored, prefBeyondAssigned,
 		prefLastRefreshAt, prefLastError, prefScopeWarning, prefProjects, trust.PrefBots,
 		sensitive.PrefScope, sensitive.PrefOff, sensitive.PrefPatterns,
 	)

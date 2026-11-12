@@ -159,6 +159,8 @@ export function notification(overrides: Partial<AppNotification> = {}): AppNotif
     url: 'https://github.com/acme-org/example-repo/pull/7',
     author: 'octo-other',
     detail: '',
+    runId: 0,
+    runStarted: '',
     ...overrides,
   }
 }
@@ -1278,8 +1280,21 @@ export function mergeOffer(overrides: Partial<ReviewOffer> = {}): ReviewOffer {
   })
 }
 
+// closeOffer is a close, which asks first and posts the text as a comment first, as the
+// backend marks it.
+export function closeOffer(overrides: Partial<ReviewOffer> = {}): ReviewOffer {
+  return offer({
+    action: 'close',
+    label: 'Close pull request',
+    confirm: true,
+    reviews: false,
+    commentsFirst: true,
+    ...overrides,
+  })
+}
+
 // review is pull request #7 as the review sheet shows it, read from GitHub: ready to
-// merge by squash, waiting on the user's approval.
+// merge by squash, waiting on the user's approval, and closable, last in the menu.
 export function review(overrides: Partial<Review> = {}): Review {
   return {
     id: 1,
@@ -1315,6 +1330,7 @@ export function review(overrides: Partial<Review> = {}): Review {
       offer(),
       offer({ action: 'request_changes', label: 'Request changes' }),
       offer({ action: 'comment', label: 'Comment' }),
+      closeOffer(),
     ],
     primary: 'approve_merge',
     mergeMethods: ['MERGE', 'SQUASH'],

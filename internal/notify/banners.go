@@ -44,9 +44,14 @@ type Banner struct {
 	Thread string
 
 	// ItemID is the item a click on the banner shows, or 0 for none. URL is the item on
-	// GitHub, for when it is no longer in the inbox.
+	// GitHub, for when it is no longer in the inbox, or the page of an entry about no item.
 	ItemID int64
 	URL    string
+
+	// RunID is the run a click on the banner opens in Scripts → Runs, or 0 for none, and
+	// RunStarted when it started, which the window checks first.
+	RunID      int64
+	RunStarted string
 }
 
 // Poster shows banners. The desktop shell implements it over the system's notification
@@ -74,6 +79,7 @@ var kindTitles = map[notifyprefs.Kind]string{
 	KindReleaseDone:      "Released",
 	KindReleasePublished: "Published",
 	KindReleaseFailed:    "Release workflow failed",
+	KindRunFailed:        "Run failed",
 }
 
 // summaryNouns name each kind in a summary banner, singular and plural.
@@ -86,6 +92,7 @@ var summaryNouns = map[notifyprefs.Kind][2]string{
 	KindReleaseDone:      {"release", "releases"},
 	KindReleasePublished: {"release published", "releases published"},
 	KindReleaseFailed:    {"release workflow failed", "release workflows failed"},
+	KindRunFailed:        {"failed run", "failed runs"},
 }
 
 // maxTitleRunes bounds an item title in a banner body; the system wraps and cuts the rest.
@@ -93,7 +100,7 @@ const maxTitleRunes = 160
 
 // banner is the banner for one recorded notification: its kind as the title, and its item,
 // or for an entry about no item its repository, as the subtitle. A click shows the item,
-// or opens the entry's page.
+// opens the entry's page, or opens the run it is about.
 func banner(n Notification) Banner {
 	body := textutil.Truncate(n.Title, maxTitleRunes)
 	if n.Detail != "" {
@@ -106,22 +113,30 @@ func banner(n Notification) Banner {
 	}
 
 	return Banner{
-		ID:       brand.Slug + "-" + strconv.FormatInt(n.ID, 10),
-		Title:    kindTitles[n.Kind],
-		Subtitle: subtitle,
-		Body:     body,
-		Thread:   string(n.Kind),
-		ItemID:   n.ItemID,
-		URL:      n.URL,
+		ID:         brand.Slug + "-" + strconv.FormatInt(n.ID, 10),
+		Title:      kindTitles[n.Kind],
+		Subtitle:   subtitle,
+		Body:       body,
+		Thread:     string(n.Kind),
+		ItemID:     n.ItemID,
+		URL:        n.URL,
+		RunID:      n.RunID,
+		RunStarted: n.RunStarted,
 	}
 }
 
 // summary is the one banner that stands for many: "5 new in your inbox", with how many of
-// each kind.
+// each kind, or "5 new notifications" when none is about an item, as a burst of failed runs.
 func summary(rows []Notification) Banner {
 	counts := make(map[notifyprefs.Kind]int)
+	title := " new notifications"
+
 	for _, r := range rows {
 		counts[r.Kind]++
+
+		if r.ItemKind != "" {
+			title = " new in your inbox"
+		}
 	}
 
 	var parts []string
@@ -139,7 +154,7 @@ func summary(rows []Notification) Banner {
 
 	return Banner{
 		ID:     brand.Slug + "-summary-" + strconv.FormatInt(rows[0].ID, 10),
-		Title:  strconv.Itoa(len(rows)) + " new in your inbox",
+		Title:  strconv.Itoa(len(rows)) + title,
 		Body:   strings.Join(parts, ", "),
 		Thread: "summary",
 	}
