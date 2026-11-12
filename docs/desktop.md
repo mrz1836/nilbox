@@ -765,8 +765,8 @@ GraphQL budget and how many items it tracked, and what that comes to in an hour 
 set in **Settings → Refreshing** (every five minutes by default), as a share of the budget. Each refresh reads every tracked item, so more
 items, or issues read with their [project fields](#issue-projects), cost more.
 
-**Checks that are running.** A pull request whose checks were still running (a yellow count,
-such as 12/18) when the inbox last read it is read again every 45 seconds, so its card shows
+**Checks that are running.** A pull request whose checks were still running (a yellow count
+with a pulsing dot, such as 12/18) when the inbox last read it is read again every 45 seconds, so its card shows
 the checks end about as soon as GitHub's own page does, rather than at the next whole refresh.
 Every such pull request is read in one request, about one point a round, and none is read while
 no checks run: at most some 80 points an hour, and only while checks run. One stops

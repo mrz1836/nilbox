@@ -13,7 +13,8 @@ import {
   type Signal,
 } from '../lib/signals'
 import { openExternal, type InboxItem, type Label, type Project, type ProjectField, type SubIssues } from '../platform'
-import { CheckIcon, CommentIcon, DotIcon, EyeIcon, ProjectIcon, RingIcon, XIcon } from './icons'
+import { CheckIcon, CommentIcon, EyeIcon, ProjectIcon, RingIcon, XIcon } from './icons'
+import { StatusDot } from './StatusDot'
 
 // shownLabels is how many labels a card shows before folding the rest into "+N".
 const shownLabels = 3
@@ -42,10 +43,17 @@ const columns = {
   commits: 'min-w-[10ch]', // up to "999 commits"
 } as const
 
+// checkIcons mark the checks: running ones with the dot a working session has, a ring
+// swelling out of it in the warning colour (StatusDot), held in an icon's box so the
+// columns line up; the rest with a still icon.
 const checkIcons: Readonly<Record<ChecksKind, ReactNode>> = {
   passed: <CheckIcon className={iconClass} />,
   failed: <XIcon className={iconClass} />,
-  pending: <DotIcon className={iconClass} />,
+  pending: (
+    <span data-checks-running className={`inline-flex items-center justify-center ${iconClass}`}>
+      <StatusDot color="bg-warning" ping />
+    </span>
+  ),
   none: <RingIcon className={iconClass} />,
 }
 

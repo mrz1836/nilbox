@@ -27,21 +27,30 @@ import type {
 } from '../../platform'
 import { buttonClass, captionClass, quietButtonClass } from '../controls'
 import { ErrorBanner } from '../ErrorBanner'
-import { AlertIcon, CheckIcon, DotIcon, RefreshIcon, RingIcon, XIcon } from '../icons'
+import { AlertIcon, CheckIcon, RefreshIcon, RingIcon, XIcon } from '../icons'
 import { RelativeTime } from '../RelativeTime'
 import { ErrorText } from '../settings/rows'
 import { Spinner } from '../Spinner'
+import { StatusDot } from '../StatusDot'
 import { GroupHeading } from './GroupHeading'
 import { RepoSearch } from './RepoSearch'
 import { RunStatus } from './RunStatus'
 import { ToolProblem } from './ToolProblem'
 
+// running marks checks still running with the dot a working session has, a ring swelling
+// out of it in the warning colour, in an icon's box.
+const running = (
+  <span data-checks-running className="inline-flex size-3.5 shrink-0 items-center justify-center">
+    <StatusDot color="bg-warning" ping />
+  </span>
+)
+
 // checksIcons mark the checks on a commit beside their words: passed, running, failing,
 // or none at all.
 const checksIcons: Readonly<Record<CommitChecks, ReactNode>> = {
   SUCCESS: <CheckIcon className="size-3.5 shrink-0 text-success" />,
-  PENDING: <DotIcon className="size-3.5 shrink-0 text-warning" />,
-  EXPECTED: <DotIcon className="size-3.5 shrink-0 text-warning" />,
+  PENDING: running,
+  EXPECTED: running,
   FAILURE: <XIcon className="size-3.5 shrink-0 text-danger" />,
   ERROR: <XIcon className="size-3.5 shrink-0 text-danger" />,
   '': <RingIcon className="size-3.5 shrink-0 text-muted" />,

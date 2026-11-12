@@ -162,6 +162,9 @@ describe('ItemRow', () => {
     )
 
     expect(slot('Checks: 3 passed, 2 running')).toHaveClass('text-warning')
+    // Running checks have the dot a working session has, a ring swelling out of it.
+    const dot = slot('Checks: 3 passed, 2 running').querySelector('[data-checks-running]')
+    expect(dot?.querySelector('.motion-safe\\:animate-ping')).toHaveClass('bg-warning')
     expect(slot('Reviews: no reviewers yet')).toHaveTextContent('—')
   })
 
