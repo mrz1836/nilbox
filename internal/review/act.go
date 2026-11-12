@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -291,13 +292,7 @@ func filesByPath(files []cachedFile) map[string]cachedFile {
 
 // containsMethod reports whether methods holds m.
 func containsMethod(methods []MergeMethod, m MergeMethod) bool {
-	for _, x := range methods {
-		if x == m {
-			return true
-		}
-	}
-
-	return false
+	return slices.Contains(methods, m)
 }
 
 // action is one action as it runs: what was asked for, and what GitHub made happen so far,

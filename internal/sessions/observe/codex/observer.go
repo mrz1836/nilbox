@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"path/filepath"
 	"slices"
+	"strings"
 	"sync"
 	"time"
 
@@ -385,8 +386,7 @@ func (o *Observer) read(ctx context.Context, h *home, id string, now time.Time) 
 	}
 
 	if err := o.call(ctx, h, "thread/read", map[string]any{"threadId": id}, &got); err != nil {
-		var rpcErr *RPCError
-		if errors.As(err, &rpcErr) {
+		if _, ok := errors.AsType[*RPCError](err); ok {
 			return nil // a thread the daemon cannot read yet, such as one not saved
 		}
 
@@ -733,12 +733,12 @@ func idsOf(recs []sessions.Record) string {
 
 	slices.Sort(ids)
 
-	out := ""
+	var out strings.Builder
 	for _, id := range ids {
-		out += id + ","
+		out.WriteString(id + ",")
 	}
 
-	return out
+	return out.String()
 }
 
 // sortedKeys returns a map's keys in order.

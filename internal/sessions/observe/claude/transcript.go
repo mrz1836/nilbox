@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"slices"
 	"strings"
 )
 
@@ -53,8 +54,8 @@ func lastMessageIn(path string, n int64) (string, error) {
 		lines = lines[1:]
 	}
 
-	for i := len(lines) - 1; i >= 0; i-- {
-		if text := assistantText(lines[i]); text != "" {
+	for _, line := range slices.Backward(lines) {
+		if text := assistantText(line); text != "" {
 			return text, nil
 		}
 	}

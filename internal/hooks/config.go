@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"io/fs"
+	"maps"
 	"os"
 	"path/filepath"
 	"slices"
@@ -67,9 +68,7 @@ func readConfig(dir string) repoConfig {
 			continue
 		}
 
-		for k, v := range parseEnv(data) {
-			cfg.values[k] = v
-		}
+		maps.Copy(cfg.values, parseEnv(data))
 	}
 
 	return cfg

@@ -202,8 +202,8 @@ func (r *Reader) Path() string {
 
 // Lookup returns key's value in env, the last one when it repeats, or "".
 func Lookup(env []string, key string) string {
-	for i := len(env) - 1; i >= 0; i-- {
-		if k, v, ok := strings.Cut(env[i], "="); ok && k == key {
+	for _, e := range slices.Backward(env) {
+		if k, v, ok := strings.Cut(e, "="); ok && k == key {
 			return v
 		}
 	}

@@ -146,9 +146,7 @@ func Definitions() []Definition {
 func quietEnv(own map[string]string) map[string]string {
 	env := map[string]string{colorVar: "1"}
 
-	for k, v := range own {
-		env[k] = v
-	}
+	maps.Copy(env, own)
 
 	return env
 }

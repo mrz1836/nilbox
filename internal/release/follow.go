@@ -302,13 +302,10 @@ func (f *Follower) start(ctx context.Context, fl followed) {
 	}
 
 	f.seen[key] = true
-	f.wg.Add(1)
 
-	go func() {
-		defer f.wg.Done()
-
+	f.wg.Go(func() {
 		f.follow(ctx, fl)
-	}()
+	})
 }
 
 // forget lets go of fl's follow, so the next resume takes it up again.

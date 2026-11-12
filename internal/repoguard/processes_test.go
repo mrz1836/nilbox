@@ -2,6 +2,7 @@ package repoguard_test
 
 import (
 	"regexp"
+	"slices"
 	"strings"
 	"testing"
 
@@ -57,13 +58,7 @@ func argvOrCommand(program, sub string) func(line string) bool {
 			return true
 		}
 
-		for _, lit := range goLiteral.FindAllString(line, -1) {
-			if command.MatchString(lit) {
-				return true
-			}
-		}
-
-		return false
+		return slices.ContainsFunc(goLiteral.FindAllString(line, -1), command.MatchString)
 	}
 }
 

@@ -110,7 +110,7 @@ func parsePatch(text string) patch {
 
 	open := -1
 
-	for _, line := range strings.Split(text, "\n") {
+	for line := range strings.SplitSeq(text, "\n") {
 		line = strings.TrimSuffix(line, "\r")
 
 		if strings.HasPrefix(line, "@@") {
@@ -364,7 +364,7 @@ func notInDiff(c LineComment, line int) error {
 // fence of three or more backticks and then, after any spaces or tabs, "suggestion". The
 // frontend's isSuggestion follows the same rule.
 func isSuggestion(body string) bool {
-	for _, line := range strings.Split(body, "\n") {
+	for line := range strings.SplitSeq(body, "\n") {
 		line = strings.TrimLeft(line, " \t")
 		info := strings.TrimLeft(line, "`")
 

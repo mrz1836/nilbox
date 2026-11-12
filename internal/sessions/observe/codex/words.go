@@ -10,6 +10,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/mrz1836/nilbox/internal/sessions"
@@ -57,8 +58,8 @@ func (w Words) LastWords(_ context.Context, r sessions.Record) (string, error) {
 		lines = lines[1:]
 	}
 
-	for i := len(lines) - 1; i >= 0; i-- {
-		if text := agentText(lines[i]); text != "" {
+	for _, line := range slices.Backward(lines) {
+		if text := agentText(line); text != "" {
 			return text, nil
 		}
 	}
