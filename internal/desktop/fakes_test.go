@@ -1,7 +1,6 @@
 package desktop_test
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -44,26 +43,6 @@ func (j *journal) all() []string {
 	defer j.mu.Unlock()
 
 	return slices.Clone(j.lines)
-}
-
-// buffer is a bytes.Buffer safe for concurrent writers.
-type buffer struct {
-	mu  sync.Mutex
-	buf bytes.Buffer
-}
-
-func (b *buffer) Write(p []byte) (int, error) {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-
-	return b.buf.Write(p)
-}
-
-func (b *buffer) String() string {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-
-	return b.buf.String()
 }
 
 // fakePage records the window events passed on to the page.
@@ -378,7 +357,7 @@ type rig struct {
 	inbox    *fakeInbox
 	settings fakeSettings
 	data     *fakeData
-	stdout   *buffer
+	stdout   *testutil.Logs
 	logs     *testutil.Logs
 }
 
@@ -397,7 +376,7 @@ func newRig() *rig {
 			textSize: settings.TextSizeLarger,
 		},
 		data:   &fakeData{log: log},
-		stdout: &buffer{},
+		stdout: &testutil.Logs{},
 		logs:   &testutil.Logs{},
 	}
 }

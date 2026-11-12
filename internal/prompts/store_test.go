@@ -115,7 +115,7 @@ func TestSeedAddsNothingWhenAWriteFails(t *testing.T) {
 			t.Parallel()
 
 			s, db := empty(t, nil)
-			exec(t, db, tt.trigger)
+			testutil.Exec(t, db, tt.trigger)
 
 			require.ErrorContains(t, Seed(t.Context(), s.store), tt.want)
 
@@ -181,7 +181,7 @@ func TestWritesReportWhatFailed(t *testing.T) {
 			t.Parallel()
 
 			s, db := seeded(t, nil)
-			exec(t, db, tt.trigger)
+			testutil.Exec(t, db, tt.trigger)
 
 			err := tt.run(t, s)
 			require.ErrorContains(t, err, tt.want)
@@ -249,7 +249,7 @@ func TestReadsReportAMissingTable(t *testing.T) {
 			s, db := seeded(t, nil)
 			review, quick := byNickname(t, s, "Review").ID, byNickname(t, s, "Quick look").ID
 
-			exec(t, db, "DROP TABLE "+tt.table)
+			testutil.Exec(t, db, "DROP TABLE "+tt.table)
 
 			require.ErrorContains(t, tt.run(t, s, review, quick), tt.want)
 		})
@@ -513,12 +513,12 @@ func TestStoreRefusesUnreadableExtraArguments(t *testing.T) {
 	review := idOf(t, s, "Review")
 
 	// The schema takes any JSON object; the library only stores lists of strings in it.
-	exec(t, db, `UPDATE prompts SET agent_args = '{"claude": [1]}' WHERE id = ?`, review)
+	testutil.Exec(t, db, `UPDATE prompts SET agent_args = '{"claude": [1]}' WHERE id = ?`, review)
 
 	_, err := s.store.Lookup(ctx, review)
 	require.ErrorContains(t, err, `read the prompt: prompt "Review": extra arguments`)
 
-	exec(t, db, `UPDATE prompts SET agent_args = '{}', models = '{"claude": 1}' WHERE id = ?`, review)
+	testutil.Exec(t, db, `UPDATE prompts SET agent_args = '{}', models = '{"claude": 1}' WHERE id = ?`, review)
 
 	_, err = s.store.Lookup(ctx, review)
 	require.ErrorContains(t, err, `read the prompt: prompt "Review": models`)
@@ -559,7 +559,7 @@ func TestLibraryReportsUnreadableDefaults(t *testing.T) {
 	t.Parallel()
 
 	s, db := seeded(t, nil)
-	exec(t, db, "DROP TABLE prefs")
+	testutil.Exec(t, db, "DROP TABLE prefs")
 
 	_, err := s.store.Library(t.Context())
 	require.ErrorContains(t, err, "read setting "+prefDefaultPR)

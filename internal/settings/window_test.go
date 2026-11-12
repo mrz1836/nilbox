@@ -44,7 +44,7 @@ func TestReadWindowSizeIsTheDefaultOnAFreshDatabase(t *testing.T) {
 func TestReadWindowSizeReportsAClosedDatabase(t *testing.T) {
 	t.Parallel()
 
-	got, err := ReadWindowSize(t.Context(), prefs.New(closedDB(t), nil))
+	got, err := ReadWindowSize(t.Context(), prefs.New(testutil.ClosedDB(t), nil))
 	require.ErrorContains(t, err, "read the window size")
 	assert.Equal(t, DefaultWindowSize(), got, "the default still comes back")
 }

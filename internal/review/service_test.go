@@ -12,6 +12,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/github"
 	"github.com/mrz1836/nilbox/internal/item"
 	"github.com/mrz1836/nilbox/internal/sensitive"
+	"github.com/mrz1836/nilbox/internal/testutil"
 )
 
 func TestOpenBeforeAnyReadShowsTheCard(t *testing.T) {
@@ -381,7 +382,7 @@ func seedMore(t *testing.T, h *harness, n int) {
 	t.Helper()
 
 	for i := 2; i <= n+1; i++ {
-		exec(t, h.db, `INSERT INTO items (id, account_id, repo_id, kind, number, node_id, item_created_at, item_updated_at,
+		testutil.Exec(t, h.db, `INSERT INTO items (id, account_id, repo_id, kind, number, node_id, item_created_at, item_updated_at,
 			fetched_at) VALUES (?, 1, 1, 'pr', ?, '', ?, ?, ?)`, i, i, testNow, testNow, testNow)
 	}
 }

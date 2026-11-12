@@ -1,13 +1,11 @@
 package worktrees
 
 import (
-	"bytes"
 	"context"
 	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
-	"sync"
 	"testing"
 	"testing/synctest"
 	"time"
@@ -415,11 +413,9 @@ func (panickingSettings) Get(context.Context) (SweepSettings, error) { panic("se
 func TestSweeperSurvivesAPanicAndLogsFailures(t *testing.T) {
 	t.Parallel()
 
-	var logs bytes.Buffer
+	var logs testutil.Logs
 
-	var mu sync.Mutex
-
-	logger := slog.New(slog.NewTextHandler(lockedWriter{w: &logs, mu: &mu}, nil))
+	logger := slog.New(slog.NewTextHandler(&logs, nil))
 
 	synctest.Test(t, func(t *testing.T) {
 		svc := NewService(Config{Settings: panickingSettings{}, Git: execpath.Exec{}, Logger: logger})
@@ -439,25 +435,10 @@ func TestSweeperSurvivesAPanicAndLogsFailures(t *testing.T) {
 		<-done
 	})
 
-	mu.Lock()
 	assert.Equal(t, 2, strings.Count(logs.String(), "worktree sweep panicked"), "a panicking sweep is logged and the next one still runs")
-	mu.Unlock()
 
 	// The log gets the error itself; the report, what the user is told about it.
 	svc := NewService(Config{Settings: fakeSettings{err: errFakeSettings}, Git: execpath.Exec{}, Logger: logger})
 	require.ErrorIs(t, svc.sweepOnce(t.Context()), errFakeSettings)
 	assert.Equal(t, uierr.Message(errFakeSettings), svc.LastSweep().Error)
-}
-
-// lockedWriter serializes writes to w.
-type lockedWriter struct {
-	w  *bytes.Buffer
-	mu *sync.Mutex
-}
-
-func (l lockedWriter) Write(p []byte) (int, error) {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-
-	return l.w.Write(p)
 }

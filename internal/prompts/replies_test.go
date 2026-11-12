@@ -9,6 +9,7 @@ import (
 
 	"github.com/mrz1836/nilbox/internal/agent"
 	"github.com/mrz1836/nilbox/internal/item"
+	"github.com/mrz1836/nilbox/internal/testutil"
 )
 
 // replyInput is a reply for action with body.
@@ -173,9 +174,9 @@ func TestReplyDefaultsSkipWhatNoLongerFits(t *testing.T) {
 	ctx := t.Context()
 
 	review := byNickname(t, s, "Review")
-	exec(t, db, "UPDATE prefs SET value = ? WHERE key = 'prompts.default.reply.comment'", review.ID)
-	exec(t, db, "UPDATE prefs SET value = '9999' WHERE key = 'prompts.default.reply.approve'")
-	exec(t, db, "UPDATE prefs SET value = 'x' WHERE key = 'prompts.default.reply.request_changes'")
+	testutil.Exec(t, db, "UPDATE prefs SET value = ? WHERE key = 'prompts.default.reply.comment'", review.ID)
+	testutil.Exec(t, db, "UPDATE prefs SET value = '9999' WHERE key = 'prompts.default.reply.approve'")
+	testutil.Exec(t, db, "UPDATE prefs SET value = 'x' WHERE key = 'prompts.default.reply.request_changes'")
 
 	defaults, err := s.Defaults(ctx)
 	require.NoError(t, err)
@@ -186,7 +187,7 @@ func TestReplyDefaultsSkipWhatNoLongerFits(t *testing.T) {
 	assert.Equal(t, defaults.Replies.ApproveBots, defaults.Replies.For(SlotApproveBots))
 	assert.Zero(t, defaults.Replies.For("later"))
 
-	exec(t, db, "UPDATE prefs SET value = ? WHERE key = 'prompts.default.pr'", byNickname(t, s, "LGTM").ID)
+	testutil.Exec(t, db, "UPDATE prefs SET value = ? WHERE key = 'prompts.default.pr'", byNickname(t, s, "LGTM").ID)
 
 	defaults, err = s.Defaults(ctx)
 	require.NoError(t, err)

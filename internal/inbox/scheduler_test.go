@@ -1,16 +1,15 @@
 package inbox
 
 import (
-	"bytes"
 	"context"
-	"log/slog"
-	"sync"
 	"sync/atomic"
 	"testing"
 	"testing/synctest"
 	"time"
 
 	"github.com/stretchr/testify/assert"
+
+	"github.com/mrz1836/nilbox/internal/testutil"
 )
 
 // countingRefresher counts its refreshes and fails the first one.
@@ -26,26 +25,6 @@ func (r *countingRefresher) Refresh(context.Context) (Snapshot, error) {
 	return Snapshot{}, nil
 }
 
-// syncBuffer is a log sink safe for concurrent writers.
-type syncBuffer struct {
-	mu  sync.Mutex
-	buf bytes.Buffer
-}
-
-func (b *syncBuffer) Write(p []byte) (int, error) {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-
-	return b.buf.Write(p)
-}
-
-func (b *syncBuffer) String() string {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-
-	return b.buf.String()
-}
-
 func TestSchedulerRefreshesAndLogsUntilCanceled(t *testing.T) {
 	t.Parallel()
 
@@ -53,8 +32,8 @@ func TestSchedulerRefreshesAndLogsUntilCanceled(t *testing.T) {
 	// interval takes no real time and the count of refreshes is exact.
 	synctest.Test(t, func(t *testing.T) {
 		r := &countingRefresher{}
-		logs := &syncBuffer{}
-		s := NewScheduler(r, nil, slog.New(slog.NewTextHandler(logs, nil)))
+		logs := &testutil.Logs{}
+		s := NewScheduler(r, nil, logs.Logger())
 
 		ctx, cancel := context.WithCancel(t.Context())
 		done := make(chan struct{})

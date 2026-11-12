@@ -541,8 +541,7 @@ func (h *launchHarness) store(t *testing.T, items ...github.Item) []int64 {
 func (h *launchHarness) exec(t *testing.T, query string, args ...any) {
 	t.Helper()
 
-	_, err := h.pool.ExecContext(t.Context(), query, args...)
-	require.NoError(t, err)
+	testutil.Exec(t, h.pool, query, args...)
 }
 
 // service returns a launch Service over the harness's current config.

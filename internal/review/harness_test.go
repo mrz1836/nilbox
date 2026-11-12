@@ -45,22 +45,14 @@ var (
 func seedItems(t *testing.T, db *sql.DB, n int) {
 	t.Helper()
 
-	exec(t, db, `INSERT INTO accounts (id, login, created_at, updated_at) VALUES (1, 'octo-user', ?, ?)`, testNow, testNow)
-	exec(t, db, `INSERT INTO repos (id, owner, name, created_at, updated_at) VALUES (1, 'acme-org', 'example-repo', ?, ?)`,
+	testutil.Exec(t, db, `INSERT INTO accounts (id, login, created_at, updated_at) VALUES (1, 'octo-user', ?, ?)`, testNow, testNow)
+	testutil.Exec(t, db, `INSERT INTO repos (id, owner, name, created_at, updated_at) VALUES (1, 'acme-org', 'example-repo', ?, ?)`,
 		testNow, testNow)
 
 	for i := 1; i <= n; i++ {
-		exec(t, db, `INSERT INTO items (id, account_id, repo_id, kind, number, node_id, item_created_at, item_updated_at,
+		testutil.Exec(t, db, `INSERT INTO items (id, account_id, repo_id, kind, number, node_id, item_created_at, item_updated_at,
 			fetched_at) VALUES (?, 1, 1, 'pr', ?, ?, ?, ?, ?)`, i, i, "PR_"+string(rune('a'+i)), testNow, testNow, testNow)
 	}
-}
-
-// exec runs a statement on db.
-func exec(t *testing.T, db *sql.DB, query string, args ...any) {
-	t.Helper()
-
-	_, err := db.ExecContext(t.Context(), query, args...)
-	require.NoError(t, err)
 }
 
 // storedPull is pull request #7 as the inbox stores it: someone else's, asking the user's

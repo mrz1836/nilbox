@@ -89,9 +89,7 @@ func TestSettingsViewsReadTheSettingsAsTheyAreNow(t *testing.T) {
 func TestSettingsViewReportsUnreadableSettings(t *testing.T) {
 	t.Parallel()
 
-	db := testutil.DB(t)
-	prefs := settings.NewService(db, nil, t.TempDir())
-	require.NoError(t, db.Close())
+	prefs := settings.NewService(testutil.ClosedDB(t), nil, t.TempDir())
 
 	got, err := settingsView[launcher.LaunchSettings]{settings: prefs, part: launchSettings}.Get(t.Context())
 	require.Error(t, err)

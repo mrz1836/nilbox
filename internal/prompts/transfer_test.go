@@ -386,7 +386,7 @@ func TestImportIsAllOrNothing(t *testing.T) {
 	s, db, _ := keeping(t)
 	before := nicknames(t, s)
 
-	exec(t, db, `CREATE TRIGGER refuse_second BEFORE INSERT ON prompts WHEN NEW.nickname = 'Second'
+	testutil.Exec(t, db, `CREATE TRIGGER refuse_second BEFORE INSERT ON prompts WHEN NEW.nickname = 'Second'
 BEGIN SELECT RAISE(ABORT, 'refused by the test'); END`)
 
 	_, err := s.Import(t.Context(), []BundlePrompt{mine("First"), mine("Second")})

@@ -115,7 +115,7 @@ func TestPruneUsesEachAgentsMarkers(t *testing.T) {
 		newDiscovered(agent.Codex, "kept", filepath.Join(home, ".codex_kept")),
 		newDiscovered("example-agent", "other", filepath.Join(home, ".codex_bare")),
 	}))
-	exec(t, db, "UPDATE agent_profiles SET agent = 'example-agent' WHERE name = 'other'")
+	testutil.Exec(t, db, "UPDATE agent_profiles SET agent = 'example-agent' WHERE name = 'other'")
 
 	removed, err := s.Prune(t.Context(), nil)
 	require.NoError(t, err)

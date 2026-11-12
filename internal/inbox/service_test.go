@@ -368,9 +368,7 @@ func (h *harness) refresh(t *testing.T) Snapshot {
 func (h *harness) exec(t *testing.T, query string, args ...any) {
 	t.Helper()
 
-	_, err := h.pool.ExecContext(t.Context(), query, args...)
-	require.NoError(t, err)
-
+	testutil.Exec(t, h.pool, query, args...)
 	h.svc.snapshots.empty()
 }
 

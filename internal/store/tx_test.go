@@ -135,8 +135,7 @@ CREATE TABLE child (parent_id INTEGER NOT NULL REFERENCES parent (id))`)
 func TestInTxReportsAFailedBegin(t *testing.T) {
 	t.Parallel()
 
-	db := testutil.DB(t)
-	require.NoError(t, db.Close())
+	db := testutil.ClosedDB(t)
 
 	called := false
 	err := store.InTx(t.Context(), db, func(*sql.Tx) error {

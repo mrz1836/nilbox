@@ -48,9 +48,6 @@ func TestLaunchDefaultTargetsListTheInboxRepositories(t *testing.T) {
 func TestInboxReposReportsAnUnreadableDatabase(t *testing.T) {
 	t.Parallel()
 
-	db := testutil.DB(t)
-	require.NoError(t, db.Close())
-
-	_, err := inboxRepos{store: inbox.NewStore(db, nil)}.Repos(t.Context())
+	_, err := inboxRepos{store: inbox.NewStore(testutil.ClosedDB(t), nil)}.Repos(t.Context())
 	require.ErrorContains(t, err, "count the items of each repository")
 }

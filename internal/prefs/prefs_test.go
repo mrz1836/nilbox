@@ -48,10 +48,7 @@ func newStore(t *testing.T) (*prefs.Store, *sql.DB) {
 func closedStore(t *testing.T) *prefs.Store {
 	t.Helper()
 
-	db := testutil.DB(t)
-	require.NoError(t, db.Close())
-
-	return prefs.New(db, nil)
+	return prefs.New(testutil.ClosedDB(t), nil)
 }
 
 // stored returns every row in the prefs table, by key.

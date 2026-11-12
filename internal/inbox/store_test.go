@@ -56,10 +56,7 @@ func TestViewerLogin(t *testing.T) {
 func TestStoreReportsAnUnreadableDatabase(t *testing.T) {
 	t.Parallel()
 
-	db := testutil.DB(t)
-	require.NoError(t, db.Close())
-
-	s := NewStore(db, nil)
+	s := NewStore(testutil.ClosedDB(t), nil)
 
 	_, err := s.ViewerLogin(t.Context())
 	require.ErrorContains(t, err, "read the signed-in account")

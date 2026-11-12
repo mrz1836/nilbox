@@ -20,14 +20,6 @@ import (
 const refuseNewProfiles = `CREATE TRIGGER refuse_new_profiles BEFORE INSERT ON agent_profiles
 BEGIN SELECT RAISE(ABORT, 'refused by the test'); END`
 
-// execOn runs a statement on db, failing the test when it fails.
-func execOn(t *testing.T, db *sql.DB, query string) {
-	t.Helper()
-
-	_, err := db.ExecContext(t.Context(), query)
-	require.NoError(t, err)
-}
-
 func TestBootstrapStopsWhenAStartupStepFails(t *testing.T) {
 	t.Parallel()
 
@@ -45,7 +37,7 @@ func TestBootstrapStopsWhenAStartupStepFails(t *testing.T) {
 			damage: func(t *testing.T, db *sql.DB, _ string) {
 				t.Helper()
 
-				execOn(t, db, "UPDATE prefs SET value = 'not json' WHERE key = 'prompts.seeded'")
+				testutil.Exec(t, db, "UPDATE prefs SET value = 'not json' WHERE key = 'prompts.seeded'")
 			},
 			want: "add the starter prompts: read the starter prompts added",
 		},
@@ -54,7 +46,7 @@ func TestBootstrapStopsWhenAStartupStepFails(t *testing.T) {
 			damage: func(t *testing.T, db *sql.DB, home string) {
 				t.Helper()
 
-				execOn(t, db, refuseNewProfiles)
+				testutil.Exec(t, db, refuseNewProfiles)
 				testutil.MakeClaudeDirs(t, home, ".claude_work")
 			},
 			want: "sync profiles",
@@ -64,7 +56,7 @@ func TestBootstrapStopsWhenAStartupStepFails(t *testing.T) {
 			damage: func(t *testing.T, db *sql.DB, _ string) {
 				t.Helper()
 
-				execOn(t, db, "DROP TABLE agent_profiles")
+				testutil.Exec(t, db, "DROP TABLE agent_profiles")
 			},
 			want: "prune profiles",
 		},

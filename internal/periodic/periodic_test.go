@@ -1,11 +1,9 @@
 package periodic_test
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"log/slog"
-	"sync"
 	"sync/atomic"
 	"testing"
 	"testing/synctest"
@@ -14,6 +12,7 @@ import (
 	"github.com/stretchr/testify/assert"
 
 	"github.com/mrz1836/nilbox/internal/periodic"
+	"github.com/mrz1836/nilbox/internal/testutil"
 )
 
 // interval is how often the job runs in these tests. They run in a synctest bubble,
@@ -22,31 +21,6 @@ import (
 const interval = time.Minute
 
 var errFakeJob = errors.New("fake: the job broke")
-
-// logBuffer is a log sink safe for concurrent writers.
-type logBuffer struct {
-	mu  sync.Mutex
-	buf bytes.Buffer
-}
-
-func (b *logBuffer) Write(p []byte) (int, error) {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-
-	return b.buf.Write(p)
-}
-
-func (b *logBuffer) String() string {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-
-	return b.buf.String()
-}
-
-// logger writes every level to logs.
-func logger(logs *logBuffer) *slog.Logger {
-	return slog.New(slog.NewTextHandler(logs, &slog.HandlerOptions{Level: slog.LevelDebug}))
-}
 
 // loop runs fn until ctx is canceled, as RunEvery does, and returns once the run in
 // flight has returned.
@@ -147,7 +121,7 @@ func TestFailuresAndPanicsAreLoggedAndTheRunsGoOn(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		var runs atomic.Int32
 
-		logs := &logBuffer{}
+		logs := &testutil.Logs{}
 		stop := start(t, everyInterval(), func(context.Context) error {
 			switch runs.Add(1) {
 			case 1:
@@ -157,7 +131,7 @@ func TestFailuresAndPanicsAreLoggedAndTheRunsGoOn(t *testing.T) {
 			default:
 				return nil
 			}
-		}, logger(logs))
+		}, logs.Logger())
 
 		after(2*interval + time.Second)
 		stop()
@@ -178,13 +152,13 @@ func TestTheRunInFlightIsWaitedForAndItsCancellationIsNotLogged(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		sawCancel := make(chan struct{})
 
-		logs := &logBuffer{}
+		logs := &testutil.Logs{}
 		stop := start(t, everyInterval(), func(ctx context.Context) error {
 			<-ctx.Done()
 			close(sawCancel)
 
 			return ctx.Err()
-		}, logger(logs))
+		}, logs.Logger())
 
 		stop()
 
