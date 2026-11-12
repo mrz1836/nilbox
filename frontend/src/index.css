@@ -108,6 +108,14 @@
     content-visibility: visible;
   }
 
+  /* A row with a dot that moves (a session at work or starting, checks running) renders in
+     full too: inside content-visibility: auto, WebKit moved such a dot only when something
+     else made it paint, as a mouse move, so it stood still the rest of the time. Few rows
+     move at once, so the rest of the list keeps skipping its work. */
+  .item-row:has([data-moving]) {
+    content-visibility: visible;
+  }
+
   /* A row an edit on GitHub is taking out of its list (aria-busy while the request runs)
      fades and blurs behind the note that says so, and takes no clicks, so the wait shows
      before the row leaves; it comes back as it was if the item stays. */
