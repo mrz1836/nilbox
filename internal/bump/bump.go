@@ -1,10 +1,9 @@
 // Package bump recognizes a dependency-update pull request from its title, as Dependabot
 // and Renovate write them, and says how big its version jump is.
 //
-// It reads only the title (and, through FromCommit, Dependabot's commit trailer), so it
-// needs no request of its own. It is conservative: a title it cannot read with
-// confidence is not a dependency update, since calling an ordinary pull request one is
-// worse than missing one.
+// It reads only the title, so it needs no request of its own. It is conservative: a title
+// it cannot read with confidence is not a dependency update, since calling an ordinary
+// pull request one is worse than missing one.
 package bump
 
 import (

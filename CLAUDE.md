@@ -354,9 +354,9 @@ app:lint` reads.
   `Merges` the repository, without waiting (core: the Release page's `Refresher`, which reads
   that repository's row again); a close tells it nothing. Nothing here lets an agent approve,
   merge, or close.
-- `internal/bump/` reads a dependency update from a bot's pull request title (and Dependabot's
-  commit trailer) into an `Update`, for the review sheet and the `.Dependency` prompt variables.
-  It is pure and imports no service.
+- `internal/bump/` reads a dependency update from a bot's pull request title into an `Update`,
+  for the review sheet and the `.Dependency` prompt variables. It is pure and imports no
+  service.
 - `internal/integrations/` finds the tools the app drives, mage-x's magex and go-pre-commit,
   each one a `Definition` (its binary, releases, version parser, quiet environment, minimum
   version, and the release that brought each upstream `Feature`). Detection looks on the login

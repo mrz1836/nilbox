@@ -89,23 +89,3 @@ func FuzzCompare(f *testing.F) {
 		assert.Equal(t, bump.LevelUnknown, bump.Compare(from, from))
 	})
 }
-
-// FuzzFromCommit checks that any commit message reads without a panic to a known level,
-// and that it reports finding one exactly when the level is known.
-func FuzzFromCommit(f *testing.F) {
-	for _, seed := range []string{
-		"---\nupdated-dependencies:\n- dependency-name: lodash\n  update-type: version-update:semver-patch\n...\n",
-		"  update-type: version-update:semver-major\n  update-type: version-update:semver-minor\n",
-		"update-type: x:semver-\n",
-		"",
-	} {
-		f.Add(seed)
-	}
-
-	f.Fuzz(func(t *testing.T, msg string) {
-		level, ok := bump.FromCommit(msg)
-
-		assert.Contains(t, levels(), level)
-		assert.Equal(t, level != bump.LevelUnknown, ok)
-	})
-}
