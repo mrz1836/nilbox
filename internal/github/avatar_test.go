@@ -5,6 +5,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strconv"
+	"strings"
 	"sync/atomic"
 	"testing"
 
@@ -129,6 +131,60 @@ func TestFetchAvatarRefusesRedirectsOffTheHost(t *testing.T) {
 			require.ErrorIs(t, err, ErrAvatarURL)
 		})
 	}
+}
+
+// redirectChain redirects /r/<n> to /r/<n-1>, and answers /r/0 with serve.
+func redirectChain(serve http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		n, err := strconv.Atoi(strings.TrimPrefix(r.URL.Path, "/r/"))
+		if err != nil || n <= 0 {
+			serve(w, r)
+
+			return
+		}
+
+		http.Redirect(w, r, "/r/"+strconv.Itoa(n-1), http.StatusFound)
+	}
+}
+
+func TestFetchAvatarFollowsAtMostThreeRedirects(t *testing.T) {
+	t.Parallel()
+
+	client, base := newAvatarServer(t, redirectChain(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(pngHeader))
+	}))
+
+	_, err := client.FetchAvatar(t.Context(), base+"/r/3")
+	require.NoError(t, err, "three redirects on the host are followed")
+
+	_, err = client.FetchAvatar(t.Context(), base+"/r/4")
+	require.ErrorIs(t, err, ErrAvatarURL)
+	require.ErrorContains(t, err, "download the avatar: ")
+	require.ErrorContains(t, err, ": not a GitHub avatar URL: more than 3 redirects")
+}
+
+func TestFetchAvatarSaysWhatURLItWants(t *testing.T) {
+	t.Parallel()
+
+	client, base := newAvatarServer(t, func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "https://example.invalid/u/101", http.StatusFound)
+	})
+	host := strings.TrimPrefix(base, "https://")
+
+	_, err := client.FetchAvatar(t.Context(), "http://"+host+"/u/101")
+	require.EqualError(t, err, "not a GitHub avatar URL: want https://"+host+"/")
+
+	_, err = client.FetchAvatar(t.Context(), "https://%zz/u/101")
+	require.ErrorIs(t, err, ErrAvatarURL)
+	require.ErrorContains(t, err, "not a GitHub avatar URL: parse ")
+
+	_, err = client.FetchAvatar(t.Context(), base+"/u/101")
+	require.ErrorIs(t, err, ErrAvatarURL)
+	require.ErrorContains(t, err, "download the avatar: ")
+	require.ErrorContains(t, err, ": not a GitHub avatar URL: want https://"+host+"/", "a redirect off the host says so")
+
+	_, err = (&Client{}).FetchAvatar(t.Context(), "https://github.com/octo-user.png")
+	require.EqualError(t, err, "not a GitHub avatar URL: want https://"+DefaultAvatarHost+"/")
 }
 
 func TestFetchAvatarRefusesWhatIsNotAnImage(t *testing.T) {

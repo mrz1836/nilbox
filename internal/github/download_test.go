@@ -142,6 +142,50 @@ func TestDownloadAssetStopsAfterFiveRedirects(t *testing.T) {
 	assert.Contains(t, err.Error(), "more than 5 redirects")
 }
 
+func TestDownloadAssetFollowsAtMostFiveRedirects(t *testing.T) {
+	t.Parallel()
+
+	client, servers := downloadServers(t, []http.HandlerFunc{redirectChain(serveRelease(t))}, 0)
+
+	var got bytes.Buffer
+
+	_, err := client.DownloadAsset(t.Context(), servers[0].URL+"/r/5", &got, 1<<20)
+	require.NoError(t, err, "five redirects on the download hosts are followed")
+	assert.Equal(t, releaseFile, got.String())
+
+	_, err = client.DownloadAsset(t.Context(), servers[0].URL+"/r/6", io.Discard, 1<<20)
+	require.ErrorIs(t, err, ErrDownloadURL)
+	require.ErrorContains(t, err, "download: ")
+	require.ErrorContains(t, err, ": not a GitHub release download: more than 5 redirects")
+}
+
+func TestDownloadAssetSaysWhatURLItWants(t *testing.T) {
+	t.Parallel()
+
+	client, servers := downloadServers(t, []http.HandlerFunc{
+		func(w http.ResponseWriter, r *http.Request) {
+			http.Redirect(w, r, "https://example.com/file", http.StatusFound)
+		},
+		func(http.ResponseWriter, *http.Request) { t.Error("nothing is asked") },
+	}, 0, 1)
+	first, second := strings.TrimPrefix(servers[0].URL, "https://"), strings.TrimPrefix(servers[1].URL, "https://")
+
+	_, err := client.DownloadAsset(t.Context(), "http://"+first+"/file", io.Discard, 1<<20)
+	require.EqualError(t, err, "not a GitHub release download: want https on "+first+", "+second)
+
+	_, err = client.DownloadAsset(t.Context(), "://not a url", io.Discard, 1<<20)
+	require.ErrorIs(t, err, ErrDownloadURL)
+	require.ErrorContains(t, err, "not a GitHub release download: parse ")
+
+	_, err = client.DownloadAsset(t.Context(), servers[0].URL+"/file", io.Discard, 1<<20)
+	require.ErrorIs(t, err, ErrDownloadURL)
+	require.ErrorContains(t, err, ": not a GitHub release download: want https on "+first+", "+second,
+		"a redirect off the download hosts says so")
+
+	_, err = (&Client{}).DownloadAsset(t.Context(), "http://github.com/acme-org/tool/releases/download/v1/file", io.Discard, 1)
+	require.EqualError(t, err, "not a GitHub release download: want https on "+strings.Join(DefaultDownloadHosts(), ", "))
+}
+
 func TestDownloadAssetFailsPastItsSize(t *testing.T) {
 	t.Parallel()
 
