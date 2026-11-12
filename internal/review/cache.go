@@ -70,9 +70,8 @@ type pullContext struct {
 	PendingReviews int    `json:"pendingReviews"`
 	AutoMerge      string `json:"autoMerge"`
 
-	Reviews     []contextReview `json:"reviews"`
-	FirstCommit string          `json:"firstCommit"`
-	Checks      []Check         `json:"checks"`
+	Reviews []contextReview `json:"reviews"`
+	Checks  []Check         `json:"checks"`
 }
 
 // contextReview is one reviewer's latest review, as the cache keeps it.
@@ -92,7 +91,7 @@ func contextOf(r *github.PullReview) pullContext {
 		MergeState: r.MergeState, MergeQueue: r.MergeQueue, Mine: r.ViewerDidAuthor,
 		CanUpdateBranch: r.ViewerCanUpdateBranch, CanAutoMerge: r.ViewerCanEnableAutoMerge, CanBypass: r.ViewerCanBypass,
 		ViewerReview: r.ViewerReview.State, ViewerReviewAt: r.ViewerReview.Commit, PendingReviews: r.PendingReviews,
-		AutoMerge: r.AutoMerge.Method, FirstCommit: r.FirstCommitMessage, CanClose: r.ViewerCanClose,
+		AutoMerge: r.AutoMerge.Method, CanClose: r.ViewerCanClose,
 		Reviews: make([]contextReview, 0, len(r.Reviews)), Checks: make([]Check, 0, len(r.Checks)),
 	}
 
