@@ -14,6 +14,9 @@ import (
 	"github.com/mrz1836/nilbox/internal/uierr"
 )
 
+// webClone is the clone most open tests open.
+const webClone = "web"
+
 // opened is one folder the fake terminal or Finder was asked to open.
 type opened struct {
 	name string
@@ -50,7 +53,7 @@ func (f *fakeOpener) Reveal(_ context.Context, path string) error {
 // openService is the rig's clones, under a Service that opens the terminal and Finder
 // through opener, or through nothing when opener is nil.
 func openService(r *rig, opener *fakeOpener) *Service {
-	cfg := Config{Clones: r.clones, Git: r.git, Home: r.home}
+	cfg := Config{Clones: r.clones, Home: r.home}
 
 	if opener != nil {
 		cfg.Terminal, cfg.Reveal = opener, opener
@@ -59,155 +62,159 @@ func openService(r *rig, opener *fakeOpener) *Service {
 	return NewService(cfg)
 }
 
-func TestOpenTerminalOpensTheCloneAndRunsNothing(t *testing.T) {
-	t.Parallel()
+// openCase is one row of the open tests: the clone the root holds, called clone (none
+// when ""), made as opts says; whether the clone root can be read; the terminal and
+// Finder (none with noOpener, failing with openErr otherwise); the folder asked for, with
+// ~; and what comes of it.
+type openCase struct {
+	name     string
+	clone    string
+	opts     cloneOpts
+	rootErr  error
+	noOpener bool
+	openErr  error
+	dir      string
 
-	r := newRig(t)
-	dir := r.clone("web", cloneOpts{config: coreEnv, origin: "acme-org/web"})
-	opener := &fakeOpener{}
+	// wantErr is the error the call fails with, or nil, wantText its words for the window
+	// (uierr.Message) when set, and wantIn what its own text holds when set.
+	wantErr  error
+	wantText string
+	wantIn   string
 
-	require.NoError(t, openService(r, opener).OpenTerminal(t.Context(), "~/projects/web"))
-	assert.Equal(t, []opened{{name: scriptrun.FolderScript, path: dir}}, opener.folder)
-	assert.Empty(t, opener.shown)
+	// folder is the clone the terminal opened in, and shown the path, relative to the
+	// clone, Finder showed: "" for none.
+	folder string
+	shown  string
 }
 
-func TestOpenTerminalOpensACloneWithoutAConfigOrAGitHubOrigin(t *testing.T) {
-	t.Parallel()
+// openRig is a light rig holding tt's clone, and the opener the call goes through, or nil.
+func openRig(t *testing.T, tt openCase) (*rig, *fakeOpener) {
+	t.Helper()
 
-	r := newRig(t)
-	dir := r.clone("plain", cloneOpts{})
-	opener := &fakeOpener{}
+	r := newLightRig(t)
+	r.clones.rootErr = tt.rootErr
 
-	require.NoError(t, openService(r, opener).OpenTerminal(t.Context(), r.shown(dir)))
-	assert.Equal(t, []opened{{name: scriptrun.FolderScript, path: dir}}, opener.folder)
+	if tt.clone != "" {
+		r.lightClone(tt.clone, tt.opts)
+	}
+
+	if tt.noOpener {
+		return r, nil
+	}
+
+	return r, &fakeOpener{err: tt.openErr}
 }
 
-func TestOpenTerminalRefusesAFolderThatIsntAClone(t *testing.T) {
-	t.Parallel()
+// checkOpen checks what came of tt's call: err, and what opener was asked to open.
+func checkOpen(t *testing.T, r *rig, tt openCase, opener *fakeOpener, err error) {
+	t.Helper()
 
-	r := newRig(t)
-	r.clone("web", cloneOpts{config: coreEnv})
+	if tt.wantErr == nil {
+		require.NoError(t, err)
+	} else {
+		require.ErrorIs(t, err, tt.wantErr)
+	}
 
-	opener := &fakeOpener{}
-	err := openService(r, opener).OpenTerminal(t.Context(), "~/elsewhere")
+	if tt.wantText != "" {
+		assert.Equal(t, tt.wantText, uierr.Message(err))
+	}
 
-	require.ErrorIs(t, err, ErrNoClone)
-	assert.Equal(t, "~/elsewhere isn't a clone in ~/projects.", uierr.Message(err))
-	assert.Empty(t, opener.folder)
+	if tt.wantIn != "" {
+		assert.Contains(t, err.Error(), tt.wantIn)
+	}
+
+	if opener == nil {
+		return
+	}
+
+	if tt.folder == "" {
+		assert.Empty(t, opener.folder)
+	} else {
+		assert.Equal(t, []opened{{name: scriptrun.FolderScript, path: filepath.Join(r.root, tt.folder)}}, opener.folder)
+	}
+
+	if tt.shown == "" {
+		assert.Empty(t, opener.shown)
+	} else {
+		assert.Equal(t, []string{filepath.Join(r.root, filepath.FromSlash(tt.shown))}, opener.shown)
+	}
 }
 
-func TestOpenTerminalSaysWhenItCant(t *testing.T) {
+func TestOpenTerminal(t *testing.T) {
 	t.Parallel()
 
-	r := newRig(t)
-	r.clone("web", cloneOpts{config: coreEnv})
+	tests := []openCase{
+		{
+			name: "opens the clone and runs nothing", clone: webClone, opts: cloneOpts{config: coreEnv, origin: "acme-org/web"},
+			dir: "~/projects/web", folder: webClone,
+		},
+		{name: "opens a clone without a config or a GitHub origin", clone: "plain", dir: "~/projects/plain", folder: "plain"},
+		{
+			name: "refuses a folder that isn't a clone", clone: webClone, opts: cloneOpts{config: coreEnv}, dir: "~/elsewhere",
+			wantErr: ErrNoClone, wantText: "~/elsewhere isn't a clone in ~/projects.",
+		},
+		{
+			name: "says when it can't", clone: webClone, opts: cloneOpts{config: coreEnv}, noOpener: true, dir: "~/projects/web",
+			wantErr: scriptrun.ErrNoFolderTerminal, wantText: "Your terminal can't be opened here.",
+		},
+		{
+			name: "passes the terminal's failure on", clone: webClone, opts: cloneOpts{config: coreEnv}, openErr: errFake,
+			dir: "~/projects/web", wantErr: errFake, wantIn: "open the terminal in the clone", folder: webClone,
+		},
+		{name: "says when the clone root can't be read", rootErr: errFake, dir: "~/projects/web", wantErr: errFake},
+	}
 
-	err := openService(r, nil).OpenTerminal(t.Context(), "~/projects/web")
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 
-	require.ErrorIs(t, err, scriptrun.ErrNoFolderTerminal)
-	assert.Equal(t, "Your terminal can't be opened here.", uierr.Message(err))
+			r, opener := openRig(t, tt)
+			err := openService(r, opener).OpenTerminal(t.Context(), tt.dir)
+
+			checkOpen(t, r, tt, opener, err)
+		})
+	}
 }
 
-func TestOpenTerminalPassesTheTerminalsFailureOn(t *testing.T) {
+func TestShowConfig(t *testing.T) {
 	t.Parallel()
 
-	r := newRig(t)
-	r.clone("web", cloneOpts{config: coreEnv})
+	tests := []openCase{
+		{
+			name: "shows the modular folder", clone: webClone, opts: cloneOpts{config: coreEnv}, dir: "~/projects/web",
+			shown: "web/.github/env",
+		},
+		{
+			name: "shows the legacy file", clone: "old", opts: cloneOpts{legacy: coreEnv}, dir: "~/projects/old",
+			shown: "old/.github/.env.base",
+		},
+		{
+			name: "prefers the modular folder to the legacy file", clone: "both", opts: cloneOpts{config: coreEnv, legacy: coreEnv},
+			dir: "~/projects/both", shown: "both/.github/env",
+		},
+		{
+			name: "refuses a clone without a config", clone: "plain", dir: "~/projects/plain", wantErr: ErrNotSetUp,
+			wantText: "~/projects/plain has no go-pre-commit config (.github/env/ or .github/.env.base).",
+		},
+		{name: "refuses a folder that isn't a clone", dir: "~/elsewhere", wantErr: ErrNoClone},
+		{
+			name: "says when Finder can't show it", clone: webClone, opts: cloneOpts{config: coreEnv}, noOpener: true,
+			dir: "~/projects/web", wantErr: ErrNoFinder, wantText: brand.Name + " can't open Finder here.",
+		},
+		{
+			name: "passes Finder's failure on", clone: webClone, opts: cloneOpts{config: coreEnv}, openErr: errFake,
+			dir: "~/projects/web", wantErr: errFake, wantIn: "show the config", shown: "web/.github/env",
+		},
+	}
 
-	err := openService(r, &fakeOpener{err: errFake}).OpenTerminal(t.Context(), "~/projects/web")
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 
-	require.ErrorIs(t, err, errFake)
-	assert.Contains(t, err.Error(), "open the terminal in the clone")
-}
+			r, opener := openRig(t, tt)
+			err := openService(r, opener).ShowConfig(t.Context(), tt.dir)
 
-func TestOpenTerminalSaysWhenTheCloneRootCantBeRead(t *testing.T) {
-	t.Parallel()
-
-	r := newRig(t)
-	r.clones.rootErr = errFake
-
-	require.ErrorIs(t, openService(r, &fakeOpener{}).OpenTerminal(t.Context(), "~/projects/web"), errFake)
-}
-
-func TestShowConfigShowsTheModularFolder(t *testing.T) {
-	t.Parallel()
-
-	r := newRig(t)
-	dir := r.clone("web", cloneOpts{config: coreEnv})
-	opener := &fakeOpener{}
-
-	require.NoError(t, openService(r, opener).ShowConfig(t.Context(), "~/projects/web"))
-	assert.Equal(t, []string{filepath.Join(dir, ".github", "env")}, opener.shown)
-	assert.Empty(t, opener.folder)
-}
-
-func TestShowConfigShowsTheLegacyFile(t *testing.T) {
-	t.Parallel()
-
-	r := newRig(t)
-	dir := r.clone("old", cloneOpts{legacy: coreEnv})
-	opener := &fakeOpener{}
-
-	require.NoError(t, openService(r, opener).ShowConfig(t.Context(), "~/projects/old"))
-	assert.Equal(t, []string{filepath.Join(dir, ".github", ".env.base")}, opener.shown)
-}
-
-func TestShowConfigPrefersTheModularFolderToTheLegacyFile(t *testing.T) {
-	t.Parallel()
-
-	r := newRig(t)
-	dir := r.clone("both", cloneOpts{config: coreEnv, legacy: coreEnv})
-	opener := &fakeOpener{}
-
-	require.NoError(t, openService(r, opener).ShowConfig(t.Context(), "~/projects/both"))
-	assert.Equal(t, []string{filepath.Join(dir, ".github", "env")}, opener.shown)
-}
-
-func TestShowConfigRefusesACloneWithoutAConfig(t *testing.T) {
-	t.Parallel()
-
-	r := newRig(t)
-	r.clone("plain", cloneOpts{})
-
-	opener := &fakeOpener{}
-	err := openService(r, opener).ShowConfig(t.Context(), "~/projects/plain")
-
-	require.ErrorIs(t, err, ErrNotSetUp)
-	assert.Equal(t, "~/projects/plain has no go-pre-commit config (.github/env/ or .github/.env.base).",
-		uierr.Message(err))
-	assert.Empty(t, opener.shown)
-}
-
-func TestShowConfigRefusesAFolderThatIsntAClone(t *testing.T) {
-	t.Parallel()
-
-	r := newRig(t)
-	opener := &fakeOpener{}
-
-	require.ErrorIs(t, openService(r, opener).ShowConfig(t.Context(), "~/elsewhere"), ErrNoClone)
-	assert.Empty(t, opener.shown)
-}
-
-func TestShowConfigSaysWhenFinderCantShowIt(t *testing.T) {
-	t.Parallel()
-
-	r := newRig(t)
-	r.clone("web", cloneOpts{config: coreEnv})
-
-	err := openService(r, nil).ShowConfig(t.Context(), "~/projects/web")
-
-	require.ErrorIs(t, err, ErrNoFinder)
-	assert.Equal(t, brand.Name+" can't open Finder here.", uierr.Message(err))
-}
-
-func TestShowConfigPassesFindersFailureOn(t *testing.T) {
-	t.Parallel()
-
-	r := newRig(t)
-	r.clone("web", cloneOpts{config: coreEnv})
-
-	err := openService(r, &fakeOpener{err: errFake}).ShowConfig(t.Context(), "~/projects/web")
-
-	require.ErrorIs(t, err, errFake)
-	assert.Contains(t, err.Error(), "show the config")
+			checkOpen(t, r, tt, opener, err)
+		})
+	}
 }

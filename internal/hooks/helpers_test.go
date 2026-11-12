@@ -175,6 +175,21 @@ func newRig(t *testing.T) *rig {
 	return r
 }
 
+// newLightRig builds a rig of the clone root alone, under a home of its own, for what only
+// finds a clone and reads its files: its clones are made with lightClone, and it has no
+// runner, go-pre-commit, or service.
+func newLightRig(t *testing.T) *rig {
+	t.Helper()
+
+	home := testutil.RealTempDir(t)
+	r := &rig{t: t, home: home, root: filepath.Join(home, "projects")}
+	require.NoError(t, os.MkdirAll(r.root, 0o700))
+
+	r.clones = &fakeClones{root: r.root, origins: map[string]repo.Name{}}
+
+	return r
+}
+
 // tool makes the copy of go-pre-commit in use a fake at version that does what run says.
 func (r *rig) tool(version string, run testutil.FakeRun) string {
 	r.t.Helper()
@@ -235,8 +250,28 @@ func buildClone(b *testutil.GitBuild, name string) struct{} {
 func (r *rig) clone(name string, o cloneOpts) string {
 	r.t.Helper()
 
-	dir := filepath.Join(r.root, name)
 	cloneRepos.Copy(r.t, name, r.root)
+
+	return r.setUp(name, o)
+}
+
+// lightClone makes a folder called name under the clone root that reads as a clone
+// without git, as the clone root lists one (a folder holding .git), sets it up as o says,
+// and returns its folder. Only a real clone takes o.hooksPath.
+func (r *rig) lightClone(name string, o cloneOpts) string {
+	r.t.Helper()
+
+	require.NoError(r.t, os.MkdirAll(filepath.Join(r.root, name, ".git"), 0o700))
+
+	return r.setUp(name, o)
+}
+
+// setUp writes o's config and hooks into the clone called name under the clone root,
+// records its origin, and returns its folder.
+func (r *rig) setUp(name string, o cloneOpts) string {
+	r.t.Helper()
+
+	dir := filepath.Join(r.root, name)
 
 	if o.config != "" {
 		writeFile(r.t, dir, ".github/env/00-core.env", o.config, 0o600)
