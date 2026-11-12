@@ -8,7 +8,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"syscall"
 	"time"
 )
 
@@ -155,10 +154,7 @@ func syncDir(dir string) {
 		return
 	}
 
-	if err = d.Sync(); err != nil && !errors.Is(err, syscall.EINVAL) && !errors.Is(err, syscall.ENOTSUP) {
-		_ = err // the rename is done; a sync that fails can't undo it
-	}
-
+	_ = d.Sync() // the rename is done; a sync that fails can't undo it
 	_ = d.Close()
 }
 

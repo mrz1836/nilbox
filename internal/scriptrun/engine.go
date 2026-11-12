@@ -583,9 +583,7 @@ func (e *Engine) takeSlot(ctx context.Context, kind Kind) (func(), error) {
 		}
 	}
 
-	var once sync.Once
-
-	return func() { once.Do(func() { <-e.slots }) }, nil
+	return sync.OnceFunc(func() { <-e.slots }), nil
 }
 
 // startApp records a run and starts it in the app.

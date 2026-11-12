@@ -1,6 +1,7 @@
 package core
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"log/slog"
@@ -216,15 +217,9 @@ func integrationsSection(list integrations.Tools, prefs integrationprefs.Config)
 		lines = append(lines, toolLine(t))
 	}
 
-	scripts := prefs.Switches[integrationprefs.Scripts]
-	if scripts == "" {
-		scripts = integrationprefs.SwitchAuto
-	}
+	scripts := cmp.Or(prefs.Switches[integrationprefs.Scripts], integrationprefs.SwitchAuto)
 
-	runsIn := prefs.RunsIn
-	if runsIn == "" {
-		runsIn = integrationprefs.RunsInApp
-	}
+	runsIn := cmp.Or(prefs.RunsIn, integrationprefs.RunsInApp)
 
 	lines = append(lines,
 		fmt.Sprintf("Scripts: %s · magex targets: %s · repository files: %s", scripts,

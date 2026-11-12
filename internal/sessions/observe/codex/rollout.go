@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"maps"
 	"os"
 	"path/filepath"
 	"slices"
@@ -86,7 +87,7 @@ func (rs *rollouts) threads(starts []time.Time, now time.Time) []Thread {
 	seen := make(map[string]rolloutEntry, len(rs.metas))
 	out := make([]Thread, 0, len(rs.metas))
 
-	for _, dir := range sortedKeys(from) {
+	for _, dir := range slices.Sorted(maps.Keys(from)) {
 		out = append(out, rs.in(dir, from[dir], seen)...)
 	}
 

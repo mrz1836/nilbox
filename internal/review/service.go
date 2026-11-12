@@ -17,6 +17,7 @@
 package review
 
 import (
+	"cmp"
 	"context"
 	"database/sql"
 	"errors"
@@ -528,7 +529,7 @@ func build(pull StoredPull, c *cached, matcher *sensitive.Matcher, pref MethodPr
 // fill adds what the cache holds to r.
 func (r *Review) fill(c *cached, matcher *sensitive.Matcher) {
 	pc := c.context
-	r.Head, r.State, r.Body, r.Stale = c.head, nonEmpty(pc.State, github.StateOpen), pc.Body, !strings.EqualFold(c.head, r.Head)
+	r.Head, r.State, r.Body, r.Stale = c.head, cmp.Or(pc.State, github.StateOpen), pc.Body, !strings.EqualFold(c.head, r.Head)
 	r.Mine = r.Mine || pc.Mine
 	r.TotalFiles, r.FilesComplete = c.total, c.complete
 	r.Checks = nonNil(pc.Checks)
@@ -688,15 +689,6 @@ func methodsOf(pull StoredPull) []MergeMethod {
 func nonNil[T any](s []T) []T {
 	if s == nil {
 		return []T{}
-	}
-
-	return s
-}
-
-// nonEmpty returns s, or fallback when s is "".
-func nonEmpty(s, fallback string) string {
-	if s == "" {
-		return fallback
 	}
 
 	return s

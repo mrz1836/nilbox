@@ -2,6 +2,7 @@ package integrations
 
 import (
 	"maps"
+	"slices"
 	"strings"
 
 	"github.com/mrz1836/nilbox/internal/integrationprefs"
@@ -105,7 +106,7 @@ func (d Definition) RunEnv(base []string, runsIn integrationprefs.RunsIn) []stri
 	if runsIn == integrationprefs.RunsInTerminal {
 		out := []string{}
 
-		for _, k := range sortedKeys(d.QuietEnv) {
+		for _, k := range slices.Sorted(maps.Keys(d.QuietEnv)) {
 			if k != colorVar {
 				out = append(out, k+"="+d.QuietEnv[k])
 			}
@@ -126,7 +127,7 @@ func (d Definition) RunEnv(base []string, runsIn integrationprefs.RunsIn) []stri
 		}
 	}
 
-	for _, k := range sortedKeys(set) {
+	for _, k := range slices.Sorted(maps.Keys(set)) {
 		out = append(out, k+"="+set[k])
 	}
 

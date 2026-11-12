@@ -1,6 +1,7 @@
 package worktrees
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"io/fs"
@@ -160,10 +161,7 @@ func listingOf(listings []cloneListing, clonePath string) *cloneListing {
 // recordRow returns the row of the worktree a record names in its clone's listing: the
 // live worktree at its directory, else the one with its branch checked out, or nil.
 func recordRow(l *cloneListing, r worklog.Record) *Worktree {
-	branch := r.Branch
-	if branch == "" {
-		branch = ownBranchPrefix + r.Worktree
-	}
+	branch := cmp.Or(r.Branch, ownBranchPrefix+r.Worktree)
 
 	for _, match := range []func(*Worktree) bool{
 		func(wt *Worktree) bool { return paths.Same(wt.Path, r.Dir()) },

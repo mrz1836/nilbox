@@ -3,6 +3,7 @@ package integrations
 import (
 	"context"
 	"errors"
+	"maps"
 	"os"
 	"path/filepath"
 	"slices"
@@ -460,23 +461,11 @@ func (d detector) source(c candidate, v Version) Source {
 func (d detector) runEnv() []string {
 	env := slices.Clone(d.env)
 
-	for _, k := range sortedKeys(d.def.QuietEnv) {
+	for _, k := range slices.Sorted(maps.Keys(d.def.QuietEnv)) {
 		env = append(env, k+"="+d.def.QuietEnv[k])
 	}
 
 	return env
-}
-
-// sortedKeys returns m's keys in order, so a tool's environment is the same every run.
-func sortedKeys(m map[string]string) []string {
-	keys := make([]string, 0, len(m))
-	for k := range m {
-		keys = append(keys, k)
-	}
-
-	slices.Sort(keys)
-
-	return keys
 }
 
 // firstLine returns the first line of the first of stderr and stdout that has one, or

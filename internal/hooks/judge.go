@@ -1,6 +1,7 @@
 package hooks
 
 import (
+	"cmp"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -152,10 +153,7 @@ func (s *Service) statusOf(ctx context.Context, hook []byte, tool ToolFacts) (st
 // send status elsewhere, hook as its pre-commit hook, and an empty modular config, which
 // status needs. It returns the repository's folder, which the caller removes.
 func (s *Service) scratchRepo(hook []byte) (string, error) {
-	root := s.scratch
-	if root == "" {
-		root = os.TempDir()
-	}
+	root := cmp.Or(s.scratch, os.TempDir())
 
 	if err := os.MkdirAll(root, 0o700); err != nil {
 		return "", fmt.Errorf("make the scratch folder: %w", err)

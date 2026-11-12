@@ -1,9 +1,11 @@
 package codex
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"log/slog"
+	"maps"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -148,7 +150,7 @@ func (o *Observer) Observe(ctx context.Context, now time.Time, live []sessions.R
 
 	var out []sessions.Observation
 
-	for _, codexHome := range sortedKeys(groups) {
+	for _, codexHome := range slices.Sorted(maps.Keys(groups)) {
 		h := o.home(codexHome)
 		recs := groups[codexHome]
 
@@ -309,10 +311,7 @@ func threadIDs(recs []sessions.Record, linked map[string]string) []string {
 	var ids []string
 
 	for _, r := range recs {
-		id := r.AgentSessionID
-		if id == "" {
-			id = linked[r.ID]
-		}
+		id := cmp.Or(r.AgentSessionID, linked[r.ID])
 
 		if id != "" {
 			ids = append(ids, id)
@@ -452,10 +451,7 @@ func (o *Observer) observe(
 ) sessions.Observation {
 	obs := sessions.Observation{ID: r.ID, AgentSessionID: linkedNow}
 
-	threadID := r.AgentSessionID
-	if threadID == "" {
-		threadID = linkedNow
-	}
+	threadID := cmp.Or(r.AgentSessionID, linkedNow)
 
 	t := h.threads[threadID]
 	if t != nil {
@@ -512,10 +508,7 @@ func (t *thread) state() (sessions.State, string) {
 		return state, detail
 	}
 
-	detail := t.turnDetail
-	if detail == "" {
-		detail = OutsideServer
-	}
+	detail := cmp.Or(t.turnDetail, OutsideServer)
 
 	if t.turnState == "" {
 		return sessions.StateUnknown, detail
@@ -744,16 +737,4 @@ func idsOf(recs []sessions.Record) string {
 	}
 
 	return out.String()
-}
-
-// sortedKeys returns a map's keys in order.
-func sortedKeys[V any](m map[string]V) []string {
-	keys := make([]string, 0, len(m))
-	for k := range m {
-		keys = append(keys, k)
-	}
-
-	slices.Sort(keys)
-
-	return keys
 }

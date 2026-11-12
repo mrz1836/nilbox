@@ -1,6 +1,7 @@
 package hooks
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -121,10 +122,7 @@ func (r Rerunner) Rerun(ctx context.Context, run scriptrun.Record) (scriptrun.Sp
 		c.name = run.Repo
 	}
 
-	where := run.RunsIn
-	if where == "" {
-		where = scriptrun.RunsInApp
-	}
+	where := cmp.Or(run.RunsIn, scriptrun.RunsInApp)
 
 	switch run.Kind {
 	case scriptrun.KindHooks:

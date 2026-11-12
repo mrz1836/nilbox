@@ -1,6 +1,7 @@
 package review
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -166,10 +167,7 @@ func (s *Service) prepare(ctx context.Context, req ActRequest, plan Plan, c *cac
 		return nil, err
 	}
 
-	method := req.Method
-	if method == "" {
-		method = plan.Method
-	}
+	method := cmp.Or(req.Method, plan.Method)
 
 	if req.Action.merges() && !containsMethod(plan.Methods, method) {
 		return nil, uierr.New("The repository doesn't allow that merge method.",

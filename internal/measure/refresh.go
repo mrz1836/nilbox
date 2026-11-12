@@ -1,6 +1,7 @@
 package measure
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -155,10 +156,7 @@ type RefreshOptions struct {
 // database that is deleted afterwards, so the user's own data is never touched. Every
 // request is a read.
 func RunRefresh(ctx context.Context, opts RefreshOptions) (RefreshReport, error) {
-	runs := opts.Runs
-	if runs == 0 {
-		runs = RefreshRuns
-	}
+	runs := cmp.Or(opts.Runs, RefreshRuns)
 
 	dir, err := os.MkdirTemp(opts.TempDir, brand.Slug+"-measure-")
 	if err != nil {

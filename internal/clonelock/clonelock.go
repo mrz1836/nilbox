@@ -10,6 +10,7 @@
 package clonelock
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"sync"
@@ -62,10 +63,7 @@ type Holder struct {
 // Sentence says what the holder is doing, for the user: "A release is using acme-org/sdk
 // right now."
 func (h Holder) Sentence() string {
-	clone := h.Repo
-	if clone == "" {
-		clone = "this clone"
-	}
+	clone := cmp.Or(h.Repo, "this clone")
 
 	return h.doer() + " is using " + clone + " right now."
 }
@@ -213,15 +211,11 @@ func (s *Set) take(key string, h Holder) func() {
 	cur := &hold{holder: h, done: make(chan struct{})}
 	s.held[key] = cur
 
-	var once sync.Once
+	return sync.OnceFunc(func() {
+		s.mu.Lock()
+		delete(s.held, key) // nothing else replaces a hold while it is held
+		s.mu.Unlock()
 
-	return func() {
-		once.Do(func() {
-			s.mu.Lock()
-			delete(s.held, key) // nothing else replaces a hold while it is held
-			s.mu.Unlock()
-
-			close(cur.done)
-		})
-	}
+		close(cur.done)
+	})
 }

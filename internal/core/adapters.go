@@ -1,6 +1,7 @@
 package core
 
 import (
+	"cmp"
 	"context"
 	"database/sql"
 	"errors"
@@ -613,10 +614,7 @@ type finderReveal struct {
 // Reveal shows path in Finder.
 func (f finderReveal) Reveal(ctx context.Context, path string) error {
 	if _, stderr, err := f.runner.Run(ctx, "/usr/bin/open", "-R", path); err != nil {
-		reason := execpath.FirstLine(stderr)
-		if reason == "" {
-			reason = err.Error()
-		}
+		reason := cmp.Or(execpath.FirstLine(stderr), err.Error())
 
 		return uierr.New("Finder couldn't show the file: "+reason, err)
 	}

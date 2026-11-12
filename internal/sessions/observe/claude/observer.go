@@ -3,6 +3,7 @@ package claude
 import (
 	"context"
 	"log/slog"
+	"maps"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -141,7 +142,7 @@ func (o *Observer) Observe(ctx context.Context, now time.Time, live []sessions.R
 	scan := &processScan{lister: o.cfg.Procs}
 	out := make([]sessions.Observation, 0, len(live))
 
-	for _, configDir := range sortedKeys(groups) {
+	for _, configDir := range slices.Sorted(maps.Keys(groups)) {
 		out = append(out, o.observeDir(ctx, configDir, groups[configDir], now, scan)...)
 	}
 
@@ -617,16 +618,4 @@ func idsOf(recs []sessions.Record) string {
 	slices.Sort(ids)
 
 	return strings.Join(ids, ",")
-}
-
-// sortedKeys returns a map's keys in order.
-func sortedKeys[V any](m map[string]V) []string {
-	keys := make([]string, 0, len(m))
-	for k := range m {
-		keys = append(keys, k)
-	}
-
-	slices.Sort(keys)
-
-	return keys
 }

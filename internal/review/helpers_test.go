@@ -59,7 +59,6 @@ func TestSmallWords(t *testing.T) {
 	assert.Equal(t, MethodRebase, PrefRebase.method())
 	assert.Empty(t, PrefRepo.method())
 	assert.Empty(t, MethodPref("fast").method())
-	assert.Equal(t, "x", nonEmpty("", "x"))
 	assert.Equal(t, 3, value(new(3)))
 	assert.Zero(t, value[int](nil))
 }

@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/mrz1836/nilbox/internal/clock"
 	"github.com/mrz1836/nilbox/internal/github"
 	"github.com/mrz1836/nilbox/internal/logging"
 )
@@ -191,15 +192,10 @@ func (s *Saver) Run(ctx context.Context) {
 		case <-s.tracker.dirty:
 		}
 
-		timer := time.NewTimer(SaveDelay)
-
-		select {
-		case <-ctx.Done():
-			timer.Stop()
+		if clock.Sleep(ctx, SaveDelay) != nil {
 			s.final(ctx)
 
 			return
-		case <-timer.C:
 		}
 
 		s.save(ctx)

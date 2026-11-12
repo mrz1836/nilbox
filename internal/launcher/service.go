@@ -1,6 +1,7 @@
 package launcher
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -542,10 +543,7 @@ func (p planned) onPRHead() bool {
 		return true
 	}
 
-	head := p.checkedHead()
-	if head == "" {
-		head = strings.ToLower(p.row.HeadOID)
-	}
+	head := cmp.Or(p.checkedHead(), strings.ToLower(p.row.HeadOID))
 
 	return head != "" && strings.EqualFold(p.worktree.Head, head)
 }

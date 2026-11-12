@@ -1,6 +1,7 @@
 package notify
 
 import (
+	"cmp"
 	"context"
 	"slices"
 	"strconv"
@@ -83,10 +84,7 @@ func SessionBanner(kind notifyprefs.Kind, s sessions.Session) Banner {
 		title = name + " finished its turn"
 	}
 
-	body := strings.TrimSpace(s.LastMessage)
-	if body == "" {
-		body = s.Title
-	}
+	body := cmp.Or(strings.TrimSpace(s.LastMessage), s.Title)
 
 	repoName := s.Repo
 	if i := strings.LastIndexByte(repoName, '/'); i >= 0 {
