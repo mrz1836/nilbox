@@ -711,7 +711,7 @@ func allowedLookup(args []string) bool {
 	case len(args) == 3 && joinArgs(args[:2]) == joinArgs(symbolicRefArgs("")[:2]):
 		return isRemoteHead(args[2])
 	case len(args) == 5 && joinArgs(args) == joinArgs(lsRemoteArgs(args[3])):
-		return remotePattern.MatchString(args[3])
+		return gitread.ValidRemoteName(args[3])
 	default:
 		return false
 	}
@@ -726,7 +726,7 @@ func isRemoteHead(ref string) bool {
 
 	remote, ok := strings.CutSuffix(rest, "/HEAD")
 
-	return ok && remotePattern.MatchString(remote)
+	return ok && gitread.ValidRemoteName(remote)
 }
 
 // isTrackingRef reports refs/remotes/<remote>/<branch> with a plain remote and branch.
@@ -738,7 +738,7 @@ func isTrackingRef(ref string) bool {
 
 	remote, branch, ok := strings.Cut(rest, "/")
 
-	return ok && remotePattern.MatchString(remote) && gitread.ValidBranch(branch)
+	return ok && gitread.ValidRemoteName(remote) && gitread.ValidBranch(branch)
 }
 
 // allowedRemove reports the arguments after `worktree remove` that may run: a path, with

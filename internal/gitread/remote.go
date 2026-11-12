@@ -184,8 +184,8 @@ func (g *Git) remoteGuard(
 	return g.guardRemotes(ctx, dir, []string{remoteName}, settings, env, userAllow)
 }
 
-// guardRemotes is remoteGuard for each of remotes, each of which isRemoteName passed, over
-// settings, the ones remoteKeysPattern matches, read once: each remote's own
+// guardRemotes is remoteGuard for each of remotes, each of which ValidRemoteName passed,
+// over settings, the ones remoteKeysPattern matches, read once: each remote's own
 // remote.<remote>.vcs and remote.<remote>.proxy, and its URL, are weighed in turn.
 func (g *Git) guardRemotes(
 	ctx context.Context, dir string, remotes []string, settings []scopedSetting, env []string, userAllow *string,
@@ -232,7 +232,7 @@ func (g *Git) weigh(ctx context.Context, dir, remote string, settings []scopedSe
 // promisors returns the remotes a partial clone fetches a missing object from: the one
 // extensions.partialClone names, then every remote whose remote.<name>.promisor is true
 // (promisorFlags), as the clone's config or the user's says, each once, in that order. A
-// name isRemoteName refuses is refused.
+// name ValidRemoteName refuses is refused.
 func promisors(settings []scopedSetting) ([]string, error) {
 	var out []string
 
@@ -247,7 +247,7 @@ func promisors(settings []scopedSetting) ([]string, error) {
 	}
 
 	for _, name := range out {
-		if !isRemoteName(name) {
+		if !ValidRemoteName(name) {
 			return nil, fmt.Errorf("%w: a promisor remote named %q", ErrGitCommandNotAllowed, name)
 		}
 	}

@@ -141,7 +141,7 @@ func (g *Git) RemoteSetup(ctx context.Context, dir string) (Setup, error) {
 // origin's place. A name that isn't one is refused (ErrGitCommandNotAllowed). Its Checkout
 // serves the same clone's checkout.
 func (g *Git) RemoteSetupFor(ctx context.Context, dir, remote string) (Setup, error) {
-	if !isRemoteName(remote) {
+	if !ValidRemoteName(remote) {
 		return Setup{}, fmt.Errorf("%w: a remote named %q", ErrGitCommandNotAllowed, remote)
 	}
 

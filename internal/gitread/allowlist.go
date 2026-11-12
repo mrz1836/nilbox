@@ -243,7 +243,7 @@ func validators() map[slot]func(string) bool {
 		slotPeeledTagRef:   isPeeledTagRef,
 		slotTagCommit:      isTagCommit,
 		slotCommitRange:    isCommitRange,
-		slotRemoteName:     isRemoteName,
+		slotRemoteName:     ValidRemoteName,
 	}
 }
 
@@ -361,9 +361,10 @@ func isCommitRange(arg string) bool {
 // config key: a letter or a digit first, then letters, digits, '.', '_', or '-'.
 var remoteNamePattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
 
-// isRemoteName reports a remote's name gitread may pass to git, which can't be read as an
-// option, a path, or a URL: remoteNamePattern, with no "..", and at most maxNameLen bytes.
-func isRemoteName(name string) bool {
+// ValidRemoteName reports a remote's name the app may pass to git, which can't be read as
+// an option, a path, or a URL: remoteNamePattern, with no "..", and at most maxNameLen
+// bytes. internal/worktrees holds the remotes it fetches from to it too.
+func ValidRemoteName(name string) bool {
 	return len(name) <= maxNameLen && remoteNamePattern.MatchString(name) && !strings.Contains(name, "..")
 }
 

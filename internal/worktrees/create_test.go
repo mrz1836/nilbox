@@ -2,6 +2,7 @@ package worktrees
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -394,6 +395,8 @@ func TestEnsureChecksItsRequest(t *testing.T) {
 		"no number":            func(r *EnsureRequest) { r.Number = 0 },
 		"no repository":        func(r *EnsureRequest) { r.Owner = "" },
 		"an option":            func(r *EnsureRequest) { r.Remote = "--upload-pack=x" },
+		"a remote with ..":     func(r *EnsureRequest) { r.Remote = "up..stream" },
+		"a remote too long":    func(r *EnsureRequest) { r.Remote = strings.Repeat("a", 256) },
 		"a head no commit has": func(r *EnsureRequest) { r.Head = "main" },
 		"an issue's head": func(r *EnsureRequest) {
 			r.Kind, r.Head = item.KindIssue, "fc1c3975011e66491785ace891c893e4fc716587"
@@ -408,6 +411,30 @@ func TestEnsureChecksItsRequest(t *testing.T) {
 		_, err = m.Plan(t.Context(), req)
 		require.ErrorIs(t, err, ErrInvalidRequest, name)
 	}
+}
+
+// TestEnsureRefusesARemoteGitreadWouldRefuse holds a request's remote to gitread's rule
+// for a remote's name, so a name gitread's guards would refuse later, one with ".." or
+// longer than 255 bytes, is refused before anything runs, in the request's own words.
+func TestEnsureRefusesARemoteGitreadWouldRefuse(t *testing.T) {
+	t.Parallel()
+
+	m, _ := newEnv(t).maker(&fakeLaunches{})
+	ok := EnsureRequest{Clone: "/srv/clone", Owner: "acme-org", Name: "example-repo", Kind: item.KindPR, Number: 1}
+
+	for _, remote := range []string{"up..stream", "..", strings.Repeat("a", 256)} {
+		req := ok
+		req.Remote = remote
+
+		_, err := m.Ensure(t.Context(), req)
+		require.EqualError(t, err, fmt.Sprintf("%v: the remote %q", ErrInvalidRequest, remote))
+	}
+
+	req := ok
+	req.Remote = strings.Repeat("a", 255)
+
+	_, err := m.Plan(t.Context(), req)
+	require.NotErrorIs(t, err, ErrInvalidRequest, "a name of 255 bytes is a remote's name")
 }
 
 func TestListReconcilesRecordsWithGit(t *testing.T) {
@@ -852,6 +879,11 @@ func TestAllowedCreateCommands(t *testing.T) {
 		"ls-remote --upload-pack=git-upload-pack --symref origin HEAD":                         true,
 		"ls-remote --symref origin HEAD":                                                       false,
 		"ls-remote --symref --upload-pack=x HEAD":                                              false,
+		"ls-remote --upload-pack=git-upload-pack --symref up..stream HEAD":                     false,
+		"rev-parse --verify --quiet refs/remotes/up..stream/main":                              false,
+		"symbolic-ref --quiet refs/remotes/up..stream/HEAD":                                    false,
+		"fetch --no-tags --refmap= --upload-pack=git-upload-pack up..stream " +
+			"+refs/heads/main:refs/remotes/up..stream/main": false,
 	} {
 		assert.Equal(t, want, allowed(strings.Fields(args)), args)
 	}

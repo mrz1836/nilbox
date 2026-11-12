@@ -7,7 +7,6 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
-	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -76,9 +75,6 @@ var (
 	// not the commit whose files the launch checked.
 	ErrHeadMoved = errors.New("the pull request's head moved after its files were checked")
 )
-
-// remotePattern is what a remote's name must look like to be passed to git.
-var remotePattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
 
 // EnsureRequest asks for an item's worktree in a clone.
 type EnsureRequest struct {
@@ -250,7 +246,7 @@ func (req EnsureRequest) check() error {
 		return fmt.Errorf("%w: no %s #%d", ErrInvalidRequest, req.Kind, req.Number)
 	case req.Owner == "" || req.Name == "":
 		return fmt.Errorf("%w: no repository", ErrInvalidRequest)
-	case req.remote() != "" && !remotePattern.MatchString(req.remote()):
+	case req.remote() != "" && !gitread.ValidRemoteName(req.remote()):
 		return fmt.Errorf("%w: the remote %q", ErrInvalidRequest, req.Remote)
 	case !req.validHead():
 		return fmt.Errorf("%w: the head %q", ErrInvalidRequest, req.Head)
@@ -761,7 +757,7 @@ func trackingRefspec(remote, branch string) string {
 func allowedCreate(args []string) bool {
 	switch {
 	case hasWords(args, 6, "fetch", "--no-tags", "--refmap=", uploadPack):
-		return remotePattern.MatchString(args[4]) && allowedFetchRefspec(args[4], args[5])
+		return gitread.ValidRemoteName(args[4]) && allowedFetchRefspec(args[4], args[5])
 	case hasWords(args, 4, "worktree", "add"):
 		return filepath.IsAbs(args[2]) && isOwnBranchRef(headsPrefix+args[3])
 	case hasWords(args, 7, "worktree", "add", "--no-track", "-b"):
