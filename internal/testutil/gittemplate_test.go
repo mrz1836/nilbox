@@ -110,18 +110,7 @@ func TestGitTemplatesBuildEachKeyOnce(t *testing.T) {
 func copyFails[V any](t *testing.T, tpl *testutil.GitTemplate[V], dir string) bool {
 	t.Helper()
 
-	tb := &failureTB{TB: t}
-	done := make(chan struct{})
-
-	go func() {
-		defer close(done)
-
-		tpl.Copy(tb, dir)
-	}()
-
-	<-done
-
-	return tb.Failed()
+	return fails(t, func(tb testing.TB) { tpl.Copy(tb, dir) })
 }
 
 func TestGitTemplateFailsEveryCopyOnceAStepFailed(t *testing.T) {

@@ -67,11 +67,9 @@ func (f *failureTB) fail() {
 	f.failed = true
 }
 
-func TestDBAtFailsWhenTheDatabaseWasSetAside(t *testing.T) {
-	t.Parallel()
-
-	path := filepath.Join(t.TempDir(), "app.db")
-	testutil.WriteFile(t, path, "this is not a database file, just text long enough to have a header")
+// fails reports whether fn fails the test it is handed, run on a goroutine of its own.
+func fails(t *testing.T, fn func(tb testing.TB)) bool {
+	t.Helper()
 
 	tb := &failureTB{TB: t}
 	done := make(chan struct{})
@@ -79,12 +77,22 @@ func TestDBAtFailsWhenTheDatabaseWasSetAside(t *testing.T) {
 	go func() {
 		defer close(done)
 
-		testutil.DBAt(tb, path)
+		fn(tb)
 	}()
 
 	<-done
 
-	assert.True(t, tb.Failed(), "a test never runs on a fresh database it did not ask for")
+	return tb.Failed()
+}
+
+func TestDBAtFailsWhenTheDatabaseWasSetAside(t *testing.T) {
+	t.Parallel()
+
+	path := filepath.Join(t.TempDir(), "app.db")
+	testutil.WriteFile(t, path, "this is not a database file, just text long enough to have a header")
+
+	assert.True(t, fails(t, func(tb testing.TB) { testutil.DBAt(tb, path) }),
+		"a test never runs on a fresh database it did not ask for")
 
 	aside, err := filepath.Glob(path + ".broken-*")
 	require.NoError(t, err)
@@ -126,19 +134,10 @@ func TestExecRunsAStatement(t *testing.T) {
 func TestExecFailsTheTestWhenTheStatementFails(t *testing.T) {
 	t.Parallel()
 
-	tb := &failureTB{TB: t}
 	db := testutil.ClosedDB(t)
-	done := make(chan struct{})
 
-	go func() {
-		defer close(done)
-
-		testutil.Exec(tb, db, "DELETE FROM prefs")
-	}()
-
-	<-done
-
-	assert.True(t, tb.Failed(), "a statement that fails fails the test")
+	assert.True(t, fails(t, func(tb testing.TB) { testutil.Exec(tb, db, "DELETE FROM prefs") }),
+		"a statement that fails fails the test")
 }
 
 func TestRequireGitReturnsAnExecutable(t *testing.T) {
