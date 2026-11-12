@@ -203,9 +203,9 @@ func (s *Service) Resume(ctx context.Context, req ResumeRequest) (LaunchResult, 
 		return LaunchResult{}, err
 	}
 
-	inWorktree := prev.Worktree != ""
 	launch := LaunchRequest{
-		ItemID: prev.ItemID, Agent: prev.Agent, Profile: prev.Profile, Worktree: &inWorktree, Alongside: req.Alongside,
+		ItemID: prev.ItemID, Agent: prev.Agent, Profile: prev.Profile, Worktree: new(prev.Worktree != ""),
+		Alongside: req.Alongside,
 	}
 	ref := sessionRef{id: s.newID(), resume: prev.AgentSessionID}
 

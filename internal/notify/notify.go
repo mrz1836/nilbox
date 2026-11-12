@@ -246,8 +246,7 @@ func (s *Store) Log(ctx context.Context) (Log, error) {
 
 // MarkAllRead marks every unread notification read at now.
 func (s *Store) MarkAllRead(ctx context.Context, now time.Time) error {
-	readAt := now.UTC()
-	if err := s.q.MarkAllRead(ctx, &readAt); err != nil {
+	if err := s.q.MarkAllRead(ctx, new(now.UTC())); err != nil {
 		return fmt.Errorf("mark the notifications read: %w", err)
 	}
 

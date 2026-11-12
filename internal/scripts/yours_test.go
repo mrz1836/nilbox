@@ -352,10 +352,9 @@ func TestTheYoursSectionByScope(t *testing.T) {
 	assert.Equal(t, []string{fixAllName, testName}, r.yours(notes), "a Go folder that isn't on GitHub")
 
 	e := r.list(sdk).Sections[0].Entries[0]
-	mine := all
 	assert.Equal(t, Entry{
 		Ref: yoursRef(all.ID), Source: SourceYours, Name: fixAllName, Command: "magex format:fix && magex lint",
-		Icon: "play", Runnable: true, Trust: TrustNone, Inputs: []Input{}, Mine: &mine,
+		Icon: "play", Runnable: true, Trust: TrustNone, Inputs: []Input{}, Mine: new(all),
 	}, e, "the user's own script needs no trust")
 
 	r.settings.scripts(integrationprefs.SwitchOn)

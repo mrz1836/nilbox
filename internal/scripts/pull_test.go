@@ -514,8 +514,7 @@ func TestAPullFollowedAgainAfterARestart(t *testing.T) {
 		Status: scriptrun.StatusSucceeded, Summary: "Updated main from " + g.first[:7] + " to " + two[:7] + ", 1 new commit.",
 	}, got, "the branch moved on from where the pull found it")
 
-	ok := 0
-	got = v.Finish(t.Context(), scriptrun.Ending{ExitCode: &ok}, scriptrun.Outcome{Status: scriptrun.StatusSucceeded})
+	got = v.Finish(t.Context(), scriptrun.Ending{ExitCode: new(0)}, scriptrun.Outcome{Status: scriptrun.StatusSucceeded})
 	assert.Equal(t, "Updated main from "+g.first[:7]+" to "+two[:7]+", 1 new commit.", got.Summary,
 		"an end that was seen, as its Spec's Finish words it")
 

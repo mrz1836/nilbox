@@ -560,8 +560,7 @@ func (s *Service) checkClones(
 		wg.Go(func() {
 			defer func() { <-slots }()
 
-			state := s.checker.CloneState(ctx, list[i].dir, status.DefaultBranch, status.HeadOID, status.Tags)
-			list[i].Clone = &state
+			list[i].Clone = new(s.checker.CloneState(ctx, list[i].dir, status.DefaultBranch, status.HeadOID, status.Tags))
 
 			progress.Add(1)
 		})

@@ -462,9 +462,7 @@ func (s *Service) CheckFiles(ctx context.Context, itemID int64) (*sensitive.Chec
 		}
 	}
 
-	evaluated := scope.matcher.Evaluate(stored.result(), stored.head, row.URL)
-
-	return &evaluated, nil
+	return new(scope.matcher.Evaluate(stored.result(), stored.head, row.URL)), nil
 }
 
 // checkItemFiles reads one pull request's head and, when it moved since the stored check

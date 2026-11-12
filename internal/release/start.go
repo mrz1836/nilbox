@@ -227,9 +227,7 @@ func (s *Service) sheetGitHub(dir string) *RepoFacts {
 		return nil
 	}
 
-	github := kept.facts.Repo
-
-	return &github
+	return new(kept.facts.Repo)
 }
 
 // recheck is a release's Before: under the clone's lock, it gathers the facts and decides

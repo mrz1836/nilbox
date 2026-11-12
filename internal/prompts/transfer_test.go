@@ -125,10 +125,9 @@ func mine(nickname string) BundlePrompt {
 func TestBundleRoundTrips(t *testing.T) {
 	t.Parallel()
 
-	on := true
 	b := bundleOf(BundlePrompt{
 		Name: "Security <pass> & more", Nickname: "Security", AppliesTo: AppliesToAny, Body: "Check {{.URL}} for <script>",
-		Models: map[agent.ID]string{agent.Claude: "opus", agent.Codex: "gpt-6-sol"}, Effort: "high", PlanMode: &on,
+		Models: map[agent.ID]string{agent.Claude: "opus", agent.Codex: "gpt-6-sol"}, Effort: "high", PlanMode: new(true),
 		ExtraArgs: map[agent.ID][]string{agent.Claude: {"--verbose"}, agent.Codex: {"--search"}}, StarterKey: "",
 		CreatedAt: "2026-11-07T09:00:00Z", UpdatedAt: "2026-11-07T09:30:00Z",
 	})

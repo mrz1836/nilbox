@@ -293,9 +293,7 @@ func autoMergeAt(a github.AutoMerge) *time.Time {
 		return nil
 	}
 
-	at := a.EnabledAt.UTC()
-
-	return &at
+	return new(a.EnabledAt.UTC())
 }
 
 // saveRates records one snapshot per resource and prunes snapshots past the retention

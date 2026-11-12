@@ -100,15 +100,12 @@ func (s runStore) finish(ctx context.Context, f finished) error {
 	var exitCode *int64
 
 	if f.exitCode != nil {
-		code := int64(*f.exitCode)
-		exitCode = &code
+		exitCode = new(int64(*f.exitCode))
 	}
-
-	at := f.at.UTC()
 
 	n, err := s.q.FinishRun(ctx, queries.FinishRunParams{
 		ID: f.id, Status: string(f.status), ExitCode: exitCode, Summary: f.summary, Result: result,
-		LogBytes: f.logBytes, FinishedAt: &at,
+		LogBytes: f.logBytes, FinishedAt: new(f.at.UTC()),
 	})
 	if err != nil {
 		return fmt.Errorf("record how the run ended: %w", err)
@@ -294,8 +291,7 @@ func recordOf(row queries.ScriptRun) Record {
 	}
 
 	if row.ExitCode != nil {
-		code := int(*row.ExitCode)
-		rec.ExitCode = &code
+		rec.ExitCode = new(int(*row.ExitCode))
 	}
 
 	return rec
