@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 
@@ -187,8 +188,8 @@ var errBatchFailed = errors.New("fake: the batch failed")
 
 // TestFanOut holds fanOut to its contract: every request is sent, at most limit at once,
 // and the answers merge in the requests' order, a later request's answer under a key
-// winning, however the sends finish; the first failure fails the call; and no requests
-// merge to an empty answer, never nil.
+// winning (however the sends finish, as the next test shows); the first failure fails the
+// call; and no requests merge to an empty answer, never nil.
 func TestFanOut(t *testing.T) {
 	t.Parallel()
 
@@ -237,4 +238,49 @@ func TestFanOut(t *testing.T) {
 		assert.NotNil(t, got)
 		assert.Empty(t, got)
 	})
+}
+
+// TestFanOutMergesInTheRequestsOrderHoweverTheSendsFinish sends every request at once and
+// makes each finish only after the one after it, so they finish last first: the answers
+// still merge in the requests' order, every key there and the last request's answer under
+// a shared key winning, though it finished first.
+func TestFanOutMergesInTheRequestsOrderHoweverTheSendsFinish(t *testing.T) {
+	t.Parallel()
+
+	reqs := []int{0, 1, 2, 3, 4, 5}
+
+	finished := make([]chan struct{}, len(reqs))
+	for i := range finished {
+		finished[i] = make(chan struct{})
+	}
+
+	var (
+		mu    sync.Mutex
+		order []int
+	)
+
+	got, err := fanOut(t.Context(), reqs, len(reqs), func(ctx context.Context, req int) (map[string]int, error) {
+		defer func() {
+			mu.Lock()
+
+			order = append(order, req)
+
+			mu.Unlock()
+			close(finished[req])
+		}()
+
+		if req+1 < len(reqs) {
+			select {
+			case <-finished[req+1]:
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			}
+		}
+
+		return map[string]int{"last": req, strconv.Itoa(req): req}, nil
+	})
+	require.NoError(t, err)
+	assert.Equal(t, []int{5, 4, 3, 2, 1, 0}, order, "the sends finished last first")
+	assert.Equal(t, map[string]int{"last": 5, "0": 0, "1": 1, "2": 2, "3": 3, "4": 4, "5": 5}, got,
+		"every key is there, and the last request's answer under a shared key wins, though it finished first")
 }
