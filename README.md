@@ -935,10 +935,14 @@ Measured on an Apple Silicon Mac (M1 Max) running macOS 15, against the producti
 
 | Metric                         | Target  | Measured |
 |--------------------------------|--------:|---------:|
-| Cold start to first paint      |   < 1 s |   0.54 s |
-| Inbox refresh                  |   < 3 s |   2.30 s |
+| Cold start to first paint      |   < 1 s |   0.58 s |
+| Inbox refresh                  |   < 3 s |   2.44 s |
+| Launch to prompt loaded        |   < 3 s |   6.86 s |
 | App binary size                | < 30 MB |  21.7 MB |
 | API budget at 5-minute cadence |   < 2 % |   1.20 % |
+
+The launch is over its target; [what its time includes](docs/performance.md#launch-to-prompt-loaded)
+is an upper bound, and how it splits between its steps isn't measured yet.
 
 Re-measure everything (size, startup, live read-only refreshes, and a real launch in iTerm2):
 
