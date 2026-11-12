@@ -857,21 +857,6 @@ func TestAllowedCreateCommands(t *testing.T) {
 	}
 }
 
-func TestValidBranch(t *testing.T) {
-	t.Parallel()
-
-	for _, ok := range []string{mainBranch, "release/2026", "dev-1.x", "trunk_2"} {
-		assert.True(t, validBranch(ok), ok)
-	}
-
-	for _, bad := range []string{
-		"", "-x", "a..b", "a b", "a~1", "a^", "a:b", "a?", "a*", "a[", `a\b`, "a/", "a.", "a//b", ".hidden",
-		"a/.b", "x.lock", "a@{1}", "@", "tab\there", strings.Repeat("a", 256),
-	} {
-		assert.False(t, validBranch(bad), bad)
-	}
-}
-
 func TestParseSymref(t *testing.T) {
 	t.Parallel()
 

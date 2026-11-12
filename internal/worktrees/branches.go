@@ -13,6 +13,7 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/mrz1836/nilbox/internal/branchrules"
+	"github.com/mrz1836/nilbox/internal/gitread"
 	"github.com/mrz1836/nilbox/internal/item"
 	"github.com/mrz1836/nilbox/internal/localrepos"
 	"github.com/mrz1836/nilbox/internal/paths"
@@ -231,7 +232,7 @@ func (s *Service) deleteChosen(ctx context.Context, g git, repoPath string, wt W
 // deleteBranchAt deletes a branch while it still points at head, refusing while any
 // worktree has it checked out.
 func (s *Service) deleteBranchAt(ctx context.Context, g git, repoPath, branch, head string) error {
-	if !isCommitID(head) {
+	if !gitread.IsCommitID(head) {
 		return fmt.Errorf("%w: no commit to compare the branch with", ErrChanged)
 	}
 
@@ -348,7 +349,7 @@ func (s *Service) branchCandidates(ctx context.Context, g git, clone localrepos.
 	defaults := g.remoteHeads(ctx, clone.Path)
 
 	for _, lb := range locals {
-		if !slices.Contains(defaults, lb.name) && !branchrules.Matches(lb.name, rules.Protected) && validBranch(lb.name) {
+		if !slices.Contains(defaults, lb.name) && !branchrules.Matches(lb.name, rules.Protected) && gitread.ValidBranch(lb.name) {
 			out.candidates = append(out.candidates, lb)
 		}
 	}
@@ -509,7 +510,7 @@ func (s *Service) inMerged(ctx context.Context, g git, repoPath, head string, pr
 		return false
 	}
 
-	return pr.HeadOID == head || (isCommitID(pr.HeadOID) && g.isAncestor(ctx, repoPath, head, pr.HeadOID))
+	return pr.HeadOID == head || (gitread.IsCommitID(pr.HeadOID) && g.isAncestor(ctx, repoPath, head, pr.HeadOID))
 }
 
 // mergedFor returns the merged pull requests a branch of the clone was the head of, with
@@ -672,7 +673,7 @@ func (s *Service) deletePicked(ctx context.Context, g git, clone string, p Branc
 	rules branchrules.Rules,
 ) error {
 	switch {
-	case !validBranch(p.Name) || !isCommitID(p.Head):
+	case !gitread.ValidBranch(p.Name) || !gitread.IsCommitID(p.Head):
 		return fmt.Errorf("%w: %q at %q", ErrInvalidRequest, p.Name, p.Head)
 	case branchrules.Matches(p.Name, rules.Protected):
 		return fmt.Errorf("%w: it is protected in Settings", ErrBranchProtected)

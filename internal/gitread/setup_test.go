@@ -549,12 +549,32 @@ func TestSetupHandsCredentialsOverOnlyAsGitWould(t *testing.T) {
 func TestValidBranch(t *testing.T) {
 	t.Parallel()
 
-	for _, name := range []string{"main", "feature/x", "release-1.4"} {
+	for _, name := range []string{
+		"main", "feature/x", "release-1.4", "release/2026", "dev-1.x", "trunk_2", strings.Repeat("a", 255),
+	} {
 		assert.True(t, ValidBranch(name), name)
 	}
 
-	for _, name := range []string{"", "-x", "a..b", "a:b", "a*", "a^", "a b", "x.lock", "a~1", "a?", "a[b", `a\b`} {
+	for _, name := range []string{
+		"", "-x", "a..b", "a:b", "a*", "a^", "a b", "x.lock", "a~1", "a?", "a[b", `a\b`, "a[", "a/", "a.", "a//b",
+		".hidden", "a/.b", "a@{1}", "@", "tab\there", "a\x7fb", strings.Repeat("a", 256),
+	} {
 		assert.False(t, ValidBranch(name), name)
+	}
+}
+
+func TestIsCommitID(t *testing.T) {
+	t.Parallel()
+
+	for _, oid := range []string{strings.Repeat("0", 39) + "1", strings.Repeat("a", 64), headSHA} {
+		assert.True(t, IsCommitID(oid), oid)
+	}
+
+	for _, oid := range []string{
+		"", strings.Repeat("0", 40), strings.Repeat("0", 64), strings.Repeat("a", 39), strings.Repeat("a", 41),
+		strings.Repeat("A", 40), strings.Repeat("g", 40), "-" + strings.Repeat("a", 39), strings.Repeat("a", 40) + "\n",
+	} {
+		assert.False(t, IsCommitID(oid), oid)
 	}
 }
 

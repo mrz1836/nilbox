@@ -1166,7 +1166,7 @@ func (s *Service) commitTimes(ctx context.Context, g git, dir string, entries []
 	seen := make(map[string]bool, len(entries))
 
 	for _, e := range entries {
-		if !e.Prunable && isCommitID(e.HEAD) && !seen[e.HEAD] {
+		if !e.Prunable && gitread.IsCommitID(e.HEAD) && !seen[e.HEAD] {
 			seen[e.HEAD] = true
 			oids = append(oids, e.HEAD)
 		}
