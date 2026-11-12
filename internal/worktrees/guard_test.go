@@ -31,8 +31,8 @@ type guardRig struct {
 	e *env
 	f remoteFixture
 
-	mu  sync.Mutex
-	env []string
+	// plants are the programs a test plants in a clone's config, and git's environment.
+	plants *testutil.Planter
 
 	// names are the programs the Maker's git ran.
 	names recorded
@@ -43,7 +43,7 @@ func newGuardRig(t *testing.T) *guardRig {
 	t.Helper()
 
 	e := newEnv(t)
-	r := &guardRig{t: t, e: e, f: newRemoteFixture(t, e), env: testutil.GitEnv(e.home)}
+	r := &guardRig{t: t, e: e, f: newRemoteFixture(t, e), plants: testutil.NewPlanter(t, e.home)}
 
 	work := filepath.Join(e.home, "pr-9")
 	testutil.RunGit(t, e.home, "clone", "-q", r.f.bare, work)
@@ -56,28 +56,20 @@ func newGuardRig(t *testing.T) *guardRig {
 	return r
 }
 
-// environ is the user's environment, as git gets it.
-func (r *guardRig) environ() []string {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
-	return append([]string(nil), r.env...)
-}
-
 // maker returns a Maker whose guarded commands run under gitread's guards, recording the
 // program every command runs, wired as core wires it: git found with gitread's own finder.
 func (r *guardRig) maker() *Maker {
-	return r.makerWith(gitread.New(gitread.Config{Env: r.environ}))
+	return r.makerWith(gitread.New(gitread.Config{Env: r.plants.Environ}))
 }
 
 // guard is the guard core would give the Maker: gitread over the rig's environment.
 func (r *guardRig) guard() *gitread.Git {
-	return gitread.New(gitread.Config{Env: r.environ})
+	return gitread.New(gitread.Config{Env: r.plants.Environ})
 }
 
 // makerWith returns maker's Maker over guard.
 func (r *guardRig) makerWith(guard Guard) *Maker {
-	git := namedRunner{run: execpath.Exec{Env: r.environ()}, names: &r.names}
+	git := namedRunner{run: execpath.Exec{Env: r.plants.Environ()}, names: &r.names}
 
 	return NewMaker(NewService(Config{
 		Settings: fakeSettings{root: cloneRoot}, Git: git, Finder: r.guard().GitFinder(), Guard: guard,
@@ -120,107 +112,24 @@ func (r *recorded) all() []string {
 	return append([]string(nil), r.names...)
 }
 
-// marker makes a fake program called name that writes ran/<name> when it runs, and
-// returns its path and that file's.
-func (r *guardRig) marker(name string) (program, marker string) {
-	r.t.Helper()
-
-	ran := filepath.Join(r.e.home, "ran")
-	require.NoError(r.t, os.MkdirAll(ran, 0o700))
-
-	marker = filepath.Join(ran, name)
-	program, entry := testutil.FakeTool(r.t, name, testutil.FakeRun{Files: []testutil.FakeFile{{Path: marker, Content: "ran"}}})
-
-	r.mu.Lock()
-	r.env = append(r.env, entry)
-	r.mu.Unlock()
-
-	return program, marker
-}
-
-// setting is one setting a test sets in a clone's own config, %s in its value standing for
-// a fake program's path.
-type setting [2]string
-
-// planting is one way a clone's own config could make worktree creation run a program: the
-// fake's name and the settings that name it.
-type planting struct {
-	name     string
-	settings []setting
-}
-
 // refusedPlantings are every way a planted clone config could make a fetch or a checkout
 // run its own program that no setup sets aside, each of which refuses worktree creation
 // before git runs: a filter driver, git's upload-pack, an alternate refs command, a hook
 // named in the config (which core.hooksPath doesn't reach), gc's recent objects hook,
 // which the automatic maintenance a fetch starts runs, and Git LFS's own transfer agent.
-func refusedPlantings() []planting {
-	return []planting{
-		{name: "evil-smudge", settings: []setting{
+func refusedPlantings() []testutil.Planting {
+	return []testutil.Planting{
+		{Name: "evil-smudge", Settings: [][2]string{
 			{"filter.evil.smudge", "%s"}, {"filter.evil.clean", "%s"}, {"filter.evil.required", "true"},
 		}},
-		{name: "evil-upload-pack", settings: []setting{{"remote.origin.uploadpack", "%s"}}},
-		{name: "evil-alternate-refs", settings: []setting{{"core.alternateRefsCommand", "%s"}}},
-		{name: "evil-hook", settings: []setting{{"hook.evil.command", "%s"}, {"hook.evil.event", "post-checkout"}}},
-		{name: "evil-gc", settings: []setting{{"gc.recentObjectsHook", "%s"}, {"gc.auto", "1"}}},
-		{name: "evil-lfs-agent", settings: []setting{
+		{Name: "evil-upload-pack", Settings: [][2]string{{"remote.origin.uploadpack", "%s"}}},
+		{Name: testutil.AlternateRefs, Settings: [][2]string{{"core.alternateRefsCommand", "%s"}}},
+		{Name: "evil-hook", Settings: [][2]string{{"hook.evil.command", "%s"}, {"hook.evil.event", "post-checkout"}}},
+		{Name: "evil-gc", Settings: [][2]string{{"gc.recentObjectsHook", "%s"}, {"gc.auto", "1"}}},
+		{Name: "evil-lfs-agent", Settings: [][2]string{
 			{"lfs.standalonetransferagent", "evil"}, {"lfs.customtransfer.evil.path", "%s"},
 		}},
 	}
-}
-
-// keysOf returns the keys of settings as git lists them: the section and the name
-// lowercased, a subsection as written.
-func keysOf(settings []setting) []string {
-	keys := make([]string, 0, len(settings))
-
-	for _, s := range settings {
-		first, last := strings.Index(s[0], "."), strings.LastIndex(s[0], ".")
-		keys = append(keys, strings.ToLower(s[0][:first])+s[0][first:last]+strings.ToLower(s[0][last:]))
-	}
-
-	return keys
-}
-
-// plant sets p in the clone at dir's own config, pointing at a fake program that writes a
-// marker file, and returns that file. An alternate refs command comes with an alternate
-// object store, an empty repository's, for a fetch to ask it about.
-func (r *guardRig) plant(dir string, p planting) string {
-	r.t.Helper()
-
-	program, marker := r.marker(p.name)
-
-	for _, s := range p.settings {
-		testutil.RunGit(r.t, dir, "config", s[0], strings.ReplaceAll(s[1], "%s", program))
-	}
-
-	if p.name == "evil-alternate-refs" {
-		alt := filepath.Join(r.t.TempDir(), "alt.git")
-		testutil.RunGit(r.t, r.e.home, "init", "-q", "--bare", alt)
-		require.NoError(r.t, os.WriteFile(filepath.Join(dir, ".git", "objects", "info", "alternates"),
-			[]byte(filepath.Join(alt, "objects")+"\n"), 0o600))
-	}
-
-	return marker
-}
-
-// plantHooks points the clone at dir's own core.hooksPath at a folder whose post-checkout
-// hook is a fake that writes a marker file, and returns that file.
-func (r *guardRig) plantHooks(dir string) string {
-	r.t.Helper()
-
-	marker := filepath.Join(r.e.home, "ran", "post-checkout")
-	hook, entry := testutil.FakeTool(r.t, "post-checkout", testutil.FakeRun{
-		Files: []testutil.FakeFile{{Path: marker, Content: "ran"}},
-	})
-
-	r.mu.Lock()
-	r.env = append(r.env, entry)
-	r.mu.Unlock()
-
-	testutil.RunGit(r.t, dir, "config", "core.hooksPath", filepath.Dir(hook))
-
-	return marker
 }
 
 // TestEnsureRefusesAClonesOwnProgramsBeforeGitRuns plants, in the clone's own config, each
@@ -232,18 +141,18 @@ func TestEnsureRefusesAClonesOwnProgramsBeforeGitRuns(t *testing.T) {
 	t.Parallel()
 
 	for _, p := range refusedPlantings() {
-		t.Run(p.name, func(t *testing.T) {
+		t.Run(p.Name, func(t *testing.T) {
 			t.Parallel()
 
 			r := newGuardRig(t)
-			marker := r.plant(r.f.clone, p)
+			marker := r.plants.Plant(r.f.clone, p)
 			testutil.RunGit(t, r.f.clone, "remote", "set-head", "origin", "-d")
 			m := r.maker()
 
 			for _, req := range []EnsureRequest{r.f.request(item.KindPR, 9), r.f.request(item.KindIssue, 3)} {
 				_, err := m.Ensure(t.Context(), req)
 				require.ErrorIs(t, err, gitread.ErrCloneConfig, "%s #%d", req.Kind, req.Number)
-				assert.Contains(t, uierr.Message(err), "This clone's own git config sets "+keysOf(p.settings)[0])
+				assert.Contains(t, uierr.Message(err), "This clone's own git config sets "+p.Keys()[0])
 			}
 
 			assert.NoFileExists(t, marker)
@@ -296,12 +205,12 @@ func TestEnsureWithTheClonesOwnTransportSettings(t *testing.T) {
 	r := newGuardRig(t)
 	markers := map[string]string{}
 
-	for _, p := range []planting{
-		{name: "evil-ssh", settings: []setting{{"core.sshCommand", "%s"}}},
-		{name: "evil-askpass", settings: []setting{{"core.askPass", "%s"}}},
-		{name: "evil-credential", settings: []setting{{"credential.helper", "!%s"}}},
+	for _, p := range []testutil.Planting{
+		{Name: "evil-ssh", Settings: [][2]string{{"core.sshCommand", "%s"}}},
+		{Name: "evil-askpass", Settings: [][2]string{{"core.askPass", "%s"}}},
+		{Name: "evil-credential", Settings: [][2]string{{"credential.helper", "!%s"}}},
 	} {
-		markers[p.name] = r.plant(r.f.clone, p)
+		markers[p.Name] = r.plants.Plant(r.f.clone, p)
 	}
 
 	const url = "https://example.invalid/acme-org/example-repo.git"
@@ -334,12 +243,10 @@ func TestEnsureSaysWhichOfTheClonesOwnSettingsItWentWithout(t *testing.T) {
 	t.Parallel()
 
 	r := newGuardRig(t)
-	evil := r.plant(r.f.clone, planting{name: "evil-ssh", settings: []setting{{"core.sshCommand", "%s"}}})
-	mine, ran := r.marker("my-ssh")
+	evil := r.plants.Plant(r.f.clone, testutil.Planting{Name: "evil-ssh", Settings: [][2]string{{"core.sshCommand", "%s"}}})
+	mine, ran := r.plants.Marker("my-ssh")
 
-	r.mu.Lock()
-	r.env = append(r.env, "GIT_SSH="+mine)
-	r.mu.Unlock()
+	r.plants.AddEnv("GIT_SSH=" + mine)
 
 	testutil.RunGit(t, r.f.clone, "remote", "set-url", "origin", "ssh://git@example.invalid/acme-org/example-repo.git")
 
@@ -398,7 +305,7 @@ func TestEnsureWordsASetupThatCouldntBeWorkedOut(t *testing.T) {
 			"folders.",
 		fmt.Errorf("git ls-remote: No such remote 'upstream': %w", errExit): "No such remote 'upstream'.",
 	} {
-		guard := failingGuard{env: r.environ, err: setupErr, calls: &atomic.Int32{}}
+		guard := failingGuard{env: r.plants.Environ, err: setupErr, calls: &atomic.Int32{}}
 
 		_, err := r.makerWith(guard).Ensure(t.Context(), r.f.request(item.KindPR, 7))
 		require.Error(t, err)
@@ -479,7 +386,7 @@ func (okRunner) Run(context.Context, string, ...string) (stdout, stderr []byte, 
 func (r *guardRig) plantWorktreeFilter(dir string) string {
 	r.t.Helper()
 
-	program, marker := r.marker("evil-worktree-filter")
+	program, marker := r.plants.Marker("evil-worktree-filter")
 	included := filepath.Join(r.t.TempDir(), "evil.gitconfig")
 	require.NoError(r.t, os.WriteFile(included, []byte("[filter \"evil\"]\n\tsmudge = "+program+"\n\trequired = true\n"), 0o600))
 	testutil.RunGit(r.t, dir, "config", "includeIf.gitdir:**/.git/worktrees/**.path", included)
@@ -535,8 +442,8 @@ func TestEnsureRunsNoHookOrMonitorOfTheClonesOwn(t *testing.T) {
 
 	r := newGuardRig(t)
 	markers := map[string]string{
-		"hooks":     r.plantHooks(r.f.clone),
-		"fsmonitor": r.plant(r.f.clone, planting{name: "evil-fsmonitor", settings: []setting{{"core.fsmonitor", "%s"}}}),
+		"hooks":     r.plants.PlantHooks(r.f.clone, "post-checkout"),
+		"fsmonitor": r.plants.Plant(r.f.clone, testutil.Planting{Name: "evil-fsmonitor", Settings: [][2]string{{"core.fsmonitor", "%s"}}}),
 	}
 
 	testutil.RunGit(t, r.f.clone, "remote", "set-head", "origin", "-d")
@@ -577,7 +484,7 @@ func TestEnsureInACloneWithWhatGitAndItsToolsWrite(t *testing.T) {
 
 	r := newGuardRig(t)
 
-	for _, kv := range []setting{
+	for _, kv := range [][2]string{
 		{"remote.upstream.url", r.f.bare},
 		{"remote.upstream.fetch", "+refs/heads/*:refs/remotes/upstream/*"},
 		{"remote.upstream.gh-resolved", "base"},
@@ -698,12 +605,12 @@ func TestPlainGitWouldRunThePlantedPrograms(t *testing.T) {
 	plain := filepath.Join(r.e.home, "plain")
 	testutil.RunGit(t, r.e.home, "clone", "-q", r.f.bare, plain)
 
-	markers := map[string]string{"hooks": r.plantHooks(plain)}
+	markers := map[string]string{"hooks": r.plants.PlantHooks(plain, "post-checkout")}
 	for _, p := range refusedPlantings() {
-		markers[p.name] = r.plant(plain, p)
+		markers[p.Name] = r.plants.Plant(plain, p)
 	}
 
-	git := execpath.Exec{Env: r.environ(), Dir: plain}
+	git := execpath.Exec{Env: r.plants.Environ(), Dir: plain}
 
 	_, _, err := git.Run(t.Context(), "git", "fetch", "-q", "origin", "refs/pull/9/head:refs/heads/plain-9")
 	require.Error(t, err, "the planted upload-pack answers nothing")
@@ -736,7 +643,7 @@ func TestAPlainWorktreeAddRunsWhatOnlyTheWorktreeIncludes(t *testing.T) {
 	marker := r.plantWorktreeFilter(plain)
 	assert.NotContains(t, testutil.RunGit(t, plain, "config", "--list"), "filter.evil", "the clone itself never sees it")
 
-	git := execpath.Exec{Env: r.environ(), Dir: plain}
+	git := execpath.Exec{Env: r.plants.Environ(), Dir: plain}
 
 	_, _, err := git.Run(t.Context(), "git", "fetch", "-q", "origin", "refs/pull/9/head:refs/heads/plain-9")
 	require.NoError(t, err)
