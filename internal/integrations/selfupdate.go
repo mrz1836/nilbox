@@ -10,7 +10,6 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
-	"sync"
 	"unicode/utf8"
 
 	"github.com/mrz1836/nilbox/internal/brand"
@@ -143,7 +142,7 @@ func (v Verifier) Verify(run scriptrun.Record) scriptrun.Verification {
 		return scriptrun.Verification{}
 	}
 
-	r := &selfRun{def: def, intent: in, reader: &updateReader{}, id: run.ID}
+	r := &selfRun{def: def, intent: in, reader: newUpdateReader(), id: run.ID}
 
 	return scriptrun.Verification{Callbacks: v.s.updateCallbacks(r, true)}
 }
@@ -211,7 +210,7 @@ func (s *Service) claimUpdate(ctx context.Context, def Definition) (*selfRun, bo
 	r := &selfRun{
 		def:    def,
 		intent: updateIntent{Tool: def.ID, Path: c.Path, From: c.Version.Raw, Installed: c.Source == SourceApp},
-		env:    def.RunEnv(env, integrationprefs.RunsInApp), reader: &updateReader{}, running: true,
+		env:    def.RunEnv(env, integrationprefs.RunsInApp), reader: newUpdateReader(), running: true,
 	}
 
 	s.mu.Lock()
@@ -583,35 +582,25 @@ type updateOutput struct {
 }
 
 // updateReader reads a tool's own updater's output as it arrives, each line as a terminal
-// shows it. The zero value is ready.
+// shows it (see scriptrun.LineWriter).
 type updateReader struct {
-	mu    sync.Mutex
-	lines textutil.LineSplitter
-	said  updateOutput
+	*scriptrun.LineWriter
+
+	said updateOutput
 }
 
-// Write reads p, which may end anywhere.
-func (r *updateReader) Write(p []byte) (int, error) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
+// newUpdateReader returns a reader that has read nothing.
+func newUpdateReader() *updateReader {
+	r := &updateReader{}
+	r.LineWriter = scriptrun.NewLineWriter(r.line)
 
-	r.lines.Write(p, r.line)
-
-	return len(p), nil
-}
-
-// Flush reads a last line that has no newline.
-func (r *updateReader) Flush() {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
-	r.lines.Flush(r.line)
+	return r
 }
 
 // snapshot returns what was read so far.
 func (r *updateReader) snapshot() updateOutput {
-	r.mu.Lock()
-	defer r.mu.Unlock()
+	r.Lock()
+	defer r.Unlock()
 
 	out := r.said
 	out.warnings = append([]string{}, r.said.warnings...)

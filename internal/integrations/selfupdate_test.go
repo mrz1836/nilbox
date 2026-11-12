@@ -782,7 +782,7 @@ func TestAnUpdateCutOffAsTheAppQuitsIsLeftForTheNextStart(t *testing.T) {
 
 	h := newUpdateHarness(t, nil)
 	path := h.m.put(h.m.pathB, magexSays(recordedMagex))
-	r := &selfRun{def: MageX(), intent: updateIntent{Tool: integrationprefs.MageX, Path: path, From: recordedMagex}, reader: &updateReader{}}
+	r := &selfRun{def: MageX(), intent: updateIntent{Tool: integrationprefs.MageX, Path: path, From: recordedMagex}, reader: newUpdateReader()}
 
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
@@ -911,7 +911,7 @@ func TestRunEnvPutsTheQuietVariablesOverTheShells(t *testing.T) {
 func TestUpdateReaderReadsTheUpdatersLines(t *testing.T) {
 	t.Parallel()
 
-	r := &updateReader{}
+	r := newUpdateReader()
 
 	for _, part := range []string{
 		"\n=== Installing ", "Update ===\n12:00:00 [WARN] first\r\n",
