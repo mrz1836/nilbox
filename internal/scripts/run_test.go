@@ -391,6 +391,19 @@ func TestRunAgainOfAMagexTarget(t *testing.T) {
 	require.ErrorIs(t, err, ErrInvalidRequest)
 }
 
+func TestRunAgainRefusesARecordWhoseIntentCantBeRead(t *testing.T) {
+	t.Parallel()
+
+	rr := NewRerunner(NewService(Config{BranchGit: &countingGit{}}))
+
+	for _, kind := range []scriptrun.Kind{scriptrun.KindScript, scriptrun.KindPull} {
+		_, err := rr.Rerun(t.Context(), scriptrun.Record{Kind: kind, Result: scriptrun.Result{Intent: "nonsense"}})
+		require.ErrorIs(t, err, ErrInvalidRequest, "%s", kind)
+		require.ErrorContains(t, err, "invalid scripts request: the run's intent: json: cannot unmarshal string",
+			"%s", kind)
+	}
+}
+
 func TestADependsOnChainStopsAtTheFirstFailure(t *testing.T) {
 	t.Parallel()
 

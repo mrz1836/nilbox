@@ -316,11 +316,13 @@ func TestRerunRefusesWhatItCantWorkOut(t *testing.T) {
 		Kind: scriptrun.KindChecks, Dir: dir, Result: scriptrun.Result{Intent: "not an intent"},
 	})
 	require.ErrorIs(t, err, ErrInvalidRequest)
+	require.ErrorContains(t, err, "invalid hooks request: the run's intent: json: cannot unmarshal string")
 
 	_, err = rr.Rerun(t.Context(), scriptrun.Record{
 		Kind: scriptrun.KindHooks, Dir: dir, Result: scriptrun.Result{Intent: []int{1}},
 	})
 	require.ErrorIs(t, err, ErrInvalidRequest)
+	require.ErrorContains(t, err, "invalid hooks request: the run's intent: json: cannot unmarshal array")
 
 	_, err = rr.Rerun(t.Context(), scriptrun.Record{Kind: scriptrun.KindHooks, Dir: "/srv/gone"})
 	require.ErrorIs(t, err, ErrNoClone)
