@@ -204,7 +204,8 @@ app:lint` reads.
 - When a service needs another, prefer a narrow interface or value type declared where it is
   used (the launcher's `ItemStore`, `LaunchSettings`, `WorktreeMaker`, and per-agent `Truster`
   map, the worktree service's `SweepSettings` and `GitHub`) over importing the other service;
-  `internal/core/adapters.go` adapts the real services to them. The repoguard boundary test
+  `internal/core/adapters_<consumer>.go` (one file per consumer, the shared `settingsPart` in
+  `adapters.go`) adapts the real services to them. The repoguard boundary test
   (`internal/repoguard/deps_test.go`) keeps the cuts it lists.
 - `internal/budget/` keeps the GitHub API budget current. The one shared `github.Client` hands
   every response's rate-limit reading, and what the request spent, to its `Tracker`
