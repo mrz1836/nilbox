@@ -413,7 +413,7 @@ func assemble(pool *sql.DB, info startup, opts Options, logger *slog.Logger) *Co
 	inboxStore := inbox.NewStore(pool, opts.Clock)
 	followed := &followSwitch{sink: event.Or(opts.Events)}
 	prefs := settings.NewService(pool, profileStore, opts.Home, settings.WithClock(opts.Clock),
-		settings.WithEvents(followed), settings.WithLogger(logger))
+		settings.WithEvents(followed), settings.WithLogger(logger), settings.WithGit(runner))
 	tokens := github.NewTokenSource(runner, search,
 		github.WithTokenClock(opts.Clock), github.WithHostsFile(github.GHHostsFile(opts.Home)))
 	// One tracker hears every response the shared client gets, whichever service asked.

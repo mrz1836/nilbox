@@ -25,6 +25,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/item"
 	"github.com/mrz1836/nilbox/internal/launcher"
 	"github.com/mrz1836/nilbox/internal/launcher/terminal"
+	"github.com/mrz1836/nilbox/internal/localrepos"
 	"github.com/mrz1836/nilbox/internal/release"
 	"github.com/mrz1836/nilbox/internal/repo"
 	"github.com/mrz1836/nilbox/internal/scriptrun"
@@ -50,17 +51,23 @@ func TestSettingsViewsReadTheSettingsAsTheyAreNow(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, launcher.LaunchSettings{
 		DefaultAgent: agent.Claude, DefaultProfiles: all.DefaultProfiles, WorktreeDefault: true, Terminal: terminal.ITerm2,
-		CloneRoot: settings.DefaultCloneRoot, TrustedBots: all.TrustedBots,
+		CloneRoot: settings.DefaultCloneRoot, CloneLocations: []localrepos.Location{}, TrustedBots: all.TrustedBots,
 	}, got)
 
 	swept, err := sweep.Get(ctx)
 	require.NoError(t, err)
 	assert.Equal(t, worktrees.SweepSettings{
-		CloneRoot: settings.DefaultCloneRoot, AutoCleanup: true, Branches: branchrules.Defaults(),
+		CloneRoot: settings.DefaultCloneRoot, CloneLocations: []localrepos.Location{}, AutoCleanup: true,
+		Branches: branchrules.Defaults(),
 	}, swept)
 
 	// A change the user makes reaches the next read, with no restart.
 	root := t.TempDir()
+	work := t.TempDir()
+	require.NoError(t, testutil.ErrOf(c.Settings.AddCloneLocations(ctx, []string{work})))
+
+	locations := []localrepos.Location{{Path: work, Kind: localrepos.KindFolder}}
+
 	require.NoError(t, testutil.ErrOf(c.Settings.SetWorktreeDefault(ctx, false)))
 	require.NoError(t, testutil.ErrOf(c.Settings.SetWorktreeAutoCleanup(ctx, false)))
 	require.NoError(t, testutil.ErrOf(c.Settings.SetTerminal(ctx, settings.TerminalApp)))
@@ -72,13 +79,13 @@ func TestSettingsViewsReadTheSettingsAsTheyAreNow(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, launcher.LaunchSettings{
 		DefaultAgent: agent.Claude, DefaultProfiles: all.DefaultProfiles, Terminal: terminal.TerminalApp, CloneRoot: root,
-		TrustedBots: []string{"renovate"},
+		CloneLocations: locations, TrustedBots: []string{"renovate"},
 	}, got)
 
 	swept, err = sweep.Get(ctx)
 	require.NoError(t, err)
 	assert.Equal(t, worktrees.SweepSettings{
-		CloneRoot: root, Branches: branchrules.Rules{Own: true, Protected: []string{"develop"}},
+		CloneRoot: root, CloneLocations: locations, Branches: branchrules.Rules{Own: true, Protected: []string{"develop"}},
 	}, swept)
 }
 
