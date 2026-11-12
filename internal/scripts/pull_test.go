@@ -35,7 +35,7 @@ func (g *gitRig) pull() scriptrun.Run {
 func (g *gitRig) ref(dir, ref string) string {
 	g.t.Helper()
 
-	out, _, err := execpath.Exec{Env: g.environ(), Dir: dir}.Run(g.t.Context(), "git", "rev-parse", "--verify", "-q", ref)
+	out, _, err := execpath.Exec{Env: g.plants.Environ(), Dir: dir}.Run(g.t.Context(), "git", "rev-parse", "--verify", "-q", ref)
 	if err != nil {
 		return ""
 	}
@@ -63,7 +63,7 @@ func TestPullFastForwardsTheBranch(t *testing.T) {
 	assert.Equal(t, third, g.ref(g.dir, "refs/remotes/origin/main"), "origin's branch as the clone keeps it moved too")
 	assert.FileExists(t, filepath.Join(g.dir, "three.txt"))
 
-	env := g.environ()
+	env := g.plants.Environ()
 	git, err := execpath.Search{Path: shellenv.Lookup(env, "PATH"), Home: shellenv.Lookup(env, "HOME")}.Find("git")
 	require.NoError(t, err)
 
