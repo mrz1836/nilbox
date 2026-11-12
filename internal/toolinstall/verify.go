@@ -107,6 +107,25 @@ func verify(path, archive, sum string) error {
 		return fmt.Errorf("read the checksums: %w", err)
 	}
 
+	listed := parseChecksums(data, archive)
+
+	switch {
+	case len(listed) != 1:
+		return fmt.Errorf("%w: the checksums list %s %d times, not once", ErrChecksum, archive, len(listed))
+	case len(listed[0]) != sha256.Size*2 || !isHex(listed[0]):
+		return fmt.Errorf("%w: the checksum for %s isn't a SHA-256", ErrChecksum, archive)
+	case !strings.EqualFold(listed[0], sum):
+		return fmt.Errorf("%w: %s", ErrChecksum, archive)
+	}
+
+	return nil
+}
+
+// parseChecksums returns, in order, the checksum of every line of a checksums file that
+// lists archive: a line of two fields, the checksum then the name, which may carry the
+// binary-mode "*" before it. The lines are read as bufio.Scanner reads them, so none past
+// one longer than its limit is.
+func parseChecksums(data []byte, archive string) []string {
 	var listed []string
 
 	sc := bufio.NewScanner(bytes.NewReader(data))
@@ -121,16 +140,7 @@ func verify(path, archive, sum string) error {
 		}
 	}
 
-	switch {
-	case len(listed) != 1:
-		return fmt.Errorf("%w: the checksums list %s %d times, not once", ErrChecksum, archive, len(listed))
-	case len(listed[0]) != sha256.Size*2 || !isHex(listed[0]):
-		return fmt.Errorf("%w: the checksum for %s isn't a SHA-256", ErrChecksum, archive)
-	case !strings.EqualFold(listed[0], sum):
-		return fmt.Errorf("%w: %s", ErrChecksum, archive)
-	}
-
-	return nil
+	return listed
 }
 
 // isHex reports a string of hex digits.
