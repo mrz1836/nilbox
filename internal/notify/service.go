@@ -147,15 +147,16 @@ func (d *Dispatcher) Gather(ctx context.Context, entry Entry) {
 }
 
 // Close drops the banners Gather holds, and holds none after: the history keeps their
-// entries, and what Gather records later shows no banner. It returns once a batch already
-// showing has been shown, so nothing reads the database after it: core calls it before it
-// closes the database.
+// entries, and what Gather records later shows no banner. A batch already showing is cut
+// short, and Close returns once it has ended, so nothing reads the database after it: core
+// calls it before it closes the database.
 func (d *Dispatcher) Close() {
 	d.held.stop()
 }
 
 // show posts the banners for recorded notifications, of the kinds that are on, when the
-// user allows banners.
+// user allows banners. Once ctx ends it posts no more, and says nothing of a read it cut
+// short.
 func (d *Dispatcher) show(ctx context.Context, rows []Notification) {
 	if d.poster == nil || d.poster.Status() != StatusOn {
 		return
@@ -163,12 +164,18 @@ func (d *Dispatcher) show(ctx context.Context, rows []Notification) {
 
 	off, err := d.bannersOff(ctx)
 	if err != nil {
-		d.logger.WarnContext(ctx, "could not read which banners are on", "error", err)
+		if ctx.Err() == nil {
+			d.logger.WarnContext(ctx, "could not read which banners are on", "error", err)
+		}
 
 		return
 	}
 
 	for _, b := range Banners(rows, off) {
+		if ctx.Err() != nil {
+			return
+		}
+
 		if err = d.poster.Post(b); err != nil {
 			d.logger.WarnContext(ctx, "could not show a notification", "error", err)
 		}

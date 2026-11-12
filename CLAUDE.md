@@ -461,7 +461,9 @@ app:lint` reads.
   banner held `GatherWindow` (2 s) with those of the failures that follow, so a burst past
   `MaxBanners` (Install and update all, a restart's reconcile) shows one summary, under the
   same rules as every kind's banner; core's `Close` drops the banners still held (the history
-  keeps their entries) and waits for a batch already showing, before the database closes. The
+  keeps their entries) and cuts short a batch already showing (each batch shows within the
+  gathering's lifetime, which `Close` ends), waiting for it to end, before the database
+  closes. The
   entry keeps the run's ID and its recorded start as RFC 3339 (`notifications.run_id` and
   `run_started`, `Entry.RunID`/`RunStarted`, `Notification.RunID`/`RunStarted`, and
   `event.RevealItem`'s for a banner's click), and the window opens it in Scripts → Runs only

@@ -826,6 +826,53 @@ func TestTheDispatcherObeysTheBannerRulesForFailedRuns(t *testing.T) {
 	assert.Equal(t, 2, f.events.Count(), "the log still keeps both")
 }
 
+// endingPoster posts as fakePoster does, then runs after.
+type endingPoster struct {
+	*fakePoster
+
+	after func()
+}
+
+func (p endingPoster) Post(b Banner) error {
+	err := p.fakePoster.Post(b)
+	p.after()
+
+	return err
+}
+
+func TestTheQuitCutsShortABatchShowing(t *testing.T) {
+	t.Parallel()
+
+	f := newFixture(t, 0)
+	logs := &testutil.Logs{}
+
+	var d *Dispatcher
+
+	cfg := f.config()
+	cfg.Logger = logs.Logger()
+	cfg.Poster = endingPoster{fakePoster: f.poster, after: func() { d.held.end() }} // the quit, as the first banner shows
+	d = NewDispatcher(cfg)
+	d.held.window = time.Hour // the test flushes, as the window's timer would
+
+	for range MaxBanners {
+		d.Gather(t.Context(), runEntry())
+	}
+
+	d.held.flush()
+	assert.Len(t, f.poster.posted(), 1, "no banner after the first: the batch was cut short")
+
+	d.Gather(t.Context(), runEntry())
+	d.held.flush()
+	assert.Len(t, f.poster.posted(), 1, "a batch past its lifetime shows nothing")
+	assert.NotContains(t, logs.String(), "could not", "and a read the quit cut short isn't a failure")
+
+	d.Close()
+
+	log, err := NewStore(f.pool).Log(t.Context())
+	require.NoError(t, err)
+	assert.Len(t, log.Items, MaxBanners+1, "the history keeps every entry")
+}
+
 func TestTheDispatcherSurvivesFailures(t *testing.T) {
 	t.Parallel()
 
