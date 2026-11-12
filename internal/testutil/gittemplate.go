@@ -104,8 +104,9 @@ func (s *GitTemplates[K, V]) template(key K) *GitTemplate[V] {
 
 // GitBuild is where a template is built: Root, a fresh folder with its symbolic links
 // resolved, which each copy's folder takes the place of, and a git isolated as GitEnv
-// describes, which dates every commit and tag templateDate. A build is its steps in
-// order: once one fails, the rest do nothing, and the build fails with that first failure.
+// describes, which dates every commit and tag alike, at 2026-01-02 03:04:05 UTC. A build
+// is its steps in order: once one fails, the rest do nothing, and the build fails with
+// that first failure.
 type GitBuild struct {
 	// Root is the template: everything under it is copied.
 	Root string
