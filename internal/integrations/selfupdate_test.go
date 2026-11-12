@@ -867,14 +867,22 @@ func TestGoEnvAddsTheFoldersGoItselfReads(t *testing.T) {
 func TestGoEnvThatCantBeReadUpdatesNothingItself(t *testing.T) {
 	t.Parallel()
 
-	for _, a := range []answer{{err: errExit}, {stdout: "only one line\n"}, {stdout: "\n\n"}} {
-		h := newUpdateHarness(t, nil)
-		h.putGo(a)
-		h.m.put(h.m.pathB, magexSays(recordedMagex))
+	for name, a := range map[string]answer{
+		"go env fails":    {err: errExit},
+		"one line":        {stdout: "only one line\n"},
+		"two empty lines": {stdout: "\n\n"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 
-		plan := h.ready(t)["mage-x"].Install
-		assert.Empty(t, plan.Updater, "%+v: go install's folders aren't known, so the installer updates it", a)
-		assert.Contains(t, h.logs.String(), "couldn't read go's settings")
+			h := newUpdateHarness(t, nil)
+			h.putGo(a)
+			h.m.put(h.m.pathB, magexSays(recordedMagex))
+
+			plan := h.ready(t)["mage-x"].Install
+			assert.Empty(t, plan.Updater, "%+v: go install's folders aren't known, so the installer updates it", a)
+			assert.Contains(t, h.logs.String(), "couldn't read go's settings")
+		})
 	}
 }
 
