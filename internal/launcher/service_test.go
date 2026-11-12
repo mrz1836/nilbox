@@ -32,6 +32,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/prompts"
 	"github.com/mrz1836/nilbox/internal/settings"
 	"github.com/mrz1836/nilbox/internal/testutil"
+	"github.com/mrz1836/nilbox/internal/textutil"
 	"github.com/mrz1836/nilbox/internal/uierr"
 	"github.com/mrz1836/nilbox/internal/workspacetrust"
 )
@@ -629,7 +630,7 @@ func TestLaunchWritesFilesAndOpensDriver(t *testing.T) {
 	}, res)
 
 	worktree := filepath.Join(h.root, "."+brand.Slug, "worktrees", exampleRepo, "pr-7")
-	assert.Contains(t, script, "cd -- "+shQuote(worktree)+" || exit 1\n", "the session starts in the item's worktree")
+	assert.Contains(t, script, "cd -- "+textutil.ShellQuote(worktree)+" || exit 1\n", "the session starts in the item's worktree")
 	assert.Contains(t, script, "unset CLAUDE_CONFIG_DIR\n")
 	assert.Contains(t, script, `exec '`+filepath.Join(filepath.Dir(h.home), "bin", "claude")+`' "$prompt" `+
 		"'--dangerously-skip-permissions' '--name=Review · example-repo#7' '--session-id="+testSessionID+"'\n",
@@ -673,7 +674,7 @@ func TestWorktreePrefDefaultAndUntick(t *testing.T) {
 
 			if !tt.want {
 				assert.Empty(t, res.Worktree)
-				assert.Contains(t, script, "cd -- "+shQuote(h.clone)+" || exit 1\n", "the session starts in the clone")
+				assert.Contains(t, script, "cd -- "+textutil.ShellQuote(h.clone)+" || exit 1\n", "the session starts in the clone")
 				assert.NotContains(t, prompt, "fresh worktree")
 				assert.Empty(t, h.maker.ensures(), "no worktree is made")
 
@@ -681,7 +682,7 @@ func TestWorktreePrefDefaultAndUntick(t *testing.T) {
 			}
 
 			assert.Equal(t, "issue-3", res.Worktree)
-			assert.Contains(t, script, "cd -- "+shQuote(filepath.Join(h.root, "."+brand.Slug, "worktrees", exampleRepo, "issue-3")))
+			assert.Contains(t, script, "cd -- "+textutil.ShellQuote(filepath.Join(h.root, "."+brand.Slug, "worktrees", exampleRepo, "issue-3")))
 			assert.Contains(t, prompt, "fresh worktree")
 		})
 	}
@@ -850,8 +851,8 @@ func TestLaunchCodex(t *testing.T) {
 	assert.Equal(t, "permission mode workspace-write", res.Permission)
 
 	worktree := filepath.Join(h.root, "."+brand.Slug, "worktrees", exampleRepo, "pr-7")
-	assert.Contains(t, script, "cd -- "+shQuote(worktree)+" || exit 1\n")
-	assert.Contains(t, script, "export CODEX_HOME="+shQuote(codexHome)+"\n")
+	assert.Contains(t, script, "cd -- "+textutil.ShellQuote(worktree)+" || exit 1\n")
+	assert.Contains(t, script, "export CODEX_HOME="+textutil.ShellQuote(codexHome)+"\n")
 	assert.Regexp(t, `exec '[^']*/codex' '--sandbox' 'workspace-write' '--' "\$prompt"\n$`, script,
 		"the prompt comes last, after --, and Codex names no session")
 	assert.NotContains(t, script, "--name=")
@@ -945,7 +946,7 @@ func TestLaunchProfileSelection(t *testing.T) {
 
 	res, script := h.launch(t, LaunchRequest{ItemID: h.trustedPR, Profile: "work"})
 	assert.Equal(t, "work", res.Profile)
-	assert.Contains(t, script, "export CLAUDE_CONFIG_DIR="+shQuote(workDir)+"\n")
+	assert.Contains(t, script, "export CLAUDE_CONFIG_DIR="+textutil.ShellQuote(workDir)+"\n")
 
 	require.NoError(t, testutil.ErrOf(h.settings.SetDefaultProfile(t.Context(), agent.Claude, "work")))
 

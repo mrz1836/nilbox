@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/mrz1836/nilbox/internal/execpath"
+	"github.com/mrz1836/nilbox/internal/textutil"
 )
 
 const (
@@ -478,7 +479,7 @@ func sshEnvironment(env []string, settings []scopedSetting) []string {
 	case userChose:
 		return append(env, sshCommandVar+"="+chosen)
 	case hasVar(env, sshVar):
-		return append(env, sshCommandVar+"="+shellQuote(varValue(env, sshVar)))
+		return append(env, sshCommandVar+"="+textutil.ShellQuote(varValue(env, sshVar)))
 	default:
 		return append(env, sshCommandVar+"="+batchSSH)
 	}
@@ -659,9 +660,4 @@ func withVar(env []string, key, value string) []string {
 	out := slices.DeleteFunc(slices.Clone(env), func(kv string) bool { return strings.HasPrefix(kv, key+"=") })
 
 	return append(out, key+"="+value)
-}
-
-// shellQuote quotes s as one word for the shell git runs GIT_SSH_COMMAND with.
-func shellQuote(s string) string {
-	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }

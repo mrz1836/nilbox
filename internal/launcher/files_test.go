@@ -18,6 +18,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/item"
 	"github.com/mrz1836/nilbox/internal/launcher/terminal"
 	"github.com/mrz1836/nilbox/internal/testutil"
+	"github.com/mrz1836/nilbox/internal/textutil"
 )
 
 // errReader is returned by failingReader.
@@ -332,11 +333,6 @@ func runSh(t *testing.T, env []string, args ...string) ([]byte, error) {
 	return out, err
 }
 
-// shQuote quotes s for a POSIX shell the way launch scripts do, for matching their lines.
-func shQuote(s string) string {
-	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
-}
-
 func TestPromptNeverOnCommandLine(t *testing.T) {
 	t.Parallel()
 
@@ -356,7 +352,7 @@ func TestPromptNeverOnCommandLine(t *testing.T) {
 			assert.NotContains(t, string(script), piece)
 		}
 
-		assert.Contains(t, string(script), "prompt=$(cat -- "+shQuote(files.Prompt)+")\n")
+		assert.Contains(t, string(script), "prompt=$(cat -- "+textutil.ShellQuote(files.Prompt)+")\n")
 		assert.Contains(t, string(script), `"$prompt"`)
 
 		stored, err := os.ReadFile(files.Prompt)
@@ -455,7 +451,7 @@ func TestRenderedScriptStopsWhenTheCloneIsMissing(t *testing.T) {
 	root := t.TempDir()
 	marker := filepath.Join(root, "agent-ran")
 	agent := filepath.Join(root, "claude")
-	testutil.WriteExecutable(t, agent, "#!/bin/sh\ntouch "+shQuote(marker)+"\n")
+	testutil.WriteExecutable(t, agent, "#!/bin/sh\ntouch "+textutil.ShellQuote(marker)+"\n")
 
 	req := baseRequest()
 	req.Dir = filepath.Join(root, "gone")

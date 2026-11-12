@@ -1,6 +1,10 @@
 package terminal
 
-import "strings"
+import (
+	"strings"
+
+	"github.com/mrz1836/nilbox/internal/textutil"
+)
 
 // appITerm2 names iTerm2 in error messages.
 const appITerm2 = "iTerm2"
@@ -34,7 +38,7 @@ tell application "iTerm"
 			create window with default profile
 		end if
 	end if
-	tell current session of current window to write text "` + appleScriptString(shQuote(scriptPath)) + `"
+	tell current session of current window to write text "` + appleScriptString(textutil.ShellQuote(scriptPath)) + `"
 end tell
 `
 }
