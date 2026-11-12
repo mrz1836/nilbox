@@ -96,8 +96,9 @@ async function choosePrompt(menu: BoundFunctions<typeof queries>, nickname: stri
   await userEvent.selectOptions(select, within(select).getByRole('option', { name: new RegExp(`^${nickname}`) }))
 }
 
-// missingClone is where a repository with no local clone would be cloned.
-const missingClone = cloneTarget({ cloned: false })
+// missingClone is where a repository with no local clone would be cloned, looked for in
+// the clone root alone.
+const missingClone = cloneTarget({ cloned: false, where: '~/projects' })
 
 // noCloneError is how a launch with no local clone fails.
 const noCloneError = new Error('no local clone of acme-org/example-repo under ~/projects')
@@ -380,7 +381,7 @@ describe('LaunchControls', () => {
     await userEvent.click(menu.getByRole('radio', { name: 'work' }))
     await userEvent.click(menu.getByRole('button', { name: 'Open in Claude' }))
 
-    expect(await screen.findByRole('alert')).toHaveTextContent('No local clone of acme-org/example-repo.')
+    expect(await screen.findByRole('alert')).toHaveTextContent('No local clone of acme-org/example-repo in ~/projects.')
     expect(platform.cloneRepo).not.toHaveBeenCalled()
 
     await userEvent.click(screen.getByRole('button', { name: 'Clone into ~/projects/example-repo' }))
@@ -432,6 +433,18 @@ describe('LaunchControls', () => {
     expect(screen.getByRole('button', { name: 'Clone into ~/projects/example-repo' })).toBeInTheDocument()
   })
 
+  it('says where it looked for the clone', async () => {
+    platform.launch.mockRejectedValue(noCloneError)
+    platform.cloneTarget.mockResolvedValue({ ...missingClone, where: '~/projects or your other repository locations' })
+    render(<LaunchControls {...props()} />)
+
+    await userEvent.click(screen.getByRole('button', { name: 'Open in Claude' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'No local clone of acme-org/example-repo in ~/projects or your other repository locations.',
+    )
+  })
+
   it('offers no clone where something already is', async () => {
     platform.launch.mockRejectedValue(noCloneError)
     platform.cloneTarget.mockResolvedValue({ ...missingClone, taken: true })
@@ -440,7 +453,7 @@ describe('LaunchControls', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Open in Claude' }))
 
     expect(await screen.findByRole('alert')).toHaveTextContent(
-      'No local clone of acme-org/example-repo, and ~/projects/example-repo already exists, so it can’t be cloned there.',
+      'No local clone of acme-org/example-repo in ~/projects, and ~/projects/example-repo already exists, so it can’t be cloned there.',
     )
     expect(screen.queryByRole('button', { name: /^Clone into/ })).not.toBeInTheDocument()
   })

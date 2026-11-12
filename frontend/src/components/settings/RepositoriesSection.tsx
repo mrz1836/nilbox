@@ -1,8 +1,10 @@
 import { startTransition, useActionState, useId, useState, type SubmitEvent } from 'react'
 
 import { attempt } from '../../lib/call'
+import { useQuery } from '../../lib/useQuery'
 import { useSettingsSave } from '../../lib/useSettingsSave'
 import {
+  checkCloneLocations,
   chooseFolder,
   setCloneRoot,
   type DefaultPrompts,
@@ -12,7 +14,7 @@ import {
   type Prompt,
 } from '../../platform'
 import { buttonClass, fieldClass } from '../controls'
-import { CloneLocations } from './CloneLocations'
+import { CloneLocations, rootMarker } from './CloneLocations'
 import { LaunchDefaultsSection } from './LaunchDefaultsSection'
 import { Group, rowDescribedBy, SettingRow } from './rows'
 import type { SectionProps } from './types'
@@ -37,8 +39,9 @@ interface CloneRootSave {
 }
 
 // RepositoriesSection holds where the local clones live: the clone root, which new clones
-// go in, saved with its Save button or as soon as Choose… picks a folder, and the other
-// repository locations; and the launch defaults for orgs and repositories.
+// go in, saved with its Save button or as soon as Choose… picks a folder, with how it reads
+// now, and the other repository locations; and the launch defaults for orgs and
+// repositories.
 export function RepositoriesSection({
   settings: stored,
   onSaved,
@@ -51,6 +54,10 @@ export function RepositoriesSection({
 }: RepositoriesSectionProps) {
   const id = useId()
   const { settings, save } = useSettingsSave(stored, onSaved)
+  const states = useQuery(() => checkCloneLocations(), [settings.cloneRoot, JSON.stringify(settings.cloneLocations)], {
+    log: 'check the repository locations',
+  })
+  const root = rootMarker(states.data?.find((s) => s.primary))
   const [draft, setDraft] = useState(settings.cloneRoot)
   const [outcome, saveCloneRoot, saving] = useActionState(
     async (_: CloneRootSave, typed: string): Promise<CloneRootSave> => {
@@ -120,13 +127,18 @@ export function RepositoriesSection({
             </button>
           </SettingRow>
         </form>
+        {root.text !== '' && (
+          <p role="status" className={`px-4 pb-3 text-xs ${root.warn ? 'text-warning' : 'text-muted'}`}>
+            {root.text}
+          </p>
+        )}
         {saved && (
           <p role="status" className="px-4 py-2 text-xs text-success">
             Saved.
           </p>
         )}
       </Group>
-      <CloneLocations settings={settings} save={save} />
+      <CloneLocations settings={settings} save={save} states={states} />
       <LaunchDefaultsSection
         settings={settings}
         agents={agents}

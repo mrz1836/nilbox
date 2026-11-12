@@ -50,6 +50,13 @@ export interface CloneTarget {
      * (LinkClone).
      */
     "elsewhere": string;
+
+    /**
+     * Where names, for a repository without a clone, the locations it was looked for in,
+     * with ~: "~/projects", or "~/projects or your other repository locations" when there
+     * are others (localrepos.Roots.Where). "" for a repository with a clone.
+     */
+    "where": string;
 }
 
 /**

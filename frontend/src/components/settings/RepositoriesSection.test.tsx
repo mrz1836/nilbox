@@ -5,7 +5,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { CloneLocation, Settings } from '../../platform'
 import { agents, defaultPrompts, locationPreview, locationState, profile, prompts, settings } from '../../test/fixtures'
 import { platform } from '../../test/platform'
-import { marker } from './CloneLocations'
+import { marker, rootMarker } from './CloneLocations'
 import { RepositoriesSection } from './RepositoriesSection'
 
 vi.mock('../../platform', () => import('../../test/platform').then((fake) => fake.platform))
@@ -65,6 +65,25 @@ describe('RepositoriesSection', () => {
     expect(
       screen.getByText(/Removing a location leaves its clones and their worktrees as they are/),
     ).toBeInTheDocument()
+  })
+
+  it('says how the clone root reads now', async () => {
+    renderSection()
+
+    const line = await screen.findByText('6 clones directly inside')
+
+    expect(line).toHaveAttribute('role', 'status')
+    expect(line).toHaveClass('text-muted')
+  })
+
+  it('warns when the clone root isn’t there', async () => {
+    platform.checkCloneLocations.mockResolvedValue([locationState({ state: 'missing', clones: 0 })])
+    renderSection(settings())
+
+    const line = await screen.findByText('Not found')
+
+    expect(line).toHaveAttribute('role', 'status')
+    expect(line).toHaveClass('text-warning')
   })
 
   it('says so while there are none', () => {
@@ -266,6 +285,16 @@ describe('RepositoriesSection', () => {
 
     expect(platform.addCloneLocations).toHaveBeenCalledWith(['/Volumes/ext/src'])
     expect(await locations().findByRole('alert')).toHaveTextContent('/Volumes/ext/src doesn’t exist.')
+  })
+})
+
+describe('rootMarker', () => {
+  it('words how the clone root reads now', () => {
+    expect(rootMarker(undefined)).toEqual({ text: '', warn: false })
+    expect(rootMarker(locationState({ clones: 1 }))).toEqual({ text: '1 clone directly inside', warn: false })
+    expect(rootMarker(locationState({ clones: 0 }))).toEqual({ text: 'No clones directly inside', warn: false })
+    expect(rootMarker(locationState({ state: 'notFolder' }))).toEqual({ text: 'Not a folder', warn: true })
+    expect(rootMarker(locationState({ state: 'unreadable' }))).toEqual({ text: 'Can’t be read', warn: true })
   })
 })
 

@@ -62,7 +62,9 @@ func TestCloneTargetAcrossLocations(t *testing.T) {
 
 		got, err := h.service().CloneTarget(t.Context(), h.orphanPR)
 		require.NoError(t, err)
-		assert.Equal(t, CloneTarget{Repo: "acme-org/missing-repo", Dir: "~/projects/missing-repo"}, got)
+		assert.Equal(t, CloneTarget{
+			Repo: "acme-org/missing-repo", Dir: "~/projects/missing-repo", Where: "~/projects or your other repository locations",
+		}, got, "it names where it looked")
 	})
 
 	t.Run("a remembered clone outside every location", func(t *testing.T) {
@@ -74,8 +76,9 @@ func TestCloneTargetAcrossLocations(t *testing.T) {
 
 		got, err := h.service().CloneTarget(t.Context(), h.orphanPR)
 		require.NoError(t, err)
-		assert.Equal(t, CloneTarget{Repo: "acme-org/missing-repo", Dir: "~/projects/missing-repo", Elsewhere: "~/old/missing-repo"},
-			got, "it is offered, not used")
+		assert.Equal(t, CloneTarget{
+			Repo: "acme-org/missing-repo", Dir: "~/projects/missing-repo", Elsewhere: "~/old/missing-repo", Where: "~/projects",
+		}, got, "it is offered, not used")
 
 		_, err = h.service().Launch(t.Context(), LaunchRequest{ItemID: h.orphanPR})
 		require.ErrorIs(t, err, localrepos.ErrCloneNotFound, "no launch starts where no listing or sweep looks")

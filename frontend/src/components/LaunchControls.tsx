@@ -94,6 +94,14 @@ type LaunchState =
   | { kind: 'noClone'; target: CloneTarget; request: LaunchRequest; error: string }
   | { kind: 'addLocation'; target: CloneTarget; request: LaunchRequest; linked: LinkedClone }
 
+// noCloneOf says a repository has no local clone, and where the launch looked: "No local
+// clone of acme-org/x in ~/projects or your other repository locations".
+function noCloneOf(target: CloneTarget): string {
+  const looked = target.where === '' ? '' : ` in ${target.where}`
+
+  return `No local clone of ${target.repo}${looked}`
+}
+
 // Saved is the last save of a launch's choices as defaults, which Undo takes back: the
 // defaults it saved over (owner and name; name is '' for the owner's), what was stored
 // there before, or undefined for nothing, and the choices it saved, which Undo brings back.
@@ -535,8 +543,8 @@ export function LaunchControls({
         <div className="col-[2/-1] mt-1.5 flex flex-wrap items-baseline gap-x-2 gap-y-1 text-xs">
           <p role="alert" className="text-warning">
             {state.target.taken
-              ? `No local clone of ${state.target.repo}, and ${state.target.dir} already exists, so it can’t be cloned there.`
-              : `No local clone of ${state.target.repo}.`}
+              ? `${noCloneOf(state.target)}, and ${state.target.dir} already exists, so it can’t be cloned there.`
+              : `${noCloneOf(state.target)}.`}
           </p>
           {!state.target.taken && (
             <button

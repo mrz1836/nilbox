@@ -700,11 +700,11 @@ describe('SettingsView', () => {
     await waitFor(() => {
       expect(onSaved).toHaveBeenCalledWith(settings({ cloneRoot: '~/code' }))
     })
-    expect(await screen.findByRole('status')).toHaveTextContent('Saved.')
+    expect(await screen.findByText('Saved.')).toHaveAttribute('role', 'status')
 
     // Editing again clears the confirmation.
     await userEvent.type(field, 'x')
-    expect(screen.queryByRole('status')).not.toBeInTheDocument()
+    expect(screen.queryByText('Saved.')).not.toBeInTheDocument()
   })
 
   it('shows a clone root the backend refused', async () => {

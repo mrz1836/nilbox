@@ -54,6 +54,11 @@ type CloneTarget struct {
 	// holds it, as after the clone root changed; "" otherwise. The window offers to use it
 	// (LinkClone).
 	Elsewhere string `json:"elsewhere"`
+
+	// Where names, for a repository without a clone, the locations it was looked for in,
+	// with ~: "~/projects", or "~/projects or your other repository locations" when there
+	// are others (localrepos.Roots.Where). "" for a repository with a clone.
+	Where string `json:"where"`
 }
 
 // CloneTarget reports whether an item's repository has a local clone and, when it has
@@ -101,7 +106,7 @@ func (s *Service) Clone(ctx context.Context, itemID int64) (CloneTarget, error) 
 
 	s.cacheClonePath(ctx, target.id, dir)
 
-	t.Cloned, t.Taken = true, false
+	t.Cloned, t.Taken, t.Where = true, false, ""
 
 	return t, nil
 }
@@ -143,6 +148,8 @@ func (s *Service) cloneTarget(ctx context.Context, itemID int64) (CloneTarget, r
 	if !errors.Is(err, localrepos.ErrCloneNotFound) {
 		return CloneTarget{}, repoRef{}, err
 	}
+
+	t.Where = roots.Where(s.home)
 
 	if old, ok := s.cloneAt(ctx, ref); ok {
 		t.Elsewhere = paths.Tilde(old.Dir, s.home)

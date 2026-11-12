@@ -1,11 +1,10 @@
 import { startTransition, useActionState, useId, useState } from 'react'
 
 import { attempt } from '../../lib/call'
+import type { Query } from '../../lib/useQuery'
 import type { SettingsSave } from '../../lib/useSettingsSave'
-import { useQuery } from '../../lib/useQuery'
 import {
   addCloneLocations,
-  checkCloneLocations,
   chooseFolder,
   previewCloneLocation,
   removeCloneLocation,
@@ -98,6 +97,18 @@ export function marker(state: LocationState | undefined): Marker {
   }
 }
 
+// rootMarker words how the clone root reads now: how many clones sit directly inside it,
+// or a warning such as Not found; nothing while it is being read.
+export function rootMarker(state: LocationState | undefined): { text: string; warn: boolean } {
+  if (state?.state === 'ok') {
+    return { text: `${state.clones === 0 ? 'No clones' : counted(state.clones)} directly inside`, warn: false }
+  }
+
+  const { text, warn } = marker(state)
+
+  return { text, warn }
+}
+
 // offers reports a preview that suggests something other than adding its folder as it is:
 // a folder with no clones directly inside it, or a clone whose folder holds other clones.
 function offers(preview: LocationPreview): boolean {
@@ -119,6 +130,9 @@ interface CloneLocationsProps {
   settings: Settings
   // save stores a change as the section's other settings are stored.
   save: SettingsSave['save']
+  // states is how the clone root and each location read now, which Check again reads
+  // again.
+  states: Query<LocationState[]>
 }
 
 // CloneLocations is the card of the other repository locations: each with what it is now,
@@ -126,13 +140,10 @@ interface CloneLocationsProps {
 // and a field, with Choose…, that adds another. A folder is looked at before it is added,
 // and the card suggests a better choice where it finds one: the folders inside a folder
 // with no clones of its own, or the folder of a clone that holds other clones.
-export function CloneLocations({ settings, save }: CloneLocationsProps) {
+export function CloneLocations({ settings, save, states }: CloneLocationsProps) {
   const id = useId()
   const [draft, setDraft] = useState('')
   const locations = settings.cloneLocations
-  const states = useQuery(() => checkCloneLocations(), [settings.cloneRoot, JSON.stringify(locations)], {
-    log: 'check the repository locations',
-  })
 
   // addAll adds locations, all or none, and clears the draft once they are stored.
   async function addAll(added: CloneLocation[], replaced: readonly string[], typed: string): Promise<LocationsState> {

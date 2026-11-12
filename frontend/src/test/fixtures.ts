@@ -929,6 +929,7 @@ export function cloneTarget(overrides: Partial<CloneTarget> = {}): CloneTarget {
     dir: '~/projects/example-repo',
     taken: false,
     elsewhere: '',
+    where: '',
     ...overrides,
   }
 }

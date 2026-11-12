@@ -2025,14 +2025,15 @@ suggests a better choice where it finds one:
   `.nilbox` or `.git` folder, and a linked worktree, whose clone is the one to add. A folder
   added drops the single clones inside it, which it now covers.
 
-Each location shows what it is now: *folder · 6 clones*, *clone · acme-org/example-repo*, or a
-warning such as *Not found* (a drive that isn't plugged in), *Not answering* (a network share
-that hangs), *No longer a clone*, *Now a clone itself* (a folder someone ran `git init` in,
-which is still looked into), or *Already in ~/projects*, with **Check again**. Every page and
-launch reads every location at once, and a location that can't be read is skipped and named: the
-launch's message says so, and the Worktrees view says which it couldn't read. A location that
-doesn't answer within 5 seconds is skipped, and read again next time. A clone two locations reach
-is listed once.
+The clone root shows how many clones sit directly inside it, *6 clones directly inside*, or a
+warning such as *Not found*. Each other location shows what it is now: *folder · 6 clones*,
+*clone · acme-org/example-repo*, or a warning such as *Not found* (a drive that isn't plugged
+in), *Not answering* (a network share that hangs), *No longer a clone*, *Now a clone itself* (a
+folder someone ran `git init` in, which is still looked into), or *Already in ~/projects*, with
+**Check again**. Every page and launch reads every location at once, and a location that can't
+be read is skipped and named: the launch's message says so, and the Worktrees view says which it
+couldn't read. A location that doesn't answer within 5 seconds is skipped, and read again next
+time. A clone two locations reach is listed once.
 
 Removing a location leaves its clones and their worktrees as they are, but nothing lists, sweeps,
 or cleans them up until you add it again, and their worktree records are kept. Worktrees stay
@@ -2056,8 +2057,9 @@ removals, prunes, and unlocks, with the [branch deletions](#branches) you confir
 [Repo scripts'](#repo-scripts) **Pull** you click, which fast-forwards the clone's branch.
 
 **A repository with no clone.** When a launch finds no clone of the item's repository, the row
-says so and offers **Clone into ~/projects/&lt;name&gt;**: the clone root, then the repository's
-name. It also offers **It's cloned elsewhere…**: pick the clone's folder, and the app checks it is
+says so and where it looked, *No local clone of acme-org/example-repo in ~/projects or your other
+repository locations*, and offers **Clone into ~/projects/&lt;name&gt;**: the clone root, then
+the repository's name. It also offers **It's cloned elsewhere…**: pick the clone's folder, and the app checks it is
 a clone of the repository (refusing, say, *~/x isn't a clone of acme-org/example-repo; its origin
 is acme-org/other*), adds it as a repository location, or offers its folder when that holds other
 clones, and continues the launch. A clone the app remembered that no location holds now, as after
