@@ -17,12 +17,13 @@ func (in *Installer) newSuffix() string { return "." + in.Slug + "-new" }
 
 func (in *Installer) oldSuffix() string { return "." + in.Slug + "-old" }
 
-// place puts the program at <Dir>/<Binary> so that the target is never missing: it works
-// in the folder Dir resolves to, copies the program beside the target, links the old copy
-// aside, renames the new one over the target (atomic, and a new inode, so a running copy
-// never sees a half-written file), and tries the placed copy, putting the old one back when
-// it won't run. It returns the target's path and whether a copy was replaced.
-func (in *Installer) place(ctx context.Context, program string, req Request) (string, bool, error) {
+// place puts the program extracted into work, as Binary, at <Dir>/<Binary> so that the
+// target is never missing: it works in the folder Dir resolves to, copies the program
+// beside the target, links the old copy aside, renames the new one over the target (atomic,
+// and a new inode, so a running copy never sees a half-written file), and tries the placed
+// copy, putting the old one back when it won't run. It returns the target's path and
+// whether a copy was replaced.
+func (in *Installer) place(ctx context.Context, work *os.Root, req Request) (string, bool, error) {
 	if err := os.MkdirAll(req.Dir, execPerm); err != nil {
 		return "", false, fmt.Errorf("%w: %w", ErrWrite, err)
 	}
@@ -45,7 +46,7 @@ func (in *Installer) place(ctx context.Context, program string, req Request) (st
 	_ = os.Remove(fresh)
 	_ = os.Remove(old)
 
-	if err = copyProgram(program, fresh); err != nil {
+	if err = copyProgram(work, req.Binary, fresh); err != nil {
 		_ = os.Remove(fresh)
 
 		return target, false, fmt.Errorf("%w: %w", ErrWrite, err)
@@ -120,9 +121,10 @@ func rollBack(target, old string, replacing bool) error {
 	return os.Remove(target) //nolint:wrapcheck // worded by the caller
 }
 
-// copyProgram copies the program to dst, a new file with mode 0755, and syncs it.
-func copyProgram(src, dst string) error {
-	in, err := os.Open(src) //nolint:gosec // the program this install extracted
+// copyProgram copies the program named name in work, the one this install extracted, to
+// dst, a new file with mode 0755, and syncs it.
+func copyProgram(work *os.Root, name, dst string) error {
+	in, err := work.Open(name)
 	if err != nil {
 		return err //nolint:wrapcheck // worded by the caller
 	}

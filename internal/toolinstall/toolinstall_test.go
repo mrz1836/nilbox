@@ -595,15 +595,50 @@ func TestInstallPlacesIntoTheResolvedFolder(t *testing.T) {
 func TestChecksumsAcceptTheBinaryMarkerAndCase(t *testing.T) {
 	t.Parallel()
 
-	dir := t.TempDir()
-	path := filepath.Join(dir, "sums")
+	work, err := os.OpenRoot(t.TempDir())
+	require.NoError(t, err)
+
+	t.Cleanup(func() { _ = work.Close() })
+
 	sum := sha([]byte("x"))
 
-	require.NoError(t, os.WriteFile(path, []byte(strings.ToUpper(sum)+" *"+archiveName+"\n"), 0o600))
-	require.NoError(t, verify(path, archiveName, sum))
+	require.NoError(t, work.WriteFile("sums", []byte(strings.ToUpper(sum)+" *"+archiveName+"\n"), 0o600))
+	require.NoError(t, verify(work, "sums", archiveName, sum))
 
-	require.NoError(t, os.WriteFile(path, []byte("abc  "+archiveName+"\n"), 0o600))
-	require.ErrorIs(t, verify(path, archiveName, sum), ErrChecksum, "a checksum that isn't 64 hex digits")
+	require.NoError(t, work.WriteFile("sums", []byte("abc  "+archiveName+"\n"), 0o600))
+	require.ErrorIs(t, verify(work, "sums", archiveName, sum), ErrChecksum, "a checksum that isn't 64 hex digits")
+}
+
+func TestTheDownloadFolderKeepsEveryFileInside(t *testing.T) {
+	t.Parallel()
+
+	s := newSetup(t, goodArchive(t))
+	parent := t.TempDir()
+	dir := filepath.Join(parent, "work")
+	require.NoError(t, os.Mkdir(dir, 0o700))
+
+	work, err := os.OpenRoot(dir)
+	require.NoError(t, err)
+
+	t.Cleanup(func() { _ = work.Close() })
+
+	// A name pickAssets would refuse, handed past it: the root refuses it as well.
+	escaping := s.d.r.assets[1]
+	escaping.Name = "../" + sumsName
+
+	_, err = s.in.fetch(t.Context(), work, escaping, maxChecksumsBytes, nil)
+	require.ErrorContains(t, err, "make the download file: ")
+	assert.NoFileExists(t, filepath.Join(parent, sumsName), "nothing is written outside the download folder")
+
+	// Nor is anything outside it read, though it is there.
+	archive := goodArchive(t)
+	require.NoError(t, os.WriteFile(filepath.Join(parent, sumsName), []byte(sha(archive)+"  "+archiveName+"\n"), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(parent, archiveName), archive, 0o600))
+
+	require.ErrorContains(t, verify(work, "../"+sumsName, archiveName, sha(archive)), "read the checksums: ")
+
+	_, _, err = s.in.extract(work, "../"+archiveName, testBinary)
+	require.ErrorContains(t, err, "open the archive: ")
 }
 
 func TestCleanupRemovesOnlyItsOwnOldLeftovers(t *testing.T) {

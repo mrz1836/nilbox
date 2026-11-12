@@ -421,7 +421,8 @@ app:lint` reads.
   program in (`clonelock.KindInstall`, the app's one `Set`), so they never meet a tool's
   update there, and hand the latest release to
   `internal/toolinstall`, which downloads the archive and checksums file into a fresh private
-  folder under `<data>/downloads`, checks both against the checksums file and GitHub's digests,
+  folder under `<data>/downloads` (every file in it made and read through an `os.Root` of it,
+  so no name from GitHub reaches out), checks both against the checksums file and GitHub's digests,
   extracts only the program's own entry, tries it, and places it so the target is never missing
   (a copy beside it renamed over it, the old one put back if the new one won't run); it keeps no
   records and speaks no HTTP, and integrations records each install in `tool_installs`, which
