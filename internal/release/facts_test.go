@@ -138,13 +138,8 @@ func newGatherRig(t *testing.T) *gatherRig {
 	r := &gatherRig{env: testutil.Git(t), root: realTempDir(t), locks: clonelock.New(), ssh: &sshFake{}, shellRead: true}
 	r.origin, r.clone = filepath.Join(r.root, "origin.git"), filepath.Join(r.root, "sdk")
 
-	testutil.RunGit(t, r.root, "-c", "init.defaultBranch=master", "init", "-q", "--bare", r.origin)
-	testutil.RunGit(t, r.root, "-c", "init.defaultBranch=master", "init", "-q", r.clone)
-	r.first = commitIn(t, r.clone, "one.txt")
-	testutil.RunGit(t, r.clone, "tag", "-a", "v1.0.0", "-m", "v1.0.0")
-	r.second = commitIn(t, r.clone, "two.txt")
-	testutil.RunGit(t, r.clone, "remote", "add", "origin", r.origin)
-	testutil.RunGit(t, r.clone, "push", "-q", "-u", "origin", branchMaster, "--tags")
+	c := sdkFixtures.Copy(t, sdkFixture{clone: "sdk", base: "v1.0.0"}, r.root)
+	r.first, r.second = c.first, c.second
 
 	r.github = &fakeGitHub{statuses: map[string]RepoStatus{name("sdk").Key(): {
 		Permission: "WRITE", DefaultBranch: branchMaster, HeadOID: r.second, Checks: ChecksSuccess,

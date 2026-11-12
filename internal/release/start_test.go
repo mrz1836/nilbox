@@ -47,7 +47,8 @@ type rigOptions struct {
 }
 
 // releaseRig is a release end to end: a clone of a local bare origin, isolated from the
-// user's git config, on master one commit past base; GitHub, the clone's origin, and ssh as
+// user's git config, on master one commit past base (a copy of sdkFixtures' fixture for
+// base); GitHub, the clone's origin, and ssh as
 // fakes; a fake magex that replays a recording; and the real runner over a fresh database,
 // with the release verifier registered. The fake magex only prints what the real one did,
 // so after does to origin and the clone what the real one would have, just before the
@@ -87,19 +88,8 @@ func newReleaseRig(t *testing.T, opts rigOptions) *releaseRig {
 	r := &releaseRig{t: t, env: testutil.Git(t), root: realTempDir(t), logs: &testutil.Logs{}}
 	r.origin, r.clone = filepath.Join(r.root, "origin.git"), filepath.Join(r.root, "sdk")
 
-	testutil.RunGit(t, r.root, "-c", "init.defaultBranch=master", "init", "-q", "--bare", r.origin)
-	testutil.RunGit(t, r.root, "-c", "init.defaultBranch=master", "init", "-q", r.clone)
-	r.first = commitIn(t, r.clone, "one.txt")
-	testutil.RunGit(t, r.clone, "tag", "-a", opts.base, "-m", opts.base)
-
-	if opts.module != "" {
-		writeIn(t, r.clone, "go.mod", "module "+opts.module+"\n", 0o600)
-		testutil.RunGit(t, r.clone, "add", "go.mod")
-	}
-
-	r.second = commitIn(t, r.clone, "two.txt")
-	testutil.RunGit(t, r.clone, "remote", "add", "origin", r.origin)
-	testutil.RunGit(t, r.clone, "push", "-q", "-u", "origin", branchMaster, "--tags")
+	c := sdkFixtures.Copy(t, sdkFixture{clone: "sdk", base: opts.base, module: opts.module}, r.root)
+	r.first, r.second = c.first, c.second
 
 	r.github = &fakeGitHub{statuses: map[string]RepoStatus{name("sdk").Key(): {
 		Permission: "WRITE", DefaultBranch: branchMaster, HeadOID: r.second, Checks: ChecksSuccess,

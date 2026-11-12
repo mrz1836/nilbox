@@ -29,7 +29,8 @@ type cloneRig struct {
 	second  string
 }
 
-// newCloneRig builds a cloneRig in a fresh folder, or skips the test without git.
+// newCloneRig builds a cloneRig in a fresh folder, a copy of sdkFixtures' fixture with
+// the clone at clone, or skips the test without git.
 func newCloneRig(t *testing.T) cloneRig {
 	t.Helper()
 
@@ -43,14 +44,8 @@ func newCloneRig(t *testing.T) cloneRig {
 		other:   filepath.Join(root, "other"),
 	}
 
-	testutil.RunGit(t, root, "-c", "init.defaultBranch=master", "init", "-q", "--bare", r.origin)
-	testutil.RunGit(t, root, "-c", "init.defaultBranch=master", "init", "-q", r.clone)
-	testutil.RunGit(t, r.clone, "checkout", "-q", "-b", "master")
-	r.first = commitIn(t, r.clone, "one.txt")
-	testutil.RunGit(t, r.clone, "tag", "-a", "v1.0.0", "-m", "v1.0.0")
-	r.second = commitIn(t, r.clone, "two.txt")
-	testutil.RunGit(t, r.clone, "remote", "add", "origin", r.origin)
-	testutil.RunGit(t, r.clone, "push", "-q", "-u", "origin", "master", "--tags")
+	c := sdkFixtures.Copy(t, sdkFixture{clone: "clone", base: "v1.0.0"}, root)
+	r.first, r.second = c.first, c.second
 
 	return r
 }
