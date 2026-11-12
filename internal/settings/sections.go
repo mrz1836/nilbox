@@ -4,7 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strconv"
+
+	"github.com/mrz1836/nilbox/internal/prefs/prefval"
 )
 
 // ListKey names an inbox list, as the inbox snapshot names it: each list is a section of
@@ -60,7 +61,7 @@ func decodeCollapsed(stored map[string]string) []ListKey {
 	out := []ListKey{}
 
 	for _, list := range listKeys() {
-		if collapsed, err := strconv.ParseBool(stored[collapsedKey(list)]); err == nil && collapsed {
+		if prefval.Bool(stored[collapsedKey(list)], false) {
 			out = append(out, list)
 		}
 	}
@@ -87,5 +88,5 @@ func (s *Service) SetSectionCollapsed(ctx context.Context, section ListKey, coll
 		return Settings{}, err
 	}
 
-	return s.save(ctx, setting(collapsedKey(section), strconv.FormatBool(collapsed)))
+	return s.save(ctx, setting(collapsedKey(section), prefval.EncodeBool(collapsed)))
 }

@@ -6,6 +6,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/mrz1836/nilbox/internal/prefs/prefval"
 )
 
 // FuzzDecodeWindowSize checks that a stored window size either is refused, as the zero
@@ -61,8 +63,8 @@ func FuzzDecodeUIPrefs(f *testing.F) {
 			assert.Equal(t, Theme(stored), theme)
 		}
 
-		on := decodeMenuBar(stored)
-		assert.Equal(t, on, decodeMenuBar(strconv.FormatBool(on)))
+		on := prefval.Bool(stored, DefaultMenuBar)
+		assert.Equal(t, on, prefval.Bool(prefval.EncodeBool(on), DefaultMenuBar))
 
 		for _, list := range listKeys() {
 			checkDecodedSection(t, list, stored)
@@ -83,6 +85,6 @@ func checkDecodedSection(t *testing.T, list ListKey, stored string) {
 		assert.Empty(t, collapsed)
 	}
 
-	written := map[string]string{collapsedKey(list): strconv.FormatBool(len(collapsed) > 0)}
+	written := map[string]string{collapsedKey(list): prefval.EncodeBool(len(collapsed) > 0)}
 	assert.Equal(t, collapsed, decodeCollapsed(written))
 }

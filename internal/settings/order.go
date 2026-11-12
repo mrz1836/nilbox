@@ -4,10 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strconv"
 	"strings"
 	"unicode/utf8"
 
+	"github.com/mrz1836/nilbox/internal/prefs/prefval"
 	"github.com/mrz1836/nilbox/internal/store"
 )
 
@@ -66,7 +66,7 @@ func decodeInboxOrder(stored map[string]string) InboxOrder {
 	out := InboxOrder{StatusSorted: []ListKey{}, StatusOrder: []string{}}
 
 	for _, list := range listKeys() {
-		if on, err := strconv.ParseBool(stored[statusSortKey(list)]); err == nil && on {
+		if prefval.Bool(stored[statusSortKey(list)], false) {
 			out.StatusSorted = append(out.StatusSorted, list)
 		}
 	}
@@ -120,7 +120,7 @@ func (s *Service) SetStatusSort(ctx context.Context, section ListKey, on bool) (
 		return Settings{}, err
 	}
 
-	return s.save(ctx, setting(statusSortKey(section), strconv.FormatBool(on)))
+	return s.save(ctx, setting(statusSortKey(section), prefval.EncodeBool(on)))
 }
 
 // SetStatusOrder stores the user's order of project status names, first ranked highest,

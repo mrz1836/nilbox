@@ -944,7 +944,10 @@ package imports the driver, and nothing imports an ORM (`internal/repoguard` enf
 - **Prefs.** `internal/prefs` owns the `prefs` table. Any package reads any key, but each key has
   exactly one writer: settings writes the user's settings, including the rule keys that the trust,
   snooze, sensitive, notifyprefs, branchrules, and integrationprefs packages declare; inbox
-  writes `inbox.*`; prompts writes `prompts.*` (the package doc has the full list).
+  writes `inbox.*`; prompts writes `prompts.*` (the package doc has the full list). Settings and
+  those leaves write a switch and a list of strings one way, through the leaf
+  `internal/prefs/prefval` (`Bool` and `EncodeBool`, `List` and `EncodeList`, which stores a nil
+  list as `[]`).
 - **Values.** Owners stamp `created_at`, `updated_at`, and every other time from their injected
   `clock.Clock`; nothing fills them in. The one exception is a release's follow, whose times in
   its run's result come from the real clock its waits run on (see `internal/release/`). The

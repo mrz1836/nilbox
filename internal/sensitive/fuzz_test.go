@@ -9,6 +9,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/mrz1836/nilbox/internal/prefs/prefval"
 )
 
 // childName is a name appended to a matched path to stand for something inside it.
@@ -78,7 +80,7 @@ func FuzzDecodeConfig(f *testing.F) {
 		checkDecodedPatterns(t, cfg.Patterns)
 
 		again := DecodeConfig(map[string]string{
-			PrefScope: string(cfg.Scope), PrefOff: EncodeList(cfg.Off), PrefPatterns: EncodeList(cfg.Patterns),
+			PrefScope: string(cfg.Scope), PrefOff: prefval.EncodeList(cfg.Off), PrefPatterns: prefval.EncodeList(cfg.Patterns),
 		})
 		assert.Equal(t, cfg, again)
 	})
@@ -127,7 +129,7 @@ func checkNormalized(t *testing.T, raw string, compileErr error) {
 	}
 
 	if utf8.ValidString(trimmed) {
-		assert.Equal(t, got, decodePatterns(EncodeList(got)))
+		assert.Equal(t, got, decodePatterns(prefval.EncodeList(got)))
 	}
 }
 

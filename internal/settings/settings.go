@@ -29,6 +29,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/notifyprefs"
 	"github.com/mrz1836/nilbox/internal/paths"
 	"github.com/mrz1836/nilbox/internal/prefs"
+	"github.com/mrz1836/nilbox/internal/prefs/prefval"
 	"github.com/mrz1836/nilbox/internal/profiles"
 	"github.com/mrz1836/nilbox/internal/sensitive"
 	"github.com/mrz1836/nilbox/internal/snooze"
@@ -315,7 +316,7 @@ func (s *Service) FollowSessions(ctx context.Context) (bool, error) {
 		return DefaultFollowSessions, fmt.Errorf("read whether to follow sessions: %w", err)
 	}
 
-	return decodeFollowSessions(stored), nil
+	return prefval.Bool(stored, DefaultFollowSessions), nil
 }
 
 // SetFollowSessions stores whether the app follows the agent sessions it launches, and
@@ -324,7 +325,7 @@ func (s *Service) FollowSessions(ctx context.Context) (bool, error) {
 // event.SessionsUpdated is emitted, so the window and the menu bar show the sessions, or
 // stop showing them, at once.
 func (s *Service) SetFollowSessions(ctx context.Context, on bool) (Settings, error) {
-	saved, err := s.save(ctx, setting(KeyFollowSessions, strconv.FormatBool(on)))
+	saved, err := s.save(ctx, setting(KeyFollowSessions, prefval.EncodeBool(on)))
 	if err != nil {
 		return saved, err
 	}
@@ -337,30 +338,13 @@ func (s *Service) SetFollowSessions(ctx context.Context, on bool) (Settings, err
 // SetCodexEffort stores whether a Codex launch passes the effort level it resolves to, and
 // returns the settings with it. Off, Codex uses the effort in its own config.
 func (s *Service) SetCodexEffort(ctx context.Context, on bool) (Settings, error) {
-	return s.save(ctx, setting(KeyCodexEffort, strconv.FormatBool(on)))
+	return s.save(ctx, setting(KeyCodexEffort, prefval.EncodeBool(on)))
 }
 
 // SetCodexFast stores whether Codex launches start in Fast mode unless unticked, and
 // returns the settings with it.
 func (s *Service) SetCodexFast(ctx context.Context, on bool) (Settings, error) {
-	return s.save(ctx, setting(KeyCodexFast, strconv.FormatBool(on)))
-}
-
-// decodeOff reads a stored switch that starts off: on only when stored as true.
-func decodeOff(stored string) bool {
-	on, err := strconv.ParseBool(stored)
-
-	return err == nil && on
-}
-
-// decodeFollowSessions reads a stored follow setting, falling back to the default for one
-// that is unset ("") or cannot be read.
-func decodeFollowSessions(stored string) bool {
-	if on, err := strconv.ParseBool(stored); err == nil {
-		return on
-	}
-
-	return DefaultFollowSessions
+	return s.save(ctx, setting(KeyCodexFast, prefval.EncodeBool(on)))
 }
 
 // SetDefaultAgent stores the coding agent launches use when no launch default names one,
@@ -399,13 +383,13 @@ func KeyDefaultProfile(id agent.ID) string {
 // SetWorktreeDefault stores whether launches start in a worktree unless unticked, and
 // returns the settings with it.
 func (s *Service) SetWorktreeDefault(ctx context.Context, on bool) (Settings, error) {
-	return s.save(ctx, setting(KeyWorktreeDefault, strconv.FormatBool(on)))
+	return s.save(ctx, setting(KeyWorktreeDefault, prefval.EncodeBool(on)))
 }
 
 // SetWorktreeAutoCleanup stores whether finished worktrees are cleaned up on their own,
 // and returns the settings with it.
 func (s *Service) SetWorktreeAutoCleanup(ctx context.Context, on bool) (Settings, error) {
-	return s.save(ctx, setting(KeyWorktreeAutoCleanup, strconv.FormatBool(on)))
+	return s.save(ctx, setting(KeyWorktreeAutoCleanup, prefval.EncodeBool(on)))
 }
 
 // SetBranchRules stores the rules for deleting local branches, and returns the settings
@@ -526,7 +510,7 @@ func (s *Service) SetSensitiveCategory(ctx context.Context, id string, on bool) 
 				return "", err
 			}
 
-			return sensitive.EncodeList(off), nil
+			return prefval.EncodeList(off), nil
 		})
 		if err != nil {
 			return fmt.Errorf("save the sensitive file categories: %w", err)
@@ -546,7 +530,7 @@ func (s *Service) SetSensitivePatterns(ctx context.Context, patterns []string) (
 		return Settings{}, err
 	}
 
-	return s.save(ctx, setting(sensitive.PrefPatterns, sensitive.EncodeList(normalized)))
+	return s.save(ctx, setting(sensitive.PrefPatterns, prefval.EncodeList(normalized)))
 }
 
 // MatchSensitivePath reports whether a path would count as sensitive under the stored
@@ -567,12 +551,12 @@ func fromStored(stored map[string]string) Settings {
 	out := Settings{
 		DefaultAgent:        DefaultAgent,
 		DefaultProfiles:     map[agent.ID]string{},
-		WorktreeDefault:     DefaultWorktreeDefault,
-		WorktreeAutoCleanup: DefaultAutoCleanup,
+		WorktreeDefault:     prefval.Bool(stored[KeyWorktreeDefault], DefaultWorktreeDefault),
+		WorktreeAutoCleanup: prefval.Bool(stored[KeyWorktreeAutoCleanup], DefaultAutoCleanup),
 		Terminal:            DefaultTerminal,
-		FollowSessions:      decodeFollowSessions(stored[KeyFollowSessions]),
-		CodexEffort:         decodeOff(stored[KeyCodexEffort]),
-		CodexFast:           decodeOff(stored[KeyCodexFast]),
+		FollowSessions:      prefval.Bool(stored[KeyFollowSessions], DefaultFollowSessions),
+		CodexEffort:         prefval.Bool(stored[KeyCodexEffort], false),
+		CodexFast:           prefval.Bool(stored[KeyCodexFast], false),
 		CloneRoot:           DefaultCloneRoot,
 		TrustedBots:         trust.DecodeBots(rawBots, hasBots),
 		DefaultTrustedBots:  trust.DefaultBots(),
@@ -585,14 +569,14 @@ func fromStored(stored map[string]string) Settings {
 		Branches:            branchrules.Decode(stored),
 
 		DefaultProtectedBranches: branchrules.DefaultProtected(),
-		MenuBar:                  decodeMenuBar(stored[KeyMenuBar]),
+		MenuBar:                  prefval.Bool(stored[KeyMenuBar], DefaultMenuBar),
 		BannersOff: notifyprefs.DecodeBannersOff(stored[notifyprefs.KeyBannersOff],
 			stored[notifyprefs.KeyBannersOn]),
 		Theme:             themes().decode(stored[KeyTheme]),
 		TextSize:          textSizes().decode(stored[KeyTextSize]),
 		CollapsedSections: decodeCollapsed(stored),
 
-		ProjectsTipDismissed: decodeProjectsTipDismissed(stored[KeyProjectsTipDismissed]),
+		ProjectsTipDismissed: prefval.Bool(stored[KeyProjectsTipDismissed], false),
 		InboxOrder:           decodeInboxOrder(stored),
 		MergeMethod:          mergeMethods().decode(stored[KeyMergeMethod]),
 		Integrations:         integrationprefs.Decode(stored),
@@ -610,14 +594,6 @@ func fromStored(stored map[string]string) Settings {
 		if v := stored[KeyDefaultProfile(id)]; v != "" {
 			out.DefaultProfiles[id] = v
 		}
-	}
-
-	if v, err := strconv.ParseBool(stored[KeyWorktreeDefault]); err == nil {
-		out.WorktreeDefault = v
-	}
-
-	if v, err := strconv.ParseBool(stored[KeyWorktreeAutoCleanup]); err == nil {
-		out.WorktreeAutoCleanup = v
 	}
 
 	if v := terminal.ID(stored[KeyTerminal]); validTerminal(v) {

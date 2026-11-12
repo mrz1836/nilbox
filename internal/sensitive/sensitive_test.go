@@ -261,13 +261,6 @@ func TestDecodeConfig(t *testing.T) {
 	assert.Equal(t, sensitive.DefaultConfig(), bad)
 }
 
-func TestEncodeList(t *testing.T) {
-	t.Parallel()
-
-	assert.Equal(t, "[]", sensitive.EncodeList(nil))
-	assert.Equal(t, `["a","b"]`, sensitive.EncodeList([]string{"a", "b"}))
-}
-
 func TestChecked(t *testing.T) {
 	t.Parallel()
 
