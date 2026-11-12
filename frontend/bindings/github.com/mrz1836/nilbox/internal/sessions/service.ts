@@ -38,3 +38,11 @@ export function LastWords(id: string): $CancellablePromise<$models.Words> {
 export function List(): $CancellablePromise<$models.Snapshot> {
     return $Call.ByID(3780341023);
 }
+
+/**
+ * ShowFolder shows the folder a session runs in, its worktree or the clone, in Finder,
+ * whether or not the session still runs.
+ */
+export function ShowFolder(id: string): $CancellablePromise<void> {
+    return $Call.ByID(744357778, id);
+}

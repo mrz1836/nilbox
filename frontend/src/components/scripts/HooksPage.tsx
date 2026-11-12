@@ -7,6 +7,7 @@ import type { SettingsSection } from '../../lib/settingsIndex'
 import { exportLine } from '../../lib/shell'
 import { formatAge, formatAgo } from '../../lib/time'
 import type { HooksState } from '../../lib/useHooks'
+import { useSections, type OnSection, type StoredSections } from '../../lib/useSections'
 import {
   openExternal,
   type HookGroup,
@@ -14,6 +15,7 @@ import {
   type IntegrationTool,
   type RunsIn,
   type ScriptRun,
+  type ScriptsSection,
 } from '../../platform'
 import { CommandLine } from '../CommandLine'
 import { buttonClass, quietButtonClass } from '../controls'
@@ -32,10 +34,15 @@ import { ToolProblem } from './ToolProblem'
 // without one.
 type Section = HookGroup | 'notSetUp'
 
+// stored names a section as the settings keep it: "hooks.ready".
+function stored(section: Section): ScriptsSection {
+  return `hooks.${section}`
+}
+
 // sectionsOpen is which sections start open, as hookGroups says; the clones without a
 // config start collapsed.
-function sectionsOpen(): Readonly<Partial<Record<Section, boolean>>> {
-  return Object.fromEntries(hookGroups.map((g) => [g.id, g.open]))
+function sectionsOpen(): Readonly<Partial<Record<ScriptsSection, boolean>>> {
+  return { ...Object.fromEntries(hookGroups.map((g) => [stored(g.id), g.open])), [stored('notSetUp')]: false }
 }
 
 // oldAs says how old a scan is: "14m old".
@@ -202,6 +209,10 @@ export interface HooksPageProps {
   runsIn: RunsIn
   onOpenRun: (id: number) => void
   onOpenSettings: (section: SettingsSection) => void
+  // sections are the sections the user opened or folded, kept across starts, and
+  // onSection stores another.
+  sections?: StoredSections
+  onSection?: OnSection
 }
 
 // HooksPage is the Scripts tab's Hooks page: every clone under the clone root with a
@@ -210,11 +221,21 @@ export interface HooksPageProps {
 // the way to set it up; a search over every group; a way to scan every clone again, and
 // how old the scan is when the last one failed; the warning that the hook can't find
 // go-pre-commit, with the fix; and the note that the checks install their own tools.
-// While go-pre-commit can't be used, the page says why in place of its list.
-export function HooksPage({ hooks, tool, runs, runsIn, onOpenRun, onOpenSettings }: HooksPageProps) {
+// While go-pre-commit can't be used, the page says why in place of its list. Each group
+// stays open or folded as the user left it, across starts (useSections).
+export function HooksPage({
+  hooks,
+  tool,
+  runs,
+  runsIn,
+  onOpenRun,
+  onOpenSettings,
+  sections = {},
+  onSection = () => undefined,
+}: HooksPageProps) {
   const id = useId()
   const [search, setSearch] = useState('')
-  const [open, setOpen] = useState(sectionsOpen)
+  const folds = useSections(sections, onSection, sectionsOpen())
   const [more, setMore] = useState<Fold>(null)
   const { list, error, refreshing, refreshError, refresh, installAll } = hooks
   const searching = search.trim() !== ''
@@ -225,7 +246,7 @@ export function HooksPage({ hooks, tool, runs, runsIn, onOpenRun, onOpenSettings
   }
 
   const toggle = (section: Section) => {
-    setOpen({ ...open, [section]: open[section] !== true })
+    folds.toggle(stored(section))
   }
 
   let body: ReactNode
@@ -264,7 +285,7 @@ export function HooksPage({ hooks, tool, runs, runsIn, onOpenRun, onOpenSettings
         <ExternalIcon className="size-3.5 text-muted" />
       </button>
     )
-    const notSetUpOpen = searching || open.notSetUp === true
+    const notSetUpOpen = searching || folds.isOpen(stored('notSetUp'))
     const toolNoteOpen = more ?? list.toolNote.open
 
     body = (
@@ -299,7 +320,7 @@ export function HooksPage({ hooks, tool, runs, runsIn, onOpenRun, onOpenSettings
         {list.repos.length > 0 &&
           hookGroups.map((group) => {
             const rows = matched.filter((r) => r.group === group.id)
-            const shown = searching || open[group.id] === true
+            const shown = searching || folds.isOpen(stored(group.id))
             const dirs = rows.filter(installable).map((r) => r.dir)
 
             if (rows.length === 0 && (searching || group.id !== 'attention')) {

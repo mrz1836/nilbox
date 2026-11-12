@@ -281,6 +281,16 @@ export function SetScriptsLastRepo(dir: string): $CancellablePromise<$models.Set
 }
 
 /**
+ * SetScriptsSectionOpen stores whether one of the Scripts tab's sections is open, as the
+ * user opened or folded it, which the page shows it as from then on, across starts, and
+ * returns the settings with it. The others stay as they were. A section that isn't one of
+ * the tab's is refused.
+ */
+export function SetScriptsSectionOpen(section: integrationprefs$0.ScriptsSection, open: boolean): $CancellablePromise<$models.Settings> {
+    return $Call.ByID(3446301586, section, open);
+}
+
+/**
  * SetSectionCollapsed stores whether an inbox section is collapsed, so the inbox opens the
  * same way at the next launch, and returns the settings with it.
  */
@@ -314,6 +324,15 @@ export function SetSensitivePatterns(patterns: string[] | null): $CancellablePro
  */
 export function SetSensitiveScope(scope: sensitive$0.Scope): $CancellablePromise<$models.Settings> {
     return $Call.ByID(2000338137, scope);
+}
+
+/**
+ * SetShowRuns stores whether a run Repo scripts starts shows beside its scripts at once,
+ * and returns the settings with it. Nothing else hears of it: the page reads the setting
+ * as a run starts.
+ */
+export function SetShowRuns(on: boolean): $CancellablePromise<$models.Settings> {
+    return $Call.ByID(723523330, on);
 }
 
 /**

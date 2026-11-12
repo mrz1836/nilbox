@@ -145,7 +145,7 @@ func (s *Service) sweepAgentWork(ctx context.Context, g git, root string, rules 
 		return nil
 	}
 
-	snap, err := s.assessClones(ctx, g, root, clones, rules)
+	snap, err := s.assessClones(ctx, g, root, clones, rules, nil)
 	if err != nil {
 		report.Error = uierr.Message(err)
 

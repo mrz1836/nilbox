@@ -130,6 +130,41 @@ func (s *Service) SetScriptsLastRepo(ctx context.Context, dir string) (Settings,
 	return s.save(ctx, setting(integrationprefs.KeyLastRepo, stored))
 }
 
+// SetScriptsSectionOpen stores whether one of the Scripts tab's sections is open, as the
+// user opened or folded it, which the page shows it as from then on, across starts, and
+// returns the settings with it. The others stay as they were. A section that isn't one of
+// the tab's is refused.
+func (s *Service) SetScriptsSectionOpen(ctx context.Context, section integrationprefs.ScriptsSection, open bool,
+) (Settings, error) {
+	if !section.Valid() {
+		return Settings{}, fmt.Errorf("%w: %q", integrationprefs.ErrInvalidSection, section)
+	}
+
+	return s.save(ctx, func(ctx context.Context, p *prefs.Store) error {
+		stored, _, err := p.Get(ctx, integrationprefs.KeySections)
+		if err != nil {
+			return err
+		}
+
+		sections := integrationprefs.DecodeSections(stored)
+		sections[section] = open
+
+		encoded, err := integrationprefs.EncodeSections(sections)
+		if err != nil {
+			return err
+		}
+
+		return p.Set(ctx, integrationprefs.KeySections, encoded)
+	})
+}
+
+// SetShowRuns stores whether a run Repo scripts starts shows beside its scripts at once,
+// and returns the settings with it. Nothing else hears of it: the page reads the setting
+// as a run starts.
+func (s *Service) SetShowRuns(ctx context.Context, on bool) (Settings, error) {
+	return s.save(ctx, setting(integrationprefs.KeyShowRuns, strconv.FormatBool(on)))
+}
+
 // toolPath expands a ~ in path and checks that it names an executable file, worded for
 // the user when it doesn't.
 func (s *Service) toolPath(path string) (string, error) {

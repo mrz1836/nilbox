@@ -205,3 +205,24 @@ UPDATE items SET reason_assigned = 0, assign_left_at = ? WHERE id = ?;
 -- themselves off its requested reviewers, stamped with the item's updated_at on GitHub
 -- after the edit (see UpsertItem).
 UPDATE items SET reason_review_requested = 0, review_left_at = ? WHERE id = ?;
+
+-- name: ListRunningChecks :many
+-- ListRunningChecks returns the listed open pull requests of the account with login whose
+-- checks were running (PENDING or EXPECTED) when their details were last read, before
+-- read_before, neither dismissed nor snoozed at now, the longest unread first, up to
+-- row_limit: the ones the inbox follows until their checks end.
+SELECT i.id, i.account_id, i.node_id
+FROM items i
+JOIN accounts a ON a.id = i.account_id
+JOIN item_details d ON d.item_id = i.id
+LEFT JOIN item_local_state l ON l.item_id = i.id
+WHERE a.login = sqlc.arg(login)
+  AND i.kind = 'pr'
+  AND i.node_id <> ''
+  AND (i.reason_review_requested = 1 OR i.reason_authored = 1 OR i.reason_assigned = 1)
+  AND d.checks_state IN ('PENDING', 'EXPECTED')
+  AND d.fetched_at < sqlc.arg(read_before)
+  AND l.dismissed_at IS NULL
+  AND (l.snoozed_until IS NULL OR l.snoozed_until <= sqlc.arg(now))
+ORDER BY d.fetched_at, i.id
+LIMIT sqlc.arg(row_limit);

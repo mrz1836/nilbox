@@ -25,8 +25,10 @@ func TestDecodeDefaultsToAutomatic(t *testing.T) {
 		RunsIn:          integrationprefs.RunsInApp,
 		OfferAfterMerge: true,
 		ScriptSources:   integrationprefs.ScriptSources{MagexTargets: true, RepoFiles: true},
+		Sections:        map[integrationprefs.ScriptsSection]bool{},
 	}, got, "a fresh database: every switch automatic, no copy chosen, runs in the app, a merge offers a release, "+
-		"Repo scripts lists every source, and no nil map")
+		"Repo scripts lists every source and shows no run at once, every section as its page starts it, and no nil "+
+		"map")
 }
 
 func TestDecodeReadsTheStoredValues(t *testing.T) {
@@ -132,7 +134,7 @@ func TestIDs(t *testing.T) {
 		"integrations.mage-x.enabled", "integrations.go-pre-commit.enabled", "integrations.scripts.enabled",
 		"integrations.mage-x.path", "integrations.go-pre-commit.path", "integrations.runsIn",
 		"integrations.offerAfterMerge", "scripts.magexTargets", "scripts.repoFiles", "integrations.announced",
-		"scripts.lastPage", "scripts.lastRepo",
+		"scripts.lastPage", "scripts.lastRepo", "scripts.sections", "scripts.showRuns",
 	}, integrationprefs.Keys())
 }
 
@@ -221,4 +223,44 @@ func TestEncodeLastRepo(t *testing.T) {
 		require.ErrorIs(t, err, integrationprefs.ErrInvalidRepo, name)
 		assert.Empty(t, integrationprefs.DecodeLastRepo(dir), "%s reads as none", name)
 	}
+}
+
+func TestTheSectionsTheUserOpenedOrFolded(t *testing.T) {
+	t.Parallel()
+
+	got := integrationprefs.Decode(map[string]string{
+		integrationprefs.KeySections: `{"hooks.ready":false,"scripts.magex":true,"hooks.someday":true,"scripts.t3":"x"}`,
+	})
+	assert.Equal(t, map[integrationprefs.ScriptsSection]bool{
+		integrationprefs.SectionHooksReady: false, integrationprefs.SectionScriptsMagex: true,
+	}, got.Sections, "a section the tab doesn't have is dropped")
+
+	for _, odd := range []string{"", "[]", "not json", `{"hooks.ready":"no"}`} {
+		assert.Empty(t, integrationprefs.DecodeSections(odd), odd)
+	}
+
+	stored, err := integrationprefs.EncodeSections(map[integrationprefs.ScriptsSection]bool{
+		integrationprefs.SectionScriptsYours: false, integrationprefs.SectionHooksOff: true,
+	})
+	require.NoError(t, err)
+	assert.JSONEq(t, `{"scripts.yours":false,"hooks.off":true}`, stored)
+
+	stored, err = integrationprefs.EncodeSections(nil)
+	require.NoError(t, err)
+	assert.Empty(t, stored, "none is stored as nothing")
+
+	_, err = integrationprefs.EncodeSections(map[integrationprefs.ScriptsSection]bool{"hooks.someday": true})
+	require.ErrorIs(t, err, integrationprefs.ErrInvalidSection)
+
+	for _, section := range integrationprefs.Sections() {
+		assert.True(t, section.Valid(), section)
+	}
+}
+
+func TestShowRunsStartsOff(t *testing.T) {
+	t.Parallel()
+
+	assert.False(t, integrationprefs.Decode(nil).ShowRuns, "a run shows beside the scripts only when asked")
+	assert.True(t, integrationprefs.Decode(map[string]string{integrationprefs.KeyShowRuns: "true"}).ShowRuns)
+	assert.False(t, integrationprefs.Decode(map[string]string{integrationprefs.KeyShowRuns: "yes"}).ShowRuns)
 }

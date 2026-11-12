@@ -5,11 +5,13 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"os"
 	"slices"
 	"strconv"
 	"strings"
 
 	"github.com/mrz1836/nilbox/internal/agent"
+	"github.com/mrz1836/nilbox/internal/brand"
 	"github.com/mrz1836/nilbox/internal/clock"
 	"github.com/mrz1836/nilbox/internal/event"
 	"github.com/mrz1836/nilbox/internal/execpath"
@@ -27,6 +29,12 @@ var (
 
 	// ErrNoTerminal is returned by Focus for a session whose terminal cannot be found.
 	ErrNoTerminal = errors.New("the session's terminal is not known")
+
+	// ErrNoFolder is returned by ShowFolder for a session whose folder is gone.
+	ErrNoFolder = errors.New("the session's folder is gone")
+
+	// ErrNoFinder is returned by ShowFolder where there is no Finder to show it in.
+	ErrNoFinder = errors.New("no file manager to show the folder in")
 )
 
 // Focuser brings a terminal's tab that runs on a tty forward. The app adapts the
@@ -35,6 +43,11 @@ type Focuser interface {
 	// Focus selects the tab, in the terminal named by its settings ID, whose tty is
 	// tty, such as /dev/ttys004, and brings its window forward.
 	Focus(ctx context.Context, terminal, tty string) error
+}
+
+// Revealer shows a file or a folder in Finder. Core adapts open -R, on macOS only.
+type Revealer interface {
+	Reveal(ctx context.Context, path string) error
 }
 
 // Config holds a Service's and a Ledger's dependencies. Store is required.
@@ -52,6 +65,9 @@ type Config struct {
 
 	// PS runs ps, which names the terminal a session's process runs in.
 	PS execpath.Runner
+
+	// Reveal shows a session's folder in Finder; without it, ShowFolder fails.
+	Reveal Revealer
 
 	// Home shows home as ~.
 	Home string
@@ -73,6 +89,7 @@ type Service struct {
 	toggle  Switch
 	focuser Focuser
 	ps      execpath.Runner
+	reveal  Revealer
 	home    string
 	words   map[agent.ID]WordsReader
 	clock   clock.Clock
@@ -82,7 +99,7 @@ type Service struct {
 // NewService returns the Service over cfg.
 func NewService(cfg Config) *Service {
 	return &Service{
-		store: cfg.Store, toggle: cfg.Switch, focuser: cfg.Focuser, ps: cfg.PS, home: cfg.Home,
+		store: cfg.Store, toggle: cfg.Switch, focuser: cfg.Focuser, ps: cfg.PS, reveal: cfg.Reveal, home: cfg.Home,
 		words: wordsReaders(cfg.Words), clock: clock.Or(cfg.Clock), logger: logging.Or(cfg.Logger),
 	}
 }
@@ -154,6 +171,29 @@ func (s *Service) Focus(ctx context.Context, id string) error {
 	}
 
 	return s.focuser.Focus(ctx, r.Terminal, tty)
+}
+
+// ShowFolder shows the folder a session runs in, its worktree or the clone, in Finder,
+// whether or not the session still runs.
+func (s *Service) ShowFolder(ctx context.Context, id string) error {
+	r, err := s.store.Get(ctx, id)
+	if err != nil {
+		return err
+	}
+
+	if info, statErr := os.Stat(r.Dir); statErr != nil || !info.IsDir() {
+		return uierr.New(paths.Tilde(r.Dir, s.home)+" isn't there anymore.", fmt.Errorf("%w: %s", ErrNoFolder, r.Dir))
+	}
+
+	if s.reveal == nil {
+		return uierr.New(brand.Name+" can't open Finder here.", ErrNoFinder)
+	}
+
+	if err = s.reveal.Reveal(ctx, r.Dir); err != nil {
+		return fmt.Errorf("show the session's folder: %w", err)
+	}
+
+	return nil
 }
 
 // TTY returns the terminal device the process pid runs on, such as /dev/ttys004, asking

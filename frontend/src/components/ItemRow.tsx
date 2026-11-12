@@ -2,8 +2,8 @@ import { memo } from 'react'
 
 import { counted } from '../lib/format'
 import { agentName } from '../lib/launch'
+import { leaving, useRowWork, workWords } from '../lib/rowWork'
 import { runningSession } from '../lib/sessions'
-import { useRowWork } from '../lib/rowWork'
 import { formatAge, formatAgo, formatFull, formatWhen } from '../lib/time'
 import { isBackFromSnooze, wakeSummary, type TriageTab } from '../lib/triage'
 import { useNowAs } from '../lib/useNow'
@@ -26,6 +26,7 @@ import { LaunchControls } from './LaunchControls'
 import { RelativeTime } from './RelativeTime'
 import { SensitiveFiles } from './SensitiveFiles'
 import { SessionTag } from './SessionTag'
+import { Spinner } from './Spinner'
 import { TriageControls, type TriageActions } from './TriageControls'
 
 // LaunchOptions are what every row's launch controls share: the coding agents, profiles,
@@ -276,7 +277,10 @@ function WorktreeTag({ wt, agents }: { wt: Worktree; agents: readonly AgentInfo[
 // reviews, comments, size, labels). The triage buttons, the menu of everything else (see
 // ItemMenu), and the launch button sit on the right, and a launch's outcome spans the
 // card below. The row does one thing with GitHub at a time, which its buttons and its
-// menu share (useRowWork). Long titles are cut short with an
+// menu share (useRowWork). While an edit that will likely take it out of the list runs,
+// the row fades and blurs under a note saying what GitHub is doing, and takes no clicks,
+// so the wait shows however slow the network is; it comes back if the item stays. Long
+// titles are cut short with an
 // ellipsis, so every card keeps the same shape. A card off screen is not rendered until
 // it scrolls near (item-row in index.css).
 //
@@ -302,12 +306,14 @@ export const ItemRow = memo(function ItemRow({
   const autoMerge = item.details?.autoMerge ?? ''
   const reviews = item.kind === 'pr' && onReview !== undefined
   const [work, start] = useRowWork()
+  const going = leaving(work)
 
   return (
     <li
       data-item-id={item.id}
       data-highlighted={highlighted || undefined}
-      className="item-row group grid grid-cols-[auto_minmax(0,1fr)_auto_auto] items-start gap-x-3 border-b border-border px-4 py-3 transition-colors last:border-b-0 hover:bg-raised/40 data-highlighted:bg-accent/10"
+      aria-busy={going || undefined}
+      className="item-row group relative grid grid-cols-[auto_minmax(0,1fr)_auto_auto] items-start gap-x-3 border-b border-border px-4 py-3 transition-colors last:border-b-0 hover:bg-raised/40 data-highlighted:bg-accent/10"
     >
       <KindIcon item={item} />
       <div className="min-w-0">
@@ -385,6 +391,17 @@ export const ItemRow = memo(function ItemRow({
           onManagePrompts={launch.onManagePrompts}
           running={runningSession(sessions)}
         />
+      )}
+      {going && (
+        <div data-row-status className="absolute inset-0 flex items-center justify-center">
+          <p
+            role="status"
+            className="flex items-center gap-2 rounded-full border border-border bg-surface px-3 py-1 text-xs font-medium text-text shadow-lg shadow-black/20 motion-safe:animate-pop-in"
+          >
+            <Spinner className="size-3.5" />
+            {workWords[work]}
+          </p>
+        </div>
       )}
     </li>
   )

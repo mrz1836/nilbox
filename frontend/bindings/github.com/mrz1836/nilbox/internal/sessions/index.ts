@@ -7,7 +7,8 @@ export {
 };
 
 export {
-    State
+    State,
+    WorktreeAction
 } from "./models.js";
 
 export type {

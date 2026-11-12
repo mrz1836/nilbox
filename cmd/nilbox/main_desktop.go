@@ -155,6 +155,9 @@ func assemble(
 	}
 
 	ui := &desktopUI{}
+	workers := []desktop.Worker{
+		c.Scheduler, c.ChecksFollower, c.Sweeper, c.BudgetSaver, c.Watcher, c.ReleaseRefresher, c.HooksScans,
+	}
 	shell := desktop.New(desktop.Config{
 		Frontend:       ui,
 		Window:         ui,
@@ -163,7 +166,7 @@ func assemble(
 		Inbox:          c.Inbox,
 		Settings:       c.ShellSettings,
 		Sessions:       c.ShellSessions,
-		Workers:        []desktop.Worker{c.Scheduler, c.Sweeper, c.BudgetSaver, c.Watcher, c.ReleaseRefresher, c.HooksScans},
+		Workers:        workers,
 		Deferred:       []desktop.Worker{c.Deferred, c.ToolFinder, c.Runs, c.ReleaseFollower},
 		Data:           c,
 		Banners:        banners.poster(),
@@ -233,6 +236,7 @@ func registerEvents() {
 	application.RegisterEvent[event.ReleasesUpdated](event.NameReleasesUpdated)
 	application.RegisterEvent[event.ReleasesProgress](event.NameReleasesProgress)
 	application.RegisterEvent[event.HooksUpdated](event.NameHooksUpdated)
+	application.RegisterEvent[event.WorktreesProgress](event.NameWorktreesProgress)
 }
 
 // services wraps every service the core binds, in the core's order. A service no binder

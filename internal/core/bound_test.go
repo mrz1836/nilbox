@@ -304,6 +304,12 @@ func boundCalls(t *testing.T) map[string]boundCall {
 		"settings.Service.SetScriptsLastRepo": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
 			return c.Settings.SetScriptsLastRepo(ctx, "~/projects/example-repo")
 		},
+		"settings.Service.SetScriptsSectionOpen": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
+			return c.Settings.SetScriptsSectionOpen(ctx, integrationprefs.SectionHooksReady, false)
+		},
+		"settings.Service.SetShowRuns": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
+			return c.Settings.SetShowRuns(ctx, true)
+		},
 		"scripts.Service.Repos": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
 			got, err := c.Scripts.Repos(ctx)
 			require.Len(t, got, 1)

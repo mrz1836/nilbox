@@ -26,7 +26,7 @@ func record(id string, number int) sessions.Record {
 		Terminal: "iterm2", ItemID: int64(number), Owner: "acme-org", Name: "example-repo", Kind: item.KindPR,
 		Number: number, Title: "Fix the widget", URL: "https://github.com/acme-org/example-repo/pull/12",
 		Dir: "/srv/wt/example-repo/pr-12", ClonePath: "/srv/projects/example-repo", Worktree: "pr-12",
-		LaunchedAt: launched(),
+		WorktreeAction: sessions.WorktreeCreate, Permission: "full access", LaunchedAt: launched(),
 	}
 }
 
@@ -52,6 +52,16 @@ func TestInsertAndRead(t *testing.T) {
 	got, err = store.Get(t.Context(), "s2")
 	require.NoError(t, err)
 	assert.True(t, got.LinkedAt.IsZero(), "not linked until its thread is found")
+
+	stale := record("s3", 14)
+	stale.WorktreeAction = "example-action"
+	stale.Notice = "Couldn't fetch origin/main, so the worktree starts from the last fetched copy."
+	require.NoError(t, store.Insert(t.Context(), stale))
+
+	got, err = store.Get(t.Context(), "s3")
+	require.NoError(t, err)
+	assert.Equal(t, sessions.WorktreeNone, got.WorktreeAction, "an action this build doesn't know reads as none")
+	assert.Equal(t, stale.Notice, got.Notice)
 
 	_, err = store.Get(t.Context(), "missing")
 	require.ErrorIs(t, err, sessions.ErrNotFound)
@@ -204,6 +214,9 @@ func TestRecordSession(t *testing.T) {
 
 	s := r.Session("/srv/home")
 	assert.Equal(t, "~/projects/.wt/pr-12", s.Dir)
+	assert.Equal(t, sessions.WorktreeCreate, s.WorktreeAction)
+	assert.Equal(t, "full access", s.Permission)
+	assert.Empty(t, s.Notice)
 	assert.Equal(t, "acme-org/example-repo", s.Repo)
 	assert.Equal(t, "2026-11-09T05:12:00Z", s.StateAt)
 	assert.Equal(t, "2026-11-09T05:11:00Z", s.LaunchedAt)

@@ -1,10 +1,10 @@
 import { useId } from 'react'
 
 import { agentOf, effortLabel, modelLabel, planToggleLabel, promptApplies, sourceLabel } from '../lib/launch'
-import { withAgent, type Choices, type SaveStatus } from '../lib/launchChoices'
+import { savableChoices, withAgent, type Choices, type SaveStatus } from '../lib/launchChoices'
 import type { AgentInfo, InboxItem, LaunchSetting, Profile, Prompt, Resolution } from '../platform'
 import { buttonClass, primaryButtonClass, quietButtonClass } from './controls'
-import { AlertIcon, TerminalIcon } from './icons'
+import { AlertIcon, StarIcon, TerminalIcon } from './icons'
 import { LaunchPreviewSection } from './LaunchPreviewSection'
 
 export interface LaunchMenuProps {
@@ -25,9 +25,13 @@ export interface LaunchMenuProps {
   busy: boolean
   // onSave saves the choices as defaults for the repository, or for its whole owner.
   onSave: (scope: 'repo' | 'org') => void
+  // saving reports a save, or its undo, under way.
   saving: boolean
   // status reports the last save, or null.
   status: SaveStatus | null
+  // onUndo puts back the defaults the last save replaced, or is null when there is no
+  // save to take back.
+  onUndo: (() => void) | null
   // resolveError says why the settings under the chosen prompt and profile could not be
   // worked out, or ''.
   resolveError: string
@@ -37,6 +41,11 @@ export interface LaunchMenuProps {
 }
 
 const sectionTitle = 'px-2 pb-1 text-[0.6875rem] font-semibold tracking-wide text-muted uppercase'
+
+// saveButtonClass is the footer's save buttons: small, but outlined, so they read as
+// buttons beside the dialog's own.
+const saveButtonClass =
+  'inline-flex max-w-40 items-center gap-1 rounded-md border border-border px-2 py-0.5 text-xs font-medium text-text transition-colors hover:bg-raised disabled:cursor-default disabled:opacity-50 disabled:hover:bg-transparent'
 const overrideHelp = "Lifts the outside-contributor restriction; keeps the profile's plan and permission settings."
 
 // defaultLabel names a setting's default: its value and where it comes from.
@@ -51,7 +60,8 @@ function defaultLabel(s: LaunchSetting, label: (v: string) => string): string {
 // LaunchMenu is the launch options in their dialog: the coding agent, the prompt, the
 // agent's profile, its model and effort, the worktree, and plan mode for this launch, a
 // preview of what it runs, and buttons to save the choices as defaults, to cancel, or to
-// launch. Every choice starts at what the item's settings resolve to, each showing where
+// launch. Saving takes one click, as it changes only this Mac's defaults, and offers Undo,
+// which puts back what the save replaced; the save buttons wait until a choice differs. Every choice starts at what the item's settings resolve to, each showing where
 // that comes from; the profiles, models, and effort levels offered are the chosen agent's.
 // The choices scroll when the window is short, and the buttons stay in view under them.
 export function LaunchMenu({
@@ -68,6 +78,7 @@ export function LaunchMenu({
   onSave,
   saving,
   status,
+  onUndo,
   resolveError,
   onManagePrompts,
   onCancel,
@@ -88,6 +99,8 @@ export function LaunchMenu({
   // forcedPlan: an outside contributor's item starts in plan mode until the override lifts it.
   const forcedPlan = untrusted && !choices.override
   const [owner, name] = [resolved.owner, resolved.repo.split('/').at(-1) ?? '']
+  // savable reports a choice a save would store; until then the save buttons wait.
+  const savable = savableChoices(choices)
   const set = (patch: Partial<Choices>) => {
     onChoices({ ...choices, ...patch })
   }
@@ -365,38 +378,57 @@ export function LaunchMenu({
       </div>
 
       <div className="flex shrink-0 items-center gap-2 border-t border-border px-3 py-2.5">
-        <div className="mr-auto flex min-w-0 flex-col">
-          <span className="text-[0.6875rem] text-muted">Save these choices as the default for</span>
-          <span className="flex gap-1">
+        <div className="mr-auto flex min-w-0 flex-col gap-1">
+          <span className="text-[0.6875rem] text-muted">
+            {savable ? 'Save these choices as the default for' : 'Change a choice above to save it as the default for'}
+          </span>
+          <span className="flex gap-1.5">
             <button
               type="button"
-              disabled={saving}
+              disabled={saving || !savable}
               onClick={() => {
                 onSave('repo')
               }}
               title={`Every launch on ${resolved.repo}`}
-              className={`${quietButtonClass} -ml-1.5 max-w-36 truncate text-text`}
+              className={saveButtonClass}
             >
-              {name}
+              <StarIcon className="size-3 shrink-0 text-muted" />
+              <span className="truncate">{name}</span>
             </button>
             <button
               type="button"
-              disabled={saving}
+              disabled={saving || !savable}
               onClick={() => {
                 onSave('org')
               }}
               title={`Every launch on ${owner}'s repositories`}
-              className={`${quietButtonClass} max-w-36 truncate text-text`}
+              className={saveButtonClass}
             >
-              all of {owner}
+              <StarIcon className="size-3 shrink-0 text-muted" />
+              <span className="truncate">all of {owner}</span>
             </button>
           </span>
           {status !== null && (
-            <span
-              role={status.tone === 'error' ? 'alert' : 'status'}
-              className={`text-[0.6875rem] leading-snug ${status.tone === 'error' ? 'text-danger' : status.tone === 'warning' ? 'text-warning' : 'text-success'}`}
-            >
-              {status.text}
+            <span className="flex flex-wrap items-baseline gap-x-1.5 text-[0.6875rem] leading-snug">
+              <span
+                role={status.tone === 'error' ? 'alert' : 'status'}
+                className={
+                  status.tone === 'error' ? 'text-danger' : status.tone === 'warning' ? 'text-warning' : 'text-success'
+                }
+              >
+                {status.text}
+              </span>
+              {onUndo !== null && (
+                <button
+                  type="button"
+                  disabled={saving}
+                  onClick={onUndo}
+                  title="Put back the defaults this save replaced"
+                  className="font-medium text-accent hover:underline disabled:opacity-50"
+                >
+                  Undo
+                </button>
+              )}
             </span>
           )}
         </div>

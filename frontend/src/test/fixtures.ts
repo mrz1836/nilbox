@@ -359,6 +359,8 @@ export function integrationsConfig(overrides: Partial<IntegrationsConfig> = {}):
     announced: false,
     lastPage: '',
     lastRepo: '',
+    sections: {},
+    showRuns: false,
     ...overrides,
   }
 }
@@ -1217,6 +1219,9 @@ export function agentSession(overrides: Partial<AgentSession> = {}): AgentSessio
     url: 'https://github.com/acme-org/example-repo/pull/7',
     dir: `~/projects/.${brand.slug}/worktrees/example-repo/pr-7`,
     worktree: 'pr-7',
+    worktreeAction: 'create',
+    permission: 'full access',
+    notice: '',
     state: 'needs_approval',
     detail: 'Permission prompt',
     stateAt: '2026-06-15T11:59:00Z',

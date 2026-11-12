@@ -17,7 +17,7 @@ import {
   worktreeRepo,
   worktreesSnapshot,
 } from '../test/fixtures'
-import { platform } from '../test/platform'
+import { emit, platform } from '../test/platform'
 import { WorktreesView } from './WorktreesView'
 
 vi.mock('../platform', () => import('../test/platform').then((fake) => fake.platform))
@@ -1074,8 +1074,13 @@ describe('WorktreesView', () => {
     )
     render(<WorktreesView clock={fixedNow} />)
 
-    expect(screen.getByText('Listing the worktrees…')).toBeInTheDocument()
+    expect(screen.getByRole('status')).toHaveTextContent('Checking the worktrees…')
     expect(screen.getByRole('button', { name: 'Refreshing…' })).toBeDisabled()
+
+    act(() => {
+      emit('worktrees:progress', { phase: 'listing', done: 3, total: 12 })
+    })
+    expect(screen.getByRole('status')).toHaveTextContent('Listing worktrees · 3 of 12 clones')
 
     await act(async () => {
       finish(worktreesSnapshot({ repos: [], cleanCount: 0 }))
@@ -1083,8 +1088,56 @@ describe('WorktreesView', () => {
     })
 
     expect(await screen.findByText('No clone under ~/projects has linked worktrees.')).toBeInTheDocument()
-    expect(screen.getByText('Worktrees of the clones under ~/projects')).toBeInTheDocument()
+    expect(screen.getByText(/^Worktrees of the clones under ~\/projects · checked/)).toBeInTheDocument()
+    expect(screen.queryByRole('status')).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Refresh' })).toBeEnabled()
+  })
+
+  it('says how far a quiet listing has got, as after a background sweep, and drops what it heard after', async () => {
+    const { rerender } = render(<WorktreesView clock={fixedNow} reloadKey={1} />)
+
+    expect(await screen.findByText(/^Worktrees of the clones under ~\/projects · checked/)).toBeInTheDocument()
+
+    let finish: (snap: ReturnType<typeof worktreesSnapshot>) => void = () => undefined
+    platform.listWorktrees.mockReturnValueOnce(
+      new Promise((resolve) => {
+        finish = resolve
+      }),
+    )
+    rerender(<WorktreesView clock={fixedNow} reloadKey={2} />)
+
+    const status = await screen.findByRole('status')
+    expect(status).toHaveTextContent('Checking the worktrees…')
+    // A quiet listing leaves the actions alone.
+    expect(screen.getByRole('button', { name: 'Refresh' })).toBeEnabled()
+
+    act(() => {
+      emit('worktrees:progress', { phase: 'clones', done: 0, total: 0 })
+    })
+    expect(status).toHaveTextContent('Finding the clones under ~/projects…')
+
+    act(() => {
+      emit('worktrees:progress', { phase: 'checking', done: 1, total: 4 })
+    })
+    expect(status).toHaveTextContent('Checking each worktree · 1 of 4 worktrees')
+    expect(status.querySelector('[style]')).toHaveStyle({ width: '25%' })
+
+    act(() => {
+      emit('worktrees:progress', { phase: 'github', done: 0, total: 2 })
+    })
+    expect(status).toHaveTextContent('Asking GitHub about 2 pull requests and issues…')
+
+    await act(async () => {
+      finish(worktreesSnapshot())
+      await Promise.resolve()
+    })
+
+    expect(screen.queryByRole('status')).not.toBeInTheDocument()
+
+    platform.listWorktrees.mockReturnValueOnce(new Promise(() => undefined))
+    rerender(<WorktreesView clock={fixedNow} reloadKey={3} />)
+
+    expect(await screen.findByRole('status')).toHaveTextContent('Checking the worktrees…')
   })
 })
 

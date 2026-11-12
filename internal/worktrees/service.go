@@ -27,6 +27,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/logging"
 	"github.com/mrz1836/nilbox/internal/paths"
 	"github.com/mrz1836/nilbox/internal/procs"
+	"github.com/mrz1836/nilbox/internal/progress"
 	"github.com/mrz1836/nilbox/internal/repo"
 	"github.com/mrz1836/nilbox/internal/uierr"
 	"github.com/mrz1836/nilbox/internal/worklog"
@@ -305,7 +306,8 @@ type Config struct {
 	Agents AgentProcesses
 
 	// Events hears an event.WorktreesUpdated when a sweep removed a worktree or changed
-	// how many need the user's attention.
+	// how many need the user's attention, and an event.WorktreesProgress as the window's
+	// listing goes.
 	Events event.Sink
 
 	// Clones is the app's one set of clone locks, which every job that changes a clone
@@ -347,6 +349,9 @@ type Service struct {
 	events   event.Sink
 	logger   *slog.Logger
 	procs    processTable
+
+	// progressEvery is how often, at most, the window's listing tells how far it has got.
+	progressEvery time.Duration
 
 	// zone is the machine's time zone, which an agent lock's start may be written in.
 	zone *time.Location
@@ -399,6 +404,8 @@ func NewService(cfg Config) *Service {
 		procs:    osProcesses{},
 		zone:     time.Local, //nolint:gosmopolitan // the agent writes a session's start in the machine's zone or in UTC
 		last:     emptyReport(),
+
+		progressEvery: progress.Every,
 	}
 }
 
@@ -406,18 +413,12 @@ func NewService(cfg Config) *Service {
 // with the status of each worktree and the pull request or issue it was made for. A
 // repository that git cannot read is listed with an error rather than hiding the rest. A
 // clone that is itself a linked worktree of another clone is folded into that repository.
+// It tells the window how far it has got as it goes (event.WorktreesProgress).
 func (s *Service) List(ctx context.Context) (Snapshot, error) {
-	g, root, prefs, err := s.prepare(ctx)
-	if err != nil {
-		return Snapshot{}, err
-	}
+	tracker := s.newListProgress()
+	defer tracker.End()
 
-	clones, err := localrepos.Scan(ctx, root, s.run)
-	if err != nil {
-		return Snapshot{}, err
-	}
-
-	return s.assessClones(ctx, g, root, clones, prefs.Branches)
+	return s.list(ctx, tracker)
 }
 
 // Remove removes one linked worktree without --force, and with it the branches named,
@@ -479,7 +480,7 @@ func (s *Service) RemoveAllClean(ctx context.Context, picks []Pick) ([]RemoveRes
 	s.act.Lock()
 	defer s.act.Unlock()
 
-	snap, err := s.List(ctx)
+	snap, err := s.list(ctx, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -548,6 +549,35 @@ func (s *Service) Prune(ctx context.Context, repoPath string) error {
 	return nil
 }
 
+// listProgress tells the window how far its listing has got (event.WorktreesProgress); a
+// nil one, as every listing but the window's passes, tells nothing.
+type listProgress = progress.Tracker[event.WorktreesPhase]
+
+// newListProgress returns the progress of the window's listing.
+func (s *Service) newListProgress() *listProgress {
+	return progress.New(s.events, s.progressEvery, func(phase event.WorktreesPhase, done, total int) event.Event {
+		return event.WorktreesProgress{Phase: phase, Done: done, Total: total}
+	})
+}
+
+// list is List, telling tracker how far it has got, or nothing for a nil one, as a
+// listing another job makes passes.
+func (s *Service) list(ctx context.Context, tracker *listProgress) (Snapshot, error) {
+	g, root, prefs, err := s.prepare(ctx)
+	if err != nil {
+		return Snapshot{}, err
+	}
+
+	tracker.Start(event.WorktreesFindingClones, 0)
+
+	clones, err := localrepos.Scan(ctx, root, s.run)
+	if err != nil {
+		return Snapshot{}, err
+	}
+
+	return s.assessClones(ctx, g, root, clones, prefs.Branches, tracker)
+}
+
 // assessClone assesses the clone at repoPath alone, GitHub included, as a listing would:
 // the clone must be under the clone root.
 func (s *Service) assessClone(ctx context.Context, repoPath string) (git, Snapshot, error) {
@@ -565,7 +595,7 @@ func (s *Service) assessClone(ctx context.Context, repoPath string) (git, Snapsh
 		return git{}, Snapshot{}, err
 	}
 
-	snap, err := s.assessClones(ctx, g, root, []localrepos.LocalRepo{clone}, prefs.Branches)
+	snap, err := s.assessClones(ctx, g, root, []localrepos.LocalRepo{clone}, prefs.Branches, nil)
 	if err != nil {
 		return git{}, Snapshot{}, err
 	}
@@ -679,8 +709,10 @@ func unpushedText(n int) string {
 // made after the listing then has no record yet rather than a record that seems to name a
 // worktree gone, and the git commands the listing runs are not mistaken for sessions.
 func (s *Service) assessClones(ctx context.Context, g git, root string, clones []localrepos.LocalRepo,
-	rules branchrules.Rules,
+	rules branchrules.Rules, tracker *listProgress,
 ) (Snapshot, error) {
+	tracker.Start(event.WorktreesListing, len(clones))
+
 	records := s.records(ctx)
 	running, known := s.processes(ctx)
 
@@ -698,6 +730,8 @@ func (s *Service) assessClones(ctx context.Context, g git, root string, clones [
 
 			listings[i], listErr = s.listRepo(ectx, g, clone.Path)
 
+			tracker.Add(1)
+
 			return listErr
 		})
 	}
@@ -706,7 +740,7 @@ func (s *Service) assessClones(ctx context.Context, g git, root string, clones [
 		return Snapshot{}, err
 	}
 
-	if err := s.readRows(ctx, g, listings); err != nil {
+	if err := s.readRows(ctx, g, listings, tracker); err != nil {
 		return Snapshot{}, err
 	}
 
@@ -718,7 +752,7 @@ func (s *Service) assessClones(ctx context.Context, g git, root string, clones [
 	}
 
 	snap := s.snapshot(root, listed)
-	snap.LinkError = s.link(ctx, snap.Repos, remotes, recorded)
+	snap.LinkError = s.link(ctx, snap.Repos, remotes, recorded, tracker)
 	s.adopt(ctx, snap.Repos, recorded)
 	markSessions(snap.Repos, running, s.agentProcesses(ctx))
 	snap.SessionsUnknown = !known
@@ -1155,9 +1189,16 @@ func (s *Service) commitTimes(ctx context.Context, g git, dir string, entries []
 }
 
 // readRows builds the row of every listed worktree, a few at a time across all clones.
-func (s *Service) readRows(ctx context.Context, g git, listings []cloneListing) error {
+func (s *Service) readRows(ctx context.Context, g git, listings []cloneListing, tracker *listProgress) error {
 	eg, ectx := errgroup.WithContext(ctx)
 	eg.SetLimit(listConcurrency)
+
+	rows := 0
+	for _, l := range listings {
+		rows += len(l.entries)
+	}
+
+	tracker.Start(event.WorktreesChecking, rows)
 
 	for i := range listings {
 		l := &listings[i]
@@ -1168,6 +1209,8 @@ func (s *Service) readRows(ctx context.Context, g git, listings []cloneListing) 
 				var rowErr error
 
 				l.rows[j], rowErr = s.row(ectx, g, e, l.managedDir, l.legacyDir, l.times)
+
+				tracker.Add(1)
 
 				return rowErr
 			})

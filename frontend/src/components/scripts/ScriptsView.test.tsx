@@ -46,6 +46,7 @@ interface TabProps {
   onOpenSettings: (section: SettingsSection) => void
   onPage?: (page: ScriptsPage) => void
   onRepo?: (dir: string) => void
+  showRuns?: boolean
 }
 
 // Tab is the tab as the window shows it: fed the tools and the runs the window lists.
@@ -59,6 +60,7 @@ function Tab({
   onOpenSettings,
   onPage = () => undefined,
   onRepo = () => undefined,
+  showRuns = false,
 }: TabProps) {
   return (
     <ScriptsView
@@ -75,6 +77,7 @@ function Tab({
       lastRepo={lastRepo}
       onPage={onPage}
       onRepo={onRepo}
+      showRuns={showRuns}
     />
   )
 }
@@ -663,7 +666,7 @@ describe('ScriptsView', () => {
     })
 
     it('shows the run a script starts beside the page, and keeps the clone and the run when it shows again', async () => {
-      renderView()
+      renderView({ showRuns: true })
 
       await userEvent.click(await rail().findByRole('button', { name: 'Repo scripts' }))
       await userEvent.selectOptions(await screen.findByRole('combobox', { name: 'Repository' }), 'web')

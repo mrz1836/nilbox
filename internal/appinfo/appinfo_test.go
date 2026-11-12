@@ -2,6 +2,7 @@ package appinfo
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"log/slog"
@@ -113,6 +114,35 @@ func TestBugReportURLFillsInTheEnvironment(t *testing.T) {
 	assert.Equal(t,
 		"- Version: 0.0.0 (16)\n- Commit: abc1234-dirty\n- System: macOS 15.1 (24B83), "+runtime.GOARCH+"\n"+
 			"- Claude: 2.1.319\n- Codex: not installed\n- GitHub CLI: not installed\n",
+		u.Query().Get(environmentField))
+}
+
+// fixedState is a StateReader with fixed sections.
+type fixedState []StateSection
+
+func (f fixedState) BugReportState(context.Context) []StateSection { return f }
+
+func TestBugReportURLFoldsTheAppStateUnderTheVersions(t *testing.T) {
+	t.Parallel()
+
+	s := NewService(Config{
+		Version: "abc1234", Release: "0.1.0", Build: "16", System: "macOS 15.1 (24B83)",
+		State: fixedState{
+			{Title: "Settings", Lines: []string{"Theme: dark", "Terminal: iTerm2"}},
+			{Title: "Integrations", Lines: []string{"magex: on (automatic) · 1.30.0 from Homebrew"}},
+		},
+	})
+
+	u, err := url.Parse(s.BugReportURL(t.Context()))
+	require.NoError(t, err)
+
+	assert.Equal(t,
+		"- Version: 0.1.0 (16)\n- Commit: abc1234\n- System: macOS 15.1 (24B83), "+runtime.GOARCH+"\n"+
+			"- Claude: not installed\n- Codex: not installed\n- GitHub CLI: not installed\n"+
+			"\n<details><summary>Settings and integrations</summary>\n"+
+			"\n**Settings**\n\n- Theme: dark\n- Terminal: iTerm2\n"+
+			"\n**Integrations**\n\n- magex: on (automatic) · 1.30.0 from Homebrew\n"+
+			"\n</details>\n",
 		u.Query().Get(environmentField))
 }
 

@@ -58,6 +58,8 @@ import {
   setIntegrationsAnnounced,
   setScriptsLastPage,
   setScriptsLastRepo,
+  setScriptsSectionOpen,
+  setShowRuns,
   type AfterMerge,
   type AgentID,
   type AppNotification,
@@ -855,6 +857,14 @@ export function App() {
                   }}
                   onRepo={(dir) => {
                     remember(setScriptsLastRepo(dir), 'the clone Repo scripts shows')
+                  }}
+                  sections={config.settings?.integrations.sections ?? {}}
+                  onSection={(section, open) => {
+                    remember(setScriptsSectionOpen(section, open), 'a Scripts section opened or folded')
+                  }}
+                  showRuns={config.settings?.integrations.showRuns ?? false}
+                  onShowRuns={(on) => {
+                    remember(setShowRuns(on), 'whether a run shows beside Repo scripts')
                   }}
                 />
               </div>

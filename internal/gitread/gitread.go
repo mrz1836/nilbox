@@ -146,14 +146,10 @@ func (g *Git) remote(parent context.Context, dir string, args []string) (stdout,
 }
 
 // exec runs git in dir with env and args, which have passed the allowlist, and the extra
-// settings, which gitread builds itself.
+// settings, which gitread builds itself. slices.Concat sizes the argv and checks that
+// size for overflow, so no sum of lengths is worked out here.
 func (g *Git) exec(ctx context.Context, dir string, env, extra, args []string) (stdout, stderr []byte, err error) {
-	safe := hardening()
-	argv := make([]string, 0, len(safe)+len(extra)+len(args)+2)
-	argv = append(argv, "-C", dir)
-	argv = append(argv, safe...)
-	argv = append(argv, extra...)
-	argv = append(argv, args...)
+	argv := slices.Concat([]string{"-C", dir}, hardening(), extra, args)
 
 	return g.runner(env).Run(ctx, gitBin, argv...)
 }

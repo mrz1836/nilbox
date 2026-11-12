@@ -277,7 +277,8 @@ func (l sessionLedger) Started(ctx context.Context, s launcher.StartedSession) e
 		ID: s.ID, AgentSessionID: s.AgentSessionID, ResumedFrom: s.ResumedFrom, Agent: s.Agent, Profile: s.Profile,
 		ConfigDir: s.ConfigDir, Prompt: s.Prompt, PromptHead: s.PromptHead, Terminal: s.Terminal, ItemID: s.ItemID,
 		Owner: s.Owner, Name: s.Name, Kind: s.Kind, Number: s.Number, Title: s.Title, URL: s.URL, Dir: s.Dir,
-		ClonePath: s.ClonePath, Worktree: s.Worktree, LaunchedAt: s.LaunchedAt,
+		ClonePath: s.ClonePath, Worktree: s.Worktree, WorktreeAction: sessions.WorktreeAction(s.WorktreeAction),
+		Permission: s.Permission, Notice: s.Notice, LaunchedAt: s.LaunchedAt,
 	})
 }
 

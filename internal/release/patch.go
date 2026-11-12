@@ -120,7 +120,7 @@ func (s *Service) patch(ctx context.Context, names map[string]bool) bool {
 	}
 
 	progress := newListProgress(s.events, s.progressEvery)
-	defer progress.end()
+	defer progress.End()
 
 	statuses, compares, err := s.askGitHub(ctx, listed, progress)
 	if err != nil {

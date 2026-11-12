@@ -122,6 +122,20 @@ describe('ScriptsCard', () => {
     expect(onSaved).toHaveBeenCalledTimes(2)
   })
 
+  it('opens a run beside Repo scripts only once asked to', async () => {
+    const { card, onSaved } = renderCard()
+    const box = card.getByRole('checkbox', { name: /^Open a run beside Repo scripts as it starts/ })
+
+    expect(box).not.toBeChecked()
+    expect(box).toHaveAccessibleDescription(/Off, the page says the run started, with a way to show it/)
+
+    await userEvent.click(box)
+
+    expect(platform.setShowRuns).toHaveBeenCalledExactlyOnceWith(true)
+    expect(box).toBeChecked()
+    expect(onSaved).toHaveBeenCalledOnce()
+  })
+
   it('says why a change was refused, beside what changed', async () => {
     platform.setScriptSources.mockRejectedValueOnce(new Error('database is locked'))
     platform.setIntegrationEnabled.mockRejectedValueOnce(new Error('disk is full'))

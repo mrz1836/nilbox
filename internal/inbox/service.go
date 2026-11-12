@@ -138,6 +138,7 @@ type Client interface {
 	FetchInbox(ctx context.Context, tok github.Token) (*github.Inbox, error)
 	FetchDetails(ctx context.Context, tok github.Token, ids []string, opts github.DetailOptions) (*github.Details, error)
 	FetchItem(ctx context.Context, tok github.Token, id string, opts github.DetailOptions) (*github.ItemUpdate, error)
+	FetchItems(ctx context.Context, tok github.Token, ids []string, opts github.DetailOptions) (*github.ItemUpdates, error)
 	FetchPullHead(ctx context.Context, tok github.Token, ref item.Ref) (*github.PullHead, error)
 	FetchChangedFiles(ctx context.Context, tok github.Token, ref item.Ref, head string) (*github.ChangedFiles, error)
 	FetchRateLimits(ctx context.Context, tok github.Token) (*github.RateLimits, error)

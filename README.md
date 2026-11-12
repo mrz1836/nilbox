@@ -320,8 +320,9 @@ requests that merged, never touching `main`, `master`, or any branch you protect
 - **Sort by status:** flip **Assigned** from **Recent** to **Status** to see work in progress
   above work that's ready, new, or deferred. Every project names its own statuses, so the order
   is yours to arrange; statuses you haven't placed are placed by their names.
-- **Always current:** a refresh on start and every five minutes, a manual refresh, and a per-card
-  refresh that costs one API point. Archived repositories, and items merged or closed since GitHub
+- **Always current:** a refresh on start and every five minutes, a manual refresh, a per-card
+  refresh that costs one API point, and pull requests whose checks are running read again every
+  45 seconds, all in one request, until their checks end. Archived repositories, and items merged or closed since GitHub
   indexed them, never show.
 - **Tab counts and collapsible lists:** the Inbox tab counts each item that needs you once, and a
   collapsed list stays collapsed across launches.
@@ -651,7 +652,8 @@ More in [Menu bar and notifications](docs/desktop.md#menu-bar-and-notifications)
   setting** in the toolbar narrows the sections to those with a match and marks the setting.
 - **About** shows the version, build, commit, and system, each coding agent's installed
   version, and the GitHub CLI's, and **Report a bug** opens a GitHub issue with those details
-  filled in.
+  filled in, and your settings and integrations folded away beneath them, with nothing personal:
+  no account, repository, path, or name of your own.
 
 More in [The window](docs/desktop.md#the-window).
 

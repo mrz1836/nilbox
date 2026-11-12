@@ -23,6 +23,7 @@ function props(overrides: Partial<LaunchMenuProps> = {}): LaunchMenuProps {
     onSave: vi.fn(),
     saving: false,
     status: null,
+    onUndo: null,
     resolveError: '',
     onManagePrompts: vi.fn(),
     onCancel: vi.fn(),
@@ -31,6 +32,39 @@ function props(overrides: Partial<LaunchMenuProps> = {}): LaunchMenuProps {
 }
 
 describe('LaunchMenu', () => {
+  it('waits for a choice before it saves defaults, then saves in one click with an undo', async () => {
+    const onSave = vi.fn()
+    const { rerender } = render(<LaunchMenu {...props({ onSave })} />)
+
+    expect(screen.getByText('Change a choice above to save it as the default for')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'example-repo' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'all of acme-org' })).toBeDisabled()
+
+    rerender(<LaunchMenu {...props({ onSave, choices: { ...noChoices, profile: 'work' } })} />)
+
+    expect(screen.getByText('Save these choices as the default for')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'all of acme-org' }))
+    expect(onSave).toHaveBeenCalledWith('org')
+
+    const onUndo = vi.fn()
+    rerender(
+      <LaunchMenu
+        {...props({
+          onSave,
+          onUndo,
+          status: { tone: 'success', text: 'Saved as the default for every acme-org repository.' },
+        })}
+      />,
+    )
+
+    expect(screen.getByRole('status')).toHaveTextContent('Saved as the default for every acme-org repository.')
+    await userEvent.click(screen.getByRole('button', { name: 'Undo' }))
+    expect(onUndo).toHaveBeenCalledOnce()
+
+    rerender(<LaunchMenu {...props({ onUndo, saving: true, status: { tone: 'success', text: 'Saved.' } })} />)
+    expect(screen.getByRole('button', { name: 'Undo' })).toBeDisabled()
+  })
+
   it('launches, or cancels without launching', async () => {
     const onLaunch = vi.fn()
     const onCancel = vi.fn()

@@ -107,6 +107,22 @@
   .item-row:has([aria-expanded='true']) {
     content-visibility: visible;
   }
+
+  /* A row an edit on GitHub is taking out of its list (aria-busy while the request runs)
+     fades and blurs behind the note that says so, and takes no clicks, so the wait shows
+     before the row leaves; it comes back as it was if the item stays. */
+  .item-row > * {
+    transition:
+      opacity 200ms,
+      filter 200ms;
+  }
+
+  .item-row[aria-busy='true'] > :not([data-row-status]) {
+    opacity: 0.35;
+    filter: blur(1px);
+    pointer-events: none;
+    user-select: none;
+  }
 }
 
 @layer components {

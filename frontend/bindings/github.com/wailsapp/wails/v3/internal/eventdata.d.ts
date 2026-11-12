@@ -25,6 +25,7 @@ declare module "@wailsio/runtime" {
             "scriptruns:updated": event$0.ScriptRunsUpdated;
             "sessions:updated": event$0.SessionsUpdated;
             "tools:updated": event$0.ToolsUpdated;
+            "worktrees:progress": event$0.WorktreesProgress;
             "worktrees:updated": event$0.WorktreesUpdated;
         }
     }

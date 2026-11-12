@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/mrz1836/nilbox/internal/clock"
+	"github.com/mrz1836/nilbox/internal/event"
 	"github.com/mrz1836/nilbox/internal/item"
 	"github.com/mrz1836/nilbox/internal/paths"
 	"github.com/mrz1836/nilbox/internal/repo"
@@ -42,7 +43,7 @@ type linkTarget struct {
 // remotes maps each repository's Path to its remotes (remote name to repository), and
 // recorded holds the live records by their worktree's resolved path.
 func (s *Service) link(ctx context.Context, repos []Repo, remotes map[string]map[string]repo.Name,
-	recorded map[string]worklog.Record,
+	recorded map[string]worklog.Record, tracker *listProgress,
 ) string {
 	if s.github == nil {
 		return ""
@@ -53,7 +54,12 @@ func (s *Service) link(ctx context.Context, repos []Repo, remotes map[string]map
 		return ""
 	}
 
-	states, err := s.github.ItemStates(ctx, uniqueRefs(targets))
+	refs := uniqueRefs(targets)
+	tracker.Start(event.WorktreesAskingGitHub, len(refs))
+
+	states, err := s.github.ItemStates(ctx, refs)
+	tracker.Add(len(refs))
+
 	if err != nil {
 		err = fmt.Errorf("could not read the pull requests and issues from GitHub: %w", err)
 		s.logger.DebugContext(ctx, "worktrees are listed without their pull requests and issues", "error", err)

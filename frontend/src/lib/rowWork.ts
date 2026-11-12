@@ -6,6 +6,20 @@ import { useRef, useState } from 'react'
 // click never sends a second request.
 export type RowWork = 'refresh' | 'unassign' | 'review' | null
 
+// workWords say what a busy row is doing with GitHub.
+export const workWords: Readonly<Record<Exclude<RowWork, null>, string>> = {
+  refresh: 'Refreshing from GitHub…',
+  unassign: 'Unassigning you on GitHub…',
+  review: 'Removing you as a reviewer on GitHub…',
+}
+
+// leaving reports work that will most likely take the row out of its list: an edit that
+// takes the user off the item, which the inbox then stops showing. A pull request that
+// still asks one of the user's teams stays, and the row comes back as it was.
+export function leaving(work: RowWork): work is 'unassign' | 'review' {
+  return work === 'unassign' || work === 'review'
+}
+
 // StartWork begins work on a row, unless some is under way: it marks the row busy with
 // what, and clears the mark once call settles. call reports its own failures, so it
 // never rejects.

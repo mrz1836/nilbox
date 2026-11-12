@@ -196,6 +196,13 @@ describe('ItemMenu', () => {
     expect(button.parentElement?.parentElement).toHaveClass('opacity-100')
     expect(screen.getByRole('button', { name: 'Refresh from GitHub' })).toBeDisabled()
 
+    // The row fades under a note saying what GitHub is doing, since it will likely leave.
+    const row = screen.getByRole('listitem')
+    expect(row).toHaveAttribute('aria-busy', 'true')
+    const note = within(row).getByRole('status')
+    expect(note).toHaveTextContent('Unassigning you on GitHub…')
+    expect(note.closest('[data-row-status]')?.parentElement).toBe(row)
+
     // A second click while GitHub works sends nothing more.
     await openMenu()
     expect(screen.getByRole('menuitem', { name: 'Unassign me' })).toBeDisabled()
@@ -208,6 +215,9 @@ describe('ItemMenu', () => {
 
     expect(button).toHaveAttribute('title', 'More actions')
     expect(screen.getByRole('button', { name: 'Refresh from GitHub' })).toBeEnabled()
+    // An item GitHub still keeps in the inbox comes back as it was.
+    expect(row).not.toHaveAttribute('aria-busy')
+    expect(within(row).queryByRole('status')).not.toBeInTheDocument()
     expect(edits.onUnassign).toHaveBeenCalledTimes(1)
     expect(triage.onRefresh).not.toHaveBeenCalled()
   })
@@ -227,6 +237,42 @@ describe('ItemMenu', () => {
     await userEvent.click(menu.getByRole('menuitem', { name: 'Remove me as reviewer' }))
 
     expect(edits.onRemoveReview).toHaveBeenCalledWith(it)
+  })
+
+  it('fades the row while GitHub takes the user off its reviewers, and never for a refresh', async () => {
+    let done: () => void = () => undefined
+    const it = item({ reviewRequest: 'you' })
+    const { edits, triage } = renderRow(it)
+    const hold = () =>
+      new Promise<void>((resolve) => {
+        done = resolve
+      })
+    vi.mocked(edits.onRemoveReview).mockImplementation(hold)
+    vi.mocked(triage.onRefresh).mockImplementation(hold)
+
+    const row = screen.getByRole('listitem')
+
+    await userEvent.click(screen.getByRole('button', { name: 'Refresh from GitHub' }))
+    // A refresh leaves the item in its list, so the row stays as it is.
+    expect(row).not.toHaveAttribute('aria-busy')
+    expect(within(row).queryByRole('status')).not.toBeInTheDocument()
+
+    await act(async () => {
+      done()
+      await Promise.resolve()
+    })
+
+    await userEvent.click((await openMenu()).getByRole('menuitem', { name: 'Remove me as reviewer' }))
+
+    expect(row).toHaveAttribute('aria-busy', 'true')
+    expect(within(row).getByRole('status')).toHaveTextContent('Removing you as a reviewer on GitHub…')
+
+    await act(async () => {
+      done()
+      await Promise.resolve()
+    })
+
+    expect(row).not.toHaveAttribute('aria-busy')
   })
 
   it('says why a review asked of a team cannot be taken off one member', async () => {

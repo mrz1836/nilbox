@@ -188,6 +188,9 @@ type fakeMaker struct {
 
 	// head is the commit an existing worktree has checked out.
 	head string
+
+	// notice is what the fake says it worked around, or "".
+	notice string
 }
 
 // worktreeOf is where the fake makes a request's worktree.
@@ -226,7 +229,7 @@ func (m *fakeMaker) EnsureWorktree(_ context.Context, req WorktreeRequest) (Work
 // answer is what the fake finds or would make for req.
 func (m *fakeMaker) answer(req WorktreeRequest) Worktree {
 	path := worktreeOf(req)
-	wt := Worktree{Path: path, Branch: "worktree-" + filepath.Base(path), Action: WorktreeCreate, Dirty: 0}
+	wt := Worktree{Path: path, Branch: "worktree-" + filepath.Base(path), Action: WorktreeCreate, Dirty: 0, Notice: m.notice}
 
 	if _, err := os.Stat(path); err == nil {
 		wt.Action, wt.Head = WorktreeResume, m.head

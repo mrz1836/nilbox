@@ -249,7 +249,18 @@ export const settingsIndex: Readonly<Record<SettingsSection, readonly SettingEnt
     },
     {
       label: 'Scripts',
-      keywords: ['repo scripts', 't3.json', 'VS Code tasks', 'tasks.json', 'magex targets', 'commands', 'automatic'],
+      keywords: [
+        'repo scripts',
+        't3.json',
+        'VS Code tasks',
+        'tasks.json',
+        'magex targets',
+        'commands',
+        'automatic',
+        'run panel',
+        'show runs',
+        'pull',
+      ],
     },
     {
       label: 'Runs in',
