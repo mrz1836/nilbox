@@ -12,7 +12,6 @@ import (
 	"sync"
 	"syscall"
 	"time"
-	"unicode"
 
 	"github.com/mrz1836/nilbox/internal/brand"
 	"github.com/mrz1836/nilbox/internal/clock"
@@ -23,6 +22,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/procs"
 	"github.com/mrz1836/nilbox/internal/repo"
 	"github.com/mrz1836/nilbox/internal/scriptrun/internal/queries"
+	"github.com/mrz1836/nilbox/internal/textutil"
 	"github.com/mrz1836/nilbox/internal/uierr"
 )
 
@@ -985,36 +985,23 @@ func sameStart(a, b time.Time) bool {
 	return d <= startSlack && d >= -startSlack
 }
 
-// DisplayCommand writes argv out as a shell would read it, quoting what needs quoting,
-// with the program's folder under home written from ~, as the window shows every folder.
-// The ~/ stays outside the quotes, where a shell still reads it as home. A run's Command
-// defaults to it, and the integrations show a tool's own update command with it.
+// DisplayCommand writes argv out as a shell would read it, each word as
+// textutil.ShellWord quotes it, with the program's folder under home written from ~, as
+// the window shows every folder. The ~/ stays outside the quotes, where a shell still
+// reads it as home. A run's Command defaults to it, and the integrations show a tool's own
+// update command with it.
 func DisplayCommand(argv []string, home string) string {
 	parts := make([]string, 0, len(argv))
 
 	for i, arg := range argv {
 		if rest, ok := strings.CutPrefix(paths.Tilde(arg, home), "~/"); i == 0 && ok {
-			parts = append(parts, "~/"+shellQuote(rest))
+			parts = append(parts, "~/"+textutil.ShellWord(rest))
 
 			continue
 		}
 
-		parts = append(parts, shellQuote(arg))
+		parts = append(parts, textutil.ShellWord(arg))
 	}
 
 	return strings.Join(parts, " ")
-}
-
-// shellQuote quotes s for a POSIX shell, unless it needs none.
-func shellQuote(s string) string {
-	if s != "" && !strings.ContainsFunc(s, needsQuote) {
-		return s
-	}
-
-	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
-}
-
-// needsQuote reports a character a shell would read as more than itself.
-func needsQuote(r rune) bool {
-	return !unicode.IsLetter(r) && !unicode.IsDigit(r) && !strings.ContainsRune("-_./=:,+@%", r)
 }

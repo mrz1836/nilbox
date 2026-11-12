@@ -352,28 +352,6 @@ func TestRecheckCompletesTheIntent(t *testing.T) {
 	require.ErrorIs(t, err, context.Canceled)
 }
 
-func TestShellWord(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		word, quoted string
-	}{
-		{word: "master", quoted: "master"},
-		{word: "origin/feature/x-1", quoted: "origin/feature/x-1"},
-		{word: "v1.4.3+build.7", quoted: "v1.4.3+build.7"},
-		{word: "", quoted: "''"},
-		{word: "a b", quoted: "'a b'"},
-		{word: "$(touch pwned)", quoted: "'$(touch pwned)'"},
-		{word: "`id`", quoted: "'`id`'"},
-		{word: "it's", quoted: `'it'\''s'`},
-		{word: "x;rm -rf ~", quoted: "'x;rm -rf ~'"},
-	}
-
-	for _, tt := range tests {
-		assert.Equal(t, tt.quoted, shellWord(tt.word), tt.word)
-	}
-}
-
 func TestCopyableCommandsAreQuoted(t *testing.T) {
 	t.Parallel()
 

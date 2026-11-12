@@ -286,10 +286,11 @@ func TestJoin(t *testing.T) {
 	assert.Empty(t, agent.Join(nil))
 	assert.Equal(t, "--advisor fable --add-dir=/srv/x", agent.Join([]string{flagAdvisor, "fable", "--add-dir=/srv/x"}))
 	assert.Equal(t, `--note 'two words' '' 'it'\''s' 'é'`, agent.Join([]string{"--note", "two words", "", "it's", "é"}))
+	assert.Equal(t, `--config=x '=x'`, agent.Join([]string{"--config=x", "=x"}), "a leading = is quoted")
 }
 
 func FuzzSplitJoin(f *testing.F) {
-	for _, seed := range []string{"--advisor fable", "two words", "it's", "", `a"b`, "tab\there", "new\nline", `back\slash`} {
+	for _, seed := range []string{"--advisor fable", "two words", "it's", "", `a"b`, "tab\there", "new\nline", `back\slash`, "=x"} {
 		f.Add(seed, "--flag")
 	}
 

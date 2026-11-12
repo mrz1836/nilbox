@@ -115,7 +115,7 @@ func TestShellWord(t *testing.T) {
 		input string
 		want  string
 	}{
-		{name: "plain", input: "plain", want: "plain"},
+		{name: "plain", input: "master", want: "master"},
 		{name: "branch", input: "origin/feature/x-1", want: "origin/feature/x-1"},
 		{name: "version", input: "v1.4.3+build.7", want: "v1.4.3+build.7"},
 		{name: "every safe character", input: "a/b.c-d_e=f:g,h+i@j%k", want: "a/b.c-d_e=f:g,h+i@j%k"},

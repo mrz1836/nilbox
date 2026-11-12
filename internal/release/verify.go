@@ -348,12 +348,12 @@ func judge(name repo.Name, in Intent, said Output, end scriptrun.Ending, got see
 	case got.commit != "":
 		res.Kind, res.Taken = ResultFailed, true
 		if ownTag {
-			res.Commands = []string{"git tag -d " + shellWord(got.tag)}
+			res.Commands = []string{"git tag -d " + textutil.ShellWord(got.tag)}
 		}
 	case res.Tagged:
 		res.Kind, res.PushWarning = ResultNotPushed, said.PushSkipWarning
 		res.Commands = []string{
-			"git push " + remoteOrigin + " " + shellWord(got.tag), "git tag -d " + shellWord(got.tag),
+			"git push " + remoteOrigin + " " + textutil.ShellWord(got.tag), "git tag -d " + textutil.ShellWord(got.tag),
 		}
 	default:
 		res.Kind = ResultFailed

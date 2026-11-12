@@ -16,6 +16,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/brand"
 	"github.com/mrz1836/nilbox/internal/clonelock"
 	"github.com/mrz1836/nilbox/internal/testutil"
+	"github.com/mrz1836/nilbox/internal/textutil"
 	"github.com/mrz1836/nilbox/internal/uierr"
 )
 
@@ -39,7 +40,7 @@ func TestStartRecordsARunThatSucceeds(t *testing.T) {
 	assert.Equal(t, testRepo(), rec.Repo)
 	assert.Equal(t, spec.Dir, rec.Dir)
 	assert.Equal(t, spec.Argv, rec.Argv)
-	assert.Equal(t, shellQuote(spec.Argv[0]), rec.Command)
+	assert.Equal(t, textutil.ShellWord(spec.Argv[0]), rec.Command)
 	assert.Positive(t, rec.PID)
 	assert.Equal(t, rec.PID, rec.PGID, "the program leads its own group")
 	assert.False(t, rec.ProcStartedAt.IsZero(), "its start time tells it from a reused PID")
@@ -697,6 +698,8 @@ func TestDisplayCommandQuotesWhatAShellWouldRead(t *testing.T) {
 	assert.Equal(t, "/bin/magex version:bump bump=patch", DisplayCommand([]string{"/bin/magex", "version:bump", "bump=patch"}, home))
 	assert.Equal(t, `/bin/zsh -c 'echo "$HOME" it'\''s'`, DisplayCommand([]string{"/bin/zsh", "-c", `echo "$HOME" it's`}, home))
 	assert.Equal(t, "/bin/x ''", DisplayCommand([]string{"/bin/x", ""}, home))
+	assert.Equal(t, "/bin/x 'café' '=y'", DisplayCommand([]string{"/bin/x", "café", "=y"}, home),
+		"a word outside ASCII, or one zsh would read as a path, is quoted")
 }
 
 func TestDisplayCommandShowsTheProgramFromHome(t *testing.T) {
