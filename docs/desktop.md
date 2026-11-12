@@ -816,21 +816,22 @@ rem, never px, so it follows the setting; a repository test fails the build for 
 large** (1680 × 1050). Choosing one resizes the window at once. A size larger than the screen
 opens as large as the screen allows.
 
-**Settings** is a page of its own, with sections for your account, appearance (the theme, the
-text size, and the size the window opens at), [notifications](#menu-bar-and-notifications) (the menu bar icon and
-which banners show), snoozing (how long the
-[Snooze](#snooze-dismiss-and-pin) button sets an item aside, and what [wakes a snooze
-early](#waking-a-snooze-early)), reviewing (the merge method and your [review
-replies](#review-replies)), launching (the terminal,
-the default coding agent, each agent's default profile, the default prompt for pull requests and
-for issues, the worktree default, and following agent sessions), worktrees (whether to [clean up
-worktrees after merging](#the-worktrees-view), which branches go with them, and protected
-branches), [coding agents and profiles](#coding-agents-and-profiles),
+**Settings** is a page of its own. Its sidebar lists the sections in the order the app is used:
+your account, appearance (the theme, the text size, and the size the window opens at),
+[notifications](#menu-bar-and-notifications) (the menu bar icon and which banners show), and
+refreshing (how often the inbox, the running checks, and the worktrees are read again); then,
+under **Inbox**, snoozing (how long the [Snooze](#snooze-dismiss-and-pin) button sets an item
+aside, and what [wakes a snooze early](#waking-a-snooze-early)) and reviewing (the merge method
+and your [review replies](#review-replies)); under **Agents**, in the order you set them up,
 repositories (the clone root, the other [repository locations](#repository-locations), and the
-[launch defaults](#launch-defaults) for orgs and repositories), trust (the [trusted
-bots](#outside-contributors)), [sensitive files](#sensitive-files),
-[integrations](#tools-the-app-finds-and-installs) (mage-x, go-pre-commit, and Scripts), and the
-app's version. Each change is saved as you make it, except the clone root, which its **Save**
+[launch defaults](#launch-defaults) for orgs and repositories), [coding agents and
+profiles](#coding-agents-and-profiles), launching (the terminal, the default coding agent, each
+agent's default profile, the default prompt for pull requests and for issues, the worktree
+default, and following agent sessions), trust (the [trusted bots](#outside-contributors)),
+[sensitive files](#sensitive-files), and worktrees (whether to [clean up worktrees after
+merging](#the-worktrees-view), which branches go with them, and protected branches); under
+**Tools**, [integrations](#tools-the-app-finds-and-installs) (mage-x, go-pre-commit, and
+Scripts); and the app's version. Each change is saved as you make it, except the clone root, which its **Save**
 button saves (or **Choose…**, as soon as it picks a folder), and launch defaults, which are saved
 with theirs. Escape or the back arrow returns to the view you came from.
 

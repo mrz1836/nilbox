@@ -894,10 +894,11 @@ More in [The window](docs/desktop.md#the-window).
 - **Refreshing:** how often the app reads the inbox (every 2 minutes to every hour), the pull
   requests whose checks are running (off, or every 30 seconds to every 2 minutes), and the
   worktrees' sweep (every 5 minutes to every hour). A change applies at once.
-- **Settings** covers your account, appearance, notifications, refreshing, snoozing, reviewing,
-  launching, worktrees, profiles, repositories, trust, sensitive files, and integrations. **Find a
-  setting** in the toolbar narrows the sections to those with a match and marks the setting, and
-  **⌘,** opens Settings from anywhere.
+- **Settings** covers your account, appearance, notifications, and refreshing; then the inbox
+  (snoozing and reviewing); the agents (repositories, profiles, launching, trust, sensitive files,
+  and worktrees, in the order you set them up); and the tools (integrations). **Find a setting**
+  in the toolbar narrows the sections to those with a match and marks the setting, and **⌘,**
+  opens Settings from anywhere.
 - **The account menu** shows who is signed in, opens your GitHub profile, and opens GitHub's status
   page, for when GitHub is having an incident.
 - **About** shows the version, build, commit, and system, each coding agent's installed version,
