@@ -269,20 +269,23 @@ func TestTheRunsTellTheNotificationsOfAFailedRun(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	var run scriptrun.Run
+	// The run's follower tells of its end once it has recorded it and let go of the clone:
+	// wait for what it tells, not for the record, which reads as ended a moment before.
+	var log notify.Log
 
-	require.Eventually(t, func() bool {
-		run, err = c.ScriptRuns.Run(t.Context(), id)
+	require.EventuallyWithT(t, func(collect *assert.CollectT) {
+		var listErr error
 
-		return err == nil && !run.Status.Live()
-	}, 15*time.Second, 10*time.Millisecond, "the run ends")
+		log, listErr = c.Notifications.List(t.Context())
+		require.NoError(collect, listErr)
+		assert.NotEmpty(collect, log.Items)
+	}, 15*time.Second, 10*time.Millisecond, "the failed run is told")
+
+	run, err := c.ScriptRuns.Run(t.Context(), id)
+	require.NoError(t, err)
 	assert.Equal(t, scriptrun.StatusFailed, run.Status)
 
-	c.Runs.StopAll() // waits for the run's follower, which tells of its end once it let go of the clone
-
-	log, err := c.Notifications.List(t.Context())
-	require.NoError(t, err)
-	require.Len(t, log.Items, 1)
+	require.Len(t, log.Items, 1, "the run that couldn't start isn't told")
 	assert.Equal(t, notify.KindRunFailed, log.Items[0].Kind)
 	assert.Equal(t, id, log.Items[0].RunID)
 	assert.Equal(t, run.StartedAt, log.Items[0].RunStarted, "the key the window checks the run against")
