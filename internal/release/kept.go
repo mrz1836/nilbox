@@ -15,8 +15,8 @@ import (
 const keptKey = "release.lastCandidates"
 
 // keptVersion is the shape of the kept list this build writes; a list kept in any other is
-// not read.
-const keptVersion = 1
+// not read. Version 2 added GroupMuted, which a build before it can't place.
+const keptVersion = 2
 
 // Keeper keeps the last list between starts: core's prefs store. The service reads and
 // writes keptKey alone.
@@ -232,6 +232,15 @@ func (r *Refresher) Run(ctx context.Context) {
 // never waits. Core hands it to the review service.
 func (r *Refresher) Merged(name repo.Name) {
 	r.s.queueMerged(name)
+}
+
+// RulesChanged tells the Release page that the user pinned or muted a repository or an
+// org, or took its rule off. It never waits, and asks GitHub nothing: the window, told the
+// list changed (event.ReleasesUpdated), asks for it again, and Candidates reads the rules
+// as they are now, regrouping the list and reading alone a repository unmuted that was
+// never read (liftMuted). Core calls it once the rules are stored.
+func (r *Refresher) RulesChanged() {
+	r.s.events.Emit(event.ReleasesUpdated{})
 }
 
 // askBehind asks the Refresher to read the list again, unless it already is. The caller

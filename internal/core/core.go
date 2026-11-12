@@ -554,12 +554,16 @@ func assemble(pool *sql.DB, info startup, opts Options, logger *slog.Logger) *Co
 		Terminal: terminals,
 		// The last list is kept in the prefs, so the next start shows it at once.
 		Keeper: prefsstore.New(pool, opts.Clock), Home: opts.Home, Clock: opts.Clock, Events: opts.Events, Logger: logger,
+		// A muted repository is listed apart and never asked about; a pinned one comes first.
+		Rules: releaseRules{prefs: prefsstore.New(pool, opts.Clock)},
 	})
 	// A release left from before a restart is read and verified as one started now.
 	runs.RegisterVerifier(scriptrun.KindRelease, release.NewVerifier(releases))
 	// The Refresher reads the Release page's rows of a released repository again, and of
 	// one a merge in the review sheet went into.
 	releaseRefresher := release.NewRefresher(releases)
+	// A pinned or muted repository regroups the Release page's list.
+	followed.releases = releaseRefresher
 	// The Follower follows each release on GitHub to published, and resumes the follows a
 	// quit cut off.
 	releaseFollower := release.NewFollower(releases)

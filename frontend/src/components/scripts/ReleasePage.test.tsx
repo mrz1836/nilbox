@@ -5,7 +5,14 @@ import { describe, expect, it, vi } from 'vitest'
 import type { SettingsSection } from '../../lib/settingsIndex'
 import type { OnSection } from '../../lib/useSections'
 import { useReleaseCandidates } from '../../lib/useReleaseCandidates'
-import type { IntegrationTool, ReleaseCandidate, ReleaseCandidates, ScriptRun } from '../../platform'
+import type {
+  IntegrationTool,
+  ReleaseCandidate,
+  ReleaseCandidates,
+  RepoRules,
+  ScriptRun,
+  Settings,
+} from '../../platform'
 import { at } from '../../test/clock'
 import {
   integrationTool,
@@ -13,6 +20,7 @@ import {
   releaseCandidates,
   releaseRun,
   scriptRun,
+  settings,
   toolCopy,
 } from '../../test/fixtures'
 import { emit, platform } from '../../test/platform'
@@ -154,6 +162,97 @@ describe('ReleasePage', () => {
 
     await userEvent.click(group(/^Up to date/))
     expect(screen.queryByRole('list', { name: 'Up to date' })).not.toBeInTheDocument()
+  })
+
+  it('lists the muted repositories folded apart, each with Unmute', async () => {
+    const muted = releaseCandidate({
+      repo: 'acme-org/quiet',
+      dir: '~/projects/quiet',
+      group: 'muted',
+      version: '',
+      ahead: 0,
+      commits: [],
+      headline: '',
+      headAt: '',
+      checks: '',
+      clone: null,
+    })
+    platform.listReleaseCandidates.mockResolvedValue(
+      releaseCandidates({ repos: [...releaseCandidates().repos, muted] }),
+    )
+    const stored = settings({ repoRules: { pinned: [], muted: [] } })
+    platform.setRepoRule.mockResolvedValue(stored)
+    const saved = vi.fn<(settings: Settings) => void>()
+    const rules: RepoRules = { pinned: [], muted: ['acme-org'] }
+
+    render(
+      <ReleasePage
+        candidates={{
+          list: releaseCandidates({ repos: [releaseCandidate(), muted] }),
+          error: '',
+          refreshing: false,
+          refreshError: '',
+          progress: null,
+          refresh: () => Promise.resolve(),
+        }}
+        tool={integrationTool()}
+        runs={[]}
+        where="under ~/projects"
+        onRelease={vi.fn()}
+        onOpenRun={vi.fn()}
+        onOpenSettings={vi.fn()}
+        repoRules={rules}
+        onSettingsSaved={saved}
+      />,
+      { wrapper: at() },
+    )
+
+    expect(group(/^Muted · 1/)).toHaveAttribute('aria-expanded', 'false')
+    await userEvent.click(group(/^Muted · 1/))
+
+    const row = within(within(screen.getByRole('list', { name: 'Muted' })).getByRole('listitem'))
+    expect(row.getByText('acme-org/quiet')).toBeInTheDocument()
+    expect(row.getByText('~/projects/quiet')).toBeInTheDocument()
+    expect(row.queryByRole('button', { name: /^Release/ })).not.toBeInTheDocument()
+
+    await userEvent.click(row.getByRole('button', { name: 'Unmute acme-org' }))
+
+    expect(platform.setRepoRule).toHaveBeenCalledExactlyOnceWith('acme-org', '')
+    expect(saved).toHaveBeenCalledWith(stored)
+  })
+
+  it('says a repository unmuted already is being read again, and why an unmute failed', async () => {
+    const muted = releaseCandidate({ repo: 'acme-org/quiet', dir: '~/projects/quiet', group: 'muted', clone: null })
+    platform.setRepoRule.mockRejectedValue(new Error('database is locked'))
+    const candidates = {
+      list: releaseCandidates({ repos: [muted, releaseCandidate({ repo: 'beta/x', dir: '~/x', group: 'muted' })] }),
+      error: '',
+      refreshing: false,
+      refreshError: '',
+      progress: null,
+      refresh: () => Promise.resolve(),
+    }
+
+    render(
+      <ReleasePage
+        candidates={candidates}
+        tool={integrationTool()}
+        runs={[]}
+        where="under ~/projects"
+        onRelease={vi.fn()}
+        onOpenRun={vi.fn()}
+        onOpenSettings={vi.fn()}
+        sections={{ 'release.muted': true }}
+        repoRules={{ pinned: [], muted: ['beta/x'] }}
+      />,
+      { wrapper: at() },
+    )
+
+    const list = within(screen.getByRole('list', { name: 'Muted' }))
+    expect(list.getByText('Unmuted · reading it again…')).toBeInTheDocument()
+
+    await userEvent.click(list.getByRole('button', { name: 'Unmute beta/x' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('Couldn’t unmute beta/x: database is locked')
   })
 
   it('searches every group, open while it searches', async () => {

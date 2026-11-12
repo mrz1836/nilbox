@@ -14,6 +14,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/inbox/internal/queries"
 	"github.com/mrz1836/nilbox/internal/item"
 	"github.com/mrz1836/nilbox/internal/repo"
+	"github.com/mrz1836/nilbox/internal/reporules"
 	"github.com/mrz1836/nilbox/internal/sensitive"
 	"github.com/mrz1836/nilbox/internal/store"
 	"github.com/mrz1836/nilbox/internal/trust"
@@ -109,7 +110,7 @@ func (s *Service) checkFiles(ctx context.Context, tok github.Token, got refreshe
 
 	status[prefViewer] = got.inbox.Viewer.Login
 
-	targets := fileTargets(s.scopes.scope(status), got, stored)
+	targets := fileTargets(s.scopes.scope(status), got, stored, reporules.Decode(status))
 	if len(targets) == 0 {
 		return map[string]fileCheck{}, nil
 	}
@@ -117,8 +118,10 @@ func (s *Service) checkFiles(ctx context.Context, tok github.Token, got refreshe
 	return s.runFileChecks(ctx, tok, targets)
 }
 
-// fileTargets picks the pull requests a refresh checks, in inbox order.
-func fileTargets(scope fileScope, got refreshed, stored []filesStored) []fileTarget {
+// fileTargets picks the pull requests a refresh checks, in inbox order, leaving out those of
+// a repository or org rules mutes: their details still come with the refresh, so a card in
+// the Muted tab is whole, but nothing more is asked of GitHub for them.
+func fileTargets(scope fileScope, got refreshed, stored []filesStored, rules reporules.Rules) []fileTarget {
 	last := make(map[string]filesStored, len(stored))
 	for _, st := range stored {
 		last[st.NodeID] = st
@@ -127,6 +130,10 @@ func fileTargets(scope fileScope, got refreshed, stored []filesStored) []fileTar
 	var targets []fileTarget
 
 	for _, e := range mergeLists(got.inbox) {
+		if rules.IsMuted(repo.Name{Owner: e.item.RepoOwner, Repo: e.item.RepoName}) {
+			continue
+		}
+
 		t, ok := scope.due(e.item, got.details.Items[e.item.NodeID].HeadOID, last)
 		if !ok {
 			continue

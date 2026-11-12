@@ -86,7 +86,8 @@ export interface Candidate {
     "dir": string;
 
     /**
-     * Group is where it's listed, and Reason, for GroupCantRelease, says why.
+     * Group is where it's listed, and Reason, for GroupCantRelease, says why. A row in
+     * GroupMuted may hold nothing but Repo and Dir, when GitHub wasn't asked about it.
      */
     "group": Group;
     "reason": string;
@@ -576,7 +577,7 @@ export const FollowState = {
 /**
  * Group is where the Release page lists a repository.
  */
-export type Group = "unreleased" | "upToDate" | "noReleases" | "cantRelease";
+export type Group = "unreleased" | "upToDate" | "noReleases" | "cantRelease" | "muted";
 
 /**
  * The values of Group, by the names of their Go constants.
@@ -603,6 +604,12 @@ export const Group = {
      * GroupCantRelease is archived, read-only to the user, or not found on GitHub.
      */
     GroupCantRelease: "cantRelease",
+
+    /**
+     * GroupMuted is a repository the user muted, itself or its org (see the reporules
+     * package): listed apart, and never asked about.
+     */
+    GroupMuted: "muted",
 } as const;
 
 /**

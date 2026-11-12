@@ -88,7 +88,8 @@ export const sectionInfo: Readonly<Record<SettingsSection, { label: string; desc
   },
   repositories: {
     label: 'Repositories',
-    description: 'Where your local clones live, and the launch defaults for orgs and repositories.',
+    description:
+      'Where your local clones live, the orgs and repositories you pinned or muted, and the launch defaults for orgs and repositories.',
   },
   trust: {
     label: 'Trust',
@@ -225,6 +226,10 @@ export const settingsIndex: Readonly<Record<SettingsSection, readonly SettingEnt
     {
       label: 'Other repository locations',
       keywords: ['locations', 'more folders', 'elsewhere', 'scattered', 'external drive', 'single clone'],
+    },
+    {
+      label: 'Pinned and muted',
+      keywords: ['pin repository', 'pin org', 'mute', 'mute org', 'hide repository', 'silence', 'ignore', 'muted tab'],
     },
     { label: 'Launch defaults', keywords: ['org defaults', 'repository defaults', 'organization', 'overrides'] },
   ],

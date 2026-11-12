@@ -5,6 +5,7 @@ import type { InboxFilter } from '../lib/inboxFilter'
 import { noWorktrees } from '../lib/itemWorktrees'
 import { isInboxNil } from '../lib/nil'
 import type { ReviewDrafts } from '../lib/reviewDrafts'
+import { ownRule } from '../lib/repoRules'
 import { noSessions, sessionsOf } from '../lib/sessions'
 import { formatAgo, formatWhen } from '../lib/time'
 import { findItem, isDismissed, type TriagedInbox, type TriageTab } from '../lib/triage'
@@ -14,13 +15,17 @@ import { useClock } from '../lib/useNow'
 import {
   copyText,
   offerReleaseAfterMerge,
+  setRepoRule,
   type AfterMerge,
   type AgentSession,
   type InboxItem,
   type ItemResolution,
   type ListKey,
+  type RepoRule,
+  type RepoRules,
   type Review,
   type ReviewResult,
+  type Settings,
   type Worktree,
 } from '../platform'
 import { ErrorBanner } from './ErrorBanner'
@@ -92,6 +97,30 @@ export interface InboxViewProps {
   // onRelease opens a repository's release sheet, as a merge's toast offers when Release
   // can release it; without it, no merge offers a release. It must keep its identity.
   onRelease?: (offer: AfterMerge) => void
+  // repoRules are the pinned and muted repositories and orgs, from the settings, which a
+  // card's menu and its Unmute change; onSettingsSaved receives the settings as stored
+  // after each change, and onRepoRuleSettings opens them in Settings → Repositories.
+  repoRules?: RepoRules | undefined
+  onSettingsSaved?: (settings: Settings) => void
+  onRepoRuleSettings?: () => void
+}
+
+// noRepoRules are the rules until the settings have loaded.
+const noRepoRules: RepoRules = { pinned: [], muted: [] }
+
+// ruleChangeWords is what the toast says once a target's rule changed from was to rule,
+// and what that does.
+function ruleChangeWords(target: string, was: RepoRule, rule: RepoRule): { text: string; detail: string } {
+  switch (rule) {
+    case 'pinned':
+      return { text: `Pinned ${target}`, detail: 'Its items stay at the top of every list.' }
+    case 'muted':
+      return { text: `Muted ${target}`, detail: 'Its items wait in each list’s Muted tab.' }
+    default:
+      return was === 'muted'
+        ? { text: `Unmuted ${target}`, detail: 'Its items are back in the lists.' }
+        : { text: `Unpinned ${target}`, detail: 'Its items are back among the rest.' }
+  }
 }
 
 // Reviewing is the pull request the review sheet shows, and the list and tab it was
@@ -182,6 +211,9 @@ export function InboxView({
   drafts,
   onManageReplies,
   onRelease,
+  repoRules = noRepoRules,
+  onSettingsSaved,
+  onRepoRuleSettings,
 }: InboxViewProps) {
   const {
     snapshot,
@@ -366,6 +398,41 @@ export function InboxView({
     })
   }
 
+  // setRule sets the rule of a target and records the settings as stored, or says why it
+  // couldn't. It resolves with whether it did.
+  const setRule = async (target: string, rule: RepoRule): Promise<boolean> => {
+    const result = await attempt(setRepoRule(target, rule))
+
+    if (!result.ok) {
+      showToast({ text: `Could not change the rule for ${target}`, detail: result.error, tone: 'error' })
+
+      return false
+    }
+
+    onSettingsSaved?.(result.data)
+
+    return true
+  }
+
+  // changeRule pins, mutes, or takes the rule off a repository or an org, as a card asked,
+  // and says so in a toast whose Undo puts back the rule the target had. The inbox shows the
+  // change once the backend has rebuilt it under the new rules ("inbox:updated").
+  const changeRule = (target: string, rule: RepoRule) => {
+    const was = ownRule(repoRules, target)
+
+    void setRule(target, rule).then((done) => {
+      if (done) {
+        showToast({
+          ...ruleChangeWords(target, was, rule),
+          undo: () => {
+            closeToast()
+            void setRule(target, was)
+          },
+        })
+      }
+    })
+  }
+
   // triage is what every row's triage buttons do. It reads no time while rendering (the
   // toast after a snooze reads the clock when it shows), so the rows keep the same
   // actions from one tick to the next.
@@ -430,6 +497,9 @@ export function InboxView({
       }
     },
     onChangeDefault: onSnoozeSettings,
+    repoRules,
+    onRepoRule: changeRule,
+    onRepoRuleSettings: onRepoRuleSettings ?? (() => undefined),
   }
 
   // edits is what every row's menu does beyond triage. An edit shows once GitHub has

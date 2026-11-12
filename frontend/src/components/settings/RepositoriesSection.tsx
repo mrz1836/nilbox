@@ -16,6 +16,7 @@ import {
 import { buttonClass, fieldClass } from '../controls'
 import { CloneLocations, rootMarker } from './CloneLocations'
 import { LaunchDefaultsSection } from './LaunchDefaultsSection'
+import { RepoRules } from './RepoRules'
 import { Group, rowDescribedBy, SettingRow } from './rows'
 import type { SectionProps } from './types'
 
@@ -40,8 +41,8 @@ interface CloneRootSave {
 
 // RepositoriesSection holds where the local clones live: the clone root, which new clones
 // go in, saved with its Save button or as soon as Choose… picks a folder, with how it reads
-// now, and the other repository locations; and the launch defaults for orgs and
-// repositories.
+// now, and the other repository locations; the repositories and orgs pinned or muted; and
+// the launch defaults for orgs and repositories.
 export function RepositoriesSection({
   settings: stored,
   onSaved,
@@ -139,6 +140,7 @@ export function RepositoriesSection({
         )}
       </Group>
       <CloneLocations settings={settings} save={save} states={states} />
+      <RepoRules settings={settings} save={save} />
       <LaunchDefaultsSection
         settings={settings}
         agents={agents}

@@ -28,12 +28,14 @@ export interface ReleaseRequest {
 }
 
 // releaseGroups are the page's groups in order: what each is called, and whether it
-// starts open. Only the unreleased changes start open.
+// starts open. Only the unreleased changes start open. Muted holds the repositories the
+// user muted, themselves or their org, which GitHub isn't asked about.
 export const releaseGroups: readonly { id: ReleaseGroup; title: string; open: boolean }[] = [
   { id: 'unreleased', title: 'Unreleased changes', open: true },
   { id: 'upToDate', title: 'Up to date', open: false },
   { id: 'noReleases', title: 'No releases yet', open: false },
   { id: 'cantRelease', title: 'Can’t release here', open: false },
+  { id: 'muted', title: 'Muted', open: false },
 ]
 
 // releasable reports a group whose rows offer Release…: one with something to release.

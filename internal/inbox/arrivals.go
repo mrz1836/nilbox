@@ -8,6 +8,8 @@ import (
 	"github.com/mrz1836/nilbox/internal/github"
 	"github.com/mrz1836/nilbox/internal/inbox/internal/queries"
 	"github.com/mrz1836/nilbox/internal/item"
+	"github.com/mrz1836/nilbox/internal/repo"
+	"github.com/mrz1836/nilbox/internal/reporules"
 	"github.com/mrz1836/nilbox/internal/snooze"
 )
 
@@ -34,8 +36,8 @@ const truncationSlack = 5 * time.Minute
 // Arrival is an item that newly needs the user after a whole refresh: a review request
 // or an assignment that was not there at the last refresh, or a snooze that new activity
 // ended early. A refresh reports none the first time it stores an account, since
-// everything would be new, and none for an item the user dismissed or that is still
-// snoozed.
+// everything would be new, none for an item the user dismissed or that is still snoozed,
+// and none for an item of a repository or org the user muted.
 type Arrival struct {
 	// Kind is ArrivalReviewRequested, ArrivalAssigned, or ArrivalWoke.
 	Kind string
@@ -72,12 +74,13 @@ type listedFlags struct {
 }
 
 // arrivalWatch is what a refresh needs to tell arrivals: the lists as they were, when the
-// last refresh was, who is signed in, and which of the new lists GitHub truncated. A nil
-// watch tells none.
+// last refresh was, who is signed in, the repositories and orgs the user muted, and which
+// of the new lists GitHub truncated. A nil watch tells none.
 type arrivalWatch struct {
 	before      listedFlags
 	lastRefresh time.Time
 	viewer      string
+	rules       reporules.Rules
 
 	// reviewTruncated and assignedTruncated report that GitHub matched more items for the
 	// list than it returned.
@@ -120,7 +123,7 @@ func (w *writer) watchArrivals(ctx context.Context, inbox *github.Inbox) (*arriv
 	}
 
 	return &arrivalWatch{
-		before: before, lastRefresh: last, viewer: viewer,
+		before: before, lastRefresh: last, viewer: viewer, rules: reporules.Decode(status),
 		reviewTruncated:   inbox.ReviewRequested.IssueCount > len(inbox.ReviewRequested.Items),
 		assignedTruncated: inbox.Assigned.IssueCount > len(inbox.Assigned.Items),
 	}, nil
@@ -159,20 +162,23 @@ func (watch *arrivalWatch) moved(it github.Item, truncated bool) bool {
 	return !truncated || it.UpdatedAt.After(watch.lastRefresh.Add(-truncationSlack))
 }
 
-// arrivalList collects arrivals, each item once, under its first kind.
+// arrivalList collects arrivals, each item once, under its first kind, leaving out the
+// items of the repositories and orgs rules mutes.
 type arrivalList struct {
 	items []Arrival
 	told  map[int64]bool
+	rules reporules.Rules
 }
 
-// add adds a stored item's arrival, unless the item has arrived already.
+// add adds a stored item's arrival, unless the item has arrived already or its repository
+// or org is muted.
 func (l *arrivalList) add(kind string, s savedEntry, woke snooze.Reasons) {
-	if l.told[s.id] {
+	it := s.entry.item
+	if l.told[s.id] || l.rules.IsMuted(repo.Name{Owner: it.RepoOwner, Repo: it.RepoName}) {
 		return
 	}
 
 	l.told[s.id] = true
-	it := s.entry.item
 	l.items = append(l.items, Arrival{
 		Kind: kind, ItemID: s.id, ItemKind: it.Ref().Kind, RepoOwner: it.RepoOwner, RepoName: it.RepoName,
 		Number: it.Number, Title: it.Title, URL: it.URL, Author: it.AuthorLogin, Woke: woke,
@@ -181,13 +187,14 @@ func (l *arrivalList) add(kind string, s savedEntry, woke snooze.Reasons) {
 
 // arrivals tells what newly needs the user once the refresh's items are stored and its
 // snoozes woken: in the order the lists returned them, review requests and assignments
-// that were not there before, then the snoozes woken early. Each item arrives once.
+// that were not there before, then the snoozes woken early. Each item arrives once, and an
+// item of a muted repository or org never does.
 func (w *writer) arrivals(ctx context.Context, watch *arrivalWatch) ([]Arrival, error) {
 	if watch == nil {
 		return nil, nil
 	}
 
-	list := arrivalList{told: make(map[int64]bool)}
+	list := arrivalList{told: make(map[int64]bool), rules: watch.rules}
 
 	for _, s := range w.saved {
 		if kind := watch.newKind(s); kind != "" {

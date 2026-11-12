@@ -24,6 +24,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/paths"
 	"github.com/mrz1836/nilbox/internal/prefs"
 	"github.com/mrz1836/nilbox/internal/profiles"
+	"github.com/mrz1836/nilbox/internal/reporules"
 	"github.com/mrz1836/nilbox/internal/sensitive"
 	"github.com/mrz1836/nilbox/internal/snooze"
 	"github.com/mrz1836/nilbox/internal/testutil"
@@ -86,6 +87,7 @@ func TestPrefDefaults(t *testing.T) {
 		SensitiveFiles:      sensitive.Config{Scope: "collaborators", Off: []string{}, Patterns: []string{}},
 		SensitiveCategories: sensitive.Categories(),
 		Branches:            branchrules.Defaults(),
+		RepoRules:           reporules.Rules{Pinned: []string{}, Muted: []string{}},
 		MenuBar:             DefaultMenuBar,
 		BannersOff:          []notifyprefs.Kind{notifyprefs.KindSessionNeedsYou, notifyprefs.KindSessionFinished},
 		Theme:               ThemeSystem,
@@ -227,6 +229,7 @@ func TestSettersPersist(t *testing.T) {
 	require.NoError(t, testutil.ErrOf(svc.SetFollowSessions(t.Context(), false)))
 	require.NoError(t, testutil.ErrOf(svc.SetBranchRules(t.Context(), branchrules.Rules{Own: true, Protected: []string{"develop"}})))
 	require.NoError(t, testutil.ErrOf(svc.SetTextSize(t.Context(), TextSizeLarger)))
+	require.NoError(t, testutil.ErrOf(svc.SetRepoRule(t.Context(), "acme-org", reporules.RuleMuted)))
 
 	magex := filepath.Join(home, "bin", "magex")
 	testutil.WriteFile(t, magex, "")
@@ -277,6 +280,7 @@ func TestSettersPersist(t *testing.T) {
 		RefreshChoices: refreshChoices(),
 
 		DefaultProtectedBranches: branchrules.DefaultProtected(),
+		RepoRules:                reporules.Rules{Pinned: []string{}, Muted: []string{"acme-org"}},
 	}, got)
 
 	abs := t.TempDir()

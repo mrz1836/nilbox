@@ -8,6 +8,9 @@ import {
   findItem,
   isBackFromSnooze,
   isDismissed,
+  isMuted,
+  isPinned,
+  isPinnedItself,
   isSnoozed,
   snoozeChoices,
   snoozeEnd,
@@ -76,6 +79,22 @@ describe('triageList', () => {
     expect(triaged.total).toBe(36)
   })
 
+  it('sets a muted repository’s items apart in the Muted tab, whatever else they are, out of the total', () => {
+    const a = item({ id: 1 })
+    const muted = item({ id: 2, repoRule: 'muted' })
+    const mutedSnoozed = item({ id: 3, repoRule: 'muted', snoozedUntil: at(4) })
+    const mutedDismissed = item({ id: 4, repoRule: 'muted', dismissedAt: at(-1) })
+    const pinned = item({ id: 5, repoRule: 'pinned' })
+
+    const triaged = triageList(list([pinned, a, muted, mutedSnoozed, mutedDismissed], 20), FIXED_NOW)
+
+    expect(triaged.inbox.map((i) => i.id)).toEqual([5, 1])
+    expect(triaged.muted.map((i) => i.id)).toEqual([2, 3, 4])
+    expect(triaged.snoozed).toEqual([])
+    expect(triaged.dismissed).toEqual([])
+    expect(triaged.total).toBe(17)
+  })
+
   it('never counts fewer than the inbox tab shows', () => {
     const triaged = triageList(list([item({ id: 1 }), item({ id: 2, dismissedAt: at(-1) })], 0), FIXED_NOW)
 
@@ -108,6 +127,21 @@ describe('triageInbox', () => {
     expect(triaged.nextBack).toEqual(new Date(at(5)))
   })
 
+  it('counts no muted item in the inbox, and no muted snooze as the next back', () => {
+    const triaged = triageInbox(
+      snapshot({
+        reviewRequested: list([item({ id: 1, repoRule: 'muted' }), item({ id: 2 })]),
+        authored: list([item({ id: 1, repoRule: 'muted' }), item({ id: 3, repoRule: 'muted', snoozedUntil: at(1) })]),
+      }),
+      FIXED_NOW,
+    )
+
+    expect(triaged.count).toBe(1)
+    expect(triaged.muted).toBe(2)
+    expect(triaged.snoozed).toBe(0)
+    expect(triaged.nextBack).toBeNull()
+  })
+
   it('finds the soonest snooze among several', () => {
     const triaged = triageInbox(
       snapshot({
@@ -122,7 +156,13 @@ describe('triageInbox', () => {
   })
 
   it('is empty for an empty inbox', () => {
-    expect(triageInbox(snapshot(), FIXED_NOW)).toMatchObject({ count: 0, snoozed: 0, dismissed: 0, nextBack: null })
+    expect(triageInbox(snapshot(), FIXED_NOW)).toMatchObject({
+      count: 0,
+      snoozed: 0,
+      dismissed: 0,
+      muted: 0,
+      nextBack: null,
+    })
   })
 })
 
@@ -227,6 +267,17 @@ describe('applyTriage', () => {
     expect(ids(applyTriage(tied, { id: 3, set: { pinnedAt: '' } }).reviewRequested)).toEqual([2, 4, 3])
   })
 
+  it('puts an item unpinned while its repository is pinned among its repository’s pins', () => {
+    const repoPinned = item({ id: 5, updatedAt: '2026-06-15T10:00:00Z', repoRule: 'pinned' })
+    const both = item({ ...older, id: 6, pinnedAt: FIXED_NOW.toISOString(), repoRule: 'pinned' })
+    const inbox = snapshot({ reviewRequested: list([both, pinned, repoPinned, newest, oldest]) })
+
+    expect(ids(applyTriage(inbox, { id: 6, set: { pinnedAt: '' } }).reviewRequested)).toEqual([1, 5, 6, 2, 4])
+    expect(ids(applyTriage(inbox, { id: 5, set: { pinnedAt: FIXED_NOW.toISOString() } }).reviewRequested)).toEqual([
+      5, 6, 1, 2, 4,
+    ])
+  })
+
   it('puts an unpinned item last when everything else lists before it', () => {
     const inbox = snapshot({ reviewRequested: list([{ ...oldest, id: 9, pinnedAt: FIXED_NOW.toISOString() }, newest]) })
 
@@ -254,5 +305,23 @@ describe('findItem and tabOf', () => {
     expect(tabOf(triaged, 2)).toBe('snoozed')
     expect(tabOf(triaged, 3)).toBe('dismissed')
     expect(tabOf(triaged, 9)).toBeNull()
+    expect(tabOf(triageList(list([item({ id: 4, repoRule: 'muted' })]), FIXED_NOW), 4)).toBe('muted')
+  })
+})
+
+describe('isPinned and isMuted', () => {
+  it('counts an item pinned with its repository as pinned, but not pinned itself', () => {
+    expect(isPinned(item({ pinnedAt: at(-1) }))).toBe(true)
+    expect(isPinnedItself(item({ pinnedAt: at(-1) }))).toBe(true)
+    expect(isPinned(item({ repoRule: 'pinned' }))).toBe(true)
+    expect(isPinnedItself(item({ repoRule: 'pinned' }))).toBe(false)
+    expect(isPinned(item({ repoRule: 'muted' }))).toBe(false)
+    expect(isPinned(item())).toBe(false)
+  })
+
+  it('tells a muted item', () => {
+    expect(isMuted(item({ repoRule: 'muted' }))).toBe(true)
+    expect(isMuted(item({ repoRule: 'pinned' }))).toBe(false)
+    expect(isMuted(item())).toBe(false)
   })
 })

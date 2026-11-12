@@ -21,6 +21,9 @@ import * as localrepos$0 from "../localrepos/models.js";
 import * as notifyprefs$0 from "../notifyprefs/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
+import * as reporules$0 from "../reporules/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
 import * as sensitive$0 from "../sensitive/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
@@ -253,6 +256,13 @@ export interface Settings {
      * DefaultProtectedBranches is the protected list before the user changes it.
      */
     "defaultProtectedBranches": string[] | null;
+
+    /**
+     * RepoRules are the pinned and the muted repositories and orgs: a pinned one's items
+     * count as pinned in the inbox, and a muted one's are set apart in each list's Muted
+     * tab and on the Release page (see the reporules package).
+     */
+    "repoRules": reporules$0.Rules;
 
     /**
      * SensitiveCategories are the built-in categories in matching order, with their

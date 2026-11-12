@@ -1,11 +1,29 @@
 import { useState } from 'react'
 
+import { ruleFor } from '../lib/repoRules'
 import type { RowWork, StartWork } from '../lib/rowWork'
 import { capitalize, formatWhen } from '../lib/time'
-import { isPinned, snoozeChoices, snoozeEnd, snoozeLength, snoozeShort, type TriageTab } from '../lib/triage'
+import {
+  isPinned,
+  isPinnedItself,
+  snoozeChoices,
+  snoozeEnd,
+  snoozeLength,
+  snoozeShort,
+  type TriageTab,
+} from '../lib/triage'
 import { useClock, useNowAs } from '../lib/useNow'
-import type { InboxItem } from '../platform'
-import { ArchiveIcon, ChevronDownIcon, ClockIcon, PinIcon, RefreshIcon, ResetIcon, SlidersIcon } from './icons'
+import type { InboxItem, RepoRule, RepoRules } from '../platform'
+import {
+  ArchiveIcon,
+  ChevronDownIcon,
+  ClockIcon,
+  MuteIcon,
+  PinIcon,
+  RefreshIcon,
+  ResetIcon,
+  SlidersIcon,
+} from './icons'
 import { MenuButton, type MenuItem } from './Menu'
 
 // TriageActions are what the rows' triage controls do; the inbox shares one set across
@@ -26,6 +44,28 @@ export interface TriageActions {
   // onChangeDefault opens the snooze settings: the Snooze button's length and what
   // wakes a snooze early.
   onChangeDefault: () => void
+  // repoRules are the pinned and muted repositories and orgs, from the settings, and
+  // onRepoRule sets the rule of a target ("owner" or "owner/name"), '' to take it off;
+  // onRepoRuleSettings opens them in Settings → Repositories.
+  repoRules: RepoRules
+  onRepoRule: (target: string, rule: RepoRule) => void
+  onRepoRuleSettings: () => void
+}
+
+// mutedTarget is the target whose rule mutes an item: its repository's own, or its org's,
+// as the settings say, else the repository, when the settings haven't caught up with the
+// inbox yet.
+export function mutedTarget(item: InboxItem, rules: RepoRules): string {
+  const applied = ruleFor(rules, item.repo)
+
+  return applied.rule === 'muted' ? applied.target : item.repo
+}
+
+// pinnedTarget is the target whose rule pins an item, as mutedTarget finds a mute's.
+function pinnedTarget(item: InboxItem, rules: RepoRules): string {
+  const applied = ruleFor(rules, item.repo)
+
+  return applied.rule === 'pinned' ? applied.target : item.repo
 }
 
 export interface TriageControlsProps {
@@ -97,9 +137,25 @@ export function snoozeItems(item: InboxItem, actions: TriageActions): MenuItem[]
 }
 
 // PinButton pins an item to the top of its lists, or, on a pinned item, marks it in the
-// accent color and unpins it.
+// accent color and unpins it. An item pinned only with its repository or org gets a mark
+// that says so instead: a row doesn't unpin a whole repository.
 function PinButton({ item, actions }: { item: InboxItem; actions: TriageActions }) {
-  const pinned = isPinned(item)
+  const pinned = isPinnedItself(item)
+
+  if (!pinned && isPinned(item)) {
+    const label = `Pinned with ${pinnedTarget(item, actions.repoRules)}`
+
+    return (
+      <span
+        role="img"
+        aria-label={label}
+        title={`${label}: unpin it from the card’s menu or in Settings → Repositories`}
+        className={`${ghostShape} text-accent hover:bg-transparent`}
+      >
+        <PinIcon filled className="size-3.5" />
+      </span>
+    )
+  }
 
   return (
     <button
@@ -126,13 +182,36 @@ function PinButton({ item, actions }: { item: InboxItem; actions: TriageActions 
 // the row or focus is in it, so the cards stay clean, and while a refresh runs. A pinned
 // item's pin is always shown, filled, and unpins it. In the Snoozed and Dismissed tabs
 // they are a single Unsnooze or Restore, always shown, since bringing items back is what
-// those tabs are for, with the pin of a pinned item beside it.
+// those tabs are for, with the pin of a pinned item beside it; in the Muted tab, Unmute,
+// which unmutes the repository or org that mutes the item.
 export function TriageControls({ item, tab, actions, work, start }: TriageControlsProps) {
   const clock = useClock()
   // pointedAt is when the pointer or focus last reached the Snooze button, whose tooltip
   // says when a snooze from then would end. It is worked out only then, so the rows
   // have nothing to render as the clock moves on.
   const [pointedAt, setPointedAt] = useState<Date | null>(null)
+
+  if (tab === 'muted') {
+    const target = mutedTarget(item, actions.repoRules)
+
+    return (
+      <div className="flex items-center gap-0.5 self-center">
+        <button
+          type="button"
+          aria-label={`Unmute ${target}`}
+          title={`Unmute ${target}: its items go back to the lists`}
+          onClick={() => {
+            actions.onRepoRule(target, '')
+          }}
+          className={ghostClass}
+        >
+          <MuteIcon className="size-3.5" />
+          Unmute
+        </button>
+        {isPinned(item) && <PinButton item={item} actions={actions} />}
+      </div>
+    )
+  }
 
   if (tab !== 'inbox') {
     const snoozed = tab === 'snoozed'

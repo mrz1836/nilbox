@@ -11,6 +11,7 @@ import { render } from '@testing-library/react'
 import type { ComponentType, ReactNode } from 'react'
 import { vi, type Mock } from 'vitest'
 
+import { withRepoRule } from '../lib/repoRules'
 import type * as real from '../platform'
 import { clockAt, FIXED_NOW, withClock } from './clock'
 import {
@@ -215,6 +216,7 @@ function answers(subscribe: Loose<Platform['on']>): { [K in keyof Platform]: Loo
     setStatusOrder: (statusOrder) => stored({ inboxOrder: { statusSorted: [], statusOrder: statusOrder ?? [] } }),
     setWindowSize: (windowSize) => stored({ windowSize }),
     setBranchRules: (branches) => stored({ branches: { ...branches, protected: branches.protected ?? [] } }),
+    setRepoRule: (target, rule) => stored({ repoRules: withRepoRule(settings().repoRules, target, rule) }),
     setMergeMethod: (mergeMethod) => stored({ mergeMethod }),
     setIntegrationEnabled: (id, state) =>
       stored({ integrations: integrationsConfig({ switches: { ...integrationsConfig().switches, [id]: state } }) }),

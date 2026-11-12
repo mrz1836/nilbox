@@ -13,6 +13,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/integrations"
 	"github.com/mrz1836/nilbox/internal/localrepos"
 	"github.com/mrz1836/nilbox/internal/notifyprefs"
+	"github.com/mrz1836/nilbox/internal/reporules"
 	"github.com/mrz1836/nilbox/internal/sensitive"
 	"github.com/mrz1836/nilbox/internal/settings"
 	"github.com/mrz1836/nilbox/internal/snooze"
@@ -53,12 +54,15 @@ func privateSettings() settings.Settings {
 			Own: true, PullRequest: true, Merged: false, Protected: []string{"main", "release-private-*"},
 		},
 		DefaultProtectedBranches: []string{"main", "master"},
-		MenuBar:                  true,
-		BannersOff:               []notifyprefs.Kind{"session_waiting"},
-		Theme:                    "dark",
-		TextSize:                 "default",
-		InboxOrder:               settings.InboxOrder{StatusOrder: []string{"Private status"}},
-		MergeMethod:              "squash",
+		RepoRules: reporules.Rules{
+			Pinned: []string{boundOwner + "/" + boundRepo}, Muted: []string{"private-user", "private-repo/x"},
+		},
+		MenuBar:     true,
+		BannersOff:  []notifyprefs.Kind{"session_waiting"},
+		Theme:       "dark",
+		TextSize:    "default",
+		InboxOrder:  settings.InboxOrder{StatusOrder: []string{"Private status"}},
+		MergeMethod: "squash",
 		Integrations: integrationprefs.Config{
 			Switches:      map[integrationprefs.ID]integrationprefs.Switch{integrationprefs.Scripts: "on"},
 			Paths:         map[integrationprefs.ID]string{integrationprefs.MageX: "/srv/private-user/bin/magex"},
@@ -122,6 +126,7 @@ func TestABugReportStatesTheSettingsAndIntegrationsWithNothingPersonal(t *testin
 		"Branch rules: own on, pull request on, merged off · protected branches: the user's own (2)",
 		"Trusted bots: the user's own (2)",
 		"Merge method: squash · lists sorted by status: 0 · collapsed lists: 0",
+		"Repositories and orgs: 1 pinned, 2 muted",
 		"magex: on (auto), update · 1.30.0 from Homebrew, a link · a copy the user chose · latest 1.30.1 · " +
 			"1 other copies",
 		"go-pre-commit: off (off), missing",

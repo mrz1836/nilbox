@@ -18,6 +18,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/logging"
 	"github.com/mrz1836/nilbox/internal/paths"
 	"github.com/mrz1836/nilbox/internal/repo"
+	"github.com/mrz1836/nilbox/internal/reporules"
 	"github.com/mrz1836/nilbox/internal/scriptrun"
 	"github.com/mrz1836/nilbox/internal/uierr"
 )
@@ -50,6 +51,12 @@ type Clones interface {
 // newest) tell. It never fails: what it can't read, it marks unreadable.
 type Checker interface {
 	CloneState(ctx context.Context, dir, branch, remoteHead string, tags []Tag) CloneState
+}
+
+// RuleSource reads the repositories and orgs the user pinned or muted: core reads them
+// from the prefs, which settings writes.
+type RuleSource interface {
+	RepoRules(ctx context.Context) (reporules.Rules, error)
 }
 
 // Config holds a Service's dependencies. GitHub and Clones are required; Prepare and
@@ -112,6 +119,11 @@ type Config struct {
 	// Keeper keeps the last list between starts, so the page shows it at once while the
 	// Refresher reads GitHub again. Without it, nothing is kept.
 	Keeper Keeper
+
+	// Rules reads the pinned and muted repositories and orgs: a muted one is listed in
+	// GroupMuted and never asked about, and a pinned one comes first in its group. Without
+	// it, nothing is pinned or muted.
+	Rules RuleSource
 
 	Home   string
 	Clock  clock.Clock
@@ -180,6 +192,9 @@ type Service struct {
 	keeper        Keeper
 	progressEvery time.Duration
 
+	// ruleSource reads the pinned and muted repositories (readRules).
+	ruleSource RuleSource
+
 	// wake asks the Refresher to read the list again behind the page, and wakePatch asks it
 	// to read again the repositories released since (queuePatch).
 	wake      chan struct{}
@@ -206,7 +221,8 @@ type Service struct {
 	// unpatched holds the keys of the repositories released, or merged into, since the
 	// Refresher last patched the list, patching reports a patch queued or under way, so the
 	// list is served as refreshing, and outdated counts the times the list went out of date
-	// (outOfDate).
+	// (outOfDate). rules are the pinned and muted repositories as last read, which the list is
+	// served under (arranged).
 	mu         sync.Mutex
 	last       Candidates
 	root       string
@@ -220,6 +236,7 @@ type Service struct {
 	unpatched  map[string]bool
 	patching   bool
 	outdated   int
+	rules      reporules.Rules
 }
 
 // NewService returns a Service over cfg.
@@ -231,7 +248,7 @@ func NewService(cfg Config) *Service {
 		notifier: cfg.Notifier, origins: cfg.Origins, tools: cfg.Tools, afterMerge: cfg.AfterMerge,
 		branches: cfg.Branches,
 		terminal: cfg.Terminal,
-		keeper:   cfg.Keeper, progressEvery: progressEvery,
+		keeper:   cfg.Keeper, progressEvery: progressEvery, ruleSource: cfg.Rules,
 		workflows: cfg.Workflows, records: cfg.Records, toFollow: map[int64]followed{},
 		wakeFollow: make(chan struct{}, 1),
 		wake:       make(chan struct{}, 1), wakePatch: make(chan struct{}, 1), reading: make(chan struct{}, 1),
@@ -270,6 +287,12 @@ func NewService(cfg Config) *Service {
 // repository's rows alone: while the Refresher runs, it reads that repository alone again
 // and patches its rows into the list, which stays as current as it was (queuePatch,
 // queueMerged). Meanwhile the list is served as it was, marked Refreshing.
+//
+// Every list is served under the pinned and muted repositories as they are now, read on
+// each call: a muted repository is listed in GroupMuted, and GitHub is never asked about
+// one muted as the list is read; a pinned one comes first in its group. Muting a listed
+// repository asks nothing, and unmuting one that was never read reads it alone, as a
+// release's patch does (liftMuted).
 func (s *Service) Candidates(ctx context.Context, refresh bool) (Candidates, error) {
 	roots, err := s.clones.Roots(ctx)
 	if err != nil {
@@ -277,6 +300,7 @@ func (s *Service) Candidates(ctx context.Context, refresh bool) (Candidates, err
 	}
 
 	s.restore(ctx)
+	s.readRules(ctx)
 
 	if served, ok := s.serveNow(roots.Key(), refresh); ok {
 		return served, nil
@@ -316,6 +340,7 @@ func (s *Service) serveNow(root string, refresh bool) (Candidates, bool) {
 // it was kept from a past start, and whether a refresh runs behind it. The caller holds mu.
 func (s *Service) served() Candidates {
 	out := s.last
+	out.Repos = arranged(s.last.Repos, s.rules)
 	out.Error, out.Kept, out.Refreshing = s.failure, s.kept, s.pending || s.patching
 
 	return out
@@ -380,9 +405,44 @@ func (s *Service) refresh(ctx context.Context, roots localrepos.Roots) (Candidat
 		delete(s.unpatched, key)
 	}
 
+	// A repository unmuted while it ran was left unread: it is read alone now.
+	s.liftMuted()
+
 	s.events.Emit(event.ReleasesUpdated{})
 
-	return got, nil
+	out := got
+	out.Repos = arranged(got.Repos, s.rules)
+
+	return out, nil
+}
+
+// readRules reads the pinned and muted repositories as they are now and serves the list
+// under them. When they changed, a repository no longer muted that the list holds unread is
+// read alone (liftMuted). Rules that can't be read are logged, and the last ones stand.
+func (s *Service) readRules(ctx context.Context) {
+	if s.ruleSource == nil {
+		return
+	}
+
+	rules, err := s.ruleSource.RepoRules(ctx)
+	if err != nil {
+		if ctx.Err() == nil {
+			s.logger.WarnContext(ctx, "couldn't read the pinned and muted repositories; using the last ones read",
+				"error", err)
+		}
+
+		return
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if rules.Equal(s.rules) {
+		return
+	}
+
+	s.rules = rules
+	s.liftMuted()
 }
 
 // startReading waits for the read of the list under way, a refresh or a patch, to land,
@@ -415,7 +475,12 @@ func (s *Service) gather(ctx context.Context, roots localrepos.Roots, progress *
 
 	out := Candidates{Repos: []Candidate{}}
 
+	s.mu.Lock()
+	rules := s.rules
+	s.mu.Unlock()
+
 	listed := make([]clone, 0, len(all))
+	muted := []Candidate{}
 
 	for _, c := range all {
 		if !c.OnHub {
@@ -424,10 +489,19 @@ func (s *Service) gather(ctx context.Context, roots localrepos.Roots, progress *
 			continue
 		}
 
+		// A muted repository is listed apart, and GitHub is never asked about it.
+		if rules.IsMuted(c.Origin) {
+			muted = append(muted, mutedCandidate(clone{dir: c.Dir, origin: c.Origin}, s.home))
+
+			continue
+		}
+
 		listed = append(listed, clone{dir: c.Dir, origin: c.Origin})
 	}
 
 	if len(listed) == 0 {
+		out.Repos = append(out.Repos, muted...)
+		sortCandidates(out.Repos)
 		out.CheckedAt = s.clock.Now().UTC().Format(time.RFC3339)
 
 		return out, nil
@@ -440,6 +514,7 @@ func (s *Service) gather(ctx context.Context, roots localrepos.Roots, progress *
 
 	out.Repos = s.candidates(listed, statuses, compares)
 	s.checkClones(ctx, out.Repos, statuses, progress)
+	out.Repos = append(out.Repos, muted...)
 	sortCandidates(out.Repos)
 
 	out.CheckedAt = s.clock.Now().UTC().Format(time.RFC3339)

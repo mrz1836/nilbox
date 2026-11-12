@@ -158,7 +158,7 @@ export const ScriptsPage = {
 /**
  * ScriptsSection is one of the sections the Scripts tab's pages open and fold.
  */
-export type ScriptsSection = "release.unreleased" | "release.upToDate" | "release.noReleases" | "release.cantRelease" | "hooks.attention" | "hooks.ready" | "hooks.off" | "hooks.notSetUp" | "scripts.yours" | "scripts.t3" | "scripts.tasks" | "scripts.magex";
+export type ScriptsSection = "release.unreleased" | "release.upToDate" | "release.noReleases" | "release.cantRelease" | "release.muted" | "hooks.attention" | "hooks.ready" | "hooks.off" | "hooks.notSetUp" | "scripts.yours" | "scripts.t3" | "scripts.tasks" | "scripts.magex";
 
 /**
  * The values of ScriptsSection, by the names of their Go constants.
@@ -185,6 +185,11 @@ export const ScriptsSection = {
      * SectionReleaseCantRelease is Release's repositories that can't be released here.
      */
     SectionReleaseCantRelease: "release.cantRelease",
+
+    /**
+     * SectionReleaseMuted is Release's repositories the user muted, themselves or their org.
+     */
+    SectionReleaseMuted: "release.muted",
 
     /**
      * SectionHooksAttention is Hooks' clones that need attention.

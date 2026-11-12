@@ -75,6 +75,30 @@ func TestAChangedIntervalWakesWhatRefreshesAndStaysInGo(t *testing.T) {
 	assert.Empty(t, events.All(), "the window has the settings from the setter already")
 }
 
+// countRules counts the times the Release page is told the rules changed.
+type countRules struct {
+	n atomic.Int32
+}
+
+func (r *countRules) RulesChanged() { r.n.Add(1) }
+
+func TestARepoRuleChangeRedrawsTheInboxAndRegroupsTheReleasePage(t *testing.T) {
+	t.Parallel()
+
+	events := &testutil.Events{}
+	releases := &countRules{}
+	relay := &followSwitch{sink: events, releases: releases}
+
+	relay.Emit(event.RepoRulesChanged{})
+
+	assert.Equal(t, int32(1), releases.n.Load(), "the Release page hears of it")
+	assert.Equal(t, []event.Event{event.InboxUpdated{}}, events.All(),
+		"the window and the menu bar read the inbox again; the change itself stays in Go")
+
+	(&followSwitch{sink: events}).Emit(event.RepoRulesChanged{})
+	assert.Len(t, events.All(), 2, "without the Release page, the inbox still hears")
+}
+
 func TestRefreshEveryReadsTheSettingAsItIsNow(t *testing.T) {
 	t.Parallel()
 

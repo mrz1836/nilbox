@@ -13,7 +13,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/mrz1836/nilbox/internal/paths"
 	"github.com/mrz1836/nilbox/internal/repo"
+	"github.com/mrz1836/nilbox/internal/reporules"
 )
 
 // Group is where the Release page lists a repository.
@@ -32,6 +34,10 @@ const (
 
 	// GroupCantRelease is archived, read-only to the user, or not found on GitHub.
 	GroupCantRelease Group = "cantRelease"
+
+	// GroupMuted is a repository the user muted, itself or its org (see the reporules
+	// package): listed apart, and never asked about.
+	GroupMuted Group = "muted"
 )
 
 // readOnlyPermissions are the GitHub permissions that may not push a tag. An empty one,
@@ -115,7 +121,8 @@ type Candidate struct {
 	Repo string `json:"repo"`
 	Dir  string `json:"dir"`
 
-	// Group is where it's listed, and Reason, for GroupCantRelease, says why.
+	// Group is where it's listed, and Reason, for GroupCantRelease, says why. A row in
+	// GroupMuted may hold nothing but Repo and Dir, when GitHub wasn't asked about it.
 	Group  Group  `json:"group"`
 	Reason string `json:"reason"`
 
@@ -237,13 +244,82 @@ func newestVersionTag(tags []Tag) (Tag, bool) {
 	return best, found
 }
 
+// mutedCandidate is the row of a clone whose repository is muted when the list is read:
+// its repository and folder, with ~ for home, and nothing GitHub would say of it, since
+// GitHub isn't asked.
+func mutedCandidate(c clone, home string) Candidate {
+	return Candidate{
+		Repo: c.origin.String(), Dir: paths.Tilde(c.dir, home), Group: GroupMuted, Commits: []Commit{},
+		dir: c.dir, origin: c.origin,
+	}
+}
+
+// unread reports whether the row is one GitHub wasn't asked about, as its repository was
+// muted when it was read.
+func (c *Candidate) unread() bool {
+	return c.Group == GroupMuted
+}
+
+// groupOrder is where each group comes on the page.
+func groupOrder(g Group) int {
+	switch g {
+	case GroupUnreleased:
+		return 0
+	case GroupUpToDate:
+		return 1
+	case GroupNoReleases:
+		return 2
+	case GroupCantRelease:
+		return 3
+	case GroupMuted:
+		return 4
+	default:
+		return 5
+	}
+}
+
+// arranged returns a copy of list as the page shows it under rules: a row whose repository
+// is muted now in GroupMuted, whatever GitHub said of it, so it shows in its own group again
+// as soon as it is unmuted, and, in each group, the pinned repositories first, in the
+// group's own order. list is never changed.
+func arranged(list []Candidate, rules reporules.Rules) []Candidate {
+	out := make([]Candidate, 0, len(list))
+
+	for _, c := range list {
+		if rules.IsMuted(c.origin) {
+			c.Group = GroupMuted
+		}
+
+		out = append(out, c)
+	}
+
+	sortCandidates(out)
+
+	slices.SortStableFunc(out, func(a, b Candidate) int {
+		if c := cmp.Compare(groupOrder(a.Group), groupOrder(b.Group)); c != 0 {
+			return c
+		}
+
+		return cmp.Compare(pinRank(a, rules), pinRank(b, rules))
+	})
+
+	return out
+}
+
+// pinRank is 0 for a row whose repository is pinned, itself or its org, else 1.
+func pinRank(c Candidate, rules reporules.Rules) int {
+	if rules.IsPinned(c.origin) {
+		return 0
+	}
+
+	return 1
+}
+
 // sortCandidates orders the candidates as the page lists them: by group, the unreleased
 // most recent commit first, the rest by repository.
 func sortCandidates(list []Candidate) {
-	order := map[Group]int{GroupUnreleased: 0, GroupUpToDate: 1, GroupNoReleases: 2, GroupCantRelease: 3}
-
 	slices.SortStableFunc(list, func(a, b Candidate) int {
-		if c := cmp.Compare(order[a.Group], order[b.Group]); c != 0 {
+		if c := cmp.Compare(groupOrder(a.Group), groupOrder(b.Group)); c != 0 {
 			return c
 		}
 

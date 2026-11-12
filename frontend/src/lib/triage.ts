@@ -63,19 +63,26 @@ export function wakeSummary(reasons: WakeReasons | null): string {
 // backMarkMs is how long an item back from a snooze is marked as such.
 const backMarkMs = 24 * 60 * 60 * 1000
 
-// TriageTab is one of a list's tabs: the items in the list, those snoozed, and those
-// dismissed.
-export type TriageTab = 'inbox' | 'snoozed' | 'dismissed'
+// TriageTab is one of a list's tabs: the items in the list, those snoozed, those
+// dismissed, and those of a repository or org the user muted.
+export type TriageTab = 'inbox' | 'snoozed' | 'dismissed' | 'muted'
+
+// triageTabs are a list's tabs, in the order it shows them.
+export const triageTabs: readonly TriageTab[] = ['inbox', 'snoozed', 'dismissed', 'muted']
 
 // TriagedList is one inbox list sorted into its tabs.
 export interface TriagedList {
-  // inbox keeps the list's order: the pinned items first, the most recently pinned first,
-  // then the rest by newest activity.
+  // inbox keeps the list's order: the items pinned themselves first, the most recently
+  // pinned first, then those pinned with their repository or org, then the rest by newest
+  // activity.
   inbox: InboxItem[]
   // snoozed are soonest back first.
   snoozed: InboxItem[]
   // dismissed are the most recently dismissed first.
   dismissed: InboxItem[]
+  // muted are the items of a muted repository or org, whatever else they are, in the
+  // list's order.
+  muted: InboxItem[]
   // total is GitHub's match count less the items set apart, and never below the number
   // in the inbox tab.
   total: number
@@ -92,9 +99,22 @@ export function isDismissed(item: InboxItem): boolean {
   return item.dismissedAt !== ''
 }
 
-// isPinned reports whether an item is pinned to the top of its lists.
-export function isPinned(item: InboxItem): boolean {
+// isPinnedItself reports whether the item itself is pinned to the top of its lists, which
+// its pin button unpins.
+export function isPinnedItself(item: InboxItem): boolean {
   return item.pinnedAt !== ''
+}
+
+// isPinned reports whether an item is pinned: itself, or with its repository or org. The
+// items pinned themselves come first, then those pinned with their repository.
+export function isPinned(item: InboxItem): boolean {
+  return isPinnedItself(item) || item.repoRule === 'pinned'
+}
+
+// isMuted reports whether the item's repository or org is muted, which sets it apart in
+// its lists' Muted tab, out of every count.
+export function isMuted(item: InboxItem): boolean {
+  return item.repoRule === 'muted'
 }
 
 // isSnoozed reports whether an item's snooze is still running at now.
@@ -110,14 +130,18 @@ export function isBackFromSnooze(item: InboxItem, now: Date): boolean {
   return !isDismissed(item) && since >= 0 && since < backMarkMs
 }
 
-// triageList sorts a list's items into its tabs at now.
+// triageList sorts a list's items into its tabs at now. An item of a muted repository or
+// org is in the Muted tab whether or not it is snoozed or dismissed too.
 export function triageList(list: InboxList, now: Date): TriagedList {
   const inbox: InboxItem[] = []
   const snoozed: InboxItem[] = []
   const dismissed: InboxItem[] = []
+  const muted: InboxItem[] = []
 
   for (const item of list.items) {
-    if (isDismissed(item)) {
+    if (isMuted(item)) {
+      muted.push(item)
+    } else if (isDismissed(item)) {
       dismissed.push(item)
     } else if (isSnoozed(item, now)) {
       snoozed.push(item)
@@ -129,9 +153,9 @@ export function triageList(list: InboxList, now: Date): TriagedList {
   snoozed.sort((a, b) => timeOf(a.snoozedUntil) - timeOf(b.snoozedUntil))
   dismissed.sort((a, b) => timeOf(b.dismissedAt) - timeOf(a.dismissedAt))
 
-  const total = Math.max(list.total - snoozed.length - dismissed.length, inbox.length)
+  const total = Math.max(list.total - snoozed.length - dismissed.length - muted.length, inbox.length)
 
-  return { inbox, snoozed, dismissed, total }
+  return { inbox, snoozed, dismissed, muted, total }
 }
 
 // findItem looks an item up in a snapshot's lists.
@@ -163,16 +187,30 @@ function listsNewer(a: InboxItem, b: InboxItem): boolean {
   return at === bt ? a.id > b.id : at > bt
 }
 
+// pinRank is where an item comes in its lists: 0 pinned itself, 1 pinned with its
+// repository or org, 2 neither.
+function pinRank(item: InboxItem): number {
+  if (isPinnedItself(item)) {
+    return 0
+  }
+
+  return item.repoRule === 'pinned' ? 1 : 2
+}
+
 // placeItem puts an item back into a list it was taken out of at index. A newly pinned
 // item goes first, as the most recently pinned; a newly unpinned one goes among the items
-// not pinned, by its activity; any other keeps its place.
+// of its rank (those pinned with their repository, or the rest), by its activity; any
+// other keeps its place.
 function placeItem(rest: readonly InboxItem[], next: InboxItem, was: InboxItem, index: number): InboxItem[] {
   let at = index
 
-  if (isPinned(next) && !isPinned(was)) {
+  if (isPinnedItself(next) && !isPinnedItself(was)) {
     at = 0
-  } else if (!isPinned(next) && isPinned(was)) {
-    const after = rest.findIndex((other) => !isPinned(other) && listsNewer(next, other))
+  } else if (!isPinnedItself(next) && isPinnedItself(was)) {
+    const rank = pinRank(next)
+    const after = rest.findIndex(
+      (other) => pinRank(other) > rank || (pinRank(other) === rank && listsNewer(next, other)),
+    )
 
     at = after < 0 ? rest.length : after
   }
@@ -206,9 +244,7 @@ export function applyTriage(snapshot: InboxSnapshot, change: TriageChange): Inbo
 
 // tabOf is the tab of a sorted list that holds an item, or null when none does.
 export function tabOf(triaged: TriagedList, id: number): TriageTab | null {
-  const tabs: readonly TriageTab[] = ['inbox', 'snoozed', 'dismissed']
-
-  return tabs.find((tab) => triaged[tab].some((item) => item.id === id)) ?? null
+  return triageTabs.find((tab) => triaged[tab].some((item) => item.id === id)) ?? null
 }
 
 // TriagedInbox is the whole inbox sorted into its tabs at one time. Everything in the
@@ -216,14 +252,15 @@ export function tabOf(triaged: TriagedList, id: number): TriageTab | null {
 // this one sorting.
 export interface TriagedInbox {
   lists: Readonly<Record<ListKey, TriagedList>>
-  // count is how many items are in the inbox: in any list's own tab, neither snoozed nor
-  // dismissed. An item in more than one list, such as a pull request you wrote and are
+  // count is how many items are in the inbox: in any list's own tab, not muted, snoozed,
+  // or dismissed. An item in more than one list, such as a pull request you wrote and are
   // assigned, counts once.
   count: number
-  // snoozed and dismissed count the items set aside, each once however many lists it
-  // is in.
+  // snoozed, dismissed, and muted count the items set aside, each once however many lists
+  // it is in.
   snoozed: number
   dismissed: number
+  muted: number
   // nextBack is when the soonest snooze ends, or null when nothing is snoozed.
   nextBack: Date | null
 }
@@ -238,6 +275,7 @@ export function triageInbox(snapshot: InboxSnapshot, now: Date): TriagedInbox {
   const inbox = new Set<number>()
   const snoozed = new Map<number, number>()
   const dismissed = new Set<number>()
+  const muted = new Set<number>()
 
   for (const triaged of Object.values(lists)) {
     for (const item of triaged.inbox) {
@@ -251,6 +289,10 @@ export function triageInbox(snapshot: InboxSnapshot, now: Date): TriagedInbox {
     for (const item of triaged.dismissed) {
       dismissed.add(item.id)
     }
+
+    for (const item of triaged.muted) {
+      muted.add(item.id)
+    }
   }
 
   return {
@@ -258,6 +300,7 @@ export function triageInbox(snapshot: InboxSnapshot, now: Date): TriagedInbox {
     count: inbox.size,
     snoozed: snoozed.size,
     dismissed: dismissed.size,
+    muted: muted.size,
     nextBack: snoozed.size === 0 ? null : new Date(Math.min(...snoozed.values())),
   }
 }

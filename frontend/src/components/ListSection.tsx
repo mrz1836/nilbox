@@ -4,11 +4,11 @@ import { formatCount } from '../lib/format'
 import type { FilteredList } from '../lib/inboxFilter'
 import { prefersReducedMotion } from '../lib/motion'
 import { sortByStatus, statusesOf, statusOrder } from '../lib/statusOrder'
-import { tabOf, type TriagedList, type TriageTab } from '../lib/triage'
+import { tabOf, triageTabs, type TriagedList, type TriageTab } from '../lib/triage'
 import { worktreeOf } from '../lib/itemWorktrees'
 import { sessionsOf } from '../lib/sessions'
 import type { AgentSession, ItemResolution, Worktree } from '../platform'
-import { ArchiveIcon, ChevronDownIcon, ClockIcon } from './icons'
+import { ArchiveIcon, ChevronDownIcon, ClockIcon, MuteIcon } from './icons'
 import type { EditActions } from './ItemMenu'
 import { ItemRow, type LaunchOptions } from './ItemRow'
 import { StatusSort } from './StatusSort'
@@ -32,9 +32,12 @@ function countText(shown: number, total: number): string {
 }
 
 // tabNames name the tabs in the hint that points to the matches in another.
-const tabNames: Readonly<Record<TriageTab, string>> = { inbox: 'the list', snoozed: 'Snoozed', dismissed: 'Dismissed' }
-
-const tabOrder: readonly TriageTab[] = ['inbox', 'snoozed', 'dismissed']
+const tabNames: Readonly<Record<TriageTab, string>> = {
+  inbox: 'the list',
+  snoozed: 'Snoozed',
+  dismissed: 'Dismissed',
+  muted: 'Muted',
+}
 
 // emptyText is what an empty tab says.
 function emptyText(tab: TriageTab, title: string): string {
@@ -43,6 +46,8 @@ function emptyText(tab: TriageTab, title: string): string {
       return `Nothing snoozed. A snoozed item comes back to ${title} on its own when its time is up.`
     case 'dismissed':
       return 'Nothing dismissed. A dismissed item stays here until you restore it.'
+    case 'muted':
+      return 'Nothing muted. Mute a repository or an org from a card’s menu, or in Settings → Repositories, and its items wait here.'
     default:
       return 'Nothing here.'
   }
@@ -94,8 +99,8 @@ export interface ListSectionProps {
   onReview?: ((id: number, tab: TriageTab) => void) | undefined
 }
 
-// ListSection is one inbox list as tabs: the list itself, then what was snoozed and
-// what was dismissed from it, each with its count. The toggle at the right of its header
+// ListSection is one inbox list as tabs: the list itself, then what was snoozed, what was
+// dismissed, and what is in a muted repository or org, each with its count. The toggle at the right of its header
 // collapses it to just the tabs, which keep their counts; a collapsed list's rows are not
 // rendered at all. A list whose items are in GitHub projects can sort its own tab by
 // project status (StatusSort), left of the toggle.
@@ -136,7 +141,7 @@ export function ListSection({
   const items = tab === 'inbox' && byStatus ? sortByStatus(shown.inbox, ranked) : shown[tab]
   const filtering = matched !== undefined
   // elsewhere are the other tabs that hold matches, for a tab that holds none.
-  const elsewhere = filtering ? tabOrder.filter((t) => t !== tab && matched[t].length > 0) : []
+  const elsewhere = filtering ? triageTabs.filter((t) => t !== tab && matched[t].length > 0) : []
   // The sort shows on the list's own tab while it has a status to sort by, or is sorted
   // by one, so it can always be turned back.
   const sortable = tab === 'inbox' && !collapsed && (statuses.length > 0 || byStatus)
@@ -194,7 +199,7 @@ export function ListSection({
   return (
     <section
       aria-label={title}
-      hidden={filtering && tabOrder.every((t) => matched[t].length === 0)}
+      hidden={filtering && triageTabs.every((t) => matched[t].length === 0)}
       className="rounded-lg border border-border bg-surface"
     >
       <div className={`flex items-center gap-1 px-1.5 ${collapsed ? '' : 'border-b border-border'}`}>
@@ -217,6 +222,13 @@ export function ListSection({
               label: 'Dismissed',
               count: hiddenCount(shown.dismissed.length),
               icon: <ArchiveIcon className="size-3.5" />,
+              filtered: filtering,
+            },
+            {
+              value: 'muted',
+              label: 'Muted',
+              count: hiddenCount(shown.muted.length),
+              icon: <MuteIcon className="size-3.5" />,
               filtered: filtering,
             },
           ]}

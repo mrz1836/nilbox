@@ -554,6 +554,12 @@ export function App() {
     go({ type: 'settings', section: 'snoozing' })
   }
 
+  // openRepoRuleSettings opens the pinned and muted repositories and orgs. It is made
+  // once, so the inbox's cards, which take it, keep their identity.
+  const [openRepoRuleSettings] = useState(() => () => {
+    go({ type: 'settings', section: 'repositories' })
+  })
+
   // openFilesSettings opens what counts as a sensitive file.
   const openFilesSettings = () => {
     go({ type: 'settings', section: 'files' })
@@ -814,6 +820,9 @@ export function App() {
             drafts={reviewDrafts}
             onManageReplies={openPrompts}
             onRelease={openRelease}
+            repoRules={config.settings?.repoRules}
+            onSettingsSaved={setSettings}
+            onRepoRuleSettings={openRepoRuleSettings}
           />
         </Activity>
         {nav.visited.has('worktrees') && (
@@ -879,6 +888,8 @@ export function App() {
                   onShowRuns={(on) => {
                     remember(setShowRuns(on), 'whether a run shows beside Repo scripts')
                   }}
+                  repoRules={config.settings?.repoRules}
+                  onSettingsSaved={setSettings}
                 />
               </div>
             </Suspense>

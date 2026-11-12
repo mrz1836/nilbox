@@ -28,6 +28,7 @@ import * as profiles from '../../bindings/github.com/mrz1836/nilbox/internal/pro
 import type * as bump from '../../bindings/github.com/mrz1836/nilbox/internal/bump'
 import * as prompts from '../../bindings/github.com/mrz1836/nilbox/internal/prompts'
 import * as release from '../../bindings/github.com/mrz1836/nilbox/internal/release'
+import type * as reporules from '../../bindings/github.com/mrz1836/nilbox/internal/reporules'
 import * as review from '../../bindings/github.com/mrz1836/nilbox/internal/review'
 import * as scriptrun from '../../bindings/github.com/mrz1836/nilbox/internal/scriptrun'
 import * as scripts from '../../bindings/github.com/mrz1836/nilbox/internal/scripts'
@@ -372,6 +373,10 @@ export type MergedPullRequest = NonNullLists<worktrees.MergedPullRequest>
 export type BranchPick = NonNullLists<worktrees.BranchPick>
 export type BranchResult = NonNullLists<worktrees.BranchResult>
 export type BranchRules = NonNullLists<branchrules.Rules>
+// RepoRule is what the user set for a repository or an org, and RepoRules every one: the
+// pinned and the muted, each "owner" for an org or "owner/name" for a repository.
+export type RepoRule = reporules.Rule
+export type RepoRules = NonNullLists<reporules.Rules>
 export type WorktreeStage = worktrees.Stage
 export type WorktreeSession = NonNullLists<worktrees.Session>
 
@@ -493,6 +498,7 @@ export const {
   SetStatusSort: setStatusSort,
   SetStatusOrder: setStatusOrder,
   SetBranchRules: setBranchRules,
+  SetRepoRule: setRepoRule,
   SetMergeMethod: setMergeMethod,
   SetIntegrationEnabled: setIntegrationEnabled,
   SetIntegrationPath: setIntegrationPath,

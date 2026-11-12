@@ -34,6 +34,12 @@ import * as $models from "./models.js";
  * repository's rows alone: while the Refresher runs, it reads that repository alone again
  * and patches its rows into the list, which stays as current as it was (queuePatch,
  * queueMerged). Meanwhile the list is served as it was, marked Refreshing.
+ *
+ * Every list is served under the pinned and muted repositories as they are now, read on
+ * each call: a muted repository is listed in GroupMuted, and GitHub is never asked about
+ * one muted as the list is read; a pinned one comes first in its group. Muting a listed
+ * repository asks nothing, and unmuting one that was never read reads it alone, as a
+ * release's patch does (liftMuted).
  */
 export function Candidates(refresh: boolean): $CancellablePromise<$models.Candidates> {
     return $Call.ByID(1671334015, refresh);

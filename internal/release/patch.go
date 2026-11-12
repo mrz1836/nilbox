@@ -2,6 +2,7 @@ package release
 
 import (
 	"context"
+	"maps"
 	"slices"
 
 	"github.com/mrz1836/nilbox/internal/event"
@@ -46,16 +47,59 @@ func (s *Service) queueMerged(name repo.Name) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	// A muted repository isn't asked about: its row is read once it is unmuted.
+	if s.rules.IsMuted(name) {
+		return
+	}
+
 	key := name.Key()
 	if s.background && s.patchable(s.root, map[string]bool{key: true}) != nil {
 		s.askPatch(key)
 	}
 }
 
-// askPatch marks the repository key to be read again, serves the list as refreshing, tells
-// the window so, and wakes the Refresher. The caller holds mu.
-func (s *Service) askPatch(key string) {
-	s.unpatched[key] = true
+// liftMuted asks for the rows the list holds unread, since their repository was muted as
+// it was read, whose repository is no longer muted: while the list can be patched, the
+// Refresher reads those repositories alone and patches their rows in, as it does a
+// released one's, and meanwhile they stay in GroupMuted, the list served as refreshing. A
+// list that can't be patched goes out of date when it is current, so the next Candidates
+// reads it again in full; any other is read again in full next anyway. A repository whose
+// patch is queued already isn't asked for twice. The caller holds mu.
+func (s *Service) liftMuted() {
+	if !s.has {
+		return
+	}
+
+	lifted := map[string]bool{}
+
+	for _, c := range s.last.Repos {
+		if key := c.origin.Key(); c.unread() && !s.rules.IsMuted(c.origin) && !s.unpatched[key] {
+			lifted[key] = true
+		}
+	}
+
+	if len(lifted) == 0 {
+		return
+	}
+
+	if s.background && s.patchable(s.root, lifted) != nil {
+		s.askPatch(slices.Collect(maps.Keys(lifted))...)
+
+		return
+	}
+
+	if s.current {
+		s.outOfDate()
+	}
+}
+
+// askPatch marks the repositories keys to be read again, serves the list as refreshing,
+// tells the window so, and wakes the Refresher. The caller holds mu.
+func (s *Service) askPatch(keys ...string) {
+	for _, key := range keys {
+		s.unpatched[key] = true
+	}
+
 	s.patching = true
 	s.events.Emit(event.ReleasesUpdated{})
 
@@ -103,8 +147,9 @@ func (s *Service) patchReleased(ctx context.Context) {
 // of their clones the list holds, telling the window how far it has got
 // (event.ReleasesProgress). It patches those rows into the last list, which is kept for
 // the next start. The rest of the list, and when GitHub was last asked, stay as they were.
-// It reports whether it patched: not when the list can't be patched (patchable), GitHub
-// can't be read, or ctx ends first.
+// A repository muted now isn't asked about: its rows are left unread, to be read once it
+// is unmuted (liftMuted). It reports whether it patched: not when the list can't be
+// patched (patchable), GitHub can't be read, or ctx ends first.
 func (s *Service) patch(ctx context.Context, names map[string]bool) bool {
 	roots, err := s.clones.Roots(ctx)
 	if err != nil {
@@ -115,30 +160,33 @@ func (s *Service) patch(ctx context.Context, names map[string]bool) bool {
 
 	s.mu.Lock()
 	listed := s.patchable(root, names)
+	rules := s.rules
 	s.mu.Unlock()
 
 	if len(listed) == 0 {
 		return false
 	}
 
-	progress := newListProgress(s.events, s.progressEvery)
-	defer progress.End()
+	rows := make([]Candidate, 0, len(listed))
+	read := make([]clone, 0, len(listed))
 
-	statuses, compares, err := s.askGitHub(ctx, listed, progress)
-	if err != nil {
-		if ctx.Err() == nil {
-			s.logger.WarnContext(ctx, "couldn't read a released repository again; the list will be read again in full",
-				"error", err)
+	for _, c := range listed {
+		if rules.IsMuted(c.origin) {
+			rows = append(rows, mutedCandidate(c, s.home))
+
+			continue
 		}
 
-		return false
+		read = append(read, c)
 	}
 
-	rows := s.candidates(listed, statuses, compares)
-	s.checkClones(ctx, rows, statuses, progress)
+	if len(read) > 0 {
+		got, ok := s.readAgain(ctx, read)
+		if !ok {
+			return false
+		}
 
-	if ctx.Err() != nil {
-		return false // a clone read as ctx ended is marked unreadable
+		rows = append(rows, got...)
 	}
 
 	// No refresh ran meanwhile (startReading), so the list is the one listed was taken from.
@@ -154,6 +202,32 @@ func (s *Service) patch(ctx context.Context, names map[string]bool) bool {
 	s.keep(context.WithoutCancel(ctx), list, root)
 
 	return true
+}
+
+// readAgain reads the rows of the clones listed again, as a refresh does, telling the window
+// how far it has got. ok is false when GitHub can't be read or ctx ends first.
+func (s *Service) readAgain(ctx context.Context, listed []clone) ([]Candidate, bool) {
+	progress := newListProgress(s.events, s.progressEvery)
+	defer progress.End()
+
+	statuses, compares, err := s.askGitHub(ctx, listed, progress)
+	if err != nil {
+		if ctx.Err() == nil {
+			s.logger.WarnContext(ctx, "couldn't read a released repository again; the list will be read again in full",
+				"error", err)
+		}
+
+		return nil, false
+	}
+
+	rows := s.candidates(listed, statuses, compares)
+	s.checkClones(ctx, rows, statuses, progress)
+
+	if ctx.Err() != nil {
+		return nil, false // a clone read as ctx ended is marked unreadable
+	}
+
+	return rows, true
 }
 
 // patchable returns the clones the last list holds of names, when it can be patched: it

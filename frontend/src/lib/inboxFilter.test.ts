@@ -117,7 +117,7 @@ function ids(src: string): number[] {
   const found = new Set<number>()
 
   for (const tabs of Object.values(filterInbox(triaged(), src, 'me-user')?.lists ?? {})) {
-    for (const i of [...tabs.inbox, ...tabs.snoozed, ...tabs.dismissed]) {
+    for (const i of [...tabs.inbox, ...tabs.snoozed, ...tabs.dismissed, ...tabs.muted]) {
       found.add(i.id)
     }
   }
@@ -189,6 +189,20 @@ describe('filterInbox', () => {
     expect(ids(src)).toEqual(want)
   })
 
+  it('matches an item pinned with its repository as pinned, and narrows the Muted tab', () => {
+    const repoPinned = item({ id: 11, number: 110, title: 'Pinned with its repo cache', repoRule: 'pinned' })
+    const muted = item({ id: 12, number: 120, title: 'Muted cache', repoRule: 'muted' })
+    const mutedOther = item({ id: 13, number: 130, title: 'Muted other', repoRule: 'muted' })
+    const inbox = triageInbox(snapshot({ reviewRequested: list([repoPinned, muted, mutedOther, cache]) }), FIXED_NOW)
+
+    expect(filterInbox(inbox, 'is:pinned', 'me-user')?.lists.reviewRequested.inbox.map((i) => i.id)).toEqual([11])
+
+    const filter = filterInbox(inbox, 'cache', 'me-user')
+    expect(filter?.lists.reviewRequested.muted.map((i) => i.id)).toEqual([12])
+    expect(filter?.matches).toBe(3)
+    expect(inboxItems(inbox).map((i) => i.id)).toEqual([11, 1, 12, 13])
+  })
+
   it('keeps each tab’s order, and counts every item once', () => {
     const filter = filterInbox(triaged(), 'cache', 'me-user')
 
@@ -197,7 +211,7 @@ describe('filterInbox', () => {
     expect(filter?.lists.reviewRequested.snoozed.map((i) => i.id)).toEqual([7])
     expect(filter?.lists.authored.inbox.map((i) => i.id)).toEqual([1])
     expect(filter?.lists.authored.dismissed.map((i) => i.id)).toEqual([8])
-    expect(filter?.lists.assigned).toEqual({ inbox: [], snoozed: [], dismissed: [] })
+    expect(filter?.lists.assigned).toEqual({ inbox: [], snoozed: [], dismissed: [], muted: [] })
   })
 
   it('reads @me as no one before the account is known', () => {
