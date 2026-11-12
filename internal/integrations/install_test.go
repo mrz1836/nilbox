@@ -366,6 +366,23 @@ func TestSmokeTellsAStopFromMacOSRefusingIt(t *testing.T) {
 	require.NotErrorIs(t, err, errRefusedToRun, "a stopped install is said to have stopped")
 }
 
+func TestSmokeRunsWithTheEnvironmentEveryRunOfTheToolGets(t *testing.T) {
+	t.Parallel()
+
+	h := newInstallHarness(t)
+	path := h.m.put(filepath.Join(h.m.root, "downloads", "fresh"), magexSays(newerMagex))
+
+	require.NoError(t, h.svc.smoke(t.Context(), MageX(), newerMagex, path))
+
+	h.m.mu.Lock()
+	env := h.m.envs[path]
+	h.m.mu.Unlock()
+
+	shell, _ := h.env.Env()
+	assert.Equal(t, MageX().RunEnv(shell, integrationprefs.RunsInApp), env, "Definition.RunEnv, in the app")
+	assert.Contains(t, env, "GIT_TERMINAL_PROMPT=0")
+}
+
 func TestAWriteFailureKeepsItsReason(t *testing.T) {
 	t.Parallel()
 

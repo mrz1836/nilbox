@@ -454,9 +454,8 @@ func (s *Service) smoke(ctx context.Context, def Definition, want, path string) 
 	defer cancel()
 
 	env, _ := s.env.Env()
-	d := detector{def: def, env: env, home: s.home, run: s.run}
 
-	stdout, stderr, err := s.run(ctx, path, def.VersionArgs, d.runEnv())
+	stdout, stderr, err := s.run(ctx, path, def.VersionArgs, def.RunEnv(env, integrationprefs.RunsInApp))
 
 	// The context ending kills the program too, so it is told apart from macOS refusing it.
 	switch {

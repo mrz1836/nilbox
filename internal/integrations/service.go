@@ -3,7 +3,8 @@
 //
 // Each tool is a Definition. Detection looks for it on the user's login shell's PATH
 // (shellenv), then in the well-known tool folders and go install's, runs each copy's
-// --version with the tool's quiet environment, and works out where each came from. It
+// --version with the environment every run of the tool gets (Definition.RunEnv: the
+// shell's, quiet, and with git's prompts off), and works out where each came from. It
 // runs after the window's first paint, never on the cold start, and its result is kept
 // in tools.<id>.seen, which List serves at once, marked as checking, until this run's
 // detection finishes. The latest releases come from one GitHub query a day, kept in

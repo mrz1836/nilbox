@@ -3,7 +3,6 @@ package integrations
 import (
 	"context"
 	"errors"
-	"maps"
 	"os"
 	"path/filepath"
 	"slices"
@@ -12,6 +11,7 @@ import (
 	"time"
 
 	"github.com/mrz1836/nilbox/internal/execpath"
+	"github.com/mrz1836/nilbox/internal/integrationprefs"
 	"github.com/mrz1836/nilbox/internal/paths"
 	"github.com/mrz1836/nilbox/internal/shellenv"
 )
@@ -404,7 +404,7 @@ func (d detector) inspect(ctx context.Context, c candidate) Copy {
 	ctx, cancel := context.WithTimeout(ctx, versionTimeout)
 	defer cancel()
 
-	stdout, stderr, err := d.run(ctx, c.path, d.def.VersionArgs, d.runEnv())
+	stdout, stderr, err := d.run(ctx, c.path, d.def.VersionArgs, d.def.RunEnv(d.env, integrationprefs.RunsInApp))
 
 	version, parseErr := d.def.ParseVersion(stdout)
 
@@ -447,18 +447,6 @@ func (d detector) source(c candidate, v Version) Source {
 	default:
 		return SourceRelease
 	}
-}
-
-// runEnv is the environment a tool runs with: the shell's, with the tool's quiet
-// variables on top.
-func (d detector) runEnv() []string {
-	env := slices.Clone(d.env)
-
-	for _, k := range slices.Sorted(maps.Keys(d.def.QuietEnv)) {
-		env = append(env, k+"="+d.def.QuietEnv[k])
-	}
-
-	return env
 }
 
 // firstLine returns the first line of the first of stderr and stdout that has one, or
