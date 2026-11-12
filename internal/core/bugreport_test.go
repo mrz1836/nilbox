@@ -11,6 +11,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/branchrules"
 	"github.com/mrz1836/nilbox/internal/integrationprefs"
 	"github.com/mrz1836/nilbox/internal/integrations"
+	"github.com/mrz1836/nilbox/internal/localrepos"
 	"github.com/mrz1836/nilbox/internal/notifyprefs"
 	"github.com/mrz1836/nilbox/internal/sensitive"
 	"github.com/mrz1836/nilbox/internal/settings"
@@ -36,11 +37,15 @@ func privateSettings() settings.Settings {
 		Terminal:            "iterm2",
 		FollowSessions:      true,
 		CloneRoot:           "/srv/private-user/work",
-		TrustedBots:         []string{"dependabot[bot]", "private-bot[bot]"},
-		DefaultTrustedBots:  []string{"dependabot[bot]"},
-		SnoozeDays:          3,
-		SnoozeWake:          snooze.Rules{Commits: 1, Reviews: "decisions", Comments: 1},
-		WindowSize:          settings.WindowSize{Width: 1280, Height: 800},
+		CloneLocations: []localrepos.Location{
+			{Path: "/srv/private-user/elsewhere", Kind: localrepos.KindFolder},
+			{Path: "~/Desktop/private-repo", Kind: localrepos.KindClone},
+		},
+		TrustedBots:        []string{"dependabot[bot]", "private-bot[bot]"},
+		DefaultTrustedBots: []string{"dependabot[bot]"},
+		SnoozeDays:         3,
+		SnoozeWake:         snooze.Rules{Commits: 1, Reviews: "decisions", Comments: 1},
+		WindowSize:         settings.WindowSize{Width: 1280, Height: 800},
 		SensitiveFiles: sensitive.Config{
 			Scope: "collaborators", Off: []string{"docs"}, Patterns: []string{"secret-dir/**"},
 		},
@@ -111,7 +116,7 @@ func TestABugReportStatesTheSettingsAndIntegrationsWithNothingPersonal(t *testin
 		"Terminal: iterm2 · menu bar: on · banners off: session_waiting",
 		"Default agent: claude · profiles: claude the user's own, codex default",
 		"Start in a worktree: on · automatic cleanup: on · follow sessions: on",
-		"Clone root: the user's own",
+		"Clone root: the user's own · other locations: 2",
 		"Snooze: 3 days · wake on commits: 1, reviews: decisions, comments: 1",
 		"Sensitive files: collaborators · categories off: docs · own patterns: 1",
 		"Branch rules: own on, pull request on, merged off · protected branches: the user's own (2)",

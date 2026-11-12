@@ -18,16 +18,16 @@ import * as $models from "./models.js";
 
 /**
  * Candidates returns the repositories the Release page lists. It serves the last list,
- * however old, while it is current and was read from the clone root as set now, unless
- * refresh is set: the whole list is read again only when the user asks (Read GitHub
- * again), none was read yet, the clone root changed, or the list went out of date
+ * however old, while it is current and was read from the repository locations as set now,
+ * unless refresh is set: the whole list is read again only when the user asks (Read GitHub
+ * again), none was read yet, the locations changed, or the list went out of date
  * (outOfDate). Otherwise it asks GitHub, in two rounds of batched queries, reads the
  * unreleased clones' state, and emits event.ReleasesUpdated, telling the window how far it
  * has got meanwhile (event.ReleasesProgress). A refresh that fails keeps the last list,
  * with its error, until the user reads it again, and fails only when there is none.
  *
- * After a restart, the list kept from the last start, when it was read from the clone
- * root as set now, is served at once, marked Kept and Refreshing, while the Refresher
+ * After a restart, the list kept from the last start, when it was read from the repository
+ * locations as set now, is served at once, marked Kept and Refreshing, while the Refresher
  * reads GitHub again behind the page; without the Refresher, the call waits for GitHub.
  *
  * A release that ends, or a pull request merged in the review sheet, changes one
@@ -42,8 +42,8 @@ export function Candidates(refresh: boolean): $CancellablePromise<$models.Candid
 /**
  * OfferAfterMerge answers whether the toast that reports a merge in the review sheet
  * offers to release owner/name, whose pull request merged into base (§5.11.9). It offers
- * when the integrations.offerAfterMerge setting is on, magex is usable, a clone under the
- * clone root has the repository as its GitHub origin, and base is a branch Release offers
+ * when the integrations.offerAfterMerge setting is on, magex is usable, a clone in the
+ * repository locations has the repository as its GitHub origin, and base is a branch Release offers
  * (D10): the repository's default branch, or main or master, which origin has, since the
  * merge went into it. It reads only local state and what the app already knows, and asks
  * GitHub nothing: the default branch comes from the Release page's last list, or else
@@ -59,7 +59,7 @@ export function OfferAfterMerge(owner: string, name: string, base: string): $Can
  * OpenTerminal opens the terminal chosen for launches in the clone of repoText, the one
  * the page shows at dir (with ~ for home), for a check's Open in terminal: the user
  * commits, pushes, or deletes a tag there. The app runs nothing in it
- * (scriptrun.OpenFolder). Only a clone the Release page lists, or the clone root holds,
+ * (scriptrun.OpenFolder). Only a clone the Release page lists, or the repository locations hold,
  * with that GitHub origin, is opened.
  */
 export function OpenTerminal(repoText: string, dir: string): $CancellablePromise<void> {
@@ -69,7 +69,7 @@ export function OpenTerminal(repoText: string, dir: string): $CancellablePromise
 /**
  * Prepare gathers a release's facts and returns the offer Decide works out from them: the
  * sheet's branches, checks, cards, and button. It finds the repository's clone among the
- * Release page's clones, or by scanning the clone root. The facts are GitHub's (one
+ * Release page's clones, or by listing the repository locations. The facts are GitHub's (one
  * query), origin's (one ls-remote), and the clone's (read-only git); a later Prepare for
  * the same clone and branch within FactsFor decides again on them, with the new choice,
  * unless req.Refresh is set. What can't be read is a check the offer shows, so it fails

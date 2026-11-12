@@ -66,7 +66,7 @@ func (s *Service) InstallAll(ctx context.Context, dirs []string) (InstallAllResu
 		return out, nil
 	}
 
-	// The clone root and the clones under it are read once for every clone asked.
+	// The repository locations and the clones in them are read once for every clone asked.
 	l, err := s.folders().List(ctx)
 	if err != nil {
 		return InstallAllResult{}, err

@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/mrz1836/nilbox/internal/integrations"
+	"github.com/mrz1836/nilbox/internal/localrepos"
 	"github.com/mrz1836/nilbox/internal/paths"
 	"github.com/mrz1836/nilbox/internal/testutil"
 	"github.com/mrz1836/nilbox/internal/uierr"
@@ -218,7 +219,7 @@ func TestListRefusesAFolderItCantRead(t *testing.T) {
 
 	_, err = s.List(t.Context(), "~/projects/api", false)
 	require.ErrorIs(t, err, os.ErrPermission)
-	require.EqualError(t, err, "read the clone root: "+os.ErrPermission.Error())
+	require.EqualError(t, err, "read the repository locations: "+os.ErrPermission.Error())
 
 	_, err = s.Repos(t.Context())
 	require.ErrorIs(t, err, os.ErrPermission)
@@ -229,8 +230,8 @@ type failingRoot struct {
 	fakeClones
 }
 
-func (*failingRoot) Root(context.Context) (string, error) {
-	return "", os.ErrPermission
+func (*failingRoot) Roots(context.Context) (localrepos.Roots, error) {
+	return localrepos.Roots{}, os.ErrPermission
 }
 
 func TestRepos(t *testing.T) {
@@ -256,6 +257,38 @@ func TestRepos(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, []string{"gamma", "Alpha", "beta"}, []string{got[0].Name, got[1].Name, got[2].Name},
 		"the clone a script ran in most recently first")
+}
+
+func TestReposTellsApartClonesOfTheSameName(t *testing.T) {
+	t.Parallel()
+
+	r := newRig(t)
+	r.clone("example-repo", "", nil)
+	r.clone("solo", "", nil)
+
+	for _, dir := range []string{"work/Example-Repo", "Desktop/exp"} {
+		require.NoError(t, os.MkdirAll(filepath.Join(r.home, dir, ".git"), 0o700))
+	}
+
+	r.clones.mu.Lock()
+	r.clones.extra = []localrepos.Location{
+		{Path: filepath.Join(r.home, "work"), Kind: localrepos.KindFolder},
+		{Path: filepath.Join(r.home, "Desktop", "exp"), Kind: localrepos.KindClone},
+	}
+	r.clones.mu.Unlock()
+
+	got, err := r.svc.Repos(t.Context())
+	require.NoError(t, err)
+	assert.Equal(t, []Clone{
+		{Name: "example-repo (~/projects)", Dir: "~/projects/example-repo"},
+		{Name: "Example-Repo (~/work)", Dir: "~/work/Example-Repo"},
+		{Name: "exp", Dir: "~/Desktop/exp"},
+		{Name: "solo", Dir: "~/projects/solo"},
+	}, got, "a name two clones share, ignoring case, names each one's folder; the folder stays the key")
+
+	_, err = r.svc.List(t.Context(), "~/elsewhere", false)
+	require.ErrorIs(t, err, ErrNoClone)
+	assert.Equal(t, "~/elsewhere isn't a clone in ~/projects or your other repository locations.", uierr.Message(err))
 }
 
 func TestTrustRecordsAreKeptPerRepository(t *testing.T) {

@@ -14,6 +14,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/execpath"
 	"github.com/mrz1836/nilbox/internal/flight"
 	"github.com/mrz1836/nilbox/internal/gitread"
+	"github.com/mrz1836/nilbox/internal/localrepos"
 	"github.com/mrz1836/nilbox/internal/logging"
 	"github.com/mrz1836/nilbox/internal/paths"
 	"github.com/mrz1836/nilbox/internal/repo"
@@ -35,11 +36,12 @@ type Clone struct {
 	OnHub  bool
 }
 
-// Clones finds the clones: Root is the clone root as set now, a cheap read, and Clones
-// lists the clones under root. Core adapts the settings and localrepos.
+// Clones finds the clones: Roots is the clone root and the other repository locations as
+// set now, a cheap read, and Clones lists the clones in them, the clone root's first.
+// Core adapts the settings and localrepos.
 type Clones interface {
-	Root(ctx context.Context) (string, error)
-	Clones(ctx context.Context, root string) ([]Clone, error)
+	Roots(ctx context.Context) (localrepos.Roots, error)
+	Clones(ctx context.Context, roots localrepos.Roots) ([]Clone, error)
 }
 
 // Checker reads a clone's state for its row on the page, with read-only git: the branch
@@ -196,9 +198,9 @@ type Service struct {
 	// answer.
 	refreshes flight.Group[Candidates]
 
-	// mu guards the last list, the clone root it was read from, whether it is current (its
-	// last read landed, and nothing put it out of date since), and why that read failed, if
-	// it did. kept reports the last list as the one kept from a past start, which no
+	// mu guards the last list, the repository locations it was read from (their Key),
+	// whether it is current (its last read landed, and nothing put it out of date since),
+	// and why that read failed, if it did. kept reports the last list as the one kept from a past start, which no
 	// refresh has replaced yet, and restored that it was read. background reports the
 	// Refresher running, and pending a refresh it was asked for that hasn't landed.
 	// unpatched holds the keys of the repositories released, or merged into, since the
@@ -252,16 +254,16 @@ func NewService(cfg Config) *Service {
 }
 
 // Candidates returns the repositories the Release page lists. It serves the last list,
-// however old, while it is current and was read from the clone root as set now, unless
-// refresh is set: the whole list is read again only when the user asks (Read GitHub
-// again), none was read yet, the clone root changed, or the list went out of date
+// however old, while it is current and was read from the repository locations as set now,
+// unless refresh is set: the whole list is read again only when the user asks (Read GitHub
+// again), none was read yet, the locations changed, or the list went out of date
 // (outOfDate). Otherwise it asks GitHub, in two rounds of batched queries, reads the
 // unreleased clones' state, and emits event.ReleasesUpdated, telling the window how far it
 // has got meanwhile (event.ReleasesProgress). A refresh that fails keeps the last list,
 // with its error, until the user reads it again, and fails only when there is none.
 //
-// After a restart, the list kept from the last start, when it was read from the clone
-// root as set now, is served at once, marked Kept and Refreshing, while the Refresher
+// After a restart, the list kept from the last start, when it was read from the repository
+// locations as set now, is served at once, marked Kept and Refreshing, while the Refresher
 // reads GitHub again behind the page; without the Refresher, the call waits for GitHub.
 //
 // A release that ends, or a pull request merged in the review sheet, changes one
@@ -269,25 +271,26 @@ func NewService(cfg Config) *Service {
 // and patches its rows into the list, which stays as current as it was (queuePatch,
 // queueMerged). Meanwhile the list is served as it was, marked Refreshing.
 func (s *Service) Candidates(ctx context.Context, refresh bool) (Candidates, error) {
-	root, err := s.clones.Root(ctx)
+	roots, err := s.clones.Roots(ctx)
 	if err != nil {
-		return Candidates{}, fmt.Errorf("read the clone root: %w", err)
+		return Candidates{}, fmt.Errorf("read the repository locations: %w", err)
 	}
 
 	s.restore(ctx)
 
-	if served, ok := s.serveNow(root, refresh); ok {
+	if served, ok := s.serveNow(roots.Key(), refresh); ok {
 		return served, nil
 	}
 
-	return s.refreshes.Do(ctx, root, func(ctx context.Context) (Candidates, error) {
-		return s.refresh(ctx, root)
+	return s.refreshes.Do(ctx, roots.Key(), func(ctx context.Context) (Candidates, error) {
+		return s.refresh(ctx, roots)
 	})
 }
 
-// serveNow returns the last list read from root when it is served without waiting for
-// GitHub: while it is current, unless refresh is set, or, when it is the list kept from a
-// past start, at once, asking the Refresher to read GitHub again behind it.
+// serveNow returns the last list read from the locations root keys (Roots.Key) when it is
+// served without waiting for GitHub: while it is current, unless refresh is set, or, when
+// it is the list kept from a past start, at once, asking the Refresher to read GitHub
+// again behind it.
 func (s *Service) serveNow(root string, refresh bool) (Candidates, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -318,7 +321,7 @@ func (s *Service) served() Candidates {
 	return out
 }
 
-// refresh asks GitHub and the clones under root again, keeping the last list when it
+// refresh asks GitHub and the clones in roots again, keeping the last list when it
 // fails. A list that lands is kept for the next start too. A refresh cut short, as when
 // the page closes, keeps nothing and records nothing.
 //
@@ -326,7 +329,9 @@ func (s *Service) served() Candidates {
 // date while it ran, as when a release ended without the Refresher, lands out of date too:
 // GitHub may have answered before the release reached it. A repository released before it
 // began, whose patch is still queued, is read here, so the patch leaves it out.
-func (s *Service) refresh(ctx context.Context, root string) (Candidates, error) {
+func (s *Service) refresh(ctx context.Context, roots localrepos.Roots) (Candidates, error) {
+	root := roots.Key()
+
 	if err := s.startReading(ctx); err != nil {
 		return Candidates{}, err
 	}
@@ -339,7 +344,7 @@ func (s *Service) refresh(ctx context.Context, root string) (Candidates, error) 
 
 	progress := newListProgress(s.events, s.progressEvery)
 
-	got, err := s.gather(ctx, root, progress)
+	got, err := s.gather(ctx, roots, progress)
 	if err == nil {
 		err = ctx.Err() // a list read as the call ended holds clones marked unreadable
 	}
@@ -400,10 +405,10 @@ func (s *Service) doneReading() {
 
 // gather lists the clones, asks GitHub about their origins, and reads the clones whose
 // repository has changes to release, telling progress of each phase.
-func (s *Service) gather(ctx context.Context, root string, progress *listProgress) (Candidates, error) {
+func (s *Service) gather(ctx context.Context, roots localrepos.Roots, progress *listProgress) (Candidates, error) {
 	progress.Start(event.ReleasesFindingClones, 0)
 
-	all, err := s.clones.Clones(ctx, root)
+	all, err := s.clones.Clones(ctx, roots)
 	if err != nil {
 		return Candidates{}, fmt.Errorf("list the clones: %w", err)
 	}

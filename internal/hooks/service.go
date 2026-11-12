@@ -21,6 +21,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/gitread"
 	"github.com/mrz1836/nilbox/internal/integrationprefs"
 	"github.com/mrz1836/nilbox/internal/integrations"
+	"github.com/mrz1836/nilbox/internal/localrepos"
 	"github.com/mrz1836/nilbox/internal/logging"
 	"github.com/mrz1836/nilbox/internal/paths"
 	"github.com/mrz1836/nilbox/internal/repo"
@@ -28,12 +29,13 @@ import (
 	"github.com/mrz1836/nilbox/internal/uierr"
 )
 
-// Clones finds the clones under the clone root: Root is the clone root as set now, Dirs
-// lists the clones directly under it, reading no git, and Origin reads which GitHub
-// repository a clone's origin is, if any. Core adapts the settings and localrepos.
+// Clones finds the clones in the repository locations: Roots is the clone root and the
+// other locations as set now, Dirs lists the clones in them, reading no git
+// (localrepos.Roots.Clones), and Origin reads which GitHub repository a clone's origin is,
+// if any. Core adapts the settings and localrepos.
 type Clones interface {
-	Root(ctx context.Context) (string, error)
-	Dirs(ctx context.Context, root string) ([]string, error)
+	Roots(ctx context.Context) (localrepos.Roots, error)
+	Dirs(ctx context.Context, roots localrepos.Roots) ([]string, error)
 	Origin(ctx context.Context, dir string) (name repo.Name, onGitHub bool, err error)
 }
 
@@ -122,7 +124,7 @@ type Config struct {
 	Logger *slog.Logger
 }
 
-// Page is the Hooks page: every clone under the clone root with a go-pre-commit config,
+// Page is the Hooks page: every clone in the repository locations with a go-pre-commit config,
 // grouped, and those without one.
 type Page struct {
 	// Tool is go-pre-commit, as the page heads it.
@@ -176,7 +178,7 @@ type Repo struct {
 
 	// HooksDir is the folder git runs its hooks from, with ~. Shared reports one other
 	// repositories use too, outside the clone's git folder and work tree, and SharedWith
-	// how many of the clones under the clone root use it, this one included; an action
+	// how many of the clones in the repository locations use it, this one included; an action
 	// there needs the user to confirm the folder.
 	HooksDir   string `json:"hooksDir"`
 	Shared     bool   `json:"shared"`
@@ -259,13 +261,13 @@ type Service struct {
 	lastHeld uint64
 	going    sync.WaitGroup
 
-	// mu guards the last scan: the clone root it read, when, the copy of go-pre-commit it
+	// mu guards the last scan: the repository locations it read, when, the copy of go-pre-commit it
 	// judged the hooks with, why the next one failed, the clones with a config and those
 	// without, and how many scans of every clone were kept; and the clones to scan again
 	// before the page is served, each by its mark's number, of the marks counts.
 	mu       sync.Mutex
 	has      bool
-	root     string
+	roots    localrepos.Roots
 	scanned  time.Time
 	judgedBy string
 	failure  string
@@ -298,7 +300,7 @@ func NewService(cfg Config) *Service {
 }
 
 // Repos returns the Hooks page. It serves the last scan while it is under FreshFor old,
-// was read from the clone root as set now, and no copy of go-pre-commit took the place of
+// was read from the repository locations as set now, and no copy of go-pre-commit took the place of
 // the one it judged with, scanning again first only the clones an action or a check ran
 // in; refresh, or anything else, scans every clone again and emits event.HooksUpdated. A
 // scan that fails keeps the last page, with its error, until one succeeds. A scan runs
@@ -322,22 +324,22 @@ func (s *Service) Repos(ctx context.Context, refresh bool) (Page, error) {
 
 // readPage is Repos, within the app's lifetime.
 func (s *Service) readPage(ctx context.Context, refresh bool) (Page, error) {
-	root, err := s.clones.Root(ctx)
+	roots, err := s.clones.Roots(ctx)
 	if err != nil {
-		return Page{}, fmt.Errorf("read the clone root: %w", err)
+		return Page{}, fmt.Errorf("read the repository locations: %w", err)
 	}
 
 	tool := s.tool(ctx)
 
 	s.mu.Lock()
 	age := s.clock.Now().Sub(s.scanned)
-	fresh := s.has && s.root == root && s.judgedBy == judgeKey(tool) && age >= 0 && age < FreshFor
+	fresh := s.has && s.roots.Equal(roots) && s.judgedBy == judgeKey(tool) && age >= 0 && age < FreshFor
 	s.mu.Unlock()
 
-	key, scan := scanAllKey+root, func(ctx context.Context) error { return s.scanAll(ctx, root, tool) }
+	key, scan := scanAllKey+roots.Key(), func(ctx context.Context) error { return s.scanAll(ctx, roots, tool) }
 
 	if fresh && !refresh {
-		key, scan = scanStaleKey+root, func(ctx context.Context) error { return s.scanStale(ctx, tool) }
+		key, scan = scanStaleKey+roots.Key(), func(ctx context.Context) error { return s.scanStale(ctx, tool) }
 	}
 
 	detached := func(ctx context.Context) (struct{}, error) {
@@ -358,26 +360,26 @@ func (s *Service) readPage(ctx context.Context, refresh bool) (Page, error) {
 		return Page{}, err
 	}
 
-	return s.page(ctx, root, tool), nil
+	return s.page(ctx, roots, tool), nil
 }
 
-// The keys a scan runs under, one at a time, with the clone root after them: a scan of
+// The keys a scan runs under, one at a time, with the locations' key after them: a scan of
 // every clone, and a scan again of the clones an action or a check ran in.
 const (
 	scanAllKey   = "all\x00"
 	scanStaleKey = "stale\x00"
 )
 
-// scanAll scans every clone under root and keeps what it found, with the marks of the
+// scanAll scans every clone in roots and keeps what it found, with the marks of the
 // clones to scan again that were there when it began cleared; a mark set while it ran
 // stays. A scan that fails keeps the last one, with why, unless there is none to keep, or
-// root changed. A scan cut short, as by ScanTimeout, keeps nothing.
-func (s *Service) scanAll(ctx context.Context, root string, tool ToolFacts) error {
+// the locations changed. A scan cut short, as by ScanTimeout, keeps nothing.
+func (s *Service) scanAll(ctx context.Context, roots localrepos.Roots, tool ToolFacts) error {
 	s.mu.Lock()
 	marked := maps.Clone(s.stale)
 	s.mu.Unlock()
 
-	repos, others, err := s.scan(ctx, root, tool)
+	repos, others, err := s.scan(ctx, roots, tool)
 	if err == nil {
 		err = ctx.Err()
 	}
@@ -390,7 +392,7 @@ func (s *Service) scanAll(ctx context.Context, root string, tool ToolFacts) erro
 	}
 
 	if err != nil {
-		if !s.has || s.root != root {
+		if !s.has || !s.roots.Equal(roots) {
 			return err
 		}
 
@@ -401,7 +403,7 @@ func (s *Service) scanAll(ctx context.Context, root string, tool ToolFacts) erro
 		return nil
 	}
 
-	s.has, s.root, s.scanned, s.failure, s.judgedBy = true, root, s.clock.Now(), "", judgeKey(tool)
+	s.has, s.roots, s.scanned, s.failure, s.judgedBy = true, roots, s.clock.Now(), "", judgeKey(tool)
 	s.repos, s.notSetUp = repos, others
 	s.scans++
 	s.unmark(marked)
@@ -483,7 +485,7 @@ func (s *Service) markStale(dir string) {
 
 // page returns the page from the last scan, with what holds each clone and its newest
 // checks run read now.
-func (s *Service) page(ctx context.Context, root string, tool ToolFacts) Page {
+func (s *Service) page(ctx context.Context, roots localrepos.Roots, tool ToolFacts) Page {
 	env, _ := s.env()
 	last := s.lastChecks(ctx)
 	note := s.toolNote(ctx, tool)
@@ -492,7 +494,7 @@ func (s *Service) page(ctx context.Context, root string, tool ToolFacts) Page {
 	defer s.mu.Unlock()
 
 	out := Page{
-		Tool: tool.status(s.home), Root: paths.Tilde(root, s.home), Repos: make([]Repo, 0, len(s.repos)),
+		Tool: tool.status(s.home), Root: paths.Tilde(roots.Primary(), s.home), Repos: make([]Repo, 0, len(s.repos)),
 		NotSetUp: make([]Clone, 0, len(s.notSetUp)), PathWarning: pathWarning(tool, env, s.home), ToolNote: note,
 		CheckedAt: stamp(s.scanned), Error: s.failure,
 	}

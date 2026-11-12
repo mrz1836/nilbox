@@ -537,6 +537,7 @@ describe('ReviewComposer', () => {
       launchDefaults: [],
       onDefaultsSaved: () => Promise.resolve(),
       onManagePrompts: () => undefined,
+      onSettingsSaved: () => undefined,
     }
     // composer is the sheet's composer for pull request id, which the sheet steps through
     // in place.

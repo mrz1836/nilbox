@@ -147,6 +147,27 @@ describe('SettingsView', () => {
 
     const nav = screen.getByRole('navigation', { name: 'Settings sections' })
     expect(nav).toBeInTheDocument()
+    expect(
+      within(nav)
+        .getAllByRole('button')
+        .map((b) => b.textContent)
+        .slice(1),
+    ).toEqual([
+      'Account',
+      'Appearance',
+      'Notifications',
+      'Refreshing',
+      'Snoozing',
+      'Reviewing',
+      'Repositories',
+      'Profiles',
+      'Launching',
+      'Trust',
+      'Sensitive files',
+      'Worktrees',
+      'Integrations',
+      'About',
+    ])
     expect(screen.getByRole('button', { name: 'Account' })).toHaveAttribute('aria-current', 'page')
     expect(screen.getByRole('button', { name: 'Launching' })).not.toHaveAttribute('aria-current')
     expect(screen.getByRole('region', { name: 'Account' })).toBeInTheDocument()
@@ -700,11 +721,11 @@ describe('SettingsView', () => {
     await waitFor(() => {
       expect(onSaved).toHaveBeenCalledWith(settings({ cloneRoot: '~/code' }))
     })
-    expect(await screen.findByRole('status')).toHaveTextContent('Saved.')
+    expect(await screen.findByText('Saved.')).toHaveAttribute('role', 'status')
 
     // Editing again clears the confirmation.
     await userEvent.type(field, 'x')
-    expect(screen.queryByRole('status')).not.toBeInTheDocument()
+    expect(screen.queryByText('Saved.')).not.toBeInTheDocument()
   })
 
   it('shows a clone root the backend refused', async () => {
@@ -718,7 +739,7 @@ describe('SettingsView', () => {
 
     expect(await screen.findByRole('alert')).toHaveTextContent('clone root ~/missing is not a directory')
     expect(onSaved).not.toHaveBeenCalled()
-    expect(field).toHaveAccessibleDescription(/look one level inside it\. clone root ~\/missing is not a directory$/)
+    expect(field).toHaveAccessibleDescription(/repository locations below\. clone root ~\/missing is not a directory$/)
   })
 
   it('waits for the settings to load', async () => {
@@ -1208,12 +1229,27 @@ describe('SettingsView escape and trust', () => {
     expect(screen.getByRole('radiogroup', { name: 'Merge method' })).toBeInTheDocument()
   })
 
-  it('has an Integrations section between Sensitive files and About, for the tools it runs', async () => {
+  it('groups the inbox’s, the agents’, and the tools’ sections under their headings', () => {
+    renderSettings()
+
+    const nav = within(screen.getByRole('navigation', { name: 'Settings sections' }))
+    const names = (group: string) =>
+      within(nav.getByRole('group', { name: group }))
+        .getAllByRole('button')
+        .map((b) => b.textContent)
+
+    expect(names('Inbox')).toEqual(['Snoozing', 'Reviewing'])
+    expect(names('Agents')).toEqual(['Repositories', 'Profiles', 'Launching', 'Trust', 'Sensitive files', 'Worktrees'])
+    expect(names('Tools')).toEqual(['Integrations'])
+    expect(nav.getAllByRole('group')).toHaveLength(3)
+  })
+
+  it('has an Integrations section between Worktrees and About, for the tools it runs', async () => {
     renderSettings()
 
     const nav = within(screen.getByRole('navigation', { name: 'Settings sections' }))
     const names = nav.getAllByRole('button').map((b) => b.textContent)
-    expect(names.indexOf('Integrations')).toBe(names.indexOf('Sensitive files') + 1)
+    expect(names.indexOf('Integrations')).toBe(names.indexOf('Worktrees') + 1)
     expect(names.indexOf('About')).toBe(names.indexOf('Integrations') + 1)
 
     await openSection('Integrations')
@@ -1441,6 +1477,8 @@ describe('SettingsView search', () => {
     render(<SettingsView {...searchProps('wake')} />)
 
     expect(sidebar()).toEqual(['Snoozing'])
+    expect(screen.getByRole('group', { name: 'Inbox' })).toBeInTheDocument()
+    expect(screen.queryByRole('group', { name: 'Agents' })).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Snoozing (4 matches)' })).toHaveAttribute('aria-current', 'page')
     expect(screen.getByRole('region', { name: 'Snoozing' })).toBeInTheDocument()
     expect(matched()).toEqual(['Wake early', 'New commits', 'Reviews', 'New comments'])

@@ -91,7 +91,7 @@ export function Pull(dir: string): $CancellablePromise<number> {
 }
 
 /**
- * RepoNames returns the GitHub repositories of the clones under the clone root,
+ * RepoNames returns the GitHub repositories of the clones in the repository locations,
  * owner/name, each once, sorted: what a script for chosen repositories can choose from.
  * Each clone's origin is read with git, a few at a time, and kept until the clone's
  * .git/config changes, so the editor opens at once after the first time; a clone the
@@ -103,8 +103,10 @@ export function RepoNames(): $CancellablePromise<string[] | null> {
 }
 
 /**
- * Repos returns the clones under the clone root, for the page's picker: the ones a script
- * ran in most recently first, then the rest by name.
+ * Repos returns the clones in the repository locations, for the page's picker: the ones a
+ * script ran in most recently first, then the rest by name. Two clones of the same name,
+ * ignoring case, in different locations are told apart by their folder: "example-repo
+ * (~/work)".
  */
 export function Repos(): $CancellablePromise<$models.Clone[] | null> {
     return $Call.ByID(3491790443);

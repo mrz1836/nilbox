@@ -1,9 +1,13 @@
 // Package localrepos finds the user's local clones of GitHub repositories.
 //
-// Clones live one level under a clone root (by default ~/projects). Clones lists them,
-// and Scan reads each one's remotes with a read-only `git config --get-regexp`; Resolve
-// picks the clone of a given repository, preferring one whose origin is that repository;
-// ByFolder finds the clone a page's request names by its folder.
+// Clones live one level inside the clone root (by default ~/projects), the primary, which
+// new clones go in, and in the other repository locations the user added: a folder looked
+// into one level deep as the clone root is, or a single clone. Roots holds them, and its
+// Clones lists the clones in all of them, reading no git; Scan reads each one's remotes
+// with a read-only `git config --get-regexp`; Resolve picks the clone of a given
+// repository, preferring one whose origin is that repository; ByFolder finds the clone a
+// page's request names by its folder; Survey and Check say what a location is, for the
+// settings that add one.
 // Git always runs as an argv through the injected execpath.Runner, never a shell.
 package localrepos
 
@@ -11,17 +15,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"iter"
 	"net/url"
 	"os"
-	"path/filepath"
 	"slices"
 	"strings"
 
 	"golang.org/x/sync/errgroup"
 
 	"github.com/mrz1836/nilbox/internal/execpath"
-	"github.com/mrz1836/nilbox/internal/paths"
 	"github.com/mrz1836/nilbox/internal/repo"
 )
 
@@ -37,7 +38,8 @@ const (
 )
 
 var (
-	// ErrCloneNotFound is returned when no clone under the root has the repository as a remote.
+	// ErrCloneNotFound is returned when no clone in the locations has the repository as a
+	// remote.
 	ErrCloneNotFound = errors.New("no local clone")
 
 	// ErrNotARepo is returned when a directory is not a git working tree.
@@ -90,91 +92,77 @@ type Match struct {
 	MatchedRemote string
 }
 
-// Resolver finds the local clone of a repository under a clone root.
+// Resolver finds the local clone of a repository in the user's repository locations.
 type Resolver struct {
-	// Root is the clone root as configured, e.g. "~/projects".
-	Root string
+	// Roots are the clone root and the other locations.
+	Roots Roots
 
-	// Home is the user's home directory, used to expand and display a ~ root.
+	// Home is the user's home directory, which a miss shows as ~.
 	Home string
 
 	// Git runs git.
 	Git execpath.Runner
 }
 
-// Resolve scans the clone root and returns the clone of name. A clone whose origin is
-// the repository wins over one that only has it as another remote; ties go to the first
-// path in sorted order. A miss returns ErrCloneNotFound naming the repository and the
-// root.
+// Resolve lists the clones in every location and returns the clone of name. A clone whose
+// origin is the repository wins over one that only has it as another remote; ties go to
+// the first in Found order, the clone root's first. A miss returns ErrCloneNotFound naming
+// the repository, where it looked, and any location it couldn't read.
 func (r Resolver) Resolve(ctx context.Context, name repo.Name) (Match, error) {
-	root, err := paths.ExpandHome(r.Root, r.Home)
-	if err != nil {
-		return Match{}, fmt.Errorf("clone root: %w", err)
-	}
-
-	repos, err := Scan(ctx, root, r.Git)
+	found, err := r.Roots.Clones(ctx)
 	if err != nil {
 		return Match{}, err
 	}
 
+	repos, err := Scan(ctx, found.Dirs, r.Git)
+	if err != nil {
+		return Match{}, err
+	}
+
+	if match, ok := pick(repos, name); ok {
+		return match, nil
+	}
+
+	where := "under " + r.Roots.Where(r.Home)
+	if r.Roots.Several() {
+		where = "in " + r.Roots.Where(r.Home)
+	}
+
+	for _, u := range found.Skipped {
+		where += "; " + u.Words(r.Home)
+	}
+
+	return Match{}, fmt.Errorf("%w of %s %s", ErrCloneNotFound, name, where)
+}
+
+// pick returns the first of repos whose origin is name, else the first with another
+// remote that is.
+func pick(repos []LocalRepo, name repo.Name) (Match, bool) {
 	var fallback *Match
 
 	for _, clone := range repos {
 		remote, ok := clone.RemoteFor(name)
-		if !ok {
+
+		switch {
+		case !ok:
 			continue
-		}
-
-		if remote == originRemote {
-			return Match{Repo: clone, MatchedRemote: remote}, nil
-		}
-
-		if fallback == nil {
+		case remote == originRemote:
+			return Match{Repo: clone, MatchedRemote: remote}, true
+		case fallback == nil:
 			fallback = &Match{Repo: clone, MatchedRemote: remote}
 		}
 	}
 
-	if fallback != nil {
-		return *fallback, nil
+	if fallback == nil {
+		return Match{}, false
 	}
 
-	return Match{}, fmt.Errorf("%w of %s under %s", ErrCloneNotFound, name, paths.Tilde(root, r.Home))
+	return *fallback, true
 }
 
-// Clones lists the git working trees directly under root: each entry, not hidden (its
-// name does not start with a dot), that is a directory or a symlink to one and holds a
-// .git directory or file, in the order of their names. Nested repositories are not
-// searched. The error is reading root itself; the entries are checked as the sequence
-// is read.
-func Clones(root string) (iter.Seq[string], error) {
-	entries, err := os.ReadDir(root)
-	if err != nil {
-		return nil, fmt.Errorf("read clone root: %w", err)
-	}
-
-	return func(yield func(string) bool) {
-		for _, entry := range entries {
-			if strings.HasPrefix(entry.Name(), ".") {
-				continue
-			}
-
-			if dir := filepath.Join(root, entry.Name()); isRepo(dir) && !yield(dir) {
-				return
-			}
-		}
-	}, nil
-}
-
-// Scan lists the git working trees under root (see Clones) with their GitHub remotes,
-// sorted by path.
-func Scan(ctx context.Context, root string, git execpath.Runner) ([]LocalRepo, error) {
-	clones, err := Clones(root)
-	if err != nil {
-		return nil, err
-	}
-
-	dirs := slices.Collect(clones)
-
+// Scan reads the GitHub remotes of each clone in dirs, as Roots.Clones lists them, eight
+// git processes at a time, and returns them in the order of dirs.
+func Scan(ctx context.Context, dirs []string, git execpath.Runner) ([]LocalRepo, error) {
 	repos := make([]LocalRepo, len(dirs))
 
 	g, gctx := errgroup.WithContext(ctx)
@@ -193,7 +181,7 @@ func Scan(ctx context.Context, root string, git execpath.Runner) ([]LocalRepo, e
 		})
 	}
 
-	if err = g.Wait(); err != nil {
+	if err := g.Wait(); err != nil {
 		return nil, err
 	}
 
@@ -240,13 +228,8 @@ func parseRemoteURL(raw string) (repo.Name, bool) {
 // isRepo reports whether dir is a directory (following symlinks) with a .git entry.
 func isRepo(dir string) bool {
 	info, err := os.Stat(dir)
-	if err != nil || !info.IsDir() {
-		return false
-	}
 
-	_, err = os.Stat(filepath.Join(dir, ".git"))
-
-	return err == nil
+	return err == nil && info.IsDir() && hasGit(dir)
 }
 
 // readRemotes lists dir's remote URLs with git config and keeps the GitHub ones. A git

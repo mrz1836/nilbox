@@ -114,6 +114,7 @@ function launchKey(settings: Settings | undefined): string {
         settings.worktreeDefault,
         settings.terminal,
         settings.cloneRoot,
+        settings.cloneLocations,
         settings.trustedBots,
         settings.codexEffort,
         settings.codexFast,

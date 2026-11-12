@@ -20,6 +20,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/event"
 	"github.com/mrz1836/nilbox/internal/execpath"
 	"github.com/mrz1836/nilbox/internal/item"
+	"github.com/mrz1836/nilbox/internal/localrepos"
 	"github.com/mrz1836/nilbox/internal/procs"
 	"github.com/mrz1836/nilbox/internal/repo"
 	"github.com/mrz1836/nilbox/internal/testutil"
@@ -163,14 +164,15 @@ func (f *fakeLaunches) all() []worklog.Record {
 
 // linkDeps are the optional dependencies of a linking Service.
 type linkDeps struct {
-	rules    *branchrules.Rules
-	gh       *fakeGitHub
-	launches *fakeLaunches
-	history  History
-	events   *testutil.Events
-	auto     bool
-	procs    processTable
-	running  procs.Lister
+	rules     *branchrules.Rules
+	locations []localrepos.Location
+	gh        *fakeGitHub
+	launches  *fakeLaunches
+	history   History
+	events    *testutil.Events
+	auto      bool
+	procs     processTable
+	running   procs.Lister
 
 	// guard, when set, runs the Service under gitread's guards, as core does.
 	guard Guard
@@ -180,7 +182,7 @@ type linkDeps struct {
 // are judged against deps.procs, which by default says every PID is dead.
 func (e *env) linked(deps linkDeps) *Service {
 	cfg := Config{
-		Settings: fakeSettings{root: cloneRoot, auto: deps.auto, rules: deps.rules},
+		Settings: fakeSettings{root: cloneRoot, locations: deps.locations, auto: deps.auto, rules: deps.rules},
 		Git:      e.git,
 		Finder:   execpath.Search{},
 		Home:     e.home,
@@ -854,19 +856,20 @@ func TestListTellsTheWindowHowFarItHasGot(t *testing.T) {
 	require.NoError(t, err)
 
 	listing := func(done int) event.WorktreesProgress {
-		return event.WorktreesProgress{Phase: event.WorktreesListing, Done: done, Total: 2}
+		return event.WorktreesProgress{Phase: event.WorktreesListing, Done: done, Total: 1}
 	}
 	checking := func(done int) event.WorktreesProgress {
-		return event.WorktreesProgress{Phase: event.WorktreesChecking, Done: done, Total: 3}
+		return event.WorktreesProgress{Phase: event.WorktreesChecking, Done: done, Total: 2}
 	}
 
 	assert.Equal(t, []event.WorktreesProgress{
 		{Phase: event.WorktreesFindingClones},
-		listing(0), listing(1), listing(2),
-		checking(0), checking(1), checking(2), checking(3),
+		listing(0), listing(1),
+		checking(0), checking(1), checking(2),
 		{Phase: event.WorktreesAskingGitHub, Total: 1},
 		{Phase: event.WorktreesAskingGitHub, Done: 1, Total: 1},
-	}, toldProgress(events), "the clones, then each one's worktrees, then each worktree, then GitHub")
+	}, toldProgress(events), "the clones, then each one's worktrees, then each worktree, then GitHub; "+
+		"other-repo, with no worktrees, isn't listed")
 
 	before := len(events.All())
 

@@ -19,16 +19,22 @@ import (
 	"github.com/mrz1836/nilbox/internal/progress"
 	"github.com/mrz1836/nilbox/internal/repo"
 	"github.com/mrz1836/nilbox/internal/uierr"
+	"github.com/mrz1836/nilbox/internal/worklog"
 )
 
 // listConcurrency bounds how many repositories List reads at once.
 const listConcurrency = 8
 
-// List scans the clone root and returns every repository that has linked worktrees,
+// List scans the repository locations and returns every repository that has linked worktrees,
 // with the status of each worktree and the pull request or issue it was made for. A
 // repository that git cannot read is listed with an error rather than hiding the rest. A
 // clone that is itself a linked worktree of another clone is folded into that repository.
 // It tells the window how far it has got as it goes (event.WorktreesProgress).
+//
+// git runs only in the clones worth listing (see worthListing): those whose git folder
+// registers a linked worktree, can't be found, or can't be read, and those a record names.
+// A clone with none of these runs no git at all, so one with no worktrees whose git folder
+// is there but which git can't read shows no error.
 func (s *Service) List(ctx context.Context) (Snapshot, error) {
 	tracker := s.newListProgress()
 	defer tracker.End()
@@ -50,30 +56,107 @@ func (s *Service) newListProgress() *listProgress {
 // list is List, telling tracker how far it has got, or nothing for a nil one, as a
 // listing another job makes passes.
 func (s *Service) list(ctx context.Context, tracker *listProgress) (Snapshot, error) {
-	g, root, prefs, err := s.prepare(ctx)
+	g, roots, prefs, err := s.prepare(ctx)
 	if err != nil {
 		return Snapshot{}, err
 	}
 
 	tracker.Start(event.WorktreesFindingClones, 0)
 
-	clones, err := localrepos.Scan(ctx, root, s.run)
+	records := s.records(ctx)
+
+	found, clones, err := s.scanSome(ctx, roots, func(dirs []string) []string { return worthListing(dirs, records) })
 	if err != nil {
 		return Snapshot{}, err
 	}
 
-	return s.assessClones(ctx, g, root, clones, prefs.Branches, tracker)
+	snap, err := s.assessClones(ctx, g, roots, clones, records, prefs.Branches, tracker)
+	if err != nil {
+		return Snapshot{}, err
+	}
+
+	snap.Unread = unreadOf(found, s.home)
+
+	return snap, nil
+}
+
+// scan lists the clones in roots and reads their remotes.
+func (s *Service) scan(ctx context.Context, roots localrepos.Roots) (localrepos.Found, []localrepos.LocalRepo, error) {
+	return s.scanSome(ctx, roots, nil)
+}
+
+// scanSome lists the clones in roots and reads the remotes of those keep keeps, or of
+// every one for a nil keep.
+func (s *Service) scanSome(ctx context.Context, roots localrepos.Roots, keep func([]string) []string,
+) (localrepos.Found, []localrepos.LocalRepo, error) {
+	found, err := roots.Clones(ctx)
+	if err != nil {
+		return localrepos.Found{}, nil, err
+	}
+
+	dirs := found.Dirs
+	if keep != nil {
+		dirs = keep(dirs)
+	}
+
+	clones, err := localrepos.Scan(ctx, dirs, s.run)
+	if err != nil {
+		return localrepos.Found{}, nil, err
+	}
+
+	return found, clones, nil
+}
+
+// worthListing keeps the clones of dirs a listing runs git in, without running any: one
+// whose common git folder registers a linked worktree; one whose common git folder can't
+// be found or read, so git says why on its row; and one a record names, so a record whose
+// worktree is gone is still checked and forgotten. Any other clone has no linked worktree
+// to list.
+func worthListing(dirs []string, records []worklog.Record) []string {
+	named := make(map[string]bool, 2*len(records))
+
+	for _, r := range records {
+		named[filepath.Clean(r.ClonePath)] = true
+		named[paths.Resolved(r.ClonePath)] = true
+	}
+
+	kept := make([]string, 0, len(dirs))
+
+	for _, dir := range dirs {
+		_, linked, known := linkedWorktrees(dir)
+
+		switch {
+		case !known, linked > 0, named[filepath.Clean(dir)]:
+		case len(named) > 0 && named[paths.Resolved(dir)]:
+		default:
+			continue
+		}
+
+		kept = append(kept, dir)
+	}
+
+	return kept
+}
+
+// unreadOf names the locations a listing couldn't read, with ~; never nil.
+func unreadOf(found localrepos.Found, home string) []string {
+	out := make([]string, 0, len(found.Skipped))
+	for _, u := range found.Skipped {
+		out = append(out, paths.Tilde(u.Dir, home))
+	}
+
+	return out
 }
 
 // assessClone assesses the clone at repoPath alone, GitHub included, as a listing would:
-// the clone must be under the clone root.
+// the repository locations must hold the clone.
 func (s *Service) assessClone(ctx context.Context, repoPath string) (git, Snapshot, error) {
-	g, root, prefs, err := s.prepare(ctx)
+	g, roots, prefs, err := s.prepare(ctx)
 	if err != nil {
 		return git{}, Snapshot{}, err
 	}
 
-	if !s.underRoot(repoPath, root) {
+	if !roots.Holds(repoPath) {
 		return git{}, Snapshot{}, fmt.Errorf("%w: %s", ErrOutsideCloneRoot, s.display(repoPath))
 	}
 
@@ -82,7 +165,7 @@ func (s *Service) assessClone(ctx context.Context, repoPath string) (git, Snapsh
 		return git{}, Snapshot{}, err
 	}
 
-	snap, err := s.assessClones(ctx, g, root, []localrepos.LocalRepo{clone}, prefs.Branches, nil)
+	snap, err := s.assessClones(ctx, g, roots, []localrepos.LocalRepo{clone}, s.records(ctx), prefs.Branches, nil)
 	if err != nil {
 		return git{}, Snapshot{}, err
 	}
@@ -90,20 +173,19 @@ func (s *Service) assessClone(ctx context.Context, repoPath string) (git, Snapsh
 	return g, snap, nil
 }
 
-// assessClones lists the given clones' worktrees, checks the records against them, links
-// them to their items, finds the sessions working in them, and works out each one's
-// stage. The clones are listed a few at a time, then every worktree's state is read under
-// the same limit, whichever clone it is in.
+// assessClones lists the given clones' worktrees, checks records, the worktree records,
+// against them, links them to their items, finds the sessions working in them, and works
+// out each one's stage. The clones are listed a few at a time, then every worktree's
+// state is read under the same limit, whichever clone it is in.
 //
 // The records and the running processes are read before git lists anything: a worktree
 // made after the listing then has no record yet rather than a record that seems to name a
 // worktree gone, and the git commands the listing runs are not mistaken for sessions.
-func (s *Service) assessClones(ctx context.Context, g git, root string, clones []localrepos.LocalRepo,
-	rules branchrules.Rules, tracker *listProgress,
+func (s *Service) assessClones(ctx context.Context, g git, roots localrepos.Roots, clones []localrepos.LocalRepo,
+	records []worklog.Record, rules branchrules.Rules, tracker *listProgress,
 ) (Snapshot, error) {
 	tracker.Start(event.WorktreesListing, len(clones))
 
-	records := s.records(ctx)
 	running, known := s.processes(ctx)
 
 	listings := make([]cloneListing, len(clones))
@@ -141,7 +223,7 @@ func (s *Service) assessClones(ctx context.Context, g git, root string, clones [
 		listed = append(listed, l.withRows())
 	}
 
-	snap := s.snapshot(root, listed)
+	snap := s.snapshot(roots, listed)
 	snap.LinkError = s.link(ctx, snap.Repos, remotes, recorded, tracker)
 	s.adopt(ctx, snap.Repos, recorded)
 	markSessions(snap.Repos, running, s.agentProcesses(ctx))
@@ -423,9 +505,10 @@ func headTime(ctx context.Context, g git, wt *Worktree, times map[string]int64) 
 
 // snapshot folds clones that share a main worktree and keeps the repositories worth
 // showing.
-func (s *Service) snapshot(root string, listed []listedRepo) Snapshot {
+func (s *Service) snapshot(roots localrepos.Roots, listed []listedRepo) Snapshot {
 	snap := Snapshot{
-		Root:     s.display(root),
+		Roots:    roots.Shown(s.home),
+		Unread:   []string{},
 		Repos:    []Repo{},
 		ListedAt: clock.Format(s.clock.Now()),
 	}

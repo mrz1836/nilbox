@@ -14,6 +14,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/execpath"
 	"github.com/mrz1836/nilbox/internal/integrationprefs"
 	"github.com/mrz1836/nilbox/internal/integrations"
+	"github.com/mrz1836/nilbox/internal/localrepos"
 	"github.com/mrz1836/nilbox/internal/repo"
 	"github.com/mrz1836/nilbox/internal/scriptrun"
 	"github.com/mrz1836/nilbox/internal/scriptrun/scriptruntest"
@@ -190,34 +191,30 @@ func (r *rig) recorded() int {
 	return len(got)
 }
 
-// fakeClones is the clone root: its folder, the clones made under it, and their origins.
+// fakeClones is the clone root: its folder, the clones made under it, and their origins,
+// with the other locations extra.
 type fakeClones struct {
 	mu      sync.Mutex
 	root    string
+	extra   []localrepos.Location
 	origins map[string]repo.Name
 }
 
-func (f *fakeClones) Root(context.Context) (string, error) {
-	return f.root, nil
+func (f *fakeClones) Roots(context.Context) (localrepos.Roots, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	return localrepos.NewRoots(f.root, f.extra, "")
 }
 
-// Dirs lists the folders under root that hold a .git, as localrepos.Clones does.
-func (f *fakeClones) Dirs(_ context.Context, root string) ([]string, error) {
-	entries, err := os.ReadDir(root)
+// Dirs lists the clones in roots, as localrepos.Roots.Clones does.
+func (f *fakeClones) Dirs(ctx context.Context, roots localrepos.Roots) ([]string, error) {
+	found, err := roots.Clones(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	var out []string
-
-	for _, e := range entries {
-		dir := filepath.Join(root, e.Name())
-		if _, statErr := os.Stat(filepath.Join(dir, ".git")); statErr == nil {
-			out = append(out, dir)
-		}
-	}
-
-	return out, nil
+	return found.Dirs, nil
 }
 
 func (f *fakeClones) Origin(_ context.Context, dir string) (repo.Name, bool, error) {

@@ -10,7 +10,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/store"
 )
 
-// keptKey is the pref the last list is kept under between starts, with the clone root it
+// keptKey is the pref the last list is kept under between starts, with the repository locations it
 // was read from. The release service alone writes it.
 const keptKey = "release.lastCandidates"
 
@@ -25,7 +25,7 @@ type Keeper interface {
 	Set(ctx context.Context, key, value string) error
 }
 
-// keptList is the last list as it is kept: its shape's version, the clone root it was read
+// keptList is the last list as it is kept: its shape's version, the locations' key (Roots.Key) it was read
 // from, and the list, each repository with what the page isn't shown of it.
 type keptList struct {
 	Version       int        `json:"version"`
@@ -68,7 +68,7 @@ func encodeKept(list Candidates, root string) (string, error) {
 	return raw, nil
 }
 
-// decodeKept reads a kept list back: the list as the page lists it, and the clone root it
+// decodeKept reads a kept list back: the list as the page lists it, and the locations' key it
 // was read from. ok is false for a list in another shape.
 func decodeKept(raw string) (list Candidates, root string, ok bool, err error) {
 	kept, err := store.DecodeJSON[keptList](raw)
@@ -101,7 +101,7 @@ func decodeKept(raw string) (list Candidates, root string, ok bool, err error) {
 }
 
 // restore reads the list kept from a past start, once, before the first list is served:
-// it stands as the last list, from the clone root it was read from, marked as kept, until
+// it stands as the last list, from the locations it was read from, marked as kept, until
 // a refresh replaces it. It is never fresh, so serving it reads GitHub again. A kept list
 // that can't be read is logged and left; one a refresh already replaced isn't read.
 func (s *Service) restore(ctx context.Context) {
@@ -259,15 +259,16 @@ func (s *Service) refreshBehind(ctx context.Context) {
 		s.mu.Unlock()
 	}()
 
-	root, err := s.clones.Root(ctx)
+	roots, err := s.clones.Roots(ctx)
 	if err != nil {
-		s.logger.WarnContext(ctx, "couldn't read the clone root to list the repositories to release", "error", err)
+		s.logger.WarnContext(ctx, "couldn't read the repository locations to list the repositories to release",
+			"error", err)
 
 		return
 	}
 
 	s.mu.Lock()
-	stale := s.has && s.kept && s.root == root
+	stale := s.has && s.kept && s.root == roots.Key()
 	s.pending = stale
 	s.mu.Unlock()
 
@@ -276,7 +277,7 @@ func (s *Service) refreshBehind(ctx context.Context) {
 	}
 
 	// A failure is kept with the list, and logged, by refresh; a cut short one keeps nothing.
-	_, _ = s.refreshes.Do(ctx, root, func(ctx context.Context) (Candidates, error) {
-		return s.refresh(ctx, root)
+	_, _ = s.refreshes.Do(ctx, roots.Key(), func(ctx context.Context) (Candidates, error) {
+		return s.refresh(ctx, roots)
 	})
 }

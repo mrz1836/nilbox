@@ -48,6 +48,17 @@ type CloneTarget struct {
 	// Taken reports that a repository without a clone cannot get one at Dir, because
 	// something is already there. Clone refuses it.
 	Taken bool `json:"taken"`
+
+	// Elsewhere is, for a repository without a clone in the repository locations, the
+	// clone the app last remembered for it, with ~, when it is still one but no location
+	// holds it, as after the clone root changed; "" otherwise. The window offers to use it
+	// (LinkClone).
+	Elsewhere string `json:"elsewhere"`
+
+	// Where names, for a repository without a clone, the locations it was looked for in,
+	// with ~: "~/projects", or "~/projects or your other repository locations" when there
+	// are others (localrepos.Roots.Where). "" for a repository with a clone.
+	Where string `json:"where"`
 }
 
 // CloneTarget reports whether an item's repository has a local clone and, when it has
@@ -95,7 +106,7 @@ func (s *Service) Clone(ctx context.Context, itemID int64) (CloneTarget, error) 
 
 	s.cacheClonePath(ctx, target.id, dir)
 
-	t.Cloned, t.Taken = true, false
+	t.Cloned, t.Taken, t.Where = true, false, ""
 
 	return t, nil
 }
@@ -122,7 +133,12 @@ func (s *Service) cloneTarget(ctx context.Context, itemID int64) (CloneTarget, r
 
 	t := CloneTarget{Repo: ref.name.String()}
 
-	clone, err := s.resolveClone(ctx, ref, prefs.CloneRoot)
+	roots, err := prefs.roots(s.home, s.reader)
+	if err != nil {
+		return CloneTarget{}, repoRef{}, err
+	}
+
+	clone, err := s.resolveClone(ctx, ref, roots)
 	if err == nil {
 		t.Cloned, t.Dir = true, paths.Tilde(clone.Dir, s.home)
 
@@ -133,12 +149,14 @@ func (s *Service) cloneTarget(ctx context.Context, itemID int64) (CloneTarget, r
 		return CloneTarget{}, repoRef{}, err
 	}
 
-	root, err := paths.ExpandHome(prefs.CloneRoot, s.home)
-	if err != nil {
-		return CloneTarget{}, repoRef{}, fmt.Errorf("clone root: %w", err)
+	t.Where = roots.Where(s.home)
+
+	if old, ok := s.cloneAt(ctx, ref); ok {
+		t.Elsewhere = paths.Tilde(old.Dir, s.home)
 	}
 
-	dir := filepath.Join(root, ref.name.Repo)
+	// New clones go in the clone root, whatever other locations there are.
+	dir := filepath.Join(roots.Primary(), ref.name.Repo)
 	t.Dir = paths.Tilde(dir, s.home)
 
 	if t.Taken, err = exists(dir); err != nil {

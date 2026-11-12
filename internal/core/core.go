@@ -34,6 +34,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/launchdefaults"
 	"github.com/mrz1836/nilbox/internal/launcher"
 	"github.com/mrz1836/nilbox/internal/launcher/terminal"
+	"github.com/mrz1836/nilbox/internal/localrepos"
 	"github.com/mrz1836/nilbox/internal/logging"
 	"github.com/mrz1836/nilbox/internal/notify"
 	"github.com/mrz1836/nilbox/internal/paths"
@@ -412,8 +413,11 @@ func assemble(pool *sql.DB, info startup, opts Options, logger *slog.Logger) *Co
 	defaultsStore := info.kept.defaults
 	inboxStore := inbox.NewStore(pool, opts.Clock)
 	followed := &followSwitch{sink: event.Or(opts.Events)}
+	// One reader bounds every read of the other repository locations, whichever service
+	// asks, so a location on a share that hangs is skipped, and read once at a time.
+	locations := localrepos.NewReader(localrepos.DefaultReadLimit)
 	prefs := settings.NewService(pool, profileStore, opts.Home, settings.WithClock(opts.Clock),
-		settings.WithEvents(followed), settings.WithLogger(logger))
+		settings.WithEvents(followed), settings.WithLogger(logger), settings.WithGit(runner), settings.WithReader(locations))
 	tokens := github.NewTokenSource(runner, search,
 		github.WithTokenClock(opts.Clock), github.WithHostsFile(github.GHHostsFile(opts.Home)))
 	// One tracker hears every response the shared client gets, whichever service asked.
@@ -470,6 +474,7 @@ func assemble(pool *sql.DB, info startup, opts Options, logger *slog.Logger) *Co
 		Guard:    shellGit,
 		GitWith:  gitWith,
 		Home:     opts.Home,
+		Reader:   locations,
 		Clock:    opts.Clock,
 		GitHub:   itemStates{tokens: tokens, client: client},
 		Records:  workLog,
@@ -499,6 +504,7 @@ func assemble(pool *sql.DB, info startup, opts Options, logger *slog.Logger) *Co
 		Ledger:    sessionLedger{ledger: follow.ledger},
 		Trust:     trusters(opts.Home, logger),
 		Files:     inboxSvc,
+		Reader:    locations,
 		Logger:    logger,
 	})
 
@@ -533,7 +539,7 @@ func assemble(pool *sql.DB, info startup, opts Options, logger *slog.Logger) *Co
 
 	releases := release.NewService(release.Config{
 		GitHub:  releaseGitHub{tokens: tokens, client: client},
-		Clones:  releaseClones{settings: prefs, home: opts.Home, git: runner},
+		Clones:  releaseClones{settings: prefs, home: opts.Home, git: runner, reader: locations},
 		Checker: release.GitChecker{Git: shellGit},
 		Git:     shellGit, Origins: releaseOrigins{git: runner}, Tools: releaseTool{tools: tools}, Locks: clones,
 		Env: shellEnv.Env, Ready: shellEnv.Ready, Runner: toolRunners, Runs: runs, Places: releaseSettings{settings: prefs},
@@ -560,7 +566,7 @@ func assemble(pool *sql.DB, info startup, opts Options, logger *slog.Logger) *Co
 
 	deps := hookDeps{
 		settings: prefs, tools: tools, git: shellGit, runner: runner, clones: clones, runs: runs, history: scriptRuns,
-		shellEnv: shellEnv, terminal: terminals,
+		shellEnv: shellEnv, terminal: terminals, locations: locations,
 	}
 	hookPage := newHooks(pool, opts, logger, deps)
 	repoScripts := newScripts(pool, opts, logger, deps, inboxStore)
@@ -673,15 +679,16 @@ func newRuns(
 // hookDeps are the services and building blocks the Hooks page and Repo scripts share with
 // the rest of the app.
 type hookDeps struct {
-	settings *settings.Service
-	tools    *integrations.Service
-	git      *gitread.Git
-	runner   execpath.Runner
-	clones   *clonelock.Set
-	runs     *scriptrun.Engine
-	history  *scriptrun.Service
-	shellEnv *shellenv.Reader
-	terminal terminalRuns
+	settings  *settings.Service
+	tools     *integrations.Service
+	git       *gitread.Git
+	runner    execpath.Runner
+	clones    *clonelock.Set
+	runs      *scriptrun.Engine
+	history   *scriptrun.Service
+	shellEnv  *shellenv.Reader
+	terminal  terminalRuns
+	locations *localrepos.Reader
 }
 
 // newHooks builds the Hooks page's service: the clones under the clone root, read with the
@@ -699,7 +706,7 @@ func newHooks(pool *sql.DB, opts Options, logger *slog.Logger, deps hookDeps) *h
 	}
 
 	svc := hooks.NewService(hooks.Config{
-		Clones: hooksClones{settings: deps.settings, home: opts.Home, git: deps.runner}, Git: deps.git,
+		Clones: hooksClones{settings: deps.settings, home: opts.Home, git: deps.runner, reader: deps.locations}, Git: deps.git,
 		Tools: hooksTool{tools: deps.tools}, Locks: deps.clones, Runs: deps.runs, History: deps.history,
 		Places: integrationSettings{settings: deps.settings}, Memory: prefsstore.New(pool, opts.Clock), Env: deps.shellEnv.Env,
 		Ready: deps.shellEnv.Ready, Runner: runner, Terminal: deps.terminal, Reveal: revealer(deps.runner), Home: opts.Home,
@@ -732,7 +739,7 @@ func newScripts(pool *sql.DB, opts Options, logger *slog.Logger, deps hookDeps, 
 	}
 
 	svc := scripts.NewService(scripts.Config{
-		Clones: hooksClones{settings: deps.settings, home: opts.Home, git: deps.runner}, Git: deps.git,
+		Clones: hooksClones{settings: deps.settings, home: opts.Home, git: deps.runner, reader: deps.locations}, Git: deps.git,
 		BranchGit: deps.git, Branches: branches, Tools: scriptsTools{tools: deps.tools},
 		Settings: integrationSettings{settings: deps.settings}, Runs: deps.runs, History: deps.history, DB: pool,
 		Env: deps.shellEnv.Env, Shell: deps.shellEnv.Shell, Runner: runner, Home: opts.Home, Clock: opts.Clock,

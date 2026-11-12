@@ -6,7 +6,6 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
-	"slices"
 	"strings"
 	"testing"
 
@@ -50,6 +49,32 @@ func initRepo(t *testing.T, dir string, remotes ...string) {
 	for i := 0; i+1 < len(remotes); i += 2 {
 		testutil.RunGit(t, dir, "remote", "add", remotes[i], remotes[i+1])
 	}
+}
+
+// scanRoot lists the clones directly inside root, the only location, and reads their
+// remotes, as a listing of one clone root does.
+func scanRoot(t *testing.T, root string, git execpath.Runner) ([]LocalRepo, error) {
+	t.Helper()
+
+	roots, err := NewRoots(root, nil, "")
+	require.NoError(t, err)
+
+	found, err := roots.Clones(t.Context())
+	if err != nil {
+		return nil, err
+	}
+
+	return Scan(t.Context(), found.Dirs, git)
+}
+
+// rootsAt builds the Roots of the clone root root and the other locations extra.
+func rootsAt(t *testing.T, root, home string, extra ...Location) Roots {
+	t.Helper()
+
+	roots, err := NewRoots(root, extra, home)
+	require.NoError(t, err)
+
+	return roots
 }
 
 // exitError is a fake process exit with a status.
@@ -158,7 +183,7 @@ func TestScanFindsReposOneLevelDeep(t *testing.T) {
 	require.NoError(t, os.Symlink(outside, filepath.Join(root, "linked")))
 	require.NoError(t, os.Symlink(filepath.Join(root, "missing"), filepath.Join(root, "dangling")))
 
-	repos, err := Scan(t.Context(), root, git)
+	repos, err := scanRoot(t, root, git)
 	require.NoError(t, err)
 
 	assert.Equal(t, []LocalRepo{
@@ -180,7 +205,7 @@ func TestScanRunsReadOnlyGitArgv(t *testing.T) {
 
 	fake := &testutil.Runner{Stdout: "remote.origin.url " + exampleHTTPS + "\n"}
 
-	repos, err := Scan(t.Context(), root, fake)
+	repos, err := scanRoot(t, root, fake)
 	require.NoError(t, err)
 	require.Len(t, repos, 1)
 	assert.Equal(t, map[string]repo.Name{"origin": exampleRepo()}, repos[0].Remotes)
@@ -197,7 +222,7 @@ func TestScanToleratesGitExitStatus(t *testing.T) {
 		t.Run(fmt.Sprint(code), func(t *testing.T) {
 			t.Parallel()
 
-			repos, err := Scan(t.Context(), root, &testutil.Runner{Err: exitError{code: code}})
+			repos, err := scanRoot(t, root, &testutil.Runner{Err: exitError{code: code}})
 			require.NoError(t, err)
 			require.Len(t, repos, 1)
 			assert.Empty(t, repos[0].Remotes)
@@ -211,24 +236,24 @@ func TestScanFailsWhenGitCannotRun(t *testing.T) {
 	root := t.TempDir()
 	require.NoError(t, os.MkdirAll(filepath.Join(root, "example-repo", ".git"), 0o700))
 
-	_, err := Scan(t.Context(), root, &testutil.Runner{Err: errFakeLaunch})
+	_, err := scanRoot(t, root, &testutil.Runner{Err: errFakeLaunch})
 	require.ErrorIs(t, err, errFakeLaunch)
 
-	_, err = Scan(t.Context(), root, &testutil.Runner{Err: exitError{code: -1}})
+	_, err = scanRoot(t, root, &testutil.Runner{Err: exitError{code: -1}})
 	require.Error(t, err)
 }
 
 func TestScanMissingRoot(t *testing.T) {
 	t.Parallel()
 
-	_, err := Scan(t.Context(), filepath.Join(t.TempDir(), "missing"), &testutil.Runner{})
+	_, err := scanRoot(t, filepath.Join(t.TempDir(), "missing"), &testutil.Runner{})
 	require.ErrorIs(t, err, fs.ErrNotExist)
 }
 
 func TestScanEmptyRoot(t *testing.T) {
 	t.Parallel()
 
-	repos, err := Scan(t.Context(), t.TempDir(), &testutil.Runner{})
+	repos, err := scanRoot(t, t.TempDir(), &testutil.Runner{})
 	require.NoError(t, err)
 	assert.Empty(t, repos)
 }
@@ -243,7 +268,7 @@ func TestResolvePrefersOrigin(t *testing.T) {
 	initRepo(t, filepath.Join(root, "a-fork"), "origin", "git@github.com:octo-user/example-repo.git", "upstream", exampleHTTPS)
 	initRepo(t, filepath.Join(root, "z-main"), "origin", exampleHTTPS)
 
-	r := Resolver{Root: "~/projects", Home: home, Git: git}
+	r := Resolver{Roots: rootsAt(t, "~/projects", home), Home: home, Git: git}
 
 	got, err := r.Resolve(t.Context(), repo.Name{Owner: "Acme-Org", Repo: "Example-Repo"})
 	require.NoError(t, err)
@@ -267,7 +292,7 @@ func TestResolveFallsBackToOtherRemote(t *testing.T) {
 	initRepo(t, filepath.Join(root, "b-fork"), "origin", "git@github.com:octo-user/example-repo.git", "upstream", exampleHTTPS)
 	initRepo(t, filepath.Join(root, "c-fork"), "origin", "git@github.com:octo-user/example-repo.git", "acme", exampleHTTPS)
 
-	got, err := Resolver{Root: root, Home: home, Git: git}.Resolve(t.Context(), exampleRepo())
+	got, err := Resolver{Roots: rootsAt(t, root, home), Home: home, Git: git}.Resolve(t.Context(), exampleRepo())
 	require.NoError(t, err)
 	assert.Equal(t, filepath.Join(root, "b-fork"), got.Repo.Path)
 	assert.Equal(t, "upstream", got.MatchedRemote)
@@ -282,7 +307,8 @@ func TestResolveUnknownRepoError(t *testing.T) {
 	home := t.TempDir()
 	initRepo(t, filepath.Join(home, "projects", "example-repo"), "origin", exampleHTTPS)
 
-	_, err := Resolver{Root: "~/projects", Home: home, Git: git}.Resolve(t.Context(), repo.Name{Owner: exampleOwner, Repo: "missing-repo"})
+	_, err := Resolver{Roots: rootsAt(t, "~/projects", home), Home: home, Git: git}.Resolve(t.Context(),
+		repo.Name{Owner: exampleOwner, Repo: "missing-repo"})
 	require.ErrorIs(t, err, ErrCloneNotFound)
 	assert.Equal(t, "no local clone of acme-org/missing-repo under ~/projects", err.Error())
 }
@@ -290,10 +316,14 @@ func TestResolveUnknownRepoError(t *testing.T) {
 func TestResolveRootErrors(t *testing.T) {
 	t.Parallel()
 
-	_, err := Resolver{Root: "", Git: &testutil.Runner{}}.Resolve(t.Context(), exampleRepo())
+	_, err := NewRoots("", nil, "")
 	require.ErrorIs(t, err, paths.ErrEmpty)
 
-	_, err = Resolver{Root: filepath.Join(t.TempDir(), "missing"), Git: &testutil.Runner{}}.Resolve(t.Context(), exampleRepo())
+	_, err = Resolver{Roots: Roots{}, Git: &testutil.Runner{}}.Resolve(t.Context(), exampleRepo())
+	require.ErrorIs(t, err, paths.ErrEmpty, "the zero Roots has no clone root")
+
+	missing := rootsAt(t, filepath.Join(t.TempDir(), "missing"), "")
+	_, err = Resolver{Roots: missing, Git: &testutil.Runner{}}.Resolve(t.Context(), exampleRepo())
 	require.ErrorIs(t, err, fs.ErrNotExist)
 }
 
@@ -337,7 +367,7 @@ func TestInspect(t *testing.T) {
 	require.ErrorIs(t, err, errFakeLaunch)
 }
 
-func TestClonesListsReposAndStopsWhenAsked(t *testing.T) {
+func TestFolderClonesListsRepos(t *testing.T) {
 	t.Parallel()
 
 	root := t.TempDir()
@@ -347,16 +377,10 @@ func TestClonesListsReposAndStopsWhenAsked(t *testing.T) {
 
 	require.NoError(t, os.MkdirAll(filepath.Join(root, "plain-dir"), 0o700))
 
-	clones, err := Clones(root)
+	clones, err := folderClones(root)
 	require.NoError(t, err)
-	assert.Equal(t, []string{filepath.Join(root, "alpha"), filepath.Join(root, "beta")}, slices.Collect(clones))
+	assert.Equal(t, []string{filepath.Join(root, "alpha"), filepath.Join(root, "beta")}, clones)
 
-	for dir := range clones {
-		assert.Equal(t, filepath.Join(root, "alpha"), dir)
-
-		break
-	}
-
-	_, err = Clones(filepath.Join(root, "missing"))
+	_, err = folderClones(filepath.Join(root, "missing"))
 	require.ErrorIs(t, err, fs.ErrNotExist)
 }

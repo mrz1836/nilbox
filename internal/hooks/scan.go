@@ -11,6 +11,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/gitread"
 	"github.com/mrz1836/nilbox/internal/integrationprefs"
 	"github.com/mrz1836/nilbox/internal/integrations"
+	"github.com/mrz1836/nilbox/internal/localrepos"
 	"github.com/mrz1836/nilbox/internal/paths"
 	"github.com/mrz1836/nilbox/internal/repo"
 	"github.com/mrz1836/nilbox/internal/uierr"
@@ -41,13 +42,13 @@ type scannedClone struct {
 	clone Clone
 }
 
-// scan lists the clones under root and scans each with a config, four at a time. When
+// scan lists the clones in roots and scans each with a config, four at a time. When
 // one's hooks folder is shared, it reads the others' too, so the count of clones that use
 // it is right.
-func (s *Service) scan(ctx context.Context, root string, tool ToolFacts) ([]scannedRepo, []scannedClone, error) {
-	dirs, err := s.clones.Dirs(ctx, root)
+func (s *Service) scan(ctx context.Context, roots localrepos.Roots, tool ToolFacts) ([]scannedRepo, []scannedClone, error) {
+	dirs, err := s.clones.Dirs(ctx, roots)
 	if err != nil {
-		return nil, nil, uierr.New("Couldn't list the clones in "+paths.Tilde(root, s.home)+".", err)
+		return nil, nil, uierr.New("Couldn't list the clones in "+roots.Where(s.home)+".", err)
 	}
 
 	var withConfig []configured

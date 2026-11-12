@@ -23,7 +23,7 @@ import (
 //     clone, which catches a worktree moved with `git worktree move`, whose record then
 //     follows it;
 //   - a record whose worktree is gone (removed outside the app, or pruned), or whose clone
-//     is gone, is dropped;
+//     is gone from a folder that is still there, is dropped;
 //   - a record whose clone was not listed, or could not be, is kept as it is, since
 //     nothing says its worktree is gone.
 //
@@ -177,11 +177,17 @@ func recordRow(l *cloneListing, r worklog.Record) *Worktree {
 	return nil
 }
 
-// cloneGone reports a clone directory that is certainly gone.
+// cloneGone reports a clone directory that is certainly gone: it isn't there, but the
+// folder that held it is. A clone whose folder is gone too, as on a drive that isn't
+// plugged in, isn't gone: its records wait for the drive to come back.
 func cloneGone(path string) bool {
-	_, err := os.Stat(path)
+	if _, err := os.Stat(path); !errors.Is(err, fs.ErrNotExist) {
+		return false
+	}
 
-	return errors.Is(err, fs.ErrNotExist)
+	info, err := os.Stat(filepath.Dir(filepath.Clean(path)))
+
+	return err == nil && info.IsDir()
 }
 
 // forgetStale forgets a record the listing found no worktree for, once git still has

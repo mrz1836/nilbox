@@ -28,23 +28,27 @@ export type SettingsSection =
   | 'integrations'
   | 'about'
 
-// sectionOrder is the sidebar's order.
-export const sectionOrder: readonly SettingsSection[] = [
-  'account',
-  'appearance',
-  'notifications',
-  'refreshing',
-  'snoozing',
-  'reviewing',
-  'launching',
-  'worktrees',
-  'profiles',
-  'repositories',
-  'trust',
-  'files',
-  'integrations',
-  'about',
+// SectionGroup is a run of the sidebar's sections under one heading, or under none when
+// heading is ''.
+export interface SectionGroup {
+  heading: string
+  sections: readonly SettingsSection[]
+}
+
+// sectionGroups is the sidebar, in the order the app is used: the settings of the whole
+// app, then the inbox's, then the agents' in the order they are set up (where the clones
+// live, the profiles a launch runs with, the launch itself and what it trusts, and the
+// worktrees it leaves behind), then the tools, and About.
+export const sectionGroups: readonly SectionGroup[] = [
+  { heading: '', sections: ['account', 'appearance', 'notifications', 'refreshing'] },
+  { heading: 'Inbox', sections: ['snoozing', 'reviewing'] },
+  { heading: 'Agents', sections: ['repositories', 'profiles', 'launching', 'trust', 'files', 'worktrees'] },
+  { heading: 'Tools', sections: ['integrations'] },
+  { heading: '', sections: ['about'] },
 ]
+
+// sectionOrder is the sidebar's order, its headings aside.
+export const sectionOrder: readonly SettingsSection[] = sectionGroups.flatMap((group) => group.sections)
 
 // sectionInfo is each section's heading and summary.
 export const sectionInfo: Readonly<Record<SettingsSection, { label: string; description: string }>> = {
@@ -214,7 +218,14 @@ export const settingsIndex: Readonly<Record<SettingsSection, readonly SettingEnt
     },
   ],
   repositories: [
-    { label: 'Clone root', keywords: ['clones', 'projects folder', 'local repositories', 'path', 'directory'] },
+    {
+      label: 'Clone root',
+      keywords: ['clones', 'projects folder', 'local repositories', 'path', 'directory', 'new clones'],
+    },
+    {
+      label: 'Other repository locations',
+      keywords: ['locations', 'more folders', 'elsewhere', 'scattered', 'external drive', 'single clone'],
+    },
     { label: 'Launch defaults', keywords: ['org defaults', 'repository defaults', 'organization', 'overrides'] },
   ],
   trust: [

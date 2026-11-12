@@ -19,6 +19,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/branchrules"
 	"github.com/mrz1836/nilbox/internal/event"
 	"github.com/mrz1836/nilbox/internal/integrationprefs"
+	"github.com/mrz1836/nilbox/internal/localrepos"
 	"github.com/mrz1836/nilbox/internal/notifyprefs"
 	"github.com/mrz1836/nilbox/internal/paths"
 	"github.com/mrz1836/nilbox/internal/prefs"
@@ -75,6 +76,7 @@ func TestPrefDefaults(t *testing.T) {
 		Terminal:            "iterm2",
 		FollowSessions:      true,
 		CloneRoot:           "~/projects",
+		CloneLocations:      []localrepos.Location{},
 		TrustedBots:         []string{"dependabot", "github-actions", "renovate"},
 		DefaultTrustedBots:  []string{"dependabot", "github-actions", "renovate"},
 		SnoozeDays:          3,
@@ -243,6 +245,7 @@ func TestSettersPersist(t *testing.T) {
 		Terminal:            TerminalITerm2,
 		FollowSessions:      false,
 		CloneRoot:           "~/code/clones",
+		CloneLocations:      []localrepos.Location{},
 		TrustedBots:         trust.DefaultBots(),
 		DefaultTrustedBots:  trust.DefaultBots(),
 		SnoozeDays:          7,
@@ -538,6 +541,7 @@ func TestSettersReturnTheStoredSettings(t *testing.T) {
 	svc, db, home := newTestService(t)
 	storeProfiles(t, db, profiles.Profile{Agent: agent.Claude, Name: "work", ConfigDir: "/opt/profiles/work"})
 	require.NoError(t, os.MkdirAll(filepath.Join(home, "code"), 0o700))
+	require.NoError(t, os.MkdirAll(filepath.Join(home, "work"), 0o700))
 
 	ctx := t.Context()
 	wake := snooze.Rules{Commits: 2, Reviews: snooze.ReviewsAny, Comments: 4}
@@ -572,6 +576,16 @@ func TestSettersReturnTheStoredSettings(t *testing.T) {
 		{
 			"clone root", func() (Settings, error) { return svc.SetCloneRoot(ctx, "~/code") },
 			func(s Settings) any { return s.CloneRoot }, "~/code",
+		},
+		{
+			"add a repository location", func() (Settings, error) { return svc.AddCloneLocations(ctx, []string{"~/work"}) },
+			func(s Settings) any { return s.CloneLocations },
+			[]localrepos.Location{{Path: "~/work", Kind: localrepos.KindFolder}},
+		},
+		{
+			"remove a repository location", func() (Settings, error) { return svc.RemoveCloneLocation(ctx, "~/work") },
+			func(s Settings) any { return s.CloneLocations },
+			[]localrepos.Location{},
 		},
 		{
 			"trusted bots", func() (Settings, error) { return svc.SetTrustedBots(ctx, []string{"renovate"}) },

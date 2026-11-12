@@ -41,6 +41,7 @@ const launchOptions: LaunchOptions = {
   launchDefaults: [],
   onDefaultsSaved: () => Promise.resolve(),
   onManagePrompts: () => undefined,
+  onSettingsSaved: () => undefined,
 }
 
 const resolutions = new Map([[1, itemResolution()]])

@@ -151,8 +151,9 @@ export interface ReleasePageProps {
   tool: IntegrationTool | undefined
   // runs are every run, newest first, for Recent; null until listed.
   runs: readonly ScriptRun[] | null
-  // cloneRoot is the folder the clones are under, with ~.
-  cloneRoot: string
+  // where names the repository locations the clones are in, such as "under ~/projects"
+  // (see whereClones).
+  where: string
   onRelease: (candidate: ReleaseCandidate) => void
   onOpenRun: (id: number) => void
   onOpenSettings: (section: SettingsSection) => void
@@ -173,7 +174,7 @@ export function ReleasePage({
   candidates,
   tool,
   runs,
-  cloneRoot,
+  where,
   onRelease,
   onOpenRun,
   onOpenSettings,
@@ -209,7 +210,7 @@ export function ReleasePage({
     body = (
       <div className="flex flex-col items-start gap-2 px-1">
         <p className="text-sm text-muted">
-          No clones under {cloneRoot} yet. Release lists the repositories you have cloned there.
+          No clones {where} yet. Release lists the repositories you have cloned there.
         </p>
         <button
           type="button"
@@ -218,7 +219,7 @@ export function ReleasePage({
           }}
           className={buttonClass}
         >
-          Change the clone root
+          Change the repository locations
         </button>
       </div>
     )

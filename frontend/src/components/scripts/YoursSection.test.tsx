@@ -27,7 +27,7 @@ function renderPage(runsIn: RunsIn = 'app') {
         onFollow={onFollow}
         runsIn={runsIn}
         terminal="iterm2"
-        cloneRoot="~/projects"
+        where="under ~/projects"
         onOpenRelease={null}
         onOpenSettings={vi.fn()}
         showRuns

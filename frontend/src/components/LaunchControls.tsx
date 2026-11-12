@@ -20,10 +20,13 @@ import {
 import { useMutation } from '../lib/useMutation'
 import { useQuery } from '../lib/useQuery'
 import {
+  addCloneLocations,
+  chooseFolder,
   cloneRepo,
   cloneTarget,
   focusSession,
   launch,
+  linkClone,
   removeLaunchDefaults,
   resolveLaunch,
   saveLaunchDefaults,
@@ -37,9 +40,11 @@ import {
   type LaunchHold,
   type LaunchRequest,
   type LaunchResult,
+  type LinkedClone,
   type Profile,
   type Prompt,
   type Resolution,
+  type Settings,
 } from '../platform'
 import { ConfirmDialog } from './ConfirmDialog'
 import { AlertIcon, ChevronDownIcon, TerminalIcon } from './icons'
@@ -61,6 +66,9 @@ export interface LaunchControlsProps {
   onDefaultsSaved: () => Promise<void>
   // onManagePrompts opens the Prompts page.
   onManagePrompts: () => void
+  // onSettingsSaved takes the settings stored once a clone found elsewhere is added as a
+  // repository location.
+  onSettingsSaved: (settings: Settings) => void
   // running is the item's newest session still running, if any: the button then brings
   // its terminal tab forward instead, and a launch from the menu asks first.
   running?: AgentSession | null | undefined
@@ -70,16 +78,29 @@ export interface LaunchControlsProps {
 }
 
 // LaunchState is where the row's launch stands. A launch that finds no local clone ends
-// in noClone, which keeps the request so a confirmed clone can continue it; one the app
-// held back for the user to confirm ends in held, which keeps the request to send again.
+// in noClone, which keeps the request so a confirmed clone, or one the user finds
+// elsewhere, can continue it, with why the last clone found elsewhere was refused; one
+// found in a folder that holds other clones ends in addLocation, which asks whether to add
+// that folder or the clone alone. One the app held back for the user to confirm ends in
+// held, which keeps the request to send again.
 type LaunchState =
   | { kind: 'idle' }
   | { kind: 'launching' }
   | { kind: 'held'; hold: LaunchHold; request: LaunchRequest }
   | { kind: 'cloning'; target: CloneTarget }
+  | { kind: 'linking'; target: CloneTarget }
   | { kind: 'launched'; result: LaunchResult }
   | { kind: 'failed'; message: string }
-  | { kind: 'noClone'; target: CloneTarget; request: LaunchRequest }
+  | { kind: 'noClone'; target: CloneTarget; request: LaunchRequest; error: string }
+  | { kind: 'addLocation'; target: CloneTarget; request: LaunchRequest; linked: LinkedClone }
+
+// noCloneOf says a repository has no local clone, and where the launch looked: "No local
+// clone of acme-org/x in ~/projects or your other repository locations".
+function noCloneOf(target: CloneTarget): string {
+  const looked = target.where === '' ? '' : ` in ${target.where}`
+
+  return `No local clone of ${target.repo}${looked}`
+}
 
 // Saved is the last save of a launch's choices as defaults, which Undo takes back: the
 // defaults it saved over (owner and name; name is '' for the owner's), what was stored
@@ -102,7 +123,9 @@ interface Saved {
 // to the next launch only and outlast closing the dialog, and the arrow shows a dot while
 // any differs from the defaults. While a launch or a clone runs, the button, the arrow,
 // and the dialog's Open all wait. A launch that finds no local clone offers to clone the
-// repository into the clone root and, once confirmed, continues with the same choices.
+// repository into the clone root and, once confirmed, continues with the same choices; or
+// to pick the clone the user has elsewhere, which is added as a repository location (its
+// folder, when the user chooses, if it holds other clones) before the launch continues.
 //
 // A launch that starts says nothing on the row: the card's session tag, and the button
 // turned to Show in terminal, follow the session, and the tag's panel says what it started
@@ -121,6 +144,7 @@ export function LaunchControls({
   launchDefaults,
   onDefaultsSaved,
   onManagePrompts,
+  onSettingsSaved,
   initial,
   running = null,
 }: LaunchControlsProps) {
@@ -201,7 +225,7 @@ export function LaunchControls({
       setState(
         !target.ok || target.data.cloned
           ? { kind: 'failed', message: launched.error }
-          : { kind: 'noClone', target: target.data, request },
+          : { kind: 'noClone', target: target.data, request, error: '' },
       )
 
       return
@@ -260,7 +284,62 @@ export function LaunchControls({
     }
   }
 
-  const busy = state.kind === 'launching' || state.kind === 'cloning'
+  // addThenLaunch adds folders as repository locations, then continues the launch that
+  // found no clone in them.
+  const addThenLaunch = async (folders: string[], target: CloneTarget, request: LaunchRequest) => {
+    setState({ kind: 'linking', target })
+
+    const added = await attempt(addCloneLocations(folders))
+
+    if (!added.ok) {
+      setState({ kind: 'noClone', target, request, error: added.error })
+
+      return
+    }
+
+    onSettingsSaved(added.data)
+    await run(request)
+  }
+
+  // linkThenLaunch takes the clone the user has elsewhere, dir, or else asks for its
+  // folder, checks it is a clone of the item's repository, and adds it as a repository
+  // location, or asks first whether to add its folder, which holds other clones. One the
+  // locations hold already continues the launch at once.
+  const linkThenLaunch = async (target: CloneTarget, request: LaunchRequest, dir = '') => {
+    let folder = dir
+
+    if (folder === '') {
+      const chosen = await attempt(chooseFolder({ title: `Choose your clone of ${target.repo}`, button: 'Use' }))
+
+      if (!chosen.ok) {
+        setState({ kind: 'noClone', target, request, error: chosen.error })
+
+        return
+      }
+
+      folder = chosen.data
+    }
+
+    if (folder === '') {
+      return
+    }
+
+    setState({ kind: 'linking', target })
+
+    const linked = await attempt(linkClone(item.id, folder))
+
+    if (!linked.ok) {
+      setState({ kind: 'noClone', target, request, error: linked.error })
+    } else if (linked.data.location.covered !== '') {
+      await run(request)
+    } else if (linked.data.location.parent.path !== '') {
+      setState({ kind: 'addLocation', target, request, linked: linked.data })
+    } else {
+      await addThenLaunch([linked.data.dir], target, request)
+    }
+  }
+
+  const busy = state.kind === 'launching' || state.kind === 'cloning' || state.kind === 'linking'
 
   const save = async (scope: 'repo' | 'org') => {
     if (base === null || !savableChoices(choices)) {
@@ -336,7 +415,11 @@ export function LaunchControls({
               className="inline-flex items-center gap-1.5 rounded-l-md px-2.5 py-1 font-medium text-text transition-colors hover:bg-raised disabled:opacity-60 disabled:hover:bg-transparent"
             >
               <TerminalIcon className="size-3.5 text-accent" />
-              {state.kind === 'launching' ? 'Opening…' : state.kind === 'cloning' ? 'Cloning…' : openLabel}
+              {state.kind === 'launching' || state.kind === 'linking'
+                ? 'Opening…'
+                : state.kind === 'cloning'
+                  ? 'Cloning…'
+                  : openLabel}
             </button>
           ) : (
             <button
@@ -460,8 +543,8 @@ export function LaunchControls({
         <div className="col-[2/-1] mt-1.5 flex flex-wrap items-baseline gap-x-2 gap-y-1 text-xs">
           <p role="alert" className="text-warning">
             {state.target.taken
-              ? `No local clone of ${state.target.repo}, and ${state.target.dir} already exists, so it can’t be cloned there.`
-              : `No local clone of ${state.target.repo}.`}
+              ? `${noCloneOf(state.target)}, and ${state.target.dir} already exists, so it can’t be cloned there.`
+              : `${noCloneOf(state.target)}.`}
           </p>
           {!state.target.taken && (
             <button
@@ -474,7 +557,48 @@ export function LaunchControls({
               {`Clone into ${state.target.dir}`}
             </button>
           )}
+          {state.target.elsewhere !== '' && (
+            <button
+              type="button"
+              onClick={() => {
+                void linkThenLaunch(state.target, state.request, state.target.elsewhere)
+              }}
+              className="font-medium text-accent hover:underline"
+            >
+              {`Use ${state.target.elsewhere}`}
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={() => {
+              void linkThenLaunch(state.target, state.request)
+            }}
+            className="font-medium text-accent hover:underline"
+          >
+            It’s cloned elsewhere…
+          </button>
+          {state.error !== '' && (
+            <p role="alert" className="basis-full text-danger">
+              {state.error}
+            </p>
+          )}
         </div>
+      )}
+      {state.kind === 'linking' && (
+        <p role="status" className="col-[2/-1] mt-1.5 truncate text-xs text-muted">
+          {`Adding your clone of ${state.target.repo}…`}
+        </p>
+      )}
+      {state.kind === 'addLocation' && (
+        <AddLocation
+          linked={state.linked}
+          onAdd={(folder) => {
+            void addThenLaunch([folder], state.target, state.request)
+          }}
+          onCancel={() => {
+            setState({ kind: 'noClone', target: state.target, request: state.request, error: '' })
+          }}
+        />
       )}
       {state.kind === 'held' && (
         <LaunchHoldDialog
@@ -513,5 +637,50 @@ export function LaunchControls({
         </ConfirmDialog>
       )}
     </>
+  )
+}
+
+interface AddLocationProps {
+  linked: LinkedClone
+  // onAdd adds the folder as a repository location: the clone's own, or the one that
+  // holds it.
+  onAdd: (folder: string) => void
+  onCancel: () => void
+}
+
+// AddLocation asks, for a clone found in a folder that holds other clones, whether to add
+// that folder as a repository location, which brings its other clones in too, or only the
+// clone.
+function AddLocation({ linked, onAdd, onCancel }: AddLocationProps) {
+  const { parent } = linked.location
+  const others = `${String(parent.clones)} other ${parent.clones === 1 ? 'clone' : 'clones'}`
+
+  return (
+    <div className="col-[2/-1] mt-1.5 flex flex-wrap items-baseline gap-x-2 gap-y-1 text-xs">
+      <p role="status" className="text-text">
+        {`${linked.dir} is a clone. Its folder, ${parent.path}, holds ${others}.`}
+      </p>
+      <button
+        type="button"
+        onClick={() => {
+          onAdd(parent.path)
+        }}
+        className="font-medium text-accent hover:underline"
+      >
+        {`Add ${parent.path}`}
+      </button>
+      <button
+        type="button"
+        onClick={() => {
+          onAdd(linked.dir)
+        }}
+        className="font-medium text-accent hover:underline"
+      >
+        Add only this clone
+      </button>
+      <button type="button" onClick={onCancel} className="text-muted hover:underline">
+        Cancel
+      </button>
+    </div>
   )
 }

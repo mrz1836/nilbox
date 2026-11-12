@@ -123,6 +123,18 @@ func boundCalls(t *testing.T) map[string]boundCall {
 		"settings.Service.SetCloneRoot": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
 			return c.Settings.SetCloneRoot(ctx, "~/projects")
 		},
+		"settings.Service.AddCloneLocations": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
+			return c.Settings.AddCloneLocations(ctx, []string{"~/work"})
+		},
+		"settings.Service.RemoveCloneLocation": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
+			return c.Settings.RemoveCloneLocation(ctx, "~/elsewhere")
+		},
+		"settings.Service.PreviewCloneLocation": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
+			return c.Settings.PreviewCloneLocation(ctx, "~/src")
+		},
+		"settings.Service.CheckCloneLocations": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
+			return c.Settings.CheckCloneLocations(ctx)
+		},
 		"settings.Service.SetTrustedBots": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
 			return c.Settings.SetTrustedBots(ctx, nil)
 		},
@@ -437,6 +449,7 @@ func unreachedBound() map[string]string {
 		"inbox.Service.CheckFiles":          "reads GitHub; nil for an item whose files are not checked",
 		"inbox.Service.StoredFiles":         "nil for an item whose files are not checked",
 		"launcher.Service.Preview":          "needs a clone; its resolution is built as Resolve's",
+		"launcher.Service.LinkClone":        "needs a clone's remotes; its location is built as settings' PreviewCloneLocation's",
 		"launcher.Service.Launch":           "opens a terminal",
 		"launcher.Service.Resume":           "opens a terminal",
 		"worktrees.Service.Remove":          "needs a worktree to remove; its result starts its lists empty, as RemoveAllClean's",
@@ -510,7 +523,10 @@ func seedBound(t *testing.T) (*Core, seededItems) {
 	home := testutil.RealTempDir(t)
 	repo := filepath.Join(home, "projects", "example-repo")
 	testutil.MakeClaudeDirs(t, home, ".claude", "projects/example-repo/.git",
-		"projects/example-repo/.claude/worktrees/scratch")
+		"projects/example-repo/.claude/worktrees/scratch", "work/web/.git", "src/acme-org/tool/.git")
+	// The linked worktree git registers, which tells the listing the clone is worth listing.
+	testutil.WriteFile(t, filepath.Join(repo, ".git", "worktrees", "scratch", "gitdir"),
+		filepath.Join(repo, ".claude", "worktrees", "scratch", ".git")+"\n")
 	// A go-pre-commit config, so the Hooks page lists the clone.
 	testutil.WriteFile(t, filepath.Join(repo, ".github", ".env.base"), "ENABLE_GO_PRE_COMMIT=true\n")
 	// A t3.json, so Repo scripts lists a script.

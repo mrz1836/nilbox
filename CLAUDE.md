@@ -236,10 +236,32 @@ app:lint` reads.
   runs and never binds, opens only such a script, in the terminal chosen in Settings. `internal/workspacetrust` marks the launch
   folder trusted in each agent's own config (Claude's `.claude.json`, Codex's `config.toml`,
   appended to and never rewritten).
+- `internal/localrepos` finds the user's clones, in the clone root (`clones.root`, the primary,
+  which new clones go in) and the other repository locations (`clones.locations`, which
+  settings alone writes: each a folder looked into one level deep as the clone root is, or a
+  single clone, its kind worked out once as it is added). `Roots` holds them, each expanded
+  and its links resolved once; `Roots.Clones` lists the clones in all of them at once,
+  reading no git, a clone two locations reach listed once, the clone root's first, and an
+  extra location it can't read skipped and named (`Found.Skipped`), while a clone root that
+  can't be read is an error; `Holds` says whether the locations hold a clone, which every
+  service checks before it changes one; `Key` is the clone root alone while there are no
+  others, so a cache keyed by it stays valid. `Survey` previews a folder before it is added,
+  with what to add instead (the folders inside one with no clones of its own, at most 100
+  subfolders and 5,000 entries looked at, or the folder of a clone that holds others), and
+  `Check` says how each stored location reads now. No location is searched recursively.
+  One `Reader`, which core builds and hands every service that reads the locations, bounds
+  each read of another location than the clone root, the resolution of its links included,
+  to `DefaultReadLimit` (5 s) and keeps one of each going per location: a share that hangs
+  reads as `StateNotAnswering` and is skipped, its hung read joined until it ends, never
+  started again beside it. The clone root is always read directly.
 - The app owns its worktrees: `internal/worktrees` makes them (one per item per clone, shared by
-  every agent, under `<clone root>/.<slug>/worktrees/<clone>/`), records them in
-  `internal/worklog`, checks every record against git on each listing and sweep, and removes
-  them safely. Only `internal/worktrees/create.go` fetches or runs `git worktree add` (Repo
+  every agent, under `<the clone's folder>/.<slug>/worktrees/<clone>/`, so in a location as in
+  the clone root), records them in `internal/worklog`, checks every record against git on each
+  listing and sweep (a record whose clone's folder is gone too, as on a drive unplugged, is
+  kept), and removes
+  them safely. A listing runs git only in the clones worth listing (`worthListing`): one whose
+  common git folder registers a linked worktree or can't be read, and one a record names, read
+  without git by `linkedWorktrees`, which the sweep's count shares. Only `internal/worktrees/create.go` fetches or runs `git worktree add` (Repo
   scripts' pull, below, fetches only as `git pull` itself does), and nothing the app runs
   changes a clone's own checkout; `TestNoGitCommandChangesAClone` in `internal/repoguard` fails
   the build otherwise. There are two exceptions, each on the user's click. A tool the user
@@ -634,21 +656,21 @@ app:lint` reads.
   ls-remote has `RemoteTimeout`, whose end is `ErrRemoteTimeout`, which `Message` words as
   origin not answering in time. `ValidBranch` is the branch rule a command's argument must
   pass.
-- `internal/release/` is the Release page's service. `Candidates` lists every clone under the
-  clone root whose origin is on GitHub, grouped as unreleased, up to date, no releases yet, or
+- `internal/release/` is the Release page's service. `Candidates` lists every clone in the
+  repository locations whose origin is on GitHub, grouped as unreleased, up to date, no releases yet, or
   can't release here, from two rounds of batched GraphQL (`(*github.Client).FetchReleaseStatus`,
   then `FetchReleaseCompare` for the repositories with a version, 15 to a query, adapted in core),
   and reads each unreleased clone's state with `gitread`, never asking origin. It serves the
   last list however old it is: the whole list is read again only on the page's **Read GitHub
-  again**, for a list from another clone root, for one out of date, or with none yet (and
+  again**, for a list from other locations, for one out of date, or with none yet (and
   behind a list kept from a past start, below), never on a timer. A refresh that fails keeps
   the last list, with its failure, until the user reads it again. A refresh tells the window
   how far it has got, at most four times a second (`event.ReleasesProgress`: finding the
   clones, each round's repositories as GitHub answers each batch, then the unreleased
-  clones), and each list that lands is kept in the `release.lastCandidates` pref with its
-  clone root. After a restart, the first `Candidates` serves that list at once, marked
+  clones), and each list that lands is kept in the `release.lastCandidates` pref with the
+  locations' `Key`. After a restart, the first `Candidates` serves that list at once, marked
   `Kept`, while the `Refresher` (a desktop worker) reads GitHub again behind the page and
-  `event.ReleasesUpdated` says when it lands; a list from another clone root is never served,
+  `event.ReleasesUpdated` says when it lands; a list from other locations is never served,
   and a refresh that fails or is cut short keeps nothing. `version.go` works the next version
   out exactly as magex does, tested against a table recorded from the real magex. A release
   follows the review sheet's template: the `Gatherer` reads its `Facts` at once (magex through
@@ -685,7 +707,7 @@ app:lint` reads.
   read of the list at a time), patches those rows into the list, however old, which stays as
   current as it was and is kept for the next start, and emits `event.ReleasesUpdated` again.
   A refresh that began after the release ended has read the repository already, so the patch
-  asks GitHub nothing. A list it can't patch (none yet, another clone root's, out of date,
+  asks GitHub nothing. A list it can't patch (none yet, other locations', out of date,
   kept from a past start, one whose last refresh failed, without that repository, or GitHub
   failing) goes out of date instead, as it does when the `Refresher` isn't running or stops
   with a patch still queued, and a refresh under way when a list goes out of date lands out
@@ -697,7 +719,8 @@ app:lint` reads.
   `OfferAfterMerge` answers the review sheet's offer after a merge from local state alone: the
   `integrations.offerAfterMerge` setting, magex, the default branch the Release page or the
   inbox already holds, and a clone with that origin, from the page's list or else only the
-  folders named as the repository is (one git command each), never a scan of the clone root.
+  folders inside the clone root and each folder location named as the repository is, then
+  each clone location (one git command each), never a scan of a location.
   The `Follower`, a deferred desktop worker, follows each release on GitHub to *published*: a
   release's `Finish` (its `Verifier`'s too) starts a `Follow` in its `Result` (its state,
   `until`, and `polls`) when the Service has `Workflows` and `Records`, and its `Recorded` hands
@@ -725,7 +748,7 @@ app:lint` reads.
   whose record says it follows (`Engine.Ended`, which reads only a kind's ended runs), within
   the same limits; a quit leaves the follow recorded for the next start.
 - `internal/hooks/` is the Hooks page's service. `Repos` scans, four at a time, every clone
-  under the clone root with a go-pre-commit config inside it (a `.github/env/*.env` file, or
+  in the repository locations with a go-pre-commit config inside it (a `.github/env/*.env` file, or
   `.github/.env.base`): where git runs its hooks (gitread's `HookPaths`), its `pre-commit` hook
   (missing, go-pre-commit's by its marker, or another tool's, named husky, pre-commit, or
   lefthook from its text), and `ENABLE_GO_PRE_COMMIT` and the checks' switches from the config
@@ -769,7 +792,7 @@ app:lint` reads.
   core registers for both kinds, works Run again out afresh from the run's intent. A row's
   **Open in terminal** (`OpenTerminal`) opens the terminal the runs open in at the clone and
   runs nothing there, and its **Open the config** (`ShowConfig`) shows `.github/env/` (or
-  `.github/.env.base`) in Finder, each only for a clone directly under the clone root.
+  `.github/.env.base`) in Finder, each only for a clone the repository locations hold.
 - `internal/scripts/` is Repo scripts' service. While the Scripts integration is off (its own
   switch, whose automatic is on while mage-x or go-pre-commit is), `List` returns the page
   marked off and `Run` and Run again refuse. Otherwise `List` reads a clone's sources in the

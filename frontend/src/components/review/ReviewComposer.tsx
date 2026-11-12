@@ -258,6 +258,7 @@ export function ReviewComposer({
             launchDefaults={launch.launchDefaults}
             onDefaultsSaved={launch.onDefaultsSaved}
             onManagePrompts={launch.onManagePrompts}
+            onSettingsSaved={launch.onSettingsSaved}
             running={runningSession(sessions)}
           />
         )}

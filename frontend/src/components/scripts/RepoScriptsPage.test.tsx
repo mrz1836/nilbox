@@ -71,7 +71,7 @@ function renderPage({
         }}
         runsIn={runsIn}
         terminal={terminal}
-        cloneRoot="~/projects"
+        where="under ~/projects"
         onOpenRelease={release ? handlers.onOpenRelease : null}
         onOpenSettings={handlers.onOpenSettings}
         sections={storedAtFirst}
@@ -940,7 +940,7 @@ describe('RepoScriptsPage', () => {
         'No clones under ~/projects yet. Repo scripts lists the repositories you have cloned there.',
       ),
     ).toBeInTheDocument()
-    await userEvent.click(screen.getByRole('button', { name: 'Change the clone root' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Change the repository locations' }))
 
     expect(onOpenSettings).toHaveBeenCalledExactlyOnceWith('repositories')
     expect(platform.listRepoScripts).not.toHaveBeenCalled()
@@ -965,7 +965,7 @@ describe('RepoScriptsPage', () => {
         onDir={vi.fn()}
         runsIn="app"
         terminal="iterm2"
-        cloneRoot="~/projects"
+        where="under ~/projects"
         followed={null}
         onFollow={vi.fn()}
         onOpenRelease={null}
@@ -974,7 +974,11 @@ describe('RepoScriptsPage', () => {
     )
 
     expect(await screen.findByRole('combobox', { name: 'Repository' })).toHaveValue('~/projects/sdk')
-    expect(platform.listRepoScripts).toHaveBeenCalledExactlyOnceWith('~/projects/sdk', false)
+    // The page asks for the clone's scripts from an effect, which may run after the picker
+    // shows, as it does under coverage.
+    await waitFor(() => {
+      expect(platform.listRepoScripts).toHaveBeenCalledExactlyOnceWith('~/projects/sdk', false)
+    })
   })
 
   it('remembers the clone it starts on, so a list ordered anew never moves the page', async () => {

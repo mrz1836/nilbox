@@ -12,6 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/mrz1836/nilbox/internal/event"
+	"github.com/mrz1836/nilbox/internal/localrepos"
 	"github.com/mrz1836/nilbox/internal/repo"
 	"github.com/mrz1836/nilbox/internal/testutil"
 	"github.com/mrz1836/nilbox/internal/uierr"
@@ -131,24 +132,30 @@ func (f *fakeGitHub) fail(err error) {
 type fakeClones struct {
 	mu      sync.Mutex
 	root    string
+	extra   []localrepos.Location
 	rootErr error
 	list    []Clone
 	err     error
 	scanned int
 }
 
-func (f *fakeClones) Root(context.Context) (string, error) {
+func (f *fakeClones) Roots(context.Context) (localrepos.Roots, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
-	if f.root == "" {
-		return "/Users/example/projects", f.rootErr
+	if f.rootErr != nil {
+		return localrepos.Roots{}, f.rootErr
 	}
 
-	return f.root, f.rootErr
+	root := f.root
+	if root == "" {
+		root = "/Users/example/projects"
+	}
+
+	return localrepos.NewRoots(root, f.extra, "")
 }
 
-func (f *fakeClones) Clones(context.Context, string) ([]Clone, error) {
+func (f *fakeClones) Clones(context.Context, localrepos.Roots) ([]Clone, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
@@ -460,6 +467,27 @@ func TestAChangedCloneRootIsReadAgain(t *testing.T) {
 
 	_, err = r.svc.Candidates(t.Context(), false)
 	require.ErrorIs(t, err, errGitHubDown, "nor kept when the new root's refresh fails")
+}
+
+func TestChangedLocationsAreReadAgain(t *testing.T) {
+	t.Parallel()
+
+	r := newRig()
+
+	_, err := r.svc.Candidates(t.Context(), false)
+	require.NoError(t, err)
+
+	r.clones.mu.Lock()
+	r.clones.extra = []localrepos.Location{{Path: "/Users/example/work", Kind: localrepos.KindFolder}}
+	r.clones.mu.Unlock()
+
+	_, err = r.svc.Candidates(t.Context(), false)
+	require.NoError(t, err)
+	assert.Equal(t, 2, r.github.calls(), "a list read before a location was added isn't served")
+
+	_, err = r.svc.Candidates(t.Context(), false)
+	require.NoError(t, err)
+	assert.Equal(t, 2, r.github.calls(), "the list read from the same locations is")
 }
 
 func TestARefreshCutShortKeepsNothing(t *testing.T) {

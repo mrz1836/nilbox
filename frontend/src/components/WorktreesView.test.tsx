@@ -79,6 +79,31 @@ describe('WorktreesView', () => {
     expect(platform.listWorktrees).toHaveBeenCalledTimes(2)
   })
 
+  it('names every repository location, and the ones it couldn’t read', async () => {
+    platform.listWorktrees.mockResolvedValue(
+      worktreesSnapshot({
+        roots: ['~/projects', '~/work', '/Volumes/ext/src'],
+        unread: ['/Volumes/ext/src'],
+        repos: [],
+        cleanCount: 0,
+      }),
+    )
+    render(<WorktreesView clock={fixedNow} />)
+
+    expect(
+      await screen.findByText('No clone in ~/projects and 2 other locations has linked worktrees.'),
+    ).toBeInTheDocument()
+    expect(screen.getByText(/^Worktrees of the clones in ~\/projects and 2 other locations · checked/)).toHaveAttribute(
+      'title',
+      '~/projects\n~/work\n/Volumes/ext/src',
+    )
+    expect(
+      screen.getByText(
+        'Couldn’t read /Volumes/ext/src, so its clones aren’t listed. Check it in Settings → Repositories.',
+      ),
+    ).toBeInTheDocument()
+  })
+
   it("shows each worktree's branch, path, status, age, and origin", async () => {
     platform.listWorktrees.mockResolvedValue(
       worktreesSnapshot({

@@ -35,7 +35,9 @@ func TestCountWorktreesNeverWaitsOnAPipe(t *testing.T) {
 
 	done := make(chan int, 1)
 
-	go func() { done <- countWorktrees(root) }()
+	dirs := cloneDirs(t, root)
+
+	go func() { done <- countWorktrees(dirs) }()
 
 	select {
 	case count := <-done:

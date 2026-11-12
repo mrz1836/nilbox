@@ -253,8 +253,9 @@ func optionOf(label, value string) Option {
 	return Option{Label: label, Value: value, Shown: shown}
 }
 
-// Clone is a clone under the clone root, as the page's picker lists it: its folder's
-// name, and its folder, with ~.
+// Clone is a clone in the repository locations, as the page's picker lists it: its
+// folder's name, with its parent folder after it when another clone shares the name, and
+// its folder, with ~, which is the clone's key.
 type Clone struct {
 	Name string `json:"name"`
 	Dir  string `json:"dir"`
@@ -264,8 +265,8 @@ var (
 	// ErrNotSetUp is returned by a run on a Service built without the runner.
 	ErrNotSetUp = errors.New("scripts are not set up")
 
-	// ErrNoClone is returned for a folder that isn't a clone under the clone root.
-	ErrNoClone = errors.New("not a clone under the clone root")
+	// ErrNoClone is returned for a folder that isn't a clone in the repository locations.
+	ErrNoClone = errors.New("not a clone in the repository locations")
 
 	// ErrInvalidRequest is returned for a run whose script, inputs, arguments, or place
 	// isn't one.

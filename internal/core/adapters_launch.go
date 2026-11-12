@@ -21,6 +21,7 @@ func launchSettings(s settings.Settings) launcher.LaunchSettings {
 		WorktreeDefault: s.WorktreeDefault,
 		Terminal:        s.Terminal,
 		CloneRoot:       s.CloneRoot,
+		CloneLocations:  s.CloneLocations,
 		TrustedBots:     s.TrustedBots,
 		EffortOverrides: s.CodexEffort,
 		FastMode:        s.CodexFast,

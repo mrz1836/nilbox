@@ -16,6 +16,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/event"
 	"github.com/mrz1836/nilbox/internal/execpath"
 	"github.com/mrz1836/nilbox/internal/item"
+	"github.com/mrz1836/nilbox/internal/localrepos"
 	"github.com/mrz1836/nilbox/internal/repo"
 	"github.com/mrz1836/nilbox/internal/testutil"
 	"github.com/mrz1836/nilbox/internal/uierr"
@@ -217,9 +218,9 @@ func TestCountWorktrees(t *testing.T) {
 	require.NoError(t, os.MkdirAll(broken, 0o700))
 	require.NoError(t, os.WriteFile(filepath.Join(broken, ".git"), []byte("not a pointer\n"), 0o600))
 
-	assert.Equal(t, 5, countWorktrees(e.root), "alpha's three and outside's two")
-	assert.Equal(t, e.list(t).WorktreeCount, countWorktrees(e.root), "as a listing counts them")
-	assert.Zero(t, countWorktrees(filepath.Join(e.root, "missing")))
+	assert.Equal(t, 5, countWorktrees(cloneDirs(t, e.root)), "alpha's three and outside's two")
+	assert.Equal(t, e.list(t).WorktreeCount, countWorktrees(cloneDirs(t, e.root)), "as a listing counts them")
+	assert.Zero(t, countWorktrees(cloneDirs(t, filepath.Join(e.root, "missing"))))
 }
 
 func TestSweepReportsWhatItCouldNotRemove(t *testing.T) {
@@ -362,7 +363,7 @@ func TestSweepClones(t *testing.T) {
 	root, err := filepath.EvalSymlinks(e.root)
 	require.NoError(t, err)
 
-	clones := svc.sweepClones(t.Context(), e.root, launches)
+	clones := svc.sweepClones(t.Context(), rootsOf(t, e.root), localrepos.Found{Dirs: cloneDirs(t, e.root)}, launches)
 
 	names := make([]string, 0, len(clones))
 	for _, c := range clones {
@@ -372,7 +373,9 @@ func TestSweepClones(t *testing.T) {
 	assert.Equal(t, []string{"agent", "recorded"}, names,
 		"only clones with agent worktrees or records, each once; not plain, empty, hidden, or not a repository")
 	assert.Equal(t, map[string]repo.Name{"origin": {Owner: "acme-org", Repo: "agent"}}, clones[0].Remotes)
-	assert.Empty(t, svc.sweepClones(t.Context(), filepath.Join(root, "missing"), nil))
+
+	missing := filepath.Join(root, "missing")
+	assert.Empty(t, svc.sweepClones(t.Context(), rootsOf(t, missing), localrepos.Found{Dirs: cloneDirs(t, missing)}, nil))
 }
 
 func TestSweeperRunsUntilCanceled(t *testing.T) {

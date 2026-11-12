@@ -27,12 +27,13 @@ import (
 	"github.com/mrz1836/nilbox/internal/uierr"
 )
 
-// Clones finds the clones under the clone root: Root is the clone root as set now, Dirs
-// lists the clones directly under it, reading no git, and Origin reads which GitHub
-// repository a clone's origin is, if any. Core adapts the settings and localrepos.
+// Clones finds the clones in the repository locations: Roots is the clone root and the
+// other locations as set now, Dirs lists the clones in them, reading no git
+// (localrepos.Roots.Clones), and Origin reads which GitHub repository a clone's origin is,
+// if any. Core adapts the settings and localrepos.
 type Clones interface {
-	Root(ctx context.Context) (string, error)
-	Dirs(ctx context.Context, root string) ([]string, error)
+	Roots(ctx context.Context) (localrepos.Roots, error)
+	Dirs(ctx context.Context, roots localrepos.Roots) ([]string, error)
 	Origin(ctx context.Context, dir string) (name repo.Name, onGitHub bool, err error)
 }
 
@@ -206,8 +207,10 @@ func appShell() string {
 	return chainShell
 }
 
-// Repos returns the clones under the clone root, for the page's picker: the ones a script
-// ran in most recently first, then the rest by name.
+// Repos returns the clones in the repository locations, for the page's picker: the ones a
+// script ran in most recently first, then the rest by name. Two clones of the same name,
+// ignoring case, in different locations are told apart by their folder: "example-repo
+// (~/work)".
 func (s *Service) Repos(ctx context.Context) ([]Clone, error) {
 	l, err := s.folders().List(ctx)
 	if err != nil {
@@ -215,11 +218,7 @@ func (s *Service) Repos(ctx context.Context) ([]Clone, error) {
 	}
 
 	recent := s.recent(ctx)
-
-	out := make([]Clone, 0, len(l.Dirs))
-	for _, d := range l.Dirs {
-		out = append(out, Clone{Name: filepath.Base(d), Dir: paths.Tilde(d, s.home)})
-	}
+	out := clonesOf(l.Dirs, s.home)
 
 	slices.SortStableFunc(out, func(a, b Clone) int {
 		ra, okA := recent[a.Dir]
@@ -237,6 +236,28 @@ func (s *Service) Repos(ctx context.Context) ([]Clone, error) {
 	})
 
 	return out, nil
+}
+
+// clonesOf names each of dirs for the picker: its folder's name, with its parent folder,
+// with ~, after a name another clone shares, ignoring case.
+func clonesOf(dirs []string, home string) []Clone {
+	count := make(map[string]int, len(dirs))
+	for _, d := range dirs {
+		count[strings.ToLower(filepath.Base(d))]++
+	}
+
+	out := make([]Clone, 0, len(dirs))
+
+	for _, d := range dirs {
+		name := filepath.Base(d)
+		if count[strings.ToLower(name)] > 1 {
+			name += " (" + paths.Tilde(filepath.Dir(d), home) + ")"
+		}
+
+		out = append(out, Clone{Name: name, Dir: paths.Tilde(d, home)})
+	}
+
+	return out
 }
 
 // List returns Repo scripts for the clone at dir, as the picker lists it, with ~: its
@@ -624,8 +645,8 @@ func (c clone) display() string {
 	return filepath.Base(c.dir)
 }
 
-// folders finds the clone a request names by its folder, with ~: only a clone directly
-// under the clone root is one. Its repository is its origin's.
+// folders finds the clone a request names by its folder, with ~: only a clone the
+// repository locations hold is one. Its repository is its origin's.
 func (s *Service) folders() localrepos.ByFolder {
 	return localrepos.ByFolder{Clones: s.clones, Home: s.home, Invalid: ErrInvalidRequest, NoClone: ErrNoClone}
 }

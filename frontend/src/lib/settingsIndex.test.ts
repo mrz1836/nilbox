@@ -2,7 +2,14 @@ import { describe, expect, it } from 'vitest'
 
 import { brand } from '../generated/brand'
 import { notificationKinds } from './notifications'
-import { matchSettings, sectionInfo, sectionOrder, settingsIndex, type SettingsSection } from './settingsIndex'
+import {
+  matchSettings,
+  sectionGroups,
+  sectionInfo,
+  sectionOrder,
+  settingsIndex,
+  type SettingsSection,
+} from './settingsIndex'
 
 // found is what a query finds: each matching section's count, in the sidebar's order.
 function found(query: string): [SettingsSection, number][] {
@@ -23,6 +30,9 @@ describe('matchSettings', () => {
     ['iterm', 'launching', 'Terminal'],
     ['protect', 'worktrees', 'Protected branches'],
     ['clone root', 'repositories', 'Clone root'],
+    ['new clones', 'repositories', 'Clone root'],
+    ['external drive', 'repositories', 'Other repository locations'],
+    ['scattered', 'repositories', 'Other repository locations'],
     ['dependabot', 'trust', 'Trusted bots and apps'],
     ['gitignore', 'files', 'Your patterns'],
     ['magex', 'integrations', 'mage-x'],
@@ -95,7 +105,7 @@ describe('matchSettings', () => {
     expect(matchSettings(brand.name)?.isMatch('about', 'Version')).toBe(true)
   })
 
-  it('finds every tool the app runs, the scripts, and where runs go, by the section’s name, after Sensitive files and before About', () => {
+  it('finds every tool the app runs, the scripts, and where runs go, by the section’s name, after Worktrees and before About', () => {
     const match = matchSettings('integrations')
 
     expect(found('integrations')).toEqual([['integrations', 5]])
@@ -105,7 +115,7 @@ describe('matchSettings', () => {
     expect(found('tasks.json')).toEqual([['integrations', 1]])
     expect(match?.isMatch('integrations', 'Runs in')).toBe(true)
     expect(match?.isMatch('integrations', 'Offer a release after you merge a pull request')).toBe(true)
-    expect(sectionOrder.indexOf('integrations')).toBe(sectionOrder.indexOf('files') + 1)
+    expect(sectionOrder.indexOf('integrations')).toBe(sectionOrder.indexOf('worktrees') + 1)
     expect(sectionOrder.indexOf('about')).toBe(sectionOrder.indexOf('integrations') + 1)
     expect(sectionInfo.integrations.description).toBe(
       `Tools ${brand.name} runs for you: mage-x releases, go-pre-commit hooks, and scripts.`,
@@ -143,6 +153,7 @@ describe('matchSettings', () => {
   })
 
   it('gives every section a heading, and an order that holds each once', () => {
+    expect(sectionOrder).toEqual(sectionGroups.flatMap((group) => group.sections))
     expect(new Set(sectionOrder).size).toBe(sectionOrder.length)
     expect(Object.keys(sectionInfo).sort()).toEqual([...sectionOrder].sort())
     expect(Object.keys(settingsIndex).sort()).toEqual([...sectionOrder].sort())

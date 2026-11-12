@@ -162,7 +162,7 @@ export interface ActionResult {
 
     /**
      * Shared reports a hooks folder other repositories use too, as Repo.Shared does, and
-     * SharedWith how many of the clones under the clone root use it, so the window can ask
+     * SharedWith how many of the clones in the repository locations use it, so the window can ask
      * before an action there, as the row does.
      */
     "shared": boolean;
@@ -473,7 +473,7 @@ export interface LastRun {
 }
 
 /**
- * Page is the Hooks page: every clone under the clone root with a go-pre-commit config,
+ * Page is the Hooks page: every clone in the repository locations with a go-pre-commit config,
  * grouped, and those without one.
  */
 export interface Page {
@@ -556,7 +556,7 @@ export interface Repo {
     /**
      * HooksDir is the folder git runs its hooks from, with ~. Shared reports one other
      * repositories use too, outside the clone's git folder and work tree, and SharedWith
-     * how many of the clones under the clone root use it, this one included; an action
+     * how many of the clones in the repository locations use it, this one included; an action
      * there needs the user to confirm the folder.
      */
     "hooksDir": string;

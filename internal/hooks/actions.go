@@ -95,7 +95,7 @@ type ActionResult struct {
 	HooksDir string `json:"hooksDir"`
 
 	// Shared reports a hooks folder other repositories use too, as Repo.Shared does, and
-	// SharedWith how many of the clones under the clone root use it, so the window can ask
+	// SharedWith how many of the clones in the repository locations use it, so the window can ask
 	// before an action there, as the row does.
 	Shared     bool `json:"shared"`
 	SharedWith int  `json:"sharedWith"`

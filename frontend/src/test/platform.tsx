@@ -37,6 +37,9 @@ import {
   launchDefaults,
   launchPreview,
   launchResult,
+  linkedClone,
+  locationPreview,
+  locationState,
   profile,
   prompt,
   promptBackup,
@@ -134,6 +137,7 @@ function answers(subscribe: Loose<Platform['on']>): { [K in keyof Platform]: Loo
     previewLaunch: () => Promise.resolve(launchPreview()),
     cloneTarget: () => Promise.resolve(cloneTarget()),
     cloneRepo: () => Promise.resolve(cloneTarget()),
+    linkClone: () => Promise.resolve(linkedClone()),
     resumeSession: () => Promise.resolve(launchResult({ worktreeAction: 'resume' })),
 
     listSessions: () => Promise.resolve(sessionsSnapshot()),
@@ -166,6 +170,7 @@ function answers(subscribe: Loose<Platform['on']>): { [K in keyof Platform]: Loo
     previewPromptImport: () => Promise.resolve([importEntry()]),
     importPrompts: (chosen) => Promise.resolve({ added: chosen?.length ?? 0, replaced: 0, skipped: 0, first: 9 }),
     chooseFileToOpen: () => Promise.resolve(''),
+    chooseFolder: () => Promise.resolve(''),
     chooseFileToSave: () => Promise.resolve(''),
 
     listLaunchDefaults: () => Promise.resolve([]),
@@ -177,6 +182,11 @@ function answers(subscribe: Loose<Platform['on']>): { [K in keyof Platform]: Loo
     getSettings: () => stored(),
     setTerminal: (terminal) => stored({ terminal }),
     setCloneRoot: (cloneRoot) => stored({ cloneRoot }),
+    addCloneLocations: (paths) =>
+      stored({ cloneLocations: (paths ?? []).map((path) => ({ path, kind: 'folder' as const })) }),
+    removeCloneLocation: () => stored(),
+    previewCloneLocation: (path) => Promise.resolve(locationPreview({ path })),
+    checkCloneLocations: () => Promise.resolve([locationState()]),
     setDefaultAgent: (defaultAgent) => stored({ defaultAgent }),
     setDefaultProfile: (agent, name) => stored({ defaultProfiles: { ...settings().defaultProfiles, [agent]: name } }),
     setWorktreeDefault: (worktreeDefault) => stored({ worktreeDefault }),

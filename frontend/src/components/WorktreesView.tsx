@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
 
+import { unreadWords, whereClones } from '../lib/locations'
 import { useWorktrees, type WorktreesOptions } from '../lib/useWorktrees'
 import { formatAgo } from '../lib/time'
 import { filterWorktrees } from '../lib/worktreeFilter'
@@ -37,8 +38,8 @@ export type WorktreesViewProps = WorktreesOptions & {
 
 // Checking says a listing is under way, whichever started it, and how far it has got:
 // the phase in words, with a thin bar for a phase that counts its clones or worktrees.
-function Checking({ progress, root }: { progress: WorktreesProgress | null; root: string }) {
-  const step = progressStep(progress, root)
+function Checking({ progress, where }: { progress: WorktreesProgress | null; where: string }) {
+  const step = progressStep(progress, where)
 
   return (
     <span role="status" className="flex min-w-0 items-center gap-2 text-muted">
@@ -56,7 +57,7 @@ function Checking({ progress, root }: { progress: WorktreesProgress | null; root
   )
 }
 
-// WorktreesView lists the git worktrees of every clone under the clone root and removes
+// WorktreesView lists the git worktrees of every clone in the repository locations and removes
 // them safely. It loads when it opens, when its Refresh button is clicked, and when
 // reloadKey changes, never on a timer of its own: a listing runs git in every clone.
 // Whatever starts a listing, a quiet one after a background sweep included, the toolbar
@@ -106,11 +107,11 @@ export function WorktreesView({
           {loading ? 'Refreshing…' : 'Refresh'}
         </button>
         {checking && snapshot !== null ? (
-          <Checking progress={progress} root={snapshot.root} />
+          <Checking progress={progress} where={whereClones(snapshot.roots)} />
         ) : (
           snapshot !== null && (
-            <span className="text-muted">
-              Worktrees of the clones under {snapshot.root} · checked{' '}
+            <span className="text-muted" title={snapshot.roots.join('\n')}>
+              Worktrees of the clones {whereClones(snapshot.roots)} · checked{' '}
               <RelativeTime iso={now.toISOString()} show={formatAgo} />
             </span>
           )
@@ -144,6 +145,9 @@ export function WorktreesView({
         </span>
       </div>
       {error !== '' && <ErrorBanner>{error}</ErrorBanner>}
+      {snapshot !== null && snapshot.unread.length > 0 && (
+        <p className="text-sm text-warning">{unreadWords(snapshot.unread)}</p>
+      )}
       {snapshot?.sessionsUnknown === true && (
         <p className="text-sm text-muted">
           This system can&apos;t list the running processes, so no worktree shows a session, the automatic cleanup
@@ -161,11 +165,11 @@ export function WorktreesView({
       {snapshot === null
         ? loadError === '' && (
             <p className="text-sm">
-              <Checking progress={progress} root="" />
+              <Checking progress={progress} where="" />
             </p>
           )
         : repos.length === 0 && (
-            <p className="text-sm text-muted">No clone under {snapshot.root} has linked worktrees.</p>
+            <p className="text-sm text-muted">No clone {whereClones(snapshot.roots)} has linked worktrees.</p>
           )}
       {repos.length > 0 && filter?.matches === 0 && (
         <p className="text-sm text-muted">No worktree matches “{query.trim()}”.</p>

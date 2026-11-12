@@ -622,7 +622,7 @@ func TestRunEnv(t *testing.T) {
 		"a terminal keeps its colors and its own shell's environment")
 }
 
-func TestInstallAllReadsTheCloneRootOnce(t *testing.T) {
+func TestInstallAllReadsTheCloneRootsOnce(t *testing.T) {
 	t.Parallel()
 
 	r := newRig(t)

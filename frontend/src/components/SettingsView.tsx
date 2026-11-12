@@ -3,7 +3,7 @@ import { useEffect, useEffectEvent, useId, useRef, useState } from 'react'
 import type { Result } from '../lib/call'
 import { counted, formatCount } from '../lib/format'
 import { isTyping } from '../lib/keys'
-import { matchSettings, sectionInfo, sectionOrder, type SettingsSection } from '../lib/settingsIndex'
+import { matchSettings, sectionGroups, sectionInfo, type SettingsSection } from '../lib/settingsIndex'
 import type { Theme } from '../lib/theme'
 import type {
   Account,
@@ -102,8 +102,14 @@ export function SettingsView({
   // openedAt is the opening the page last turned to its section for.
   const [openedAt, setOpenedAt] = useState(opened)
   const match = matchSettings(query)
-  const listed = match === null ? sectionOrder : sectionOrder.filter((id) => match.sections.has(id))
-  const firstMatch = listed[0]
+  // groups are the sidebar's groups with the sections listed, a group with none left out.
+  const groups = sectionGroups
+    .map((group) => ({
+      ...group,
+      sections: match === null ? group.sections : group.sections.filter((id) => match.sections.has(id)),
+    }))
+    .filter((group) => group.sections.length > 0)
+  const firstMatch = groups[0]?.sections[0]
   const contentRef = useRef<HTMLDivElement>(null)
 
   if (opened !== openedAt) {
@@ -162,35 +168,52 @@ export function SettingsView({
         {match !== null && firstMatch === undefined && (
           <p className="px-2.5 py-1.5 text-sm text-muted">No setting matches “{query.trim()}”.</p>
         )}
-        {listed.map((id) => {
-          const count = match?.sections.get(id) ?? 0
+        {groups.map((group, i) => (
+          <div
+            key={group.sections.join(' ')}
+            role={group.heading === '' ? undefined : 'group'}
+            aria-labelledby={group.heading === '' ? undefined : `${headingId}-${group.heading}`}
+            className={`flex flex-col gap-0.5 ${i > 0 ? 'pt-4' : ''}`.trim()}
+          >
+            {group.heading !== '' && (
+              <p
+                id={`${headingId}-${group.heading}`}
+                className="mx-2.5 mb-1 border-b border-border pb-1.5 text-[0.6875rem] font-semibold tracking-wider text-text uppercase"
+              >
+                {group.heading}
+              </p>
+            )}
+            {group.sections.map((id) => {
+              const count = match?.sections.get(id) ?? 0
 
-          return (
-            <button
-              key={id}
-              type="button"
-              aria-current={id === section ? 'page' : undefined}
-              onClick={() => {
-                setSection(id)
-              }}
-              className="flex items-center justify-between gap-2 rounded-md px-2.5 py-1.5 text-left text-sm text-muted transition-colors hover:bg-raised hover:text-text aria-[current=page]:bg-raised aria-[current=page]:font-medium aria-[current=page]:text-text"
-            >
-              {sectionInfo[id].label}
-              {count > 0 && (
-                <>
-                  {' '}
-                  <span
-                    aria-hidden="true"
-                    className="rounded-full bg-accent/15 px-1.5 text-[0.6875rem] leading-[1.125rem] font-medium text-text tabular-nums"
-                  >
-                    {formatCount(count)}
-                  </span>
-                  <span className="sr-only">({counted(count, 'match', 'matches')})</span>
-                </>
-              )}
-            </button>
-          )
-        })}
+              return (
+                <button
+                  key={id}
+                  type="button"
+                  aria-current={id === section ? 'page' : undefined}
+                  onClick={() => {
+                    setSection(id)
+                  }}
+                  className="flex items-center justify-between gap-2 rounded-md px-2.5 py-1.5 text-left text-sm text-muted transition-colors hover:bg-raised hover:text-text aria-[current=page]:bg-raised aria-[current=page]:font-medium aria-[current=page]:text-text"
+                >
+                  {sectionInfo[id].label}
+                  {count > 0 && (
+                    <>
+                      {' '}
+                      <span
+                        aria-hidden="true"
+                        className="rounded-full bg-accent/15 px-1.5 text-[0.6875rem] leading-[1.125rem] font-medium text-text tabular-nums"
+                      >
+                        {formatCount(count)}
+                      </span>
+                      <span className="sr-only">({counted(count, 'match', 'matches')})</span>
+                    </>
+                  )}
+                </button>
+              )
+            })}
+          </div>
+        ))}
       </nav>
       <SettingMatch value={(label) => match?.isMatch(section, label) ?? false}>
         <section aria-labelledby={headingId} className="min-w-0 flex-1 overflow-y-auto">

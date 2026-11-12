@@ -173,7 +173,7 @@ func (s launchSettings) Get(ctx context.Context) (LaunchSettings, error) {
 
 	return LaunchSettings{
 		DefaultAgent: all.DefaultAgent, DefaultProfiles: all.DefaultProfiles, WorktreeDefault: all.WorktreeDefault,
-		Terminal: all.Terminal, CloneRoot: all.CloneRoot, TrustedBots: all.TrustedBots,
+		Terminal: all.Terminal, CloneRoot: all.CloneRoot, CloneLocations: all.CloneLocations, TrustedBots: all.TrustedBots,
 		EffortOverrides: all.CodexEffort, FastMode: all.CodexFast,
 	}, nil
 }
@@ -982,10 +982,19 @@ func TestLaunchRevalidatesTheCachedClone(t *testing.T) {
 	assert.Equal(t, "~/projects/example-repo", res.ClonePath)
 	assert.Equal(t, h.clone, h.cachedPath(t, exampleRepo))
 
-	// A valid cached clone outside the clone root is used without a scan.
+	// A valid cached clone outside every repository location is passed over: the launch
+	// would make a worktree no listing or sweep sees.
 	elsewhere := filepath.Join(h.home, "elsewhere", exampleRepo)
 	makeRepoDir(t, elsewhere)
 	h.git.remotes[elsewhere] = "remote.origin.url https://github.com/acme-org/example-repo\n"
+	h.exec(t, "UPDATE repos SET local_path = ? WHERE name = ?", elsewhere, exampleRepo)
+
+	res, _ = h.launch(t, LaunchRequest{ItemID: h.trustedPR})
+	assert.Equal(t, "~/projects/example-repo", res.ClonePath)
+	assert.Equal(t, h.clone, h.cachedPath(t, exampleRepo))
+
+	// Once a location holds it, it is used without a scan.
+	require.NoError(t, testutil.ErrOf(h.settings.AddCloneLocations(t.Context(), []string{elsewhere})))
 	h.exec(t, "UPDATE repos SET local_path = ? WHERE name = ?", elsewhere, exampleRepo)
 
 	before := len(h.git.recorded())

@@ -22,6 +22,9 @@ import type {
   ReviewReplyList,
   ReviewResult,
   CloneTarget,
+  LinkedClone,
+  LocationPreview,
+  LocationState,
   FileCheck,
   HookActionResult,
   HookChecksResult,
@@ -323,6 +326,7 @@ export function settings(overrides: Partial<Settings> = {}): Settings {
     codexEffort: false,
     codexFast: false,
     cloneRoot: '~/projects',
+    cloneLocations: [],
     trustedBots: ['dependabot', 'github-actions', 'renovate'],
     defaultTrustedBots: ['dependabot', 'github-actions', 'renovate'],
     snoozeDays: 3,
@@ -919,7 +923,62 @@ export function launchPreview(overrides: Partial<LaunchPreview> = {}): LaunchPre
 
 // cloneTarget is example-repo's clone under the clone root, already cloned.
 export function cloneTarget(overrides: Partial<CloneTarget> = {}): CloneTarget {
-  return { repo: 'acme-org/example-repo', cloned: true, dir: '~/projects/example-repo', taken: false, ...overrides }
+  return {
+    repo: 'acme-org/example-repo',
+    cloned: true,
+    dir: '~/projects/example-repo',
+    taken: false,
+    elsewhere: '',
+    where: '',
+    ...overrides,
+  }
+}
+
+// locationPreview is what adding ~/work, a folder with three clones directly inside it,
+// would add.
+export function locationPreview(overrides: Partial<LocationPreview> = {}): LocationPreview {
+  return {
+    path: '~/work',
+    kind: 'folder',
+    clones: 3,
+    repo: '',
+    covered: '',
+    coveredBy: '',
+    inside: [],
+    moreInside: false,
+    partial: false,
+    parent: { path: '', clones: 0 },
+    replaces: [],
+    ...overrides,
+  }
+}
+
+// locationState is the clone root, ~/projects, read now: a folder of six clones.
+export function locationState(overrides: Partial<LocationState> = {}): LocationState {
+  return {
+    path: '~/projects',
+    kind: 'folder',
+    primary: true,
+    state: 'ok',
+    clones: 6,
+    repo: '',
+    coveredBy: '',
+    ...overrides,
+  }
+}
+
+// linkedClone is example-repo's clone found on the desktop, alone in its folder.
+export function linkedClone(overrides: Partial<LinkedClone> = {}): LinkedClone {
+  return {
+    dir: '~/Desktop/example-repo',
+    location: locationPreview({
+      path: '~/Desktop/example-repo',
+      kind: 'clone',
+      clones: 0,
+      repo: 'acme-org/example-repo',
+    }),
+    ...overrides,
+  }
 }
 
 export const unknownRate: Rate = { known: false, limit: 0, remaining: 0, used: 0, cost: 0, resetAt: '', takenAt: '' }
@@ -1193,7 +1252,8 @@ export function worktreeRepo(overrides: Partial<WorktreeRepo> = {}): WorktreeRep
 
 export function worktreesSnapshot(overrides: Partial<WorktreesSnapshot> = {}): WorktreesSnapshot {
   return {
-    root: '~/projects',
+    roots: ['~/projects'],
+    unread: [],
     repos: [worktreeRepo()],
     cleanCount: 1,
     finishedCount: 0,

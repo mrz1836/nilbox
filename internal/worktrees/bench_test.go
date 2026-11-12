@@ -12,10 +12,12 @@ import (
 )
 
 // Shape of the benchmark clone root: a few clones, each with a few agent worktrees, one
-// of them with uncommitted changes.
+// of them with uncommitted changes, beside many more clones with no worktrees, each with
+// an origin, as most of a user's clones are.
 const (
 	benchClones    = 3
 	benchWorktrees = 4
+	benchPlain     = 30
 )
 
 // BenchmarkList lists the worktrees of every clone under the clone root with real git,
@@ -95,6 +97,11 @@ func benchCloneRoot(b *testing.B, e *env) (worktrees, elsewhere []string) {
 				testutil.WriteFile(b, filepath.Join(path, "notes.txt"), "draft\n")
 			}
 		}
+	}
+
+	for p := range benchPlain {
+		name := fmt.Sprintf("plain-%02d", p)
+		testutil.RunGit(b, e.newRepo(b, name), "remote", "add", "origin", "https://github.com/acme-org/"+name+".git")
 	}
 
 	return worktrees, elsewhere

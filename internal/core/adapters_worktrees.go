@@ -21,7 +21,9 @@ func worktreeRunner(search execpath.Search) execpath.Exec {
 
 // sweepSettings is the part of the settings the worktree service reads.
 func sweepSettings(s settings.Settings) worktrees.SweepSettings {
-	return worktrees.SweepSettings{CloneRoot: s.CloneRoot, AutoCleanup: s.WorktreeAutoCleanup, Branches: s.Branches}
+	return worktrees.SweepSettings{
+		CloneRoot: s.CloneRoot, CloneLocations: s.CloneLocations, AutoCleanup: s.WorktreeAutoCleanup, Branches: s.Branches,
+	}
 }
 
 // itemStates reads the state of the pull requests and issues worktrees are linked to,

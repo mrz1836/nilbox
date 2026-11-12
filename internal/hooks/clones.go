@@ -25,7 +25,7 @@ func (c clone) label(home string) string {
 }
 
 // folders finds the clone a request names by its folder, as the page lists it, with ~:
-// only a clone directly under the clone root is one. Its repository is the one the last
+// only a clone the repository locations hold is one. Its repository is the one the last
 // scan read for it, else its origin's.
 func (s *Service) folders() localrepos.ByFolder {
 	return localrepos.ByFolder{

@@ -33,8 +33,8 @@ var (
 	// version, or a place to run that isn't one.
 	ErrInvalidRequest = errors.New("invalid release request")
 
-	// ErrNoClone is returned when no clone under the clone root has the repository as its
-	// origin.
+	// ErrNoClone is returned when no clone in the repository locations has the repository
+	// as its origin.
 	ErrNoClone = errors.New("no clone of the repository")
 
 	// ErrNotReady is returned by Start when the facts, gathered again, block the release:
@@ -125,7 +125,7 @@ type StartRequest struct {
 
 // Prepare gathers a release's facts and returns the offer Decide works out from them: the
 // sheet's branches, checks, cards, and button. It finds the repository's clone among the
-// Release page's clones, or by scanning the clone root. The facts are GitHub's (one
+// Release page's clones, or by listing the repository locations. The facts are GitHub's (one
 // query), origin's (one ls-remote), and the clone's (read-only git); a later Prepare for
 // the same clone and branch within FactsFor decides again on them, with the new choice,
 // unless req.Refresh is set. What can't be read is a check the offer shows, so it fails
@@ -388,39 +388,38 @@ func (s *Service) choice(ctx context.Context, c Choice) (Choice, error) {
 }
 
 // cloneFor finds the clone of name: among the Release page's clones when it lists the
-// clone root as set now, else by scanning the clone root. shown, when set, is the clone's
-// folder as the page lists it, with ~, and picks one of several clones of name.
+// repository locations as set now, else by listing the locations, the clone root's clones
+// first. shown, when set, is the clone's folder as the page lists it, with ~, and picks
+// one of several clones of name.
 func (s *Service) cloneFor(ctx context.Context, name repo.Name, shown string) (string, error) {
-	root, err := s.clones.Root(ctx)
+	roots, err := s.clones.Roots(ctx)
 	if err != nil {
-		return "", fmt.Errorf("read the clone root: %w", err)
+		return "", fmt.Errorf("read the repository locations: %w", err)
 	}
 
 	matches := func(dir string, origin repo.Name) bool {
 		return origin.Key() == name.Key() && (shown == "" || shown == dir || shown == paths.Tilde(dir, s.home))
 	}
 
-	if dir, ok := s.listedClone(root, matches); ok {
+	if dir, ok := s.listedClone(roots.Key(), matches); ok {
 		return dir, nil
 	}
 
-	all, err := s.clones.Clones(ctx, root)
+	all, err := s.clones.Clones(ctx, roots)
 	if err != nil {
 		return "", fmt.Errorf("list the clones: %w", err)
 	}
-
-	slices.SortFunc(all, func(a, b Clone) int { return cmp.Compare(a.Dir, b.Dir) })
 
 	if i := slices.IndexFunc(all, func(c Clone) bool { return c.OnHub && matches(c.Dir, c.Origin) }); i >= 0 {
 		return all[i].Dir, nil
 	}
 
-	return "", uierr.New(fmt.Sprintf("There's no clone of %s in %s.", name, paths.Tilde(root, s.home)),
+	return "", uierr.New(fmt.Sprintf("There's no clone of %s in %s.", name, roots.Where(s.home)),
 		fmt.Errorf("%w: %s", ErrNoClone, name))
 }
 
 // listedClone returns the first clone the Release page lists that matches, when the page
-// was read from root.
+// was read from the locations root keys.
 func (s *Service) listedClone(root string, matches func(dir string, origin repo.Name) bool) (string, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()

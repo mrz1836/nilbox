@@ -141,6 +141,22 @@ describe('useLaunchConfig', () => {
     expect(platform.resolveLaunches).toHaveBeenCalledTimes(3)
   })
 
+  it('re-resolves after the repository locations change', async () => {
+    const { result } = renderHook(() => useLaunchConfig(snapshot({ reviewRequested: list([item()]) })))
+
+    await waitFor(() => {
+      expect(platform.resolveLaunches).toHaveBeenCalledOnce()
+    })
+
+    act(() => {
+      result.current.setSettings(settings({ cloneLocations: [{ path: '~/work', kind: 'folder' }] }))
+    })
+
+    await waitFor(() => {
+      expect(platform.resolveLaunches).toHaveBeenCalledTimes(2)
+    })
+  })
+
   it('reports a configuration or resolution that could not load', async () => {
     platform.getSettings.mockRejectedValueOnce(new Error('database is locked'))
     const { result } = renderHook(() => useLaunchConfig(snapshot({ reviewRequested: list([item()]) })))

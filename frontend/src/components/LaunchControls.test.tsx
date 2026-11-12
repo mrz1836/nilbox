@@ -26,10 +26,13 @@ import {
   launchHold,
   launchPreview,
   launchResult,
+  linkedClone,
+  locationPreview,
   profile,
   prompts,
   resolution,
   runningHold,
+  settings,
 } from '../test/fixtures'
 import { platform } from '../test/platform'
 import { LaunchControls, type LaunchControlsProps } from './LaunchControls'
@@ -69,6 +72,7 @@ function props(overrides: Partial<LaunchControlsProps> = {}): LaunchControlsProp
     launchDefaults: [],
     onDefaultsSaved: vi.fn(() => Promise.resolve()),
     onManagePrompts: vi.fn(),
+    onSettingsSaved: vi.fn(),
     ...overrides,
   }
 }
@@ -92,8 +96,9 @@ async function choosePrompt(menu: BoundFunctions<typeof queries>, nickname: stri
   await userEvent.selectOptions(select, within(select).getByRole('option', { name: new RegExp(`^${nickname}`) }))
 }
 
-// missingClone is where a repository with no local clone would be cloned.
-const missingClone = cloneTarget({ cloned: false })
+// missingClone is where a repository with no local clone would be cloned, looked for in
+// the clone root alone.
+const missingClone = cloneTarget({ cloned: false, where: '~/projects' })
 
 // noCloneError is how a launch with no local clone fails.
 const noCloneError = new Error('no local clone of acme-org/example-repo under ~/projects')
@@ -376,7 +381,7 @@ describe('LaunchControls', () => {
     await userEvent.click(menu.getByRole('radio', { name: 'work' }))
     await userEvent.click(menu.getByRole('button', { name: 'Open in Claude' }))
 
-    expect(await screen.findByRole('alert')).toHaveTextContent('No local clone of acme-org/example-repo.')
+    expect(await screen.findByRole('alert')).toHaveTextContent('No local clone of acme-org/example-repo in ~/projects.')
     expect(platform.cloneRepo).not.toHaveBeenCalled()
 
     await userEvent.click(screen.getByRole('button', { name: 'Clone into ~/projects/example-repo' }))
@@ -428,6 +433,18 @@ describe('LaunchControls', () => {
     expect(screen.getByRole('button', { name: 'Clone into ~/projects/example-repo' })).toBeInTheDocument()
   })
 
+  it('says where it looked for the clone', async () => {
+    platform.launch.mockRejectedValue(noCloneError)
+    platform.cloneTarget.mockResolvedValue({ ...missingClone, where: '~/projects or your other repository locations' })
+    render(<LaunchControls {...props()} />)
+
+    await userEvent.click(screen.getByRole('button', { name: 'Open in Claude' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'No local clone of acme-org/example-repo in ~/projects or your other repository locations.',
+    )
+  })
+
   it('offers no clone where something already is', async () => {
     platform.launch.mockRejectedValue(noCloneError)
     platform.cloneTarget.mockResolvedValue({ ...missingClone, taken: true })
@@ -436,9 +453,181 @@ describe('LaunchControls', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Open in Claude' }))
 
     expect(await screen.findByRole('alert')).toHaveTextContent(
-      'No local clone of acme-org/example-repo, and ~/projects/example-repo already exists, so it can’t be cloned there.',
+      'No local clone of acme-org/example-repo in ~/projects, and ~/projects/example-repo already exists, so it can’t be cloned there.',
     )
     expect(screen.queryByRole('button', { name: /^Clone into/ })).not.toBeInTheDocument()
+  })
+
+  it('takes a clone found elsewhere, adds it as a repository location, and continues the launch', async () => {
+    const added = settings({ cloneLocations: [{ path: '~/Desktop/example-repo', kind: 'clone' }] })
+    platform.launch.mockRejectedValueOnce(noCloneError).mockResolvedValueOnce(launchResult())
+    platform.cloneTarget.mockResolvedValue(missingClone)
+    platform.chooseFolder.mockResolvedValue('/srv/home/Desktop/example-repo')
+    platform.addCloneLocations.mockResolvedValue(added)
+    const onSettingsSaved = vi.fn()
+    render(<LaunchControls {...props({ onSettingsSaved })} />)
+
+    await userEvent.click(screen.getByRole('button', { name: 'Open in Claude' }))
+    await userEvent.click(await screen.findByRole('button', { name: 'It’s cloned elsewhere…' }))
+
+    expect(platform.chooseFolder).toHaveBeenCalledWith({
+      title: 'Choose your clone of acme-org/example-repo',
+      button: 'Use',
+    })
+    await waitFor(() => {
+      expect(platform.launch).toHaveBeenCalledTimes(2)
+    })
+    expect(platform.linkClone).toHaveBeenCalledWith(1, '/srv/home/Desktop/example-repo')
+    expect(platform.addCloneLocations).toHaveBeenCalledWith(['~/Desktop/example-repo'])
+    expect(onSettingsSaved).toHaveBeenCalledWith(added)
+    expect(platform.launch).toHaveBeenNthCalledWith(2, defaultRequest)
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+
+  it('asks whether to add the folder of a clone found among other clones', async () => {
+    platform.launch.mockRejectedValueOnce(noCloneError).mockResolvedValueOnce(launchResult())
+    platform.cloneTarget.mockResolvedValue(missingClone)
+    platform.chooseFolder.mockResolvedValue('~/Desktop/example-repo')
+    platform.linkClone.mockResolvedValue(
+      linkedClone({
+        location: locationPreview({
+          path: '~/Desktop/example-repo',
+          kind: 'clone',
+          clones: 0,
+          parent: { path: '~/Desktop', clones: 3 },
+        }),
+      }),
+    )
+    render(<LaunchControls {...props()} />)
+
+    await userEvent.click(screen.getByRole('button', { name: 'Open in Claude' }))
+    await userEvent.click(await screen.findByRole('button', { name: 'It’s cloned elsewhere…' }))
+
+    expect(
+      await screen.findByText('~/Desktop/example-repo is a clone. Its folder, ~/Desktop, holds 3 other clones.'),
+    ).toBeInTheDocument()
+    expect(platform.addCloneLocations).not.toHaveBeenCalled()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Add ~/Desktop' }))
+
+    expect(platform.addCloneLocations).toHaveBeenCalledWith(['~/Desktop'])
+    await waitFor(() => {
+      expect(platform.launch).toHaveBeenCalledTimes(2)
+    })
+  })
+
+  it('adds only the clone when asked, goes back on Cancel, and says why an add was refused', async () => {
+    platform.launch.mockRejectedValue(noCloneError)
+    platform.cloneTarget.mockResolvedValue(missingClone)
+    platform.chooseFolder.mockResolvedValue('~/Desktop/example-repo')
+    platform.linkClone.mockResolvedValue(
+      linkedClone({
+        location: locationPreview({
+          path: '~/Desktop/example-repo',
+          kind: 'clone',
+          clones: 0,
+          parent: { path: '~/Desktop', clones: 1 },
+        }),
+      }),
+    )
+    platform.addCloneLocations.mockRejectedValue(new Error('~/Desktop/example-repo doesn’t exist.'))
+    render(<LaunchControls {...props()} />)
+
+    await userEvent.click(screen.getByRole('button', { name: 'Open in Claude' }))
+    await userEvent.click(await screen.findByRole('button', { name: 'It’s cloned elsewhere…' }))
+
+    expect(
+      await screen.findByText('~/Desktop/example-repo is a clone. Its folder, ~/Desktop, holds 1 other clone.'),
+    ).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+    expect(screen.queryByText(/is a clone\. Its folder/)).not.toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: 'It’s cloned elsewhere…' }))
+    await userEvent.click(await screen.findByRole('button', { name: 'Add only this clone' }))
+
+    expect(platform.addCloneLocations).toHaveBeenCalledWith(['~/Desktop/example-repo'])
+    expect(await screen.findByText('~/Desktop/example-repo doesn’t exist.')).toBeInTheDocument()
+    expect(platform.launch).toHaveBeenCalledTimes(1)
+  })
+
+  it('says why the folder dialog failed', async () => {
+    platform.launch.mockRejectedValue(noCloneError)
+    platform.cloneTarget.mockResolvedValue(missingClone)
+    platform.chooseFolder.mockRejectedValue(new Error('the dialog could not open'))
+    render(<LaunchControls {...props()} />)
+
+    await userEvent.click(screen.getByRole('button', { name: 'Open in Claude' }))
+    await userEvent.click(await screen.findByRole('button', { name: 'It’s cloned elsewhere…' }))
+
+    expect(await screen.findByText('the dialog could not open')).toBeInTheDocument()
+    expect(platform.linkClone).not.toHaveBeenCalled()
+  })
+
+  it('launches at once with a clone found elsewhere that a location holds already', async () => {
+    platform.launch.mockRejectedValueOnce(noCloneError).mockResolvedValueOnce(launchResult())
+    platform.cloneTarget.mockResolvedValue(missingClone)
+    platform.chooseFolder.mockResolvedValue('~/projects/example-repo')
+    platform.linkClone.mockResolvedValue(
+      linkedClone({ location: locationPreview({ covered: '~/projects/example-repo is already in ~/projects.' }) }),
+    )
+    render(<LaunchControls {...props()} />)
+
+    await userEvent.click(screen.getByRole('button', { name: 'Open in Claude' }))
+    await userEvent.click(await screen.findByRole('button', { name: 'It’s cloned elsewhere…' }))
+
+    await waitFor(() => {
+      expect(platform.launch).toHaveBeenCalledTimes(2)
+    })
+    expect(platform.addCloneLocations).not.toHaveBeenCalled()
+  })
+
+  it('says why a folder picked isn’t the repository’s clone, and keeps offering', async () => {
+    platform.launch.mockRejectedValue(noCloneError)
+    platform.cloneTarget.mockResolvedValue(missingClone)
+    platform.chooseFolder.mockResolvedValue('~/other')
+    platform.linkClone.mockRejectedValue(
+      new Error('~/other isn’t a clone of acme-org/example-repo; its origin is acme-org/other.'),
+    )
+    render(<LaunchControls {...props()} />)
+
+    await userEvent.click(screen.getByRole('button', { name: 'Open in Claude' }))
+    await userEvent.click(await screen.findByRole('button', { name: 'It’s cloned elsewhere…' }))
+
+    expect(
+      await screen.findByText('~/other isn’t a clone of acme-org/example-repo; its origin is acme-org/other.'),
+    ).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'It’s cloned elsewhere…' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Clone into ~/projects/example-repo' })).toBeInTheDocument()
+    expect(platform.launch).toHaveBeenCalledTimes(1)
+  })
+
+  it('does nothing when the folder dialog is cancelled', async () => {
+    platform.launch.mockRejectedValue(noCloneError)
+    platform.cloneTarget.mockResolvedValue(missingClone)
+    render(<LaunchControls {...props()} />)
+
+    await userEvent.click(screen.getByRole('button', { name: 'Open in Claude' }))
+    await userEvent.click(await screen.findByRole('button', { name: 'It’s cloned elsewhere…' }))
+
+    expect(platform.linkClone).not.toHaveBeenCalled()
+    expect(screen.getByRole('button', { name: 'It’s cloned elsewhere…' })).toBeInTheDocument()
+  })
+
+  it('offers the clone it last remembered, now outside every location', async () => {
+    platform.launch.mockRejectedValueOnce(noCloneError).mockResolvedValueOnce(launchResult())
+    platform.cloneTarget.mockResolvedValue({ ...missingClone, elsewhere: '~/old/example-repo' })
+    platform.linkClone.mockResolvedValue(linkedClone({ dir: '~/old/example-repo' }))
+    render(<LaunchControls {...props()} />)
+
+    await userEvent.click(screen.getByRole('button', { name: 'Open in Claude' }))
+    await userEvent.click(await screen.findByRole('button', { name: 'Use ~/old/example-repo' }))
+
+    expect(platform.chooseFolder).not.toHaveBeenCalled()
+    expect(platform.linkClone).toHaveBeenCalledWith(1, '~/old/example-repo')
+    await waitFor(() => {
+      expect(platform.addCloneLocations).toHaveBeenCalledWith(['~/old/example-repo'])
+    })
   })
 
   it('shows a failed clone and launches nothing', async () => {

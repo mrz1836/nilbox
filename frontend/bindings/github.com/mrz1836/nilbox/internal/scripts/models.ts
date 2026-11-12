@@ -119,8 +119,9 @@ export interface BranchStatus {
 }
 
 /**
- * Clone is a clone under the clone root, as the page's picker lists it: its folder's
- * name, and its folder, with ~.
+ * Clone is a clone in the repository locations, as the page's picker lists it: its
+ * folder's name, with its parent folder after it when another clone shares the name, and
+ * its folder, with ~, which is the clone's key.
  */
 export interface Clone {
     "name": string;

@@ -22,9 +22,10 @@ function of(done: number, total: number, one: string, many: string): string {
 }
 
 // progressStep words where a listing stands: what it is doing now, and how far through.
-// root is the clone root, as the last listing named it, or ''. Before the listing first
-// says how far it has got, it is only checking.
-export function progressStep(progress: WorktreesProgress | null, root: string): Step {
+// where names the repository locations as the last listing found them, such as "under
+// ~/projects" (see whereClones), or ''. Before the listing first says how far it has got,
+// it is only checking.
+export function progressStep(progress: WorktreesProgress | null, where: string): Step {
   if (progress === null) {
     return { text: 'Checking the worktrees…', share: null }
   }
@@ -33,7 +34,7 @@ export function progressStep(progress: WorktreesProgress | null, root: string): 
 
   switch (progress.phase) {
     case 'clones':
-      return { text: root === '' ? 'Finding the clones…' : `Finding the clones under ${root}…`, share: null }
+      return { text: where === '' ? 'Finding the clones…' : `Finding the clones ${where}…`, share: null }
     case 'listing':
       return { text: `Listing worktrees · ${of(progress.done, progress.total, 'clone', 'clones')}`, share }
     case 'checking':

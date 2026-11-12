@@ -304,12 +304,11 @@ export interface RemoveResult {
 }
 
 /**
- * Repo is one clone under the clone root and its worktrees.
+ * Repo is one clone in the repository locations and its worktrees.
  */
 export interface Repo {
     /**
-     * Path is the clone's directory under the clone root; pass it back to the removal
-     * and prune calls.
+     * Path is the clone's directory; pass it back to the removal and prune calls.
      */
     "path": string;
 
@@ -364,14 +363,21 @@ export interface Session {
 }
 
 /**
- * Snapshot is every repository under the clone root that has linked worktrees, as the
- * Worktrees view shows it. Every field is a plain value.
+ * Snapshot is every repository in the repository locations that has linked worktrees, as
+ * the Worktrees view shows it. Every field is a plain value.
  */
 export interface Snapshot {
     /**
-     * Root is the clone root, shown relative to home with ~.
+     * Roots are the repository locations, the clone root first, shown relative to home
+     * with ~.
      */
-    "root": string;
+    "roots": string[] | null;
+
+    /**
+     * Unread are the other locations the listing couldn't read, as on a drive that is
+     * unplugged, with ~. Their clones aren't listed.
+     */
+    "unread": string[] | null;
 
     /**
      * Repos are the repositories with linked worktrees (or that could not be listed),
@@ -494,7 +500,7 @@ export interface SweepReport {
     "leftover": number;
 
     /**
-     * WorktreeCount is how many linked worktrees the clones under the clone root have
+     * WorktreeCount is how many linked worktrees the clones in the repository locations have
      * once the sweep is done, as a listing's Snapshot.WorktreeCount would count them. It
      * is read from each clone's git directory, without running git.
      */

@@ -21,6 +21,7 @@ import type * as item from '../../bindings/github.com/mrz1836/nilbox/internal/it
 import * as launchdefaults from '../../bindings/github.com/mrz1836/nilbox/internal/launchdefaults'
 import * as launcher from '../../bindings/github.com/mrz1836/nilbox/internal/launcher'
 import type * as terminal from '../../bindings/github.com/mrz1836/nilbox/internal/launcher/terminal'
+import type * as localrepos from '../../bindings/github.com/mrz1836/nilbox/internal/localrepos'
 import * as notify from '../../bindings/github.com/mrz1836/nilbox/internal/notify'
 import type * as notifyprefs from '../../bindings/github.com/mrz1836/nilbox/internal/notifyprefs'
 import * as profiles from '../../bindings/github.com/mrz1836/nilbox/internal/profiles'
@@ -246,6 +247,7 @@ export type LaunchDefaultsInput = NonNullLists<launchdefaults.Input>
 export type LaunchTarget = NonNullLists<launchdefaults.Target>
 
 export type CloneTarget = NonNullLists<launcher.CloneTarget>
+export type LinkedClone = NonNullLists<launcher.LinkedClone>
 export type LaunchHold = NonNullLists<launcher.Hold>
 export type ItemResolution = NonNullLists<launcher.ItemResolution>
 export type LaunchRequest = NonNullLists<launcher.LaunchRequest>
@@ -258,6 +260,16 @@ export type LaunchSource = launcher.Source
 export type WorktreeAction = launcher.WorktreeAction
 export type WorktreePlan = NonNullLists<launcher.WorktreePlan>
 export type TerminalID = terminal.ID
+
+// The user's repository locations: the clone root and the other locations, each a folder
+// looked into one level deep or a single clone; how each reads now; and what adding a
+// folder would add, with what the app suggests instead.
+export type CloneLocation = NonNullLists<localrepos.Location>
+export type LocationKind = localrepos.Kind
+export type LocationState = NonNullLists<localrepos.LocationState>
+export type LocationStatus = localrepos.State
+export type LocationPreview = NonNullLists<localrepos.Preview>
+export type LocationSuggestion = NonNullLists<localrepos.Suggestion>
 
 // AppNotification is an entry in the notification history. Its item's kind is '' for an
 // entry about no item, such as a release reaching GitHub, which the generated type, a
@@ -398,6 +410,7 @@ export const {
   Preview: previewLaunch,
   CloneTarget: cloneTarget,
   Clone: cloneRepo,
+  LinkClone: linkClone,
   Resume: resumeSession,
 } = narrow(launcher.Service)
 
@@ -449,6 +462,10 @@ export const {
   Get: getSettings,
   SetTerminal: setTerminal,
   SetCloneRoot: setCloneRoot,
+  AddCloneLocations: addCloneLocations,
+  RemoveCloneLocation: removeCloneLocation,
+  PreviewCloneLocation: previewCloneLocation,
+  CheckCloneLocations: checkCloneLocations,
   SetDefaultAgent: setDefaultAgent,
   SetDefaultProfile: setDefaultProfile,
   SetWorktreeDefault: setWorktreeDefault,
@@ -743,6 +760,26 @@ export async function chooseFileToOpen(choice: FileChoice): Promise<string> {
     Filters: filters(choice),
     CanChooseFiles: true,
     CanChooseDirectories: false,
+    AllowsMultipleSelection: false,
+  })
+}
+
+// FolderChoice is what a native folder dialog asks for: its title and the button that
+// confirms it.
+export interface FolderChoice {
+  title: string
+  button: string
+}
+
+// chooseFolder asks the user for a folder in the system's open dialog, and resolves with
+// its path, or '' when they cancel.
+export async function chooseFolder(choice: FolderChoice): Promise<string> {
+  return Dialogs.OpenFile({
+    Title: choice.title,
+    ButtonText: choice.button,
+    CanChooseFiles: false,
+    CanChooseDirectories: true,
+    CanCreateDirectories: false,
     AllowsMultipleSelection: false,
   })
 }

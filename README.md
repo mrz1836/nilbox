@@ -251,11 +251,11 @@ you saw. Every merge asks first.
 ### Launch a coding agent
 
 Click **Open in Claude** (or **Open in Codex**) on any card. Nilbox finds the item's local clone
-under `~/projects`, gives the item its own `pr-<n>` or `issue-<n>` worktree beside it, opens a
-terminal there, and starts the agent with your prompt loaded. The card then follows the session:
-working, waiting for your approval, or done. Use the arrow beside the button instead to switch
-agents for one launch, pick the prompt, profile, model, effort, and plan mode, and save the
-choices as the repository's or org's defaults.
+under `~/projects`, or in your other repository locations, gives the item its own `pr-<n>` or
+`issue-<n>` worktree beside it, opens a terminal there, and starts the agent with your prompt
+loaded. The card then follows the session: working, waiting for your approval, or done. Use the
+arrow beside the button instead to switch agents for one launch, pick the prompt, profile, model,
+effort, and plan mode, and save the choices as the repository's or org's defaults.
 
 <br>
 
@@ -270,10 +270,11 @@ with, such as **LGTM** for people and **Update OK** for dependency bots.
 
 ### Clean up finished worktrees
 
-The **Worktrees** tab lists every linked worktree under your clone root. **Clean up** removes one
-only when nothing would be lost, and a background sweep does it for you once the pull request
-merges or the issue closes. **Clean up merged branches…** clears out the local branches of pull
-requests that merged, never touching `main`, `master`, or any branch you protect.
+The **Worktrees** tab lists every linked worktree in your clone root and your other repository
+locations. **Clean up** removes one only when nothing would be lost, and a background sweep does it
+for you once the pull request merges or the issue closes. **Clean up merged branches…** clears out
+the local branches of pull requests that merged, never touching `main`, `master`, or any branch you
+protect.
 
 <br>
 
@@ -504,10 +505,18 @@ More in [Reviewing a pull request](docs/desktop.md#reviewing-a-pull-request) and
   iTerm2 tab (the default) or Terminal.app window, with the item's prompt, profile, model, and
   permissions already worked out.
 - **The item's clone,** found by matching git remotes one level under your clone root
-  (`~/projects` by default). No clone yet? The card offers to clone it there with
-  `gh repo clone`, then carries on with the launch.
-- **Its own worktree,** made by Nilbox in Go at `~/projects/.nilbox/worktrees/<repo>/pr-<n>` (or
-  `issue-<n>`), from the pull request's head or the default branch. Every agent shares it, so a
+  (`~/projects` by default) and your other repository locations: folders anywhere else, each
+  looked into one level deep, or single clones, added in **Settings → Repositories**. No clone
+  yet? The card offers to clone it into the clone root with `gh repo clone`, or to pick the
+  clone you have elsewhere, which it adds as a location, then carries on with the launch.
+- **Smart about where clones live:** adding a folder previews it first. A folder with no clones
+  directly inside suggests the folders inside it that have some (`~/src/<owner>` layouts), a
+  clone whose folder holds other clones offers that folder, and a location that is unplugged
+  says so, while its worktree records wait for it. A network share that stops answering is
+  skipped after 5 seconds, and read again next time.
+- **Its own worktree,** made by Nilbox in Go beside the clone, at
+  `~/projects/.nilbox/worktrees/<repo>/pr-<n>` (or `issue-<n>`), from the pull request's head or
+  the default branch. Every agent shares it, so a
   later launch, with either agent, resumes it, and a worktree Claude Code made under a clone's
   `.claude/worktrees` is picked up too.
 - **Your clone stays as it is:** a launch never checks out, pulls, or resets an existing clone,
@@ -642,13 +651,13 @@ The **Scripts** tab, with Release, Hooks, Repo scripts, and Runs, appears while 
 go-pre-commit is on in **Settings → Integrations**, or while you turn Scripts on there.
 
 <details>
-<summary>🌳 <strong>Worktrees and branches</strong>: every worktree under your clone root, cleaned up once its pull request merges, never at the cost of work</summary>
+<summary>🌳 <strong>Worktrees and branches</strong>: every worktree in your repository locations, cleaned up once its pull request merges, never at the cost of work</summary>
 <br/>
 
 - **Every worktree, in one view:** the **Worktrees** tab lists every linked worktree of the clones
-  under your clone root, including ones from sessions started outside Nilbox, with the branch,
-  uncommitted files, commits not on GitHub, locks, and the age of the last commit. While it
-  lists, the toolbar shows how far it has got.
+  in your clone root and other repository locations, including ones from sessions started
+  outside Nilbox, with the branch, uncommitted files, commits not on GitHub, locks, and the age of
+  the last commit. While it lists, the toolbar shows how far it has got.
 - **Kept track of:** Nilbox records each worktree it makes, with the agent and time of its latest
   session, and checks every record against git each time it lists or sweeps: a worktree moved is
   followed, one removed outside the app is forgotten, and one on an item's `worktree-<item>`
@@ -683,7 +692,7 @@ More in [The Worktrees view](docs/desktop.md#the-worktrees-view) and
 <summary>🚢 <strong>Release in two clicks</strong>: every clone with unreleased changes; magex tags and pushes the exact version, then Nilbox follows it to published</summary>
 <br/>
 
-- **Every clone, one list:** each clone under your clone root whose `origin` is on GitHub, grouped
+- **Every clone, one list:** each clone in your repository locations whose `origin` is on GitHub, grouped
   into **Unreleased changes** (newest commit first), **Up to date**, **No releases yet**, and
   **Can't release here**. Each row shows the newest version, the commits since it, the checks on
   the newest commit, and what matters about your clone, such as being on another branch or having
@@ -885,10 +894,11 @@ More in [The window](docs/desktop.md#the-window).
 - **Refreshing:** how often the app reads the inbox (every 2 minutes to every hour), the pull
   requests whose checks are running (off, or every 30 seconds to every 2 minutes), and the
   worktrees' sweep (every 5 minutes to every hour). A change applies at once.
-- **Settings** covers your account, appearance, notifications, refreshing, snoozing, reviewing,
-  launching, worktrees, profiles, repositories, trust, sensitive files, and integrations. **Find a
-  setting** in the toolbar narrows the sections to those with a match and marks the setting, and
-  **⌘,** opens Settings from anywhere.
+- **Settings** covers your account, appearance, notifications, and refreshing; then the inbox
+  (snoozing and reviewing); the agents (repositories, profiles, launching, trust, sensitive files,
+  and worktrees, in the order you set them up); and the tools (integrations). **Find a setting**
+  in the toolbar narrows the sections to those with a match and marks the setting, and **⌘,**
+  opens Settings from anywhere.
 - **The account menu** shows who is signed in, opens your GitHub profile, and opens GitHub's status
   page, for when GitHub is having an incident.
 - **About** shows the version, build, commit, and system, each coding agent's installed version,

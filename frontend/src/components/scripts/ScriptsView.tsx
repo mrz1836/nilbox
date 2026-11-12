@@ -100,8 +100,9 @@ export interface ScriptsViewProps {
   // null until the settings have loaded; runsIn is where runs go, as set.
   terminal: TerminalID | null
   runsIn: RunsIn
-  // cloneRoot is the folder the clones are under, with ~.
-  cloneRoot: string
+  // where names the repository locations the clones are in, such as "under ~/projects"
+  // (see whereClones).
+  where: string
   // integrations are the tools as the window lists them, and runs every run: the window
   // holds both, for the tab's badge. scriptsSwitch is how the user set the Scripts
   // integration, which shows Repo scripts.
@@ -143,7 +144,7 @@ export interface ScriptsViewProps {
 export default function ScriptsView({
   terminal,
   runsIn,
-  cloneRoot,
+  where,
   integrations,
   scriptsSwitch,
   runs,
@@ -349,7 +350,7 @@ export default function ScriptsView({
             candidates={candidates}
             tool={mageX}
             runs={runs.runs}
-            cloneRoot={cloneRoot}
+            where={where}
             onRelease={(c) => {
               opens.current -= 1
               setSheet({ target: { repo: c.repo, dir: c.dir, branch: '' }, key: opens.current })
@@ -378,7 +379,7 @@ export default function ScriptsView({
             onFollow={setRepoRun}
             runsIn={runsIn}
             terminal={terminal}
-            cloneRoot={cloneRoot}
+            where={where}
             onOpenRelease={
               releaseOn
                 ? () => {

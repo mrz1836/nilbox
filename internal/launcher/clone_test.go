@@ -114,7 +114,7 @@ func TestCloneTarget(t *testing.T) {
 
 		got, err := h.service().CloneTarget(t.Context(), h.orphanPR)
 		require.NoError(t, err)
-		assert.Equal(t, CloneTarget{Repo: "acme-org/missing-repo", Dir: "~/projects/missing-repo"}, got)
+		assert.Equal(t, CloneTarget{Repo: "acme-org/missing-repo", Dir: "~/projects/missing-repo", Where: "~/projects"}, got)
 		assert.Empty(t, gh.recorded(), "finding the target clones nothing")
 		assert.NoDirExists(t, filepath.Join(h.root, "missing-repo"))
 	})
@@ -127,7 +127,9 @@ func TestCloneTarget(t *testing.T) {
 
 		got, err := h.service().CloneTarget(t.Context(), h.orphanPR)
 		require.NoError(t, err)
-		assert.Equal(t, CloneTarget{Repo: "acme-org/missing-repo", Dir: "~/projects/missing-repo", Taken: true}, got)
+		assert.Equal(t, CloneTarget{
+			Repo: "acme-org/missing-repo", Dir: "~/projects/missing-repo", Taken: true, Where: "~/projects",
+		}, got)
 	})
 
 	t.Run("a target taken by a dangling symlink", func(t *testing.T) {

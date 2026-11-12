@@ -23,8 +23,10 @@ import (
 	"github.com/mrz1836/nilbox/internal/branchrules"
 	"github.com/mrz1836/nilbox/internal/clock"
 	"github.com/mrz1836/nilbox/internal/event"
+	"github.com/mrz1836/nilbox/internal/execpath"
 	"github.com/mrz1836/nilbox/internal/integrationprefs"
 	"github.com/mrz1836/nilbox/internal/launcher/terminal"
+	"github.com/mrz1836/nilbox/internal/localrepos"
 	"github.com/mrz1836/nilbox/internal/logging"
 	"github.com/mrz1836/nilbox/internal/notifyprefs"
 	"github.com/mrz1836/nilbox/internal/paths"
@@ -66,7 +68,8 @@ const (
 	// KeyCodexFast is whether Codex launches start in Fast mode unless unticked.
 	KeyCodexFast = "agent.codex.fast"
 
-	// KeyCloneRoot is the directory whose children are the user's local clones.
+	// KeyCloneRoot is the directory whose children are the user's local clones, and the
+	// one new clones go in. The other locations are under KeyCloneLocations.
 	KeyCloneRoot = "clones.root"
 
 	// KeyTrustedBots lists the bots whose items are trusted (see the trust package).
@@ -142,8 +145,14 @@ type Settings struct {
 	CodexEffort bool `json:"codexEffort"`
 	CodexFast   bool `json:"codexFast"`
 
-	// CloneRoot is the clone root as entered, e.g. "~/projects".
+	// CloneRoot is the clone root as entered, e.g. "~/projects": the folder new clones go
+	// in, and the first place clones are looked for.
 	CloneRoot string `json:"cloneRoot"`
+
+	// CloneLocations are the other repository locations, in the order they were added:
+	// each a folder looked into one level deep, as the clone root is, or a single clone,
+	// with ~ for home. Never nil.
+	CloneLocations []localrepos.Location `json:"cloneLocations"`
 
 	// TrustedBots lists the bots (GitHub Apps) whose pull requests and issues are trusted
 	// like a collaborator's, by login, sorted. It starts as trust.DefaultBots.
@@ -239,6 +248,8 @@ type Service struct {
 	pool     *sql.DB
 	prefs    *prefs.Store
 	profiles ProfileLookup
+	git      execpath.Runner
+	reader   *localrepos.Reader
 	home     string
 	clock    clock.Clock
 	events   event.Sink
@@ -273,6 +284,19 @@ func WithClock(c clock.Clock) Option {
 // stored.
 func WithEvents(sink event.Sink) Option {
 	return func(s *Service) { s.events = sink }
+}
+
+// WithGit reads a clone location's origin with git, one read-only git config, for the
+// preview and the check of the repository locations. Without it, they name no repository.
+func WithGit(git execpath.Runner) Option {
+	return func(s *Service) { s.git = git }
+}
+
+// WithReader reads the other repository locations through reader, which bounds how long
+// each read may take, so one that hangs reads as not answering rather than holding the
+// check of the locations. Without it they are read directly.
+func WithReader(reader *localrepos.Reader) Option {
+	return func(s *Service) { s.reader = reader }
 }
 
 // WithLogger logs to logger what a setter cannot report as its error. Without it, or
@@ -557,7 +581,8 @@ func fromStored(stored map[string]string) Settings {
 		FollowSessions:      prefval.Bool(stored[KeyFollowSessions], DefaultFollowSessions),
 		CodexEffort:         prefval.Bool(stored[KeyCodexEffort], false),
 		CodexFast:           prefval.Bool(stored[KeyCodexFast], false),
-		CloneRoot:           DefaultCloneRoot,
+		CloneRoot:           storedCloneRoot(stored),
+		CloneLocations:      decodeCloneLocations(stored[KeyCloneLocations]),
 		TrustedBots:         trust.DecodeBots(rawBots, hasBots),
 		DefaultTrustedBots:  trust.DefaultBots(),
 		SnoozeDays:          snooze.DecodeDays(stored),
@@ -598,10 +623,6 @@ func fromStored(stored map[string]string) Settings {
 
 	if v := terminal.ID(stored[KeyTerminal]); validTerminal(v) {
 		out.Terminal = v
-	}
-
-	if v := strings.TrimSpace(stored[KeyCloneRoot]); v != "" {
-		out.CloneRoot = v
 	}
 
 	if v, ok := decodeWindowSize(stored[KeyWindowSize]); ok {
@@ -686,7 +707,7 @@ func settingKeys() []string {
 
 	return append(append(keys,
 		KeyWorktreeDefault, KeyWorktreeAutoCleanup, KeyTerminal, KeyFollowSessions, KeyCodexEffort, KeyCodexFast,
-		KeyCloneRoot, KeyTrustedBots,
+		KeyCloneRoot, KeyCloneLocations, KeyTrustedBots,
 		KeySnoozeDays, KeyWindowSize,
 		snooze.PrefWakeCommits, snooze.PrefWakeReviews, snooze.PrefWakeComments,
 		sensitive.PrefScope, sensitive.PrefOff, sensitive.PrefPatterns, KeyMenuBar, notifyprefs.KeyBannersOff, notifyprefs.KeyBannersOn, KeyTheme,

@@ -1,7 +1,11 @@
 import { startTransition, useActionState, useId, useState, type SubmitEvent } from 'react'
 
+import { attempt } from '../../lib/call'
+import { useQuery } from '../../lib/useQuery'
 import { useSettingsSave } from '../../lib/useSettingsSave'
 import {
+  checkCloneLocations,
+  chooseFolder,
   setCloneRoot,
   type DefaultPrompts,
   type LaunchDefaults,
@@ -10,6 +14,7 @@ import {
   type Prompt,
 } from '../../platform'
 import { buttonClass, fieldClass } from '../controls'
+import { CloneLocations, rootMarker } from './CloneLocations'
 import { LaunchDefaultsSection } from './LaunchDefaultsSection'
 import { Group, rowDescribedBy, SettingRow } from './rows'
 import type { SectionProps } from './types'
@@ -33,8 +38,10 @@ interface CloneRootSave {
   error: string
 }
 
-// RepositoriesSection holds where the local clones live, saved with its Save button, and
-// the launch defaults for orgs and repositories.
+// RepositoriesSection holds where the local clones live: the clone root, which new clones
+// go in, saved with its Save button or as soon as Choose… picks a folder, with how it reads
+// now, and the other repository locations; and the launch defaults for orgs and
+// repositories.
 export function RepositoriesSection({
   settings: stored,
   onSaved,
@@ -47,6 +54,10 @@ export function RepositoriesSection({
 }: RepositoriesSectionProps) {
   const id = useId()
   const { settings, save } = useSettingsSave(stored, onSaved)
+  const states = useQuery(() => checkCloneLocations(), [settings.cloneRoot, JSON.stringify(settings.cloneLocations)], {
+    log: 'check the repository locations',
+  })
+  const root = rootMarker(states.data?.find((s) => s.primary))
   const [draft, setDraft] = useState(settings.cloneRoot)
   const [outcome, saveCloneRoot, saving] = useActionState(
     async (_: CloneRootSave, typed: string): Promise<CloneRootSave> => {
@@ -68,6 +79,18 @@ export function RepositoriesSection({
     })
   }
 
+  // choose picks the clone root in the system's folder dialog and saves it at once.
+  const choose = async () => {
+    const chosen = await attempt(chooseFolder({ title: 'Choose the clone root', button: 'Use' }))
+
+    if (chosen.ok && chosen.data !== '') {
+      setDraft(chosen.data)
+      startTransition(() => {
+        saveCloneRoot(chosen.data)
+      })
+    }
+  }
+
   return (
     <div className="flex flex-col gap-8">
       <Group>
@@ -75,7 +98,7 @@ export function RepositoriesSection({
           <SettingRow
             label="Clone root"
             controlId={`${id}-clone-root`}
-            description="The folder your local clones live in, such as ~/projects. Launches and the Worktrees view look one level inside it."
+            description="The folder new clones go in. Launches, the Worktrees view, and the Scripts pages look one level inside it, and in your other repository locations below."
             error={error}
           >
             <input
@@ -89,17 +112,33 @@ export function RepositoriesSection({
               }}
               className={`${fieldClass} w-56 font-mono text-[0.8125rem]`}
             />
+            <button
+              type="button"
+              disabled={saving}
+              onClick={() => {
+                void choose()
+              }}
+              className={buttonClass}
+            >
+              Choose…
+            </button>
             <button type="submit" className={buttonClass}>
               Save
             </button>
           </SettingRow>
         </form>
+        {root.text !== '' && (
+          <p role="status" className={`px-4 py-2 text-xs ${root.warn ? 'text-warning' : 'text-muted'}`}>
+            {root.text}
+          </p>
+        )}
         {saved && (
           <p role="status" className="px-4 py-2 text-xs text-success">
             Saved.
           </p>
         )}
       </Group>
+      <CloneLocations settings={settings} save={save} states={states} />
       <LaunchDefaultsSection
         settings={settings}
         agents={agents}

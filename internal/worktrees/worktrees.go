@@ -10,7 +10,8 @@
 // Worktrees Claude Code made under a clone's .claude/worktrees before the app made them
 // itself are found the same way and resumed where they are.
 //
-// Listing covers every git repository directly under the clone root (the same scan clone
+// Listing covers every git repository in the user's repository locations, directly inside
+// the clone root or a folder location, or a clone location itself (the same scan clone
 // resolution uses), so worktrees left by sessions started elsewhere show up too. Removal
 // is deliberately narrow:
 //
@@ -43,11 +44,16 @@ import (
 	"github.com/mrz1836/nilbox/internal/item"
 )
 
-// Snapshot is every repository under the clone root that has linked worktrees, as the
-// Worktrees view shows it. Every field is a plain value.
+// Snapshot is every repository in the repository locations that has linked worktrees, as
+// the Worktrees view shows it. Every field is a plain value.
 type Snapshot struct {
-	// Root is the clone root, shown relative to home with ~.
-	Root string `json:"root"`
+	// Roots are the repository locations, the clone root first, shown relative to home
+	// with ~.
+	Roots []string `json:"roots"`
+
+	// Unread are the other locations the listing couldn't read, as on a drive that is
+	// unplugged, with ~. Their clones aren't listed.
+	Unread []string `json:"unread"`
 
 	// Repos are the repositories with linked worktrees (or that could not be listed),
 	// sorted by path.
@@ -175,10 +181,9 @@ func (i *LinkedItem) done() bool {
 	return i != nil && (i.State == ItemMerged || i.State == ItemClosed)
 }
 
-// Repo is one clone under the clone root and its worktrees.
+// Repo is one clone in the repository locations and its worktrees.
 type Repo struct {
-	// Path is the clone's directory under the clone root; pass it back to the removal
-	// and prune calls.
+	// Path is the clone's directory; pass it back to the removal and prune calls.
 	Path string `json:"path"`
 
 	// DisplayPath is Path relative to home with ~.
@@ -473,7 +478,7 @@ type SweepReport struct {
 	// so the user may want to look at them.
 	Leftover int `json:"leftover"`
 
-	// WorktreeCount is how many linked worktrees the clones under the clone root have
+	// WorktreeCount is how many linked worktrees the clones in the repository locations have
 	// once the sweep is done, as a listing's Snapshot.WorktreeCount would count them. It
 	// is read from each clone's git directory, without running git.
 	WorktreeCount int `json:"worktreeCount"`

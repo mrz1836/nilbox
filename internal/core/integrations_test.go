@@ -21,6 +21,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/github"
 	"github.com/mrz1836/nilbox/internal/integrationprefs"
 	"github.com/mrz1836/nilbox/internal/integrations"
+	"github.com/mrz1836/nilbox/internal/localrepos"
 	"github.com/mrz1836/nilbox/internal/notify"
 	"github.com/mrz1836/nilbox/internal/release"
 	"github.com/mrz1836/nilbox/internal/repo"
@@ -533,15 +534,52 @@ func TestReleaseClonesListTheCloneRoot(t *testing.T) {
 
 	clones := releaseClones{settings: c.Settings, home: home, git: execpath.Exec{Env: env}}
 
-	gotRoot, err := clones.Root(t.Context())
+	roots, err := clones.Roots(t.Context())
 	require.NoError(t, err)
-	assert.Equal(t, root, gotRoot)
+	assert.Equal(t, root, roots.Primary())
 
-	got, err := clones.Clones(t.Context(), gotRoot)
+	got, err := clones.Clones(t.Context(), roots)
 	require.NoError(t, err)
 	assert.Equal(t, []release.Clone{
 		{Dir: filepath.Join(root, "notes")},
 		{Dir: filepath.Join(root, "sdk"), Origin: repo.Name{Owner: boundOwner, Repo: boundRepo}, OnHub: true},
+	}, got)
+}
+
+func TestClonesListEveryRepositoryLocation(t *testing.T) {
+	t.Parallel()
+
+	home := testutil.ClaudeHome(t)
+	root := filepath.Join(home, "projects")
+	env := testutil.Git(t)
+
+	sdk, web := filepath.Join(root, "sdk"), filepath.Join(home, "work", "web")
+	exp := filepath.Join(home, "Desktop", "exp")
+
+	for _, dir := range []string{sdk, web, exp} {
+		testutil.InitRepo(t, dir)
+	}
+
+	testutil.RunGit(t, exp, "remote", "add", "origin", "https://github.com/acme-org/example-repo.git")
+
+	opts := testOptions(t)
+	opts.Home = home
+	c := bootstrap(t, opts)
+	require.NoError(t, testutil.ErrOf(c.Settings.SetCloneRoot(t.Context(), root)))
+	require.NoError(t, testutil.ErrOf(c.Settings.AddCloneLocations(t.Context(), []string{"~/work", "~/Desktop/exp"})))
+
+	roots, err := releaseClones{settings: c.Settings, home: home}.Roots(t.Context())
+	require.NoError(t, err)
+	assert.Equal(t, []string{"~/projects", "~/work", "~/Desktop/exp"}, roots.Shown(home))
+
+	dirs, err := hooksClones{settings: c.Settings, home: home}.Dirs(t.Context(), roots)
+	require.NoError(t, err)
+	assert.Equal(t, []string{sdk, web, exp}, dirs, "the clone root's first, then each location's in order")
+
+	got, err := releaseClones{settings: c.Settings, home: home, git: execpath.Exec{Env: env}}.Clones(t.Context(), roots)
+	require.NoError(t, err)
+	assert.Equal(t, []release.Clone{
+		{Dir: sdk}, {Dir: web}, {Dir: exp, Origin: repo.Name{Owner: boundOwner, Repo: boundRepo}, OnHub: true},
 	}, got)
 }
 
@@ -564,11 +602,11 @@ func TestHooksClonesListTheCloneRootWithoutGit(t *testing.T) {
 
 	clones := hooksClones{settings: c.Settings, home: home, git: execpath.Exec{Env: env}}
 
-	gotRoot, err := clones.Root(t.Context())
+	roots, err := clones.Roots(t.Context())
 	require.NoError(t, err)
-	assert.Equal(t, root, gotRoot)
+	assert.Equal(t, root, roots.Primary())
 
-	dirs, err := clones.Dirs(t.Context(), gotRoot)
+	dirs, err := clones.Dirs(t.Context(), roots)
 	require.NoError(t, err)
 	assert.Equal(t, []string{notes, sdk}, dirs)
 
@@ -581,7 +619,10 @@ func TestHooksClonesListTheCloneRootWithoutGit(t *testing.T) {
 	require.NoError(t, err)
 	assert.False(t, onHub)
 
-	_, err = clones.Dirs(t.Context(), filepath.Join(root, "missing"))
+	missing, err := localrepos.NewRoots(filepath.Join(root, "missing"), nil, home)
+	require.NoError(t, err)
+
+	_, err = clones.Dirs(t.Context(), missing)
 	require.Error(t, err)
 }
 
