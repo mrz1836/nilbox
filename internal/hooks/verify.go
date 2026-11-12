@@ -5,7 +5,6 @@ import (
 	"slices"
 
 	"github.com/mrz1836/nilbox/internal/brand"
-	"github.com/mrz1836/nilbox/internal/event"
 	"github.com/mrz1836/nilbox/internal/paths"
 	"github.com/mrz1836/nilbox/internal/scriptrun"
 	"github.com/mrz1836/nilbox/internal/shellenv"
@@ -57,21 +56,8 @@ func (s *Service) verifyAction(rec scriptrun.Record) scriptrun.Verification {
 	}
 
 	run := &actionRun{action: in.Action, clone: clone{dir: rec.Dir, name: rec.Repo}, confirm: in.Confirm, where: rec.RunsIn}
-	reader := newActionReader()
 
-	return scriptrun.Verification{
-		Output: reader,
-		Finish: func(ctx context.Context, end scriptrun.Ending, engine scriptrun.Outcome) scriptrun.Outcome {
-			if !s.awaitShell(ctx) {
-				return scriptrun.Outcome{Unsettled: true}
-			}
-
-			run.result = s.finishKept(ctx, rec.ID, run, reader, end)
-
-			return settled(run.cut, actionOutcome(run.result, reader.snapshot(), engine))
-		},
-		Released: func(int64) { s.markStale(run.clone.dir) },
-	}
+	return scriptrun.Verification{Callbacks: s.actionCallbacks(run, &rec, nil)}
 }
 
 // finishKept reads what an action from before the app restarted did, as its own Finish
@@ -119,22 +105,8 @@ func (s *Service) verifyChecks(rec scriptrun.Record) scriptrun.Verification {
 	}
 
 	run := &checksRun{intent: in, clone: clone{dir: rec.Dir, name: rec.Repo}, where: rec.RunsIn}
-	reader := newChecksReader(slices.Contains(rec.Argv, jsonFlag))
 
-	return scriptrun.Verification{
-		Output: reader,
-		Finish: func(ctx context.Context, end scriptrun.Ending, engine scriptrun.Outcome) scriptrun.Outcome {
-			if !s.awaitShell(ctx) {
-				return scriptrun.Outcome{Unsettled: true}
-			}
-
-			s.restoreChecks(ctx, rec.ID, run)
-
-			return settled(run.cut, s.finishChecks(ctx, run, reader, end, engine))
-		},
-		Recorded: func(ctx context.Context, _ int64, _ scriptrun.Outcome) { s.checksRecorded(ctx) },
-		Released: func(int64) { s.events.Emit(event.HooksUpdated{}) },
-	}
+	return scriptrun.Verification{Callbacks: s.checksCallbacks(run, slices.Contains(rec.Argv, jsonFlag), &rec)}
 }
 
 // restoreChecks gives a checks run from before the app restarted the config it ran with

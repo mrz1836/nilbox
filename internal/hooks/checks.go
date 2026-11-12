@@ -147,22 +147,45 @@ func (s *Service) checksSpec(ctx context.Context, c clone, intent ChecksIntent, 
 	}
 
 	run := &checksRun{intent: intent, clone: c, where: where, kept: &keptChecks{}}
-	reader := newChecksReader(tool.Has(integrations.FeatureRunJSON))
 	base, _ := s.env()
 
 	return scriptrun.Spec{
 		Kind: scriptrun.KindChecks, Title: checksTitle(intent), Source: string(intent.Scope), Repo: c.name, Dir: c.dir,
 		Env: runEnv(base, where), RunsIn: where, Tool: string(toolID), Intent: intent, Keep: run.kept,
+		Callbacks: s.checksCallbacks(run, tool.Has(integrations.FeatureRunJSON), nil),
+		Before:    func(ctx context.Context) ([]string, error) { return s.beforeChecks(ctx, run) },
+	}, nil
+}
+
+// checksCallbacks are the callbacks of run, a checks run, built alike for the run
+// checksSpec starts and for one from before the app restarted, whose record, rec, the
+// Verifier picks up (nil for a run this app starts): go-pre-commit's output read as it
+// arrives, as JSON when asJSON is set; a Finish that compares the clone with the snapshot
+// its Before took (finishChecks), which, for a run from before the restart, first waits
+// for the login shell's environment and gives the run the config and the snapshot it kept
+// (restoreChecks); a Recorded that notes a checks run ended; and a Released that tells the
+// window.
+func (s *Service) checksCallbacks(run *checksRun, asJSON bool, rec *scriptrun.Record) scriptrun.Callbacks {
+	reader := newChecksReader(asJSON)
+
+	return scriptrun.Callbacks{
 		Output: reader,
-		Before: func(ctx context.Context) ([]string, error) { return s.beforeChecks(ctx, run) },
 		Finish: func(ctx context.Context, end scriptrun.Ending, engine scriptrun.Outcome) scriptrun.Outcome {
+			if rec != nil {
+				if !s.awaitShell(ctx) {
+					return scriptrun.Outcome{Unsettled: true}
+				}
+
+				s.restoreChecks(ctx, rec.ID, run)
+			}
+
 			return settled(run.cut, s.finishChecks(ctx, run, reader, end, engine))
 		},
 		Recorded: func(ctx context.Context, _ int64, _ scriptrun.Outcome) { s.checksRecorded(ctx) },
 		// The window reads the page again once the run lets go of the clone, its record
 		// kept: the row then shows the clone free and this run as its newest.
 		Released: func(int64) { s.events.Emit(event.HooksUpdated{}) },
-	}, nil
+	}
 }
 
 // checkIntent checks a checks run's scope and check.

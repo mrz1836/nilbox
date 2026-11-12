@@ -262,9 +262,9 @@ func TestNothingIsToldOfAnUnsettledEnd(t *testing.T) {
 type failingVerifier struct{}
 
 func (failingVerifier) Verify(Record) Verification {
-	return Verification{Finish: func(context.Context, Ending, Outcome) Outcome {
+	return Verification{Callbacks: Callbacks{Finish: func(context.Context, Ending, Outcome) Outcome {
 		return Outcome{Status: StatusFailed, Summary: "The tag isn't on GitHub."}
-	}}
+	}}}
 }
 
 func TestARunAVerifierSettlesAsFailedIsTold(t *testing.T) {

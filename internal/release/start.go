@@ -198,21 +198,17 @@ func (s *Service) Start(ctx context.Context, req StartRequest) (int64, error) {
 func (s *Service) spec(req StartRequest, sh sheet) scriptrun.Spec {
 	in := &Intent{Version: req.Version, Bump: req.Bump, Branch: req.Branch, Original: req.Original, Head: req.Head}
 	github := s.sheetGitHub(sh.dir)
-	reader := NewOutputReader()
 	env, _ := s.env()
 
 	return scriptrun.Spec{
 		Kind: scriptrun.KindRelease, Title: "Release " + req.Version, Repo: sh.name, Dir: sh.dir,
 		Env: runEnv(env, sh.choice.RunsIn), RunsIn: sh.choice.RunsIn, Tool: string(integrationprefs.MageX), Intent: in,
-		Output:   reader,
-		Progress: func() scriptrun.Progress { return reader.Progress(*in) },
+		Callbacks: s.callbacks(sh.name, sh.dir, in, false),
 		Before: func(ctx context.Context) ([]string, error) {
 			gather := GatherRequest{Repo: sh.name, Dir: sh.dir, Choice: sh.choice, Locked: true, GitHub: github}
 
 			return s.recheck(ctx, req, gather, in)
 		},
-		Finish:   s.finisher(sh.name, sh.dir, in, reader),
-		Recorded: s.announcer(sh.name, in),
 	}
 }
 

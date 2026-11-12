@@ -111,15 +111,26 @@ func (s *Service) pullsOff(ctx context.Context) error {
 // whole run, and its Finish reading what the pull did.
 func (s *Service) pullSpec(c clone, branch string) scriptrun.Spec {
 	run := &pullRun{c: c, intent: PullIntent{Branch: branch}}
-	out := &pullOutput{}
 
 	// The intent is recorded once Before has run, so it holds what Before read too.
 	return scriptrun.Spec{
 		Kind: scriptrun.KindPull, Title: "Pull " + branch, Source: "git", Repo: c.name, Dir: c.dir,
-		RunsIn: scriptrun.RunsInApp, Intent: &run.intent, Output: out,
-		Progress:  pullProgress,
+		RunsIn: scriptrun.RunsInApp, Intent: &run.intent, Callbacks: s.pullCallbacks(run),
 		Before:    func(ctx context.Context) ([]string, error) { return s.beforePull(ctx, run) },
 		BeforeEnv: func() []string { return run.env },
+	}
+}
+
+// pullCallbacks are the callbacks of run, a pull, built alike for the run pullSpec starts
+// and for one from before the app restarted, which the Verifier picks up: git's output
+// read for its last error line, Stop held back for its whole run (pullProgress), and a
+// Finish that reads what the pull did (finishPull).
+func (s *Service) pullCallbacks(run *pullRun) scriptrun.Callbacks {
+	out := &pullOutput{}
+
+	return scriptrun.Callbacks{
+		Output:   out,
+		Progress: pullProgress,
 		Finish: func(ctx context.Context, end scriptrun.Ending, engine scriptrun.Outcome) scriptrun.Outcome {
 			return s.finishPull(ctx, run, out, end, engine)
 		},
@@ -458,19 +469,12 @@ func (v Verifier) Verify(rec scriptrun.Record) scriptrun.Verification {
 	if err := decodeIntent(rec.Result.Intent, &in); err != nil || !gitread.ValidBranch(in.Branch) || v.s.branchGit == nil {
 		v.s.logger.Warn("a pull from before the app restarted can't be checked", "run", rec.ID)
 
-		return scriptrun.Verification{Progress: pullProgress}
+		return scriptrun.Verification{Callbacks: scriptrun.Callbacks{Progress: pullProgress}}
 	}
 
 	run := &pullRun{c: clone{dir: rec.Dir, name: rec.Repo}, intent: in}
-	out := &pullOutput{}
 
-	return scriptrun.Verification{
-		Output:   out,
-		Progress: pullProgress,
-		Finish: func(ctx context.Context, end scriptrun.Ending, engine scriptrun.Outcome) scriptrun.Outcome {
-			return v.s.finishPull(ctx, run, out, end, engine)
-		},
-	}
+	return scriptrun.Verification{Callbacks: v.s.pullCallbacks(run)}
 }
 
 // pullOutput reads a pull's output for its last error line, git's last fatal or error

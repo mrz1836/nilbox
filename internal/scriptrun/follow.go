@@ -3,7 +3,6 @@ package scriptrun
 import (
 	"context"
 	"fmt"
-	"io"
 	"log/slog"
 	"os"
 	"strconv"
@@ -29,6 +28,10 @@ const (
 
 // live is a run the engine follows: one it started, or one from before the app restarted.
 type live struct {
+	// Callbacks are its kind's: its Spec's, or what its kind's Verifier gave a run from
+	// before the app restarted.
+	Callbacks
+
 	id     int64
 	kind   Kind
 	runsIn RunsIn
@@ -41,18 +44,13 @@ type live struct {
 	name repo.Name
 	repo string
 
-	timeout  time.Duration
-	output   io.Writer
-	finish   func(ctx context.Context, end Ending, out Outcome) Outcome
-	recorded func(ctx context.Context, id int64, out Outcome)
-	released func(id int64)
-	intent   any
-	holds    holds
+	timeout time.Duration
+	intent  any
+	holds   holds
 
-	// progress is its kind's Spec.Progress, or nil, and shown the progress last seen after
-	// a read of its log, which only its follower touches.
-	progress func() Progress
-	shown    Progress
+	// shown is the progress last seen after a read of its log, which only its follower
+	// touches.
+	shown Progress
 
 	// proc is the program of a run this engine started in the app, or nil. pid, pgid,
 	// and procStart are its process, group, and start time, or a terminal run's shell's
@@ -101,11 +99,11 @@ type live struct {
 // progressNow returns how far the run has got, as its kind says, or no progress for a kind
 // that says nothing.
 func (l *live) progressNow() Progress {
-	if l.progress == nil {
+	if l.Progress == nil {
 		return Progress{}
 	}
 
-	return l.progress()
+	return l.Progress()
 }
 
 // markDone closes done, once.
@@ -128,7 +126,7 @@ func (l *live) finishOutcome(ctx context.Context, end Ending, out Outcome) Outco
 		}
 	}()
 
-	return l.finish(ctx, end, out)
+	return l.Finish(ctx, end, out)
 }
 
 // giveUp closes abandon, once.
@@ -336,7 +334,7 @@ func (e *Engine) followOrphan(ctx context.Context, l *live) {
 // tail feeds the run's output reader what its log holds past what it has read, and then
 // notes whether its progress changed.
 func (e *Engine) tail(l *live) {
-	if l.output == nil || !e.openLog(l) {
+	if l.Output == nil || !e.openLog(l) {
 		return
 	}
 
@@ -370,7 +368,7 @@ func (l *live) feed() bool {
 	for {
 		n, err := l.reader.ReadAt(l.buf, l.offset)
 		if n > 0 {
-			_, _ = l.output.Write(l.buf[:n])
+			_, _ = l.Output.Write(l.buf[:n])
 			l.offset += int64(n)
 			fed = true
 		}
@@ -388,7 +386,7 @@ func (e *Engine) end(ctx context.Context, l *live, end Ending) {
 	l.closeReader()
 
 	out := defaultOutcome(end, l.timeout)
-	if l.finish != nil {
+	if l.Finish != nil {
 		got := l.finishOutcome(ctx, end, out)
 		if got.Unsettled {
 			e.leave(ctx, l)
@@ -447,14 +445,14 @@ func (e *Engine) record(ctx context.Context, l *live, exitCode *int, out Outcome
 	switch {
 	case err != nil:
 		e.logger.WarnContext(ctx, "couldn't record how a run ended", "run", l.id, "error", err)
-	case l.recorded != nil:
-		l.recorded(ctx, l.id, out)
+	case l.Recorded != nil:
+		l.Recorded(ctx, l.id, out)
 	}
 
 	e.release(l)
 
-	if l.released != nil {
-		l.released(l.id)
+	if l.Released != nil {
+		l.Released(l.id)
 	}
 
 	// Told once the run has let go of its clone and its slot, so a slow write or banner

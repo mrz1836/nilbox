@@ -128,6 +128,33 @@ type verifyGit interface {
 	InProgress(ctx context.Context, dir string) (gitread.Operation, error)
 }
 
+// callbacks are the callbacks of the release in sets out to make in the clone at dir, of
+// name, built alike for the release spec starts and, restarted, for one from before the
+// app restarted, which the Verifier picks up: magex's output read as it arrives and the
+// progress it reads, a Finish that verifies the release (finisher), first waiting, for one
+// from before the restart, for the login shell's environment, and a Recorded that tells of
+// it once that is kept (announcer).
+func (s *Service) callbacks(name repo.Name, dir string, in *Intent, restarted bool) scriptrun.Callbacks {
+	reader := NewOutputReader()
+	finish := s.finisher(name, dir, in, reader)
+
+	if restarted {
+		verify := finish
+		finish = func(ctx context.Context, end scriptrun.Ending, out scriptrun.Outcome) scriptrun.Outcome {
+			s.awaitShell(ctx)
+
+			return verify(ctx, end, out)
+		}
+	}
+
+	return scriptrun.Callbacks{
+		Output:   reader,
+		Progress: func() scriptrun.Progress { return reader.Progress(*in) },
+		Finish:   finish,
+		Recorded: s.announcer(name, in),
+	}
+}
+
 // finisher returns a release's Finish: once magex has ended and the reader has read all of
 // its output, it verifies the release in the clone at dir against in, which Before
 // completed, and works out the run's outcome. When its context ends first, as the app
@@ -489,19 +516,7 @@ func (v Verifier) Verify(run scriptrun.Record) scriptrun.Verification {
 		return scriptrun.Verification{}
 	}
 
-	reader := NewOutputReader()
-	finish := v.s.finisher(run.Repo, run.Dir, &in, reader)
-
-	return scriptrun.Verification{
-		Output:   reader,
-		Progress: func() scriptrun.Progress { return reader.Progress(in) },
-		Recorded: v.s.announcer(run.Repo, &in),
-		Finish: func(ctx context.Context, end scriptrun.Ending, out scriptrun.Outcome) scriptrun.Outcome {
-			v.s.awaitShell(ctx)
-
-			return finish(ctx, end, out)
-		},
-	}
+	return scriptrun.Verification{Callbacks: v.s.callbacks(run.Repo, run.Dir, &in, true)}
 }
 
 // awaitShell waits, until ctx ends, for the login shell's environment to have been read

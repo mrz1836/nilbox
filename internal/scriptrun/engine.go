@@ -207,8 +207,8 @@ func (e *Engine) RegisterRerunner(kind Kind, r Rerunner) {
 }
 
 // RegisterVerifier makes v verify the runs of kind from before the app restarted: it
-// gives each again the output reader and the Finish its Spec gave it. Register it before
-// Run, which picks those runs up.
+// gives each again the Callbacks its Spec gave it. Register it before Run, which picks
+// those runs up.
 func (e *Engine) RegisterVerifier(kind Kind, v Verifier) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
@@ -756,10 +756,9 @@ func (e *Engine) newLive(spec Spec, h holds) *live {
 	}
 
 	return &live{
-		kind: spec.Kind, runsIn: spec.RunsIn, tool: spec.Tool, dir: spec.Dir, name: spec.Repo,
-		repo: e.where(spec.Repo, spec.Dir), title: spec.Title, timeout: timeout, output: spec.Output,
-		progress: spec.Progress, finish: spec.Finish, recorded: spec.Recorded, released: spec.Released,
-		intent: spec.Intent, holds: h, started: e.clock.Now(), done: make(chan struct{}), abandon: make(chan struct{}),
+		Callbacks: spec.Callbacks, kind: spec.Kind, runsIn: spec.RunsIn, tool: spec.Tool, dir: spec.Dir, name: spec.Repo,
+		repo: e.where(spec.Repo, spec.Dir), title: spec.Title, timeout: timeout, intent: spec.Intent, holds: h,
+		started: e.clock.Now(), done: make(chan struct{}), abandon: make(chan struct{}),
 	}
 }
 
@@ -944,11 +943,11 @@ func (e *Engine) notify() {
 // noteProgress tells Progressed, with the run's ID, when its progress changed since it
 // last looked. Only the goroutine that follows the run calls it.
 func (e *Engine) noteProgress(l *live) {
-	if l.progress == nil {
+	if l.Progress == nil {
 		return
 	}
 
-	now := l.progress()
+	now := l.Progress()
 	if now == l.shown {
 		return
 	}

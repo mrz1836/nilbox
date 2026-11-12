@@ -460,8 +460,9 @@ app:lint` reads.
   time matches is orphaned and followed again; one that is gone was interrupted; a terminal
   run is told apart by its PID and exit files; every one is held under a placeholder lock and
   registered before any is settled, and a kind's `Verifier`, registered with
-  `RegisterVerifier`, gives such a run its output reader, progress, `Finish`, `Recorded`, and
-  `Released` again from its record's intent and what it kept, so it is read and verified as it
+  `RegisterVerifier`, gives such a run its `Callbacks` (its output reader, progress, `Finish`,
+  `Recorded`, and `Released`, which a `Spec` embeds) again from its record's intent and what
+  it kept, built by the same helper as the kind's `Spec`, so it is read and verified as it
   ends, as tracked work) and, as the app quits, stops every run in the app and records it
   stopped, unless its `Finish` returns `Unsettled` (a release whose check of GitHub the quit
   cut off), which leaves it recorded as going for the next start. `Active` is the desktop

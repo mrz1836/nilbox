@@ -34,7 +34,7 @@ func (e *Engine) reconcile(ctx context.Context) {
 	}
 
 	for _, s := range e.resumeAll(ctx, recs) {
-		if s.l.finish == nil {
+		if s.l.Finish == nil {
 			e.end(ctx, s.l, s.end)
 		} else {
 			e.settle(context.WithoutCancel(ctx), s)
@@ -194,10 +194,9 @@ func (e *Engine) resumeTerminal(ctx context.Context, rec Record) *settled {
 	return nil
 }
 
-// liveOf returns the state of a run from before the app started. Its Spec's output
-// reader, progress, Finish, Recorded, and Released were the app's before it restarted: its
-// kind's Verifier, when it has one, gives them again, and the reader is fed the run's log
-// from its start.
+// liveOf returns the state of a run from before the app started. Its Spec's Callbacks were
+// the app's before it restarted: its kind's Verifier, when it has one, gives them again,
+// whole, and the reader is fed the run's log from its start.
 func (e *Engine) liveOf(rec Record) *live {
 	l := &live{
 		id: rec.ID, kind: rec.Kind, runsIn: rec.RunsIn, tool: rec.Result.Tool, dir: rec.Dir, name: rec.Repo,
@@ -206,9 +205,7 @@ func (e *Engine) liveOf(rec Record) *live {
 	}
 
 	if v := e.verifier(rec.Kind); v != nil {
-		got := v.Verify(rec)
-		l.output, l.progress, l.finish = got.Output, got.Progress, got.Finish
-		l.recorded, l.released = got.Recorded, got.Released
+		l.Callbacks = v.Verify(rec).Callbacks
 	}
 
 	return l

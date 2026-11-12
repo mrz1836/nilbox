@@ -241,17 +241,39 @@ func (s *Service) actionSpec(ctx context.Context, action Action, c clone, confir
 	}
 
 	run := &actionRun{action: action, clone: c, confirm: confirm, where: where, kept: &keptAction{}}
-	reader := newActionReader()
 	base, _ := s.env()
 
 	return scriptrun.Spec{
 		Kind: scriptrun.KindHooks, Title: actionTitle(action), Source: string(action), Repo: c.name, Dir: c.dir,
 		Env: runEnv(base, where), RunsIn: where, Tool: string(toolID),
 		Intent: ActionIntent{Action: action, Confirm: confirm}, Keep: run.kept,
+		Callbacks: s.actionCallbacks(run, nil, done),
+		Before:    func(ctx context.Context) ([]string, error) { return s.beforeAction(ctx, run) },
+	}, nil
+}
+
+// actionCallbacks are the callbacks of run, a hooks action, built alike for the run
+// actionSpec starts and for one from before the app restarted, whose record, rec, the
+// Verifier picks up (nil for a run this app starts): go-pre-commit's output read as it
+// arrives; a Finish that reads what the action did from the hook files (finishAction),
+// which, for a run from before the restart, first waits for the login shell's environment
+// and judges it against the hooks its Before kept (finishKept); and a Released that has
+// the page scan the clone again, then tells done, when set, the result.
+func (s *Service) actionCallbacks(run *actionRun, rec *scriptrun.Record, done func(ActionResult),
+) scriptrun.Callbacks {
+	reader := newActionReader()
+
+	return scriptrun.Callbacks{
 		Output: reader,
-		Before: func(ctx context.Context) ([]string, error) { return s.beforeAction(ctx, run) },
 		Finish: func(ctx context.Context, end scriptrun.Ending, engine scriptrun.Outcome) scriptrun.Outcome {
-			run.result = s.finishAction(ctx, run, reader, end)
+			switch {
+			case rec == nil:
+				run.result = s.finishAction(ctx, run, reader, end)
+			case !s.awaitShell(ctx):
+				return scriptrun.Outcome{Unsettled: true}
+			default:
+				run.result = s.finishKept(ctx, rec.ID, run, reader, end)
+			}
 
 			return settled(run.cut, actionOutcome(run.result, reader.snapshot(), engine))
 		},
@@ -262,7 +284,7 @@ func (s *Service) actionSpec(ctx context.Context, action Action, c clone, confir
 				done(run.result)
 			}
 		},
-	}, nil
+	}
 }
 
 // beforeAction is a hooks action's Before: under the clone's lock, it reads go-pre-commit

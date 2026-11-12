@@ -329,7 +329,7 @@ func TestNoteProgressTellsOnlyAChange(t *testing.T) {
 		told++
 	}})
 	kind := &fakeKind{}
-	l := &live{id: 7, progress: kind.Progress}
+	l := &live{id: 7, Callbacks: Callbacks{Progress: kind.Progress}}
 
 	e.noteProgress(l)
 	assert.Zero(t, told, "no progress yet is no change")
@@ -428,7 +428,7 @@ type progressVerifier struct {
 }
 
 func (v progressVerifier) Verify(Record) Verification {
-	return Verification{Output: v.kind, Progress: v.kind.Progress}
+	return Verification{Callbacks: Callbacks{Output: v.kind, Progress: v.kind.Progress}}
 }
 
 func TestQuitWaitsForAKindToLetItStop(t *testing.T) {

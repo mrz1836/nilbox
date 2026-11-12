@@ -451,14 +451,14 @@ func (f *fakeVerifier) Verify(run Record) Verification {
 
 	f.asked = append(f.asked, run)
 
-	return Verification{Output: f.output, Finish: func(_ context.Context, end Ending, out Outcome) Outcome {
+	return Verification{Callbacks: Callbacks{Output: f.output, Finish: func(_ context.Context, end Ending, out Outcome) Outcome {
 		f.mu.Lock()
 		defer f.mu.Unlock()
 
 		f.ended, f.given = append(f.ended, end), append(f.given, out)
 
 		return Outcome{Status: StatusSucceeded, Summary: "Verified.", Detail: map[string]string{"tag": "v1.4.3"}}
-	}}
+	}}}
 }
 
 // seen returns the runs it was asked about, and the endings and outcomes its Finish got.
@@ -555,14 +555,14 @@ type heldVerifier struct {
 }
 
 func (v heldVerifier) Verify(Record) Verification {
-	return Verification{Finish: func(ctx context.Context, _ Ending, _ Outcome) Outcome {
+	return Verification{Callbacks: Callbacks{Finish: func(ctx context.Context, _ Ending, _ Outcome) Outcome {
 		select {
 		case <-v.let:
 			return Outcome{Status: StatusSucceeded, Summary: "Verified."}
 		case <-ctx.Done():
 			return Outcome{Unsettled: true}
 		}
-	}}
+	}}}
 }
 
 func TestReconcileHoldsEveryRunBeforeItVerifiesAny(t *testing.T) {
