@@ -184,9 +184,14 @@ type choiceRig struct {
 	told   []event.Event
 }
 
-// newChoiceRig returns a rig over a fresh database file.
+// newChoiceRig returns a rig over a fresh database file. It first holds the setting to
+// what the checks rely on: a value to store, the last of them unlike the default, so a
+// value lost on a refusal or a restart can't pass for the one stored.
 func newChoiceRig(t *testing.T, c choiceSetting) *choiceRig {
 	t.Helper()
+
+	require.NotEmpty(t, c.values, "a choice setting stores at least one value")
+	require.NotEqual(t, c.fallback, c.values[len(c.values)-1], "the last value differs from the default")
 
 	r := &choiceRig{c: c, home: t.TempDir(), path: filepath.Join(t.TempDir(), "app.db"), events: &testutil.Events{}}
 	r.open(t)
