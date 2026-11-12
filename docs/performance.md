@@ -11,11 +11,11 @@ numbers with the `magex measure:*` targets.
 
 | Metric | Target | Measured | Result |
 |---|---|---|---|
-| Cold start to first paint | < 1 s | 544 ms | Met on the M1 Max; the M4 Pro build host measured 1013 ms with an earlier build, at the target rather than under it |
-| Inbox refresh | < 3 s | 2.30 s | Met once the inbox's items are known; the first refresh into an empty database takes 5–10 s |
-| Launch to prompt loaded | < 3 s | Not recorded yet | Pending: the build host cannot grant the Automation permission unattended, so the number needs a run on the maintainer's Mac |
+| Cold start to first paint | < 1 s | 583 ms | Met on the M1 Max with the integrations (544 ms before them); the M4 Pro build host measured 1013 ms with an earlier build, at the target rather than under it |
+| Inbox refresh | < 3 s | 2.44 s | Met once the inbox's items are known; the first refresh into an empty database takes 5–10 s |
+| Launch to prompt loaded | < 3 s | 6.86 s | **Not met**, one run: an upper bound that includes a held-back launch's check on GitHub and your shell starting in the new iTerm2 tab (see below) |
 | App binary size | < 30 MB | 21.7 MB | Met (17.0 MB before the integrations: Release, Hooks, Repo scripts, and the tool installer) |
-| API budget at 5-minute cadence | < 2% | 1.20% | Met, for an inbox of 43 items |
+| API budget at 5-minute cadence | < 2% | 1.20% | Met: 5 points a refresh |
 
 Measured on an Apple Silicon Mac (M1 Max, 32 GB memory) running macOS 15.8, over its regular
 network connection. The first numbers were taken on the build host, a second Mac (M4 Pro,
@@ -48,10 +48,16 @@ uses the real data directory and starts the usual background refresh, as a norma
 Run it with the screen unlocked: a window that is not on screen runs no animation frames, so on
 a locked Mac the report never comes and the target gives up after a minute.
 
-**Recorded run.** On the M1 Max (2026-11-08), two runs one after the other. The first started
+**Recorded run.** On the M1 Max (2026-11-11, macOS 15.8.2), with the integrations (Release,
+Hooks, Repo scripts, the tool installer, and following a release to published) built in: first
+launch 941 ms; launches 2–6 576, 577, 588, 583, and 590 ms, for a median of 583 ms, the
+table's number, 39 ms over the median below. Tool detection and the login-shell read are
+deferred work, started only after the first paint.
+
+Before the integrations, on the M1 Max (2026-11-08), two runs one after the other. The first started
 from a data directory whose database an older schema had written: its first launch, 934 ms,
 also set that database aside and created a fresh one; launches 2–6 took 628, 544, 538, 541, and
-524 ms, for a median of 541 ms. The second run is the table's number: first launch 497 ms;
+524 ms, for a median of 541 ms. The second run was the table's number then: first launch 497 ms;
 launches 2–6 532, 548, 533, 545, and 544 ms, for a median of 544 ms. Those launches opened a
 current database that held no items yet, since a measuring launch quits before its background
 refresh lands. A run of an earlier build the day before, against a database of 90 items,
@@ -121,8 +127,10 @@ afterwards, and times five refreshes one after another, using the GitHub CLI log
 runs it. Every request is a read. Running through the app binary measures the production build,
 and it is also the binary a per-app firewall has to allow.
 
-**Recorded run.** On the M1 Max (2026-11-08), with 43 items in the inbox: 4807, 2316, 2165,
-2149, and 2296 ms, for a median of 2.30 s. Earlier runs on the same Mac, with at most 20 items,
+**Recorded run.** On the M1 Max (2026-11-11), with the integrations built in: 4993, 2869, 2043,
+2259, and 2435 ms, for a median of 2.44 s, the table's number; each refresh cost 5 GraphQL
+points. Before them (2026-11-08), with 43 items in the inbox: 4807, 2316, 2165, 2149, and
+2296 ms, for a median of 2.30 s. Earlier runs on the same Mac, with at most 20 items,
 measured 6935, 1782, 1363, 1490, and 1673 ms (a median of 1.67 s); 6414, 2565, 2418, 2543, and
 2342 ms (2.54 s); and 10039, 3863, 2282, 2202, and 2391 ms (2.39 s). The spread is GitHub's:
 two builds timed alternately in the same hour gave medians of 2.36 and 2.58 s, while the app's
@@ -173,11 +181,17 @@ bound for a pull request whose files check out. It then checks the process list 
 agent process's working directory (`lsof`) every 100 ms, and stops the agent as soon as it is
 found. The clone and the scratch data directory are deleted afterwards.
 
-**Result.** Not measured on the build host. Its build session cannot answer macOS's one-time
-prompt to let a process control iTerm2: asking macOS without prompting
-(`AEDeterminePermissionToAutomateTarget`) returned "would require user consent" (-1744), so a
-live run there would only leave the permission dialog on screen. No number has been recorded
-yet: it is to come from `magex measure:launch` run from iTerm2 on the maintainer's Mac. When
+**Result.** On the M1 Max (2026-11-11), run from iTerm2 with Claude Code: 6,859 ms (6.86 s),
+one run, over the 3 s target. It is an upper bound in two ways. It includes the held-back
+first request, whose check of the placeholder's files on GitHub can't succeed, then the
+confirmed one. And iTerm2's driver opens a tab with your default profile and types the launch
+script's path into it, so your interactive shell's startup files run before the script
+changes into the clone and starts the agent. How the time splits between those steps is not
+measured yet.
+
+Not measured on the build host: its build session cannot answer macOS's one-time prompt to let
+a process control iTerm2 (asking macOS without prompting,
+`AEDeterminePermissionToAutomateTarget`, returned "would require user consent", -1744). When
 the permission is missing, the target prints `NEEDS AUTOMATION PERMISSION` and exits without a
 number.
 
