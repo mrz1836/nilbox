@@ -91,7 +91,7 @@ func (s *Service) Move(ctx context.Context, id int64, way Direction, dir string)
 	return s.yours.move(ctx, id, way, shown)
 }
 
-// RepoNames returns the GitHub repositories of the clones under the clone root,
+// RepoNames returns the GitHub repositories of the clones in the repository locations,
 // owner/name, each once, sorted: what a script for chosen repositories can choose from.
 // Each clone's origin is read with git, a few at a time, and kept until the clone's
 // .git/config changes, so the editor opens at once after the first time; a clone the

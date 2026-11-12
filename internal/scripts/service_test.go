@@ -259,6 +259,38 @@ func TestRepos(t *testing.T) {
 		"the clone a script ran in most recently first")
 }
 
+func TestReposTellsApartClonesOfTheSameName(t *testing.T) {
+	t.Parallel()
+
+	r := newRig(t)
+	r.clone("example-repo", "", nil)
+	r.clone("solo", "", nil)
+
+	for _, dir := range []string{"work/Example-Repo", "Desktop/exp"} {
+		require.NoError(t, os.MkdirAll(filepath.Join(r.home, dir, ".git"), 0o700))
+	}
+
+	r.clones.mu.Lock()
+	r.clones.extra = []localrepos.Location{
+		{Path: filepath.Join(r.home, "work"), Kind: localrepos.KindFolder},
+		{Path: filepath.Join(r.home, "Desktop", "exp"), Kind: localrepos.KindClone},
+	}
+	r.clones.mu.Unlock()
+
+	got, err := r.svc.Repos(t.Context())
+	require.NoError(t, err)
+	assert.Equal(t, []Clone{
+		{Name: "example-repo (~/projects)", Dir: "~/projects/example-repo"},
+		{Name: "Example-Repo (~/work)", Dir: "~/work/Example-Repo"},
+		{Name: "exp", Dir: "~/Desktop/exp"},
+		{Name: "solo", Dir: "~/projects/solo"},
+	}, got, "a name two clones share, ignoring case, names each one's folder; the folder stays the key")
+
+	_, err = r.svc.List(t.Context(), "~/elsewhere", false)
+	require.ErrorIs(t, err, ErrNoClone)
+	assert.Equal(t, "~/elsewhere isn't a clone in ~/projects or your other repository locations.", uierr.Message(err))
+}
+
 func TestTrustRecordsAreKeptPerRepository(t *testing.T) {
 	t.Parallel()
 

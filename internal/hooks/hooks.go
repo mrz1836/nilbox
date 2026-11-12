@@ -1,4 +1,4 @@
-// Package hooks is the Hooks page's service: the clones under the clone root with a
+// Package hooks is the Hooks page's service: the clones in the repository locations with a
 // go-pre-commit config, the pre-commit hook in each, and what go-pre-commit does in them
 // on the user's click, installing, updating, replacing, or removing the hook, and running
 // the checks.
@@ -230,8 +230,8 @@ var (
 	// turned it off.
 	ErrNoTool = errors.New("go-pre-commit can't be used")
 
-	// ErrNoClone is returned for a folder that isn't a clone under the clone root.
-	ErrNoClone = errors.New("not a clone under the clone root")
+	// ErrNoClone is returned for a folder that isn't a clone in the repository locations.
+	ErrNoClone = errors.New("not a clone in the repository locations")
 
 	// ErrInvalidRequest is returned for an action, a scope, a check, or a place to run
 	// that isn't one.

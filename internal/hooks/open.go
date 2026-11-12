@@ -20,8 +20,8 @@ type Revealer interface {
 
 // OpenTerminal opens the terminal chosen for launches in the clone the page lists at dir
 // (with ~), for a row's Open in terminal: the user looks at the clone or fixes it there.
-// The app runs nothing in it (scriptrun.OpenFolder). Only a clone directly under the clone
-// root is opened.
+// The app runs nothing in it (scriptrun.OpenFolder). Only a clone the repository locations
+// hold is opened.
 func (s *Service) OpenTerminal(ctx context.Context, dir string) error {
 	c, err := s.cloneAt(ctx, dir)
 	if err != nil {
@@ -33,7 +33,7 @@ func (s *Service) OpenTerminal(ctx context.Context, dir string) error {
 
 // ShowConfig shows the go-pre-commit config of the clone the page lists at dir (with ~) in
 // Finder, for a row's Open the config: its .github/env folder, or the legacy
-// .github/.env.base. Only a clone directly under the clone root, with a config, is shown.
+// .github/.env.base. Only a clone the repository locations hold, with a config, is shown.
 func (s *Service) ShowConfig(ctx context.Context, dir string) error {
 	c, err := s.cloneAt(ctx, dir)
 	if err != nil {

@@ -125,7 +125,7 @@ type StartRequest struct {
 
 // Prepare gathers a release's facts and returns the offer Decide works out from them: the
 // sheet's branches, checks, cards, and button. It finds the repository's clone among the
-// Release page's clones, or by scanning the clone root. The facts are GitHub's (one
+// Release page's clones, or by listing the repository locations. The facts are GitHub's (one
 // query), origin's (one ls-remote), and the clone's (read-only git); a later Prepare for
 // the same clone and branch within FactsFor decides again on them, with the new choice,
 // unless req.Refresh is set. What can't be read is a check the offer shows, so it fails

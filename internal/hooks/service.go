@@ -124,7 +124,7 @@ type Config struct {
 	Logger *slog.Logger
 }
 
-// Page is the Hooks page: every clone under the clone root with a go-pre-commit config,
+// Page is the Hooks page: every clone in the repository locations with a go-pre-commit config,
 // grouped, and those without one.
 type Page struct {
 	// Tool is go-pre-commit, as the page heads it.
@@ -178,7 +178,7 @@ type Repo struct {
 
 	// HooksDir is the folder git runs its hooks from, with ~. Shared reports one other
 	// repositories use too, outside the clone's git folder and work tree, and SharedWith
-	// how many of the clones under the clone root use it, this one included; an action
+	// how many of the clones in the repository locations use it, this one included; an action
 	// there needs the user to confirm the folder.
 	HooksDir   string `json:"hooksDir"`
 	Shared     bool   `json:"shared"`

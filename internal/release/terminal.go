@@ -9,7 +9,7 @@ import (
 // OpenTerminal opens the terminal chosen for launches in the clone of repoText, the one
 // the page shows at dir (with ~ for home), for a check's Open in terminal: the user
 // commits, pushes, or deletes a tag there. The app runs nothing in it
-// (scriptrun.OpenFolder). Only a clone the Release page lists, or the clone root holds,
+// (scriptrun.OpenFolder). Only a clone the Release page lists, or the repository locations hold,
 // with that GitHub origin, is opened.
 func (s *Service) OpenTerminal(ctx context.Context, repoText, dir string) error {
 	name, err := s.checkRequest(repoText, "", "")
