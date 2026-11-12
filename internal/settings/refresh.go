@@ -61,11 +61,6 @@ type RefreshChoices struct {
 	Worktrees []int `json:"worktrees"`
 }
 
-// Kinds returns every refresh kind, in the order Settings shows them.
-func Kinds() []RefreshKind {
-	return []RefreshKind{RefreshInbox, RefreshChecks, RefreshWorktrees}
-}
-
 // refreshChoices returns the intervals each kind can be set to. The inbox's shortest is
 // two minutes, since each whole refresh reads every item; the checks follow can be off.
 func refreshChoices() RefreshChoices {
