@@ -270,7 +270,10 @@ it says which copy it uses, its version, and where it came from (a GitHub releas
   in `~/.local/bin`, and if your terminal still finds the old one first, the card says so and
   offers to move it to the Trash, through Finder, so **Put Back** works. The first time, macOS
   asks whether the app may control Finder; if you say no, it offers **Reveal in Finder** instead.
-  While a run uses the tool, neither kind of update starts.
+  Every other copy the card lists under **Other copies** (one the tool doesn't use, or one that
+  won't run) has **Move to the Trash** too, after you confirm, except a link, which Finder would
+  follow to what it points to, and a Homebrew copy, which Homebrew manages. While a run uses the
+  tool, neither kind of update starts.
 - **`~/.local/bin` and your `PATH`.** The app finds a tool it installed either way. If your shell's
   `PATH` doesn't include `~/.local/bin`, your terminal won't, and the card says so with the line to
   add to `~/.zprofile`: `export PATH="$HOME/.local/bin:$PATH"`. For go-pre-commit this matters
