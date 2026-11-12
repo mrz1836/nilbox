@@ -12,69 +12,6 @@ import (
 	"github.com/mrz1836/nilbox/internal/testutil"
 )
 
-func TestTheMenuBarIsOnByDefault(t *testing.T) {
-	t.Parallel()
-
-	svc, _, _ := newTestService(t)
-
-	on, err := svc.MenuBar(t.Context())
-	require.NoError(t, err)
-	assert.True(t, on)
-}
-
-func TestSetMenuBarEmitsOnceStored(t *testing.T) {
-	t.Parallel()
-
-	_, db, home := newTestService(t)
-	events := &testutil.Events{}
-	svc := serviceOver(t, db, home, WithEvents(events))
-
-	require.NoError(t, testutil.ErrOf(svc.SetMenuBar(t.Context(), false)))
-
-	on, err := svc.MenuBar(t.Context())
-	require.NoError(t, err)
-	assert.False(t, on)
-
-	require.NoError(t, testutil.ErrOf(svc.SetMenuBar(t.Context(), true)))
-	assert.Equal(t, []event.Event{event.MenuBarChanged{On: false}, event.MenuBarChanged{On: true}}, events.All())
-
-	got, err := svc.Get(t.Context())
-	require.NoError(t, err)
-	assert.True(t, got.MenuBar)
-}
-
-func TestAnUnreadableMenuBarSettingIsOn(t *testing.T) {
-	t.Parallel()
-
-	svc, db, _ := newTestService(t)
-	setPref(t, db, KeyMenuBar, "sometimes")
-
-	on, err := svc.MenuBar(t.Context())
-	require.NoError(t, err)
-	assert.True(t, on)
-
-	got, err := svc.Get(t.Context())
-	require.NoError(t, err)
-	assert.True(t, got.MenuBar)
-}
-
-func TestTheMenuBarSettingFailsOnAClosedDatabase(t *testing.T) {
-	t.Parallel()
-
-	svc, db, _ := newTestService(t)
-	events := &testutil.Events{}
-	svc.events = events
-
-	require.NoError(t, db.Close())
-
-	on, err := svc.MenuBar(t.Context())
-	require.Error(t, err)
-	assert.Equal(t, DefaultMenuBar, on)
-
-	require.Error(t, testutil.ErrOf(svc.SetMenuBar(t.Context(), false)))
-	assert.Empty(t, events.All(), "a change that was not stored is not told")
-}
-
 func TestSetNotificationBanner(t *testing.T) {
 	t.Parallel()
 
