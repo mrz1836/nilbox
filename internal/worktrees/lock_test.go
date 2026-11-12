@@ -10,6 +10,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/mrz1836/nilbox/internal/procs"
 )
 
 func TestParseAgentLockReadsThePID(t *testing.T) {
@@ -84,14 +86,14 @@ func TestLatestStartReadsTheLaterOfUTCAndLocal(t *testing.T) {
 type fakeProcesses map[int]fakeProcess
 
 type fakeProcess struct {
-	state   liveness
+	state   procs.Liveness
 	started time.Time
 }
 
-func (f fakeProcesses) lookup(pid int) (liveness, time.Time) {
+func (f fakeProcesses) lookup(pid int) (procs.Liveness, time.Time) {
 	p, ok := f[pid]
 	if !ok {
-		return livenessDead, time.Time{}
+		return procs.Gone, time.Time{}
 	}
 
 	return p.state, p.started
@@ -118,33 +120,33 @@ func TestSessionEnded(t *testing.T) {
 		{
 			name:  "the session's own process, started within the second it recorded",
 			lock:  agentLock{pid: 10, start: start},
-			procs: fakeProcesses{10: {state: livenessAlive, started: at.Add(900 * time.Millisecond)}},
+			procs: fakeProcesses{10: {state: procs.Running, started: at.Add(900 * time.Millisecond)}},
 		},
 		{
 			name:  "the session's process, started before the time it recorded",
 			lock:  agentLock{pid: 10, start: start},
-			procs: fakeProcesses{10: {state: livenessAlive, started: at.Add(-3 * time.Second)}},
+			procs: fakeProcesses{10: {state: procs.Running, started: at.Add(-3 * time.Second)}},
 		},
 		{
 			name:  "a reused PID: the process started after the session",
 			lock:  agentLock{pid: 10, start: start},
-			procs: fakeProcesses{10: {state: livenessAlive, started: at.Add(10 * time.Hour)}},
+			procs: fakeProcesses{10: {state: procs.Running, started: at.Add(10 * time.Hour)}},
 			ended: true,
 		},
 		{
 			name:  "a live process whose start is unknown counts as the session",
 			lock:  agentLock{pid: 10, start: start},
-			procs: fakeProcesses{10: {state: livenessAlive}},
+			procs: fakeProcesses{10: {state: procs.Running}},
 		},
 		{
 			name:  "a live process when the lock has no start counts as the session",
 			lock:  agentLock{pid: 10},
-			procs: fakeProcesses{10: {state: livenessAlive, started: at.Add(10 * time.Hour)}},
+			procs: fakeProcesses{10: {state: procs.Running, started: at.Add(10 * time.Hour)}},
 		},
 		{
 			name:  "an unknown state counts as running",
 			lock:  agentLock{pid: 10, start: start},
-			procs: fakeProcesses{10: {state: livenessUnknown}},
+			procs: fakeProcesses{10: {state: procs.Unknown}},
 		},
 	}
 
@@ -160,12 +162,12 @@ func TestSessionEnded(t *testing.T) {
 func TestEndedAgentLock(t *testing.T) {
 	t.Parallel()
 
-	procs := fakeProcesses{7: {state: livenessAlive}}
+	table := fakeProcesses{7: {state: procs.Running}}
 
-	assert.True(t, endedAgentLock("claude session pr-7 (pid 8)", procs, time.UTC), "an ended session's lock")
-	assert.False(t, endedAgentLock("claude session pr-7 (pid 7)", procs, time.UTC), "a running session's lock")
-	assert.False(t, endedAgentLock("locked by hand", procs, time.UTC), "only agent locks are judged")
-	assert.False(t, endedAgentLock("", procs, time.UTC))
+	assert.True(t, endedAgentLock("claude session pr-7 (pid 8)", table, time.UTC), "an ended session's lock")
+	assert.False(t, endedAgentLock("claude session pr-7 (pid 7)", table, time.UTC), "a running session's lock")
+	assert.False(t, endedAgentLock("locked by hand", table, time.UTC), "only agent locks are judged")
+	assert.False(t, endedAgentLock("", table, time.UTC))
 }
 
 // deadPID starts a short-lived child, waits for it so it is reaped, and returns its PID.
@@ -186,23 +188,24 @@ func deadPID(t *testing.T) int {
 func TestOSProcesses(t *testing.T) {
 	t.Parallel()
 
-	if processLiveness(os.Getpid()) == livenessUnknown {
+	if procs.Probe(os.Getpid()) == procs.Unknown {
 		t.Skip("process liveness is not supported on this OS")
 	}
 
 	dead := deadPID(t)
 
-	assert.Equal(t, livenessAlive, processLiveness(os.Getpid()))
-	assert.Equal(t, livenessDead, processLiveness(dead))
-	assert.Equal(t, livenessUnknown, processLiveness(0))
-	assert.Equal(t, livenessUnknown, processLiveness(-1))
+	for _, pid := range []int{0, -1, procs.MaxPID + 1} {
+		state, started := osProcesses{}.lookup(pid)
+		assert.Equal(t, procs.Unknown, state, "pid %d", pid)
+		assert.True(t, started.IsZero(), "pid %d has no start", pid)
+	}
 
 	state, started := osProcesses{}.lookup(dead)
-	assert.Equal(t, livenessDead, state)
+	assert.Equal(t, procs.Gone, state)
 	assert.True(t, started.IsZero(), "a dead process has no start")
 
 	state, started = osProcesses{}.lookup(os.Getpid())
-	assert.Equal(t, livenessAlive, state)
+	assert.Equal(t, procs.Running, state)
 
 	if runtime.GOOS == "darwin" {
 		require.False(t, started.IsZero(), "the start of a running process is read")
@@ -217,6 +220,9 @@ func TestOSProcesses(t *testing.T) {
 	own := "claude session pr-7 (pid " + strconv.Itoa(os.Getpid()) + " start " + time.Now().UTC().Format(lockStartLayout) + ")"
 	ended := "claude session pr-7 (pid " + strconv.Itoa(dead) + ")"
 
+	outOfRange := "claude session pr-7 (pid " + strconv.Itoa(procs.MaxPID+1) + ")"
+
 	assert.False(t, endedAgentLock(own, osProcesses{}, time.UTC), "this test's own process is running")
 	assert.True(t, endedAgentLock(ended, osProcesses{}, time.UTC), "a reaped process has ended")
+	assert.False(t, endedAgentLock(outOfRange, osProcesses{}, time.UTC), "a PID out of range is unknown, so its lock is kept")
 }

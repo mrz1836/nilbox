@@ -153,8 +153,10 @@ app:lint` reads.
   modes, reserved flags, and how a launch's options become its flags, so adding an agent adds
   a spec and the launcher, profiles, and editors read the rest from it; `internal/procs` lists
   the running processes' working directories (`lsof` on macOS, `/proc` on Linux), which tell
-  a worktree some session is in, and reads a process's start time (`StartedAt`), which tells a
-  process from a stranger that reused its PID; `internal/execpath` finds and runs external
+  a worktree some session is in, reads a process's start time (`StartedAt`), which tells a
+  process from a stranger that reused its PID, and probes a PID as running, gone, or unknown
+  (`Probe`, which never signals one `ValidPID` refuses and calls it unknown, so an agent's
+  worktree lock naming one is kept); `internal/execpath` finds and runs external
   programs (`Finder`, `Runner`; `Search.Path` searches the login shell's PATH), and starts a
   long-lived one in its own process group (`Start`, `Proc`), writing straight into a file the
   app tails and stopping the whole group with a signal ladder; nothing else starts a process

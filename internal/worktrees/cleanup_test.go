@@ -330,7 +330,7 @@ func TestListLinksAndStagesAgentWorktrees(t *testing.T) {
 
 	gh.set("example-repo", 10, pr(ItemMerged, ""))
 
-	svc := e.linked(linkDeps{gh: gh, procs: fakeProcesses{alive: {state: livenessAlive}}})
+	svc := e.linked(linkDeps{gh: gh, procs: fakeProcesses{alive: {state: procs.Running}}})
 
 	snap, err := svc.List(t.Context())
 	require.NoError(t, err)
@@ -511,7 +511,7 @@ func TestUnlock(t *testing.T) {
 	e := newEnv(t)
 	repo := e.newRepo(t, "example-repo")
 	alive := os.Getpid()
-	svc := e.linked(linkDeps{procs: fakeProcesses{alive: {state: livenessAlive}}})
+	svc := e.linked(linkDeps{procs: fakeProcesses{alive: {state: procs.Running}}})
 
 	stale := addWorktree(t, repo, filepath.Join(e.home, "wt", "stale"), "stale")
 	lock(t, repo, stale, "claude session stale (pid 999999 start Fri Nov  6 17:14:26 2026)")
@@ -622,7 +622,7 @@ func TestCleanUpRefusesWhatIsNotFinished(t *testing.T) {
 
 	plain, _ := agentWorktree(t, repo, "scratch")
 
-	svc := e.linked(linkDeps{gh: gh, procs: fakeProcesses{alive: {state: livenessAlive}}})
+	svc := e.linked(linkDeps{gh: gh, procs: fakeProcesses{alive: {state: procs.Running}}})
 
 	_, err := svc.CleanUp(t.Context(), repo, repo, nil)
 	require.ErrorIs(t, err, ErrMainWorktree)
@@ -633,7 +633,7 @@ func TestCleanUpRefusesWhatIsNotFinished(t *testing.T) {
 	_, err = svc.CleanUp(t.Context(), e.home, open, nil)
 	require.ErrorIs(t, err, ErrOutsideCloneRoot)
 
-	offline := e.linked(linkDeps{gh: &fakeGitHub{err: errFakeGitHub}, procs: fakeProcesses{alive: {state: livenessAlive}}})
+	offline := e.linked(linkDeps{gh: &fakeGitHub{err: errFakeGitHub}, procs: fakeProcesses{alive: {state: procs.Running}}})
 
 	_, err = offline.CleanUp(t.Context(), repo, open, nil)
 	require.ErrorIs(t, err, ErrGitHubUnavailable)
