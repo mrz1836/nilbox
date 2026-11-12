@@ -4,10 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"slices"
 	"strconv"
-
-	"github.com/mrz1836/nilbox/internal/textutil"
 )
 
 // ListKey names an inbox list, as the inbox snapshot names it: each list is a section of
@@ -33,6 +30,12 @@ var ErrUnknownSection = errors.New("unknown inbox section")
 // listKeys returns the inbox lists in the order the inbox shows them.
 func listKeys() []ListKey {
 	return []ListKey{ListReviewRequested, ListAuthored, ListAssigned}
+}
+
+// sections is the inbox lists as a choice, for the setters that name one: a list that
+// is not one of them is refused with ErrUnknownSection.
+func sections() choice[ListKey] {
+	return choice[ListKey]{values: listKeys(), invalid: ErrUnknownSection}
 }
 
 // collapsedKey is the preference that stores whether the section for list is collapsed.
@@ -80,9 +83,8 @@ func (s *Service) CollapsedSections(ctx context.Context) ([]ListKey, error) {
 // SetSectionCollapsed stores whether an inbox section is collapsed, so the inbox opens the
 // same way at the next launch, and returns the settings with it.
 func (s *Service) SetSectionCollapsed(ctx context.Context, section ListKey, collapsed bool) (Settings, error) {
-	if !slices.Contains(listKeys(), section) {
-		return Settings{}, fmt.Errorf("%w %q: choose one of %s", ErrUnknownSection, section,
-			textutil.Join(listKeys(), ", "))
+	if err := sections().check(section); err != nil {
+		return Settings{}, err
 	}
 
 	return s.save(ctx, setting(collapsedKey(section), strconv.FormatBool(collapsed)))

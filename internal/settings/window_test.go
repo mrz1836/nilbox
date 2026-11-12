@@ -144,7 +144,7 @@ func TestMinWindowSizeGrowsWithTheTextSize(t *testing.T) {
 	assert.Equal(t, WindowSize{Width: 1040, Height: 676}, MinWindowSizeFor(TextSizeLarger))
 	assert.Equal(t, MinWindowSizeFor(DefaultTextSize), MinWindowSizeFor("unknown"))
 
-	for _, size := range textSizes() {
+	for _, size := range textSizes().values {
 		assert.True(t, MinWindowSizeFor(size).valid(), "the minimum at %s is a size the window can be", size)
 	}
 }

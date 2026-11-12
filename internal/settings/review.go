@@ -4,9 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"slices"
-
-	"github.com/mrz1836/nilbox/internal/textutil"
 )
 
 // KeyMergeMethod is how the review sheet merges a pull request, stored as one of the
@@ -36,19 +33,14 @@ const DefaultMergeMethod = MergeMethodRepo
 // ErrInvalidMergeMethod is returned for a merge method that is not one of the choices.
 var ErrInvalidMergeMethod = errors.New("unknown merge method")
 
-// mergeMethods returns the merge method choices in the order Settings offers them.
-func mergeMethods() []MergeMethod {
-	return []MergeMethod{MergeMethodRepo, MergeMethodSquash, MergeMethodMerge, MergeMethodRebase}
-}
-
-// decodeMergeMethod reads a stored merge method, falling back to DefaultMergeMethod for
-// one that is unset or no longer a choice.
-func decodeMergeMethod(stored string) MergeMethod {
-	if m := MergeMethod(stored); slices.Contains(mergeMethods(), m) {
-		return m
+// mergeMethods is the merge method choice: the methods in the order Settings offers them,
+// falling back to DefaultMergeMethod for a stored method that is unset or no longer a
+// choice.
+func mergeMethods() choice[MergeMethod] {
+	return choice[MergeMethod]{
+		values:   []MergeMethod{MergeMethodRepo, MergeMethodSquash, MergeMethodMerge, MergeMethodRebase},
+		fallback: DefaultMergeMethod, invalid: ErrInvalidMergeMethod,
 	}
-
-	return DefaultMergeMethod
 }
 
 // MergeMethod returns the stored merge method, or DefaultMergeMethod when none is stored
@@ -59,15 +51,14 @@ func (s *Service) MergeMethod(ctx context.Context) (MergeMethod, error) {
 		return DefaultMergeMethod, fmt.Errorf("read the merge method: %w", err)
 	}
 
-	return decodeMergeMethod(stored), nil
+	return mergeMethods().decode(stored), nil
 }
 
 // SetMergeMethod stores how the review sheet merges: MergeMethodRepo, MergeMethodSquash,
 // MergeMethodMerge, or MergeMethodRebase, and returns the settings with it.
 func (s *Service) SetMergeMethod(ctx context.Context, method MergeMethod) (Settings, error) {
-	if !slices.Contains(mergeMethods(), method) {
-		return Settings{}, fmt.Errorf("%w %q: choose one of %s", ErrInvalidMergeMethod, method,
-			textutil.Join(mergeMethods(), ", "))
+	if err := mergeMethods().check(method); err != nil {
+		return Settings{}, err
 	}
 
 	return s.save(ctx, setting(KeyMergeMethod, string(method)))

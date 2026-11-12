@@ -4,13 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"slices"
 	"strconv"
 	"strings"
 	"unicode/utf8"
 
 	"github.com/mrz1836/nilbox/internal/store"
-	"github.com/mrz1836/nilbox/internal/textutil"
 )
 
 // keyStatusSortPrefix starts the key that stores whether an inbox list is sorted by
@@ -118,9 +116,8 @@ func (s *Service) InboxOrder(ctx context.Context) (InboxOrder, error) {
 // SetStatusSort stores whether an inbox list is sorted by project status, rather than by
 // newest activity, and returns the settings with it.
 func (s *Service) SetStatusSort(ctx context.Context, section ListKey, on bool) (Settings, error) {
-	if !slices.Contains(listKeys(), section) {
-		return Settings{}, fmt.Errorf("%w %q: choose one of %s", ErrUnknownSection, section,
-			textutil.Join(listKeys(), ", "))
+	if err := sections().check(section); err != nil {
+		return Settings{}, err
 	}
 
 	return s.save(ctx, setting(statusSortKey(section), strconv.FormatBool(on)))

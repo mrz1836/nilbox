@@ -53,11 +53,11 @@ func FuzzDecodeUIPrefs(f *testing.F) {
 	}
 
 	f.Fuzz(func(t *testing.T, stored string) {
-		theme := decodeTheme(stored)
-		assert.True(t, validTheme(theme), "theme %q", theme)
-		assert.Equal(t, theme, decodeTheme(string(theme)))
+		theme := themes().decode(stored)
+		assert.True(t, themes().valid(theme), "theme %q", theme)
+		assert.Equal(t, theme, themes().decode(string(theme)))
 
-		if validTheme(Theme(stored)) {
+		if themes().valid(Theme(stored)) {
 			assert.Equal(t, Theme(stored), theme)
 		}
 
