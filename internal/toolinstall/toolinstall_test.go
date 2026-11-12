@@ -408,11 +408,10 @@ func TestAFailedRollBackSaysSo(t *testing.T) {
 func TestEveryRefusalLeavesNothingBehind(t *testing.T) {
 	t.Parallel()
 
-	bomb := func(t *testing.T) []byte {
-		t.Helper()
-
-		return makeArchive(t, entry{name: testBinary, body: goodProgram}, entry{name: "padding", size: 4 << 20})
-	}
+	// The bomb holds the program and unpacks to more than twice the cap its case sets, so
+	// only the cap refuses it. Its subtests share the one archive.
+	bombArchive := makeArchive(t, entry{name: testBinary, body: goodProgram}, entry{name: "padding", size: 128 << 10})
+	bomb := func(*testing.T) []byte { return bombArchive }
 
 	tests := []struct {
 		name    string
@@ -469,7 +468,7 @@ func TestEveryRefusalLeavesNothingBehind(t *testing.T) {
 			return makeArchive(t, entry{name: testBinary, body: goodProgram}, entry{name: "./" + testBinary, body: goodProgram})
 		}, want: ErrArchive},
 		{name: "an oversized entry", change: func(s *setup, _ *Request) { s.in.maxProgram = 4 }, want: ErrArchive},
-		{name: "a gzip bomb", archive: bomb, change: func(s *setup, _ *Request) { s.in.maxUnpacked = 1 << 20 }, want: ErrArchive},
+		{name: "a gzip bomb", archive: bomb, change: func(s *setup, _ *Request) { s.in.maxUnpacked = 64 << 10 }, want: ErrArchive},
 		{name: "a download that won't run", archive: func(t *testing.T) []byte {
 			t.Helper()
 
