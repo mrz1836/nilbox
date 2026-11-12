@@ -56,16 +56,14 @@ func TestFixedTextSizePattern(t *testing.T) {
 func TestFrontendTextFollowsTheTextSize(t *testing.T) {
 	t.Parallel()
 
-	root := moduleRoot(t)
-
 	var found []string
 
-	for _, rel := range repoFiles(t, root) {
+	for _, rel := range repoFiles(t) {
 		if !frontendBrandFile(rel) {
 			continue
 		}
 
-		text, ok := readText(t, root, rel)
+		text, ok := readText(t, rel)
 		if !ok {
 			continue
 		}

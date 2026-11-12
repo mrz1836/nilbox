@@ -87,8 +87,7 @@ func httpName(file *ast.File) string {
 }
 
 // strayRequests returns "file:line: what" for each way src, the Go file rel, could send a
-// GitHub request around the budget: importing net/http outside internal/github, building
-// or sending a request outside requestBuilders, or running gh's api command.
+// GitHub request around the budget, as strayRequestsIn tells them.
 func strayRequests(rel, src string) ([]string, error) {
 	fset := token.NewFileSet()
 
@@ -97,6 +96,14 @@ func strayRequests(rel, src string) ([]string, error) {
 		return nil, fmt.Errorf("parse %s: %w", rel, err)
 	}
 
+	return strayRequestsIn(fset, rel, file), nil
+}
+
+// strayRequestsIn returns "file:line: what" for each way file, the Go file rel parsed
+// with object resolution on, could send a GitHub request around the budget: importing
+// net/http outside internal/github, building or sending a request outside
+// requestBuilders, or running gh's api command.
+func strayRequestsIn(fset *token.FileSet, rel string, file *ast.File) []string {
 	var found []string
 
 	where := func(n ast.Node, what string) {
@@ -120,7 +127,7 @@ func strayRequests(rel, src string) ([]string, error) {
 		})
 	}
 
-	return found, nil
+	return found
 }
 
 // buildsRequests reports whether decl is one of requestBuilders.
@@ -160,24 +167,16 @@ func runsGHAPI(call *ast.CallExpr) bool {
 func TestEveryGitHubRequestCountsAgainstTheBudget(t *testing.T) {
 	t.Parallel()
 
-	root := moduleRoot(t)
-
 	var found []string
 
-	for _, rel := range goFiles(t, root) {
+	for _, rel := range goFiles(t) {
 		if !requestScope(rel) {
 			continue
 		}
 
-		src, ok := readText(t, root, rel)
-		if !ok {
-			continue
+		if fset, file, ok := goSyntax(t, rel); ok {
+			found = append(found, strayRequestsIn(fset, rel, file)...)
 		}
-
-		stray, err := strayRequests(rel, src)
-		require.NoError(t, err)
-
-		found = append(found, stray...)
 	}
 
 	assert.Empty(t, found,

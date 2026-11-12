@@ -3,7 +3,6 @@ package repoguard_test
 import (
 	"fmt"
 	"go/ast"
-	"go/parser"
 	"go/token"
 	"maps"
 	"path"
@@ -156,14 +155,12 @@ func hasPrefix(s string, prefixes []string) bool {
 func TestNoORM(t *testing.T) {
 	t.Parallel()
 
-	root := moduleRoot(t)
-
 	var orms, drivers []string
 
 	// Every Go file is parsed whatever its build tags, tests included, so neither a tag
 	// nor a test can hide an import from this check.
-	for _, rel := range goFiles(t, root) {
-		for _, imp := range fileImports(t, root, rel) {
+	for _, rel := range goFiles(t) {
+		for _, imp := range fileImports(t, rel) {
 			switch {
 			case hasPrefix(imp, ormImportPrefixes()):
 				orms = append(orms, rel+": "+imp)
@@ -226,18 +223,13 @@ func sqlCall(n ast.Node) (string, bool) {
 
 // sqlUses returns "file:line: what" for every SQL statement literal and every call that
 // runs SQL in the Go file rel.
-func sqlUses(t *testing.T, root, rel string) []string {
+func sqlUses(t *testing.T, rel string) []string {
 	t.Helper()
 
-	src, ok := readText(t, root, rel)
+	fset, file, ok := goSyntax(t, rel)
 	if !ok {
 		return nil
 	}
-
-	fset := token.NewFileSet()
-
-	file, err := parser.ParseFile(fset, rel, src, parser.SkipObjectResolution)
-	require.NoError(t, err, rel)
 
 	var found []string
 
@@ -266,14 +258,12 @@ func sqlUses(t *testing.T, root, rel string) []string {
 func TestSQLOnlyInQueryPackages(t *testing.T) {
 	t.Parallel()
 
-	root := moduleRoot(t)
-
 	var found []string
 
 	// Every Go file is parsed whatever its build tags, so a tag cannot hide SQL.
-	for _, rel := range goFiles(t, root) {
+	for _, rel := range goFiles(t) {
 		if !sqlExempt(rel) {
-			found = append(found, sqlUses(t, root, rel)...)
+			found = append(found, sqlUses(t, rel)...)
 		}
 	}
 
@@ -347,18 +337,13 @@ type literal struct {
 }
 
 // stringLiterals returns every string literal in the Go file rel.
-func stringLiterals(t *testing.T, root, rel string) []literal {
+func stringLiterals(t *testing.T, rel string) []literal {
 	t.Helper()
 
-	src, ok := readText(t, root, rel)
+	fset, file, ok := goSyntax(t, rel)
 	if !ok {
 		return nil
 	}
-
-	fset := token.NewFileSet()
-
-	file, err := parser.ParseFile(fset, rel, src, parser.SkipObjectResolution)
-	require.NoError(t, err, rel)
 
 	var literals []literal
 
@@ -380,14 +365,14 @@ func stringLiterals(t *testing.T, root, rel string) []literal {
 
 // goSchemaChanges returns "file:line: name" for every schema change in a string literal of
 // the Go file rel, except the migration runner creating its history table.
-func goSchemaChanges(t *testing.T, root, rel string) []string {
+func goSchemaChanges(t *testing.T, rel string) []string {
 	t.Helper()
 
 	runner := path.Dir(rel) == migrateDir
 
 	var found []string
 
-	for _, lit := range stringLiterals(t, root, rel) {
+	for _, lit := range stringLiterals(t, rel) {
 		for _, change := range schemaChanges(lit.where, lit.value) {
 			if !runner || !strings.HasSuffix(change, ": "+historyTable) {
 				found = append(found, change)
@@ -401,19 +386,17 @@ func goSchemaChanges(t *testing.T, root, rel string) []string {
 func TestSchemaComesFromMigrations(t *testing.T) {
 	t.Parallel()
 
-	root := moduleRoot(t)
-
 	var found []string
 
 	// Generated query code holds its query files' SQL, so this covers them too, along
 	// with any hand-written SQL in the store.
-	for _, rel := range goFiles(t, root) {
+	for _, rel := range goFiles(t) {
 		if !strings.HasSuffix(rel, "_test.go") {
-			found = append(found, goSchemaChanges(t, root, rel)...)
+			found = append(found, goSchemaChanges(t, rel)...)
 		}
 	}
 
-	files, texts := repoTexts(t, root, queryPackagePattern+"/*.sql")
+	files, texts := repoTexts(t, queryPackagePattern+"/*.sql")
 	for _, rel := range files {
 		found = append(found, schemaChanges(rel, texts[rel])...)
 	}
@@ -483,17 +466,17 @@ func liveTables(migrations []string) map[string]bool {
 
 // repoTexts returns the text of every repository file that matches pattern, keyed by its
 // path and in path order.
-func repoTexts(t *testing.T, root, pattern string) ([]string, map[string]string) {
+func repoTexts(t *testing.T, pattern string) ([]string, map[string]string) {
 	t.Helper()
 
 	texts := map[string]string{}
 
-	for _, rel := range repoFiles(t, root) {
+	for _, rel := range repoFiles(t) {
 		if ok, _ := path.Match(pattern, rel); !ok {
 			continue
 		}
 
-		if text, ok := readText(t, root, rel); ok {
+		if text, ok := readText(t, rel); ok {
 			texts[rel] = text
 		}
 	}
@@ -545,13 +528,12 @@ func ownershipGaps(live map[string]bool, owners map[string]string) ([]string, []
 func TestQueryFilesTouchOwnTables(t *testing.T) {
 	t.Parallel()
 
-	root := moduleRoot(t)
 	owners := tableOwners()
 
 	t.Run("every query file touches only its package's tables", func(t *testing.T) {
 		t.Parallel()
 
-		files, texts := repoTexts(t, root, queryPackagePattern+"/*.sql")
+		files, texts := repoTexts(t, queryPackagePattern+"/*.sql")
 		require.NotEmpty(t, files, "no query files found; update this guard")
 
 		assert.Empty(t, crossOwnerTables(files, texts, owners),
@@ -561,7 +543,7 @@ func TestQueryFilesTouchOwnTables(t *testing.T) {
 	t.Run("every table the migrations create has one owner", func(t *testing.T) {
 		t.Parallel()
 
-		files, texts := repoTexts(t, root, migrationsDir+"/*.sql")
+		files, texts := repoTexts(t, migrationsDir+"/*.sql")
 		require.NotEmpty(t, files, "no migrations found; update this guard")
 
 		migrations := make([]string, 0, len(files))
@@ -633,10 +615,10 @@ func TestLiveTables(t *testing.T) {
 
 // envValue returns the value that the env file rel assigns key, failing the test when it
 // assigns none.
-func envValue(t *testing.T, root, rel, key string) string {
+func envValue(t *testing.T, rel, key string) string {
 	t.Helper()
 
-	text, ok := readText(t, root, rel)
+	text, ok := readText(t, rel)
 	require.True(t, ok, "%s is missing", rel)
 
 	m := regexp.MustCompile(`(?m)^\s*` + regexp.QuoteMeta(key) + `=(\S+)`).FindStringSubmatch(text)
@@ -658,16 +640,15 @@ func sqlcOutput(rel string) bool {
 func TestGeneratedSQLCVersion(t *testing.T) {
 	t.Parallel()
 
-	root := moduleRoot(t)
-	want := envValue(t, root, projectEnvFile, sqlcVersionKey)
+	want := envValue(t, projectEnvFile, sqlcVersionKey)
 
 	var (
 		checked int
 		found   []string
 	)
 
-	for _, rel := range goFiles(t, root) {
-		text, ok := readText(t, root, rel)
+	for _, rel := range goFiles(t) {
+		text, ok := readText(t, rel)
 		if !ok || (!sqlcOutput(rel) && !strings.Contains(text, sqlcHeader)) {
 			continue
 		}

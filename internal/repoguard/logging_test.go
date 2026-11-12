@@ -46,8 +46,7 @@ func loggingScope(rel string) bool {
 }
 
 // globalLoggerUses returns "file:line: what" for every use of a process-wide logger in
-// src, the Go file rel: a reference to one of globalLoggerFuncs through its package, or a
-// dot import of either package, which would hide such calls.
+// src, the Go file rel, as globalLoggerUsesIn tells them.
 func globalLoggerUses(rel, src string) ([]string, error) {
 	fset := token.NewFileSet()
 
@@ -58,6 +57,14 @@ func globalLoggerUses(rel, src string) ([]string, error) {
 		return nil, fmt.Errorf("parse %s: %w", rel, err)
 	}
 
+	return globalLoggerUsesIn(fset, rel, file), nil
+}
+
+// globalLoggerUsesIn returns "file:line: what" for every use of a process-wide logger in
+// file, the Go file rel parsed with object resolution on: a reference to one of
+// globalLoggerFuncs through its package, or a dot import of either package, which would
+// hide such calls.
+func globalLoggerUsesIn(fset *token.FileSet, rel string, file *ast.File) []string {
 	packages, found := loggerImports(fset, rel, file)
 	funcs := globalLoggerFuncs()
 
@@ -69,7 +76,7 @@ func globalLoggerUses(rel, src string) ([]string, error) {
 		return true
 	})
 
-	return found, nil
+	return found
 }
 
 // loggerImports returns the name each logger package in globalLoggerFuncs is imported
@@ -121,25 +128,17 @@ func packageSelector(n ast.Node) (pkg, name string, ok bool) {
 func TestNoGlobalLogger(t *testing.T) {
 	t.Parallel()
 
-	root := moduleRoot(t)
-
 	var found []string
 
 	// Every Go file is parsed whatever its build tags, so a tag cannot hide a call.
-	for _, rel := range goFiles(t, root) {
+	for _, rel := range goFiles(t) {
 		if !loggingScope(rel) {
 			continue
 		}
 
-		src, ok := readText(t, root, rel)
-		if !ok {
-			continue
+		if fset, file, ok := goSyntax(t, rel); ok {
+			found = append(found, globalLoggerUsesIn(fset, rel, file)...)
 		}
-
-		uses, err := globalLoggerUses(rel, src)
-		require.NoError(t, err)
-
-		found = append(found, uses...)
 	}
 
 	assert.Empty(t, found,

@@ -43,6 +43,11 @@ func strayWrites(rel, src string) ([]string, error) {
 		return nil, fmt.Errorf("parse %s: %w", rel, err)
 	}
 
+	return strayWritesIn(fset, rel, file), nil
+}
+
+// strayWritesIn is strayWrites for file, the parsed Go file rel.
+func strayWritesIn(fset *token.FileSet, rel string, file *ast.File) []string {
 	var found []string
 
 	for _, decl := range file.Decls {
@@ -67,7 +72,7 @@ func strayWrites(rel, src string) ([]string, error) {
 		})
 	}
 
-	return found, nil
+	return found
 }
 
 // strayWrite says how call, made in the function named caller, could change GitHub around
@@ -110,24 +115,16 @@ func isMethodGet(arg ast.Expr) bool {
 func TestEveryGitHubWriteGoesThroughTheGate(t *testing.T) {
 	t.Parallel()
 
-	root := moduleRoot(t)
-
 	var found []string
 
-	for _, rel := range goFiles(t, root) {
+	for _, rel := range goFiles(t) {
 		if !strings.HasPrefix(rel, githubPackage) || !requestScope(rel) {
 			continue
 		}
 
-		src, ok := readText(t, root, rel)
-		if !ok {
-			continue
+		if fset, file, ok := goSyntax(t, rel); ok {
+			found = append(found, strayWritesIn(fset, rel, file)...)
 		}
-
-		stray, err := strayWrites(rel, src)
-		require.NoError(t, err)
-
-		found = append(found, stray...)
 	}
 
 	assert.Empty(t, found,
