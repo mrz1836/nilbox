@@ -974,7 +974,11 @@ describe('RepoScriptsPage', () => {
     )
 
     expect(await screen.findByRole('combobox', { name: 'Repository' })).toHaveValue('~/projects/sdk')
-    expect(platform.listRepoScripts).toHaveBeenCalledExactlyOnceWith('~/projects/sdk', false)
+    // The page asks for the clone's scripts from an effect, which may run after the picker
+    // shows, as it does under coverage.
+    await waitFor(() => {
+      expect(platform.listRepoScripts).toHaveBeenCalledExactlyOnceWith('~/projects/sdk', false)
+    })
   })
 
   it('remembers the clone it starts on, so a list ordered anew never moves the page', async () => {
