@@ -51,6 +51,19 @@ func programNames(r *testutil.Runner) []string {
 	return names
 }
 
+// testOptions returns the Options a test starts a Core with: a fresh data directory, a
+// fresh home holding dirs (made as testutil.ClaudeHome makes them), and a runner that
+// runs no program. A test sets whatever else it needs on the result.
+func testOptions(t *testing.T, dirs ...string) Options {
+	t.Helper()
+
+	return Options{
+		Paths:  appdata.NewPaths(filepath.Join(t.TempDir(), "data")),
+		Home:   testutil.ClaudeHome(t, dirs...),
+		Runner: noPrograms(),
+	}
+}
+
 // bootstrap starts a Core over a fresh data directory and closes it when the test ends.
 func bootstrap(t *testing.T, opts Options) *Core {
 	t.Helper()
@@ -181,12 +194,10 @@ func TestBootstrapUnreadableHomeSkipsDiscovery(t *testing.T) {
 
 	var logs bytes.Buffer
 
-	c := bootstrap(t, Options{
-		Paths:  appdata.NewPaths(filepath.Join(t.TempDir(), "data")),
-		Home:   filepath.Join(t.TempDir(), "missing-home"),
-		Runner: noPrograms(),
-		Logger: slog.New(slog.NewTextHandler(&logs, nil)),
-	})
+	opts := testOptions(t)
+	opts.Home = filepath.Join(t.TempDir(), "missing-home")
+	opts.Logger = slog.New(slog.NewTextHandler(&logs, nil))
+	c := bootstrap(t, opts)
 
 	assert.Empty(t, profileNames(t, c))
 	assert.Contains(t, logs.String(), "profile discovery skipped")
@@ -195,11 +206,7 @@ func TestBootstrapUnreadableHomeSkipsDiscovery(t *testing.T) {
 func TestServicesListsBoundServices(t *testing.T) {
 	t.Parallel()
 
-	c := bootstrap(t, Options{
-		Paths:  appdata.NewPaths(filepath.Join(t.TempDir(), "data")),
-		Home:   testutil.ClaudeHome(t, ".claude"),
-		Runner: noPrograms(),
-	})
+	c := bootstrap(t, testOptions(t, ".claude"))
 
 	services := c.Services()
 
@@ -224,11 +231,7 @@ func TestServicesListsBoundServices(t *testing.T) {
 func TestTheSweeperSweepsTheWorktreeService(t *testing.T) {
 	t.Parallel()
 
-	c := bootstrap(t, Options{
-		Paths:  appdata.NewPaths(filepath.Join(t.TempDir(), "data")),
-		Home:   testutil.ClaudeHome(t),
-		Runner: noPrograms(),
-	})
+	c := bootstrap(t, testOptions(t))
 
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
@@ -269,12 +272,9 @@ func TestThemeChangesReachTheEvents(t *testing.T) {
 
 	events := &testutil.Events{}
 
-	c := bootstrap(t, Options{
-		Paths:  appdata.NewPaths(filepath.Join(t.TempDir(), "data")),
-		Home:   testutil.ClaudeHome(t),
-		Runner: noPrograms(),
-		Events: events,
-	})
+	opts := testOptions(t)
+	opts.Events = events
+	c := bootstrap(t, opts)
 
 	require.NoError(t, testutil.ErrOf(c.Settings.SetTheme(t.Context(), settings.ThemeDark)))
 	require.Error(t, testutil.ErrOf(c.Settings.SetTheme(t.Context(), "sepia")))
@@ -303,13 +303,10 @@ func TestMenuBarAndNotificationsReachTheShell(t *testing.T) {
 	events := &testutil.Events{}
 	poster := &posterStub{}
 
-	c := bootstrap(t, Options{
-		Paths:   appdata.NewPaths(filepath.Join(t.TempDir(), "data")),
-		Home:    testutil.ClaudeHome(t),
-		Runner:  noPrograms(),
-		Events:  events,
-		Banners: poster,
-	})
+	opts := testOptions(t)
+	opts.Events = events
+	opts.Banners = poster
+	c := bootstrap(t, opts)
 
 	require.NoError(t, testutil.ErrOf(c.Settings.SetMenuBar(t.Context(), false)))
 	assert.Equal(t, []event.Event{event.MenuBarChanged{On: false}}, events.All())
@@ -326,11 +323,7 @@ func TestMenuBarAndNotificationsReachTheShell(t *testing.T) {
 func TestTheShellReadsItsSettingsOffTheBoundService(t *testing.T) {
 	t.Parallel()
 
-	c := bootstrap(t, Options{
-		Paths:  appdata.NewPaths(filepath.Join(t.TempDir(), "data")),
-		Home:   testutil.ClaudeHome(t),
-		Runner: noPrograms(),
-	})
+	c := bootstrap(t, testOptions(t))
 
 	for _, s := range c.Services() {
 		assert.NotEqual(t, c.ShellSettings, s, "the shell's settings are not bound")
@@ -364,11 +357,7 @@ func TestTheShellReadsItsSettingsOffTheBoundService(t *testing.T) {
 func TestThemeWithoutAnEventSink(t *testing.T) {
 	t.Parallel()
 
-	c := bootstrap(t, Options{
-		Paths:  appdata.NewPaths(filepath.Join(t.TempDir(), "data")),
-		Home:   testutil.ClaudeHome(t),
-		Runner: noPrograms(),
-	})
+	c := bootstrap(t, testOptions(t))
 
 	require.NoError(t, testutil.ErrOf(c.Settings.SetTheme(t.Context(), settings.ThemeLight)))
 
@@ -380,14 +369,11 @@ func TestThemeWithoutAnEventSink(t *testing.T) {
 func TestAppInfoReportsVersion(t *testing.T) {
 	t.Parallel()
 
-	c := bootstrap(t, Options{
-		Paths:   appdata.NewPaths(filepath.Join(t.TempDir(), "data")),
-		Home:    testutil.ClaudeHome(t),
-		Version: "v1.2.3",
-		Release: "1.2.3",
-		Build:   "42",
-		Runner:  noPrograms(),
-	})
+	opts := testOptions(t)
+	opts.Version = "v1.2.3"
+	opts.Release = "1.2.3"
+	opts.Build = "42"
+	c := bootstrap(t, opts)
 
 	info := c.AppInfo.Info()
 	assert.Equal(t, "v1.2.3", info.Version)
@@ -445,11 +431,7 @@ func TestBootstrapStartsFreshWhenTheDatabaseCannotBeRead(t *testing.T) {
 func TestBootstrapRefusesADatabaseFromANewerBuild(t *testing.T) {
 	t.Parallel()
 
-	opts := Options{
-		Paths:  appdata.NewPaths(filepath.Join(t.TempDir(), "data")),
-		Home:   testutil.ClaudeHome(t),
-		Runner: noPrograms(),
-	}
+	opts := testOptions(t)
 
 	c := bootstrap(t, opts)
 	_, err := c.DB.ExecContext(t.Context(), `INSERT INTO schema_migrations (version, name, checksum, applied_at)
@@ -466,11 +448,9 @@ func TestInboxRefreshUsesInjectedRunner(t *testing.T) {
 
 	runner := noPrograms()
 
-	c := bootstrap(t, Options{
-		Paths:  appdata.NewPaths(filepath.Join(t.TempDir(), "data")),
-		Home:   testutil.ClaudeHome(t),
-		Runner: runner,
-	})
+	opts := testOptions(t)
+	opts.Runner = runner
+	c := bootstrap(t, opts)
 
 	// The token is borrowed through the injected runner, which runs nothing, so the
 	// refresh fails before any request is made.
@@ -496,11 +476,9 @@ func TestWorktreeItemStatesBorrowTheToken(t *testing.T) {
 
 	runner := noPrograms()
 
-	c := bootstrap(t, Options{
-		Paths:  appdata.NewPaths(filepath.Join(t.TempDir(), "data")),
-		Home:   testutil.ClaudeHome(t),
-		Runner: runner,
-	})
+	opts := testOptions(t)
+	opts.Runner = runner
+	c := bootstrap(t, opts)
 
 	states := itemStates{tokens: github.NewTokenSource(runner, execpath.Search{Home: testutil.ClaudeHome(t)}), client: github.NewClient("test")}
 
@@ -516,11 +494,7 @@ func TestWorktreeItemStatesBorrowTheToken(t *testing.T) {
 func TestBootstrapAddsTheStarterPrompts(t *testing.T) {
 	t.Parallel()
 
-	opts := Options{
-		Paths:  appdata.NewPaths(filepath.Join(t.TempDir(), "data")),
-		Home:   testutil.ClaudeHome(t, ".claude"),
-		Runner: noPrograms(),
-	}
+	opts := testOptions(t, ".claude")
 
 	c := bootstrap(t, opts)
 

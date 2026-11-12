@@ -1,14 +1,12 @@
 package core
 
 import (
-	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/mrz1836/nilbox/internal/appdata"
 	"github.com/mrz1836/nilbox/internal/github"
 	"github.com/mrz1836/nilbox/internal/inbox"
 	"github.com/mrz1836/nilbox/internal/launchdefaults"
@@ -18,11 +16,7 @@ import (
 func TestLaunchDefaultTargetsListTheInboxRepositories(t *testing.T) {
 	t.Parallel()
 
-	c := bootstrap(t, Options{
-		Paths:  appdata.NewPaths(filepath.Join(t.TempDir(), "data")),
-		Home:   testutil.ClaudeHome(t, ".claude"),
-		Runner: noPrograms(),
-	})
+	c := bootstrap(t, testOptions(t, ".claude"))
 	at := time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)
 
 	pr := github.Item{IsPR: true, Number: 1, CreatedAt: at, UpdatedAt: at, RepoOwner: "acme-org", RepoName: "web"}

@@ -38,11 +38,7 @@ import (
 func TestSettingsViewsReadTheSettingsAsTheyAreNow(t *testing.T) {
 	t.Parallel()
 
-	c := bootstrap(t, Options{
-		Paths:  appdata.NewPaths(filepath.Join(t.TempDir(), "data")),
-		Home:   testutil.ClaudeHome(t, ".claude"),
-		Runner: noPrograms(),
-	})
+	c := bootstrap(t, testOptions(t, ".claude"))
 	ctx := t.Context()
 	launch := settingsView[launcher.LaunchSettings]{settings: c.Settings, part: launchSettings}
 	sweep := settingsView[worktrees.SweepSettings]{settings: c.Settings, part: sweepSettings}
@@ -243,11 +239,9 @@ func TestCloseForgetsTheToken(t *testing.T) {
 
 	runner := &testutil.Runner{Stdout: "test-token-not-real\n"}
 
-	c, err := Bootstrap(t.Context(), Options{
-		Paths:  appdata.NewPaths(filepath.Join(t.TempDir(), "data")),
-		Home:   testutil.ClaudeHome(t),
-		Runner: runner,
-	})
+	opts := testOptions(t)
+	opts.Runner = runner
+	c, err := Bootstrap(t.Context(), opts)
 	require.NoError(t, err)
 
 	for range 2 {
