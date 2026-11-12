@@ -554,12 +554,13 @@ func findTranscript(configDir, sessionID string) string {
 	return ""
 }
 
-// processScan lists the running processes at most once per Observe.
+// processScan lists the running processes at most once per Observe, and resolves each
+// one's directory at most once, however many sessions' folders it is asked of.
 type processScan struct {
-	lister procs.Lister
-	done   bool
-	list   []procs.Process
-	err    error
+	lister  procs.Lister
+	done    bool
+	located *procs.Located
+	err     error
 }
 
 // in returns a Claude Code process working in dir itself, or 0 for none, whether other
@@ -571,14 +572,16 @@ func (s *processScan) in(ctx context.Context, dir string) (pid int, others, ok b
 
 	if !s.done {
 		s.done = true
-		s.list, s.err = s.lister.Processes(ctx)
+
+		list, err := s.lister.Processes(ctx)
+		s.located, s.err = procs.Locate(list), err
 	}
 
 	if s.err != nil {
 		return 0, false, false
 	}
 
-	for _, p := range procs.In(s.list, dir) {
+	for _, p := range s.located.In(dir) {
 		if pid == 0 && isClaudeCommand(p.Command) {
 			pid = p.PID
 		} else {

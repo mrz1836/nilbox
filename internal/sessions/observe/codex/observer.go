@@ -640,13 +640,14 @@ func launchBefore(t Thread, recs []sessions.Record, dirs []string) (int, bool) {
 	return latest, latest >= 0
 }
 
-// processScan lists the running processes at most once per Observe, and knows which
+// processScan lists the running processes at most once per Observe, resolves each one's
+// directory at most once, however many sessions' folders it is asked of, and knows which
 // session each process found is.
 type processScan struct {
-	lister procs.Lister
-	done   bool
-	list   []procs.Process
-	err    error
+	lister  procs.Lister
+	done    bool
+	located *procs.Located
+	err     error
 
 	// claimed holds the session each process is, by process ID.
 	claimed map[int]string
@@ -677,7 +678,7 @@ func (s *processScan) codexIn(ctx context.Context, dir string) ([]int, bool) {
 		s.done = true
 
 		list, err := s.lister.Processes(ctx)
-		s.list, s.err = procs.WithoutServices(list, []string{codexInfo().Command}), err
+		s.located, s.err = procs.Locate(procs.WithoutServices(list, []string{codexInfo().Command})), err
 	}
 
 	if s.err != nil {
@@ -686,7 +687,7 @@ func (s *processScan) codexIn(ctx context.Context, dir string) ([]int, bool) {
 
 	var pids []int
 
-	for _, p := range procs.In(s.list, dir) {
+	for _, p := range s.located.In(dir) {
 		if filepath.Base(p.Command) == codexInfo().Command {
 			pids = append(pids, p.PID)
 		}
