@@ -17,6 +17,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/integrationprefs"
 	"github.com/mrz1836/nilbox/internal/repo"
 	"github.com/mrz1836/nilbox/internal/scriptrun"
+	"github.com/mrz1836/nilbox/internal/testutil"
 	"github.com/mrz1836/nilbox/internal/uierr"
 )
 
@@ -653,7 +654,7 @@ func TestRepoNames(t *testing.T) {
 	require.NoError(t, err)
 	assert.Contains(t, got, "acme-org/sdk", "kept while .git/config looks the same")
 
-	writeText(t, filepath.Join(sdk, ".git", "config"), "[core]\n\tbare = false\n")
+	testutil.WriteFile(t, filepath.Join(sdk, ".git", "config"), "[core]\n\tbare = false\n")
 
 	later := time.Now().Add(time.Minute)
 	require.NoError(t, os.Chtimes(filepath.Join(sdk, ".git", "config"), later, later))

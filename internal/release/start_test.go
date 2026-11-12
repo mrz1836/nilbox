@@ -85,7 +85,7 @@ type releaseRig struct {
 func newReleaseRig(t *testing.T, opts rigOptions) *releaseRig {
 	t.Helper()
 
-	r := &releaseRig{t: t, env: testutil.Git(t), root: realTempDir(t), logs: &testutil.Logs{}}
+	r := &releaseRig{t: t, env: testutil.Git(t), root: testutil.RealTempDir(t), logs: &testutil.Logs{}}
 	r.origin, r.clone = filepath.Join(r.root, "origin.git"), filepath.Join(r.root, "sdk")
 
 	c := sdkFixtures.Copy(t, sdkFixture{clone: "sdk", base: opts.base, module: opts.module}, r.root)
@@ -526,7 +526,7 @@ func TestStartReleasedANewerCommit(t *testing.T) {
 	r := newReleaseRig(t, rigOptions{base: shownVersion})
 	elsewhere := filepath.Join(r.root, "elsewhere")
 	testutil.RunGit(t, r.root, "clone", "-q", r.origin, elsewhere)
-	writeIn(t, elsewhere, "three.txt", "three", 0o600)
+	testutil.WriteFileMode(t, filepath.Join(elsewhere, "three.txt"), "three", 0o600)
 
 	r.magex("1.30.2", r.replay("patch-feature-behind"))
 	r.after.set(func(ctx context.Context) error {
@@ -741,7 +741,7 @@ func TestStartRechecksUnderLock(t *testing.T) {
 		o := r.prepare(PrepareRequest{})
 		require.True(t, o.Ready)
 
-		writeIn(t, r.clone, "notes.txt", "uncommitted", 0o600)
+		testutil.WriteFileMode(t, filepath.Join(r.clone, "notes.txt"), "uncommitted", 0o600)
 
 		_, err := r.svc.Start(t.Context(), requestFor(o))
 		require.ErrorIs(t, err, ErrNotReady)

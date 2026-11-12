@@ -166,7 +166,7 @@ func TestAScratchRepositoryIsOneGitKnows(t *testing.T) {
 
 	// A global core.hooksPath, which would send status to another folder.
 	global := filepath.Join(r.home, "global.gitconfig")
-	writeFile(t, r.home, "global.gitconfig", "[core]\n\thooksPath = /srv/elsewhere\n", 0o600)
+	testutil.WriteFileMode(t, filepath.Join(r.home, "global.gitconfig"), "[core]\n\thooksPath = /srv/elsewhere\n", 0o600)
 
 	env := slices.DeleteFunc(slices.Clone(r.env), func(kv string) bool { return strings.HasPrefix(kv, "GIT_CONFIG_GLOBAL=") })
 	git := gitread.New(gitread.Config{Env: func() []string { return append(env, "GIT_CONFIG_GLOBAL="+global) }})
@@ -183,7 +183,7 @@ func TestAScratchRepositoryIsOneGitKnows(t *testing.T) {
 	assert.True(t, readConfig(dir).present, "go-pre-commit's status needs a config")
 
 	// A scratch folder that can't be made says so.
-	writeFile(t, r.home, "blocked", "a file", 0o600)
+	testutil.WriteFileMode(t, filepath.Join(r.home, "blocked"), "a file", 0o600)
 	r.svc.scratch = filepath.Join(r.home, "blocked", "scratch")
 
 	_, err = r.svc.scratchRepo([]byte(currentHook))
@@ -356,8 +356,8 @@ func TestReposScansAgainOnlyTheClonesThatChanged(t *testing.T) {
 
 	assert.Equal(t, StateMissing, row(t, r.page(false), api).State)
 
-	writeFile(t, filepath.Join(api, ".git", "hooks"), hookPreCommit, huskyHook, 0o755)
-	writeFile(t, filepath.Join(web, ".git", "hooks"), hookPreCommit, huskyHook, 0o755)
+	testutil.WriteFileMode(t, filepath.Join(api, ".git", "hooks", hookPreCommit), huskyHook, 0o755)
+	testutil.WriteFileMode(t, filepath.Join(web, ".git", "hooks", hookPreCommit), huskyHook, 0o755)
 	r.svc.markStale(api)
 
 	p := r.page(false)
@@ -433,14 +433,14 @@ func TestAGlobalHooksPathIsSharedByEveryClone(t *testing.T) {
 
 	r := newRig(t)
 	shared := filepath.Join(r.home, ".githooks")
-	writeFile(t, r.home, "global.gitconfig", "[core]\n\thooksPath = "+shared+"\n", 0o600)
+	testutil.WriteFileMode(t, filepath.Join(r.home, "global.gitconfig"), "[core]\n\thooksPath = "+shared+"\n", 0o600)
 	r.env = append(slices.DeleteFunc(r.env, func(kv string) bool { return strings.HasPrefix(kv, "GIT_CONFIG_GLOBAL=") }),
 		"GIT_CONFIG_GLOBAL="+filepath.Join(r.home, "global.gitconfig"))
 
 	api := r.clone("api", cloneOpts{config: coreEnv})
 	web := r.clone("web", cloneOpts{config: coreEnv})
 	r.clone("notes", cloneOpts{})
-	writeFile(t, shared, hookPreCommit, currentHook, 0o755)
+	testutil.WriteFileMode(t, filepath.Join(shared, hookPreCommit), currentHook, 0o755)
 
 	p := r.page(false)
 
@@ -461,7 +461,7 @@ func TestAStaleRescanCutShortKeepsNothing(t *testing.T) {
 	dir := r.clone("api", cloneOpts{config: coreEnv})
 	assert.Equal(t, StateMissing, row(t, r.page(false), dir).State)
 
-	writeFile(t, filepath.Join(dir, ".git", "hooks"), hookPreCommit, huskyHook, 0o755)
+	testutil.WriteFileMode(t, filepath.Join(dir, ".git", "hooks", hookPreCommit), huskyHook, 0o755)
 	r.svc.markStale(dir)
 
 	ctx, cancel := context.WithCancel(t.Context())
@@ -516,7 +516,7 @@ func TestAStaleRescanReadsTheConfigAfresh(t *testing.T) {
 	dir := r.clone("api", cloneOpts{config: coreEnv})
 	assert.Equal(t, GroupAttention, row(t, r.page(false), dir).Group)
 
-	writeFile(t, dir, ".github/env/99-local.env", "ENABLE_GO_PRE_COMMIT=false\n", 0o600)
+	testutil.WriteFileMode(t, filepath.Join(dir, ".github/env/99-local.env"), "ENABLE_GO_PRE_COMMIT=false\n", 0o600)
 	r.svc.markStale(dir)
 
 	assert.Equal(t, GroupOff, row(t, r.page(false), dir).Group)

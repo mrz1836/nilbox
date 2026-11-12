@@ -9,7 +9,6 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
-	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -49,66 +48,28 @@ const (
 
 var errFake = errors.New("fake: failed")
 
-// recording is one recorded go-pre-commit run: its arguments, what it wrote, its exit
-// status, and its lines in the order they arrived.
+// recording is one recorded go-pre-commit run.
 type recording struct {
-	Name   string   `json:"name"`
-	Argv   []string `json:"argv"`
-	Stdout string   `json:"stdout"`
-	Stderr string   `json:"stderr"`
-	Exit   int      `json:"exit"`
-	Lines  []struct {
-		Stream string `json:"stream"`
-		Text   string `json:"text"`
-	} `json:"lines"`
+	testutil.Recording
 }
 
 // loadRecording reads the recording called name.
 func loadRecording(t *testing.T, name string) recording {
 	t.Helper()
 
-	data, err := os.ReadFile(filepath.Join(recordings, name+".json")) //nolint:gosec // a fixture the test names
-	require.NoError(t, err)
-
-	var rec recording
-	require.NoError(t, json.Unmarshal(data, &rec))
-	require.Equal(t, name, rec.Name)
-
-	return rec
+	return testutil.LoadRecording[recording](t, recordings, name)
 }
 
 // recordingNames lists the recordings whose names start with prefix.
 func recordingNames(t *testing.T, prefix string) []string {
 	t.Helper()
 
-	paths, err := filepath.Glob(filepath.Join(recordings, prefix+"*.json"))
-	require.NoError(t, err)
-	require.NotEmpty(t, paths)
-
-	names := make([]string, 0, len(paths))
-	for _, p := range paths {
-		names = append(names, strings.TrimSuffix(filepath.Base(p), ".json"))
-	}
-
-	return names
-}
-
-// log returns the run's output as the app's log holds it: its lines in the order they
-// arrived, each ended by a newline.
-func (r recording) log() string {
-	var b strings.Builder
-
-	for _, l := range r.Lines {
-		b.WriteString(l.Text)
-		b.WriteByte('\n')
-	}
-
-	return b.String()
+	return testutil.RecordingNames(t, recordings, prefix)
 }
 
 // fakeRun is the recording as a fake go-pre-commit plays it, after files.
 func (r recording) fakeRun(files ...testutil.FakeFile) testutil.FakeRun {
-	return testutil.FakeRun{Stdout: r.log(), Exit: r.Exit, Files: files}
+	return testutil.FakeRun{Stdout: r.Log("\n"), Exit: r.Exit, Files: files}
 }
 
 // rig is the Hooks page end to end: a clone root under a home of its own, clones made
@@ -274,11 +235,11 @@ func (r *rig) setUp(name string, o cloneOpts) string {
 	dir := filepath.Join(r.root, name)
 
 	if o.config != "" {
-		writeFile(r.t, dir, ".github/env/00-core.env", o.config, 0o600)
+		testutil.WriteFileMode(r.t, filepath.Join(dir, ".github/env/00-core.env"), o.config, 0o600)
 	}
 
 	if o.legacy != "" {
-		writeFile(r.t, dir, ".github/.env.base", o.legacy, 0o600)
+		testutil.WriteFileMode(r.t, filepath.Join(dir, ".github/.env.base"), o.legacy, 0o600)
 	}
 
 	hooks := filepath.Join(dir, ".git", "hooks")
@@ -293,11 +254,11 @@ func (r *rig) setUp(name string, o cloneOpts) string {
 	}
 
 	if o.hook != "" {
-		writeFile(r.t, hooks, hookPreCommit, o.hook, cmpMode(o.mode))
+		testutil.WriteFileMode(r.t, filepath.Join(hooks, hookPreCommit), o.hook, cmpMode(o.mode))
 	}
 
 	for n, text := range o.hooks {
-		writeFile(r.t, hooks, n, text, 0o755)
+		testutil.WriteFileMode(r.t, filepath.Join(hooks, n), text, 0o755)
 	}
 
 	if o.origin != "" {
@@ -342,16 +303,6 @@ func row(t *testing.T, p Page, dir string) Repo {
 	require.GreaterOrEqual(t, i, 0, "no row for %s", dir)
 
 	return p.Repos[i]
-}
-
-// writeFile writes text to name in dir, making the folders it needs, with mode.
-func writeFile(t *testing.T, dir, name, text string, mode os.FileMode) {
-	t.Helper()
-
-	path := filepath.Join(dir, filepath.FromSlash(name))
-	require.NoError(t, os.MkdirAll(filepath.Dir(path), 0o700))
-	require.NoError(t, os.WriteFile(path, []byte(text), mode))
-	require.NoError(t, os.Chmod(path, mode))
 }
 
 // readHookText returns the text of the pre-commit hook in the clone at dir.

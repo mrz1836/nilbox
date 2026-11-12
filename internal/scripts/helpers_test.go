@@ -126,7 +126,7 @@ func (r *rig) clone(name, origin string, files map[string]string) string {
 	require.NoError(r.t, os.MkdirAll(filepath.Join(dir, ".git"), 0o700))
 
 	for rel, text := range files {
-		writeText(r.t, filepath.Join(dir, filepath.FromSlash(rel)), text)
+		testutil.WriteFile(r.t, filepath.Join(dir, filepath.FromSlash(rel)), text)
 	}
 
 	if origin != "" {

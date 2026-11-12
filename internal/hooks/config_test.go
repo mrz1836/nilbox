@@ -8,6 +8,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/mrz1836/nilbox/internal/testutil"
 )
 
 func TestParseEnvReadsAsGoPreCommitDoes(t *testing.T) {
@@ -40,12 +42,14 @@ func TestReadConfigModularFilesInOrder(t *testing.T) {
 	t.Parallel()
 
 	dir := t.TempDir()
-	writeFile(t, dir, ".github/env/10-pre-commit.env", "ENABLE_GO_PRE_COMMIT=false\nGO_PRE_COMMIT_ENABLE_LINT=false\n", 0o600)
-	writeFile(t, dir, ".github/env/00-core.env", coreEnv+"GO_PRE_COMMIT_ENABLE_GITLEAKS=true\n", 0o600)
-	writeFile(t, dir, ".github/env/99-local.env", "ENABLE_GO_PRE_COMMIT=true\n", 0o600)
-	writeFile(t, dir, ".github/env/notes.txt", "ENABLE_GO_PRE_COMMIT=false\n", 0o600)
+	testutil.WriteFileMode(t, filepath.Join(dir, ".github/env/10-pre-commit.env"),
+		"ENABLE_GO_PRE_COMMIT=false\nGO_PRE_COMMIT_ENABLE_LINT=false\n", 0o600)
+	testutil.WriteFileMode(t, filepath.Join(dir, ".github/env/00-core.env"),
+		coreEnv+"GO_PRE_COMMIT_ENABLE_GITLEAKS=true\n", 0o600)
+	testutil.WriteFileMode(t, filepath.Join(dir, ".github/env/99-local.env"), "ENABLE_GO_PRE_COMMIT=true\n", 0o600)
+	testutil.WriteFileMode(t, filepath.Join(dir, ".github/env/notes.txt"), "ENABLE_GO_PRE_COMMIT=false\n", 0o600)
 	require.NoError(t, os.MkdirAll(filepath.Join(dir, ".github", "env", "folder.env"), 0o700))
-	writeFile(t, dir, ".github/.env.base", "ENABLE_GO_PRE_COMMIT=false\n", 0o600)
+	testutil.WriteFileMode(t, filepath.Join(dir, ".github/.env.base"), "ENABLE_GO_PRE_COMMIT=false\n", 0o600)
 
 	cfg := readConfig(dir)
 	require.True(t, cfg.present)
@@ -65,8 +69,9 @@ func TestReadConfigLegacyFiles(t *testing.T) {
 	t.Parallel()
 
 	dir := t.TempDir()
-	writeFile(t, dir, ".github/.env.base", "ENABLE_GO_PRE_COMMIT=true\nGO_PRE_COMMIT_ENABLE_MOD_TIDY=false\n", 0o600)
-	writeFile(t, dir, ".github/.env.custom", "ENABLE_GO_PRE_COMMIT=0\n", 0o600)
+	testutil.WriteFileMode(t, filepath.Join(dir, ".github/.env.base"),
+		"ENABLE_GO_PRE_COMMIT=true\nGO_PRE_COMMIT_ENABLE_MOD_TIDY=false\n", 0o600)
+	testutil.WriteFileMode(t, filepath.Join(dir, ".github/.env.custom"), "ENABLE_GO_PRE_COMMIT=0\n", 0o600)
 
 	cfg := readConfig(dir)
 	require.True(t, cfg.present)
@@ -76,7 +81,7 @@ func TestReadConfigLegacyFiles(t *testing.T) {
 	assert.Empty(t, cfg.ciVersion())
 
 	// A modular folder with no .env file leaves the legacy files in charge.
-	writeFile(t, dir, ".github/env/README.md", "notes", 0o600)
+	testutil.WriteFileMode(t, filepath.Join(dir, ".github/env/README.md"), "notes", 0o600)
 	assert.False(t, readConfig(dir).enabled())
 }
 

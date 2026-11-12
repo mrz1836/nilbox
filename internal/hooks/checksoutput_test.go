@@ -104,7 +104,7 @@ func TestChecksReaderReadsEveryRecording(t *testing.T) {
 		expected, ok := want[name]
 		require.True(t, ok, "%s has no expectation", name)
 
-		got := readChecks(loadRecording(t, name).log(), false)
+		got := readChecks(loadRecording(t, name).Log("\n"), false)
 
 		assert.Equal(t, expected.states, states(got), name)
 		assert.Equal(t, expected.totals, got.totals, name)
@@ -150,7 +150,7 @@ func TestChecksReaderPlacesEachFailedChecksWords(t *testing.T) {
 			CheckLint, "",
 		},
 	} {
-		got := checkNamed(t, readChecks(loadRecording(t, c.name).log(), false), c.check)
+		got := checkNamed(t, readChecks(loadRecording(t, c.name).Log("\n"), false), c.check)
 
 		assert.Equal(t, c.error, got.Error, c.name)
 		assert.Equal(t, c.suggestion, got.Suggestion, c.name)
@@ -164,7 +164,7 @@ func TestChecksReaderPlacesEachFailedChecksWords(t *testing.T) {
 func TestChecksReaderReadsTheToolsItInstalls(t *testing.T) {
 	t.Parallel()
 
-	got := readChecks(loadRecording(t, "run-installs-tools").log(), false)
+	got := readChecks(loadRecording(t, "run-installs-tools").Log("\n"), false)
 	assert.Equal(t, []string{"gofumpt@v0.12.0", "gitleaks@v8.30.1", "golangci-lint@v2.15.0"}, got.installs)
 
 	assert.InDelta(t, 4700, checkNamed(t, got, CheckFumpt).DurationMs, 1)

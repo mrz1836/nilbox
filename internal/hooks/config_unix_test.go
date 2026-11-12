@@ -12,6 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/mrz1836/nilbox/internal/paths"
+	"github.com/mrz1836/nilbox/internal/testutil"
 )
 
 // fifo makes a named pipe at path, which nothing ever writes to: opening it to read the
@@ -67,8 +68,9 @@ func TestReadConfigSkipsAPipeAndALinkToOne(t *testing.T) {
 	pipe := filepath.Join(t.TempDir(), "elsewhere.env")
 	fifo(t, pipe)
 
-	writeFile(t, dir, ".github/env/00-core.env", coreEnv, 0o600)
-	writeFile(t, dir, ".github/env/elsewhere/10-real.env", "GO_PRE_COMMIT_ENABLE_LINT=false\n", 0o600)
+	testutil.WriteFileMode(t, filepath.Join(dir, ".github/env/00-core.env"), coreEnv, 0o600)
+	testutil.WriteFileMode(t, filepath.Join(dir, ".github/env/elsewhere/10-real.env"),
+		"GO_PRE_COMMIT_ENABLE_LINT=false\n", 0o600)
 	fifo(t, filepath.Join(dir, ".github", "env", "20-pipe.env"))
 	require.NoError(t, os.Symlink(pipe, filepath.Join(dir, ".github", "env", "30-linked-pipe.env")))
 	require.NoError(t, os.Symlink(filepath.Join(dir, ".github", "env", "elsewhere", "10-real.env"),

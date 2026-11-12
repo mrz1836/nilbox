@@ -2,6 +2,7 @@ package hooks
 
 import (
 	"fmt"
+	"path/filepath"
 	"slices"
 	"sync"
 	"testing"
@@ -48,13 +49,13 @@ func TestChecksCatchAChangeToAFileThatWasAlreadyDirty(t *testing.T) {
 
 	r := newRig(t)
 	dir := r.clone("web", cloneOpts{config: coreEnv, origin: "acme-org/web"})
-	writeFile(t, dir, "README.md", "# web  \n", 0o600)
-	writeFile(t, dir, "docs/setup.md", "setup\n", 0o600)
+	testutil.WriteFileMode(t, filepath.Join(dir, "README.md"), "# web  \n", 0o600)
+	testutil.WriteFileMode(t, filepath.Join(dir, "docs/setup.md"), "setup\n", 0o600)
 	testutil.RunGit(t, dir, "add", ".")
 	testutil.RunGit(t, dir, "commit", "-q", "-m", "docs")
 
 	// The user's own uncommitted edit, with trailing spaces of its own.
-	writeFile(t, dir, "docs/setup.md", "setup\nmore  \n", 0o600)
+	testutil.WriteFileMode(t, filepath.Join(dir, "docs/setup.md"), "setup\nmore  \n", 0o600)
 
 	// whitespace fixes both; the fake can't stage, so docs/setup.md stays " M" and only
 	// its contents tell it changed.
@@ -186,7 +187,7 @@ func TestChecksReadTheJSONReportWhenTheCopyHasIt(t *testing.T) {
 
 	r := newRig(t)
 	dir := r.clone("web", cloneOpts{config: coreEnv})
-	writeFile(t, dir, "README.md", "# web  \n", 0o600)
+	testutil.WriteFileMode(t, filepath.Join(dir, "README.md"), "# web  \n", 0o600)
 	testutil.RunGit(t, dir, "add", "README.md")
 	testutil.RunGit(t, dir, "commit", "-q", "-m", "spaces")
 

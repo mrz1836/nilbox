@@ -50,17 +50,6 @@ func newCloneRig(t *testing.T) cloneRig {
 	return r
 }
 
-// commitIn writes name in dir and commits it, returning the commit.
-func commitIn(t *testing.T, dir, name string) string {
-	t.Helper()
-
-	require.NoError(t, os.WriteFile(filepath.Join(dir, name), []byte(name+"\n"), 0o600))
-	testutil.RunGit(t, dir, "add", name)
-	testutil.RunGit(t, dir, "-c", "user.name=Example", "-c", "user.email=example@example.com", "commit", "-q", "-m", name)
-
-	return strings.TrimSpace(testutil.RunGit(t, dir, "rev-parse", "HEAD"))
-}
-
 func TestCloneStateOfACleanClone(t *testing.T) {
 	t.Parallel()
 
@@ -75,7 +64,7 @@ func TestCloneStateFindsWhatMatters(t *testing.T) {
 
 	r := newCloneRig(t)
 
-	commitIn(t, r.clone, "three.txt")
+	testutil.Commit(t, r.clone, "three.txt", "three.txt"+"\n")
 	testutil.RunGit(t, r.clone, "tag", "v1.1.0")
 	testutil.RunGit(t, r.clone, "tag", "v0.9.0") // older than GitHub's newest: not judged
 	testutil.RunGit(t, r.clone, "checkout", "-q", "-b", "feature-x")
@@ -98,7 +87,7 @@ func TestCloneStateSeesItIsBehind(t *testing.T) {
 	r := newCloneRig(t)
 
 	testutil.RunGit(t, filepath.Dir(r.clone), "clone", "-q", r.origin, r.other)
-	ahead := commitIn(t, r.other, "elsewhere.txt")
+	ahead := testutil.Commit(t, r.other, "elsewhere.txt", "elsewhere.txt"+"\n")
 	testutil.RunGit(t, r.other, "push", "-q", "origin", "master")
 
 	got := r.checker.CloneState(t.Context(), r.clone, "master", ahead, nil)
@@ -109,7 +98,7 @@ func TestCloneStateSeesItIsBehind(t *testing.T) {
 	got = r.checker.CloneState(t.Context(), r.clone, "master", ahead, nil)
 	assert.True(t, got.Behind, "fetched but not pulled: the clone's head is an ancestor of GitHub's")
 
-	diverged := commitIn(t, r.clone, "mine.txt")
+	diverged := testutil.Commit(t, r.clone, "mine.txt", "mine.txt"+"\n")
 	got = r.checker.CloneState(t.Context(), r.clone, "master", ahead, nil)
 	assert.False(t, got.Behind, "diverged is not behind")
 	assert.Equal(t, 1, got.NotPushed)
@@ -178,7 +167,7 @@ func TestCloneStateMarksWhatGitCantRead(t *testing.T) {
 	env := testutil.Git(t)
 
 	testutil.RunGit(t, filepath.Dir(r.clone), "clone", "-q", r.origin, r.other)
-	ahead := commitIn(t, r.other, "elsewhere.txt")
+	ahead := testutil.Commit(t, r.other, "elsewhere.txt", "elsewhere.txt"+"\n")
 	testutil.RunGit(t, r.other, "push", "-q", "origin", "master")
 	testutil.RunGit(t, r.clone, "fetch", "-q", "origin")
 

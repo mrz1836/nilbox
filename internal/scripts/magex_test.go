@@ -12,6 +12,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/brand"
 	"github.com/mrz1836/nilbox/internal/integrationprefs"
 	"github.com/mrz1836/nilbox/internal/integrations"
+	"github.com/mrz1836/nilbox/internal/testutil"
 )
 
 // magefile is a magefiles package with every kind of declaration magex's discovery
@@ -164,12 +165,12 @@ func TestMagefilesHashFollowsEveryFile(t *testing.T) {
 	first := hash()
 	assert.Equal(t, first, hash(), "the same files hash the same")
 
-	writeText(t, filepath.Join(dir, "magefiles", "data", "config.yaml"), "a file the build reads")
+	testutil.WriteFile(t, filepath.Join(dir, "magefiles", "data", "config.yaml"), "a file the build reads")
 
 	second := hash()
 	assert.NotEqual(t, first, second, "a new file anywhere under magefiles/")
 
-	writeText(t, filepath.Join(dir, "magefiles", "types.go"), magefileTypes+"// changed\n")
+	testutil.WriteFile(t, filepath.Join(dir, "magefiles", "types.go"), magefileTypes+"// changed\n")
 	assert.NotEqual(t, second, hash(), "a changed file that holds no target")
 
 	require.NoError(t, os.Symlink(filepath.Join(dir, "magefiles", "types.go"), filepath.Join(dir, "magefiles", "link.go")))
@@ -203,7 +204,7 @@ func TestFingerprintSeesAChange(t *testing.T) {
 	before := fingerprint(dir)
 	assert.Equal(t, before, fingerprint(dir))
 
-	writeText(t, filepath.Join(dir, "magefiles", "main.go"), magefile+"// longer\n")
+	testutil.WriteFile(t, filepath.Join(dir, "magefiles", "main.go"), magefile+"// longer\n")
 	assert.NotEqual(t, before, fingerprint(dir))
 }
 

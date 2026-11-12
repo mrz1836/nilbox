@@ -200,13 +200,13 @@ func TestAChecksRunCutOffByARestartNamesTheFilesItChanged(t *testing.T) {
 
 	r := newRig(t)
 	dir := r.clone("web", cloneOpts{config: coreEnv, origin: "acme-org/web"})
-	writeFile(t, dir, "README.md", "# web  \n", 0o600)
-	writeFile(t, dir, "docs/setup.md", "setup\n", 0o600)
+	testutil.WriteFileMode(t, filepath.Join(dir, "README.md"), "# web  \n", 0o600)
+	testutil.WriteFileMode(t, filepath.Join(dir, "docs/setup.md"), "setup\n", 0o600)
 	testutil.RunGit(t, dir, "add", ".")
 	testutil.RunGit(t, dir, "commit", "-q", "-m", "docs")
 
 	// The user's own uncommitted edit, which whitespace's fix mixes its own into.
-	writeFile(t, dir, "docs/setup.md", "setup\nmore  \n", 0o600)
+	testutil.WriteFileMode(t, filepath.Join(dir, "docs/setup.md"), "setup\nmore  \n", 0o600)
 
 	r.tool("1.13.1", loadRecording(t, "run-whitespace-dirty-file").fakeRun(
 		testutil.FakeFile{Path: "README.md", Content: "# web\n"},
@@ -264,8 +264,8 @@ func TestAChecksRunCutOffByARestartUsesTheConfigItRanWith(t *testing.T) {
 	allow()
 
 	// The config changes while the app is away: gitleaks on, lint off.
-	writeFile(t, dir, ".github/env/99-local.env", "GO_PRE_COMMIT_ENABLE_GITLEAKS=true\nGO_PRE_COMMIT_ENABLE_LINT=false\n",
-		0o600)
+	testutil.WriteFileMode(t, filepath.Join(dir, ".github/env/99-local.env"),
+		"GO_PRE_COMMIT_ENABLE_GITLEAKS=true\nGO_PRE_COMMIT_ENABLE_LINT=false\n", 0o600)
 
 	r.restart(id)
 
@@ -281,7 +281,7 @@ func TestWhatARunsBeforeReadStaysOutOfItsRecord(t *testing.T) {
 
 	r := newRig(t)
 	dir := r.clone("web", cloneOpts{config: coreEnv})
-	writeFile(t, dir, "notes.txt", "draft\n", 0o600)
+	testutil.WriteFileMode(t, filepath.Join(dir, "notes.txt"), "draft\n", 0o600)
 	r.tool("1.13.1", loadRecording(t, "run-pass").fakeRun())
 
 	// A run that ends as it should.
@@ -323,7 +323,7 @@ func TestARunFromBeforeTheRestartThatKeptNothingSaysSo(t *testing.T) {
 	checks := v.Verify(checksRecord(7, dir))
 	require.NotNil(t, checks.Finish)
 
-	_, err := checks.Output.Write([]byte(loadRecording(t, "run-pass").log()))
+	_, err := checks.Output.Write([]byte(loadRecording(t, "run-pass").Log("\n")))
 	require.NoError(t, err)
 
 	out := checks.Finish(t.Context(), scriptrun.Ending{ExitCode: &zero}, scriptrun.Outcome{Status: scriptrun.StatusSucceeded})
@@ -380,7 +380,7 @@ func TestAChecksRunWithTooManyDirtyFilesToHashIsStillComparedAfterARestart(t *te
 
 	r := newRig(t)
 	dir := r.clone("web", cloneOpts{config: coreEnv})
-	writeFile(t, dir, "notes.txt", "draft\n", 0o600)
+	testutil.WriteFileMode(t, filepath.Join(dir, "notes.txt"), "draft\n", 0o600)
 
 	// As for a clone with more than maxHashed dirty files: sizes and times, not contents.
 	before := r.svc.read(t.Context(), dir, func(int) bool { return false })
@@ -392,7 +392,7 @@ func TestAChecksRunWithTooManyDirtyFilesToHashIsStillComparedAfterARestart(t *te
 		7: keptChecks{Checks: readConfig(dir).settings(), Snapshot: kept},
 	}}
 
-	writeFile(t, dir, "notes.txt", "draft, longer now\n", 0o600)
+	testutil.WriteFileMode(t, filepath.Join(dir, "notes.txt"), "draft, longer now\n", 0o600)
 
 	zero := 0
 	out := NewVerifier(r.svc).Verify(checksRecord(7, dir)).Finish(t.Context(), scriptrun.Ending{ExitCode: &zero},
@@ -420,13 +420,13 @@ func TestAChecksRunsFinishIsKeptUnlessTheQuitCutsAReadShort(t *testing.T) {
 
 			r := newRig(t)
 			dir := r.clone("web", cloneOpts{config: coreEnv})
-			writeFile(t, dir, "notes.txt", "draft\n", 0o600)
+			testutil.WriteFileMode(t, filepath.Join(dir, "notes.txt"), "draft\n", 0o600)
 
 			r.svc.runs = keptRuns{Runs: r.engine, kept: map[int64]any{
 				7: keptChecks{Checks: readConfig(dir).settings(), Snapshot: keepSnapshot(r.svc.take(t.Context(), dir))},
 			}}
 
-			writeFile(t, dir, "notes.txt", "draft, fixed\n", 0o600)
+			testutil.WriteFileMode(t, filepath.Join(dir, "notes.txt"), "draft, fixed\n", 0o600)
 
 			ctx, cancel := context.WithCancel(t.Context())
 			defer cancel()
@@ -525,7 +525,7 @@ func TestAnActionAfterARestartIsJudgedWithTheCopyThatRan(t *testing.T) {
 	facts := r.tools.HooksTool(t.Context())
 
 	// It wrote its hook, then exited 1; meanwhile another copy came into use.
-	writeFile(t, filepath.Join(dir, ".git", "hooks"), hookPreCommit, currentHook, 0o755)
+	testutil.WriteFileMode(t, filepath.Join(dir, ".git", "hooks", hookPreCommit), currentHook, 0o755)
 	r.tool("1.13.1", testutil.FakeRun{})
 	require.NotEqual(t, ran, r.tools.HooksTool(t.Context()).Path)
 
@@ -610,7 +610,7 @@ func TestAKeptSnapshotReadsBackAsItWasTaken(t *testing.T) {
 
 	r := newRig(t)
 	dir := r.clone("web", cloneOpts{config: coreEnv})
-	writeFile(t, dir, "notes.txt", "draft\n", 0o600)
+	testutil.WriteFileMode(t, filepath.Join(dir, "notes.txt"), "draft\n", 0o600)
 	require.NoError(t, os.Remove(filepath.Join(dir, "README.md")))
 
 	for _, hashed := range []bool{true, false} {

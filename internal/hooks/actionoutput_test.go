@@ -35,7 +35,7 @@ func TestActionReaderKnowsEveryRecordedLine(t *testing.T) {
 	names = append(names, "global-hookspath-install")
 
 	for _, name := range names {
-		got := readAction(loadRecording(t, name).log())
+		got := readAction(loadRecording(t, name).Log("\n"))
 
 		assert.Empty(t, got.Unrecognized, name)
 		assert.Zero(t, got.UnrecognizedCount, name)

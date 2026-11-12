@@ -2,8 +2,6 @@ package release
 
 import (
 	"encoding/json"
-	"io/fs"
-	"os"
 	"path/filepath"
 	"regexp"
 	"slices"
@@ -15,6 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/mrz1836/nilbox/internal/scriptrun"
+	"github.com/mrz1836/nilbox/internal/testutil"
 	"github.com/mrz1836/nilbox/internal/textutil"
 )
 
@@ -38,17 +37,11 @@ const (
 	recBump    = "patch"
 )
 
-// magexRecording is one recorded run: its arguments, its exit status, its lines in the
-// order they arrived, each from stdout ("out") or stderr ("err"), and the clone's state
-// before and after it, as git told the recorder.
+// magexRecording is one recorded run, and the clone's state before and after it, as git
+// told the recorder.
 type magexRecording struct {
-	Name  string   `json:"name"`
-	Argv  []string `json:"argv"`
-	Exit  int      `json:"exit"`
-	Lines []struct {
-		Stream string `json:"stream"`
-		Text   string `json:"text"`
-	} `json:"lines"`
+	testutil.Recording
+
 	Before cloneRecord `json:"before"`
 	After  cloneRecord `json:"after"`
 }
@@ -74,12 +67,7 @@ func loadRecording(t *testing.T, name string) magexRecording {
 func loadRecordingIn(t *testing.T, dir, name string) magexRecording {
 	t.Helper()
 
-	data, err := fs.ReadFile(os.DirFS(dir), name+".json")
-	require.NoError(t, err)
-
-	var rec magexRecording
-	require.NoError(t, json.Unmarshal(data, &rec))
-	require.Equal(t, name, rec.Name)
+	rec := testutil.LoadRecording[magexRecording](t, dir, name)
 	require.NotEmpty(t, rec.Lines)
 
 	return rec
@@ -92,34 +80,20 @@ func recordingNames(t *testing.T) []string {
 	return recordingNamesIn(t, magexRecordings)
 }
 
-// recordingNamesIn lists the recorded version:bump runs in the folder dir.
+// recordingNamesIn lists the recorded version:bump runs in the folder dir: every file but
+// next-version, which records versions rather than a run.
 func recordingNamesIn(t *testing.T, dir string) []string {
 	t.Helper()
 
-	paths, err := filepath.Glob(filepath.Join(dir, "*.json"))
-	require.NoError(t, err)
-
-	names := make([]string, 0, len(paths))
-	for _, p := range paths {
-		if name := strings.TrimSuffix(filepath.Base(p), ".json"); name != "next-version" {
-			names = append(names, name)
-		}
-	}
-
-	return names
+	return slices.DeleteFunc(testutil.RecordingNames(t, dir, ""), func(name string) bool {
+		return name == "next-version"
+	})
 }
 
 // log returns the run's output as one log holds it, stdout and stderr in the order they
 // arrived, each line ended by eol.
 func (m magexRecording) log(eol string) []byte {
-	var b strings.Builder
-
-	for _, l := range m.Lines {
-		b.WriteString(l.Text)
-		b.WriteString(eol)
-	}
-
-	return []byte(b.String())
+	return []byte(m.Log(eol))
 }
 
 // param returns the value of the run's key=value argument, or "".
