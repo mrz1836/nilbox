@@ -721,7 +721,7 @@ func (e *Engine) open(ctx context.Context, l *live, spec Spec) error {
 	e.keepState(ctx, l.id, spec.Keep)
 
 	err := e.terminal.OpenRun(ctx, TerminalRun{
-		Name: fmt.Sprintf("run-%d", l.id), Dir: spec.Dir, Argv: spec.Argv, Env: spec.Env,
+		Name: ScriptName(l.id), Dir: spec.Dir, Argv: spec.Argv, Env: spec.Env,
 		Log: e.files.log(l.id), PIDFile: e.files.pid(l.id), ExitFile: e.files.exit(l.id),
 	})
 	if err != nil {

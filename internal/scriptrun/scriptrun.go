@@ -504,7 +504,7 @@ type Record struct {
 // exit status to ExitFile, under a temporary name first and then renamed, so it is never
 // read half written.
 type TerminalRun struct {
-	// Name names the script, "run-<id>".
+	// Name names the script, "run-<id>" (ScriptName).
 	Name string
 
 	// Dir is the folder it runs in, Argv the command, and Env what the script exports.
@@ -523,7 +523,7 @@ type TerminalRun struct {
 // where no terminal can be opened, it returns an error.
 type TerminalOpener interface {
 	OpenRun(ctx context.Context, run TerminalRun) error
-	OpenFolder(ctx context.Context, name, dir string) error
+	FolderOpener
 }
 
 // Revealer shows a file in the user's file manager: Finder on macOS. Core adapts it.

@@ -195,7 +195,7 @@ func (s *Service) OpenInTerminal(ctx context.Context, id int64) error {
 		return uierr.New(paths.Tilde(rec.Dir, s.e.home)+" isn't there anymore.", fmt.Errorf("%w: %s", ErrNoFolder, rec.Dir))
 	}
 
-	if err = s.e.terminal.OpenFolder(ctx, fmt.Sprintf("run-%d", id), rec.Dir); err != nil {
+	if err = s.e.terminal.OpenFolder(ctx, ScriptName(id), rec.Dir); err != nil {
 		return fmt.Errorf("open the terminal in the run's folder: %w", err)
 	}
 
