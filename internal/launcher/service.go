@@ -169,6 +169,11 @@ type Config struct {
 	// prompt names its sensitive files. Without it, no launch is held back.
 	Files FileChecker
 
+	// Reader bounds how long a read of one of the other repository locations may take, so
+	// one that hangs is skipped rather than holding a launch. Optional: without it they are
+	// read directly.
+	Reader *localrepos.Reader
+
 	// Logger receives what a launch cannot report as its error: a session record or a
 	// clone path that could not be stored, and old launch files that could not be
 	// pruned. Without it they are not logged.
@@ -315,6 +320,7 @@ type Service struct {
 	newID     func() string
 	trust     map[agent.ID]Truster
 	files     FileChecker
+	reader    *localrepos.Reader
 	logger    *slog.Logger
 
 	// cloneMu runs one Clone at a time.
@@ -346,6 +352,7 @@ func NewService(cfg Config) *Service {
 		newID:     cfg.NewID,
 		trust:     cfg.Trust,
 		files:     cfg.Files,
+		reader:    cfg.Reader,
 		logger:    logging.Or(cfg.Logger),
 	}
 }
@@ -640,7 +647,7 @@ func (s *Service) place(ctx context.Context, w world, row launchItemRow, res Res
 		return planned{}, err
 	}
 
-	roots, err := w.settings.roots(s.home)
+	roots, err := w.settings.roots(s.home, s.reader)
 	if err != nil {
 		return planned{}, err
 	}
@@ -836,9 +843,10 @@ func sessionName(nickname string, row launchItemRow) string {
 	return fmt.Sprintf("%s · %s#%d", nickname, row.Name, row.Number)
 }
 
-// roots builds the repository locations the settings name.
-func (l LaunchSettings) roots(home string) (localrepos.Roots, error) {
-	return localrepos.NewRoots(l.CloneRoot, l.CloneLocations, home)
+// roots builds the repository locations the settings name, the other locations read
+// through reader.
+func (l LaunchSettings) roots(home string, reader *localrepos.Reader) (localrepos.Roots, error) {
+	return localrepos.NewRoots(l.CloneRoot, l.CloneLocations, home, localrepos.WithReader(reader))
 }
 
 // resolveClone finds the clone a launch starts in. A cached path is used while the

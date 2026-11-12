@@ -134,7 +134,7 @@ export interface Preview {
 /**
  * State is how a repository location reads now.
  */
-export type State = "ok" | "missing" | "notFolder" | "unreadable" | "notAClone" | "nowAClone" | "covered";
+export type State = "ok" | "missing" | "notFolder" | "unreadable" | "notAClone" | "nowAClone" | "covered" | "notAnswering";
 
 /**
  * The values of State, by the names of their Go constants.
@@ -175,6 +175,12 @@ export const State = {
      * directly inside the clone root or a folder location, or one listed twice.
      */
     StateCovered: "covered",
+
+    /**
+     * StateNotAnswering is a location whose read took longer than its Reader's limit, as on
+     * a network share that hangs. It is skipped, and read again next time.
+     */
+    StateNotAnswering: "notAnswering",
 } as const;
 
 /**

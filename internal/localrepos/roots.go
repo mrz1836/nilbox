@@ -44,6 +44,10 @@ const (
 	// StateCovered is a location another one already covers: the clone root, a clone
 	// directly inside the clone root or a folder location, or one listed twice.
 	StateCovered State = "covered"
+
+	// StateNotAnswering is a location whose read took longer than its Reader's limit, as on
+	// a network share that hangs. It is skipped, and read again next time.
+	StateNotAnswering State = "notAnswering"
 )
 
 // Place is one location Roots reads: its path, absolute and with ~ expanded, its kind,
@@ -54,11 +58,13 @@ type Place struct {
 	Primary bool
 }
 
-// place is a Place with its path resolved through links once.
+// place is a Place with its path resolved through links once, and whether that took
+// longer than the Reader's limit, which leaves its path as it is.
 type place struct {
 	Place
 
 	resolved string
+	stalled  bool
 }
 
 // Roots is where the user's clones are: the clone root, the primary, which new clones go
@@ -66,33 +72,62 @@ type place struct {
 // The zero Roots has no primary; NewRoots builds one.
 type Roots struct {
 	places []place
+
+	// reader bounds the reads of the other locations; nil reads them directly.
+	reader *Reader
+}
+
+// RootsOption configures the Roots NewRoots builds.
+type RootsOption func(*Roots)
+
+// WithReader reads the other locations through reader, which bounds how long each may
+// take, the resolution of their links included; the clone root is still read directly. It
+// changes neither Key nor Equal.
+func WithReader(reader *Reader) RootsOption {
+	return func(r *Roots) { r.reader = reader }
 }
 
 // NewRoots builds the Roots of the clone root primary and the other locations extra, both
 // as stored, with ~ for home. Only the primary can fail; an extra that can't be expanded,
-// has no known kind, is the primary, or repeats another is dropped.
-func NewRoots(primary string, extra []Location, home string) (Roots, error) {
+// has no known kind, is the primary, or repeats another is dropped. With a Reader
+// (WithReader), the other locations' links are resolved through it, at once: one that
+// doesn't answer is kept as it is written, and Clones skips it.
+func NewRoots(primary string, extra []Location, home string, opts ...RootsOption) (Roots, error) {
 	root, err := paths.ExpandHome(primary, home)
 	if err != nil {
 		return Roots{}, fmt.Errorf("clone root: %w", err)
 	}
 
-	r := Roots{places: make([]place, 0, 1+len(extra))}
+	var r Roots
+
+	for _, opt := range opts {
+		opt(&r)
+	}
+
+	r.places = make([]place, 0, 1+len(extra))
 	r.places = append(r.places, place{Place: Place{Path: root, Kind: KindFolder, Primary: true}, resolved: paths.Resolved(root)})
 
-	for _, loc := range extra {
-		dir, expandErr := paths.ExpandHome(loc.Path, home)
-		if expandErr != nil || !loc.Kind.Valid() {
-			continue
-		}
-
-		p := place{Place: Place{Path: dir, Kind: loc.Kind}, resolved: paths.Resolved(dir)}
+	for _, p := range r.resolveAll(extraPlaces(extra, home)) {
 		if !r.has(p.resolved) {
 			r.places = append(r.places, p)
 		}
 	}
 
 	return r, nil
+}
+
+// extraPlaces expands the other locations, dropping one that can't be expanded or has no
+// known kind.
+func extraPlaces(extra []Location, home string) []place {
+	out := make([]place, 0, len(extra))
+
+	for _, loc := range extra {
+		if dir, err := paths.ExpandHome(loc.Path, home); err == nil && loc.Kind.Valid() {
+			out = append(out, place{Place: Place{Path: dir, Kind: loc.Kind}})
+		}
+	}
+
+	return out
 }
 
 // Primary returns the clone root, absolute, or "" for the zero Roots.
@@ -204,8 +239,8 @@ type Unread struct {
 	// Dir is the location, absolute.
 	Dir string
 
-	// State is why it wasn't read: StateMissing, StateNotFolder, StateUnreadable, or
-	// StateNotAClone.
+	// State is why it wasn't read: StateMissing, StateNotFolder, StateUnreadable,
+	// StateNotAClone, or StateNotAnswering.
 	State State
 }
 
@@ -220,6 +255,8 @@ func (u Unread) Words(home string) string {
 		return shown + " isn't a folder"
 	case StateNotAClone:
 		return shown + " is no longer a clone"
+	case StateNotAnswering:
+		return shown + " didn't answer in time"
 	case StateUnreadable, StateOK, StateNowAClone, StateCovered:
 		return shown + " couldn't be read"
 	}
@@ -240,9 +277,10 @@ type Found struct {
 
 // Clones lists the clones in every location, reading no git: the clones directly inside
 // the clone root and each folder location (see folderClones), and each clone location
-// that still holds a .git. The locations are read at once. A clone root that can't be
-// read is an error, as it always was; another location that can't be read is skipped and
-// named in Found.Skipped.
+// that still holds a .git. The locations are read at once, the others through the Roots'
+// Reader, if any. A clone root that can't be read is an error, as it always was; another
+// location that can't be read, or doesn't answer in time, is skipped and named in
+// Found.Skipped.
 func (r Roots) Clones(ctx context.Context) (Found, error) {
 	if len(r.places) == 0 {
 		return Found{}, fmt.Errorf("read clone root: %w", paths.ErrEmpty)
@@ -253,7 +291,14 @@ func (r Roots) Clones(ctx context.Context) (Found, error) {
 	var wg sync.WaitGroup
 
 	for i, p := range r.places {
-		wg.Go(func() { reads[i] = readPlace(p.Place) })
+		switch {
+		case p.Primary:
+			wg.Go(func() { reads[i] = readPlace(p.Place) })
+		case p.stalled:
+			reads[i] = placeRead{state: StateNotAnswering}
+		default:
+			wg.Go(func() { reads[i] = r.reader.within(ctx, p.Place) })
+		}
 	}
 
 	wg.Wait()
@@ -287,6 +332,35 @@ func (r Roots) Clones(ctx context.Context) (Found, error) {
 	}
 
 	return found, nil
+}
+
+// resolveAll resolves each place's links: directly, one after another, without a Reader,
+// or through it, all at once.
+func (r Roots) resolveAll(places []place) []place {
+	if r.reader == nil {
+		for i := range places {
+			places[i].resolved = paths.Resolved(places[i].Path)
+		}
+
+		return places
+	}
+
+	var wg sync.WaitGroup
+
+	for i := range places {
+		p := &places[i]
+
+		wg.Go(func() {
+			var answered bool
+
+			p.resolved, answered = r.reader.Resolved(p.Path)
+			p.stalled = !answered
+		})
+	}
+
+	wg.Wait()
+
+	return places
 }
 
 // folderAt reports a folder location, the clone root among them, whose resolved path is

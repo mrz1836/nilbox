@@ -84,11 +84,12 @@ type hooksClones struct {
 	settings *settings.Service
 	home     string
 	git      execpath.Runner
+	reader   *localrepos.Reader
 }
 
 // Roots returns the clone root and the other locations as they are set now.
 func (c hooksClones) Roots(ctx context.Context) (localrepos.Roots, error) {
-	return releaseClones{settings: c.settings, home: c.home}.Roots(ctx)
+	return releaseClones{settings: c.settings, home: c.home, reader: c.reader}.Roots(ctx)
 }
 
 // Dirs lists the clones in roots.

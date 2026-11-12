@@ -23,6 +23,7 @@ type releaseClones struct {
 	settings *settings.Service
 	home     string
 	git      execpath.Runner
+	reader   *localrepos.Reader
 }
 
 // Roots returns the clone root and the other locations as they are set now.
@@ -32,7 +33,7 @@ func (c releaseClones) Roots(ctx context.Context) (localrepos.Roots, error) {
 		return localrepos.Roots{}, err
 	}
 
-	return rootsOf(all, c.home)
+	return rootsOf(all, c.home, c.reader)
 }
 
 // Clones lists the clones in roots and reads their remotes.

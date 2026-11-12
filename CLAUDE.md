@@ -249,6 +249,11 @@ app:lint` reads.
   with what to add instead (the folders inside one with no clones of its own, at most 100
   subfolders and 5,000 entries looked at, or the folder of a clone that holds others), and
   `Check` says how each stored location reads now. No location is searched recursively.
+  One `Reader`, which core builds and hands every service that reads the locations, bounds
+  each read of another location than the clone root, the resolution of its links included,
+  to `DefaultReadLimit` (5 s) and keeps one of each going per location: a share that hangs
+  reads as `StateNotAnswering` and is skipped, its hung read joined until it ends, never
+  started again beside it. The clone root is always read directly.
 - The app owns its worktrees: `internal/worktrees` makes them (one per item per clone, shared by
   every agent, under `<the clone's folder>/.<slug>/worktrees/<clone>/`, so in a location as in
   the clone root), records them in `internal/worklog`, checks every record against git on each

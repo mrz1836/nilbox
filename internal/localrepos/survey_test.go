@@ -207,7 +207,7 @@ func TestCheck(t *testing.T) {
 		{Path: "~/work/a", Kind: KindClone},
 		{Path: workLocation, Kind: KindFolder},
 		{Path: "~/notes", Kind: KindFolder},
-	}, home, git)
+	}, home, git, NewReader(DefaultReadLimit))
 
 	assert.Equal(t, []LocationState{
 		{Path: "~/projects", Kind: KindFolder, Primary: true, State: StateOK, Clones: 1},
@@ -222,6 +222,6 @@ func TestCheck(t *testing.T) {
 		{Path: "~/notes", Kind: KindFolder, State: StateNotFolder},
 	}, got)
 
-	got = Check(t.Context(), "~/projects", []Location{{Path: "relative", Kind: KindFolder}}, home, nil)
+	got = Check(t.Context(), "~/projects", []Location{{Path: "relative", Kind: KindFolder}}, home, nil, nil)
 	assert.Equal(t, StateUnreadable, got[1].State, "a path that can't be read as one")
 }

@@ -128,7 +128,7 @@ func (s *Service) cloneTarget(ctx context.Context, itemID int64) (CloneTarget, r
 
 	t := CloneTarget{Repo: ref.name.String()}
 
-	roots, err := prefs.roots(s.home)
+	roots, err := prefs.roots(s.home, s.reader)
 	if err != nil {
 		return CloneTarget{}, repoRef{}, err
 	}

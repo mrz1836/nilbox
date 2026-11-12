@@ -27,6 +27,7 @@ func newLocationsRig(t *testing.T) locationsRig {
 	t.Helper()
 
 	svc, db, home := newTestService(t)
+	svc.reader = localrepos.NewReader(localrepos.DefaultReadLimit) // read as the app reads them
 
 	for _, dir := range []string{
 		"projects/api", "work/web", "work/cli", "Desktop/exp", "src/acme-org/one", "src/tools/two",

@@ -279,6 +279,11 @@ type Config struct {
 	// Home is the user's home directory; it expands a ~ clone root and shortens paths.
 	Home string
 
+	// Reader bounds how long a read of one of the other repository locations may take, so
+	// one that hangs is skipped rather than holding a listing, a sweep, or a launch's
+	// worktree. Optional: without it they are read directly.
+	Reader *localrepos.Reader
+
 	// Clock stamps snapshots. It defaults to the system clock.
 	Clock clock.Clock
 
@@ -336,6 +341,7 @@ type Service struct {
 	gitWith  func(env []string) execpath.Runner
 	home     string
 	realHome string
+	reader   *localrepos.Reader
 	clock    clock.Clock
 	github   GitHub
 	launches Records
@@ -388,6 +394,7 @@ func NewService(cfg Config) *Service {
 		gitWith:  cfg.GitWith,
 		home:     cfg.Home,
 		realHome: realHome,
+		reader:   cfg.Reader,
 		clock:    clock.Or(cfg.Clock),
 		github:   cfg.GitHub,
 		launches: cfg.Records,
@@ -657,7 +664,7 @@ func (s *Service) prepare(ctx context.Context) (git, localrepos.Roots, SweepSett
 		return git{}, localrepos.Roots{}, SweepSettings{}, err
 	}
 
-	roots, err := localrepos.NewRoots(prefs.CloneRoot, prefs.CloneLocations, s.home)
+	roots, err := localrepos.NewRoots(prefs.CloneRoot, prefs.CloneLocations, s.home, localrepos.WithReader(s.reader))
 	if err != nil {
 		return git{}, localrepos.Roots{}, SweepSettings{}, err
 	}

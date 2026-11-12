@@ -512,7 +512,8 @@ More in [Reviewing a pull request](docs/desktop.md#reviewing-a-pull-request) and
 - **Smart about where clones live:** adding a folder previews it first. A folder with no clones
   directly inside suggests the folders inside it that have some (`~/src/<owner>` layouts), a
   clone whose folder holds other clones offers that folder, and a location that is unplugged
-  says so, while its worktree records wait for it.
+  says so, while its worktree records wait for it. A network share that stops answering is
+  skipped after 5 seconds, and read again next time.
 - **Its own worktree,** made by Nilbox in Go beside the clone, at
   `~/projects/.nilbox/worktrees/<repo>/pr-<n>` (or `issue-<n>`), from the pull request's head or
   the default branch. Every agent shares it, so a

@@ -338,9 +338,13 @@ type checked struct {
 // Check reads how the clone root primary and each of the locations extra, both as stored,
 // read now: the clone root first, then each stored entry in order, every one of them, so
 // the settings can show what NewRoots drops. git, when set, reads a clone location's
-// origin; nil leaves Repo "". The locations are read at once.
-func Check(ctx context.Context, primary string, extra []Location, home string, git execpath.Runner) []LocationState {
-	all := checkedOf(primary, extra, home)
+// origin; nil leaves Repo "". The locations are read at once, the others through reader,
+// when set, so one that doesn't answer in time reads as StateNotAnswering; the clone root
+// is read directly.
+func Check(ctx context.Context, primary string, extra []Location, home string, git execpath.Runner,
+	reader *Reader,
+) []LocationState {
+	all := checkedOf(primary, extra, home, reader)
 
 	markCovered(all)
 
@@ -348,8 +352,8 @@ func Check(ctx context.Context, primary string, extra []Location, home string, g
 
 	for i := range all {
 		c := &all[i]
-		if c.dir != "" && c.state.State != StateCovered {
-			wg.Go(func() { c.read(ctx, git) })
+		if c.dir != "" && c.state.State != StateCovered && c.state.State != StateNotAnswering {
+			wg.Go(func() { c.read(ctx, git, reader) })
 		}
 	}
 
@@ -364,8 +368,9 @@ func Check(ctx context.Context, primary string, extra []Location, home string, g
 }
 
 // checkedOf lists the locations Check reads, each expanded, with no state read yet: one
-// that can't be read as a path, or has no known kind, is unreadable.
-func checkedOf(primary string, extra []Location, home string) []checked {
+// that can't be read as a path, or has no known kind, is unreadable, and one whose links
+// reader couldn't resolve in time doesn't answer.
+func checkedOf(primary string, extra []Location, home string, reader *Reader) []checked {
 	all := make([]checked, 0, 1+len(extra))
 
 	root, err := paths.ExpandHome(primary, home)
@@ -382,13 +387,38 @@ func checkedOf(primary string, extra []Location, home string) []checked {
 		c := checked{state: LocationState{Path: loc.Path, Kind: loc.Kind, State: StateUnreadable}}
 
 		if dir, expandErr := paths.ExpandHome(loc.Path, home); expandErr == nil && loc.Kind.Valid() {
-			c.dir, c.resolved = dir, paths.Resolved(dir)
+			c.dir = dir
 		}
 
 		all = append(all, c)
 	}
 
+	resolveChecked(all[1:], reader)
+
 	return all
+}
+
+// resolveChecked resolves the links of each of others, the locations beside the clone
+// root, through reader, all at once: one that takes longer than its limit doesn't answer.
+func resolveChecked(others []checked, reader *Reader) {
+	var wg sync.WaitGroup
+
+	for i := range others {
+		c := &others[i]
+		if c.dir == "" {
+			continue
+		}
+
+		wg.Go(func() {
+			var answered bool
+
+			if c.resolved, answered = reader.Resolved(c.dir); !answered {
+				c.state.State = StateNotAnswering
+			}
+		})
+	}
+
+	wg.Wait()
 }
 
 // markCovered marks each location another already covers, from the paths alone: one the
@@ -412,9 +442,17 @@ func markCovered(all []checked) {
 }
 
 // read reads how the location reads now: its state, a folder's clones, and a clone's
-// origin.
-func (c *checked) read(ctx context.Context, git execpath.Runner) {
-	read := readPlace(Place{Path: c.dir, Kind: c.state.Kind, Primary: c.state.Primary})
+// origin. Another location than the clone root is read through reader.
+func (c *checked) read(ctx context.Context, git execpath.Runner, reader *Reader) {
+	p := Place{Path: c.dir, Kind: c.state.Kind, Primary: c.state.Primary}
+
+	var read placeRead
+	if p.Primary {
+		read = readPlace(p)
+	} else {
+		read = reader.within(ctx, p)
+	}
+
 	c.state.State = read.state
 
 	switch {

@@ -249,6 +249,7 @@ type Service struct {
 	prefs    *prefs.Store
 	profiles ProfileLookup
 	git      execpath.Runner
+	reader   *localrepos.Reader
 	home     string
 	clock    clock.Clock
 	events   event.Sink
@@ -289,6 +290,13 @@ func WithEvents(sink event.Sink) Option {
 // preview and the check of the repository locations. Without it, they name no repository.
 func WithGit(git execpath.Runner) Option {
 	return func(s *Service) { s.git = git }
+}
+
+// WithReader reads the other repository locations through reader, which bounds how long
+// each read may take, so one that hangs reads as not answering rather than holding the
+// check of the locations. Without it they are read directly.
+func WithReader(reader *localrepos.Reader) Option {
+	return func(s *Service) { s.reader = reader }
 }
 
 // WithLogger logs to logger what a setter cannot report as its error. Without it, or

@@ -55,7 +55,7 @@ func (s *Service) LinkClone(ctx context.Context, itemID int64, dir string) (Link
 		return LinkedClone{}, err
 	}
 
-	roots, err := prefs.roots(s.home)
+	roots, err := prefs.roots(s.home, s.reader)
 	if err != nil {
 		return LinkedClone{}, err
 	}

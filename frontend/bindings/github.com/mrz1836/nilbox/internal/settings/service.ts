@@ -51,10 +51,11 @@ import * as $models from "./models.js";
  * preview offers, and a launch's clone found elsewhere. Each is trimmed, expanded, and
  * stored with ~, as a folder (looked into one level deep) or a single clone, by what it is
  * now (localrepos.Classify); a hidden folder, one inside the app's worktrees folder or a
- * git folder, a linked worktree, the clone root, and a clone the locations already hold
- * are refused, in words the window shows. A location already listed is classified again,
- * which is what Check again does. A folder added drops the clone locations directly inside
- * it, which it now covers.
+ * git folder, a linked worktree, the clone root, a clone the locations already hold, and
+ * a folder that doesn't answer within the Reader's limit (WithReader) are refused, in
+ * words the window shows. A location already listed is classified again, which is what
+ * Check again does. A folder added drops the clone locations directly inside it, which it
+ * now covers.
  */
 export function AddCloneLocations(dirs: string[] | null): $CancellablePromise<$models.Settings> {
     return $Call.ByID(4232663309, dirs);

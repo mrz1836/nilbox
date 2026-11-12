@@ -91,6 +91,8 @@ export function marker(state: LocationState | undefined): Marker {
       return { text: 'Can’t be read', warn: true, recheck: true }
     case 'notAClone':
       return { text: 'No longer a clone', warn: true, recheck: true }
+    case 'notAnswering':
+      return { text: 'Not answering', warn: true, recheck: true }
     case 'covered':
       return { text: `Already in ${state.coveredBy}`, warn: true, recheck: false }
   }

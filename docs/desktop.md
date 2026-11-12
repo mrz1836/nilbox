@@ -2026,11 +2026,13 @@ suggests a better choice where it finds one:
   clones inside it, which it now covers.
 
 Each location shows what it is now: *folder · 6 clones*, *clone · acme-org/example-repo*, or a
-warning such as *Not found* (a drive that isn't plugged in), *No longer a clone*, *Now a clone
-itself* (a folder someone ran `git init` in, which is still looked into), or *Already in
-~/projects*, with **Check again**. Every page and launch reads every location at once, and a
-location that can't be read is skipped and named: the launch's message says so, and the
-Worktrees view says which it couldn't read. A clone two locations reach is listed once.
+warning such as *Not found* (a drive that isn't plugged in), *Not answering* (a network share
+that hangs), *No longer a clone*, *Now a clone itself* (a folder someone ran `git init` in,
+which is still looked into), or *Already in ~/projects*, with **Check again**. Every page and
+launch reads every location at once, and a location that can't be read is skipped and named: the
+launch's message says so, and the Worktrees view says which it couldn't read. A location that
+doesn't answer within 5 seconds is skipped, and read again next time. A clone two locations reach
+is listed once.
 
 Removing a location leaves its clones and their worktrees as they are, but nothing lists, sweeps,
 or cleans them up until you add it again, and their worktree records are kept. Worktrees stay

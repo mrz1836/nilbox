@@ -29,12 +29,13 @@ var ErrInvalidCloneLocation = errors.New("invalid repository location")
 // preview offers, and a launch's clone found elsewhere. Each is trimmed, expanded, and
 // stored with ~, as a folder (looked into one level deep) or a single clone, by what it is
 // now (localrepos.Classify); a hidden folder, one inside the app's worktrees folder or a
-// git folder, a linked worktree, the clone root, and a clone the locations already hold
-// are refused, in words the window shows. A location already listed is classified again,
-// which is what Check again does. A folder added drops the clone locations directly inside
-// it, which it now covers.
+// git folder, a linked worktree, the clone root, a clone the locations already hold, and
+// a folder that doesn't answer within the Reader's limit (WithReader) are refused, in
+// words the window shows. A location already listed is classified again, which is what
+// Check again does. A folder added drops the clone locations directly inside it, which it
+// now covers.
 func (s *Service) AddCloneLocations(ctx context.Context, dirs []string) (Settings, error) {
-	adds, err := s.checkLocations(dirs)
+	adds, err := s.checkLocations(ctx, dirs)
 	if err != nil {
 		return Settings{}, err
 	}
@@ -70,10 +71,16 @@ func (s *Service) RemoveCloneLocation(ctx context.Context, dir string) (Settings
 	text := strings.TrimSpace(dir)
 	expanded, expandErr := paths.ExpandHome(text, s.home)
 
+	// Resolved once, before the transaction: the location may be on a share that hangs.
+	var target folder
+	if expandErr == nil {
+		target = s.folderOf(expanded)
+	}
+
 	return s.save(ctx, func(ctx context.Context, p *prefs.Store) error {
 		err := p.Update(ctx, KeyCloneLocations, func(stored string, _ bool) (string, error) {
 			list := slices.DeleteFunc(decodeCloneLocations(stored), func(loc localrepos.Location) bool {
-				return loc.Path == text || (expandErr == nil && s.sameLocation(loc.Path, expanded))
+				return loc.Path == text || (expandErr == nil && s.sameLocation(loc.Path, target))
 			})
 
 			return store.EncodeJSON(list)
@@ -114,17 +121,19 @@ func (s *Service) CheckCloneLocations(ctx context.Context) ([]localrepos.Locatio
 	}
 
 	return localrepos.Check(ctx, storedCloneRoot(stored), decodeCloneLocations(stored[KeyCloneLocations]), s.home,
-		s.git), nil
+		s.git, s.reader), nil
 }
 
-// locationAdd is a location to add: its folder, absolute, and what it is now.
+// locationAdd is a location to add: its folder, absolute and resolved through its links,
+// and what it is now.
 type locationAdd struct {
-	dir  string
-	kind localrepos.Kind
+	dir    string
+	folder folder
+	kind   localrepos.Kind
 }
 
 // checkLocations checks each of dirs as checkLocation does, refusing none at all.
-func (s *Service) checkLocations(dirs []string) ([]locationAdd, error) {
+func (s *Service) checkLocations(ctx context.Context, dirs []string) ([]locationAdd, error) {
 	if len(dirs) == 0 {
 		return nil, uierr.New("Choose a folder to add.", ErrInvalidCloneLocation)
 	}
@@ -132,7 +141,7 @@ func (s *Service) checkLocations(dirs []string) ([]locationAdd, error) {
 	adds := make([]locationAdd, 0, len(dirs))
 
 	for _, dir := range dirs {
-		add, err := s.checkLocation(dir)
+		add, err := s.checkLocation(ctx, dir)
 		if err != nil {
 			return nil, err
 		}
@@ -144,36 +153,33 @@ func (s *Service) checkLocations(dirs []string) ([]locationAdd, error) {
 }
 
 // checkLocation checks a location to add as it is typed, before anything is read from
-// the database: a path to a folder that exists and can be a location.
-func (s *Service) checkLocation(dir string) (locationAdd, error) {
+// the database: a path to a folder that exists and can be a location, which answers within
+// the Reader's limit (WithReader).
+func (s *Service) checkLocation(ctx context.Context, dir string) (locationAdd, error) {
 	expanded, err := expandLocation(dir, s.home)
 	if err != nil {
 		return locationAdd{}, err
 	}
 
-	kind, err := localrepos.Classify(expanded, s.home)
+	kind, err := s.reader.Addable(ctx, expanded, s.home)
 	if err != nil {
 		return locationAdd{}, fmt.Errorf("%w: %w", ErrInvalidCloneLocation, err)
 	}
 
-	if err = localrepos.CheckAddable(expanded, s.home); err != nil {
-		return locationAdd{}, fmt.Errorf("%w: %w", ErrInvalidCloneLocation, err)
-	}
-
-	return locationAdd{dir: expanded, kind: kind}, nil
+	return locationAdd{dir: expanded, folder: s.folderOf(expanded), kind: kind}, nil
 }
 
 // addLocation adds add to list, the locations stored beside the clone root root: it
 // classifies one already listed again, refuses one the locations cover, and otherwise
 // appends it with ~, dropping the clone locations a folder covers.
 func (s *Service) addLocation(root string, list []localrepos.Location, add locationAdd) ([]localrepos.Location, error) {
-	if i := slices.IndexFunc(list, func(loc localrepos.Location) bool { return s.sameLocation(loc.Path, add.dir) }); i >= 0 {
+	if i := slices.IndexFunc(list, func(loc localrepos.Location) bool { return s.sameLocation(loc.Path, add.folder) }); i >= 0 {
 		list[i].Kind = add.kind
 
 		return s.pruneCovered(list, add), nil
 	}
 
-	roots, err := localrepos.NewRoots(root, list, s.home)
+	roots, err := localrepos.NewRoots(root, list, s.home, localrepos.WithReader(s.reader))
 	if err != nil {
 		return nil, err
 	}
@@ -196,15 +202,47 @@ func (s *Service) pruneCovered(list []localrepos.Location, add locationAdd) []lo
 	return slices.DeleteFunc(list, func(loc localrepos.Location) bool {
 		dir, err := paths.ExpandHome(loc.Path, s.home)
 
-		return err == nil && loc.Kind == localrepos.KindClone && paths.Same(filepath.Dir(dir), add.dir)
+		return err == nil && loc.Kind == localrepos.KindClone && s.same(filepath.Dir(dir), add.folder)
 	})
 }
 
-// sameLocation reports whether stored, a location as stored, names the folder dir.
-func (s *Service) sameLocation(stored, dir string) bool {
+// folder is a folder a change names: its path, cleaned, and resolved through its links
+// once, through the Reader, which answered unless it took longer than its limit.
+type folder struct {
+	clean    string
+	resolved string
+	answered bool
+}
+
+// folderOf resolves the folder dir once, through the Reader.
+func (s *Service) folderOf(dir string) folder {
+	resolved, answered := s.reader.Resolved(dir)
+
+	return folder{clean: filepath.Clean(dir), resolved: resolved, answered: answered}
+}
+
+// sameLocation reports whether stored, a location as stored, names the folder f.
+func (s *Service) sameLocation(stored string, f folder) bool {
 	expanded, err := paths.ExpandHome(stored, s.home)
 
-	return err == nil && paths.Same(expanded, dir)
+	return err == nil && s.same(expanded, f)
+}
+
+// same reports whether path names the folder f: the same path once cleaned, or once both
+// are resolved through their links, through the Reader. A folder whose links don't resolve
+// in time is the same only by its path.
+func (s *Service) same(path string, f folder) bool {
+	if filepath.Clean(path) == f.clean {
+		return true
+	}
+
+	if !f.answered {
+		return false
+	}
+
+	resolved, answered := s.reader.Resolved(path)
+
+	return answered && resolved == f.resolved
 }
 
 // storedRoots reads the clone root and the other locations as stored.
@@ -214,7 +252,8 @@ func (s *Service) storedRoots(ctx context.Context) (localrepos.Roots, error) {
 		return localrepos.Roots{}, fmt.Errorf("read the repository locations: %w", err)
 	}
 
-	return localrepos.NewRoots(storedCloneRoot(stored), decodeCloneLocations(stored[KeyCloneLocations]), s.home)
+	return localrepos.NewRoots(storedCloneRoot(stored), decodeCloneLocations(stored[KeyCloneLocations]), s.home,
+		localrepos.WithReader(s.reader))
 }
 
 // expandLocation expands a location as it is typed, refusing one that isn't a path in

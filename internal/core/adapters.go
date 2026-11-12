@@ -21,9 +21,9 @@ func (v settingsView[T]) Get(ctx context.Context) (T, error) {
 }
 
 // rootsOf builds the repository locations the settings name: the clone root and the other
-// locations, with ~ for home.
-func rootsOf(s settings.Settings, home string) (localrepos.Roots, error) {
-	return localrepos.NewRoots(s.CloneRoot, s.CloneLocations, home)
+// locations, with ~ for home, the others read through reader.
+func rootsOf(s settings.Settings, home string, reader *localrepos.Reader) (localrepos.Roots, error) {
+	return localrepos.NewRoots(s.CloneRoot, s.CloneLocations, home, localrepos.WithReader(reader))
 }
 
 // settingsPart reads the settings as they are now and returns the part of them pick takes,

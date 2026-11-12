@@ -284,6 +284,11 @@ describe('marker', () => {
     expect(marker(locationState({ ...extra, state: 'notAClone', kind: 'clone' })).text).toBe('No longer a clone')
     expect(marker(locationState({ ...extra, state: 'notFolder' })).text).toBe('Not a folder')
     expect(marker(locationState({ ...extra, state: 'unreadable' })).text).toBe('Can’t be read')
+    expect(marker(locationState({ ...extra, state: 'notAnswering' }))).toEqual({
+      text: 'Not answering',
+      warn: true,
+      recheck: true,
+    })
     expect(marker(locationState({ ...extra, state: 'covered', coveredBy: '~/projects' }))).toEqual({
       text: 'Already in ~/projects',
       warn: true,
