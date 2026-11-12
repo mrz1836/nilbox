@@ -59,6 +59,11 @@ func (e exitError) Error() string { return fmt.Sprintf("exit status %d", e.code)
 
 func (e exitError) ExitCode() int { return e.code }
 
+// OriginMatched reports whether the matching remote is origin.
+func (m Match) OriginMatched() bool {
+	return m.MatchedRemote == originRemote
+}
+
 func TestParseRemoteURL(t *testing.T) {
 	t.Parallel()
 

@@ -34,6 +34,10 @@ func scoped(settings ...[3]string) string {
 	return b.String()
 }
 
+// getURLArgs prints origin's URL as git would use it, insteadOf applied, asking nothing of
+// origin.
+func getURLArgs() []string { return getURLArgsFor(remoteName) }
+
 // guardCase is a case of what an ls-remote runs with.
 type guardCase struct {
 	name string

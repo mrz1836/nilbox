@@ -90,11 +90,6 @@ type Match struct {
 	MatchedRemote string
 }
 
-// OriginMatched reports whether the matching remote is origin.
-func (m Match) OriginMatched() bool {
-	return m.MatchedRemote == originRemote
-}
-
 // Resolver finds the local clone of a repository under a clone root.
 type Resolver struct {
 	// Root is the clone root as configured, e.g. "~/projects".

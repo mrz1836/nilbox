@@ -136,6 +136,15 @@ func (h *harness) record(id int64) Record {
 	return rec
 }
 
+// liveRun returns the run the engine follows with id, or nil: until the engine lets go of
+// it, which is a moment after its end is recorded.
+func (e *Engine) liveRun(id int64) *live {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+
+	return e.live[id]
+}
+
 // logText returns the run's log, or "" when there is none.
 func (h *harness) logText(id int64) string {
 	h.t.Helper()

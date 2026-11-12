@@ -350,10 +350,6 @@ func remoteKeysArgs() []string {
 	return []string{configCmd, "--show-scope", "-z", "--get-regexp", remoteKeysPattern}
 }
 
-// getURLArgs prints origin's URL as git would use it, insteadOf applied, asking nothing of
-// origin.
-func getURLArgs() []string { return getURLArgsFor(remoteName) }
-
 // getURLArgsFor prints remote's URL as git would use it, insteadOf applied, asking nothing of
 // it.
 func getURLArgsFor(remote string) []string { return []string{lsRemote, "--get-url", remote} }
