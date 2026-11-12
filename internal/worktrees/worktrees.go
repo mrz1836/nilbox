@@ -43,11 +43,16 @@ import (
 	"github.com/mrz1836/nilbox/internal/item"
 )
 
-// Snapshot is every repository under the clone root that has linked worktrees, as the
-// Worktrees view shows it. Every field is a plain value.
+// Snapshot is every repository in the repository locations that has linked worktrees, as
+// the Worktrees view shows it. Every field is a plain value.
 type Snapshot struct {
-	// Root is the clone root, shown relative to home with ~.
-	Root string `json:"root"`
+	// Roots are the repository locations, the clone root first, shown relative to home
+	// with ~.
+	Roots []string `json:"roots"`
+
+	// Unread are the other locations the listing couldn't read, as on a drive that is
+	// unplugged, with ~. Their clones aren't listed.
+	Unread []string `json:"unread"`
 
 	// Repos are the repositories with linked worktrees (or that could not be listed),
 	// sorted by path.

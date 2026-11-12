@@ -27,12 +27,13 @@ import (
 	"github.com/mrz1836/nilbox/internal/uierr"
 )
 
-// Clones finds the clones under the clone root: Root is the clone root as set now, Dirs
-// lists the clones directly under it, reading no git, and Origin reads which GitHub
-// repository a clone's origin is, if any. Core adapts the settings and localrepos.
+// Clones finds the clones in the repository locations: Roots is the clone root and the
+// other locations as set now, Dirs lists the clones in them, reading no git
+// (localrepos.Roots.Clones), and Origin reads which GitHub repository a clone's origin is,
+// if any. Core adapts the settings and localrepos.
 type Clones interface {
-	Root(ctx context.Context) (string, error)
-	Dirs(ctx context.Context, root string) ([]string, error)
+	Roots(ctx context.Context) (localrepos.Roots, error)
+	Dirs(ctx context.Context, roots localrepos.Roots) ([]string, error)
 	Origin(ctx context.Context, dir string) (name repo.Name, onGitHub bool, err error)
 }
 

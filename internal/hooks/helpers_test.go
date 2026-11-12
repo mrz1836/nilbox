@@ -20,6 +20,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/gitread"
 	"github.com/mrz1836/nilbox/internal/integrationprefs"
 	"github.com/mrz1836/nilbox/internal/integrations"
+	"github.com/mrz1836/nilbox/internal/localrepos"
 	"github.com/mrz1836/nilbox/internal/repo"
 	"github.com/mrz1836/nilbox/internal/scriptrun"
 	"github.com/mrz1836/nilbox/internal/scriptrun/scriptruntest"
@@ -324,10 +325,12 @@ func cmpMode(mode os.FileMode) os.FileMode {
 	return mode
 }
 
-// fakeClones is the clone root: its folder, the clones made under it, and their origins.
+// fakeClones is the clone root: its folder, the clones made under it, and their origins,
+// with the other locations extra.
 type fakeClones struct {
 	mu      sync.Mutex
 	root    string
+	extra   []localrepos.Location
 	rootErr error
 	dirsErr error
 	origins map[string]repo.Name
@@ -341,17 +344,21 @@ type fakeClones struct {
 	onOrigin func()
 }
 
-func (f *fakeClones) Root(context.Context) (string, error) {
+func (f *fakeClones) Roots(context.Context) (localrepos.Roots, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
 	f.rooted++
 
-	return f.root, f.rootErr
+	if f.rootErr != nil {
+		return localrepos.Roots{}, f.rootErr
+	}
+
+	return localrepos.NewRoots(f.root, f.extra, "")
 }
 
-// Dirs lists the folders under root that hold a .git, as localrepos.Clones does.
-func (f *fakeClones) Dirs(_ context.Context, root string) ([]string, error) {
+// Dirs lists the clones in roots, as localrepos.Roots.Clones does.
+func (f *fakeClones) Dirs(ctx context.Context, roots localrepos.Roots) ([]string, error) {
 	f.mu.Lock()
 	f.listed++
 	err, hook := f.dirsErr, f.onDirs
@@ -365,21 +372,12 @@ func (f *fakeClones) Dirs(_ context.Context, root string) ([]string, error) {
 		return nil, err
 	}
 
-	entries, err := os.ReadDir(root)
+	found, err := roots.Clones(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	var out []string
-
-	for _, e := range entries {
-		dir := filepath.Join(root, e.Name())
-		if _, statErr := os.Stat(filepath.Join(dir, ".git")); statErr == nil {
-			out = append(out, dir)
-		}
-	}
-
-	return out, nil
+	return found.Dirs, nil
 }
 
 func (f *fakeClones) Origin(_ context.Context, dir string) (repo.Name, bool, error) {

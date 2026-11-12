@@ -11,40 +11,40 @@ import (
 	"github.com/mrz1836/nilbox/internal/launcher/terminal"
 	"github.com/mrz1836/nilbox/internal/localrepos"
 	"github.com/mrz1836/nilbox/internal/notify"
-	"github.com/mrz1836/nilbox/internal/paths"
 	"github.com/mrz1836/nilbox/internal/release"
 	"github.com/mrz1836/nilbox/internal/repo"
 	"github.com/mrz1836/nilbox/internal/settings"
 )
 
-// releaseClones lists the clones under the clone root the settings name, for the Release
-// page, with each one's origin when origin is a GitHub repository (release.Clones).
+// releaseClones lists the clones in the repository locations the settings name, for the
+// Release page, with each one's origin when origin is a GitHub repository
+// (release.Clones).
 type releaseClones struct {
 	settings *settings.Service
 	home     string
 	git      execpath.Runner
 }
 
-// Root returns the clone root as it is set now, with ~ expanded.
-func (c releaseClones) Root(ctx context.Context) (string, error) {
+// Roots returns the clone root and the other locations as they are set now.
+func (c releaseClones) Roots(ctx context.Context) (localrepos.Roots, error) {
 	all, err := c.settings.Get(ctx)
 	if err != nil {
-		return "", err
+		return localrepos.Roots{}, err
 	}
 
-	root, err := paths.ExpandHome(all.CloneRoot, c.home)
-	if err != nil {
-		return "", fmt.Errorf("clone root: %w", err)
-	}
-
-	return root, nil
+	return rootsOf(all, c.home)
 }
 
-// Clones scans root.
-func (c releaseClones) Clones(ctx context.Context, root string) ([]release.Clone, error) {
-	found, err := localrepos.Scan(ctx, root, c.git)
+// Clones lists the clones in roots and reads their remotes.
+func (c releaseClones) Clones(ctx context.Context, roots localrepos.Roots) ([]release.Clone, error) {
+	listed, err := roots.Clones(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("scan the clone root: %w", err)
+		return nil, fmt.Errorf("list the clones: %w", err)
+	}
+
+	found, err := localrepos.Scan(ctx, listed.Dirs, c.git)
+	if err != nil {
+		return nil, fmt.Errorf("read the clones' remotes: %w", err)
 	}
 
 	out := make([]release.Clone, 0, len(found))

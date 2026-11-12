@@ -369,9 +369,20 @@ func TestOnlyTheLauncherCreatesClones(t *testing.T) {
 	assert.NotEmpty(t, hits(cloneWriterFile, writer, clone.MatchString),
 		"%s no longer runs the clone; update this guard", cloneWriterFile)
 
-	assert.Empty(t, productionGoHits(t, clone, cloneWriterFile),
-		"only the launcher's confirmed clone of a missing repository may create a clone")
+	// The one such word that runs nothing: the kind of repository location a single clone
+	// is, stored with the user's settings. Only its declaration, in its own file, is let
+	// through.
+	kind := "KindClone Kind = " + `"clo` + `ne"`
+	found := slices.DeleteFunc(productionGoHits(t, clone, cloneWriterFile), func(hit string) bool {
+		return strings.HasPrefix(hit, locationKindFile+":") && strings.HasSuffix(hit, ": "+kind)
+	})
+
+	assert.Empty(t, found, "only the launcher's confirmed clone of a missing repository may create a clone")
 }
+
+// locationKindFile declares the kinds of repository location, one of which is spelled as
+// the argv word TestOnlyTheLauncherCreatesClones looks for.
+const locationKindFile = "internal/localrepos/location.go"
 
 // cloneChangingVerbs are the git subcommands that change an existing clone's checkout,
 // index, history, or remotes' refs. Built from parts so this file does not match itself.

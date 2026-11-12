@@ -15,6 +15,7 @@ import (
 
 	"github.com/mrz1836/nilbox/internal/branchrules"
 	"github.com/mrz1836/nilbox/internal/execpath"
+	"github.com/mrz1836/nilbox/internal/localrepos"
 	"github.com/mrz1836/nilbox/internal/paths"
 	"github.com/mrz1836/nilbox/internal/testutil"
 )
@@ -32,10 +33,11 @@ func listedAt() time.Time { return time.Date(2026, 11, 5, 9, 30, 0, 0, time.UTC)
 // fakeSettings serves a clone root, the automatic cleanup setting, and the branch rules:
 // the defaults unless rules is set.
 type fakeSettings struct {
-	root  string
-	auto  bool
-	rules *branchrules.Rules
-	err   error
+	root      string
+	locations []localrepos.Location
+	auto      bool
+	rules     *branchrules.Rules
+	err       error
 }
 
 func (f fakeSettings) Get(context.Context) (SweepSettings, error) {
@@ -44,7 +46,30 @@ func (f fakeSettings) Get(context.Context) (SweepSettings, error) {
 		rules = *f.rules
 	}
 
-	return SweepSettings{CloneRoot: f.root, AutoCleanup: f.auto, Branches: rules}, f.err
+	return SweepSettings{CloneRoot: f.root, CloneLocations: f.locations, AutoCleanup: f.auto, Branches: rules}, f.err
+}
+
+// rootsOf builds the Roots of the clone root root and the other locations extra.
+func rootsOf(t testing.TB, root string, extra ...localrepos.Location) localrepos.Roots {
+	t.Helper()
+
+	roots, err := localrepos.NewRoots(root, extra, "")
+	require.NoError(t, err)
+
+	return roots
+}
+
+// cloneDirs lists the clones directly inside root, the only location, as a listing finds
+// them; none when root can't be read.
+func cloneDirs(t testing.TB, root string) []string {
+	t.Helper()
+
+	found, err := rootsOf(t, root).Clones(t.Context())
+	if err != nil {
+		return nil
+	}
+
+	return found.Dirs
 }
 
 // reply is a scripted git answer.
@@ -325,12 +350,14 @@ func TestListScansAllReposUnderRoot(t *testing.T) {
 
 	snap := e.list(t)
 
-	assert.Equal(t, cloneRoot, snap.Root)
+	assert.Equal(t, []string{cloneRoot}, snap.Roots)
+	assert.Empty(t, snap.Unread)
+	assert.NotNil(t, snap.Unread)
 	assert.Equal(t, listedAt().Format(time.RFC3339), snap.ListedAt)
 	assert.Equal(t, []string{"alpha", "broken", "gamma"}, repoNames(snap), "beta has no linked worktrees, nested is too deep, and gamma-wt folds into gamma")
 	assert.Equal(t, 3, snap.CleanCount, "alpha-feature, alpha-detached, and gamma-wt are clean")
 	assert.Equal(t, 6, snap.WorktreeCount, "alpha's five linked worktrees and gamma-wt, the main worktrees aside")
-	assert.Equal(t, snap.WorktreeCount, countWorktrees(e.root), "the sweep's count, read without git, agrees")
+	assert.Equal(t, snap.WorktreeCount, countWorktrees(cloneDirs(t, e.root)), "the sweep's count, read without git, agrees")
 
 	repo, ok := findRepo(snap, "alpha")
 	require.True(t, ok)

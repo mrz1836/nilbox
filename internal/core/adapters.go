@@ -3,6 +3,7 @@ package core
 import (
 	"context"
 
+	"github.com/mrz1836/nilbox/internal/localrepos"
 	"github.com/mrz1836/nilbox/internal/settings"
 )
 
@@ -17,6 +18,12 @@ type settingsView[T any] struct {
 // Get reads the settings and returns the part.
 func (v settingsView[T]) Get(ctx context.Context) (T, error) {
 	return settingsPart(ctx, v.settings, v.part)
+}
+
+// rootsOf builds the repository locations the settings name: the clone root and the other
+// locations, with ~ for home.
+func rootsOf(s settings.Settings, home string) (localrepos.Roots, error) {
+	return localrepos.NewRoots(s.CloneRoot, nil, home)
 }
 
 // settingsPart reads the settings as they are now and returns the part of them pick takes,

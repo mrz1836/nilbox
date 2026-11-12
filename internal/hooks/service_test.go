@@ -17,6 +17,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/event"
 	"github.com/mrz1836/nilbox/internal/gitread"
 	"github.com/mrz1836/nilbox/internal/integrations"
+	"github.com/mrz1836/nilbox/internal/localrepos"
 	"github.com/mrz1836/nilbox/internal/paths"
 	"github.com/mrz1836/nilbox/internal/repo"
 	"github.com/mrz1836/nilbox/internal/testutil"
@@ -310,6 +311,31 @@ func TestReposServesTheLastScanWhileItsFresh(t *testing.T) {
 
 	r.clones.setDirsErr(nil)
 	assert.Empty(t, r.page(true).Error)
+}
+
+func TestReposScansAgainWhenTheLocationsChange(t *testing.T) {
+	t.Parallel()
+
+	r := newRig(t)
+	r.clone("api", cloneOpts{config: coreEnv})
+
+	work := filepath.Join(r.home, "work")
+	require.NoError(t, os.MkdirAll(filepath.Join(work, "web", ".git"), 0o700))
+	testutil.WriteFile(t, filepath.Join(work, "web", ".github", "env", "00-core.env"), coreEnv)
+
+	assert.Len(t, r.page(false).Repos, 1)
+
+	r.clones.mu.Lock()
+	r.clones.extra = []localrepos.Location{{Path: work, Kind: localrepos.KindFolder}}
+	r.clones.mu.Unlock()
+
+	p := r.page(false)
+	assert.Equal(t, 2, r.clones.listings(), "a scan of other locations isn't served")
+	assert.Len(t, p.Repos, 2, "a folder location's clones are scanned")
+	assert.Equal(t, "~/projects", p.Root, "the page names the clone root")
+
+	r.page(false)
+	assert.Equal(t, 2, r.clones.listings(), "the scan of the same locations is")
 }
 
 func TestReposFailsWithoutAScanToShow(t *testing.T) {

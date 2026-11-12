@@ -6,7 +6,6 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
-	"strings"
 	"time"
 
 	"github.com/mrz1836/nilbox/internal/branchrules"
@@ -112,18 +111,21 @@ func (s *Service) sweepLocked(ctx context.Context) (SweepReport, error) {
 func (s *Service) sweep(ctx context.Context) (SweepReport, error) {
 	report := emptyReport()
 
-	g, root, prefs, err := s.prepare(ctx)
+	g, roots, prefs, err := s.prepare(ctx)
 	if err != nil {
 		report.Error = uierr.Message(err)
 
 		return report, err
 	}
 
+	// A location that can't be read lists no clones: their records still bring them in.
+	found, _ := roots.Clones(ctx)
+
 	report.Enabled = prefs.AutoCleanup
-	err = s.sweepAgentWork(ctx, g, root, prefs.Branches, &report)
+	err = s.sweepAgentWork(ctx, g, roots, found, prefs.Branches, &report)
 
 	// Counted last, so the worktrees the sweep removed are not.
-	report.WorktreeCount = countWorktrees(root)
+	report.WorktreeCount = countWorktrees(found.Dirs)
 
 	return report, err
 }
@@ -132,12 +134,12 @@ func (s *Service) sweep(ctx context.Context) (SweepReport, error) {
 // records, cleans up what it may, and drops the records whose worktree is gone. It
 // returns the error that stopped it before it could clean up anything, which it also
 // words in the report.
-func (s *Service) sweepAgentWork(ctx context.Context, g git, root string, rules branchrules.Rules,
-	report *SweepReport,
+func (s *Service) sweepAgentWork(ctx context.Context, g git, roots localrepos.Roots, found localrepos.Found,
+	rules branchrules.Rules, report *SweepReport,
 ) error {
 	records := s.records(ctx)
 
-	clones := s.sweepClones(ctx, root, records)
+	clones := s.sweepClones(ctx, roots, found, records)
 	if len(clones) == 0 {
 		// Nothing to list: only the records whose clone is gone can be dropped.
 		s.reconcile(ctx, nil, records)
@@ -145,7 +147,7 @@ func (s *Service) sweepAgentWork(ctx context.Context, g git, root string, rules 
 		return nil
 	}
 
-	snap, err := s.assessClones(ctx, g, root, clones, rules, nil)
+	snap, err := s.assessClones(ctx, g, roots, clones, rules, nil)
 	if err != nil {
 		report.Error = uierr.Message(err)
 
@@ -195,14 +197,16 @@ func (s *Service) sweepRow(ctx context.Context, g git, repoPath string, wt Workt
 	}
 }
 
-// sweepClones lists the clones worth checking: those directly under root with worktrees
-// the app or Claude Code made, found without running git, and those with a record. A
-// directory that is not a git clone is skipped.
-func (s *Service) sweepClones(ctx context.Context, root string, records []worklog.Record) []localrepos.LocalRepo {
-	dirs := managedCloneDirs(root)
+// sweepClones lists the clones worth checking: those the locations found with worktrees
+// the app or Claude Code made, found without running git, and those with a record the
+// locations hold. A directory that is not a git clone is skipped.
+func (s *Service) sweepClones(ctx context.Context, roots localrepos.Roots, found localrepos.Found,
+	records []worklog.Record,
+) []localrepos.LocalRepo {
+	dirs := managedCloneDirs(roots, found.Dirs)
 
 	for _, r := range records {
-		if s.underRoot(r.ClonePath, root) && !slices.ContainsFunc(dirs, func(d string) bool { return paths.Same(d, r.ClonePath) }) {
+		if roots.Holds(r.ClonePath) && !slices.ContainsFunc(dirs, func(d string) bool { return paths.Same(d, r.ClonePath) }) {
 			dirs = append(dirs, filepath.Clean(r.ClonePath))
 		}
 	}
@@ -220,20 +224,21 @@ func (s *Service) sweepClones(ctx context.Context, root string, records []worklo
 	return clones
 }
 
-// managedCloneDirs lists the clones directly under root (see localrepos.Clones) with
-// worktrees the app or Claude Code made. A clone reached through a symlink is left out,
-// so a clone the root also holds itself is never swept twice; its records still bring it
-// in.
-func managedCloneDirs(root string) []string {
-	clones, err := localrepos.Clones(root)
-	if err != nil {
-		return nil
-	}
-
+// managedCloneDirs lists the clones of clones, the locations' (see Roots.Clones), with
+// worktrees the app or Claude Code made. A clone a folder reaches through a symlink is
+// left out, so a clone a location also holds itself is never swept twice; its records
+// still bring it in. A clone location is kept even when it is a symlink: it is reached no
+// other way.
+func managedCloneDirs(roots localrepos.Roots, clones []string) []string {
 	var dirs []string
 
-	for dir := range clones {
-		if info, statErr := os.Lstat(dir); statErr == nil && info.IsDir() && managedClone(dir) {
+	for _, dir := range clones {
+		info, err := os.Lstat(dir)
+		if err != nil || !managedClone(dir) {
+			continue
+		}
+
+		if info.IsDir() || roots.CloneAt(dir) {
 			dirs = append(dirs, dir)
 		}
 	}
@@ -241,23 +246,18 @@ func managedCloneDirs(root string) []string {
 	return dirs
 }
 
-// countWorktrees counts the linked worktrees of the clones directly under root, not
-// hidden, as a listing would, without running git. Git registers each linked worktree in
-// its repository's common git directory, under worktrees/, and lists every entry there
-// that holds a gitdir file, whether or not the worktree's own directory is still there;
-// this counts the same entries. Clones of one repository (one a linked worktree of
-// another, or one clone reached through a symlink) count its worktrees once.
-func countWorktrees(root string) int {
-	clones, err := localrepos.Clones(root)
-	if err != nil {
-		return 0
-	}
-
+// countWorktrees counts the linked worktrees of clones, as a listing would, without
+// running git. Git registers each linked worktree in its repository's common git
+// directory, under worktrees/, and lists every entry there that holds a gitdir file,
+// whether or not the worktree's own directory is still there; this counts the same
+// entries. Clones of one repository (one a linked worktree of another, or one clone
+// reached through a symlink) count its worktrees once.
+func countWorktrees(clones []string) int {
 	seen := map[string]bool{}
 	count := 0
 
-	for dir := range clones {
-		common := commonDir(dir)
+	for _, dir := range clones {
+		common := localrepos.CommonDir(dir)
 		if common == "" || seen[common] {
 			continue
 		}
@@ -289,60 +289,6 @@ func registeredWorktrees(common string) int {
 	}
 
 	return count
-}
-
-// commonDir returns the resolved common git directory of the clone at dir, or "" when
-// dir has no readable .git. A .git directory is that directory. A .git file (a linked
-// worktree, or a clone whose git directory lives elsewhere) points at the git directory,
-// and a commondir file there points on to the common one.
-func commonDir(dir string) string {
-	dotGit := filepath.Join(dir, ".git")
-
-	info, err := os.Stat(dotGit)
-	if err != nil {
-		return ""
-	}
-
-	if info.IsDir() {
-		return paths.Resolved(dotGit)
-	}
-
-	gitDir, ok := readGitPointer(dotGit, dir, "gitdir: ")
-	if !ok {
-		return ""
-	}
-
-	if common, found := readGitPointer(filepath.Join(gitDir, "commondir"), gitDir, ""); found {
-		return paths.Resolved(common)
-	}
-
-	return paths.Resolved(gitDir)
-}
-
-// gitPointerLimit is the most of a one-line git file that is read, far more than the
-// longest path a system takes.
-const gitPointerLimit = 64 << 10
-
-// readGitPointer reads the path a one-line git file holds after prefix. A relative path
-// is taken from base, as git takes it. Only a regular file, or a link to one, is read
-// (paths.ReadHead), so a named pipe put in its place never hangs the count, and reads as
-// a file that isn't there.
-func readGitPointer(file, base, prefix string) (string, bool) {
-	data, err := paths.ReadHead(file, gitPointerLimit)
-	if err != nil {
-		return "", false
-	}
-
-	path, ok := strings.CutPrefix(strings.TrimRight(string(data), "\r\n"), prefix)
-	if !ok || path == "" {
-		return "", false
-	}
-
-	if !filepath.IsAbs(path) {
-		path = filepath.Join(base, path)
-	}
-
-	return path, true
 }
 
 // Sweeper runs a Service's sweeps on a timer. It is kept apart from Service, every

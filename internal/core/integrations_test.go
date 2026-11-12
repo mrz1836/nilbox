@@ -21,6 +21,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/github"
 	"github.com/mrz1836/nilbox/internal/integrationprefs"
 	"github.com/mrz1836/nilbox/internal/integrations"
+	"github.com/mrz1836/nilbox/internal/localrepos"
 	"github.com/mrz1836/nilbox/internal/notify"
 	"github.com/mrz1836/nilbox/internal/release"
 	"github.com/mrz1836/nilbox/internal/repo"
@@ -533,11 +534,11 @@ func TestReleaseClonesListTheCloneRoot(t *testing.T) {
 
 	clones := releaseClones{settings: c.Settings, home: home, git: execpath.Exec{Env: env}}
 
-	gotRoot, err := clones.Root(t.Context())
+	roots, err := clones.Roots(t.Context())
 	require.NoError(t, err)
-	assert.Equal(t, root, gotRoot)
+	assert.Equal(t, root, roots.Primary())
 
-	got, err := clones.Clones(t.Context(), gotRoot)
+	got, err := clones.Clones(t.Context(), roots)
 	require.NoError(t, err)
 	assert.Equal(t, []release.Clone{
 		{Dir: filepath.Join(root, "notes")},
@@ -564,11 +565,11 @@ func TestHooksClonesListTheCloneRootWithoutGit(t *testing.T) {
 
 	clones := hooksClones{settings: c.Settings, home: home, git: execpath.Exec{Env: env}}
 
-	gotRoot, err := clones.Root(t.Context())
+	roots, err := clones.Roots(t.Context())
 	require.NoError(t, err)
-	assert.Equal(t, root, gotRoot)
+	assert.Equal(t, root, roots.Primary())
 
-	dirs, err := clones.Dirs(t.Context(), gotRoot)
+	dirs, err := clones.Dirs(t.Context(), roots)
 	require.NoError(t, err)
 	assert.Equal(t, []string{notes, sdk}, dirs)
 
@@ -581,7 +582,10 @@ func TestHooksClonesListTheCloneRootWithoutGit(t *testing.T) {
 	require.NoError(t, err)
 	assert.False(t, onHub)
 
-	_, err = clones.Dirs(t.Context(), filepath.Join(root, "missing"))
+	missing, err := localrepos.NewRoots(filepath.Join(root, "missing"), nil, home)
+	require.NoError(t, err)
+
+	_, err = clones.Dirs(t.Context(), missing)
 	require.Error(t, err)
 }
 

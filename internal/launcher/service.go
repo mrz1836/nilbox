@@ -59,8 +59,11 @@ type LaunchSettings struct {
 	Terminal terminal.ID
 
 	// CloneRoot is the directory whose children are the user's local clones, as entered,
-	// e.g. "~/projects".
+	// e.g. "~/projects". New clones go in it.
 	CloneRoot string
+
+	// CloneLocations are the user's other repository locations, as stored.
+	CloneLocations []localrepos.Location
 
 	// TrustedBots lists the bots whose items are trusted like a collaborator's (see the
 	// trust package).
@@ -637,7 +640,12 @@ func (s *Service) place(ctx context.Context, w world, row launchItemRow, res Res
 		return planned{}, err
 	}
 
-	if p.clone, err = s.resolveClone(ctx, row.repoRef(), w.settings.CloneRoot); err != nil {
+	roots, err := w.settings.roots(s.home)
+	if err != nil {
+		return planned{}, err
+	}
+
+	if p.clone, err = s.resolveClone(ctx, row.repoRef(), roots); err != nil {
 		return planned{}, err
 	}
 
@@ -828,10 +836,15 @@ func sessionName(nickname string, row launchItemRow) string {
 	return fmt.Sprintf("%s · %s#%d", nickname, row.Name, row.Number)
 }
 
+// roots builds the repository locations the settings name.
+func (l LaunchSettings) roots(home string) (localrepos.Roots, error) {
+	return localrepos.NewRoots(l.CloneRoot, l.CloneLocations, home)
+}
+
 // resolveClone finds the clone a launch starts in. A cached path is used while it is
-// still a clone of the repository; otherwise the clone root is scanned and the match is
-// cached for next time.
-func (s *Service) resolveClone(ctx context.Context, ref repoRef, root string) (Clone, error) {
+// still a clone of the repository; otherwise the repository locations are scanned and
+// the match is cached for next time.
+func (s *Service) resolveClone(ctx context.Context, ref repoRef, roots localrepos.Roots) (Clone, error) {
 	if clone, ok := s.cachedClone(ctx, ref); ok {
 		return clone, nil
 	}
@@ -840,7 +853,7 @@ func (s *Service) resolveClone(ctx context.Context, ref repoRef, root string) (C
 		return Clone{}, err
 	}
 
-	match, err := localrepos.Resolver{Root: root, Home: s.home, Git: s.git}.Resolve(ctx, ref.name)
+	match, err := localrepos.Resolver{Roots: roots, Home: s.home, Git: s.git}.Resolve(ctx, ref.name)
 	if err != nil {
 		return Clone{}, err
 	}

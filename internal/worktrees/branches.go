@@ -254,7 +254,7 @@ func (s *Service) deleteBranchAt(ctx context.Context, g git, repoPath, branch, h
 	return nil
 }
 
-// MergedBranches lists the local branches of every clone under the clone root whose pull
+// MergedBranches lists the local branches of every clone in the repository locations whose pull
 // request merged on GitHub: each branch that was the head branch of a merged pull request
 // in one of the clone's GitHub repositories, and each worktree-pr-<n> branch whose pull
 // request merged. Branches the user protects and each remote's default branch are left
@@ -266,12 +266,12 @@ func (s *Service) MergedBranches(ctx context.Context) ([]MergedBranch, error) {
 		return nil, ErrGitHubUnavailable
 	}
 
-	g, root, prefs, err := s.prepare(ctx)
+	g, roots, prefs, err := s.prepare(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	clones, err := localrepos.Scan(ctx, root, s.run)
+	_, clones, err := s.scan(ctx, roots)
 	if err != nil {
 		return nil, err
 	}
@@ -546,7 +546,7 @@ func mergedFor(clone localrepos.LocalRepo, name string, answers map[BranchKey][]
 }
 
 // DeleteBranches deletes the branches the user ticked in the cleanup of merged branches,
-// each checked again first: its clone must be under the clone root, the user must not
+// each checked again first: the repository locations must hold its clone, the user must not
 // protect it, it must not be a remote's default branch or checked out in any worktree,
 // and it must still point at the commit it was offered at. Each clone is read once and its
 // branches deleted in turn, a few clones at a time. It reports each outcome, in the order
@@ -555,7 +555,7 @@ func (s *Service) DeleteBranches(ctx context.Context, picks []BranchPick) ([]Bra
 	s.act.Lock()
 	defer s.act.Unlock()
 
-	g, root, prefs, err := s.prepare(ctx)
+	g, roots, prefs, err := s.prepare(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -581,7 +581,7 @@ func (s *Service) DeleteBranches(ctx context.Context, picks []BranchPick) ([]Bra
 
 	for _, clone := range clones {
 		eg.Go(func() error {
-			s.deleteInClone(ctx, g, root, clone, byClone[clone], picks, out, prefs.Branches)
+			s.deleteInClone(ctx, g, roots, clone, byClone[clone], picks, out, prefs.Branches)
 
 			return nil
 		})
@@ -601,9 +601,10 @@ type cloneBranchState struct {
 	inUse    map[string]bool
 }
 
-// readCloneBranches reads a clone's branch state, refusing a clone outside the clone root.
-func (s *Service) readCloneBranches(ctx context.Context, g git, root, clone string) (cloneBranchState, error) {
-	if !s.underRoot(clone, root) {
+// readCloneBranches reads a clone's branch state, refusing a clone the repository
+// locations don't hold.
+func (s *Service) readCloneBranches(ctx context.Context, g git, roots localrepos.Roots, clone string) (cloneBranchState, error) {
+	if !roots.Holds(clone) {
 		return cloneBranchState{}, fmt.Errorf("%w: %s", ErrOutsideCloneRoot, s.display(clone))
 	}
 
@@ -637,7 +638,7 @@ func (s *Service) readCloneBranches(ctx context.Context, g git, root, clone stri
 // deleteInClone deletes the picks at idx, all in one clone, recording each outcome in out.
 // It holds the clone's lock throughout, and a run using the clone refuses every pick, naming
 // the run (see holdClone).
-func (s *Service) deleteInClone(ctx context.Context, g git, root, clone string, idx []int, picks []BranchPick,
+func (s *Service) deleteInClone(ctx context.Context, g git, roots localrepos.Roots, clone string, idx []int, picks []BranchPick,
 	out []BranchResult, rules branchrules.Rules,
 ) {
 	unlock, err := s.holdClone(ctx, clone)
@@ -651,7 +652,7 @@ func (s *Service) deleteInClone(ctx context.Context, g git, root, clone string, 
 
 	defer unlock()
 
-	state, readErr := s.readCloneBranches(ctx, g, root, clone)
+	state, readErr := s.readCloneBranches(ctx, g, roots, clone)
 
 	for _, i := range idx {
 		err := cmp.Or(ctx.Err(), readErr)

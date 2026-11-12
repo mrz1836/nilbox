@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"slices"
 
 	"github.com/mrz1836/nilbox/internal/execpath"
 	"github.com/mrz1836/nilbox/internal/github"
@@ -78,28 +77,28 @@ func toolByID(list integrations.Tools, id integrationprefs.ID) integrations.Tool
 	return integrations.Tool{}
 }
 
-// hooksClones lists the clones under the clone root the settings name, for the Hooks
-// page, reading no git, and a clone's origin with the read-only remote lookup
-// localrepos.Inspect runs (hooks.Clones).
+// hooksClones lists the clones in the repository locations the settings name, for the
+// Hooks and Repo scripts pages, reading no git, and a clone's origin with the read-only
+// remote lookup localrepos.Inspect runs (hooks.Clones, scripts.Clones).
 type hooksClones struct {
 	settings *settings.Service
 	home     string
 	git      execpath.Runner
 }
 
-// Root returns the clone root as it is set now, with ~ expanded.
-func (c hooksClones) Root(ctx context.Context) (string, error) {
-	return releaseClones{settings: c.settings, home: c.home}.Root(ctx)
+// Roots returns the clone root and the other locations as they are set now.
+func (c hooksClones) Roots(ctx context.Context) (localrepos.Roots, error) {
+	return releaseClones{settings: c.settings, home: c.home}.Roots(ctx)
 }
 
-// Dirs lists the clones directly under root.
-func (c hooksClones) Dirs(_ context.Context, root string) ([]string, error) {
-	clones, err := localrepos.Clones(root)
+// Dirs lists the clones in roots.
+func (c hooksClones) Dirs(ctx context.Context, roots localrepos.Roots) ([]string, error) {
+	found, err := roots.Clones(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	return slices.Collect(clones), nil
+	return found.Dirs, nil
 }
 
 // Origin returns the repository the clone at dir's origin points at, and whether it is a

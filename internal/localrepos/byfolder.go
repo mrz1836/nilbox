@@ -10,19 +10,20 @@ import (
 	"github.com/mrz1836/nilbox/internal/uierr"
 )
 
-// CloneRoot reads the clone root as set now, lists the clones directly under it, reading
-// no git, and reads which GitHub repository a clone's origin is, if any: what a page that
-// takes a clone by its folder reads. Core adapts the settings and Clones to it.
-type CloneRoot interface {
-	Root(ctx context.Context) (string, error)
-	Dirs(ctx context.Context, root string) ([]string, error)
+// CloneRoots reads the repository locations as set now, lists the clones in them, reading
+// no git (Roots.Clones), and reads which GitHub repository a clone's origin is, if any:
+// what a page that takes a clone by its folder reads. Core adapts the settings and Roots
+// to it.
+type CloneRoots interface {
+	Roots(ctx context.Context) (Roots, error)
+	Dirs(ctx context.Context, roots Roots) ([]string, error)
 	Origin(ctx context.Context, dir string) (name repo.Name, onGitHub bool, err error)
 }
 
-// Listing is the clone root as set when it was read, and the clones under it.
+// Listing is the repository locations as set when they were read, and the clones in them.
 type Listing struct {
-	Root string
-	Dirs []string
+	Roots Roots
+	Dirs  []string
 }
 
 // Picked is the clone a request names: its folder, absolute, as the listing holds it, and
@@ -33,18 +34,18 @@ type Picked struct {
 }
 
 // ByFolder finds the clone a page's request names by its folder, as the page shows it,
-// with ~: only a clone directly under the clone root is one. Hooks and Repo scripts share
+// with ~: only a clone the repository locations hold is one. Hooks and Repo scripts share
 // it, each with its own errors.
 type ByFolder struct {
-	// Clones reads the clone root, the clones under it, and their origins.
-	Clones CloneRoot
+	// Clones reads the locations, the clones in them, and their origins.
+	Clones CloneRoots
 
 	// Home is the user's home folder, which ~ stands for.
 	Home string
 
 	// Invalid is the page's error for a request it can't read, which a folder that can't
 	// be read as a path is wrapped in, and NoClone its error for a folder that isn't a
-	// clone under the clone root. Both are required.
+	// clone in the locations. Both are required.
 	Invalid, NoClone error
 
 	// Known, when set, returns the repository the page already holds for the clone at dir
@@ -53,23 +54,23 @@ type ByFolder struct {
 	Known func(dir string) (repo.Name, bool)
 }
 
-// List reads the clone root as set now and lists the clones under it.
+// List reads the repository locations as set now and lists the clones in them.
 func (b ByFolder) List(ctx context.Context) (Listing, error) {
-	root, err := b.Clones.Root(ctx)
+	roots, err := b.Clones.Roots(ctx)
 	if err != nil {
-		return Listing{}, fmt.Errorf("read the clone root: %w", err)
+		return Listing{}, fmt.Errorf("read the repository locations: %w", err)
 	}
 
-	dirs, err := b.Clones.Dirs(ctx, root)
+	dirs, err := b.Clones.Dirs(ctx, roots)
 	if err != nil {
 		return Listing{}, fmt.Errorf("list the clones: %w", err)
 	}
 
-	return Listing{Root: root, Dirs: dirs}, nil
+	return Listing{Roots: roots, Dirs: dirs}, nil
 }
 
-// At lists the clones under the clone root as set now and finds the one shown names
-// (see Pick).
+// At lists the clones in the repository locations as set now and finds the one shown
+// names (see Pick).
 func (b ByFolder) At(ctx context.Context, shown string) (Picked, error) {
 	l, err := b.List(ctx)
 	if err != nil {
@@ -81,8 +82,9 @@ func (b ByFolder) At(ctx context.Context, shown string) (Picked, error) {
 
 // Pick finds the clone shown names among l's: the folder itself, else one that is the
 // same through a link. Its repository is the one Known holds for it, else its origin's.
-// A folder that isn't a clone under l's root is refused in words the window shows: "~/x
-// isn't a clone in ~/projects."
+// A folder that isn't a clone in l's locations is refused in words the window shows: "~/x
+// isn't a clone in ~/projects.", or "... in ~/projects or your other repository locations."
+// when there are others.
 func (b ByFolder) Pick(ctx context.Context, shown string, l Listing) (Picked, error) {
 	dir, err := paths.ExpandHome(shown, b.Home)
 	if err != nil {
@@ -96,7 +98,7 @@ func (b ByFolder) Pick(ctx context.Context, shown string, l Listing) (Picked, er
 
 	if i < 0 {
 		return Picked{}, uierr.New(fmt.Sprintf("%s isn't a clone in %s.", paths.Tilde(dir, b.Home),
-			paths.Tilde(l.Root, b.Home)), fmt.Errorf("%w: %s", b.NoClone, dir))
+			l.Roots.Where(b.Home)), fmt.Errorf("%w: %s", b.NoClone, dir))
 	}
 
 	p := Picked{Dir: l.Dirs[i]}

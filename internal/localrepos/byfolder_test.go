@@ -24,6 +24,7 @@ var (
 // and whose clones' origins are origins (a clone missing there isn't on GitHub).
 type fakeRoot struct {
 	root      string
+	extra     []Location
 	dirs      []string
 	origins   map[string]repo.Name
 	rootErr   error
@@ -32,12 +33,16 @@ type fakeRoot struct {
 	asked     []string
 }
 
-func (f *fakeRoot) Root(context.Context) (string, error) {
-	return f.root, f.rootErr
+func (f *fakeRoot) Roots(context.Context) (Roots, error) {
+	if f.rootErr != nil {
+		return Roots{}, f.rootErr
+	}
+
+	return NewRoots(f.root, f.extra, "")
 }
 
-func (f *fakeRoot) Dirs(_ context.Context, root string) ([]string, error) {
-	if root != f.root {
+func (f *fakeRoot) Dirs(_ context.Context, roots Roots) ([]string, error) {
+	if roots.Primary() != f.root {
 		return nil, os.ErrNotExist
 	}
 
@@ -80,7 +85,8 @@ func TestByFolderList(t *testing.T) {
 
 	l, err := b.List(t.Context())
 	require.NoError(t, err)
-	assert.Equal(t, Listing{Root: f.root, Dirs: f.dirs}, l)
+	assert.Equal(t, f.root, l.Roots.Primary())
+	assert.Equal(t, f.dirs, l.Dirs)
 
 	f.dirsErr = os.ErrPermission
 	_, err = b.List(t.Context())
@@ -93,7 +99,7 @@ func TestByFolderList(t *testing.T) {
 	f.rootErr = os.ErrDeadlineExceeded
 	_, err = b.List(t.Context())
 	require.ErrorIs(t, err, os.ErrDeadlineExceeded)
-	require.EqualError(t, err, "read the clone root: "+os.ErrDeadlineExceeded.Error())
+	require.EqualError(t, err, "read the repository locations: "+os.ErrDeadlineExceeded.Error())
 }
 
 func TestByFolderPicksAListedClone(t *testing.T) {
@@ -180,10 +186,19 @@ func TestByFolderRefuses(t *testing.T) {
 	_, err = b.At(t.Context(), "~/projects")
 	require.ErrorIs(t, err, errTestNoClone, "the clone root itself isn't a clone")
 
+	l, err := b.List(t.Context())
+	require.NoError(t, err)
+
 	outside := t.TempDir()
-	_, err = b.Pick(t.Context(), outside, Listing{Root: f.root, Dirs: f.dirs})
+	_, err = b.Pick(t.Context(), outside, l)
 	require.ErrorIs(t, err, errTestNoClone)
 	assert.Equal(t, outside+" isn't a clone in ~/projects.", uierr.Message(err), "a folder outside home keeps its path")
+
+	f.extra = []Location{{Path: filepath.Join(b.Home, "work"), Kind: KindFolder}}
+	_, err = b.At(t.Context(), "~/elsewhere")
+	require.ErrorIs(t, err, errTestNoClone)
+	assert.Equal(t, "~/elsewhere isn't a clone in ~/projects or your other repository locations.", uierr.Message(err),
+		"other locations are named together")
 
 	for _, shown := range []string{"relative/dir", "", "~other/api"} {
 		_, err = b.At(t.Context(), shown)

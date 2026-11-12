@@ -14,6 +14,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/mrz1836/nilbox/internal/integrations"
+	"github.com/mrz1836/nilbox/internal/localrepos"
 	"github.com/mrz1836/nilbox/internal/repo"
 	"github.com/mrz1836/nilbox/internal/testutil"
 )
@@ -320,4 +321,40 @@ func TestOfferAfterMergeSaysWhatItCantRead(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, AfterMerge{}, got, "without a way to read an origin, only the page's list serves")
 	assert.Zero(t, m.clones.scans())
+}
+
+func TestOfferAfterMergeLooksInEveryLocation(t *testing.T) {
+	t.Parallel()
+
+	m := newMergeRig(t)
+
+	work := filepath.Join(m.home, "work")
+	exp := filepath.Join(m.home, "Desktop", "exp-app")
+
+	for _, dir := range []string{filepath.Join(work, "api"), exp} {
+		require.NoError(t, os.MkdirAll(dir, 0o700))
+	}
+
+	m.clones.extra = []localrepos.Location{
+		{Path: filepath.Join(m.home, "gone"), Kind: localrepos.KindFolder},
+		{Path: work, Kind: localrepos.KindFolder},
+		{Path: exp, Kind: localrepos.KindClone},
+	}
+	m.origins.origins["api"] = Clone{Origin: name("api"), OnHub: true}
+	m.origins.origins["exp-app"] = Clone{Origin: name("exp"), OnHub: true}
+	m.branches.branches[name("api").Key()] = branchMain
+	m.branches.branches[name("exp").Key()] = branchMain
+
+	got, err := m.service().OfferAfterMerge(t.Context(), "acme-org", "api", branchMain)
+	require.NoError(t, err)
+	assert.Equal(t, AfterMerge{Offer: true, Repo: "acme-org/api", Dir: "~/work/api", Branch: branchMain}, got,
+		"a folder location's clone named as the repository is; a missing location is passed over")
+	assert.Equal(t, []string{"api"}, m.origins.gitRuns(), "only the folders named as the repository is")
+
+	got, err = m.service().OfferAfterMerge(t.Context(), "acme-org", "exp", branchMain)
+	require.NoError(t, err)
+	assert.Equal(t, AfterMerge{Offer: true, Repo: "acme-org/exp", Dir: "~/Desktop/exp-app", Branch: branchMain}, got,
+		"a clone location, whatever its name")
+	assert.Equal(t, []string{"api", "exp-app"}, m.origins.gitRuns(), "the clone locations come last")
+	assert.Zero(t, m.clones.scans(), "no location is scanned")
 }

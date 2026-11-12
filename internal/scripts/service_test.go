@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/mrz1836/nilbox/internal/integrations"
+	"github.com/mrz1836/nilbox/internal/localrepos"
 	"github.com/mrz1836/nilbox/internal/paths"
 	"github.com/mrz1836/nilbox/internal/testutil"
 	"github.com/mrz1836/nilbox/internal/uierr"
@@ -218,7 +219,7 @@ func TestListRefusesAFolderItCantRead(t *testing.T) {
 
 	_, err = s.List(t.Context(), "~/projects/api", false)
 	require.ErrorIs(t, err, os.ErrPermission)
-	require.EqualError(t, err, "read the clone root: "+os.ErrPermission.Error())
+	require.EqualError(t, err, "read the repository locations: "+os.ErrPermission.Error())
 
 	_, err = s.Repos(t.Context())
 	require.ErrorIs(t, err, os.ErrPermission)
@@ -229,8 +230,8 @@ type failingRoot struct {
 	fakeClones
 }
 
-func (*failingRoot) Root(context.Context) (string, error) {
-	return "", os.ErrPermission
+func (*failingRoot) Roots(context.Context) (localrepos.Roots, error) {
+	return localrepos.Roots{}, os.ErrPermission
 }
 
 func TestRepos(t *testing.T) {

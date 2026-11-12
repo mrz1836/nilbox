@@ -259,15 +259,16 @@ func (s *Service) refreshBehind(ctx context.Context) {
 		s.mu.Unlock()
 	}()
 
-	root, err := s.clones.Root(ctx)
+	roots, err := s.clones.Roots(ctx)
 	if err != nil {
-		s.logger.WarnContext(ctx, "couldn't read the clone root to list the repositories to release", "error", err)
+		s.logger.WarnContext(ctx, "couldn't read the repository locations to list the repositories to release",
+			"error", err)
 
 		return
 	}
 
 	s.mu.Lock()
-	stale := s.has && s.kept && s.root == root
+	stale := s.has && s.kept && s.root == roots.Key()
 	s.pending = stale
 	s.mu.Unlock()
 
@@ -276,7 +277,7 @@ func (s *Service) refreshBehind(ctx context.Context) {
 	}
 
 	// A failure is kept with the list, and logged, by refresh; a cut short one keeps nothing.
-	_, _ = s.refreshes.Do(ctx, root, func(ctx context.Context) (Candidates, error) {
-		return s.refresh(ctx, root)
+	_, _ = s.refreshes.Do(ctx, roots.Key(), func(ctx context.Context) (Candidates, error) {
+		return s.refresh(ctx, roots)
 	})
 }

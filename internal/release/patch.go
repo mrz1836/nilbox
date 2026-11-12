@@ -106,10 +106,12 @@ func (s *Service) patchReleased(ctx context.Context) {
 // It reports whether it patched: not when the list can't be patched (patchable), GitHub
 // can't be read, or ctx ends first.
 func (s *Service) patch(ctx context.Context, names map[string]bool) bool {
-	root, err := s.clones.Root(ctx)
+	roots, err := s.clones.Roots(ctx)
 	if err != nil {
 		return false
 	}
+
+	root := roots.Key()
 
 	s.mu.Lock()
 	listed := s.patchable(root, names)
@@ -155,12 +157,13 @@ func (s *Service) patch(ctx context.Context, names map[string]bool) bool {
 }
 
 // patchable returns the clones the last list holds of names, when it can be patched: it
-// was read from root, the clone root as set now; it is current, however old, since one
+// was read from the locations root keys, the repository locations as set now; it is
+// current, however old, since one
 // out of date is read again in full by the next Candidates anyway; it was read from GitHub
 // in this run of the app, and its last read didn't fail, since the next read of a list
 // kept from a past start or one that failed is a full one, which the page asks for (the
 // read behind a kept list) or shows the failure until; and it lists every one of names,
-// since a repository it doesn't list takes a scan of the clone root. Otherwise it returns
+// since a repository it doesn't list takes a scan of the locations. Otherwise it returns
 // none. The caller holds mu.
 func (s *Service) patchable(root string, names map[string]bool) []clone {
 	if !s.has || s.root != root || !s.current || s.kept || s.failure != "" {

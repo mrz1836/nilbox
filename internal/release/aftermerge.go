@@ -8,6 +8,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/mrz1836/nilbox/internal/localrepos"
 	"github.com/mrz1836/nilbox/internal/paths"
 	"github.com/mrz1836/nilbox/internal/repo"
 )
@@ -41,8 +42,8 @@ type AfterMerge struct {
 
 // OfferAfterMerge answers whether the toast that reports a merge in the review sheet
 // offers to release owner/name, whose pull request merged into base (§5.11.9). It offers
-// when the integrations.offerAfterMerge setting is on, magex is usable, a clone under the
-// clone root has the repository as its GitHub origin, and base is a branch Release offers
+// when the integrations.offerAfterMerge setting is on, magex is usable, a clone in the
+// repository locations has the repository as its GitHub origin, and base is a branch Release offers
 // (D10): the repository's default branch, or main or master, which origin has, since the
 // merge went into it. It reads only local state and what the app already knows, and asks
 // GitHub nothing: the default branch comes from the Release page's last list, or else
@@ -80,18 +81,19 @@ func (s *Service) OfferAfterMerge(ctx context.Context, owner, name, base string)
 
 // mergeClone finds the clone of name for a merge's offer, or "" when it finds none,
 // reading as little as it can, since a merge asks on every merge: the Release page's
-// clones, when it listed the clone root as set now, and else only the folders directly
-// under the root named as the repository is, ignoring case, each one's origin read with
-// one git command. It never scans the root, so a clone in a folder named otherwise is
+// clones, when it listed the repository locations as set now, and else only the folders
+// directly inside the clone root and each folder location named as the repository is,
+// ignoring case, then each clone location whatever its name, each one's origin read with
+// one git command. It never scans a folder, so a clone in a folder named otherwise is
 // offered once the Release page has listed it.
 func (s *Service) mergeClone(ctx context.Context, name repo.Name) (string, error) {
-	root, err := s.clones.Root(ctx)
+	roots, err := s.clones.Roots(ctx)
 	if err != nil {
-		return "", fmt.Errorf("read the clone root: %w", err)
+		return "", fmt.Errorf("read the repository locations: %w", err)
 	}
 
 	isName := func(_ string, origin repo.Name) bool { return origin.Key() == name.Key() }
-	if dir, ok := s.listedClone(root, isName); ok {
+	if dir, ok := s.listedClone(roots.Key(), isName); ok {
 		return dir, nil
 	}
 
@@ -99,35 +101,72 @@ func (s *Service) mergeClone(ctx context.Context, name repo.Name) (string, error
 		return "", nil
 	}
 
-	return s.namedClone(ctx, root, name)
+	return s.namedClone(ctx, roots, name)
 }
 
-// namedClone finds the clone of name among the folders directly under root named as the
-// repository is, ignoring case, reading each one's origin, or returns "".
-func (s *Service) namedClone(ctx context.Context, root string, name repo.Name) (string, error) {
-	entries, err := os.ReadDir(root)
+// namedClone finds the clone of name, reading each candidate's origin, or returns "": the
+// folders directly inside the clone root named as the repository is, ignoring case, then
+// those inside each folder location, then each clone location whatever its name. A clone
+// root that can't be read is an error; another location that can't be read is passed over.
+func (s *Service) namedClone(ctx context.Context, roots localrepos.Roots, name repo.Name) (string, error) {
+	candidates, err := namedCandidates(roots, name.Repo)
 	if err != nil {
-		return "", fmt.Errorf("read the clone root: %w", err)
+		return "", err
 	}
 
-	for _, entry := range entries {
-		if !strings.EqualFold(entry.Name(), name.Repo) {
-			continue
-		}
-
-		dir := filepath.Join(root, entry.Name())
-
+	for _, dir := range candidates {
 		if info, statErr := os.Stat(dir); statErr != nil || !info.IsDir() {
 			continue
 		}
 
-		origin, onHub, originErr := s.origins.Origin(ctx, dir)
-		if originErr == nil && onHub && origin.Key() == name.Key() {
+		if origin, onHub, originErr := s.origins.Origin(ctx, dir); originErr == nil && onHub && origin.Key() == name.Key() {
 			return dir, nil
 		}
 	}
 
 	return "", nil
+}
+
+// namedCandidates lists the folders namedClone reads, in order: those directly inside the
+// clone root and each folder location named repoName, ignoring case, then each clone
+// location. Only a clone root that can't be read is an error.
+func namedCandidates(roots localrepos.Roots, repoName string) ([]string, error) {
+	var named, clones []string
+
+	for _, place := range roots.Places() {
+		if place.Kind == localrepos.KindClone {
+			clones = append(clones, place.Path)
+
+			continue
+		}
+
+		found, err := namedIn(place.Path, repoName)
+		if err != nil && place.Primary {
+			return nil, fmt.Errorf("read the clone root: %w", err)
+		}
+
+		named = append(named, found...)
+	}
+
+	return append(named, clones...), nil
+}
+
+// namedIn lists the entries directly inside folder named repoName, ignoring case.
+func namedIn(folder, repoName string) ([]string, error) {
+	entries, err := os.ReadDir(folder)
+	if err != nil {
+		return nil, err
+	}
+
+	var out []string
+
+	for _, entry := range entries {
+		if strings.EqualFold(entry.Name(), repoName) {
+			out = append(out, filepath.Join(folder, entry.Name()))
+		}
+	}
+
+	return out, nil
 }
 
 // mergeOffers reports whether a merge offers a release at all now: the setting is on, and

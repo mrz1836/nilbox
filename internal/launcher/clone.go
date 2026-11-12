@@ -122,7 +122,12 @@ func (s *Service) cloneTarget(ctx context.Context, itemID int64) (CloneTarget, r
 
 	t := CloneTarget{Repo: ref.name.String()}
 
-	clone, err := s.resolveClone(ctx, ref, prefs.CloneRoot)
+	roots, err := prefs.roots(s.home)
+	if err != nil {
+		return CloneTarget{}, repoRef{}, err
+	}
+
+	clone, err := s.resolveClone(ctx, ref, roots)
 	if err == nil {
 		t.Cloned, t.Dir = true, paths.Tilde(clone.Dir, s.home)
 
@@ -133,12 +138,8 @@ func (s *Service) cloneTarget(ctx context.Context, itemID int64) (CloneTarget, r
 		return CloneTarget{}, repoRef{}, err
 	}
 
-	root, err := paths.ExpandHome(prefs.CloneRoot, s.home)
-	if err != nil {
-		return CloneTarget{}, repoRef{}, fmt.Errorf("clone root: %w", err)
-	}
-
-	dir := filepath.Join(root, ref.name.Repo)
+	// New clones go in the clone root, whatever other locations there are.
+	dir := filepath.Join(roots.Primary(), ref.name.Repo)
 	t.Dir = paths.Tilde(dir, s.home)
 
 	if t.Taken, err = exists(dir); err != nil {

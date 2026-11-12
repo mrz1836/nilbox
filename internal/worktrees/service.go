@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"iter"
 	"log/slog"
-	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -18,6 +17,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/execpath"
 	"github.com/mrz1836/nilbox/internal/gitread"
 	"github.com/mrz1836/nilbox/internal/item"
+	"github.com/mrz1836/nilbox/internal/localrepos"
 	"github.com/mrz1836/nilbox/internal/logging"
 	"github.com/mrz1836/nilbox/internal/paths"
 	"github.com/mrz1836/nilbox/internal/procs"
@@ -97,9 +97,11 @@ var (
 	// is gone.
 	ErrPrunable = errors.New("the worktree's directory is gone; prune the repository instead")
 
-	// ErrOutsideCloneRoot is returned for a repository that is not directly under the
-	// clone root.
-	ErrOutsideCloneRoot = errors.New("not a repository under the clone root")
+	// ErrOutsideCloneRoot is returned for a repository that isn't a clone the repository
+	// locations hold: directly inside the clone root or a folder location, or a clone
+	// location itself. A location removed in Settings leaves its clones outside until it is
+	// added again.
+	ErrOutsideCloneRoot = errors.New("not a clone in your repository locations; check Settings → Repositories")
 
 	// ErrRemovalRefused is matched by every RefusedError.
 	ErrRemovalRefused = errors.New("git refused to remove the worktree")
@@ -156,6 +158,9 @@ type SweepSettings struct {
 	// CloneRoot is the directory whose children are the clones, as entered, e.g.
 	// "~/projects".
 	CloneRoot string
+
+	// CloneLocations are the user's other repository locations, as stored.
+	CloneLocations []localrepos.Location
 
 	// AutoCleanup lets the automatic sweep clean up a finished worktree once its pull
 	// request merges or its issue closes.
@@ -640,24 +645,24 @@ func (s *Service) records(ctx context.Context) []worklog.Record {
 	return records
 }
 
-// prepare resolves git, the preferences, and the clone root.
-func (s *Service) prepare(ctx context.Context) (git, string, SweepSettings, error) {
+// prepare resolves git, the preferences, and the repository locations.
+func (s *Service) prepare(ctx context.Context) (git, localrepos.Roots, SweepSettings, error) {
 	g, err := s.git()
 	if err != nil {
-		return git{}, "", SweepSettings{}, err
+		return git{}, localrepos.Roots{}, SweepSettings{}, err
 	}
 
 	prefs, err := s.settings.Get(ctx)
 	if err != nil {
-		return git{}, "", SweepSettings{}, err
+		return git{}, localrepos.Roots{}, SweepSettings{}, err
 	}
 
-	root, err := paths.ExpandHome(prefs.CloneRoot, s.home)
+	roots, err := localrepos.NewRoots(prefs.CloneRoot, prefs.CloneLocations, s.home)
 	if err != nil {
-		return git{}, "", SweepSettings{}, fmt.Errorf("clone root: %w", err)
+		return git{}, localrepos.Roots{}, SweepSettings{}, err
 	}
 
-	return g, root, prefs, nil
+	return g, roots, prefs, nil
 }
 
 // git returns the allowlisted git runner, resolving the binary when a Finder is set, for
@@ -677,27 +682,19 @@ func (s *Service) git() (git, error) {
 	return git{run: s.run, bin: bin, guard: s.guard, with: s.gitWith, locals: locals}, nil
 }
 
-// checkedGit resolves git and checks that repoPath is a clone directly under the clone
-// root, as List reports them.
+// checkedGit resolves git and checks that repoPath is a clone the repository locations
+// hold, as List reports them.
 func (s *Service) checkedGit(ctx context.Context, repoPath string) (git, error) {
-	g, root, _, err := s.prepare(ctx)
+	g, roots, _, err := s.prepare(ctx)
 	if err != nil {
 		return git{}, err
 	}
 
-	if !s.underRoot(repoPath, root) {
+	if !roots.Holds(repoPath) {
 		return git{}, fmt.Errorf("%w: %s", ErrOutsideCloneRoot, s.display(repoPath))
 	}
 
 	return g, nil
-}
-
-// underRoot reports an absolute, non-hidden directory directly under root.
-func (s *Service) underRoot(repoPath, root string) bool {
-	clean := filepath.Clean(repoPath)
-
-	return filepath.IsAbs(clean) && !strings.HasPrefix(filepath.Base(clean), ".") &&
-		paths.Resolved(filepath.Dir(clean)) == paths.Resolved(root)
 }
 
 // entryOf re-lists the repository and returns path's entry when it is a linked worktree
