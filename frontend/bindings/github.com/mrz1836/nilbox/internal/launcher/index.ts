@@ -18,6 +18,7 @@ export type {
     ItemResolution,
     LaunchRequest,
     LaunchResult,
+    LinkedClone,
     Preview,
     PromptChoice,
     Resolution,

@@ -66,7 +66,7 @@ function Tab({
     <ScriptsView
       terminal={terminal}
       runsIn="app"
-      cloneRoot="~/projects"
+      where="under ~/projects"
       integrations={useIntegrations()}
       scriptsSwitch={scriptsSwitch}
       runs={useScriptRuns()}
@@ -755,7 +755,7 @@ describe('ScriptsView', () => {
       const { onOpenSettings } = renderView()
 
       await userEvent.click(await rail().findByRole('button', { name: 'Repo scripts' }))
-      await userEvent.click(await screen.findByRole('button', { name: 'Change the clone root' }))
+      await userEvent.click(await screen.findByRole('button', { name: 'Change the repository locations' }))
 
       expect(onOpenSettings).toHaveBeenCalledExactlyOnceWith('repositories')
     })

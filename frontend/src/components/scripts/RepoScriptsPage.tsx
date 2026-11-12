@@ -464,8 +464,9 @@ export interface RepoScriptsPageProps {
   // run in the terminal runs in, or null until the settings have loaded.
   runsIn: RunsIn
   terminal: TerminalID | null
-  // cloneRoot is the folder the clones are under, with ~.
-  cloneRoot: string
+  // where names the repository locations the clones are in, such as "under ~/projects"
+  // (see whereClones).
+  where: string
   // onOpenRelease opens the Release page, or is null while it isn't on.
   onOpenRelease: (() => void) | null
   onOpenSettings: (section: SettingsSection) => void
@@ -498,7 +499,7 @@ export function RepoScriptsPage({
   onFollow,
   runsIn,
   terminal,
-  cloneRoot,
+  where,
   onOpenRelease,
   onOpenSettings,
   sections = {},
@@ -580,7 +581,7 @@ export function RepoScriptsPage({
       <Frame>
         <div className="flex flex-col items-start gap-2 px-1">
           <p className="text-sm text-muted">
-            No clones under {cloneRoot} yet. Repo scripts lists the repositories you have cloned there.
+            No clones {where} yet. Repo scripts lists the repositories you have cloned there.
           </p>
           <button
             type="button"
@@ -589,7 +590,7 @@ export function RepoScriptsPage({
             }}
             className={buttonClass}
           >
-            Change the clone root
+            Change the repository locations
           </button>
         </div>
       </Frame>

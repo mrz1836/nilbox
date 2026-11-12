@@ -30,6 +30,10 @@ export interface StringListEditorProps {
   describedBy?: string
   // busy holds every control while a change is being stored.
   busy: boolean
+  // actions sit before the submit button, such as one that picks a folder.
+  actions?: ReactNode
+  // below sits under the field, such as what adding the draft would add.
+  below?: ReactNode
 }
 
 // StringListEditor is a card listing strings, each with a button that removes it, above a
@@ -51,6 +55,8 @@ export function StringListEditor({
   error,
   describedBy = '',
   busy,
+  actions,
+  below,
 }: StringListEditorProps) {
   const id = useId()
 
@@ -106,10 +112,12 @@ export function StringListEditor({
           />
           <ErrorText id={`${id}-error`} error={error} />
         </div>
+        {actions}
         <button type="submit" disabled={busy || draft.trim() === ''} className={buttonClass}>
           {submitLabel}
         </button>
       </form>
+      {below}
     </Group>
   )
 }

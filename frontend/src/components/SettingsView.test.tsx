@@ -718,7 +718,7 @@ describe('SettingsView', () => {
 
     expect(await screen.findByRole('alert')).toHaveTextContent('clone root ~/missing is not a directory')
     expect(onSaved).not.toHaveBeenCalled()
-    expect(field).toHaveAccessibleDescription(/look one level inside it\. clone root ~\/missing is not a directory$/)
+    expect(field).toHaveAccessibleDescription(/repository locations below\. clone root ~\/missing is not a directory$/)
   })
 
   it('waits for the settings to load', async () => {

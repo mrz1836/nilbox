@@ -55,8 +55,8 @@ export function InstallAll(dirs: string[] | null): $CancellablePromise<$models.I
 /**
  * OpenTerminal opens the terminal chosen for launches in the clone the page lists at dir
  * (with ~), for a row's Open in terminal: the user looks at the clone or fixes it there.
- * The app runs nothing in it (scriptrun.OpenFolder). Only a clone directly under the clone
- * root is opened.
+ * The app runs nothing in it (scriptrun.OpenFolder). Only a clone the repository locations
+ * hold is opened.
  */
 export function OpenTerminal(dir: string): $CancellablePromise<void> {
     return $Call.ByID(1334707302, dir);
@@ -79,7 +79,7 @@ export function Replace(req: $models.ActionRequest): $CancellablePromise<number>
 
 /**
  * Repos returns the Hooks page. It serves the last scan while it is under FreshFor old,
- * was read from the clone root as set now, and no copy of go-pre-commit took the place of
+ * was read from the repository locations as set now, and no copy of go-pre-commit took the place of
  * the one it judged with, scanning again first only the clones an action or a check ran
  * in; refresh, or anything else, scans every clone again and emits event.HooksUpdated. A
  * scan that fails keeps the last page, with its error, until one succeeds. A scan runs
@@ -104,7 +104,7 @@ export function RunChecks(req: $models.ChecksRequest): $CancellablePromise<numbe
 /**
  * ShowConfig shows the go-pre-commit config of the clone the page lists at dir (with ~) in
  * Finder, for a row's Open the config: its .github/env folder, or the legacy
- * .github/.env.base. Only a clone directly under the clone root, with a config, is shown.
+ * .github/.env.base. Only a clone the repository locations hold, with a config, is shown.
  */
 export function ShowConfig(dir: string): $CancellablePromise<void> {
     return $Call.ByID(3217116281, dir);

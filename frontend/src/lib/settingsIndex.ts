@@ -214,7 +214,14 @@ export const settingsIndex: Readonly<Record<SettingsSection, readonly SettingEnt
     },
   ],
   repositories: [
-    { label: 'Clone root', keywords: ['clones', 'projects folder', 'local repositories', 'path', 'directory'] },
+    {
+      label: 'Clone root',
+      keywords: ['clones', 'projects folder', 'local repositories', 'path', 'directory', 'new clones'],
+    },
+    {
+      label: 'Other repository locations',
+      keywords: ['locations', 'more folders', 'elsewhere', 'scattered', 'external drive', 'single clone'],
+    },
     { label: 'Launch defaults', keywords: ['org defaults', 'repository defaults', 'organization', 'overrides'] },
   ],
   trust: [

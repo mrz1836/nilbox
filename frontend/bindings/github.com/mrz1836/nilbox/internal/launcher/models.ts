@@ -12,6 +12,9 @@ import * as item$0 from "../item/models.js";
 import * as terminal$0 from "./terminal/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
+import * as localrepos$0 from "../localrepos/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
 import * as sensitive$0 from "../sensitive/models.js";
 
 /**
@@ -39,6 +42,14 @@ export interface CloneTarget {
      * something is already there. Clone refuses it.
      */
     "taken": boolean;
+
+    /**
+     * Elsewhere is, for a repository without a clone in the repository locations, the
+     * clone the app last remembered for it, with ~, when it is still one but no location
+     * holds it, as after the clone root changed; "" otherwise. The window offers to use it
+     * (LinkClone).
+     */
+    "elsewhere": string;
 }
 
 /**
@@ -340,6 +351,24 @@ export interface LaunchResult {
      * SessionID is the session's own ID, which the app follows it by.
      */
     "sessionId": string;
+}
+
+/**
+ * LinkedClone is a clone of an item's repository the user found outside the repository
+ * locations, ready for the window to add as a location.
+ */
+export interface LinkedClone {
+    /**
+     * Dir is the clone, with ~ for home.
+     */
+    "dir": string;
+
+    /**
+     * Location is what adding the clone as a repository location would add: the clone
+     * alone, its folder when that holds other clones (Location.Parent), or nothing new
+     * when the locations already hold it (Location.Covered).
+     */
+    "location": localrepos$0.Preview;
 }
 
 /**

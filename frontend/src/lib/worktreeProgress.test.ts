@@ -4,11 +4,14 @@ import { progressStep } from './worktreeProgress'
 
 describe('progressStep', () => {
   it('words each phase of a listing, with how far through it is', () => {
-    expect(progressStep(null, '~/projects')).toEqual({ text: 'Checking the worktrees…', share: null })
-    expect(progressStep({ phase: 'clones', done: 0, total: 0 }, '~/projects')).toEqual({
+    expect(progressStep(null, 'under ~/projects')).toEqual({ text: 'Checking the worktrees…', share: null })
+    expect(progressStep({ phase: 'clones', done: 0, total: 0 }, 'under ~/projects')).toEqual({
       text: 'Finding the clones under ~/projects…',
       share: null,
     })
+    expect(progressStep({ phase: 'clones', done: 0, total: 0 }, 'in ~/projects and 2 other locations').text).toBe(
+      'Finding the clones in ~/projects and 2 other locations…',
+    )
     expect(progressStep({ phase: 'clones', done: 0, total: 0 }, '').text).toBe('Finding the clones…')
     expect(progressStep({ phase: 'listing', done: 3, total: 12 }, '')).toEqual({
       text: 'Listing worktrees · 3 of 12 clones',

@@ -23,6 +23,7 @@ vi.mock('../../platform', () => import('../../test/platform').then((fake) => fak
 interface PageProps {
   tool: IntegrationTool | undefined
   runs?: readonly ScriptRun[] | null
+  where?: string
   onRelease: (candidate: ReleaseCandidate) => void
   onOpenRun: (id: number) => void
   onOpenSettings: (section: SettingsSection) => void
@@ -30,7 +31,7 @@ interface PageProps {
 
 // Page is the page as the tab shows it, reading the list itself.
 function Page({ runs = [], ...props }: PageProps) {
-  return <ReleasePage candidates={useReleaseCandidates(true)} runs={runs} cloneRoot="~/projects" {...props} />
+  return <ReleasePage candidates={useReleaseCandidates(true)} runs={runs} where="under ~/projects" {...props} />
 }
 
 function renderPage(props: Partial<Omit<PageProps, 'onRelease' | 'onOpenRun' | 'onOpenSettings'>> = {}) {
@@ -82,7 +83,7 @@ describe('ReleasePage', () => {
         }}
         tool={integrationTool()}
         runs={[]}
-        cloneRoot="~/projects"
+        where="under ~/projects"
         onRelease={vi.fn()}
         onOpenRun={vi.fn()}
         onOpenSettings={vi.fn()}
@@ -189,7 +190,7 @@ describe('ReleasePage', () => {
     expect(await screen.findByText('1 clone without a GitHub origin isn’t listed.')).toBeInTheDocument()
   })
 
-  it('offers to change the clone root while there are no clones', async () => {
+  it('offers to change the repository locations while there are no clones', async () => {
     platform.listReleaseCandidates.mockResolvedValue(releaseCandidates({ repos: [], withoutGitHub: 0 }))
     const { onOpenSettings } = renderPage()
 
@@ -197,8 +198,19 @@ describe('ReleasePage', () => {
       await screen.findByText('No clones under ~/projects yet. Release lists the repositories you have cloned there.'),
     ).toBeInTheDocument()
 
-    await userEvent.click(screen.getByRole('button', { name: 'Change the clone root' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Change the repository locations' }))
     expect(onOpenSettings).toHaveBeenCalledExactlyOnceWith('repositories')
+  })
+
+  it('names the other repository locations while there are no clones', async () => {
+    platform.listReleaseCandidates.mockResolvedValue(releaseCandidates({ repos: [], withoutGitHub: 0 }))
+    renderPage({ where: 'in ~/projects and 2 other locations' })
+
+    expect(
+      await screen.findByText(
+        'No clones in ~/projects and 2 other locations yet. Release lists the repositories you have cloned there.',
+      ),
+    ).toBeInTheDocument()
   })
 
   it('keeps the last list when GitHub can’t be reached, saying how old it is', async () => {

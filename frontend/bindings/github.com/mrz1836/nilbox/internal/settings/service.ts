@@ -30,6 +30,9 @@ import * as integrationprefs$0 from "../integrationprefs/models.js";
 import * as terminal$0 from "../launcher/terminal/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
+import * as localrepos$0 from "../localrepos/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
 import * as notifyprefs$0 from "../notifyprefs/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
@@ -41,6 +44,30 @@ import * as snooze$0 from "../snooze/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
 import * as $models from "./models.js";
+
+/**
+ * AddCloneLocations adds each of dirs to the other repository locations, all or none,
+ * and returns the settings with them; one call serves a single add, the suggestions the
+ * preview offers, and a launch's clone found elsewhere. Each is trimmed, expanded, and
+ * stored with ~, as a folder (looked into one level deep) or a single clone, by what it is
+ * now (localrepos.Classify); a hidden folder, one inside the app's worktrees folder or a
+ * git folder, a linked worktree, the clone root, and a clone the locations already hold
+ * are refused, in words the window shows. A location already listed is classified again,
+ * which is what Check again does. A folder added drops the clone locations directly inside
+ * it, which it now covers.
+ */
+export function AddCloneLocations(dirs: string[] | null): $CancellablePromise<$models.Settings> {
+    return $Call.ByID(4232663309, dirs);
+}
+
+/**
+ * CheckCloneLocations reads how the clone root and each of the other repository
+ * locations read now, the clone root first: whether each is there, a folder's clones, and
+ * a clone's origin (see localrepos.Check).
+ */
+export function CheckCloneLocations(): $CancellablePromise<localrepos$0.LocationState[] | null> {
+    return $Call.ByID(2376765246);
+}
 
 /**
  * CollapsedSections returns the inbox sections the user collapsed, in the order the inbox
@@ -97,6 +124,26 @@ export function MenuBar(): $CancellablePromise<boolean> {
  */
 export function MergeMethod(): $CancellablePromise<$models.MergeMethod> {
     return $Call.ByID(3939744348);
+}
+
+/**
+ * PreviewCloneLocation says what adding dir as a repository location would add, and what
+ * the app suggests instead where it finds a better choice, before anything is stored (see
+ * localrepos.Survey). It reads the folder and its subfolders with stat alone, and a
+ * clone's origin with one read-only git command when the Service has git (WithGit).
+ */
+export function PreviewCloneLocation(dir: string): $CancellablePromise<localrepos$0.Preview> {
+    return $Call.ByID(1195137913, dir);
+}
+
+/**
+ * RemoveCloneLocation drops dir from the other repository locations, by its stored text
+ * or as the same folder, and returns the settings without it. A location that isn't
+ * listed is no error. Its clones and their worktrees are left as they are, but no listing
+ * or cleanup reaches them until the location is added again.
+ */
+export function RemoveCloneLocation(dir: string): $CancellablePromise<$models.Settings> {
+    return $Call.ByID(1625961587, dir);
 }
 
 /**

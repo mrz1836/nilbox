@@ -22,6 +22,7 @@ import { Toast, type ToastMessage } from './components/Toast'
 import { attempt } from './lib/call'
 import { filterInbox, inboxItems, inboxSpec, inboxSuggestions } from './lib/inboxFilter'
 import { isFindKey, isTyping } from './lib/keys'
+import { cloneWhere } from './lib/locations'
 import { toggleFilter } from './lib/query'
 import { opensRun } from './lib/notifications'
 import type { ReleaseRequest } from './lib/release'
@@ -676,6 +677,9 @@ export function App() {
           launchDefaults: config.launchDefaults,
           onDefaultsSaved: reload,
           onManagePrompts: openPrompts,
+          // A location added from a launch changes nothing the inbox shows, so the stored
+          // settings are only recorded; the launch options stay the same between renders.
+          onSettingsSaved: setSettings,
         }
   // worktrees are the inbox items' worktrees, as the Worktrees view last listed them, apart
   // from launch so a listing renders only the rows whose worktree it lists.
@@ -703,6 +707,7 @@ export function App() {
         launchDefaults={launch.launchDefaults}
         onDefaultsSaved={launch.onDefaultsSaved}
         onManagePrompts={launch.onManagePrompts}
+        onSettingsSaved={launch.onSettingsSaved}
         initial={{ worktree: true }}
         running={runningSession(sessionsOf(agentSessions.byItem, found))}
       />
@@ -851,7 +856,7 @@ export function App() {
                 <ScriptsView
                   terminal={config.settings?.terminal ?? null}
                   runsIn={config.settings?.integrations.runsIn ?? 'app'}
-                  cloneRoot={config.settings?.cloneRoot ?? ''}
+                  where={config.settings === null ? '' : cloneWhere(config.settings)}
                   integrations={integrations}
                   scriptsSwitch={config.settings?.integrations.switches.scripts ?? 'auto'}
                   runs={scriptRuns}

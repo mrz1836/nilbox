@@ -173,6 +173,22 @@ describe('file dialogs', () => {
     })
   })
 
+  it('asks for one folder, and resolves with its path', async () => {
+    mocks.dialogs.OpenFile.mockResolvedValue('/srv/work')
+
+    await expect(platform.chooseFolder({ title: 'Choose a repository location', button: 'Add' })).resolves.toBe(
+      '/srv/work',
+    )
+    expect(mocks.dialogs.OpenFile).toHaveBeenCalledExactlyOnceWith({
+      Title: 'Choose a repository location',
+      ButtonText: 'Add',
+      CanChooseFiles: false,
+      CanChooseDirectories: true,
+      CanCreateDirectories: false,
+      AllowsMultipleSelection: false,
+    })
+  })
+
   it('asks where to save, suggesting a name, and resolves with the path', async () => {
     mocks.dialogs.SaveFile.mockResolvedValue('')
 

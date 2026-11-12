@@ -15,6 +15,9 @@ import * as integrationprefs$0 from "../integrationprefs/models.js";
 import * as terminal$0 from "../launcher/terminal/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
+import * as localrepos$0 from "../localrepos/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
 import * as notifyprefs$0 from "../notifyprefs/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
@@ -187,9 +190,17 @@ export interface Settings {
     "codexFast": boolean;
 
     /**
-     * CloneRoot is the clone root as entered, e.g. "~/projects".
+     * CloneRoot is the clone root as entered, e.g. "~/projects": the folder new clones go
+     * in, and the first place clones are looked for.
      */
     "cloneRoot": string;
+
+    /**
+     * CloneLocations are the other repository locations, in the order they were added:
+     * each a folder looked into one level deep, as the clone root is, or a single clone,
+     * with ~ for home. Never nil.
+     */
+    "cloneLocations": localrepos$0.Location[] | null;
 
     /**
      * TrustedBots lists the bots (GitHub Apps) whose pull requests and issues are trusted

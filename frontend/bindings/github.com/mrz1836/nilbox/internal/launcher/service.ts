@@ -70,6 +70,18 @@ export function Launch(req: $models.LaunchRequest): $CancellablePromise<$models.
 }
 
 /**
+ * LinkClone checks that the folder dir, which the user picked, is a clone of the item's
+ * repository, remembers it as the repository's clone, and says what adding it as a
+ * repository location would add, for the launch that found no clone. It refuses a folder
+ * that isn't a clone, a linked worktree, and a clone with no remote pointing at the
+ * repository, in words the window shows, and stores no location: the window adds it
+ * through the settings, which alone write the locations, then launches again.
+ */
+export function LinkClone(itemID: number, dir: string): $CancellablePromise<$models.LinkedClone> {
+    return $Call.ByID(1747569069, itemID, dir);
+}
+
+/**
  * Preview plans a launch without writing files or opening a terminal: the resolved
  * settings, the clone, the command, and the filled-in prompt. Launch runs the same plan,
  * so the prompt shown is the prompt sent, except that Launch checks a pull request's

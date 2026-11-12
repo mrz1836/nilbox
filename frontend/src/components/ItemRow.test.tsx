@@ -34,6 +34,7 @@ const launch: LaunchOptions = {
   launchDefaults: [],
   onDefaultsSaved: () => Promise.resolve(),
   onManagePrompts: () => undefined,
+  onSettingsSaved: () => undefined,
 }
 
 // render renders on a clock that stands at now.

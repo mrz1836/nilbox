@@ -16,6 +16,7 @@ import {
   type AgentSession,
   type Profile,
   type Prompt,
+  type Settings,
   type Worktree,
 } from '../platform'
 import { Highlight } from './Highlight'
@@ -40,6 +41,9 @@ export interface LaunchOptions {
   launchDefaults: readonly LaunchDefaults[]
   onDefaultsSaved: () => Promise<void>
   onManagePrompts: () => void
+  // onSettingsSaved takes the settings a change made from a launch stored, such as a
+  // repository location added for a clone found elsewhere.
+  onSettingsSaved: (settings: Settings) => void
 }
 
 export interface ItemRowProps {
@@ -389,6 +393,7 @@ export const ItemRow = memo(function ItemRow({
           launchDefaults={launch.launchDefaults}
           onDefaultsSaved={launch.onDefaultsSaved}
           onManagePrompts={launch.onManagePrompts}
+          onSettingsSaved={launch.onSettingsSaved}
           running={runningSession(sessions)}
         />
       )}
