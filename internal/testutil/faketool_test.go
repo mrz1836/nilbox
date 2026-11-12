@@ -15,16 +15,16 @@ import (
 	"github.com/mrz1836/nilbox/internal/testutil"
 )
 
-// runFake runs a fake tool with its environment entry and returns what it wrote and how
-// it exited.
-func runFake(t *testing.T, path, env string) (stdout, stderr string, code int) {
+// runFake runs a fake tool with its environment entry, and any others after it, and
+// returns what it wrote and how it exited.
+func runFake(t *testing.T, path string, env ...string) (stdout, stderr string, code int) {
 	t.Helper()
 
 	var out, errOut bytes.Buffer
 
 	cmd := exec.CommandContext(t.Context(), path, "ignored", "--args")
 
-	cmd.Env = append(os.Environ(), env)
+	cmd.Env = append(os.Environ(), env...)
 	cmd.Stdout, cmd.Stderr = &out, &errOut
 
 	err := cmd.Run()
@@ -97,6 +97,19 @@ func TestFakeToolReportsStdin(t *testing.T) {
 
 	stdout, _, _ := runFake(t, path, env)
 	assert.Equal(t, "stdin: 0 bytes, devnull: true\n", stdout, "exec.Cmd with no Stdin reads /dev/null")
+}
+
+func TestFakeToolReportsItsEnvironment(t *testing.T) {
+	t.Parallel()
+
+	path, env := testutil.FakeTool(t, "codex", testutil.FakeRun{
+		Stdout: "done\n", ReportEnv: []string{"FAKE_SECOND", "FAKE_FIRST", "FAKE_UNSET"},
+	})
+
+	stdout, _, code := runFake(t, path, env, "FAKE_FIRST=one", "FAKE_SECOND=two=2")
+	require.Zero(t, code)
+	assert.Equal(t, "FAKE_SECOND=two=2\nFAKE_FIRST=one\nFAKE_UNSET=\ndone\n", stdout,
+		"each named variable in order, an unset one empty, before what it writes")
 }
 
 func TestFakeToolChangesFilesBeforeWriting(t *testing.T) {
