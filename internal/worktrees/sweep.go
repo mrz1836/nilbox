@@ -342,18 +342,32 @@ func readGitPointer(file, base, prefix string) (string, bool) {
 // Sweeper runs a Service's sweeps on a timer. It is kept apart from Service, every
 // exported method of which the window binds.
 type Sweeper struct {
-	svc      *Service
-	interval time.Duration
+	svc   *Service
+	every periodic.Every
+	wake  chan struct{}
 }
 
-// NewSweeper returns a Sweeper over svc that sweeps every interval.
-func NewSweeper(svc *Service, interval time.Duration) Sweeper {
-	return Sweeper{svc: svc, interval: interval}
+// NewSweeper returns a Sweeper over svc that sweeps as often as every says, the user's
+// setting, or every DefaultSweepInterval when nil.
+func NewSweeper(svc *Service, every periodic.Every) Sweeper {
+	if every == nil {
+		every = func(context.Context) time.Duration { return DefaultSweepInterval }
+	}
+
+	return Sweeper{svc: svc, every: every, wake: make(chan struct{}, 1)}
 }
 
-// Run sweeps now and then every interval until ctx is canceled, and returns once the
-// sweep in flight has. A failed sweep is logged, and a panicking one is recovered and
-// logged; the next one still runs.
+// Run sweeps now and then as often as every says, from the end of each sweep, until ctx
+// is canceled, and returns once the sweep in flight has. A failed sweep is logged, and a
+// panicking one is recovered and logged; the next one still runs.
 func (sw Sweeper) Run(ctx context.Context) {
-	periodic.Run(ctx, sw.interval, sweepJob, sw.svc.sweepOnce, sw.svc.logger)
+	periodic.RunEvery(ctx, sw.every, sw.wake, sweepJob, sw.svc.sweepOnce, sw.svc.logger)
+}
+
+// Wake has the sweeper read how often to sweep again, as when the user changed it.
+func (sw Sweeper) Wake() {
+	select {
+	case sw.wake <- struct{}{}:
+	default:
+	}
 }

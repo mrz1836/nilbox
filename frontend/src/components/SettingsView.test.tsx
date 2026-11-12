@@ -1456,7 +1456,8 @@ describe('SettingsView search', () => {
   it('stays on the open section while it has a match', () => {
     render(<SettingsView {...searchProps('worktree', 'worktrees')} />)
 
-    expect(sidebar()).toEqual(['Launching', 'Worktrees'])
+    expect(sidebar()).toEqual(['Refreshing', 'Launching', 'Worktrees'])
+    expect(screen.getByRole('button', { name: 'Refreshing (1 match)' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Launching (1 match)' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Worktrees (6 matches)' })).toHaveAttribute('aria-current', 'page')
     expect(screen.getByRole('region', { name: 'Worktrees' })).toBeInTheDocument()
@@ -1496,7 +1497,7 @@ describe('SettingsView search', () => {
 
     rerender(<SettingsView {...searchProps('')} />)
 
-    expect(sidebar()).toHaveLength(13)
+    expect(sidebar()).toHaveLength(14)
     expect(sidebar()).toContain('Account')
     expect(screen.getByRole('region', { name: 'Notifications' })).toBeInTheDocument()
     expect(matched()).toEqual([])

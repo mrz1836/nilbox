@@ -29,6 +29,7 @@ import { ReviewingSection } from './settings/ReviewingSection'
 import { SensitiveFilesSection } from './settings/SensitiveFilesSection'
 import { SnoozingSection } from './settings/SnoozingSection'
 import { TrustSection } from './settings/TrustSection'
+import { RefreshingSection } from './settings/RefreshingSection'
 import { WorktreesSection } from './settings/WorktreesSection'
 
 export type { SettingsSection }
@@ -205,6 +206,8 @@ export function SettingsView({
               )}
               {section === 'notifications' &&
                 (settings === null ? loading : <NotificationsSection settings={settings} onSaved={onSaved} />)}
+              {section === 'refreshing' &&
+                (settings === null ? loading : <RefreshingSection settings={settings} onSaved={onSaved} />)}
               {section === 'snoozing' &&
                 (settings === null ? loading : <SnoozingSection settings={settings} onSaved={onSaved} />)}
               {section === 'reviewing' &&

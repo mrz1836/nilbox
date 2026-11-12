@@ -244,6 +244,16 @@ export function SetProjectsTipDismissed(dismissed: boolean): $CancellablePromise
 }
 
 /**
+ * SetRefreshInterval stores how often, in seconds, the app reads kind again on its own,
+ * one of its choices (RefreshChoices), and returns the settings with it. Once it is
+ * stored, an event.IntervalsChanged is emitted, so whatever reads kind again works its
+ * next wait out from the new interval at once.
+ */
+export function SetRefreshInterval(kind: $models.RefreshKind, seconds: number): $CancellablePromise<$models.Settings> {
+    return $Call.ByID(2017569153, kind, seconds);
+}
+
+/**
  * SetRunsIn stores where the runs go, in the app or in the terminal chosen for launches,
  * and returns the settings with it. Nothing else hears of it: what starts a run (a
  * release, a hooks action, checks, or a script) reads the setting as it starts one.

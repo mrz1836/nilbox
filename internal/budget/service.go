@@ -30,30 +30,30 @@ type Config struct {
 	Reader  Reader
 	Clock   clock.Clock
 
-	// RefreshInterval is how often the inbox refreshes on its own, from which the window
-	// works out the app's hourly pace.
-	RefreshInterval time.Duration
+	// RefreshEvery says how often the inbox refreshes on its own, as set now, from which
+	// the window works out the app's hourly pace; nil or zero counts no refreshes.
+	RefreshEvery func(ctx context.Context) time.Duration
 }
 
 // Service serves the budgets to the window: as the app's latest responses left them, and,
 // when asked, as GitHub reports them now.
 type Service struct {
-	tracker  *Tracker
-	reader   Reader
-	clock    clock.Clock
-	interval time.Duration
-	checks   flight.Group[Gauge]
+	tracker *Tracker
+	reader  Reader
+	clock   clock.Clock
+	every   func(ctx context.Context) time.Duration
+	checks  flight.Group[Gauge]
 }
 
 // NewService returns a Service. A nil Clock uses the system clock.
 func NewService(cfg Config) *Service {
-	return &Service{tracker: cfg.Tracker, reader: cfg.Reader, clock: clock.Or(cfg.Clock), interval: cfg.RefreshInterval}
+	return &Service{tracker: cfg.Tracker, reader: cfg.Reader, clock: clock.Or(cfg.Clock), every: cfg.RefreshEvery}
 }
 
 // Gauge returns every budget as the app's latest responses left it, what the app spent
 // from each since it last refilled, and what the last inbox refresh cost.
-func (s *Service) Gauge() Gauge {
-	return s.tracker.gauge(s.refreshesPerHour())
+func (s *Service) Gauge(ctx context.Context) Gauge {
+	return s.tracker.gauge(s.refreshesPerHour(ctx))
 }
 
 // Check reads every budget from GitHub now, unless the app read all of them within
@@ -61,25 +61,30 @@ func (s *Service) Gauge() Gauge {
 // one runs share it. A failed read returns the gauge as it was, with the error.
 func (s *Service) Check(ctx context.Context) (Gauge, error) {
 	if s.tracker.freshSince(s.clock.Now().UTC().Add(-FreshFor)) {
-		return s.Gauge(), nil
+		return s.Gauge(ctx), nil
 	}
 
 	return s.checks.Do(ctx, checkKey, func(ctx context.Context) (Gauge, error) {
 		if err := s.reader.ReadRates(ctx); err != nil {
-			return s.Gauge(), fmt.Errorf("read the API budget: %w", err)
+			return s.Gauge(ctx), fmt.Errorf("read the API budget: %w", err)
 		}
 
-		return s.Gauge(), nil
+		return s.Gauge(ctx), nil
 	})
 }
 
-// refreshesPerHour is how many times an hour the inbox refreshes on its own.
-func (s *Service) refreshesPerHour() int {
-	if s.interval <= 0 {
+// refreshesPerHour is how many times an hour the inbox refreshes on its own, as set now.
+func (s *Service) refreshesPerHour(ctx context.Context) int {
+	if s.every == nil {
 		return 0
 	}
 
-	return int(time.Hour / s.interval)
+	interval := s.every(ctx)
+	if interval <= 0 {
+		return 0
+	}
+
+	return int(time.Hour / interval)
 }
 
 // Gauge is every budget the window shows, and the app's own spending. Every field is a

@@ -112,6 +112,8 @@ func TestPrefDefaults(t *testing.T) {
 			ScriptSources:   integrationprefs.ScriptSources{MagexTargets: true, RepoFiles: true},
 			Sections:        map[integrationprefs.ScriptsSection]bool{},
 		},
+		Refresh:        DefaultRefreshIntervals(),
+		RefreshChoices: refreshChoices(),
 
 		DefaultProtectedBranches: []string{"main", "master"},
 	}, got)
@@ -278,6 +280,8 @@ func TestSettersPersist(t *testing.T) {
 			ScriptSources:   integrationprefs.ScriptSources{MagexTargets: false, RepoFiles: true},
 			Sections:        map[integrationprefs.ScriptsSection]bool{},
 		},
+		Refresh:        DefaultRefreshIntervals(),
+		RefreshChoices: refreshChoices(),
 
 		DefaultProtectedBranches: branchrules.DefaultProtected(),
 	}, got)

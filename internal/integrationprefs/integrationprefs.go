@@ -54,8 +54,8 @@ const (
 	// when unset.
 	KeyLastRepo = "scripts.lastRepo"
 
-	// KeySections is the preference key holding which of the Scripts tab's sections the
-	// user opened or folded: a JSON object of each ScriptsSection to whether it is open,
+	// KeySections is the preference key holding which of the Scripts tab's sections (on
+	// Release, Hooks, and Repo scripts) the user opened or folded: a JSON object of each ScriptsSection to whether it is open,
 	// each section left out at its page's own default.
 	KeySections = "scripts.sections"
 
@@ -73,6 +73,18 @@ type ScriptsSection string
 
 // The Scripts tab's sections, by page.
 const (
+	// SectionReleaseUnreleased is Release's repositories with unreleased changes.
+	SectionReleaseUnreleased ScriptsSection = "release.unreleased"
+
+	// SectionReleaseUpToDate is Release's repositories whose newest version is current.
+	SectionReleaseUpToDate ScriptsSection = "release.upToDate"
+
+	// SectionReleaseNoReleases is Release's repositories with no release yet.
+	SectionReleaseNoReleases ScriptsSection = "release.noReleases"
+
+	// SectionReleaseCantRelease is Release's repositories that can't be released here.
+	SectionReleaseCantRelease ScriptsSection = "release.cantRelease"
+
 	// SectionHooksAttention is Hooks' clones that need attention.
 	SectionHooksAttention ScriptsSection = "hooks.attention"
 
@@ -101,6 +113,7 @@ const (
 // Sections returns every section, in page order.
 func Sections() []ScriptsSection {
 	return []ScriptsSection{
+		SectionReleaseUnreleased, SectionReleaseUpToDate, SectionReleaseNoReleases, SectionReleaseCantRelease,
 		SectionHooksAttention, SectionHooksReady, SectionHooksOff, SectionHooksNotSetUp,
 		SectionScriptsYours, SectionScriptsT3, SectionScriptsTasks, SectionScriptsMagex,
 	}

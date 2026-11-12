@@ -208,3 +208,130 @@ func TestRunSkipsTicksThatComeWhileRunning(t *testing.T) {
 		stop()
 	})
 }
+
+// setting is an interval a test changes, read as RunEvery reads a setting.
+type setting struct {
+	every atomic.Int64
+}
+
+func (s *setting) get(context.Context) time.Duration { return time.Duration(s.every.Load()) }
+
+func (s *setting) set(d time.Duration) { s.every.Store(int64(d)) }
+
+// startEvery runs fn as every says, woken through wake, inside the caller's synctest
+// bubble, and waits until the first run, if any, has settled.
+func startEvery(t *testing.T, every *setting, wake chan struct{}, fn func(context.Context) error) (stop func()) {
+	t.Helper()
+
+	ctx, cancel := context.WithCancel(t.Context())
+	done := make(chan struct{})
+
+	go func() {
+		defer close(done)
+
+		periodic.RunEvery(ctx, every.get, wake, "fake job", fn, nil)
+	}()
+
+	synctest.Wait()
+
+	return func() {
+		cancel()
+		<-done
+	}
+}
+
+func TestRunEveryRunsAtOnceThenAsTheSettingSays(t *testing.T) {
+	t.Parallel()
+
+	synctest.Test(t, func(t *testing.T) {
+		var runs atomic.Int32
+
+		every := &setting{}
+		every.set(10 * time.Minute)
+
+		wake := make(chan struct{}, 1)
+		stop := startEvery(t, every, wake, func(context.Context) error {
+			runs.Add(1)
+
+			return nil
+		})
+
+		assert.Equal(t, int32(1), runs.Load(), "the first run starts at once")
+
+		after(10*time.Minute + time.Second)
+		assert.Equal(t, int32(2), runs.Load())
+
+		// Three minutes in, the setting drops to two minutes: the run is due already.
+		after(3 * time.Minute)
+		every.set(2 * time.Minute)
+
+		wake <- struct{}{}
+
+		synctest.Wait()
+		assert.Equal(t, int32(3), runs.Load(), "a run already due under the new interval starts at once")
+
+		after(2*time.Minute + time.Second)
+		assert.Equal(t, int32(4), runs.Load(), "then every two minutes")
+
+		// Off: nothing runs however long it waits, until it is on again.
+		every.set(0)
+
+		wake <- struct{}{}
+
+		after(time.Hour)
+		assert.Equal(t, int32(4), runs.Load(), "off runs nothing")
+
+		every.set(time.Minute)
+
+		wake <- struct{}{}
+
+		synctest.Wait()
+		assert.Equal(t, int32(5), runs.Load(), "on again, a run long due starts at once")
+
+		stop()
+	})
+}
+
+func TestRunEveryWaitsFromALongRunsEnd(t *testing.T) {
+	t.Parallel()
+
+	synctest.Test(t, func(t *testing.T) {
+		var runs atomic.Int32
+
+		every := &setting{}
+		every.set(time.Minute)
+		stop := startEvery(t, every, nil, func(ctx context.Context) error {
+			runs.Add(1)
+			time.Sleep(3 * time.Minute)
+
+			return nil
+		})
+
+		after(3*time.Minute + 30*time.Second)
+		assert.Equal(t, int32(1), runs.Load(), "a run longer than the interval is not followed by one at once")
+
+		after(30 * time.Second)
+		assert.Equal(t, int32(2), runs.Load(), "the next waits the interval from its end")
+
+		stop()
+	})
+}
+
+func TestRunEveryOffFromTheStartRunsNothing(t *testing.T) {
+	t.Parallel()
+
+	synctest.Test(t, func(t *testing.T) {
+		var runs atomic.Int32
+
+		stop := startEvery(t, &setting{}, make(chan struct{}, 1), func(context.Context) error {
+			runs.Add(1)
+
+			return nil
+		})
+
+		after(time.Hour)
+		assert.Zero(t, runs.Load())
+
+		stop()
+	})
+}

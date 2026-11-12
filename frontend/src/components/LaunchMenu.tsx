@@ -57,13 +57,15 @@ function defaultLabel(s: LaunchSetting, label: (v: string) => string): string {
   return `Default · ${label(s.inherited)} (${sourceLabel(s.inheritedSource)})`
 }
 
-// LaunchMenu is the launch options in their dialog: the coding agent, the prompt, the
-// agent's profile, its model and effort, the worktree, and plan mode for this launch, a
-// preview of what it runs, and buttons to save the choices as defaults, to cancel, or to
-// launch. Saving takes one click, as it changes only this Mac's defaults, and offers Undo,
-// which puts back what the save replaced; the save buttons wait until a choice differs. Every choice starts at what the item's settings resolve to, each showing where
-// that comes from; the profiles, models, and effort levels offered are the chosen agent's.
-// The choices scroll when the window is short, and the buttons stay in view under them.
+// LaunchMenu is the launch options in their dialog: the coding agent, the prompt (a select,
+// with the chosen one's description under it), the agent's profile, its model and effort,
+// the worktree, and plan mode for this launch, a preview of what it runs, and buttons to
+// save the choices as defaults, to cancel, or to launch. Saving takes one click, as it
+// changes only this Mac's defaults, and offers Undo, which puts back what the save
+// replaced; the save buttons wait until a choice differs. Every choice starts at what the
+// item's settings resolve to, each showing where that comes from; the profiles, models, and
+// effort levels offered are the chosen agent's. The choices scroll when the window is
+// short, and the buttons stay in view under them.
 export function LaunchMenu({
   item,
   resolved,
@@ -92,6 +94,10 @@ export function LaunchMenu({
   const agentId = choices.agent === '' ? resolved.agentInherited : choices.agent
   const applicable = prompts.filter((p) => promptApplies(p, item.kind))
   const promptId = choices.promptId === 0 ? resolved.prompt.id : choices.promptId
+  // about is the chosen prompt's description, under the select, or '' when it only says
+  // its nickname again.
+  const chosenPrompt = applicable.find((p) => p.id === promptId)
+  const about = chosenPrompt === undefined || chosenPrompt.name === chosenPrompt.nickname ? '' : chosenPrompt.name
   const profile = choices.profile === '' ? resolved.profile.value : choices.profile
   const worktree = choices.worktree ?? resolved.worktree.inherited
   const planMode = choices.planMode ?? resolved.planMode.inherited
@@ -144,44 +150,44 @@ export function LaunchMenu({
           </div>
         )}
 
-        <div className={`px-1.5 pt-2 ${agents.length > 1 ? 'mt-1 border-t border-border' : ''}`}>
+        <div className={`px-1.5 pt-2 pb-1 ${agents.length > 1 ? 'mt-1 border-t border-border' : ''}`}>
           <div className="flex items-baseline justify-between">
-            <p id={`${id}-prompt-title`} className={sectionTitle}>
+            <label htmlFor={`${id}-prompt`} className={sectionTitle}>
               Prompt
-            </p>
+            </label>
             <button type="button" onClick={onManagePrompts} className={quietButtonClass}>
               Manage
             </button>
           </div>
-          {/* The dialog opens with focus on the chosen prompt, the choice most often changed. */}
-          <div
-            role="radiogroup"
-            aria-labelledby={`${id}-prompt-title`}
-            data-initial-focus
-            className="max-h-48 overflow-y-auto"
-          >
-            {applicable.map((p) => (
-              <label
-                key={p.id}
-                className="grid cursor-pointer grid-cols-[auto_minmax(0,1fr)_auto] items-baseline gap-x-2 rounded-md px-2 py-1 hover:bg-raised has-checked:bg-raised/70"
-              >
-                <input
-                  type="radio"
-                  name={`${id}-prompt`}
-                  value={p.id}
-                  checked={promptId === p.id}
-                  onChange={() => {
-                    set({ promptId: p.id === resolved.prompt.inheritedId ? 0 : p.id })
-                  }}
-                  className="radio row-span-2 translate-y-0.5"
-                />
-                <span className="truncate font-medium">{p.nickname}</span>
-                <span className="text-[0.6875rem] text-muted">
-                  {p.id === resolved.prompt.inheritedId ? sourceLabel(resolved.prompt.inheritedSource) : ''}
-                </span>
-                <span className="col-span-2 truncate text-xs text-muted">{p.name}</span>
-              </label>
-            ))}
+          <div className="flex flex-col gap-1 px-2">
+            {/* The dialog opens with focus on the prompt, the choice most often changed. A
+                select keeps the dialog one size however many prompts there are, and its
+                menu shows every one. */}
+            <select
+              id={`${id}-prompt`}
+              data-initial-focus
+              value={promptId}
+              aria-describedby={about === '' ? undefined : `${id}-prompt-about`}
+              onChange={(e) => {
+                const chosen = Number(e.target.value)
+
+                set({ promptId: chosen === resolved.prompt.inheritedId ? 0 : chosen })
+              }}
+              className="w-full truncate rounded-md border border-border bg-surface px-2 py-1.5 text-sm font-medium"
+            >
+              {applicable.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.id === resolved.prompt.inheritedId
+                    ? `${p.nickname} · ${sourceLabel(resolved.prompt.inheritedSource)}`
+                    : p.nickname}
+                </option>
+              ))}
+            </select>
+            {about !== '' && (
+              <p id={`${id}-prompt-about`} className="line-clamp-2 text-xs text-muted">
+                {about}
+              </p>
+            )}
           </div>
         </div>
 

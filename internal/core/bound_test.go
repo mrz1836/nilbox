@@ -310,6 +310,9 @@ func boundCalls(t *testing.T) map[string]boundCall {
 		"settings.Service.SetShowRuns": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
 			return c.Settings.SetShowRuns(ctx, true)
 		},
+		"settings.Service.SetRefreshInterval": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
+			return c.Settings.SetRefreshInterval(ctx, settings.RefreshChecks, 30)
+		},
 		"scripts.Service.Repos": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
 			got, err := c.Scripts.Repos(ctx)
 			require.Len(t, got, 1)

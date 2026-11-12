@@ -166,7 +166,7 @@ func TestChecksFollowerFollowsEveryIntervalUntilCanceled(t *testing.T) {
 
 	synctest.Test(t, func(t *testing.T) {
 		f := &countingFollower{}
-		follower := &ChecksFollower{follow: f.follow, interval: FollowInterval, logger: slog.New(slog.DiscardHandler)}
+		follower := newChecksFollower(f.follow, nil, slog.New(slog.DiscardHandler))
 
 		ctx, cancel := context.WithCancel(t.Context())
 		done := make(chan struct{})
@@ -189,5 +189,43 @@ func TestChecksFollowerFollowsEveryIntervalUntilCanceled(t *testing.T) {
 	})
 
 	assert.Equal(t, 45*time.Second, FollowInterval)
-	assert.Equal(t, FollowInterval, NewChecksFollower(newHarness(t).svc, nil).interval)
+	assert.Equal(t, FollowInterval, NewChecksFollower(newHarness(t).svc, nil, nil).every(t.Context()))
+}
+
+func TestChecksFollowerOffFollowsNothingUntilOn(t *testing.T) {
+	t.Parallel()
+
+	synctest.Test(t, func(t *testing.T) {
+		var on atomic.Bool
+
+		f := &countingFollower{}
+		follower := newChecksFollower(f.follow, func(context.Context) time.Duration {
+			if on.Load() {
+				return 30 * time.Second
+			}
+
+			return 0
+		}, nil)
+
+		ctx, cancel := context.WithCancel(t.Context())
+		done := make(chan struct{})
+
+		go func() {
+			defer close(done)
+
+			follower.Run(ctx)
+		}()
+
+		time.Sleep(time.Hour)
+		synctest.Wait()
+		assert.Zero(t, f.count.Load(), "off follows nothing, not even at once")
+
+		on.Store(true)
+		follower.Wake()
+		synctest.Wait()
+		assert.Equal(t, int32(1), f.count.Load())
+
+		cancel()
+		<-done
+	})
 }

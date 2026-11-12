@@ -565,6 +565,13 @@ func assemble(pool *sql.DB, info startup, opts Options, logger *slog.Logger) *Co
 	hookPage := newHooks(pool, opts, logger, deps)
 	repoScripts := newScripts(pool, opts, logger, deps, inboxStore)
 
+	// What reads the inbox, the running checks, and the worktrees again on its own does so
+	// as often as the settings say, and works its next wait out again once they change.
+	scheduler := inbox.NewScheduler(inboxSvc, refreshEvery(prefs, settings.RefreshInbox, logger), logger)
+	checksFollower := inbox.NewChecksFollower(inboxSvc, refreshEvery(prefs, settings.RefreshChecks, logger), logger)
+	sweeper := worktrees.NewSweeper(sweeps, refreshEvery(prefs, settings.RefreshWorktrees, logger))
+	followed.intervals = []waker{scheduler, checksFollower, sweeper}
+
 	return &Core{
 		DB:       pool,
 		Settings: prefs,
@@ -597,7 +604,7 @@ func assemble(pool *sql.DB, info startup, opts Options, logger *slog.Logger) *Co
 		}),
 		Budget: budget.NewService(budget.Config{
 			Tracker: tracker, Reader: rateReader{tokens: tokens, client: client}, Clock: opts.Clock,
-			RefreshInterval: inbox.DefaultInterval,
+			RefreshEvery: refreshEvery(prefs, settings.RefreshInbox, logger),
 		}),
 		Sessions: follow.service,
 		Review: review.NewService(review.Config{
@@ -609,9 +616,9 @@ func assemble(pool *sql.DB, info startup, opts Options, logger *slog.Logger) *Co
 		ShellSessions:    ShellSessions{ledger: follow.ledger, service: follow.service},
 		ShellSettings:    newShellSettings(prefs, pool, opts.Clock),
 		ProfileStore:     profileStore,
-		Scheduler:        inbox.NewScheduler(inboxSvc, logger),
-		ChecksFollower:   inbox.NewChecksFollower(inboxSvc, logger),
-		Sweeper:          worktrees.NewSweeper(sweeps, worktrees.DefaultSweepInterval),
+		Scheduler:        scheduler,
+		ChecksFollower:   checksFollower,
+		Sweeper:          sweeper,
 		Timing:           recorder,
 		ShellEnv:         shellEnv,
 		Deferred:         &Deferred{steps: []func(context.Context){func(ctx context.Context) { _ = shellEnv.Read(ctx) }}},

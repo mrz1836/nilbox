@@ -171,9 +171,11 @@ app:lint` reads.
 - `internal/event/` holds the app's events, one Go type each with its name; services emit them
   into the one `event.Sink` they are given. `internal/desktop/` is the shell's logic: it hears
   those events, keeps the menu bar current with what `internal/menubar` works out, runs the
-  scheduler, the checks follower (`inbox.ChecksFollower`: every 45 seconds, the listed pull
-  requests whose checks were running, read in one request through
-  `(*github.Client).FetchItems`, and nothing while none runs), the sweeper, the budget's `Saver`, the sessions watcher, the Release page's
+  scheduler, the checks follower (`inbox.ChecksFollower`: the listed pull requests whose
+  checks were running, read in one request through `(*github.Client).FetchItems`, and
+  nothing while none runs), the sweeper (these three as often as Settings → Refreshing
+  says, through `periodic.RunEvery`, which core wakes on the Go-only
+  `event.IntervalsChanged` the settings setter emits, so a change applies at once), the budget's `Saver`, the sessions watcher, the Release page's
   refresher, and the Hooks page's scans as tracked work, starts the deferred work
   (`core.Deferred`: the login-shell read first; the tool finder, the runs, and the release
   `Follower` beside it) once after the first paint, never on the cold
@@ -370,7 +372,7 @@ app:lint` reads.
   `tools.*` preferences and only reads `integrations.*`, which settings writes through the leaf `internal/integrationprefs`
   (the switches, automatic, on, or off, and the chosen copies; the leaf also declares the
   window's memory of the Scripts tab, `integrations.announced`, `scripts.lastPage`,
-  `scripts.lastRepo`, and `scripts.sections` (the Hooks and Repo scripts sections the user
+  `scripts.lastRepo`, and `scripts.sections` (the Release, Hooks, and Repo scripts sections the user
   opened or folded), and `scripts.showRuns`, whether a run Repo scripts starts opens beside
   it, off by default, which settings stores for the window alone), so settings never imports
   integrations. One rule says which folders are go install's (`goFolders`), for a copy's

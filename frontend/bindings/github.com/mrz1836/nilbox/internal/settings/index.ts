@@ -9,12 +9,15 @@ export {
 export {
     ListKey,
     MergeMethod,
+    RefreshKind,
     TextSize,
     Theme
 } from "./models.js";
 
 export type {
     InboxOrder,
+    RefreshChoices,
+    RefreshIntervals,
     Settings,
     WindowSize
 } from "./models.js";

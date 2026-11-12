@@ -50,8 +50,8 @@ describe('matchSettings', () => {
     const sections = found('worktree').map(([section]) => section)
 
     expect(sections).toEqual(sectionOrder.filter((s) => sections.includes(s)))
-    expect(sections).toEqual(['launching', 'worktrees'])
-    expect(match?.matches).toBe(1 + settingsIndex.worktrees.length)
+    expect(sections).toEqual(['refreshing', 'launching', 'worktrees'])
+    expect(match?.matches).toBe(1 + 1 + settingsIndex.worktrees.length)
   })
 
   it('needs every word, ignoring case and accents, and leaves out excluded ones', () => {

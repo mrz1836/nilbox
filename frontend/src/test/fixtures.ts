@@ -342,6 +342,12 @@ export function settings(overrides: Partial<Settings> = {}): Settings {
     inboxOrder: { statusSorted: [], statusOrder: [] },
     mergeMethod: 'repo',
     integrations: integrationsConfig(),
+    refresh: { inbox: 300, checks: 45, worktrees: 300 },
+    refreshChoices: {
+      inbox: [120, 300, 600, 900, 1800, 3600],
+      checks: [0, 30, 45, 60, 120],
+      worktrees: [300, 600, 900, 1800, 3600],
+    },
     ...overrides,
   }
 }

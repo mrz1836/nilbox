@@ -220,6 +220,7 @@ function answers(subscribe: Loose<Platform['on']>): { [K in keyof Platform]: Loo
     setScriptsSectionOpen: (section, open) =>
       stored({ integrations: integrationsConfig({ sections: { [section]: open } }) }),
     setShowRuns: (showRuns) => stored({ integrations: integrationsConfig({ showRuns }) }),
+    setRefreshInterval: (kind, seconds) => stored({ refresh: { ...settings().refresh, [kind]: seconds } }),
 
     listIntegrations: () => Promise.resolve(integrationTools()),
     checkIntegrationsAgain: () => Promise.resolve(integrationTools()),

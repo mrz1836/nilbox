@@ -230,7 +230,7 @@ Account** shows whether projects are on.
 ### Work the inbox
 
 The **Inbox** tab shows three lists: **Review requested**, **Authored**, and **Assigned**, drawn
-from every repository your account can see and refreshed every five minutes. **Snooze** an item
+from every repository your account can see and refreshed every five minutes (you set how often). **Snooze** an item
 (3 days by default), **dismiss** it, or **pin** it to the top. Each card's **⋯** menu gathers
 those, opens or copies the item's link, and, when you're assigned or asked to review, takes you
 off it on GitHub. Press **⌘F** to filter the inbox: type a few words, or pick `repo:`, `label:`,
@@ -322,8 +322,9 @@ requests that merged, never touching `main`, `master`, or any branch you protect
   is yours to arrange; statuses you haven't placed are placed by their names.
 - **Always current:** a refresh on start and every five minutes, a manual refresh, a per-card
   refresh that costs one API point, and pull requests whose checks are running read again every
-  45 seconds, all in one request, until their checks end. Archived repositories, and items merged or closed since GitHub
-  indexed them, never show.
+  45 seconds, all in one request, until their checks end; **Settings → Refreshing** sets how often
+  each, and the worktrees' sweep, runs. Archived repositories, and items merged or closed since
+  GitHub indexed them, never show.
 - **Tab counts and collapsible lists:** the Inbox tab counts each item that needs you once, and a
   collapsed list stays collapsed across launches.
 - **Filter:** the toolbar's field (**⌘F** or **/**) narrows every list as you type, by words in
@@ -524,8 +525,9 @@ More in [Outside contributors](docs/desktop.md#outside-contributors) and
   done, so each shows as **in use**, **ready to clean up**, or **needs a look**. **In use** means a
   running process, of any agent or tool, works inside it.
 - **Clean up** removes a finished worktree only when nothing would be lost: no uncommitted
-  changes, every commit on GitHub, and no session running in it. A sweep every five minutes does
-  the same once a pull request merges or an issue closes (on by default).
+  changes, every commit on GitHub, and no session running in it. A sweep every five minutes (or as
+  set in Settings → Refreshing) does the same once a pull request merges or an issue closes (on by
+  default).
 - **Remove**, **Remove all clean**, **Force remove** (for dirty, unlocked worktrees), **Prune**,
   and **Unlock** for an agent lock whose session has ended. The main worktree is never removable, a
   worktree in use is never removed, and a lock you set by hand is never released.
@@ -647,8 +649,8 @@ More in [Menu bar and notifications](docs/desktop.md#menu-bar-and-notifications)
 - **Themes:** follow the system, or pin Light or Dark. The native window frame and menus follow.
 - **Text size:** 100%, 115%, or 130%, apart from the window's size. Text and the spacing around
   it scale together, so nothing clips.
-- **Settings** covers your account, appearance, notifications, snoozing, reviewing, launching,
-  worktrees, profiles, repositories, trust, sensitive files, and integrations. **Find a
+- **Settings** covers your account, appearance, notifications, refreshing, snoozing, reviewing,
+  launching, worktrees, profiles, repositories, trust, sensitive files, and integrations. **Find a
   setting** in the toolbar narrows the sections to those with a match and marks the setting.
 - **About** shows the version, build, commit, and system, each coding agent's installed
   version, and the GitHub CLI's, and **Report a bug** opens a GitHub issue with those details

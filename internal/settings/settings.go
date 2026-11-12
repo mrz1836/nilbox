@@ -214,6 +214,11 @@ type Settings struct {
 
 	// Integrations is each integration's switch, and the copy of each tool the user chose.
 	Integrations integrationprefs.Config `json:"integrations"`
+
+	// Refresh is how often, in seconds, the app reads the inbox, the running checks, and
+	// the worktrees again on its own, and RefreshChoices what each can be set to.
+	Refresh        RefreshIntervals `json:"refresh"`
+	RefreshChoices RefreshChoices   `json:"refreshChoices"`
 }
 
 // ProfileLookup finds an agent's stored profile by name, or returns
@@ -591,6 +596,8 @@ func fromStored(stored map[string]string) Settings {
 		InboxOrder:           decodeInboxOrder(stored),
 		MergeMethod:          decodeMergeMethod(stored[KeyMergeMethod]),
 		Integrations:         integrationprefs.Decode(stored),
+		Refresh:              decodeRefreshIntervals(stored),
+		RefreshChoices:       refreshChoices(),
 	}
 
 	if v := agent.ID(stored[KeyDefaultAgent]); agent.Known(v) {
@@ -707,6 +714,6 @@ func settingKeys() []string {
 		KeySnoozeDays, KeyWindowSize,
 		snooze.PrefWakeCommits, snooze.PrefWakeReviews, snooze.PrefWakeComments,
 		sensitive.PrefScope, sensitive.PrefOff, sensitive.PrefPatterns, KeyMenuBar, notifyprefs.KeyBannersOff, notifyprefs.KeyBannersOn, KeyTheme,
-		KeyTextSize, KeyProjectsTipDismissed, KeyMergeMethod,
+		KeyTextSize, KeyProjectsTipDismissed, KeyMergeMethod, KeyRefreshInbox, KeyRefreshChecks, KeyRefreshWorktrees,
 	), append(append(append(collapsedKeys(), orderKeys()...), branchrules.Keys()...), integrationprefs.Keys()...)...)
 }

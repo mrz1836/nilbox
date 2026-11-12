@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 
 import { noChoices } from '../lib/launchChoices'
-import { agents, item, profile, prompts, resolution } from '../test/fixtures'
+import { agents, item, profile, prompt, prompts, resolution } from '../test/fixtures'
 import { LaunchMenu, type LaunchMenuProps } from './LaunchMenu'
 
 vi.mock('../platform', () => import('../test/platform').then((fake) => fake.platform))
@@ -32,6 +32,25 @@ function props(overrides: Partial<LaunchMenuProps> = {}): LaunchMenuProps {
 }
 
 describe('LaunchMenu', () => {
+  it('chooses the prompt from a select, with the chosen one’s description under it', async () => {
+    const onChoices = vi.fn()
+    const same = prompt({ id: 8, nickname: 'Fix merge conflicts', name: 'Fix merge conflicts' })
+    const { rerender } = render(<LaunchMenu {...props({ onChoices, prompts: [...prompts(), same] })} />)
+
+    const select = screen.getByRole('combobox', { name: 'Prompt' })
+    expect(select).toHaveValue('1')
+    expect(select).toHaveAccessibleDescription('Review a pull request')
+
+    await userEvent.selectOptions(select, 'Quick look')
+    expect(onChoices).toHaveBeenLastCalledWith({ ...noChoices, promptId: 2 })
+
+    rerender(
+      <LaunchMenu {...props({ onChoices, prompts: [...prompts(), same], choices: { ...noChoices, promptId: 8 } })} />,
+    )
+    expect(select).toHaveValue('8')
+    expect(select).not.toHaveAccessibleDescription(/./)
+  })
+
   it('waits for a choice before it saves defaults, then saves in one click with an undo', async () => {
     const onSave = vi.fn()
     const { rerender } = render(<LaunchMenu {...props({ onSave })} />)

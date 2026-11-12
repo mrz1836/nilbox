@@ -48,7 +48,7 @@ func TestTheBudgetComesBackAfterARestart(t *testing.T) {
 	require.NoError(t, first.Close())
 
 	second := bootstrap(t, Options{Paths: paths, Home: home})
-	got := second.Budget.Gauge()
+	got := second.Budget.Gauge(t.Context())
 
 	assert.Equal(t, 120, got.GraphQL.Used)
 	assert.Equal(t, 7, got.GraphQL.Spent, "what the app spent counts on across the restart")

@@ -13,10 +13,18 @@ import {
   releaseGroups,
 } from '../../lib/release'
 import type { ReleaseCandidatesState } from '../../lib/useReleaseCandidates'
+import { useSections, type OnSection, type StoredSections } from '../../lib/useSections'
 import type { SettingsSection } from '../../lib/settingsIndex'
 import { usable } from '../../lib/scriptsTab'
 import { formatAge, formatAgo } from '../../lib/time'
-import type { CommitChecks, IntegrationTool, ReleaseCandidate, ReleaseGroup, ScriptRun } from '../../platform'
+import type {
+  CommitChecks,
+  IntegrationTool,
+  ReleaseCandidate,
+  ReleaseGroup,
+  ScriptRun,
+  ScriptsSection,
+} from '../../platform'
 import { buttonClass, captionClass, quietButtonClass } from '../controls'
 import { ErrorBanner } from '../ErrorBanner'
 import { AlertIcon, CheckIcon, DotIcon, RefreshIcon, RingIcon, XIcon } from '../icons'
@@ -39,9 +47,14 @@ const checksIcons: Readonly<Record<CommitChecks, ReactNode>> = {
   '': <RingIcon className="size-3.5 shrink-0 text-muted" />,
 }
 
+// stored names a group as the settings keep it: "release.upToDate".
+function stored(group: ReleaseGroup): ScriptsSection {
+  return `release.${group}`
+}
+
 // groupsOpen is which groups start open, as releaseGroups says.
-function groupsOpen(): Readonly<Partial<Record<ReleaseGroup, boolean>>> {
-  return Object.fromEntries(releaseGroups.map((g) => [g.id, g.open]))
+function groupsOpen(): Readonly<Partial<Record<ScriptsSection, boolean>>> {
+  return Object.fromEntries(releaseGroups.map((g) => [stored(g.id), g.open]))
 }
 
 // oldAs says how old a list is: "14m old".
@@ -134,6 +147,10 @@ export interface ReleasePageProps {
   onRelease: (candidate: ReleaseCandidate) => void
   onOpenRun: (id: number) => void
   onOpenSettings: (section: SettingsSection) => void
+  // sections are the sections the user opened or folded, kept across starts, and
+  // onSection stores another.
+  sections?: StoredSections
+  onSection?: OnSection
 }
 
 // ReleasePage is the Scripts tab's Release page: every clone with a GitHub origin, in its
@@ -141,7 +158,8 @@ export interface ReleasePageProps {
 // with Release… where there is something to release; a search over every group; a way
 // to read GitHub again, how far a read has got, and how old the list is when it was kept
 // from the last start or the last read failed; and the recent releases, each opening its
-// run. While magex can't be used, the page says why in place of its list.
+// run. While magex can't be used, the page says why in place of its list. Each group
+// stays open or folded as the user left it, across starts (useSections).
 export function ReleasePage({
   candidates,
   tool,
@@ -150,10 +168,12 @@ export function ReleasePage({
   onRelease,
   onOpenRun,
   onOpenSettings,
+  sections = {},
+  onSection = () => undefined,
 }: ReleasePageProps) {
   const id = useId()
   const [search, setSearch] = useState('')
-  const [open, setOpen] = useState(groupsOpen)
+  const folds = useSections(sections, onSection, groupsOpen())
   const { list, error, refreshing, refreshError, progress, refresh } = candidates
   const searching = search.trim() !== ''
   const matched = list === null ? [] : matchCandidates(list.repos, search)
@@ -201,7 +221,7 @@ export function ReleasePage({
         )}
         {releaseGroups.map((group) => {
           const rows = matched.filter((r) => r.group === group.id)
-          const shown = searching || open[group.id] === true
+          const shown = searching || folds.isOpen(stored(group.id))
 
           if (rows.length === 0 && (searching || group.id !== 'unreleased')) {
             return null
@@ -216,7 +236,7 @@ export function ReleasePage({
                 open={shown}
                 disabled={searching}
                 onToggle={() => {
-                  setOpen({ ...open, [group.id]: !open[group.id] })
+                  folds.toggle(stored(group.id))
                 }}
               />
               {shown &&
