@@ -253,7 +253,7 @@ type History interface {
 // Config holds a Service's dependencies. Settings and Git are required; the rest are
 // optional.
 type Config struct {
-	// Settings supplies the clone root and whether the sweep cleans up on its own.
+	// Settings supplies the repository locations and whether the sweep cleans up on its own.
 	Settings SettingsReader
 
 	// Git runs git argv; it also reads remotes during the clone-root scan.
@@ -327,7 +327,7 @@ type Guard interface {
 	ReadEnv() []string
 }
 
-// Service lists and removes worktrees of the clones under the clone root.
+// Service lists and removes worktrees of the clones in the repository locations.
 type Service struct {
 	settings SettingsReader
 	run      execpath.Runner
@@ -408,7 +408,7 @@ func NewService(cfg Config) *Service {
 // Remove removes one linked worktree without --force, and with it the branches named,
 // of those it offers (see Worktree.Branches): each goes only when nothing on it would be
 // lost and nothing protects it, and only while it still points at the commit assessed.
-// The repository must be a clone under the clone root and path one of its linked
+// The repository must be a clone in the repository locations and path one of its linked
 // worktrees, which is assessed again first. The main worktree, a locked one, and one a
 // session works in are refused before git runs, and git itself refuses one with
 // uncommitted changes, which comes back as a RefusedError. The result names the branches

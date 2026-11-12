@@ -20,6 +20,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/event"
 	"github.com/mrz1836/nilbox/internal/execpath"
 	"github.com/mrz1836/nilbox/internal/item"
+	"github.com/mrz1836/nilbox/internal/localrepos"
 	"github.com/mrz1836/nilbox/internal/procs"
 	"github.com/mrz1836/nilbox/internal/repo"
 	"github.com/mrz1836/nilbox/internal/testutil"
@@ -163,14 +164,15 @@ func (f *fakeLaunches) all() []worklog.Record {
 
 // linkDeps are the optional dependencies of a linking Service.
 type linkDeps struct {
-	rules    *branchrules.Rules
-	gh       *fakeGitHub
-	launches *fakeLaunches
-	history  History
-	events   *testutil.Events
-	auto     bool
-	procs    processTable
-	running  procs.Lister
+	rules     *branchrules.Rules
+	locations []localrepos.Location
+	gh        *fakeGitHub
+	launches  *fakeLaunches
+	history   History
+	events    *testutil.Events
+	auto      bool
+	procs     processTable
+	running   procs.Lister
 
 	// guard, when set, runs the Service under gitread's guards, as core does.
 	guard Guard
@@ -180,7 +182,7 @@ type linkDeps struct {
 // are judged against deps.procs, which by default says every PID is dead.
 func (e *env) linked(deps linkDeps) *Service {
 	cfg := Config{
-		Settings: fakeSettings{root: cloneRoot, auto: deps.auto, rules: deps.rules},
+		Settings: fakeSettings{root: cloneRoot, locations: deps.locations, auto: deps.auto, rules: deps.rules},
 		Git:      e.git,
 		Finder:   execpath.Search{},
 		Home:     e.home,

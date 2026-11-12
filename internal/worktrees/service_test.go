@@ -161,7 +161,13 @@ func (e *env) scripted(intercept func(sub []string) (reply, bool)) *Service {
 func (e *env) newRepo(t testing.TB, name string) string {
 	t.Helper()
 
-	dir := filepath.Join(e.root, name)
+	return e.repoAt(t, filepath.Join(e.root, name))
+}
+
+// repoAt creates a repository at dir with one commit and returns its path.
+func (e *env) repoAt(t testing.TB, dir string) string {
+	t.Helper()
+
 	testutil.InitRepo(t, dir)
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "README.md"), []byte("example\n"), 0o600))
 	testutil.RunGit(t, dir, "add", "README.md")
