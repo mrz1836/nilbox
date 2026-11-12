@@ -85,7 +85,7 @@ func (s *Service) finishKept(ctx context.Context, id int64, run *actionRun, read
 
 	run.before, run.tool = kept.Hooks.hooks(), kept.Tool.facts()
 
-	if now := s.tool(ctx); !now.Usable() || now.key() != run.tool.key() {
+	if now := s.tool(ctx); !now.Usable() || now.Key() != run.tool.Key() {
 		run.stale = true
 	}
 

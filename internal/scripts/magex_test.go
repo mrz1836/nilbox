@@ -214,16 +214,17 @@ func TestToolFacts(t *testing.T) {
 		State: integrations.StateFound, Copy: integrations.Copy{Path: "/opt/bin/magex", Version: integrations.Version{Raw: "1.30.2"}},
 	})
 	assert.True(t, found.Usable())
-	assert.Equal(t, "/opt/bin/magex@1.30.2", found.key())
+	assert.Equal(t, "/opt/bin/magex@1.30.2", found.Key())
 
-	for want, facts := range map[string]ToolFacts{
+	for want, facts := range map[string]integrations.CopyFacts{
 		"mage-x is turned off in Settings → Integrations.":                                    {Path: "/x", State: integrations.StateFound, Off: true},
 		"magex isn't installed. Install it in Settings → Integrations.":                       {State: integrations.StateMissing},
 		"This magex is too old for " + brand.Name + ". Update it in Settings → Integrations.": {Path: "/x", State: integrations.StateTooOld},
 		"magex won't run. Check it in Settings → Integrations.":                               {Path: "/x", State: integrations.StateWontRun},
 	} {
-		assert.False(t, facts.Usable(), want)
-		assert.Equal(t, want, facts.why())
+		tool := ToolFacts{CopyFacts: facts}
+		assert.False(t, tool.Usable(), want)
+		assert.Equal(t, want, tool.why())
 	}
 
 	off := ToolFactsOf(integrations.Tool{Switch: integrationprefs.SwitchOff})

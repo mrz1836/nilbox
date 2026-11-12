@@ -406,7 +406,7 @@ func TestAMajorWithoutMagexIsNotReadyRatherThanABug(t *testing.T) {
 	t.Parallel()
 
 	r := newReleaseRig(t, rigOptions{base: shownVersion})
-	r.tool = ToolFacts{Features: []integrations.Feature{}, State: integrations.StateMissing}
+	r.tool = ToolFacts{CopyFacts: integrations.CopyFacts{Features: []integrations.Feature{}, State: integrations.StateMissing}}
 
 	_, err := r.svc.Start(t.Context(), StartRequest{Repo: sdkRepo, Bump: BumpMajor, Version: majorVersion, Typed: majorVersion})
 	require.ErrorIs(t, err, ErrNotReady)

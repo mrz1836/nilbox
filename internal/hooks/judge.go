@@ -67,7 +67,7 @@ func (s *Service) judgeBytes(ctx context.Context, hook hookFile, tool ToolFacts)
 		return false, false, nil
 	}
 
-	if current, known = s.judged.get(tool.key(), hook.sha); known {
+	if current, known = s.judged.get(tool.Key(), hook.sha); known {
 		return current, true, nil
 	}
 
@@ -94,7 +94,7 @@ func (s *Service) judgeBytes(ctx context.Context, hook hookFile, tool ToolFacts)
 		return false, false, nil
 	}
 
-	s.judged.set(tool.key(), hook.sha, current)
+	s.judged.set(tool.Key(), hook.sha, current)
 
 	return current, true, nil
 }

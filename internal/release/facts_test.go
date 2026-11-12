@@ -151,7 +151,9 @@ func newGatherRig(t *testing.T) *gatherRig {
 	}}}
 	r.origins = fakeOrigins{name: name("sdk"), onGitHub: true}
 	r.tool = ToolFacts{
-		Path: "/opt/tools/magex", Version: "1.30.2", State: integrations.StateFound, Features: allFeatures(),
+		CopyFacts: integrations.CopyFacts{
+			Path: "/opt/tools/magex", Version: "1.30.2", State: integrations.StateFound, Features: allFeatures(),
+		},
 		MinVersion: "1.29.5", ExpectSince: "1.30.0",
 	}
 
@@ -536,7 +538,7 @@ func TestGatherWithoutMagexOrTheShell(t *testing.T) {
 
 	f, err := g.Gather(t.Context(), GatherRequest{Repo: name("sdk"), Dir: r.clone})
 	require.NoError(t, err)
-	assert.Equal(t, ToolFacts{Features: []integrations.Feature{}}, f.Tool)
+	assert.Equal(t, ToolFacts{CopyFacts: integrations.CopyFacts{Features: []integrations.Feature{}}}, f.Tool)
 	assert.False(t, f.Clone.ShellRead)
 }
 
@@ -600,10 +602,12 @@ func TestToolFactsOf(t *testing.T) {
 
 	got := ToolFactsOf(def, tool)
 	assert.Equal(t, ToolFacts{
-		Path: "/opt/tools/magex", Version: "1.30.1", State: integrations.StateFound,
-		Features: []integrations.Feature{
-			integrations.FeatureBumpJSON, integrations.FeatureExpect, integrations.FeaturePushFails,
-			integrations.FeatureSelfUpdate,
+		CopyFacts: integrations.CopyFacts{
+			Path: "/opt/tools/magex", Version: "1.30.1", State: integrations.StateFound,
+			Features: []integrations.Feature{
+				integrations.FeatureBumpJSON, integrations.FeatureExpect, integrations.FeaturePushFails,
+				integrations.FeatureSelfUpdate,
+			},
 		},
 		MinVersion: def.MinVersion, ExpectSince: def.Features[integrations.FeatureExpect],
 	}, got)

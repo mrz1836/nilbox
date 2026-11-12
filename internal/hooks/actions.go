@@ -432,7 +432,7 @@ func exitFailed(end scriptrun.Ending) bool {
 func (s *Service) wrote(run *actionRun, after hookFile, res *ActionResult) {
 	before := run.before.hook
 
-	s.judged.set(run.tool.key(), after.sha, true)
+	s.judged.set(run.tool.Key(), after.sha, true)
 
 	res.Outcome = installedOutcome(before)
 

@@ -229,7 +229,7 @@ func TestReposWithoutAUsableGoPreCommit(t *testing.T) {
 	r := newRig(t)
 	web := r.clone("web", cloneOpts{config: coreEnv, hook: currentHook})
 	api := r.clone("api", cloneOpts{config: coreEnv})
-	r.tools.set(ToolFacts{State: integrations.StateMissing, Off: true}, "")
+	r.tools.set(ToolFacts{CopyFacts: integrations.CopyFacts{State: integrations.StateMissing, Off: true}}, "")
 
 	p := r.page(false)
 

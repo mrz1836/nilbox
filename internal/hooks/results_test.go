@@ -7,6 +7,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/mrz1836/nilbox/internal/integrations"
 	"github.com/mrz1836/nilbox/internal/scriptrun"
 )
 
@@ -78,7 +79,7 @@ func TestAServiceWithoutItsOptionalParts(t *testing.T) {
 
 	svc := NewService(Config{})
 
-	assert.Equal(t, ToolFacts{Features: svc.tool(t.Context()).Features, Copies: []string{}}, svc.tool(t.Context()))
+	assert.Equal(t, ToolFacts{CopyFacts: integrations.CopyFacts{Features: svc.tool(t.Context()).Features}, Copies: []string{}}, svc.tool(t.Context()))
 	assert.Empty(t, svc.lastChecks(t.Context()))
 	assert.Equal(t, ToolNote{Show: true, Open: true}, svc.toolNote(t.Context(), factsAt("/opt/go-pre-commit", "1.13.1")))
 

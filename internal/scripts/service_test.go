@@ -143,7 +143,7 @@ func TestListWithoutMagex(t *testing.T) {
 
 	r := newRig(t)
 	dir := r.thisRepo()
-	r.tools.set(ToolFacts{State: integrations.StateMissing})
+	r.tools.set(ToolFacts{CopyFacts: integrations.CopyFacts{State: integrations.StateMissing}})
 	r.tools.on(false, true) // go-pre-commit keeps the scripts on
 
 	magex := r.list(dir).Sections[3]

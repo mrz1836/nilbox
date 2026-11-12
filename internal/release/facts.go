@@ -6,10 +6,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"maps"
 	"os"
 	"path/filepath"
-	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -97,21 +95,10 @@ func (f Facts) remoteHead(branch string) string {
 	return ""
 }
 
-// ToolFacts is what Release knows of magex: where it is, its version, and what it can do.
+// ToolFacts is what Release knows of magex: the copy in use, where it is, its version, and
+// what it can do (integrations.CopyFacts), and the versions Release goes by.
 type ToolFacts struct {
-	// Path is the copy in use, absolute, or "" when there is none; Version is its
-	// version as printed, without a leading v.
-	Path    string
-	Version string
-
-	// State is what the settings say of it, and Off reports the user turned mage-x off:
-	// only their switch says so, since automatic is on whenever the copy can be used, and a
-	// copy too old to use is too old, not off.
-	State integrations.State
-	Off   bool
-
-	// Features are the upstream changes this copy has.
-	Features []integrations.Feature
+	integrations.CopyFacts
 
 	// MinVersion is the oldest version Release drives, and ExpectSince the first release
 	// with expect=, or "" while none has it.
@@ -122,30 +109,10 @@ type ToolFacts struct {
 // ToolFactsOf reads magex's facts from the integrations' view of it: def is mage-x's
 // definition and tool what the settings show of it.
 func ToolFactsOf(def integrations.Definition, tool integrations.Tool) ToolFacts {
-	out := ToolFacts{
-		Path: tool.Copy.Path, Version: tool.Copy.Version.Raw, State: tool.State,
-		Off:      tool.Switch == integrationprefs.SwitchOff,
-		Features: []integrations.Feature{}, MinVersion: def.MinVersion,
-		ExpectSince: def.Features[integrations.FeatureExpect],
+	return ToolFacts{
+		CopyFacts:  integrations.CopyFactsOf(def, tool),
+		MinVersion: def.MinVersion, ExpectSince: def.Features[integrations.FeatureExpect],
 	}
-
-	for _, f := range slices.Sorted(maps.Keys(def.Features)) {
-		if def.Has(f, tool.Copy.Version) {
-			out.Features = append(out.Features, f)
-		}
-	}
-
-	return out
-}
-
-// Usable reports a copy Release can run: on, found, and new enough.
-func (t ToolFacts) Usable() bool {
-	return !t.Off && t.Path != "" && t.State.Usable()
-}
-
-// Has reports whether the copy in use has feature f.
-func (t ToolFacts) Has(f integrations.Feature) bool {
-	return t.Usable() && slices.Contains(t.Features, f)
 }
 
 // RepoFacts is what GitHub says of the repository, and which of the branches Release
@@ -412,7 +379,7 @@ func (g *Gatherer) freshen(ctx context.Context, f *Facts) {
 // tool reads magex's facts, or none without a source.
 func (g *Gatherer) tool(ctx context.Context) ToolFacts {
 	if g.tools == nil {
-		return ToolFacts{Features: []integrations.Feature{}}
+		return ToolFacts{CopyFacts: integrations.CopyFacts{Features: []integrations.Feature{}}}
 	}
 
 	return g.tools.ReleaseTool(ctx)

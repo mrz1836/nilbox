@@ -1,31 +1,18 @@
 package hooks
 
 import (
-	"maps"
 	"path/filepath"
 	"slices"
 
-	"github.com/mrz1836/nilbox/internal/integrationprefs"
 	"github.com/mrz1836/nilbox/internal/integrations"
 	"github.com/mrz1836/nilbox/internal/paths"
 	"github.com/mrz1836/nilbox/internal/shellenv"
 )
 
-// ToolFacts is what Hooks knows of go-pre-commit: the copy in use, what it can do, and
-// where the user's shell finds copies of it.
+// ToolFacts is what Hooks knows of go-pre-commit: the copy in use, what it can do
+// (integrations.CopyFacts), and where the user's shell finds copies of it.
 type ToolFacts struct {
-	// Path is the copy in use, absolute, or "" when there is none; Version is its
-	// version as printed, without a leading v.
-	Path    string
-	Version string
-
-	// State is what the settings say of it, and Off reports the user turned it off: only
-	// their switch says so, since automatic is on whenever the copy can be used.
-	State integrations.State
-	Off   bool
-
-	// Features are the upstream changes this copy has.
-	Features []integrations.Feature
+	integrations.CopyFacts
 
 	// Copies are every copy found, the one in use first, and OnPath reports that the
 	// user's shell finds one of them on its PATH.
@@ -41,16 +28,7 @@ type ToolFacts struct {
 // definition, tool what the settings show of it, and shellRead whether the user's shell's
 // environment was read.
 func ToolFactsOf(def integrations.Definition, tool integrations.Tool, shellRead bool) ToolFacts {
-	out := ToolFacts{
-		Path: tool.Copy.Path, Version: tool.Copy.Version.Raw, State: tool.State, Off: tool.Switch == integrationprefs.SwitchOff,
-		Features: []integrations.Feature{}, Copies: []string{}, ShellRead: shellRead,
-	}
-
-	for _, f := range slices.Sorted(maps.Keys(def.Features)) {
-		if def.Has(f, tool.Copy.Version) {
-			out.Features = append(out.Features, f)
-		}
-	}
+	out := ToolFacts{CopyFacts: integrations.CopyFactsOf(def, tool), Copies: []string{}, ShellRead: shellRead}
 
 	for _, c := range append([]integrations.Copy{tool.Copy}, tool.Others...) {
 		if c.Path == "" {
@@ -62,21 +40,6 @@ func ToolFactsOf(def integrations.Definition, tool integrations.Tool, shellRead 
 	}
 
 	return out
-}
-
-// Usable reports a copy the page can run: on, found, and new enough.
-func (t ToolFacts) Usable() bool {
-	return !t.Off && t.Path != "" && t.State.Usable()
-}
-
-// Has reports whether the copy in use has feature f.
-func (t ToolFacts) Has(f integrations.Feature) bool {
-	return t.Usable() && slices.Contains(t.Features, f)
-}
-
-// key names the copy in use, for the hook bytes it judged: its path and version.
-func (t ToolFacts) key() string {
-	return t.Path + "@" + t.Version
 }
 
 // ToolStatus is go-pre-commit as the page heads it.

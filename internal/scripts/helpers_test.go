@@ -115,7 +115,7 @@ func (r *rig) fake(name string, run testutil.FakeRun) string {
 // magex makes the copy of magex in use a fake at version that does what run says.
 func (r *rig) magex(version string, run testutil.FakeRun) {
 	path := r.fake("magex", run)
-	r.tools.set(ToolFacts{Path: path, Version: version, State: integrations.StateFound})
+	r.tools.set(ToolFacts{CopyFacts: integrations.CopyFacts{Path: path, Version: version, State: integrations.StateFound}})
 }
 
 // environ is the login shell's environment.
