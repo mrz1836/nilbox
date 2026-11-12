@@ -448,8 +448,11 @@ func (o *Observer) lastMessage(d *dirState, sessionID string) string {
 		o.transcripts[sessionID] = t
 	}
 
-	info, err := os.Stat(t.path)
-	if err != nil {
+	// The path was a regular file when it was found. One that has since gone, or been
+	// swapped for a link or anything else, is dropped and looked for again on the next
+	// poll, never read through: paths.ReadTail would follow a link.
+	info, err := os.Lstat(t.path)
+	if err != nil || !info.Mode().IsRegular() {
 		t.path = ""
 
 		return t.message
