@@ -156,6 +156,17 @@ func (b *GitBuild) WriteFile(name, content string) {
 	}
 }
 
+// Commit writes content to the file name in the repository at dir, relative to Root,
+// adds it, and commits it with name as the message, as Commit does in a test, and returns
+// the new commit, or "" after a failed step.
+func (b *GitBuild) Commit(dir, name, content string) string {
+	b.WriteFile(filepath.Join(dir, name), content)
+	b.Git(dir, "add", name)
+	b.Git(dir, "commit", "-q", "-m", name)
+
+	return b.Git(dir, "rev-parse", "HEAD")
+}
+
 // gitTree is a built template, held in memory: its folders and files in the order a walk
 // meets them, so each folder comes before what it holds, the folder it was built in, the
 // work trees whose index a copy refreshes, and what its build returned.

@@ -57,10 +57,7 @@ func buildGitRigRepos(b *testutil.GitBuild) string {
 
 	b.Git(".", "-c", "init.defaultBranch=main", "init", "-q", "--bare", origin)
 	b.Git(".", "clone", "-q", url, "other")
-	b.WriteFile(filepath.Join("other", "one.txt"), "one.txt\n")
-	b.Git("other", "add", "one.txt")
-	b.Git("other", "commit", "-q", "-m", "one.txt")
-	first := b.Git("other", "rev-parse", "HEAD")
+	first := b.Commit("other", "one.txt", "one.txt\n")
 	b.Git("other", "push", "-q", "origin", "HEAD:main")
 	b.Git(".", "clone", "-q", url, filepath.Join("projects", "sdk"))
 

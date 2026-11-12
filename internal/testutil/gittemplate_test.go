@@ -23,9 +23,7 @@ func originAndClone(b *testutil.GitBuild) string {
 
 	b.Git(".", "-c", "init.defaultBranch=main", "init", "-q", "--bare", origin)
 	b.Git(".", "-c", "init.defaultBranch=main", "init", "-q", "work")
-	b.WriteFile(filepath.Join("work", "one.txt"), "one\n")
-	b.Git("work", "add", "one.txt")
-	b.Git("work", "commit", "-q", "-m", "one")
+	b.Commit("work", "one.txt", "one\n")
 	b.Git("work", "push", "-q", url, "HEAD:main")
 	b.Git(".", "clone", "-q", url, "clone")
 
@@ -76,8 +74,9 @@ func TestGitTemplateCommitsAreTheSameInEveryBuild(t *testing.T) {
 	assert.Equal(t, one, two, "every build dates its commits alike")
 
 	when := time.Date(2026, time.January, 2, 3, 4, 5, 0, time.UTC).Unix()
-	assert.Equal(t, fmt.Sprintf("%s <%s> %d %d\n", testutil.GitName, testutil.GitEmail, when, when),
-		testutil.RunGit(t, filepath.Join(dir, "clone"), "log", "-1", "--format=%an <%ae> %at %ct", one))
+	assert.Equal(t, fmt.Sprintf("%s <%s> %d %d one.txt\n", testutil.GitName, testutil.GitEmail, when, when),
+		testutil.RunGit(t, filepath.Join(dir, "clone"), "log", "-1", "--format=%an <%ae> %at %ct %s", one),
+		"committed as the test identity, at the template's date, with the file's name as the message")
 }
 
 func TestGitTemplatesBuildEachKeyOnce(t *testing.T) {
