@@ -32,7 +32,7 @@ describe('AccountMenu', () => {
     expect(trigger.querySelector('img')).not.toBeNull()
   })
 
-  it('opens a menu with the account, Settings, and the GitHub profile', async () => {
+  it('opens a menu with the account, Settings, the GitHub profile, and GitHub’s status', async () => {
     const { trigger } = renderMenu()
 
     await userEvent.click(trigger)
@@ -47,7 +47,7 @@ describe('AccountMenu', () => {
       within(menu)
         .getAllByRole('menuitem')
         .map((item) => item.textContent),
-    ).toEqual(['Settings⌘,', 'View GitHub profile'])
+    ).toEqual(['Settings⌘,', 'View GitHub profile', 'GitHub status'])
     expect(within(menu).getByRole('menuitem', { name: /Settings/ })).toHaveFocus()
   })
 
@@ -72,27 +72,40 @@ describe('AccountMenu', () => {
     expect(screen.queryByRole('menu')).not.toBeInTheDocument()
   })
 
+  it('opens GitHub’s status page in the browser', async () => {
+    const { trigger } = renderMenu()
+
+    await userEvent.click(trigger)
+    await userEvent.click(screen.getByRole('menuitem', { name: 'GitHub status' }))
+
+    expect(platform.openExternal).toHaveBeenCalledWith('https://www.githubstatus.com/')
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument()
+  })
+
   it('moves between items with the arrow keys, Home, and End, wrapping at the ends', async () => {
     const { trigger } = renderMenu()
     await userEvent.click(trigger)
 
     const settings = screen.getByRole('menuitem', { name: /Settings/ })
     const profile = screen.getByRole('menuitem', { name: 'View GitHub profile' })
+    const status = screen.getByRole('menuitem', { name: 'GitHub status' })
 
     await userEvent.keyboard('{ArrowDown}')
     expect(profile).toHaveFocus()
+    await userEvent.keyboard('{ArrowDown}')
+    expect(status).toHaveFocus()
     await userEvent.keyboard('{ArrowDown}')
     expect(settings).toHaveFocus()
     await userEvent.keyboard('{ArrowUp}')
-    expect(profile).toHaveFocus()
+    expect(status).toHaveFocus()
     await userEvent.keyboard('{Home}')
     expect(settings).toHaveFocus()
     await userEvent.keyboard('{End}')
-    expect(profile).toHaveFocus()
+    expect(status).toHaveFocus()
 
     // Other keys are left alone.
     await userEvent.keyboard('x')
-    expect(profile).toHaveFocus()
+    expect(status).toHaveFocus()
   })
 
   it('opens from the keyboard at the first or the last item', async () => {
@@ -107,7 +120,7 @@ describe('AccountMenu', () => {
     expect(trigger).toHaveFocus()
 
     await userEvent.keyboard('{ArrowUp}')
-    expect(screen.getByRole('menuitem', { name: 'View GitHub profile' })).toHaveFocus()
+    expect(screen.getByRole('menuitem', { name: 'GitHub status' })).toHaveFocus()
 
     // Enter on an item activates it.
     await userEvent.keyboard('{Home}{Enter}')
@@ -134,14 +147,14 @@ describe('AccountMenu', () => {
     expect(screen.getByText('Signed in to GitHub')).toBeInTheDocument()
   })
 
-  it('offers only Settings before the first refresh', async () => {
+  it('offers Settings and GitHub’s status before the first refresh', async () => {
     const { trigger } = renderMenu(signedOut)
 
     expect(trigger).toHaveAccessibleName('Account')
     await userEvent.click(trigger)
 
     expect(screen.getByText('Not signed in yet')).toBeInTheDocument()
-    expect(screen.getAllByRole('menuitem')).toHaveLength(1)
+    expect(screen.getAllByRole('menuitem').map((item) => item.textContent)).toEqual(['Settings⌘,', 'GitHub status'])
   })
 
   it('works before the inbox has loaded', async () => {
