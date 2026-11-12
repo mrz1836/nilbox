@@ -465,25 +465,39 @@ func (s *Service) keep(ctx context.Context, got map[string]detection, now time.T
 // checkUpdatesLogged is checkUpdates for a caller that goes on without its answer, as
 // every caller does: a failure keeps the last answer, so the next look tries again, and is
 // logged here, once, unless ctx ended: GitHub not answering (offline, signed out) as
-// information, and the preferences failing as a warning.
+// information, with GitHub's own error, and the preferences failing as a warning.
 func (s *Service) checkUpdatesLogged(ctx context.Context, maxAge time.Duration) {
 	err := s.checkUpdates(ctx, maxAge)
+	unanswered, fromGitHub := errors.AsType[*updateCheckError](err)
 
 	switch {
 	case err == nil || ctx.Err() != nil:
-	case errors.Is(err, errUpdateCheck):
-		s.logger.InfoContext(ctx, "couldn't check the tools for updates", "error", err)
+	case fromGitHub:
+		s.logger.InfoContext(ctx, "couldn't check the tools for updates", "error", unanswered.err)
 	default:
 		s.logger.WarnContext(ctx, "couldn't check the tools for updates", "error", err)
 	}
 }
 
-// errUpdateCheck marks a check for updates that GitHub didn't answer.
-var errUpdateCheck = errors.New("check for updates")
+// updateCheckError is a check for updates that GitHub didn't answer; err is GitHub's
+// error.
+type updateCheckError struct {
+	err error
+}
+
+// Error says the check failed, and why.
+func (e *updateCheckError) Error() string {
+	return "check for updates: " + e.err.Error()
+}
+
+// Unwrap returns GitHub's error.
+func (e *updateCheckError) Unwrap() error {
+	return e.err
+}
 
 // checkUpdates looks up every tool's latest release and keeps it, unless every tool was
 // checked within maxAge. A failure keeps the last answer, logs nothing, and is returned:
-// one that GitHub's answer caused wraps errUpdateCheck.
+// one that GitHub's answer caused is an *updateCheckError.
 func (s *Service) checkUpdates(ctx context.Context, maxAge time.Duration) error {
 	if s.releases == nil {
 		return nil
@@ -519,7 +533,7 @@ func (s *Service) checkUpdates(ctx context.Context, maxAge time.Duration) error 
 	s.mu.Unlock()
 
 	if err != nil {
-		return fmt.Errorf("%w: %w", errUpdateCheck, err)
+		return &updateCheckError{err: err}
 	}
 
 	if err = s.keepLatest(ctx, got, now); err != nil {

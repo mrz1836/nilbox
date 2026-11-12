@@ -307,7 +307,7 @@ func TestAFailedUpdateCheckKeepsTheLastAnswer(t *testing.T) {
 
 	h.svc.checkUpdatesLogged(t.Context(), updateEvery)
 	assert.Equal(t, 1, strings.Count(h.logs.String(), updateCheckFailed))
-	assert.Contains(t, h.logs.String(), "check for updates: offline")
+	assert.Contains(t, h.logs.String(), "error=offline\n", "the record holds GitHub's own error")
 
 	_, tools := h.list(t)
 	assert.Equal(t, "1.30.2", tools["mage-x"].Latest.Version, "the last answer stays")
@@ -335,7 +335,12 @@ func TestEveryFailedUpdateCheckIsLoggedOnce(t *testing.T) {
 		logs := h.logs.String()
 		assert.Equal(t, 1, strings.Count(logs, updateCheckFailed), logs)
 		assert.Contains(t, logs, "level=INFO", "a routine note")
-		assert.Contains(t, logs, "check for updates: "+ErrSignedOut.Error())
+		assert.Contains(t, logs, `error="`+ErrSignedOut.Error()+`"`, "the record holds GitHub's own error")
+		assert.NotContains(t, logs, "check for updates:")
+
+		err := h.svc.checkUpdates(t.Context(), 0)
+		require.ErrorIs(t, err, ErrSignedOut)
+		assert.EqualError(t, err, "check for updates: "+ErrSignedOut.Error(), "the error itself still says what failed")
 	})
 
 	t.Run("the last answer couldn't be read", func(t *testing.T) {
