@@ -186,12 +186,19 @@ func (r Exec) Run(ctx context.Context, name string, args ...string) (stdout, std
 // exit status is an *exec.ExitError in Exec's error chain), or -1 when err holds none:
 // the program could not be run, was killed by a signal, or err is nil.
 func ExitCode(err error) int {
-	var exit interface{ ExitCode() int }
-	if err == nil || !errors.As(err, &exit) {
+	exit, ok := errors.AsType[exitCoder](err)
+	if !ok {
 		return -1
 	}
 
 	return exit.ExitCode()
+}
+
+// exitCoder is an error that holds the status a program exited with, as *exec.ExitError
+// does.
+type exitCoder interface {
+	error
+	ExitCode() int
 }
 
 // Executable reports whether a file with mode m is a program someone may run: a regular

@@ -602,8 +602,7 @@ func (s *Service) installError(def Definition, plan InstallPlan, err error) erro
 // joinedCause returns the text of what err joins to sentinel, as fmt.Errorf("%w: %w",
 // sentinel, cause) does, or err's own text.
 func joinedCause(err, sentinel error) string {
-	var joined interface{ Unwrap() []error }
-	if errors.As(err, &joined) {
+	if joined, ok := errors.AsType[joinedError](err); ok {
 		var parts []string
 
 		for _, e := range joined.Unwrap() {
@@ -618,6 +617,13 @@ func joinedCause(err, sentinel error) string {
 	}
 
 	return err.Error()
+}
+
+// joinedError is an error that joins others, as errors.Join and fmt.Errorf with several
+// %w verbs make.
+type joinedError interface {
+	error
+	Unwrap() []error
 }
 
 // hashOf returns the SHA-256 of the file at path in hex, from the cache while its size,

@@ -386,7 +386,7 @@ func (o *Observer) read(ctx context.Context, h *home, id string, now time.Time) 
 	}
 
 	if err := o.call(ctx, h, "thread/read", map[string]any{"threadId": id}, &got); err != nil {
-		if _, ok := errors.AsType[*RPCError](err); ok {
+		if isRPCError(err) {
 			return nil // a thread the daemon cannot read yet, such as one not saved
 		}
 
@@ -411,10 +411,8 @@ func (o *Observer) read(ctx context.Context, h *home, id string, now time.Time) 
 
 	err := o.call(ctx, h, "thread/turns/list", map[string]any{"threadId": id, "limit": 1, "itemsView": "full"}, &turns)
 
-	var rpcErr *RPCError
-
 	switch {
-	case errors.As(err, &rpcErr):
+	case isRPCError(err):
 		return nil // no turn yet: Codex keeps a thread once its first message is sent
 	case err != nil:
 		return err
@@ -430,6 +428,13 @@ func (o *Observer) read(ctx context.Context, h *home, id string, now time.Time) 
 	}
 
 	return nil
+}
+
+// isRPCError reports whether err holds an error the daemon answered a call with.
+func isRPCError(err error) bool {
+	_, ok := errors.AsType[*RPCError](err)
+
+	return ok
 }
 
 // call makes one call on a home's connection, bounded by callTimeout.
