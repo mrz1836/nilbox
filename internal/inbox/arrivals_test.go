@@ -91,8 +91,7 @@ func TestNewReviewRequestsAndAssignmentsArrive(t *testing.T) {
 	t.Parallel()
 
 	h, sink := arrivalHarness(t)
-	h.client.inbox = fetched([]github.Item{pr(1, "MEMBER", false)}, nil, nil)
-	h.refresh(t)
+	h.seed(t, []github.Item{pr(1, "MEMBER", false)}, nil, nil)
 
 	h.tick()
 	h.client.inbox = fetched(
@@ -126,19 +125,16 @@ func TestAReviewRequestedAgainArrivesAgain(t *testing.T) {
 	t.Parallel()
 
 	h, sink := arrivalHarness(t)
-	h.client.inbox = fetched([]github.Item{pr(1, "MEMBER", false)}, nil, nil)
-	h.refresh(t)
+	h.seed(t, []github.Item{pr(1, "MEMBER", false)}, nil, nil)
 
 	// Reviewed: it leaves the list.
 	h.tick()
-	h.client.inbox = fetched(nil, nil, nil)
-	h.refresh(t)
+	h.seed(t, nil, nil, nil)
 	assert.Empty(t, sink.calls)
 
 	// Asked again.
 	h.tick()
-	h.client.inbox = fetched([]github.Item{pr(1, "MEMBER", false)}, nil, nil)
-	h.refresh(t)
+	h.seed(t, []github.Item{pr(1, "MEMBER", false)}, nil, nil)
 	assert.Equal(t, []string{"review_requested #1"}, kindsAndNumbers(sink.last()))
 }
 
@@ -146,14 +142,12 @@ func TestAnItemArrivesOnceForItsFirstReason(t *testing.T) {
 	t.Parallel()
 
 	h, sink := arrivalHarness(t)
-	h.client.inbox = fetched(nil, nil, nil)
-	h.refresh(t)
+	h.seed(t, nil, nil, nil)
 
 	both := byOther(pr(5, "MEMBER", false))
 
 	h.tick()
-	h.client.inbox = fetched([]github.Item{both}, nil, []github.Item{both})
-	h.refresh(t)
+	h.seed(t, []github.Item{both}, nil, []github.Item{both})
 
 	assert.Equal(t, []string{"review_requested #5"}, kindsAndNumbers(sink.last()))
 }
@@ -162,12 +156,10 @@ func TestAnAssignmentOnYourOwnItemDoesNotArrive(t *testing.T) {
 	t.Parallel()
 
 	h, sink := arrivalHarness(t)
-	h.client.inbox = fetched(nil, nil, nil)
-	h.refresh(t)
+	h.seed(t, nil, nil, nil)
 
 	h.tick()
-	h.client.inbox = fetched(nil, nil, []github.Item{issue("example-repo", 6, "OWNER")})
-	h.refresh(t)
+	h.seed(t, nil, nil, []github.Item{issue("example-repo", 6, "OWNER")})
 
 	assert.Empty(t, sink.calls, "the signed-in user wrote it")
 }
@@ -177,8 +169,7 @@ func TestSetAsideItemsDoNotArrive(t *testing.T) {
 
 	h, sink := arrivalHarness(t)
 	one, two := byOther(pr(1, "MEMBER", false)), byOther(pr(2, "MEMBER", false))
-	h.client.inbox = fetched(nil, nil, []github.Item{one, two})
-	snap := h.refresh(t)
+	snap := h.seed(t, nil, nil, []github.Item{one, two})
 
 	_, err := h.svc.Dismiss(t.Context(), itemByNumber(t, snap.Assigned, 1).ID)
 	require.NoError(t, err)
@@ -187,8 +178,7 @@ func TestSetAsideItemsDoNotArrive(t *testing.T) {
 
 	// All three newly ask for a review; 1 is dismissed and 2 still snoozed.
 	h.tick()
-	h.client.inbox = fetched([]github.Item{one, two, byOther(pr(7, "MEMBER", false))}, nil, []github.Item{one, two})
-	h.refresh(t)
+	h.seed(t, []github.Item{one, two, byOther(pr(7, "MEMBER", false))}, nil, []github.Item{one, two})
 
 	assert.Equal(t, []string{"review_requested #7"}, kindsAndNumbers(sink.last()))
 }
@@ -199,8 +189,7 @@ func TestAnItemBackFromASnoozeArrives(t *testing.T) {
 	h, sink := arrivalHarness(t)
 	one, two, three := byOther(pr(1, "MEMBER", false)), byOther(pr(2, "MEMBER", false)),
 		byOther(pr(3, "MEMBER", false))
-	h.client.inbox = fetched(nil, nil, []github.Item{one, two, three})
-	snap := h.refresh(t)
+	snap := h.seed(t, nil, nil, []github.Item{one, two, three})
 
 	_, err := h.svc.Dismiss(t.Context(), itemByNumber(t, snap.Assigned, 1).ID)
 	require.NoError(t, err)
@@ -210,8 +199,7 @@ func TestAnItemBackFromASnoozeArrives(t *testing.T) {
 	// Two days on, 3's snooze has run its course; all three newly ask for a review, and
 	// only the dismissed 1 is still set aside.
 	h.clock.Advance(48 * time.Hour)
-	h.client.inbox = fetched([]github.Item{one, two, three}, nil, []github.Item{one, two, three})
-	h.refresh(t)
+	h.seed(t, []github.Item{one, two, three}, nil, []github.Item{one, two, three})
 
 	assert.Equal(t, []string{"review_requested #2", "review_requested #3"}, kindsAndNumbers(sink.last()))
 }
@@ -269,8 +257,7 @@ func TestAnotherAccountTellsNoArrivals(t *testing.T) {
 	t.Parallel()
 
 	h, sink := arrivalHarness(t)
-	h.client.inbox = fetched(nil, nil, nil)
-	h.refresh(t)
+	h.seed(t, nil, nil, nil)
 
 	h.tick()
 	h.client.inbox = fetched([]github.Item{byOther(pr(1, "MEMBER", false))}, nil, nil)
@@ -284,8 +271,7 @@ func TestAFailedRefreshTellsNoArrivals(t *testing.T) {
 	t.Parallel()
 
 	h, sink := arrivalHarness(t)
-	h.client.inbox = fetched(nil, nil, nil)
-	h.refresh(t)
+	h.seed(t, nil, nil, nil)
 
 	h.tick()
 	h.client.inbox = fetched([]github.Item{byOther(pr(1, "MEMBER", false))}, nil, nil)

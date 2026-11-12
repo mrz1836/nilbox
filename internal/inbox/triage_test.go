@@ -21,8 +21,7 @@ func triageHarness(t *testing.T) (h *harness, first, second int64) {
 
 	h = newHarness(t)
 	a, b := pr(1, "OWNER", false), pr(2, "OWNER", false)
-	h.client.inbox = fetched([]github.Item{a, b}, nil, []github.Item{a})
-	snap := h.refresh(t)
+	snap := h.seed(t, []github.Item{a, b}, nil, []github.Item{a})
 
 	return h, itemByNumber(t, snap.ReviewRequested, 1).ID, itemByNumber(t, snap.ReviewRequested, 2).ID
 }

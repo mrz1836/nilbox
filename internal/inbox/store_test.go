@@ -37,8 +37,7 @@ func TestViewerLogin(t *testing.T) {
 	require.NoError(t, err)
 	assert.Empty(t, login, "nobody is signed in before the first refresh")
 
-	h.client.inbox = fetched([]github.Item{pr(1, "OWNER", false)}, nil, nil)
-	h.refresh(t)
+	h.seed(t, []github.Item{pr(1, "OWNER", false)}, nil, nil)
 
 	login, err = h.store().ViewerLogin(t.Context())
 	require.NoError(t, err)
@@ -117,8 +116,7 @@ func TestRememberClone(t *testing.T) {
 	t.Parallel()
 
 	h := newHarness(t)
-	h.client.inbox = fetched([]github.Item{pr(1, "OWNER", false)}, nil, nil)
-	h.refresh(t)
+	h.seed(t, []github.Item{pr(1, "OWNER", false)}, nil, nil)
 
 	before := h.repoRow(t, "example-repo")
 
@@ -197,8 +195,7 @@ func TestUnknownItemsAreNotFound(t *testing.T) {
 	t.Parallel()
 
 	h := newHarness(t)
-	h.client.inbox = fetched([]github.Item{pr(1, "OWNER", false)}, nil, nil)
-	h.refresh(t)
+	h.seed(t, []github.Item{pr(1, "OWNER", false)}, nil, nil)
 
 	const unknown = 999
 
@@ -330,8 +327,7 @@ func TestStateWritesThatFailAreReported(t *testing.T) {
 	t.Parallel()
 
 	h := newHarness(t)
-	h.client.inbox = fetched([]github.Item{pr(1, "OWNER", false)}, nil, nil)
-	id := itemByNumber(t, h.refresh(t).ReviewRequested, 1).ID
+	id := itemByNumber(t, h.seed(t, []github.Item{pr(1, "OWNER", false)}, nil, nil).ReviewRequested, 1).ID
 
 	_, err := h.svc.Dismiss(t.Context(), id)
 	require.NoError(t, err)

@@ -154,8 +154,7 @@ func TestARefreshDoesNotBringBackAnItemMergedSinceIndexed(t *testing.T) {
 
 	// GitHub's index has not caught up, so the searches still return #1, but with its
 	// state as of now.
-	h.client.inbox = fetched([]github.Item{merged, pr(2, "OWNER", false)}, nil, []github.Item{merged})
-	snap := h.refresh(t)
+	snap := h.seed(t, []github.Item{merged, pr(2, "OWNER", false)}, nil, []github.Item{merged})
 
 	assert.Equal(t, []int{2}, numbers(snap.ReviewRequested))
 	assert.Empty(t, snap.Assigned.Items)
