@@ -98,6 +98,20 @@ func (d Definition) Has(f Feature, v Version) bool {
 	return first != "" && v.AtLeast(first)
 }
 
+// FeaturesOf lists, sorted, every feature a copy at version v has (Has); the list is never
+// nil.
+func (d Definition) FeaturesOf(v Version) []Feature {
+	out := []Feature{}
+
+	for _, f := range slices.Sorted(maps.Keys(d.Features)) {
+		if d.Has(f, v) {
+			out = append(out, f)
+		}
+	}
+
+	return out
+}
+
 // RunEnv is the environment a run of the tool gets (§5.5). In the app it is base, the login
 // shell's, with the tool's quiet settings and git's terminal prompts off, since no one can
 // answer one there, each in place of base's own. In the terminal it is only the quiet
