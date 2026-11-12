@@ -553,7 +553,9 @@ origin, with one `git ls-remote` whose answer is kept five minutes.
   (`git pull --ff-only`, never a merge or a rebase) as a run beside the scripts, in the app, and
   reads the scripts again once it ends. It asks origin about that one branch, with one `git
   ls-remote`, and never fetches; the answer is kept five minutes, and its refresh button asks
-  again, while a pull keeps the commit it fetched without counting as a new ask. A branch ahead of
+  again, while a pull keeps the commit it fetched without counting as a new ask. A clone whose
+  origin isn't on GitHub reads **Origin not checked** with a **Check** button: Nilbox asks no host
+  but GitHub on its own, so that origin is asked only when you click. A branch ahead of
   origin, one that has diverged from it, one that tracks no branch on origin, a detached HEAD, or
   a merge or rebase in progress says so, and offers no pull. A pull refuses a clone that moved to
   another branch since the check, fails with git's own words on a branch with commits of its own,

@@ -23,6 +23,7 @@ const stateLabels: Readonly<Record<BranchState, string>> = {
   unknown: 'Couldn’t check origin',
   off: 'Scripts are off',
   refused: 'Can’t pull here',
+  notAsked: 'Origin not checked',
 }
 
 // statusTitle is a status in full, for its tooltip: its note, and when origin was asked.
@@ -166,17 +167,23 @@ function CloneBranchCheck({ dir, onStarted, onPulled }: BranchCheckProps) {
           {busy ? 'Pulling…' : 'Pull'}
         </button>
       )}
+      {/* An origin off GitHub is asked only on this click, so the button says so. */}
       <button
         type="button"
         disabled={checking || busy}
-        aria-label="Check origin again"
-        title="Ask origin again whether it has newer commits"
+        aria-label={status.state === 'notAsked' ? 'Check origin' : 'Check origin again'}
+        title={
+          status.state === 'notAsked'
+            ? 'Ask origin whether it has newer commits'
+            : 'Ask origin again whether it has newer commits'
+        }
         onClick={() => {
           checkAgain(true)
         }}
         className={quietButtonClass}
       >
         <RefreshIcon className={`size-3.5 ${checking ? 'motion-safe:animate-spin' : ''}`} />
+        {status.state === 'notAsked' && 'Check'}
       </button>
       {/* The pull's error says what failed in full, the branch included. */}
       {pull.error !== '' && (

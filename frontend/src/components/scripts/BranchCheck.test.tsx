@@ -97,6 +97,26 @@ describe('BranchCheck', () => {
     expect(platform.getBranchStatus).toHaveBeenLastCalledWith('~/projects/sdk', true)
   })
 
+  it('checks an origin off GitHub only when asked', async () => {
+    const user = userEvent.setup()
+    renderCheck({
+      state: 'notAsked',
+      local: '',
+      origin: '',
+      note: 'origin isn’t on GitHub, so it’s asked only when you check.',
+    })
+
+    expect(await screen.findByText('Origin not checked')).toBeVisible()
+    expect(platform.getBranchStatus).toHaveBeenCalledExactlyOnceWith('~/projects/sdk', false)
+
+    platform.getBranchStatus.mockResolvedValue(branchStatus())
+    await user.click(screen.getByRole('button', { name: 'Check origin' }))
+
+    expect(await screen.findByText('Up to date')).toBeVisible()
+    expect(platform.getBranchStatus).toHaveBeenLastCalledWith('~/projects/sdk', true)
+    expect(screen.getByRole('button', { name: 'Check origin again' })).toBeInTheDocument()
+  })
+
   it('starts afresh on another clone, never with the last one’s refresh or pull', async () => {
     const user = userEvent.setup()
     const handlers = { onStarted: vi.fn<(id: number) => void>(), onPulled: vi.fn<() => void>() }

@@ -253,7 +253,7 @@ func TestPullRefusesWhatTheStatusWouldNotOffer(t *testing.T) {
 
 	_, err := g.branch.Pull(t.Context(), g.shown(g.dir))
 	require.ErrorIs(t, err, ErrCantPull)
-	assert.Equal(t, "Check sdk's branch again before pulling it.", uierr.Message(err), "no status, no pull")
+	assert.Equal(t, "Check acme-org/sdk's branch again before pulling it.", uierr.Message(err), "no status, no pull")
 
 	g.status(false)
 	require.NoError(t, os.WriteFile(filepath.Join(g.dir, ".git", "MERGE_HEAD"), []byte(g.first+"\n"), 0o600))

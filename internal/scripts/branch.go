@@ -72,7 +72,15 @@ const (
 	// clone alone: origin isn't asked, and the note says which settings, and where to set
 	// them instead.
 	BranchRefused BranchState = "refused"
+
+	// BranchNotAsked is a clone whose origin isn't on GitHub, which is asked only when the
+	// user asks (refresh): the app reaches nothing but GitHub unless the user clicks. An
+	// answer the user asked for is served while it is kept.
+	BranchNotAsked BranchState = "notAsked"
 )
+
+// errNotAsked is returned by originHead for an origin it may not ask unasked.
+var errNotAsked = errors.New("origin isn't asked without a click")
 
 // BranchStatus is a clone's branch against origin's, for Repo scripts' header: whether a
 // pull would bring it newer commits. Only a branch that is behind is offered one.
@@ -115,8 +123,10 @@ type keptHead struct {
 // which it keeps for OriginKept: within it, nothing asks origin again unless refresh is
 // set. It never fetches. A clone that can't be read, or an origin that doesn't answer, is
 // a status that says why, not an error, and a clone whose own config a pull would refuse
-// says so (BranchRefused), asking origin nothing. While the Scripts integration is off, it
-// reads nothing and says so (BranchOff).
+// says so (BranchRefused), asking origin nothing. An origin that isn't on GitHub is asked
+// only with refresh, the user's click, and is otherwise BranchNotAsked unless an answer
+// the user asked for is kept: unasked, the app reaches GitHub alone. While the Scripts
+// integration is off, it reads nothing and says so (BranchOff).
 func (s *Service) BranchStatus(ctx context.Context, dir string, refresh bool) (BranchStatus, error) {
 	if s.branchGit == nil {
 		return BranchStatus{}, ErrNotSetUp
@@ -162,7 +172,14 @@ func (s *Service) branchStatus(ctx context.Context, c clone, refresh bool) Branc
 		return st
 	}
 
-	head, err := s.originHead(ctx, c, f.upstream, refresh)
+	// Only GitHub is asked unasked: another host's origin waits for the user's click.
+	head, err := s.originHead(ctx, c, f.upstream, refresh, refresh || c.name.Valid())
+	if errors.Is(err, errNotAsked) {
+		st.State, st.Note = BranchNotAsked, "origin isn't on GitHub, so it's asked only when you check."
+
+		return st
+	}
+
 	if err != nil {
 		return st.unknown(gitNote("Couldn't ask origin about "+f.upstream, err))
 	}
@@ -285,8 +302,10 @@ func inProgressNote(op gitread.Operation) string {
 // originHead returns origin's branch as the clone c last asked about it, while that answer
 // is younger than OriginKept and refresh isn't set, and else asks origin again for that one
 // branch (gitread's RemoteBranch: one ls-remote of refs/heads/<branch>, never every branch
-// and tag origin has), one ask per clone and branch at a time, and keeps the answer.
-func (s *Service) originHead(ctx context.Context, c clone, branch string, refresh bool) (keptHead, error) {
+// and tag origin has), one ask per clone and branch at a time, and keeps the answer. When
+// it may not ask (mayAsk false: an origin not on GitHub, not asked by the user), it serves
+// a kept answer and else returns errNotAsked, asking nothing.
+func (s *Service) originHead(ctx context.Context, c clone, branch string, refresh, mayAsk bool) (keptHead, error) {
 	if !refresh {
 		s.mu.Lock()
 		kept, ok := s.heads[c.dir][branch]
@@ -295,6 +314,10 @@ func (s *Service) originHead(ctx context.Context, c clone, branch string, refres
 		if age := s.clock.Now().Sub(kept.at); ok && age >= 0 && age < OriginKept {
 			return kept, nil
 		}
+	}
+
+	if !mayAsk {
+		return keptHead{}, errNotAsked
 	}
 
 	return s.asking.Do(ctx, c.dir+"\x00"+branch, func(ctx context.Context) (keptHead, error) {
@@ -375,7 +398,7 @@ func stateNote(st BranchStatus) string {
 		return st.Branch + " has commits that aren't on " + theirs + " yet, and nothing to pull."
 	case BranchDiverged:
 		return st.Branch + " and " + theirs + " both have commits the other doesn't, so it can't be fast-forwarded."
-	case BranchDetached, BranchNoUpstream, BranchInProgress, BranchUnknown, BranchOff, BranchRefused:
+	case BranchDetached, BranchNoUpstream, BranchInProgress, BranchUnknown, BranchOff, BranchRefused, BranchNotAsked:
 	}
 
 	return ""

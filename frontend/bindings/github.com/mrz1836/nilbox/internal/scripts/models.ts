@@ -8,7 +8,7 @@ import * as integrationprefs$0 from "../integrationprefs/models.js";
 /**
  * BranchState is where a clone's branch stands against the branch it follows on origin.
  */
-export type BranchState = "upToDate" | "behind" | "ahead" | "diverged" | "detached" | "noUpstream" | "inProgress" | "unknown" | "off" | "refused";
+export type BranchState = "upToDate" | "behind" | "ahead" | "diverged" | "detached" | "noUpstream" | "inProgress" | "unknown" | "off" | "refused" | "notAsked";
 
 /**
  * The values of BranchState, by the names of their Go constants.
@@ -76,6 +76,13 @@ export const BranchState = {
      * them instead.
      */
     BranchRefused: "refused",
+
+    /**
+     * BranchNotAsked is a clone whose origin isn't on GitHub, which is asked only when the
+     * user asks (refresh): the app reaches nothing but GitHub unless the user clicks. An
+     * answer the user asked for is served while it is kept.
+     */
+    BranchNotAsked: "notAsked",
 } as const;
 
 /**
