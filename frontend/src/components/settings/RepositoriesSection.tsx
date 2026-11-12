@@ -98,7 +98,7 @@ export function RepositoriesSection({
           <SettingRow
             label="Clone root"
             controlId={`${id}-clone-root`}
-            description="The folder new clones go in, such as ~/projects. Launches, the Worktrees view, and the Scripts pages look one level inside it, and in your other repository locations below."
+            description="The folder new clones go in. Launches, the Worktrees view, and the Scripts pages look one level inside it, and in your other repository locations below."
             error={error}
           >
             <input
@@ -128,7 +128,7 @@ export function RepositoriesSection({
           </SettingRow>
         </form>
         {root.text !== '' && (
-          <p role="status" className={`px-4 pb-3 text-xs ${root.warn ? 'text-warning' : 'text-muted'}`}>
+          <p role="status" className={`px-4 py-2 text-xs ${root.warn ? 'text-warning' : 'text-muted'}`}>
             {root.text}
           </p>
         )}
