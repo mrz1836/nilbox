@@ -93,6 +93,12 @@ func boundaries() []boundary {
 			why:       "integrationprefs declares the integrations' settings keys, which settings writes; it knows no service",
 		},
 		{
+			pkg:       "internal/prefs/prefval",
+			forbidden: noService,
+			why: "prefval spells the switches and lists that settings and the leaves declaring its keys store; " +
+				"it knows no store or service",
+		},
+		{
 			pkg:       "internal/integrations",
 			forbidden: append(slices.Clone(services), "internal/launcher", "internal/desktop"),
 			why: "the integrations reach the settings through integrationprefs and GitHub through their own Releases, " +
