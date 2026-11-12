@@ -12,7 +12,6 @@ import (
 	"github.com/mrz1836/nilbox/internal/github"
 	"github.com/mrz1836/nilbox/internal/item"
 	"github.com/mrz1836/nilbox/internal/sensitive"
-	"github.com/mrz1836/nilbox/internal/testutil"
 )
 
 func TestOpenBeforeAnyReadShowsTheCard(t *testing.T) {
@@ -335,20 +334,20 @@ func TestCacheStaysWithinItsCaps(t *testing.T) {
 
 	h := newHarness(t)
 	ctx := t.Context()
-	seedMore(t, h, maxCachedPulls+1)
+	more := storePulls(t, h.db, 2, maxCachedPulls+1)
 
 	small := &github.PullDiff{Head: headA, Total: 1, Complete: true, Files: []github.PullFile{
 		{Path: "a.go", Patch: "@@ -1 +1 @@\n-a\n+b", HasPatch: true},
 	}}
 
-	for id := int64(2); id <= maxCachedPulls+2; id++ {
+	for _, id := range more {
 		h.clock.Advance(time.Second)
 		require.NoError(t, h.svc.cache.save(ctx, id, pullContext{Head: headA}, small, h.clock.Now().UTC()))
 	}
 
 	assert.Equal(t, maxCachedPulls, countRows(t, h, "review_diffs"), "the least recently used past the cap is dropped")
 
-	gone, err := h.svc.cache.load(ctx, 2, 0)
+	gone, err := h.svc.cache.load(ctx, more[0], 0)
 	require.NoError(t, err)
 	assert.Nil(t, gone, "the oldest went first")
 
@@ -375,16 +374,6 @@ func TestCacheKeepsAPullRequestsDiffsWithinItsCap(t *testing.T) {
 	assert.Empty(t, c.files[0].state)
 	assert.Equal(t, storedCapped, c.files[1].state, "past the cap")
 	assert.Empty(t, c.files[2].state, "a small one after it still fits")
-}
-
-// seedMore stores items 2 to n+1 beside #7.
-func seedMore(t *testing.T, h *harness, n int) {
-	t.Helper()
-
-	for i := 2; i <= n+1; i++ {
-		testutil.Exec(t, h.db, `INSERT INTO items (id, account_id, repo_id, kind, number, node_id, item_created_at, item_updated_at,
-			fetched_at) VALUES (?, 1, 1, 'pr', ?, '', ?, ?, ?)`, i, i, testNow, testNow, testNow)
-	}
 }
 
 // countRows counts a table's rows.

@@ -15,6 +15,7 @@ import (
 
 	"github.com/mrz1836/nilbox/internal/brand"
 	"github.com/mrz1836/nilbox/internal/event"
+	"github.com/mrz1836/nilbox/internal/github"
 	"github.com/mrz1836/nilbox/internal/inbox"
 	"github.com/mrz1836/nilbox/internal/notifyprefs"
 	"github.com/mrz1836/nilbox/internal/prefs"
@@ -85,31 +86,21 @@ func newFixture(t *testing.T, n int) *fixture {
 	t.Helper()
 
 	pool := testutil.DB(t)
-	ctx := t.Context()
-
-	var accountID, repoID int64
-
-	require.NoError(t, pool.QueryRowContext(ctx, `INSERT INTO accounts (login, created_at, updated_at)
-VALUES ('octo-user', ?, ?) RETURNING id`, testNow, testNow).Scan(&accountID))
-	require.NoError(t, pool.QueryRowContext(ctx, `INSERT INTO repos (owner, name, created_at, updated_at)
-VALUES ('acme-org', 'example-repo', ?, ?) RETURNING id`, testNow, testNow).Scan(&repoID))
-
-	f := &fixture{
-		pool: pool, clock: testutil.NewClock(testNow), poster: &fakePoster{status: StatusOn},
-		events: &testutil.Events{},
-	}
+	stored := inbox.Fixture{Viewer: "octo-user", At: testNow}
 
 	for i := 1; i <= n; i++ {
-		var id int64
-
-		require.NoError(t, pool.QueryRowContext(ctx, `INSERT INTO items (account_id, repo_id, kind, number,
-item_created_at, item_updated_at, fetched_at) VALUES (?, ?, 'pr', ?, ?, ?, ?) RETURNING id`,
-			accountID, repoID, i, testNow, testNow, testNow).Scan(&id))
-
-		f.items = append(f.items, id)
+		stored.Items = append(stored.Items, inbox.FixtureItem{Item: github.Item{
+			IsPR: true, Number: i, CreatedAt: testNow, UpdatedAt: testNow, RepoOwner: "acme-org", RepoName: "example-repo",
+		}})
 	}
 
-	return f
+	ids, err := inbox.StoreFixture(t.Context(), pool, stored)
+	require.NoError(t, err)
+
+	return &fixture{
+		pool: pool, clock: testutil.NewClock(testNow), poster: &fakePoster{status: StatusOn},
+		events: &testutil.Events{}, items: ids,
+	}
 }
 
 func (f *fixture) config() Config {
