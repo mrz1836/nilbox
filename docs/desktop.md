@@ -2021,9 +2021,9 @@ suggests a better choice where it finds one:
 - **A clone whose folder holds other clones:** it offers that folder, *~/Desktop/exp is a clone.
   Its folder, ~/Desktop, holds 3 other clones*, or **Add only this clone**.
 - **A folder the locations already cover** (the clone root, a listed location, or a clone directly
-  inside one) is refused, and so are hidden folders, anything inside a `.nilbox` or `.git`
-  folder, and a linked worktree, whose clone is the one to add. A folder added drops the single
-  clones inside it, which it now covers.
+  inside one) is refused, and so are `/`, the whole disk, hidden folders, anything inside a
+  `.nilbox` or `.git` folder, and a linked worktree, whose clone is the one to add. A folder
+  added drops the single clones inside it, which it now covers.
 
 Each location shows what it is now: *folder · 6 clones*, *clone · acme-org/example-repo*, or a
 warning such as *Not found* (a drive that isn't plugged in), *Not answering* (a network share

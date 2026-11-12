@@ -73,11 +73,16 @@ func Classify(dir, home string) (Kind, error) {
 }
 
 // CheckAddable refuses a folder that can't be a repository location, in words the window
-// shows: a hidden one, which no listing looks in, one inside the app's worktrees folder
-// (.<slug>) or a git folder, and a linked worktree, whose clone is the one to add.
+// shows: the root folder, the whole disk; a hidden one, which no listing looks in; one
+// inside the app's worktrees folder (.<slug>) or a git folder; and a linked worktree,
+// whose clone is the one to add.
 func CheckAddable(dir, home string) error {
 	shown := paths.Tilde(dir, home)
 	clean := filepath.Clean(dir)
+
+	if filepath.Dir(clean) == clean {
+		return refused(clean+" is the whole disk; choose a folder inside it.", clean)
+	}
 
 	if hidden(clean) {
 		return refused(shown+" is hidden, and the app never looks in hidden folders.", clean)

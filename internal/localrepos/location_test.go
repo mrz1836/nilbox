@@ -84,6 +84,8 @@ func TestCheckAddable(t *testing.T) {
 		dir  string
 		want string
 	}{
+		{dir: "/", want: "/ is the whole disk; choose a folder inside it."},
+		{dir: "//", want: "/ is the whole disk; choose a folder inside it."},
 		{dir: filepath.Join(home, ".hidden"), want: "~/.hidden is hidden, and the app never looks in hidden folders."},
 		{
 			dir:  filepath.Join(home, "projects", "."+brand.Slug, "worktrees", "api"),

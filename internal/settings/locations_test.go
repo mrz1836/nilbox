@@ -88,6 +88,7 @@ func TestAddCloneLocationsRefuses(t *testing.T) {
 		{dir: "projects", want: "Type the folder's full path, or one starting with ~/."},
 		{dir: "~/missing", want: "~/missing doesn't exist."},
 		{dir: "~/notes.txt", want: "~/notes.txt is a file, not a folder."},
+		{dir: "/", want: "/ is the whole disk; choose a folder inside it."},
 		{dir: "~/.hidden", want: "~/.hidden is hidden, and the app never looks in hidden folders."},
 		{dir: "~/exp-wt", want: "~/exp-wt is a linked worktree of ~/Desktop/exp; add ~/Desktop/exp instead."},
 		{dir: "~/projects", want: "~/projects is your clone root."},
@@ -183,6 +184,10 @@ func TestPreviewAndCheckCloneLocations(t *testing.T) {
 
 	_, err = r.svc.PreviewCloneLocation(t.Context(), "relative")
 	require.ErrorIs(t, err, ErrInvalidCloneLocation)
+
+	_, err = r.svc.PreviewCloneLocation(t.Context(), "/")
+	require.ErrorIs(t, err, localrepos.ErrLocationRefused)
+	assert.Equal(t, "/ is the whole disk; choose a folder inside it.", uierr.Message(err), "the preview refuses / too")
 
 	states, err := r.svc.CheckCloneLocations(t.Context())
 	require.NoError(t, err)
