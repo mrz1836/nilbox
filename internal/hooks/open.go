@@ -6,26 +6,12 @@ import (
 	"fmt"
 
 	"github.com/mrz1836/nilbox/internal/brand"
+	"github.com/mrz1836/nilbox/internal/scriptrun"
 	"github.com/mrz1836/nilbox/internal/uierr"
 )
 
-// terminalScript names the script a terminal opened in a clone runs: no run owns it, so
-// it takes run 0's prefix, which the launch folder's pruning knows.
-const terminalScript = "run-0"
-
-var (
-	// ErrNoTerminal is returned where the user's terminal can't be opened.
-	ErrNoTerminal = errors.New("the terminal can't be opened here")
-
-	// ErrNoFinder is returned where Finder can't show a folder, as on Linux.
-	ErrNoFinder = errors.New("finder can't show a folder here")
-)
-
-// FolderOpener opens the user's terminal in a folder, running nothing there. Core adapts
-// the terminal the runs open in.
-type FolderOpener interface {
-	OpenFolder(ctx context.Context, name, dir string) error
-}
+// ErrNoFinder is returned where Finder can't show a folder, as on Linux.
+var ErrNoFinder = errors.New("finder can't show a folder here")
 
 // Revealer shows a file or a folder in Finder. Core adapts open -R, on macOS only.
 type Revealer interface {
@@ -34,22 +20,15 @@ type Revealer interface {
 
 // OpenTerminal opens the terminal chosen for launches in the clone the page lists at dir
 // (with ~), for a row's Open in terminal: the user looks at the clone or fixes it there.
-// The app runs nothing in it. Only a clone directly under the clone root is opened.
+// The app runs nothing in it (scriptrun.OpenFolder). Only a clone directly under the clone
+// root is opened.
 func (s *Service) OpenTerminal(ctx context.Context, dir string) error {
 	c, err := s.cloneAt(ctx, dir)
 	if err != nil {
 		return err
 	}
 
-	if s.terminal == nil {
-		return uierr.New("Your terminal can't be opened here.", ErrNoTerminal)
-	}
-
-	if err = s.terminal.OpenFolder(ctx, terminalScript, c.dir); err != nil {
-		return fmt.Errorf("open the terminal in the clone: %w", err)
-	}
-
-	return nil
+	return scriptrun.OpenFolder(ctx, s.terminal, c.dir)
 }
 
 // ShowConfig shows the go-pre-commit config of the clone the page lists at dir (with ~) in

@@ -219,6 +219,10 @@ var (
 
 // Spec is a run to start.
 type Spec struct {
+	// Callbacks are what its kind hears of the run and tells of it: its output reader,
+	// progress, Finish, Recorded, and Released.
+	Callbacks
+
 	// Kind is what the run does.
 	Kind Kind
 
@@ -275,17 +279,6 @@ type Spec struct {
 	// nothing.
 	Keep any
 
-	// Output is the run's output reader: it is fed every byte of the log in order, as it
-	// arrives, from one goroutine at a time. nil reads nothing.
-	Output io.Writer
-
-	// Progress says how far the run has got, and whether Stop is let through now, as its
-	// kind works it out from what Output has read. The engine asks it as the window reads
-	// the run, at each Stop, and after each read of the log, telling Config.Progressed when
-	// the answer changed. It is called from any goroutine, must return promptly, and must
-	// never call back into the engine. nil has no steps, and lets Stop through.
-	Progress func() Progress
-
 	// Before runs under the clone's lock and a slot, before anything is recorded or
 	// started; an error ends the start there. It may return the command to run, worked out
 	// under the lock, which replaces Argv; nil keeps Argv. A release gathers its facts again
@@ -297,6 +290,31 @@ type Spec struct {
 	// what its command runs with, as a pull works out git's guards there, hands it over
 	// this way. nil keeps Env.
 	BeforeEnv func() []string
+}
+
+// Callbacks are what a run's kind hears of the run and tells of it, as it goes and as it
+// ends. A Spec gives a run them as it starts, and its kind's Verifier gives them again to
+// a run from before the app restarted (Verification): each kind builds both from one
+// helper, so a run picked up after a restart is read, judged, and told of as one it
+// started. Any may be nil.
+type Callbacks struct {
+	// Output is the run's output reader: it is fed every byte of the log in order, as it
+	// arrives, from one goroutine at a time. nil reads nothing.
+	Output io.Writer
+
+	// Progress says how far the run has got, and whether Stop is let through now, as its
+	// kind works it out from what Output has read. The engine asks it as the window reads
+	// the run, at each Stop, and after each read of the log, telling Config.Progressed when
+	// the answer changed. It is called from any goroutine, must return promptly, and must
+	// never call back into the engine. nil has no steps, and lets Stop through.
+	Progress func() Progress
+
+	// Finish works out the run's outcome once it has ended and Output has read all of
+	// it. It is given how the run ended and the outcome the engine worked out from that,
+	// and returns the one to record. nil records the engine's. Its context ends when the
+	// app quits and can wait no longer, and Finish must then return at once: with an
+	// Unsettled outcome, when what it needed to know couldn't be learned in time.
+	Finish func(ctx context.Context, end Ending, out Outcome) Outcome
 
 	// Recorded is called once the run's end is recorded, with the outcome recorded, before
 	// the run lets go of its clone: what is told of an outcome is told only once it is
@@ -312,13 +330,6 @@ type Spec struct {
 	// left going as the app quit. It runs on the goroutine that recorded the run, must return
 	// promptly, and must never call back into the engine. nil tells nothing.
 	Released func(id int64)
-
-	// Finish works out the run's outcome once it has ended and Output has read all of
-	// it. It is given how the run ended and the outcome the engine worked out from that,
-	// and returns the one to record. nil records the engine's. Its context ends when the
-	// app quits and can wait no longer, and Finish must then return at once: with an
-	// Unsettled outcome, when what it needed to know couldn't be learned in time.
-	Finish func(ctx context.Context, end Ending, out Outcome) Outcome
 }
 
 // Progress is how far a run going now has got, as its kind reads its output, and whether
@@ -493,7 +504,7 @@ type Record struct {
 // exit status to ExitFile, under a temporary name first and then renamed, so it is never
 // read half written.
 type TerminalRun struct {
-	// Name names the script, "run-<id>".
+	// Name names the script, "run-<id>" (ScriptName).
 	Name string
 
 	// Dir is the folder it runs in, Argv the command, and Env what the script exports.
@@ -512,7 +523,7 @@ type TerminalRun struct {
 // where no terminal can be opened, it returns an error.
 type TerminalOpener interface {
 	OpenRun(ctx context.Context, run TerminalRun) error
-	OpenFolder(ctx context.Context, name, dir string) error
+	FolderOpener
 }
 
 // Revealer shows a file in the user's file manager: Finder on macOS. Core adapts it.
@@ -528,22 +539,17 @@ type Rerunner interface {
 }
 
 // Verifier stands in, for the runs of its kind from before the app restarted, for what
-// their Spec gave them: an output reader and a Finish, closures a restart loses. As the
-// engine picks such a run up, orphaned or interrupted, it asks Verify for them again,
-// built from the run's record alone, its intent above all. It then feeds the reader the
-// run's whole log, from its start, and calls Finish when the run ends, as for a run it
-// started: a release is verified that way, wherever its tag and its clone were left.
+// their Spec gave them: their Callbacks, closures a restart loses. As the engine picks such
+// a run up, orphaned or interrupted, it asks Verify for them again, built from the run's
+// record alone, its intent above all. It then feeds the reader the run's whole log, from
+// its start, and calls Finish when the run ends, as for a run it started: a release is
+// verified that way, wherever its tag and its clone were left.
 type Verifier interface {
 	Verify(run Record) Verification
 }
 
-// Verification is what a Verifier gives a run from before the app restarted: its output
-// reader, its progress, its Finish, its Recorded, and its Released, as a Spec's. Any may be
-// nil, as in a Spec.
+// Verification is what a Verifier gives a run from before the app restarted: the
+// Callbacks a Spec gives a run it starts. Any may be nil, as in a Spec.
 type Verification struct {
-	Output   io.Writer
-	Progress func() Progress
-	Finish   func(ctx context.Context, end Ending, out Outcome) Outcome
-	Recorded func(ctx context.Context, id int64, out Outcome)
-	Released func(id int64)
+	Callbacks
 }

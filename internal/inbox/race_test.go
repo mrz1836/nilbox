@@ -1,7 +1,6 @@
 package inbox_test
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -159,26 +158,6 @@ func (c *raceClient) RemoveReviewRequest(context.Context, github.Token, item.Ref
 	return nil, errNotAsked
 }
 
-// lockedBuffer collects log output written from many goroutines.
-type lockedBuffer struct {
-	mu  sync.Mutex
-	buf bytes.Buffer
-}
-
-func (b *lockedBuffer) Write(p []byte) (int, error) {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-
-	return b.buf.Write(p)
-}
-
-func (b *lockedBuffer) String() string {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-
-	return b.buf.String()
-}
-
 // numbered returns the snapshot item with a number, from any list.
 func numbered(t *testing.T, snap inbox.Snapshot, number int) inbox.Item {
 	t.Helper()
@@ -222,11 +201,6 @@ func repeat(fn func(round int) error) func() error {
 	}
 }
 
-// errOnly returns a call's error, dropping its result.
-func errOnly[T any](_ T, err error) error {
-	return err
-}
-
 // triageStep is a triage action on one item.
 type triageStep func(ctx context.Context, id int64) (inbox.Snapshot, error)
 
@@ -235,17 +209,17 @@ type triageStep func(ctx context.Context, id int64) (inbox.Snapshot, error)
 func toggle(ctx context.Context, id int64, on, off triageStep) func() error {
 	return func() error {
 		err := repeat(func(int) error {
-			if err := errOnly(on(ctx, id)); err != nil {
+			if err := testutil.ErrOf(on(ctx, id)); err != nil {
 				return err
 			}
 
-			return errOnly(off(ctx, id))
+			return testutil.ErrOf(off(ctx, id))
 		})()
 		if err != nil {
 			return err
 		}
 
-		return errOnly(on(ctx, id))
+		return testutil.ErrOf(on(ctx, id))
 	}
 }
 
@@ -258,15 +232,15 @@ func terminals() []terminal.ID {
 // trusted bots and the wake rules) and one it does not, a different value each round.
 func writeSettings(ctx context.Context, s *settings.Service) func() error {
 	return repeat(func(round int) error {
-		if err := errOnly(s.SetTerminal(ctx, terminals()[round%2])); err != nil {
+		if err := testutil.ErrOf(s.SetTerminal(ctx, terminals()[round%2])); err != nil {
 			return err
 		}
 
-		if err := errOnly(s.SetTrustedBots(ctx, []string{"dependabot", fmt.Sprintf("helper-%d", round)})); err != nil {
+		if err := testutil.ErrOf(s.SetTrustedBots(ctx, []string{"dependabot", fmt.Sprintf("helper-%d", round)})); err != nil {
 			return err
 		}
 
-		return errOnly(s.SetSnoozeWake(ctx, snooze.Rules{Commits: 1 + round%3, Reviews: snooze.ReviewsAny}))
+		return testutil.ErrOf(s.SetSnoozeWake(ctx, snooze.Rules{Commits: 1 + round%3, Reviews: snooze.ReviewsAny}))
 	})
 }
 
@@ -304,7 +278,7 @@ func TestRefreshTriageAndSettingsWritesShareOnePool(t *testing.T) {
 	pool := testutil.DB(t)
 	clk := testutil.NewClock(time.Date(2026, 1, 10, 12, 0, 0, 0, time.UTC))
 
-	var logs lockedBuffer
+	var logs testutil.Logs
 
 	notices := notify.Config{Pool: pool, Clock: clk, Logger: slog.New(slog.NewTextHandler(&logs, nil))}
 	svc := inbox.NewService(inbox.Config{
@@ -333,15 +307,15 @@ func TestRefreshTriageAndSettingsWritesShareOnePool(t *testing.T) {
 	// notification history being read and marked read; and snapshots.
 	var g errgroup.Group
 
-	g.Go(repeat(func(int) error { return errOnly(svc.Refresh(ctx)) }))
-	g.Go(repeat(func(int) error { return errOnly(svc.RefreshItem(ctx, pinned)) }))
+	g.Go(repeat(func(int) error { return testutil.ErrOf(svc.Refresh(ctx)) }))
+	g.Go(repeat(func(int) error { return testutil.ErrOf(svc.RefreshItem(ctx, pinned)) }))
 	g.Go(rememberClones(ctx, items, launched[0].RepoID))
 	g.Go(toggle(ctx, pinned, svc.Pin, svc.Unpin))
 	g.Go(toggle(ctx, numbered(t, first, 2).ID, svc.Dismiss, svc.Restore))
 	g.Go(toggle(ctx, numbered(t, first, 3).ID, snoozeFor3Days, svc.Restore))
 	g.Go(writeSettings(ctx, userSettings))
 	g.Go(readNotifications(ctx, notifications))
-	g.Go(repeat(func(int) error { return errOnly(svc.Snapshot(ctx)) }))
+	g.Go(repeat(func(int) error { return testutil.ErrOf(svc.Snapshot(ctx)) }))
 
 	require.NoError(t, g.Wait(), "no write fails, and none waits out the busy timeout")
 	assert.Empty(t, logs.String(), "no arrival went unrecorded")

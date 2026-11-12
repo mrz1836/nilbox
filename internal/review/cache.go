@@ -70,9 +70,8 @@ type pullContext struct {
 	PendingReviews int    `json:"pendingReviews"`
 	AutoMerge      string `json:"autoMerge"`
 
-	Reviews     []contextReview `json:"reviews"`
-	FirstCommit string          `json:"firstCommit"`
-	Checks      []Check         `json:"checks"`
+	Reviews []contextReview `json:"reviews"`
+	Checks  []Check         `json:"checks"`
 }
 
 // contextReview is one reviewer's latest review, as the cache keeps it.
@@ -92,7 +91,7 @@ func contextOf(r *github.PullReview) pullContext {
 		MergeState: r.MergeState, MergeQueue: r.MergeQueue, Mine: r.ViewerDidAuthor,
 		CanUpdateBranch: r.ViewerCanUpdateBranch, CanAutoMerge: r.ViewerCanEnableAutoMerge, CanBypass: r.ViewerCanBypass,
 		ViewerReview: r.ViewerReview.State, ViewerReviewAt: r.ViewerReview.Commit, PendingReviews: r.PendingReviews,
-		AutoMerge: r.AutoMerge.Method, FirstCommit: r.FirstCommitMessage, CanClose: r.ViewerCanClose,
+		AutoMerge: r.AutoMerge.Method, CanClose: r.ViewerCanClose,
 		Reviews: make([]contextReview, 0, len(r.Reviews)), Checks: make([]Check, 0, len(r.Checks)),
 	}
 
@@ -179,7 +178,7 @@ func (c *cacheStore) load(ctx context.Context, id, budget int64) (*cached, error
 
 	out := &cached{
 		head: row.HeadOID, total: int(row.Total), complete: row.Complete, context: pc,
-		contextAt: value(row.ContextAt), fetchedAt: value(row.FetchedAt), files: make([]cachedFile, 0, len(rows)),
+		contextAt: store.Deref(row.ContextAt), fetchedAt: store.Deref(row.FetchedAt), files: make([]cachedFile, 0, len(rows)),
 	}
 
 	for _, r := range rows {
@@ -393,15 +392,4 @@ func (c *cacheStore) drop(ctx context.Context, id int64) error {
 	}
 
 	return nil
-}
-
-// value returns what p points to, or T's zero value when p is nil.
-func value[T any](p *T) T {
-	if p == nil {
-		var zero T
-
-		return zero
-	}
-
-	return *p
 }

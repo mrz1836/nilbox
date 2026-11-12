@@ -13,11 +13,13 @@ import (
 
 // Message is the part of a failure of one of gitread's commands, or of a command run with
 // a Setup, worth showing the user: what git said, without the command and the exit status,
-// or that origin didn't answer an ls-remote in time. A clone whose own config sets
-// settings a Setup refuses names them, and where to set them instead (CloneConfigError); a
-// remote refused before anything ran says why, naming it (RefusedError, origin when none
-// is named); and a command that failed after setting aside the clone's own ssh command,
-// password program, or credential helpers says so, and where to set them instead.
+// or that origin didn't answer an ls-remote in time. A git failure's words are read from
+// the *commandError in err's chain, not from err's text, so however a caller wraps it, its
+// wrap never reaches the window. A clone whose own config sets settings a Setup refuses
+// names them, and where to set them instead (CloneConfigError); a remote refused before
+// anything ran says why, naming it (RefusedError, origin when none is named); and a
+// command that failed after setting aside the clone's own ssh command, password program,
+// or credential helpers says so, and where to set them instead.
 func Message(err error) string {
 	remote := remoteName
 	if refused, ok := errors.AsType[*RefusedError](err); ok && refused.Remote != "" {
@@ -84,22 +86,20 @@ func cloneConfigText(keys []string) string {
 		"git config, with an includeIf, instead."
 }
 
-// listed words names as a list ("a", "a and b", "a, b, and c"), with the verb and the
-// pronoun that go with that many.
+// listed words names as a list (textutil.Series: "a", "a and b", "a, b, and c"), with the
+// verb and the pronoun that go with that many.
 func listed(names []string) (list, verb, them string) {
-	switch n := len(names); n {
-	case 1:
+	if len(names) == 1 {
 		return names[0], "isn't", "it"
-	case 2:
-		return names[0] + " and " + names[1], "aren't", "them"
-	default:
-		return strings.Join(names[:n-1], ", ") + ", and " + names[n-1], "aren't", "them"
 	}
+
+	return textutil.Series(names), "aren't", "them"
 }
 
-// gitSaid is what git said in a failure, without the command and the exit status, or that
-// origin didn't answer an ls-remote within RemoteTimeout, or that git ran out of time
-// otherwise.
+// gitSaid is what git said in a failure, without the command and the exit status, or the
+// command when git said nothing worth showing, read from the *commandError in err's
+// chain, however a caller wraps it; or that origin didn't answer an ls-remote within
+// RemoteTimeout, or that git ran out of time otherwise; or else textSaid.
 func gitSaid(err error) string {
 	switch {
 	case errors.Is(err, ErrRemoteTimeout):
@@ -108,6 +108,23 @@ func gitSaid(err error) string {
 		return "git didn't finish in time"
 	}
 
+	if failed, ok := errors.AsType[*commandError](err); ok {
+		if failed.said == "" {
+			return "git " + failed.cmd
+		}
+
+		return failed.said
+	}
+
+	return textSaid(err)
+}
+
+// textSaid is what an error that holds no *commandError says, read from its text: its own
+// words, without those of the error it wraps, as a file gitread couldn't look for is
+// "look for index.lock"; and, in a failure's shape, "git <command>: <said>", what follows
+// the command, as a refused command (ErrGitCommandNotAllowed) gives what was refused, and
+// as a git failure built elsewhere in that shape gives what git said.
+func textSaid(err error) string {
 	text := err.Error()
 	if inner := errors.Unwrap(err); inner != nil {
 		text = strings.TrimSuffix(text, ": "+inner.Error())

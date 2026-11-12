@@ -4,12 +4,14 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+
+	"github.com/mrz1836/nilbox/internal/scriptrun"
 )
 
 // actionOutput is what go-pre-commit's install or uninstall said, as an actionReader read
 // it. What it did is read from the hook files, which say it better than its lines.
 type actionOutput struct {
-	notes
+	scriptrun.Notes
 
 	// errors are its error lines, without their Error: or ✗.
 	errors []string
@@ -54,9 +56,9 @@ func actionPrefixes() []actionPrefix {
 }
 
 // actionReader reads go-pre-commit install's and uninstall's output as it arrives (see
-// lineReader). It knows 1.13.1's lines, recorded in testdata/go-pre-commit-1.13.1.
+// scriptrun.LineWriter). It knows 1.13.1's lines, recorded in testdata/go-pre-commit-1.13.1.
 type actionReader struct {
-	lineReader
+	*scriptrun.LineWriter
 
 	out actionOutput
 }
@@ -64,20 +66,20 @@ type actionReader struct {
 // newActionReader returns a reader that has read nothing.
 func newActionReader() *actionReader {
 	r := &actionReader{}
-	r.read = r.readLine
+	r.LineWriter = scriptrun.NewLineWriter(r.readLine)
 
 	return r
 }
 
 // snapshot returns what the reader has read so far, sharing nothing with it.
 func (r *actionReader) snapshot() actionOutput {
-	r.mu.Lock()
-	defer r.mu.Unlock()
+	r.Lock()
+	defer r.Unlock()
 
 	out := r.out
 	out.errors = slices.Clone(out.errors)
-	out.warnings = slices.Clone(out.warnings)
-	out.unrecognized = slices.Clone(out.unrecognized)
+	out.Warnings = slices.Clone(out.Warnings)
+	out.Unrecognized = slices.Clone(out.Unrecognized)
 
 	return out
 }
@@ -97,13 +99,13 @@ func (r *actionReader) readLine(line string) {
 		case !ok:
 			continue
 		case p.err:
-			r.out.errors = keepNote(r.out.errors, rest)
+			r.out.errors = scriptrun.KeepNote(r.out.errors, rest)
 		default:
-			r.out.warn(rest)
+			r.out.Warn(rest)
 		}
 
 		return
 	}
 
-	r.out.unknown(line)
+	r.out.Unknown(line)
 }

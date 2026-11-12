@@ -5,7 +5,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -39,9 +38,6 @@ var errParseCommitTime = errors.New("unexpected commit time")
 
 // errParseCount is returned when git rev-list prints something other than a count.
 var errParseCount = errors.New("unexpected commit count")
-
-// objectIDPattern is a full commit ID, SHA-1 or SHA-256.
-var objectIDPattern = regexp.MustCompile(`^(?:[0-9a-f]{40}|[0-9a-f]{64})$`)
 
 // allowedFixedCommands are the complete argument lists, after `-C <dir>`, that git may
 // run with. `worktree remove`, `worktree unlock`, and `update-ref -d` are checked
@@ -521,7 +517,7 @@ func (g git) branches(ctx context.Context, dir string) ([]localBranch, []byte, e
 
 	for line := range strings.Lines(string(stdout)) {
 		fields := strings.Split(strings.TrimRight(line, "\n"), "\x00")
-		if len(fields) != 3 || fields[0] == "" || !isCommitID(fields[1]) {
+		if len(fields) != 3 || fields[0] == "" || !gitread.IsCommitID(fields[1]) {
 			continue
 		}
 
@@ -683,7 +679,7 @@ func allowedChange(args []string) bool {
 	case worktreeCmd + " unlock":
 		return len(args) == 3 && isPathArg(args[2])
 	case "update-ref -d":
-		return len(args) == 4 && isBranchRef(args[2]) && isCommitID(args[3])
+		return len(args) == 4 && isBranchRef(args[2]) && gitread.IsCommitID(args[3])
 	default:
 		return false
 	}
@@ -698,7 +694,7 @@ func allowedCommitTimes(args []string) bool {
 	}
 
 	for _, oid := range args[len(head):] {
-		if !isCommitID(oid) {
+		if !gitread.IsCommitID(oid) {
 			return false
 		}
 	}
@@ -715,7 +711,7 @@ func allowedLookup(args []string) bool {
 	case len(args) == 3 && joinArgs(args[:2]) == joinArgs(symbolicRefArgs("")[:2]):
 		return isRemoteHead(args[2])
 	case len(args) == 5 && joinArgs(args) == joinArgs(lsRemoteArgs(args[3])):
-		return remotePattern.MatchString(args[3])
+		return gitread.ValidRemoteName(args[3])
 	default:
 		return false
 	}
@@ -730,7 +726,7 @@ func isRemoteHead(ref string) bool {
 
 	remote, ok := strings.CutSuffix(rest, "/HEAD")
 
-	return ok && remotePattern.MatchString(remote)
+	return ok && gitread.ValidRemoteName(remote)
 }
 
 // isTrackingRef reports refs/remotes/<remote>/<branch> with a plain remote and branch.
@@ -742,7 +738,7 @@ func isTrackingRef(ref string) bool {
 
 	remote, branch, ok := strings.Cut(rest, "/")
 
-	return ok && remotePattern.MatchString(remote) && validBranch(branch)
+	return ok && gitread.ValidRemoteName(remote) && gitread.ValidBranch(branch)
 }
 
 // allowedRemove reports the arguments after `worktree remove` that may run: a path, with
@@ -753,13 +749,6 @@ func allowedRemove(rest []string) bool {
 	}
 
 	return len(rest) == 1 && isPathArg(rest[0])
-}
-
-// isCommitID reports a full commit ID that names a commit. The null ID is refused: given
-// as the old value to `update-ref -d` it turns the comparison off, and git reports it as
-// the HEAD of a worktree with no commits.
-func isCommitID(oid string) bool {
-	return objectIDPattern.MatchString(oid) && strings.Trim(oid, "0") != ""
 }
 
 // isPathArg reports a non-empty argument that cannot be read as an option.
@@ -773,9 +762,9 @@ func isPathArg(arg string) bool {
 func allowedBranchLookup(args []string) bool {
 	switch {
 	case len(args) == 5 && args[0] == "rev-list":
-		return isCommitID(args[2]) && joinArgs(args) == joinArgs(branchUnpushedArgs(args[2]))
+		return gitread.IsCommitID(args[2]) && joinArgs(args) == joinArgs(branchUnpushedArgs(args[2]))
 	case len(args) == 4 && args[0] == "merge-base":
-		return isCommitID(args[2]) && isCommitID(args[3]) && joinArgs(args) == joinArgs(ancestorArgs(args[2], args[3]))
+		return gitread.IsCommitID(args[2]) && gitread.IsCommitID(args[3]) && joinArgs(args) == joinArgs(ancestorArgs(args[2], args[3]))
 	default:
 		return false
 	}
@@ -785,7 +774,7 @@ func allowedBranchLookup(args []string) bool {
 func isBranchRef(ref string) bool {
 	name, ok := strings.CutPrefix(ref, headsPrefix)
 
-	return ok && validBranch(name)
+	return ok && gitread.ValidBranch(name)
 }
 
 // isOwnBranchRef reports refs/heads/worktree-<name>, where name is a single plain path

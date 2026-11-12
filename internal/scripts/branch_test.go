@@ -4,7 +4,6 @@ import (
 	"context"
 	"os"
 	"path/filepath"
-	"slices"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -37,10 +36,30 @@ type gitRig struct {
 	asked  *countingGit
 	branch *Service
 
-	// envMu guards genv, the user's environment every git here gets: an isolated git's,
-	// with the fake programs' entries.
-	envMu sync.Mutex
-	genv  []string
+	// plants plants fake programs in a clone's own config, and keeps the user's
+	// environment every git here gets: an isolated git's, with the fake programs' entries.
+	plants *testutil.Planter
+}
+
+// gitRigRepos are a gitRig's origin and clones, under its home, built once for the test
+// binary by buildGitRigRepos and copied into each rig.
+var gitRigRepos = testutil.NewGitTemplate(buildGitRigRepos) //nolint:gochecknoglobals // built once for the whole test binary
+
+// buildGitRigRepos builds, under what becomes a rig's home, a local bare origin on main,
+// origin.git; other, a clone of it that pushed one commit, one.txt, to origin's main; and
+// sdk under the clone root, projects, cloned after it. Both clones reach origin over
+// file://. It returns the commit.
+func buildGitRigRepos(b *testutil.GitBuild) string {
+	origin := filepath.Join(b.Root, "origin.git")
+	url := "file://" + filepath.ToSlash(origin)
+
+	b.Git(".", "-c", "init.defaultBranch=main", "init", "-q", "--bare", origin)
+	b.Git(".", "clone", "-q", url, "other")
+	first := b.Commit("other", "one.txt", "one.txt\n")
+	b.Git("other", "push", "-q", "origin", "HEAD:main")
+	b.Git(".", "clone", "-q", url, filepath.Join("projects", "sdk"))
+
+	return first
 }
 
 // newGitRig builds a gitRig, or skips the test without git.
@@ -53,53 +72,23 @@ func newGitRig(t *testing.T) *gitRig {
 	g := &gitRig{
 		rig: r, origin: filepath.Join(r.home, "origin.git"), dir: filepath.Join(r.root, "sdk"),
 		other: filepath.Join(r.home, "other"), clock: testutil.NewClock(time.Date(2026, 11, 11, 9, 0, 0, 0, time.UTC)),
-		genv: testutil.GitEnv(r.home),
+		plants: testutil.NewPlanter(t, r.home),
 	}
 
-	testutil.RunGit(t, r.home, "-c", "init.defaultBranch=main", "init", "-q", "--bare", g.origin)
-	testutil.RunGit(t, r.home, "clone", "-q", g.url(), g.other)
-	g.first = g.commit(g.other, "one.txt")
-	testutil.RunGit(t, g.other, "push", "-q", "origin", "HEAD:main")
-	testutil.RunGit(t, r.root, "clone", "-q", g.url(), g.dir)
+	g.first = gitRigRepos.Copy(t, r.home)
 
 	// The clone's origin is on GitHub, as the clones list reads it, so its status asks
 	// origin unasked (a local bare repository stands in for GitHub's).
 	r.clones.setOrigin(g.dir, repo.Name{Owner: "acme-org", Repo: "sdk"})
 
-	g.asked = &countingGit{BranchGit: gitread.New(gitread.Config{Env: g.environ})}
+	g.asked = &countingGit{BranchGit: gitread.New(gitread.Config{Env: g.plants.Environ})}
 	g.branch = NewService(Config{
 		Clones: r.clones, BranchGit: g.asked, Tools: r.tools, Settings: r.settings, Runs: r.engine, History: r.runs,
-		DB: r.db, Env: func() ([]string, bool) { return g.environ(), true }, Home: r.home, Clock: g.clock,
+		DB: r.runner.DB, Env: func() ([]string, bool) { return g.plants.Environ(), true }, Home: r.home, Clock: g.clock,
 	})
 	r.engine.RegisterRerunner(scriptrun.KindPull, NewRerunner(g.branch))
 
 	return g
-}
-
-// environ is the user's environment, as the login shell gives it.
-func (g *gitRig) environ() []string {
-	g.envMu.Lock()
-	defer g.envMu.Unlock()
-
-	return slices.Clone(g.genv)
-}
-
-// marker makes a fake program called name that writes the file ran/<name> when it runs,
-// whatever it is run for, and returns its path and that file's.
-func (g *gitRig) marker(name string) (program, marker string) {
-	g.t.Helper()
-
-	ran := filepath.Join(g.home, "ran")
-	require.NoError(g.t, os.MkdirAll(ran, 0o700))
-
-	marker = filepath.Join(ran, name)
-	program, entry := testutil.FakeTool(g.t, name, testutil.FakeRun{Files: []testutil.FakeFile{{Path: marker, Content: "ran"}}})
-
-	g.envMu.Lock()
-	g.genv = append(g.genv, entry)
-	g.envMu.Unlock()
-
-	return program, marker
 }
 
 // url is origin's address.
@@ -111,11 +100,7 @@ func (g *gitRig) url() string {
 func (g *gitRig) commit(dir, name string) string {
 	g.t.Helper()
 
-	require.NoError(g.t, os.WriteFile(filepath.Join(dir, name), []byte(name+"\n"), 0o600))
-	testutil.RunGit(g.t, dir, "add", name)
-	testutil.RunGit(g.t, dir, "commit", "-q", "-m", name)
-
-	return g.head(dir)
+	return testutil.Commit(g.t, dir, name, name+"\n")
 }
 
 // head returns the commit dir's HEAD is at, read with the fake programs' entries in git's

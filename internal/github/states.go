@@ -4,13 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"maps"
 	"slices"
 	"strconv"
 	"strings"
 	"time"
-
-	"golang.org/x/sync/errgroup"
 
 	"github.com/mrz1836/nilbox/internal/item"
 )
@@ -79,28 +76,12 @@ func (c *Client) FetchItemStates(ctx context.Context, tok Token, refs []item.Ref
 		queries = append(queries, statesRequest{refs: batch, query: query})
 	}
 
-	answers := make([]map[string]ItemState, len(queries))
-
-	g, gctx := errgroup.WithContext(ctx)
-	g.SetLimit(statesParallel)
-
-	for i, req := range queries {
-		g.Go(func() error {
-			var err error
-
-			answers[i], err = c.fetchStates(gctx, tok, req)
-
-			return err
+	states, err := fanOut(ctx, queries, statesParallel,
+		func(ctx context.Context, req statesRequest) (map[string]ItemState, error) {
+			return c.fetchStates(ctx, tok, req)
 		})
-	}
-
-	if err := g.Wait(); err != nil {
+	if err != nil {
 		return nil, Redact(err, tok)
-	}
-
-	states := make(map[string]ItemState, len(refs))
-	for _, answer := range answers {
-		maps.Copy(states, answer)
 	}
 
 	return states, nil

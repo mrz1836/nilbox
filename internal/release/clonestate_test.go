@@ -29,7 +29,8 @@ type cloneRig struct {
 	second  string
 }
 
-// newCloneRig builds a cloneRig in a fresh folder, or skips the test without git.
+// newCloneRig builds a cloneRig in a fresh folder, a copy of sdkFixtures' fixture with
+// the clone at clone, or skips the test without git.
 func newCloneRig(t *testing.T) cloneRig {
 	t.Helper()
 
@@ -43,27 +44,10 @@ func newCloneRig(t *testing.T) cloneRig {
 		other:   filepath.Join(root, "other"),
 	}
 
-	testutil.RunGit(t, root, "-c", "init.defaultBranch=master", "init", "-q", "--bare", r.origin)
-	testutil.RunGit(t, root, "-c", "init.defaultBranch=master", "init", "-q", r.clone)
-	testutil.RunGit(t, r.clone, "checkout", "-q", "-b", "master")
-	r.first = commitIn(t, r.clone, "one.txt")
-	testutil.RunGit(t, r.clone, "tag", "-a", "v1.0.0", "-m", "v1.0.0")
-	r.second = commitIn(t, r.clone, "two.txt")
-	testutil.RunGit(t, r.clone, "remote", "add", "origin", r.origin)
-	testutil.RunGit(t, r.clone, "push", "-q", "-u", "origin", "master", "--tags")
+	c := sdkFixtures.Copy(t, sdkFixture{clone: "clone", base: "v1.0.0"}, root)
+	r.first, r.second = c.first, c.second
 
 	return r
-}
-
-// commitIn writes name in dir and commits it, returning the commit.
-func commitIn(t *testing.T, dir, name string) string {
-	t.Helper()
-
-	require.NoError(t, os.WriteFile(filepath.Join(dir, name), []byte(name+"\n"), 0o600))
-	testutil.RunGit(t, dir, "add", name)
-	testutil.RunGit(t, dir, "-c", "user.name=Example", "-c", "user.email=example@example.com", "commit", "-q", "-m", name)
-
-	return strings.TrimSpace(testutil.RunGit(t, dir, "rev-parse", "HEAD"))
 }
 
 func TestCloneStateOfACleanClone(t *testing.T) {
@@ -80,7 +64,7 @@ func TestCloneStateFindsWhatMatters(t *testing.T) {
 
 	r := newCloneRig(t)
 
-	commitIn(t, r.clone, "three.txt")
+	testutil.Commit(t, r.clone, "three.txt", "three.txt"+"\n")
 	testutil.RunGit(t, r.clone, "tag", "v1.1.0")
 	testutil.RunGit(t, r.clone, "tag", "v0.9.0") // older than GitHub's newest: not judged
 	testutil.RunGit(t, r.clone, "checkout", "-q", "-b", "feature-x")
@@ -103,7 +87,7 @@ func TestCloneStateSeesItIsBehind(t *testing.T) {
 	r := newCloneRig(t)
 
 	testutil.RunGit(t, filepath.Dir(r.clone), "clone", "-q", r.origin, r.other)
-	ahead := commitIn(t, r.other, "elsewhere.txt")
+	ahead := testutil.Commit(t, r.other, "elsewhere.txt", "elsewhere.txt"+"\n")
 	testutil.RunGit(t, r.other, "push", "-q", "origin", "master")
 
 	got := r.checker.CloneState(t.Context(), r.clone, "master", ahead, nil)
@@ -114,7 +98,7 @@ func TestCloneStateSeesItIsBehind(t *testing.T) {
 	got = r.checker.CloneState(t.Context(), r.clone, "master", ahead, nil)
 	assert.True(t, got.Behind, "fetched but not pulled: the clone's head is an ancestor of GitHub's")
 
-	diverged := commitIn(t, r.clone, "mine.txt")
+	diverged := testutil.Commit(t, r.clone, "mine.txt", "mine.txt"+"\n")
 	got = r.checker.CloneState(t.Context(), r.clone, "master", ahead, nil)
 	assert.False(t, got.Behind, "diverged is not behind")
 	assert.Equal(t, 1, got.NotPushed)
@@ -183,7 +167,7 @@ func TestCloneStateMarksWhatGitCantRead(t *testing.T) {
 	env := testutil.Git(t)
 
 	testutil.RunGit(t, filepath.Dir(r.clone), "clone", "-q", r.origin, r.other)
-	ahead := commitIn(t, r.other, "elsewhere.txt")
+	ahead := testutil.Commit(t, r.other, "elsewhere.txt", "elsewhere.txt"+"\n")
 	testutil.RunGit(t, r.other, "push", "-q", "origin", "master")
 	testutil.RunGit(t, r.clone, "fetch", "-q", "origin")
 

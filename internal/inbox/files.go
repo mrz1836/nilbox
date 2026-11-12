@@ -326,27 +326,15 @@ func (c filesColumns) result() (*sensitive.Result, error) {
 		return nil, nil //nolint:nilnil // no check is not an error, and there is no result
 	}
 
-	files, err := store.DecodeJSON[[]storedFile](value(c.files))
+	files, err := store.DecodeJSON[[]storedFile](store.Deref(c.files))
 	if err != nil {
 		return nil, fmt.Errorf("read the checked files: %w", err)
 	}
 
 	return filesRow{
-		itemID: *c.itemID, head: value(c.head), total: int(value(c.total)), files: files,
-		complete: value(c.complete), err: value(c.err), checkedAt: value(c.checkedAt),
+		itemID: *c.itemID, head: store.Deref(c.head), total: int(store.Deref(c.total)), files: files,
+		complete: store.Deref(c.complete), err: store.Deref(c.err), checkedAt: store.Deref(c.checkedAt),
 	}.result(), nil
-}
-
-// value returns what p points to, or T's zero value when p is nil: the value a column
-// from a LEFT JOIN takes when the joined row is missing.
-func value[T any](p *T) T {
-	if p == nil {
-		var zero T
-
-		return zero
-	}
-
-	return *p
 }
 
 // checkItemRow is a stored item as checking its files reads it.
@@ -382,7 +370,7 @@ func checkItemRowOf(r queries.GetCheckItemRow) (checkItemRow, error) {
 	return checkItemRow{
 		ID: r.ID, Kind: item.Kind(r.Kind), Number: int(r.Number), URL: r.URL, AuthorLogin: r.AuthorLogin,
 		AuthorType: r.AuthorType, AuthorAssociation: r.AuthorAssociation, IsCrossRepository: r.IsCrossRepository,
-		RepoOwner: r.RepoOwner, RepoName: r.RepoName, HeadOID: value(r.HeadOID), Stored: stored,
+		RepoOwner: r.RepoOwner, RepoName: r.RepoName, HeadOID: store.Deref(r.HeadOID), Stored: stored,
 	}, nil
 }
 
@@ -462,9 +450,7 @@ func (s *Service) CheckFiles(ctx context.Context, itemID int64) (*sensitive.Chec
 		}
 	}
 
-	evaluated := scope.matcher.Evaluate(stored.result(), stored.head, row.URL)
-
-	return &evaluated, nil
+	return new(scope.matcher.Evaluate(stored.result(), stored.head, row.URL)), nil
 }
 
 // checkItemFiles reads one pull request's head and, when it moved since the stored check

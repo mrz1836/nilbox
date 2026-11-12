@@ -7,7 +7,6 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
-	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -76,9 +75,6 @@ var (
 	// not the commit whose files the launch checked.
 	ErrHeadMoved = errors.New("the pull request's head moved after its files were checked")
 )
-
-// remotePattern is what a remote's name must look like to be passed to git.
-var remotePattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
 
 // EnsureRequest asks for an item's worktree in a clone.
 type EnsureRequest struct {
@@ -250,7 +246,7 @@ func (req EnsureRequest) check() error {
 		return fmt.Errorf("%w: no %s #%d", ErrInvalidRequest, req.Kind, req.Number)
 	case req.Owner == "" || req.Name == "":
 		return fmt.Errorf("%w: no repository", ErrInvalidRequest)
-	case req.remote() != "" && !remotePattern.MatchString(req.remote()):
+	case req.remote() != "" && !gitread.ValidRemoteName(req.remote()):
 		return fmt.Errorf("%w: the remote %q", ErrInvalidRequest, req.Remote)
 	case !req.validHead():
 		return fmt.Errorf("%w: the head %q", ErrInvalidRequest, req.Head)
@@ -261,7 +257,7 @@ func (req EnsureRequest) check() error {
 
 // validHead reports a Head the request may carry: none, or a pull request's commit.
 func (req EnsureRequest) validHead() bool {
-	return req.Head == "" || (req.Kind == item.KindPR && isCommitID(req.Head))
+	return req.Head == "" || (req.Kind == item.KindPR && gitread.IsCommitID(req.Head))
 }
 
 // remote returns the remote to fetch from: Remote, or origin.
@@ -497,7 +493,7 @@ func (m *Maker) verifyHead(ctx context.Context, g git, req EnsureRequest, branch
 		return nil
 	}
 
-	if isCommitID(got) {
+	if gitread.IsCommitID(got) {
 		if stderr, err := g.deleteBranch(ctx, req.Clone, branch, got); err != nil {
 			m.s.logger.WarnContext(ctx, "could not delete a pull request head that was not checked",
 				"branch", branch, "error", gitError(err, stderr))
@@ -574,14 +570,14 @@ func remoteSaid(err, cause error, extra string) string {
 // it, else as the clone's remote last said (refs/remotes/<remote>/HEAD), else as the
 // remote says now.
 func (m *Maker) defaultBranch(ctx context.Context, g git, req EnsureRequest) (string, error) {
-	if validBranch(req.DefaultBranch) {
+	if gitread.ValidBranch(req.DefaultBranch) {
 		return req.DefaultBranch, nil
 	}
 
 	remote := req.remote()
 
 	if out, _, err := g.do(ctx, req.Clone, symbolicRefArgs(remote)...); err == nil {
-		if branch, ok := strings.CutPrefix(strings.TrimSpace(string(out)), remotesRef+remote+"/"); ok && validBranch(branch) {
+		if branch, ok := strings.CutPrefix(strings.TrimSpace(string(out)), remotesRef+remote+"/"); ok && gitread.ValidBranch(branch) {
 			return branch, nil
 		}
 	}
@@ -612,7 +608,7 @@ func parseSymref(out string) (string, bool) {
 		}
 
 		branch, ok := strings.CutPrefix(target, "ref: "+headsPrefix)
-		if ok && validBranch(branch) {
+		if ok && gitread.ValidBranch(branch) {
 			return branch, true
 		}
 	}
@@ -761,7 +757,7 @@ func trackingRefspec(remote, branch string) string {
 func allowedCreate(args []string) bool {
 	switch {
 	case hasWords(args, 6, "fetch", "--no-tags", "--refmap=", uploadPack):
-		return remotePattern.MatchString(args[4]) && allowedFetchRefspec(args[4], args[5])
+		return gitread.ValidRemoteName(args[4]) && allowedFetchRefspec(args[4], args[5])
 	case hasWords(args, 4, "worktree", "add"):
 		return filepath.IsAbs(args[2]) && isOwnBranchRef(headsPrefix+args[3])
 	case hasWords(args, 7, "worktree", "add", "--no-track", "-b"):
@@ -781,7 +777,7 @@ func hasWords(args []string, n int, words ...string) bool {
 func isTrackingBranch(ref string) bool {
 	rest, ok := strings.CutPrefix(ref, remotesRef)
 
-	return ok && validBranch(rest)
+	return ok && gitread.ValidBranch(rest)
 }
 
 // allowedFetchRefspec reports a refspec this file fetches from remote.
@@ -797,7 +793,7 @@ func allowedFetchRefspec(remote, refspec string) bool {
 
 	branch, ok := strings.CutPrefix(src, "+"+headsPrefix)
 
-	return ok && validBranch(branch) && dst == remotesRef+remote+"/"+branch
+	return ok && gitread.ValidBranch(branch) && dst == remotesRef+remote+"/"+branch
 }
 
 // pullNumber reads n from refs/pull/<n>/head.

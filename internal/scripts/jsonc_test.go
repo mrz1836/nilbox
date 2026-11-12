@@ -73,7 +73,7 @@ func FuzzStripJSONC(f *testing.F) {
 		}
 
 		if !bytes.Equal(out, data) {
-			t.Fatalf("plain JSON changed:\n in: %q\nout: %q", data, out)
+			require.Failf(t, "plain JSON changed", "\n in: %q\nout: %q", data, out)
 		}
 
 		roundTrip(t, data)
@@ -87,7 +87,7 @@ func roundTrip(t *testing.T, data []byte) {
 
 	want, err := decodeNumbers(data)
 	if err != nil {
-		t.Fatalf("decode valid JSON: %v", err)
+		require.Failf(t, "decode valid JSON", "%v", err)
 	}
 
 	var b strings.Builder
@@ -95,11 +95,11 @@ func roundTrip(t *testing.T, data []byte) {
 
 	got, err := decodeNumbers(stripJSONC([]byte(b.String())))
 	if err != nil {
-		t.Fatalf("JSONC didn't come out as JSON: %v\n%s", err, b.String())
+		require.Failf(t, "JSONC didn't come out as JSON", "%v\n%s", err, b.String())
 	}
 
 	if fmt.Sprint(got) != fmt.Sprint(want) {
-		t.Fatalf("JSONC decoded differently:\nwant %v\n got %v", want, got)
+		require.Failf(t, "JSONC decoded differently", "\nwant %v\n got %v", want, got)
 	}
 }
 
@@ -154,7 +154,7 @@ func encoded(t *testing.T, v any) []byte {
 
 	data, err := json.Marshal(v)
 	if err != nil {
-		t.Fatalf("encode %v: %v", v, err)
+		require.Failf(t, "encode", "%v: %v", v, err)
 	}
 
 	return data

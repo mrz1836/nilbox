@@ -24,12 +24,12 @@ import (
 func (r *rig) refuseEnds() func() {
 	r.t.Helper()
 
-	_, err := r.db.ExecContext(r.t.Context(), `CREATE TRIGGER refuse_finish BEFORE UPDATE ON script_runs
+	_, err := r.runner.DB.ExecContext(r.t.Context(), `CREATE TRIGGER refuse_finish BEFORE UPDATE ON script_runs
 		WHEN NEW.finished_at IS NOT NULL BEGIN SELECT RAISE(ABORT, 'refused by the test'); END`)
 	require.NoError(r.t, err)
 
 	return func() {
-		_, err := r.db.ExecContext(r.t.Context(), `DROP TRIGGER refuse_finish`)
+		_, err := r.runner.DB.ExecContext(r.t.Context(), `DROP TRIGGER refuse_finish`)
 		require.NoError(r.t, err)
 	}
 }
@@ -41,11 +41,11 @@ func (r *rig) refuseEnds() func() {
 func (r *rig) leftGoing(id int64, dir string, told int) scriptrun.Run {
 	r.t.Helper()
 
-	require.Eventually(r.t, func() bool {
+	r.runner.Await(func() bool {
 		_, held := r.locks.Holder(dir)
 
 		return !held && r.events.Count() > told
-	}, runWait, runPoll, "run %d lets go of its clone", id)
+	}, "run %d lets go of its clone", id)
 
 	runs, err := r.runs.Runs(r.t.Context(), scriptrun.Filter{})
 	require.NoError(r.t, err)
@@ -62,37 +62,11 @@ func (r *rig) leftGoing(id int64, dir string, told int) scriptrun.Run {
 func (r *rig) restart(id int64) scriptrun.Run {
 	r.t.Helper()
 
-	next := scriptrun.NewEngine(scriptrun.Config{
-		DB: r.db, Locks: r.locks, LogDir: r.logDir, Home: r.home, Logger: r.logs.Logger(),
-	})
 	verify := NewVerifier(r.svc)
-	next.RegisterVerifier(scriptrun.KindHooks, verify)
-	next.RegisterVerifier(scriptrun.KindChecks, verify)
 
-	ctx, cancel := context.WithCancel(r.t.Context())
-	done := make(chan struct{})
-
-	go func() {
-		defer close(done)
-
-		next.Run(ctx)
-	}()
-
-	runs := scriptrun.NewService(next)
-
-	var run scriptrun.Run
-
-	require.Eventually(r.t, func() bool {
-		got, err := runs.Run(r.t.Context(), id)
-		run = got
-
-		return err == nil && !got.Status.Live()
-	}, runWait, runPoll, "run %d is settled on the next start", id)
-
-	cancel()
-	<-done
-
-	return run
+	return r.runner.Restart(id, map[scriptrun.Kind]scriptrun.Verifier{
+		scriptrun.KindHooks: verify, scriptrun.KindChecks: verify,
+	})
 }
 
 // keeps reports whether the run id keeps anything beside its record.
@@ -111,7 +85,7 @@ func (r *rig) keeps(id int64) bool {
 func (r *rig) keptFiles() []string {
 	r.t.Helper()
 
-	names, err := filepath.Glob(filepath.Join(r.logDir, "*.kept"))
+	names, err := filepath.Glob(filepath.Join(r.runner.LogDir, "*.kept"))
 	require.NoError(r.t, err)
 
 	return names
@@ -226,13 +200,13 @@ func TestAChecksRunCutOffByARestartNamesTheFilesItChanged(t *testing.T) {
 
 	r := newRig(t)
 	dir := r.clone("web", cloneOpts{config: coreEnv, origin: "acme-org/web"})
-	writeFile(t, dir, "README.md", "# web  \n", 0o600)
-	writeFile(t, dir, "docs/setup.md", "setup\n", 0o600)
+	testutil.WriteFileMode(t, filepath.Join(dir, "README.md"), "# web  \n", 0o600)
+	testutil.WriteFileMode(t, filepath.Join(dir, "docs/setup.md"), "setup\n", 0o600)
 	testutil.RunGit(t, dir, "add", ".")
 	testutil.RunGit(t, dir, "commit", "-q", "-m", "docs")
 
 	// The user's own uncommitted edit, which whitespace's fix mixes its own into.
-	writeFile(t, dir, "docs/setup.md", "setup\nmore  \n", 0o600)
+	testutil.WriteFileMode(t, filepath.Join(dir, "docs/setup.md"), "setup\nmore  \n", 0o600)
 
 	r.tool("1.13.1", loadRecording(t, "run-whitespace-dirty-file").fakeRun(
 		testutil.FakeFile{Path: "README.md", Content: "# web\n"},
@@ -290,8 +264,8 @@ func TestAChecksRunCutOffByARestartUsesTheConfigItRanWith(t *testing.T) {
 	allow()
 
 	// The config changes while the app is away: gitleaks on, lint off.
-	writeFile(t, dir, ".github/env/99-local.env", "GO_PRE_COMMIT_ENABLE_GITLEAKS=true\nGO_PRE_COMMIT_ENABLE_LINT=false\n",
-		0o600)
+	testutil.WriteFileMode(t, filepath.Join(dir, ".github/env/99-local.env"),
+		"GO_PRE_COMMIT_ENABLE_GITLEAKS=true\nGO_PRE_COMMIT_ENABLE_LINT=false\n", 0o600)
 
 	r.restart(id)
 
@@ -307,7 +281,7 @@ func TestWhatARunsBeforeReadStaysOutOfItsRecord(t *testing.T) {
 
 	r := newRig(t)
 	dir := r.clone("web", cloneOpts{config: coreEnv})
-	writeFile(t, dir, "notes.txt", "draft\n", 0o600)
+	testutil.WriteFileMode(t, filepath.Join(dir, "notes.txt"), "draft\n", 0o600)
 	r.tool("1.13.1", loadRecording(t, "run-pass").fakeRun())
 
 	// A run that ends as it should.
@@ -349,7 +323,7 @@ func TestARunFromBeforeTheRestartThatKeptNothingSaysSo(t *testing.T) {
 	checks := v.Verify(checksRecord(7, dir))
 	require.NotNil(t, checks.Finish)
 
-	_, err := checks.Output.Write([]byte(loadRecording(t, "run-pass").log()))
+	_, err := checks.Output.Write([]byte(loadRecording(t, "run-pass").Log("\n")))
 	require.NoError(t, err)
 
 	out := checks.Finish(t.Context(), scriptrun.Ending{ExitCode: &zero}, scriptrun.Outcome{Status: scriptrun.StatusSucceeded})
@@ -406,7 +380,7 @@ func TestAChecksRunWithTooManyDirtyFilesToHashIsStillComparedAfterARestart(t *te
 
 	r := newRig(t)
 	dir := r.clone("web", cloneOpts{config: coreEnv})
-	writeFile(t, dir, "notes.txt", "draft\n", 0o600)
+	testutil.WriteFileMode(t, filepath.Join(dir, "notes.txt"), "draft\n", 0o600)
 
 	// As for a clone with more than maxHashed dirty files: sizes and times, not contents.
 	before := r.svc.read(t.Context(), dir, func(int) bool { return false })
@@ -418,7 +392,7 @@ func TestAChecksRunWithTooManyDirtyFilesToHashIsStillComparedAfterARestart(t *te
 		7: keptChecks{Checks: readConfig(dir).settings(), Snapshot: kept},
 	}}
 
-	writeFile(t, dir, "notes.txt", "draft, longer now\n", 0o600)
+	testutil.WriteFileMode(t, filepath.Join(dir, "notes.txt"), "draft, longer now\n", 0o600)
 
 	zero := 0
 	out := NewVerifier(r.svc).Verify(checksRecord(7, dir)).Finish(t.Context(), scriptrun.Ending{ExitCode: &zero},
@@ -446,13 +420,13 @@ func TestAChecksRunsFinishIsKeptUnlessTheQuitCutsAReadShort(t *testing.T) {
 
 			r := newRig(t)
 			dir := r.clone("web", cloneOpts{config: coreEnv})
-			writeFile(t, dir, "notes.txt", "draft\n", 0o600)
+			testutil.WriteFileMode(t, filepath.Join(dir, "notes.txt"), "draft\n", 0o600)
 
 			r.svc.runs = keptRuns{Runs: r.engine, kept: map[int64]any{
 				7: keptChecks{Checks: readConfig(dir).settings(), Snapshot: keepSnapshot(r.svc.take(t.Context(), dir))},
 			}}
 
-			writeFile(t, dir, "notes.txt", "draft, fixed\n", 0o600)
+			testutil.WriteFileMode(t, filepath.Join(dir, "notes.txt"), "draft, fixed\n", 0o600)
 
 			ctx, cancel := context.WithCancel(t.Context())
 			defer cancel()
@@ -551,7 +525,7 @@ func TestAnActionAfterARestartIsJudgedWithTheCopyThatRan(t *testing.T) {
 	facts := r.tools.HooksTool(t.Context())
 
 	// It wrote its hook, then exited 1; meanwhile another copy came into use.
-	writeFile(t, filepath.Join(dir, ".git", "hooks"), hookPreCommit, currentHook, 0o755)
+	testutil.WriteFileMode(t, filepath.Join(dir, ".git", "hooks", hookPreCommit), currentHook, 0o755)
 	r.tool("1.13.1", testutil.FakeRun{})
 	require.NotEqual(t, ran, r.tools.HooksTool(t.Context()).Path)
 
@@ -636,7 +610,7 @@ func TestAKeptSnapshotReadsBackAsItWasTaken(t *testing.T) {
 
 	r := newRig(t)
 	dir := r.clone("web", cloneOpts{config: coreEnv})
-	writeFile(t, dir, "notes.txt", "draft\n", 0o600)
+	testutil.WriteFileMode(t, filepath.Join(dir, "notes.txt"), "draft\n", 0o600)
 	require.NoError(t, os.Remove(filepath.Join(dir, "README.md")))
 
 	for _, hashed := range []bool{true, false} {

@@ -4,11 +4,9 @@ import (
 	"fmt"
 	"strings"
 	"unicode"
-	"unicode/utf8"
-)
 
-// safeChars are the characters an argument may hold and still be written without quotes.
-const safeChars = "_@%+=:,./-"
+	"github.com/mrz1836/nilbox/internal/textutil"
+)
 
 // Split reads extra flags typed on one line into one argument each, the way a POSIX shell
 // splits words, but without expanding anything: whitespace separates arguments, single
@@ -22,36 +20,16 @@ func Split(line string) ([]string, error) {
 	return s.split()
 }
 
-// Join writes arguments on one line that Split reads back unchanged: an argument made only
-// of letters, digits, and _@%+=:,./- is written as is, and any other is single-quoted.
+// Join writes arguments on one line that Split reads back unchanged, each as
+// textutil.ShellWord writes it: as is when a shell reads it as itself, as --add-dir=/srv/x
+// is, and single-quoted otherwise.
 func Join(args []string) string {
 	quoted := make([]string, 0, len(args))
 	for _, arg := range args {
-		quoted = append(quoted, quote(arg))
+		quoted = append(quoted, textutil.ShellWord(arg))
 	}
 
 	return strings.Join(quoted, " ")
-}
-
-// quote returns arg as Split reads it back: unchanged when it is safe, otherwise in
-// single quotes, each single quote inside it closing the quotes, escaped, and reopening
-// them.
-func quote(arg string) string {
-	if arg != "" && !strings.ContainsFunc(arg, needsQuote) {
-		return arg
-	}
-
-	return "'" + strings.ReplaceAll(arg, "'", `'\''`) + "'"
-}
-
-// needsQuote reports whether r must be quoted: anything but an ASCII letter, digit, or
-// one of safeChars.
-func needsQuote(r rune) bool {
-	if r >= utf8.RuneSelf {
-		return true
-	}
-
-	return !unicode.IsLetter(r) && !unicode.IsDigit(r) && !strings.ContainsRune(safeChars, r)
 }
 
 // splitter is Split's state: the input, the read position, the arguments so far, and the

@@ -10,6 +10,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/mrz1836/nilbox/internal/paths"
 )
 
 func TestReadMetaNeverWaitsOnAFIFO(t *testing.T) {
@@ -20,16 +22,45 @@ func TestReadMetaNeverWaitsOnAFIFO(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "rollout-2026-11-09T00-17-28-x.jsonl")
 	require.NoError(t, syscall.Mkfifo(path, 0o600))
 
-	done := make(chan rolloutEntry, 1)
+	type read struct {
+		entry rolloutEntry
+		whole bool
+	}
+
+	done := make(chan read, 1)
 
 	go func() {
-		entry, _ := readMeta(path)
-		done <- entry
+		entry, whole := readMeta(path)
+		done <- read{entry, whole}
 	}()
 
 	select {
-	case entry := <-done:
-		assert.False(t, entry.ok, "a FIFO is no rollout")
+	case got := <-done:
+		assert.False(t, got.entry.ok, "a FIFO is no rollout")
+		assert.False(t, got.whole, "and is read again next time, in case a rollout takes its place")
+	case <-time.After(5 * time.Second):
+		require.Fail(t, "reading a FIFO hung")
+	}
+}
+
+func TestLastWordsNeverWaitOnAFIFO(t *testing.T) {
+	t.Parallel()
+
+	// A rollout swapped for a FIFO after its folder was listed is refused, never opened
+	// and waited on.
+	path := filepath.Join(t.TempDir(), "rollout-2026-11-09T00-17-28-x.jsonl")
+	require.NoError(t, syscall.Mkfifo(path, 0o600))
+
+	done := make(chan error, 1)
+
+	go func() {
+		_, err := lastAgentText(path, wordsTailBytes)
+		done <- err
+	}()
+
+	select {
+	case err := <-done:
+		require.ErrorIs(t, err, paths.ErrNotRegular, "a FIFO is no rollout")
 	case <-time.After(5 * time.Second):
 		require.Fail(t, "reading a FIFO hung")
 	}

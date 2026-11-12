@@ -57,7 +57,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/worktrees"
 )
 
-// Build metadata, injected at build time via -ldflags (see magefiles/app.go).
+// Build metadata, injected at build time via -ldflags (see magefiles/bundle.go).
 //
 //nolint:gochecknoglobals // set by the linker
 var (

@@ -7,6 +7,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/mrz1836/nilbox/internal/scriptrun"
 )
 
 // CheckState is how one check came out of a checks run.
@@ -59,7 +61,7 @@ type totals struct {
 
 // checksOutput is what a checks run's output said, as a checksReader read it.
 type checksOutput struct {
-	notes
+	scriptrun.Notes
 
 	// checks are the checks it named, in the order it first named them.
 	checks []CheckResult
@@ -152,19 +154,22 @@ const (
 	// maxReport caps the JSON report a run with --json prints, which holds every failed
 	// check's whole output.
 	maxReport = 8 << 20
+
+	// maxDetail caps the lines a check's detail keeps.
+	maxDetail = 40
 )
 
-// checksReader reads go-pre-commit run's output as it arrives (see lineReader). It knows
-// 1.13.1's lines, recorded in testdata/go-pre-commit-1.13.1, and, for a run with --json
-// (1.14.1 and later), the JSON report it prints last on stdout, which then gives the
-// checks and the totals.
+// checksReader reads go-pre-commit run's output as it arrives (see scriptrun.LineWriter).
+// It knows 1.13.1's lines, recorded in testdata/go-pre-commit-1.13.1, and, for a run with
+// --json (1.14.1 and later), the JSON report it prints last on stdout, which then gives
+// the checks and the totals.
 //
 // The app's log holds stdout and stderr in the order the run wrote them, so a failed
 // check's error lines follow its "✗ <check> failed" line. The recordings, taken through two
 // pipes, hold them out of that order: an error or a detail the reader can't place goes to
 // the one failed check that has none, or else to the lines it didn't recognize.
 type checksReader struct {
-	lineReader
+	*scriptrun.LineWriter
 
 	out checksOutput
 
@@ -193,7 +198,7 @@ type checksReader struct {
 // --json.
 func newChecksReader(withJSON bool) *checksReader {
 	r := &checksReader{json: withJSON, current: -1}
-	r.read = r.readLine
+	r.LineWriter = scriptrun.NewLineWriter(r.readLine)
 
 	return r
 }
@@ -254,7 +259,7 @@ func (r *checksReader) readRun(line string) bool {
 	}
 
 	if m := chkInstalling.FindStringSubmatch(line); m != nil {
-		r.out.installs = keepNote(r.out.installs, m[1])
+		r.out.installs = scriptrun.KeepNote(r.out.installs, m[1])
 
 		return true
 	}
@@ -341,11 +346,11 @@ func (r *checksReader) readOwn(line string) bool {
 	case line == disabledLine:
 		r.out.disabled = true
 	case strings.HasPrefix(line, "Error: "):
-		r.out.errors = keepNote(r.out.errors, strings.TrimPrefix(line, "Error: "))
+		r.out.errors = scriptrun.KeepNote(r.out.errors, strings.TrimPrefix(line, "Error: "))
 	case strings.HasPrefix(line, "✗ "):
-		r.out.errors = keepNote(r.out.errors, strings.TrimPrefix(line, "✗ "))
+		r.out.errors = scriptrun.KeepNote(r.out.errors, strings.TrimPrefix(line, "✗ "))
 	case strings.HasPrefix(line, "⚠ "):
-		r.out.warn(strings.TrimPrefix(line, "⚠ "))
+		r.out.Warn(strings.TrimPrefix(line, "⚠ "))
 	default:
 		return false
 	}
@@ -369,9 +374,9 @@ func (r *checksReader) readDetail(line string) {
 			c.Detail = append(c.Detail, text)
 		}
 	case r.sect == sectionResults || r.sect == sectionErrors:
-		r.looseDetail = keepNote(r.looseDetail, text)
+		r.looseDetail = scriptrun.KeepNote(r.looseDetail, text)
 	default:
-		r.out.unknown(line)
+		r.out.Unknown(line)
 	}
 }
 
@@ -384,7 +389,7 @@ func (r *checksReader) placeError(text string) {
 	}
 
 	if r.current < 0 {
-		r.looseErrors = keepNote(r.looseErrors, text)
+		r.looseErrors = scriptrun.KeepNote(r.looseErrors, text)
 	}
 }
 
@@ -398,7 +403,7 @@ func (r *checksReader) placeSuggestion(text string) {
 	}
 
 	if r.current < 0 {
-		r.looseSuggestions = keepNote(r.looseSuggestions, text)
+		r.looseSuggestions = scriptrun.KeepNote(r.looseSuggestions, text)
 	}
 }
 
@@ -432,8 +437,8 @@ func (r *checksReader) settle(i int, state CheckState, duration string) {
 // lines placed where they can be, and the JSON report's checks and totals when it was
 // read.
 func (r *checksReader) snapshot() checksOutput {
-	r.mu.Lock()
-	defer r.mu.Unlock()
+	r.Lock()
+	defer r.Unlock()
 
 	out := r.out
 	out.checks = make([]CheckResult, 0, len(r.out.checks))
@@ -446,8 +451,8 @@ func (r *checksReader) snapshot() checksOutput {
 
 	out.installs = slices.Clone(out.installs)
 	out.errors = slices.Clone(out.errors)
-	out.warnings = slices.Clone(out.warnings)
-	out.unrecognized = slices.Clone(out.unrecognized)
+	out.Warnings = slices.Clone(out.Warnings)
+	out.Unrecognized = slices.Clone(out.Unrecognized)
 
 	if !out.fromJSON {
 		r.placeLoose(&out)
@@ -463,7 +468,7 @@ func (r *checksReader) snapshot() checksOutput {
 func (r *checksReader) placeLoose(out *checksOutput) {
 	keep := func(lines []string) {
 		for _, l := range lines {
-			out.unknown(l)
+			out.Unknown(l)
 		}
 	}
 
@@ -530,7 +535,7 @@ func (r *checksReader) readReport(line string) bool {
 
 	if !r.applyReport(strings.Join(r.report, "\n")) {
 		for _, l := range r.report {
-			r.out.unknown(l)
+			r.out.Unknown(l)
 		}
 	}
 
@@ -576,7 +581,7 @@ func (r *checksReader) applyReport(text string) bool {
 	}
 
 	if rep.Error != nil {
-		r.out.errors = keepNote(r.out.errors, rep.Error.Message)
+		r.out.errors = scriptrun.KeepNote(r.out.errors, rep.Error.Message)
 
 		return true
 	}
@@ -602,8 +607,8 @@ func (r *checksReader) applyReport(text string) bool {
 	}
 
 	for _, w := range rep.Warnings {
-		if !slices.Contains(o.warnings, w) {
-			o.warn(w)
+		if !slices.Contains(o.Warnings, w) {
+			o.Warn(w)
 		}
 	}
 

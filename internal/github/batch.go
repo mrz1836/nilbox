@@ -1,11 +1,15 @@
 package github
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"strconv"
 	"unicode/utf8"
+
+	"golang.org/x/sync/errgroup"
 
 	"github.com/mrz1836/nilbox/internal/repo"
 )
@@ -14,6 +18,44 @@ import (
 // written as JSON, its bad bytes would become U+FFFD, and the query would ask about some
 // other value.
 var errNotUTF8 = errors.New("not valid UTF-8")
+
+// fanOut sends each of reqs with send, side by side, at most limit at a time, and merges
+// their answers in reqs' order, so a later request's answer under a key wins. The first
+// request to fail stops the rest and fails the call. The merged answer is never nil.
+func fanOut[R, T any](
+	ctx context.Context, reqs []R, limit int, send func(ctx context.Context, req R) (map[string]T, error),
+) (map[string]T, error) {
+	answers := make([]map[string]T, len(reqs))
+
+	g, gctx := errgroup.WithContext(ctx)
+	g.SetLimit(limit)
+
+	for i, req := range reqs {
+		g.Go(func() error {
+			var err error
+
+			answers[i], err = send(gctx, req)
+
+			return err
+		})
+	}
+
+	if err := g.Wait(); err != nil {
+		return nil, err
+	}
+
+	size := 0
+	for _, answer := range answers {
+		size += len(answer)
+	}
+
+	out := make(map[string]T, size)
+	for _, answer := range answers {
+		maps.Copy(out, answer)
+	}
+
+	return out, nil
+}
 
 // batchAlias is the alias of the i-th field of a batched query: prefix, then i, as in r0.
 // Each query names its prefix once, in a constant that both the query and the reading of

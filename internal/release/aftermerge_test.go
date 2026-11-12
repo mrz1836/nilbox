@@ -89,7 +89,7 @@ const sdkName = "sdk"
 
 // usableMagex is a copy of magex Release can run.
 func usableMagex() ToolFacts {
-	return ToolFacts{Path: "/opt/tools/magex", Version: "1.30.2", State: integrations.StateFound}
+	return ToolFacts{CopyFacts: integrations.CopyFacts{Path: "/opt/tools/magex", Version: "1.30.2", State: integrations.StateFound}}
 }
 
 // mergeRig is a Service that answers OfferAfterMerge over a real clone root, ~/projects,

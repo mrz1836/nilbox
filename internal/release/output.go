@@ -10,7 +10,6 @@ import (
 	"unicode"
 
 	"github.com/mrz1836/nilbox/internal/scriptrun"
-	"github.com/mrz1836/nilbox/internal/textutil"
 )
 
 // Step is a step of a release, as the sheet lists them. The names avoid git's own verbs,
@@ -52,15 +51,9 @@ func (s Step) rank() int {
 	return slices.Index(stepOrder(), s) + 1
 }
 
-const (
-	// maxOutputNotes caps the warning lines and logged errors an Output keeps: the first
-	// ones.
-	maxOutputNotes = 200
-
-	// maxOutputErrors caps the error lines an Output keeps: the last ones, since a run
-	// ends with the one that stopped it.
-	maxOutputErrors = 20
-)
+// maxOutputErrors caps the error lines an Output keeps: the last ones, since a run ends
+// with the one that stopped it.
+const maxOutputErrors = 20
 
 // BumpResult is the outcome magex 1.30.1 and later print with json=true: one JSON object on
 // a line of its own, the last line of stdout, on success and on failure. A step the run
@@ -99,6 +92,10 @@ type BumpResult struct {
 // Output is what a release's output said, as an OutputReader read it: a value that
 // shares nothing with the reader, safe to keep while it goes on reading.
 type Output struct {
+	// Notes hold magex's WARN lines, as plain text, as Warnings, and the lines the reader
+	// didn't recognize, each list with scriptrun's caps.
+	scriptrun.Notes
+
 	// Step is the last step magex reached, or "" before the first.
 	Step Step `json:"step"`
 
@@ -149,15 +146,12 @@ type Output struct {
 	// Canceled reports magex's line saying a signal stopped it.
 	Canceled bool `json:"canceled"`
 
-	// Warnings are magex's WARN lines, as plain text: the first maxOutputNotes.
-	Warnings []string `json:"warnings"`
-
 	// Errors are the messages of magex's ❌ Error: lines, the last maxOutputErrors, each
 	// with the lines magex continues it on, joined by newlines.
 	Errors []string `json:"errors"`
 
 	// LoggedErrors are magex's ERROR and FATAL lines, as plain text: the first
-	// maxOutputNotes.
+	// scriptrun.MaxNotes.
 	LoggedErrors []string `json:"loggedErrors"`
 
 	// Signing is git's line saying it couldn't sign the tag, or "".
@@ -178,11 +172,6 @@ type Output struct {
 	// pre-push hook's own, when one stopped it.
 	PushRefsFailed bool   `json:"pushRefsFailed"`
 	HookLine       string `json:"hookLine"`
-
-	// Unrecognized are the lines the reader didn't recognize, the first
-	// scriptrun.MaxUnrecognized of them, and UnrecognizedCount counts them all.
-	Unrecognized      []string `json:"unrecognized"`
-	UnrecognizedCount int      `json:"unrecognizedCount"`
 
 	// Result is the JSON result of a run with json=true, or nil.
 	Result *BumpResult `json:"result"`
@@ -240,19 +229,20 @@ func cloneOutputLines(lines []string) []string {
 }
 
 // OutputReader reads magex version:bump's output as it arrives: an io.Writer for a run's
-// Spec.Output, fed the log's bytes in order and split anywhere. It reads whole lines,
-// ended by \r\n or \n, a bare \r overwriting the line as a terminal does, and color
-// escapes removed. Snapshot returns what it has read, and is safe to call while it reads.
+// Spec.Output, fed the log's bytes in order and split anywhere (scriptrun.LineWriter). It
+// reads whole lines, ended by \r\n or \n, a bare \r overwriting the line as a terminal
+// does, and color escapes removed. Snapshot returns what it has read, and is safe to call
+// while it reads. The zero value is ready, as NewOutputReader's is.
 //
 // A line it doesn't recognize leaves the step as it was and is kept for the result. It
 // knows the lines of magex 1.29.5 and 1.30.2, recorded in testdata/magex-1.29.5 and
 // testdata/magex-1.30.2, ff-only's among them, and the JSON result that json=true adds
 // from 1.30.1.
 type OutputReader struct {
-	mu sync.Mutex
-
-	// lines cuts the output into the lines read reads.
-	lines textutil.LineSplitter
+	// lines hands r.read each whole line under its lock, which every method takes. It is
+	// made on first use (writer), so the zero value is ready.
+	linesOnce sync.Once
+	lines     *scriptrun.LineWriter
 
 	out Output
 
@@ -273,30 +263,39 @@ func NewOutputReader() *OutputReader {
 
 // Write reads p, the next part of the output. It never fails.
 func (r *OutputReader) Write(p []byte) (int, error) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
-	r.lines.Write(p, r.read)
-
-	return len(p), nil
+	return r.writer().Write(p)
 }
 
 // Flush reads the last line when the output ended without a newline. Call it once the
 // output has ended.
 func (r *OutputReader) Flush() {
-	r.mu.Lock()
-	defer r.mu.Unlock()
+	r.writer().Flush()
+}
 
-	r.lines.Flush(r.read)
+// Lock takes the lock no line is read without, so what the reader kept can be read.
+func (r *OutputReader) Lock() {
+	r.writer().Lock()
+}
+
+// Unlock lets the lock go.
+func (r *OutputReader) Unlock() {
+	r.writer().Unlock()
 }
 
 // Snapshot returns what the reader has read so far. A line still missing its newline is
 // read by Flush, not here.
 func (r *OutputReader) Snapshot() Output {
-	r.mu.Lock()
-	defer r.mu.Unlock()
+	r.Lock()
+	defer r.Unlock()
 
 	return r.out.clone()
+}
+
+// writer returns the LineWriter that hands r each line, made on first use.
+func (r *OutputReader) writer() *scriptrun.LineWriter {
+	r.linesOnce.Do(func() { r.lines = scriptrun.NewLineWriter(r.read) })
+
+	return r.lines
 }
 
 // plainOutputText returns a magex message without the indentation, emoji, or bullet it
@@ -343,7 +342,7 @@ func (r *OutputReader) read(line string) {
 		r.out.HookLine = strings.TrimSpace(line)
 	}
 
-	r.unrecognized(line)
+	r.out.Unknown(line)
 }
 
 // readKnown reads a line the reader knows, reporting whether it is one: the JSON result,
@@ -356,14 +355,6 @@ func (r *OutputReader) readKnown(line string, continues bool) bool {
 		(r.inCommits && mxCommit.MatchString(line)) ||
 		mxHeader.MatchString(line) ||
 		r.readGit(line)
-}
-
-// unrecognized keeps a line the reader didn't recognize.
-func (r *OutputReader) unrecognized(line string) {
-	r.out.UnrecognizedCount++
-	if len(r.out.Unrecognized) < scriptrun.MaxUnrecognized {
-		r.out.Unrecognized = append(r.out.Unrecognized, line)
-	}
 }
 
 // reach records that magex reached step, which ends the step under way when it is that
@@ -445,7 +436,7 @@ func (r *OutputReader) readLogLine(line string) bool {
 	r.inCommits = false
 
 	if !r.readLevel(m[1], plainOutputText(m[2])) {
-		r.unrecognized(line)
+		r.out.Unknown(line)
 	}
 
 	return true
@@ -476,8 +467,8 @@ func (r *OutputReader) readLevel(level, text string) bool {
 
 // logError keeps an ERROR or FATAL line's text.
 func (r *OutputReader) logError(text string) {
-	if text != "" && len(r.out.LoggedErrors) < maxOutputNotes {
-		r.out.LoggedErrors = append(r.out.LoggedErrors, text)
+	if text != "" {
+		r.out.LoggedErrors = scriptrun.KeepNote(r.out.LoggedErrors, text)
 	}
 }
 
@@ -491,9 +482,7 @@ func (r *OutputReader) readWarning(text string) {
 		return
 	}
 
-	if len(r.out.Warnings) < maxOutputNotes {
-		r.out.Warnings = append(r.out.Warnings, text)
-	}
+	r.out.Warn(text)
 
 	if mxPushSkipped.MatchString(text) {
 		r.out.PushSkipped = true

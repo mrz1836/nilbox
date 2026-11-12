@@ -101,7 +101,7 @@ func (s *rawServer) next(t *testing.T) clientFrame {
 
 		return f
 	case <-time.After(5 * time.Second):
-		t.Fatal("the client sent nothing")
+		require.FailNow(t, "the client sent nothing")
 
 		return clientFrame{}
 	}

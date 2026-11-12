@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"strconv"
 	"strings"
 
 	"github.com/mrz1836/nilbox/internal/event"
@@ -13,6 +12,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/integrationprefs"
 	"github.com/mrz1836/nilbox/internal/paths"
 	"github.com/mrz1836/nilbox/internal/prefs"
+	"github.com/mrz1836/nilbox/internal/prefs/prefval"
 	"github.com/mrz1836/nilbox/internal/uierr"
 )
 
@@ -82,7 +82,7 @@ func (s *Service) SetRunsIn(ctx context.Context, place integrationprefs.RunsIn) 
 // release its repository, and returns the settings with it. Nothing else hears of it: the
 // review sheet asks Release whether to offer as each merge lands.
 func (s *Service) SetOfferAfterMerge(ctx context.Context, on bool) (Settings, error) {
-	return s.save(ctx, setting(integrationprefs.KeyOfferAfterMerge, integrationprefs.EncodeOfferAfterMerge(on)))
+	return s.save(ctx, setting(integrationprefs.KeyOfferAfterMerge, prefval.EncodeBool(on)))
 }
 
 // SetScriptSources stores which sources Repo scripts lists besides the user's own scripts,
@@ -91,11 +91,11 @@ func (s *Service) SetOfferAfterMerge(ctx context.Context, on bool) (Settings, er
 // scripts reads the setting as it lists a repository's scripts.
 func (s *Service) SetScriptSources(ctx context.Context, magexTargets, repoFiles bool) (Settings, error) {
 	return s.save(ctx, func(ctx context.Context, p *prefs.Store) error {
-		if err := p.Set(ctx, integrationprefs.KeyMagexTargets, integrationprefs.EncodeOn(magexTargets)); err != nil {
+		if err := p.Set(ctx, integrationprefs.KeyMagexTargets, prefval.EncodeBool(magexTargets)); err != nil {
 			return err
 		}
 
-		return p.Set(ctx, integrationprefs.KeyRepoFiles, integrationprefs.EncodeOn(repoFiles))
+		return p.Set(ctx, integrationprefs.KeyRepoFiles, prefval.EncodeBool(repoFiles))
 	})
 }
 
@@ -103,7 +103,7 @@ func (s *Service) SetScriptSources(ctx context.Context, magexTargets, repoFiles 
 // first appeared because a tool was found, and returns the settings with it, so the toast
 // shows once rather than at every start. Nothing else hears of it.
 func (s *Service) SetIntegrationsAnnounced(ctx context.Context, announced bool) (Settings, error) {
-	return s.save(ctx, setting(integrationprefs.KeyAnnounced, strconv.FormatBool(announced)))
+	return s.save(ctx, setting(integrationprefs.KeyAnnounced, prefval.EncodeBool(announced)))
 }
 
 // SetScriptsLastPage stores the Scripts tab's page shown last, which the tab reopens on,
@@ -162,7 +162,7 @@ func (s *Service) SetScriptsSectionOpen(ctx context.Context, section integration
 // and returns the settings with it. Nothing else hears of it: the page reads the setting
 // as a run starts.
 func (s *Service) SetShowRuns(ctx context.Context, on bool) (Settings, error) {
-	return s.save(ctx, setting(integrationprefs.KeyShowRuns, strconv.FormatBool(on)))
+	return s.save(ctx, setting(integrationprefs.KeyShowRuns, prefval.EncodeBool(on)))
 }
 
 // toolPath expands a ~ in path and checks that it names an executable file, worded for

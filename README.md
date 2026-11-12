@@ -298,7 +298,7 @@ magex targets, and commands of your own.
 Everything Nilbox does, grouped by what you're doing. Expand any feature for the details; each
 links to its full write-up in the [Desktop Guide](docs/desktop.md).
 
-### Your inbox
+### <code>Your inbox</code>
 
 <details>
 <summary>📥 <strong>One inbox, every repository</strong>: Review requested, Authored, and Assigned, across everything your account can see</summary>
@@ -425,7 +425,7 @@ More in [The item menu and edits on GitHub](docs/desktop.md#the-item-menu-and-ed
 
 </details>
 
-### Review and merge
+### <code>Review and merge</code>
 
 <details>
 <summary>🔍 <strong>The review sheet</strong>: a pull request's files, diff, checks, and reviews in one panel, with one button for the action that fits</summary>
@@ -494,7 +494,7 @@ More in [Reviewing a pull request](docs/desktop.md#reviewing-a-pull-request) and
 
 </details>
 
-### Coding agents
+### <code>Coding agents</code>
 
 <details>
 <summary>▶️ <strong>One-click launch</strong>: Claude Code or OpenAI Codex in iTerm2 or Terminal.app, in the item's own worktree, with your prompt loaded</summary>
@@ -636,7 +636,7 @@ More in [Outside contributors](docs/desktop.md#outside-contributors) and
 
 </details>
 
-### Your clones
+### <code>Your clones</code>
 
 The **Scripts** tab, with Release, Hooks, Repo scripts, and Runs, appears while mage-x or
 go-pre-commit is on in **Settings → Integrations**, or while you turn Scripts on there.
@@ -830,7 +830,7 @@ More in [Tools the app finds and installs](docs/desktop.md#tools-the-app-finds-a
 
 </details>
 
-### The app
+### <code>The app</code>
 
 <details>
 <summary>🔔 <strong>Menu bar and notifications</strong>: a live count, sessions waiting for you, native banners, and a history of the last 200</summary>

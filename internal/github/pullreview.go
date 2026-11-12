@@ -35,7 +35,6 @@ fragment ReviewFields on PullRequest {
   reviewBodies: latestReviews(first: 50) {
     nodes { state body url submittedAt author { login } commit { oid } }
   }
-  firstCommit: commits(first: 1) { nodes { commit { message } } }
   checkList: statusCheckRollup {
     contexts(first: 100) {
       nodes {
@@ -142,9 +141,6 @@ type PullReview struct {
 
 	// Reviews are each reviewer's latest review, in GitHub's order.
 	Reviews []Review
-
-	// FirstCommitMessage is the first commit's message, "" when GitHub did not say.
-	FirstCommitMessage string
 
 	// Checks are the head commit's checks and statuses, the first 100.
 	Checks []Check
@@ -356,13 +352,6 @@ type reviewNode struct {
 			Commit      *graphQLCommit `json:"commit"`
 		} `json:"nodes"`
 	} `json:"reviewBodies"`
-	FirstCommit struct {
-		Nodes []*struct {
-			Commit *struct {
-				Message string `json:"message"`
-			} `json:"commit"`
-		} `json:"nodes"`
-	} `json:"firstCommit"`
 	CheckList *struct {
 		Contexts struct {
 			Nodes []*graphQLCheck `json:"nodes"`
@@ -419,7 +408,6 @@ func (n *reviewNode) fill(r *PullReview) {
 	r.PendingReviews = max(n.PendingReviews.TotalCount, 0)
 	r.AutoMerge = n.AutoMergeRequest.autoMerge()
 	r.Reviews = n.reviews()
-	r.FirstCommitMessage = n.firstCommitMessage()
 	r.Checks = n.checks()
 
 	if v := n.ViewerLatestReview; v != nil {
@@ -444,17 +432,6 @@ func (n *reviewNode) reviews() []Review {
 	}
 
 	return out
-}
-
-// firstCommitMessage is the first commit's message, or "".
-func (n *reviewNode) firstCommitMessage() string {
-	for _, c := range n.FirstCommit.Nodes {
-		if c != nil && c.Commit != nil {
-			return c.Commit.Message
-		}
-	}
-
-	return ""
 }
 
 // checks converts the head commit's checks, skipping nulls and other nodes.

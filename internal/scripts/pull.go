@@ -7,7 +7,6 @@ import (
 	"maps"
 	"slices"
 	"strings"
-	"sync"
 
 	"github.com/mrz1836/nilbox/internal/execpath"
 	"github.com/mrz1836/nilbox/internal/gitread"
@@ -111,15 +110,26 @@ func (s *Service) pullsOff(ctx context.Context) error {
 // whole run, and its Finish reading what the pull did.
 func (s *Service) pullSpec(c clone, branch string) scriptrun.Spec {
 	run := &pullRun{c: c, intent: PullIntent{Branch: branch}}
-	out := &pullOutput{}
 
 	// The intent is recorded once Before has run, so it holds what Before read too.
 	return scriptrun.Spec{
 		Kind: scriptrun.KindPull, Title: "Pull " + branch, Source: "git", Repo: c.name, Dir: c.dir,
-		RunsIn: scriptrun.RunsInApp, Intent: &run.intent, Output: out,
-		Progress:  pullProgress,
+		RunsIn: scriptrun.RunsInApp, Intent: &run.intent, Callbacks: s.pullCallbacks(run),
 		Before:    func(ctx context.Context) ([]string, error) { return s.beforePull(ctx, run) },
 		BeforeEnv: func() []string { return run.env },
+	}
+}
+
+// pullCallbacks are the callbacks of run, a pull, built alike for the run pullSpec starts
+// and for one from before the app restarted, which the Verifier picks up: git's output
+// read for its last error line, Stop held back for its whole run (pullProgress), and a
+// Finish that reads what the pull did (finishPull).
+func (s *Service) pullCallbacks(run *pullRun) scriptrun.Callbacks {
+	out := newPullOutput()
+
+	return scriptrun.Callbacks{
+		Output:   out,
+		Progress: pullProgress,
 		Finish: func(ctx context.Context, end scriptrun.Ending, engine scriptrun.Outcome) scriptrun.Outcome {
 			return s.finishPull(ctx, run, out, end, engine)
 		},
@@ -377,19 +387,10 @@ func (s *Service) pulled(ctx context.Context, run *pullRun, after string) string
 	text := "Updated " + run.intent.Branch + " from " + short(run.intent.Before) + " to " + short(after)
 
 	if n, err := s.branchGit.CommitsBetween(ctx, run.c.dir, run.intent.Before, after); err == nil {
-		text += fmt.Sprintf(", %d new commit%s", n, plural(n))
+		text += ", " + textutil.Counted(n, "new commit", "new commits")
 	}
 
 	return text + "."
-}
-
-// plural is the "s" a count other than one takes.
-func plural(n int) string {
-	if n == 1 {
-		return ""
-	}
-
-	return "s"
 }
 
 // pullArgs is git's pull of origin's branch upstream into the branch the clone is on, the
@@ -454,43 +455,34 @@ func (v Verifier) Verify(rec scriptrun.Record) scriptrun.Verification {
 		return scriptrun.Verification{}
 	}
 
-	var in PullIntent
-	if err := decodeIntent(rec.Result.Intent, &in); err != nil || !gitread.ValidBranch(in.Branch) || v.s.branchGit == nil {
+	in, err := scriptrun.Decode[PullIntent](rec.Result.Intent)
+	if err != nil || !gitread.ValidBranch(in.Branch) || v.s.branchGit == nil {
 		v.s.logger.Warn("a pull from before the app restarted can't be checked", "run", rec.ID)
 
-		return scriptrun.Verification{Progress: pullProgress}
+		return scriptrun.Verification{Callbacks: scriptrun.Callbacks{Progress: pullProgress}}
 	}
 
 	run := &pullRun{c: clone{dir: rec.Dir, name: rec.Repo}, intent: in}
-	out := &pullOutput{}
 
-	return scriptrun.Verification{
-		Output:   out,
-		Progress: pullProgress,
-		Finish: func(ctx context.Context, end scriptrun.Ending, engine scriptrun.Outcome) scriptrun.Outcome {
-			return v.s.finishPull(ctx, run, out, end, engine)
-		},
-	}
+	return scriptrun.Verification{Callbacks: v.s.pullCallbacks(run)}
 }
 
 // pullOutput reads a pull's output for its last error line, git's last fatal or error
 // line, its prefix cut, or else its last line that isn't a hint. It is fed the log's bytes
-// in order, split anywhere.
+// in order, split anywhere (see scriptrun.LineWriter).
 type pullOutput struct {
-	mu    sync.Mutex
-	lines textutil.LineSplitter
-	said  string
-	last  string
+	*scriptrun.LineWriter
+
+	said string
+	last string
 }
 
-// Write reads p, the next part of the output. It never fails.
-func (o *pullOutput) Write(p []byte) (int, error) {
-	o.mu.Lock()
-	defer o.mu.Unlock()
+// newPullOutput returns a reader that has read nothing.
+func newPullOutput() *pullOutput {
+	o := &pullOutput{}
+	o.LineWriter = scriptrun.NewLineWriter(o.read)
 
-	o.lines.Write(p, o.read)
-
-	return len(p), nil
+	return o
 }
 
 // read reads one line.
@@ -509,10 +501,10 @@ func (o *pullOutput) read(line string) {
 
 // lastError returns git's last error line, once the output has ended, or "" for none.
 func (o *pullOutput) lastError() string {
-	o.mu.Lock()
-	defer o.mu.Unlock()
+	o.Flush()
 
-	o.lines.Flush(o.read)
+	o.Lock()
+	defer o.Unlock()
 
 	return cmp.Or(o.said, o.last)
 }

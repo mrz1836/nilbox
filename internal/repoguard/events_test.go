@@ -30,31 +30,27 @@ type registration struct {
 	name     string
 }
 
-// dirFiles parses the Go files of dir, whatever their build tags, leaving out tests.
-func dirFiles(t *testing.T, root, dir string) (*token.FileSet, []*ast.File) {
+// dirFiles returns the syntax of the Go files of dir, whatever their build tags, leaving
+// out tests, and the file set that positions it.
+func dirFiles(t *testing.T, dir string) (*token.FileSet, []*ast.File) {
 	t.Helper()
-
-	fset := token.NewFileSet()
 
 	var files []*ast.File
 
-	for _, rel := range goFiles(t, root) {
+	for _, rel := range goFiles(t) {
 		if filepath.ToSlash(filepath.Dir(rel)) != dir || strings.HasSuffix(rel, "_test.go") {
 			continue
 		}
 
-		src, ok := readText(t, root, rel)
+		_, file, ok := goSyntax(t, rel)
 		require.True(t, ok, rel)
-
-		file, err := parser.ParseFile(fset, rel, src, 0)
-		require.NoError(t, err, rel)
 
 		files = append(files, file)
 	}
 
 	require.NotEmpty(t, files, "%s has no Go files; update this guard", dir)
 
-	return fset, files
+	return repo(t).fset, files
 }
 
 // stringConstants returns the string constants files declare, by name.
@@ -315,17 +311,16 @@ func registrations(
 func TestEveryWindowEventIsRegistered(t *testing.T) {
 	t.Parallel()
 
-	root := moduleRoot(t)
-	eventPath := modulePath(t, root) + "/" + eventDir
+	eventPath := modulePath(t, moduleRoot(t)) + "/" + eventDir
 
-	_, eventFiles := dirFiles(t, root, eventDir)
+	_, eventFiles := dirFiles(t, eventDir)
 	constants := stringConstants(eventFiles)
 
 	want, problems := windowEvents(eventFiles, constants)
 	require.Empty(t, problems)
 	require.NotEmpty(t, want, "%s declares no window events; update this guard", eventDir)
 
-	fset, cmdFiles := dirFiles(t, root, "cmd/"+brand.Slug)
+	fset, cmdFiles := dirFiles(t, "cmd/"+brand.Slug)
 
 	got, problems := registrations(fset, cmdFiles, eventPath, constants)
 	assert.Empty(t, problems, "register each event as RegisterEvent[event.Type](event.Name), "+
@@ -338,7 +333,7 @@ func TestEveryWindowEventIsRegistered(t *testing.T) {
 func TestWindowEventsListsEveryWindowEvent(t *testing.T) {
 	t.Parallel()
 
-	_, eventFiles := dirFiles(t, moduleRoot(t), eventDir)
+	_, eventFiles := dirFiles(t, eventDir)
 
 	want, problems := windowEvents(eventFiles, stringConstants(eventFiles))
 	require.Empty(t, problems)

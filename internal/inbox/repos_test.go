@@ -59,10 +59,7 @@ func TestRepoCountsWithNoRepositories(t *testing.T) {
 func TestRepoCountsReportsAnUnreadableDatabase(t *testing.T) {
 	t.Parallel()
 
-	db := testutil.DB(t)
-	require.NoError(t, db.Close())
-
-	_, err := NewStore(db, nil).RepoCounts(t.Context())
+	_, err := NewStore(testutil.ClosedDB(t), nil).RepoCounts(t.Context())
 	require.ErrorContains(t, err, "count the items of each repository")
 }
 

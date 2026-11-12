@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/mrz1836/nilbox/internal/scriptrun"
 	"github.com/mrz1836/nilbox/internal/uierr"
 )
 
@@ -42,7 +43,7 @@ func TestOpenTerminalOpensOnlyAClonesFolder(t *testing.T) {
 	svc := NewService(Config{GitHub: &fakeGitHub{}, Clones: clones, Home: "/Users/example", Terminal: folders})
 
 	require.NoError(t, svc.OpenTerminal(t.Context(), "acme-org/sdk", "~/projects/sdk"))
-	assert.Equal(t, []string{terminalScript + " /Users/example/projects/sdk"}, folders.opened, "nothing is run there")
+	assert.Equal(t, []string{scriptrun.FolderScript + " /Users/example/projects/sdk"}, folders.opened, "nothing is run there")
 
 	err := svc.OpenTerminal(t.Context(), "acme-org/web", "")
 	require.ErrorIs(t, err, ErrNoClone, "only a clone of the repository opens")
@@ -60,6 +61,6 @@ func TestOpenTerminalOpensOnlyAClonesFolder(t *testing.T) {
 
 	bare := NewService(Config{GitHub: &fakeGitHub{}, Clones: clones, Home: "/Users/example"})
 	err = bare.OpenTerminal(t.Context(), "acme-org/sdk", "")
-	require.ErrorIs(t, err, ErrNoTerminal)
+	require.ErrorIs(t, err, scriptrun.ErrNoFolderTerminal)
 	assert.Equal(t, "Your terminal can't be opened here.", uierr.Message(err))
 }

@@ -87,15 +87,9 @@ func (s *Store) All(ctx context.Context) ([]Prompt, error) {
 		return nil, fmt.Errorf("read the prompts: %w", err)
 	}
 
-	out := make([]Prompt, 0, len(rows))
-
-	for _, row := range rows {
-		p, decodeErr := fromRow(row)
-		if decodeErr != nil {
-			return nil, fmt.Errorf("read the prompts: %w", decodeErr)
-		}
-
-		out = append(out, p)
+	out, err := store.ConvertRows(rows, fromRow)
+	if err != nil {
+		return nil, fmt.Errorf("read the prompts: %w", err)
 	}
 
 	return out, nil

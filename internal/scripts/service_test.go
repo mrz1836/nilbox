@@ -1,6 +1,8 @@
 package scripts
 
 import (
+	"context"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -9,6 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/mrz1836/nilbox/internal/integrations"
+	"github.com/mrz1836/nilbox/internal/paths"
 	"github.com/mrz1836/nilbox/internal/testutil"
 	"github.com/mrz1836/nilbox/internal/uierr"
 )
@@ -140,7 +143,7 @@ func TestListWithoutMagex(t *testing.T) {
 
 	r := newRig(t)
 	dir := r.thisRepo()
-	r.tools.set(ToolFacts{State: integrations.StateMissing})
+	r.tools.set(ToolFacts{CopyFacts: integrations.CopyFacts{State: integrations.StateMissing}})
 	r.tools.on(false, true) // go-pre-commit keeps the scripts on
 
 	magex := r.list(dir).Sections[3]
@@ -199,6 +202,35 @@ func TestListRefusesAFolderOutsideTheCloneRoot(t *testing.T) {
 	_, err := r.svc.List(t.Context(), t.TempDir(), false)
 	require.ErrorIs(t, err, ErrNoClone)
 	assert.Contains(t, uierr.Message(err), "isn't a clone in ~/projects.")
+}
+
+func TestListRefusesAFolderItCantRead(t *testing.T) {
+	t.Parallel()
+
+	r := newRig(t)
+
+	_, err := r.svc.List(t.Context(), "relative/dir", false)
+	require.ErrorIs(t, err, ErrInvalidRequest)
+	require.ErrorIs(t, err, paths.ErrRelative)
+	require.ErrorContains(t, err, `invalid scripts request: the folder "relative/dir": `)
+
+	s := NewService(Config{Clones: &failingRoot{}, Home: r.home})
+
+	_, err = s.List(t.Context(), "~/projects/api", false)
+	require.ErrorIs(t, err, os.ErrPermission)
+	require.EqualError(t, err, "read the clone root: "+os.ErrPermission.Error())
+
+	_, err = s.Repos(t.Context())
+	require.ErrorIs(t, err, os.ErrPermission)
+}
+
+// failingRoot is a Clones whose clone root can't be read.
+type failingRoot struct {
+	fakeClones
+}
+
+func (*failingRoot) Root(context.Context) (string, error) {
+	return "", os.ErrPermission
 }
 
 func TestRepos(t *testing.T) {

@@ -3,7 +3,8 @@
 //
 // Each tool is a Definition. Detection looks for it on the user's login shell's PATH
 // (shellenv), then in the well-known tool folders and go install's, runs each copy's
-// --version with the tool's quiet environment, and works out where each came from. It
+// --version with the environment every run of the tool gets (Definition.RunEnv: the
+// shell's, quiet, and with git's prompts off), and works out where each came from. It
 // runs after the window's first paint, never on the cold start, and its result is kept
 // in tools.<id>.seen, which List serves at once, marked as checking, until this run's
 // detection finishes. The latest releases come from one GitHub query a day, kept in
@@ -295,7 +296,7 @@ func (s *Service) CheckAgain(ctx context.Context) (Tools, error) {
 	go func() {
 		defer close(checked)
 
-		_ = s.checkUpdates(ctx, recheckAfter) // a failed check is logged, and keeps the last answer
+		s.checkUpdatesLogged(ctx, recheckAfter) // a failed check keeps the last answer
 	}()
 
 	_ = s.env.Read(ctx) // a failed read is logged, and keeps the last good environment
@@ -461,9 +462,42 @@ func (s *Service) keep(ctx context.Context, got map[string]detection, now time.T
 	return found, nil
 }
 
+// checkUpdatesLogged is checkUpdates for a caller that goes on without its answer, as
+// every caller does: a failure keeps the last answer, so the next look tries again, and is
+// logged here, once, unless ctx ended: GitHub not answering (offline, signed out) as
+// information, with GitHub's own error, and the preferences failing as a warning.
+func (s *Service) checkUpdatesLogged(ctx context.Context, maxAge time.Duration) {
+	err := s.checkUpdates(ctx, maxAge)
+	unanswered, fromGitHub := errors.AsType[*updateCheckError](err)
+
+	switch {
+	case err == nil || ctx.Err() != nil:
+	case fromGitHub:
+		s.logger.InfoContext(ctx, "couldn't check the tools for updates", "error", unanswered.err)
+	default:
+		s.logger.WarnContext(ctx, "couldn't check the tools for updates", "error", err)
+	}
+}
+
+// updateCheckError is a check for updates that GitHub didn't answer; err is GitHub's
+// error.
+type updateCheckError struct {
+	err error
+}
+
+// Error says the check failed, and why.
+func (e *updateCheckError) Error() string {
+	return "check for updates: " + e.err.Error()
+}
+
+// Unwrap returns GitHub's error.
+func (e *updateCheckError) Unwrap() error {
+	return e.err
+}
+
 // checkUpdates looks up every tool's latest release and keeps it, unless every tool was
-// checked within maxAge. A failure is logged and keeps the last answer, so the next look
-// tries again.
+// checked within maxAge. A failure keeps the last answer, logs nothing, and is returned:
+// one that GitHub's answer caused is an *updateCheckError.
 func (s *Service) checkUpdates(ctx context.Context, maxAge time.Duration) error {
 	if s.releases == nil {
 		return nil
@@ -499,11 +533,7 @@ func (s *Service) checkUpdates(ctx context.Context, maxAge time.Duration) error 
 	s.mu.Unlock()
 
 	if err != nil {
-		if ctx.Err() == nil {
-			s.logger.InfoContext(ctx, "couldn't check the tools for updates", "error", err)
-		}
-
-		return fmt.Errorf("check for updates: %w", err)
+		return &updateCheckError{err: err}
 	}
 
 	if err = s.keepLatest(ctx, got, now); err != nil {
@@ -584,7 +614,7 @@ func (w *Worker) Run(ctx context.Context) {
 
 	w.detect(ctx)
 	w.s.cleanup()
-	_ = w.s.checkUpdates(ctx, updateEvery) // logged; the next tick tries again
+	w.s.checkUpdatesLogged(ctx, updateEvery) // the next tick tries again
 
 	ticker := time.NewTicker(w.tick)
 	defer ticker.Stop()
@@ -596,7 +626,7 @@ func (w *Worker) Run(ctx context.Context) {
 		case <-w.s.wake:
 			w.detect(ctx)
 		case <-ticker.C:
-			_ = w.s.checkUpdates(ctx, updateEvery) // logged; the next tick tries again
+			w.s.checkUpdatesLogged(ctx, updateEvery) // the next tick tries again
 		}
 	}
 }

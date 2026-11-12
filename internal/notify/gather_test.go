@@ -149,3 +149,31 @@ func TestStoppingAGatheringWaitsForABatchShowing(t *testing.T) {
 		assert.Equal(t, [][]Notification{{failedRow(1)}}, shown.all())
 	})
 }
+
+func TestStoppingAGatheringCutsShortABatchShowing(t *testing.T) {
+	t.Parallel()
+
+	synctest.Test(t, func(t *testing.T) {
+		showing := make(chan struct{})
+
+		var cut error
+
+		g := newGathering(func(ctx context.Context, _ []Notification) {
+			close(showing)
+
+			// A batch that would show on until its lifetime ends, as one reading the
+			// database or posting banners does.
+			<-ctx.Done()
+
+			cut = ctx.Err()
+		})
+
+		g.add(failedRow(1))
+		time.Sleep(GatherWindow)
+		<-showing
+
+		g.stop() // returns only once the batch has ended, which the stop itself brings
+
+		require.ErrorIs(t, cut, context.Canceled, "the stop ended the batch's lifetime")
+	})
+}

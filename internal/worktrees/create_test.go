@@ -2,6 +2,7 @@ package worktrees
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -47,16 +48,10 @@ func newRemoteFixture(t *testing.T, e *env) remoteFixture {
 
 	src := filepath.Join(e.home, "src")
 	testutil.InitRepo(t, src)
-	require.NoError(t, os.WriteFile(filepath.Join(src, "README.md"), []byte("example\n"), 0o600))
-	testutil.RunGit(t, src, "add", "README.md")
-	testutil.RunGit(t, src, "commit", "-q", "-m", "init")
-	main := strings.TrimSpace(testutil.RunGit(t, src, "rev-parse", "HEAD"))
+	main := testutil.Commit(t, src, "README.md", "example\n")
 
 	testutil.RunGit(t, src, "switch", "-q", "-c", "contributor-fix")
-	require.NoError(t, os.WriteFile(filepath.Join(src, "fix.txt"), []byte("fix\n"), 0o600))
-	testutil.RunGit(t, src, "add", "fix.txt")
-	testutil.RunGit(t, src, "commit", "-q", "-m", "fix")
-	prHead := strings.TrimSpace(testutil.RunGit(t, src, "rev-parse", "HEAD"))
+	prHead := testutil.Commit(t, src, "fix.txt", "fix\n")
 	testutil.RunGit(t, src, "switch", "-q", mainBranch)
 
 	bare := filepath.Join(e.home, "remote.git")
@@ -228,10 +223,7 @@ func TestEnsureAttachesALeftBehindBranch(t *testing.T) {
 	first, err := m.Ensure(t.Context(), f.request(item.KindPR, 7))
 	require.NoError(t, err)
 
-	require.NoError(t, os.WriteFile(filepath.Join(first.Path, "more.txt"), []byte("more\n"), 0o600))
-	testutil.RunGit(t, first.Path, "add", "more.txt")
-	testutil.RunGit(t, first.Path, "commit", "-q", "-m", "more")
-	work := strings.TrimSpace(testutil.RunGit(t, first.Path, "rev-parse", "HEAD"))
+	work := testutil.Commit(t, first.Path, "more.txt", "more\n")
 
 	// The worktree is removed outside the app; its branch stays.
 	testutil.RunGit(t, f.clone, "worktree", "remove", first.Path)
@@ -394,6 +386,8 @@ func TestEnsureChecksItsRequest(t *testing.T) {
 		"no number":            func(r *EnsureRequest) { r.Number = 0 },
 		"no repository":        func(r *EnsureRequest) { r.Owner = "" },
 		"an option":            func(r *EnsureRequest) { r.Remote = "--upload-pack=x" },
+		"a remote with ..":     func(r *EnsureRequest) { r.Remote = "up..stream" },
+		"a remote too long":    func(r *EnsureRequest) { r.Remote = strings.Repeat("a", 256) },
 		"a head no commit has": func(r *EnsureRequest) { r.Head = "main" },
 		"an issue's head": func(r *EnsureRequest) {
 			r.Kind, r.Head = item.KindIssue, "fc1c3975011e66491785ace891c893e4fc716587"
@@ -408,6 +402,30 @@ func TestEnsureChecksItsRequest(t *testing.T) {
 		_, err = m.Plan(t.Context(), req)
 		require.ErrorIs(t, err, ErrInvalidRequest, name)
 	}
+}
+
+// TestEnsureRefusesARemoteGitreadWouldRefuse holds a request's remote to gitread's rule
+// for a remote's name, so a name gitread's guards would refuse later, one with ".." or
+// longer than 255 bytes, is refused before anything runs, in the request's own words.
+func TestEnsureRefusesARemoteGitreadWouldRefuse(t *testing.T) {
+	t.Parallel()
+
+	m, _ := newEnv(t).maker(&fakeLaunches{})
+	ok := EnsureRequest{Clone: "/srv/clone", Owner: "acme-org", Name: "example-repo", Kind: item.KindPR, Number: 1}
+
+	for _, remote := range []string{"up..stream", "..", strings.Repeat("a", 256)} {
+		req := ok
+		req.Remote = remote
+
+		_, err := m.Ensure(t.Context(), req)
+		require.EqualError(t, err, fmt.Sprintf("%v: the remote %q", ErrInvalidRequest, remote))
+	}
+
+	req := ok
+	req.Remote = strings.Repeat("a", 255)
+
+	_, err := m.Plan(t.Context(), req)
+	require.NotErrorIs(t, err, ErrInvalidRequest, "a name of 255 bytes is a remote's name")
 }
 
 func TestListReconcilesRecordsWithGit(t *testing.T) {
@@ -603,10 +621,7 @@ func TestRemoveKeepsABranchWithCommitsNotOnGitHub(t *testing.T) {
 
 	f, svc, issue, _ := removeFixture(t)
 
-	require.NoError(t, os.WriteFile(filepath.Join(issue.Path, "fix.go"), []byte("package fix\n"), 0o600))
-	testutil.RunGit(t, issue.Path, "add", "fix.go")
-	testutil.RunGit(t, issue.Path, "commit", "-q", "-m", "fix the thing")
-	work := strings.TrimSpace(testutil.RunGit(t, issue.Path, "rev-parse", "HEAD"))
+	work := testutil.Commit(t, issue.Path, "fix.go", "package fix\n")
 
 	snap, err := svc.List(t.Context())
 	require.NoError(t, err)
@@ -852,23 +867,13 @@ func TestAllowedCreateCommands(t *testing.T) {
 		"ls-remote --upload-pack=git-upload-pack --symref origin HEAD":                         true,
 		"ls-remote --symref origin HEAD":                                                       false,
 		"ls-remote --symref --upload-pack=x HEAD":                                              false,
+		"ls-remote --upload-pack=git-upload-pack --symref up..stream HEAD":                     false,
+		"rev-parse --verify --quiet refs/remotes/up..stream/main":                              false,
+		"symbolic-ref --quiet refs/remotes/up..stream/HEAD":                                    false,
+		"fetch --no-tags --refmap= --upload-pack=git-upload-pack up..stream " +
+			"+refs/heads/main:refs/remotes/up..stream/main": false,
 	} {
 		assert.Equal(t, want, allowed(strings.Fields(args)), args)
-	}
-}
-
-func TestValidBranch(t *testing.T) {
-	t.Parallel()
-
-	for _, ok := range []string{mainBranch, "release/2026", "dev-1.x", "trunk_2"} {
-		assert.True(t, validBranch(ok), ok)
-	}
-
-	for _, bad := range []string{
-		"", "-x", "a..b", "a b", "a~1", "a^", "a:b", "a?", "a*", "a[", `a\b`, "a/", "a.", "a//b", ".hidden",
-		"a/.b", "x.lock", "a@{1}", "@", "tab\there", strings.Repeat("a", 256),
-	} {
-		assert.False(t, validBranch(bad), bad)
 	}
 }
 

@@ -50,15 +50,9 @@ func (s *Store) All(ctx context.Context) ([]Defaults, error) {
 		return nil, fmt.Errorf("read the launch defaults: %w", err)
 	}
 
-	out := make([]Defaults, 0, len(rows))
-
-	for _, row := range rows {
-		d, decodeErr := fromRow(row)
-		if decodeErr != nil {
-			return nil, fmt.Errorf("read the launch defaults: %w", decodeErr)
-		}
-
-		out = append(out, d)
+	out, err := store.ConvertRows(rows, fromRow)
+	if err != nil {
+		return nil, fmt.Errorf("read the launch defaults: %w", err)
 	}
 
 	return out, nil

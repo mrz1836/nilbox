@@ -9,12 +9,12 @@ import (
 	"regexp"
 	"slices"
 	"strings"
-	"unicode"
 
 	"github.com/mrz1836/nilbox/internal/brand"
 	"github.com/mrz1836/nilbox/internal/execpath"
 	"github.com/mrz1836/nilbox/internal/integrationprefs"
 	"github.com/mrz1836/nilbox/internal/shellenv"
+	"github.com/mrz1836/nilbox/internal/textutil"
 	"github.com/mrz1836/nilbox/internal/uierr"
 )
 
@@ -215,7 +215,7 @@ func (l launcher) argv(parts []part) ([]string, error) {
 
 	lines := make([]string, 0, len(steps))
 	for _, s := range steps {
-		lines = append(lines, "cd -- "+quote(s.dir)+" && "+quoteArgv(s.argv))
+		lines = append(lines, "cd -- "+textutil.ShellWord(s.dir)+" && "+quoteArgv(s.argv))
 	}
 
 	return []string{chainShell, "-c", strings.Join(lines, " && ")}, nil
@@ -416,35 +416,30 @@ func displayParts(parts []part) string {
 	return strings.Join(shown, " && ")
 }
 
-// quote quotes s for a POSIX shell, unless it needs none.
-func quote(s string) string {
-	return quoteUnless(s, "")
-}
-
-// show quotes s as the page shows it: like quote, but a ${…} stays readable.
+// show quotes s as the page shows it: as textutil.ShellWord does, but a ${…} stays
+// readable, its $, {, and } counted as plain letters.
 func show(s string) string {
-	return quoteUnless(s, "${}")
-}
-
-// quoteUnless quotes s for a POSIX shell unless every character is a letter, a digit, or
-// one that reads as itself, or one of safe.
-func quoteUnless(s, safe string) string {
-	plain := func(r rune) bool {
-		return unicode.IsLetter(r) || unicode.IsDigit(r) || strings.ContainsRune("-_./=:,+@%"+safe, r)
-	}
-
-	if s != "" && !strings.ContainsFunc(s, func(r rune) bool { return !plain(r) }) {
+	if textutil.ShellSafe(strings.Map(variableAsLetters, s)) {
 		return s
 	}
 
-	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
+	return textutil.ShellQuote(s)
 }
 
-// quoteAll quotes each word for a shell.
+// variableAsLetters reads the $, {, and } of a ${…} as a letter, which needs no quotes.
+func variableAsLetters(r rune) rune {
+	if strings.ContainsRune("${}", r) {
+		return 'x'
+	}
+
+	return r
+}
+
+// quoteAll quotes each word for a shell, as textutil.ShellWord does.
 func quoteAll(words []string) []string {
 	out := make([]string, 0, len(words))
 	for _, w := range words {
-		out = append(out, quote(w))
+		out = append(out, textutil.ShellWord(w))
 	}
 
 	return out
@@ -460,7 +455,14 @@ func showAll(words []string) []string {
 	return out
 }
 
-// quoteArgv writes argv out as one shell command line.
+// quoteArgv writes argv out as one shell command line, each word as textutil.ShellWord
+// writes it, but the program's plain only as an absolute path: a shell reads a first
+// word such as A=b, an alias, or a reserved word as more than a program to run.
 func quoteArgv(argv []string) string {
-	return strings.Join(quoteAll(argv), " ")
+	words := quoteAll(argv)
+	if len(argv) > 0 && !strings.HasPrefix(argv[0], "/") {
+		words[0] = textutil.ShellQuote(argv[0])
+	}
+
+	return strings.Join(words, " ")
 }

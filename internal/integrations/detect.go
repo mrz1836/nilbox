@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/mrz1836/nilbox/internal/execpath"
+	"github.com/mrz1836/nilbox/internal/integrationprefs"
 	"github.com/mrz1836/nilbox/internal/paths"
 	"github.com/mrz1836/nilbox/internal/shellenv"
 )
@@ -208,7 +209,7 @@ func (s *Service) addGoEnv(ctx context.Context, env []string, dirs *searchDirs) 
 	ctx, cancel := context.WithTimeout(ctx, versionTimeout)
 	defer cancel()
 
-	stdout, _, err := s.run(ctx, goPath, []string{"env", "GOBIN", "GOPATH"}, withVar(env, "GOTOOLCHAIN", "local"))
+	stdout, _, err := s.run(ctx, goPath, []string{"env", "GOBIN", "GOPATH"}, shellenv.With(env, "GOTOOLCHAIN", "local"))
 
 	gobin, gopath, ok := parseGoEnv(stdout)
 	if err != nil || !ok {
@@ -244,13 +245,6 @@ func parseGoEnv(out []byte) (gobin, gopath string, ok bool) {
 	}
 
 	return lines[0], lines[1], true
-}
-
-// withVar returns env with key set to value, in place of any it had.
-func withVar(env []string, key, value string) []string {
-	out := slices.DeleteFunc(slices.Clone(env), func(kv string) bool { return strings.HasPrefix(kv, key+"=") })
-
-	return append(out, key+"="+value)
 }
 
 // absDirs keeps the absolute folders of dirs, cleaned, each once.
@@ -410,7 +404,7 @@ func (d detector) inspect(ctx context.Context, c candidate) Copy {
 	ctx, cancel := context.WithTimeout(ctx, versionTimeout)
 	defer cancel()
 
-	stdout, stderr, err := d.run(ctx, c.path, d.def.VersionArgs, d.runEnv())
+	stdout, stderr, err := d.run(ctx, c.path, d.def.VersionArgs, d.def.RunEnv(d.env, integrationprefs.RunsInApp))
 
 	version, parseErr := d.def.ParseVersion(stdout)
 
@@ -453,30 +447,6 @@ func (d detector) source(c candidate, v Version) Source {
 	default:
 		return SourceRelease
 	}
-}
-
-// runEnv is the environment a tool runs with: the shell's, with the tool's quiet
-// variables on top.
-func (d detector) runEnv() []string {
-	env := slices.Clone(d.env)
-
-	for _, k := range sortedKeys(d.def.QuietEnv) {
-		env = append(env, k+"="+d.def.QuietEnv[k])
-	}
-
-	return env
-}
-
-// sortedKeys returns m's keys in order, so a tool's environment is the same every run.
-func sortedKeys(m map[string]string) []string {
-	keys := make([]string, 0, len(m))
-	for k := range m {
-		keys = append(keys, k)
-	}
-
-	slices.Sort(keys)
-
-	return keys
 }
 
 // firstLine returns the first line of the first of stderr and stdout that has one, or

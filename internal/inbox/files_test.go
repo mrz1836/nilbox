@@ -235,8 +235,7 @@ func TestChecksLeaveWithTheirItems(t *testing.T) {
 	h.refresh(t)
 	assert.Equal(t, int64(1), h.count(t, "item_files"))
 
-	h.client.inbox = fetched(nil, nil, nil)
-	h.refresh(t)
+	h.seed(t, nil, nil, nil)
 	assert.Equal(t, int64(0), h.count(t, "item_files"))
 }
 

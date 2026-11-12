@@ -3,7 +3,6 @@ package integrations
 import (
 	"cmp"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -146,16 +145,7 @@ func (v Verifier) Verify(run scriptrun.Record) scriptrun.Verification {
 
 	r := &selfRun{def: def, intent: in, reader: &updateReader{}, id: run.ID}
 
-	return scriptrun.Verification{
-		Output: r.reader,
-		Finish: func(ctx context.Context, end scriptrun.Ending, out scriptrun.Outcome) scriptrun.Outcome {
-			if !shellenv.Await(ctx, v.s.env.Ready()) {
-				return scriptrun.Outcome{Unsettled: true}
-			}
-
-			return v.s.finishUpdate(ctx, r, end, out)
-		},
-	}
+	return scriptrun.Verification{Callbacks: v.s.updateCallbacks(r, true)}
 }
 
 // updatesItself reports whether the copy c updates itself, with the tool's own updater,
@@ -308,14 +298,36 @@ func (s *Service) updateSpec(r *selfRun) scriptrun.Spec {
 	return scriptrun.Spec{
 		Kind: scriptrun.KindUpdate, Title: "Update " + r.def.Binary, Source: string(r.def.ID),
 		Dir: filepath.Dir(r.intent.Path), Argv: r.argv(), Env: r.env, RunsIn: scriptrun.RunsInApp,
-		Tool: string(r.def.ID), Intent: r.intent, Output: r.reader,
+		Tool: string(r.def.ID), Intent: r.intent, Callbacks: s.updateCallbacks(r, false),
 		Before: func(context.Context) ([]string, error) { return s.beforeUpdate(r) },
+	}
+}
+
+// updateCallbacks are the callbacks of r, a tool's own update, built alike for the run
+// updateSpec starts and, restarted, for one from before the app restarted, which the
+// Verifier picks up: the updater's output read as it arrives, and a Finish that checks
+// what the updater did (finishUpdate), first waiting, for a run from before the restart,
+// for the shell's environment. Only a run this app started is the card's (claimUpdate), so
+// only it gets a Recorded, which keeps what it did for the card, and a Released, which
+// tells the window once it has let go of the copy's folder.
+func (s *Service) updateCallbacks(r *selfRun, restarted bool) scriptrun.Callbacks {
+	cb := scriptrun.Callbacks{
+		Output: r.reader,
 		Finish: func(ctx context.Context, end scriptrun.Ending, out scriptrun.Outcome) scriptrun.Outcome {
+			if restarted && !shellenv.Await(ctx, s.env.Ready()) {
+				return scriptrun.Outcome{Unsettled: true}
+			}
+
 			return s.finishUpdate(ctx, r, end, out)
 		},
-		Recorded: func(_ context.Context, id int64, out scriptrun.Outcome) { s.recordedUpdate(r, id, out) },
-		Released: func(int64) { s.releasedUpdate(r) },
 	}
+
+	if !restarted {
+		cb.Recorded = func(_ context.Context, id int64, out scriptrun.Outcome) { s.recordedUpdate(r, id, out) }
+		cb.Released = func(int64) { s.releasedUpdate(r) }
+	}
+
+	return cb
 }
 
 // unclaim forgets an update that never started. One the runner recorded, which failed to
@@ -505,13 +517,7 @@ func (s *Service) releasedUpdate(r *selfRun) {
 // values, with the tool it names; ok is false for one that can't be read, or names no tool
 // the app knows.
 func (s *Service) intentOf(recorded any) (Definition, updateIntent, bool) {
-	var in updateIntent
-
-	data, err := json.Marshal(recorded)
-	if err == nil {
-		err = json.Unmarshal(data, &in)
-	}
-
+	in, err := scriptrun.Decode[updateIntent](recorded)
 	def, known := s.definition(in.Tool)
 
 	return def, in, err == nil && known && filepath.IsAbs(in.Path)
@@ -577,35 +583,39 @@ type updateOutput struct {
 }
 
 // updateReader reads a tool's own updater's output as it arrives, each line as a terminal
-// shows it. The zero value is ready.
+// shows it (see scriptrun.LineWriter). The zero value is ready.
 type updateReader struct {
-	mu    sync.Mutex
-	lines textutil.LineSplitter
-	said  updateOutput
+	// lines hands r.line each whole line under its lock, which every method takes. It is
+	// made on first use (writer).
+	linesOnce sync.Once
+	lines     *scriptrun.LineWriter
+
+	said updateOutput
 }
 
-// Write reads p, which may end anywhere.
+// Write reads p, which may end anywhere. It never fails.
 func (r *updateReader) Write(p []byte) (int, error) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
-	r.lines.Write(p, r.line)
-
-	return len(p), nil
+	return r.writer().Write(p)
 }
 
 // Flush reads a last line that has no newline.
 func (r *updateReader) Flush() {
-	r.mu.Lock()
-	defer r.mu.Unlock()
+	r.writer().Flush()
+}
 
-	r.lines.Flush(r.line)
+// writer returns the LineWriter that hands r each line, made on first use.
+func (r *updateReader) writer() *scriptrun.LineWriter {
+	r.linesOnce.Do(func() { r.lines = scriptrun.NewLineWriter(r.line) })
+
+	return r.lines
 }
 
 // snapshot returns what was read so far.
 func (r *updateReader) snapshot() updateOutput {
-	r.mu.Lock()
-	defer r.mu.Unlock()
+	w := r.writer()
+
+	w.Lock()
+	defer w.Unlock()
 
 	out := r.said
 	out.warnings = append([]string{}, r.said.warnings...)

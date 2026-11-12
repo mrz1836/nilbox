@@ -210,7 +210,7 @@ func TestClientNeverAnswersTheDaemonsRequests(t *testing.T) {
 	select {
 	case <-c.Changed():
 	case <-time.After(5 * time.Second):
-		t.Fatal("a status change did not wake the client")
+		require.FailNow(t, "a status change did not wake the client")
 	}
 
 	require.NoError(t, c.Call(t.Context(), "thread/loaded/list", map[string]any{}, nil))
@@ -842,7 +842,7 @@ func TestObserveClosesWhatItNoLongerNeeds(t *testing.T) {
 
 	select {
 	case <-time.After(5 * time.Second):
-		t.Fatal("the connection stayed open with no session to follow")
+		require.FailNow(t, "the connection stayed open with no session to follow")
 	case <-waitClosed(d):
 	}
 }

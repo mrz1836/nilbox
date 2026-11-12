@@ -378,13 +378,13 @@ func TestActionsRefusedBeforeTheyStart(t *testing.T) {
 	require.ErrorIs(t, err, clonelock.ErrBusy)
 	release()
 
-	for _, facts := range []ToolFacts{
+	for _, facts := range []integrations.CopyFacts{
 		{State: integrations.StateMissing},
 		{Path: "/opt/go-pre-commit", State: integrations.StateFound, Off: true},
 		{Path: "/opt/go-pre-commit", State: integrations.StateTooOld},
 		{Path: "/opt/go-pre-commit", State: integrations.StateWontRun},
 	} {
-		r.tools.set(facts, "")
+		r.tools.set(ToolFacts{CopyFacts: facts}, "")
 
 		_, err = r.svc.Install(ctx, ActionRequest{Dir: r.shown(dir)})
 		require.ErrorIs(t, err, ErrNoTool)
@@ -549,7 +549,7 @@ func TestInstallAllWithoutAUsableGoPreCommit(t *testing.T) {
 	t.Parallel()
 
 	r := newRig(t)
-	r.tools.set(ToolFacts{State: integrations.StateMissing}, "")
+	r.tools.set(ToolFacts{CopyFacts: integrations.CopyFacts{State: integrations.StateMissing}}, "")
 
 	_, err := r.svc.InstallAll(t.Context(), nil)
 	require.ErrorIs(t, err, ErrNoTool)

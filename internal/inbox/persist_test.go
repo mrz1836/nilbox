@@ -132,8 +132,7 @@ func TestSnapshotReportsUnreadableTables(t *testing.T) {
 			t.Parallel()
 
 			h := newHarness(t)
-			h.client.inbox = fetched([]github.Item{pr(1, "OWNER", false)}, nil, nil)
-			h.refresh(t)
+			h.seed(t, []github.Item{pr(1, "OWNER", false)}, nil, nil)
 
 			// Renaming keeps the rows and the references to them, while every read of the
 			// table by its name fails.
@@ -162,8 +161,7 @@ func TestSnapshotWithoutRateReadings(t *testing.T) {
 	t.Parallel()
 
 	h := newHarness(t)
-	h.client.inbox = fetched([]github.Item{pr(1, "OWNER", false)}, nil, nil)
-	h.refresh(t)
+	h.seed(t, []github.Item{pr(1, "OWNER", false)}, nil, nil)
 
 	h.exec(t, "DELETE FROM rate_snapshots")
 

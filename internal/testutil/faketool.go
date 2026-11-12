@@ -24,9 +24,10 @@ const (
 )
 
 // FakeRun is what a fake tool does when it runs, in this order: ignore signals, start a
-// grandchild, report its stdin or open descriptors, change Files, write Stdout and Stderr,
-// sleep (until WaitFor appears, when set), and exit with Exit. A recorded fixture's
-// {"stdout", "stderr", "exit"} reads straight into it (see LoadFakeRun).
+// grandchild, report its stdin, open descriptors, or environment, change Files, write
+// Stdout and Stderr, sleep (until WaitFor appears, when set), and exit with Exit. A
+// recorded fixture's {"stdout", "stderr", "exit"} reads straight into it (see
+// LoadFakeRun).
 type FakeRun struct {
 	Stdout string `json:"stdout"`
 	Stderr string `json:"stderr"`
@@ -57,6 +58,10 @@ type FakeRun struct {
 
 	// ReportFDs writes "fds: 0,1,2" to stdout: every descriptor open in it.
 	ReportFDs bool `json:"reportFds,omitempty"`
+
+	// ReportEnv writes "NAME=value" to stdout for each variable it names, in order, a line
+	// each: the variable as the fake reads it from its environment, or empty when unset.
+	ReportEnv []string `json:"reportEnv,omitempty"`
 }
 
 // FakeFile is one change a fake tool makes to the file at Path, absolute or relative to the
@@ -194,6 +199,10 @@ func play(run FakeRun) int {
 
 	if run.ReportFDs {
 		_, _ = fmt.Fprintf(os.Stdout, "fds: %s\n", openFDs())
+	}
+
+	for _, name := range run.ReportEnv {
+		_, _ = fmt.Fprintf(os.Stdout, "%s=%s\n", name, os.Getenv(name))
 	}
 
 	for _, f := range run.Files {

@@ -18,6 +18,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/gitread"
 	"github.com/mrz1836/nilbox/internal/integrationprefs"
 	"github.com/mrz1836/nilbox/internal/integrations"
+	"github.com/mrz1836/nilbox/internal/localrepos"
 	"github.com/mrz1836/nilbox/internal/logging"
 	"github.com/mrz1836/nilbox/internal/paths"
 	"github.com/mrz1836/nilbox/internal/repo"
@@ -208,15 +209,15 @@ func appShell() string {
 // Repos returns the clones under the clone root, for the page's picker: the ones a script
 // ran in most recently first, then the rest by name.
 func (s *Service) Repos(ctx context.Context) ([]Clone, error) {
-	l, err := s.listClones(ctx)
+	l, err := s.folders().List(ctx)
 	if err != nil {
 		return nil, err
 	}
 
 	recent := s.recent(ctx)
 
-	out := make([]Clone, 0, len(l.dirs))
-	for _, d := range l.dirs {
+	out := make([]Clone, 0, len(l.Dirs))
+	for _, d := range l.Dirs {
 		out = append(out, Clone{Name: filepath.Base(d), Dir: paths.Tilde(d, s.home)})
 	}
 
@@ -623,57 +624,20 @@ func (c clone) display() string {
 	return filepath.Base(c.dir)
 }
 
-// listing is the clone root as set when it was read, and the clones under it.
-type listing struct {
-	root string
-	dirs []string
-}
-
-// listClones reads the clone root as set now and lists the clones under it.
-func (s *Service) listClones(ctx context.Context) (listing, error) {
-	root, err := s.clones.Root(ctx)
-	if err != nil {
-		return listing{}, fmt.Errorf("read the clone root: %w", err)
-	}
-
-	dirs, err := s.clones.Dirs(ctx, root)
-	if err != nil {
-		return listing{}, fmt.Errorf("list the clones: %w", err)
-	}
-
-	return listing{root: root, dirs: dirs}, nil
-}
-
-// cloneAt finds the clone a request names by its folder, with ~: only a clone directly
+// folders finds the clone a request names by its folder, with ~: only a clone directly
 // under the clone root is one. Its repository is its origin's.
+func (s *Service) folders() localrepos.ByFolder {
+	return localrepos.ByFolder{Clones: s.clones, Home: s.home, Invalid: ErrInvalidRequest, NoClone: ErrNoClone}
+}
+
+// cloneAt finds the clone a request names by its folder (see folders).
 func (s *Service) cloneAt(ctx context.Context, shown string) (clone, error) {
-	l, err := s.listClones(ctx)
+	p, err := s.folders().At(ctx, shown)
 	if err != nil {
 		return clone{}, err
 	}
 
-	dir, err := paths.ExpandHome(shown, s.home)
-	if err != nil {
-		return clone{}, fmt.Errorf("%w: the folder %q: %w", ErrInvalidRequest, shown, err)
-	}
-
-	i := slices.Index(l.dirs, dir)
-	if i < 0 {
-		i = slices.IndexFunc(l.dirs, func(d string) bool { return paths.Same(d, dir) })
-	}
-
-	if i < 0 {
-		return clone{}, uierr.New(fmt.Sprintf("%s isn't a clone in %s.", paths.Tilde(dir, s.home),
-			paths.Tilde(l.root, s.home)), fmt.Errorf("%w: %s", ErrNoClone, dir))
-	}
-
-	c := clone{dir: l.dirs[i]}
-
-	if name, onHub, originErr := s.clones.Origin(ctx, c.dir); originErr == nil && onHub {
-		c.name = name
-	}
-
-	return c, nil
+	return clone{dir: p.Dir, name: p.Name}, nil
 }
 
 // repoText writes a repository as "owner/name", or "" for none.

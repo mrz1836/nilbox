@@ -2,6 +2,7 @@ package repoguard_test
 
 import (
 	"regexp"
+	"slices"
 	"strings"
 	"testing"
 
@@ -57,13 +58,7 @@ func argvOrCommand(program, sub string) func(line string) bool {
 			return true
 		}
 
-		for _, lit := range goLiteral.FindAllString(line, -1) {
-			if command.MatchString(lit) {
-				return true
-			}
-		}
-
-		return false
+		return slices.ContainsFunc(goLiteral.FindAllString(line, -1), command.MatchString)
 	}
 }
 
@@ -75,17 +70,17 @@ func sudo() func(string) bool { return argvOrCommand("su"+"do", "") }
 // productionMatches returns "file:line: text" for every line of a non-test Go file that
 // match accepts, skipping files under the exempt paths (a path ending in "/" covers its
 // folder).
-func productionMatches(t *testing.T, root string, match func(string) bool, exempt ...string) []string {
+func productionMatches(t *testing.T, match func(string) bool, exempt ...string) []string {
 	t.Helper()
 
 	var found []string
 
-	for _, rel := range goFiles(t, root) {
+	for _, rel := range goFiles(t) {
 		if strings.HasSuffix(rel, "_test.go") || exempted(rel, exempt) {
 			continue
 		}
 
-		if text, ok := readText(t, root, rel); ok {
+		if text, ok := readText(t, rel); ok {
 			found = append(found, hits(rel, text, match)...)
 		}
 	}
@@ -107,14 +102,14 @@ func exempted(rel string, paths []string) bool {
 func TestNoGoInstall(t *testing.T) {
 	t.Parallel()
 
-	assert.Empty(t, productionMatches(t, moduleRoot(t), goInstall()),
+	assert.Empty(t, productionMatches(t, goInstall()),
 		"the app installs tools from their GitHub releases, verified against their checksums, never with go install")
 }
 
 func TestNoSudo(t *testing.T) {
 	t.Parallel()
 
-	assert.Empty(t, productionMatches(t, moduleRoot(t), sudo()), "the app never runs anything with sudo")
+	assert.Empty(t, productionMatches(t, sudo()), "the app never runs anything with sudo")
 }
 
 func TestOnlyExecpathStartsProcesses(t *testing.T) {
@@ -122,7 +117,7 @@ func TestOnlyExecpathStartsProcesses(t *testing.T) {
 
 	match := func(line string) bool { return !commentLine(line) && processStarter.MatchString(line) }
 
-	assert.Empty(t, productionMatches(t, moduleRoot(t), match, processStarterExceptions()...),
+	assert.Empty(t, productionMatches(t, match, processStarterExceptions()...),
 		"programs start through internal/execpath (Exec.Run, or Start for a long-lived one), so the guards on what "+
 			"the app runs can't be dodged by building an argv elsewhere")
 }

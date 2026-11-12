@@ -18,6 +18,11 @@ type gathering struct {
 	window time.Duration
 	show   func(ctx context.Context, rows []Notification)
 
+	// life is the gathering's lifetime, which every batch shows within, and end ends it:
+	// stop does, so a batch still showing at quit is cut short.
+	life context.Context //nolint:containedctx // the gathering's lifetime, which outlives every call
+	end  context.CancelFunc
+
 	// showing holds a token while a batch shows, so stop returns only once a showing the
 	// timer began has ended.
 	showing chan struct{}
@@ -32,7 +37,9 @@ type gathering struct {
 // newGathering returns a gathering that shows each batch with show, GatherWindow after the
 // first banner it held.
 func newGathering(show func(ctx context.Context, rows []Notification)) *gathering {
-	return &gathering{window: GatherWindow, show: show, showing: make(chan struct{}, 1)}
+	life, end := context.WithCancel(context.Background())
+
+	return &gathering{window: GatherWindow, show: show, life: life, end: end, showing: make(chan struct{}, 1)}
 }
 
 // add holds row's banner until the window that the first held banner began ends. Once
@@ -53,7 +60,7 @@ func (g *gathering) add(row Notification) {
 }
 
 // flush shows the banners held, as one batch, and holds none after. Only the timer calls
-// it, with no caller's context to carry.
+// it, with no caller's context to carry: the batch shows within the gathering's lifetime.
 func (g *gathering) flush() {
 	g.showing <- struct{}{}
 	defer func() { <-g.showing }()
@@ -64,12 +71,13 @@ func (g *gathering) flush() {
 	g.mu.Unlock()
 
 	if len(rows) > 0 {
-		g.show(context.Background(), rows)
+		g.show(g.life, rows)
 	}
 }
 
-// stop drops the banners held, shows none after, and returns once a showing the timer began
-// has ended, so nothing reads the database or posts a banner after it.
+// stop drops the banners held, shows none after, cuts short a batch showing by ending the
+// gathering's lifetime, and returns once that showing has ended, so nothing reads the
+// database or posts a banner after it.
 func (g *gathering) stop() {
 	g.mu.Lock()
 	g.stopped = true
@@ -80,6 +88,8 @@ func (g *gathering) stop() {
 		g.timer = nil
 	}
 	g.mu.Unlock()
+
+	g.end()
 
 	// Wait for a batch showing to end.
 	g.showing <- struct{}{}

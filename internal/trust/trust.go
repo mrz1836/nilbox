@@ -16,12 +16,13 @@
 package trust
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"regexp"
 	"slices"
 	"strings"
+
+	"github.com/mrz1836/nilbox/internal/prefs/prefval"
 )
 
 // Author associations GitHub reports for an item's author. Only the first three are
@@ -165,15 +166,9 @@ func NormalizeBots(logins []string) ([]string, error) {
 	return out, nil
 }
 
-// EncodeBots writes a trusted list for PrefBots.
+// EncodeBots writes a trusted list for PrefBots, a nil list as an empty one.
 func EncodeBots(bots []string) string {
-	if bots == nil {
-		bots = []string{}
-	}
-
-	b, _ := json.Marshal(bots) //nolint:errchkjson // a []string always encodes
-
-	return string(b)
+	return prefval.EncodeList(bots)
 }
 
 // DecodeBots reads PrefBots: the defaults while the preference is unset (stored false)
@@ -183,8 +178,8 @@ func DecodeBots(raw string, stored bool) []string {
 		return DefaultBots()
 	}
 
-	var bots []string
-	if err := json.Unmarshal([]byte(raw), &bots); err != nil {
+	bots, ok := prefval.List[string](raw)
+	if !ok {
 		return DefaultBots()
 	}
 

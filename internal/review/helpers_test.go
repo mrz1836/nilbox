@@ -59,9 +59,19 @@ func TestSmallWords(t *testing.T) {
 	assert.Equal(t, MethodRebase, PrefRebase.method())
 	assert.Empty(t, PrefRepo.method())
 	assert.Empty(t, MethodPref("fast").method())
-	assert.Equal(t, "x", nonEmpty("", "x"))
-	assert.Equal(t, 3, value(new(3)))
-	assert.Zero(t, value[int](nil))
+}
+
+func TestFillReadsACacheWithNoStateAsOpen(t *testing.T) {
+	t.Parallel()
+
+	var r Review
+
+	r.fill(&cached{head: headA}, nil)
+	assert.Equal(t, github.StateOpen, r.State, "a cache that holds no state")
+
+	r = Review{}
+	r.fill(&cached{head: headA, context: pullContext{State: github.StateClosed}}, nil)
+	assert.Equal(t, github.StateClosed, r.State, "the state the cache holds")
 }
 
 func TestFilesAreJudgedByEitherPath(t *testing.T) {

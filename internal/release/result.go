@@ -2,7 +2,6 @@ package release
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"slices"
@@ -68,13 +67,8 @@ var errNoKind = errors.New("the outcome names no result")
 // decodeResult reads a release's result back from its record, where it was decoded as
 // plain JSON values, with no nil list.
 func decodeResult(recorded any) (Result, error) {
-	data, err := json.Marshal(recorded)
+	res, err := scriptrun.Decode[Result](recorded)
 	if err != nil {
-		return Result{}, fmt.Errorf("read the outcome: %w", err)
-	}
-
-	var res Result
-	if err = json.Unmarshal(data, &res); err != nil {
 		return Result{}, fmt.Errorf("read the outcome: %w", err)
 	}
 

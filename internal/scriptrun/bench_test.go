@@ -32,9 +32,8 @@ func BenchmarkRunsFullHistory(b *testing.B) {
 		})
 		require.NoError(b, err)
 
-		code := i % 2
 		require.NoError(b, e.store.finish(ctx, finished{
-			id: id, status: StatusSucceeded, exitCode: &code, summary: "All 5 checks passed", logBytes: 4096,
+			id: id, status: StatusSucceeded, exitCode: new(i % 2), summary: "All 5 checks passed", logBytes: 4096,
 			at: at.Add(38 * time.Second),
 			result: Result{
 				Tool: "go-pre-commit", Warnings: []string{fmt.Sprintf("warning %d", i)},

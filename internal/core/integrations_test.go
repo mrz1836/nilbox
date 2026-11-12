@@ -15,7 +15,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/mrz1836/nilbox/internal/appdata"
 	"github.com/mrz1836/nilbox/internal/clock"
 	"github.com/mrz1836/nilbox/internal/event"
 	"github.com/mrz1836/nilbox/internal/execpath"
@@ -78,9 +77,9 @@ func TestAChangedIntervalWakesWhatRefreshesAndStaysInGo(t *testing.T) {
 func TestRefreshEveryReadsTheSettingAsItIsNow(t *testing.T) {
 	t.Parallel()
 
-	c := bootstrap(t, Options{
-		Paths: appdata.NewPaths(filepath.Join(t.TempDir(), "data")), Home: t.TempDir(), Runner: &testutil.Runner{},
-	})
+	opts := testOptions(t)
+	opts.Runner = &testutil.Runner{}
+	c := bootstrap(t, opts)
 	inboxEvery := refreshEvery(c.Settings, settings.RefreshInbox, nil)
 	checksEvery := refreshEvery(c.Settings, settings.RefreshChecks, nil)
 
@@ -150,12 +149,9 @@ func TestARunsChangeReachesTheRunsAndTheTools(t *testing.T) {
 	t.Parallel()
 
 	events := &testutil.Events{}
-	c := bootstrap(t, Options{
-		Paths:  appdata.NewPaths(filepath.Join(t.TempDir(), "data")),
-		Home:   testutil.ClaudeHome(t),
-		Runner: noPrograms(),
-		Events: events,
-	})
+	opts := testOptions(t)
+	opts.Events = events
+	c := bootstrap(t, opts)
 
 	before := len(events.All())
 
@@ -167,11 +163,7 @@ func TestARunsChangeReachesTheRunsAndTheTools(t *testing.T) {
 func TestReleaseSettingsReadWhetherAMergeOffersARelease(t *testing.T) {
 	t.Parallel()
 
-	c := bootstrap(t, Options{
-		Paths:  appdata.NewPaths(filepath.Join(t.TempDir(), "data")),
-		Home:   testutil.ClaudeHome(t),
-		Runner: noPrograms(),
-	})
+	c := bootstrap(t, testOptions(t))
 	adapter := releaseSettings{settings: c.Settings}
 
 	on, err := adapter.OfferAfterMerge(t.Context())
@@ -199,12 +191,9 @@ func TestReleaseNoticesRecordARelease(t *testing.T) {
 	t.Parallel()
 
 	events := &testutil.Events{}
-	c := bootstrap(t, Options{
-		Paths:  appdata.NewPaths(filepath.Join(t.TempDir(), "data")),
-		Home:   testutil.ClaudeHome(t),
-		Runner: noPrograms(),
-		Events: events,
-	})
+	opts := testOptions(t)
+	opts.Events = events
+	c := bootstrap(t, opts)
 
 	pool := c.DB
 	releaseNotices{dispatcher: notify.NewDispatcher(notify.Config{Pool: pool, Events: events})}.Released(t.Context(),
@@ -228,12 +217,9 @@ func TestRunFailuresRecordAFailedRun(t *testing.T) {
 	t.Parallel()
 
 	events := &testutil.Events{}
-	c := bootstrap(t, Options{
-		Paths:  appdata.NewPaths(filepath.Join(t.TempDir(), "data")),
-		Home:   testutil.ClaudeHome(t),
-		Runner: noPrograms(),
-		Events: events,
-	})
+	opts := testOptions(t)
+	opts.Events = events
+	c := bootstrap(t, opts)
 
 	dispatcher := notify.NewDispatcher(notify.Config{Pool: c.DB, Events: events})
 	t.Cleanup(dispatcher.Close)
@@ -265,11 +251,7 @@ func TestRunFailuresRecordAFailedRun(t *testing.T) {
 func TestTheRunsTellTheNotificationsOfAFailedRun(t *testing.T) {
 	t.Parallel()
 
-	c := bootstrap(t, Options{
-		Paths:  appdata.NewPaths(filepath.Join(t.TempDir(), "data")),
-		Home:   testutil.ClaudeHome(t),
-		Runner: noPrograms(),
-	})
+	c := bootstrap(t, testOptions(t))
 
 	// A run the app can't start isn't told: its start's error reaches the window.
 	_, err := c.Runs.Start(t.Context(), scriptrun.Spec{
@@ -287,20 +269,23 @@ func TestTheRunsTellTheNotificationsOfAFailedRun(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	var run scriptrun.Run
+	// The run's follower tells of its end once it has recorded it and let go of the clone:
+	// wait for what it tells, not for the record, which reads as ended a moment before.
+	var log notify.Log
 
-	require.Eventually(t, func() bool {
-		run, err = c.ScriptRuns.Run(t.Context(), id)
+	require.EventuallyWithT(t, func(collect *assert.CollectT) {
+		var listErr error
 
-		return err == nil && !run.Status.Live()
-	}, 15*time.Second, 10*time.Millisecond, "the run ends")
+		log, listErr = c.Notifications.List(t.Context())
+		require.NoError(collect, listErr)
+		assert.NotEmpty(collect, log.Items)
+	}, 15*time.Second, 10*time.Millisecond, "the failed run is told")
+
+	run, err := c.ScriptRuns.Run(t.Context(), id)
+	require.NoError(t, err)
 	assert.Equal(t, scriptrun.StatusFailed, run.Status)
 
-	c.Runs.StopAll() // waits for the run's follower, which tells of its end once it let go of the clone
-
-	log, err := c.Notifications.List(t.Context())
-	require.NoError(t, err)
-	require.Len(t, log.Items, 1)
+	require.Len(t, log.Items, 1, "the run that couldn't start isn't told")
 	assert.Equal(t, notify.KindRunFailed, log.Items[0].Kind)
 	assert.Equal(t, id, log.Items[0].RunID)
 	assert.Equal(t, run.StartedAt, log.Items[0].RunStarted, "the key the window checks the run against")
@@ -422,9 +407,7 @@ func budgetHeaders(w http.ResponseWriter, resource string, n int, resetAt int64)
 func TestReleaseGitHubReadsTheWorkflowAndTheBudgetCountsEveryPoll(t *testing.T) {
 	t.Parallel()
 
-	c := bootstrap(t, Options{
-		Paths: appdata.NewPaths(filepath.Join(t.TempDir(), "data")), Home: testutil.ClaudeHome(t), Runner: noPrograms(),
-	})
+	c := bootstrap(t, testOptions(t))
 
 	commit := strings.Repeat("1", 40)
 	releases, runs := workflowReleases(), workflowRuns(commit)
@@ -493,12 +476,9 @@ func TestReleaseNoticesRecordTheReleaseWorkflow(t *testing.T) {
 	t.Parallel()
 
 	events := &testutil.Events{}
-	c := bootstrap(t, Options{
-		Paths:  appdata.NewPaths(filepath.Join(t.TempDir(), "data")),
-		Home:   testutil.ClaudeHome(t),
-		Runner: noPrograms(),
-		Events: events,
-	})
+	opts := testOptions(t)
+	opts.Events = events
+	c := bootstrap(t, opts)
 
 	notices := releaseNotices{dispatcher: notify.NewDispatcher(notify.Config{Pool: c.DB, Events: events})}
 	sdk := repo.Name{Owner: boundOwner, Repo: boundRepo}
@@ -546,9 +526,9 @@ func TestReleaseClonesListTheCloneRoot(t *testing.T) {
 		}
 	}
 
-	c := bootstrap(t, Options{
-		Paths: appdata.NewPaths(filepath.Join(t.TempDir(), "data")), Home: home, Runner: noPrograms(),
-	})
+	opts := testOptions(t)
+	opts.Home = home
+	c := bootstrap(t, opts)
 	require.NoError(t, testutil.ErrOf(c.Settings.SetCloneRoot(t.Context(), root)))
 
 	clones := releaseClones{settings: c.Settings, home: home, git: execpath.Exec{Env: env}}
@@ -577,9 +557,9 @@ func TestHooksClonesListTheCloneRootWithoutGit(t *testing.T) {
 	testutil.InitRepo(t, notes)
 	testutil.RunGit(t, sdk, "remote", "add", "origin", "https://github.com/acme-org/example-repo.git")
 
-	c := bootstrap(t, Options{
-		Paths: appdata.NewPaths(filepath.Join(t.TempDir(), "data")), Home: home, Runner: noPrograms(),
-	})
+	opts := testOptions(t)
+	opts.Home = home
+	c := bootstrap(t, opts)
 	require.NoError(t, testutil.ErrOf(c.Settings.SetCloneRoot(t.Context(), root)))
 
 	clones := hooksClones{settings: c.Settings, home: home, git: execpath.Exec{Env: env}}
@@ -608,9 +588,7 @@ func TestHooksClonesListTheCloneRootWithoutGit(t *testing.T) {
 func TestHooksToolAndSettingsReadWhatTheAppKnows(t *testing.T) {
 	t.Parallel()
 
-	c := bootstrap(t, Options{
-		Paths: appdata.NewPaths(filepath.Join(t.TempDir(), "data")), Home: testutil.ClaudeHome(t), Runner: noPrograms(),
-	})
+	c := bootstrap(t, testOptions(t))
 
 	facts := hooksTool{tools: c.Integrations}.HooksTool(t.Context())
 	assert.False(t, facts.Usable(), "no go-pre-commit is found")
@@ -639,9 +617,7 @@ func TestHooksToolAndSettingsReadWhatTheAppKnows(t *testing.T) {
 func TestScriptsToolsReadWhatTheAppKnows(t *testing.T) {
 	t.Parallel()
 
-	c := bootstrap(t, Options{
-		Paths: appdata.NewPaths(filepath.Join(t.TempDir(), "data")), Home: testutil.ClaudeHome(t), Runner: noPrograms(),
-	})
+	c := bootstrap(t, testOptions(t))
 
 	got := scriptsTools{tools: c.Integrations}.Tools(t.Context())
 	assert.False(t, got.Magex.Usable(), "no magex is found")

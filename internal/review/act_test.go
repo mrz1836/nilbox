@@ -578,11 +578,15 @@ func TestTheGuardRefusesWhatIsNoLongerMergeable(t *testing.T) {
 		"gone":   {},
 		"draft":  {Found: true, Status: github.MergeStateClean, Head: headA, State: github.StateOpen, IsDraft: true},
 	} {
-		h := readHarness(t, github.MergeStateClean)
-		h.github.states = []*github.MergeState{state}
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 
-		_, err := h.svc.Act(t.Context(), ActRequest{ItemID: pullID, Action: ActionMerge, Head: headA, Accept: true})
-		require.ErrorIs(t, err, github.ErrNotMergeable, name)
+			h := readHarness(t, github.MergeStateClean)
+			h.github.states = []*github.MergeState{state}
+
+			_, err := h.svc.Act(t.Context(), ActRequest{ItemID: pullID, Action: ActionMerge, Head: headA, Accept: true})
+			require.ErrorIs(t, err, github.ErrNotMergeable)
+		})
 	}
 }
 
@@ -695,13 +699,17 @@ func TestActDecidesAgainOnARebaseOrAnUpdateWheneverTheyApply(t *testing.T) {
 			github.MergeStateBlocked, github.MergeStateClean, github.MergeStateUnstable, github.MergeStateBehind,
 			github.MergeStateDirty,
 		} {
-			// GitHub can't update a branch with conflicts, which the rebase resolves.
-			h := keepUpHarness(t, status, true, status != github.MergeStateDirty)
+			t.Run(status, func(t *testing.T) {
+				t.Parallel()
 
-			res := h.act(t, ActRequest{Action: ActionRebaseBot})
-			assert.Equal(t, OutcomeAskedBot, res.Outcome, status)
-			assert.Equal(t, []string{callComment}, h.github.requests(), status)
-			assert.Equal(t, []string{"@dependabot rebase"}, h.github.comments, status)
+				// GitHub can't update a branch with conflicts, which the rebase resolves.
+				h := keepUpHarness(t, status, true, status != github.MergeStateDirty)
+
+				res := h.act(t, ActRequest{Action: ActionRebaseBot})
+				assert.Equal(t, OutcomeAskedBot, res.Outcome)
+				assert.Equal(t, []string{callComment}, h.github.requests())
+				assert.Equal(t, []string{"@dependabot rebase"}, h.github.comments)
+			})
 		}
 	})
 

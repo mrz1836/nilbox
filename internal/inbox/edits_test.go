@@ -64,9 +64,7 @@ func (c *fakeClient) recordEdit(tok github.Token, edit string) (*github.Edited, 
 		return &github.Edited{}, nil
 	}
 
-	answer := *c.edited
-
-	return &answer, nil
+	return new(*c.edited), nil
 }
 
 // editHarness refreshes an inbox where pull request #1 asks for the user's review by name

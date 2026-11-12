@@ -197,7 +197,7 @@ func TestBoundServicesWordTheirErrors(t *testing.T) {
 	t.Parallel()
 
 	root := moduleRoot(t)
-	fset, files := dirFiles(t, root, "cmd/"+brand.Slug)
+	fset, files := dirFiles(t, "cmd/"+brand.Slug)
 
 	bound, problems := serviceBindings(fset, files)
 	assert.Empty(t, problems, "bind every service with application.NewServiceWithOptions(svc, %s())", boundOptionsFunc)

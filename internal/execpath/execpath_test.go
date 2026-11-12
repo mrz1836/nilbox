@@ -9,6 +9,7 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -281,6 +282,13 @@ func TestExecRun(t *testing.T) {
 			tt.check(t, stdout, stderr, err)
 		})
 	}
+}
+
+func TestRunWaitsTwoSecondsForADescendantUnlessTold(t *testing.T) {
+	t.Parallel()
+
+	assert.Equal(t, 2*time.Second, Exec{}.descendantWait(), "the app's runs wait runWaitDelay")
+	assert.Equal(t, 50*time.Millisecond, WithWaitDelay(Exec{Dir: "/"}, 50*time.Millisecond).descendantWait())
 }
 
 // fakeExitError is a fake process exit with a status.

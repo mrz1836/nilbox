@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/mrz1836/nilbox/internal/github"
+	"github.com/mrz1836/nilbox/internal/textutil"
 )
 
 // The decision model is pure: Decide turns what is known about a pull request into the
@@ -439,7 +440,7 @@ func skipped(f Facts) []string {
 	}
 
 	if f.RequiredFailing > 0 {
-		out = append(out, counted(f.RequiredFailing, "required check is failing.", "required checks are failing."))
+		out = append(out, textutil.Counted(f.RequiredFailing, "required check is failing.", "required checks are failing."))
 	}
 
 	if f.RequiredPending > 0 {
@@ -644,7 +645,7 @@ func optionalFailing(f Facts) int {
 // optional check failing", or, with none failing, that optional checks aren't passing.
 func unstableNote(f Facts) string {
 	if n := optionalFailing(f); n > 0 {
-		return counted(n, "optional check failing", "optional checks failing")
+		return textutil.Counted(n, "optional check failing", "optional checks failing")
 	}
 
 	return "optional checks not passing"
@@ -699,7 +700,7 @@ func needsOf(f Facts) []string {
 	}
 
 	if f.RequiredFailing > 0 {
-		needs = append(needs, counted(f.RequiredFailing, "required check failing", "required checks failing"))
+		needs = append(needs, textutil.Counted(f.RequiredFailing, "required check failing", "required checks failing"))
 	}
 
 	if f.RequiredPending > 0 {
@@ -707,15 +708,6 @@ func needsOf(f Facts) []string {
 	}
 
 	return needs
-}
-
-// counted writes n with a noun in the singular or the plural.
-func counted(n int, one, many string) string {
-	if n == 1 {
-		return "1 " + one
-	}
-
-	return fmt.Sprintf("%d %s", n, many)
 }
 
 // base names the branch the pull request merges into.

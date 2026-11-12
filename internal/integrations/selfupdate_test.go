@@ -867,14 +867,22 @@ func TestGoEnvAddsTheFoldersGoItselfReads(t *testing.T) {
 func TestGoEnvThatCantBeReadUpdatesNothingItself(t *testing.T) {
 	t.Parallel()
 
-	for _, a := range []answer{{err: errExit}, {stdout: "only one line\n"}, {stdout: "\n\n"}} {
-		h := newUpdateHarness(t, nil)
-		h.putGo(a)
-		h.m.put(h.m.pathB, magexSays(recordedMagex))
+	for name, a := range map[string]answer{
+		"go env fails":    {err: errExit},
+		"one line":        {stdout: "only one line\n"},
+		"two empty lines": {stdout: "\n\n"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 
-		plan := h.ready(t)["mage-x"].Install
-		assert.Empty(t, plan.Updater, "%+v: go install's folders aren't known, so the installer updates it", a)
-		assert.Contains(t, h.logs.String(), "couldn't read go's settings")
+			h := newUpdateHarness(t, nil)
+			h.putGo(a)
+			h.m.put(h.m.pathB, magexSays(recordedMagex))
+
+			plan := h.ready(t)["mage-x"].Install
+			assert.Empty(t, plan.Updater, "%+v: go install's folders aren't known, so the installer updates it", a)
+			assert.Contains(t, h.logs.String(), "couldn't read go's settings")
+		})
 	}
 }
 
@@ -908,10 +916,23 @@ func TestRunEnvPutsTheQuietVariablesOverTheShells(t *testing.T) {
 	assert.Equal(t, []string{}, Definition{}.RunEnv(base, integrationprefs.RunsInTerminal))
 }
 
+func TestUpdateReaderZeroValueIsReady(t *testing.T) {
+	t.Parallel()
+
+	// Each method works as the first call on a zero value.
+	for name, call := range map[string]func(r *updateReader){
+		"Write":    func(r *updateReader) { _, _ = r.Write([]byte("partial")) },
+		"Flush":    func(r *updateReader) { r.Flush() },
+		"snapshot": func(r *updateReader) { _ = r.snapshot() },
+	} {
+		assert.NotPanics(t, func() { call(new(updateReader)) }, name)
+	}
+}
+
 func TestUpdateReaderReadsTheUpdatersLines(t *testing.T) {
 	t.Parallel()
 
-	r := &updateReader{}
+	var r updateReader
 
 	for _, part := range []string{
 		"\n=== Installing ", "Update ===\n12:00:00 [WARN] first\r\n",

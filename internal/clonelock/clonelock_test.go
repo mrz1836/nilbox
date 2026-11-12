@@ -128,7 +128,7 @@ func TestLockWaitsForTheHolderToLetGo(t *testing.T) {
 
 		select {
 		case err := <-got:
-			t.Fatalf("Lock returned while the clone was held: %v", err)
+			require.Failf(t, "Lock returned while the clone was held", "%v", err)
 		default:
 		}
 
@@ -175,7 +175,7 @@ func TestLockWaitingForFailsFastOnOtherHolders(t *testing.T) {
 
 		select {
 		case err := <-got:
-			t.Fatalf("another worktree change is waited for, but it returned: %v", err)
+			require.Failf(t, "another worktree change is waited for, but it returned", "%v", err)
 		default:
 		}
 

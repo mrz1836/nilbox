@@ -10,15 +10,18 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/mrz1836/nilbox/internal/paths"
+	"github.com/mrz1836/nilbox/internal/testutil"
 )
 
 func TestReadHook(t *testing.T) {
 	t.Parallel()
 
 	dir := t.TempDir()
-	writeFile(t, dir, "ours", currentHook, 0o755)
-	writeFile(t, dir, "off", currentHook, 0o644)
-	writeFile(t, dir, "husky", huskyHook, 0o755)
+	testutil.WriteFileMode(t, filepath.Join(dir, "ours"), currentHook, 0o755)
+	testutil.WriteFileMode(t, filepath.Join(dir, "off"), currentHook, 0o644)
+	testutil.WriteFileMode(t, filepath.Join(dir, "husky"), huskyHook, 0o755)
 	require.NoError(t, os.MkdirAll(filepath.Join(dir, "folder"), 0o700))
 	require.NoError(t, os.Symlink(filepath.Join(dir, "ours"), filepath.Join(dir, "link")))
 
@@ -47,7 +50,7 @@ func TestReadHook(t *testing.T) {
 
 	folder := readHook(filepath.Join(dir, "folder"))
 	assert.True(t, folder.present)
-	require.ErrorIs(t, folder.err, errNotAFile)
+	require.ErrorIs(t, folder.err, paths.ErrNotRegular)
 }
 
 func TestReadHookHashesAWholeLongFile(t *testing.T) {
@@ -55,7 +58,7 @@ func TestReadHookHashesAWholeLongFile(t *testing.T) {
 
 	dir := t.TempDir()
 	long := strings.Repeat("echo padding\n", hookHead/8) + "# " + marker + "\n"
-	writeFile(t, dir, "long", long, 0o755)
+	testutil.WriteFileMode(t, filepath.Join(dir, "long"), long, 0o755)
 
 	got := readHook(filepath.Join(dir, "long"))
 	sum := sha256.Sum256([]byte(long))
@@ -86,12 +89,12 @@ func TestMarkedTypesAndBackups(t *testing.T) {
 	t.Parallel()
 
 	dir := t.TempDir()
-	writeFile(t, dir, "pre-commit", currentHook, 0o755)
-	writeFile(t, dir, hookCommitMsg, oldHook, 0o755)
-	writeFile(t, dir, "pre-push", "#!/bin/sh\nexit 0\n", 0o755)
-	writeFile(t, dir, "pre-commit.backup.9", huskyHook, 0o700)
-	writeFile(t, dir, "pre-commit.backup.10", huskyHook, 0o700)
-	writeFile(t, dir, "pre-commit.sample", "#!/bin/sh\n", 0o755)
+	testutil.WriteFileMode(t, filepath.Join(dir, "pre-commit"), currentHook, 0o755)
+	testutil.WriteFileMode(t, filepath.Join(dir, hookCommitMsg), oldHook, 0o755)
+	testutil.WriteFileMode(t, filepath.Join(dir, "pre-push"), "#!/bin/sh\nexit 0\n", 0o755)
+	testutil.WriteFileMode(t, filepath.Join(dir, "pre-commit.backup.9"), huskyHook, 0o700)
+	testutil.WriteFileMode(t, filepath.Join(dir, "pre-commit.backup.10"), huskyHook, 0o700)
+	testutil.WriteFileMode(t, filepath.Join(dir, "pre-commit.sample"), "#!/bin/sh\n", 0o755)
 
 	assert.Equal(t, []string{"pre-commit", hookCommitMsg}, markedTypes(dir))
 	assert.Equal(t, []string{"pre-commit.backup.10", "pre-commit.backup.9"}, backups(dir), "sorted as go-pre-commit sorts")

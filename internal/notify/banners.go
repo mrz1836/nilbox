@@ -209,23 +209,14 @@ func WakeDetail(r snooze.Reasons) string {
 
 	switch {
 	case r.Commits > 0:
-		parts = append(parts, counted(r.Commits, "new commit", "new commits"))
+		parts = append(parts, textutil.Counted(r.Commits, "new commit", "new commits"))
 	case r.ForcePushed:
 		parts = append(parts, "force-pushed")
 	}
 
 	if r.Comments > 0 {
-		parts = append(parts, counted(r.Comments, "new comment", "new comments"))
+		parts = append(parts, textutil.Counted(r.Comments, "new comment", "new comments"))
 	}
 
 	return strings.Join(parts, ", ")
-}
-
-// counted is "1 thing" or "N things".
-func counted(n int, one, many string) string {
-	if n == 1 {
-		return "1 " + one
-	}
-
-	return strconv.Itoa(n) + " " + many
 }

@@ -12,6 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/mrz1836/nilbox/internal/brand"
+	"github.com/mrz1836/nilbox/internal/testutil"
 	"github.com/mrz1836/nilbox/internal/uierr"
 )
 
@@ -31,18 +32,10 @@ func folder(t *testing.T, files map[string]string) string {
 
 	dir := t.TempDir()
 	for rel, text := range files {
-		writeText(t, filepath.Join(dir, filepath.FromSlash(rel)), text)
+		testutil.WriteFile(t, filepath.Join(dir, filepath.FromSlash(rel)), text)
 	}
 
 	return dir
-}
-
-// writeText writes text to path, making the folders it needs.
-func writeText(t *testing.T, path, text string) {
-	t.Helper()
-
-	require.NoError(t, os.MkdirAll(filepath.Dir(path), 0o700))
-	require.NoError(t, os.WriteFile(path, []byte(text), 0o600))
 }
 
 // byName returns the scripts by name; the first of a name wins.

@@ -151,8 +151,7 @@ func TestListOrdersByOwnerThenRepositoryIgnoringCase(t *testing.T) {
 func TestServiceReportsAClosedDatabase(t *testing.T) {
 	t.Parallel()
 
-	db := testutil.DB(t)
-	require.NoError(t, db.Close())
+	db := testutil.ClosedDB(t)
 
 	stored := launchdefaults.NewStore(db, nil)
 	svc := launchdefaults.NewService(launchdefaults.Config{

@@ -1,11 +1,14 @@
 package codex
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"log/slog"
+	"maps"
 	"path/filepath"
 	"slices"
+	"strings"
 	"sync"
 	"time"
 
@@ -147,7 +150,7 @@ func (o *Observer) Observe(ctx context.Context, now time.Time, live []sessions.R
 
 	var out []sessions.Observation
 
-	for _, codexHome := range sortedKeys(groups) {
+	for _, codexHome := range slices.Sorted(maps.Keys(groups)) {
 		h := o.home(codexHome)
 		recs := groups[codexHome]
 
@@ -308,10 +311,7 @@ func threadIDs(recs []sessions.Record, linked map[string]string) []string {
 	var ids []string
 
 	for _, r := range recs {
-		id := r.AgentSessionID
-		if id == "" {
-			id = linked[r.ID]
-		}
+		id := cmp.Or(r.AgentSessionID, linked[r.ID])
 
 		if id != "" {
 			ids = append(ids, id)
@@ -385,8 +385,7 @@ func (o *Observer) read(ctx context.Context, h *home, id string, now time.Time) 
 	}
 
 	if err := o.call(ctx, h, "thread/read", map[string]any{"threadId": id}, &got); err != nil {
-		var rpcErr *RPCError
-		if errors.As(err, &rpcErr) {
+		if isRPCError(err) {
 			return nil // a thread the daemon cannot read yet, such as one not saved
 		}
 
@@ -411,10 +410,8 @@ func (o *Observer) read(ctx context.Context, h *home, id string, now time.Time) 
 
 	err := o.call(ctx, h, "thread/turns/list", map[string]any{"threadId": id, "limit": 1, "itemsView": "full"}, &turns)
 
-	var rpcErr *RPCError
-
 	switch {
-	case errors.As(err, &rpcErr):
+	case isRPCError(err):
 		return nil // no turn yet: Codex keeps a thread once its first message is sent
 	case err != nil:
 		return err
@@ -432,6 +429,13 @@ func (o *Observer) read(ctx context.Context, h *home, id string, now time.Time) 
 	return nil
 }
 
+// isRPCError reports whether err holds an error the daemon answered a call with.
+func isRPCError(err error) bool {
+	_, ok := errors.AsType[*RPCError](err)
+
+	return ok
+}
+
 // call makes one call on a home's connection, bounded by callTimeout.
 func (o *Observer) call(ctx context.Context, h *home, method string, params, result any) error {
 	ctx, cancel := context.WithTimeout(ctx, callTimeout)
@@ -447,10 +451,7 @@ func (o *Observer) observe(
 ) sessions.Observation {
 	obs := sessions.Observation{ID: r.ID, AgentSessionID: linkedNow}
 
-	threadID := r.AgentSessionID
-	if threadID == "" {
-		threadID = linkedNow
-	}
+	threadID := cmp.Or(r.AgentSessionID, linkedNow)
 
 	t := h.threads[threadID]
 	if t != nil {
@@ -507,10 +508,7 @@ func (t *thread) state() (sessions.State, string) {
 		return state, detail
 	}
 
-	detail := t.turnDetail
-	if detail == "" {
-		detail = OutsideServer
-	}
+	detail := cmp.Or(t.turnDetail, OutsideServer)
 
 	if t.turnState == "" {
 		return sessions.StateUnknown, detail
@@ -642,13 +640,14 @@ func launchBefore(t Thread, recs []sessions.Record, dirs []string) (int, bool) {
 	return latest, latest >= 0
 }
 
-// processScan lists the running processes at most once per Observe, and knows which
+// processScan lists the running processes at most once per Observe, resolves each one's
+// directory at most once, however many sessions' folders it is asked of, and knows which
 // session each process found is.
 type processScan struct {
-	lister procs.Lister
-	done   bool
-	list   []procs.Process
-	err    error
+	lister  procs.Lister
+	done    bool
+	located *procs.Located
+	err     error
 
 	// claimed holds the session each process is, by process ID.
 	claimed map[int]string
@@ -679,7 +678,7 @@ func (s *processScan) codexIn(ctx context.Context, dir string) ([]int, bool) {
 		s.done = true
 
 		list, err := s.lister.Processes(ctx)
-		s.list, s.err = procs.WithoutServices(list, []string{codexInfo().Command}), err
+		s.located, s.err = procs.Locate(procs.WithoutServices(list, []string{codexInfo().Command})), err
 	}
 
 	if s.err != nil {
@@ -688,7 +687,7 @@ func (s *processScan) codexIn(ctx context.Context, dir string) ([]int, bool) {
 
 	var pids []int
 
-	for _, p := range procs.In(s.list, dir) {
+	for _, p := range s.located.In(dir) {
 		if filepath.Base(p.Command) == codexInfo().Command {
 			pids = append(pids, p.PID)
 		}
@@ -733,22 +732,11 @@ func idsOf(recs []sessions.Record) string {
 
 	slices.Sort(ids)
 
-	out := ""
+	var out strings.Builder
 	for _, id := range ids {
-		out += id + ","
+		out.WriteString(id)
+		out.WriteByte(',')
 	}
 
-	return out
-}
-
-// sortedKeys returns a map's keys in order.
-func sortedKeys[V any](m map[string]V) []string {
-	keys := make([]string, 0, len(m))
-	for k := range m {
-		keys = append(keys, k)
-	}
-
-	slices.Sort(keys)
-
-	return keys
+	return out.String()
 }

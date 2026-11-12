@@ -63,7 +63,7 @@ func TestTheHistoryKeepsItsNewestRuns(t *testing.T) {
 		finished = append(finished, id)
 	}
 
-	require.Eventually(t, func() bool { return h.count() == 3 }, wait, poll)
+	h.waitCount(3)
 
 	runs, err := h.s.Runs(t.Context(), Filter{})
 	require.NoError(t, err)
@@ -98,7 +98,7 @@ func TestTheHistoryKeepsItsLogsUnderTheirLimit(t *testing.T) {
 		ids = append(ids, id)
 	}
 
-	require.Eventually(t, func() bool { return h.count() == 2 }, wait, poll, "two logs of 10 bytes fit in 25")
+	h.waitCount(2, "two logs of 10 bytes fit in 25")
 
 	_, err := h.e.store.get(t.Context(), ids[1])
 	require.ErrorIs(t, err, ErrNotFound)

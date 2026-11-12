@@ -1,6 +1,7 @@
 package notify
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"fmt"
@@ -15,6 +16,7 @@ import (
 
 	"github.com/mrz1836/nilbox/internal/brand"
 	"github.com/mrz1836/nilbox/internal/event"
+	"github.com/mrz1836/nilbox/internal/github"
 	"github.com/mrz1836/nilbox/internal/inbox"
 	"github.com/mrz1836/nilbox/internal/notifyprefs"
 	"github.com/mrz1836/nilbox/internal/prefs"
@@ -85,31 +87,21 @@ func newFixture(t *testing.T, n int) *fixture {
 	t.Helper()
 
 	pool := testutil.DB(t)
-	ctx := t.Context()
-
-	var accountID, repoID int64
-
-	require.NoError(t, pool.QueryRowContext(ctx, `INSERT INTO accounts (login, created_at, updated_at)
-VALUES ('octo-user', ?, ?) RETURNING id`, testNow, testNow).Scan(&accountID))
-	require.NoError(t, pool.QueryRowContext(ctx, `INSERT INTO repos (owner, name, created_at, updated_at)
-VALUES ('acme-org', 'example-repo', ?, ?) RETURNING id`, testNow, testNow).Scan(&repoID))
-
-	f := &fixture{
-		pool: pool, clock: testutil.NewClock(testNow), poster: &fakePoster{status: StatusOn},
-		events: &testutil.Events{},
-	}
+	stored := inbox.Fixture{Viewer: "octo-user", At: testNow}
 
 	for i := 1; i <= n; i++ {
-		var id int64
-
-		require.NoError(t, pool.QueryRowContext(ctx, `INSERT INTO items (account_id, repo_id, kind, number,
-item_created_at, item_updated_at, fetched_at) VALUES (?, ?, 'pr', ?, ?, ?, ?) RETURNING id`,
-			accountID, repoID, i, testNow, testNow, testNow).Scan(&id))
-
-		f.items = append(f.items, id)
+		stored.Items = append(stored.Items, inbox.FixtureItem{Item: github.Item{
+			IsPR: true, Number: i, CreatedAt: testNow, UpdatedAt: testNow, RepoOwner: "acme-org", RepoName: "example-repo",
+		}})
 	}
 
-	return f
+	ids, err := inbox.StoreFixture(t.Context(), pool, stored)
+	require.NoError(t, err)
+
+	return &fixture{
+		pool: pool, clock: testutil.NewClock(testNow), poster: &fakePoster{status: StatusOn},
+		events: &testutil.Events{}, items: ids,
+	}
 }
 
 func (f *fixture) config() Config {
@@ -824,6 +816,99 @@ func TestTheDispatcherObeysTheBannerRulesForFailedRuns(t *testing.T) {
 	d.held.flush()
 	assert.Empty(t, f.poster.posted(), "no banner while the user doesn't allow them")
 	assert.Equal(t, 2, f.events.Count(), "the log still keeps both")
+}
+
+// endingPoster posts as fakePoster does, then runs after.
+type endingPoster struct {
+	*fakePoster
+
+	after func()
+}
+
+func (p endingPoster) Post(b Banner) error {
+	err := p.fakePoster.Post(b)
+	p.after()
+
+	return err
+}
+
+func TestTheQuitCutsShortABatchShowing(t *testing.T) {
+	t.Parallel()
+
+	f := newFixture(t, 0)
+	logs := &testutil.Logs{}
+
+	var d *Dispatcher
+
+	cfg := f.config()
+	cfg.Logger = logs.Logger()
+	cfg.Poster = endingPoster{fakePoster: f.poster, after: func() { d.held.end() }} // the quit, as the first banner shows
+	d = NewDispatcher(cfg)
+	d.held.window = time.Hour // the test flushes, as the window's timer would
+
+	for range MaxBanners {
+		d.Gather(t.Context(), runEntry())
+	}
+
+	d.held.flush()
+	assert.Len(t, f.poster.posted(), 1, "no banner after the first: the batch was cut short")
+
+	d.Gather(t.Context(), runEntry())
+	d.held.flush()
+	assert.Len(t, f.poster.posted(), 1, "a batch past its lifetime shows nothing")
+	assert.NotContains(t, logs.String(), "could not", "and a read the quit cut short isn't a failure")
+
+	d.Close()
+
+	log, err := NewStore(f.pool).Log(t.Context())
+	require.NoError(t, err)
+	assert.Len(t, log.Items, MaxBanners+1, "the history keeps every entry")
+}
+
+// askedPoster answers Status as fakePoster does, after running before.
+type askedPoster struct {
+	*fakePoster
+
+	before func()
+}
+
+func (p askedPoster) Status() BannerStatus {
+	p.before()
+
+	return p.fakePoster.Status()
+}
+
+func TestOnlyTheQuitCutsShortTheBannersShowing(t *testing.T) {
+	t.Parallel()
+
+	t.Run("the arrivals show every banner once their caller's context ends", func(t *testing.T) {
+		t.Parallel()
+
+		f := newFixture(t, 2)
+		ctx, cancel := context.WithCancel(t.Context())
+		cfg := f.config()
+		cfg.Poster = endingPoster{fakePoster: f.poster, after: cancel} // the caller's context ends as the first banner shows
+		d := NewDispatcher(cfg)
+
+		d.Arrived(ctx, []inbox.Arrival{f.arrival(0, KindReviewRequested), f.arrival(1, KindAssigned)})
+		assert.Len(t, f.poster.posted(), 2, "the caller's context isn't the quit")
+	})
+
+	t.Run("an entry's read its caller's context cut short is a failure", func(t *testing.T) {
+		t.Parallel()
+
+		f := newFixture(t, 0)
+		logs := &testutil.Logs{}
+		ctx, cancel := context.WithCancel(t.Context())
+		cfg := f.config()
+		cfg.Logger = logs.Logger()
+		cfg.Poster = askedPoster{fakePoster: f.poster, before: cancel} // the caller's context ends once the entry is recorded
+		d := NewDispatcher(cfg)
+
+		d.Notify(ctx, releaseEntry())
+		assert.Empty(t, f.poster.posted(), "the settings couldn't be read")
+		assert.Contains(t, logs.String(), "could not read which banners are on", "and that is told, as any failure is")
+	})
 }
 
 func TestTheDispatcherSurvivesFailures(t *testing.T) {

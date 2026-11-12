@@ -15,7 +15,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/mrz1836/nilbox/internal/agent"
-	"github.com/mrz1836/nilbox/internal/appdata"
 	"github.com/mrz1836/nilbox/internal/branchrules"
 	"github.com/mrz1836/nilbox/internal/clock"
 	"github.com/mrz1836/nilbox/internal/github"
@@ -517,11 +516,10 @@ func seedBound(t *testing.T) (*Core, seededItems) {
 	// A t3.json, so Repo scripts lists a script.
 	testutil.WriteFile(t, filepath.Join(repo, "t3.json"), `{"scripts": [{"name": "Test", "command": "magex test"}]}`)
 
-	c := bootstrap(t, Options{
-		Paths:  appdata.NewPaths(filepath.Join(t.TempDir(), "data")),
-		Home:   home,
-		Runner: worktreeGit(repo),
-	})
+	opts := testOptions(t)
+	opts.Home = home
+	opts.Runner = worktreeGit(repo)
+	c := bootstrap(t, opts)
 
 	now := time.Now()
 	stored := func(kind item.Kind, number int, repoName string) inbox.FixtureItem {

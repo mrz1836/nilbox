@@ -148,23 +148,37 @@ type watched struct {
 	toggle    *toggle
 }
 
-func newWatched(t *testing.T) *watched {
+// newWatched returns a Watcher over a fresh ledger that wakes it, each tweak changing the
+// Watcher's config before it is built.
+func newWatched(t *testing.T, tweaks ...func(*sessions.WatcherConfig)) *watched {
 	t.Helper()
 
 	w := &watched{
 		store: sessions.NewStore(testutil.DB(t)), claude: newFakeObserver(), codex: newFakeObserver(),
 		attention: &fakeAttention{}, events: &testutil.Events{}, toggle: &toggle{on: true},
 	}
-	w.watcher = sessions.NewWatcher(sessions.WatcherConfig{
+
+	cfg := sessions.WatcherConfig{
 		Store: w.store, Observers: map[agent.ID]sessions.Observer{agent.Claude: w.claude, agent.Codex: w.codex},
 		Switch: w.toggle, Attention: w.attention, Events: w.events,
-	})
+	}
+	for _, tweak := range tweaks {
+		tweak(&cfg)
+	}
+
+	w.watcher = sessions.NewWatcher(cfg)
 	w.ledger = sessions.NewLedger(sessions.Config{Store: w.store, Watcher: w.watcher, Switch: w.toggle, Events: w.events})
 
 	return w
 }
 
-// start records a session launched now.
+// mintsResumed has the Watcher name a session resumed outside the app "resumed".
+func mintsResumed(cfg *sessions.WatcherConfig) {
+	cfg.NewID = func() string { return "resumed" }
+}
+
+// start records a session launched now. Inside a synctest bubble with the Watcher
+// running, call it only once the Watcher is idle (after synctest.Wait), as run explains.
 func (w *watched) start(t *testing.T, id string) {
 	t.Helper()
 
@@ -183,7 +197,11 @@ func (w *watched) state(t *testing.T, id string) sessions.State {
 	return r.State
 }
 
-// run runs the Watcher until the test ends.
+// run runs the Watcher until the test ends, in the test's synctest bubble, and returns
+// once its first reconcile, which forgets old sessions in a write, is done. A test never
+// writes while the Watcher may: SQLite waits out the other's lock by sleeping on the
+// bubble's clock, which synctest counts as durably blocked, so a synctest.Wait could
+// return before the Watcher had stored what it saw.
 func (w *watched) run(t *testing.T) {
 	t.Helper()
 
@@ -200,13 +218,24 @@ func (w *watched) run(t *testing.T) {
 		cancel()
 		<-done
 	})
+
+	synctest.Wait()
 }
 
 func TestWatcherSleepsUntilASessionStarts(t *testing.T) {
 	t.Parallel()
 
+	// A short revive window, so the window ends after a few looks rather than a day's
+	// worth of them; TestWatcherRevivesWithinTheDefaultWindow covers the default.
+	const (
+		reviveTick   = 30 * time.Second
+		reviveWindow = 4 * reviveTick
+	)
+
 	synctest.Test(t, func(t *testing.T) {
-		w := newWatched(t)
+		w := newWatched(t, func(cfg *sessions.WatcherConfig) {
+			cfg.ReviveTick, cfg.ReviveWindow = reviveTick, reviveWindow
+		})
 		w.run(t)
 
 		time.Sleep(time.Hour)
@@ -240,36 +269,56 @@ func TestWatcherSleepsUntilASessionStarts(t *testing.T) {
 
 		assert.Equal(t, sessions.StateEnded, w.state(t, "s1"))
 
-		time.Sleep(3 * sessions.ReviveTick)
+		time.Sleep(3 * reviveTick)
 		synctest.Wait()
 
 		calls, _ = w.claude.counts()
 		assert.Equal(t, 8, calls, "nothing runs, so only a slow look for the session resumed elsewhere")
 
-		time.Sleep(sessions.ReviveWindow)
+		time.Sleep(reviveWindow)
 		synctest.Wait()
 
 		calls, closes = w.claude.counts()
+		assert.Equal(t, 9, calls, "looked for until the window ends")
 
 		time.Sleep(time.Hour)
 		synctest.Wait()
 
 		again, _ := w.claude.counts()
-		assert.Equal(t, calls, again, "a day after it ended, nothing is asked")
+		assert.Equal(t, calls, again, "once the window after it ended passed, nothing is asked")
 		assert.Equal(t, 1, closes, "and the observer let go")
 	})
+}
+
+func TestWatcherRevivesWithinTheDefaultWindow(t *testing.T) {
+	t.Parallel()
+
+	clk := testutil.NewClock(launched())
+	w := newWatched(t, func(cfg *sessions.WatcherConfig) { cfg.Clock = clk })
+
+	require.NoError(t, w.store.Insert(t.Context(), record("s1", 12)))
+	_, err := w.store.Apply(t.Context(), launched(), []sessions.Observation{{ID: "s1", State: sessions.StateEnded}})
+	require.NoError(t, err)
+
+	clk.Set(launched().Add(sessions.ReviveWindow))
+	assert.Equal(t, sessions.ReviveTick, w.watcher.Reconcile(t.Context()), "an ended session is looked for once a revive tick")
+
+	calls, _ := w.claude.counts()
+	assert.Equal(t, 1, calls, "until the default window after it ended passed")
+
+	clk.Set(launched().Add(sessions.ReviveWindow + time.Second))
+	assert.Zero(t, w.watcher.Reconcile(t.Context()), "then it waits to be woken")
+
+	calls, closes := w.claude.counts()
+	assert.Equal(t, 1, calls, "and asks nothing")
+	assert.Equal(t, 1, closes, "the observer let go")
 }
 
 func TestWatcherFollowsASessionResumedOutsideTheApp(t *testing.T) {
 	t.Parallel()
 
 	synctest.Test(t, func(t *testing.T) {
-		w := newWatched(t)
-		w.watcher = sessions.NewWatcher(sessions.WatcherConfig{
-			Store: w.store, Observers: map[agent.ID]sessions.Observer{agent.Claude: w.claude}, Events: w.events,
-			NewID: func() string { return "resumed" },
-		})
-		w.ledger = sessions.NewLedger(sessions.Config{Store: w.store, Watcher: w.watcher, Events: w.events})
+		w := newWatched(t, mintsResumed)
 		w.run(t)
 
 		w.claude.set("s1", sessions.StateEnded)
@@ -323,6 +372,7 @@ func TestWatcherDebouncesWhatNeedsTheUser(t *testing.T) {
 		w.claude.set("quick", sessions.StateWorking)
 		w.claude.set("slow", sessions.StateWorking)
 		w.start(t, "quick")
+		synctest.Wait()
 		w.start(t, "slow")
 		synctest.Wait()
 
@@ -488,6 +538,7 @@ func TestWatcherTakesAMomentItCouldNotAskForNoChange(t *testing.T) {
 		w.claude.set("s1", sessions.StateNeedsApproval)
 		w.claude.set("s2", sessions.StateWorking)
 		w.start(t, "s1")
+		synctest.Wait()
 		w.start(t, "s2")
 		synctest.Wait()
 
@@ -551,11 +602,7 @@ func TestWatcherRevivesASessionLaunchedLongAgoThatEndedRecently(t *testing.T) {
 	t.Parallel()
 
 	synctest.Test(t, func(t *testing.T) {
-		w := newWatched(t)
-		w.watcher = sessions.NewWatcher(sessions.WatcherConfig{
-			Store: w.store, Observers: map[agent.ID]sessions.Observer{agent.Claude: w.claude}, Events: w.events,
-			NewID: func() string { return "resumed" },
-		})
+		w := newWatched(t, mintsResumed)
 
 		old := record("s1", 12)
 		old.LaunchedAt = time.Now().Add(-3 * 24 * time.Hour)

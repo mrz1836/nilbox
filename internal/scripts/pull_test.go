@@ -35,7 +35,7 @@ func (g *gitRig) pull() scriptrun.Run {
 func (g *gitRig) ref(dir, ref string) string {
 	g.t.Helper()
 
-	out, _, err := execpath.Exec{Env: g.environ(), Dir: dir}.Run(g.t.Context(), "git", "rev-parse", "--verify", "-q", ref)
+	out, _, err := execpath.Exec{Env: g.plants.Environ(), Dir: dir}.Run(g.t.Context(), "git", "rev-parse", "--verify", "-q", ref)
 	if err != nil {
 		return ""
 	}
@@ -63,7 +63,7 @@ func TestPullFastForwardsTheBranch(t *testing.T) {
 	assert.Equal(t, third, g.ref(g.dir, "refs/remotes/origin/main"), "origin's branch as the clone keeps it moved too")
 	assert.FileExists(t, filepath.Join(g.dir, "three.txt"))
 
-	env := g.environ()
+	env := g.plants.Environ()
 	git, err := execpath.Search{Path: shellenv.Lookup(env, "PATH"), Home: shellenv.Lookup(env, "HOME")}.Find("git")
 	require.NoError(t, err)
 
@@ -514,8 +514,7 @@ func TestAPullFollowedAgainAfterARestart(t *testing.T) {
 		Status: scriptrun.StatusSucceeded, Summary: "Updated main from " + g.first[:7] + " to " + two[:7] + ", 1 new commit.",
 	}, got, "the branch moved on from where the pull found it")
 
-	ok := 0
-	got = v.Finish(t.Context(), scriptrun.Ending{ExitCode: &ok}, scriptrun.Outcome{Status: scriptrun.StatusSucceeded})
+	got = v.Finish(t.Context(), scriptrun.Ending{ExitCode: new(0)}, scriptrun.Outcome{Status: scriptrun.StatusSucceeded})
 	assert.Equal(t, "Updated main from "+g.first[:7]+" to "+two[:7]+", 1 new commit.", got.Summary,
 		"an end that was seen, as its Spec's Finish words it")
 
@@ -555,7 +554,7 @@ func TestPullOutputLastError(t *testing.T) {
 		},
 		{out: "schwerwiegend: kein Repository\nhint: x\n", want: "schwerwiegend: kein Repository"},
 	} {
-		out := &pullOutput{}
+		out := newPullOutput()
 
 		for chunk := range slices.Chunk([]byte(tc.out), 7) {
 			_, err := out.Write(chunk)

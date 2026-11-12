@@ -3,27 +3,19 @@ package hooks
 import (
 	"cmp"
 	"context"
-	"errors"
 	"fmt"
 	"path/filepath"
 	"slices"
 	"strings"
-	"time"
 
 	"github.com/mrz1836/nilbox/internal/brand"
-	"github.com/mrz1836/nilbox/internal/clonelock"
 	"github.com/mrz1836/nilbox/internal/integrationprefs"
 	"github.com/mrz1836/nilbox/internal/integrations"
 	"github.com/mrz1836/nilbox/internal/paths"
-	"github.com/mrz1836/nilbox/internal/repo"
 	"github.com/mrz1836/nilbox/internal/scriptrun"
 	"github.com/mrz1836/nilbox/internal/textutil"
 	"github.com/mrz1836/nilbox/internal/uierr"
 )
-
-// installAllSlack is how much longer than a hooks run's own limit Install and update all
-// waits for one to end.
-const installAllSlack = 30 * time.Second
 
 // ActionRequest is a hooks action the window asks for in one clone.
 type ActionRequest struct {
@@ -241,17 +233,39 @@ func (s *Service) actionSpec(ctx context.Context, action Action, c clone, confir
 	}
 
 	run := &actionRun{action: action, clone: c, confirm: confirm, where: where, kept: &keptAction{}}
-	reader := newActionReader()
 	base, _ := s.env()
 
 	return scriptrun.Spec{
 		Kind: scriptrun.KindHooks, Title: actionTitle(action), Source: string(action), Repo: c.name, Dir: c.dir,
 		Env: runEnv(base, where), RunsIn: where, Tool: string(toolID),
 		Intent: ActionIntent{Action: action, Confirm: confirm}, Keep: run.kept,
+		Callbacks: s.actionCallbacks(run, nil, done),
+		Before:    func(ctx context.Context) ([]string, error) { return s.beforeAction(ctx, run) },
+	}, nil
+}
+
+// actionCallbacks are the callbacks of run, a hooks action, built alike for the run
+// actionSpec starts and for one from before the app restarted, whose record, rec, the
+// Verifier picks up (nil for a run this app starts): go-pre-commit's output read as it
+// arrives; a Finish that reads what the action did from the hook files (finishAction),
+// which, for a run from before the restart, first waits for the login shell's environment
+// and judges it against the hooks its Before kept (finishKept); and a Released that has
+// the page scan the clone again, then tells done, when set, the result.
+func (s *Service) actionCallbacks(run *actionRun, rec *scriptrun.Record, done func(ActionResult),
+) scriptrun.Callbacks {
+	reader := newActionReader()
+
+	return scriptrun.Callbacks{
 		Output: reader,
-		Before: func(ctx context.Context) ([]string, error) { return s.beforeAction(ctx, run) },
 		Finish: func(ctx context.Context, end scriptrun.Ending, engine scriptrun.Outcome) scriptrun.Outcome {
-			run.result = s.finishAction(ctx, run, reader, end)
+			switch {
+			case rec == nil:
+				run.result = s.finishAction(ctx, run, reader, end)
+			case !s.awaitShell(ctx):
+				return scriptrun.Outcome{Unsettled: true}
+			default:
+				run.result = s.finishKept(ctx, rec.ID, run, reader, end)
+			}
 
 			return settled(run.cut, actionOutcome(run.result, reader.snapshot(), engine))
 		},
@@ -262,7 +276,7 @@ func (s *Service) actionSpec(ctx context.Context, action Action, c clone, confir
 				done(run.result)
 			}
 		},
-	}, nil
+	}
 }
 
 // beforeAction is a hooks action's Before: under the clone's lock, it reads go-pre-commit
@@ -409,7 +423,7 @@ func exitFailed(end scriptrun.Ending) bool {
 func (s *Service) wrote(run *actionRun, after hookFile, res *ActionResult) {
 	before := run.before.hook
 
-	s.judged.set(run.tool.key(), after.sha, true)
+	s.judged.set(run.tool.Key(), after.sha, true)
 
 	res.Outcome = installedOutcome(before)
 
@@ -504,8 +518,8 @@ func (s *Service) judgeUninstall(run *actionRun, res *ActionResult) {
 // end wasn't seen, which the engine's own outcome says.
 func actionOutcome(res ActionResult, said actionOutput, engine scriptrun.Outcome) scriptrun.Outcome {
 	out := scriptrun.Outcome{
-		Status: scriptrun.StatusFailed, Summary: res.Message, Warnings: said.warnings, Unrecognized: said.unrecognized,
-		UnrecognizedCount: said.unrecognizedCount, Detail: res,
+		Status: scriptrun.StatusFailed, Summary: res.Message, Warnings: said.Warnings, Unrecognized: said.Unrecognized,
+		UnrecognizedCount: said.UnrecognizedCount, Detail: res,
 	}
 
 	switch {
@@ -609,109 +623,6 @@ func owner(tool string) string {
 	return tool + "'s"
 }
 
-// clone is a clone a request names: its folder, absolute, and its origin's repository on
-// GitHub, or the zero Name.
-type clone struct {
-	dir  string
-	name repo.Name
-}
-
-// label names the clone for the app's log: its repository, or its folder with ~.
-func (c clone) label(home string) string {
-	if c.name.Valid() {
-		return c.name.String()
-	}
-
-	return paths.Tilde(c.dir, home)
-}
-
-// cloneAt finds the clone a request names by its folder, as the page lists it, with ~:
-// only a clone directly under the clone root is one.
-func (s *Service) cloneAt(ctx context.Context, shown string) (clone, error) {
-	l, err := s.listClones(ctx)
-	if err != nil {
-		return clone{}, err
-	}
-
-	return s.cloneIn(ctx, shown, l)
-}
-
-// listing is the clone root as set when it was read, and the clones under it.
-type listing struct {
-	root string
-	dirs []string
-}
-
-// listClones reads the clone root as set now and lists the clones under it.
-func (s *Service) listClones(ctx context.Context) (listing, error) {
-	root, err := s.clones.Root(ctx)
-	if err != nil {
-		return listing{}, fmt.Errorf("read the clone root: %w", err)
-	}
-
-	dirs, err := s.clones.Dirs(ctx, root)
-	if err != nil {
-		return listing{}, fmt.Errorf("list the clones: %w", err)
-	}
-
-	return listing{root: root, dirs: dirs}, nil
-}
-
-// cloneIn finds the clone shown names among l's: the folder itself, else one that is the
-// same through a link. Its repository is the one the last scan read for it, else its
-// origin's.
-func (s *Service) cloneIn(ctx context.Context, shown string, l listing) (clone, error) {
-	dir, err := paths.ExpandHome(shown, s.home)
-	if err != nil {
-		return clone{}, fmt.Errorf("%w: the folder %q: %w", ErrInvalidRequest, shown, err)
-	}
-
-	i := slices.Index(l.dirs, dir)
-	if i < 0 {
-		i = slices.IndexFunc(l.dirs, func(d string) bool { return paths.Same(d, dir) })
-	}
-
-	if i < 0 {
-		return clone{}, uierr.New(fmt.Sprintf("%s isn't a clone in %s.", paths.Tilde(dir, s.home),
-			paths.Tilde(l.root, s.home)), fmt.Errorf("%w: %s", ErrNoClone, dir))
-	}
-
-	c := clone{dir: l.dirs[i]}
-
-	if name, known := s.scannedName(c.dir); known {
-		c.name = name
-	} else if name, onHub, originErr := s.clones.Origin(ctx, c.dir); originErr == nil && onHub {
-		c.name = name
-	}
-
-	return c, nil
-}
-
-// scannedName returns the repository the last scan read for the clone at dir, the zero
-// Name for one whose origin isn't on GitHub, and whether the scan listed the clone.
-func (s *Service) scannedName(dir string) (repo.Name, bool) {
-	key := paths.Resolved(dir)
-
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	for _, r := range s.repos {
-		if r.key != key {
-			continue
-		}
-
-		if r.row.Repo == "" {
-			return repo.Name{}, true
-		}
-
-		name, err := repo.Parse(r.row.Repo)
-
-		return name, err == nil
-	}
-
-	return repo.Name{}, false
-}
-
 // where returns where a run goes: the request's choice, or the setting, or the app.
 func (s *Service) where(ctx context.Context, chosen integrationprefs.RunsIn) (integrationprefs.RunsIn, error) {
 	if chosen != "" {
@@ -782,214 +693,4 @@ func noToolError(tool ToolFacts) error {
 func notSetUpError(c clone, home string) error {
 	return uierr.New(fmt.Sprintf("%s has no go-pre-commit config (.github/env/ or .github/.env.base).", c.label(home)),
 		fmt.Errorf("%w: %s", ErrNotSetUp, c.dir))
-}
-
-// InstallLine is one clone in Install and update all's result.
-type InstallLine struct {
-	// Name is what the page calls the clone, and Dir its folder, with ~.
-	Name string `json:"name"`
-	Dir  string `json:"dir"`
-
-	// Action is what ran, or "" for a clone skipped; RunID is its run, or 0.
-	Action Action `json:"action"`
-	RunID  int64  `json:"runId"`
-
-	// Outcome is what it did, or OutcomeSkipped, and Message says so, or why it was
-	// skipped.
-	Outcome ActionOutcome `json:"outcome"`
-	Message string        `json:"message"`
-}
-
-// InstallAllResult is Install and update all's result: one line per clone, in the order
-// asked, and a sentence that sums them up.
-type InstallAllResult struct {
-	Lines   []InstallLine `json:"lines"`
-	Message string        `json:"message"`
-}
-
-// InstallAll installs or updates go-pre-commit's hook in each clone of dirs (folders as
-// the page lists them, with ~), one at a time, each as its own run in the app, and returns
-// a line per clone once all have ended. It never replaces another tool's hook, never
-// touches a shared hooks folder, does a folder that two clones resolve to once, and skips
-// a clone that is busy, turned off, current already, or without a config.
-func (s *Service) InstallAll(ctx context.Context, dirs []string) (InstallAllResult, error) {
-	if s.runs == nil {
-		return InstallAllResult{}, ErrNotSetUp
-	}
-
-	tool := s.tool(ctx)
-	if !tool.Usable() {
-		return InstallAllResult{}, noToolError(tool)
-	}
-
-	out := InstallAllResult{Lines: []InstallLine{}}
-	if len(dirs) == 0 {
-		out.Message = installAllMessage(out.Lines)
-
-		return out, nil
-	}
-
-	// The clone root and the clones under it are read once for every clone asked.
-	l, err := s.listClones(ctx)
-	if err != nil {
-		return InstallAllResult{}, err
-	}
-
-	done := map[string]string{} // hooks folders already done, and the clone that did each
-	seen := map[string]bool{}
-
-	for _, shown := range dirs {
-		if seen[shown] {
-			continue
-		}
-
-		seen[shown] = true
-
-		out.Lines = append(out.Lines, s.installOne(ctx, shown, l, tool, done))
-	}
-
-	out.Message = installAllMessage(out.Lines)
-
-	return out, nil
-}
-
-// installOne installs or updates the hook in the clone shown, unless it is one to skip,
-// and waits for the run to end.
-func (s *Service) installOne(ctx context.Context, shown string, l listing, tool ToolFacts, done map[string]string,
-) InstallLine {
-	line := InstallLine{Name: filepath.Base(shown), Dir: shown, Outcome: OutcomeSkipped}
-
-	c, err := s.cloneIn(ctx, shown, l)
-	if err != nil {
-		line.Message = uierr.Message(err)
-
-		return line
-	}
-
-	line.Name, line.Dir = display(c.name, c.dir), paths.Tilde(c.dir, s.home)
-
-	action, hooks, why := s.planInstall(ctx, c, tool, done)
-	if action == "" {
-		line.Message = why
-
-		return line
-	}
-
-	results := make(chan ActionResult, 1)
-
-	spec, err := s.actionSpec(ctx, action, c, "", integrationprefs.RunsInApp, func(r ActionResult) { results <- r })
-	if err == nil {
-		line.RunID, err = s.runs.Start(ctx, spec)
-	}
-
-	switch {
-	case errors.Is(err, clonelock.ErrBusy):
-		line.Message = uierr.Message(err)
-
-		return line
-	case err != nil:
-		line.Action, line.Outcome, line.Message = action, OutcomeFailed, uierr.Message(err)
-
-		return line
-	}
-
-	line.Action = action
-	done[hooks] = line.Name
-
-	select {
-	case r := <-results:
-		line.Outcome, line.Message = r.Outcome, r.Message
-	case <-ctx.Done():
-		line.Outcome, line.Message = OutcomeUnverified, "Stopped waiting for it to end."
-	case <-time.After(scriptrun.KindHooks.Timeout() + installAllSlack):
-		line.Outcome, line.Message = OutcomeUnverified, "It didn't end in time."
-	}
-
-	return line
-}
-
-// planInstall works out what Install and update all does in c: install, update, or
-// reinstall, and in which hooks folder, or why it skips it.
-func (s *Service) planInstall(ctx context.Context, c clone, tool ToolFacts, done map[string]string,
-) (action Action, hooks, why string) {
-	l := s.look(ctx, c.dir)
-	if why = s.skipReason(c, l); why != "" {
-		return "", "", why
-	}
-
-	hooks = paths.Resolved(l.paths.Hooks)
-	if by, ok := done[hooks]; ok {
-		return "", "", "It shares its hooks folder with " + by + ", done just now."
-	}
-
-	switch state, _ := s.judge(ctx, l.hook, tool); state {
-	case StateMissing:
-		return ActionInstall, hooks, ""
-	case StateOutdated:
-		return ActionUpdate, hooks, ""
-	case StateNotExecutable:
-		return ActionReinstall, hooks, ""
-	case StateUnknown, StateUnreadable:
-		return "", "", "go-pre-commit couldn't say whether its hook is current."
-	case StateReady, StateOther:
-	}
-
-	return "", "", "Its hook is current already."
-}
-
-// skipReason says why Install and update all leaves c, whose hooks are l, as it is: no
-// config, turned off, hooks it can't read, a shared hooks folder, or another tool's hook;
-// "" when nothing does.
-func (s *Service) skipReason(c clone, l clonesHooks) string {
-	cfg := readConfig(c.dir)
-
-	switch {
-	case !cfg.present:
-		return "It has no go-pre-commit config."
-	case !cfg.enabled():
-		return "go-pre-commit is turned off in this repository."
-	case l.err != nil:
-		return uierr.Message(l.err)
-	case l.shared:
-		return "Its hooks folder, " + paths.Tilde(l.paths.Hooks, s.home) + ", is shared, so it's left as it is."
-	case l.hook.err != nil:
-		return uierr.Message(uierr.New("Couldn't read its pre-commit hook.", l.hook.err))
-	case l.hook.present && !l.hook.ours:
-		return textutil.Capitalize(owner(l.hook.tool)) + " hook is there, so it's left as it is."
-	default:
-		return ""
-	}
-}
-
-// installAllMessage sums up Install and update all.
-func installAllMessage(lines []InstallLine) string {
-	count := map[ActionOutcome]int{}
-	for _, l := range lines {
-		count[l.Outcome]++
-	}
-
-	var parts []string
-
-	for _, p := range []struct {
-		outcome ActionOutcome
-		word    string
-	}{
-		{OutcomeInstalled, "installed"},
-		{OutcomeUpdated, "updated"},
-		{OutcomeCurrent, "already current"},
-		{OutcomeBlocked, "blocked by another tool's hook"},
-		{OutcomeFailed, "failed"},
-		{OutcomeUnverified, "unverified"},
-		{OutcomeSkipped, "skipped"},
-	} {
-		if n := count[p.outcome]; n > 0 {
-			parts = append(parts, fmt.Sprintf("%d %s", n, p.word))
-		}
-	}
-
-	if len(parts) == 0 {
-		return "Nothing to install or update."
-	}
-
-	return textutil.Capitalize(strings.Join(parts, ", ")) + "."
 }

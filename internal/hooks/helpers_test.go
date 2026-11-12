@@ -3,14 +3,12 @@ package hooks
 import (
 	"cmp"
 	"context"
-	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
-	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -24,6 +22,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/integrations"
 	"github.com/mrz1836/nilbox/internal/repo"
 	"github.com/mrz1836/nilbox/internal/scriptrun"
+	"github.com/mrz1836/nilbox/internal/scriptrun/scriptruntest"
 	"github.com/mrz1836/nilbox/internal/testutil"
 )
 
@@ -49,66 +48,28 @@ const (
 
 var errFake = errors.New("fake: failed")
 
-// recording is one recorded go-pre-commit run: its arguments, what it wrote, its exit
-// status, and its lines in the order they arrived.
+// recording is one recorded go-pre-commit run.
 type recording struct {
-	Name   string   `json:"name"`
-	Argv   []string `json:"argv"`
-	Stdout string   `json:"stdout"`
-	Stderr string   `json:"stderr"`
-	Exit   int      `json:"exit"`
-	Lines  []struct {
-		Stream string `json:"stream"`
-		Text   string `json:"text"`
-	} `json:"lines"`
+	testutil.Recording
 }
 
 // loadRecording reads the recording called name.
 func loadRecording(t *testing.T, name string) recording {
 	t.Helper()
 
-	data, err := os.ReadFile(filepath.Join(recordings, name+".json")) //nolint:gosec // a fixture the test names
-	require.NoError(t, err)
-
-	var rec recording
-	require.NoError(t, json.Unmarshal(data, &rec))
-	require.Equal(t, name, rec.Name)
-
-	return rec
+	return testutil.LoadRecording[recording](t, recordings, name)
 }
 
 // recordingNames lists the recordings whose names start with prefix.
 func recordingNames(t *testing.T, prefix string) []string {
 	t.Helper()
 
-	paths, err := filepath.Glob(filepath.Join(recordings, prefix+"*.json"))
-	require.NoError(t, err)
-	require.NotEmpty(t, paths)
-
-	names := make([]string, 0, len(paths))
-	for _, p := range paths {
-		names = append(names, strings.TrimSuffix(filepath.Base(p), ".json"))
-	}
-
-	return names
-}
-
-// log returns the run's output as the app's log holds it: its lines in the order they
-// arrived, each ended by a newline.
-func (r recording) log() string {
-	var b strings.Builder
-
-	for _, l := range r.Lines {
-		b.WriteString(l.Text)
-		b.WriteByte('\n')
-	}
-
-	return b.String()
+	return testutil.RecordingNames(t, recordings, prefix)
 }
 
 // fakeRun is the recording as a fake go-pre-commit plays it, after files.
 func (r recording) fakeRun(files ...testutil.FakeFile) testutil.FakeRun {
-	return testutil.FakeRun{Stdout: r.log(), Exit: r.Exit, Files: files}
+	return testutil.FakeRun{Stdout: r.Log("\n"), Exit: r.Exit, Files: files}
 }
 
 // rig is the Hooks page end to end: a clone root under a home of its own, clones made
@@ -123,20 +84,20 @@ type rig struct {
 	clones *fakeClones
 	tools  *fakeTools
 	status *fakeStatus
-	locks  *clonelock.Set
-	engine *scriptrun.Engine
-	runs   *scriptrun.Service
 	memory *fakeMemory
 	events *testutil.Events
 	logs   *testutil.Logs
 	svc    *Service
 
+	// runner is the real runner, whose history and logs the next start reads; locks,
+	// engine, and runs are its clone locks, its Engine, and its Service.
+	runner *scriptruntest.Harness
+	locks  *clonelock.Set
+	engine *scriptrun.Engine
+	runs   *scriptrun.Service
+
 	// scratch is where go-pre-commit's status judges hooks.
 	scratch string
-
-	// db and logDir are the runner's history and its logs, which the next start reads.
-	db     *sql.DB
-	logDir string
 }
 
 // newRig builds a rig with go-pre-commit 1.13.1 replaying nothing, or skips the test
@@ -147,23 +108,19 @@ func newRig(t *testing.T) *rig {
 	testutil.RequireGit(t)
 
 	home := testutil.RealTempDir(t)
+	logs := &testutil.Logs{}
+	runner := scriptruntest.New(t, home, logs.Logger())
 	r := &rig{
 		t: t, home: home, root: filepath.Join(home, "projects"), env: testutil.GitEnv(home),
-		tools: &fakeTools{}, status: &fakeStatus{}, locks: clonelock.New(),
-		memory: &fakeMemory{values: map[string]string{}}, events: &testutil.Events{}, logs: &testutil.Logs{},
-		scratch: filepath.Join(t.TempDir(), "scratch"), db: testutil.DB(t), logDir: filepath.Join(t.TempDir(), "script-runs"),
+		tools: &fakeTools{}, status: &fakeStatus{}, memory: &fakeMemory{values: map[string]string{}},
+		events: &testutil.Events{}, logs: logs, runner: runner, locks: runner.Locks, engine: runner.Engine,
+		runs: runner.Runs, scratch: filepath.Join(t.TempDir(), "scratch"),
 	}
 	require.NoError(t, os.MkdirAll(r.root, 0o700))
 
 	r.git = gitread.New(gitread.Config{Env: func() []string { return r.env }})
 	r.clones = &fakeClones{root: r.root, origins: map[string]repo.Name{}}
 
-	r.engine = scriptrun.NewEngine(scriptrun.Config{
-		DB: r.db, Locks: r.locks, LogDir: r.logDir, Home: home, Logger: r.logs.Logger(),
-	})
-	t.Cleanup(r.engine.StopAll)
-
-	r.runs = scriptrun.NewService(r.engine)
 	r.tool("1.13.1", testutil.FakeRun{})
 
 	r.svc = NewService(Config{
@@ -175,6 +132,21 @@ func newRig(t *testing.T) *rig {
 
 	r.engine.RegisterRerunner(scriptrun.KindHooks, NewRerunner(r.svc))
 	r.engine.RegisterRerunner(scriptrun.KindChecks, NewRerunner(r.svc))
+
+	return r
+}
+
+// newLightRig builds a rig of the clone root alone, under a home of its own, for what only
+// finds a clone and reads its files: its clones are made with lightClone, and it has no
+// runner, go-pre-commit, or service.
+func newLightRig(t *testing.T) *rig {
+	t.Helper()
+
+	home := testutil.RealTempDir(t)
+	r := &rig{t: t, home: home, root: filepath.Join(home, "projects")}
+	require.NoError(t, os.MkdirAll(r.root, 0o700))
+
+	r.clones = &fakeClones{root: r.root, origins: map[string]repo.Name{}}
 
 	return r
 }
@@ -220,22 +192,54 @@ type cloneOpts struct {
 	origin string
 }
 
+// cloneRepos are the repositories rig.clone starts its clones from, one for each name,
+// built once for the test binary by buildClone and copied into each rig that makes one.
+var cloneRepos = testutil.NewGitTemplates(buildClone) //nolint:gochecknoglobals // built once for the whole test binary
+
+// buildClone builds a repository called name, on main, whose one commit, first, holds
+// README.md.
+func buildClone(b *testutil.GitBuild, name string) struct{} {
+	b.WriteFile(filepath.Join(name, "README.md"), "# "+name+"\n")
+	b.Git(name, "-c", "init.defaultBranch=main", "init", "-q")
+	b.Git(name, "add", "README.md")
+	b.Git(name, "commit", "-q", "-m", "first")
+
+	return struct{}{}
+}
+
 // clone makes a clone called name under the clone root, and returns its folder.
 func (r *rig) clone(name string, o cloneOpts) string {
 	r.t.Helper()
 
+	cloneRepos.Copy(r.t, name, r.root)
+
+	return r.setUp(name, o)
+}
+
+// lightClone makes a folder called name under the clone root that reads as a clone
+// without git, as the clone root lists one (a folder holding .git), sets it up as o says,
+// and returns its folder. Only a real clone takes o.hooksPath.
+func (r *rig) lightClone(name string, o cloneOpts) string {
+	r.t.Helper()
+
+	require.NoError(r.t, os.MkdirAll(filepath.Join(r.root, name, ".git"), 0o700))
+
+	return r.setUp(name, o)
+}
+
+// setUp writes o's config and hooks into the clone called name under the clone root,
+// records its origin, and returns its folder.
+func (r *rig) setUp(name string, o cloneOpts) string {
+	r.t.Helper()
+
 	dir := filepath.Join(r.root, name)
-	testutil.InitRepo(r.t, dir)
-	writeFile(r.t, dir, "README.md", "# "+name+"\n", 0o600)
-	testutil.RunGit(r.t, dir, "add", "README.md")
-	testutil.RunGit(r.t, dir, "commit", "-q", "-m", "first")
 
 	if o.config != "" {
-		writeFile(r.t, dir, ".github/env/00-core.env", o.config, 0o600)
+		testutil.WriteFileMode(r.t, filepath.Join(dir, ".github/env/00-core.env"), o.config, 0o600)
 	}
 
 	if o.legacy != "" {
-		writeFile(r.t, dir, ".github/.env.base", o.legacy, 0o600)
+		testutil.WriteFileMode(r.t, filepath.Join(dir, ".github/.env.base"), o.legacy, 0o600)
 	}
 
 	hooks := filepath.Join(dir, ".git", "hooks")
@@ -250,11 +254,11 @@ func (r *rig) clone(name string, o cloneOpts) string {
 	}
 
 	if o.hook != "" {
-		writeFile(r.t, hooks, hookPreCommit, o.hook, cmpMode(o.mode))
+		testutil.WriteFileMode(r.t, filepath.Join(hooks, hookPreCommit), o.hook, cmpMode(o.mode))
 	}
 
 	for n, text := range o.hooks {
-		writeFile(r.t, hooks, n, text, 0o755)
+		testutil.WriteFileMode(r.t, filepath.Join(hooks, n), text, 0o755)
 	}
 
 	if o.origin != "" {
@@ -278,22 +282,7 @@ func (r *rig) shown(dir string) string {
 func (r *rig) ended(id int64) scriptrun.Run {
 	r.t.Helper()
 
-	var run scriptrun.Run
-
-	require.Eventually(r.t, func() bool {
-		got, err := r.runs.Run(r.t.Context(), id)
-		if err != nil || got.Status.Live() {
-			return false
-		}
-
-		run = got
-
-		_, busy := r.locks.Holder(filepath.Join(r.home, strings.TrimPrefix(got.Dir, "~/")))
-
-		return !busy
-	}, runWait, runPoll, "run %d never ended", id)
-
-	return run
+	return r.runner.Ended(id)
 }
 
 // page returns the page, failing the test when it can't be read.
@@ -314,16 +303,6 @@ func row(t *testing.T, p Page, dir string) Repo {
 	require.GreaterOrEqual(t, i, 0, "no row for %s", dir)
 
 	return p.Repos[i]
-}
-
-// writeFile writes text to name in dir, making the folders it needs, with mode.
-func writeFile(t *testing.T, dir, name, text string, mode os.FileMode) {
-	t.Helper()
-
-	path := filepath.Join(dir, filepath.FromSlash(name))
-	require.NoError(t, os.MkdirAll(filepath.Dir(path), 0o700))
-	require.NoError(t, os.WriteFile(path, []byte(text), mode))
-	require.NoError(t, os.Chmod(path, mode))
 }
 
 // readHookText returns the text of the pre-commit hook in the clone at dir.

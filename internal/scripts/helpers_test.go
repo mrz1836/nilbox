@@ -2,14 +2,11 @@ package scripts
 
 import (
 	"context"
-	"database/sql"
 	"os"
 	"path/filepath"
 	"slices"
-	"strings"
 	"sync"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/require"
 
@@ -19,13 +16,8 @@ import (
 	"github.com/mrz1836/nilbox/internal/integrations"
 	"github.com/mrz1836/nilbox/internal/repo"
 	"github.com/mrz1836/nilbox/internal/scriptrun"
+	"github.com/mrz1836/nilbox/internal/scriptrun/scriptruntest"
 	"github.com/mrz1836/nilbox/internal/testutil"
-)
-
-// runWait bounds how long a test waits for a run to end, and runPoll how often it looks.
-const (
-	runWait = 30 * time.Second
-	runPoll = 10 * time.Millisecond
 )
 
 // zshPath is a login shell of the POSIX family, and magexTest the command most tests run.
@@ -42,17 +34,20 @@ type rig struct {
 	home    string
 	root    string
 	scratch string
-	db      *sql.DB
 
 	clones   *fakeClones
 	git      *fakeGit
 	tools    *fakeTools
 	settings *fakeSettings
 	help     *fakeHelp
-	locks    *clonelock.Set
-	engine   *scriptrun.Engine
-	runs     *scriptrun.Service
 	svc      *Service
+
+	// runner is the real runner, whose database the service keeps its own tables in;
+	// locks, engine, and runs are its clone locks, its Engine, and its Service.
+	runner *scriptruntest.Harness
+	locks  *clonelock.Set
+	engine *scriptrun.Engine
+	runs   *scriptrun.Service
 
 	// shell is the fake login shell, and env the environment every run gets, which
 	// names each fake's script.
@@ -66,20 +61,16 @@ func newRig(t *testing.T) *rig {
 	t.Helper()
 
 	home := testutil.RealTempDir(t)
+	runner := scriptruntest.New(t, home, nil)
 	r := &rig{
-		t: t, home: home, root: filepath.Join(home, "projects"), scratch: t.TempDir(), db: testutil.DB(t),
+		t: t, home: home, root: filepath.Join(home, "projects"), scratch: t.TempDir(),
 		clones: &fakeClones{origins: map[string]repo.Name{}}, git: &fakeGit{}, tools: &fakeTools{},
 		settings: &fakeSettings{cfg: integrationprefs.Decode(nil)}, help: &fakeHelp{out: fixture(t, "magex-1.30.2-help-commands.txt")},
-		locks: clonelock.New(), env: []string{"PATH=/usr/bin:/bin", "HOME=" + home},
+		runner: runner, locks: runner.Locks, engine: runner.Engine, runs: runner.Runs,
+		env: []string{"PATH=/usr/bin:/bin", "HOME=" + home},
 	}
 	require.NoError(t, os.MkdirAll(r.root, 0o700))
 	r.clones.root = r.root
-
-	r.engine = scriptrun.NewEngine(scriptrun.Config{
-		DB: r.db, Locks: r.locks, LogDir: filepath.Join(t.TempDir(), "script-runs"), Home: home,
-	})
-	t.Cleanup(r.engine.StopAll)
-	r.runs = scriptrun.NewService(r.engine)
 
 	r.shell = r.fake("zsh", testutil.FakeRun{Stdout: "ran\n"})
 	r.magex("1.30.2", testutil.FakeRun{Stdout: "magex ran\n"})
@@ -94,7 +85,7 @@ func newRig(t *testing.T) *rig {
 func (r *rig) service(runs Runs) *Service {
 	return NewService(Config{
 		Clones: r.clones, Git: r.git, Branches: fakeBranches{"acme-org/sdk": "main"}, Tools: r.tools, Settings: r.settings,
-		Runs: runs, History: r.runs, DB: r.db, Env: r.environ, Shell: func() string { return r.shell },
+		Runs: runs, History: r.runs, DB: r.runner.DB, Env: r.environ, Shell: func() string { return r.shell },
 		Runner: r.help.runner, Scratch: r.scratch, Home: r.home,
 	})
 }
@@ -115,7 +106,7 @@ func (r *rig) fake(name string, run testutil.FakeRun) string {
 // magex makes the copy of magex in use a fake at version that does what run says.
 func (r *rig) magex(version string, run testutil.FakeRun) {
 	path := r.fake("magex", run)
-	r.tools.set(ToolFacts{Path: path, Version: version, State: integrations.StateFound})
+	r.tools.set(ToolFacts{CopyFacts: integrations.CopyFacts{Path: path, Version: version, State: integrations.StateFound}})
 }
 
 // environ is the login shell's environment.
@@ -135,7 +126,7 @@ func (r *rig) clone(name, origin string, files map[string]string) string {
 	require.NoError(r.t, os.MkdirAll(filepath.Join(dir, ".git"), 0o700))
 
 	for rel, text := range files {
-		writeText(r.t, filepath.Join(dir, filepath.FromSlash(rel)), text)
+		testutil.WriteFile(r.t, filepath.Join(dir, filepath.FromSlash(rel)), text)
 	}
 
 	if origin != "" {
@@ -177,7 +168,7 @@ func (r *rig) entry(dir, ref string) Entry {
 		}
 	}
 
-	r.t.Fatalf("no entry %s", ref)
+	require.Failf(r.t, "no entry", "%s", ref)
 
 	return Entry{}
 }
@@ -186,21 +177,7 @@ func (r *rig) entry(dir, ref string) Entry {
 func (r *rig) ended(id int64) scriptrun.Run {
 	r.t.Helper()
 
-	var run scriptrun.Run
-
-	require.Eventually(r.t, func() bool {
-		got, err := r.runs.Run(r.t.Context(), id)
-		if err != nil || got.Status.Live() {
-			return false
-		}
-
-		run = got
-		_, busy := r.locks.Holder(filepath.Join(r.home, strings.TrimPrefix(got.Dir, "~/")))
-
-		return !busy
-	}, runWait, runPoll, "run %d never ended", id)
-
-	return run
+	return r.runner.Ended(id)
 }
 
 // recorded returns how many runs the history holds.

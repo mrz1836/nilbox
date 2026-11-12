@@ -44,7 +44,7 @@ func TestReadWindowSizeIsTheDefaultOnAFreshDatabase(t *testing.T) {
 func TestReadWindowSizeReportsAClosedDatabase(t *testing.T) {
 	t.Parallel()
 
-	got, err := ReadWindowSize(t.Context(), prefs.New(closedDB(t), nil))
+	got, err := ReadWindowSize(t.Context(), prefs.New(testutil.ClosedDB(t), nil))
 	require.ErrorContains(t, err, "read the window size")
 	assert.Equal(t, DefaultWindowSize(), got, "the default still comes back")
 }
@@ -144,7 +144,7 @@ func TestMinWindowSizeGrowsWithTheTextSize(t *testing.T) {
 	assert.Equal(t, WindowSize{Width: 1040, Height: 676}, MinWindowSizeFor(TextSizeLarger))
 	assert.Equal(t, MinWindowSizeFor(DefaultTextSize), MinWindowSizeFor("unknown"))
 
-	for _, size := range textSizes() {
+	for _, size := range textSizes().values {
 		assert.True(t, MinWindowSizeFor(size).valid(), "the minimum at %s is a size the window can be", size)
 	}
 }

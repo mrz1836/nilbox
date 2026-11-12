@@ -17,8 +17,8 @@ func writable(dir string) bool {
 
 // killed reports a program that ended on SIGKILL, as macOS ends one it refuses to run.
 func killed(err error) bool {
-	var exit *exec.ExitError
-	if !errors.As(err, &exit) || exit.ProcessState == nil {
+	exit, ok := errors.AsType[*exec.ExitError](err)
+	if !ok || exit.ProcessState == nil {
 		return false
 	}
 

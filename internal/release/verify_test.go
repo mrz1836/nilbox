@@ -176,9 +176,9 @@ func TestJudgeAndOutcome(t *testing.T) {
 func TestTheResultLeavesOutTheWarningEveryReleaseHas(t *testing.T) {
 	t.Parallel()
 
-	said := Output{Warnings: []string{
+	said := Output{Notes: scriptrun.Notes{Warnings: []string{
 		notOnHead, sendByHand, "Current version tag is not on HEAD – there are 12 commits since v0.9.1",
-	}}
+	}}}
 	out := outcomeOf(Result{Kind: ResultNotPushed, Tag: recVersion}, said, scriptrun.Outcome{})
 
 	assert.Equal(t, []string{sendByHand}, out.Warnings, "a version tag not on HEAD is why a release is made")
@@ -352,28 +352,6 @@ func TestRecheckCompletesTheIntent(t *testing.T) {
 	require.ErrorIs(t, err, context.Canceled)
 }
 
-func TestShellWord(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		word, quoted string
-	}{
-		{word: "master", quoted: "master"},
-		{word: "origin/feature/x-1", quoted: "origin/feature/x-1"},
-		{word: "v1.4.3+build.7", quoted: "v1.4.3+build.7"},
-		{word: "", quoted: "''"},
-		{word: "a b", quoted: "'a b'"},
-		{word: "$(touch pwned)", quoted: "'$(touch pwned)'"},
-		{word: "`id`", quoted: "'`id`'"},
-		{word: "it's", quoted: `'it'\''s'`},
-		{word: "x;rm -rf ~", quoted: "'x;rm -rf ~'"},
-	}
-
-	for _, tt := range tests {
-		assert.Equal(t, tt.quoted, shellWord(tt.word), tt.word)
-	}
-}
-
 func TestCopyableCommandsAreQuoted(t *testing.T) {
 	t.Parallel()
 
@@ -428,7 +406,7 @@ func TestAMajorWithoutMagexIsNotReadyRatherThanABug(t *testing.T) {
 	t.Parallel()
 
 	r := newReleaseRig(t, rigOptions{base: shownVersion})
-	r.tool = ToolFacts{Features: []integrations.Feature{}, State: integrations.StateMissing}
+	r.tool = ToolFacts{CopyFacts: integrations.CopyFacts{Features: []integrations.Feature{}, State: integrations.StateMissing}}
 
 	_, err := r.svc.Start(t.Context(), StartRequest{Repo: sdkRepo, Bump: BumpMajor, Version: majorVersion, Typed: majorVersion})
 	require.ErrorIs(t, err, ErrNotReady)

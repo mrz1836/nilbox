@@ -101,6 +101,10 @@ type WatcherConfig struct {
 	Tick     time.Duration
 	Debounce time.Duration
 
+	// ReviveTick and ReviveWindow default to the ReviveTick and ReviveWindow constants.
+	ReviveTick   time.Duration
+	ReviveWindow time.Duration
+
 	// NewID mints the ID of a session resumed outside the app; it defaults to a random
 	// UUID.
 	NewID func() string
@@ -120,6 +124,8 @@ type Watcher struct {
 	logger    *slog.Logger
 	tick      time.Duration
 	debounce  time.Duration
+	reviveIn  time.Duration
+	window    time.Duration
 	newID     func() string
 
 	wake chan struct{}
@@ -147,8 +153,8 @@ func NewWatcher(cfg WatcherConfig) *Watcher {
 	w := &Watcher{
 		store: cfg.Store, observers: cfg.Observers, toggle: cfg.Switch, attention: cfg.Attention,
 		events: event.Or(cfg.Events), clock: clock.Or(cfg.Clock), home: cfg.Home, logger: logging.Or(cfg.Logger),
-		tick: cfg.Tick, debounce: cfg.Debounce, newID: cfg.NewID, wake: make(chan struct{}, 1),
-		waiting: map[string]time.Time{}, known: map[string]State{},
+		tick: cfg.Tick, debounce: cfg.Debounce, reviveIn: cfg.ReviveTick, window: cfg.ReviveWindow,
+		newID: cfg.NewID, wake: make(chan struct{}, 1), waiting: map[string]time.Time{}, known: map[string]State{},
 	}
 
 	if w.newID == nil {
@@ -161,6 +167,14 @@ func NewWatcher(cfg WatcherConfig) *Watcher {
 
 	if w.debounce <= 0 {
 		w.debounce = DefaultDebounce
+	}
+
+	if w.reviveIn <= 0 {
+		w.reviveIn = ReviveTick
+	}
+
+	if w.window <= 0 {
+		w.window = ReviveWindow
 	}
 
 	return w
@@ -226,7 +240,7 @@ func (w *Watcher) Reconcile(ctx context.Context) time.Duration {
 }
 
 // settle tells the window what changed, hands the AttentionSink what needs the user, and
-// returns how long to wait: a tick while a session runs, else ReviveTick.
+// returns how long to wait: a tick while a session runs, else the revive tick.
 func (w *Watcher) settle(ctx context.Context, now time.Time, changes []Change, revived, running bool) time.Duration {
 	if len(changes) > 0 || revived {
 		w.events.Emit(event.SessionsUpdated{})
@@ -235,7 +249,7 @@ func (w *Watcher) settle(ctx context.Context, now time.Time, changes []Change, r
 	w.heed(ctx, now, changes)
 
 	if !running && !revived {
-		return ReviveTick
+		return w.reviveIn
 	}
 
 	return w.tick
@@ -262,11 +276,11 @@ func (w *Watcher) idle(ctx context.Context, live, ended []Record) (time.Duration
 	return wait, true
 }
 
-// resumable returns the sessions that ended in the last ReviveWindow, however long ago
+// resumable returns the sessions that ended in the last revive window, however long ago
 // they were launched, and could be resumed outside the app under the same ID, as Claude
 // Code's can: the last of each ID to end, leaving out an ID a running session already has.
 func (w *Watcher) resumable(ctx context.Context, now time.Time, live []Record) []Record {
-	ended, err := w.store.EndedSince(ctx, now.Add(-ReviveWindow))
+	ended, err := w.store.EndedSince(ctx, now.Add(-w.window))
 	if err != nil {
 		return nil
 	}

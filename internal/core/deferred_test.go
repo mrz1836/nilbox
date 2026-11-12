@@ -2,16 +2,13 @@ package core
 
 import (
 	"context"
-	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/mrz1836/nilbox/internal/appdata"
 	"github.com/mrz1836/nilbox/internal/shellenv"
-	"github.com/mrz1836/nilbox/internal/testutil"
 )
 
 // fakeShell answers the environment read with env, between the markers it was asked to
@@ -31,10 +28,10 @@ func TestDeferredReadsTheShellEnvironment(t *testing.T) {
 	t.Parallel()
 
 	runs := 0
-	c := bootstrap(t, Options{
-		Paths: appdata.NewPaths(filepath.Join(t.TempDir(), "data")), Home: testutil.ClaudeHome(t, ".claude"),
-		Version: "test", Runner: noPrograms(), ShellStarter: fakeShell("PATH=/opt/homebrew/bin:/usr/bin\x00", &runs),
-	})
+	opts := testOptions(t, ".claude")
+	opts.Version = "test"
+	opts.ShellStarter = fakeShell("PATH=/opt/homebrew/bin:/usr/bin\x00", &runs)
+	c := bootstrap(t, opts)
 
 	assert.Zero(t, runs, "starting the app reads no shell: that waits for the first paint")
 
@@ -48,7 +45,7 @@ func TestDeferredReadsTheShellEnvironment(t *testing.T) {
 	select {
 	case <-c.ShellEnv.Ready():
 	default:
-		t.Fatal("the deferred work read the shell's environment")
+		require.FailNow(t, "the deferred work read the shell's environment")
 	}
 
 	env, read := c.ShellEnv.Env()

@@ -159,8 +159,7 @@ func (s *procStream) stop() error {
 		err = <-exited
 	}
 
-	var exit *exec.ExitError
-	if err != nil && !errors.As(err, &exit) {
+	if _, ok := errors.AsType[*exec.ExitError](err); err != nil && !ok {
 		return fmt.Errorf("stop codex app-server proxy: %w", err)
 	}
 

@@ -14,6 +14,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/mrz1836/nilbox/internal/github"
+	"github.com/mrz1836/nilbox/internal/inbox"
 	"github.com/mrz1836/nilbox/internal/item"
 	"github.com/mrz1836/nilbox/internal/repo"
 	"github.com/mrz1836/nilbox/internal/sensitive"
@@ -41,26 +42,24 @@ var (
 	errNotCalled = errors.New("the fake was not set up for this call")
 )
 
-// seedItems stores the items the cache rows reference: n pull requests with ids 1 to n.
-func seedItems(t *testing.T, db *sql.DB, n int) {
+// storePulls stores, as a refresh of the inbox would, count pull requests of
+// acme-org/example-repo numbered from first, which the cache rows reference by id, and
+// returns their ids.
+func storePulls(t *testing.T, db *sql.DB, first, count int) []int64 {
 	t.Helper()
 
-	exec(t, db, `INSERT INTO accounts (id, login, created_at, updated_at) VALUES (1, 'octo-user', ?, ?)`, testNow, testNow)
-	exec(t, db, `INSERT INTO repos (id, owner, name, created_at, updated_at) VALUES (1, 'acme-org', 'example-repo', ?, ?)`,
-		testNow, testNow)
+	stored := inbox.Fixture{Viewer: octoUser, At: testNow}
 
-	for i := 1; i <= n; i++ {
-		exec(t, db, `INSERT INTO items (id, account_id, repo_id, kind, number, node_id, item_created_at, item_updated_at,
-			fetched_at) VALUES (?, 1, 1, 'pr', ?, ?, ?, ?, ?)`, i, i, "PR_"+string(rune('a'+i)), testNow, testNow, testNow)
+	for number := first; number < first+count; number++ {
+		stored.Items = append(stored.Items, inbox.FixtureItem{Item: github.Item{
+			IsPR: true, Number: number, CreatedAt: testNow, UpdatedAt: testNow, RepoOwner: "acme-org", RepoName: "example-repo",
+		}})
 	}
-}
 
-// exec runs a statement on db.
-func exec(t *testing.T, db *sql.DB, query string, args ...any) {
-	t.Helper()
-
-	_, err := db.ExecContext(t.Context(), query, args...)
+	ids, err := inbox.StoreFixture(t.Context(), db, stored)
 	require.NoError(t, err)
+
+	return ids
 }
 
 // storedPull is pull request #7 as the inbox stores it: someone else's, asking the user's
@@ -463,7 +462,7 @@ func newHarness(t *testing.T) *harness {
 	t.Helper()
 
 	db := testutil.DB(t)
-	seedItems(t, db, 1)
+	require.Equal(t, []int64{pullID}, storePulls(t, db, 1, 1), "the pull request the sheet shows")
 
 	h := &harness{
 		db: db, inbox: &fakeInbox{pull: storedPull()}, clock: testutil.NewClock(testNow), events: &testutil.Events{},

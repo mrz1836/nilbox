@@ -1,19 +1,19 @@
 package periodic_test
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"log/slog"
-	"sync"
 	"sync/atomic"
 	"testing"
 	"testing/synctest"
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/mrz1836/nilbox/internal/periodic"
+	"github.com/mrz1836/nilbox/internal/testutil"
 )
 
 // interval is how often the job runs in these tests. They run in a synctest bubble,
@@ -23,34 +23,27 @@ const interval = time.Minute
 
 var errFakeJob = errors.New("fake: the job broke")
 
-// logBuffer is a log sink safe for concurrent writers.
-type logBuffer struct {
-	mu  sync.Mutex
-	buf bytes.Buffer
+// loop runs fn until ctx is canceled, as RunEvery does, and returns once the run in
+// flight has returned.
+type loop func(ctx context.Context, fn func(context.Context) error, log *slog.Logger)
+
+// runEvery is RunEvery as a loop, asking every for its interval and woken through wake.
+func runEvery(every periodic.Every, wake <-chan struct{}) loop {
+	return func(ctx context.Context, fn func(context.Context) error, log *slog.Logger) {
+		periodic.RunEvery(ctx, every, wake, "fake job", fn, log)
+	}
 }
 
-func (b *logBuffer) Write(p []byte) (int, error) {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-
-	return b.buf.Write(p)
+// everyInterval is RunEvery running the job every interval, an interval that never
+// changes, with nothing to wake it.
+func everyInterval() loop {
+	return runEvery(func(context.Context) time.Duration { return interval }, nil)
 }
 
-func (b *logBuffer) String() string {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-
-	return b.buf.String()
-}
-
-// logger writes every level to logs.
-func logger(logs *logBuffer) *slog.Logger {
-	return slog.New(slog.NewTextHandler(logs, &slog.HandlerOptions{Level: slog.LevelDebug}))
-}
-
-// start runs fn every interval in the background, inside the caller's synctest bubble,
-// and waits until the first run has settled; stop cancels Run and waits for it to return.
-func start(t *testing.T, fn func(context.Context) error, log *slog.Logger) (stop func()) {
+// start runs fn with run in the background, inside the caller's synctest bubble, and
+// waits until the first run, if any, has settled; stop cancels it and waits for it to
+// return.
+func start(t *testing.T, run loop, fn func(context.Context) error, log *slog.Logger) (stop func()) {
 	t.Helper()
 
 	ctx, cancel := context.WithCancel(t.Context())
@@ -59,7 +52,7 @@ func start(t *testing.T, fn func(context.Context) error, log *slog.Logger) (stop
 	go func() {
 		defer close(done)
 
-		periodic.Run(ctx, interval, "fake job", fn, log)
+		run(ctx, fn, log)
 	}()
 
 	synctest.Wait()
@@ -77,13 +70,13 @@ func after(d time.Duration) {
 	synctest.Wait()
 }
 
-func TestRunRunsAtOnceAndOnEveryTick(t *testing.T) {
+func TestTheJobRunsAtOnceAndThenEveryInterval(t *testing.T) {
 	t.Parallel()
 
 	synctest.Test(t, func(t *testing.T) {
 		var runs atomic.Int32
 
-		stop := start(t, func(context.Context) error {
+		stop := start(t, everyInterval(), func(context.Context) error {
 			runs.Add(1)
 
 			return nil
@@ -92,22 +85,22 @@ func TestRunRunsAtOnceAndOnEveryTick(t *testing.T) {
 		assert.Equal(t, int32(1), runs.Load(), "the first run starts at once")
 
 		after(3*interval + time.Second)
-		assert.Equal(t, int32(4), runs.Load(), "one run on each of the three ticks")
+		assert.Equal(t, int32(4), runs.Load(), "one run in each of the three intervals")
 
 		stop()
 		after(10 * interval)
-		assert.Equal(t, int32(4), runs.Load(), "nothing runs once Run has returned")
+		assert.Equal(t, int32(4), runs.Load(), "nothing runs once the loop has returned")
 	})
 }
 
-func TestRunStartsWithoutWaitingForATick(t *testing.T) {
+func TestTheFirstRunStartsWithoutWaiting(t *testing.T) {
 	t.Parallel()
 
 	synctest.Test(t, func(t *testing.T) {
 		began := time.Now()
 		ran := make(chan time.Time, 1)
 
-		stop := start(t, func(context.Context) error {
+		stop := start(t, everyInterval(), func(context.Context) error {
 			ran <- time.Now()
 
 			return nil
@@ -116,21 +109,21 @@ func TestRunStartsWithoutWaitingForATick(t *testing.T) {
 
 		select {
 		case at := <-ran:
-			assert.Equal(t, began, at, "the first run starts at once, before any tick")
+			assert.Equal(t, began, at, "the first run starts at once, before any interval passes")
 		default:
-			t.Fatal("the first run did not start at once")
+			require.FailNow(t, "the first run did not start at once")
 		}
 	})
 }
 
-func TestRunLogsFailuresAndPanicsAndKeepsGoing(t *testing.T) {
+func TestFailuresAndPanicsAreLoggedAndTheRunsGoOn(t *testing.T) {
 	t.Parallel()
 
 	synctest.Test(t, func(t *testing.T) {
 		var runs atomic.Int32
 
-		logs := &logBuffer{}
-		stop := start(t, func(context.Context) error {
+		logs := &testutil.Logs{}
+		stop := start(t, everyInterval(), func(context.Context) error {
 			switch runs.Add(1) {
 			case 1:
 				return errFakeJob
@@ -139,7 +132,7 @@ func TestRunLogsFailuresAndPanicsAndKeepsGoing(t *testing.T) {
 			default:
 				return nil
 			}
-		}, logger(logs))
+		}, logs.Logger())
 
 		after(2*interval + time.Second)
 		stop()
@@ -154,58 +147,29 @@ func TestRunLogsFailuresAndPanicsAndKeepsGoing(t *testing.T) {
 	})
 }
 
-func TestRunWaitsForTheRunInFlightAndDoesNotLogItsCancellation(t *testing.T) {
+func TestTheRunInFlightIsWaitedForAndItsCancellationIsNotLogged(t *testing.T) {
 	t.Parallel()
 
 	synctest.Test(t, func(t *testing.T) {
 		sawCancel := make(chan struct{})
 
-		logs := &logBuffer{}
-		stop := start(t, func(ctx context.Context) error {
+		logs := &testutil.Logs{}
+		stop := start(t, everyInterval(), func(ctx context.Context) error {
 			<-ctx.Done()
 			close(sawCancel)
 
 			return ctx.Err()
-		}, logger(logs))
+		}, logs.Logger())
 
 		stop()
 
 		select {
 		case <-sawCancel:
 		default:
-			t.Fatal("Run returned before the run in flight did")
+			require.FailNow(t, "the loop returned before the run in flight did")
 		}
 
 		assert.NotContains(t, logs.String(), "fake job failed", "a canceled run is not a failure")
-	})
-}
-
-func TestRunSkipsTicksThatComeWhileRunning(t *testing.T) {
-	t.Parallel()
-
-	synctest.Test(t, func(t *testing.T) {
-		var runs atomic.Int32
-
-		// The first run outlasts two ticks.
-		const long = 2*interval + interval/2
-
-		logs := &logBuffer{}
-		stop := start(t, func(context.Context) error {
-			if runs.Add(1) == 1 {
-				time.Sleep(long)
-			}
-
-			return nil
-		}, logger(logs))
-
-		after(long + time.Second)
-		assert.Equal(t, int32(1), runs.Load(), "a run that outlasts the interval is not followed by one straight away")
-		assert.Contains(t, logs.String(), "fake job skipped", "the ticks during the long first run were skipped")
-
-		after(interval / 2)
-		assert.Equal(t, int32(2), runs.Load(), "the next tick runs the job again")
-
-		stop()
 	})
 }
 
@@ -218,28 +182,6 @@ func (s *setting) get(context.Context) time.Duration { return time.Duration(s.ev
 
 func (s *setting) set(d time.Duration) { s.every.Store(int64(d)) }
 
-// startEvery runs fn as every says, woken through wake, inside the caller's synctest
-// bubble, and waits until the first run, if any, has settled.
-func startEvery(t *testing.T, every *setting, wake chan struct{}, fn func(context.Context) error) (stop func()) {
-	t.Helper()
-
-	ctx, cancel := context.WithCancel(t.Context())
-	done := make(chan struct{})
-
-	go func() {
-		defer close(done)
-
-		periodic.RunEvery(ctx, every.get, wake, "fake job", fn, nil)
-	}()
-
-	synctest.Wait()
-
-	return func() {
-		cancel()
-		<-done
-	}
-}
-
 func TestRunEveryRunsAtOnceThenAsTheSettingSays(t *testing.T) {
 	t.Parallel()
 
@@ -250,11 +192,11 @@ func TestRunEveryRunsAtOnceThenAsTheSettingSays(t *testing.T) {
 		every.set(10 * time.Minute)
 
 		wake := make(chan struct{}, 1)
-		stop := startEvery(t, every, wake, func(context.Context) error {
+		stop := start(t, runEvery(every.get, wake), func(context.Context) error {
 			runs.Add(1)
 
 			return nil
-		})
+		}, nil)
 
 		assert.Equal(t, int32(1), runs.Load(), "the first run starts at once")
 
@@ -300,12 +242,12 @@ func TestRunEveryWaitsFromALongRunsEnd(t *testing.T) {
 
 		every := &setting{}
 		every.set(time.Minute)
-		stop := startEvery(t, every, nil, func(ctx context.Context) error {
+		stop := start(t, runEvery(every.get, nil), func(context.Context) error {
 			runs.Add(1)
 			time.Sleep(3 * time.Minute)
 
 			return nil
-		})
+		}, nil)
 
 		after(3*time.Minute + 30*time.Second)
 		assert.Equal(t, int32(1), runs.Load(), "a run longer than the interval is not followed by one at once")
@@ -323,11 +265,11 @@ func TestRunEveryOffFromTheStartRunsNothing(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		var runs atomic.Int32
 
-		stop := startEvery(t, &setting{}, make(chan struct{}, 1), func(context.Context) error {
+		stop := start(t, runEvery((&setting{}).get, make(chan struct{}, 1)), func(context.Context) error {
 			runs.Add(1)
 
 			return nil
-		})
+		}, nil)
 
 		after(time.Hour)
 		assert.Zero(t, runs.Load())

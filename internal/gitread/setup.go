@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/mrz1836/nilbox/internal/execpath"
+	"github.com/mrz1836/nilbox/internal/shellenv"
 )
 
 const (
@@ -100,7 +101,7 @@ func (s Setup) Checkout() Setup {
 	}
 
 	out := s
-	out.Env = withVar(s.Env, allowProtocolVar, "")
+	out.Env = shellenv.With(s.Env, allowProtocolVar, "")
 
 	return out
 }
@@ -141,7 +142,7 @@ func (g *Git) RemoteSetup(ctx context.Context, dir string) (Setup, error) {
 // origin's place. A name that isn't one is refused (ErrGitCommandNotAllowed). Its Checkout
 // serves the same clone's checkout.
 func (g *Git) RemoteSetupFor(ctx context.Context, dir, remote string) (Setup, error) {
-	if !isRemoteName(remote) {
+	if !ValidRemoteName(remote) {
 		return Setup{}, fmt.Errorf("%w: a remote named %q", ErrGitCommandNotAllowed, remote)
 	}
 
@@ -195,7 +196,7 @@ func (g *Git) setupFor(ctx context.Context, dir string, remotes []string) (Setup
 	}
 
 	return g.setupWith(ctx, dir, setupFacts{
-		git: git, env: env, userAllow: lookupVar(base, allowProtocolVar), listed: listed, remotes: remotes,
+		git: git, env: env, userAllow: userAllowOf(base), listed: listed, remotes: remotes,
 		folders: folders, partial: len(lazies) > 0,
 	})
 }
@@ -229,9 +230,9 @@ func (g *Git) setupWith(ctx context.Context, dir string, f setupFacts) (Setup, e
 		return Setup{}, err
 	}
 
-	env := withVar(guarded.env, noReplaceVar, "1")
+	env := shellenv.With(guarded.env, noReplaceVar, "1")
 	if f.partial {
-		env = slices.DeleteFunc(env, func(kv string) bool { return strings.HasPrefix(kv, noLazyFetchVar+"=") })
+		env = shellenv.Without(env, noLazyFetchVar)
 	}
 
 	settings := unflagged(slices.Concat(Hardening(), fetchHardening(), credentialHardening(), guarded.extra, off))
@@ -325,7 +326,7 @@ type Local struct {
 // (git's --no-lazy-fetch, which only git 2.44 and later take, isn't passed: the app runs
 // any git the user has).
 func (g *Git) ReadEnv() []string {
-	return withVar(environmentOf(g.env()), noReplaceVar, "1")
+	return shellenv.With(environmentOf(g.env()), noReplaceVar, "1")
 }
 
 // LocalSetup works out what a git command in dir, a clone or one of its worktrees, that
@@ -392,24 +393,24 @@ func unflagged(settings []string) []string {
 func withSettings(env, settings []string) ([]string, error) {
 	n := 0
 
-	if count := lookupVar(env, configCountVar); count != nil {
-		parsed, err := strconv.Atoi(*count)
+	if count, ok := shellenv.LookupOK(env, configCountVar); ok {
+		parsed, err := strconv.Atoi(count)
 		if err != nil || parsed < 0 {
-			return nil, fmt.Errorf("%w: %s=%q", ErrGitCommandNotAllowed, configCountVar, *count)
+			return nil, fmt.Errorf("%w: %s=%q", ErrGitCommandNotAllowed, configCountVar, count)
 		}
 
 		n = parsed
 	}
 
-	out := slices.Clone(env)
+	out := env
 
 	for i, setting := range settings {
 		key, value, _ := strings.Cut(setting, "=")
-		out = withVar(out, configKeyVar+strconv.Itoa(n+i), key)
-		out = withVar(out, configValueVar+strconv.Itoa(n+i), value)
+		out = shellenv.With(out, configKeyVar+strconv.Itoa(n+i), key)
+		out = shellenv.With(out, configValueVar+strconv.Itoa(n+i), value)
 	}
 
-	return withVar(out, configCountVar, strconv.Itoa(n+len(settings))), nil
+	return shellenv.With(out, configCountVar, strconv.Itoa(n+len(settings))), nil
 }
 
 // SetAsideNote says which of the clone's own settings, of SetAsideSSHCommand,

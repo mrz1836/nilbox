@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/mrz1836/nilbox/internal/brand"
+	"github.com/mrz1836/nilbox/internal/textutil"
 )
 
 // runSh runs a shell command line with /bin/sh and returns its stdout.
@@ -30,44 +31,6 @@ func runSh(t *testing.T, env []string, args ...string) ([]byte, error) {
 	}
 
 	return out, err
-}
-
-func TestShellQuote(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		name  string
-		input string
-		want  string
-	}{
-		{name: "plain", input: "plain", want: "'plain'"},
-		{name: "empty", input: "", want: "''"},
-		{name: "spaces", input: "two words  here", want: "'two words  here'"},
-		{name: "single quote", input: "it's", want: `'it'\''s'`},
-		{name: "only quotes", input: "''", want: `''\'''\'''`},
-		{name: "double quote", input: `say "hi"`, want: `'say "hi"'`},
-		{name: "dollar", input: "$HOME and ${USER}", want: "'$HOME and ${USER}'"},
-		{name: "command substitution", input: "$(id) `whoami`", want: "'$(id) `whoami`'"},
-		{name: "newline", input: "line one\nline two", want: "'line one\nline two'"},
-		{name: "unicode", input: "café naïve 🚀", want: "'café naïve 🚀'"},
-		{name: "leading hash", input: "#7", want: "'#7'"},
-		{name: "backslash", input: `C:\path\n`, want: `'C:\path\n'`},
-		{name: "shell operators", input: "a; b && c | d > e < f &", want: "'a; b && c | d > e < f &'"},
-		{name: "globs and tilde", input: "~/x/*.go [ab]?", want: "'~/x/*.go [ab]?'"},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
-			got := shQuote(tt.input)
-			assert.Equal(t, tt.want, got)
-
-			out, err := runSh(t, os.Environ(), "-c", "printf %s "+got)
-			require.NoError(t, err)
-			assert.Equal(t, tt.input, string(out), "the shell reads back exactly the input")
-		})
-	}
 }
 
 // goldenScript is a script with every part the renderer writes.
@@ -174,8 +137,8 @@ func TestRenderQuotesInvalidEnvNames(t *testing.T) {
 	}
 
 	script := string(POSIXRenderer{}.Render(bad))
-	assert.Contains(t, script, "unset "+shQuote(bad.Unset[0])+"\n")
-	assert.Contains(t, script, "export "+shQuote("A;touch "+marker+";B")+"='v'\n")
+	assert.Contains(t, script, "unset "+textutil.ShellQuote(bad.Unset[0])+"\n")
+	assert.Contains(t, script, "export "+textutil.ShellQuote("A;touch "+marker+";B")+"='v'\n")
 
 	path := filepath.Join(root, "bad.command")
 	require.NoError(t, os.WriteFile(path, []byte(script), 0o600))

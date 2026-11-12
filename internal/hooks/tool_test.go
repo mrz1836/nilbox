@@ -98,7 +98,7 @@ func TestToolFactsUsable(t *testing.T) {
 		Version: "1.14.1", Path: "~/bin/go-pre-commit", State: integrations.StateFound, Usable: true,
 	}, factsAt("/srv/home/bin/go-pre-commit", "1.14.1").status("/srv/home"))
 	assert.Equal(t, ToolStatus{State: integrations.StateMissing, Off: true}, ToolFacts{
-		State: integrations.StateMissing, Off: true,
+		CopyFacts: integrations.CopyFacts{State: integrations.StateMissing, Off: true},
 	}.status("/srv/home"))
 }
 
@@ -109,16 +109,17 @@ func TestPathWarning(t *testing.T) {
 	local := filepath.Join(home, ".local", "bin", "go-pre-commit")
 	gopath := filepath.Join(home, "go", "bin", "go-pre-commit")
 
+	at := func(path string) integrations.CopyFacts { return integrations.CopyFacts{Path: path} }
 	offPath := func(copies ...string) ToolFacts {
-		return ToolFacts{Path: copies[0], Copies: copies, ShellRead: true}
+		return ToolFacts{CopyFacts: at(copies[0]), Copies: copies, ShellRead: true}
 	}
 
 	assert.Equal(t, PathWarning{Show: true, Dir: "~/.local/bin"}, pathWarning(offPath(local), nil, home))
 
 	assert.Equal(t, PathWarning{}, pathWarning(ToolFacts{}, nil, home), "no copy, no warning")
-	assert.Equal(t, PathWarning{}, pathWarning(ToolFacts{Path: local, Copies: []string{local}}, nil, home),
+	assert.Equal(t, PathWarning{}, pathWarning(ToolFacts{CopyFacts: at(local), Copies: []string{local}}, nil, home),
 		"a shell not read can't tell")
-	assert.Equal(t, PathWarning{}, pathWarning(ToolFacts{Path: local, Copies: []string{local}, OnPath: true, ShellRead: true},
+	assert.Equal(t, PathWarning{}, pathWarning(ToolFacts{CopyFacts: at(local), Copies: []string{local}, OnPath: true, ShellRead: true},
 		nil, home))
 	assert.Equal(t, PathWarning{}, pathWarning(offPath(local, gopath), nil, home), "the hook finds the copy in GOPATH's bin")
 	assert.Equal(t, PathWarning{}, pathWarning(offPath(local, "/opt/go/bin/go-pre-commit"),

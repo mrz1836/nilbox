@@ -41,7 +41,9 @@ func allFeatures() []integrations.Feature {
 func readyFacts() Facts {
 	return Facts{
 		Tool: ToolFacts{
-			Path: magexPath, Version: "1.30.2", State: integrations.StateFound, Features: allFeatures(),
+			CopyFacts: integrations.CopyFacts{
+				Path: magexPath, Version: "1.30.2", State: integrations.StateFound, Features: allFeatures(),
+			},
 			MinVersion: "1.29.5", ExpectSince: "1.30.0",
 		},
 		Repo: RepoFacts{
@@ -169,8 +171,10 @@ func toolAndRepoCases() []decideCase {
 	return []decideCase{
 		{
 			name: "magex missing", id: CheckTool, state: CheckBlock, text: "magex isn't available",
-			fixes:  []Fix{FixOpenSettings},
-			change: func(f *Facts) { f.Tool = ToolFacts{State: integrations.StateMissing} },
+			fixes: []Fix{FixOpenSettings},
+			change: func(f *Facts) {
+				f.Tool = ToolFacts{CopyFacts: integrations.CopyFacts{State: integrations.StateMissing}}
+			},
 		},
 		{
 			name: "magex off", id: CheckTool, state: CheckBlock, text: "mage-x is turned off in Settings",
@@ -884,7 +888,7 @@ func TestDecideArgv(t *testing.T) {
 		t.Parallel()
 
 		f := readyFacts()
-		f.Tool = ToolFacts{State: integrations.StateMissing}
+		f.Tool = ToolFacts{CopyFacts: integrations.CopyFacts{State: integrations.StateMissing}}
 
 		o := Decide(f)
 		assert.Equal(t, []string{}, o.Argv)
@@ -1063,13 +1067,4 @@ func TestModuleFor(t *testing.T) {
 	for _, tc := range tests {
 		assert.Equal(t, tc.want, moduleFor(tc.path, tc.major), "%s to v%d", tc.path, tc.major)
 	}
-}
-
-func TestListed(t *testing.T) {
-	t.Parallel()
-
-	assert.Empty(t, listed(nil))
-	assert.Equal(t, "a", listed([]string{"a"}))
-	assert.Equal(t, "a and b", listed([]string{"a", "b"}))
-	assert.Equal(t, "a, b, and c", listed([]string{"a", "b", "c"}))
 }

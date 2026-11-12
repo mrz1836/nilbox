@@ -3,6 +3,7 @@ package claude
 import (
 	"context"
 	"log/slog"
+	"maps"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -141,7 +142,7 @@ func (o *Observer) Observe(ctx context.Context, now time.Time, live []sessions.R
 	scan := &processScan{lister: o.cfg.Procs}
 	out := make([]sessions.Observation, 0, len(live))
 
-	for _, configDir := range sortedKeys(groups) {
+	for _, configDir := range slices.Sorted(maps.Keys(groups)) {
 		out = append(out, o.observeDir(ctx, configDir, groups[configDir], now, scan)...)
 	}
 
@@ -447,8 +448,11 @@ func (o *Observer) lastMessage(d *dirState, sessionID string) string {
 		o.transcripts[sessionID] = t
 	}
 
-	info, err := os.Stat(t.path)
-	if err != nil {
+	// The path was a regular file when it was found. One that has since gone, or been
+	// swapped for a link or anything else, is dropped and looked for again on the next
+	// poll, never read through: paths.ReadTail would follow a link.
+	info, err := os.Lstat(t.path)
+	if err != nil || !info.Mode().IsRegular() {
 		t.path = ""
 
 		return t.message
@@ -553,12 +557,13 @@ func findTranscript(configDir, sessionID string) string {
 	return ""
 }
 
-// processScan lists the running processes at most once per Observe.
+// processScan lists the running processes at most once per Observe, and resolves each
+// one's directory at most once, however many sessions' folders it is asked of.
 type processScan struct {
-	lister procs.Lister
-	done   bool
-	list   []procs.Process
-	err    error
+	lister  procs.Lister
+	done    bool
+	located *procs.Located
+	err     error
 }
 
 // in returns a Claude Code process working in dir itself, or 0 for none, whether other
@@ -570,14 +575,16 @@ func (s *processScan) in(ctx context.Context, dir string) (pid int, others, ok b
 
 	if !s.done {
 		s.done = true
-		s.list, s.err = s.lister.Processes(ctx)
+
+		list, err := s.lister.Processes(ctx)
+		s.located, s.err = procs.Locate(list), err
 	}
 
 	if s.err != nil {
 		return 0, false, false
 	}
 
-	for _, p := range procs.In(s.list, dir) {
+	for _, p := range s.located.In(dir) {
 		if pid == 0 && isClaudeCommand(p.Command) {
 			pid = p.PID
 		} else {
@@ -617,16 +624,4 @@ func idsOf(recs []sessions.Record) string {
 	slices.Sort(ids)
 
 	return strings.Join(ids, ",")
-}
-
-// sortedKeys returns a map's keys in order.
-func sortedKeys[V any](m map[string]V) []string {
-	keys := make([]string, 0, len(m))
-	for k := range m {
-		keys = append(keys, k)
-	}
-
-	slices.Sort(keys)
-
-	return keys
 }

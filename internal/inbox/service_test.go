@@ -362,15 +362,23 @@ func (h *harness) refresh(t *testing.T) Snapshot {
 	return snap
 }
 
+// seed has the inbox query answer with the lists fetched builds from review, authored,
+// and assigned, then runs a refresh that must succeed.
+func (h *harness) seed(t *testing.T, review, authored, assigned []github.Item) Snapshot {
+	t.Helper()
+
+	h.client.inbox = fetched(review, authored, assigned)
+
+	return h.refresh(t)
+}
+
 // exec runs a statement on the harness's database. The statement writes past the
 // service, so it also empties the service's snapshot cache, as the service's own writes
 // do.
 func (h *harness) exec(t *testing.T, query string, args ...any) {
 	t.Helper()
 
-	_, err := h.pool.ExecContext(t.Context(), query, args...)
-	require.NoError(t, err)
-
+	testutil.Exec(t, h.pool, query, args...)
 	h.svc.snapshots.empty()
 }
 
@@ -625,8 +633,7 @@ func TestRefreshUpsertsItemsWithReasonFlags(t *testing.T) {
 	c := issue("other-repo", 3, "MEMBER")
 
 	// A is both review-requested and assigned.
-	h.client.inbox = fetched([]github.Item{a}, []github.Item{b}, []github.Item{a, c})
-	snap := h.refresh(t)
+	snap := h.seed(t, []github.Item{a}, []github.Item{b}, []github.Item{a, c})
 
 	assert.Equal(t, []int{1}, numbers(snap.ReviewRequested))
 	assert.Equal(t, []int{2}, numbers(snap.Authored))
@@ -644,8 +651,7 @@ func TestRefreshUpsertsItemsWithReasonFlags(t *testing.T) {
 	a.Title = "Item 1, retitled"
 
 	h.clock.Advance(DefaultInterval)
-	h.client.inbox = fetched([]github.Item{a}, nil, []github.Item{c})
-	snap = h.refresh(t)
+	snap = h.seed(t, []github.Item{a}, nil, []github.Item{c})
 
 	assert.Equal(t, []int{1}, numbers(snap.ReviewRequested))
 	assert.Empty(t, snap.Authored.Items)
@@ -745,8 +751,7 @@ func TestRefreshWritesRateSnapshot(t *testing.T) {
 	t.Parallel()
 
 	h := newHarness(t)
-	h.client.inbox = fetched(nil, nil, nil)
-	h.refresh(t)
+	h.seed(t, nil, nil, nil)
 
 	// Readings older than the retention window are pruned on the next refresh.
 	old := h.insertRate(t, 1, h.clock.Now().Add(-8*24*time.Hour))
@@ -921,8 +926,7 @@ func TestARefreshForgetsTheWholeCountsAnOlderBuildKept(t *testing.T) {
 	h := newHarness(t)
 	require.NoError(t, h.svc.prefs.Set(t.Context(), "inbox.total.authored", "9"))
 
-	h.client.inbox = fetched(nil, []github.Item{pr(1, "OWNER", false)}, nil)
-	snap := h.refresh(t)
+	snap := h.seed(t, nil, []github.Item{pr(1, "OWNER", false)}, nil)
 
 	assert.Equal(t, 1, snap.Authored.Total, "an old whole count is never read as a count past the page")
 
@@ -935,8 +939,7 @@ func TestRefreshNeverPersistsToken(t *testing.T) {
 	t.Parallel()
 
 	h := newHarness(t)
-	h.client.inbox = fetched([]github.Item{pr(1, "OWNER", false)}, nil, []github.Item{issue("other-repo", 2, "MEMBER")})
-	h.refresh(t)
+	h.seed(t, []github.Item{pr(1, "OWNER", false)}, nil, []github.Item{issue("other-repo", 2, "MEMBER")})
 
 	assert.Equal(t, []string{fakeToken, fakeToken, fakeToken}, h.client.gotTokens, "the token reaches the client")
 
@@ -996,8 +999,7 @@ func TestRefreshFetchErrorsKeepTheStoredInbox(t *testing.T) {
 	t.Parallel()
 
 	h := newHarness(t)
-	h.client.inbox = fetched([]github.Item{pr(1, "OWNER", false)}, nil, nil)
-	h.refresh(t)
+	h.seed(t, []github.Item{pr(1, "OWNER", false)}, nil, nil)
 
 	h.client.limitsErr = errFakeNetwork
 	h.clock.Advance(DefaultInterval)
@@ -1042,8 +1044,7 @@ func TestRefreshNotifies(t *testing.T) {
 	t.Parallel()
 
 	h := newHarness(t)
-	h.client.inbox = fetched(nil, nil, nil)
-	h.refresh(t)
+	h.seed(t, nil, nil, nil)
 	assert.Equal(t, 1, h.events.Count())
 	assert.Equal(t, 1, h.tokens.calls, "the token is borrowed on every refresh")
 
@@ -1070,8 +1071,7 @@ func TestSnapshotSwitchesWithTheViewer(t *testing.T) {
 	t.Parallel()
 
 	h := newHarness(t)
-	h.client.inbox = fetched([]github.Item{pr(1, "OWNER", false)}, nil, nil)
-	h.refresh(t)
+	h.seed(t, []github.Item{pr(1, "OWNER", false)}, nil, nil)
 
 	// Signing in as another account shows only that account's items.
 	h.client.inbox = fetched(nil, []github.Item{pr(2, "MEMBER", false)}, nil)
@@ -1167,8 +1167,7 @@ func TestSnapshotNeverShowsAnotherAccountsAvatar(t *testing.T) {
 	t.Parallel()
 
 	h := newHarness(t)
-	h.client.inbox = fetched(nil, nil, nil)
-	require.NotEmpty(t, h.refresh(t).Account.Avatar)
+	require.NotEmpty(t, h.seed(t, nil, nil, nil).Account.Avatar)
 
 	// The new account's picture cannot be downloaded, so it shows none rather than the old one.
 	h.client.inbox.Viewer = github.Viewer{Login: "octo-other", AvatarURL: octoOtherAvatar}
@@ -1196,8 +1195,7 @@ func TestSnapshotDatabaseErrors(t *testing.T) {
 	t.Parallel()
 
 	h := newHarness(t)
-	h.client.inbox = fetched(nil, nil, nil)
-	h.refresh(t)
+	h.seed(t, nil, nil, nil)
 	require.NoError(t, h.pool.Close())
 
 	_, err := h.svc.Snapshot(t.Context())
@@ -1422,8 +1420,7 @@ func TestRefreshReadsTheListedDetailsAlongsideTheInbox(t *testing.T) {
 	t.Parallel()
 
 	h := newHarness(t)
-	h.client.inbox = fetched([]github.Item{pr(1, "OWNER", false)}, nil, nil)
-	h.refresh(t)
+	h.seed(t, []github.Item{pr(1, "OWNER", false)}, nil, nil)
 
 	// The inbox query now answers only once a details request has started.
 	h.client.inboxGate = make(chan struct{})
@@ -1443,13 +1440,11 @@ func TestRefreshAsksAfterTheInboxOnlyAboutNewItems(t *testing.T) {
 	c := pr(3, "OWNER", false)
 
 	// The first refresh has nothing listed yet, so it asks about everything afterwards.
-	h.client.inbox = fetched([]github.Item{a, b}, nil, nil)
-	h.refresh(t)
+	h.seed(t, []github.Item{a, b}, nil, nil)
 
 	// Then A leaves the lists and C joins: the listed A and B are read alongside the
 	// inbox query (newest first), and only C afterwards.
-	h.client.inbox = fetched([]github.Item{b, c}, nil, nil)
-	h.refresh(t)
+	h.seed(t, []github.Item{b, c}, nil, nil)
 
 	// Nothing new: one request, alongside the inbox query.
 	h.refresh(t)
@@ -1555,8 +1550,7 @@ func TestRefreshStoresWhatGitHubSaysAboutEachRepository(t *testing.T) {
 		ViewerMergeMethod: "SQUASH", SquashMergeAllowed: true, AutoMergeAllowed: true, AllowUpdateBranch: true,
 		Language: "Go", LanguageColor: "#00add8", PushedAt: time.Date(2026, 1, 9, 8, 0, 0, 0, time.UTC),
 	}
-	h.client.inbox = fetched([]github.Item{a}, nil, nil)
-	h.refresh(t)
+	h.seed(t, []github.Item{a}, nil, nil)
 
 	repo := h.repoRow(t, "example-repo")
 	assert.Equal(t, "R_fakeRepoExample", repo.NodeID)
@@ -1586,8 +1580,7 @@ func TestRefreshStoresWhatGitHubSaysAboutEachRepository(t *testing.T) {
 
 	a.Repo.Description = "Renamed description"
 	a.Repo.PushedAt = time.Time{}
-	h.client.inbox = fetched([]github.Item{a}, nil, nil)
-	h.refresh(t)
+	h.seed(t, []github.Item{a}, nil, nil)
 
 	repo = h.repoRow(t, "example-repo")
 	assert.Equal(t, "Renamed description", repo.Description)
@@ -1605,8 +1598,7 @@ func TestRefreshLeavesArchivedRepositoriesOut(t *testing.T) {
 	live := pr(1, "OWNER", false)
 	old := issue("old-repo", 2, "MEMBER")
 
-	h.client.inbox = fetched([]github.Item{live}, nil, []github.Item{old})
-	snap := h.refresh(t)
+	snap := h.seed(t, []github.Item{live}, nil, []github.Item{old})
 	assert.Equal(t, []int{2}, numbers(snap.Assigned))
 
 	// old-repo is archived; GitHub's index has not caught up, so the search still returns

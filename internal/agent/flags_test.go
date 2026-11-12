@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/mrz1836/nilbox/internal/agent"
+	"github.com/mrz1836/nilbox/internal/textutil"
 )
 
 func TestValidateEffort(t *testing.T) {
@@ -286,10 +287,11 @@ func TestJoin(t *testing.T) {
 	assert.Empty(t, agent.Join(nil))
 	assert.Equal(t, "--advisor fable --add-dir=/srv/x", agent.Join([]string{flagAdvisor, "fable", "--add-dir=/srv/x"}))
 	assert.Equal(t, `--note 'two words' '' 'it'\''s' 'é'`, agent.Join([]string{"--note", "two words", "", "it's", "é"}))
+	assert.Equal(t, `--config=x '=x'`, agent.Join([]string{"--config=x", "=x"}), "a leading = is quoted")
 }
 
 func FuzzSplitJoin(f *testing.F) {
-	for _, seed := range []string{"--advisor fable", "two words", "it's", "", `a"b`, "tab\there", "new\nline", `back\slash`} {
+	for _, seed := range []string{"--advisor fable", "two words", "it's", "", `a"b`, "tab\there", "new\nline", `back\slash`, "=x"} {
 		f.Add(seed, "--flag")
 	}
 
@@ -303,5 +305,9 @@ func FuzzSplitJoin(f *testing.F) {
 		got, err := agent.Split(agent.Join(args))
 		require.NoError(t, err)
 		assert.Equal(t, args, got)
+
+		got, err = agent.Split(textutil.ShellQuote(a) + " " + textutil.ShellQuote(b))
+		require.NoError(t, err)
+		assert.Equal(t, args, got, "Split reads words that are always quoted back too")
 	})
 }

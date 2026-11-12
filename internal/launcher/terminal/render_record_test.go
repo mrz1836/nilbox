@@ -16,6 +16,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/mrz1836/nilbox/internal/brand"
+	"github.com/mrz1836/nilbox/internal/textutil"
 )
 
 // update makes TestRenderGolden rewrite its golden files from the current output instead
@@ -218,7 +219,7 @@ func runScript(t *testing.T, script []byte, env []string) (stdout string, pid, s
 // standInTool is a stand-in for script(1): a shell that prints its working directory,
 // one variable, and every argument, each ended by a NUL byte, then exits with status.
 func standInTool(status int) string {
-	return shQuote(posixShell) + " -c " + shQuote(`printf 'cwd=%s\000' "$(pwd -P)"; `+
+	return textutil.ShellQuote(posixShell) + " -c " + textutil.ShellQuote(`printf 'cwd=%s\000' "$(pwd -P)"; `+
 		`printf 'extra=%s\000' "${EXTRA_VAR-<unset>}"; printf 'old=%s\000' "${OLD_VAR-<unset>}"; `+
 		`printf '%s\000' "$@"; exit `+strconv.Itoa(status)) + " stand-in"
 }
@@ -296,7 +297,7 @@ func TestRecordedScriptStopsBeforeTheCommand(t *testing.T) {
 			marker := filepath.Join(root, "command-ran")
 			tt.mutate(&r.script, root)
 
-			tool := shQuote(posixShell) + " -c " + shQuote("touch "+shQuote(marker)) + " stand-in"
+			tool := textutil.ShellQuote(posixShell) + " -c " + textutil.ShellQuote("touch "+textutil.ShellQuote(marker)) + " stand-in"
 
 			_, pid, status := runScript(t, renderPOSIX(r.script, tool), os.Environ())
 			assert.NotZero(t, status, "the script fails")

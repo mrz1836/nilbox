@@ -127,7 +127,8 @@ type Check struct {
 	Text  string     `json:"text"`
 
 	// Fixes are the actions beside it, and Commands the commands it offers to copy, which
-	// the app never runs.
+	// the app never runs, each branch or tag name in them, which can hold $(…) or
+	// backticks, quoted as textutil.ShellWord quotes it.
 	Fixes    []Fix    `json:"fixes"`
 	Commands []string `json:"commands"`
 
@@ -501,7 +502,7 @@ func (d decider) upstreamCheck() (Check, bool) {
 
 	tracked := remoteOrigin + "/" + b
 	out := checkBlock(CheckUpstream, fmt.Sprintf("%s doesn't track %s, so %s can't pull it.", b, tracked, magexName))
-	out.Commands = []string{"git branch --set-upstream-to=" + shellWord(tracked) + " " + shellWord(b)}
+	out.Commands = []string{"git branch --set-upstream-to=" + textutil.ShellWord(tracked) + " " + textutil.ShellWord(b)}
 
 	return out, true
 }
@@ -563,15 +564,15 @@ func (d decider) localOnlyCheck() (Check, bool) {
 	}
 
 	text := fmt.Sprintf("%s %s on GitHub. %s would skip %s and leave a gap. Push %s or delete %s in your terminal:",
-		listed(only), is, magexName, it, it, it)
+		textutil.Series(only), is, magexName, it, it, it)
 
 	out := checkBlock(CheckLocalOnly, text, FixOpenTerminal)
 	for _, tag := range only {
-		out.Commands = append(out.Commands, "git push "+remoteOrigin+" "+shellWord(tag))
+		out.Commands = append(out.Commands, "git push "+remoteOrigin+" "+textutil.ShellWord(tag))
 	}
 
 	for _, tag := range only {
-		out.Commands = append(out.Commands, "git tag -d "+shellWord(tag))
+		out.Commands = append(out.Commands, "git tag -d "+textutil.ShellWord(tag))
 	}
 
 	return out, true
@@ -996,29 +997,6 @@ func moduleFor(path string, major int) string {
 func isDigits(s string) bool {
 	return s != "" && strings.Trim(s, "0123456789") == ""
 }
-
-// listed joins names as a sentence lists them: "a", "a and b", "a, b, and c".
-func listed(names []string) string {
-	if len(names) < 3 {
-		return strings.Join(names, " and ")
-	}
-
-	return strings.Join(names[:len(names)-1], ", ") + ", and " + names[len(names)-1]
-}
-
-// shellWord quotes s as one word for a POSIX shell, for a command the user copies: as it
-// is when every character is plainly safe, else in single quotes, each ' inside written
-// '\”. A branch or tag name can hold $(…) or backticks.
-func shellWord(s string) string {
-	if s != "" && strings.Trim(s, safeShellChars) == "" {
-		return s
-	}
-
-	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
-}
-
-// safeShellChars are the characters a shell reads as themselves anywhere in a word.
-const safeShellChars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789._/@:+=-"
 
 // checksURL is the page of a commit's checks on GitHub.
 func checksURL(name repo.Name, oid string) string {

@@ -20,34 +20,12 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"strings"
-	"unicode"
-	"unicode/utf8"
 
 	"github.com/mrz1836/nilbox/internal/agent"
 	"github.com/mrz1836/nilbox/internal/clock"
 	"github.com/mrz1836/nilbox/internal/item"
 	"github.com/mrz1836/nilbox/internal/logging"
 	"github.com/mrz1836/nilbox/internal/textutil"
-)
-
-// Limits on a prompt's names.
-const (
-	maxNameRunes     = 80
-	maxNicknameRunes = 20
-)
-
-// Fields an agent.FieldError can name, matching Input's JSON names. A per-agent field's
-// error for one agent names it with agent.FieldFor, as in "models.codex".
-const (
-	FieldName       = "name"
-	FieldNickname   = "nickname"
-	FieldAppliesTo  = "appliesTo"
-	FieldAction     = "replyAction"
-	FieldBody       = "body"
-	FieldModels     = agent.FieldModels
-	FieldEffort     = agent.FieldEffort
-	FieldExtraFlags = agent.FieldExtraFlags
 )
 
 var (
@@ -728,31 +706,6 @@ func resetPrompt(ctx context.Context, st *Store, p Prompt, starter Starter, usag
 	return nil
 }
 
-// normalized trims the names and each agent's model, and turns Windows line endings into
-// newlines. An Input with no purpose is an agent prompt's, whose reply action is cleared;
-// a reply applies to pull requests and has no launch settings.
-func (in Input) normalized() Input {
-	in.Name = strings.TrimSpace(in.Name)
-	in.Nickname = strings.TrimSpace(in.Nickname)
-	in.Body = strings.ReplaceAll(in.Body, "\r\n", "\n")
-
-	if in.Purpose != PurposeReply {
-		in.Purpose, in.ReplyAction = PurposeAgent, ""
-	} else {
-		in.AppliesTo, in.Effort, in.PlanMode, in.Worktree = AppliesToPR, "", nil, nil
-		in.Models, in.ExtraFlags = nil, nil
-	}
-
-	models := make(map[agent.ID]string, len(in.Models))
-	for id, model := range in.Models {
-		models[id] = strings.TrimSpace(model)
-	}
-
-	in.Models = models
-
-	return in
-}
-
 // input returns the starter as an Input.
 func (st Starter) input() Input {
 	return Input{
@@ -760,153 +713,5 @@ func (st Starter) input() Input {
 		ReplyAction: st.ReplyAction,
 		Models:      agent.CloneModels(st.Models), Effort: st.Effort, PlanMode: st.PlanMode, Worktree: st.Worktree,
 		ExtraFlags: agent.JoinArgs(st.ExtraArgs),
-	}
-}
-
-// validate checks an Input for the prompt with id (0 for a new one) and returns its
-// models and extra arguments ready to store, or the problems that stop it being saved.
-func validate(ctx context.Context, st *Store, id int64, in Input, usage Usage) (agent.Checked, []agent.FieldError) {
-	checked, fields := validateFields(ctx, st, id, in, usage)
-
-	if t, _ := parseFor(in.Purpose, in.Body, appliesToOrAny(in.AppliesTo)); t == nil {
-		fields = append(fields, agent.FieldError{Field: FieldBody, Message: "Fix the problems in the prompt's text."})
-	}
-
-	return checked, fields
-}
-
-// parseFor checks a prompt's text the way its purpose fills it in: a reply's in reply
-// mode, an agent prompt's for the kinds it applies to.
-func parseFor(purpose Purpose, body string, appliesTo AppliesTo) (*Template, []Diagnostic) {
-	if purpose == PurposeReply {
-		return ParseReply(body)
-	}
-
-	return Parse(body, appliesTo)
-}
-
-// validateFields checks every field but the text, which Parse checks.
-func validateFields(ctx context.Context, st *Store, id int64, in Input, usage Usage) (agent.Checked, []agent.FieldError) {
-	var fields []agent.FieldError
-
-	add := func(field, message string) {
-		if message != "" {
-			fields = append(fields, agent.FieldError{Field: field, Message: message})
-		}
-	}
-
-	add(FieldName, checkName(in.Name))
-	add(FieldNickname, checkNickname(ctx, st, id, in.Nickname))
-
-	if in.Purpose == PurposeReply {
-		add(FieldAction, checkReplyAction(in.ReplyAction, usage))
-
-		return agent.Checked{Models: map[agent.ID]string{}, Args: map[agent.ID][]string{}}, fields
-	}
-
-	add(FieldAppliesTo, checkAppliesTo(in.AppliesTo, usage))
-
-	checked, overrides := agent.CheckSettings(agent.Settings{
-		Models: in.Models, Effort: in.Effort, ExtraFlags: in.ExtraFlags,
-	})
-
-	return checked, append(fields, overrides...)
-}
-
-// invalid is the error for a prompt that cannot be saved for the reasons in fields.
-func invalid(fields []agent.FieldError) error {
-	return &agent.ValidationError{Err: ErrInvalidPrompt, Fields: fields}
-}
-
-// checkName checks a prompt's title.
-func checkName(name string) string {
-	switch {
-	case name == "":
-		return "Give the prompt a title."
-	case utf8.RuneCountInString(name) > maxNameRunes:
-		return fmt.Sprintf("Keep the title to %d characters.", maxNameRunes)
-	case strings.ContainsFunc(name, unicode.IsControl):
-		return "Keep the title on one line."
-	default:
-		return ""
-	}
-}
-
-// checkNickname checks a prompt's nickname: short, one line, and not another prompt's.
-func checkNickname(ctx context.Context, st *Store, id int64, nickname string) string {
-	switch {
-	case nickname == "":
-		return "Give the prompt a nickname for the launch menu."
-	case utf8.RuneCountInString(nickname) > maxNicknameRunes:
-		return fmt.Sprintf("Keep the nickname to %d characters so it fits the launch button.", maxNicknameRunes)
-	case strings.ContainsFunc(nickname, unicode.IsControl):
-		return "Keep the nickname on one line."
-	}
-
-	taken, err := st.nicknameTaken(ctx, id, nickname)
-	if err != nil {
-		return "Couldn't check whether the nickname is free."
-	}
-
-	if taken {
-		return fmt.Sprintf("Another prompt is already called %q.", nickname)
-	}
-
-	return ""
-}
-
-// checkAppliesTo checks what a prompt applies to: one of the three choices, covering
-// every kind it is a default for.
-func checkAppliesTo(appliesTo AppliesTo, usage Usage) string {
-	switch appliesTo {
-	case AppliesToPR, AppliesToIssue, AppliesToAny:
-	default:
-		return "Choose what the prompt is for: pull requests, issues, or both."
-	}
-
-	for _, kind := range usage.Kinds {
-		if !appliesTo.Covers(kind) {
-			return fmt.Sprintf("It's a default for %s (%s), so it has to apply to them.",
-				kind.Plural(), describeUsage(usage))
-		}
-	}
-
-	return ""
-}
-
-// checkReplyAction checks the review a reply is written for: one of the three, and the
-// one every default it is needs.
-func checkReplyAction(action ReplyAction, usage Usage) string {
-	if !action.valid() {
-		return "Choose the review the reply is for: an approval, a request for changes, or a comment."
-	}
-
-	for _, slot := range usage.Replies {
-		if slot.Action() != action {
-			return fmt.Sprintf("It's %s, so it has to stay a reply for that review.", slot.describe())
-		}
-	}
-
-	return ""
-}
-
-// appliesToOrAny returns appliesTo when it is valid, else "any", so a prompt's text can
-// be checked while its kind is still being chosen.
-func appliesToOrAny(appliesTo AppliesTo) AppliesTo {
-	if appliesTo == AppliesToPR || appliesTo == AppliesToIssue {
-		return appliesTo
-	}
-
-	return AppliesToAny
-}
-
-// fromInput returns a validated Input with its checked models and extra arguments as a
-// Prompt to store.
-func fromInput(in Input, checked agent.Checked) Prompt {
-	return Prompt{
-		Name: in.Name, Nickname: in.Nickname, AppliesTo: in.AppliesTo, Body: in.Body, Purpose: in.Purpose,
-		ReplyAction: in.ReplyAction,
-		Models:      agent.CloneModels(checked.Models), Effort: in.Effort, PlanMode: in.PlanMode, Worktree: in.Worktree,
-		ExtraArgs: agent.CloneArgs(checked.Args),
 	}
 }

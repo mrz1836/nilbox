@@ -46,16 +46,6 @@ func serviceOver(t *testing.T, db *sql.DB, home string, opts ...Option) *Service
 	return NewService(db, profiles.NewStore(db, nil), home, opts...)
 }
 
-// closedDB returns a migrated database that is already closed.
-func closedDB(t *testing.T) *sql.DB {
-	t.Helper()
-
-	db := testutil.DB(t)
-	require.NoError(t, db.Close())
-
-	return db
-}
-
 // setPref writes a raw preference value, bypassing validation.
 func setPref(t *testing.T, db *sql.DB, key, value string) {
 	t.Helper()

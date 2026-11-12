@@ -33,7 +33,7 @@ func newSigningRig(t *testing.T, ssh *sshFake, config map[string]string) signing
 	t.Helper()
 
 	gitEnv := testutil.Git(t)
-	r := signingRig{clone: filepath.Join(realTempDir(t), "sdk"), home: realTempDir(t), ssh: ssh}
+	r := signingRig{clone: filepath.Join(testutil.RealTempDir(t), "sdk"), home: testutil.RealTempDir(t), ssh: ssh}
 	r.env = []string{"SSH_AUTH_SOCK=/tmp/agent.sock"}
 
 	testutil.InitRepo(t, r.clone)
@@ -82,7 +82,7 @@ func TestSigningWithSSH(t *testing.T) {
 
 		r := newSigningRig(t, &sshFake{agent: otherKey + " other\n" + signingKey + " me@example.com\n"},
 			sshConfig("~/keys/signing.pub"))
-		writeIn(t, r.home, "keys/signing.pub", signingKey+" me@example.com\n", 0o600)
+		testutil.WriteFileMode(t, filepath.Join(r.home, "keys/signing.pub"), signingKey+" me@example.com\n", 0o600)
 
 		assert.Equal(t, SigningFacts{Format: SignSSH, AgentHasKey: true}, r.signing(t))
 		assert.Equal(t, [][]string{{"ssh-add", "-L"}}, r.ssh.ran())
@@ -93,7 +93,7 @@ func TestSigningWithSSH(t *testing.T) {
 		t.Parallel()
 
 		r := newSigningRig(t, &sshFake{agent: otherKey + "\n", opens: true}, sshConfig("~/keys/signing.pub"))
-		writeIn(t, r.home, "keys/signing.pub", signingKey+"\n", 0o600)
+		testutil.WriteFileMode(t, filepath.Join(r.home, "keys/signing.pub"), signingKey+"\n", 0o600)
 
 		assert.Equal(t, SigningFacts{Format: SignSSH, OpenKey: true}, r.signing(t))
 		assert.Equal(t, [][]string{
@@ -105,7 +105,7 @@ func TestSigningWithSSH(t *testing.T) {
 		t.Parallel()
 
 		r := newSigningRig(t, &sshFake{}, sshConfig("~/keys/signing.pub"))
-		writeIn(t, r.home, "keys/signing.pub", signingKey+"\n", 0o600)
+		testutil.WriteFileMode(t, filepath.Join(r.home, "keys/signing.pub"), signingKey+"\n", 0o600)
 
 		assert.Equal(t, SigningFacts{Format: SignSSH}, r.signing(t))
 	})
@@ -114,7 +114,7 @@ func TestSigningWithSSH(t *testing.T) {
 		t.Parallel()
 
 		r := newSigningRig(t, &sshFake{agent: signingKey + "\n"}, sshConfig("~/keys/signing"))
-		writeIn(t, r.home, "keys/signing.pub", signingKey+"\n", 0o600)
+		testutil.WriteFileMode(t, filepath.Join(r.home, "keys/signing.pub"), signingKey+"\n", 0o600)
 
 		assert.Equal(t, SigningFacts{Format: SignSSH, AgentHasKey: true}, r.signing(t))
 	})
@@ -213,7 +213,7 @@ func TestSigningWithGPG(t *testing.T) {
 			t.Parallel()
 
 			r := newSigningRig(t, &sshFake{}, map[string]string{"tag.gpgSign": "true"})
-			writeIn(t, r.home, ".gnupg/gpg-agent.conf", tc.conf, 0o600)
+			testutil.WriteFileMode(t, filepath.Join(r.home, ".gnupg/gpg-agent.conf"), tc.conf, 0o600)
 
 			assert.Equal(t, SigningFacts{Format: SignGPG, WindowPinentry: tc.window}, r.signing(t))
 			assert.Empty(t, r.ssh.ran())
@@ -224,8 +224,9 @@ func TestSigningWithGPG(t *testing.T) {
 		t.Parallel()
 
 		r := newSigningRig(t, &sshFake{}, map[string]string{"tag.gpgSign": "true", "gpg.format": "openpgp"})
-		gnupg := realTempDir(t)
-		writeIn(t, gnupg, "gpg-agent.conf", "pinentry-program /usr/local/bin/pinentry-mac\n", 0o600)
+		gnupg := testutil.RealTempDir(t)
+		testutil.WriteFileMode(t, filepath.Join(gnupg, "gpg-agent.conf"),
+			"pinentry-program /usr/local/bin/pinentry-mac\n", 0o600)
 		r.env = append(r.env, "GNUPGHOME="+gnupg)
 
 		assert.Equal(t, SigningFacts{Format: SignGPG, WindowPinentry: true}, r.signing(t))

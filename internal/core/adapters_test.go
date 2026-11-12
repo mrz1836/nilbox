@@ -21,11 +21,14 @@ import (
 	"github.com/mrz1836/nilbox/internal/execpath"
 	"github.com/mrz1836/nilbox/internal/github"
 	"github.com/mrz1836/nilbox/internal/inbox"
+	"github.com/mrz1836/nilbox/internal/integrationprefs"
 	"github.com/mrz1836/nilbox/internal/item"
 	"github.com/mrz1836/nilbox/internal/launcher"
 	"github.com/mrz1836/nilbox/internal/launcher/terminal"
+	"github.com/mrz1836/nilbox/internal/release"
 	"github.com/mrz1836/nilbox/internal/repo"
 	"github.com/mrz1836/nilbox/internal/scriptrun"
+	"github.com/mrz1836/nilbox/internal/sensitive"
 	"github.com/mrz1836/nilbox/internal/settings"
 	"github.com/mrz1836/nilbox/internal/testutil"
 	"github.com/mrz1836/nilbox/internal/uierr"
@@ -35,11 +38,7 @@ import (
 func TestSettingsViewsReadTheSettingsAsTheyAreNow(t *testing.T) {
 	t.Parallel()
 
-	c := bootstrap(t, Options{
-		Paths:  appdata.NewPaths(filepath.Join(t.TempDir(), "data")),
-		Home:   testutil.ClaudeHome(t, ".claude"),
-		Runner: noPrograms(),
-	})
+	c := bootstrap(t, testOptions(t, ".claude"))
 	ctx := t.Context()
 	launch := settingsView[launcher.LaunchSettings]{settings: c.Settings, part: launchSettings}
 	sweep := settingsView[worktrees.SweepSettings]{settings: c.Settings, part: sweepSettings}
@@ -86,13 +85,64 @@ func TestSettingsViewsReadTheSettingsAsTheyAreNow(t *testing.T) {
 func TestSettingsViewReportsUnreadableSettings(t *testing.T) {
 	t.Parallel()
 
-	db := testutil.DB(t)
-	prefs := settings.NewService(db, nil, t.TempDir())
-	require.NoError(t, db.Close())
+	prefs := settings.NewService(testutil.ClosedDB(t), nil, t.TempDir())
 
 	got, err := settingsView[launcher.LaunchSettings]{settings: prefs, part: launchSettings}.Get(t.Context())
 	require.Error(t, err)
 	assert.Zero(t, got)
+}
+
+func TestSettingsAdaptersReadTheirPartOfTheSettings(t *testing.T) {
+	t.Parallel()
+
+	ctx := t.Context()
+	db := testutil.DB(t)
+	prefs := settings.NewService(db, nil, t.TempDir())
+	places, review := releaseSettings{settings: prefs}, reviewSettings{settings: prefs}
+
+	where, err := places.Where(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, release.Where{RunsIn: integrationprefs.RunsInApp, Terminal: terminal.Name(terminal.ITerm2)}, where)
+
+	files, err := review.Sensitive(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, sensitive.DefaultConfig(), files)
+
+	require.NoError(t, testutil.ErrOf(prefs.SetRunsIn(ctx, integrationprefs.RunsInTerminal)))
+	require.NoError(t, testutil.ErrOf(prefs.SetTerminal(ctx, settings.TerminalApp)))
+	require.NoError(t, testutil.ErrOf(prefs.SetSensitiveScope(ctx, sensitive.ScopeOutside)))
+
+	where, err = places.Where(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, release.Where{
+		RunsIn: integrationprefs.RunsInTerminal, Terminal: terminal.Name(terminal.TerminalApp),
+	}, where, "a change reaches the next read")
+
+	files, err = review.Sensitive(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, sensitive.ScopeOutside, files.Scope)
+
+	require.NoError(t, db.Close())
+
+	where, err = places.Where(ctx)
+	require.Error(t, err)
+	assert.Zero(t, where, "settings that can't be read give no part")
+
+	files, err = review.Sensitive(ctx)
+	require.Error(t, err)
+	assert.Zero(t, files)
+
+	offer, err := places.OfferAfterMerge(ctx)
+	require.Error(t, err)
+	assert.False(t, offer)
+
+	cfg, err := integrationSettings{settings: prefs}.Integrations(ctx)
+	require.Error(t, err)
+	assert.Zero(t, cfg)
+
+	runsIn, err := integrationSettings{settings: prefs}.RunsIn(ctx)
+	require.Error(t, err)
+	assert.Zero(t, runsIn)
 }
 
 func TestLaunchItemsHandTheLauncherTheStoredItems(t *testing.T) {
@@ -189,11 +239,9 @@ func TestCloseForgetsTheToken(t *testing.T) {
 
 	runner := &testutil.Runner{Stdout: "test-token-not-real\n"}
 
-	c, err := Bootstrap(t.Context(), Options{
-		Paths:  appdata.NewPaths(filepath.Join(t.TempDir(), "data")),
-		Home:   testutil.ClaudeHome(t),
-		Runner: runner,
-	})
+	opts := testOptions(t)
+	opts.Runner = runner
+	c, err := Bootstrap(t.Context(), opts)
 	require.NoError(t, err)
 
 	for range 2 {
@@ -210,20 +258,65 @@ func TestCloseForgetsTheToken(t *testing.T) {
 	assert.Len(t, runner.Calls(), 2, "the token was forgotten when the app closed")
 }
 
+// TestAgentRunnerPutsTheCommandsDirectoryFirstOnThePath runs a runner with no environment
+// of its own, which passes on this process's, so the fake's entry goes there with
+// t.Setenv and the test runs serially.
 func TestAgentRunnerPutsTheCommandsDirectoryFirstOnThePath(t *testing.T) {
-	t.Parallel()
-
 	// An npm-installed agent's command is a script that finds node beside it.
-	dir := t.TempDir()
-	command := filepath.Join(dir, "codex")
-	require.NoError(t, os.WriteFile(command, []byte("#!/bin/sh\nprintf '%s' \"$PATH\"\n"), 0o700)) //nolint:gosec // a command must be executable
+	command, entry := testutil.FakeTool(t, "codex", testutil.FakeRun{ReportEnv: []string{"PATH"}})
+	key, value, _ := strings.Cut(entry, "=")
+	t.Setenv(key, value)
 
 	stdout, _, err := agentRunner{search: execpath.Search{}}.Run(t.Context(), command, "--version")
 	require.NoError(t, err)
 
-	first, _, _ := strings.Cut(string(stdout), string(os.PathListSeparator))
-	assert.Equal(t, dir, first)
-	assert.Contains(t, string(stdout), os.Getenv("PATH"), "the rest of the search path follows")
+	path, found := strings.CutPrefix(strings.TrimSuffix(string(stdout), "\n"), "PATH=")
+	require.True(t, found, "the fake reports its PATH: %q", stdout)
+
+	first, _, _ := strings.Cut(path, string(os.PathListSeparator))
+	assert.Equal(t, filepath.Dir(command), first)
+	assert.Contains(t, path, os.Getenv("PATH"), "the rest of the search path follows")
+}
+
+func TestAgentRunnerReplacesThePathOfTheEnvironmentItIsGiven(t *testing.T) {
+	t.Parallel()
+
+	command, entry := testutil.FakeTool(t, "claude", testutil.FakeRun{ReportEnv: []string{"KEPT", "PATH"}})
+
+	env := []string{"PATH=/first", "KEPT=yes", "PATH=/second", entry}
+	runner := agentRunner{search: execpath.Search{}, env: env}
+
+	stdout, _, err := runner.Run(t.Context(), command, "--version")
+	require.NoError(t, err)
+
+	// A program reads the first of a variable's entries, so any PATH left would win.
+	assert.Equal(t, "KEPT=yes\nPATH="+filepath.Dir(command)+string(os.PathListSeparator)+os.Getenv("PATH")+"\n",
+		string(stdout), "every PATH it had gives way to the command's directory, then this process's search path")
+	assert.Equal(t, []string{"PATH=/first", "KEPT=yes", "PATH=/second", entry}, env,
+		"the runner's own environment is left alone")
+}
+
+func TestWorktreeRunnerTurnsGitsTerminalPromptsOff(t *testing.T) {
+	t.Setenv("GIT_TERMINAL_PROMPT", "1")
+
+	search := execpath.Search{Path: "/opt/fake/bin"}
+	runner := worktreeRunner(search)
+
+	assert.Equal(t, search, runner.Search)
+	require.NotEmpty(t, runner.Env)
+	assert.Equal(t, "GIT_TERMINAL_PROMPT=0", runner.Env[len(runner.Env)-1], "set last")
+
+	var prompts []string
+
+	for _, kv := range runner.Env {
+		if strings.HasPrefix(kv, "GIT_TERMINAL_PROMPT=") {
+			prompts = append(prompts, kv)
+		}
+	}
+
+	assert.Equal(t, []string{"GIT_TERMINAL_PROMPT=0"}, prompts, "in place of the process's own")
+	assert.Len(t, runner.Env, len(os.Environ()), "the rest of the process's environment, as it is")
+	assert.Contains(t, runner.Env, "PATH="+os.Getenv("PATH"))
 }
 
 func TestMergedPullRequestsKeyEachAnswerByRepositoryAndBranch(t *testing.T) {

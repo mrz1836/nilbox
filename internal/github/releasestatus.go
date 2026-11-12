@@ -11,8 +11,6 @@ import (
 	"strings"
 	"time"
 
-	"golang.org/x/sync/errgroup"
-
 	"github.com/mrz1836/nilbox/internal/repo"
 )
 
@@ -213,40 +211,21 @@ type ReleaseAnswered func(n int)
 type releaseSend[A, T any] func(ctx context.Context, asks []A) (map[string]T, error)
 
 // sendReleaseBatches sends asks in batches of releaseBatch, at most releaseParallel at a
-// time, telling answered of each batch answered, and merges the answers. The first batch
-// to fail stops the rest and fails the call.
+// time (fanOut), each halved when GitHub gives up on it as too slow (sendHalving), telling
+// answered of each batch answered, and merges the answers. The first batch to fail stops
+// the rest and fails the call.
 func sendReleaseBatches[A, T any](
 	ctx context.Context, asks []A, send releaseSend[A, T], answered ReleaseAnswered,
 ) (map[string]T, error) {
-	batches := slices.Collect(slices.Chunk(asks, releaseBatch))
-	answers := make([]map[string]T, len(batches))
-
-	g, gctx := errgroup.WithContext(ctx)
-	g.SetLimit(releaseParallel)
-
-	for i, batch := range batches {
-		g.Go(func() error {
-			var err error
-
-			answers[i], err = sendHalving(gctx, batch, send)
+	return fanOut(ctx, slices.Collect(slices.Chunk(asks, releaseBatch)), releaseParallel,
+		func(ctx context.Context, batch []A) (map[string]T, error) {
+			answer, err := sendHalving(ctx, batch, send)
 			if err == nil && answered != nil {
 				answered(len(batch))
 			}
 
-			return err
+			return answer, err
 		})
-	}
-
-	if err := g.Wait(); err != nil {
-		return nil, err
-	}
-
-	out := make(map[string]T, len(asks))
-	for _, answer := range answers {
-		maps.Copy(out, answer)
-	}
-
-	return out, nil
 }
 
 // sendHalving sends one batch, and when GitHub gives up on it as too slow, sends each

@@ -116,15 +116,9 @@ func (s *Store) LaunchItems(ctx context.Context, ids []int64) ([]LaunchItem, err
 		return nil, fmt.Errorf("read the items: %w", err)
 	}
 
-	items := make([]LaunchItem, 0, len(rows))
-
-	for _, r := range rows {
-		it, convErr := launchItemOf(r)
-		if convErr != nil {
-			return nil, fmt.Errorf("read the items: %w", convErr)
-		}
-
-		items = append(items, it)
+	items, err := store.ConvertRows(rows, launchItemOf)
+	if err != nil {
+		return nil, fmt.Errorf("read the items: %w", err)
 	}
 
 	return items, nil
@@ -150,9 +144,10 @@ func launchItemOf(r queries.ListLaunchItemsRow) (LaunchItem, error) {
 		AuthorLogin: r.AuthorLogin, AuthorType: r.AuthorType, AuthorAssociation: r.AuthorAssociation,
 		IsCrossRepository: r.IsCrossRepository, IsDraft: r.IsDraft,
 		RepoID: r.RepoID, Owner: r.Owner, Name: r.Name, LocalPath: r.LocalPath, DefaultBranch: r.DefaultBranch,
-		Labels: labels, Additions: int(value(r.Additions)), Deletions: int(value(r.Deletions)),
-		ChangedFiles: int(value(r.ChangedFiles)), Commits: int(value(r.Commits)), Mergeable: value(r.Mergeable),
-		ChecksState: value(r.ChecksState), ReviewDecision: value(r.ReviewDecision), HeadOID: value(r.HeadOID),
+		Labels: labels, Additions: int(store.Deref(r.Additions)), Deletions: int(store.Deref(r.Deletions)),
+		ChangedFiles: int(store.Deref(r.ChangedFiles)), Commits: int(store.Deref(r.Commits)),
+		Mergeable: store.Deref(r.Mergeable), ChecksState: store.Deref(r.ChecksState),
+		ReviewDecision: store.Deref(r.ReviewDecision), HeadOID: store.Deref(r.HeadOID),
 	}, nil
 }
 
@@ -274,14 +269,15 @@ func (s *Store) ReviewItem(ctx context.Context, id int64) (ReviewItem, error) {
 		SquashMergeAllowed: r.SquashMergeAllowed, RebaseMergeAllowed: r.RebaseMergeAllowed,
 		AutoMergeAllowed: r.AutoMergeAllowed, DeleteBranchOnMerge: r.DeleteBranchOnMerge,
 		AllowUpdateBranch: r.AllowUpdateBranch, Viewer: r.AccountLogin,
-		HasDetails: r.DetailsItemID != nil, Labels: labels, Comments: int(value(r.Comments)),
-		Additions: int(value(r.Additions)), Deletions: int(value(r.Deletions)),
-		ChangedFiles: int(value(r.ChangedFiles)), Commits: int(value(r.Commits)), Mergeable: value(r.Mergeable),
-		ChecksState: value(r.ChecksState), ChecksPassed: int(value(r.ChecksPassed)),
-		ChecksFailed: int(value(r.ChecksFailed)), ChecksPending: int(value(r.ChecksPending)),
-		ChecksSkipped: int(value(r.ChecksSkipped)), ReviewDecision: value(r.ReviewDecision),
-		Reviewers: int(value(r.Reviewers)), Reviewed: int(value(r.Reviewed)), Approvals: int(value(r.Approvals)),
-		ChangesRequested: int(value(r.ChangesRequested)), HeadOID: value(r.HeadOID),
-		AutoMerge: value(r.AutoMergeMethod), DetailsAt: value(r.DetailsFetchedAt).UTC(),
+		HasDetails: r.DetailsItemID != nil, Labels: labels, Comments: int(store.Deref(r.Comments)),
+		Additions: int(store.Deref(r.Additions)), Deletions: int(store.Deref(r.Deletions)),
+		ChangedFiles: int(store.Deref(r.ChangedFiles)), Commits: int(store.Deref(r.Commits)),
+		Mergeable: store.Deref(r.Mergeable), ChecksState: store.Deref(r.ChecksState),
+		ChecksPassed: int(store.Deref(r.ChecksPassed)), ChecksFailed: int(store.Deref(r.ChecksFailed)),
+		ChecksPending: int(store.Deref(r.ChecksPending)), ChecksSkipped: int(store.Deref(r.ChecksSkipped)),
+		ReviewDecision: store.Deref(r.ReviewDecision), Reviewers: int(store.Deref(r.Reviewers)),
+		Reviewed: int(store.Deref(r.Reviewed)), Approvals: int(store.Deref(r.Approvals)),
+		ChangesRequested: int(store.Deref(r.ChangesRequested)), HeadOID: store.Deref(r.HeadOID),
+		AutoMerge: store.Deref(r.AutoMergeMethod), DetailsAt: store.Deref(r.DetailsFetchedAt).UTC(),
 	}, nil
 }

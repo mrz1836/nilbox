@@ -3,7 +3,6 @@ package release
 import (
 	"cmp"
 	"context"
-	"encoding/json"
 	"fmt"
 	"net/url"
 	"strings"
@@ -126,6 +125,33 @@ type verifyGit interface {
 	LocalTagCommit(ctx context.Context, dir, tag string) (string, error)
 	CurrentBranch(ctx context.Context, dir string) (string, error)
 	InProgress(ctx context.Context, dir string) (gitread.Operation, error)
+}
+
+// callbacks are the callbacks of the release in sets out to make in the clone at dir, of
+// name, built alike for the release spec starts and, restarted, for one from before the
+// app restarted, which the Verifier picks up: magex's output read as it arrives and the
+// progress it reads, a Finish that verifies the release (finisher), first waiting, for one
+// from before the restart, for the login shell's environment, and a Recorded that tells of
+// it once that is kept (announcer).
+func (s *Service) callbacks(name repo.Name, dir string, in *Intent, restarted bool) scriptrun.Callbacks {
+	reader := NewOutputReader()
+	finish := s.finisher(name, dir, in, reader)
+
+	if restarted {
+		verify := finish
+		finish = func(ctx context.Context, end scriptrun.Ending, out scriptrun.Outcome) scriptrun.Outcome {
+			s.awaitShell(ctx)
+
+			return verify(ctx, end, out)
+		}
+	}
+
+	return scriptrun.Callbacks{
+		Output:   reader,
+		Progress: func() scriptrun.Progress { return reader.Progress(*in) },
+		Finish:   finish,
+		Recorded: s.announcer(name, in),
+	}
 }
 
 // finisher returns a release's Finish: once magex has ended and the reader has read all of
@@ -322,12 +348,12 @@ func judge(name repo.Name, in Intent, said Output, end scriptrun.Ending, got see
 	case got.commit != "":
 		res.Kind, res.Taken = ResultFailed, true
 		if ownTag {
-			res.Commands = []string{"git tag -d " + shellWord(got.tag)}
+			res.Commands = []string{"git tag -d " + textutil.ShellWord(got.tag)}
 		}
 	case res.Tagged:
 		res.Kind, res.PushWarning = ResultNotPushed, said.PushSkipWarning
 		res.Commands = []string{
-			"git push " + remoteOrigin + " " + shellWord(got.tag), "git tag -d " + shellWord(got.tag),
+			"git push " + remoteOrigin + " " + textutil.ShellWord(got.tag), "git tag -d " + textutil.ShellWord(got.tag),
 		}
 	default:
 		res.Kind = ResultFailed
@@ -489,19 +515,7 @@ func (v Verifier) Verify(run scriptrun.Record) scriptrun.Verification {
 		return scriptrun.Verification{}
 	}
 
-	reader := NewOutputReader()
-	finish := v.s.finisher(run.Repo, run.Dir, &in, reader)
-
-	return scriptrun.Verification{
-		Output:   reader,
-		Progress: func() scriptrun.Progress { return reader.Progress(in) },
-		Recorded: v.s.announcer(run.Repo, &in),
-		Finish: func(ctx context.Context, end scriptrun.Ending, out scriptrun.Outcome) scriptrun.Outcome {
-			v.s.awaitShell(ctx)
-
-			return finish(ctx, end, out)
-		},
-	}
+	return scriptrun.Verification{Callbacks: v.s.callbacks(run.Repo, run.Dir, &in, true)}
 }
 
 // awaitShell waits, until ctx ends, for the login shell's environment to have been read
@@ -516,13 +530,8 @@ func (s *Service) awaitShell(ctx context.Context) {
 // intentOf reads a release's intent back from its record, where it was decoded as plain
 // JSON values, and reports whether it names a version.
 func intentOf(recorded any) (Intent, bool) {
-	data, err := json.Marshal(recorded)
+	in, err := scriptrun.Decode[Intent](recorded)
 	if err != nil {
-		return Intent{}, false
-	}
-
-	var in Intent
-	if err = json.Unmarshal(data, &in); err != nil {
 		return Intent{}, false
 	}
 

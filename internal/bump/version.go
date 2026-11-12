@@ -1,14 +1,6 @@
 package bump
 
-import (
-	"regexp"
-	"slices"
-	"strings"
-)
-
-// updateTypePattern matches an update-type line in Dependabot's commit trailer, such as
-// "  update-type: version-update:semver-patch", capturing the level.
-var updateTypePattern = regexp.MustCompile(`(?im)^[ \t-]*update-type:[ \t]*[^\s:]+:semver-(major|minor|patch)\b`)
+import "strings"
 
 // Compare says how big the change from one version to another is: major, minor, or patch
 // by the first numeric part that differs, patch when only a suffix or a further part
@@ -40,21 +32,6 @@ func Compare(from, to string) Level {
 	}
 
 	return LevelPatch
-}
-
-// FromCommit reads Dependabot's commit trailer, the updated-dependencies YAML in a
-// commit's message, and returns the highest level among its update-type lines (major
-// over minor over patch). It reports false when the message has none.
-func FromCommit(msg string) (Level, bool) {
-	best := LevelUnknown
-
-	for _, m := range updateTypePattern.FindAllStringSubmatch(msg, -1) {
-		if level := Level(strings.ToLower(m[1])); rank(level) > rank(best) {
-			best = level
-		}
-	}
-
-	return best, best != LevelUnknown
 }
 
 // bare returns a version without surrounding space, one leading range operator, and a
@@ -135,9 +112,4 @@ func levelAt(i int) Level {
 	default:
 		return LevelPatch
 	}
-}
-
-// rank orders the levels, unknown lowest and major highest.
-func rank(level Level) int {
-	return slices.Index([]Level{LevelUnknown, LevelPatch, LevelMinor, LevelMajor}, level)
 }

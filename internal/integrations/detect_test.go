@@ -16,6 +16,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/mrz1836/nilbox/internal/execpath"
+	"github.com/mrz1836/nilbox/internal/integrationprefs"
 	"github.com/mrz1836/nilbox/internal/testutil"
 )
 
@@ -394,6 +395,25 @@ func TestDetection(t *testing.T) {
 	}
 }
 
+func TestDetectionRunsWithTheEnvironmentEveryRunOfTheToolGets(t *testing.T) {
+	t.Parallel()
+
+	m := newMachine(t)
+	path := m.put(m.pathA, magexSays(recordedMagex))
+	shell := []string{"HOME=" + m.home, "NO_COLOR=", "GIT_TERMINAL_PROMPT=1"}
+
+	detector{def: MageX(), dirs: m.dirs(), env: shell, home: m.home, run: m.run}.detect(t.Context(), "")
+
+	m.mu.Lock()
+	env := m.envs[path]
+	m.mu.Unlock()
+
+	assert.Equal(t, MageX().RunEnv(shell, integrationprefs.RunsInApp), env, "Definition.RunEnv, in the app")
+	assert.Equal(t, []string{"HOME=" + m.home, "GIT_TERMINAL_PROMPT=0", "MAGEX_NO_UPDATE_CHECK=1", "NO_COLOR=1"}, env,
+		"the shell's environment, then no prompt no one can answer, no update banner, and no color, each in place of "+
+			"the shell's own")
+}
+
 func TestDetectionRunsWithTheToolsQuietEnvironment(t *testing.T) {
 	t.Parallel()
 
@@ -406,8 +426,8 @@ func TestDetectionRunsWithTheToolsQuietEnvironment(t *testing.T) {
 	env := m.envs[path]
 	m.mu.Unlock()
 
-	assert.Equal(t, []string{"HOME=" + m.home, "MAGEX_NO_UPDATE_CHECK=1", "NO_COLOR=1"}, env,
-		"the shell's environment, then no update banner and no color")
+	assert.Equal(t, []string{"HOME=" + m.home, "GIT_TERMINAL_PROMPT=0", "MAGEX_NO_UPDATE_CHECK=1", "NO_COLOR=1"}, env,
+		"the shell's environment, then no prompt, no update banner, and no color")
 }
 
 func TestDetectionGivesUpOnACopyThatHangs(t *testing.T) {
@@ -533,7 +553,7 @@ func TestDetectionRunsAtMostFourCopiesAtOnce(t *testing.T) {
 			dir := filepath.Join(m.root, "bin"+strconv.Itoa(i))
 			dirs = append(dirs, dir)
 			m.put(dir, magexSays(recordedMagex))
-			executable(t, filepath.Join(dir, "go-pre-commit"))
+			testutil.WriteFileMode(t, filepath.Join(dir, "go-pre-commit"), "", 0o700)
 		}
 
 		var (
@@ -563,12 +583,4 @@ func TestDetectionRunsAtMostFourCopiesAtOnce(t *testing.T) {
 		assert.Len(t, got["mage-x"].others, 5)
 		assert.Equal(t, versionParallel, most, "four at a time across both tools, never more")
 	})
-}
-
-// executable writes an empty executable file at path.
-func executable(t *testing.T, path string) {
-	t.Helper()
-
-	testutil.WriteFile(t, path, "")
-	require.NoError(t, os.Chmod(path, 0o700)) //nolint:gosec // a fake tool must be executable
 }

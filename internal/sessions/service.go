@@ -284,8 +284,8 @@ func (l *Ledger) Running(ctx context.Context, dir string) ([]Session, error) {
 		return nil, err
 	}
 
-	for i := len(live) - 1; i >= 0; i-- {
-		if r := live[i]; paths.Same(r.Dir, dir) {
+	for _, r := range slices.Backward(live) {
+		if paths.Same(r.Dir, dir) {
 			out = append(out, r.Session(l.home))
 		}
 	}

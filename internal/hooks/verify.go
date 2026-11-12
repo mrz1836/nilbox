@@ -5,7 +5,6 @@ import (
 	"slices"
 
 	"github.com/mrz1836/nilbox/internal/brand"
-	"github.com/mrz1836/nilbox/internal/event"
 	"github.com/mrz1836/nilbox/internal/paths"
 	"github.com/mrz1836/nilbox/internal/scriptrun"
 	"github.com/mrz1836/nilbox/internal/shellenv"
@@ -49,29 +48,16 @@ func (v Verifier) Verify(run scriptrun.Record) scriptrun.Verification {
 // verifyAction is Verify for a hooks action: its Finish judges it from the hooks its Before
 // kept, and its Released has the page scan the clone again, as an action's Spec does.
 func (s *Service) verifyAction(rec scriptrun.Record) scriptrun.Verification {
-	var in ActionIntent
-	if err := decodeIntent(rec.Result.Intent, &in); err != nil || !in.Action.Valid() {
+	in, err := scriptrun.Decode[ActionIntent](rec.Result.Intent)
+	if err != nil || !in.Action.Valid() {
 		s.logger.Warn("a hooks action from before the app restarted can't be checked", "run", rec.ID)
 
 		return scriptrun.Verification{}
 	}
 
 	run := &actionRun{action: in.Action, clone: clone{dir: rec.Dir, name: rec.Repo}, confirm: in.Confirm, where: rec.RunsIn}
-	reader := newActionReader()
 
-	return scriptrun.Verification{
-		Output: reader,
-		Finish: func(ctx context.Context, end scriptrun.Ending, engine scriptrun.Outcome) scriptrun.Outcome {
-			if !s.awaitShell(ctx) {
-				return scriptrun.Outcome{Unsettled: true}
-			}
-
-			run.result = s.finishKept(ctx, rec.ID, run, reader, end)
-
-			return settled(run.cut, actionOutcome(run.result, reader.snapshot(), engine))
-		},
-		Released: func(int64) { s.markStale(run.clone.dir) },
-	}
+	return scriptrun.Verification{Callbacks: s.actionCallbacks(run, &rec, nil)}
 }
 
 // finishKept reads what an action from before the app restarted did, as its own Finish
@@ -99,7 +85,7 @@ func (s *Service) finishKept(ctx context.Context, id int64, run *actionRun, read
 
 	run.before, run.tool = kept.Hooks.hooks(), kept.Tool.facts()
 
-	if now := s.tool(ctx); !now.Usable() || now.key() != run.tool.key() {
+	if now := s.tool(ctx); !now.Usable() || now.Key() != run.tool.Key() {
 		run.stale = true
 	}
 
@@ -111,30 +97,16 @@ func (s *Service) finishKept(ctx context.Context, id int64, run *actionRun, read
 // window, as a checks run's Spec does. A record that ran go-pre-commit with --json is read as
 // JSON.
 func (s *Service) verifyChecks(rec scriptrun.Record) scriptrun.Verification {
-	var in ChecksIntent
-	if err := decodeIntent(rec.Result.Intent, &in); err != nil || checkIntent(in) != nil {
+	in, err := scriptrun.Decode[ChecksIntent](rec.Result.Intent)
+	if err != nil || checkIntent(in) != nil {
 		s.logger.Warn("a checks run from before the app restarted can't be checked", "run", rec.ID)
 
 		return scriptrun.Verification{}
 	}
 
 	run := &checksRun{intent: in, clone: clone{dir: rec.Dir, name: rec.Repo}, where: rec.RunsIn}
-	reader := newChecksReader(slices.Contains(rec.Argv, jsonFlag))
 
-	return scriptrun.Verification{
-		Output: reader,
-		Finish: func(ctx context.Context, end scriptrun.Ending, engine scriptrun.Outcome) scriptrun.Outcome {
-			if !s.awaitShell(ctx) {
-				return scriptrun.Outcome{Unsettled: true}
-			}
-
-			s.restoreChecks(ctx, rec.ID, run)
-
-			return settled(run.cut, s.finishChecks(ctx, run, reader, end, engine))
-		},
-		Recorded: func(ctx context.Context, _ int64, _ scriptrun.Outcome) { s.checksRecorded(ctx) },
-		Released: func(int64) { s.events.Emit(event.HooksUpdated{}) },
-	}
+	return scriptrun.Verification{Callbacks: s.checksCallbacks(run, slices.Contains(rec.Argv, jsonFlag), &rec)}
 }
 
 // restoreChecks gives a checks run from before the app restarted the config it ran with

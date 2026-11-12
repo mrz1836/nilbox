@@ -8,7 +8,6 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"strings"
 )
 
 const (
@@ -76,7 +75,7 @@ func (c *Client) FetchAvatar(ctx context.Context, rawURL string) (*Avatar, error
 
 	// A copy of the client, so the redirect rule applies to this download only.
 	hc := *c.httpClient()
-	hc.CheckRedirect = c.checkAvatarRedirect
+	hc.CheckRedirect = redirectsWithin(maxAvatarRedirects, ErrAvatarURL, c.checkAvatarURL)
 
 	resp, err := hc.Do(req)
 	if err != nil {
@@ -109,27 +108,9 @@ func (c *Client) FetchAvatar(ctx context.Context, rawURL string) (*Avatar, error
 // checkAvatarURL parses rawURL and accepts it only as https on the avatar host, with no
 // credentials in it.
 func (c *Client) checkAvatarURL(rawURL string) (*url.URL, error) {
-	u, err := url.Parse(rawURL)
-	if err != nil {
-		return nil, fmt.Errorf("%w: %w", ErrAvatarURL, err)
-	}
+	host := c.avatarHost()
 
-	if u.Scheme != "https" || u.User != nil || !strings.EqualFold(u.Host, c.avatarHost()) {
-		return nil, fmt.Errorf("%w: want https://%s/", ErrAvatarURL, c.avatarHost())
-	}
-
-	return u, nil
-}
-
-// checkAvatarRedirect lets an avatar download follow a few redirects on the avatar host.
-func (c *Client) checkAvatarRedirect(req *http.Request, via []*http.Request) error {
-	if len(via) > maxAvatarRedirects {
-		return fmt.Errorf("%w: more than %d redirects", ErrAvatarURL, maxAvatarRedirects)
-	}
-
-	_, err := c.checkAvatarURL(req.URL.String())
-
-	return err
+	return checkPublicURL(rawURL, []string{host}, ErrAvatarURL, "https://"+host+"/")
 }
 
 // avatarHost returns the configured avatar host, or GitHub's.

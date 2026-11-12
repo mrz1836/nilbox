@@ -2,6 +2,7 @@ package hooks
 
 import (
 	"fmt"
+	"path/filepath"
 	"slices"
 	"sync"
 	"testing"
@@ -48,13 +49,13 @@ func TestChecksCatchAChangeToAFileThatWasAlreadyDirty(t *testing.T) {
 
 	r := newRig(t)
 	dir := r.clone("web", cloneOpts{config: coreEnv, origin: "acme-org/web"})
-	writeFile(t, dir, "README.md", "# web  \n", 0o600)
-	writeFile(t, dir, "docs/setup.md", "setup\n", 0o600)
+	testutil.WriteFileMode(t, filepath.Join(dir, "README.md"), "# web  \n", 0o600)
+	testutil.WriteFileMode(t, filepath.Join(dir, "docs/setup.md"), "setup\n", 0o600)
 	testutil.RunGit(t, dir, "add", ".")
 	testutil.RunGit(t, dir, "commit", "-q", "-m", "docs")
 
 	// The user's own uncommitted edit, with trailing spaces of its own.
-	writeFile(t, dir, "docs/setup.md", "setup\nmore  \n", 0o600)
+	testutil.WriteFileMode(t, filepath.Join(dir, "docs/setup.md"), "setup\nmore  \n", 0o600)
 
 	// whitespace fixes both; the fake can't stage, so docs/setup.md stays " M" and only
 	// its contents tell it changed.
@@ -186,7 +187,7 @@ func TestChecksReadTheJSONReportWhenTheCopyHasIt(t *testing.T) {
 
 	r := newRig(t)
 	dir := r.clone("web", cloneOpts{config: coreEnv})
-	writeFile(t, dir, "README.md", "# web  \n", 0o600)
+	testutil.WriteFileMode(t, filepath.Join(dir, "README.md"), "# web  \n", 0o600)
 	testutil.RunGit(t, dir, "add", "README.md")
 	testutil.RunGit(t, dir, "commit", "-q", "-m", "spaces")
 
@@ -316,11 +317,13 @@ func TestRerunRefusesWhatItCantWorkOut(t *testing.T) {
 		Kind: scriptrun.KindChecks, Dir: dir, Result: scriptrun.Result{Intent: "not an intent"},
 	})
 	require.ErrorIs(t, err, ErrInvalidRequest)
+	require.ErrorContains(t, err, "invalid hooks request: the run's intent: json: cannot unmarshal string")
 
 	_, err = rr.Rerun(t.Context(), scriptrun.Record{
 		Kind: scriptrun.KindHooks, Dir: dir, Result: scriptrun.Result{Intent: []int{1}},
 	})
 	require.ErrorIs(t, err, ErrInvalidRequest)
+	require.ErrorContains(t, err, "invalid hooks request: the run's intent: json: cannot unmarshal array")
 
 	_, err = rr.Rerun(t.Context(), scriptrun.Record{Kind: scriptrun.KindHooks, Dir: "/srv/gone"})
 	require.ErrorIs(t, err, ErrNoClone)
@@ -356,7 +359,7 @@ func TestSecondsText(t *testing.T) {
 	assert.Equal(t, "350 ms", secondsText(350))
 	assert.Equal(t, "2.6 s", secondsText(2600))
 	assert.Equal(t, "38 s", secondsText(37600))
-	assert.Equal(t, "1 file", plural(1, "file"))
+	assert.Equal(t, "All 2 checks passed on 1 file.", passedChecksMessage(ChecksResult{Passed: 2, Files: 1}))
 	assert.Equal(t, "Checks · all files", checksTitle(ChecksIntent{Scope: ScopeAll}))
 	assert.True(t, ScopeStaged.Valid())
 	assert.False(t, Scope("x").Valid())

@@ -9,6 +9,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/brand"
 	"github.com/mrz1836/nilbox/internal/clock"
 	"github.com/mrz1836/nilbox/internal/github"
+	"github.com/mrz1836/nilbox/internal/textutil"
 	"github.com/mrz1836/nilbox/internal/uierr"
 )
 
@@ -142,19 +143,10 @@ func paceError(n int, period string, wait time.Duration) error {
 // waitText says when a wait of d ends, in words: "in 40 seconds", "in 12 minutes".
 func waitText(d time.Duration) string {
 	if seconds := int(math.Ceil(d.Seconds())); seconds < 60 {
-		return "in " + plural(max(seconds, 1), "second")
+		return "in " + textutil.Counted(max(seconds, 1), "second", "seconds")
 	}
 
-	return "in " + plural(int(math.Ceil(d.Minutes())), "minute")
-}
-
-// plural writes n of a unit, such as "1 minute" or "5 minutes".
-func plural(n int, unit string) string {
-	if n == 1 {
-		return "1 " + unit
-	}
-
-	return fmt.Sprintf("%d %ss", n, unit)
+	return "in " + textutil.Counted(int(math.Ceil(d.Minutes())), "minute", "minutes")
 }
 
 // pruneWritesLocked forgets the edits that no longer count toward the pace. The caller

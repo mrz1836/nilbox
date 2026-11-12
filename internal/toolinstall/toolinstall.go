@@ -170,7 +170,9 @@ type Installer struct {
 
 // Install downloads, checks, tries, and places the release req names, and returns what it
 // placed. On any failure before the program is placed, nothing outside the download
-// folder has changed, and that folder is removed.
+// folder has changed, and that folder is removed. Every file in the download folder is
+// made and read through an os.Root of it, so no name, an asset's from GitHub included,
+// reaches out of it.
 func (in *Installer) Install(ctx context.Context, req Request) (Placed, error) {
 	archive, checksums, err := pickAssets(req)
 	if err != nil {
@@ -182,7 +184,10 @@ func (in *Installer) Install(ctx context.Context, req Request) (Placed, error) {
 		return Placed{}, err
 	}
 
-	defer func() { _ = os.RemoveAll(work) }()
+	defer func() {
+		_ = work.Close()
+		_ = os.RemoveAll(work.Name())
+	}()
 
 	progress := func(p Progress) {
 		if req.Progress != nil {
@@ -203,11 +208,11 @@ func (in *Installer) Install(ctx context.Context, req Request) (Placed, error) {
 
 	progress(Progress{Step: StepVerifying})
 
-	if err = verify(filepath.Join(work, checksums.Name), archive.Name, archiveSum); err != nil {
+	if err = verify(work, checksums.Name, archive.Name, archiveSum); err != nil {
 		return Placed{}, err
 	}
 
-	program, programSum, err := in.extract(filepath.Join(work, archive.Name), req.Binary, work)
+	program, programSum, err := in.extract(work, archive.Name, req.Binary)
 	if err != nil {
 		return Placed{}, err
 	}
@@ -220,7 +225,7 @@ func (in *Installer) Install(ctx context.Context, req Request) (Placed, error) {
 
 	progress(Progress{Step: StepInstalling})
 
-	path, replaced, err := in.place(ctx, program, req)
+	path, replaced, err := in.place(ctx, work, req)
 	if err != nil {
 		return Placed{}, err
 	}
@@ -263,21 +268,30 @@ func safeName(name string) bool {
 	return name != "" && name != "." && name != ".." && !strings.ContainsAny(name, `/\`+"\x00")
 }
 
-// workDir makes a fresh private folder for one install's downloads.
-func (in *Installer) workDir(req Request) (string, error) {
+// workDir makes a fresh private folder for one install's downloads, and returns it opened
+// as an os.Root, which every file in it is made and read through: its Name is the folder's
+// path.
+func (in *Installer) workDir(req Request) (*os.Root, error) {
 	if err := os.MkdirAll(in.Downloads, dirPerm); err != nil {
-		return "", fmt.Errorf("make the downloads folder: %w", err)
+		return nil, fmt.Errorf("make the downloads folder: %w", err)
 	}
 
 	random := make([]byte, 6)
 	if _, err := rand.Read(random); err != nil {
-		return "", fmt.Errorf("name the download folder: %w", err)
+		return nil, fmt.Errorf("name the download folder: %w", err)
 	}
 
 	dir := filepath.Join(in.Downloads, in.Slug+"-"+req.Tool+"-"+req.Version+"-"+hex.EncodeToString(random))
 	if err := os.Mkdir(dir, dirPerm); err != nil {
-		return "", fmt.Errorf("make the download folder: %w", err)
+		return nil, fmt.Errorf("make the download folder: %w", err)
 	}
 
-	return dir, nil
+	root, err := os.OpenRoot(dir)
+	if err != nil {
+		_ = os.Remove(dir)
+
+		return nil, fmt.Errorf("open the download folder: %w", err)
+	}
+
+	return root, nil
 }

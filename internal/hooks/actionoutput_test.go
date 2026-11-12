@@ -7,6 +7,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/mrz1836/nilbox/internal/scriptrun"
 	"github.com/mrz1836/nilbox/internal/textutil"
 )
 
@@ -34,11 +35,11 @@ func TestActionReaderKnowsEveryRecordedLine(t *testing.T) {
 	names = append(names, "global-hookspath-install")
 
 	for _, name := range names {
-		got := readAction(loadRecording(t, name).log())
+		got := readAction(loadRecording(t, name).Log("\n"))
 
-		assert.Empty(t, got.unrecognized, name)
-		assert.Zero(t, got.unrecognizedCount, name)
-		assert.Empty(t, got.warnings, name)
+		assert.Empty(t, got.Unrecognized, name)
+		assert.Zero(t, got.UnrecognizedCount, name)
+		assert.Empty(t, got.Warnings, name)
 
 		if name == "install-no-config" {
 			assert.Equal(t, "failed to load configuration: failed to load configuration: failed to find environment "+
@@ -66,9 +67,9 @@ func TestActionReaderKeepsWhatItDoesntKnow(t *testing.T) {
 
 	assert.Equal(t, []string{"hooks not installed: pre-commit (use --force to overwrite)", "Failed to write the hook"}, got.errors)
 	assert.Equal(t, "Failed to write the hook", got.lastError())
-	assert.Equal(t, []string{"A warning of its own", "failed to restore backup hook: permission denied"}, got.warnings)
-	assert.Equal(t, []string{"something new", "last line without a newline"}, got.unrecognized)
-	assert.Equal(t, 2, got.unrecognizedCount)
+	assert.Equal(t, []string{"A warning of its own", "failed to restore backup hook: permission denied"}, got.Warnings)
+	assert.Equal(t, []string{"something new", "last line without a newline"}, got.Unrecognized)
+	assert.Equal(t, 2, got.UnrecognizedCount)
 
 	assert.Empty(t, readAction("").lastError())
 }
@@ -76,20 +77,20 @@ func TestActionReaderKeepsWhatItDoesntKnow(t *testing.T) {
 func TestReadersKeepNotesUpToTheirLimits(t *testing.T) {
 	t.Parallel()
 
-	lines := make([]string, 0, 3*(maxNotes+10))
-	for range maxNotes + 10 {
+	lines := make([]string, 0, 3*(scriptrun.MaxNotes+10))
+	for range scriptrun.MaxNotes + 10 {
 		lines = append(lines, "⚠ again", "Error: again", "?? unknown")
 	}
 
 	got := readAction(strings.Join(lines, "\n") + "\n")
-	assert.Len(t, got.warnings, maxNotes)
-	assert.Len(t, got.errors, maxNotes)
-	assert.Len(t, got.unrecognized, 200)
-	assert.Equal(t, maxNotes+10, got.unrecognizedCount)
+	assert.Len(t, got.Warnings, scriptrun.MaxNotes)
+	assert.Len(t, got.errors, scriptrun.MaxNotes)
+	assert.Len(t, got.Unrecognized, 200)
+	assert.Equal(t, scriptrun.MaxNotes+10, got.UnrecognizedCount)
 
 	// A line past textutil.MaxLine keeps its start, and the next line reads as its own.
 	got = readAction(strings.Repeat("x", textutil.MaxLine+10) + "\n" + "next\n")
-	require.Len(t, got.unrecognized, 2)
-	assert.Len(t, got.unrecognized[0], textutil.MaxLine)
-	assert.Equal(t, "next", got.unrecognized[1])
+	require.Len(t, got.Unrecognized, 2)
+	assert.Len(t, got.Unrecognized[0], textutil.MaxLine)
+	assert.Equal(t, "next", got.Unrecognized[1])
 }

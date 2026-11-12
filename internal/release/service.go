@@ -17,6 +17,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/logging"
 	"github.com/mrz1836/nilbox/internal/paths"
 	"github.com/mrz1836/nilbox/internal/repo"
+	"github.com/mrz1836/nilbox/internal/scriptrun"
 	"github.com/mrz1836/nilbox/internal/uierr"
 )
 
@@ -104,7 +105,7 @@ type Config struct {
 
 	// Terminal opens the user's terminal in a clone, for a check's Open in terminal.
 	// Without it, OpenTerminal says the terminal can't be opened here.
-	Terminal FolderOpener
+	Terminal scriptrun.FolderOpener
 
 	// Keeper keeps the last list between starts, so the page shows it at once while the
 	// Refresher reads GitHub again. Without it, nothing is kept.
@@ -161,7 +162,7 @@ type Service struct {
 	tools      ToolSource
 	afterMerge MergeSetting
 	branches   DefaultBranches
-	terminal   FolderOpener
+	terminal   scriptrun.FolderOpener
 
 	// workflows reads a release's workflow on GitHub, and records the releases' records,
 	// for the Follower. followMu guards toFollow, the releases handed to the Follower since
@@ -560,8 +561,7 @@ func (s *Service) checkClones(
 		wg.Go(func() {
 			defer func() { <-slots }()
 
-			state := s.checker.CloneState(ctx, list[i].dir, status.DefaultBranch, status.HeadOID, status.Tags)
-			list[i].Clone = &state
+			list[i].Clone = new(s.checker.CloneState(ctx, list[i].dir, status.DefaultBranch, status.HeadOID, status.Tags))
 
 			progress.Add(1)
 		})

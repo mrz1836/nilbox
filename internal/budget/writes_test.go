@@ -177,3 +177,20 @@ func TestAStateWithoutEditsStillReads(t *testing.T) {
 	require.NoError(t, tr.Restore(`{"version":1,"budgets":[]}`))
 	assert.Equal(t, noWrites(), tr.gauge(12).Writes)
 }
+
+func TestWaitTextCountsSecondsAndMinutes(t *testing.T) {
+	t.Parallel()
+
+	for d, want := range map[time.Duration]string{
+		0:                         "in 1 second",
+		500 * time.Millisecond:    "in 1 second",
+		time.Second:               "in 1 second",
+		30 * time.Second:          "in 30 seconds",
+		59*time.Second + 1:        "in 1 minute",
+		time.Minute:               "in 1 minute",
+		time.Minute + time.Second: "in 2 minutes",
+		40 * time.Minute:          "in 40 minutes",
+	} {
+		assert.Equal(t, want, waitText(d), d)
+	}
+}

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -152,7 +153,7 @@ func TestReadTimesOutAndFallsBack(t *testing.T) {
 		select {
 		case <-r.Ready():
 		default:
-			t.Fatal("Ready closes once the first read ends, even a failed one")
+			require.FailNow(t, "Ready closes once the first read ends, even a failed one")
 		}
 
 		env, ok := r.Env()
@@ -234,7 +235,7 @@ func TestEnvBeforeTheFirstReadIsTheFallback(t *testing.T) {
 
 	select {
 	case <-r.Ready():
-		t.Fatal("Ready closes only once a read ends")
+		require.FailNow(t, "Ready closes only once a read ends")
 	default:
 	}
 }
@@ -369,4 +370,115 @@ func TestAwaitReportsWhetherTheShellWasRead(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
 	assert.False(t, shellenv.Await(ctx, make(chan struct{})), "a quit never waits on a read that never comes")
+}
+
+func TestLookupReadsTheLastEntryThatSetsTheVariable(t *testing.T) {
+	t.Parallel()
+
+	env := []string{"A=1", "EMPTY=", "BARE", "A=2", "AB=3", "=root"}
+
+	for _, tc := range []struct {
+		key   string
+		value string
+		set   bool
+	}{
+		{key: "A", value: "2", set: true},
+		{key: "AB", value: "3", set: true},
+		{key: "EMPTY", value: "", set: true},
+		{key: "BARE", value: "", set: false},
+		{key: "a", value: "", set: false},
+		{key: "MISSING", value: "", set: false},
+		{key: "", value: "root", set: true},
+	} {
+		value, set := shellenv.LookupOK(env, tc.key)
+		assert.Equal(t, tc.value, value, tc.key)
+		assert.Equal(t, tc.set, set, tc.key)
+		assert.Equal(t, tc.value, shellenv.Lookup(env, tc.key), tc.key)
+	}
+
+	_, set := shellenv.LookupOK(nil, "A")
+	assert.False(t, set)
+}
+
+func TestLookupReadsAKeyUpToItsEntrysFirstEquals(t *testing.T) {
+	t.Parallel()
+
+	// A repository's ${env:NAME} hands Lookup a name it chose, which may hold "=".
+	env := []string{"LS_COLORS=di=34:ln=35", "A=first", "BARE", "A=last", "A=B=c"}
+
+	for _, tc := range []struct {
+		key   string
+		value string
+		set   bool
+	}{
+		{key: "LS_COLORS", value: "di=34:ln=35", set: true},
+		{key: "LS_COLORS=di", value: "", set: false},
+		{key: "LS_COLORS=", value: "", set: false},
+		{key: "A=B", value: "", set: false},
+		{key: "A", value: "B=c", set: true},
+		{key: "BARE", value: "", set: false},
+	} {
+		value, set := shellenv.LookupOK(env, tc.key)
+		assert.Equal(t, tc.value, value, tc.key)
+		assert.Equal(t, tc.set, set, tc.key)
+		assert.Equal(t, tc.value, shellenv.Lookup(env, tc.key), tc.key)
+	}
+
+	assert.Equal(t, "last", shellenv.Lookup([]string{"A=first", "B=x", "A=last", "BARE"}, "A"), "the last entry wins")
+
+	value, set := shellenv.LookupOK([]string{"A=first", "A="}, "A")
+	assert.True(t, set)
+	assert.Empty(t, value, "an empty last entry wins too")
+}
+
+func TestWithoutDropsABareKeyAndEveryRepeat(t *testing.T) {
+	t.Parallel()
+
+	env := []string{"BARE", "A=1", "BARE=x", "A=B=2", "A", "BAREST=y", "A=3"}
+
+	assert.Equal(t, []string{"BAREST=y"}, shellenv.Without(env, "A", "BARE"),
+		"every repeat goes, an entry with no = when its whole text is the key, and a value holding =")
+	assert.Equal(t, env, shellenv.Without(env, "A=B", "BARE="), "a key holding = names no entry")
+	assert.Equal(t, []string{"A=1", "A=B=2", "A", "BAREST=y", "A=3", "BARE=new"}, shellenv.With(env, "BARE", "new"))
+}
+
+func TestWithoutDropsEveryEntryThatSetsAKey(t *testing.T) {
+	t.Parallel()
+
+	env := []string{"A=1", "PATH=/bin", "BARE", "A=2", "AB=3", "B=", "a=4"}
+	before := slices.Clone(env)
+
+	assert.Equal(t, []string{"PATH=/bin", "BARE", "AB=3", "a=4"}, shellenv.Without(env, "A", "B"),
+		"in order, every repeat, a name only when it is the whole name, case and all; a bare entry of another key stays")
+	assert.Equal(t, before, env, "env itself is left alone")
+	assert.Equal(t, env, shellenv.Without(env))
+
+	assert.NotNil(t, shellenv.Without(nil, "A"))
+	assert.Empty(t, shellenv.Without(nil, "A"))
+	assert.Empty(t, shellenv.Without([]string{"A=1"}, "A"))
+
+	out := shellenv.Without(env)
+	out[0] = "CHANGED=1"
+
+	assert.Equal(t, before, env, "the copy shares nothing with env")
+}
+
+func TestWithSetsAVariableLastInPlaceOfEveryOther(t *testing.T) {
+	t.Parallel()
+
+	env := []string{"A=old", "PATH=/bin", "A=older", "B=x"}
+	before := slices.Clone(env)
+
+	assert.Equal(t, []string{"PATH=/bin", "B=x", "A=new"}, shellenv.With(env, "A", "new"))
+	assert.Equal(t, []string{"A=old", "PATH=/bin", "A=older", "B=x", "C="}, shellenv.With(env, "C", ""))
+	assert.Equal(t, before, env, "env itself is left alone")
+	assert.Equal(t, []string{"A=1"}, shellenv.With(nil, "A", "1"))
+
+	// A slice with room to spare is still copied, never appended to in place.
+	backing := []string{"B=x", "", "", ""}
+
+	got := shellenv.With(backing[:1], "A", "1")
+	got[0] = "CHANGED=1"
+
+	assert.Equal(t, []string{"B=x", "", "", ""}, backing, "nothing was written into env's array, past its end or not")
 }

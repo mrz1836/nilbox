@@ -15,35 +15,24 @@ import (
 	"github.com/mrz1836/nilbox/internal/uierr"
 )
 
-// planted is one way a clone's own config can make git run a program: the settings that
-// name it, with %s for the fake program's path, and the fake's name.
-type planted struct {
-	name     string
-	settings [][2]string
-}
-
-// The plantings that need more than their settings: an alternate refs command, which a
-// fetch runs only in a clone with alternates, which plant gives the clone.
-const alternateRefs = "evil-alternate-refs"
-
 // refusedPlantings are every way a planted clone config could make a pull run its own
 // program that no setup sets aside, each of which refuses the pull before git runs: a
 // filter driver (the checkout runs its smudge), signature checks, git's upload-pack, an
 // alternate refs command, a hook named in the config (which core.hooksPath doesn't
 // reach), gc's recent objects hook, which the automatic maintenance a fetch and a merge
 // start runs, and Git LFS's own transfer agent.
-func refusedPlantings() []planted {
-	return []planted{
-		{name: "evil-smudge", settings: [][2]string{
+func refusedPlantings() []testutil.Planting {
+	return []testutil.Planting{
+		{Name: "evil-smudge", Settings: [][2]string{
 			{"filter.evil.smudge", "%s"}, {"filter.evil.clean", "%s"}, {"filter.evil.required", "true"},
 		}},
-		{name: "evil-gpg", settings: [][2]string{
+		{Name: "evil-gpg", Settings: [][2]string{
 			{"merge.verifySignatures", "true"}, {"gpg.program", "%s"}, {"gpg.ssh.program", "%s"},
 		}},
-		{name: "evil-upload-pack", settings: [][2]string{{"remote.origin.uploadpack", "%s"}}},
-		{name: alternateRefs, settings: [][2]string{{"core.alternateRefsCommand", "%s"}}},
-		{name: "evil-hook", settings: [][2]string{{"hook.evil.command", "%s"}, {"hook.evil.event", "post-merge"}}},
-		{name: "evil-gc", settings: [][2]string{
+		{Name: "evil-upload-pack", Settings: [][2]string{{"remote.origin.uploadpack", "%s"}}},
+		{Name: testutil.AlternateRefs, Settings: [][2]string{{"core.alternateRefsCommand", "%s"}}},
+		{Name: "evil-hook", Settings: [][2]string{{"hook.evil.command", "%s"}, {"hook.evil.event", "post-merge"}}},
+		{Name: "evil-gc", Settings: [][2]string{
 			{"gc.recentObjectsHook", "%s"},
 			{"gc.cruftPacks", "true"},
 			{"gc.autoPackLimit", "1"},
@@ -53,66 +42,10 @@ func refusedPlantings() []planted {
 			{"maintenance.autoDetach", "false"},
 			{"gc.auto", "1"},
 		}},
-		{name: "evil-lfs-agent", settings: [][2]string{
+		{Name: "evil-lfs-agent", Settings: [][2]string{
 			{"lfs.standalonetransferagent", "evil"}, {"lfs.customtransfer.evil.path", "%s"},
 		}},
 	}
-}
-
-// keysOf returns the keys of settings as git lists them: the section and the name
-// lowercased, a subsection as written.
-func keysOf(settings [][2]string) []string {
-	keys := make([]string, 0, len(settings))
-
-	for _, s := range settings {
-		first, last := strings.Index(s[0], "."), strings.LastIndex(s[0], ".")
-		keys = append(keys, strings.ToLower(s[0][:first])+s[0][first:last]+strings.ToLower(s[0][last:]))
-	}
-
-	return keys
-}
-
-// plant sets p in the clone at dir's own config, pointing at a fake program that writes a
-// marker file, and returns that file. An alternate refs command comes with an alternate
-// object store, an empty repository's, for the fetch to ask it about.
-func (g *gitRig) plant(dir string, p planted) string {
-	g.t.Helper()
-
-	program, marker := g.marker(p.name)
-
-	for _, s := range p.settings {
-		testutil.RunGit(g.t, dir, "config", s[0], strings.ReplaceAll(s[1], "%s", program))
-	}
-
-	if p.name == alternateRefs {
-		alt := filepath.Join(g.t.TempDir(), "alt.git")
-		testutil.RunGit(g.t, g.home, "init", "-q", "--bare", alt)
-		require.NoError(g.t, os.WriteFile(filepath.Join(dir, ".git", "objects", "info", "alternates"),
-			[]byte(filepath.Join(alt, "objects")+"\n"), 0o600))
-	}
-
-	return marker
-}
-
-// plantHooks points the clone at dir's own core.hooksPath at a folder whose post-merge hook
-// is a fake that writes a marker file, and returns that file.
-func (g *gitRig) plantHooks(dir string) string {
-	g.t.Helper()
-
-	marker := filepath.Join(g.home, "ran", "post-merge")
-	require.NoError(g.t, os.MkdirAll(filepath.Dir(marker), 0o700))
-
-	hook, entry := testutil.FakeTool(g.t, "post-merge", testutil.FakeRun{
-		Files: []testutil.FakeFile{{Path: marker, Content: "ran"}},
-	})
-
-	g.envMu.Lock()
-	g.genv = append(g.genv, entry)
-	g.envMu.Unlock()
-
-	testutil.RunGit(g.t, dir, "config", "core.hooksPath", filepath.Dir(hook))
-
-	return marker
 }
 
 // pushSigned pushes to origin's main a commit that names the filter driver evil for its
@@ -148,18 +81,18 @@ func TestPullRefusesAClonesOwnProgramsBeforeGitRuns(t *testing.T) {
 	t.Parallel()
 
 	for _, p := range refusedPlantings() {
-		t.Run(p.name, func(t *testing.T) {
+		t.Run(p.Name, func(t *testing.T) {
 			t.Parallel()
 
 			g := newGitRig(t)
 			g.pushSigned()
 			require.Equal(t, BranchBehind, g.status(false).State)
 
-			marker := g.plant(g.dir, p)
+			marker := g.plants.Plant(g.dir, p)
 
 			_, err := g.branch.Pull(t.Context(), g.shown(g.dir))
 			require.ErrorIs(t, err, ErrCantPull)
-			assert.Contains(t, uierr.Message(err), "This clone's own git config sets "+keysOf(p.settings)[0])
+			assert.Contains(t, uierr.Message(err), "This clone's own git config sets "+p.Keys()[0])
 			assert.Zero(t, g.recorded(), "refused before anything ran")
 			assert.Equal(t, g.first, g.head(g.dir))
 			assert.NoFileExists(t, marker)
@@ -194,12 +127,12 @@ func TestPullWithTheClonesOwnTransportSettings(t *testing.T) {
 	two := g.pushed("two.txt")
 	markers := map[string]string{}
 
-	for _, p := range []planted{
-		{name: "evil-ssh", settings: [][2]string{{"core.sshCommand", "%s"}}},
-		{name: "evil-askpass", settings: [][2]string{{"core.askPass", "%s"}}},
-		{name: "evil-credential", settings: [][2]string{{"credential.helper", "!%s"}}},
+	for _, p := range []testutil.Planting{
+		{Name: "evil-ssh", Settings: [][2]string{{"core.sshCommand", "%s"}}},
+		{Name: "evil-askpass", Settings: [][2]string{{"core.askPass", "%s"}}},
+		{Name: "evil-credential", Settings: [][2]string{{"credential.helper", "!%s"}}},
 	} {
-		markers[p.name] = g.plant(g.dir, p)
+		markers[p.Name] = g.plants.Plant(g.dir, p)
 	}
 
 	const url = "https://example.invalid/acme-org/example-repo.git"
@@ -228,12 +161,9 @@ func TestPullSaysWhichOfTheClonesOwnSettingsItWentWithout(t *testing.T) {
 	g := newGitRig(t)
 	g.status(false)
 
-	evil := g.plant(g.dir, planted{name: "evil-ssh", settings: [][2]string{{"core.sshCommand", "%s"}}})
-	mine, ran := g.marker("my-ssh")
-
-	g.envMu.Lock()
-	g.genv = append(g.genv, "GIT_SSH="+mine)
-	g.envMu.Unlock()
+	evil := g.plants.Plant(g.dir, testutil.Planting{Name: "evil-ssh", Settings: [][2]string{{"core.sshCommand", "%s"}}})
+	mine, ran := g.plants.Marker("my-ssh")
+	g.plants.AddEnv("GIT_SSH=" + mine)
 
 	testutil.RunGit(t, g.dir, "remote", "set-url", "origin", "ssh://git@example.invalid/acme-org/example-repo.git")
 
@@ -289,8 +219,8 @@ func TestPullRunsNoHookOrMonitorOfTheClonesOwn(t *testing.T) {
 	two := g.pushed("two.txt")
 
 	markers := map[string]string{
-		"hooks":     g.plantHooks(g.dir),
-		"fsmonitor": g.plant(g.dir, planted{name: "evil-fsmonitor", settings: [][2]string{{"core.fsmonitor", "%s"}}}),
+		"hooks":     g.plants.PlantHooks(g.dir, "post-merge"),
+		"fsmonitor": g.plants.Plant(g.dir, testutil.Planting{Name: "evil-fsmonitor", Settings: [][2]string{{"core.fsmonitor", "%s"}}}),
 	}
 
 	require.Equal(t, BranchBehind, g.status(false).State)
@@ -349,15 +279,15 @@ func TestAPlainPullWouldRunThePlantedPrograms(t *testing.T) {
 	t.Parallel()
 
 	reached := map[string]bool{
-		"evil-smudge": true, "evil-gpg": true, "evil-upload-pack": true, alternateRefs: true, "evil-hook": true,
+		"evil-smudge": true, "evil-gpg": true, "evil-upload-pack": true, testutil.AlternateRefs: true, "evil-hook": true,
 	}
 
 	for _, p := range refusedPlantings() {
-		if !reached[p.name] {
+		if !reached[p.Name] {
 			continue
 		}
 
-		t.Run(p.name, func(t *testing.T) {
+		t.Run(p.Name, func(t *testing.T) {
 			t.Parallel()
 
 			g := newGitRig(t)
@@ -365,11 +295,11 @@ func TestAPlainPullWouldRunThePlantedPrograms(t *testing.T) {
 			testutil.RunGit(t, g.home, "clone", "-q", g.url(), plain)
 			g.pushSigned()
 
-			marker := g.plant(plain, p)
+			marker := g.plants.Plant(plain, p)
 
-			_, _, err := execpath.Exec{Env: g.environ(), Dir: plain}.Run(t.Context(), "git", "pull", "--ff-only", "-q")
+			_, _, err := execpath.Exec{Env: g.plants.Environ(), Dir: plain}.Run(t.Context(), "git", "pull", "--ff-only", "-q")
 			t.Logf("a plain pull: %v", err) // it may fail once the planted program ran, as a planted upload-pack does
-			assert.FileExists(t, marker, "a plain pull runs the clone's own %s", p.name)
+			assert.FileExists(t, marker, "a plain pull runs the clone's own %s", p.Name)
 		})
 	}
 
@@ -381,9 +311,9 @@ func TestAPlainPullWouldRunThePlantedPrograms(t *testing.T) {
 		testutil.RunGit(t, g.home, "clone", "-q", g.url(), plain)
 		g.pushed("two.txt")
 
-		marker := g.plantHooks(plain)
+		marker := g.plants.PlantHooks(plain, "post-merge")
 
-		_, _, err := execpath.Exec{Env: g.environ(), Dir: plain}.Run(t.Context(), "git", "pull", "--ff-only", "-q")
+		_, _, err := execpath.Exec{Env: g.plants.Environ(), Dir: plain}.Run(t.Context(), "git", "pull", "--ff-only", "-q")
 		require.NoError(t, err)
 		assert.FileExists(t, marker, "a plain pull runs the clone's own post-merge hook")
 	})
@@ -400,7 +330,7 @@ func TestAPlainPullWouldRunThePlantedPrograms(t *testing.T) {
 		require.NoError(t, os.Mkdir(elsewhere, 0o700))
 		testutil.RunGit(t, plain, "config", "core.worktree", elsewhere)
 
-		_, _, err := execpath.Exec{Env: g.environ(), Dir: plain}.Run(t.Context(), "git", "pull", "--ff-only", "-q")
+		_, _, err := execpath.Exec{Env: g.plants.Environ(), Dir: plain}.Run(t.Context(), "git", "pull", "--ff-only", "-q")
 		t.Logf("a plain pull: %v", err)
 		assert.FileExists(t, filepath.Join(elsewhere, "two.txt"), "a plain pull writes where core.worktree says")
 	})

@@ -130,7 +130,7 @@ type recordedVerifier struct {
 }
 
 func (v recordedVerifier) Verify(Record) Verification {
-	return Verification{Recorded: v.hook}
+	return Verification{Callbacks: Callbacks{Recorded: v.hook}}
 }
 
 // releasedCall is one call of a spec's Released: the run, the status its record held
@@ -240,7 +240,7 @@ type releasedVerifier struct {
 }
 
 func (v releasedVerifier) Verify(Record) Verification {
-	return Verification{Released: v.hook}
+	return Verification{Callbacks: Callbacks{Released: v.hook}}
 }
 
 func TestReleasedIsntToldForAnUnsettledEnd(t *testing.T) {

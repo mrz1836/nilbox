@@ -52,6 +52,140 @@ func TestWithin(t *testing.T) {
 	assert.Empty(t, procs.Within(list, filepath.Join(root, "missing")))
 }
 
+func TestLocatedAnswersAsWithinDoes(t *testing.T) {
+	t.Parallel()
+
+	root := testutil.RealTempDir(t)
+	worktrees := filepath.Join(root, "worktrees")
+	first := filepath.Join(worktrees, "pr-7")
+	second := filepath.Join(worktrees, "pr-8")
+	require.NoError(t, os.MkdirAll(filepath.Join(first, "src"), 0o700))
+	require.NoError(t, os.MkdirAll(second, 0o700))
+
+	link := filepath.Join(root, "link")
+	require.NoError(t, os.Symlink(second, link))
+
+	list := []procs.Process{
+		{PID: 1, Command: "claude", Dir: first},
+		{PID: 2, Command: "go", Dir: filepath.Join(first, "src")},
+		{PID: 3, Command: "fish", Dir: filepath.Join(link, "missing")},
+		{PID: 4, Command: "codex", Dir: first + "-other"},
+		{PID: 5, Command: "bash", Dir: worktrees},
+		{PID: 6, Command: "none", Dir: ""},
+		{PID: 7, Command: "vim", Dir: second},
+	}
+
+	located := procs.Locate(list)
+	folders := map[string][]int{
+		first:                               {1, 2},
+		first + string(filepath.Separator):  {1, 2},
+		second:                              {3, 7},
+		link:                                {3, 7},
+		worktrees:                           {1, 2, 3, 4, 5, 7},
+		filepath.Join(first, "src"):         {2},
+		filepath.Join(root, "missing"):      nil,
+		filepath.Join(link, "missing"):      {3},
+		filepath.Join(link, "missing", "x"): nil,
+	}
+
+	for dir, want := range folders {
+		got := located.Within(dir)
+		assert.Equal(t, procs.Within(list, dir), got, "asked of %s", dir)
+
+		if want == nil {
+			assert.Nil(t, got, "none in %s", dir)
+		} else {
+			assert.Equal(t, want, pids(got), "in %s, by PID", dir)
+		}
+	}
+
+	assert.Nil(t, procs.Locate(nil).Within(root))
+	assert.Nil(t, procs.Within(nil, root))
+}
+
+func TestLocatedInAnswersEachFolder(t *testing.T) {
+	t.Parallel()
+
+	root := testutil.RealTempDir(t)
+	worktrees := filepath.Join(root, "worktrees")
+	first := filepath.Join(worktrees, "pr-7")
+	second := filepath.Join(worktrees, "pr-8")
+	require.NoError(t, os.MkdirAll(filepath.Join(first, "src"), 0o700))
+	require.NoError(t, os.MkdirAll(second, 0o700))
+
+	link := filepath.Join(root, "link")
+	require.NoError(t, os.Symlink(second, link))
+
+	list := []procs.Process{
+		{PID: 9, Command: "node", Dir: first},
+		{PID: 1, Command: "claude", Dir: first},
+		{PID: 2, Command: "go", Dir: filepath.Join(first, "src")},
+		{PID: 3, Command: "fish", Dir: filepath.Join(link, "missing")},
+		{PID: 4, Command: "make", Dir: first + "-other"},
+		{PID: 5, Command: "bash", Dir: worktrees},
+		{PID: 6, Command: "none", Dir: ""},
+		{PID: 7, Command: "vim", Dir: second},
+		{PID: 8, Command: "zsh", Dir: link + string(filepath.Separator)},
+	}
+
+	located := procs.Locate(list)
+	folders := map[string][]int{
+		first:                               {9, 1},
+		first + string(filepath.Separator):  {9, 1},
+		second:                              {7, 8},
+		link:                                {7, 8},
+		worktrees:                           {5},
+		filepath.Join(first, "src"):         {2},
+		filepath.Join(link, "missing"):      {3},
+		filepath.Join(root, "missing"):      nil,
+		filepath.Join(link, "missing", "x"): nil,
+		"":                                  nil,
+	}
+
+	for dir, want := range folders {
+		got := located.In(dir)
+		assert.Equal(t, procs.In(list, dir), got, "asked of %q, as a fresh Located answers", dir)
+
+		if want == nil {
+			assert.Nil(t, got, "none in %q", dir)
+		} else {
+			assert.Equal(t, want, pids(got), "in %q, in the list's order", dir)
+		}
+	}
+
+	assert.Nil(t, procs.Locate(nil).In(root))
+	assert.Nil(t, procs.In(nil, root))
+
+	mixed := procs.Locate(list)
+	require.Equal(t, []int{9, 1, 2, 3, 4, 5, 7, 8}, pids(mixed.Within(worktrees)))
+	assert.Equal(t, []int{7, 8}, pids(mixed.In(second)), "In reuses what Within resolved")
+}
+
+func TestLocatedResolvesEachDirectoryOnce(t *testing.T) {
+	t.Parallel()
+
+	root := testutil.RealTempDir(t)
+	first := filepath.Join(root, "pr-7")
+	second := filepath.Join(root, "pr-8")
+
+	require.NoError(t, os.MkdirAll(first, 0o700))
+	require.NoError(t, os.MkdirAll(second, 0o700))
+
+	link := filepath.Join(root, "link")
+	require.NoError(t, os.Symlink(first, link))
+
+	list := []procs.Process{{PID: 1, Command: "fish", Dir: link}}
+	located := procs.Locate(list)
+	require.Equal(t, []int{1}, pids(located.Within(first)))
+
+	require.NoError(t, os.Remove(link))
+	require.NoError(t, os.Symlink(second, link))
+
+	assert.Empty(t, located.Within(second), "the directory stays as it resolved the first time")
+	assert.Equal(t, []int{1}, pids(located.Within(first)))
+	assert.Equal(t, []int{1}, pids(procs.Within(list, second)), "a fresh look resolves it again")
+}
+
 func TestOthers(t *testing.T) {
 	t.Parallel()
 

@@ -22,6 +22,7 @@ import (
 
 	"github.com/mrz1836/nilbox/internal/brand"
 	"github.com/mrz1836/nilbox/internal/brandgen"
+	"github.com/mrz1836/nilbox/internal/testutil"
 )
 
 // fakeWailsVersion is the wails version the fake go reports for the module go.mod pins.
@@ -123,7 +124,7 @@ func checkout(t *testing.T, dir string) {
 	require.NoError(t, brandgen.Write(dir))
 
 	for _, icon := range []string{brandgen.IconSetPath, brandgen.DevIconPath, brandgen.TrayIconPath} {
-		writeFile(t, filepath.Join(dir, filepath.FromSlash(icon)), "png")
+		testutil.WriteFile(t, filepath.Join(dir, filepath.FromSlash(icon)), "png")
 	}
 
 	require.NoError(t, brandgen.WriteIconStamp(dir))
@@ -217,8 +218,8 @@ func TestTreeFiles(t *testing.T) {
 		t.Parallel()
 
 		root := t.TempDir()
-		writeFile(t, filepath.Join(root, "a.ts"), "a")
-		writeFile(t, filepath.Join(root, "nested", "b.ts"), "b")
+		testutil.WriteFile(t, filepath.Join(root, "a.ts"), "a")
+		testutil.WriteFile(t, filepath.Join(root, "nested", "b.ts"), "b")
 		require.NoError(t, os.Symlink("a.ts", filepath.Join(root, "link.ts")))
 
 		files, err := treeFiles(root)
@@ -233,7 +234,7 @@ func TestTreeFiles(t *testing.T) {
 		skipAsRoot(t)
 
 		root := t.TempDir()
-		writeFile(t, filepath.Join(root, "a.ts"), "a")
+		testutil.WriteFile(t, filepath.Join(root, "a.ts"), "a")
 		require.NoError(t, os.Chmod(filepath.Join(root, "a.ts"), 0o000))
 
 		_, err := treeFiles(root)
@@ -250,12 +251,12 @@ func TestTreeDiff(t *testing.T) {
 		t.Parallel()
 
 		want, got := t.TempDir(), t.TempDir()
-		writeFile(t, filepath.Join(want, "same.ts"), "x")
-		writeFile(t, filepath.Join(got, "same.ts"), "x")
-		writeFile(t, filepath.Join(want, "changed.ts"), "old")
-		writeFile(t, filepath.Join(got, "changed.ts"), "new")
-		writeFile(t, filepath.Join(got, "added", "new.ts"), "new")
-		writeFile(t, filepath.Join(want, "gone.ts"), "old")
+		testutil.WriteFile(t, filepath.Join(want, "same.ts"), "x")
+		testutil.WriteFile(t, filepath.Join(got, "same.ts"), "x")
+		testutil.WriteFile(t, filepath.Join(want, "changed.ts"), "old")
+		testutil.WriteFile(t, filepath.Join(got, "changed.ts"), "new")
+		testutil.WriteFile(t, filepath.Join(got, "added", "new.ts"), "new")
+		testutil.WriteFile(t, filepath.Join(want, "gone.ts"), "old")
 
 		drift, err := treeDiff(want, got)
 
@@ -267,8 +268,8 @@ func TestTreeDiff(t *testing.T) {
 		t.Parallel()
 
 		want, got := t.TempDir(), t.TempDir()
-		writeFile(t, filepath.Join(want, "a.ts"), "a")
-		writeFile(t, filepath.Join(got, "a.ts"), "a")
+		testutil.WriteFile(t, filepath.Join(want, "a.ts"), "a")
+		testutil.WriteFile(t, filepath.Join(got, "a.ts"), "a")
 
 		drift, err := treeDiff(want, got)
 
@@ -282,7 +283,7 @@ func TestTreeDiff(t *testing.T) {
 		skipAsRoot(t)
 
 		bad := t.TempDir()
-		writeFile(t, filepath.Join(bad, "a.ts"), "a")
+		testutil.WriteFile(t, filepath.Join(bad, "a.ts"), "a")
 		require.NoError(t, os.Chmod(filepath.Join(bad, "a.ts"), 0o000))
 
 		_, err := treeDiff(bad, t.TempDir())
@@ -304,9 +305,9 @@ func TestTidyBindings(t *testing.T) {
 		enum := filepath.Join(root, "item", "models.ts")
 		clean := filepath.Join(root, "b.ts")
 
-		writeFile(t, dirty, "/**\n * Doc. \n *\t\n */\nexport const a = 1;  \n")
-		writeFile(t, enum, "export enum Kind {\n    KindPR = \"pr\",\n};\n")
-		writeFile(t, clean, "export const b = 2;\n")
+		testutil.WriteFile(t, dirty, "/**\n * Doc. \n *\t\n */\nexport const a = 1;  \n")
+		testutil.WriteFile(t, enum, "export enum Kind {\n    KindPR = \"pr\",\n};\n")
+		testutil.WriteFile(t, clean, "export const b = 2;\n")
 
 		past := time.Date(2020, time.January, 1, 0, 0, 0, 0, time.UTC)
 		require.NoError(t, os.Chtimes(clean, past, past))
@@ -334,7 +335,7 @@ func TestTidyBindings(t *testing.T) {
 
 		root := t.TempDir()
 		path := filepath.Join(root, "a.ts")
-		writeFile(t, path, "a \n")
+		testutil.WriteFile(t, path, "a \n")
 		require.NoError(t, os.Chmod(path, 0o400))
 
 		err := tidyBindings(root)
@@ -349,7 +350,7 @@ func TestTidyBindings(t *testing.T) {
 		skipAsRoot(t)
 
 		root := t.TempDir()
-		writeFile(t, filepath.Join(root, "a.ts"), "a \n")
+		testutil.WriteFile(t, filepath.Join(root, "a.ts"), "a \n")
 		require.NoError(t, os.Chmod(filepath.Join(root, "a.ts"), 0o000))
 
 		require.Error(t, tidyBindings(root))
@@ -471,7 +472,7 @@ func TestEnsureDist(t *testing.T) {
 
 	t.Run("keeps a built frontend", func(t *testing.T) {
 		inTempDir(t)
-		writeFile(t, distIndex, "<html>built</html>")
+		testutil.WriteFile(t, distIndex, "<html>built</html>")
 
 		require.NoError(t, ensureDist())
 
@@ -480,7 +481,7 @@ func TestEnsureDist(t *testing.T) {
 
 	t.Run("frontend is not a directory", func(t *testing.T) {
 		inTempDir(t)
-		writeFile(t, frontendDir, "")
+		testutil.WriteFile(t, frontendDir, "")
 
 		err := ensureDist()
 
@@ -556,7 +557,7 @@ func TestLintVersion(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			dir := inTempDir(t)
 			t.Setenv(lintVersionKey, "")
-			writeFile(t, filepath.Join(dir, mageXEnvFile), tt.env)
+			testutil.WriteFile(t, filepath.Join(dir, mageXEnvFile), tt.env)
 
 			got, err := lintVersion()
 
@@ -644,7 +645,7 @@ func TestAppLint(t *testing.T) {
 
 	t.Run("frontend is not a directory", func(t *testing.T) {
 		inTempDir(t)
-		writeFile(t, frontendDir, "")
+		testutil.WriteFile(t, frontendDir, "")
 
 		require.Error(t, App{}.Lint())
 	})
@@ -688,7 +689,7 @@ func TestAppBindings(t *testing.T) {
 
 	t.Run("frontend is not a directory", func(t *testing.T) {
 		inTempDir(t)
-		writeFile(t, frontendDir, "")
+		testutil.WriteFile(t, frontendDir, "")
 
 		require.Error(t, App{}.Bindings())
 	})
@@ -712,8 +713,8 @@ func TestAppBindingsCheck(t *testing.T) {
 	t.Run("lists every drifted file", func(t *testing.T) {
 		inTempDir(t)
 		fakeGo(t, bindingsGenerator)
-		writeFile(t, filepath.Join(bindingsDir, "models", "a.ts"), "export const a = 0;\n")
-		writeFile(t, filepath.Join(bindingsDir, "old.ts"), "")
+		testutil.WriteFile(t, filepath.Join(bindingsDir, "models", "a.ts"), "export const a = 0;\n")
+		testutil.WriteFile(t, filepath.Join(bindingsDir, "old.ts"), "")
 
 		err := App{}.BindingsCheck()
 
@@ -734,7 +735,7 @@ func TestAppBindingsCheck(t *testing.T) {
 
 		inTempDir(t)
 		fakeGo(t, bindingsGenerator)
-		writeFile(t, filepath.Join(bindingsDir, "a.ts"), "")
+		testutil.WriteFile(t, filepath.Join(bindingsDir, "a.ts"), "")
 		require.NoError(t, os.Chmod(filepath.Join(bindingsDir, "a.ts"), 0o000))
 
 		err := App{}.BindingsCheck()
@@ -815,7 +816,7 @@ func TestAppBundleOnMacOS(t *testing.T) {
 	_, _, err := appBundle()
 	require.ErrorIs(t, err, errNoBundle)
 
-	writeFile(t, filepath.Join(dir, "bin", brand.Name+".app", "Contents", "MacOS", brand.Slug), "")
+	testutil.WriteFile(t, filepath.Join(dir, "bin", brand.Name+".app", "Contents", "MacOS", brand.Slug), "")
 
 	bundle, exe, err := appBundle()
 
@@ -1131,11 +1132,11 @@ func TestReadBuildMeta(t *testing.T) {
 		isolateGit(t)
 		dir := inTempDir(t)
 		git(t, "init", "-q")
-		writeFile(t, filepath.Join(dir, "a.txt"), "a")
+		testutil.WriteFile(t, filepath.Join(dir, "a.txt"), "a")
 		git(t, "add", "a.txt")
 		git(t, "commit", "-q", "-m", "first")
 		git(t, "tag", "v0.1.0")
-		writeFile(t, filepath.Join(dir, "a.txt"), "b")
+		testutil.WriteFile(t, filepath.Join(dir, "a.txt"), "b")
 
 		assert.Equal(t, "v0.1.0-dirty", readBuildMeta().version)
 	})
@@ -1221,7 +1222,7 @@ func TestWriteInfoPlist(t *testing.T) {
 
 	t.Run("copies the plist and stamps the versions", func(t *testing.T) {
 		dir := inTempDir(t)
-		writeFile(t, filepath.FromSlash(brandgen.InfoPlistPath), "<plist/>")
+		testutil.WriteFile(t, filepath.FromSlash(brandgen.InfoPlistPath), "<plist/>")
 
 		log := fakeLoggedTool(t, isolatedPath(t), "plutil", "")
 
@@ -1247,7 +1248,7 @@ func TestWriteInfoPlist(t *testing.T) {
 
 	t.Run("bundle missing", func(t *testing.T) {
 		dir := inTempDir(t)
-		writeFile(t, filepath.FromSlash(brandgen.InfoPlistPath), "<plist/>")
+		testutil.WriteFile(t, filepath.FromSlash(brandgen.InfoPlistPath), "<plist/>")
 
 		err := writeInfoPlist(filepath.Join(dir, "missing", "Info.plist"), meta)
 
@@ -1257,7 +1258,7 @@ func TestWriteInfoPlist(t *testing.T) {
 
 	t.Run("stamping fails", func(t *testing.T) {
 		dir := inTempDir(t)
-		writeFile(t, filepath.FromSlash(brandgen.InfoPlistPath), "<plist/>")
+		testutil.WriteFile(t, filepath.FromSlash(brandgen.InfoPlistPath), "<plist/>")
 		fakeTool(t, isolatedPath(t), "plutil", "exit 1")
 
 		err := writeInfoPlist(filepath.Join(dir, "Info.plist"), meta)
@@ -1299,7 +1300,7 @@ func TestCheckBrandFiles(t *testing.T) {
 func TestCopyIconSet(t *testing.T) {
 	t.Run("copies the icon set under the name the Info.plist gives it", func(t *testing.T) {
 		dir := inTempDir(t)
-		writeFile(t, filepath.FromSlash(brandgen.IconSetPath), "icns")
+		testutil.WriteFile(t, filepath.FromSlash(brandgen.IconSetPath), "icns")
 
 		resources := filepath.Join(dir, "Contents", "Resources")
 
@@ -1319,10 +1320,10 @@ func TestCopyIconSet(t *testing.T) {
 
 	t.Run("resources is a file", func(t *testing.T) {
 		dir := inTempDir(t)
-		writeFile(t, filepath.FromSlash(brandgen.IconSetPath), "icns")
+		testutil.WriteFile(t, filepath.FromSlash(brandgen.IconSetPath), "icns")
 
 		resources := filepath.Join(dir, "Resources")
-		writeFile(t, resources, "")
+		testutil.WriteFile(t, resources, "")
 
 		err := copyIconSet(resources)
 
@@ -1332,7 +1333,7 @@ func TestCopyIconSet(t *testing.T) {
 
 	t.Run("icon path is a directory", func(t *testing.T) {
 		dir := inTempDir(t)
-		writeFile(t, filepath.FromSlash(brandgen.IconSetPath), "icns")
+		testutil.WriteFile(t, filepath.FromSlash(brandgen.IconSetPath), "icns")
 
 		resources := filepath.Join(dir, "Resources")
 		require.NoError(t, os.MkdirAll(filepath.Join(resources, brandgen.IconFile+".icns"), 0o750))
@@ -1348,7 +1349,7 @@ func TestCopyIconSet(t *testing.T) {
 func TestReportSize(t *testing.T) {
 	t.Run("prints the bundle and its binary's size", func(t *testing.T) {
 		exe := filepath.Join(t.TempDir(), "app")
-		writeFile(t, exe, strings.Repeat("x", 1500))
+		testutil.WriteFile(t, exe, strings.Repeat("x", 1500))
 
 		var err error
 
@@ -1375,7 +1376,7 @@ func TestBuildBundle(t *testing.T) {
 		dir := inTempDir(t)
 		checkout(t, dir)
 		_, log := appTools(t)
-		writeFile(t, filepath.Join(bundle, "stale.txt"), "from the previous build")
+		testutil.WriteFile(t, filepath.Join(bundle, "stale.txt"), "from the previous build")
 
 		var err error
 
@@ -1441,7 +1442,7 @@ func TestBuildBundle(t *testing.T) {
 		dir := inTempDir(t)
 		checkout(t, dir)
 		appTools(t)
-		writeFile(t, "bin", "")
+		testutil.WriteFile(t, "bin", "")
 
 		require.Error(t, buildBundle(bundle))
 	})
@@ -1469,7 +1470,7 @@ func TestAppTargetsOnMacOS(t *testing.T) {
 	t.Run("open opens an existing bundle as it is", func(t *testing.T) {
 		inTempDir(t)
 		_, log := appTools(t)
-		writeFile(t, exe, "")
+		testutil.WriteFile(t, exe, "")
 
 		require.NoError(t, App{}.Open())
 

@@ -42,9 +42,7 @@ func (r Row) Int(column string) (int64, bool) {
 func (r Row) Bool(column string) *bool {
 	switch v := r[column].(type) {
 	case int64:
-		on := v != 0
-
-		return &on
+		return new(v != 0)
 	case bool:
 		return &v
 	default:

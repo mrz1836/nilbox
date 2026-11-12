@@ -4,6 +4,8 @@ import (
 	"regexp"
 	"strconv"
 	"time"
+
+	"github.com/mrz1836/nilbox/internal/procs"
 )
 
 // claudeLockPattern is the reason the coding agent gives `git worktree lock` while a
@@ -18,34 +20,21 @@ const lockStartLayout = time.ANSIC
 // startSlack absorbs the whole seconds the agent writes a session's start in.
 const startSlack = 2 * time.Second
 
-// liveness is whether a process is still running.
-type liveness int
-
-const (
-	// livenessUnknown means the process's state cannot be determined on this OS.
-	livenessUnknown liveness = iota
-
-	// livenessAlive means the process exists.
-	livenessAlive
-
-	// livenessDead means no process has the PID.
-	livenessDead
-)
-
 // processTable looks up running processes. osProcesses is the real one.
 type processTable interface {
 	// lookup reports whether pid is running and, when it is and the OS says, when it
 	// started; the time is zero otherwise.
-	lookup(pid int) (liveness, time.Time)
+	lookup(pid int) (procs.Liveness, time.Time)
 }
 
 // osProcesses asks the operating system.
 type osProcesses struct{}
 
-// lookup probes pid and reads its start time.
-func (osProcesses) lookup(pid int) (liveness, time.Time) {
-	state := processLiveness(pid)
-	if state != livenessAlive {
+// lookup probes pid (procs.Probe, which never signals a PID out of range and calls it
+// Unknown) and reads its start time.
+func (osProcesses) lookup(pid int) (procs.Liveness, time.Time) {
+	state := procs.Probe(pid)
+	if state != procs.Running {
 		return state, time.Time{}
 	}
 
@@ -105,19 +94,19 @@ func (l agentLock) latestStart(local *time.Location) (time.Time, bool) {
 // sessionEnded reports whether the session that wrote lock has certainly ended: no
 // process has its PID any more, or the process that has it now started after the session
 // did, so the PID was reused by another program (after a restart, say). Anything in doubt
-// counts as still running, because a lock judged ended can be released. local is the
-// machine's zone, which the recorded start may be in.
-func sessionEnded(lock agentLock, procs processTable, local *time.Location) bool {
-	state, started := procs.lookup(lock.pid)
+// counts as still running, a PID out of range included, because a lock judged ended can be
+// released. local is the machine's zone, which the recorded start may be in.
+func sessionEnded(lock agentLock, table processTable, local *time.Location) bool {
+	state, started := table.lookup(lock.pid)
 
 	switch state {
-	case livenessDead:
+	case procs.Gone:
 		return true
-	case livenessAlive:
+	case procs.Running:
 		latest, ok := lock.latestStart(local)
 
 		return ok && !started.IsZero() && started.After(latest.Add(startSlack))
-	case livenessUnknown:
+	case procs.Unknown:
 		return false
 	}
 
@@ -125,8 +114,8 @@ func sessionEnded(lock agentLock, procs processTable, local *time.Location) bool
 }
 
 // endedAgentLock reports whether reason is an agent lock whose session has ended.
-func endedAgentLock(reason string, procs processTable, local *time.Location) bool {
+func endedAgentLock(reason string, table processTable, local *time.Location) bool {
 	lock, ok := parseAgentLock(reason)
 
-	return ok && sessionEnded(lock, procs, local)
+	return ok && sessionEnded(lock, table, local)
 }

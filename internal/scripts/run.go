@@ -3,7 +3,6 @@ package scripts
 import (
 	"cmp"
 	"context"
-	"encoding/json"
 	"fmt"
 	"regexp"
 	"slices"
@@ -13,6 +12,8 @@ import (
 	"github.com/mrz1836/nilbox/internal/integrations"
 	"github.com/mrz1836/nilbox/internal/paths"
 	"github.com/mrz1836/nilbox/internal/scriptrun"
+	"github.com/mrz1836/nilbox/internal/shellenv"
+	"github.com/mrz1836/nilbox/internal/textutil"
 	"github.com/mrz1836/nilbox/internal/uierr"
 )
 
@@ -208,7 +209,7 @@ func (s *Service) spec(ctx context.Context, c clone, in Intent, asked integratio
 		return scriptrun.Spec{}, err
 	}
 
-	in.SHA256, in.Args = sc.hash, nonNil(in.Args)
+	in.SHA256, in.Args = sc.hash, textutil.NonNil(in.Args)
 	where := cmp.Or(asked, sc.place, cfg.RunsIn, integrationprefs.RunsInApp)
 
 	base, _ := s.env()
@@ -228,7 +229,7 @@ func (s *Service) spec(ctx context.Context, c clone, in Intent, asked integratio
 	case SourceMagex:
 		spec.Tool = string(integrationprefs.MageX)
 	case SourceYours:
-		spec.Env = withVars(spec.Env, s.repoVars(ctx, c))
+		spec.Env = append(shellenv.Without(spec.Env, Variables()...), s.repoVars(ctx, c)...)
 	case SourceT3, SourceTasks:
 	}
 
@@ -481,15 +482,6 @@ func runDisplay(sc script, v vars, args []string) string {
 	return strings.Join(shown, " && ")
 }
 
-// nonNil returns list, or an empty list for nil.
-func nonNil(list []string) []string {
-	if list == nil {
-		return []string{}
-	}
-
-	return list
-}
-
 // Rerunner works Run again out for script runs (scriptrun.Rerunner): the same script, with
 // the same values and arguments, read again from its source, in the same clone. It asks
 // nothing, so it runs a repository command only while the user trusts it as it is now, by
@@ -529,16 +521,16 @@ func (r Rerunner) pull(ctx context.Context, run scriptrun.Record) (scriptrun.Spe
 		return scriptrun.Spec{}, ErrNotSetUp
 	}
 
-	var in PullIntent
-	if err := decodeIntent(run.Result.Intent, &in); err != nil {
-		return scriptrun.Spec{}, err
+	in, err := scriptrun.Decode[PullIntent](run.Result.Intent)
+	if err != nil {
+		return scriptrun.Spec{}, fmt.Errorf("%w: the run's intent: %w", ErrInvalidRequest, err)
 	}
 
 	if in.Branch == "" {
 		return scriptrun.Spec{}, fmt.Errorf("%w: a pull of no branch", ErrInvalidRequest)
 	}
 
-	if err := r.s.pullsOff(ctx); err != nil {
+	if err = r.s.pullsOff(ctx); err != nil {
 		return scriptrun.Spec{}, err
 	}
 
@@ -552,9 +544,9 @@ func (r Rerunner) pull(ctx context.Context, run scriptrun.Record) (scriptrun.Spe
 
 // script returns the spec of a script again.
 func (r Rerunner) script(ctx context.Context, run scriptrun.Record) (scriptrun.Spec, error) {
-	var in Intent
-	if err := decodeIntent(run.Result.Intent, &in); err != nil {
-		return scriptrun.Spec{}, err
+	in, err := scriptrun.Decode[Intent](run.Result.Intent)
+	if err != nil {
+		return scriptrun.Spec{}, fmt.Errorf("%w: the run's intent: %w", ErrInvalidRequest, err)
 	}
 
 	c, err := r.s.cloneAt(ctx, paths.Tilde(run.Dir, r.s.home))
@@ -568,19 +560,4 @@ func (r Rerunner) script(ctx context.Context, run scriptrun.Record) (scriptrun.S
 	}
 
 	return r.s.spec(ctx, c, in, cmp.Or(run.RunsIn, integrationprefs.RunsInApp), cfg, confirmation{rerun: true})
-}
-
-// decodeIntent reads a run's intent back from its record, where it was decoded as plain
-// JSON values.
-func decodeIntent(recorded, into any) error {
-	data, err := json.Marshal(recorded)
-	if err == nil {
-		err = json.Unmarshal(data, into)
-	}
-
-	if err != nil {
-		return fmt.Errorf("%w: the run's intent: %w", ErrInvalidRequest, err)
-	}
-
-	return nil
 }

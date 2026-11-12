@@ -5,6 +5,7 @@ package scriptrun
 import (
 	"bytes"
 	"context"
+	"os"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -108,8 +109,11 @@ func (h *harness) run(id int64) Run {
 func (h *harness) waitProgress(id int64, want Progress) {
 	h.t.Helper()
 
-	require.Eventually(h.t, func() bool { return h.run(id).Progress == want }, wait, poll,
-		"run %d reads as %+v", id, want)
+	require.EventuallyWithT(h.t, func(c *assert.CollectT) {
+		got, err := h.s.Run(h.t.Context(), id)
+		require.NoError(c, err)
+		assert.Equal(c, want, got.Progress)
+	}, wait, poll, "run %d reads as %+v", id, want)
 }
 
 func TestStopIsRefusedWhileTheKindSaysSo(t *testing.T) {
@@ -325,7 +329,7 @@ func TestNoteProgressTellsOnlyAChange(t *testing.T) {
 		told++
 	}})
 	kind := &fakeKind{}
-	l := &live{id: 7, progress: kind.Progress}
+	l := &live{id: 7, Callbacks: Callbacks{Progress: kind.Progress}}
 
 	e.noteProgress(l)
 	assert.Zero(t, told, "no progress yet is no change")
@@ -424,7 +428,7 @@ type progressVerifier struct {
 }
 
 func (v progressVerifier) Verify(Record) Verification {
-	return Verification{Output: v.kind, Progress: v.kind.Progress}
+	return Verification{Callbacks: Callbacks{Output: v.kind, Progress: v.kind.Progress}}
 }
 
 func TestQuitWaitsForAKindToLetItStop(t *testing.T) {
@@ -513,15 +517,29 @@ func TestQuitStopsARunThatEndsWhileHeldBackAsUsual(t *testing.T) {
 	t.Parallel()
 
 	h := newHarness(t)
-	h.e.quitKill = QuitKillAfter // time enough for it to end on its own while held back
+	h.e.quitKill = wait // time enough for it to end on its own while held back
 
+	// The tool runs until the quit has begun, so it is seen held back however long it takes
+	// to start, and it ends while the quit still holds it back.
+	proceed := filepath.Join(t.TempDir(), "proceed")
 	spec, _ := withKind(h.spec(testutil.FakeRun{
-		Stdout: "working updated\nrefuse " + rebaseRisk + "\n", Sleep: 150 * time.Millisecond, Exit: 1,
+		Stdout: "working updated\nrefuse " + rebaseRisk + "\n", WaitFor: proceed, Exit: 1,
 	}))
 	id := h.start(spec)
 	h.waitProgress(id, Progress{Working: "updated", StopRefused: rebaseRisk})
 
+	let := make(chan struct{})
+
+	go func() {
+		defer close(let)
+
+		if assert.Eventually(t, h.e.isClosed, wait, poll, "the quit begins") {
+			assert.NoError(t, os.WriteFile(proceed, nil, 0o600), "the tool ends")
+		}
+	}()
+
 	h.e.StopAll()
+	<-let
 
 	rec := h.record(id)
 	assert.Equal(t, StatusFailed, rec.Status, "it ended on its own, unsignaled, and its end is recorded")

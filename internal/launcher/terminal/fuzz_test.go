@@ -1,26 +1,19 @@
 package terminal
 
 import (
-	"context"
-	"os"
-	"os/exec"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-// posixShell is the shell the quoting is checked against.
+// posixShell is the shell the tests run scripts with.
 const posixShell = "/bin/sh"
 
-// shellRunTimeout bounds one shell run, so a stuck shell fails its input instead of
-// hanging the fuzzer.
-const shellRunTimeout = 10 * time.Second
-
-// quotingSeeds are strings that exercise both quoters: empty, plain, every special
-// character, newlines, unicode, and a long run of quotes.
+// quotingSeeds are strings that exercise the AppleScript escaping: empty, plain, every
+// special character, newlines, unicode, and a long run of quotes. The shell quoting is
+// textutil.ShellQuote's, fuzzed there against a real shell.
 func quotingSeeds() []string {
 	return []string{
 		"",
@@ -34,34 +27,6 @@ func quotingSeeds() []string {
 		`\n \t \r \"`,
 		strings.Repeat(`'"\`, 64),
 	}
-}
-
-// FuzzShQuote checks that a quoted string reaches a POSIX shell as exactly the bytes it
-// was built from: printf prints every input back unchanged, whatever quotes, dollar
-// signs, backslashes, or newlines it holds.
-func FuzzShQuote(f *testing.F) {
-	if _, err := os.Stat(posixShell); err != nil {
-		f.Skipf("no %s to run the quoted strings: %v", posixShell, err)
-	}
-
-	for _, seed := range quotingSeeds() {
-		f.Add(seed)
-	}
-
-	f.Fuzz(func(t *testing.T, s string) {
-		if strings.ContainsRune(s, 0) {
-			t.Skip("a shell argument cannot carry a NUL byte")
-		}
-
-		ctx, cancel := context.WithTimeout(t.Context(), shellRunTimeout)
-		defer cancel()
-
-		cmd := exec.CommandContext(ctx, posixShell, "-c", "printf %s "+shQuote(s)) //nolint:gosec // the shell run is the test
-
-		out, err := cmd.Output()
-		require.NoError(t, err)
-		assert.Equal(t, s, string(out))
-	})
 }
 
 // FuzzAppleScriptString checks that an escaped string, put between double quotes, is an

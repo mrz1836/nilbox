@@ -135,7 +135,7 @@ func TestSyncDoesNotOverwriteOrDelete(t *testing.T) {
 	require.NoError(t, s.Sync(t.Context(), found))
 
 	// The user edits a profile by hand.
-	exec(t, db, `UPDATE agent_profiles SET model = 'opus', effort = 'high', permission_mode = 'acceptEdits',
+	testutil.Exec(t, db, `UPDATE agent_profiles SET model = 'opus', effort = 'high', permission_mode = 'acceptEdits',
 		plan_mode = 1, add_dirs = '["~/projects/shared"]' WHERE name = 'work'`)
 
 	// A directory disappears and a new one appears; discovery runs again.
@@ -381,7 +381,7 @@ func TestPruneRemovesUneditedProfilesWithNoAgentConfig(t *testing.T) {
 		newDiscovered(agent.Claude, "empty", dir(".claude-empty")),
 		newDiscovered(agent.Claude, "gone", dir(".claude-gone")),
 	}))
-	exec(t, db, "UPDATE agent_profiles SET model = 'opus' WHERE name = 'edited'")
+	testutil.Exec(t, db, "UPDATE agent_profiles SET model = 'opus' WHERE name = 'edited'")
 
 	var logs testutil.Logs
 
@@ -448,7 +448,7 @@ func TestPruneErrors(t *testing.T) {
 		home := t.TempDir()
 		mkdirs(t, home, ".claude-stray")
 		require.NoError(t, s.Sync(t.Context(), []Profile{newDiscovered(agent.Claude, "stray", filepath.Join(home, ".claude-stray"))}))
-		exec(t, db, refuseRemoval)
+		testutil.Exec(t, db, refuseRemoval)
 
 		_, err := s.Prune(t.Context(), nil)
 		require.ErrorContains(t, err, "refused by the test")

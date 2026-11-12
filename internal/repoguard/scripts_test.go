@@ -2,6 +2,7 @@ package repoguard_test
 
 import (
 	"path"
+	"slices"
 	"strings"
 	"testing"
 
@@ -23,10 +24,8 @@ func syncedScriptDirs() []string {
 // or its text starts with a #! line.
 func isScript(rel, text string) bool {
 	ext := strings.ToLower(path.Ext(rel))
-	for _, script := range scriptExtensions() {
-		if ext == script {
-			return true
-		}
+	if slices.Contains(scriptExtensions(), ext) {
+		return true
 	}
 
 	return strings.HasPrefix(text, "#!")
@@ -56,19 +55,17 @@ func TestIsScript(t *testing.T) {
 func TestNoScripts(t *testing.T) {
 	t.Parallel()
 
-	root := moduleRoot(t)
-
 	var found []string
 
 files:
-	for _, rel := range repoFiles(t, root) {
+	for _, rel := range repoFiles(t) {
 		for _, dir := range syncedScriptDirs() {
 			if strings.HasPrefix(rel, dir) {
 				continue files
 			}
 		}
 
-		text, _ := readText(t, root, rel)
+		text, _ := readText(t, rel)
 		if isScript(rel, text) {
 			found = append(found, rel)
 		}

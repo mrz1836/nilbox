@@ -29,14 +29,6 @@ func openStore(t *testing.T) (*Store, *sql.DB) {
 	return NewStore(db, nil), db
 }
 
-// exec runs a statement the Store has no call for, such as an edit made by hand.
-func exec(t *testing.T, db *sql.DB, query string) {
-	t.Helper()
-
-	_, err := db.ExecContext(t.Context(), query)
-	require.NoError(t, err)
-}
-
 // stamps returns a stored profile's created_at and updated_at as the database holds them.
 func stamps(t *testing.T, db *sql.DB, name string) (created, updated string) {
 	t.Helper()
@@ -78,7 +70,7 @@ func TestSyncStoresAllOrNone(t *testing.T) {
 	t.Parallel()
 
 	s, db := openStore(t)
-	exec(t, db, refuseSecond)
+	testutil.Exec(t, db, refuseSecond)
 
 	err := s.Sync(t.Context(), []Profile{newDiscovered(agent.Claude, "first", "/opt/profiles/first"), newDiscovered(agent.Claude, "second", "")})
 	require.ErrorContains(t, err, "store discovered profiles")
@@ -153,7 +145,7 @@ func TestReadsReportARowTheyCannotDecode(t *testing.T) {
 
 			s, db := openStore(t)
 			require.NoError(t, s.Sync(t.Context(), []Profile{newDiscovered(agent.Claude, "stray", "/opt/profiles/stray")}))
-			exec(t, db, tt.update)
+			testutil.Exec(t, db, tt.update)
 
 			_, err := s.All(t.Context())
 			require.ErrorContains(t, err, "list profiles")

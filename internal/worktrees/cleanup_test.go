@@ -240,11 +240,8 @@ func agentWorktree(t *testing.T, repo, name string) (string, string) {
 	t.Helper()
 
 	path := addWorktree(t, repo, filepath.Join(repo, ".claude", "worktrees", name), ownBranchPrefix+name)
-	require.NoError(t, os.WriteFile(filepath.Join(path, "fix.txt"), []byte(name+"\n"), 0o600))
-	testutil.RunGit(t, path, "add", "fix.txt")
-	testutil.RunGit(t, path, "commit", "-q", "-m", "fix "+name)
 
-	return path, strings.TrimSpace(testutil.RunGit(t, path, "rev-parse", "HEAD"))
+	return path, testutil.Commit(t, path, "fix.txt", name+"\n")
 }
 
 // pushed records head on a remote-tracking branch, as a push and fetch would.
@@ -330,7 +327,7 @@ func TestListLinksAndStagesAgentWorktrees(t *testing.T) {
 
 	gh.set("example-repo", 10, pr(ItemMerged, ""))
 
-	svc := e.linked(linkDeps{gh: gh, procs: fakeProcesses{alive: {state: livenessAlive}}})
+	svc := e.linked(linkDeps{gh: gh, procs: fakeProcesses{alive: {state: procs.Running}}})
 
 	snap, err := svc.List(t.Context())
 	require.NoError(t, err)
@@ -511,7 +508,7 @@ func TestUnlock(t *testing.T) {
 	e := newEnv(t)
 	repo := e.newRepo(t, "example-repo")
 	alive := os.Getpid()
-	svc := e.linked(linkDeps{procs: fakeProcesses{alive: {state: livenessAlive}}})
+	svc := e.linked(linkDeps{procs: fakeProcesses{alive: {state: procs.Running}}})
 
 	stale := addWorktree(t, repo, filepath.Join(e.home, "wt", "stale"), "stale")
 	lock(t, repo, stale, "claude session stale (pid 999999 start Fri Nov  6 17:14:26 2026)")
@@ -622,7 +619,7 @@ func TestCleanUpRefusesWhatIsNotFinished(t *testing.T) {
 
 	plain, _ := agentWorktree(t, repo, "scratch")
 
-	svc := e.linked(linkDeps{gh: gh, procs: fakeProcesses{alive: {state: livenessAlive}}})
+	svc := e.linked(linkDeps{gh: gh, procs: fakeProcesses{alive: {state: procs.Running}}})
 
 	_, err := svc.CleanUp(t.Context(), repo, repo, nil)
 	require.ErrorIs(t, err, ErrMainWorktree)
@@ -633,7 +630,7 @@ func TestCleanUpRefusesWhatIsNotFinished(t *testing.T) {
 	_, err = svc.CleanUp(t.Context(), e.home, open, nil)
 	require.ErrorIs(t, err, ErrOutsideCloneRoot)
 
-	offline := e.linked(linkDeps{gh: &fakeGitHub{err: errFakeGitHub}, procs: fakeProcesses{alive: {state: livenessAlive}}})
+	offline := e.linked(linkDeps{gh: &fakeGitHub{err: errFakeGitHub}, procs: fakeProcesses{alive: {state: procs.Running}}})
 
 	_, err = offline.CleanUp(t.Context(), repo, open, nil)
 	require.ErrorIs(t, err, ErrGitHubUnavailable)

@@ -34,6 +34,10 @@ func scoped(settings ...[3]string) string {
 	return b.String()
 }
 
+// getURLArgs prints origin's URL as git would use it, insteadOf applied, asking nothing of
+// origin.
+func getURLArgs() []string { return getURLArgsFor(remoteName) }
+
 // guardCase is a case of what an ls-remote runs with.
 type guardCase struct {
 	name string
@@ -482,7 +486,7 @@ func newRemoteRig(t *testing.T) remoteRig {
 
 	testutil.RunGit(t, root, "-c", "init.defaultBranch=main", "init", "-q", "--bare", origin)
 	testutil.InitRepo(t, r.clone)
-	commitFile(t, r.clone, "a.txt", "a")
+	testutil.Commit(t, r.clone, "a.txt", "a\n")
 	testutil.RunGit(t, r.clone, "tag", "v1.0.0")
 	testutil.RunGit(t, r.clone, "remote", "add", "origin", origin)
 	testutil.RunGit(t, r.clone, "push", "-q", "origin", "HEAD:refs/heads/main", "--tags")

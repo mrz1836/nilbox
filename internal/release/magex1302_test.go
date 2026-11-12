@@ -11,6 +11,7 @@ import (
 
 	"github.com/mrz1836/nilbox/internal/brand"
 	"github.com/mrz1836/nilbox/internal/gitread"
+	"github.com/mrz1836/nilbox/internal/scriptrun"
 )
 
 // magex 1.30.2's texts the recordings share: the line it continues an unsent tag's error
@@ -88,7 +89,8 @@ func recorded1302Outputs() map[string]Output {
 		"origin-unreachable-nobranch": pushWhenUnreachable(was["origin-unreachable-nobranch"], "128"),
 		"origin-without-head": pushWhenUnreachable(ff(Output{
 			Step: StepTagCreated, Branch: recBranch, Bump: recBump, From: recFrom, Version: recVersion, Tag: recVersion,
-			PushSkipped: true, PushSkipWarning: unreachableWarning + "2", Warnings: []string{notOnHead, unreachableWarning + "2"},
+			PushSkipped: true, PushSkipWarning: unreachableWarning + "2",
+			Notes: scriptrun.Notes{Warnings: []string{notOnHead, unreachableWarning + "2"}},
 		}), "2"),
 		// magex 1.30.2 reads origin's annotated v1.4.3, at the clone's own HEAD, as at
 		// another commit: its ls-remote leaves out the peeled ^{} line it compares.
@@ -111,7 +113,7 @@ func recorded1302Outputs() map[string]Output {
 		"ff-only-ahead-from-feature": ffAhead,
 		"version-moved": {
 			Step: StepUpdated, Branch: recBranch, Bump: recBump, From: recVersion, Version: recNext, FastForward: true,
-			Warnings: []string{"Current version tag is not on HEAD - there are 1 commits since v1.4.3"},
+			Notes: scriptrun.Notes{Warnings: []string{"Current version tag is not on HEAD - there are 1 commits since v1.4.3"}},
 			Errors: []string{
 				"expected v1.4.3, but the next patch is v1.4.4: another version was tagged meanwhile; nothing was tagged",
 			},

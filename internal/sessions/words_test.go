@@ -72,9 +72,13 @@ func TestLastWordsFallsBackToWhatTheLedgerKeeps(t *testing.T) {
 		"an empty read":   fakeWords{text: "  "},
 		"no reader":       nil,
 	} {
-		got, err := wordsService(t, reader).LastWords(t.Context(), "s1")
-		require.NoError(t, err, name)
-		assert.Equal(t, sessions.Words{Text: "The start of it", Partial: true}, got, name)
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			got, err := wordsService(t, reader).LastWords(t.Context(), "s1")
+			require.NoError(t, err)
+			assert.Equal(t, sessions.Words{Text: "The start of it", Partial: true}, got)
+		})
 	}
 }
 

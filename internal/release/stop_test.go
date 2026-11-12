@@ -55,7 +55,8 @@ func (r *releaseRig) killOnCleanup(id int64) {
 	r.t.Helper()
 
 	var pgid int
-	require.NoError(r.t, r.db.QueryRowContext(r.t.Context(), "SELECT pgid FROM script_runs WHERE id = ?", id).Scan(&pgid))
+	require.NoError(r.t, r.runner.DB.QueryRowContext(r.t.Context(), "SELECT pgid FROM script_runs WHERE id = ?", id).
+		Scan(&pgid))
 	require.Positive(r.t, pgid)
 
 	r.t.Cleanup(func() {
@@ -73,8 +74,11 @@ func (r *releaseRig) killOnCleanup(id int64) {
 func (r *releaseRig) waitProgress(id int64, want scriptrun.Progress) {
 	r.t.Helper()
 
-	require.Eventually(r.t, func() bool { return r.run(id).Progress == want }, runWait, runPoll,
-		"run %d reads as %+v", id, want)
+	require.EventuallyWithT(r.t, func(c *assert.CollectT) {
+		got, err := r.runs.Run(r.t.Context(), id)
+		require.NoError(c, err)
+		assert.Equal(c, want, got.Progress)
+	}, runWait, runPoll, "run %d reads as %+v", id, want)
 }
 
 func TestStopIsRefusedWhileMagexSwitchesOrPulls(t *testing.T) {
@@ -214,59 +218,39 @@ func TestAReleaseIsToldOnceEvenWhenItsRecordFails(t *testing.T) {
 	r.magex("1.30.2", r.replay("patch-feature-behind"))
 	r.after.set(r.tagged(recVersion, r.second, true))
 
-	_, err := r.db.ExecContext(t.Context(), `CREATE TRIGGER refuse_finish BEFORE UPDATE ON script_runs
+	_, err := r.runner.DB.ExecContext(t.Context(), `CREATE TRIGGER refuse_finish BEFORE UPDATE ON script_runs
 		WHEN NEW.finished_at IS NOT NULL BEGIN SELECT RAISE(ABORT, 'refused by the test'); END`)
 	require.NoError(t, err)
 
 	id := r.release()
 
-	require.Eventually(t, func() bool {
+	r.runner.Await(func() bool {
 		_, held := r.locks.Holder(r.clone)
 
 		return !held
-	}, runWait, runPoll, "the release ends and lets go of its clone")
+	}, "the release ends and lets go of its clone")
 	require.NoError(t, r.after.failure())
 
 	assert.True(t, r.run(id).Status.Live(), "its end couldn't be recorded")
 	assert.Empty(t, r.notices.all(), "so nothing is told yet")
 
-	_, err = r.db.ExecContext(t.Context(), `DROP TRIGGER refuse_finish`)
+	_, err = r.runner.DB.ExecContext(t.Context(), `DROP TRIGGER refuse_finish`)
 	require.NoError(t, err)
 
 	// The next start finds it, verifies it, and records it: now it is told, once.
-	next := scriptrun.NewEngine(scriptrun.Config{
-		DB: r.db, Locks: r.locks, LogDir: r.logDir, Home: r.root, Logger: r.logs.Logger(),
-	})
-	next.RegisterVerifier(scriptrun.KindRelease, NewVerifier(r.svc))
+	verifiers := func() map[scriptrun.Kind]scriptrun.Verifier {
+		return map[scriptrun.Kind]scriptrun.Verifier{scriptrun.KindRelease: NewVerifier(r.svc)}
+	}
 
-	ctx, cancel := context.WithCancel(t.Context())
-	done := make(chan struct{})
-
-	go func() {
-		defer close(done)
-
-		next.Run(ctx)
-	}()
-
-	runs := scriptrun.NewService(next)
-
-	require.Eventually(t, func() bool {
-		got, runErr := runs.Run(t.Context(), id)
-
-		return runErr == nil && !got.Status.Live()
-	}, runWait, runPoll)
-
-	cancel()
-	<-done
+	r.runner.Restart(id, verifiers())
 
 	told := r.notices.all()
 	require.Len(t, told, 1, "told once, by the start whose record held")
 	assert.Equal(t, "v1.4.3 is on GitHub", told[0].Title)
 
-	again := scriptrun.NewEngine(scriptrun.Config{DB: r.db, Locks: r.locks, LogDir: r.logDir, Home: r.root})
-	again.RegisterVerifier(scriptrun.KindRelease, NewVerifier(r.svc))
+	again := r.runner.Next(verifiers())
 
-	ctx, cancel = context.WithCancel(t.Context())
+	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
 	again.Run(ctx)
 

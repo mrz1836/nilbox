@@ -68,7 +68,7 @@ func (c *Client) DownloadAsset(ctx context.Context, rawURL string, w io.Writer, 
 	// bound it instead.
 	hc := *c.httpClient()
 	hc.Timeout = 0
-	hc.CheckRedirect = c.checkDownloadRedirect
+	hc.CheckRedirect = redirectsWithin(maxDownloadRedirects, ErrDownloadURL, c.checkDownloadURL)
 
 	stall := time.AfterFunc(c.downloadStall(), func() { cancel(ErrDownloadStalled) })
 	defer stall.Stop()
@@ -134,30 +134,43 @@ func (s *stallReader) Read(p []byte) (int, error) {
 // checkDownloadURL parses rawURL and accepts it only as https on a download host, with no
 // credentials in it.
 func (c *Client) checkDownloadURL(rawURL string) (*url.URL, error) {
+	hosts := c.downloadHosts()
+
+	return checkPublicURL(rawURL, hosts, ErrDownloadURL, "https on "+strings.Join(hosts, ", "))
+}
+
+// checkPublicURL parses rawURL and accepts it only as https on one of hosts, in any case,
+// with no credentials in it: the rule for the two downloads that aren't the API
+// (FetchAvatar and DownloadAsset). Anything else fails with refused, saying it wants want.
+func checkPublicURL(rawURL string, hosts []string, refused error, want string) (*url.URL, error) {
 	u, err := url.Parse(rawURL)
 	if err != nil {
-		return nil, fmt.Errorf("%w: %w", ErrDownloadURL, err)
+		return nil, fmt.Errorf("%w: %w", refused, err)
 	}
 
-	hosts := c.downloadHosts()
 	if u.Scheme != "https" || u.User != nil || !slices.ContainsFunc(hosts, func(h string) bool {
 		return strings.EqualFold(u.Host, h)
 	}) {
-		return nil, fmt.Errorf("%w: want https on %s", ErrDownloadURL, strings.Join(hosts, ", "))
+		return nil, fmt.Errorf("%w: want %s", refused, want)
 	}
 
 	return u, nil
 }
 
-// checkDownloadRedirect lets a download follow a few redirects, each on a download host.
-func (c *Client) checkDownloadRedirect(req *http.Request, via []*http.Request) error {
-	if len(via) > maxDownloadRedirects {
-		return fmt.Errorf("%w: more than %d redirects", ErrDownloadURL, maxDownloadRedirects)
+// redirectsWithin returns a CheckRedirect that lets a download follow at most limit
+// redirects, each to a URL check accepts, and fails with refused past limit.
+func redirectsWithin(
+	limit int, refused error, check func(rawURL string) (*url.URL, error),
+) func(req *http.Request, via []*http.Request) error {
+	return func(req *http.Request, via []*http.Request) error {
+		if len(via) > limit {
+			return fmt.Errorf("%w: more than %d redirects", refused, limit)
+		}
+
+		_, err := check(req.URL.String())
+
+		return err
 	}
-
-	_, err := c.checkDownloadURL(req.URL.String())
-
-	return err
 }
 
 // downloadHosts returns the configured download hosts, or DefaultDownloadHosts.

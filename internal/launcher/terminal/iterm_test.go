@@ -7,6 +7,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/mrz1836/nilbox/internal/textutil"
 )
 
 // awkwardScriptPath has a space, a single quote, a double quote, and a backslash.
@@ -67,7 +69,7 @@ func TestITermAppleScriptTypesTheQuotedPath(t *testing.T) {
 			require.GreaterOrEqual(t, end, 0)
 
 			typed := unescapeAppleScript(rest[:end])
-			assert.Equal(t, shQuote(path), typed, "iTerm2 types the shell-quoted path")
+			assert.Equal(t, textutil.ShellQuote(path), typed, "iTerm2 types the shell-quoted path")
 
 			out, err := runSh(t, os.Environ(), "-c", "printf %s "+typed)
 			require.NoError(t, err)

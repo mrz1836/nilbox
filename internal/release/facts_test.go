@@ -121,37 +121,26 @@ type gatherRig struct {
 	shellRead bool
 }
 
-// realTempDir returns a fresh folder with its symbolic links resolved, as git prints it.
-func realTempDir(t *testing.T) string {
-	t.Helper()
-
-	dir, err := filepath.EvalSymlinks(t.TempDir())
-	require.NoError(t, err)
-
-	return dir
-}
-
 // newGatherRig builds a gatherRig in a fresh folder, or skips the test without git.
 func newGatherRig(t *testing.T) *gatherRig {
 	t.Helper()
 
-	r := &gatherRig{env: testutil.Git(t), root: realTempDir(t), locks: clonelock.New(), ssh: &sshFake{}, shellRead: true}
+	r := &gatherRig{
+		env: testutil.Git(t), root: testutil.RealTempDir(t), locks: clonelock.New(), ssh: &sshFake{}, shellRead: true,
+	}
 	r.origin, r.clone = filepath.Join(r.root, "origin.git"), filepath.Join(r.root, "sdk")
 
-	testutil.RunGit(t, r.root, "-c", "init.defaultBranch=master", "init", "-q", "--bare", r.origin)
-	testutil.RunGit(t, r.root, "-c", "init.defaultBranch=master", "init", "-q", r.clone)
-	r.first = commitIn(t, r.clone, "one.txt")
-	testutil.RunGit(t, r.clone, "tag", "-a", "v1.0.0", "-m", "v1.0.0")
-	r.second = commitIn(t, r.clone, "two.txt")
-	testutil.RunGit(t, r.clone, "remote", "add", "origin", r.origin)
-	testutil.RunGit(t, r.clone, "push", "-q", "-u", "origin", branchMaster, "--tags")
+	c := sdkFixtures.Copy(t, sdkFixture{clone: "sdk", base: "v1.0.0"}, r.root)
+	r.first, r.second = c.first, c.second
 
 	r.github = &fakeGitHub{statuses: map[string]RepoStatus{name("sdk").Key(): {
 		Permission: "WRITE", DefaultBranch: branchMaster, HeadOID: r.second, Checks: ChecksSuccess,
 	}}}
 	r.origins = fakeOrigins{name: name("sdk"), onGitHub: true}
 	r.tool = ToolFacts{
-		Path: "/opt/tools/magex", Version: "1.30.2", State: integrations.StateFound, Features: allFeatures(),
+		CopyFacts: integrations.CopyFacts{
+			Path: "/opt/tools/magex", Version: "1.30.2", State: integrations.StateFound, Features: allFeatures(),
+		},
 		MinVersion: "1.29.5", ExpectSince: "1.30.0",
 	}
 
@@ -190,20 +179,10 @@ func (r *gatherRig) pushElsewhere(t *testing.T) string {
 
 	other := filepath.Join(r.root, "elsewhere")
 	testutil.RunGit(t, r.root, "clone", "-q", r.origin, other)
-	oid := commitIn(t, other, "elsewhere.txt")
+	oid := testutil.Commit(t, other, "elsewhere.txt", "elsewhere.txt"+"\n")
 	testutil.RunGit(t, other, "push", "-q", "origin", branchMaster)
 
 	return oid
-}
-
-// writeIn writes text to name under dir with mode.
-func writeIn(t *testing.T, dir, name, text string, mode os.FileMode) {
-	t.Helper()
-
-	path := filepath.Join(dir, name)
-	require.NoError(t, os.MkdirAll(filepath.Dir(path), 0o700))
-	require.NoError(t, os.WriteFile(path, []byte(text), mode))
-	require.NoError(t, os.Chmod(path, mode))
 }
 
 func TestGatherACleanClone(t *testing.T) {
@@ -258,15 +237,16 @@ func TestGatherFindsWhatMatters(t *testing.T) {
 
 	testutil.RunGit(t, r.clone, "checkout", "-q", "-b", "feature-x")
 	testutil.RunGit(t, r.clone, "worktree", "add", "-q", other, branchMaster)
-	third := commitIn(t, other, "three.txt")
+	third := testutil.Commit(t, other, "three.txt", "three.txt"+"\n")
 	testutil.RunGit(t, other, "tag", "v1.1.0")
 
-	writeIn(t, r.clone, "one.txt", "changed\n", 0o600)
-	writeIn(t, r.clone, "go.mod", "module github.com/acme-org/sdk // the SDK\n\ngo 1.26\n", 0o600)
+	testutil.WriteFileMode(t, filepath.Join(r.clone, "one.txt"), "changed\n", 0o600)
+	testutil.WriteFileMode(t, filepath.Join(r.clone, "go.mod"),
+		"module github.com/acme-org/sdk // the SDK\n\ngo 1.26\n", 0o600)
 
 	hooks := filepath.Join(r.clone, ".git", "hooks")
-	writeIn(t, hooks, "pre-push", "#!/bin/sh\n", 0o700)
-	writeIn(t, hooks, "post-checkout", "#!/bin/sh\n", 0o600) // not executable: git skips it
+	testutil.WriteFileMode(t, filepath.Join(hooks, "pre-push"), "#!/bin/sh\n", 0o700)
+	testutil.WriteFileMode(t, filepath.Join(hooks, "post-checkout"), "#!/bin/sh\n", 0o600) // not executable: git skips it
 
 	f := r.gather(t, Choice{})
 	c := f.Clone
@@ -329,7 +309,7 @@ func TestGatherWithoutOriginsBranchInTheClone(t *testing.T) {
 	assert.Empty(t, f.Clone.TrackingHead)
 	assert.Zero(t, f.Clone.Unpushed, "the clone's head is origin's")
 
-	commitIn(t, r.clone, "mine.txt")
+	testutil.Commit(t, r.clone, "mine.txt", "mine.txt"+"\n")
 
 	f = r.gather(t, Choice{})
 	assert.Equal(t, UnpushedSome, f.Clone.Unpushed, "a commit origin's head lacks, uncounted")
@@ -369,7 +349,7 @@ func TestGatherASetRightStaleCount(t *testing.T) {
 
 	// The clone's master gains a commit that reaches origin while origin/master in the
 	// clone stays where it was, as when another clone pushed the same commit.
-	mine := commitIn(t, r.clone, "mine.txt")
+	mine := testutil.Commit(t, r.clone, "mine.txt", "mine.txt"+"\n")
 	testutil.RunGit(t, r.clone, "push", "-q", "origin", mine+":refs/heads/master")
 	testutil.RunGit(t, r.clone, "update-ref", "refs/remotes/origin/master", r.second)
 
@@ -467,7 +447,7 @@ func TestGatherAFolderThatIsntAClone(t *testing.T) {
 
 	r := newGatherRig(t)
 
-	f, err := r.gatherer().Gather(t.Context(), GatherRequest{Repo: name("sdk"), Dir: realTempDir(t)})
+	f, err := r.gatherer().Gather(t.Context(), GatherRequest{Repo: name("sdk"), Dir: testutil.RealTempDir(t)})
 	require.NoError(t, err, "what git can't read is a fact, not a failure")
 	assert.NotEmpty(t, f.Clone.Error)
 	assert.False(t, f.Clone.Reached)
@@ -483,7 +463,7 @@ func TestGatherDetachedInTheMiddleOfAMerge(t *testing.T) {
 
 	r := newGatherRig(t)
 	testutil.RunGit(t, r.clone, "checkout", "-q", "--detach", r.first)
-	writeIn(t, filepath.Join(r.clone, ".git"), "MERGE_HEAD", r.second+"\n", 0o600)
+	testutil.WriteFileMode(t, filepath.Join(filepath.Join(r.clone, ".git"), "MERGE_HEAD"), r.second+"\n", 0o600)
 
 	f := r.gather(t, Choice{})
 	assert.True(t, f.Clone.Detached)
@@ -536,7 +516,7 @@ func TestGatherWithoutMagexOrTheShell(t *testing.T) {
 
 	f, err := g.Gather(t.Context(), GatherRequest{Repo: name("sdk"), Dir: r.clone})
 	require.NoError(t, err)
-	assert.Equal(t, ToolFacts{Features: []integrations.Feature{}}, f.Tool)
+	assert.Equal(t, ToolFacts{CopyFacts: integrations.CopyFacts{Features: []integrations.Feature{}}}, f.Tool)
 	assert.False(t, f.Clone.ShellRead)
 }
 
@@ -600,10 +580,12 @@ func TestToolFactsOf(t *testing.T) {
 
 	got := ToolFactsOf(def, tool)
 	assert.Equal(t, ToolFacts{
-		Path: "/opt/tools/magex", Version: "1.30.1", State: integrations.StateFound,
-		Features: []integrations.Feature{
-			integrations.FeatureBumpJSON, integrations.FeatureExpect, integrations.FeaturePushFails,
-			integrations.FeatureSelfUpdate,
+		CopyFacts: integrations.CopyFacts{
+			Path: "/opt/tools/magex", Version: "1.30.1", State: integrations.StateFound,
+			Features: []integrations.Feature{
+				integrations.FeatureBumpJSON, integrations.FeatureExpect, integrations.FeaturePushFails,
+				integrations.FeatureSelfUpdate,
+			},
 		},
 		MinVersion: def.MinVersion, ExpectSince: def.Features[integrations.FeatureExpect],
 	}, got)

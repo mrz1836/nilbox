@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/mrz1836/nilbox/internal/integrationprefs"
+	"github.com/mrz1836/nilbox/internal/prefs/prefval"
 )
 
 func TestDecodeDefaultsToAutomatic(t *testing.T) {
@@ -60,16 +61,19 @@ func TestDecodeReadsTheStoredValues(t *testing.T) {
 func TestOfferAfterMerge(t *testing.T) {
 	t.Parallel()
 
+	offers := func(stored string) bool {
+		return integrationprefs.Decode(map[string]string{integrationprefs.KeyOfferAfterMerge: stored}).OfferAfterMerge
+	}
+
 	for _, on := range []bool{true, false} {
-		assert.Equal(t, on, integrationprefs.DecodeOfferAfterMerge(integrationprefs.EncodeOfferAfterMerge(on)),
-			"a stored choice reads back as itself")
+		assert.Equal(t, on, offers(prefval.EncodeBool(on)), "a stored choice reads back as itself")
 	}
 
 	for _, stored := range []string{"", "maybe", "on"} {
-		assert.True(t, integrationprefs.DecodeOfferAfterMerge(stored), "%q is the default: on", stored)
+		assert.True(t, offers(stored), "%q is the default: on", stored)
 	}
 
-	assert.False(t, integrationprefs.DecodeOfferAfterMerge("0"), "anything that reads as false is off")
+	assert.False(t, offers("0"), "anything that reads as false is off")
 }
 
 func TestEncodeRunsIn(t *testing.T) {
@@ -151,12 +155,12 @@ func FuzzDecode(f *testing.F) {
 		})
 
 		if !got.Switches[integrationprefs.MageX].Valid() {
-			t.Fatalf("decoded an invalid switch from %q", sw)
+			require.Failf(t, "decoded an invalid switch", "from %q", sw)
 		}
 
 		if p := got.Paths[integrationprefs.MageX]; p != "" {
 			if _, err := integrationprefs.EncodePath(p); err != nil {
-				t.Fatalf("decoded a path EncodePath refuses: %q", p)
+				require.Failf(t, "decoded a path EncodePath refuses", "%q", p)
 			}
 		}
 	})

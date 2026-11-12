@@ -75,7 +75,10 @@ This deliberately overrides the synced
 A test that runs real git isolates it through the runner, not the process: hand the service
 under test `execpath.Exec{Env: testutil.GitEnv(home)}` (or `testutil.Git(t)` for a fresh home),
 which reads none of the user's git configuration, and run fixture commands with
-`testutil.RunGit`. A test that runs an external tool runs a fake one: `testutil.FakeTool`
+`testutil.RunGit`. A suite whose rigs start from the same repositories builds them once per
+test binary with `testutil.GitTemplate` (or `GitTemplates`, one per key) and copies them into
+each test, and `testutil.DB` likewise hands each test a copy of a database migrated once per
+test binary. A test that runs an external tool runs a fake one: `testutil.FakeTool`
 links the tool's name to the test binary, which replays a recorded run or a scripted behavior
 when the package's `TestMain` calls `testutil.FakeToolMain` first, so no test writes a script
 to run.
@@ -153,8 +156,10 @@ app:lint` reads.
   modes, reserved flags, and how a launch's options become its flags, so adding an agent adds
   a spec and the launcher, profiles, and editors read the rest from it; `internal/procs` lists
   the running processes' working directories (`lsof` on macOS, `/proc` on Linux), which tell
-  a worktree some session is in, and reads a process's start time (`StartedAt`), which tells a
-  process from a stranger that reused its PID; `internal/execpath` finds and runs external
+  a worktree some session is in, reads a process's start time (`StartedAt`), which tells a
+  process from a stranger that reused its PID, and probes a PID as running, gone, or unknown
+  (`Probe`, which never signals one `ValidPID` refuses and calls it unknown, so an agent's
+  worktree lock naming one is kept); `internal/execpath` finds and runs external
   programs (`Finder`, `Runner`; `Search.Path` searches the login shell's PATH), and starts a
   long-lived one in its own process group (`Start`, `Proc`), writing straight into a file the
   app tails and stopping the whole group with a signal ladder; nothing else starts a process
@@ -165,9 +170,30 @@ app:lint` reads.
   `internal/progress`, and `internal/textutil` hold the clock (and `clock.Sleep`, the shared
   wait that ends with its context), the interval runner, one call per key at a time, `~`
   paths, a long read's progress told to the window a few times a second (the Release page's
-  list and the window's worktrees listing, `event.WorktreesProgress`), and text helpers. `internal/testutil` holds the fakes and fixtures the test suites
-  share (a fresh database, an isolated git, a runner, finder, clock, event sink, log, and fake
-  tools); only tests may import it.
+  list and the window's worktrees listing, `event.WorktreesProgress`), and text helpers,
+  among them the app's one POSIX shell quoting: `textutil.ShellQuote`, which always quotes,
+  for every word of a script the app writes, of the ssh command it hands git, and for the
+  program of Repo scripts' chain line unless it is a path from `/`, and
+  `textutil.ShellWord`, which leaves a word plain only when every POSIX shell reads it as
+  itself (ASCII letters, digits, and `=-_./:,+@%`, not starting with `=`), for the commands
+  the window shows or copies and the chain line's folders and arguments.
+  A file a repository or an agent controls (a clone's `go.mod`, `t3.json`, `tasks.json`,
+  magefiles, go-pre-commit config and hooks, the signing files, the `.git` file and
+  `commondir` the sweep's count of worktrees follows, an agent's transcript) is read
+  only through `paths.OpenRegular` (`ReadHead`, `ReadTail`): a regular file, or a link to one,
+  opened without waiting and checked again once open, so a named pipe swapped in is refused
+  (`paths.ErrNotRegular`) rather than hanging the read.
+  `internal/testutil` holds the fakes and fixtures the test suites share (a fresh database, an
+  isolated git, `Commit` for a fixture file, git templates built once per test binary, the
+  `Planter`, which plants fake programs in a clone's own config for the guard tests, recorded
+  runs of real tools, a runner, finder, clock, event sink, log, and fake tools); only tests
+  may import it. `internal/scriptrun/scriptruntest` holds the runner the
+  hooks, scripts, and release suites share, built on it: a real `scriptrun.Engine` and its
+  Service over a fresh database, the next start over the same history (`Restart`, `Next`),
+  and `Ended` and `Await`, which look again only when the engine's `Changed` says the runs
+  changed, never on a timer; only tests may import it either. The repoguard guards on SQL and
+  on the git verbs the app runs treat both test-support packages as they treat `_test.go`
+  files.
 - `internal/event/` holds the app's events, one Go type each with its name; services emit them
   into the one `event.Sink` they are given. `internal/desktop/` is the shell's logic: it hears
   those events, keeps the menu bar current with what `internal/menubar` works out, runs the
@@ -186,7 +212,8 @@ app:lint` reads.
 - When a service needs another, prefer a narrow interface or value type declared where it is
   used (the launcher's `ItemStore`, `LaunchSettings`, `WorktreeMaker`, and per-agent `Truster`
   map, the worktree service's `SweepSettings` and `GitHub`) over importing the other service;
-  `internal/core/adapters.go` adapts the real services to them. The repoguard boundary test
+  `internal/core/adapters_<consumer>.go` (one file per consumer, the shared `settingsPart` in
+  `adapters.go`) adapts the real services to them. The repoguard boundary test
   (`internal/repoguard/deps_test.go`) keeps the cuts it lists.
 - `internal/budget/` keeps the GitHub API budget current. The one shared `github.Client` hands
   every response's rate-limit reading, and what the request spent, to its `Tracker`
@@ -349,9 +376,9 @@ app:lint` reads.
   `Merges` the repository, without waiting (core: the Release page's `Refresher`, which reads
   that repository's row again); a close tells it nothing. Nothing here lets an agent approve,
   merge, or close.
-- `internal/bump/` reads a dependency update from a bot's pull request title (and Dependabot's
-  commit trailer) into an `Update`, for the review sheet and the `.Dependency` prompt variables.
-  It is pure and imports no service.
+- `internal/bump/` reads a dependency update from a bot's pull request title into an `Update`,
+  for the review sheet and the `.Dependency` prompt variables. It is pure and imports no
+  service.
 - `internal/integrations/` finds the tools the app drives, mage-x's magex and go-pre-commit,
   each one a `Definition` (its binary, releases, version parser, quiet environment, minimum
   version, and the release that brought each upstream `Feature`). Detection looks on the login
@@ -381,8 +408,8 @@ app:lint` reads.
   GOBIN GOPATH` too (run once per detection with `GOTOOLCHAIN=local`; one that fails leaves the
   folders unsure, and then no copy updates itself). Every run of a tool gets
   `Definition.RunEnv` (the shell's environment with the quiet variables and
-  `GIT_TERMINAL_PROMPT=0`, or the quiet variables alone in the terminal); release and hooks use
-  it too. `Update` of a copy that can update itself runs the tool's own updater
+  `GIT_TERMINAL_PROMPT=0`, or the quiet variables alone in the terminal), detection's and an
+  install's `--version` runs included; release and hooks use it too. `Update` of a copy that can update itself runs the tool's own updater
   (`Definition.UpdateArgs`: `magex update:install`, `go-pre-commit update`), which downloads
   the latest release, checks it against the release's checksums, and renames it over the copy
   it runs as: a copy from a GitHub release or the app, no link, whose version has
@@ -405,7 +432,8 @@ app:lint` reads.
   program in (`clonelock.KindInstall`, the app's one `Set`), so they never meet a tool's
   update there, and hand the latest release to
   `internal/toolinstall`, which downloads the archive and checksums file into a fresh private
-  folder under `<data>/downloads`, checks both against the checksums file and GitHub's digests,
+  folder under `<data>/downloads` (every file in it made and read through an `os.Root` of it,
+  so no name from GitHub reaches out), checks both against the checksums file and GitHub's digests,
   extracts only the program's own entry, tries it, and places it so the target is never missing
   (a copy beside it renamed over it, the old one put back if the new one won't run); it keeps no
   records and speaks no HTTP, and integrations records each install in `tool_installs`, which
@@ -445,7 +473,9 @@ app:lint` reads.
   banner held `GatherWindow` (2 s) with those of the failures that follow, so a burst past
   `MaxBanners` (Install and update all, a restart's reconcile) shows one summary, under the
   same rules as every kind's banner; core's `Close` drops the banners still held (the history
-  keeps their entries) and waits for a batch already showing, before the database closes. The
+  keeps their entries) and cuts short a batch already showing (each batch shows within the
+  gathering's lifetime, which `Close` ends), waiting for it to end, before the database
+  closes. The
   entry keeps the run's ID and its recorded start as RFC 3339 (`notifications.run_id` and
   `run_started`, `Entry.RunID`/`RunStarted`, `Notification.RunID`/`RunStarted`, and
   `event.RevealItem`'s for a banner's click), and the window opens it in Scripts → Runs only
@@ -460,8 +490,9 @@ app:lint` reads.
   time matches is orphaned and followed again; one that is gone was interrupted; a terminal
   run is told apart by its PID and exit files; every one is held under a placeholder lock and
   registered before any is settled, and a kind's `Verifier`, registered with
-  `RegisterVerifier`, gives such a run its output reader, progress, `Finish`, `Recorded`, and
-  `Released` again from its record's intent and what it kept, so it is read and verified as it
+  `RegisterVerifier`, gives such a run its `Callbacks` (its output reader, progress, `Finish`,
+  `Recorded`, and `Released`, which a `Spec` embeds) again from its record's intent and what
+  it kept, built by the same helper as the kind's `Spec`, so it is read and verified as it
   ends, as tracked work) and, as the app quits, stops every run in the app and records it
   stopped, unless its `Finish` returns `Unsettled` (a release whose check of GitHub the quit
   cut off), which leaves it recorded as going for the next start. `Active` is the desktop
@@ -699,8 +730,8 @@ app:lint` reads.
   (missing, go-pre-commit's by its marker, or another tool's, named husky, pre-commit, or
   lefthook from its text), and `ENABLE_GO_PRE_COMMIT` and the checks' switches from the config
   files themselves. Only a regular file, or a link to one, is read, a config file and a hook
-  alike, and each is opened without waiting and checked again once open, so a named pipe swapped
-  in never hangs a scan. A hooks folder outside both the clone's git folder and its work tree is
+  alike, and each is opened without waiting and checked again once open (`paths.OpenRegular`),
+  so a named pipe swapped in never hangs a scan. A hooks folder outside both the clone's git folder and its work tree is
   shared, and the scan counts the clones that use it. Only go-pre-commit's `status` says whether
   its own hook is current, a byte comparison, so it runs in a scratch repository of the app's own
   that holds the hook's bytes, never in a clone, whose `.env` files go-pre-commit would load into
@@ -943,13 +974,18 @@ package imports the driver, and nothing imports an ORM (`internal/repoguard` enf
 - **Prefs.** `internal/prefs` owns the `prefs` table. Any package reads any key, but each key has
   exactly one writer: settings writes the user's settings, including the rule keys that the trust,
   snooze, sensitive, notifyprefs, branchrules, and integrationprefs packages declare; inbox
-  writes `inbox.*`; prompts writes `prompts.*` (the package doc has the full list).
+  writes `inbox.*`; prompts writes `prompts.*` (the package doc has the full list). Settings and
+  those leaves write a switch and a list of strings one way, through the leaf
+  `internal/prefs/prefval` (`Bool` and `EncodeBool`, `List` and `EncodeList`, which stores a nil
+  list as `[]`).
 - **Values.** Owners stamp `created_at`, `updated_at`, and every other time from their injected
   `clock.Clock`; nothing fills them in. The one exception is a release's follow, whose times in
   its run's result come from the real clock its waits run on (see `internal/release/`). The
   driver stores every `time.Time` as UTC text (`2006-01-02 15:04:05.999999999+00:00`), so
   stamps compare and sort as text in time order.
   JSON columns are TEXT, written with `store.EncodeJSON` and read with `store.DecodeJSON[T]`.
+  An owner converts its query rows with `store.ConvertRows`, whose list is never nil, and reads
+  a nullable or LEFT JOIN column with `store.Deref`.
 - **Self-heal.** `store.Open` backs the database up before applying pending migrations. A file
   that is not a database or is damaged, a schema the migrations did not create, or a history this
   build disagrees with is renamed, with its `-wal` and `-shm` files, to

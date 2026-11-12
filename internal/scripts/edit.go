@@ -98,19 +98,19 @@ func (s *Service) Move(ctx context.Context, id int64, way Direction, dir string)
 // listing no longer holds is forgotten. Once the caller has gone (ctx is done, as when the
 // window cancels the call), no more origins are read.
 func (s *Service) RepoNames(ctx context.Context) ([]string, error) {
-	l, err := s.listClones(ctx)
+	l, err := s.folders().List(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	names := make([]repo.Name, len(l.dirs))
-	parallel(ctx, l.dirs, func(i int, dir string) { names[i] = s.originOf(ctx, dir) })
+	names := make([]repo.Name, len(l.Dirs))
+	parallel(ctx, l.Dirs, func(i int, dir string) { names[i] = s.originOf(ctx, dir) })
 
 	if err = ctx.Err(); err != nil {
 		return nil, fmt.Errorf("list the clones' repositories: %w", err)
 	}
 
-	s.forgetOrigins(l.dirs)
+	s.forgetOrigins(l.Dirs)
 
 	seen := map[string]bool{}
 	out := []string{}

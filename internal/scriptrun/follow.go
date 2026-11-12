@@ -3,7 +3,6 @@ package scriptrun
 import (
 	"context"
 	"fmt"
-	"io"
 	"log/slog"
 	"os"
 	"strconv"
@@ -29,6 +28,10 @@ const (
 
 // live is a run the engine follows: one it started, or one from before the app restarted.
 type live struct {
+	// Callbacks are its kind's: its Spec's, or what its kind's Verifier gave a run from
+	// before the app restarted.
+	Callbacks
+
 	id     int64
 	kind   Kind
 	runsIn RunsIn
@@ -41,18 +44,13 @@ type live struct {
 	name repo.Name
 	repo string
 
-	timeout  time.Duration
-	output   io.Writer
-	finish   func(ctx context.Context, end Ending, out Outcome) Outcome
-	recorded func(ctx context.Context, id int64, out Outcome)
-	released func(id int64)
-	intent   any
-	holds    holds
+	timeout time.Duration
+	intent  any
+	holds   holds
 
-	// progress is its kind's Spec.Progress, or nil, and shown the progress last seen after
-	// a read of its log, which only its follower touches.
-	progress func() Progress
-	shown    Progress
+	// shown is the progress last seen after a read of its log, which only its follower
+	// touches.
+	shown Progress
 
 	// proc is the program of a run this engine started in the app, or nil. pid, pgid,
 	// and procStart are its process, group, and start time, or a terminal run's shell's
@@ -70,7 +68,9 @@ type live struct {
 	// can't be stopped, holds no tool, and doesn't keep the app from quitting.
 	settling bool
 
-	// ended marks a run whose end is recorded. The engine holds it, and its clone, a moment
+	// ended marks a run whose end is recorded, or being recorded: the engine marks it just
+	// before it writes the record, so a record read as ended is never of a run not marked,
+	// and unmarks it should the write fail. The engine holds it, and its clone, a moment
 	// longer, until it lets go of it, but nothing of it goes any more: it can't be stopped,
 	// shows no progress, uses no tool, and doesn't keep the app from quitting. The engine's
 	// mu guards it.
@@ -101,11 +101,11 @@ type live struct {
 // progressNow returns how far the run has got, as its kind says, or no progress for a kind
 // that says nothing.
 func (l *live) progressNow() Progress {
-	if l.progress == nil {
+	if l.Progress == nil {
 		return Progress{}
 	}
 
-	return l.progress()
+	return l.Progress()
 }
 
 // markDone closes done, once.
@@ -128,7 +128,7 @@ func (l *live) finishOutcome(ctx context.Context, end Ending, out Outcome) Outco
 		}
 	}()
 
-	return l.finish(ctx, end, out)
+	return l.Finish(ctx, end, out)
 }
 
 // giveUp closes abandon, once.
@@ -336,7 +336,7 @@ func (e *Engine) followOrphan(ctx context.Context, l *live) {
 // tail feeds the run's output reader what its log holds past what it has read, and then
 // notes whether its progress changed.
 func (e *Engine) tail(l *live) {
-	if l.output == nil || !e.openLog(l) {
+	if l.Output == nil || !e.openLog(l) {
 		return
 	}
 
@@ -370,7 +370,7 @@ func (l *live) feed() bool {
 	for {
 		n, err := l.reader.ReadAt(l.buf, l.offset)
 		if n > 0 {
-			_, _ = l.output.Write(l.buf[:n])
+			_, _ = l.Output.Write(l.buf[:n])
 			l.offset += int64(n)
 			fed = true
 		}
@@ -388,7 +388,7 @@ func (e *Engine) end(ctx context.Context, l *live, end Ending) {
 	l.closeReader()
 
 	out := defaultOutcome(end, l.timeout)
-	if l.finish != nil {
+	if l.Finish != nil {
 		got := l.finishOutcome(ctx, end, out)
 		if got.Unsettled {
 			e.leave(ctx, l)
@@ -417,13 +417,16 @@ func (e *Engine) failStart(ctx context.Context, l *live, summary string) {
 	e.record(ctx, l, nil, Outcome{Status: StatusFailed, Summary: summary}, e.files.size(l.id))
 }
 
-// record records a run's end and, once it is recorded, marks the run ended and removes
-// what it kept beside its record, tells its kind's Recorded, lets go of it and then tells
-// its Released and, for a run that failed, Failed, logs it, applies the retention, and
-// tells Changed. A run whose end couldn't be recorded isn't marked, tells none of them but
-// Released, and keeps its state: its record still says it goes, and the next start settles
-// it. The record changes only a run recorded as going, so of every record of one run's end,
-// only one holds, and the run's end is told once.
+// record marks a run ended and records its end and, once it is recorded, removes what it
+// kept beside its record, tells its kind's Recorded, lets go of it and then tells its
+// Released and, for a run that failed, Failed, logs it, applies the retention, and tells
+// Changed. The mark comes first, as the run's program has ended by now: whoever reads the
+// record as ended finds the run marked too, so a Stop or a quit that comes once the record
+// reads as ended never takes the run for one it stopped. A run whose end couldn't be
+// recorded is unmarked, tells none of them but Released, and keeps its state: its record
+// still says it goes, and the next start settles it. The record changes only a run
+// recorded as going, so of every record of one run's end, only one holds, and the run's
+// end is told once.
 func (e *Engine) record(ctx context.Context, l *live, exitCode *int, out Outcome, size int64) {
 	unrecognized := out.Unrecognized
 	if len(unrecognized) > MaxUnrecognized {
@@ -435,26 +438,29 @@ func (e *Engine) record(ctx context.Context, l *live, exitCode *int, out Outcome
 		UnrecognizedCount: max(out.UnrecognizedCount, len(out.Unrecognized)), Outcome: out.Detail,
 	})
 
+	e.markEnded(l, true)
+
 	err := e.store.finish(ctx, finished{
 		id: l.id, status: out.Status, exitCode: exitCode, summary: out.Summary, result: result, logBytes: size,
 		at: e.clock.Now(),
 	})
 	if err == nil {
-		e.markEnded(l)
 		e.dropKept(ctx, l.id)
+	} else {
+		e.markEnded(l, false)
 	}
 
 	switch {
 	case err != nil:
 		e.logger.WarnContext(ctx, "couldn't record how a run ended", "run", l.id, "error", err)
-	case l.recorded != nil:
-		l.recorded(ctx, l.id, out)
+	case l.Recorded != nil:
+		l.Recorded(ctx, l.id, out)
 	}
 
 	e.release(l)
 
-	if l.released != nil {
-		l.released(l.id)
+	if l.Released != nil {
+		l.Released(l.id)
 	}
 
 	// Told once the run has let go of its clone and its slot, so a slow write or banner
@@ -505,12 +511,13 @@ func stoppedBySignal(code int) bool {
 	return code == 128+int(syscall.SIGHUP) || code == 128+int(syscall.SIGINT) || code == 128+int(syscall.SIGTERM)
 }
 
-// markEnded marks a run whose end is recorded as ended.
-func (e *Engine) markEnded(l *live) {
+// markEnded marks a run ended as its end is about to be recorded, or, when ended is false,
+// unmarks one whose end couldn't be.
+func (e *Engine) markEnded(l *live, ended bool) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 
-	l.ended = true
+	l.ended = ended
 }
 
 // leave lets go of a run whose Finish couldn't settle it before its context ended, as the

@@ -13,6 +13,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/mrz1836/nilbox/internal/testutil"
 )
 
 // isolatedPath points PATH at a fresh, empty directory and returns it, so a target finds
@@ -33,7 +35,7 @@ func fakeTool(t *testing.T, dir, name, body string) string {
 	t.Helper()
 
 	path := filepath.Join(dir, name)
-	writeExecutable(t, path, "#!/bin/sh\n"+body+"\n")
+	testutil.WriteExecutable(t, path, "#!/bin/sh\n"+body+"\n")
 
 	return path
 }
@@ -50,22 +52,6 @@ func fakeLoggedTool(t *testing.T, dir, name, body string) string {
 	fakeTool(t, dir, name, "log='"+log+"'\n"+`printf '%s\n' "$*" >> "$log"`+"\n"+body)
 
 	return log
-}
-
-// writeExecutable writes content to path, creating its directory, with the execute bit set.
-func writeExecutable(t *testing.T, path, content string) {
-	t.Helper()
-
-	require.NoError(t, os.MkdirAll(filepath.Dir(path), 0o750))
-	require.NoError(t, os.WriteFile(path, []byte(content), 0o700)) //nolint:gosec // a test tool must be executable
-}
-
-// writeFile writes content to path, creating its directory.
-func writeFile(t *testing.T, path, content string) {
-	t.Helper()
-
-	require.NoError(t, os.MkdirAll(filepath.Dir(path), 0o750))
-	require.NoError(t, os.WriteFile(path, []byte(content), 0o600))
 }
 
 // readFile returns the content of path, failing the test when it cannot be read.

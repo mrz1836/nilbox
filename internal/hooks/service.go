@@ -113,7 +113,7 @@ type Config struct {
 	// Terminal opens the user's terminal in a clone, for a row's Open in terminal, and
 	// Reveal shows a clone's config in Finder, for its Open the config. Without them,
 	// each says it can't.
-	Terminal FolderOpener
+	Terminal scriptrun.FolderOpener
 	Reveal   Revealer
 
 	Home   string
@@ -235,7 +235,7 @@ type Service struct {
 	ready    func() <-chan struct{}
 	runner   func(env []string, dir string) execpath.Runner
 	scratch  string
-	terminal FolderOpener
+	terminal scriptrun.FolderOpener
 	reveal   Revealer
 	home     string
 	clock    clock.Clock
@@ -567,7 +567,7 @@ func (s *Service) lastChecks(ctx context.Context) map[string]LastRun {
 // tool returns what the app knows of go-pre-commit now.
 func (s *Service) tool(ctx context.Context) ToolFacts {
 	if s.tools == nil {
-		return ToolFacts{Features: []integrations.Feature{}, Copies: []string{}}
+		return ToolFacts{CopyFacts: integrations.CopyFacts{Features: []integrations.Feature{}}, Copies: []string{}}
 	}
 
 	return s.tools.HooksTool(ctx)
@@ -576,7 +576,7 @@ func (s *Service) tool(ctx context.Context) ToolFacts {
 // judgeKey names the copy of go-pre-commit a scan judged the hooks with, and whether it
 // could be used: another, or one turned on or off, makes the scan out of date.
 func judgeKey(tool ToolFacts) string {
-	return fmt.Sprintf("%s %t", tool.key(), tool.Usable())
+	return fmt.Sprintf("%s %t", tool.Key(), tool.Usable())
 }
 
 // groupRank orders the groups as the page lists them.

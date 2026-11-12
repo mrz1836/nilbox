@@ -10,14 +10,14 @@
 package branchrules
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"path"
 	"slices"
-	"strconv"
 	"strings"
 	"unicode"
+
+	"github.com/mrz1836/nilbox/internal/prefs/prefval"
 )
 
 // The preferences the rules are stored under.
@@ -153,16 +153,11 @@ func (r Rules) Encode() (map[string]string, error) {
 		return nil, err
 	}
 
-	list, err := json.Marshal(protected)
-	if err != nil {
-		return nil, fmt.Errorf("encode the protected branches: %w", err)
-	}
-
 	return map[string]string{
-		PrefOwn:         strconv.FormatBool(r.Own),
-		PrefPullRequest: strconv.FormatBool(r.PullRequest),
-		PrefMerged:      strconv.FormatBool(r.Merged),
-		PrefProtected:   string(list),
+		PrefOwn:         prefval.EncodeBool(r.Own),
+		PrefPullRequest: prefval.EncodeBool(r.PullRequest),
+		PrefMerged:      prefval.EncodeBool(r.Merged),
+		PrefProtected:   prefval.EncodeList(protected),
 	}, nil
 }
 
@@ -172,9 +167,7 @@ func Decode(stored map[string]string) Rules {
 	r := Defaults()
 
 	for key, rule := range map[string]*bool{PrefOwn: &r.Own, PrefPullRequest: &r.PullRequest, PrefMerged: &r.Merged} {
-		if v, err := strconv.ParseBool(stored[key]); err == nil {
-			*rule = v
-		}
+		*rule = prefval.Bool(stored[key], *rule)
 	}
 
 	raw, ok := stored[PrefProtected]
@@ -182,8 +175,8 @@ func Decode(stored map[string]string) Rules {
 		return r
 	}
 
-	var protected []string
-	if err := json.Unmarshal([]byte(raw), &protected); err != nil {
+	protected, ok := prefval.List[string](raw)
+	if !ok {
 		return r
 	}
 

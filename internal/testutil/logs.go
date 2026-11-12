@@ -6,8 +6,8 @@ import (
 	"sync"
 )
 
-// Logs collects a logger's records in memory, as text, for a test to read. It is safe for
-// concurrent use.
+// Logs collects a logger's records, or any other text written to it, in memory for a test
+// to read. It is safe for concurrent use.
 type Logs struct {
 	mu  sync.Mutex
 	buf bytes.Buffer

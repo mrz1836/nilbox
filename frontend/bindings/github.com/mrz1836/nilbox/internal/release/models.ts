@@ -142,7 +142,8 @@ export interface Check {
 
     /**
      * Fixes are the actions beside it, and Commands the commands it offers to copy, which
-     * the app never runs.
+     * the app never runs, each branch or tag name in them, which can hold $(…) or
+     * backticks, quoted as textutil.ShellWord quotes it.
      */
     "fixes": Fix[] | null;
     "commands": string[] | null;

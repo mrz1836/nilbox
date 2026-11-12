@@ -2,8 +2,6 @@ package release
 
 import (
 	"encoding/json"
-	"io/fs"
-	"os"
 	"path/filepath"
 	"regexp"
 	"slices"
@@ -15,6 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/mrz1836/nilbox/internal/scriptrun"
+	"github.com/mrz1836/nilbox/internal/testutil"
 	"github.com/mrz1836/nilbox/internal/textutil"
 )
 
@@ -38,17 +37,11 @@ const (
 	recBump    = "patch"
 )
 
-// magexRecording is one recorded run: its arguments, its exit status, its lines in the
-// order they arrived, each from stdout ("out") or stderr ("err"), and the clone's state
-// before and after it, as git told the recorder.
+// magexRecording is one recorded run, and the clone's state before and after it, as git
+// told the recorder.
 type magexRecording struct {
-	Name  string   `json:"name"`
-	Argv  []string `json:"argv"`
-	Exit  int      `json:"exit"`
-	Lines []struct {
-		Stream string `json:"stream"`
-		Text   string `json:"text"`
-	} `json:"lines"`
+	testutil.Recording
+
 	Before cloneRecord `json:"before"`
 	After  cloneRecord `json:"after"`
 }
@@ -74,12 +67,7 @@ func loadRecording(t *testing.T, name string) magexRecording {
 func loadRecordingIn(t *testing.T, dir, name string) magexRecording {
 	t.Helper()
 
-	data, err := fs.ReadFile(os.DirFS(dir), name+".json")
-	require.NoError(t, err)
-
-	var rec magexRecording
-	require.NoError(t, json.Unmarshal(data, &rec))
-	require.Equal(t, name, rec.Name)
+	rec := testutil.LoadRecording[magexRecording](t, dir, name)
 	require.NotEmpty(t, rec.Lines)
 
 	return rec
@@ -92,34 +80,20 @@ func recordingNames(t *testing.T) []string {
 	return recordingNamesIn(t, magexRecordings)
 }
 
-// recordingNamesIn lists the recorded version:bump runs in the folder dir.
+// recordingNamesIn lists the recorded version:bump runs in the folder dir: every file but
+// next-version, which records versions rather than a run.
 func recordingNamesIn(t *testing.T, dir string) []string {
 	t.Helper()
 
-	paths, err := filepath.Glob(filepath.Join(dir, "*.json"))
-	require.NoError(t, err)
-
-	names := make([]string, 0, len(paths))
-	for _, p := range paths {
-		if name := strings.TrimSuffix(filepath.Base(p), ".json"); name != "next-version" {
-			names = append(names, name)
-		}
-	}
-
-	return names
+	return slices.DeleteFunc(testutil.RecordingNames(t, dir, ""), func(name string) bool {
+		return name == "next-version"
+	})
 }
 
 // log returns the run's output as one log holds it, stdout and stderr in the order they
 // arrived, each line ended by eol.
 func (m magexRecording) log(eol string) []byte {
-	var b strings.Builder
-
-	for _, l := range m.Lines {
-		b.WriteString(l.Text)
-		b.WriteString(eol)
-	}
-
-	return []byte(b.String())
+	return []byte(m.Log(eol))
 }
 
 // param returns the value of the run's key=value argument, or "".
@@ -185,7 +159,7 @@ const (
 func released(version string, warnings ...string) Output {
 	return Output{
 		Step: StepTagPushed, Branch: recBranch, Bump: recBump, From: recFrom, Version: version,
-		Tag: version, TagPushed: true, Warnings: warnings,
+		Tag: version, TagPushed: true, Notes: scriptrun.Notes{Warnings: warnings},
 	}
 }
 
@@ -201,9 +175,9 @@ func recordedOutputs() map[string]Output {
 
 	signing := Output{
 		Step: StepUpdated, Branch: recBranch, Bump: recBump, From: recFrom, Version: recVersion,
-		Warnings: []string{notOnHead}, Signing: "error: gpg failed to sign the data:",
-		Errors:       []string{"failed to create tag: command failed [git tag -a v1.4.3 -m GitHubRelease v1.4.3]: exit status 128"},
-		Unrecognized: []string{"(no gpg output)"},
+		Notes:   scriptrun.Notes{Warnings: []string{notOnHead}, Unrecognized: []string{"(no gpg output)"}},
+		Signing: "error: gpg failed to sign the data:",
+		Errors:  []string{"failed to create tag: command failed [git tag -a v1.4.3 -m GitHubRelease v1.4.3]: exit status 128"},
 	}
 
 	signingFromFeature := signing
@@ -218,9 +192,12 @@ func recordedOutputs() map[string]Output {
 	prePush := Output{
 		Step: StepTagCreated, Working: StepTagPushed, Branch: recBranch, Bump: recBump, From: recFrom,
 		Version: recVersion, Tag: recVersion, PushFailed: true, PushRefsFailed: true,
-		HookLine: "pre-push: blocked by policy", Warnings: []string{notOnHead, sendByHand},
+		HookLine: "pre-push: blocked by policy",
+		Notes: scriptrun.Notes{
+			Warnings: []string{notOnHead, sendByHand}, Unrecognized: []string{"pre-push: blocked by policy"},
+		},
 		Errors:       []string{"failed to push tag: command failed [git push origin v1.4.3]: exit status 1"},
-		LoggedErrors: []string{notSent}, Unrecognized: []string{"pre-push: blocked by policy"},
+		LoggedErrors: []string{notSent},
 	}
 
 	prePushFromFeature := prePush
@@ -230,7 +207,7 @@ func recordedOutputs() map[string]Output {
 		return Output{
 			Step: StepTagCreated, Working: StepTagPushed, Branch: recBranch, Bump: recBump, From: recFrom,
 			Version: recVersion, Tag: recVersion, PushFailed: true, SwitchBackFailed: true, Canceled: true,
-			Warnings: []string{notOnHead, sendByHand},
+			Notes: scriptrun.Notes{Warnings: []string{notOnHead, sendByHand}},
 			Errors: []string{"failed to push tag: command 'git' was canceled after 30s: context canceled " +
 				"(command failed [git push origin v1.4.3]: signal: " + signal + ")"},
 			LoggedErrors: []string{notSent, switchBackCut},
@@ -326,15 +303,15 @@ func recordedOutputs() map[string]Output {
 			"signal: interrupt"),
 		"dry-run": {
 			Step: StepOnBranch, Branch: recBranch, Bump: recBump, From: recFrom, Version: recVersion, DryRun: true,
-			Warnings: []string{notOnHead},
+			Notes: scriptrun.Notes{Warnings: []string{notOnHead}},
 		},
 		"major-no-confirm": {
 			Bump: "major",
-			Warnings: append(majorWarnings(recFrom, "v2.0.0"),
+			Notes: scriptrun.Notes{Warnings: append(majorWarnings(recFrom, "v2.0.0"),
 				"To proceed with major version bump, add 'major-confirm' parameter",
 				"Example: magex version:bump bump=major major-confirm push",
 				"Or use 'dry-run' to preview the change first:",
-				"Example: magex version:bump bump=major dry-run"),
+				"Example: magex version:bump bump=major dry-run")},
 			Errors: []string{"major version bump requires explicit confirmation via MAJOR_BUMP_CONFIRM=true"},
 		},
 		"missing-branch": {
@@ -342,43 +319,45 @@ func recordedOutputs() map[string]Output {
 		},
 		"tag-on-head": {
 			Step: StepUpdated, Branch: recBranch, Bump: recBump,
-			Warnings: []string{
+			Notes: scriptrun.Notes{Warnings: []string{
 				"Current commit already has version tags: v1.4.2",
 				"Please create a new commit before bumping the version again",
-			},
+			}},
 			Errors: []string{"current commit already has version tags: v1.4.2"},
 		},
 		"no-upstream": {
 			Step: StepOnBranch, Working: StepUpdated, Branch: recBranch, Bump: recBump,
-			Errors:       []string{"failed to pull latest changes: command failed [git pull --rebase origin]: exit status 1"},
-			Unrecognized: []string{noUpstream1, noUpstream2, noUpstream3},
+			Errors: []string{"failed to pull latest changes: command failed [git pull --rebase origin]: exit status 1"},
+			Notes:  scriptrun.Notes{Unrecognized: []string{noUpstream1, noUpstream2, noUpstream3}},
 		},
 		"no-upstream-from-feature": {
 			Step: StepOnBranch, Working: StepUpdated, Branch: recBranch, Bump: recBump, BackOn: recFeature,
 			Errors: []string{"failed to pull latest changes on branch 'master': failed to pull latest changes: " +
 				"command failed [git pull --rebase origin]: exit status 1"},
-			Unrecognized: []string{noUpstream1, noUpstream2, noUpstream3},
+			Notes: scriptrun.Notes{Unrecognized: []string{noUpstream1, noUpstream2, noUpstream3}},
 		},
 		"origin-unreachable-branch": {
 			Step: StepOnBranch, Working: StepUpdated, Branch: recBranch, Bump: recBump,
 			Errors: []string{"failed to fetch from origin: command failed [git fetch --tags --force origin]: exit status 128"},
-			Unrecognized: []string{
+			Notes: scriptrun.Notes{Unrecognized: []string{
 				"fatal: '/work/cases/origin-unreachable-branch/missing.git' does not appear to be a git repository",
 				cantReachOrigin, accessRights, repoExists,
-			},
+			}},
 		},
 		"origin-unreachable-nobranch": {
 			Step: StepTagCreated, Bump: recBump, From: recFrom, Version: recVersion, Tag: recVersion, PushSkipped: true,
 			PushSkipWarning: "Git remote validation failed: remote 'origin' exists but may not be accessible: " +
 				"command failed [git ls-remote --exit-code origin HEAD]: exit status 128",
-			Warnings: []string{
-				noBranchParam, considerParam, notOnHead,
-				"Git remote validation failed: remote 'origin' exists but may not be accessible: " +
-					"command failed [git ls-remote --exit-code origin HEAD]: exit status 128",
-			},
-			Unrecognized: []string{
-				"fatal: '/work/cases/origin-unreachable-nobranch/missing.git' does not appear to be a git repository",
-				cantReachOrigin, accessRights, repoExists,
+			Notes: scriptrun.Notes{
+				Warnings: []string{
+					noBranchParam, considerParam, notOnHead,
+					"Git remote validation failed: remote 'origin' exists but may not be accessible: " +
+						"command failed [git ls-remote --exit-code origin HEAD]: exit status 128",
+				},
+				Unrecognized: []string{
+					"fatal: '/work/cases/origin-unreachable-nobranch/missing.git' does not appear to be a git repository",
+					cantReachOrigin, accessRights, repoExists,
+				},
 			},
 		},
 		"other-worktree": {
@@ -386,25 +365,25 @@ func recordedOutputs() map[string]Output {
 			Errors: []string{"failed to checkout branch 'master': local branch not found (command failed " +
 				"[git checkout master]: exit status 128) and remote checkout failed (command failed " +
 				"[git checkout -b master origin/master]: exit status 128)"},
-			Unrecognized: []string{
+			Notes: scriptrun.Notes{Unrecognized: []string{
 				"fatal: 'master' is already used by worktree at '/work/cases/other-worktree/wt-master'",
 				"fatal: a branch named 'master' already exists",
-			},
+			}},
 		},
 		"post-checkout-fails": {
 			Working: StepOnBranch, Branch: recBranch, Bump: recBump,
 			Errors: []string{"failed to checkout branch 'master': local branch not found (command failed " +
 				"[git checkout master]: exit status 1) and remote checkout failed (command failed " +
 				"[git checkout -b master origin/master]: exit status 128)"},
-			Unrecognized: []string{"post-checkout: blocked by policy", "fatal: a branch named 'master' already exists"},
+			Notes: scriptrun.Notes{Unrecognized: []string{"post-checkout: blocked by policy", "fatal: a branch named 'master' already exists"}},
 		},
 		"remote-tag-other-commit": {
 			Step: StepTagCreated, Bump: recBump, From: recFrom, Version: recVersion, Tag: recVersion,
-			Warnings: []string{
+			Notes: scriptrun.Notes{Warnings: []string{
 				noBranchParam, considerParam, notOnHead, "This usually means:",
 				"The tag was created from a different branch", "Another developer created this tag",
 				"Your local tags were out of sync with remote",
-			},
+			}},
 			Errors:       []string{"tag already exists on remote: v1.4.3"},
 			LoggedErrors: []string{"Tag v1.4.3 already exists on remote pointing at a different commit"},
 		},
@@ -412,10 +391,10 @@ func recordedOutputs() map[string]Output {
 			Step: StepTagCreated, Working: StepTagPushed, Branch: recBranch, Bump: recBump, From: "v0.0.1",
 			Version: "v0.0.2", Tag: "v0.0.2", PushFailed: true, PushRejected: true, PushRefsFailed: true,
 			Refused: "Cannot create ref due to creations being restricted.",
-			Warnings: []string{
+			Notes: scriptrun.Notes{Warnings: []string{
 				"Found tag v0.0.1 in repository, but it's not reachable from current commit",
 				"To push manually: git push origin v0.0.2",
-			},
+			}},
 			Errors:       []string{"failed to push tag: command failed [git push origin v0.0.2]: exit status 1"},
 			LoggedErrors: []string{notSent},
 		},
@@ -616,6 +595,30 @@ func TestOutputReadsAnUnfinishedLastLineOnFlush(t *testing.T) {
 	r.Flush()
 	r.Flush()
 	assert.Equal(t, []string{"cut sh"}, r.Snapshot().Errors)
+}
+
+func TestOutputReaderZeroValueIsReady(t *testing.T) {
+	t.Parallel()
+
+	// Each method works as the first call on a zero value.
+	for name, call := range map[string]func(r *OutputReader){
+		"Write":    func(r *OutputReader) { _, _ = r.Write([]byte("partial")) },
+		"Flush":    func(r *OutputReader) { r.Flush() },
+		"Snapshot": func(r *OutputReader) { _ = r.Snapshot() },
+		"Progress": func(r *OutputReader) { _ = r.Progress(Intent{}) },
+	} {
+		assert.NotPanics(t, func() { call(new(OutputReader)) }, name)
+	}
+
+	whole := loadRecording(t, "patch-feature-behind").log("\n")
+
+	var r OutputReader
+
+	_, err := r.Write(whole)
+	require.NoError(t, err)
+	r.Flush()
+
+	assert.Equal(t, readOutput(whole), r.Snapshot(), "a zero value reads as NewOutputReader's does")
 }
 
 func TestOutputSnapshotsShareNothing(t *testing.T) {

@@ -169,7 +169,7 @@ func (s *Service) install(ctx context.Context, id integrationprefs.ID) (InstallR
 		return InstallResult{}, err
 	}
 
-	_ = s.checkUpdates(ctx, latestFreshFor) // a failure keeps the last answer, which the plan then says is missing
+	s.checkUpdatesLogged(ctx, latestFreshFor) // a failure keeps the last answer, which the plan then says is missing
 
 	plan, latest, _, err := s.planFor(ctx, def)
 	if err != nil {
@@ -454,9 +454,8 @@ func (s *Service) smoke(ctx context.Context, def Definition, want, path string) 
 	defer cancel()
 
 	env, _ := s.env.Env()
-	d := detector{def: def, env: env, home: s.home, run: s.run}
 
-	stdout, stderr, err := s.run(ctx, path, def.VersionArgs, d.runEnv())
+	stdout, stderr, err := s.run(ctx, path, def.VersionArgs, def.RunEnv(env, integrationprefs.RunsInApp))
 
 	// The context ending kills the program too, so it is told apart from macOS refusing it.
 	switch {
@@ -602,8 +601,7 @@ func (s *Service) installError(def Definition, plan InstallPlan, err error) erro
 // joinedCause returns the text of what err joins to sentinel, as fmt.Errorf("%w: %w",
 // sentinel, cause) does, or err's own text.
 func joinedCause(err, sentinel error) string {
-	var joined interface{ Unwrap() []error }
-	if errors.As(err, &joined) {
+	if joined, ok := errors.AsType[joinedError](err); ok {
 		var parts []string
 
 		for _, e := range joined.Unwrap() {
@@ -618,6 +616,13 @@ func joinedCause(err, sentinel error) string {
 	}
 
 	return err.Error()
+}
+
+// joinedError is an error that joins others, as errors.Join and fmt.Errorf with several
+// %w verbs make.
+type joinedError interface {
+	error
+	Unwrap() []error
 }
 
 // hashOf returns the SHA-256 of the file at path in hex, from the cache while its size,

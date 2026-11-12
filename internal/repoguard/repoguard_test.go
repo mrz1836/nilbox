@@ -36,19 +36,10 @@ var generatedPattern = regexp.MustCompile(`(?m)^// Code generated .* DO NOT EDIT
 func moduleRoot(t *testing.T) string {
 	t.Helper()
 
-	dir, err := os.Getwd()
+	root, err := findModuleRoot()
 	require.NoError(t, err)
 
-	for {
-		if _, err = os.Stat(filepath.Join(dir, "go.mod")); err == nil {
-			return dir
-		}
-
-		parent := filepath.Dir(dir)
-		require.NotEqual(t, dir, parent, "go.mod not found above the test directory")
-
-		dir = parent
-	}
+	return root
 }
 
 // modulePath reads the module path from go.mod.
@@ -64,73 +55,7 @@ func modulePath(t *testing.T, root string) string {
 	return string(m[1])
 }
 
-// repoFiles lists the repository's files (tracked, plus untracked files that are not
-// ignored) as slash-separated paths relative to root. Without git it walks the tree.
-func repoFiles(t *testing.T, root string) []string {
-	t.Helper()
-
-	cmd := exec.CommandContext(t.Context(), "git", "-C", root, "ls-files", "-z", //nolint:gosec // argv only, no shell
-		"--cached", "--others", "--exclude-standard")
-
-	out, err := cmd.Output()
-	if err != nil {
-		t.Logf("git ls-files unavailable (%v); walking the tree instead", err)
-
-		return walkFiles(t, root)
-	}
-
-	var files []string
-
-	for f := range strings.SplitSeq(string(out), "\x00") {
-		if f != "" {
-			files = append(files, f)
-		}
-	}
-
-	return files
-}
-
-// walkFiles lists the files under root, skipping build output and dependency trees.
-func walkFiles(t *testing.T, root string) []string {
-	t.Helper()
-
-	var files []string
-
-	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, walkErr error) error {
-		switch {
-		case walkErr != nil:
-			return walkErr
-		case d.IsDir() && path != root && skipDirs[d.Name()]:
-			return filepath.SkipDir
-		case d.IsDir():
-			return nil
-		}
-
-		rel, relErr := filepath.Rel(root, path)
-		if relErr != nil {
-			return relErr
-		}
-
-		files = append(files, filepath.ToSlash(rel))
-
-		return nil
-	})
-	require.NoError(t, err)
-
-	return files
-}
-
-// readText returns a file's contents, or ok=false for a binary or missing file.
-func readText(t *testing.T, root, rel string) (string, bool) {
-	t.Helper()
-
-	text, ok, err := readTextFile(root, rel)
-	require.NoError(t, err)
-
-	return text, ok
-}
-
-// readTextFile is readText for a caller that is not on the test's goroutine: it returns
+// readTextFile returns a file's contents, or ok=false for a binary or missing file, with
 // the error a test would fail with.
 func readTextFile(root, rel string) (string, bool, error) {
 	body, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(rel))) //nolint:gosec // paths come from this repo's file list
@@ -147,23 +72,6 @@ func readTextFile(root, rel string) (string, bool, error) {
 	}
 
 	return string(body), true, nil
-}
-
-// goFiles returns the repository's Go files.
-func goFiles(t *testing.T, root string) []string {
-	t.Helper()
-
-	var files []string
-
-	for _, f := range repoFiles(t, root) {
-		if strings.HasSuffix(f, ".go") {
-			files = append(files, f)
-		}
-	}
-
-	require.NotEmpty(t, files)
-
-	return files
 }
 
 // hits returns "file:line: text" for every line of text that matches.
@@ -212,34 +120,35 @@ func TestDataLayerBuildsWithoutCGO(t *testing.T) {
 func TestNoAbsoluteHomePaths(t *testing.T) {
 	t.Parallel()
 
-	root := moduleRoot(t)
-
 	// Built from parts so this file does not match itself. The look-behind-style prefix
 	// keeps URL path segments (such as example.com/home/page) from matching.
 	pattern := regexp.MustCompile(`(^|[^A-Za-z0-9._~-])/(` + "Us" + "ers" + "|" + "ho" + "me" + `)/([^/\s"'` + "`" + `)]+)`)
+
+	// Every match holds one of these, so a file without either is not matched line by
+	// line.
+	homes := []string{"/" + "Us" + "ers" + "/", "/" + "ho" + "me" + "/"}
 
 	placeholders := map[string]bool{
 		"me": true, "you": true, "user": true, "username": true, "runner": true, "example": true,
 		"USER": true, "<user>": true, "<username>": true, "$USER": true, "${USER}": true,
 	}
 
-	var found []string
-
-	for _, rel := range repoFiles(t, root) {
-		text, ok := readText(t, root, rel)
-		if !ok {
-			continue
+	realHome := func(line string) bool {
+		for _, m := range pattern.FindAllStringSubmatch(line, -1) {
+			if !placeholders[m[3]] {
+				return true
+			}
 		}
 
-		found = append(found, hits(rel, text, func(line string) bool {
-			for _, m := range pattern.FindAllStringSubmatch(line, -1) {
-				if !placeholders[m[3]] {
-					return true
-				}
-			}
+		return false
+	}
 
-			return false
-		})...)
+	var found []string
+
+	for _, rel := range repoFiles(t) {
+		if text, ok := readText(t, rel); ok && containsAny(text, homes) {
+			found = append(found, hits(rel, text, realHome)...)
+		}
 	}
 
 	assert.Empty(t, found, "use ~/projects or a placeholder home directory, never a real one")
@@ -291,7 +200,7 @@ func TestFrontendBrandFile(t *testing.T) {
 // exempt module path and command directory removed, or ok=false for a file it skips:
 // anything that is neither Go nor a frontend source, the brand package itself, and
 // generated Go files.
-func productNameText(t *testing.T, root, module, rel string) (string, bool) {
+func productNameText(t *testing.T, module, rel string) (string, bool) {
 	t.Helper()
 
 	isGo := strings.HasSuffix(rel, ".go")
@@ -299,7 +208,7 @@ func productNameText(t *testing.T, root, module, rel string) (string, bool) {
 		return "", false
 	}
 
-	text, ok := readText(t, root, rel)
+	text, ok := readText(t, rel)
 	if !ok || (isGo && generatedPattern.MatchString(text)) {
 		return "", false
 	}
@@ -321,8 +230,8 @@ func TestNoHardcodedProductName(t *testing.T) {
 
 	var found []string
 
-	for _, rel := range repoFiles(t, root) {
-		text, ok := productNameText(t, root, module, rel)
+	for _, rel := range repoFiles(t) {
+		text, ok := productNameText(t, module, rel)
 		if !ok {
 			continue
 		}
@@ -340,19 +249,17 @@ func TestNoHardcodedProductName(t *testing.T) {
 func TestNoLiveGitHubCallsInTests(t *testing.T) {
 	t.Parallel()
 
-	root := moduleRoot(t)
-
 	// Built from parts so this file does not match itself.
 	needle := "api." + "github" + ".com"
 
 	var found []string
 
-	for _, rel := range goFiles(t, root) {
+	for _, rel := range goFiles(t) {
 		if !strings.HasSuffix(rel, "_test.go") {
 			continue
 		}
 
-		if text, ok := readText(t, root, rel); ok {
+		if text, ok := readText(t, rel); ok {
 			found = append(found, hits(rel, text, func(line string) bool { return strings.Contains(line, needle) })...)
 		}
 	}
@@ -395,17 +302,16 @@ func containsAny(line string, needles []string) bool {
 func TestNoBranchDeletion(t *testing.T) {
 	t.Parallel()
 
-	root := moduleRoot(t)
 	needles := branchDeleteNeedles()
 
 	var found []string
 
-	for _, rel := range goFiles(t, root) {
+	for _, rel := range goFiles(t) {
 		if strings.HasSuffix(rel, "_test.go") {
 			continue
 		}
 
-		if text, ok := readText(t, root, rel); ok {
+		if text, ok := readText(t, rel); ok {
 			found = append(found, hits(rel, text, func(line string) bool { return containsAny(line, needles) })...)
 		}
 	}
@@ -430,19 +336,20 @@ func argvLiteral(words ...string) *regexp.Regexp {
 	return regexp.MustCompile(`(^|[\s,({])"(` + strings.Join(quoted, "|") + `)"`)
 }
 
-// productionGoHits returns "file:line: text" for every line of a non-test Go file that
-// pattern matches, skipping the files in exempt.
-func productionGoHits(t *testing.T, root string, pattern *regexp.Regexp, exempt ...string) []string {
+// productionGoHits returns "file:line: text" for every line pattern matches in a Go file
+// the app is built from, neither a test nor the test support only tests import, skipping
+// the files in exempt.
+func productionGoHits(t *testing.T, pattern *regexp.Regexp, exempt ...string) []string {
 	t.Helper()
 
 	var found []string
 
-	for _, rel := range goFiles(t, root) {
-		if strings.HasSuffix(rel, "_test.go") || slices.Contains(exempt, rel) {
+	for _, rel := range goFiles(t) {
+		if strings.HasSuffix(rel, "_test.go") || inTestSupport(rel) || slices.Contains(exempt, rel) {
 			continue
 		}
 
-		if text, ok := readText(t, root, rel); ok {
+		if text, ok := readText(t, rel); ok {
 			found = append(found, hits(rel, text, pattern.MatchString)...)
 		}
 	}
@@ -453,18 +360,16 @@ func productionGoHits(t *testing.T, root string, pattern *regexp.Regexp, exempt 
 func TestOnlyTheLauncherCreatesClones(t *testing.T) {
 	t.Parallel()
 
-	root := moduleRoot(t)
-
 	// Built from parts so this file does not match itself. "clone" is the argv word of
 	// both `git clone` and `gh repo clone`.
 	clone := argvLiteral("clo" + "ne")
 
-	writer, ok := readText(t, root, cloneWriterFile)
+	writer, ok := readText(t, cloneWriterFile)
 	require.True(t, ok, "%s is gone; update this guard", cloneWriterFile)
 	assert.NotEmpty(t, hits(cloneWriterFile, writer, clone.MatchString),
 		"%s no longer runs the clone; update this guard", cloneWriterFile)
 
-	assert.Empty(t, productionGoHits(t, root, clone, cloneWriterFile),
+	assert.Empty(t, productionGoHits(t, clone, cloneWriterFile),
 		"only the launcher's confirmed clone of a missing repository may create a clone")
 }
 
@@ -498,7 +403,6 @@ const clonePullerFile = "internal/scripts/pull.go"
 func TestNoGitCommandChangesAClone(t *testing.T) {
 	t.Parallel()
 
-	root := moduleRoot(t)
 	verbs := argvLiteral(cloneChangingVerbs()...)
 	worktreeAdd := regexp.MustCompile(`"work` + `tree",\s*"add"`)
 
@@ -506,7 +410,7 @@ func TestNoGitCommandChangesAClone(t *testing.T) {
 	fetch := argvLiteral("fet" + "ch")
 	changing := slices.DeleteFunc(cloneChangingVerbs(), func(v string) bool { return v == "fet"+"ch" })
 
-	maker, ok := readText(t, root, worktreeMakerFile)
+	maker, ok := readText(t, worktreeMakerFile)
 	require.True(t, ok, "%s is gone; update this guard", worktreeMakerFile)
 	assert.NotEmpty(t, hits(worktreeMakerFile, maker, fetch.MatchString),
 		"%s no longer fetches; update this guard", worktreeMakerFile)
@@ -516,10 +420,10 @@ func TestNoGitCommandChangesAClone(t *testing.T) {
 		"%s only fetches and adds worktrees", worktreeMakerFile)
 
 	assertMakerFetchesOnlyItsOwnRefs(t, maker)
-	assertPullerOnlyFastForwards(t, root)
+	assertPullerOnlyFastForwards(t)
 
-	found := productionGoHits(t, root, verbs, worktreeMakerFile, clonePullerFile)
-	found = append(found, productionGoHits(t, root, worktreeAdd, worktreeMakerFile)...)
+	found := productionGoHits(t, verbs, worktreeMakerFile, clonePullerFile)
+	found = append(found, productionGoHits(t, worktreeAdd, worktreeMakerFile)...)
 
 	assert.Empty(t, found, "nothing changes a clone's own checkout: no checkout, stash, branch switch, pull, reset, "+
 		"merge, rebase, commit, push, restore, cherry-pick, or clean anywhere, only worktree creation ("+
@@ -536,7 +440,7 @@ func TestNoGitCommandRunsAMergeOrDiffTool(t *testing.T) {
 	// Built from parts so this file does not match itself.
 	tools := argvLiteral("merge"+"tool", "diff"+"tool")
 
-	assert.Empty(t, productionGoHits(t, moduleRoot(t), tools),
+	assert.Empty(t, productionGoHits(t, tools),
 		"no git command the app runs is mergetool or difftool, whose programs a clone's config may name")
 }
 
@@ -587,14 +491,14 @@ func pullWords() []string {
 // --no-verify-signatures are there and nothing else is; every option it names anywhere is
 // one of them, so no -c setting, short option, merge strategy, or --update-head-ok can be
 // added beside; and it holds no other verb that changes a clone.
-func assertPullerOnlyFastForwards(t *testing.T, root string) {
+func assertPullerOnlyFastForwards(t *testing.T) {
 	t.Helper()
 
 	words := pullWords()
 	pull := words[0]
 	others := slices.DeleteFunc(cloneChangingVerbs(), func(v string) bool { return v == pull })
 
-	text, ok := readText(t, root, clonePullerFile)
+	text, ok := readText(t, clonePullerFile)
 	require.True(t, ok, "%s is gone; update this guard", clonePullerFile)
 
 	argvs, options := verbLiterals(t, text, pull)
@@ -748,12 +652,10 @@ func fileRunners(rel, text string) []string {
 func TestNoMacOSRunners(t *testing.T) {
 	t.Parallel()
 
-	root := moduleRoot(t)
-
 	var found []string
 
-	for _, rel := range repoFiles(t, root) {
-		text, ok := readText(t, root, rel)
+	for _, rel := range repoFiles(t) {
+		text, ok := readText(t, rel)
 		if !ok {
 			continue
 		}
@@ -793,27 +695,6 @@ func TestRunnerValues(t *testing.T) {
 	}, runnerValues("w.yml", workflow))
 }
 
-// fileImports returns the import paths of the Go file rel, whatever its build tags, or
-// none for a file that cannot be read as text.
-func fileImports(t *testing.T, root, rel string) []string {
-	t.Helper()
-
-	src, ok := readText(t, root, rel)
-	if !ok {
-		return nil
-	}
-
-	file, err := parser.ParseFile(token.NewFileSet(), rel, src, parser.ImportsOnly)
-	require.NoError(t, err, rel)
-
-	paths := make([]string, 0, len(file.Imports))
-	for _, imp := range file.Imports {
-		paths = append(paths, strings.Trim(imp.Path.Value, `"`))
-	}
-
-	return paths
-}
-
 // wailsBootstrapFiles are the only files allowed to import the desktop runtime: the
 // desktop shell (the desktop main, the menu bar icon, and the notification banners, each
 // in a *_desktop.go file) and its desktop-tagged tests (*_desktop_test.go), its per-OS
@@ -838,8 +719,6 @@ func wailsAllowed(rel string) bool {
 func TestOnlyDesktopBootstrapImportsWails(t *testing.T) {
 	t.Parallel()
 
-	root := moduleRoot(t)
-
 	// Built from parts so the needle reads as data, not as an import path.
 	runtimePrefix := "github.com/" + "wailsapp/"
 
@@ -847,12 +726,12 @@ func TestOnlyDesktopBootstrapImportsWails(t *testing.T) {
 
 	// Every Go file is parsed whatever its build tags, so a tagged file cannot hide an
 	// import from this check.
-	for _, rel := range goFiles(t, root) {
+	for _, rel := range goFiles(t) {
 		if wailsAllowed(rel) {
 			continue
 		}
 
-		for _, imp := range fileImports(t, root, rel) {
+		for _, imp := range fileImports(t, rel) {
 			if strings.HasPrefix(imp, runtimePrefix) {
 				found = append(found, rel+": "+imp)
 			}
@@ -884,34 +763,82 @@ func TestWailsAllowed(t *testing.T) {
 	}
 }
 
-// testSupportDir holds the test-support package: helpers and fakes the test suites share,
-// which must never reach the app.
-const testSupportDir = "internal/testutil"
+// testSupportDirs hold the test-support packages, which must never reach the app: the
+// helpers and fakes the test suites share, and the runner the suites of scriptrun's kinds
+// share, which builds on them.
+func testSupportDirs() []string {
+	return []string{"internal/testutil", "internal/scriptrun/scriptruntest"}
+}
+
+// inTestSupport reports whether rel, a path relative to the module, is in a test-support
+// package or under one.
+func inTestSupport(rel string) bool {
+	return slices.ContainsFunc(testSupportDirs(), func(dir string) bool {
+		return rel == dir || strings.HasPrefix(rel, dir+"/")
+	})
+}
+
+// testSupportImports returns the imports of a test-support package among imports, those
+// of a file in module.
+func testSupportImports(module string, imports []string) []string {
+	var found []string
+
+	for _, imp := range imports {
+		if rel, ok := strings.CutPrefix(imp, module+"/"); ok && inTestSupport(rel) {
+			found = append(found, imp)
+		}
+	}
+
+	return found
+}
 
 func TestOnlyTestsImportTestSupport(t *testing.T) {
 	t.Parallel()
 
 	root := moduleRoot(t)
-	testSupport := modulePath(t, root) + "/" + testSupportDir
+	module := modulePath(t, root)
 
-	require.DirExists(t, filepath.Join(root, filepath.FromSlash(testSupportDir)),
-		"%s is gone; update this guard", testSupportDir)
+	for _, dir := range testSupportDirs() {
+		require.DirExists(t, filepath.Join(root, filepath.FromSlash(dir)), "%s is gone; update this guard", dir)
+	}
 
 	var found []string
 
 	// Every Go file is parsed whatever its build tags, so a tagged file cannot hide an
-	// import from this check.
-	for _, rel := range goFiles(t, root) {
-		if strings.HasSuffix(rel, "_test.go") {
+	// import from this check. A test-support package may import another.
+	for _, rel := range goFiles(t) {
+		if strings.HasSuffix(rel, "_test.go") || inTestSupport(rel) {
 			continue
 		}
 
-		for _, imp := range fileImports(t, root, rel) {
-			if imp == testSupport || strings.HasPrefix(imp, testSupport+"/") {
-				found = append(found, rel+": "+imp)
-			}
+		for _, imp := range testSupportImports(module, fileImports(t, rel)) {
+			found = append(found, rel+": "+imp)
 		}
 	}
 
-	assert.Empty(t, found, "only _test.go files may import the test-support package")
+	assert.Empty(t, found, "only _test.go files may import the test-support packages")
+}
+
+func TestTestSupportImports(t *testing.T) {
+	t.Parallel()
+
+	for rel, want := range map[string]bool{
+		"internal/testutil":                                 true,
+		"internal/testutil/db.go":                           true,
+		"internal/scriptrun/scriptruntest":                  true,
+		"internal/scriptrun/scriptruntest/scriptruntest.go": true,
+		"internal/scriptrun/engine.go":                      false,
+		"internal/scriptrun":                                false,
+		"internal/testutilx/a.go":                           false,
+		"internal/hooks/helpers_test.go":                    false,
+	} {
+		assert.Equal(t, want, inTestSupport(rel), rel)
+	}
+
+	assert.Equal(t, []string{"example.com/m/internal/testutil", "example.com/m/internal/scriptrun/scriptruntest"},
+		testSupportImports("example.com/m", []string{
+			"example.com/m/internal/testutil", "example.com/m/internal/scriptrun",
+			"example.com/m/internal/scriptrun/scriptruntest", "example.com/other/internal/testutil", "testing",
+		}))
+	assert.Empty(t, testSupportImports("example.com/m", []string{"example.com/m/internal/testutilx"}))
 }

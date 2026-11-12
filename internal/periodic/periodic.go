@@ -8,38 +8,6 @@ import (
 	"github.com/mrz1836/nilbox/internal/logging"
 )
 
-// Run calls fn now and then every interval until ctx is canceled, and returns once the
-// run in flight has returned. Runs never overlap: a tick that comes while fn is still
-// running is skipped, so a run longer than the interval is followed by the next tick,
-// not by a run straight away.
-//
-// name labels the job in log entries: a failure (an error returned while ctx is still
-// live) is logged as "<name> failed", and a panic is recovered and logged as "<name>
-// panicked". A nil logger discards them. A non-positive interval panics, as
-// time.NewTicker does.
-func Run(ctx context.Context, interval time.Duration, name string, fn func(context.Context) error, log *slog.Logger) {
-	log = logging.Or(log)
-
-	ticker := time.NewTicker(interval)
-	defer ticker.Stop()
-
-	for {
-		once(ctx, name, fn, log)
-
-		select {
-		case <-ticker.C:
-			log.DebugContext(ctx, name+" skipped: the previous run was still going")
-		default:
-		}
-
-		select {
-		case <-ctx.Done():
-			return
-		case <-ticker.C:
-		}
-	}
-}
-
 // once runs fn, logging a failure or a panic.
 func once(ctx context.Context, name string, fn func(context.Context) error, log *slog.Logger) {
 	defer func() {
@@ -53,9 +21,9 @@ func once(ctx context.Context, name string, fn func(context.Context) error, log 
 	}
 }
 
-// Every says how long to wait after a run before the next, as set now: Run asks again
-// before each wait, and again whenever it is woken, so a change applies at once. Zero or
-// less means not to run until woken with a positive interval.
+// Every says how long to wait after a run before the next, as set now: RunEvery asks
+// again before each wait, and again whenever it is woken, so a change applies at once.
+// Zero or less means not to run until woken with a positive interval.
 type Every func(ctx context.Context) time.Duration
 
 // RunEvery calls fn whenever every says one is due, until ctx is canceled, and returns
@@ -65,7 +33,9 @@ type Every func(ctx context.Context) time.Duration
 // interval starts at once, and otherwise the wait is the new interval from the last run's
 // end. While every says zero or less, nothing runs, the first run included.
 //
-// name labels the job in log entries, as Run's does. A nil logger discards them.
+// name labels the job in log entries: a failure (an error returned while ctx is still
+// live) is logged as "<name> failed", and a panic is recovered and logged as "<name>
+// panicked". A nil logger discards them.
 func RunEvery(ctx context.Context, every Every, wake <-chan struct{}, name string, fn func(context.Context) error,
 	log *slog.Logger,
 ) {

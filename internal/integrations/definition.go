@@ -2,10 +2,11 @@ package integrations
 
 import (
 	"maps"
-	"strings"
+	"slices"
 
 	"github.com/mrz1836/nilbox/internal/integrationprefs"
 	"github.com/mrz1836/nilbox/internal/repo"
+	"github.com/mrz1836/nilbox/internal/shellenv"
 )
 
 // Feature is an upstream change a tool gained in some release, which the app uses once
@@ -97,6 +98,20 @@ func (d Definition) Has(f Feature, v Version) bool {
 	return first != "" && v.AtLeast(first)
 }
 
+// FeaturesOf lists, sorted, every feature a copy at version v has (Has); the list is never
+// nil.
+func (d Definition) FeaturesOf(v Version) []Feature {
+	out := []Feature{}
+
+	for _, f := range slices.Sorted(maps.Keys(d.Features)) {
+		if d.Has(f, v) {
+			out = append(out, f)
+		}
+	}
+
+	return out
+}
+
 // RunEnv is the environment a run of the tool gets (§5.5). In the app it is base, the login
 // shell's, with the tool's quiet settings and git's terminal prompts off, since no one can
 // answer one there, each in place of base's own. In the terminal it is only the quiet
@@ -105,7 +120,7 @@ func (d Definition) RunEnv(base []string, runsIn integrationprefs.RunsIn) []stri
 	if runsIn == integrationprefs.RunsInTerminal {
 		out := []string{}
 
-		for _, k := range sortedKeys(d.QuietEnv) {
+		for _, k := range slices.Sorted(maps.Keys(d.QuietEnv)) {
 			if k != colorVar {
 				out = append(out, k+"="+d.QuietEnv[k])
 			}
@@ -117,16 +132,10 @@ func (d Definition) RunEnv(base []string, runsIn integrationprefs.RunsIn) []stri
 	set := map[string]string{"GIT_TERMINAL_PROMPT": "0"}
 	maps.Copy(set, d.QuietEnv)
 
-	out := make([]string, 0, len(base)+len(set))
+	keys := slices.Sorted(maps.Keys(set))
+	out := shellenv.Without(base, keys...)
 
-	for _, kv := range base {
-		key, _, _ := strings.Cut(kv, "=")
-		if _, replaced := set[key]; !replaced {
-			out = append(out, kv)
-		}
-	}
-
-	for _, k := range sortedKeys(set) {
+	for _, k := range keys {
 		out = append(out, k+"="+set[k])
 	}
 
@@ -146,9 +155,7 @@ func Definitions() []Definition {
 func quietEnv(own map[string]string) map[string]string {
 	env := map[string]string{colorVar: "1"}
 
-	for k, v := range own {
-		env[k] = v
-	}
+	maps.Copy(env, own)
 
 	return env
 }

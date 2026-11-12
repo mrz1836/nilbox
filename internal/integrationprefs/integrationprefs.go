@@ -4,9 +4,9 @@
 // scripts lists, whether a run Repo scripts starts shows beside its scripts, and the
 // window's memory of the Scripts tab (whether it was announced, the page and clone it
 // reopens on, and the sections the user opened or folded). The settings package writes them, and the
-// integrations, release, and scripts packages read them. It imports nothing of the app's,
-// so settings never depends on the integrations package, nor through it on the GitHub
-// client.
+// integrations, release, and scripts packages read them. It imports nothing of the app's
+// but the prefval leaf, so settings never depends on the integrations package, nor through
+// it on the GitHub client.
 package integrationprefs
 
 import (
@@ -15,10 +15,11 @@ import (
 	"fmt"
 	"path/filepath"
 	"slices"
-	"strconv"
 	"strings"
 	"unicode"
 	"unicode/utf8"
+
+	"github.com/mrz1836/nilbox/internal/prefs/prefval"
 )
 
 const (
@@ -327,15 +328,15 @@ func Keys() []string {
 func Decode(stored map[string]string) Config {
 	out := Config{
 		Switches: map[ID]Switch{}, Paths: map[ID]string{}, RunsIn: DecodeRunsIn(stored[KeyRunsIn]),
-		OfferAfterMerge: DecodeOfferAfterMerge(stored[KeyOfferAfterMerge]),
+		OfferAfterMerge: prefval.Bool(stored[KeyOfferAfterMerge], true),
 		ScriptSources: ScriptSources{
-			MagexTargets: decodeOn(stored[KeyMagexTargets]), RepoFiles: decodeOn(stored[KeyRepoFiles]),
+			MagexTargets: prefval.Bool(stored[KeyMagexTargets], true), RepoFiles: prefval.Bool(stored[KeyRepoFiles], true),
 		},
-		Announced: decodeOff(stored[KeyAnnounced]),
+		Announced: prefval.Bool(stored[KeyAnnounced], false),
 		LastPage:  DecodeLastPage(stored[KeyLastPage]),
 		LastRepo:  DecodeLastRepo(stored[KeyLastRepo]),
 		Sections:  DecodeSections(stored[KeySections]),
-		ShowRuns:  decodeOff(stored[KeyShowRuns]),
+		ShowRuns:  prefval.Bool(stored[KeyShowRuns], false),
 	}
 
 	for _, id := range IDs() {
@@ -409,39 +410,6 @@ func EncodeRunsIn(r RunsIn) (string, error) {
 	}
 
 	return string(r), nil
-}
-
-// DecodeOfferAfterMerge reads whether a merge offers a release: as stored, when it reads as
-// a boolean, else on, the default.
-func DecodeOfferAfterMerge(stored string) bool {
-	return decodeOn(stored)
-}
-
-// EncodeOfferAfterMerge returns the stored form of whether a merge offers a release.
-func EncodeOfferAfterMerge(on bool) string {
-	return EncodeOn(on)
-}
-
-// EncodeOn returns the stored form of a switch that starts on, such as a Repo scripts
-// source's: "true" or "false".
-func EncodeOn(on bool) string {
-	return strconv.FormatBool(on)
-}
-
-// decodeOn reads a switch that starts on: as stored, when it reads as a boolean, else on.
-func decodeOn(stored string) bool {
-	if on, err := strconv.ParseBool(stored); err == nil {
-		return on
-	}
-
-	return true
-}
-
-// decodeOff reads a switch that starts off: true only when it is stored as true.
-func decodeOff(stored string) bool {
-	on, err := strconv.ParseBool(stored)
-
-	return err == nil && on
 }
 
 // Valid reports whether p is one of the Scripts tab's pages (PageNone is not).

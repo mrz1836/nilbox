@@ -411,8 +411,7 @@ func TestARefreshDoesNotAnnounceAnItemMergedWhileItFetched(t *testing.T) {
 	t.Parallel()
 
 	h, sink := arrivalHarness(t)
-	h.client.inbox = fetched([]github.Item{byOther(pr(2, "OWNER", false))}, nil, []github.Item{byOther(pr(1, "OWNER", false))})
-	snap := h.refresh(t)
+	snap := h.seed(t, []github.Item{byOther(pr(2, "OWNER", false))}, nil, []github.Item{byOther(pr(1, "OWNER", false))})
 	id := itemByNumber(t, snap.Assigned, 1).ID
 
 	c := h.gatedTelling(sink)

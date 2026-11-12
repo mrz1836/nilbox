@@ -234,7 +234,7 @@ func validators() map[slot]func(string) bool {
 		slotLocalRef:       isLocalRef,
 		slotTrackingRef:    isTrackingRef,
 		slotCommitPeel:     isCommitPeel,
-		slotCommitID:       isCommitID,
+		slotCommitID:       IsCommitID,
 		slotConfigKey:      isConfigKey,
 		slotBoolKey:        isBoolKey,
 		slotUnpushedRange:  isUnpushedRange,
@@ -243,7 +243,7 @@ func validators() map[slot]func(string) bool {
 		slotPeeledTagRef:   isPeeledTagRef,
 		slotTagCommit:      isTagCommit,
 		slotCommitRange:    isCommitRange,
-		slotRemoteName:     isRemoteName,
+		slotRemoteName:     ValidRemoteName,
 	}
 }
 
@@ -292,11 +292,14 @@ func isTrackingRef(ref string) bool {
 func isCommitPeel(arg string) bool {
 	oid, ok := strings.CutSuffix(arg, commitSuffix)
 
-	return ok && isCommitID(oid)
+	return ok && IsCommitID(oid)
 }
 
-// isCommitID reports a full commit ID that can name a commit: not the null ID.
-func isCommitID(oid string) bool {
+// IsCommitID reports a full commit ID, SHA-1 or SHA-256, that can name a commit. The null
+// ID is refused: given as the old value to `update-ref -d` it turns the comparison off,
+// and git reports it as the HEAD of a worktree with no commits. internal/worktrees holds
+// its commit IDs to it too.
+func IsCommitID(oid string) bool {
 	return objectIDPattern.MatchString(oid) && strings.Trim(oid, "0") != ""
 }
 
@@ -351,16 +354,17 @@ func isUnpushedRange(arg string) bool {
 func isCommitRange(arg string) bool {
 	from, to, ok := strings.Cut(arg, "..")
 
-	return ok && isCommitID(from) && isCommitID(to)
+	return ok && IsCommitID(from) && IsCommitID(to)
 }
 
 // remoteNamePattern is what a remote's name must look like to be named in a command or a
 // config key: a letter or a digit first, then letters, digits, '.', '_', or '-'.
 var remoteNamePattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
 
-// isRemoteName reports a remote's name gitread may pass to git, which can't be read as an
-// option, a path, or a URL: remoteNamePattern, with no "..", and at most maxNameLen bytes.
-func isRemoteName(name string) bool {
+// ValidRemoteName reports a remote's name the app may pass to git, which can't be read as
+// an option, a path, or a URL: remoteNamePattern, with no "..", and at most maxNameLen
+// bytes. internal/worktrees holds the remotes it fetches from to it too.
+func ValidRemoteName(name string) bool {
 	return len(name) <= maxNameLen && remoteNamePattern.MatchString(name) && !strings.Contains(name, "..")
 }
 
@@ -401,7 +405,8 @@ func samePeeledTag(args []string) bool {
 // validBranch reports a branch name git takes that cannot be read as an option or reach
 // outside its ref folder: no leading "-", no "..", "@{", whitespace, control characters,
 // or any of ~^:?*[\, no component that is empty, starts with ".", or ends in ".lock" or
-// ".", and at most maxNameLen bytes. It is internal/worktrees' rule.
+// ".", and at most maxNameLen bytes. internal/worktrees holds its branch names to it too,
+// through ValidBranch.
 func validBranch(name string) bool {
 	if name == "" || name == "@" || len(name) > maxNameLen || strings.HasPrefix(name, "-") {
 		return false

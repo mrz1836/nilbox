@@ -66,7 +66,7 @@ func TestFetchPullReviewReadsTheSheet(t *testing.T) {
 	assert.Equal(t, ReviewMark{State: "COMMENTED", Commit: sha1s("2")}, review.ViewerReview)
 	assert.Equal(t, 1, review.PendingReviews)
 	assert.True(t, review.AutoMerge.On())
-	assert.Contains(t, review.FirstCommitMessage, "update-type: version-update:semver-patch")
+	assert.NotContains(t, pullReviewQuery, "commits(", "nothing reads a commit's message, so none is asked for")
 
 	assert.Equal(t, []Review{
 		{
@@ -162,7 +162,6 @@ func TestReviewChecksWithoutARollup(t *testing.T) {
 
 	assert.Equal(t, []Check{}, review.Checks)
 	assert.Equal(t, []Review{}, review.Reviews)
-	assert.Empty(t, review.FirstCommitMessage)
 	assert.Equal(t, ReviewMark{}, review.ViewerReview)
 
 	var check *graphQLCheck

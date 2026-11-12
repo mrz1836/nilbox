@@ -18,7 +18,7 @@ func (r *releaseRig) insertRun(kind scriptrun.Kind, result string) int64 {
 
 	now := time.Now().UTC()
 
-	got, err := r.db.ExecContext(r.t.Context(), `INSERT INTO script_runs (kind, title, dir, argv, status, result,
+	got, err := r.runner.DB.ExecContext(r.t.Context(), `INSERT INTO script_runs (kind, title, dir, argv, status, result,
 		started_at, finished_at) VALUES (?, 'A run', ?, '["/opt/tools/magex"]', 'failed', ?, ?, ?)`,
 		string(kind), r.clone, result, now, now)
 	require.NoError(r.t, err)

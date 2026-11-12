@@ -125,10 +125,9 @@ func mine(nickname string) BundlePrompt {
 func TestBundleRoundTrips(t *testing.T) {
 	t.Parallel()
 
-	on := true
 	b := bundleOf(BundlePrompt{
 		Name: "Security <pass> & more", Nickname: "Security", AppliesTo: AppliesToAny, Body: "Check {{.URL}} for <script>",
-		Models: map[agent.ID]string{agent.Claude: "opus", agent.Codex: "gpt-6-sol"}, Effort: "high", PlanMode: &on,
+		Models: map[agent.ID]string{agent.Claude: "opus", agent.Codex: "gpt-6-sol"}, Effort: "high", PlanMode: new(true),
 		ExtraArgs: map[agent.ID][]string{agent.Claude: {"--verbose"}, agent.Codex: {"--search"}}, StarterKey: "",
 		CreatedAt: "2026-11-07T09:00:00Z", UpdatedAt: "2026-11-07T09:30:00Z",
 	})
@@ -387,7 +386,7 @@ func TestImportIsAllOrNothing(t *testing.T) {
 	s, db, _ := keeping(t)
 	before := nicknames(t, s)
 
-	exec(t, db, `CREATE TRIGGER refuse_second BEFORE INSERT ON prompts WHEN NEW.nickname = 'Second'
+	testutil.Exec(t, db, `CREATE TRIGGER refuse_second BEFORE INSERT ON prompts WHEN NEW.nickname = 'Second'
 BEGIN SELECT RAISE(ABORT, 'refused by the test'); END`)
 
 	_, err := s.Import(t.Context(), []BundlePrompt{mine("First"), mine("Second")})

@@ -215,24 +215,15 @@ func setReviewRequests(ctx context.Context, q *queries.Queries, id int64, r gith
 // encodeReviewRequests encodes who a pull request asks to review for its two columns,
 // each always an array.
 func encodeReviewRequests(r github.ReviewRequests) (users, teams string, err error) {
-	if users, err = store.EncodeJSON(nonNil(r.Users)); err != nil {
+	if users, err = store.EncodeJSON(r.Users); err != nil {
 		return "", "", err
 	}
 
-	if teams, err = store.EncodeJSON(nonNil(r.Teams)); err != nil {
+	if teams, err = store.EncodeJSON(r.Teams); err != nil {
 		return "", "", err
 	}
 
 	return users, teams, nil
-}
-
-// nonNil returns s, or an empty slice for nil.
-func nonNil(s []string) []string {
-	if s == nil {
-		return []string{}
-	}
-
-	return s
 }
 
 // later returns the later of a and b.

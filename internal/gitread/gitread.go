@@ -127,7 +127,7 @@ func (g *Git) remote(parent context.Context, dir string, args []string) (stdout,
 
 	base := g.env()
 
-	setup, stderr, err := g.remoteGuard(ctx, dir, environmentOf(base), lookupVar(base, allowProtocolVar))
+	setup, stderr, err := g.remoteGuard(ctx, dir, environmentOf(base), userAllowOf(base))
 	if err == nil {
 		stdout, stderr, err = g.exec(ctx, dir, setup.env, setup.extra, args)
 	}
@@ -277,16 +277,8 @@ func (g *Git) environment() []string { return environmentOf(g.env()) }
 
 // environmentOf is environment over base.
 func environmentOf(base []string) []string {
-	dropped := droppedVars()
-	env := make([]string, 0, len(base)+4)
-
-	for _, kv := range base {
-		if key, _, _ := strings.Cut(kv, "="); !slices.Contains(dropped, key) {
-			env = append(env, kv)
-		}
-	}
-
-	return append(env, "GIT_OPTIONAL_LOCKS=0", "GIT_TERMINAL_PROMPT=0", "GIT_NO_LAZY_FETCH=1", allowProtocolVar+"=")
+	return append(shellenv.Without(base, droppedVars()...),
+		"GIT_OPTIONAL_LOCKS=0", "GIT_TERMINAL_PROMPT=0", "GIT_NO_LAZY_FETCH=1", allowProtocolVar+"=")
 }
 
 // hardening are the settings every command runs with: the file system monitor and
@@ -356,7 +348,9 @@ func droppedVars() []string {
 // hasVar reports whether env sets key, to any value: git reads an empty GIT_SSH_COMMAND
 // as set, too.
 func hasVar(env []string, key string) bool {
-	return slices.ContainsFunc(env, func(kv string) bool { return strings.HasPrefix(kv, key+"=") })
+	_, set := shellenv.LookupOK(env, key)
+
+	return set
 }
 
 // execRunner is the default Runner: an execpath.Exec that runs with env and finds git as

@@ -105,16 +105,31 @@ func TestRunDisplay(t *testing.T) {
 	assert.Equal(t, "magex lint fix=true", runDisplay(magex, v, []string{"fix=true"}))
 }
 
-func TestQuote(t *testing.T) {
+func TestShow(t *testing.T) {
 	t.Parallel()
 
 	for in, want := range map[string]string{
-		"plain": "plain", "a/b.c-d_e=f:g,h+i@j%k": "a/b.c-d_e=f:g,h+i@j%k", "": "''", "two words": "'two words'",
-		"it's": `'it'\''s'`, "$HOME": "'$HOME'", "a;b": "'a;b'",
+		"${workspaceFolder}/out": "${workspaceFolder}/out",
+		"a/b.c-d_e=f:g,h+i@j%k":  "a/b.c-d_e=f:g,h+i@j%k",
+		"two words":              "'two words'",
+		"":                       "''",
+		"it's":                   `'it'\''s'`,
+		"a;b":                    "'a;b'",
+		"${input:two words}":     "'${input:two words}'",
+		"=${env:X}":              "'=${env:X}'",
+		"café":                   "'café'",
 	} {
-		assert.Equal(t, want, quote(in), in)
+		assert.Equal(t, want, show(in), in)
 	}
+}
 
-	assert.Equal(t, "${workspaceFolder}/out", show("${workspaceFolder}/out"), "a variable stays readable")
-	assert.Equal(t, "'two words'", show("two words"))
+func TestQuoteArgv(t *testing.T) {
+	t.Parallel()
+
+	assert.Equal(t, "/usr/bin/env A=b /opt/bin/tool 'two words' ''",
+		quoteArgv([]string{envProgram, "A=b", "/opt/bin/tool", "two words", ""}))
+	assert.Equal(t, "'/opt/my tools/x' -v", quoteArgv([]string{"/opt/my tools/x", "-v"}))
+	assert.Equal(t, "'A=b' x", quoteArgv([]string{"A=b", "x"}), "a program that isn't a path never reads as a variable")
+	assert.Equal(t, "'zsh' -c 'magex lint'", quoteArgv([]string{"zsh", "-c", "magex lint"}))
+	assert.Empty(t, quoteArgv(nil))
 }

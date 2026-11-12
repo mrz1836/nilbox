@@ -95,8 +95,12 @@ func TestRunReturnsWhenAGrandchildHoldsStdout(t *testing.T) {
 	g := grandchild(t, false)
 	path, env := testutil.FakeTool(t, "tool", testutil.FakeRun{Stdout: "done\n", Grandchild: g})
 
+	// Waiting less for the grandchild than the app does (runWaitDelay) changes nothing
+	// but how long the test takes.
+	run := execpath.WithWaitDelay(execpath.Exec{Env: append(os.Environ(), env)}, 100*time.Millisecond)
+
 	start := time.Now()
-	stdout, _, err := execpath.Exec{Env: append(os.Environ(), env)}.Run(t.Context(), path)
+	stdout, _, err := run.Run(t.Context(), path)
 
 	require.NoError(t, err, "the program exited 0; its grandchild holding stdout isn't a failure")
 	assert.Equal(t, "done\n", string(stdout))
@@ -122,10 +126,17 @@ func TestGroupStopEndsGrandchildren(t *testing.T) {
 func TestGroupEscalatesWhenSignalsAreIgnored(t *testing.T) {
 	t.Parallel()
 
-	proc, _ := startFake(t, t.Context(), testutil.FakeRun{Sleep: time.Minute, IgnoreSignals: true})
+	// The fake writes ready once it ignores signals, which the first one sent waits for.
+	ready := filepath.Join(t.TempDir(), "ready")
+	proc, _ := startFake(t, t.Context(), testutil.FakeRun{
+		Sleep: time.Minute, IgnoreSignals: true, Files: []testutil.FakeFile{{Path: ready}},
+	})
 
-	// Let the fake start ignoring signals before the first one is sent.
-	time.Sleep(200 * time.Millisecond)
+	require.Eventually(t, func() bool {
+		_, err := os.Stat(ready)
+
+		return err == nil
+	}, processWait, 10*time.Millisecond, "the fake ignores signals")
 
 	proc.Stop(fastLadder())
 
@@ -259,7 +270,7 @@ func TestGroupReportsExitCodes(t *testing.T) {
 	select {
 	case <-proc.Done():
 	default:
-		t.Fatal("Done is closed once the program exited")
+		require.FailNow(t, "Done is closed once the program exited")
 	}
 
 	assert.Equal(t, proc.Pid(), proc.Pgid(), "the program leads its own group")

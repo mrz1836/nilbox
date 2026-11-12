@@ -13,6 +13,7 @@ import (
 	"strings"
 
 	"github.com/mrz1836/nilbox/internal/gitread"
+	"github.com/mrz1836/nilbox/internal/paths"
 )
 
 const (
@@ -163,7 +164,7 @@ func fileSum(dir, rel string, hash bool) string {
 		return fmt.Sprintf("size:%d time:%d", info.Size(), info.ModTime().UnixNano())
 	}
 
-	f, err := openChecked(path)
+	f, err := paths.OpenRegular(path)
 	if err != nil {
 		return "unreadable"
 	}

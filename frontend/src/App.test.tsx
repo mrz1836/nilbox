@@ -148,6 +148,27 @@ describe('App', () => {
     expect(await screen.findByRole('region', { name: 'Review requested' })).toBeInTheDocument()
   })
 
+  it('keeps the toolbar in the window however far a page scrolls, scrolling only the page area', async () => {
+    await renderApp()
+    await openSettingsFromMenu()
+
+    // jsdom lays nothing out, so this pins the structure the layout relies on: the toolbar
+    // and the page area are the window column's own, the column is the window's height and
+    // holds and clips everything positioned inside it, and only the page area scrolls.
+    const toolbar = screen.getByRole('banner')
+    const column = toolbar.parentElement
+    const pages = screen.getByRole('main')
+    expect(column).toHaveClass('relative', 'flex', 'h-screen', 'flex-col', 'overflow-clip')
+    expect(pages.parentElement).toBe(column)
+    expect(pages).toHaveClass('min-h-0', 'flex-1', 'overflow-y-auto')
+    expect(pages).toContainElement(screen.getByRole('navigation', { name: 'Settings sections' }))
+
+    // Nothing that holds the toolbar can be scrolled, by a person or by scrollIntoView.
+    for (let el = column; el !== null; el = el.parentElement) {
+      expect(el.className).not.toMatch(/\boverflow-(?:[xy]-)?(?:auto|scroll|hidden)\b/)
+    }
+  })
+
   it('keeps the inbox lists collapsed the way they were left, across views', async () => {
     platform.getCollapsedSections.mockResolvedValue(['assigned'])
     await renderApp()

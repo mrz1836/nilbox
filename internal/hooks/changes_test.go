@@ -28,20 +28,20 @@ func newChangesRig(t *testing.T) changesRig {
 	dir := filepath.Join(testutil.RealTempDir(t), "clone")
 
 	testutil.InitRepo(t, dir)
-	writeFile(t, dir, "README.md", "# clone  \n", 0o600)
-	writeFile(t, dir, "docs/setup.md", "setup\n", 0o600)
-	writeFile(t, dir, "main.go", "package main\n", 0o600)
-	writeFile(t, dir, "both.go", "package main\n", 0o600)
+	testutil.WriteFileMode(t, filepath.Join(dir, "README.md"), "# clone  \n", 0o600)
+	testutil.WriteFileMode(t, filepath.Join(dir, "docs/setup.md"), "setup\n", 0o600)
+	testutil.WriteFileMode(t, filepath.Join(dir, "main.go"), "package main\n", 0o600)
+	testutil.WriteFileMode(t, filepath.Join(dir, "both.go"), "package main\n", 0o600)
 	testutil.RunGit(t, dir, "add", ".")
 	testutil.RunGit(t, dir, "commit", "-q", "-m", "first")
 
-	writeFile(t, dir, "docs/setup.md", "setup\nmore  \n", 0o600)
-	writeFile(t, dir, "main.go", "package main\n\nfunc main() {}\n", 0o600)
+	testutil.WriteFileMode(t, filepath.Join(dir, "docs/setup.md"), "setup\nmore  \n", 0o600)
+	testutil.WriteFileMode(t, filepath.Join(dir, "main.go"), "package main\n\nfunc main() {}\n", 0o600)
 	testutil.RunGit(t, dir, "add", "main.go")
-	writeFile(t, dir, "both.go", "package main // staged\n", 0o600)
+	testutil.WriteFileMode(t, filepath.Join(dir, "both.go"), "package main // staged\n", 0o600)
 	testutil.RunGit(t, dir, "add", "both.go")
-	writeFile(t, dir, "both.go", "package main // staged, then edited\n", 0o600)
-	writeFile(t, dir, "notes.txt", "notes\n", 0o600)
+	testutil.WriteFileMode(t, filepath.Join(dir, "both.go"), "package main // staged, then edited\n", 0o600)
+	testutil.WriteFileMode(t, filepath.Join(dir, "notes.txt"), "notes\n", 0o600)
 
 	git := gitread.New(gitread.Config{Env: func() []string { return env }})
 
@@ -59,19 +59,19 @@ func TestChangedFilesFindsEveryChange(t *testing.T) {
 
 	// What whitespace does: fix README.md and stage it, and fix docs/setup.md, already
 	// dirty, staging it with the user's own edit.
-	writeFile(t, r.dir, "README.md", "# clone\n", 0o600)
-	writeFile(t, r.dir, "docs/setup.md", "setup\nmore\n", 0o600)
+	testutil.WriteFileMode(t, filepath.Join(r.dir, "README.md"), "# clone\n", 0o600)
+	testutil.WriteFileMode(t, filepath.Join(r.dir, "docs/setup.md"), "setup\nmore\n", 0o600)
 	testutil.RunGit(t, r.dir, "add", "README.md", "docs/setup.md")
 
 	// Rewrite the dirty both.go without changing its status: only its hash tells.
-	writeFile(t, r.dir, "both.go", "package main // staged, then edited, then fixed\n", 0o600)
+	testutil.WriteFileMode(t, filepath.Join(r.dir, "both.go"), "package main // staged, then edited, then fixed\n", 0o600)
 
 	// Bring main.go back to its last commit, index and all.
 	testutil.RunGit(t, r.dir, "reset", "-q", "main.go")
-	writeFile(t, r.dir, "main.go", "package main\n", 0o600)
+	testutil.WriteFileMode(t, filepath.Join(r.dir, "main.go"), "package main\n", 0o600)
 
 	// A new untracked file.
-	writeFile(t, r.dir, "fixed.txt", "new\n", 0o600)
+	testutil.WriteFileMode(t, filepath.Join(r.dir, "fixed.txt"), "new\n", 0o600)
 
 	after := r.svc.takeAfter(t.Context(), r.dir, before)
 	require.NoError(t, after.err)
@@ -105,7 +105,7 @@ func TestChangedFilesSeesAFileRewrittenWithItsSize(t *testing.T) {
 	before := r.svc.read(t.Context(), r.dir, func(int) bool { return false })
 	assert.False(t, before.hashed)
 
-	writeFile(t, r.dir, "notes.txt", "longer notes\n", 0o600)
+	testutil.WriteFileMode(t, filepath.Join(r.dir, "notes.txt"), "longer notes\n", 0o600)
 
 	after := r.svc.takeAfter(t.Context(), r.dir, before)
 	assert.False(t, after.hashed)
@@ -124,7 +124,7 @@ func TestFileSum(t *testing.T) {
 	t.Parallel()
 
 	dir := t.TempDir()
-	writeFile(t, dir, "a.txt", "a", 0o600)
+	testutil.WriteFileMode(t, filepath.Join(dir, "a.txt"), "a", 0o600)
 	require.NoError(t, os.Symlink("a.txt", filepath.Join(dir, "link")))
 	require.NoError(t, os.MkdirAll(filepath.Join(dir, "sub"), 0o700))
 

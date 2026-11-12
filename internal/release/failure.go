@@ -276,10 +276,7 @@ func endedOnSignal(end scriptrun.Ending) bool {
 // refusedHeading quotes the rule origin said the tag broke. The tag is the one magex
 // made, which is the version shown unless it moved.
 func refusedHeading(in FailureInput, _ string) (string, string) {
-	tag := in.Output.Tag
-	if tag == "" {
-		tag = in.Version
-	}
+	tag := cmp.Or(in.Output.Tag, in.Version)
 
 	quote := in.Output.Refused
 

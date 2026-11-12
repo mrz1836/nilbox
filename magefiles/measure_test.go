@@ -13,6 +13,7 @@ import (
 
 	"github.com/mrz1836/nilbox/internal/brand"
 	"github.com/mrz1836/nilbox/internal/measure"
+	"github.com/mrz1836/nilbox/internal/testutil"
 )
 
 // fakeBundle writes an app bundle under bin/ in the working directory, with an executable
@@ -21,7 +22,7 @@ func fakeBundle(t *testing.T, body string) string {
 	t.Helper()
 
 	exe := filepath.Join("bin", brand.Name+".app", "Contents", "MacOS", brand.Slug)
-	writeExecutable(t, exe, "#!/bin/sh\n"+body+"\n")
+	testutil.WriteExecutable(t, exe, "#!/bin/sh\n"+body+"\n")
 
 	return exe
 }
@@ -66,7 +67,7 @@ func TestMeasureOnMacOS(t *testing.T) {
 	t.Run("size reports the binary and the bundle", func(t *testing.T) {
 		inTempDir(t)
 		exe := fakeBundle(t, "exit 0")
-		writeFile(t, filepath.Join(filepath.Dir(filepath.Dir(exe)), "Info.plist"), strings.Repeat("x", 100))
+		testutil.WriteFile(t, filepath.Join(filepath.Dir(filepath.Dir(exe)), "Info.plist"), strings.Repeat("x", 100))
 
 		info, err := os.Stat(exe)
 		require.NoError(t, err)

@@ -112,11 +112,15 @@ func TestFocusWithoutATerminal(t *testing.T) {
 		"odd output":   {Stdout: "two words\n"},
 		"just a query": {Stdout: "?\n"},
 	} {
-		svc := newService(t, ps, &fakeFocuser{})
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 
-		err := svc.Focus(t.Context(), "s1")
-		require.ErrorIs(t, err, sessions.ErrNoTerminal, name)
-		assert.Contains(t, uierr.Message(err), "Couldn't find the session's terminal", name)
+			svc := newService(t, ps, &fakeFocuser{})
+
+			err := svc.Focus(t.Context(), "s1")
+			require.ErrorIs(t, err, sessions.ErrNoTerminal)
+			assert.Contains(t, uierr.Message(err), "Couldn't find the session's terminal")
+		})
 	}
 }
 

@@ -28,6 +28,17 @@ func WriteExecutable(t testing.TB, path, content string) {
 	require.NoError(t, os.WriteFile(path, []byte(content), 0o700)) //nolint:gosec // a test executable must be runnable
 }
 
+// WriteFileMode writes content to path, creating its directory, and leaves the file with
+// exactly mode: it is set again after the write, so neither the umask nor the mode of a
+// file already at path changes it.
+func WriteFileMode(t testing.TB, path, content string, mode os.FileMode) {
+	t.Helper()
+
+	require.NoError(t, os.MkdirAll(filepath.Dir(path), 0o700))
+	require.NoError(t, os.WriteFile(path, []byte(content), mode))
+	require.NoError(t, os.Chmod(path, mode))
+}
+
 // RealTempDir returns a new temporary directory with its symbolic links resolved. On
 // macOS the temporary directory sits under one, and code that resolves a path, as an agent
 // does with its working directory, sees the resolved form.

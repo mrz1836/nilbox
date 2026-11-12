@@ -45,10 +45,10 @@ func stopOffReason(forward bool, branch string) string {
 // there. A line magex prints is read within the runner's tail interval, so a Stop in that
 // moment is judged on the line before it.
 func (r *OutputReader) Progress(in Intent) scriptrun.Progress {
-	r.mu.Lock()
+	r.Lock()
 	step, working, tag, branch, back := r.out.Step, r.out.Working, r.out.Tag, r.out.Branch, r.out.BackOn
 	forward := in.FastForward || r.out.FastForward
-	r.mu.Unlock()
+	r.Unlock()
 
 	branch = cmp.Or(branch, in.Branch)
 	away := step.Reached(StepOnBranch) && branch != "" && branch != in.Original && back == ""

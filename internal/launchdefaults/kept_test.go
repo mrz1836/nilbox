@@ -161,10 +161,9 @@ func TestRestoreMatchesPromptsByNickname(t *testing.T) {
 	t.Parallel()
 
 	h := newHarness(t)
-	off := false
 
 	n, err := launchdefaults.Restore(t.Context(), h.store, []launchdefaults.Kept{
-		{Owner: acme, Profiles: claude("gone"), PRPrompt: "Review", IssuePrompt: "Renamed away", PlanMode: &off},
+		{Owner: acme, Profiles: claude("gone"), PRPrompt: "Review", IssuePrompt: "Renamed away", PlanMode: new(false)},
 		{
 			Owner: acme, Name: exampleRepo, Effort: "huge", Agent: "example-agent",
 			Models:    map[agent.ID]string{agent.Claude: "sonnet", agent.Codex: "-bad", "example-agent": "x"},
@@ -263,10 +262,9 @@ func TestReadSnapshotReadsAnOlderSchema(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	on := true
 	assert.Equal(t, []launchdefaults.Kept{{
 		Owner: acme, Profiles: claude("work"), PRPrompt: "Review", Models: claude(opusModel), Effort: "xhigh",
-		Worktree: &on, ExtraArgs: map[agent.ID][]string{},
+		Worktree: new(true), ExtraArgs: map[agent.ID][]string{},
 	}}, got, "an older backup's settings were Claude's")
 
 	_, err = launchdefaults.ReadSnapshot(t.Context(), filepath.Join(t.TempDir(), "missing.db"), nil)
@@ -283,11 +281,10 @@ func TestLoadReadsAVersionOneCopy(t *testing.T) {
 		{"owner": "acme-org", "name": "example-repo", "agent": "", "profile": "", "model": "", "extraArgs": null}
 	]}`)
 
-	on := true
 	assert.Equal(t, []launchdefaults.Kept{
 		{
 			Owner: acme, Agent: agent.Claude, Profiles: claude("work"), PRPrompt: "Review", Models: claude(opusModel),
-			Effort: "high", Worktree: &on, ExtraArgs: map[agent.ID][]string{agent.Claude: {"--verbose"}},
+			Effort: "high", Worktree: new(true), ExtraArgs: map[agent.ID][]string{agent.Claude: {"--verbose"}},
 		},
 		{
 			Owner: acme, Name: exampleRepo, Profiles: map[agent.ID]string{}, Models: map[agent.ID]string{},

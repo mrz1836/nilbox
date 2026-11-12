@@ -23,6 +23,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/brand"
 	"github.com/mrz1836/nilbox/internal/integrationprefs"
 	"github.com/mrz1836/nilbox/internal/integrations"
+	"github.com/mrz1836/nilbox/internal/paths"
 	"github.com/mrz1836/nilbox/internal/textutil"
 )
 
@@ -61,24 +62,15 @@ func wrapperNamespaces() []string {
 	}
 }
 
-// ToolFacts is what Repo scripts knows of magex: the copy in use, and whether it can run.
+// ToolFacts is what Repo scripts knows of magex: the copy in use, and whether it can run
+// (integrations.CopyFacts).
 type ToolFacts struct {
-	// Path is the copy in use, absolute, or "" when there is none; Version is its version
-	// as printed, without a leading v.
-	Path    string
-	Version string
-
-	// State is what the settings say of it, and Off reports the user turned mage-x off.
-	State integrations.State
-	Off   bool
+	integrations.CopyFacts
 }
 
 // ToolFactsOf reads magex's facts from what the settings show of it.
 func ToolFactsOf(tool integrations.Tool) ToolFacts {
-	return ToolFacts{
-		Path: tool.Copy.Path, Version: tool.Copy.Version.Raw, State: tool.State,
-		Off: tool.Switch == integrationprefs.SwitchOff,
-	}
+	return ToolFacts{CopyFacts: integrations.CopyFactsOf(integrations.MageX(), tool)}
 }
 
 // Tools is what Repo scripts knows of the integrations' tools: magex, and whether mage-x
@@ -93,16 +85,6 @@ type Tools struct {
 // ToolsOf reads the tools from what the settings show of mage-x and go-pre-commit.
 func ToolsOf(mageX, goPreCommit integrations.Tool) Tools {
 	return Tools{Magex: ToolFactsOf(mageX), MageXOn: mageX.On, GoPreCommitOn: goPreCommit.On}
-}
-
-// Usable reports a copy the page can run: on, found, and new enough.
-func (t ToolFacts) Usable() bool {
-	return !t.Off && t.Path != "" && t.State.Usable()
-}
-
-// key names the copy, for the built-ins it listed.
-func (t ToolFacts) key() string {
-	return t.Path + "@" + t.Version
 }
 
 // why says why magex can't run.
@@ -228,18 +210,18 @@ type listedBuiltins struct {
 // its caller's context is tried again.
 func (s *Service) builtinsOf(ctx context.Context, tool ToolFacts) (builtins, error) {
 	s.mu.Lock()
-	got, ok := s.listed[tool.key()]
+	got, ok := s.listed[tool.Key()]
 	s.mu.Unlock()
 
 	if ok {
 		return got.builtins, got.err
 	}
 
-	return s.listing.Do(ctx, tool.key(), func(ctx context.Context) (builtins, error) {
+	return s.listing.Do(ctx, tool.Key(), func(ctx context.Context) (builtins, error) {
 		got, err := s.loadBuiltins(ctx, tool)
 		if ctx.Err() == nil {
 			s.mu.Lock()
-			s.listed[tool.key()] = listedBuiltins{builtins: got, err: err}
+			s.listed[tool.Key()] = listedBuiltins{builtins: got, err: err}
 			s.mu.Unlock()
 		}
 
@@ -250,7 +232,7 @@ func (s *Service) builtinsOf(ctx context.Context, tool ToolFacts) (builtins, err
 // forgetBuiltins drops what the copy tool listed, so the next look lists them again.
 func (s *Service) forgetBuiltins(tool ToolFacts) {
 	s.mu.Lock()
-	delete(s.listed, tool.key())
+	delete(s.listed, tool.Key())
 	s.mu.Unlock()
 }
 
@@ -301,30 +283,30 @@ func readMagefiles(dir string) magefiles {
 		return magefiles{}
 	}
 
-	base, paths, goFiles := filepath.Dir(root), []string{root}, []string{root}
+	base, files, goFiles := filepath.Dir(root), []string{root}, []string{root}
 
 	if !single {
 		var err error
-		if paths, err = walkFiles(root); err != nil {
+		if files, err = walkFiles(root); err != nil {
 			return magefiles{found: true, readErr: err}
 		}
 
-		base, goFiles = root, targetFiles(root, paths)
+		base, goFiles = root, targetFiles(root, files)
 	}
 
 	mf := magefiles{found: true}
 	mf.targets, mf.readErr = parseTargets(goFiles)
-	mf.files, mf.sumErr = sumFiles(base, paths)
+	mf.files, mf.sumErr = sumFiles(base, files)
 
 	return mf
 }
 
-// targetFiles returns the files of paths magex reads targets from: the .go files directly
-// in root, tests aside.
-func targetFiles(root string, paths []string) []string {
+// targetFiles returns those of files magex reads targets from: the .go files directly in
+// root, tests aside.
+func targetFiles(root string, files []string) []string {
 	var out []string
 
-	for _, p := range paths {
+	for _, p := range files {
 		if filepath.Dir(p) == root && strings.HasSuffix(p, ".go") && !strings.HasSuffix(p, "_test.go") {
 			out = append(out, p)
 		}
@@ -384,12 +366,12 @@ func walkFiles(root string) ([]string, error) {
 	return out, err
 }
 
-// sumFiles sums each file of paths, named relative to root.
-func sumFiles(root string, paths []string) ([]fileSum, error) {
-	out := make([]fileSum, 0, len(paths))
+// sumFiles sums each of files, named relative to root.
+func sumFiles(root string, files []string) ([]fileSum, error) {
+	out := make([]fileSum, 0, len(files))
 	budget := int64(maxMagefileBytes)
 
-	for _, p := range paths {
+	for _, p := range files {
 		sum, err := sumPath(root, p, &budget)
 		if err != nil {
 			return nil, err
@@ -455,10 +437,11 @@ func linkTarget(p string) (string, fs.FileInfo, error) {
 	return link, info, err
 }
 
-// sumFile returns the SHA-256 of the file at path, taking what it read from budget, and
-// fails once budget runs out.
+// sumFile returns the SHA-256 of the regular file at path, taking what it read from
+// budget, and fails once budget runs out. Anything else, a pipe swapped in included, is
+// refused (paths.OpenRegular).
 func sumFile(path string, budget *int64) (string, error) {
-	f, err := os.Open(path) //nolint:gosec // a file under the clone's magefiles
+	f, err := paths.OpenRegular(path)
 	if err != nil {
 		return "", err
 	}

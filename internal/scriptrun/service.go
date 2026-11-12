@@ -195,7 +195,7 @@ func (s *Service) OpenInTerminal(ctx context.Context, id int64) error {
 		return uierr.New(paths.Tilde(rec.Dir, s.e.home)+" isn't there anymore.", fmt.Errorf("%w: %s", ErrNoFolder, rec.Dir))
 	}
 
-	if err = s.e.terminal.OpenFolder(ctx, fmt.Sprintf("run-%d", id), rec.Dir); err != nil {
+	if err = s.e.terminal.OpenFolder(ctx, ScriptName(id), rec.Dir); err != nil {
 		return fmt.Errorf("open the terminal in the run's folder: %w", err)
 	}
 
@@ -265,9 +265,9 @@ func (s *Service) view(rec Record) Run {
 		run.LogBytes = s.e.files.size(rec.ID)
 	}
 
-	// Progress and Stop are a going run's alone. The engine records a run's end a moment
-	// before it marks the run ended, and lets go of it a moment after: a record read as
-	// ended, or a run marked ended since its record was read, has ended either way.
+	// Progress and Stop are a going run's alone. The engine marks a run ended a moment
+	// before it records its end, and lets go of it a moment after: a record read as ended,
+	// or a run marked ended since its record was read, has ended either way.
 	if l == nil || l.settling || !rec.Status.Live() {
 		return run
 	}

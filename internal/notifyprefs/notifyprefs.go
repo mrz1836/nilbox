@@ -1,14 +1,15 @@
 // Package notifyprefs reads and writes which kinds of notification show a banner, the
 // pref the settings page changes and the notify package obeys. It imports nothing of the
-// app's, so the settings service does not depend on the notify package, nor through it
-// on the inbox and the GitHub client.
+// app's but the prefval leaf, so the settings service does not depend on the notify
+// package, nor through it on the inbox and the GitHub client.
 package notifyprefs
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"slices"
+
+	"github.com/mrz1836/nilbox/internal/prefs/prefval"
 )
 
 // KeyBannersOff is the prefs key listing, as a JSON array, the kinds of notification whose
@@ -84,7 +85,8 @@ func (k Kind) DefaultOn() bool {
 // first lists it, and one that starts off is off unless the second lists it. A value that
 // is unset ("") or cannot be read lists none, and kinds that are not known are dropped.
 func DecodeBannersOff(storedOff, storedOn string) []Kind {
-	listedOff, listedOn := decodeList(storedOff), decodeList(storedOn)
+	listedOff, _ := prefval.List[Kind](storedOff)
+	listedOn, _ := prefval.List[Kind](storedOn)
 	off := []Kind{}
 
 	for _, kind := range Kinds() {
@@ -136,22 +138,5 @@ func EncodeBanners(off []Kind) (storedOff, storedOn string) {
 		}
 	}
 
-	return encodeList(offList), encodeList(onList)
-}
-
-// decodeList reads a stored JSON array of kinds, or none when it cannot be read.
-func decodeList(stored string) []Kind {
-	var listed []Kind
-	if json.Unmarshal([]byte(stored), &listed) != nil {
-		return nil
-	}
-
-	return listed
-}
-
-// encodeList writes kinds as a JSON array.
-func encodeList(kinds []Kind) string {
-	b, _ := json.Marshal(kinds) //nolint:errchkjson // a []Kind always encodes
-
-	return string(b)
+	return prefval.EncodeList(offList), prefval.EncodeList(onList)
 }

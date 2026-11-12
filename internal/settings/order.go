@@ -4,13 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"slices"
-	"strconv"
 	"strings"
 	"unicode/utf8"
 
+	"github.com/mrz1836/nilbox/internal/prefs/prefval"
 	"github.com/mrz1836/nilbox/internal/store"
-	"github.com/mrz1836/nilbox/internal/textutil"
 )
 
 // keyStatusSortPrefix starts the key that stores whether an inbox list is sorted by
@@ -68,7 +66,7 @@ func decodeInboxOrder(stored map[string]string) InboxOrder {
 	out := InboxOrder{StatusSorted: []ListKey{}, StatusOrder: []string{}}
 
 	for _, list := range listKeys() {
-		if on, err := strconv.ParseBool(stored[statusSortKey(list)]); err == nil && on {
+		if prefval.Bool(stored[statusSortKey(list)], false) {
 			out.StatusSorted = append(out.StatusSorted, list)
 		}
 	}
@@ -118,12 +116,11 @@ func (s *Service) InboxOrder(ctx context.Context) (InboxOrder, error) {
 // SetStatusSort stores whether an inbox list is sorted by project status, rather than by
 // newest activity, and returns the settings with it.
 func (s *Service) SetStatusSort(ctx context.Context, section ListKey, on bool) (Settings, error) {
-	if !slices.Contains(listKeys(), section) {
-		return Settings{}, fmt.Errorf("%w %q: choose one of %s", ErrUnknownSection, section,
-			textutil.Join(listKeys(), ", "))
+	if err := sections().check(section); err != nil {
+		return Settings{}, err
 	}
 
-	return s.save(ctx, setting(statusSortKey(section), strconv.FormatBool(on)))
+	return s.save(ctx, setting(statusSortKey(section), prefval.EncodeBool(on)))
 }
 
 // SetStatusOrder stores the user's order of project status names, first ranked highest,

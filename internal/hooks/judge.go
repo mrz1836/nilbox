@@ -1,6 +1,7 @@
 package hooks
 
 import (
+	"cmp"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -12,6 +13,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/execpath"
 	"github.com/mrz1836/nilbox/internal/integrationprefs"
 	"github.com/mrz1836/nilbox/internal/integrations"
+	"github.com/mrz1836/nilbox/internal/paths"
 	"github.com/mrz1836/nilbox/internal/uierr"
 )
 
@@ -66,7 +68,7 @@ func (s *Service) judgeBytes(ctx context.Context, hook hookFile, tool ToolFacts)
 		return false, false, nil
 	}
 
-	if current, known = s.judged.get(tool.key(), hook.sha); known {
+	if current, known = s.judged.get(tool.Key(), hook.sha); known {
 		return current, true, nil
 	}
 
@@ -93,7 +95,7 @@ func (s *Service) judgeBytes(ctx context.Context, hook hookFile, tool ToolFacts)
 		return false, false, nil
 	}
 
-	s.judged.set(tool.key(), hook.sha, current)
+	s.judged.set(tool.Key(), hook.sha, current)
 
 	return current, true, nil
 }
@@ -101,7 +103,7 @@ func (s *Service) judgeBytes(ctx context.Context, hook hookFile, tool ToolFacts)
 // readJudged reads hook's bytes for status to judge, and reports whether they are the bytes
 // it was read with: a hook that changed since, or is too big to be one, isn't judged.
 func readJudged(hook hookFile) ([]byte, bool) {
-	data, err := readSmall(hook.path, hookLimit)
+	data, err := paths.ReadHead(hook.path, hookLimit)
 	sum := sha256.Sum256(data)
 
 	return data, err == nil && hex.EncodeToString(sum[:]) == hook.sha
@@ -152,10 +154,7 @@ func (s *Service) statusOf(ctx context.Context, hook []byte, tool ToolFacts) (st
 // send status elsewhere, hook as its pre-commit hook, and an empty modular config, which
 // status needs. It returns the repository's folder, which the caller removes.
 func (s *Service) scratchRepo(hook []byte) (string, error) {
-	root := s.scratch
-	if root == "" {
-		root = os.TempDir()
-	}
+	root := cmp.Or(s.scratch, os.TempDir())
 
 	if err := os.MkdirAll(root, 0o700); err != nil {
 		return "", fmt.Errorf("make the scratch folder: %w", err)

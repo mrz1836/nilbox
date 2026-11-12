@@ -3,11 +3,11 @@ package claude
 import (
 	"bytes"
 	"encoding/json"
-	"errors"
 	"fmt"
-	"io"
-	"os"
+	"slices"
 	"strings"
+
+	"github.com/mrz1836/nilbox/internal/paths"
 )
 
 // tailBytes is how much of a transcript's end is read for its last message, and
@@ -41,20 +41,21 @@ func LastMessage(path string) (string, error) {
 	return lastMessageIn(path, tailBytes)
 }
 
-// lastMessageIn is LastMessage, reading the last n bytes of the transcript.
+// lastMessageIn is LastMessage, reading the last n bytes of the transcript. Only a regular
+// file, or a link to one, is read (paths.ReadTail), so a pipe never blocks the read.
 func lastMessageIn(path string, n int64) (string, error) {
-	tail, err := readTail(path, n)
+	data, cut, err := paths.ReadTail(path, n)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("read the transcript: %w", err)
 	}
 
-	lines := bytes.Split(tail.data, []byte("\n"))
-	if tail.cut && len(lines) > 0 {
+	lines := bytes.Split(data, []byte("\n"))
+	if cut && len(lines) > 0 {
 		lines = lines[1:]
 	}
 
-	for i := len(lines) - 1; i >= 0; i-- {
-		if text := assistantText(lines[i]); text != "" {
+	for _, line := range slices.Backward(lines) {
+		if text := assistantText(line); text != "" {
 			return text, nil
 		}
 	}
@@ -100,49 +101,4 @@ func contentText(content json.RawMessage) string {
 	}
 
 	return strings.Join(parts, "\n")
-}
-
-// tail is the end of a file, and whether it is not the whole file.
-type tail struct {
-	data []byte
-	cut  bool
-}
-
-// errNotAFile is returned for a transcript path that is not a regular file, such as a
-// pipe, which opening could block on.
-var errNotAFile = errors.New("the transcript is not a regular file")
-
-// readTail reads up to n bytes from the end of the regular file at path. Anything else
-// there is refused before it is opened, so a pipe never blocks the read.
-func readTail(path string, n int64) (tail, error) {
-	if info, err := os.Lstat(path); err != nil {
-		return tail{}, fmt.Errorf("open the transcript: %w", err)
-	} else if !info.Mode().IsRegular() {
-		return tail{}, errNotAFile
-	}
-
-	f, err := os.Open(path) //nolint:gosec // a transcript under the agent's own config directory
-	if err != nil {
-		return tail{}, fmt.Errorf("open the transcript: %w", err)
-	}
-
-	defer func() { _ = f.Close() }()
-
-	info, err := f.Stat()
-	if err != nil {
-		return tail{}, fmt.Errorf("read the transcript: %w", err)
-	}
-
-	if !info.Mode().IsRegular() {
-		return tail{}, errNotAFile
-	}
-
-	offset := max(info.Size()-n, 0)
-
-	data := make([]byte, info.Size()-offset)
-	if _, err = f.ReadAt(data, offset); err != nil && !errors.Is(err, io.EOF) {
-		return tail{}, fmt.Errorf("read the transcript: %w", err)
-	}
-
-	return tail{data: data, cut: offset > 0}, nil
 }

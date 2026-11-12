@@ -279,7 +279,8 @@ func DecodeConfig(prefs map[string]string) Config {
 }
 
 // decodeOff reads PrefOff: the built-in categories turned off, sorted, without unknown
-// or locked ones or repeats.
+// or locked ones or repeats. Unlike prefval.List, it keeps the names in an array that
+// holds something else too.
 func decodeOff(raw string) []string {
 	var stored []string
 
@@ -299,7 +300,8 @@ func decodeOff(raw string) []string {
 }
 
 // decodePatterns reads PrefPatterns: the user's patterns that still compile, at most
-// MaxPatterns of them.
+// MaxPatterns of them. Like decodeOff, it keeps the patterns in an array that holds
+// something else too.
 func decodePatterns(raw string) []string {
 	var stored []string
 
@@ -374,17 +376,6 @@ func NormalizePatterns(patterns []string) ([]string, error) {
 	}
 
 	return out, nil
-}
-
-// EncodeList writes a list for PrefOff or PrefPatterns.
-func EncodeList(list []string) string {
-	if list == nil {
-		list = []string{}
-	}
-
-	b, _ := json.Marshal(list) //nolint:errchkjson // a []string always encodes
-
-	return string(b)
 }
 
 // Checked reports whether a pull request's files are checked under scope: every pull

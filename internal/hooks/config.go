@@ -1,17 +1,16 @@
 package hooks
 
 import (
-	"bytes"
-	"errors"
-	"io"
 	"io/fs"
+	"maps"
 	"os"
 	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
-	"syscall"
 	"unicode"
+
+	"github.com/mrz1836/nilbox/internal/paths"
 )
 
 const (
@@ -36,9 +35,6 @@ const (
 	checkKeyPrefix = "GO_PRE_COMMIT_ENABLE_"
 )
 
-// errNotAFile is a config file or a hook that is there but isn't a regular file.
-var errNotAFile = errors.New("not a regular file")
-
 // repoConfig is a clone's go-pre-commit config, read as go-pre-commit reads it: the
 // modular folder's .env files in sorted order, the last one setting a key winning, or
 // else the legacy .env.base, then .env.custom over it. The process's own environment,
@@ -62,14 +58,12 @@ func readConfig(dir string) repoConfig {
 	cfg := repoConfig{present: true, values: map[string]string{}}
 
 	for _, f := range files {
-		data, err := readSmall(f, configLimit)
+		data, err := paths.ReadHead(f, configLimit)
 		if err != nil {
 			continue
 		}
 
-		for k, v := range parseEnv(data) {
-			cfg.values[k] = v
-		}
+		maps.Copy(cfg.values, parseEnv(data))
 	}
 
 	return cfg
@@ -222,61 +216,4 @@ func isRegular(path string) bool {
 	info, err := os.Stat(path)
 
 	return err == nil && info.Mode().IsRegular()
-}
-
-// readSmall reads up to limit bytes of the regular file at path, following a link. A
-// path that is a folder, a pipe, or a device isn't read, so a clone can't make a read
-// wait on one.
-func readSmall(path string, limit int64) ([]byte, error) {
-	f, err := openRegular(path)
-	if err != nil {
-		return nil, err
-	}
-
-	defer func() { _ = f.Close() }()
-
-	var buf bytes.Buffer
-	if _, err = io.Copy(&buf, io.LimitReader(f, limit)); err != nil {
-		return nil, err
-	}
-
-	return buf.Bytes(), nil
-}
-
-// openRegular opens the regular file at path, following a link, and refuses anything else:
-// a path that isn't one is never opened, and one swapped for a pipe or a device since it
-// was looked at is refused by openChecked.
-func openRegular(path string) (*os.File, error) {
-	info, err := os.Stat(path)
-	if err != nil {
-		return nil, err
-	}
-
-	if !info.Mode().IsRegular() {
-		return nil, errNotAFile
-	}
-
-	return openChecked(path)
-}
-
-// openChecked opens path to read without waiting, as opening a pipe that nothing writes to
-// otherwise would, and keeps it open only when what it opened is a regular file.
-func openChecked(path string) (*os.File, error) {
-	f, err := os.OpenFile(path, os.O_RDONLY|syscall.O_NONBLOCK, 0) //nolint:gosec // a file in a clone the user listed, only read
-	if err != nil {
-		return nil, err
-	}
-
-	info, err := f.Stat()
-	if err == nil && !info.Mode().IsRegular() {
-		err = errNotAFile
-	}
-
-	if err != nil {
-		_ = f.Close()
-
-		return nil, err
-	}
-
-	return f, nil
 }

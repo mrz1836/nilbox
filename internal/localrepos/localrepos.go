@@ -2,7 +2,8 @@
 //
 // Clones live one level under a clone root (by default ~/projects). Clones lists them,
 // and Scan reads each one's remotes with a read-only `git config --get-regexp`; Resolve
-// picks the clone of a given repository, preferring one whose origin is that repository.
+// picks the clone of a given repository, preferring one whose origin is that repository;
+// ByFolder finds the clone a page's request names by its folder.
 // Git always runs as an argv through the injected execpath.Runner, never a shell.
 package localrepos
 
@@ -87,11 +88,6 @@ func (r LocalRepo) RemoteFor(name repo.Name) (string, bool) {
 type Match struct {
 	Repo          LocalRepo
 	MatchedRemote string
-}
-
-// OriginMatched reports whether the matching remote is origin.
-func (m Match) OriginMatched() bool {
-	return m.MatchedRemote == originRemote
 }
 
 // Resolver finds the local clone of a repository under a clone root.

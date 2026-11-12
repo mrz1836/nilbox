@@ -12,7 +12,6 @@ import (
 	"sync"
 	"syscall"
 	"time"
-	"unicode"
 
 	"github.com/mrz1836/nilbox/internal/brand"
 	"github.com/mrz1836/nilbox/internal/clock"
@@ -23,6 +22,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/procs"
 	"github.com/mrz1836/nilbox/internal/repo"
 	"github.com/mrz1836/nilbox/internal/scriptrun/internal/queries"
+	"github.com/mrz1836/nilbox/internal/textutil"
 	"github.com/mrz1836/nilbox/internal/uierr"
 )
 
@@ -207,8 +207,8 @@ func (e *Engine) RegisterRerunner(kind Kind, r Rerunner) {
 }
 
 // RegisterVerifier makes v verify the runs of kind from before the app restarted: it
-// gives each again the output reader and the Finish its Spec gave it. Register it before
-// Run, which picks those runs up.
+// gives each again the Callbacks its Spec gave it. Register it before Run, which picks
+// those runs up.
 func (e *Engine) RegisterVerifier(kind Kind, v Verifier) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
@@ -583,9 +583,7 @@ func (e *Engine) takeSlot(ctx context.Context, kind Kind) (func(), error) {
 		}
 	}
 
-	var once sync.Once
-
-	return func() { once.Do(func() { <-e.slots }) }, nil
+	return sync.OnceFunc(func() { <-e.slots }), nil
 }
 
 // startApp records a run and starts it in the app.
@@ -723,7 +721,7 @@ func (e *Engine) open(ctx context.Context, l *live, spec Spec) error {
 	e.keepState(ctx, l.id, spec.Keep)
 
 	err := e.terminal.OpenRun(ctx, TerminalRun{
-		Name: fmt.Sprintf("run-%d", l.id), Dir: spec.Dir, Argv: spec.Argv, Env: spec.Env,
+		Name: ScriptName(l.id), Dir: spec.Dir, Argv: spec.Argv, Env: spec.Env,
 		Log: e.files.log(l.id), PIDFile: e.files.pid(l.id), ExitFile: e.files.exit(l.id),
 	})
 	if err != nil {
@@ -758,10 +756,9 @@ func (e *Engine) newLive(spec Spec, h holds) *live {
 	}
 
 	return &live{
-		kind: spec.Kind, runsIn: spec.RunsIn, tool: spec.Tool, dir: spec.Dir, name: spec.Repo,
-		repo: e.where(spec.Repo, spec.Dir), title: spec.Title, timeout: timeout, output: spec.Output,
-		progress: spec.Progress, finish: spec.Finish, recorded: spec.Recorded, released: spec.Released,
-		intent: spec.Intent, holds: h, started: e.clock.Now(), done: make(chan struct{}), abandon: make(chan struct{}),
+		Callbacks: spec.Callbacks, kind: spec.Kind, runsIn: spec.RunsIn, tool: spec.Tool, dir: spec.Dir, name: spec.Repo,
+		repo: e.where(spec.Repo, spec.Dir), title: spec.Title, timeout: timeout, intent: spec.Intent, holds: h,
+		started: e.clock.Now(), done: make(chan struct{}), abandon: make(chan struct{}),
 	}
 }
 
@@ -882,15 +879,6 @@ func (e *Engine) processAlive(pid int, start time.Time) bool {
 	return e.alive(pid) && sameStart(e.startedAt(pid), start)
 }
 
-// liveRun returns the run the engine follows with id, or nil: until the engine lets go of
-// it, which is a moment after its end is recorded.
-func (e *Engine) liveRun(id int64) *live {
-	e.mu.Lock()
-	defer e.mu.Unlock()
-
-	return e.live[id]
-}
-
 // goingRun returns the run the engine follows with id while it goes, or nil: nil too for a
 // run whose end is recorded, which the engine is only letting go of.
 func (e *Engine) goingRun(id int64) *live {
@@ -946,11 +934,11 @@ func (e *Engine) notify() {
 // noteProgress tells Progressed, with the run's ID, when its progress changed since it
 // last looked. Only the goroutine that follows the run calls it.
 func (e *Engine) noteProgress(l *live) {
-	if l.progress == nil {
+	if l.Progress == nil {
 		return
 	}
 
-	now := l.progress()
+	now := l.Progress()
 	if now == l.shown {
 		return
 	}
@@ -988,36 +976,24 @@ func sameStart(a, b time.Time) bool {
 	return d <= startSlack && d >= -startSlack
 }
 
-// DisplayCommand writes argv out as a shell would read it, quoting what needs quoting,
-// with the program's folder under home written from ~, as the window shows every folder.
-// The ~/ stays outside the quotes, where a shell still reads it as home. A run's Command
-// defaults to it, and the integrations show a tool's own update command with it.
+// DisplayCommand writes argv out as a shell would read it, each word as
+// textutil.ShellWord quotes it, with the program's folder under home written from ~, as
+// the window shows every folder. The ~/ stays outside the quotes, where a shell still
+// reads it as home. The program is a path that starts with a slash, as every run's is
+// (validArgv) and a tool's copy is, so ShellWord's rule lets it stand plain. A run's
+// Command defaults to it, and the integrations show a tool's own update command with it.
 func DisplayCommand(argv []string, home string) string {
 	parts := make([]string, 0, len(argv))
 
 	for i, arg := range argv {
 		if rest, ok := strings.CutPrefix(paths.Tilde(arg, home), "~/"); i == 0 && ok {
-			parts = append(parts, "~/"+shellQuote(rest))
+			parts = append(parts, "~/"+textutil.ShellWord(rest))
 
 			continue
 		}
 
-		parts = append(parts, shellQuote(arg))
+		parts = append(parts, textutil.ShellWord(arg))
 	}
 
 	return strings.Join(parts, " ")
-}
-
-// shellQuote quotes s for a POSIX shell, unless it needs none.
-func shellQuote(s string) string {
-	if s != "" && !strings.ContainsFunc(s, needsQuote) {
-		return s
-	}
-
-	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
-}
-
-// needsQuote reports a character a shell would read as more than itself.
-func needsQuote(r rune) bool {
-	return !unicode.IsLetter(r) && !unicode.IsDigit(r) && !strings.ContainsRune("-_./=:,+@%", r)
 }

@@ -84,19 +84,7 @@ func seeded(t *testing.T, source PreviewSource) (*Service, *sql.DB) {
 func closedService(t *testing.T) *Service {
 	t.Helper()
 
-	db := testutil.DB(t)
-	require.NoError(t, db.Close())
-
-	return newService(db, nil)
-}
-
-// exec runs a statement the library has no call for, such as an edit made by hand or
-// another package's write.
-func exec(t *testing.T, db *sql.DB, query string, args ...any) {
-	t.Helper()
-
-	_, err := db.ExecContext(t.Context(), query, args...)
-	require.NoError(t, err)
+	return newService(testutil.ClosedDB(t), nil)
 }
 
 // byNickname finds a listed prompt by nickname.
@@ -165,7 +153,7 @@ func fieldErrors(t *testing.T, err error) map[string]string {
 func addLaunchDefault(t *testing.T, db *sql.DB, owner, name string, pr int64) {
 	t.Helper()
 
-	exec(t, db, `INSERT INTO launch_defaults (owner, name, pr_prompt_id, created_at, updated_at)
+	testutil.Exec(t, db, `INSERT INTO launch_defaults (owner, name, pr_prompt_id, created_at, updated_at)
 		VALUES (?, ?, ?, '2026-01-01 00:00:00', '2026-01-01 00:00:00')`, owner, name, pr)
 }
 
@@ -377,7 +365,7 @@ func TestDeleteRefusesAPromptInUse(t *testing.T) {
 	assert.Equal(t, "Fix checks", inUse.Nickname)
 	assert.Contains(t, err.Error(), "a default for acme-org and 2 repositories")
 
-	exec(t, db, "DELETE FROM launch_defaults")
+	testutil.Exec(t, db, "DELETE FROM launch_defaults")
 	require.NoError(t, s.Delete(ctx, fix.ID))
 	assert.NotContains(t, nicknames(t, s), "Fix checks")
 

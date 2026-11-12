@@ -152,7 +152,7 @@ func mayHoldATerm(text string, folded []string) bool {
 // every line of a text file that it matches, in file order. folded is terms, the terms
 // pattern was built from, each through foldCase. The files are scanned side by side, and
 // a file whose text holds no term in any case is not matched line by line.
-func privateTermsInFiles(t *testing.T, root string, pattern *regexp.Regexp, terms []string) []string {
+func privateTermsInFiles(t *testing.T, pattern *regexp.Regexp, terms []string) []string {
 	t.Helper()
 
 	folded := make([]string, 0, len(terms))
@@ -160,7 +160,7 @@ func privateTermsInFiles(t *testing.T, root string, pattern *regexp.Regexp, term
 		folded = append(folded, foldCase(term))
 	}
 
-	files := repoFiles(t, root)
+	files := repoFiles(t)
 	found := make([][]string, len(files))
 
 	var g errgroup.Group
@@ -168,12 +168,12 @@ func privateTermsInFiles(t *testing.T, root string, pattern *regexp.Regexp, term
 	g.SetLimit(runtime.GOMAXPROCS(0))
 
 	for i, rel := range files {
+		text, isText := readText(t, rel)
+
 		g.Go(func() error {
-			var err error
+			found[i] = privateTermsInFile(rel, text, isText, pattern, folded)
 
-			found[i], err = privateTermsInFile(root, rel, pattern, folded)
-
-			return err
+			return nil
 		})
 	}
 
@@ -183,24 +183,19 @@ func privateTermsInFiles(t *testing.T, root string, pattern *regexp.Regexp, term
 }
 
 // privateTermsInFile returns rel's path when pattern matches it, and every line of its
-// text that pattern matches.
-func privateTermsInFile(root, rel string, pattern *regexp.Regexp, folded []string) ([]string, error) {
+// text, when isText, that pattern matches.
+func privateTermsInFile(rel, text string, isText bool, pattern *regexp.Regexp, folded []string) []string {
 	var found []string
 
 	if pattern.MatchString(rel) {
 		found = append(found, rel+": (the path)")
 	}
 
-	text, ok, err := readTextFile(root, rel)
-	if err != nil {
-		return nil, err
-	}
-
-	if ok && mayHoldATerm(text, folded) && pattern.MatchString(text) {
+	if isText && mayHoldATerm(text, folded) && pattern.MatchString(text) {
 		found = append(found, hits(rel, text, pattern.MatchString)...)
 	}
 
-	return found, nil
+	return found
 }
 
 // privateTermsInGit returns the current branch name if pattern matches it, and every
@@ -253,7 +248,7 @@ func TestNoPrivateTerms(t *testing.T) {
 	t.Run("files", func(t *testing.T) {
 		t.Parallel()
 
-		reportPrivateTerms(t, privateTermsInFiles(t, root, pattern, terms), "a term from "+termsPath+
+		reportPrivateTerms(t, privateTermsInFiles(t, pattern, terms), "a term from "+termsPath+
 			" is in these files; replace it with a neutral placeholder such as acme-org or example-repo")
 	})
 

@@ -76,5 +76,4 @@ func TestEveryTurnsAnIntervalIntoADuration(t *testing.T) {
 	assert.Zero(t, r.Every(RefreshChecks))
 	assert.Equal(t, time.Hour, r.Every(RefreshWorktrees))
 	assert.Zero(t, r.Every("releases"))
-	assert.Equal(t, []RefreshKind{RefreshInbox, RefreshChecks, RefreshWorktrees}, Kinds())
 }
