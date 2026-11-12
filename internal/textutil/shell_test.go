@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
@@ -22,9 +23,16 @@ const posixShell = "/bin/sh"
 // hanging the fuzzer.
 const shellRunTimeout = 10 * time.Second
 
+// plantedFiles are the files shellWords's folder holds, so a glob left unquoted, * or ?,
+// would match them and come back as other words.
+func plantedFiles() []string {
+	return []string{"a", "planted file"}
+}
+
 // shellWords runs a POSIX shell on line, the words of a command, and returns how the shell
-// split it: how many words, then each word, every one ended by a NUL. It runs in the
-// package's folder, where a glob left unquoted would match files.
+// split it: how many words, then each word, every one ended by a NUL. It runs in a fresh
+// folder that holds plantedFiles, where a glob left unquoted would match them, with only
+// PATH and LC_ALL in its environment, so nothing of the developer's own reaches it.
 func shellWords(t *testing.T, line string) string {
 	t.Helper()
 
@@ -32,11 +40,18 @@ func shellWords(t *testing.T, line string) string {
 		t.Skipf("no %s to run the quoted words: %v", posixShell, err)
 	}
 
+	dir := t.TempDir()
+	for _, name := range plantedFiles() {
+		require.NoError(t, os.WriteFile(filepath.Join(dir, name), nil, 0o600))
+	}
+
 	ctx, cancel := context.WithTimeout(t.Context(), shellRunTimeout)
 	defer cancel()
 
 	script := "set -- " + line + `; printf '%s\0' "$#" "$@"`
 	cmd := exec.CommandContext(ctx, posixShell, "-c", script) //nolint:gosec // the shell run is the test
+	cmd.Dir = dir
+	cmd.Env = []string{"PATH=/usr/bin:/bin", "LC_ALL=C"}
 
 	out, err := cmd.Output()
 	require.NoError(t, err, "the shell runs %q", script)
@@ -70,6 +85,15 @@ func quotingSeeds() []string {
 		"*",
 		"\xff\xfe",
 	}
+}
+
+func TestShellWordsSeesAnUnquotedGlobMatch(t *testing.T) {
+	t.Parallel()
+
+	assert.Equal(t, splitBack(plantedFiles()...), shellWords(t, "*"), "a glob left unquoted comes back as the planted files")
+	assert.Equal(t, splitBack("a"), shellWords(t, "?"))
+	assert.Equal(t, splitBack("/usr/bin:/bin", "C"), shellWords(t, `"$PATH" "$LC_ALL"`),
+		"the shell runs with the test's own environment, not the developer's")
 }
 
 func TestShellQuote(t *testing.T) {
