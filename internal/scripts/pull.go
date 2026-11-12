@@ -7,7 +7,6 @@ import (
 	"maps"
 	"slices"
 	"strings"
-	"sync"
 
 	"github.com/mrz1836/nilbox/internal/execpath"
 	"github.com/mrz1836/nilbox/internal/gitread"
@@ -126,7 +125,7 @@ func (s *Service) pullSpec(c clone, branch string) scriptrun.Spec {
 // read for its last error line, Stop held back for its whole run (pullProgress), and a
 // Finish that reads what the pull did (finishPull).
 func (s *Service) pullCallbacks(run *pullRun) scriptrun.Callbacks {
-	out := &pullOutput{}
+	out := newPullOutput()
 
 	return scriptrun.Callbacks{
 		Output:   out,
@@ -479,22 +478,20 @@ func (v Verifier) Verify(rec scriptrun.Record) scriptrun.Verification {
 
 // pullOutput reads a pull's output for its last error line, git's last fatal or error
 // line, its prefix cut, or else its last line that isn't a hint. It is fed the log's bytes
-// in order, split anywhere.
+// in order, split anywhere (see scriptrun.LineWriter).
 type pullOutput struct {
-	mu    sync.Mutex
-	lines textutil.LineSplitter
-	said  string
-	last  string
+	*scriptrun.LineWriter
+
+	said string
+	last string
 }
 
-// Write reads p, the next part of the output. It never fails.
-func (o *pullOutput) Write(p []byte) (int, error) {
-	o.mu.Lock()
-	defer o.mu.Unlock()
+// newPullOutput returns a reader that has read nothing.
+func newPullOutput() *pullOutput {
+	o := &pullOutput{}
+	o.LineWriter = scriptrun.NewLineWriter(o.read)
 
-	o.lines.Write(p, o.read)
-
-	return len(p), nil
+	return o
 }
 
 // read reads one line.
@@ -513,10 +510,10 @@ func (o *pullOutput) read(line string) {
 
 // lastError returns git's last error line, once the output has ended, or "" for none.
 func (o *pullOutput) lastError() string {
-	o.mu.Lock()
-	defer o.mu.Unlock()
+	o.Flush()
 
-	o.lines.Flush(o.read)
+	o.Lock()
+	defer o.Unlock()
 
 	return cmp.Or(o.said, o.last)
 }

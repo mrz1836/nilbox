@@ -554,7 +554,7 @@ func TestPullOutputLastError(t *testing.T) {
 		},
 		{out: "schwerwiegend: kein Repository\nhint: x\n", want: "schwerwiegend: kein Repository"},
 	} {
-		out := &pullOutput{}
+		out := newPullOutput()
 
 		for chunk := range slices.Chunk([]byte(tc.out), 7) {
 			_, err := out.Write(chunk)
