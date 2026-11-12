@@ -68,7 +68,9 @@ type live struct {
 	// can't be stopped, holds no tool, and doesn't keep the app from quitting.
 	settling bool
 
-	// ended marks a run whose end is recorded. The engine holds it, and its clone, a moment
+	// ended marks a run whose end is recorded, or being recorded: the engine marks it just
+	// before it writes the record, so a record read as ended is never of a run not marked,
+	// and unmarks it should the write fail. The engine holds it, and its clone, a moment
 	// longer, until it lets go of it, but nothing of it goes any more: it can't be stopped,
 	// shows no progress, uses no tool, and doesn't keep the app from quitting. The engine's
 	// mu guards it.
@@ -415,13 +417,16 @@ func (e *Engine) failStart(ctx context.Context, l *live, summary string) {
 	e.record(ctx, l, nil, Outcome{Status: StatusFailed, Summary: summary}, e.files.size(l.id))
 }
 
-// record records a run's end and, once it is recorded, marks the run ended and removes
-// what it kept beside its record, tells its kind's Recorded, lets go of it and then tells
-// its Released and, for a run that failed, Failed, logs it, applies the retention, and
-// tells Changed. A run whose end couldn't be recorded isn't marked, tells none of them but
-// Released, and keeps its state: its record still says it goes, and the next start settles
-// it. The record changes only a run recorded as going, so of every record of one run's end,
-// only one holds, and the run's end is told once.
+// record marks a run ended and records its end and, once it is recorded, removes what it
+// kept beside its record, tells its kind's Recorded, lets go of it and then tells its
+// Released and, for a run that failed, Failed, logs it, applies the retention, and tells
+// Changed. The mark comes first, as the run's program has ended by now: whoever reads the
+// record as ended finds the run marked too, so a Stop or a quit that comes once the record
+// reads as ended never takes the run for one it stopped. A run whose end couldn't be
+// recorded is unmarked, tells none of them but Released, and keeps its state: its record
+// still says it goes, and the next start settles it. The record changes only a run
+// recorded as going, so of every record of one run's end, only one holds, and the run's
+// end is told once.
 func (e *Engine) record(ctx context.Context, l *live, exitCode *int, out Outcome, size int64) {
 	unrecognized := out.Unrecognized
 	if len(unrecognized) > MaxUnrecognized {
@@ -433,13 +438,16 @@ func (e *Engine) record(ctx context.Context, l *live, exitCode *int, out Outcome
 		UnrecognizedCount: max(out.UnrecognizedCount, len(out.Unrecognized)), Outcome: out.Detail,
 	})
 
+	e.markEnded(l, true)
+
 	err := e.store.finish(ctx, finished{
 		id: l.id, status: out.Status, exitCode: exitCode, summary: out.Summary, result: result, logBytes: size,
 		at: e.clock.Now(),
 	})
 	if err == nil {
-		e.markEnded(l)
 		e.dropKept(ctx, l.id)
+	} else {
+		e.markEnded(l, false)
 	}
 
 	switch {
@@ -503,12 +511,13 @@ func stoppedBySignal(code int) bool {
 	return code == 128+int(syscall.SIGHUP) || code == 128+int(syscall.SIGINT) || code == 128+int(syscall.SIGTERM)
 }
 
-// markEnded marks a run whose end is recorded as ended.
-func (e *Engine) markEnded(l *live) {
+// markEnded marks a run ended as its end is about to be recorded, or, when ended is false,
+// unmarks one whose end couldn't be.
+func (e *Engine) markEnded(l *live, ended bool) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 
-	l.ended = true
+	l.ended = ended
 }
 
 // leave lets go of a run whose Finish couldn't settle it before its context ended, as the

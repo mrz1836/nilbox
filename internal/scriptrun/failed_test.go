@@ -223,6 +223,71 @@ func TestNothingIsToldOfARunTheQuitStopped(t *testing.T) {
 	assert.Empty(t, got.all(), "but the quit stopped it")
 }
 
+func TestAQuitWhileARunsEndIsRecordedDoesntTakeItForOneItStopped(t *testing.T) {
+	t.Parallel()
+
+	var db *sql.DB
+
+	h, got := failingHarness(t, func(cfg *Config) { db = cfg.DB })
+
+	finishing, goOn := make(chan struct{}), make(chan struct{})
+	release := sync.OnceFunc(func() { close(goOn) })
+	t.Cleanup(release)
+
+	spec := h.spec(testutil.FakeRun{Stderr: "boom\n", Exit: 3})
+	spec.Finish = func(ctx context.Context, _ Ending, out Outcome) Outcome {
+		close(finishing)
+
+		select {
+		case <-goOn:
+		case <-ctx.Done():
+		}
+
+		return out
+	}
+
+	id := h.start(spec)
+
+	select {
+	case <-finishing:
+	case <-time.After(wait):
+		require.FailNow(t, "the run never ended")
+	}
+
+	// The test holds the database's write lock, so the run's end waits to be recorded.
+	tx, err := db.BeginTx(t.Context(), nil)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = tx.Rollback() })
+
+	release()
+
+	require.Eventually(t, func() bool { return !h.e.Active() }, wait, poll,
+		"the run reads as ended as soon as its end is being recorded")
+	assert.True(t, h.record(id).Status.Live(), "though its record, held back, still says it goes")
+
+	stopped := make(chan struct{})
+
+	go func() {
+		defer close(stopped)
+
+		h.e.StopAll()
+	}()
+
+	// StopAll closes the engine as it looks at the runs to stop, under the same lock.
+	require.Eventually(t, h.e.isClosed, wait, poll, "the quit looked at the runs")
+	require.NoError(t, tx.Rollback())
+
+	select {
+	case <-stopped:
+	case <-time.After(wait):
+		require.FailNow(t, "the quit never ended")
+	}
+
+	assert.Equal(t, []failedCall{told(Failure{
+		ID: id, Repo: testRepo(), Title: "A script failed: Lint", Body: "It exited with status 3.",
+	})}, got.all(), "it failed on its own, before the quit")
+}
+
 func TestNothingIsToldOfAnEndNotKept(t *testing.T) {
 	t.Parallel()
 
