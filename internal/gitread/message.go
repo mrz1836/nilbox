@@ -13,11 +13,13 @@ import (
 
 // Message is the part of a failure of one of gitread's commands, or of a command run with
 // a Setup, worth showing the user: what git said, without the command and the exit status,
-// or that origin didn't answer an ls-remote in time. A clone whose own config sets
-// settings a Setup refuses names them, and where to set them instead (CloneConfigError); a
-// remote refused before anything ran says why, naming it (RefusedError, origin when none
-// is named); and a command that failed after setting aside the clone's own ssh command,
-// password program, or credential helpers says so, and where to set them instead.
+// or that origin didn't answer an ls-remote in time. A git failure's words are read from
+// the *commandError in err's chain, not from err's text, so however a caller wraps it, its
+// wrap never reaches the window. A clone whose own config sets settings a Setup refuses
+// names them, and where to set them instead (CloneConfigError); a remote refused before
+// anything ran says why, naming it (RefusedError, origin when none is named); and a
+// command that failed after setting aside the clone's own ssh command, password program,
+// or credential helpers says so, and where to set them instead.
 func Message(err error) string {
 	remote := remoteName
 	if refused, ok := errors.AsType[*RefusedError](err); ok && refused.Remote != "" {
