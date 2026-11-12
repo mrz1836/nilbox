@@ -43,6 +43,30 @@ type gitRig struct {
 	genv  []string
 }
 
+// gitRigRepos are a gitRig's origin and clones, under its home, built once for the test
+// binary by buildGitRigRepos and copied into each rig.
+var gitRigRepos = testutil.NewGitTemplate(buildGitRigRepos) //nolint:gochecknoglobals // built once for the whole test binary
+
+// buildGitRigRepos builds, under what becomes a rig's home, a local bare origin on main,
+// origin.git; other, a clone of it that pushed one commit, one.txt, to origin's main; and
+// sdk under the clone root, projects, cloned after it. Both clones reach origin over
+// file://. It returns the commit.
+func buildGitRigRepos(b *testutil.GitBuild) string {
+	origin := filepath.Join(b.Root, "origin.git")
+	url := "file://" + filepath.ToSlash(origin)
+
+	b.Git(".", "-c", "init.defaultBranch=main", "init", "-q", "--bare", origin)
+	b.Git(".", "clone", "-q", url, "other")
+	b.WriteFile(filepath.Join("other", "one.txt"), "one.txt\n")
+	b.Git("other", "add", "one.txt")
+	b.Git("other", "commit", "-q", "-m", "one.txt")
+	first := b.Git("other", "rev-parse", "HEAD")
+	b.Git("other", "push", "-q", "origin", "HEAD:main")
+	b.Git(".", "clone", "-q", url, filepath.Join("projects", "sdk"))
+
+	return first
+}
+
 // newGitRig builds a gitRig, or skips the test without git.
 func newGitRig(t *testing.T) *gitRig {
 	t.Helper()
@@ -56,11 +80,7 @@ func newGitRig(t *testing.T) *gitRig {
 		genv: testutil.GitEnv(r.home),
 	}
 
-	testutil.RunGit(t, r.home, "-c", "init.defaultBranch=main", "init", "-q", "--bare", g.origin)
-	testutil.RunGit(t, r.home, "clone", "-q", g.url(), g.other)
-	g.first = g.commit(g.other, "one.txt")
-	testutil.RunGit(t, g.other, "push", "-q", "origin", "HEAD:main")
-	testutil.RunGit(t, r.root, "clone", "-q", g.url(), g.dir)
+	g.first = gitRigRepos.Copy(t, r.home)
 
 	// The clone's origin is on GitHub, as the clones list reads it, so its status asks
 	// origin unasked (a local bare repository stands in for GitHub's).
