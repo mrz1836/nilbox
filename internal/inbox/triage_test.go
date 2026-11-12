@@ -458,6 +458,32 @@ func TestASnoozeBeforeTheDetailsTakesItsBaselineLater(t *testing.T) {
 	require.NotNil(t, itemByNumber(t, snap.ReviewRequested, 1).WokeBy)
 }
 
+func TestAnUnreadableSnoozeBaselineIsTakenAgain(t *testing.T) {
+	t.Parallel()
+
+	h, id, details := wakeHarness(t)
+
+	_, err := h.svc.Snooze(t.Context(), id, 3)
+	require.NoError(t, err)
+
+	_, err = h.pool.ExecContext(t.Context(),
+		`UPDATE item_local_state SET snooze_baseline = '{"commits":"many"}' WHERE item_id = ?`, id)
+	require.NoError(t, err, "an object, as the schema holds it to, that this build can't read")
+
+	details.Commits += 2
+	it := h.later(t, details)
+	assert.Nil(t, it.WokeBy, "the activity is the new baseline, not news")
+
+	baseline := h.baseline(t, id)
+	require.NotNil(t, baseline)
+	assert.Contains(t, *baseline, `"commits":5`)
+
+	details.Commits++
+	it = h.later(t, details)
+	require.NotNil(t, it.WokeBy, "a commit after the new baseline wakes it")
+	assert.Equal(t, snooze.Reasons{Commits: 1}, *it.WokeBy)
+}
+
 func TestDismissedItemsNeverWake(t *testing.T) {
 	t.Parallel()
 
