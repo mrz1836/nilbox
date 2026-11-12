@@ -207,7 +207,14 @@ func buildTree[V any](build func(b *GitBuild) V) (tree *gitTree[V], err error) {
 		}
 	}
 
-	b := &GitBuild{Root: root, env: append(GitEnv(home), "GIT_AUTHOR_DATE="+templateDate, "GIT_COMMITTER_DATE="+templateDate)}
+	// Automatic maintenance stays off: a commit may start it detached, and its
+	// objects/maintenance.lock would come and go while readTree walks the folder.
+	b := &GitBuild{Root: root, env: append(GitEnv(home),
+		"GIT_AUTHOR_DATE="+templateDate, "GIT_COMMITTER_DATE="+templateDate,
+		"GIT_CONFIG_COUNT=2",
+		"GIT_CONFIG_KEY_0=maintenance.auto", "GIT_CONFIG_VALUE_0=false",
+		"GIT_CONFIG_KEY_1=gc.auto", "GIT_CONFIG_VALUE_1=0",
+	)}
 
 	value := build(b)
 	if b.err != nil {
