@@ -238,6 +238,9 @@ it says which copy it uses, its version, and where it came from (a GitHub releas
   Homebrew, `/usr/local/bin`, `~/.local/bin`, `~/bin`, and go install's folder, and runs each
   copy's `--version`. The copy your terminal runs is the one it uses, unless you choose another
   under **Details**. It checks once a day, while you're signed in to GitHub, for a newer release.
+  The app drives magex 1.29.5 or later and go-pre-commit 1.12.0 or later; an older copy's card
+  says so (*magex 1.28.0 is older than 1.29.5, which Nilbox needs*), and the pages that run it
+  ask for a newer one.
 - **Updating.** A copy that can update itself does: **Update** runs the tool's own updater,
   `magex update:install` or `go-pre-commit update`, which downloads the latest release for your
   Mac, checks it against the release's SHA-256 checksums, and swaps it in for the copy with a
@@ -260,8 +263,8 @@ it says which copy it uses, its version, and where it came from (a GitHub releas
   `~/.local/bin` (or replace the copy you have in place). The download goes to a private folder
   in the app's data folder, and nothing else on your Mac changes until the program has run
   once. The program is swapped in with a rename, so your terminal never finds it missing, and
-  if the new copy won't run, the old one is put back. While a tool updates itself in that folder,
-  an install there waits for it to end.
+  if the new copy won't run, the old one is put back. While a tool updates itself, an install of
+  it, or any install in that folder, fails at once and says why; try again once the update ends.
 - **What the app never does.** It never runs `go install` or `sudo`, never edits your shell's
   startup files, and never replaces a Homebrew copy (it shows the `brew upgrade` command) or a
   link (such as a development build you linked into `~/.local/bin`). A copy it didn't install is
@@ -270,7 +273,8 @@ it says which copy it uses, its version, and where it came from (a GitHub releas
   in `~/.local/bin`, and if your terminal still finds the old one first, the card says so and
   offers to move it to the Trash, through Finder, so **Put Back** works. The first time, macOS
   asks whether the app may control Finder; if you say no, it offers **Reveal in Finder** instead.
-  Every other copy the card lists under **Other copies** (one the tool doesn't use, or one that
+  Under **Details**, a copy the app installed has **Reinstall** and **Move to the Trash**, and
+  every other copy the card lists under **Other copies** (one the tool doesn't use, or one that
   won't run) has **Move to the Trash** too, after you confirm, except a link, which Finder would
   follow to what it points to, and a Homebrew copy, which Homebrew manages. While a run uses the
   tool, neither kind of update starts.
@@ -287,8 +291,8 @@ it says which copy it uses, its version, and where it came from (a GitHub releas
 
 ## Runs
 
-Releases, hook changes, pre-commit checks, scripts, and a tool updating itself all go through
-one runner, which keeps a record of each run and its whole output.
+Releases, hook changes, pre-commit checks, scripts, a clone's pull, and a tool updating itself
+all go through one runner, which keeps a record of each run and its whole output.
 
 - **In the app or in your terminal.** A run goes in the app by default; **Runs in** under Settings →
   Integrations sends runs to your terminal instead. In the app, its output is written as it comes
@@ -305,11 +309,14 @@ one runner, which keeps a record of each run and its whole output.
   install there fails at once too. At most four runs go in the app at once, and a release never
   waits for one of those slots.
 - **Limits and stopping.** In the app, a release stops after 5 minutes, a hooks action after 1,
-  checks after 30, and a tool's update after 10; a run in your terminal has no limit. **Stop** sends the run's whole process group
+  checks after 30, a pull after 30, and a tool's update after 10; a script, and any run in your
+  terminal, has no limit. **Stop** sends the run's whole process group
   Control-C (SIGINT), then SIGTERM after 5 seconds, then SIGKILL after 10 more. A release's Stop is
-  off while magex switches to the branch it releases and pulls (*Stopping now could leave a rebase
-  in progress*), and once magex has made the tag, Stop asks first, since stopping can leave the
-  tag on your Mac but not on GitHub.
+  off while magex switches to the branch it releases and pulls (*Stopping now could leave main
+  partly updated*, or, with a magex before 1.30.2, *Stopping now could leave a rebase in
+  progress*). Once magex has made the tag, Stop asks first, since stopping can leave the tag on
+  your Mac but not on GitHub, and so it does while magex has your clone on another branch
+  (*Stopping now can leave your clone on main.*). A pull's Stop is off for the whole pull.
 - **Quitting while runs are going.** Quitting (the app menu, ⌘Q, or the menu bar's Quit) while a
   run goes in the app brings the window forward and asks first: **Keep running** or **Stop and
   quit**. Stop and quit sends each run SIGTERM, then SIGKILL after 3 seconds, and records it as
@@ -335,8 +342,10 @@ one runner, which keeps a record of each run and its whole output.
 - **The run panel.** A run's panel shows its status, its result, and its log as it comes
   (colors kept, the newest 2,000 lines, earlier output on request). **Open in terminal** opens
   your terminal in the run's folder and runs nothing there; **Show the log file** shows the log
-  in Finder. **Stop** shows while a run goes in the app: it is off, with the reason beside it,
-  while the run's kind refuses it (a release while magex switches branches and pulls), and asks
+  in Finder; **Copy log** copies the log, and **Run again**, where the kind allows it, works the
+  command out afresh and starts it. **Stop** shows while a run goes in the app: it is off, with
+  the reason beside it, while the run's kind refuses it (a release while magex switches branches
+  and pulls, a pull for its whole run), and asks
   first, in the kind's own words, while stopping would leave something behind. A run in your
   terminal has no **Stop**: the panel says to press Control-C there.
 - **A run that fails tells you.** Once a run's end is recorded as failed, or as stopped at its
@@ -346,13 +355,13 @@ one runner, which keeps a record of each run and its whole output.
   after 30 minutes.* A run in a folder that isn't a GitHub clone, as a tool's update is, names
   the folder in the title instead. It covers every kind of run, in the app or in your
   terminal, and one from before a restart that the app settles as failed once it starts again.
-  A run that couldn't start (the window already says why), one you stopped, from the app or
-  with Control-C in your terminal, one a quit or a restart interrupted, and one that succeeded
-  tell nothing, and no run tells twice. Failures that come within 2 seconds of each other, as
-  **Install all** or a restart can make, show their banners together, and more than three as
-  one that sums them up; the history keeps each. Clicking the entry or its banner opens the run
-  here, in Runs, while the history still holds it: once it doesn't, as after **Clear
-  history**, a toast says so.
+  A run that couldn't start (the window already says why), one you stopped, from the app or in
+  your terminal (Control-C, or closing its window or tab), one a quit or a restart interrupted,
+  and one that succeeded tell nothing, and no run tells twice. Failures that come within 2
+  seconds of each other, as **Install and update all** or a restart can make, show their
+  banners together, and more than three as one that sums them up; the history keeps each.
+  Clicking the entry or its banner opens the run here, in Runs, while the history still holds
+  it: once it doesn't, as after **Clear history**, a toast says so.
 - **History.** The newest 200 runs are kept, with up to 512 MB of logs in all; older runs go with
   their logs, and a run still going is never dropped. A finished log over 16 MB keeps its first
   4 MB and its last 12 MB.
@@ -393,7 +402,8 @@ itself never tags or pushes: magex does, when you click a button that names the 
 
 - **Groups:** **Unreleased changes** (the default branch has commits since its newest version
   tag), open; **Up to date**, **No releases yet** (no `vX.Y.Z` tag), and **Can't release here**
-  (archived, read-only to you, or not found), collapsed, each with its count.
+  (archived, read-only to you, not found, or with no commits on GitHub yet), collapsed, each with
+  its count.
 - **Each row** shows the repository and its newest version, **+N** commits since it, the checks
   on the default branch's newest commit (passed, running, failing, or none) and that commit's
   age and headline, and what matters about your clone: the branch it's on when that isn't the
@@ -412,8 +422,8 @@ itself never tags or pushes: magex does, when you click a button that names the 
   *From 2h ago · checking again…*, while it reads GitHub again behind it, and then replaces it.
   A list read from another clone root isn't shown.
 - **Recent** lists the last 10 releases started from the app, with how each came out (*on
-  GitHub*, *on GitHub, following its workflow*, *published*, *release workflow failed*, *not
-  pushed*, *failed*); each opens its run.
+  GitHub*, *on GitHub, following its workflow*, *published*, *release workflow failed*, *on
+  GitHub, not published*, *not pushed*, *failed*, *not checked on GitHub*); each opens its run.
 
 **The sheet** checks the clone, origin, and GitHub as it opens, then shows:
 
@@ -428,15 +438,16 @@ itself never tags or pushes: magex does, when you click a button that names the 
   each: **Open Settings**, **Update magex in Settings**, **Open in terminal** (your terminal in
   the clone, running nothing), **Check again**, **View on GitHub**, **Watch the run**, and
   **Copy** for a command the app never runs itself.
-- **What's in it:** the commits since the newest version, from GitHub, each linked to its
-  commit.
+- **What's in it:** the newest commits since the newest version, from GitHub (up to 10, three
+  shown until you ask for the rest, with GitHub's comparison for any past those), each linked
+  to its commit.
 - **The version:** **Patch**, **Minor**, or **Major**, each with the version it makes. Patch is
   chosen every time the sheet opens. Major needs a magex that can be told which version to make
   (1.30.0 or later, with `expect=`); before that its card says so, with **Update magex in
   Settings**. Choosing Major asks you to type the exact version, with an empty field every time,
   and, for a Go module whose `go.mod` doesn't name the new major, to tick **Release anyway: this
   module isn't meant to be imported**. The service checks both again. Under the cards, a hint
-  reads the commits' conventional-commit prefixes: *2 commits start with feat:, which usually
+  reads those commits' conventional-commit prefixes: *2 commits start with feat:, which usually
   means a minor release.*, or, for a commit marked breaking (`feat!:`, `fix(api)!:`, or a
   headline starting `BREAKING CHANGE:`), that it usually means a major one. It never changes
   the choice.
@@ -456,8 +467,8 @@ pushed, then the app's own check that GitHub has the tag), with the run's panel 
 The panel shows magex's command with your home folder as `~`; the log leaves out magex's JSON
 result line, which the result shows, and the log file and **Copy log** keep it. Closing the
 sheet never stops a release: it goes on under Runs. **Stop** is off while magex switches
-branches and pulls (*Stopping now could leave a rebase in progress*), and asks first once the
-tag is made.
+branches and pulls (*Stopping now could leave main partly updated*), and asks first once the
+tag is made, or while magex has your clone on another branch.
 
 **The result** comes from what magex said and what origin and your clone say once it ended,
 never from its exit status alone:
@@ -471,6 +482,9 @@ never from its exit status alone:
 - **Failed:** what happened in words, magex's line that says so, where your clone is now, and
   **Try again**, which reopens the sheet with fresh checks. A release is never run again from
   its stored command.
+- **Couldn't check:** *Couldn't check whether v1.4.3 is on GitHub*, when origin couldn't be
+  asked once magex ended, so it may be there; **Try again** reopens the sheet, which checks
+  afresh.
 
 magex's warnings show with the result, all but the one it prints on every release with
 something to release, that the newest version tag isn't on HEAD; the log keeps that one.
@@ -689,7 +703,8 @@ origin, with one `git ls-remote` whose answer is kept five minutes.
 ## The window
 
 A single toolbar runs beside the macOS window controls. It holds the **Inbox**, **Worktrees**,
-and **Prompts** tabs, and [**Scripts**](#the-scripts-tab) while a tool you run from it is on,
+and **Prompts** tabs, and [**Scripts**](#the-scripts-tab) while mage-x or go-pre-commit is on, or
+you turned Scripts on,
 and, on the right, the page's [filter](#filtering), the
 [notification](#menu-bar-and-notifications) bell, the API budget gauge, and your profile
 picture. Drag the bar to move the window, and double-click it to zoom. As the window narrows,
@@ -781,13 +796,17 @@ opens as large as the screen allows.
 text size, and the size the window opens at), [notifications](#menu-bar-and-notifications) (the menu bar icon and
 which banners show), snoozing (how long the
 [Snooze](#snooze-dismiss-and-pin) button sets an item aside, and what [wakes a snooze
-early](#waking-a-snooze-early)), launching (the terminal,
+early](#waking-a-snooze-early)), reviewing (the merge method and your [review
+replies](#review-replies)), launching (the terminal,
 the default coding agent, each agent's default profile, the default prompt for pull requests and
-for issues, the worktree default, and whether to [clean up worktrees after
-merging](#the-worktrees-view)), [coding agents and profiles](#coding-agents-and-profiles),
+for issues, the worktree default, and following agent sessions), worktrees (whether to [clean up
+worktrees after merging](#the-worktrees-view), which branches go with them, and protected
+branches), [coding agents and profiles](#coding-agents-and-profiles),
 repositories (the clone root and the [launch
 defaults](#launch-defaults) for orgs and repositories), trust (the [trusted
-bots](#outside-contributors)), [sensitive files](#sensitive-files), and the app's version. Each change is
+bots](#outside-contributors)), [sensitive files](#sensitive-files),
+[integrations](#tools-the-app-finds-and-installs) (mage-x, go-pre-commit, and Scripts), and the
+app's version. Each change is
 saved as you make it, except the clone root and launch defaults, which are saved with their
 **Save** buttons. Escape or the back arrow returns to the view you came from.
 
@@ -1213,7 +1232,8 @@ Every card gets it, in any list.
   into your review's text, to edit before you send it.
 - **Your review**, at the foot of the right column and always in view: the text, a **Replies**
   menu of your [review replies](#review-replies), the line comments waiting to go, the action
-  button, and **Ask Claude** (the item's launch button, with its menu).
+  button, and **Open in Claude** (or **Open in Codex**: the item's launch button, with its
+  menu).
 
 **Opening is instant.** The sheet opens from what it read last time, with no request, then reads
 the pull request from GitHub in the background (**Checking GitHub…**): one GraphQL request, and
@@ -1233,7 +1253,7 @@ what it does, as in **Approve & squash-merge**:
 | can merge now, with only optional checks failing (**Ready to merge · 1 optional check failing**) | **Approve & merge**, whose confirmation asks you to accept the failing checks |
 | only waits for your approval | **Approve & merge** |
 | waits for required checks still running | **Approve & auto-merge** |
-| has a required check failing | **Comment**, with Ask Claude beside it |
+| has a required check failing | **Comment**, with the launch button (**Open in Claude**) beside it |
 | is behind its base, and the rules want it up to date | **Update branch**; on a Dependabot pull request, **Ask Dependabot to rebase**, since Dependabot stops maintaining a branch someone else pushed to |
 | has conflicts, from Dependabot | **Ask Dependabot to rebase** |
 | is your own | Merge or auto-merge, never Approve or Request changes. When the rules want an approval, the sheet says it needs one **from someone else**, since GitHub never lets you approve your own, and **Merge when ready** warns that it waits for one |
@@ -1269,8 +1289,11 @@ in **Your review**, and any line comments, as a comment before they merge, so th
 shows it was reviewed, your own included, where GitHub takes a comment but never your approval.
 A note under the button, and the confirmation, say so (**Your text is posted as a comment
 first.**); clear the text to merge without one. The comment goes to the commit you saw, the way
-**Comment** sends one, and only once the merge state Nilbox reads first says GitHub would make
-the merge, so a pull request that has conflicts, is blocked, or was pushed to gets no comment.
+**Comment** sends one, and only once the merge state Nilbox reads first says the merge can go
+ahead: for **Merge**, that GitHub would merge it now; for **Merge past the rules**, that GitHub
+still lets you; for **Merge when ready**, that it is open, not a draft, and at the commit you
+saw. So a pull request that was pushed to gets no comment, and neither does one a plain Merge
+finds in conflict or blocked.
 The merge then runs exactly as it would without it. If the comment fails, nothing merges. If
 GitHub then won't merge, or anything else fails, the toast says the comment is posted and why
 it didn't merge, as in **Commented on acme-org/api#212, but it wasn't merged: Required status
@@ -1353,7 +1376,8 @@ against the diff before GitHub sees it, so GitHub never refuses one for a line i
 
 **Drafts** are kept per pull request for the session: closing the sheet, or stepping to another
 pull request and back, keeps your text, chosen reply, line comments, and viewed files. A draft
-is cleared once its action succeeds.
+is cleared once its action succeeds, except **Update branch** and **Ask Dependabot to rebase**,
+which leave it for the review to come.
 
 **What it costs.** Opening costs nothing; a refresh with nothing pushed, 1 GraphQL point; the first
 open of a pull request with up to 100 files, 1 GraphQL point and 1 REST point; each write, what
@@ -1425,7 +1449,7 @@ and records what newly needs you; a release or a run is recorded as it ends:
 | Released | A release you started reaches GitHub; it names the version and the commit it tagged |
 | Published | The release workflow on GitHub publishes a release you started (*acme-org/sdk v1.4.3 is published*) |
 | Release workflow failed | A workflow the tag of a release you started ran fails on GitHub (*The goreleaser workflow failed for acme-org/sdk v1.4.3*) |
-| Run failed | A run from the Scripts tab (a release, a hook change, checks, a script, a tool's update, or a pull), in the app or in your terminal, fails or runs past its time limit; it names the run and its repository (or its folder) and says how it ended. One that couldn't start, one you stopped (Control-C in your terminal included), and one a quit or a restart interrupted never notify |
+| Run failed | A run from the Scripts tab (a release, a hook change, checks, a script, a tool's update, or a pull), in the app or in your terminal, fails or runs past its time limit; it names the run and its repository (or its folder) and says how it ended. One that couldn't start, one you stopped (Control-C, or closing its terminal window, included), and one a quit or a restart interrupted never notify |
 
 Nothing is recorded for the first refresh of an account (everything in it would be new), for
 an item you dismissed or that is still snoozed, or for a refresh that failed. A list that shows

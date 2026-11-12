@@ -368,9 +368,9 @@ More in [Snooze, dismiss, and pin](docs/desktop.md#snooze-dismiss-and-pin).
   GitHub's answer confirms it. The item stays out of that list while GitHub's search catches up.
 - **Your account only:** an edit goes out only with the token of the account whose inbox you
   see, so a `gh auth switch` never sends one for the wrong person.
-- **Within your budget:** edits are counted in the API budget, paced well under GitHub's limits
-  on writes (30 a minute, 200 an hour), held while REST is down to its last hundredth, and paused
-  as long as GitHub asks.
+- **Within your budget:** edits are counted in the API budget, paced at 30 a minute and 200 an
+  hour, well under GitHub's limits on writes (80 and 500), held while REST is down to its last
+  hundredth, and paused as long as GitHub asks.
 
 More in [The item menu and edits on GitHub](docs/desktop.md#the-item-menu-and-edits-on-github).
 
@@ -388,7 +388,8 @@ More in [The item menu and edits on GitHub](docs/desktop.md#the-item-menu-and-ed
 - **One button:** it runs the action that fits, and says what it does: **Approve & squash-merge**,
   **Approve & auto-merge**, **Merge**, **Update branch**, **Ask Dependabot to rebase**, or
   **Comment** when checks fail. Its menu lists every action, with why one can't run now, and
-  offers **Ask Dependabot to rebase** on every open Dependabot pull request behind its base and
+  offers **Ask Dependabot to rebase** on every open Dependabot pull request, for one behind its
+  base or in conflict with it, and
   **Update branch** whenever GitHub lets you, whatever the merge state. Neither is the button
   unless the rules hold the pull request back for being behind (or, for the rebase, it has
   conflicts); with nothing else to run, the button reads **Choose an action** and opens the menu.
@@ -405,10 +406,12 @@ More in [The item menu and edits on GitHub](docs/desktop.md#the-item-menu-and-ed
   from the menu, with each rule it skips to accept. No agent ever approves, merges, or closes.
 - **Line comments and suggestions** on the diff, checked against it before GitHub sees them, and
   a draft per pull request that survives closing the sheet.
-- **Ask Claude** from the sheet, and use the latest session's verdict as your review's text.
+- **Open in Claude** (or Codex) from the sheet, and use the latest session's verdict as your
+  review's text.
 - **Cheap:** opening is instant and free, a refresh with nothing pushed costs one GraphQL point,
-  and each write costs one point, plus one to check the head before an approval or a close and
-  one to three for the merge-state read before a merge.
+  and each write costs one point, plus one to check the head before an approval or a close,
+  one to three for the merge-state read before a merge, and one more when your text goes as a
+  comment first.
 
 More in [Reviewing a pull request](docs/desktop.md#reviewing-a-pull-request).
 
@@ -597,7 +600,8 @@ More in [The Worktrees view](docs/desktop.md#the-worktrees-view).
   from its menu, in the other place. **New script** saves your own commands, shown first, in
   every repository, the Go ones, or those you choose, each with its own place to run and an
   optional ask before running. Beside the branch, the page says whether origin has newer
-  commits on it, asking origin about that branch alone, and **Pull** fast-forwards it (`git pull
+  commits on it, asking origin about that branch alone (an origin not on GitHub only when you
+  click **Check**), and **Pull** fast-forwards it (`git pull
   --ff-only`, never a merge or a rebase), so the scripts run on the newest code. A clone whose
   own git config names a program git would run says it can't be pulled, and why.
 - **A command from the repository asks first.** Before a `t3.json` script, a VS Code task, or the
@@ -643,8 +647,8 @@ More in [Menu bar and notifications](docs/desktop.md#menu-bar-and-notifications)
 - **Text size:** 100%, 115%, or 130%, apart from the window's size. Text and the spacing around
   it scale together, so nothing clips.
 - **Settings** covers your account, appearance, notifications, snoozing, reviewing, launching,
-  profiles, repositories, trust, and sensitive files. **Find a setting** in the toolbar narrows
-  the sections to those with a match and marks the setting.
+  worktrees, profiles, repositories, trust, sensitive files, and integrations. **Find a
+  setting** in the toolbar narrows the sections to those with a match and marks the setting.
 - **About** shows the version, build, commit, and system, each coding agent's installed
   version, and the GitHub CLI's, and **Report a bug** opens a GitHub issue with those details
   filled in.
@@ -663,11 +667,12 @@ More in [The window](docs/desktop.md#the-window).
 | ✅ Claude Code                        | **Supported** | Your own profiles, models, effort, and flags                        |
 | ✅ OpenAI Codex                       | **Supported** | The same, with a switch on each launch and defaults per repo or org |
 | ✅ iTerm2 and Terminal.app            | **Supported** | iTerm2 by default                                                   |
+| ✅ mage-x and go-pre-commit           | **Supported** | Releases, Git hooks, and repository scripts in the Scripts tab      |
 | 🚧 First-run setup                   | **Planned**   | A GitHub CLI check, plus agent and terminal preferences             |
 | 🚧 Mute or pin repositories and orgs | **Planned**   | Hide or raise everything from a repository or org at once           |
 | 🚧 Security alert sweeps             | **Planned**   | Sweep security alerts across every repository                       |
 | 🚧 More coding agents and terminals  | **Planned**   | Beyond Claude Code, Codex, iTerm2, and Terminal.app                 |
-| 🚧 Integrations                      | **Planned**   | Connect Nilbox to the rest of your tools                            |
+| 🚧 More integrations                 | **Planned**   | Beyond mage-x and go-pre-commit                                     |
 | 🚧 Linux and Windows                 | **Planned**   | The core is plain Go and already builds and tests on Linux          |
 
 <br/>
@@ -690,9 +695,11 @@ More in [The window](docs/desktop.md#the-window).
 > `avatars.githubusercontent.com` once for your profile picture, and, when you install or update a
 > tool, `github.com` and GitHub's release download hosts for that tool's public release, with no
 > token and nothing of yours. It reads from GitHub, and changes
-> something there only when you ask: taking you off an item, or a review, merge, or branch update
-> you send from the review sheet. Your preferences, triage state, and cache, the diffs of pull
-> requests you review included, never leave your machine.
+> something there only when you ask: taking you off an item, or a review, comment, merge,
+> auto-merge, branch update, Dependabot rebase request, or close you send from the review sheet.
+> Repo scripts' branch check and **Pull** run git against a clone's own origin, and ask an origin
+> that isn't on GitHub only when you click **Check**. Your preferences, triage state, and cache,
+> the diffs of pull requests you review included, never leave your machine.
 
 <br/>
 
@@ -811,7 +818,7 @@ magex app:check      # macOS: bindings drift check, desktop lint, desktop tests,
 |-------------------|---------------------------------------------------------------------------------------------------------------------------------|
 | `cmd/nilbox/`     | Entry point: a headless build by default, and the desktop app (window, menu bar icon, banners) with the `desktop` tag          |
 | `internal/brand/` | Product identity and design tokens; `internal/brandgen/` generates the theme, `Info.plist`, and icon artwork from it            |
-| `internal/`       | The bound services (inbox, review, launcher, prompts, launch defaults, settings, profiles, worktrees, notifications) and their building blocks |
+| `internal/`       | The bound services (inbox, review, launcher, prompts, launch defaults, settings, profiles, worktrees, notifications, sessions, the API budget, integrations, script runs, release, hooks, and repository scripts) and their building blocks |
 | `frontend/`       | The React + TypeScript frontend and its generated Go bindings                                                                   |
 | `build/`          | App and menu bar icon artwork, and the macOS bundle's `Info.plist` and icon set                                                 |
 | `magefiles/`      | Custom `magex` targets for the brand, the frontend, the app, the database queries, and measurements                             |
@@ -930,7 +937,7 @@ Measured on an Apple Silicon Mac (M1 Max) running macOS 15, against the producti
 |--------------------------------|--------:|---------:|
 | Cold start to first paint      |   < 1 s |   0.54 s |
 | Inbox refresh                  |   < 3 s |   2.30 s |
-| App binary size                | < 30 MB |  21.6 MB |
+| App binary size                | < 30 MB |  21.7 MB |
 | API budget at 5-minute cadence |   < 2 % |   1.20 % |
 
 Re-measure everything (size, startup, live read-only refreshes, and a real launch in iTerm2):
