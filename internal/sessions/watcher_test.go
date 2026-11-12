@@ -148,6 +148,8 @@ type watched struct {
 	toggle    *toggle
 }
 
+// newWatched returns a Watcher over a fresh ledger that wakes it, each tweak changing the
+// Watcher's config before it is built.
 func newWatched(t *testing.T, tweaks ...func(*sessions.WatcherConfig)) *watched {
 	t.Helper()
 
@@ -168,6 +170,11 @@ func newWatched(t *testing.T, tweaks ...func(*sessions.WatcherConfig)) *watched 
 	w.ledger = sessions.NewLedger(sessions.Config{Store: w.store, Watcher: w.watcher, Switch: w.toggle, Events: w.events})
 
 	return w
+}
+
+// mintsResumed has the Watcher name a session resumed outside the app "resumed".
+func mintsResumed(cfg *sessions.WatcherConfig) {
+	cfg.NewID = func() string { return "resumed" }
 }
 
 // start records a session launched now. Inside a synctest bubble with the Watcher
@@ -286,11 +293,8 @@ func TestWatcherSleepsUntilASessionStarts(t *testing.T) {
 func TestWatcherRevivesWithinTheDefaultWindow(t *testing.T) {
 	t.Parallel()
 
-	w := newWatched(t)
 	clk := testutil.NewClock(launched())
-	w.watcher = sessions.NewWatcher(sessions.WatcherConfig{
-		Store: w.store, Observers: map[agent.ID]sessions.Observer{agent.Claude: w.claude}, Clock: clk,
-	})
+	w := newWatched(t, func(cfg *sessions.WatcherConfig) { cfg.Clock = clk })
 
 	require.NoError(t, w.store.Insert(t.Context(), record("s1", 12)))
 	_, err := w.store.Apply(t.Context(), launched(), []sessions.Observation{{ID: "s1", State: sessions.StateEnded}})
@@ -314,12 +318,7 @@ func TestWatcherFollowsASessionResumedOutsideTheApp(t *testing.T) {
 	t.Parallel()
 
 	synctest.Test(t, func(t *testing.T) {
-		w := newWatched(t)
-		w.watcher = sessions.NewWatcher(sessions.WatcherConfig{
-			Store: w.store, Observers: map[agent.ID]sessions.Observer{agent.Claude: w.claude}, Events: w.events,
-			NewID: func() string { return "resumed" },
-		})
-		w.ledger = sessions.NewLedger(sessions.Config{Store: w.store, Watcher: w.watcher, Events: w.events})
+		w := newWatched(t, mintsResumed)
 		w.run(t)
 
 		w.claude.set("s1", sessions.StateEnded)
@@ -603,11 +602,7 @@ func TestWatcherRevivesASessionLaunchedLongAgoThatEndedRecently(t *testing.T) {
 	t.Parallel()
 
 	synctest.Test(t, func(t *testing.T) {
-		w := newWatched(t)
-		w.watcher = sessions.NewWatcher(sessions.WatcherConfig{
-			Store: w.store, Observers: map[agent.ID]sessions.Observer{agent.Claude: w.claude}, Events: w.events,
-			NewID: func() string { return "resumed" },
-		})
+		w := newWatched(t, mintsResumed)
 
 		old := record("s1", 12)
 		old.LaunchedAt = time.Now().Add(-3 * 24 * time.Hour)
