@@ -169,9 +169,11 @@ app:lint` reads.
   paths, a long read's progress told to the window a few times a second (the Release page's
   list and the window's worktrees listing, `event.WorktreesProgress`), and text helpers,
   among them the app's one POSIX shell quoting: `textutil.ShellQuote`, which always quotes,
-  for every word of a script the app writes and of the ssh command it hands git, and
+  for every word of a script the app writes, of the ssh command it hands git, and for the
+  program of Repo scripts' chain line unless it is a path from `/`, and
   `textutil.ShellWord`, which leaves a word plain only when every POSIX shell reads it as
-  itself (ASCII letters, digits, and `=-_./:,+@%`, not starting with `=`).
+  itself (ASCII letters, digits, and `=-_./:,+@%`, not starting with `=`), for the commands
+  the window shows or copies and the chain line's folders and arguments.
   A file a repository or an agent controls (a clone's `go.mod`, `t3.json`, `tasks.json`,
   magefiles, go-pre-commit config and hooks, the signing files, an agent's transcript) is read
   only through `paths.OpenRegular` (`ReadHead`, `ReadTail`): a regular file, or a link to one,

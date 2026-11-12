@@ -8,18 +8,22 @@ const shellPunct = "-_./:,+@%"
 
 // ShellQuote quotes s as one word for a POSIX shell, whatever s holds: in single quotes,
 // inside which nothing is special, each single quote in s closing them, written as \',
-// and opening them again. The empty string comes out as a pair of quotes. It is the
-// quoting for every word of a command a shell runs, the program's name included.
+// and opening them again. The empty string comes out as a pair of quotes. It quotes every
+// word of a script the app writes, the ssh command it hands git, and the program of a
+// command line a shell runs unless that is a path that starts with a slash (ShellWord).
 func ShellQuote(s string) string {
 	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }
 
 // ShellWord quotes s as one word for a POSIX shell only when it needs quotes: as it is
-// when ShellSafe passes it, else as ShellQuote quotes it. It suits a command shown to the
-// user, or copied, where a plain word reads better. A shell reads a command's first word
-// as more than itself when it is a reserved word, an alias, or, as in A=b, sets a
-// variable, so a program's name is quoted with ShellQuote unless it is a path that starts
-// with a slash.
+// when ShellSafe passes it, else as ShellQuote quotes it. Every POSIX shell reads what it
+// returns as the one word s, so it suits a command shown to the user, or copied, where a
+// plain word reads better, and a folder or an argument of a command line a shell runs. A
+// shell reads a command's first word as more than itself, though, when it is a reserved
+// word, an alias, or, as in A=b, sets a variable, so a command line a shell runs quotes
+// its program with ShellQuote unless it is a path that starts with a slash. A command
+// only shown (scriptrun.DisplayCommand) passes its program here too: a run's is always
+// such a path.
 func ShellWord(s string) string {
 	if ShellSafe(s) {
 		return s

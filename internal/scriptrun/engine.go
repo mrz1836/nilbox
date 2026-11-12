@@ -979,8 +979,9 @@ func sameStart(a, b time.Time) bool {
 // DisplayCommand writes argv out as a shell would read it, each word as
 // textutil.ShellWord quotes it, with the program's folder under home written from ~, as
 // the window shows every folder. The ~/ stays outside the quotes, where a shell still
-// reads it as home. A run's Command defaults to it, and the integrations show a tool's own
-// update command with it.
+// reads it as home. The program is a path that starts with a slash, as every run's is
+// (validArgv) and a tool's copy is, so ShellWord's rule lets it stand plain. A run's
+// Command defaults to it, and the integrations show a tool's own update command with it.
 func DisplayCommand(argv []string, home string) string {
 	parts := make([]string, 0, len(argv))
 
