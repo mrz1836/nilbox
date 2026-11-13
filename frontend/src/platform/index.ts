@@ -310,6 +310,7 @@ export type ReviewActRequest = NonNullLists<review.ActRequest>
 export type ReviewChange = NonNullLists<review.Change>
 export type ReviewClosing = NonNullLists<review.Closing>
 export type ReviewCheck = NonNullLists<review.Check>
+export type ReviewUnrun = NonNullLists<review.Unrun>
 export type ReviewEntry = NonNullLists<review.ReviewEntry>
 export type ReviewFile = NonNullLists<review.File>
 export type ReviewFilePatch = NonNullLists<review.FilePatch>

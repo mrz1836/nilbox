@@ -272,6 +272,10 @@ type Review struct {
 	Checks  []Check       `json:"checks"`
 	Reviews []ReviewEntry `json:"reviews"`
 
+	// Unrun are the head commit's workflow runs that ended without a check and without
+	// passing (Unrun), which the checks list names beneath it.
+	Unrun []Unrun `json:"unrun"`
+
 	// Closes are the issues it closes once it merges, the first ten, and MoreCloses how many
 	// others.
 	Closes     []Closing `json:"closes"`
@@ -358,6 +362,15 @@ type Check struct {
 
 	URL      string `json:"url"`
 	Required bool   `json:"required"`
+}
+
+// Unrun is a workflow run on the head commit that ended without any check and without
+// passing, which GitHub counts in the merge state though no check shows it: its workflow
+// (or app), and whether it waits for a maintainer's approval, as a fork's runs do, rather
+// than having failed to start.
+type Unrun struct {
+	Name     string `json:"name"`
+	Approval bool   `json:"approval"`
 }
 
 // Closing is an issue a pull request closes once it merges: its repository as "owner/name",

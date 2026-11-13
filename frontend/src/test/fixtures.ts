@@ -1406,6 +1406,7 @@ export function review(overrides: Partial<Review> = {}): Review {
     totalFiles: 1,
     filesComplete: true,
     checks: [{ name: 'test', workflow: 'CI', state: 'SUCCESS', outcome: 'passed', url: '', required: true }],
+    unrun: [],
     reviews: [],
     closes: [],
     moreCloses: 0,

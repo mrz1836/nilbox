@@ -371,7 +371,11 @@ app:lint` reads.
   fresh and merges only when GitHub says it can, so an admin's token never merges past branch
   protection on its own: only `merge_bypass`
   ("merge past the rules") does, offered when GitHub sets `viewerCanMergeAsAdmin`, never the
-  sheet's button, and with each rule it skips to accept. Each step is reported as an
+  sheet's button, and with each rule it skips to accept. An UNSTABLE pull request's readiness
+  line and merge warning say what GitHub counts as not passing: optional checks failing or
+  running, and the head commit's workflow runs that ended without a check (`Unrun`, read in
+  the review query through the rollup's own `commit`: a fork's runs awaiting approval, or runs
+  that failed to start), which the sheet names beneath its checks. Each step is reported as an
   `event.ReviewProgress`, which the sheet shows while the user waits. Line comments are checked
   against the cached diff (`hunks.go`) before anything is sent. `Decide` marks every offer with
   what its text goes with (`Offer.Reviews`, `Offer.CommentsFirst`, and `Offer.CommentBlocked`,

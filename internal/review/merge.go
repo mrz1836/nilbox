@@ -278,7 +278,7 @@ func stateReason(status string) string {
 	case github.MergeStateDirty:
 		return "It has conflicts."
 	case github.MergeStateUnstable:
-		return "Some checks are failing."
+		return "Not every check or workflow run is passing."
 	default:
 		return "GitHub is still working out whether it can merge."
 	}

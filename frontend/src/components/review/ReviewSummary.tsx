@@ -2,7 +2,7 @@ import { counted } from '../../lib/format'
 import { refText } from '../../lib/format'
 import { issueLook } from '../../lib/issues'
 import { toneDot, toneText, type Tone } from '../../lib/signals'
-import type { InboxItem, ReadyState, Review, ReviewCheck, ReviewEntry } from '../../platform'
+import type { InboxItem, ReadyState, Review, ReviewCheck, ReviewEntry, ReviewUnrun } from '../../platform'
 import { openExternal } from '../../platform'
 import { chipClass } from '../controls'
 import { ItemLink } from '../ItemLink'
@@ -152,13 +152,46 @@ function CheckList({ checks }: { checks: readonly ReviewCheck[] }) {
   )
 }
 
+// Unrun names the head commit's workflow runs that ended without a check and without
+// passing, which GitHub counts as not passing though no check shows them: those waiting for
+// a maintainer's approval, as a fork's runs do, and those that failed to start, each
+// workflow named once.
+function Unrun({ unrun }: { unrun: readonly ReviewUnrun[] }) {
+  const lines = [
+    { runs: unrun.filter((u) => u.approval), words: 'awaiting approval' },
+    { runs: unrun.filter((u) => !u.approval), words: 'that didn’t start' },
+  ].filter((l) => l.runs.length > 0)
+
+  if (lines.length === 0) {
+    return null
+  }
+
+  return (
+    <ul aria-label="Workflow runs with no check" className="mt-1.5 space-y-0.5 text-xs text-warning">
+      {lines.map(({ runs, words }) => (
+        <li key={words}>
+          {counted(runs.length, 'workflow run', 'workflow runs')} {words}
+          {': '}
+          <span className="text-muted">{[...new Set(runs.map((u) => u.name || 'an app'))].join(', ')}</span>
+        </li>
+      ))}
+    </ul>
+  )
+}
+
 // Checks lists the head commit's checks that ran: the failing ones first, then those
 // running, then those passed. The ones skipped, which say nothing about the change, fold
 // away below them under their count. The list starts open, and folds away under its count,
 // which marks the checks running with their dot, so a folded list still shows CI at work.
-function Checks({ checks }: { checks: readonly ReviewCheck[] }) {
+// Beneath it, the workflow runs that never ran a check and aren't passing (Unrun).
+function Checks({ checks, unrun }: { checks: readonly ReviewCheck[]; unrun: readonly ReviewUnrun[] }) {
   if (checks.length === 0) {
-    return <p className="text-xs text-muted">No checks on this commit.</p>
+    return (
+      <>
+        <p className="text-xs text-muted">No checks on this commit.</p>
+        <Unrun unrun={unrun} />
+      </>
+    )
   }
 
   const order = { failed: 0, pending: 1, passed: 2 } as Record<string, number>
@@ -184,6 +217,7 @@ function Checks({ checks }: { checks: readonly ReviewCheck[] }) {
           <CheckList checks={skipped} />
         </details>
       )}
+      <Unrun unrun={unrun} />
     </details>
   )
 }
@@ -261,7 +295,7 @@ export function ReviewSummary({ review, item, onFilesSettings }: ReviewSummaryPr
         {change.areas.length > 0 && <span className="text-xs text-muted">in {areasText(change.areas)}</span>}
       </div>
       <Closes review={review} />
-      <Checks checks={review.checks} />
+      <Checks checks={review.checks} unrun={review.unrun} />
       <Reviews reviews={review.reviews} />
     </section>
   )

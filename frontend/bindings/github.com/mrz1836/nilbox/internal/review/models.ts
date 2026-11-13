@@ -664,6 +664,12 @@ export interface Review {
     "reviews": ReviewEntry[] | null;
 
     /**
+     * Unrun are the head commit's workflow runs that ended without a check and without
+     * passing (Unrun), which the checks list names beneath it.
+     */
+    "unrun": Unrun[] | null;
+
+    /**
      * Closes are the issues it closes once it merges, the first ten, and MoreCloses how many
      * others.
      */
@@ -757,3 +763,14 @@ export const Side = {
      */
     SideRight: "RIGHT",
 } as const;
+
+/**
+ * Unrun is a workflow run on the head commit that ended without any check and without
+ * passing, which GitHub counts in the merge state though no check shows it: its workflow
+ * (or app), and whether it waits for a maintainer's approval, as a fork's runs do, rather
+ * than having failed to start.
+ */
+export interface Unrun {
+    "name": string;
+    "approval": boolean;
+}
