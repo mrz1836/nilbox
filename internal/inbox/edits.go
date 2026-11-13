@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/mrz1836/nilbox/internal/github"
@@ -260,7 +259,7 @@ func later(a, b time.Time) time.Time {
 // each token belongs to is remembered from the refreshes and checks made with it, so a
 // check costs a request only for a token the inbox has not used yet.
 func (s *Service) checkViewer(ctx context.Context, tok github.Token, login string) error {
-	viewer, ok := s.viewers.get(tok)
+	viewer, ok := s.viewers.Get(tok)
 	if !ok {
 		var err error
 
@@ -268,7 +267,7 @@ func (s *Service) checkViewer(ctx context.Context, tok github.Token, login strin
 			return fmt.Errorf("check the signed-in account: %w", err)
 		}
 
-		s.viewers.remember(tok, viewer)
+		s.viewers.Remember(tok, viewer)
 	}
 
 	if !strings.EqualFold(viewer, login) {
@@ -280,35 +279,4 @@ func (s *Service) checkViewer(ctx context.Context, tok github.Token, login strin
 	}
 
 	return nil
-}
-
-// viewerCache remembers the account the last token the inbox used belongs to. The token
-// stays in memory, as the TokenSource keeps it, and is only compared.
-type viewerCache struct {
-	mu    sync.Mutex
-	tok   github.Token
-	login string
-}
-
-// get returns the account tok belongs to, if tok is the token remembered.
-func (c *viewerCache) get(tok github.Token) (string, bool) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	if c.login == "" || !c.tok.Same(tok) {
-		return "", false
-	}
-
-	return c.login, true
-}
-
-// remember records that tok belongs to the account login.
-func (c *viewerCache) remember(tok github.Token, login string) {
-	if tok.IsZero() || login == "" {
-		return
-	}
-
-	c.mu.Lock()
-	c.tok, c.login = tok, login
-	c.mu.Unlock()
 }

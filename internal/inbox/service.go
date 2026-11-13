@@ -220,7 +220,7 @@ type Service struct {
 	scopes    scopeCache
 
 	// viewers remembers the account the last token used belongs to, for the edits.
-	viewers viewerCache
+	viewers github.ViewerCache
 }
 
 // NewService returns a Service. A nil Clock uses the system clock.
@@ -503,7 +503,7 @@ func (s *Service) fetch(ctx context.Context, tok github.Token, listed []string, 
 		return refreshed{}, ErrIncompleteFetch
 	}
 
-	s.viewers.remember(tok, got.inbox.Viewer.Login)
+	s.viewers.Remember(tok, got.inbox.Viewer.Login)
 
 	got.archived = dropArchived(got.inbox)
 	got.closed = dropClosed(got.inbox)

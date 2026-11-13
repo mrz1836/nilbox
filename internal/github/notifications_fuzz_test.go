@@ -125,6 +125,7 @@ func FuzzDecodeThreads(f *testing.F) {
 		assert.Len(t, listed, len(page.Threads)+page.Dropped, "every thread is kept or counted")
 		assert.False(t, page.NotModified)
 		assert.Zero(t, page.NextPage)
+		assert.False(t, page.Capped)
 		assert.NotNil(t, page.Threads)
 
 		for _, thread := range page.Threads {
