@@ -59,6 +59,7 @@ func TestEveryEventHasItsOwnName(t *testing.T) {
 		{event.WorktreesProgress{}, event.NameWorktreesProgress},
 		{event.IntervalsChanged{}, event.NameIntervalsChanged},
 		{event.RepoRulesChanged{}, event.NameRepoRulesChanged},
+		{event.GHThreadsUpdated{}, event.NameGHThreadsUpdated},
 	}
 
 	seen := make(map[string]bool, len(all))
@@ -84,6 +85,7 @@ func TestTheWindowHearsOnlyTheWindowEvents(t *testing.T) {
 		event.NameBudgetUpdated, event.NameSessionsUpdated, event.NameReviewProgress, event.NameIssueProgress,
 		event.NameToolsUpdated, event.NameScriptRunsUpdated, event.NameScriptRunProgress, event.NameQuitRequested,
 		event.NameReleasesUpdated, event.NameReleasesProgress, event.NameHooksUpdated, event.NameWorktreesProgress,
+		event.NameGHThreadsUpdated,
 	}, names)
 
 	for _, e := range []event.Event{

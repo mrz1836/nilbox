@@ -38,6 +38,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/core"
 	"github.com/mrz1836/nilbox/internal/desktop"
 	"github.com/mrz1836/nilbox/internal/event"
+	"github.com/mrz1836/nilbox/internal/ghthreads"
 	"github.com/mrz1836/nilbox/internal/hooks"
 	"github.com/mrz1836/nilbox/internal/inbox"
 	"github.com/mrz1836/nilbox/internal/integrations"
@@ -157,7 +158,8 @@ func assemble(
 
 	ui := &desktopUI{}
 	workers := []desktop.Worker{
-		c.Scheduler, c.ChecksFollower, c.Sweeper, c.BudgetSaver, c.Watcher, c.ReleaseRefresher, c.HooksScans,
+		c.Scheduler, c.GHThreadsSyncer, c.ChecksFollower, c.Sweeper, c.BudgetSaver, c.Watcher, c.ReleaseRefresher,
+		c.HooksScans,
 	}
 	shell := desktop.New(desktop.Config{
 		Frontend:       ui,
@@ -239,6 +241,7 @@ func registerEvents() {
 	application.RegisterEvent[event.ReleasesProgress](event.NameReleasesProgress)
 	application.RegisterEvent[event.HooksUpdated](event.NameHooksUpdated)
 	application.RegisterEvent[event.WorktreesProgress](event.NameWorktreesProgress)
+	application.RegisterEvent[event.GHThreadsUpdated](event.NameGHThreadsUpdated)
 }
 
 // services wraps every service the core binds, in the core's order. A service no binder
@@ -282,6 +285,7 @@ func binders() []func(svc any) (application.Service, bool) {
 		binder[worktrees.Service], binder[notify.Service], binder[appinfo.Service], binder[budget.Service],
 		binder[sessions.Service], binder[review.Service], binder[issues.Service], binder[integrations.Service],
 		binder[scriptrun.Service], binder[releases.Service], binder[hooks.Service], binder[scripts.Service],
+		binder[ghthreads.Service],
 	}
 }
 

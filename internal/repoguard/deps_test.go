@@ -26,14 +26,17 @@ type boundary struct {
 // boundaries are the package dependencies the app keeps cut. A forbidden path covers
 // the packages under it too.
 func boundaries() []boundary {
+	// inbox is the inbox's package, which many boundaries name.
+	const inbox = "internal/inbox"
+
 	// services are the app's services that a building block below them never imports,
 	// and noService adds the store: what a leaf that serves any of them never imports.
-	services := []string{"internal/github", "internal/settings", "internal/inbox", "internal/core"}
+	services := []string{"internal/github", "internal/settings", inbox, "internal/core"}
 	noService := append([]string{"internal/store"}, services...)
 	// sheets are what the review sheet and the issue sheet reach only through the
 	// interfaces each declares.
 	sheets := []string{
-		"internal/inbox", "internal/settings", "internal/prompts", "internal/launcher", "internal/worktrees",
+		inbox, "internal/settings", "internal/prompts", "internal/launcher", "internal/worktrees",
 		"internal/sessions", "internal/core", "internal/desktop",
 	}
 
@@ -107,11 +110,25 @@ func boundaries() []boundary {
 		{
 			pkg: "internal/threadrules",
 			forbidden: append(slices.Clone(noService),
-				"internal/notify", "internal/notifyprefs", "internal/clock", "internal/integrations"),
+				"internal/notify", "internal/notifyprefs", "internal/clock", "internal/integrations", "internal/ghthreads"),
 			why: "threadrules declares the GitHub notification rules' settings keys, which settings writes, and decides " +
 				"a thread from them and what it is given alone; this rule keeps it off the store, the GitHub client, " +
-				"settings, the inbox, core, the notifications, the clock, and the integrations, and by convention it " +
-				"imports only item and prefval",
+				"settings, the inbox, core, the notifications, the clock, the integrations, and the mirror of the " +
+				"notifications that obeys it, and by convention it imports only item and prefval",
+		},
+		{
+			pkg:       "internal/ghthreads",
+			forbidden: append(slices.Clone(sheets), "internal/notify", "internal/review", "internal/issues"),
+			why: "ghthreads mirrors the user's GitHub notifications through the GitHub client and reads its rules " +
+				"through its own RuleSource, which core adapts; what the inbox tells it comes through core, never " +
+				"through an import",
+		},
+		{
+			pkg:       inbox,
+			forbidden: []string{"internal/ghthreads"},
+			why: "the inbox tells what the user finished only to the OutcomeSink it is given, so what follows its " +
+				"items, the mirror of the user's GitHub notifications among them, is wired by core; it never imports " +
+				"the mirror",
 		},
 		{
 			pkg:       "internal/prefs/prefval",

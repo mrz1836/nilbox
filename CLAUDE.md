@@ -147,7 +147,7 @@ app:lint` reads.
 - `internal/core/` assembles the app and builds every service the window binds: settings,
   profiles, prompts, launch defaults, inbox, review, issues, launcher, worktrees,
   notifications, app info, the API budget, sessions, integrations, script runs, release, hooks,
-  and repository scripts.
+  repository scripts, and the mirror of the user's GitHub notifications.
   Every `internal/*` package is plain Go, built and tested on Linux without CGO.
 - Services share their building blocks rather than keep copies: `internal/repo` and
   `internal/item` name repositories, pull requests and issues, and their worktrees;
@@ -203,7 +203,8 @@ app:lint` reads.
   runs GitHub holds for approval, `item_details.checks_awaiting`, which its card marks held
   in place of the rollup's state, isn't running, and waits for the whole refresh), the sweeper (these three as often as Settings → Refreshing
   says, through `periodic.RunEvery`, which core wakes on the Go-only
-  `event.IntervalsChanged` the settings setter emits, so a change applies at once), the budget's `Saver`, the sessions watcher, the Release page's
+  `event.IntervalsChanged` the settings setter emits, so a change applies at once), the GitHub
+  notifications' `ghthreads.Syncer` (woken the same way), the budget's `Saver`, the sessions watcher, the Release page's
   refresher, and the Hooks page's scans as tracked work, starts the deferred work
   (`core.Deferred`: the login-shell read first; the tool finder, the runs, and the release
   `Follower` beside it) once after the first paint, never on the cold
@@ -506,6 +507,58 @@ app:lint` reads.
   alone writes, and the pure `Decide`, which says whether one thread is cleared, skipped, or
   held at the moment its item was finished; it is a leaf that imports only `internal/item` and
   `prefval`.
+- `internal/ghthreads/` mirrors the user's GitHub notifications (threads, in the REST API's
+  words) as the web inbox lists them, read and unread but not done, in `gh_threads`, which it
+  owns, one row per account and thread (its reason, unread, times, subject type and title,
+  repository, the pull request or issue `Thread.Ref` names, '' and 0 for any other subject,
+  and `latest_comment_url`, kept for the next check of who acted after a moment and never
+  shown or opened), and keeps the state of its passes in `ghthreads.sync`, a JSON pref only it
+  writes. It only reads: nothing here writes to GitHub. A pass, one at a time (the Syncer's
+  and `CheckNow`'s share one), reads the rules through its `RuleSource` (core's
+  `ghThreadRules`, one read of the prefs): with `Read` off it sends nothing and borrows no
+  token, and marks the mirror stale (`walkNext`). Otherwise it borrows a token through
+  `github.WithToken`, learns its login with `FetchViewer` (remembered per token in a
+  `github.ViewerCache`, the inbox's building block too: one GraphQL point per new token), and
+  lists through its `Client` (`*github.Client`): page 1 with the ETag its last answer
+  carried, a 304 ending the listing at no cost, and a 200 reading on (`ThreadPage.NextPage`)
+  until a page whose oldest thread is no newer than the high-water mark, the newest
+  `updated_at` the last stored listing saw. A 304 covers page 1 alone, so every page is
+  walked, with no ETag, up to `github.MaxThreadPages` (the newest 1,000, the mirror
+  `Truncated` when GitHub lists a page past them, `ThreadPage.Capped`): at the first pass
+  after the Service is built, every `FullWalkEvery` (6 h), after the account changes (another
+  account's ETag and mark are never used, and its rows, never shown, are dropped once unseen
+  for 30 days), once reading is back on, and after a refusal; a pass that reads to the last
+  page counts as one. A 200 drops the account's rows it didn't list within the span it read
+  (done on GitHub): every one for a walk, and, for a pass that stopped at the mark, those
+  updated strictly after the oldest thread on its last page, since GitHub lists the newest
+  updated first; a thread updated while the pages are read may be dropped once, and listed
+  again by the next pass. A pass stores its listing in one `store.InTx` at its end, rows and
+  `ghthreads.sync` together, so one that fails partway stores nothing, and never an ETag or a
+  mark the pages it meant to read don't back. GitHub refusing the listing to the token
+  (`github.NotificationsRefused`: 404, or 403 but a rate limit) marks access refused ("Your
+  GitHub token can't read notifications."), and no listing is sent for `RefusedFor` (6 h)
+  unless `CheckNow` asks; any other failure is only the status's last error
+  (`uierr.Message`), and the next pass tries again. Then, a 304 pass included, it checks the
+  state of the pull requests and issues its threads are about, each once, in one
+  `FetchItemStates` call: those never checked, those whose thread updated since, and those
+  not known merged or closed and checked `StateRecheck` (30 min) ago; releases, discussions,
+  check suites, and commits are counted, never checked. One GitHub can't find is stamped
+  checked, its state kept, and a check that fails stores only the last error, the listing
+  standing. The `Syncer`, a desktop worker after the scheduler and woken with it
+  (`followed.intervals`), runs a pass at once, then the longer of the inbox's refresh interval
+  and GitHub's `X-Poll-Interval` after the last pass ended, its own or `CheckNow`'s (a timed
+  pass that finds one ended while it waited for the running one lists nothing), in its own
+  select loop, recovering and logging a panic; its tests run in a `testing/synctest` bubble.
+  The bound `Snapshot` reads the database alone, for the account the last pass read: the
+  status (reading, the account, `Access`, the last pass and walk, the last error, when a
+  refused listing is sent again, the count, the unread count, and `Truncated`), `ByItem` (each
+  pull request or issue with threads: unread, total, and reasons) for the cards' tags, and
+  the newest 20 `Unread`, none with a URL GitHub gave; with reading off, its lists are empty.
+  `CheckNow` runs a pass once any running has ended, lifting the back-off and ignoring the
+  poll interval, and returns the `Snapshot`, whose status tells a pass that failed. A pass
+  that changes what `Snapshot` shows, the passes' times aside, emits `event.GHThreadsUpdated`
+  (`ghthreads:updated`), but one whose caller gave up tells nothing. It never imports the inbox, settings, core, notify, the sheets, or the
+  desktop shell, and the inbox never imports it (the repoguard boundary test).
 - `internal/bump/` reads a dependency update from a bot's pull request title into an `Update`,
   for the review sheet and the `.Dependency` prompt variables. It is pure and imports no
   service.

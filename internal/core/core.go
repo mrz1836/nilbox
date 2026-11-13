@@ -26,6 +26,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/clonelock"
 	"github.com/mrz1836/nilbox/internal/event"
 	"github.com/mrz1836/nilbox/internal/execpath"
+	"github.com/mrz1836/nilbox/internal/ghthreads"
 	"github.com/mrz1836/nilbox/internal/github"
 	"github.com/mrz1836/nilbox/internal/gitread"
 	"github.com/mrz1836/nilbox/internal/hooks"
@@ -139,6 +140,7 @@ type Core struct {
 	Release        *release.Service
 	Hooks          *hooks.Service
 	Scripts        *scripts.Service
+	GHThreads      *ghthreads.Service
 
 	// ShellSettings are the settings the desktop shell reads when the app launches. They
 	// are not bound.
@@ -158,6 +160,11 @@ type Core struct {
 	// still running, in one request, and nothing while none runs; the desktop shell runs
 	// it with the scheduler.
 	ChecksFollower *inbox.ChecksFollower
+
+	// GHThreadsSyncer reads the user's GitHub notifications into GHThreads' mirror on
+	// start, then as often as the inbox is read, never sooner than GitHub asks; the
+	// desktop shell runs it after the scheduler. It is not bound.
+	GHThreadsSyncer *ghthreads.Syncer
 
 	// Watcher follows the agent sessions launches start, once Run is called; the desktop
 	// shell runs it with the other work. ShellSessions are the sessions the menu bar
@@ -286,7 +293,7 @@ func (c *Core) Services() []any {
 	return []any{
 		c.Settings, c.Profiles, c.Prompts, c.LaunchDefaults, c.Inbox, c.Launcher, c.Worktrees, c.Notifications,
 		c.AppInfo, c.Budget, c.Sessions, c.Review, c.Issues, c.Integrations, c.ScriptRuns, c.Release, c.Hooks,
-		c.Scripts,
+		c.Scripts, c.GHThreads,
 	}
 }
 
@@ -442,6 +449,15 @@ func assemble(pool *sql.DB, info startup, opts Options, logger *slog.Logger) *Co
 	// as a release that reached GitHub or a run that failed.
 	dispatcher := notify.NewDispatcher(notices)
 
+	// The user's GitHub notifications are mirrored through the shared client, read only,
+	// while the Read rule settings writes is on, as often as the inbox is read, never sooner
+	// than GitHub asks.
+	ghThreads := ghthreads.NewService(ghthreads.Config{
+		Pool: pool, Tokens: tokens, Client: client, Rules: ghThreadRules{prefs: prefsstore.New(pool, opts.Clock)},
+		Clock: opts.Clock, Events: opts.Events, Logger: logger,
+	})
+	ghThreadsSyncer := ghthreads.NewSyncer(ghThreads, refreshEvery(prefs, settings.RefreshInbox, logger), logger)
+
 	inboxSvc := inbox.NewService(inbox.Config{
 		Pool:     pool,
 		Tokens:   tokens,
@@ -586,7 +602,7 @@ func assemble(pool *sql.DB, info startup, opts Options, logger *slog.Logger) *Co
 	scheduler := inbox.NewScheduler(inboxSvc, refreshEvery(prefs, settings.RefreshInbox, logger), logger)
 	checksFollower := inbox.NewChecksFollower(inboxSvc, refreshEvery(prefs, settings.RefreshChecks, logger), logger)
 	sweeper := worktrees.NewSweeper(sweeps, refreshEvery(prefs, settings.RefreshWorktrees, logger))
-	followed.intervals = []waker{scheduler, checksFollower, sweeper}
+	followed.intervals = []waker{scheduler, checksFollower, sweeper, ghThreadsSyncer}
 
 	// The review sheet and the issue sheet read and act through the inbox's one Actor.
 	actor := inbox.NewActor(inboxSvc)
@@ -642,6 +658,8 @@ func assemble(pool *sql.DB, info startup, opts Options, logger *slog.Logger) *Co
 		ShellSettings:    newShellSettings(prefs, pool, opts.Clock),
 		ProfileStore:     profileStore,
 		Scheduler:        scheduler,
+		GHThreads:        ghThreads,
+		GHThreadsSyncer:  ghThreadsSyncer,
 		ChecksFollower:   checksFollower,
 		Sweeper:          sweeper,
 		Timing:           recorder,

@@ -36,8 +36,9 @@ const (
 	// MaxThreadPages is the most pages of notifications the app reads: 1,000 threads.
 	MaxThreadPages = 20
 
-	// threadsPerPage is the most threads GitHub lists on a page.
-	threadsPerPage = 50
+	// ThreadsPerPage is the most threads GitHub lists on a page, which the listing asks
+	// for.
+	ThreadsPerPage = 50
 
 	// maxPollSeconds caps the X-Poll-Interval the app takes from GitHub: a day.
 	maxPollSeconds = 24 * 60 * 60
@@ -108,6 +109,10 @@ type ThreadPage struct {
 	// NextPage is the page after this one, or 0 when there is none, or it would be past
 	// MaxThreadPages.
 	NextPage int
+
+	// Capped reports that GitHub lists a page after this one, past MaxThreadPages, which
+	// the app reads no further: the threads past it are left out. NextPage is then 0.
+	Capped bool
 }
 
 // Thread is one notification thread: GitHub's notice about one subject, such as a pull
@@ -206,10 +211,8 @@ func (c *Client) listThreads(ctx context.Context, tok Token, q ThreadQuery) (*Th
 		return nil, fmt.Errorf("%w: decode the notifications: %w", ErrMalformedResponse, err)
 	}
 
-	out := &ThreadPage{
-		Threads: threads, Dropped: dropped, PollInterval: pollInterval(header),
-		NextPage: nextThreadPage(base, header, page),
-	}
+	out := &ThreadPage{Threads: threads, Dropped: dropped, PollInterval: pollInterval(header)}
+	out.NextPage, out.Capped = pageAfter(nextThreadPage(base, header, page))
 
 	// Only page 1 is ever sent with an ETag, so only its ETag is kept.
 	if page == 1 {
@@ -253,7 +256,7 @@ func markedError(id int64, as string, err error) error {
 // the read ones too, is_done=false leaves the done ones out), as many to a page as GitHub
 // lists, always in this order.
 func threadListQuery(page int) string {
-	return "all=true&is_done=false&per_page=" + strconv.Itoa(threadsPerPage) + "&page=" + strconv.Itoa(page)
+	return "all=true&is_done=false&per_page=" + strconv.Itoa(ThreadsPerPage) + "&page=" + strconv.Itoa(page)
 }
 
 // threadPath is the REST path of the notification thread id.
@@ -274,8 +277,8 @@ func pollInterval(h http.Header) time.Duration {
 
 // nextThreadPage reads the number of the page after current from an answer's Link header,
 // and only the number: the link must be the API's own listing (base's scheme, host, and
-// path), its page one number after current or more, and within MaxThreadPages; 0 for
-// anything else.
+// path), and its page one number after current or more; 0 for anything else. The caller
+// holds it to MaxThreadPages.
 func nextThreadPage(base *url.URL, header http.Header, current int) int {
 	m := nextPageLink.FindStringSubmatch(header.Get("Link"))
 	if m == nil || base == nil {
@@ -288,11 +291,42 @@ func nextThreadPage(base *url.URL, header http.Header, current int) int {
 	}
 
 	next, ok := onlyPage(link.RawQuery)
-	if !ok || next <= current || next > MaxThreadPages {
+	if !ok || next <= current {
 		return 0
 	}
 
 	return next
+}
+
+// pageAfter is the page the app reads after one whose Link names next (0 for none): next,
+// or 0 past MaxThreadPages, which is never asked for, though GitHub listing it says threads
+// are left out (capped).
+func pageAfter(next int) (page int, capped bool) {
+	if next > MaxThreadPages {
+		return 0, true
+	}
+
+	return next, false
+}
+
+// NotificationsRefused reports whether err is GitHub refusing the token the notifications
+// listing itself, as it does a fine-grained token: 404, or 403 that is neither a rate limit
+// (rateLimited) nor carries a Retry-After. A rate limit says to wait, not that the token
+// can't read them; a 401 is the token itself, which WithToken borrows again.
+func NotificationsRefused(err error) bool {
+	status, ok := errors.AsType[*StatusError](err)
+	if !ok {
+		return false
+	}
+
+	switch status.StatusCode {
+	case http.StatusNotFound:
+		return true
+	case http.StatusForbidden:
+		return !rateLimited(status) && status.RetryAfter == 0
+	default:
+		return false
+	}
 }
 
 // isListing reports whether link is the API's own listing of notifications: on base, at

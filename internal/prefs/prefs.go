@@ -21,6 +21,12 @@
 //     locations it was read from, which the next start shows at once.
 //   - hooks writes hooks.*: whether a checks run has ended, after which the Hooks page
 //     folds what it says about the tools the checks install.
+//   - ghthreads writes ghthreads.*: ghthreads.sync, the state of the passes that mirror the
+//     user's GitHub notifications (the account read last, page 1's ETag and the high-water
+//     mark the next pass starts from, GitHub's poll interval, the last pass and the last
+//     walk of every page, whether GitHub lets the token read them and when a refused
+//     listing is sent again, the last error, whether the walk stopped at the newest 1,000,
+//     and whether the next pass walks every page).
 //
 // A Store from New runs each call on the pool. One joined to a transaction with WithTx
 // runs every call inside it, so prefs are written together with another owner's tables

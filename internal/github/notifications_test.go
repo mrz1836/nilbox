@@ -2,6 +2,7 @@ package github
 
 import (
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"strconv"
@@ -309,9 +310,10 @@ func TestListThreadsLinkNextPageRebuilt(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name string
-		link func(base string) string
-		want int
+		name   string
+		link   func(base string) string
+		want   int
+		capped bool
 	}{
 		{
 			name: "GitHub's own, without is_done",
@@ -363,8 +365,9 @@ func TestListThreadsLinkNextPageRebuilt(t *testing.T) {
 			link: func(base string) string { return "<" + base + `/notifications?page=1>; rel="next"` },
 		},
 		{
-			name: "past the last page read",
-			link: func(base string) string { return "<" + base + `/notifications?page=21>; rel="next"` },
+			name:   "past the last page read",
+			link:   func(base string) string { return "<" + base + `/notifications?page=21>; rel="next"` },
+			capped: true,
 		},
 		{
 			name: "two pages",
@@ -391,6 +394,7 @@ func TestListThreadsLinkNextPageRebuilt(t *testing.T) {
 			page, err := client.ListThreads(t.Context(), NewToken(fakeToken), ThreadQuery{})
 			require.NoError(t, err)
 			assert.Equal(t, tt.want, page.NextPage)
+			assert.Equal(t, tt.capped, page.Capped, "only a page past the last the app reads leaves threads out")
 
 			if tt.want == 0 {
 				return
@@ -433,6 +437,7 @@ func TestListThreadsStopsAt20Pages(t *testing.T) {
 
 		got, err := client.ListThreads(t.Context(), NewToken(fakeToken), ThreadQuery{Page: page})
 		require.NoError(t, err)
+		assert.Equal(t, page == MaxThreadPages, got.Capped, "page %d: only the last read leaves threads out", page)
 
 		page = got.NextPage
 	}
@@ -444,6 +449,79 @@ func TestListThreadsStopsAt20Pages(t *testing.T) {
 	_, err := client.ListThreads(t.Context(), NewToken(fakeToken), ThreadQuery{Page: MaxThreadPages + 1})
 	require.ErrorIs(t, err, ErrInvalidThreadPage)
 	assert.Len(t, log.all(), MaxThreadPages, "a page past the last is never asked for")
+}
+
+func TestListThreadsCappedOnlyWhenGitHubListsMore(t *testing.T) {
+	t.Parallel()
+
+	// A full page of check suites' threads, which name no item.
+	entries := make([]string, 0, ThreadsPerPage)
+	for i := range ThreadsPerPage {
+		entries = append(entries, `{"id": "`+strconv.Itoa(20000000001+i)+`", "subject": {"type": "CheckSuite"}}`)
+	}
+
+	full := "[" + strings.Join(entries, ",") + "]"
+
+	// The 20th page, full, and GitHub's last: no Link names a page after it.
+	client, _, _ := fakeGitHub(t, func(string, *http.Request) answer {
+		return answer{status: http.StatusOK, body: full}
+	})
+
+	page, err := client.ListThreads(t.Context(), NewToken(fakeToken), ThreadQuery{Page: MaxThreadPages})
+	require.NoError(t, err)
+	require.Len(t, page.Threads, ThreadsPerPage)
+	assert.Zero(t, page.NextPage)
+	assert.False(t, page.Capped, "nothing past it, however full")
+
+	// The same page, with GitHub naming the next.
+	client, _, _ = fakeGitHub(t, func(base string, _ *http.Request) answer {
+		return answer{status: http.StatusOK, body: full, headers: map[string]string{
+			"Link": "<" + base + `/notifications?all=true&per_page=50&page=21>; rel="next"`,
+		}}
+	})
+
+	page, err = client.ListThreads(t.Context(), NewToken(fakeToken), ThreadQuery{Page: MaxThreadPages})
+	require.NoError(t, err)
+	assert.Zero(t, page.NextPage, "never read")
+	assert.True(t, page.Capped, "but threads are left out")
+	assert.Equal(t, 50, ThreadsPerPage)
+}
+
+func TestNotificationsRefused(t *testing.T) {
+	t.Parallel()
+
+	status := func(code int, message string, retry time.Duration) error {
+		return fmt.Errorf("list the notifications: %w", &StatusError{StatusCode: code, Message: message, RetryAfter: retry})
+	}
+
+	tests := []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{name: "not found", err: status(http.StatusNotFound, "Not Found", 0), want: true},
+		{
+			name: "forbidden to a fine-grained token",
+			err:  status(http.StatusForbidden, "Resource not accessible by personal access token", 0), want: true,
+		},
+		{name: "forbidden, its token redacted", err: Redact(status(http.StatusForbidden, "", 0), NewToken(fakeToken)), want: true},
+		{name: "a rate limit", err: status(http.StatusForbidden, "API rate limit exceeded for user ID 1.", 0)},
+		{name: "a secondary rate limit", err: status(http.StatusForbidden, "You have exceeded a secondary rate limit.", 0)},
+		{name: "forbidden, wait and try again", err: status(http.StatusForbidden, "", time.Minute)},
+		{name: "too many requests", err: status(http.StatusTooManyRequests, "", 0)},
+		{name: "bad credentials", err: status(http.StatusUnauthorized, "Bad credentials", 0)},
+		{name: "GitHub failing", err: status(http.StatusBadGateway, "", 0)},
+		{name: "an answer that can't be read", err: fmt.Errorf("decode the notifications: %w", ErrMalformedResponse)},
+		{name: "none", err: nil},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			assert.Equal(t, tt.want, NotificationsRefused(tt.err))
+		})
+	}
 }
 
 func TestListThreadsDropsBadIDs(t *testing.T) {

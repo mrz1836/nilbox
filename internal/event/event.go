@@ -88,6 +88,9 @@ const (
 
 	// NameRepoRulesChanged is RepoRulesChanged's name.
 	NameRepoRulesChanged = "settings:repoRulesChanged"
+
+	// NameGHThreadsUpdated is GHThreadsUpdated's name.
+	NameGHThreadsUpdated = "ghthreads:updated"
 )
 
 // Event is something that happened, or was asked for, that another part of the app
@@ -141,6 +144,7 @@ func WindowEvents() []WindowEvent {
 		ReleasesProgress{},
 		HooksUpdated{},
 		WorktreesProgress{},
+		GHThreadsUpdated{},
 	}
 }
 
@@ -450,6 +454,17 @@ type WorktreesProgress struct {
 func (WorktreesProgress) Name() string { return NameWorktreesProgress }
 
 func (WorktreesProgress) window() {}
+
+// GHThreadsUpdated says what the window shows of the user's GitHub notifications changed:
+// a pass read them, or checked their items' states, and found something new; reading them
+// was turned off; or whether GitHub lets the token read them, or the last pass's error,
+// changed. The window reads them again. A pass that changed nothing tells nothing.
+type GHThreadsUpdated struct{}
+
+// Name returns NameGHThreadsUpdated.
+func (GHThreadsUpdated) Name() string { return NameGHThreadsUpdated }
+
+func (GHThreadsUpdated) window() {}
 
 // Discard is a Sink that drops every event.
 type Discard struct{}

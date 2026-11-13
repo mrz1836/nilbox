@@ -17,6 +17,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/agent"
 	"github.com/mrz1836/nilbox/internal/branchrules"
 	"github.com/mrz1836/nilbox/internal/clock"
+	"github.com/mrz1836/nilbox/internal/ghthreads"
 	"github.com/mrz1836/nilbox/internal/github"
 	"github.com/mrz1836/nilbox/internal/hooks"
 	"github.com/mrz1836/nilbox/internal/inbox"
@@ -26,6 +27,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/launcher"
 	"github.com/mrz1836/nilbox/internal/notify"
 	"github.com/mrz1836/nilbox/internal/notifyprefs"
+	prefsstore "github.com/mrz1836/nilbox/internal/prefs"
 	"github.com/mrz1836/nilbox/internal/prompts"
 	"github.com/mrz1836/nilbox/internal/release"
 	"github.com/mrz1836/nilbox/internal/reporules"
@@ -458,6 +460,22 @@ func boundCalls(t *testing.T) map[string]boundCall {
 
 			return got, err
 		},
+		"ghthreads.Service.Snapshot": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
+			got, err := c.GHThreads.Snapshot(ctx)
+			require.Len(t, got.ByItem, 1, "the pull request's notification")
+			require.NotEmpty(t, got.ByItem[0].Reasons)
+			require.Len(t, got.Unread, 1)
+
+			return got, err
+		},
+		"ghthreads.Service.CheckNow": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
+			// The fake runner lends no token, so the pass asks GitHub nothing and says why.
+			got, err := c.GHThreads.CheckNow(ctx)
+			require.NotEmpty(t, got.Status.LastError)
+			require.Len(t, got.ByItem, 1, "what the last pass read stays")
+
+			return got, err
+		},
 		"notify.Service.List": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
 			got, err := c.Notifications.List(ctx)
 			require.Len(t, got.Items, 3, "an item's notification, one about no item, and one about a run")
@@ -648,6 +666,14 @@ func seedBound(t *testing.T) (*Core, seededItems) {
 		VALUES (?, '{"state":"OPEN","timeline":[{"kind":"comment","id":"IC_1","body":"Can repro."}]}', 80, ?, ?)`,
 		ids[1], now, now)
 	require.NoError(t, err)
+
+	// A GitHub notification about the pull request, as a pass of the account's leaves it.
+	_, err = c.DB.ExecContext(ctx, `INSERT INTO gh_threads (account_login, thread_id, reason, unread, updated_at,
+		subject_type, subject_title, repo_owner, repo_name, item_kind, number, seen_at) VALUES ('octo-user',
+		20000000001, 'review_requested', 1, ?, 'PullRequest', 'Fix the login redirect', 'acme-org', 'example-repo',
+		'pr', 7, ?)`, now, now)
+	require.NoError(t, err)
+	require.NoError(t, prefsstore.New(c.DB, nil).Set(ctx, ghthreads.KeySync, `{"account":"octo-user","access":"ok"}`))
 
 	// A run that ended, with its result as sparse as an older build's, and a release whose
 	// outcome is as sparse.

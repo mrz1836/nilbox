@@ -9,6 +9,15 @@ export interface BudgetUpdated {
 }
 
 /**
+ * GHThreadsUpdated says what the window shows of the user's GitHub notifications changed:
+ * a pass read them, or checked their items' states, and found something new; reading them
+ * was turned off; or whether GitHub lets the token read them, or the last pass's error,
+ * changed. The window reads them again. A pass that changed nothing tells nothing.
+ */
+export interface GHThreadsUpdated {
+}
+
+/**
  * HooksUpdated says the Hooks page's list changed: a clone was scanned again, or a hooks
  * action or a checks run ended. The window reads the list again, which serves what is kept
  * and scans again only the clones that changed.
