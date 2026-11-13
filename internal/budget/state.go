@@ -49,6 +49,11 @@ type savedState struct {
 	// before edits has neither.
 	Writes    []time.Time `json:"writes,omitempty"`
 	HeldUntil *time.Time  `json:"heldUntil,omitempty"`
+
+	// Chores are when the app sent the chores of the last hour, oldest first. A state
+	// saved before the chore lane has none, and a build before it ignores them, so the
+	// version stays the same.
+	Chores []time.Time `json:"chores,omitempty"`
 }
 
 // savedBudget is one budget's newest reading and what the app spent from its window.
@@ -91,8 +96,11 @@ func (t *Tracker) state() (string, error) {
 		out.Refresh = &savedRefresh{At: t.last.at, Points: t.last.points, Items: t.last.items}
 	}
 
-	t.pruneWritesLocked(t.clock.Now().UTC())
-	out.Writes = append(out.Writes, t.writes...)
+	now := t.clock.Now().UTC()
+	t.writes.prune(now)
+	t.chores.prune(now)
+	out.Writes = append(out.Writes, t.writes.sent...)
+	out.Chores = append(out.Chores, t.chores.sent...)
 
 	if !t.heldUntil.IsZero() {
 		out.HeldUntil = new(t.heldUntil)
@@ -109,9 +117,10 @@ func (t *Tracker) state() (string, error) {
 }
 
 // Restore starts the Tracker from a state an earlier run kept: each budget's reading
-// and what the app spent from its window, the last refresh, the edits of the last hour
-// and any wait GitHub asked for, and when the app began counting. It is meant for startup, before any response; a budget already read in this
-// run keeps its reading. A state that cannot be read changes nothing.
+// and what the app spent from its window, the last refresh, the edits and the chores of
+// the last hour and any wait GitHub asked for, and when the app began counting. It is
+// meant for startup, before any response; a budget already read in this run keeps its
+// reading. A state that cannot be read changes nothing.
 func (t *Tracker) Restore(state string) error {
 	var saved savedState
 
@@ -138,7 +147,7 @@ func (t *Tracker) Restore(state string) error {
 		t.last = refresh{at: saved.Refresh.At.UTC(), points: saved.Refresh.Points, items: saved.Refresh.Items}
 	}
 
-	t.restoreWritesLocked(saved.Writes, saved.HeldUntil)
+	t.restoreWritesLocked(saved.Writes, saved.Chores, saved.HeldUntil)
 
 	return nil
 }

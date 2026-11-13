@@ -103,6 +103,10 @@ type Gauge struct {
 	// Writes is what the app changed on GitHub for the user lately, and how it paces
 	// its edits.
 	Writes Writes `json:"writes"`
+
+	// Chores is the notifications the app's chore lane cleared on GitHub lately, and how
+	// it paces them, apart from the edits.
+	Chores Writes `json:"chores"`
 }
 
 // Reading is one budget as GitHub last reported it, and what the app spent from it since
@@ -146,12 +150,16 @@ func (t *Tracker) gauge(perHour int) Gauge {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
+	now := t.clock.Now().UTC()
+	reserve := t.reserveLocked()
+
 	out := Gauge{
 		GraphQL:          t.readingLocked(github.ResourceGraphQL),
 		Core:             t.readingLocked(github.ResourceCore),
 		Search:           t.readingLocked(github.ResourceSearch),
 		RefreshesPerHour: perHour,
-		Writes:           t.writesLocked(t.clock.Now().UTC()),
+		Writes:           t.writes.writes(now, reserve, t.heldUntil),
+		Chores:           t.chores.writes(now, reserve, t.heldUntil),
 	}
 
 	if !t.last.at.IsZero() {

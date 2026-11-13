@@ -26,6 +26,13 @@ import (
 // (edit for REST, mutate for GraphQL), so the app's edits stay within the user's budget and
 // well clear of GitHub's own limits on writes, and an answer that asks the app to slow
 // down holds the next ones.
+//
+// The one other kind of change is the chore lane's: marking a notification thread done or
+// read (notifications.go), sent only by rules the user turns on, or by the user's click.
+// Each is one REST request too, through chore, which asks the client's ChoreGate first: a
+// lane of its own, slower than the edits', so a burst of chores never holds up an edit the
+// user asked for, though it keeps the same reserve, and a hold either lane hears stops
+// both.
 
 // secondaryLimitWait is how long GitHub asks a client it slowed down for writing too fast
 // to wait, when the answer does not say: at least a minute.
@@ -115,6 +122,23 @@ type WriteGate interface {
 	// HoldWrites hears that GitHub asked the app to send no more edits for wait.
 	HoldWrites(wait time.Duration)
 }
+
+// ChoreGate paces the chore lane's notification writes (chore), apart from the edits the
+// WriteGate paces. *budget.Tracker implements it. It must return promptly.
+type ChoreGate interface {
+	// AllowChore asks to send one chore now, spending from the budget resource names
+	// (ResourceCore). It counts the chore and returns nil when it may go, or returns an
+	// error that says why not and when to try again.
+	AllowChore(resource string) error
+
+	// HoldWrites hears that GitHub asked the app to send no more writes for wait, which
+	// holds the edits too.
+	HoldWrites(wait time.Duration)
+}
+
+// ErrChoreRefused is returned for a chore the client never sends: a method but DELETE or
+// PATCH, a thread ID that isn't positive, or a client with no ChoreGate.
+var ErrChoreRefused = errors.New("the client sends no such chore")
 
 // ReviewRequests is who a pull request asks to review.
 type ReviewRequests struct {
@@ -305,8 +329,8 @@ func (a restReviewAnswer) requests() ReviewRequests {
 }
 
 // edit sends one edit through do, once the client's WriteGate, if any, allows it, and
-// tells the gate when GitHub asks the app to slow down. An edit with no token is never
-// sent, so it is not counted.
+// tells both gates when GitHub asks the app to slow down (holdWrites). An edit with no
+// token is never sent, so it is not counted.
 func (c *Client) edit(ctx context.Context, tok Token, method, path string, body []byte) ([]byte, error) {
 	if c.Writes != nil && !tok.IsZero() {
 		if err := c.Writes.AllowWrite(ResourceCore); err != nil {
@@ -315,19 +339,35 @@ func (c *Client) edit(ctx context.Context, tok Token, method, path string, body 
 	}
 
 	raw, _, err := c.do(ctx, tok, method, path, body)
+	c.holdWrites(err)
 
-	if wait := writeHold(err); wait > 0 && c.Writes != nil {
+	return raw, err
+}
+
+// holdWrites tells the client's gates, the WriteGate and the ChoreGate, each when it has
+// one, how long GitHub asked the app to wait when err is such an answer (writeHold): a
+// slow-down heard in either lane holds both. Telling one Tracker, both gates at once,
+// twice is harmless: the later hold stands.
+func (c *Client) holdWrites(err error) {
+	wait := writeHold(err)
+	if wait <= 0 {
+		return
+	}
+
+	if c.Writes != nil {
 		c.Writes.HoldWrites(wait)
 	}
 
-	return raw, err
+	if c.Chores != nil {
+		c.Chores.HoldWrites(wait)
+	}
 }
 
 // mutate sends one GraphQL mutation, named name in errors, once the client's WriteGate,
 // if any, allows it, and decodes its data into T. It is edit's twin for GraphQL: the gate
 // counts it against the GraphQL budget, it spends one point, and an answer that asks the
-// app to slow down holds the next edits. Any GraphQL error fails it. A mutation with no
-// token is never sent, so it is not counted.
+// app to slow down holds the next edits and chores. Any GraphQL error fails it. A mutation
+// with no token is never sent, so it is not counted.
 func mutate[T any](ctx context.Context, c *Client, tok Token, name string, req graphQLRequest) (*T, error) {
 	if !isMutation(req.Query) {
 		return nil, fmt.Errorf("%w: the %s request is not a mutation", ErrMalformedResponse, name)
@@ -340,16 +380,44 @@ func mutate[T any](ctx context.Context, c *Client, tok Token, name string, req g
 	}
 
 	resp, _, err := sendGraphQL[T](ctx, c, tok, name, req, anyError, func([]byte) int { return mutationCost })
-
-	if wait := writeHold(err); wait > 0 && c.Writes != nil {
-		c.Writes.HoldWrites(wait)
-	}
+	c.holdWrites(err)
 
 	if err != nil {
 		return nil, err
 	}
 
 	return resp.Data, nil
+}
+
+// chore sends one of the chore lane's writes, method (DELETE, which marks the thread done,
+// or PATCH, which marks it read) on the notification thread threadID, through do, once the
+// client's ChoreGate allows it, and tells both gates when GitHub asks the app to slow down
+// (holdWrites), as edit does. It is edit's twin for the chore lane: any other method, a
+// thread ID that isn't positive, or a client without a ChoreGate is refused before anything
+// is sent. A chore with no token is never sent, so it is not counted.
+func (c *Client) chore(ctx context.Context, tok Token, method string, threadID int64) error {
+	if method != http.MethodDelete && method != http.MethodPatch {
+		return fmt.Errorf("%w: %q", ErrChoreRefused, method)
+	}
+
+	if threadID <= 0 {
+		return fmt.Errorf("%w: thread %d", ErrChoreRefused, threadID)
+	}
+
+	if c.Chores == nil {
+		return fmt.Errorf("%w: no chore gate", ErrChoreRefused)
+	}
+
+	if !tok.IsZero() {
+		if err := c.Chores.AllowChore(ResourceCore); err != nil {
+			return err
+		}
+	}
+
+	_, _, err := c.do(ctx, tok, method, threadPath(threadID), nil)
+	c.holdWrites(err)
+
+	return err
 }
 
 // writeHold is how long GitHub asked the app to send no more edits, from its answer to

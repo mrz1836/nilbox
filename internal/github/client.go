@@ -129,6 +129,10 @@ type Client struct {
 	// Writes paces the edits the client sends GitHub (see edits.go). Nil lets every edit
 	// go.
 	Writes WriteGate
+
+	// Chores paces the chore lane's notification writes, apart from the edits and more
+	// slowly (see edits.go). Nil refuses every chore.
+	Chores ChoreGate
 }
 
 // NewClient returns a client for GitHub's public API that identifies itself with the
@@ -253,8 +257,115 @@ func sendGraphQL[T any](
 	return &resp, header, nil
 }
 
-// do sends one authenticated request and returns the body of a 2xx response.
-func (c *Client) do(ctx context.Context, tok Token, method, path string, body []byte) ([]byte, http.Header, error) {
+// ErrNotModified is returned for a GET sent with an earlier answer's ETag (withETag) that
+// GitHub answered 304 Not Modified: what that GET would answer is as it was in the
+// earlier answer, and the request cost nothing. The error do returns carries the 304's
+// headers (notModifiedError).
+var ErrNotModified = errors.New("not modified since the last answer")
+
+// notModifiedError is a conditional GET GitHub answered 304 Not Modified. It matches
+// ErrNotModified, and keeps the answer's headers, such as its ETag and X-Poll-Interval.
+type notModifiedError struct {
+	header http.Header
+}
+
+// Error says the answer is as it was.
+func (e *notModifiedError) Error() string {
+	return ErrNotModified.Error()
+}
+
+// Is reports whether target is ErrNotModified.
+func (e *notModifiedError) Is(target error) bool {
+	return target == ErrNotModified
+}
+
+// requestOption changes one request do sends.
+type requestOption func(*requestOptions)
+
+// requestOptions are what a request's options set.
+type requestOptions struct {
+	// etag is the ETag an earlier answer to the same GET carried, sent as If-None-Match.
+	etag string
+}
+
+// withETag sends a GET with If-None-Match: etag, the ETag an earlier answer to it carried,
+// so GitHub answers 304 Not Modified, which costs nothing, while what it would send still
+// carries that ETag. Measured in November 2026, github.com answered If-Modified-Since with
+// a 200 that was charged, and If-None-Match with a free 304, so the client sends the ETag
+// alone. An etag that isn't one (validETag) is left out, and the GET is sent as a plain
+// one. A request with any other method never sends it.
+func withETag(etag string) requestOption {
+	return func(o *requestOptions) { o.etag = etag }
+}
+
+// maxETagLen caps the ETag a request sends back.
+const maxETagLen = 256
+
+// validETag reports whether s is an entity tag as HTTP defines one, weak or strong: an
+// optional W/, then a quoted string of visible ASCII without a quote, as GitHub sends
+// (W/"b5ff…" on a 200, "b5ff…" on a 304). Nothing else reaches a request's header.
+func validETag(s string) bool {
+	s = strings.TrimPrefix(s, "W/")
+	if len(s) < 2 || len(s) > maxETagLen || s[0] != '"' || s[len(s)-1] != '"' {
+		return false
+	}
+
+	for i := 1; i < len(s)-1; i++ {
+		if c := s[i]; c <= ' ' || c == '"' || c > '~' {
+			return false
+		}
+	}
+
+	return true
+}
+
+// ifNoneMatch is the If-None-Match a request with method sends, given its options: the
+// ETag withETag set, on a GET, when it is one; "" for none.
+func ifNoneMatch(method string, opts []requestOption) string {
+	var o requestOptions
+	for _, opt := range opts {
+		opt(&o)
+	}
+
+	if method != http.MethodGet || !validETag(o.etag) {
+		return ""
+	}
+
+	return o.etag
+}
+
+// setHeaders sets a request's headers: the token, the media type, the user agent, the
+// body's type when it has one, and etag as If-None-Match unless it is "".
+func (c *Client) setHeaders(h http.Header, tok Token, hasBody bool, etag string) {
+	h.Set("Authorization", "Bearer "+tok.Reveal())
+	h.Set("Accept", "application/vnd.github+json")
+	h.Set("User-Agent", c.UserAgent)
+
+	if hasBody {
+		h.Set("Content-Type", "application/json")
+	}
+
+	if etag != "" {
+		h.Set("If-None-Match", etag)
+	}
+}
+
+// answerSpend is what an answer to a request to path spent: restSpend, but nothing for a
+// 304 to a conditional GET, which leaves the budget's used count as it was.
+func answerSpend(path string, notModified bool) int {
+	if notModified {
+		return 0
+	}
+
+	return restSpend(path)
+}
+
+// do sends one authenticated request and returns the body of a 2xx response. A GET sent
+// withETag that GitHub answers 304 Not Modified returns a notModifiedError instead, and
+// spends nothing; any other answer that isn't 2xx is a *StatusError.
+func (c *Client) do(
+	ctx context.Context, tok Token, method, path string, body []byte, opts ...requestOption,
+) ([]byte, http.Header, error) {
 	if tok.IsZero() {
 		return nil, nil, errLoggedOut()
 	}
@@ -269,13 +380,8 @@ func (c *Client) do(ctx context.Context, tok Token, method, path string, body []
 		return nil, nil, fmt.Errorf("build the GitHub API request: %w", err)
 	}
 
-	req.Header.Set("Authorization", "Bearer "+tok.Reveal())
-	req.Header.Set("Accept", "application/vnd.github+json")
-	req.Header.Set("User-Agent", c.UserAgent)
-
-	if body != nil {
-		req.Header.Set("Content-Type", "application/json")
-	}
+	etag := ifNoneMatch(method, opts)
+	c.setHeaders(req.Header, tok, body != nil, etag)
 
 	resp, err := c.httpClient().Do(req)
 	if err != nil {
@@ -285,11 +391,16 @@ func (c *Client) do(ctx context.Context, tok Token, method, path string, body []
 	defer func() { _ = resp.Body.Close() }()
 
 	// Every answer counts against a budget, a refusal included, and says what is left.
-	c.observe(resp.Header, restSpend(path))
+	notModified := etag != "" && resp.StatusCode == http.StatusNotModified
+	c.observe(resp.Header, answerSpend(path, notModified))
 
 	data, err := c.readAnswer(resp, path)
 	if err != nil {
 		return nil, nil, err
+	}
+
+	if notModified {
+		return nil, nil, &notModifiedError{header: resp.Header}
 	}
 
 	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {

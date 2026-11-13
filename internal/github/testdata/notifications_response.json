@@ -1,0 +1,219 @@
+[
+    {
+        "id": "20000000001",
+        "repository": {
+            "id": 100000001,
+            "node_id": "R_fakeRepoExample",
+            "name": "example-repo",
+            "full_name": "acme-org/example-repo",
+            "private": false,
+            "owner": {
+                "login": "acme-org",
+                "id": 101,
+                "type": "Organization",
+                "site_admin": false
+            },
+            "html_url": "https://github.com/acme-org/example-repo",
+            "fork": false,
+            "url": "https://api.github.com/repos/acme-org/example-repo"
+        },
+        "subject": {
+            "title": "Retry the sync worker after a timeout",
+            "url": "https://api.github.com/repos/acme-org/example-repo/pulls/42",
+            "latest_comment_url": "https://api.github.com/repos/acme-org/example-repo/issues/comments/30000000001",
+            "type": "PullRequest"
+        },
+        "reason": "review_requested",
+        "unread": true,
+        "updated_at": "2026-11-12T18:04:05Z",
+        "last_read_at": null,
+        "url": "https://api.github.com/notifications/threads/20000000001",
+        "subscription_url": "https://api.github.com/notifications/threads/20000000001/subscription"
+    },
+    {
+        "id": "20000000002",
+        "repository": {
+            "id": 100000001,
+            "node_id": "R_fakeRepoExample",
+            "name": "example-repo",
+            "full_name": "acme-org/example-repo",
+            "private": false,
+            "owner": {
+                "login": "acme-org",
+                "id": 101,
+                "type": "Organization",
+                "site_admin": false
+            },
+            "html_url": "https://github.com/acme-org/example-repo",
+            "fork": false,
+            "url": "https://api.github.com/repos/acme-org/example-repo"
+        },
+        "subject": {
+            "title": "The settings page forgets the chosen theme",
+            "url": "https://api.github.com/repos/acme-org/example-repo/issues/7",
+            "latest_comment_url": "https://api.github.com/repos/acme-org/example-repo/issues/7",
+            "type": "Issue"
+        },
+        "reason": "author",
+        "unread": false,
+        "updated_at": "2026-11-12T09:30:00Z",
+        "last_read_at": "2026-11-12T09:31:12Z",
+        "url": "https://api.github.com/notifications/threads/20000000002",
+        "subscription_url": "https://api.github.com/notifications/threads/20000000002/subscription"
+    },
+    {
+        "id": "20000000003",
+        "repository": {
+            "id": 100000002,
+            "node_id": "R_fakeRepoOther",
+            "name": "other-repo",
+            "full_name": "acme-org/other-repo",
+            "private": false,
+            "owner": {
+                "login": "acme-org",
+                "id": 101,
+                "type": "Organization",
+                "site_admin": false
+            },
+            "html_url": "https://github.com/acme-org/other-repo",
+            "fork": false,
+            "url": "https://api.github.com/repos/acme-org/other-repo"
+        },
+        "subject": {
+            "title": "v1.4.3",
+            "url": "https://api.github.com/repos/acme-org/other-repo/releases/123456789",
+            "latest_comment_url": "https://api.github.com/repos/acme-org/other-repo/releases/123456789",
+            "type": "Release"
+        },
+        "reason": "subscribed",
+        "unread": true,
+        "updated_at": "2026-11-11T22:15:00Z",
+        "last_read_at": null,
+        "url": "https://api.github.com/notifications/threads/20000000003",
+        "subscription_url": "https://api.github.com/notifications/threads/20000000003/subscription"
+    },
+    {
+        "id": "20000000004",
+        "repository": {
+            "id": 100000001,
+            "node_id": "R_fakeRepoExample",
+            "name": "example-repo",
+            "full_name": "acme-org/example-repo",
+            "private": false,
+            "owner": {
+                "login": "acme-org",
+                "id": 101,
+                "type": "Organization",
+                "site_admin": false
+            },
+            "html_url": "https://github.com/acme-org/example-repo",
+            "fork": false,
+            "url": "https://api.github.com/repos/acme-org/example-repo"
+        },
+        "subject": {
+            "title": "CI workflow run failed for main branch",
+            "url": null,
+            "latest_comment_url": null,
+            "type": "CheckSuite"
+        },
+        "reason": "ci_activity",
+        "unread": true,
+        "updated_at": "2026-11-11T20:00:00Z",
+        "last_read_at": null,
+        "url": "https://api.github.com/notifications/threads/20000000004",
+        "subscription_url": "https://api.github.com/notifications/threads/20000000004/subscription"
+    },
+    {
+        "id": "20000000005",
+        "repository": {
+            "id": 100000001,
+            "node_id": "R_fakeRepoExample",
+            "name": "example-repo",
+            "full_name": "acme-org/example-repo",
+            "private": false,
+            "owner": {
+                "login": "acme-org",
+                "id": 101,
+                "type": "Organization",
+                "site_admin": false
+            },
+            "html_url": "https://github.com/acme-org/example-repo",
+            "fork": false,
+            "url": "https://api.github.com/repos/acme-org/example-repo"
+        },
+        "subject": {
+            "title": "Bump the lint action to the latest release",
+            "url": "https://api.example.com/repos/acme-org/example-repo/pulls/9",
+            "latest_comment_url": "https://api.example.com/repos/acme-org/example-repo/issues/comments/30000000005",
+            "type": "PullRequest"
+        },
+        "reason": "subscribed",
+        "unread": false,
+        "updated_at": "2026-11-10T12:00:00Z",
+        "last_read_at": "2026-11-10T12:05:00Z",
+        "url": "https://api.github.com/notifications/threads/20000000005",
+        "subscription_url": "https://api.github.com/notifications/threads/20000000005/subscription"
+    },
+    {
+        "id": "20000000006",
+        "repository": {
+            "id": 100000001,
+            "node_id": "R_fakeRepoExample",
+            "name": "example-repo",
+            "full_name": "acme-org/example-repo",
+            "private": false,
+            "owner": {
+                "login": "acme-org",
+                "id": 101,
+                "type": "Organization",
+                "site_admin": false
+            },
+            "html_url": "https://github.com/acme-org/example-repo",
+            "fork": false,
+            "url": "https://api.github.com/repos/acme-org/example-repo"
+        },
+        "subject": {
+            "title": "Document the retry settings",
+            "url": "https://api.github.com/repos/acme-org/example-repo/pulls/9/files",
+            "latest_comment_url": null,
+            "type": "PullRequest"
+        },
+        "reason": "mention",
+        "unread": true,
+        "updated_at": "2026-11-10T08:00:00Z",
+        "last_read_at": null,
+        "url": "https://api.github.com/notifications/threads/20000000006",
+        "subscription_url": "https://api.github.com/notifications/threads/20000000006/subscription"
+    },
+    {
+        "id": "27000000007",
+        "repository": {
+            "id": 100000001,
+            "node_id": "R_fakeRepoExample",
+            "name": "example-repo",
+            "full_name": "acme-org/example-repo",
+            "private": false,
+            "owner": {
+                "login": "acme-org",
+                "id": 101,
+                "type": "Organization",
+                "site_admin": false
+            },
+            "html_url": "https://github.com/acme-org/example-repo",
+            "fork": false,
+            "url": "https://api.github.com/repos/acme-org/example-repo"
+        },
+        "subject": {
+            "title": "Where should the retry settings live?",
+            "url": null,
+            "latest_comment_url": null,
+            "type": "Discussion"
+        },
+        "reason": "subscribed",
+        "unread": true,
+        "updated_at": "2026-11-09T16:45:00Z",
+        "last_read_at": null,
+        "url": "https://api.github.com/notifications/threads/27000000007",
+        "subscription_url": "https://api.github.com/notifications/threads/27000000007/subscription"
+    }
+]

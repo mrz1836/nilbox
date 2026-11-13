@@ -19,6 +19,12 @@ func noWrites() Writes {
 	return Writes{PerHour: WritesPerHour, PerMinute: WritesPerMinute, Reserve: minReserve}
 }
 
+// noChores is the chores of a tracker that sent none, with nothing known of the REST
+// budget.
+func noChores() Writes {
+	return Writes{PerHour: ChoresPerHour, PerMinute: ChoresPerMinute, Reserve: minReserve}
+}
+
 // core is a REST reading with remaining points of limit left, refilling at reset.
 func core(limit, remaining int) github.RateReading {
 	return github.RateReading{
@@ -153,7 +159,7 @@ func TestTheEditsOutliveARestart(t *testing.T) {
 	first := NewTracker(clk, nil)
 
 	allowN(t, first, clk, 2)
-	first.writes = append([]time.Time{start.Add(-2 * time.Hour)}, first.writes...) // long past
+	first.writes.sent = append([]time.Time{start.Add(-2 * time.Hour)}, first.writes.sent...) // long past
 	first.HoldWrites(time.Minute)
 
 	state, err := first.state()
