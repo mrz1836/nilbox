@@ -4,6 +4,7 @@ import { counted } from '../../lib/format'
 import { earlierCount, newSince, rowKey, timelineRows, type TimelineRow } from '../../lib/issues'
 import { formatAgo, formatFull } from '../../lib/time'
 import type { Issue } from '../../platform'
+import { PersonAvatar } from '../Avatar'
 import { buttonClass } from '../controls'
 import { ErrorBanner } from '../ErrorBanner'
 import { Markdown } from '../Markdown'
@@ -49,6 +50,7 @@ function Description({ issue, reading }: { issue: Issue; reading: boolean }) {
   return (
     <article aria-label="Description" className="rounded-md border border-border">
       <header className="flex items-center gap-2 border-b border-border bg-raised/40 px-3 py-1.5 text-xs text-muted">
+        <PersonAvatar login={issue.author} />
         <span className="font-medium text-text">{issue.author}</span>
         {issue.openedAt !== '' && (
           <span title={formatFull(issue.openedAt)}>

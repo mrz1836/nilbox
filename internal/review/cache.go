@@ -73,6 +73,10 @@ type pullContext struct {
 	Reviews []contextReview `json:"reviews"`
 	Checks  []Check         `json:"checks"`
 
+	// Unrun are the workflow runs that ended without a check and without passing; none in a
+	// context an older build cached, until the sheet reads it again.
+	Unrun []Unrun `json:"unrun"`
+
 	// Closes are the issues it closes once it merges, and CloseCount how many there are;
 	// none in a context an older build cached, until the sheet reads it again.
 	Closes     []Closing `json:"closes"`
@@ -98,7 +102,11 @@ func contextOf(r *github.PullReview) pullContext {
 		ViewerReview: r.ViewerReview.State, ViewerReviewAt: r.ViewerReview.Commit, PendingReviews: r.PendingReviews,
 		AutoMerge: r.AutoMerge.Method, CanClose: r.ViewerCanClose,
 		Reviews: make([]contextReview, 0, len(r.Reviews)), Checks: make([]Check, 0, len(r.Checks)),
-		Closes: make([]Closing, 0, len(r.Closes)), CloseCount: r.CloseCount,
+		Unrun: make([]Unrun, 0, len(r.Unrun)), Closes: make([]Closing, 0, len(r.Closes)), CloseCount: r.CloseCount,
+	}
+
+	for _, s := range r.Unrun {
+		c.Unrun = append(c.Unrun, Unrun{Name: s.Name, Approval: s.Conclusion == github.SuiteAwaitsApproval})
 	}
 
 	for _, ref := range r.Closes {

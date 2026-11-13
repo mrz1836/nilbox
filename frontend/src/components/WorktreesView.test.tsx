@@ -1598,6 +1598,83 @@ describe('WorktreesView merged branches', () => {
     expect(dialog.getByRole('button', { name: 'Delete 0 branches' })).toBeDisabled()
   })
 
+  it('deletes a branch with commits not on GitHub only once asked for, ticked, and confirmed', async () => {
+    const stale = merged('stale-work', 190, {
+      branch: {
+        ...mergedBranch().branch,
+        name: 'stale-work',
+        head: '1901901901901901901901901901901901901901',
+        deletable: false,
+        reason: 'it has 3 commits that aren’t in pull request #190 or on GitHub',
+      },
+      unpushed: 3,
+    })
+    platform.mergedBranches.mockResolvedValue([busy, mergedBranch(), stale])
+    platform.deleteBranches.mockResolvedValue([result('feature-x'), result('stale-work')])
+    const dialog = await openMerged()
+
+    expect(await dialog.findByText('3 branches in 1 clone · 1 ticked · 2 can’t be deleted')).toBeInTheDocument()
+    await userEvent.click(clone(dialog, '~/projects/example-repo').toggle)
+    expect(dialog.getByRole('checkbox', { name: /^stale-work/ }), 'held to start with').toBeDisabled()
+
+    const anyway = dialog.getByRole('checkbox', { name: /Also offer the 1 branch with commits not on GitHub/ })
+    await userEvent.click(anyway)
+
+    const staleBox = dialog.getByRole('checkbox', { name: /^stale-work/ })
+    expect(staleBox, 'offered, never ticked to start with').toBeEnabled()
+    expect(staleBox).not.toBeChecked()
+    expect(dialog.getByText(/Has 3 commits not on GitHub/)).toBeInTheDocument()
+    expect(dialog.getByRole('checkbox', { name: /^busy/ }), 'a checked-out branch never').toBeDisabled()
+    expect(dialog.getByText('3 branches in 1 clone · 1 ticked · 1 can’t be deleted')).toBeInTheDocument()
+
+    await userEvent.click(staleBox)
+    await userEvent.click(dialog.getByRole('button', { name: 'Delete 2 branches' }))
+
+    const confirm = within(await screen.findByRole('dialog', { name: 'Delete 1 branch with commits not on GitHub?' }))
+    expect(platform.deleteBranches, 'nothing yet').not.toHaveBeenCalled()
+    expect(confirm.getByRole('list', { name: 'Branches with commits not on GitHub' })).toHaveTextContent(
+      '~/projects/example-repostale-work3 commits not on GitHub',
+    )
+
+    await userEvent.click(confirm.getByRole('button', { name: 'Go back' }))
+    expect(screen.getByRole('dialog', { name: 'Delete merged branches?' })).toBeInTheDocument()
+    expect(platform.deleteBranches).not.toHaveBeenCalled()
+
+    await userEvent.click(dialog.getByRole('button', { name: 'Delete 2 branches' }))
+    await userEvent.click(
+      within(await screen.findByRole('dialog', { name: /with commits not on GitHub\?$/ })).getByRole('button', {
+        name: 'Delete 2 branches',
+      }),
+    )
+
+    expect(platform.deleteBranches).toHaveBeenCalledExactlyOnceWith([
+      { repoPath, name: 'feature-x', head: 'fc1c3975011e66491785ace891c893e4fc716587' },
+      { repoPath, name: 'stale-work', head: '1901901901901901901901901901901901901901' },
+    ])
+  })
+
+  it('unticks the branches with commits not on GitHub once they are no longer offered', async () => {
+    const stale = merged('stale-work', 190, {
+      branch: { ...mergedBranch().branch, name: 'stale-work', deletable: false, reason: 'it has commits' },
+      unpushed: -1,
+    })
+    platform.mergedBranches.mockResolvedValue([stale])
+    const dialog = await openMerged()
+
+    const anyway = await dialog.findByRole('checkbox', { name: /Also offer the 1 branch/ })
+    await userEvent.click(anyway)
+    await userEvent.click(dialog.getByRole('button', { name: 'Select all' }))
+    expect(dialog.getByRole('button', { name: 'Delete 1 branch' })).toBeEnabled()
+
+    await userEvent.click(anyway)
+    expect(dialog.getByRole('button', { name: 'Delete 0 branches' })).toBeDisabled()
+
+    await userEvent.click(anyway)
+    expect(dialog.getByRole('button', { name: 'Delete 0 branches' }), 'offered again, unticked').toBeDisabled()
+    await userEvent.click(clone(dialog, '~/projects/example-repo').toggle)
+    expect(dialog.getByText(/Has commits not on GitHub/)).toBeInTheDocument()
+  })
+
   it('holds the box of a clone none of whose branches can go', async () => {
     platform.mergedBranches.mockResolvedValue([busy])
     const dialog = await openMerged()

@@ -1,14 +1,15 @@
-import { useEffect, useId, useRef, useState } from 'react'
+import { useEffect, useEffectEvent, useId, useRef, useState } from 'react'
 
 import { formatCount } from '../lib/format'
 import type { FilteredList } from '../lib/inboxFilter'
-import { shownItems, statusRanking } from '../lib/listOrder'
+import { ofKind, shownItems, statusRanking } from '../lib/listOrder'
 import { prefersReducedMotion } from '../lib/motion'
 import { statusesOf } from '../lib/statusOrder'
 import { tabOf, triageTabs, type TriagedList, type TriageTab } from '../lib/triage'
 import { worktreeOf } from '../lib/itemWorktrees'
 import { sessionsOf } from '../lib/sessions'
-import type { AgentSession, InboxItem, ItemResolution, Worktree } from '../platform'
+import type { AgentSession, InboxItem, ItemResolution, ListKind, Worktree } from '../platform'
+import { quietButtonClass, Segmented } from './controls'
 import { ArchiveIcon, ChevronDownIcon, ClockIcon, MuteIcon } from './icons'
 import type { EditActions } from './ItemMenu'
 import { ItemRow, type LaunchOptions } from './ItemRow'
@@ -54,14 +55,23 @@ function emptyText(tab: TriageTab, title: string): string {
   }
 }
 
-// ListOrder is how a list orders its own tab: by newest activity, or by project status in
-// the user's order, and the calls that change either.
+// kindWords name the items a list shows only one kind of, for its empty tab.
+const kindWords: Readonly<Record<Exclude<ListKind, 'all'>, string>> = {
+  pr: 'pull requests',
+  issue: 'issues',
+}
+
+// ListOrder is how a list orders its own tab, by newest activity or by project status in
+// the user's order, and which kind of item it shows there, and the calls that change them.
 export interface ListOrder {
   byStatus: boolean
   // stored is the user's order of status names (see statusOrder).
   stored: readonly string[]
+  // kind is every item ('all'), or only the list's pull requests or its issues.
+  kind: ListKind
   onSortChange: (byStatus: boolean) => void
   onOrderChange: (order: readonly string[]) => void
+  onKindChange: (kind: ListKind) => void
 }
 
 export interface ListSectionProps {
@@ -104,7 +114,9 @@ export interface ListSectionProps {
 // dismissed, and what is in a muted repository or org, each with its count. The toggle at the right of its header
 // collapses it to just the tabs, which keep their counts; a collapsed list's rows are not
 // rendered at all. A list whose items are in GitHub projects can sort its own tab by
-// project status (StatusSort), left of the toggle.
+// project status (StatusSort), left of the toggle, and a list that holds both pull requests
+// and issues can show only one kind on its own tab, left of that, its count then reading
+// "N of M".
 //
 // While the inbox is filtered, each tab shows only its matching items, in its own order,
 // and counts them; a tab with none points to the tabs that have some. A list with no
@@ -144,6 +156,11 @@ export function ListSection({
   // The sort shows on the list's own tab while it has a status to sort by, or is sorted
   // by one, so it can always be turned back.
   const sortable = tab === 'inbox' && !collapsed && (statuses.length > 0 || byStatus)
+  // The kind shows on the list's own tab while it holds both kinds, or shows only one, so
+  // it can always be turned back; narrowed says it shows only one.
+  const narrowed = order.kind !== 'all'
+  const bothKinds = triaged.inbox.some((i) => i.kind === 'pr') && triaged.inbox.some((i) => i.kind === 'issue')
+  const kindable = tab === 'inbox' && !collapsed && (bothKinds || narrowed)
   const panelRef = useRef<HTMLDivElement>(null)
   // revealed is the last reveal request handled, and highlight the row it highlights.
   const [revealed, setRevealed] = useState(0)
@@ -159,6 +176,22 @@ export function ListSection({
   } else if (reveal === null && highlight !== null) {
     setHighlight(null)
   }
+
+  // A card asked for that the list's kind leaves out, as one a notification opens, shows
+  // every item again, so its row is there to see.
+  const showRevealed = useEffectEvent((id: number) => {
+    const card = triaged.inbox.find((i) => i.id === id)
+
+    if (card !== undefined && narrowed && card.kind !== order.kind) {
+      order.onKindChange('all')
+    }
+  })
+
+  useEffect(() => {
+    if (highlight !== null) {
+      showRevealed(highlight)
+    }
+  }, [highlight, revealed])
 
   // Once the list is open, the highlighted row scrolls into view, and the highlight fades.
   useEffect(() => {
@@ -191,9 +224,10 @@ export function ListSection({
   }
 
   const hiddenCount = (n: number) => (n > 0 ? String(n) : '')
-  const listCount = filtering
-    ? `${formatCount(matched.inbox.length)} of ${formatCount(triaged.inbox.length)}`
-    : countText(triaged.inbox.length, triaged.total)
+  const listCount =
+    filtering || narrowed
+      ? `${formatCount(ofKind(shown.inbox, order.kind).length)} of ${formatCount(triaged.inbox.length)}`
+      : countText(triaged.inbox.length, triaged.total)
 
   return (
     <section
@@ -208,7 +242,7 @@ export function ListSection({
           value={tab}
           onChange={select}
           tabs={[
-            { value: 'inbox', label: title, count: listCount, strong: true, filtered: filtering },
+            { value: 'inbox', label: title, count: listCount, strong: true, filtered: filtering || narrowed },
             {
               value: 'snoozed',
               label: 'Snoozed',
@@ -234,6 +268,19 @@ export function ListSection({
           className="flex flex-1 items-center gap-1"
           tabClassName="pt-2.5"
         />
+        {kindable && (
+          <Segmented<ListKind>
+            label={`Show in ${title}`}
+            size="sm"
+            value={order.kind}
+            options={[
+              { value: 'all', label: 'All', title: 'Pull requests and issues' },
+              { value: 'pr', label: 'PRs', title: 'Only pull requests' },
+              { value: 'issue', label: 'Issues', title: 'Only issues' },
+            ]}
+            onChange={order.onKindChange}
+          />
+        )}
         {sortable && (
           <StatusSort
             title={title}
@@ -281,6 +328,19 @@ export function ListSection({
                 </button>
               </span>
             ))}
+          </p>
+        ) : items.length === 0 && tab === 'inbox' && order.kind !== 'all' ? (
+          <p className="flex flex-wrap items-center gap-x-1.5 px-4 py-3 text-sm text-muted">
+            No {kindWords[order.kind]} here.
+            <button
+              type="button"
+              onClick={() => {
+                order.onKindChange('all')
+              }}
+              className={quietButtonClass}
+            >
+              Show all
+            </button>
           </p>
         ) : items.length === 0 ? (
           <p className="px-4 py-3 text-sm text-muted">{emptyText(tab, title)}</p>

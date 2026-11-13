@@ -133,8 +133,14 @@ type Replies interface {
 	Fill(ctx context.Context, replyID, itemID int64) (string, error)
 }
 
-// Config holds a Service's dependencies. Every one but Events, Clock, and Logger is
-// required.
+// Pictures serves the profile pictures of the people the sheet shows, as data: URLs keyed
+// by login. *avatars.Service implements it.
+type Pictures interface {
+	Pictures(ctx context.Context, logins []string) (map[string]string, error)
+}
+
+// Config holds a Service's dependencies. Every one but Pictures, Events, Clock, and Logger
+// is required.
 type Config struct {
 	// Pool is the database, which holds the sheet's cache.
 	Pool *sql.DB
@@ -142,6 +148,9 @@ type Config struct {
 	Inbox   Inbox
 	GitHub  GitHub
 	Replies Replies
+
+	// Pictures serves the people's profile pictures; without it the sheet shows none.
+	Pictures Pictures
 
 	// Events hears what an action is doing as it goes (event.IssueProgress), for the sheet
 	// to show while the user waits.
@@ -153,10 +162,11 @@ type Config struct {
 
 // Service is the issue sheet as the window binds it. It is safe for concurrent use.
 type Service struct {
-	inbox   Inbox
-	github  GitHub
-	replies Replies
-	cache   *cacheStore
+	inbox    Inbox
+	github   GitHub
+	replies  Replies
+	pictures Pictures
+	cache    *cacheStore
 
 	// labels and searches keep what the pickers read, and labelReads and searchReads make
 	// one read of each at a time.
@@ -175,7 +185,7 @@ type Service struct {
 // NewService returns a Service over cfg.
 func NewService(cfg Config) *Service {
 	return &Service{
-		inbox: cfg.Inbox, github: cfg.GitHub, replies: cfg.Replies, cache: newCacheStore(cfg.Pool),
+		inbox: cfg.Inbox, github: cfg.GitHub, replies: cfg.Replies, pictures: cfg.Pictures, cache: newCacheStore(cfg.Pool),
 		labels: &memo[RepoLabels]{size: labelRepos}, searches: &memo[[]github.Assignable]{size: keptSearches},
 		events: event.Or(cfg.Events),
 		clock:  clock.Or(cfg.Clock), logger: logging.Or(cfg.Logger),

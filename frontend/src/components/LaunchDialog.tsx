@@ -1,7 +1,7 @@
-import { useEffectEvent, useLayoutEffect, useRef, type ReactNode } from 'react'
+import { useRef, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 
-import { useModalDialog } from '../lib/useModalDialog'
+import { useCloseWhenHidden, useModalDialog } from '../lib/useModalDialog'
 import type { InboxItem } from '../platform'
 import { quietButtonClass } from './controls'
 import { IssueIcon, PullRequestIcon, XIcon } from './icons'
@@ -40,9 +40,9 @@ function initialFocus(body: HTMLElement | null): HTMLElement | null {
 //
 // It is drawn in the page's body rather than inside the row that opens it, so the row
 // doesn't count the pointer or focus in the dialog as its own and light up behind the
-// backdrop. A page that hides with it open (the window's views are Activities, kept while
-// another shows) closes it, so it never shows again unasked, nor opens before the review
-// sheet it was opened over. Render it only while it is open.
+// backdrop. A page that hides with it open closes it (useCloseWhenHidden), so it never
+// shows again unasked, nor opens before the review sheet it was opened over. Render it only
+// while it is open.
 //
 // The dialog has no height of its own, only a cap, so it is as tall as what it holds. No
 // column inside it may take flex-1 (a basis of 0%): the desktop's WebKit then counts the
@@ -53,31 +53,8 @@ export function LaunchDialog({ id, title, item, onClose, children }: LaunchDialo
   const dialogRef = useRef<HTMLDialogElement>(null)
   const bodyRef = useRef<HTMLDivElement>(null)
   const cancel = useModalDialog(dialogRef, onClose, () => initialFocus(bodyRef.current), { backdrop: true })
-  // live says the dialog's effects are running: they stop as its page hides, or it closes.
-  const live = useRef(false)
 
-  const pageHidden = useEffectEvent(() => {
-    onClose()
-  })
-
-  // A page that hides keeps the dialog in the document, where a closed one is gone; and
-  // StrictMode runs the effects again at once after this cleanup, where a hidden page
-  // waits. So the close waits a microtask and happens only for a hidden page.
-  useLayoutEffect(() => {
-    const dialog = dialogRef.current
-
-    live.current = true
-
-    return () => {
-      live.current = false
-
-      queueMicrotask(() => {
-        if (!live.current && dialog?.isConnected === true) {
-          pageHidden()
-        }
-      })
-    }
-  }, [])
+  useCloseWhenHidden(dialogRef, onClose)
 
   const name = `${item.repo}#${String(item.number)}`
 

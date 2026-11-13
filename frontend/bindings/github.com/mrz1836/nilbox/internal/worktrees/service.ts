@@ -47,7 +47,9 @@ export function ClearCleanups(): $CancellablePromise<void> {
  * DeleteBranches deletes the branches the user ticked in the cleanup of merged branches,
  * each checked again first: the repository locations must hold its clone, the user must not
  * protect it, it must not be a remote's default branch or checked out in any worktree,
- * and it must still point at the commit it was offered at. Each clone is read once and its
+ * and it must still point at the commit it was offered at. A branch with commits that
+ * aren't on GitHub (MergedBranch.Unpushed) is among the picks only once the user confirmed
+ * they don't need them; pinned to the commit offered, it loses nothing they weren't shown. Each clone is read once and its
  * branches deleted in turn, a few clones at a time. It reports each outcome, in the order
  * picked, with the commit that restores a deleted branch.
  */

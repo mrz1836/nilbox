@@ -126,7 +126,7 @@ func TestABugReportStatesTheSettingsAndIntegrationsWithNothingPersonal(t *testin
 		"Sensitive files: collaborators · categories off: docs · own patterns: 1",
 		"Branch rules: own on, pull request on, merged off · protected branches: the user's own (2)",
 		"Trusted bots: the user's own (2)",
-		"Merge method: squash · lists sorted by status: 0 · collapsed lists: 0",
+		"Merge method: squash · lists sorted by status: 0 · lists showing one kind: 0 · collapsed lists: 0",
 		"Repositories and orgs: 1 pinned, 2 muted",
 		"magex: on (auto), update · 1.30.0 from Homebrew, a link · a copy the user chose · latest 1.30.1 · " +
 			"1 other copies",

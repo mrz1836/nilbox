@@ -506,7 +506,7 @@ func build(pull StoredPull, c *cached, matcher *sensitive.Matcher, pref MethodPr
 		Mine: strings.EqualFold(pull.AuthorLogin, pull.Viewer), Draft: pull.IsDraft, HeadRef: pull.HeadRef,
 		BaseRef: pull.DefaultBranch, ReviewRequested: pull.ReviewRequested, Labels: textutil.NonNil(pull.Labels),
 		Additions: pull.Additions, Deletions: pull.Deletions, Commits: pull.Commits, Comments: pull.Comments,
-		AutoMerge: MergeMethod(pull.AutoMerge), Head: pull.HeadOID, Files: []File{}, Checks: []Check{},
+		AutoMerge: MergeMethod(pull.AutoMerge), Head: pull.HeadOID, Files: []File{}, Checks: []Check{}, Unrun: []Unrun{},
 		Reviews: []ReviewEntry{}, Closes: []Closing{}, TotalFiles: pull.ChangedFiles, Stale: true,
 	}
 
@@ -534,6 +534,7 @@ func (r *Review) fill(c *cached, matcher *sensitive.Matcher) {
 	r.Mine = r.Mine || pc.Mine
 	r.TotalFiles, r.FilesComplete = c.total, c.complete
 	r.Checks = textutil.NonNil(pc.Checks)
+	r.Unrun = textutil.NonNil(pc.Unrun)
 	r.Closes, r.MoreCloses = textutil.NonNil(pc.Closes), max(pc.CloseCount-len(pc.Closes), 0)
 
 	if pc.BaseRef != "" {
@@ -634,8 +635,21 @@ func factsOf(pull StoredPull, c *cached, r Review) Facts {
 	f.CanBypass, f.CanClose = pc.CanBypass, pc.CanClose
 	f.ApprovedAtHead = pc.ViewerReview == "APPROVED" && strings.EqualFold(pc.ViewerReviewAt, c.head)
 	f.countChecks(pc.Checks)
+	f.countUnrun(pc.Unrun)
 
 	return f
+}
+
+// countUnrun counts the workflow runs that ended without a check into f: those awaiting
+// approval, and those that failed to start.
+func (f *Facts) countUnrun(unrun []Unrun) {
+	for _, u := range unrun {
+		if u.Approval {
+			f.AwaitingApproval++
+		} else {
+			f.NotStarted++
+		}
+	}
 }
 
 // countChecks counts the checks failing and pending into f, and those of them required.

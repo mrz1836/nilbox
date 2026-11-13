@@ -310,6 +310,7 @@ export type ReviewActRequest = NonNullLists<review.ActRequest>
 export type ReviewChange = NonNullLists<review.Change>
 export type ReviewClosing = NonNullLists<review.Closing>
 export type ReviewCheck = NonNullLists<review.Check>
+export type ReviewUnrun = NonNullLists<review.Unrun>
 export type ReviewEntry = NonNullLists<review.ReviewEntry>
 export type ReviewFile = NonNullLists<review.File>
 export type ReviewFilePatch = NonNullLists<review.FilePatch>
@@ -376,6 +377,7 @@ export type Settings = NonNullLists<settings.Settings>
 export type InboxOrder = NonNullLists<settings.InboxOrder>
 export type WindowSize = NonNullLists<settings.WindowSize>
 export type ListKey = settings.ListKey
+export type ListKind = settings.ListKind
 export type Theme = settings.Theme
 export type TextSize = settings.TextSize
 export type MergeMethodSetting = settings.MergeMethod
@@ -478,6 +480,7 @@ export const {
   Labels: issueLabels,
   Assignable: issueAssignable,
   Edit: editIssue,
+  Avatars: issueAvatars,
 } = narrow(issues.Service)
 
 export const {
@@ -541,6 +544,7 @@ export const {
   SetProjectsTipDismissed: setProjectsTipDismissed,
   InboxOrder: getInboxOrder,
   SetStatusSort: setStatusSort,
+  SetListKind: setListKind,
   SetStatusOrder: setStatusOrder,
   SetBranchRules: setBranchRules,
   SetRepoRule: setRepoRule,

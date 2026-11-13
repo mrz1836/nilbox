@@ -219,7 +219,9 @@ app:lint` reads.
   every response's rate-limit reading, and what the request spent, to its `Tracker`
   (`github.RateObserver`), whose state the `Saver` keeps across runs. Every GitHub request goes
   through `(*github.Client).do`, apart from two downloads that aren't the API and carry no token:
-  the profile picture (`FetchAvatar`) and a public release file (`DownloadAsset`, https only, its
+  a profile picture (`FetchAvatar`, the user's own by the URL GitHub gives, and anyone's by login
+  through `FetchLoginAvatar`, which builds the avatar host's URL itself and refuses a login no user
+  could have, such as a bot's) and a public release file (`DownloadAsset`, https only, its
   host and every redirect's on `DownloadHosts`). Never build an HTTP request anywhere else, nor run
   `gh api`;
   `internal/repoguard/githubrequests_test.go` fails the build if anything does. Every write goes
@@ -323,10 +325,15 @@ app:lint` reads.
   `WorktreeMaker` interface; no agent's own `--worktree` flag is used. A branch is deleted only
   with the conditional `git update-ref -d <ref> <oid>` (the repoguard tests ban `git branch
   -d/-D`): by `create.go`, of a branch it just fetched at a head the launch didn't check, and
-  otherwise only through `deleteBranchAt` in `internal/worktrees/branches.go`, when the user
+  otherwise only through `internal/worktrees/branches.go`, when the user
   ticked it (or, for the automatic cleanup, the user's rules pick it), every commit on it is on
   GitHub, and neither the user's protected patterns (`internal/branchrules`) nor a remote's
-  `HEAD` keeps it. Every job that changes a clone holds that clone's lock from
+  `HEAD` keeps it. The one exception is the cleanup of merged branches: a branch kept only
+  for its commits not on GitHub (`MergedBranch.Unpushed`) can be deleted there anyway, but
+  only once the user asks for such branches to be offered, ticks it (never ticked to start
+  with), and confirms a second dialog naming each and what it holds; pinned to the commit
+  shown, whose result names that commit. A branch checked out, protected, or a remote's
+  default never is. Every job that changes a clone holds that clone's lock from
   `internal/clonelock`, one `Set` that core builds and hands to each, keyed by
   `paths.Resolved`. Lock `act` before a clone's lock, never after. Worktree changes wait only
   for one another. A run (a release, checks, a script) is never waited for: a launch or a
@@ -364,7 +371,11 @@ app:lint` reads.
   fresh and merges only when GitHub says it can, so an admin's token never merges past branch
   protection on its own: only `merge_bypass`
   ("merge past the rules") does, offered when GitHub sets `viewerCanMergeAsAdmin`, never the
-  sheet's button, and with each rule it skips to accept. Each step is reported as an
+  sheet's button, and with each rule it skips to accept. An UNSTABLE pull request's readiness
+  line and merge warning say what GitHub counts as not passing: optional checks failing or
+  running, and the head commit's workflow runs that ended without a check (`Unrun`, read in
+  the review query through the rollup's own `commit`: a fork's runs awaiting approval, or runs
+  that failed to start), which the sheet names beneath its checks. Each step is reported as an
   `event.ReviewProgress`, which the sheet shows while the user waits. Line comments are checked
   against the cached diff (`hunks.go`) before anything is sent. `Decide` marks every offer with
   what its text goes with (`Offer.Reviews`, `Offer.CommentsFirst`, and `Offer.CommentBlocked`,
@@ -443,6 +454,15 @@ app:lint` reads.
   make), never sending a step twice, stopping at the first that fails, and saying how many
   GitHub made (`EditResult`), so the window reads the issue again only then; the user takes
   themselves off with Unassign me alone.
+- `internal/avatars/` keeps the profile pictures of the people the issue sheet shows (who opened
+  the issue, its assignees and participants, and who wrote each comment shown in full, never a
+  bot), which the window asks for in one batch through the issue sheet's bound `Avatars` once the
+  sheet renders, so the conversation never waits on one. It owns `avatars`, one row per
+  lower-cased login, downloaded by login (`FetchLoginAvatar`), at most four at a time, each once
+  until it is a week old and shown again, a failed one not tried again for 30 minutes, and
+  bounded (30 days unused, 2,000 rows, 16 MiB), pruned in the transaction that writes. The window
+  gets them as data: URLs (`PersonAvatar`, `frontend/src/lib/pictures.ts`), so it loads nothing
+  remote itself.
 - `internal/reporules/` holds the pinned and muted repositories and orgs (`repos.pinned` and
   `repos.muted`, each a list of `owner` or `owner/name`, a target in one list at most), which
   settings alone writes (`SetRepoRule`, emitting the Go-only `event.RepoRulesChanged`, which

@@ -30,8 +30,9 @@ import * as sensitive$0 from "../sensitive/models.js";
 import * as snooze$0 from "../snooze/models.js";
 
 /**
- * InboxOrder is how the inbox orders its lists: which are sorted by project status, and
- * the order of the statuses. Every field is a plain value.
+ * InboxOrder is how the inbox orders and narrows its lists: which are sorted by project
+ * status, the order of the statuses, and which show only one kind of item. Every field is
+ * a plain value.
  */
 export interface InboxOrder {
     /**
@@ -45,6 +46,12 @@ export interface InboxOrder {
      * is empty until the user changes it.
      */
     "statusOrder": string[] | null;
+
+    /**
+     * Kinds holds each list that shows only one kind of item on its own tab, with that
+     * kind. A list it leaves out shows every one.
+     */
+    "kinds": { [_ in ListKey]?: ListKind } | null;
 }
 
 /**
@@ -63,6 +70,24 @@ export const ListKey = {
     ListReviewRequested: "reviewRequested",
     ListAuthored: "authored",
     ListAssigned: "assigned",
+} as const;
+
+/**
+ * ListKind is which kind of item an inbox list shows on its own tab: every one, or only
+ * its pull requests, or only its issues.
+ */
+export type ListKind = "all" | "pr" | "issue";
+
+/**
+ * The values of ListKind, by the names of their Go constants.
+ */
+export const ListKind = {
+    /**
+     * The kinds a list can show.
+     */
+    ListKindAll: "all",
+    ListKindPRs: "pr",
+    ListKindIssues: "issue",
 } as const;
 
 /**

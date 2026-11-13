@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest'
 import type { InboxItem } from '../platform'
 import { details, item, project } from '../test/fixtures'
 import type { FilteredList } from './inboxFilter'
-import { keptInPlace, sheetCards, shownItems, shownOrder, statusRanking } from './listOrder'
+import { keptInPlace, ofKind, sheetCards, shownItems, shownOrder, statusRanking } from './listOrder'
 import type { TriagedList } from './triage'
 
 // issue is an issue numbered n, in a project at status, or in none.
@@ -24,8 +24,8 @@ function triaged(inbox: InboxItem[]): TriagedList {
   return { inbox, snoozed: [issue(90)], dismissed: [issue(91)], muted: [issue(92)], total: inbox.length }
 }
 
-const newestFirst = { byStatus: false, stored: [] }
-const byStatus = { byStatus: true, stored: [] }
+const newestFirst = { byStatus: false, stored: [], kind: 'all' as const }
+const byStatus = { byStatus: true, stored: [], kind: 'all' as const }
 
 describe('shownItems', () => {
   const done = issue(1, 'Done')
@@ -43,8 +43,20 @@ describe('shownItems', () => {
     expect(ids(shownItems(list, 'inbox', undefined, byStatus))).toEqual([3, 4, 1, 2])
     const stored = ['Done', 'In progress', 'Backlog']
 
-    expect(ids(shownItems(list, 'inbox', undefined, { byStatus: true, stored }))).toEqual([1, 3, 4, 2])
+    expect(ids(shownItems(list, 'inbox', undefined, { byStatus: true, stored, kind: 'all' }))).toEqual([1, 3, 4, 2])
     expect(ids(shownItems(list, 'snoozed', undefined, byStatus))).toEqual([90])
+  })
+
+  it('shows only the kind the list shows on its own tab, sorted as it is, and every item on the others', () => {
+    const pull = item({ id: 5, number: 5, kind: 'pr', details: details() })
+    const mixed = triaged([done, pull, issue(3, 'In progress')])
+    mixed.snoozed = [item({ id: 93, kind: 'pr' }), issue(90)]
+
+    expect(ids(shownItems(mixed, 'inbox', undefined, { ...newestFirst, kind: 'pr' }))).toEqual([5])
+    expect(ids(shownItems(mixed, 'inbox', undefined, { ...newestFirst, kind: 'issue' }))).toEqual([1, 3])
+    expect(ids(shownItems(mixed, 'inbox', undefined, { ...byStatus, kind: 'issue' }))).toEqual([3, 1])
+    expect(ids(shownItems(mixed, 'snoozed', undefined, { ...newestFirst, kind: 'issue' }))).toEqual([93, 90])
+    expect(ids(ofKind(mixed.inbox, 'all'))).toEqual([1, 5, 3])
   })
 
   it('shows only the filter’s matches, ranked by the whole list’s statuses', () => {
@@ -58,11 +70,11 @@ describe('shownItems', () => {
 
 describe('shownOrder', () => {
   it('reads how the inbox sorts a list, and newest activity first while the order loads', () => {
-    const order = { statusSorted: ['assigned' as const], statusOrder: ['Done'] }
+    const order = { statusSorted: ['assigned' as const], statusOrder: ['Done'], kinds: { authored: 'issue' as const } }
 
-    expect(shownOrder(order, 'assigned')).toEqual({ byStatus: true, stored: ['Done'] })
-    expect(shownOrder(order, 'authored')).toEqual({ byStatus: false, stored: ['Done'] })
-    expect(shownOrder(null, 'assigned')).toEqual({ byStatus: false, stored: [] })
+    expect(shownOrder(order, 'assigned')).toEqual({ byStatus: true, stored: ['Done'], kind: 'all' })
+    expect(shownOrder(order, 'authored')).toEqual({ byStatus: false, stored: ['Done'], kind: 'issue' })
+    expect(shownOrder(null, 'assigned')).toEqual({ byStatus: false, stored: [], kind: 'all' })
   })
 })
 
@@ -130,5 +142,13 @@ describe('sheetCards', () => {
     expect(ids(sheetCards(list, 'inbox', matched, byStatus, 3))).toEqual([3, 1])
     expect(ids(sheetCards(list, 'inbox', matched, newestFirst, 1))).toEqual([1])
     expect(ids(sheetCards(list, 'inbox', undefined, newestFirst, 2))).toEqual([1, 2, 3])
+  })
+
+  it('keeps a card of the kind the list leaves out in its place among the cards of either kind', () => {
+    const pull = item({ id: 2, number: 2, kind: 'pr', details: details() })
+    const list = triaged([issue(1), pull, issue(3)])
+
+    expect(ids(sheetCards(list, 'inbox', undefined, { ...newestFirst, kind: 'issue' }, 1))).toEqual([1, 3])
+    expect(ids(sheetCards(list, 'inbox', undefined, { ...newestFirst, kind: 'issue' }, 2))).toEqual([1, 2, 3])
   })
 })

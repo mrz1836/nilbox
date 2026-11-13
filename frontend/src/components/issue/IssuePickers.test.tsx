@@ -42,6 +42,20 @@ describe('LabelPicker', () => {
     })
   })
 
+  it('opens as a modal with focus in its field, and Escape closes it back to its button', async () => {
+    render(<IssueSummary issue={issue()} onEdit={vi.fn()} />)
+
+    await picker('Edit labels', 'Labels')
+    const dialog = screen.getByRole('dialog', { name: 'Labels' })
+    expect(dialog.tagName, 'a native modal, over the sheet’s column').toBe('DIALOG')
+    expect(dialog).toHaveAttribute('open')
+    expect(screen.getByRole('searchbox', { name: 'Filter labels' })).toHaveFocus()
+
+    await userEvent.keyboard('{Escape}')
+    expect(screen.queryByRole('dialog', { name: 'Labels' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Edit labels' })).toHaveFocus()
+  })
+
   it('says why GitHub refused part of the change, and sends only the rest again', async () => {
     const onEdit = vi.fn().mockResolvedValueOnce('GitHub kept “bug” on it.').mockResolvedValueOnce('')
     const { rerender } = render(<IssueSummary issue={issue()} onEdit={onEdit} />)

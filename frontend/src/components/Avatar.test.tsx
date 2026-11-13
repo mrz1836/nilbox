@@ -1,8 +1,9 @@
 import { fireEvent, render, screen } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 
+import { PicturesContext } from '../lib/pictures'
 import { account, avatarDataURL, signedOut } from '../test/fixtures'
-import { Avatar } from './Avatar'
+import { Avatar, PersonAvatar } from './Avatar'
 
 // picture returns the rendered image; it is decorative, so it has no accessible role.
 function picture(container: HTMLElement): HTMLImageElement | null {
@@ -48,6 +49,30 @@ describe('Avatar', () => {
     expect(container).toHaveTextContent('')
 
     rerender(<Avatar account={signedOut} size="sm" />)
+    expect(container.querySelector('svg')).not.toBeNull()
+  })
+})
+
+describe('PersonAvatar', () => {
+  it('shows the picture the sheet read for the login, and the login’s initial until then', () => {
+    const { container, rerender } = render(<PersonAvatar login="octo-user" />)
+
+    expect(picture(container)).toBeNull()
+    expect(screen.getByText('O')).toHaveClass('size-5')
+
+    rerender(
+      <PicturesContext value={{ 'octo-user': avatarDataURL }}>
+        <PersonAvatar login="octo-user" />
+      </PicturesContext>,
+    )
+    expect(picture(container)).toHaveAttribute('src', avatarDataURL)
+    expect(picture(container)).toHaveAttribute('alt', '')
+  })
+
+  it('shows a person glyph for a deleted account', () => {
+    const { container } = render(<PersonAvatar login="" />)
+
+    expect(picture(container)).toBeNull()
     expect(container.querySelector('svg')).not.toBeNull()
   })
 })

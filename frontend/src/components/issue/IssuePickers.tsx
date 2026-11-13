@@ -1,11 +1,12 @@
-import { useId, useState, type KeyboardEvent, type ReactNode } from 'react'
+import { useId, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
+import { createPortal } from 'react-dom'
 
-import { usePopover, type Popover } from '../../lib/usePopover'
+import { useCloseWhenHidden, useModalDialog } from '../../lib/useModalDialog'
 import { useQuery } from '../../lib/useQuery'
 import { issueAssignable, issueLabels, type Issue, type IssueCandidate } from '../../platform'
-import { fieldClass, primaryButtonClass, quietButtonClass } from '../controls'
+import { buttonClass, fieldClass, primaryButtonClass, quietButtonClass } from '../controls'
+import { XIcon } from '../icons'
 import { LabelChip } from '../ItemSignals'
-import { PopoverPanel } from '../PopoverPanel'
 
 // IssueEdit is a change to an issue's labels or assignees, as the pickers ask for it.
 export interface IssueEdit {
@@ -50,10 +51,8 @@ function changes(wanted: Wanted, now: ReadonlySet<string>): { add: string[]; rem
 }
 
 interface PickerProps {
-  popover: Popover<HTMLButtonElement, HTMLDivElement>
-  // applying reports an edit under way, which holds the panel open until it ends.
-  applying: boolean
-  onApplying: (applying: boolean) => void
+  open: boolean
+  onOpen: (open: boolean) => void
   // title names the picker, as in "Labels", and buttonLabel its button, as in "Edit labels".
   title: string
   buttonLabel: string
@@ -61,7 +60,8 @@ interface PickerProps {
   query: string
   onQuery: (query: string) => void
   choices: readonly Choice[]
-  // note is said under the choices: that they load, why they couldn't, or that none match.
+  // note says that the choices load, why they couldn't, or that none match, in the list's
+  // place while it is empty, else beside the buttons.
   note: string
   // current are the keys the issue has now.
   current: readonly string[]
@@ -69,56 +69,58 @@ interface PickerProps {
   onApply: (add: string[], remove: string[]) => Promise<string>
 }
 
-// Picker is an Edit button that opens a panel of choices to check and uncheck, with a field
-// to filter or search them, and Apply (or ⌘↩), which sends only what differs from the issue,
-// holds the panel open while GitHub answers, and closes once GitHub made it all, or says
-// why it couldn't.
-function Picker({ popover, title, buttonLabel, ...props }: PickerProps) {
+// Picker is an Edit button that opens a dialog of choices to check and uncheck, with a
+// field to filter or search them, and Apply (or ⌘↩), which sends only what differs from
+// the issue, holds the dialog open while GitHub answers, and closes once GitHub made it
+// all, or says why it couldn't.
+function Picker({ open, onOpen, buttonLabel, ...props }: PickerProps) {
   const id = useId()
-  const { open, toggle, triggerRef } = popover
 
   return (
-    <div className="relative">
+    <>
       <button
-        ref={triggerRef}
         type="button"
         aria-label={buttonLabel}
         title={buttonLabel}
         aria-haspopup="dialog"
         aria-expanded={open}
         aria-controls={open ? id : undefined}
-        onClick={toggle}
+        onClick={(e) => {
+          // The desktop's WebKit focuses no button on a click. Focusing this one first
+          // makes it where the dialog gives focus back as it closes.
+          e.currentTarget.focus()
+          onOpen(true)
+        }}
         className={quietButtonClass}
       >
         Edit
       </button>
-      <PopoverPanel
-        state={popover}
-        align="right"
-        id={id}
-        role="dialog"
-        aria-labelledby={`${id}-title`}
-        className="z-30 flex w-72 flex-col shadow-black/20"
-      >
-        <h3 id={`${id}-title`} className="px-3 pt-3 text-sm font-semibold">
-          {title}
-        </h3>
-        <PickerBody
+      {open && (
+        <PickerDialog
           {...props}
-          onDone={() => {
-            popover.close(true)
+          id={id}
+          onClose={() => {
+            onOpen(false)
           }}
         />
-      </PopoverPanel>
-    </div>
+      )}
+    </>
   )
 }
 
-// PickerBody is an open picker's field, choices, and buttons. It lives while the panel is
-// open, so each opening starts with nothing changed.
-function PickerBody({
-  applying,
-  onApplying,
+// PickerDialog is an open picker, in the middle of the window over the sheet, so the
+// sheet's column never cuts it off: a native modal <dialog> (see useModalDialog), drawn in
+// the page's body as LaunchDialog is, and closed with its page (useCloseWhenHidden). Focus
+// starts in the field; Escape, the close button, Cancel, or a click on the backdrop closes
+// it, except while GitHub answers, so the outcome shows there. It lives while it is open,
+// so each opening starts with nothing changed.
+//
+// Its list keeps one height, cut short only by a short window, so the dialog doesn't jump
+// as the field filters it. As in LaunchDialog, no column inside it takes flex-1, which the
+// desktop's WebKit counts as empty.
+function PickerDialog({
+  id,
+  title,
   placeholder,
   query,
   onQuery,
@@ -126,10 +128,26 @@ function PickerBody({
   note,
   current,
   onApply,
-  onDone,
-}: Omit<PickerProps, 'popover' | 'title' | 'buttonLabel'> & { onDone: () => void }) {
+  onClose,
+}: Omit<PickerProps, 'open' | 'onOpen' | 'buttonLabel'> & { id: string; onClose: () => void }) {
+  const dialogRef = useRef<HTMLDialogElement>(null)
+  const fieldRef = useRef<HTMLInputElement>(null)
   const [wanted, setWanted] = useState<Wanted>(new Map())
   const [error, setError] = useState('')
+  const [applying, setApplying] = useState(false)
+  const cancel = useModalDialog(
+    dialogRef,
+    () => {
+      if (!applying) {
+        onClose()
+      }
+    },
+    () => fieldRef.current,
+    { backdrop: true },
+  )
+
+  useCloseWhenHidden(dialogRef, onClose)
+
   const now = new Set(current.map(fold))
   const checked = (key: string) => wanted.get(fold(key))?.on ?? now.has(fold(key))
   const { add, remove } = changes(wanted, now)
@@ -140,14 +158,14 @@ function PickerBody({
   }
 
   const apply = async () => {
-    onApplying(true)
+    setApplying(true)
 
     const failed = await onApply(add, remove)
 
-    onApplying(false)
+    setApplying(false)
 
     if (failed === '') {
-      onDone()
+      onClose()
     } else {
       setError(failed)
     }
@@ -164,69 +182,106 @@ function PickerBody({
     }
   }
 
-  return (
-    // eslint-disable-next-line jsx-a11y/no-static-element-interactions -- the panel's own ⌘↩, for the field and the checkboxes inside it
-    <div onKeyDown={onKeyDown} className="flex min-h-0 flex-col gap-2 p-3">
-      <input
-        type="search"
-        aria-label={placeholder}
-        placeholder={placeholder}
-        value={query}
-        onChange={(e) => {
-          onQuery(e.target.value)
-        }}
-        className={`${fieldClass} w-full`}
-      />
-      <ul className="max-h-64 space-y-0.5 overflow-y-auto">
-        {choices.map((c) => (
-          <li key={c.key}>
-            <label
-              title={c.locked === '' ? undefined : c.locked}
-              className="flex min-w-0 items-center gap-2 rounded-md px-1.5 py-1 text-sm hover:bg-raised has-disabled:opacity-60"
-            >
-              <input
-                type="checkbox"
-                className="checkbox"
-                checked={checked(c.key)}
-                disabled={c.locked !== '' || applying}
-                onChange={() => {
-                  flip(c.key)
-                }}
-              />
-              <span className="flex min-w-0 items-center gap-1.5">{c.label}</span>
-              {/* A space keeps the name and the hint apart when read aloud; the flex layout drops it. */}
-              {c.hint !== '' && (
-                <>
-                  {' '}
-                  <span className="min-w-0 truncate text-xs text-muted">{c.hint}</span>
-                </>
-              )}
-            </label>
-          </li>
-        ))}
-      </ul>
-      {note !== '' && <p className="text-xs text-muted">{note}</p>}
-      {error !== '' && (
-        <p role="alert" className="text-xs text-danger">
-          {error}
-        </p>
-      )}
-      <div className="flex justify-end gap-2">
-        <button type="button" disabled={applying} onClick={onDone} className={quietButtonClass}>
-          Cancel
-        </button>
-        <button
-          type="button"
-          disabled={!ready}
-          onClick={() => {
-            void apply()
-          }}
-          className={primaryButtonClass}
-        >
-          {applying ? 'Applying…' : 'Apply'}
-        </button>
+  return createPortal(
+    <dialog
+      ref={dialogRef}
+      id={id}
+      aria-modal="true"
+      aria-labelledby={`${id}-title`}
+      onCancel={cancel}
+      // The backdrop's color is spelled out, as ConfirmDialog's is, for older Safari.
+      className="m-auto max-h-[calc(100%-3rem)] w-[calc(100%-2rem)] max-w-md overflow-hidden rounded-xl border border-border bg-surface p-0 text-text shadow-xl backdrop:bg-[rgb(0_0_0/0.4)] open:flex open:flex-col motion-safe:animate-pop-in"
+    >
+      {/* The body takes focus itself, so a click on a checkbox or button, which the
+          desktop's WebKit focuses no control for, leaves focus in the dialog. */}
+      {/* eslint-disable-next-line jsx-a11y/no-static-element-interactions -- the dialog's own ⌘↩, for the field and the checkboxes inside it */}
+      <div tabIndex={-1} onKeyDown={onKeyDown} className="flex min-h-0 flex-col outline-none">
+        <header className="flex shrink-0 items-center gap-3 border-b border-border py-2.5 pr-2.5 pl-4">
+          <h2 id={`${id}-title`} className="min-w-0 flex-1 truncate text-base font-semibold">
+            {title}
+          </h2>
+          <button
+            type="button"
+            aria-label="Close"
+            title="Close (Esc)"
+            disabled={applying}
+            onClick={onClose}
+            className={`${quietButtonClass} p-1`}
+          >
+            <XIcon className="size-4" />
+          </button>
+        </header>
+        <div className="shrink-0 px-4 pt-3 pb-2">
+          <input
+            ref={fieldRef}
+            type="search"
+            aria-label={placeholder}
+            placeholder={placeholder}
+            value={query}
+            onChange={(e) => {
+              onQuery(e.target.value)
+            }}
+            className={`${fieldClass} w-full`}
+          />
+        </div>
+        <div className="h-88 min-h-24 overflow-y-auto px-2 pb-2">
+          {choices.length === 0 ? (
+            <p className="flex h-full items-center justify-center px-4 text-center text-sm text-muted">{note}</p>
+          ) : (
+            <ul className="space-y-px">
+              {choices.map((c) => (
+                <li key={c.key}>
+                  <label
+                    title={c.locked === '' ? undefined : c.locked}
+                    className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-x-3 gap-y-0.5 rounded-md px-2 py-1.5 text-sm hover:bg-raised has-disabled:opacity-60"
+                  >
+                    <input
+                      type="checkbox"
+                      className="checkbox"
+                      checked={checked(c.key)}
+                      disabled={c.locked !== '' || applying}
+                      onChange={() => {
+                        flip(c.key)
+                      }}
+                    />
+                    <span className="flex min-w-0 items-center">{c.label}</span>
+                    {/* A space keeps the name and the hint apart when read aloud; the grid drops it. */}
+                    {c.hint !== '' && (
+                      <>
+                        {' '}
+                        <span className="col-start-2 line-clamp-2 text-xs text-muted">{c.hint}</span>
+                      </>
+                    )}
+                  </label>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+        {error !== '' && (
+          <p role="alert" className="shrink-0 border-t border-border px-4 py-2 text-xs text-danger">
+            {error}
+          </p>
+        )}
+        <footer className="flex shrink-0 items-center gap-2 border-t border-border px-4 py-3">
+          <p className="min-w-0 flex-1 text-xs text-muted">{choices.length === 0 ? '' : note}</p>
+          <button type="button" disabled={applying} onClick={onClose} className={buttonClass}>
+            Cancel
+          </button>
+          <button
+            type="button"
+            disabled={!ready}
+            onClick={() => {
+              void apply()
+            }}
+            className={primaryButtonClass}
+          >
+            {applying ? 'Applying…' : 'Apply'}
+          </button>
+        </footer>
       </div>
-    </div>
+    </dialog>,
+    document.body,
   )
 }
 
@@ -256,22 +311,14 @@ function labelsNote(loading: string, held: number, total: number, shown: number)
   return shown === 0 ? 'No label matches.' : ''
 }
 
-// usePicker is a picker's open state, which holds while an edit is under way.
-function usePicker() {
-  const [applying, setApplying] = useState(false)
-  const popover = usePopover<HTMLButtonElement, HTMLDivElement>({ focus: 'panel', hold: applying })
-
-  return { popover, applying, onApplying: setApplying }
-}
-
 // LabelPicker edits the issue's labels: the repository's labels, filtered by the field,
 // each checked while the issue has it. The labels are read as it opens, which GitHub
 // answers for one point, kept ten minutes; a repository with more than a hundred shows the
 // first hundred in name order, and says so.
 export function LabelPicker({ issue, onEdit }: { issue: Issue; onEdit: OnEdit }) {
-  const picker = usePicker()
+  const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
-  const labels = useQuery(() => issueLabels(issue.id), [issue.id], { enabled: picker.popover.open })
+  const labels = useQuery(() => issueLabels(issue.id), [issue.id], { enabled: open })
   const q = query.trim().toLowerCase()
   const held = labels.data?.labels ?? []
   const shown = held.filter((l) => l.name.toLowerCase().includes(q))
@@ -279,7 +326,8 @@ export function LabelPicker({ issue, onEdit }: { issue: Issue; onEdit: OnEdit })
 
   return (
     <Picker
-      {...picker}
+      open={open}
+      onOpen={setOpen}
       title="Labels"
       buttonLabel="Edit labels"
       placeholder="Filter labels"
@@ -302,10 +350,10 @@ export function LabelPicker({ issue, onEdit }: { issue: Issue; onEdit: OnEdit })
 // search finds it can be, a search costing one point as the user stops typing, kept ten
 // minutes. The user takes themselves off with Unassign me, never here.
 export function AssigneePicker({ issue, onEdit }: { issue: Issue; onEdit: OnEdit }) {
-  const picker = usePicker()
+  const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
   const found = useQuery(() => issueAssignable(issue.id, query.trim()), [issue.id, query.trim()], {
-    enabled: picker.popover.open,
+    enabled: open,
     delay: 300,
   })
   const assigned = issue.assignees.map((p) => ({ login: p.login, name: '', mine: p.mine }))
@@ -317,7 +365,8 @@ export function AssigneePicker({ issue, onEdit }: { issue: Issue; onEdit: OnEdit
 
   return (
     <Picker
-      {...picker}
+      open={open}
+      onOpen={setOpen}
       title="Assignees"
       buttonLabel="Edit assignees"
       placeholder="Search people"

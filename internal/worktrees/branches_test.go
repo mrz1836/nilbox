@@ -3,6 +3,7 @@ package worktrees
 import (
 	"context"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -118,6 +119,7 @@ func TestMergedBranchesFindsEachBranchWhosePullRequestMerged(t *testing.T) {
 		name      string
 		number    int
 		deletable bool
+		unpushed  int
 		reason    string
 	}
 
@@ -130,17 +132,17 @@ func TestMergedBranchesFindsEachBranchWhosePullRequestMerged(t *testing.T) {
 		assert.Equal(t, "acme-org/example-repo", mb.PullRequest.Repo)
 		assert.Equal(t, "2026-11-06T18:00:00Z", mb.PullRequest.MergedAt)
 
-		rows = append(rows, row{mb.Branch.Name, mb.PullRequest.Number, mb.Branch.Deletable, mb.Branch.Reason})
+		rows = append(rows, row{mb.Branch.Name, mb.PullRequest.Number, mb.Branch.Deletable, mb.Unpushed, mb.Branch.Reason})
 	}
 
 	assert.Equal(t, []row{
-		{"behind", 185, true, ""},
-		{"busy", 187, false, "it is checked out in ~/busy"},
-		{"current", 189, false, "it is the clone's current branch"},
-		{"extra-work", 186, false, "it has commits that aren't in pull request #186 or on GitHub"},
-		{"feature-x", 184, true, ""},
-		{"pushed-x", 188, true, ""},
-		{"worktree-pr-9", 9, true, ""},
+		{"behind", 185, true, 0, ""},
+		{"busy", 187, false, 0, "it is checked out in ~/busy"},
+		{"current", 189, false, 0, "it is the clone's current branch"},
+		{"extra-work", 186, false, 1, "it has 1 commit that isn't in pull request #186 or on GitHub"},
+		{"feature-x", 184, true, 0, ""},
+		{"pushed-x", 188, true, 0, ""},
+		{"worktree-pr-9", 9, true, 0, ""},
 	}, rows, "the default branch, a protected one, and one never merged are left out")
 
 	require.Len(t, f.gh.asked, 1, "one question to GitHub for the clone's branches")
@@ -223,6 +225,41 @@ func TestDeleteBranchesChecksEachAgain(t *testing.T) {
 
 	assert.Equal(t, f.heads["feature-x"], got[0].Head, "the result keeps the commit that restores the branch")
 	assert.Equal(t, "~/projects/example-repo", got[0].DisplayRepo)
+}
+
+func TestDeleteBranchesDeletesABranchWithWorkNotOnGitHubAtTheCommitShown(t *testing.T) {
+	t.Parallel()
+
+	f := newMergedFixture(t)
+
+	listed, err := f.svc.MergedBranches(t.Context())
+	require.NoError(t, err)
+
+	i := slices.IndexFunc(listed, func(mb MergedBranch) bool { return mb.Branch.Name == "extra-work" })
+	require.GreaterOrEqual(t, i, 0)
+	require.False(t, listed[i].Branch.Deletable)
+	require.Equal(t, 1, listed[i].Unpushed, "kept only for its commit not on GitHub, so the user may delete it anyway")
+
+	// Work added since it was shown is never lost: the pick is pinned to the commit shown.
+	moved := commitOn(t, f.clone, f.heads["extra-work"], "more work")
+	testutil.RunGit(t, f.clone, "update-ref", "refs/heads/extra-work", moved)
+
+	pick := BranchPick{RepoPath: f.clone, Name: "extra-work", Head: listed[i].Branch.Head}
+	got, err := f.svc.DeleteBranches(t.Context(), []BranchPick{pick})
+	require.NoError(t, err)
+	require.Len(t, got, 1)
+	assert.False(t, got[0].Deleted)
+	assert.Equal(t, ErrBranchMoved.Error(), got[0].Reason)
+
+	// Back at the commit shown, the user's confirmed pick deletes it, and names that commit.
+	testutil.RunGit(t, f.clone, "update-ref", "refs/heads/extra-work", listed[i].Branch.Head)
+
+	got, err = f.svc.DeleteBranches(t.Context(), []BranchPick{pick})
+	require.NoError(t, err)
+	require.Len(t, got, 1)
+	assert.True(t, got[0].Deleted, got[0].Reason)
+	assert.Equal(t, listed[i].Branch.Head, got[0].Head, "the commit that brings it back")
+	assert.NotContains(t, branches(t, f.clone), "extra-work")
 }
 
 func TestDeleteBranchesStopsWhenCancelled(t *testing.T) {

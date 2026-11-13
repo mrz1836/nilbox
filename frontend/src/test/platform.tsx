@@ -167,6 +167,7 @@ function answers(subscribe: Loose<Platform['on']>): { [K in keyof Platform]: Loo
     fillIssueReply: () => Promise.resolve('Looking into it, @octo-user.'),
     issueLabels: () => Promise.resolve(repoLabels()),
     issueAssignable: () => Promise.resolve(candidates()),
+    issueAvatars: () => Promise.resolve({}),
     editIssue: () => Promise.resolve({ sent: 1, failed: '' }),
     reviewReplies: () => Promise.resolve(replyList()),
     fillReply: () => Promise.resolve('Reviewed and approved. Thanks, @octo-other!'),
@@ -228,9 +229,13 @@ function answers(subscribe: Loose<Platform['on']>): { [K in keyof Platform]: Loo
     getCollapsedSections: () => Promise.resolve([]),
     setSectionCollapsed: (section, collapsed) => stored({ collapsedSections: collapsed ? [section] : [] }),
     setProjectsTipDismissed: (projectsTipDismissed) => stored({ projectsTipDismissed }),
-    getInboxOrder: () => Promise.resolve({ statusSorted: [], statusOrder: [] }),
-    setStatusSort: (section, on) => stored({ inboxOrder: { statusSorted: on ? [section] : [], statusOrder: [] } }),
-    setStatusOrder: (statusOrder) => stored({ inboxOrder: { statusSorted: [], statusOrder: statusOrder ?? [] } }),
+    getInboxOrder: () => Promise.resolve({ statusSorted: [], statusOrder: [], kinds: {} }),
+    setStatusSort: (section, on) =>
+      stored({ inboxOrder: { statusSorted: on ? [section] : [], statusOrder: [], kinds: {} } }),
+    setListKind: (section, kind) =>
+      stored({ inboxOrder: { statusSorted: [], statusOrder: [], kinds: kind === 'all' ? {} : { [section]: kind } } }),
+    setStatusOrder: (statusOrder) =>
+      stored({ inboxOrder: { statusSorted: [], statusOrder: statusOrder ?? [], kinds: {} } }),
     setWindowSize: (windowSize) => stored({ windowSize }),
     setBranchRules: (branches) => stored({ branches: { ...branches, protected: branches.protected ?? [] } }),
     setRepoRule: (target, rule) => stored({ repoRules: withRepoRule(settings().repoRules, target, rule) }),

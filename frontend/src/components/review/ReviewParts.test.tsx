@@ -127,6 +127,41 @@ describe('ReviewSummary', () => {
     expect(screen.getByRole('button', { name: /Agent config/ })).toBeInTheDocument()
   })
 
+  it('names the workflow runs GitHub counts as not passing that ran no check', () => {
+    const { rerender } = render(
+      <ReviewSummary
+        review={review({
+          unrun: [
+            { name: 'PR Management', approval: true },
+            { name: 'Auto-merge Trigger', approval: true },
+            { name: 'Auto-merge Trigger', approval: true },
+            { name: 'Auto-merge Trigger', approval: false },
+          ],
+        })}
+        item={undefined}
+      />,
+    )
+
+    const runs = screen.getByRole('list', { name: 'Workflow runs with no check' })
+    expect(
+      within(runs)
+        .getAllByRole('listitem')
+        .map((li) => li.textContent),
+    ).toEqual([
+      '3 workflow runs awaiting approval: PR Management, Auto-merge Trigger',
+      '1 workflow run that didn’t start: Auto-merge Trigger',
+    ])
+
+    rerender(<ReviewSummary review={review({ checks: [], unrun: [{ name: '', approval: false }] })} item={undefined} />)
+    expect(screen.getByText('No checks on this commit.')).toBeInTheDocument()
+    expect(screen.getByRole('list', { name: 'Workflow runs with no check' })).toHaveTextContent(
+      '1 workflow run that didn’t start: an app',
+    )
+
+    rerender(<ReviewSummary review={review()} item={undefined} />)
+    expect(screen.queryByRole('list', { name: 'Workflow runs with no check' })).not.toBeInTheDocument()
+  })
+
   it('says when a commit has no checks', () => {
     render(
       <ReviewSummary

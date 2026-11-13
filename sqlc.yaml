@@ -111,3 +111,9 @@ sql:
       go:
         !!merge <<: *go
         out: internal/issues/internal/queries
+  - !!merge <<: *owner
+    queries: internal/avatars/internal/queries
+    gen:
+      go:
+        !!merge <<: *go
+        out: internal/avatars/internal/queries

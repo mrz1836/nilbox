@@ -40,12 +40,37 @@ func TestFactsCountTheChecks(t *testing.T) {
 	assert.False(t, factsOf(pull, c, Review{}).CanAutoMerge, "the repository doesn't allow auto-merge")
 }
 
+func TestFactsCountTheWorkflowRunsThatRanNoCheck(t *testing.T) {
+	t.Parallel()
+
+	c := &cached{head: headA, context: contextOf(&github.PullReview{Unrun: []github.UnrunSuite{
+		{Name: "PR Management", Conclusion: github.SuiteAwaitsApproval},
+		{Name: "Auto-merge Trigger", Conclusion: github.SuiteAwaitsApproval},
+		{Name: "Auto-merge Trigger", Conclusion: "FAILURE"},
+	}})}
+
+	assert.Equal(t, []Unrun{
+		{Name: "PR Management", Approval: true},
+		{Name: "Auto-merge Trigger", Approval: true},
+		{Name: "Auto-merge Trigger"},
+	}, c.context.Unrun)
+
+	f := factsOf(storedPull(), c, Review{BaseRef: "main", State: github.StateOpen})
+	assert.Equal(t, 2, f.AwaitingApproval)
+	assert.Equal(t, 1, f.NotStarted)
+	assert.Zero(t, f.Failing, "none of them is a check")
+
+	sheet := build(storedPull(), c, nil, PrefRepo)
+	assert.Equal(t, c.context.Unrun, sheet.Unrun, "the sheet names them beneath its checks")
+	assert.Equal(t, []Unrun{}, build(storedPull(), nil, nil, PrefRepo).Unrun)
+}
+
 func TestSmallWords(t *testing.T) {
 	t.Parallel()
 
 	for status, words := range map[string]string{
 		github.MergeStateBlocked: "Branch protection", github.MergeStateBehind: "behind", github.MergeStateDirty: "conflicts",
-		github.MergeStateUnstable: "failing", github.MergeStateUnknown: "still working",
+		github.MergeStateUnstable: "workflow run is passing", github.MergeStateUnknown: "still working",
 	} {
 		assert.Contains(t, stateReason(status), words, status)
 	}

@@ -238,6 +238,7 @@
                             "detailsUrl": "https://github.com/acme-org/example-repo/actions/runs/101/job/201",
                             "isRequired": false,
                             "checkSuite": {
+                                "id": "CS_1",
                                 "workflowRun": {
                                     "workflow": {
                                         "name": "CodeQL"
@@ -253,6 +254,7 @@
                             "detailsUrl": "https://github.com/acme-org/example-repo/actions/runs/101/job/201",
                             "isRequired": true,
                             "checkSuite": {
+                                "id": "CS_2",
                                 "workflowRun": {
                                     "workflow": {
                                         "name": "run-go-tests"
@@ -268,6 +270,7 @@
                             "detailsUrl": "https://github.com/acme-org/example-repo/runs/129306286891",
                             "isRequired": false,
                             "checkSuite": {
+                                "id": "CS_3",
                                 "workflowRun": null
                             }
                         },
@@ -279,6 +282,7 @@
                             "detailsUrl": "https://app.codecov.io/gh/acme-org/example-repo/pull/94",
                             "isRequired": false,
                             "checkSuite": {
+                                "id": "CS_4",
                                 "workflowRun": null
                             }
                         },
@@ -290,6 +294,7 @@
                             "detailsUrl": "https://github.com/acme-org/example-repo/actions/runs/101/job/202",
                             "isRequired": true,
                             "checkSuite": {
+                                "id": "CS_2",
                                 "workflowRun": null
                             }
                         },
@@ -301,6 +306,7 @@
                             "detailsUrl": "https://github.com/acme-org/example-repo/actions/runs/101/job/203",
                             "isRequired": false,
                             "checkSuite": {
+                                "id": "CS_5",
                                 "workflowRun": {
                                     "workflow": {
                                         "name": "e2e"
@@ -317,6 +323,89 @@
                         },
                         null
                     ]
+                },
+                "commit": {
+                    "checkSuites": {
+                        "nodes": [
+                            {
+                                "id": "CS_1",
+                                "conclusion": "SUCCESS",
+                                "app": {
+                                    "name": "GitHub Actions"
+                                },
+                                "workflowRun": {
+                                    "workflow": {
+                                        "name": "CodeQL"
+                                    }
+                                }
+                            },
+                            {
+                                "id": "CS_5",
+                                "conclusion": "FAILURE",
+                                "app": {
+                                    "name": "GitHub Actions"
+                                },
+                                "workflowRun": {
+                                    "workflow": {
+                                        "name": "e2e"
+                                    }
+                                }
+                            },
+                            {
+                                "id": "CS_6",
+                                "conclusion": "ACTION_REQUIRED",
+                                "app": {
+                                    "name": "GitHub Actions"
+                                },
+                                "workflowRun": {
+                                    "workflow": {
+                                        "name": "PR Management"
+                                    }
+                                }
+                            },
+                            {
+                                "id": "CS_7",
+                                "conclusion": "FAILURE",
+                                "app": {
+                                    "name": "GitHub Actions"
+                                },
+                                "workflowRun": {
+                                    "workflow": {
+                                        "name": "Auto-merge Trigger"
+                                    }
+                                }
+                            },
+                            {
+                                "id": "CS_8",
+                                "conclusion": "SUCCESS",
+                                "app": {
+                                    "name": "GitHub Actions"
+                                },
+                                "workflowRun": {
+                                    "workflow": {
+                                        "name": "Labeler"
+                                    }
+                                }
+                            },
+                            {
+                                "id": "CS_9",
+                                "conclusion": null,
+                                "app": {
+                                    "name": "Example CI"
+                                },
+                                "workflowRun": null
+                            },
+                            {
+                                "id": "CS_10",
+                                "conclusion": "STARTUP_FAILURE",
+                                "app": {
+                                    "name": "Example CI"
+                                },
+                                "workflowRun": null
+                            },
+                            null
+                        ]
+                    }
                 }
             },
             "closes": {

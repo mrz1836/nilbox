@@ -79,6 +79,13 @@ type Facts struct {
 	Failing         int
 	Pending         int
 
+	// AwaitingApproval and NotStarted count the head commit's workflow runs that ended
+	// without a check and without passing (Unrun): those waiting for a maintainer's
+	// approval, as a fork's runs do, and those that failed to start. GitHub counts them in
+	// the merge state (UNSTABLE) though no check shows them.
+	AwaitingApproval int
+	NotStarted       int
+
 	// Sensitive names the sensitive categories of danger level the pull request changes,
 	// as in "Workflows".
 	Sensitive []string
@@ -636,31 +643,81 @@ func readiness(f Facts) Readiness {
 	return r
 }
 
-// optionalFailing counts the failing checks that aren't required.
+// optionalFailing counts the failing checks that aren't required, and optionalPending
+// those still running.
 func optionalFailing(f Facts) int {
 	return max(f.Failing-f.RequiredFailing, 0)
 }
 
-// unstableNote says what keeps a pull request GitHub would merge from passing, as in "1
-// optional check failing", or, with none failing, that optional checks aren't passing.
-func unstableNote(f Facts) string {
-	if n := optionalFailing(f); n > 0 {
-		return textutil.Counted(n, "optional check failing", "optional checks failing")
-	}
-
-	return "optional checks not passing"
+func optionalPending(f Facts) int {
+	return max(f.Pending-f.RequiredPending, 0)
 }
 
-// unstableWarning is unstableNote as the warning a merge asks the user to accept.
-func unstableWarning(f Facts) string {
-	switch n := optionalFailing(f); n {
-	case 0:
-		return "Optional checks aren't passing."
-	case 1:
-		return "1 optional check is failing."
-	default:
-		return fmt.Sprintf("%d optional checks are failing.", n)
+// unstableNote says what keeps a pull request GitHub would merge from passing, as in "1
+// optional check failing · 3 workflow runs awaiting approval", or, when nothing the sheet
+// read says, that a status isn't passing.
+func unstableNote(f Facts) string {
+	var parts []string
+
+	if n := optionalFailing(f); n > 0 {
+		parts = append(parts, textutil.Counted(n, "optional check failing", "optional checks failing"))
 	}
+
+	if n := optionalPending(f); n > 0 {
+		parts = append(parts, textutil.Counted(n, "optional check running", "optional checks running"))
+	}
+
+	if f.AwaitingApproval > 0 {
+		parts = append(parts, textutil.Counted(f.AwaitingApproval, "workflow run awaiting approval",
+			"workflow runs awaiting approval"))
+	}
+
+	if f.NotStarted > 0 {
+		parts = append(parts, textutil.Counted(f.NotStarted, "workflow run that didn't start",
+			"workflow runs that didn't start"))
+	}
+
+	if len(parts) == 0 {
+		return "a status isn't passing"
+	}
+
+	return strings.Join(parts, " · ")
+}
+
+// unstableWarning is unstableNote as the warning a merge asks the user to accept, a sentence
+// for each thing GitHub counts as not passing. When those are only workflow runs that never
+// ran a check, it says so: every check that ran passed, and GitHub merges it as it is.
+func unstableWarning(f Facts) string {
+	var says []string
+
+	if n := optionalFailing(f); n > 0 {
+		says = append(says, textutil.Counted(n, "optional check is failing.", "optional checks are failing."))
+	}
+
+	if n := optionalPending(f); n > 0 {
+		says = append(says, textutil.Counted(n, "optional check is still running.", "optional checks are still running."))
+	}
+
+	checksPass := len(says) == 0
+
+	if n := f.AwaitingApproval; n > 0 {
+		says = append(says, textutil.Counted(n, "workflow run is", "workflow runs are")+
+			" waiting for a maintainer's approval to run, as a fork's runs do.")
+	}
+
+	if n := f.NotStarted; n > 0 {
+		says = append(says, textutil.Counted(n, "workflow run", "workflow runs")+" failed to start.")
+	}
+
+	switch {
+	case checksPass && f.AwaitingApproval+f.NotStarted > 0:
+		says = append(says, "No check shows them, and every check that ran passed: GitHub merges it as it is.")
+	case checksPass:
+		says = append(says, "GitHub counts a status of the head commit as not passing, though no check the sheet "+
+			"read is failing.")
+	}
+
+	return strings.Join(says, " ")
 }
 
 // blockedSentence says what a blocked pull request waits on.

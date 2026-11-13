@@ -39,6 +39,16 @@ export function Assignable(id: number, query: string): $CancellablePromise<$mode
 }
 
 /**
+ * Avatars returns the profile pictures of the people with logins, as the sheet shows them
+ * beside their names, as data: URLs keyed by login, leaving out anyone without one (see
+ * avatars.Service.Pictures). Each picture is downloaded from GitHub's avatar host once and
+ * kept, so the window loads nothing remote itself.
+ */
+export function Avatars(logins: string[] | null): $CancellablePromise<{ [_ in string]?: string } | null> {
+    return $Call.ByID(3078039022, logins);
+}
+
+/**
  * Earlier reads the page of the issue's timeline before the cursor before, which a page
  * the sheet holds gave: one GraphQL request, which stores nothing, not even in the cache.
  */

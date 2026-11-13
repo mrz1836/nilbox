@@ -103,6 +103,12 @@ func TestFetchPullReviewReadsTheSheet(t *testing.T) {
 		Kind: CheckKindStatus, Name: "ci/legacy", State: "SUCCESS", Outcome: CheckPassed,
 		URL: "https://ci.example.com/acme-org/example-repo/7",
 	}, review.Checks[6])
+	assert.Equal(t, []UnrunSuite{
+		{Name: "PR Management", Conclusion: SuiteAwaitsApproval},
+		{Name: "Auto-merge Trigger", Conclusion: "FAILURE"},
+		{Name: "Example CI", Conclusion: "STARTUP_FAILURE"},
+	}, review.Unrun, "the suites that ended without a check and without passing: one that ran a check, passed, or "+
+		"is still queued is none of them, and a null is skipped")
 
 	observed := rates.all()
 	require.NotEmpty(t, observed)
@@ -168,6 +174,7 @@ func TestReviewChecksWithoutARollup(t *testing.T) {
 	(&reviewNode{}).fill(review)
 
 	assert.Equal(t, []Check{}, review.Checks)
+	assert.Equal(t, []UnrunSuite{}, review.Unrun)
 	assert.Equal(t, []Review{}, review.Reviews)
 	assert.Equal(t, ReviewMark{}, review.ViewerReview)
 

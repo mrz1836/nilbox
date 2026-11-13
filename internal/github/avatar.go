@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strconv"
 )
 
 const (
@@ -120,4 +121,57 @@ func (c *Client) avatarHost() string {
 	}
 
 	return c.AvatarHost
+}
+
+// LoginAvatarSize is the size, in pixels, FetchLoginAvatar asks for: a picture shown 20
+// points square, on a display of two pixels to the point.
+const LoginAvatarSize = 40
+
+// ErrAvatarLogin is returned for a login FetchLoginAvatar won't ask the avatar host about:
+// one that isn't a user's, such as a bot's.
+var ErrAvatarLogin = errors.New("not a login with a GitHub avatar")
+
+// FetchLoginAvatar downloads the profile picture of the account with login, LoginAvatarSize
+// pixels square, from the avatar host by the login alone, as FetchAvatar does: no API
+// request, so no token and no point of the budget. GitHub answers a login it doesn't know
+// with its default picture. A login only a user or an organization could have is asked
+// about (validLogin): a bot's, which GitHub answers with a pattern made from its name
+// rather than the app's picture, fails with ErrAvatarLogin.
+func (c *Client) FetchLoginAvatar(ctx context.Context, login string) (*Avatar, error) {
+	if !validLogin(login) {
+		return nil, fmt.Errorf("%w: %q", ErrAvatarLogin, login)
+	}
+
+	u := url.URL{
+		Scheme: "https", Host: c.avatarHost(), Path: "/" + login, RawQuery: "s=" + strconv.Itoa(LoginAvatarSize),
+	}
+
+	return c.FetchAvatar(ctx, u.String())
+}
+
+// maxLoginLength is the longest login validLogin takes: GitHub's own logins run to 39
+// characters, and a managed user's adds an underscore and the enterprise's short code.
+const maxLoginLength = 64
+
+// validLogin reports whether login is one a user or an organization could have: ASCII
+// letters, digits, hyphens, and underscores, starting with a letter or a digit, at most
+// maxLoginLength long. A bot's login, which GitHub writes with "[bot]", is not.
+func validLogin(login string) bool {
+	if login == "" || len(login) > maxLoginLength || login[0] == '-' || login[0] == '_' {
+		return false
+	}
+
+	for _, r := range login {
+		if !loginRune(r) {
+			return false
+		}
+	}
+
+	return true
+}
+
+// loginRune reports whether a login may hold r: an ASCII letter or digit, a hyphen, or an
+// underscore.
+func loginRune(r rune) bool {
+	return r == '-' || r == '_' || (r >= '0' && r <= '9') || (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z')
 }

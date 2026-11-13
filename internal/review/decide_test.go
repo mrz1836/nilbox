@@ -333,15 +333,34 @@ func TestDecideSaysWhatKeepsAMergeFromPassing(t *testing.T) {
 	t.Parallel()
 
 	for _, c := range []struct {
-		failing, required int
-		sentence, warning string
+		failing, required, pending, approval, notStarted int
+		sentence, warning                                string
 	}{
-		{0, 0, "Ready to merge · optional checks not passing", "Optional checks aren't passing."},
-		{1, 0, "Ready to merge · 1 optional check failing", "1 optional check is failing."},
-		{3, 1, "Ready to merge · 2 optional checks failing", "2 optional checks are failing."},
+		{
+			0, 0, 0, 0, 0, "Ready to merge · a status isn't passing",
+			"GitHub counts a status of the head commit as not passing, though no check the sheet read is failing.",
+		},
+		{1, 0, 0, 0, 0, "Ready to merge · 1 optional check failing", "1 optional check is failing."},
+		{3, 1, 0, 0, 0, "Ready to merge · 2 optional checks failing", "2 optional checks are failing."},
+		{0, 0, 2, 0, 0, "Ready to merge · 2 optional checks running", "2 optional checks are still running."},
+		{
+			0, 0, 0, 3, 1, "Ready to merge · 3 workflow runs awaiting approval · 1 workflow run that didn't start",
+			"3 workflow runs are waiting for a maintainer's approval to run, as a fork's runs do. 1 workflow run " +
+				"failed to start. No check shows them, and every check that ran passed: GitHub merges it as it is.",
+		},
+		{
+			0, 0, 0, 1, 0, "Ready to merge · 1 workflow run awaiting approval",
+			"1 workflow run is waiting for a maintainer's approval to run, as a fork's runs do. No check shows " +
+				"them, and every check that ran passed: GitHub merges it as it is.",
+		},
+		{
+			1, 0, 0, 0, 2, "Ready to merge · 1 optional check failing · 2 workflow runs that didn't start",
+			"1 optional check is failing. 2 workflow runs failed to start.",
+		},
 	} {
 		f := facts(github.MergeStateUnstable)
-		f.Failing, f.RequiredFailing = c.failing, c.required
+		f.Failing, f.RequiredFailing, f.Pending = c.failing, c.required, c.pending
+		f.AwaitingApproval, f.NotStarted = c.approval, c.notStarted
 
 		assert.Equal(t, c.sentence, readiness(f).Sentence)
 		assert.Equal(t, c.warning, unstableWarning(f))

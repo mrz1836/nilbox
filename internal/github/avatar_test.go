@@ -264,3 +264,41 @@ func TestAvatarHostDefaultsToGitHub(t *testing.T) {
 		require.ErrorIs(t, err, ErrAvatarURL, bad)
 	}
 }
+
+func TestFetchLoginAvatarAsksTheHostByTheLogin(t *testing.T) {
+	t.Parallel()
+
+	var asked atomic.Int32
+
+	client, _ := newAvatarServer(t, func(w http.ResponseWriter, r *http.Request) {
+		asked.Add(1)
+		assert.Equal(t, "/octo-user_ACME", r.URL.Path)
+		assert.Equal(t, "s=40", r.URL.RawQuery)
+		assert.Empty(t, r.Header.Get("Authorization"), "avatars are public; no token is sent")
+
+		_, _ = w.Write([]byte(pngHeader))
+	})
+
+	avatar, err := client.FetchLoginAvatar(t.Context(), "octo-user_ACME")
+	require.NoError(t, err)
+	assert.Equal(t, "image/png", avatar.ContentType)
+	assert.Equal(t, int32(1), asked.Load())
+}
+
+func TestFetchLoginAvatarAsksNothingOfALoginNoUserHas(t *testing.T) {
+	t.Parallel()
+
+	client, _ := newAvatarServer(t, func(http.ResponseWriter, *http.Request) {
+		t.Error("nothing is asked for a login no user has")
+	})
+
+	for _, login := range []string{
+		"", "dependabot[bot]", "-octo", "_octo", "octo/../u/1", "octo?s=400", "octo user", "octö",
+		strings.Repeat("a", maxLoginLength+1),
+	} {
+		_, err := client.FetchLoginAvatar(t.Context(), login)
+		require.ErrorIs(t, err, ErrAvatarLogin, login)
+	}
+
+	assert.True(t, validLogin(strings.Repeat("a", maxLoginLength)))
+}

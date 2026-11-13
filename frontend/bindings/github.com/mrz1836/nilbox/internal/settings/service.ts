@@ -248,6 +248,14 @@ export function SetIntegrationsAnnounced(announced: boolean): $CancellablePromis
 }
 
 /**
+ * SetListKind stores which kind of item an inbox list shows on its own tab, every one or
+ * only its pull requests or its issues, and returns the settings with it.
+ */
+export function SetListKind(section: $models.ListKey, kind: $models.ListKind): $CancellablePromise<$models.Settings> {
+    return $Call.ByID(1258831923, section, kind);
+}
+
+/**
  * SetMenuBar stores whether the app shows its menu bar icon, and returns the settings
  * with it. Once it is stored, an event.MenuBarChanged is emitted, so the desktop shell
  * adds or removes the icon.

@@ -24,6 +24,26 @@ function boxKey(m: MergedBranch): string {
   return `${m.repoPath}\u0000${m.branch.name}`
 }
 
+// unpushedHeld reports a branch kept only for its commits not on GitHub, which the user may
+// delete anyway once they ask, and confirm (MergedBranch.unpushed).
+function unpushedHeld(m: MergedBranch): boolean {
+  return !m.branch.deletable && m.unpushed !== 0
+}
+
+// unpushedWords counts a branch's commits not on GitHub, or says "commits" when they
+// couldn't be counted.
+function unpushedWords(n: number): string {
+  return n > 0 ? counted(n, 'commit', 'commits') : 'commits'
+}
+
+// Choice is which branches the user may tick, and which start ticked: those that may go,
+// as the rules say, and, once the user asks, those kept only for commits not on GitHub,
+// never ticked to start with.
+interface Choice {
+  tickable: (m: MergedBranch) => boolean
+  byDefault: (m: MergedBranch) => boolean
+}
+
 // CloneGroup is the merged branches of one clone.
 interface CloneGroup {
   repoPath: string
@@ -61,16 +81,19 @@ function Warning({ label }: { label: string }) {
 
 interface MergedRowProps {
   merged: MergedBranch
+  // tickable is whether the user may tick it.
+  tickable: boolean
   checked: boolean
   now: Date
   onChange: (on: boolean) => void
 }
 
 // MergedRow is one merged branch: its box, name, when its pull request merged and the
-// commit it points at, the pull request, and, when it can't go, why.
-function MergedRow({ merged: m, checked, now, onChange }: MergedRowProps) {
+// commit it points at, the pull request, and, when it can't go, why, or, offered anyway,
+// what deleting it loses.
+function MergedRow({ merged: m, tickable, checked, now, onChange }: MergedRowProps) {
   const pr = m.pullRequest
-  const held = !m.branch.deletable
+  const held = !tickable
 
   return (
     <li>
@@ -101,6 +124,11 @@ function MergedRow({ merged: m, checked, now, onChange }: MergedRowProps) {
             #{pr.number} {pr.title}
           </span>
           {held && <span className="text-xs text-warning">Stays: {m.branch.reason}.</span>}
+          {!held && unpushedHeld(m) && (
+            <span className="text-xs text-warning">
+              Has {unpushedWords(m.unpushed)} not on GitHub, which deleting it leaves only in this clone.
+            </span>
+          )}
         </span>
       </label>
     </li>
@@ -109,7 +137,7 @@ function MergedRow({ merged: m, checked, now, onChange }: MergedRowProps) {
 
 interface CloneRowProps {
   group: CloneGroup
-  rules: BranchRules
+  choice: Choice
   ticks: Ticks
   now: Date
   open: boolean
@@ -119,10 +147,10 @@ interface CloneRowProps {
 // CloneRow is one clone's merged branches: a box that ticks them all, its name, which
 // opens the list, how many it has and how many are ticked, a warning when some can't go,
 // and, open, a row for each branch.
-function CloneRow({ group, rules, ticks, now, open, onToggle }: CloneRowProps) {
+function CloneRow({ group, choice, ticks, now, open, onToggle }: CloneRowProps) {
   const id = useId()
-  const deletable = group.branches.filter((m) => m.branch.deletable)
-  const ticked = deletable.filter((m) => ticks.on(boxKey(m), rules.merged)).length
+  const deletable = group.branches.filter(choice.tickable)
+  const ticked = deletable.filter((m) => ticks.on(boxKey(m), choice.byDefault(m))).length
   const held = group.branches.length - deletable.length
 
   return (
@@ -166,7 +194,8 @@ function CloneRow({ group, rules, ticks, now, open, onToggle }: CloneRowProps) {
             <MergedRow
               key={m.branch.name}
               merged={m}
-              checked={ticks.on(boxKey(m), rules.merged)}
+              tickable={choice.tickable(m)}
+              checked={ticks.on(boxKey(m), choice.byDefault(m))}
               now={now}
               onChange={(on) => {
                 ticks.set([boxKey(m)], on)
@@ -217,100 +246,174 @@ function Checking() {
 // by clone, each group closed to start with and ticked as a whole or branch by branch,
 // every box starting as the user's rules say. A branch that can't go is shown, held, with
 // why, and its clone carries a warning.
+//
+// A branch kept only for its commits not on GitHub can be deleted anyway: the user asks
+// for those branches to be offered, ticks them, none ticked to start with, and confirms
+// once more in a second dialog that names each and what it holds. A branch checked out,
+// protected, or a remote's default never can.
 export function MergedBranchesDialog({ rules, now, onConfirm, onCancel }: MergedBranchesDialogProps) {
   const found = useQuery(() => mergedBranches(), [])
   const ticks = useTicks()
   // open holds the clones whose branches are shown; every clone starts closed.
   const [open, setOpen] = useState<ReadonlySet<string>>(() => new Set())
+  // anyway offers the branches kept only for commits not on GitHub, and confirming asks
+  // once more before deleting any.
+  const [anyway, setAnyway] = useState(false)
+  const [confirming, setConfirming] = useState(false)
   const branches = found.data ?? []
-  const deletable = branches.filter((m) => m.branch.deletable)
-  const chosen = deletable.filter((m) => ticks.on(boxKey(m), rules.merged))
+  const choice: Choice = {
+    tickable: (m) => m.branch.deletable || (anyway && unpushedHeld(m)),
+    byDefault: (m) => m.branch.deletable && rules.merged,
+  }
+  const deletable = branches.filter(choice.tickable)
+  const chosen = deletable.filter((m) => ticks.on(boxKey(m), choice.byDefault(m)))
+  const risky = chosen.filter(unpushedHeld)
+  const unpushed = branches.filter(unpushedHeld)
   const groups = byClone(branches)
   const held = branches.length - deletable.length
+  const picks = chosen.map((m) => ({ repoPath: m.repoPath, name: m.branch.name, head: m.branch.head }))
 
   return (
-    <ConfirmDialog
-      title="Delete merged branches?"
-      confirmLabel={
-        found.data === undefined ? 'Delete branches' : `Delete ${counted(chosen.length, 'branch', 'branches')}`
-      }
-      confirmDisabled={chosen.length === 0}
-      size="large"
-      onConfirm={() => {
-        onConfirm(chosen.map((m) => ({ repoPath: m.repoPath, name: m.branch.name, head: m.branch.head })))
-      }}
-      onCancel={onCancel}
-    >
-      {found.error !== '' ? (
-        <p role="alert">Couldn’t check the branches: {found.error}</p>
-      ) : found.data === undefined ? (
-        <Checking />
-      ) : branches.length === 0 ? (
-        <p>
-          No local branch in your clones belongs to a merged pull request. A protected branch, and each repository’s
-          default branch, is never offered.
-        </p>
-      ) : (
-        <>
+    <>
+      <ConfirmDialog
+        title="Delete merged branches?"
+        confirmLabel={
+          found.data === undefined ? 'Delete branches' : `Delete ${counted(chosen.length, 'branch', 'branches')}`
+        }
+        confirmDisabled={chosen.length === 0}
+        size="large"
+        onConfirm={() => {
+          if (risky.length > 0) {
+            setConfirming(true)
+          } else {
+            onConfirm(picks)
+          }
+        }}
+        onCancel={onCancel}
+      >
+        {found.error !== '' ? (
+          <p role="alert">Couldn’t check the branches: {found.error}</p>
+        ) : found.data === undefined ? (
+          <Checking />
+        ) : branches.length === 0 ? (
           <p>
-            These local branches belong to pull requests that merged. Each is deleted only while it still points at the
-            commit shown, and the results list each commit, so a branch can be brought back.
+            No local branch in your clones belongs to a merged pull request. A protected branch, and each repository’s
+            default branch, is never offered.
           </p>
-          <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1">
-            <span className="text-xs text-text">
-              {counted(branches.length, 'branch', 'branches')} in {counted(groups.length, 'clone', 'clones')} ·{' '}
-              {String(chosen.length)} ticked
-              {held > 0 && ` · ${String(held)} can’t be deleted`}
-            </span>
-            <span className="ml-auto flex gap-1">
-              <button
-                type="button"
-                className={quietButtonClass}
-                onClick={() => {
-                  ticks.set(deletable.map(boxKey), true)
-                }}
-              >
-                Select all
-              </button>
-              <button
-                type="button"
-                className={quietButtonClass}
-                onClick={() => {
-                  ticks.set(deletable.map(boxKey), false)
-                }}
-              >
-                Select none
-              </button>
-            </span>
-          </div>
-          <ul
-            aria-label="Clones"
-            className="mt-2 max-h-[55vh] divide-y divide-border overflow-y-auto rounded-md border border-border"
-          >
-            {groups.map((group) => (
-              <CloneRow
-                key={group.repoPath}
-                group={group}
-                rules={rules}
-                ticks={ticks}
-                now={now}
-                open={open.has(group.repoPath)}
-                onToggle={() => {
-                  setOpen((was) => {
-                    const next = new Set(was)
+        ) : (
+          <>
+            <p>
+              These local branches belong to pull requests that merged. Each is deleted only while it still points at
+              the commit shown, and the results list each commit, so a branch can be brought back.
+            </p>
+            <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1">
+              <span className="text-xs text-text">
+                {counted(branches.length, 'branch', 'branches')} in {counted(groups.length, 'clone', 'clones')} ·{' '}
+                {String(chosen.length)} ticked
+                {held > 0 && ` · ${String(held)} can’t be deleted`}
+              </span>
+              <span className="ml-auto flex gap-1">
+                <button
+                  type="button"
+                  className={quietButtonClass}
+                  onClick={() => {
+                    ticks.set(deletable.map(boxKey), true)
+                  }}
+                >
+                  Select all
+                </button>
+                <button
+                  type="button"
+                  className={quietButtonClass}
+                  onClick={() => {
+                    ticks.set(deletable.map(boxKey), false)
+                  }}
+                >
+                  Select none
+                </button>
+              </span>
+            </div>
+            {unpushed.length > 0 && (
+              <label className="mt-2 flex cursor-pointer items-start gap-2.5 rounded-md border border-warning/40 px-2.5 py-2 text-xs">
+                <input
+                  type="checkbox"
+                  checked={anyway}
+                  onChange={(e) => {
+                    setAnyway(e.target.checked)
+                    ticks.set(unpushed.map(boxKey), false)
+                  }}
+                  className="checkbox mt-px"
+                />
+                <span>
+                  <span className="font-medium text-text">
+                    Also offer the {counted(unpushed.length, 'branch', 'branches')} with commits not on GitHub
+                  </span>{' '}
+                  Deleting one leaves its commits only in its clone, until git cleans them away. You’re asked again
+                  before any is deleted.
+                </span>
+              </label>
+            )}
+            <ul
+              aria-label="Clones"
+              className="mt-2 max-h-[55vh] divide-y divide-border overflow-y-auto rounded-md border border-border"
+            >
+              {groups.map((group) => (
+                <CloneRow
+                  key={group.repoPath}
+                  group={group}
+                  choice={choice}
+                  ticks={ticks}
+                  now={now}
+                  open={open.has(group.repoPath)}
+                  onToggle={() => {
+                    setOpen((was) => {
+                      const next = new Set(was)
 
-                    if (!next.delete(group.repoPath)) {
-                      next.add(group.repoPath)
-                    }
+                      if (!next.delete(group.repoPath)) {
+                        next.add(group.repoPath)
+                      }
 
-                    return next
-                  })
-                }}
-              />
+                      return next
+                    })
+                  }}
+                />
+              ))}
+            </ul>
+          </>
+        )}
+      </ConfirmDialog>
+      {confirming && (
+        <ConfirmDialog
+          title={`Delete ${counted(risky.length, 'branch', 'branches')} with commits not on GitHub?`}
+          confirmLabel={`Delete ${counted(chosen.length, 'branch', 'branches')}`}
+          cancelLabel="Go back"
+          size="wide"
+          onConfirm={() => {
+            setConfirming(false)
+            onConfirm(picks)
+          }}
+          onCancel={() => {
+            setConfirming(false)
+          }}
+        >
+          <p>
+            Their commits aren’t in their pull requests or anywhere on GitHub. Once a branch is deleted, its commits are
+            left only in its clone, until git cleans them away. Each is deleted only while it still points at the commit
+            shown, and the results list that commit, which brings the branch back while git still has it.
+          </p>
+          <ul aria-label="Branches with commits not on GitHub" className="mt-2 max-h-48 space-y-0.5 overflow-y-auto">
+            {risky.map((m) => (
+              <li key={boxKey(m)} className="flex items-baseline gap-2 text-xs">
+                <span className="truncate">{m.displayRepo}</span>
+                <code className="truncate font-mono text-text">{m.branch.name}</code>
+                <span className="ml-auto shrink-0 whitespace-nowrap text-warning">
+                  {unpushedWords(m.unpushed)} not on GitHub
+                </span>
+              </li>
             ))}
           </ul>
-        </>
+        </ConfirmDialog>
       )}
-    </ConfirmDialog>
+    </>
   )
 }

@@ -14,8 +14,9 @@ import (
 // the description, the base branch, the merge state, what the viewer may do (close it
 // included), the viewer's own latest review and pending reviews, auto-merge, the latest
 // review of each reviewer with its words, the first commit's message, which holds
-// Dependabot's metadata, the head commit's checks, each with whether it is required, and the
-// issues the pull request closes once it merges.
+// Dependabot's metadata, the head commit's checks, each with whether it is required, its
+// check suites, which name the workflow runs that ended without a check (as a fork's runs
+// waiting for approval do), and the issues the pull request closes once it merges.
 //
 // Fields DetailFields asks for with other arguments are aliased: GitHub refuses one name
 // asked for twice with different arguments.
@@ -43,11 +44,12 @@ fragment ReviewFields on PullRequest {
         __typename
         ... on CheckRun {
           name conclusion status detailsUrl isRequired(pullRequestId: $id)
-          checkSuite { workflowRun { workflow { name } } }
+          checkSuite { id workflowRun { workflow { name } } }
         }
         ... on StatusContext { context state targetUrl isRequired(pullRequestId: $id) }
       }
     }
+    commit { checkSuites(first: 50) { nodes { id conclusion app { name } workflowRun { workflow { name } } } } }
   }
 }
 `
@@ -147,6 +149,12 @@ type PullReview struct {
 	// Checks are the head commit's checks and statuses, the first 100.
 	Checks []Check
 
+	// Unrun are the head commit's check suites, of its first 50, that ended without any
+	// check among Checks and without passing: a fork's workflow runs waiting for a
+	// maintainer's approval, and runs that failed to start. GitHub counts them in the merge
+	// state (UNSTABLE) though no check shows them.
+	Unrun []UnrunSuite
+
 	// Closes are the first ten issues the pull request closes once it merges, the ones its
 	// description names and the ones linked to it by hand, and CloseCount how many there are
 	// that the viewer can see.
@@ -200,6 +208,21 @@ type Check struct {
 	// Required reports a check the base branch requires.
 	Required bool
 }
+
+// UnrunSuite is a check suite that ended without a check: what ran it, and how it ended.
+type UnrunSuite struct {
+	// Name is the GitHub Actions workflow, or else the app, that ran it.
+	Name string
+
+	// Conclusion is ACTION_REQUIRED for a run waiting for approval, or how it otherwise
+	// ended, a conclusion a check run with it fails on (checkRunOutcome), as FAILURE or
+	// STARTUP_FAILURE.
+	Conclusion string
+}
+
+// SuiteAwaitsApproval is the conclusion of a suite whose run waits for a maintainer's
+// approval, as a fork's first workflow runs do.
+const SuiteAwaitsApproval = "ACTION_REQUIRED"
 
 // Where a check is counted.
 const (
@@ -364,6 +387,11 @@ type reviewNode struct {
 		Contexts struct {
 			Nodes []*graphQLCheck `json:"nodes"`
 		} `json:"contexts"`
+		Commit *struct {
+			CheckSuites struct {
+				Nodes []*graphQLSuite `json:"nodes"`
+			} `json:"checkSuites"`
+		} `json:"commit"`
 	} `json:"checkList"`
 	Closes struct {
 		TotalCount int           `json:"totalCount"`
@@ -395,6 +423,7 @@ type graphQLCheck struct {
 	DetailsURL string `json:"detailsUrl"`
 	IsRequired bool   `json:"isRequired"`
 	CheckSuite *struct {
+		ID          string `json:"id"`
 		WorkflowRun *struct {
 			Workflow *struct {
 				Name string `json:"name"`
@@ -404,6 +433,66 @@ type graphQLCheck struct {
 	Context   string `json:"context"`
 	State     string `json:"state"`
 	TargetURL string `json:"targetUrl"`
+}
+
+// graphQLSuite is one of the head commit's check suites.
+type graphQLSuite struct {
+	ID         string `json:"id"`
+	Conclusion string `json:"conclusion"`
+	App        *struct {
+		Name string `json:"name"`
+	} `json:"app"`
+	WorkflowRun *struct {
+		Workflow *struct {
+			Name string `json:"name"`
+		} `json:"workflow"`
+	} `json:"workflowRun"`
+}
+
+// name is the workflow that ran the suite, or else its app, or "".
+func (s *graphQLSuite) name() string {
+	if w := s.WorkflowRun; w != nil && w.Workflow != nil && w.Workflow.Name != "" {
+		return w.Workflow.Name
+	}
+
+	if s.App != nil {
+		return s.App.Name
+	}
+
+	return ""
+}
+
+// unrun lists the check suites that ended without passing, a conclusion a check run with it
+// fails on (a suite still queued has none, and one that passed, was skipped, or was neutral
+// doesn't fail), and without a check among the rollup's contexts, skipping nulls.
+func (n *reviewNode) unrun() []UnrunSuite {
+	out := []UnrunSuite{}
+	if n.CheckList == nil || n.CheckList.Commit == nil {
+		return out
+	}
+
+	ran := n.suitesRan()
+
+	for _, s := range n.CheckList.Commit.CheckSuites.Nodes {
+		if s != nil && s.ID != "" && !ran[s.ID] && checkRunOutcome(s.Conclusion) == outcomeFailed {
+			out = append(out, UnrunSuite{Name: s.name(), Conclusion: s.Conclusion})
+		}
+	}
+
+	return out
+}
+
+// suitesRan holds the check suites of the rollup's check runs, by ID.
+func (n *reviewNode) suitesRan() map[string]bool {
+	ran := map[string]bool{}
+
+	for _, c := range n.CheckList.Contexts.Nodes {
+		if c != nil && c.CheckSuite != nil && c.CheckSuite.ID != "" {
+			ran[c.CheckSuite.ID] = true
+		}
+	}
+
+	return ran
 }
 
 // fill copies the review fields into r.
@@ -421,6 +510,7 @@ func (n *reviewNode) fill(r *PullReview) {
 	r.AutoMerge = n.AutoMergeRequest.autoMerge()
 	r.Reviews = n.reviews()
 	r.Checks = n.checks()
+	r.Unrun = n.unrun()
 	r.Closes = itemRefs(n.Closes.Nodes)
 	r.CloseCount = shownCount(n.Closes.TotalCount, len(n.Closes.Nodes), len(r.Closes))
 

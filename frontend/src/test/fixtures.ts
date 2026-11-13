@@ -355,7 +355,7 @@ export function settings(overrides: Partial<Settings> = {}): Settings {
     toastSeconds: 12,
     collapsedSections: [],
     projectsTipDismissed: false,
-    inboxOrder: { statusSorted: [], statusOrder: [] },
+    inboxOrder: { statusSorted: [], statusOrder: [], kinds: {} },
     mergeMethod: 'repo',
     integrations: integrationsConfig(),
     refresh: { inbox: 300, checks: 45, worktrees: 300 },
@@ -1217,6 +1217,7 @@ export function mergedBranch(overrides: Partial<MergedBranch> = {}): MergedBranc
       url: 'https://github.com/acme-org/example-repo/pull/184',
       mergedAt: '2026-06-12T12:00:00Z',
     },
+    unpushed: 0,
     ...overrides,
   }
 }
@@ -1405,6 +1406,7 @@ export function review(overrides: Partial<Review> = {}): Review {
     totalFiles: 1,
     filesComplete: true,
     checks: [{ name: 'test', workflow: 'CI', state: 'SUCCESS', outcome: 'passed', url: '', required: true }],
+    unrun: [],
     reviews: [],
     closes: [],
     moreCloses: 0,

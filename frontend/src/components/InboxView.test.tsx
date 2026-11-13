@@ -1400,6 +1400,7 @@ describe('InboxView’s status sort', () => {
     platform.getInboxOrder.mockResolvedValue({
       statusSorted: ['assigned'],
       statusOrder: ['Deferred', 'In progress', 'Ready'],
+      kinds: {},
     })
     render(<Harness launch={launchOptions} clock={fixedNow} />)
 
@@ -1416,6 +1417,74 @@ describe('InboxView’s status sort', () => {
 
     const shown = await section('Assigned')
     expect(shown.queryByRole('radiogroup', { name: 'Sort Assigned by' })).not.toBeInTheDocument()
+  })
+})
+
+describe('InboxView’s kind switch', () => {
+  // mixed is an inbox whose Assigned list holds a pull request between two issues.
+  const mixed = () =>
+    snapshot({
+      assigned: list([
+        item({ id: 1, kind: 'issue', title: 'An issue', details: details() }),
+        item({ id: 2, kind: 'pr', title: 'A pull request', details: details() }),
+        item({ id: 3, kind: 'issue', title: 'Another issue', details: details() }),
+      ]),
+    })
+
+  // titles lists the titles of a list's rows, top first.
+  const titles = (rows: Awaited<ReturnType<typeof section>>) =>
+    rows
+      .getAllByRole('listitem')
+      .flatMap((row) => (row.dataset.itemId === undefined ? [] : [row.querySelector('button')?.textContent]))
+
+  it('shows only a list’s issues or pull requests, counting them against the whole list', async () => {
+    platform.getInboxSnapshot.mockResolvedValue(mixed())
+    render(<Harness launch={launchOptions} clock={fixedNow} />)
+
+    const shown = await section('Assigned')
+    expect(shown.getByRole('radio', { name: 'All' })).toBeChecked()
+
+    await userEvent.click(shown.getByRole('radio', { name: 'Issues' }))
+    expect(titles(shown)).toEqual(['An issue', 'Another issue'])
+    expect(shown.getByRole('tab', { name: /Assigned/ })).toHaveTextContent('2 of 3')
+    expect(platform.setListKind).toHaveBeenCalledWith('assigned', 'issue')
+
+    await userEvent.click(shown.getByRole('radio', { name: 'PRs' }))
+    expect(titles(shown)).toEqual(['A pull request'])
+
+    await userEvent.click(shown.getByRole('radio', { name: 'All' }))
+    expect(titles(shown)).toEqual(['An issue', 'A pull request', 'Another issue'])
+    expect(shown.getByRole('tab', { name: /Assigned/ })).toHaveTextContent('3')
+  })
+
+  it('opens showing the kind it was left on, and says when that kind has none', async () => {
+    platform.getInboxSnapshot.mockResolvedValue(
+      snapshot({ assigned: list([item({ id: 1, kind: 'issue', title: 'An issue', details: details() })]) }),
+    )
+    platform.getInboxOrder.mockResolvedValue({ statusSorted: [], statusOrder: [], kinds: { assigned: 'pr' } })
+    render(<Harness launch={launchOptions} clock={fixedNow} />)
+
+    const shown = await section('Assigned')
+    expect(shown.getByRole('radio', { name: 'PRs' }), 'still offered, to turn it back').toBeChecked()
+    expect(shown.getByText('No pull requests here.')).toBeInTheDocument()
+
+    await userEvent.click(shown.getByRole('button', { name: 'Show all' }))
+    expect(titles(shown)).toEqual(['An issue'])
+    expect(platform.setListKind).toHaveBeenCalledWith('assigned', 'all')
+    expect(shown.queryByRole('radiogroup', { name: 'Show in Assigned' }), 'one kind only').not.toBeInTheDocument()
+  })
+
+  it('shows every item again to reveal a card of the kind the list leaves out', async () => {
+    platform.getInboxSnapshot.mockResolvedValue(mixed())
+    platform.getInboxOrder.mockResolvedValue({ statusSorted: [], statusOrder: [], kinds: { assigned: 'issue' } })
+    render(<Harness launch={launchOptions} clock={fixedNow} reveal={{ id: 2, seq: 1 }} />)
+
+    const shown = await section('Assigned')
+    await waitFor(() => {
+      expect(titles(shown)).toContain('A pull request')
+    })
+    expect(shown.getByRole('radio', { name: 'All' })).toBeChecked()
+    expect(platform.setListKind).toHaveBeenCalledWith('assigned', 'all')
   })
 })
 
