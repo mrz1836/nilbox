@@ -10,6 +10,7 @@ import (
 
 	"github.com/mrz1836/nilbox/internal/github"
 	"github.com/mrz1836/nilbox/internal/inbox/internal/queries"
+	"github.com/mrz1836/nilbox/internal/item"
 	"github.com/mrz1836/nilbox/internal/periodic"
 	"github.com/mrz1836/nilbox/internal/repo"
 	"github.com/mrz1836/nilbox/internal/reporules"
@@ -43,26 +44,37 @@ const (
 // its checks end about as soon as GitHub's own page does. A pull request whose checks end,
 // pass or fail, is left alone from then on. It asks GitHub nothing while none runs, and
 // leaves alone one read in the last little while. A pull request GitHub doesn't answer for
-// is left as it was, for the next whole refresh.
+// is left as it was, for the next whole refresh. Once it has let go of every pull request,
+// it tells the outcome sink of each merge or close an answer it stored shows.
 func (s *Service) refreshRunning(ctx context.Context) error {
+	told, err := s.followRound(ctx)
+	s.settle(ctx, told)
+
+	return err
+}
+
+// followRound is refreshRunning under the pull requests' locks. It returns what to tell
+// once they are let go, the stores made before a failure included.
+func (s *Service) followRound(ctx context.Context) ([]Outcome, error) {
 	stored, err := s.prefs.GetMany(ctx, append([]string{prefViewer}, reporules.Keys()...)...)
 	if err != nil {
-		return fmt.Errorf("read the pull requests whose checks run: %w", err)
+		return nil, fmt.Errorf("read the pull requests whose checks run: %w", err)
 	}
 
 	now := s.clock.Now().UTC()
+	login := stored[prefViewer]
 
 	listed, err := s.q.ListRunningChecks(ctx, queries.ListRunningChecksParams{
-		Login: stored[prefViewer], ReadBefore: now.Add(-followFresh), Now: &now,
+		Login: login, ReadBefore: now.Add(-followFresh), Now: &now,
 	})
 	if err != nil {
-		return fmt.Errorf("read the pull requests whose checks run: %w", err)
+		return nil, fmt.Errorf("read the pull requests whose checks run: %w", err)
 	}
 
 	running := followable(listed, reporules.Decode(stored))
 
 	if len(running) == 0 {
-		return nil
+		return nil, nil
 	}
 
 	// Each pull request waits for other work on it, as RefreshItem does, in one order, so
@@ -71,21 +83,21 @@ func (s *Service) refreshRunning(ctx context.Context) error {
 
 	unlock, err := s.lockAll(ctx, running)
 	if err != nil {
-		return fmt.Errorf("follow the running checks: %w", err)
+		return nil, fmt.Errorf("follow the running checks: %w", err)
 	}
 
 	defer unlock()
 
-	wrote, err := s.followRunning(ctx, running)
+	told, wrote, err := s.followRunning(ctx, login, running)
 	if err != nil {
-		return fmt.Errorf("follow the running checks: %w", err)
+		return told, fmt.Errorf("follow the running checks: %w", err)
 	}
 
 	if wrote {
 		_, err = s.changed(ctx)
 	}
 
-	return err
+	return told, err
 }
 
 // followable returns the first followMax of listed, in its order, leaving out the pull
@@ -136,12 +148,15 @@ type followed struct {
 	files   map[int64]map[string]fileCheck
 }
 
-// followRunning asks GitHub about running, and stores each pull request it answered for.
-// It reports whether it stored any.
-func (s *Service) followRunning(ctx context.Context, running []queries.ListRunningChecksRow) (bool, error) {
+// followRunning asks GitHub about running, the pull requests of the account login, and
+// stores each pull request it answered for. It reports whether it stored any, and what the
+// answers it stored tell (see seenClosed), those stored before a failure included.
+func (s *Service) followRunning(
+	ctx context.Context, login string, running []queries.ListRunningChecksRow,
+) ([]Outcome, bool, error) {
 	last, err := s.projectAccess(ctx)
 	if err != nil {
-		return false, err
+		return nil, false, err
 	}
 
 	ids := make([]string, 0, len(running))
@@ -157,8 +172,18 @@ func (s *Service) followRunning(ctx context.Context, running []queries.ListRunni
 		return s.fetchRunning(ctx, tok, running, ids, readOptions(last))
 	})
 	if err != nil {
-		return false, err
+		return nil, false, err
 	}
+
+	return s.storeFollowed(ctx, login, running, got, seq)
+}
+
+// storeFollowed stores what a round read, fetched as seq, for each pull request of running
+// GitHub answered for, as followRunning says.
+func (s *Service) storeFollowed(
+	ctx context.Context, login string, running []queries.ListRunningChecksRow, got followed, seq uint64,
+) ([]Outcome, bool, error) {
+	var told []Outcome
 
 	wrote := false
 
@@ -172,15 +197,19 @@ func (s *Service) followRunning(ctx context.Context, running []queries.ListRunni
 			accountID: r.AccountID, update: &update, files: got.files[r.ID],
 		}}
 
-		stored, storeErr := s.storeItemWrite(ctx, w)
-		if storeErr != nil {
-			return wrote, fmt.Errorf("save the item: %w", storeErr)
+		stored, err := s.storeItemWrite(ctx, w)
+		if err != nil {
+			return told, wrote, fmt.Errorf("save the item: %w", err)
 		}
 
-		wrote = wrote || stored
+		if stored {
+			ref := refOf(r.RepoOwner, r.RepoName, r.Number, item.KindPR)
+			told = append(told, seenClosed(w, login, ref, s.now())...)
+			wrote = true
+		}
 	}
 
-	return wrote, nil
+	return told, wrote, nil
 }
 
 // fetchRunning reads running from GitHub with tok, and checks the files of each one whose

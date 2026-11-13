@@ -11,7 +11,6 @@ import (
 	"github.com/mrz1836/nilbox/internal/github"
 	"github.com/mrz1836/nilbox/internal/inbox/internal/queries"
 	"github.com/mrz1836/nilbox/internal/item"
-	"github.com/mrz1836/nilbox/internal/repo"
 	"github.com/mrz1836/nilbox/internal/store"
 	"github.com/mrz1836/nilbox/internal/uierr"
 )
@@ -61,10 +60,13 @@ type PullTarget struct {
 // Acted is what an action made happen on GitHub, for the inbox to record. An action that
 // failed partway reports the steps GitHub made all the same.
 type Acted struct {
-	// Reviewed reports a review GitHub recorded, at ReviewedAt (zero when it did not say).
-	// Any review fulfills a request for one.
-	Reviewed   bool
-	ReviewedAt time.Time
+	// Reviewed reports a review GitHub recorded, at ReviewedAt (zero when it did not say),
+	// and ReviewEvent which it was: github.ReviewApprove, github.ReviewRequestChanges, or
+	// github.ReviewComment, which the text a merge or a close posts first is too. Any
+	// review fulfills a request for one.
+	Reviewed    bool
+	ReviewedAt  time.Time
+	ReviewEvent string
 
 	// Merged reports a merge GitHub made, and Closed a close without one.
 	Merged bool
@@ -75,10 +77,21 @@ type Acted struct {
 func (a Acted) with(b Acted) Acted {
 	a.Reviewed = a.Reviewed || b.Reviewed
 	a.ReviewedAt = later(a.ReviewedAt, b.ReviewedAt)
+	a.ReviewEvent = strongerEvent(a.ReviewEvent, b.ReviewEvent)
 	a.Merged = a.Merged || b.Merged
 	a.Closed = a.Closed || b.Closed
 
 	return a
+}
+
+// strongerEvent is the review two tries of one action submitted together: a decision (an
+// approval or a request for changes) over a comment, and over none, b's of two alike.
+func strongerEvent(a, b string) string {
+	if b == "" || (decides(a) && !decides(b)) {
+		return a
+	}
+
+	return b
 }
 
 // any reports whether the action changed anything the inbox records.
@@ -127,6 +140,10 @@ type IssueRead struct {
 type IssueActed struct {
 	// Closed reports a close GitHub made, or found made: the issue leaves every list.
 	Closed bool
+
+	// Own reports that the close was the user's own and went through, not one someone
+	// made first that the action found.
+	Own bool
 }
 
 // Actor reads and acts on pull requests for the review sheet, and on issues for the issue
@@ -147,53 +164,79 @@ func NewActor(s *Service) *Actor {
 // repeat a step it made. What act reports is recorded even when it also returns an error,
 // since a step GitHub made stands: a review takes the pull request out of the Review
 // requested list, and a merge or a close out of every list, at once and with no request.
+//
+// Once it has let go of the item, it tells the outcome sink what the action finished, even
+// when the inbox could not record it: a merge, a close, or else an approval or a request
+// for changes.
 func (a *Actor) Act(
 	ctx context.Context, id int64, act func(context.Context, github.Token, PullTarget) (Acted, error),
 ) (Snapshot, error) {
-	return a.s.actOn(ctx, id, item.KindPR, func(ctx context.Context, tok github.Token, row editRow) (Acted, error) {
+	s := a.s
+
+	snap, done, err := s.actOn(ctx, id, item.KindPR, func(ctx context.Context, tok github.Token, row editRow) (Acted, error) {
 		return act(ctx, tok, pullTargetOfRow(row))
 	})
+
+	s.settle(ctx, pullOutcomes(done.row, done.acted, s.now()))
+
+	return snap, err
 }
 
 // ActIssue runs act on the issue with id, an issue in the Assigned list, as Act runs an
 // action on a pull request: under the item's lock, with a token of the account whose inbox
 // is shown, which a token GitHub refuses is borrowed again for, once, so act must not
 // repeat a step it made. A close act reports is recorded even when act also returns an
-// error, and takes the issue out of every list at once, with no request.
+// error, and takes the issue out of every list at once, with no request. Once it has let
+// go of the item, it tells the outcome sink of the close: as the user's own when act says
+// so (IssueActed.Own), and otherwise as one it found made.
 func (a *Actor) ActIssue(
 	ctx context.Context, id int64, act func(context.Context, github.Token, IssueTarget) (IssueActed, error),
 ) (Snapshot, error) {
 	s := a.s
+	own := false
 
-	return s.actOn(ctx, id, item.KindIssue, func(ctx context.Context, tok github.Token, row editRow) (Acted, error) {
+	snap, done, err := s.actOn(ctx, id, item.KindIssue, func(ctx context.Context, tok github.Token, row editRow) (Acted, error) {
 		got, err := act(ctx, tok, issueTargetOfRow(row, false))
+		own = own || (got.Closed && got.Own)
 
 		return Acted{Closed: got.Closed}, err
 	})
+
+	s.settle(ctx, issueOutcomes(done.row, done.acted.Closed, own, s.now()))
+
+	return snap, err
 }
 
 // editRow is an item as an edit reads it (GetEditItem).
 type editRow = queries.GetEditItemRow
 
+// actedOn is what an action made happen on the item whose row is row: nothing when it never
+// ran.
+type actedOn struct {
+	row   editRow
+	acted Acted
+}
+
 // actOn runs act on the item with id, of kind, listed in one of the inbox's lists, with a
 // token of the account whose inbox is shown, holding the item's lock throughout, and
-// records what act made happen (see Act).
+// records what act made happen (see Act). It returns that too, for the caller to tell
+// once the item's lock is let go.
 func (s *Service) actOn(
 	ctx context.Context, id int64, kind item.Kind, act func(context.Context, github.Token, editRow) (Acted, error),
-) (Snapshot, error) {
+) (Snapshot, actedOn, error) {
 	unlock, err := s.items.lock(ctx, id)
 	if err != nil {
-		return Snapshot{}, err
+		return Snapshot{}, actedOn{}, err
 	}
 
 	defer unlock()
 
 	row, err := s.targetRow(ctx, id, kind, true)
 	if err != nil {
-		return Snapshot{}, err
+		return Snapshot{}, actedOn{}, err
 	}
 
-	var acted Acted
+	done := actedOn{row: row}
 
 	_, err = github.WithToken(ctx, s.tokens, func(tok github.Token) (struct{}, error) {
 		if checkErr := s.checkViewer(ctx, tok, row.AccountLogin); checkErr != nil {
@@ -201,18 +244,18 @@ func (s *Service) actOn(
 		}
 
 		got, actErr := act(ctx, tok, row)
-		acted = acted.with(got)
+		done.acted = done.acted.with(got)
 
 		return struct{}{}, actErr
 	})
 
-	if !acted.any() {
+	if !done.acted.any() {
 		snap, snapErr := s.Snapshot(ctx)
 
-		return snap, errors.Join(err, snapErr)
+		return snap, done, errors.Join(err, snapErr)
 	}
 
-	if recordErr := s.recordActed(ctx, row, acted); recordErr != nil {
+	if recordErr := s.recordActed(ctx, row, done.acted); recordErr != nil {
 		err = errors.Join(err, uierr.New(
 			"GitHub made the change, but the inbox could not record it. The next refresh catches it up.", recordErr,
 		))
@@ -220,7 +263,7 @@ func (s *Service) actOn(
 
 	snap, snapErr := s.changed(ctx)
 
-	return snap, errors.Join(err, snapErr)
+	return snap, done, errors.Join(err, snapErr)
 }
 
 // ReadPull runs read on the pull request with id, with a token, and stores what it found,
@@ -229,22 +272,32 @@ func (s *Service) actOn(
 // are stored as its sensitive-file check when one is due and they belong to the head the
 // answer names. It returns the new snapshot. It never waits for a whole refresh, only for
 // other work on the item, and a whole refresh that started later and stored the item
-// makes it store nothing.
+// makes it store nothing. Once it has let go of the item, it tells the outcome sink of a
+// merge or a close the answer it stored shows.
 func (a *Actor) ReadPull(
 	ctx context.Context, id int64, read func(context.Context, github.Token, PullTarget) (PullRead, error),
 ) (Snapshot, error) {
-	s := a.s
+	snap, told, err := a.s.readPull(ctx, id, read)
+	a.s.settle(ctx, told)
 
+	return snap, err
+}
+
+// readPull is ReadPull under the item's lock. It returns what to tell once the lock is let
+// go.
+func (s *Service) readPull(
+	ctx context.Context, id int64, read func(context.Context, github.Token, PullTarget) (PullRead, error),
+) (Snapshot, []Outcome, error) {
 	unlock, err := s.items.lock(ctx, id)
 	if err != nil {
-		return Snapshot{}, err
+		return Snapshot{}, nil, err
 	}
 
 	defer unlock()
 
 	row, err := s.targetRow(ctx, id, item.KindPR, false)
 	if err != nil {
-		return Snapshot{}, err
+		return Snapshot{}, nil, err
 	}
 
 	target := pullTargetOfRow(row)
@@ -257,19 +310,19 @@ func (a *Actor) ReadPull(
 		return read(ctx, tok, target)
 	})
 	if err != nil {
-		return Snapshot{}, err
+		return Snapshot{}, nil, err
 	}
 
 	if err = checkAnswer(got.Update, row); err != nil {
-		return Snapshot{}, err
+		return Snapshot{}, nil, err
 	}
 
 	files, err := s.readFiles(ctx, id, got)
 	if err != nil {
-		return Snapshot{}, err
+		return Snapshot{}, nil, err
 	}
 
-	return s.storeRead(ctx, itemWrite{
+	return s.storeRead(ctx, row, itemWrite{
 		id: id, seq: seq, update: &itemUpdate{accountID: row.AccountID, update: got.Update, files: files},
 	})
 }
@@ -288,18 +341,25 @@ func checkAnswer(update *github.ItemUpdate, row editRow) error {
 	return nil
 }
 
-// storeRead stores a read's answer as w says, and returns the new snapshot.
-func (s *Service) storeRead(ctx context.Context, w itemWrite) (Snapshot, error) {
+// storeRead stores a read's answer as w says, for the item whose row is row, and returns
+// the new snapshot, and the outcome to tell when the answer it stored shows the item merged
+// or closed.
+func (s *Service) storeRead(ctx context.Context, row editRow, w itemWrite) (Snapshot, []Outcome, error) {
 	wrote, err := s.storeItemWrite(ctx, w)
 	if err != nil {
-		return Snapshot{}, fmt.Errorf("save the item: %w", err)
+		return Snapshot{}, nil, fmt.Errorf("save the item: %w", err)
 	}
 
 	if !wrote {
-		return s.Snapshot(ctx)
+		snap, snapErr := s.Snapshot(ctx)
+
+		return snap, nil, snapErr
 	}
 
-	return s.changed(ctx)
+	told := seenClosed(w, row.AccountLogin, refOfRow(row), s.now())
+	snap, err := s.changed(ctx)
+
+	return snap, told, err
 }
 
 // ReadIssue runs read on the issue with id, with a token, and stores what it found, as
@@ -307,27 +367,38 @@ func (s *Service) storeRead(ctx context.Context, w itemWrite) (Snapshot, error) 
 // target asked for them, or the issue leaves the lists when it was closed or deleted since.
 // It holds the item's lock throughout, so read may store what it keeps of the answer, such
 // as the sheet's own cache, knowing no action on the issue runs meanwhile. It returns the
-// new snapshot. An issue in no list is read too: its sheet may still be open on it.
+// new snapshot. An issue in no list is read too: its sheet may still be open on it. Once
+// it has let go of the item, it tells the outcome sink of a close the answer it stored
+// shows.
 func (a *Actor) ReadIssue(
 	ctx context.Context, id int64, read func(context.Context, github.Token, IssueTarget) (IssueRead, error),
 ) (Snapshot, error) {
-	s := a.s
+	snap, told, err := a.s.readIssue(ctx, id, read)
+	a.s.settle(ctx, told)
 
+	return snap, err
+}
+
+// readIssue is ReadIssue under the item's lock. It returns what to tell once the lock is
+// let go.
+func (s *Service) readIssue(
+	ctx context.Context, id int64, read func(context.Context, github.Token, IssueTarget) (IssueRead, error),
+) (Snapshot, []Outcome, error) {
 	unlock, err := s.items.lock(ctx, id)
 	if err != nil {
-		return Snapshot{}, err
+		return Snapshot{}, nil, err
 	}
 
 	defer unlock()
 
 	row, err := s.targetRow(ctx, id, item.KindIssue, false)
 	if err != nil {
-		return Snapshot{}, err
+		return Snapshot{}, nil, err
 	}
 
 	last, err := s.projectAccess(ctx)
 	if err != nil {
-		return Snapshot{}, err
+		return Snapshot{}, nil, err
 	}
 
 	target := issueTargetOfRow(row, readOptions(last).Projects)
@@ -346,14 +417,14 @@ func (a *Actor) ReadIssue(
 		return read(ctx, tok, target)
 	})
 	if err != nil {
-		return Snapshot{}, err
+		return Snapshot{}, nil, err
 	}
 
 	if err = checkAnswer(got.Update, row); err != nil {
-		return Snapshot{}, err
+		return Snapshot{}, nil, err
 	}
 
-	return s.storeRead(ctx, itemWrite{
+	return s.storeRead(ctx, row, itemWrite{
 		id: id, seq: seq, update: &itemUpdate{accountID: row.AccountID, update: got.Update, files: map[string]fileCheck{}},
 	})
 }
@@ -398,9 +469,7 @@ func issueTargetOfRow(row editRow, projects bool) IssueTarget {
 
 // refOfRow names the item of a GetEditItem row.
 func refOfRow(row editRow) item.Ref {
-	return item.Ref{
-		Repo: repo.Name{Owner: row.RepoOwner, Repo: row.RepoName}, Number: int(row.Number), Kind: item.Kind(row.Kind),
-	}
+	return refOf(row.RepoOwner, row.RepoName, row.Number, item.Kind(row.Kind))
 }
 
 // targetRow reads the item with id, checking it belongs to the account whose inbox is

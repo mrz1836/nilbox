@@ -368,7 +368,7 @@ func TestACommentPostedBeforeAMergeThatDidNotHappenSaysBoth(t *testing.T) {
 			assert.True(t, res.Commented)
 			assert.False(t, res.LeftInbox)
 			assert.Equal(t, tt.requests, h.github.requests())
-			assert.Equal(t, Acted{Reviewed: true, ReviewedAt: testNow}, h.inbox.acted[0])
+			assert.Equal(t, Acted{Reviewed: true, ReviewedAt: testNow, ReviewEvent: github.ReviewComment}, h.inbox.acted[0])
 		})
 	}
 }

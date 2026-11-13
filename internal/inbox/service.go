@@ -157,8 +157,8 @@ type RefreshUsage interface {
 	Refreshed(points, items int)
 }
 
-// Config holds a Service's dependencies. Clock, Events, Arrivals, Usage, and Logger are
-// optional.
+// Config holds a Service's dependencies. Clock, Events, Arrivals, Outcomes, Usage, and
+// Logger are optional.
 type Config struct {
 	// Pool is the database's connection pool. It holds the inbox's tables, and the prefs
 	// that keep the inbox status and the settings the inbox reads.
@@ -173,6 +173,10 @@ type Config struct {
 
 	// Arrivals is told about the items that newly need the user after each refresh.
 	Arrivals ArrivalSink
+
+	// Outcomes is told what the user finished from the inbox, and which items the inbox
+	// saw close or leave its lists (see Outcome).
+	Outcomes OutcomeSink
 
 	// Usage is told what each refresh it stores cost, and how many items it tracked.
 	Usage RefreshUsage
@@ -194,12 +198,17 @@ type Service struct {
 	clock    clock.Clock
 	events   event.Sink
 	arrivals ArrivalSink
+	outcomes OutcomeSink
 	usage    RefreshUsage
 	logger   *slog.Logger
 
 	// refreshes runs one whole refresh at a time; a refresh asked for while one runs
 	// joins it.
 	refreshes flight.Group[Snapshot]
+
+	// pending holds what whole refreshes found until a caller of Refresh tells it,
+	// outside the refresh's flight.
+	pending heldOutcomes
 
 	// items runs the work on one item one piece at a time.
 	items itemLocks
@@ -220,8 +229,8 @@ func NewService(cfg Config) *Service {
 
 	return &Service{
 		db: cfg.Pool, q: queries.New(cfg.Pool), prefs: prefs.New(cfg.Pool, c), tokens: cfg.Tokens,
-		client: cfg.Client, clock: c, events: event.Or(cfg.Events), arrivals: cfg.Arrivals, usage: cfg.Usage,
-		logger: logging.Or(cfg.Logger),
+		client: cfg.Client, clock: c, events: event.Or(cfg.Events), arrivals: cfg.Arrivals, outcomes: cfg.Outcomes,
+		usage: cfg.Usage, logger: logging.Or(cfg.Logger),
 	}
 }
 
@@ -235,14 +244,21 @@ func NewService(cfg Config) *Service {
 // refresh goes on for the others.
 //
 // A refresh that stored what GitHub said tells the arrival sink, once, about the items
-// that newly need the user.
+// that newly need the user. What it found for the outcome sink (the items of the lists
+// it found merged or closed, and those that left them) is told once the refresh's flight
+// has returned, by the first caller back from it, so a sink that refreshes the inbox
+// again starts a refresh of its own; what no caller was there to tell, the next caller
+// tells.
 func (s *Service) Refresh(ctx context.Context) (Snapshot, error) {
-	return s.refreshes.Do(ctx, refreshKey, s.runRefresh)
+	snap, err := s.refreshes.Do(ctx, refreshKey, s.runRefresh)
+	s.settle(ctx, s.pending.take())
+
+	return snap, err
 }
 
 // runRefresh is one whole refresh, run once for every caller that asked meanwhile.
 func (s *Service) runRefresh(ctx context.Context) (Snapshot, error) {
-	arrivals, err := s.refresh(ctx)
+	told, err := s.refresh(ctx)
 	if err != nil {
 		err = fmt.Errorf("refresh the inbox: %w", err)
 		if ctx.Err() != nil {
@@ -262,10 +278,21 @@ func (s *Service) runRefresh(ctx context.Context) (Snapshot, error) {
 
 	snap, err := s.changed(ctx)
 	if err == nil {
-		s.announce(ctx, arrivals)
+		s.announce(ctx, told.arrivals)
 	}
 
+	// What GitHub said is stored, whether or not the snapshot could be read again. Refresh
+	// tells it, outside this flight.
+	s.pending.hold(told.outcomes)
+
 	return snap, err
+}
+
+// refreshTold is what a stored refresh tells: the items that newly need the user, and the
+// outcomes it found.
+type refreshTold struct {
+	arrivals []Arrival
+	outcomes []Outcome
 }
 
 // changed empties the snapshot cache after a write, reads the snapshot again so it is
@@ -283,15 +310,15 @@ func (s *Service) changed(ctx context.Context) (Snapshot, error) {
 
 // refresh does one fetch-and-store cycle. It fetches without holding a lock, and holds
 // the store lock only to write (see order.go).
-func (s *Service) refresh(ctx context.Context) ([]Arrival, error) {
+func (s *Service) refresh(ctx context.Context) (refreshTold, error) {
 	listed, err := s.listedNodeIDs(ctx)
 	if err != nil {
-		return nil, err
+		return refreshTold{}, err
 	}
 
 	last, err := s.projectAccess(ctx)
 	if err != nil {
-		return nil, err
+		return refreshTold{}, err
 	}
 
 	var seq uint64
@@ -306,15 +333,15 @@ func (s *Service) refresh(ctx context.Context) ([]Arrival, error) {
 		return s.fetchAll(ctx, tok, listed, last)
 	})
 	if err != nil {
-		return nil, err
+		return refreshTold{}, err
 	}
 
-	arrivals, err := s.save(ctx, seq, got)
+	told, err := s.save(ctx, seq, got)
 	if err == nil && s.usage != nil {
 		s.usage.Refreshed(graphQLReading(got.inbox.RateLimit, got.details).Cost, len(nodeIDs(got.inbox)))
 	}
 
-	return arrivals, err
+	return told, err
 }
 
 // fetchAll reads everything one refresh stores, with tok. The details of the items
@@ -413,8 +440,10 @@ type refreshed struct {
 	// projects is whether the details include the projects each issue is in.
 	projects ProjectAccess
 
-	// archived holds the items left out because their repository is archived.
+	// archived holds the items left out because their repository is archived, and closed
+	// those left out because they were merged or closed.
 	archived []github.Item
+	closed   []github.Item
 
 	// files holds the outcome of each file check the refresh ran, by node ID.
 	files map[string]fileCheck
@@ -477,7 +506,7 @@ func (s *Service) fetch(ctx context.Context, tok github.Token, listed []string, 
 	s.viewers.remember(tok, got.inbox.Viewer.Login)
 
 	got.archived = dropArchived(got.inbox)
-	dropClosed(got.inbox)
+	got.closed = dropClosed(got.inbox)
 
 	return got, nil
 }
@@ -516,13 +545,25 @@ func dropArchived(inbox *github.Inbox) []github.Item {
 // or a close for a while; the state the query reads with each item does not. Like an
 // archived repository's items, they leave every list, so a refresh never brings back an
 // item that RefreshItem saw merged, and each list's total counts them out too (countOut):
-// GitHub's count still has them, and a list of one would read "1 of 2".
-func dropClosed(inbox *github.Inbox) {
+// GitHub's count still has them, and a list of one would read "1 of 2". It returns the
+// items it took out, in the lists' order, an item in two lists twice.
+func dropClosed(inbox *github.Inbox) []github.Item {
+	var dropped []github.Item
+
 	for _, list := range []*github.SearchResult{&inbox.ReviewRequested, &inbox.Authored, &inbox.Assigned} {
 		listed := len(list.Items)
+
+		for _, it := range list.Items {
+			if it.Closed() {
+				dropped = append(dropped, it)
+			}
+		}
+
 		list.Items = slices.DeleteFunc(list.Items, github.Item.Closed)
 		countOut(list, listed)
 	}
+
+	return dropped
 }
 
 // countOut takes the items list returned but no longer holds, of the listed it did, out
@@ -537,8 +578,9 @@ func countOut(list *github.SearchResult, listed int) {
 // from later fetches (see order.go). An item whose own refresh is among those keeps the
 // details and file check it stored, so the snoozes woken and the arrivals told are judged
 // on its newer details. It returns the items that newly need the user (see Arrival),
-// leaving out any such a later write took out of the lists.
-func (s *Service) save(ctx context.Context, seq uint64, got refreshed) ([]Arrival, error) {
+// leaving out any such a later write took out of the lists, and the outcomes it found (see
+// refreshOutcomes).
+func (s *Service) save(ctx context.Context, seq uint64, got refreshed) (refreshTold, error) {
 	var items map[string]github.ItemDetails
 	if got.details != nil {
 		items = got.details.Items
@@ -550,63 +592,70 @@ func (s *Service) save(ctx context.Context, seq uint64, got refreshed) ([]Arriva
 	replays := s.takeReplays(seq)
 
 	var (
-		arrivals []Arrival
-		w        *writer
+		told refreshTold
+		w    *writer
 	)
 
 	err := store.InTx(ctx, s.db, func(tx *sql.Tx) error {
 		w = s.newWriter(tx)
 		w.details, w.files, w.keep = items, got.files, rewritten(replays)
+		w.tellOutcomes = s.outcomes != nil
 
 		var err error
 
-		if arrivals, err = w.saveRefresh(ctx, got); err != nil {
+		if told, err = w.saveRefresh(ctx, got); err != nil {
 			return err
 		}
 
 		unlisted, err := s.replay(ctx, tx, replays)
-		arrivals = slices.DeleteFunc(arrivals, func(a Arrival) bool { return unlisted[a.ItemID] })
+		told.arrivals = slices.DeleteFunc(told.arrivals, func(a Arrival) bool { return unlisted[a.ItemID] })
 
 		return err
 	})
 	if err != nil {
-		return nil, fmt.Errorf("save the inbox: %w", err)
+		return refreshTold{}, fmt.Errorf("save the inbox: %w", err)
 	}
 
 	s.storedBy(seq, w)
 
-	return arrivals, nil
+	return told, nil
 }
 
 // saveRefresh stores what a refresh read, in the writer's transaction, and returns the
-// items that newly need the user.
-func (w *writer) saveRefresh(ctx context.Context, got refreshed) ([]Arrival, error) {
+// items that newly need the user and the outcomes it found. The lists as they were are
+// read first, before saveItems clears them.
+func (w *writer) saveRefresh(ctx context.Context, got refreshed) (refreshTold, error) {
 	inbox := got.inbox
 
 	if err := w.saveAccount(ctx, inbox.Viewer.Login); err != nil {
-		return nil, err
+		return refreshTold{}, err
 	}
 
-	watch, err := w.watchArrivals(ctx, inbox)
+	stored, err := readStatus(ctx, w.prefs)
 	if err != nil {
-		return nil, err
+		return refreshTold{}, err
+	}
+
+	before, err := w.readListed(ctx, stored, inbox)
+	if err != nil {
+		return refreshTold{}, err
 	}
 
 	if err = w.saveRepos(ctx, got.archived); err != nil {
-		return nil, err
+		return refreshTold{}, err
 	}
 
 	if err = w.saveItems(ctx, inbox); err != nil {
-		return nil, err
+		return refreshTold{}, err
 	}
 
-	arrivals, err := w.arrivals(ctx, watch)
+	arrivals, err := w.arrivals(ctx, watchArrivals(stored, inbox, before))
 	if err != nil {
-		return nil, err
+		return refreshTold{}, err
 	}
 
 	if err = w.saveRates(ctx, graphQLReading(inbox.RateLimit, got.details), got.limits); err != nil {
-		return nil, err
+		return refreshTold{}, err
 	}
 
 	status := map[string]string{
@@ -629,10 +678,12 @@ func (w *writer) saveRefresh(ctx context.Context, got refreshed) ([]Arrival, err
 	}
 
 	if err = w.prefs.SetMany(ctx, status); err != nil {
-		return nil, err
+		return refreshTold{}, err
 	}
 
-	return arrivals, w.forgetRawTotals(ctx)
+	told := refreshTold{arrivals: arrivals, outcomes: w.refreshOutcomes(inbox, got.closed, got.archived, before)}
+
+	return told, w.forgetRawTotals(ctx)
 }
 
 // beyond is how many items list's search matched past the ones it returned: GitHub

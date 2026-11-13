@@ -65,3 +65,15 @@ UPDATE item_local_state SET snoozed_until = ?, wake_reasons = ?, updated_at = ? 
 -- number however long the list is.
 SELECT item_id FROM item_local_state
 WHERE (dismissed_at IS NOT NULL OR snoozed_until > sqlc.arg(now)) AND item_id IN (sqlc.slice(ids));
+
+-- name: GetTriageItem :one
+-- GetTriageItem returns the item with id as an outcome names it (the account whose inbox
+-- lists it, its repository, number, and kind) with its dismissal and snooze, each NULL
+-- when it has none, or sql.ErrNoRows when no item has id.
+SELECT a.login AS account_login, r.owner AS repo_owner, r.name AS repo_name, i.number, i.kind,
+    ls.dismissed_at, ls.snoozed_until
+FROM items i
+JOIN accounts a ON a.id = i.account_id
+JOIN repos r ON r.id = i.repo_id
+LEFT JOIN item_local_state ls ON ls.item_id = i.id
+WHERE i.id = ?;

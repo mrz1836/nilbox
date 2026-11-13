@@ -45,6 +45,10 @@ type writer struct {
 	// keep holds the items whose details and file check a newer write stored, which the
 	// writer leaves as they are.
 	keep map[int64]bool
+
+	// tellOutcomes is set while an outcome sink listens, so a refresh reads and works out
+	// what it tells (see refreshOutcomes).
+	tellOutcomes bool
 }
 
 // newWriter returns a writer that stores through q and p, which run in one transaction,

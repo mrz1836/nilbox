@@ -82,7 +82,7 @@ func TestACloseWithTextPostsItFirst(t *testing.T) {
 		"Checking your account", "Checking for new comments since you opened it", "Posting your comment",
 		"Closing as not planned",
 	}, h.steps(t))
-	assert.Equal(t, []Acted{{Closed: true}}, h.inbox.acted, "the inbox takes it out of the lists")
+	assert.Equal(t, []Acted{{Closed: true, Own: true}}, h.inbox.acted, "the inbox takes it out of the lists")
 	assert.Nil(t, h.cached(t), "the sheet forgets a closed issue")
 }
 
@@ -263,10 +263,12 @@ func TestACloseOfAnIssueSomeoneClosedFirst(t *testing.T) {
 	res = h.act(t, ActRequest{Action: ActionCloseCompleted})
 	assert.Equal(t, OutcomeAlreadyClosed, res.Outcome)
 	assert.Equal(t, issueRef+" was already closed as completed", res.Message)
+	assert.Equal(t, []Acted{{Closed: true}}, h.inbox.acted, "someone else's close is not the user's own")
 
 	h = readHarness(t)
 	h.github.closedBy = "Octo-User"
 	assert.Equal(t, OutcomeClosed, h.act(t, ActRequest{Action: ActionCloseCompleted}).Outcome, "the user's own close")
+	assert.Equal(t, []Acted{{Closed: true, Own: true}}, h.inbox.acted)
 }
 
 func TestACloseGitHubWontLetThroughSendsNothing(t *testing.T) {

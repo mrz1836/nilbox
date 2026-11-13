@@ -29,41 +29,57 @@ import (
 //
 // A failure is returned, not recorded as the inbox's last error, which reports whole
 // refreshes, and the stored inbox is left as it was.
+//
+// Once it has let go of the item, it tells the outcome sink of a merge or a close the
+// answer it stored shows.
 func (s *Service) RefreshItem(ctx context.Context, id int64) (Snapshot, error) {
+	snap, told, err := s.refreshItemLocked(ctx, id)
+	s.settle(ctx, told)
+
+	return snap, err
+}
+
+// refreshItemLocked is RefreshItem under the item's lock. It returns what to tell once the
+// lock is let go.
+func (s *Service) refreshItemLocked(ctx context.Context, id int64) (Snapshot, []Outcome, error) {
 	unlock, err := s.items.lock(ctx, id)
 	if err != nil {
-		return Snapshot{}, fmt.Errorf("refresh the item: %w", err)
+		return Snapshot{}, nil, fmt.Errorf("refresh the item: %w", err)
 	}
 
 	defer unlock()
 
-	wrote, err := s.refreshItem(ctx, id)
+	told, wrote, err := s.refreshItem(ctx, id)
 	if err != nil {
-		return Snapshot{}, fmt.Errorf("refresh the item: %w", err)
+		return Snapshot{}, nil, fmt.Errorf("refresh the item: %w", err)
 	}
 
 	if !wrote {
-		return s.Snapshot(ctx)
+		snap, snapErr := s.Snapshot(ctx)
+
+		return snap, nil, snapErr
 	}
 
-	return s.changed(ctx)
+	snap, err := s.changed(ctx)
+
+	return snap, told, err
 }
 
 // refreshItem reads the stored item, asks GitHub about it, and stores the answer. It
-// reports whether it stored it.
-func (s *Service) refreshItem(ctx context.Context, id int64) (bool, error) {
+// reports whether it stored it, and what the answer stored tells (see seenClosed).
+func (s *Service) refreshItem(ctx context.Context, id int64) ([]Outcome, bool, error) {
 	stored, err := s.q.GetStoredItem(ctx, id)
 	if errors.Is(err, sql.ErrNoRows) {
-		return false, fmt.Errorf("%w (id %d)", item.ErrNotFound, id)
+		return nil, false, fmt.Errorf("%w (id %d)", item.ErrNotFound, id)
 	}
 
 	if err != nil {
-		return false, fmt.Errorf("read the item: %w", err)
+		return nil, false, fmt.Errorf("read the item: %w", err)
 	}
 
 	last, err := s.projectAccess(ctx)
 	if err != nil {
-		return false, err
+		return nil, false, err
 	}
 
 	var seq uint64
@@ -74,17 +90,24 @@ func (s *Service) refreshItem(ctx context.Context, id int64) (bool, error) {
 		return s.fetchItem(ctx, tok, id, stored.NodeID, readOptions(last))
 	})
 	if err != nil {
-		return false, err
+		return nil, false, err
 	}
 
 	update.accountID = stored.AccountID
+	w := itemWrite{id: id, seq: seq, update: &update}
 
-	wrote, err := s.storeItemWrite(ctx, itemWrite{id: id, seq: seq, update: &update})
+	wrote, err := s.storeItemWrite(ctx, w)
 	if err != nil {
-		return false, fmt.Errorf("save the item: %w", err)
+		return nil, false, fmt.Errorf("save the item: %w", err)
 	}
 
-	return wrote, nil
+	if !wrote {
+		return nil, false, nil
+	}
+
+	ref := refOf(stored.RepoOwner, stored.RepoName, stored.Number, item.Kind(stored.Kind))
+
+	return seenClosed(w, stored.AccountLogin, ref, s.now()), true, nil
 }
 
 // fetchItem asks GitHub about the item with id and nodeID, with what opts adds to its

@@ -11,6 +11,44 @@ import (
 	"time"
 )
 
+const getTriageItem = `-- name: GetTriageItem :one
+SELECT a.login AS account_login, r.owner AS repo_owner, r.name AS repo_name, i.number, i.kind,
+    ls.dismissed_at, ls.snoozed_until
+FROM items i
+JOIN accounts a ON a.id = i.account_id
+JOIN repos r ON r.id = i.repo_id
+LEFT JOIN item_local_state ls ON ls.item_id = i.id
+WHERE i.id = ?
+`
+
+type GetTriageItemRow struct {
+	AccountLogin string
+	RepoOwner    string
+	RepoName     string
+	Number       int64
+	Kind         string
+	DismissedAt  *time.Time
+	SnoozedUntil *time.Time
+}
+
+// GetTriageItem returns the item with id as an outcome names it (the account whose inbox
+// lists it, its repository, number, and kind) with its dismissal and snooze, each NULL
+// when it has none, or sql.ErrNoRows when no item has id.
+func (q *Queries) GetTriageItem(ctx context.Context, id int64) (GetTriageItemRow, error) {
+	row := q.db.QueryRowContext(ctx, getTriageItem, id)
+	var i GetTriageItemRow
+	err := row.Scan(
+		&i.AccountLogin,
+		&i.RepoOwner,
+		&i.RepoName,
+		&i.Number,
+		&i.Kind,
+		&i.DismissedAt,
+		&i.SnoozedUntil,
+	)
+	return i, err
+}
+
 const listRunningSnoozes = `-- name: ListRunningSnoozes :many
 SELECT ls.item_id, ls.snooze_baseline, i.author_type, d.head_oid, d.commits, d.comments, d.review_decision,
     d.reviewed, d.approvals, d.changes_requested
