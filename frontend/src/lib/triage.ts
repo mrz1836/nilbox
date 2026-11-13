@@ -1,5 +1,6 @@
 import type { InboxItem, InboxList, InboxSnapshot, ListKey, WakeReasons, WakeReview } from '../platform'
 import { counted } from './format'
+import { itemKey } from './itemWorktrees'
 
 // Triage as the inbox shows it. The snapshot keeps every item in its lists with its
 // triage state, and this module sorts each list into the tabs the inbox shows, against
@@ -169,6 +170,30 @@ export function findItem(snapshot: InboxSnapshot, id: number): InboxItem | undef
   }
 
   return undefined
+}
+
+// ListedItem is an item of the inbox and the first of its lists that holds it.
+export interface ListedItem {
+  item: InboxItem
+  list: ListKey
+}
+
+// itemsByRef maps the inbox's items by itemKey, their repository in any case and their
+// number, each to the first list that holds it in the inbox's order.
+export function itemsByRef(snapshot: InboxSnapshot): ReadonlyMap<string, ListedItem> {
+  const out = new Map<string, ListedItem>()
+
+  for (const list of ['reviewRequested', 'authored', 'assigned'] as const) {
+    for (const item of snapshot[list].items) {
+      const key = itemKey(item.repo, item.number)
+
+      if (!out.has(key)) {
+        out.set(key, { item, list })
+      }
+    }
+  }
+
+  return out
 }
 
 // TriageChange is a triage action as the inbox shows it at once, before the backend's

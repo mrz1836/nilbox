@@ -1054,6 +1054,41 @@ describe('ReviewSheet', () => {
     )
   })
 
+  it('names the issues the pull request closes, and opens them on GitHub outside the inbox', async () => {
+    platform.refreshReview.mockResolvedValue(
+      review({
+        closes: [
+          {
+            repo: 'acme-org/example-repo',
+            number: 12,
+            title: 'Cache misses after restart',
+            url: 'https://github.com/acme-org/example-repo/issues/12',
+            state: 'OPEN',
+            stateReason: '',
+          },
+          {
+            repo: 'acme-org/api',
+            number: 3,
+            title: 'Retry the upload',
+            url: 'https://github.com/acme-org/api/issues/3',
+            state: 'CLOSED',
+            stateReason: 'NOT_PLANNED',
+          },
+        ],
+        moreCloses: 2,
+      }),
+    )
+    render(<Harness />)
+
+    const closes = await screen.findByRole('region', { name: 'Closes' })
+    expect(closes).toHaveTextContent('and 2 more on GitHub')
+    const [open, closed] = within(closes).getAllByRole('listitem')
+    expect(open, 'an open issue says nothing more').toHaveTextContent(/^#12 Cache misses after restart$/)
+    expect(closed).toHaveTextContent(/^acme-org\/api#3 Retry the upload closed as not planned$/)
+    await userEvent.click(within(closes).getByRole('button', { name: '#12 Cache misses after restart' }))
+    expect(platform.openExternal).toHaveBeenCalledWith('https://github.com/acme-org/example-repo/issues/12')
+  })
+
   it('shows the latest agent session, and uses its words as the review', async () => {
     platform.sessionLastWords.mockResolvedValue({ text: 'The **whole** verdict.', partial: true })
     render(<Harness sessions={[agentSession()]} launch={launch} />)

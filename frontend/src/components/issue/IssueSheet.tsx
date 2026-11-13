@@ -1,5 +1,6 @@
 import { useId, useLayoutEffect, useRef, useState } from 'react'
 
+import { refText } from '../../lib/format'
 import {
   changedSince,
   closeNote,
@@ -10,7 +11,7 @@ import {
   standingTone,
 } from '../../lib/issues'
 import type { IssueDraft, IssueDrafts } from '../../lib/issueDrafts'
-import { placeIn, stepTo, useActionProgress, useSheetKeys } from '../../lib/sheet'
+import { placeIn, stepTo, useActionProgress, useSheetKeys, type SheetBack } from '../../lib/sheet'
 import { toneDot, toneText } from '../../lib/signals'
 import { formatAgo } from '../../lib/time'
 import { useIssue } from '../../lib/useIssue'
@@ -64,8 +65,12 @@ export interface IssueSheetProps {
   // or '' once it did, when the inbox closes the sheet; without it the sheet doesn't offer
   // it.
   onUnassign?: ((item: InboxItem) => Promise<string>) | undefined
-  // initialFocus selects the control focus starts on as the sheet opens (see Sheet).
+  // initialFocus selects the control focus starts on as the sheet opens (see Sheet), and
+  // refocus moves it there again whenever it changes.
   initialFocus?: string | undefined
+  refocus?: number | undefined
+  // back returns to the sheet a link was followed from, or is null.
+  back?: SheetBack | null
 }
 
 // Notice is what the sheet says of one issue after an action on it: a close refused for a
@@ -114,6 +119,8 @@ export function IssueSheet({
   onDone,
   onUnassign,
   initialFocus,
+  refocus,
+  back = null,
 }: IssueSheetProps) {
   const titleId = useId()
   const loaded = useIssue(id)
@@ -144,7 +151,7 @@ export function IssueSheet({
   })
 
   const shown = issue ?? item
-  const target = shown === undefined ? '' : `${shown.repo}#${String(shown.number)}`
+  const target = shown === undefined ? '' : refText(shown)
   const reading = loaded.checking && (issue === null || issue.fetchedAt === '')
   const { prev, next, position } = placeIn(siblings, id, listTitle)
 
@@ -155,7 +162,7 @@ export function IssueSheet({
   const send = async (is: Issue, action: IssueAction) => {
     const offer = is.offers.find((o) => o.action === action)
 
-    setProgress({ title: offer?.label ?? 'Working', target: `${is.repo}#${String(is.number)}`, steps: [] })
+    setProgress({ title: offer?.label ?? 'Working', target: refText(is), steps: [] })
     setActedOn(id)
 
     const result = await act.run({ itemId: id, action, seen: is.seen, body: draft.body })
@@ -244,7 +251,7 @@ export function IssueSheet({
     issue !== null && !loaded.checking && (changedSince(issue, item) || (issue.stale && issue.fetchedAt !== ''))
 
   return (
-    <Sheet labelledBy={titleId} onClose={close} initialFocus={initialFocus}>
+    <Sheet labelledBy={titleId} onClose={close} initialFocus={initialFocus} refocus={refocus}>
       <div inert={working} className="flex min-h-0 flex-1 flex-col">
         <IssueHeader
           titleId={titleId}
@@ -254,6 +261,7 @@ export function IssueSheet({
           checking={loaded.checking}
           prev={toPrev}
           next={toNext}
+          back={back}
           onRefresh={() => {
             loaded.reload()
           }}

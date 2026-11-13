@@ -44,3 +44,8 @@ function userMessage(cause: unknown): string {
 export function counted(n: number, one: string, many: string): string {
   return `${formatCount(n)} ${n === 1 ? one : many}`
 }
+
+// refText names a pull request or an issue as "owner/name#number".
+export function refText(ref: { repo: string; number: number }): string {
+  return `${ref.repo}#${String(ref.number)}`
+}

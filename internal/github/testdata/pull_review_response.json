@@ -318,6 +318,23 @@
                         null
                     ]
                 }
+            },
+            "closes": {
+                "totalCount": 2,
+                "nodes": [
+                    {
+                        "__typename": "Issue",
+                        "number": 12,
+                        "title": "Pin the code scanning action",
+                        "url": "https://github.com/acme-org/example-repo/issues/12",
+                        "issueState": "OPEN",
+                        "stateReason": null,
+                        "repository": {
+                            "nameWithOwner": "acme-org/example-repo"
+                        }
+                    },
+                    null
+                ]
             }
         },
         "rateLimit": {

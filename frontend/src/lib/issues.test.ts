@@ -9,7 +9,6 @@ import {
   issueOffer,
   issueResult,
   item,
-  pullRef,
 } from '../test/fixtures'
 import {
   changedSince,
@@ -21,7 +20,6 @@ import {
   keepsDraft,
   newSince,
   quoteInto,
-  refText,
   rowKey,
   selectedIssueAction,
   standingTone,
@@ -195,9 +193,8 @@ describe('quoteInto', () => {
   })
 })
 
-describe('refText and earlierCount', () => {
-  it('names a linked item and counts what comes before the page', () => {
-    expect(refText(pullRef())).toBe('acme-org/example-repo#14')
+describe('earlierCount', () => {
+  it('counts what comes before the page', () => {
     expect(earlierCount(40, 3, 'cursor')).toBe(37)
     expect(earlierCount(40, 40, 'cursor'), 'a page whose total is out of date still offers more').toBe(1)
     expect(earlierCount(40, 3, '')).toBe(0)

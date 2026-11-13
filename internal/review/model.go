@@ -272,6 +272,11 @@ type Review struct {
 	Checks  []Check       `json:"checks"`
 	Reviews []ReviewEntry `json:"reviews"`
 
+	// Closes are the issues it closes once it merges, the first ten, and MoreCloses how many
+	// others.
+	Closes     []Closing `json:"closes"`
+	MoreCloses int       `json:"moreCloses"`
+
 	// Readiness says how close it is to merging.
 	Readiness Readiness `json:"readiness"`
 
@@ -354,6 +359,40 @@ type Check struct {
 	URL      string `json:"url"`
 	Required bool   `json:"required"`
 }
+
+// Closing is an issue a pull request closes once it merges: its repository as "owner/name",
+// its number, title, and page, and its state, with the reason it was closed, as GitHub
+// says them.
+type Closing struct {
+	Repo        string      `json:"repo"`
+	Number      int         `json:"number"`
+	Title       string      `json:"title"`
+	URL         string      `json:"url"`
+	State       IssueState  `json:"state"`
+	StateReason IssueReason `json:"stateReason"`
+}
+
+// IssueState is an issue's state, as GitHub's GraphQL API names it.
+type IssueState string
+
+// The issue states.
+const (
+	IssueOpen   IssueState = "OPEN"
+	IssueClosed IssueState = "CLOSED"
+)
+
+// IssueReason is why an issue was closed, or reopened, as GitHub's GraphQL API names it.
+type IssueReason string
+
+// The reasons.
+const (
+	// ReasonNone is an issue never closed, or one closed before GitHub kept a reason.
+	ReasonNone       IssueReason = ""
+	ReasonCompleted  IssueReason = "COMPLETED"
+	ReasonNotPlanned IssueReason = "NOT_PLANNED"
+	ReasonDuplicate  IssueReason = "DUPLICATE"
+	ReasonReopened   IssueReason = "REOPENED"
+)
 
 // ReviewEntry is one reviewer's latest review.
 type ReviewEntry struct {

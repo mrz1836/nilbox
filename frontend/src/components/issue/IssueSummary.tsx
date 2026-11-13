@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 
-import { counted } from '../../lib/format'
+import { counted, refText } from '../../lib/format'
 import { dayPassed, formatDay } from '../../lib/time'
 import { useNowAs } from '../../lib/useNow'
 import { openExternal, type Issue, type IssueFix, type IssueLinked, type IssuePerson } from '../../platform'
@@ -103,7 +103,7 @@ function Links({ links, repo }: { links: readonly IssueLinked[]; repo: string })
   return (
     <ul className="space-y-1 text-sm">
       {links.map((l) => (
-        <li key={`${l.repo}#${String(l.number)}`} className="flex min-w-0">
+        <li key={refText(l)} className="flex min-w-0">
           <ItemLink linked={l} from={repo} titled />
         </li>
       ))}
@@ -123,7 +123,7 @@ function Development({ issue }: { issue: Issue }) {
       {issue.fixes.length > 0 && (
         <ul className="space-y-1.5 text-sm">
           {issue.fixes.map((fix) => (
-            <li key={`${fix.pr.repo}#${String(fix.pr.number)}`} className="min-w-0">
+            <li key={refText(fix.pr)} className="min-w-0">
               <ItemLink linked={fix.pr} from={issue.repo} titled />
               <p className="text-xs text-muted">{fixState(fix)}</p>
             </li>

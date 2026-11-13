@@ -72,6 +72,11 @@ type pullContext struct {
 
 	Reviews []contextReview `json:"reviews"`
 	Checks  []Check         `json:"checks"`
+
+	// Closes are the issues it closes once it merges, and CloseCount how many there are;
+	// none in a context an older build cached, until the sheet reads it again.
+	Closes     []Closing `json:"closes"`
+	CloseCount int       `json:"closeCount"`
 }
 
 // contextReview is one reviewer's latest review, as the cache keeps it.
@@ -93,6 +98,14 @@ func contextOf(r *github.PullReview) pullContext {
 		ViewerReview: r.ViewerReview.State, ViewerReviewAt: r.ViewerReview.Commit, PendingReviews: r.PendingReviews,
 		AutoMerge: r.AutoMerge.Method, CanClose: r.ViewerCanClose,
 		Reviews: make([]contextReview, 0, len(r.Reviews)), Checks: make([]Check, 0, len(r.Checks)),
+		Closes: make([]Closing, 0, len(r.Closes)), CloseCount: r.CloseCount,
+	}
+
+	for _, ref := range r.Closes {
+		c.Closes = append(c.Closes, Closing{
+			Repo: ref.Repo, Number: ref.Number, Title: ref.Title, URL: ref.URL, State: IssueState(ref.State),
+			StateReason: IssueReason(ref.StateReason),
+		})
 	}
 
 	for _, rev := range r.Reviews {

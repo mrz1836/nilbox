@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { counted, errorMessage, formatCount } from './format'
+import { counted, errorMessage, formatCount, refText } from './format'
 
 describe('formatCount', () => {
   it('formats with the locale grouping', () => {
@@ -45,5 +45,11 @@ describe('errorMessage', () => {
     expect(errorMessage(new Error(''))).toBe('Something went wrong.')
     expect(errorMessage(undefined)).toBe('Something went wrong.')
     expect(errorMessage({ code: 1 })).toBe('Something went wrong.')
+  })
+})
+
+describe('refText', () => {
+  it('names an item by its repository and number', () => {
+    expect(refText({ repo: 'acme-org/example-repo', number: 14 })).toBe('acme-org/example-repo#14')
   })
 })

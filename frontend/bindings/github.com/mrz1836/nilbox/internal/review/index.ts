@@ -9,6 +9,8 @@ export {
 export {
     Action,
     ChangeKind,
+    IssueReason,
+    IssueState,
     MergeMethod,
     Outcome,
     PatchState,
@@ -21,6 +23,7 @@ export type {
     ActRequest,
     Change,
     Check,
+    Closing,
     File,
     FilePatch,
     LineComment,

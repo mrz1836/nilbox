@@ -105,4 +105,13 @@ describe('SheetHeader', () => {
     await userEvent.click(back)
     expect(onBack).toHaveBeenCalledOnce()
   })
+
+  it('names only the card it goes back to when it has no title', () => {
+    header({ back: { label: 'acme-org/example-repo#7', title: '', onBack: vi.fn() } })
+
+    expect(screen.getByRole('button', { name: 'Back to acme-org/example-repo#7' })).toHaveAttribute(
+      'title',
+      'Back to acme-org/example-repo#7',
+    )
+  })
 })

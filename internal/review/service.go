@@ -507,7 +507,7 @@ func build(pull StoredPull, c *cached, matcher *sensitive.Matcher, pref MethodPr
 		BaseRef: pull.DefaultBranch, ReviewRequested: pull.ReviewRequested, Labels: textutil.NonNil(pull.Labels),
 		Additions: pull.Additions, Deletions: pull.Deletions, Commits: pull.Commits, Comments: pull.Comments,
 		AutoMerge: MergeMethod(pull.AutoMerge), Head: pull.HeadOID, Files: []File{}, Checks: []Check{},
-		Reviews: []ReviewEntry{}, TotalFiles: pull.ChangedFiles, Stale: true,
+		Reviews: []ReviewEntry{}, Closes: []Closing{}, TotalFiles: pull.ChangedFiles, Stale: true,
 	}
 
 	if u, ok := bump.Parse(pull.Title); ok && r.IsBot {
@@ -534,6 +534,7 @@ func (r *Review) fill(c *cached, matcher *sensitive.Matcher) {
 	r.Mine = r.Mine || pc.Mine
 	r.TotalFiles, r.FilesComplete = c.total, c.complete
 	r.Checks = textutil.NonNil(pc.Checks)
+	r.Closes, r.MoreCloses = textutil.NonNil(pc.Closes), max(pc.CloseCount-len(pc.Closes), 0)
 
 	if pc.BaseRef != "" {
 		r.BaseRef = pc.BaseRef

@@ -82,7 +82,7 @@ export function SheetHeader({
           <button
             type="button"
             aria-label={`Back to ${back.label}`}
-            title={`Back to ${back.label}: ${back.title}`}
+            title={back.title === '' ? `Back to ${back.label}` : `Back to ${back.label}: ${back.title}`}
             onClick={back.onBack}
             className={`${quietButtonClass} flex items-center gap-0.5 px-1.5 py-1 text-xs`}
           >

@@ -6,7 +6,6 @@ import type {
   Issue,
   IssueAction,
   IssueLabel,
-  IssueLinked,
   IssueOffer,
   IssueResult,
   IssueStandingState,
@@ -240,11 +239,6 @@ export function quoteInto(body: string, text: string): string {
   const before = body.trim() === '' ? '' : `${body.replace(/\s+$/, '')}\n\n`
 
   return `${before}${quote}\n\n`
-}
-
-// refText names a linked item as "owner/name#number".
-export function refText(linked: IssueLinked): string {
-  return `${linked.repo}#${String(linked.number)}`
 }
 
 // earlierCount is how many entries come before the ones the sheet holds, or 0 when none do.

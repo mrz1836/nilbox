@@ -53,4 +53,30 @@ describe('Sheet', () => {
     )
     expect(document.activeElement).toBe(screen.getByRole('dialog').firstElementChild)
   })
+
+  it('moves focus in again when told to, as another item takes the place of the control that had it', () => {
+    const { rerender } = render(
+      <Sheet labelledBy="title" onClose={vi.fn()} refocus={0}>
+        <Body />
+        <button type="button">Open #14</button>
+      </Sheet>,
+    )
+    const link = screen.getByRole('button', { name: 'Open #14' })
+    link.focus()
+
+    rerender(
+      <Sheet labelledBy="title" onClose={vi.fn()} refocus={0}>
+        <Body />
+        <button type="button">Open #14</button>
+      </Sheet>,
+    )
+    expect(link, 'focus stays where the user put it').toHaveFocus()
+
+    rerender(
+      <Sheet labelledBy="title" onClose={vi.fn()} refocus={1}>
+        <Body />
+      </Sheet>,
+    )
+    expect(document.activeElement).toBe(screen.getByRole('dialog').firstElementChild)
+  })
 })

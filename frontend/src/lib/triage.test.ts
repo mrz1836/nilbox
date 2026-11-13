@@ -12,6 +12,7 @@ import {
   isPinned,
   isPinnedItself,
   isSnoozed,
+  itemsByRef,
   snoozeChoices,
   snoozeEnd,
   snoozeLength,
@@ -323,5 +324,22 @@ describe('isPinned and isMuted', () => {
     expect(isMuted(item({ repoRule: 'muted' }))).toBe(true)
     expect(isMuted(item({ repoRule: 'pinned' }))).toBe(false)
     expect(isMuted(item())).toBe(false)
+  })
+})
+
+describe('itemsByRef', () => {
+  it('finds an item by its repository, in any case, and number, in the first list that holds it', () => {
+    const issue = item({ id: 4, kind: 'issue', number: 12, repo: 'ACME-org/Example-Repo' })
+    const pull = item({ id: 3, number: 12, repo: 'acme-org/api' })
+    const refs = itemsByRef(
+      snapshot({
+        authored: list([pull]),
+        assigned: list([issue, pull]),
+      }),
+    )
+
+    expect(refs.get('acme-org/example-repo#12')).toEqual({ item: issue, list: 'assigned' })
+    expect(refs.get('acme-org/api#12')).toEqual({ item: pull, list: 'authored' })
+    expect(refs.has('acme-org/example-repo#13')).toBe(false)
   })
 })
