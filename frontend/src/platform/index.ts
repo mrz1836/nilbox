@@ -478,6 +478,7 @@ export const {
   Labels: issueLabels,
   Assignable: issueAssignable,
   Edit: editIssue,
+  Avatars: issueAvatars,
 } = narrow(issues.Service)
 
 export const {

@@ -3,6 +3,7 @@ import { memo, type ReactNode } from 'react'
 import type { LabelRow, TimelineRow } from '../../lib/issues'
 import { formatAgo, formatFull } from '../../lib/time'
 import { openExternal, type IssueStateReason, type IssueTimelineItem } from '../../platform'
+import { PersonAvatar } from '../Avatar'
 import { quietButtonClass } from '../controls'
 import { ExternalIcon } from '../icons'
 import { ItemLink } from '../ItemLink'
@@ -74,6 +75,7 @@ function CommentEntry({
   return (
     <article aria-label={`${who}’s comment`} className="rounded-md border border-border">
       <header className="flex items-center gap-2 border-b border-border bg-raised/40 px-3 py-1.5 text-xs text-muted">
+        <PersonAvatar login={item.actor} />
         <span className="font-medium text-text">{who}</span>
         {item.actor !== '' && item.actor === author && <span className={tagClass}>Author</span>}
         {item.mine && <span className={tagClass}>You</span>}

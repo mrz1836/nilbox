@@ -167,6 +167,7 @@ function answers(subscribe: Loose<Platform['on']>): { [K in keyof Platform]: Loo
     fillIssueReply: () => Promise.resolve('Looking into it, @octo-user.'),
     issueLabels: () => Promise.resolve(repoLabels()),
     issueAssignable: () => Promise.resolve(candidates()),
+    issueAvatars: () => Promise.resolve({}),
     editIssue: () => Promise.resolve({ sent: 1, failed: '' }),
     reviewReplies: () => Promise.resolve(replyList()),
     fillReply: () => Promise.resolve('Reviewed and approved. Thanks, @octo-other!'),

@@ -19,6 +19,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/agent"
 	"github.com/mrz1836/nilbox/internal/appdata"
 	"github.com/mrz1836/nilbox/internal/appinfo"
+	"github.com/mrz1836/nilbox/internal/avatars"
 	"github.com/mrz1836/nilbox/internal/brand"
 	"github.com/mrz1836/nilbox/internal/budget"
 	"github.com/mrz1836/nilbox/internal/clock"
@@ -631,7 +632,8 @@ func assemble(pool *sql.DB, info startup, opts Options, logger *slog.Logger) *Co
 		Issues: issues.NewService(issues.Config{
 			Pool: pool, Inbox: issuesInbox{store: inboxStore, actor: actor}, GitHub: client,
 			Replies: issuesReplies{replyFiller{store: promptStore, source: previews}}, Events: opts.Events,
-			Clock: opts.Clock, Logger: logger,
+			Pictures: avatars.NewService(avatars.Config{Pool: pool, Fetcher: client, Clock: opts.Clock, Logger: logger}),
+			Clock:    opts.Clock, Logger: logger,
 		}),
 		Watcher:          follow.watcher,
 		ShellSessions:    ShellSessions{ledger: follow.ledger, service: follow.service},

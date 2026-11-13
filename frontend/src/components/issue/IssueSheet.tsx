@@ -12,6 +12,7 @@ import {
   standingTone,
 } from '../../lib/issues'
 import type { IssueDraft, IssueDrafts } from '../../lib/issueDrafts'
+import { pictureLogins, PicturesContext, usePictures } from '../../lib/pictures'
 import { placeIn, stepTo, useActionProgress, useSheetKeys, type SheetBack } from '../../lib/sheet'
 import { toneDot, toneText } from '../../lib/signals'
 import { formatAgo } from '../../lib/time'
@@ -137,6 +138,7 @@ export function IssueSheet({
   const titleId = useId()
   const loaded = useIssue(id)
   const issue = loaded.issue
+  const pictures = usePictures(issue === null ? [] : pictureLogins(issue))
   const draft = drafts.get(id)
   const act = useMutation(actOnIssue)
   const [confirming, setConfirming] = useState<IssueOffer | null>(null)
@@ -327,76 +329,78 @@ export function IssueSheet({
             issue arrives. Before any copy, each column shows placeholders; with nothing read
             and nothing reading, only the error shows. */}
         {(issue !== null || loaded.checking || loaded.error === '') && (
-          <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_22rem]">
-            <main className="min-h-0 space-y-4 overflow-y-auto p-4">
-              {reading && <ReadingBanner key={`reading-${String(id)}`} target={target} kind="issue" />}
+          <PicturesContext value={pictures}>
+            <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_22rem]">
+              <main className="min-h-0 space-y-4 overflow-y-auto p-4">
+                {reading && <ReadingBanner key={`reading-${String(id)}`} target={target} kind="issue" />}
+                {issue === null ? (
+                  <div className="mx-auto max-w-3xl rounded-md border border-border p-3">
+                    <DescriptionSkeleton />
+                  </div>
+                ) : (
+                  <Conversation
+                    key={`conversation-${String(id)}`}
+                    issue={issue}
+                    lastSeenAt={loaded.lastSeenAt}
+                    reading={reading}
+                    onEarlier={() => {
+                      void loaded.loadEarlier()
+                    }}
+                    loadingEarlier={loaded.loadingEarlier}
+                    earlierError={loaded.earlierError}
+                    onQuote={quote}
+                  />
+                )}
+              </main>
               {issue === null ? (
-                <div className="mx-auto max-w-3xl rounded-md border border-border p-3">
-                  <DescriptionSkeleton />
-                </div>
+                <aside className="min-h-0 border-l border-border p-4">
+                  <span aria-hidden="true" className="skeleton mb-4 block h-3.5 w-36" />
+                  <SummarySkeleton />
+                </aside>
               ) : (
-                <Conversation
-                  key={`conversation-${String(id)}`}
-                  issue={issue}
-                  lastSeenAt={loaded.lastSeenAt}
-                  reading={reading}
-                  onEarlier={() => {
-                    void loaded.loadEarlier()
-                  }}
-                  loadingEarlier={loaded.loadingEarlier}
-                  earlierError={loaded.earlierError}
-                  onQuote={quote}
-                />
-              )}
-            </main>
-            {issue === null ? (
-              <aside className="min-h-0 border-l border-border p-4">
-                <span aria-hidden="true" className="skeleton mb-4 block h-3.5 w-36" />
-                <SummarySkeleton />
-              </aside>
-            ) : (
-              /* The composer sits below the scrolling details, in no scrolling box of its
+                /* The composer sits below the scrolling details, in no scrolling box of its
                  own, so its menus open over the conversation rather than being cut off at
                  the column's edge, and its button never scrolls out of view. The work line
                  sits in the strip above, outside the scroller, so its panel isn't cut off
                  either. */
-              <aside className="flex min-h-0 flex-col border-l border-border">
-                <div className="shrink-0 space-y-1.5 border-b border-border px-4 py-3">
-                  <StandingLine standing={issue.standing} />
-                  <WorkLine worktree={worktree} sessions={sessions} agents={launch?.agents ?? []} />
-                </div>
-                <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4">
-                  {reading ? <SummarySkeleton /> : <IssueSummary issue={issue} onEdit={edit} />}
-                  <AgentVerdict
-                    sessions={sessions}
-                    agents={launch?.agents ?? []}
-                    useLabel="Use as comment"
-                    onUse={(text) => {
-                      onDraft((d) => ({ ...d, body: text }))
-                    }}
-                  />
-                </div>
-                <div className="shrink-0 border-t border-border p-4">
-                  <IssueComposer
-                    issue={issue}
-                    item={item}
-                    draft={draft}
-                    onDraft={onDraft}
-                    selected={selected}
-                    onRun={run}
-                    busy={act.pending || working}
-                    error={actedOn === id ? act.error : ''}
-                    launch={launch}
-                    resolution={resolution}
-                    sessions={sessions}
-                    onUnassign={unassign}
-                    textRef={textRef}
-                    onManageReplies={onManageReplies}
-                  />
-                </div>
-              </aside>
-            )}
-          </div>
+                <aside className="flex min-h-0 flex-col border-l border-border">
+                  <div className="shrink-0 space-y-1.5 border-b border-border px-4 py-3">
+                    <StandingLine standing={issue.standing} />
+                    <WorkLine worktree={worktree} sessions={sessions} agents={launch?.agents ?? []} />
+                  </div>
+                  <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4">
+                    {reading ? <SummarySkeleton /> : <IssueSummary issue={issue} onEdit={edit} />}
+                    <AgentVerdict
+                      sessions={sessions}
+                      agents={launch?.agents ?? []}
+                      useLabel="Use as comment"
+                      onUse={(text) => {
+                        onDraft((d) => ({ ...d, body: text }))
+                      }}
+                    />
+                  </div>
+                  <div className="shrink-0 border-t border-border p-4">
+                    <IssueComposer
+                      issue={issue}
+                      item={item}
+                      draft={draft}
+                      onDraft={onDraft}
+                      selected={selected}
+                      onRun={run}
+                      busy={act.pending || working}
+                      error={actedOn === id ? act.error : ''}
+                      launch={launch}
+                      resolution={resolution}
+                      sessions={sessions}
+                      onUnassign={unassign}
+                      textRef={textRef}
+                      onManageReplies={onManageReplies}
+                    />
+                  </div>
+                </aside>
+              )}
+            </div>
+          </PicturesContext>
         )}
       </div>
       {progress !== null && <ActionProgress title={progress.title} target={progress.target} steps={progress.steps} />}

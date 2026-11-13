@@ -127,6 +127,27 @@ describe('IssueSheet', () => {
     expect(await actionButton('Comment')).toBeDisabled()
   })
 
+  it('shows each person’s picture beside their name, read once for everyone shown', async () => {
+    platform.issueAvatars.mockResolvedValue({ 'octo-other': 'data:image/png;base64,b3RoZXI=' })
+    const { container } = render(<Harness />)
+
+    const conversation = await screen.findByRole('region', { name: 'Conversation' })
+    await waitFor(() => {
+      expect(
+        within(conversation).getByRole('article', { name: 'octo-other’s comment' }).querySelector('img'),
+      ).toHaveAttribute('src', 'data:image/png;base64,b3RoZXI=')
+    })
+    expect(platform.issueAvatars).toHaveBeenCalledExactlyOnceWith(['octo-other', 'octo-user'])
+    expect(
+      within(conversation).getByRole('article', { name: 'Description' }).querySelector('img'),
+      'who opened it',
+    ).toHaveAttribute('src', 'data:image/png;base64,b3RoZXI=')
+    const mine = within(conversation).getByRole('article', { name: 'octo-user’s comment' })
+    expect(mine.querySelector('img'), 'no picture yet: the initial').toBeNull()
+    expect(within(screen.getByRole('region', { name: 'Assignees' })).getByText('O')).toBeInTheDocument()
+    expect(container.querySelectorAll('img[src^="https:"]'), 'nothing remote loads').toHaveLength(0)
+  })
+
   it('shows placeholders until it has a copy, and the reading banner while it first reads', async () => {
     let answer: (v: ReturnType<typeof issue>) => void = () => undefined
     platform.openIssue.mockReturnValue(new Promise(() => undefined))

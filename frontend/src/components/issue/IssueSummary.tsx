@@ -4,6 +4,7 @@ import { counted, refText } from '../../lib/format'
 import { dayPassed, formatDay } from '../../lib/time'
 import { useNowAs } from '../../lib/useNow'
 import { openExternal, type Issue, type IssueFix, type IssueLinked, type IssuePerson } from '../../platform'
+import { PersonAvatar } from '../Avatar'
 import { captionClass } from '../controls'
 import { ItemLink } from '../ItemLink'
 import { LabelChip, ProgressBar, ProjectLink } from '../ItemSignals'
@@ -65,11 +66,14 @@ function People({
   }
 
   return (
-    <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-sm">
       {people.map((p) => (
-        <span key={p.login} className="text-text">
-          {p.login}
-          {p.mine && <span className="text-muted"> (you)</span>}
+        <span key={p.login} className="inline-flex items-center gap-1.5 text-text">
+          <PersonAvatar login={p.login} />
+          <span>
+            {p.login}
+            {p.mine && <span className="text-muted"> (you)</span>}
+          </span>
         </span>
       ))}
       <More count={more} url={url} />

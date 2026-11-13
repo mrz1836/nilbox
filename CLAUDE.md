@@ -219,7 +219,9 @@ app:lint` reads.
   every response's rate-limit reading, and what the request spent, to its `Tracker`
   (`github.RateObserver`), whose state the `Saver` keeps across runs. Every GitHub request goes
   through `(*github.Client).do`, apart from two downloads that aren't the API and carry no token:
-  the profile picture (`FetchAvatar`) and a public release file (`DownloadAsset`, https only, its
+  a profile picture (`FetchAvatar`, the user's own by the URL GitHub gives, and anyone's by login
+  through `FetchLoginAvatar`, which builds the avatar host's URL itself and refuses a login no user
+  could have, such as a bot's) and a public release file (`DownloadAsset`, https only, its
   host and every redirect's on `DownloadHosts`). Never build an HTTP request anywhere else, nor run
   `gh api`;
   `internal/repoguard/githubrequests_test.go` fails the build if anything does. Every write goes
@@ -443,6 +445,15 @@ app:lint` reads.
   make), never sending a step twice, stopping at the first that fails, and saying how many
   GitHub made (`EditResult`), so the window reads the issue again only then; the user takes
   themselves off with Unassign me alone.
+- `internal/avatars/` keeps the profile pictures of the people the issue sheet shows (who opened
+  the issue, its assignees and participants, and who wrote each comment shown in full, never a
+  bot), which the window asks for in one batch through the issue sheet's bound `Avatars` once the
+  sheet renders, so the conversation never waits on one. It owns `avatars`, one row per
+  lower-cased login, downloaded by login (`FetchLoginAvatar`), at most four at a time, each once
+  until it is a week old and shown again, a failed one not tried again for 30 minutes, and
+  bounded (30 days unused, 2,000 rows, 16 MiB), pruned in the transaction that writes. The window
+  gets them as data: URLs (`PersonAvatar`, `frontend/src/lib/pictures.ts`), so it loads nothing
+  remote itself.
 - `internal/reporules/` holds the pinned and muted repositories and orgs (`repos.pinned` and
   `repos.muted`, each a list of `owner` or `owner/name`, a target in one list at most), which
   settings alone writes (`SetRepoRule`, emitting the Go-only `event.RepoRulesChanged`, which

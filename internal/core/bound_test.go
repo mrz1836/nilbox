@@ -432,6 +432,10 @@ func boundCalls(t *testing.T) map[string]boundCall {
 		"issues.Service.Replies": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
 			return c.Issues.Replies(ctx)
 		},
+		"issues.Service.Avatars": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
+			// No logins asks nothing of the avatar host.
+			return c.Issues.Avatars(ctx, nil)
+		},
 		"review.Service.Replies": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
 			got, err := c.Review.Replies(ctx, review.ReplyApprove)
 			require.NotEmpty(t, got.Replies)
