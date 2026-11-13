@@ -78,7 +78,11 @@ describe('NotificationsSection', () => {
     drag(slider, 8)
 
     expect(await screen.findByRole('alert')).toHaveTextContent('database is locked')
-    expect(slider).toHaveValue('12')
+    // The knob goes back once the refused save has settled, which can be a render after the
+    // alert shows.
+    await waitFor(() => {
+      expect(slider).toHaveValue('12')
+    })
     expect(screen.getByText('12 s')).toBeInTheDocument()
     expect(slider).toHaveAccessibleDescription(/database is locked/)
   })

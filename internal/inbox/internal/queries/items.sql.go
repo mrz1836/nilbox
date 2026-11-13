@@ -141,6 +141,85 @@ func (q *Queries) GetEditItem(ctx context.Context, id int64) (GetEditItemRow, er
 	return i, err
 }
 
+const getIssueItem = `-- name: GetIssueItem :one
+SELECT
+    i.id, i.kind, i.number, i.node_id, i.title, i.url, i.author_login, i.author_type, i.author_association,
+    i.item_created_at, i.item_updated_at, i.reason_assigned,
+    r.owner AS repo_owner, r.name AS repo_name, r.default_branch, r.viewer_permission, a.login AS account_login,
+    d.item_id AS details_item_id, d.labels, d.projects, d.comments, d.sub_issues_total, d.sub_issues_completed,
+    d.fetched_at AS details_fetched_at
+FROM items i
+JOIN repos r ON r.id = i.repo_id
+JOIN accounts a ON a.id = i.account_id
+LEFT JOIN item_details d ON d.item_id = i.id
+WHERE i.id = ?
+`
+
+type GetIssueItemRow struct {
+	ID                 int64
+	Kind               string
+	Number             int64
+	NodeID             string
+	Title              string
+	URL                string
+	AuthorLogin        string
+	AuthorType         string
+	AuthorAssociation  string
+	ItemCreatedAt      time.Time
+	ItemUpdatedAt      time.Time
+	ReasonAssigned     bool
+	RepoOwner          string
+	RepoName           string
+	DefaultBranch      string
+	ViewerPermission   string
+	AccountLogin       string
+	DetailsItemID      *int64
+	Labels             *string
+	Projects           *string
+	Comments           *int64
+	SubIssuesTotal     *int64
+	SubIssuesCompleted *int64
+	DetailsFetchedAt   *time.Time
+}
+
+// GetIssueItem returns what the issue sheet shows of the item with id before asking
+// GitHub: the item, its repository's default branch and the viewer's access to it, the
+// account whose inbox lists it, whether it is in Assigned (the only list an issue is in), and
+// its card's details when a refresh
+// has read them (a column of missing details is NULL). It returns sql.ErrNoRows when no
+// item has id.
+func (q *Queries) GetIssueItem(ctx context.Context, id int64) (GetIssueItemRow, error) {
+	row := q.db.QueryRowContext(ctx, getIssueItem, id)
+	var i GetIssueItemRow
+	err := row.Scan(
+		&i.ID,
+		&i.Kind,
+		&i.Number,
+		&i.NodeID,
+		&i.Title,
+		&i.URL,
+		&i.AuthorLogin,
+		&i.AuthorType,
+		&i.AuthorAssociation,
+		&i.ItemCreatedAt,
+		&i.ItemUpdatedAt,
+		&i.ReasonAssigned,
+		&i.RepoOwner,
+		&i.RepoName,
+		&i.DefaultBranch,
+		&i.ViewerPermission,
+		&i.AccountLogin,
+		&i.DetailsItemID,
+		&i.Labels,
+		&i.Projects,
+		&i.Comments,
+		&i.SubIssuesTotal,
+		&i.SubIssuesCompleted,
+		&i.DetailsFetchedAt,
+	)
+	return i, err
+}
+
 const getReviewItem = `-- name: GetReviewItem :one
 SELECT
     i.id, i.kind, i.number, i.node_id, i.title, i.url, i.author_login, i.author_type, i.author_association,

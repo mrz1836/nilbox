@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/mrz1836/nilbox/internal/clock"
+	"github.com/mrz1836/nilbox/internal/github"
 	"github.com/mrz1836/nilbox/internal/inbox/internal/queries"
 	"github.com/mrz1836/nilbox/internal/item"
 	"github.com/mrz1836/nilbox/internal/prefs"
@@ -280,4 +281,108 @@ func (s *Store) ReviewItem(ctx context.Context, id int64) (ReviewItem, error) {
 		ChangesRequested: int(store.Deref(r.ChangesRequested)), HeadOID: store.Deref(r.HeadOID),
 		AutoMerge: store.Deref(r.AutoMergeMethod), DetailsAt: store.Deref(r.DetailsFetchedAt).UTC(),
 	}, nil
+}
+
+// IssueItem is a stored issue as the issue sheet shows it before asking GitHub: the item,
+// its repository's default branch and the viewer's access to it, the lists it is in, and
+// its card's details, which are zero until a refresh has read them. Its labels, projects,
+// and sub-issue counts are the GitHub client's own types, as the card stores them.
+type IssueItem struct {
+	ID     int64
+	Kind   item.Kind
+	Number int
+	NodeID string
+	Title  string
+	URL    string
+
+	AuthorLogin       string
+	AuthorType        string
+	AuthorAssociation string
+
+	CreatedAt time.Time
+	UpdatedAt time.Time
+
+	// Assigned reports that the issue is in the Assigned list, the only list an issue is in.
+	Assigned bool
+
+	// Owner and Name are the repository, and DefaultBranch its default branch.
+	Owner         string
+	Name          string
+	DefaultBranch string
+
+	// ViewerPermission is the viewer's access to the repository: ADMIN, MAINTAIN, WRITE,
+	// TRIAGE, or READ.
+	ViewerPermission string
+
+	// Viewer is the account whose inbox lists the issue.
+	Viewer string
+
+	// HasDetails reports that a refresh has read the details below.
+	HasDetails bool
+
+	// Labels and Projects are in GitHub's order; never nil.
+	Labels   []github.Label
+	Comments int
+	Projects []github.ProjectItem
+
+	SubIssues github.SubIssues
+
+	// DetailsAt is when a refresh read the details; zero before one has.
+	DetailsAt time.Time
+}
+
+// IssueItem returns the stored item with id as the issue sheet reads it, or an error
+// matching item.ErrNotFound when no item has id.
+func (s *Store) IssueItem(ctx context.Context, id int64) (IssueItem, error) {
+	r, err := s.q.GetIssueItem(ctx, id)
+	if errors.Is(err, sql.ErrNoRows) {
+		return IssueItem{}, fmt.Errorf("%w (id %d)", item.ErrNotFound, id)
+	}
+
+	if err != nil {
+		return IssueItem{}, fmt.Errorf("read the item: %w", err)
+	}
+
+	labels, err := decodeColumn[storedLabel](r.Labels)
+	if err != nil {
+		return IssueItem{}, fmt.Errorf("the labels of item %d: %w", r.ID, err)
+	}
+
+	projects, err := decodeColumn[storedProject](r.Projects)
+	if err != nil {
+		return IssueItem{}, fmt.Errorf("the projects of item %d: %w", r.ID, err)
+	}
+
+	return IssueItem{
+		ID: r.ID, Kind: item.Kind(r.Kind), Number: int(r.Number), NodeID: r.NodeID, Title: r.Title, URL: r.URL,
+		AuthorLogin: r.AuthorLogin, AuthorType: r.AuthorType, AuthorAssociation: r.AuthorAssociation,
+		CreatedAt: r.ItemCreatedAt.UTC(), UpdatedAt: r.ItemUpdatedAt.UTC(), Assigned: r.ReasonAssigned,
+		Owner: r.RepoOwner, Name: r.RepoName, DefaultBranch: r.DefaultBranch, ViewerPermission: r.ViewerPermission,
+		Viewer: r.AccountLogin, HasDetails: r.DetailsItemID != nil, Labels: githubLabels(labels),
+		Comments: int(store.Deref(r.Comments)), Projects: githubProjects(projects),
+		SubIssues: github.SubIssues{
+			Total: int(store.Deref(r.SubIssuesTotal)), Completed: int(store.Deref(r.SubIssuesCompleted)),
+		},
+		DetailsAt: store.Deref(r.DetailsFetchedAt).UTC(),
+	}, nil
+}
+
+// githubLabels converts stored labels, never returning nil.
+func githubLabels(stored []storedLabel) []github.Label {
+	out := make([]github.Label, 0, len(stored))
+	for _, l := range stored {
+		out = append(out, github.Label(l))
+	}
+
+	return out
+}
+
+// githubProjects converts stored projects, never returning nil.
+func githubProjects(stored []storedProject) []github.ProjectItem {
+	out := make([]github.ProjectItem, 0, len(stored))
+	for _, p := range stored {
+		out = append(out, p.githubProject())
+	}
+
+	return out
 }

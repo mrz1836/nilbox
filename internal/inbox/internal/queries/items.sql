@@ -194,6 +194,25 @@ JOIN accounts a ON a.id = i.account_id
 LEFT JOIN item_details d ON d.item_id = i.id
 WHERE i.id = ?;
 
+-- name: GetIssueItem :one
+-- GetIssueItem returns what the issue sheet shows of the item with id before asking
+-- GitHub: the item, its repository's default branch and the viewer's access to it, the
+-- account whose inbox lists it, whether it is in Assigned (the only list an issue is in), and
+-- its card's details when a refresh
+-- has read them (a column of missing details is NULL). It returns sql.ErrNoRows when no
+-- item has id.
+SELECT
+    i.id, i.kind, i.number, i.node_id, i.title, i.url, i.author_login, i.author_type, i.author_association,
+    i.item_created_at, i.item_updated_at, i.reason_assigned,
+    r.owner AS repo_owner, r.name AS repo_name, r.default_branch, r.viewer_permission, a.login AS account_login,
+    d.item_id AS details_item_id, d.labels, d.projects, d.comments, d.sub_issues_total, d.sub_issues_completed,
+    d.fetched_at AS details_fetched_at
+FROM items i
+JOIN repos r ON r.id = i.repo_id
+JOIN accounts a ON a.id = i.account_id
+LEFT JOIN item_details d ON d.item_id = i.id
+WHERE i.id = ?;
+
 -- name: LeaveAssigned :exec
 -- LeaveAssigned takes the item with id out of the assigned list after the user took
 -- themselves off its assignees, stamped with the item's updated_at on GitHub after the
