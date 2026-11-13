@@ -106,7 +106,7 @@ const chipClass =
 
 // LabelChip is one label with its GitHub color: a button that filters the inbox by it,
 // when the card offers that, or else a plain chip.
-function LabelChip({ label, onFilterBy }: { label: Label; onFilterBy: FilterBy | undefined }) {
+export function LabelChip({ label, onFilterBy }: { label: Label; onFilterBy?: FilterBy | undefined }) {
   const children = (
     <>
       <span
@@ -178,7 +178,7 @@ function FieldPill({ field }: { field: ProjectField }) {
 // ProjectLink names the project an issue is in, with its status there as a pill in the
 // status's color and its featured fields (see featuredFields) as outlined pills, and
 // opens the project on GitHub. Its tooltip lists every field.
-function ProjectLink({ project }: { project: Project }) {
+export function ProjectLink({ project }: { project: Project }) {
   const where = projectText(project)
   const featured = featuredFields(project)
   const spoken = featured.map((f) => `, ${f.name} ${f.value}`).join('')
@@ -215,6 +215,27 @@ function ProjectLink({ project }: { project: Project }) {
   )
 }
 
+export interface ProgressBarProps {
+  // done of total is how far the bar is filled.
+  done: number
+  total: number
+  // className sizes the bar: by default it is 2.5rem wide.
+  className?: string
+}
+
+// ProgressBar is a small bar filled as far as done goes of total, in the success color. It
+// is decoration: the words beside it say how far.
+export function ProgressBar({ done, total, className = 'w-10' }: ProgressBarProps) {
+  return (
+    <span aria-hidden="true" className={`relative h-1.5 shrink-0 overflow-hidden rounded-full bg-border ${className}`}>
+      <span
+        className="absolute inset-y-0 left-0 rounded-full bg-success"
+        style={{ width: `${String(total > 0 ? Math.min(done / total, 1) * 100 : 0)}%` }}
+      />
+    </span>
+  )
+}
+
 // SubIssueProgress shows how many of an issue's sub-issues are done, as a count and a
 // small bar, green once all are.
 function SubIssueProgress({ subIssues }: { subIssues: SubIssues }) {
@@ -228,12 +249,7 @@ function SubIssueProgress({ subIssues }: { subIssues: SubIssues }) {
 
   return (
     <Slot long={`Sub-issues: ${subIssuesText(subIssues)}`} className={done ? 'text-success' : ''}>
-      <span className="relative h-1.5 w-10 overflow-hidden rounded-full bg-border">
-        <span
-          className="absolute inset-y-0 left-0 rounded-full bg-success"
-          style={{ width: `${String((completed / total) * 100)}%` }}
-        />
-      </span>
+      <ProgressBar done={completed} total={total} />
       <span>
         {formatCount(completed)}/{formatCount(total)}
       </span>

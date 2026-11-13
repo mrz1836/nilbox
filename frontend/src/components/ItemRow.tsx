@@ -254,7 +254,7 @@ function TriageTag({ item, tab }: { item: InboxItem; tab: TriageTab }) {
 // WorktreeTag marks an item that has a worktree, as the Worktrees view last listed it: its
 // uncommitted files, and the agent and age of its latest session, as in "worktree · 2
 // changes · Codex 3h ago".
-function WorktreeTag({ wt, agents }: { wt: Worktree; agents: readonly AgentInfo[] }) {
+export function WorktreeTag({ wt, agents }: { wt: Worktree; agents: readonly AgentInfo[] }) {
   const parts = ['worktree']
 
   if (wt.dirtyCount > 0) {

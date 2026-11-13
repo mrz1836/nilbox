@@ -21,7 +21,7 @@ import { ChevronDownIcon } from '../icons'
 import type { LaunchOptions } from '../ItemRow'
 import { LaunchControls } from '../LaunchControls'
 import { MenuButton, type MenuItem } from '../Menu'
-import { ActionButton } from './ActionButton'
+import { ActionButton, menuOnly } from './ActionButton'
 
 export interface ReviewComposerProps {
   review: Review
@@ -244,6 +244,7 @@ export function ReviewComposer({
           }}
           onRun={onRun}
           blocked={(action) => heldBack(offerOf(action), sentText(action, draft, body), draft.comments.length)}
+          menuOnly={menuOnly}
         />
         {launch !== null && item !== undefined && (
           <LaunchControls

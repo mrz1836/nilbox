@@ -1861,7 +1861,7 @@ describe('InboxView review sheet', () => {
     await userEvent.click(screen.getByRole('menuitem', { name: 'Review…' }))
 
     expect(await screen.findByText('1 of 2 in Review requested')).toBeInTheDocument()
-    await userEvent.click(screen.getByRole('button', { name: 'Next pull request' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Next' }))
     expect(await screen.findByRole('heading', { name: 'Second' })).toBeInTheDocument()
 
     await userEvent.click(screen.getByRole('button', { name: 'Close' }))
