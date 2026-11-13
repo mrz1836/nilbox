@@ -2,8 +2,9 @@ import { useEffect, useId, useRef, useState } from 'react'
 
 import { formatCount } from '../lib/format'
 import type { FilteredList } from '../lib/inboxFilter'
+import { shownItems, statusRanking } from '../lib/listOrder'
 import { prefersReducedMotion } from '../lib/motion'
-import { sortByStatus, statusesOf, statusOrder } from '../lib/statusOrder'
+import { statusesOf } from '../lib/statusOrder'
 import { tabOf, triageTabs, type TriagedList, type TriageTab } from '../lib/triage'
 import { worktreeOf } from '../lib/itemWorktrees'
 import { sessionsOf } from '../lib/sessions'
@@ -133,12 +134,10 @@ export function ListSection({
   // and the order the user's, with each status they haven't placed placed by its name.
   const statuses = statusesOf(triaged.inbox)
   const byStatus = order.byStatus
-  const ranked = statusOrder(
-    order.stored,
-    statuses.map((s) => s.name),
-  )
+  const ranked = statusRanking(triaged, order.stored)
   const shown = matched ?? triaged
-  const items = tab === 'inbox' && byStatus ? sortByStatus(shown.inbox, ranked) : shown[tab]
+  // The sheets step through the cards in this same order (shownItems).
+  const items = shownItems(triaged, tab, matched, order)
   const filtering = matched !== undefined
   // elsewhere are the other tabs that hold matches, for a tab that holds none.
   const elsewhere = filtering ? triageTabs.filter((t) => t !== tab && matched[t].length > 0) : []
