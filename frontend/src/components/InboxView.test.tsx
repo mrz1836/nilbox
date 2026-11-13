@@ -13,7 +13,7 @@ import { useIssueDrafts } from '../lib/issueDrafts'
 import { useReviewDrafts } from '../lib/reviewDrafts'
 import { ClockContext } from '../lib/useNow'
 import { useTriage } from '../lib/useTriage'
-import type { AfterMerge, InboxSnapshot, ListKey, RepoRules, ReviewResult, Settings } from '../platform'
+import type { AfterMerge, InboxItem, InboxSnapshot, ListKey, RepoRules, ReviewResult, Settings } from '../platform'
 import { clockAt, FIXED_NOW, fixedNow, fromNow } from '../test/clock'
 import {
   afterMerge,
@@ -2127,5 +2127,230 @@ describe('InboxView issue sheet', () => {
 
     expect(await screen.findByRole('dialog', { name: 'Parser bug' })).toBe(sheet)
     expect(within(sheet).queryByRole('button', { name: /^Back to/ })).not.toBeInTheDocument()
+  })
+})
+
+describe('InboxView triage in the sheets', () => {
+  // Two issues assigned to the user, and a pull request beside them.
+  const parser = item({ id: 1, kind: 'issue', number: 12, title: 'Parser drops the trailing newline', assigned: true })
+  const crash = item({ id: 2, kind: 'issue', number: 13, title: 'Crash on start', assigned: true })
+  const pull = item({ id: 3, number: 14, title: 'Keep the trailing newline', assigned: true })
+
+  // readsOf answers each read of an issue or a pull request with its card's name and title.
+  function readsOf(cards: readonly InboxItem[]) {
+    const card = (id: number) => cards.find((c) => c.id === id) ?? parser
+
+    platform.openIssue.mockImplementation((id) => {
+      const c = card(id)
+
+      return Promise.resolve(issue({ id, repo: c.repo, number: c.number, title: c.title }))
+    })
+    platform.refreshIssue.mockImplementation((id) => {
+      const c = card(id)
+
+      return Promise.resolve(issue({ id, repo: c.repo, number: c.number, title: c.title }))
+    })
+    platform.openReview.mockImplementation((id) => {
+      const c = card(id)
+
+      return Promise.resolve(review({ id, repo: c.repo, number: c.number, title: c.title }))
+    })
+    platform.refreshReview.mockImplementation((id) => {
+      const c = card(id)
+
+      return Promise.resolve(review({ id, repo: c.repo, number: c.number, title: c.title }))
+    })
+  }
+
+  it('snoozes the card from its sheet, moves on to the next, and keeps Undo in reach', async () => {
+    platform.getInboxSnapshot.mockResolvedValue(snapshot({ assigned: list([parser, crash]) }))
+    platform.snoozeItem.mockResolvedValue(
+      snapshot({ assigned: list([{ ...parser, snoozedUntil: '2026-06-18T12:00:00Z' }, crash]) }),
+    )
+    platform.restoreItem.mockResolvedValue(snapshot({ assigned: list([parser, crash]) }))
+    readsOf([parser, crash])
+    render(<Harness launch={launchOptions} clock={fixedNow} reviews />)
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Parser drops the trailing newline' }))
+    const sheet = await screen.findByRole('dialog', { name: 'Parser drops the trailing newline' })
+    expect(within(sheet).getByText('1 of 2 in Assigned')).toBeInTheDocument()
+
+    await userEvent.click(within(sheet).getByRole('button', { name: 'Snooze for 3 days' }))
+
+    expect(platform.snoozeItem).toHaveBeenCalledWith(1, 3)
+    expect(await screen.findByRole('dialog', { name: 'Crash on start' }), 'the next card, in the same sheet').toBe(
+      sheet,
+    )
+    expect(within(sheet).getByText('1 of 1 in Assigned')).toBeInTheDocument()
+
+    // The page behind the sheet is out of reach, so the toast shows in the sheet.
+    const toast = await within(sheet).findByRole('group', { name: 'Notification' })
+    expect(toast).toHaveTextContent(/^Snoozed until Thu, 12:00\sPM · Parser drops the trailing newline/)
+    await userEvent.click(within(toast).getByRole('button', { name: 'Undo' }))
+
+    expect(platform.restoreItem).toHaveBeenCalledWith(1)
+    expect(within(sheet).queryByRole('group', { name: 'Notification' })).not.toBeInTheDocument()
+  })
+
+  it('dismisses a pull request from the review sheet, which gives way to the issue after it', async () => {
+    platform.getInboxSnapshot.mockResolvedValue(snapshot({ assigned: list([pull, crash]) }))
+    platform.dismissItem.mockResolvedValue(
+      snapshot({ assigned: list([{ ...pull, dismissedAt: FIXED_NOW.toISOString() }, crash]) }),
+    )
+    readsOf([pull, crash])
+    render(<Harness launch={launchOptions} clock={fixedNow} reviews />)
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Keep the trailing newline' }))
+    const sheet = await screen.findByRole('dialog', { name: 'Keep the trailing newline' })
+    await userEvent.click(within(sheet).getByRole('button', { name: 'Dismiss' }))
+
+    expect(platform.dismissItem).toHaveBeenCalledWith(3)
+    expect(await screen.findByRole('dialog', { name: 'Crash on start' })).toBeInTheDocument()
+    expect(await within(screen.getByRole('dialog')).findByRole('group', { name: 'Notification' })).toHaveTextContent(
+      'Dismissed · Keep the trailing newline',
+    )
+  })
+
+  it('pins the card from its sheet, which stays on it', async () => {
+    platform.getInboxSnapshot.mockResolvedValue(snapshot({ assigned: list([parser, crash]) }))
+    platform.pinItem.mockResolvedValue(
+      snapshot({ assigned: list([{ ...crash, pinnedAt: FIXED_NOW.toISOString() }, parser]) }),
+    )
+    readsOf([parser, crash])
+    render(<Harness launch={launchOptions} clock={fixedNow} reviews />)
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Crash on start' }))
+    const sheet = await screen.findByRole('dialog', { name: 'Crash on start' })
+    expect(within(sheet).getByText('2 of 2 in Assigned')).toBeInTheDocument()
+
+    await userEvent.click(within(sheet).getByRole('button', { name: 'Pin to top' }))
+
+    expect(platform.pinItem).toHaveBeenCalledWith(2)
+    expect(await within(sheet).findByText('1 of 2 in Assigned'), 'pinned to the top of the list').toBeInTheDocument()
+    expect(screen.getByRole('dialog', { name: 'Crash on start' })).toBe(sheet)
+    expect(within(sheet).getByRole('button', { name: 'Unpin' })).toBeInTheDocument()
+  })
+
+  it('restores a dismissed card from its sheet, which closes once the tab holds no other', async () => {
+    const dismissed = { ...parser, dismissedAt: '2026-06-15T09:00:00Z' }
+    platform.getInboxSnapshot.mockResolvedValue(snapshot({ assigned: list([dismissed, crash]) }))
+    platform.restoreItem.mockResolvedValue(snapshot({ assigned: list([parser, crash]) }))
+    readsOf([parser, crash])
+    render(<Harness launch={launchOptions} clock={fixedNow} reviews />)
+
+    const assigned = await section('Assigned')
+    await userEvent.click(assigned.getByRole('tab', { name: 'Dismissed 1' }))
+    await userEvent.click(assigned.getByRole('button', { name: 'Parser drops the trailing newline' }))
+    const sheet = await screen.findByRole('dialog', { name: 'Parser drops the trailing newline' })
+    expect(within(sheet).queryByRole('button', { name: 'Dismiss' }), 'a dismissed card is brought back').toBeNull()
+
+    await userEvent.click(within(sheet).getByRole('button', { name: 'Restore' }))
+
+    expect(platform.restoreItem).toHaveBeenCalledWith(1)
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    })
+    expect(await screen.findByRole('status')).toHaveTextContent('Restored · Parser drops the trailing newline')
+  })
+
+  it('unmutes from its sheet, moving past the cards the same rule mutes', async () => {
+    const retry = item({ id: 5, kind: 'issue', number: 1, title: 'Retry the upload', repo: 'acme-org/api' })
+    const log = item({ id: 6, kind: 'issue', number: 2, title: 'Log the retries', repo: 'acme-org/api' })
+    const footer = item({ id: 7, kind: 'issue', number: 3, title: 'Fix the footer', repo: 'acme-org/web' })
+    const muted = [retry, log, footer].map((c) => ({ ...c, assigned: true, repoRule: 'muted' as const }))
+    platform.getInboxSnapshot.mockResolvedValue(snapshot({ assigned: list(muted) }))
+    platform.setRepoRule.mockResolvedValue(settings({ repoRules: { pinned: [], muted: ['acme-org/web'] } }))
+    readsOf(muted)
+    render(
+      <Harness
+        launch={launchOptions}
+        clock={fixedNow}
+        reviews
+        repoRules={{ pinned: [], muted: ['acme-org/api', 'acme-org/web'] }}
+      />,
+    )
+
+    const assigned = await section('Assigned')
+    await userEvent.click(assigned.getByRole('tab', { name: 'Muted 3' }))
+    await userEvent.click(assigned.getByRole('button', { name: 'Retry the upload' }))
+    const sheet = await screen.findByRole('dialog', { name: 'Retry the upload' })
+
+    await userEvent.click(within(sheet).getByRole('button', { name: 'Unmute acme-org/api' }))
+
+    expect(platform.setRepoRule).toHaveBeenCalledExactlyOnceWith('acme-org/api', '')
+    expect(await screen.findByRole('dialog', { name: 'Fix the footer' }), 'past the other api card').toBe(sheet)
+  })
+
+  it('goes back to the card when the backend refuses what the sheet asked', async () => {
+    platform.getInboxSnapshot.mockResolvedValue(snapshot({ assigned: list([parser, crash]) }))
+    platform.dismissItem.mockRejectedValue(new Error('database is locked'))
+    readsOf([parser, crash])
+    render(<Harness launch={launchOptions} clock={fixedNow} reviews />)
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Parser drops the trailing newline' }))
+    const sheet = await screen.findByRole('dialog', { name: 'Parser drops the trailing newline' })
+    await userEvent.click(within(sheet).getByRole('button', { name: 'Dismiss' }))
+
+    expect(await within(sheet).findByRole('group', { name: 'Notification' })).toHaveTextContent(
+      'Could not dismiss “Parser drops the trailing newline” · database is locked',
+    )
+    expect(screen.getByRole('dialog', { name: 'Parser drops the trailing newline' })).toBe(sheet)
+    expect(within(sheet).getByText('1 of 2 in Assigned')).toBeInTheDocument()
+  })
+
+  it('stays on a card that left the tab by itself, which a snooze from the sheet brings back', async () => {
+    const snoozed = { ...parser, snoozedUntil: '2026-06-18T12:00:00Z' }
+    const other = { ...crash, snoozedUntil: '2026-06-19T12:00:00Z' }
+    platform.getInboxSnapshot.mockResolvedValue(snapshot({ assigned: list([snoozed, other]) }))
+    platform.snoozeItem.mockResolvedValue(snapshot({ assigned: list([snoozed, other]) }))
+    readsOf([parser, crash])
+    render(<Harness launch={launchOptions} clock={fixedNow} reviews />)
+
+    const assigned = await section('Assigned')
+    await userEvent.click(assigned.getByRole('tab', { name: 'Snoozed 2' }))
+    await userEvent.click(assigned.getByRole('button', { name: 'Parser drops the trailing newline' }))
+    const sheet = await screen.findByRole('dialog', { name: 'Parser drops the trailing newline' })
+    expect(within(sheet).getByRole('button', { name: 'Unsnooze' })).toBeInTheDocument()
+
+    // Its snooze ends while the sheet is open, so it is back in the list, and the sheet keeps it.
+    platform.getInboxSnapshot.mockResolvedValue(snapshot({ assigned: list([parser, other]) }))
+    act(() => {
+      emit('inbox:updated')
+    })
+    const snooze = await within(sheet).findByRole('button', { name: 'Snooze for 3 days' })
+
+    await userEvent.click(snooze)
+
+    expect(platform.snoozeItem).toHaveBeenCalledWith(1, 3)
+    expect(await within(sheet).findByRole('button', { name: 'Unsnooze' }), 'snoozed again').toBeInTheDocument()
+    expect(screen.getByRole('dialog', { name: 'Parser drops the trailing newline' })).toBe(sheet)
+  })
+
+  it('stays on a card another rule still mutes once its own is taken off', async () => {
+    const retry = item({ id: 5, kind: 'issue', number: 1, title: 'Retry the upload', repo: 'acme-org/api' })
+    const footer = item({ id: 7, kind: 'issue', number: 3, title: 'Fix the footer', repo: 'acme-org/web' })
+    const muted = [retry, footer].map((c) => ({ ...c, assigned: true, repoRule: 'muted' as const }))
+    platform.getInboxSnapshot.mockResolvedValue(snapshot({ assigned: list(muted) }))
+    platform.setRepoRule.mockResolvedValue(settings({ repoRules: { pinned: [], muted: ['acme-org'] } }))
+    readsOf(muted)
+    render(
+      <Harness
+        launch={launchOptions}
+        clock={fixedNow}
+        reviews
+        repoRules={{ pinned: [], muted: ['acme-org', 'acme-org/api'] }}
+      />,
+    )
+
+    const assigned = await section('Assigned')
+    await userEvent.click(assigned.getByRole('tab', { name: 'Muted 2' }))
+    await userEvent.click(assigned.getByRole('button', { name: 'Retry the upload' }))
+    const sheet = await screen.findByRole('dialog', { name: 'Retry the upload' })
+
+    await userEvent.click(within(sheet).getByRole('button', { name: 'Unmute acme-org/api' }))
+
+    expect(platform.setRepoRule).toHaveBeenCalledExactlyOnceWith('acme-org/api', '')
+    expect(await within(sheet).findByRole('group', { name: 'Notification' })).toBeInTheDocument()
+    expect(screen.getByRole('dialog', { name: 'Retry the upload' }), 'the org still mutes it').toBe(sheet)
   })
 })

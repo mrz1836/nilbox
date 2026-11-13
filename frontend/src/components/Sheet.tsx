@@ -15,6 +15,9 @@ export interface SheetProps {
   // another item in place, as a link in it or its step back does: the control that moved
   // it may be gone with what it showed, which would leave focus nowhere.
   refocus?: number | undefined
+  // toast is a message shown over the sheet, such as the inbox's toast with its Undo,
+  // which the page behind the sheet can't show: the sheet makes it inert.
+  toast?: ReactNode
   children: ReactNode
 }
 
@@ -24,7 +27,7 @@ export interface SheetProps {
 // focus goes back where it was when it closes. Focus starts on the sheet itself, so its
 // own keys work at once, unless initialFocus picks a control in it. Render it only while
 // it is open.
-export function Sheet({ labelledBy, onClose, initialFocus, refocus = 0, children }: SheetProps) {
+export function Sheet({ labelledBy, onClose, initialFocus, refocus = 0, toast, children }: SheetProps) {
   const dialogRef = useRef<HTMLDialogElement>(null)
   const bodyRef = useRef<HTMLDivElement>(null)
   const firstFocus = () => {
@@ -60,6 +63,7 @@ export function Sheet({ labelledBy, onClose, initialFocus, refocus = 0, children
       <div ref={bodyRef} tabIndex={-1} className="relative flex min-h-0 flex-1 flex-col outline-none">
         {children}
       </div>
+      {toast}
     </dialog>
   )
 }

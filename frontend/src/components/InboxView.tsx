@@ -9,8 +9,9 @@ import { itemKey, noWorktrees, worktreeOf } from '../lib/itemWorktrees'
 import { sheetCards, shownOrder } from '../lib/listOrder'
 import { isInboxNil } from '../lib/nil'
 import type { ReviewDrafts } from '../lib/reviewDrafts'
-import { ownRule } from '../lib/repoRules'
+import { ownRule, ruleFor, withRepoRule } from '../lib/repoRules'
 import { noSessions, sessionsOf } from '../lib/sessions'
+import { movesOnTo } from '../lib/sheet'
 import { formatAgo, formatWhen } from '../lib/time'
 import { findItem, isDismissed, itemsByRef, tabOf, type TriagedInbox, type TriageTab } from '../lib/triage'
 import type { InboxState } from '../lib/useInbox'
@@ -44,7 +45,7 @@ import { ProjectsTip } from './ProjectsTip'
 import { RelativeTime } from './RelativeTime'
 import { ReviewSheet } from './review/ReviewSheet'
 import { defaultToastSeconds, Toast, type ToastMessage } from './Toast'
-import type { TriageActions } from './TriageControls'
+import { SheetTriage, type TriageActions } from './TriageControls'
 
 export type { LaunchOptions } from './ItemRow'
 export type { Reveal } from './ListSection'
@@ -468,21 +469,66 @@ export function InboxView({
 
   // changeRule pins, mutes, or takes the rule off a repository or an org, as a card asked,
   // and says so in a toast whose Undo puts back the rule the target had. The inbox shows the
-  // change once the backend has rebuilt it under the new rules ("inbox:updated").
-  const changeRule = (target: string, rule: RepoRule) => {
+  // change once the backend has rebuilt it under the new rules ("inbox:updated"). It
+  // resolves with whether the rule changed.
+  const changeRule = async (target: string, rule: RepoRule): Promise<boolean> => {
     const was = ownRule(repoRules, target)
+    const done = await setRule(target, rule)
 
-    void setRule(target, rule).then((done) => {
-      if (done) {
-        showToast({
-          ...ruleChangeWords(target, was, rule),
-          undo: () => {
-            closeToast()
-            void setRule(target, was)
-          },
-        })
-      }
-    })
+    if (done) {
+      showToast({
+        ...ruleChangeWords(target, was, rule),
+        undo: () => {
+          closeToast()
+          void setRule(target, was)
+        },
+      })
+    }
+
+    return done
+  }
+
+  // dismissIt, snoozeIt, and restoreIt set an item aside or bring it back, and say so in a
+  // toast, or why the backend refused; each resolves with whether it took the change.
+  const dismissIt = async (item: InboxItem): Promise<boolean> => {
+    const result = await dismiss(item.id)
+
+    if (result.ok) {
+      showToast({ text: 'Dismissed', detail: item.title, undo: undo(item) })
+    } else {
+      failed('dismiss', item, result.error)
+    }
+
+    return result.ok
+  }
+
+  const snoozeIt = async (item: InboxItem, days: number): Promise<boolean> => {
+    const result = await snooze(item.id, days)
+
+    if (!result.ok) {
+      failed('snooze', item, result.error)
+
+      return false
+    }
+
+    const until = findItem(result.data, item.id)?.snoozedUntil ?? ''
+    const text = until === '' ? 'Snoozed' : `Snoozed until ${formatWhen(clock.getSnapshot(), new Date(until))}`
+
+    showToast({ text, detail: item.title, undo: undo(item) })
+
+    return true
+  }
+
+  const restoreIt = async (item: InboxItem): Promise<boolean> => {
+    const result = await restore(item.id)
+
+    if (result.ok) {
+      showToast({ text: isDismissed(item) ? 'Restored' : 'Unsnoozed', detail: item.title })
+    } else {
+      failed('restore', item, result.error)
+    }
+
+    return result.ok
   }
 
   // triage is what every row's triage buttons do. It reads no time while rendering (the
@@ -491,36 +537,13 @@ export function InboxView({
   const triage: TriageActions = {
     snoozeDays,
     onDismiss: (item) => {
-      void dismiss(item.id).then((result) => {
-        if (result.ok) {
-          showToast({ text: 'Dismissed', detail: item.title, undo: undo(item) })
-        } else {
-          failed('dismiss', item, result.error)
-        }
-      })
+      void dismissIt(item)
     },
     onSnooze: (item, days) => {
-      void snooze(item.id, days).then((result) => {
-        if (!result.ok) {
-          failed('snooze', item, result.error)
-
-          return
-        }
-
-        const until = findItem(result.data, item.id)?.snoozedUntil ?? ''
-        const text = until === '' ? 'Snoozed' : `Snoozed until ${formatWhen(clock.getSnapshot(), new Date(until))}`
-
-        showToast({ text, detail: item.title, undo: undo(item) })
-      })
+      void snoozeIt(item, days)
     },
     onRestore: (item) => {
-      void restore(item.id).then((result) => {
-        if (result.ok) {
-          showToast({ text: isDismissed(item) ? 'Restored' : 'Unsnoozed', detail: item.title })
-        } else {
-          failed('restore', item, result.error)
-        }
-      })
+      void restoreIt(item)
     },
     // A pin shows at once, as the item moves to the top, so it needs no toast.
     onPin: (item) => {
@@ -550,7 +573,9 @@ export function InboxView({
     },
     onChangeDefault: onSnoozeSettings,
     repoRules,
-    onRepoRule: changeRule,
+    onRepoRule: (target, rule) => {
+      void changeRule(target, rule)
+    },
     onRepoRuleSettings: onRepoRuleSettings ?? (() => undefined),
   }
 
@@ -623,16 +648,19 @@ export function InboxView({
         )
   const listTitle = viewing === null ? '' : (sections.find(({ key }) => key === viewing.list)?.title ?? '')
 
-  // step moves a sheet to the card with id, which switches the sheet when its kind
-  // differs.
+  // toCard is the sheet from moved to the card with id among its cards, which switches the
+  // sheet when its kind differs.
+  const toCard = (from: Viewing, id: number): Viewing => ({
+    ...from,
+    id,
+    kind: siblings.find((s) => s.id === id)?.kind ?? from.kind,
+    arrow: focusedArrow(),
+  })
+
+  // step moves a sheet to the card with id.
   const step = (id: number) => {
     if (viewing !== null) {
-      setViewing({
-        ...viewing,
-        id,
-        kind: siblings.find((s) => s.id === id)?.kind ?? viewing.kind,
-        arrow: focusedArrow(),
-      })
+      setViewing(toCard(viewing, id))
     }
   }
   const initialFocus = viewing === null || viewing.arrow === '' ? undefined : `[data-step="${viewing.arrow}"]`
@@ -688,6 +716,70 @@ export function InboxView({
 
     return error
   }
+
+  // leaving runs act, a triage action from a sheet that takes its card out of the tab the
+  // sheet steps through, along with every card leaves says goes too. The sheet moves on at
+  // once, as the inbox shows the action at once: to the nearest card after it that stays,
+  // else the nearest before it, or it closes, worked out before the action changes the
+  // cards. Should the backend refuse, a sheet still on the card it moved to goes back. A
+  // card the tab no longer holds, as one whose snooze ended while it was open, has no place
+  // to move on from, and keeps the sheet.
+  const leaving = (act: () => Promise<boolean>, leaves: (card: InboxItem) => boolean = () => false) => {
+    const from = viewing
+
+    if (from === null || !siblings.some((s) => s.id === from.id)) {
+      void act()
+
+      return
+    }
+
+    const after = movesOnTo(siblings, from.id, leaves)
+    const moved = after === undefined ? null : toCard(from, after.id)
+
+    setViewing(moved)
+    void act().then((done) => {
+      if (!done && moved !== null) {
+        setViewing((now) => (now === moved ? from : now))
+      }
+    })
+  }
+  // sheetTriage is what the triage buttons in a sheet's header do: what a row's do, with a
+  // snooze, a dismissal, and a restore moving the sheet on (leaving).
+  const sheetTriage: TriageActions = {
+    ...triage,
+    onSnooze: (item, days) => {
+      leaving(() => snoozeIt(item, days))
+    },
+    onDismiss: (item) => {
+      leaving(() => dismissIt(item))
+    },
+    onRestore: (item) => {
+      leaving(() => restoreIt(item))
+    },
+    // Unmute is the one rule a sheet changes. The card leaves the Muted tab only when no
+    // rule mutes it once the change is made, as an org's still would once its repository's
+    // own is taken off, and every card the change unmutes leaves with it.
+    onRepoRule: (target, rule) => {
+      const changed = withRepoRule(repoRules, target, rule)
+      const unmuted = (card: InboxItem) =>
+        ruleFor(repoRules, card.repo).rule === 'muted' && ruleFor(changed, card.repo).rule !== 'muted'
+
+      if (viewed !== undefined && unmuted(viewed)) {
+        leaving(() => changeRule(target, rule), unmuted)
+      } else {
+        void changeRule(target, rule)
+      }
+    },
+  }
+  // The card's own tab decides its triage buttons, which may differ from the tab the sheet
+  // steps through, as when a snooze ended while the sheet was open.
+  const cardTab = viewing === null || triaged === null ? null : tabOf(triaged.lists[viewing.list], viewing.id)
+  const sheetTriageButtons =
+    viewed === undefined || cardTab === null ? null : <SheetTriage item={viewed} tab={cardTab} actions={sheetTriage} />
+  // While a sheet is open, the toast shows in it: the page behind it is inert, so its Undo
+  // couldn't be reached there.
+  const sheetOpen = viewing !== null && sheets
+  const sheetToast = <Toast toast={toast} seconds={toastSeconds} onClose={closeToast} />
 
   return (
     <div className="flex flex-col gap-4 p-4">
@@ -800,6 +892,8 @@ export function InboxView({
             initialFocus={initialFocus}
             refocus={viewing.refocus}
             back={back}
+            triage={sheetTriageButtons}
+            toast={sheetToast}
           />
         )}
         {viewing !== null && sheets && viewing.kind === 'issue' && (
@@ -825,10 +919,12 @@ export function InboxView({
             initialFocus={initialFocus}
             refocus={viewing.refocus}
             back={back}
+            triage={sheetTriageButtons}
+            toast={sheetToast}
           />
         )}
       </LinksContext>
-      <Toast toast={toast} seconds={toastSeconds} onClose={closeToast} />
+      <Toast toast={sheetOpen ? null : toast} seconds={toastSeconds} onClose={closeToast} />
     </div>
   )
 }

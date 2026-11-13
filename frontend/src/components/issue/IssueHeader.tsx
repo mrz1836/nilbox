@@ -1,3 +1,5 @@
+import type { ReactNode } from 'react'
+
 import { issueLook } from '../../lib/issues'
 import type { SheetBack, SheetStep } from '../../lib/sheet'
 import { formatAgo } from '../../lib/time'
@@ -22,6 +24,8 @@ export interface IssueHeaderProps {
   next: SheetStep | null
   // back returns to the sheet a link was followed from, or is null.
   back?: SheetBack | null
+  // actions are the card's own buttons before the steps, such as its triage.
+  actions?: ReactNode
   // onRefresh reads the issue from GitHub again: its conversation, details, and what the
   // user may do.
   onRefresh: () => void
@@ -43,6 +47,7 @@ export function IssueHeader({
   prev,
   next,
   back = null,
+  actions,
   onRefresh,
   onClose,
 }: IssueHeaderProps) {
@@ -91,6 +96,7 @@ export function IssueHeader({
       prev={prev}
       next={next}
       back={back}
+      actions={actions}
       refreshTitle="Read it from GitHub again: the conversation, the details, and what you can do"
       onRefresh={onRefresh}
       onClose={onClose}

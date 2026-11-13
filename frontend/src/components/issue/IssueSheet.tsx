@@ -1,4 +1,4 @@
-import { useId, useLayoutEffect, useRef, useState } from 'react'
+import { useId, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 
 import { refText } from '../../lib/format'
 import {
@@ -71,6 +71,10 @@ export interface IssueSheetProps {
   refocus?: number | undefined
   // back returns to the sheet a link was followed from, or is null.
   back?: SheetBack | null
+  // triage is the card's triage, in the header, and toast the inbox's toast, which shows in
+  // the sheet while it is open, since the page behind it can't be reached.
+  triage?: ReactNode
+  toast?: ReactNode
 }
 
 // Notice is what the sheet says of one issue after an action on it: a close refused for a
@@ -121,6 +125,8 @@ export function IssueSheet({
   initialFocus,
   refocus,
   back = null,
+  triage,
+  toast,
 }: IssueSheetProps) {
   const titleId = useId()
   const loaded = useIssue(id)
@@ -251,7 +257,7 @@ export function IssueSheet({
     issue !== null && !loaded.checking && (changedSince(issue, item) || (issue.stale && issue.fetchedAt !== ''))
 
   return (
-    <Sheet labelledBy={titleId} onClose={close} initialFocus={initialFocus} refocus={refocus}>
+    <Sheet labelledBy={titleId} onClose={close} initialFocus={initialFocus} refocus={refocus} toast={toast}>
       <div inert={working} className="flex min-h-0 flex-1 flex-col">
         <IssueHeader
           titleId={titleId}
@@ -262,6 +268,7 @@ export function IssueSheet({
           prev={toPrev}
           next={toNext}
           back={back}
+          actions={triage}
           onRefresh={() => {
             loaded.reload()
           }}

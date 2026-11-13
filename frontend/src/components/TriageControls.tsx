@@ -176,21 +176,84 @@ function PinButton({ item, actions }: { item: InboxItem; actions: TriageActions 
   )
 }
 
-// TriageControls are a row's quiet triage buttons. In a list's inbox tab they are
-// Refresh (this item alone, from GitHub), the Snooze split button (the default length in
-// one click, with the arrow for another), Dismiss, and Pin, shown while the pointer is on
-// the row or focus is in it, so the cards stay clean, and while a refresh runs. A pinned
-// item's pin is always shown, filled, and unpins it. In the Snoozed and Dismissed tabs
-// they are a single Unsnooze or Restore, always shown, since bringing items back is what
-// those tabs are for, with the pin of a pinned item beside it; in the Muted tab, Unmute,
-// which unmutes the repository or org that mutes the item.
-export function TriageControls({ item, tab, actions, work, start }: TriageControlsProps) {
+// SnoozeSplit is the Snooze split button: the Snooze button's own length in one click,
+// with the arrow for another length.
+function SnoozeSplit({ item, actions }: { item: InboxItem; actions: TriageActions }) {
   const clock = useClock()
   // pointedAt is when the pointer or focus last reached the Snooze button, whose tooltip
   // says when a snooze from then would end. It is worked out only then, so the rows
   // have nothing to render as the clock moves on.
   const [pointedAt, setPointedAt] = useState<Date | null>(null)
+  const { snoozeDays } = actions
+  const length = snoozeLength(snoozeDays)
+  const snoozeTitle =
+    pointedAt === null
+      ? `Snooze for ${length}`
+      : `Snooze for ${length}: back ${formatWhen(pointedAt, snoozeEnd(pointedAt, snoozeDays))}`
 
+  const point = () => {
+    setPointedAt(clock.getSnapshot())
+  }
+
+  return (
+    <div className="flex items-center">
+      <button
+        type="button"
+        aria-label={`Snooze for ${length}`}
+        title={snoozeTitle}
+        onPointerEnter={point}
+        onFocus={point}
+        onClick={() => {
+          actions.onSnooze(item, snoozeDays)
+        }}
+        className={`${ghostClass} rounded-r-none pr-1`}
+      >
+        <ClockIcon className="size-3.5" />
+        {snoozeShort(snoozeDays)}
+      </button>
+      <MenuButton
+        label="Snooze for…"
+        title="Snooze for another length"
+        heading="Snooze until"
+        items={() => snoozeItems(item, actions)}
+        className={`${ghostClass} rounded-l-none px-1`}
+      >
+        <ChevronDownIcon className="size-3" />
+      </MenuButton>
+    </div>
+  )
+}
+
+// DismissButton hides an item until the user restores it.
+function DismissButton({ item, actions }: { item: InboxItem; actions: TriageActions }) {
+  return (
+    <button
+      type="button"
+      aria-label="Dismiss"
+      title="Dismiss: hide it until you restore it"
+      onClick={() => {
+        actions.onDismiss(item)
+      }}
+      className={ghostClass}
+    >
+      <ArchiveIcon className="size-3.5" />
+    </button>
+  )
+}
+
+// BringBack is the one button of the tabs an item is set aside in, always shown, since
+// bringing items back is what those tabs are for: Unsnooze or Restore, which put it back in
+// the list, or, in the Muted tab, Unmute, which unmutes the repository or org that mutes it.
+// A pinned item's pin sits beside it.
+function BringBack({
+  item,
+  tab,
+  actions,
+}: {
+  item: InboxItem
+  tab: Exclude<TriageTab, 'inbox'>
+  actions: TriageActions
+}) {
   if (tab === 'muted') {
     const target = mutedTarget(item, actions.repoRules)
 
@@ -213,36 +276,35 @@ export function TriageControls({ item, tab, actions, work, start }: TriageContro
     )
   }
 
+  const snoozed = tab === 'snoozed'
+
+  return (
+    <div className="flex items-center gap-0.5 self-center">
+      <button
+        type="button"
+        title={snoozed ? 'End the snooze and put it back in the list now' : 'Put it back in the list'}
+        onClick={() => {
+          actions.onRestore(item)
+        }}
+        className={ghostClass}
+      >
+        <ResetIcon className="size-3.5" />
+        {snoozed ? 'Unsnooze' : 'Restore'}
+      </button>
+      {isPinned(item) && <PinButton item={item} actions={actions} />}
+    </div>
+  )
+}
+
+// TriageControls are a row's quiet triage buttons. In a list's inbox tab they are
+// Refresh (this item alone, from GitHub), the Snooze split button (the default length in
+// one click, with the arrow for another), Dismiss, and Pin, shown while the pointer is on
+// the row or focus is in it, so the cards stay clean, and while a refresh runs. A pinned
+// item's pin is always shown, filled, and unpins it. In the Snoozed, Dismissed, and Muted
+// tabs they are the one button that brings it back (BringBack).
+export function TriageControls({ item, tab, actions, work, start }: TriageControlsProps) {
   if (tab !== 'inbox') {
-    const snoozed = tab === 'snoozed'
-
-    return (
-      <div className="flex items-center gap-0.5 self-center">
-        <button
-          type="button"
-          title={snoozed ? 'End the snooze and put it back in the list now' : 'Put it back in the list'}
-          onClick={() => {
-            actions.onRestore(item)
-          }}
-          className={ghostClass}
-        >
-          <ResetIcon className="size-3.5" />
-          {snoozed ? 'Unsnooze' : 'Restore'}
-        </button>
-        {isPinned(item) && <PinButton item={item} actions={actions} />}
-      </div>
-    )
-  }
-
-  const { snoozeDays } = actions
-  const length = snoozeLength(snoozeDays)
-  const snoozeTitle =
-    pointedAt === null
-      ? `Snooze for ${length}`
-      : `Snooze for ${length}: back ${formatWhen(pointedAt, snoozeEnd(pointedAt, snoozeDays))}`
-
-  const point = () => {
-    setPointedAt(clock.getSnapshot())
+    return <BringBack item={item} tab={tab} actions={actions} />
   }
 
   const refreshing = work === 'refresh'
@@ -266,47 +328,38 @@ export function TriageControls({ item, tab, actions, work, start }: TriageContro
         >
           <RefreshIcon className={`size-3.5 ${refreshing ? 'motion-safe:animate-spin' : ''}`} />
         </button>
-        <div className="flex items-center">
-          <button
-            type="button"
-            aria-label={`Snooze for ${length}`}
-            title={snoozeTitle}
-            onPointerEnter={point}
-            onFocus={point}
-            onClick={() => {
-              actions.onSnooze(item, snoozeDays)
-            }}
-            className={`${ghostClass} rounded-r-none pr-1`}
-          >
-            <ClockIcon className="size-3.5" />
-            {snoozeShort(snoozeDays)}
-          </button>
-          <MenuButton
-            label="Snooze for…"
-            title="Snooze for another length"
-            heading="Snooze until"
-            items={() => snoozeItems(item, actions)}
-            className={`${ghostClass} rounded-l-none px-1`}
-          >
-            <ChevronDownIcon className="size-3" />
-          </MenuButton>
-        </div>
-        <button
-          type="button"
-          aria-label="Dismiss"
-          title="Dismiss: hide it until you restore it"
-          onClick={() => {
-            actions.onDismiss(item)
-          }}
-          className={ghostClass}
-        >
-          <ArchiveIcon className="size-3.5" />
-        </button>
+        <SnoozeSplit item={item} actions={actions} />
+        <DismissButton item={item} actions={actions} />
       </div>
       {/* A pinned item's pin shows without hovering, to mark it and unpin it. */}
       <div className={isPinned(item) ? 'flex' : hover}>
         <PinButton item={item} actions={actions} />
       </div>
+    </div>
+  )
+}
+
+export interface SheetTriageProps {
+  item: InboxItem
+  // tab is the list tab the card is in now, which decides the buttons it gets.
+  tab: TriageTab
+  actions: TriageActions
+}
+
+// SheetTriage is the card's triage in a sheet's header, the row's buttons always shown: in
+// the inbox tab the Snooze split button, Dismiss, and Pin, and in the tabs an item is set
+// aside in, the one that brings it back. The sheet reads the card from GitHub itself, so it
+// has no Refresh of the row's.
+export function SheetTriage({ item, tab, actions }: SheetTriageProps) {
+  if (tab !== 'inbox') {
+    return <BringBack item={item} tab={tab} actions={actions} />
+  }
+
+  return (
+    <div className="flex items-center gap-0.5">
+      <SnoozeSplit item={item} actions={actions} />
+      <DismissButton item={item} actions={actions} />
+      <PinButton item={item} actions={actions} />
     </div>
   )
 }

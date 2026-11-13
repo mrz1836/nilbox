@@ -1,4 +1,4 @@
-import { useId, useState } from 'react'
+import { useId, useState, type ReactNode } from 'react'
 
 import { refText } from '../../lib/format'
 import type { ReviewDrafts } from '../../lib/reviewDrafts'
@@ -57,6 +57,10 @@ export interface ReviewSheetProps {
   refocus?: number | undefined
   // back returns to the sheet a link was followed from, or is null.
   back?: SheetBack | null
+  // triage is the card's triage, in the header, and toast the inbox's toast, which shows in
+  // the sheet while it is open, since the page behind it can't be reached.
+  triage?: ReactNode
+  toast?: ReactNode
 }
 
 // selectedAction is the action the sheet's button runs: the one the user chose, while the
@@ -108,6 +112,8 @@ export function ReviewSheet({
   initialFocus,
   refocus,
   back = null,
+  triage,
+  toast,
 }: ReviewSheetProps) {
   const titleId = useId()
   const loaded = useReview(id)
@@ -243,7 +249,7 @@ export function ReviewSheet({
   })
 
   return (
-    <Sheet labelledBy={titleId} onClose={close} initialFocus={initialFocus} refocus={refocus}>
+    <Sheet labelledBy={titleId} onClose={close} initialFocus={initialFocus} refocus={refocus} toast={toast}>
       <div inert={working} className="flex min-h-0 flex-1 flex-col">
         <ReviewHeader
           titleId={titleId}
@@ -254,6 +260,7 @@ export function ReviewSheet({
           onPrev={toPrev}
           onNext={toNext}
           back={back}
+          actions={triage}
           onClose={close}
           // A notice that it was pushed to since stays until its own Reload is clicked.
           onRefresh={() => {
