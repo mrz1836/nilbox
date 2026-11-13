@@ -12,7 +12,6 @@ import (
 	"github.com/mrz1836/nilbox/internal/github"
 	"github.com/mrz1836/nilbox/internal/inbox/internal/queries"
 	"github.com/mrz1836/nilbox/internal/item"
-	"github.com/mrz1836/nilbox/internal/repo"
 	"github.com/mrz1836/nilbox/internal/store"
 	"github.com/mrz1836/nilbox/internal/uierr"
 )
@@ -75,20 +74,39 @@ func (k editKind) verb() string {
 	return "unassign"
 }
 
+// outcome is what an edit GitHub made tells.
+func (k editKind) outcome() OutcomeKind {
+	if k == editReview {
+		return OutcomeUnrequested
+	}
+
+	return OutcomeUnassigned
+}
+
 // edit makes one edit to the item with id on GitHub, then stores what GitHub answered and
 // returns the new snapshot. GitHub having made the edit, a failure to store it is
-// returned, and the next refresh catches the inbox up.
+// returned, and the next refresh catches the inbox up. Once it has let go of the item, it
+// tells the outcome sink of the edit GitHub made, stored or not.
 func (s *Service) edit(ctx context.Context, id int64, kind editKind) (Snapshot, error) {
+	snap, told, err := s.editLocked(ctx, id, kind)
+	s.settle(ctx, told)
+
+	return snap, err
+}
+
+// editLocked is edit under the item's lock. It returns what to tell once the lock is let
+// go.
+func (s *Service) editLocked(ctx context.Context, id int64, kind editKind) (Snapshot, []Outcome, error) {
 	unlock, err := s.items.lock(ctx, id)
 	if err != nil {
-		return Snapshot{}, fmt.Errorf("%s: %w", kind.verb(), err)
+		return Snapshot{}, nil, fmt.Errorf("%s: %w", kind.verb(), err)
 	}
 
 	defer unlock()
 
 	target, err := s.editTarget(ctx, id, kind)
 	if err != nil {
-		return Snapshot{}, fmt.Errorf("%s: %w", kind.verb(), err)
+		return Snapshot{}, nil, fmt.Errorf("%s: %w", kind.verb(), err)
 	}
 
 	edited, err := github.WithToken(ctx, s.tokens, func(tok github.Token) (*github.Edited, error) {
@@ -103,21 +121,25 @@ func (s *Service) edit(ctx context.Context, id int64, kind editKind) (Snapshot, 
 		return s.client.RemoveAssignee(ctx, tok, target.ref, target.login)
 	})
 	if err != nil {
-		return Snapshot{}, fmt.Errorf("%s: %w", kind.verb(), err)
+		return Snapshot{}, nil, fmt.Errorf("%s: %w", kind.verb(), err)
 	}
 
 	if edited == nil {
-		return Snapshot{}, fmt.Errorf("%s: %w", kind.verb(), ErrIncompleteFetch)
+		return Snapshot{}, nil, fmt.Errorf("%s: %w", kind.verb(), ErrIncompleteFetch)
 	}
 
+	told := []Outcome{{Kind: kind.outcome(), Login: target.login, Ref: target.ref, At: s.now()}}
+
 	if err = s.storeEdit(ctx, target, kind, edited); err != nil {
-		return Snapshot{}, uierr.New(
+		return Snapshot{}, told, uierr.New(
 			"GitHub made the change, but the inbox could not record it. The next refresh catches it up.",
 			fmt.Errorf("%s: %w", kind.verb(), err),
 		)
 	}
 
-	return s.changed(ctx)
+	snap, err := s.changed(ctx)
+
+	return snap, told, err
 }
 
 // editTarget is the item an edit is for, and the login it takes off.
@@ -138,9 +160,7 @@ func (s *Service) editTarget(ctx context.Context, id int64, kind editKind) (edit
 		return editTarget{}, err
 	}
 
-	ref := item.Ref{
-		Repo: repo.Name{Owner: row.RepoOwner, Repo: row.RepoName}, Number: int(row.Number), Kind: item.Kind(row.Kind),
-	}
+	ref := refOfRow(row)
 
 	if err = kind.check(ref, row); err != nil {
 		return editTarget{}, err

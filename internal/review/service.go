@@ -135,11 +135,14 @@ type Target struct {
 }
 
 // Acted is what an action made happen on GitHub. Its fields match inbox.Acted's.
+// ReviewEvent is the review's event, as the action sent it (github.ReviewApprove,
+// github.ReviewRequestChanges, or github.ReviewComment).
 type Acted struct {
-	Reviewed   bool
-	ReviewedAt time.Time
-	Merged     bool
-	Closed     bool
+	Reviewed    bool
+	ReviewedAt  time.Time
+	ReviewEvent string
+	Merged      bool
+	Closed      bool
 }
 
 // PullRead is what a read found. Its fields match inbox.PullRead's.

@@ -115,7 +115,7 @@ func TestAClosePostsYourTextAsACommentFirst(t *testing.T) {
 			assert.Equal(t, []string{
 				"Checking your account", "Checking nothing was pushed since you opened it", "Posting your comment", "Closing",
 			}, h.steps(t))
-			assert.Equal(t, Acted{Reviewed: true, ReviewedAt: testNow, Closed: true}, h.inbox.acted[0])
+			assert.Equal(t, Acted{Reviewed: true, ReviewedAt: testNow, ReviewEvent: github.ReviewComment, Closed: true}, h.inbox.acted[0])
 		})
 	}
 }
@@ -245,7 +245,7 @@ func TestACommentPostedBeforeACloseThatFailedSaysBoth(t *testing.T) {
 			assert.Equal(t, []string{"Commented"}, res.Steps)
 			assert.Equal(t, tt.requests, h.github.requests())
 			assert.Len(t, h.github.sent, 1, "commented once")
-			assert.Equal(t, Acted{Reviewed: true, ReviewedAt: testNow}, h.inbox.acted[0])
+			assert.Equal(t, Acted{Reviewed: true, ReviewedAt: testNow, ReviewEvent: github.ReviewComment}, h.inbox.acted[0])
 		})
 	}
 }
@@ -276,7 +276,7 @@ func TestARetriedTokenNeverCommentsTwiceBeforeAClose(t *testing.T) {
 	assert.Equal(t, []string{callState, callSubmit, callClose, callState, callClose}, h.github.requests(),
 		"commented once, and read the head again right before the second close")
 	assert.Equal(t, "Closed acme-org/example-repo#7 with your comment", res.Message)
-	assert.Equal(t, Acted{Reviewed: true, ReviewedAt: testNow, Closed: true}, h.inbox.acted[0])
+	assert.Equal(t, Acted{Reviewed: true, ReviewedAt: testNow, ReviewEvent: github.ReviewComment, Closed: true}, h.inbox.acted[0])
 }
 
 func TestARetriedCloseWithoutTextReadsTheHeadAgain(t *testing.T) {

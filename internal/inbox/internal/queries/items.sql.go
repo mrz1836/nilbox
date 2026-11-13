@@ -356,21 +356,39 @@ func (q *Queries) GetReviewItem(ctx context.Context, id int64) (GetReviewItemRow
 }
 
 const getStoredItem = `-- name: GetStoredItem :one
-SELECT account_id, node_id FROM items WHERE id = ? AND node_id <> ''
+SELECT i.account_id, i.node_id, a.login AS account_login, i.kind, i.number, r.owner AS repo_owner,
+    r.name AS repo_name
+FROM items i
+JOIN accounts a ON a.id = i.account_id
+JOIN repos r ON r.id = i.repo_id
+WHERE i.id = ? AND i.node_id <> ''
 `
 
 type GetStoredItemRow struct {
-	AccountID int64
-	NodeID    string
+	AccountID    int64
+	NodeID       string
+	AccountLogin string
+	Kind         string
+	Number       int64
+	RepoOwner    string
+	RepoName     string
 }
 
-// GetStoredItem returns the account and node ID of the item with id, or sql.ErrNoRows
-// when there is none. An item without a node ID cannot be asked about on its own, so it
-// reads as not stored.
+// GetStoredItem returns the account and node ID of the item with id, with the account's
+// login and the item's kind, number, and repository, or sql.ErrNoRows when there is none.
+// An item without a node ID cannot be asked about on its own, so it reads as not stored.
 func (q *Queries) GetStoredItem(ctx context.Context, id int64) (GetStoredItemRow, error) {
 	row := q.db.QueryRowContext(ctx, getStoredItem, id)
 	var i GetStoredItemRow
-	err := row.Scan(&i.AccountID, &i.NodeID)
+	err := row.Scan(
+		&i.AccountID,
+		&i.NodeID,
+		&i.AccountLogin,
+		&i.Kind,
+		&i.Number,
+		&i.RepoOwner,
+		&i.RepoName,
+	)
 	return i, err
 }
 
@@ -673,6 +691,61 @@ func (q *Queries) ListLaunchItems(ctx context.Context, ids []int64) ([]ListLaunc
 	return items, nil
 }
 
+const listListed = `-- name: ListListed :many
+SELECT i.id, i.node_id, i.kind, i.number, r.owner AS repo_owner, r.name AS repo_name,
+    i.reason_review_requested, i.reason_authored, i.reason_assigned
+FROM items i
+JOIN repos r ON r.id = i.repo_id
+WHERE i.account_id = ? AND (i.reason_review_requested = 1 OR i.reason_authored = 1 OR i.reason_assigned = 1)
+`
+
+type ListListedRow struct {
+	ID                    int64
+	NodeID                string
+	Kind                  string
+	Number                int64
+	RepoOwner             string
+	RepoName              string
+	ReasonReviewRequested bool
+	ReasonAuthored        bool
+	ReasonAssigned        bool
+}
+
+// ListListed returns every listed item of the account with account_id, with the lists it
+// is in, its node ID, kind, number, and repository, before a refresh rewrites the flags.
+func (q *Queries) ListListed(ctx context.Context, accountID int64) ([]ListListedRow, error) {
+	rows, err := q.db.QueryContext(ctx, listListed, accountID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListListedRow{}
+	for rows.Next() {
+		var i ListListedRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.NodeID,
+			&i.Kind,
+			&i.Number,
+			&i.RepoOwner,
+			&i.RepoName,
+			&i.ReasonReviewRequested,
+			&i.ReasonAuthored,
+			&i.ReasonAssigned,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listListedFlags = `-- name: ListListedFlags :many
 SELECT id, reason_review_requested, reason_assigned FROM items
 WHERE account_id = ? AND (reason_review_requested = 1 OR reason_assigned = 1)
@@ -745,7 +818,7 @@ func (q *Queries) ListListedNodeIDs(ctx context.Context, login string) ([]string
 }
 
 const listRunningChecks = `-- name: ListRunningChecks :many
-SELECT i.id, i.account_id, i.node_id, r.owner AS repo_owner, r.name AS repo_name
+SELECT i.id, i.account_id, i.node_id, i.number, r.owner AS repo_owner, r.name AS repo_name
 FROM items i
 JOIN accounts a ON a.id = i.account_id
 JOIN repos r ON r.id = i.repo_id
@@ -772,6 +845,7 @@ type ListRunningChecksRow struct {
 	ID        int64
 	AccountID int64
 	NodeID    string
+	Number    int64
 	RepoOwner string
 	RepoName  string
 }
@@ -779,10 +853,10 @@ type ListRunningChecksRow struct {
 // ListRunningChecks returns the listed open pull requests of the account with login whose
 // checks were running (PENDING or EXPECTED) when their details were last read, before
 // read_before, neither dismissed nor snoozed at now, the longest unread first, each with
-// its repository's owner and name: the ones the inbox follows until their checks end. The
-// follow leaves out those of a muted repository or org, which only the prefs name, and
-// takes the first of the rest, so it reads them all; they are listed items, a few hundred
-// at most.
+// its number and its repository's owner and name: the ones the inbox follows until their
+// checks end. The follow leaves out those of a muted repository or org, which only the
+// prefs name, and takes the first of the rest, so it reads them all; they are listed
+// items, a few hundred at most.
 func (q *Queries) ListRunningChecks(ctx context.Context, arg ListRunningChecksParams) ([]ListRunningChecksRow, error) {
 	rows, err := q.db.QueryContext(ctx, listRunningChecks, arg.Login, arg.ReadBefore, arg.Now)
 	if err != nil {
@@ -796,6 +870,7 @@ func (q *Queries) ListRunningChecks(ctx context.Context, arg ListRunningChecksPa
 			&i.ID,
 			&i.AccountID,
 			&i.NodeID,
+			&i.Number,
 			&i.RepoOwner,
 			&i.RepoName,
 		); err != nil {

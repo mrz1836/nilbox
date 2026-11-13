@@ -40,7 +40,8 @@ export function CheckFiles(itemID: number): $CancellablePromise<sensitive$0.Chec
 
 /**
  * Dismiss hides an item from every list until it is restored, and returns the new
- * snapshot. It replaces a snooze. Nothing is written to GitHub.
+ * snapshot. It replaces a snooze. Nothing is written to GitHub. Once the dismissal of an
+ * item that wasn't dismissed is stored, it tells the outcome sink of it.
  */
 export function Dismiss(id: number): $CancellablePromise<$models.Snapshot> {
     return $Call.ByID(2737462950, id);
@@ -67,7 +68,11 @@ export function Pin(id: number): $CancellablePromise<$models.Snapshot> {
  * refresh goes on for the others.
  *
  * A refresh that stored what GitHub said tells the arrival sink, once, about the items
- * that newly need the user.
+ * that newly need the user. What it found for the outcome sink (the items of the lists
+ * it found merged or closed, and those that left them) is told once the refresh's flight
+ * has returned, by the first caller back from it, so a sink that refreshes the inbox
+ * again starts a refresh of its own; what no caller was there to tell, the next caller
+ * tells.
  */
 export function Refresh(): $CancellablePromise<$models.Snapshot> {
     return $Call.ByID(373787417);
@@ -92,6 +97,9 @@ export function Refresh(): $CancellablePromise<$models.Snapshot> {
  *
  * A failure is returned, not recorded as the inbox's last error, which reports whole
  * refreshes, and the stored inbox is left as it was.
+ *
+ * Once it has let go of the item, it tells the outcome sink of a merge or a close the
+ * answer it stored shows.
  */
 export function RefreshItem(id: number): $CancellablePromise<$models.Snapshot> {
     return $Call.ByID(2803834770, id);
@@ -113,6 +121,7 @@ export function RemoveReviewRequest(id: number): $CancellablePromise<$models.Sna
 /**
  * Restore brings a dismissed or snoozed item back to its lists, and returns the new
  * snapshot. A pinned item stays pinned. Restoring an item that is neither does nothing.
+ * Once an item that was dismissed or snoozed is restored, it tells the outcome sink of it.
  */
 export function Restore(id: number): $CancellablePromise<$models.Snapshot> {
     return $Call.ByID(2819403784, id);

@@ -458,7 +458,7 @@ func (a *action) review(ctx context.Context, s *Service, tok github.Token) error
 	}
 
 	a.reviewed = submitted
-	a.acted.Reviewed, a.acted.ReviewedAt = true, submitted.SubmittedAt
+	a.acted.Reviewed, a.acted.ReviewedAt, a.acted.ReviewEvent = true, submitted.SubmittedAt, in.Event
 	a.outcome = OutcomeReviewed
 	a.steps = append(a.steps, reviewStep(a.reviewAs))
 

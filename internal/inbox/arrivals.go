@@ -67,10 +67,20 @@ type ArrivalSink interface {
 	Arrived(ctx context.Context, arrivals []Arrival)
 }
 
-// listedFlags are the items in the review-requested and assigned lists before a refresh.
+// listedFlags are the items in the review-requested and assigned lists before a refresh:
+// an item in neither may be in the map, as false.
 type listedFlags struct {
 	reviewRequested map[int64]bool
 	assigned        map[int64]bool
+}
+
+// set records the lists the item with id was in.
+func (f *listedFlags) set(id int64, reviewRequested, assigned bool) {
+	if f.reviewRequested == nil {
+		f.reviewRequested, f.assigned = make(map[int64]bool), make(map[int64]bool)
+	}
+
+	f.reviewRequested[id], f.assigned[id] = reviewRequested, assigned
 }
 
 // arrivalWatch is what a refresh needs to tell arrivals: the lists as they were, when the
@@ -94,20 +104,44 @@ type savedEntry struct {
 	entry *entry
 }
 
-// watchArrivals reads the lists as they are before the refresh rewrites them with inbox.
-// It returns nil, so no arrival is told, when the account was never refreshed or another
-// account was refreshed last: everything in the lists would be new.
-func (w *writer) watchArrivals(ctx context.Context, inbox *github.Inbox) (*arrivalWatch, error) {
-	status, err := readStatus(ctx, w.prefs)
-	if err != nil {
-		return nil, err
+// listedBefore is what the lists held before a refresh rewrote them, as the last refresh
+// of the same account left them: which items were in the review-requested and the
+// assigned lists, which arrivals compare with, and, while an outcome sink listens, every
+// item listed (rows), which outcomes compare with.
+type listedBefore struct {
+	flags listedFlags
+	rows  []listedRow
+}
+
+// readListed reads the lists as they are before the refresh rewrites them with inbox, from
+// status, the inbox status stored. It returns nil when another account, or none, was
+// refreshed last: this account's lists are then another time's, if it has any. While no
+// outcome sink listens, it reads only what arrivals compare with, and only when they
+// will.
+func (w *writer) readListed(ctx context.Context, status map[string]string, inbox *github.Inbox) (*listedBefore, error) {
+	if status[prefViewer] != inbox.Viewer.Login {
+		return nil, nil //nolint:nilnil // no lists to compare with is the answer for another account
 	}
 
-	viewer := inbox.Viewer.Login
+	before := &listedBefore{}
 
-	last, refreshed := lastRefresh(status)
-	if !refreshed || status[prefViewer] != viewer {
-		return nil, nil //nolint:nilnil // no watch is the answer for a first refresh
+	if w.tellOutcomes {
+		rows, err := w.q.ListListed(ctx, w.accountID)
+		if err != nil {
+			return nil, fmt.Errorf("read the listed items: %w", err)
+		}
+
+		for _, r := range rows {
+			before.flags.set(r.ID, r.ReasonReviewRequested, r.ReasonAssigned)
+		}
+
+		before.rows = rows
+
+		return before, nil
+	}
+
+	if _, refreshed := lastRefresh(status); !refreshed {
+		return nil, nil //nolint:nilnil // arrivals compare with nothing on a first refresh, and nothing else reads them
 	}
 
 	rows, err := w.q.ListListedFlags(ctx, w.accountID)
@@ -115,18 +149,28 @@ func (w *writer) watchArrivals(ctx context.Context, inbox *github.Inbox) (*arriv
 		return nil, fmt.Errorf("read the listed items: %w", err)
 	}
 
-	before := listedFlags{reviewRequested: make(map[int64]bool), assigned: make(map[int64]bool)}
-
 	for _, r := range rows {
-		before.reviewRequested[r.ID] = r.ReasonReviewRequested
-		before.assigned[r.ID] = r.ReasonAssigned
+		before.flags.set(r.ID, r.ReasonReviewRequested, r.ReasonAssigned)
+	}
+
+	return before, nil
+}
+
+// watchArrivals is what telling the arrivals of a refresh that stores inbox needs, with
+// the lists as they were before it (see readListed) and status, the inbox status stored.
+// It returns nil, so no arrival is told, when the account was never refreshed or another
+// account was refreshed last: everything in the lists would be new.
+func watchArrivals(status map[string]string, inbox *github.Inbox, listed *listedBefore) *arrivalWatch {
+	last, refreshed := lastRefresh(status)
+	if !refreshed || listed == nil {
+		return nil
 	}
 
 	return &arrivalWatch{
-		before: before, lastRefresh: last, viewer: viewer, rules: reporules.Decode(status),
-		reviewTruncated:   inbox.ReviewRequested.IssueCount > len(inbox.ReviewRequested.Items),
-		assignedTruncated: inbox.Assigned.IssueCount > len(inbox.Assigned.Items),
-	}, nil
+		before: listed.flags, lastRefresh: last, viewer: inbox.Viewer.Login, rules: reporules.Decode(status),
+		reviewTruncated:   truncated(inbox.ReviewRequested),
+		assignedTruncated: truncated(inbox.Assigned),
+	}
 }
 
 // lastRefresh reads when the last successful refresh was, and whether there was one.

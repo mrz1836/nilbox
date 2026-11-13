@@ -248,7 +248,7 @@ func (a *action) close(ctx context.Context, s *Service, tok github.Token) error 
 		return nil
 	}
 
-	a.outcome = OutcomeClosed
+	a.outcome, a.acted.Own = OutcomeClosed, true
 	a.steps = append(a.steps, "Closed as "+words)
 
 	return nil

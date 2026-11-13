@@ -69,7 +69,7 @@ func TestApproveSendsOnePinnedReview(t *testing.T) {
 	}, h.github.sent[0])
 
 	require.Len(t, h.inbox.acted, 1)
-	assert.Equal(t, Acted{Reviewed: true, ReviewedAt: testNow}, h.inbox.acted[0])
+	assert.Equal(t, Acted{Reviewed: true, ReviewedAt: testNow, ReviewEvent: github.ReviewApprove}, h.inbox.acted[0])
 }
 
 func TestTheOtherReviewsAndTheirWords(t *testing.T) {
@@ -86,6 +86,10 @@ func TestTheOtherReviewsAndTheirWords(t *testing.T) {
 	})
 	assert.Equal(t, "Commented acme-org/example-repo#7", res.Message)
 	assert.Equal(t, github.ReviewComment, h.github.sent[1].Event)
+
+	require.Len(t, h.inbox.acted, 2)
+	assert.Equal(t, github.ReviewRequestChanges, h.inbox.acted[0].ReviewEvent, "the inbox hears which review it was")
+	assert.Equal(t, github.ReviewComment, h.inbox.acted[1].ReviewEvent)
 }
 
 func TestActRefusesWhatIsNotSent(t *testing.T) {
@@ -176,7 +180,7 @@ func TestApproveAndMerge(t *testing.T) {
 	assert.True(t, res.LeftInbox)
 	assert.Equal(t, MethodSquash, res.Method)
 	assert.Equal(t, []github.MergeInput{{SHA: headA, Method: "SQUASH"}}, h.github.merges)
-	assert.Equal(t, Acted{Reviewed: true, ReviewedAt: testNow, Merged: true}, h.inbox.acted[0])
+	assert.Equal(t, Acted{Reviewed: true, ReviewedAt: testNow, ReviewEvent: github.ReviewApprove, Merged: true}, h.inbox.acted[0])
 
 	c, err := h.svc.cache.load(t.Context(), pullID, 0)
 	require.NoError(t, err)

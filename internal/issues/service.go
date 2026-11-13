@@ -98,6 +98,10 @@ type IssueRead struct {
 type Acted struct {
 	// Closed reports a close GitHub made, or found made: the issue leaves every list.
 	Closed bool
+
+	// Own reports that the close was the user's own and went through, not one someone
+	// made first that the action found.
+	Own bool
 }
 
 // Inbox is what the sheet needs of the inbox: a stored issue, and reads and actions run with

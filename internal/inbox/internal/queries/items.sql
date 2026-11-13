@@ -77,10 +77,15 @@ SET reason_review_requested = 0, reason_authored = 0, reason_assigned = 0, fetch
 WHERE id = ?;
 
 -- name: GetStoredItem :one
--- GetStoredItem returns the account and node ID of the item with id, or sql.ErrNoRows
--- when there is none. An item without a node ID cannot be asked about on its own, so it
--- reads as not stored.
-SELECT account_id, node_id FROM items WHERE id = ? AND node_id <> '';
+-- GetStoredItem returns the account and node ID of the item with id, with the account's
+-- login and the item's kind, number, and repository, or sql.ErrNoRows when there is none.
+-- An item without a node ID cannot be asked about on its own, so it reads as not stored.
+SELECT i.account_id, i.node_id, a.login AS account_login, i.kind, i.number, r.owner AS repo_owner,
+    r.name AS repo_name
+FROM items i
+JOIN accounts a ON a.id = i.account_id
+JOIN repos r ON r.id = i.repo_id
+WHERE i.id = ? AND i.node_id <> '';
 
 -- name: ListListedNodeIDs :many
 -- ListListedNodeIDs returns the node IDs of the listed items of the account with login,
@@ -98,6 +103,15 @@ ORDER BY i.item_updated_at DESC, i.id DESC;
 -- review-requested and the assigned lists, before a refresh rewrites the flags.
 SELECT id, reason_review_requested, reason_assigned FROM items
 WHERE account_id = ? AND (reason_review_requested = 1 OR reason_assigned = 1);
+
+-- name: ListListed :many
+-- ListListed returns every listed item of the account with account_id, with the lists it
+-- is in, its node ID, kind, number, and repository, before a refresh rewrites the flags.
+SELECT i.id, i.node_id, i.kind, i.number, r.owner AS repo_owner, r.name AS repo_name,
+    i.reason_review_requested, i.reason_authored, i.reason_assigned
+FROM items i
+JOIN repos r ON r.id = i.repo_id
+WHERE i.account_id = ? AND (i.reason_review_requested = 1 OR i.reason_authored = 1 OR i.reason_assigned = 1);
 
 -- name: ListItems :many
 -- ListItems returns every listed item of the account with account_id, with its
@@ -229,11 +243,11 @@ UPDATE items SET reason_review_requested = 0, review_left_at = ? WHERE id = ?;
 -- ListRunningChecks returns the listed open pull requests of the account with login whose
 -- checks were running (PENDING or EXPECTED) when their details were last read, before
 -- read_before, neither dismissed nor snoozed at now, the longest unread first, each with
--- its repository's owner and name: the ones the inbox follows until their checks end. The
--- follow leaves out those of a muted repository or org, which only the prefs name, and
--- takes the first of the rest, so it reads them all; they are listed items, a few hundred
--- at most.
-SELECT i.id, i.account_id, i.node_id, r.owner AS repo_owner, r.name AS repo_name
+-- its number and its repository's owner and name: the ones the inbox follows until their
+-- checks end. The follow leaves out those of a muted repository or org, which only the
+-- prefs name, and takes the first of the rest, so it reads them all; they are listed
+-- items, a few hundred at most.
+SELECT i.id, i.account_id, i.node_id, i.number, r.owner AS repo_owner, r.name AS repo_name
 FROM items i
 JOIN accounts a ON a.id = i.account_id
 JOIN repos r ON r.id = i.repo_id

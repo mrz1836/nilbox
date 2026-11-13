@@ -16,11 +16,49 @@ import (
 )
 
 // Dismiss hides an item from every list until it is restored, and returns the new
-// snapshot. It replaces a snooze. Nothing is written to GitHub.
+// snapshot. It replaces a snooze. Nothing is written to GitHub. Once the dismissal of an
+// item that wasn't dismissed is stored, it tells the outcome sink of it.
 func (s *Service) Dismiss(ctx context.Context, id int64) (Snapshot, error) {
 	now := s.now()
 
-	return s.setTriage(ctx, "dismiss", id, &now, nil, nil)
+	var (
+		told   []Outcome
+		stored int64
+	)
+
+	// The triage as it was is read in the dismissal's transaction, so a second click
+	// tells nothing.
+	err := store.InTx(ctx, s.db, func(tx *sql.Tx) error {
+		q := s.q.WithTx(tx)
+
+		was, found, err := s.triageBefore(ctx, q, id)
+		if err != nil {
+			return err
+		}
+
+		stored, err = q.SetTriage(ctx, queries.SetTriageParams{DismissedAt: &now, UpdatedAt: now, ID: id})
+		if err != nil {
+			return err
+		}
+
+		if found && was.DismissedAt == nil {
+			told = triageOutcome(OutcomeDismissed, was, now)
+		}
+
+		return nil
+	})
+
+	switch {
+	case err != nil:
+		return Snapshot{}, fmt.Errorf("dismiss the item: %w", err)
+	case stored == 0:
+		return Snapshot{}, fmt.Errorf("%w (id %d)", item.ErrNotFound, id)
+	}
+
+	snap, err := s.changed(ctx)
+	s.settle(ctx, told)
+
+	return snap, err
 }
 
 // Snooze hides an item from every list for a number of days (snooze.MinDays to
@@ -49,10 +87,32 @@ func (s *Service) Snooze(ctx context.Context, id int64, days int) (Snapshot, err
 
 // Restore brings a dismissed or snoozed item back to its lists, and returns the new
 // snapshot. A pinned item stays pinned. Restoring an item that is neither does nothing.
+// Once an item that was dismissed or snoozed is restored, it tells the outcome sink of it.
 func (s *Service) Restore(ctx context.Context, id int64) (Snapshot, error) {
-	return s.clearState(ctx, "restore the item", id, func(ctx context.Context, q *queries.Queries) error {
-		return q.Restore(ctx, queries.RestoreParams{UpdatedAt: s.now(), ItemID: id})
+	now := s.now()
+
+	var told []Outcome
+
+	err := s.storeCleared(ctx, "restore the item", id, func(ctx context.Context, q *queries.Queries) error {
+		was, found, err := s.triageBefore(ctx, q, id)
+		if err != nil {
+			return err
+		}
+
+		if found && setAside(was, now) {
+			told = triageOutcome(OutcomeRestored, was, now)
+		}
+
+		return q.Restore(ctx, queries.RestoreParams{UpdatedAt: now, ItemID: id})
 	})
+	if err != nil {
+		return Snapshot{}, err
+	}
+
+	snap, err := s.changed(ctx)
+	s.settle(ctx, told)
+
+	return snap, err
 }
 
 // Pin keeps an item at the top of every list it is in, above the items not pinned, the
@@ -82,6 +142,18 @@ func (s *Service) Unpin(ctx context.Context, id int64) (Snapshot, error) {
 func (s *Service) clearState(
 	ctx context.Context, what string, id int64, unset func(context.Context, *queries.Queries) error,
 ) (Snapshot, error) {
+	if err := s.storeCleared(ctx, what, id, unset); err != nil {
+		return Snapshot{}, err
+	}
+
+	return s.changed(ctx)
+}
+
+// storeCleared is clearState's transaction: unset, then the row's deletion once nothing is
+// left in it.
+func (s *Service) storeCleared(
+	ctx context.Context, what string, id int64, unset func(context.Context, *queries.Queries) error,
+) error {
 	err := store.InTx(ctx, s.db, func(tx *sql.Tx) error {
 		q := s.q.WithTx(tx)
 		if err := unset(ctx, q); err != nil {
@@ -91,10 +163,10 @@ func (s *Service) clearState(
 		return q.PruneState(ctx, id)
 	})
 	if err != nil {
-		return Snapshot{}, fmt.Errorf("%s: %w", what, err)
+		return fmt.Errorf("%s: %w", what, err)
 	}
 
-	return s.changed(ctx)
+	return nil
 }
 
 // setTriage stores an item's triage state, says the inbox changed, and returns the new
