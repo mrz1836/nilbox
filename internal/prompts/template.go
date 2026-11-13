@@ -90,12 +90,13 @@ func Parse(body string, appliesTo AppliesTo) (*Template, []Diagnostic) {
 	return c.check(), c.diags
 }
 
-// ParseReply checks the text of a review reply, which the review sheet fills in for a pull
-// request as the text of a review, and parses it. It is Parse in reply mode: the text may
-// start with "-", as a markdown list does; filled in, it may be empty, as an approval with
-// no text is; and a session variable, which means nothing in a reply, is a warning.
-func ParseReply(body string) (*Template, []Diagnostic) {
-	c := newChecker(body, AppliesToPR)
+// ParseReply checks the text of a reply, which a sheet fills in as the text of a review of
+// a pull request, or of a comment on the kinds of item appliesTo covers, and parses it. It
+// is Parse in reply mode: the text may start with "-", as a markdown list does; filled in,
+// it may be empty, as an approval with no text is; and a session variable, which means
+// nothing in a reply, is a warning.
+func ParseReply(body string, appliesTo AppliesTo) (*Template, []Diagnostic) {
+	c := newChecker(body, appliesTo)
 	c.reply = true
 
 	return c.check(), c.diags

@@ -237,7 +237,7 @@ export function PromptsView({ agents, prompts, replies, defaults, variables, ite
   const listed = replyMode ? replies : prompts
 
   // applicableItems are the inbox items the draft applies to, which it can be previewed
-  // with: a reply applies to pull requests.
+  // with: a reply's are pull requests, unless it is a comment reply for issues too.
   const applicableItems = items.filter((item) => promptApplies({ appliesTo: draft.appliesTo }, item.kind))
 
   // previewItem is the item chosen to preview with: the one picked while the prompt
@@ -524,9 +524,10 @@ export function PromptsView({ agents, prompts, replies, defaults, variables, ite
 
   // replyDefaultItems offers to make a reply the default for each review it is written
   // for, where it is not already.
+  // A reply for issues alone is no default: only the review sheet starts from one.
   const replyDefaultItems = (p: Prompt): MenuItem[] =>
     replySlots(p.replyAction)
-      .filter((slot) => !p.usage.replies.includes(slot))
+      .filter((slot) => promptApplies(p, 'pr') && !p.usage.replies.includes(slot))
       .map((slot) => ({
         label: `Make the default for ${replySlotPlaces[slot]}`,
         icon: <StarIcon className="size-4 text-muted" />,

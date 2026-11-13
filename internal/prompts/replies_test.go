@@ -1,6 +1,7 @@
 package prompts
 
 import (
+	"context"
 	"path/filepath"
 	"testing"
 
@@ -20,7 +21,7 @@ func replyInput(nickname string, action ReplyAction, body string) Input {
 func TestParseReplyAllowsWhatARepliesNeeds(t *testing.T) {
 	t.Parallel()
 
-	tmpl, diags := ParseReply("- looks good\n- {{if .IsBot}}thanks, bot{{end}}")
+	tmpl, diags := ParseReply("- looks good\n- {{if .IsBot}}thanks, bot{{end}}", AppliesToPR)
 	require.NotNil(t, tmpl, "a reply may start with a list")
 	assert.Empty(t, diags)
 
@@ -28,7 +29,7 @@ func TestParseReplyAllowsWhatARepliesNeeds(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "- looks good\n-\n", out)
 
-	empty, diags := ParseReply("{{if .IsBot}}Thanks, bot.{{end}}")
+	empty, diags := ParseReply("{{if .IsBot}}Thanks, bot.{{end}}", AppliesToPR)
 	require.NotNil(t, empty, "a reply may be empty once filled in")
 	assert.Empty(t, diags)
 
@@ -47,7 +48,7 @@ func TestParseReplyAllowsWhatARepliesNeeds(t *testing.T) {
 func TestParseReplyWarnsAboutSessionVariables(t *testing.T) {
 	t.Parallel()
 
-	tmpl, diags := ParseReply("Approved from {{.Worktree}} with {{.Profile}} by {{.Me}}")
+	tmpl, diags := ParseReply("Approved from {{.Worktree}} with {{.Profile}} by {{.Me}}", AppliesToPR)
 	require.NotNil(t, tmpl)
 	require.Len(t, diags, 2)
 
@@ -56,7 +57,7 @@ func TestParseReplyWarnsAboutSessionVariables(t *testing.T) {
 		assert.Contains(t, d.Message, "means nothing in a reply")
 	}
 
-	_, diags = ParseReply("  \n")
+	_, diags = ParseReply("  \n", AppliesToPR)
 	require.Len(t, diags, 1)
 	assert.Equal(t, "Write the reply's text.", diags[0].Message)
 
@@ -98,6 +99,82 @@ func TestCreateAReply(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, PurposeAgent, agentPrompt.Purpose)
 	assert.Empty(t, agentPrompt.ReplyAction, "an agent prompt has no review")
+}
+
+func TestACommentReplyMayApplyToIssues(t *testing.T) {
+	t.Parallel()
+
+	s, db := seeded(t, nil)
+	ctx := t.Context()
+
+	in := replyInput("Looking", ReplyComment, "Looking into it, @{{.Author}}.")
+	in.AppliesTo = AppliesToIssue
+
+	looking, err := s.Create(ctx, in)
+	require.NoError(t, err)
+	assert.Equal(t, AppliesToIssue, looking.AppliesTo)
+
+	tmpl, err := looking.Template()
+	require.NoError(t, err)
+
+	out, err := tmpl.Execute(Sample(item.KindIssue))
+	require.NoError(t, err)
+	assert.Equal(t, "Looking into it, @octo-user.\n", out)
+
+	_, diags := ParseReply("On {{.Branch}}", AppliesToIssue)
+	require.Len(t, diags, 1)
+	assert.Equal(t, SeverityWarning, diags[0].Severity)
+	assert.Contains(t, diags[0].Message, "only set for pull requests", "an issue has no branch")
+
+	_, diags = ParseReply("On {{.Branch}}", AppliesToPR)
+	assert.Empty(t, diags)
+
+	odd := replyInput("Odd", ReplyComment, "Thanks.")
+	odd.AppliesTo = "later"
+	assert.Equal(t, map[string]string{FieldAppliesTo: "Choose what the reply is for: pull requests, issues, or both."},
+		fieldErrors(t, createErr(ctx, s, odd)))
+
+	// Only a comment reply may be for issues, and one that says nothing is for pull requests.
+	approve := replyInput("Approve it", ReplyApprove, "Approved.")
+	approve.AppliesTo = AppliesToIssue
+	blank := replyInput("Thanks", ReplyComment, "Thanks.")
+
+	for _, in := range []Input{approve, blank} {
+		p, saveErr := s.Create(ctx, in)
+		require.NoError(t, saveErr)
+		assert.Equal(t, AppliesToPR, p.AppliesTo, in.Nickname)
+	}
+
+	// The default for comments, which the review sheet starts from, applies to pull requests.
+	require.ErrorIs(t, s.SetReplyDefault(ctx, SlotComment, looking.ID), ErrWrongKind)
+
+	question := byNickname(t, s, "Question")
+	edit := replyInput("Question", ReplyComment, question.Body)
+	edit.AppliesTo = AppliesToIssue
+
+	_, err = s.Update(ctx, question.ID, edit)
+	assert.Equal(t, map[string]string{FieldAppliesTo: "It's the default for comments, so it has to apply to pull requests."},
+		fieldErrors(t, err))
+
+	edit.AppliesTo = AppliesToAny
+	both, err := s.Update(ctx, question.ID, edit)
+	require.NoError(t, err, "both still covers pull requests")
+	assert.Equal(t, AppliesToAny, both.AppliesTo)
+
+	// A stored default that doesn't apply to pull requests, as a library set by hand could
+	// hold, is none.
+	testutil.Exec(t, db, "UPDATE prefs SET value = ? WHERE key = 'prompts.default.reply.comment'", looking.ID)
+
+	defaults, err := s.Defaults(ctx)
+	require.NoError(t, err)
+	assert.Zero(t, defaults.Replies.Comment)
+}
+
+// createErr creates in and returns why it couldn't.
+func createErr(ctx context.Context, s *Service, in Input) error {
+	_, err := s.Create(ctx, in)
+
+	return err
 }
 
 func TestUpdateKeepsAPromptsPurpose(t *testing.T) {
@@ -328,12 +405,18 @@ func TestImportCleansAReply(t *testing.T) {
 	})
 
 	assert.Equal(t, ReplyComment, p.Action, "an unknown review becomes a comment")
-	assert.Equal(t, AppliesToPR, p.AppliesTo)
+	assert.Equal(t, AppliesToIssue, p.AppliesTo, "a comment reply may apply to issues")
 	assert.Empty(t, p.Effort)
 	assert.Empty(t, p.Models)
 	assert.Len(t, notes, 2, "the review it was for, and the text's problems")
 
-	ok, notes := cleanImport(BundlePrompt{Name: "Fine", Nickname: "Fine", Purpose: PurposeReply, Action: ReplyApprove, Body: "Thanks"})
+	ok, notes := cleanImport(BundlePrompt{
+		Name: "Fine", Nickname: "Fine", Purpose: PurposeReply, Action: ReplyApprove, AppliesTo: AppliesToAny, Body: "Thanks",
+	})
 	assert.Equal(t, ReplyApprove, ok.Action)
+	assert.Equal(t, AppliesToPR, ok.AppliesTo, "an approval is a review of a pull request")
 	assert.Empty(t, notes)
+
+	older, _ := cleanImport(BundlePrompt{Name: "Q", Nickname: "Q", Purpose: PurposeReply, Action: ReplyComment, Body: "Why?"})
+	assert.Equal(t, AppliesToPR, older.AppliesTo, "a reply that names nothing applies to pull requests, as every one did")
 }

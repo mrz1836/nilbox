@@ -38,6 +38,14 @@ export function Earlier(id: number, before: string): $CancellablePromise<$models
 }
 
 /**
+ * FillReply fills in the reply with replyID for the issue with itemID, as the text the
+ * comment starts with.
+ */
+export function FillReply(itemID: number, replyID: number): $CancellablePromise<string> {
+    return $Call.ByID(509630683, itemID, replyID);
+}
+
+/**
  * Open returns the issue with id as the sheet last read it, from its cache and the inbox,
  * with no request: at once, and offline. It starts a visit: LastSeenAt is GitHub's time of
  * the newest activity in the read it shows, so what a refresh brings that is newer is new
@@ -66,4 +74,13 @@ export function ReadAgain(id: number): $CancellablePromise<$models.Issue> {
  */
 export function Refresh(id: number): $CancellablePromise<$models.Issue> {
     return $Call.ByID(3734596507, id);
+}
+
+/**
+ * Replies returns the replies the composer offers: the prompt library's comment replies
+ * that apply to issues. None is a default, so the sheet never fills in text the user
+ * didn't pick.
+ */
+export function Replies(): $CancellablePromise<$models.Reply[] | null> {
+    return $Call.ByID(230097536);
 }

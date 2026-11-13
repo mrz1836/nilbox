@@ -201,6 +201,13 @@ export function PromptLibrary({
                             Default in {places} {places === 1 ? 'place' : 'places'}
                           </span>
                         )}
+                        {/* A reply is for pull requests unless it says otherwise, as a comment
+                            reply the issue sheet offers does. */}
+                        {replies && p.appliesTo !== 'pr' && (
+                          <span className="text-[0.6875rem] text-muted">
+                            {p.appliesTo === 'issue' ? 'For issues' : 'For pull requests and issues'}
+                          </span>
+                        )}
                         {badges.length > 0 && (
                           <span className="mt-0.5 flex flex-wrap gap-1">
                             {badges.map((badge) => (

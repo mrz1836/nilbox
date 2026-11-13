@@ -24,6 +24,7 @@ import {
   selectedIssueAction,
   standingTone,
   timelineRows,
+  withReply,
   writeFirst,
 } from './issues'
 
@@ -190,6 +191,14 @@ describe('quoteInto', () => {
   it('quotes each line, after what the draft holds', () => {
     expect(quoteInto('', 'Can repro.\n\nOn 1.4.')).toBe('> Can repro.\n>\n> On 1.4.\n\n')
     expect(quoteInto('Thanks!  \n', ' Can repro. ')).toBe('Thanks!\n\n> Can repro.\n\n')
+  })
+})
+
+describe('withReply', () => {
+  it('fills an empty comment, takes the place of the last reply, and goes after what the user wrote', () => {
+    expect(withReply({ body: '  ', filled: '' }, 'Thanks!')).toBe('Thanks!')
+    expect(withReply({ body: 'Thanks!', filled: 'Thanks!' }, 'Looking into it.')).toBe('Looking into it.')
+    expect(withReply({ body: 'Fixed in #14.\n', filled: 'Thanks!' }, 'Thanks!')).toBe('Fixed in #14.\n\nThanks!')
   })
 })
 

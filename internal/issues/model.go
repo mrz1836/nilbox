@@ -359,6 +359,14 @@ type Offer struct {
 	CommentBlocked string `json:"commentBlocked"`
 }
 
+// Reply is a reply from the prompt library the composer offers: its ID, its title, and the
+// nickname the menu shows.
+type Reply struct {
+	ID       int64  `json:"id"`
+	Name     string `json:"name"`
+	Nickname string `json:"nickname"`
+}
+
 // ActRequest asks for an action on the issue with ItemID, pinned to Seen, the comments as
 // of the read the user saw, with the user's text.
 type ActRequest struct {

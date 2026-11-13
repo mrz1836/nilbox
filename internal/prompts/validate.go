@@ -1,6 +1,7 @@
 package prompts
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"strings"
@@ -8,6 +9,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/mrz1836/nilbox/internal/agent"
+	"github.com/mrz1836/nilbox/internal/item"
 )
 
 // Limits on a prompt's names.
@@ -31,7 +33,8 @@ const (
 
 // normalized trims the names and each agent's model, and turns Windows line endings into
 // newlines. An Input with no purpose is an agent prompt's, whose reply action is cleared;
-// a reply applies to pull requests and has no launch settings.
+// a reply has no launch settings, and applies to pull requests unless it is a comment
+// reply that names what it applies to: an approval and a request for changes are reviews.
 func (in Input) normalized() Input {
 	in.Name = strings.TrimSpace(in.Name)
 	in.Nickname = strings.TrimSpace(in.Nickname)
@@ -40,7 +43,8 @@ func (in Input) normalized() Input {
 	if in.Purpose != PurposeReply {
 		in.Purpose, in.ReplyAction = PurposeAgent, ""
 	} else {
-		in.AppliesTo, in.Effort, in.PlanMode, in.Worktree = AppliesToPR, "", nil, nil
+		in.AppliesTo = replyAppliesTo(in.ReplyAction, cmp.Or(in.AppliesTo, AppliesToPR))
+		in.Effort, in.PlanMode, in.Worktree = "", nil, nil
 		in.Models, in.ExtraFlags = nil, nil
 	}
 
@@ -66,11 +70,11 @@ func validate(ctx context.Context, st *Store, id int64, in Input, usage Usage) (
 	return checked, fields
 }
 
-// parseFor checks a prompt's text the way its purpose fills it in: a reply's in reply
-// mode, an agent prompt's for the kinds it applies to.
+// parseFor checks a prompt's text the way its purpose fills it in, for the kinds it applies
+// to: a reply's in reply mode.
 func parseFor(purpose Purpose, body string, appliesTo AppliesTo) (*Template, []Diagnostic) {
 	if purpose == PurposeReply {
-		return ParseReply(body)
+		return ParseReply(body, appliesTo)
 	}
 
 	return Parse(body, appliesTo)
@@ -91,6 +95,7 @@ func validateFields(ctx context.Context, st *Store, id int64, in Input, usage Us
 
 	if in.Purpose == PurposeReply {
 		add(FieldAction, checkReplyAction(in.ReplyAction, usage))
+		add(FieldAppliesTo, checkReplyAppliesTo(in.AppliesTo, usage))
 
 		return agent.Checked{Models: map[agent.ID]string{}, Args: map[agent.ID][]string{}}, fields
 	}
@@ -176,6 +181,22 @@ func checkReplyAction(action ReplyAction, usage Usage) string {
 		if slot.Action() != action {
 			return fmt.Sprintf("It's %s, so it has to stay a reply for that review.", slot.describe())
 		}
+	}
+
+	return ""
+}
+
+// checkReplyAppliesTo checks what a reply applies to: one of the three choices, and pull
+// requests while it is a default reply, which only the review sheet starts from.
+func checkReplyAppliesTo(appliesTo AppliesTo, usage Usage) string {
+	switch appliesTo {
+	case AppliesToPR, AppliesToIssue, AppliesToAny:
+	default:
+		return "Choose what the reply is for: pull requests, issues, or both."
+	}
+
+	if len(usage.Replies) > 0 && !appliesTo.Covers(item.KindPR) {
+		return fmt.Sprintf("It's %s, so it has to apply to pull requests.", usage.Replies[0].describe())
 	}
 
 	return ""

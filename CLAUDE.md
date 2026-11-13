@@ -431,7 +431,11 @@ app:lint` reads.
   the item's lock, the cache is dropped (a close) or marked out of date. It owns
   `issue_views`, a bounded cache (1 MiB per issue, whose long texts are cut to 16 KiB, then 4
   KiB, then emptied, each cut marked; 200 issues, 32 MiB, and 14 days unused in all), pruned in
-  the same transaction that writes. Unassign me is the inbox's own `Unassign`.
+  the same transaction that writes. Unassign me is the inbox's own `Unassign`. `Replies` and
+  `FillReply` offer and fill in the prompt library's comment replies for issues (a comment
+  reply may apply to issues; a default reply, which only the review sheet starts from, must
+  apply to pull requests), through the reply filler core shares with the review sheet,
+  which refuses a reply for another kind of item.
 - `internal/reporules/` holds the pinned and muted repositories and orgs (`repos.pinned` and
   `repos.muted`, each a list of `owner` or `owner/name`, a target in one list at most), which
   settings alone writes (`SetRepoRule`, emitting the Go-only `event.RepoRulesChanged`, which

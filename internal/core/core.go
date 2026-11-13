@@ -625,11 +625,12 @@ func assemble(pool *sql.DB, info startup, opts Options, logger *slog.Logger) *Co
 		Sessions: follow.service,
 		Review: review.NewService(review.Config{
 			Pool: pool, Inbox: reviewInbox{store: inboxStore, actor: actor}, GitHub: client,
-			Settings: reviewSettings{settings: prefs}, Replies: reviewReplies{store: promptStore, source: previews},
+			Settings: reviewSettings{settings: prefs}, Replies: reviewReplies{replyFiller{store: promptStore, source: previews}},
 			Events: opts.Events, Merges: releaseRefresher, Clock: opts.Clock, Logger: logger,
 		}),
 		Issues: issues.NewService(issues.Config{
-			Pool: pool, Inbox: issuesInbox{store: inboxStore, actor: actor}, GitHub: client, Events: opts.Events,
+			Pool: pool, Inbox: issuesInbox{store: inboxStore, actor: actor}, GitHub: client,
+			Replies: issuesReplies{replyFiller{store: promptStore, source: previews}}, Events: opts.Events,
 			Clock: opts.Clock, Logger: logger,
 		}),
 		Watcher:          follow.watcher,

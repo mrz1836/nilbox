@@ -120,14 +120,22 @@ type GitHub interface {
 	CloseIssue(ctx context.Context, tok github.Token, ref item.Ref, reason string) (*github.IssueClosed, error)
 }
 
+// Replies is the prompt library's replies the composer offers: the comment replies that
+// apply to issues, each filled in for an issue as a launch on it fills a prompt.
+type Replies interface {
+	Offered(ctx context.Context) ([]Reply, error)
+	Fill(ctx context.Context, replyID, itemID int64) (string, error)
+}
+
 // Config holds a Service's dependencies. Every one but Events, Clock, and Logger is
 // required.
 type Config struct {
 	// Pool is the database, which holds the sheet's cache.
 	Pool *sql.DB
 
-	Inbox  Inbox
-	GitHub GitHub
+	Inbox   Inbox
+	GitHub  GitHub
+	Replies Replies
 
 	// Events hears what an action is doing as it goes (event.IssueProgress), for the sheet
 	// to show while the user waits.
@@ -139,12 +147,13 @@ type Config struct {
 
 // Service is the issue sheet as the window binds it. It is safe for concurrent use.
 type Service struct {
-	inbox  Inbox
-	github GitHub
-	cache  *cacheStore
-	events event.Sink
-	clock  clock.Clock
-	logger *slog.Logger
+	inbox   Inbox
+	github  GitHub
+	replies Replies
+	cache   *cacheStore
+	events  event.Sink
+	clock   clock.Clock
+	logger  *slog.Logger
 
 	// refreshes reads each issue once at a time.
 	refreshes flight.Group[Issue]
@@ -153,8 +162,9 @@ type Service struct {
 // NewService returns a Service over cfg.
 func NewService(cfg Config) *Service {
 	return &Service{
-		inbox: cfg.Inbox, github: cfg.GitHub, cache: newCacheStore(cfg.Pool), events: event.Or(cfg.Events),
-		clock: clock.Or(cfg.Clock), logger: logging.Or(cfg.Logger),
+		inbox: cfg.Inbox, github: cfg.GitHub, replies: cfg.Replies, cache: newCacheStore(cfg.Pool),
+		events: event.Or(cfg.Events),
+		clock:  clock.Or(cfg.Clock), logger: logging.Or(cfg.Logger),
 	}
 }
 

@@ -65,6 +65,8 @@ export interface IssueSheetProps {
   // or '' once it did, when the inbox closes the sheet; without it the sheet doesn't offer
   // it.
   onUnassign?: ((item: InboxItem) => Promise<string>) | undefined
+  // onManageReplies opens the replies in the Prompts tab.
+  onManageReplies?: (() => void) | undefined
   // initialFocus selects the control focus starts on as the sheet opens (see Sheet), and
   // refocus moves it there again whenever it changes.
   initialFocus?: string | undefined
@@ -122,6 +124,7 @@ export function IssueSheet({
   onClose,
   onDone,
   onUnassign,
+  onManageReplies,
   initialFocus,
   refocus,
   back = null,
@@ -372,6 +375,7 @@ export function IssueSheet({
                     sessions={sessions}
                     onUnassign={unassign}
                     textRef={textRef}
+                    onManageReplies={onManageReplies}
                   />
                 </div>
               </aside>

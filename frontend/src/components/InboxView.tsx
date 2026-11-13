@@ -102,7 +102,7 @@ export interface InboxViewProps {
   // drafts are the sheets' drafts, which the window keeps for the session; with them, a card
   // opens in its sheet, and without, on GitHub.
   drafts?: SheetDrafts
-  // onManageReplies opens the review replies in the Prompts tab.
+  // onManageReplies opens the replies in the Prompts tab.
   onManageReplies?: () => void
   // onRelease opens a repository's release sheet, as a merge's toast offers when Release
   // can release it; without it, no merge offers a release. It must keep its identity.
@@ -916,6 +916,7 @@ export function InboxView({
               showToast({ text: result.message, detail: is.title, tone: issueTone(result) })
             }}
             onUnassign={unassignHere}
+            onManageReplies={onManageReplies}
             initialFocus={initialFocus}
             refocus={viewing.refocus}
             back={back}
