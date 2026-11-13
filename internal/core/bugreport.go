@@ -152,8 +152,8 @@ func settingsSection(s settings.Settings) appinfo.StateSection {
 			ownOrDefault(sameSet(s.Branches.Protected, s.DefaultProtectedBranches)), len(s.Branches.Protected)),
 		fmt.Sprintf("Trusted bots: %s (%d)", ownOrDefault(sameSet(s.TrustedBots, s.DefaultTrustedBots)),
 			len(s.TrustedBots)),
-		fmt.Sprintf("Merge method: %s · lists sorted by status: %d · collapsed lists: %d", s.MergeMethod,
-			len(s.InboxOrder.StatusSorted), len(s.CollapsedSections)),
+		fmt.Sprintf("Merge method: %s · lists sorted by status: %d · lists showing one kind: %d · collapsed lists: %d",
+			s.MergeMethod, len(s.InboxOrder.StatusSorted), len(s.InboxOrder.Kinds), len(s.CollapsedSections)),
 		fmt.Sprintf("Repositories and orgs: %d pinned, %d muted", len(s.RepoRules.Pinned), len(s.RepoRules.Muted)),
 	}}
 }

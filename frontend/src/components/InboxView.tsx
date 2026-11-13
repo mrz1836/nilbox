@@ -275,7 +275,7 @@ export function InboxView({
     unassign,
     removeReviewRequest,
   } = inbox
-  const { order, setStatusSort, setStatusOrder } = inboxOrder
+  const { order, setStatusSort, setStatusOrder, setListKind } = inboxOrder
   const clock = useClock()
   const lastError = snapshot?.lastError ?? ''
   const error = firstMessage(refreshError, lastError, loadError)
@@ -857,6 +857,9 @@ export function InboxView({
                   setStatusSort(key, on)
                 },
                 onOrderChange: setStatusOrder,
+                onKindChange: (kind) => {
+                  setListKind(key, kind)
+                },
               }}
               matched={filter?.lists[key]}
               marks={filter?.marks ?? ''}

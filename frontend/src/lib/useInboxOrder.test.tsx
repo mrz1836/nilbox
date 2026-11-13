@@ -20,13 +20,13 @@ async function loaded() {
 
 describe('useInboxOrder', () => {
   it('is null until the stored order loads, then holds it', async () => {
-    platform.getInboxOrder.mockResolvedValue({ statusSorted: ['assigned'], statusOrder: ['In progress'] })
+    platform.getInboxOrder.mockResolvedValue({ statusSorted: ['assigned'], statusOrder: ['In progress'], kinds: {} })
     const { result } = renderHook(() => useInboxOrder())
 
     expect(result.current.order).toBeNull()
 
     await waitFor(() => {
-      expect(result.current.order).toEqual({ statusSorted: ['assigned'], statusOrder: ['In progress'] })
+      expect(result.current.order).toEqual({ statusSorted: ['assigned'], statusOrder: ['In progress'], kinds: {} })
     })
   })
 
@@ -51,8 +51,31 @@ describe('useInboxOrder', () => {
     })
   })
 
+  it('shows only one kind in a list and every item again, storing each change in order', async () => {
+    const { result } = await loaded()
+
+    act(() => {
+      result.current.setListKind('assigned', 'issue')
+      result.current.setListKind('authored', 'pr')
+    })
+    expect(result.current.order?.kinds).toEqual({ assigned: 'issue', authored: 'pr' })
+
+    act(() => {
+      result.current.setListKind('assigned', 'all')
+    })
+    expect(result.current.order?.kinds).toEqual({ authored: 'pr' })
+
+    await waitFor(() => {
+      expect(platform.setListKind.mock.calls).toEqual([
+        ['assigned', 'issue'],
+        ['authored', 'pr'],
+        ['assigned', 'all'],
+      ])
+    })
+  })
+
   it('sorts a second list by status alongside the first', async () => {
-    platform.getInboxOrder.mockResolvedValue({ statusSorted: ['assigned'], statusOrder: [] })
+    platform.getInboxOrder.mockResolvedValue({ statusSorted: ['assigned'], statusOrder: [], kinds: {} })
     const { result } = await loaded()
 
     act(() => {
@@ -96,12 +119,12 @@ describe('useInboxOrder', () => {
     platform.getInboxOrder.mockRejectedValue(new Error('locked'))
     const { result } = await loaded()
 
-    expect(result.current.order).toEqual({ statusSorted: [], statusOrder: [] })
+    expect(result.current.order).toEqual({ statusSorted: [], statusOrder: [], kinds: {} })
     expect(settings().inboxOrder).toEqual(result.current.order)
 
     act(() => {
       result.current.setStatusOrder(['Ready'])
     })
-    expect(result.current.order).toEqual({ statusSorted: [], statusOrder: ['Ready'] })
+    expect(result.current.order).toEqual({ statusSorted: [], statusOrder: ['Ready'], kinds: {} })
   })
 })

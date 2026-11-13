@@ -85,6 +85,9 @@ func boundCalls(t *testing.T) map[string]boundCall {
 		"settings.Service.SetStatusSort": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
 			return c.Settings.SetStatusSort(ctx, settings.ListAssigned, true)
 		},
+		"settings.Service.SetListKind": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
+			return c.Settings.SetListKind(ctx, settings.ListAssigned, settings.ListKindIssues)
+		},
 		"settings.Service.SetStatusOrder": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
 			return c.Settings.SetStatusOrder(ctx, nil)
 		},

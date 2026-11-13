@@ -1,21 +1,32 @@
 // The order a list's cards show in, which the sheets step through as the list shows them.
 
-import type { InboxItem, InboxOrder, ListKey } from '../platform'
+import type { InboxItem, InboxOrder, ListKey, ListKind } from '../platform'
 import type { FilteredList } from './inboxFilter'
 import { sortByStatus, statusesOf, statusOrder } from './statusOrder'
 import type { TriagedList, TriageTab } from './triage'
 
-// ShownOrder is how a list orders its own tab: by newest activity, or by project status
-// in the user's order of status names (see statusOrder).
+// ShownOrder is how a list orders its own tab, by newest activity or by project status in
+// the user's order of status names (see statusOrder), and which kind of item it shows
+// there: every one, or only its pull requests or its issues.
 export interface ShownOrder {
   byStatus: boolean
   stored: readonly string[]
+  kind: ListKind
 }
 
-// shownOrder is how the inbox's order sorts the list key, or by newest activity while the
-// stored order loads.
+// shownOrder is how the inbox's order sorts and narrows the list key, or every item by
+// newest activity while the stored order loads.
 export function shownOrder(order: InboxOrder | null, key: ListKey): ShownOrder {
-  return { byStatus: order?.statusSorted.includes(key) ?? false, stored: order?.statusOrder ?? [] }
+  return {
+    byStatus: order?.statusSorted.includes(key) ?? false,
+    stored: order?.statusOrder ?? [],
+    kind: order?.kinds[key] ?? 'all',
+  }
+}
+
+// ofKind is the items of the kind a list shows, every one for 'all'.
+export function ofKind(items: readonly InboxItem[], kind: ListKind): readonly InboxItem[] {
+  return kind === 'all' ? items : items.filter((i) => i.kind === kind)
 }
 
 // statusRanking is the order a list's own tab sorts its statuses in: the user's stored
@@ -29,8 +40,8 @@ export function statusRanking(list: TriagedList, stored: readonly string[]): str
 }
 
 // shownItems is a list tab's items as its section shows them: the filter's matches while
-// one is on, and the list's own tab ordered by project status (statusRanking) while it is
-// sorted so.
+// one is on, and on the list's own tab only the kind it shows (ofKind), ordered by project
+// status (statusRanking) while it is sorted so.
 export function shownItems(
   list: TriagedList,
   tab: TriageTab,
@@ -39,11 +50,13 @@ export function shownItems(
 ): readonly InboxItem[] {
   const shown = matched ?? list
 
-  if (tab !== 'inbox' || !order.byStatus) {
+  if (tab !== 'inbox') {
     return shown[tab]
   }
 
-  return sortByStatus(shown.inbox, statusRanking(list, order.stored))
+  const items = ofKind(shown.inbox, order.kind)
+
+  return order.byStatus ? sortByStatus(items, statusRanking(list, order.stored)) : items
 }
 
 // keptInPlace returns shown, the cards a sheet steps through, holding the card with id,
@@ -69,7 +82,8 @@ export function keptInPlace(shown: readonly InboxItem[], all: readonly InboxItem
 
 // sheetCards are the cards a sheet opened from a list's tab steps through: the tab's cards
 // as the list shows them (shownItems), with the card with id, the one the sheet shows,
-// kept in its place (keptInPlace).
+// kept in its place (keptInPlace) among every card of the tab, of either kind, so a card
+// the list's kind leaves out, as one a notification opened, still has its neighbours.
 export function sheetCards(
   list: TriagedList,
   tab: TriageTab,
@@ -77,5 +91,9 @@ export function sheetCards(
   order: ShownOrder,
   id: number,
 ): readonly InboxItem[] {
-  return keptInPlace(shownItems(list, tab, matched, order), shownItems(list, tab, undefined, order), id)
+  return keptInPlace(
+    shownItems(list, tab, matched, order),
+    shownItems(list, tab, undefined, { ...order, kind: 'all' }),
+    id,
+  )
 }

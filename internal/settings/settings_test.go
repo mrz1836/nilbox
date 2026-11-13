@@ -94,7 +94,7 @@ func TestPrefDefaults(t *testing.T) {
 		TextSize:            TextSizeDefault,
 		ToastSeconds:        12,
 		CollapsedSections:   []ListKey{},
-		InboxOrder:          InboxOrder{StatusSorted: []ListKey{}, StatusOrder: []string{}},
+		InboxOrder:          InboxOrder{StatusSorted: []ListKey{}, StatusOrder: []string{}, Kinds: map[ListKey]ListKind{}},
 		MergeMethod:         DefaultMergeMethod,
 		Integrations: integrationprefs.Config{
 			Switches: map[integrationprefs.ID]integrationprefs.Switch{
@@ -265,7 +265,7 @@ func TestSettersPersist(t *testing.T) {
 		TextSize:            TextSizeLarger,
 		ToastSeconds:        30,
 		CollapsedSections:   []ListKey{},
-		InboxOrder:          InboxOrder{StatusSorted: []ListKey{}, StatusOrder: []string{}},
+		InboxOrder:          InboxOrder{StatusSorted: []ListKey{}, StatusOrder: []string{}, Kinds: map[ListKey]ListKind{}},
 		MergeMethod:         DefaultMergeMethod,
 		Branches:            branchrules.Rules{Own: true, Protected: []string{"develop"}},
 		Integrations: integrationprefs.Config{

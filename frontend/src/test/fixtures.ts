@@ -355,7 +355,7 @@ export function settings(overrides: Partial<Settings> = {}): Settings {
     toastSeconds: 12,
     collapsedSections: [],
     projectsTipDismissed: false,
-    inboxOrder: { statusSorted: [], statusOrder: [] },
+    inboxOrder: { statusSorted: [], statusOrder: [], kinds: {} },
     mergeMethod: 'repo',
     integrations: integrationsConfig(),
     refresh: { inbox: 300, checks: 45, worktrees: 300 },

@@ -8,6 +8,7 @@ export {
 
 export {
     ListKey,
+    ListKind,
     MergeMethod,
     RefreshKind,
     TextSize,

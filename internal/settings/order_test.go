@@ -17,7 +17,55 @@ func TestInboxOrderStartsNewestFirst(t *testing.T) {
 
 	order, err := svc.InboxOrder(t.Context())
 	require.NoError(t, err)
-	assert.Equal(t, InboxOrder{StatusSorted: []ListKey{}, StatusOrder: []string{}}, order)
+	assert.Equal(t, InboxOrder{StatusSorted: []ListKey{}, StatusOrder: []string{}, Kinds: map[ListKey]ListKind{}}, order)
+}
+
+func TestSetListKind(t *testing.T) {
+	t.Parallel()
+
+	svc, _, _ := newTestService(t)
+
+	got, err := svc.SetListKind(t.Context(), ListAssigned, ListKindIssues)
+	require.NoError(t, err)
+	assert.Equal(t, map[ListKey]ListKind{ListAssigned: ListKindIssues}, got.InboxOrder.Kinds)
+
+	require.NoError(t, testutil.ErrOf(svc.SetListKind(t.Context(), ListAuthored, ListKindPRs)))
+
+	order, err := svc.InboxOrder(t.Context())
+	require.NoError(t, err)
+	assert.Equal(t, map[ListKey]ListKind{ListAssigned: ListKindIssues, ListAuthored: ListKindPRs}, order.Kinds)
+
+	got, err = svc.SetListKind(t.Context(), ListAssigned, ListKindAll)
+	require.NoError(t, err)
+	assert.Equal(t, map[ListKey]ListKind{ListAuthored: ListKindPRs}, got.InboxOrder.Kinds, "every item leaves it out")
+}
+
+func TestSetListKindRefusesAnUnknownListOrKind(t *testing.T) {
+	t.Parallel()
+
+	svc, _, _ := newTestService(t)
+
+	_, err := svc.SetListKind(t.Context(), "starred", ListKindPRs)
+	require.ErrorIs(t, err, ErrUnknownSection)
+
+	_, err = svc.SetListKind(t.Context(), ListAssigned, "discussion")
+	require.ErrorIs(t, err, ErrInvalidListKind)
+	require.EqualError(t, err, `unknown kind of item "discussion": choose one of all, pr, issue`)
+
+	order, err := svc.InboxOrder(t.Context())
+	require.NoError(t, err)
+	assert.Empty(t, order.Kinds, "nothing was stored")
+}
+
+func TestInboxOrderShowsEveryItemForAKindItCantRead(t *testing.T) {
+	t.Parallel()
+
+	svc, db, _ := newTestService(t)
+	setPref(t, db, listKindKey(ListAssigned), "PR")
+
+	order, err := svc.InboxOrder(t.Context())
+	require.NoError(t, err)
+	assert.Empty(t, order.Kinds)
 }
 
 func TestSetStatusSort(t *testing.T) {
@@ -98,5 +146,5 @@ func TestAnUnreadableInboxOrderIsNewestFirst(t *testing.T) {
 
 	order, err := svc.InboxOrder(t.Context())
 	require.NoError(t, err)
-	assert.Equal(t, InboxOrder{StatusSorted: []ListKey{}, StatusOrder: []string{}}, order)
+	assert.Equal(t, InboxOrder{StatusSorted: []ListKey{}, StatusOrder: []string{}, Kinds: map[ListKey]ListKind{}}, order)
 }

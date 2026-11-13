@@ -376,6 +376,7 @@ export type Settings = NonNullLists<settings.Settings>
 export type InboxOrder = NonNullLists<settings.InboxOrder>
 export type WindowSize = NonNullLists<settings.WindowSize>
 export type ListKey = settings.ListKey
+export type ListKind = settings.ListKind
 export type Theme = settings.Theme
 export type TextSize = settings.TextSize
 export type MergeMethodSetting = settings.MergeMethod
@@ -542,6 +543,7 @@ export const {
   SetProjectsTipDismissed: setProjectsTipDismissed,
   InboxOrder: getInboxOrder,
   SetStatusSort: setStatusSort,
+  SetListKind: setListKind,
   SetStatusOrder: setStatusOrder,
   SetBranchRules: setBranchRules,
   SetRepoRule: setRepoRule,

@@ -16,6 +16,31 @@ import (
 // "true" or "false". Each list has its own key, as each collapsed section does.
 const keyStatusSortPrefix = "ui.statusSort."
 
+// keyListKindPrefix starts the key that stores which kind of item an inbox list shows on
+// its own tab: "ui.listKind.<list key>", holding a ListKind. Each list has its own key.
+const keyListKindPrefix = "ui.listKind."
+
+// ListKind is which kind of item an inbox list shows on its own tab: every one, or only
+// its pull requests, or only its issues.
+type ListKind string
+
+// The kinds a list can show.
+const (
+	ListKindAll    ListKind = "all"
+	ListKindPRs    ListKind = "pr"
+	ListKindIssues ListKind = "issue"
+)
+
+// ErrInvalidListKind is returned for a kind that is not one a list can show.
+var ErrInvalidListKind = errors.New("unknown kind of item")
+
+// listKinds is the kinds as a choice: a stored one that can't be read shows every item.
+func listKinds() choice[ListKind] {
+	return choice[ListKind]{
+		values: []ListKind{ListKindAll, ListKindPRs, ListKindIssues}, fallback: ListKindAll, invalid: ErrInvalidListKind,
+	}
+}
+
 // KeyStatusOrder is the order the user put project statuses in, such as "In progress"
 // before "Blocked", as a JSON array of their names. A list sorted by status ranks each
 // issue by the first of its projects' statuses here. Statuses not in it are placed by the
@@ -33,8 +58,9 @@ const (
 // that is.
 var ErrInvalidStatusOrder = errors.New("invalid status order")
 
-// InboxOrder is how the inbox orders its lists: which are sorted by project status, and
-// the order of the statuses. Every field is a plain value.
+// InboxOrder is how the inbox orders and narrows its lists: which are sorted by project
+// status, the order of the statuses, and which show only one kind of item. Every field is
+// a plain value.
 type InboxOrder struct {
 	// StatusSorted lists the inbox lists sorted by project status, in the order the inbox
 	// shows them. Every other list keeps its newest activity first.
@@ -43,6 +69,15 @@ type InboxOrder struct {
 	// StatusOrder is the user's order of project status names, first ranked highest. It
 	// is empty until the user changes it.
 	StatusOrder []string `json:"statusOrder"`
+
+	// Kinds holds each list that shows only one kind of item on its own tab, with that
+	// kind. A list it leaves out shows every one.
+	Kinds map[ListKey]ListKind `json:"kinds"`
+}
+
+// listKindKey is the preference that stores which kind of item list shows.
+func listKindKey(list ListKey) string {
+	return keyListKindPrefix + string(list)
 }
 
 // statusSortKey is the preference that stores whether list is sorted by project status.
@@ -52,22 +87,27 @@ func statusSortKey(list ListKey) string {
 
 // orderKeys returns the preferences the inbox order reads.
 func orderKeys() []string {
-	keys := make([]string, 0, len(listKeys())+1)
+	keys := make([]string, 0, 2*len(listKeys())+1)
 	for _, list := range listKeys() {
-		keys = append(keys, statusSortKey(list))
+		keys = append(keys, statusSortKey(list), listKindKey(list))
 	}
 
 	return append(keys, KeyStatusOrder)
 }
 
 // decodeInboxOrder reads the inbox order from the stored preferences. A sort that is not
-// a boolean is newest activity first, and an order that can't be read is empty.
+// a boolean is newest activity first, a kind that can't be read shows every item, and an
+// order that can't be read is empty.
 func decodeInboxOrder(stored map[string]string) InboxOrder {
-	out := InboxOrder{StatusSorted: []ListKey{}, StatusOrder: []string{}}
+	out := InboxOrder{StatusSorted: []ListKey{}, StatusOrder: []string{}, Kinds: map[ListKey]ListKind{}}
 
 	for _, list := range listKeys() {
 		if prefval.Bool(stored[statusSortKey(list)], false) {
 			out.StatusSorted = append(out.StatusSorted, list)
+		}
+
+		if kind := listKinds().decode(stored[listKindKey(list)]); kind != ListKindAll {
+			out.Kinds[list] = kind
 		}
 	}
 
@@ -121,6 +161,20 @@ func (s *Service) SetStatusSort(ctx context.Context, section ListKey, on bool) (
 	}
 
 	return s.save(ctx, setting(statusSortKey(section), prefval.EncodeBool(on)))
+}
+
+// SetListKind stores which kind of item an inbox list shows on its own tab, every one or
+// only its pull requests or its issues, and returns the settings with it.
+func (s *Service) SetListKind(ctx context.Context, section ListKey, kind ListKind) (Settings, error) {
+	if err := sections().check(section); err != nil {
+		return Settings{}, err
+	}
+
+	if err := listKinds().check(kind); err != nil {
+		return Settings{}, err
+	}
+
+	return s.save(ctx, setting(listKindKey(section), string(kind)))
 }
 
 // SetStatusOrder stores the user's order of project status names, first ranked highest,
