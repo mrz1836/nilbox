@@ -89,10 +89,11 @@ export interface SheetKeys {
   next: SheetStep | null
 }
 
-// inPopover reports a key pressed in an open menu or picker, which takes its own arrows:
+// inPopover reports a key pressed in an open menu or popover, which takes its own arrows:
 // a submenu's open and close with them, and the choices it was built with are another
-// card's once the sheet steps. A picker's panel names itself a dialog; the sheet, a native
-// <dialog>, carries no role of its own to match.
+// card's once the sheet steps. A popover's panel names itself a dialog; the sheet, a native
+// <dialog>, carries no role of its own to match. A picker that opens its own modal <dialog>
+// over the sheet (the issue sheet's) leaves the sheet no longer topmost instead.
 function inPopover(e: KeyboardEvent): boolean {
   return e.target instanceof Element && e.target.closest('[role="menu"], [role="dialog"]') !== null
 }

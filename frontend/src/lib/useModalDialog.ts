@@ -41,6 +41,37 @@ export function isTopmost(dialog: HTMLDialogElement): boolean {
   return Array.from(document.querySelectorAll('dialog[open]')).at(-1) === dialog
 }
 
+// useCloseWhenHidden closes, through onClose, a modal <dialog> whose page hides while it is
+// open (the window's views are Activities, kept while another shows), so it never shows
+// again unasked, nor opens again before a dialog it was opened over, which would then
+// cover it. A page that hides keeps the dialog in the document, where a closed one is
+// gone; and StrictMode runs the effects again at once after this cleanup, where a hidden
+// page waits. So the close waits a microtask and happens only for a hidden page.
+export function useCloseWhenHidden(ref: RefObject<HTMLDialogElement | null>, onClose: () => void): void {
+  // live says the dialog's effects are running: they stop as its page hides, or it closes.
+  const live = useRef(false)
+
+  const pageHidden = useEffectEvent(() => {
+    onClose()
+  })
+
+  useLayoutEffect(() => {
+    const dialog = ref.current
+
+    live.current = true
+
+    return () => {
+      live.current = false
+
+      queueMicrotask(() => {
+        if (!live.current && dialog?.isConnected === true) {
+          pageHidden()
+        }
+      })
+    }
+  }, [ref])
+}
+
 export interface ModalDialogOptions {
   // backdrop cancels the dialog on a click on its backdrop, as Escape does. A press that
   // begins inside the dialog and ends on the backdrop, such as a drag selecting text,
