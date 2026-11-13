@@ -1,7 +1,17 @@
 import { describe, expect, it, vi } from 'vitest'
 
 import { FIXED_NOW, fromNow } from '../test/clock'
-import { capitalize, formatAge, formatAgo, formatDateTime, formatFull, formatUntil, formatWhen } from './time'
+import {
+  capitalize,
+  dayPassed,
+  formatAge,
+  formatAgo,
+  formatDateTime,
+  formatDay,
+  formatFull,
+  formatUntil,
+  formatWhen,
+} from './time'
 
 // Tests run in UTC (vitest.config.ts); FIXED_NOW is a Monday.
 
@@ -95,6 +105,18 @@ describe('formatWhen', () => {
     expect(plain(formatDateTime('2026-06-18T12:00:00Z', 'en-US'))).toBe('Jun 18, 2026, 12:00 PM')
     expect(formatDateTime('', 'en-US')).toBe('')
     expect(formatDateTime('not a time', 'en-US')).toBe('')
+  })
+
+  it('says a day GitHub keeps at midnight UTC has passed once the user’s own day is later', () => {
+    expect(dayPassed(new Date(2026, 11, 1, 23, 59), '2026-12-01T00:00:00Z'), 'the due day itself').toBe(false)
+    expect(dayPassed(new Date(2026, 11, 2, 0, 1), '2026-12-01T00:00:00Z')).toBe(true)
+    expect(dayPassed(new Date(2026, 10, 30, 12), '2026-12-01T00:00:00Z')).toBe(false)
+    expect(dayPassed(new Date(2026, 11, 2), '')).toBe(false)
+  })
+
+  it('names a day GitHub keeps at midnight UTC as that day', () => {
+    expect(formatDay('2026-12-01T00:00:00Z', 'en-US')).toBe('Dec 1, 2026')
+    expect(formatDay('', 'en-US')).toBe('')
   })
 
   it('makes each date format once, however many times it formats', () => {

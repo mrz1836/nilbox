@@ -75,10 +75,10 @@ export interface ItemRowProps {
   // onFilterBy adds a filter to the inbox's query, or takes it away: the row's
   // repository, author, and labels offer it when clicked. Without it they are plain text.
   onFilterBy?: ((key: string, value: string) => void) | undefined
-  // onReview opens a pull request in the review sheet, from the row's tab: its title does,
-  // and ⌘-click or the ↗ beside it opens GitHub instead. Without it, and for an issue, the
-  // title opens GitHub. It must keep its identity, so the row keeps its own.
-  onReview?: ((id: number, tab: TriageTab) => void) | undefined
+  // onOpen opens the item in its sheet, from the row's tab: the review sheet for a pull
+  // request, the issue sheet for an issue. Its title does, unless ⌘ is held, and a mark
+  // beside it opens GitHub. Without it the title opens GitHub.
+  onOpen?: ((item: InboxItem, tab: TriageTab) => void) | undefined
 }
 
 // tagClass is a status tag: weight and color mark it, with no pill around it.
@@ -307,11 +307,11 @@ export const ItemRow = memo(function ItemRow({
   highlighted = false,
   marks = '',
   onFilterBy,
-  onReview,
+  onOpen,
 }: ItemRowProps) {
   const conflicting = item.details?.mergeable === 'CONFLICTING'
   const autoMerge = item.details?.autoMerge ?? ''
-  const reviews = item.kind === 'pr' && onReview !== undefined
+  const opens = onOpen !== undefined
   const [work, start] = useRowWork()
   const going = leaving(work)
 
@@ -327,10 +327,14 @@ export const ItemRow = memo(function ItemRow({
         <div className="flex min-w-0 items-center gap-2">
           <button
             type="button"
-            title={reviews ? `${item.title}\nReview it here; ⌘-click opens GitHub` : item.title}
+            title={
+              opens
+                ? `${item.title}\n${item.kind === 'pr' ? 'Review' : 'Read'} it here; ⌘-click opens GitHub`
+                : item.title
+            }
             onClick={(e) => {
-              if (reviews && !e.metaKey) {
-                onReview(item.id, tab)
+              if (opens && !e.metaKey) {
+                onOpen(item, tab)
               } else {
                 openExternal(item.url)
               }
@@ -339,7 +343,7 @@ export const ItemRow = memo(function ItemRow({
           >
             <Highlight text={item.title} marks={marks} />
           </button>
-          {reviews && (
+          {opens && (
             <button
               type="button"
               aria-label="Open on GitHub"

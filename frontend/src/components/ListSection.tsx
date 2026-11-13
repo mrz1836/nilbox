@@ -8,7 +8,7 @@ import { statusesOf } from '../lib/statusOrder'
 import { tabOf, triageTabs, type TriagedList, type TriageTab } from '../lib/triage'
 import { worktreeOf } from '../lib/itemWorktrees'
 import { sessionsOf } from '../lib/sessions'
-import type { AgentSession, ItemResolution, Worktree } from '../platform'
+import type { AgentSession, InboxItem, ItemResolution, Worktree } from '../platform'
 import { ArchiveIcon, ChevronDownIcon, ClockIcon, MuteIcon } from './icons'
 import type { EditActions } from './ItemMenu'
 import { ItemRow, type LaunchOptions } from './ItemRow'
@@ -96,8 +96,8 @@ export interface ListSectionProps {
   // onFilterBy adds a filter to the inbox's query, or takes it away, as a card's
   // repository, author, and labels do when clicked.
   onFilterBy?: ((key: string, value: string) => void) | undefined
-  // onReview opens a pull request of this list in the review sheet (see ItemRow).
-  onReview?: ((id: number, tab: TriageTab) => void) | undefined
+  // onOpen opens a card of this list in its sheet (see ItemRow).
+  onOpen?: ((item: InboxItem, tab: TriageTab) => void) | undefined
 }
 
 // ListSection is one inbox list as tabs: the list itself, then what was snoozed, what was
@@ -126,7 +126,7 @@ export function ListSection({
   matched,
   marks = '',
   onFilterBy,
-  onReview,
+  onOpen,
 }: ListSectionProps) {
   const id = useId()
   const [tab, setTab] = useState<TriageTab>('inbox')
@@ -301,7 +301,7 @@ export function ListSection({
                 highlighted={item.id === highlight}
                 marks={marks}
                 onFilterBy={onFilterBy}
-                onReview={onReview}
+                onOpen={onOpen}
               />
             ))}
           </ul>

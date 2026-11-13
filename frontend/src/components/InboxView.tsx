@@ -2,7 +2,9 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 
 import { attempt } from '../lib/call'
 import type { InboxFilter } from '../lib/inboxFilter'
-import { noWorktrees } from '../lib/itemWorktrees'
+import type { IssueDrafts } from '../lib/issueDrafts'
+import { issueTone } from '../lib/issues'
+import { noWorktrees, worktreeOf } from '../lib/itemWorktrees'
 import { sheetCards, shownOrder } from '../lib/listOrder'
 import { isInboxNil } from '../lib/nil'
 import type { ReviewDrafts } from '../lib/reviewDrafts'
@@ -20,6 +22,7 @@ import {
   type AfterMerge,
   type AgentSession,
   type InboxItem,
+  type ItemKind,
   type ItemResolution,
   type ListKey,
   type RepoRule,
@@ -31,6 +34,7 @@ import {
 } from '../platform'
 import { ErrorBanner } from './ErrorBanner'
 import { InboxNil } from './InboxNil'
+import { IssueSheet } from './issue/IssueSheet'
 import { teamsText, type EditActions } from './ItemMenu'
 import type { LaunchOptions } from './ItemRow'
 import { ListSection, type Reveal } from './ListSection'
@@ -92,9 +96,9 @@ export interface InboxViewProps {
   onFilterBy?: (key: string, value: string) => void
   // onClearFilter empties the query.
   onClearFilter?: () => void
-  // drafts are the review sheet's drafts, which the window keeps for the session; without
-  // them pull requests open on GitHub.
-  drafts?: ReviewDrafts
+  // drafts are the sheets' drafts, which the window keeps for the session; with them, a card
+  // opens in its sheet, and without, on GitHub.
+  drafts?: SheetDrafts
   // onManageReplies opens the review replies in the Prompts tab.
   onManageReplies?: () => void
   // onRelease opens a repository's release sheet, as a merge's toast offers when Release
@@ -106,6 +110,13 @@ export interface InboxViewProps {
   repoRules?: RepoRules | undefined
   onSettingsSaved?: (settings: Settings) => void
   onRepoRuleSettings?: () => void
+}
+
+// SheetDrafts are the drafts of both sheets over the inbox: the review sheet's and the issue
+// sheet's.
+export interface SheetDrafts {
+  review: ReviewDrafts
+  issue: IssueDrafts
 }
 
 // noRepoRules are the rules until the settings have loaded.
@@ -126,12 +137,24 @@ function ruleChangeWords(target: string, was: RepoRule, rule: RepoRule): { text:
   }
 }
 
-// Reviewing is the pull request the review sheet shows, and the list and tab it was
-// opened from, which it steps through.
-interface Reviewing {
+// Viewing is the card a sheet shows, and the list and tab it was opened from, which the
+// sheet steps through: the review sheet for a pull request, the issue sheet for an issue.
+// It keeps the card's kind, so the sheet stays as it was should the card leave the list,
+// and the header's step arrow it was stepped to with, if any, which keeps focus when the
+// step opens the other kind's sheet in its place.
+interface Viewing {
   id: number
+  kind: ItemKind
   list: ListKey
   tab: TriageTab
+  arrow: '' | 'prev' | 'next'
+}
+
+// focusedArrow is the header's step arrow that has focus, or ''.
+function focusedArrow(): Viewing['arrow'] {
+  const step = document.activeElement?.closest('[data-step]')?.getAttribute('data-step')
+
+  return step === 'prev' || step === 'next' ? step : ''
 }
 
 // resultTone is how a review's outcome reads in the toast: a review GitHub took, an
@@ -312,8 +335,8 @@ export function InboxView({
     }
   }, [reveal, revealIn, collapsed, onCollapse])
 
-  const [reviewing, setReviewing] = useState<Reviewing | null>(null)
-  const reviews = drafts !== undefined
+  const [viewing, setViewing] = useState<Viewing | null>(null)
+  const sheets = drafts !== undefined
   // shown is the snapshot the lists show, for the menu's review to find an item's list in
   // when it is chosen, without a new action for every snapshot.
   const shown = useRef(snapshot)
@@ -322,20 +345,20 @@ export function InboxView({
     shown.current = snapshot
   }, [snapshot])
 
-  // reviewIn opens a pull request in the sheet from each list, and reviewFromMenu from a
-  // card's menu, in the first list that holds it; each is made once, so the cards, which
-  // take them, keep their identity.
-  const [reviewIn] = useState(() => {
-    const open = (list: ListKey) => (id: number, tab: TriageTab) => {
-      setReviewing({ id, list, tab })
+  // openIn opens a card in its sheet from each list, and openFromMenu from a card's menu,
+  // in the first list that holds it; each is made once, so the cards, which take them,
+  // keep their identity.
+  const [openIn] = useState(() => {
+    const open = (list: ListKey) => (item: InboxItem, tab: TriageTab) => {
+      setViewing({ id: item.id, kind: item.kind, list, tab, arrow: '' })
     }
 
     return { reviewRequested: open('reviewRequested'), authored: open('authored'), assigned: open('assigned') }
   })
-  const [reviewFromMenu] = useState(() => (item: InboxItem, tab: TriageTab) => {
+  const [openFromMenu] = useState(() => (item: InboxItem, tab: TriageTab) => {
     const list = sections.find(({ key }) => shown.current?.[key].items.some((i) => i.id === item.id))?.key
 
-    setReviewing({ id: item.id, list: list ?? 'reviewRequested', tab })
+    setViewing({ id: item.id, kind: item.kind, list: list ?? 'reviewRequested', tab, arrow: '' })
   })
 
   const showToast = (message: Omit<ToastMessage, 'id'>) => {
@@ -506,6 +529,20 @@ export function InboxView({
     onRepoRuleSettings: onRepoRuleSettings ?? (() => undefined),
   }
 
+  // unassignOn takes the user off the item on GitHub, from its card's menu or its sheet, and
+  // says so once GitHub made it; it resolves with why it couldn't, or ''.
+  const unassignOn = async (item: InboxItem): Promise<string> => {
+    const result = await unassign(item.id)
+
+    if (!result.ok) {
+      return result.error
+    }
+
+    showToast({ text: 'Unassigned you on GitHub', detail: item.title })
+
+    return ''
+  }
+
   // edits is what every row's menu does beyond triage. An edit shows once GitHub has
   // made it, as the item leaves the list, which the toast confirms; a pull request that
   // still asks a team for a review stays, and the toast says which.
@@ -520,12 +557,10 @@ export function InboxView({
       })
     },
     onUnassign: async (item) => {
-      const result = await unassign(item.id)
+      const error = await unassignOn(item)
 
-      if (result.ok) {
-        showToast({ text: 'Unassigned you on GitHub', detail: item.title })
-      } else {
-        failed('unassign you from', item, result.error)
+      if (error !== '') {
+        failed('unassign you from', item, error)
       }
     },
     onRemoveReview: async (item) => {
@@ -544,23 +579,50 @@ export function InboxView({
         detail: after?.reviewRequest === 'team' ? `It still asks ${teamsText(after.reviewTeams)}` : item.title,
       })
     },
-    onReview: reviews ? reviewFromMenu : undefined,
+    onOpen: sheets ? openFromMenu : undefined,
   }
 
-  const reviewed = reviewing === null || snapshot === null ? undefined : findItem(snapshot, reviewing.id)
-  // The sheet steps through the cards of its list and tab as the list shows them: the
-  // filter's matches, sorted by project status when the list is, and the card it shows,
-  // kept in its place should the filter stop matching it.
+  const viewed = viewing === null || snapshot === null ? undefined : findItem(snapshot, viewing.id)
+  // A sheet steps through the cards of its list and tab as the list shows them, pull
+  // requests and issues alike: the filter's matches, sorted by project status when the list
+  // is, and the card it shows, kept in its place should the filter stop matching it.
   const siblings =
-    reviewing === null || triaged === null
+    viewing === null || triaged === null
       ? []
       : sheetCards(
-          triaged.lists[reviewing.list],
-          reviewing.tab,
-          filter?.lists[reviewing.list],
-          shownOrder(order, reviewing.list),
-          reviewing.id,
-        ).filter((i) => i.kind === 'pr')
+          triaged.lists[viewing.list],
+          viewing.tab,
+          filter?.lists[viewing.list],
+          shownOrder(order, viewing.list),
+          viewing.id,
+        )
+  const listTitle = viewing === null ? '' : (sections.find(({ key }) => key === viewing.list)?.title ?? '')
+
+  // step moves a sheet to the card with id, which switches the sheet when its kind
+  // differs.
+  const step = (id: number) => {
+    if (viewing !== null) {
+      setViewing({
+        ...viewing,
+        id,
+        kind: siblings.find((s) => s.id === id)?.kind ?? viewing.kind,
+        arrow: focusedArrow(),
+      })
+    }
+  }
+  const initialFocus = viewing === null || viewing.arrow === '' ? undefined : `[data-step="${viewing.arrow}"]`
+
+  // unassignHere takes the user off an issue from its sheet: the sheet closes and the toast
+  // says so once GitHub made it, and it hears why when it couldn't.
+  const unassignHere = async (it: InboxItem): Promise<string> => {
+    const error = await unassignOn(it)
+
+    if (error === '') {
+      setViewing(null)
+    }
+
+    return error
+  }
 
   return (
     <div className="flex flex-col gap-4 p-4">
@@ -642,27 +704,25 @@ export function InboxView({
               matched={filter?.lists[key]}
               marks={filter?.marks ?? ''}
               onFilterBy={onFilterBy}
-              onReview={reviews ? reviewIn[key] : undefined}
+              onOpen={sheets ? openIn[key] : undefined}
             />
           ))}
-      {reviewing !== null && drafts !== undefined && (
+      {viewing !== null && sheets && viewing.kind === 'pr' && (
         <ReviewSheet
-          id={reviewing.id}
-          item={reviewed}
+          id={viewing.id}
+          item={viewed}
           siblings={siblings}
-          listTitle={sections.find(({ key }) => key === reviewing.list)?.title ?? ''}
-          drafts={drafts}
+          listTitle={listTitle}
+          drafts={drafts.review}
           launch={launch}
-          resolution={resolutions.get(reviewing.id) ?? null}
-          sessions={reviewed === undefined ? undefined : sessionsOf(sessions, reviewed)}
-          onNavigate={(id) => {
-            setReviewing({ ...reviewing, id })
-          }}
+          resolution={resolutions.get(viewing.id) ?? null}
+          sessions={viewed === undefined ? undefined : sessionsOf(sessions, viewed)}
+          onNavigate={step}
           onClose={() => {
-            setReviewing(null)
+            setViewing(null)
           }}
           onDone={(result, r) => {
-            setReviewing(null)
+            setViewing(null)
             showToast({ text: result.message, detail: r.title, tone: resultTone(result) })
 
             if (result.outcome === 'merged') {
@@ -671,6 +731,30 @@ export function InboxView({
           }}
           onFilesSettings={onFilesSettings}
           onManageReplies={onManageReplies}
+          initialFocus={initialFocus}
+        />
+      )}
+      {viewing !== null && sheets && viewing.kind === 'issue' && (
+        <IssueSheet
+          id={viewing.id}
+          item={viewed}
+          siblings={siblings}
+          listTitle={listTitle}
+          drafts={drafts.issue}
+          launch={launch}
+          resolution={resolutions.get(viewing.id) ?? null}
+          sessions={viewed === undefined ? undefined : sessionsOf(sessions, viewed)}
+          worktree={viewed === undefined ? undefined : worktreeOf(worktrees, viewed)}
+          onNavigate={step}
+          onClose={() => {
+            setViewing(null)
+          }}
+          onDone={(result, is) => {
+            setViewing(null)
+            showToast({ text: result.message, detail: is.title, tone: issueTone(result) })
+          }}
+          onUnassign={unassignHere}
+          initialFocus={initialFocus}
         />
       )}
       <Toast toast={toast} seconds={toastSeconds} onClose={closeToast} />

@@ -924,8 +924,8 @@ Each pull request or issue in the inbox is a card three lines high:
    merge conflicts with its base branch, and an **Auto-merge · squash** tag (or merge commit, or
    rebase) when GitHub will merge it on its own once its requirements are met. A long title is cut
    short; hover it for all of it. Clicking a pull request's title opens it in the [review
-   sheet](#reviewing-a-pull-request); **⌘-click** it, or click the small **↗** beside it, to
-   open it on GitHub instead. An issue's title opens GitHub.
+   sheet](#reviewing-a-pull-request), and an issue's in the [issue sheet](#reading-an-issue);
+   **⌘-click** it, or click the small **↗** beside it, to open it on GitHub instead.
 2. The repository and number, the author, how long ago it last changed, and a tag when the
    [trust rule](#outside-contributors) says so: **bot** for a trusted bot, **untrusted bot**,
    or **outside contributor**. A pull request whose files are checked then shows its
@@ -1190,7 +1190,8 @@ again starts a fresh record.
 Every card has a **More actions** menu (**⋯**) at the end of its triage buttons, which shows as
 you hover the card or move focus into it. It gathers everything you can do with the item:
 
-- **Review…**, on a pull request, opens it in the [review sheet](#reviewing-a-pull-request).
+- **Review…**, on a pull request, opens it in the [review sheet](#reviewing-a-pull-request), and
+  **View issue…**, on an issue, in the [issue sheet](#reading-an-issue).
 - **Open on GitHub** and **Copy link**.
 - **Inbox actions**, a submenu with the card's triage buttons: **Refresh from GitHub**, **Pin to
   top** (or **Unpin**), **Pin or mute repository**, with a submenu that pins or mutes the card's
@@ -1214,7 +1215,7 @@ approval, merge, and close happens only because you clicked.
 
 | Change | Where | Cost |
 |---|---|---|
-| Unassign me | The card's menu | 1 REST point |
+| Unassign me | The card's menu, or the issue sheet's | 1 REST point |
 | Remove me as reviewer | The card's menu | 1 REST point |
 | Approve (with line comments) | The review sheet | 1 GraphQL point to check nothing was pushed, then 1 REST point |
 | Request changes, Comment (with line comments) | The review sheet | 1 REST point |
@@ -1224,6 +1225,8 @@ approval, merge, and close happens only because you clicked.
 | Update branch | The review sheet | 1 REST point |
 | Ask Dependabot to rebase (a `@dependabot rebase` comment) | The review sheet | 1 REST point |
 | Close pull request | The review sheet's menu, after you confirm | 1 GraphQL point to check nothing was pushed, then 1 REST point (1 more for your comment) |
+| Comment on an issue | The issue sheet | 1 REST point |
+| Close an issue as completed, or as not planned | The issue sheet, after you confirm | 1 GraphQL point to check for new comments, then 1 REST point (1 more for your comment) |
 
 From the card's menu, once GitHub has taken you off, the item leaves that list (and the inbox,
 when it is in no other), and a toast confirms it. When GitHub refuses, or answers without making
@@ -1270,12 +1273,13 @@ Every card gets it, in any list.
 
 - **The header:** the title, `owner/repo#n`, who opened it with the same trust tag the card has,
   which branch merges into which, and where it sits in its list, as in **3 of 8 in Assigned**.
-  **←** and **→** (or the arrow keys, while you aren't typing) step to the previous or next pull
-  request in the same list and tab, in the order the list shows them: only the cards the
-  [filter](#filtering) matches, sorted by project status when the list is. Each arrow names the
-  pull request it steps to in its tooltip. A pull request a refresh stops matching keeps its
-  place while the sheet is open on it. **↗** opens it on GitHub, and **✕** or **Escape** closes
-  the sheet.
+  **←** and **→** (or the arrow keys, while you aren't typing) step to the previous or next card
+  in the same list and tab, in the order the list shows them: only the cards the
+  [filter](#filtering) matches, sorted by project status when the list is. Pull requests and
+  issues come in turn, and the sheet becomes the [issue sheet](#reading-an-issue) for an issue;
+  filter `is:pr` to step through pull requests alone. Each arrow names the card it steps to in
+  its tooltip. A card a refresh stops matching keeps its place while the sheet is open on it.
+  **↗** opens it on GitHub, and **✕** or **Escape** closes the sheet.
 - **The files** on the left: each path with its additions and deletions, a dot for a
   [sensitive](#sensitive-files) category, and a tick once you mark it viewed. Clicking one scrolls
   to its diff.
@@ -1458,6 +1462,84 @@ sheet closes after acting.
 Mac, diffs included: at most 8 MB of diffs per pull request, 64 MB and 100 pull requests in all,
 the least recently opened dropped first, anything unopened for 14 days dropped, and a pull
 request's own dropped once it merges. Nothing leaves your Mac but the requests to GitHub's API.
+
+<br>
+
+## Reading an issue
+
+Clicking an issue's title opens the **issue sheet**, the review sheet's twin for issues, so you
+can read an issue, discuss it, hand it to an agent, and close it without leaving Nilbox. Issues
+reach the inbox through **Assigned**, so these are your own work items.
+
+**What it shows.**
+
+- **The header:** the issue's icon in its state's color (green while open, blue once closed as
+  completed, grey as not planned or a duplicate), the title, `owner/repo#n`, who opened it and
+  when, with the card's trust tag, a **Locked** tag on a locked conversation, the issue's type,
+  and where it sits in its list. **←** and **→** step through the list's cards as the [review
+  sheet](#reviewing-a-pull-request)'s do, pull requests included, and **↗**, **✕**, and
+  **Escape** work as there.
+- **The conversation** in the middle, oldest first: the description, rendered from markdown as
+  safely as a pull request's, with its reactions; then every comment, with who wrote it and when
+  (the full date on hover), **Author**, **You**, and **bot** tags, whether it was edited, **Quote
+  reply**, which quotes it into your comment, and **↗**. A comment someone hid is folded, saying
+  why, and so is a bot's, to its first line; open either to read it. Events take a line each:
+  mentions by other pull requests and issues, linked and unlinked pull requests, closes (as what,
+  by what), reopens, assignments, renames, duplicates, and labels, the ones a person changed at
+  once on one line. **Show N earlier entries** reads the part of a long conversation before the
+  newest hundred entries, 1 GraphQL point per hundred, only when you click it.
+- **New since your last visit:** a divider marks what came after the conversation as you last
+  opened it, and the sheet scrolls to it once. It goes by GitHub's own times, so your Mac's clock
+  can't move it, and your own comments are never new to you.
+- **Where it stands,** at the top of the right column, in its color: **Fix merged: #14 into
+  release-1.2**, **Fix in progress: #14 · draft · checks failing**, **You replied last**,
+  **Assigned to you · opened 3 days ago**, **Locked**, **Closed as not planned by octo-other**,
+  or that GitHub can't find it any more. Under it, the issue's worktree and agent session, as
+  its card shows them.
+- **The details:** **Development** (the pull requests that close it once merged, with their
+  state, checks, and review, then the ones that mentioned it), assignees, labels, projects, the
+  milestone (its due day, in amber once it has passed, and how far along it is), sub-issues with
+  their progress, the issue it is part of, and who took part. A pull request or issue named here
+  opens on GitHub.
+- **The latest agent session** on the issue, as on the review sheet, with **Use as comment**.
+
+**Commenting and closing.** Write in **Your comment** and press **Comment**, or **⌘↩**. The
+button's menu also offers **Close as completed…** and **Close as not planned…**, which become the
+button once chosen, and **Unassign me**. When a fix has merged, the button starts as **Close as
+completed…**. Every close asks first, says your text is posted as a comment before it, and can be
+undone on GitHub by reopening the issue. The closes wait for the sheet's first read from GitHub,
+and are left out when GitHub doesn't let your account close the issue. On a locked conversation
+you can't write to, **Comment** is held back, and a close goes only without text.
+
+**Never over a comment you haven't read.** A close remembers the comments you saw. Before it
+sends anything, it reads the issue's state and its newest ten comments (1 GraphQL point): when
+someone else commented since you opened it, nothing is sent, the sheet keeps your draft, says
+who, and reads the issue again, so you can read it first; when someone closed it first, it leaves
+the inbox and the toast says so. Your own comments never stop it. Once your comment is posted,
+anything that keeps the close from going says the comment was posted, so you never post it
+twice.
+
+While an action runs, the sheet ticks off each step GitHub finishes and takes no input; then it
+closes, and a toast says what came of it. **Unassign me** closes the sheet with its toast once
+GitHub takes you off, or says in the sheet why it couldn't.
+
+**Drafts** are kept per issue for the session, as the review sheet's are: your text and your
+chosen action, cleared once the action succeeds, but not when a new comment stopped a close.
+
+**Changed since it was read.** When the card shows newer activity or more comments than the
+sheet's read, which the inbox's refresh brings at no cost, the sheet says so and offers
+**Reload**.
+
+**What it costs.** Opening costs nothing: it shows what the sheet read last time, or the card.
+Its refresh costs 1 GraphQL point, and none within 20 seconds of the last unless the card shows
+newer activity or you click refresh. Each write costs what the [edits
+table](#the-item-menu-and-edits-on-github) says.
+
+**What it keeps.** The sheet keeps what it read of each issue in the app's database on this Mac:
+at most 1 MiB per issue (a very long description or comment is cut short, marked, with a link to
+the rest), 32 MiB and 200 issues in all, the least recently opened dropped first, anything
+unopened for 14 days dropped, and an issue's own once it is closed. Nothing leaves your Mac but
+the requests to GitHub's API.
 
 <br>
 

@@ -160,4 +160,25 @@ describe('useReview', () => {
     await act(() => result.current.loadPatches(['a.go']))
     expect(platform.reviewPatches).not.toHaveBeenCalled()
   })
+
+  it('forces a read only of the pull request the user asked it for', async () => {
+    const { result, rerender } = renderHook(({ id }) => useReview(id), { initialProps: { id: 1 } })
+
+    await waitFor(() => {
+      expect(result.current.review).not.toBeNull()
+    })
+
+    act(() => {
+      result.current.reload()
+    })
+    await waitFor(() => {
+      expect(platform.readReviewAgain).toHaveBeenCalledWith(1)
+    })
+
+    rerender({ id: 2 })
+    await waitFor(() => {
+      expect(platform.refreshReview).toHaveBeenCalledWith(2)
+    })
+    expect(platform.readReviewAgain, 'stepping is no reload').toHaveBeenCalledOnce()
+  })
 })

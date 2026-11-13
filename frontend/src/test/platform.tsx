@@ -33,6 +33,9 @@ import {
   importEntry,
   installResult,
   integrationsConfig,
+  issue,
+  issueResult,
+  issueTimeline,
   integrationTools,
   itemResolution,
   launchDefaults,
@@ -152,6 +155,11 @@ function answers(subscribe: Loose<Platform['on']>): { [K in keyof Platform]: Loo
     reviewPatches: (_id, _head, paths) =>
       Promise.resolve((paths ?? []).map((path) => ({ path, patch: '@@ -1 +1 @@\n-a\n+b', patchState: '' as const }))),
     actOnReview: () => Promise.resolve(reviewResult()),
+    openIssue: (id) => Promise.resolve(issue({ id })),
+    refreshIssue: (id) => Promise.resolve(issue({ id })),
+    readIssueAgain: (id) => Promise.resolve(issue({ id })),
+    issueEarlier: () => Promise.resolve(issueTimeline({ items: [], before: '' })),
+    actOnIssue: () => Promise.resolve(issueResult()),
     reviewReplies: () => Promise.resolve(replyList()),
     fillReply: () => Promise.resolve('Reviewed and approved. Thanks, @octo-other!'),
 

@@ -17,6 +17,7 @@ import * as hooks from '../../bindings/github.com/mrz1836/nilbox/internal/hooks'
 import * as inbox from '../../bindings/github.com/mrz1836/nilbox/internal/inbox'
 import type * as integrationprefs from '../../bindings/github.com/mrz1836/nilbox/internal/integrationprefs'
 import * as integrations from '../../bindings/github.com/mrz1836/nilbox/internal/integrations'
+import * as issues from '../../bindings/github.com/mrz1836/nilbox/internal/issues'
 import type * as item from '../../bindings/github.com/mrz1836/nilbox/internal/item'
 import * as launchdefaults from '../../bindings/github.com/mrz1836/nilbox/internal/launchdefaults'
 import * as launcher from '../../bindings/github.com/mrz1836/nilbox/internal/launcher'
@@ -327,6 +328,30 @@ export type ChangeKind = review.ChangeKind
 export type DependencyUpdate = NonNullLists<bump.Update>
 export type UpdateLevel = bump.Level
 
+export type Issue = NonNullLists<issues.Issue>
+export type IssueAction = issues.Action
+export type IssueActRequest = NonNullLists<issues.ActRequest>
+export type IssueEventKind = issues.EventKind
+export type IssueFix = NonNullLists<issues.Fix>
+export type IssueLabel = NonNullLists<issues.Label>
+export type IssueLinked = NonNullLists<issues.Linked>
+export type IssueMilestone = NonNullLists<issues.Milestone>
+export type IssueOffer = NonNullLists<issues.Offer>
+export type IssueOutcome = issues.Outcome
+export type IssuePerson = NonNullLists<issues.Person>
+export type IssueProject = NonNullLists<issues.Project>
+export type IssueResult = NonNullLists<issues.Result>
+export type IssueSeen = NonNullLists<issues.Seen>
+export type IssueStanding = NonNullLists<issues.Standing>
+export type IssueStandingState = issues.StandingState
+export type IssueStateReason = issues.StateReason
+export type IssueTimelineItem = NonNullLists<issues.TimelineItem>
+export type IssueTimelinePage = NonNullLists<issues.TimelinePage>
+export type IssueType = NonNullLists<issues.IssueType>
+export type ChecksWord = issues.ChecksWord
+export type RefState = issues.RefState
+export type ReviewWord = issues.ReviewWord
+
 export type SensitiveCategory = NonNullLists<sensitive.Category>
 export type FileCheck = NonNullLists<sensitive.Check>
 export type SensitiveFile = NonNullLists<sensitive.Finding>
@@ -435,6 +460,14 @@ export const {
   Replies: reviewReplies,
   FillReply: fillReply,
 } = narrow(review.Service)
+
+export const {
+  Open: openIssue,
+  Refresh: refreshIssue,
+  ReadAgain: readIssueAgain,
+  Earlier: issueEarlier,
+  Act: actOnIssue,
+} = narrow(issues.Service)
 
 export const {
   List: listPrompts,

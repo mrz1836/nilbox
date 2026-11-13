@@ -42,6 +42,7 @@ import { useInbox } from './lib/useInbox'
 import { useInboxOrder } from './lib/useInboxOrder'
 import { useIntegrations } from './lib/useIntegrations'
 import { useScriptRuns } from './lib/useScriptRuns'
+import { useIssueDrafts } from './lib/issueDrafts'
 import { useReviewDrafts } from './lib/reviewDrafts'
 import { useLaunchConfig } from './lib/useLaunchConfig'
 import { useNotifications } from './lib/useNotifications'
@@ -366,6 +367,8 @@ export function App() {
   const config = useLaunchConfig(inbox.snapshot)
   // reviewDrafts keeps what the user wrote in the review sheet, for the session.
   const reviewDrafts = useReviewDrafts()
+  // issueDrafts keeps what the user wrote in the issue sheet, for the session.
+  const issueDrafts = useIssueDrafts()
   // The text size follows the stored settings; until they load, it is the size the
   // window opened at (main.tsx).
   useTextSize(config.settings?.textSize)
@@ -820,7 +823,7 @@ export function App() {
             onClearFilter={() => {
               go({ type: 'search', view: 'inbox', query: '' })
             }}
-            drafts={reviewDrafts}
+            drafts={{ review: reviewDrafts, issue: issueDrafts }}
             onManageReplies={openPrompts}
             onRelease={openRelease}
             repoRules={config.settings?.repoRules}

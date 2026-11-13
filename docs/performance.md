@@ -276,6 +276,21 @@ GitHub's file list names the commit it listed each file at, so a read whose file
 head the sheet asked for needs no separate request to confirm it, and the same list serves as
 the pull request's sensitive-file check when one is due.
 
+The [issue sheet](desktop.md#reading-an-issue) spends nothing on the scheduler's budget either:
+it reads only when you open an issue. Its one read brings the description, the newest hundred
+entries of the conversation, and the details beside them, and costs 1 GraphQL point with the
+projects or without them (measured on a public issue of over a hundred entries).
+
+| What you do | Requests |
+|---|---|
+| Open the sheet | None: it shows what it read last time, or the card |
+| Its refresh | 1 GraphQL point; none within 20 seconds of the last, unless the card shows newer activity or the header's refresh button asked |
+| Show earlier entries | 1 GraphQL point per 100 entries, only when you click it |
+| Comment | 1 REST request |
+| Close as completed, or as not planned | 1 GraphQL point to check for new comments, then 1 REST request, plus 1 more for your comment |
+| Unassign me | 1 REST request |
+| A closed issue leaving the inbox | None |
+
 [Following a release](desktop.md#release) to published costs at most 20 GraphQL points and 20
 REST requests per release: a check a minute after the release ends, then one every three
 minutes, each one GraphQL query of 1 point (measured) for the tag's release and, until it is

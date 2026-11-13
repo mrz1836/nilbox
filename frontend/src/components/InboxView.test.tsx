@@ -9,6 +9,7 @@ import { offersProjects } from '../lib/projects'
 import { useCollapsedSections } from '../lib/useCollapsedSections'
 import { useInbox } from '../lib/useInbox'
 import { useInboxOrder } from '../lib/useInboxOrder'
+import { useIssueDrafts } from '../lib/issueDrafts'
 import { useReviewDrafts } from '../lib/reviewDrafts'
 import { ClockContext } from '../lib/useNow'
 import { useTriage } from '../lib/useTriage'
@@ -18,6 +19,8 @@ import {
   afterMerge,
   agents,
   details,
+  issue,
+  issueResult,
   item,
   itemResolution,
   list,
@@ -94,6 +97,7 @@ function Inbox({
 }: Omit<HarnessProps, 'clock'>) {
   const inbox = useInbox()
   const drafts = useReviewDrafts()
+  const issueDrafts = useIssueDrafts()
   const triaged = useTriage(inbox.snapshot)
   const filter = triaged === null ? null : filterInbox(triaged, query, inbox.snapshot?.account.login ?? '')
   const sections = useCollapsedSections()
@@ -121,7 +125,7 @@ function Inbox({
       filter={filter}
       onFilterBy={filterBy}
       onClearFilter={clearFilter}
-      {...(reviews ? { drafts, onManageReplies: manageReplies } : {})}
+      {...(reviews ? { drafts: { review: drafts, issue: issueDrafts }, onManageReplies: manageReplies } : {})}
       {...(reviews && releases ? { onRelease: release } : {})}
       repoRules={repoRules}
       onSettingsSaved={settingsSaved}
@@ -1897,5 +1901,122 @@ describe('InboxView review sheet', () => {
     await userEvent.click(await screen.findByRole('button', { name: 'Add the widget cache' }))
     expect(platform.openExternal).toHaveBeenCalledWith('https://github.com/acme-org/example-repo/pull/7')
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  })
+})
+
+describe('InboxView issue sheet', () => {
+  // crash is an issue in the Assigned list, beside a pull request.
+  const crash = item({
+    id: 2,
+    kind: 'issue',
+    number: 12,
+    title: 'Parser drops the trailing newline',
+    url: 'https://github.com/acme-org/example-repo/issues/12',
+    assigned: true,
+  })
+
+  it('opens an issue from its title, and reports what the action came to', async () => {
+    platform.getInboxSnapshot.mockResolvedValue(snapshot({ assigned: list([crash]) }))
+    platform.openIssue.mockResolvedValue(issue({ id: 2 }))
+    platform.refreshIssue.mockResolvedValue(issue({ id: 2 }))
+    platform.actOnIssue.mockResolvedValue(
+      issueResult({
+        outcome: 'commented_not_closed',
+        message: 'Commented on acme-org/example-repo#12, but it wasn’t closed: GitHub refused it',
+      }),
+    )
+    render(<Harness launch={launchOptions} clock={fixedNow} reviews />)
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Parser drops the trailing newline' }))
+
+    const sheet = await screen.findByRole('dialog', { name: 'Parser drops the trailing newline' })
+    await userEvent.type(within(sheet).getByRole('textbox', { name: 'Your comment' }), 'Done.')
+    await userEvent.click(within(sheet).getByRole('button', { name: 'Comment' }))
+
+    const toast = await screen.findByRole('group', { name: 'Notification' })
+    expect(
+      within(toast).getByText('Commented on acme-org/example-repo#12, but it wasn’t closed: GitHub refused it'),
+    ).toBeInTheDocument()
+    expect(toast.querySelector('.text-warning')).not.toBeNull()
+    expect(screen.queryByRole('dialog', { name: 'Parser drops the trailing newline' })).not.toBeInTheDocument()
+  })
+
+  it('steps from a pull request to an issue and back, switching sheets', async () => {
+    const third = item({ id: 3, number: 9, title: 'Third' })
+    platform.getInboxSnapshot.mockResolvedValue(snapshot({ assigned: list([item({ id: 1 }), crash, third]) }))
+    platform.openIssue.mockResolvedValue(issue({ id: 2 }))
+    platform.refreshIssue.mockResolvedValue(issue({ id: 2 }))
+    platform.openReview.mockImplementation((id) =>
+      Promise.resolve(review({ id, title: id === 3 ? 'Third' : 'Add the widget cache' })),
+    )
+    platform.refreshReview.mockImplementation((id) =>
+      Promise.resolve(review({ id, title: id === 3 ? 'Third' : 'Add the widget cache' })),
+    )
+    render(<Harness launch={launchOptions} clock={fixedNow} reviews />)
+
+    const opener = await screen.findByRole('button', { name: 'Add the widget cache' })
+    await userEvent.click(opener)
+    await screen.findByRole('dialog', { name: 'Add the widget cache' })
+
+    await userEvent.keyboard('{ArrowRight}')
+    const sheet = await screen.findByRole('dialog', { name: 'Parser drops the trailing newline' })
+    expect(within(sheet).getByText('2 of 3 in Assigned')).toBeInTheDocument()
+    expect(screen.queryByRole('dialog', { name: 'Add the widget cache' })).not.toBeInTheDocument()
+
+    // A step taken with the header's arrow keeps focus on that arrow in the other sheet.
+    await userEvent.click(within(sheet).getByRole('button', { name: 'Next' }))
+    const last = await screen.findByRole('dialog', { name: 'Third' })
+    await waitFor(() => {
+      expect(within(last).getByRole('button', { name: 'Previous' })).toBeInTheDocument()
+    })
+    await userEvent.click(within(last).getByRole('button', { name: 'Previous' }))
+    const back = await screen.findByRole('dialog', { name: 'Parser drops the trailing newline' })
+    await waitFor(() => {
+      expect(within(back).getByRole('button', { name: 'Previous' })).toHaveFocus()
+    })
+
+    await userEvent.keyboard('{Escape}')
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    })
+    expect(opener, 'focus goes back to the card the first sheet was opened from').toHaveFocus()
+  })
+
+  it('opens an issue from its menu', async () => {
+    platform.getInboxSnapshot.mockResolvedValue(snapshot({ assigned: list([crash]) }))
+    platform.openIssue.mockResolvedValue(issue({ id: 2 }))
+    platform.refreshIssue.mockResolvedValue(issue({ id: 2 }))
+    render(<Harness launch={launchOptions} clock={fixedNow} reviews />)
+
+    const row = (await screen.findAllByRole('listitem')).find((li) =>
+      li.textContent.includes('Parser drops the trailing newline'),
+    )
+    await userEvent.click(within(row as HTMLElement).getByRole('button', { name: 'More actions' }))
+    await userEvent.click(screen.getByRole('menuitem', { name: 'View issue…' }))
+
+    expect(await screen.findByRole('dialog', { name: 'Parser drops the trailing newline' })).toBeInTheDocument()
+  })
+
+  it('takes the user off the issue from its sheet, which closes, and says why it couldn’t', async () => {
+    platform.getInboxSnapshot.mockResolvedValue(snapshot({ assigned: list([crash]) }))
+    platform.openIssue.mockResolvedValue(issue({ id: 2 }))
+    platform.refreshIssue.mockResolvedValue(issue({ id: 2 }))
+    platform.unassignItem.mockRejectedValueOnce(new Error('GitHub refused it.'))
+    render(<Harness launch={launchOptions} clock={fixedNow} reviews />)
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Parser drops the trailing newline' }))
+    const sheet = await screen.findByRole('dialog', { name: 'Parser drops the trailing newline' })
+
+    await userEvent.click(await within(sheet).findByRole('button', { name: 'More issue actions' }))
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Unassign me' }))
+    expect(await within(sheet).findByText('GitHub refused it.')).toBeInTheDocument()
+
+    await userEvent.click(await within(sheet).findByRole('button', { name: 'More issue actions' }))
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Unassign me' }))
+
+    const toast = await screen.findByRole('group', { name: 'Notification' })
+    expect(within(toast).getByText('Unassigned you on GitHub')).toBeInTheDocument()
+    expect(screen.queryByRole('dialog', { name: 'Parser drops the trailing newline' })).not.toBeInTheDocument()
+    expect(platform.unassignItem).toHaveBeenLastCalledWith(2)
   })
 })

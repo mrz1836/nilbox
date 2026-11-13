@@ -197,8 +197,9 @@ Wails CLI is never installed: the build runs it with `go run` at the version `go
   (the three newest are kept). Your prompts and launch defaults are also kept in `prompts.json`
   and `launch-defaults.json` beside it, rewritten after every change, so they survive an update
   or a damaged database. The review sheet keeps the diffs of pull requests you open in it there
-  too, capped at 64 MB and dropped after 14 days unused. GitHub tokens are never stored there or
-  anywhere else.
+  too, capped at 64 MB, and the issue sheet the conversations of issues you open in it, capped at
+  32 MB, each dropped after 14 days unused. GitHub tokens are never stored there or anywhere
+  else.
 - **A damaged database** is renamed to `nilbox.db.broken-<UTC time>`, never deleted, and the app
   starts with a fresh one, your prompts and launch defaults brought back on their own.
 - **Logs:** `logs/nilbox.log` in the same folder, at most three files of 5 MB each. Start the
@@ -320,8 +321,8 @@ links to its full write-up in the [Desktop Guide](docs/desktop.md).
 - **Live signals:** checks still running pulse in yellow (**12/18**), and a card names the item's
   worktree (**worktree · 2 changes · Codex 3h ago**) and what its agent session is doing
   (**Claude · needs approval · 2m**).
-- **Click a pull request's title** to review it in the app; **⌘-click** it, or click the **↗**
-  beside it, to open it on GitHub.
+- **Click a title** to review a pull request, or read an issue, in the app; **⌘-click** it, or
+  click the **↗** beside it, to open it on GitHub.
 - **Always current:** a refresh on start and every five minutes, **Refresh** whenever you like,
   and a card's own circular arrow to read that one item for one API point. Pull requests whose
   checks are running are read again every 45 seconds, all in one request, until their checks end.
@@ -464,6 +465,31 @@ More in [The item menu and edits on GitHub](docs/desktop.md#the-item-menu-and-ed
   in the background, for one GraphQL point when nothing was pushed.
 
 More in [Reviewing a pull request](docs/desktop.md#reviewing-a-pull-request).
+
+</details>
+
+<details>
+<summary>💬 <strong>The issue sheet</strong>: an issue's whole conversation, where it stands, and what fixes it, with comment and close a click away</summary>
+<br/>
+
+- **Read it here:** click an issue's title for its description and conversation, oldest first,
+  with hidden and bot comments folded, events on a line, and a **New** divider at what came since
+  your last visit, which the sheet scrolls to.
+- **Where it stands,** in one sentence: **Fix merged: #14 into release-1.2**, **Fix in
+  progress: #14 · checks failing**, **You replied last**, or **Assigned to you**, beside the
+  pull requests that fix it, its labels, projects, milestone, sub-issues, and who took part.
+- **Comment, or close it as completed or as not planned:** every close asks first, posts your
+  text as a comment before it, and never goes over a comment you haven't read: if someone
+  commented since you opened it, nothing is sent and the sheet shows you what's new.
+  **Unassign me** is in the same menu, and **Quote reply** quotes a comment into yours.
+- **Your agent's verdict** shows with **Use as comment**, and **Open in Claude** (or Codex) hands
+  the issue to an agent from the sheet.
+- **One list, both kinds:** **←** and **→** step through the list's cards as it shows them, pull
+  requests and issues alike, and the sheet switches to suit each.
+- **Instant and cheap:** it opens from what it read last time, with no request, then checks GitHub
+  for one GraphQL point.
+
+More in [Reading an issue](docs/desktop.md#reading-an-issue).
 
 </details>
 
@@ -957,12 +983,13 @@ More in [The window](docs/desktop.md#the-window).
 > `avatars.githubusercontent.com` once for your profile picture, and, when you install or update a
 > tool, `github.com` and GitHub's release download hosts for that tool's public release, with no
 > token and nothing of yours. It reads from GitHub, and changes something there only when you ask:
-> taking you off an item, or a review, comment, merge, auto-merge, branch update, Dependabot
-> rebase request, or close you send from the review sheet. The git it runs reaches a clone's own
+> taking you off an item, a review, comment, merge, auto-merge, branch update, Dependabot rebase
+> request, or close you send from the review sheet, or a comment or close you send from the issue
+> sheet. The git it runs reaches a clone's own
 > remote only to make a worktree, to check a release before and after magex pushes its tag, and
 > for Repo scripts' branch check and **Pull**, which ask an origin that isn't on GitHub only when
 > you click **Check**. Your preferences, triage state, and cache, the diffs of pull requests you
-> review included, never leave your machine.
+> review and the conversations of issues you read included, never leave your machine.
 
 <br/>
 

@@ -72,10 +72,18 @@ function withPatches(review: Review, patches: Patches): Review {
 // before the sheet stepped to this one, is never shown.
 export function useReview(id: number): ReviewState {
   const opened = useQuery(() => openReview(id), [id])
-  // round counts the reads asked for after the first; force marks one the user asked for,
-  // which reads GitHub however recently the pull request was read.
-  const [round, setRound] = useState({ n: 0, force: false })
-  const refreshed = useQuery(() => (round.force ? readReviewAgain(id) : refreshReview(id)), [id, round.n])
+  // round counts the reads asked for after the first, for one pull request; force marks
+  // one the user asked for, which reads GitHub however recently the pull request was read.
+  // Stepping to another pull request starts its rounds afresh, so a reload asked for on one
+  // never forces the reads of the next.
+  const [round, setRound] = useState({ id, n: 0, force: false })
+
+  if (round.id !== id) {
+    setRound({ id, n: 0, force: false })
+  }
+
+  const force = round.id === id && round.force
+  const refreshed = useQuery(() => (force ? readReviewAgain(id) : refreshReview(id)), [id, round.n])
   const [patches, setPatches] = useState(noPatches)
   const [loading, setLoading] = useState<ReadonlySet<string>>(new Set())
   const [patchError, setPatchError] = useState('')
@@ -97,7 +105,7 @@ export function useReview(id: number): ReviewState {
 
     const timer = setTimeout(() => {
       setRetries({ id, count: tries + 1 })
-      setRound((r) => ({ n: r.n + 1, force: false }))
+      setRound((r) => ({ id, n: r.n + 1, force: false }))
     }, unknownWait)
 
     return () => {
@@ -110,7 +118,7 @@ export function useReview(id: number): ReviewState {
     checking: refreshed.pending,
     error: refreshed.error === '' ? opened.error : refreshed.error,
     reload: () => {
-      setRound((r) => ({ n: r.n + 1, force: true }))
+      setRound((r) => ({ id, n: r.n + 1, force: true }))
     },
     loading,
     patchError,
