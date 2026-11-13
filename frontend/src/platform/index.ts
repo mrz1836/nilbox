@@ -341,6 +341,7 @@ export type IssueOffer = NonNullLists<issues.Offer>
 export type IssueOutcome = issues.Outcome
 export type IssuePerson = NonNullLists<issues.Person>
 export type IssueProject = NonNullLists<issues.Project>
+export type IssueReply = NonNullLists<issues.Reply>
 export type IssueResult = NonNullLists<issues.Result>
 export type IssueSeen = NonNullLists<issues.Seen>
 export type IssueStanding = NonNullLists<issues.Standing>
@@ -468,6 +469,8 @@ export const {
   ReadAgain: readIssueAgain,
   Earlier: issueEarlier,
   Act: actOnIssue,
+  Replies: issueReplies,
+  FillReply: fillIssueReply,
 } = narrow(issues.Service)
 
 export const {

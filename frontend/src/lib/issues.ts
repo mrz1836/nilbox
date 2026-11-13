@@ -241,6 +241,18 @@ export function quoteInto(body: string, text: string): string {
   return `${before}${quote}\n\n`
 }
 
+// withReply is the comment once a reply the user picked fills it in: the reply alone while
+// the comment is empty, or still just the text the last pick filled in, else the user's
+// own text with the reply after it, as a quote is added, so a pick never loses what they
+// wrote.
+export function withReply(draft: { body: string; filled: string }, text: string): string {
+  if (draft.body.trim() === '' || draft.body === draft.filled) {
+    return text
+  }
+
+  return `${draft.body.replace(/\s+$/, '')}\n\n${text}`
+}
+
 // earlierCount is how many entries come before the ones the sheet holds, or 0 when none do.
 export function earlierCount(total: number, held: number, before: string): number {
   return before === '' ? 0 : Math.max(total - held, 1)

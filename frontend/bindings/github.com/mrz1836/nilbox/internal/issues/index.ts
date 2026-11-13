@@ -30,6 +30,7 @@ export type {
     Project,
     ProjectField,
     Reaction,
+    Reply,
     Result,
     Seen,
     Standing,

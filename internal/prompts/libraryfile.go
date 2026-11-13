@@ -194,8 +194,7 @@ func restorePrompts(ctx context.Context, st *Store, b Bundle) (map[string]int64,
 
 // restoreDefaults makes the prompts defaults names, by their nicknames in the file, the
 // app's default prompts again, each where it is an agent prompt for the kind, and the
-// replies it names the default replies again, each where it is a reply for the slot's
-// review.
+// replies it names the default replies again, each where it fits the slot.
 func restoreDefaults(ctx context.Context, st *Store, defaults BundleDefaults, ids map[string]int64) error {
 	for kind, nickname := range map[item.Kind]string{item.KindPR: defaults.PR, item.KindIssue: defaults.Issue} {
 		p, ok, err := restoredPrompt(ctx, st, ids, nickname)
@@ -216,7 +215,7 @@ func restoreDefaults(ctx context.Context, st *Store, defaults BundleDefaults, id
 }
 
 // restoreReplies makes the replies defaults names the default replies again, each where
-// it is a reply for the slot's review.
+// it fits the slot.
 func restoreReplies(ctx context.Context, st *Store, defaults BundleDefaults, ids map[string]int64) error {
 	for _, slot := range ReplySlots() {
 		p, ok, err := restoredPrompt(ctx, st, ids, defaults.Replies[slot])
@@ -224,7 +223,7 @@ func restoreReplies(ctx context.Context, st *Store, defaults BundleDefaults, ids
 			return err
 		}
 
-		if !ok || !p.IsReply() || p.ReplyAction != slot.Action() {
+		if !ok || !slot.fits(p) {
 			continue
 		}
 

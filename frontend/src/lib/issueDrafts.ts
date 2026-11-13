@@ -12,10 +12,14 @@ export interface IssueDraft {
   // action is the action the user chose in the action button, or '' for the sheet's
   // primary.
   action: IssueAction
+  // filled is the text the reply the user last picked filled the comment in with, which
+  // the next pick takes the place of while the comment is still just that, or ''. No
+  // reply fills the comment in by itself.
+  filled: string
 }
 
 // emptyIssueDraft is an issue's draft before the user does anything.
-export const emptyIssueDraft: IssueDraft = Object.freeze({ body: '', action: '' })
+export const emptyIssueDraft: IssueDraft = Object.freeze({ body: '', action: '', filled: '' })
 
 // IssueDrafts is every issue's draft, by inbox item ID.
 export type IssueDrafts = Drafts<IssueDraft>

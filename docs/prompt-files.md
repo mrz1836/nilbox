@@ -66,9 +66,9 @@ Each prompt:
 |---|---|
 | `name` | Its title, up to 80 characters on one line. |
 | `nickname` | The short label the launch button shows, up to 20 characters. Nicknames are unique in a library, ignoring case. |
-| `appliesTo` | `pr`, `issue`, or `any`. |
+| `appliesTo` | `pr`, `issue`, or `any`. A reply's is `pr`, but a comment reply's, which may be for issues too. |
 | `body` | The prompt's text: a Go [text/template](https://pkg.go.dev/text/template) using the variables in [Prompts](desktop.md#prompts). |
-| `purpose` | `agent` for a prompt a launch fills in, or `reply` for a [review reply](desktop.md#review-replies), the text of a review the review sheet fills in. A reply applies to pull requests and has no launch settings. |
+| `purpose` | `agent` for a prompt a launch fills in, or `reply` for a [review reply](desktop.md#review-replies), the text a sheet fills in: a review's in the review sheet, or a comment's in the issue sheet. A reply has no launch settings. |
 | `action` | A reply's review: `approve`, `request_changes`, or `comment`; `""` for an agent prompt. |
 | `models` | The model it launches each coding agent with, keyed by agent: `claude` or `codex`. An agent left out inherits its model. |
 | `effort` | The effort level it launches with, shared by every agent, or `""` to inherit it. An agent that lacks the level, such as Claude Code for Codex's `ultra`, launches with its own default. |
@@ -94,7 +94,10 @@ Each prompt:
   agent this version of the app doesn't know, so a file can never loosen a session's permissions
   (with `--dangerously-skip-permissions`, `--sandbox`, or a Codex `-c sandbox_mode=...`, say).
   Text with problems is kept, to be fixed in the editor before it launches. A reply whose `action`
-  this version doesn't know becomes a reply for comments, and its launch settings are dropped.
+  this version doesn't know becomes a reply for comments, and its launch settings are dropped. A
+  reply other than a comment reply, or one whose `appliesTo` is missing or unknown, applies to
+  pull requests; a version of the app from before comment replies for issues reads every reply
+  so, which leaves it for pull requests alone rather than misreading it.
   Each change is shown before you import.
 - **Files are at most 8 MB.**
 

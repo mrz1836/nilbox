@@ -2,8 +2,12 @@ package core
 
 import (
 	"context"
+	"fmt"
+	"strings"
 
+	"github.com/mrz1836/nilbox/internal/item"
 	"github.com/mrz1836/nilbox/internal/localrepos"
+	"github.com/mrz1836/nilbox/internal/prompts"
 	"github.com/mrz1836/nilbox/internal/settings"
 )
 
@@ -37,4 +41,51 @@ func settingsPart[T any](ctx context.Context, s *settings.Service, pick func(set
 	}
 
 	return pick(all), nil
+}
+
+// replyFiller fills in a reply from the prompt library for an inbox item, with what a
+// launch on the item would fill a prompt with. The review sheet and the issue sheet both
+// fill their replies through it.
+type replyFiller struct {
+	store  *prompts.Store
+	source prompts.PreviewSource
+}
+
+// fill fills in the reply with replyID for the inbox item with itemID, which must be a kind
+// of item the reply applies to.
+func (f replyFiller) fill(ctx context.Context, replyID, itemID int64) (string, error) {
+	p, err := f.store.Lookup(ctx, replyID)
+	if err != nil {
+		return "", err
+	}
+
+	if !p.IsReply() {
+		return "", fmt.Errorf("%w: %q", prompts.ErrNotReply, p.Nickname)
+	}
+
+	tmpl, err := p.Template()
+	if err != nil {
+		return "", err
+	}
+
+	data, err := f.source.PreviewData(ctx, itemID)
+	if err != nil {
+		return "", err
+	}
+
+	kind := item.KindIssue
+	if data.IsPR {
+		kind = item.KindPR
+	}
+
+	if !p.AppliesTo.Covers(kind) {
+		return "", fmt.Errorf("%w: %q doesn't apply to %s", prompts.ErrWrongKind, p.Nickname, kind.Plural())
+	}
+
+	out, err := tmpl.Execute(data)
+	if err != nil {
+		return "", err
+	}
+
+	return strings.TrimRight(out, "\n"), nil
 }

@@ -484,6 +484,8 @@ More in [Reviewing a pull request](docs/desktop.md#reviewing-a-pull-request).
   text as a comment before it, and never goes over a comment you haven't read: if someone
   commented since you opened it, nothing is sent and the sheet shows you what's new.
   **Unassign me** is in the same menu, and **Quote reply** quotes a comment into yours.
+  **Replies** fills your comment in from one of your comment replies for issues; none is picked
+  for you.
 - **Your agent's verdict** shows with **Use as comment**, and **Open in Claude** (or Codex) hands
   the issue to an agent from the sheet.
 - **One list, both kinds:** **←** and **→** step through the list's cards as it shows them, pull
@@ -641,8 +643,8 @@ More in [Following a session](docs/desktop.md#following-a-session).
 - **Review replies** are a second library beside the agent prompts: the text the review sheet
   starts an approval, a request for changes, or a comment with, filled in for the pull request.
   **LGTM**, **Update OK**, **Needs changes**, and **Question** to start, and a default for
-  approvals, for bots' pull requests, for changes, and for comments. A reply never launches
-  anything.
+  approvals, for bots' pull requests, for changes, and for comments. A comment reply can be for
+  issues too, which the issue sheet offers. A reply never launches anything.
 - **Never lost:** after every change the library is copied to `prompts.json`, and your launch
   defaults to `launch-defaults.json`. Both come back on their own whenever the database has to
   start over.

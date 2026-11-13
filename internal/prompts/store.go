@@ -448,8 +448,8 @@ func pickDefault(all []Prompt, kind item.Kind, stored int64) int64 {
 	return first
 }
 
-// pickReplies returns each stored default reply that still exists and is a reply for its
-// slot's review, and 0 for the others.
+// pickReplies returns each stored default reply that still exists and fits its slot, and 0
+// for the others.
 func pickReplies(all []Prompt, stored ReplyDefaults) ReplyDefaults {
 	byID := make(map[int64]Prompt, len(all))
 	for _, p := range all {
@@ -458,7 +458,7 @@ func pickReplies(all []Prompt, stored ReplyDefaults) ReplyDefaults {
 
 	keep := func(slot ReplySlot) int64 {
 		p, ok := byID[stored.For(slot)]
-		if !ok || !p.IsReply() || p.ReplyAction != slot.Action() {
+		if !ok || !slot.fits(p) {
 			return 0
 		}
 

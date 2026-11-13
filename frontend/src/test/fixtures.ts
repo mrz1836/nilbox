@@ -36,6 +36,7 @@ import type {
   Issue,
   IssueLinked,
   IssueOffer,
+  IssueReply,
   IssueResult,
   IssueTimelineItem,
   IssueTimelinePage,
@@ -1628,6 +1629,15 @@ export function issueResult(overrides: Partial<IssueResult> = {}): IssueResult {
     leftInbox: false,
     ...overrides,
   }
+}
+
+// issueReplies are the comment replies the issue sheet offers: one for issues, one for
+// both kinds.
+export function issueReplies(): IssueReply[] {
+  return [
+    { id: 31, name: 'Looking into it', nickname: 'Looking' },
+    { id: 32, name: 'Thanks', nickname: 'Thanks' },
+  ]
 }
 
 // replyList is the approval replies: one for people, one for bots.

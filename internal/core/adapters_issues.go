@@ -6,7 +6,39 @@ import (
 	"github.com/mrz1836/nilbox/internal/github"
 	"github.com/mrz1836/nilbox/internal/inbox"
 	"github.com/mrz1836/nilbox/internal/issues"
+	"github.com/mrz1836/nilbox/internal/item"
+	"github.com/mrz1836/nilbox/internal/prompts"
 )
+
+// issuesReplies hands the issue sheet the prompt library's comment replies that apply to
+// issues, filled in with what a launch on the issue would fill a prompt with.
+type issuesReplies struct {
+	replyFiller
+}
+
+// Offered returns the comment replies that apply to issues, in the library's order. None is
+// a default: the review sheet's defaults are for pull requests.
+func (r issuesReplies) Offered(ctx context.Context) ([]issues.Reply, error) {
+	lib, err := r.store.Library(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	out := []issues.Reply{}
+
+	for _, p := range lib.Prompts {
+		if p.IsReply() && p.ReplyAction == prompts.ReplyComment && p.AppliesTo.Covers(item.KindIssue) {
+			out = append(out, issues.Reply{ID: p.ID, Name: p.Name, Nickname: p.Nickname})
+		}
+	}
+
+	return out, nil
+}
+
+// Fill fills in the reply with replyID for the issue with itemID.
+func (r issuesReplies) Fill(ctx context.Context, replyID, itemID int64) (string, error) {
+	return r.fill(ctx, replyID, itemID)
+}
 
 // issuesInbox hands the issue sheet the inbox's stored issues, and runs its reads and
 // actions through the inbox's Actor.

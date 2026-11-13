@@ -114,6 +114,29 @@ func (s ReplySlot) Action() ReplyAction {
 	}
 }
 
+// fits reports whether p can be the slot's default reply (see takes).
+func (s ReplySlot) fits(p Prompt) bool {
+	return s.takes(p.Purpose, p.ReplyAction, p.AppliesTo)
+}
+
+// takes reports whether a prompt with purpose, written for action and applying to
+// appliesTo, can be the slot's default reply: a reply for the slot's review that applies
+// to pull requests, since only the review sheet starts from a default.
+func (s ReplySlot) takes(purpose Purpose, action ReplyAction, appliesTo AppliesTo) bool {
+	return purpose == PurposeReply && action == s.Action() && appliesTo.Covers(item.KindPR)
+}
+
+// replyAppliesTo is what a reply written for action applies to, given what it says: a
+// comment reply applies to what it says, and every other reply, a review of a pull
+// request, to pull requests.
+func replyAppliesTo(action ReplyAction, says AppliesTo) AppliesTo {
+	if action != ReplyComment {
+		return AppliesToPR
+	}
+
+	return says
+}
+
 // describe names a slot in a sentence, as in "the default for approvals".
 func (s ReplySlot) describe() string {
 	switch s {
@@ -620,7 +643,7 @@ func (s *Service) SetDefault(ctx context.Context, kind item.Kind, id int64) erro
 
 // SetReplyDefault makes the reply with id the default for slot, or, with id 0, leaves the
 // slot with no default, so that review starts with no text. The prompt must be a reply for
-// the slot's review.
+// the slot's review that applies to pull requests.
 func (s *Service) SetReplyDefault(ctx context.Context, slot ReplySlot, id int64) error {
 	if slot.Action() == "" {
 		return fmt.Errorf("%w: unknown default reply %q", ErrNotReply, slot)
@@ -634,6 +657,11 @@ func (s *Service) SetReplyDefault(ctx context.Context, slot ReplySlot, id int64)
 
 		if !p.IsReply() || p.ReplyAction != slot.Action() {
 			return fmt.Errorf("%w: %q can't be %s", ErrNotReply, p.Nickname, slot.describe())
+		}
+
+		if !slot.fits(p) {
+			return fmt.Errorf("%w: %q doesn't apply to pull requests, so it can't be %s", ErrWrongKind, p.Nickname,
+				slot.describe())
 		}
 	}
 

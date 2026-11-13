@@ -34,6 +34,7 @@ import {
   installResult,
   integrationsConfig,
   issue,
+  issueReplies,
   issueResult,
   issueTimeline,
   integrationTools,
@@ -160,6 +161,8 @@ function answers(subscribe: Loose<Platform['on']>): { [K in keyof Platform]: Loo
     readIssueAgain: (id) => Promise.resolve(issue({ id })),
     issueEarlier: () => Promise.resolve(issueTimeline({ items: [], before: '' })),
     actOnIssue: () => Promise.resolve(issueResult()),
+    issueReplies: () => Promise.resolve(issueReplies()),
+    fillIssueReply: () => Promise.resolve('Looking into it, @octo-user.'),
     reviewReplies: () => Promise.resolve(replyList()),
     fillReply: () => Promise.resolve('Reviewed and approved. Thanks, @octo-other!'),
 

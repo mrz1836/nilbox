@@ -340,6 +340,14 @@ func TestImportNeverSavesOverADefaultWithAPromptThatCannotBeOne(t *testing.T) {
 	})
 
 	assert.Equal(t, []string{"rename Review 2"}, outcomes(preview(t, s, bundleOf(forIssues))))
+
+	// The question starter is the default for comments, which the review sheet starts from,
+	// so a version of it for issues only cannot take its place either.
+	question := starterAsBundled(t, StarterReplyQuestion, func(p *BundlePrompt) {
+		p.AppliesTo = AppliesToIssue
+	})
+
+	assert.Equal(t, []string{"rename Question 2"}, outcomes(preview(t, s, bundleOf(question))))
 }
 
 func TestImportStoresWhatThePreviewSaid(t *testing.T) {

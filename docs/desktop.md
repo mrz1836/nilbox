@@ -1519,7 +1519,10 @@ to the sheet you came from (while that card is still in your inbox); following a
 replaces that step rather than stacking another. Anything else opens on GitHub, which the **↗**
 beside it says.
 
-**Commenting and closing.** Write in **Your comment** and press **Comment**, or **⌘↩**. The
+**Commenting and closing.** Write in **Your comment** and press **Comment**, or **⌘↩**.
+**Replies** above it fills the text in from one of your [comment replies](#review-replies) for
+issues, filled in for this issue, with **No reply** to empty it and **Manage replies…** to edit
+them; none is picked for you, so **⌘↩** never posts text you didn't write or choose. The
 button's menu also offers **Close as completed…** and **Close as not planned…**, which become the
 button once chosen, and **Unassign me**. When a fix has merged, the button starts as **Close as
 completed…**. Every close asks first, says your text is posted as a comment before it, and can be
@@ -1799,7 +1802,11 @@ The Prompts tab holds a second library, **Review replies**: the text the [review
 sheet](#reviewing-a-pull-request) starts a review with. Switch to it with **Agent prompts |
 Review replies** above the library. A reply has a title, a nickname, and the **Action** it is
 written for (**Approve**, **Request changes**, or **Comment**), and no launch settings; agent
-prompts and replies share one set of nicknames.
+prompts and replies share one set of nicknames. A **Comment** reply also says what it is **For**:
+pull requests, issues, or both. The [issue sheet](#reading-an-issue) offers the comment replies
+for issues (the library marks them **For issues**, or **For pull requests and issues**), and the
+review sheet those for pull requests; an approval and a request for changes are always for pull
+requests.
 
 **Starter replies.** **LGTM** (approve, the default for people): "Reviewed and approved. Thanks
 for the work on this, @{{.Author}}!" **Update OK** (approve, the default for bots): "Reviewed the
@@ -1813,13 +1820,15 @@ once, and **Reset to original** restores one you changed.
 requests, for requests for changes, or for comments. The sheet fills the default in for the
 review you're about to send, a bot's default on a bot's pull request, until you write your own
 text; with no default, the text starts empty. Deleting a reply that is a default clears that
-default.
+default. A default is for pull requests, so a reply for issues alone is never one, and the
+default for comments can't be changed to one; the issue sheet has no default.
 
 **Writing one.** A reply is a template like a prompt, with the same variables, checked the same
 way, with three differences: it may start with `-`, for a markdown list; it may come out empty,
 as an approval with no text does; and a session variable (`.InWorktree`, `.WorktreeOnPRHead`,
 `.Worktree`, `.Profile`) is a warning, since a reply starts no session. A reply never gets the
-lines an agent's prompt ends with. The preview fills it in for a real pull request.
+lines an agent's prompt ends with. The preview fills it in for a real item, and a comment reply
+for issues warns about a pull-request variable, which is always empty for an issue.
 
 A reply is never an agent's prompt: the launch menu, launch defaults, and Settings → Launching
 list agent prompts only.

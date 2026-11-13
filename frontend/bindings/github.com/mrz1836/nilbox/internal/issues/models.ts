@@ -358,6 +358,16 @@ export const RefState = {
 } as const;
 
 /**
+ * Reply is a reply from the prompt library the composer offers: its ID, its title, and the
+ * nickname the menu shows.
+ */
+export interface Reply {
+    "id": number;
+    "name": string;
+    "nickname": string;
+}
+
+/**
  * Result is what an action came to: its outcome, the toast's words, why a close didn't
  * happen, the steps GitHub made, whether the user's text is on GitHub now (Commented), and
  * whether the issue left the inbox.

@@ -190,7 +190,8 @@ func (pl *planner) holding(p BundlePrompt) (Prompt, bool) {
 
 // replaceable returns the index of the stored starter p would be saved over: the
 // library's copy of p's starter, still as it was added, not yet saved over by this
-// import, and only when p applies to every kind of item that copy is a default for.
+// import, and only when p applies to every kind of item that copy is a default for, and
+// can be every default reply it is.
 func (pl *planner) replaceable(p BundlePrompt) (int, bool) {
 	if p.StarterKey == "" {
 		return 0, false
@@ -201,8 +202,11 @@ func (pl *planner) replaceable(p BundlePrompt) (int, bool) {
 			continue
 		}
 
-		covers := !slices.ContainsFunc(pl.usage[q.ID].Kinds, func(k item.Kind) bool { return !p.AppliesTo.Covers(k) })
-		if covers {
+		usage := pl.usage[q.ID]
+		covers := !slices.ContainsFunc(usage.Kinds, func(k item.Kind) bool { return !p.AppliesTo.Covers(k) })
+		fits := !slices.ContainsFunc(usage.Replies, func(s ReplySlot) bool { return !s.takes(p.Purpose, p.Action, p.AppliesTo) })
+
+		if covers && fits {
 			return i, true
 		}
 	}
@@ -298,13 +302,14 @@ func cleanImport(in BundlePrompt) (BundlePrompt, []string) {
 	return p, notes
 }
 
-// cleanReply returns a review reply read from a file or a backup as this build would store
-// it: for pull requests, with no launch settings, and for one of the reviews, a comment
-// when the file names none this build knows.
+// cleanReply returns a reply read from a file or a backup as this build would store it:
+// with no launch settings, for one of the reviews, a comment when the file names none this
+// build knows, and for pull requests unless it is a comment reply that says it is for
+// issues or both.
 func cleanReply(p BundlePrompt) (BundlePrompt, []string) {
 	var notes []string
 
-	p.AppliesTo, p.Effort, p.PlanMode, p.Worktree = AppliesToPR, "", nil, nil
+	p.Effort, p.PlanMode, p.Worktree = "", nil, nil
 	p.Models, p.ExtraArgs = map[agent.ID]string{}, map[agent.ID][]string{}
 
 	if !p.Action.valid() {
@@ -312,7 +317,17 @@ func cleanReply(p BundlePrompt) (BundlePrompt, []string) {
 		p.Action = ReplyComment
 	}
 
-	if t, _ := ParseReply(p.Body); t == nil {
+	// A reply that names nothing this build knows applies to pull requests, as every reply
+	// did before comment replies could be for issues.
+	switch p.AppliesTo {
+	case AppliesToPR, AppliesToIssue, AppliesToAny:
+	default:
+		p.AppliesTo = AppliesToPR
+	}
+
+	p.AppliesTo = replyAppliesTo(p.Action, p.AppliesTo)
+
+	if t, _ := ParseReply(p.Body, p.AppliesTo); t == nil {
 		notes = append(notes, "Its text has problems to fix before it can be used.")
 	}
 

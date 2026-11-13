@@ -158,15 +158,16 @@ export function PromptEditor({
             />
           </Field>
         </div>
-        {reply ? (
+        {reply && (
           <div className="flex flex-col gap-1">
             <span className="text-xs font-medium text-muted">Action</span>
             <Segmented
               label="Action"
               value={draft.replyAction}
               options={actionOptions}
+              // Only a comment reply can be for issues: a review is of a pull request.
               onChange={(replyAction) => {
-                set({ replyAction })
+                set(replyAction === 'comment' ? { replyAction } : { replyAction, appliesTo: 'pr' })
               }}
             />
             {(fieldErrors.replyAction ?? '') !== '' && (
@@ -175,11 +176,14 @@ export function PromptEditor({
               </p>
             )}
           </div>
-        ) : (
+        )}
+        {/* A comment reply can be for issues too; an approval and a request for changes
+            are reviews of a pull request. */}
+        {(!reply || draft.replyAction === 'comment') && (
           <div className="flex flex-col gap-1">
             <span className="text-xs font-medium text-muted">For</span>
             <Segmented
-              label="What the prompt is for"
+              label={reply ? 'What the reply is for' : 'What the prompt is for'}
               value={draft.appliesTo}
               options={appliesToOptions}
               onChange={(appliesTo) => {

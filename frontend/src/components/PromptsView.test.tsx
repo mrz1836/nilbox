@@ -849,6 +849,40 @@ describe('PromptsView review replies', () => {
     expect(await screen.findByText('Saved.')).toBeInTheDocument()
   })
 
+  it('asks what a comment reply is for, which an approval never is', async () => {
+    render(
+      <Harness
+        initialReplies={replyPrompts().map((p) =>
+          p.nickname === 'Question' ? { ...p, appliesTo: 'any' as const } : p,
+        )}
+      />,
+    )
+    await showReplies()
+
+    expect(screen.queryByRole('radiogroup', { name: 'What the reply is for' }), 'an approval').not.toBeInTheDocument()
+    expect(replyLibrary().getByRole('button', { name: /Question/ })).toHaveTextContent('For pull requests and issues')
+    expect(replyLibrary().getByRole('button', { name: /LGTM/ })).not.toHaveTextContent(/For /)
+
+    await userEvent.click(replyLibrary().getByRole('button', { name: /Question/ }))
+    expect(screen.getByRole('radio', { name: 'Both' })).toBeChecked()
+
+    await userEvent.click(screen.getByRole('radio', { name: 'Issues' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }))
+
+    expect(platform.updatePrompt).toHaveBeenCalledWith(
+      24,
+      expect.objectContaining({ purpose: 'reply', replyAction: 'comment', appliesTo: 'issue' }),
+    )
+    expect(await screen.findByText('Saved.')).toBeInTheDocument()
+
+    // An approval is a review of a pull request, so it leaves what the reply was for behind.
+    await userEvent.click(screen.getByRole('radio', { name: 'Approve' }))
+    expect(screen.queryByRole('radiogroup', { name: 'What the reply is for' })).not.toBeInTheDocument()
+    await waitFor(() => {
+      expect(lastCheck().input).toEqual(expect.objectContaining({ replyAction: 'approve', appliesTo: 'pr' }))
+    })
+  })
+
   it('shows why a reply’s action is refused', async () => {
     platform.checkPrompt.mockResolvedValue(
       checkResult({

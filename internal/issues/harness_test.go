@@ -471,15 +471,40 @@ func openState(recent ...github.CommentMark) *github.IssueState {
 	}
 }
 
+// fakeReplies is the prompt library's replies: the ones it offers, or err, and each
+// reply's filled-in text by its ID.
+type fakeReplies struct {
+	offered []Reply
+	err     error
+	filled  map[int64]string
+}
+
+func (f *fakeReplies) Offered(context.Context) ([]Reply, error) {
+	return f.offered, f.err
+}
+
+func (f *fakeReplies) Fill(_ context.Context, replyID, _ int64) (string, error) {
+	text, ok := f.filled[replyID]
+	if !ok {
+		return "", errNoSuchReply
+	}
+
+	return text, nil
+}
+
+// errNoSuchReply is the fake library's answer for a reply it doesn't hold.
+var errNoSuchReply = errors.New("no such reply")
+
 // harness is a Service over a fresh database holding issue #12, with fakes.
 type harness struct {
-	svc    *Service
-	db     *sql.DB
-	inbox  *fakeInbox
-	github *fakeGitHub
-	clock  *testutil.Clock
-	events *testutil.Events
-	logs   *testutil.Logs
+	svc     *Service
+	db      *sql.DB
+	inbox   *fakeInbox
+	github  *fakeGitHub
+	replies *fakeReplies
+	clock   *testutil.Clock
+	events  *testutil.Events
+	logs    *testutil.Logs
 }
 
 // newHarness returns a harness whose GitHub answers with issueView.
@@ -491,11 +516,12 @@ func newHarness(t *testing.T) *harness {
 
 	h := &harness{
 		db: db, inbox: &fakeInbox{issue: storedIssue()}, github: &fakeGitHub{views: []*github.IssueView{issueView()}},
-		clock: testutil.NewClock(testNow), events: &testutil.Events{}, logs: &testutil.Logs{},
+		replies: &fakeReplies{}, clock: testutil.NewClock(testNow), events: &testutil.Events{}, logs: &testutil.Logs{},
 	}
 
 	h.svc = NewService(Config{
-		Pool: db, Inbox: h.inbox, GitHub: h.github, Events: h.events, Clock: h.clock, Logger: h.logs.Logger(),
+		Pool: db, Inbox: h.inbox, GitHub: h.github, Replies: h.replies, Events: h.events, Clock: h.clock,
+		Logger: h.logs.Logger(),
 	})
 
 	return h

@@ -2,12 +2,10 @@ package core
 
 import (
 	"context"
-	"fmt"
-	"strings"
 
 	"github.com/mrz1836/nilbox/internal/github"
 	"github.com/mrz1836/nilbox/internal/inbox"
-	"github.com/mrz1836/nilbox/internal/prompts"
+	"github.com/mrz1836/nilbox/internal/item"
 	"github.com/mrz1836/nilbox/internal/review"
 	"github.com/mrz1836/nilbox/internal/sensitive"
 	"github.com/mrz1836/nilbox/internal/settings"
@@ -78,11 +76,11 @@ func (r reviewSettings) Sensitive(ctx context.Context) (sensitive.Config, error)
 	return settingsPart(ctx, r.settings, func(s settings.Settings) sensitive.Config { return s.SensitiveFiles })
 }
 
-// reviewReplies hands the review sheet the review replies of the prompt library, filled in
-// with what a launch on the pull request would fill a prompt with.
+// reviewReplies hands the review sheet the review replies of the prompt library that apply
+// to pull requests, filled in with what a launch on the pull request would fill a prompt
+// with.
 type reviewReplies struct {
-	store  *prompts.Store
-	source prompts.PreviewSource
+	replyFiller
 }
 
 // Offered returns the replies for action, with the defaults for a person's and a bot's
@@ -96,7 +94,7 @@ func (r reviewReplies) Offered(ctx context.Context, action review.ReplyAction) (
 	out := review.ReplyList{Replies: []review.Reply{}}
 
 	for _, p := range lib.Prompts {
-		if p.IsReply() && string(p.ReplyAction) == string(action) {
+		if p.IsReply() && string(p.ReplyAction) == string(action) && p.AppliesTo.Covers(item.KindPR) {
 			out.Replies = append(out.Replies, review.Reply{
 				ID: p.ID, Name: p.Name, Nickname: p.Nickname, Action: review.ReplyAction(p.ReplyAction),
 			})
@@ -120,31 +118,7 @@ func (r reviewReplies) Offered(ctx context.Context, action review.ReplyAction) (
 	return out, nil
 }
 
-// Fill fills in the reply with replyID for the inbox item with itemID.
+// Fill fills in the reply with replyID for the pull request with itemID.
 func (r reviewReplies) Fill(ctx context.Context, replyID, itemID int64) (string, error) {
-	p, err := r.store.Lookup(ctx, replyID)
-	if err != nil {
-		return "", err
-	}
-
-	if !p.IsReply() {
-		return "", fmt.Errorf("%w: %q", prompts.ErrNotReply, p.Nickname)
-	}
-
-	tmpl, err := p.Template()
-	if err != nil {
-		return "", err
-	}
-
-	data, err := r.source.PreviewData(ctx, itemID)
-	if err != nil {
-		return "", err
-	}
-
-	out, err := tmpl.Execute(data)
-	if err != nil {
-		return "", err
-	}
-
-	return strings.TrimRight(out, "\n"), nil
+	return r.fill(ctx, replyID, itemID)
 }

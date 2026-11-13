@@ -3,6 +3,7 @@ import { useId } from 'react'
 import { counted } from '../../lib/format'
 import type { ReviewDraft } from '../../lib/reviewDrafts'
 import { runningSession } from '../../lib/sessions'
+import { usePickReply } from '../../lib/usePickReply'
 import { useQuery } from '../../lib/useQuery'
 import {
   fillReply,
@@ -165,14 +166,9 @@ export function ReviewComposer({
   // A note that says why the comment can't be posted holds the button back.
   const noteBlocks = firstNote !== '' && offer !== undefined && offer.commentBlocked !== ''
 
-  const pick = (replyId: number) => {
-    void fillReply(review.id, replyId).then(
-      (text) => {
-        onDraft((d) => ({ ...d, body: text, edited: true, replyId }))
-      },
-      () => undefined,
-    )
-  }
+  const picking = usePickReply(review.id, fillReply, (text, replyId) => {
+    onDraft((d) => ({ ...d, body: text, edited: true, replyId }))
+  })
 
   const replyItems = (): MenuItem[] => [
     ...(list?.replies ?? []).map((r) => ({
@@ -180,13 +176,14 @@ export function ReviewComposer({
       hint: r.id === fallback ? 'default' : undefined,
       title: r.name,
       onSelect: () => {
-        pick(r.id)
+        picking.pick(r.id)
       },
     })),
     {
       label: 'No reply',
       divided: true,
       onSelect: () => {
+        picking.drop()
         onDraft((d) => ({ ...d, body: '', edited: true, replyId: 0 }))
       },
     },
@@ -211,10 +208,16 @@ export function ReviewComposer({
         onChange={(e) => {
           const text = e.target.value
 
+          picking.drop()
           onDraft((d) => ({ ...d, body: text, edited: true }))
         }}
         className={`${fieldClass} block w-full font-mono text-xs`}
       />
+      {picking.error !== '' && (
+        <p role="alert" className="text-xs text-danger">
+          Couldn’t fill in the reply: {picking.error}
+        </p>
+      )}
       {draft.comments.length > 0 && (
         <p className="flex items-center gap-2 text-xs text-muted">
           {counted(draft.comments.length, 'line comment', 'line comments')} go with the review.

@@ -1330,7 +1330,7 @@ describe('ReviewSheet', () => {
     expect(platform.actOnReview).not.toHaveBeenCalled()
   })
 
-  it('keeps the text when a reply can’t be filled in', async () => {
+  it('keeps the text when a reply can’t be filled in, and says why', async () => {
     render(<Harness />)
 
     await choose('Approve')
@@ -1343,6 +1343,7 @@ describe('ReviewSheet', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Choose a reply' }))
     await userEvent.click(screen.getByRole('menuitem', { name: 'Update OK' }))
 
+    expect(await screen.findByText('Couldn’t fill in the reply: The reply is gone')).toBeInTheDocument()
     expect(screen.getByRole('textbox', { name: 'Your review' })).toHaveValue(
       'Reviewed and approved. Thanks, @octo-other!',
     )

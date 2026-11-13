@@ -209,6 +209,70 @@ describe('IssueSheet', () => {
     })
   })
 
+  it('starts with no reply, and fills the comment from the one the user picks', async () => {
+    const onManageReplies = vi.fn()
+    platform.fillIssueReply.mockImplementation((_, replyId) =>
+      Promise.resolve(replyId === 31 ? 'Looking into it, @octo-user.' : 'Thanks!'),
+    )
+    render(<Harness onManageReplies={onManageReplies} />)
+
+    const text = await screen.findByRole('textbox', { name: 'Your comment' })
+    expect(text, 'no reply is picked for the user').toHaveValue('')
+
+    // pickReply picks the reply nicknamed name from the Replies menu.
+    const pickReply = async (name: string) => {
+      await userEvent.click(screen.getByRole('button', { name: 'Choose a reply' }))
+      await userEvent.click(screen.getByRole('menuitem', { name }))
+    }
+
+    await userEvent.click(screen.getByRole('button', { name: 'Choose a reply' }))
+    expect(screen.getAllByRole('menuitem').map((m) => m.textContent)).toEqual(['Looking', 'Thanks', 'Manage replies…'])
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Looking' }))
+
+    expect(platform.fillIssueReply).toHaveBeenCalledWith(1, 31)
+    await waitFor(() => {
+      expect(text).toHaveValue('Looking into it, @octo-user.')
+    })
+
+    // Another pick takes the place of the last one's text, untouched since.
+    await pickReply('Thanks')
+    await waitFor(() => {
+      expect(text).toHaveValue('Thanks!')
+    })
+
+    // Text the user wrote stays, with the reply after it.
+    await userEvent.type(text, ' Fixed in #14.')
+    await pickReply('Looking')
+    await waitFor(() => {
+      expect(text).toHaveValue('Thanks! Fixed in #14.\n\nLooking into it, @octo-user.')
+    })
+
+    await pickReply('Manage replies…')
+    expect(onManageReplies).toHaveBeenCalledOnce()
+  })
+
+  it('says why a reply couldn’t be filled in', async () => {
+    platform.fillIssueReply.mockRejectedValueOnce(new Error('the reply is gone'))
+    render(<Harness />)
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Choose a reply' }))
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Looking' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Couldn’t fill in the reply: the reply is gone')
+    expect(screen.getByRole('textbox', { name: 'Your comment' })).toHaveValue('')
+  })
+
+  it('says the library has no replies for issues', async () => {
+    platform.issueReplies.mockResolvedValue([])
+    render(<Harness />)
+
+    await waitFor(() => {
+      expect(platform.issueReplies).toHaveBeenCalled()
+    })
+    await userEvent.click(await screen.findByRole('button', { name: 'Choose a reply' }))
+    expect(screen.getByRole('menuitem', { name: 'No replies for issues yet' })).toBeDisabled()
+  })
+
   it('runs the button with ⌘↩, and only once it can', async () => {
     render(<Harness />)
 
