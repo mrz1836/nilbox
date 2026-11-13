@@ -1,9 +1,9 @@
 import { act, renderHook, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { review, reviewFile } from '../test/fixtures'
+import { heldRun, review, reviewFile } from '../test/fixtures'
 import { platform } from '../test/platform'
-import { unknownRetries, unknownWait, useReview } from './useReview'
+import { approvalRetries, approvalWait, runsStarted, unknownRetries, unknownWait, useReview } from './useReview'
 
 vi.mock('../platform', () => import('./../test/platform').then((fake) => fake.platform))
 
@@ -91,6 +91,106 @@ describe('useReview', () => {
     await wait(10 * unknownWait)
     expect(platform.refreshReview).toHaveBeenCalledTimes(2)
     expect(result.current.review?.readiness.state).toBe('ready')
+  })
+
+  it('reads again after an approval of held runs until their checks start, then stops', async () => {
+    vi.useFakeTimers()
+    const held = review({ unrun: [heldRun('CI', 101)] })
+    const queued = review({
+      unrun: [],
+      checks: [{ name: 'lint', workflow: 'CI', state: 'QUEUED', outcome: 'pending', url: '', required: false }],
+    })
+    platform.refreshReview.mockResolvedValue(held)
+    // GitHub hasn't made the checks yet on the first two reads; the third finds them queued.
+    platform.readReviewAgain
+      .mockResolvedValueOnce(held)
+      .mockResolvedValueOnce(review({ unrun: [] }))
+      .mockResolvedValue(queued)
+
+    const { result } = renderHook(() => useReview(1))
+
+    await settle()
+    expect(result.current.following).toBe(false)
+
+    act(() => {
+      result.current.followRuns(1)
+    })
+    expect(result.current.following).toBe(true)
+    await settle()
+    expect(platform.readReviewAgain).toHaveBeenCalledTimes(1)
+    expect(result.current.following).toBe(true)
+
+    await wait(approvalWait)
+    expect(platform.readReviewAgain).toHaveBeenCalledTimes(2)
+    await wait(approvalWait)
+    expect(platform.readReviewAgain).toHaveBeenCalledTimes(3)
+    expect(result.current.following).toBe(false)
+    expect(result.current.review?.checks[0]?.state).toBe('QUEUED')
+
+    await wait(10 * approvalWait)
+    expect(platform.readReviewAgain).toHaveBeenCalledTimes(3)
+    expect(platform.refreshReview).toHaveBeenCalledTimes(1)
+  })
+
+  it('gives up reading again after an approval a few reads later', async () => {
+    vi.useFakeTimers()
+    const held = review({ unrun: [heldRun('CI', 101)] })
+    platform.refreshReview.mockResolvedValue(held)
+    platform.readReviewAgain.mockResolvedValue(held)
+
+    const { result } = renderHook(() => useReview(1))
+
+    await settle()
+    act(() => {
+      result.current.followRuns(1)
+    })
+    await settle()
+
+    for (let n = 2; n <= 1 + approvalRetries; n++) {
+      await wait(approvalWait)
+      expect(platform.readReviewAgain).toHaveBeenCalledTimes(n)
+    }
+
+    await wait(10 * approvalWait)
+    expect(platform.readReviewAgain).toHaveBeenCalledTimes(1 + approvalRetries)
+    expect(result.current.following).toBe(false)
+  })
+
+  it('ends the reads after an approval when the user reads it again', async () => {
+    vi.useFakeTimers()
+    const held = review({ unrun: [heldRun('CI', 101)] })
+    platform.refreshReview.mockResolvedValue(held)
+    platform.readReviewAgain.mockResolvedValue(held)
+
+    const { result } = renderHook(() => useReview(1))
+
+    await settle()
+    act(() => {
+      result.current.followRuns(1)
+    })
+    await settle()
+
+    act(() => {
+      result.current.reload()
+    })
+    await settle()
+    expect(result.current.following).toBe(false)
+
+    await wait(10 * approvalWait)
+    expect(platform.readReviewAgain).toHaveBeenCalledTimes(2)
+  })
+
+  it('counts approved runs as started once fewer are held and a check runs, or it is no longer open', () => {
+    const running = [{ name: 'lint', workflow: 'CI', state: 'QUEUED', outcome: 'pending', url: '', required: false }]
+    const two = [heldRun('CI', 101), heldRun('CodeQL', 102)]
+
+    expect(runsStarted(review({ unrun: two, checks: running }), 2)).toBe(false)
+    expect(runsStarted(review({ unrun: [] }), 2)).toBe(false)
+    expect(runsStarted(review({ unrun: [], checks: running }), 2)).toBe(true)
+    // GitHub refused one: the other started.
+    expect(runsStarted(review({ unrun: [heldRun('CodeQL', 102)], checks: running }), 2)).toBe(true)
+    expect(runsStarted(review({ unrun: [{ ...heldRun('CI', 101), approval: false }], checks: running }), 1)).toBe(true)
+    expect(runsStarted(review({ state: 'MERGED', unrun: two }), 2)).toBe(true)
   })
 
   it('never shows another pull request', async () => {

@@ -21,6 +21,7 @@ import type {
   ReviewOffer,
   ReviewReplyList,
   ReviewResult,
+  ReviewUnrun,
   CloneTarget,
   LinkedClone,
   LocationPreview,
@@ -206,7 +207,7 @@ export function details(overrides: Partial<ItemDetails> = {}): ItemDetails {
     changedFiles: 6,
     commits: 3,
     mergeable: 'MERGEABLE',
-    checks: { state: 'SUCCESS', passed: 12, failed: 0, pending: 0, skipped: 3 },
+    checks: { state: 'SUCCESS', passed: 12, failed: 0, pending: 0, skipped: 3, awaiting: 0 },
     reviews: { decision: 'APPROVED', reviewers: 2, reviewed: 1, approvals: 1, changesRequested: 0 },
     autoMerge: '',
     fetchedAt: '2026-06-15T11:59:00Z',
@@ -1386,6 +1387,18 @@ export function closeOffer(overrides: Partial<ReviewOffer> = {}): ReviewOffer {
     commentsFirst: true,
     ...overrides,
   })
+}
+
+// approveRunsOffer approves the workflow runs GitHub holds for approval, which sends no
+// text and runs on the click, as the backend marks it.
+export function approveRunsOffer(overrides: Partial<ReviewOffer> = {}): ReviewOffer {
+  return offer({ action: 'approve_runs', label: 'Approve workflows to run', reviews: false, ...overrides })
+}
+
+// heldRun is a fork's workflow run named name, with the ID id, which GitHub holds for a
+// maintainer's approval.
+export function heldRun(name: string, id: number): ReviewUnrun {
+  return { name, approval: true, runId: id, url: `https://github.com/acme-org/example-repo/actions/runs/${String(id)}` }
 }
 
 // review is pull request #7 as the review sheet shows it, read from GitHub: ready to

@@ -459,6 +459,11 @@ More in [The item menu and edits on GitHub](docs/desktop.md#the-item-menu-and-ed
   Dependabot pull request, and **Update branch** whenever GitHub lets you. Neither is the button
   unless the rules hold the pull request back for being behind (or, for the rebase, it has
   conflicts); with nothing else to run, the button reads **Choose an action** and opens the menu.
+- **Workflow runs waiting for approval:** the runs GitHub holds until a maintainer approves them,
+  as it does a fork's, show on the card as held rather than as passed checks, and the sheet names
+  them in a bar with **Approve workflows to run**, which asks first when the pull request changes
+  workflow files. The sheet stays open until their checks start, and each run links to GitHub in
+  case GitHub won't let the sheet approve it.
 - **Line comments and suggestions** on the diff, checked against it before GitHub sees them, and a
   draft per pull request that survives closing the sheet.
 - **Your replies, your agent's verdict:** your [review replies](docs/desktop.md#review-replies)
@@ -997,7 +1002,8 @@ More in [The window](docs/desktop.md#the-window).
 > tool, `github.com` and GitHub's release download hosts for that tool's public release, with no
 > token and nothing of yours. It reads from GitHub, and changes something there only when you ask:
 > taking you off an item, a review, comment, merge, auto-merge, branch update, Dependabot rebase
-> request, or close you send from the review sheet, or a comment or close you send from the issue
+> request, approval of held workflow runs, or close you send from the review sheet, or a comment or
+> close you send from the issue
 > sheet. The git it runs reaches a clone's own
 > remote only to make a worktree, to check a release before and after magex pushes its tag, and
 > for Repo scripts' branch check and **Pull**, which ask an origin that isn't on GitHub only when

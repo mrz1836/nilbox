@@ -50,6 +50,11 @@ const (
 	// ActionClose closes the pull request without merging it. It is never the sheet's
 	// button, and always asks first.
 	ActionClose Action = "close"
+
+	// ActionApproveRuns approves the head commit's workflow runs GitHub holds for a
+	// maintainer's approval, as it does a fork's. It sends no text, and is never the sheet's
+	// button.
+	ActionApproveRuns Action = "approve_runs"
 )
 
 // merges reports an action that merges the pull request, now or once it can: every one
@@ -152,6 +157,10 @@ const (
 
 	// OutcomeAskedBot is Dependabot asked to rebase.
 	OutcomeAskedBot Outcome = "asked_bot"
+
+	// OutcomeRunsApproved is the held workflow runs approved, all of them or, when GitHub
+	// refused one after approving others, some; Reason then says why.
+	OutcomeRunsApproved Outcome = "runs_approved"
 
 	// OutcomePushedSince is an action refused, or never sent, because the pull request was
 	// pushed to since the sheet read it.
@@ -371,6 +380,12 @@ type Check struct {
 type Unrun struct {
 	Name     string `json:"name"`
 	Approval bool   `json:"approval"`
+
+	// RunID is the GitHub Actions run's ID, which an approval names, and URL its page; 0
+	// and "" for another app's suite, and in a context an older build cached, until the
+	// sheet reads it again.
+	RunID int64  `json:"runId"`
+	URL   string `json:"url"`
 }
 
 // Closing is an issue a pull request closes once it merges: its repository as "owner/name",
@@ -495,7 +510,8 @@ type Result struct {
 	Message string `json:"message"`
 
 	// Reason says why GitHub would not merge, for OutcomeApprovedNotMerged and
-	// OutcomeCommentedNotMerged, or why the close failed, for OutcomeCommentedNotClosed.
+	// OutcomeCommentedNotMerged, why the close failed, for OutcomeCommentedNotClosed, or why
+	// GitHub refused the rest of the runs, for OutcomeRunsApproved after some.
 	Reason string `json:"reason"`
 
 	// Steps are what happened, in order.

@@ -220,6 +220,9 @@ type ReviewItem struct {
 	ChecksSkipped  int
 	ReviewDecision string
 
+	// ChecksAwaiting counts the workflow runs held for a maintainer's approval.
+	ChecksAwaiting int
+
 	Reviewers        int
 	Reviewed         int
 	Approvals        int
@@ -276,7 +279,7 @@ func (s *Store) ReviewItem(ctx context.Context, id int64) (ReviewItem, error) {
 		Mergeable: store.Deref(r.Mergeable), ChecksState: store.Deref(r.ChecksState),
 		ChecksPassed: int(store.Deref(r.ChecksPassed)), ChecksFailed: int(store.Deref(r.ChecksFailed)),
 		ChecksPending: int(store.Deref(r.ChecksPending)), ChecksSkipped: int(store.Deref(r.ChecksSkipped)),
-		ReviewDecision: store.Deref(r.ReviewDecision), Reviewers: int(store.Deref(r.Reviewers)),
+		ChecksAwaiting: int(store.Deref(r.ChecksAwaiting)), ReviewDecision: store.Deref(r.ReviewDecision), Reviewers: int(store.Deref(r.Reviewers)),
 		Reviewed: int(store.Deref(r.Reviewed)), Approvals: int(store.Deref(r.Approvals)),
 		ChangesRequested: int(store.Deref(r.ChangesRequested)), HeadOID: store.Deref(r.HeadOID),
 		AutoMerge: store.Deref(r.AutoMergeMethod), DetailsAt: store.Deref(r.DetailsFetchedAt).UTC(),

@@ -287,6 +287,7 @@ func detailsRow(itemID int64, d github.ItemDetails, now time.Time) (queries.Upse
 		ChecksFailed:       int64(d.Checks.Failed),
 		ChecksPending:      int64(d.Checks.Pending),
 		ChecksSkipped:      int64(d.Checks.Skipped),
+		ChecksAwaiting:     int64(max(d.Checks.Awaiting, 0)),
 		ReviewDecision:     d.Reviews.Decision,
 		Reviewers:          int64(d.Reviews.Reviewers),
 		Reviewed:           int64(d.Reviews.Reviewed),

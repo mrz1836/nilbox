@@ -25,6 +25,11 @@ export interface ReviewState {
   // reload reads the pull request from GitHub again, however recently it was read: the
   // user asked for it.
   reload: () => void
+  // followRuns reads the pull request again after the sheet approved its held workflow runs,
+  // held of them when it did, until their checks start (approvalRetries), and following
+  // reports those reads under way or waiting.
+  followRuns: (held: number) => void
+  following: boolean
   // loadPatches reads the diffs of paths that Open left out; loading reports those under
   // way, and patchError why the last read of them failed.
   loadPatches: (paths: readonly string[]) => Promise<void>
@@ -46,10 +51,36 @@ const noPatches: Patches = { head: '', byPath: new Map() }
 export const unknownRetries = 2
 export const unknownWait = 2000
 
+// Once the sheet approved a pull request's held workflow runs, GitHub takes a few seconds to
+// create their checks. The sheet reads again at once, then approvalWait apart, up to
+// approvalRetries times, until fewer runs wait for approval and a check is running: at most
+// five reads, each of which rewrites the inbox card, so it shows the checks running and the
+// inbox's checks follower takes them from there.
+export const approvalRetries = 4
+export const approvalWait = 3000
+
 // Retries counts the reads again for one pull request.
 interface Retries {
   id: number
   count: number
+}
+
+// Follow counts the reads after an approval of a pull request's held runs, held of them
+// when the sheet approved them.
+interface Follow extends Retries {
+  held: number
+}
+
+// heldRuns counts a pull request's workflow runs waiting for approval.
+export function heldRuns(review: Review): number {
+  return review.unrun.filter((u) => u.approval).length
+}
+
+// runsStarted reports a pull request whose approved workflow runs have started: fewer wait
+// for approval than the held when the sheet approved them (GitHub may have refused some),
+// and a check is running. One no longer open has nothing left to wait for.
+export function runsStarted(review: Review, held: number): boolean {
+  return review.state !== 'OPEN' || (heldRuns(review) < held && review.checks.some((c) => c.outcome === 'pending'))
 }
 
 // withPatches returns review with the diffs read on demand for its head filled in.
@@ -88,6 +119,8 @@ export function useReview(id: number): ReviewState {
   const [loading, setLoading] = useState<ReadonlySet<string>>(new Set())
   const [patchError, setPatchError] = useState('')
   const [retries, setRetries] = useState<Retries>({ id, count: 0 })
+  // follow counts the reads after an approval, for the pull request it was made on.
+  const [follow, setFollow] = useState<Follow | null>(null)
 
   const mine = (r: Review | undefined) => (r?.id === id ? r : undefined)
   const fresh = mine(refreshed.data)
@@ -97,6 +130,31 @@ export function useReview(id: number): ReviewState {
   const tries = retries.id === id ? retries.count : 0
   const unsure =
     !refreshed.pending && fresh !== undefined && fresh.state === 'OPEN' && fresh.readiness.state === 'unknown'
+
+  // follows is how many reads after an approval of this pull request's runs have run, or -1
+  // without one. It ends once a read answers that the runs started, or the last read
+  // answers; a read under way stops the wait for the next, and its answer starts it again.
+  const follows = follow?.id === id ? follow.count : -1
+  const held = follow?.held ?? 0
+  const followEnded =
+    !refreshed.pending && (fresh === undefined || runsStarted(fresh, held) || follows >= approvalRetries)
+  const following = follows >= 0 && !followEnded
+  const waitsAgain = following && !refreshed.pending
+
+  useEffect(() => {
+    if (!waitsAgain) {
+      return
+    }
+
+    const timer = setTimeout(() => {
+      setFollow({ id, count: follows + 1, held })
+      setRound((r) => ({ id, n: r.n + 1, force: true }))
+    }, approvalWait)
+
+    return () => {
+      clearTimeout(timer)
+    }
+  }, [waitsAgain, follows, held, id])
 
   useEffect(() => {
     if (!unsure || tries >= unknownRetries) {
@@ -118,8 +176,15 @@ export function useReview(id: number): ReviewState {
     checking: refreshed.pending,
     error: refreshed.error === '' ? opened.error : refreshed.error,
     reload: () => {
+      // A read the user asked for ends a follow of approved runs: they read it themselves.
+      setFollow(null)
       setRound((r) => ({ id, n: r.n + 1, force: true }))
     },
+    followRuns: (heldNow) => {
+      setFollow({ id, count: 0, held: heldNow })
+      setRound((r) => ({ id, n: r.n + 1, force: true }))
+    },
+    following,
     loading,
     patchError,
     loadPatches: async (paths) => {

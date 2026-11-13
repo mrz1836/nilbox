@@ -8,6 +8,7 @@ import (
 
 	"github.com/mrz1836/nilbox/internal/github"
 	"github.com/mrz1836/nilbox/internal/sensitive"
+	"github.com/mrz1836/nilbox/internal/store"
 	"github.com/mrz1836/nilbox/internal/testutil"
 )
 
@@ -44,19 +45,23 @@ func TestFactsCountTheWorkflowRunsThatRanNoCheck(t *testing.T) {
 	t.Parallel()
 
 	c := &cached{head: headA, context: contextOf(&github.PullReview{Unrun: []github.UnrunSuite{
-		{Name: "PR Management", Conclusion: github.SuiteAwaitsApproval},
+		{
+			Name: "PR Management", Conclusion: github.SuiteAwaitsApproval, RunID: 106,
+			URL: "https://github.com/acme-org/example-repo/actions/runs/106",
+		},
 		{Name: "Auto-merge Trigger", Conclusion: github.SuiteAwaitsApproval},
-		{Name: "Auto-merge Trigger", Conclusion: "FAILURE"},
+		{Name: "Auto-merge Trigger", Conclusion: "FAILURE", RunID: 107},
 	}})}
 
 	assert.Equal(t, []Unrun{
-		{Name: "PR Management", Approval: true},
+		{Name: "PR Management", Approval: true, RunID: 106, URL: "https://github.com/acme-org/example-repo/actions/runs/106"},
 		{Name: "Auto-merge Trigger", Approval: true},
-		{Name: "Auto-merge Trigger"},
+		{Name: "Auto-merge Trigger", RunID: 107},
 	}, c.context.Unrun)
 
 	f := factsOf(storedPull(), c, Review{BaseRef: "main", State: github.StateOpen})
 	assert.Equal(t, 2, f.AwaitingApproval)
+	assert.Equal(t, 1, f.Approvable, "a run held without its ID, as an older build cached it, can't be approved yet")
 	assert.Equal(t, 1, f.NotStarted)
 	assert.Zero(t, f.Failing, "none of them is a check")
 
@@ -152,4 +157,45 @@ func TestActFailsWithItsSettings(t *testing.T) {
 
 	_, err = h.svc.Act(t.Context(), ActRequest{ItemID: pullID, Action: ActionApprove, Head: headA})
 	require.ErrorIs(t, err, errFakeRead)
+}
+
+func TestTheCacheKeepsEachHeldRunsIDAndPage(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	unrun := []Unrun{
+		{Name: "CI", Approval: true, RunID: 30433642, URL: "https://github.com/acme-org/example-repo/actions/runs/30433642"},
+		{Name: "Example CI"},
+	}
+	pc := pullContext{Head: headA, State: github.StateOpen, MergeState: github.MergeStateUnstable, Unrun: unrun}
+
+	require.NoError(t, h.svc.cache.save(t.Context(), pullID, pc, pullDiff(headA), testNow))
+
+	c, err := h.svc.cache.load(t.Context(), pullID, 0)
+	require.NoError(t, err)
+	require.NotNil(t, c)
+	assert.Equal(t, unrun, c.context.Unrun)
+
+	// A context an older build cached has no run IDs: those runs read as not read yet.
+	old, err := store.DecodeJSON[pullContext](`{"head":"` + headA + `","unrun":[{"name":"CI","approval":true}]}`)
+	require.NoError(t, err)
+	assert.Equal(t, []Unrun{{Name: "CI", Approval: true}}, old.Unrun)
+}
+
+func TestFactsSayWhenThePullRequestChangesWorkflows(t *testing.T) {
+	t.Parallel()
+
+	c := &cached{head: headA}
+
+	f := factsOf(storedPull(), c, Review{Files: []File{
+		{Path: ".github/workflows/ci.yml", Category: "Workflows", Level: sensitive.LevelDanger},
+	}})
+	assert.True(t, f.ChangesWorkflows)
+	assert.Equal(t, []string{"Workflows"}, f.Sensitive)
+
+	f = factsOf(storedPull(), c, Review{Files: []File{
+		{Path: ".claude/settings.json", Category: "Agent config", Level: sensitive.LevelDanger},
+		{Path: "main.go"},
+	}})
+	assert.False(t, f.ChangesWorkflows, "another sensitive category is no workflow")
 }

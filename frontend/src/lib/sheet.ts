@@ -142,12 +142,13 @@ export function useSheetKeys(titleId: string, keys: SheetKeys): void {
   }, [])
 }
 
-// Progress is an action under way: what it is, the item it acts on, and the steps the
-// backend reported so far.
+// Progress is an action under way: what it is, the item it acts on, the steps the backend
+// reported so far, and whether the sheet stays open once it is done.
 export interface Progress {
   title: string
   target: string
   steps: readonly string[]
+  staysOpen?: boolean | undefined
 }
 
 // withStep adds a step the backend reported to progress, once: a step repeated, as the

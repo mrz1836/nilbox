@@ -1,16 +1,19 @@
 import { act, fireEvent, render as renderPlain, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { Activity, useState, type ReactElement } from 'react'
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { useReviewDrafts } from '../../lib/reviewDrafts'
+import { approvalWait } from '../../lib/useReview'
 import { isTopmost } from '../../lib/useModalDialog'
 import type { InboxItem, ReviewResult } from '../../platform'
 import { at } from '../../test/clock'
 import {
   agentSession,
   agents,
+  approveRunsOffer,
   closeOffer,
+  heldRun,
   item,
   itemResolution,
   mergeOffer,
@@ -90,6 +93,10 @@ async function choose(label: string) {
 }
 
 describe('ReviewSheet', () => {
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
   it('shows the pull request', async () => {
     platform.refreshReview.mockResolvedValue(
       review({
@@ -1369,6 +1376,230 @@ describe('ReviewSheet', () => {
   })
 })
 
+// held is #7 with two of its workflow runs held for a maintainer's approval, which the
+// sheet may approve, offered in the menu as it is in the bar.
+function held(offer = approveRunsOffer()) {
+  return review({ unrun: [heldRun('GoFortress', 101), heldRun('CodeQL', 102)], offers: [...review().offers, offer] })
+}
+
+// runsBar is the bar that names the held workflow runs.
+function runsBar() {
+  return screen.findByRole('region', { name: 'Workflow runs awaiting approval' })
+}
+
+// queued is #7 once its approved runs started: none held, and their checks queued.
+const queued = () =>
+  review({
+    checks: [{ name: 'lint', workflow: 'GoFortress', state: 'QUEUED', outcome: 'pending', url: '', required: false }],
+  })
+
+describe('ReviewSheet with workflow runs held for approval', () => {
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('names them, approves them from its bar, and stays open, reading again until their checks start', async () => {
+    // Fake time runs along with real time, so the queries' own waits still pass.
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'], shouldAdvanceTime: true })
+    platform.refreshReview.mockResolvedValue(held())
+    // GitHub hasn't made the runs' checks on the first read; the next finds them queued.
+    platform.readReviewAgain.mockResolvedValueOnce(held()).mockResolvedValue(queued())
+    platform.actOnReview.mockResolvedValue(
+      reviewResult({
+        outcome: 'runs_approved',
+        message: 'Approved 2 workflow runs on acme-org/example-repo#7',
+        steps: ['Approved GoFortress', 'Approved CodeQL'],
+        leftReview: false,
+      }),
+    )
+    platform.reviewReplies.mockResolvedValue(replyList({ replies: [], default: 0, defaultBots: 0 }))
+    const onDone = vi.fn()
+    render(<Harness onDone={onDone} />)
+
+    const bar = await runsBar()
+    expect(bar).toHaveTextContent('2 workflow runs are waiting for approval: GoFortress, CodeQL')
+    expect(within(bar).getByRole('button', { name: 'GoFortress' })).toBeInTheDocument()
+
+    await choose('Comment')
+    await userEvent.type(screen.getByRole('textbox', { name: 'Your review' }), 'Why?')
+    await userEvent.click(within(bar).getByRole('button', { name: 'Approve workflows to run' }))
+
+    expect(platform.actOnReview).toHaveBeenCalledWith({
+      itemId: 1,
+      action: 'approve_runs',
+      head: review().head,
+      body: '',
+      comments: [],
+      method: 'SQUASH',
+      accept: false,
+    })
+    expect(await within(bar).findByRole('status')).toHaveTextContent(
+      'Approved 2 workflow runs on acme-org/example-repo#7. Waiting for their checks to start…',
+    )
+    expect(onDone).not.toHaveBeenCalled()
+    expect(screen.getByRole('textbox', { name: 'Your review' })).toHaveValue('Why?')
+    await waitFor(() => {
+      expect(platform.readReviewAgain).toHaveBeenCalledOnce()
+    })
+
+    act(() => {
+      vi.advanceTimersByTime(approvalWait)
+    })
+
+    await waitFor(() => {
+      expect(within(bar).getByRole('status')).toHaveTextContent(
+        /^Approved 2 workflow runs on acme-org\/example-repo#7\.$/,
+      )
+    })
+    expect(platform.readReviewAgain).toHaveBeenCalledTimes(2)
+    expect(within(bar).queryByRole('button', { name: 'Approve workflows to run' })).not.toBeInTheDocument()
+
+    act(() => {
+      vi.advanceTimersByTime(10 * approvalWait)
+    })
+    expect(platform.readReviewAgain).toHaveBeenCalledTimes(2)
+  })
+
+  it('says the progress panel leaves the sheet open', async () => {
+    let finish: (result: ReviewResult) => void = () => undefined
+    platform.refreshReview.mockResolvedValue(held())
+    platform.actOnReview.mockReturnValue(
+      new Promise<ReviewResult>((resolve) => {
+        finish = resolve
+      }),
+    )
+    render(<Harness />)
+
+    await userEvent.click(within(await runsBar()).getByRole('button', { name: 'Approve workflows to run' }))
+
+    const panel = await screen.findByRole('heading', { name: 'Approve workflows to run acme-org/example-repo#7' })
+    expect(panel.closest('[role="status"]')).toHaveTextContent('the sheet stays open once it’s done')
+
+    act(() => {
+      finish(reviewResult({ outcome: 'runs_approved', message: 'Approved 2 workflow runs on acme-org/example-repo#7' }))
+    })
+    await waitFor(() => {
+      expect(screen.queryByRole('heading', { name: /^Approve workflows to run/ })).not.toBeInTheDocument()
+    })
+  })
+
+  it('says why the user can’t approve them, in place of the button', async () => {
+    platform.refreshReview.mockResolvedValue(
+      held(
+        approveRunsOffer({
+          enabled: false,
+          reason: 'Only people with write access to the repository can approve its workflow runs.',
+        }),
+      ),
+    )
+    render(<Harness />)
+
+    const bar = await runsBar()
+    expect(bar).toHaveTextContent('Only people with write access to the repository can approve its workflow runs.')
+    expect(within(bar).queryByRole('button', { name: 'Approve workflows to run' })).not.toBeInTheDocument()
+  })
+
+  it('asks first when the pull request changes its workflows', async () => {
+    const warning = 'It changes workflow files, and these runs would use its versions of them.'
+    platform.refreshReview.mockResolvedValue(held(approveRunsOffer({ confirm: true, warnings: [warning] })))
+    platform.actOnReview.mockResolvedValue(
+      reviewResult({ outcome: 'runs_approved', message: 'Approved 2 workflow runs on acme-org/example-repo#7' }),
+    )
+    render(<Harness />)
+
+    await userEvent.click(within(await runsBar()).getByRole('button', { name: 'Approve workflows to run' }))
+
+    const dialog = screen.getByRole('dialog', { name: 'Approve 2 workflow runs on #7?' })
+    expect(dialog).toHaveTextContent('GitHub runs GoFortress, CodeQL on commit aaaaaaa')
+    expect(within(dialog).getByText(warning)).toBeInTheDocument()
+    expect(within(dialog).getByRole('button', { name: 'Approve and run' })).toBeDisabled()
+
+    await userEvent.click(within(dialog).getByRole('checkbox', { name: 'I’ve looked, approve anyway' }))
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Approve and run' }))
+    await waitFor(() => {
+      expect(platform.actOnReview).toHaveBeenCalledWith(
+        expect.objectContaining({ action: 'approve_runs', accept: true }),
+      )
+    })
+  })
+
+  it('shows GitHub’s refusal in its bar, beside the runs to approve on GitHub', async () => {
+    platform.refreshReview.mockResolvedValue(held())
+    platform.actOnReview.mockRejectedValue(
+      new Error(
+        'GitHub wouldn’t approve workflow run 101 of acme-org/example-repo: Resource not accessible by integration.',
+      ),
+    )
+    render(<Harness />)
+
+    const bar = await runsBar()
+    await userEvent.click(within(bar).getByRole('button', { name: 'Approve workflows to run' }))
+
+    expect(await within(bar).findByRole('alert')).toHaveTextContent('Resource not accessible by integration.')
+    expect(screen.getAllByRole('alert')).toHaveLength(1)
+    await userEvent.click(within(bar).getByRole('button', { name: 'CodeQL' }))
+    expect(platform.openExternal).toHaveBeenCalledWith('https://github.com/acme-org/example-repo/actions/runs/102')
+  })
+
+  it('names the runs GitHub still holds after it approved only some', async () => {
+    platform.refreshReview.mockResolvedValue(held())
+    // GoFortress started; GitHub still holds CodeQL.
+    platform.readReviewAgain.mockResolvedValue(
+      review({
+        unrun: [heldRun('CodeQL', 102)],
+        checks: queued().checks,
+        offers: [...review().offers, approveRunsOffer()],
+      }),
+    )
+    platform.actOnReview.mockResolvedValue(
+      reviewResult({
+        outcome: 'runs_approved',
+        message:
+          'Approved 1 of 2 workflow runs on acme-org/example-repo#7; GitHub refused the rest: GitHub wouldn’t approve it',
+        reason: 'GitHub wouldn’t approve it',
+      }),
+    )
+    render(<Harness />)
+
+    const bar = await runsBar()
+    await userEvent.click(within(bar).getByRole('button', { name: 'Approve workflows to run' }))
+
+    expect(
+      await within(bar).findByText('1 workflow run is still waiting for approval:', { exact: false }),
+    ).toHaveTextContent('1 workflow run is still waiting for approval: CodeQL')
+    expect(within(bar).getByRole('status')).toHaveTextContent(
+      'Approved 1 of 2 workflow runs on acme-org/example-repo#7; GitHub refused the rest: GitHub wouldn’t approve it.',
+    )
+  })
+
+  it('offers the approval in the menu too, where it runs when picked and is never the button', async () => {
+    platform.refreshReview.mockResolvedValue(held())
+    platform.actOnReview.mockResolvedValue(
+      reviewResult({ outcome: 'runs_approved', message: 'Approved 2 workflow runs on acme-org/example-repo#7' }),
+    )
+    render(<Harness />)
+
+    await runsBar()
+    expect(await actionButton('Approve & squash-merge')).toBeInTheDocument()
+    await choose('Approve workflows to run')
+    await waitFor(() => {
+      expect(platform.actOnReview).toHaveBeenCalledWith(expect.objectContaining({ action: 'approve_runs' }))
+    })
+    expect(await actionButton('Approve & squash-merge')).toBeInTheDocument()
+  })
+
+  it('shows no bar on a pull request no longer open', async () => {
+    platform.openReview.mockResolvedValue(held())
+    platform.refreshReview.mockResolvedValue({ ...held(), state: 'MERGED' })
+    render(<Harness />)
+
+    expect(await screen.findByText('Adds a cache in front of the widget store.')).toBeInTheDocument()
+    await waitFor(() => {
+      expect(screen.queryByRole('region', { name: 'Workflow runs awaiting approval' })).not.toBeInTheDocument()
+    })
+  })
+})
+
 describe('selectedAction', () => {
   it('keeps the chosen action while it is offered and enabled', () => {
     const r = review()
@@ -1382,5 +1613,10 @@ describe('selectedAction', () => {
   it('never keeps a close, which runs only from the menu, even one offered and enabled', () => {
     expect(selectedAction(review(), 'close')).toBe('approve_merge')
     expect(selectedAction(review({ offers: [closeOffer()], primary: 'close' }), 'close')).toBe('')
+  })
+
+  it('never keeps approving held runs, which runs only from the menu or the bar', () => {
+    expect(selectedAction(held(), 'approve_runs')).toBe('approve_merge')
+    expect(selectedAction(review({ offers: [approveRunsOffer()], primary: '' }), 'approve_runs')).toBe('')
   })
 })

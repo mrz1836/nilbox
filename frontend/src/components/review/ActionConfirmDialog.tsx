@@ -1,5 +1,6 @@
 import { useState, type ReactNode } from 'react'
 
+import { counted } from '../../lib/format'
 import type { Review, ReviewOffer } from '../../platform'
 import { ConfirmDialog } from '../ConfirmDialog'
 import { WarningsToAccept } from './WarningsToAccept'
@@ -14,9 +15,13 @@ export interface ActionConfirmDialogProps {
   comment?: string
 }
 
-// actionText is the confirmation's title, what the action does, and the box that accepts
-// its warnings, for an action that isn't a merge.
-function actionText(review: Review, offer: ReviewOffer): { title: string; does: ReactNode; accept: string } {
+// actionText is the confirmation's title, what the action does, the box that accepts its
+// warnings, and, when it isn't the offer's label, its confirm button's words, for an action
+// that isn't a merge.
+function actionText(
+  review: Review,
+  offer: ReviewOffer,
+): { title: string; does: ReactNode; accept: string; confirm?: string } {
   const pull = `#${String(review.number)}`
   const commit = <span className="font-mono text-text">{review.head.slice(0, 7)}</span>
 
@@ -43,6 +48,21 @@ function actionText(review: Review, offer: ReviewOffer): { title: string; does: 
         ),
         accept: 'I’ve looked, close anyway',
       }
+    case 'approve_runs': {
+      const held = review.unrun.filter((u) => u.approval)
+
+      return {
+        title: `Approve ${counted(held.length, 'workflow run', 'workflow runs')} on ${pull}?`,
+        does: (
+          <>
+            GitHub runs {[...new Set(held.map((u) => u.name || 'an app'))].join(', ')} on commit {commit}, with this
+            pull request’s own versions of its files, workflows included.
+          </>
+        ),
+        accept: 'I’ve looked, approve anyway',
+        confirm: 'Approve and run',
+      }
+    }
     default:
       return {
         title: `${offer.label} on ${pull}?`,
@@ -69,7 +89,7 @@ export function ActionConfirmDialog({ review, offer, onConfirm, onCancel, commen
   return (
     <ConfirmDialog
       title={text.title}
-      confirmLabel={offer.label}
+      confirmLabel={text.confirm ?? offer.label}
       tone={offer.action === 'close' ? 'danger' : 'primary'}
       size="wide"
       confirmDisabled={offer.warnings.length > 0 && !accepted}

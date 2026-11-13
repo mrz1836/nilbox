@@ -9,6 +9,9 @@ export interface ActionProgressProps {
   // steps are what the action did so far, in order, as the backend reported them; the last
   // is the one it is doing now.
   steps: readonly string[]
+  // staysOpen reports an action after which the sheet stays open, such as approving held
+  // workflow runs, whose checks it then waits for.
+  staysOpen?: boolean | undefined
 }
 
 // ActionProgress covers the review sheet while an action runs: the sheet behind it is dimmed
@@ -17,7 +20,7 @@ export interface ActionProgressProps {
 // announces each step to assistive technology as it comes. The panel is wide enough for most
 // titles on one line, and a longer one wraps before the pull request, inside its name only
 // when the name is wider than the panel.
-export function ActionProgress({ title, target, steps }: ActionProgressProps) {
+export function ActionProgress({ title, target, steps, staysOpen = false }: ActionProgressProps) {
   const shown = steps.length === 0 ? ['Starting'] : steps
 
   return (
@@ -57,7 +60,9 @@ export function ActionProgress({ title, target, steps }: ActionProgressProps) {
           })}
         </ol>
         <p className="mt-4 text-xs text-muted">
-          Waiting for GitHub. This usually takes a few seconds, and the sheet closes once it’s done.
+          {staysOpen
+            ? 'Waiting for GitHub. This usually takes a few seconds, and the sheet stays open once it’s done.'
+            : 'Waiting for GitHub. This usually takes a few seconds, and the sheet closes once it’s done.'}
         </p>
       </div>
     </div>

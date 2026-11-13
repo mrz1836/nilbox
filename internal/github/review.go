@@ -6,11 +6,14 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
+	"strconv"
 	"strings"
 	"time"
 	"unicode/utf8"
 
 	"github.com/mrz1836/nilbox/internal/item"
+	"github.com/mrz1836/nilbox/internal/repo"
 	"github.com/mrz1836/nilbox/internal/uierr"
 )
 
@@ -167,6 +170,17 @@ func (c *Client) UpdateBranch(ctx context.Context, tok Token, ref item.Ref, expe
 	update, err := c.updateBranch(ctx, tok, ref, expectedHead)
 
 	return update, Redact(err, tok)
+}
+
+// ApproveWorkflowRun approves the GitHub Actions workflow run with ID runID in the
+// repository name, which GitHub holds until a maintainer approves it, as it does a fork's,
+// with one REST request (POST /repos/{owner}/{repo}/actions/runs/{run_id}/approve). It
+// takes write access to the repository. GitHub documents it for a public fork's first-time
+// contributor, and may refuse a run its other approval settings hold, which is worded
+// (approveError) with what GitHub says. A run takes no head: the caller approves only the
+// runs it read on the head the user saw.
+func (c *Client) ApproveWorkflowRun(ctx context.Context, tok Token, name repo.Name, runID int64) error {
+	return Redact(c.approveWorkflowRun(ctx, tok, name, runID), tok)
 }
 
 // AddComment adds a comment to the conversation of the pull request or issue ref, with
@@ -433,6 +447,46 @@ func (c *Client) updateBranch(ctx context.Context, tok Token, ref item.Ref, expe
 	return &BranchUpdate{Message: answer.Message}, nil
 }
 
+// approveWorkflowRun checks the run and sends the approval. GitHub answers 201 with an
+// empty object, which says nothing more.
+func (c *Client) approveWorkflowRun(ctx context.Context, tok Token, name repo.Name, runID int64) error {
+	if name.Owner == "" || name.Repo == "" || runID <= 0 {
+		return fmt.Errorf("%w: workflow run %d of %q/%q", ErrInvalidWrite, runID, name.Owner, name.Repo)
+	}
+
+	run := workflowRun{repo: name, id: runID}
+	path := "/repos/" + url.PathEscape(name.Owner) + "/" + url.PathEscape(name.Repo) + "/actions/runs/" +
+		strconv.FormatInt(runID, 10) + "/approve"
+
+	if _, err := c.edit(ctx, tok, http.MethodPost, path, nil); err != nil {
+		return approveError(run, fmt.Errorf("approve %s: %w", run, err))
+	}
+
+	return nil
+}
+
+// workflowRun names a workflow run in a refusal's words.
+type workflowRun struct {
+	repo repo.Name
+	id   int64
+}
+
+// String is "workflow run 123 of owner/name".
+func (r workflowRun) String() string {
+	return "workflow run " + strconv.FormatInt(r.id, 10) + " of " + r.repo.String()
+}
+
+// approveError gives a refused approval of run a message the user can act on, keeping err's
+// chain (refusedAs): a run GitHub can't find was deleted or run again, and one it won't
+// approve says why in GitHub's words, or, when GitHub says nothing, what an approval takes.
+func approveError(run workflowRun, err error) error {
+	return refusedAs(run, err, refusal{
+		missed: "it wasn't approved; it may have been deleted or run again",
+		verb:   "approve",
+		unsaid: "approving takes write access to the repository, and works only on a run waiting for approval",
+	})
+}
+
 // addComment checks the comment, sends it, and reads GitHub's answer.
 func (c *Client) addComment(ctx context.Context, tok Token, ref item.Ref, body string) (*Comment, error) {
 	if err := validateRef(ref); err != nil {
@@ -487,8 +541,8 @@ func closeError(ref item.Ref, err error) error {
 	})
 }
 
-// refusal is how a write that is pinned to nothing and merges nothing, a close or an issue's
-// comment, words GitHub's refusal: what didn't happen when GitHub couldn't find the item,
+// refusal is how a write that is pinned to nothing and merges nothing, a close, an issue's
+// comment, or a workflow run's approval, words GitHub's refusal: what didn't happen when GitHub couldn't find the item,
 // what GitHub wouldn't do to it, and why, when GitHub says nothing.
 type refusal struct {
 	missed string
@@ -496,10 +550,11 @@ type refusal struct {
 	unsaid string
 }
 
-// refusedAs gives a refused write of ref the words w gives it, whatever its status: never a
-// merge GitHub won't make (405) or a push (409). A rate limit, a token GitHub refused, and a
-// request that got no answer keep what they say.
-func refusedAs(ref item.Ref, err error, w refusal) error {
+// refusedAs gives a refused write of ref, the item or whatever else the write was to, the
+// words w gives it, whatever its status: never a merge GitHub won't make (405) or a push
+// (409). A rate limit, a token GitHub refused, and a request that got no answer keep what
+// they say.
+func refusedAs(ref fmt.Stringer, err error, w refusal) error {
 	status, ok := errors.AsType[*StatusError](err)
 	if !ok || IsBadCredentials(err) {
 		return err

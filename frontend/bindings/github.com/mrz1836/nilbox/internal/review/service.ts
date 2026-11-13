@@ -27,7 +27,9 @@ import * as $models from "./models.js";
  * at the head the user saw, posting the text and line comments first the same way. A step
  * GitHub made stands, so an approval or a comment GitHub took and a merge it would not
  * make yet is a result, not an error, and once a merge's or a close's comment is posted
- * nothing that fails after it is an error either.
+ * nothing that fails after it is an error either. Approving held workflow runs approves
+ * the ones the sheet read at the head the user saw, one request each, and once GitHub
+ * approved any, a refusal of the rest is the result's reason, not an error.
  */
 export function Act(req: $models.ActRequest): $CancellablePromise<$models.Result> {
     return $Call.ByID(1916819644, req);

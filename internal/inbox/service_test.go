@@ -1326,6 +1326,37 @@ func TestRefreshReplacesTheDetails(t *testing.T) {
 	assert.Equal(t, int64(2), h.count(t, "item_details"))
 }
 
+func TestRefreshStoresTheRunsHeldForApproval(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	h.client.inbox = fetched([]github.Item{pr(1, "OWNER", false)}, nil, nil)
+
+	// The rollup reads SUCCESS while a fork's workflow runs wait for a maintainer.
+	held := prDetails()
+	held.Checks = github.Checks{State: "SUCCESS", Passed: 1, Awaiting: 4}
+	h.client.details = map[string]github.ItemDetails{nodeID(1): held}
+
+	snap := h.refresh(t)
+
+	first := itemByNumber(t, snap.ReviewRequested, 1)
+	require.NotNil(t, first.Details)
+	assert.Equal(t, Checks{State: "SUCCESS", Passed: 1, Awaiting: 4}, first.Details.Checks)
+
+	stored, err := NewStore(h.pool, h.clock).ReviewItem(t.Context(), first.ID)
+	require.NoError(t, err)
+	assert.Equal(t, 4, stored.ChecksAwaiting, "the review sheet reads the count too")
+
+	// Approved: the runs started, and the count is replaced with the rest.
+	running := prDetails()
+	running.Checks = github.Checks{State: "PENDING", Passed: 1, Pending: 6}
+	h.client.details = map[string]github.ItemDetails{nodeID(1): running}
+	h.clock.Advance(DefaultInterval)
+
+	snap = h.refresh(t)
+	assert.Equal(t, Checks{State: "PENDING", Passed: 1, Pending: 6}, itemByNumber(t, snap.ReviewRequested, 1).Details.Checks)
+}
+
 func TestRefreshDetailsFailureKeepsTheStoredInbox(t *testing.T) {
 	t.Parallel()
 

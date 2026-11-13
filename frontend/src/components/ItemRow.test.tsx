@@ -140,7 +140,7 @@ describe('ItemRow', () => {
       item({
         details: details({
           mergeable: 'CONFLICTING',
-          checks: { state: 'FAILURE', passed: 18, failed: 2, pending: 0, skipped: 0 },
+          checks: { state: 'FAILURE', passed: 18, failed: 2, pending: 0, skipped: 0, awaiting: 0 },
           reviews: { decision: 'CHANGES_REQUESTED', reviewers: 1, reviewed: 1, approvals: 0, changesRequested: 1 },
         }),
       }),
@@ -156,7 +156,7 @@ describe('ItemRow', () => {
     renderRow(
       item({
         details: details({
-          checks: { state: 'PENDING', passed: 3, failed: 0, pending: 2, skipped: 0 },
+          checks: { state: 'PENDING', passed: 3, failed: 0, pending: 2, skipped: 0, awaiting: 0 },
           reviews: { decision: '', reviewers: 0, reviewed: 0, approvals: 0, changesRequested: 0 },
         }),
       }),
@@ -167,6 +167,22 @@ describe('ItemRow', () => {
     const dot = slot('Checks: 3 passed, 2 running').querySelector('[data-checks-running]')
     expect(dot?.querySelector('.motion-safe\\:animate-ping')).toHaveClass('bg-warning')
     expect(slot('Reviews: no reviewers yet')).toHaveTextContent('—')
+  })
+
+  it('marks workflow runs held for approval in yellow, in place of the passed checks GitHub reports', () => {
+    renderRow(
+      item({
+        details: details({
+          checks: { state: 'SUCCESS', passed: 1, failed: 0, pending: 0, skipped: 0, awaiting: 4 },
+        }),
+      }),
+    )
+
+    const held = slot('Checks: 4 workflow runs awaiting approval, 1 passed')
+    expect(held).toHaveClass('text-warning')
+    expect(held).toHaveTextContent('4 held')
+    expect(held.querySelector('[data-checks-held]')).toBeInTheDocument()
+    expect(held.querySelector('[data-checks-running]')).not.toBeInTheDocument()
   })
 
   it('tags a draft and mutes its icon', () => {
@@ -307,7 +323,7 @@ describe('ItemRow', () => {
       deletions: 25_322,
       changedFiles: 358,
       commits: 63,
-      checks: { state: '', passed: 0, failed: 0, pending: 0, skipped: 0 },
+      checks: { state: '', passed: 0, failed: 0, pending: 0, skipped: 0, awaiting: 0 },
       reviews: { decision: '', reviewers: 0, reviewed: 0, approvals: 0, changesRequested: 0 },
     })
     render(

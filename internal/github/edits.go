@@ -451,10 +451,10 @@ func rateLimited(status *StatusError) bool {
 		(status.StatusCode == http.StatusForbidden && strings.Contains(strings.ToLower(status.Message), "rate limit"))
 }
 
-// editError gives a refused edit to ref a message the user can act on, keeping err's
-// chain. A refusal it has no better words for, a token GitHub refused, and a request that
-// got no answer keep what they say.
-func editError(ref item.Ref, err error) error {
+// editError gives a refused edit to ref, the item or whatever else the edit was to, a
+// message the user can act on, keeping err's chain. A refusal it has no better words for,
+// a token GitHub refused, and a request that got no answer keep what they say.
+func editError(ref fmt.Stringer, err error) error {
 	status, ok := errors.AsType[*StatusError](err)
 	if !ok || IsBadCredentials(err) {
 		return err

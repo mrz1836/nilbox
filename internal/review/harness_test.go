@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -175,6 +176,7 @@ const (
 	callUpdate  = "update"
 	callComment = "comment"
 	callClose   = "close"
+	callApprove = "approve"
 )
 
 // fakeGitHub answers the sheet's requests and counts them.
@@ -200,6 +202,11 @@ type fakeGitHub struct {
 	closeErr   error
 	closeOnce  error
 
+	// approveErrs fails the approval of a run, by its ID, every time, and approveOnce the
+	// next approval of a run once.
+	approveErrs map[int64]error
+	approveOnce map[int64]error
+
 	calls map[string]int
 	// order names every request, in the order they came.
 	order    []string
@@ -207,6 +214,8 @@ type fakeGitHub struct {
 	merges   []github.MergeInput
 	autos    []string
 	comments []string
+	// approved names each run GitHub approved, as "owner/name:run ID", in order.
+	approved []string
 }
 
 func (g *fakeGitHub) FetchPullReview(context.Context, github.Token, string) (*github.PullReview, error) {
@@ -373,6 +382,27 @@ func (g *fakeGitHub) ClosePull(context.Context, github.Token, item.Ref) error {
 	}
 
 	return g.closeErr
+}
+
+func (g *fakeGitHub) ApproveWorkflowRun(_ context.Context, _ github.Token, name repo.Name, runID int64) error {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+
+	g.count(callApprove)
+
+	if err := g.approveOnce[runID]; err != nil {
+		delete(g.approveOnce, runID)
+
+		return err
+	}
+
+	if err := g.approveErrs[runID]; err != nil {
+		return err
+	}
+
+	g.approved = append(g.approved, name.String()+":"+strconv.FormatInt(runID, 10))
+
+	return nil
 }
 
 func (g *fakeGitHub) count(name string) {

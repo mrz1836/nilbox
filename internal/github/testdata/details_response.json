@@ -137,6 +137,47 @@
                             }
                         ]
                     }
+                },
+                "headSuites": {
+                    "nodes": [
+                        {
+                            "commit": {
+                                "checkSuites": {
+                                    "nodes": [
+                                        {
+                                            "conclusion": "SUCCESS",
+                                            "workflowRun": {
+                                                "databaseId": 201
+                                            }
+                                        },
+                                        {
+                                            "conclusion": "ACTION_REQUIRED",
+                                            "workflowRun": {
+                                                "databaseId": 202
+                                            }
+                                        },
+                                        {
+                                            "conclusion": "ACTION_REQUIRED",
+                                            "workflowRun": null
+                                        },
+                                        {
+                                            "conclusion": "ACTION_REQUIRED",
+                                            "workflowRun": {
+                                                "databaseId": 203
+                                            }
+                                        },
+                                        {
+                                            "conclusion": null,
+                                            "workflowRun": {
+                                                "databaseId": 204
+                                            }
+                                        },
+                                        null
+                                    ]
+                                }
+                            }
+                        }
+                    ]
                 }
             },
             {
@@ -220,6 +261,11 @@
                             }
                         ]
                     }
+                },
+                "headSuites": {
+                    "nodes": [
+                        null
+                    ]
                 }
             },
             {

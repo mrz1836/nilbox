@@ -4,7 +4,7 @@ import { refText } from '../../lib/format'
 import type { ReviewDrafts } from '../../lib/reviewDrafts'
 import { placeIn, stepTo, useActionProgress, useSheetKeys, type SheetBack } from '../../lib/sheet'
 import { useMutation } from '../../lib/useMutation'
-import { useReview } from '../../lib/useReview'
+import { heldRuns, useReview } from '../../lib/useReview'
 import {
   actOnReview,
   type AgentSession,
@@ -27,6 +27,7 @@ import { ActionProgress } from './ActionProgress'
 import { AgentVerdict } from './AgentVerdict'
 import { DiffView } from './DiffView'
 import { FileList } from './FileList'
+import { HeldRuns } from './HeldRuns'
 import { menuOnly } from './ActionButton'
 import { ActionConfirmDialog } from './ActionConfirmDialog'
 import { MergeConfirmDialog, merges } from './MergeConfirmDialog'
@@ -100,7 +101,9 @@ interface Notice {
 // that), the latest agent's verdict, and the review to send. ← and → step through its list
 // while the user isn't typing, ⌘↩ runs the button's action, and Escape closes it. It
 // closes after an action, which the inbox's toast reports, except when the pull request
-// was pushed to since, when it stays open, with the draft, to reload.
+// was pushed to since, when it stays open, with the draft, to reload, and after it approved
+// the workflow runs GitHub held, when it stays open, with the draft, and reads again until
+// their checks start (HeldRuns says so).
 export function ReviewSheet({
   id,
   item,
@@ -129,10 +132,15 @@ export function ReviewSheet({
   const act = useMutation(actOnReview)
   const [confirming, setConfirming] = useState<ReviewOffer | null>(null)
   const [pushed, setPushed] = useState<Notice | null>(null)
-  // actedOn is the pull request the last action ran on, whose error the composer shows.
-  const [actedOn, setActedOn] = useState(0)
+  const [approved, setApproved] = useState<Notice | null>(null)
+  // actedOn is the pull request the last action ran on, and the action, whose error the
+  // composer shows, or, for an approval of held runs, their bar.
+  const [actedOn, setActedOn] = useState<{ id: number; action: ReviewAction }>({ id: 0, action: '' })
   const [progress, setProgress] = useActionProgress('review:progress', id)
   const pushedHere = pushed?.id === id ? pushed.message : ''
+  const approvedHere = approved?.id === id ? approved.message : ''
+  const actError = actedOn.id === id ? act.error : ''
+  const approving = actedOn.action === 'approve_runs'
 
   // target names the pull request while it loads, and reading reports its first read from
   // GitHub under way: nothing the sheet would show has come from GitHub yet, so each
@@ -153,8 +161,13 @@ export function ReviewSheet({
     // and a close, which post them as a comment first when there are any, as the offer says.
     const text = sendsText(offer)
 
-    setProgress({ title: offer?.label ?? 'Working', target: refText(r), steps: [] })
-    setActedOn(id)
+    setProgress({
+      title: offer?.label ?? 'Working',
+      target: refText(r),
+      steps: [],
+      staysOpen: action === 'approve_runs',
+    })
+    setActedOn({ id, action })
 
     const result = await act.run({
       itemId: id,
@@ -191,6 +204,15 @@ export function ReviewSheet({
 
       setPushed({ id, message: result.data.message })
       loaded.reload()
+
+      return
+    }
+
+    if (result.data.outcome === 'runs_approved') {
+      // The sheet stays open, with the draft, and reads again until the runs' checks start;
+      // each read rewrites the inbox card too.
+      setApproved({ id, message: result.data.message })
+      loaded.followRuns(heldRuns(r))
 
       return
     }
@@ -293,6 +315,18 @@ export function ReviewSheet({
               </button>
             </div>
           )}
+          {review !== null && (
+            <HeldRuns
+              review={review}
+              notice={approvedHere}
+              following={loaded.following}
+              error={approving ? actError : ''}
+              busy={act.pending}
+              onApprove={() => {
+                run('approve_runs')
+              }}
+            />
+          )}
           {loaded.patchError !== '' && <ErrorBanner>{loaded.patchError}</ErrorBanner>}
         </div>
         {/* One grid in every state, so the reading banner stays as the inbox's copy of the
@@ -391,7 +425,7 @@ export function ReviewSheet({
                     selected={selected}
                     onRun={run}
                     busy={act.pending}
-                    error={actedOn === id ? act.error : ''}
+                    error={approving ? '' : actError}
                     launch={launch}
                     resolution={resolution}
                     sessions={sessions}
@@ -403,7 +437,14 @@ export function ReviewSheet({
           </div>
         )}
       </div>
-      {progress !== null && <ActionProgress title={progress.title} target={progress.target} steps={progress.steps} />}
+      {progress !== null && (
+        <ActionProgress
+          title={progress.title}
+          target={progress.target}
+          steps={progress.steps}
+          staysOpen={progress.staysOpen}
+        />
+      )}
       {/* A merge asks with its methods; any other action that asks first, with none. */}
       {confirming !== null &&
         review !== null &&

@@ -876,7 +876,7 @@ matches item 123, and a bare `123` matches it too.
 
 | Page | Keys |
 |---|---|
-| Inbox | `is:pr`, `is:issue`, `is:draft`, `is:pinned` (pinned itself, or with its repository or org), `is:conflict` (`is:open` matches everything); `repo:`, `org:`, `author:` (with `@me` for you), `label:`, `status:` (project status), `project:`; `checks:failing`, `checks:passing`, `checks:pending`; `review:approved`, `review:changes_requested`, `review:required` |
+| Inbox | `is:pr`, `is:issue`, `is:draft`, `is:pinned` (pinned itself, or with its repository or org), `is:conflict` (`is:open` matches everything); `repo:`, `org:`, `author:` (with `@me` for you), `label:`, `status:` (project status), `project:`; `checks:failing`, `checks:awaiting` (workflow runs held for a maintainer's approval), `checks:passing`, `checks:pending`; `review:approved`, `review:changes_requested`, `review:required` |
 | Worktrees | `repo:`, `branch:`, `agent:`; `is:dirty`, `is:locked`, `is:in-use`, `is:finished`, `is:review` (needs a look), `is:pr`, `is:issue`, `is:open`, `is:merged`, `is:closed` |
 | Settings | Words only |
 
@@ -1237,6 +1237,7 @@ approval, merge, and close happens only because you clicked.
 | Turn on auto-merge | The review sheet, after you confirm | 1 GraphQL point |
 | Update branch | The review sheet | 1 REST point |
 | Ask Dependabot to rebase (a `@dependabot rebase` comment) | The review sheet | 1 REST point |
+| Approve workflows to run | The review sheet's bar or menu, after you confirm when it changes workflow files | 1 REST point per run, then up to 5 GraphQL points to read it again until their checks start |
 | Close pull request | The review sheet's menu, after you confirm | 1 GraphQL point to check nothing was pushed, then 1 REST point (1 more for your comment) |
 | Comment on an issue | The issue sheet | 1 REST point |
 | Close an issue as completed, or as not planned | The issue sheet, after you confirm | 1 GraphQL point to check for new comments, then 1 REST point (1 more for your comment) |
@@ -1389,6 +1390,18 @@ its checks list (**3 workflow runs awaiting approval: Labeler, Deploy preview**)
 line counts them, and the merge's confirmation says that every check that ran passed and that
 GitHub merges it as it is, so accepting it is no bypass: merging past the rules is the separate
 **Merge past the rules**. They're read in the same request as the checks.
+
+**Approving held workflow runs.** GitHub holds a fork's workflow runs until someone with write
+access approves them, and its overall check state leaves them out, so it can read as passed while
+nothing of the pull request's own CI has run. The inbox card marks them instead (**4 held**, in the
+warning color, and `checks:awaiting` finds them), and the sheet names them in a bar under its
+header, each a link to its run on GitHub, with **Approve workflows to run**. It approves each run
+Nilbox read on the commit you saw, one REST request each, and asks first when the pull request
+changes workflow files, since the runs use its versions of them. The sheet then stays open, with
+your draft, and reads the pull request again until the runs' checks start (at most five reads, a
+few seconds apart), which also moves the card to running checks. GitHub documents the approval for
+a first-time contributor's fork; when it refuses one held under another of its approval settings,
+the bar shows what GitHub said, and the run's link is where to approve it by hand.
 
 **Your text goes with a merge.** Merge, Merge past the rules, and Merge when ready post the text
 in **Your review**, and any line comments, as a comment before they merge, so the pull request

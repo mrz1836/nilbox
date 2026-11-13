@@ -68,7 +68,10 @@ func TestFetchPullReviewReadsTheSheet(t *testing.T) {
 	assert.Equal(t, ReviewMark{State: "COMMENTED", Commit: sha1s("2")}, review.ViewerReview)
 	assert.Equal(t, 1, review.PendingReviews)
 	assert.True(t, review.AutoMerge.On())
-	assert.NotContains(t, pullReviewQuery, "commits(", "nothing reads a commit's message, so none is asked for")
+	assert.NotContains(t, pullReviewQuery, "message", "nothing reads a commit's message, so none is asked for")
+	assert.Equal(t, 2, strings.Count(pullReviewQuery, "commits("), "the head's suites, once in each fragment")
+	assert.Equal(t, 2, strings.Count(pullReviewQuery, "headSuites: commits(last: 1)"),
+		"both fragments read the head's suites under one alias and arguments, which GraphQL merges into one field")
 	assert.Equal(t, []ItemRef{{
 		Repo: "acme-org/example-repo", Number: 12, Title: "Pin the code scanning action",
 		URL: "https://github.com/acme-org/example-repo/issues/12", State: StateOpen,
@@ -104,15 +107,60 @@ func TestFetchPullReviewReadsTheSheet(t *testing.T) {
 		URL: "https://ci.example.com/acme-org/example-repo/7",
 	}, review.Checks[6])
 	assert.Equal(t, []UnrunSuite{
-		{Name: "PR Management", Conclusion: SuiteAwaitsApproval},
-		{Name: "Auto-merge Trigger", Conclusion: "FAILURE"},
+		{
+			Name: "PR Management", Conclusion: SuiteAwaitsApproval, RunID: 106,
+			URL: "https://github.com/acme-org/example-repo/actions/runs/106",
+		},
+		{
+			Name: "Auto-merge Trigger", Conclusion: "FAILURE", RunID: 107,
+			URL: "https://github.com/acme-org/example-repo/actions/runs/107",
+		},
 		{Name: "Example CI", Conclusion: "STARTUP_FAILURE"},
-	}, review.Unrun, "the suites that ended without a check and without passing: one that ran a check, passed, or "+
-		"is still queued is none of them, and a null is skipped")
+	}, review.Unrun, "the suites that ended without a check and without passing, each workflow run with its ID and "+
+		"page: one that ran a check (e2e failed in CS_5), passed, or is still queued is none of them, and a null is "+
+		"skipped")
+	assert.Equal(t, 1, review.Update.Details.Checks.Awaiting, "the card counts the run held for approval")
 
 	observed := rates.all()
 	require.NotEmpty(t, observed)
 	assert.Equal(t, 1, observed[len(observed)-1].spent, "the query spends the point it reports")
+}
+
+func TestFetchPullReviewReadsHeldRunsWithoutARollup(t *testing.T) {
+	t.Parallel()
+
+	// A first-time contributor's fork whose every run waits for approval has no check, and
+	// GitHub answers its rollup null: the held runs are read from the head commit anyway.
+	var answer map[string]any
+	require.NoError(t, json.Unmarshal(fixture(t, "pull_review_response.json"), &answer))
+
+	node, ok := answer["data"].(map[string]any)["node"].(map[string]any)
+	require.True(t, ok)
+
+	node["statusCheckRollup"], node["checkList"] = nil, nil
+
+	body, err := json.Marshal(answer)
+	require.NoError(t, err)
+
+	client := newTestClient(t, serveItem(string(body)))
+
+	review, err := client.FetchPullReview(t.Context(), NewToken(fakeToken), "PR_fakeNodeId94")
+	require.NoError(t, err)
+
+	assert.Empty(t, review.Checks)
+	assert.Equal(t, []UnrunSuite{
+		{Name: "e2e", Conclusion: "FAILURE", RunID: 105, URL: "https://github.com/acme-org/example-repo/actions/runs/105"},
+		{
+			Name: "PR Management", Conclusion: SuiteAwaitsApproval, RunID: 106,
+			URL: "https://github.com/acme-org/example-repo/actions/runs/106",
+		},
+		{
+			Name: "Auto-merge Trigger", Conclusion: "FAILURE", RunID: 107,
+			URL: "https://github.com/acme-org/example-repo/actions/runs/107",
+		},
+		{Name: "Example CI", Conclusion: "STARTUP_FAILURE"},
+	}, review.Unrun, "with no check run, no suite ran one")
+	assert.Equal(t, Checks{Awaiting: 1}, review.Update.Details.Checks, "the card has no rollup, and the held run")
 }
 
 func TestFetchPullReviewOfAPullRequestThatIsGone(t *testing.T) {

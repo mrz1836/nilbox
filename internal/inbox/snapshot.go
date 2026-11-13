@@ -269,6 +269,10 @@ type Checks struct {
 	Failed  int `json:"failed"`
 	Pending int `json:"pending"`
 	Skipped int `json:"skipped"`
+
+	// Awaiting counts the workflow runs held until a maintainer approves them, which State
+	// and the other counts leave out (github.Checks.Awaiting).
+	Awaiting int `json:"awaiting"`
 }
 
 // Reviews counts who was asked to review a pull request and who has.
@@ -500,6 +504,7 @@ type itemRow struct {
 	ChecksFailed     int
 	ChecksPending    int
 	ChecksSkipped    int
+	ChecksAwaiting   int
 	ReviewDecision   string
 	Reviewers        int
 	Reviewed         int
@@ -568,8 +573,9 @@ func itemRowOf(r queries.ListItemsRow) (itemRow, error) {
 		Commits: int(store.Deref(r.Commits)), Mergeable: store.Deref(r.Mergeable),
 		ChecksState: store.Deref(r.ChecksState), ChecksPassed: int(store.Deref(r.ChecksPassed)),
 		ChecksFailed: int(store.Deref(r.ChecksFailed)), ChecksPending: int(store.Deref(r.ChecksPending)),
-		ChecksSkipped: int(store.Deref(r.ChecksSkipped)), ReviewDecision: store.Deref(r.ReviewDecision),
-		Reviewers: int(store.Deref(r.Reviewers)), Reviewed: int(store.Deref(r.Reviewed)),
+		ChecksSkipped: int(store.Deref(r.ChecksSkipped)), ChecksAwaiting: int(store.Deref(r.ChecksAwaiting)),
+		ReviewDecision: store.Deref(r.ReviewDecision), Reviewers: int(store.Deref(r.Reviewers)),
+		Reviewed:  int(store.Deref(r.Reviewed)),
 		Approvals: int(store.Deref(r.Approvals)), ChangesRequested: int(store.Deref(r.ChangesRequested)),
 		DetailsFetchedAt: r.DetailsFetchedAt, HeadOID: store.Deref(r.HeadOID), AutoMerge: store.Deref(r.AutoMergeMethod),
 		SubIssues: SubIssues{
@@ -717,7 +723,7 @@ func (r *itemRow) details() *Details {
 		Mergeable:    r.Mergeable,
 		Checks: Checks{
 			State: r.ChecksState, Passed: r.ChecksPassed, Failed: r.ChecksFailed,
-			Pending: r.ChecksPending, Skipped: r.ChecksSkipped,
+			Pending: r.ChecksPending, Skipped: r.ChecksSkipped, Awaiting: r.ChecksAwaiting,
 		},
 		Reviews: Reviews{
 			Decision: r.ReviewDecision, Reviewers: r.Reviewers, Reviewed: r.Reviewed,

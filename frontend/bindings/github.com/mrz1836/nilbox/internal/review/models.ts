@@ -46,7 +46,7 @@ export interface ActRequest {
 /**
  * Action is something the review sheet can do with a pull request.
  */
-export type Action = "" | "approve" | "approve_merge" | "approve_auto_merge" | "merge_now" | "auto_merge" | "merge_bypass" | "request_changes" | "comment" | "update_branch" | "rebase_bot" | "close";
+export type Action = "" | "approve" | "approve_merge" | "approve_auto_merge" | "merge_now" | "auto_merge" | "merge_bypass" | "request_changes" | "comment" | "update_branch" | "rebase_bot" | "close" | "approve_runs";
 
 /**
  * The values of Action, by the names of their Go constants.
@@ -116,6 +116,13 @@ export const Action = {
      * button, and always asks first.
      */
     ActionClose: "close",
+
+    /**
+     * ActionApproveRuns approves the head commit's workflow runs GitHub holds for a
+     * maintainer's approval, as it does a fork's. It sends no text, and is never the sheet's
+     * button.
+     */
+    ActionApproveRuns: "approve_runs",
 } as const;
 
 /**
@@ -364,7 +371,7 @@ export interface Offer {
 /**
  * Outcome is what an action came to.
  */
-export type Outcome = "reviewed" | "merged" | "auto_merge" | "approved_not_merged" | "commented_not_merged" | "closed" | "commented_not_closed" | "branch_updating" | "asked_bot" | "pushed_since";
+export type Outcome = "reviewed" | "merged" | "auto_merge" | "approved_not_merged" | "commented_not_merged" | "closed" | "commented_not_closed" | "branch_updating" | "asked_bot" | "runs_approved" | "pushed_since";
 
 /**
  * The values of Outcome, by the names of their Go constants.
@@ -420,6 +427,12 @@ export const Outcome = {
      * OutcomeAskedBot is Dependabot asked to rebase.
      */
     OutcomeAskedBot: "asked_bot",
+
+    /**
+     * OutcomeRunsApproved is the held workflow runs approved, all of them or, when GitHub
+     * refused one after approving others, some; Reason then says why.
+     */
+    OutcomeRunsApproved: "runs_approved",
 
     /**
      * OutcomePushedSince is an action refused, or never sent, because the pull request was
@@ -558,7 +571,8 @@ export interface Result {
 
     /**
      * Reason says why GitHub would not merge, for OutcomeApprovedNotMerged and
-     * OutcomeCommentedNotMerged, or why the close failed, for OutcomeCommentedNotClosed.
+     * OutcomeCommentedNotMerged, why the close failed, for OutcomeCommentedNotClosed, or why
+     * GitHub refused the rest of the runs, for OutcomeRunsApproved after some.
      */
     "reason": string;
 
@@ -773,4 +787,12 @@ export const Side = {
 export interface Unrun {
     "name": string;
     "approval": boolean;
+
+    /**
+     * RunID is the GitHub Actions run's ID, which an approval names, and URL its page; 0
+     * and "" for another app's suite, and in a context an older build cached, until the
+     * sheet reads it again.
+     */
+    "runId": number;
+    "url": string;
 }

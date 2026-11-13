@@ -46,7 +46,9 @@ var (
 // at the head the user saw, posting the text and line comments first the same way. A step
 // GitHub made stands, so an approval or a comment GitHub took and a merge it would not
 // make yet is a result, not an error, and once a merge's or a close's comment is posted
-// nothing that fails after it is an error either.
+// nothing that fails after it is an error either. Approving held workflow runs approves
+// the ones the sheet read at the head the user saw, one request each, and once GitHub
+// approved any, a refusal of the rest is the result's reason, not an error.
 func (s *Service) Act(ctx context.Context, req ActRequest) (Result, error) {
 	pull, c, err := s.loadAct(ctx, req)
 	if err != nil {
@@ -89,13 +91,16 @@ func (s *Service) Act(ctx context.Context, req ActRequest) (Result, error) {
 	s.settle(ctx, req.ItemID, run.gone())
 	s.tellMerged(run.acted.Merged, pull.ref().Repo)
 
-	if err != nil && !run.commentedFirst() {
-		return Result{}, err
-	}
-
-	if err != nil {
+	switch {
+	case err == nil:
+	case run.commentedFirst():
 		// The comment is on GitHub: the sheet must hear it was posted, whatever failed after.
 		run.failedAfterComment(ctx, s, err)
+	case len(run.approvedRuns) > 0:
+		// Runs GitHub approved stand: the sheet must hear they were, and why the rest weren't.
+		run.failedAfterApproval(ctx, s, err)
+	default:
+		return Result{}, err
 	}
 
 	return run.result(pull.ReviewRequested), nil
@@ -177,10 +182,31 @@ func (s *Service) prepare(ctx context.Context, req ActRequest, plan Plan, c *cac
 		return nil, err
 	}
 
-	return &action{
+	a := &action{
 		kind: req.Action, reviewAs: reviewAs, commentFirst: offer.CommentsFirst, head: c.head, body: req.Body,
 		comments: req.Comments, method: method, unstable: req.Accept,
-	}, nil
+	}
+
+	if req.Action == ActionApproveRuns {
+		a.runs = heldRuns(c.context.Unrun)
+	}
+
+	return a, nil
+}
+
+// heldRuns are the cached runs awaiting approval that an approval can name. The cache holds
+// what the sheet read at the head the user saw (loadAct refuses any other), so approving
+// them is pinned to the commit the user reviewed without reading GitHub again.
+func heldRuns(unrun []Unrun) []Unrun {
+	out := []Unrun{}
+
+	for _, u := range unrun {
+		if u.Approval && u.RunID > 0 && !slices.ContainsFunc(out, func(o Unrun) bool { return o.RunID == u.RunID }) {
+			out = append(out, u)
+		}
+	}
+
+	return out
 }
 
 // reviewOf is the review a request submits, as its offer says: the action's own, for one
@@ -310,6 +336,11 @@ type action struct {
 	// bypassing reports a merge going past the branch's rules, as the user chose.
 	bypassing bool
 
+	// runs are the held workflow runs an approval names, and approvedRuns the IDs of those
+	// GitHub approved so far, which a retry skips.
+	runs         []Unrun
+	approvedRuns []int64
+
 	// What GitHub made happen.
 	reviewed *github.SubmittedReview
 	acted    Acted
@@ -386,6 +417,20 @@ func (a *action) failedAfterComment(ctx context.Context, s *Service, err error) 
 	a.outcome, a.reason = a.notDone(), strings.TrimSuffix(uierr.Message(err), ".")
 }
 
+// failedAfterApproval turns an error that came after GitHub approved some of the held runs
+// into the action's result, so the sheet hears those were approved and follows them. With
+// every run approved, the error came from the inbox's own bookkeeping, and is only logged;
+// otherwise GitHub refused the rest, and the error's words are the result's reason.
+func (a *action) failedAfterApproval(ctx context.Context, s *Service, err error) {
+	if len(a.approvedRuns) == len(a.runs) {
+		s.logger.WarnContext(ctx, "an action's step failed after GitHub answered it", "outcome", a.outcome, "error", err)
+
+		return
+	}
+
+	a.reason = strings.TrimSuffix(uierr.Message(err), ".")
+}
+
 // notDone is the outcome of an action whose comment GitHub took and whose own step it
 // didn't make: a close's, or a merge's.
 func (a *action) notDone() Outcome {
@@ -411,6 +456,8 @@ func (a *action) follow(ctx context.Context, s *Service, tok github.Token) error
 		return a.askBot(ctx, s, tok)
 	case ActionClose:
 		return a.closePull(ctx, s, tok)
+	case ActionApproveRuns:
+		return a.approveRuns(ctx, s, tok)
 	case ActionNone:
 		return fmt.Errorf("%w: no action", ErrNotOffered)
 	default:
@@ -544,6 +591,35 @@ func (a *action) updateBranch(ctx context.Context, s *Service, tok github.Token)
 
 	a.outcome = OutcomeBranchUpdating
 	a.steps = append(a.steps, "Updating the branch")
+
+	return nil
+}
+
+// approveRuns approves each held run, one request each, in the order the sheet listed them.
+// A run an earlier try approved is skipped, so the inbox's retry with a fresh token never
+// approves one twice. The first refusal stops it and is returned; Act makes it the result's
+// reason once any run was approved.
+func (a *action) approveRuns(ctx context.Context, s *Service, tok github.Token) error {
+	if len(a.runs) == 0 {
+		return uierr.New("No workflow run is waiting for approval.", fmt.Errorf("%w: no held runs", ErrNotOffered))
+	}
+
+	for _, run := range a.runs {
+		if slices.Contains(a.approvedRuns, run.RunID) {
+			continue
+		}
+
+		name := cmp.Or(run.Name, "the workflow run")
+		a.step(s, "Approving "+name)
+
+		if err := s.github.ApproveWorkflowRun(ctx, tok, a.ref.Repo, run.RunID); err != nil {
+			return err
+		}
+
+		a.approvedRuns = append(a.approvedRuns, run.RunID)
+		a.outcome = OutcomeRunsApproved
+		a.steps = append(a.steps, "Approved "+name)
+	}
 
 	return nil
 }

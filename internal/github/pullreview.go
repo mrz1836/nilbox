@@ -16,10 +16,13 @@ import (
 // review of each reviewer with its words, the first commit's message, which holds
 // Dependabot's metadata, the head commit's checks, each with whether it is required, its
 // check suites, which name the workflow runs that ended without a check (as a fork's runs
-// waiting for approval do), and the issues the pull request closes once it merges.
+// waiting for approval do) with each run's ID and page, and the issues the pull request
+// closes once it merges.
 //
 // Fields DetailFields asks for with other arguments are aliased: GitHub refuses one name
-// asked for twice with different arguments.
+// asked for twice with different arguments. The head commit's suites are asked for under
+// DetailFields' own alias and arguments (headSuites), which GraphQL merges into one field,
+// so they are read once whatever each fragment selects of them.
 const pullReviewQuery = `query PullReview($id: ID!) {
   node(id: $id) { ...ItemFields ...DetailFields ...ReviewFields }
   rateLimit { cost remaining resetAt limit used }
@@ -49,7 +52,15 @@ fragment ReviewFields on PullRequest {
         ... on StatusContext { context state targetUrl isRequired(pullRequestId: $id) }
       }
     }
-    commit { checkSuites(first: 50) { nodes { id conclusion app { name } workflowRun { workflow { name } } } } }
+  }
+  headSuites: commits(last: 1) {
+    nodes {
+      commit {
+        checkSuites(first: 50) {
+          nodes { id conclusion app { name } workflowRun { databaseId url workflow { name } } }
+        }
+      }
+    }
   }
 }
 `
@@ -218,6 +229,11 @@ type UnrunSuite struct {
 	// ended, a conclusion a check run with it fails on (checkRunOutcome), as FAILURE or
 	// STARTUP_FAILURE.
 	Conclusion string
+
+	// RunID is the GitHub Actions workflow run's ID, which REST names it by (as
+	// ApproveWorkflowRun does), and URL its page; 0 and "" for another app's suite.
+	RunID int64
+	URL   string
 }
 
 // SuiteAwaitsApproval is the conclusion of a suite whose run waits for a maintainer's
@@ -387,13 +403,9 @@ type reviewNode struct {
 		Contexts struct {
 			Nodes []*graphQLCheck `json:"nodes"`
 		} `json:"contexts"`
-		Commit *struct {
-			CheckSuites struct {
-				Nodes []*graphQLSuite `json:"nodes"`
-			} `json:"checkSuites"`
-		} `json:"commit"`
 	} `json:"checkList"`
-	Closes struct {
+	HeadSuites graphQLHeadSuites `json:"headSuites"`
+	Closes     struct {
 		TotalCount int           `json:"totalCount"`
 		Nodes      []*graphQLRef `json:"nodes"`
 	} `json:"closes"`
@@ -435,7 +447,8 @@ type graphQLCheck struct {
 	TargetURL string `json:"targetUrl"`
 }
 
-// graphQLSuite is one of the head commit's check suites.
+// graphQLSuite is one of the head commit's check suites. The details query asks only for
+// its conclusion and its run's ID; the rest decode to zero values there.
 type graphQLSuite struct {
 	ID         string `json:"id"`
 	Conclusion string `json:"conclusion"`
@@ -443,10 +456,28 @@ type graphQLSuite struct {
 		Name string `json:"name"`
 	} `json:"app"`
 	WorkflowRun *struct {
-		Workflow *struct {
+		DatabaseID int64  `json:"databaseId"`
+		URL        string `json:"url"`
+		Workflow   *struct {
 			Name string `json:"name"`
 		} `json:"workflow"`
 	} `json:"workflowRun"`
+}
+
+// runID is the suite's workflow run's ID, 0 for a nil suite or one without a run.
+func (s *graphQLSuite) runID() int64 {
+	if s == nil || s.WorkflowRun == nil {
+		return 0
+	}
+
+	return max(s.WorkflowRun.DatabaseID, 0)
+}
+
+// heldRun reports a suite whose GitHub Actions workflow run waits for a maintainer's
+// approval. An app's check run that ended ACTION_REQUIRED belongs to that app's suite,
+// which has no workflow run, so it is never counted here as well as among failed checks.
+func (s *graphQLSuite) heldRun() bool {
+	return s != nil && s.Conclusion == SuiteAwaitsApproval && s.runID() > 0
 }
 
 // name is the workflow that ran the suite, or else its app, or "".
@@ -462,29 +493,38 @@ func (s *graphQLSuite) name() string {
 	return ""
 }
 
-// unrun lists the check suites that ended without passing, a conclusion a check run with it
-// fails on (a suite still queued has none, and one that passed, was skipped, or was neutral
-// doesn't fail), and without a check among the rollup's contexts, skipping nulls.
+// unrun lists the head commit's check suites that ended without passing, a conclusion a
+// check run with it fails on (a suite still queued has none, and one that passed, was
+// skipped, or was neutral doesn't fail), and without a check among the rollup's contexts,
+// skipping nulls. The suites are read from the head commit, not the rollup, so a fork's
+// runs held for approval are listed while no check has run and the rollup is null.
 func (n *reviewNode) unrun() []UnrunSuite {
 	out := []UnrunSuite{}
-	if n.CheckList == nil || n.CheckList.Commit == nil {
-		return out
-	}
-
 	ran := n.suitesRan()
 
-	for _, s := range n.CheckList.Commit.CheckSuites.Nodes {
-		if s != nil && s.ID != "" && !ran[s.ID] && checkRunOutcome(s.Conclusion) == outcomeFailed {
-			out = append(out, UnrunSuite{Name: s.name(), Conclusion: s.Conclusion})
+	for _, s := range n.HeadSuites.suites() {
+		if s == nil || s.ID == "" || ran[s.ID] || checkRunOutcome(s.Conclusion) != outcomeFailed {
+			continue
 		}
+
+		suite := UnrunSuite{Name: s.name(), Conclusion: s.Conclusion, RunID: s.runID()}
+		if suite.RunID > 0 {
+			suite.URL = s.WorkflowRun.URL
+		}
+
+		out = append(out, suite)
 	}
 
 	return out
 }
 
-// suitesRan holds the check suites of the rollup's check runs, by ID.
+// suitesRan holds the check suites of the rollup's check runs, by ID; none while the
+// rollup is null.
 func (n *reviewNode) suitesRan() map[string]bool {
 	ran := map[string]bool{}
+	if n.CheckList == nil {
+		return ran
+	}
 
 	for _, c := range n.CheckList.Contexts.Nodes {
 		if c != nil && c.CheckSuite != nil && c.CheckSuite.ID != "" {

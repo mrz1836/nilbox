@@ -56,6 +56,12 @@ export interface Checks {
     "failed": number;
     "pending": number;
     "skipped": number;
+
+    /**
+     * Awaiting counts the workflow runs held until a maintainer approves them, which State
+     * and the other counts leave out (github.Checks.Awaiting).
+     */
+    "awaiting": number;
 }
 
 /**
