@@ -1293,7 +1293,9 @@ Every card gets it, in any list.
   · checks running · auto-merge available**, **Behind main**, **Conflicts with main**), which
   stays in view at the top of the column while the rest scrolls; a chip for the kind of change
   and the folders it touches (as in **in wallet/ and the top level**); the dependency it bumps
-  (as in `golang.org/x/net 0.30.0 → 0.31.0 · minor`, a major in amber); the checks, listed open
+  (as in `golang.org/x/net 0.30.0 → 0.31.0 · minor`, a major in amber); **Closes**, the issues it
+  closes once it merges (one already closed says how, as in **closed as not planned**), each
+  opening in the [issue sheet](#reading-an-issue) when it is in your inbox; the checks, listed open
   with the failing ones first, then those running, then those passed, the required ones marked,
   and the skipped ones folded away below them under their count (click a count to open or fold
   it); the card's sensitive-file chip; and each reviewer's latest review. A check that is queued
@@ -1499,9 +1501,15 @@ reach the inbox through **Assigned**, so these are your own work items.
 - **The details:** **Development** (the pull requests that close it once merged, with their
   state, checks, and review, then the ones that mentioned it), assignees, labels, projects, the
   milestone (its due day, in amber once it has passed, and how far along it is), sub-issues with
-  their progress, the issue it is part of, and who took part. A pull request or issue named here
-  opens on GitHub.
+  their progress, the issue it is part of, and who took part.
 - **The latest agent session** on the issue, as on the review sheet, with **Use as comment**.
+
+**Links between the sheets.** A pull request or issue either sheet names, in the details, the
+conversation's events, or the review sheet's **Closes** row, opens in its own sheet when it is
+in your inbox, at its place in its list, with a **‹ acme-org/api#12** step in the header back
+to the sheet you came from (while that card is still in your inbox); following another link
+replaces that step rather than stacking another. Anything else opens on GitHub, which the **↗**
+beside it says.
 
 **Commenting and closing.** Write in **Your comment** and press **Comment**, or **⌘↩**. The
 button's menu also offers **Close as completed…** and **Close as not planned…**, which become the

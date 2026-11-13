@@ -485,7 +485,9 @@ More in [Reviewing a pull request](docs/desktop.md#reviewing-a-pull-request).
 - **Your agent's verdict** shows with **Use as comment**, and **Open in Claude** (or Codex) hands
   the issue to an agent from the sheet.
 - **One list, both kinds:** **←** and **→** step through the list's cards as it shows them, pull
-  requests and issues alike, and the sheet switches to suit each.
+  requests and issues alike, and the sheet switches to suit each. A pull request that fixes the
+  issue, or an issue a pull request closes (the review sheet's **Closes** row), opens in its own
+  sheet when it's in your inbox, with a step back.
 - **Instant and cheap:** it opens from what it read last time, with no request, then checks GitHub
   for one GraphQL point.
 
