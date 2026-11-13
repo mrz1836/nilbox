@@ -229,6 +229,17 @@ func storedProjectOf(p github.ProjectItem) storedProject {
 	return storedProject{Title: p.Title, URL: p.URL, Status: p.Status, StatusColor: p.StatusColor, Fields: fields}
 }
 
+// githubProject converts a stored project back to the GitHub client's form, storedProjectOf
+// undone; its fields are never nil.
+func (p storedProject) githubProject() github.ProjectItem {
+	fields := make([]github.ProjectField, 0, len(p.Fields))
+	for _, f := range p.Fields {
+		fields = append(fields, github.ProjectField(f))
+	}
+
+	return github.ProjectItem{Title: p.Title, URL: p.URL, Status: p.Status, StatusColor: p.StatusColor, Fields: fields}
+}
+
 // detailsRow converts fetched details to their row.
 func detailsRow(itemID int64, d github.ItemDetails, now time.Time) (queries.UpsertDetailsParams, error) {
 	labels := make([]storedLabel, 0, len(d.Labels))
