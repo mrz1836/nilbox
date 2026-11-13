@@ -1,31 +1,52 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 
-import { PullRequestIcon } from '../icons'
+import type { ItemKind } from '../../platform'
+import { IssueIcon, PullRequestIcon } from '../icons'
 
 // sweep staggers a placeholder's highlight by its place, so the sweep travels down them.
 function sweep(i: number): { animationDelay: string } {
   return { animationDelay: `${String(i * 90)}ms` }
 }
 
-// coming are the parts of a pull request its first read from GitHub brings.
-const coming = ['Description', 'Changed files', 'Checks', 'Reviews'] as const
+// Reading is how the banner speaks of an item of one kind: its icon, what it calls it
+// while nothing names it, and the parts its first read from GitHub brings.
+interface Reading {
+  icon: ReactNode
+  noun: string
+  coming: readonly string[]
+}
+
+const readings: Readonly<Record<ItemKind, Reading>> = {
+  pr: {
+    icon: <PullRequestIcon className="size-4 text-accent" />,
+    noun: 'the pull request',
+    coming: ['Description', 'Changed files', 'Checks', 'Reviews'],
+  },
+  issue: {
+    icon: <IssueIcon className="size-4 text-accent" />,
+    noun: 'the issue',
+    coming: ['Description', 'Comments', 'Linked pull requests', 'Projects'],
+  },
+}
 
 // countAfter is how many seconds a read runs before the banner counts them.
 const countAfter = 3
 
 export interface ReadingBannerProps {
-  // target names the pull request, as in "acme-org/api#212", or is '' when nothing names it
-  // yet.
+  // target names the item, as in "acme-org/api#212", or is '' when nothing names it yet.
   target: string
+  // kind is what the item is: a pull request, by default, or an issue.
+  kind?: ItemKind
 }
 
-// ReadingBanner says the sheet is reading a pull request from GitHub for the first time,
-// and what that read brings: an accent ring pulses out from the pull request's icon, each
-// part to come carries a pulsing mark, and once the read has run a few seconds it counts
-// them, so a slow GitHub reads as slow rather than stuck. It is a named region, not a live
-// one: the header already announces that GitHub is being checked.
-export function ReadingBanner({ target }: ReadingBannerProps) {
+// ReadingBanner says the sheet is reading an item from GitHub for the first time, and what
+// that read brings: an accent ring pulses out from the item's icon, each part to come
+// carries a pulsing mark, and once the read has run a few seconds it counts them, so a
+// slow GitHub reads as slow rather than stuck. It is a named region, not a live one: the
+// header already announces that GitHub is being checked.
+export function ReadingBanner({ target, kind = 'pr' }: ReadingBannerProps) {
   const [seconds, setSeconds] = useState(0)
+  const { icon, noun, coming } = readings[kind]
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -44,15 +65,11 @@ export function ReadingBanner({ target }: ReadingBannerProps) {
     >
       <span aria-hidden="true" className="relative mt-0.5 flex size-8 shrink-0 items-center justify-center">
         <span className="absolute inset-0 rounded-full bg-accent/25 motion-safe:animate-ping" />
-        <span className="relative flex size-8 items-center justify-center rounded-full bg-accent/15">
-          <PullRequestIcon className="size-4 text-accent" />
-        </span>
+        <span className="relative flex size-8 items-center justify-center rounded-full bg-accent/15">{icon}</span>
       </span>
       <div className="min-w-0 flex-1">
         <p className="flex flex-wrap items-baseline gap-x-2 text-sm font-medium">
-          <span>
-            Reading {target === '' ? 'the pull request' : <span className="font-mono">{target}</span>} from GitHub…
-          </span>
+          <span>Reading {target === '' ? noun : <span className="font-mono">{target}</span>} from GitHub…</span>
           {seconds >= countAfter && (
             <span aria-hidden="true" className="text-xs font-normal text-muted tabular-nums">
               {seconds}s

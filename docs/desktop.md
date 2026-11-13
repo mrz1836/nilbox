@@ -1271,8 +1271,11 @@ Every card gets it, in any list.
 - **The header:** the title, `owner/repo#n`, who opened it with the same trust tag the card has,
   which branch merges into which, and where it sits in its list, as in **3 of 8 in Assigned**.
   **←** and **→** (or the arrow keys, while you aren't typing) step to the previous or next pull
-  request in the same list and tab; **↗** opens it on GitHub, and **✕** or **Escape** closes the
-  sheet.
+  request in the same list and tab, in the order the list shows them: only the cards the
+  [filter](#filtering) matches, sorted by project status when the list is. Each arrow names the
+  pull request it steps to in its tooltip. A pull request a refresh stops matching keeps its
+  place while the sheet is open on it. **↗** opens it on GitHub, and **✕** or **Escape** closes
+  the sheet.
 - **The files** on the left: each path with its additions and deletions, a dot for a
   [sensitive](#sensitive-files) category, and a tick once you mark it viewed. Clicking one scrolls
   to its diff.

@@ -3,6 +3,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { attempt } from '../lib/call'
 import type { InboxFilter } from '../lib/inboxFilter'
 import { noWorktrees } from '../lib/itemWorktrees'
+import { sheetCards, shownOrder } from '../lib/listOrder'
 import { isInboxNil } from '../lib/nil'
 import type { ReviewDrafts } from '../lib/reviewDrafts'
 import { ownRule } from '../lib/repoRules'
@@ -547,10 +548,19 @@ export function InboxView({
   }
 
   const reviewed = reviewing === null || snapshot === null ? undefined : findItem(snapshot, reviewing.id)
+  // The sheet steps through the cards of its list and tab as the list shows them: the
+  // filter's matches, sorted by project status when the list is, and the card it shows,
+  // kept in its place should the filter stop matching it.
   const siblings =
     reviewing === null || triaged === null
       ? []
-      : triaged.lists[reviewing.list][reviewing.tab].filter((i) => i.kind === 'pr')
+      : sheetCards(
+          triaged.lists[reviewing.list],
+          reviewing.tab,
+          filter?.lists[reviewing.list],
+          shownOrder(order, reviewing.list),
+          reviewing.id,
+        ).filter((i) => i.kind === 'pr')
 
   return (
     <div className="flex flex-col gap-4 p-4">
@@ -623,8 +633,7 @@ export function InboxView({
               onFilesSettings={onFilesSettings}
               reveal={key === revealIn ? reveal : null}
               order={{
-                byStatus: order.statusSorted.includes(key),
-                stored: order.statusOrder,
+                ...shownOrder(order, key),
                 onSortChange: (on) => {
                   setStatusSort(key, on)
                 },

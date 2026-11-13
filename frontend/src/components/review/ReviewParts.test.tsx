@@ -19,7 +19,7 @@ import {
   review,
 } from '../../test/fixtures'
 import { platform } from '../../test/platform'
-import { ActionButton } from './ActionButton'
+import { ActionButton, menuOnly } from './ActionButton'
 import { AgentVerdict } from './AgentVerdict'
 import { DiffView } from './DiffView'
 import { LineComment } from './LineComment'
@@ -372,6 +372,21 @@ describe('AgentVerdict', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Show all' }))
     expect(await screen.findByText('No such session')).toBeInTheDocument()
   })
+
+  it('puts what it said into the sheet’s text, as its button names', async () => {
+    const onUse = vi.fn()
+    render(
+      <AgentVerdict
+        sessions={[agentSession({ lastMessage: 'Fixed in the parser.' })]}
+        agents={agents()}
+        onUse={onUse}
+        useLabel="Use as comment"
+      />,
+    )
+
+    await userEvent.click(screen.getByRole('button', { name: 'Use as comment' }))
+    expect(onUse).toHaveBeenCalledWith('Fixed in the parser.')
+  })
 })
 
 describe('LineComment', () => {
@@ -427,6 +442,7 @@ describe('ActionButton', () => {
         onRun={onRun}
         busy={false}
         blocked={() => ''}
+        menuOnly={menuOnly}
       />,
     )
 
@@ -446,6 +462,7 @@ describe('ActionButton', () => {
         onRun={onRun}
         busy={false}
         blocked={(a) => (a === 'close' ? 'You have a review started on GitHub.' : '')}
+        menuOnly={menuOnly}
       />,
     )
     await userEvent.click(screen.getByRole('button', { name: 'More review actions' }))
@@ -466,6 +483,7 @@ describe('ActionButton', () => {
         onRun={onRun}
         busy={false}
         blocked={() => ''}
+        menuOnly={menuOnly}
       />,
     )
 
@@ -483,10 +501,105 @@ describe('ActionButton', () => {
         onRun={onRun}
         busy={false}
         blocked={() => ''}
+        menuOnly={menuOnly}
       />,
     )
     expect(screen.getByText('Nothing to do here now.')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'More review actions' })).not.toBeInTheDocument()
+  })
+
+  it('takes a sheet’s own menu, with any action as the button and items set apart at its foot', async () => {
+    const onSelect = vi.fn()
+    const onRun = vi.fn()
+    const unassign = vi.fn()
+    render(
+      <ActionButton
+        offers={[
+          { action: 'comment', label: 'Comment', enabled: true, reason: '', confirm: false },
+          { action: 'close', label: 'Close as completed', enabled: true, reason: '', confirm: true },
+        ]}
+        selected="close"
+        onSelect={onSelect}
+        onRun={onRun}
+        busy={false}
+        blocked={() => ''}
+        menuLabel="More issue actions"
+        extra={[{ label: 'Unassign me', onSelect: unassign }]}
+      />,
+    )
+
+    // Nothing runs only from this menu, so even a close can be the button, and asks first.
+    await userEvent.click(screen.getByRole('button', { name: 'Close as completed…' }))
+    expect(onRun).toHaveBeenCalledWith('close')
+
+    await userEvent.click(screen.getByRole('button', { name: 'More issue actions' }))
+    const menu = screen.getByRole('menu')
+    expect(
+      within(menu)
+        .getAllByRole('menuitem')
+        .map((m) => m.textContent),
+    ).toEqual(['Comment', 'Close as completed', 'Unassign me'])
+    // Only the items set apart get a line above them.
+    expect(within(menu).getAllByRole('separator')).toHaveLength(1)
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Unassign me' }))
+    expect(unassign).toHaveBeenCalledOnce()
+    expect(onSelect).not.toHaveBeenCalled()
+  })
+
+  it('keeps the items set apart in a menu beside the words when nothing else can run', async () => {
+    const unassign = vi.fn()
+    render(
+      <ActionButton
+        offers={[offer({ enabled: false, reason: 'Not now.' })]}
+        selected=""
+        onSelect={vi.fn()}
+        onRun={vi.fn()}
+        busy={false}
+        blocked={() => ''}
+        menuLabel="More issue actions"
+        extra={[{ label: 'Unassign me', onSelect: unassign }]}
+      />,
+    )
+
+    expect(screen.getByText('Nothing to do here now.')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'More issue actions' }))
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Unassign me' }))
+    expect(unassign).toHaveBeenCalledOnce()
+  })
+
+  it('holds the items set apart back while an action runs, with no line above them when they stand alone', async () => {
+    const { rerender } = render(
+      <ActionButton
+        offers={[offer({ action: 'comment', label: 'Comment' })]}
+        selected="comment"
+        onSelect={vi.fn()}
+        onRun={vi.fn()}
+        busy
+        blocked={() => ''}
+        menuLabel="More issue actions"
+        extra={[{ label: 'Unassign me', onSelect: vi.fn() }]}
+      />,
+    )
+
+    await userEvent.click(screen.getByRole('button', { name: 'More issue actions' }))
+    expect(screen.getByRole('menuitem', { name: 'Unassign me' })).toBeDisabled()
+    await userEvent.keyboard('{Escape}')
+
+    rerender(
+      <ActionButton
+        offers={[]}
+        selected=""
+        onSelect={vi.fn()}
+        onRun={vi.fn()}
+        busy={false}
+        blocked={() => ''}
+        menuLabel="More issue actions"
+        extra={[{ label: 'Unassign me', onSelect: vi.fn() }]}
+      />,
+    )
+    await userEvent.click(screen.getByRole('button', { name: 'More issue actions' }))
+    expect(screen.getByRole('menuitem', { name: 'Unassign me' })).toBeEnabled()
+    expect(within(screen.getByRole('menu')).queryByRole('separator')).not.toBeInTheDocument()
   })
 })
 

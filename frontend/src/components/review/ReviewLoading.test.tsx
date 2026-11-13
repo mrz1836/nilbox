@@ -44,6 +44,25 @@ describe('ReadingBanner', () => {
       'Reading the pull request from GitHub…',
     )
   })
+
+  it('speaks of an issue, and what an issue’s read brings', () => {
+    const { rerender } = render(<ReadingBanner target="acme-org/api#12" kind="issue" />)
+
+    expect(screen.getByRole('region', { name: 'Reading from GitHub' })).toHaveTextContent(
+      'Reading acme-org/api#12 from GitHub…',
+    )
+    expect(screen.getAllByRole('listitem').map((part) => part.textContent)).toEqual([
+      'Description',
+      'Comments',
+      'Linked pull requests',
+      'Projects',
+    ])
+
+    rerender(<ReadingBanner target="" kind="issue" />)
+    expect(screen.getByRole('region', { name: 'Reading from GitHub' })).toHaveTextContent(
+      'Reading the issue from GitHub…',
+    )
+  })
 })
 
 describe('the placeholders', () => {

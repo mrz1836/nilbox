@@ -1861,11 +1861,33 @@ describe('InboxView review sheet', () => {
     await userEvent.click(screen.getByRole('menuitem', { name: 'Review…' }))
 
     expect(await screen.findByText('1 of 2 in Review requested')).toBeInTheDocument()
-    await userEvent.click(screen.getByRole('button', { name: 'Next pull request' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Next' }))
     expect(await screen.findByRole('heading', { name: 'Second' })).toBeInTheDocument()
 
     await userEvent.click(screen.getByRole('button', { name: 'Close' }))
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  })
+
+  it('steps through the cards as the list shows them, the filter’s matches alone', async () => {
+    const cards = [
+      item({ id: 1 }),
+      item({ id: 2, number: 8, title: 'Fix the parser' }),
+      item({ id: 3, number: 9, title: 'Add the widget docs' }),
+    ]
+    const titleOf = (id: number) => cards.find((c) => c.id === id)?.title ?? ''
+    platform.getInboxSnapshot.mockResolvedValue(snapshot({ reviewRequested: list(cards) }))
+    platform.openReview.mockImplementation((id) => Promise.resolve(review({ id, title: titleOf(id) })))
+    platform.refreshReview.mockImplementation((id) => Promise.resolve(review({ id, title: titleOf(id) })))
+    render(<Harness launch={launchOptions} clock={fixedNow} reviews query="Add" />)
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Add the widget cache' }))
+    expect(await screen.findByText('1 of 2 in Review requested')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Next' })).toHaveAttribute('title', 'Next: Add the widget docs (→)')
+
+    await userEvent.click(screen.getByRole('button', { name: 'Next' }))
+    expect(await screen.findByRole('heading', { name: 'Add the widget docs' })).toBeInTheDocument()
+    expect(screen.getByText('2 of 2 in Review requested')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Next' })).toBeDisabled()
   })
 
   it('opens GitHub when the sheet is off', async () => {

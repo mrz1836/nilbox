@@ -10,18 +10,20 @@ import { Markdown } from '../Markdown'
 import { RelativeTime } from '../RelativeTime'
 
 export interface AgentVerdictProps {
-  // sessions are the pull request's agent sessions, newest first.
+  // sessions are the item's agent sessions, newest first.
   sessions: readonly AgentSession[] | undefined
   agents: readonly AgentInfo[]
-  // onUse puts the verdict into the review's text.
+  // onUse puts the verdict into the sheet's text, and useLabel names the button that does.
   onUse: (text: string) => void
+  useLabel?: string
 }
 
-// AgentVerdict shows what the latest agent session on the pull request said: the agent,
-// what it is doing, and its last message. Show all reads the whole message from the
-// agent's own files on this Mac, and Use as review comment puts it into the review's text,
-// for the user to edit and send. An agent never reviews on its own.
-export function AgentVerdict({ sessions, agents, onUse }: AgentVerdictProps) {
+// AgentVerdict shows what the latest agent session on the item said: the agent, what it
+// is doing, and its last message. Show all reads the whole message from the agent's own
+// files on this Mac, and Use as review comment (or as useLabel says) puts it into the
+// sheet's text, for the user to edit and send. An agent never reviews or comments on its
+// own.
+export function AgentVerdict({ sessions, agents, onUse, useLabel = 'Use as review comment' }: AgentVerdictProps) {
   const latest = sessions?.[0]
   const [full, setFull] = useState<{ id: string; text: string; partial: boolean } | null>(null)
   const [error, setError] = useState('')
@@ -69,7 +71,7 @@ export function AgentVerdict({ sessions, agents, onUse }: AgentVerdictProps) {
             }}
             className={quietButtonClass}
           >
-            Use as review comment
+            {useLabel}
           </button>
         </div>
       )}

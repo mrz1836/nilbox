@@ -24,7 +24,7 @@ import {
 } from '../../test/fixtures'
 import { emit, platform } from '../../test/platform'
 import type { LaunchOptions } from '../ItemRow'
-import { ReviewSheet, selectedAction, withStep, type ReviewSheetProps } from './ReviewSheet'
+import { ReviewSheet, selectedAction, type ReviewSheetProps } from './ReviewSheet'
 
 vi.mock('../../platform', () => import('../../test/platform').then((fake) => fake.platform))
 
@@ -764,6 +764,33 @@ describe('ReviewSheet', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('GitHub refused it.')
   })
 
+  it('says what an action met only of its own pull request, never of the next one stepped to', async () => {
+    platform.openReview.mockImplementation((id) => Promise.resolve(review({ id })))
+    platform.refreshReview.mockImplementation((id) => Promise.resolve(review({ id })))
+    platform.actOnReview.mockResolvedValueOnce(
+      reviewResult({ outcome: 'pushed_since', message: 'acme-org/example-repo#7 was pushed to since you opened it.' }),
+    )
+    platform.actOnReview.mockRejectedValueOnce(new Error('GitHub refused it.'))
+    render(<Harness />)
+
+    await choose('Approve')
+    await userEvent.click(await actionButton('Approve'))
+    expect(await screen.findByText('acme-org/example-repo#7 was pushed to since you opened it.')).toBeInTheDocument()
+
+    await userEvent.click(await actionButton('Approve'))
+    expect(await screen.findByRole('alert')).toHaveTextContent('GitHub refused it.')
+
+    await userEvent.click(screen.getByRole('button', { name: 'Next' }))
+    expect(await screen.findByText('2 of 3 in Assigned')).toBeInTheDocument()
+    expect(screen.queryByText('acme-org/example-repo#7 was pushed to since you opened it.')).not.toBeInTheDocument()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+
+    // Back on the pull request they were about, both show again.
+    await userEvent.click(screen.getByRole('button', { name: 'Previous' }))
+    expect(await screen.findByText('acme-org/example-repo#7 was pushed to since you opened it.')).toBeInTheDocument()
+    expect(screen.getByRole('alert')).toHaveTextContent('GitHub refused it.')
+  })
+
   it('steps through its list with the arrows, and runs the action with ⌘↩', async () => {
     platform.openReview.mockImplementation((id) => Promise.resolve(review({ id })))
     platform.refreshReview.mockImplementation((id) => Promise.resolve(review({ id })))
@@ -784,12 +811,12 @@ describe('ReviewSheet', () => {
     await userEvent.keyboard('{ArrowLeft}')
     expect(screen.getByText('1 of 3 in Assigned')).toBeInTheDocument()
 
-    await userEvent.click(screen.getByRole('button', { name: 'Next pull request' }))
-    await userEvent.click(screen.getByRole('button', { name: 'Previous pull request' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Next' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Previous' }))
     expect(screen.getByText('1 of 3 in Assigned')).toBeInTheDocument()
 
-    await userEvent.click(screen.getByRole('button', { name: 'Next pull request' }))
-    await userEvent.click(screen.getByRole('button', { name: 'Next pull request' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Next' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Next' }))
     await userEvent.keyboard('{ArrowRight}')
     expect(screen.getByText('3 of 3 in Assigned')).toBeInTheDocument()
 
@@ -1284,23 +1311,6 @@ describe('ReviewSheet', () => {
     expect(screen.getByRole('textbox', { name: 'Your review' })).toHaveValue(
       'Reviewed and approved. Thanks, @octo-other!',
     )
-  })
-})
-
-describe('withStep', () => {
-  it('adds each new step once, and nothing when no action runs', () => {
-    const started = { title: 'Approve', target: 'acme-org/example-repo#7', steps: [] }
-
-    expect(withStep(null, 'Approving')).toBeNull()
-    expect(withStep(started, 'Approving')).toEqual({
-      title: 'Approve',
-      target: 'acme-org/example-repo#7',
-      steps: ['Approving'],
-    })
-
-    const once = { title: 'Approve', target: 'acme-org/example-repo#7', steps: ['Approving'] }
-
-    expect(withStep(once, 'Approving')).toBe(once)
   })
 })
 

@@ -19,6 +19,9 @@ export interface SessionTagProps {
   // markWorktree puts the worktree mark on a session in the item's worktree; the card
   // turns it off while its own worktree tag already says so.
   markWorktree?: boolean
+  // align puts the sessions' panel's left edge under the tag's, by default, or its right
+  // edge, for a tag near the window's right side.
+  align?: 'left' | 'right'
 }
 
 // SessionTag follows an item's agent session on its card: a status dot and "Claude ·
@@ -28,7 +31,7 @@ export interface SessionTagProps {
 // of its dot (SessionDot), and one in the item's worktree carries the worktree mark,
 // wherever it was launched from, unless markWorktree is off. It opens the item's sessions
 // (SessionPanel). An item with neither shows nothing.
-export function SessionTag({ sessions, agents, markWorktree = true }: SessionTagProps) {
+export function SessionTag({ sessions, agents, markWorktree = true, align = 'left' }: SessionTagProps) {
   const id = useId()
   const popover = usePopover<HTMLButtonElement, HTMLDivElement>({ placement: 'fit' })
   const { open, toggle, triggerRef } = popover
@@ -75,7 +78,7 @@ export function SessionTag({ sessions, agents, markWorktree = true }: SessionTag
       </button>
       <PopoverPanel
         state={popover}
-        align="left"
+        align={align}
         id={id}
         role="dialog"
         aria-label="Agent sessions"

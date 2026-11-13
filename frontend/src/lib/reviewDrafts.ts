@@ -2,10 +2,9 @@
 // the session, so closing the sheet, or stepping to another pull request and back, loses
 // nothing. A draft is cleared once its action succeeds.
 
-import { useState } from 'react'
-
 import type { ReviewAction } from '../platform'
 import type { DiffSide } from './diff'
+import { useDrafts, type Drafts } from './drafts'
 
 // PendingComment is a line comment waiting to go with the review.
 export interface PendingComment {
@@ -46,31 +45,12 @@ export const emptyDraft: ReviewDraft = Object.freeze({
 })
 
 // ReviewDrafts is every pull request's draft, by inbox item ID.
-export interface ReviewDrafts {
-  get: (id: number) => ReviewDraft
-  update: (id: number, change: (draft: ReviewDraft) => ReviewDraft) => void
-  clear: (id: number) => void
-}
+export type ReviewDrafts = Drafts<ReviewDraft>
 
 // useReviewDrafts keeps the drafts for as long as the component that holds them lives:
 // the window, for the session.
 export function useReviewDrafts(): ReviewDrafts {
-  const [drafts, setDrafts] = useState<ReadonlyMap<number, ReviewDraft>>(new Map())
-
-  return {
-    get: (id) => drafts.get(id) ?? emptyDraft,
-    update: (id, change) => {
-      setDrafts((was) => new Map(was).set(id, change(was.get(id) ?? emptyDraft)))
-    },
-    clear: (id) => {
-      setDrafts((was) => {
-        const next = new Map(was)
-        next.delete(id)
-
-        return next
-      })
-    },
-  }
+  return useDrafts(emptyDraft)
 }
 
 // nextCommentId is a new pending comment's ID: one past the draft's largest.

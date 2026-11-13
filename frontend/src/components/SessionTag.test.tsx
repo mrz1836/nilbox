@@ -72,6 +72,17 @@ describe('SessionTag', () => {
     expect(pulse()).toBeNull()
   })
 
+  it('opens its panel under its left edge, or under its right edge near the window’s right side', async () => {
+    const user = userEvent.setup()
+    const { rerender } = renderTag([agentSession()])
+
+    await user.click(screen.getByRole('button', { name: /Claude session/ }))
+    expect(screen.getByRole('dialog', { name: 'Agent sessions' })).toHaveClass('left-0')
+
+    rerender(<SessionTag sessions={[agentSession()]} agents={agents()} align="right" />)
+    expect(screen.getByRole('dialog', { name: 'Agent sessions' })).toHaveClass('right-0')
+  })
+
   it('shows nothing for an item whose sessions ended over a day ago', () => {
     const { container } = renderTag([agentSession({ state: 'ended', endedAt: '2026-06-13T09:00:00Z' })])
 

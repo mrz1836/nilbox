@@ -1,13 +1,11 @@
-import { useEffect, useEffectEvent, useId, useState } from 'react'
+import { useId, useState } from 'react'
 
-import { isTyping } from '../../lib/keys'
 import type { ReviewDrafts } from '../../lib/reviewDrafts'
+import { placeIn, stepTo, useActionProgress, useSheetKeys } from '../../lib/sheet'
 import { useMutation } from '../../lib/useMutation'
-import { isTopmost } from '../../lib/useModalDialog'
 import { useReview } from '../../lib/useReview'
 import {
   actOnReview,
-  on,
   type AgentSession,
   type InboxItem,
   type ItemResolution,
@@ -38,8 +36,8 @@ export interface ReviewSheetProps {
   // id is the pull request the sheet shows, and item its inbox card.
   id: number
   item: InboxItem | undefined
-  // siblings are the pull requests of the list and tab it was opened from, in order, for
-  // stepping through them; listTitle names that list.
+  // siblings are the pull requests of the list and tab it was opened from, in the order
+  // the list shows them, for stepping through them; listTitle names that list.
   siblings: readonly InboxItem[]
   listTitle: string
   drafts: ReviewDrafts
@@ -73,22 +71,12 @@ function keepsDraft(result: ReviewResult): boolean {
   return result.outcome === 'pushed_since' || result.outcome === 'branch_updating' || result.outcome === 'asked_bot'
 }
 
-// Progress is an action under way: what it is, the pull request it acts on, and the steps
-// the backend reported so far.
-interface Progress {
-  title: string
-  target: string
-  steps: readonly string[]
-}
-
-// withStep adds a step the backend reported to progress, once: a step repeated, as the
-// wait for GitHub to work out a merge can be, shows as one.
-export function withStep(progress: Progress | null, step: string): Progress | null {
-  if (progress === null || progress.steps.at(-1) === step) {
-    return progress
-  }
-
-  return { ...progress, steps: [...progress.steps, step] }
+// Notice is what the sheet says of one pull request after an action on it: an action
+// refused for a push since, or why one failed. It says it only while that pull request
+// shows, never of the next one the sheet steps to.
+interface Notice {
+  id: number
+  message: string
 }
 
 // ReviewSheet is the review sheet: a pull request's files and diffs, its description, what
@@ -117,8 +105,11 @@ export function ReviewSheet({
   const draft = drafts.get(id)
   const act = useMutation(actOnReview)
   const [confirming, setConfirming] = useState<ReviewOffer | null>(null)
-  const [pushed, setPushed] = useState('')
-  const [progress, setProgress] = useState<Progress | null>(null)
+  const [pushed, setPushed] = useState<Notice | null>(null)
+  // actedOn is the pull request the last action ran on, whose error the composer shows.
+  const [actedOn, setActedOn] = useState(0)
+  const [progress, setProgress] = useActionProgress('review:progress', id)
+  const pushedHere = pushed?.id === id ? pushed.message : ''
 
   // target names the pull request while it loads, and reading reports its first read from
   // GitHub under way: nothing the sheet would show has come from GitHub yet, so each
@@ -127,10 +118,7 @@ export function ReviewSheet({
   const target = shown === undefined ? '' : `${shown.repo}#${String(shown.number)}`
   const reading = loaded.checking && (review === null || review.fetchedAt === '')
 
-  const at = siblings.findIndex((s) => s.id === id)
-  const prev = at > 0 ? siblings[at - 1] : undefined
-  const next = at >= 0 ? siblings[at + 1] : undefined
-  const position = at < 0 ? '' : `${String(at + 1)} of ${String(siblings.length)} in ${listTitle}`
+  const { prev, next, position } = placeIn(siblings, id, listTitle)
 
   const onDraft = (change: Parameters<ReviewDrafts['update']>[1]) => {
     drafts.update(id, change)
@@ -143,6 +131,7 @@ export function ReviewSheet({
     const text = sendsText(offer)
 
     setProgress({ title: offer?.label ?? 'Working', target: `${r.repo}#${String(r.number)}`, steps: [] })
+    setActedOn(id)
 
     const result = await act.run({
       itemId: id,
@@ -177,7 +166,7 @@ export function ReviewSheet({
         drafts.update(id, (d) => ({ ...d, body: '', edited: true, replyId: 0, comments: [] }))
       }
 
-      setPushed(result.data.message)
+      setPushed({ id, message: result.data.message })
       loaded.reload()
 
       return
@@ -213,21 +202,6 @@ export function ReviewSheet({
   const selected = review === null ? '' : selectedAction(review, draft.action)
   const reply = useReplyBody(id, review?.isBot ?? item?.authorIsBot ?? false, draft, selected)
 
-  // The backend reports each step of an action on this pull request while it runs.
-  const heard = useEffectEvent((itemId: number, step: string) => {
-    if (itemId === id) {
-      setProgress((p) => withStep(p, step))
-    }
-  })
-
-  useEffect(
-    () =>
-      on('review:progress', (data) => {
-        heard(data.itemId, data.step)
-      }),
-    [],
-  )
-
   // While an action runs, the sheet waits for it: it neither closes nor moves on, so the
   // outcome is never lost.
   const working = progress !== null
@@ -238,16 +212,12 @@ export function ReviewSheet({
     }
   }
 
-  const onKey = useEffectEvent((e: KeyboardEvent) => {
-    const dialog = document.querySelector(`dialog[aria-labelledby="${titleId}"]`)
+  const toPrev = stepTo(prev, onNavigate)
+  const toNext = stepTo(next, onNavigate)
 
-    if (!(dialog instanceof HTMLDialogElement) || !isTopmost(dialog) || working) {
-      return
-    }
-
-    if (e.key === 'Enter' && e.metaKey) {
-      e.preventDefault()
-
+  useSheetKeys(titleId, {
+    working,
+    run: () => {
       if (
         heldBack(
           review?.offers.find((o) => o.action === selected),
@@ -257,34 +227,10 @@ export function ReviewSheet({
       ) {
         run(selected)
       }
-
-      return
-    }
-
-    if (isTyping(e) || e.metaKey || e.altKey || e.ctrlKey) {
-      return
-    }
-
-    if (e.key === 'ArrowLeft' && prev !== undefined) {
-      e.preventDefault()
-      onNavigate(prev.id)
-    } else if (e.key === 'ArrowRight' && next !== undefined) {
-      e.preventDefault()
-      onNavigate(next.id)
-    }
+    },
+    prev: toPrev,
+    next: toNext,
   })
-
-  useEffect(() => {
-    const listener = (e: KeyboardEvent) => {
-      onKey(e)
-    }
-
-    document.addEventListener('keydown', listener)
-
-    return () => {
-      document.removeEventListener('keydown', listener)
-    }
-  }, [])
 
   return (
     <Sheet labelledBy={titleId} onClose={close}>
@@ -295,20 +241,8 @@ export function ReviewSheet({
           item={item}
           position={position}
           checking={loaded.checking}
-          onPrev={
-            prev === undefined
-              ? null
-              : () => {
-                  onNavigate(prev.id)
-                }
-          }
-          onNext={
-            next === undefined
-              ? null
-              : () => {
-                  onNavigate(next.id)
-                }
-          }
+          onPrev={toPrev}
+          onNext={toNext}
           onClose={close}
           // A notice that it was pushed to since stays until its own Reload is clicked.
           onRefresh={() => {
@@ -317,13 +251,15 @@ export function ReviewSheet({
         />
         <div className="space-y-2 px-5 empty:hidden">
           {loaded.error !== '' && <ErrorBanner>{loaded.error}</ErrorBanner>}
-          {(pushed !== '' || (review?.stale === true && !loaded.checking && review.fetchedAt !== '')) && (
+          {(pushedHere !== '' || (review?.stale === true && !loaded.checking && review.fetchedAt !== '')) && (
             <div className="mt-2 flex items-center gap-3 rounded-md border border-warning/60 px-3 py-2 text-sm text-warning">
-              <span className="flex-1">{pushed === '' ? 'This pull request changed since it was read.' : pushed}</span>
+              <span className="flex-1">
+                {pushedHere === '' ? 'This pull request changed since it was read.' : pushedHere}
+              </span>
               <button
                 type="button"
                 onClick={() => {
-                  setPushed('')
+                  setPushed(null)
                   loaded.reload()
                 }}
                 className={buttonClass}
@@ -427,7 +363,7 @@ export function ReviewSheet({
                     selected={selected}
                     onRun={run}
                     busy={act.pending}
-                    error={act.error}
+                    error={actedOn === id ? act.error : ''}
                     launch={launch}
                     resolution={resolution}
                     sessions={sessions}
