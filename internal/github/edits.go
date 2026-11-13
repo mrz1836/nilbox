@@ -17,14 +17,15 @@ import (
 )
 
 // The app reads GitHub, and edits it only when the user asks, one item at a time: it takes
-// the user off an item's assignees, or off a pull request's requested reviewers, and,
-// from the review sheet, reviews, merges, turns on auto-merge, updates a branch, asks
-// Dependabot to rebase, or closes a pull request (see review.go). Each edit is one
-// request: a REST edit spends one point of the REST budget, a GraphQL mutation one point of
-// the GraphQL budget. Every edit goes through the client's WriteGate first (edit for REST,
-// mutate for GraphQL), so the app's edits stay within the user's budget and well clear of
-// GitHub's own limits on writes, and an answer that asks the app to slow down holds the
-// next ones.
+// the user off an item's assignees, or off a pull request's requested reviewers; from the
+// review sheet, it reviews, merges, turns on auto-merge, updates a branch, asks Dependabot
+// to rebase, or closes a pull request (see review.go); and from the issue sheet, it
+// comments on an issue or closes it as completed or as not planned (issuewrites.go). Each
+// edit is one request: a REST edit spends one point of the REST budget, a GraphQL mutation
+// one point of the GraphQL budget. Every edit goes through the client's WriteGate first
+// (edit for REST, mutate for GraphQL), so the app's edits stay within the user's budget and
+// well clear of GitHub's own limits on writes, and an answer that asks the app to slow
+// down holds the next ones.
 
 // secondaryLimitWait is how long GitHub asks a client it slowed down for writing too fast
 // to wait, when the answer does not say: at least a minute.
@@ -451,6 +452,23 @@ func unprocessable(ref item.Ref, message, msg string, err error) error {
 	default:
 		return err
 	}
+}
+
+// commentError gives a refused comment on ref a message the user can act on, keeping
+// err's chain. A comment on an issue is pinned to nothing and merges nothing, so its
+// refusal is never worded as a push or a merge (refusedAs): GitHub couldn't find the issue,
+// or wouldn't take the comment, in its own words when it gives some, as a locked
+// conversation's. A comment on a pull request, which only Dependabot's rebase comment is,
+// keeps writeError's words.
+func commentError(ref item.Ref, err error) error {
+	if ref.Kind != item.KindIssue {
+		return writeError(ref, err)
+	}
+
+	return refusedAs(ref, err, refusal{
+		missed: "your comment wasn't posted", verb: "take your comment on",
+		unsaid: "your account may not be allowed to comment on it",
+	})
 }
 
 // pushedSince is a write GitHub refused because ref was pushed to after the head the write

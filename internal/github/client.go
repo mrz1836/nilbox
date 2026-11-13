@@ -63,6 +63,11 @@ var (
 
 	// ErrMalformedResponse is returned for a response body that can't be used.
 	ErrMalformedResponse = errors.New("malformed response from the GitHub API")
+
+	// ErrResponseTooLarge is returned, with ErrMalformedResponse, for a response larger
+	// than the client reads, so a read that can ask for less, as the issue sheet's can,
+	// asks again.
+	ErrResponseTooLarge = errors.New("the GitHub API response is too large")
 )
 
 // StatusError is a non-2xx response from the GitHub API.
@@ -282,7 +287,7 @@ func (c *Client) do(ctx context.Context, tok Token, method, path string, body []
 	// Every answer counts against a budget, a refusal included, and says what is left.
 	c.observe(resp.Header, restSpend(path))
 
-	data, err := readBody(resp.Body)
+	data, err := c.readAnswer(resp, path)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -294,6 +299,18 @@ func (c *Client) do(ctx context.Context, tok Token, method, path string, body []
 	}
 
 	return data, resp.Header, nil
+}
+
+// readAnswer reads the body of the answer to a request to path. A query GitHub answered
+// cost at least a point, which an answer too large to read can't report, as sendGraphQL
+// would have read it to, so that point is counted here.
+func (c *Client) readAnswer(resp *http.Response, path string) ([]byte, error) {
+	data, err := readBody(resp.Body)
+	if err != nil && path == graphQLPath && errors.Is(err, ErrResponseTooLarge) {
+		c.observe(resp.Header, minQueryCost)
+	}
+
+	return data, err
 }
 
 // retryAfter reads a response's Retry-After header, which GitHub sends in whole seconds,
@@ -343,7 +360,7 @@ func readBody(r io.Reader) ([]byte, error) {
 	}
 
 	if len(data) > maxResponseBytes {
-		return nil, fmt.Errorf("%w: the response is larger than %d bytes", ErrMalformedResponse, maxResponseBytes)
+		return nil, fmt.Errorf("%w: %w: more than %d bytes", ErrMalformedResponse, ErrResponseTooLarge, maxResponseBytes)
 	}
 
 	return data, nil

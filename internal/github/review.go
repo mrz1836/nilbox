@@ -171,7 +171,8 @@ func (c *Client) UpdateBranch(ctx context.Context, tok Token, ref item.Ref, expe
 
 // AddComment adds a comment to the conversation of the pull request or issue ref, with
 // one REST request (POST /repos/{owner}/{repo}/issues/{number}/comments). The review sheet
-// uses it only to ask Dependabot to rebase.
+// uses it only to ask Dependabot to rebase, and the issue sheet for the user's comment,
+// whose refusals are worded as a comment's (commentError).
 func (c *Client) AddComment(ctx context.Context, tok Token, ref item.Ref, body string) (*Comment, error) {
 	comment, err := c.addComment(ctx, tok, ref, body)
 
@@ -449,7 +450,7 @@ func (c *Client) addComment(ctx context.Context, tok Token, ref item.Ref, body s
 
 	raw, err := c.edit(ctx, tok, http.MethodPost, issuePath(ref)+"/comments", payload)
 	if err != nil {
-		return nil, writeError(ref, fmt.Errorf("comment on %s: %w", ref, err))
+		return nil, commentError(ref, fmt.Errorf("comment on %s: %w", ref, err))
 	}
 
 	var answer struct {
@@ -465,43 +466,40 @@ func (c *Client) addComment(ctx context.Context, tok Token, ref item.Ref, body s
 	return &Comment{ID: answer.ID, URL: answer.HTMLURL, CreatedAt: answer.CreatedAt.UTC()}, nil
 }
 
-// closePull checks the pull request, sends the close, and checks GitHub's answer.
+// closePull checks the pull request and sends the close (closeItem).
 func (c *Client) closePull(ctx context.Context, tok Token, ref item.Ref) error {
 	if err := validateRef(ref); err != nil {
 		return err
 	}
 
-	body, err := json.Marshal(map[string]string{"state": "closed"})
-	if err != nil {
-		return fmt.Errorf("encode the close: %w", err)
-	}
+	_, err := c.closeItem(ctx, tok, ref, pullPath(ref), map[string]string{"state": "closed"})
 
-	raw, err := c.edit(ctx, tok, http.MethodPatch, pullPath(ref), body)
-	if err != nil {
-		return closeError(ref, fmt.Errorf("close %s: %w", ref, err))
-	}
-
-	var answer struct {
-		State string `json:"state"`
-	}
-
-	if err = json.Unmarshal(raw, &answer); err != nil {
-		return fmt.Errorf("%w: decode the close of %s: %w", ErrMalformedResponse, ref, err)
-	}
-
-	if !strings.EqualFold(answer.State, "closed") {
-		return uierr.New(fmt.Sprintf("GitHub did not close %s.", ref), fmt.Errorf("close %s: %w", ref, ErrEditIgnored))
-	}
-
-	return nil
+	return err
 }
 
 // closeError gives a refused close of ref a message the user can act on, keeping err's
 // chain. A close is neither a merge nor pinned to a head, so a refusal is worded as a close
 // whatever its status, never as a merge GitHub won't make (405) or a push (409), and it
-// carries neither ErrNotMergeable nor ErrPushedSince. A rate limit, a token GitHub refused,
-// and a request that got no answer keep what they say.
+// carries neither ErrNotMergeable nor ErrPushedSince (refusedAs).
 func closeError(ref item.Ref, err error) error {
+	return refusedAs(ref, err, refusal{
+		missed: "it wasn't closed", verb: "close", unsaid: "your account may not be allowed to close it",
+	})
+}
+
+// refusal is how a write that is pinned to nothing and merges nothing, a close or an issue's
+// comment, words GitHub's refusal: what didn't happen when GitHub couldn't find the item,
+// what GitHub wouldn't do to it, and why, when GitHub says nothing.
+type refusal struct {
+	missed string
+	verb   string
+	unsaid string
+}
+
+// refusedAs gives a refused write of ref the words w gives it, whatever its status: never a
+// merge GitHub won't make (405) or a push (409). A rate limit, a token GitHub refused, and a
+// request that got no answer keep what they say.
+func refusedAs(ref item.Ref, err error, w refusal) error {
 	status, ok := errors.AsType[*StatusError](err)
 	if !ok || IsBadCredentials(err) {
 		return err
@@ -509,14 +507,13 @@ func closeError(ref item.Ref, err error) error {
 
 	switch status.StatusCode {
 	case http.StatusNotFound, http.StatusGone:
-		return uierr.New(fmt.Sprintf("GitHub could not find %s, or your account cannot see it, so it wasn't closed.", ref), err)
+		return uierr.New(fmt.Sprintf("GitHub could not find %s, or your account cannot see it, so %s.", ref, w.missed), err)
 	case http.StatusForbidden, http.StatusMethodNotAllowed, http.StatusConflict, http.StatusUnprocessableEntity:
 		if rateLimited(status) {
 			return editError(ref, err)
 		}
 
-		return uierr.New(fmt.Sprintf("GitHub wouldn't close %s: %s", ref, sentence(nonEmpty(status.Message,
-			"your account may not be allowed to close it"))), err)
+		return uierr.New(fmt.Sprintf("GitHub wouldn't %s %s: %s", w.verb, ref, sentence(nonEmpty(status.Message, w.unsaid))), err)
 	default:
 		return editError(ref, err)
 	}

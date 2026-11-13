@@ -626,6 +626,12 @@ func TestEveryWriteScrubsTheToken(t *testing.T) {
 
 	err = client.ClosePull(t.Context(), tok, editRef())
 	assert.NotContains(t, err.Error(), fakeToken)
+
+	_, err = client.CloseIssue(t.Context(), tok, issueRef(), IssueReasonCompleted)
+	assert.NotContains(t, err.Error(), fakeToken)
+
+	_, err = client.AddComment(t.Context(), tok, issueRef(), "x")
+	assert.NotContains(t, err.Error(), fakeToken)
 }
 
 func TestStartSideAndNonEmpty(t *testing.T) {

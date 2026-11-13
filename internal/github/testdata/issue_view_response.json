@@ -1,0 +1,618 @@
+{
+    "data": {
+        "node": {
+            "__typename": "Issue",
+            "id": "I_fakeNodeId12",
+            "number": 12,
+            "title": "Parser drops the trailing newline",
+            "url": "https://github.com/acme-org/example-repo/issues/12",
+            "createdAt": "2026-11-09T09:00:00Z",
+            "updatedAt": "2026-11-12T10:00:00Z",
+            "issueState": "OPEN",
+            "authorAssociation": "MEMBER",
+            "author": {
+                "__typename": "User",
+                "login": "octo-other"
+            },
+            "repository": {
+                "id": "R_fakeRepoExample",
+                "name": "example-repo",
+                "owner": {
+                    "login": "acme-org"
+                },
+                "description": "An example repository",
+                "visibility": "PUBLIC",
+                "isArchived": false,
+                "archivedAt": null,
+                "isDisabled": false,
+                "isLocked": false,
+                "lockReason": null,
+                "isFork": false,
+                "parent": null,
+                "defaultBranchRef": {
+                    "name": "main"
+                },
+                "viewerPermission": "WRITE",
+                "viewerDefaultMergeMethod": "SQUASH",
+                "mergeCommitAllowed": true,
+                "squashMergeAllowed": true,
+                "rebaseMergeAllowed": true,
+                "autoMergeAllowed": true,
+                "deleteBranchOnMerge": true,
+                "allowUpdateBranch": true,
+                "primaryLanguage": {
+                    "name": "Go",
+                    "color": "#00ADD8"
+                },
+                "pushedAt": "2026-11-12T09:00:00Z"
+            },
+            "comments": {
+                "totalCount": 5
+            },
+            "labels": {
+                "nodes": [
+                    {
+                        "name": "bug",
+                        "color": "d73a4a"
+                    },
+                    {
+                        "name": "priority-1",
+                        "color": "e00808"
+                    }
+                ]
+            },
+            "subIssuesSummary": {
+                "total": 2,
+                "completed": 1
+            },
+            "body": "Steps to reproduce:\n\n1. Parse a file that ends in a newline.\n2. Print it.\n\nThe newline is gone.",
+            "lastEditedAt": "2026-11-09T09:30:00Z",
+            "stateReason": "REOPENED",
+            "closedAt": null,
+            "locked": false,
+            "activeLockReason": null,
+            "viewerCanClose": true,
+            "viewerCanReopen": false,
+            "viewerCanUpdate": true,
+            "viewerDidAuthor": false,
+            "issueType": {
+                "name": "Bug",
+                "color": "RED",
+                "description": "An unexpected problem or behavior"
+            },
+            "milestone": {
+                "title": "v1.2",
+                "url": "https://github.com/acme-org/example-repo/milestone/3",
+                "dueOn": "2026-11-20T00:00:00Z",
+                "state": "OPEN",
+                "progressPercentage": 40.0
+            },
+            "duplicateOf": null,
+            "parent": {
+                "__typename": "Issue",
+                "number": 3,
+                "title": "Parser epic",
+                "url": "https://github.com/acme-org/example-repo/issues/3",
+                "issueState": "OPEN",
+                "stateReason": null,
+                "repository": {
+                    "nameWithOwner": "acme-org/example-repo"
+                }
+            },
+            "assignees": {
+                "totalCount": 2,
+                "nodes": [
+                    {
+                        "login": "octo-user"
+                    },
+                    {
+                        "login": "octo-other"
+                    }
+                ]
+            },
+            "participants": {
+                "totalCount": 12,
+                "nodes": [
+                    {
+                        "login": "octo-other"
+                    },
+                    {
+                        "login": "octo-bob"
+                    },
+                    {
+                        "login": "octo-user"
+                    },
+                    {
+                        "login": "octo-dave"
+                    },
+                    {
+                        "login": "octo-carol"
+                    },
+                    {
+                        "login": "octo-erin"
+                    },
+                    {
+                        "login": "octo-frank"
+                    },
+                    {
+                        "login": "octo-grace"
+                    },
+                    {
+                        "login": "octo-heidi"
+                    },
+                    {
+                        "login": "octo-ivan"
+                    }
+                ]
+            },
+            "subIssueList": {
+                "nodes": [
+                    {
+                        "__typename": "Issue",
+                        "number": 20,
+                        "title": "Handle CRLF endings",
+                        "url": "https://github.com/acme-org/example-repo/issues/20",
+                        "issueState": "CLOSED",
+                        "stateReason": "COMPLETED",
+                        "repository": {
+                            "nameWithOwner": "acme-org/example-repo"
+                        }
+                    },
+                    {
+                        "__typename": "Issue",
+                        "number": 21,
+                        "title": "Handle files with no newline",
+                        "url": "https://github.com/acme-org/example-repo/issues/21",
+                        "issueState": "OPEN",
+                        "stateReason": null,
+                        "repository": {
+                            "nameWithOwner": "acme-org/example-repo"
+                        }
+                    }
+                ]
+            },
+            "fixes": {
+                "totalCount": 2,
+                "nodes": [
+                    {
+                        "__typename": "PullRequest",
+                        "number": 14,
+                        "title": "Keep the trailing newline",
+                        "url": "https://github.com/acme-org/example-repo/pull/14",
+                        "prState": "OPEN",
+                        "isDraft": true,
+                        "merged": false,
+                        "repository": {
+                            "nameWithOwner": "acme-org/example-repo"
+                        },
+                        "baseRefName": "main",
+                        "mergedAt": null,
+                        "reviewDecision": "REVIEW_REQUIRED",
+                        "statusCheckRollup": {
+                            "state": "FAILURE"
+                        }
+                    },
+                    {
+                        "__typename": "PullRequest",
+                        "number": 15,
+                        "title": "Fix the parser on release-1.2",
+                        "url": "https://github.com/acme-org/example-repo/pull/15",
+                        "prState": "MERGED",
+                        "isDraft": false,
+                        "merged": true,
+                        "repository": {
+                            "nameWithOwner": "acme-org/example-repo"
+                        },
+                        "baseRefName": "release-1.2",
+                        "mergedAt": "2026-11-10T08:00:00Z",
+                        "reviewDecision": "APPROVED",
+                        "statusCheckRollup": {
+                            "state": "SUCCESS"
+                        }
+                    }
+                ]
+            },
+            "reactionGroups": [
+                {
+                    "content": "THUMBS_UP",
+                    "reactors": {
+                        "totalCount": 4
+                    }
+                },
+                {
+                    "content": "THUMBS_DOWN",
+                    "reactors": {
+                        "totalCount": 0
+                    }
+                },
+                {
+                    "content": "LAUGH",
+                    "reactors": {
+                        "totalCount": 0
+                    }
+                },
+                {
+                    "content": "HOORAY",
+                    "reactors": {
+                        "totalCount": 0
+                    }
+                },
+                {
+                    "content": "CONFUSED",
+                    "reactors": {
+                        "totalCount": 0
+                    }
+                },
+                {
+                    "content": "HEART",
+                    "reactors": {
+                        "totalCount": 1
+                    }
+                },
+                {
+                    "content": "ROCKET",
+                    "reactors": {
+                        "totalCount": 0
+                    }
+                },
+                {
+                    "content": "EYES",
+                    "reactors": {
+                        "totalCount": 0
+                    }
+                }
+            ],
+            "lastComment": {
+                "nodes": [
+                    {
+                        "id": "IC_fakeComment18",
+                        "createdAt": "2026-11-12T10:00:00Z",
+                        "viewerDidAuthor": false,
+                        "author": {
+                            "login": "octo-carol"
+                        }
+                    }
+                ]
+            },
+            "timeline": {
+                "totalCount": 112,
+                "pageInfo": {
+                    "hasPreviousPage": true,
+                    "startCursor": "Y3Vyc29yOnYyOpfakeCursor12=="
+                },
+                "nodes": [
+                    {
+                        "__typename": "IssueComment",
+                        "id": "IC_fakeComment1",
+                        "url": "https://github.com/acme-org/example-repo/issues/12#issuecomment-1",
+                        "createdAt": "2026-11-09T10:00:00Z",
+                        "lastEditedAt": "2026-11-09T10:05:00Z",
+                        "body": "Can repro on 1.4 with a file that ends in `\\n`.",
+                        "authorAssociation": "CONTRIBUTOR",
+                        "isMinimized": false,
+                        "minimizedReason": null,
+                        "viewerDidAuthor": false,
+                        "author": {
+                            "__typename": "User",
+                            "login": "octo-bob"
+                        }
+                    },
+                    {
+                        "__typename": "CrossReferencedEvent",
+                        "id": "CRE_fakeEvent2",
+                        "createdAt": "2026-11-09T11:00:00Z",
+                        "willCloseTarget": true,
+                        "isCrossRepository": false,
+                        "actor": {
+                            "__typename": "User",
+                            "login": "octo-user"
+                        },
+                        "source": {
+                            "__typename": "PullRequest",
+                            "number": 14,
+                            "title": "Keep the trailing newline",
+                            "url": "https://github.com/acme-org/example-repo/pull/14",
+                            "prState": "OPEN",
+                            "isDraft": true,
+                            "merged": false,
+                            "repository": {
+                                "nameWithOwner": "acme-org/example-repo"
+                            }
+                        }
+                    },
+                    {
+                        "__typename": "CrossReferencedEvent",
+                        "id": "CRE_fakeEvent3",
+                        "createdAt": "2026-11-09T12:00:00Z",
+                        "willCloseTarget": false,
+                        "isCrossRepository": true,
+                        "actor": {
+                            "__typename": "User",
+                            "login": "octo-dave"
+                        },
+                        "source": {
+                            "__typename": "Issue",
+                            "number": 40,
+                            "title": "Formatter strips the last line",
+                            "url": "https://github.com/acme-org/other-repo/issues/40",
+                            "issueState": "OPEN",
+                            "stateReason": null,
+                            "repository": {
+                                "nameWithOwner": "acme-org/other-repo"
+                            }
+                        }
+                    },
+                    {
+                        "__typename": "IssueComment",
+                        "id": "IC_fakeComment4",
+                        "url": "https://github.com/acme-org/example-repo/issues/12#issuecomment-4",
+                        "createdAt": "2026-11-09T12:30:00Z",
+                        "lastEditedAt": null,
+                        "body": "Buy cheap followers at example.com",
+                        "authorAssociation": "NONE",
+                        "isMinimized": true,
+                        "minimizedReason": "SPAM",
+                        "viewerDidAuthor": false,
+                        "author": null
+                    },
+                    {
+                        "__typename": "IssueComment",
+                        "id": "IC_fakeComment5",
+                        "url": "https://github.com/acme-org/example-repo/issues/12#issuecomment-5",
+                        "createdAt": "2026-11-09T13:00:00Z",
+                        "lastEditedAt": null,
+                        "body": "This issue has had no activity for 30 days.",
+                        "authorAssociation": "NONE",
+                        "isMinimized": false,
+                        "minimizedReason": null,
+                        "viewerDidAuthor": false,
+                        "author": {
+                            "__typename": "Bot",
+                            "login": "github-actions"
+                        }
+                    },
+                    {
+                        "__typename": "LabeledEvent",
+                        "id": "LE_fakeEvent6",
+                        "createdAt": "2026-11-09T14:00:10Z",
+                        "actor": {
+                            "__typename": "User",
+                            "login": "octo-user"
+                        },
+                        "label": {
+                            "name": "bug",
+                            "color": "D73A4A"
+                        }
+                    },
+                    {
+                        "__typename": "LabeledEvent",
+                        "id": "LE_fakeEvent7",
+                        "createdAt": "2026-11-09T14:00:20Z",
+                        "actor": {
+                            "__typename": "User",
+                            "login": "octo-user"
+                        },
+                        "label": {
+                            "name": "priority-1",
+                            "color": "e00808"
+                        }
+                    },
+                    {
+                        "__typename": "UnlabeledEvent",
+                        "id": "UNLE_fakeEvent8",
+                        "createdAt": "2026-11-09T14:00:30Z",
+                        "actor": {
+                            "__typename": "User",
+                            "login": "octo-user"
+                        },
+                        "label": {
+                            "name": "needs-triage",
+                            "color": "not-a-color"
+                        }
+                    },
+                    {
+                        "__typename": "AssignedEvent",
+                        "id": "AE_fakeEvent9",
+                        "createdAt": "2026-11-09T15:00:00Z",
+                        "actor": {
+                            "__typename": "User",
+                            "login": "octo-user"
+                        },
+                        "assignee": {
+                            "__typename": "User",
+                            "login": "octo-user"
+                        }
+                    },
+                    {
+                        "__typename": "UnassignedEvent",
+                        "id": "UAE_fakeEvent10",
+                        "createdAt": "2026-11-09T15:01:00Z",
+                        "actor": {
+                            "__typename": "User",
+                            "login": "octo-user"
+                        },
+                        "assignee": {
+                            "__typename": "User",
+                            "login": "octo-dave"
+                        }
+                    },
+                    {
+                        "__typename": "ConnectedEvent",
+                        "id": "CE_fakeEvent11",
+                        "createdAt": "2026-11-10T09:00:00Z",
+                        "isCrossRepository": false,
+                        "actor": {
+                            "__typename": "User",
+                            "login": "octo-other"
+                        },
+                        "source": {
+                            "__typename": "Issue",
+                            "number": 12,
+                            "title": "Parser drops the trailing newline",
+                            "url": "https://github.com/acme-org/example-repo/issues/12",
+                            "issueState": "OPEN",
+                            "stateReason": null,
+                            "repository": {
+                                "nameWithOwner": "acme-org/example-repo"
+                            }
+                        },
+                        "subject": {
+                            "__typename": "PullRequest",
+                            "number": 15,
+                            "title": "Fix the parser on release-1.2",
+                            "url": "https://github.com/acme-org/example-repo/pull/15",
+                            "prState": "MERGED",
+                            "isDraft": false,
+                            "merged": true,
+                            "repository": {
+                                "nameWithOwner": "acme-org/example-repo"
+                            }
+                        }
+                    },
+                    {
+                        "__typename": "DisconnectedEvent",
+                        "id": "DE_fakeEvent12",
+                        "createdAt": "2026-11-10T09:30:00Z",
+                        "isCrossRepository": false,
+                        "actor": {
+                            "__typename": "User",
+                            "login": "octo-other"
+                        },
+                        "source": {
+                            "__typename": "PullRequest",
+                            "number": 16,
+                            "title": "Try a different parser",
+                            "url": "https://github.com/acme-org/example-repo/pull/16",
+                            "prState": "CLOSED",
+                            "isDraft": false,
+                            "merged": false,
+                            "repository": {
+                                "nameWithOwner": "acme-org/example-repo"
+                            }
+                        },
+                        "subject": {
+                            "__typename": "Issue",
+                            "number": 12,
+                            "title": "Parser drops the trailing newline",
+                            "url": "https://github.com/acme-org/example-repo/issues/12",
+                            "issueState": "OPEN",
+                            "stateReason": null,
+                            "repository": {
+                                "nameWithOwner": "acme-org/example-repo"
+                            }
+                        }
+                    },
+                    {
+                        "__typename": "ClosedEvent",
+                        "id": "CE_fakeEvent13",
+                        "createdAt": "2026-11-10T10:00:00Z",
+                        "stateReason": "COMPLETED",
+                        "actor": {
+                            "__typename": "User",
+                            "login": "octo-other"
+                        },
+                        "closer": {
+                            "__typename": "Commit",
+                            "abbreviatedOid": "1111111",
+                            "url": "https://github.com/acme-org/example-repo/commit/1111111111111111111111111111111111111111"
+                        },
+                        "duplicateOf": null
+                    },
+                    {
+                        "__typename": "ReopenedEvent",
+                        "id": "REE_fakeEvent14",
+                        "createdAt": "2026-11-10T11:00:00Z",
+                        "stateReason": "REOPENED",
+                        "actor": {
+                            "__typename": "User",
+                            "login": "octo-bob"
+                        }
+                    },
+                    {
+                        "__typename": "RenamedTitleEvent",
+                        "id": "RTE_fakeEvent15",
+                        "createdAt": "2026-11-10T12:00:00Z",
+                        "actor": {
+                            "__typename": "User",
+                            "login": "octo-other"
+                        },
+                        "previousTitle": "Parser drops newline",
+                        "currentTitle": "Parser drops the trailing newline"
+                    },
+                    {
+                        "__typename": "MarkedAsDuplicateEvent",
+                        "id": "MADE_fakeEvent16",
+                        "createdAt": "2026-11-11T09:00:00Z",
+                        "isCrossRepository": false,
+                        "actor": {
+                            "__typename": "User",
+                            "login": "octo-dave"
+                        },
+                        "canonical": {
+                            "__typename": "Issue",
+                            "number": 12,
+                            "title": "Parser drops the trailing newline",
+                            "url": "https://github.com/acme-org/example-repo/issues/12",
+                            "issueState": "OPEN",
+                            "stateReason": null,
+                            "repository": {
+                                "nameWithOwner": "acme-org/example-repo"
+                            }
+                        },
+                        "duplicate": {
+                            "__typename": "Issue",
+                            "number": 9,
+                            "title": "Newline missing at the end of the output",
+                            "url": "https://github.com/acme-org/example-repo/issues/9",
+                            "issueState": "CLOSED",
+                            "stateReason": "DUPLICATE",
+                            "repository": {
+                                "nameWithOwner": "acme-org/example-repo"
+                            }
+                        }
+                    },
+                    null,
+                    {
+                        "__typename": "IssueComment",
+                        "id": "IC_fakeComment17",
+                        "url": "https://github.com/acme-org/example-repo/issues/12#issuecomment-17",
+                        "createdAt": "2026-11-11T10:00:00Z",
+                        "lastEditedAt": null,
+                        "body": "I'll take this.",
+                        "authorAssociation": "MEMBER",
+                        "isMinimized": false,
+                        "minimizedReason": null,
+                        "viewerDidAuthor": true,
+                        "author": {
+                            "__typename": "User",
+                            "login": "octo-user"
+                        }
+                    },
+                    {
+                        "__typename": "IssueComment",
+                        "id": "IC_fakeComment18",
+                        "url": "https://github.com/acme-org/example-repo/issues/12#issuecomment-18",
+                        "createdAt": "2026-11-12T10:00:00Z",
+                        "lastEditedAt": null,
+                        "body": "Here's a trace:\n\n```\npanic: unexpected EOF\n```",
+                        "authorAssociation": "COLLABORATOR",
+                        "isMinimized": false,
+                        "minimizedReason": null,
+                        "viewerDidAuthor": false,
+                        "author": {
+                            "__typename": "User",
+                            "login": "octo-carol"
+                        }
+                    }
+                ]
+            }
+        },
+        "rateLimit": {
+            "cost": 1,
+            "remaining": 4992,
+            "resetAt": "2026-11-12T13:00:00Z",
+            "limit": 5000,
+            "used": 8
+        }
+    }
+}

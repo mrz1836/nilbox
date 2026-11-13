@@ -177,3 +177,95 @@ func FuzzDecodeFiles(f *testing.F) {
 		}
 	})
 }
+
+// FuzzDecodeIssueView checks that any answer to the issue sheet's view either fails with
+// ErrMalformedResponse or ErrGraphQL, without the token in the message, or yields a view
+// that is all zero for an issue GitHub can't find, and otherwise one of an issue: never a
+// pull request, its lists never nil, its counts never below what it lists, and its
+// timeline's items each with an ID, one of the types the sheet reads, and a time in UTC.
+func FuzzDecodeIssueView(f *testing.F) {
+	for _, seed := range []string{
+		`{"data": {"node": {"__typename": "Issue", "id": "I_1", "number": 12, "issueState": "OPEN",
+			"repository": {"name": "example-repo", "owner": {"login": "acme-org"}}, "comments": {"totalCount": 2},
+			"labels": {"nodes": []}, "assignees": {"totalCount": 1, "nodes": [{"login": "octo-user"}]},
+			"subIssueList": {"nodes": [{"__typename": "Issue", "number": 3,
+				"repository": {"nameWithOwner": "acme-org/example-repo"}}, null]},
+			"fixes": {"totalCount": 1, "nodes": [{"__typename": "PullRequest", "number": 4, "prState": "MERGED",
+				"repository": {"nameWithOwner": "acme-org/example-repo"}, "mergedAt": "2026-11-10T08:00:00+02:00"}]},
+			"reactionGroups": [{"content": "HEART", "reactors": {"totalCount": 2}}, null],
+			"timeline": {"totalCount": 3, "pageInfo": {"hasPreviousPage": true, "startCursor": "c"}, "nodes": [
+				{"__typename": "IssueComment", "id": "IC_1", "createdAt": "2026-11-09T10:00:00-05:00", "body": "hi"},
+				{"__typename": "ConnectedEvent", "id": "CE_1", "source": {"__typename": "Issue", "number": 12,
+					"repository": {"nameWithOwner": "acme-org/example-repo"}}},
+				{"__typename": "SubscribedEvent", "id": "SE_1"}, null]}}}}`,
+		`{"data": {"node": null}, "errors": [{"type": "NOT_FOUND", "message": "Could not resolve"}]}`,
+		`{"data": null, "errors": [{"type": "FORBIDDEN", "message": "` + fakeToken + `"}]}`,
+		`{"data": {"node": {"__typename": "PullRequest", "id": "PR_1", "number": 7, "prState": "OPEN",
+			"repository": {"name": "example-repo", "owner": {"login": "acme-org"}}}}}`,
+		`{"data": {"node": {"__typename": "Issue", "id": "I_1", "number": 1, "repository": {"name": "r"},
+			"timeline": {"nodes": {}}}}}`,
+		`{}`,
+		`null`,
+		"\xff\x00{",
+	} {
+		f.Add([]byte(seed))
+	}
+
+	f.Fuzz(func(t *testing.T, body []byte) {
+		c := &Client{BaseURL: DefaultBaseURL, HTTP: &http.Client{Transport: bodyTransport(body)}, UserAgent: "fuzz"}
+
+		view, err := c.FetchIssueView(t.Context(), NewToken(fakeToken), "I_1", DetailOptions{})
+		if err != nil {
+			assert.Nil(t, view)
+			assert.True(t, errorIsAny(err, ErrMalformedResponse, ErrGraphQL), "unexpected error: %v", err)
+			assert.NotContains(t, err.Error(), fakeToken)
+
+			return
+		}
+
+		require.NotNil(t, view)
+		checkIssueView(t, view)
+	})
+}
+
+// checkIssueView checks a view FetchIssueView returned.
+func checkIssueView(t *testing.T, view *IssueView) {
+	t.Helper()
+
+	if !view.Update.Found {
+		assert.Empty(t, view.Timeline.Items)
+		assert.Empty(t, view.Assignees.Logins)
+
+		return
+	}
+
+	assert.False(t, view.Update.Item.IsPR)
+	assert.NotNil(t, view.SubIssues)
+	assert.NotNil(t, view.Fixes)
+	assert.NotNil(t, view.Reactions)
+	assert.NotNil(t, view.Assignees.Logins)
+	assert.NotNil(t, view.Timeline.Items)
+	assert.GreaterOrEqual(t, view.Assignees.Total, len(view.Assignees.Logins))
+	assert.GreaterOrEqual(t, view.Participants.Total, len(view.Participants.Logins))
+	assert.GreaterOrEqual(t, view.Timeline.Total, len(view.Timeline.Items))
+	assert.True(t, view.Timeline.HasEarlier || view.Timeline.Before == "", "a cursor only for earlier items")
+
+	for _, it := range view.Timeline.Items {
+		assert.NotEmpty(t, it.ID)
+		assert.Contains(t, []string{
+			TimelineComment, TimelineCrossReferenced, TimelineConnected, TimelineDisconnected, TimelineClosed,
+			TimelineReopened, TimelineAssigned, TimelineUnassigned, TimelineLabeled, TimelineUnlabeled,
+			TimelineRenamed, TimelineMarkedAsDuplicate,
+		}, it.Type)
+		assert.Equal(t, time.UTC, it.CreatedAt.Location())
+	}
+
+	for _, fix := range view.Fixes {
+		assert.True(t, fix.Ref.IsPR)
+		assert.Equal(t, time.UTC, fix.MergedAt.Location())
+	}
+
+	for _, r := range view.Reactions {
+		assert.Positive(t, r.Count)
+	}
+}
