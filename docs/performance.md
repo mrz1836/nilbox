@@ -289,6 +289,8 @@ projects or without them (measured on a public issue of over a hundred entries).
 | Comment | 1 REST request |
 | Close as completed, or as not planned | 1 GraphQL point to check for new comments, then 1 REST request, plus 1 more for your comment |
 | Unassign me | 1 REST request |
+| Labels | 1 GraphQL point to list the repository's labels, kept 10 minutes; 1 REST request for all you add, 1 for each you remove; then the sheet's read, once GitHub made any of it |
+| Assignees | 1 GraphQL point a search, the same words kept 10 minutes; 1 REST request for all you assign, 1 for each you unassign; then the sheet's read, once GitHub made any of it |
 | A closed issue leaving the inbox | None |
 
 [Following a release](desktop.md#release) to published costs at most 20 GraphQL points and 20

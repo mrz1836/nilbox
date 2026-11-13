@@ -486,6 +486,8 @@ More in [Reviewing a pull request](docs/desktop.md#reviewing-a-pull-request).
   **Unassign me** is in the same menu, and **Quote reply** quotes a comment into yours.
   **Replies** fills your comment in from one of your comment replies for issues; none is picked
   for you.
+- **Labels and assignees,** with triage access: edit them from the details, each answer checked,
+  since GitHub ignores a change it won't make rather than refusing it.
 - **Your agent's verdict** shows with **Use as comment**, and **Open in Claude** (or Codex) hands
   the issue to an agent from the sheet.
 - **One list, both kinds:** **←** and **→** step through the list's cards as it shows them, pull
