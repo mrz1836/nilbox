@@ -109,10 +109,11 @@ not committed yet keeps the old build number; if a stale icon persists, clear th
 `killall Dock WindowManager`.
 
 **Firewalls.** The app talks only to GitHub: `api.github.com` on every refresh, and
-`avatars.githubusercontent.com` to download your profile picture once (it is then cached). A
-per-app firewall must allow `bin/Nilbox.app/Contents/MacOS/nilbox` to reach `api.github.com`,
-or every refresh times out. Blocking the avatar host only means the toolbar shows your initial
-instead of your picture.
+`avatars.githubusercontent.com` to download profile pictures: yours once, and the pictures of the
+people an issue you open shows, each downloaded by login, without your token, kept in the
+database, and downloaded again at most once a week. A per-app firewall must allow
+`bin/Nilbox.app/Contents/MacOS/nilbox` to reach `api.github.com`, or every refresh times out.
+Blocking the avatar host only means initials show instead of pictures.
 
 <br>
 
@@ -1065,6 +1066,14 @@ goes after the last status you placed at the same point or an earlier one. **Res
 every status back where its name places it. The toggle and the order are kept across
 launches; statuses you placed that are not in the list now keep their places.
 
+**Showing one kind.** A list that holds both pull requests and issues, **Assigned** in
+practice, has an **All | PRs | Issues** switch to the left of that toggle. **PRs** or
+**Issues** shows only that kind on the list's own tab, in the same order, and its count then
+reads *N of M*, so nothing is hidden without saying so; the sheets step through the same
+cards. A kind with nothing left in the list says so, with **Show all**. Snoozed, Dismissed,
+and Muted always show both kinds. The choice is kept for each list across launches, and a
+notification that opens a card of the other kind shows the whole list again.
+
 **The scope.** GitHub only shows projects to a token with the `read:project` scope (or
 `project`, which includes it), and `gh auth login` doesn't ask for it. Add it to the token
 the app borrows, then refresh:
@@ -1338,6 +1347,7 @@ what it does, as in **Approve & squash-merge**:
 |---|---|
 | can merge now (checks green, no review needed, or approved) | **Approve & merge**, or **Merge** once you approved this commit |
 | can merge now, with only optional checks failing (**Ready to merge · 1 optional check failing**) | **Approve & merge**, whose confirmation asks you to accept the failing checks |
+| can merge now, with workflow runs that never ran a check (**Ready to merge · 3 workflow runs awaiting approval**) | **Approve & merge**, whose confirmation says what those runs are and that every check that ran passed |
 | only waits for your approval | **Approve & merge** |
 | waits for required checks still running | **Approve & auto-merge** |
 | has a required check failing | **Comment**, with the launch button (**Open in Claude**) beside it |
@@ -1370,6 +1380,15 @@ first, in a confirmation of its own with no merge methods. **Update branch** on 
 pull request does: its confirmation warns that Dependabot stops rebasing a pull request once
 someone else changes its branch, and that asking Dependabot to rebase keeps it managed, and it
 updates only once you tick **I've looked, update anyway**.
+
+**When nothing listed is failing.** GitHub calls a pull request it would merge, but whose head
+commit has something not passing, *unstable*. That something isn't always a check: a workflow
+run that never ran a job, such as a fork's run waiting for a maintainer to approve it, or one
+that failed to start, counts too, though no check shows it. The sheet names those runs beneath
+its checks list (**3 workflow runs awaiting approval: Labeler, Deploy preview**), the readiness
+line counts them, and the merge's confirmation says that every check that ran passed and that
+GitHub merges it as it is, so accepting it is no bypass: merging past the rules is the separate
+**Merge past the rules**. They're read in the same request as the checks.
 
 **Your text goes with a merge.** Merge, Merge past the rules, and Merge when ready post the text
 in **Your review**, and any line comments, as a comment before they merge, so the pull request
@@ -2638,5 +2657,15 @@ that commit, so `git branch <name> <commit>` brings one back; **Copy restore com
 those commands for every branch deleted. Branches are deleted a few clones at a time, each
 clone's branches read once. The automatic cleanup deletes only a worktree's own and pull request branches, as the
 settings say; merged branches go only through the dialog. Nothing on GitHub is ever changed.
+
+**Deleting a merged branch with work not on GitHub.** A merged branch held only because some of
+its commits aren't in its pull request or on GitHub, such as an old branch you know you don't
+want, can be deleted anyway. Tick **Also offer the N branches with commits not on GitHub** above
+the list: each such branch then gets a box, unticked, and says how many commits it holds. Delete
+asks once more, naming each of those branches and its commits, and **Go back** returns to the
+list. Their commits are then left only in the clone, until git cleans them away (`git gc`), and
+the outcome lists each branch's commit, so `git branch <name> <commit>` brings one back while
+git still has it. A branch checked out, protected, or a repository's default branch is never
+offered.
 
 Every git command runs as an argument list with `git -C <repository>`, never through a shell.

@@ -191,7 +191,7 @@ Wails CLI is never installed: the build runs it with `go run` at the version `go
   built it.
 - **Firewalls:** a per-app firewall must let `bin/Nilbox.app/Contents/MacOS/nilbox` reach
   `api.github.com`, or every refresh times out. Blocking `avatars.githubusercontent.com` only
-  swaps your profile picture for your initial.
+  swaps profile pictures (yours, and those of the people an issue shows) for initials.
 - **Data:** everything lives in `~/Library/Application Support/Nilbox`, readable only by you. The
   database is `nilbox.db` (SQLite, WAL mode), and a copy is saved before each schema migration
   (the three newest are kept). Your prompts and launch defaults are also kept in `prompts.json`
@@ -372,7 +372,8 @@ More in [Filtering](docs/desktop.md#filtering).
 - **Sort by status:** flip **Assigned** from **Recent** to **Status** to see work in progress
   above work that's ready, new, or set aside. Every project names its own statuses, so **Status
   order** is yours to arrange; statuses you haven't placed are placed by their names. The sort and
-  the order are kept across launches.
+  the order are kept across launches. Beside it, **All | PRs | Issues** shows only one kind of
+  item in the list, its count reading *N of M* while it does.
 - **One optional scope:** projects need the read-only `read:project` scope (`gh auth refresh -s
   read:project`). Without it the inbox works as before and offers the command until you close the
   tip. With it, projects come with the details the inbox already reads, so they add no request.
@@ -719,6 +720,8 @@ go-pre-commit is on in **Settings → Integrations**, or while you turn Scripts 
   few batched GitHub requests, and deletes the ones you tick. Protected branches (`main` and
   `master` by default, plus names or patterns such as `release/*`) and each repository's default
   branch are never offered, and **Copy restore commands** copies what brings a deleted one back.
+  A merged branch held only for commits not on GitHub can be deleted anyway, once you ask for
+  such branches to be offered, tick it, and confirm a second time.
 - **Recently cleaned up** lists each cleanup, by hand or automatic, with the deleted branch and the
   commit the worktree was at.
 - **Guarded against a clone's own config:** a worktree whose status can't be read safely, such as
@@ -989,7 +992,8 @@ More in [The window](docs/desktop.md#the-window).
 <br>
 
 > **Your data stays on your Mac.** Nilbox's own requests go only to GitHub: `api.github.com`,
-> `avatars.githubusercontent.com` once for your profile picture, and, when you install or update a
+> `avatars.githubusercontent.com` for profile pictures (yours, and, by login, those of the people an
+> issue you open shows, each kept and downloaded again at most weekly), and, when you install or update a
 > tool, `github.com` and GitHub's release download hosts for that tool's public release, with no
 > token and nothing of yours. It reads from GitHub, and changes something there only when you ask:
 > taking you off an item, a review, comment, merge, auto-merge, branch update, Dependabot rebase
