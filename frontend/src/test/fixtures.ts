@@ -358,6 +358,15 @@ export function settings(overrides: Partial<Settings> = {}): Settings {
     inboxOrder: { statusSorted: [], statusOrder: [], kinds: {} },
     mergeMethod: 'repo',
     integrations: integrationsConfig(),
+    githubNotifications: {
+      read: true,
+      auto: false,
+      action: 'done',
+      triggersOff: [],
+      watching: true,
+      botActivity: true,
+      cleanupCardDismissed: false,
+    },
     refresh: { inbox: 300, checks: 45, worktrees: 300 },
     refreshChoices: {
       inbox: [120, 300, 600, 900, 1800, 3600],

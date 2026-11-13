@@ -484,6 +484,12 @@ app:lint` reads.
   out of the menu bar's count), told in no arrival, followed by no checks follower, and
   given no file check by a refresh, though their details still come with it. It is a leaf:
   it imports only `internal/repo` and `prefval`.
+- `internal/threadrules/` holds the rules for the user's GitHub notifications (`threadrules.*`:
+  whether they are read, whether they are cleared on their own, marked done or read, by which
+  triggers, and whether a watched repository's or a bot's activity counts), which settings
+  alone writes, and the pure `Decide`, which says whether one thread is cleared, skipped, or
+  held at the moment its item was finished; it is a leaf that imports only `internal/item` and
+  `prefval`.
 - `internal/bump/` reads a dependency update from a bot's pull request title into an `Update`,
   for the review sheet and the `.Dependency` prompt variables. It is pure and imports no
   service.
@@ -1086,7 +1092,8 @@ package imports the driver, and nothing imports an ORM (`internal/repoguard` enf
   pool-backed store from inside an open transaction: it waits on the lock the transaction holds.
 - **Prefs.** `internal/prefs` owns the `prefs` table. Any package reads any key, but each key has
   exactly one writer: settings writes the user's settings, including the rule keys that the trust,
-  snooze, sensitive, notifyprefs, branchrules, reporules, and integrationprefs packages declare; inbox
+  snooze, sensitive, notifyprefs, branchrules, reporules, integrationprefs, and threadrules packages
+  declare; inbox
   writes `inbox.*`; prompts writes `prompts.*` (the package doc has the full list). Settings and
   those leaves write a switch and a list of strings one way, through the leaf
   `internal/prefs/prefval` (`Bool` and `EncodeBool`, `List` and `EncodeList`, which stores a nil

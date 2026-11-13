@@ -4,9 +4,9 @@
 // Each preference is a typed key with a default, so a fresh database already has a
 // complete set of settings. Setters validate their value before storing it and reject
 // anything unknown with a sentinel error. Settings writes every key it declares, and the
-// keys the trust, snooze, sensitive, notifyprefs, branchrules, reporules, and
-// integrationprefs packages declare and decode; see the prefs package for which package
-// writes the others.
+// keys the trust, snooze, sensitive, notifyprefs, branchrules, reporules,
+// integrationprefs, and threadrules packages declare and decode; see the prefs package for
+// which package writes the others.
 package settings
 
 import (
@@ -38,6 +38,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/sensitive"
 	"github.com/mrz1836/nilbox/internal/snooze"
 	"github.com/mrz1836/nilbox/internal/store"
+	"github.com/mrz1836/nilbox/internal/threadrules"
 	"github.com/mrz1836/nilbox/internal/trust"
 )
 
@@ -235,6 +236,11 @@ type Settings struct {
 
 	// Integrations is each integration's switch, and the copy of each tool the user chose.
 	Integrations integrationprefs.Config `json:"integrations"`
+
+	// GitHubNotifications are the rules for the user's GitHub notifications: whether the app
+	// reads them, and whether, how, and when it clears one once the work behind it is
+	// finished (see the threadrules package).
+	GitHubNotifications threadrules.Rules `json:"githubNotifications"`
 
 	// Refresh is how often, in seconds, the app reads the inbox, the running checks, and
 	// the worktrees again on its own, and RefreshChoices what each can be set to.
@@ -618,6 +624,7 @@ func fromStored(stored map[string]string) Settings {
 		InboxOrder:           decodeInboxOrder(stored),
 		MergeMethod:          mergeMethods().decode(stored[KeyMergeMethod]),
 		Integrations:         integrationprefs.Decode(stored),
+		GitHubNotifications:  threadrules.Decode(stored),
 		Refresh:              decodeRefreshIntervals(stored),
 		RefreshChoices:       refreshChoices(),
 	}
@@ -726,5 +733,5 @@ func settingKeys() []string {
 		sensitive.PrefScope, sensitive.PrefOff, sensitive.PrefPatterns, KeyMenuBar, notifyprefs.KeyBannersOff, notifyprefs.KeyBannersOn, KeyTheme,
 		KeyTextSize, KeyToastSeconds, KeyProjectsTipDismissed, KeyMergeMethod, KeyRefreshInbox, KeyRefreshChecks, KeyRefreshWorktrees,
 	), append(append(append(append(collapsedKeys(), orderKeys()...), branchrules.Keys()...), reporules.Keys()...),
-		integrationprefs.Keys()...)...)
+		append(integrationprefs.Keys(), threadrules.Keys()...)...)...)
 }

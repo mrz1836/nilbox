@@ -28,6 +28,9 @@ import * as sensitive$0 from "../sensitive/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
 import * as snooze$0 from "../snooze/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
+import * as threadrules$0 from "../threadrules/models.js";
 
 /**
  * InboxOrder is how the inbox orders and narrows its lists: which are sorted by project
@@ -351,6 +354,13 @@ export interface Settings {
      * Integrations is each integration's switch, and the copy of each tool the user chose.
      */
     "integrations": integrationprefs$0.Config;
+
+    /**
+     * GitHubNotifications are the rules for the user's GitHub notifications: whether the app
+     * reads them, and whether, how, and when it clears one once the work behind it is
+     * finished (see the threadrules package).
+     */
+    "githubNotifications": threadrules$0.Rules;
 
     /**
      * Refresh is how often, in seconds, the app reads the inbox, the running checks, and
