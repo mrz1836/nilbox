@@ -875,6 +875,7 @@ export function InboxView({
             launch={launch}
             resolution={resolutions.get(viewing.id) ?? null}
             sessions={viewed === undefined ? undefined : sessionsOf(sessions, viewed)}
+            worktree={viewed === undefined ? undefined : worktreeOf(worktrees, viewed)}
             onNavigate={step}
             onClose={() => {
               setViewing(null)

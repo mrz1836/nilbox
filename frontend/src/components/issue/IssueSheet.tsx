@@ -32,13 +32,13 @@ import {
 } from '../../platform'
 import { buttonClass } from '../controls'
 import { ErrorBanner } from '../ErrorBanner'
-import { WorktreeTag, type LaunchOptions } from '../ItemRow'
+import type { LaunchOptions } from '../ItemRow'
 import { RelativeTime } from '../RelativeTime'
 import { ActionProgress } from '../review/ActionProgress'
 import { AgentVerdict } from '../review/AgentVerdict'
 import { DescriptionSkeleton, ReadingBanner, SummarySkeleton } from '../review/ReviewLoading'
-import { SessionTag } from '../SessionTag'
 import { Sheet } from '../Sheet'
+import { WorkLine } from '../WorkLine'
 import { Conversation } from './Conversation'
 import { IssueCloseDialog } from './IssueCloseDialog'
 import { IssueComposer } from './IssueComposer'
@@ -363,19 +363,7 @@ export function IssueSheet({
               <aside className="flex min-h-0 flex-col border-l border-border">
                 <div className="shrink-0 space-y-1.5 border-b border-border px-4 py-3">
                   <StandingLine standing={issue.standing} />
-                  {(worktree !== undefined || (sessions !== undefined && sessions.length > 0)) && (
-                    <div className="flex min-w-0 flex-wrap items-center gap-2 text-xs text-muted">
-                      {worktree !== undefined && <WorktreeTag wt={worktree} agents={launch?.agents ?? []} />}
-                      {sessions !== undefined && (
-                        <SessionTag
-                          sessions={sessions}
-                          agents={launch?.agents ?? []}
-                          markWorktree={worktree === undefined}
-                          align="right"
-                        />
-                      )}
-                    </div>
-                  )}
+                  <WorkLine worktree={worktree} sessions={sessions} agents={launch?.agents ?? []} />
                 </div>
                 <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4">
                   {reading ? <SummarySkeleton /> : <IssueSummary issue={issue} onEdit={edit} />}

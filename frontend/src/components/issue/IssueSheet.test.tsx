@@ -574,6 +574,11 @@ describe('IssueSheet', () => {
     await userEvent.click(await screen.findByRole('button', { name: 'Use as comment' }))
     expect(screen.getByRole('textbox', { name: 'Your comment' })).toHaveValue('The **whole** verdict.')
     expect(await actionButton('Comment')).toBeEnabled()
+
+    // The work line, under where it stands, opens the issue's sessions.
+    expect(screen.getByText('worktree')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: /Claude session: needs approval/ }))
+    expect(screen.getByRole('dialog', { name: 'Agent sessions' })).toBeInTheDocument()
   })
 
   it('holds a close back while GitHub would refuse its comment', async () => {

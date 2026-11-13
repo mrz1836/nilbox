@@ -21,6 +21,7 @@ import {
   review,
   reviewFile,
   reviewResult,
+  worktree,
 } from '../../test/fixtures'
 import { emit, platform } from '../../test/platform'
 import type { LaunchOptions } from '../ItemRow'
@@ -1101,6 +1102,24 @@ describe('ReviewSheet', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Use as review comment' }))
     expect(screen.getByRole('textbox', { name: 'Your review' })).toHaveValue('The **whole** verdict.')
     expect(await actionButton('Comment')).toBeEnabled()
+  })
+
+  it('shows the work on the pull request under what it needs, and opens its sessions', async () => {
+    render(<Harness sessions={[agentSession()]} worktree={worktree()} launch={launch} />)
+
+    const pill = await screen.findByRole('button', { name: /Claude session: needs approval/ })
+    expect(screen.getByText('worktree')).toBeInTheDocument()
+
+    await userEvent.click(pill)
+    expect(screen.getByRole('dialog', { name: 'Agent sessions' })).toBeInTheDocument()
+  })
+
+  it('shows no work line on a pull request with no worktree and no session', async () => {
+    render(<Harness sessions={[]} launch={launch} />)
+
+    expect(await screen.findByText('Ready to merge')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /session:/ })).not.toBeInTheDocument()
+    expect(screen.queryByText('worktree')).not.toBeInTheDocument()
   })
 
   it('offers the review replies, and opens them in Prompts', async () => {

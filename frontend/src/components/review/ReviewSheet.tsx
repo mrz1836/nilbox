@@ -15,12 +15,14 @@ import {
   type ReviewAction,
   type ReviewOffer,
   type ReviewResult,
+  type Worktree,
 } from '../../platform'
 import { buttonClass } from '../controls'
 import { ErrorBanner } from '../ErrorBanner'
 import type { LaunchOptions } from '../ItemRow'
 import { Markdown } from '../Markdown'
 import { Sheet } from '../Sheet'
+import { WorkLine } from '../WorkLine'
 import { ActionProgress } from './ActionProgress'
 import { AgentVerdict } from './AgentVerdict'
 import { DiffView } from './DiffView'
@@ -45,6 +47,9 @@ export interface ReviewSheetProps {
   launch: LaunchOptions | null
   resolution: ItemResolution | null
   sessions: readonly AgentSession[] | undefined
+  // worktree is the pull request's worktree, which the sheet's work line shows, if it has
+  // one.
+  worktree?: Worktree | undefined
   onNavigate: (id: number) => void
   onClose: () => void
   // onDone hears an action's outcome, once the sheet closes for it.
@@ -91,10 +96,11 @@ interface Notice {
 }
 
 // ReviewSheet is the review sheet: a pull request's files and diffs, its description, what
-// it still needs to merge, the latest agent's verdict, and the review to send. ← and → step
-// through its list while the user isn't typing, ⌘↩ runs the button's action, and Escape
-// closes it. It closes after an action, which the inbox's toast reports, except when the
-// pull request was pushed to since, when it stays open, with the draft, to reload.
+// it still needs to merge, the work on it (its worktree and agent session, in a line under
+// that), the latest agent's verdict, and the review to send. ← and → step through its list
+// while the user isn't typing, ⌘↩ runs the button's action, and Escape closes it. It
+// closes after an action, which the inbox's toast reports, except when the pull request
+// was pushed to since, when it stays open, with the draft, to reload.
 export function ReviewSheet({
   id,
   item,
@@ -104,6 +110,7 @@ export function ReviewSheet({
   launch,
   resolution,
   sessions,
+  worktree,
   onNavigate,
   onClose,
   onDone,
@@ -346,11 +353,14 @@ export function ReviewSheet({
             ) : (
               /* The review form sits below the scrolling summary, in no scrolling box of its
                  own, so its menus open over the diff rather than being cut off at the column's
-                 edge, and its button never scrolls out of view. */
+                 edge, and its button never scrolls out of view. The work line sits in the strip
+                 above, outside the scroller, so its panel isn't cut off either. */
               <aside className="flex min-h-0 flex-col border-l border-border">
-                {/* How close it is to merging stays in view while the summary scrolls. */}
-                <div className="shrink-0 border-b border-border px-4 py-3">
+                {/* How close it is to merging, and the work on it, stay in view while the
+                    summary scrolls. */}
+                <div className="shrink-0 space-y-1.5 border-b border-border px-4 py-3">
                   <Readiness review={review} />
+                  <WorkLine worktree={worktree} sessions={sessions} agents={launch?.agents ?? []} />
                 </div>
                 <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4">
                   {reading ? (
