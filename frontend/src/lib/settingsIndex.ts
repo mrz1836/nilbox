@@ -59,7 +59,7 @@ export const sectionInfo: Readonly<Record<SettingsSection, { label: string; desc
   appearance: { label: 'Appearance', description: 'The theme, the text size, and the size the window opens at.' },
   notifications: {
     label: 'Notifications',
-    description: 'The menu bar icon, and the banners that tell you when something new needs you.',
+    description: 'The menu bar icon, how long toasts stay, and the banners that tell you when something new needs you.',
   },
   refreshing: {
     label: 'Refreshing',
@@ -155,6 +155,10 @@ export const settingsIndex: Readonly<Record<SettingsSection, readonly SettingEnt
   ],
   notifications: [
     { label: 'Show in the menu bar', keywords: ['menu bar icon', 'tray', 'status bar', 'badge', 'keep running'] },
+    {
+      label: 'Toasts stay for',
+      keywords: ['toast', 'message', 'undo', 'how long', 'duration', 'seconds', 'timeout', 'dismiss', 'auto close'],
+    },
     { label: 'Banners', keywords: ['notifications', 'alerts'] },
     ...banner(false),
     { label: 'Test', keywords: ['test notification', 'send a test', 'sample banner', 'permission'] },

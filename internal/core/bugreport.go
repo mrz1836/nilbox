@@ -134,8 +134,8 @@ func settingsSection(s settings.Settings) appinfo.StateSection {
 	}
 
 	return appinfo.StateSection{Title: "Settings", Lines: []string{
-		fmt.Sprintf("Theme: %s · text size: %s · window: %d×%d", s.Theme, s.TextSize, s.WindowSize.Width,
-			s.WindowSize.Height),
+		fmt.Sprintf("Theme: %s · text size: %s · toasts: %d s · window: %d×%d", s.Theme, s.TextSize,
+			s.ToastSeconds, s.WindowSize.Width, s.WindowSize.Height),
 		fmt.Sprintf("Terminal: %s · menu bar: %s · banners off: %s", s.Terminal, onOff(s.MenuBar), banners),
 		fmt.Sprintf("Default agent: %s · profiles: %s", s.DefaultAgent, profileWords(s.DefaultProfiles)),
 		fmt.Sprintf("Codex effort: %s · Codex fast: %s", onOff(s.CodexEffort), onOff(s.CodexFast)),

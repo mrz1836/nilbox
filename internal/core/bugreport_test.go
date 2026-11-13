@@ -57,12 +57,13 @@ func privateSettings() settings.Settings {
 		RepoRules: reporules.Rules{
 			Pinned: []string{boundOwner + "/" + boundRepo}, Muted: []string{"private-user", "private-repo/x"},
 		},
-		MenuBar:     true,
-		BannersOff:  []notifyprefs.Kind{"session_waiting"},
-		Theme:       "dark",
-		TextSize:    "default",
-		InboxOrder:  settings.InboxOrder{StatusOrder: []string{"Private status"}},
-		MergeMethod: "squash",
+		MenuBar:      true,
+		BannersOff:   []notifyprefs.Kind{"session_waiting"},
+		Theme:        "dark",
+		TextSize:     "default",
+		ToastSeconds: 20,
+		InboxOrder:   settings.InboxOrder{StatusOrder: []string{"Private status"}},
+		MergeMethod:  "squash",
 		Integrations: integrationprefs.Config{
 			Switches:      map[integrationprefs.ID]integrationprefs.Switch{integrationprefs.Scripts: "on"},
 			Paths:         map[integrationprefs.ID]string{integrationprefs.MageX: "/srv/private-user/bin/magex"},
@@ -116,7 +117,7 @@ func TestABugReportStatesTheSettingsAndIntegrationsWithNothingPersonal(t *testin
 	}
 
 	for _, want := range []string{
-		"Theme: dark · text size: default · window: 1280×800",
+		"Theme: dark · text size: default · toasts: 20 s · window: 1280×800",
 		"Terminal: iterm2 · menu bar: on · banners off: session_waiting",
 		"Default agent: claude · profiles: claude the user's own, codex default",
 		"Start in a worktree: on · automatic cleanup: on · follow sessions: on",

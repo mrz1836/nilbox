@@ -491,6 +491,7 @@ export const {
   Theme: getTheme,
   SetTheme: setTheme,
   SetTextSize: setTextSize,
+  SetToastSeconds: setToastSeconds,
   CollapsedSections: getCollapsedSections,
   SetSectionCollapsed: setSectionCollapsed,
   SetProjectsTipDismissed: setProjectsTipDismissed,

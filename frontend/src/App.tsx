@@ -18,7 +18,7 @@ import { LaunchControls } from './components/LaunchControls'
 import { QuitDialog } from './components/QuitDialog'
 import type { SearchFieldProps } from './components/SearchField'
 import type { SettingsSection } from './components/SettingsView'
-import { Toast, type ToastMessage } from './components/Toast'
+import { defaultToastSeconds, Toast, type ToastMessage } from './components/Toast'
 import { attempt } from './lib/call'
 import { filterInbox, inboxItems, inboxSpec, inboxSuggestions } from './lib/inboxFilter'
 import { isFindKey, isTyping } from './lib/keys'
@@ -539,6 +539,8 @@ export function App() {
         : changeToast === null
           ? closeSweepToast
           : closeChangeToast
+  // toastSeconds is how long every toast shows, the inbox's too, as set in Settings.
+  const toastSeconds = config.settings?.toastSeconds ?? defaultToastSeconds
 
   const openSettings = () => {
     go({ type: 'settings', section: 'account' })
@@ -803,6 +805,7 @@ export function App() {
             worktrees={worktrees}
             sessions={agentSessions.byItem}
             snoozeDays={config.settings?.snoozeDays ?? defaultSnoozeDays}
+            toastSeconds={toastSeconds}
             onSnoozeSettings={openSnoozeSettings}
             onFilesSettings={openFilesSettings}
             collapsed={sections.collapsed}
@@ -920,7 +923,7 @@ export function App() {
           </Activity>
         )}
       </main>
-      <Toast toast={shownToast} onClose={closeToast} />
+      <Toast toast={shownToast} seconds={toastSeconds} onClose={closeToast} />
       <QuitDialog />
     </div>
   )

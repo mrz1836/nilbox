@@ -178,6 +178,9 @@ func boundCalls(t *testing.T) map[string]boundCall {
 		"settings.Service.SetTextSize": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
 			return c.Settings.SetTextSize(ctx, settings.TextSizeLarge)
 		},
+		"settings.Service.SetToastSeconds": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
+			return c.Settings.SetToastSeconds(ctx, 20)
+		},
 		"settings.Service.SetWindowSize": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
 			return c.Settings.SetWindowSize(ctx, settings.DefaultWindowSize())
 		},

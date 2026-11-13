@@ -2,9 +2,13 @@ import { useEffect, useEffectEvent, useState } from 'react'
 
 import { AlertIcon, CircleCheckIcon, XIcon } from './icons'
 
-// toastMs is how long a toast shows, unless the pointer rests on it: long enough to read
-// a message and reach its button.
-export const toastMs = 12000
+// How long a toast can be set to show, in seconds, unless the pointer rests on it, and how
+// long it shows until the settings load: long enough to read a message and reach its
+// button. Settings → Notifications sets it; internal/settings keeps the same three, and a
+// test holds the two in step.
+export const minToastSeconds = 5
+export const maxToastSeconds = 60
+export const defaultToastSeconds = 12
 
 // toastButtonClass is a toast's text button, such as Undo.
 const toastButtonClass =
@@ -35,15 +39,17 @@ export interface ToastAction {
 export interface ToastProps {
   // toast is the message showing, or null for none.
   toast: ToastMessage | null
+  // seconds is how long a toast shows before it closes itself, as set in Settings.
+  seconds: number
   onClose: () => void
 }
 
 // Toast shows a short confirmation at the bottom of the window, its message wrapping over
-// its buttons, with a button to close it. It closes itself after twelve seconds
-// (toastMs), waits while the pointer rests on it or focus is in it (so Undo can be reached
-// with the keyboard), and is announced politely to screen readers: the live region stays
-// mounted, so each new message is read.
-export function Toast({ toast, onClose }: ToastProps) {
+// its buttons, with a button to close it. It closes itself after seconds, waits while the
+// pointer rests on it or focus is in it (so Undo can be reached with the keyboard), and
+// is announced politely to screen readers: the live region stays mounted, so each new
+// message is read.
+export function Toast({ toast, seconds, onClose }: ToastProps) {
   // hoveredId and focusedId are the toast the pointer rests on and the one focus is in.
   // Keyed by toast, a pause never outlives the toast it was for, even when that one is
   // replaced under the pointer.
@@ -63,12 +69,12 @@ export function Toast({ toast, onClose }: ToastProps) {
 
     const timer = setTimeout(() => {
       close()
-    }, toastMs)
+    }, seconds * 1000)
 
     return () => {
       clearTimeout(timer)
     }
-  }, [toast, paused])
+  }, [toast, paused, seconds])
 
   const error = toast?.tone === 'error'
 

@@ -214,6 +214,10 @@ type Settings struct {
 	// TextSize is the size of the app's text, apart from the size of its window.
 	TextSize TextSize `json:"textSize"`
 
+	// ToastSeconds is how long, in seconds, a message at the bottom of the window stays
+	// before it closes itself, MinToastSeconds to MaxToastSeconds.
+	ToastSeconds int `json:"toastSeconds"`
+
 	// CollapsedSections lists the inbox sections the user collapsed, in the order the
 	// inbox shows them.
 	CollapsedSections []ListKey `json:"collapsedSections"`
@@ -607,6 +611,7 @@ func fromStored(stored map[string]string) Settings {
 			stored[notifyprefs.KeyBannersOn]),
 		Theme:             themes().decode(stored[KeyTheme]),
 		TextSize:          textSizes().decode(stored[KeyTextSize]),
+		ToastSeconds:      decodeToastSeconds(stored[KeyToastSeconds]),
 		CollapsedSections: decodeCollapsed(stored),
 
 		ProjectsTipDismissed: prefval.Bool(stored[KeyProjectsTipDismissed], false),
@@ -719,7 +724,7 @@ func settingKeys() []string {
 		KeySnoozeDays, KeyWindowSize,
 		snooze.PrefWakeCommits, snooze.PrefWakeReviews, snooze.PrefWakeComments,
 		sensitive.PrefScope, sensitive.PrefOff, sensitive.PrefPatterns, KeyMenuBar, notifyprefs.KeyBannersOff, notifyprefs.KeyBannersOn, KeyTheme,
-		KeyTextSize, KeyProjectsTipDismissed, KeyMergeMethod, KeyRefreshInbox, KeyRefreshChecks, KeyRefreshWorktrees,
+		KeyTextSize, KeyToastSeconds, KeyProjectsTipDismissed, KeyMergeMethod, KeyRefreshInbox, KeyRefreshChecks, KeyRefreshWorktrees,
 	), append(append(append(append(collapsedKeys(), orderKeys()...), branchrules.Keys()...), reporules.Keys()...),
 		integrationprefs.Keys()...)...)
 }

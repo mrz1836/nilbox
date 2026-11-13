@@ -2,7 +2,10 @@ import { act, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { Toast, toastMs } from './Toast'
+import { defaultToastSeconds, Toast } from './Toast'
+
+// toastMs is how long the toasts here show: the length a fresh install has.
+const toastMs = defaultToastSeconds * 1000
 
 // The toast's timer runs on fake timers. Testing Library waits for a timer of its own
 // after each user-event action, which it moves on itself only under Jest's fake timers, so
@@ -42,7 +45,7 @@ function cardOf(text: string): HTMLElement {
 
 describe('Toast', () => {
   it('keeps an empty live region mounted when there is nothing to say', () => {
-    render(<Toast toast={null} onClose={vi.fn()} />)
+    render(<Toast seconds={defaultToastSeconds} toast={null} onClose={vi.fn()} />)
 
     expect(screen.getByRole('status')).toBeEmptyDOMElement()
     expect(screen.getByRole('status')).toHaveAttribute('aria-live', 'polite')
@@ -52,7 +55,13 @@ describe('Toast', () => {
     const person = user()
     const onClose = vi.fn()
     const undo = vi.fn()
-    render(<Toast toast={{ id: 1, text: 'Dismissed', detail: 'Add the widget cache', undo }} onClose={onClose} />)
+    render(
+      <Toast
+        seconds={defaultToastSeconds}
+        toast={{ id: 1, text: 'Dismissed', detail: 'Add the widget cache', undo }}
+        onClose={onClose}
+      />,
+    )
 
     expect(screen.getByRole('status')).toHaveTextContent('Dismissed · Add the widget cache')
 
@@ -78,7 +87,9 @@ describe('Toast', () => {
     ['success', 'text-success'],
     ['warning', 'text-warning'],
   ] as const)('leads a %s with its sign, in its color', (tone, color) => {
-    render(<Toast toast={{ id: 1, text: 'Deleted 2 branches', tone }} onClose={vi.fn()} />)
+    render(
+      <Toast seconds={defaultToastSeconds} toast={{ id: 1, text: 'Deleted 2 branches', tone }} onClose={vi.fn()} />,
+    )
 
     const card = screen.getByRole('group', { name: 'Notification' })
     expect(card.querySelectorAll('svg')).toHaveLength(2)
@@ -88,7 +99,13 @@ describe('Toast', () => {
   it('shows an action button with its label, whole on hover when it is cut short', async () => {
     const person = user()
     const onClick = vi.fn()
-    render(<Toast toast={{ id: 1, text: 'Cleaned up', action: { label: 'View', onClick } }} onClose={vi.fn()} />)
+    render(
+      <Toast
+        seconds={defaultToastSeconds}
+        toast={{ id: 1, text: 'Cleaned up', action: { label: 'View', onClick } }}
+        onClose={vi.fn()}
+      />,
+    )
 
     expect(screen.queryByRole('button', { name: 'Undo' })).not.toBeInTheDocument()
 
@@ -98,14 +115,50 @@ describe('Toast', () => {
     expect(onClick).toHaveBeenCalledOnce()
   })
 
-  it('stays twelve seconds, time to read it and reach its button', () => {
-    expect(toastMs).toBe(12_000)
+  it('stays twelve seconds until the settings load, time to read it and reach its button', () => {
+    expect(defaultToastSeconds).toBe(12)
+  })
+
+  it('stays as long as the settings say', () => {
+    const onClose = vi.fn()
+    render(<Toast seconds={5} toast={{ id: 1, text: 'Dismissed' }} onClose={onClose} />)
+
+    act(() => {
+      vi.advanceTimersByTime(4999)
+    })
+    expect(onClose).not.toHaveBeenCalled()
+
+    act(() => {
+      vi.advanceTimersByTime(1)
+    })
+    expect(onClose).toHaveBeenCalledOnce()
+  })
+
+  it('times a toast already showing by a length changed under it', () => {
+    const onClose = vi.fn()
+    const toast = { id: 1, text: 'Dismissed' }
+    const { rerender } = render(<Toast seconds={60} toast={toast} onClose={onClose} />)
+
+    act(() => {
+      vi.advanceTimersByTime(3000)
+    })
+    rerender(<Toast seconds={5} toast={toast} onClose={onClose} />)
+
+    act(() => {
+      vi.advanceTimersByTime(4999)
+    })
+    expect(onClose).not.toHaveBeenCalled()
+
+    act(() => {
+      vi.advanceTimersByTime(1)
+    })
+    expect(onClose).toHaveBeenCalledOnce()
   })
 
   it('waits while the pointer rests on it', async () => {
     const person = user()
     const onClose = vi.fn()
-    render(<Toast toast={{ id: 1, text: 'Restored' }} onClose={onClose} />)
+    render(<Toast seconds={defaultToastSeconds} toast={{ id: 1, text: 'Restored' }} onClose={onClose} />)
 
     expect(screen.queryByRole('button', { name: 'Undo' })).not.toBeInTheDocument()
 
@@ -126,7 +179,9 @@ describe('Toast', () => {
 
   it('waits while focus is in it, so Undo can be reached with the keyboard', () => {
     const onClose = vi.fn()
-    render(<Toast toast={{ id: 1, text: 'Dismissed', undo: vi.fn() }} onClose={onClose} />)
+    render(
+      <Toast seconds={defaultToastSeconds} toast={{ id: 1, text: 'Dismissed', undo: vi.fn() }} onClose={onClose} />,
+    )
 
     const undo = screen.getByRole('button', { name: 'Undo' })
     act(() => {
@@ -153,10 +208,14 @@ describe('Toast', () => {
   it('gives a toast replaced under the pointer its own full time', async () => {
     const person = user()
     const onClose = vi.fn()
-    const { rerender } = render(<Toast toast={{ id: 1, text: 'Dismissed' }} onClose={onClose} />)
+    const { rerender } = render(
+      <Toast seconds={defaultToastSeconds} toast={{ id: 1, text: 'Dismissed' }} onClose={onClose} />,
+    )
 
     await person.hover(cardOf('Dismissed'))
-    rerender(<Toast toast={{ id: 2, text: 'Snoozed', tone: 'error' }} onClose={onClose} />)
+    rerender(
+      <Toast seconds={defaultToastSeconds} toast={{ id: 2, text: 'Snoozed', tone: 'error' }} onClose={onClose} />,
+    )
 
     expect(screen.getByText('Snoozed')).toHaveClass('text-danger')
 
@@ -169,7 +228,7 @@ describe('Toast', () => {
   it('closes on request', async () => {
     const person = user()
     const onClose = vi.fn()
-    render(<Toast toast={{ id: 1, text: 'Dismissed', detail: '' }} onClose={onClose} />)
+    render(<Toast seconds={defaultToastSeconds} toast={{ id: 1, text: 'Dismissed', detail: '' }} onClose={onClose} />)
 
     expect(screen.getByRole('status')).toHaveTextContent(/^Dismissed$/)
 

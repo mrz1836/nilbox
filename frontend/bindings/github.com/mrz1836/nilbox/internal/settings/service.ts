@@ -470,6 +470,15 @@ export function SetTheme(theme: $models.Theme): $CancellablePromise<$models.Sett
 }
 
 /**
+ * SetToastSeconds stores how long, in seconds, a toast stays before it closes itself,
+ * MinToastSeconds to MaxToastSeconds, and returns the settings with it. The window reads
+ * it from the settings, so the next toast stays that long.
+ */
+export function SetToastSeconds(seconds: number): $CancellablePromise<$models.Settings> {
+    return $Call.ByID(636806457, seconds);
+}
+
+/**
  * SetTrustedBots stores the bots whose items are trusted, and returns the settings with
  * them. Each login may be written as GitHub shows it ("dependabot", "dependabot[bot]", or
  * "app/dependabot"); the list is stored normalized and sorted, and may be empty to trust

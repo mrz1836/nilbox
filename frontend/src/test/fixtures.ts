@@ -343,6 +343,7 @@ export function settings(overrides: Partial<Settings> = {}): Settings {
     bannersOff: ['session_needs_you', 'session_finished'],
     theme: 'system',
     textSize: 'default',
+    toastSeconds: 12,
     collapsedSections: [],
     projectsTipDismissed: false,
     inboxOrder: { statusSorted: [], statusOrder: [] },

@@ -294,6 +294,12 @@ export interface Settings {
     "textSize": TextSize;
 
     /**
+     * ToastSeconds is how long, in seconds, a message at the bottom of the window stays
+     * before it closes itself, MinToastSeconds to MaxToastSeconds.
+     */
+    "toastSeconds": number;
+
+    /**
      * CollapsedSections lists the inbox sections the user collapsed, in the order the
      * inbox shows them.
      */

@@ -208,6 +208,7 @@ function answers(subscribe: Loose<Platform['on']>): { [K in keyof Platform]: Loo
     getTheme: () => Promise.resolve('system'),
     setTheme: (theme) => stored({ theme }),
     setTextSize: (textSize) => stored({ textSize }),
+    setToastSeconds: (toastSeconds) => stored({ toastSeconds }),
     getCollapsedSections: () => Promise.resolve([]),
     setSectionCollapsed: (section, collapsed) => stored({ collapsedSections: collapsed ? [section] : [] }),
     setProjectsTipDismissed: (projectsTipDismissed) => stored({ projectsTipDismissed }),

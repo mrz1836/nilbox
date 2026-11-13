@@ -92,6 +92,7 @@ func TestPrefDefaults(t *testing.T) {
 		BannersOff:          []notifyprefs.Kind{notifyprefs.KindSessionNeedsYou, notifyprefs.KindSessionFinished},
 		Theme:               ThemeSystem,
 		TextSize:            TextSizeDefault,
+		ToastSeconds:        12,
 		CollapsedSections:   []ListKey{},
 		InboxOrder:          InboxOrder{StatusSorted: []ListKey{}, StatusOrder: []string{}},
 		MergeMethod:         DefaultMergeMethod,
@@ -229,6 +230,7 @@ func TestSettersPersist(t *testing.T) {
 	require.NoError(t, testutil.ErrOf(svc.SetFollowSessions(t.Context(), false)))
 	require.NoError(t, testutil.ErrOf(svc.SetBranchRules(t.Context(), branchrules.Rules{Own: true, Protected: []string{"develop"}})))
 	require.NoError(t, testutil.ErrOf(svc.SetTextSize(t.Context(), TextSizeLarger)))
+	require.NoError(t, testutil.ErrOf(svc.SetToastSeconds(t.Context(), 30)))
 	require.NoError(t, testutil.ErrOf(svc.SetRepoRule(t.Context(), "acme-org", reporules.RuleMuted)))
 
 	magex := filepath.Join(home, "bin", "magex")
@@ -261,6 +263,7 @@ func TestSettersPersist(t *testing.T) {
 		BannersOff:          []notifyprefs.Kind{notifyprefs.KindWoke, notifyprefs.KindSessionFinished},
 		Theme:               DefaultTheme,
 		TextSize:            TextSizeLarger,
+		ToastSeconds:        30,
 		CollapsedSections:   []ListKey{},
 		InboxOrder:          InboxOrder{StatusSorted: []ListKey{}, StatusOrder: []string{}},
 		MergeMethod:         DefaultMergeMethod,
@@ -325,6 +328,9 @@ func TestSetRejectsInvalid(t *testing.T) {
 		{name: "clone root is a file", set: func() error { return testutil.ErrOf(svc.SetCloneRoot(t.Context(), file)) }, wantErr: ErrInvalidCloneRoot, wantMsg: "~/notes.txt is not a directory"},
 		{name: "no snooze", set: func() error { return testutil.ErrOf(svc.SetSnoozeDays(t.Context(), 0)) }, wantErr: snooze.ErrInvalidDays, wantMsg: "0 days; choose 1 to 365"},
 		{name: "snooze past a year", set: func() error { return testutil.ErrOf(svc.SetSnoozeDays(t.Context(), 366)) }, wantErr: snooze.ErrInvalidDays},
+		{name: "toast too short", set: func() error { return testutil.ErrOf(svc.SetToastSeconds(t.Context(), 4)) }, wantErr: ErrInvalidToastSeconds, wantMsg: "4 seconds; choose 5 to 60"},
+		{name: "toast too long", set: func() error { return testutil.ErrOf(svc.SetToastSeconds(t.Context(), 61)) }, wantErr: ErrInvalidToastSeconds},
+		{name: "no toast", set: func() error { return testutil.ErrOf(svc.SetToastSeconds(t.Context(), 0)) }, wantErr: ErrInvalidToastSeconds},
 		{name: "unknown review rule", set: func() error {
 			return testutil.ErrOf(svc.SetSnoozeWake(t.Context(), snooze.Rules{Reviews: "sometimes"}))
 		}, wantErr: snooze.ErrInvalidRules, wantMsg: `"sometimes"`},
@@ -373,6 +379,7 @@ func TestGetFallsBackOnBadStoredValues(t *testing.T) {
 	setPref(t, db, KeyTerminal, "warp")
 	setPref(t, db, KeyCloneRoot, "   ")
 	setPref(t, db, KeySnoozeDays, "-2")
+	setPref(t, db, KeyToastSeconds, "61")
 	setPref(t, db, snooze.PrefWakeReviews, "sometimes")
 	setPref(t, db, snooze.PrefWakeCommits, "lots")
 
@@ -381,6 +388,7 @@ func TestGetFallsBackOnBadStoredValues(t *testing.T) {
 	assert.Equal(t, fromStored(nil), got)
 
 	setPref(t, db, KeySnoozeDays, "soon")
+	setPref(t, db, KeyToastSeconds, "soon")
 
 	got, err = svc.Get(t.Context())
 	require.NoError(t, err)
@@ -603,6 +611,10 @@ func TestSettersReturnTheStoredSettings(t *testing.T) {
 		{
 			"snooze days", func() (Settings, error) { return svc.SetSnoozeDays(ctx, 9) },
 			func(s Settings) any { return s.SnoozeDays }, 9,
+		},
+		{
+			"toast seconds", func() (Settings, error) { return svc.SetToastSeconds(ctx, 5) },
+			func(s Settings) any { return s.ToastSeconds }, 5,
 		},
 		{
 			"snooze wake", func() (Settings, error) { return svc.SetSnoozeWake(ctx, wake) },

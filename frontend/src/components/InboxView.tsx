@@ -36,7 +36,7 @@ import { ListSection, type Reveal } from './ListSection'
 import { ProjectsTip } from './ProjectsTip'
 import { RelativeTime } from './RelativeTime'
 import { ReviewSheet } from './review/ReviewSheet'
-import { Toast, type ToastMessage } from './Toast'
+import { defaultToastSeconds, Toast, type ToastMessage } from './Toast'
 import type { TriageActions } from './TriageControls'
 
 export type { LaunchOptions } from './ItemRow'
@@ -60,6 +60,8 @@ export interface InboxViewProps {
   sessions?: ReadonlyMap<string, readonly AgentSession[]>
   // snoozeDays is how long a row's Snooze button hides an item.
   snoozeDays: number
+  // toastSeconds is how long the inbox's toasts show, as set in Settings → Notifications.
+  toastSeconds?: number
   // onSnoozeSettings opens the setting for the Snooze button's length.
   onSnoozeSettings: () => void
   // onFilesSettings opens Settings → Sensitive files.
@@ -196,6 +198,7 @@ export function InboxView({
   worktrees = noWorktrees,
   sessions = noSessions,
   snoozeDays,
+  toastSeconds = defaultToastSeconds,
   onSnoozeSettings,
   onFilesSettings,
   collapsed,
@@ -661,7 +664,7 @@ export function InboxView({
           onManageReplies={onManageReplies}
         />
       )}
-      <Toast toast={toast} onClose={closeToast} />
+      <Toast toast={toast} seconds={toastSeconds} onClose={closeToast} />
     </div>
   )
 }
