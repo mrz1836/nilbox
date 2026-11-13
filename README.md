@@ -395,6 +395,8 @@ More in [Issue projects](docs/desktop.md#issue-projects).
   wait in each list's **Muted** tab, out of the counts, the menu bar, and the notifications, and
   nothing follows their checks. A repository's own rule wins over its org's, so you can mute an
   org and pin one of its repositories.
+- **From the sheets too:** the review and issue sheets carry the card's snooze, dismiss, and pin
+  in their headers, and move on to the next card when one sets it aside.
 - **Undo** is in the toast that confirms each snooze, dismissal, pin, and mute.
 - **Wake rules** end a snooze early when new commits (any push, by default), reviews (an approval
   or a request for changes, by default), or comments reach your thresholds in **Settings →
