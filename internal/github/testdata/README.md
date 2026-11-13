@@ -16,6 +16,8 @@ one serves a file from a local `httptest` server.
 | `item_response.json` | The item query, `itemQuery` in `item.go`, for one merged pull request opened from a fork | `TestFetchItemReadsTheItemAndItsDetails` in `item_test.go` |
 | `pull_review_response.json` | The pull review query, `pullReviewQuery` in `pullreview.go`, for one open Dependabot pull request; a pending and a failing check, a commit status, reviews, a pending review, auto-merge, and `viewerCanClose` were added by hand | `TestFetchPullReviewReadsTheSheet` in `pullreview_test.go` |
 | `rate_limit_response.json` | The REST endpoint `GET /rate_limit` | `TestFetchRateLimits` in `ratelimit_test.go` |
+| `issue_view_response.json` | The issue view query, `issueViewQuery` in `issueview.go`, recorded from a public issue to pin the answer's shape (field names, nulls, enum casing, an upper-case `minimizedReason`, label colors without `#`, and the timeline's `totalCount` and cursor, which page oldest first), then scrubbed and rewritten by hand into one open, reopened issue: a type, a milestone, a parent, two sub-issues, two assignees, twelve participants, a draft and a merged fix, reactions, and a timeline of every type the sheet reads, with a minimized comment by a deleted account, a bot's comment, the viewer's own, a mention that closes it, one from another repository, a connection and a disconnection with this issue on either side, a close by a commit, a duplicate mark, a label with no color, and a null node | `TestFetchIssueView*` in `issueview_test.go` |
+| `issue_timeline_response.json` | The earlier-page query, `issueTimelineQuery` in `issueview.go`, with the same history: recorded for its shape, then written by hand as the first page of the issue above, with a close by a pull request, a reopen by a deleted account, a close as a duplicate, an item of a type the sheet doesn't read, and a null node | `TestFetchIssueTimeline*` in `issueview_test.go` |
 | `latest_releases_response.json` | The latest-release query, `latestReleasesQuery` in `releases.go`, for the two public tool repositories the integrations install from (`t0`, `t1`), which keep their real names since the integrations' definitions name them; a repository with no release (`t2`) and one GitHub could not find (`t3`) were added by hand | `TestFetchLatestReleases*` in `releases_test.go` |
 | `tag_runs_response.json` | **Not recorded: written by hand** from GitHub's REST schema for `GET /repos/{owner}/{name}/actions/runs`, which `fetchTagRuns` in `releaseprogress.go` asks for a tag's push runs. Its shape follows P0's finding on a real release that a tag push's runs carry the tag as their `head_branch`: two runs for the tag (one failed, one in progress), the branch's own push run of the same commit, a run for another tag, and a schedule run, the last three of which never count | `TestFetchReleaseProgressReadsTheTagsOwnRuns` in `releaseprogress_test.go` |
 
@@ -39,8 +41,9 @@ compares the queries with them. After a deliberate change to a query, rewrite th
 
 1. Copy the query into a scratch file outside the repository, with the fragments its Go
    constant appends: `inboxQuery` ends with `itemFieldsFragment` and `repoFieldsFragment`,
-   `detailsQuery` with `detailFieldsFragment`, `itemQuery` with all three, and `pullReviewQuery`
-   with those three and `reviewFieldsFragment`.
+   `detailsQuery` with `detailFieldsFragment`, `itemQuery` with all three, `pullReviewQuery`
+   with those three and `reviewFieldsFragment`, and `issueViewQuery` with the first three and
+   `issueViewFragments`, which brings the timeline's, a reference's, and an assignee's.
 2. Run it with `gh`, which sends the token itself, and format the result the way the files
    are formatted:
 
@@ -52,6 +55,10 @@ compares the queries with them. After a deliberate change to a query, rewrite th
    gh api graphql -F query=@/tmp/details.graphql -f 'ids[]=<node-id>' -f 'ids[]=<node-id>' | jq --indent 4 .
    gh api graphql -F query=@/tmp/item.graphql -f id=<node-id> | jq --indent 4 .
    gh api graphql -F query=@/tmp/pull_review.graphql -f id=<node-id> | jq --indent 4 .
+
+   # The issue view takes the timeline's page size too, and an earlier page its cursor.
+   gh api graphql -F query=@/tmp/issue_view.graphql -f id=<node-id> -F last=100 | jq --indent 4 .
+   gh api graphql -F query=@/tmp/issue_timeline.graphql -f id=<node-id> -f before=<cursor> -F last=100 | jq --indent 4 .
 
    # The rate limits come from the REST API.
    gh api rate_limit | jq --indent 4 .

@@ -1,0 +1,111 @@
+{
+    "data": {
+        "node": {
+            "__typename": "Issue",
+            "number": 12,
+            "repository": {
+                "nameWithOwner": "acme-org/example-repo"
+            },
+            "timeline": {
+                "totalCount": 112,
+                "pageInfo": {
+                    "hasPreviousPage": false,
+                    "startCursor": "Y3Vyc29yOnYyOpfakeCursor1=="
+                },
+                "nodes": [
+                    {
+                        "__typename": "IssueComment",
+                        "id": "IC_fakeComment90",
+                        "url": "https://github.com/acme-org/example-repo/issues/12#issuecomment-90",
+                        "createdAt": "2026-11-01T09:00:00Z",
+                        "lastEditedAt": null,
+                        "body": "Seen on main too.",
+                        "authorAssociation": "MEMBER",
+                        "isMinimized": false,
+                        "minimizedReason": null,
+                        "viewerDidAuthor": false,
+                        "author": {
+                            "__typename": "User",
+                            "login": "octo-other"
+                        }
+                    },
+                    {
+                        "__typename": "ClosedEvent",
+                        "id": "CE_fakeEvent91",
+                        "createdAt": "2026-11-02T09:00:00Z",
+                        "stateReason": "COMPLETED",
+                        "actor": {
+                            "__typename": "User",
+                            "login": "octo-other"
+                        },
+                        "closer": {
+                            "__typename": "PullRequest",
+                            "number": 13,
+                            "title": "Parse the last line",
+                            "url": "https://github.com/acme-org/example-repo/pull/13",
+                            "prState": "MERGED",
+                            "isDraft": false,
+                            "merged": true,
+                            "repository": {
+                                "nameWithOwner": "acme-org/example-repo"
+                            }
+                        },
+                        "duplicateOf": null
+                    },
+                    {
+                        "__typename": "ReopenedEvent",
+                        "id": "REE_fakeEvent92",
+                        "createdAt": "2026-11-02T10:00:00Z",
+                        "stateReason": "REOPENED",
+                        "actor": null
+                    },
+                    {
+                        "__typename": "ClosedEvent",
+                        "id": "CE_fakeEvent93",
+                        "createdAt": "2026-11-03T09:00:00Z",
+                        "stateReason": "DUPLICATE",
+                        "actor": {
+                            "__typename": "User",
+                            "login": "octo-dave"
+                        },
+                        "closer": null,
+                        "duplicateOf": {
+                            "__typename": "Issue",
+                            "number": 9,
+                            "title": "Newline missing at the end of the output",
+                            "url": "https://github.com/acme-org/example-repo/issues/9",
+                            "issueState": "CLOSED",
+                            "stateReason": "DUPLICATE",
+                            "repository": {
+                                "nameWithOwner": "acme-org/example-repo"
+                            }
+                        }
+                    },
+                    {
+                        "__typename": "ReopenedEvent",
+                        "id": "REE_fakeEvent94",
+                        "createdAt": "2026-11-03T10:00:00Z",
+                        "stateReason": "REOPENED",
+                        "actor": {
+                            "__typename": "User",
+                            "login": "octo-other"
+                        }
+                    },
+                    {
+                        "__typename": "SubscribedEvent",
+                        "id": "SE_fakeEvent95",
+                        "createdAt": "2026-11-03T11:00:00Z"
+                    },
+                    null
+                ]
+            }
+        },
+        "rateLimit": {
+            "cost": 1,
+            "remaining": 4991,
+            "resetAt": "2026-11-12T13:00:00Z",
+            "limit": 5000,
+            "used": 9
+        }
+    }
+}

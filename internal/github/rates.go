@@ -108,6 +108,9 @@ func restSpend(path string) int {
 	return 1
 }
 
+// minQueryCost is the least a GraphQL query GitHub ran costs.
+const minQueryCost = 1
+
 // queryCost reads the cost a GraphQL response reports for its query, or 0 when it reports
 // none, as a query GitHub refused before running it.
 func queryCost(raw []byte) int {
