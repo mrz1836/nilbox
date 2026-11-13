@@ -105,3 +105,9 @@ sql:
       go:
         !!merge <<: *go
         out: internal/review/internal/queries
+  - !!merge <<: *owner
+    queries: internal/issues/internal/queries
+    gen:
+      go:
+        !!merge <<: *go
+        out: internal/issues/internal/queries

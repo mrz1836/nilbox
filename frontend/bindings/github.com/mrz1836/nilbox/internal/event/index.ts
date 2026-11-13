@@ -10,6 +10,7 @@ export type {
     BudgetUpdated,
     HooksUpdated,
     InboxUpdated,
+    IssueProgress,
     NotificationsUpdated,
     QuitRequested,
     ReleasesProgress,

@@ -41,6 +41,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/hooks"
 	"github.com/mrz1836/nilbox/internal/inbox"
 	"github.com/mrz1836/nilbox/internal/integrations"
+	"github.com/mrz1836/nilbox/internal/issues"
 	"github.com/mrz1836/nilbox/internal/launchdefaults"
 	"github.com/mrz1836/nilbox/internal/launcher"
 	"github.com/mrz1836/nilbox/internal/logging"
@@ -229,6 +230,7 @@ func registerEvents() {
 	application.RegisterEvent[event.BudgetUpdated](event.NameBudgetUpdated)
 	application.RegisterEvent[event.SessionsUpdated](event.NameSessionsUpdated)
 	application.RegisterEvent[event.ReviewProgress](event.NameReviewProgress)
+	application.RegisterEvent[event.IssueProgress](event.NameIssueProgress)
 	application.RegisterEvent[event.ToolsUpdated](event.NameToolsUpdated)
 	application.RegisterEvent[event.ScriptRunsUpdated](event.NameScriptRunsUpdated)
 	application.RegisterEvent[event.ScriptRunProgress](event.NameScriptRunProgress)
@@ -278,8 +280,8 @@ func binders() []func(svc any) (application.Service, bool) {
 		binder[settings.Service], binder[profiles.Service], binder[prompts.Service],
 		binder[launchdefaults.Service], binder[inbox.Service], binder[launcher.Service],
 		binder[worktrees.Service], binder[notify.Service], binder[appinfo.Service], binder[budget.Service],
-		binder[sessions.Service], binder[review.Service], binder[integrations.Service], binder[scriptrun.Service],
-		binder[releases.Service], binder[hooks.Service], binder[scripts.Service],
+		binder[sessions.Service], binder[review.Service], binder[issues.Service], binder[integrations.Service],
+		binder[scriptrun.Service], binder[releases.Service], binder[hooks.Service], binder[scripts.Service],
 	}
 }
 

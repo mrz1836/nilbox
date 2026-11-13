@@ -30,6 +30,12 @@ func boundaries() []boundary {
 	// and noService adds the store: what a leaf that serves any of them never imports.
 	services := []string{"internal/github", "internal/settings", "internal/inbox", "internal/core"}
 	noService := append([]string{"internal/store"}, services...)
+	// sheets are what the review sheet and the issue sheet reach only through the
+	// interfaces each declares.
+	sheets := []string{
+		"internal/inbox", "internal/settings", "internal/prompts", "internal/launcher", "internal/worktrees",
+		"internal/sessions", "internal/core", "internal/desktop",
+	}
 
 	return []boundary{
 		{
@@ -154,13 +160,15 @@ func boundaries() []boundary {
 			why:       "gitread runs the read-only git commands the release and hooks services ask of a clone; it knows no service",
 		},
 		{
-			pkg: "internal/review",
-			forbidden: []string{
-				"internal/inbox", "internal/settings", "internal/prompts", "internal/launcher", "internal/worktrees",
-				"internal/sessions", "internal/core", "internal/desktop",
-			},
+			pkg:       "internal/review",
+			forbidden: append(slices.Clone(sheets), "internal/issues"),
 			why: "the review sheet reaches the inbox, the settings, and the replies through its own Inbox, Settings, " +
-				"and Replies interfaces",
+				"and Replies interfaces, and knows nothing of the issue sheet",
+		},
+		{
+			pkg:       "internal/issues",
+			forbidden: append(slices.Clone(sheets), "internal/review"),
+			why:       "the issue sheet reaches the inbox through its own Inbox interface, and knows nothing of the review sheet",
 		},
 	}
 }

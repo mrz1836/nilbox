@@ -31,6 +31,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/inbox"
 	"github.com/mrz1836/nilbox/internal/integrationprefs"
 	"github.com/mrz1836/nilbox/internal/integrations"
+	"github.com/mrz1836/nilbox/internal/issues"
 	"github.com/mrz1836/nilbox/internal/launchdefaults"
 	"github.com/mrz1836/nilbox/internal/launcher"
 	"github.com/mrz1836/nilbox/internal/launcher/terminal"
@@ -131,6 +132,7 @@ type Core struct {
 	Budget         *budget.Service
 	Sessions       *sessions.Service
 	Review         *review.Service
+	Issues         *issues.Service
 	Integrations   *integrations.Service
 	ScriptRuns     *scriptrun.Service
 	Release        *release.Service
@@ -282,7 +284,8 @@ func Bootstrap(ctx context.Context, opts Options) (*Core, error) {
 func (c *Core) Services() []any {
 	return []any{
 		c.Settings, c.Profiles, c.Prompts, c.LaunchDefaults, c.Inbox, c.Launcher, c.Worktrees, c.Notifications,
-		c.AppInfo, c.Budget, c.Sessions, c.Review, c.Integrations, c.ScriptRuns, c.Release, c.Hooks, c.Scripts,
+		c.AppInfo, c.Budget, c.Sessions, c.Review, c.Issues, c.Integrations, c.ScriptRuns, c.Release, c.Hooks,
+		c.Scripts,
 	}
 }
 
@@ -582,6 +585,9 @@ func assemble(pool *sql.DB, info startup, opts Options, logger *slog.Logger) *Co
 	sweeper := worktrees.NewSweeper(sweeps, refreshEvery(prefs, settings.RefreshWorktrees, logger))
 	followed.intervals = []waker{scheduler, checksFollower, sweeper}
 
+	// The review sheet and the issue sheet read and act through the inbox's one Actor.
+	actor := inbox.NewActor(inboxSvc)
+
 	return &Core{
 		DB:       pool,
 		Settings: prefs,
@@ -618,9 +624,13 @@ func assemble(pool *sql.DB, info startup, opts Options, logger *slog.Logger) *Co
 		}),
 		Sessions: follow.service,
 		Review: review.NewService(review.Config{
-			Pool: pool, Inbox: reviewInbox{store: inboxStore, actor: inbox.NewActor(inboxSvc)}, GitHub: client,
+			Pool: pool, Inbox: reviewInbox{store: inboxStore, actor: actor}, GitHub: client,
 			Settings: reviewSettings{settings: prefs}, Replies: reviewReplies{store: promptStore, source: previews},
 			Events: opts.Events, Merges: releaseRefresher, Clock: opts.Clock, Logger: logger,
+		}),
+		Issues: issues.NewService(issues.Config{
+			Pool: pool, Inbox: issuesInbox{store: inboxStore, actor: actor}, GitHub: client, Events: opts.Events,
+			Clock: opts.Clock, Logger: logger,
 		}),
 		Watcher:          follow.watcher,
 		ShellSessions:    ShellSessions{ledger: follow.ledger, service: follow.service},

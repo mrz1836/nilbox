@@ -145,9 +145,9 @@ app:lint` reads.
   artwork the icons were rendered from. `build/darwin/` holds the bundle's generated
   `Info.plist` and the rendered icon set, `icons.icns`.
 - `internal/core/` assembles the app and builds every service the window binds: settings,
-  profiles, prompts, launch defaults, inbox, review, launcher, worktrees, notifications, app
-  info, the API budget, sessions, integrations, script runs, release, hooks, and repository
-  scripts.
+  profiles, prompts, launch defaults, inbox, review, issues, launcher, worktrees,
+  notifications, app info, the API budget, sessions, integrations, script runs, release, hooks,
+  and repository scripts.
   Every `internal/*` package is plain Go, built and tested on Linux without CGO.
 - Services share their building blocks rather than keep copies: `internal/repo` and
   `internal/item` name repositories, pull requests and issues, and their worktrees;
@@ -370,8 +370,8 @@ app:lint` reads.
   what its text goes with (`Offer.Reviews`, `Offer.CommentsFirst`, and `Offer.CommentBlocked`,
   why GitHub can't take the comment now), and `Act` and the window both go by those marks. A
   merge with no review of its own (`merge_now`, `merge_bypass`, `auto_merge`) posts the
-  composer's text and line comments, when there are any (by `hasText`, which trims as the
-  window's `trim()` does), as a COMMENT review at the head the user saw, the way `comment` does
+  composer's text and line comments, when there are any (by `textutil.HasText`, which trims as
+  the window's `trim()` does), as a COMMENT review at the head the user saw, the way `comment` does
   (never an approval, so it works on the user's own pull request), but only once the fresh merge
   state says GitHub would merge (auto-merge: that it is open, not a draft, at that head), so a
   refused merge strands no comment; then it merges exactly as it would without them: no
@@ -398,6 +398,40 @@ app:lint` reads.
   `Merges` the repository, without waiting (core: the Release page's `Refresher`, which reads
   that repository's row again); a close tells it nothing. Nothing here lets an agent approve,
   merge, or close.
+- `internal/issues/` is the issue sheet's service, beside the review sheet's: neither imports
+  the other (the repoguard boundary test), and they share only the building blocks. `Decide`
+  is pure: from an issue's facts it works out where it stands (gone, closed as what and by
+  whom, locked, a fix merged or in progress, the user replied last, assigned, open), the
+  offers, and the one primary, and `Act` runs it again before any write. Comment is offered
+  always, but held back on a locked conversation for a user without write access; the two
+  closes (as completed, as not planned) wait for the sheet's first read ("Wait for it to
+  load"), are left out when GitHub's `viewerCanClose` says no, always confirm, and post the
+  user's text first (`Offer.CommentsFirst`, with `Offer.CommentBlocked` while a lock refuses
+  it). The button is Comment, or Close as completed once a fix merged. `Open` serves the issue
+  from its cache and the inbox card with no request, and starts a visit: `seen_at` holds
+  GitHub's `updatedAt` of the read it shows, which only `Open` moves, so what a later read
+  brings that is newer is new to the user (`Issue.LastSeenAt`, GitHub's own times, no clock
+  skew). `Refresh` reads the issue (one GraphQL point, `FetchIssueView`) unless a read under 20
+  seconds old matches the card's activity, `ReadAgain` whenever the user asks, one read per
+  issue at a time (`flight.Group`), through the inbox's `Actor` (`ReadIssue`), which rewrites
+  the card from the same answer and under whose lock the cache is written; a read that finds
+  the issue closed or gone is returned once, built from the read, and the cache dropped.
+  `Earlier` reads the timeline's page before a cursor through `PeekIssue`, and stores it
+  nowhere. Every action goes through `ActIssue` and tells each step as an
+  `event.IssueProgress`. A close is pinned to the comments the user saw (the earlier of the
+  request's `Seen` and the read's): every try, a token retry included, first reads the state
+  and the newest ten comments (`FetchIssueState`); a comment someone else wrote since, or ten
+  newer with more before them, is `new_activity` with nothing sent, and an issue someone closed
+  first is `already_closed` and leaves the inbox. Then the text is posted once, and the issue
+  closed with one REST `PATCH` (`(*github.Client).CloseIssue`; an answer that names another
+  account as the closer, or another reason than the one asked, means someone closed it first).
+  Once GitHub answered a step, nothing after it is an error: `failedAfterStep` makes a close
+  whose comment was posted `commented_not_closed`, and keeps any other outcome, logging the
+  inbox's own failure. After any action, under
+  the item's lock, the cache is dropped (a close) or marked out of date. It owns
+  `issue_views`, a bounded cache (1 MiB per issue, whose long texts are cut to 16 KiB, then 4
+  KiB, then emptied, each cut marked; 200 issues, 32 MiB, and 14 days unused in all), pruned in
+  the same transaction that writes. Unassign me is the inbox's own `Unassign`.
 - `internal/reporules/` holds the pinned and muted repositories and orgs (`repos.pinned` and
   `repos.muted`, each a list of `owner` or `owner/name`, a target in one list at most), which
   settings alone writes (`SetRepoRule`, emitting the Go-only `event.RepoRulesChanged`, which

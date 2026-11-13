@@ -570,6 +570,17 @@ type Repository struct {
 	PushedAt time.Time
 }
 
+// CanWrite reports that permission, the viewer's access to a repository as GitHub names it
+// (Repo.ViewerPermission), is write access or more: ADMIN, MAINTAIN, or WRITE.
+func CanWrite(permission string) bool {
+	switch permission {
+	case "ADMIN", "MAINTAIN", "WRITE":
+		return true
+	default:
+		return false
+	}
+}
+
 // Closed reports an item closed or merged. An item whose state is unknown is not.
 func (i Item) Closed() bool {
 	return i.State == StateClosed || i.State == StateMerged

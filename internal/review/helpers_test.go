@@ -52,9 +52,6 @@ func TestSmallWords(t *testing.T) {
 
 	assert.Empty(t, waitingOn(nil))
 	assert.Empty(t, upperFirst(""))
-	assert.True(t, canWrite("ADMIN"))
-	assert.True(t, canWrite("MAINTAIN"))
-	assert.False(t, canWrite("TRIAGE"))
 	assert.Equal(t, MethodSquash, PrefSquash.method())
 	assert.Equal(t, MethodRebase, PrefRebase.method())
 	assert.Empty(t, PrefRepo.method())
