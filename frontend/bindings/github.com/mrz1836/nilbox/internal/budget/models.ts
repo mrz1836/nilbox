@@ -25,6 +25,12 @@ export interface Gauge {
      * its edits.
      */
     "writes": Writes;
+
+    /**
+     * Chores is the notifications the app's chore lane cleared on GitHub lately, and how
+     * it paces them, apart from the edits.
+     */
+    "chores": Writes;
 }
 
 /**
@@ -79,31 +85,32 @@ export interface Refresh {
 }
 
 /**
- * Writes is what the app changed on GitHub for the user lately, and how it paces its
- * edits. Every field is a plain value.
+ * Writes is what the app changed on GitHub lately in one lane, and how it paces that lane:
+ * the edits it made for the user (Gauge.Writes), or its chores (Gauge.Chores). Every field
+ * is a plain value.
  */
 export interface Writes {
     /**
-     * LastHour and LastMinute count the edits the app sent in the last hour and minute.
+     * LastHour and LastMinute count the changes the app sent in the last hour and minute.
      */
     "lastHour": number;
     "lastMinute": number;
 
     /**
-     * PerHour and PerMinute are the most edits the app sends in an hour and in a minute.
+     * PerHour and PerMinute are the most changes the app sends in an hour and in a minute.
      */
     "perHour": number;
     "perMinute": number;
 
     /**
-     * Reserve is how much of the REST budget, which edits spend, they leave for
+     * Reserve is how much of the REST budget, which the changes spend, they leave for
      * everything else signed in as the user.
      */
     "reserve": number;
 
     /**
-     * HeldUntil is when GitHub's request to wait before the next edit ends, as RFC 3339,
-     * or "" when there is none.
+     * HeldUntil is when GitHub's request to wait before the next change, which holds both
+     * lanes, ends, as RFC 3339, or "" when there is none.
      */
     "heldUntil": string;
 }

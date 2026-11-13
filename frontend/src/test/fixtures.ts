@@ -1049,6 +1049,8 @@ export function budgetGauge(overrides: Partial<BudgetGauge> = {}): BudgetGauge {
     refresh: { known: false, at: '', points: 0, items: 0 },
     refreshesPerHour: 12,
     writes: writes(),
+    // The chore lane: no notifications cleared lately, paced as the app paces them.
+    chores: writes({ perHour: 300, perMinute: 50 }),
     ...overrides,
   }
 }

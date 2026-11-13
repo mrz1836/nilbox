@@ -226,7 +226,17 @@ app:lint` reads.
   `gh api`;
   `internal/repoguard/githubrequests_test.go` fails the build if anything does. Every write goes
   through the `WriteGate`, a REST one through `edit` and a GraphQL mutation through `mutate`
-  (`postGraphQL` refuses a mutation); `internal/repoguard/githubwrites_test.go` keeps it so.
+  (`postGraphQL` refuses a mutation), but the chore lane's: marking a notification thread done
+  or read, sent only by a rule the user turned on or by the user's click, goes through `chore`
+  and the client's own `ChoreGate` (nil refuses every chore), whose `AllowChore` paces it apart
+  from the edits, with counts of its own (50 a minute, 300 an hour, a second apart), the same
+  reserve, and the same hold, so a wait GitHub asks of either lane stops both;
+  `internal/repoguard/githubwrites_test.go` keeps it so. The notifications listing is
+  conditional (page 1 sent with its last ETag as `If-None-Match`, through `do`'s `withETag`:
+  measured in November 2026, github.com answered `If-Modified-Since` with a charged 200 and
+  `If-None-Match` with a free 304), and a 304 spends nothing, but says only that page 1 is as it
+  was; `internal/repoguard/githubnotifications_test.go` holds the client to `GET /notifications`
+  and `DELETE` and `PATCH` on `/notifications/threads/{id}`.
 - `internal/launcher/` resolves a launch (the agent first, then that agent's profile, model,
   and flags), plans it, and writes its files; `internal/launcher/terminal/` renders the launch
   script, which only changes into the folder and runs the agent, and opens it in the user's

@@ -13,7 +13,8 @@
 // The same Tracker paces the edits the app makes on GitHub for the user (github.WriteGate,
 // see writes.go): an edit is refused before it is sent when its budget is down to the
 // reserve left for everything else, when the app has made as many as it makes in a minute
-// or an hour, or while GitHub has asked it to wait.
+// or an hour, or while GitHub has asked it to wait. It paces the chore lane's notification
+// writes (github.ChoreGate) the same way, more slowly, and with counts of their own.
 //
 // Each change emits an event.BudgetUpdated, and the window reads the budgets again.
 package budget
@@ -91,9 +92,11 @@ type Tracker struct {
 	budgets map[string]*held
 	last    refresh
 
-	// writes are when the app sent the edits of the last hour, oldest first, and
-	// heldUntil when GitHub's request to wait before the next edit ends (see writes.go).
-	writes    []time.Time
+	// writes and chores are the lanes of the edits and the chores, each with the times it
+	// sent its changes of the last hour, and heldUntil when GitHub's request to wait
+	// before the next of either ends (see writes.go).
+	writes    lane
+	chores    lane
 	heldUntil time.Time
 
 	// dirty holds a signal while a change waits to be saved (see Saver).
@@ -107,7 +110,7 @@ func NewTracker(c clock.Clock, events event.Sink) *Tracker {
 
 	return &Tracker{
 		clock: c, events: event.Or(events), started: c.Now().UTC(), budgets: make(map[string]*held),
-		dirty: make(chan struct{}, 1),
+		writes: writeLane(), chores: choreLane(), dirty: make(chan struct{}, 1),
 	}
 }
 

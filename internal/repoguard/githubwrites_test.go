@@ -13,19 +13,21 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// The app changes GitHub only when the user asks, and every change goes through the
-// client's WriteGate, which paces the edits and keeps the user's budget clear of them. So,
-// inside internal/github:
+// The app changes GitHub only when the user asks, or by a rule the user turned on, and
+// every change goes through a gate that paces it and keeps the user's budget clear of it:
+// the client's WriteGate for an edit, and its ChoreGate for the chore lane's notification
+// writes. So, inside internal/github:
 //
 //   - a request with any method but GET is sent through (*Client).do only by edit, the
-//     gated REST edit, and by sendGraphQL, which posts GraphQL;
+//     gated REST edit, by chore, the gated notification write, and by sendGraphQL, which
+//     posts GraphQL;
 //   - sendGraphQL is called only by postGraphQL, which refuses a mutation, and by mutate,
 //     the gated GraphQL edit.
 
 // writeSenders are the functions allowed to send a request other than a GET through do,
 // by "Receiver.Name".
 func writeSenders() []string {
-	return []string{"*Client.edit", "sendGraphQL"}
+	return []string{"*Client.edit", "*Client.chore", "sendGraphQL"}
 }
 
 // graphQLSenders are the functions allowed to call sendGraphQL.
@@ -80,7 +82,7 @@ func strayWritesIn(fset *token.FileSet, rel string, file *ast.File) []string {
 func strayWrite(call *ast.CallExpr, caller string) string {
 	switch callee := calleeName(call); {
 	case callee == "do" && len(call.Args) >= 3 && !isMethodGet(call.Args[2]) && !slices.Contains(writeSenders(), caller):
-		return "sends a request other than a GET outside edit and sendGraphQL"
+		return "sends a request other than a GET outside edit, chore, and sendGraphQL"
 	case callee == "sendGraphQL" && !slices.Contains(graphQLSenders(), caller):
 		return "calls sendGraphQL outside postGraphQL and mutate"
 	default:
@@ -128,7 +130,8 @@ func TestEveryGitHubWriteGoesThroughTheGate(t *testing.T) {
 	}
 
 	assert.Empty(t, found,
-		"send every change to GitHub through edit (REST) or mutate (GraphQL), which the WriteGate paces and counts")
+		"send every change to GitHub through edit (REST) or mutate (GraphQL), which the WriteGate paces and counts, "+
+			"or a notification write through chore, which the ChoreGate paces and counts")
 }
 
 func TestStrayWrites(t *testing.T) {
@@ -145,6 +148,7 @@ func TestStrayWrites(t *testing.T) {
 type Client struct{}
 func (c *Client) read() { c.do(nil, tok, http.MethodGet, "/x", nil); c.do(nil, tok, "GET", "/y", nil) }
 func (c *Client) edit() { c.do(nil, tok, method, path, body) }
+func (c *Client) chore() { c.do(nil, tok, method, threadPath(id), nil) }
 func sendGraphQL[T any]() { c.do(nil, tok, http.MethodPost, graphQLPath, body) }
 func postGraphQL[T any]() { sendGraphQL[T]() }
 func mutate[T any]() { sendGraphQL[T]() }`,
@@ -154,7 +158,14 @@ func mutate[T any]() { sendGraphQL[T]() }`,
 			src: `package github
 type Client struct{}
 func (c *Client) merge() { c.do(nil, tok, http.MethodPut, "/merge", nil) }`,
-			want: []string{"internal/github/x.go:3: sends a request other than a GET outside edit and sendGraphQL"},
+			want: []string{"internal/github/x.go:3: sends a request other than a GET outside edit, chore, and sendGraphQL"},
+		},
+		{
+			name: "a notification write around the chore lane",
+			src: `package github
+type Client struct{}
+func (c *Client) markDone() { c.do(nil, tok, http.MethodDelete, threadPath(id), nil) }`,
+			want: []string{"internal/github/x.go:3: sends a request other than a GET outside edit, chore, and sendGraphQL"},
 		},
 		{
 			name: "a mutation around mutate",

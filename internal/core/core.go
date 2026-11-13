@@ -429,8 +429,10 @@ func assemble(pool *sql.DB, info startup, opts Options, logger *slog.Logger) *Co
 	keeper := newBudgetKeeper(pool, opts.Clock)
 	client := github.NewClient(opts.Version)
 	client.Rates = tracker
-	// The same tracker paces the edits the client makes for the user (budget.Writes).
+	// The same tracker paces the edits the client makes for the user (budget.Writes), and,
+	// in a lane of its own, the notification writes of its chore lane.
 	client.Writes = tracker
+	client.Chores = tracker
 	workLog := worklog.New(pool)
 
 	notices := notify.Config{
