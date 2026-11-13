@@ -117,3 +117,9 @@ sql:
       go:
         !!merge <<: *go
         out: internal/avatars/internal/queries
+  - !!merge <<: *owner
+    queries: internal/ghthreads/internal/queries
+    gen:
+      go:
+        !!merge <<: *go
+        out: internal/ghthreads/internal/queries

@@ -74,7 +74,7 @@ type rulesFollower interface {
 }
 
 // waker is woken to look again: *integrations.Worker, and what reads things again on its
-// own (*inbox.Scheduler, *inbox.ChecksFollower, worktrees.Sweeper).
+// own (*inbox.Scheduler, *inbox.ChecksFollower, worktrees.Sweeper, *ghthreads.Syncer).
 type waker interface {
 	Wake()
 }

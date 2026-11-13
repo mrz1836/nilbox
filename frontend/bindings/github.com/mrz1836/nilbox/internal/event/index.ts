@@ -8,6 +8,7 @@ export {
 
 export type {
     BudgetUpdated,
+    GHThreadsUpdated,
     HooksUpdated,
     InboxUpdated,
     IssueProgress,
