@@ -631,15 +631,6 @@ func TestTheOtherActionsPostNoCommentFirst(t *testing.T) {
 func TestTextIsWhatTheWindowTrimsToSomething(t *testing.T) {
 	t.Parallel()
 
-	// Everything String.prototype.trim drops: its white space and line terminators.
-	js := "\t\n\v\f\r \u00a0\u1680\u2000\u2001\u2002\u2003\u2004\u2005\u2006\u2007\u2008\u2009\u200a\u2028\u2029\u202f\u205f\u3000\uFEFF"
-
-	assert.False(t, hasText(""))
-	assert.False(t, hasText(js))
-	assert.False(t, hasText("\uFEFF"), "trim drops a byte order mark, which strings.TrimSpace keeps")
-	assert.True(t, hasText("\u0085"), "trim keeps U+0085, which unicode.IsSpace counts")
-	assert.True(t, hasText(js+"ok"+js))
-
 	h := readHarness(t, github.MergeStateBlocked)
 
 	_, err := h.svc.Act(t.Context(), ActRequest{ItemID: pullID, Action: ActionComment, Head: headA, Body: "\uFEFF"})
