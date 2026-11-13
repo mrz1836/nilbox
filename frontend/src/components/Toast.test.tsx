@@ -155,6 +155,28 @@ describe('Toast', () => {
     expect(onClose).toHaveBeenCalledOnce()
   })
 
+  it('keeps a toast’s time when another Toast shows it, as the inbox’s moves into a sheet', () => {
+    const onClose = vi.fn()
+    const toast = { id: 1, text: 'Dismissed' }
+    const { unmount } = render(<Toast seconds={5} toast={toast} onClose={onClose} />)
+
+    act(() => {
+      vi.advanceTimersByTime(3000)
+    })
+    unmount()
+    render(<Toast seconds={5} toast={toast} onClose={onClose} />)
+
+    act(() => {
+      vi.advanceTimersByTime(1999)
+    })
+    expect(onClose).not.toHaveBeenCalled()
+
+    act(() => {
+      vi.advanceTimersByTime(1)
+    })
+    expect(onClose).toHaveBeenCalledOnce()
+  })
+
   it('waits while the pointer rests on it', async () => {
     const person = user()
     const onClose = vi.fn()

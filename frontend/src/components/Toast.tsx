@@ -36,6 +36,12 @@ export interface ToastAction {
   onClick: () => void
 }
 
+// timing is when each toast's time began and the length it was timed for, kept beside the
+// toast rather than in the Toast showing it, so a toast handed to another Toast, as the
+// inbox's is into a sheet and back out, still closes when it would have. A pause, or a
+// length changed under it, starts its time again.
+const timing = new WeakMap<ToastMessage, { start: number; seconds: number }>()
+
 export interface ToastProps {
   // toast is the message showing, or null for none.
   toast: ToastMessage | null
@@ -63,13 +69,27 @@ export function Toast({ toast, seconds, onClose }: ToastProps) {
   })
 
   useEffect(() => {
-    if (toast === null || paused) {
+    if (toast === null) {
       return undefined
     }
 
-    const timer = setTimeout(() => {
-      close()
-    }, seconds * 1000)
+    if (paused) {
+      timing.delete(toast)
+
+      return undefined
+    }
+
+    const kept = timing.get(toast)
+    const start = kept?.seconds === seconds ? kept.start : Date.now()
+
+    timing.set(toast, { start, seconds })
+
+    const timer = setTimeout(
+      () => {
+        close()
+      },
+      Math.max(start + seconds * 1000 - Date.now(), 0),
+    )
 
     return () => {
       clearTimeout(timer)

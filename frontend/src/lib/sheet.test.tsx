@@ -5,7 +5,7 @@ import { describe, expect, it, vi } from 'vitest'
 
 import { item } from '../test/fixtures'
 import { emit, listening } from '../test/platform'
-import { placeIn, stepTo, useActionProgress, useSheetKeys, withStep, type SheetKeys } from './sheet'
+import { movesOnTo, placeIn, stepTo, useActionProgress, useSheetKeys, withStep, type SheetKeys } from './sheet'
 
 vi.mock('../platform', () => import('../test/platform').then((fake) => fake.platform))
 
@@ -25,6 +25,28 @@ describe('placeIn', () => {
   it('has no place for a card the list doesn’t show', () => {
     expect(placeIn(siblings, 9, 'Assigned')).toEqual({ prev: undefined, next: undefined, position: '' })
     expect(placeIn([], 1, 'Assigned')).toEqual({ prev: undefined, next: undefined, position: '' })
+  })
+})
+
+describe('movesOnTo', () => {
+  const first = item({ id: 1, repo: 'acme-org/api' })
+  const third = item({ id: 3, repo: 'acme-org/api' })
+  const siblings = [first, item({ id: 2 }), third, item({ id: 4 })]
+  const alone = () => false
+
+  it('moves on to the next card, or the one before it at the end', () => {
+    expect(movesOnTo(siblings, 2, alone)?.id).toBe(3)
+    expect(movesOnTo(siblings, 4, alone)?.id).toBe(3)
+    expect(movesOnTo([first], 1, alone), 'none is left').toBeUndefined()
+    expect(movesOnTo(siblings, 9, alone), 'a card the list doesn’t show').toBeUndefined()
+  })
+
+  it('skips the cards that leave with it', () => {
+    const api = (card: { repo: string }) => card.repo === 'acme-org/api'
+
+    expect(movesOnTo(siblings, 1, api)?.id).toBe(2)
+    expect(movesOnTo(siblings, 3, api)?.id).toBe(4)
+    expect(movesOnTo([first, third], 3, api)).toBeUndefined()
   })
 })
 
@@ -53,6 +75,11 @@ function KeyedSheet(keys: SheetKeys) {
     <dialog ref={ref} aria-labelledby="sheet-title">
       <h2 id="sheet-title">Sheet</h2>
       <textarea aria-label="Your comment" />
+      <div role="menu" aria-label="Snooze for…">
+        <button type="button" role="menuitem">
+          1 day
+        </button>
+      </div>
     </dialog>
   )
 }
@@ -84,6 +111,17 @@ describe('useSheetKeys', () => {
 
     await userEvent.keyboard('{Meta>}{Enter}{/Meta}')
     expect(k.run).toHaveBeenCalledOnce()
+  })
+
+  it('leaves the arrows to a menu open in the sheet', async () => {
+    const k = keys()
+    render(<KeyedSheet {...k} />)
+
+    screen.getByRole('menuitem', { name: '1 day' }).focus()
+    await userEvent.keyboard('{ArrowLeft}{ArrowRight}')
+
+    expect(k.prev?.onStep).not.toHaveBeenCalled()
+    expect(k.next?.onStep).not.toHaveBeenCalled()
   })
 
   it('steps nowhere at the ends, nor with a modifier held', async () => {

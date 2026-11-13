@@ -28,6 +28,26 @@ export function placeIn(siblings: readonly InboxItem[], id: number, listTitle: s
   }
 }
 
+// movesOnTo is the card a sheet moves on to as an action takes the card with id out of the
+// cards it steps through, along with every card leaves says goes too: the nearest after it
+// that stays, else the nearest before it, or undefined when none stays, which closes the
+// sheet. Work it out before the action runs, which changes the cards.
+export function movesOnTo(
+  siblings: readonly InboxItem[],
+  id: number,
+  leaves: (card: InboxItem) => boolean,
+): InboxItem | undefined {
+  const at = siblings.findIndex((s) => s.id === id)
+
+  if (at < 0) {
+    return undefined
+  }
+
+  const stays = (card: InboxItem) => card.id !== id && !leaves(card)
+
+  return siblings.slice(at + 1).find(stays) ?? siblings.slice(0, at).findLast(stays)
+}
+
 // SheetStep is a step to the card before or after the one a sheet shows: the title of the
 // card it steps to, and the step.
 export interface SheetStep {
@@ -69,9 +89,16 @@ export interface SheetKeys {
   next: SheetStep | null
 }
 
+// inMenu reports a key pressed in an open menu, which takes its own arrows: a submenu's
+// open and close with them, and the items it was built with are another card's once the
+// sheet steps.
+function inMenu(e: KeyboardEvent): boolean {
+  return e.target instanceof Element && e.target.closest('[role="menu"]') !== null
+}
+
 // useSheetKeys gives the sheet whose title has titleId its keys while it is the dialog the
 // user is in: ⌘↩ runs its button, and ← and → step through its list while the user isn't
-// typing, with no modifier held.
+// typing or in a menu, with no modifier held.
 export function useSheetKeys(titleId: string, keys: SheetKeys): void {
   const onKey = useEffectEvent((e: KeyboardEvent) => {
     const dialog = document.querySelector(`dialog[aria-labelledby="${titleId}"]`)
@@ -87,7 +114,7 @@ export function useSheetKeys(titleId: string, keys: SheetKeys): void {
       return
     }
 
-    if (isTyping(e) || e.metaKey || e.altKey || e.ctrlKey) {
+    if (isTyping(e) || inMenu(e) || e.metaKey || e.altKey || e.ctrlKey) {
       return
     }
 

@@ -1126,8 +1126,12 @@ you.
   pin showing, and comes back pinned, so **Undo** leaves the pin as it was.
 
 Every one of these is also in the card's [menu](#the-item-menu-and-edits-on-github), under
-**Inbox actions**. A toast at the bottom of the window confirms each snooze or dismissal, with
-**Undo**. The default length and the wake rules are under **Settings → Snoozing**, which the
+**Inbox actions**, and in the header of the [review sheet](#reviewing-a-pull-request) and the
+[issue sheet](#reading-an-issue), always shown there. A snooze, a dismissal, a restore, or an
+unmute from a sheet takes the card out of its tab, so the sheet moves on to the next card in the
+list, or the one before it at the end, and closes once none is left; an unmute also moves past
+the cards the same rule muted. A toast at the bottom of the window confirms each snooze or
+dismissal, with **Undo**, over the sheet while one is open. The default length and the wake rules are under **Settings → Snoozing**, which the
 snooze menu's **Snooze settings…** opens. Snoozes, dismissals, and pins are kept in the local database only:
 GitHub never hears about them. The **N of M** count of a list leaves out the items set aside.
 
@@ -1279,7 +1283,11 @@ Every card gets it, in any list.
   issues come in turn, and the sheet becomes the [issue sheet](#reading-an-issue) for an issue;
   filter `is:pr` to step through pull requests alone. Each arrow names the card it steps to in
   its tooltip. A card a refresh stops matching keeps its place while the sheet is open on it.
-  **↗** opens it on GitHub, and **✕** or **Escape** closes the sheet.
+  Before the arrows sit the card's [triage](#snooze-dismiss-and-pin) buttons: snooze, with its
+  length menu, dismiss, and pin, or **Unsnooze**, **Restore**, or **Unmute** in those tabs. One
+  that takes the card out of its tab moves the sheet on to the next card, and the toast, with
+  **Undo**, shows over the sheet. **↗** opens it on GitHub, and **✕** or **Escape** closes the
+  sheet; with a menu open, **Escape** closes the menu alone.
 - **The files** on the left: each path with its additions and deletions, a dot for a
   [sensitive](#sensitive-files) category, and a tick once you mark it viewed. Clicking one scrolls
   to its diff.
@@ -1479,8 +1487,8 @@ reach the inbox through **Assigned**, so these are your own work items.
   completed, grey as not planned or a duplicate), the title, `owner/repo#n`, who opened it and
   when, with the card's trust tag, a **Locked** tag on a locked conversation, the issue's type,
   and where it sits in its list. **←** and **→** step through the list's cards as the [review
-  sheet](#reviewing-a-pull-request)'s do, pull requests included, and **↗**, **✕**, and
-  **Escape** work as there.
+  sheet](#reviewing-a-pull-request)'s do, pull requests included, and the triage buttons,
+  **↗**, **✕**, and **Escape** work as there.
 - **The conversation** in the middle, oldest first: the description, rendered from markdown as
   safely as a pull request's, with its reactions; then every comment, with who wrote it and when
   (the full date on hover), **Author**, **You**, and **bot** tags, whether it was edited, **Quote

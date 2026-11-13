@@ -138,7 +138,8 @@ export function useModalDialog(
     }
   }, [ref, backdrop])
 
-  // Escape cancels, with the latest onCancel, and Tab keeps focus inside the dialog.
+  // Escape cancels, with the latest onCancel, unless a menu open in the dialog already took
+  // it (usePopover), and Tab keeps focus inside the dialog.
   const handleKey = useEffectEvent((e: KeyboardEvent) => {
     const dialog = ref.current
 
@@ -147,8 +148,10 @@ export function useModalDialog(
     }
 
     if (e.key === 'Escape') {
-      e.preventDefault()
-      onCancel()
+      if (!e.defaultPrevented) {
+        e.preventDefault()
+        onCancel()
+      }
 
       return
     }
