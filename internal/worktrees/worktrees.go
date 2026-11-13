@@ -365,6 +365,14 @@ type MergedBranch struct {
 
 	// PullRequest is the merged pull request it was the head of.
 	PullRequest MergedPullRequest `json:"pullRequest"`
+
+	// Unpushed counts the commits on it that are neither in its pull request nor on
+	// GitHub, when they alone keep it (-1 when they couldn't be counted), and is 0
+	// otherwise. The window offers such a branch only once the user asks, and deletes it
+	// only once they confirm they don't need those commits: DeleteBranches deletes a pick
+	// at the commit offered whatever it holds, and its result names that commit, which
+	// brings the branch back until git prunes it.
+	Unpushed int `json:"unpushed"`
 }
 
 // MergedPullRequest is a merged pull request, as the cleanup of merged branches shows it.

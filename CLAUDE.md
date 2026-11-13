@@ -325,10 +325,15 @@ app:lint` reads.
   `WorktreeMaker` interface; no agent's own `--worktree` flag is used. A branch is deleted only
   with the conditional `git update-ref -d <ref> <oid>` (the repoguard tests ban `git branch
   -d/-D`): by `create.go`, of a branch it just fetched at a head the launch didn't check, and
-  otherwise only through `deleteBranchAt` in `internal/worktrees/branches.go`, when the user
+  otherwise only through `internal/worktrees/branches.go`, when the user
   ticked it (or, for the automatic cleanup, the user's rules pick it), every commit on it is on
   GitHub, and neither the user's protected patterns (`internal/branchrules`) nor a remote's
-  `HEAD` keeps it. Every job that changes a clone holds that clone's lock from
+  `HEAD` keeps it. The one exception is the cleanup of merged branches: a branch kept only
+  for its commits not on GitHub (`MergedBranch.Unpushed`) can be deleted there anyway, but
+  only once the user asks for such branches to be offered, ticks it (never ticked to start
+  with), and confirms a second dialog naming each and what it holds; pinned to the commit
+  shown, whose result names that commit. A branch checked out, protected, or a remote's
+  default never is. Every job that changes a clone holds that clone's lock from
   `internal/clonelock`, one `Set` that core builds and hands to each, keyed by
   `paths.Resolved`. Lock `act` before a clone's lock, never after. Worktree changes wait only
   for one another. A run (a release, checks, a script) is never waited for: a launch or a

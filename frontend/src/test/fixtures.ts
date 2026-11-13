@@ -1217,6 +1217,7 @@ export function mergedBranch(overrides: Partial<MergedBranch> = {}): MergedBranc
       url: 'https://github.com/acme-org/example-repo/pull/184',
       mergedAt: '2026-06-12T12:00:00Z',
     },
+    unpushed: 0,
     ...overrides,
   }
 }

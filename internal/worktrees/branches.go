@@ -492,11 +492,16 @@ func (s *Service) mergedBranch(ctx context.Context, g git, scan cloneBranches, l
 		out.Branch.Deletable = true
 	default:
 		n, err := g.unpushedOf(ctx, scan.clone.Path, lb.head)
-		if err == nil && n == 0 {
+		if err != nil {
+			n = -1
+		}
+
+		if n == 0 {
 			out.Branch.Deletable = true
 		} else {
-			out.Branch.Reason = "it has commits that aren't in pull request #" + strconv.Itoa(prs[newest].Number) +
-				" or on GitHub"
+			out.Unpushed = n
+			out.Branch.Reason = "it has " + unpushedText(n) + " that " + aren(n) + " in pull request #" +
+				strconv.Itoa(prs[newest].Number) + " or on GitHub"
 		}
 	}
 
@@ -548,7 +553,9 @@ func mergedFor(clone localrepos.LocalRepo, name string, answers map[BranchKey][]
 // DeleteBranches deletes the branches the user ticked in the cleanup of merged branches,
 // each checked again first: the repository locations must hold its clone, the user must not
 // protect it, it must not be a remote's default branch or checked out in any worktree,
-// and it must still point at the commit it was offered at. Each clone is read once and its
+// and it must still point at the commit it was offered at. A branch with commits that
+// aren't on GitHub (MergedBranch.Unpushed) is among the picks only once the user confirmed
+// they don't need them; pinned to the commit offered, it loses nothing they weren't shown. Each clone is read once and its
 // branches deleted in turn, a few clones at a time. It reports each outcome, in the order
 // picked, with the commit that restores a deleted branch.
 func (s *Service) DeleteBranches(ctx context.Context, picks []BranchPick) ([]BranchResult, error) {
