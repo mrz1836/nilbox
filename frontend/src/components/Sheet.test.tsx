@@ -1,6 +1,8 @@
 import { render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 
+import { MenuButton } from './Menu'
 import { Sheet } from './Sheet'
 
 // Body is a sheet's content: its title and a step arrow, disabled at the list's end.
@@ -78,5 +80,27 @@ describe('Sheet', () => {
       </Sheet>,
     )
     expect(document.activeElement).toBe(screen.getByRole('dialog').firstElementChild)
+  })
+
+  it('leaves Escape to a menu open in it, and closes on the next one', async () => {
+    const onClose = vi.fn()
+    render(
+      <Sheet labelledBy="title" onClose={onClose}>
+        <Body />
+        <MenuButton label="Snooze for…" items={() => [{ label: '1 day', onSelect: vi.fn() }]}>
+          More
+        </MenuButton>
+      </Sheet>,
+    )
+
+    await userEvent.click(screen.getByRole('button', { name: 'Snooze for…' }))
+    await userEvent.keyboard('{Escape}')
+
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Snooze for…' }), 'focus goes back to the menu’s button').toHaveFocus()
+    expect(onClose).not.toHaveBeenCalled()
+
+    await userEvent.keyboard('{Escape}')
+    expect(onClose).toHaveBeenCalledOnce()
   })
 })

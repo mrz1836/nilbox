@@ -89,8 +89,9 @@ function place(trigger: HTMLElement, panel: HTMLElement, placement: Placement): 
 
 // usePopover opens and closes a floating panel the way a desktop menu behaves: a click or
 // focus anywhere outside the button and the panel closes it, and Escape closes it and
-// puts focus back on the button. Escape is taken in the capture phase and marked handled
-// (defaultPrevented), so a page-level Escape handler can tell it was used. As the panel
+// puts focus back on the button. Escape is taken first, in the window's capture phase, and
+// marked handled (defaultPrevented), so a page-level Escape handler, and a modal dialog
+// the panel opened in (useModalDialog), can tell it was used and stay open. As the panel
 // opens, it is placed (see Placement) and focus moves as asked (see PopoverFocus).
 export function usePopover<T extends HTMLElement, P extends HTMLElement>({
   placement = 'below',
@@ -188,12 +189,12 @@ export function usePopover<T extends HTMLElement, P extends HTMLElement>({
 
     document.addEventListener('mousedown', onPointer)
     document.addEventListener('focusin', onFocus)
-    document.addEventListener('keydown', onKeyDown, true)
+    window.addEventListener('keydown', onKeyDown, true)
 
     return () => {
       document.removeEventListener('mousedown', onPointer)
       document.removeEventListener('focusin', onFocus)
-      document.removeEventListener('keydown', onKeyDown, true)
+      window.removeEventListener('keydown', onKeyDown, true)
     }
   }, [open])
 
