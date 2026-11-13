@@ -444,8 +444,9 @@ More in [The item menu and edits on GitHub](docs/desktop.md#the-item-menu-and-ed
 - **Everything in one place:** click a pull request's title for its files and diffs, its
   description (rendered with no remote images), its checks (failing first, the required ones
   marked, running ones pulsing), each reviewer's latest review, and a readiness sentence that
-  stays in view, such as **An approval · checks running · auto-merge available**. A dependency
-  bot's pull request says what it bumps (`golang.org/x/net 0.30.0 → 0.31.0 · minor`).
+  stays in view, such as **An approval · checks running · auto-merge available**, with the pull
+  request's worktree and agent session under it. A dependency bot's pull request says what it
+  bumps (`golang.org/x/net 0.30.0 → 0.31.0 · minor`).
 - **Easy to read:** lock files, generated files, and files with more than 400 changed lines start
   folded, viewed files get a tick, and **←** and **→** step through the list the pull request came
   from.

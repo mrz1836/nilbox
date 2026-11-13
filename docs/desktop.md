@@ -1301,7 +1301,8 @@ Every card gets it, in any list.
   lines start folded. A binary file, or one GitHub won't show, says so and offers ↗.
 - **The summary** on the right: a one-line readiness sentence (**Ready to merge**, **An approval
   · checks running · auto-merge available**, **Behind main**, **Conflicts with main**), which
-  stays in view at the top of the column while the rest scrolls; a chip for the kind of change
+  stays in view at the top of the column while the rest scrolls, with the pull request's
+  worktree and agent session under it, as its card shows them; a chip for the kind of change
   and the folders it touches (as in **in wallet/ and the top level**); the dependency it bumps
   (as in `golang.org/x/net 0.30.0 → 0.31.0 · minor`, a major in amber); **Closes**, the issues it
   closes once it merges (one already closed says how, as in **closed as not planned**), each
