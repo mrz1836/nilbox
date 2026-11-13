@@ -104,6 +104,9 @@ type StoredPull struct {
 	ChecksSkipped  int
 	ReviewDecision string
 
+	// ChecksAwaiting counts the workflow runs held for a maintainer's approval.
+	ChecksAwaiting int
+
 	Reviewers        int
 	Reviewed         int
 	Approvals        int
@@ -173,6 +176,7 @@ type GitHub interface {
 	UpdateBranch(ctx context.Context, tok github.Token, ref item.Ref, expectedHead string) (*github.BranchUpdate, error)
 	AddComment(ctx context.Context, tok github.Token, ref item.Ref, body string) (*github.Comment, error)
 	ClosePull(ctx context.Context, tok github.Token, ref item.Ref) error
+	ApproveWorkflowRun(ctx context.Context, tok github.Token, name repo.Name, runID int64) error
 }
 
 // Settings reads the settings the sheet follows: how to merge, and which files are
@@ -622,10 +626,14 @@ func factsOf(pull StoredPull, c *cached, r Review) Facts {
 		AutoMergeOn: r.AutoMerge != "", Closed: r.State != github.StateOpen, Sensitive: []string{},
 	}
 
+	workflows := workflowsCategory()
+
 	for _, file := range r.Files {
 		if file.Level == sensitive.LevelDanger && !slices.Contains(f.Sensitive, file.Category) {
 			f.Sensitive = append(f.Sensitive, file.Category)
 		}
+
+		f.ChangesWorkflows = f.ChangesWorkflows || (workflows != "" && file.Category == workflows)
 	}
 
 	if c == nil {
@@ -644,15 +652,32 @@ func factsOf(pull StoredPull, c *cached, r Review) Facts {
 }
 
 // countUnrun counts the workflow runs that ended without a check into f: those awaiting
-// approval, and those that failed to start.
+// approval, those of them an approval can name (a run ID read), and those that failed to
+// start.
 func (f *Facts) countUnrun(unrun []Unrun) {
 	for _, u := range unrun {
-		if u.Approval {
+		switch {
+		case u.Approval && u.RunID > 0:
 			f.AwaitingApproval++
-		} else {
+			f.Approvable++
+		case u.Approval:
+			f.AwaitingApproval++
+		default:
 			f.NotStarted++
 		}
 	}
+}
+
+// workflowsCategory is the short name a file in the workflows category carries
+// (File.Category), or "" when the build has no such category.
+func workflowsCategory() string {
+	for _, c := range sensitive.Categories() {
+		if c.ID == sensitive.CategoryWorkflows {
+			return c.Short
+		}
+	}
+
+	return ""
 }
 
 // countChecks counts the checks failing and pending into f, and those of them required.

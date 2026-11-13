@@ -34,7 +34,11 @@ const (
 //
 // The counts per check state come without listing the checks themselves, and review
 // requests and latest reviews come with their logins so a reviewer is counted once. The
-// head commit's SHA tells a snooze when a pull request was pushed, force-pushes included.
+// head commit's check suites come with only their conclusions and run IDs, for the
+// workflow runs GitHub holds for a maintainer's approval, which the rollup leaves out: they
+// cost one point more per batch of 50 (measured in November 2026: 2 points without them, 3
+// with). The head commit's SHA tells a snooze when a pull request was pushed, force-pushes
+// included.
 // The fields are a fragment the item query spreads too, so a card refreshed on its own
 // reads exactly what a whole refresh reads.
 const detailsQuery = detailsQueryHead + detailFieldsFragment
@@ -86,6 +90,9 @@ fragment DetailFields on Node {
         checkRunCountsByState { state count }
         statusContextCountsByState { state count }
       }
+    }
+    headSuites: commits(last: 1) {
+      nodes { commit { checkSuites(first: 50) { nodes { conclusion workflowRun { databaseId } } } } }
     }
   }
   ... on Issue {
@@ -288,6 +295,12 @@ type Checks struct {
 	Failed  int
 	Pending int
 	Skipped int
+
+	// Awaiting counts the head commit's GitHub Actions runs held until a maintainer approves
+	// them, as a fork's runs are: suites that ended ACTION_REQUIRED with a workflow run.
+	// GitHub counts none of them in State or the other counts, which can read SUCCESS while
+	// they wait.
+	Awaiting int
 }
 
 // Reviews counts who was asked to review a pull request and who has.
@@ -471,6 +484,7 @@ type detailsNode struct {
 	ReviewRequests     graphQLRequests   `json:"reviewRequests"`
 	LatestReviews      graphQLReviews    `json:"latestReviews"`
 	StatusCheckRollup  *graphQLRollup    `json:"statusCheckRollup"`
+	HeadSuites         graphQLHeadSuites `json:"headSuites"`
 	AutoMergeRequest   *graphQLAutoMerge `json:"autoMergeRequest"`
 	ProjectItems       graphQLProjects   `json:"projectItems"`
 	SubIssuesSummary   graphQLSubIssues  `json:"subIssuesSummary"`
@@ -622,7 +636,7 @@ func (n *detailsNode) details() (id string, item ItemDetails, ok bool) {
 			Commits:        n.Commits.TotalCount,
 			HeadOID:        n.HeadRefOID,
 			Mergeable:      n.Mergeable,
-			Checks:         n.StatusCheckRollup.checks(),
+			Checks:         n.checks(),
 			Reviews:        n.reviews(author),
 			ReviewRequests: n.ReviewRequests.requests(),
 			AutoMerge:      n.AutoMergeRequest.autoMerge(),
@@ -806,6 +820,53 @@ func (r *graphQLRollup) checks() Checks {
 	}
 
 	return c
+}
+
+// checks counts the head commit's checks from its rollup, and the workflow runs held for
+// approval from its check suites, which the rollup leaves out.
+func (n *detailsNode) checks() Checks {
+	c := n.StatusCheckRollup.checks()
+	c.Awaiting = n.HeadSuites.awaiting()
+
+	return c
+}
+
+// graphQLHeadSuites is the head commit's check suites, read through the pull request's last
+// commit rather than its rollup, which is null while no check has run, as on a first-time
+// contributor's fork whose every run waits for approval.
+type graphQLHeadSuites struct {
+	Nodes []*struct {
+		Commit *struct {
+			CheckSuites struct {
+				Nodes []*graphQLSuite `json:"nodes"`
+			} `json:"checkSuites"`
+		} `json:"commit"`
+	} `json:"nodes"`
+}
+
+// suites returns the last commit's check suites, nulls included, or nil when there is no
+// commit.
+func (h graphQLHeadSuites) suites() []*graphQLSuite {
+	for i := len(h.Nodes) - 1; i >= 0; i-- {
+		if n := h.Nodes[i]; n != nil && n.Commit != nil {
+			return n.Commit.CheckSuites.Nodes
+		}
+	}
+
+	return nil
+}
+
+// awaiting counts the suites whose workflow run waits for approval (heldRun).
+func (h graphQLHeadSuites) awaiting() int {
+	n := 0
+
+	for _, s := range h.suites() {
+		if s.heldRun() {
+			n++
+		}
+	}
+
+	return n
 }
 
 // outcome is where a check state is counted.

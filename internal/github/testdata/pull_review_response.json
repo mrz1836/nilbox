@@ -323,90 +323,106 @@
                         },
                         null
                     ]
-                },
-                "commit": {
-                    "checkSuites": {
-                        "nodes": [
-                            {
-                                "id": "CS_1",
-                                "conclusion": "SUCCESS",
-                                "app": {
-                                    "name": "GitHub Actions"
-                                },
-                                "workflowRun": {
-                                    "workflow": {
-                                        "name": "CodeQL"
-                                    }
-                                }
-                            },
-                            {
-                                "id": "CS_5",
-                                "conclusion": "FAILURE",
-                                "app": {
-                                    "name": "GitHub Actions"
-                                },
-                                "workflowRun": {
-                                    "workflow": {
-                                        "name": "e2e"
-                                    }
-                                }
-                            },
-                            {
-                                "id": "CS_6",
-                                "conclusion": "ACTION_REQUIRED",
-                                "app": {
-                                    "name": "GitHub Actions"
-                                },
-                                "workflowRun": {
-                                    "workflow": {
-                                        "name": "PR Management"
-                                    }
-                                }
-                            },
-                            {
-                                "id": "CS_7",
-                                "conclusion": "FAILURE",
-                                "app": {
-                                    "name": "GitHub Actions"
-                                },
-                                "workflowRun": {
-                                    "workflow": {
-                                        "name": "Auto-merge Trigger"
-                                    }
-                                }
-                            },
-                            {
-                                "id": "CS_8",
-                                "conclusion": "SUCCESS",
-                                "app": {
-                                    "name": "GitHub Actions"
-                                },
-                                "workflowRun": {
-                                    "workflow": {
-                                        "name": "Labeler"
-                                    }
-                                }
-                            },
-                            {
-                                "id": "CS_9",
-                                "conclusion": null,
-                                "app": {
-                                    "name": "Example CI"
-                                },
-                                "workflowRun": null
-                            },
-                            {
-                                "id": "CS_10",
-                                "conclusion": "STARTUP_FAILURE",
-                                "app": {
-                                    "name": "Example CI"
-                                },
-                                "workflowRun": null
-                            },
-                            null
-                        ]
-                    }
                 }
+            },
+            "headSuites": {
+                "nodes": [
+                    {
+                        "commit": {
+                            "checkSuites": {
+                                "nodes": [
+                                    {
+                                        "id": "CS_1",
+                                        "conclusion": "SUCCESS",
+                                        "app": {
+                                            "name": "GitHub Actions"
+                                        },
+                                        "workflowRun": {
+                                            "databaseId": 101,
+                                            "url": "https://github.com/acme-org/example-repo/actions/runs/101",
+                                            "workflow": {
+                                                "name": "CodeQL"
+                                            }
+                                        }
+                                    },
+                                    {
+                                        "id": "CS_5",
+                                        "conclusion": "FAILURE",
+                                        "app": {
+                                            "name": "GitHub Actions"
+                                        },
+                                        "workflowRun": {
+                                            "databaseId": 105,
+                                            "url": "https://github.com/acme-org/example-repo/actions/runs/105",
+                                            "workflow": {
+                                                "name": "e2e"
+                                            }
+                                        }
+                                    },
+                                    {
+                                        "id": "CS_6",
+                                        "conclusion": "ACTION_REQUIRED",
+                                        "app": {
+                                            "name": "GitHub Actions"
+                                        },
+                                        "workflowRun": {
+                                            "databaseId": 106,
+                                            "url": "https://github.com/acme-org/example-repo/actions/runs/106",
+                                            "workflow": {
+                                                "name": "PR Management"
+                                            }
+                                        }
+                                    },
+                                    {
+                                        "id": "CS_7",
+                                        "conclusion": "FAILURE",
+                                        "app": {
+                                            "name": "GitHub Actions"
+                                        },
+                                        "workflowRun": {
+                                            "databaseId": 107,
+                                            "url": "https://github.com/acme-org/example-repo/actions/runs/107",
+                                            "workflow": {
+                                                "name": "Auto-merge Trigger"
+                                            }
+                                        }
+                                    },
+                                    {
+                                        "id": "CS_8",
+                                        "conclusion": "SUCCESS",
+                                        "app": {
+                                            "name": "GitHub Actions"
+                                        },
+                                        "workflowRun": {
+                                            "databaseId": 108,
+                                            "url": "https://github.com/acme-org/example-repo/actions/runs/108",
+                                            "workflow": {
+                                                "name": "Labeler"
+                                            }
+                                        }
+                                    },
+                                    {
+                                        "id": "CS_9",
+                                        "conclusion": null,
+                                        "app": {
+                                            "name": "Example CI"
+                                        },
+                                        "workflowRun": null
+                                    },
+                                    {
+                                        "id": "CS_10",
+                                        "conclusion": "STARTUP_FAILURE",
+                                        "app": {
+                                            "name": "Example CI"
+                                        },
+                                        "workflowRun": null
+                                    },
+                                    null
+                                ]
+                            }
+                        }
+                    }
+                ]
             },
             "closes": {
                 "totalCount": 2,

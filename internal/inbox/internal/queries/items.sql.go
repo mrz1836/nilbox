@@ -230,7 +230,7 @@ SELECT
     r.delete_branch_on_merge, r.allow_update_branch, a.login AS account_login,
     d.item_id AS details_item_id, d.labels, d.comments, d.additions, d.deletions, d.changed_files, d.commits,
     d.mergeable, d.checks_state, d.checks_passed, d.checks_failed, d.checks_pending, d.checks_skipped,
-    d.review_decision, d.reviewers, d.reviewed, d.approvals, d.changes_requested, d.head_oid,
+    d.checks_awaiting, d.review_decision, d.reviewers, d.reviewed, d.approvals, d.changes_requested, d.head_oid,
     d.auto_merge_method, d.fetched_at AS details_fetched_at
 FROM items i
 JOIN repos r ON r.id = i.repo_id
@@ -282,6 +282,7 @@ type GetReviewItemRow struct {
 	ChecksFailed          *int64
 	ChecksPending         *int64
 	ChecksSkipped         *int64
+	ChecksAwaiting        *int64
 	ReviewDecision        *string
 	Reviewers             *int64
 	Reviewed              *int64
@@ -343,6 +344,7 @@ func (q *Queries) GetReviewItem(ctx context.Context, id int64) (GetReviewItemRow
 		&i.ChecksFailed,
 		&i.ChecksPending,
 		&i.ChecksSkipped,
+		&i.ChecksAwaiting,
 		&i.ReviewDecision,
 		&i.Reviewers,
 		&i.Reviewed,
@@ -433,7 +435,7 @@ SELECT
     i.item_updated_at, i.reason_review_requested, i.reason_authored, i.reason_assigned,
     d.item_id AS details_item_id, d.labels, d.projects, d.comments, d.additions, d.deletions,
     d.changed_files, d.commits, d.mergeable, d.checks_state, d.checks_passed, d.checks_failed,
-    d.checks_pending, d.checks_skipped, d.review_decision, d.reviewers, d.reviewed, d.approvals,
+    d.checks_pending, d.checks_skipped, d.checks_awaiting, d.review_decision, d.reviewers, d.reviewed, d.approvals,
     d.changes_requested, d.sub_issues_total, d.sub_issues_completed,
     d.fetched_at AS details_fetched_at, d.head_oid, d.review_users, d.review_teams, d.auto_merge_method,
     f.item_id AS files_item_id, f.head_oid AS files_head_oid, f.total AS files_total, f.files,
@@ -481,6 +483,7 @@ type ListItemsRow struct {
 	ChecksFailed          *int64
 	ChecksPending         *int64
 	ChecksSkipped         *int64
+	ChecksAwaiting        *int64
 	ReviewDecision        *string
 	Reviewers             *int64
 	Reviewed              *int64
@@ -551,6 +554,7 @@ func (q *Queries) ListItems(ctx context.Context, accountID int64) ([]ListItemsRo
 			&i.ChecksFailed,
 			&i.ChecksPending,
 			&i.ChecksSkipped,
+			&i.ChecksAwaiting,
 			&i.ReviewDecision,
 			&i.Reviewers,
 			&i.Reviewed,

@@ -132,10 +132,10 @@ describe('ReviewSummary', () => {
       <ReviewSummary
         review={review({
           unrun: [
-            { name: 'PR Management', approval: true },
-            { name: 'Auto-merge Trigger', approval: true },
-            { name: 'Auto-merge Trigger', approval: true },
-            { name: 'Auto-merge Trigger', approval: false },
+            { name: 'PR Management', approval: true, runId: 106, url: 'https://example.test/runs/106' },
+            { name: 'Auto-merge Trigger', approval: true, runId: 107, url: 'https://example.test/runs/107' },
+            { name: 'Auto-merge Trigger', approval: true, runId: 108, url: 'https://example.test/runs/108' },
+            { name: 'Auto-merge Trigger', approval: false, runId: 0, url: '' },
           ],
         })}
         item={undefined}
@@ -152,7 +152,12 @@ describe('ReviewSummary', () => {
       '1 workflow run that didn’t start: Auto-merge Trigger',
     ])
 
-    rerender(<ReviewSummary review={review({ checks: [], unrun: [{ name: '', approval: false }] })} item={undefined} />)
+    rerender(
+      <ReviewSummary
+        review={review({ checks: [], unrun: [{ name: '', approval: false, runId: 0, url: '' }] })}
+        item={undefined}
+      />,
+    )
     expect(screen.getByText('No checks on this commit.')).toBeInTheDocument()
     expect(screen.getByRole('list', { name: 'Workflow runs with no check' })).toHaveTextContent(
       '1 workflow run that didn’t start: an app',
@@ -160,6 +165,33 @@ describe('ReviewSummary', () => {
 
     rerender(<ReviewSummary review={review()} item={undefined} />)
     expect(screen.queryByRole('list', { name: 'Workflow runs with no check' })).not.toBeInTheDocument()
+  })
+
+  it('links each held run’s name to its run on GitHub, where it can be approved by hand', async () => {
+    render(
+      <ReviewSummary
+        review={review({
+          unrun: [
+            { name: 'PR Management', approval: true, runId: 106, url: 'https://example.test/runs/106' },
+            { name: 'Auto-merge Trigger', approval: true, runId: 0, url: '' },
+            { name: 'Auto-merge Trigger', approval: true, runId: 108, url: 'https://example.test/runs/108' },
+            { name: 'Example CI', approval: false, runId: 0, url: '' },
+          ],
+        })}
+        item={undefined}
+      />,
+    )
+
+    const runs = screen.getByRole('list', { name: 'Workflow runs with no check' })
+    expect(
+      within(runs)
+        .getAllByRole('button')
+        .map((b) => b.textContent),
+    ).toEqual(['PR Management', 'Auto-merge Trigger'])
+    expect(within(runs).queryByRole('button', { name: 'Example CI' })).not.toBeInTheDocument()
+
+    await userEvent.click(within(runs).getByRole('button', { name: 'Auto-merge Trigger' }))
+    expect(platform.openExternal).toHaveBeenCalledWith('https://example.test/runs/108')
   })
 
   it('says when a commit has no checks', () => {

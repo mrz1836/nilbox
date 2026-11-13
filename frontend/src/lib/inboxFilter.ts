@@ -36,13 +36,18 @@ export const inboxHint = 'Matches titles, repos, #numbers, branches, authors, la
 // names exactly. is:open matches every item, as the inbox holds only open ones.
 const fixedValues: Readonly<Record<string, ReadonlySet<string>>> = {
   is: new Set(['pr', 'issue', 'draft', 'pinned', 'conflict', 'open']),
-  checks: new Set(['failing', 'passing', 'pending']),
+  checks: new Set(['failing', 'awaiting', 'passing', 'pending']),
   review: new Set(['approved', 'changes_requested', 'required']),
 }
 
 // checkValues and reviewValues name a card's checks and reviews as the filter does, so a
 // filter agrees with what the card shows (lib/signals).
-const checkValues: Readonly<Record<string, string>> = { failed: 'failing', passed: 'passing', pending: 'pending' }
+const checkValues: Readonly<Record<string, string>> = {
+  failed: 'failing',
+  awaiting: 'awaiting',
+  passed: 'passing',
+  pending: 'pending',
+}
 
 // reviewValue names a pull request's reviews as review: does: approved, changes requested,
 // or waiting on a review the repository requires.

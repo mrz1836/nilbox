@@ -199,7 +199,9 @@ app:lint` reads.
   those events, keeps the menu bar current with what `internal/menubar` works out, runs the
   scheduler, the checks follower (`inbox.ChecksFollower`: the listed pull requests whose
   checks were running, but a muted repository's, read in one request through
-  `(*github.Client).FetchItems`, and nothing while none runs), the sweeper (these three as often as Settings → Refreshing
+  `(*github.Client).FetchItems`, and nothing while none runs; a pull request whose workflow
+  runs GitHub holds for approval, `item_details.checks_awaiting`, which its card marks held
+  in place of the rollup's state, isn't running, and waits for the whole refresh), the sweeper (these three as often as Settings → Refreshing
   says, through `periodic.RunEvery`, which core wakes on the Go-only
   `event.IntervalsChanged` the settings setter emits, so a change applies at once), the budget's `Saver`, the sessions watcher, the Release page's
   refresher, and the Hooks page's scans as tracked work, starts the deferred work
@@ -384,8 +386,22 @@ app:lint` reads.
   sheet's button, and with each rule it skips to accept. An UNSTABLE pull request's readiness
   line and merge warning say what GitHub counts as not passing: optional checks failing or
   running, and the head commit's workflow runs that ended without a check (`Unrun`, read in
-  the review query through the rollup's own `commit`: a fork's runs awaiting approval, or runs
-  that failed to start), which the sheet names beneath its checks. Each step is reported as an
+  the review query from the head commit's own check suites, `headSuites: commits(last: 1)`,
+  which the details fragment asks for under the same alias and arguments, so GraphQL merges
+  the two and a fork whose rollup is null still shows them: a fork's runs awaiting approval,
+  each with its run's ID and page, or runs that failed to start), which the sheet names
+  beneath its checks, each a link to its run. Runs awaiting approval are approved with
+  `approve_runs` ("Approve workflows to run"), offered in a bar under the sheet's header and
+  in the menu, never the button: held back until the sheet read every one's run ID (a cache
+  an older build kept has none), for a user with write access, and asking first, with a
+  warning, when the pull request changes workflow files. `Act` approves the runs the cache
+  read at the head the user saw (`loadAct` refuses another head as `pushed_since`), one REST
+  `POST .../actions/runs/{id}/approve` each (`(*github.Client).ApproveWorkflowRun`, through
+  `edit`), never one twice across the token retry; once GitHub approved any, a refusal of the
+  rest is the result's `Reason` (`runs_approved`, "Approved 2 of 4 ..."), not an error. The
+  sheet stays open after it, with the draft, and reads again (`ReadAgain`) at once, then
+  three seconds apart up to four more times, until fewer runs are held and a check is
+  running; each read rewrites the card, which the checks follower then keeps current. Each step is reported as an
   `event.ReviewProgress`, which the sheet shows while the user waits. Line comments are checked
   against the cached diff (`hunks.go`) before anything is sent. `Decide` marks every offer with
   what its text goes with (`Offer.Reviews`, `Offer.CommentsFirst`, and `Offer.CommentBlocked`,

@@ -28,7 +28,7 @@ const cache = item({
       { name: 'enhancement', color: '' },
       { name: 'good first issue', color: '' },
     ],
-    checks: { state: 'FAILURE', passed: 3, failed: 1, pending: 0, skipped: 0 },
+    checks: { state: 'FAILURE', passed: 3, failed: 1, pending: 0, skipped: 0, awaiting: 0 },
     reviews: { decision: 'APPROVED', reviewers: 1, reviewed: 1, approvals: 1, changesRequested: 0 },
   }),
 })
@@ -45,7 +45,7 @@ const draft = item({
   details: details({
     labels: [{ name: 'bug', color: '' }],
     mergeable: 'CONFLICTING',
-    checks: { state: 'PENDING', passed: 0, failed: 0, pending: 2, skipped: 0 },
+    checks: { state: 'PENDING', passed: 0, failed: 0, pending: 2, skipped: 0, awaiting: 0 },
     reviews: { decision: 'CHANGES_REQUESTED', reviewers: 1, reviewed: 1, approvals: 0, changesRequested: 1 },
   }),
 })
@@ -58,7 +58,7 @@ const required = item({
   author: 'octo-user',
   details: details({
     labels: [{ name: 'bugfix', color: '' }],
-    checks: { state: 'SUCCESS', passed: 4, failed: 0, pending: 0, skipped: 0 },
+    checks: { state: 'SUCCESS', passed: 4, failed: 0, pending: 0, skipped: 0, awaiting: 0 },
     reviews: { decision: 'REVIEW_REQUIRED', reviewers: 2, reviewed: 0, approvals: 0, changesRequested: 0 },
   }),
 })
@@ -71,7 +71,8 @@ const waiting = item({
   author: 'bot-user',
   details: details({
     labels: [],
-    checks: { state: '', passed: 0, failed: 0, pending: 0, skipped: 0 },
+    // A fork's runs, held for approval before any check ran.
+    checks: { state: '', passed: 0, failed: 0, pending: 0, skipped: 0, awaiting: 2 },
     reviews: { decision: '', reviewers: 0, reviewed: 0, approvals: 0, changesRequested: 0 },
   }),
 })
@@ -180,6 +181,8 @@ describe('filterInbox', () => {
     ['checks:failing', [1]],
     ['checks:pending', [2]],
     ['checks:passing', [3]],
+    ['checks:awaiting', [4]],
+    ['-checks:awaiting is:pr', [1, 2, 3, 7, 8]],
     ['review:approved', [1]],
     ['review:changes_requested', [2]],
     ['review:required', [3]],
@@ -283,6 +286,7 @@ describe('inboxSuggestions', () => {
       'pr',
     ])
     expect(inboxSuggestions(items, 'checks:', 7, 'me-user').options.map((o) => o.label)).toEqual([
+      'awaiting',
       'failing',
       'passing',
       'pending',

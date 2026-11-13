@@ -989,3 +989,110 @@ func TestNeitherIsTheButtonWhenNothingElseCanRun(t *testing.T) {
 
 	assert.Equal(t, ActionRebaseBot, Decide(f, PrefRepo).Primary)
 }
+
+// holding are a fork's pull request in merge state status whose n workflow runs wait for a
+// maintainer's approval, each with the run ID the sheet read.
+func holding(status string, n int) Facts {
+	f := facts(status)
+	f.AwaitingApproval, f.Approvable = n, n
+
+	return f
+}
+
+func TestDecideOffersToApproveHeldRuns(t *testing.T) {
+	t.Parallel()
+
+	const wait = "Wait for it to load from GitHub."
+
+	for _, c := range []struct {
+		name     string
+		facts    func() Facts
+		offered  bool
+		enabled  bool
+		reason   string
+		warnings []string
+	}{
+		{name: "none held", facts: func() Facts { return holding(github.MergeStateClean, 0) }},
+		{
+			name: "held", facts: func() Facts { return holding(github.MergeStateUnstable, 3) }, offered: true,
+			enabled: true,
+		},
+		{
+			name: "held behind the rules", facts: func() Facts { return holding(github.MergeStateBlocked, 1) },
+			offered: true, enabled: true,
+		},
+		{
+			name: "not read yet", offered: true, reason: wait,
+			facts: func() Facts { return holding("", 2) },
+		},
+		{
+			name: "cached by an older build, without run IDs", offered: true, reason: wait,
+			facts: func() Facts {
+				f := holding(github.MergeStateUnstable, 2)
+				f.Approvable = 1
+
+				return f
+			},
+		},
+		{
+			name: "without write access", offered: true,
+			reason: "Only people with write access to the repository can approve its workflow runs.",
+			facts: func() Facts {
+				f := holding(github.MergeStateUnstable, 2)
+				f.CanWrite = false
+
+				return f
+			},
+		},
+		{
+			name: "changing workflow files", offered: true, enabled: true, warnings: []string{workflowsWarning},
+			facts: func() Facts {
+				f := holding(github.MergeStateUnstable, 2)
+				f.Sensitive, f.ChangesWorkflows = []string{"Workflows"}, true
+
+				return f
+			},
+		},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+
+			p := Decide(c.facts(), PrefRepo)
+
+			o, ok := p.offer(ActionApproveRuns)
+			require.Equal(t, c.offered, ok)
+
+			if !ok {
+				return
+			}
+
+			assert.Equal(t, "Approve workflows to run", o.Label)
+			assert.Equal(t, c.enabled, o.Enabled)
+			assert.Equal(t, c.reason, o.Reason)
+			assert.Equal(t, append([]string{}, c.warnings...), o.Warnings)
+			assert.Equal(t, len(c.warnings) > 0, o.Confirm, "it asks first only to accept a warning")
+			assert.False(t, o.Reviews || o.CommentsFirst, "it sends no text")
+			assert.Empty(t, o.CommentBlocked)
+			assert.NotEqual(t, ActionApproveRuns, p.Primary)
+		})
+	}
+}
+
+func TestApprovingHeldRunsIsNeverTheButton(t *testing.T) {
+	t.Parallel()
+
+	// A review of the user's started on GitHub holds back every review, and a required
+	// check failing every merge: the approval is the only offer left, and the button only
+	// opens the menu that holds it.
+	f := holding(github.MergeStateBlocked, 2)
+	f.PendingReview, f.RequiredFailing, f.Failing, f.CanAutoMerge = true, 1, 1, false
+
+	p := Decide(f, PrefRepo)
+	assert.Equal(t, []Action{ActionApproveRuns}, enabled(p))
+	assert.Equal(t, ActionNone, p.Primary)
+
+	f.Closed = true
+
+	_, ok := Decide(f, PrefRepo).offer(ActionApproveRuns)
+	assert.False(t, ok, "nothing is offered once it was merged or closed")
+}

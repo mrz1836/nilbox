@@ -1,6 +1,7 @@
 package review
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/mrz1836/nilbox/internal/textutil"
@@ -41,6 +42,8 @@ func (a *action) message() string {
 		return a.notMergedMessage(ref)
 	case a.outcome == OutcomeBranchUpdating:
 		return "Updating the branch of " + ref
+	case a.kind == ActionApproveRuns:
+		return a.runsMessage(ref)
 	default:
 		return "Asked Dependabot to rebase " + ref
 	}
@@ -57,6 +60,17 @@ func (a *action) notMergedMessage(ref string) string {
 	default:
 		return "Commented on " + ref + ", but it wasn't merged: " + a.reason
 	}
+}
+
+// runsMessage says how many of the held workflow runs GitHub approved, and, when it refused
+// the rest, why.
+func (a *action) runsMessage(ref string) string {
+	approved, held := len(a.approvedRuns), len(a.runs)
+	if approved == held || a.reason == "" {
+		return "Approved " + textutil.Counted(approved, "workflow run", "workflow runs") + " on " + ref
+	}
+
+	return fmt.Sprintf("Approved %d of %d workflow runs on %s; GitHub refused the rest: %s", approved, held, ref, a.reason)
 }
 
 // closedMessage says what a close came to, with the comment it posted first, if any.

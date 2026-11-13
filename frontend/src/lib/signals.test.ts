@@ -4,7 +4,7 @@ import type { Checks, Reviews } from '../platform'
 import { checksSignal, reviewsSignal, sizeOf, sizeText, type Size } from './signals'
 
 function checks(overrides: Partial<Checks> = {}): Checks {
-  return { state: 'SUCCESS', passed: 0, failed: 0, pending: 0, skipped: 0, ...overrides }
+  return { state: 'SUCCESS', passed: 0, failed: 0, pending: 0, skipped: 0, awaiting: 0, ...overrides }
 }
 
 function reviews(overrides: Partial<Reviews> = {}): Reviews {
@@ -49,6 +49,34 @@ describe('checksSignal', () => {
       kind: 'pending',
       short: 'Running',
       long: 'Checks running',
+    })
+  })
+
+  it('marks workflow runs held for approval, which GitHub leaves out of its state, in place of a pass', () => {
+    // A fork's runs wait for a maintainer while another app's check passed: GitHub reads SUCCESS.
+    expect(checksSignal(checks({ passed: 1, awaiting: 4 }))).toEqual({
+      kind: 'awaiting',
+      tone: 'warning',
+      short: '4 held',
+      long: 'Checks: 4 workflow runs awaiting approval, 1 passed',
+    })
+    expect(checksSignal(checks({ state: '', awaiting: 1 }))).toEqual({
+      kind: 'awaiting',
+      tone: 'warning',
+      short: '1 held',
+      long: 'Checks: 1 workflow run awaiting approval',
+    })
+  })
+
+  it('puts a failure before held runs, and held runs before running checks', () => {
+    expect(checksSignal(checks({ state: 'FAILURE', passed: 2, failed: 1, awaiting: 3 }))).toMatchObject({
+      kind: 'failed',
+      long: 'Checks: 2 passed, 1 failing',
+    })
+    expect(checksSignal(checks({ state: 'PENDING', passed: 2, pending: 1, awaiting: 3 }))).toMatchObject({
+      kind: 'awaiting',
+      short: '3 held',
+      long: 'Checks: 3 workflow runs awaiting approval, 2 passed, 1 running',
     })
   })
 

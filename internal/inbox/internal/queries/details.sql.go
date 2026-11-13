@@ -64,10 +64,10 @@ func (q *Queries) SetReviewRequests(ctx context.Context, arg SetReviewRequestsPa
 const upsertDetails = `-- name: UpsertDetails :exec
 INSERT INTO item_details (
     item_id, labels, projects, comments, additions, deletions, changed_files, commits, head_oid, mergeable,
-    checks_state, checks_passed, checks_failed, checks_pending, checks_skipped, review_decision,
-    reviewers, reviewed, approvals, changes_requested, sub_issues_total, sub_issues_completed,
+    checks_state, checks_passed, checks_failed, checks_pending, checks_skipped, checks_awaiting,
+    review_decision, reviewers, reviewed, approvals, changes_requested, sub_issues_total, sub_issues_completed,
     review_users, review_teams, auto_merge_method, auto_merge_at, fetched_at
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT (item_id) DO UPDATE SET
     labels = excluded.labels,
     projects = excluded.projects,
@@ -83,6 +83,7 @@ ON CONFLICT (item_id) DO UPDATE SET
     checks_failed = excluded.checks_failed,
     checks_pending = excluded.checks_pending,
     checks_skipped = excluded.checks_skipped,
+    checks_awaiting = excluded.checks_awaiting,
     review_decision = excluded.review_decision,
     reviewers = excluded.reviewers,
     reviewed = excluded.reviewed,
@@ -113,6 +114,7 @@ type UpsertDetailsParams struct {
 	ChecksFailed       int64
 	ChecksPending      int64
 	ChecksSkipped      int64
+	ChecksAwaiting     int64
 	ReviewDecision     string
 	Reviewers          int64
 	Reviewed           int64
@@ -146,6 +148,7 @@ func (q *Queries) UpsertDetails(ctx context.Context, arg UpsertDetailsParams) er
 		arg.ChecksFailed,
 		arg.ChecksPending,
 		arg.ChecksSkipped,
+		arg.ChecksAwaiting,
 		arg.ReviewDecision,
 		arg.Reviewers,
 		arg.Reviewed,

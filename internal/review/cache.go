@@ -106,7 +106,9 @@ func contextOf(r *github.PullReview) pullContext {
 	}
 
 	for _, s := range r.Unrun {
-		c.Unrun = append(c.Unrun, Unrun{Name: s.Name, Approval: s.Conclusion == github.SuiteAwaitsApproval})
+		c.Unrun = append(c.Unrun, Unrun{
+			Name: s.Name, Approval: s.Conclusion == github.SuiteAwaitsApproval, RunID: s.RunID, URL: s.URL,
+		})
 	}
 
 	for _, ref := range r.Closes {

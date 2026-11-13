@@ -39,10 +39,11 @@ const noExtra: readonly MenuItem[] = []
 const anyFromButton = () => false
 
 // menuOnly reports an action that runs only when picked from the menu, on purpose: a pull
-// request's close. Picking it runs it (it asks first), so it is never the button, never
-// the action the sheet keeps chosen, never run by ⌘↩, and never counts as something to do.
+// request's close, and approving its held workflow runs, which the sheet's bar offers too.
+// Picking it runs it (a close asks first), so it is never the button, never the action the
+// sheet keeps chosen, never run by ⌘↩, and never counts as something to do.
 export function menuOnly(action: string): boolean {
-  return action === 'close'
+  return action === 'close' || action === 'approve_runs'
 }
 
 // ActionButton is a sheet's split button: the action it runs, labelled with exactly what

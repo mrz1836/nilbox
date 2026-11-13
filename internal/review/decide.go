@@ -86,9 +86,15 @@ type Facts struct {
 	AwaitingApproval int
 	NotStarted       int
 
+	// Approvable counts the runs awaiting approval whose run ID the sheet read, which an
+	// approval names; fewer than AwaitingApproval in a cache an older build kept.
+	Approvable int
+
 	// Sensitive names the sensitive categories of danger level the pull request changes,
-	// as in "Workflows".
-	Sensitive []string
+	// as in "Workflows", and ChangesWorkflows reports that the workflows category is among
+	// them: runs approved would use the pull request's own versions of those files.
+	Sensitive        []string
+	ChangesWorkflows bool
 
 	// Base is the branch it merges into.
 	Base string
@@ -170,6 +176,12 @@ func (d decider) offers() []Offer {
 		out = append(out, d.updateBranch())
 	}
 
+	// GitHub holds a fork's workflow runs until a maintainer approves them, and an
+	// approval is what starts its checks, whatever else the pull request waits on.
+	if f.AwaitingApproval > 0 {
+		out = append(out, d.approveRuns())
+	}
+
 	out = append(out, d.closePull())
 	out = slices.DeleteFunc(out, func(o Offer) bool { return o.Action == ActionNone })
 
@@ -197,6 +209,34 @@ func (d decider) rebaseBot() Offer {
 		o.Reason = "Dependabot only takes commands from people with push access to the repository."
 	case f.MergeState != github.MergeStateBehind && f.MergeState != github.MergeStateDirty && !f.CanUpdateBranch:
 		o.Reason = fmt.Sprintf("It's up to date with %s, so there's nothing to rebase.", base(f))
+	default:
+		o.Enabled = true
+	}
+
+	return o
+}
+
+// workflowsWarning is what approving runs asks the user to accept when the pull request
+// changes workflow files.
+const workflowsWarning = "It changes workflow files, and these runs would use its versions of them."
+
+// approveRuns offers to approve the workflow runs GitHub holds for a maintainer's
+// approval: once the sheet read every one's run ID, for a user with write access. It runs
+// on click, but asks first when the pull request changes workflow files, which the runs
+// would use. It is never the sheet's button, and sends no text.
+func (d decider) approveRuns() Offer {
+	f := d.f
+	o := Offer{Action: ActionApproveRuns, Label: "Approve workflows to run", Warnings: []string{}}
+
+	if f.ChangesWorkflows {
+		o.Warnings = []string{workflowsWarning}
+	}
+
+	switch {
+	case f.MergeState == "" || f.Approvable < f.AwaitingApproval:
+		o.Reason = "Wait for it to load from GitHub."
+	case !f.CanWrite:
+		o.Reason = "Only people with write access to the repository can approve its workflow runs."
 	default:
 		o.Enabled = true
 	}

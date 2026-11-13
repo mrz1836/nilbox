@@ -1,3 +1,5 @@
+import { Fragment } from 'react'
+
 import { counted } from '../../lib/format'
 import { refText } from '../../lib/format'
 import { issueLook } from '../../lib/issues'
@@ -152,10 +154,44 @@ function CheckList({ checks }: { checks: readonly ReviewCheck[] }) {
   )
 }
 
+// RunNames names each workflow of runs once, each a link to its run's page on GitHub when
+// the sheet read one: where to approve a run GitHub wouldn't let the sheet approve.
+export function RunNames({ runs }: { runs: readonly ReviewUnrun[] }) {
+  const pages = new Map<string, string>()
+
+  for (const u of runs) {
+    const name = u.name || 'an app'
+
+    if (!pages.has(name) || pages.get(name) === '') {
+      pages.set(name, u.url)
+    }
+  }
+
+  return [...pages].map(([name, url], i) => (
+    <Fragment key={name}>
+      {i > 0 && ', '}
+      {url === '' ? (
+        name
+      ) : (
+        <button
+          type="button"
+          title={url}
+          onClick={() => {
+            openExternal(url)
+          }}
+          className="hover:text-accent hover:underline"
+        >
+          {name}
+        </button>
+      )}
+    </Fragment>
+  ))
+}
+
 // Unrun names the head commit's workflow runs that ended without a check and without
 // passing, which GitHub counts as not passing though no check shows them: those waiting for
 // a maintainer's approval, as a fork's runs do, and those that failed to start, each
-// workflow named once.
+// workflow named once, as a link to its run.
 function Unrun({ unrun }: { unrun: readonly ReviewUnrun[] }) {
   const lines = [
     { runs: unrun.filter((u) => u.approval), words: 'awaiting approval' },
@@ -172,7 +208,9 @@ function Unrun({ unrun }: { unrun: readonly ReviewUnrun[] }) {
         <li key={words}>
           {counted(runs.length, 'workflow run', 'workflow runs')} {words}
           {': '}
-          <span className="text-muted">{[...new Set(runs.map((u) => u.name || 'an app'))].join(', ')}</span>
+          <span className="text-muted">
+            <RunNames runs={runs} />
+          </span>
         </li>
       ))}
     </ul>

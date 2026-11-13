@@ -31,15 +31,17 @@ export interface Signal<K extends string> {
   long: string
 }
 
-export type ChecksKind = 'passed' | 'failed' | 'pending' | 'none'
+export type ChecksKind = 'passed' | 'failed' | 'awaiting' | 'pending' | 'none'
 
 // checksSignal reads the head commit's checks. Skipped checks count toward neither side,
-// so a pull request whose remaining checks all pass reads as fully passed.
+// so a pull request whose remaining checks all pass reads as fully passed. Workflow runs
+// GitHub holds until a maintainer approves them, as a fork's, come right after a failure:
+// GitHub's own state leaves them out, and can read as passed while they wait.
 export function checksSignal(checks: Checks): Signal<ChecksKind> {
-  const { state, passed, failed, pending, skipped } = checks
+  const { state, passed, failed, pending, skipped, awaiting } = checks
   const ran = passed + failed + pending
 
-  if (state === '' && ran === 0 && skipped === 0) {
+  if (state === '' && ran === 0 && skipped === 0 && awaiting === 0) {
     return { kind: 'none', tone: 'muted', short: 'No checks', long: 'No checks on the latest commit' }
   }
 
@@ -58,6 +60,17 @@ export function checksSignal(checks: Checks): Signal<ChecksKind> {
       tone: 'danger',
       short: ran > 0 ? fraction : 'Failing',
       long: ran > 0 ? long : 'Checks failing',
+    }
+  }
+
+  if (awaiting > 0) {
+    const held = `${counted(awaiting, 'workflow run', 'workflow runs')} awaiting approval`
+
+    return {
+      kind: 'awaiting',
+      tone: 'warning',
+      short: `${formatCount(awaiting)} held`,
+      long: parts.length > 0 ? `Checks: ${held}, ${parts.join(', ')}` : `Checks: ${held}`,
     }
   }
 

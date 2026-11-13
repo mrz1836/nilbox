@@ -2,6 +2,8 @@ package review
 
 import (
 	"context"
+	"slices"
+	"strconv"
 	"testing"
 	"testing/synctest"
 	"time"
@@ -853,4 +855,183 @@ func TestBadCredentialsMidwayAreRetriedNotReported(t *testing.T) {
 
 	_, err := h.svc.Act(t.Context(), ActRequest{ItemID: pullID, Action: ActionApproveMerge, Head: headA, Accept: true})
 	require.True(t, github.IsBadCredentials(err), "the actor retries a refused token; a second refusal is its error")
+}
+
+// heldRunsHarness is a harness whose pull request the sheet has read at headA, unstable
+// with the workflow runs with IDs runs waiting for approval, and another app's suite that
+// failed to start. Its diff changes a workflow, so approving them asks first.
+func heldRunsHarness(t *testing.T, runs ...int64) *harness {
+	t.Helper()
+
+	h := newHarness(t)
+	h.github.review = pullReview(headA, github.MergeStateUnstable)
+	h.github.review.Unrun = []github.UnrunSuite{{Name: "Example CI", Conclusion: "STARTUP_FAILURE"}}
+
+	for _, id := range runs {
+		h.github.review.Unrun = append(h.github.review.Unrun, github.UnrunSuite{
+			Name: "Workflow " + strconv.FormatInt(id, 10), Conclusion: github.SuiteAwaitsApproval, RunID: id,
+			URL: "https://github.com/acme-org/example-repo/actions/runs/" + strconv.FormatInt(id, 10),
+		})
+	}
+
+	h.refreshed(t)
+
+	return h
+}
+
+func TestApproveHeldRuns(t *testing.T) {
+	t.Parallel()
+
+	h := heldRunsHarness(t, 101, 102)
+
+	before, err := h.svc.Open(t.Context(), pullID)
+	require.NoError(t, err)
+
+	i := slices.IndexFunc(before.Offers, func(o Offer) bool { return o.Action == ActionApproveRuns })
+	require.GreaterOrEqual(t, i, 0, "the sheet offers to approve them")
+	assert.True(t, before.Offers[i].Enabled)
+	assert.Equal(t, []string{workflowsWarning}, before.Offers[i].Warnings, "#7's diff changes a workflow")
+
+	res := h.act(t, ActRequest{Action: ActionApproveRuns, Accept: true, Body: "Not sent."})
+	assert.Equal(t, OutcomeRunsApproved, res.Outcome)
+	assert.Equal(t, "Approved 2 workflow runs on acme-org/example-repo#7", res.Message)
+	assert.Empty(t, res.Reason)
+	assert.Equal(t, []string{"Approved Workflow 101", "Approved Workflow 102"}, res.Steps)
+	assert.False(t, res.LeftReview || res.LeftInbox || res.Commented)
+	assert.Equal(t, []string{"acme-org/example-repo:101", "acme-org/example-repo:102"}, h.github.approved,
+		"each run is approved once, in its repository, by its ID")
+	assert.Equal(t, []string{callApprove, callApprove}, h.github.requests(),
+		"no text is posted, and nothing else is read or sent")
+	assert.Equal(t, []string{"Checking your account", "Approving Workflow 101", "Approving Workflow 102"}, h.steps(t))
+
+	opened, err := h.svc.Open(t.Context(), pullID)
+	require.NoError(t, err)
+	assert.Empty(t, opened.FetchedAt, "the read before the approval no longer counts as current")
+
+	// The sheet's next read finds the runs started: none held, and their checks queued.
+	reads := h.github.called(callReview)
+	h.github.review = pullReview(headA, github.MergeStateBlocked)
+	h.github.review.Checks = append(h.github.review.Checks, github.Check{
+		Kind: github.CheckKindRun, Name: "lint", Workflow: "Workflow 101", State: "QUEUED", Outcome: github.CheckPending,
+	})
+
+	r := h.refreshed(t)
+	assert.Equal(t, reads+1, h.github.called(callReview), "a refresh right after reads again")
+	assert.Empty(t, r.Unrun)
+
+	assert.False(t, slices.ContainsFunc(r.Offers, func(o Offer) bool { return o.Action == ActionApproveRuns }),
+		"nothing is left to approve")
+}
+
+func TestApprovingOneHeldRunSaysSo(t *testing.T) {
+	t.Parallel()
+
+	h := heldRunsHarness(t, 101)
+
+	res := h.act(t, ActRequest{Action: ActionApproveRuns, Accept: true})
+	assert.Equal(t, "Approved 1 workflow run on acme-org/example-repo#7", res.Message)
+}
+
+func TestApprovingHeldRunsAsksFirstWhenItChangesWorkflows(t *testing.T) {
+	t.Parallel()
+
+	h := heldRunsHarness(t, 101)
+
+	_, err := h.svc.Act(t.Context(), ActRequest{ItemID: pullID, Action: ActionApproveRuns, Head: headA})
+	require.ErrorIs(t, err, ErrWarningsNotAccepted)
+	assert.Zero(t, h.github.called(callApprove))
+
+	// Without the workflow in its diff, it runs on the click.
+	h = newHarness(t)
+	h.github.diff = &github.PullDiff{Head: headA, Total: 1, Complete: true, Files: []github.PullFile{
+		{Path: cacheFile, Status: "modified", Patch: "@@ -1 +1 @@\n-a\n+b", HasPatch: true, Additions: 1, Deletions: 1},
+	}}
+	h.github.review = pullReview(headA, github.MergeStateUnstable)
+	h.github.review.Unrun = []github.UnrunSuite{{Name: "CI", Conclusion: github.SuiteAwaitsApproval, RunID: 7}}
+	h.refreshed(t)
+
+	res := h.act(t, ActRequest{Action: ActionApproveRuns})
+	assert.Equal(t, OutcomeRunsApproved, res.Outcome)
+	assert.Equal(t, []string{"acme-org/example-repo:7"}, h.github.approved)
+}
+
+func TestARetriedTokenNeverApprovesARunTwice(t *testing.T) {
+	t.Parallel()
+
+	h := heldRunsHarness(t, 101, 102)
+	h.github.approveOnce = map[int64]error{102: badCredentials()}
+
+	res := h.act(t, ActRequest{Action: ActionApproveRuns, Accept: true})
+	assert.Equal(t, OutcomeRunsApproved, res.Outcome)
+	assert.Equal(t, []string{"acme-org/example-repo:101", "acme-org/example-repo:102"}, h.github.approved)
+	assert.Equal(t, 3, h.github.called(callApprove), "101 once, then 102 with each token")
+	assert.Equal(t, 2, h.inbox.tries)
+}
+
+func TestApprovingHeldRunsPartwayIsAResult(t *testing.T) {
+	t.Parallel()
+
+	h := heldRunsHarness(t, 101, 102, 103)
+	h.github.approveErrs = map[int64]error{102: uierr.New(
+		"GitHub wouldn't approve workflow run 102 of acme-org/example-repo: Resource not accessible by integration.",
+		errGateShut,
+	)}
+
+	res := h.act(t, ActRequest{Action: ActionApproveRuns, Accept: true})
+	assert.Equal(t, OutcomeRunsApproved, res.Outcome)
+	assert.Equal(t, "GitHub wouldn't approve workflow run 102 of acme-org/example-repo: Resource not accessible by "+
+		"integration", res.Reason)
+	assert.Equal(t, "Approved 1 of 3 workflow runs on acme-org/example-repo#7; GitHub refused the rest: GitHub "+
+		"wouldn't approve workflow run 102 of acme-org/example-repo: Resource not accessible by integration", res.Message)
+	assert.Equal(t, []string{"Approved Workflow 101"}, res.Steps)
+	assert.Equal(t, []string{"acme-org/example-repo:101"}, h.github.approved, "the first refusal stops the rest")
+}
+
+func TestApprovingHeldRunsThatGitHubRefusesFirstIsAnError(t *testing.T) {
+	t.Parallel()
+
+	h := heldRunsHarness(t, 101, 102)
+	h.github.approveErrs = map[int64]error{101: errGateShut}
+
+	_, err := h.svc.Act(t.Context(), ActRequest{ItemID: pullID, Action: ActionApproveRuns, Head: headA, Accept: true})
+	require.ErrorIs(t, err, errGateShut, "nothing happened, so it is an error")
+	assert.Empty(t, h.github.approved)
+	assert.Equal(t, 1, h.github.called(callApprove))
+}
+
+func TestApprovingHeldRunsOfAPullRequestPushedSinceSendsNothing(t *testing.T) {
+	t.Parallel()
+
+	h := heldRunsHarness(t, 101)
+
+	res := h.act(t, ActRequest{Action: ActionApproveRuns, Head: headB, Accept: true})
+	assert.Equal(t, OutcomePushedSince, res.Outcome, "the runs read belong to another head than the one the user saw")
+	assert.Zero(t, h.github.called(callApprove))
+	assert.Zero(t, h.inbox.acts)
+}
+
+func TestApprovingHeldRunsWithoutTheirIDsWaits(t *testing.T) {
+	t.Parallel()
+
+	// A cache an older build kept names the held runs without their IDs.
+	h := newHarness(t)
+	h.github.review = pullReview(headA, github.MergeStateUnstable)
+	h.github.review.Unrun = []github.UnrunSuite{{Name: "CI", Conclusion: github.SuiteAwaitsApproval}}
+	h.refreshed(t)
+
+	_, err := h.svc.Act(t.Context(), ActRequest{ItemID: pullID, Action: ActionApproveRuns, Head: headA, Accept: true})
+	require.ErrorIs(t, err, ErrNotOffered)
+	assert.Equal(t, "Wait for it to load from GitHub.", uierr.Message(err))
+	assert.Zero(t, h.github.called(callApprove))
+}
+
+func TestApprovingHeldRunsTakesWriteAccess(t *testing.T) {
+	t.Parallel()
+
+	h := heldRunsHarness(t, 101)
+	h.inbox.pull.ViewerPermission = "READ"
+
+	_, err := h.svc.Act(t.Context(), ActRequest{ItemID: pullID, Action: ActionApproveRuns, Head: headA, Accept: true})
+	require.ErrorIs(t, err, ErrNotOffered)
+	assert.Zero(t, h.github.called(callApprove))
 }
