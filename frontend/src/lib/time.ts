@@ -138,6 +138,27 @@ export function formatDateTime(iso: string, locale?: string): string {
   return ms === undefined ? '' : dateFormat(locale, { dateStyle: 'medium', timeStyle: 'short' }).format(ms)
 }
 
+// formatDay names a day GitHub keeps as midnight UTC, such as a milestone's due date, as that
+// day wherever the user is: "Dec 1, 2026". locale is for tests; the app uses the system's.
+export function formatDay(iso: string, locale?: string): string {
+  const ms = parseTime(iso)
+
+  return ms === undefined ? '' : dateFormat(locale, { dateStyle: 'medium', timeZone: 'UTC' }).format(ms)
+}
+
+// dayPassed reports that the day GitHub keeps as midnight UTC, iso, such as a milestone's due
+// date, has passed by now's own calendar, as formatDay names it: it is over once the user's
+// day is a later one.
+export function dayPassed(now: Date, iso: string): boolean {
+  if (parseTime(iso) === undefined) {
+    return false
+  }
+
+  const today = [now.getFullYear(), now.getMonth() + 1, now.getDate()].map((n) => String(n).padStart(2, '0'))
+
+  return today.join('-') > iso.slice(0, 10)
+}
+
 // capitalize starts a phrase with a capital, for formatWhen at the start of a line.
 export function capitalize(phrase: string): string {
   return phrase.charAt(0).toUpperCase() + phrase.slice(1)

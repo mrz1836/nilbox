@@ -131,7 +131,7 @@ export function withStep(progress: Progress | null, step: string): Progress | nu
 }
 
 // ProgressEvent names an event that reports the steps of a sheet's action.
-export type ProgressEvent = 'review:progress'
+export type ProgressEvent = 'review:progress' | 'issue:progress'
 
 // useActionProgress follows an action on the item with id as the backend reports its
 // steps on event, from the moment the sheet sets it under way until the sheet sets it to

@@ -31,9 +31,9 @@ export interface EditActions {
   // and reports its own failures, so it never rejects.
   onUnassign: (item: InboxItem) => Promise<void>
   onRemoveReview: (item: InboxItem) => Promise<void>
-  // onReview opens a pull request in the review sheet, from the row's tab. Without it the
-  // menu offers no review.
-  onReview?: ((item: InboxItem, tab: TriageTab) => void) | undefined
+  // onOpen opens the item in its sheet, from the row's tab: the review sheet for a pull
+  // request, the issue sheet for an issue. Without it the menu offers neither.
+  onOpen?: ((item: InboxItem, tab: TriageTab) => void) | undefined
 }
 
 export interface ItemMenuProps {
@@ -261,20 +261,23 @@ function githubEdits(item: InboxItem, edits: EditActions, work: RowWork, start: 
 // controls, and stays in sight, turning to a spinner, while the row is busy with GitHub.
 // Its items are built only as it opens.
 export function ItemMenu({ item, tab, triage, edits, work, start }: ItemMenuProps) {
-  const onReview = edits.onReview
+  const onOpen = edits.onOpen
   const review: MenuItem[] =
-    item.kind === 'pr' && onReview !== undefined
-      ? [
+    onOpen === undefined
+      ? []
+      : [
           {
-            label: 'Review…',
+            label: item.kind === 'pr' ? 'Review…' : 'View issue…',
             icon: <EyeIcon className={iconClass} />,
-            title: 'See its changes and approve, comment, or merge it here',
+            title:
+              item.kind === 'pr'
+                ? 'See its changes and approve, comment, or merge it here'
+                : 'Read its conversation, and comment on it or close it here',
             onSelect: () => {
-              onReview(item, tab)
+              onOpen(item, tab)
             },
           },
         ]
-      : []
   const items = (): MenuItem[] => [
     ...review,
     {

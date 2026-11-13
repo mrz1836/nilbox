@@ -423,10 +423,10 @@ describe('teamsText', () => {
   })
 })
 
-describe('ItemMenu review', () => {
+describe('ItemMenu open', () => {
   it('opens a pull request in the review sheet', async () => {
     const triage = triageActions()
-    const edits = { ...editActions(), onReview: vi.fn() }
+    const edits = { ...editActions(), onOpen: vi.fn() }
     const it = item()
 
     render(
@@ -438,15 +438,30 @@ describe('ItemMenu review', () => {
 
     const menu = await openMenu()
     await userEvent.click(menu.getByRole('menuitem', { name: 'Review…' }))
-    expect(edits.onReview).toHaveBeenCalledWith(it, 'inbox')
+    expect(edits.onOpen).toHaveBeenCalledWith(it, 'inbox')
   })
 
-  it('offers no review of an issue', async () => {
-    const edits = { ...editActions(), onReview: vi.fn() }
+  it('opens an issue in the issue sheet', async () => {
+    const edits = { ...editActions(), onOpen: vi.fn() }
+    const it = item({ kind: 'issue' })
 
     render(
       <ul>
-        <ItemRow item={item({ kind: 'issue' })} launch={null} triage={triageActions()} edits={edits} />
+        <ItemRow item={it} launch={null} tab="inbox" triage={triageActions()} edits={edits} />
+      </ul>,
+      { wrapper: at() },
+    )
+
+    const menu = await openMenu()
+    expect(menu.queryByRole('menuitem', { name: 'Review…' })).not.toBeInTheDocument()
+    await userEvent.click(menu.getByRole('menuitem', { name: 'View issue…' }))
+    expect(edits.onOpen).toHaveBeenCalledWith(it, 'inbox')
+  })
+
+  it('offers neither without a sheet', async () => {
+    render(
+      <ul>
+        <ItemRow item={item()} launch={null} triage={triageActions()} edits={editActions()} />
       </ul>,
       { wrapper: at() },
     )

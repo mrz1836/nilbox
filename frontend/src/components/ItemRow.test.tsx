@@ -518,18 +518,22 @@ describe('ItemRow worktree tag', () => {
   })
 })
 
-describe('ItemRow review', () => {
+describe('ItemRow open', () => {
   it('opens a pull request in the review sheet from its title, and GitHub otherwise', async () => {
-    const onReview = vi.fn()
+    const onOpen = vi.fn()
     const user = userEvent.setup()
+    const pull = item()
     render(
       <ul>
-        <ItemRow item={item()} launch={null} tab="dismissed" onReview={onReview} />
+        <ItemRow item={pull} launch={null} tab="dismissed" onOpen={onOpen} />
       </ul>,
     )
 
-    await user.click(screen.getByRole('button', { name: 'Add the widget cache' }))
-    expect(onReview).toHaveBeenCalledExactlyOnceWith(1, 'dismissed')
+    const title = screen.getByRole('button', { name: 'Add the widget cache' })
+    expect(title).toHaveAttribute('title', 'Add the widget cache\nReview it here; ⌘-click opens GitHub')
+
+    await user.click(title)
+    expect(onOpen).toHaveBeenCalledExactlyOnceWith(pull, 'dismissed')
     expect(platform.openExternal).not.toHaveBeenCalled()
 
     await user.keyboard('{Meta>}')
@@ -541,16 +545,38 @@ describe('ItemRow review', () => {
     expect(platform.openExternal).toHaveBeenCalledTimes(2)
   })
 
-  it('opens an issue on GitHub', async () => {
-    const onReview = vi.fn()
+  it('opens an issue in the issue sheet from its title', async () => {
+    const onOpen = vi.fn()
+    const crash = item({
+      kind: 'issue',
+      title: 'Crash on start',
+      url: 'https://github.com/acme-org/example-repo/issues/8',
+    })
     render(
       <ul>
-        <ItemRow item={item({ kind: 'issue', title: 'Crash on start' })} launch={null} onReview={onReview} />
+        <ItemRow item={crash} launch={null} onOpen={onOpen} />
+      </ul>,
+    )
+
+    const title = screen.getByRole('button', { name: 'Crash on start' })
+    expect(title).toHaveAttribute('title', 'Crash on start\nRead it here; ⌘-click opens GitHub')
+
+    await userEvent.click(title)
+    expect(onOpen).toHaveBeenCalledExactlyOnceWith(crash, 'inbox')
+
+    await userEvent.click(screen.getByRole('button', { name: 'Open on GitHub' }))
+    expect(platform.openExternal).toHaveBeenCalledWith('https://github.com/acme-org/example-repo/issues/8')
+  })
+
+  it('opens a card on GitHub when no sheet does', async () => {
+    render(
+      <ul>
+        <ItemRow item={item({ kind: 'issue', title: 'Crash on start' })} launch={null} />
       </ul>,
     )
 
     await userEvent.click(screen.getByRole('button', { name: 'Crash on start' }))
-    expect(onReview).not.toHaveBeenCalled()
+    expect(platform.openExternal).toHaveBeenCalledOnce()
     expect(screen.queryByRole('button', { name: 'Open on GitHub' })).not.toBeInTheDocument()
   })
 

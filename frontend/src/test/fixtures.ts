@@ -33,6 +33,12 @@ import type {
   HooksList,
   ImportEntry,
   InboxItem,
+  Issue,
+  IssueLinked,
+  IssueOffer,
+  IssueResult,
+  IssueTimelineItem,
+  IssueTimelinePage,
   InboxList,
   InboxSnapshot,
   Info,
@@ -1428,6 +1434,196 @@ export function reviewResult(overrides: Partial<ReviewResult> = {}): ReviewResul
     leftReview: true,
     leftInbox: false,
     method: '',
+    ...overrides,
+  }
+}
+
+// issueOffer is an offer to comment on issue 12, enabled.
+export function issueOffer(overrides: Partial<IssueOffer> = {}): IssueOffer {
+  return {
+    action: 'comment',
+    label: 'Comment',
+    enabled: true,
+    reason: '',
+    confirm: false,
+    commentsFirst: false,
+    commentBlocked: '',
+    ...overrides,
+  }
+}
+
+// closeIssueOffer is an offer to close issue 12 as completed, which asks first and posts
+// the text before it.
+export function closeIssueOffer(overrides: Partial<IssueOffer> = {}): IssueOffer {
+  return issueOffer({
+    action: 'close_completed',
+    label: 'Close as completed',
+    confirm: true,
+    commentsFirst: true,
+    ...overrides,
+  })
+}
+
+// issueRef is issue 3 of example-repo, open, as the sheet names a linked item.
+export function issueRef(overrides: Partial<IssueLinked> = {}): IssueLinked {
+  return {
+    kind: 'issue',
+    repo: 'acme-org/example-repo',
+    number: 3,
+    title: 'Parser bug',
+    url: 'https://github.com/acme-org/example-repo/issues/3',
+    state: 'OPEN',
+    stateReason: '',
+    draft: false,
+    ...overrides,
+  }
+}
+
+// pullRef is pull request 14 of example-repo, open, as the sheet names a linked item.
+export function pullRef(overrides: Partial<IssueLinked> = {}): IssueLinked {
+  return issueRef({
+    kind: 'pr',
+    number: 14,
+    title: 'Keep the trailing newline',
+    url: 'https://github.com/acme-org/example-repo/pull/14',
+    ...overrides,
+  })
+}
+
+// issueEvent is a timeline entry of issue 12: octo-other labeled it bug, two days ago.
+export function issueEvent(overrides: Partial<IssueTimelineItem> = {}): IssueTimelineItem {
+  return {
+    kind: 'labeled',
+    id: 'LE_1',
+    at: '2026-06-13T12:00:00Z',
+    actor: 'octo-other',
+    actorIsBot: false,
+    mine: false,
+    body: '',
+    trimmed: false,
+    url: '',
+    association: '',
+    editedAt: '',
+    minimized: false,
+    minimizedReason: '',
+    ref: null,
+    willClose: false,
+    commit: '',
+    duplicateOf: null,
+    stateReason: '',
+    label: { name: 'bug', color: '#d73a4a' },
+    assignee: '',
+    from: '',
+    to: '',
+    ...overrides,
+  }
+}
+
+// issueComment is a comment on issue 12: octo-other's, an hour before the clock's now.
+export function issueComment(overrides: Partial<IssueTimelineItem> = {}): IssueTimelineItem {
+  return issueEvent({
+    kind: 'comment',
+    id: 'IC_2',
+    at: '2026-06-15T11:00:00Z',
+    body: 'Can repro on 1.4.',
+    url: 'https://github.com/acme-org/example-repo/issues/12#issuecomment-2',
+    association: 'MEMBER',
+    label: null,
+    ...overrides,
+  })
+}
+
+// issueTimeline is issue 12's newest page: the user's comment, a mention by pull request
+// 14, and octo-other's comment, of 40 items in all.
+export function issueTimeline(overrides: Partial<IssueTimelinePage> = {}): IssueTimelinePage {
+  return {
+    items: [
+      issueComment({
+        id: 'IC_1',
+        at: '2026-06-15T10:00:00Z',
+        actor: 'octo-user',
+        mine: true,
+        body: 'Looking into it.',
+        url: 'https://github.com/acme-org/example-repo/issues/12#issuecomment-1',
+        association: 'OWNER',
+      }),
+      issueEvent({ kind: 'mentioned', id: 'CRE_1', at: '2026-06-15T10:30:00Z', label: null, ref: pullRef() }),
+      issueComment(),
+    ],
+    total: 40,
+    before: 'Y3Vyc29y',
+    ...overrides,
+  }
+}
+
+// issue is issue 12 of example-repo as the sheet read it: octo-other's, assigned to the
+// user, open, with a description, a conversation, and the offers to comment and close.
+export function issue(overrides: Partial<Issue> = {}): Issue {
+  return {
+    id: 1,
+    repo: 'acme-org/example-repo',
+    number: 12,
+    title: 'Parser drops the trailing newline',
+    url: 'https://github.com/acme-org/example-repo/issues/12',
+    state: 'OPEN',
+    stateReason: '',
+    closedAt: '',
+    author: 'octo-other',
+    isBot: false,
+    mine: false,
+    openedAt: '2026-06-12T12:00:00Z',
+    updatedAt: '2026-06-15T11:00:00Z',
+    assigned: true,
+    locked: false,
+    lockReason: '',
+    body: 'It drops the newline at the end of the file.',
+    bodyTrimmed: false,
+    editedAt: '',
+    reactions: [{ content: 'THUMBS_UP', count: 4 }],
+    type: { name: 'Bug', color: '#d73a4a', description: 'Something isn’t working' },
+    milestone: null,
+    labels: [{ name: 'bug', color: '#d73a4a' }],
+    projects: [],
+    assignees: [{ login: 'octo-user', mine: true }],
+    moreAssignees: 0,
+    participants: [
+      { login: 'octo-other', mine: false },
+      { login: 'octo-user', mine: true },
+    ],
+    moreParticipants: 0,
+    parent: null,
+    duplicateOf: null,
+    subIssues: [],
+    subIssuesTotal: 0,
+    subIssuesDone: 0,
+    fixes: [],
+    moreFixes: 0,
+    mentioned: [pullRef()],
+    timeline: issueTimeline(),
+    lastSeenAt: '',
+    seen: { comments: 2, latest: 'IC_2', latestAt: '2026-06-15T11:00:00Z' },
+    standing: { state: 'assigned', sentence: 'Assigned to you', at: '2026-06-12T12:00:00Z', opened: true },
+    offers: [
+      issueOffer(),
+      closeIssueOffer(),
+      closeIssueOffer({ action: 'close_not_planned', label: 'Close as not planned' }),
+    ],
+    primary: 'comment',
+    fetchedAt: '2026-06-15T11:59:00Z',
+    stale: false,
+    ...overrides,
+  }
+}
+
+// issueResult is what a comment on issue 12 came to.
+export function issueResult(overrides: Partial<IssueResult> = {}): IssueResult {
+  return {
+    outcome: 'commented',
+    message: 'Commented on acme-org/example-repo#12',
+    reason: '',
+    steps: ['Commented'],
+    commented: true,
+    leftInbox: false,
     ...overrides,
   }
 }

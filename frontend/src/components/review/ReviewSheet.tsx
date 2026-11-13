@@ -50,6 +50,8 @@ export interface ReviewSheetProps {
   onDone: (result: ReviewResult, review: Review) => void
   onFilesSettings?: (() => void) | undefined
   onManageReplies?: (() => void) | undefined
+  // initialFocus selects the control focus starts on as the sheet opens (see Sheet).
+  initialFocus?: string | undefined
 }
 
 // selectedAction is the action the sheet's button runs: the one the user chose, while the
@@ -98,6 +100,7 @@ export function ReviewSheet({
   onDone,
   onFilesSettings,
   onManageReplies,
+  initialFocus,
 }: ReviewSheetProps) {
   const titleId = useId()
   const loaded = useReview(id)
@@ -233,7 +236,7 @@ export function ReviewSheet({
   })
 
   return (
-    <Sheet labelledBy={titleId} onClose={close}>
+    <Sheet labelledBy={titleId} onClose={close} initialFocus={initialFocus}>
       <div inert={working} className="flex min-h-0 flex-1 flex-col">
         <ReviewHeader
           titleId={titleId}
