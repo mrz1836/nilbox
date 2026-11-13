@@ -273,6 +273,51 @@ describe('IssueSheet', () => {
     expect(screen.getByRole('menuitem', { name: 'No replies for issues yet' })).toBeDisabled()
   })
 
+  it('edits the labels, then reads the issue again once GitHub made any of it', async () => {
+    render(<Harness />)
+
+    // labels opens the label picker and applies the flip of the label named name.
+    const labels = async (name: string) => {
+      await userEvent.click(screen.getByRole('button', { name: 'Edit labels' }))
+      const panel = within(await screen.findByRole('dialog', { name: 'Labels' }))
+      await userEvent.click(await panel.findByRole('checkbox', { name }))
+      await userEvent.click(panel.getByRole('button', { name: 'Apply' }))
+
+      return panel
+    }
+
+    await screen.findByRole('button', { name: 'Edit labels' })
+    await labels('p1')
+
+    await waitFor(() => {
+      expect(platform.readIssueAgain).toHaveBeenCalledWith(1)
+    })
+    expect(platform.editIssue).toHaveBeenCalledWith({
+      itemId: 1,
+      addLabels: ['p1'],
+      removeLabels: [],
+      addAssignees: [],
+      removeAssignees: [],
+    })
+
+    // A part GitHub made, and why the rest failed.
+    platform.editIssue.mockResolvedValueOnce({ sent: 1, failed: 'GitHub kept “bug” on it.' })
+    platform.readIssueAgain.mockClear()
+    const partly = await labels('bug Something isn’t working')
+
+    expect(await partly.findByRole('alert')).toHaveTextContent('GitHub kept “bug” on it.')
+    expect(platform.readIssueAgain, 'what it made shows').toHaveBeenCalledWith(1)
+
+    // Nothing sent, so nothing to read again.
+    await userEvent.click(partly.getByRole('button', { name: 'Cancel' }))
+    platform.editIssue.mockRejectedValueOnce(new Error('Take yourself off the issue with Unassign me.'))
+    platform.readIssueAgain.mockClear()
+    const refused = await labels('p1')
+
+    expect(await refused.findByRole('alert')).toHaveTextContent('Take yourself off the issue with Unassign me.')
+    expect(platform.readIssueAgain).not.toHaveBeenCalled()
+  })
+
   it('runs the button with ⌘↩, and only once it can', async () => {
     render(<Harness />)
 

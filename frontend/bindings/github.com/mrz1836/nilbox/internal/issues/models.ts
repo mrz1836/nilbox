@@ -51,6 +51,16 @@ export const Action = {
 } as const;
 
 /**
+ * Candidate is someone the issue can be assigned to: their login, their name or "", and
+ * whether they are the user.
+ */
+export interface Candidate {
+    "login": string;
+    "name": string;
+    "mine": boolean;
+}
+
+/**
  * ChecksWord is a pull request's checks, in a word.
  */
 export type ChecksWord = "" | "passing" | "failing" | "running";
@@ -67,6 +77,28 @@ export const ChecksWord = {
     ChecksFailing: "failing",
     ChecksRunning: "running",
 } as const;
+
+/**
+ * EditRequest asks to change the labels and assignees of the issue with ItemID: the
+ * labels to add and to take off, by name, and the people to assign and to unassign, by
+ * login. Taking the user off is Unassign me, never an edit.
+ */
+export interface EditRequest {
+    "itemId": number;
+    "addLabels": string[] | null;
+    "removeLabels": string[] | null;
+    "addAssignees": string[] | null;
+    "removeAssignees": string[] | null;
+}
+
+/**
+ * EditResult is what an edit made of an issue on GitHub: Sent counts the requests GitHub
+ * made, and Failed says why the one after them failed, or "" when every one went.
+ */
+export interface EditResult {
+    "sent": number;
+    "failed": string;
+}
 
 /**
  * EventKind is what one entry of an issue's timeline is.
@@ -145,6 +177,13 @@ export interface Issue {
      */
     "locked": boolean;
     "lockReason": string;
+
+    /**
+     * CanEdit reports that the user may change its labels and assignees: an open issue the
+     * sheet has read, so its assignees are known, with triage access or more to its
+     * repository.
+     */
+    "canEdit": boolean;
 
     /**
      * Body is the description, BodyTrimmed whether the cache cut it short (its page has
@@ -365,6 +404,25 @@ export interface Reply {
     "id": number;
     "name": string;
     "nickname": string;
+}
+
+/**
+ * RepoLabel is one of a repository's labels, with its color as "#rrggbb" or "", and what
+ * it says it is for.
+ */
+export interface RepoLabel {
+    "name": string;
+    "color": string;
+    "description": string;
+}
+
+/**
+ * RepoLabels are the labels of the issue's repository the label picker offers: the first
+ * hundred in name order, and how many it has.
+ */
+export interface RepoLabels {
+    "labels": RepoLabel[] | null;
+    "total": number;
 }
 
 /**

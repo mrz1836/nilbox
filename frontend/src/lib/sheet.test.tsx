@@ -80,6 +80,9 @@ function KeyedSheet(keys: SheetKeys) {
           1 day
         </button>
       </div>
+      <div role="dialog" aria-label="Labels">
+        <input type="checkbox" aria-label="bug" />
+      </div>
     </dialog>
   )
 }
@@ -113,12 +116,15 @@ describe('useSheetKeys', () => {
     expect(k.run).toHaveBeenCalledOnce()
   })
 
-  it('leaves the arrows to a menu open in the sheet', async () => {
+  it('leaves the arrows to a menu or a picker open in the sheet', async () => {
     const k = keys()
     render(<KeyedSheet {...k} />)
 
     screen.getByRole('menuitem', { name: '1 day' }).focus()
     await userEvent.keyboard('{ArrowLeft}{ArrowRight}')
+    screen.getByRole('checkbox', { name: 'bug' }).focus()
+    await userEvent.keyboard('{ArrowLeft}{ArrowRight}{Meta>}{Enter}{/Meta}')
+    expect(k.run, 'a picker’s ⌘↩ is its own').not.toHaveBeenCalled()
 
     expect(k.prev?.onStep).not.toHaveBeenCalled()
     expect(k.next?.onStep).not.toHaveBeenCalled()

@@ -7,16 +7,23 @@ import { openExternal, type Issue, type IssueFix, type IssueLinked, type IssuePe
 import { captionClass } from '../controls'
 import { ItemLink } from '../ItemLink'
 import { LabelChip, ProgressBar, ProjectLink } from '../ItemSignals'
+import { AssigneePicker, LabelPicker, type OnEdit } from './IssuePickers'
 
 export interface IssueSummaryProps {
   issue: Issue
+  // onEdit changes the issue's labels and assignees, which the details offer to while the
+  // user may (Issue.canEdit); without it, they don't.
+  onEdit?: OnEdit | undefined
 }
 
-// Part is one titled part of the details.
-function Part({ title, children }: { title: string; children: ReactNode }) {
+// Part is one titled part of the details, with a control beside its title, if any.
+function Part({ title, action, children }: { title: string; action?: ReactNode; children: ReactNode }) {
   return (
     <section aria-label={title} className="space-y-1.5">
-      <h3 className={captionClass}>{title}</h3>
+      <div className="flex items-center justify-between gap-2">
+        <h3 className={captionClass}>{title}</h3>
+        {action}
+      </div>
       {children}
     </section>
   )
@@ -179,16 +186,18 @@ function Milestone({ issue }: { issue: Issue }) {
 // IssueSummary is the details beside the conversation: the pull requests that fix the
 // issue, who it is assigned to, its labels and projects, its milestone, its sub-issues and
 // the issue it is part of, and who took part.
-export function IssueSummary({ issue }: IssueSummaryProps) {
+export function IssueSummary({ issue, onEdit }: IssueSummaryProps) {
+  const editing = issue.canEdit && onEdit !== undefined
+
   return (
     <div className="space-y-4">
       <Part title="Development">
         <Development issue={issue} />
       </Part>
-      <Part title="Assignees">
+      <Part title="Assignees" action={editing && <AssigneePicker issue={issue} onEdit={onEdit} />}>
         <People people={issue.assignees} more={issue.moreAssignees} url={issue.url} none="No one" />
       </Part>
-      <Part title="Labels">
+      <Part title="Labels" action={editing && <LabelPicker issue={issue} onEdit={onEdit} />}>
         {issue.labels.length === 0 ? (
           <p className="text-sm text-muted">None</p>
         ) : (

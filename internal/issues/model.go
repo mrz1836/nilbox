@@ -160,6 +160,11 @@ type Issue struct {
 	Locked     bool   `json:"locked"`
 	LockReason string `json:"lockReason"`
 
+	// CanEdit reports that the user may change its labels and assignees: an open issue the
+	// sheet has read, so its assignees are known, with triage access or more to its
+	// repository.
+	CanEdit bool `json:"canEdit"`
+
 	// Body is the description, BodyTrimmed whether the cache cut it short (its page has
 	// all of it), and EditedAt when it was last edited, or "".
 	Body        string     `json:"body"`
@@ -357,6 +362,47 @@ type Offer struct {
 	Confirm        bool   `json:"confirm"`
 	CommentsFirst  bool   `json:"commentsFirst"`
 	CommentBlocked string `json:"commentBlocked"`
+}
+
+// RepoLabels are the labels of the issue's repository the label picker offers: the first
+// hundred in name order, and how many it has.
+type RepoLabels struct {
+	Labels []RepoLabel `json:"labels"`
+	Total  int         `json:"total"`
+}
+
+// RepoLabel is one of a repository's labels, with its color as "#rrggbb" or "", and what
+// it says it is for.
+type RepoLabel struct {
+	Name        string `json:"name"`
+	Color       string `json:"color"`
+	Description string `json:"description"`
+}
+
+// Candidate is someone the issue can be assigned to: their login, their name or "", and
+// whether they are the user.
+type Candidate struct {
+	Login string `json:"login"`
+	Name  string `json:"name"`
+	Mine  bool   `json:"mine"`
+}
+
+// EditRequest asks to change the labels and assignees of the issue with ItemID: the
+// labels to add and to take off, by name, and the people to assign and to unassign, by
+// login. Taking the user off is Unassign me, never an edit.
+type EditRequest struct {
+	ItemID          int64    `json:"itemId"`
+	AddLabels       []string `json:"addLabels"`
+	RemoveLabels    []string `json:"removeLabels"`
+	AddAssignees    []string `json:"addAssignees"`
+	RemoveAssignees []string `json:"removeAssignees"`
+}
+
+// EditResult is what an edit made of an issue on GitHub: Sent counts the requests GitHub
+// made, and Failed says why the one after them failed, or "" when every one went.
+type EditResult struct {
+	Sent   int    `json:"sent"`
+	Failed string `json:"failed"`
 }
 
 // Reply is a reply from the prompt library the composer offers: its ID, its title, and the

@@ -19,6 +19,9 @@ export {
 
 export type {
     ActRequest,
+    Candidate,
+    EditRequest,
+    EditResult,
     Fix,
     Issue,
     IssueType,
@@ -31,6 +34,8 @@ export type {
     ProjectField,
     Reaction,
     Reply,
+    RepoLabel,
+    RepoLabels,
     Result,
     Seen,
     Standing,

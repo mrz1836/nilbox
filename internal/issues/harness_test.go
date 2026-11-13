@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 	"slices"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -256,6 +257,8 @@ const (
 	callTimeline = "timeline"
 	callComment  = "comment"
 	callClose    = "close"
+	callLabels   = "labels"
+	callPeople   = "people"
 )
 
 // fakeGitHub answers the sheet's requests and counts them.
@@ -291,9 +294,59 @@ type fakeGitHub struct {
 	closedBy string
 	reasons  []string
 
+	// repoLabels answers a read of the repository's labels, and people a search for whom
+	// the issue can be assigned to, which searched records.
+	repoLabels *github.RepoLabels
+	people     []github.Assignable
+	searched   []string
+
+	// editErr fails the edit whose name it is keyed by, as "+label", "-label:bug",
+	// "+assignee", or "-assignee:octo-other", once; edits records each edit made.
+	editErr map[string]error
+	edits   []string
+
 	calls map[string]int
 	// order names every request, in the order they came.
 	order []string
+}
+
+func (g *fakeGitHub) FetchRepoLabels(context.Context, github.Token, string) (*github.RepoLabels, error) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+
+	g.count(callLabels)
+
+	if g.repoLabels == nil {
+		return nil, errNotCalled
+	}
+
+	return g.repoLabels, nil
+}
+
+func (g *fakeGitHub) FetchAssignable(_ context.Context, _ github.Token, _, query string) ([]github.Assignable, error) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+
+	g.count(callPeople)
+	g.searched = append(g.searched, query)
+
+	return g.people, nil
+}
+
+func (g *fakeGitHub) AddLabels(_ context.Context, _ github.Token, _ item.Ref, names []string) ([]github.Label, error) {
+	return nil, g.made("+label:" + strings.Join(names, ","))
+}
+
+func (g *fakeGitHub) RemoveLabel(_ context.Context, _ github.Token, _ item.Ref, name string) ([]github.Label, error) {
+	return nil, g.made("-label:" + name)
+}
+
+func (g *fakeGitHub) AddAssignees(_ context.Context, _ github.Token, _ item.Ref, logins []string) (*github.Edited, error) {
+	return &github.Edited{}, g.made("+assignee:" + strings.Join(logins, ","))
+}
+
+func (g *fakeGitHub) RemoveAssignee(_ context.Context, _ github.Token, _ item.Ref, login string) (*github.Edited, error) {
+	return &github.Edited{}, g.made("-assignee:" + login)
 }
 
 func (g *fakeGitHub) FetchIssueView(
@@ -421,6 +474,24 @@ func (g *fakeGitHub) CloseIssue(_ context.Context, _ github.Token, _ item.Ref, r
 	}
 
 	return &github.IssueClosed{Reason: reason, ClosedBy: g.closedBy}, nil
+}
+
+// made records the edit named name, or fails it once as editErr says.
+func (g *fakeGitHub) made(name string) error {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+
+	g.count(name)
+
+	if err := g.editErr[name]; err != nil {
+		delete(g.editErr, name)
+
+		return err
+	}
+
+	g.edits = append(g.edits, name)
+
+	return nil
 }
 
 func (g *fakeGitHub) count(name string) {

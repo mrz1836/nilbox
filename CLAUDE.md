@@ -435,7 +435,14 @@ app:lint` reads.
   `FillReply` offer and fill in the prompt library's comment replies for issues (a comment
   reply may apply to issues; a default reply, which only the review sheet starts from, must
   apply to pull requests), through the reply filler core shares with the review sheet,
-  which refuses a reply for another kind of item.
+  which refuses a reply for another kind of item. With triage access or more (`github.CanTriage`,
+  `Issue.CanEdit`, on an open issue the sheet has read), `Labels` lists the repository's
+  labels and `Assignable` searches who the issue can be assigned to (one GraphQL point each,
+  one read of each at a time, kept in memory ten minutes), and `Edit` adds and removes labels
+  and assignees through `ActIssue`, each answer checked (GitHub ignores a change it won't
+  make), never sending a step twice, stopping at the first that fails, and saying how many
+  GitHub made (`EditResult`), so the window reads the issue again only then; the user takes
+  themselves off with Unassign me alone.
 - `internal/reporules/` holds the pinned and muted repositories and orgs (`repos.pinned` and
   `repos.muted`, each a list of `owner` or `owner/name`, a target in one list at most), which
   settings alone writes (`SetRepoRule`, emitting the Go-only `event.RepoRulesChanged`, which

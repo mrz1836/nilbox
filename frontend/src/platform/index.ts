@@ -341,6 +341,10 @@ export type IssueOffer = NonNullLists<issues.Offer>
 export type IssueOutcome = issues.Outcome
 export type IssuePerson = NonNullLists<issues.Person>
 export type IssueProject = NonNullLists<issues.Project>
+export type IssueCandidate = NonNullLists<issues.Candidate>
+export type IssueEditRequest = NonNullLists<issues.EditRequest>
+export type IssueRepoLabel = NonNullLists<issues.RepoLabel>
+export type IssueRepoLabels = NonNullLists<issues.RepoLabels>
 export type IssueReply = NonNullLists<issues.Reply>
 export type IssueResult = NonNullLists<issues.Result>
 export type IssueSeen = NonNullLists<issues.Seen>
@@ -471,6 +475,9 @@ export const {
   Act: actOnIssue,
   Replies: issueReplies,
   FillReply: fillIssueReply,
+  Labels: issueLabels,
+  Assignable: issueAssignable,
+  Edit: editIssue,
 } = narrow(issues.Service)
 
 export const {

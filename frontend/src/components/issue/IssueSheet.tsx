@@ -1,5 +1,6 @@
 import { useId, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 
+import { attempt } from '../../lib/call'
 import { refText } from '../../lib/format'
 import {
   changedSince,
@@ -18,6 +19,7 @@ import { useIssue } from '../../lib/useIssue'
 import { useMutation } from '../../lib/useMutation'
 import {
   actOnIssue,
+  editIssue,
   type AgentSession,
   type InboxItem,
   type Issue,
@@ -41,6 +43,7 @@ import { Conversation } from './Conversation'
 import { IssueCloseDialog } from './IssueCloseDialog'
 import { IssueComposer } from './IssueComposer'
 import { IssueHeader } from './IssueHeader'
+import type { IssueEdit } from './IssuePickers'
 import { IssueSummary } from './IssueSummary'
 
 export interface IssueSheetProps {
@@ -194,6 +197,31 @@ export function IssueSheet({
 
     drafts.clear(id)
     onDone(result.data, is)
+  }
+
+  // edit changes the issue's labels or assignees, then reads it again once GitHub made any
+  // of it, since what it made before a step that failed stands. It resolves with why it
+  // couldn't, or '' once it did.
+  const edit = async (change: IssueEdit): Promise<string> => {
+    const result = await attempt(
+      editIssue({
+        itemId: id,
+        addLabels: change.addLabels ?? [],
+        removeLabels: change.removeLabels ?? [],
+        addAssignees: change.addAssignees ?? [],
+        removeAssignees: change.removeAssignees ?? [],
+      }),
+    )
+
+    if (!result.ok) {
+      return result.error
+    }
+
+    if (result.data.sent > 0) {
+      loaded.reload()
+    }
+
+    return result.data.failed
   }
 
   const run = (action: IssueAction) => {
@@ -350,7 +378,7 @@ export function IssueSheet({
                   )}
                 </div>
                 <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4">
-                  {reading ? <SummarySkeleton /> : <IssueSummary issue={issue} />}
+                  {reading ? <SummarySkeleton /> : <IssueSummary issue={issue} onEdit={edit} />}
                   <AgentVerdict
                     sessions={sessions}
                     agents={launch?.agents ?? []}
