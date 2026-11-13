@@ -43,6 +43,9 @@ import * as sensitive$0 from "../sensitive/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
 import * as snooze$0 from "../snooze/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
+import * as threadrules$0 from "../threadrules/models.js";
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
@@ -217,6 +220,43 @@ export function SetDefaultProfile(id: agent$0.ID, name: string): $CancellablePro
  */
 export function SetFollowSessions(on: boolean): $CancellablePromise<$models.Settings> {
     return $Call.ByID(3396426745, on);
+}
+
+/**
+ * SetGitHubCleanupCardDismissed stores whether the card that first offers to clean up the
+ * user's GitHub notifications is put away ("Not now"), and returns the settings with it.
+ */
+export function SetGitHubCleanupCardDismissed(dismissed: boolean): $CancellablePromise<$models.Settings> {
+    return $Call.ByID(1506872121, dismissed);
+}
+
+/**
+ * SetGitHubNotificationAction stores what clearing a GitHub notification does, mark it
+ * done or mark it read, and returns the settings with it. An action this build does not
+ * know is refused.
+ */
+export function SetGitHubNotificationAction(action: threadrules$0.Action): $CancellablePromise<$models.Settings> {
+    return $Call.ByID(1242132559, action);
+}
+
+/**
+ * SetGitHubNotificationSwitch turns one of the GitHub notification rules' switches on or
+ * off (see threadrules.Switches), and returns the settings with it. Nothing else hears of
+ * it: what reads and clears the notifications reads the rules as it runs.
+ */
+export function SetGitHubNotificationSwitch(name: threadrules$0.Switch, on: boolean): $CancellablePromise<$models.Settings> {
+    return $Call.ByID(3494034241, name, on);
+}
+
+/**
+ * SetGitHubNotificationTrigger turns one of the moments that clear a GitHub notification
+ * on or off (see threadrules.Triggers), and returns the settings with it. Clearing by hand
+ * has no switch and is refused, as is a trigger this build does not know. The triggers
+ * that are off are read and written in one transaction, so two changes never lose
+ * either.
+ */
+export function SetGitHubNotificationTrigger(trigger: threadrules$0.Trigger, on: boolean): $CancellablePromise<$models.Settings> {
+    return $Call.ByID(2396512243, trigger, on);
 }
 
 /**

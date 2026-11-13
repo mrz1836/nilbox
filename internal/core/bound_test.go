@@ -36,6 +36,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/settings"
 	"github.com/mrz1836/nilbox/internal/snooze"
 	"github.com/mrz1836/nilbox/internal/testutil"
+	"github.com/mrz1836/nilbox/internal/threadrules"
 	"github.com/mrz1836/nilbox/internal/worklog"
 	"github.com/mrz1836/nilbox/internal/worktrees"
 )
@@ -171,6 +172,18 @@ func boundCalls(t *testing.T) map[string]boundCall {
 		},
 		"settings.Service.SetProjectsTipDismissed": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
 			return c.Settings.SetProjectsTipDismissed(ctx, true)
+		},
+		"settings.Service.SetGitHubNotificationSwitch": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
+			return c.Settings.SetGitHubNotificationSwitch(ctx, threadrules.SwitchAuto, true)
+		},
+		"settings.Service.SetGitHubNotificationTrigger": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
+			return c.Settings.SetGitHubNotificationTrigger(ctx, threadrules.TriggerReviewed, false)
+		},
+		"settings.Service.SetGitHubNotificationAction": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
+			return c.Settings.SetGitHubNotificationAction(ctx, threadrules.ActionRead)
+		},
+		"settings.Service.SetGitHubCleanupCardDismissed": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
+			return c.Settings.SetGitHubCleanupCardDismissed(ctx, true)
 		},
 		"settings.Service.SetSectionCollapsed": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
 			return c.Settings.SetSectionCollapsed(ctx, settings.ListAuthored, false)
