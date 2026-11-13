@@ -1,17 +1,18 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 
 import { attempt } from '../lib/call'
+import { refText } from '../lib/format'
 import type { InboxFilter } from '../lib/inboxFilter'
 import type { IssueDrafts } from '../lib/issueDrafts'
 import { issueTone } from '../lib/issues'
-import { noWorktrees, worktreeOf } from '../lib/itemWorktrees'
+import { itemKey, noWorktrees, worktreeOf } from '../lib/itemWorktrees'
 import { sheetCards, shownOrder } from '../lib/listOrder'
 import { isInboxNil } from '../lib/nil'
 import type { ReviewDrafts } from '../lib/reviewDrafts'
 import { ownRule } from '../lib/repoRules'
 import { noSessions, sessionsOf } from '../lib/sessions'
 import { formatAgo, formatWhen } from '../lib/time'
-import { findItem, isDismissed, type TriagedInbox, type TriageTab } from '../lib/triage'
+import { findItem, isDismissed, itemsByRef, tabOf, type TriagedInbox, type TriageTab } from '../lib/triage'
 import type { InboxState } from '../lib/useInbox'
 import type { InboxOrderState } from '../lib/useInboxOrder'
 import { useClock } from '../lib/useNow'
@@ -35,6 +36,7 @@ import {
 import { ErrorBanner } from './ErrorBanner'
 import { InboxNil } from './InboxNil'
 import { IssueSheet } from './issue/IssueSheet'
+import { LinksContext, type Links } from './ItemLink'
 import { teamsText, type EditActions } from './ItemMenu'
 import type { LaunchOptions } from './ItemRow'
 import { ListSection, type Reveal } from './ListSection'
@@ -148,6 +150,21 @@ interface Viewing {
   list: ListKey
   tab: TriageTab
   arrow: '' | 'prev' | 'next'
+  // back is the sheet a link in it was followed from, which its back step returns to, or
+  // null.
+  back: Back | null
+  // refocus counts the links followed and the steps back taken, each of which shows another
+  // card in the sheet in place of the control it was taken with, so the sheet moves focus
+  // into itself again.
+  refocus: number
+}
+
+// Back is the sheet a link was followed from: where it was, with no step back of its own,
+// so following another link replaces it rather than stacking, and its card's name and title.
+interface Back {
+  to: Viewing
+  label: string
+  title: string
 }
 
 // focusedArrow is the header's step arrow that has focus, or ''.
@@ -350,7 +367,7 @@ export function InboxView({
   // keep their identity.
   const [openIn] = useState(() => {
     const open = (list: ListKey) => (item: InboxItem, tab: TriageTab) => {
-      setViewing({ id: item.id, kind: item.kind, list, tab, arrow: '' })
+      setViewing({ id: item.id, kind: item.kind, list, tab, arrow: '', back: null, refocus: 0 })
     }
 
     return { reviewRequested: open('reviewRequested'), authored: open('authored'), assigned: open('assigned') }
@@ -358,7 +375,15 @@ export function InboxView({
   const [openFromMenu] = useState(() => (item: InboxItem, tab: TriageTab) => {
     const list = sections.find(({ key }) => shown.current?.[key].items.some((i) => i.id === item.id))?.key
 
-    setViewing({ id: item.id, kind: item.kind, list: list ?? 'reviewRequested', tab, arrow: '' })
+    setViewing({
+      id: item.id,
+      kind: item.kind,
+      list: list ?? 'reviewRequested',
+      tab,
+      arrow: '',
+      back: null,
+      refocus: 0,
+    })
   })
 
   const showToast = (message: Omit<ToastMessage, 'id'>) => {
@@ -612,6 +637,46 @@ export function InboxView({
   }
   const initialFocus = viewing === null || viewing.arrow === '' ? undefined : `[data-step="${viewing.arrow}"]`
 
+  // links open a card a sheet links to in its own sheet, at its place in the first list
+  // that holds it, with one step back to the sheet the link was in, while its card is
+  // still in the inbox to name it.
+  const listed = snapshot === null ? null : itemsByRef(snapshot)
+  const links: Links = {
+    holds: (repo, number) => listed?.has(itemKey(repo, number)) === true,
+    follow: (repo, number) => {
+      const target = listed?.get(itemKey(repo, number))
+
+      if (viewing === null || target === undefined || triaged === null) {
+        return
+      }
+
+      setViewing({
+        id: target.item.id,
+        kind: target.item.kind,
+        list: target.list,
+        tab: tabOf(triaged.lists[target.list], target.item.id) ?? 'inbox',
+        arrow: '',
+        back:
+          viewed === undefined
+            ? null
+            : { to: { ...viewing, arrow: '', back: null }, label: refText(viewed), title: viewed.title },
+        refocus: viewing.refocus + 1,
+      })
+    },
+  }
+  const back =
+    viewing?.back == null
+      ? null
+      : {
+          label: viewing.back.label,
+          title: viewing.back.title,
+          onBack: () => {
+            if (viewing.back !== null) {
+              setViewing({ ...viewing.back.to, refocus: viewing.refocus + 1 })
+            }
+          },
+        }
+
   // unassignHere takes the user off an issue from its sheet: the sheet closes and the toast
   // says so once GitHub made it, and it hears why when it couldn't.
   const unassignHere = async (it: InboxItem): Promise<string> => {
@@ -707,56 +772,62 @@ export function InboxView({
               onOpen={sheets ? openIn[key] : undefined}
             />
           ))}
-      {viewing !== null && sheets && viewing.kind === 'pr' && (
-        <ReviewSheet
-          id={viewing.id}
-          item={viewed}
-          siblings={siblings}
-          listTitle={listTitle}
-          drafts={drafts.review}
-          launch={launch}
-          resolution={resolutions.get(viewing.id) ?? null}
-          sessions={viewed === undefined ? undefined : sessionsOf(sessions, viewed)}
-          onNavigate={step}
-          onClose={() => {
-            setViewing(null)
-          }}
-          onDone={(result, r) => {
-            setViewing(null)
-            showToast({ text: result.message, detail: r.title, tone: resultTone(result) })
+      <LinksContext value={links}>
+        {viewing !== null && sheets && viewing.kind === 'pr' && (
+          <ReviewSheet
+            id={viewing.id}
+            item={viewed}
+            siblings={siblings}
+            listTitle={listTitle}
+            drafts={drafts.review}
+            launch={launch}
+            resolution={resolutions.get(viewing.id) ?? null}
+            sessions={viewed === undefined ? undefined : sessionsOf(sessions, viewed)}
+            onNavigate={step}
+            onClose={() => {
+              setViewing(null)
+            }}
+            onDone={(result, r) => {
+              setViewing(null)
+              showToast({ text: result.message, detail: r.title, tone: resultTone(result) })
 
-            if (result.outcome === 'merged') {
-              offerRelease(r, toastCount.current)
-            }
-          }}
-          onFilesSettings={onFilesSettings}
-          onManageReplies={onManageReplies}
-          initialFocus={initialFocus}
-        />
-      )}
-      {viewing !== null && sheets && viewing.kind === 'issue' && (
-        <IssueSheet
-          id={viewing.id}
-          item={viewed}
-          siblings={siblings}
-          listTitle={listTitle}
-          drafts={drafts.issue}
-          launch={launch}
-          resolution={resolutions.get(viewing.id) ?? null}
-          sessions={viewed === undefined ? undefined : sessionsOf(sessions, viewed)}
-          worktree={viewed === undefined ? undefined : worktreeOf(worktrees, viewed)}
-          onNavigate={step}
-          onClose={() => {
-            setViewing(null)
-          }}
-          onDone={(result, is) => {
-            setViewing(null)
-            showToast({ text: result.message, detail: is.title, tone: issueTone(result) })
-          }}
-          onUnassign={unassignHere}
-          initialFocus={initialFocus}
-        />
-      )}
+              if (result.outcome === 'merged') {
+                offerRelease(r, toastCount.current)
+              }
+            }}
+            onFilesSettings={onFilesSettings}
+            onManageReplies={onManageReplies}
+            initialFocus={initialFocus}
+            refocus={viewing.refocus}
+            back={back}
+          />
+        )}
+        {viewing !== null && sheets && viewing.kind === 'issue' && (
+          <IssueSheet
+            id={viewing.id}
+            item={viewed}
+            siblings={siblings}
+            listTitle={listTitle}
+            drafts={drafts.issue}
+            launch={launch}
+            resolution={resolutions.get(viewing.id) ?? null}
+            sessions={viewed === undefined ? undefined : sessionsOf(sessions, viewed)}
+            worktree={viewed === undefined ? undefined : worktreeOf(worktrees, viewed)}
+            onNavigate={step}
+            onClose={() => {
+              setViewing(null)
+            }}
+            onDone={(result, is) => {
+              setViewing(null)
+              showToast({ text: result.message, detail: is.title, tone: issueTone(result) })
+            }}
+            onUnassign={unassignHere}
+            initialFocus={initialFocus}
+            refocus={viewing.refocus}
+            back={back}
+          />
+        )}
+      </LinksContext>
       <Toast toast={toast} seconds={toastSeconds} onClose={closeToast} />
     </div>
   )

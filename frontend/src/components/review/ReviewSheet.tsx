@@ -1,7 +1,8 @@
 import { useId, useState } from 'react'
 
+import { refText } from '../../lib/format'
 import type { ReviewDrafts } from '../../lib/reviewDrafts'
-import { placeIn, stepTo, useActionProgress, useSheetKeys } from '../../lib/sheet'
+import { placeIn, stepTo, useActionProgress, useSheetKeys, type SheetBack } from '../../lib/sheet'
 import { useMutation } from '../../lib/useMutation'
 import { useReview } from '../../lib/useReview'
 import {
@@ -50,8 +51,12 @@ export interface ReviewSheetProps {
   onDone: (result: ReviewResult, review: Review) => void
   onFilesSettings?: (() => void) | undefined
   onManageReplies?: (() => void) | undefined
-  // initialFocus selects the control focus starts on as the sheet opens (see Sheet).
+  // initialFocus selects the control focus starts on as the sheet opens (see Sheet), and
+  // refocus moves it there again whenever it changes.
   initialFocus?: string | undefined
+  refocus?: number | undefined
+  // back returns to the sheet a link was followed from, or is null.
+  back?: SheetBack | null
 }
 
 // selectedAction is the action the sheet's button runs: the one the user chose, while the
@@ -101,6 +106,8 @@ export function ReviewSheet({
   onFilesSettings,
   onManageReplies,
   initialFocus,
+  refocus,
+  back = null,
 }: ReviewSheetProps) {
   const titleId = useId()
   const loaded = useReview(id)
@@ -118,7 +125,7 @@ export function ReviewSheet({
   // GitHub under way: nothing the sheet would show has come from GitHub yet, so each
   // column shows placeholders shaped like what comes.
   const shown = review ?? item
-  const target = shown === undefined ? '' : `${shown.repo}#${String(shown.number)}`
+  const target = shown === undefined ? '' : refText(shown)
   const reading = loaded.checking && (review === null || review.fetchedAt === '')
 
   const { prev, next, position } = placeIn(siblings, id, listTitle)
@@ -133,7 +140,7 @@ export function ReviewSheet({
     // and a close, which post them as a comment first when there are any, as the offer says.
     const text = sendsText(offer)
 
-    setProgress({ title: offer?.label ?? 'Working', target: `${r.repo}#${String(r.number)}`, steps: [] })
+    setProgress({ title: offer?.label ?? 'Working', target: refText(r), steps: [] })
     setActedOn(id)
 
     const result = await act.run({
@@ -236,7 +243,7 @@ export function ReviewSheet({
   })
 
   return (
-    <Sheet labelledBy={titleId} onClose={close} initialFocus={initialFocus}>
+    <Sheet labelledBy={titleId} onClose={close} initialFocus={initialFocus} refocus={refocus}>
       <div inert={working} className="flex min-h-0 flex-1 flex-col">
         <ReviewHeader
           titleId={titleId}
@@ -246,6 +253,7 @@ export function ReviewSheet({
           checking={loaded.checking}
           onPrev={toPrev}
           onNext={toNext}
+          back={back}
           onClose={close}
           // A notice that it was pushed to since stays until its own Reload is clicked.
           onRefresh={() => {

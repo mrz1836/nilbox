@@ -1403,6 +1403,8 @@ export function review(overrides: Partial<Review> = {}): Review {
     filesComplete: true,
     checks: [{ name: 'test', workflow: 'CI', state: 'SUCCESS', outcome: 'passed', url: '', required: true }],
     reviews: [],
+    closes: [],
+    moreCloses: 0,
     readiness: { state: 'ready', sentence: 'Ready to merge', needs: [] },
     offers: [
       offer({ action: 'approve_merge', label: 'Approve & squash-merge', confirm: true }),

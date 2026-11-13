@@ -257,7 +257,7 @@ type IssueView struct {
 	SubIssues []ItemRef
 
 	// Fixes are the first ten pull requests that close it once merged, closed ones
-	// included, and FixCount how many there are.
+	// included, and FixCount how many there are that the viewer can see.
 	Fixes    []LinkedPull
 	FixCount int
 
@@ -725,7 +725,7 @@ func (n *issueViewNode) fill(v *IssueView, self ItemRef) {
 	v.Participants = n.Participants.people()
 	v.SubIssues = itemRefs(n.SubIssueList.Nodes)
 	v.Fixes = fixes(n.Fixes.Nodes)
-	v.FixCount = max(n.Fixes.TotalCount, 0)
+	v.FixCount = shownCount(n.Fixes.TotalCount, len(n.Fixes.Nodes), len(v.Fixes))
 	v.Reactions = n.reactions()
 	v.Timeline = n.Timeline.page(self)
 
@@ -847,6 +847,14 @@ func itemRefs(nodes []*graphQLRef) []ItemRef {
 	}
 
 	return out
+}
+
+// shownCount is how many of a connection's totalCount the viewer can see, from the nodes
+// GitHub returned and those kept: a node it returned as null is one the token can't read,
+// which GitHub counts but the viewer can't open, so it isn't counted. It is never fewer
+// than were kept.
+func shownCount(total, returned, kept int) int {
+	return max(total-(returned-kept), kept)
 }
 
 // graphQLFix is a pull request that closes an issue.

@@ -555,6 +555,27 @@ func TestTimelineItemsOfAnUnknownSideOrKind(t *testing.T) {
 	}.people(), "a count below the logins read is never shown")
 }
 
+func TestShownCountLeavesOutWhatTheTokenCantRead(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name                  string
+		total, returned, kept int
+		want                  int
+	}{
+		{"every node read", 12, 10, 10, 12},
+		{"a null among the first page", 12, 10, 9, 11},
+		{"only nulls", 2, 2, 0, 0},
+		{"a count below what was kept", 0, 3, 3, 3},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			assert.Equal(t, tc.want, shownCount(tc.total, tc.returned, tc.kept))
+		})
+	}
+}
+
 func TestATooLargeAnswerStillCountsItsPoint(t *testing.T) {
 	t.Parallel()
 

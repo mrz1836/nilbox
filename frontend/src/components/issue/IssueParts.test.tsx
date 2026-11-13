@@ -8,7 +8,7 @@ import type { IssueTimelineItem } from '../../platform'
 import { at } from '../../test/clock'
 import { issue, issueComment, issueEvent, issueRef, project, pullRef } from '../../test/fixtures'
 import { platform } from '../../test/platform'
-import { ItemLink } from '../ItemLink'
+import { ItemLink, LinksContext } from '../ItemLink'
 import { IssueHeader } from './IssueHeader'
 import { IssueSummary } from './IssueSummary'
 import { TimelineEntry } from './TimelineEntry'
@@ -78,7 +78,7 @@ describe('TimelineEntry', () => {
   it.each([
     [
       issueEvent({ kind: 'mentioned', label: null, ref: pullRef(), willClose: true }),
-      'mentioned this in #14Keep the trailing newline, which closes it once merged',
+      'mentioned this in #14 Keep the trailing newline, which closes it once merged',
     ],
     [issueEvent({ kind: 'linked', label: null, ref: pullRef() }), 'linked #14'],
     [issueEvent({ kind: 'unlinked', label: null, ref: pullRef() }), 'unlinked #14'],
@@ -104,7 +104,7 @@ describe('TimelineEntry', () => {
       issueEvent({ kind: 'renamed', label: null, from: 'Parser bug', to: 'Parser drops the newline' }),
       'changed the title from “Parser bug” to “Parser drops the newline”',
     ],
-    [issueEvent({ kind: 'duplicate', label: null, ref: issueRef() }), 'marked this and #3Parser bug as duplicates'],
+    [issueEvent({ kind: 'duplicate', label: null, ref: issueRef() }), 'marked this and #3 Parser bug as duplicates'],
     [issueEvent({ kind: 'labeled', label: null }), 'added a label'],
     [issueEvent({ kind: 'unlabeled', label: null }), 'removed a label'],
   ])('words an event: %#', (event, words) => {
@@ -180,7 +180,7 @@ describe('IssueSummary', () => {
     expect(development).toHaveTextContent('open · checks passing')
     expect(development).toHaveTextContent('open · approved')
     expect(development).toHaveTextContent('Mentioned in')
-    expect(development).toHaveTextContent('acme-org/api#9Crash on start')
+    expect(development).toHaveTextContent('acme-org/api#9 Crash on start')
 
     await userEvent.click(within(development).getByRole('button', { name: 'and 2 more on GitHub' }))
     expect(platform.openExternal).toHaveBeenCalledWith('https://github.com/acme-org/example-repo/issues/12')
@@ -227,7 +227,7 @@ describe('IssueSummary', () => {
 
     expect(screen.getByRole('region', { name: 'Sub-issues' })).toHaveTextContent('1 of 3 sub-issues done')
     expect(screen.getByRole('button', { name: 'and 2 more on GitHub' })).toBeInTheDocument()
-    expect(screen.getByRole('region', { name: 'Part of' })).toHaveTextContent('#2Parser')
+    expect(screen.getByRole('region', { name: 'Part of' })).toHaveTextContent('#2 Parser')
     expect(screen.getByRole('region', { name: 'Duplicate of' })).toHaveTextContent('#3')
     expect(screen.getByRole('region', { name: 'Participants' })).toHaveTextContent('and 4 more on GitHub')
   })
@@ -315,6 +315,25 @@ describe('ItemLink', () => {
     expect(link).toHaveAttribute('title', 'Keep the trailing newline\nOpen it on GitHub')
     await userEvent.click(link)
     expect(platform.openExternal).toHaveBeenCalledWith('https://github.com/acme-org/example-repo/pull/14')
+  })
+
+  it('opens an item the inbox holds in its sheet', async () => {
+    const follow = vi.fn()
+    render(
+      <LinksContext value={{ holds: (repo, number) => repo === 'acme-org/example-repo' && number === 14, follow }}>
+        <ItemLink linked={pullRef()} from="acme-org/example-repo" />
+        <ItemLink linked={issueRef()} from="acme-org/example-repo" />
+      </LinksContext>,
+    )
+
+    const held = screen.getByRole('button', { name: '#14' })
+    expect(held).toHaveAttribute('title', 'Keep the trailing newline\nOpen it here')
+    await userEvent.click(held)
+    expect(follow).toHaveBeenCalledWith('acme-org/example-repo', 14)
+    expect(platform.openExternal).not.toHaveBeenCalled()
+
+    await userEvent.click(screen.getByRole('button', { name: '#3' }))
+    expect(platform.openExternal).toHaveBeenCalledWith('https://github.com/acme-org/example-repo/issues/3')
   })
 
   it('names one of another repository in full, with its title when asked', () => {

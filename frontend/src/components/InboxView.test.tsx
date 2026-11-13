@@ -20,6 +20,7 @@ import {
   agents,
   details,
   issue,
+  issueRef,
   issueResult,
   item,
   itemResolution,
@@ -2018,5 +2019,113 @@ describe('InboxView issue sheet', () => {
     expect(within(toast).getByText('Unassigned you on GitHub')).toBeInTheDocument()
     expect(screen.queryByRole('dialog', { name: 'Parser drops the trailing newline' })).not.toBeInTheDocument()
     expect(platform.unassignItem).toHaveBeenLastCalledWith(2)
+  })
+
+  it('follows a link between the sheets, and steps back', async () => {
+    const pull = item({ id: 1, number: 14, title: 'Keep the trailing newline' })
+    platform.getInboxSnapshot.mockResolvedValue(snapshot({ reviewRequested: list([pull]), assigned: list([crash]) }))
+    platform.openIssue.mockResolvedValue(issue({ id: 2 }))
+    platform.refreshIssue.mockResolvedValue(issue({ id: 2 }))
+    platform.openReview.mockResolvedValue(review({ id: 1, title: 'Keep the trailing newline', number: 14 }))
+    platform.refreshReview.mockResolvedValue(
+      review({
+        id: 1,
+        title: 'Keep the trailing newline',
+        number: 14,
+        closes: [
+          {
+            repo: 'acme-org/example-repo',
+            number: 12,
+            title: 'Parser drops the trailing newline',
+            url: 'https://github.com/acme-org/example-repo/issues/12',
+            state: 'OPEN',
+            stateReason: '',
+          },
+        ],
+      }),
+    )
+    render(<Harness launch={launchOptions} clock={fixedNow} reviews />)
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Parser drops the trailing newline' }))
+    const sheet = await screen.findByRole('dialog', { name: 'Parser drops the trailing newline' })
+
+    // The mention by the pull request opens it in the review sheet, with a step back.
+    const mention = await within(sheet).findByRole('region', { name: 'Development' })
+    await userEvent.click(within(mention).getByRole('button', { name: '#14 Keep the trailing newline' }))
+
+    const review14 = await screen.findByRole('dialog', { name: 'Keep the trailing newline' })
+    expect(within(review14).getByText('1 of 1 in Review requested')).toBeInTheDocument()
+    expect(within(review14).getByRole('button', { name: 'Back to acme-org/example-repo#12' })).toBeInTheDocument()
+
+    // Its Closes row leads back to the issue, whose step back now returns to the pull request.
+    const closes = await within(review14).findByRole('region', { name: 'Closes' })
+    await userEvent.click(within(closes).getByRole('button', { name: '#12 Parser drops the trailing newline' }))
+
+    const again = await screen.findByRole('dialog', { name: 'Parser drops the trailing newline' })
+    await userEvent.click(within(again).getByRole('button', { name: 'Back to acme-org/example-repo#14' }))
+
+    const back = await screen.findByRole('dialog', { name: 'Keep the trailing newline' })
+    expect(within(back).queryByRole('button', { name: /^Back to/ }), 'one step back, no more').not.toBeInTheDocument()
+  })
+
+  // parent is the issue crash is part of, in the Assigned list too.
+  const parent = item({
+    id: 5,
+    kind: 'issue',
+    number: 3,
+    title: 'Parser bug',
+    url: 'https://github.com/acme-org/example-repo/issues/3',
+    assigned: true,
+  })
+
+  // readIssue answers a read of crash, which is part of parent, or of parent.
+  const readIssue = (id: number) =>
+    Promise.resolve(
+      id === parent.id ? issue({ id: 5, number: 3, title: 'Parser bug' }) : issue({ id: 2, parent: issueRef() }),
+    )
+
+  it('keeps focus in the sheet as a link shows another issue in its place, and as it steps back', async () => {
+    platform.getInboxSnapshot.mockResolvedValue(snapshot({ assigned: list([crash, parent]) }))
+    platform.openIssue.mockImplementation(readIssue)
+    platform.refreshIssue.mockImplementation(readIssue)
+    render(<Harness launch={launchOptions} clock={fixedNow} reviews />)
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Parser drops the trailing newline' }))
+    const sheet = await screen.findByRole('dialog', { name: 'Parser drops the trailing newline' })
+    const partOf = await within(sheet).findByRole('region', { name: 'Part of' })
+    await userEvent.click(within(partOf).getByRole('button', { name: '#3 Parser bug' }))
+
+    expect(await screen.findByRole('dialog', { name: 'Parser bug' }), 'the same sheet, showing the other').toBe(sheet)
+    expect(document.activeElement, 'the link went with what it showed').toBe(sheet.firstElementChild)
+
+    await userEvent.click(within(sheet).getByRole('button', { name: 'Back to acme-org/example-repo#12' }))
+
+    expect(await screen.findByRole('dialog', { name: 'Parser drops the trailing newline' })).toBe(sheet)
+    expect(document.activeElement, 'so did the step back').toBe(sheet.firstElementChild)
+  })
+
+  it('offers no step back to a sheet whose card has left the inbox', async () => {
+    platform.getInboxSnapshot.mockResolvedValue(snapshot({ assigned: list([crash, parent]) }))
+    platform.openIssue.mockImplementation(readIssue)
+    platform.refreshIssue.mockImplementation(readIssue)
+    render(<Harness launch={launchOptions} clock={fixedNow} reviews />)
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Parser drops the trailing newline' }))
+    const sheet = await screen.findByRole('dialog', { name: 'Parser drops the trailing newline' })
+    expect(within(sheet).getByText('1 of 2 in Assigned')).toBeInTheDocument()
+
+    // Its card leaves the inbox while the sheet stays open, as when someone closes it.
+    platform.getInboxSnapshot.mockResolvedValue(snapshot({ assigned: list([parent]) }))
+    act(() => {
+      emit('inbox:updated')
+    })
+    await waitFor(() => {
+      expect(within(sheet).queryByText('1 of 2 in Assigned')).not.toBeInTheDocument()
+    })
+
+    await userEvent.click(within(sheet).getByRole('button', { name: '#3 Parser bug' }))
+
+    expect(await screen.findByRole('dialog', { name: 'Parser bug' })).toBe(sheet)
+    expect(within(sheet).queryByRole('button', { name: /^Back to/ })).not.toBeInTheDocument()
   })
 })

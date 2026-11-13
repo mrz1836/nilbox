@@ -173,6 +173,20 @@ export interface Check {
 }
 
 /**
+ * Closing is an issue a pull request closes once it merges: its repository as "owner/name",
+ * its number, title, and page, and its state, with the reason it was closed, as GitHub
+ * says them.
+ */
+export interface Closing {
+    "repo": string;
+    "number": number;
+    "title": string;
+    "url": string;
+    "state": IssueState;
+    "stateReason": IssueReason;
+}
+
+/**
  * File is one file a pull request changes.
  */
 export interface File {
@@ -208,6 +222,43 @@ export interface FilePatch {
     "patch": string;
     "patchState": PatchState;
 }
+
+/**
+ * IssueReason is why an issue was closed, or reopened, as GitHub's GraphQL API names it.
+ */
+export type IssueReason = "" | "COMPLETED" | "NOT_PLANNED" | "DUPLICATE" | "REOPENED";
+
+/**
+ * The values of IssueReason, by the names of their Go constants.
+ */
+export const IssueReason = {
+    /**
+     * The reasons.
+     *
+     * ReasonNone is an issue never closed, or one closed before GitHub kept a reason.
+     */
+    ReasonNone: "",
+    ReasonCompleted: "COMPLETED",
+    ReasonNotPlanned: "NOT_PLANNED",
+    ReasonDuplicate: "DUPLICATE",
+    ReasonReopened: "REOPENED",
+} as const;
+
+/**
+ * IssueState is an issue's state, as GitHub's GraphQL API names it.
+ */
+export type IssueState = "OPEN" | "CLOSED";
+
+/**
+ * The values of IssueState, by the names of their Go constants.
+ */
+export const IssueState = {
+    /**
+     * The issue states.
+     */
+    IssueOpen: "OPEN",
+    IssueClosed: "CLOSED",
+} as const;
 
 /**
  * LineComment is one comment on a pull request's diff, as the window sends it.
@@ -611,6 +662,13 @@ export interface Review {
     "filesComplete": boolean;
     "checks": Check[] | null;
     "reviews": ReviewEntry[] | null;
+
+    /**
+     * Closes are the issues it closes once it merges, the first ten, and MoreCloses how many
+     * others.
+     */
+    "closes": Closing[] | null;
+    "moreCloses": number;
 
     /**
      * Readiness says how close it is to merging.

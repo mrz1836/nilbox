@@ -14,7 +14,8 @@ import (
 // the description, the base branch, the merge state, what the viewer may do (close it
 // included), the viewer's own latest review and pending reviews, auto-merge, the latest
 // review of each reviewer with its words, the first commit's message, which holds
-// Dependabot's metadata, and the head commit's checks, each with whether it is required.
+// Dependabot's metadata, the head commit's checks, each with whether it is required, and the
+// issues the pull request closes once it merges.
 //
 // Fields DetailFields asks for with other arguments are aliased: GitHub refuses one name
 // asked for twice with different arguments.
@@ -22,7 +23,7 @@ const pullReviewQuery = `query PullReview($id: ID!) {
   node(id: $id) { ...ItemFields ...DetailFields ...ReviewFields }
   rateLimit { cost remaining resetAt limit used }
 }
-` + itemFieldsFragment + repoFieldsFragment + detailFieldsFragment + reviewFieldsFragment
+` + itemFieldsFragment + repoFieldsFragment + detailFieldsFragment + reviewFieldsFragment + refFieldsFragment
 
 // reviewFieldsFragment is what the review sheet reads beyond an inbox card.
 const reviewFieldsFragment = `
@@ -35,6 +36,7 @@ fragment ReviewFields on PullRequest {
   reviewBodies: latestReviews(first: 50) {
     nodes { state body url submittedAt author { login } commit { oid } }
   }
+  closes: closingIssuesReferences(first: 10) { totalCount nodes { ...RefFields } }
   checkList: statusCheckRollup {
     contexts(first: 100) {
       nodes {
@@ -144,6 +146,12 @@ type PullReview struct {
 
 	// Checks are the head commit's checks and statuses, the first 100.
 	Checks []Check
+
+	// Closes are the first ten issues the pull request closes once it merges, the ones its
+	// description names and the ones linked to it by hand, and CloseCount how many there are
+	// that the viewer can see.
+	Closes     []ItemRef
+	CloseCount int
 }
 
 // ReviewMark is a review's state and the commit it was left on.
@@ -357,6 +365,10 @@ type reviewNode struct {
 			Nodes []*graphQLCheck `json:"nodes"`
 		} `json:"contexts"`
 	} `json:"checkList"`
+	Closes struct {
+		TotalCount int           `json:"totalCount"`
+		Nodes      []*graphQLRef `json:"nodes"`
+	} `json:"closes"`
 }
 
 // graphQLCommit is a commit asked only for its SHA.
@@ -409,6 +421,8 @@ func (n *reviewNode) fill(r *PullReview) {
 	r.AutoMerge = n.AutoMergeRequest.autoMerge()
 	r.Reviews = n.reviews()
 	r.Checks = n.checks()
+	r.Closes = itemRefs(n.Closes.Nodes)
+	r.CloseCount = shownCount(n.Closes.TotalCount, len(n.Closes.Nodes), len(r.Closes))
 
 	if v := n.ViewerLatestReview; v != nil {
 		r.ViewerReview = ReviewMark{State: v.State, Commit: v.Commit.oid()}

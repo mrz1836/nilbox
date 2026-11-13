@@ -385,3 +385,40 @@ func countRows(t *testing.T, h *harness, table string) int {
 
 	return n
 }
+
+func TestTheSheetNamesTheIssuesItCloses(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	pr := pullReview(headA, github.MergeStateClean)
+	pr.Closes = []github.ItemRef{{
+		Repo: "acme-org/example-repo", Number: 12, Title: "Cache misses after restart",
+		URL: "https://github.com/acme-org/example-repo/issues/12", State: github.StateOpen,
+	}, {
+		Repo: "acme-org/api", Number: 3, Title: "Retry the upload",
+		URL: "https://github.com/acme-org/api/issues/3", State: github.StateClosed,
+		StateReason: github.StateReasonNotPlanned,
+	}}
+	pr.CloseCount = 3
+	h.github.review = pr
+
+	r := h.refreshed(t)
+	assert.Equal(t, []Closing{{
+		Repo: "acme-org/example-repo", Number: 12, Title: "Cache misses after restart",
+		URL: "https://github.com/acme-org/example-repo/issues/12", State: IssueOpen,
+	}, {
+		Repo: "acme-org/api", Number: 3, Title: "Retry the upload",
+		URL: "https://github.com/acme-org/api/issues/3", State: IssueClosed, StateReason: ReasonNotPlanned,
+	}}, r.Closes)
+	assert.Equal(t, 1, r.MoreCloses)
+
+	// A context an older build cached names none, until the sheet reads it again.
+	_, err := h.db.ExecContext(t.Context(), `UPDATE review_diffs SET context = json_remove(context, '$.closes', '$.closeCount')`)
+	require.NoError(t, err)
+
+	r, err = h.svc.Open(t.Context(), pullID)
+	require.NoError(t, err)
+	assert.NotNil(t, r.Closes)
+	assert.Empty(t, r.Closes)
+	assert.Zero(t, r.MoreCloses)
+}

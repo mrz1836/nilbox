@@ -1,5 +1,5 @@
 import { issueLook } from '../../lib/issues'
-import type { SheetStep } from '../../lib/sheet'
+import type { SheetBack, SheetStep } from '../../lib/sheet'
 import { formatAgo } from '../../lib/time'
 import type { InboxItem, Issue } from '../../platform'
 import { IssueIcon } from '../icons'
@@ -20,6 +20,8 @@ export interface IssueHeaderProps {
   checking: boolean
   prev: SheetStep | null
   next: SheetStep | null
+  // back returns to the sheet a link was followed from, or is null.
+  back?: SheetBack | null
   // onRefresh reads the issue from GitHub again: its conversation, details, and what the
   // user may do.
   onRefresh: () => void
@@ -40,6 +42,7 @@ export function IssueHeader({
   checking,
   prev,
   next,
+  back = null,
   onRefresh,
   onClose,
 }: IssueHeaderProps) {
@@ -87,6 +90,7 @@ export function IssueHeader({
       checking={checking}
       prev={prev}
       next={next}
+      back={back}
       refreshTitle="Read it from GitHub again: the conversation, the details, and what you can do"
       onRefresh={onRefresh}
       onClose={onClose}

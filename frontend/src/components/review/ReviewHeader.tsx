@@ -1,4 +1,4 @@
-import type { SheetStep } from '../../lib/sheet'
+import type { SheetBack, SheetStep } from '../../lib/sheet'
 import type { InboxItem, Review } from '../../platform'
 import { PullRequestIcon } from '../icons'
 import { TrustTag } from '../ItemRow'
@@ -17,6 +17,8 @@ export interface ReviewHeaderProps {
   // the list.
   onPrev: SheetStep | null
   onNext: SheetStep | null
+  // back returns to the sheet a link was followed from, or is null.
+  back?: SheetBack | null
   onClose: () => void
   // onRefresh reads the pull request from GitHub again: its description, files, checks,
   // reviews, and whether it can merge.
@@ -34,6 +36,7 @@ export function ReviewHeader({
   position,
   onPrev,
   onNext,
+  back = null,
   onClose,
   onRefresh,
   checking,
@@ -64,6 +67,7 @@ export function ReviewHeader({
       position={position}
       checking={checking}
       prev={onPrev}
+      back={back}
       next={onNext}
       refreshTitle="Read it from GitHub again: checks, reviews, files, and the description"
       onRefresh={onRefresh}

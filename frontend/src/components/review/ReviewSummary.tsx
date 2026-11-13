@@ -1,8 +1,11 @@
 import { counted } from '../../lib/format'
+import { refText } from '../../lib/format'
+import { issueLook } from '../../lib/issues'
 import { toneDot, toneText, type Tone } from '../../lib/signals'
 import type { InboxItem, ReadyState, Review, ReviewCheck, ReviewEntry } from '../../platform'
 import { openExternal } from '../../platform'
 import { chipClass } from '../controls'
+import { ItemLink } from '../ItemLink'
 import { Markdown } from '../Markdown'
 import { SensitiveFiles } from '../SensitiveFiles'
 import { StatusDot } from '../StatusDot'
@@ -206,6 +209,35 @@ function Reviews({ reviews }: { reviews: readonly ReviewEntry[] }) {
   )
 }
 
+// Closes names the issues the pull request closes once it merges, each opening in the issue
+// sheet when the inbox holds it, and how one already closed was closed.
+function Closes({ review }: { review: Review }) {
+  if (review.closes.length === 0) {
+    return null
+  }
+
+  return (
+    <section aria-label="Closes" className="space-y-1 text-xs">
+      <p className="text-muted">Closes</p>
+      <ul className="space-y-1">
+        {review.closes.map((c) => (
+          <li key={refText(c)} className="flex min-w-0 items-baseline gap-1.5">
+            <ItemLink linked={c} from={review.repo} titled />
+            {/* A space keeps the title and the state apart when read aloud; the flex layout drops it. */}
+            {c.state === 'CLOSED' && (
+              <>
+                {' '}
+                <span className="shrink-0 text-muted">{issueLook(c.state, c.stateReason).words.toLowerCase()}</span>
+              </>
+            )}
+          </li>
+        ))}
+      </ul>
+      {review.moreCloses > 0 && <p className="text-muted">and {String(review.moreCloses)} more on GitHub</p>}
+    </section>
+  )
+}
+
 // Readiness says how close the pull request is to merging, in one line, as in "An approval
 // · auto-merge available". The sheet keeps it in view above the summary, which scrolls.
 export function Readiness({ review }: { review: Review }) {
@@ -215,7 +247,8 @@ export function Readiness({ review }: { review: Review }) {
 }
 
 // ReviewSummary sums up a pull request in a few lines: what kind of change it is and where,
-// what a dependency update bumps, its checks, its sensitive files, and its reviews.
+// what a dependency update bumps, the issues it closes, its checks, its sensitive files,
+// and its reviews.
 export function ReviewSummary({ review, item, onFilesSettings }: ReviewSummaryProps) {
   const { change } = review
 
@@ -227,6 +260,7 @@ export function ReviewSummary({ review, item, onFilesSettings }: ReviewSummaryPr
         {item?.files != null && <SensitiveFiles itemId={item.id} check={item.files} onSettings={onFilesSettings} />}
         {change.areas.length > 0 && <span className="text-xs text-muted">in {areasText(change.areas)}</span>}
       </div>
+      <Closes review={review} />
       <Checks checks={review.checks} />
       <Reviews reviews={review.reviews} />
     </section>

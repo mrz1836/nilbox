@@ -32,6 +32,8 @@ func TestFetchPullReviewReadsTheSheet(t *testing.T) {
 		assert.Contains(t, req.Query, "fragment ReviewFields on PullRequest")
 		assert.Contains(t, req.Query, "viewerCanClose")
 		assert.Contains(t, req.Query, "isRequired(pullRequestId: $id)")
+		assert.Contains(t, req.Query, "closes: closingIssuesReferences(first: 10) { totalCount nodes { ...RefFields } }")
+		assert.Contains(t, req.Query, "fragment RefFields on ReferencedSubject")
 		assert.Equal(t, "PR_fakeNodeId94", req.Variables.ID)
 
 		setRateHeaders(w, ResourceGraphQL, 4995, 5)
@@ -67,6 +69,11 @@ func TestFetchPullReviewReadsTheSheet(t *testing.T) {
 	assert.Equal(t, 1, review.PendingReviews)
 	assert.True(t, review.AutoMerge.On())
 	assert.NotContains(t, pullReviewQuery, "commits(", "nothing reads a commit's message, so none is asked for")
+	assert.Equal(t, []ItemRef{{
+		Repo: "acme-org/example-repo", Number: 12, Title: "Pin the code scanning action",
+		URL: "https://github.com/acme-org/example-repo/issues/12", State: StateOpen,
+	}}, review.Closes, "the issues it closes, a null skipped")
+	assert.Equal(t, 1, review.CloseCount, "the null is one the token can't read, which isn't counted")
 
 	assert.Equal(t, []Review{
 		{

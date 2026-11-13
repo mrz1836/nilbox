@@ -1,4 +1,4 @@
-import { useRef, type ReactNode } from 'react'
+import { useEffectEvent, useLayoutEffect, useRef, type ReactNode } from 'react'
 
 import { useModalDialog } from '../lib/useModalDialog'
 
@@ -11,6 +11,10 @@ export interface SheetProps {
   // sheet in its place; without it, or with nothing it selects that can take focus, focus
   // starts on the sheet.
   initialFocus?: string | undefined
+  // refocus moves focus as the sheet opens whenever it changes, for a sheet that shows
+  // another item in place, as a link in it or its step back does: the control that moved
+  // it may be gone with what it showed, which would leave focus nowhere.
+  refocus?: number | undefined
   children: ReactNode
 }
 
@@ -20,16 +24,26 @@ export interface SheetProps {
 // focus goes back where it was when it closes. Focus starts on the sheet itself, so its
 // own keys work at once, unless initialFocus picks a control in it. Render it only while
 // it is open.
-export function Sheet({ labelledBy, onClose, initialFocus, children }: SheetProps) {
+export function Sheet({ labelledBy, onClose, initialFocus, refocus = 0, children }: SheetProps) {
   const dialogRef = useRef<HTMLDialogElement>(null)
   const bodyRef = useRef<HTMLDivElement>(null)
-  const cancel = useModalDialog(dialogRef, onClose, () => {
+  const firstFocus = () => {
     const body = bodyRef.current
     const picked = initialFocus === undefined ? null : body?.querySelector<HTMLElement>(initialFocus)
 
     // A control that can't take focus, being disabled, leaves focus on the sheet.
     return picked === null || picked === undefined || picked.matches(':disabled') ? body : picked
+  }
+  const cancel = useModalDialog(dialogRef, onClose, firstFocus)
+  const focusAgain = useEffectEvent(() => {
+    firstFocus()?.focus()
   })
+
+  // As it opens this repeats what the dialog just did; after that it runs only when
+  // refocus changes.
+  useLayoutEffect(() => {
+    focusAgain()
+  }, [refocus])
 
   return (
     <dialog
