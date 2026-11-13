@@ -28,6 +28,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/sensitive"
 	"github.com/mrz1836/nilbox/internal/snooze"
 	"github.com/mrz1836/nilbox/internal/testutil"
+	"github.com/mrz1836/nilbox/internal/threadrules"
 	"github.com/mrz1836/nilbox/internal/trust"
 )
 
@@ -106,6 +107,10 @@ func TestPrefDefaults(t *testing.T) {
 			OfferAfterMerge: true,
 			ScriptSources:   integrationprefs.ScriptSources{MagexTargets: true, RepoFiles: true},
 			Sections:        map[integrationprefs.ScriptsSection]bool{},
+		},
+		GitHubNotifications: threadrules.Rules{
+			Read: true, Action: threadrules.ActionDone, TriggersOff: []threadrules.Trigger{}, Watching: true,
+			BotActivity: true,
 		},
 		Refresh:        DefaultRefreshIntervals(),
 		RefreshChoices: refreshChoices(),
@@ -239,6 +244,10 @@ func TestSettersPersist(t *testing.T) {
 	require.NoError(t, testutil.ErrOf(svc.SetIntegrationEnabled(t.Context(), integrationprefs.GoPreCommit, integrationprefs.SwitchOff)))
 	require.NoError(t, testutil.ErrOf(svc.SetIntegrationPath(t.Context(), integrationprefs.MageX, "~/bin/magex")))
 	require.NoError(t, testutil.ErrOf(svc.SetScriptSources(t.Context(), false, true)))
+	require.NoError(t, testutil.ErrOf(svc.SetGitHubNotificationSwitch(t.Context(), threadrules.SwitchAuto, true)))
+	require.NoError(t, testutil.ErrOf(svc.SetGitHubNotificationSwitch(t.Context(), threadrules.SwitchWatching, false)))
+	require.NoError(t, testutil.ErrOf(svc.SetGitHubNotificationTrigger(t.Context(), threadrules.TriggerDismissed, false)))
+	require.NoError(t, testutil.ErrOf(svc.SetGitHubNotificationAction(t.Context(), threadrules.ActionRead)))
 
 	got, err := svc.Get(t.Context())
 	require.NoError(t, err)
@@ -278,6 +287,10 @@ func TestSettersPersist(t *testing.T) {
 			OfferAfterMerge: true,
 			ScriptSources:   integrationprefs.ScriptSources{MagexTargets: false, RepoFiles: true},
 			Sections:        map[integrationprefs.ScriptsSection]bool{},
+		},
+		GitHubNotifications: threadrules.Rules{
+			Read: true, Auto: true, Action: threadrules.ActionRead,
+			TriggersOff: []threadrules.Trigger{threadrules.TriggerDismissed}, Watching: false, BotActivity: true,
 		},
 		Refresh:        DefaultRefreshIntervals(),
 		RefreshChoices: refreshChoices(),
@@ -677,6 +690,28 @@ func TestSettersReturnTheStoredSettings(t *testing.T) {
 		{
 			"text size", func() (Settings, error) { return svc.SetTextSize(ctx, TextSizeLarge) },
 			func(s Settings) any { return s.TextSize }, TextSizeLarge,
+		},
+		{
+			"github notification switch",
+			func() (Settings, error) { return svc.SetGitHubNotificationSwitch(ctx, threadrules.SwitchAuto, true) },
+			func(s Settings) any { return s.GitHubNotifications.Auto }, true,
+		},
+		{
+			"github notification trigger",
+			func() (Settings, error) {
+				return svc.SetGitHubNotificationTrigger(ctx, threadrules.TriggerReviewed, false)
+			},
+			func(s Settings) any { return s.GitHubNotifications.TriggersOff },
+			[]threadrules.Trigger{threadrules.TriggerReviewed},
+		},
+		{
+			"github notification action",
+			func() (Settings, error) { return svc.SetGitHubNotificationAction(ctx, threadrules.ActionRead) },
+			func(s Settings) any { return s.GitHubNotifications.Action }, threadrules.ActionRead,
+		},
+		{
+			"github cleanup card", func() (Settings, error) { return svc.SetGitHubCleanupCardDismissed(ctx, true) },
+			func(s Settings) any { return s.GitHubNotifications.CleanupCardDismissed }, true,
 		},
 	} {
 		got, err := tc.set()

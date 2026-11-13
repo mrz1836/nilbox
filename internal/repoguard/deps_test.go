@@ -105,6 +105,15 @@ func boundaries() []boundary {
 				"inbox and release read; it knows no store or service",
 		},
 		{
+			pkg: "internal/threadrules",
+			forbidden: append(slices.Clone(noService),
+				"internal/notify", "internal/notifyprefs", "internal/clock", "internal/integrations"),
+			why: "threadrules declares the GitHub notification rules' settings keys, which settings writes, and decides " +
+				"a thread from them and what it is given alone; this rule keeps it off the store, the GitHub client, " +
+				"settings, the inbox, core, the notifications, the clock, and the integrations, and by convention it " +
+				"imports only item and prefval",
+		},
+		{
 			pkg:       "internal/prefs/prefval",
 			forbidden: noService,
 			why: "prefval spells the switches and lists that settings and the leaves declaring its keys store; " +
