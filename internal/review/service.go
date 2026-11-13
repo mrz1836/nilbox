@@ -610,7 +610,7 @@ func patchOf(f cachedFile, patches map[int]string) (string, PatchState) {
 // sheet built from them.
 func factsOf(pull StoredPull, c *cached, r Review) Facts {
 	f := Facts{
-		Mine: r.Mine, Draft: pull.IsDraft, CanWrite: canWrite(pull.ViewerPermission),
+		Mine: r.Mine, Draft: pull.IsDraft, CanWrite: github.CanWrite(pull.ViewerPermission),
 		Dependabot:     r.IsBot && strings.HasPrefix(strings.ToLower(pull.AuthorLogin), "dependabot"),
 		ReviewRequired: pull.ReviewDecision == "REVIEW_REQUIRED", ChangesRequested: pull.ReviewDecision == "CHANGES_REQUESTED",
 		Base: r.BaseRef, Methods: methodsOf(pull), ViewerMethod: MergeMethod(pull.ViewerMergeMethod),
@@ -654,16 +654,6 @@ func (f *Facts) countChecks(checks []Check) {
 				f.RequiredPending++
 			}
 		}
-	}
-}
-
-// canWrite reports write access or more.
-func canWrite(permission string) bool {
-	switch permission {
-	case "ADMIN", "MAINTAIN", "WRITE":
-		return true
-	default:
-		return false
 	}
 }
 

@@ -155,6 +155,25 @@ func TestCloseIssueSaysWhatAnIssueClosedFirstIsClosedAs(t *testing.T) {
 	closed, err = client.CloseIssue(t.Context(), NewToken(fakeToken), issueRef(), IssueReasonCompleted)
 	require.NoError(t, err)
 	assert.Empty(t, closed.Reason)
+	assert.Empty(t, closed.ClosedBy)
+
+	// Someone closed it first as the reason asked: GitHub says who.
+	client, _ = writeServer(t, ResourceCore, http.StatusOK,
+		`{"state":"closed","state_reason":"completed","closed_by":{"login":"octo-other"}}`, nil)
+
+	closed, err = client.CloseIssue(t.Context(), NewToken(fakeToken), issueRef(), IssueReasonCompleted)
+	require.NoError(t, err)
+	assert.Equal(t, &IssueClosed{Reason: IssueReasonCompleted, ClosedBy: "octo-other"}, closed)
+}
+
+func TestCanWrite(t *testing.T) {
+	t.Parallel()
+
+	for permission, want := range map[string]bool{
+		"ADMIN": true, "MAINTAIN": true, "WRITE": true, "TRIAGE": false, "READ": false, "": false, "write": false,
+	} {
+		assert.Equal(t, want, CanWrite(permission), permission)
+	}
 }
 
 func TestAnIssueCommentIsWordedAsAComment(t *testing.T) {

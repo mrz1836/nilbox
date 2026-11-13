@@ -47,6 +47,7 @@ func TestWindowEventsGoOnToThePage(t *testing.T) {
 		event.BudgetUpdated{},
 		event.SessionsUpdated{},
 		event.ReviewProgress{},
+		event.IssueProgress{},
 		event.ToolsUpdated{},
 		event.ScriptRunsUpdated{},
 		event.ScriptRunProgress{},

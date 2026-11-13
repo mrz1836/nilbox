@@ -25,6 +25,10 @@ type IssueClosed struct {
 	// say. It is the reason asked for, unless someone closed the issue first: GitHub
 	// ignores a reason unless the close changes the issue's state.
 	Reason string
+
+	// ClosedBy is the login GitHub says closed the issue, "" when it doesn't say: the
+	// viewer's, unless someone closed it first.
+	ClosedBy string
 }
 
 // CloseIssue closes the issue ref as reason, IssueReasonCompleted or
@@ -59,13 +63,22 @@ func (c *Client) closeIssue(ctx context.Context, tok Token, ref item.Ref, reason
 		return nil, err
 	}
 
-	return &IssueClosed{Reason: strings.ToLower(answer.StateReason)}, nil
+	closed := &IssueClosed{Reason: strings.ToLower(answer.StateReason)}
+	if answer.ClosedBy != nil {
+		closed.ClosedBy = answer.ClosedBy.Login
+	}
+
+	return closed, nil
 }
 
-// closedItem is GitHub's answer to a close: the item's state, and an issue's reason.
+// closedItem is GitHub's answer to a close: the item's state, and an issue's reason and who
+// closed it.
 type closedItem struct {
 	State       string `json:"state"`
 	StateReason string `json:"state_reason"`
+	ClosedBy    *struct {
+		Login string `json:"login"`
+	} `json:"closed_by"`
 }
 
 // closeItem sends the close of ref to its REST path, with the fields change sets, and

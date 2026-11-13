@@ -190,3 +190,16 @@ func TestLineSplitter(t *testing.T) {
 	short.Write([]byte("ij\nxy\n"), keep)
 	assert.Equal(t, []string{"abcd", "xy"}, lines, "a long line keeps its start, and the next line reads whole")
 }
+
+func TestHasTextIsWhatTheWindowTrimsToSomething(t *testing.T) {
+	t.Parallel()
+
+	// Everything String.prototype.trim drops: its white space and line terminators.
+	js := "\t\n\v\f\r \u00a0\u1680\u2000\u2001\u2002\u2003\u2004\u2005\u2006\u2007\u2008\u2009\u200a\u2028\u2029\u202f\u205f\u3000\uFEFF"
+
+	assert.False(t, textutil.HasText(""))
+	assert.False(t, textutil.HasText(js))
+	assert.False(t, textutil.HasText("\uFEFF"), "trim drops a byte order mark, which strings.TrimSpace keeps")
+	assert.True(t, textutil.HasText("\u0085"), "trim keeps U+0085, which unicode.IsSpace counts")
+	assert.True(t, textutil.HasText(js+"ok"+js))
+}

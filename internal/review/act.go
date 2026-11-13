@@ -13,6 +13,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/item"
 	"github.com/mrz1836/nilbox/internal/repo"
 	"github.com/mrz1836/nilbox/internal/sensitive"
+	"github.com/mrz1836/nilbox/internal/textutil"
 	"github.com/mrz1836/nilbox/internal/uierr"
 )
 
@@ -190,7 +191,7 @@ func reviewOf(req ActRequest, offer Offer) (Action, error) {
 	switch {
 	case offer.Reviews:
 		return req.Action, nil
-	case !offer.CommentsFirst || (!hasText(req.Body) && len(req.Comments) == 0):
+	case !offer.CommentsFirst || (!textutil.HasText(req.Body) && len(req.Comments) == 0):
 		return ActionNone, nil
 	case offer.CommentBlocked != "":
 		return ActionNone, uierr.New(offer.CommentBlocked,
@@ -213,7 +214,7 @@ func checkOffer(req ActRequest, plan Plan) error {
 		return uierr.New(offer.Reason, fmt.Errorf("%w: %q: %s", ErrNotOffered, req.Action, offer.Reason))
 	case len(offer.Warnings) > 0 && !req.Accept:
 		return uierr.New("Accept the warnings first.", fmt.Errorf("%w: %q", ErrWarningsNotAccepted, req.Action))
-	case (req.Action == ActionRequestChanges || req.Action == ActionComment) && !hasText(req.Body) &&
+	case (req.Action == ActionRequestChanges || req.Action == ActionComment) && !textutil.HasText(req.Body) &&
 		len(req.Comments) == 0:
 		return uierr.New("Write something, or add a line comment, first.",
 			fmt.Errorf("%w: %q needs text", ErrNotOffered, req.Action))

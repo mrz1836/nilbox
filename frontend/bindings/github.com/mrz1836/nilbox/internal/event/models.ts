@@ -24,6 +24,23 @@ export interface InboxUpdated {
 }
 
 /**
+ * IssueProgress says what the issue sheet's action on an issue is doing now, as in
+ * "Checking for new comments since you opened it" or "Closing as completed", so the sheet
+ * can show each step while the user waits for GitHub.
+ */
+export interface IssueProgress {
+    /**
+     * ItemID is the stored issue the action is on.
+     */
+    "itemId": number;
+
+    /**
+     * Step says what the action is doing now.
+     */
+    "step": string;
+}
+
+/**
  * NotificationsUpdated says the notification log changed: the window reads it again.
  */
 export interface NotificationsUpdated {

@@ -38,6 +38,9 @@ const (
 	// NameReviewProgress is ReviewProgress's name.
 	NameReviewProgress = "review:progress"
 
+	// NameIssueProgress is IssueProgress's name.
+	NameIssueProgress = "issue:progress"
+
 	// NameThemeChanged is ThemeChanged's name.
 	NameThemeChanged = "settings:theme"
 
@@ -129,6 +132,7 @@ func WindowEvents() []WindowEvent {
 		BudgetUpdated{},
 		SessionsUpdated{},
 		ReviewProgress{},
+		IssueProgress{},
 		ToolsUpdated{},
 		ScriptRunsUpdated{},
 		ScriptRunProgress{},
@@ -224,6 +228,22 @@ type ReviewProgress struct {
 func (ReviewProgress) Name() string { return NameReviewProgress }
 
 func (ReviewProgress) window() {}
+
+// IssueProgress says what the issue sheet's action on an issue is doing now, as in
+// "Checking for new comments since you opened it" or "Closing as completed", so the sheet
+// can show each step while the user waits for GitHub.
+type IssueProgress struct {
+	// ItemID is the stored issue the action is on.
+	ItemID int64 `json:"itemId"`
+
+	// Step says what the action is doing now.
+	Step string `json:"step"`
+}
+
+// Name returns NameIssueProgress.
+func (IssueProgress) Name() string { return NameIssueProgress }
+
+func (IssueProgress) window() {}
 
 // ThemeChanged says the user chose a theme and it was stored. The shell brings the
 // window's native appearance along with it; the page has already switched itself.

@@ -417,6 +417,12 @@ func boundCalls(t *testing.T) map[string]boundCall {
 
 			return got, err
 		},
+		"issues.Service.Open": func(ctx context.Context, c *Core, ids seededItems) (any, error) {
+			got, err := c.Issues.Open(ctx, ids.stuck)
+			require.NotEmpty(t, got.Timeline.Items)
+
+			return got, err
+		},
 		"review.Service.Patches": func(ctx context.Context, c *Core, ids seededItems) (any, error) {
 			got, err := c.Review.Patches(ctx, ids.item, "abc123", []string{"login.go"})
 			require.NotEmpty(t, got)
@@ -466,6 +472,10 @@ func unreachedBound() map[string]string {
 		"review.Service.Refresh":            "reads GitHub; its review is built as Open's",
 		"review.Service.ReadAgain":          "reads GitHub; its review is built as Open's",
 		"review.Service.Act":                "edits GitHub; its steps start empty",
+		"issues.Service.Refresh":            "reads GitHub; its issue is built as Open's",
+		"issues.Service.ReadAgain":          "reads GitHub; its issue is built as Open's",
+		"issues.Service.Earlier":            "reads GitHub; its items are converted as Open's",
+		"issues.Service.Act":                "edits GitHub; its steps start empty",
 		"release.Service.Candidates":        "scans the clone root and reads GitHub; its lists start empty",
 		"release.Service.Prepare":           "needs a clone of a GitHub repository; Decide starts every list empty",
 		"hooks.Service.InstallAll":          "needs go-pre-commit; its lines start empty",
@@ -605,6 +615,13 @@ func seedBound(t *testing.T) (*Core, seededItems) {
 		VALUES (?, 0, 'login.go', 'modified', 1, '@@ -1 +1 @@
 -a
 +b')`, ids[0])
+	require.NoError(t, err)
+
+	// The issue sheet's cache of the issue, as sparse as an older build's but for a comment
+	// in its conversation.
+	_, err = c.DB.ExecContext(ctx, `INSERT INTO issue_views (item_id, view, bytes, fetched_at, used_at)
+		VALUES (?, '{"state":"OPEN","timeline":[{"kind":"comment","id":"IC_1","body":"Can repro."}]}', 80, ?, ?)`,
+		ids[1], now, now)
 	require.NoError(t, err)
 
 	// A run that ended, with its result as sparse as an older build's, and a release whose

@@ -61,6 +61,16 @@ func EndSentence(msg string) string {
 	return msg + "."
 }
 
+// HasText reports text that says something: anything left once the white space the
+// window's String.prototype.trim drops is gone from both ends, so the window and the
+// services that post the user's text always agree. That is unicode.IsSpace's set but
+// U+0085, which trim keeps, plus U+FEFF, which trim drops.
+func HasText(s string) bool {
+	return strings.TrimFunc(s, func(r rune) bool {
+		return r == '\uFEFF' || (unicode.IsSpace(r) && r != '\u0085')
+	}) != ""
+}
+
 // NonNil returns list, or an empty list for nil, so JSON carries [] rather than null and
 // the UI always gets an array.
 func NonNil[T any](list []T) []T {

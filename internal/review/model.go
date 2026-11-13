@@ -2,8 +2,6 @@ package review
 
 import (
 	"slices"
-	"strings"
-	"unicode"
 
 	"github.com/mrz1836/nilbox/internal/bump"
 	"github.com/mrz1836/nilbox/internal/sensitive"
@@ -76,16 +74,6 @@ func (a Action) reviews() bool {
 // (Offer.CommentsFirst), which is what Act and the window go by.
 func (a Action) commentsFirst() bool {
 	return slices.Contains([]Action{ActionMerge, ActionMergeBypass, ActionAutoMerge, ActionClose}, a)
-}
-
-// hasText reports text that says something: anything left once the white space the
-// window's String.prototype.trim drops is gone from both ends, so the window and Act
-// always agree. That is unicode.IsSpace's set but U+0085, which trim keeps, plus U+FEFF,
-// which trim drops.
-func hasText(s string) bool {
-	return strings.TrimFunc(s, func(r rune) bool {
-		return r == '\uFEFF' || (unicode.IsSpace(r) && r != '\u0085')
-	}) != ""
 }
 
 // MergeMethod is how GitHub merges a pull request, as its GraphQL API names it.
