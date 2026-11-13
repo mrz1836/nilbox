@@ -33,7 +33,7 @@ func setAsideAt() time.Time { return time.Date(2026, time.January, 2, 3, 4, 5, 0
 func damage() []byte { return bytes.Repeat([]byte{0xff}, 400) }
 
 // preSquashHistory is the migration history a database had before its migrations were
-// combined into one: each version, name, and file checksum.
+// first combined into one: each version, name, and file checksum.
 func preSquashHistory() [][3]any {
 	return [][3]any{
 		{1, "init", "e0a22b503faef27899852e69e1833fbfa9de8094da4da0e0bf55bda9933ce60b"},
@@ -49,6 +49,51 @@ func preSquashHistory() [][3]any {
 		{11, "item_pin", "76dd5d270c3990c08b351f4e83963d2372907856bde2d0b7e12b1bd7e9828516"},
 		{12, "item_files", "b09022f79f2630608bc9ff14ce1eae216bcd0ad413309c8a99831f9b8a757f08"},
 		{13, "notifications", "f9e617695e05f2964c45c052b660a7eed91b84f7d3184484ee676f64ecebfb97"},
+	}
+}
+
+// secondPreSquashHistory is the migration history a database had before its migrations
+// were combined into one the second time: each version, name, and file checksum.
+func secondPreSquashHistory() [][3]any {
+	return [][3]any{
+		{1, "init", "53416feb8a10fbffa7f55bb98bfecb6fa467a513a80c3664ee3a01375bedcb77"},
+		{2, "item_projects", "0edcc6e13fc62185825f5a0fcce1f9a3842d33c74379bc59506d86367f99ab7f"},
+		{3, "item_sub_issues", "6db03c40db2617351c7b95ee1d9829416b6db10f29c0bcb1166fc7bdb996b105"},
+		{4, "item_edits", "a2b781a4031489dfc8df0459abb469fd89d450c27e0f6284c46eab56b0d6d3f5"},
+		{5, "agents", "c431fe832f73e18cc2b2e66e2cd932ca0f2a5fb05f51a525e124c1e3c6115a95"},
+		{6, "agent_sessions", "0bfad3303b3e4a389638ddaf8867aee43501beb26d363f8527f8aef18fc4a367"},
+		{7, "review_replies", "4bd5f09f283a1d9686c7b77edd1d83753b8f7f0f30fdfaf7056063179283e103"},
+		{8, "item_auto_merge", "d88b2537c341f7ae3bf345770dadb49789aa79f085a8e288c98af815a334377e"},
+		{9, "pull_reviews", "86db3016af28c3376587c6c8929ae310e6a7f767caae45b2154d4ab6eb10e3f1"},
+		{10, "tool_installs", "c3d0950aad749a5b35a5f51fb082e3711ee45c62c0c2d7f55da6f501c55145ca"},
+		{11, "script_runs", "bb2b6db0253c40f189c5c902ce1a60a6d54f2b836be1aa2734cc5431a688c6d2"},
+		{12, "repo_scripts", "f24f535e32972d226eb01b88c3d5b880bdb704c846a37ea2b6ac9b7549cdb663"},
+		{13, "notification_runs", "2676d542820b3da706d1f9227e5e197ad16ef0554e00f06f60f2ab61ac293c42"},
+		{14, "session_launch", "c128704c39ac45fcc70df5a00ee53d37b79246c724f32a999a71786c5009acac"},
+		{15, "drop_repo_flags", "31bdcb1deb0560a2305e63b8b6bb2eac99dec75ba33e7056593907c4f32cf4a4"},
+		{16, "issue_views", "f1faa1f7ff1dc800e95eaf4922306c8c1348dec0d624b1bc1e7a84abd9cfedbb"},
+		{17, "avatars", "27278eb547f8e0b10f6ef9fc39beb08d66727f69af0f8d2006b68fd941114626"},
+		{18, "item_checks_awaiting", "8f5d862e2710ba8f497627fc0b76772f97e0fd1f85c0921f6cb38651180240f2"},
+	}
+}
+
+// recordedHistory returns a setup that migrates a database and replaces its migration
+// history with history.
+func recordedHistory(history [][3]any) func(t *testing.T, path string) {
+	return func(t *testing.T, path string) {
+		t.Helper()
+
+		migrated(t, path, "DELETE FROM schema_migrations")
+
+		raw := rawDB(t, path)
+
+		for _, row := range history {
+			_, err := raw.ExecContext(t.Context(), `INSERT INTO schema_migrations (version, name, checksum, applied_at)
+VALUES (?, ?, ?, '2026-01-01T00:00:00Z')`, row[0], row[1], row[2])
+			require.NoError(t, err)
+		}
+
+		require.NoError(t, raw.Close())
 	}
 }
 
@@ -201,20 +246,15 @@ func TestOpenSetsAsideADatabaseItCannotUse(t *testing.T) {
 			kept:   assertPrefKept,
 		},
 		{
-			name: "pre-squash history",
-			setup: func(t *testing.T, path string) {
-				migrated(t, path, "DELETE FROM schema_migrations")
-
-				raw := rawDB(t, path)
-
-				for _, row := range preSquashHistory() {
-					_, err := raw.ExecContext(t.Context(), `INSERT INTO schema_migrations (version, name, checksum, applied_at)
-VALUES (?, ?, ?, '2026-01-01T00:00:00Z')`, row[0], row[1], row[2])
-					require.NoError(t, err)
-				}
-
-				require.NoError(t, raw.Close())
-			},
+			name:   "pre-squash history",
+			setup:  recordedHistory(preSquashHistory()),
+			reason: store.ResetHistory,
+			cause:  migrate.ErrChecksumMismatch,
+			kept:   assertPrefKept,
+		},
+		{
+			name:   "history from before the second squash",
+			setup:  recordedHistory(secondPreSquashHistory()),
 			reason: store.ResetHistory,
 			cause:  migrate.ErrChecksumMismatch,
 			kept:   assertPrefKept,
