@@ -4,8 +4,9 @@
 // Each preference is a typed key with a default, so a fresh database already has a
 // complete set of settings. Setters validate their value before storing it and reject
 // anything unknown with a sentinel error. Settings writes every key it declares, and the
-// keys the trust, snooze, sensitive, notifyprefs, branchrules, and integrationprefs
-// packages declare and decode; see the prefs package for which package writes the others.
+// keys the trust, snooze, sensitive, notifyprefs, branchrules, reporules, and
+// integrationprefs packages declare and decode; see the prefs package for which package
+// writes the others.
 package settings
 
 import (
@@ -33,6 +34,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/prefs"
 	"github.com/mrz1836/nilbox/internal/prefs/prefval"
 	"github.com/mrz1836/nilbox/internal/profiles"
+	"github.com/mrz1836/nilbox/internal/reporules"
 	"github.com/mrz1836/nilbox/internal/sensitive"
 	"github.com/mrz1836/nilbox/internal/snooze"
 	"github.com/mrz1836/nilbox/internal/store"
@@ -187,6 +189,11 @@ type Settings struct {
 
 	// DefaultProtectedBranches is the protected list before the user changes it.
 	DefaultProtectedBranches []string `json:"defaultProtectedBranches"`
+
+	// RepoRules are the pinned and the muted repositories and orgs: a pinned one's items
+	// count as pinned in the inbox, and a muted one's are set apart in each list's Muted
+	// tab and on the Release page (see the reporules package).
+	RepoRules reporules.Rules `json:"repoRules"`
 
 	// SensitiveCategories are the built-in categories in matching order, with their
 	// patterns, for the settings page to describe.
@@ -594,6 +601,7 @@ func fromStored(stored map[string]string) Settings {
 		Branches:            branchrules.Decode(stored),
 
 		DefaultProtectedBranches: branchrules.DefaultProtected(),
+		RepoRules:                reporules.Decode(stored),
 		MenuBar:                  prefval.Bool(stored[KeyMenuBar], DefaultMenuBar),
 		BannersOff: notifyprefs.DecodeBannersOff(stored[notifyprefs.KeyBannersOff],
 			stored[notifyprefs.KeyBannersOn]),
@@ -712,5 +720,6 @@ func settingKeys() []string {
 		snooze.PrefWakeCommits, snooze.PrefWakeReviews, snooze.PrefWakeComments,
 		sensitive.PrefScope, sensitive.PrefOff, sensitive.PrefPatterns, KeyMenuBar, notifyprefs.KeyBannersOff, notifyprefs.KeyBannersOn, KeyTheme,
 		KeyTextSize, KeyProjectsTipDismissed, KeyMergeMethod, KeyRefreshInbox, KeyRefreshChecks, KeyRefreshWorktrees,
-	), append(append(append(collapsedKeys(), orderKeys()...), branchrules.Keys()...), integrationprefs.Keys()...)...)
+	), append(append(append(append(collapsedKeys(), orderKeys()...), branchrules.Keys()...), reporules.Keys()...),
+		integrationprefs.Keys()...)...)
 }

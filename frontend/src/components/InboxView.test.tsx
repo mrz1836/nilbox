@@ -12,7 +12,7 @@ import { useInboxOrder } from '../lib/useInboxOrder'
 import { useReviewDrafts } from '../lib/reviewDrafts'
 import { ClockContext } from '../lib/useNow'
 import { useTriage } from '../lib/useTriage'
-import type { AfterMerge, InboxSnapshot, ListKey, ReviewResult } from '../platform'
+import type { AfterMerge, InboxSnapshot, ListKey, RepoRules, ReviewResult, Settings } from '../platform'
 import { clockAt, FIXED_NOW, fixedNow, fromNow } from '../test/clock'
 import {
   afterMerge,
@@ -52,6 +52,8 @@ const filterBy = vi.fn<(key: string, value: string) => void>()
 const clearFilter = vi.fn()
 const manageReplies = vi.fn()
 const release = vi.fn<(offer: AfterMerge) => void>()
+const settingsSaved = vi.fn<(settings: Settings) => void>()
+const repoRuleSettings = vi.fn()
 
 interface HarnessProps {
   launch: LaunchOptions | null
@@ -65,6 +67,8 @@ interface HarnessProps {
   // after a merge, on with it unless turned off.
   reviews?: boolean
   releases?: boolean
+  // repoRules are the pinned and muted repositories the settings hold.
+  repoRules?: RepoRules
 }
 
 // Harness renders the view over the real inbox state, triage, and collapsed lists, the
@@ -86,6 +90,7 @@ function Inbox({
   query = '',
   reviews = false,
   releases = true,
+  repoRules = { pinned: [], muted: [] },
 }: Omit<HarnessProps, 'clock'>) {
   const inbox = useInbox()
   const drafts = useReviewDrafts()
@@ -118,6 +123,9 @@ function Inbox({
       onClearFilter={clearFilter}
       {...(reviews ? { drafts, onManageReplies: manageReplies } : {})}
       {...(reviews && releases ? { onRelease: release } : {})}
+      repoRules={repoRules}
+      onSettingsSaved={settingsSaved}
+      onRepoRuleSettings={repoRuleSettings}
     />
   )
 }
@@ -496,6 +504,94 @@ describe('InboxView triage', () => {
   const snoozed = item({ id: 2, number: 8, title: 'Bump the parser', snoozedUntil: '2026-06-18T12:00:00Z' })
   const dismissed = item({ id: 3, number: 9, title: 'Rename the flag', dismissedAt: '2026-06-15T09:00:00Z' })
 
+  it('sets a muted repository’s items apart in the Muted tab, out of the count', async () => {
+    const quiet = item({ id: 4, number: 11, title: 'Quiet change', repo: 'acme-org/quiet', repoRule: 'muted' })
+    platform.getInboxSnapshot.mockResolvedValue(snapshot({ reviewRequested: list([fresh, quiet], 2) }))
+    render(<Harness launch={launchOptions} clock={fixedNow} repoRules={{ pinned: [], muted: ['acme-org/quiet'] }} />)
+
+    const review = await section('Review requested')
+    expect(review.getByRole('tab', { name: 'Review requested 1' })).toHaveAttribute('aria-selected', 'true')
+    expect(review.queryByRole('button', { name: 'Quiet change' })).not.toBeInTheDocument()
+
+    await userEvent.click(review.getByRole('tab', { name: 'Muted 1' }))
+    expect(review.getByRole('button', { name: 'Quiet change' })).toBeInTheDocument()
+
+    platform.setRepoRule.mockResolvedValue(settings({ repoRules: { pinned: [], muted: [] } }))
+    await userEvent.click(review.getByRole('button', { name: 'Unmute acme-org/quiet' }))
+
+    expect(platform.setRepoRule).toHaveBeenCalledExactlyOnceWith('acme-org/quiet', '')
+    expect(await screen.findByRole('status')).toHaveTextContent(
+      'Unmuted acme-org/quiet · Its items are back in the lists.',
+    )
+    expect(settingsSaved).toHaveBeenCalledWith(settings({ repoRules: { pinned: [], muted: [] } }))
+
+    // The inbox shows the change once the backend has built it again under the new rules.
+    platform.getInboxSnapshot.mockResolvedValue(
+      snapshot({ reviewRequested: list([fresh, { ...quiet, repoRule: '' }]) }),
+    )
+    act(() => {
+      emit('inbox:updated')
+    })
+    expect(await review.findByRole('tab', { name: 'Review requested 2' })).toBeInTheDocument()
+    expect(review.getByRole('tab', { name: 'Muted' })).toBeInTheDocument()
+  })
+
+  it('mutes a card’s org from its menu, and undoes it from the toast', async () => {
+    platform.getInboxSnapshot.mockResolvedValue(snapshot({ reviewRequested: list([fresh]) }))
+    platform.setRepoRule.mockResolvedValue(settings({ repoRules: { pinned: [], muted: ['acme-org'] } }))
+    render(<Harness launch={launchOptions} clock={fixedNow} />)
+
+    const review = await section('Review requested')
+    await userEvent.click(review.getByRole('button', { name: 'More actions' }))
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Inbox actions' }))
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Pin or mute repository' }))
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Mute everything in acme-org' }))
+
+    expect(platform.setRepoRule).toHaveBeenCalledExactlyOnceWith('acme-org', 'muted')
+    expect(await screen.findByRole('status')).toHaveTextContent(
+      'Muted acme-org · Its items wait in each list’s Muted tab.',
+    )
+
+    platform.setRepoRule.mockResolvedValue(settings())
+    await userEvent.click(screen.getByRole('button', { name: 'Undo' }))
+
+    expect(platform.setRepoRule).toHaveBeenLastCalledWith('acme-org', '')
+    await waitFor(() => {
+      expect(settingsSaved).toHaveBeenLastCalledWith(settings())
+    })
+    expect(screen.getByRole('status')).toBeEmptyDOMElement()
+  })
+
+  it('says why a rule could not be changed', async () => {
+    platform.getInboxSnapshot.mockResolvedValue(snapshot({ reviewRequested: list([fresh]) }))
+    platform.setRepoRule.mockRejectedValue(new Error('database is locked'))
+    render(<Harness launch={launchOptions} clock={fixedNow} />)
+
+    const review = await section('Review requested')
+    await userEvent.click(review.getByRole('button', { name: 'More actions' }))
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Inbox actions' }))
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Pin or mute repository' }))
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Pin acme-org/example-repo' }))
+
+    expect(await screen.findByRole('status')).toHaveTextContent(
+      'Could not change the rule for acme-org/example-repo · database is locked',
+    )
+    expect(screen.queryByRole('button', { name: 'Undo' })).not.toBeInTheDocument()
+  })
+
+  it('opens the pinned and muted repositories in Settings from a card’s menu', async () => {
+    platform.getInboxSnapshot.mockResolvedValue(snapshot({ reviewRequested: list([fresh]) }))
+    render(<Harness launch={launchOptions} clock={fixedNow} />)
+
+    const review = await section('Review requested')
+    await userEvent.click(review.getByRole('button', { name: 'More actions' }))
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Inbox actions' }))
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Pin or mute repository' }))
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Pinned and muted…' }))
+
+    expect(repoRuleSettings).toHaveBeenCalledOnce()
+  })
+
   it('shows each list as tabs, with what was set aside counted apart', async () => {
     platform.getInboxSnapshot.mockResolvedValue(
       snapshot({ reviewRequested: list([fresh, snoozed, dismissed], 40), assigned: list([fresh]) }),
@@ -555,10 +651,13 @@ describe('InboxView triage', () => {
     expect(review.getByRole('tab', { name: 'Snoozed' })).toHaveAttribute('aria-selected', 'true')
 
     await userEvent.keyboard('{End}')
-    expect(review.getByRole('tab', { name: 'Dismissed' })).toHaveFocus()
+    expect(review.getByRole('tab', { name: 'Muted' })).toHaveFocus()
 
     await userEvent.keyboard('{ArrowRight}')
     expect(inbox).toHaveFocus()
+
+    await userEvent.keyboard('{ArrowLeft}')
+    expect(review.getByRole('tab', { name: 'Muted' })).toHaveFocus()
 
     await userEvent.keyboard('{ArrowLeft}')
     expect(review.getByRole('tab', { name: 'Dismissed' })).toHaveFocus()

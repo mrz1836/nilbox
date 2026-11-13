@@ -1,6 +1,10 @@
 package inbox
 
-import "time"
+import (
+	"time"
+
+	"github.com/mrz1836/nilbox/internal/reporules"
+)
 
 // Dismissed reports whether the item was dismissed.
 func (it Item) Dismissed() bool {
@@ -20,14 +24,21 @@ func (it Item) Snoozed(now time.Time) bool {
 	return err == nil && until.After(now)
 }
 
-// NeedsYou reports whether the item is in its lists' own tab at now: neither dismissed
-// nor snoozed.
+// Muted reports whether the item's repository or org is muted, which sets it apart in its
+// lists' Muted tab, whatever else it is.
+func (it Item) Muted() bool {
+	return it.RepoRule == reporules.RuleMuted
+}
+
+// NeedsYou reports whether the item is in its lists' own tab at now: not muted with its
+// repository or org, dismissed, or snoozed.
 func (it Item) NeedsYou(now time.Time) bool {
-	return !it.Dismissed() && !it.Snoozed(now)
+	return !it.Muted() && !it.Dismissed() && !it.Snoozed(now)
 }
 
 // Waiting returns the list's items that need the user at now, in the list's order: the
-// pinned items first, then the rest by newest activity.
+// pinned items first, then those pinned with their repository or org, then the rest by
+// newest activity.
 func (l List) Waiting(now time.Time) []Item {
 	var out []Item
 
@@ -45,8 +56,8 @@ func (s *Snapshot) Lists() []List {
 	return []List{s.ReviewRequested, s.Authored, s.Assigned}
 }
 
-// NeedsYou counts the items that need the user at now: those in any list, neither
-// dismissed nor snoozed, each once however many lists it is in. It is the count the Inbox
+// NeedsYou counts the items that need the user at now: those in any list, not muted,
+// dismissed, or snoozed, each once however many lists it is in. It is the count the Inbox
 // tab shows (inboxCount in the frontend's lib/triage.ts), so the menu bar and the window
 // always agree.
 func (s *Snapshot) NeedsYou(now time.Time) int {
@@ -63,25 +74,32 @@ func (s *Snapshot) NeedsYou(now time.Time) int {
 	return len(seen)
 }
 
-// NextSnoozeEnd is when the soonest running snooze ends after now, which is when
-// NeedsYou next changes without anything being stored, or the zero time when no snooze
-// is running.
+// NextSnoozeEnd is when the soonest running snooze of an item that isn't muted ends after
+// now, which is when NeedsYou next changes without anything being stored, or the zero time
+// when no such snooze is running.
 func (s *Snapshot) NextSnoozeEnd(now time.Time) time.Time {
 	var next time.Time
 
 	for _, l := range s.Lists() {
 		for _, it := range l.Items {
-			if !it.Snoozed(now) {
-				continue
-			}
-
-			until, _ := time.Parse(time.RFC3339, it.SnoozedUntil) // Snoozed parsed it
-
-			if next.IsZero() || until.Before(next) {
+			if until, ok := it.snoozeEnd(now); ok && (next.IsZero() || until.Before(next)) {
 				next = until
 			}
 		}
 	}
 
 	return next
+}
+
+// snoozeEnd is when the item's running snooze ends, and whether it counts: an item muted
+// with its repository or org is set apart whatever its snooze says, so its end changes no
+// count.
+func (it Item) snoozeEnd(now time.Time) (time.Time, bool) {
+	if it.Muted() || !it.Snoozed(now) {
+		return time.Time{}, false
+	}
+
+	until, _ := time.Parse(time.RFC3339, it.SnoozedUntil) // Snoozed parsed it
+
+	return until, true
 }

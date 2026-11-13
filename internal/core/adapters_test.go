@@ -26,8 +26,10 @@ import (
 	"github.com/mrz1836/nilbox/internal/launcher"
 	"github.com/mrz1836/nilbox/internal/launcher/terminal"
 	"github.com/mrz1836/nilbox/internal/localrepos"
+	prefsstore "github.com/mrz1836/nilbox/internal/prefs"
 	"github.com/mrz1836/nilbox/internal/release"
 	"github.com/mrz1836/nilbox/internal/repo"
+	"github.com/mrz1836/nilbox/internal/reporules"
 	"github.com/mrz1836/nilbox/internal/scriptrun"
 	"github.com/mrz1836/nilbox/internal/sensitive"
 	"github.com/mrz1836/nilbox/internal/settings"
@@ -87,6 +89,28 @@ func TestSettingsViewsReadTheSettingsAsTheyAreNow(t *testing.T) {
 	assert.Equal(t, worktrees.SweepSettings{
 		CloneRoot: root, CloneLocations: locations, Branches: branchrules.Rules{Own: true, Protected: []string{"develop"}},
 	}, swept)
+}
+
+func TestTheReleasePageReadsTheRepoRulesAsSettingsStoreThem(t *testing.T) {
+	t.Parallel()
+
+	c := bootstrap(t, testOptions(t))
+	ctx := t.Context()
+	rules := releaseRules{prefs: prefsstore.New(c.DB, nil)}
+
+	got, err := rules.RepoRules(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, reporules.Rules{Pinned: []string{}, Muted: []string{}}, got)
+
+	require.NoError(t, testutil.ErrOf(c.Settings.SetRepoRule(ctx, boundOwner, reporules.RuleMuted)))
+	require.NoError(t, testutil.ErrOf(c.Settings.SetRepoRule(ctx, boundOwner+"/"+boundRepo, reporules.RulePinned)))
+
+	got, err = rules.RepoRules(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, reporules.Rules{Pinned: []string{boundOwner + "/" + boundRepo}, Muted: []string{boundOwner}}, got)
+
+	_, err = releaseRules{prefs: prefsstore.New(testutil.ClosedDB(t), nil)}.RepoRules(ctx)
+	require.Error(t, err)
 }
 
 func TestSettingsViewReportsUnreadableSettings(t *testing.T) {

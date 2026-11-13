@@ -86,6 +86,9 @@ const (
 	// SectionReleaseCantRelease is Release's repositories that can't be released here.
 	SectionReleaseCantRelease ScriptsSection = "release.cantRelease"
 
+	// SectionReleaseMuted is Release's repositories the user muted, themselves or their org.
+	SectionReleaseMuted ScriptsSection = "release.muted"
+
 	// SectionHooksAttention is Hooks' clones that need attention.
 	SectionHooksAttention ScriptsSection = "hooks.attention"
 
@@ -115,7 +118,7 @@ const (
 func Sections() []ScriptsSection {
 	return []ScriptsSection{
 		SectionReleaseUnreleased, SectionReleaseUpToDate, SectionReleaseNoReleases, SectionReleaseCantRelease,
-		SectionHooksAttention, SectionHooksReady, SectionHooksOff, SectionHooksNotSetUp,
+		SectionReleaseMuted, SectionHooksAttention, SectionHooksReady, SectionHooksOff, SectionHooksNotSetUp,
 		SectionScriptsYours, SectionScriptsT3, SectionScriptsTasks, SectionScriptsMagex,
 	}
 }

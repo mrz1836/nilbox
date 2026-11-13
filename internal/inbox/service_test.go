@@ -1513,8 +1513,6 @@ type storedRepo struct {
 	LanguageColor      string
 	PushedAt           *time.Time
 	FetchedAt          *time.Time
-	Pinned             bool
-	Muted              bool
 	LocalPath          string
 	CreatedAt          time.Time
 	UpdatedAt          time.Time
@@ -1529,11 +1527,11 @@ func (h *harness) repoRow(t *testing.T, name string) storedRepo {
 	require.NoError(t, h.pool.QueryRowContext(t.Context(), `SELECT id, node_id, description, visibility,
     is_archived, archived_at, is_fork, parent, default_branch, viewer_permission, viewer_merge_method,
     merge_commit_allowed, squash_merge_allowed, auto_merge_allowed, allow_update_branch, language, language_color,
-    pushed_at, fetched_at, pinned, muted, local_path, created_at, updated_at
+    pushed_at, fetched_at, local_path, created_at, updated_at
 FROM repos WHERE name = ?`, name).Scan(&r.ID, &r.NodeID, &r.Description, &r.Visibility, &r.IsArchived,
 		&r.ArchivedAt, &r.IsFork, &r.Parent, &r.DefaultBranch, &r.ViewerPermission, &r.ViewerMergeMethod,
 		&r.MergeCommitAllowed, &r.SquashMergeAllowed, &r.AutoMergeAllowed, &r.AllowUpdateBranch, &r.Language,
-		&r.LanguageColor, &r.PushedAt, &r.FetchedAt, &r.Pinned, &r.Muted, &r.LocalPath, &r.CreatedAt, &r.UpdatedAt))
+		&r.LanguageColor, &r.PushedAt, &r.FetchedAt, &r.LocalPath, &r.CreatedAt, &r.UpdatedAt))
 
 	return r
 }
@@ -1573,10 +1571,9 @@ func TestRefreshStoresWhatGitHubSaysAboutEachRepository(t *testing.T) {
 	require.NotNil(t, repo.FetchedAt)
 	assert.True(t, h.clock.Now().Equal(*repo.FetchedAt))
 
-	// The local columns are the user's, and a refresh leaves them alone while it rewrites
+	// The local column is the app's, and a refresh leaves it alone while it rewrites
 	// GitHub's.
-	h.exec(t, "UPDATE repos SET pinned = 1, muted = 1, local_path = ? WHERE id = ?", "~/projects/example-repo",
-		repo.ID)
+	h.exec(t, "UPDATE repos SET local_path = ? WHERE id = ?", "~/projects/example-repo", repo.ID)
 
 	a.Repo.Description = "Renamed description"
 	a.Repo.PushedAt = time.Time{}
@@ -1585,8 +1582,6 @@ func TestRefreshStoresWhatGitHubSaysAboutEachRepository(t *testing.T) {
 	repo = h.repoRow(t, "example-repo")
 	assert.Equal(t, "Renamed description", repo.Description)
 	assert.Nil(t, repo.PushedAt, "an unknown push time is stored as unknown")
-	assert.True(t, repo.Pinned)
-	assert.True(t, repo.Muted)
 	assert.Equal(t, "~/projects/example-repo", repo.LocalPath)
 }
 

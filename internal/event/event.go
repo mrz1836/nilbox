@@ -82,6 +82,9 @@ const (
 
 	// NameIntervalsChanged is IntervalsChanged's name.
 	NameIntervalsChanged = "settings:intervalsChanged"
+
+	// NameRepoRulesChanged is RepoRulesChanged's name.
+	NameRepoRulesChanged = "settings:repoRulesChanged"
 )
 
 // Event is something that happened, or was asked for, that another part of the app
@@ -289,6 +292,14 @@ type IntervalsChanged struct{}
 
 // Name returns NameIntervalsChanged.
 func (IntervalsChanged) Name() string { return NameIntervalsChanged }
+
+// RepoRulesChanged says the user pinned or muted a repository or an org, or took the rule
+// off, and it was stored. It stays in Go: core tells the window the inbox changed, which
+// the menu bar shows too, and has the Release page regroup its list.
+type RepoRulesChanged struct{}
+
+// Name returns NameRepoRulesChanged.
+func (RepoRulesChanged) Name() string { return NameRepoRulesChanged }
 
 // ScriptRunsUpdated says a run started, ended, or changed status, or the history changed:
 // the window lists the runs again and pulls what it shows. It never carries output.

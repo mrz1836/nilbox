@@ -6,6 +6,9 @@
 import * as item$0 from "../item/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
+import * as reporules$0 from "../reporules/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
 import * as sensitive$0 from "../sensitive/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
@@ -189,6 +192,14 @@ export interface Item {
      * snooze or a dismissal.
      */
     "pinnedAt": string;
+
+    /**
+     * RepoRule is the rule the user set for the item's repository or its org, the
+     * repository's own winning (see the reporules package): "pinned" counts the item as
+     * pinned, after the items pinned themselves, and "muted" sets it apart in its lists'
+     * Muted tab, where it needs no one; "" is neither.
+     */
+    "repoRule": reporules$0.Rule;
 
     /**
      * Assigned reports that the item is in the Assigned list: it is assigned to the

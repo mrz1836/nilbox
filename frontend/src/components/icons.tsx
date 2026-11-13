@@ -402,6 +402,16 @@ export function BellIcon(props: IconProps) {
   )
 }
 
+// MuteIcon stands for muting a repository or an org: a struck bell.
+export function MuteIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M6 16.5V11a6 6 0 0 1 12 0v5.5l1.5 2H4.5z" />
+      <path d="M10 20.5a2 2 0 0 0 4 0M3.5 3.5l17 17" />
+    </Icon>
+  )
+}
+
 // AssignIcon stands for an item assigned to the user.
 export function AssignIcon(props: IconProps) {
   return (

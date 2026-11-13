@@ -11,10 +11,28 @@ import (
 	"github.com/mrz1836/nilbox/internal/launcher/terminal"
 	"github.com/mrz1836/nilbox/internal/localrepos"
 	"github.com/mrz1836/nilbox/internal/notify"
+	prefsstore "github.com/mrz1836/nilbox/internal/prefs"
 	"github.com/mrz1836/nilbox/internal/release"
 	"github.com/mrz1836/nilbox/internal/repo"
+	"github.com/mrz1836/nilbox/internal/reporules"
 	"github.com/mrz1836/nilbox/internal/settings"
 )
+
+// releaseRules reads the pinned and muted repositories and orgs for the Release page, in
+// one read of the prefs (release.RuleSource).
+type releaseRules struct {
+	prefs *prefsstore.Store
+}
+
+// RepoRules returns the rules as stored.
+func (r releaseRules) RepoRules(ctx context.Context) (reporules.Rules, error) {
+	stored, err := r.prefs.GetMany(ctx, reporules.Keys()...)
+	if err != nil {
+		return reporules.Rules{}, fmt.Errorf("read the pinned and muted repositories: %w", err)
+	}
+
+	return reporules.Decode(stored), nil
+}
 
 // releaseClones lists the clones in the repository locations the settings name, for the
 // Release page, with each one's origin when origin is a GitHub repository

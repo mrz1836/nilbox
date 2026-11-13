@@ -210,7 +210,7 @@ export function inboxItems(triaged: TriagedInbox): InboxItem[] {
   const seen = new Map<number, InboxItem>()
 
   for (const list of Object.values(triaged.lists)) {
-    for (const item of [...list.inbox, ...list.snoozed, ...list.dismissed]) {
+    for (const item of [...list.inbox, ...list.snoozed, ...list.dismissed, ...list.muted]) {
       if (!seen.has(item.id)) {
         seen.set(item.id, item)
       }
@@ -259,7 +259,12 @@ export function filterInbox(triaged: TriagedInbox, src: string, viewer: string):
   const narrow = (key: ListKey): FilteredList => {
     const list = triaged.lists[key]
 
-    return { inbox: keep(list.inbox), snoozed: keep(list.snoozed), dismissed: keep(list.dismissed) }
+    return {
+      inbox: keep(list.inbox),
+      snoozed: keep(list.snoozed),
+      dismissed: keep(list.dismissed),
+      muted: keep(list.muted),
+    }
   }
   const lists = {
     reviewRequested: narrow('reviewRequested'),

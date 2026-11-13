@@ -1,5 +1,6 @@
 import { useId, useState, type ReactNode } from 'react'
 
+import { attempt } from '../../lib/call'
 import { counted, formatCount } from '../../lib/format'
 import {
   cloneNotes,
@@ -12,18 +13,22 @@ import {
   releasable,
   releaseGroups,
 } from '../../lib/release'
+import { ruleFor } from '../../lib/repoRules'
 import type { ReleaseCandidatesState } from '../../lib/useReleaseCandidates'
 import { useSections, type OnSection, type StoredSections } from '../../lib/useSections'
 import type { SettingsSection } from '../../lib/settingsIndex'
 import { usable } from '../../lib/scriptsTab'
 import { formatAge, formatAgo } from '../../lib/time'
-import type {
-  CommitChecks,
-  IntegrationTool,
-  ReleaseCandidate,
-  ReleaseGroup,
-  ScriptRun,
-  ScriptsSection,
+import {
+  setRepoRule,
+  type CommitChecks,
+  type IntegrationTool,
+  type ReleaseCandidate,
+  type ReleaseGroup,
+  type RepoRules,
+  type ScriptRun,
+  type ScriptsSection,
+  type Settings,
 } from '../../platform'
 import { buttonClass, captionClass, quietButtonClass } from '../controls'
 import { ErrorBanner } from '../ErrorBanner'
@@ -123,6 +128,43 @@ function CandidateRow({ candidate, onRelease }: { candidate: ReleaseCandidate; o
   )
 }
 
+interface MutedRowProps {
+  candidate: ReleaseCandidate
+  // target is the repository or org whose rule mutes it, or '' once it is unmuted and
+  // read again.
+  target: string
+  busy: boolean
+  onUnmute: () => void
+}
+
+// MutedRow is a muted repository: its name and clone, and Unmute, which unmutes the
+// repository or org that mutes it, so it is read again and listed in its own group. One
+// unmuted already says it is being read again.
+function MutedRow({ candidate, target, busy, onUnmute }: MutedRowProps) {
+  return (
+    <li className="flex items-center gap-3 rounded-md px-3 py-2 hover:bg-raised/60">
+      <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+        <p className="text-sm font-medium">{candidate.repo}</p>
+        <p className="truncate font-mono text-xs text-muted">{candidate.dir}</p>
+      </div>
+      {target === '' ? (
+        <span className="text-xs text-muted">Unmuted · reading it again…</span>
+      ) : (
+        <button
+          type="button"
+          disabled={busy}
+          aria-label={`Unmute ${target}`}
+          title={`Unmute ${target}: GitHub is asked about it again, and its items go back to the inbox’s lists`}
+          onClick={onUnmute}
+          className={buttonClass}
+        >
+          Unmute
+        </button>
+      )}
+    </li>
+  )
+}
+
 // RecentRelease is a release in Recent: how it went, its version and repository, and
 // when it started. It opens its run.
 function RecentRelease({ run, onOpen }: { run: ScriptRun; onOpen: () => void }) {
@@ -161,7 +203,14 @@ export interface ReleasePageProps {
   // onSection stores another.
   sections?: StoredSections
   onSection?: OnSection
+  // repoRules are the pinned and muted repositories and orgs, from the settings, which a
+  // muted row's Unmute changes; onSettingsSaved receives the settings as stored after it.
+  repoRules?: RepoRules | undefined
+  onSettingsSaved?: ((settings: Settings) => void) | undefined
 }
+
+// noRepoRules are the rules until the settings have loaded.
+const noRepoRules: RepoRules = { pinned: [], muted: [] }
 
 // ReleasePage is the Scripts tab's Release page: every clone with a GitHub origin, in its
 // group (unreleased changes first, newest commit first, then the collapsed rest), each
@@ -169,7 +218,8 @@ export interface ReleasePageProps {
 // to read GitHub again, how far a read has got, and how old the list is when it was kept
 // from the last start or the last read failed; and the recent releases, each opening its
 // run. While magex can't be used, the page says why in place of its list. Each group
-// stays open or folded as the user left it, across starts (useSections).
+// stays open or folded as the user left it, across starts (useSections). The muted
+// repositories sit in their own group, folded at first, each with Unmute.
 export function ReleasePage({
   candidates,
   tool,
@@ -180,9 +230,14 @@ export function ReleasePage({
   onOpenSettings,
   sections = {},
   onSection = () => undefined,
+  repoRules = noRepoRules,
+  onSettingsSaved,
 }: ReleasePageProps) {
   const id = useId()
   const [search, setSearch] = useState('')
+  // unmuting is the target being unmuted, and unmuteError why the last unmute failed.
+  const [unmuting, setUnmuting] = useState('')
+  const [unmuteError, setUnmuteError] = useState('')
   const folds = useSections(sections, onSection, groupsOpen())
   const { list, error, refreshing, refreshError, progress, refresh } = candidates
   const searching = search.trim() !== ''
@@ -190,6 +245,30 @@ export function ReleasePage({
   const recent = recentReleases(runs)
   const openIntegrations = () => {
     onOpenSettings('integrations')
+  }
+
+  // unmute takes the mute off target. The settings, as stored, show it at once; the list
+  // regroups once the service has read the rules ("releases:updated").
+  const unmute = async (target: string) => {
+    setUnmuting(target)
+    setUnmuteError('')
+
+    const result = await attempt(setRepoRule(target, ''))
+
+    setUnmuting('')
+
+    if (result.ok) {
+      onSettingsSaved?.(result.data)
+    } else {
+      setUnmuteError(`Couldn’t unmute ${target}: ${result.error}`)
+    }
+  }
+
+  // mutedBy is the target whose rule mutes a repository, or '' when none does any more.
+  const mutedBy = (repo: string) => {
+    const applied = ruleFor(repoRules, repo)
+
+    return applied.rule === 'muted' ? applied.target : ''
   }
 
   let body: ReactNode
@@ -254,15 +333,27 @@ export function ReleasePage({
                   <p className="px-3 text-sm text-muted">No repository has unreleased changes.</p>
                 ) : (
                   <ul aria-label={group.title} className="flex flex-col">
-                    {rows.map((candidate) => (
-                      <CandidateRow
-                        key={`${candidate.repo} ${candidate.dir}`}
-                        candidate={candidate}
-                        onRelease={() => {
-                          onRelease(candidate)
-                        }}
-                      />
-                    ))}
+                    {rows.map((candidate) =>
+                      candidate.group === 'muted' ? (
+                        <MutedRow
+                          key={`${candidate.repo} ${candidate.dir}`}
+                          candidate={candidate}
+                          target={mutedBy(candidate.repo)}
+                          busy={unmuting !== ''}
+                          onUnmute={() => {
+                            void unmute(mutedBy(candidate.repo))
+                          }}
+                        />
+                      ) : (
+                        <CandidateRow
+                          key={`${candidate.repo} ${candidate.dir}`}
+                          candidate={candidate}
+                          onRelease={() => {
+                            onRelease(candidate)
+                          }}
+                        />
+                      ),
+                    )}
                   </ul>
                 ))}
             </section>
@@ -308,6 +399,7 @@ export function ReleasePage({
           </div>
         </div>
         <ErrorText error={refreshError === '' ? '' : `Couldn’t read GitHub again: ${refreshError}`} />
+        <ErrorText error={unmuteError} />
         {list !== null && list.error !== '' && (
           <p role="note" className="flex items-center gap-1.5 text-xs text-warning" title={list.error}>
             <AlertIcon className="size-3.5 shrink-0" />

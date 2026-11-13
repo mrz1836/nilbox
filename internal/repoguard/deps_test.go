@@ -93,6 +93,12 @@ func boundaries() []boundary {
 			why:       "integrationprefs declares the integrations' settings keys, which settings writes; it knows no service",
 		},
 		{
+			pkg:       "internal/reporules",
+			forbidden: noService,
+			why: "reporules declares the pinned and muted repositories' settings keys, which settings writes and the " +
+				"inbox and release read; it knows no store or service",
+		},
+		{
 			pkg:       "internal/prefs/prefval",
 			forbidden: noService,
 			why: "prefval spells the switches and lists that settings and the leaves declaring its keys store; " +

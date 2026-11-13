@@ -11,7 +11,15 @@ import type { IntegrationsState } from '../../lib/useIntegrations'
 import { useReleaseCandidates } from '../../lib/useReleaseCandidates'
 import type { ScriptRunsState } from '../../lib/useScriptRuns'
 import type { OnSection, StoredSections } from '../../lib/useSections'
-import type { IntegrationSwitch, IntegrationTool, RunsIn, ScriptsPage as StoredPage, TerminalID } from '../../platform'
+import type {
+  IntegrationSwitch,
+  IntegrationTool,
+  RepoRules,
+  RunsIn,
+  ScriptsPage as StoredPage,
+  Settings,
+  TerminalID,
+} from '../../platform'
 import {
   AlertIcon,
   AnchorIcon,
@@ -131,6 +139,10 @@ export interface ScriptsViewProps {
   // and onShowRuns changes it.
   showRuns?: boolean
   onShowRuns?: (on: boolean) => void
+  // repoRules are the pinned and muted repositories and orgs, which Release's muted rows
+  // unmute; onSettingsSaved receives the settings as stored after each change.
+  repoRules?: RepoRules | undefined
+  onSettingsSaved?: ((settings: Settings) => void) | undefined
 }
 
 // ScriptsView is the Scripts tab: a rail of its pages, each with what it counts, and at
@@ -159,6 +171,8 @@ export default function ScriptsView({
   onSection = () => undefined,
   showRuns = false,
   onShowRuns = () => undefined,
+  repoRules,
+  onSettingsSaved,
 }: ScriptsViewProps) {
   const { tools, error } = integrations
   const mageX = toolOf(tools, 'mage-x')
@@ -359,6 +373,8 @@ export default function ScriptsView({
             onOpenSettings={onOpenSettings}
             sections={sections}
             onSection={onSection}
+            repoRules={repoRules}
+            onSettingsSaved={onSettingsSaved}
           />
         ) : shown === 'hooks' ? (
           <HooksPage

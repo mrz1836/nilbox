@@ -232,8 +232,9 @@ function BackTag({ item }: { item: InboxItem }) {
 }
 
 // TriageTag says where a snoozed or dismissed item stands, and marks an item just back
-// from a snooze, so it is easy to spot among the rest. Each tag reads the clock itself,
-// so a tick renders a tag only when its words change.
+// from a snooze, so it is easy to spot among the rest. A muted item needs no tag: its tab
+// says why it is there. Each tag reads the clock itself, so a tick renders a tag only when
+// its words change.
 function TriageTag({ item, tab }: { item: InboxItem; tab: TriageTab }) {
   const quiet = `${tagClass} inline-flex items-center gap-1 text-muted`
 
@@ -242,6 +243,8 @@ function TriageTag({ item, tab }: { item: InboxItem; tab: TriageTab }) {
       return <SnoozedTag item={item} className={quiet} />
     case 'dismissed':
       return <DismissedTag item={item} className={quiet} />
+    case 'muted':
+      return null
     default:
       // An item never snoozed has nothing to mark, nor any reason to follow the clock.
       return item.snoozedUntil === '' ? null : <BackTag item={item} />

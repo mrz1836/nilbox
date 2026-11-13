@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 
 import type { TriageTab } from '../lib/triage'
-import type { InboxItem } from '../platform'
+import type { InboxItem, RepoRules } from '../platform'
 import { at } from '../test/clock'
 import { item } from '../test/fixtures'
 import { platform } from '../test/platform'
@@ -13,7 +13,7 @@ import type { TriageActions } from './TriageControls'
 
 vi.mock('../platform', () => import('../test/platform').then((fake) => fake.platform))
 
-function triageActions(): TriageActions {
+function triageActions(repoRules: RepoRules = { pinned: [], muted: [] }): TriageActions {
   return {
     snoozeDays: 3,
     onDismiss: vi.fn(),
@@ -23,6 +23,9 @@ function triageActions(): TriageActions {
     onUnpin: vi.fn(),
     onRefresh: vi.fn(() => Promise.resolve()),
     onChangeDefault: vi.fn(),
+    repoRules,
+    onRepoRule: vi.fn(),
+    onRepoRuleSettings: vi.fn(),
   }
 }
 
@@ -36,8 +39,8 @@ function editActions(): EditActions {
 
 // renderRow renders one row with its triage buttons and its menu, and returns what they
 // do.
-function renderRow(it: InboxItem, tab: TriageTab = 'inbox') {
-  const triage = triageActions()
+function renderRow(it: InboxItem, tab: TriageTab = 'inbox', repoRules?: RepoRules) {
+  const triage = triageActions(repoRules)
   const edits = editActions()
 
   render(
@@ -108,6 +111,7 @@ describe('ItemMenu', () => {
     expect(names(screen.getByRole('menu', { name: 'Inbox actions' }))).toEqual([
       'Refresh from GitHub',
       'Pin to top',
+      'Pin or mute repository',
       'Snooze',
       'Dismiss',
     ])
@@ -150,6 +154,7 @@ describe('ItemMenu', () => {
     expect(names(screen.getByRole('menu', { name: 'Inbox actions' }))).toEqual([
       'Unsnooze',
       'Unpin',
+      'Pin or mute repository',
       'Refresh from GitHub',
     ])
 
@@ -160,6 +165,93 @@ describe('ItemMenu', () => {
     await openSubmenu('Inbox actions')
     await userEvent.click(screen.getByRole('menuitem', { name: 'Unsnooze' }))
     expect(triage.onRestore).toHaveBeenCalledWith(it)
+  })
+
+  it('pins or mutes the item’s repository or its whole org', async () => {
+    const { triage } = renderRow(item({ repo: 'acme-org/example-repo' }))
+
+    await openMenu()
+    await openSubmenu('Inbox actions')
+    const rules = await openSubmenu('Pin or mute repository')
+
+    expect(names(screen.getByRole('menu', { name: 'Pin or mute repository' }))).toEqual([
+      'Pin acme-org/example-repo',
+      'Mute acme-org/example-repo',
+      'Pin everything in acme-org',
+      'Mute everything in acme-org',
+      'Pinned and muted…',
+    ])
+
+    await userEvent.click(rules.getByRole('menuitem', { name: 'Mute everything in acme-org' }))
+    expect(triage.onRepoRule).toHaveBeenCalledExactlyOnceWith('acme-org', 'muted')
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument()
+
+    await openMenu()
+    await openSubmenu('Inbox actions')
+    await openSubmenu('Pin or mute repository')
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Pinned and muted…' }))
+    expect(triage.onRepoRuleSettings).toHaveBeenCalledOnce()
+  })
+
+  it('takes a rule off the target it is set on, and moves a target from one rule to the other', async () => {
+    const { triage } = renderRow(item({ repo: 'acme-org/example-repo', repoRule: 'pinned' }), 'inbox', {
+      pinned: ['Acme-Org/Example-Repo'],
+      muted: ['acme-org'],
+    })
+
+    await openMenu()
+    await openSubmenu('Inbox actions')
+    await openSubmenu('Pin or mute repository')
+    expect(names(screen.getByRole('menu', { name: 'Pin or mute repository' }))).toEqual([
+      'Unpin acme-org/example-repo',
+      'Mute acme-org/example-repo',
+      'Pin everything in acme-org',
+      'Unmute everything in acme-org',
+      'Pinned and muted…',
+    ])
+
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Unpin acme-org/example-repo' }))
+    expect(triage.onRepoRule).toHaveBeenLastCalledWith('acme-org/example-repo', '')
+
+    await openMenu()
+    await openSubmenu('Inbox actions')
+    await openSubmenu('Pin or mute repository')
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Pin everything in acme-org' }))
+    expect(triage.onRepoRule).toHaveBeenLastCalledWith('acme-org', 'pinned')
+  })
+
+  it('unmutes a muted item’s repository or org from the Muted tab', async () => {
+    const it = item({ repo: 'acme-org/example-repo', repoRule: 'muted' })
+    const { triage } = renderRow(it, 'muted', { pinned: [], muted: ['acme-org'] })
+
+    const unmute = screen.getByRole('button', { name: 'Unmute acme-org' })
+    expect(unmute).toHaveTextContent('Unmute')
+    await userEvent.click(unmute)
+    expect(triage.onRepoRule).toHaveBeenCalledExactlyOnceWith('acme-org', '')
+
+    await openMenu()
+    await openSubmenu('Inbox actions')
+    expect(names(screen.getByRole('menu', { name: 'Inbox actions' }))).toEqual([
+      'Unmute acme-org',
+      'Pin to top',
+      'Refresh from GitHub',
+    ])
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Unmute acme-org' }))
+    expect(triage.onRepoRule).toHaveBeenLastCalledWith('acme-org', '')
+  })
+
+  it('marks an item pinned with its repository, which a row doesn’t unpin', async () => {
+    const it = item({ repo: 'acme-org/example-repo', repoRule: 'pinned' })
+    const { triage } = renderRow(it, 'inbox', { pinned: ['acme-org'], muted: [] })
+
+    const mark = screen.getByRole('img', { name: 'Pinned with acme-org' })
+    expect(mark.parentElement).toHaveClass('flex')
+    expect(screen.queryByRole('button', { name: 'Unpin' })).not.toBeInTheDocument()
+
+    await openMenu()
+    await openSubmenu('Inbox actions')
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Pin to top' }))
+    expect(triage.onPin).toHaveBeenCalledWith(it)
   })
 
   it('offers a dismissed item back with Restore', async () => {

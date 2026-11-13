@@ -1,10 +1,12 @@
 package inbox
 
 import (
+	"cmp"
 	"context"
 	"database/sql"
 	"errors"
 	"fmt"
+	"slices"
 	"strconv"
 	"time"
 
@@ -13,6 +15,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/inbox/internal/queries"
 	"github.com/mrz1836/nilbox/internal/item"
 	"github.com/mrz1836/nilbox/internal/repo"
+	"github.com/mrz1836/nilbox/internal/reporules"
 	"github.com/mrz1836/nilbox/internal/sensitive"
 	"github.com/mrz1836/nilbox/internal/snooze"
 	"github.com/mrz1836/nilbox/internal/store"
@@ -133,6 +136,12 @@ type Item struct {
 	// items come first in each list, the most recently pinned first. A pin outlasts a
 	// snooze or a dismissal.
 	PinnedAt string `json:"pinnedAt"`
+
+	// RepoRule is the rule the user set for the item's repository or its org, the
+	// repository's own winning (see the reporules package): "pinned" counts the item as
+	// pinned, after the items pinned themselves, and "muted" sets it apart in its lists'
+	// Muted tab, where it needs no one; "" is neither.
+	RepoRule reporules.Rule `json:"repoRule"`
 
 	// Assigned reports that the item is in the Assigned list: it is assigned to the
 	// signed-in user, who can take themselves off it (Unassign).
@@ -351,7 +360,7 @@ func (s *Service) buildSnapshot(ctx context.Context) (Snapshot, settingsKey, err
 		return Snapshot{}, settingsKey{}, err
 	}
 
-	snap.addItems(rows, s.scopes.scope(status), status[prefViewer])
+	snap.addItems(rows, s.scopes.scope(status), status[prefViewer], reporules.Decode(status))
 	snap.applyTotals(status)
 
 	if snap.Rate, err = loadRates(ctx, s.q, accountID); err != nil {
@@ -397,11 +406,14 @@ func accountFromPrefs(prefs map[string]string) Account {
 }
 
 // addItems sorts rows into the lists whose flags they carry, deciding each item's trust,
-// and whether its files are checked, with scope, and how it asks viewer, the signed-in
-// account, to review it.
-func (s *Snapshot) addItems(rows []itemRow, scope fileScope, viewer string) {
+// and whether its files are checked, with scope, how it asks viewer, the signed-in
+// account, to review it, and which of rules applies to its repository. Each list then
+// holds the items pinned themselves first, as rows has them, then those pinned with their
+// repository or org, then the rest, each in rows' order.
+func (s *Snapshot) addItems(rows []itemRow, scope fileScope, viewer string, rules reporules.Rules) {
 	for _, r := range rows {
 		item := r.item(scope, viewer)
+		item.RepoRule, _ = rules.For(repo.Name{Owner: r.RepoOwner, Repo: r.RepoName})
 
 		if r.ReasonReviewRequested {
 			s.ReviewRequested.Items = append(s.ReviewRequested.Items, item)
@@ -414,6 +426,23 @@ func (s *Snapshot) addItems(rows []itemRow, scope fileScope, viewer string) {
 		if r.ReasonAssigned {
 			s.Assigned.Items = append(s.Assigned.Items, item)
 		}
+	}
+
+	for _, l := range []*List{&s.ReviewRequested, &s.Authored, &s.Assigned} {
+		slices.SortStableFunc(l.Items, func(a, b Item) int { return cmp.Compare(a.pinRank(), b.pinRank()) })
+	}
+}
+
+// pinRank is where the item comes in its lists: 0 pinned itself, 1 pinned with its
+// repository or org, 2 neither.
+func (it Item) pinRank() int {
+	switch {
+	case it.PinnedAt != "":
+		return 0
+	case it.RepoRule == reporules.RulePinned:
+		return 1
+	default:
+		return 2
 	}
 }
 

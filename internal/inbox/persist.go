@@ -8,6 +8,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/github"
 	"github.com/mrz1836/nilbox/internal/inbox/internal/queries"
 	"github.com/mrz1836/nilbox/internal/prefs"
+	"github.com/mrz1836/nilbox/internal/reporules"
 	"github.com/mrz1836/nilbox/internal/sensitive"
 	"github.com/mrz1836/nilbox/internal/snooze"
 	"github.com/mrz1836/nilbox/internal/store"
@@ -367,7 +368,7 @@ func readStatus(ctx context.Context, p *prefs.Store) (map[string]string, error) 
 		prefViewer, prefViewerName, prefViewerURL, prefViewerAvatarURL, prefAvatar, prefAvatarSource,
 		prefBeyondReviewRequested, prefBeyondAuthored, prefBeyondAssigned,
 		prefLastRefreshAt, prefLastError, prefScopeWarning, prefProjects, trust.PrefBots,
-		sensitive.PrefScope, sensitive.PrefOff, sensitive.PrefPatterns,
+		sensitive.PrefScope, sensitive.PrefOff, sensitive.PrefPatterns, reporules.PrefPinned, reporules.PrefMuted,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("read the inbox status: %w", err)

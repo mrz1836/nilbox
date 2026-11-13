@@ -28,6 +28,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/notifyprefs"
 	"github.com/mrz1836/nilbox/internal/prompts"
 	"github.com/mrz1836/nilbox/internal/release"
+	"github.com/mrz1836/nilbox/internal/reporules"
 	"github.com/mrz1836/nilbox/internal/review"
 	"github.com/mrz1836/nilbox/internal/scriptrun"
 	"github.com/mrz1836/nilbox/internal/scripts"
@@ -95,6 +96,9 @@ func boundCalls(t *testing.T) map[string]boundCall {
 		},
 		"settings.Service.SetBranchRules": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
 			return c.Settings.SetBranchRules(ctx, branchrules.Defaults())
+		},
+		"settings.Service.SetRepoRule": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
+			return c.Settings.SetRepoRule(ctx, "acme-org", reporules.RuleMuted)
 		},
 		"settings.Service.SetDefaultAgent": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
 			return c.Settings.SetDefaultAgent(ctx, agent.Codex)

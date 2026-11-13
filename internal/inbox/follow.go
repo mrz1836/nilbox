@@ -11,6 +11,8 @@ import (
 	"github.com/mrz1836/nilbox/internal/github"
 	"github.com/mrz1836/nilbox/internal/inbox/internal/queries"
 	"github.com/mrz1836/nilbox/internal/periodic"
+	"github.com/mrz1836/nilbox/internal/repo"
+	"github.com/mrz1836/nilbox/internal/reporules"
 )
 
 // The follow of the pull requests whose checks are running: GitHub's own page updates
@@ -36,25 +38,28 @@ const (
 )
 
 // refreshRunning reads again, in one request, the listed pull requests whose checks were
-// still running when the inbox last read them, neither dismissed nor snoozed, and stores
-// each as RefreshItem would, so a card shows its checks end about as soon as GitHub's own
-// page does. A pull request whose checks end, pass or fail, is left alone from then on. It
-// asks GitHub nothing while none runs, and leaves alone one read in the last little while.
-// A pull request GitHub doesn't answer for is left as it was, for the next whole refresh.
+// still running when the inbox last read them, neither dismissed nor snoozed, nor of a
+// repository or org the user muted, and stores each as RefreshItem would, so a card shows
+// its checks end about as soon as GitHub's own page does. A pull request whose checks end,
+// pass or fail, is left alone from then on. It asks GitHub nothing while none runs, and
+// leaves alone one read in the last little while. A pull request GitHub doesn't answer for
+// is left as it was, for the next whole refresh.
 func (s *Service) refreshRunning(ctx context.Context) error {
-	viewer, _, err := s.prefs.Get(ctx, prefViewer)
+	stored, err := s.prefs.GetMany(ctx, append([]string{prefViewer}, reporules.Keys()...)...)
 	if err != nil {
 		return fmt.Errorf("read the pull requests whose checks run: %w", err)
 	}
 
 	now := s.clock.Now().UTC()
 
-	running, err := s.q.ListRunningChecks(ctx, queries.ListRunningChecksParams{
-		Login: viewer, ReadBefore: now.Add(-followFresh), Now: &now, RowLimit: followMax,
+	listed, err := s.q.ListRunningChecks(ctx, queries.ListRunningChecksParams{
+		Login: stored[prefViewer], ReadBefore: now.Add(-followFresh), Now: &now,
 	})
 	if err != nil {
 		return fmt.Errorf("read the pull requests whose checks run: %w", err)
 	}
+
+	running := followable(listed, reporules.Decode(stored))
 
 	if len(running) == 0 {
 		return nil
@@ -81,6 +86,24 @@ func (s *Service) refreshRunning(ctx context.Context) error {
 	}
 
 	return err
+}
+
+// followable returns the first followMax of listed, in its order, leaving out the pull
+// requests of the repositories and orgs rules mutes.
+func followable(listed []queries.ListRunningChecksRow, rules reporules.Rules) []queries.ListRunningChecksRow {
+	running := make([]queries.ListRunningChecksRow, 0, min(len(listed), followMax))
+
+	for _, r := range listed {
+		if rules.IsMuted(repo.Name{Owner: r.RepoOwner, Repo: r.RepoName}) {
+			continue
+		}
+
+		if running = append(running, r); len(running) == followMax {
+			break
+		}
+	}
+
+	return running
 }
 
 // lockAll takes each pull request's lock, in running's order, and returns what lets go of

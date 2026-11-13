@@ -1,5 +1,6 @@
+import { orgOf, ownRule } from '../lib/repoRules'
 import { leaving, workWords, type RowWork, type StartWork } from '../lib/rowWork'
-import { isPinned, type TriageTab } from '../lib/triage'
+import { isPinnedItself, type TriageTab } from '../lib/triage'
 import { openExternal, type InboxItem } from '../platform'
 import {
   ArchiveIcon,
@@ -10,13 +11,15 @@ import {
   InboxIcon,
   LinkIcon,
   MoreIcon,
+  MuteIcon,
   PinIcon,
   RefreshIcon,
   ResetIcon,
+  SlidersIcon,
   UnassignIcon,
 } from './icons'
 import { MenuButton, type MenuItem } from './Menu'
-import { ghostClass, hoverClass, snoozeItems, type TriageActions } from './TriageControls'
+import { ghostClass, hoverClass, mutedTarget, snoozeItems, type TriageActions } from './TriageControls'
 
 // EditActions are what a row's menu does beyond triage: copy the item's link, and the
 // edits it makes on GitHub. The inbox shares one set across every row.
@@ -67,11 +70,59 @@ export function teamsText(teams: readonly string[]): string {
   return `the ${named.slice(0, -1).join(', ')} and ${named.at(-1) ?? ''} teams`
 }
 
+// repoRuleItems pin or mute the item's repository, or every repository of its org, or take
+// either rule off, each target by its own rule, then open the rules in Settings.
+export function repoRuleItems(item: InboxItem, triage: TriageActions): MenuItem[] {
+  const repo = item.repo
+  const org = orgOf(repo)
+  const toggles = (target: string, scope: string, divided: boolean): MenuItem[] => {
+    const own = ownRule(triage.repoRules, target)
+    const set = (rule: 'pinned' | 'muted') => () => {
+      triage.onRepoRule(target, own === rule ? '' : rule)
+    }
+
+    return [
+      {
+        label: `${own === 'pinned' ? 'Unpin' : 'Pin'} ${scope}`,
+        icon: <PinIcon filled={own === 'pinned'} className={iconClass} />,
+        title:
+          own === 'pinned'
+            ? 'Its items go back among the rest'
+            : 'Keep its items at the top of every list, after the items pinned themselves',
+        divided,
+        onSelect: set('pinned'),
+      },
+      {
+        label: `${own === 'muted' ? 'Unmute' : 'Mute'} ${scope}`,
+        icon: <MuteIcon className={iconClass} />,
+        title:
+          own === 'muted'
+            ? 'Its items go back to the lists'
+            : 'Move its items to each list’s Muted tab, out of the counts, the menu bar, and the notifications',
+        onSelect: set('muted'),
+      },
+    ]
+  }
+
+  return [
+    ...toggles(repo, repo, false),
+    ...toggles(org, `everything in ${org}`, true),
+    {
+      label: 'Pinned and muted…',
+      icon: <SlidersIcon className={iconClass} />,
+      title: 'See every pinned and muted repository and org in Settings',
+      divided: true,
+      onSelect: triage.onRepoRuleSettings,
+    },
+  ]
+}
+
 // inboxActions are the triage actions the row's quiet controls offer, gathered in the
-// menu as well: in the inbox tab, Refresh, Pin, Snooze, and Dismiss; in the Snoozed and
-// Dismissed tabs, Unsnooze or Restore, Pin, and Refresh.
+// menu as well: in the inbox tab, Refresh, Pin, Snooze, Dismiss, and the repository's own
+// pin or mute; in the Snoozed and Dismissed tabs, Unsnooze or Restore, Pin, the
+// repository's pin or mute, and Refresh; in the Muted tab, Unmute, Pin, and Refresh.
 function inboxActions(item: InboxItem, tab: TriageTab, triage: TriageActions, work: RowWork, start: StartWork) {
-  const pinned = isPinned(item)
+  const pinned = isPinnedItself(item)
   const refresh: MenuItem = {
     label: 'Refresh from GitHub',
     icon: <RefreshIcon className={iconClass} />,
@@ -93,6 +144,29 @@ function inboxActions(item: InboxItem, tab: TriageTab, triage: TriageActions, wo
     },
   }
 
+  const repository: MenuItem = {
+    label: 'Pin or mute repository',
+    icon: <MuteIcon className={iconClass} />,
+    items: () => repoRuleItems(item, triage),
+  }
+
+  if (tab === 'muted') {
+    const target = mutedTarget(item, triage.repoRules)
+
+    return [
+      {
+        label: `Unmute ${target}`,
+        icon: <MuteIcon className={iconClass} />,
+        title: 'Its items go back to the lists',
+        onSelect: () => {
+          triage.onRepoRule(target, '')
+        },
+      },
+      pin,
+      { ...refresh, divided: true },
+    ]
+  }
+
   if (tab !== 'inbox') {
     const snoozed = tab === 'snoozed'
 
@@ -106,6 +180,7 @@ function inboxActions(item: InboxItem, tab: TriageTab, triage: TriageActions, wo
         },
       },
       pin,
+      repository,
       { ...refresh, divided: true },
     ]
   }
@@ -113,6 +188,7 @@ function inboxActions(item: InboxItem, tab: TriageTab, triage: TriageActions, wo
   return [
     refresh,
     pin,
+    repository,
     {
       label: 'Snooze',
       icon: <ClockIcon className={iconClass} />,
@@ -218,7 +294,7 @@ export function ItemMenu({ item, tab, triage, edits, work, start }: ItemMenuProp
     {
       label: 'Inbox actions',
       icon: <InboxIcon className={iconClass} />,
-      title: 'Snooze, dismiss, pin, or refresh it. These stay on this Mac.',
+      title: 'Snooze, dismiss, pin, mute, or refresh it. These stay on this Mac.',
       divided: true,
       items: () => inboxActions(item, tab, triage, work, start),
     },

@@ -3,26 +3,31 @@ package inbox
 import (
 	"sync/atomic"
 
+	"github.com/mrz1836/nilbox/internal/reporules"
 	"github.com/mrz1836/nilbox/internal/sensitive"
 	"github.com/mrz1836/nilbox/internal/trust"
 )
 
 // settingsKey is the settings a snapshot depends on beside the inbox's own tables, as
-// stored: the trusted bots, which decide each item's trust, and the sensitive-file
-// settings, which decide whose files are checked and what each check points out. The
-// settings package writes them, so the inbox reads them back to tell whether a snapshot
-// or a compiled scope still holds.
+// stored: the trusted bots, which decide each item's trust, the sensitive-file settings,
+// which decide whose files are checked and what each check points out, and the pinned and
+// muted repositories and orgs, which decide each item's repository rule and its place in
+// its lists. The settings package writes them, so the inbox reads them back to tell
+// whether a snapshot or a compiled scope still holds.
 type settingsKey struct {
 	bots       string
 	botsStored bool
 	scope      string
 	off        string
 	patterns   string
+	pinned     string
+	muted      string
 }
 
 // settingsPrefs are the prefs keys a settingsKey is read from.
 func settingsPrefs() []string {
-	return []string{trust.PrefBots, sensitive.PrefScope, sensitive.PrefOff, sensitive.PrefPatterns}
+	return append([]string{trust.PrefBots, sensitive.PrefScope, sensitive.PrefOff, sensitive.PrefPatterns},
+		reporules.Keys()...)
 }
 
 // keyOf reads the settingsKey from stored prefs that include settingsPrefs.
@@ -31,7 +36,8 @@ func keyOf(stored map[string]string) settingsKey {
 
 	return settingsKey{
 		bots: bots, botsStored: botsStored, scope: stored[sensitive.PrefScope], off: stored[sensitive.PrefOff],
-		patterns: stored[sensitive.PrefPatterns],
+		patterns: stored[sensitive.PrefPatterns], pinned: stored[reporules.PrefPinned],
+		muted: stored[reporules.PrefMuted],
 	}
 }
 

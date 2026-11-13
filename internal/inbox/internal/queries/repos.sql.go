@@ -158,7 +158,7 @@ type UpsertRepoParams struct {
 // UpsertRepo stores what GitHub says about a repository and returns its id. A repository
 // already stored under the same owner and name, which match ignoring case, has every
 // GitHub column rewritten, its owner and name take the casing given, and updated_at is
-// stamped. The local columns (muted, pinned, local_path) and created_at stay as they are.
+// stamped. The local column (local_path) and created_at stay as they are.
 func (q *Queries) UpsertRepo(ctx context.Context, arg UpsertRepoParams) (int64, error) {
 	row := q.db.QueryRowContext(ctx, upsertRepo,
 		arg.Owner,

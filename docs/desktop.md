@@ -402,9 +402,11 @@ names the version.
 **The page.**
 
 - **Groups:** **Unreleased changes** (the default branch has commits since its newest version
-  tag), open; **Up to date**, **No releases yet** (no `vX.Y.Z` tag), and **Can't release here**
-  (archived, read-only to you, not found, or with no commits on GitHub yet), collapsed, each with
-  its count. A group you open or fold stays that way, when you come back and after a restart.
+  tag), open; **Up to date**, **No releases yet** (no `vX.Y.Z` tag), **Can't release here**
+  (archived, read-only to you, not found, or with no commits on GitHub yet), and **Muted** (the
+  repositories you [muted](#pinned-and-muted-repositories-and-orgs), each with **Unmute**, which
+  GitHub isn't asked about), collapsed, each with its count. A pinned repository comes first in
+  its group. A group you open or fold stays that way, when you come back and after a restart.
 - **Each row** shows the repository and its newest version, **+N** commits since it, the checks
   on the default branch's newest commit (passed, running, failing, or none) and that commit's
   age and headline, and what matters about your clone: the branch it's on when that isn't the
@@ -873,20 +875,20 @@ matches item 123, and a bare `123` matches it too.
 
 | Page | Keys |
 |---|---|
-| Inbox | `is:pr`, `is:issue`, `is:draft`, `is:pinned`, `is:conflict` (`is:open` matches everything); `repo:`, `org:`, `author:` (with `@me` for you), `label:`, `status:` (project status), `project:`; `checks:failing`, `checks:passing`, `checks:pending`; `review:approved`, `review:changes_requested`, `review:required` |
+| Inbox | `is:pr`, `is:issue`, `is:draft`, `is:pinned` (pinned itself, or with its repository or org), `is:conflict` (`is:open` matches everything); `repo:`, `org:`, `author:` (with `@me` for you), `label:`, `status:` (project status), `project:`; `checks:failing`, `checks:passing`, `checks:pending`; `review:approved`, `review:changes_requested`, `review:required` |
 | Worktrees | `repo:`, `branch:`, `agent:`; `is:dirty`, `is:locked`, `is:in-use`, `is:finished`, `is:review` (needs a look), `is:pr`, `is:issue`, `is:open`, `is:merged`, `is:closed` |
 | Settings | Words only |
 
 **What the inbox searches.** An item's title, its repository as `owner/name`, its number, its
 author, its branch, its labels, its projects and their statuses, and the teams asked to review
-it, in every list and in Snoozed and Dismissed too. `checks:`, `review:`, and `status:` read
+it, in every list and in Snoozed, Dismissed, and Muted too. `checks:`, `review:`, and `status:` read
 an item the way its card shows it. An item whose details haven't arrived yet matches no key
 that needs them, such as `label:`. Descriptions and comments aren't kept on your Mac, so the
 filter can't search them.
 
 **The inbox while filtered.** Each list keeps its order (pinned items first, then the status
 sort) and shows only its matches, and its tab says how many, as **5 of 38**, in a dashed pill
-of its own. Snoozed and Dismissed count their matches too, and a tab with none points to the
+of its own. Snoozed, Dismissed, and Muted count their matches too, and a tab with none points to the
 one that has some, as **No matches here · 2 in Snoozed**. A list with no match anywhere hides
 and comes back as you left it, and a collapsed list shows open while you filter without
 forgetting that it was collapsed. The words you typed are marked in each title. When nothing
@@ -1101,9 +1103,10 @@ it. Refreshing one card reads its projects when the last whole refresh could.
 
 ## Snooze, dismiss, and pin
 
-Each list has three tabs: the list itself with its count (**Review requested 14**), then
-**Snoozed** and **Dismissed**, each counted once it holds anything. Snoozing or dismissing an
-item moves it out of every list it is in, so the lists only show what still needs you.
+Each list has four tabs: the list itself with its count (**Review requested 14**), then
+**Snoozed**, **Dismissed**, and **Muted**, each counted once it holds anything. Snoozing or
+dismissing an item moves it out of every list it is in, so the lists only show what still needs
+you.
 
 - **Snooze** sets an item aside for a while. Hover a card and click the clock, which shows the
   length (**3d**), to snooze it for your default length; the arrow beside it offers 1 day, 2
@@ -1127,6 +1130,34 @@ Every one of these is also in the card's [menu](#the-item-menu-and-edits-on-gith
 **Undo**. The default length and the wake rules are under **Settings → Snoozing**, which the
 snooze menu's **Snooze settings…** opens. Snoozes, dismissals, and pins are kept in the local database only:
 GitHub never hears about them. The **N of M** count of a list leaves out the items set aside.
+
+### Pinned and muted repositories and orgs
+
+A rule can cover a whole repository, or an org (or a user) and every repository it owns. Set one
+from a card's menu, under **Inbox actions → Pin or mute repository**, which offers the card's
+repository and its org, or in **Settings → Repositories → Pinned and muted**, which lists every
+rule, each org first and then its repositories, with **Pinned** or **Muted** to switch and **✕**
+to take it off, above a field that adds one (an org such as `acme-org`, a repository such as
+`acme-org/example-repo`, or a link to either on GitHub).
+
+- **Pinned:** the repository's items count as pinned. They come right after the items you pinned
+  yourself, newest activity first, and match `is:pinned`. Their cards show a filled pin, marked
+  **Pinned with acme-org**, which a card doesn't unpin: the rule does.
+- **Muted:** the repository's items wait in each list's **Muted** tab, whether or not they are
+  also snoozed or dismissed. They count nowhere: not in the **Inbox** tab, the menu bar, or a
+  list's **N of M**, and a new review request or assignment in a muted repository shows no
+  banner. The inbox still reads them with every refresh, so they're current when you unmute, but
+  nothing follows their running checks or checks their changed files. **Unmute**, on each card in
+  the tab, takes the mute off the repository or org that set it.
+- **Which rule wins:** a repository's own rule wins over its org's, so you can mute an org and pin
+  one of its repositories. A target is pinned or muted, never both.
+- **Release:** on **Scripts → Release**, a muted repository is listed in the folded **Muted**
+  group, with **Unmute**, and GitHub isn't asked about it; a pinned one comes first in its group.
+  Muting a listed repository regroups it without a request. Unmuting one the page never read
+  reads that repository alone.
+
+A toast confirms each change, with **Undo**. The rules live in your settings on this Mac;
+GitHub never hears about them.
 
 ### Waking a snooze early
 
@@ -1162,9 +1193,11 @@ you hover the card or move focus into it. It gathers everything you can do with 
 - **Review…**, on a pull request, opens it in the [review sheet](#reviewing-a-pull-request).
 - **Open on GitHub** and **Copy link**.
 - **Inbox actions**, a submenu with the card's triage buttons: **Refresh from GitHub**, **Pin to
-  top** (or **Unpin**), **Snooze**, with a submenu of lengths, and **Dismiss**; on a card in the
-  **Snoozed** or **Dismissed** tab, **Unsnooze** or **Restore** instead. The hover buttons stay,
-  so the everyday ones are still one click away.
+  top** (or **Unpin**), **Pin or mute repository**, with a submenu that pins or mutes the card's
+  repository or its whole org, **Snooze**, with a submenu of lengths, and **Dismiss**; on a card
+  in the **Snoozed** or **Dismissed** tab, **Unsnooze** or **Restore** instead, and in the
+  **Muted** tab, **Unmute**. The hover buttons stay, so the everyday ones are still one click
+  away.
 - **On GitHub**, when they apply: **Unassign me** on an item assigned to you, and **Remove me as
   reviewer** on a pull request that asks for your review.
 

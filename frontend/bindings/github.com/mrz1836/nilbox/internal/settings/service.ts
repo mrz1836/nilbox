@@ -36,6 +36,9 @@ import * as localrepos$0 from "../localrepos/models.js";
 import * as notifyprefs$0 from "../notifyprefs/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
+import * as reporules$0 from "../reporules/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
 import * as sensitive$0 from "../sensitive/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
@@ -299,6 +302,18 @@ export function SetProjectsTipDismissed(dismissed: boolean): $CancellablePromise
  */
 export function SetRefreshInterval(kind: $models.RefreshKind, seconds: number): $CancellablePromise<$models.Settings> {
     return $Call.ByID(2017569153, kind, seconds);
+}
+
+/**
+ * SetRepoRule pins or mutes a repository ("owner/name") or an org ("owner"), or takes its
+ * rule off with reporules.RuleNone, and returns the settings with it. A target is in one
+ * list at most, so pinning a muted one unmutes it. The rules are read and written in one
+ * transaction, so two changes never lose either. Once they are stored, an
+ * event.RepoRulesChanged is emitted, so the inbox, the menu bar, and the Release page
+ * show the change at once.
+ */
+export function SetRepoRule(target: string, rule: reporules$0.Rule): $CancellablePromise<$models.Settings> {
+    return $Call.ByID(1111417015, target, rule);
 }
 
 /**

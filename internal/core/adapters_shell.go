@@ -55,13 +55,22 @@ func (s ShellSettings) TextSize(ctx context.Context) (settings.TextSize, error) 
 // event.SessionsUpdated, so the watcher starts or stops following at once instead of at
 // its next look at the switch. An event.IntegrationsChanged stays in Go: a chosen copy of a
 // tool wakes the tool finder, which tells the window once it has looked, and a flipped
-// switch, which changes no detection, tells the window at once. The watcher and the finder
-// are set once, before any setting can change.
+// switch, which changes no detection, tells the window at once. An event.RepoRulesChanged
+// stays in Go too: the inbox's snapshot is built again under the new rules, so the window
+// and the menu bar hear the inbox changed, and the Release page regroups its list. The
+// watcher, the finder, and the Release page are set once, before any setting can change.
 type followSwitch struct {
 	sink      event.Sink
 	watcher   *sessions.Watcher
 	tools     waker
 	intervals []waker
+	releases  rulesFollower
+}
+
+// rulesFollower hears that the user pinned or muted a repository or an org:
+// *release.Refresher.
+type rulesFollower interface {
+	RulesChanged()
 }
 
 // waker is woken to look again: *integrations.Worker, and what reads things again on its
@@ -70,13 +79,22 @@ type waker interface {
 	Wake()
 }
 
-// Emit passes e on, waking the watcher first for an event.SessionsUpdated, and turns an
-// event.IntegrationsChanged into a wake of the tool finder or an event.ToolsUpdated.
+// Emit passes e on, waking the watcher first for an event.SessionsUpdated, turns an
+// event.IntegrationsChanged into a wake of the tool finder or an event.ToolsUpdated, and an
+// event.RepoRulesChanged into an event.InboxUpdated and a word to the Release page.
 func (f *followSwitch) Emit(e event.Event) {
 	switch e := e.(type) {
 	case event.IntervalsChanged:
 		for _, w := range f.intervals {
 			w.Wake()
+		}
+
+		return
+	case event.RepoRulesChanged:
+		f.sink.Emit(event.InboxUpdated{})
+
+		if f.releases != nil {
+			f.releases.RulesChanged()
 		}
 
 		return

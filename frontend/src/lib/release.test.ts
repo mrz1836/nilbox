@@ -49,6 +49,7 @@ describe('release', () => {
     expect(releasable('noReleases')).toBe(true)
     expect(releasable('upToDate')).toBe(false)
     expect(releasable('cantRelease')).toBe(false)
+    expect(releasable('muted')).toBe(false)
   })
 
   it('searches the repositories by owner and name, trimmed and in any case', () => {
