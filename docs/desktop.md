@@ -1231,6 +1231,8 @@ approval, merge, and close happens only because you clicked.
 | Close pull request | The review sheet's menu, after you confirm | 1 GraphQL point to check nothing was pushed, then 1 REST point (1 more for your comment) |
 | Comment on an issue | The issue sheet | 1 REST point |
 | Close an issue as completed, or as not planned | The issue sheet, after you confirm | 1 GraphQL point to check for new comments, then 1 REST point (1 more for your comment) |
+| Add or remove labels | The issue sheet's **Labels**, with triage access | 1 GraphQL point to list the repository's labels (kept 10 minutes), then 1 REST point for all you add, and 1 for each you remove |
+| Assign or unassign someone else | The issue sheet's **Assignees**, with triage access | 1 GraphQL point a search (kept 10 minutes), then 1 REST point for all you assign, and 1 for each you unassign |
 
 From the card's menu, once GitHub has taken you off, the item leaves that list (and the inbox,
 when it is in no other), and a toast confirms it. When GitHub refuses, or answers without making
@@ -1510,6 +1512,16 @@ reach the inbox through **Assigned**, so these are your own work items.
   state, checks, and review, then the ones that mentioned it), assignees, labels, projects, the
   milestone (its due day, in amber once it has passed, and how far along it is), sub-issues with
   their progress, the issue it is part of, and who took part.
+- **Labels and assignees,** with triage access or more to an open issue's repository: **Edit**
+  beside **Labels** lists the repository's labels, the first hundred in name order, to filter
+  and check, each checked while the issue has it; **Edit** beside **Assignees** lists who it is
+  assigned to and searches the people it can be as you stop typing (a search is kept ten
+  minutes). They wait for the sheet's first read, so they start from who the issue is
+  assigned to. **Apply** (or **⌘↩**) sends only what differs from the issue, checks every
+  answer, since GitHub ignores a change an account can't make rather than refusing it, and
+  reads the issue again once GitHub made any of it; the picker stays open until GitHub
+  answers, and a step that failed says why there, while those before it stand. You take
+  yourself off with **Unassign me**, never here.
 - **The latest agent session** on the issue, as on the review sheet, with **Use as comment**.
 
 **Links between the sheets.** A pull request or issue either sheet names, in the details, the

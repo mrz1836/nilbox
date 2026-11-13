@@ -19,6 +19,9 @@ export type PopoverFocus<P extends HTMLElement> = 'panel' | ((panel: P) => HTMLE
 export interface PopoverOptions<P extends HTMLElement> {
   placement?: Placement
   focus?: PopoverFocus<P>
+  // hold keeps the panel open, whatever the user clicks, focuses, or presses, while what it
+  // started is under way, so its outcome can show there.
+  hold?: boolean
 }
 
 // Popover is the state of a button that opens a floating panel.
@@ -96,6 +99,7 @@ function place(trigger: HTMLElement, panel: HTMLElement, placement: Placement): 
 export function usePopover<T extends HTMLElement, P extends HTMLElement>({
   placement = 'below',
   focus,
+  hold = false,
 }: PopoverOptions<P> = {}): Popover<T, P> {
   const [open, setOpen] = useState(false)
   const [side, setSide] = useState<Side>('below')
@@ -116,7 +120,7 @@ export function usePopover<T extends HTMLElement, P extends HTMLElement>({
   }
 
   const toggle = () => {
-    setOpen((was) => !was)
+    setOpen((was) => !was || hold)
   }
 
   // Place the panel before it paints, so it never shows on the wrong side first.
@@ -155,9 +159,12 @@ export function usePopover<T extends HTMLElement, P extends HTMLElement>({
     }
   }, [open])
 
-  // The listeners close with the latest close, so they are added once per opening.
+  // The listeners close with the latest close, so they are added once per opening, and
+  // leave a held panel open.
   const dismiss = useEffectEvent((restoreFocus: boolean) => {
-    close(restoreFocus)
+    if (!hold) {
+      close(restoreFocus)
+    }
   })
 
   useEffect(() => {

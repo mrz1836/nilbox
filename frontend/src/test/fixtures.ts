@@ -35,7 +35,9 @@ import type {
   InboxItem,
   Issue,
   IssueLinked,
+  IssueCandidate,
   IssueOffer,
+  IssueRepoLabels,
   IssueReply,
   IssueResult,
   IssueTimelineItem,
@@ -1579,6 +1581,7 @@ export function issue(overrides: Partial<Issue> = {}): Issue {
     assigned: true,
     locked: false,
     lockReason: '',
+    canEdit: true,
     body: 'It drops the newline at the end of the file.',
     bodyTrimmed: false,
     editedAt: '',
@@ -1629,6 +1632,28 @@ export function issueResult(overrides: Partial<IssueResult> = {}): IssueResult {
     leftInbox: false,
     ...overrides,
   }
+}
+
+// repoLabels are example-repo's labels, as the label picker reads them.
+export function repoLabels(overrides: Partial<IssueRepoLabels> = {}): IssueRepoLabels {
+  return {
+    labels: [
+      { name: 'bug', color: '#d73a4a', description: 'Something isn’t working' },
+      { name: 'p1', color: '#b60205', description: '' },
+      { name: 'triage', color: '', description: 'Needs a first look' },
+    ],
+    total: 3,
+    ...overrides,
+  }
+}
+
+// candidates are the people a search finds the issue can be assigned to: the user, and one
+// other.
+export function candidates(): IssueCandidate[] {
+  return [
+    { login: 'octo-user', name: 'Octo User', mine: true },
+    { login: 'octo-other', name: '', mine: false },
+  ]
 }
 
 // issueReplies are the comment replies the issue sheet offers: one for issues, one for

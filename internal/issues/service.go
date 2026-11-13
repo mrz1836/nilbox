@@ -118,6 +118,12 @@ type GitHub interface {
 	FetchIssueTimeline(ctx context.Context, tok github.Token, id, before string) (*github.TimelinePage, error)
 	AddComment(ctx context.Context, tok github.Token, ref item.Ref, body string) (*github.Comment, error)
 	CloseIssue(ctx context.Context, tok github.Token, ref item.Ref, reason string) (*github.IssueClosed, error)
+	FetchRepoLabels(ctx context.Context, tok github.Token, id string) (*github.RepoLabels, error)
+	FetchAssignable(ctx context.Context, tok github.Token, id, query string) ([]github.Assignable, error)
+	AddLabels(ctx context.Context, tok github.Token, ref item.Ref, names []string) ([]github.Label, error)
+	RemoveLabel(ctx context.Context, tok github.Token, ref item.Ref, name string) ([]github.Label, error)
+	AddAssignees(ctx context.Context, tok github.Token, ref item.Ref, logins []string) (*github.Edited, error)
+	RemoveAssignee(ctx context.Context, tok github.Token, ref item.Ref, login string) (*github.Edited, error)
 }
 
 // Replies is the prompt library's replies the composer offers: the comment replies that
@@ -151,9 +157,16 @@ type Service struct {
 	github  GitHub
 	replies Replies
 	cache   *cacheStore
-	events  event.Sink
-	clock   clock.Clock
-	logger  *slog.Logger
+
+	// labels and searches keep what the pickers read, and labelReads and searchReads make
+	// one read of each at a time.
+	labels      *memo[RepoLabels]
+	searches    *memo[[]github.Assignable]
+	labelReads  flight.Group[RepoLabels]
+	searchReads flight.Group[[]github.Assignable]
+	events      event.Sink
+	clock       clock.Clock
+	logger      *slog.Logger
 
 	// refreshes reads each issue once at a time.
 	refreshes flight.Group[Issue]
@@ -163,6 +176,7 @@ type Service struct {
 func NewService(cfg Config) *Service {
 	return &Service{
 		inbox: cfg.Inbox, github: cfg.GitHub, replies: cfg.Replies, cache: newCacheStore(cfg.Pool),
+		labels: &memo[RepoLabels]{size: labelRepos}, searches: &memo[[]github.Assignable]{size: keptSearches},
 		events: event.Or(cfg.Events),
 		clock:  clock.Or(cfg.Clock), logger: logging.Or(cfg.Logger),
 	}

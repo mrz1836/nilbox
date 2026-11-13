@@ -30,6 +30,15 @@ export function Act(req: $models.ActRequest): $CancellablePromise<$models.Result
 }
 
 /**
+ * Assignable returns the people the issue can be assigned to whose login or name matches
+ * query, the first twenty: read with one GraphQL point a search, one at a time for the
+ * same words in the same repository, then kept ten minutes. The user is marked.
+ */
+export function Assignable(id: number, query: string): $CancellablePromise<$models.Candidate[] | null> {
+    return $Call.ByID(3319554465, id, query);
+}
+
+/**
  * Earlier reads the page of the issue's timeline before the cursor before, which a page
  * the sheet holds gave: one GraphQL request, which stores nothing, not even in the cache.
  */
@@ -38,11 +47,36 @@ export function Earlier(id: number, before: string): $CancellablePromise<$models
 }
 
 /**
+ * Edit changes the labels and assignees of the issue with req.ItemID as req asks, with one
+ * REST request for the labels added, one for each label taken off, one for the people
+ * assigned, and one for each person unassigned, through the inbox's Actor (the item's
+ * lock, the account check, and a token borrowed again once when GitHub refuses one, which
+ * never sends a step twice). GitHub ignores a change an account can't make rather than
+ * refusing it, so every answer is checked. It stops at the first step that fails, and
+ * those before it stand: once GitHub made any, the result counts them and says why the
+ * next failed, while a failure before any is the error. A name given twice is sent once,
+ * and one both added and taken off not at all. The sheet's copy of the issue is marked out
+ * of date, for the read the sheet makes next.
+ */
+export function Edit(req: $models.EditRequest): $CancellablePromise<$models.EditResult> {
+    return $Call.ByID(4216690548, req);
+}
+
+/**
  * FillReply fills in the reply with replyID for the issue with itemID, as the text the
  * comment starts with.
  */
 export function FillReply(itemID: number, replyID: number): $CancellablePromise<string> {
     return $Call.ByID(509630683, itemID, replyID);
+}
+
+/**
+ * Labels returns the labels of the issue's repository the picker offers, the first hundred
+ * in name order: read with one GraphQL point, one read per repository at a time, then kept
+ * ten minutes.
+ */
+export function Labels(id: number): $CancellablePromise<$models.RepoLabels> {
+    return $Call.ByID(2961028679, id);
 }
 
 /**

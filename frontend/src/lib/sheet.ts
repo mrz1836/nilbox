@@ -89,21 +89,23 @@ export interface SheetKeys {
   next: SheetStep | null
 }
 
-// inMenu reports a key pressed in an open menu, which takes its own arrows: a submenu's
-// open and close with them, and the items it was built with are another card's once the
-// sheet steps.
-function inMenu(e: KeyboardEvent): boolean {
-  return e.target instanceof Element && e.target.closest('[role="menu"]') !== null
+// inPopover reports a key pressed in an open menu or picker, which takes its own arrows:
+// a submenu's open and close with them, and the choices it was built with are another
+// card's once the sheet steps. A picker's panel names itself a dialog; the sheet, a native
+// <dialog>, carries no role of its own to match.
+function inPopover(e: KeyboardEvent): boolean {
+  return e.target instanceof Element && e.target.closest('[role="menu"], [role="dialog"]') !== null
 }
 
 // useSheetKeys gives the sheet whose title has titleId its keys while it is the dialog the
-// user is in: ⌘↩ runs its button, and ← and → step through its list while the user isn't
-// typing or in a menu, with no modifier held.
+// user is in and no menu or picker in it holds focus: ⌘↩ runs its button, and ← and → step
+// through its list while the user isn't typing, with no modifier held.
 export function useSheetKeys(titleId: string, keys: SheetKeys): void {
   const onKey = useEffectEvent((e: KeyboardEvent) => {
     const dialog = document.querySelector(`dialog[aria-labelledby="${titleId}"]`)
 
-    if (!(dialog instanceof HTMLDialogElement) || !isTopmost(dialog) || keys.working) {
+    // A key pressed in a menu or a picker is its own, ⌘↩ included, which applies a picker.
+    if (!(dialog instanceof HTMLDialogElement) || !isTopmost(dialog) || keys.working || inPopover(e)) {
       return
     }
 
@@ -114,7 +116,7 @@ export function useSheetKeys(titleId: string, keys: SheetKeys): void {
       return
     }
 
-    if (isTyping(e) || inMenu(e) || e.metaKey || e.altKey || e.ctrlKey) {
+    if (isTyping(e) || e.metaKey || e.altKey || e.ctrlKey) {
       return
     }
 

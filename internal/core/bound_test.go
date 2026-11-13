@@ -479,6 +479,8 @@ func unreachedBound() map[string]string {
 		"issues.Service.ReadAgain":          "reads GitHub; its issue is built as Open's",
 		"issues.Service.Earlier":            "reads GitHub; its items are converted as Open's",
 		"issues.Service.Act":                "edits GitHub; its steps start empty",
+		"issues.Service.Labels":             "reads GitHub; its labels start empty, and an error returns them empty",
+		"issues.Service.Assignable":         "reads GitHub; it starts its list empty, and an error returns it empty",
 		"release.Service.Candidates":        "scans the clone root and reads GitHub; its lists start empty",
 		"release.Service.Prepare":           "needs a clone of a GitHub repository; Decide starts every list empty",
 		"hooks.Service.InstallAll":          "needs go-pre-commit; its lines start empty",

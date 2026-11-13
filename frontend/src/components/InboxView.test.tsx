@@ -2181,7 +2181,7 @@ describe('InboxView triage in the sheets', () => {
     expect(await screen.findByRole('dialog', { name: 'Crash on start' }), 'the next card, in the same sheet').toBe(
       sheet,
     )
-    expect(within(sheet).getByText('1 of 1 in Assigned')).toBeInTheDocument()
+    expect(await within(sheet).findByText('1 of 1 in Assigned')).toBeInTheDocument()
 
     // The page behind the sheet is out of reach, so the toast shows in the sheet.
     const toast = await within(sheet).findByRole('group', { name: 'Notification' })
@@ -2295,7 +2295,9 @@ describe('InboxView triage in the sheets', () => {
       'Could not dismiss “Parser drops the trailing newline” · database is locked',
     )
     expect(screen.getByRole('dialog', { name: 'Parser drops the trailing newline' })).toBe(sheet)
-    expect(within(sheet).getByText('1 of 2 in Assigned')).toBeInTheDocument()
+    // The inbox drops the dismissal it showed at once only as the refused triage's
+    // transition ends, a moment after the toast, and the card is back in its place then.
+    expect(await within(sheet).findByText('1 of 2 in Assigned')).toBeInTheDocument()
   })
 
   it('stays on a card that left the tab by itself, which a snooze from the sheet brings back', async () => {

@@ -237,6 +237,7 @@ func build(card StoredIssue, c *cached, lastSeenAt string, gone bool) Issue {
 
 	plan := Decide(factsOf(card, c, gone))
 	is.Standing, is.Offers, is.Primary = plan.Standing, textutil.NonNil(plan.Offers), plan.Primary
+	is.CanEdit = canEdit(card, c) && !gone
 
 	return is
 }
@@ -401,4 +402,11 @@ func cardOf(card StoredIssue, u *github.ItemUpdate) StoredIssue {
 	card.Labels, card.Comments, card.SubIssues, card.Assigned = textutil.NonNil(d.Labels), d.Comments, d.SubIssues, false
 
 	return card
+}
+
+// canEdit reports that the user may change the issue's labels and assignees: one the sheet
+// has read, so its assignees are known, still open in that read, with triage access or more
+// to its repository.
+func canEdit(card StoredIssue, c *cached) bool {
+	return c != nil && cmp.Or(c.view.State, StateOpen) == StateOpen && github.CanTriage(card.ViewerPermission)
 }
