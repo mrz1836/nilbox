@@ -449,14 +449,17 @@ func assemble(pool *sql.DB, info startup, opts Options, logger *slog.Logger) *Co
 	// as a release that reached GitHub or a run that failed.
 	dispatcher := notify.NewDispatcher(notices)
 
-	// The user's GitHub notifications are mirrored through the shared client, read only,
-	// while the Read rule settings writes is on, as often as the inbox is read, never sooner
-	// than GitHub asks.
+	// The user's GitHub notifications are mirrored through the shared client while the Read
+	// rule settings writes is on, as often as the inbox is read, never sooner than GitHub
+	// asks, and cleared by the rules, through the client's chore lane, once the user turns
+	// clearing on or clears one by hand. What the user finishes from the inbox reaches the
+	// mirror as the inbox's outcomes, and a change to the rules through the settings' events.
 	ghThreads := ghthreads.NewService(ghthreads.Config{
 		Pool: pool, Tokens: tokens, Client: client, Rules: ghThreadRules{prefs: prefsstore.New(pool, opts.Clock)},
-		Clock: opts.Clock, Events: opts.Events, Logger: logger,
+		Holds: ghThreadHolds{settings: prefs}, Clock: opts.Clock, Events: opts.Events, Logger: logger,
 	})
 	ghThreadsSyncer := ghthreads.NewSyncer(ghThreads, refreshEvery(prefs, settings.RefreshInbox, logger), logger)
+	followed.threadRules = ghThreadsSyncer
 
 	inboxSvc := inbox.NewService(inbox.Config{
 		Pool:     pool,
@@ -465,6 +468,7 @@ func assemble(pool *sql.DB, info startup, opts Options, logger *slog.Logger) *Co
 		Clock:    opts.Clock,
 		Events:   opts.Events,
 		Arrivals: dispatcher,
+		Outcomes: ghThreadOutcomes{settler: ghthreads.NewSettler(ghThreads)},
 		Usage:    tracker,
 		Logger:   logger,
 	})

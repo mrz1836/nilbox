@@ -10,6 +10,8 @@ import (
 	"github.com/mrz1836/nilbox/internal/ghthreads/internal/queries"
 	"github.com/mrz1836/nilbox/internal/item"
 	"github.com/mrz1836/nilbox/internal/repo"
+	"github.com/mrz1836/nilbox/internal/store"
+	"github.com/mrz1836/nilbox/internal/threadrules"
 )
 
 // Snapshot is what the window shows of the user's GitHub notifications. No URL GitHub gave
@@ -25,6 +27,69 @@ type Snapshot struct {
 	// Unread are the newest MaxUnread unread threads, whatever their subject, the newest
 	// first.
 	Unread []Thread `json:"unread"`
+
+	// Queued are the clears waiting to be sent, the one due first first, each of which Keep
+	// takes back.
+	Queued []QueuedClear `json:"queued"`
+
+	// Backlog is how many clears the last pass held back, more than clear on their own, for
+	// the user to review (Preview, then Clear); 0 when none waits.
+	Backlog int `json:"backlog"`
+
+	// Recent are the latest MaxRecent clears that settled, the latest first.
+	Recent []SettledClear `json:"recent"`
+}
+
+// QueuedClear is a clear waiting to be sent.
+type QueuedClear struct {
+	// ID is the clear's, which Keep takes, and ThreadID GitHub's ID of the thread.
+	ID       int64 `json:"id"`
+	ThreadID int64 `json:"threadId"`
+
+	// Owner and Name are the thread's repository, Kind and Number its item, and Title the
+	// item's title.
+	Owner  string    `json:"owner"`
+	Name   string    `json:"name"`
+	Kind   item.Kind `json:"kind"`
+	Number int       `json:"number"`
+	Title  string    `json:"title"`
+
+	// SendAfter is when it may be sent, as RFC 3339: the Undo hold's end, or when it was
+	// queued.
+	SendAfter string `json:"sendAfter"`
+
+	// Trigger is the moment that chose it, and Action what it does.
+	Trigger threadrules.Trigger `json:"trigger"`
+	Action  threadrules.Action  `json:"action"`
+}
+
+// SettledClear is a clear that left the queue.
+type SettledClear struct {
+	// ID is the clear's, and ThreadID GitHub's ID of the thread.
+	ID       int64 `json:"id"`
+	ThreadID int64 `json:"threadId"`
+
+	// Owner and Name are the thread's repository, Kind and Number its item, and Title the
+	// item's title.
+	Owner  string    `json:"owner"`
+	Name   string    `json:"name"`
+	Kind   item.Kind `json:"kind"`
+	Number int       `json:"number"`
+	Title  string    `json:"title"`
+
+	// Trigger is the moment that chose it, Action what it did or was to do, and State how
+	// it settled.
+	Trigger threadrules.Trigger `json:"trigger"`
+	Action  threadrules.Action  `json:"action"`
+	State   ClearState          `json:"state"`
+
+	// At is when it settled, as RFC 3339.
+	At string `json:"at"`
+
+	// Error is the last failure, in a sentence, for a failed clear, and Reason why a
+	// skipped one was.
+	Error  string     `json:"error"`
+	Reason SkipReason `json:"reason"`
 }
 
 // Status is how reading the user's GitHub notifications goes, for the account the last pass
@@ -116,7 +181,10 @@ func compared(s Snapshot) Snapshot {
 
 // snapshot builds the Snapshot of st's account, with reading on or off.
 func (s *Service) snapshot(ctx context.Context, reading bool, st syncState) (Snapshot, error) {
-	out := Snapshot{Status: st.status(reading), ByItem: []ItemThreads{}, Unread: []Thread{}}
+	out := Snapshot{
+		Status: st.status(reading), ByItem: []ItemThreads{}, Unread: []Thread{}, Queued: []QueuedClear{},
+		Recent: []SettledClear{},
+	}
 
 	if !reading || st.Account == "" {
 		return out, nil
@@ -134,7 +202,46 @@ func (s *Service) snapshot(ctx context.Context, reading bool, st syncState) (Sna
 		out.group(&rows[i], byItem)
 	}
 
+	if err = s.ledger(ctx, &out, st); err != nil {
+		return Snapshot{}, err
+	}
+
 	return out, nil
+}
+
+// ledger adds the clears of st's account to out: those queued, the backlog, and the latest
+// that settled.
+func (s *Service) ledger(ctx context.Context, out *Snapshot, st syncState) error {
+	queued, err := s.q.ListQueuedClears(ctx, st.Account)
+	if err != nil {
+		return fmt.Errorf("read the queued clears of GitHub notifications: %w", err)
+	}
+
+	for _, c := range queued {
+		out.Queued = append(out.Queued, QueuedClear{
+			ID: c.ID, ThreadID: c.ThreadID, Owner: c.RepoOwner, Name: c.RepoName, Kind: item.Kind(c.ItemKind),
+			Number: int(c.Number), Title: c.Title, SendAfter: stamp(c.SendAfter), Trigger: threadrules.Trigger(c.Trigger),
+			Action: threadrules.Action(c.Action),
+		})
+	}
+
+	recent, err := s.q.ListRecentClears(ctx, queries.ListRecentClearsParams{AccountLogin: st.Account, RowLimit: MaxRecent})
+	if err != nil {
+		return fmt.Errorf("read the cleared GitHub notifications: %w", err)
+	}
+
+	for _, c := range recent {
+		out.Recent = append(out.Recent, SettledClear{
+			ID: c.ID, ThreadID: c.ThreadID, Owner: c.RepoOwner, Name: c.RepoName, Kind: item.Kind(c.ItemKind),
+			Number: int(c.Number), Title: c.Title, Trigger: threadrules.Trigger(c.Trigger),
+			Action: threadrules.Action(c.Action), State: ClearState(c.State), At: stamp(store.Deref(c.SettledAt)),
+			Error: c.Error, Reason: SkipReason(c.SkipReason),
+		})
+	}
+
+	out.Backlog = st.Backlog
+
+	return nil
 }
 
 // count counts r, the next row, the newest first, and lists it among the unread while

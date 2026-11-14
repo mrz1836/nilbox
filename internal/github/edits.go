@@ -29,10 +29,12 @@ import (
 //
 // The one other kind of change is the chore lane's: marking a notification thread done or
 // read (notifications.go), sent only by rules the user turns on, or by the user's click.
-// Each is one REST request too, through chore, which asks the client's ChoreGate first: a
-// lane of its own, slower than the edits', so a burst of chores never holds up an edit the
-// user asked for, though it keeps the same reserve, and a hold either lane hears stops
-// both.
+// Once the user turns on automatic clearing, or clicks Mark done, the app also marks their
+// GitHub notifications done or read this way, by the rules in Settings, logging each one
+// (the ghthreads package); it edits nothing else on its own. Each is one REST request too,
+// through chore, which asks the client's ChoreGate first: a lane of its own, slower than
+// the edits', so a burst of chores never holds up an edit the user asked for, though it
+// keeps the same reserve, and a hold either lane hears stops both.
 
 // secondaryLimitWait is how long GitHub asks a client it slowed down for writing too fast
 // to wait, when the answer does not say: at least a minute.
@@ -442,6 +444,15 @@ func writeHold(err error) time.Duration {
 	}
 
 	return 0
+}
+
+// RateLimited reports whether err is GitHub refusing a request for its rate limits (429,
+// or 403 saying so), or asking the app to wait before the next (Retry-After), rather than
+// refusing the request itself: a caller sending many reads stops at the first.
+func RateLimited(err error) bool {
+	status, ok := errors.AsType[*StatusError](err)
+
+	return ok && (rateLimited(status) || status.RetryAfter > 0)
 }
 
 // rateLimited reports an answer that refused a request for GitHub's rate limits rather

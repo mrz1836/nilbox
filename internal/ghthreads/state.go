@@ -8,6 +8,7 @@ import (
 
 	"github.com/mrz1836/nilbox/internal/prefs"
 	"github.com/mrz1836/nilbox/internal/store"
+	"github.com/mrz1836/nilbox/internal/threadrules"
 )
 
 // KeySync is the preference that holds the state of the passes, as JSON: whose
@@ -68,11 +69,35 @@ type syncState struct {
 	// WalkNext is whether the next listing walks every page: the mirror went stale while
 	// reading was off, or after GitHub refused it.
 	WalkNext bool `json:"walkNext,omitempty"`
+
+	// RulesSeen is the fingerprint (fingerprint) of the rules the last pass that decided
+	// every thread queued its clears under, "" while clearing on its own is off or before
+	// such a pass: a pass under other rules is the first after a change, and queues at most
+	// FirstCap by itself.
+	RulesSeen string `json:"rulesSeen,omitempty"`
+
+	// Backlog is how many clears the last pass that decided every thread would have queued
+	// but held back, more than its cap allows, for the user to review; 0 when it held none.
+	// BacklogRules is the fingerprint of the rules it was counted under: while they stand,
+	// a pass reads no item's state again only to count it in the backlog.
+	Backlog      int    `json:"backlog,omitempty"`
+	BacklogRules string `json:"backlogRules,omitempty"`
+}
+
+// backlogHeld reports whether a backlog counted under rules is still held for review.
+func (st syncState) backlogHeld(rules threadrules.Rules) bool {
+	return st.Backlog > 0 && st.BacklogRules == fingerprint(rules)
 }
 
 // pollInterval is PollSeconds as a duration.
 func (st syncState) pollInterval() time.Duration {
 	return time.Duration(st.PollSeconds) * time.Second
+}
+
+// stale reports whether the mirror is too old, at now, for a nudged run to go without a
+// listing: no listing was answered for GitHub's poll interval, or a minute at the least.
+func (st syncState) stale(now time.Time) bool {
+	return st.LastPass.IsZero() || now.Sub(st.LastPass) >= max(st.pollInterval(), MinNudgeListing)
 }
 
 // access is Access, AccessUnchecked when none was recorded.
@@ -88,7 +113,13 @@ func (st syncState) access() Access {
 // can't be decoded is logged and read as the zero state too, which only makes the next
 // pass walk every page.
 func (s *Service) loadState(ctx context.Context) (syncState, error) {
-	stored, ok, err := s.prefs.Get(ctx, KeySync)
+	return s.loadStateFrom(ctx, s.prefs)
+}
+
+// loadStateFrom reads the state of the passes through p, the pool's preferences or a
+// transaction's, as loadState does.
+func (s *Service) loadStateFrom(ctx context.Context, p *prefs.Store) (syncState, error) {
+	stored, ok, err := p.Get(ctx, KeySync)
 	if err != nil {
 		return syncState{}, fmt.Errorf("read the state of the GitHub notifications: %w", err)
 	}

@@ -73,6 +73,8 @@ func tableOwners() map[string]string {
 		"issue_views":       "issues",
 		"avatars":           "avatars",
 		"gh_threads":        "ghthreads",
+		"gh_thread_moments": "ghthreads",
+		"gh_thread_clears":  "ghthreads",
 		"tool_installs":     "integrations",
 		"script_runs":       "scriptrun",
 		"script_trust":      "scripts",

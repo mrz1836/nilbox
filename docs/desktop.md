@@ -1224,7 +1224,11 @@ A combined action, such as **Approve & merge**, makes its changes one at a time 
 of their rows, and so does a merge that posts your text as a comment first (Merge when ready
 then reads the merge state before the comment, 1 GraphQL point more). Nilbox never goes past branch protection on its own (only **Merge past the
 rules** does, when you choose it), and no agent ever approves, merges, or closes: every
-approval, merge, and close happens only because you clicked.
+approval, merge, and close happens only because you clicked. The one change Nilbox makes on its
+own is clearing your GitHub notifications, and only once you turn clearing on: it marks a
+notification done (or read, as you choose) when the work behind it is finished, such as a pull
+request you merged, waiting long enough for the toast's Undo when you finished it in Nilbox,
+through a slower lane of its own (one a second at most), and records each one.
 
 | Change | Where | Cost |
 |---|---|---|
@@ -1243,6 +1247,7 @@ approval, merge, and close happens only because you clicked.
 | Close an issue as completed, or as not planned | The issue sheet, after you confirm | 1 GraphQL point to check for new comments, then 1 REST point (1 more for your comment) |
 | Add or remove labels | The issue sheet's **Labels**, with triage access | 1 GraphQL point to list the repository's labels (kept 10 minutes), then 1 REST point for all you add, and 1 for each you remove |
 | Assign or unassign someone else | The issue sheet's **Assignees**, with triage access | 1 GraphQL point a search (kept 10 minutes), then 1 REST point for all you assign, and 1 for each you unassign |
+| Mark a GitHub notification done, or read | On its own once you turn clearing on, or when you clear one yourself | 1 REST point each, at most 50 a minute and 300 an hour, and 1 more for one that changed after the work was finished, to read who commented last |
 
 From the card's menu, once GitHub has taken you off, the item leaves that list (and the inbox,
 when it is in no other), and a toast confirms it. When GitHub refuses, or answers without making

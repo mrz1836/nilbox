@@ -28,6 +28,44 @@ export function CheckNow(): $CancellablePromise<$models.Snapshot> {
 }
 
 /**
+ * Clear clears the threads with threadIDs by the user's own hand, the cleanup sheet's
+ * button: each one the mirror lists for the account the last pass read is queued to go at
+ * once, with no hold and whether clearing on its own is on or off, and a clear already
+ * queued for it goes at once instead. A thread about neither a pull request nor an issue,
+ * one already read while clearing marks one read, and any while reading is off are left
+ * alone. It returns the Snapshot, whose Queued lists them until they are sent.
+ */
+export function Clear(threadIDs: number[] | null): $CancellablePromise<$models.Snapshot> {
+    return $Call.ByID(751692783, threadIDs);
+}
+
+/**
+ * ClearItem clears, by the user's own hand, every thread about the pull request or issue
+ * owner/name#number that the mirror lists for the account the last pass read, as Clear
+ * does: the card's menu action.
+ */
+export function ClearItem(owner: string, name: string, $number: number): $CancellablePromise<$models.Snapshot> {
+    return $Call.ByID(2554946024, owner, name, $number);
+}
+
+/**
+ * Keep takes back the queued clears with clearIDs, the toast's Undo: each one still queued
+ * is kept, and never sent. A clear kept stays kept: its thread isn't queued again on its
+ * own until it changes on GitHub. It returns the Snapshot.
+ */
+export function Keep(clearIDs: number[] | null): $CancellablePromise<$models.Snapshot> {
+    return $Call.ByID(2145302723, clearIDs);
+}
+
+/**
+ * Preview returns what clearing would do now, from the database alone: it never asks
+ * GitHub.
+ */
+export function Preview(): $CancellablePromise<$models.Preview> {
+    return $Call.ByID(238893682);
+}
+
+/**
  * Snapshot returns what the window shows of the user's GitHub notifications, for the
  * account the last pass read, from the database alone: it never asks GitHub. With reading
  * turned off, its status says so and its lists are empty.

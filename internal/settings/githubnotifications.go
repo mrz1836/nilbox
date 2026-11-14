@@ -5,22 +5,28 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/mrz1836/nilbox/internal/event"
 	"github.com/mrz1836/nilbox/internal/prefs"
 	"github.com/mrz1836/nilbox/internal/prefs/prefval"
 	"github.com/mrz1836/nilbox/internal/threadrules"
 	"github.com/mrz1836/nilbox/internal/uierr"
 )
 
+// Each setter of a GitHub notification rule (a switch, a trigger, the action) emits an
+// event.ThreadRulesChanged once the rule is stored, so what reads and clears the
+// notifications applies it at once: clearing turned off stops at once, and turned on, or
+// changed, clears what it now finds finished. The cleanup card's flag is the window's alone,
+// and tells nothing.
+
 // SetGitHubNotificationSwitch turns one of the GitHub notification rules' switches on or
-// off (see threadrules.Switches), and returns the settings with it. Nothing else hears of
-// it: what reads and clears the notifications reads the rules as it runs.
+// off (see threadrules.Switches), and returns the settings with it.
 func (s *Service) SetGitHubNotificationSwitch(ctx context.Context, name threadrules.Switch, on bool) (Settings, error) {
 	if !name.Valid() {
 		return Settings{}, uierr.New("That isn't a setting of GitHub notifications.",
 			fmt.Errorf("%w: %q", threadrules.ErrUnknownSwitch, name))
 	}
 
-	return s.save(ctx, setting(name.Key(), prefval.EncodeBool(on)))
+	return s.saveThreadRules(ctx, setting(name.Key(), prefval.EncodeBool(on)))
 }
 
 // SetGitHubNotificationTrigger turns one of the moments that clear a GitHub notification
@@ -36,7 +42,7 @@ func (s *Service) SetGitHubNotificationTrigger(ctx context.Context, trigger thre
 		return Settings{}, triggerError(trigger, err)
 	}
 
-	return s.save(ctx, func(ctx context.Context, p *prefs.Store) error {
+	return s.saveThreadRules(ctx, func(ctx context.Context, p *prefs.Store) error {
 		err := p.Update(ctx, threadrules.KeyTriggersOff, func(stored string, _ bool) (string, error) {
 			off, err := threadrules.SetTrigger(threadrules.DecodeTriggersOff(stored), trigger, on)
 			if err != nil {
@@ -63,13 +69,27 @@ func (s *Service) SetGitHubNotificationAction(ctx context.Context, action thread
 			fmt.Errorf("%w: %q", err, action))
 	}
 
-	return s.save(ctx, setting(threadrules.KeyAction, stored))
+	return s.saveThreadRules(ctx, setting(threadrules.KeyAction, stored))
 }
 
 // SetGitHubCleanupCardDismissed stores whether the card that first offers to clean up the
 // user's GitHub notifications is put away ("Not now"), and returns the settings with it.
+// Only the window reads it, so nothing else hears of it.
 func (s *Service) SetGitHubCleanupCardDismissed(ctx context.Context, dismissed bool) (Settings, error) {
 	return s.save(ctx, setting(threadrules.KeyCleanupCardDismissed, prefval.EncodeBool(dismissed)))
+}
+
+// saveThreadRules saves a change to the GitHub notification rules with write, and emits an
+// event.ThreadRulesChanged once it is stored; a change that fails emits nothing.
+func (s *Service) saveThreadRules(ctx context.Context, write func(context.Context, *prefs.Store) error) (Settings, error) {
+	saved, err := s.save(ctx, write)
+	if err != nil {
+		return saved, err
+	}
+
+	s.events.Emit(event.ThreadRulesChanged{})
+
+	return saved, nil
 }
 
 // triggerError words SetTrigger's refusal of trigger for the window.

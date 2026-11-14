@@ -225,6 +225,7 @@ export function SetFollowSessions(on: boolean): $CancellablePromise<$models.Sett
 /**
  * SetGitHubCleanupCardDismissed stores whether the card that first offers to clean up the
  * user's GitHub notifications is put away ("Not now"), and returns the settings with it.
+ * Only the window reads it, so nothing else hears of it.
  */
 export function SetGitHubCleanupCardDismissed(dismissed: boolean): $CancellablePromise<$models.Settings> {
     return $Call.ByID(1506872121, dismissed);
@@ -241,8 +242,7 @@ export function SetGitHubNotificationAction(action: threadrules$0.Action): $Canc
 
 /**
  * SetGitHubNotificationSwitch turns one of the GitHub notification rules' switches on or
- * off (see threadrules.Switches), and returns the settings with it. Nothing else hears of
- * it: what reads and clears the notifications reads the rules as it runs.
+ * off (see threadrules.Switches), and returns the settings with it.
  */
 export function SetGitHubNotificationSwitch(name: threadrules$0.Switch, on: boolean): $CancellablePromise<$models.Settings> {
     return $Call.ByID(3494034241, name, on);

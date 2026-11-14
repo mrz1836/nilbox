@@ -89,6 +89,9 @@ const (
 	// NameRepoRulesChanged is RepoRulesChanged's name.
 	NameRepoRulesChanged = "settings:repoRulesChanged"
 
+	// NameThreadRulesChanged is ThreadRulesChanged's name.
+	NameThreadRulesChanged = "settings:threadRulesChanged"
+
 	// NameGHThreadsUpdated is GHThreadsUpdated's name.
 	NameGHThreadsUpdated = "ghthreads:updated"
 )
@@ -324,6 +327,15 @@ type RepoRulesChanged struct{}
 
 // Name returns NameRepoRulesChanged.
 func (RepoRulesChanged) Name() string { return NameRepoRulesChanged }
+
+// ThreadRulesChanged says the user changed a rule for their GitHub notifications (whether
+// they are read, whether, how, and when they are cleared), and it was stored. It stays in
+// Go: core has the mirror of the notifications decide every thread again at once, so
+// clearing turned off stops at once, and turned on clears what is finished.
+type ThreadRulesChanged struct{}
+
+// Name returns NameThreadRulesChanged.
+func (ThreadRulesChanged) Name() string { return NameThreadRulesChanged }
 
 // ScriptRunsUpdated says a run started, ended, or changed status, or the history changed:
 // the window lists the runs again and pulls what it shows. It never carries output.

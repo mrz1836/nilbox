@@ -4,6 +4,9 @@
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
 import * as item$0 from "../item/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
+import * as threadrules$0 from "../threadrules/models.js";
 
 /**
  * Access is whether GitHub lets the token read the user's notifications.
@@ -34,6 +37,44 @@ export const Access = {
 } as const;
 
 /**
+ * ClearState is where a clear stands in the ledger.
+ */
+export type ClearState = "queued" | "sent" | "kept" | "failed" | "skipped";
+
+/**
+ * The values of ClearState, by the names of their Go constants.
+ */
+export const ClearState = {
+    /**
+     * The states of a clear.
+     *
+     * ClearQueued is a clear waiting to be sent.
+     */
+    ClearQueued: "queued",
+
+    /**
+     * ClearSent is a clear GitHub took, or one GitHub no longer had the thread of.
+     */
+    ClearSent: "sent",
+
+    /**
+     * ClearKept is a clear the user undid (Keep), or one a restore after a dismissal took
+     * back.
+     */
+    ClearKept: "kept",
+
+    /**
+     * ClearFailed is a clear whose sends failed MaxAttempts times.
+     */
+    ClearFailed: "failed",
+
+    /**
+     * ClearSkipped is a clear not sent, for its SkipReason.
+     */
+    ClearSkipped: "skipped",
+} as const;
+
+/**
  * ItemThreads are the threads about one pull request or issue.
  */
 export interface ItemThreads {
@@ -59,6 +100,247 @@ export interface ItemThreads {
 }
 
 /**
+ * Preview is what clearing would do now, for the cleanup sheet and the card that first
+ * offers it: the threads that would clear, by repository, and those held back, by reason.
+ * It is decided as if clearing on its own were on, so it counts the candidates while it is
+ * off, and it takes GitHub's last word on an item's state however old it is: a pass reads a
+ * state again before it clears on it.
+ */
+export interface Preview {
+    /**
+     * Reading is whether the app reads the user's notifications; off, nothing would clear.
+     */
+    "reading": boolean;
+
+    /**
+     * Auto is whether clearing on its own is on, and Action what clearing does.
+     */
+    "auto": boolean;
+    "action": threadrules$0.Action;
+
+    /**
+     * Count is how many threads would clear.
+     */
+    "count": number;
+
+    /**
+     * Repos are the threads that would clear, by repository, in the order of each one's
+     * most recently updated thread.
+     */
+    "repos": PreviewRepo[] | null;
+
+    /**
+     * Held are the threads a moment finished but that would not clear now, by reason, in
+     * the order each reason is first met.
+     */
+    "held": PreviewHeld[] | null;
+}
+
+/**
+ * PreviewHeld is the threads held back from clearing for one reason.
+ */
+export interface PreviewHeld {
+    "reason": SkipReason;
+    "count": number;
+    "threads": PreviewThread[] | null;
+}
+
+/**
+ * PreviewRepo is one repository's threads that would clear.
+ */
+export interface PreviewRepo {
+    "owner": string;
+    "name": string;
+    "threads": PreviewThread[] | null;
+}
+
+/**
+ * PreviewThread is one thread in a Preview.
+ */
+export interface PreviewThread {
+    /**
+     * ID is GitHub's ID of the thread, which Clear takes.
+     */
+    "id": number;
+
+    /**
+     * Owner and Name are its repository, Kind and Number the item it is about.
+     */
+    "owner": string;
+    "name": string;
+    "kind": item$0.Kind;
+    "number": number;
+
+    /**
+     * Title is the item's title, Reason GitHub's reason for the thread, and Unread whether
+     * it is unread.
+     */
+    "title": string;
+    "reason": string;
+    "unread": boolean;
+
+    /**
+     * UpdatedAt is when it last changed on GitHub, as RFC 3339.
+     */
+    "updatedAt": string;
+
+    /**
+     * Trigger is the moment that finished its item.
+     */
+    "trigger": threadrules$0.Trigger;
+}
+
+/**
+ * QueuedClear is a clear waiting to be sent.
+ */
+export interface QueuedClear {
+    /**
+     * ID is the clear's, which Keep takes, and ThreadID GitHub's ID of the thread.
+     */
+    "id": number;
+    "threadId": number;
+
+    /**
+     * Owner and Name are the thread's repository, Kind and Number its item, and Title the
+     * item's title.
+     */
+    "owner": string;
+    "name": string;
+    "kind": item$0.Kind;
+    "number": number;
+    "title": string;
+
+    /**
+     * SendAfter is when it may be sent, as RFC 3339: the Undo hold's end, or when it was
+     * queued.
+     */
+    "sendAfter": string;
+
+    /**
+     * Trigger is the moment that chose it, and Action what it does.
+     */
+    "trigger": threadrules$0.Trigger;
+    "action": threadrules$0.Action;
+}
+
+/**
+ * SettledClear is a clear that left the queue.
+ */
+export interface SettledClear {
+    /**
+     * ID is the clear's, and ThreadID GitHub's ID of the thread.
+     */
+    "id": number;
+    "threadId": number;
+
+    /**
+     * Owner and Name are the thread's repository, Kind and Number its item, and Title the
+     * item's title.
+     */
+    "owner": string;
+    "name": string;
+    "kind": item$0.Kind;
+    "number": number;
+    "title": string;
+
+    /**
+     * Trigger is the moment that chose it, Action what it did or was to do, and State how
+     * it settled.
+     */
+    "trigger": threadrules$0.Trigger;
+    "action": threadrules$0.Action;
+    "state": ClearState;
+
+    /**
+     * At is when it settled, as RFC 3339.
+     */
+    "at": string;
+
+    /**
+     * Error is the last failure, in a sentence, for a failed clear, and Reason why a
+     * skipped one was.
+     */
+    "error": string;
+    "reason": SkipReason;
+}
+
+/**
+ * SkipReason is why a clear was skipped, or a thread held back from clearing.
+ */
+export type SkipReason = "" | "off" | "rule_off" | "still_open" | "new_activity" | "already_read" | "not_item" | "not_listed" | "changed" | "stale" | "kept" | "failed";
+
+/**
+ * The values of SkipReason, by the names of their Go constants.
+ */
+export const SkipReason = {
+    /**
+     * The reasons a clear is skipped. Those threadrules.Decide gives keep its words.
+     *
+     * SkipNone is no reason: the clear wasn't skipped.
+     */
+    SkipNone: "",
+
+    /**
+     * SkipOff is reading the notifications, or clearing on its own, turned off.
+     */
+    SkipOff: "off",
+
+    /**
+     * SkipRuleOff is the trigger turned off, or a watched repository's thread left alone.
+     */
+    SkipRuleOff: "rule_off",
+
+    /**
+     * SkipStillOpen is an item GitHub no longer says is finished: reopened.
+     */
+    SkipStillOpen: "still_open",
+
+    /**
+     * SkipNewActivity is a thread that changed after the moment, which the user may not
+     * have seen.
+     */
+    SkipNewActivity: "new_activity",
+
+    /**
+     * SkipAlreadyRead is a thread already read while clearing marks one read.
+     */
+    SkipAlreadyRead: "already_read",
+
+    /**
+     * SkipNotItem is a thread about neither a pull request nor an issue.
+     */
+    SkipNotItem: "not_item",
+
+    /**
+     * SkipNotListed is a thread the mirror no longer lists: done elsewhere, or dropped for
+     * one pass by a listing that raced its update. A later pass queues it again if it
+     * still clears.
+     */
+    SkipNotListed: "not_listed",
+
+    /**
+     * SkipChanged is a thread updated since the clear was decided: it was decided again.
+     */
+    SkipChanged: "changed",
+
+    /**
+     * SkipStale is a clear queued more than QueuedFor ago: it was decided again.
+     */
+    SkipStale: "stale",
+
+    /**
+     * SkipKept is a thread the user kept (Undo) at its update: it waits until it moves.
+     */
+    SkipKept: "kept",
+
+    /**
+     * SkipFailed is a thread whose clear failed MaxAttempts times at its update: it waits
+     * until it moves, or the user clears it by hand.
+     */
+    SkipFailed: "failed",
+} as const;
+
+/**
  * Snapshot is what the window shows of the user's GitHub notifications. No URL GitHub gave
  * is in it: the window builds a link to an item from its repository and number.
  */
@@ -79,6 +361,23 @@ export interface Snapshot {
      * first.
      */
     "unread": Thread[] | null;
+
+    /**
+     * Queued are the clears waiting to be sent, the one due first first, each of which Keep
+     * takes back.
+     */
+    "queued": QueuedClear[] | null;
+
+    /**
+     * Backlog is how many clears the last pass held back, more than clear on their own, for
+     * the user to review (Preview, then Clear); 0 when none waits.
+     */
+    "backlog": number;
+
+    /**
+     * Recent are the latest MaxRecent clears that settled, the latest first.
+     */
+    "recent": SettledClear[] | null;
 }
 
 /**

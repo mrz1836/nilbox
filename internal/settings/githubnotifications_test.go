@@ -1,11 +1,13 @@
 package settings
 
 import (
+	"context"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/mrz1836/nilbox/internal/event"
 	"github.com/mrz1836/nilbox/internal/testutil"
 	"github.com/mrz1836/nilbox/internal/threadrules"
 	"github.com/mrz1836/nilbox/internal/uierr"
@@ -81,7 +83,74 @@ func TestSetGitHubNotificationSwitch(t *testing.T) {
 		}
 	}
 
-	assert.Zero(t, events.Count(), "nothing hears of a change yet")
+	assert.Equal(t, 12, events.Count(), "every change stored is told")
+}
+
+func TestGitHubNotificationSettersEmitRulesChanged(t *testing.T) {
+	t.Parallel()
+
+	for name, set := range map[string]func(context.Context, *Service) error{
+		"switch": func(ctx context.Context, s *Service) error {
+			return testutil.ErrOf(s.SetGitHubNotificationSwitch(ctx, threadrules.SwitchAuto, true))
+		},
+		"trigger": func(ctx context.Context, s *Service) error {
+			return testutil.ErrOf(s.SetGitHubNotificationTrigger(ctx, threadrules.TriggerDismissed, false))
+		},
+		"action": func(ctx context.Context, s *Service) error {
+			return testutil.ErrOf(s.SetGitHubNotificationAction(ctx, threadrules.ActionRead))
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			events := &testutil.Events{}
+			svc := serviceOver(t, testutil.DB(t), t.TempDir(), WithEvents(events))
+
+			require.NoError(t, set(t.Context(), svc))
+			assert.Equal(t, []event.Event{event.ThreadRulesChanged{}}, events.All(), "told once it is stored")
+		})
+	}
+
+	t.Run("cleanup card", func(t *testing.T) {
+		t.Parallel()
+
+		events := &testutil.Events{}
+		svc := serviceOver(t, testutil.DB(t), t.TempDir(), WithEvents(events))
+
+		got, err := svc.SetGitHubCleanupCardDismissed(t.Context(), true)
+		require.NoError(t, err)
+		assert.True(t, got.GitHubNotifications.CleanupCardDismissed, "stored")
+		assert.Zero(t, events.Count(), "the window's own flag changes no rule: nothing is told")
+	})
+
+	for name, set := range map[string]func(context.Context, *Service) error{
+		"unknown switch": func(ctx context.Context, s *Service) error {
+			return testutil.ErrOf(s.SetGitHubNotificationSwitch(ctx, "sometimes", true))
+		},
+		"by hand": func(ctx context.Context, s *Service) error {
+			return testutil.ErrOf(s.SetGitHubNotificationTrigger(ctx, threadrules.TriggerByHand, false))
+		},
+		"unknown action": func(ctx context.Context, s *Service) error {
+			return testutil.ErrOf(s.SetGitHubNotificationAction(ctx, "archive"))
+		},
+		"failed write": func(ctx context.Context, s *Service) error {
+			if _, err := s.pool.ExecContext(ctx, refusePrefs); err != nil {
+				return err
+			}
+
+			return testutil.ErrOf(s.SetGitHubNotificationSwitch(ctx, threadrules.SwitchAuto, true))
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			events := &testutil.Events{}
+			svc := serviceOver(t, testutil.DB(t), t.TempDir(), WithEvents(events))
+
+			require.Error(t, set(t.Context(), svc))
+			assert.Zero(t, events.Count(), "a change refused, or not stored, tells nothing")
+		})
+	}
 }
 
 func TestSetGitHubNotificationSwitchRefusesAnUnknownOne(t *testing.T) {
@@ -131,7 +200,7 @@ func TestSetGitHubNotificationTrigger(t *testing.T) {
 	reread, err := svc.Get(ctx)
 	require.NoError(t, err)
 	assert.Equal(t, reread, got, "it returns the settings as stored")
-	assert.Zero(t, events.Count(), "nothing hears of a change yet")
+	assert.Equal(t, 3, events.Count(), "every change stored is told")
 }
 
 func TestSetGitHubNotificationTriggerDropsWhatIsNoLongerKnown(t *testing.T) {

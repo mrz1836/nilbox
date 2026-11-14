@@ -3,6 +3,7 @@ package ghthreads
 import (
 	"context"
 	"errors"
+	"slices"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -30,11 +31,42 @@ type fakePasser struct {
 	// fail fails every pass, and panic panics on the first.
 	fail  bool
 	panic bool
+
+	// runs are the runs asked, in order, with when each ran.
+	runs []fakeRun
+
+	// nudges holds what the Syncer is nudged to; sendAt is when a send is due, zero for
+	// none, which a send run clears.
+	nudges nudges
+	sendAt time.Time
 }
 
-func (p *fakePasser) runPass(context.Context, passRequest) error {
+// fakeRun is one run a fakePasser was asked, and when.
+type fakeRun struct {
+	req passRequest
+	at  time.Time
+}
+
+// newFakePasser returns a fakePasser with nothing nudged.
+func newFakePasser() *fakePasser {
+	return &fakePasser{nudges: nudges{wake: make(chan struct{}, 1)}}
+}
+
+func (p *fakePasser) runPass(_ context.Context, req passRequest) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
+
+	p.runs = append(p.runs, fakeRun{req: req, at: time.Now()})
+
+	if req.send {
+		p.sendAt = time.Time{}
+
+		return nil
+	}
+
+	if req.nudged {
+		return nil
+	}
 
 	p.passes = append(p.passes, time.Now())
 	p.ended = time.Now()
@@ -48,6 +80,40 @@ func (p *fakePasser) runPass(context.Context, passRequest) error {
 	}
 
 	return nil
+}
+
+func (p *fakePasser) takeNudge() (passRequest, bool) { return p.nudges.take() }
+
+func (p *fakePasser) woken() <-chan struct{} { return p.nudges.wake }
+
+func (p *fakePasser) rulesChanged() { p.nudges.add(nil, nil, true) }
+
+func (p *fakePasser) untilSend() (time.Duration, bool) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	if p.sendAt.IsZero() {
+		return 0, false
+	}
+
+	return time.Until(p.sendAt), true
+}
+
+// sendBy has a send come due at, and wakes the Syncer, as a clear queued does.
+func (p *fakePasser) sendBy(at time.Time) {
+	p.mu.Lock()
+	p.sendAt = at
+	p.mu.Unlock()
+
+	p.nudges.signal()
+}
+
+// ran returns the runs asked, in order.
+func (p *fakePasser) ran() []fakeRun {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	return slices.Clone(p.runs)
 }
 
 func (p *fakePasser) pollInterval() time.Duration {
@@ -115,7 +181,7 @@ func TestSyncerPassesAtOnceThenEveryInterval(t *testing.T) {
 	// The bubble's clock moves only when every goroutine in it is blocked, so the real
 	// interval takes no real time and the count of passes is exact.
 	synctest.Test(t, func(t *testing.T) {
-		p := &fakePasser{}
+		p := newFakePasser()
 		logs := &testutil.Logs{}
 		p.fail = true
 		stop := runSyncer(t, newSyncer(p, nil, logs.Logger()))
@@ -138,7 +204,8 @@ func TestSyncerHonorsPollInterval(t *testing.T) {
 	t.Parallel()
 
 	synctest.Test(t, func(t *testing.T) {
-		p := &fakePasser{poll: 10 * time.Minute}
+		p := newFakePasser()
+		p.poll = 10 * time.Minute
 
 		stop := runSyncer(t, newSyncer(p, func(context.Context) time.Duration { return 2 * time.Minute }, nil))
 		defer stop()
@@ -164,7 +231,7 @@ func TestSyncerWakeAppliesNewInterval(t *testing.T) {
 
 		every.Store(int64(30 * time.Minute))
 
-		p := &fakePasser{}
+		p := newFakePasser()
 		s := newSyncer(p, func(context.Context) time.Duration { return time.Duration(every.Load()) }, nil)
 
 		stop := runSyncer(t, s)
@@ -197,7 +264,7 @@ func TestSyncerWaitsFromTheLastPassAnyoneRan(t *testing.T) {
 	t.Parallel()
 
 	synctest.Test(t, func(t *testing.T) {
-		p := &fakePasser{}
+		p := newFakePasser()
 
 		stop := runSyncer(t, newSyncer(p, nil, nil))
 		defer stop()
@@ -223,7 +290,7 @@ func TestSyncerOffRunsNothingUntilWoken(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		var on atomic.Bool
 
-		p := &fakePasser{}
+		p := newFakePasser()
 		s := newSyncer(p, func(context.Context) time.Duration {
 			if on.Load() {
 				return time.Minute
@@ -250,7 +317,8 @@ func TestSyncerRecoversAPanickingPass(t *testing.T) {
 	t.Parallel()
 
 	synctest.Test(t, func(t *testing.T) {
-		p := &fakePasser{panic: true}
+		p := newFakePasser()
+		p.panic = true
 		logs := &testutil.Logs{}
 
 		stop := runSyncer(t, newSyncer(p, nil, logs.Logger()))
@@ -308,6 +376,16 @@ func (c *gatedClient) ListThreads(context.Context, github.Token, github.ThreadQu
 func (*gatedClient) FetchItemStates(context.Context, github.Token, []item.Ref) (map[string]github.ItemState, error) {
 	return map[string]github.ItemState{}, nil
 }
+
+func (*gatedClient) FetchLatestComment(context.Context, github.Token, string) (*github.CommentAuthor, error) {
+	return &github.CommentAuthor{}, nil
+}
+
+func (*gatedClient) ParseSubject(string) (item.Ref, bool) { return item.Ref{}, false }
+
+func (*gatedClient) MarkThreadDone(context.Context, github.Token, int64) error { return nil }
+
+func (*gatedClient) MarkThreadRead(context.Context, github.Token, int64) error { return nil }
 
 // counts returns how many listings were sent, and the most answering at once.
 func (c *gatedClient) counts() (listed, most int) {

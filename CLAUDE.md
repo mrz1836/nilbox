@@ -508,16 +508,19 @@ app:lint` reads.
 - `internal/threadrules/` holds the rules for the user's GitHub notifications (`threadrules.*`:
   whether they are read, whether they are cleared on their own, marked done or read, by which
   triggers, and whether a watched repository's or a bot's activity counts), which settings
-  alone writes, and the pure `Decide`, which says whether one thread is cleared, skipped, or
-  held at the moment its item was finished; it is a leaf that imports only `internal/item` and
-  `prefval`.
+  alone writes (each rule's setter emitting the Go-only `event.ThreadRulesChanged` once it
+  is stored, which core's relay turns into the ghthreads `Syncer`'s `RulesChanged`; the
+  cleanup card's flag is the window's alone, and tells nothing), and the
+  pure `Decide`, which says whether one thread is cleared, skipped, or held at the moment its
+  item was finished; it is a leaf that imports only `internal/item` and `prefval`.
 - `internal/ghthreads/` mirrors the user's GitHub notifications (threads, in the REST API's
   words) as the web inbox lists them, read and unread but not done, in `gh_threads`, which it
   owns, one row per account and thread (its reason, unread, times, subject type and title,
   repository, the pull request or issue `Thread.Ref` names, '' and 0 for any other subject,
   and `latest_comment_url`, kept for the next check of who acted after a moment and never
   shown or opened), and keeps the state of its passes in `ghthreads.sync`, a JSON pref only it
-  writes. It only reads: nothing here writes to GitHub. A pass, one at a time (the Syncer's
+  writes. Its one write to GitHub is clearing a thread (below), and it sends none until the
+  user turns clearing on or clears one by hand. A pass, one at a time (the Syncer's
   and `CheckNow`'s share one), reads the rules through its `RuleSource` (core's
   `ghThreadRules`, one read of the prefs): with `Read` off it sends nothing and borrows no
   token, and marks the mirror stale (`walkNext`). Otherwise it borrows a token through
@@ -561,8 +564,65 @@ app:lint` reads.
   `CheckNow` runs a pass once any running has ended, lifting the back-off and ignoring the
   poll interval, and returns the `Snapshot`, whose status tells a pass that failed. A pass
   that changes what `Snapshot` shows, the passes' times aside, emits `event.GHThreadsUpdated`
-  (`ghthreads:updated`), but one whose caller gave up tells nothing. It never imports the inbox, settings, core, notify, the sheets, or the
-  desktop shell, and the inbox never imports it (the repoguard boundary test).
+  (`ghthreads:updated`), but one whose caller gave up tells nothing.
+  It clears the threads by the user's rules (`clear.go`), and owns `gh_thread_moments` and
+  `gh_thread_clears` for it. The inbox's `Config.Outcomes` is its `Settler` (core's
+  `ghThreadOutcomes` adapts `inbox.Outcome` to its own `Outcome`, never bound), whose
+  `Settle` records, in one transaction and without waiting, the moments the user finished an
+  item in the app (a merge, a close, a review that approves or requests changes, a
+  dismissal, taking themselves off), a merge's or a close's state as GitHub answered it
+  (`MERGED` or `CLOSED`, read now), and a restore's taking back of the dismissal's moment and
+  its queued clears (kept), then nudges the `Syncer`, which runs a pass on those items at
+  once, listing first only when the mirror is older than the poll interval (a minute at
+  least, `MinNudgeListing`); an item the inbox saw close or leave its lists has its state
+  checked. A pass reads the account's threads, moments, and clears once (`decideInputs`),
+  and again only what a step changed: the threads once a state check stored an answer, and
+  the clears inside the transaction that queues, since a click may have queued or kept one
+  meanwhile; a send reads its one item's moments. After its listing and state checks, a
+  pass decides each pull request and issue thread with `threadrules.Decide` against every
+  moment that could apply: the user's own, and GitHub's own merge or close
+  (`outsideMoment`, only on a state read within `StateFreshFor`, an hour; one older that
+  would clear is read again first, but not while a backlog counted under the same rules is
+  held for review, `BacklogRules` in `ghthreads.sync`: such threads count toward the cap
+  as they are, so a held backlog costs no state reads). A thread held back, unread and
+  updated after the moment, has who acted after it checked once per update of the thread,
+  and only while a bot's activity counts: the latest comment's author (`FetchLatestComment`,
+  one REST point, `MaxCommentChecks`, 50, a pass at most, the rest the next pass, the checks
+  stopping at the first answer that says GitHub is limiting the app's requests,
+  `github.RateLimited`), stored as `after_moment`, a person's sticking until the thread is
+  read (a person's comment followed by a bot's before the next pass reads as a bot's). A
+  latest-comment URL that is the subject's own is an event, not a comment, and needs no
+  request: on an item merged or closed it is the merge or the close itself, a bot's; on an
+  open one (a push, a request for review, an approval with no text) it counts as a
+  person's. A thread that clears is queued in the ledger before anything is sent, with its
+  trigger and action (`threadrules.action`: done, a `DELETE`, or read, a `PATCH`): a clear
+  the user's own action chose waits the Undo hold (`Hold`: the toast setting plus 3 s, 15 s
+  at least, through core's `ghThreadHolds`), one GitHub's state chose goes at once, and the
+  latest hold among the moments that clear wins. One the user kept (`Keep`), and one whose
+  clear failed, is not queued again on its own until its thread moves (`marks`); the user
+  may still clear it by hand. The first pass after clearing turns on or the rules change
+  (`RulesSeen`, a fingerprint in `ghthreads.sync`) queues at most `FirstCap` (25), any later
+  one `Cap` (150); one over its cap queues none and records the count as the `Backlog`. The
+  sends go one at a time through the client's chore lane, from a pass or from a run the
+  `Syncer`'s timer starts at the next `send_after` or when the lane lets the next go, which
+  lists nothing and lets go of the pass slot at the lane's first refusal, and each is checked
+  again first (`sendOne`): clearing still on (but for one by hand), reading on, GitHub not
+  refusing the listing, the token's login the row's (else the queue waits for the next
+  pass), the thread still listed at the `updated_at` it was decided on (else decided again;
+  one not listed is skipped, never sent), queued less than a day ago (else decided again),
+  and `Decide` still clearing it. A 404 counts as done; a refusal of the lane costs no
+  attempt; any other failure is tried again a minute on, three times at most, then failed. A
+  thread marked done leaves the mirror, and one marked read stays, read. Clearing turned off
+  (settings' Go-only `event.ThreadRulesChanged`, which core's relay turns into the `Syncer`'s
+  `RulesChanged`) skips every queued clear but the user's own at once, and reading turned off
+  skips them all and sends nothing. The bound `Preview` lists, from the database alone and as
+  if clearing were on, what would clear, by repository, and what is held back, by reason;
+  `Clear` and `ClearItem` clear threads by hand (no hold, with clearing on or off, never a
+  thread that isn't a pull request's or an issue's); and `Keep` takes queued clears back. The
+  `Snapshot` also lists the `Queued` clears, the `Backlog`, and the `Recent` 50 that settled.
+  Moments and settled clears are dropped 30 days on. It never imports the inbox, settings,
+  core, notify, the sheets, or the desktop shell, and the inbox never imports it (the
+  repoguard boundary test).
 - `internal/bump/` reads a dependency update from a bot's pull request title into an `Update`,
   for the review sheet and the `.Dependency` prompt variables. It is pure and imports no
   service.
