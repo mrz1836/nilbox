@@ -56,6 +56,9 @@ func TestSchemaConstraints(t *testing.T) {
 		VALUES ('claude', 'work', ` + at + `, ` + at + `)`
 	seedWorktree := `INSERT INTO worktree_records (clone_path, worktree, owner, name, kind, number, created_at)
 		VALUES ('/srv/projects/example-repo', 'pr-184', 'acme-org', 'example-repo', 'pr', 184, ` + at + `)`
+	seedClear := `INSERT INTO gh_thread_clears (account_login, thread_id, repo_owner, repo_name, item_kind, number,
+		trigger, action, state, thread_updated_at, queued_at, send_after) VALUES ('octo-user', 20000000001, 'acme-org',
+		'example-repo', 'pr', 7, 'dismissed', 'done', 'queued', ` + at + `, ` + at + `, ` + at + `)`
 
 	tests := []struct {
 		name string
@@ -125,6 +128,49 @@ func TestSchemaConstraints(t *testing.T) {
 			refused:  `UPDATE worktree_records SET launches = -1`,
 			want:     check + "launches >= 0",
 			accepted: `UPDATE worktree_records SET launches = 2`,
+		},
+		{
+			name: "a second queued clear of one thread",
+			seed: seedClear,
+			refused: `INSERT INTO gh_thread_clears (account_login, thread_id, repo_owner, repo_name, item_kind, number,
+				trigger, action, state, thread_updated_at, queued_at, send_after) VALUES ('Octo-User', 20000000001,
+				'acme-org', 'example-repo', 'pr', 7, 'by_hand', 'done', 'queued', ` + at + `, ` + at + `, ` + at + `)`,
+			want: unique + "gh_thread_clears.account_login, gh_thread_clears.thread_id",
+			// A settled clear of the thread may sit beside the queued one.
+			accepted: `INSERT INTO gh_thread_clears (account_login, thread_id, repo_owner, repo_name, item_kind, number,
+				trigger, action, state, thread_updated_at, queued_at, send_after, settled_at) VALUES ('octo-user',
+				20000000001, 'acme-org', 'example-repo', 'pr', 7, 'merged', 'done', 'kept', ` + at + `, ` + at + `, ` +
+				at + `, ` + at + `)`,
+		},
+		{
+			name:     "a settled clear with no time it settled",
+			seed:     seedClear,
+			refused:  `UPDATE gh_thread_clears SET state = 'skipped'`,
+			want:     check + "(state = 'queued') = (settled_at IS NULL)",
+			accepted: `UPDATE gh_thread_clears SET state = 'skipped', settled_at = ` + at,
+		},
+		{
+			name:     "a sent clear with no time it was sent",
+			seed:     seedClear,
+			refused:  `UPDATE gh_thread_clears SET state = 'sent', settled_at = ` + at,
+			want:     check + "(state = 'sent') = (sent_at IS NOT NULL)",
+			accepted: `UPDATE gh_thread_clears SET state = 'sent', settled_at = ` + at + `, sent_at = ` + at,
+		},
+		{
+			name:     "a clear that does what no clear does",
+			seed:     seedClear,
+			refused:  `UPDATE gh_thread_clears SET action = 'unsubscribe'`,
+			want:     check + "action IN ('done', 'read')",
+			accepted: `UPDATE gh_thread_clears SET action = 'read'`,
+		},
+		{
+			name: "a moment cleared by hand",
+			seed: seedClear,
+			refused: `INSERT INTO gh_thread_moments (account_login, repo_owner, repo_name, item_kind, number, trigger, at,
+				created_at) VALUES ('octo-user', 'acme-org', 'example-repo', 'pr', 7, 'by_hand', ` + at + `, ` + at + `)`,
+			want: check + "trigger <> '' AND trigger <> 'by_hand'",
+			accepted: `INSERT INTO gh_thread_moments (account_login, repo_owner, repo_name, item_kind, number, trigger, at,
+				created_at) VALUES ('octo-user', 'acme-org', 'example-repo', 'pr', 7, 'merged', ` + at + `, ` + at + `)`,
 		},
 	}
 

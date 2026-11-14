@@ -28,6 +28,7 @@ import type {
   LocationState,
   FileCheck,
   GitHubThread,
+  GitHubThreadsPreview,
   GitHubThreadsSnapshot,
   GitHubThreadsStatus,
   HookActionResult,
@@ -69,6 +70,8 @@ import type {
   PromptBackup,
   PromptCheckResult,
   PromptVariable,
+  PreviewThread,
+  QueuedClear,
   Rate,
   ReleaseCandidate,
   ReleaseCandidates,
@@ -89,6 +92,7 @@ import type {
   SensitiveCategory,
   SensitiveGroup,
   SessionsSnapshot,
+  SettledClear,
   Settings,
   SweepReport,
   ToolCopy,
@@ -1094,14 +1098,78 @@ export function threadsStatus(overrides: Partial<GitHubThreadsStatus> = {}): Git
 }
 
 // githubThreads is what the app mirrors of the user's GitHub notifications: by default
-// read a minute ago, with none in the GitHub inbox. Every test builds one here, with the
-// fields it cares about, so a field the backend adds needs a default in this one place.
+// read a minute ago, with none in the GitHub inbox, nothing queued to clear, none held back
+// for review, and none cleared lately. Every test builds one here, with the fields it cares
+// about, so a field the backend adds needs a default in this one place.
 export function githubThreads(
   overrides: Partial<Omit<GitHubThreadsSnapshot, 'status'>> & { status?: Partial<GitHubThreadsStatus> } = {},
 ): GitHubThreadsSnapshot {
   const { status, ...rest } = overrides
 
-  return { byItem: [], unread: [], ...rest, status: threadsStatus(status) }
+  return { byItem: [], unread: [], queued: [], backlog: 0, recent: [], ...rest, status: threadsStatus(status) }
+}
+
+// queuedClear is the notification about pull request #7 of example-repo, queued to be
+// marked done after the user dismissed it, held for the Undo until 15 seconds past noon.
+export function queuedClear(overrides: Partial<QueuedClear> = {}): QueuedClear {
+  return {
+    id: 1,
+    threadId: 1001,
+    owner: 'acme-org',
+    name: 'example-repo',
+    kind: 'pr',
+    number: 7,
+    title: 'Add the widget cache',
+    sendAfter: '2026-06-15T12:00:15Z',
+    trigger: 'dismissed',
+    action: 'done',
+    ...overrides,
+  }
+}
+
+// settledClear is that notification marked done on GitHub, at noon, after the user merged
+// the pull request.
+export function settledClear(overrides: Partial<SettledClear> = {}): SettledClear {
+  return {
+    id: 1,
+    threadId: 1001,
+    owner: 'acme-org',
+    name: 'example-repo',
+    kind: 'pr',
+    number: 7,
+    title: 'Add the widget cache',
+    trigger: 'merged',
+    action: 'done',
+    state: 'sent',
+    at: '2026-06-15T12:00:00Z',
+    error: '',
+    reason: '',
+    ...overrides,
+  }
+}
+
+// previewThread is that notification as the cleanup sheet lists it: its pull request
+// merged, so it would clear.
+export function previewThread(overrides: Partial<PreviewThread> = {}): PreviewThread {
+  return {
+    id: 1001,
+    owner: 'acme-org',
+    name: 'example-repo',
+    kind: 'pr',
+    number: 7,
+    title: 'Add the widget cache',
+    reason: 'review_requested',
+    unread: true,
+    updatedAt: '2026-06-15T11:55:00Z',
+    trigger: 'merged',
+    ...overrides,
+  }
+}
+
+// threadsPreview is what clearing would do: by default nothing, with clearing off and
+// marking a notification done.
+export function threadsPreview(overrides: Partial<GitHubThreadsPreview> = {}): GitHubThreadsPreview {
+  return { reading: true, auto: false, action: 'done', count: 0, repos: [], held: [], ...overrides }
 }
 
 // itemThreads are the threads about pull request #7 of example-repo: one, unread, asking

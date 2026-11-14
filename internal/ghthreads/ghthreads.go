@@ -1,7 +1,10 @@
 // Package ghthreads mirrors the user's GitHub notifications, which GitHub's REST API calls
 // threads, as the web inbox lists them (read and unread, not done), in the gh_threads table
 // it owns, one row per account and thread, so the window counts them and tags the cards
-// they are about without asking GitHub. It reads them only: nothing here writes to GitHub.
+// they are about without asking GitHub, and clears them by the user's rules (clear.go):
+// it marks a thread done, or read, once the work behind it is finished. Clearing is the
+// only write it makes, through the GitHub client's chore lane, and it makes none until
+// the user turns clearing on, or clears one by hand.
 //
 // A pass reads them, never two at once. With reading turned off (threadrules' Read), a pass
 // sends nothing and borrows no token. Otherwise it learns the token's account (one GraphQL
@@ -29,6 +32,9 @@
 // The Syncer runs a pass as often as the inbox is read, never sooner than GitHub's
 // X-Poll-Interval asks, and the window reads the mirror through Snapshot alone, which asks
 // GitHub nothing. Each pass that changes what Snapshot shows emits event.GHThreadsUpdated.
+// A pass then decides which threads clear, queues them in the gh_thread_clears ledger, and
+// sends the ones due; the Syncer also runs a pass when the inbox tells of something the user
+// finished (Settler), when the rules change, and when a queued clear comes due.
 package ghthreads
 
 import (
@@ -73,12 +79,18 @@ const (
 	MaxThreads = github.MaxThreadPages * github.ThreadsPerPage
 )
 
-// Client is what a pass asks GitHub: the token's account, a page of the notifications, and
-// the state of pull requests and issues. *github.Client implements it.
+// Client is what a pass asks GitHub: the token's account, a page of the notifications, the
+// state of pull requests and issues, and who wrote a thread's latest comment; and what it
+// sends: a thread marked done or read, through the chore lane. ParseSubject reads an API
+// URL GitHub gave and sends nothing. *github.Client implements it.
 type Client interface {
 	FetchViewer(ctx context.Context, tok github.Token) (string, error)
 	ListThreads(ctx context.Context, tok github.Token, q github.ThreadQuery) (*github.ThreadPage, error)
 	FetchItemStates(ctx context.Context, tok github.Token, refs []item.Ref) (map[string]github.ItemState, error)
+	FetchLatestComment(ctx context.Context, tok github.Token, rawURL string) (*github.CommentAuthor, error)
+	ParseSubject(raw string) (item.Ref, bool)
+	MarkThreadDone(ctx context.Context, tok github.Token, id int64) error
+	MarkThreadRead(ctx context.Context, tok github.Token, id int64) error
 }
 
 // RuleSource reads the user's rules for their GitHub notifications, as stored now; core
@@ -87,18 +99,29 @@ type RuleSource interface {
 	ThreadRules(ctx context.Context) (threadrules.Rules, error)
 }
 
+// HoldSource reads how long, in seconds, the window's toasts stay (the toast setting),
+// which the Undo hold follows (Hold); core adapts the settings.
+type HoldSource interface {
+	ToastSeconds(ctx context.Context) (int, error)
+}
+
 // Config holds a Service's dependencies. Pool, Tokens, Client, and Rules are required.
 type Config struct {
-	// Pool is the database, which holds the threads and the state of the passes.
+	// Pool is the database, which holds the threads, the ledger of clears, and the state of
+	// the passes.
 	Pool *sql.DB
 
-	// Tokens lends the token a pass reads with; a token GitHub refuses is borrowed again
-	// once (github.WithToken).
+	// Tokens lends the token a pass reads and clears with; a token GitHub refuses is
+	// borrowed again once (github.WithToken).
 	Tokens github.Tokens
 	Client Client
 
-	// Rules says whether the user's notifications are read at all.
+	// Rules says whether the user's notifications are read at all, and when they clear.
 	Rules RuleSource
+
+	// Holds says how long the window's toasts stay, which the Undo hold follows; nil, or
+	// one that can't be read, holds MinHold.
+	Holds HoldSource
 
 	// Clock stamps the passes and the rows; nil is the system clock. The Syncer's waits
 	// run on the real clock.
@@ -120,6 +143,7 @@ type Service struct {
 	tokens github.Tokens
 	client Client
 	rules  RuleSource
+	holds  HoldSource
 	clock  clock.Clock
 	events event.Sink
 	logger *slog.Logger
@@ -139,21 +163,36 @@ type Service struct {
 	// when it couldn't be read: the next pass tells the window only what changes it.
 	shown *Snapshot
 
+	// sending holds a clear from its last check to its record in the ledger, so Keep, and a
+	// restore Settle hears of, never mark kept a clear on its way to GitHub.
+	sending sync.Mutex
+
+	// nudges holds what the Syncer was asked to run soon.
+	nudges nudges
+
 	// mu guards what the Syncer reads between passes.
 	mu sync.Mutex
 
-	// ended is when the last pass ended, on the real clock, zero before the first; poll is
-	// how long GitHub last asked the app to wait between listings.
+	// ended is when the last pass that listed, or meant to, ended, on the real clock, zero
+	// before the first; poll is how long GitHub last asked the app to wait between listings.
 	ended time.Time
 	poll  time.Duration
+
+	// sendAt is when the next queued clear may be sent, on the Service's clock, zero when
+	// none waits on a time: none is queued, or what holds them back ends only with a pass.
+	// sendGen counts the clears the user queued (sendBy), so a run that ends never puts
+	// one off.
+	sendAt  time.Time
+	sendGen uint64
 }
 
 // NewService returns a Service over cfg.
 func NewService(cfg Config) *Service {
 	return &Service{
 		db: cfg.Pool, q: queries.New(cfg.Pool), prefs: prefs.New(cfg.Pool, cfg.Clock), tokens: cfg.Tokens,
-		client: cfg.Client, rules: cfg.Rules, clock: clock.Or(cfg.Clock), events: event.Or(cfg.Events),
-		logger: logging.Or(cfg.Logger), running: make(chan struct{}, 1),
+		client: cfg.Client, rules: cfg.Rules, holds: cfg.Holds, clock: clock.Or(cfg.Clock),
+		events: event.Or(cfg.Events), logger: logging.Or(cfg.Logger), running: make(chan struct{}, 1),
+		nudges: nudges{wake: make(chan struct{}, 1)},
 	}
 }
 
@@ -221,4 +260,48 @@ func (s *Service) keepPoll(st syncState) {
 	s.mu.Lock()
 	s.poll = st.pollInterval()
 	s.mu.Unlock()
+}
+
+// untilSend says how long until a queued clear may be sent, on the Service's clock, which
+// the Syncer waits on the real one; ok is false when none waits on a time.
+func (s *Service) untilSend() (wait time.Duration, ok bool) {
+	s.mu.Lock()
+	at := s.sendAt
+	s.mu.Unlock()
+
+	if at.IsZero() {
+		return 0, false
+	}
+
+	return at.Sub(s.clock.Now()), true
+}
+
+// sendGeneration is how many times sendBy was called: a run that begins at one learns, as
+// it ends, whether a clear was queued meanwhile.
+func (s *Service) sendGeneration() uint64 {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	return s.sendGen
+}
+
+// sendBy has the next send go by at, unless one is due sooner, and moves the generation on,
+// so a run that was going on keeps it (planSend).
+func (s *Service) sendBy(at time.Time) {
+	s.mu.Lock()
+	s.sendGen++
+	s.sendAt = earliest(s.sendAt, at)
+	s.mu.Unlock()
+}
+
+// earliest returns the earlier of a and b, zero standing for none.
+func earliest(a, b time.Time) time.Time {
+	switch {
+	case a.IsZero():
+		return b
+	case b.IsZero() || a.Before(b):
+		return a
+	default:
+		return b
+	}
 }

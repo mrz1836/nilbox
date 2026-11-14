@@ -38,7 +38,11 @@
 // The inbox edits GitHub only when the user asks, one item at a time, and only to take the
 // user off it: Unassign and RemoveReviewRequest (see edits.go). Each is one REST request the
 // API budget paces and counts, made only with the token of the account whose inbox is shown,
-// and the item leaves that list once GitHub's answer confirms the edit.
+// and the item leaves that list once GitHub's answer confirms the edit. What the user
+// finishes here is told to the OutcomeSink (outcomes.go): once the user turns on automatic
+// clearing, or clicks Mark done, the mirror of their GitHub notifications that core wires
+// to it marks them done or read through the client's chore lane, by the rules in Settings,
+// logging each; the app edits nothing else on its own.
 //
 // The review sheet reads and acts on a pull request through an Actor (see actor.go), which
 // runs the sheet's own requests under the item's lock and, for an action, only with a token

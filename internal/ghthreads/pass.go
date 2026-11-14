@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"reflect"
+	"slices"
 	"strings"
 	"time"
 
@@ -15,6 +16,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/github"
 	"github.com/mrz1836/nilbox/internal/item"
 	"github.com/mrz1836/nilbox/internal/store"
+	"github.com/mrz1836/nilbox/internal/threadrules"
 	"github.com/mrz1836/nilbox/internal/uierr"
 )
 
@@ -33,9 +35,40 @@ type passRequest struct {
 	lastEnded time.Time
 
 	// check are pull requests and issues whose state is checked this pass, whenever it
-	// was checked last, as long as a thread of the account's is about one. It is for the
-	// refs the inbox reports closed or unlisted, and unused until that is wired.
+	// was checked last, as long as a thread of the account's is about one: those the inbox
+	// saw close or leave its lists.
 	check []item.Ref
+
+	// nudged is a run the Syncer was nudged to: it lists only when the mirror is older than
+	// GitHub's poll interval (stale), and decides only the threads about refs and check, or
+	// every thread when all is set (the rules changed). Any other pass lists and decides
+	// every thread.
+	nudged bool
+	refs   []item.Ref
+	all    bool
+
+	// send is a run that only sends the queued clears that are due, when the Syncer's timer
+	// says one is: it lists nothing and decides nothing anew.
+	send bool
+}
+
+// decidesAll reports whether the run decides every thread, rather than those of its refs.
+func (r passRequest) decidesAll() bool {
+	return !r.nudged || r.all
+}
+
+// scope is the items whose threads the run decides, by key; nil decides every thread.
+func (r passRequest) scope() map[string]bool {
+	if r.decidesAll() {
+		return nil
+	}
+
+	out := make(map[string]bool, len(r.refs)+len(r.check))
+	for _, ref := range append(slices.Clone(r.refs), r.check...) {
+		out[ref.Key()] = true
+	}
+
+	return out
 }
 
 // listing is what a pass's listing read, and the state it leaves.
@@ -77,10 +110,13 @@ func (e *refusedError) Error() string { return e.err.Error() }
 func (e *refusedError) Unwrap() error { return e.err }
 
 // runPass runs one pass, once any other has ended, then tells the window when what
-// Snapshot shows changed. A timed pass that finds another ended while it waited runs
-// nothing.
-func (s *Service) runPass(ctx context.Context, req passRequest) error {
-	if err := ctx.Err(); err != nil {
+// Snapshot shows changed, and works out when the next queued clear may be sent. A timed
+// pass that finds another ended while it waited runs nothing. Every pass but a nudged one
+// that didn't list, and a run that only sends, counts as the last pass for the Syncer's
+// timer. Both are done however the run ends, a panic included, so a run that panics never
+// has the Syncer run it again at once.
+func (s *Service) runPass(ctx context.Context, req passRequest) (err error) {
+	if err = ctx.Err(); err != nil {
 		return fmt.Errorf("start a pass: %w", err)
 	}
 
@@ -96,20 +132,80 @@ func (s *Service) runPass(ctx context.Context, req passRequest) error {
 		return nil
 	}
 
-	defer s.passEnded()
+	var did ran
 
-	before := s.shown
-	if before == nil {
-		if snap, err := s.Snapshot(ctx); err == nil {
-			before = &snap
-		}
-	}
+	gen := s.sendGeneration()
+	defer func() { s.endRun(req, did, gen) }()
 
-	err := s.pass(ctx, req)
+	before := s.shownBefore(ctx)
+	did, err = s.pass(ctx, req)
 
 	s.tell(ctx, before)
 
 	return err
+}
+
+// endRun does what follows any run, however it ended: it records when the next queued
+// clear may be sent (planSend), and, for a pass that listed or meant to, that it ended.
+func (s *Service) endRun(req passRequest, did ran, gen uint64) {
+	s.planSend(req, did, gen)
+
+	if did.listed || (!req.nudged && !req.send) {
+		s.passEnded()
+	}
+}
+
+// shownBefore is what Snapshot showed at the end of the last pass, or else shows now: what
+// a pass compares with what it leaves. It is nil when neither can be read.
+func (s *Service) shownBefore(ctx context.Context) *Snapshot {
+	if s.shown != nil {
+		return s.shown
+	}
+
+	snap, err := s.Snapshot(ctx)
+	if err != nil {
+		return nil
+	}
+
+	return &snap
+}
+
+// ran is what one run did, for what follows it.
+type ran struct {
+	// listed is whether it sent the listing, or meant to.
+	listed bool
+
+	// sends is when the next queued clear may be sent, as the run's sends left it: nil when
+	// it stopped before them.
+	sends *sendOutcome
+}
+
+// planSend records when the next queued clear may be sent, as the run did left it. A run
+// that stopped before its sends leaves it as it was, unless it was to send, which tries
+// again FailedRetry on, a send that panicked included: the Syncer never runs one send
+// after another that failed. A clear the user queued while the run went on (sendBy, which
+// moves the generation on from gen, the one the run began at) is never put off: the
+// earlier time stands.
+func (s *Service) planSend(req passRequest, did ran, gen uint64) {
+	var at time.Time
+
+	switch {
+	case did.sends != nil:
+		at = did.sends.next
+	case req.send:
+		at = s.clock.Now().Add(FailedRetry)
+	default:
+		return
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.sendGen != gen {
+		at = earliest(at, s.sendAt)
+	}
+
+	s.sendAt = at
 }
 
 // tell reads what Snapshot shows now, keeps it for the next pass, and tells the window
@@ -136,58 +232,110 @@ func (s *Service) tell(ctx context.Context, before *Snapshot) {
 	}
 }
 
-// pass reads the rules, then, while reading is on, lists the notifications and checks
-// their items' states. Each failure is recorded as the status's last error before it is
-// returned, but a pass the caller gave up on.
-func (s *Service) pass(ctx context.Context, req passRequest) error {
+// pass reads the rules, then, while reading is on, lists the notifications (a nudged run
+// only while the mirror is stale) and follows the listing: it checks the items' states,
+// decides which threads clear, queues them, and sends the clears that are due (follow). A
+// run that only sends goes straight to the sends. Each failure of the listing or the
+// states is recorded as the status's last error before it is returned, but a pass the
+// caller gave up on.
+func (s *Service) pass(ctx context.Context, req passRequest) (ran, error) {
 	now := s.clock.Now()
 
 	st, err := s.loadState(ctx)
 	if err != nil {
-		return err
+		return ran{}, err
 	}
 
 	s.keepPoll(st)
 
 	rules, err := s.rules.ThreadRules(ctx)
 	if err != nil {
-		return s.failed(ctx, st, fmt.Errorf("read the rules for GitHub notifications: %w", err))
+		return ran{}, s.failed(ctx, st, fmt.Errorf("read the rules for GitHub notifications: %w", err))
 	}
 
 	if !rules.Read {
-		return s.readingOff(ctx, st)
+		return ran{sends: &sendOutcome{}}, s.readingOff(ctx, st, now)
 	}
 
+	if err = s.skipWhileOff(ctx, rules, now); err != nil {
+		return ran{}, err
+	}
+
+	if req.send {
+		out, sendErr := s.sendDue(ctx, rules, st)
+
+		return ran{sends: &out}, sendErr
+	}
+
+	return s.listAndFollow(ctx, req, rules, st, now)
+}
+
+// listAndFollow lists the notifications, but for a nudged run while the mirror is fresh,
+// then follows the listing (follow), once a pass has learned the account and while GitHub
+// lets the token read them.
+func (s *Service) listAndFollow(
+	ctx context.Context, req passRequest, rules threadrules.Rules, st syncState, now time.Time,
+) (ran, error) {
+	out := ran{listed: !req.nudged || st.stale(now)}
+
+	if out.listed {
+		listed, onward, err := s.listAndKeep(ctx, req, st, now)
+		if !onward {
+			return out, err
+		}
+
+		st = listed
+	}
+
+	if st.Account == "" || st.backingOff(now) {
+		return out, nil
+	}
+
+	sends, err := s.follow(ctx, req, rules, st, out.listed, now)
+	out.sends = sends
+
+	return out, err
+}
+
+// listAndKeep lists the notifications and stores what the listing read, and returns the
+// state it leaves; ok is false when the pass goes no further: the listing failed (err says
+// why, recorded as the status's last error), or it backed off from GitHub's refusal.
+func (s *Service) listAndKeep(ctx context.Context, req passRequest, st syncState, now time.Time) (syncState, bool, error) {
 	listed, err := github.WithToken(ctx, s.tokens, func(tok github.Token) (*listing, error) {
 		return s.list(ctx, tok, st, req.now, now)
 	})
 	if err != nil {
-		return s.listFailed(ctx, st, err, now)
+		return st, false, s.listFailed(ctx, st, err, now)
 	}
 
 	if listed.backedOff {
-		return nil
+		return st, false, nil
 	}
 
 	if err = s.keep(ctx, listed, now); err != nil {
-		return s.failed(ctx, st, err)
+		return st, false, s.failed(ctx, st, err)
 	}
 
 	s.logger.DebugContext(ctx, "read the GitHub notifications", slog.Int("pages", listed.pages),
 		slog.Int("threads", len(listed.threads)), slog.Bool("unchanged", listed.notModified),
 		slog.Bool("walkedAll", listed.walkedAll))
 
-	return s.checkStates(ctx, listed.state, req.check, now)
+	return listed.state, true, nil
 }
 
-// readingOff is a pass while reading is off: it sends nothing, and remembers that the
-// mirror went stale, so the first pass once reading is back on walks every page.
-func (s *Service) readingOff(ctx context.Context, st syncState) error {
-	if st.WalkNext {
+// readingOff is a pass while reading is off: it sends nothing, skips every queued clear,
+// and remembers that the mirror went stale, so the first pass once reading is back on walks
+// every page, and counts as the first after the rules changed.
+func (s *Service) readingOff(ctx context.Context, st syncState, now time.Time) error {
+	if err := s.skipQueued(ctx, s.q, true, now); err != nil {
+		return err
+	}
+
+	if st.WalkNext && st.RulesSeen == "" && st.Backlog == 0 && st.BacklogRules == "" {
 		return nil
 	}
 
-	st.WalkNext = true
+	st.WalkNext, st.RulesSeen, st.Backlog, st.BacklogRules = true, "", 0, ""
 
 	return saveState(ctx, s.prefs, st)
 }

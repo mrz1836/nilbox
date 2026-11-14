@@ -7,11 +7,19 @@ export {
 };
 
 export {
-    Access
+    Access,
+    ClearState,
+    SkipReason
 } from "./models.js";
 
 export type {
     ItemThreads,
+    Preview,
+    PreviewHeld,
+    PreviewRepo,
+    PreviewThread,
+    QueuedClear,
+    SettledClear,
     Snapshot,
     Status,
     Thread

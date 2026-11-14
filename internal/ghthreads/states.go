@@ -17,42 +17,67 @@ import (
 // checkStates checks the state of the items st's account's threads are about that are due
 // (dueRefs), and those asked, in one call that batches them, and stores each answer: the
 // state, when the item was merged or closed, and when it was checked; an item GitHub
-// couldn't find is stamped checked, its state kept. A call that fails stores nothing but
-// the status's last error, and leaves the listing stored.
-func (s *Service) checkStates(ctx context.Context, st syncState, asked []item.Ref, at time.Time) error {
-	rows, err := s.q.ListItemThreads(ctx, st.Account)
+// couldn't find is stamped checked, its state kept. With onlyAsked, as for a nudged run
+// that didn't list, only those asked are checked. A call that fails stores nothing but the
+// status's last error, and leaves the listing stored. stored reports whether any state was
+// stored, which the threads read before it no longer show.
+func (s *Service) checkStates(
+	ctx context.Context, st syncState, asked []item.Ref, onlyAsked bool, at time.Time,
+) (stored bool, err error) {
+	refs, err := s.refsToCheck(ctx, st.Account, asked, onlyAsked, at)
 	if err != nil {
-		return s.failed(ctx, st, fmt.Errorf("read the GitHub notifications' items: %w", err))
+		return false, s.failed(ctx, st, err)
 	}
 
-	refs := dueRefs(rows, asked, at)
 	if len(refs) == 0 {
-		return nil
+		return false, nil
 	}
 
 	states, err := github.WithToken(ctx, s.tokens, func(tok github.Token) (map[string]github.ItemState, error) {
 		return s.client.FetchItemStates(ctx, tok, refs)
 	})
 	if err != nil {
-		return s.failed(ctx, st, fmt.Errorf("check the state of the GitHub notifications' items: %w", err))
+		return false, s.failed(ctx, st, fmt.Errorf("check the state of the GitHub notifications' items: %w", err))
 	}
 
 	err = store.InTx(ctx, s.db, func(tx *sql.Tx) error {
 		q := s.q.WithTx(tx)
 
 		for _, ref := range refs {
-			if stored := storeState(ctx, q, st.Account, ref, states, at); stored != nil {
-				return stored
+			if storeErr := storeState(ctx, q, st.Account, ref, states, at); storeErr != nil {
+				return storeErr
 			}
 		}
 
 		return nil
 	})
 	if err != nil {
-		return s.failed(ctx, st, fmt.Errorf("store the state of the GitHub notifications' items: %w", err))
+		return false, s.failed(ctx, st, fmt.Errorf("store the state of the GitHub notifications' items: %w", err))
 	}
 
-	return nil
+	return true, nil
+}
+
+// refsToCheck returns the items of account's threads whose state is checked as of at: those
+// due and those asked (dueRefs), or, with onlyAsked, those asked alone.
+func (s *Service) refsToCheck(
+	ctx context.Context, account string, asked []item.Ref, onlyAsked bool, at time.Time,
+) ([]item.Ref, error) {
+	if onlyAsked && len(asked) == 0 {
+		return nil, nil
+	}
+
+	rows, err := s.q.ListItemThreads(ctx, account)
+	if err != nil {
+		return nil, fmt.Errorf("read the GitHub notifications' items: %w", err)
+	}
+
+	refs := dueRefs(rows, asked, at)
+	if onlyAsked {
+		return onlyRefs(refs, asked), nil
+	}
+
+	return refs, nil
 }
 
 // storeState stores what GitHub said of ref, from states, on account's threads about it,
@@ -130,6 +155,24 @@ func dueRefs(rows []queries.ListItemThreadsRow, asked []item.Ref, at time.Time) 
 
 		if wanted[ref.Key()] || stateDue(&rows[i], at) {
 			seen[ref.Key()] = true
+			out = append(out, ref)
+		}
+	}
+
+	return out
+}
+
+// onlyRefs returns those of refs that asked names, in their order.
+func onlyRefs(refs, asked []item.Ref) []item.Ref {
+	wanted := make(map[string]bool, len(asked))
+	for _, ref := range asked {
+		wanted[ref.Key()] = true
+	}
+
+	out := make([]item.Ref, 0, len(refs))
+
+	for _, ref := range refs {
+		if wanted[ref.Key()] {
 			out = append(out, ref)
 		}
 	}

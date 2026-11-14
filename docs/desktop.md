@@ -1231,7 +1231,9 @@ A combined action, such as **Approve & merge**, makes its changes one at a time 
 of their rows, and so does a merge that posts your text as a comment first (Merge when ready
 then reads the merge state before the comment, 1 GraphQL point more). Nilbox never goes past branch protection on its own (only **Merge past the
 rules** does, when you choose it), and no agent ever approves, merges, or closes: every
-approval, merge, and close happens only because you clicked.
+approval, merge, and close happens only because you clicked. The one change Nilbox makes on its
+own is [clearing your GitHub notifications](#github-notifications), and only once you turn
+clearing on: it marks a notification done, or read, when the work behind it is finished.
 
 | Change | Where | Cost |
 |---|---|---|
@@ -1250,6 +1252,7 @@ approval, merge, and close happens only because you clicked.
 | Close an issue as completed, or as not planned | The issue sheet, after you confirm | 1 GraphQL point to check for new comments, then 1 REST point (1 more for your comment) |
 | Add or remove labels | The issue sheet's **Labels**, with triage access | 1 GraphQL point to list the repository's labels (kept 10 minutes), then 1 REST point for all you add, and 1 for each you remove |
 | Assign or unassign someone else | The issue sheet's **Assignees**, with triage access | 1 GraphQL point a search (kept 10 minutes), then 1 REST point for all you assign, and 1 for each you unassign |
+| Mark a GitHub notification done, or read | On its own, once you turn on **Clear them automatically** in Settings → GitHub notifications | 1 REST point each, at most 50 a minute and 300 an hour, and 1 more for one that changed after the work was done, to read who commented last |
 
 From the card's menu, once GitHub has taken you off, the item leaves that list (and the inbox,
 when it is in no other), and a toast confirms it. When GitHub refuses, or answers without making
@@ -1738,18 +1741,51 @@ sent.
 **The settings.** **Settings → GitHub notifications** also says what your GitHub inbox held at
 the last check, and when, with **Check again**; that GitHub refuses the token, and when it is
 asked again; or why the last check failed. Nilbox reads the newest 1,000, and says so when
-GitHub holds more. Turning reading off hides the button and the cards' tags at once.
-**Clear them automatically** (off by default, and only while reading is on) clears a
-notification on GitHub once the work behind it is done, at the moments under **When to
-clear**, unless a person's activity since is still unread on GitHub: read it there, and it
-clears on the next check. Each moment is on by default: a pull request merged, or closed
-without merging; an issue closed; a review you submit in Nilbox; an item you dismiss in
-Nilbox; and taking yourself off an item's assignees or reviewers. **Include repositories you
-only watch** clears one you get only by watching its repository too, **Count bot activity
-after it closes as seen** keeps a bot's activity after the moment from holding one back, and
-**What clearing does** chooses **Mark done**, which takes it out of your GitHub inbox, or
-**Mark read**, which leaves it there, so the button's count stays and only its accent goes.
-Turning reading or clearing on checks GitHub at once.
+GitHub holds more. Turning reading off hides the button and the cards' tags at once, and
+turning reading or clearing on checks GitHub at once.
+
+**Clearing.** **Clear them automatically**, off by default and only while reading is on,
+clears a notification on GitHub once the work behind it is done. Until you turn it on, Nilbox
+changes nothing in your GitHub inbox. **What clearing does** chooses **Mark done**, which takes
+the notification out of your GitHub inbox, or **Mark read**, which leaves it there, read, so the
+button's count stays and only its accent goes; with **Mark read**, one you already read is left
+alone.
+
+- **When.** Each moment under **When to clear** is on by default: a pull request merged, or
+  closed without merging, and an issue closed, in Nilbox or anywhere else; a review you submit
+  in Nilbox that approves or asks for changes (a comment alone doesn't count); an item you
+  dismiss in Nilbox; and taking yourself off an item's assignees or reviewers in Nilbox. A
+  merge or a close made elsewhere counts only on GitHub's own word, read within the last hour,
+  so an item reopened stops counting at once. **Include repositories you only watch** clears a
+  notification you get only by watching its repository once its item is merged or closed
+  elsewhere; what you do in Nilbox clears one either way.
+- **Nothing you haven't seen.** A notification that changed more than two minutes after the
+  moment and is still unread is held back, since someone may have said something you haven't
+  read. With **Count bot activity after it closes as seen**, it clears anyway when everything
+  since was a bot's, which Nilbox tells from who wrote its latest comment: 1 REST point, read
+  once each time the notification changes, at most 150 a check. An event with no comment on an
+  open item, such as a push or a new request for your review, counts as a person's. A person's
+  activity holds the notification until you read it on GitHub, and it clears on the next check.
+- **Undo.** A notification cleared by something you did in Nilbox waits as long as the toast
+  stays, plus 3 seconds (15 seconds at least), so the toast's **Undo** still takes it back:
+  undoing a dismissal keeps its notification, which isn't cleared again on its own until it
+  changes on GitHub. One cleared by a merge or a close made elsewhere goes as soon as a check
+  finds it.
+- **How many.** The first check after you turn clearing on, or change what clears, clears at
+  most 25 on its own, and any later check at most 150. When more would clear, none is cleared
+  on its own: they wait for you to review them.
+- **Pace.** Notifications are cleared one at a time, at most one a second, 50 a minute, and 300
+  an hour, in a lane of their own beside the [edits](#the-item-menu-and-edits-on-github), with
+  the same reserve, and a pause GitHub asks for holds both. Just before each is sent, Nilbox
+  checks again that clearing is still on, that GitHub still lists the notification as it was
+  when it was chosen (one that changed is decided again), and that your `gh` token belongs to
+  the account it was chosen for (another account's waits). Each one is recorded, sent or not.
+  One GitHub no longer has counts as done; one that fails three times waits until the
+  notification changes.
+- **Never.** Nilbox never marks your whole inbox or a repository read, never unsubscribes from
+  or mutes anything, never touches another account's notifications, and never clears one about
+  a release, a discussion, a check suite, or anything else that isn't a pull request or an
+  issue.
 
 <br>
 

@@ -524,6 +524,39 @@ func TestNotificationsRefused(t *testing.T) {
 	}
 }
 
+func TestRateLimited(t *testing.T) {
+	t.Parallel()
+
+	status := func(code int, message string, retry time.Duration) error {
+		return fmt.Errorf("read the latest comment: %w", &StatusError{StatusCode: code, Message: message, RetryAfter: retry})
+	}
+
+	tests := []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{name: "a rate limit", err: status(http.StatusForbidden, "API rate limit exceeded for user ID 1.", 0), want: true},
+		{name: "a secondary rate limit", err: status(http.StatusForbidden, "You have exceeded a secondary rate limit.", 0), want: true},
+		{name: "too many requests", err: status(http.StatusTooManyRequests, "", 0), want: true},
+		{name: "wait and try again", err: status(http.StatusForbidden, "", time.Minute), want: true},
+		{name: "its token redacted", err: Redact(status(http.StatusTooManyRequests, "", 0), NewToken(fakeToken)), want: true},
+		{name: "forbidden", err: status(http.StatusForbidden, "Resource not accessible by personal access token", 0)},
+		{name: "not found", err: status(http.StatusNotFound, "Not Found", 0)},
+		{name: "GitHub failing", err: status(http.StatusBadGateway, "", 0)},
+		{name: "no answer", err: ErrMalformedResponse},
+		{name: "none", err: nil},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			assert.Equal(t, tt.want, RateLimited(tt.err))
+		})
+	}
+}
+
 func TestListThreadsDropsBadIDs(t *testing.T) {
 	t.Parallel()
 

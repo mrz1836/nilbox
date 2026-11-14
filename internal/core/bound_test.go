@@ -476,6 +476,35 @@ func boundCalls(t *testing.T) map[string]boundCall {
 
 			return got, err
 		},
+		// The calls run in the order of their names: Clear queues the notification, by
+		// hand, and Keep takes it back, so the lists of both the queue and the ledger have
+		// an element.
+		"ghthreads.Service.Clear": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
+			got, err := c.GHThreads.Clear(ctx, []int64{20000000001})
+			require.Len(t, got.Queued, 1, "queued by hand, with no Syncer to send it")
+
+			return got, err
+		},
+		"ghthreads.Service.ClearItem": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
+			got, err := c.GHThreads.ClearItem(ctx, boundOwner, boundRepo, 7)
+			require.Len(t, got.Queued, 1, "the one queued, sent at once")
+
+			return got, err
+		},
+		"ghthreads.Service.Keep": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
+			queued, err := c.GHThreads.Snapshot(ctx)
+			require.NoError(t, err)
+			require.Len(t, queued.Queued, 1)
+
+			got, err := c.GHThreads.Keep(ctx, []int64{queued.Queued[0].ID})
+			require.Len(t, got.Recent, 1, "kept")
+
+			return got, err
+		},
+		"ghthreads.Service.Preview": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
+			// No moment finished the pull request: nothing would clear.
+			return c.GHThreads.Preview(ctx)
+		},
 		"notify.Service.List": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
 			got, err := c.Notifications.List(ctx)
 			require.Len(t, got.Items, 3, "an item's notification, one about no item, and one about a run")

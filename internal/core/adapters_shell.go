@@ -57,20 +57,31 @@ func (s ShellSettings) TextSize(ctx context.Context) (settings.TextSize, error) 
 // tool wakes the tool finder, which tells the window once it has looked, and a flipped
 // switch, which changes no detection, tells the window at once. An event.RepoRulesChanged
 // stays in Go too: the inbox's snapshot is built again under the new rules, so the window
-// and the menu bar hear the inbox changed, and the Release page regroups its list. The
-// watcher, the finder, and the Release page are set once, before any setting can change.
+// and the menu bar hear the inbox changed, and the Release page regroups its list. An
+// event.ThreadRulesChanged stays in Go as well: the mirror of the user's GitHub
+// notifications decides every thread again at once under the new rules. The watcher, the
+// finder, the Release page, and the mirror are set once, before any setting can change.
 type followSwitch struct {
-	sink      event.Sink
-	watcher   *sessions.Watcher
-	tools     waker
-	intervals []waker
-	releases  rulesFollower
+	sink        event.Sink
+	watcher     *sessions.Watcher
+	tools       waker
+	intervals   []waker
+	releases    rulesFollower
+	threadRules rulesFollower
 }
 
-// rulesFollower hears that the user pinned or muted a repository or an org:
-// *release.Refresher.
+// rulesFollower hears that the user changed rules it follows: the pinned and muted
+// repositories and orgs (*release.Refresher), or the GitHub notification rules
+// (*ghthreads.Syncer).
 type rulesFollower interface {
 	RulesChanged()
+}
+
+// tellRulesChanged tells f the rules changed, when there is an f.
+func tellRulesChanged(f rulesFollower) {
+	if f != nil {
+		f.RulesChanged()
+	}
 }
 
 // waker is woken to look again: *integrations.Worker, and what reads things again on its
@@ -80,8 +91,9 @@ type waker interface {
 }
 
 // Emit passes e on, waking the watcher first for an event.SessionsUpdated, turns an
-// event.IntegrationsChanged into a wake of the tool finder or an event.ToolsUpdated, and an
-// event.RepoRulesChanged into an event.InboxUpdated and a word to the Release page.
+// event.IntegrationsChanged into a wake of the tool finder or an event.ToolsUpdated, an
+// event.RepoRulesChanged into an event.InboxUpdated and a word to the Release page, and an
+// event.ThreadRulesChanged into a word to the mirror of the GitHub notifications.
 func (f *followSwitch) Emit(e event.Event) {
 	switch e := e.(type) {
 	case event.IntervalsChanged:
@@ -90,12 +102,13 @@ func (f *followSwitch) Emit(e event.Event) {
 		}
 
 		return
+	case event.ThreadRulesChanged:
+		tellRulesChanged(f.threadRules)
+
+		return
 	case event.RepoRulesChanged:
 		f.sink.Emit(event.InboxUpdated{})
-
-		if f.releases != nil {
-			f.releases.RulesChanged()
-		}
+		tellRulesChanged(f.releases)
 
 		return
 	case event.SessionsUpdated:

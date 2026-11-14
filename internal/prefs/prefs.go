@@ -26,7 +26,8 @@
 //     mark the next pass starts from, GitHub's poll interval, the last pass and the last
 //     walk of every page, whether GitHub lets the token read them and when a refused
 //     listing is sent again, the last error, whether the walk stopped at the newest 1,000,
-//     and whether the next pass walks every page).
+//     whether the next pass walks every page, the fingerprint of the clearing rules the
+//     last pass queued under, and how many clears it held back for review).
 //
 // A Store from New runs each call on the pool. One joined to a transaction with WithTx
 // runs every call inside it, so prefs are written together with another owner's tables

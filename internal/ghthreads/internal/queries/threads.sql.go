@@ -289,6 +289,7 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT (account_login, thread_id) DO UPDATE SET
     reason = excluded.reason,
     unread = excluded.unread,
+    after_moment = CASE WHEN excluded.unread THEN gh_threads.after_moment ELSE '' END,
     updated_at = excluded.updated_at,
     last_read_at = excluded.last_read_at,
     subject_type = excluded.subject_type,
@@ -320,7 +321,8 @@ type UpsertThreadParams struct {
 
 // UpsertThread keeps a thread as a pass listed it, at seen_at. The checks' columns
 // (subject_state, subject_closed_at, state_checked_at, and after_moment with its time) keep
-// what they held: only the checks write them.
+// what they held: only the checks write them, but for a thread listed read, which nobody
+// acted on unseen since: its after_moment is ” again.
 func (q *Queries) UpsertThread(ctx context.Context, arg UpsertThreadParams) error {
 	_, err := q.db.ExecContext(ctx, upsertThread,
 		arg.AccountLogin,

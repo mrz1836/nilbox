@@ -21,6 +21,8 @@ func TestSnapshotBeforeAnyPass(t *testing.T) {
 		Status: Status{Reading: true, Access: AccessUnchecked},
 		ByItem: []ItemThreads{},
 		Unread: []Thread{},
+		Queued: []QueuedClear{},
+		Recent: []SettledClear{},
 	}, r.snapshot(), "nothing read yet, and never null lists")
 	assertNoRequests(t, r.gh.requests(), "a snapshot never asks GitHub")
 }
