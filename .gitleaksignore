@@ -1,0 +1,7 @@
+# Findings gitleaks reports that are not secrets, each by its exact fingerprint.
+#
+# A measure test's expected report lines, "launch.permission=full access" followed by
+# "launch.pid=7 (stopped)", read to the generic-api-key rule as a key. The test now uses
+# another permission, but the line stays in the branch's history, which the pre-commit
+# check scans.
+6be57ee9f2aaa5d4545be891b05072eec4fe12b6:internal/measure/launchsteps_test.go:generic-api-key:226

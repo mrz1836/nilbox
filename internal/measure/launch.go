@@ -98,6 +98,9 @@ type LaunchReport struct {
 	// its prompt.
 	Elapsed time.Duration
 
+	// Steps splits Elapsed between the launch's steps, when it could tell (Steps.Known).
+	Steps LaunchSteps
+
 	// PID is the agent process that was found, and then stopped.
 	PID int
 
@@ -121,19 +124,30 @@ func (r LaunchReport) Lines() []string {
 		return []string{"launch.needs_automation_permission=true", "launch.reason=" + r.Reason}
 	}
 
-	return []string{
-		fmt.Sprintf("launch.ms=%s s=%s", milliseconds(r.Elapsed), seconds(r.Elapsed)),
-		"launch.terminal=" + string(r.Terminal),
-		"launch.permission=" + r.Permission,
-		fmt.Sprintf("launch.pid=%d (stopped)", r.PID),
+	lines := []string{fmt.Sprintf("launch.ms=%s s=%s", milliseconds(r.Elapsed), seconds(r.Elapsed))}
+
+	if r.Steps.Known {
+		lines = append(lines, r.Steps.line())
 	}
+
+	if r.Steps.Held > 0 {
+		lines = append(lines, fmt.Sprintf("launch.unheld_ms=%s (without the held-back first request: "+
+			"a launch whose files check out, in a running app)", milliseconds(r.Elapsed-r.Steps.Held)))
+	}
+
+	return append(lines,
+		"launch.terminal="+string(r.Terminal),
+		"launch.permission="+r.Permission,
+		fmt.Sprintf("launch.pid=%d (stopped)", r.PID),
+	)
 }
 
 // RunLaunch times one real launch in iTerm2: from the launch request to the agent running
 // in the clone with its prompt loaded. It launches on an outside contributor's pull
 // request in a throwaway clone of a placeholder repository, so the session starts in plan
 // mode, and without a worktree, so the agent fetches nothing. The agent process is
-// stopped as soon as it is found; the scratch clone and data directory are deleted.
+// stopped as soon as it is found; the scratch clone and data directory are deleted. The
+// report splits the time between the launch's steps.
 func RunLaunch(ctx context.Context, opts LaunchOptions) (LaunchReport, error) {
 	runner := deadlineRunner{inner: opts.Runner}
 	if opts.Runner == nil {
@@ -147,7 +161,9 @@ func RunLaunch(ctx context.Context, opts LaunchOptions) (LaunchReport, error) {
 
 	defer func() { _ = os.RemoveAll(dir) }()
 
-	fx, err := newLaunchFixture(ctx, dir, opts, runner)
+	steps := newLaunchSteps(time.Now)
+
+	fx, err := newLaunchFixture(ctx, dir, opts, runner, steps)
 	if err != nil {
 		return LaunchReport{}, err
 	}
@@ -173,7 +189,8 @@ func RunLaunch(ctx context.Context, opts LaunchOptions) (LaunchReport, error) {
 		clone:   fx.clone,
 		timeout: cmpOr(opts.AgentTimeout, defaultAgentTimeout),
 		poll:    cmpOr(opts.Poll, defaultPoll),
-		now:     time.Now,
+		now:     steps.now,
+		steps:   steps,
 	}
 
 	return timer.run(ctx)
@@ -199,11 +216,18 @@ type launchFixture struct {
 
 	// itemID is the fixture item's id.
 	itemID int64
+
+	// steps notes when the first request returned held back, and, through the app's
+	// runner, when the terminal's program and the GitHub CLI's token ran.
+	steps *launchSteps
 }
 
-// newLaunchFixture creates the clone, starts the app over a scratch data directory, and
-// stores the fixture item, the clone root, and iTerm2 as the terminal.
-func newLaunchFixture(ctx context.Context, dir string, opts LaunchOptions, runner execpath.Runner) (*launchFixture, error) {
+// newLaunchFixture creates the clone, starts the app over a scratch data directory with
+// runner noting steps, and stores the fixture item, the clone root, and iTerm2 as the
+// terminal.
+func newLaunchFixture(ctx context.Context, dir string, opts LaunchOptions, runner execpath.Runner,
+	steps *launchSteps,
+) (*launchFixture, error) {
 	root := filepath.Join(dir, "clones")
 	clone := filepath.Join(root, fixtureName)
 
@@ -215,7 +239,7 @@ func newLaunchFixture(ctx context.Context, dir string, opts LaunchOptions, runne
 		Paths:   appdata.NewPaths(filepath.Join(dir, "data")),
 		Home:    opts.Home,
 		Version: opts.Version,
-		Runner:  runner,
+		Runner:  stepRunner{inner: runner, steps: steps},
 		Logger:  opts.Logger,
 	})
 	if err != nil {
@@ -235,7 +259,7 @@ func newLaunchFixture(ctx context.Context, dir string, opts LaunchOptions, runne
 		clone = resolved
 	}
 
-	return &launchFixture{core: c, clone: clone, itemID: itemID}, nil
+	return &launchFixture{core: c, clone: clone, itemID: itemID, steps: steps}, nil
 }
 
 // launch starts a session on the fixture item in the clone itself, with no worktree. A
@@ -250,6 +274,8 @@ func (f *launchFixture) launch(ctx context.Context) (launcher.LaunchResult, erro
 	if err != nil || res.Hold == nil {
 		return res, err
 	}
+
+	f.steps.mark(stepHeld)
 
 	req.Confirmed = res.Hold.Key
 
@@ -351,6 +377,9 @@ type launchTimer struct {
 	timeout time.Duration
 	poll    time.Duration
 	now     func() time.Time
+
+	// steps, when set, splits the time between the launch's steps; now must be its clock.
+	steps *launchSteps
 }
 
 // run launches, waits for the agent, stops it, and reports the time in between. A
@@ -377,7 +406,11 @@ func (t launchTimer) run(ctx context.Context) (LaunchReport, error) {
 		return LaunchReport{}, err
 	}
 
-	report := LaunchReport{Elapsed: t.now().Sub(start), PID: pid, Terminal: res.Terminal, Permission: res.Permission}
+	found := t.now()
+	report := LaunchReport{
+		Elapsed: found.Sub(start), Steps: t.steps.split(start, found), PID: pid, Terminal: res.Terminal,
+		Permission: res.Permission,
+	}
 
 	if err = t.probe.Stop(ctx, pid); err != nil {
 		return report, fmt.Errorf("stop the measured agent (pid %d): %w", pid, err)

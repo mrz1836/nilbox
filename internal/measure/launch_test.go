@@ -445,6 +445,10 @@ func TestRunLaunch(t *testing.T) {
 	assert.Contains(t, report.Permission, "plan", "an outside contributor's pull request launches in plan mode")
 	assert.Positive(t, report.Elapsed)
 	assert.Contains(t, ran(runner), "kill -TERM 4242")
+
+	steps := report.Steps
+	require.True(t, steps.Known, "the terminal's program was seen")
+	assert.Equal(t, report.Elapsed, steps.Held+steps.Confirmed+steps.Terminal+steps.Agent, "the steps add up to the launch")
 }
 
 //nolint:paralleltest // fakeAgent puts the agent on the process's PATH, where the launch looks it up
