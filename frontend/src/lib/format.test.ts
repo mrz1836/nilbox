@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { counted, errorMessage, formatCount, refText } from './format'
+import { counted, errorMessage, fileDate, fileName, formatCount, refText } from './format'
 
 describe('formatCount', () => {
   it('formats with the locale grouping', () => {
@@ -51,5 +51,20 @@ describe('errorMessage', () => {
 describe('refText', () => {
   it('names an item by its repository and number', () => {
     expect(refText({ repo: 'acme-org/example-repo', number: 14 })).toBe('acme-org/example-repo#14')
+  })
+})
+
+describe('fileDate', () => {
+  it('writes a day as a file name carries it, with two digits for the month and the day', () => {
+    expect(fileDate(new Date(2026, 0, 5, 23, 59))).toBe('2026-01-05')
+    expect(fileDate(new Date(2026, 10, 14))).toBe('2026-11-14')
+  })
+})
+
+describe('fileName', () => {
+  it('is the last part of a path', () => {
+    expect(fileName('/exports/shared prompts.json')).toBe('shared prompts.json')
+    expect(fileName('C:\\exports\\all.json')).toBe('all.json')
+    expect(fileName('all.json')).toBe('all.json')
   })
 })

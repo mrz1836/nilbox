@@ -57,9 +57,20 @@ func (s *Service) MergeMethod(ctx context.Context) (MergeMethod, error) {
 // SetMergeMethod stores how the review sheet merges: MergeMethodRepo, MergeMethodSquash,
 // MergeMethodMerge, or MergeMethodRebase, and returns the settings with it.
 func (s *Service) SetMergeMethod(ctx context.Context, method MergeMethod) (Settings, error) {
-	if err := mergeMethods().check(method); err != nil {
+	values, err := checkMergeMethod(method)
+	if err != nil {
 		return Settings{}, err
 	}
 
-	return s.save(ctx, setting(KeyMergeMethod, string(method)))
+	return s.save(ctx, setMany(values, ""))
+}
+
+// checkMergeMethod refuses a merge method that is not one of the choices, and returns its
+// write.
+func checkMergeMethod(method MergeMethod) (map[string]string, error) {
+	if err := mergeMethods().check(method); err != nil {
+		return nil, err
+	}
+
+	return map[string]string{KeyMergeMethod: string(method)}, nil
 }

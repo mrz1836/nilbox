@@ -36,7 +36,7 @@ import {
   agentSession,
   sessionsSnapshot,
 } from './test/fixtures'
-import { emit, listening, platform, renderApp } from './test/platform'
+import { emit, listening, mocks, platform, renderApp } from './test/platform'
 
 vi.mock('./platform', () => import('./test/platform').then((fake) => fake.platform))
 
@@ -1082,7 +1082,7 @@ describe('App’s GitHub notifications', () => {
     await screen.findByRole('region', { name: 'Review requested' })
     await screen.findByRole('button', { name: /^GitHub notifications/ })
 
-    for (const fn of Object.values(platform)) {
+    for (const [, fn] of mocks()) {
       fn.mockClear()
     }
 
@@ -1091,7 +1091,7 @@ describe('App’s GitHub notifications', () => {
       await Promise.resolve()
     })
 
-    const called = Object.entries(platform)
+    const called = mocks()
       .filter(([, fn]) => fn.mock.calls.length > 0)
       .map(([name]) => name)
 

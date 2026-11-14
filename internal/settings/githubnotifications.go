@@ -63,13 +63,37 @@ func (s *Service) SetGitHubNotificationTrigger(ctx context.Context, trigger thre
 // done or mark it read, and returns the settings with it. An action this build does not
 // know is refused.
 func (s *Service) SetGitHubNotificationAction(ctx context.Context, action threadrules.Action) (Settings, error) {
-	stored, err := threadrules.EncodeAction(action)
+	values, err := checkThreadAction(action)
 	if err != nil {
-		return Settings{}, uierr.New("Choose to mark a cleared notification done or read.",
-			fmt.Errorf("%w: %q", err, action))
+		return Settings{}, err
 	}
 
-	return s.saveThreadRules(ctx, setting(threadrules.KeyAction, stored))
+	return s.saveThreadRules(ctx, setMany(values, ""))
+}
+
+// checkThreadAction refuses an action this build doesn't know, and returns its write.
+func checkThreadAction(action threadrules.Action) (map[string]string, error) {
+	stored, err := threadrules.EncodeAction(action)
+	if err != nil {
+		return nil, uierr.New("Choose to mark a cleared notification done or read.", fmt.Errorf("%w: %q", err, action))
+	}
+
+	return map[string]string{threadrules.KeyAction: stored}, nil
+}
+
+// checkTriggersOff refuses a list of the triggers turned off that names one this build
+// doesn't know, or clearing by hand, which has no switch, and returns its write.
+func checkTriggersOff(triggers []threadrules.Trigger) (map[string]string, error) {
+	var off []threadrules.Trigger
+
+	for _, trigger := range triggers {
+		var err error
+		if off, err = threadrules.SetTrigger(off, trigger, false); err != nil {
+			return nil, triggerError(trigger, err)
+		}
+	}
+
+	return map[string]string{threadrules.KeyTriggersOff: threadrules.EncodeTriggersOff(off)}, nil
 }
 
 // SetGitHubCleanupCardDismissed stores whether the card that first offers to clean up the

@@ -108,43 +108,66 @@ func (b backupFile) read(ctx context.Context) (Bundle, error) {
 	return readSnapshotBundle(ctx, b.path)
 }
 
+// ExportResult says what Export wrote.
+type ExportResult struct {
+	// Prompts counts the agent prompts written, and Replies the review replies.
+	Prompts int `json:"prompts"`
+	Replies int `json:"replies"`
+}
+
+// countOf counts b's agent prompts and its replies.
+func countOf(b Bundle) ExportResult {
+	var out ExportResult
+
+	for _, p := range b.Prompts {
+		if purposeOf(p.Purpose) == PurposeReply {
+			out.Replies++
+		} else {
+			out.Prompts++
+		}
+	}
+
+	return out
+}
+
 // Export writes the prompts with ids, or every prompt when ids is empty, to a prompt file
-// at path, replacing any file there, and returns how many it wrote. A whole library is
-// written with the app's default prompts and the record of the starters it was given, so
-// importing it on another Mac, or restoring it here, brings back the library as it was.
-func (s *Service) Export(ctx context.Context, path string, ids []int64) (int, error) {
+// at path, replacing any file there, and returns how many agent prompts and replies it
+// wrote. A whole library is written with the app's default prompts, its default replies,
+// and the record of the starters it was given, so importing it on another Mac, or
+// restoring it here, brings back the library as it was.
+func (s *Service) Export(ctx context.Context, path string, ids []int64) (ExportResult, error) {
 	if path == "" || !filepath.IsAbs(path) {
-		return 0, ErrNoPath
+		return ExportResult{}, ErrNoPath
 	}
 
 	lib, err := s.store.Library(ctx)
 	if err != nil {
-		return 0, err
+		return ExportResult{}, err
 	}
 
 	for _, id := range ids {
 		if !slices.ContainsFunc(lib.Prompts, func(p Prompt) bool { return p.ID == id }) {
-			return 0, fmt.Errorf("%w (id %d)", ErrPromptNotFound, id)
+			return ExportResult{}, fmt.Errorf("%w (id %d)", ErrPromptNotFound, id)
 		}
 	}
 
 	added, err := s.store.seeded(ctx)
 	if err != nil {
-		return 0, err
+		return ExportResult{}, err
 	}
 
 	b := newBundle(lib, added, ids, s.clock.Now(), s.app)
 
-	data, err := encodeBundle(b)
+	data, err := EncodeBundle(b)
 	if err != nil {
-		return 0, err
+		return ExportResult{}, err
 	}
 
 	if err = appdata.WriteFile(path, data); err != nil {
-		return 0, fmt.Errorf("export the prompts: %w", err)
+		return ExportResult{}, fmt.Errorf("export the prompts: %w", err)
 	}
 
-	return len(b.Prompts), nil
+	return countOf(b), nil
 }
 
 // Backups lists the copies of the prompt library the app keeps, newest first, with how
@@ -183,34 +206,60 @@ func (s *Service) Backups(ctx context.Context) ([]Backup, error) {
 	return out, nil
 }
 
+// ImportPreview is what importing a source would do: each prompt it holds, and each of the
+// source's defaults that importing could make the library's.
+type ImportPreview struct {
+	// Entries are the source's prompts, in its order, each with what importing it would do.
+	Entries []ImportEntry `json:"entries"`
+
+	// Defaults are the source's defaults that importing would change here, each offered
+	// only where its prompt fits the slot (see DefaultOffer).
+	Defaults []DefaultOffer `json:"defaults"`
+}
+
 // PreviewImport reads the prompts a source holds and says what importing each one would
-// do, changing nothing.
-func (s *Service) PreviewImport(ctx context.Context, source ImportSource) ([]ImportEntry, error) {
+// do, and which of the source's defaults importing could make the library's, changing
+// nothing.
+func (s *Service) PreviewImport(ctx context.Context, source ImportSource) (ImportPreview, error) {
 	b, err := s.readSource(ctx, source)
 	if err != nil {
-		return nil, err
+		return ImportPreview{}, err
 	}
 
-	pl, err := s.planner(ctx)
+	lib, err := s.store.Library(ctx)
 	if err != nil {
-		return nil, err
+		return ImportPreview{}, err
 	}
 
-	out := make([]ImportEntry, 0, len(b.Prompts))
-	for _, p := range b.Prompts {
-		out = append(out, pl.plan(p).ImportEntry)
+	usage, err := s.loadUsage(ctx)
+	if err != nil {
+		return ImportPreview{}, err
 	}
+
+	pl := newPlanner(lib.Prompts, usage)
+	plans := make([]planned, 0, len(b.Prompts))
+	out := ImportPreview{Entries: make([]ImportEntry, 0, len(b.Prompts))}
+
+	for _, p := range b.Prompts {
+		e := pl.plan(p)
+		plans = append(plans, e)
+		out.Entries = append(out.Entries, e.ImportEntry)
+	}
+
+	out.Defaults = offers(lib, plans, b.Prompts, b.Defaults)
 
 	return out, nil
 }
 
 // Import adds prompts to the library, as PreviewImport said it would, all of them or,
-// when a write fails, none. It never changes a prompt the user wrote or edited: a prompt
-// the library already holds is skipped, one whose nickname is taken is added under a free
-// one, and only a starter still as the app added it is saved over, by the user's own
-// version of that starter. A text with problems is imported for the user to fix, and a
-// setting this build would refuse is left out.
-func (s *Service) Import(ctx context.Context, prompts []BundlePrompt) (ImportResult, error) {
+// when a write fails, none, and makes the prompts defaults names, by their nicknames among
+// prompts, the library's defaults, each where it fits the slot. It never changes a prompt
+// the user wrote or edited: a prompt the library already holds is skipped, one whose
+// nickname is taken is added under a free one, and only a starter still as the app added
+// it is saved over, by the user's own version of that starter. A text with problems is
+// imported for the user to fix, and a setting this build would refuse is left out. A
+// default whose prompt is not among prompts is left as it is.
+func (s *Service) Import(ctx context.Context, prompts []BundlePrompt, defaults BundleDefaults) (ImportResult, error) {
 	if len(prompts) > maxBundlePrompts {
 		return ImportResult{}, ErrBundleTooLarge
 	}
@@ -225,9 +274,13 @@ func (s *Service) Import(ctx context.Context, prompts []BundlePrompt) (ImportRes
 	var res ImportResult
 
 	err = s.store.inTx(ctx, func(st *Store) error {
-		var importErr error
+		imported, links, importErr := importInto(ctx, st, prompts, usage)
+		if importErr != nil {
+			return importErr
+		}
 
-		res, importErr = importInto(ctx, st, prompts, usage)
+		res = imported
+		res.Defaults, importErr = restoreDefaults(ctx, st, defaults, links)
 
 		return importErr
 	})
@@ -235,7 +288,7 @@ func (s *Service) Import(ctx context.Context, prompts []BundlePrompt) (ImportRes
 		return ImportResult{}, fmt.Errorf("import the prompts: %w", err)
 	}
 
-	if res.Added+res.Replaced > 0 {
+	if res.Added+res.Replaced+res.Defaults > 0 {
 		s.saved(ctx)
 	}
 

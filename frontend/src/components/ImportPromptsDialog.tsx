@@ -1,8 +1,9 @@
 import { useId, useState } from 'react'
 
 import { brand } from '../generated/brand'
-import { counted } from '../lib/format'
+import { counted, fileName } from '../lib/format'
 import { agentName, modelChoices, modelLabel, perAgentEntries } from '../lib/launch'
+import { replySlotPlaces } from '../lib/replies'
 import { formatDateTime, formatFull } from '../lib/time'
 import { useMutation } from '../lib/useMutation'
 import { useQuery } from '../lib/useQuery'
@@ -11,8 +12,12 @@ import {
   listPromptBackups,
   previewPromptImport,
   type AgentInfo,
+  type BundleDefaults,
   type BundlePrompt,
+  type DefaultOffer,
+  type DefaultSlot,
   type ImportEntry,
+  type ImportPreview,
   type ImportResult,
   type ImportSource,
   type PromptBackup,
@@ -58,11 +63,6 @@ const appliesText: Record<BundlePrompt['appliesTo'], string> = {
   any: 'For pull requests and issues',
 }
 
-// fileName is the last part of a path.
-function fileName(path: string): string {
-  return path.split(/[\\/]/).at(-1) ?? path
-}
-
 // settingsText lists a prompt's launch settings that are not inherited, as in "For pull
 // requests · Claude: Opus · high effort · plan mode".
 function settingsText(p: BundlePrompt, agents: readonly AgentInfo[]): string {
@@ -103,6 +103,62 @@ function outcomeText(e: ImportEntry): string {
   }
 }
 
+// slotText names what a default is the default for, as in "the default prompt for pull
+// requests" or "the default reply for approvals".
+function slotText(slot: DefaultSlot): string {
+  switch (slot) {
+    case 'pr':
+      return 'the default prompt for pull requests'
+    case 'issue':
+      return 'the default prompt for issues'
+    default:
+      return `the default reply for ${replySlotPlaces[slot]}`
+  }
+}
+
+// offerText says what taking a default offer does, as in "Make “LGTM” the default reply
+// for approvals (now “Looks good”)".
+function offerText(offer: DefaultOffer): string {
+  const now = offer.current === '' ? 'now none' : `now “${offer.current}”`
+
+  return `Make “${offer.nickname}” ${slotText(offer.slot)} (${now})`
+}
+
+// chosenDefaults are the defaults an import sends for the offers taken: each slot named by
+// the nickname its entry's prompt is sent with.
+function chosenDefaults(offers: readonly DefaultOffer[], entries: readonly ImportEntry[]): BundleDefaults {
+  const out: BundleDefaults = { pr: '', issue: '', replies: {} }
+
+  for (const offer of offers) {
+    const nickname = entries[offer.entry]?.prompt.nickname ?? ''
+
+    if (offer.slot === 'pr' || offer.slot === 'issue') {
+      out[offer.slot] = nickname
+    } else {
+      out.replies = { ...out.replies, [offer.slot]: nickname }
+    }
+  }
+
+  return out
+}
+
+// importLabel words the confirm button: what the import brings, as in "Import 2 prompts
+// and 1 default", or only the prompts when it takes no default.
+function importLabel(verb: string, prompts: number, defaults: number): string {
+  const what = counted(prompts, 'prompt', 'prompts')
+
+  if (defaults === 0) {
+    return `${verb} ${what}`
+  }
+
+  const made = counted(defaults, 'default', 'defaults')
+
+  return prompts === 0 ? `${verb} ${made}` : `${verb} ${what} and ${made}`
+}
+
+// noPreview is what a dialog without a source yet shows.
+const noPreview: ImportPreview = { entries: [], defaults: [] }
+
 // backupDetail says what a backup holds, compared with the library.
 function backupDetail(b: PromptBackup): string {
   if (b.error !== '') {
@@ -126,22 +182,28 @@ function usable(b: PromptBackup): boolean {
 // ImportPromptsDialog brings prompts into the library: from a prompt file the user chose,
 // or from one of the copies the app keeps (its saved copy, data it set aside, and backups
 // taken before updates). It first shows every prompt the source holds and what importing
-// it does, all chosen but those already in the library, so nothing changes until the user
-// says so. Importing never changes a prompt the user wrote or edited.
+// it does, all chosen but those already in the library, and below them each of the
+// source's defaults that importing would change here, all taken, so nothing changes until
+// the user says so. A default goes with its prompt: one whose prompt is left out is held
+// back. Importing never changes a prompt the user wrote or edited.
 export function ImportPromptsDialog({ start, agents, onImported, onCancel }: ImportPromptsDialogProps) {
   const id = useId()
   const [source, setSource] = useState<ImportSource | null>(
     start.kind === 'file' ? { kind: 'file', path: start.path } : null,
   )
   const [picked, setPicked] = useState<string | null>(null)
-  // unchosen holds the entries, by index, the user turned off.
+  // unchosen holds the entries, by index, the user turned off, and declined the default
+  // offers, by index.
   const [unchosen, setUnchosen] = useState<ReadonlySet<number>>(new Set())
+  const [declined, setDeclined] = useState<ReadonlySet<number>>(new Set())
 
   const backups = useQuery(() => listPromptBackups(), [], { enabled: start.kind === 'backups' })
-  const entries = useQuery(() => (source === null ? Promise.resolve([]) : previewPromptImport(source)), [source], {
-    enabled: source !== null,
-  })
-  const importer = useMutation((chosen: BundlePrompt[]) => importPrompts(chosen))
+  const preview = useQuery(
+    () => (source === null ? Promise.resolve(noPreview) : previewPromptImport(source)),
+    [source],
+    { enabled: source !== null },
+  )
+  const importer = useMutation((chosen: BundlePrompt[], defaults: BundleDefaults) => importPrompts(chosen, defaults))
 
   const restoring = start.kind === 'backups'
 
@@ -175,21 +237,31 @@ export function ImportPromptsDialog({ start, agents, onImported, onCancel }: Imp
     )
   }
 
-  const shown = entries.data ?? []
-  const chosen = shown.flatMap((e, i) => (e.outcome !== 'skip' && !unchosen.has(i) ? [e.prompt] : []))
+  const shown = preview.data?.entries ?? []
+  const offers = preview.data?.defaults ?? []
+  // brought reports whether an entry's prompt is chosen; held, whether the library holds
+  // it already, which a default it offers needs no import for.
+  const brought = (i: number) => shown[i] !== undefined && shown[i].outcome !== 'skip' && !unchosen.has(i)
+  const held = (i: number) => shown[i]?.outcome === 'skip'
+  const offerable = (offer: DefaultOffer) => brought(offer.entry) || held(offer.entry)
+  const taken = offers.filter((offer, i) => offerable(offer) && !declined.has(i))
+  const chosen = shown.filter((_, i) => brought(i))
+  // A default names its prompt among those sent, so a prompt the library holds already is
+  // sent with it, which the import skips again.
+  const sent = shown.flatMap((e, i) => (brought(i) || taken.some((o) => o.entry === i) ? [e.prompt] : []))
   const verb = restoring ? 'Restore' : 'Import'
   const sourceName = start.kind === 'file' ? `“${fileName(start.path)}”` : 'the backup'
 
   return (
     <ConfirmDialog
       title={`${verb} prompts from ${sourceName}`}
-      confirmLabel={importer.pending ? `${verb}ing…` : `${verb} ${counted(chosen.length, 'prompt', 'prompts')}`}
+      confirmLabel={importer.pending ? `${verb}ing…` : importLabel(verb, chosen.length, taken.length)}
       tone="primary"
       size="wide"
-      confirmDisabled={chosen.length === 0 || importer.pending || entries.pending}
+      confirmDisabled={chosen.length + taken.length === 0 || importer.pending || preview.pending}
       onCancel={onCancel}
       onConfirm={() => {
-        void importer.run(chosen).then((result) => {
+        void importer.run(sent, chosenDefaults(taken, shown)).then((result) => {
           if (result.ok) {
             onImported(result.data)
           }
@@ -199,29 +271,90 @@ export function ImportPromptsDialog({ start, agents, onImported, onCancel }: Imp
       <EntryList
         agents={agents}
         entries={shown}
-        pending={entries.pending}
-        error={entries.error}
+        pending={preview.pending}
+        error={preview.error}
         unchosen={unchosen}
         onToggle={(i, on) => {
-          setUnchosen((current) => {
-            const next = new Set(current)
-
-            if (on) {
-              next.delete(i)
-            } else {
-              next.add(i)
-            }
-
-            return next
-          })
+          setUnchosen((current) => toggled(current, i, on))
         }}
       />
+      {offers.length > 0 && (
+        <DefaultList
+          offers={offers}
+          offerable={offerable}
+          declined={declined}
+          onToggle={(i, on) => {
+            setDeclined((current) => toggled(current, i, on))
+          }}
+        />
+      )}
       {importer.error !== '' && (
         <p role="alert" className="mt-3 text-danger">
           {importer.error}
         </p>
       )}
     </ConfirmDialog>
+  )
+}
+
+// toggled returns set with i taken out when on, or put in when not.
+function toggled(set: ReadonlySet<number>, i: number, on: boolean): ReadonlySet<number> {
+  const next = new Set(set)
+
+  if (on) {
+    next.delete(i)
+  } else {
+    next.add(i)
+  }
+
+  return next
+}
+
+interface DefaultListProps {
+  offers: readonly DefaultOffer[]
+  // offerable reports whether an offer's prompt is brought in or already held.
+  offerable: (offer: DefaultOffer) => boolean
+  declined: ReadonlySet<number>
+  onToggle: (index: number, on: boolean) => void
+}
+
+// DefaultList offers each of the source's defaults that importing would change, each with
+// a box to leave it as it is; one whose prompt is left out is held back with it.
+function DefaultList({ offers, offerable, declined, onToggle }: DefaultListProps) {
+  const id = useId()
+
+  return (
+    <div role="group" aria-labelledby={`${id}-title`} className="mt-4">
+      <h3 id={`${id}-title`} className="text-sm font-semibold text-text">
+        Defaults
+      </h3>
+      <p className="mt-0.5 text-xs">The file’s defaults that differ from yours. Each goes with its prompt.</p>
+      <ul className="mt-2 flex flex-col gap-1">
+        {offers.map((offer, i) => {
+          const open = offerable(offer)
+
+          return (
+            <li key={offer.slot}>
+              <label
+                title={open ? undefined : 'Its prompt isn’t chosen.'}
+                className={`flex items-start gap-2.5 rounded-md border border-border px-3 py-2 text-sm text-text ${open ? 'cursor-pointer' : 'opacity-60'}`}
+              >
+                <input
+                  type="checkbox"
+                  checked={open && !declined.has(i)}
+                  disabled={!open}
+                  onChange={(ev) => {
+                    onToggle(i, ev.target.checked)
+                  }}
+                  className="checkbox mt-0.5"
+                />
+                {offerText(offer)}
+              </label>
+            </li>
+          )
+        })}
+      </ul>
+    </div>
   )
 }
 

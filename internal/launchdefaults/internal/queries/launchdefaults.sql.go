@@ -10,6 +10,17 @@ import (
 	"time"
 )
 
+const deleteAllLaunchDefaults = `-- name: DeleteAllLaunchDefaults :exec
+DELETE FROM launch_defaults
+`
+
+// DeleteAllLaunchDefaults removes every org's and repository's launch defaults, as an
+// import that replaces them does first.
+func (q *Queries) DeleteAllLaunchDefaults(ctx context.Context) error {
+	_, err := q.db.ExecContext(ctx, deleteAllLaunchDefaults)
+	return err
+}
+
 const deleteLaunchDefaults = `-- name: DeleteLaunchDefaults :execrows
 DELETE FROM launch_defaults WHERE owner = ? AND name = ?
 `

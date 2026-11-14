@@ -15,6 +15,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/mrz1836/nilbox/internal/agent"
+	"github.com/mrz1836/nilbox/internal/backup"
 	"github.com/mrz1836/nilbox/internal/branchrules"
 	"github.com/mrz1836/nilbox/internal/clock"
 	"github.com/mrz1836/nilbox/internal/ghthreads"
@@ -236,6 +237,22 @@ func boundCalls(t *testing.T) map[string]boundCall {
 			}
 
 			return c.Prompts.PreviewImport(ctx, prompts.ImportSource{Kind: prompts.SourceFile, Path: path})
+		},
+		"backup.Service.Export": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
+			return c.Backup.Export(ctx, filepath.Join(t.TempDir(), "backup.json"), backup.Sections())
+		},
+		"backup.Service.Preview": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
+			return previewBackup(ctx, t, c)
+		},
+		"backup.Service.Import": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
+			p, err := previewBackup(ctx, t, c)
+			if err != nil {
+				return nil, err
+			}
+
+			return c.Backup.Import(ctx, backup.Request{
+				Path: p.Path, Hash: p.Hash, Sections: backup.Sections(), Mode: backup.ModeMerge,
+			})
 		},
 		"launchdefaults.Service.List": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
 			return c.LaunchDefaults.List(ctx)
@@ -893,4 +910,16 @@ func valueNulls(v reflect.Value, path string) []string {
 	}
 
 	return out
+}
+
+// previewBackup exports c's whole setup to a file and previews importing it back.
+func previewBackup(ctx context.Context, t *testing.T, c *Core) (backup.Preview, error) {
+	t.Helper()
+
+	path := filepath.Join(t.TempDir(), "backup.json")
+	if _, err := c.Backup.Export(ctx, path, backup.Sections()); err != nil {
+		return backup.Preview{}, err
+	}
+
+	return c.Backup.Preview(ctx, path)
 }

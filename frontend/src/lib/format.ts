@@ -49,3 +49,15 @@ export function counted(n: number, one: string, many: string): string {
 export function refText(ref: { repo: string; number: number }): string {
   return `${ref.repo}#${String(ref.number)}`
 }
+
+// fileDate is a date as a file name carries it: 2026-11-08, in the user's own time zone.
+export function fileDate(now: Date): string {
+  const pad = (n: number) => String(n).padStart(2, '0')
+
+  return `${String(now.getFullYear())}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`
+}
+
+// fileName is the last part of a path: the file's name.
+export function fileName(path: string): string {
+  return path.split(/[\\/]/).at(-1) ?? path
+}

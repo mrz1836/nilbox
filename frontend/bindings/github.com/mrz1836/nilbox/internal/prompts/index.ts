@@ -9,6 +9,7 @@ export {
 export {
     AppliesTo,
     BackupKind,
+    DefaultSlot,
     ImportOutcome,
     Purpose,
     ReplyAction,
@@ -19,12 +20,16 @@ export {
 
 export type {
     Backup,
+    BundleDefaults,
     BundlePrompt,
     CheckRequest,
     CheckResult,
+    DefaultOffer,
     DefaultPrompts,
     Diagnostic,
+    ExportResult,
     ImportEntry,
+    ImportPreview,
     ImportResult,
     ImportSource,
     Input,

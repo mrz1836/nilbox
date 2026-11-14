@@ -37,6 +37,13 @@ import type {
   HookRepo,
   HooksList,
   ImportEntry,
+  ImportPreview,
+  DefaultOffer,
+  BackupImported,
+  BackupPlan,
+  BackupPreview,
+  BackupSection,
+  BackupSectionPreview,
   InboxItem,
   Issue,
   IssueLinked,
@@ -770,6 +777,70 @@ export function importEntry(overrides: Partial<ImportEntry> = {}): ImportEntry {
     replaces: '',
     notes: [],
     ...overrides,
+  }
+}
+
+// importPreview is what a prompt file holds: one prompt importing would add, and no
+// default to offer.
+export function importPreview(overrides: Partial<ImportPreview> = {}): ImportPreview {
+  return { entries: [importEntry()], defaults: [], ...overrides }
+}
+
+// defaultOffer offers to make the file's first prompt the default approval reply.
+export function defaultOffer(overrides: Partial<DefaultOffer> = {}): DefaultOffer {
+  return { slot: 'approve', nickname: 'Security', current: 'LGTM', entry: 0, ...overrides }
+}
+
+// backupPlan is what importing a category would do: nothing, until a test says.
+export function backupPlan(overrides: Partial<BackupPlan> = {}): BackupPlan {
+  return { count: { add: 0, update: 0, same: 0, remove: 0 }, items: [], notes: [], ...overrides }
+}
+
+// backupSectionPreview is a category a backup holds, with nothing to change under either
+// mode.
+export function backupSectionPreview(
+  section: BackupSection,
+  overrides: Partial<BackupSectionPreview> = {},
+): BackupSectionPreview {
+  return { section, present: true, merge: backupPlan(), replace: backupPlan(), error: '', ...overrides }
+}
+
+// backupPreview is a backup holding every category: the settings change the theme, a
+// prompt is added under Merge and another deleted under Replace, and the rest change
+// nothing.
+export function backupPreview(overrides: Partial<BackupPreview> = {}): BackupPreview {
+  const theme = { label: 'Theme', change: 'update' as const, detail: 'dark (now system)' }
+  const added = { label: 'Security', change: 'add' as const, detail: '' }
+  const removed = { label: 'Old review', change: 'remove' as const, detail: '' }
+
+  return {
+    path: '/backups/setup.json',
+    hash: 'c0ffee',
+    exportedAt: '2026-11-13T17:00:00Z',
+    app: 'v1.2.3',
+    sections: [
+      backupSectionPreview('settings', {
+        merge: backupPlan({ count: { add: 0, update: 1, same: 20, remove: 0 }, items: [theme] }),
+        replace: backupPlan({ count: { add: 0, update: 1, same: 20, remove: 0 }, items: [theme] }),
+      }),
+      backupSectionPreview('repositories'),
+      backupSectionPreview('prompts', {
+        merge: backupPlan({ count: { add: 1, update: 0, same: 8, remove: 0 }, items: [added] }),
+        replace: backupPlan({ count: { add: 1, update: 0, same: 8, remove: 1 }, items: [added, removed] }),
+      }),
+      backupSectionPreview('launchDefaults'),
+      backupSectionPreview('scripts'),
+    ],
+    ...overrides,
+  }
+}
+
+// backupImported is what importing sections did: each changed one item, and the setup as
+// it was is saved in the app's backups folder.
+export function backupImported(sections: readonly BackupSection[]): BackupImported {
+  return {
+    savedTo: `~/Library/Application Support/${brand.name}/backups/before import.json`,
+    sections: sections.map((section) => ({ section, count: { add: 1, update: 0, same: 0, remove: 0 }, notes: [] })),
   }
 }
 

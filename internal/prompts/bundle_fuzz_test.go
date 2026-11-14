@@ -48,7 +48,7 @@ func FuzzDecodeBundle(f *testing.F) {
 		assert.NotNil(t, b.StartersAdded)
 		assert.NotNil(t, b.Prompts)
 
-		written, err := encodeBundle(b)
+		written, err := EncodeBundle(b)
 		require.NoError(t, err)
 
 		again, err := DecodeBundle(written)

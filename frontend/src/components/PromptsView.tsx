@@ -1,7 +1,7 @@
 import { useEffect, useEffectEvent, useId, useRef, useState } from 'react'
 
 import { brand } from '../generated/brand'
-import { counted, errorMessage } from '../lib/format'
+import { counted, errorMessage, fileDate, fileName } from '../lib/format'
 import { isFindKey } from '../lib/keys'
 import { kindPlural, promptApplies, usageCount, usagePlaces } from '../lib/launch'
 import { replyDefaultsText, replySlotPlaces, replySlots } from '../lib/replies'
@@ -26,6 +26,7 @@ import {
   type InboxItem,
   type PerAgent,
   type Prompt,
+  type PromptExport,
   type PromptInput,
   type PromptPurpose,
   type PromptVariable,
@@ -168,32 +169,33 @@ function sameInput(a: PromptInput, b: PromptInput): boolean {
 const promptFiles = [{ name: `${brand.name} prompts`, pattern: '*.json' }]
 const importFiles = [...promptFiles, { name: `${brand.name} database`, pattern: '*.db' }]
 
-// datePart is a date as a file name carries it: 2026-11-08.
-function datePart(now: Date): string {
-  const pad = (n: number) => String(n).padStart(2, '0')
-
-  return `${String(now.getFullYear())}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`
-}
-
 // fileSafe is text with the characters a file name cannot hold replaced.
 function fileSafe(text: string): string {
   return text.replace(/[/\\:*?"<>|]+/g, '-').trim()
 }
 
-// baseName is the last part of a path.
-function baseName(path: string): string {
-  return path.split(/[\\/]/).at(-1) ?? path
+// exportedText says what an export wrote, and where: its prompts and its replies, as in
+// "Exported 9 prompts and 4 replies to “all.json”.", leaving out a kind it holds none of.
+function exportedText(result: PromptExport, path: string): string {
+  const parts = [
+    result.prompts > 0 || result.replies === 0 ? counted(result.prompts, 'prompt', 'prompts') : '',
+    result.replies > 0 ? counted(result.replies, 'reply', 'replies') : '',
+  ].filter((part) => part !== '')
+
+  return `Exported ${parts.join(' and ')} to “${fileName(path)}”.`
 }
 
 // importedText says what an import, or a restore from a backup, did.
 function importedText(result: ImportResult, restored: boolean): string {
   const done = `${restored ? 'Restored' : 'Imported'} ${counted(result.added + result.replaced, 'prompt', 'prompts')}.`
+  const held =
+    result.skipped === 0
+      ? ''
+      : ` ${result.skipped === 1 ? 'One was' : `${String(result.skipped)} were`} already in your library.`
+  const defaults =
+    result.defaults === 0 ? '' : ` ${counted(result.defaults, 'default', 'defaults')} changed to the file’s.`
 
-  if (result.skipped === 0) {
-    return done
-  }
-
-  return `${done} ${result.skipped === 1 ? 'One was' : `${String(result.skipped)} were`} already in your library.`
+  return `${done}${held}${defaults}`
 }
 
 // touchedField reports whether a field of the draft was edited away from its start.
@@ -462,9 +464,7 @@ export function PromptsView({ agents, prompts, replies, defaults, variables, ite
     const result = await exporter.run(path, ids)
 
     setStatus(
-      result.ok
-        ? { tone: 'success', text: `Exported ${counted(result.data, 'prompt', 'prompts')} to “${baseName(path)}”.` }
-        : { tone: 'error', text: result.error },
+      result.ok ? { tone: 'success', text: exportedText(result.data, path) } : { tone: 'error', text: result.error },
     )
   }
 
@@ -508,12 +508,12 @@ export function PromptsView({ agents, prompts, replies, defaults, variables, ite
       },
     },
     {
-      label: 'Export all prompts…',
+      label: 'Export all prompts and replies…',
       icon: <ExportIcon className="size-4 text-muted" />,
       divided: true,
       disabled: prompts.length + replies.length === 0,
       onSelect: () => {
-        void exportTo([], `${brand.name} prompts ${datePart(new Date())}.json`)
+        void exportTo([], `${brand.name} prompts ${fileDate(new Date())}.json`)
       },
     },
   ]

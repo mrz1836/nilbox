@@ -196,6 +196,12 @@ func boundaries() []boundary {
 			forbidden: append(slices.Clone(sheets), "internal/review"),
 			why:       "the issue sheet reaches the inbox through its own Inbox interface, and knows nothing of the review sheet",
 		},
+		{
+			pkg:       "internal/backup",
+			forbidden: append([]string{"internal/prompts", "internal/launchdefaults", "internal/scripts"}, services...),
+			why: "the backup reaches each category's owner only through its Part, which core adapts; the owners " +
+				"import its plan's words, never the reverse",
+		},
 	}
 }
 

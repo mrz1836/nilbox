@@ -9,7 +9,7 @@ import {
   agents,
   checkResult,
   defaultPrompts,
-  importEntry,
+  importPreview,
   item,
   prompt,
   prompts,
@@ -588,13 +588,24 @@ describe('PromptsView', () => {
     render(<Harness />)
 
     await userEvent.click(screen.getByRole('button', { name: 'Import and export prompts' }))
-    await userEvent.click(screen.getByRole('menuitem', { name: 'Export all prompts…' }))
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Export all prompts and replies…' }))
 
     const asked = platform.chooseFileToSave.mock.lastCall?.[0]
     expect(asked?.filename).toMatch(new RegExp(`^${brand.name} prompts \\d{4}-\\d{2}-\\d{2}\\.json$`))
     expect(asked?.filters).toEqual([{ name: `${brand.name} prompts`, pattern: '*.json' }])
     expect(platform.exportPrompts).toHaveBeenCalledWith('/exports/all.json', [])
     expect(await screen.findByText(`Exported ${String(prompts().length)} prompts to “all.json”.`)).toBeInTheDocument()
+
+    platform.exportPrompts.mockResolvedValue({ prompts: 9, replies: 4 })
+    await userEvent.click(screen.getByRole('button', { name: 'Import and export prompts' }))
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Export all prompts and replies…' }))
+    expect(await screen.findByText('Exported 9 prompts and 4 replies to “all.json”.')).toBeInTheDocument()
+
+    platform.exportPrompts.mockResolvedValue({ prompts: 0, replies: 1 })
+    await userEvent.click(screen.getByRole('button', { name: 'Import and export prompts' }))
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Export all prompts and replies…' }))
+    expect(await screen.findByText('Exported 1 reply to “all.json”.')).toBeInTheDocument()
+    platform.exportPrompts.mockResolvedValue({ prompts: 1, replies: 0 })
 
     platform.chooseFileToSave.mockResolvedValue('/exports/Fix checks.json')
     await userEvent.click(screen.getByRole('button', { name: 'More actions for Fix checks' }))
@@ -609,7 +620,7 @@ describe('PromptsView', () => {
     render(<Harness />)
 
     await userEvent.click(screen.getByRole('button', { name: 'Import and export prompts' }))
-    await userEvent.click(screen.getByRole('menuitem', { name: 'Export all prompts…' }))
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Export all prompts and replies…' }))
 
     await waitFor(() => {
       expect(platform.chooseFileToSave).toHaveBeenCalled()
@@ -623,15 +634,15 @@ describe('PromptsView', () => {
     render(<Harness />)
 
     await userEvent.click(screen.getByRole('button', { name: 'Import and export prompts' }))
-    await userEvent.click(screen.getByRole('menuitem', { name: 'Export all prompts…' }))
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Export all prompts and replies…' }))
 
     expect(await screen.findByRole('alert')).toHaveTextContent('the disk is gone')
   })
 
   it('imports prompts from a file and opens the first one', async () => {
     platform.chooseFileToOpen.mockResolvedValue('/exports/shared.json')
-    platform.previewPromptImport.mockResolvedValue([importEntry()])
-    platform.importPrompts.mockResolvedValue({ added: 1, replaced: 0, skipped: 0, first: 9 })
+    platform.previewPromptImport.mockResolvedValue(importPreview())
+    platform.importPrompts.mockResolvedValue({ added: 1, replaced: 0, skipped: 0, defaults: 0, first: 9 })
     next = [...prompts(), prompt({ id: 9, nickname: 'Security', name: 'Look for security problems', appliesTo: 'any' })]
     render(<Harness />)
 
@@ -653,7 +664,7 @@ describe('PromptsView', () => {
   })
 
   it('restores prompts from a backup', async () => {
-    platform.importPrompts.mockResolvedValue({ added: 1, replaced: 2, skipped: 1, first: 1 })
+    platform.importPrompts.mockResolvedValue({ added: 1, replaced: 2, skipped: 1, defaults: 0, first: 1 })
     render(<Harness />)
 
     await userEvent.click(screen.getByRole('button', { name: 'Import and export prompts' }))
@@ -664,8 +675,20 @@ describe('PromptsView', () => {
     expect(await screen.findByText('Restored 3 prompts. One was already in your library.')).toBeInTheDocument()
   })
 
+  it('says how many defaults an import changed', async () => {
+    platform.importPrompts.mockResolvedValue({ added: 1, replaced: 0, skipped: 0, defaults: 2, first: 0 })
+    render(<Harness />)
+
+    await userEvent.click(screen.getByRole('button', { name: 'Import and export prompts' }))
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Restore from a backup…' }))
+    await userEvent.click(await screen.findByRole('button', { name: 'Show prompts' }))
+    await userEvent.click(await screen.findByRole('button', { name: 'Restore 1 prompt' }))
+
+    expect(await screen.findByText('Restored 1 prompt. 2 defaults changed to the file’s.')).toBeInTheDocument()
+  })
+
   it('keeps the open prompt after an import that brings in nothing new', async () => {
-    platform.importPrompts.mockResolvedValue({ added: 0, replaced: 0, skipped: 2, first: 0 })
+    platform.importPrompts.mockResolvedValue({ added: 0, replaced: 0, skipped: 2, defaults: 0, first: 0 })
     render(<Harness />)
 
     await userEvent.click(screen.getByRole('button', { name: 'Import and export prompts' }))
@@ -678,7 +701,7 @@ describe('PromptsView', () => {
   })
 
   it('keeps the open prompt when the one an action names is not in the library', async () => {
-    platform.importPrompts.mockResolvedValue({ added: 1, replaced: 0, skipped: 0, first: 99 })
+    platform.importPrompts.mockResolvedValue({ added: 1, replaced: 0, skipped: 0, defaults: 0, first: 99 })
     next = prompts()
     render(<Harness />)
 
@@ -709,7 +732,7 @@ describe('PromptsView', () => {
     render(<Harness />)
 
     await userEvent.click(screen.getByRole('button', { name: 'Import and export prompts' }))
-    await userEvent.click(screen.getByRole('menuitem', { name: 'Export all prompts…' }))
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Export all prompts and replies…' }))
 
     expect(await screen.findByRole('alert')).toHaveTextContent('Couldn’t open the save dialog: no window')
     expect(platform.exportPrompts).not.toHaveBeenCalled()
@@ -733,7 +756,7 @@ describe('PromptsView', () => {
 
     expect(screen.getByRole('menuitem', { name: 'Import from a file…' })).toBeDisabled()
     expect(screen.getByRole('menuitem', { name: 'Restore from a backup…' })).toBeDisabled()
-    expect(screen.getByRole('menuitem', { name: 'Export all prompts…' })).toBeEnabled()
+    expect(screen.getByRole('menuitem', { name: 'Export all prompts and replies…' })).toBeEnabled()
   })
 })
 
@@ -1155,7 +1178,7 @@ describe('PromptsView review replies', () => {
 
   it('opens an imported reply in the replies', async () => {
     platform.chooseFileToOpen.mockResolvedValue('/exports/replies.json')
-    platform.importPrompts.mockResolvedValue({ added: 1, replaced: 0, skipped: 0, first: 9 })
+    platform.importPrompts.mockResolvedValue({ added: 1, replaced: 0, skipped: 0, defaults: 0, first: 9 })
     nextReplies = [...replyPrompts(), replyPrompt({ id: 9, nickname: 'Ship it', name: 'Approve and say so' })]
     render(<Harness />)
 

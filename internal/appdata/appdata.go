@@ -45,6 +45,7 @@ type Paths struct {
 	DB             string // the SQLite database file
 	Prompts        string // the copy of the prompt library kept beside the database
 	LaunchDefaults string // the copy of the launch defaults kept beside the database
+	Backups        string // the copies of the user's setup an import saves before it changes anything
 	Launch         string // generated launch scripts and prompt files
 	Logs           string // log files
 }
@@ -56,6 +57,7 @@ func NewPaths(root string) Paths {
 		DB:             filepath.Join(root, brand.Slug+".db"),
 		Prompts:        filepath.Join(root, "prompts.json"),
 		LaunchDefaults: filepath.Join(root, "launch-defaults.json"),
+		Backups:        filepath.Join(root, "backups"),
 		Launch:         filepath.Join(root, "launch"),
 		Logs:           filepath.Join(root, "logs"),
 	}

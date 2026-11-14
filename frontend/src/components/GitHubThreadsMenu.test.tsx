@@ -7,7 +7,7 @@ import type { GitHubThreadsState } from '../lib/useGitHubThreads'
 import type { GitHubThreadsSnapshot, Settings, ThreadRules } from '../platform'
 import { at } from '../test/clock'
 import { githubThread, githubThreads, settings } from '../test/fixtures'
-import { platform } from '../test/platform'
+import { mocks, platform } from '../test/platform'
 import { GitHubThreadsMenu } from './GitHubThreadsMenu'
 
 vi.mock('../platform', () => import('../test/platform').then((fake) => fake.platform))
@@ -85,7 +85,7 @@ function line(title: string): RegExp {
 
 // calledPlatform lists the platform calls made so far.
 function calledPlatform(): string[] {
-  return Object.entries(platform)
+  return mocks()
     .filter(([, fn]) => fn.mock.calls.length > 0)
     .map(([name]) => name)
 }

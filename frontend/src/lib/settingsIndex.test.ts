@@ -116,10 +116,20 @@ describe('matchSettings', () => {
     expect(match?.isMatch('integrations', 'Runs in')).toBe(true)
     expect(match?.isMatch('integrations', 'Offer a release after you merge a pull request')).toBe(true)
     expect(sectionOrder.indexOf('integrations')).toBe(sectionOrder.indexOf('worktrees') + 1)
-    expect(sectionOrder.indexOf('about')).toBe(sectionOrder.indexOf('integrations') + 1)
+    expect(sectionOrder.indexOf('backup')).toBe(sectionOrder.indexOf('integrations') + 1)
     expect(sectionInfo.integrations.description).toBe(
       `Tools ${brand.name} runs for you: mage-x releases, go-pre-commit hooks, and scripts.`,
     )
+  })
+
+  it('finds backing up and restoring the setup by what it does, right before About', () => {
+    expect(found('backup')).toEqual([['backup', 3]])
+    expect(matchSettings('back up')?.isMatch('backup', 'Back up your setup')).toBe(true)
+    expect(matchSettings('another mac')?.sections.get('backup')).toBe(2)
+    expect(matchSettings('import')?.isMatch('backup', 'Restore from a backup')).toBe(true)
+    expect(matchSettings('script trust')?.isMatch('backup', 'What a backup never holds')).toBe(true)
+    expect(sectionOrder.indexOf('about')).toBe(sectionOrder.indexOf('backup') + 1)
+    expect(sectionInfo.backup.label).toBe('Back up and restore')
   })
 
   it('finds the GitHub notification settings by the section’s name, right after Notifications', () => {

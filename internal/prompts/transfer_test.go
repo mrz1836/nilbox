@@ -57,7 +57,7 @@ func bundleOf(prompts ...BundlePrompt) Bundle {
 func writeBundle(t *testing.T, b Bundle) string {
 	t.Helper()
 
-	data, err := encodeBundle(b)
+	data, err := EncodeBundle(b)
 	require.NoError(t, err)
 
 	path := filepath.Join(t.TempDir(), "shared.json")
@@ -70,10 +70,17 @@ func writeBundle(t *testing.T, b Bundle) string {
 func preview(t *testing.T, s *Service, b Bundle) []ImportEntry {
 	t.Helper()
 
-	entries, err := s.PreviewImport(t.Context(), ImportSource{Kind: SourceFile, Path: writeBundle(t, b)})
+	return previewAll(t, s, b).Entries
+}
+
+// previewAll previews importing b into s, with the defaults it offers.
+func previewAll(t *testing.T, s *Service, b Bundle) ImportPreview {
+	t.Helper()
+
+	got, err := s.PreviewImport(t.Context(), ImportSource{Kind: SourceFile, Path: writeBundle(t, b)})
 	require.NoError(t, err)
 
-	return entries
+	return got
 }
 
 // outcomes lists each entry's outcome and the nickname it would be saved under.
@@ -134,7 +141,7 @@ func TestBundleRoundTrips(t *testing.T) {
 	b.ExportedAt, b.App = "2026-11-08T17:00:00Z", "v1.2.3"
 	b.Defaults = BundleDefaults{PR: "Security"}
 
-	data, err := encodeBundle(b)
+	data, err := EncodeBundle(b)
 	require.NoError(t, err)
 	assert.Contains(t, string(data), "<script>", "a prompt's text reads in the file as it was written")
 	assert.True(t, strings.HasSuffix(string(data), "}\n"))
@@ -194,7 +201,7 @@ func TestExportWritesTheWholeLibrary(t *testing.T) {
 
 	n, err := s.Export(t.Context(), path, nil)
 	require.NoError(t, err)
-	assert.Equal(t, len(Starters()), n)
+	assert.Equal(t, ExportResult{Prompts: 4, Replies: 4}, n, "the starters are four agent prompts and four replies")
 
 	got, err := readBundleFile(path)
 	require.NoError(t, err)
@@ -227,7 +234,7 @@ func TestExportWritesTheChosenPrompts(t *testing.T) {
 
 	n, err := s.Export(t.Context(), path, []int64{quick.ID})
 	require.NoError(t, err)
-	assert.Equal(t, 1, n)
+	assert.Equal(t, ExportResult{Prompts: 1}, n)
 
 	got, err := readBundleFile(path)
 	require.NoError(t, err)
@@ -308,7 +315,7 @@ func TestImportAddsAStarterEditOverAnEditedStarterAsTheUsersOwn(t *testing.T) {
 	assert.Equal(t, []string{"rename Review 2"}, outcomes(preview(t, s, bundleOf(edit))),
 		"a starter the user edited is never saved over")
 
-	res, err := s.Import(t.Context(), []BundlePrompt{edit})
+	res, err := s.Import(t.Context(), []BundlePrompt{edit}, BundleDefaults{})
 	require.NoError(t, err)
 	assert.Equal(t, ImportResult{Added: 1, First: res.First}, res)
 
@@ -359,7 +366,7 @@ func TestImportStoresWhatThePreviewSaid(t *testing.T) {
 	edit := starterAsBundled(t, StarterReviewPR, func(p *BundlePrompt) {
 		p.Nickname, p.Body = "Review (mine)", "Review {{.URL}} my way."
 	})
-	res, err := s.Import(t.Context(), []BundlePrompt{edit, mine("Security"), starterAsBundled(t, StarterQuickLook, nil)})
+	res, err := s.Import(t.Context(), []BundlePrompt{edit, mine("Security"), starterAsBundled(t, StarterQuickLook, nil)}, BundleDefaults{})
 	require.NoError(t, err)
 	assert.Equal(t, ImportResult{Added: 1, Replaced: 1, Skipped: 1, First: review.ID}, res)
 
@@ -380,7 +387,7 @@ func TestImportRecordsTheStartersItAdds(t *testing.T) {
 
 	s, db := empty(t, nil)
 
-	_, err := s.Import(t.Context(), []BundlePrompt{starterAsBundled(t, StarterQuickLook, nil)})
+	_, err := s.Import(t.Context(), []BundlePrompt{starterAsBundled(t, StarterQuickLook, nil)}, BundleDefaults{})
 	require.NoError(t, err)
 	require.NoError(t, Seed(t.Context(), s.store))
 
@@ -397,7 +404,7 @@ func TestImportIsAllOrNothing(t *testing.T) {
 	testutil.Exec(t, db, `CREATE TRIGGER refuse_second BEFORE INSERT ON prompts WHEN NEW.nickname = 'Second'
 BEGIN SELECT RAISE(ABORT, 'refused by the test'); END`)
 
-	_, err := s.Import(t.Context(), []BundlePrompt{mine("First"), mine("Second")})
+	_, err := s.Import(t.Context(), []BundlePrompt{mine("First"), mine("Second")}, BundleDefaults{})
 	require.ErrorContains(t, err, `import "Second"`)
 	assert.Equal(t, before, nicknames(t, s))
 }
@@ -407,7 +414,7 @@ func TestImportRefusesTooManyPrompts(t *testing.T) {
 
 	s, _, _ := keeping(t)
 
-	_, err := s.Import(t.Context(), make([]BundlePrompt, maxBundlePrompts+1))
+	_, err := s.Import(t.Context(), make([]BundlePrompt, maxBundlePrompts+1), BundleDefaults{})
 	require.ErrorIs(t, err, ErrBundleTooLarge)
 }
 
@@ -449,7 +456,7 @@ func TestImportKeepsWhatTheUserWroteAndLeavesOutWhatTheEditorWouldRefuse(t *test
 		assert.Contains(t, notes, want)
 	}
 
-	res, err := s.Import(t.Context(), []BundlePrompt{entries[0].Prompt})
+	res, err := s.Import(t.Context(), []BundlePrompt{entries[0].Prompt}, BundleDefaults{})
 	require.NoError(t, err)
 	assert.Equal(t, 1, res.Added, "a prompt with problems is imported, never dropped")
 }
@@ -503,9 +510,9 @@ func TestPreviewImportReadsAListedBackup(t *testing.T) {
 	old := filepath.Join(dir, "app.db.broken-20261108T165152Z")
 	writeLibraryDB(t, old, mine("Security"))
 
-	entries, err := s.PreviewImport(t.Context(), ImportSource{Kind: SourceBackup, Path: old})
+	got, err := s.PreviewImport(t.Context(), ImportSource{Kind: SourceBackup, Path: old})
 	require.NoError(t, err)
-	assert.Equal(t, []string{"add Security"}, outcomes(entries))
+	assert.Equal(t, []string{"add Security"}, outcomes(got.Entries))
 
 	elsewhere := filepath.Join(t.TempDir(), "app.db.broken-20261108T165152Z")
 	writeLibraryDB(t, elsewhere, mine("Security"))
@@ -527,9 +534,9 @@ func TestPreviewImportReadsADatabaseFileTheUserChose(t *testing.T) {
 	copied := filepath.Join(t.TempDir(), "kept-from-a-backup.db")
 	writeLibraryDB(t, copied, mine("Security"))
 
-	entries, err := s.PreviewImport(t.Context(), ImportSource{Kind: SourceFile, Path: copied})
+	got, err := s.PreviewImport(t.Context(), ImportSource{Kind: SourceFile, Path: copied})
 	require.NoError(t, err)
-	assert.Equal(t, []string{"add Security"}, outcomes(entries))
+	assert.Equal(t, []string{"add Security"}, outcomes(got.Entries))
 }
 
 func TestPreviewImportRefusesAFileThatHoldsNoPrompts(t *testing.T) {
@@ -786,7 +793,7 @@ func TestDecodeBundleReadsVersionOne(t *testing.T) {
 	assert.Equal(t, map[agent.ID][]string{}, got.Prompts[1].ExtraArgs)
 	assert.Equal(t, map[agent.ID][]string{}, got.Prompts[2].ExtraArgs)
 
-	data, err := encodeBundle(got)
+	data, err := EncodeBundle(got)
 	require.NoError(t, err)
 	assert.NotContains(t, string(data), `"model"`, "the file is written as version 2")
 	assert.Contains(t, string(data), `"models": {`)
@@ -885,8 +892,9 @@ func TestImportEntriesHoldNoNullLists(t *testing.T) {
 
 	s, _, _ := keeping(t)
 
-	data, err := json.Marshal(preview(t, s, bundleOf(BundlePrompt{Name: "x", Nickname: "x", AppliesTo: AppliesToAny, Body: "{{.URL}}"})))
+	data, err := json.Marshal(previewAll(t, s, bundleOf(BundlePrompt{Name: "x", Nickname: "x", AppliesTo: AppliesToAny, Body: "{{.URL}}"})))
 	require.NoError(t, err)
+	assert.Contains(t, string(data), `"defaults":[]`)
 	assert.Contains(t, string(data), `"notes":[]`)
 	assert.Contains(t, string(data), `"extraArgs":{}`)
 	assert.Contains(t, string(data), `"models":{}`)

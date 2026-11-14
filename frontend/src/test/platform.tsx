@@ -20,6 +20,8 @@ import {
   toolVersions,
   agents,
   appInfo,
+  backupImported,
+  backupPreview,
   branchStatus,
   budgetGauge,
   checkResult,
@@ -31,7 +33,7 @@ import {
   hookChecksResult,
   hookInstallAll,
   hooksList,
-  importEntry,
+  importPreview,
   installResult,
   integrationsConfig,
   issue,
@@ -84,8 +86,11 @@ type Loose<F> = F extends (...args: infer A) => real.CancellablePromise<infer R>
 
 // FakePlatform is the platform with every function a mock of its Loose form, so a test
 // that calls one with the wrong arguments, answers for one with the wrong value, or reads
-// its calls (mock.calls, mock.lastCall) as the wrong types does not compile.
-export type FakePlatform = { [K in keyof Platform]: Mock<Loose<Platform[K]>> }
+// its calls (mock.calls, mock.lastCall) as the wrong types does not compile. A value the
+// platform hands out as it is, such as a generated constant, stays that value.
+export type FakePlatform = {
+  [K in keyof Platform]: Platform[K] extends (...args: never[]) => unknown ? Mock<Loose<Platform[K]>> : Platform[K]
+}
 
 // WindowEvent names an event the shell sends the window, and EventData is what it carries.
 type WindowEvent = Parameters<Platform['on']>[0]
@@ -192,10 +197,18 @@ function answers(subscribe: Loose<Platform['on']>): { [K in keyof Platform]: Loo
     getDefaultPrompts: () => Promise.resolve(defaultPrompts()),
     setDefaultPrompt: done,
     setReplyDefault: done,
-    exportPrompts: (_path, ids) => Promise.resolve(ids === null || ids.length === 0 ? prompts().length : ids.length),
+    exportPrompts: (_path, ids) =>
+      Promise.resolve({ prompts: ids === null || ids.length === 0 ? prompts().length : ids.length, replies: 0 }),
     listPromptBackups: () => Promise.resolve([promptBackup()]),
-    previewPromptImport: () => Promise.resolve([importEntry()]),
-    importPrompts: (chosen) => Promise.resolve({ added: chosen?.length ?? 0, replaced: 0, skipped: 0, first: 9 }),
+    previewPromptImport: () => Promise.resolve(importPreview()),
+    importPrompts: (chosen) =>
+      Promise.resolve({ added: chosen?.length ?? 0, replaced: 0, skipped: 0, defaults: 0, first: 9 }),
+
+    BackupMode: { ModeMerge: 'combine', ModeReplace: 'replace' },
+    exportBackup: (path, sections) =>
+      Promise.resolve({ path, sections: (sections ?? []).map((section) => ({ section, items: 3 })) }),
+    previewBackup: (path) => Promise.resolve(backupPreview({ path })),
+    importBackup: (req) => Promise.resolve(backupImported(req.sections ?? [])),
     chooseFileToOpen: () => Promise.resolve(''),
     chooseFolder: () => Promise.resolve(''),
     chooseFileToSave: () => Promise.resolve(''),
@@ -387,11 +400,15 @@ export function createPlatform() {
     }
   }
 
-  // Each function is a mock whose default, which mockReset returns it to, is its answer.
-  // Object.fromEntries keys them by string, so the cast goes through unknown: comparing
-  // its union of every answer's type with FakePlatform is past what TypeScript compares.
+  // Each function is a mock whose default, which mockReset returns it to, is its answer;
+  // a value stays as it is. Object.fromEntries keys them by string, so the cast goes
+  // through unknown: comparing its union of every answer's type with FakePlatform is past
+  // what TypeScript compares.
   const platform = Object.fromEntries(
-    Object.entries(answers(subscribe)).map(([name, answer]) => [name, vi.fn(answer)]),
+    Object.entries(answers(subscribe)).map(([name, answer]) => [
+      name,
+      typeof answer === 'function' ? vi.fn(answer as (...args: unknown[]) => unknown) : answer,
+    ]),
   ) as unknown as FakePlatform
 
   // emit sends an event as the shell would: every listener subscribed for it now gets its
@@ -422,6 +439,14 @@ export function createPlatform() {
 
 // The test file's fake, the one its vi.mock line installs.
 export const { platform, emit, listening } = createPlatform()
+
+// mocks lists the fake's functions by name, for a test that reads every call made, leaving
+// out the values the platform hands out as they are.
+export function mocks(): [string, Mock][] {
+  return Object.entries(platform).flatMap(([name, value]: [string, unknown]) =>
+    vi.isMockFunction(value) ? [[name, value] as [string, Mock]] : [],
+  )
+}
 
 export interface RenderAppOptions {
   // now is the time the window's clock stands at, or a function it reads the time from;

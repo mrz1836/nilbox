@@ -1,6 +1,7 @@
 package prompts
 
 import (
+	"cmp"
 	"context"
 	"database/sql"
 	"fmt"
@@ -80,6 +81,10 @@ type ImportResult struct {
 	Replaced int `json:"replaced"`
 	Skipped  int `json:"skipped"`
 
+	// Defaults counts the library's defaults the import changed: its default prompts and
+	// its default replies.
+	Defaults int `json:"defaults"`
+
 	// First is the ID of the first prompt added or saved over, for the window to open, or 0
 	// when there was none.
 	First int64 `json:"first"`
@@ -91,6 +96,9 @@ type planned struct {
 
 	// target is the ID of the prompt it is saved over, for ImportReplace.
 	target int64
+
+	// held is the ID of the prompt that already holds it, for ImportSkip.
+	held int64
 
 	// keepStarter says whether it is stored with its starter key: a library holds one
 	// prompt per starter, so a second one is stored as the user's own.
@@ -145,7 +153,7 @@ func (pl *planner) plan(in BundlePrompt) planned {
 
 	if !pl.faithful {
 		if held, ok := pl.holding(p); ok {
-			e.Outcome, e.Nickname = ImportSkip, held.Nickname
+			e.Outcome, e.Nickname, e.held = ImportSkip, held.Nickname, held.ID
 
 			return e
 		}
@@ -452,18 +460,23 @@ func bundledAsPrompt(p BundlePrompt) Prompt {
 
 // importInto plans prompts against the library st holds and stores them, inside the
 // transaction st is joined to. Starters it stores are recorded as added, so Seed never
-// adds them again.
-func importInto(ctx context.Context, st *Store, prompts []BundlePrompt, usage map[int64]Usage) (ImportResult, error) {
+// adds them again. It returns, beside what it did, the ID each nickname among prompts
+// ended up under: the prompt added or saved over, or the one that already held it, the
+// first where two share a nickname, for what names the prompts by nickname, such as
+// their defaults.
+func importInto(ctx context.Context, st *Store, prompts []BundlePrompt, usage map[int64]Usage,
+) (ImportResult, map[string]int64, error) {
 	lib, err := st.All(ctx)
 	if err != nil {
-		return ImportResult{}, err
+		return ImportResult{}, nil, err
 	}
 
 	pl := newPlanner(lib, usage)
 
 	var (
-		res  ImportResult
-		keys []string
+		res   ImportResult
+		keys  []string
+		links = map[string]int64{}
 	)
 
 	for _, in := range prompts {
@@ -471,30 +484,39 @@ func importInto(ctx context.Context, st *Store, prompts []BundlePrompt, usage ma
 
 		id, storeErr := storePlanned(ctx, st, e)
 		if storeErr != nil {
-			return ImportResult{}, storeErr
+			return ImportResult{}, nil, storeErr
 		}
 
-		switch e.Outcome {
-		case ImportSkip:
-			res.Skipped++
-
-			continue
-		case ImportReplace:
-			res.Replaced++
-		case ImportAdd, ImportRename:
-			res.Added++
+		if _, seen := links[in.Nickname]; !seen {
+			links[in.Nickname] = cmp.Or(id, e.held)
 		}
 
-		if res.First == 0 {
-			res.First = id
-		}
-
-		if e.keepStarter {
+		if res.tally(e, id) && e.keepStarter {
 			keys = append(keys, e.Prompt.StarterKey)
 		}
 	}
 
-	return res, recordStarters(ctx, st, keys)
+	return res, links, recordStarters(ctx, st, keys)
+}
+
+// tally counts e, stored under id, and reports whether it was stored rather than skipped.
+func (r *ImportResult) tally(e planned, id int64) bool {
+	switch e.Outcome {
+	case ImportSkip:
+		r.Skipped++
+
+		return false
+	case ImportReplace:
+		r.Replaced++
+	case ImportAdd, ImportRename:
+		r.Added++
+	}
+
+	if r.First == 0 {
+		r.First = id
+	}
+
+	return true
 }
 
 // storePlanned stores one planned prompt and returns its ID, or 0 for one skipped.

@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/mrz1836/nilbox/internal/agent"
 	"github.com/mrz1836/nilbox/internal/appdata"
@@ -129,23 +130,47 @@ func (f *File) Save(ctx context.Context, st *Store, library PromptLookup) error 
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
-	all, err := st.All(ctx)
+	kept, err := keepAll(ctx, st, library)
 	if err != nil {
 		return err
 	}
 
-	doc := keptFile{
-		Format: KeptFormat, Version: KeptVersion, SavedAt: clock.Format(f.clock.Now()), App: f.app,
-		Defaults: make([]Kept, 0, len(all)),
+	data, err := EncodeKept(kept, f.app, f.clock.Now())
+	if err != nil {
+		return err
 	}
+
+	return appdata.WriteFile(f.path, data)
+}
+
+// keepAll returns every stored launch default st holds as Kept, naming each default prompt
+// by its nickname in library.
+func keepAll(ctx context.Context, st *Store, library PromptLookup) ([]Kept, error) {
+	all, err := st.All(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	out := make([]Kept, 0, len(all))
 
 	for _, d := range all {
 		k, keepErr := keep(ctx, d, library)
 		if keepErr != nil {
-			return keepErr
+			return nil, keepErr
 		}
 
-		doc.Defaults = append(doc.Defaults, k)
+		out = append(out, k)
+	}
+
+	return out, nil
+}
+
+// EncodeKept writes kept in the format of the launch defaults' copy, saved at now by the
+// app version app, as indented JSON ending in a newline.
+func EncodeKept(kept []Kept, app string, now time.Time) ([]byte, error) {
+	doc := keptFile{
+		Format: KeptFormat, Version: KeptVersion, SavedAt: clock.Format(now), App: app,
+		Defaults: append(make([]Kept, 0, len(kept)), kept...),
 	}
 
 	var buf bytes.Buffer
@@ -154,11 +179,11 @@ func (f *File) Save(ctx context.Context, st *Store, library PromptLookup) error 
 	enc.SetEscapeHTML(false)
 	enc.SetIndent("", "  ")
 
-	if err = enc.Encode(doc); err != nil {
-		return fmt.Errorf("write the launch defaults: %w", err)
+	if err := enc.Encode(doc); err != nil {
+		return nil, fmt.Errorf("write the launch defaults: %w", err)
 	}
 
-	return appdata.WriteFile(f.path, buf.Bytes())
+	return buf.Bytes(), nil
 }
 
 // Load reads the file. A file that is not there is an error matching fs.ErrNotExist. Its
@@ -169,8 +194,18 @@ func (f *File) Load() ([]Kept, error) {
 		return nil, err
 	}
 
+	return DecodeKept(data)
+}
+
+// DecodeKept reads launch defaults in the format of their copy, of any version this build
+// reads. Its lists are never nil.
+func DecodeKept(data []byte) ([]Kept, error) {
+	if len(data) > maxKeptBytes {
+		return nil, fmt.Errorf("%w: it is too large", ErrNotKept)
+	}
+
 	var doc keptHeader
-	if err = json.Unmarshal(data, &doc); err != nil {
+	if err := json.Unmarshal(data, &doc); err != nil {
 		return nil, fmt.Errorf("%w: %w", ErrNotKept, err)
 	}
 
@@ -386,6 +421,12 @@ type restoring struct {
 // restorable returns kept defaults as this build would store them, and whether there is
 // anything to store: a row for a valid org or repository that sets something.
 func restorable(k Kept, promptID func(nickname string) (int64, bool)) (restoring, bool) {
+	return restorableWith(k, idFor(k.PRPrompt, promptID), idFor(k.IssuePrompt, promptID))
+}
+
+// restorableWith returns kept defaults as restorable does, with the default prompts pr and
+// issue, each nil to inherit.
+func restorableWith(k Kept, pr, issue *int64) (restoring, bool) {
 	in := Input{
 		Owner: strings.TrimSpace(k.Owner), Name: strings.TrimSpace(k.Name),
 		Agent: agent.ID(strings.TrimSpace(string(k.Agent))), Effort: strings.TrimSpace(k.Effort),
@@ -408,8 +449,7 @@ func restorable(k Kept, promptID func(nickname string) (int64, bool)) (restoring
 
 	in.Profiles, checked = restorableAgents(k)
 	in.Models, in.ExtraFlags = checked.Models, agent.JoinArgs(checked.Args)
-	in.PRPromptID = idFor(k.PRPrompt, promptID)
-	in.IssuePromptID = idFor(k.IssuePrompt, promptID)
+	in.PRPromptID, in.IssuePromptID = pr, issue
 
 	return restoring{input: in, checked: checked}, !in.Empty()
 }

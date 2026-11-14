@@ -42,6 +42,21 @@ func (s *Service) SetMenuBar(ctx context.Context, on bool) (Settings, error) {
 	return out, nil
 }
 
+// checkBannersOff refuses a list of the kinds whose banners are off that names one this
+// build doesn't know, and returns the writes of both banner keys, which together say of
+// every kind whether its banners are off.
+func checkBannersOff(kinds []notifyprefs.Kind) (map[string]string, error) {
+	for _, kind := range kinds {
+		if !kind.Valid() {
+			return nil, fmt.Errorf("%w %q", notifyprefs.ErrUnknownKind, kind)
+		}
+	}
+
+	storedOff, storedOn := notifyprefs.EncodeBanners(kinds)
+
+	return map[string]string{notifyprefs.KeyBannersOff: storedOff, notifyprefs.KeyBannersOn: storedOn}, nil
+}
+
 // SetNotificationBanner turns the banners of one kind of notification on or off (see the
 // notify package for the kinds), and returns the settings with it. The notification
 // history keeps every kind either way.

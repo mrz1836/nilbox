@@ -261,9 +261,10 @@ func decodeBundleArgs(raw json.RawMessage) (map[agent.ID][]string, error) {
 	}
 }
 
-// encodeBundle writes b as indented JSON ending in a newline. Characters HTML treats
+// EncodeBundle writes b as indented JSON ending in a newline, as Export and the library
+// file write it. Characters HTML treats
 // specially stay as they are, so a prompt's text reads in the file as it was written.
-func encodeBundle(b Bundle) ([]byte, error) {
+func EncodeBundle(b Bundle) ([]byte, error) {
 	var buf bytes.Buffer
 
 	enc := json.NewEncoder(&buf)

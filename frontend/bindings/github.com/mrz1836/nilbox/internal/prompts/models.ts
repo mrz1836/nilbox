@@ -87,6 +87,21 @@ export const BackupKind = {
 } as const;
 
 /**
+ * BundleDefaults names the app's default prompt for each kind of item by nickname; ""
+ * where none of the file's prompts is the default.
+ */
+export interface BundleDefaults {
+    "pr": string;
+    "issue": string;
+
+    /**
+     * Replies names the default reply for each slot by nickname, leaving out a slot whose
+     * default is none of the file's prompts.
+     */
+    "replies"?: { [_ in ReplySlot]?: string } | null;
+}
+
+/**
  * BundlePrompt is one prompt in portable form: its text, its names, and its launch
  * settings, as the library stores them.
  */
@@ -224,6 +239,35 @@ export interface CheckResult {
 }
 
 /**
+ * DefaultOffer is one of a source's defaults that importing its prompt would make the
+ * library's, as the import dialog offers it.
+ */
+export interface DefaultOffer {
+    /**
+     * Slot is the default.
+     */
+    "slot": DefaultSlot;
+
+    /**
+     * Nickname is the name the source's default will have in the library: the name it is
+     * saved under, after a rename, or the name of the prompt that already holds it, when it
+     * is skipped.
+     */
+    "nickname": string;
+
+    /**
+     * Current is the nickname of the slot's default now, or "" for none.
+     */
+    "current": string;
+
+    /**
+     * Entry is the index, among the preview's entries, of the prompt the offer depends on:
+     * unticked, it is not imported, and neither is the offer.
+     */
+    "entry": number;
+}
+
+/**
  * DefaultPrompts are the app's default prompt for each kind of item, 0 when no prompt
  * applies to that kind, and its default replies.
  */
@@ -236,6 +280,27 @@ export interface DefaultPrompts {
      */
     "replies": ReplyDefaults;
 }
+
+/**
+ * DefaultSlot names one of the library's defaults: the default prompt for pull requests or
+ * for issues, or one of the default replies, under its ReplySlot's name.
+ */
+export type DefaultSlot = "pr" | "issue" | "approve" | "approve_bots" | "request_changes" | "comment";
+
+/**
+ * The values of DefaultSlot, by the names of their Go constants.
+ */
+export const DefaultSlot = {
+    /**
+     * The library's defaults.
+     */
+    DefaultSlotPR: "pr",
+    DefaultSlotIssue: "issue",
+    DefaultSlotApprove: "approve",
+    DefaultSlotApproveBots: "approve_bots",
+    DefaultSlotRequestChanges: "request_changes",
+    DefaultSlotComment: "comment",
+} as const;
 
 /**
  * Diagnostic is one problem in a prompt's text, placed for the editor. Line and Column
@@ -252,6 +317,17 @@ export interface Diagnostic {
      * Message is a sentence saying what is wrong and how to fix it.
      */
     "message": string;
+}
+
+/**
+ * ExportResult says what Export wrote.
+ */
+export interface ExportResult {
+    /**
+     * Prompts counts the agent prompts written, and Replies the review replies.
+     */
+    "prompts": number;
+    "replies": number;
 }
 
 /**
@@ -322,6 +398,23 @@ export const ImportOutcome = {
 } as const;
 
 /**
+ * ImportPreview is what importing a source would do: each prompt it holds, and each of the
+ * source's defaults that importing could make the library's.
+ */
+export interface ImportPreview {
+    /**
+     * Entries are the source's prompts, in its order, each with what importing it would do.
+     */
+    "entries": ImportEntry[] | null;
+
+    /**
+     * Defaults are the source's defaults that importing would change here, each offered
+     * only where its prompt fits the slot (see DefaultOffer).
+     */
+    "defaults": DefaultOffer[] | null;
+}
+
+/**
  * ImportResult says what Import did.
  */
 export interface ImportResult {
@@ -332,6 +425,12 @@ export interface ImportResult {
     "added": number;
     "replaced": number;
     "skipped": number;
+
+    /**
+     * Defaults counts the library's defaults the import changed: its default prompts and
+     * its default replies.
+     */
+    "defaults": number;
 
     /**
      * First is the ID of the first prompt added or saved over, for the window to open, or 0

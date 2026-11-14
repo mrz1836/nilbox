@@ -70,24 +70,27 @@ export function Duplicate(id: number): $CancellablePromise<$models.Prompt> {
 
 /**
  * Export writes the prompts with ids, or every prompt when ids is empty, to a prompt file
- * at path, replacing any file there, and returns how many it wrote. A whole library is
- * written with the app's default prompts and the record of the starters it was given, so
- * importing it on another Mac, or restoring it here, brings back the library as it was.
+ * at path, replacing any file there, and returns how many agent prompts and replies it
+ * wrote. A whole library is written with the app's default prompts, its default replies,
+ * and the record of the starters it was given, so importing it on another Mac, or
+ * restoring it here, brings back the library as it was.
  */
-export function Export(path: string, ids: number[] | null): $CancellablePromise<number> {
+export function Export(path: string, ids: number[] | null): $CancellablePromise<$models.ExportResult> {
     return $Call.ByID(1946062737, path, ids);
 }
 
 /**
  * Import adds prompts to the library, as PreviewImport said it would, all of them or,
- * when a write fails, none. It never changes a prompt the user wrote or edited: a prompt
- * the library already holds is skipped, one whose nickname is taken is added under a free
- * one, and only a starter still as the app added it is saved over, by the user's own
- * version of that starter. A text with problems is imported for the user to fix, and a
- * setting this build would refuse is left out.
+ * when a write fails, none, and makes the prompts defaults names, by their nicknames among
+ * prompts, the library's defaults, each where it fits the slot. It never changes a prompt
+ * the user wrote or edited: a prompt the library already holds is skipped, one whose
+ * nickname is taken is added under a free one, and only a starter still as the app added
+ * it is saved over, by the user's own version of that starter. A text with problems is
+ * imported for the user to fix, and a setting this build would refuse is left out. A
+ * default whose prompt is not among prompts is left as it is.
  */
-export function Import(prompts: $models.BundlePrompt[] | null): $CancellablePromise<$models.ImportResult> {
-    return $Call.ByID(3210265186, prompts);
+export function Import(prompts: $models.BundlePrompt[] | null, defaults: $models.BundleDefaults): $CancellablePromise<$models.ImportResult> {
+    return $Call.ByID(3210265186, prompts, defaults);
 }
 
 /**
@@ -99,9 +102,10 @@ export function List(): $CancellablePromise<$models.Prompt[] | null> {
 
 /**
  * PreviewImport reads the prompts a source holds and says what importing each one would
- * do, changing nothing.
+ * do, and which of the source's defaults importing could make the library's, changing
+ * nothing.
  */
-export function PreviewImport(source: $models.ImportSource): $CancellablePromise<$models.ImportEntry[] | null> {
+export function PreviewImport(source: $models.ImportSource): $CancellablePromise<$models.ImportPreview> {
     return $Call.ByID(2022656236, source);
 }
 

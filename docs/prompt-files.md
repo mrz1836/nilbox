@@ -4,7 +4,8 @@ A prompt file holds prompts in a portable form, so you can move them between Mac
 or keep them in your own backups. The app writes one when you export prompts, reads one when
 you import, and keeps one beside its database as `prompts.json`, a copy of your whole library
 that it rewrites after every change. How the app uses that copy is in
-[Keeping your prompts](desktop.md#keeping-your-prompts).
+[Keeping your prompts](desktop.md#keeping-your-prompts). A [backup](backup-files.md) of your
+whole setup holds one as its prompts section.
 
 A prompt file is UTF-8 JSON. The app writes every field, so a file you open shows every
 setting a prompt has, and you can edit one by hand.
@@ -99,6 +100,15 @@ Each prompt:
   pull requests; a version of the app from before comment replies for issues reads every reply
   so, which leaves it for pull requests alone rather than misreading it.
   Each change is shown before you import.
+- **The file's defaults are offered, never taken unasked.** An import lists each of the file's
+  `defaults` that would change your library's (the default prompt for pull requests or for
+  issues, or one of the default replies), but only where its prompt fits the slot: an agent
+  prompt that applies to that kind of item, or a reply for that review that applies to pull
+  requests. Each has a box, ticked to start with, and says what it replaces. A default follows
+  its prompt through the import, to the free nickname a prompt is renamed to, or to the prompt
+  your library already holds when it is left out as already there. A default whose prompt you
+  untick isn't imported, and one your library already has isn't offered. In a
+  [backup](backup-files.md), the prompts section takes its defaults as the import's mode says.
 - **Files are at most 8 MB.**
 
 **Import from a file…** also reads a copy of the app's database file, such as a `nilbox.db`

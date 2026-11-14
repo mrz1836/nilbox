@@ -42,3 +42,8 @@ RETURNING id, owner, name, agent, pr_prompt_id, issue_prompt_id, effort, plan_mo
 -- DeleteLaunchDefaults removes an org's (name '') or a repository's launch defaults,
 -- matching the owner and name ignoring case. No row changes when none are stored.
 DELETE FROM launch_defaults WHERE owner = ? AND name = ?;
+
+-- name: DeleteAllLaunchDefaults :exec
+-- DeleteAllLaunchDefaults removes every org's and repository's launch defaults, as an
+-- import that replaces them does first.
+DELETE FROM launch_defaults;

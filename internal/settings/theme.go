@@ -71,11 +71,12 @@ func (s *Service) Theme(ctx context.Context) (Theme, error) {
 // returns the settings with it. Once it is stored, an event.ThemeChanged is emitted, so
 // the desktop shell brings the window's native appearance along with it.
 func (s *Service) SetTheme(ctx context.Context, theme Theme) (Settings, error) {
-	if err := themes().check(theme); err != nil {
+	values, err := checkTheme(theme)
+	if err != nil {
 		return Settings{}, err
 	}
 
-	out, err := s.save(ctx, setting(KeyTheme, string(theme)))
+	out, err := s.save(ctx, setMany(values, ""))
 	if err != nil {
 		return Settings{}, err
 	}
@@ -83,4 +84,13 @@ func (s *Service) SetTheme(ctx context.Context, theme Theme) (Settings, error) {
 	s.events.Emit(event.ThemeChanged{Theme: string(theme)})
 
 	return out, nil
+}
+
+// checkTheme refuses a theme that is not one of the choices, and returns its write.
+func checkTheme(theme Theme) (map[string]string, error) {
+	if err := themes().check(theme); err != nil {
+		return nil, err
+	}
+
+	return map[string]string{KeyTheme: string(theme)}, nil
 }

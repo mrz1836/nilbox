@@ -388,7 +388,7 @@ func TestImportReadsAnOlderFileAsAgentPrompts(t *testing.T) {
 	require.NoError(t, err)
 
 	s, _ := empty(t, nil)
-	_, err = s.Import(t.Context(), b.Prompts)
+	_, err = s.Import(t.Context(), b.Prompts, b.Defaults)
 	require.NoError(t, err)
 
 	old := byNickname(t, s, "Old")

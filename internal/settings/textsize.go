@@ -78,11 +78,12 @@ func (s *Service) TextSize(ctx context.Context) (TextSize, error) {
 // once it is stored, an event.TextSizeChanged is emitted, so the desktop shell sets the
 // window's smallest size to suit it.
 func (s *Service) SetTextSize(ctx context.Context, size TextSize) (Settings, error) {
-	if err := textSizes().check(size); err != nil {
+	values, err := checkTextSize(size)
+	if err != nil {
 		return Settings{}, err
 	}
 
-	out, err := s.save(ctx, setting(KeyTextSize, string(size)))
+	out, err := s.save(ctx, setMany(values, ""))
 	if err != nil {
 		return Settings{}, err
 	}
@@ -90,4 +91,14 @@ func (s *Service) SetTextSize(ctx context.Context, size TextSize) (Settings, err
 	s.events.Emit(event.TextSizeChanged{Size: string(size)})
 
 	return out, nil
+}
+
+// checkTextSize refuses a text size that is not one of the choices, and returns its
+// write.
+func checkTextSize(size TextSize) (map[string]string, error) {
+	if err := textSizes().check(size); err != nil {
+		return nil, err
+	}
+
+	return map[string]string{KeyTextSize: string(size)}, nil
 }

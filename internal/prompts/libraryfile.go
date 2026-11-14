@@ -9,7 +9,6 @@ import (
 
 	"github.com/mrz1836/nilbox/internal/appdata"
 	"github.com/mrz1836/nilbox/internal/clock"
-	"github.com/mrz1836/nilbox/internal/item"
 )
 
 // LibraryFile is the copy of the prompt library the app keeps in a plain file beside its
@@ -54,7 +53,7 @@ func (f *LibraryFile) Save(ctx context.Context, st *Store) error {
 		return err
 	}
 
-	data, err := encodeBundle(newBundle(lib, added, nil, f.clock.Now(), f.app))
+	data, err := EncodeBundle(newBundle(lib, added, nil, f.clock.Now(), f.app))
 	if err != nil {
 		return err
 	}
@@ -152,7 +151,9 @@ func restoreBundle(ctx context.Context, st *Store, b Bundle, from string) (Resto
 			return err
 		}
 
-		return restoreDefaults(ctx, tx, b.Defaults, ids)
+		_, err = restoreDefaults(ctx, tx, b.Defaults, ids)
+
+		return err
 	})
 	if err != nil {
 		return Restored{}, fmt.Errorf("restore the prompts: %w", err)
@@ -194,45 +195,63 @@ func restorePrompts(ctx context.Context, st *Store, b Bundle) (map[string]int64,
 
 // restoreDefaults makes the prompts defaults names, by their nicknames in the file, the
 // app's default prompts again, each where it is an agent prompt for the kind, and the
-// replies it names the default replies again, each where it fits the slot.
-func restoreDefaults(ctx context.Context, st *Store, defaults BundleDefaults, ids map[string]int64) error {
-	for kind, nickname := range map[item.Kind]string{item.KindPR: defaults.PR, item.KindIssue: defaults.Issue} {
-		p, ok, err := restoredPrompt(ctx, st, ids, nickname)
-		if err != nil {
-			return err
-		}
+// replies it names the default replies again, each where it fits the slot (see
+// DefaultSlot.takes). ids maps each nickname to the prompt it stands for here. It returns
+// how many of the library's defaults that changed.
+func restoreDefaults(ctx context.Context, st *Store, defaults BundleDefaults, ids map[string]int64) (int, error) {
+	before, err := st.Defaults(ctx)
+	if err != nil {
+		return 0, err
+	}
 
-		if !ok || p.IsReply() || !p.AppliesTo.Covers(kind) {
+	changed := 0
+
+	for _, slot := range DefaultSlots() {
+		p, ok, findErr := fittingPrompt(ctx, st, ids, slot, defaults.For(slot))
+
+		switch {
+		case findErr != nil:
+			return 0, findErr
+		case !ok:
 			continue
 		}
 
-		if err = st.setDefault(ctx, kind, p.ID); err != nil {
-			return err
+		if err = setSlot(ctx, st, slot, p.ID); err != nil {
+			return 0, err
+		}
+
+		if before.Slot(slot) != p.ID {
+			changed++
 		}
 	}
 
-	return restoreReplies(ctx, st, defaults, ids)
+	return changed, nil
 }
 
-// restoreReplies makes the replies defaults names the default replies again, each where
-// it fits the slot.
-func restoreReplies(ctx context.Context, st *Store, defaults BundleDefaults, ids map[string]int64) error {
-	for _, slot := range ReplySlots() {
-		p, ok, err := restoredPrompt(ctx, st, ids, defaults.Replies[slot])
-		if err != nil {
-			return err
-		}
-
-		if !ok || !slot.fits(p) {
-			continue
-		}
-
-		if err = st.setReplyDefault(ctx, slot, p.ID); err != nil {
-			return err
-		}
+// fittingPrompt returns the prompt restored under nickname, when there is one and it fits
+// slot (see DefaultSlot.takes), and whether it does.
+func fittingPrompt(ctx context.Context, st *Store, ids map[string]int64, slot DefaultSlot, nickname string,
+) (Prompt, bool, error) {
+	p, ok, err := restoredPrompt(ctx, st, ids, nickname)
+	if err != nil || !ok || !slot.takes(p.Purpose, p.ReplyAction, p.AppliesTo) {
+		return Prompt{}, false, err
 	}
 
-	return nil
+	return p, true, nil
+}
+
+// setSlot stores id as slot's default; 0 leaves a reply slot with none, and a kind's
+// default to fall back to the first prompt that applies.
+func setSlot(ctx context.Context, st *Store, slot DefaultSlot, id int64) error {
+	if kind, ok := slot.kind(); ok {
+		if id == 0 {
+			return st.prefs.Delete(ctx, defaultPrefKey(kind))
+		}
+
+		return st.setDefault(ctx, kind, id)
+	}
+
+	return st.setReplyDefault(ctx, ReplySlot(slot), id)
 }
 
 // restoredPrompt returns the prompt restored under nickname, and whether there is one.

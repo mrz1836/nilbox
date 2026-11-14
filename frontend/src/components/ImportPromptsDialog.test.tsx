@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 
 import { brand } from '../generated/brand'
-import { agents, bundlePrompt, importEntry, promptBackup } from '../test/fixtures'
+import { agents, bundlePrompt, defaultOffer, importEntry, importPreview, promptBackup } from '../test/fixtures'
 import { platform } from '../test/platform'
 import { ImportPromptsDialog, type ImportStart } from './ImportPromptsDialog'
 
@@ -60,7 +60,7 @@ function renderDialog(start: ImportStart) {
 
 describe('ImportPromptsDialog', () => {
   it('shows what importing each prompt in a file would do', async () => {
-    platform.previewPromptImport.mockResolvedValue(entries())
+    platform.previewPromptImport.mockResolvedValue(importPreview({ entries: entries() }))
     renderDialog(file)
 
     expect(screen.getByRole('heading', { name: 'Import prompts from “shared prompts.json”' })).toBeInTheDocument()
@@ -93,20 +93,24 @@ describe('ImportPromptsDialog', () => {
 
   it('imports the prompts left chosen', async () => {
     const all = entries()
-    platform.previewPromptImport.mockResolvedValue(all)
-    platform.importPrompts.mockResolvedValue({ added: 1, replaced: 1, skipped: 0, first: 4 })
+    platform.previewPromptImport.mockResolvedValue(importPreview({ entries: all }))
+    platform.importPrompts.mockResolvedValue({ added: 1, replaced: 1, skipped: 0, defaults: 0, first: 4 })
     const { onImported } = renderDialog(file)
 
     const list = within(await screen.findByRole('list', { name: 'Prompts' }))
     await userEvent.click(list.getAllByRole('checkbox')[1] as HTMLElement)
     await userEvent.click(screen.getByRole('button', { name: 'Import 2 prompts' }))
 
-    expect(platform.importPrompts).toHaveBeenCalledWith([all[0]?.prompt, all[2]?.prompt])
-    expect(onImported).toHaveBeenCalledWith({ added: 1, replaced: 1, skipped: 0, first: 4 })
+    expect(platform.importPrompts).toHaveBeenCalledWith([all[0]?.prompt, all[2]?.prompt], {
+      pr: '',
+      issue: '',
+      replies: {},
+    })
+    expect(onImported).toHaveBeenCalledWith({ added: 1, replaced: 1, skipped: 0, defaults: 0, first: 4 })
   })
 
   it('has nothing to import when the library holds everything', async () => {
-    platform.previewPromptImport.mockResolvedValue([importEntry({ outcome: 'skip' })])
+    platform.previewPromptImport.mockResolvedValue(importPreview({ entries: [importEntry({ outcome: 'skip' })] }))
     renderDialog(file)
 
     expect(await screen.findByText('Everything in it is already in your library.')).toBeInTheDocument()
@@ -123,7 +127,7 @@ describe('ImportPromptsDialog', () => {
   })
 
   it('keeps the dialog open and says why an import failed', async () => {
-    platform.previewPromptImport.mockResolvedValue([importEntry()])
+    platform.previewPromptImport.mockResolvedValue(importPreview({ entries: [importEntry()] }))
     platform.importPrompts.mockRejectedValue(new Error('the disk is full'))
     const { onImported } = renderDialog(file)
 
@@ -139,7 +143,7 @@ describe('ImportPromptsDialog', () => {
       promptBackup(),
       promptBackup({ path: '/data/app.db.backup-x', kind: 'update', error: 'the file is damaged', prompts: 0, new: 0 }),
     ])
-    platform.previewPromptImport.mockResolvedValue([importEntry()])
+    platform.previewPromptImport.mockResolvedValue(importPreview({ entries: [importEntry()] }))
     const { onImported } = renderDialog({ kind: 'backups' })
 
     expect(screen.getByRole('heading', { name: 'Restore prompts from a backup' })).toBeInTheDocument()
@@ -198,7 +202,9 @@ describe('ImportPromptsDialog', () => {
   })
 
   it('puts a prompt back after leaving it out', async () => {
-    platform.previewPromptImport.mockResolvedValue([importEntry(), importEntry({ nickname: 'Other' })])
+    platform.previewPromptImport.mockResolvedValue(
+      importPreview({ entries: [importEntry(), importEntry({ nickname: 'Other' })] }),
+    )
     renderDialog(file)
 
     const box = (await screen.findAllByRole('checkbox'))[0] as HTMLElement
@@ -210,20 +216,24 @@ describe('ImportPromptsDialog', () => {
   })
 
   it('says when a file holds no prompts', async () => {
-    platform.previewPromptImport.mockResolvedValue([])
+    platform.previewPromptImport.mockResolvedValue(importPreview({ entries: [] }))
     renderDialog(file)
 
     expect(await screen.findByText('There are no prompts in it.')).toBeInTheDocument()
   })
 
   it('names the prompt that already holds an entry, and every setting it turns off', async () => {
-    platform.previewPromptImport.mockResolvedValue([
-      importEntry({
-        prompt: bundlePrompt({ nickname: 'Review (old)', planMode: false, worktree: true }),
-        outcome: 'skip',
-        nickname: 'Review',
+    platform.previewPromptImport.mockResolvedValue(
+      importPreview({
+        entries: [
+          importEntry({
+            prompt: bundlePrompt({ nickname: 'Review (old)', planMode: false, worktree: true }),
+            outcome: 'skip',
+            nickname: 'Review',
+          }),
+        ],
       }),
-    ])
+    )
     renderDialog(file)
 
     const row = (await screen.findAllByRole('listitem'))[0]
@@ -238,5 +248,71 @@ describe('ImportPromptsDialog', () => {
     expect(await screen.findByText('Holds no prompts.')).toBeInTheDocument()
     expect(screen.getByRole('radio')).toBeDisabled()
     expect(screen.getByRole('button', { name: 'Show prompts' })).toBeDisabled()
+  })
+
+  it('offers the file’s defaults, each going with its prompt', async () => {
+    const all = entries()
+    platform.previewPromptImport.mockResolvedValue(
+      importPreview({
+        entries: all,
+        defaults: [
+          defaultOffer({ slot: 'pr', nickname: 'Review (mine)', current: 'Review', entry: 2 }),
+          defaultOffer({ slot: 'approve', nickname: 'Security', current: 'LGTM', entry: 0 }),
+          defaultOffer({ slot: 'comment', nickname: 'Quick look', current: '', entry: 3 }),
+        ],
+      }),
+    )
+    platform.importPrompts.mockResolvedValue({ added: 2, replaced: 1, skipped: 1, defaults: 2, first: 4 })
+    const { onImported } = renderDialog(file)
+
+    const group = within(await screen.findByRole('group', { name: 'Defaults' }))
+    const boxes = group.getAllByRole('checkbox')
+    expect(boxes.map((b) => b.closest('label')?.textContent)).toEqual([
+      'Make “Review (mine)” the default prompt for pull requests (now “Review”)',
+      'Make “Security” the default reply for approvals (now “LGTM”)',
+      'Make “Quick look” the default reply for comments (now none)',
+    ])
+    expect(boxes.map((b) => (b as HTMLInputElement).checked)).toEqual([true, true, true])
+    expect(screen.getByRole('button', { name: 'Import 3 prompts and 3 defaults' })).toBeEnabled()
+
+    // Leaving a prompt out holds its default back with it.
+    const prompts = within(screen.getByRole('list', { name: 'Prompts' }))
+    await userEvent.click(prompts.getAllByRole('checkbox')[0] as HTMLElement)
+    expect(boxes[1]).toBeDisabled()
+    expect(boxes[1]).not.toBeChecked()
+
+    // And leaving a default out keeps the one here.
+    await userEvent.click(boxes[0] as HTMLElement)
+    await userEvent.click(screen.getByRole('button', { name: 'Import 2 prompts and 1 default' }))
+
+    // A prompt the library holds is sent with the default it brings, and skipped again.
+    expect(platform.importPrompts).toHaveBeenCalledWith([all[1]?.prompt, all[2]?.prompt, all[3]?.prompt], {
+      pr: '',
+      issue: '',
+      replies: { comment: 'Quick look' },
+    })
+    expect(onImported).toHaveBeenCalledWith({ added: 2, replaced: 1, skipped: 1, defaults: 2, first: 4 })
+  })
+
+  it('imports a default alone', async () => {
+    const held = [importEntry({ outcome: 'skip', nickname: 'Security' })]
+    platform.previewPromptImport.mockResolvedValue(importPreview({ entries: held, defaults: [defaultOffer()] }))
+    renderDialog(file)
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Import 1 default' }))
+
+    expect(platform.importPrompts).toHaveBeenCalledWith([held[0]?.prompt], {
+      pr: '',
+      issue: '',
+      replies: { approve: 'Security' },
+    })
+  })
+
+  it('shows no defaults when the file offers none', async () => {
+    platform.previewPromptImport.mockResolvedValue(importPreview())
+    renderDialog(file)
+
+    expect(await screen.findByRole('button', { name: 'Import 1 prompt' })).toBeEnabled()
+    expect(screen.queryByRole('group', { name: 'Defaults' })).not.toBeInTheDocument()
   })
 })

@@ -27,6 +27,7 @@ export type SettingsSection =
   | 'trust'
   | 'files'
   | 'integrations'
+  | 'backup'
   | 'about'
 
 // SectionGroup is a run of the sidebar's sections under one heading, or under none when
@@ -39,13 +40,14 @@ export interface SectionGroup {
 // sectionGroups is the sidebar, in the order the app is used: the settings of the whole
 // app, then the inbox's, then the agents' in the order they are set up (where the clones
 // live, the profiles a launch runs with, the launch itself and what it trusts, and the
-// worktrees it leaves behind), then the tools, and About.
+// worktrees it leaves behind), then the tools, and last the setup as a whole, kept in a
+// backup, and About.
 export const sectionGroups: readonly SectionGroup[] = [
   { heading: '', sections: ['account', 'appearance', 'notifications', 'github', 'refreshing'] },
   { heading: 'Inbox', sections: ['snoozing', 'reviewing'] },
   { heading: 'Agents', sections: ['repositories', 'profiles', 'launching', 'trust', 'files', 'worktrees'] },
   { heading: 'Tools', sections: ['integrations'] },
-  { heading: '', sections: ['about'] },
+  { heading: '', sections: ['backup', 'about'] },
 ]
 
 // sectionOrder is the sidebar's order, its headings aside.
@@ -109,6 +111,11 @@ export const sectionInfo: Readonly<Record<SettingsSection, { label: string; desc
   integrations: {
     label: 'Integrations',
     description: `Tools ${brand.name} runs for you: mage-x releases, go-pre-commit hooks, and scripts.`,
+  },
+  backup: {
+    label: 'Back up and restore',
+    description:
+      'Your whole setup in one file: settings, repositories, prompts and replies, launch defaults, and your scripts, to keep or to bring to another Mac.',
   },
   about: { label: 'About', description: '' },
 }
@@ -336,6 +343,20 @@ export const settingsIndex: Readonly<Record<SettingsSection, readonly SettingEnt
     {
       label: 'Offer a release after you merge a pull request',
       keywords: ['release', 'merge', 'after merge', 'toast', 'magex', 'tag', 'version'],
+    },
+  ],
+  backup: [
+    {
+      label: 'Back up your setup',
+      keywords: ['backup', 'export', 'save', 'settings file', 'another Mac', 'new Mac', 'migrate', 'move', 'transfer'],
+    },
+    {
+      label: 'Restore from a backup',
+      keywords: ['import', 'restore', 'merge', 'replace', 'bring back', 'undo', 'before import', 'another Mac'],
+    },
+    {
+      label: 'What a backup never holds',
+      keywords: ['GitHub sign-in', 'token', 'caches', 'history', 'triage', 'script trust', 'privacy', 'left out'],
     },
   ],
   about: [

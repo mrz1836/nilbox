@@ -20,6 +20,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/appdata"
 	"github.com/mrz1836/nilbox/internal/appinfo"
 	"github.com/mrz1836/nilbox/internal/avatars"
+	"github.com/mrz1836/nilbox/internal/backup"
 	"github.com/mrz1836/nilbox/internal/brand"
 	"github.com/mrz1836/nilbox/internal/budget"
 	"github.com/mrz1836/nilbox/internal/clock"
@@ -141,6 +142,7 @@ type Core struct {
 	Hooks          *hooks.Service
 	Scripts        *scripts.Service
 	GHThreads      *ghthreads.Service
+	Backup         *backup.Service
 
 	// ShellSettings are the settings the desktop shell reads when the app launches. They
 	// are not bound.
@@ -293,7 +295,7 @@ func (c *Core) Services() []any {
 	return []any{
 		c.Settings, c.Profiles, c.Prompts, c.LaunchDefaults, c.Inbox, c.Launcher, c.Worktrees, c.Notifications,
 		c.AppInfo, c.Budget, c.Sessions, c.Review, c.Issues, c.Integrations, c.ScriptRuns, c.Release, c.Hooks,
-		c.Scripts, c.GHThreads,
+		c.Scripts, c.GHThreads, c.Backup,
 	}
 }
 
@@ -612,7 +614,7 @@ func assemble(pool *sql.DB, info startup, opts Options, logger *slog.Logger) *Co
 	// The review sheet and the issue sheet read and act through the inbox's one Actor.
 	actor := inbox.NewActor(inboxSvc)
 
-	return &Core{
+	c := &Core{
 		DB:       pool,
 		Settings: prefs,
 		Profiles: profiles.NewService(profileStore, opts.Home, search),
@@ -687,6 +689,11 @@ func assemble(pool *sql.DB, info startup, opts Options, logger *slog.Logger) *Co
 		budgetKeeper:     keeper,
 		dispatcher:       dispatcher,
 	}
+
+	// The backup reaches every category through its owner, so it is built once they are.
+	c.Backup = newBackup(pool, c, promptStore, opts, logger)
+
+	return c
 }
 
 // newRuns builds the engine that starts and follows the runs, over the app's one set of

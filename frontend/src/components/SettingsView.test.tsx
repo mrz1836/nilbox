@@ -167,6 +167,7 @@ describe('SettingsView', () => {
       'Sensitive files',
       'Worktrees',
       'Integrations',
+      'Back up and restore',
       'About',
     ])
     expect(screen.getByRole('button', { name: 'Account' })).toHaveAttribute('aria-current', 'page')
@@ -1245,13 +1246,14 @@ describe('SettingsView escape and trust', () => {
     expect(nav.getAllByRole('group')).toHaveLength(3)
   })
 
-  it('has an Integrations section between Worktrees and About, for the tools it runs', async () => {
+  it('has an Integrations section after Worktrees, for the tools it runs, and Back up and restore before About', async () => {
     renderSettings()
 
     const nav = within(screen.getByRole('navigation', { name: 'Settings sections' }))
     const names = nav.getAllByRole('button').map((b) => b.textContent)
     expect(names.indexOf('Integrations')).toBe(names.indexOf('Worktrees') + 1)
-    expect(names.indexOf('About')).toBe(names.indexOf('Integrations') + 1)
+    expect(names.indexOf('Back up and restore')).toBe(names.indexOf('Integrations') + 1)
+    expect(names.indexOf('About')).toBe(names.indexOf('Back up and restore') + 1)
 
     await openSection('Integrations')
 
@@ -1536,7 +1538,7 @@ describe('SettingsView search', () => {
 
     rerender(<SettingsView {...searchProps('')} />)
 
-    expect(sidebar()).toHaveLength(15)
+    expect(sidebar()).toHaveLength(16)
     expect(sidebar()).toContain('Account')
     expect(screen.getByRole('region', { name: 'Notifications' })).toBeInTheDocument()
     expect(matched()).toEqual([])

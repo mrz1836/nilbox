@@ -10,6 +10,7 @@ import { Browser, Clipboard, Dialogs, Events, Window, type CancellablePromise } 
 import '../../bindings/events'
 import type * as agent from '../../bindings/github.com/mrz1836/nilbox/internal/agent'
 import * as appinfo from '../../bindings/github.com/mrz1836/nilbox/internal/appinfo'
+import * as backup from '../../bindings/github.com/mrz1836/nilbox/internal/backup'
 import * as branchrules from '../../bindings/github.com/mrz1836/nilbox/internal/branchrules'
 import * as budget from '../../bindings/github.com/mrz1836/nilbox/internal/budget'
 import * as ghthreads from '../../bindings/github.com/mrz1836/nilbox/internal/ghthreads'
@@ -329,8 +330,31 @@ export type PromptBackupKind = prompts.BackupKind
 export type BundlePrompt = NonNullLists<prompts.BundlePrompt>
 export type ImportEntry = NonNullLists<prompts.ImportEntry>
 export type ImportOutcome = prompts.ImportOutcome
+export type ImportPreview = NonNullLists<prompts.ImportPreview>
 export type ImportResult = NonNullLists<prompts.ImportResult>
 export type ImportSource = NonNullLists<prompts.ImportSource>
+export type BundleDefaults = NonNullLists<prompts.BundleDefaults>
+export type DefaultOffer = NonNullLists<prompts.DefaultOffer>
+export type DefaultSlot = prompts.DefaultSlot
+export type PromptExport = NonNullLists<prompts.ExportResult>
+
+// A backup of the user's whole setup, in Settings: what one export wrote, what importing
+// one would do under each mode, and what it did. The mode's wire value is Go's, so the
+// window names it by the generated constant's name (BackupMode.ModeMerge), never by its
+// value.
+export type BackupSection = backup.Section
+export type BackupMode = backup.Mode
+export const BackupMode = backup.Mode
+export type BackupChange = backup.Change
+export type BackupCount = NonNullLists<backup.Count>
+export type BackupItem = NonNullLists<backup.Item>
+export type BackupPlan = NonNullLists<backup.Plan>
+export type BackupExported = NonNullLists<backup.Exported>
+export type BackupPreview = NonNullLists<backup.Preview>
+export type BackupSectionPreview = NonNullLists<backup.SectionPreview>
+export type BackupRequest = NonNullLists<backup.Request>
+export type BackupImported = NonNullLists<backup.Imported>
+export type BackupSectionResult = NonNullLists<backup.SectionResult>
 
 export type Review = NonNullLists<review.Review>
 export type ReviewAction = review.Action
@@ -529,6 +553,8 @@ export const {
   PreviewImport: previewPromptImport,
   Import: importPrompts,
 } = narrow(prompts.Service)
+
+export const { Export: exportBackup, Preview: previewBackup, Import: importBackup } = narrow(backup.Service)
 
 export const {
   List: listLaunchDefaults,

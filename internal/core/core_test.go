@@ -213,7 +213,7 @@ func TestServicesListsBoundServices(t *testing.T) {
 	assert.Equal(t, []any{
 		c.Settings, c.Profiles, c.Prompts, c.LaunchDefaults, c.Inbox, c.Launcher, c.Worktrees, c.Notifications,
 		c.AppInfo, c.Budget, c.Sessions, c.Review, c.Issues, c.Integrations, c.ScriptRuns, c.Release, c.Hooks,
-		c.Scripts, c.GHThreads,
+		c.Scripts, c.GHThreads, c.Backup,
 	}, services)
 
 	for _, s := range services {

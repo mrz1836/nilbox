@@ -162,16 +162,12 @@ func (r RefreshIntervals) Every(kind RefreshKind) time.Duration {
 // stored, an event.IntervalsChanged is emitted, so whatever reads kind again works its
 // next wait out from the new interval at once.
 func (s *Service) SetRefreshInterval(ctx context.Context, kind RefreshKind, seconds int) (Settings, error) {
-	spec, ok := specOf(kind)
-	if !ok {
-		return Settings{}, fmt.Errorf("%w: %q", ErrInvalidRefresh, kind)
+	values, err := checkRefresh(kind, seconds)
+	if err != nil {
+		return Settings{}, err
 	}
 
-	if !slices.Contains(spec.choices, seconds) {
-		return Settings{}, fmt.Errorf("%w: %d seconds for %s", ErrInvalidRefresh, seconds, kind)
-	}
-
-	saved, err := s.save(ctx, setting(spec.key, strconv.Itoa(seconds)))
+	saved, err := s.save(ctx, setMany(values, ""))
 	if err != nil {
 		return saved, err
 	}
@@ -179,4 +175,25 @@ func (s *Service) SetRefreshInterval(ctx context.Context, kind RefreshKind, seco
 	s.events.Emit(event.IntervalsChanged{})
 
 	return saved, nil
+}
+
+// checkRefresh refuses a kind this build doesn't know, and an interval that isn't one of
+// its choices, and returns its write.
+func checkRefresh(kind RefreshKind, seconds int) (map[string]string, error) {
+	spec, ok := specOf(kind)
+	if !ok {
+		return nil, fmt.Errorf("%w: %q", ErrInvalidRefresh, kind)
+	}
+
+	if !slices.Contains(spec.choices, seconds) {
+		return nil, fmt.Errorf("%w: %d seconds for %s", ErrInvalidRefresh, seconds, kind)
+	}
+
+	return map[string]string{spec.key: strconv.Itoa(seconds)}, nil
+}
+
+// RefreshKinds returns every kind the app reads again on its own, in the order Settings
+// lists them.
+func RefreshKinds() []RefreshKind {
+	return []RefreshKind{RefreshInbox, RefreshChecks, RefreshWorktrees, RefreshNotifications}
 }

@@ -111,6 +111,7 @@ func TestNewPaths(t *testing.T) {
 	assert.Equal(t, filepath.Join(root, brand.Slug+".db"), p.DB)
 	assert.Equal(t, filepath.Join(root, "prompts.json"), p.Prompts)
 	assert.Equal(t, filepath.Join(root, "launch-defaults.json"), p.LaunchDefaults)
+	assert.Equal(t, filepath.Join(root, "backups"), p.Backups)
 	assert.Equal(t, filepath.Join(root, "launch"), p.Launch)
 	assert.Equal(t, filepath.Join(root, "logs"), p.Logs)
 }

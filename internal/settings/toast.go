@@ -43,10 +43,21 @@ func decodeToastSeconds(stored string) int {
 // MinToastSeconds to MaxToastSeconds, and returns the settings with it. The window reads
 // it from the settings, so the next toast stays that long.
 func (s *Service) SetToastSeconds(ctx context.Context, seconds int) (Settings, error) {
+	values, err := checkToastSeconds(seconds)
+	if err != nil {
+		return Settings{}, err
+	}
+
+	return s.save(ctx, setMany(values, ""))
+}
+
+// checkToastSeconds refuses a toast length outside MinToastSeconds to MaxToastSeconds,
+// and returns its write.
+func checkToastSeconds(seconds int) (map[string]string, error) {
 	if !validToastSeconds(seconds) {
-		return Settings{}, fmt.Errorf("%w: %d seconds; choose %d to %d", ErrInvalidToastSeconds, seconds,
+		return nil, fmt.Errorf("%w: %d seconds; choose %d to %d", ErrInvalidToastSeconds, seconds,
 			MinToastSeconds, MaxToastSeconds)
 	}
 
-	return s.save(ctx, setting(KeyToastSeconds, strconv.Itoa(seconds)))
+	return map[string]string{KeyToastSeconds: strconv.Itoa(seconds)}, nil
 }

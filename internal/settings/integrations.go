@@ -24,16 +24,27 @@ var ErrInvalidToolPath = errors.New("invalid tool path")
 // event.IntegrationsChanged is emitted, so the window hears that the tools' list changed.
 func (s *Service) SetIntegrationEnabled(ctx context.Context, id integrationprefs.ID, state integrationprefs.Switch,
 ) (Settings, error) {
+	values, err := checkIntegrationSwitch(id, state)
+	if err != nil {
+		return Settings{}, err
+	}
+
+	return s.saveIntegrations(ctx, values, event.IntegrationsChanged{})
+}
+
+// checkIntegrationSwitch refuses an integration this build doesn't know and a switch that
+// isn't one, and returns its write.
+func checkIntegrationSwitch(id integrationprefs.ID, state integrationprefs.Switch) (map[string]string, error) {
 	if !id.Valid() {
-		return Settings{}, fmt.Errorf("%w: %q", integrationprefs.ErrUnknownIntegration, id)
+		return nil, fmt.Errorf("%w: %q", integrationprefs.ErrUnknownIntegration, id)
 	}
 
 	stored, err := integrationprefs.EncodeSwitch(state)
 	if err != nil {
-		return Settings{}, fmt.Errorf("%w: %q", err, state)
+		return nil, fmt.Errorf("%w: %q", err, state)
 	}
 
-	return s.saveIntegrations(ctx, integrationprefs.KeyEnabled(id), stored, event.IntegrationsChanged{})
+	return map[string]string{integrationprefs.KeyEnabled(id): stored}, nil
 }
 
 // SetIntegrationPath stores the copy of a tool the user chose, and returns the settings
@@ -41,18 +52,29 @@ func (s *Service) SetIntegrationEnabled(ctx context.Context, id integrationprefs
 // absolute, or "" to use the copy the user's shell finds. Once it is stored, an
 // event.IntegrationsChanged is emitted, so the integrations detect the tools again.
 func (s *Service) SetIntegrationPath(ctx context.Context, id integrationprefs.ID, path string) (Settings, error) {
+	values, err := s.checkIntegrationPath(id, path)
+	if err != nil {
+		return Settings{}, err
+	}
+
+	return s.saveIntegrations(ctx, values, event.IntegrationsChanged{CopyChosen: true})
+}
+
+// checkIntegrationPath refuses an integration that isn't a tool and a path that isn't an
+// executable file, and returns its write.
+func (s *Service) checkIntegrationPath(id integrationprefs.ID, path string) (map[string]string, error) {
 	switch {
 	case !id.Valid():
-		return Settings{}, fmt.Errorf("%w: %q", integrationprefs.ErrUnknownIntegration, id)
+		return nil, fmt.Errorf("%w: %q", integrationprefs.ErrUnknownIntegration, id)
 	case !id.Tool():
-		return Settings{}, fmt.Errorf("%w: %q", integrationprefs.ErrNotATool, id)
+		return nil, fmt.Errorf("%w: %q", integrationprefs.ErrNotATool, id)
 	}
 
 	path = strings.TrimSpace(path)
 	if path != "" {
 		full, err := s.toolPath(path)
 		if err != nil {
-			return Settings{}, err
+			return nil, err
 		}
 
 		path = full
@@ -60,22 +82,32 @@ func (s *Service) SetIntegrationPath(ctx context.Context, id integrationprefs.ID
 
 	stored, err := integrationprefs.EncodePath(path)
 	if err != nil {
-		return Settings{}, fmt.Errorf("%w: %w", ErrInvalidToolPath, err)
+		return nil, fmt.Errorf("%w: %w", ErrInvalidToolPath, err)
 	}
 
-	return s.saveIntegrations(ctx, integrationprefs.KeyPath(id), stored, event.IntegrationsChanged{CopyChosen: true})
+	return map[string]string{integrationprefs.KeyPath(id): stored}, nil
 }
 
 // SetRunsIn stores where the runs go, in the app or in the terminal chosen for launches,
 // and returns the settings with it. Nothing else hears of it: what starts a run (a
 // release, a hooks action, checks, or a script) reads the setting as it starts one.
 func (s *Service) SetRunsIn(ctx context.Context, place integrationprefs.RunsIn) (Settings, error) {
-	stored, err := integrationprefs.EncodeRunsIn(place)
+	values, err := checkRunsIn(place)
 	if err != nil {
-		return Settings{}, fmt.Errorf("%w: %q", err, place)
+		return Settings{}, err
 	}
 
-	return s.save(ctx, setting(integrationprefs.KeyRunsIn, stored))
+	return s.save(ctx, setMany(values, ""))
+}
+
+// checkRunsIn refuses a place runs can't go, and returns its write.
+func checkRunsIn(place integrationprefs.RunsIn) (map[string]string, error) {
+	stored, err := integrationprefs.EncodeRunsIn(place)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %q", err, place)
+	}
+
+	return map[string]string{integrationprefs.KeyRunsIn: stored}, nil
 }
 
 // SetOfferAfterMerge stores whether merging a pull request in the review sheet offers to
@@ -191,10 +223,10 @@ func (s *Service) toolPath(path string) (string, error) {
 	return full, nil
 }
 
-// saveIntegrations stores value under key, and, once it is stored, emits changed.
-func (s *Service) saveIntegrations(ctx context.Context, key, value string, changed event.IntegrationsChanged,
+// saveIntegrations stores values, and, once they are stored, emits changed.
+func (s *Service) saveIntegrations(ctx context.Context, values map[string]string, changed event.IntegrationsChanged,
 ) (Settings, error) {
-	saved, err := s.save(ctx, setting(key, value))
+	saved, err := s.save(ctx, setMany(values, ""))
 	if err != nil {
 		return saved, err
 	}

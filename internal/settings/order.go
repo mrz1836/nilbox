@@ -1,9 +1,11 @@
 package settings
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"unicode/utf8"
 
@@ -182,22 +184,66 @@ func (s *Service) SetListKind(ctx context.Context, section ListKey, kind ListKin
 // case) are left out. An empty order puts every status back where the window would place
 // it.
 func (s *Service) SetStatusOrder(ctx context.Context, order []string) (Settings, error) {
+	values, err := checkStatusOrder(order)
+	if err != nil {
+		return Settings{}, err
+	}
+
+	return s.save(ctx, setMany(values, ""))
+}
+
+// checkStatusOrder refuses a status order that is too long, or holds a name that is, and
+// returns its write, cleaned.
+func checkStatusOrder(order []string) (map[string]string, error) {
 	clean := cleanStatusOrder(order)
 	if len(clean) > maxStatuses {
-		return Settings{}, fmt.Errorf("%w: %d statuses; keep it to %d", ErrInvalidStatusOrder, len(clean), maxStatuses)
+		return nil, fmt.Errorf("%w: %d statuses; keep it to %d", ErrInvalidStatusOrder, len(clean), maxStatuses)
 	}
 
 	for _, name := range clean {
 		if utf8.RuneCountInString(name) > maxStatusLength {
-			return Settings{}, fmt.Errorf("%w: a status name is longer than %d characters", ErrInvalidStatusOrder,
+			return nil, fmt.Errorf("%w: a status name is longer than %d characters", ErrInvalidStatusOrder,
 				maxStatusLength)
 		}
 	}
 
 	encoded, err := store.EncodeJSON(clean)
 	if err != nil {
-		return Settings{}, err
+		return nil, err
 	}
 
-	return s.save(ctx, setting(KeyStatusOrder, encoded))
+	return map[string]string{KeyStatusOrder: encoded}, nil
+}
+
+// checkInboxOrder refuses an inbox order that names a list that isn't one, a kind a list
+// can't show, or a status order SetStatusOrder would refuse, and returns the writes of
+// the whole order: every list's sort and kind, and the status order.
+func checkInboxOrder(order InboxOrder) (map[string]string, error) {
+	values, err := checkStatusOrder(order.StatusOrder)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, list := range order.StatusSorted {
+		if err = sections().check(list); err != nil {
+			return nil, err
+		}
+	}
+
+	for list, kind := range order.Kinds {
+		if err = sections().check(list); err != nil {
+			return nil, err
+		}
+
+		if err = listKinds().check(kind); err != nil {
+			return nil, err
+		}
+	}
+
+	for _, list := range listKeys() {
+		values[statusSortKey(list)] = prefval.EncodeBool(slices.Contains(order.StatusSorted, list))
+		values[listKindKey(list)] = string(cmp.Or(order.Kinds[list], ListKindAll))
+	}
+
+	return values, nil
 }

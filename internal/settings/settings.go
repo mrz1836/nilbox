@@ -343,11 +343,21 @@ func (s *Service) Get(ctx context.Context) (Settings, error) {
 // SetTerminal stores the terminal launches open in, TerminalITerm2 or TerminalApp, and
 // returns the settings with it.
 func (s *Service) SetTerminal(ctx context.Context, id terminal.ID) (Settings, error) {
-	if !validTerminal(id) {
-		return Settings{}, fmt.Errorf("%w %q: choose %q or %q", ErrInvalidTerminal, id, TerminalITerm2, TerminalApp)
+	values, err := checkTerminal(id)
+	if err != nil {
+		return Settings{}, err
 	}
 
-	return s.save(ctx, setting(KeyTerminal, string(id)))
+	return s.save(ctx, setMany(values, ""))
+}
+
+// checkTerminal refuses a terminal that is not one of the choices, and returns its write.
+func checkTerminal(id terminal.ID) (map[string]string, error) {
+	if !validTerminal(id) {
+		return nil, fmt.Errorf("%w %q: choose %q or %q", ErrInvalidTerminal, id, TerminalITerm2, TerminalApp)
+	}
+
+	return map[string]string{KeyTerminal: string(id)}, nil
 }
 
 // FollowSessions returns whether the app follows the agent sessions it launches: the
@@ -392,29 +402,32 @@ func (s *Service) SetCodexFast(ctx context.Context, on bool) (Settings, error) {
 // SetDefaultAgent stores the coding agent launches use when no launch default names one,
 // and returns the settings with it.
 func (s *Service) SetDefaultAgent(ctx context.Context, id agent.ID) (Settings, error) {
-	if !agent.Known(id) {
-		return Settings{}, fmt.Errorf("%w %q", ErrUnknownAgent, id)
+	values, err := checkDefaultAgent(id)
+	if err != nil {
+		return Settings{}, err
 	}
 
-	return s.save(ctx, setting(KeyDefaultAgent, string(id)))
+	return s.save(ctx, setMany(values, ""))
+}
+
+// checkDefaultAgent refuses an agent this build does not know, and returns its write.
+func checkDefaultAgent(id agent.ID) (map[string]string, error) {
+	if !agent.Known(id) {
+		return nil, fmt.Errorf("%w %q", ErrUnknownAgent, id)
+	}
+
+	return map[string]string{KeyDefaultAgent: string(id)}, nil
 }
 
 // SetDefaultProfile stores the agent's profile launches use when no launch default names
 // one, and returns the settings with it. It must name one of the agent's stored profiles.
 func (s *Service) SetDefaultProfile(ctx context.Context, id agent.ID, name string) (Settings, error) {
-	if !agent.Known(id) {
-		return Settings{}, fmt.Errorf("%w %q", ErrUnknownAgent, id)
-	}
-
-	if _, err := s.profiles.Lookup(ctx, id, name); err != nil {
-		if errors.Is(err, profiles.ErrProfileNotFound) {
-			return Settings{}, fmt.Errorf("%w %q", ErrUnknownProfile, name)
-		}
-
+	values, err := s.checkDefaultProfile(ctx, id, name)
+	if err != nil {
 		return Settings{}, err
 	}
 
-	return s.save(ctx, setting(KeyDefaultProfile(id), name))
+	return s.save(ctx, setMany(values, ""))
 }
 
 // KeyDefaultProfile is the key of the agent's default profile, profile.default.<agent>.
@@ -443,36 +456,19 @@ func (s *Service) SetBranchRules(ctx context.Context, rules branchrules.Rules) (
 		return Settings{}, err
 	}
 
-	return s.save(ctx, func(ctx context.Context, p *prefs.Store) error {
-		if err := p.SetMany(ctx, values); err != nil {
-			return fmt.Errorf("save the branch rules: %w", err)
-		}
-
-		return nil
-	})
+	return s.save(ctx, setMany(values, "save the branch rules"))
 }
 
 // SetCloneRoot stores the clone root, and returns the settings with it. It must be an
 // absolute or ~-relative path to an existing directory; it is stored as entered (trimmed
 // and cleaned), so "~/projects" stays portable across machines.
 func (s *Service) SetCloneRoot(ctx context.Context, root string) (Settings, error) {
-	root = strings.TrimSpace(root)
-
-	dir, err := paths.ExpandHome(root, s.home)
+	values, err := s.checkCloneRoot(root)
 	if err != nil {
-		return Settings{}, fmt.Errorf("%w: %w", ErrInvalidCloneRoot, err)
+		return Settings{}, err
 	}
 
-	info, err := os.Stat(dir)
-	if err != nil {
-		return Settings{}, fmt.Errorf("%w: %w", ErrInvalidCloneRoot, err)
-	}
-
-	if !info.IsDir() {
-		return Settings{}, fmt.Errorf("%w: %s is not a directory", ErrInvalidCloneRoot, paths.Tilde(dir, s.home))
-	}
-
-	return s.save(ctx, setting(KeyCloneRoot, filepath.Clean(root)))
+	return s.save(ctx, setMany(values, ""))
 }
 
 // SetTrustedBots stores the bots whose items are trusted, and returns the settings with
@@ -480,12 +476,23 @@ func (s *Service) SetCloneRoot(ctx context.Context, root string) (Settings, erro
 // "app/dependabot"); the list is stored normalized and sorted, and may be empty to trust
 // no bot.
 func (s *Service) SetTrustedBots(ctx context.Context, bots []string) (Settings, error) {
-	normalized, err := trust.NormalizeBots(bots)
+	values, err := checkTrustedBots(bots)
 	if err != nil {
 		return Settings{}, err
 	}
 
-	return s.save(ctx, setting(KeyTrustedBots, trust.EncodeBots(normalized)))
+	return s.save(ctx, setMany(values, ""))
+}
+
+// checkTrustedBots refuses a login that is not a bot's, and returns the write of the list,
+// normalized and sorted.
+func checkTrustedBots(bots []string) (map[string]string, error) {
+	normalized, err := trust.NormalizeBots(bots)
+	if err != nil {
+		return nil, err
+	}
+
+	return map[string]string{KeyTrustedBots: trust.EncodeBots(normalized)}, nil
 }
 
 // ResetTrustedBots goes back to the default trusted bots, and returns the settings with
@@ -503,40 +510,81 @@ func (s *Service) ResetTrustedBots(ctx context.Context) (Settings, error) {
 // SetSnoozeDays stores how many days the Snooze button hides an item, snooze.MinDays to
 // snooze.MaxDays, and returns the settings with it.
 func (s *Service) SetSnoozeDays(ctx context.Context, days int) (Settings, error) {
+	values, err := checkSnoozeDays(days)
+	if err != nil {
+		return Settings{}, err
+	}
+
+	return s.save(ctx, setMany(values, ""))
+}
+
+// checkSnoozeDays refuses a snooze length outside snooze.MinDays to snooze.MaxDays, and
+// returns its write.
+func checkSnoozeDays(days int) (map[string]string, error) {
 	if !snooze.ValidDays(days) {
-		return Settings{}, fmt.Errorf("%w: %d days; choose %d to %d", snooze.ErrInvalidDays, days, snooze.MinDays,
+		return nil, fmt.Errorf("%w: %d days; choose %d to %d", snooze.ErrInvalidDays, days, snooze.MinDays,
 			snooze.MaxDays)
 	}
 
-	return s.save(ctx, setting(KeySnoozeDays, strconv.Itoa(days)))
+	return map[string]string{KeySnoozeDays: strconv.Itoa(days)}, nil
 }
 
 // SetSnoozeWake stores which new activity ends a snooze early, and returns the settings
 // with it. Every rule is stored together, so the rules never mix two saves.
 func (s *Service) SetSnoozeWake(ctx context.Context, rules snooze.Rules) (Settings, error) {
-	if err := rules.Validate(); err != nil {
+	values, err := checkSnoozeWake(rules)
+	if err != nil {
 		return Settings{}, err
 	}
 
-	return s.save(ctx, func(ctx context.Context, p *prefs.Store) error {
-		if err := p.SetMany(ctx, rules.Encode()); err != nil {
-			return fmt.Errorf("save the snooze rules: %w", err)
-		}
+	return s.save(ctx, setMany(values, "save the snooze rules"))
+}
 
-		return nil
-	})
+// checkSnoozeWake refuses wake rules out of range, and returns their writes.
+func checkSnoozeWake(rules snooze.Rules) (map[string]string, error) {
+	if err := rules.Validate(); err != nil {
+		return nil, err
+	}
+
+	return rules.Encode(), nil
 }
 
 // SetSensitiveScope stores whose pull requests have their changed files checked,
 // sensitive.ScopeOutside or sensitive.ScopeCollaborators to check collaborators' too, and
 // returns the settings with it.
 func (s *Service) SetSensitiveScope(ctx context.Context, scope sensitive.Scope) (Settings, error) {
+	values, err := checkSensitiveScope(scope)
+	if err != nil {
+		return Settings{}, err
+	}
+
+	return s.save(ctx, setMany(values, ""))
+}
+
+// checkSensitiveScope refuses a scope that is not one of the choices, and returns its
+// write.
+func checkSensitiveScope(scope sensitive.Scope) (map[string]string, error) {
 	if !scope.Valid() {
-		return Settings{}, fmt.Errorf("%w %q: choose %q or %q", sensitive.ErrInvalidScope, scope, sensitive.ScopeOutside,
+		return nil, fmt.Errorf("%w %q: choose %q or %q", sensitive.ErrInvalidScope, scope, sensitive.ScopeOutside,
 			sensitive.ScopeCollaborators)
 	}
 
-	return s.save(ctx, setting(sensitive.PrefScope, string(scope)))
+	return map[string]string{sensitive.PrefScope: string(scope)}, nil
+}
+
+// checkSensitiveOff refuses a list of the built-in categories turned off that names one
+// this build doesn't know or one that can't be turned off, and returns its write.
+func checkSensitiveOff(ids []string) (map[string]string, error) {
+	off := []string{}
+
+	for _, id := range ids {
+		var err error
+		if off, err = sensitive.SetCategory(off, id, false); err != nil {
+			return nil, err
+		}
+	}
+
+	return map[string]string{sensitive.PrefOff: prefval.EncodeList(off)}, nil
 }
 
 // SetSensitiveCategory turns a built-in category of sensitive files on or off, and returns
@@ -567,12 +615,23 @@ func (s *Service) SetSensitiveCategory(ctx context.Context, id string, on bool) 
 // a pattern that cannot be used is refused with the reason (see the sensitive package for
 // the syntax).
 func (s *Service) SetSensitivePatterns(ctx context.Context, patterns []string) (Settings, error) {
-	normalized, err := sensitive.NormalizePatterns(patterns)
+	values, err := checkSensitivePatterns(patterns)
 	if err != nil {
 		return Settings{}, err
 	}
 
-	return s.save(ctx, setting(sensitive.PrefPatterns, prefval.EncodeList(normalized)))
+	return s.save(ctx, setMany(values, ""))
+}
+
+// checkSensitivePatterns refuses a pattern that can't be used, and returns the write of
+// the patterns, normalized.
+func checkSensitivePatterns(patterns []string) (map[string]string, error) {
+	normalized, err := sensitive.NormalizePatterns(patterns)
+	if err != nil {
+		return nil, err
+	}
+
+	return map[string]string{sensitive.PrefPatterns: prefval.EncodeList(normalized)}, nil
 }
 
 // MatchSensitivePath reports whether a path would count as sensitive under the stored
@@ -584,6 +643,46 @@ func (s *Service) MatchSensitivePath(ctx context.Context, path string) (sensitiv
 	}
 
 	return sensitive.Lookup(sensitive.DecodeConfig(stored), path), nil
+}
+
+// checkDefaultProfile refuses an agent this build does not know, and a profile not among
+// the agent's stored profiles, and returns its write.
+func (s *Service) checkDefaultProfile(ctx context.Context, id agent.ID, name string) (map[string]string, error) {
+	if !agent.Known(id) {
+		return nil, fmt.Errorf("%w %q", ErrUnknownAgent, id)
+	}
+
+	if _, err := s.profiles.Lookup(ctx, id, name); err != nil {
+		if errors.Is(err, profiles.ErrProfileNotFound) {
+			return nil, fmt.Errorf("%w %q", ErrUnknownProfile, name)
+		}
+
+		return nil, err
+	}
+
+	return map[string]string{KeyDefaultProfile(id): name}, nil
+}
+
+// checkCloneRoot refuses a clone root that is not an absolute or ~-relative path to an
+// existing directory, and returns its write: the root as entered, trimmed and cleaned.
+func (s *Service) checkCloneRoot(root string) (map[string]string, error) {
+	root = strings.TrimSpace(root)
+
+	dir, err := paths.ExpandHome(root, s.home)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %w", ErrInvalidCloneRoot, err)
+	}
+
+	info, err := os.Stat(dir)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %w", ErrInvalidCloneRoot, err)
+	}
+
+	if !info.IsDir() {
+		return nil, fmt.Errorf("%w: %s is not a directory", ErrInvalidCloneRoot, paths.Tilde(dir, s.home))
+	}
+
+	return map[string]string{KeyCloneRoot: filepath.Clean(root)}, nil
 }
 
 // fromStored builds Settings from stored values, falling back to the defaults.
@@ -693,6 +792,19 @@ func (s *Service) save(ctx context.Context, write func(context.Context, *prefs.S
 func setting(key, value string) func(context.Context, *prefs.Store) error {
 	return func(ctx context.Context, p *prefs.Store) error {
 		return p.Set(ctx, key, value)
+	}
+}
+
+// setMany returns a write that stores each of values under its key, all of them or none;
+// a failure is wrapped as what, when it isn't "".
+func setMany(values map[string]string, what string) func(context.Context, *prefs.Store) error {
+	return func(ctx context.Context, p *prefs.Store) error {
+		err := p.SetMany(ctx, values)
+		if err != nil && what != "" {
+			return fmt.Errorf("%s: %w", what, err)
+		}
+
+		return err
 	}
 }
 

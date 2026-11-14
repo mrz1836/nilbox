@@ -147,7 +147,8 @@ app:lint` reads.
 - `internal/core/` assembles the app and builds every service the window binds: settings,
   profiles, prompts, launch defaults, inbox, review, issues, launcher, worktrees,
   notifications, app info, the API budget, sessions, integrations, script runs, release, hooks,
-  repository scripts, and the mirror of the user's GitHub notifications.
+  repository scripts, the mirror of the user's GitHub notifications, and the backup of the
+  user's setup.
   Every `internal/*` package is plain Go, built and tested on Linux without CGO.
 - Services share their building blocks rather than keep copies: `internal/repo` and
   `internal/item` name repositories, pull requests and issues, and their worktrees;
@@ -1162,6 +1163,33 @@ app:lint` reads.
   (`scripts.NewVerifier`) for pulls, so one left going at a quit comes back after a
   restart with Stop held again and that same `Finish`. Run again pulls the same branch, its
   `Before` checking everything afresh.
+- `internal/backup/` is Settings → Back up and restore's service, which owns no table. It
+  exports the user's setup to one `<slug>.backup` file (`File`, version 1, at most 16 MB,
+  written user-only through `appdata.WriteFile`), one section per category ticked: settings,
+  repositories, prompts (a `prompts.Bundle`, exactly as `prompts.json`), launch defaults (the
+  `launch-defaults.json` format), and the user's scripts; and imports one back. It reaches each
+  category's owner only through a `Part` (`Export`, `Prepare` outside the transaction, `Apply`
+  inside it, `Done` once it commits), which `internal/core/adapters_backup.go` adapts over each
+  owner's `BackupPart` (`settings`, `prompts`, `launchdefaults`, `scripts`), a type of its own
+  built with `NewBackupPart`, never a method of the bound Service, so the window can't reach a
+  method that takes a `*sql.Tx`; the owners import only backup's words (`Mode`, `Plan`, `Item`,
+  `Count`), and the boundary test forbids the reverse. `Preview` works every section out under
+  both modes (Merge, whose wire value is `combine`, and Replace), a section that can't be read
+  shown with why; `Import` reads the file again and refuses it when its SHA-256 differs from the
+  preview's (`ErrChanged`), saves the whole setup first to `<data>/backups/<slug> before import
+  <stamp>.json` (the newest `KeepBefore`, 5, kept), works each section out again, then applies
+  every one in one `store.InTx`, in `Sections` order, a `Clearer`'s rows (the launch defaults',
+  under Replace) deleted first so the prompts part may delete what they named; the prompts
+  part fills in the `Links` (each file nickname's ID here) the launch defaults part finds its
+  prompts through, else the library by nickname. Each owner checks what it imports as its own
+  setters or editors do (settings' `check…` helpers, shared with the setters), leaving out what
+  it refuses with a note: a setting the setter refuses, a profile not on this Mac, a copy of a
+  tool that isn't a program here, a location that doesn't exist, a launch default's prompt not
+  found (it inherits). Under Replace, prompts are matched by nickname and purpose, the rest
+  deleted but one a launch default the import keeps still names; scripts identical to the
+  file's keep their IDs. A backup never holds the GitHub sign-in, caches, mirrors, history,
+  per-item triage, agent profiles, script trust (a file from elsewhere could pre-approve a
+  repository's command), the window's memory, or tool detection.
 - `internal/measure/` and `magefiles/measure.go` take the numbers in
   [`docs/performance.md`](docs/performance.md).
 - `frontend/` is the React + TypeScript + Vite + Tailwind app. It reaches Go only through the
@@ -1273,7 +1301,13 @@ package imports the driver, and nothing imports an ORM (`internal/repoguard` enf
   never changes a prompt the user wrote or edited, and checks every imported setting the way
   the editor does. The file format is `prompts.Bundle`, specified in
   [`docs/prompt-files.md`](docs/prompt-files.md); keep the two in step, and raise
-  `BundleVersion` only for a change an older build would misread.
+  `BundleVersion` only for a change an older build would misread. An import offers the file's
+  defaults (`ImportPreview.Defaults`, each a `DefaultOffer` where its prompt fits the slot and it
+  would change something) and applies the chosen ones in the transaction of the prompts,
+  through the nickname links `importInto` returns. The user's whole setup, these two
+  included, also leaves the app as a backup (`internal/backup`, its format in
+  [`docs/backup-files.md`](docs/backup-files.md)), whose prompts and launch defaults sections
+  are exactly these two copies' formats; keep the backup's in step with both.
 - **Tests** open a fresh, migrated database with `testutil.DB(t)`, a given file with
   `testutil.DBAt(t, path)`, and a closed one with `testutil.ClosedDB(t)`. To make a write fail,
   add a trigger that calls `RAISE(ABORT, ...)`, or drop the table.
