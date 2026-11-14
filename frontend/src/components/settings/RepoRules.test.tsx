@@ -111,6 +111,26 @@ describe('RepoRules', () => {
     expect(platform.setRepoRule).toHaveBeenLastCalledWith('solo', 'pinned')
   })
 
+  it('offers only what has no rule of its own yet', async () => {
+    platform.listLaunchTargets.mockResolvedValue([
+      { owner: 'acme-org', name: '', items: 3, cloned: false },
+      { owner: 'acme-org', name: 'web', items: 2, cloned: false },
+      { owner: 'beta-org', name: '', items: 0, cloned: true },
+      { owner: 'beta-org', name: 'example-repo', items: 0, cloned: true },
+      { owner: 'beta-org', name: 'tools', items: 0, cloned: true },
+    ])
+    renderSection({ pinned: ['Acme-Org'], muted: ['beta-org/Example-Repo'] })
+
+    await waitFor(() => {
+      expect(document.querySelectorAll('datalist option')).toHaveLength(3)
+    })
+    expect(document.querySelector('datalist option[value="acme-org"]')).toBeNull()
+    expect(document.querySelector('datalist option[value="beta-org/example-repo"]')).toBeNull()
+    expect(document.querySelector('datalist option[value="acme-org/web"]')).not.toBeNull()
+    expect(document.querySelector('datalist option[value="beta-org"]')).not.toBeNull()
+    expect(document.querySelector('datalist option[value="beta-org/tools"]')).not.toBeNull()
+  })
+
   it('refuses what can’t be a GitHub org or repository, and says why a change failed', async () => {
     platform.setRepoRule.mockRejectedValue(new Error('too many repositories and orgs: keep each list to 500'))
     renderSection()

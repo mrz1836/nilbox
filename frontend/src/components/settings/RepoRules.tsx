@@ -1,7 +1,7 @@
 import { useId, useState, type SubmitEvent } from 'react'
 
 import { targetHint } from '../../lib/launchChoices'
-import { parseTarget, ruleRows, targetKey, withRepoRule, type RuleRow } from '../../lib/repoRules'
+import { ownRule, parseTarget, ruleRows, targetKey, withRepoRule, type RuleRow } from '../../lib/repoRules'
 import { useQuery } from '../../lib/useQuery'
 import type { SettingsSave } from '../../lib/useSettingsSave'
 import { listLaunchTargets, setRepoRule, type LaunchTarget, type RepoRule, type Settings } from '../../platform'
@@ -41,6 +41,9 @@ export function RepoRules({ settings, save }: RepoRulesProps) {
   const [busy, setBusy] = useState(false)
   const targets = useQuery(() => listLaunchTargets(), [], { log: 'list the repositories to pin or mute' })
   const rows = ruleRows(settings.repoRules)
+  // offered are the targets the field suggests: those with no rule of their own yet. A
+  // repository whose org has a rule is still offered, since its own rule wins.
+  const offered = (targets.data ?? noTargets).filter((t) => ownRule(settings.repoRules, optionText(t)) === '')
   // orgs are the orgs with a rule of their own, whose repositories' rows sit under theirs.
   const orgs = new Set(rows.filter((r) => !r.target.includes('/')).map((r) => targetKey(r.target)))
 
@@ -135,7 +138,7 @@ export function RepoRules({ settings, save }: RepoRulesProps) {
               className={`${fieldClass} w-full font-mono text-[0.8125rem]`}
             />
             <datalist id={`${id}-targets`}>
-              {(targets.data ?? noTargets).map((t) => (
+              {offered.map((t) => (
                 <option key={optionText(t)} value={optionText(t)}>
                   {targetHint(t)}
                 </option>
