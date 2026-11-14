@@ -132,6 +132,7 @@ export interface RefreshChoices {
     "inbox": number[] | null;
     "checks": number[] | null;
     "worktrees": number[] | null;
+    "notifications": number[] | null;
 }
 
 /**
@@ -142,12 +143,13 @@ export interface RefreshIntervals {
     "inbox": number;
     "checks": number;
     "worktrees": number;
+    "notifications": number;
 }
 
 /**
  * RefreshKind names one of the things the app reads again on its own, on a timer.
  */
-export type RefreshKind = "inbox" | "checks" | "worktrees";
+export type RefreshKind = "inbox" | "checks" | "worktrees" | "notifications";
 
 /**
  * The values of RefreshKind, by the names of their Go constants.
@@ -171,6 +173,13 @@ export const RefreshKind = {
      * and issues they belong to, and the automatic cleanup.
      */
     RefreshWorktrees: "worktrees",
+
+    /**
+     * RefreshNotifications is the user's GitHub notifications, listed from GitHub: one
+     * conditional request, free when nothing changed, and never sooner than GitHub's own
+     * poll interval asks.
+     */
+    RefreshNotifications: "notifications",
 } as const;
 
 /**
@@ -363,8 +372,9 @@ export interface Settings {
     "githubNotifications": threadrules$0.Rules;
 
     /**
-     * Refresh is how often, in seconds, the app reads the inbox, the running checks, and
-     * the worktrees again on its own, and RefreshChoices what each can be set to.
+     * Refresh is how often, in seconds, the app reads the inbox, the running checks, the
+     * worktrees, and the GitHub notifications again on its own, and RefreshChoices what each
+     * can be set to.
      */
     "refresh": RefreshIntervals;
     "refreshChoices": RefreshChoices;

@@ -23,6 +23,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/mrz1836/nilbox/internal/budget"
 	"github.com/mrz1836/nilbox/internal/github"
 	"github.com/mrz1836/nilbox/internal/item"
 	"github.com/mrz1836/nilbox/internal/repo"
@@ -619,6 +620,9 @@ type fakeGate struct {
 	mu      sync.Mutex
 	refuse  error
 	allowed int
+
+	// paced is how many chores to come it refuses for the app's pace before it allows one.
+	paced int
 }
 
 // AllowChore allows the clear, or refuses it as told.
@@ -628,6 +632,12 @@ func (g *fakeGate) AllowChore(string) error {
 
 	if g.refuse != nil {
 		return g.refuse
+	}
+
+	if g.paced > 0 {
+		g.paced--
+
+		return budget.ErrWritePace
 	}
 
 	g.allowed++

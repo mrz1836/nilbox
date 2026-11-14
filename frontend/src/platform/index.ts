@@ -779,8 +779,9 @@ export const {
 //
 // Preview says, from the database alone, what clearing would do now, as if it were on;
 // Clear and ClearItem clear threads by the user's own hand, at once and whether clearing is
-// on or off; and Keep takes back queued clears, the toast's Undo. Each returns the
-// Snapshot.
+// on or off; Keep takes back queued clears, the toast's Undo; and MarkDone and MarkRead
+// mark threads done or read on GitHub at the user's click in the panel, whatever their
+// subject. Each returns the Snapshot.
 const githubThreads = narrow(ghthreads.Service)
 
 export const githubThreadsSnapshot: () => CancellablePromise<GitHubThreadsSnapshot> = githubThreads.Snapshot
@@ -794,6 +795,10 @@ export const clearGitHubItemThreads: (
   number: number,
 ) => CancellablePromise<GitHubThreadsSnapshot> = githubThreads.ClearItem
 export const keepGitHubThreads: (clearIDs: number[]) => CancellablePromise<GitHubThreadsSnapshot> = githubThreads.Keep
+export const markGitHubThreadsDone: (threadIDs: number[]) => CancellablePromise<GitHubThreadsSnapshot> =
+  githubThreads.MarkDone
+export const markGitHubThreadsRead: (threadIDs: number[]) => CancellablePromise<GitHubThreadsSnapshot> =
+  githubThreads.MarkRead
 
 const notifications = narrow(notify.Service)
 

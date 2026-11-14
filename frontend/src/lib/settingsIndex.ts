@@ -236,6 +236,7 @@ export const settingsIndex: Readonly<Record<SettingsSection, readonly SettingEnt
     { label: 'Inbox', keywords: ['refresh every', 'five minutes', 'interval', 'poll'] },
     { label: 'Running checks', keywords: ['CI', 'checks', 'pending', 'yellow', 'follow', 'interval'] },
     { label: 'Worktrees', keywords: ['sweep', 'cleanup', 'interval'] },
+    { label: 'GitHub notifications', keywords: ['notifications', 'GitHub inbox', 'poll interval', 'interval'] },
   ],
   worktrees: [
     { label: 'Clean up after merging', keywords: ['automatic cleanup', 'auto cleanup', 'remove worktrees', 'sweep'] },

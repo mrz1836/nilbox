@@ -523,8 +523,9 @@ app:lint` reads.
   repository, the pull request or issue `Thread.Ref` names, '' and 0 for any other subject,
   and `latest_comment_url`, kept for the next check of who acted after a moment and never
   shown or opened), and keeps the state of its passes in `ghthreads.sync`, a JSON pref only it
-  writes. Its one write to GitHub is clearing a thread (below), and it sends none until the
-  user turns clearing on or clears one by hand. A pass, one at a time (the Syncer's
+  writes. Its writes to GitHub mark a thread done or read: clearing one (below), which sends
+  none until the user turns clearing on or clears one by hand, and the panel's own clicks
+  (`MarkDone`, `MarkRead`, below). A pass, one at a time (the Syncer's
   and `CheckNow`'s share one), reads the rules through its `RuleSource` (core's
   `ghThreadRules`, one read of the prefs): with `Read` off it sends nothing and borrows no
   token, and marks the mirror stale (`walkNext`). Otherwise it borrows a token through
@@ -556,8 +557,9 @@ app:lint` reads.
   check suites, and commits are counted, never checked. One GitHub can't find is stamped
   checked, its state kept, and a check that fails stores only the last error, the listing
   standing. The `Syncer`, a desktop worker after the scheduler and woken with it
-  (`followed.intervals`), runs a pass at once, then the longer of the inbox's refresh interval
-  and GitHub's `X-Poll-Interval` after the last pass ended, its own or `CheckNow`'s (a timed
+  (`followed.intervals`), runs a pass at once, then the longer of its own refresh interval
+  (Settings → Refreshing, `refresh.notifications`, a minute to an hour) and GitHub's
+  `X-Poll-Interval` after the last pass ended, its own or `CheckNow`'s (a timed
   pass that finds one ended while it waited for the running one lists nothing), in its own
   select loop, recovering and logging a panic; its tests run in a `testing/synctest` bubble.
   The bound `Snapshot` reads the database alone, for the account the last pass read: the
@@ -621,7 +623,14 @@ app:lint` reads.
   skips them all and sends nothing. The bound `Preview` lists, from the database alone and as
   if clearing were on, what would clear, by repository, and what is held back, by reason;
   `Clear` and `ClearItem` clear threads by hand (no hold, with clearing on or off, never a
-  thread that isn't a pull request's or an issue's); and `Keep` takes queued clears back. The
+  thread that isn't a pull request's or an issue's); `Keep` takes queued clears back; and
+  `MarkDone` and `MarkRead` (`mark.go`) are the panel's Done and its opening of a line on
+  GitHub: any thread the mirror lists for the account, whatever its subject and whatever the
+  rules' action, sent at once through the chore lane (waiting out its pace up to
+  `MaxPaceWait`, else worded), holding the pass slot so no pass stores a listing read before
+  GitHub took the mark, after the token's login is checked against the account, each landing
+  in the mirror as GitHub takes it (done or gone: dropped; read: kept, read), recorded in no
+  ledger, and told to the window. The
   `Snapshot` also lists the `Queued` clears, the `Backlog`, and the `Recent` 50 that settled.
   Moments and settled clears are dropped 30 days on. It never imports the inbox, settings,
   core, notify, the sheets, or the desktop shell, and the inbox never imports it (the

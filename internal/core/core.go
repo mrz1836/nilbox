@@ -162,8 +162,8 @@ type Core struct {
 	ChecksFollower *inbox.ChecksFollower
 
 	// GHThreadsSyncer reads the user's GitHub notifications into GHThreads' mirror on
-	// start, then as often as the inbox is read, never sooner than GitHub asks; the
-	// desktop shell runs it after the scheduler. It is not bound.
+	// start, then as often as the notifications' refresh setting says, never sooner than
+	// GitHub asks; the desktop shell runs it after the scheduler. It is not bound.
 	GHThreadsSyncer *ghthreads.Syncer
 
 	// Watcher follows the agent sessions launches start, once Run is called; the desktop
@@ -450,15 +450,16 @@ func assemble(pool *sql.DB, info startup, opts Options, logger *slog.Logger) *Co
 	dispatcher := notify.NewDispatcher(notices)
 
 	// The user's GitHub notifications are mirrored through the shared client while the Read
-	// rule settings writes is on, as often as the inbox is read, never sooner than GitHub
-	// asks, and cleared by the rules, through the client's chore lane, once the user turns
-	// clearing on or clears one by hand. What the user finishes from the inbox reaches the
+	// rule settings writes is on, as often as the notifications' refresh setting says, never
+	// sooner than GitHub asks, and cleared by the rules, through the client's chore lane, once
+	// the user turns clearing on or clears one by hand; the panel's clicks mark one done or
+	// read through the same lane. What the user finishes from the inbox reaches the
 	// mirror as the inbox's outcomes, and a change to the rules through the settings' events.
 	ghThreads := ghthreads.NewService(ghthreads.Config{
 		Pool: pool, Tokens: tokens, Client: client, Rules: ghThreadRules{prefs: prefsstore.New(pool, opts.Clock)},
 		Holds: ghThreadHolds{settings: prefs}, Clock: opts.Clock, Events: opts.Events, Logger: logger,
 	})
-	ghThreadsSyncer := ghthreads.NewSyncer(ghThreads, refreshEvery(prefs, settings.RefreshInbox, logger), logger)
+	ghThreadsSyncer := ghthreads.NewSyncer(ghThreads, refreshEvery(prefs, settings.RefreshNotifications, logger), logger)
 	followed.threadRules = ghThreadsSyncer
 
 	inboxSvc := inbox.NewService(inbox.Config{

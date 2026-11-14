@@ -26,7 +26,7 @@ function labels(name: string): string[] {
 
 describe('RefreshingSection', () => {
   it('offers each interval Go allows, the stored one chosen and the defaults marked', () => {
-    renderSection(settings({ refresh: { inbox: 900, checks: 0, worktrees: 300 } }))
+    renderSection(settings({ refresh: { inbox: 900, checks: 0, worktrees: 300, notifications: 60 } }))
 
     expect(screen.getByRole('combobox', { name: 'Inbox' })).toHaveValue('900')
     expect(screen.getByRole('combobox', { name: 'Running checks' })).toHaveValue('0')
@@ -49,6 +49,19 @@ describe('RefreshingSection', () => {
     expect(screen.getByRole('combobox', { name: 'Running checks' })).toHaveAccessibleDescription(
       /all in one request, about a point, until their checks end/,
     )
+    expect(screen.getByRole('combobox', { name: 'GitHub notifications' })).toHaveValue('60')
+    expect(labels('GitHub notifications')).toEqual([
+      'Every minute',
+      'Every 2 minutes',
+      'Every 5 minutes (default)',
+      'Every 10 minutes',
+      'Every 15 minutes',
+      'Every 30 minutes',
+      'Every hour',
+    ])
+    expect(screen.getByRole('combobox', { name: 'GitHub notifications' })).toHaveAccessibleDescription(
+      /free when nothing changed, and never sooner than GitHub asks/,
+    )
   })
 
   it('stores a chosen interval at once', async () => {
@@ -58,7 +71,7 @@ describe('RefreshingSection', () => {
 
     expect(platform.setRefreshInterval).toHaveBeenCalledExactlyOnceWith('checks', 30)
     expect(onSaved).toHaveBeenCalledExactlyOnceWith(
-      expect.objectContaining({ refresh: { inbox: 300, checks: 30, worktrees: 300 } }),
+      expect.objectContaining({ refresh: { inbox: 300, checks: 30, worktrees: 300, notifications: 300 } }),
     )
   })
 

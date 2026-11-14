@@ -1,7 +1,6 @@
 import type { RefObject } from 'react'
 
 import { counted, formatCount } from '../lib/format'
-import type { ThreadItem } from '../lib/githubThreads'
 import { scriptsBadgeTitle, type ScriptsBadge } from '../lib/scriptsTab'
 import type { GitHubThreadsState } from '../lib/useGitHubThreads'
 import type { NotificationsState } from '../lib/useNotifications'
@@ -52,12 +51,10 @@ export interface AppHeaderProps {
   // githubThreads is the user's GitHub notifications, which the button beside the bell
   // shows; without it there is no button. settings are the stored settings, or null until
   // they load, which say whether the app reads the notifications and clears them on its
-  // own. onOpenThread shows the item a notification is about, onGitHubThreadsSettings opens
-  // their settings, and onSettingsSaved receives the settings as stored after the button
-  // turned automatic clearing on.
+  // own. onGitHubThreadsSettings opens their settings, and onSettingsSaved receives the
+  // settings as stored after the button turned automatic clearing on.
   githubThreads?: GitHubThreadsState
   settings?: Settings | null
-  onOpenThread?: (item: ThreadItem) => void
   onGitHubThreadsSettings?: () => void
   onSettingsSaved?: (settings: Settings) => void
   // search is the current page's filter field, or undefined on a page with none, and
@@ -137,7 +134,6 @@ export function AppHeader(props: AppHeaderProps) {
     onNotificationSettings = onOpenSettings,
     githubThreads,
     settings = null,
-    onOpenThread = () => undefined,
     onGitHubThreadsSettings = onOpenSettings,
     onSettingsSaved = () => undefined,
     search,
@@ -209,7 +205,6 @@ export function AppHeader(props: AppHeaderProps) {
           <GitHubThreadsMenu
             threads={githubThreads}
             settings={settings}
-            onOpen={onOpenThread}
             onSettings={onGitHubThreadsSettings}
             onSettingsSaved={onSettingsSaved}
           />

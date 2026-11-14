@@ -29,11 +29,16 @@ function state(
     checkNow: vi.fn(() => Promise.resolve({ ok: true as const, data: githubThreads() })),
     checking: false,
     checkError: '',
+    markDone: vi.fn(() => Promise.resolve({ ok: true as const, data: githubThreads() })),
+    markRead: vi.fn(() => Promise.resolve({ ok: true as const, data: githubThreads() })),
+    finishing: new Set(),
+    reading: new Set(),
+    markError: '',
+    dismissMarkError: vi.fn(),
     ...overrides,
   }
 }
 
-const onOpen = vi.fn()
 const onSettings = vi.fn()
 const onSettingsSaved = vi.fn()
 
@@ -49,7 +54,6 @@ function menu(threads: GitHubThreadsState, auto: boolean | null = true, read = t
     <GitHubThreadsMenu
       threads={threads}
       settings={auto === null ? null : rulesOf({ auto, read })}
-      onOpen={onOpen}
       onSettings={onSettings}
       onSettingsSaved={onSettingsSaved}
     />
@@ -73,6 +77,12 @@ async function open() {
   return within(screen.getByRole('dialog', { name: 'GitHub notifications' }))
 }
 
+// line is the pattern of a line's own button, the one that opens it, whose title holds
+// title: its Done's name holds the title too.
+function line(title: string): RegExp {
+  return new RegExp(`^(?!Done: |Marking done: ).*${title.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`)
+}
+
 // calledPlatform lists the platform calls made so far.
 function calledPlatform(): string[] {
   return Object.entries(platform)
@@ -81,22 +91,20 @@ function calledPlatform(): string[] {
 }
 
 describe('GitHubThreadsMenu', () => {
-  it('counts the GitHub inbox on its badge, accented while any are unread', () => {
+  it('counts the unread on its badge, as the panel lists them', () => {
     renderMenu(state(githubThreads({ status: { count: 38, unread: 5 } })))
 
-    expect(button()).toHaveAccessibleName('GitHub notifications, 38 in your inbox, 5 unread')
+    expect(button()).toHaveAccessibleName('GitHub notifications, 5 unread, 38 in your inbox')
 
     const badge = screen.getByTestId('github-threads-count')
-    expect(badge).toHaveTextContent('38')
+    expect(badge).toHaveTextContent('5')
     expect(badge).toHaveClass('bg-accent')
   })
 
-  it('leaves the count unaccented once none are unread', () => {
+  it('shows no count once none are unread, read ones in the inbox or not', () => {
     renderMenu(state(githubThreads({ status: { count: 38 } })))
 
-    const badge = screen.getByTestId('github-threads-count')
-    expect(badge).toHaveTextContent('38')
-    expect(badge).not.toHaveClass('bg-accent')
+    expect(screen.queryByTestId('github-threads-count')).not.toBeInTheDocument()
     expect(button()).toHaveAccessibleName('GitHub notifications, 38 in your inbox')
   })
 
@@ -173,7 +181,9 @@ describe('GitHubThreadsMenu', () => {
     // Clearing can't help while nothing can be read.
     expect(panel.queryByRole('button', { name: 'Turn on automatic clearing' })).not.toBeInTheDocument()
 
-    await userEvent.click(panel.getByRole('button', { name: 'Check again' }))
+    // The header's button is the one way to ask again now.
+    expect(panel.queryByRole('button', { name: 'Check again' })).not.toBeInTheDocument()
+    await userEvent.click(panel.getByRole('button', { name: 'Check GitHub now' }))
     expect(threads.checkNow).toHaveBeenCalledOnce()
   })
 
@@ -186,27 +196,27 @@ describe('GitHubThreadsMenu', () => {
     const panel = await open()
 
     expect(panel.getByRole('heading', { name: 'GitHub notifications' })).toBeInTheDocument()
-    expect(panel.getByText('38 in your GitHub inbox · 2 unread')).toBeInTheDocument()
+    expect(panel.getByText(/^2 unread · 38 in your GitHub inbox · checked /)).toBeInTheDocument()
     expect(threads.reload).toHaveBeenCalledOnce()
     expect(threads.checkNow).not.toHaveBeenCalled()
+    expect(threads.markRead).not.toHaveBeenCalled()
     expect(calledPlatform()).toEqual([])
     // The badge still counts what it counted: nothing was marked read.
-    expect(screen.getByTestId('github-threads-count')).toHaveTextContent('38')
+    expect(screen.getByTestId('github-threads-count')).toHaveTextContent('2')
   })
 
-  it('lists the newest unread grouped by item, and opens the item a line is about', async () => {
-    renderMenu(
-      state(
-        githubThreads({
-          status: { count: 5, unread: 3 },
-          unread: [
-            githubThread({ id: 1, reason: 'mention', updatedAt: '2026-06-15T11:58:00Z' }),
-            githubThread({ id: 2, kind: 'issue', number: 9, subjectType: 'Issue', title: 'Fix the parser' }),
-            githubThread({ id: 3, reason: 'review_requested' }),
-          ],
-        }),
-      ),
+  it('lists the newest unread grouped by item, and opens a line on GitHub, marking it read', async () => {
+    const threads = state(
+      githubThreads({
+        status: { count: 5, unread: 3 },
+        unread: [
+          githubThread({ id: 1, reason: 'mention', updatedAt: '2026-06-15T11:58:00Z' }),
+          githubThread({ id: 2, kind: 'issue', number: 9, subjectType: 'Issue', title: 'Fix the parser' }),
+          githubThread({ id: 3, reason: 'review_requested' }),
+        ],
+      }),
     )
+    renderMenu(threads)
 
     const panel = await open()
     const lines = within(panel.getByRole('list', { name: 'Unread on GitHub' })).getAllByRole('listitem')
@@ -219,48 +229,127 @@ describe('GitHubThreadsMenu', () => {
     expect(lines[1]).toHaveTextContent('Review requested')
     expect(lines[1]).toHaveTextContent('example-repo #9')
 
-    const parser = panel.getByRole('button', { name: /Fix the parser/ })
-    expect(parser).toHaveAttribute('title', 'acme-org/example-repo #9')
+    const parser = panel.getByRole('button', { name: line('Fix the parser') })
+    expect(parser).toHaveAttribute('title', 'Open on GitHub · acme-org/example-repo')
 
     await userEvent.click(parser)
 
-    expect(onOpen).toHaveBeenCalledExactlyOnceWith({
-      owner: 'acme-org',
-      name: 'example-repo',
-      kind: 'issue',
-      number: 9,
-    })
-    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    expect(platform.openExternal).toHaveBeenCalledExactlyOnceWith('https://github.com/acme-org/example-repo/issues/9')
+    expect(threads.markRead).toHaveBeenCalledExactlyOnceWith([2])
+    expect(screen.getByRole('dialog')).toBeInTheDocument()
+
+    await userEvent.click(panel.getByRole('button', { name: line('Add the widget cache') }))
+    expect(threads.markRead).toHaveBeenLastCalledWith([1, 3])
   })
 
-  it('shows a notification about no item as plain text, and every title as text', async () => {
+  it('opens a notification about no item on its repository’s page, and every title as text', async () => {
+    const threads = state(
+      githubThreads({
+        status: { count: 3, unread: 3 },
+        unread: [
+          githubThread({ id: 5, kind: '', number: 0, subjectType: 'Release', title: 'v1.4.3', reason: 'subscribed' }),
+          githubThread({
+            id: 7,
+            kind: '',
+            number: 0,
+            subjectType: 'CheckSuite',
+            title: 'CI workflow run failed for master branch',
+            reason: 'ci_activity',
+          }),
+          githubThread({ id: 6, title: '<img src=x onerror=alert(1)> Add the cache' }),
+        ],
+      }),
+    )
+    renderMenu(threads)
+
+    const panel = await open()
+    const release = panel.getByRole('button', { name: line('v1.4.3') })
+
+    expect(release.closest('li')).toHaveTextContent('acme-org/example-repo · Release')
+    expect(release.closest('li')).toHaveTextContent('Watching')
+
+    await userEvent.click(release)
+    expect(platform.openExternal).toHaveBeenLastCalledWith('https://github.com/acme-org/example-repo/releases')
+    expect(threads.markRead).toHaveBeenLastCalledWith([5])
+
+    await userEvent.click(panel.getByRole('button', { name: line('CI workflow run failed') }))
+    expect(platform.openExternal).toHaveBeenLastCalledWith('https://github.com/acme-org/example-repo/actions')
+
+    expect(panel.getByRole('button', { name: line('<img src=x onerror=alert(1)> Add the cache') })).toBeInTheDocument()
+    expect(document.querySelector('img')).toBeNull()
+  })
+
+  it('marks a line done, all its notifications, from its Done', async () => {
+    const threads = state(
+      githubThreads({
+        status: { count: 2, unread: 2 },
+        unread: [githubThread({ id: 1 }), githubThread({ id: 3, reason: 'mention' })],
+      }),
+    )
+    renderMenu(threads)
+
+    const panel = await open()
+
+    await userEvent.click(panel.getByRole('button', { name: 'Done: Add the widget cache' }))
+
+    expect(threads.markDone).toHaveBeenCalledExactlyOnceWith([1, 3])
+    expect(threads.markRead).not.toHaveBeenCalled()
+    expect(platform.openExternal).not.toHaveBeenCalled()
+  })
+
+  it('shows a line on its way: dimmed, its Done turning while it goes done', async () => {
     renderMenu(
       state(
         githubThreads({
           status: { count: 2, unread: 2 },
-          unread: [
-            githubThread({
-              id: 5,
-              kind: '',
-              number: 0,
-              subjectType: 'Release',
-              title: 'v1.4.3',
-              reason: 'subscribed',
-            }),
-            githubThread({ id: 6, title: '<img src=x onerror=alert(1)> Add the cache' }),
-          ],
+          unread: [githubThread({ id: 1 }), githubThread({ id: 2, number: 9, title: 'Fix the parser' })],
         }),
+        { finishing: new Set([1]), reading: new Set([2]) },
       ),
     )
 
     const panel = await open()
-    const release = panel.getByText('v1.4.3')
+    const lines = within(panel.getByRole('list', { name: 'Unread on GitHub' })).getAllByRole('listitem')
+    const done = panel.getByRole('button', { name: 'Marking done: Add the widget cache' })
 
-    expect(release.closest('button')).toBeNull()
-    expect(release.closest('li')).toHaveTextContent('acme-org/example-repo · Release')
-    expect(release.closest('li')).toHaveTextContent('Watching')
-    expect(panel.getByRole('button', { name: /<img src=x onerror=alert\(1\)> Add the cache/ })).toBeInTheDocument()
-    expect(document.querySelector('img')).toBeNull()
+    expect(lines[0]).toHaveAttribute('aria-busy', 'true')
+    expect(done).toBeDisabled()
+    expect(done.querySelector('.motion-safe\\:animate-spin')).not.toBeNull()
+    expect(panel.getByRole('button', { name: line('Add the widget cache') })).toBeDisabled()
+
+    expect(lines[1]).toHaveAttribute('aria-busy', 'true')
+    expect(panel.getByRole('button', { name: 'Done: Fix the parser' })).toBeDisabled()
+  })
+
+  it('says why a mark failed, until it is dismissed', async () => {
+    const threads = state(githubThreads({ status: { count: 1, unread: 1 }, unread: [githubThread()] }), {
+      markError: 'GitHub asked for a pause before the next change. Try again in a minute.',
+    })
+    renderMenu(threads)
+
+    const panel = await open()
+
+    expect(panel.getByRole('alert')).toHaveTextContent('GitHub asked for a pause before the next change.')
+
+    await userEvent.click(panel.getByRole('button', { name: 'Dismiss' }))
+    expect(threads.dismissMarkError).toHaveBeenCalledOnce()
+  })
+
+  it('checks GitHub now from its header, turning while it checks', async () => {
+    const threads = state(githubThreads({ status: { count: 4 } }))
+    const { rerender } = renderMenu(threads)
+
+    await userEvent.click((await open()).getByRole('button', { name: 'Check GitHub now' }))
+    expect(threads.checkNow).toHaveBeenCalledOnce()
+
+    rerender(menu({ ...threads, checking: true }))
+
+    const panel = within(screen.getByRole('dialog', { name: 'GitHub notifications' }))
+    const checking = panel.getByRole('button', { name: 'Checking GitHub' })
+
+    expect(checking).toBeDisabled()
+    expect(checking.querySelector('svg')).toHaveClass('motion-safe:animate-spin')
+    expect(panel.getByText(/· checking…$/)).toBeInTheDocument()
   })
 
   it('says when nothing is unread', async () => {
@@ -335,7 +424,7 @@ describe('GitHubThreadsMenu', () => {
 
     const panel = await open()
 
-    expect(panel.getByRole('button', { name: 'Checking…' })).toBeDisabled()
+    expect(panel.getByRole('button', { name: 'Checking GitHub' })).toBeDisabled()
     expect(panel.getByRole('alert')).toHaveTextContent('Could not check GitHub: database is locked')
 
     // Clicking the button again closes the panel, reading nothing more.
@@ -351,7 +440,7 @@ describe('GitHubThreadsMenu', () => {
     const panel = await open()
 
     expect(panel.getByText('GitHub didn’t answer in time.')).toBeInTheDocument()
-    await userEvent.click(panel.getByRole('button', { name: 'Check again' }))
+    await userEvent.click(panel.getByRole('button', { name: 'Check GitHub now' }))
     expect(threads.checkNow).toHaveBeenCalledOnce()
   })
 })

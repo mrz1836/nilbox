@@ -329,11 +329,7 @@ func (s *Service) sendClear(ctx context.Context, account string, id int64, actio
 			return struct{}{}, errOtherAccount
 		}
 
-		if action == threadrules.ActionRead {
-			return struct{}{}, s.client.MarkThreadRead(ctx, tok, id)
-		}
-
-		return struct{}{}, s.client.MarkThreadDone(ctx, tok, id)
+		return struct{}{}, s.sendMark(ctx, tok, id, action)
 	})
 
 	if err != nil && !borrowed {
@@ -433,15 +429,7 @@ func (s *Service) recordSent(
 	err := store.InTx(ctx, s.db, func(tx *sql.Tx) error {
 		q := s.q.WithTx(tx)
 
-		var err error
-
-		if action == threadrules.ActionRead && !gone {
-			err = q.SetThreadRead(ctx, queries.SetThreadReadParams{AccountLogin: row.AccountLogin, ThreadID: row.ThreadID})
-		} else {
-			err = q.DeleteThread(ctx, queries.DeleteThreadParams{AccountLogin: row.AccountLogin, ThreadID: row.ThreadID})
-		}
-
-		if err != nil {
+		if err := markInMirror(ctx, q, row.AccountLogin, row.ThreadID, action, gone); err != nil {
 			return err
 		}
 
