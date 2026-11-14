@@ -120,6 +120,19 @@ describe('LaunchDefaultsSection', () => {
     expect(document.querySelector(`${targets} option[value="acme-org/example-repo"]`)).toHaveTextContent('Local clone')
   })
 
+  it('offers only what has no defaults yet', async () => {
+    renderSection([launchDefaults({ owner: 'Acme-Org' }), launchDefaults({ name: 'Example-Repo' })])
+
+    await userEvent.click(screen.getByRole('button', { name: 'Add defaults' }))
+
+    const targets = 'datalist[id$="-targets"]'
+
+    await waitFor(() => {
+      expect(document.querySelectorAll(`${targets} option`)).toHaveLength(1)
+    })
+    expect(document.querySelector(`${targets} option[value="acme-org/api"]`)).toHaveTextContent('2 in the inbox')
+  })
+
   it('shows a repository what it inherits from its org', async () => {
     renderSection([launchDefaults({ prPromptId: 2, worktree: false, models: { claude: 'opus' } })])
 

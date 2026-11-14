@@ -321,6 +321,9 @@ function DefaultsEditor({
   const full: LaunchDefaultsInput = { ...input, owner: target.owner, name: target.name }
   const org = target.name === '' ? undefined : findDefaults(launchDefaults, target.owner, '')
   const exists = editing.kind === 'new' && findDefaults(launchDefaults, target.owner, target.name) !== undefined
+  // offered are the targets the field suggests: those with no defaults yet. A repository
+  // whose org has defaults is still offered, since its own win over its org's.
+  const offered = (targets.data ?? noTargets).filter((t) => findDefaults(launchDefaults, t.owner, t.name) === undefined)
   const set = (patch: Partial<LaunchDefaultsInput>) => {
     setInput((was) => ({ ...was, ...patch }))
   }
@@ -429,7 +432,7 @@ function DefaultsEditor({
             className={`${fieldClass} w-full font-mono text-[0.8125rem]`}
           />
           <datalist id={`${id}-targets`}>
-            {(targets.data ?? noTargets).map((t) => (
+            {offered.map((t) => (
               <option key={targetText(t.owner, t.name)} value={targetText(t.owner, t.name)}>
                 {targetHint(t)}
               </option>
