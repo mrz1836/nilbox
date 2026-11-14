@@ -587,7 +587,7 @@ app:lint` reads.
   as they are, so a held backlog costs no state reads). A thread held back, unread and
   updated after the moment, has who acted after it checked once per update of the thread,
   and only while a bot's activity counts: the latest comment's author (`FetchLatestComment`,
-  one REST point, `MaxCommentChecks`, 50, a pass at most, the rest the next pass, the checks
+  one REST point, `MaxCommentChecks`, 150, a pass at most, the rest the next pass, the checks
   stopping at the first answer that says GitHub is limiting the app's requests,
   `github.RateLimited`), stored as `after_moment`, a person's sticking until the thread is
   read (a person's comment followed by a bot's before the next pass reads as a bot's). A

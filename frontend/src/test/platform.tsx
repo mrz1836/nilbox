@@ -52,6 +52,7 @@ import {
   prompt,
   promptBackup,
   prompts,
+  queuedClear,
   releaseCandidates,
   releaseOffer,
   releaseResult,
@@ -68,6 +69,7 @@ import {
   settings,
   snapshot,
   sweepReport,
+  threadsPreview,
   userScript,
   variables,
   worktreesSnapshot,
@@ -269,6 +271,24 @@ function answers(subscribe: Loose<Platform['on']>): { [K in keyof Platform]: Loo
 
     githubThreadsSnapshot: () => Promise.resolve(githubThreads()),
     checkGitHubThreadsNow: () => Promise.resolve(githubThreads()),
+    previewGitHubThreads: () => Promise.resolve(threadsPreview()),
+    // A clear by hand is queued to go at once; Undo takes a queued one back, which leaves
+    // none queued.
+    clearGitHubThreads: (threadIDs) =>
+      Promise.resolve(
+        githubThreads({
+          queued: threadIDs.map((threadId, i) =>
+            queuedClear({ id: i + 1, threadId, trigger: 'by_hand', sendAfter: '2026-06-15T12:00:00Z' }),
+          ),
+        }),
+      ),
+    clearGitHubItemThreads: (owner, name, number) =>
+      Promise.resolve(
+        githubThreads({
+          queued: [queuedClear({ owner, name, number, trigger: 'by_hand', sendAfter: '2026-06-15T12:00:00Z' })],
+        }),
+      ),
+    keepGitHubThreads: () => Promise.resolve(githubThreads()),
 
     listIntegrations: () => Promise.resolve(integrationTools()),
     checkIntegrationsAgain: () => Promise.resolve(integrationTools()),

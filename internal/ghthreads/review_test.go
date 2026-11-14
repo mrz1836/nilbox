@@ -156,7 +156,7 @@ func TestAfterMomentChecksCappedPerPass(t *testing.T) {
 	r := commentedRig(t, MaxCommentChecks+10)
 
 	got := r.mustPass()
-	assert.Len(t, ofKind(got, "comment"), MaxCommentChecks, "50 a pass at most")
+	assert.Len(t, ofKind(got, "comment"), MaxCommentChecks, "150 a pass at most")
 	assert.Len(t, r.ledger(), MaxCommentChecks, "those checked clear")
 
 	r.clock.Advance(5 * time.Minute)

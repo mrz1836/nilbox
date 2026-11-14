@@ -84,7 +84,7 @@ const (
 
 	// MaxCommentChecks is the most latest-comment reads one pass sends to learn who acted
 	// on the threads held back; the rest wait for the next pass.
-	MaxCommentChecks = 50
+	MaxCommentChecks = 150
 
 	// maxSendsPerRun bounds the clears one run sends, should the chore lane never refuse.
 	maxSendsPerRun = 200

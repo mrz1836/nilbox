@@ -254,9 +254,9 @@ func TestTuesdayHundredMergedByAppClearUnattended(t *testing.T) {
 	r.clock.Advance(6 * time.Minute)
 
 	got := r.mustPass()
-	assert.Len(t, ofKind(got, "comment"), MaxCommentChecks, "who commented after the merge: 50 a pass")
+	assert.Len(t, ofKind(got, "comment"), 100, "who commented after the merge, once each, in the one pass")
 
-	sent, comments, passes := writes(got), len(ofKind(got, "comment")), 1
+	sent, passes := writes(got), 1
 
 	// The Syncer: a send as soon as the lane lets the next go, and a pass the interval on
 	// once nothing waits.
@@ -274,22 +274,19 @@ func TestTuesdayHundredMergedByAppClearUnattended(t *testing.T) {
 
 		r.clock.Advance(DefaultInterval)
 
-		got = r.mustPass()
-		sent, comments, passes = append(sent, writes(got)...), comments+len(ofKind(got, "comment")), passes+1
+		sent, passes = append(sent, writes(r.mustPass())...), passes+1
 	}
 
 	require.Len(t, sent, 100, "every one cleared, with no click")
-	assert.Equal(t, 100, comments, "who commented asked once each")
-	assert.Equal(t, 2, passes, "the rest of the checks on the next pass")
+	assert.Equal(t, 1, passes, "all queued by the one pass that found them")
 
 	for i := 1; i < len(sent); i++ {
 		assert.GreaterOrEqual(t, sent[i].at.Sub(sent[i-1].at), budget.ChoreGap, "never two within a second")
 	}
 
-	first := sent[49].at.Sub(sent[0].at)
-	assert.GreaterOrEqual(t, first, 49*time.Second, "about one a second")
-	assert.Less(t, first, time.Minute, "within the lane's 50 a minute")
-	assert.Less(t, sent[len(sent)-1].at.Sub(sent[0].at), 7*time.Minute, "all within two passes")
+	took := sent[len(sent)-1].at.Sub(sent[0].at)
+	assert.GreaterOrEqual(t, took, 99*time.Second, "about one a second")
+	assert.Less(t, took, 2*time.Minute, "within the lane's 50 a minute: about two minutes")
 
 	for _, l := range r.ledger() {
 		assert.Equal(t, "sent", l.state)

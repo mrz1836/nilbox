@@ -105,6 +105,16 @@ export type GitHubThreadsStatus = NonNullLists<ghthreads.Status>
 export type GitHubThreadsAccess = ghthreads.Access
 export type ItemThreads = NonNullLists<ghthreads.ItemThreads>
 export type GitHubThread = Omit<NonNullLists<ghthreads.Thread>, 'kind'> & { kind: item.Kind | '' }
+// Clearing them: the clears waiting to be sent (each of which Undo keeps), those that
+// settled, and how each stands; and what clearing would do now, for the cleanup sheet.
+export type QueuedClear = NonNullLists<ghthreads.QueuedClear>
+export type SettledClear = NonNullLists<ghthreads.SettledClear>
+export type ClearState = ghthreads.ClearState
+export type ClearSkipReason = ghthreads.SkipReason
+export type GitHubThreadsPreview = NonNullLists<ghthreads.Preview>
+export type PreviewRepo = NonNullLists<ghthreads.PreviewRepo>
+export type PreviewHeld = NonNullLists<ghthreads.PreviewHeld>
+export type PreviewThread = NonNullLists<ghthreads.PreviewThread>
 // The user's rules for their GitHub notifications, from the settings, and the names their
 // setters take.
 export type ThreadRules = NonNullLists<threadrules.Rules>
@@ -764,12 +774,27 @@ export const {
 
 // The user's GitHub notifications. Snapshot reads what the app mirrors from the database
 // alone and never asks GitHub; CheckNow runs a pass now, once any pass under way has ended,
-// and returns the Snapshot after it. A "ghthreads:updated" event follows each pass that
-// changed what Snapshot shows. Neither marks anything read or done.
+// and returns the Snapshot after it. A pass also sends the clears that are due, once the
+// user turned clearing on or cleared one by hand. A "ghthreads:updated" event follows each
+// pass that changed what Snapshot shows.
+//
+// Preview says, from the database alone, what clearing would do now, as if it were on;
+// Clear and ClearItem clear threads by the user's own hand, at once and whether clearing is
+// on or off; and Keep takes back queued clears, the toast's Undo. Each returns the
+// Snapshot.
 const githubThreads = narrow(ghthreads.Service)
 
 export const githubThreadsSnapshot: () => CancellablePromise<GitHubThreadsSnapshot> = githubThreads.Snapshot
 export const checkGitHubThreadsNow: () => CancellablePromise<GitHubThreadsSnapshot> = githubThreads.CheckNow
+export const previewGitHubThreads: () => CancellablePromise<GitHubThreadsPreview> = githubThreads.Preview
+export const clearGitHubThreads: (threadIDs: number[]) => CancellablePromise<GitHubThreadsSnapshot> =
+  githubThreads.Clear
+export const clearGitHubItemThreads: (
+  owner: string,
+  name: string,
+  number: number,
+) => CancellablePromise<GitHubThreadsSnapshot> = githubThreads.ClearItem
+export const keepGitHubThreads: (clearIDs: number[]) => CancellablePromise<GitHubThreadsSnapshot> = githubThreads.Keep
 
 const notifications = narrow(notify.Service)
 
