@@ -230,6 +230,10 @@ type Settings struct {
 	// ReviewTab is the review sheet's tab the user last chose, which it opens on.
 	ReviewTab ReviewTab `json:"reviewTab"`
 
+	// NotificationsTab is the Notifications page's tab the user last chose, which it opens
+	// on unless a quick view's View all asks for the other.
+	NotificationsTab NotificationsTab `json:"notificationsTab"`
+
 	// ConversationOrder is the order the sheets list a conversation in, the one the user
 	// last chose.
 	ConversationOrder ConversationOrder `json:"conversationOrder"`
@@ -729,6 +733,7 @@ func fromStored(stored map[string]string) Settings {
 
 		ProjectsTipDismissed: prefval.Bool(stored[KeyProjectsTipDismissed], false),
 		ReviewTab:            reviewTabs().decode(stored[KeyReviewTab]),
+		NotificationsTab:     notificationsTabs().decode(stored[KeyNotificationsTab]),
 		ConversationOrder:    conversationOrders().decode(stored[KeyConversationOrder]),
 		InboxOrder:           decodeInboxOrder(stored),
 		MergeMethod:          mergeMethods().decode(stored[KeyMergeMethod]),
@@ -853,7 +858,7 @@ func settingKeys() []string {
 		KeySnoozeDays, KeyWindowSize,
 		snooze.PrefWakeCommits, snooze.PrefWakeReviews, snooze.PrefWakeComments,
 		sensitive.PrefScope, sensitive.PrefOff, sensitive.PrefPatterns, KeyMenuBar, notifyprefs.KeyBannersOff, notifyprefs.KeyBannersOn, KeyTheme,
-		KeyTextSize, KeyToastSeconds, KeyProjectsTipDismissed, KeyReviewTab, KeyConversationOrder, KeyMergeMethod, KeyRefreshInbox, KeyRefreshChecks, KeyRefreshWorktrees,
+		KeyTextSize, KeyToastSeconds, KeyProjectsTipDismissed, KeyReviewTab, KeyNotificationsTab, KeyConversationOrder, KeyMergeMethod, KeyRefreshInbox, KeyRefreshChecks, KeyRefreshWorktrees,
 		KeyRefreshNotifications, KeyRefreshReleaseChecks,
 	), append(append(append(append(collapsedKeys(), orderKeys()...), branchrules.Keys()...), reporules.Keys()...),
 		append(integrationprefs.Keys(), threadrules.Keys()...)...)...)

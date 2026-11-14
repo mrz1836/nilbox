@@ -23,8 +23,8 @@ type banners struct {
 }
 
 // newBanners prepares the notification center, emitting an event.RevealItem into events
-// for every click on a banner: the item it was for, or none for a banner that stands for
-// many. It returns nil, and logs why, when this build cannot show banners. It must run
+// for every click on a banner: the item it was for and the notification it stands for,
+// which the window marks read, or none for a banner that stands for many. It returns nil, and logs why, when this build cannot show banners. It must run
 // before the app finishes launching, so a click on a banner that launched the app is
 // still delivered.
 func newBanners(logger *slog.Logger, events event.Sink) *banners {

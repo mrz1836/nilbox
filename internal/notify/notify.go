@@ -14,8 +14,10 @@
 // run from the Scripts tab that failed, which names the run a click on it opens. The
 // Dispatcher's Notify records such an Entry and shows its banner the same way.
 //
-// Service is what the window binds: the log, marking it read, clearing it, the state of
-// the banners, and a test banner. Nothing here leaves the machine: banners are posted to
+// Service is what the window binds: the log, marking entries read or unread, clearing it,
+// the state of the banners, and a test banner. Opening the history marks nothing: an entry
+// is marked read when the user opens it, clicks its banner, opens its item's sheet, or
+// marks it done, and marked unread again only by the user. Nothing here leaves the machine: banners are posted to
 // the operating system, and the log is a local table.
 package notify
 
@@ -60,7 +62,7 @@ const (
 )
 
 // Keep is how many notifications the log keeps; recording more drops the oldest.
-const Keep = 200
+const Keep = 1000
 
 // Notification is one entry in the log, as the window shows it. Every field is a plain
 // value.
@@ -74,7 +76,8 @@ type Notification struct {
 	// CreatedAt is when it was recorded, as RFC 3339.
 	CreatedAt string `json:"createdAt"`
 
-	// Read reports whether the user has seen it in the history.
+	// Read reports whether the user is done with it: opened it, clicked its banner, opened
+	// its item, or marked it done. Opening the history marks nothing.
 	Read bool `json:"read"`
 
 	// ItemID is the item's id in the inbox snapshot, or 0 once the item is no longer
@@ -251,6 +254,36 @@ func (s *Store) MarkAllRead(ctx context.Context, now time.Time) error {
 	}
 
 	return nil
+}
+
+// MarkRead marks the unread notifications among ids read at now, and reports how many it
+// marked. An id the log doesn't hold, or one already read, is left alone.
+func (s *Store) MarkRead(ctx context.Context, now time.Time, ids []int64) (int64, error) {
+	if len(ids) == 0 {
+		return 0, nil
+	}
+
+	n, err := s.q.MarkRead(ctx, queries.MarkReadParams{ReadAt: new(now.UTC()), Ids: ids})
+	if err != nil {
+		return 0, fmt.Errorf("mark the notifications read: %w", err)
+	}
+
+	return n, nil
+}
+
+// MarkUnread marks the read notifications among ids unread again, and reports how many it
+// marked. An id the log doesn't hold, or one already unread, is left alone.
+func (s *Store) MarkUnread(ctx context.Context, ids []int64) (int64, error) {
+	if len(ids) == 0 {
+		return 0, nil
+	}
+
+	n, err := s.q.MarkUnread(ctx, ids)
+	if err != nil {
+		return 0, fmt.Errorf("mark the notifications unread: %w", err)
+	}
+
+	return n, nil
 }
 
 // Clear forgets every notification.

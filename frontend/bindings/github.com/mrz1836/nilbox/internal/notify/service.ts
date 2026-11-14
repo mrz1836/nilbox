@@ -37,10 +37,27 @@ export function List(): $CancellablePromise<$models.Log> {
 }
 
 /**
- * MarkAllRead marks every notification read, as the history does once it is opened.
+ * MarkAllRead marks every notification read, as the history's Mark all done does.
  */
 export function MarkAllRead(): $CancellablePromise<void> {
     return $Call.ByID(1928867509);
+}
+
+/**
+ * MarkRead marks the notifications with ids read: the user opened them, clicked their
+ * banner, opened their item, or marked them done. The window is told only when one was
+ * unread.
+ */
+export function MarkRead(ids: number[] | null): $CancellablePromise<void> {
+    return $Call.ByID(443937582, ids);
+}
+
+/**
+ * MarkUnread marks the notifications with ids unread again, which puts them back in the
+ * bell's quick view. The window is told only when one was read.
+ */
+export function MarkUnread(ids: number[] | null): $CancellablePromise<void> {
+    return $Call.ByID(2420423797, ids);
 }
 
 /**

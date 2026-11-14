@@ -149,6 +149,28 @@ export const MergeMethod = {
 } as const;
 
 /**
+ * NotificationsTab is a tab of the Notifications page: the app's own notifications, or the
+ * user's GitHub notifications.
+ */
+export type NotificationsTab = "app" | "github";
+
+/**
+ * The values of NotificationsTab, by the names of their Go constants.
+ */
+export const NotificationsTab = {
+    /**
+     * The Notifications page's tabs.
+     */
+    NotificationsTabApp: "app",
+    NotificationsTabGitHub: "github",
+
+    /**
+     * DefaultNotificationsTab is the tab a fresh database opens the Notifications page on.
+     */
+    DefaultNotificationsTab: "app",
+} as const;
+
+/**
  * RefreshChoices are the intervals each can be set to, in seconds, shortest first.
  */
 export interface RefreshChoices {
@@ -405,6 +427,12 @@ export interface Settings {
      * ReviewTab is the review sheet's tab the user last chose, which it opens on.
      */
     "reviewTab": ReviewTab;
+
+    /**
+     * NotificationsTab is the Notifications page's tab the user last chose, which it opens
+     * on unless a quick view's View all asks for the other.
+     */
+    "notificationsTab": NotificationsTab;
 
     /**
      * ConversationOrder is the order the sheets list a conversation in, the one the user

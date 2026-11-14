@@ -179,6 +179,9 @@ func boundCalls(t *testing.T) map[string]boundCall {
 		"settings.Service.SetReviewTab": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
 			return c.Settings.SetReviewTab(ctx, settings.ReviewTabComments)
 		},
+		"settings.Service.SetNotificationsTab": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
+			return c.Settings.SetNotificationsTab(ctx, settings.NotificationsTabGitHub)
+		},
 		"settings.Service.SetConversationOrder": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
 			return c.Settings.SetConversationOrder(ctx, settings.ConversationNewest)
 		},
@@ -520,6 +523,12 @@ func boundCalls(t *testing.T) map[string]boundCall {
 
 			got, err := c.GHThreads.Keep(ctx, []int64{queued.Queued[0].ID})
 			require.Len(t, got.Recent, 1, "kept")
+
+			return got, err
+		},
+		"ghthreads.Service.List": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
+			got, err := c.GHThreads.List(ctx)
+			require.Len(t, got.Threads, 1, "the pull request's notification")
 
 			return got, err
 		},

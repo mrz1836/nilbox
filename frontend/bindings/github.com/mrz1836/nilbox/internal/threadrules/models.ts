@@ -73,6 +73,38 @@ export interface Rules {
 }
 
 /**
+ * State is the state of a thread's pull request or issue, as GitHub last reported it.
+ */
+export type State = "" | "OPEN" | "CLOSED" | "MERGED";
+
+/**
+ * The values of State, by the names of their Go constants.
+ */
+export const State = {
+    /**
+     * The states.
+     *
+     * StateUnknown is a state not reported, or not known yet.
+     */
+    StateUnknown: "",
+
+    /**
+     * StateOpen is an open pull request or issue, one reopened included.
+     */
+    StateOpen: "OPEN",
+
+    /**
+     * StateClosed is a pull request closed without merging, or a closed issue.
+     */
+    StateClosed: "CLOSED",
+
+    /**
+     * StateMerged is a merged pull request.
+     */
+    StateMerged: "MERGED",
+} as const;
+
+/**
  * Switch names one of the rules' switches, for the settings' one setter of them.
  */
 export type Switch = "read" | "auto" | "watching" | "botActivity";

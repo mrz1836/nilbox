@@ -126,11 +126,15 @@ func TestRevealItemIsSentAsTheFrontendReadsIt(t *testing.T) {
 
 	data, err := json.Marshal(event.RevealItem{ItemID: 7, URL: "https://github.com/acme-org/example-repo/pull/12"})
 	require.NoError(t, err)
-	assert.JSONEq(t, `{"itemId":7,"url":"https://github.com/acme-org/example-repo/pull/12","runId":0,"runStarted":""}`, string(data))
+	assert.JSONEq(t, `{"itemId":7,"url":"https://github.com/acme-org/example-repo/pull/12","runId":0,"runStarted":"","notificationId":0}`, string(data))
 
 	data, err = json.Marshal(event.RevealItem{RunID: 42, RunStarted: "2026-11-10T16:00:00Z"})
 	require.NoError(t, err)
-	assert.JSONEq(t, `{"itemId":0,"url":"","runId":42,"runStarted":"2026-11-10T16:00:00Z"}`, string(data), "a failed run's notification opens the run")
+	assert.JSONEq(t, `{"itemId":0,"url":"","runId":42,"runStarted":"2026-11-10T16:00:00Z","notificationId":0}`, string(data), "a failed run's notification opens the run")
+
+	data, err = json.Marshal(event.RevealItem{ItemID: 7, NotificationID: 3})
+	require.NoError(t, err)
+	assert.JSONEq(t, `{"itemId":7,"url":"","runId":0,"runStarted":"","notificationId":3}`, string(data), "a banner's click marks its notification read")
 }
 
 func TestOrFallsBackToDiscard(t *testing.T) {

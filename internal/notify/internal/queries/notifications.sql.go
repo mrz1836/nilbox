@@ -7,6 +7,7 @@ package queries
 
 import (
 	"context"
+	"strings"
 	"time"
 )
 
@@ -140,6 +141,60 @@ UPDATE notifications SET read_at = ?1 WHERE read_at IS NULL
 func (q *Queries) MarkAllRead(ctx context.Context, readAt *time.Time) error {
 	_, err := q.db.ExecContext(ctx, markAllRead, readAt)
 	return err
+}
+
+const markRead = `-- name: MarkRead :execrows
+UPDATE notifications SET read_at = ?1 WHERE read_at IS NULL AND id IN (/*SLICE:ids*/?)
+`
+
+type MarkReadParams struct {
+	ReadAt *time.Time
+	Ids    []int64
+}
+
+// MarkRead marks the unread notifications among ids read at read_at, and returns how many it
+// marked.
+func (q *Queries) MarkRead(ctx context.Context, arg MarkReadParams) (int64, error) {
+	query := markRead
+	var queryParams []interface{}
+	queryParams = append(queryParams, arg.ReadAt)
+	if len(arg.Ids) > 0 {
+		for _, v := range arg.Ids {
+			queryParams = append(queryParams, v)
+		}
+		query = strings.Replace(query, "/*SLICE:ids*/?", strings.Repeat(",?", len(arg.Ids))[1:], 1)
+	} else {
+		query = strings.Replace(query, "/*SLICE:ids*/?", "NULL", 1)
+	}
+	result, err := q.db.ExecContext(ctx, query, queryParams...)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
+const markUnread = `-- name: MarkUnread :execrows
+UPDATE notifications SET read_at = NULL WHERE read_at IS NOT NULL AND id IN (/*SLICE:ids*/?)
+`
+
+// MarkUnread marks the read notifications among ids unread again, and returns how many it
+// marked.
+func (q *Queries) MarkUnread(ctx context.Context, ids []int64) (int64, error) {
+	query := markUnread
+	var queryParams []interface{}
+	if len(ids) > 0 {
+		for _, v := range ids {
+			queryParams = append(queryParams, v)
+		}
+		query = strings.Replace(query, "/*SLICE:ids*/?", strings.Repeat(",?", len(ids))[1:], 1)
+	} else {
+		query = strings.Replace(query, "/*SLICE:ids*/?", "NULL", 1)
+	}
+	result, err := q.db.ExecContext(ctx, query, queryParams...)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
 }
 
 const trimNotifications = `-- name: TrimNotifications :exec

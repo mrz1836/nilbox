@@ -321,10 +321,14 @@ func TestRecordingNothingStoresNothing(t *testing.T) {
 func TestTheLogKeepsOnlyTheNewest(t *testing.T) {
 	t.Parallel()
 
+	// The cap is lowered so the test runs past it with few writes.
+	const keep = 20
+
 	f := newFixture(t, 1)
 	s := NewStore(f.pool)
+	s.keep = keep
 
-	arrivals := make([]inbox.Arrival, Keep+5)
+	arrivals := make([]inbox.Arrival, keep+5)
 	for i := range arrivals {
 		arrivals[i] = f.arrival(0, KindReviewRequested)
 	}
@@ -336,7 +340,7 @@ func TestTheLogKeepsOnlyTheNewest(t *testing.T) {
 
 	log, err := s.Log(t.Context())
 	require.NoError(t, err)
-	assert.Len(t, log.Items, Keep)
+	assert.Len(t, log.Items, keep)
 
 	for _, n := range log.Items {
 		assert.Equal(t, "2026-03-04T13:00:00Z", n.CreatedAt, "the oldest were dropped")
@@ -440,24 +444,35 @@ func countNotifications(t *testing.T, db *sql.DB) int {
 func TestTheLogKeepsTheLastRecordedOfTheSameTime(t *testing.T) {
 	t.Parallel()
 
+	// The cap is lowered so the test runs past it with few writes.
+	const keep = 20
+
 	f := newFixture(t, 1)
 	s := NewStore(f.pool)
+	s.keep = keep
 
-	arrivals := make([]inbox.Arrival, Keep+3)
+	arrivals := make([]inbox.Arrival, keep+3)
 	for i := range arrivals {
 		arrivals[i] = f.arrival(0, KindReviewRequested)
 	}
 
 	rows, err := s.Record(t.Context(), testNow, arrivals)
 	require.NoError(t, err)
-	require.Len(t, rows, Keep+3, "Record returns every one it stored")
-	assert.Equal(t, Keep, countNotifications(t, f.pool), "exactly Keep are kept")
+	require.Len(t, rows, keep+3, "Record returns every one it stored")
+	assert.Equal(t, keep, countNotifications(t, f.pool), "exactly the cap are kept")
 
 	log, err := s.Log(t.Context())
 	require.NoError(t, err)
-	require.Len(t, log.Items, Keep)
+	require.Len(t, log.Items, keep)
 	assert.Equal(t, rows[len(rows)-1].ID, log.Items[0].ID, "the last recorded comes first")
-	assert.Equal(t, rows[3].ID, log.Items[Keep-1].ID, "the first three recorded are dropped")
+	assert.Equal(t, rows[3].ID, log.Items[keep-1].ID, "the first three recorded are dropped")
+}
+
+func TestTheStoreKeepsAThousand(t *testing.T) {
+	t.Parallel()
+
+	assert.Equal(t, int64(Keep), NewStore(nil).keep)
+	assert.Equal(t, 1000, Keep, "the page's history holds the latest thousand")
 }
 
 func TestRecordIsAllOrNothing(t *testing.T) {
@@ -465,6 +480,7 @@ func TestRecordIsAllOrNothing(t *testing.T) {
 
 	f := newFixture(t, 1)
 	s := NewStore(f.pool)
+	s.keep = 3
 
 	unknown := f.arrival(0, KindAssigned)
 	unknown.ItemID = f.items[0] + 100
@@ -478,7 +494,7 @@ func TestRecordIsAllOrNothing(t *testing.T) {
 BEGIN SELECT RAISE(ABORT, 'refused by the test'); END`)
 	require.NoError(t, err)
 
-	arrivals := make([]inbox.Arrival, Keep+1)
+	arrivals := make([]inbox.Arrival, s.keep+1)
 	for i := range arrivals {
 		arrivals[i] = f.arrival(0, KindReviewRequested)
 	}
@@ -560,6 +576,89 @@ func TestMarkAllReadStampsOnlyTheUnread(t *testing.T) {
 	assert.Equal(t, "2026-03-04 12:03:00+00:00", stamp(t, f.pool, "read_at", second[0].ID))
 }
 
+func TestMarkReadAndUnreadByID(t *testing.T) {
+	t.Parallel()
+
+	f := newFixture(t, 2)
+	s := NewStore(f.pool)
+
+	rows, err := s.Record(t.Context(), testNow,
+		[]inbox.Arrival{f.arrival(0, KindReviewRequested), f.arrival(1, KindAssigned), f.arrival(0, KindWoke)})
+	require.NoError(t, err)
+
+	n, err := s.MarkRead(t.Context(), testNow, nil)
+	require.NoError(t, err)
+	assert.Zero(t, n, "an empty list marks nothing")
+
+	n, err = s.MarkRead(t.Context(), testNow.Add(time.Minute), []int64{rows[0].ID, rows[1].ID, 9999})
+	require.NoError(t, err)
+	assert.Equal(t, int64(2), n, "an id the log doesn't hold is left alone")
+	assert.Equal(t, "2026-03-04 12:01:00+00:00", stamp(t, f.pool, "read_at", rows[0].ID))
+	assert.Empty(t, stamp(t, f.pool, "read_at", rows[2].ID), "only the ids asked for")
+
+	n, err = s.MarkRead(t.Context(), testNow.Add(2*time.Minute), []int64{rows[0].ID})
+	require.NoError(t, err)
+	assert.Zero(t, n, "already read")
+	assert.Equal(t, "2026-03-04 12:01:00+00:00", stamp(t, f.pool, "read_at", rows[0].ID), "its first read stands")
+
+	log, err := s.Log(t.Context())
+	require.NoError(t, err)
+	assert.Equal(t, 1, log.Unread)
+
+	n, err = s.MarkUnread(t.Context(), nil)
+	require.NoError(t, err)
+	assert.Zero(t, n, "an empty list marks nothing")
+
+	n, err = s.MarkUnread(t.Context(), []int64{rows[0].ID, rows[2].ID, 9999})
+	require.NoError(t, err)
+	assert.Equal(t, int64(1), n, "one already unread, and one the log doesn't hold, are left alone")
+	assert.Empty(t, stamp(t, f.pool, "read_at", rows[0].ID))
+	assert.Equal(t, "2026-03-04 12:01:00+00:00", stamp(t, f.pool, "read_at", rows[1].ID), "only the ids asked for")
+
+	require.NoError(t, f.pool.Close())
+
+	_, err = s.MarkRead(t.Context(), testNow, []int64{rows[0].ID})
+	require.ErrorContains(t, err, "mark the notifications read")
+	_, err = s.MarkUnread(t.Context(), []int64{rows[0].ID})
+	require.ErrorContains(t, err, "mark the notifications unread")
+}
+
+func TestTheServiceTellsOnlyAMarkThatChangedSomething(t *testing.T) {
+	t.Parallel()
+
+	f := newFixture(t, 1)
+	svc := NewService(f.config())
+
+	rows, err := NewStore(f.pool).Record(t.Context(), testNow, []inbox.Arrival{f.arrival(0, KindReviewRequested)})
+	require.NoError(t, err)
+
+	id := rows[0].ID
+
+	require.NoError(t, svc.MarkRead(t.Context(), nil))
+	require.NoError(t, svc.MarkUnread(t.Context(), []int64{id}))
+	assert.Zero(t, f.events.Count(), "nothing changed")
+
+	f.clock.Set(testNow.Add(time.Minute))
+	require.NoError(t, svc.MarkRead(t.Context(), []int64{id}))
+	assert.Equal(t, []event.Event{event.NotificationsUpdated{}}, f.events.All())
+	assert.Equal(t, "2026-03-04 12:01:00+00:00", stamp(t, f.pool, "read_at", id), "read at the clock's time")
+
+	require.NoError(t, svc.MarkRead(t.Context(), []int64{id}))
+	assert.Equal(t, 1, f.events.Count(), "already read")
+
+	require.NoError(t, svc.MarkUnread(t.Context(), []int64{id}))
+	assert.Equal(t, 2, f.events.Count())
+
+	log, err := svc.List(t.Context())
+	require.NoError(t, err)
+	assert.Equal(t, 1, log.Unread, "back on the bell")
+
+	require.NoError(t, f.pool.Close())
+	require.Error(t, svc.MarkRead(t.Context(), []int64{id}))
+	require.Error(t, svc.MarkUnread(t.Context(), []int64{id}))
+	assert.Equal(t, 2, f.events.Count(), "failures are not told")
+}
+
 func TestTimesAreStoredInUTC(t *testing.T) {
 	t.Parallel()
 
@@ -594,7 +693,7 @@ func TestTheDispatcherRecordsAndShowsBanners(t *testing.T) {
 	assert.Equal(t, Banner{
 		ID: brand.Slug + "-" + strconv.FormatInt(log.Items[1].ID, 10), Title: "Review requested",
 		Subtitle: "acme-org/example-repo #1", Body: "Item 1", Thread: string(KindReviewRequested), ItemID: f.items[0],
-		URL: "https://github.com/acme-org/example-repo/pull/1",
+		URL: "https://github.com/acme-org/example-repo/pull/1", NotificationID: log.Items[1].ID,
 	}, banners[0])
 	assert.Equal(t, "Assigned to you", banners[1].Title)
 }
@@ -700,7 +799,7 @@ func TestTheDispatcherNotifiesOfAnEntryAboutNoItem(t *testing.T) {
 	assert.Equal(t, []Banner{{
 		ID: brand.Slug + "-" + strconv.FormatInt(log.Items[0].ID, 10), Title: "Released", Subtitle: "acme-org/sdk",
 		Body: "v1.4.3 is on GitHub\nTagged a1b2c3d on master.", Thread: string(KindReleaseDone),
-		URL: "https://github.com/acme-org/sdk/releases/tag/v1.4.3",
+		URL: "https://github.com/acme-org/sdk/releases/tag/v1.4.3", NotificationID: log.Items[0].ID,
 	}}, f.poster.posted(), "a click opens the entry's page: there's no item to show")
 
 	require.NoError(t, prefs.New(f.pool, f.clock).Set(t.Context(), notifyprefs.KeyBannersOff, `["release_done"]`))
@@ -743,6 +842,7 @@ func TestTheDispatcherGathersAFailedRun(t *testing.T) {
 		ID: brand.Slug + "-" + strconv.FormatInt(log.Items[0].ID, 10), Title: "Run failed", Subtitle: "acme-org/sdk",
 		Body:   "Checks failed: Checks · all files\n4 passed, 1 failed: whitespace.",
 		Thread: string(KindRunFailed), RunID: 42, RunStarted: "2026-03-04T11:59:00Z",
+		NotificationID: log.Items[0].ID,
 	}}, f.poster.posted(), "the repository as the subtitle, and a click opens the run")
 
 	d.Gather(t.Context(), runEntry())

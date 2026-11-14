@@ -32,8 +32,8 @@ func TestABannerPerNotification(t *testing.T) {
 	assert.Equal(t, Banner{
 		ID: brand.Slug + "-1", Title: "Review requested", Subtitle: "acme-org/example-repo #7",
 		Body: "Fix the login redirect", Thread: string(KindReviewRequested), ItemID: 10,
-		URL: "https://github.com/acme-org/example-repo/pull/7",
-	}, got[0])
+		URL: "https://github.com/acme-org/example-repo/pull/7", NotificationID: 1,
+	}, got[0], "a click marks its entry read")
 	assert.Equal(t, "Back from snooze", got[1].Title)
 	assert.Equal(t, "Fix the login redirect\nApproved, 2 new commits", got[1].Body)
 }
@@ -62,6 +62,7 @@ func TestABannerForAnEntryAboutNoItem(t *testing.T) {
 	assert.Equal(t, Banner{
 		ID: brand.Slug + "-3", Title: "Released", Subtitle: "acme-org/sdk", Body: "v1.4.3 is on GitHub",
 		Thread: string(KindReleaseDone), URL: "https://github.com/acme-org/sdk/releases/tag/v1.4.3",
+		NotificationID: 3,
 	}, got[0], "its repository alone as the subtitle, and no item to show")
 
 	sum := Banners([]Notification{
@@ -91,6 +92,7 @@ func TestBannersForTheReleaseWorkflow(t *testing.T) {
 	assert.Equal(t, Banner{
 		ID: brand.Slug + "-6", Title: "Published", Subtitle: "acme-org/sdk", Body: "acme-org/sdk v1.4.3 is published",
 		Thread: string(KindReleasePublished), URL: "https://github.com/acme-org/sdk/releases/tag/v1.4.3",
+		NotificationID: 6,
 	}, got[0], "it opens the release")
 	assert.Equal(t, "Release workflow failed", got[1].Title)
 	assert.Equal(t, "https://github.com/acme-org/sdk/actions/runs/7", got[1].URL, "it opens the run")
@@ -121,7 +123,7 @@ func TestABannerForAFailedRun(t *testing.T) {
 	require.Len(t, got, 1)
 	assert.Equal(t, Banner{
 		ID: brand.Slug + "-6", Title: "Run failed", Body: "A script failed in ~/projects/notes: lint\nIt exited with status 1.",
-		Thread: string(KindRunFailed), RunID: 42,
+		Thread: string(KindRunFailed), RunID: 42, NotificationID: 6,
 	}, got[0], "no repository for a folder that isn't one, which the title names; a click opens the run")
 
 	assert.Empty(t, Banners([]Notification{{ID: 6, Kind: KindRunFailed}}, []notifyprefs.Kind{KindRunFailed}),
@@ -151,7 +153,7 @@ func TestManyBannersAreSummedUp(t *testing.T) {
 	assert.Equal(t, Banner{
 		ID: brand.Slug + "-summary-4", Title: "5 new in your inbox",
 		Body: "3 review requests, 1 assignment, 1 back from snooze", Thread: "summary",
-	}, got[0])
+	}, got[0], "a summary stands for many entries, and marks none")
 
 	// Up to MaxBanners are shown one by one.
 	assert.Len(t, Banners(rows[:MaxBanners], nil), MaxBanners)
