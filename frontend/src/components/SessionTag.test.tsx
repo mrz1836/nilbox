@@ -182,6 +182,39 @@ describe('SessionTag', () => {
     expect(await within(done).findByRole('alert')).toHaveTextContent("isn't there anymore.")
   })
 
+  it('removes a session once it ended, and says why it couldn’t', async () => {
+    const user = userEvent.setup()
+    const ended = agentSession({ id: 'older', state: 'ended', endedAt: '2026-06-15T10:00:00Z', canFocus: false })
+    const failed = agentSession({ id: 'failed', state: 'failed', detail: 'API error' })
+
+    renderTag([agentSession(), failed, ended])
+    await user.click(screen.getByRole('button', { name: /Claude session/ }))
+
+    const [running = document.body, stuck = document.body, done = document.body] = entries(3)
+
+    // Only a session that ended can be removed; a failed one still counts as running.
+    expect(within(running).queryByRole('button', { name: 'Remove this session' })).toBeNull()
+    expect(within(stuck).queryByRole('button', { name: 'Remove this session' })).toBeNull()
+
+    const remove = within(done).getByRole('button', { name: 'Remove this session' })
+    expect(remove).toHaveAttribute('title', 'Remove this ended session from the list')
+
+    platform.forgetSession.mockRejectedValueOnce(
+      new Error('This session is still running. Remove it once it has ended.'),
+    )
+    await user.click(remove)
+
+    expect(platform.forgetSession).toHaveBeenCalledWith('older')
+    expect(await within(done).findByRole('alert')).toHaveTextContent('This session is still running.')
+
+    await user.click(remove)
+    expect(platform.forgetSession).toHaveBeenCalledTimes(2)
+    expect(within(done).queryByRole('alert')).toBeNull()
+    // The panel stays open for the other sessions; the list reads again once the app says
+    // the sessions changed.
+    entries(3)
+  })
+
   it('shows the terminal, resumes, and copies the session ID', async () => {
     const user = userEvent.setup()
     const ended = agentSession({ id: 'older', state: 'ended', endedAt: '2026-06-15T10:00:00Z', canResume: true })

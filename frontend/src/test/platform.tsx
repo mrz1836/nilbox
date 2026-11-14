@@ -150,6 +150,7 @@ function answers(subscribe: Loose<Platform['on']>): { [K in keyof Platform]: Loo
     listSessions: () => Promise.resolve(sessionsSnapshot()),
     focusSession: done,
     showSessionFolder: done,
+    forgetSession: done,
     sessionLastWords: () => Promise.resolve({ text: 'The change looks good.', partial: false }),
 
     openReview: () => Promise.resolve(review()),

@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/mrz1836/nilbox/internal/event"
 	"github.com/mrz1836/nilbox/internal/sessions"
 	"github.com/mrz1836/nilbox/internal/testutil"
 	"github.com/mrz1836/nilbox/internal/uierr"
@@ -35,6 +36,17 @@ func (f *fakeFocuser) Focus(_ context.Context, terminal, tty string) error {
 func newService(t *testing.T, ps *testutil.Runner, focus *fakeFocuser) *sessions.Service {
 	t.Helper()
 
+	return sessions.NewService(sessions.Config{
+		Store: seeded(t), Focuser: focus, PS: ps, Home: "/srv", Switch: &toggle{on: true},
+		Clock: testutil.NewClock(launched().Add(time.Hour)),
+	})
+}
+
+// seeded returns a fresh ledger holding a running session, s1, whose process is 4100, an
+// ended one, s2, and one just launched, s3.
+func seeded(t *testing.T) *sessions.Store {
+	t.Helper()
+
 	store := sessions.NewStore(testutil.DB(t))
 
 	for _, r := range []sessions.Record{record("s1", 12), record("s2", 12), record("s3", 13)} {
@@ -46,10 +58,7 @@ func newService(t *testing.T, ps *testutil.Runner, focus *fakeFocuser) *sessions
 	})
 	require.NoError(t, err)
 
-	return sessions.NewService(sessions.Config{
-		Store: store, Focuser: focus, PS: ps, Home: "/srv", Switch: &toggle{on: true},
-		Clock: testutil.NewClock(launched().Add(time.Hour)),
-	})
+	return store
 }
 
 func TestList(t *testing.T) {
@@ -122,6 +131,50 @@ func TestFocusWithoutATerminal(t *testing.T) {
 			assert.Contains(t, uierr.Message(err), "Couldn't find the session's terminal")
 		})
 	}
+}
+
+func TestForget(t *testing.T) {
+	t.Parallel()
+
+	events := &testutil.Events{}
+	svc := sessions.NewService(sessions.Config{
+		Store: seeded(t), Home: "/srv", Switch: &toggle{on: true}, Events: events,
+		Clock: testutil.NewClock(launched().Add(time.Hour)),
+	})
+
+	listed := func() []string {
+		got, err := svc.List(t.Context())
+		require.NoError(t, err)
+
+		ids := make([]string, 0, len(got.Sessions))
+		for _, s := range got.Sessions {
+			ids = append(ids, s.ID)
+		}
+
+		return ids
+	}
+
+	require.NoError(t, svc.Forget(t.Context(), "s2"))
+	assert.NotContains(t, listed(), "s2", "the ended session is forgotten")
+	assert.Equal(t, []event.Event{event.SessionsUpdated{}}, events.All(), "the window is told")
+
+	err := svc.Forget(t.Context(), "s1")
+	require.ErrorIs(t, err, sessions.ErrLive)
+	assert.Equal(t, "This session is still running. Remove it once it has ended.", uierr.Message(err))
+	assert.Contains(t, listed(), "s1", "a running session is kept")
+	assert.Equal(t, 1, events.Count(), "nothing changed, so the window isn't told")
+
+	require.NoError(t, svc.Forget(t.Context(), "gone"), "a session already forgotten counts as done")
+	assert.Equal(t, 2, events.Count(), "and the window is told, so a stale list reads again")
+
+	quiet := &testutil.Events{}
+	closed := sessions.NewService(sessions.Config{Store: sessions.NewStore(testutil.ClosedDB(t)), Events: quiet})
+
+	err = closed.Forget(t.Context(), "s2")
+	require.Error(t, err)
+	require.NotErrorIs(t, err, sessions.ErrNotFound)
+	assert.Contains(t, err.Error(), "forget the session")
+	assert.Zero(t, quiet.Count(), "a forget that failed tells nothing")
 }
 
 func TestTTY(t *testing.T) {

@@ -22,6 +22,15 @@ export function Focus(id: string): $CancellablePromise<void> {
 }
 
 /**
+ * Forget forgets a session that has ended, on the user's click, so it leaves the card and
+ * the panel, and tells the window. A session already forgotten counts as done, and one
+ * still running is refused and kept.
+ */
+export function Forget(id: string): $CancellablePromise<void> {
+    return $Call.ByID(1215828878, id);
+}
+
+/**
  * LastWords returns what the session with id last said, in full, read from the agent's own
  * files, so the review sheet can show a whole verdict where a card shows its start. When the
  * agent's files can't be read, it returns the start the ledger keeps, marked Partial; a

@@ -205,6 +205,50 @@ func TestPrune(t *testing.T) {
 	assert.Len(t, recent, sessions.KeepPerItem+1)
 }
 
+func TestStoreForgetsOnlyAnEndedSession(t *testing.T) {
+	t.Parallel()
+
+	db := testutil.DB(t)
+	store := sessions.NewStore(db)
+
+	for _, r := range []sessions.Record{record("ended", 1), record("running", 1), record("failed", 1)} {
+		require.NoError(t, store.Insert(t.Context(), r))
+	}
+
+	_, err := store.Apply(t.Context(), launched(), []sessions.Observation{
+		{ID: "ended", State: sessions.StateEnded}, {ID: "failed", State: sessions.StateFailed},
+	})
+	require.NoError(t, err)
+
+	require.NoError(t, store.Forget(t.Context(), "ended"))
+
+	_, err = store.Get(t.Context(), "ended")
+	require.ErrorIs(t, err, sessions.ErrNotFound, "an ended session is forgotten")
+
+	for _, id := range []string{"running", "failed"} {
+		require.ErrorIs(t, store.Forget(t.Context(), id), sessions.ErrLive, id)
+
+		_, err = store.Get(t.Context(), id)
+		require.NoError(t, err, "a session that has not ended is kept: %s", id)
+	}
+
+	require.ErrorIs(t, store.Forget(t.Context(), "ended"), sessions.ErrNotFound, "forgotten already")
+	require.ErrorIs(t, store.Forget(t.Context(), "missing"), sessions.ErrNotFound)
+
+	_, err = store.Apply(t.Context(), launched(), []sessions.Observation{{ID: "running", State: sessions.StateEnded}})
+	require.NoError(t, err)
+
+	_, err = db.ExecContext(t.Context(), `CREATE TRIGGER refuse_forget BEFORE DELETE ON agent_sessions
+BEGIN SELECT RAISE(ABORT, 'refused by the test'); END`)
+	require.NoError(t, err)
+
+	err = store.Forget(t.Context(), "running")
+	require.Error(t, err)
+	require.NotErrorIs(t, err, sessions.ErrNotFound)
+	require.NotErrorIs(t, err, sessions.ErrLive)
+	assert.Contains(t, err.Error(), "forget the session")
+}
+
 func TestRecordSession(t *testing.T) {
 	t.Parallel()
 

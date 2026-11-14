@@ -1,12 +1,13 @@
 import { useRef, useState } from 'react'
 
 import { agentName } from '../lib/launch'
-import { setupWords, sinceWhen, stateLabel, terminalName } from '../lib/sessions'
+import { isLive, setupWords, sinceWhen, stateLabel, terminalName } from '../lib/sessions'
 import { formatAgo, formatFull } from '../lib/time'
 import { useMutation } from '../lib/useMutation'
 import {
   copyText,
   focusSession,
+  forgetSession,
   resumeSession,
   showSessionFolder,
   type AgentInfo,
@@ -15,7 +16,7 @@ import {
   type ResumeRequest,
 } from '../platform'
 import { quietButtonClass } from './controls'
-import { AlertIcon, CheckIcon, CopyIcon, FolderIcon, PlayIcon, TerminalIcon } from './icons'
+import { AlertIcon, CheckIcon, CopyIcon, FolderIcon, PlayIcon, TerminalIcon, XIcon } from './icons'
 import { LaunchHoldDialog } from './LaunchHoldDialog'
 import { RelativeTime } from './RelativeTime'
 import { SessionDot } from './SessionDot'
@@ -49,7 +50,7 @@ function StateLine({ session }: { session: AgentSession }) {
 }
 
 // Action is one of a session's buttons.
-type Action = 'focus' | 'resume' | 'folder' | 'copy'
+type Action = 'focus' | 'resume' | 'folder' | 'copy' | 'forget'
 
 // Held is a resume held back for the user to confirm, with the request to send again,
 // once confirmed.
@@ -72,7 +73,8 @@ function SessionEntry({ session, agents }: { session: AgentSession; agents: read
   const resume = useMutation((request: ResumeRequest) => resumeSession(request))
   const folder = useMutation((id: string) => showSessionFolder(id))
   const copy = useMutation(() => copyText(session.agentSessionId))
-  const actions = { focus, resume, folder, copy }
+  const forget = useMutation((id: string) => forgetSession(id))
+  const actions = { focus, resume, folder, copy, forget }
   const terminal = terminalName(session)
   const setup = setupWords(session)
   // copied is whether the ID was just copied; it clears on the next copy.
@@ -134,6 +136,13 @@ function SessionEntry({ session, agents }: { session: AgentSession; agents: read
     setCopied((await copy.run()).ok)
   }
 
+  // remove forgets the session once it ended; the list reads again when the app says the
+  // sessions changed, and this entry leaves it.
+  const remove = () => {
+    press('forget')
+    void forget.run(session.id)
+  }
+
   return (
     <li className="flex flex-col gap-1.5 border-b border-border py-2.5 first:pt-0 last:border-b-0 last:pb-0">
       <div className="flex min-w-0 items-baseline gap-2">
@@ -142,6 +151,18 @@ function SessionEntry({ session, agents }: { session: AgentSession; agents: read
         <span className="ml-auto shrink-0 text-[0.6875rem] text-muted" title={formatFull(session.launchedAt)}>
           started <RelativeTime iso={session.launchedAt} show={formatAgo} />
         </span>
+        {!isLive(session.state) && (
+          <button
+            type="button"
+            disabled={forget.pending}
+            onClick={remove}
+            aria-label="Remove this session"
+            title="Remove this ended session from the list"
+            className="-my-0.5 flex size-5 shrink-0 items-center justify-center self-center rounded-md text-muted transition-colors hover:bg-raised hover:text-danger disabled:opacity-50"
+          >
+            <XIcon className="size-3.5" />
+          </button>
+        )}
       </div>
       <StateLine session={session} />
       {setup !== '' && <p className="truncate text-[0.6875rem] text-muted">{setup}</p>}
@@ -252,7 +273,7 @@ export interface SessionPanelProps {
 // and prompt, what it is doing and for how long, the permissions it started with, the
 // folder it runs in and what its launch did to the item's worktree, what the launch
 // worked around, what the agent last said, and buttons to show its terminal, resume it
-// once it ended, show its folder in Finder, and copy its ID.
+// once it ended, show its folder in Finder, copy its ID, and remove it once it ended.
 export function SessionPanel({ sessions, agents }: SessionPanelProps) {
   return (
     <div className="flex flex-col gap-2.5">

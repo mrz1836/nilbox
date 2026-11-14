@@ -62,6 +62,10 @@ WHERE id = sqlc.arg(id);
 -- PruneEndedBefore forgets the sessions that ended before a time.
 DELETE FROM agent_sessions WHERE state = 'ended' AND ended_at < sqlc.arg(before);
 
+-- name: ForgetEndedSession :execrows
+-- ForgetEndedSession forgets one session, only once it has ended.
+DELETE FROM agent_sessions WHERE id = sqlc.arg(id) AND state = 'ended';
+
 -- name: PruneItemExcess :execrows
 -- PruneItemExcess forgets each item's ended sessions past its newest keep sessions.
 DELETE FROM agent_sessions WHERE state = 'ended' AND (

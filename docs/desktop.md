@@ -2445,6 +2445,12 @@ around, and the start of what the agent last said. Each has its actions:
 - **Show in Finder** shows the folder the session runs in, its worktree or the clone, whether or
   not it still runs, and says so when the folder is gone.
 - **Copy session ID** copies the agent's own ID, to resume or look the session up yourself.
+- **×** (on a session that ended) removes it from the card and the panel, forgetting its
+  record: Resume is no longer offered for it, and resuming it outside the app is no longer
+  followed. The conversation itself stays in the agent's own files, so copy its ID first if you
+  may want it. A session still running, or one that failed or whose status is unavailable,
+  can't be removed. The card's tag then shows the next session that ended within the day, or
+  none.
 
 **How it is read.** The app asks each agent through the interface it supports for this, and
 never the terminal:
@@ -2512,8 +2518,9 @@ session banner shows. Launches are still recorded, which costs nothing. Turned o
 sessions still running are followed at once.
 
 **What is kept.** Sessions are recorded in the local database (the `agent_sessions` table):
-every one still running, and each ended one for 30 days, at most the newest 20 per item. The
-last message keeps its first 500 characters.
+every one still running, and each ended one for 30 days, at most the newest 20 per item, unless
+you remove it sooner with its **×** in the panel. The last message keeps its first 500
+characters.
 
 <br>
 

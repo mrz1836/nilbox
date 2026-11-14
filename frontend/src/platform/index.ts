@@ -457,6 +457,7 @@ export const {
   Focus: focusSession,
   LastWords: sessionLastWords,
   ShowFolder: showSessionFolder,
+  Forget: forgetSession,
 } = narrow(sessions.Service)
 
 export const {

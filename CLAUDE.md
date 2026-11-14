@@ -366,7 +366,11 @@ app:lint` reads.
   files, on demand, for the review sheet. Each record keeps what its launch reported (the
   permissions it started with, what it did to the item's worktree, and what it worked around),
   which the card's sessions panel shows in place of a line on the row after the launch, and
-  `ShowFolder` shows a session's folder in Finder through core's `open -R` Revealer.
+  `ShowFolder` shows a session's folder in Finder through core's `open -R` Revealer. The
+  bound `Forget` deletes an ended session's record on the user's click (the panel's ×),
+  refusing one still running (`ErrLive`; failed and unknown count as running) and counting
+  one already gone as done, and emits `event.SessionsUpdated`; the prune is otherwise the
+  only thing that deletes a session.
 - `internal/review/` is the review sheet's service. `Decide` is pure: from a pull request's
   facts it works out every action's offer and the one primary, and `Act` runs it again before
   any write. An offer with warnings asks first (`offers` sets `Offer.Confirm` for it), since
