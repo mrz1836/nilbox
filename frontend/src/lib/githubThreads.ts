@@ -99,8 +99,9 @@ export function badgeText(count: number): string {
   return count > 99 ? '99+' : formatCount(count)
 }
 
-// countsText says what the user's GitHub inbox holds: "38 in your GitHub inbox · 5 unread",
-// or that it is empty, or that it hasn't been read yet.
+// countsText says what the user's GitHub inbox holds, the unread first, as the toolbar's
+// badge counts them: "5 unread · 38 in your GitHub inbox", or that it is empty, or that it
+// hasn't been read yet.
 export function countsText(status: GitHubThreadsStatus): string {
   if (status.lastPassAt === '') {
     return 'Not read from GitHub yet'
@@ -112,7 +113,22 @@ export function countsText(status: GitHubThreadsStatus): string {
 
   const inbox = `${formatCount(status.count)} in your GitHub inbox`
 
-  return status.unread > 0 ? `${inbox} · ${formatCount(status.unread)} unread` : inbox
+  return status.unread > 0 ? `${formatCount(status.unread)} unread · ${inbox}` : inbox
+}
+
+// summaryText is the panel's line under its title: the counts, the unread first as the
+// badge counts them, then when GitHub was last checked, or that a check is under way: "5
+// unread · 38 in your GitHub inbox · checked 2m ago".
+export function summaryText(now: Date, status: GitHubThreadsStatus, checking: boolean): string {
+  const counts = countsText(status)
+
+  if (checking) {
+    return `${counts} · checking…`
+  }
+
+  const ago = formatAgo(now, status.lastPassAt)
+
+  return ago === '' ? counts : `${counts} · checked ${ago}`
 }
 
 // checkedText says what the GitHub inbox held at the last check, and when that was: "38 in
@@ -125,7 +141,7 @@ export function checkedText(now: Date, status: GitHubThreadsStatus): string {
   return ago === '' ? inbox : `${inbox} · checked ${ago}`
 }
 
-// buttonLabel names the toolbar button with what its badge or dot says.
+// buttonLabel names the toolbar button with what its badge or dot says, the unread first.
 export function buttonLabel(status: GitHubThreadsStatus): string {
   if (status.access === 'refused') {
     return 'GitHub notifications, can’t be read'
@@ -135,9 +151,9 @@ export function buttonLabel(status: GitHubThreadsStatus): string {
     return 'GitHub notifications'
   }
 
-  const unread = status.unread > 0 ? `, ${formatCount(status.unread)} unread` : ''
+  const unread = status.unread > 0 ? `${formatCount(status.unread)} unread, ` : ''
 
-  return `GitHub notifications, ${formatCount(status.count)} in your inbox${unread}`
+  return `GitHub notifications, ${unread}${formatCount(status.count)} in your inbox`
 }
 
 // refusal is why GitHub refuses the notifications, as the status words it.
@@ -172,8 +188,10 @@ export interface ThreadGroup {
   reasons: string[]
   // updatedAt is when the newest of them last changed.
   updatedAt: string
-  // count is how many unread notifications the line stands for.
+  // count is how many unread notifications the line stands for, and ids are theirs, which
+  // opening the line marks read and its Done marks done.
   count: number
+  ids: number[]
 }
 
 // threadGroups groups the newest unread notifications, the newest first, by the item each
@@ -189,6 +207,7 @@ export function threadGroups(threads: readonly GitHubThread[]): ThreadGroup[] {
 
     if (found !== undefined) {
       found.count += 1
+      found.ids.push(t.id)
 
       if (t.reason !== '' && !found.reasons.includes(t.reason)) {
         found.reasons.push(t.reason)
@@ -206,6 +225,7 @@ export function threadGroups(threads: readonly GitHubThread[]): ThreadGroup[] {
       reasons: t.reason === '' ? [] : [t.reason],
       updatedAt: t.updatedAt,
       count: 1,
+      ids: [t.id],
     }
 
     byKey.set(key, group)
@@ -223,6 +243,51 @@ const subjectWords: Readonly<Record<string, string>> = {
   Commit: 'Commit',
   RepositoryVulnerabilityAlert: 'Security alert',
   RepositoryDependabotAlertsThread: 'Dependabot alerts',
+}
+
+// subjectPages are the page of its repository a notification about no item opens on, by
+// what it is about: a workflow run's Actions, a release's Releases, and so on; any other
+// opens the repository.
+const subjectPages: Readonly<Record<string, string>> = {
+  CheckSuite: 'actions',
+  WorkflowRun: 'actions',
+  Release: 'releases',
+  Discussion: 'discussions',
+  Commit: 'commits',
+  RepositoryVulnerabilityAlert: 'security',
+  RepositoryDependabotAlertsThread: 'security/dependabot',
+}
+
+// repoURL is a repository's page on GitHub, from "owner/name", or '' when it names none a
+// link could hold.
+function repoURL(repo: string): string {
+  const [owner = '', name = '', ...rest] = repo.split('/')
+
+  if (rest.length > 0 || !validSegment(owner) || !validSegment(name)) {
+    return ''
+  }
+
+  return `https://github.com/${encodeURIComponent(owner)}/${encodeURIComponent(name)}`
+}
+
+// groupURL is where a line opens on GitHub, as GitHub's own inbox opens it: its item's
+// page, or, for one about no item, the page of its repository it belongs on (subjectPages),
+// or else the GitHub inbox. Every link is built from fixed parts and the repository's
+// checked name: none is an address GitHub sent.
+export function groupURL(group: ThreadGroup): string {
+  if (group.item !== null) {
+    return itemURL(group.item)
+  }
+
+  const repo = repoURL(group.repo)
+
+  if (repo === '') {
+    return inboxURL
+  }
+
+  const page = Object.hasOwn(subjectPages, group.subjectType) ? subjectPages[group.subjectType] : undefined
+
+  return page === undefined ? repo : `${repo}/${page}`
 }
 
 // groupWhere says where a line's notifications are: "example-repo #7", or "acme-org/sdk ·

@@ -782,8 +782,9 @@ read at all.
 
 **How often.** **Settings → Refreshing** sets each interval: the inbox (every 2 minutes to every
 hour, five minutes by default), the running checks (off, or every 30 seconds to every 2 minutes,
-45 seconds by default), and the worktrees' sweep (every 5 minutes to every hour, five minutes by
-default). A change applies at once: a refresh already due under the new interval starts
+45 seconds by default), the worktrees' sweep (every 5 minutes to every hour, five minutes by
+default), and the [GitHub notifications](#github-notifications) (every minute to every hour, five
+minutes by default, and never sooner than GitHub asks). A change applies at once: a refresh already due under the new interval starts
 straight away, and otherwise the next waits the new interval from the last one's end.
 
 **Changes on GitHub.** The panel also counts the [edits](#the-item-menu-and-edits-on-github)
@@ -1722,20 +1723,30 @@ posted to macOS.
 ## GitHub notifications
 
 Nilbox keeps a copy of your GitHub inbox, the notifications GitHub keeps for you, read and
-unread but not done, read from GitHub as the inbox refreshes. **Settings → GitHub
-notifications → Read my GitHub notifications** turns it off; it is on by default.
+unread but not done, read from GitHub every five minutes, or as set in **Settings →
+Refreshing**. **Settings → GitHub notifications → Read my GitHub notifications** turns it off; it
+is on by default.
 
-**The button.** Beside the bell, GitHub's mark counts what your GitHub inbox holds, up to
-**99+**, accented while any are unread, and shows nothing at none. While GitHub refuses your
-token the notifications, it shows an amber dot instead. Click it for the counts (*38 in your
-GitHub inbox · 5 unread*), why they can't be read and when Nilbox asks again, with **Check
-again**, and the newest 20 unread, grouped by the pull request or issue each is about. Click
-one to show its item in the inbox, or on GitHub when the inbox doesn't list it; one about
-something else, such as a release, is only listed. **Open on GitHub** opens your GitHub inbox,
-and **Settings** its settings. Opening it reads Nilbox's own copy: it asks GitHub nothing and
-marks nothing read. While automatic clearing is off, it offers **Turn on automatic clearing**.
-Every link is built from the item's repository and number; Nilbox opens no address GitHub
-sent.
+**The button.** Beside the bell, GitHub's mark counts the unread notifications in your GitHub
+inbox, up to **99+**, and shows nothing while none are unread. While GitHub refuses your token
+the notifications, it shows an amber dot instead. Click it for the counts and when GitHub was
+last checked (*5 unread · 38 in your GitHub inbox · checked 2m ago*), with a refresh button that
+checks GitHub now and turns while it does; why they can't be read and when Nilbox asks again,
+with **Check again**; and the newest 20 unread, grouped by the pull request or issue each is
+about. Opening the panel reads Nilbox's own copy: it asks GitHub nothing and marks nothing read.
+While automatic clearing is off, it offers **Turn on automatic clearing**. **Open on GitHub**
+opens your GitHub inbox, and **Settings** its settings.
+
+**Opening and Done.** Click a notification to open it on GitHub, as GitHub's own inbox does,
+which marks it read there too: a pull request or an issue on its page, a workflow run on its
+repository's Actions page, a release on its Releases page, and anything else on its repository.
+Point at one, or move the focus to it, and **Done** takes the place of its time: click it to
+mark the notification done on GitHub, which takes it out of your GitHub inbox, whatever it is
+about and whatever **What clearing does** says; Nilbox drops it at once. A notification on its
+way dims, and its **Done** turns until GitHub has taken it; if GitHub refuses, the panel says
+why. Each goes through the same paced lane as automatic clearing. Every link is built from the
+item's repository and number, or from the repository's name and a fixed page; Nilbox opens no
+address GitHub sent.
 
 **The settings.** **Settings → GitHub notifications** also says what your GitHub inbox held at
 the last check, and when, with **Check again**; that GitHub refuses the token, and when it is

@@ -58,6 +58,30 @@ export function Keep(clearIDs: number[] | null): $CancellablePromise<$models.Sna
 }
 
 /**
+ * MarkDone marks the threads with ids done on GitHub at the user's click, the panel's Done,
+ * which takes them out of the user's inbox there: any thread the mirror lists for the
+ * account the last pass read, whatever its subject and whatever the rules say clearing
+ * does, and, for one about a pull request or an issue, every thread the mirror lists about
+ * that item, since the panel's line stands for the item. Each one GitHub took, or no longer
+ * had, leaves the mirror, and a clear queued for it is settled. With reading off, or before
+ * a pass read an account, it sends nothing. It returns the Snapshot.
+ */
+export function MarkDone(ids: number[] | null): $CancellablePromise<$models.Snapshot> {
+    return $Call.ByID(652796123, ids);
+}
+
+/**
+ * MarkRead marks the threads with ids read on GitHub as the user opens them from the panel,
+ * as GitHub's own inbox does, and in the mirror: any unread thread it lists for the account
+ * the last pass read, whatever its subject, and, for one about a pull request or an issue,
+ * every unread thread it lists about that item. With reading off, or before a pass read an
+ * account, it sends nothing. It returns the Snapshot.
+ */
+export function MarkRead(ids: number[] | null): $CancellablePromise<$models.Snapshot> {
+    return $Call.ByID(2703849747, ids);
+}
+
+/**
  * Preview returns what clearing would do now, from the database alone: it never asks
  * GitHub.
  */

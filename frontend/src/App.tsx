@@ -29,7 +29,6 @@ import type { ReleaseRequest } from './lib/release'
 import type { RunRequest } from './lib/scriptRuns'
 import { foundToolsText, scriptsBadge, showsScripts } from './lib/scriptsTab'
 import { matchSettings } from './lib/settingsIndex'
-import { itemURL, threadItemKey, type ThreadItem } from './lib/githubThreads'
 import { itemWorktrees } from './lib/itemWorktrees'
 import { runningSession, sessionsOf } from './lib/sessions'
 import { useGitHubThreads } from './lib/useGitHubThreads'
@@ -37,7 +36,7 @@ import { useSessions } from './lib/useSessions'
 import { agentName } from './lib/launch'
 import { offersProjects } from './lib/projects'
 import { useTextSize } from './lib/textSize'
-import { defaultSnoozeDays, findItem, itemsByRef } from './lib/triage'
+import { defaultSnoozeDays, findItem } from './lib/triage'
 import { useCollapsedSections } from './lib/useCollapsedSections'
 import { useBudget } from './lib/useBudget'
 import { useInbox } from './lib/useInbox'
@@ -595,14 +594,6 @@ export function App() {
     showItem(entry.itemId, entry.url)
   }
 
-  // openThread shows the item a GitHub notification is about, in the inbox while it is
-  // listed there, or on GitHub, at a link built from its repository, kind, and number.
-  const openThread = (thread: ThreadItem) => {
-    const listed = inbox.snapshot === null ? undefined : itemsByRef(inbox.snapshot).get(threadItemKey(thread))
-
-    showItem(listed?.item.id ?? 0, itemURL(thread))
-  }
-
   // openGitHubThreadsSettings opens the GitHub notification settings.
   const openGitHubThreadsSettings = () => {
     go({ type: 'settings', section: 'github' })
@@ -816,7 +807,6 @@ export function App() {
           onNotificationSettings={openNotificationSettings}
           githubThreads={githubThreads}
           settings={config.settings}
-          onOpenThread={openThread}
           onGitHubThreadsSettings={openGitHubThreadsSettings}
           onSettingsSaved={saveSettings}
           search={view === 'prompts' || view === 'scripts' ? undefined : searchFor(view)}

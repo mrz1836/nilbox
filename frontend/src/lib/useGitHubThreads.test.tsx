@@ -77,4 +77,82 @@ describe('useGitHubThreads', () => {
     expect(result.current.checkError).toBe('database is locked')
     expect(result.current.snapshot?.status.count).toBe(12)
   })
+
+  it('marks done and read on request, holding each until the mirror is read again after it', async () => {
+    const { result } = renderHook(() => useGitHubThreads())
+
+    await waitFor(() => {
+      expect(result.current.snapshot).not.toBeNull()
+    })
+
+    let answer: (value: ReturnType<typeof githubThreads>) => void = () => undefined
+    platform.markGitHubThreadsDone.mockReturnValueOnce(
+      new Promise((resolve) => {
+        answer = resolve
+      }),
+    )
+
+    let done: ReturnType<typeof result.current.markDone> | undefined
+    act(() => {
+      done = result.current.markDone([1, 3])
+    })
+
+    expect([...result.current.finishing]).toEqual([1, 3])
+    expect(result.current.reading.size).toBe(0)
+    expect(platform.markGitHubThreadsDone).toHaveBeenCalledExactlyOnceWith([1, 3])
+
+    // GitHub took them; the mirror, read again, shows them gone.
+    platform.githubThreadsSnapshot.mockResolvedValue(githubThreads({ status: { count: 2 } }))
+    act(() => {
+      answer(githubThreads({ status: { count: 2 } }))
+    })
+
+    await waitFor(() => {
+      expect(result.current.finishing.size).toBe(0)
+    })
+    expect(result.current.snapshot?.status.count).toBe(2)
+    expect((await done)?.ok).toBe(true)
+
+    let read: ReturnType<typeof result.current.markRead> | undefined
+    act(() => {
+      read = result.current.markRead([4])
+    })
+
+    expect([...result.current.reading]).toEqual([4])
+    await waitFor(() => {
+      expect(result.current.reading.size).toBe(0)
+    })
+    expect(platform.markGitHubThreadsRead).toHaveBeenCalledExactlyOnceWith([4])
+    expect((await read)?.ok).toBe(true)
+    expect(result.current.markError).toBe('')
+  })
+
+  it('says why a mark failed, reads the mirror again, and lets the words go on request', async () => {
+    const { result } = renderHook(() => useGitHubThreads())
+
+    await waitFor(() => {
+      expect(result.current.snapshot).not.toBeNull()
+    })
+
+    const reads = platform.githubThreadsSnapshot.mock.calls.length
+    platform.markGitHubThreadsDone.mockRejectedValueOnce(new Error('GitHub asked for a pause before the next change.'))
+
+    let done: ReturnType<typeof result.current.markDone> | undefined
+    act(() => {
+      done = result.current.markDone([1])
+    })
+
+    await waitFor(() => {
+      expect(result.current.finishing.size).toBe(0)
+    })
+    expect(result.current.markError).toBe('GitHub asked for a pause before the next change.')
+    expect(platform.githubThreadsSnapshot.mock.calls.length).toBeGreaterThan(reads)
+    expect((await done)?.ok).toBe(false)
+
+    act(() => {
+      result.current.dismissMarkError()
+    })
+
+    expect(result.current.markError).toBe('')
+  })
 })

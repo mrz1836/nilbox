@@ -1,10 +1,11 @@
 // Package ghthreads mirrors the user's GitHub notifications, which GitHub's REST API calls
 // threads, as the web inbox lists them (read and unread, not done), in the gh_threads table
-// it owns, one row per account and thread, so the window counts them and tags the cards
-// they are about without asking GitHub, and clears them by the user's rules (clear.go):
-// it marks a thread done, or read, once the work behind it is finished. Clearing is the
-// only write it makes, through the GitHub client's chore lane, and it makes none until
-// the user turns clearing on, or clears one by hand.
+// it owns, one row per account and thread, so the window counts and lists them without
+// asking GitHub, and clears them by the user's rules (clear.go): it marks a thread done, or
+// read, once the work behind it is finished. Its writes, each through the GitHub client's
+// chore lane, mark a thread done or read: a clear, which it makes none of until the user
+// turns clearing on or clears one by hand, and the panel's own clicks (mark.go), opening a
+// notification, which marks it read, and its Done.
 //
 // A pass reads them, never two at once. With reading turned off (threadrules' Read), a pass
 // sends nothing and borrows no token. Otherwise it learns the token's account (one GraphQL
@@ -29,8 +30,8 @@
 // checked StateRecheck ago. Releases, discussions, check suites, and the other subjects are
 // mirrored and counted, never checked.
 //
-// The Syncer runs a pass as often as the inbox is read, never sooner than GitHub's
-// X-Poll-Interval asks, and the window reads the mirror through Snapshot alone, which asks
+// The Syncer runs a pass as often as the notifications' refresh setting says, never sooner
+// than GitHub's X-Poll-Interval asks, and the window reads the mirror through Snapshot alone, which asks
 // GitHub nothing. Each pass that changes what Snapshot shows emits event.GHThreadsUpdated.
 // A pass then decides which threads clear, queues them in the gh_thread_clears ledger, and
 // sends the ones due; the Syncer also runs a pass when the inbox tells of something the user
@@ -167,6 +168,10 @@ type Service struct {
 	// restore Settle hears of, never mark kept a clear on its way to GitHub.
 	sending sync.Mutex
 
+	// paceSleep waits out the chore lane's pace for a mark the user clicked: clock.Sleep,
+	// which tests replace so no test waits on the real clock.
+	paceSleep func(ctx context.Context, d time.Duration) error
+
 	// nudges holds what the Syncer was asked to run soon.
 	nudges nudges
 
@@ -192,7 +197,7 @@ func NewService(cfg Config) *Service {
 		db: cfg.Pool, q: queries.New(cfg.Pool), prefs: prefs.New(cfg.Pool, cfg.Clock), tokens: cfg.Tokens,
 		client: cfg.Client, rules: cfg.Rules, holds: cfg.Holds, clock: clock.Or(cfg.Clock),
 		events: event.Or(cfg.Events), logger: logging.Or(cfg.Logger), running: make(chan struct{}, 1),
-		nudges: nudges{wake: make(chan struct{}, 1)},
+		nudges: nudges{wake: make(chan struct{}, 1)}, paceSleep: clock.Sleep,
 	}
 }
 

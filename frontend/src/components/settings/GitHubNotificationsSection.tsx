@@ -221,8 +221,9 @@ export function GitHubNotificationsSection({ settings: stored, onSaved, threads 
             controlId={`${id}-read`}
             description={
               <>
-                {brand.name} keeps a copy of your GitHub inbox on this Mac, read from GitHub as the inbox refreshes, and
-                lists what’s unread under the toolbar’s GitHub button. Reading them changes nothing on GitHub.
+                {brand.name} keeps a copy of your GitHub inbox on this Mac, read from GitHub as often as Settings →
+                Refreshing says, and lists what’s unread under the toolbar’s GitHub button. Reading them changes nothing
+                on GitHub.
               </>
             }
             checked={rules.read}

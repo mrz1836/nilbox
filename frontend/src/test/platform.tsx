@@ -289,6 +289,8 @@ function answers(subscribe: Loose<Platform['on']>): { [K in keyof Platform]: Loo
         }),
       ),
     keepGitHubThreads: () => Promise.resolve(githubThreads()),
+    markGitHubThreadsDone: () => Promise.resolve(githubThreads()),
+    markGitHubThreadsRead: () => Promise.resolve(githubThreads()),
 
     listIntegrations: () => Promise.resolve(integrationTools()),
     checkIntegrationsAgain: () => Promise.resolve(integrationTools()),
@@ -386,9 +388,11 @@ export function createPlatform() {
   }
 
   // Each function is a mock whose default, which mockReset returns it to, is its answer.
+  // Object.fromEntries keys them by string, so the cast goes through unknown: comparing
+  // its union of every answer's type with FakePlatform is past what TypeScript compares.
   const platform = Object.fromEntries(
     Object.entries(answers(subscribe)).map(([name, answer]) => [name, vi.fn(answer)]),
-  ) as FakePlatform
+  ) as unknown as FakePlatform
 
   // emit sends an event as the shell would: every listener subscribed for it now gets its
   // data, which an event that carries nothing may leave out. It fails the test when

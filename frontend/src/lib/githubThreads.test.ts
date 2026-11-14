@@ -8,11 +8,13 @@ import {
   buttonLabel,
   checkedText,
   countsText,
+  groupURL,
   groupWhere,
   itemURL,
   reasonsText,
   reasonText,
   refusal,
+  summaryText,
   threadGroups,
   threadItem,
 } from './githubThreads'
@@ -79,10 +81,10 @@ describe('the counts', () => {
     expect(badgeText(100)).toBe('99+')
   })
 
-  it('says what the GitHub inbox holds, and how much of it is unread', () => {
-    expect(countsText(threadsStatus({ count: 38, unread: 5 }))).toBe('38 in your GitHub inbox · 5 unread')
+  it('says what the GitHub inbox holds, the unread first, as the badge counts them', () => {
+    expect(countsText(threadsStatus({ count: 38, unread: 5 }))).toBe('5 unread · 38 in your GitHub inbox')
     expect(countsText(threadsStatus({ count: 38 }))).toBe('38 in your GitHub inbox')
-    expect(countsText(threadsStatus({ count: 1234, unread: 1000 }))).toBe('1,234 in your GitHub inbox · 1,000 unread')
+    expect(countsText(threadsStatus({ count: 1234, unread: 1000 }))).toBe('1,000 unread · 1,234 in your GitHub inbox')
     expect(countsText(threadsStatus())).toBe('Nothing in your GitHub inbox')
     expect(countsText(threadsStatus({ lastPassAt: '' }))).toBe('Not read from GitHub yet')
   })
@@ -91,9 +93,17 @@ describe('the counts', () => {
     expect(buttonLabel(threadsStatus())).toBe('GitHub notifications')
     expect(buttonLabel(threadsStatus({ count: 38 }))).toBe('GitHub notifications, 38 in your inbox')
     expect(buttonLabel(threadsStatus({ count: 38, unread: 5 }))).toBe(
-      'GitHub notifications, 38 in your inbox, 5 unread',
+      'GitHub notifications, 5 unread, 38 in your inbox',
     )
     expect(buttonLabel(threadsStatus({ access: 'refused', count: 38 }))).toBe('GitHub notifications, can’t be read')
+  })
+
+  it('sums the panel up: the counts, then when GitHub was checked, or that it is being checked', () => {
+    const status = threadsStatus({ count: 38, unread: 5, lastPassAt: '2026-06-15T11:58:00Z' })
+
+    expect(summaryText(FIXED_NOW, status, false)).toBe('5 unread · 38 in your GitHub inbox · checked 2m ago')
+    expect(summaryText(FIXED_NOW, status, true)).toBe('5 unread · 38 in your GitHub inbox · checking…')
+    expect(summaryText(FIXED_NOW, threadsStatus({ lastPassAt: '' }), false)).toBe('Not read from GitHub yet')
   })
 
   it('says when the inbox was last checked', () => {
@@ -129,9 +139,9 @@ describe('threadGroups', () => {
       githubThread({ id: 4, reason: 'mention' }),
     ])
 
-    expect(groups.map((g) => [g.key, g.count, g.reasons, g.updatedAt])).toEqual([
-      ['acme-org/example-repo#7', 3, ['mention', 'review_requested'], '2026-06-15T11:58:00Z'],
-      ['acme-org/example-repo#9', 1, ['review_requested'], '2026-06-15T11:55:00Z'],
+    expect(groups.map((g) => [g.key, g.count, g.ids, g.reasons, g.updatedAt])).toEqual([
+      ['acme-org/example-repo#7', 3, [1, 3, 4], ['mention', 'review_requested'], '2026-06-15T11:58:00Z'],
+      ['acme-org/example-repo#9', 1, [2], ['review_requested'], '2026-06-15T11:55:00Z'],
     ])
     expect(groups[0]?.item).toEqual({ owner: 'acme-org', name: 'example-repo', kind: 'pr', number: 7 })
     expect(groups[1] === undefined ? '' : groupWhere(groups[1])).toBe('example-repo #9')
@@ -149,5 +159,46 @@ describe('threadGroups', () => {
       ['thread-6', null, 'acme-org/example-repo · Release'],
       ['thread-7', null, 'Unknown'],
     ])
+  })
+})
+
+describe('groupURL', () => {
+  // urlOf is where a line about thread opens.
+  const urlOf = (thread: Parameters<typeof githubThread>[0]) => {
+    const [group] = threadGroups([githubThread(thread)])
+
+    if (group === undefined) {
+      throw new Error('no line')
+    }
+
+    return groupURL(group)
+  }
+
+  it('opens an item on its own page', () => {
+    expect(urlOf({})).toBe('https://github.com/acme-org/example-repo/pull/7')
+    expect(urlOf({ kind: 'issue', number: 9, subjectType: 'Issue' })).toBe(
+      'https://github.com/acme-org/example-repo/issues/9',
+    )
+  })
+
+  it('opens one about no item on the page of its repository it belongs on', () => {
+    const about = (subjectType: string) => urlOf({ kind: '', number: 0, subjectType })
+
+    expect(about('CheckSuite')).toBe('https://github.com/acme-org/example-repo/actions')
+    expect(about('Release')).toBe('https://github.com/acme-org/example-repo/releases')
+    expect(about('Discussion')).toBe('https://github.com/acme-org/example-repo/discussions')
+    expect(about('RepositoryDependabotAlertsThread')).toBe(
+      'https://github.com/acme-org/example-repo/security/dependabot',
+    )
+    expect(about('SomethingNew')).toBe('https://github.com/acme-org/example-repo')
+  })
+
+  it('opens the GitHub inbox for a repository no link could hold', () => {
+    const about = (owner: string, name: string) => urlOf({ owner, name, kind: '', number: 0, subjectType: 'Release' })
+
+    expect(about('', '')).toBe('https://github.com/notifications')
+    expect(about('acme-org', '..')).toBe('https://github.com/notifications')
+    expect(about('acme org', 'example-repo')).toBe('https://github.com/notifications')
+    expect(about('acme-org', 'example-repo/../../evil')).toBe('https://github.com/notifications')
   })
 })

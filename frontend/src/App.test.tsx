@@ -1019,21 +1019,61 @@ describe('App’s GitHub notifications', () => {
     return review.getByRole('button', { name: title }).closest('li')
   }
 
-  it('shows the item a notification is about in the inbox, and one it doesn’t list on GitHub', async () => {
+  it('opens a notification on GitHub, as GitHub’s inbox does, and marks it read there', async () => {
     platform.githubThreadsSnapshot.mockResolvedValue(unread())
+    // GitHub marks the first read, and the other stays unread.
+    platform.markGitHubThreadsRead.mockResolvedValueOnce(
+      githubThreads({
+        status: { count: 5, unread: 1 },
+        unread: [githubThread({ id: 1002, number: 9, title: 'Bump the parser' })],
+      }),
+    )
     await renderApp()
     await screen.findByRole('region', { name: 'Review requested' })
 
-    await userEvent.click(screen.getByRole('button', { name: 'Worktrees' }))
-    await userEvent.click((await openButton()).getByRole('button', { name: /Add the widget cache/ }))
+    const panel = await openButton()
 
-    expect(screen.getByRole('button', { name: 'Inbox' })).toHaveAttribute('aria-pressed', 'true')
-    expect(await row('Add the widget cache')).toHaveAttribute('data-highlighted', 'true')
+    await userEvent.click(panel.getByRole('button', { name: /^Review requested.*Add the widget cache/ }))
+
+    expect(platform.openExternal).toHaveBeenCalledExactlyOnceWith('https://github.com/acme-org/example-repo/pull/7')
+    await waitFor(() => {
+      expect(platform.markGitHubThreadsRead).toHaveBeenCalledExactlyOnceWith([githubThread().id])
+    })
+
+    await userEvent.click(panel.getByRole('button', { name: /^Review requested.*Bump the parser/ }))
+
+    expect(platform.openExternal).toHaveBeenLastCalledWith('https://github.com/acme-org/example-repo/pull/9')
+    await waitFor(() => {
+      expect(platform.markGitHubThreadsRead).toHaveBeenLastCalledWith([1002])
+    })
+  })
+
+  it('marks a notification done from its Done, and shows the inbox as GitHub left it', async () => {
+    platform.githubThreadsSnapshot.mockResolvedValue(unread())
+    // GitHub takes the Done, and the mirror, read again after it, no longer lists it.
+    platform.markGitHubThreadsDone.mockImplementation(() => {
+      const left = githubThreads({
+        status: { count: 4, unread: 1 },
+        unread: [githubThread({ id: 1002, number: 9, title: 'Bump the parser' })],
+      })
+
+      platform.githubThreadsSnapshot.mockResolvedValue(left)
+
+      return Promise.resolve(left)
+    })
+    await renderApp()
+    await screen.findByRole('region', { name: 'Review requested' })
+
+    const panel = await openButton()
+
+    await userEvent.click(panel.getByRole('button', { name: 'Done: Add the widget cache' }))
+
+    expect(platform.markGitHubThreadsDone).toHaveBeenCalledExactlyOnceWith([githubThread().id])
+    await waitFor(() => {
+      expect(panel.queryByText('Add the widget cache')).not.toBeInTheDocument()
+    })
+    expect(within(toolbar()).getByTestId('github-threads-count')).toHaveTextContent('1')
     expect(platform.openExternal).not.toHaveBeenCalled()
-
-    await userEvent.click((await openButton()).getByRole('button', { name: /Bump the parser/ }))
-
-    expect(platform.openExternal).toHaveBeenCalledExactlyOnceWith('https://github.com/acme-org/example-repo/pull/9')
   })
 
   it('reads only the app’s own mirror as the button opens: it sends GitHub nothing and marks nothing read', async () => {
@@ -1065,7 +1105,7 @@ describe('App’s GitHub notifications', () => {
     const card = await row('Add the widget cache')
 
     await waitFor(() => {
-      expect(within(toolbar()).getByTestId('github-threads-count')).toHaveAttribute('data-unread', 'true')
+      expect(within(toolbar()).getByTestId('github-threads-count')).toHaveTextContent('2')
     })
     expect(card).not.toHaveTextContent(/on GitHub/)
   })
@@ -1129,7 +1169,7 @@ describe('App’s GitHub notifications', () => {
     platform.githubThreadsSnapshot.mockResolvedValue(unread())
     await renderApp()
     await waitFor(() => {
-      expect(toolbarButton()).toHaveAccessibleName('GitHub notifications, 5 in your inbox, 2 unread')
+      expect(toolbarButton()).toHaveAccessibleName('GitHub notifications, 2 unread, 5 in your inbox')
     })
     await openGitHubSettings()
     const reads = platform.githubThreadsSnapshot.mock.calls.length
@@ -1159,7 +1199,7 @@ describe('App’s GitHub notifications', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Check again' }))
 
     expect(await screen.findByText(/^5 in your GitHub inbox · checked/)).toBeInTheDocument()
-    expect(toolbarButton()).toHaveAccessibleName('GitHub notifications, 5 in your inbox, 2 unread')
+    expect(toolbarButton()).toHaveAccessibleName('GitHub notifications, 2 unread, 5 in your inbox')
     expect(platform.checkGitHubThreadsNow).toHaveBeenCalledOnce()
     // Opening the settings read the mirror once, as the button's opening did; nothing else.
     expect(platform.githubThreadsSnapshot).toHaveBeenCalledTimes(2)

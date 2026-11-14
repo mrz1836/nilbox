@@ -32,14 +32,14 @@ type passer interface {
 	untilSend() (time.Duration, bool)
 }
 
-// Syncer runs a pass when it starts, then again as often as its every says (the inbox's
-// refresh setting), but never sooner than GitHub's poll interval asks, from the end of the
-// last pass, its own or CheckNow's. Wake makes it read the interval again at once. Between
-// passes it runs what it is nudged to at once (what the inbox tells the Settler, and the
-// rules changing, RulesChanged), and a run that sends the queued clears as soon as the next
-// may go, so an Undo hold of seconds is never stretched into the interval's wait. A pass
-// that fails is logged, and one that panics is recovered and logged, so the Syncer keeps
-// going until its context is canceled.
+// Syncer runs a pass when it starts, then again as often as its every says (the
+// notifications' refresh setting), but never sooner than GitHub's poll interval asks, from
+// the end of the last pass, its own or CheckNow's. Wake makes it read the interval again at
+// once. Between passes it runs what it is nudged to at once (what the inbox tells the
+// Settler, and the rules changing, RulesChanged), and a run that sends the queued clears as
+// soon as the next may go, so an Undo hold of seconds is never stretched into the
+// interval's wait. A pass that fails is logged, and one that panics is recovered and
+// logged, so the Syncer keeps going until its context is canceled.
 type Syncer struct {
 	svc    passer
 	every  periodic.Every

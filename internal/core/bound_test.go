@@ -499,6 +499,20 @@ func boundCalls(t *testing.T) map[string]boundCall {
 
 			return got, err
 		},
+		// The fake runner lends no token, so a mark of a thread the mirror doesn't list, which
+		// borrows none, answers with the Snapshot as it stands.
+		"ghthreads.Service.MarkDone": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
+			got, err := c.GHThreads.MarkDone(ctx, []int64{1})
+			require.Len(t, got.Unread, 1, "nothing marked")
+
+			return got, err
+		},
+		"ghthreads.Service.MarkRead": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
+			got, err := c.GHThreads.MarkRead(ctx, []int64{1})
+			require.Len(t, got.Unread, 1, "nothing marked")
+
+			return got, err
+		},
 		"ghthreads.Service.Preview": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
 			// No moment finished the pull request: nothing would clear.
 			return c.GHThreads.Preview(ctx)

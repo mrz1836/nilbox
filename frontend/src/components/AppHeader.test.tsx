@@ -5,7 +5,29 @@ import { describe, expect, it, vi } from 'vitest'
 import { brand } from '../generated/brand'
 import { at } from '../test/clock'
 import { account, budgetGauge, githubThread, githubThreads, notification, reading, settings } from '../test/fixtures'
+import type { GitHubThreadsState } from '../lib/useGitHubThreads'
+import type { GitHubThreadsSnapshot } from '../platform'
 import { AppHeader, type AppHeaderProps } from './AppHeader'
+
+// threadsState is the GitHub notifications the button shows, with spies for what it does.
+function threadsState(snapshot: GitHubThreadsSnapshot, checkNow = vi.fn()): GitHubThreadsState {
+  const answer = () => Promise.resolve({ ok: true as const, data: githubThreads() })
+
+  return {
+    snapshot,
+    error: '',
+    reload: vi.fn(),
+    checkNow: checkNow.mockImplementation(answer),
+    checking: false,
+    checkError: '',
+    markDone: vi.fn(answer),
+    markRead: vi.fn(answer),
+    finishing: new Set(),
+    reading: new Set(),
+    markError: '',
+    dismissMarkError: vi.fn(),
+  }
+}
 
 vi.mock('../platform', () => import('../test/platform').then((fake) => fake.platform))
 
@@ -59,18 +81,11 @@ describe('AppHeader', () => {
   })
 
   it('puts the GitHub notifications button between the bell and the budget gauge, and opens from it', async () => {
-    const { onOpenThread, onGitHubThreadsSettings } = renderHeader({
+    const threads = threadsState(githubThreads({ status: { count: 3, unread: 1 }, unread: [githubThread()] }))
+    const { onGitHubThreadsSettings } = renderHeader({
       notifications: { log: { items: [], unread: 0 }, error: '', markRead: vi.fn(), markError: '', clear: vi.fn() },
-      githubThreads: {
-        snapshot: githubThreads({ status: { count: 3, unread: 1 }, unread: [githubThread()] }),
-        error: '',
-        reload: vi.fn(),
-        checkNow: vi.fn(() => Promise.resolve({ ok: true as const, data: githubThreads() })),
-        checking: false,
-        checkError: '',
-      },
+      githubThreads: threads,
       settings: settings({ githubNotifications: { ...settings().githubNotifications, auto: true } }),
-      onOpenThread: vi.fn(),
       onGitHubThreadsSettings: vi.fn(),
     })
 
@@ -78,44 +93,29 @@ describe('AppHeader', () => {
       .getAllByRole('button')
       .map((b) => b.getAttribute('aria-label') ?? '')
     const bell = names.indexOf('Notifications')
-    const github = names.indexOf('GitHub notifications, 3 in your inbox, 1 unread')
+    const github = names.indexOf('GitHub notifications, 1 unread, 3 in your inbox')
 
     expect(bell).toBeGreaterThan(-1)
     expect(github).toBe(bell + 1)
     expect(names[github + 1]).toMatch(/budget/i)
 
     await userEvent.click(screen.getByRole('button', { name: /^GitHub notifications/ }))
-    await userEvent.click(screen.getByRole('button', { name: /Add the widget cache/ }))
-    expect(onOpenThread).toHaveBeenCalledExactlyOnceWith({
-      owner: 'acme-org',
-      name: 'example-repo',
-      kind: 'pr',
-      number: 7,
-    })
+    await userEvent.click(screen.getByRole('button', { name: /^Review requested.*Add the widget cache/ }))
+    expect(threads.markRead).toHaveBeenCalledExactlyOnceWith([githubThread().id])
 
-    await userEvent.click(screen.getByRole('button', { name: /^GitHub notifications/ }))
     await userEvent.click(screen.getByRole('button', { name: 'Settings' }))
     expect(onGitHubThreadsSettings).toHaveBeenCalledOnce()
   })
 
   it('opens the general settings from the GitHub notifications button when given nothing else to open', async () => {
-    const checkNow = vi.fn(() => Promise.resolve({ ok: true as const, data: githubThreads() }))
+    const checkNow = vi.fn()
     const { onOpenSettings } = renderHeader({
-      githubThreads: {
-        snapshot: githubThreads({ status: { count: 1, unread: 1 }, unread: [githubThread()] }),
-        error: '',
-        reload: vi.fn(),
+      githubThreads: threadsState(
+        githubThreads({ status: { count: 1, unread: 1 }, unread: [githubThread()] }),
         checkNow,
-        checking: false,
-        checkError: '',
-      },
+      ),
       settings: settings(),
     })
-
-    // Without a way to show an item, a click on one only closes the panel.
-    await userEvent.click(screen.getByRole('button', { name: /^GitHub notifications/ }))
-    await userEvent.click(screen.getByRole('button', { name: /Add the widget cache/ }))
-    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
 
     // Turning clearing on still checks GitHub, with no one to hand the settings to.
     await userEvent.click(screen.getByRole('button', { name: /^GitHub notifications/ }))
