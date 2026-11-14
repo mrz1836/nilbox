@@ -14,7 +14,7 @@ numbers with the `magex measure:*` targets.
 | Cold start to first paint | < 1 s | 583 ms | Met on the M1 Max with the integrations (544 ms before them); the M4 Pro build host measured 1013 ms with an earlier build, at the target rather than under it |
 | Inbox refresh | < 3 s | 2.44 s | Met once the inbox's items are known; the first refresh into an empty database takes 5–10 s |
 | Launch to prompt loaded | < 3 s | 6.86 s | **Not met**, one run: an upper bound that includes a held-back launch's check on GitHub and your shell starting in the new iTerm2 tab (see below) |
-| App binary size | < 30 MB | 21.7 MB | Met (17.0 MB before the integrations: Release, Hooks, Repo scripts, and the tool installer) |
+| App binary size | < 30 MB | 22.9 MB | Met (21.7 MB before the issue sheet, the GitHub notifications, and the features that came with them; 17.0 MB before the integrations: Release, Hooks, Repo scripts, and the tool installer) |
 | API budget at 5-minute cadence | < 2% | 1.20% | Met: 5 points a refresh |
 
 Measured on an Apple Silicon Mac (M1 Max, 32 GB memory) running macOS 15.8, over its regular
@@ -22,7 +22,9 @@ network connection. The first numbers were taken on the build host, a second Mac
 24 GB memory, macOS 15, with one 1920×1080 display at 60 Hz), which starts the app more slowly;
 its runs are kept below for comparison. The refresh and API budget numbers are set by GitHub's
 response times and by how many items the inbox holds, not by the machine. Each number comes
-from the production bundle that `magex app:build` produces.
+from the production bundle that `magex app:build` produces. The timings come from the build of
+2026-11-11, once the integrations were done; the size was measured again on 2026-11-14, after
+the issue sheet and the GitHub notifications.
 
 <br>
 
@@ -198,14 +200,20 @@ number.
 ### App binary size
 
 `magex measure:size` reads the size of the production executable,
-`bin/Nilbox.app/Contents/MacOS/nilbox`: 21,709,552 bytes, or 21.7 MB in decimal megabytes. The
-whole bundle, the executable with its icon set and `Info.plist`, is 23.0 MB (22,985,949 bytes).
+`bin/Nilbox.app/Contents/MacOS/nilbox`: 22,949,712 bytes, or 22.9 MB in decimal megabytes. The
+whole bundle, the executable with its icon set, `Info.plist`, and code signature, is 24.2 MB
+(24,226,109 bytes).
 The binary is built with `-tags desktop,production -trimpath -ldflags "-s -w"` and embeds the
-built frontend, about 1.15 MB without source maps: the 562 KB script the first paint needs
-(184 KB gzipped); the Scripts tab (137 KB), Settings (121 KB), Prompts (63 KB), and Worktrees
-(53 KB) pages in scripts of their own, loaded the first time each opens, with three more
-shared by them (the dialogs, 81 KB; the run panel, 44 KB; the launch fields, 6 KB); and 78 KB
-of CSS. Measured once following a release to published landed.
+built frontend, about 1.31 MB without source maps: the 670 KB script the first paint needs
+(219 KB gzipped); the Settings (155 KB), Scripts tab (143 KB), Prompts (63 KB), and Worktrees
+(58 KB) pages in scripts of their own, loaded the first time each opens, with three more
+shared by them (the dialogs, 87 KB; the run panel, 44 KB; the launch fields, 6 KB); and 80 KB
+of CSS. Measured once the GitHub notifications' clearing landed.
+
+The build of 2026-11-11, with the integrations but before the issue sheet, the GitHub
+notifications, and the features that came with them (other repository locations, pinned or
+muted repositories, and profile pictures, among others), measured 21,709,552 bytes (21.7 MB),
+with a 23.0 MB bundle and a frontend of about 1.15 MB, its first-paint script 562 KB.
 
 The build before the integrations (Release, Hooks, Repo scripts, the tool installer, and the
 run history) measured 17,013,376 bytes (17.0 MB), with an 18.3 MB bundle and a frontend of
@@ -217,10 +225,11 @@ a 16.4 MB bundle and a frontend of about 280 KB.
 
 ### Scripts tab, first open
 
-The Scripts tab's code loads the first time it opens, as a script of its own: 137.3 KB (41.7 KB
+The Scripts tab's code loads the first time it opens, as a script of its own: 142.9 KB (43.7 KB
 gzipped), from `vite build` (the `ScriptsView` chunk, with Release, its sheet, Hooks, Repo
-scripts, and Runs; the run panel and the log view are a shared 44.3 KB chunk, 15.7 KB
-gzipped). It was 80.6 KB (25.9 KB gzipped) before Hooks and Repo scripts. The window already
+scripts, and Runs; the run panel and the log view are a shared 44.5 KB chunk, 15.8 KB
+gzipped). It was 137.3 KB (41.7 KB gzipped) once the integrations were done, and 80.6 KB
+(25.9 KB gzipped) before Hooks and Repo scripts. The window already
 holds the tools and the run history it badges the tab with, so opening it lists nothing again. Release reads its list as it opens from the
 service's copy, however old; it reads GitHub for the whole list only on **Read GitHub again**,
 the first time, or behind the list kept from the last start (about 4 points of GraphQL budget
