@@ -6,7 +6,8 @@ import { brand } from '../generated/brand'
 import { at } from '../test/clock'
 import { account, budgetGauge, githubThread, githubThreads, notification, reading, settings } from '../test/fixtures'
 import type { GitHubThreadsState } from '../lib/useGitHubThreads'
-import type { GitHubThreadsSnapshot } from '../platform'
+import type { NotificationsState } from '../lib/useNotifications'
+import type { AppNotification, GitHubThreadsSnapshot } from '../platform'
 import { AppHeader, type AppHeaderProps } from './AppHeader'
 
 // threadsState is the GitHub notifications the button shows, with spies for what it does.
@@ -26,6 +27,24 @@ function threadsState(snapshot: GitHubThreadsSnapshot, checkNow = vi.fn()): GitH
     reading: new Set(),
     markError: '',
     dismissMarkError: vi.fn(),
+    list: null,
+    listError: '',
+    keep: vi.fn(answer),
+  }
+}
+
+// historyOf is the notification history the bell shows, holding items, with spies for
+// what it does.
+function historyOf(items: AppNotification[] = []): NotificationsState {
+  return {
+    log: { items, unread: items.filter((n) => !n.read).length },
+    error: '',
+    markRead: vi.fn(),
+    markUnread: vi.fn(),
+    markAllRead: vi.fn(),
+    markItemRead: vi.fn(),
+    markError: '',
+    clear: vi.fn(),
   }
 }
 
@@ -49,30 +68,112 @@ function renderHeader(overrides: Partial<AppHeaderProps> = {}) {
 describe('AppHeader', () => {
   it('shows no notification bell without a history', () => {
     renderHeader()
-    expect(screen.queryByRole('button', { name: /^Notifications/ })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /unread notifications$/ })).not.toBeInTheDocument()
   })
 
   it('opens a notification and the notification settings from the bell', async () => {
     const entry = notification()
     const { onOpenNotification, onNotificationSettings } = renderHeader({
-      notifications: {
-        log: { items: [entry], unread: 1 },
-        error: '',
-        markRead: vi.fn(),
-        markError: '',
-        clear: vi.fn(),
-      },
+      notifications: historyOf([entry]),
       onOpenNotification: vi.fn(),
       onNotificationSettings: vi.fn(),
     })
 
-    await userEvent.click(screen.getByRole('button', { name: 'Notifications, 1 unread' }))
-    await userEvent.click(screen.getByRole('button', { name: /Add the widget cache/ }))
+    await userEvent.click(screen.getByRole('button', { name: '1 unread notifications' }))
+    await userEvent.click(screen.getByRole('button', { name: /^(?!Done: ).*Add the widget cache/ }))
     expect(onOpenNotification).toHaveBeenCalledWith(entry)
 
-    await userEvent.click(screen.getByRole('button', { name: /^Notifications/ }))
+    await userEvent.click(screen.getByRole('button', { name: /unread notifications$/ }))
     await userEvent.click(screen.getByRole('button', { name: 'Notification settings' }))
     expect(onNotificationSettings).toHaveBeenCalledOnce()
+  })
+
+  it('opens the Notifications page on each quick view’s tab from its View all', async () => {
+    const { onViewAll } = renderHeader({
+      notifications: historyOf([notification()]),
+      githubThreads: threadsState(githubThreads({ status: { count: 1, unread: 1 }, unread: [githubThread()] })),
+      settings: settings(),
+      onViewAll: vi.fn(),
+    })
+
+    await userEvent.click(screen.getByRole('button', { name: '1 unread notifications' }))
+    await userEvent.click(screen.getByRole('button', { name: 'View all' }))
+    expect(onViewAll).toHaveBeenLastCalledWith('app')
+
+    await userEvent.click(screen.getByRole('button', { name: /^GitHub notifications/ }))
+    await userEvent.click(screen.getByRole('button', { name: 'View all' }))
+    expect(onViewAll).toHaveBeenLastCalledWith('github')
+  })
+
+  it('offers no View all with nowhere to view them', async () => {
+    renderHeader({ notifications: historyOf([notification({ read: true })]) })
+
+    await userEvent.click(screen.getByRole('button', { name: 'No unread notifications' }))
+    expect(screen.queryByRole('button', { name: 'View all' })).not.toBeInTheDocument()
+  })
+
+  it('counts the unread notifications, the app’s own and GitHub’s, on the Notifications tab', () => {
+    renderHeader({
+      notifications: historyOf([notification({ id: 1 }), notification({ id: 2 }), notification({ id: 3, read: true })]),
+      githubThreads: threadsState(githubThreads({ status: { count: 30, unread: 12 } })),
+      settings: settings(),
+    })
+
+    const tab = screen.getByRole('button', { name: 'Notifications' })
+
+    expect(tab).toHaveTextContent('Notifications14')
+    expect(tab).toHaveAccessibleDescription(`2 unread in ${brand.name} · 12 unread on GitHub`)
+    expect(screen.getByTestId('notifications-count')).toHaveTextContent('14')
+  })
+
+  it('counts GitHub’s unread only while the app reads them', () => {
+    const { rerender } = render(
+      <AppHeader
+        view="inbox"
+        onViewChange={vi.fn()}
+        account={account()}
+        gauge={null}
+        onOpenSettings={vi.fn()}
+        githubThreads={threadsState(githubThreads({ status: { count: 30, unread: 12 } }))}
+        settings={settings({ githubNotifications: { ...settings().githubNotifications, read: false } })}
+      />,
+      { wrapper: at() },
+    )
+
+    expect(screen.queryByTestId('notifications-count')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Notifications' })).not.toHaveAttribute('title')
+
+    rerender(
+      <AppHeader
+        view="inbox"
+        onViewChange={vi.fn()}
+        account={account()}
+        gauge={null}
+        onOpenSettings={vi.fn()}
+        notifications={historyOf([notification()])}
+        githubThreads={threadsState(githubThreads({ status: { reading: false, count: 30, unread: 12 } }))}
+        settings={null}
+      />,
+    )
+
+    expect(screen.getByTestId('notifications-count')).toHaveTextContent('1')
+    expect(screen.getByRole('button', { name: 'Notifications' })).toHaveAccessibleDescription(
+      `1 unread in ${brand.name}`,
+    )
+
+    rerender(
+      <AppHeader
+        view="inbox"
+        onViewChange={vi.fn()}
+        account={account()}
+        gauge={null}
+        onOpenSettings={vi.fn()}
+        githubThreads={threadsState(githubThreads({ status: { count: 30, unread: 12 } }))}
+        settings={null}
+      />,
+    )
+
+    expect(screen.getByRole('button', { name: 'Notifications' })).toHaveAccessibleDescription('12 unread on GitHub')
   })
 
   it('shows no GitHub notifications button without them', () => {
@@ -83,7 +184,7 @@ describe('AppHeader', () => {
   it('puts the GitHub notifications button between the bell and the budget gauge, and opens from it', async () => {
     const threads = threadsState(githubThreads({ status: { count: 3, unread: 1 }, unread: [githubThread()] }))
     const { onGitHubThreadsSettings } = renderHeader({
-      notifications: { log: { items: [], unread: 0 }, error: '', markRead: vi.fn(), markError: '', clear: vi.fn() },
+      notifications: historyOf(),
       githubThreads: threads,
       settings: settings({ githubNotifications: { ...settings().githubNotifications, auto: true } }),
       onGitHubThreadsSettings: vi.fn(),
@@ -92,7 +193,7 @@ describe('AppHeader', () => {
     const names = within(screen.getByRole('banner'))
       .getAllByRole('button')
       .map((b) => b.getAttribute('aria-label') ?? '')
-    const bell = names.indexOf('Notifications')
+    const bell = names.indexOf('No unread notifications')
     const github = names.indexOf('GitHub notifications, 1 unread, 3 in your inbox')
 
     expect(bell).toBeGreaterThan(-1)
@@ -129,11 +230,9 @@ describe('AppHeader', () => {
   })
 
   it('opens the general settings from the bell when given no notification settings', async () => {
-    const { onOpenSettings } = renderHeader({
-      notifications: { log: { items: [], unread: 0 }, error: '', markRead: vi.fn(), markError: '', clear: vi.fn() },
-    })
+    const { onOpenSettings } = renderHeader({ notifications: historyOf() })
 
-    await userEvent.click(screen.getByRole('button', { name: 'Notifications' }))
+    await userEvent.click(screen.getByRole('button', { name: 'No unread notifications' }))
     await userEvent.click(screen.getByRole('button', { name: 'Notification settings' }))
     expect(onOpenSettings).toHaveBeenCalledOnce()
   })
@@ -200,13 +299,19 @@ describe('AppHeader', () => {
     expect(screen.queryByRole('button', { name: 'Scripts' })).not.toBeInTheDocument()
   })
 
-  it('shows the Scripts tab after Prompts while an integration is on', () => {
+  it('shows the Scripts tab after Prompts while an integration is on, Notifications staying beside the Inbox', () => {
     renderHeader({ scripts: { running: 0, failed: false, blocked: false } })
 
     const views = within(screen.getByRole('navigation', { name: 'Views' })).getAllByRole('button')
     const scripts = screen.getByRole('button', { name: 'Scripts' })
 
-    expect(views.map((b) => b.getAttribute('aria-label'))).toEqual(['Inbox', 'Worktrees', 'Prompts', 'Scripts'])
+    expect(views.map((b) => b.getAttribute('aria-label'))).toEqual([
+      'Inbox',
+      'Notifications',
+      'Worktrees',
+      'Prompts',
+      'Scripts',
+    ])
     expect(scripts).toHaveTextContent(/^Scripts$/)
     expect(scripts).not.toHaveAttribute('title')
   })
@@ -235,6 +340,7 @@ describe('AppHeader', () => {
     renderHeader()
 
     expect(screen.queryByTestId('inbox-count')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('notifications-count')).not.toBeInTheDocument()
     expect(screen.queryByTestId('worktrees-count')).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Inbox' })).not.toHaveAttribute('title')
     expect(screen.getByRole('button', { name: 'Worktrees' })).not.toHaveAttribute('title')

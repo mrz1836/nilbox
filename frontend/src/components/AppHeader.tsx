@@ -1,10 +1,11 @@
 import type { RefObject } from 'react'
 
+import { brand } from '../generated/brand'
 import { counted, formatCount } from '../lib/format'
 import { scriptsBadgeTitle, type ScriptsBadge } from '../lib/scriptsTab'
 import type { GitHubThreadsState } from '../lib/useGitHubThreads'
 import type { NotificationsState } from '../lib/useNotifications'
-import type { Account, AppNotification, BudgetGauge, Settings } from '../platform'
+import type { Account, AppNotification, BudgetGauge, NotificationsTab, Settings } from '../platform'
 import { AccountMenu } from './AccountMenu'
 import { BudgetMenu } from './BudgetMenu'
 import { GitHubThreadsMenu } from './GitHubThreadsMenu'
@@ -14,10 +15,13 @@ import { SearchField, type SearchFieldProps } from './SearchField'
 
 // View is the page the window shows. Settings is opened from the account menu (or ⌘,)
 // rather than from a tab.
-export type View = 'inbox' | 'worktrees' | 'prompts' | 'scripts' | 'settings'
+export type View = 'inbox' | 'notifications' | 'worktrees' | 'prompts' | 'scripts' | 'settings'
 
+// tabs are the view tabs, in their order: Notifications sits beside the Inbox, so it never
+// moves when Scripts comes and goes at the end.
 const tabs: readonly { id: View; label: string }[] = [
   { id: 'inbox', label: 'Inbox' },
+  { id: 'notifications', label: 'Notifications' },
   { id: 'worktrees', label: 'Worktrees' },
   { id: 'prompts', label: 'Prompts' },
   { id: 'scripts', label: 'Scripts' },
@@ -44,10 +48,13 @@ export interface AppHeaderProps {
   onOpenSettings: () => void
   // notifications is the notification history the bell shows; without it there is no bell.
   // onOpenNotification shows an entry's item, and onNotificationSettings opens their
-  // settings.
+  // settings. onViewAll opens the Notifications page on a tab, as each quick view's View
+  // all does. The Notifications tab counts the unread of both the bell and the GitHub
+  // button.
   notifications?: NotificationsState
   onOpenNotification?: (entry: AppNotification) => void
   onNotificationSettings?: () => void
+  onViewAll?: (tab: NotificationsTab) => void
   // githubThreads is the user's GitHub notifications, which the button beside the bell
   // shows; without it there is no button. settings are the stored settings, or null until
   // they load, which say whether the app reads the notifications and clears them on its
@@ -79,9 +86,33 @@ function worktreesTitle(count: number, attention: number): string {
   return attention > 0 ? `${worktrees}, ${formatCount(attention)} done on GitHub but still on disk` : worktrees
 }
 
-// tabCount is the count a tab shows; Prompts and Settings show none. Scripts counts the
-// runs going, with a red dot after a run failed until it is opened, and an amber one
-// while a tool that's on can't be used.
+// githubUnread is how many of the user's GitHub notifications are unread, counted only
+// while the app reads them, as the settings say before the mirror does.
+function githubUnread(props: AppHeaderProps): number {
+  const status = props.githubThreads?.snapshot?.status
+
+  if (props.settings?.githubNotifications.read === false || status?.reading !== true) {
+    return 0
+  }
+
+  return status.unread
+}
+
+// notificationsTitle explains the Notifications tab's count: "3 unread in <app> · 12
+// unread on GitHub", each part only when it counts something.
+function notificationsTitle(own: number, github: number): string {
+  return [
+    own > 0 ? `${formatCount(own)} unread in ${brand.name}` : '',
+    github > 0 ? `${formatCount(github)} unread on GitHub` : '',
+  ]
+    .filter((part) => part !== '')
+    .join(' · ')
+}
+
+// tabCount is the count a tab shows; Prompts and Settings show none. Notifications counts
+// the unread, the app's own and GitHub's together. Scripts counts the runs going, with a
+// red dot after a run failed until it is opened, and an amber one while a tool that's on
+// can't be used.
 function tabCount(id: View, props: AppHeaderProps): TabCount {
   const { inboxCount = 0, worktreeCount = 0, worktreeAttention = 0, scripts = null } = props
 
@@ -92,6 +123,12 @@ function tabCount(id: View, props: AppHeaderProps): TabCount {
         title: counted(inboxCount, 'item in the inbox', 'items in the inbox'),
         attention: false,
       }
+    case 'notifications': {
+      const own = props.notifications?.log.unread ?? 0
+      const github = githubUnread(props)
+
+      return { count: own + github, title: notificationsTitle(own, github), attention: false }
+    }
     case 'worktrees':
       return {
         count: worktreeCount,
@@ -113,7 +150,8 @@ function tabCount(id: View, props: AppHeaderProps): TabCount {
 }
 
 // AppHeader is the window's single toolbar, sitting beside the macOS window controls:
-// the logo, the view tabs (Inbox and Worktrees with their counts, Prompts), and on the
+// the logo, the view tabs (Inbox, Notifications, and Worktrees with their counts, Prompts,
+// and Scripts while an integration is on), and on the
 // right the page's filter field, the notification bell, the GitHub notifications button,
 // the API budget gauge, and the account menu. The filter gives way first as the window narrows; the logo and the tabs
 // keep their size. The bar itself drags the window
@@ -132,6 +170,7 @@ export function AppHeader(props: AppHeaderProps) {
     notifications,
     onOpenNotification = () => undefined,
     onNotificationSettings = onOpenSettings,
+    onViewAll,
     githubThreads,
     settings = null,
     onGitHubThreadsSettings = onOpenSettings,
@@ -199,6 +238,13 @@ export function AppHeader(props: AppHeaderProps) {
             notifications={notifications}
             onOpen={onOpenNotification}
             onSettings={onNotificationSettings}
+            onViewAll={
+              onViewAll === undefined
+                ? undefined
+                : () => {
+                    onViewAll('app')
+                  }
+            }
           />
         )}
         {githubThreads !== undefined && (
@@ -207,6 +253,13 @@ export function AppHeader(props: AppHeaderProps) {
             settings={settings}
             onSettings={onGitHubThreadsSettings}
             onSettingsSaved={onSettingsSaved}
+            onViewAll={
+              onViewAll === undefined
+                ? undefined
+                : () => {
+                    onViewAll('github')
+                  }
+            }
           />
         )}
         <BudgetMenu gauge={gauge} onCheck={onBudgetCheck} />

@@ -28,6 +28,7 @@ import {
   cloneTarget,
   defaultPrompts,
   fileCheck,
+  githubThreadList,
   githubThreads,
   hookActionResult,
   hookChecksResult,
@@ -253,6 +254,7 @@ function answers(subscribe: Loose<Platform['on']>): { [K in keyof Platform]: Loo
     setSectionCollapsed: (section, collapsed) => stored({ collapsedSections: collapsed ? [section] : [] }),
     setProjectsTipDismissed: (projectsTipDismissed) => stored({ projectsTipDismissed }),
     setReviewTab: (reviewTab) => stored({ reviewTab }),
+    setNotificationsTab: (notificationsTab) => stored({ notificationsTab }),
     setConversationOrder: (conversationOrder) => stored({ conversationOrder }),
     getInboxOrder: () => Promise.resolve({ statusSorted: [], statusOrder: [], kinds: {} }),
     setStatusSort: (section, on) =>
@@ -286,6 +288,7 @@ function answers(subscribe: Loose<Platform['on']>): { [K in keyof Platform]: Loo
     setGitHubCleanupCardDismissed: (cleanupCardDismissed) => stored(threadRules({ cleanupCardDismissed })),
 
     githubThreadsSnapshot: () => Promise.resolve(githubThreads()),
+    githubThreadsList: () => Promise.resolve(githubThreadList()),
     checkGitHubThreadsNow: () => Promise.resolve(githubThreads()),
     previewGitHubThreads: () => Promise.resolve(threadsPreview()),
     // A clear by hand is queued to go at once; Undo takes a queued one back, which leaves
@@ -374,7 +377,9 @@ function answers(subscribe: Loose<Platform['on']>): { [K in keyof Platform]: Loo
     clearCleanups: done,
 
     listNotifications: () => Promise.resolve({ items: [], unread: 0 }),
+    markAllNotificationsRead: done,
     markNotificationsRead: done,
+    markNotificationsUnread: done,
     clearNotifications: done,
     notificationBannerStatus: () => Promise.resolve('on'),
     sendTestNotification: done,

@@ -22,9 +22,17 @@ import { defaultToastSeconds, Toast, type ToastMessage } from './components/Toas
 import { attempt, serial } from './lib/call'
 import { filterInbox, inboxItems, inboxSpec, inboxSuggestions } from './lib/inboxFilter'
 import { isFindKey, isTyping } from './lib/keys'
+import { filterThreads } from './lib/githubThreads'
 import { cloneWhere } from './lib/locations'
+import {
+  appNotificationSuggestions,
+  filterAppNotifications,
+  filterGitHubThreads,
+  githubNotificationSuggestions,
+  notificationSpec,
+} from './lib/notificationFilter'
 import { toggleFilter } from './lib/query'
-import { opensRun } from './lib/notifications'
+import { bannerEntry, filterEntries, opensRun, startLists, type NotificationLists } from './lib/notifications'
 import type { ReleaseRequest } from './lib/release'
 import type { RunRequest } from './lib/scriptRuns'
 import { foundToolsText, scriptsBadge, showsScripts } from './lib/scriptsTab'
@@ -58,6 +66,7 @@ import {
   lastWorktreeSweep,
   on,
   openExternal,
+  setNotificationsTab,
   setProjectsTipDismissed,
   setReviewTab,
   setConversationOrder,
@@ -72,6 +81,7 @@ import {
   type IntegrationTools,
   type InboxSnapshot,
   type LinkedItem,
+  type NotificationsTab,
   type RemoveResult,
   type Settings,
   type SweepReport,
@@ -81,6 +91,7 @@ import {
 // The pages besides the inbox load on their first visit, so the code the window runs
 // before its first paint is the inbox's alone. The inbox itself is never behind a lazy
 // boundary: main.tsx reports the first paint once it has rendered.
+const NotificationsView = lazy(() => import('./components/notifications/NotificationsView'))
 const PromptsView = lazy(() => import('./components/PromptsView').then((m) => ({ default: m.PromptsView })))
 const ScriptsView = lazy(() => import('./components/scripts/ScriptsView'))
 const SettingsView = lazy(() => import('./components/SettingsView').then((m) => ({ default: m.SettingsView })))
@@ -163,15 +174,26 @@ function useWorktreeSweeps() {
   return { ...counts, seq: reported?.seq ?? 0, toast, listed, closeToast, snapshot }
 }
 
+// BannerClick is what a clicked banner names: the notification it stands for, which is
+// marked read, and its item, page, or run.
+interface BannerClick {
+  notificationId: number
+  itemId: number
+  url: string
+  runId: number
+}
+
 // useReveal shows an item in the inbox when asked: by the menu bar, a notification, or an
 // entry in the notification history. An item no longer in the inbox opens on GitHub
 // instead. show opens the inbox at the item, so reveal is the request the inbox view
 // follows; clear drops it once another view opens. A notification about a run, as a
-// failed run's banner is, opens the run with openRun instead.
+// failed run's banner is, opens the run with openRun instead. A clicked banner names the
+// notification it stands for, which markBanner marks read first.
 function useReveal(
   snapshot: InboxSnapshot | null,
   openInbox: () => void,
   openRun: (id: number, started: string) => void,
+  markBanner: (click: BannerClick) => void,
 ) {
   const [reveal, setReveal] = useState<Reveal | null>(null)
   // requests numbers the requests, so asking for the same item again shows it again.
@@ -192,20 +214,24 @@ function useReveal(
   }
 
   // The menu bar's request is read against the inbox as shown when it arrives.
-  const showOnRequest = useEffectEvent((itemId: number, url: string, runId: number, runStarted: string) => {
-    if (runId > 0) {
-      openRun(runId, runStarted)
+  const showOnRequest = useEffectEvent((click: BannerClick, runStarted: string) => {
+    if (click.notificationId > 0) {
+      markBanner(click)
+    }
+
+    if (click.runId > 0) {
+      openRun(click.runId, runStarted)
 
       return
     }
 
-    show(itemId, url)
+    show(click.itemId, click.url)
   })
 
   useEffect(
     () =>
-      on('inbox:reveal', ({ itemId, url, runId, runStarted }) => {
-        showOnRequest(itemId, url, runId, runStarted)
+      on('inbox:reveal', ({ itemId, url, runId, runStarted, notificationId }) => {
+        showOnRequest({ notificationId, itemId, url, runId }, runStarted)
       }),
     [],
   )
@@ -255,6 +281,7 @@ type SearchView = Exclude<View, 'prompts' | 'scripts'>
 // placeholders say what the field does on each page.
 const placeholders: Readonly<Record<SearchView, string>> = {
   inbox: 'Filter inbox',
+  notifications: 'Filter notifications',
   worktrees: 'Filter worktrees',
   settings: 'Find a setting',
 }
@@ -263,9 +290,11 @@ const placeholders: Readonly<Record<SearchView, string>> = {
 // which stays mounted once visited; where closing the settings goes back to; the section
 // the settings open at, with a count of their openings, so each opening turns to its
 // section; whether the Worktrees view opens at its recently cleaned-up list, as a
-// cleanup toast's View asks; and each page's query in the toolbar's field. The queries
-// last only as long as the window: a filter that came back after a relaunch would make
-// items look lost.
+// cleanup toast's View asks; the Notifications page's tab, once the user or a quick
+// view's View all chose one (null opens it on the tab the settings remember), and each of
+// its tabs' Show and Type; and each page's query in the toolbar's field. The queries last
+// only as long as the window: a filter that came back after a relaunch would make items
+// look lost.
 interface Nav {
   view: View
   visited: ReadonlySet<View>
@@ -273,6 +302,8 @@ interface Nav {
   settingsSection: SettingsSection
   settingsOpened: number
   historyFocus: boolean
+  notificationsTab: NotificationsTab | null
+  notificationLists: NotificationLists
   queries: Readonly<Record<SearchView, string>>
 }
 
@@ -284,6 +315,8 @@ type NavAction =
   | { type: 'reveal' }
   | { type: 'search'; view: SearchView; query: string }
   | { type: 'filterBy'; key: string; value: string }
+  | { type: 'notifications'; tab: NotificationsTab }
+  | { type: 'notificationLists'; lists: NotificationLists }
 
 const startNav: Nav = {
   view: 'inbox',
@@ -292,7 +325,9 @@ const startNav: Nav = {
   settingsSection: 'account',
   settingsOpened: 0,
   historyFocus: false,
-  queries: { inbox: '', worktrees: '', settings: '' },
+  notificationsTab: null,
+  notificationLists: startLists,
+  queries: { inbox: '', notifications: '', worktrees: '', settings: '' },
 }
 
 // visit shows a page, with any other change to where the window is. Leaving the settings,
@@ -315,8 +350,10 @@ function search(nav: Nav, view: SearchView, query: string): Nav {
 // settings opens the settings at a section, remembering the page to go back to, unless
 // they are open already; closeSettings goes back; cleanups opens the Worktrees view at
 // its recently cleaned-up list; reveal opens the inbox unfiltered, so the item asked for
-// is surely in it; search sets a page's query; and filterBy adds a filter to the inbox's
-// query, or takes it away.
+// is surely in it; search sets a page's query; filterBy adds a filter to the inbox's
+// query, or takes it away; notifications opens the Notifications page on a tab, as View
+// all does and as choosing a tab there does; and notificationLists sets its tabs' Show and
+// Type.
 function navigate(nav: Nav, action: NavAction): Nav {
   switch (action.type) {
     case 'show':
@@ -339,6 +376,10 @@ function navigate(nav: Nav, action: NavAction): Nav {
       return search(nav, action.view, action.query)
     case 'filterBy':
       return search(nav, 'inbox', toggleFilter(nav.queries.inbox, action.key, action.value, inboxSpec))
+    case 'notifications':
+      return visit(nav, 'notifications', { notificationsTab: action.tab, historyFocus: false })
+    case 'notificationLists':
+      return { ...nav, notificationLists: action.lists }
   }
 }
 
@@ -381,9 +422,14 @@ export function App() {
   // opens and again whenever one changes.
   const agentSessions = useSessions()
   const notifications = useNotifications()
+  const [nav, go] = useReducer(navigate, startNav)
+  // notificationsTab is the Notifications page's tab: the one chosen this run, or else the
+  // one the settings remember.
+  const notificationsTab = nav.notificationsTab ?? config.settings?.notificationsTab ?? 'app'
   // githubThreads are the user's GitHub notifications, as the app mirrors them: the
-  // toolbar's button, the inbox's cards, and their settings share them.
-  const githubThreads = useGitHubThreads()
+  // toolbar's button, the inbox's cards, the Notifications page, and their settings share
+  // them. Every one is listed only while the page shows its GitHub tab.
+  const githubThreads = useGitHubThreads(nav.view === 'notifications' && notificationsTab === 'github')
   // settingsQueue is the one queue every settings save in the window goes through
   // (useSettingsSave), the toolbar's and the settings page's alike.
   const [settingsQueue] = useState(serial)
@@ -403,11 +449,11 @@ export function App() {
     integrations.tools !== null && config.settings !== null,
     config.settings?.integrations.announced ?? false,
   )
-  const [nav, go] = useReducer(navigate, startNav)
   // A Scripts tab gone, as when every integration was turned off, shows the inbox.
   const view = nav.view === 'scripts' && !scriptsShown ? 'inbox' : nav.view
   const inboxQuery = useQueryOf(nav.queries.inbox)
   const worktreesQuery = useQueryOf(nav.queries.worktrees)
+  const notificationsQuery = useQueryOf(nav.queries.notifications)
   const settingsQuery = useQueryOf(nav.queries.settings)
   // onFilterBy is made once, so the inbox's cards, which take it, keep their identity.
   const [onFilterBy] = useState(() => (key: string, value: string) => {
@@ -464,12 +510,28 @@ export function App() {
       go({ type: 'show', view: 'scripts' })
     })
   }
-  const revealer = useReveal(inbox.snapshot, openInbox, openRun)
+  // markBanner marks read the notification a clicked banner stands for, while the log's
+  // entry with its id is still the one it stood for.
+  const markBanner = (click: BannerClick) => {
+    const entry = notifications.log.items.find((n) => n.id === click.notificationId)
+
+    if (entry !== undefined && !entry.read && bannerEntry(entry, click)) {
+      notifications.markRead([entry.id])
+    }
+  }
+  const revealer = useReveal(inbox.snapshot, openInbox, openRun, markBanner)
   const { clear: clearReveal, show: showItem } = revealer
 
   const changeView = (next: View) => {
     clearReveal()
     go({ type: 'show', view: next })
+  }
+
+  // viewNotifications opens the Notifications page on a tab, as each quick view's View all
+  // does.
+  const viewNotifications = (tab: NotificationsTab) => {
+    clearReveal()
+    go({ type: 'notifications', tab })
   }
 
   const { closeToast: closeSweepToast } = sweeps
@@ -585,8 +647,13 @@ export function App() {
     go({ type: 'settings', section: 'notifications' })
   }
 
-  // openNotification shows a history entry's item, or opens its page or its run.
+  // openNotification marks a history entry read and shows its item, or opens its page or
+  // its run.
   const openNotification = (entry: AppNotification) => {
+    if (!entry.read) {
+      notifications.markRead([entry.id])
+    }
+
     if (opensRun(entry)) {
       openRun(entry.runId, entry.runStarted)
 
@@ -670,7 +737,8 @@ export function App() {
   }
 
   // remember stores a change to the window's memory: that the Scripts tab was announced, the
-  // page or clone it reopens on, the review sheet's tab, or the conversations' order. What
+  // page or clone it reopens on, the review sheet's tab, the Notifications page's tab, or
+  // the conversations' order. What
   // shows has changed already; a store that fails only means the next start doesn't
   // remember it.
   const remember = (store: Promise<Settings>, what: string) => {
@@ -778,6 +846,32 @@ export function App() {
             sweeps.snapshot === null ? null : (filterWorktrees(wtRepos, worktreesQuery, wtOptions)?.matches ?? null),
           suggest: (src, caret) => worktreeSuggestions(wtRepos, src, caret, wtOptions),
         }
+      case 'notifications': {
+        if (notificationsTab === 'app') {
+          const { show, type } = nav.notificationLists.app
+          const entries = filterEntries(notifications.log.items, show, type)
+
+          return {
+            ...base,
+            spec: notificationSpec,
+            matches: filterAppNotifications(entries, notificationsQuery)?.length ?? null,
+            suggest: (src, caret) => appNotificationSuggestions(entries, src, caret),
+          }
+        }
+
+        const { show, type } = nav.notificationLists.github
+        const threads = filterThreads(githubThreads.list?.threads ?? [], show, type)
+
+        return {
+          ...base,
+          spec: notificationSpec,
+          matches:
+            githubThreads.list === null || show === 'cleared'
+              ? null
+              : (filterGitHubThreads(threads, notificationsQuery)?.matches ?? null),
+          suggest: (src, caret) => githubNotificationSuggestions(threads, src, caret),
+        }
+      }
       case 'settings':
         return { ...base, matches: matchSettings(settingsQuery)?.matches ?? null }
     }
@@ -808,6 +902,7 @@ export function App() {
           notifications={notifications}
           onOpenNotification={openNotification}
           onNotificationSettings={openNotificationSettings}
+          onViewAll={viewNotifications}
           githubThreads={githubThreads}
           settings={config.settings}
           onGitHubThreadsSettings={openGitHubThreadsSettings}
@@ -858,8 +953,41 @@ export function App() {
               onConversationOrder={(order) => {
                 remember(setConversationOrder(order), 'the conversations’ order')
               }}
+              onItemOpened={notifications.markItemRead}
             />
           </Activity>
+          {nav.visited.has('notifications') && (
+            <Activity mode={mode('notifications')}>
+              <Suspense fallback={<PageLoading />}>
+                <NotificationsView
+                  tab={notificationsTab}
+                  onTab={(tab) => {
+                    go({ type: 'notifications', tab })
+                    remember(setNotificationsTab(tab), 'the Notifications page’s tab')
+                  }}
+                  lists={nav.notificationLists}
+                  onLists={(lists) => {
+                    go({ type: 'notificationLists', lists })
+                  }}
+                  query={notificationsQuery}
+                  onClearQuery={() => {
+                    go({ type: 'search', view: 'notifications', query: '' })
+                  }}
+                  notifications={notifications}
+                  githubThreads={githubThreads}
+                  settings={config.settings}
+                  onSettingsSaved={saveSettings}
+                  snapshot={inbox.snapshot}
+                  onShowItem={(itemId) => {
+                    showItem(itemId, '')
+                  }}
+                  onOpen={openNotification}
+                  onNotificationSettings={openNotificationSettings}
+                  onGitHubSettings={openGitHubThreadsSettings}
+                />
+              </Suspense>
+            </Activity>
+          )}
           {nav.visited.has('worktrees') && (
             <Activity mode={mode('worktrees')}>
               <Suspense fallback={<PageLoading />}>

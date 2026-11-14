@@ -7,12 +7,12 @@ import type { ItemRowProps } from './components/ItemRow'
 import { triageList } from './lib/triage'
 import type { InboxItem, InboxSnapshot } from './platform'
 import { FIXED_NOW, fromNow } from './test/clock'
-import { details, fileCheck, githubThreads, item, list, rate, snapshot } from './test/fixtures'
+import { details, fileCheck, githubThreads, item, list, notification, rate, snapshot } from './test/fixtures'
 import { emit, platform, renderApp } from './test/platform'
 
 // The render profile: a 300-item inbox, and how much of it renders again for a minute
-// tick, a background update that changes one item, a GitHub notifications update, which
-// the cards don't show, collapsing a list, leaving the inbox and coming back, and
+// tick, a background update that changes one item, a GitHub notifications update and an
+// update of the app's own notifications, which the cards don't show, collapsing a list, leaving the inbox and coming back, and
 // filtering it and clearing the filter. It runs twice. In the unit tests the components run as written,
 // where the bounds below hold however much a parent renders again. `pnpm test:renders`
 // (vitest.renders.config.ts) runs it through the React Compiler, as the build ships, where
@@ -231,6 +231,23 @@ describe('App rendering', () => {
 
     expect(threads.mounts).toBe(0)
 
+    // An update of the app's own notifications, which only the bell and the Notifications
+    // tab show: the inbox's rows have no part in it, though the inbox hears of it (the
+    // sheet's opening marks an item's notifications read).
+    platform.listNotifications.mockImplementation(() =>
+      Promise.resolve({ items: [notification({ id: 1, itemId: 1 }), notification({ id: 2, itemId: 2 })], unread: 2 }),
+    )
+    const notifications = await measure(async () => {
+      act(() => {
+        emit('notifications:updated')
+      })
+      await waitFor(() => {
+        expect(screen.getByTestId('notifications-unread')).toHaveTextContent('2')
+      }, wait)
+    })
+
+    expect(notifications.mounts).toBe(0)
+
     // Collapsing a list takes its rows out of the document.
     const collapse = await measure(async () => {
       await userEvent.click(screen.getByLabelText('Collapse Authored'))
@@ -281,18 +298,38 @@ describe('App rendering', () => {
     // filtering renders only the rows it marks. As written, every render of a list renders
     // its rows again, a couple of times a step.
     const most = compiled
-      ? { update: 1, threads: 0, collapse: 0, away: 0, back: 0, filter: matches }
-      : { update: 2 * rows, threads: 2 * rows, collapse: rows, away: 2 * rows, back: rows, filter: 2 * rows }
+      ? { update: 1, threads: 0, notifications: 0, collapse: 0, away: 0, back: 0, filter: matches }
+      : {
+          update: 2 * rows,
+          threads: 2 * rows,
+          notifications: 2 * rows,
+          collapse: rows,
+          away: 2 * rows,
+          back: rows,
+          filter: 2 * rows,
+        }
 
     expect(update.rows).toBeLessThanOrEqual(most.update)
     expect(threads.rows).toBeLessThanOrEqual(most.threads)
+    expect(notifications.rows).toBeLessThanOrEqual(most.notifications)
     expect(collapse.rows).toBeLessThanOrEqual(most.collapse)
     expect(away.rows).toBeLessThanOrEqual(most.away)
     expect(back.rows).toBeLessThanOrEqual(most.back)
     expect(filter.rows).toBeLessThanOrEqual(most.filter)
 
     if (compiled) {
-      const steps = Object.entries({ mounted, tick, update, threads, collapse, away, back, filter, clear }).map(
+      const steps = Object.entries({
+        mounted,
+        tick,
+        update,
+        threads,
+        notifications,
+        collapse,
+        away,
+        back,
+        filter,
+        clear,
+      }).map(
         ([step, m]) => `  ${step}: ${String(m.rows)} / ${String(m.mounts)} / ${String(m.commits)} / ${String(m.ms)}`,
       )
 

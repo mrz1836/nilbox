@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { FIXED_NOW, fromNow } from '../test/clock'
 import {
   capitalize,
+  dayHeading,
   dayPassed,
   formatAge,
   formatAgo,
@@ -131,5 +132,31 @@ describe('formatWhen', () => {
   it('capitalizes a phrase', () => {
     expect(capitalize('tomorrow, 9:00 AM')).toBe('Tomorrow, 9:00 AM')
     expect(capitalize('')).toBe('')
+  })
+})
+
+describe('dayHeading', () => {
+  it.each([
+    ['2026-06-15T23:59:00Z', 'Today'],
+    ['2026-06-15T00:00:00Z', 'Today'],
+    ['2026-06-16T09:00:00Z', 'Today'],
+    ['2026-06-14T23:59:00Z', 'Yesterday'],
+    ['2026-06-13T12:00:00Z', 'Saturday'],
+    ['2026-06-09T12:00:00Z', 'Tuesday'],
+    ['2026-06-08T12:00:00Z', 'Jun 8'],
+    ['2026-01-02T12:00:00Z', 'Jan 2'],
+    ['2025-12-30T12:00:00Z', 'Dec 30, 2025'],
+  ])('names %s against Monday noon as %j', (iso, want) => {
+    expect(dayHeading(FIXED_NOW, iso, 'en-US')).toBe(want)
+  })
+
+  it('names nothing for a time it cannot read', () => {
+    expect(dayHeading(FIXED_NOW, '', 'en-US')).toBe('')
+    expect(dayHeading(FIXED_NOW, 'not a time', 'en-US')).toBe('')
+  })
+
+  it('follows the locale', () => {
+    expect(dayHeading(FIXED_NOW, '2026-06-13T12:00:00Z', 'de-DE')).toBe('Samstag')
+    expect(dayHeading(FIXED_NOW, '2025-12-30T12:00:00Z', 'de-DE')).toBe('30. Dez. 2025')
   })
 })

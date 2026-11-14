@@ -1,7 +1,7 @@
 import { act, renderHook, waitFor } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 
-import { githubThreads } from '../test/fixtures'
+import { githubThread, githubThreadList, githubThreads, queuedClear, settledClear } from '../test/fixtures'
 import { emit, listening, platform } from '../test/platform'
 import { useGitHubThreads } from './useGitHubThreads'
 
@@ -154,5 +154,116 @@ describe('useGitHubThreads', () => {
     })
 
     expect(result.current.markError).toBe('')
+  })
+
+  it('lists every notification only while listing, and again on each change and after each mark', async () => {
+    platform.githubThreadsList.mockResolvedValue(githubThreadList({ threads: [githubThread()] }))
+
+    const { result, rerender } = renderHook(({ listing }) => useGitHubThreads(listing), {
+      initialProps: { listing: false },
+    })
+
+    await waitFor(() => {
+      expect(result.current.snapshot).not.toBeNull()
+    })
+    expect(platform.githubThreadsList).not.toHaveBeenCalled()
+    expect(result.current.list).toBeNull()
+
+    act(() => {
+      emit('ghthreads:updated')
+    })
+    expect(platform.githubThreadsList).not.toHaveBeenCalled()
+
+    rerender({ listing: true })
+
+    await waitFor(() => {
+      expect(result.current.list?.threads).toHaveLength(1)
+    })
+
+    platform.githubThreadsList.mockResolvedValue(
+      githubThreadList({ threads: [githubThread(), githubThread({ id: 1002, unread: false })] }),
+    )
+    act(() => {
+      emit('ghthreads:updated')
+    })
+
+    await waitFor(() => {
+      expect(result.current.list?.threads).toHaveLength(2)
+    })
+
+    const lists = platform.githubThreadsList.mock.calls.length
+
+    act(() => {
+      void result.current.markRead([1001])
+    })
+    await waitFor(() => {
+      expect(result.current.reading.size).toBe(0)
+    })
+    expect(platform.githubThreadsList.mock.calls.length).toBeGreaterThan(lists)
+
+    const checked = platform.githubThreadsList.mock.calls.length
+
+    act(() => {
+      void result.current.checkNow()
+    })
+    await waitFor(() => {
+      expect(platform.githubThreadsList.mock.calls.length).toBeGreaterThan(checked)
+    })
+
+    // Listing no more, the list stays as it was and nothing asks again.
+    rerender({ listing: false })
+
+    const stopped = platform.githubThreadsList.mock.calls.length
+
+    act(() => {
+      emit('ghthreads:updated')
+    })
+    await waitFor(() => {
+      expect(platform.githubThreadsSnapshot).toHaveBeenCalled()
+    })
+    expect(platform.githubThreadsList.mock.calls.length).toBe(stopped)
+    expect(result.current.list?.threads).toHaveLength(2)
+  })
+
+  it('says why the list could not be read', async () => {
+    platform.githubThreadsList.mockRejectedValue(new Error('database is locked'))
+
+    const { result } = renderHook(() => useGitHubThreads(true))
+
+    await waitFor(() => {
+      expect(result.current.listError).toBe('database is locked')
+    })
+    expect(result.current.list).toBeNull()
+  })
+
+  it('takes queued clears back, and shows the mirror as Keep left it', async () => {
+    platform.githubThreadsSnapshot.mockResolvedValue(githubThreads({ queued: [queuedClear()] }))
+
+    const { result } = renderHook(() => useGitHubThreads())
+
+    await waitFor(() => {
+      expect(result.current.snapshot?.queued).toHaveLength(1)
+    })
+
+    platform.keepGitHubThreads.mockResolvedValueOnce(githubThreads({ recent: [settledClear({ state: 'kept' })] }))
+
+    let kept: Awaited<ReturnType<typeof result.current.keep>> | undefined
+    await act(async () => {
+      kept = await result.current.keep([1])
+    })
+
+    expect(platform.keepGitHubThreads).toHaveBeenCalledExactlyOnceWith([1])
+    expect(kept?.ok).toBe(true)
+    expect(result.current.snapshot?.queued).toEqual([])
+    expect(result.current.snapshot?.recent).toHaveLength(1)
+
+    platform.keepGitHubThreads.mockRejectedValueOnce(new Error('database is locked'))
+
+    await act(async () => {
+      kept = await result.current.keep([1])
+    })
+
+    expect(kept).toEqual({ ok: false, error: 'database is locked' })
+    expect(result.current.snapshot?.recent).toHaveLength(1)
   })
 })

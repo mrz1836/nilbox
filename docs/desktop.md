@@ -766,9 +766,9 @@ origin, with one `git ls-remote` whose answer is kept five minutes.
 
 ## The window
 
-A single toolbar runs beside the macOS window controls. It holds the **Inbox**, **Worktrees**,
-and **Prompts** tabs, and [**Scripts**](#the-scripts-tab) while mage-x or go-pre-commit is on, or
-you turned Scripts on,
+A single toolbar runs beside the macOS window controls. It holds the **Inbox**,
+[**Notifications**](#the-notifications-page), **Worktrees**, and **Prompts** tabs, and
+[**Scripts**](#the-scripts-tab) while mage-x or go-pre-commit is on, or you turned Scripts on,
 and, on the right, the page's [filter](#filtering), the
 [notification](#menu-bar-and-notifications) bell, the [GitHub notifications](#github-notifications)
 button, the API budget gauge, and your profile picture. Drag the bar to move the window, and double-click it to zoom. As the window narrows,
@@ -776,7 +776,10 @@ the filter gives way first.
 
 **Tab counts.** **Inbox** counts the items in your lists, leaving out what is snoozed or
 dismissed. An item in two lists, such as a pull request you opened and are assigned, counts
-once. **Worktrees** counts the linked worktrees on disk across every clone in the repository
+once. **Notifications** counts what is unread: the app's own notifications, the bell's, and,
+while Nilbox reads them, your [GitHub notifications](#github-notifications); hover it for each,
+as **3 unread in Nilbox · 12 unread on GitHub**. **Worktrees** counts the linked worktrees on
+disk across every clone in the repository
 locations, main worktrees aside, with an amber dot while some are done on GitHub but still on
 disk.
 **Scripts** counts the runs going, with a red dot after a run failed until you open it, and an
@@ -900,8 +903,8 @@ with theirs. Escape or the back arrow returns to the view you came from.
 
 ## Filtering
 
-The toolbar's field filters the page you're on: **Filter inbox**, **Filter worktrees**, or
-**Find a setting**. Prompts keeps the search in its own sidebar. Everything it searches is
+The toolbar's field filters the page you're on: **Filter inbox**, **Filter notifications**,
+**Filter worktrees**, or **Find a setting**. Prompts keeps the search in its own sidebar. Everything it searches is
 already in the window, so a filter is instant and asks GitHub nothing. Each page keeps its
 own query while you look at another, until the app quits; a filter never comes back after a
 relaunch, where it would make items look lost.
@@ -935,6 +938,7 @@ matches item 123, and a bare `123` matches it too.
 | Page | Keys |
 |---|---|
 | Inbox | `is:pr`, `is:issue`, `is:draft`, `is:pinned` (pinned itself, or with its repository or org), `is:conflict` (`is:open` matches everything); `repo:`, `org:`, `author:` (with `@me` for you), `label:`, `status:` (project status), `project:`; `checks:failing`, `checks:awaiting` (workflow runs held for a maintainer's approval), `checks:passing`, `checks:pending`; `review:approved`, `review:changes_requested`, `review:required` |
+| Notifications | `repo:` (`owner/name`), `type:` (on the Nilbox tab `review`, `assigned`, `snooze`, `release`, `run`; on the GitHub tab `pr`, `issue`, `release`, `actions`, `other`), `is:unread`, `is:read`; on the GitHub tab also `is:open`, `is:merged`, `is:closed` (the item's state), and `reason:` (GitHub's reason, such as `mention` or `review_requested`) |
 | Worktrees | `repo:`, `branch:`, `agent:`; `is:dirty`, `is:locked`, `is:in-use`, `is:finished`, `is:review` (needs a look), `is:pr`, `is:issue`, `is:open`, `is:merged`, `is:closed` |
 | Settings | Words only |
 
@@ -959,6 +963,13 @@ to the filter, and click it again to take it out.
 
 **Showing an item.** When the menu bar or a notification shows an item, the inbox's filter is
 cleared first, so the item is always found.
+
+**The Notifications page while filtered.** The field filters the tab that shows, within its
+**Show** and **Type**, and counts what the list then shows: on the GitHub tab, each item's line
+once, however many of its notifications match. Words match an entry's title, its repository,
+its number, and what happened (the kind, such as **Back from snooze**, or GitHub's reason, such
+as **Mentioned**), and an entry's detail. The suggestions are the tab's own. When nothing
+matches, the list says so and offers **Clear the filter**. **Cleared** isn't filtered.
 
 **The Worktrees view while filtered.** A clone with no matching worktree hides. A clone whose
 name matches shows all its worktrees; any other shows only the matching ones, and its header
@@ -1737,16 +1748,23 @@ an item you dismissed or that is still snoozed, or for a refresh that failed. A 
 **N of M** can gain an item only because another left it, so in one an item counts only if it
 changed since the last refresh. Refreshing a single card never notifies.
 
-**The history.** The bell in the toolbar keeps every notification, newest first, up to the
-latest 200. Its badge counts the unread ones; opening it marks them read, and they stay marked
-until it closes. Click an entry to show its item in the inbox, or on GitHub once the item has
-left the inbox. An entry about no item, such as a release, names its repository alone, and a
-click opens its page on GitHub; a release workflow that failed is marked with a red cross, and
-opens the failed run there. A failed run's entry, marked the same way, opens Scripts →
-Runs with the run in its panel; a toast says why it can't when the run is no longer in the
-history, or the Scripts tab is gone (*Turn on an integration in Settings to see your runs.*).
-**Clear** empties the history. It lives in the local database (the `notifications` table),
-whether or not a banner was shown.
+**The bell.** The bell in the toolbar is a quick view of what is unread: its badge counts the
+unread notifications, and a click lists the newest 20 of them, with **15 more unread · View
+all** when there are more. Opening it marks nothing. Click an entry to show its item in the
+inbox, or on GitHub once the item has left the inbox, which marks the entry read. An entry about
+no item, such as a release, names its repository alone, and a click opens its page on GitHub; a
+release workflow that failed is marked with a red cross, and opens the failed run there. A
+failed run's entry, marked the same way, opens Scripts → Runs with the run in its panel; a toast
+says why it can't when the run is no longer in the history, or the Scripts tab is gone (*Turn
+on an integration in Settings to see your runs.*). Point at an entry, or move the focus to it,
+and **✓** takes the place of its time: it marks the entry done, which takes it off the bell and
+keeps it in the history. **Mark all done** does that to them all. **View all** opens the
+[Notifications page](#the-notifications-page), and **Notification settings** their settings.
+
+**Read without asking.** An entry is also marked read when you click its banner, and when you
+open its item's review or issue sheet, however you open it; it stays read until you mark it
+unread on the page. A banner left from before the history was cleared marks nothing, since its
+entry's number may belong to another by then.
 
 **Banners.** Each kind can also show a native macOS banner. All seven are on by default, and
 each has its own switch in Settings → Notifications. Two more switches there show a banner when
@@ -1760,7 +1778,8 @@ opens the tag on GitHub, the release once it is published, or the failed run onc
 failed. So is a failed run: its banner gives the repository (none for a folder
 that isn't one), what failed, and how it ended, and clicking it opens the run in Scripts → Runs.
 Failed runs that come within 2 seconds of each other show their banners together, and more
-than three as one, such as **5 new notifications: 5 failed runs**.
+than three as one, such as **5 new notifications: 5 failed runs**. Clicking a banner marks its
+entry read; a banner that sums several up marks none.
 
 The first time the app starts, macOS asks whether to allow its notifications. **Send a test**
 in Settings shows a sample banner, asking first if macOS never has. If notifications are
@@ -1772,6 +1791,47 @@ built app (`magex app:build`, `magex app:run`) but not in `magex app:dev`, which
 binary: there the history still fills, and Settings explains why no banner shows. Nothing
 about notifications leaves your Mac: they are made from what the inbox already reads and
 posted to macOS.
+
+<br>
+
+## The Notifications page
+
+The **Notifications** tab, beside **Inbox**, holds everything the bell and the GitHub button
+are quick views of, on two tabs: **Nilbox**, the app's own notifications, and **GitHub**, your
+[GitHub notifications](#github-notifications). Each tab counts its unread. The page opens on
+the tab you chose last, unless a quick view's **View all** asks for the other; the choice is
+the window's memory, which a [backup](#backing-up-your-setup) never holds.
+
+Each tab lists what it holds newest first, under a heading for each day (**Today**,
+**Yesterday**, the weekday within the week, then the date), which stays at the top as its day
+scrolls past. An unread entry carries a dot and a bolder title. **Show** picks **Unread** or
+**All** (the default), and **Type** what kind; the toolbar's field [filters](#filtering) the
+list too. Long lists stay quick: only the rows near the screen are drawn.
+
+**Nilbox.** The whole history, up to the latest 1,000, in the local database (the
+`notifications` table), whether or not a banner was shown. **Type** is **Reviews**,
+**Assigned**, **Snoozes**, **Releases**, or **Runs**. Click an entry to open it as the bell
+does, which marks it read. Point at one: an unread entry offers **✓ Done**, and a read one
+**Mark unread**, which puts it back on the bell. **Mark all done** marks them all read, and
+**Clear history** forgets every notification, after asking; banners and settings stay.
+
+**GitHub.** Every notification Nilbox keeps a copy of, read and unread, grouped by the pull
+request or issue each is about, with the counts and when GitHub was last checked, a refresh
+button that checks it now, **Open on GitHub**, and **Settings**. It says why GitHub refuses the
+token, why the last check failed, and when GitHub holds more than the newest 1,000. **Type** is
+**Pull requests**, **Issues**, **Releases**, **Actions** (workflow runs), or **Other**. A line
+whose item is merged or closed says so. Click a line to open it on GitHub, which marks its
+unread notifications read there; point at it for **Show in inbox** (while the inbox lists its
+item), **Mark read**, and **Done**. Each goes to GitHub at once, one line at a time, through the
+same paced lane as clearing; there is no bulk mark. While Nilbox doesn't read your GitHub
+notifications, the tab says so and offers **Turn on**, which checks GitHub straight after.
+
+**Cleared.** **Show → Cleared** shows what clearing did. **Clearing soon** lists each clear
+waiting to be sent, why it clears, and when it goes (*in 12s*), with **Undo**, which keeps the
+notification. **Recently cleared** lists the last 50 that settled and how: **Marked done**,
+**Marked read**, **Kept**, **Couldn't clear**, or **Skipped**, with why; a click opens the item on
+GitHub. **GitHub's Done view** opens GitHub's own list of what was marked done. While automatic
+clearing is off, it offers to turn it on.
 
 <br>
 
@@ -1789,8 +1849,10 @@ last checked (*5 unread · 38 in your GitHub inbox · checked 2m ago*), with a r
 checks GitHub now and turns while it does; why they can't be read and when Nilbox asks again,
 with **Check again**; and the newest 20 unread, grouped by the pull request or issue each is
 about. Opening the panel reads Nilbox's own copy: it asks GitHub nothing and marks nothing read.
-While automatic clearing is off, it offers **Turn on automatic clearing**. **Open on GitHub**
-opens your GitHub inbox, and **Settings** its settings.
+While automatic clearing is off, it offers **Turn on automatic clearing**. **View all** opens
+the [Notifications page](#the-notifications-page)'s GitHub tab, which lists every notification,
+read ones too, and what clearing did. **Open on GitHub** opens your GitHub inbox, and
+**Settings** its settings.
 
 **Opening and Done.** Click a notification to open it on GitHub, as GitHub's own inbox does,
 which marks it read there too: a pull request or an issue on its page, a workflow run on its

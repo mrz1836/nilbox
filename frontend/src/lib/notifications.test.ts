@@ -3,13 +3,21 @@ import { describe, expect, it } from 'vitest'
 import type { NotificationKind } from '../platform'
 import { notification } from '../test/fixtures'
 import {
+  appTypeOf,
+  appTypeOrder,
+  appTypes,
+  bannerEntry,
   bannerStatusText,
   entryRef,
   entryTitle,
   entryWhere,
+  filterEntries,
   kindTitle,
   notificationKinds,
   opensRun,
+  quickViewMax,
+  startLists,
+  unreadOf,
 } from './notifications'
 
 describe('notifications', () => {
@@ -84,5 +92,75 @@ describe('notifications', () => {
     expect(bannerStatusText('')).toBe('')
     expect(bannerStatusText('off')).toMatch(/System Settings › Notifications/)
     expect(bannerStatusText('unavailable')).toMatch(/packaged app/)
+  })
+})
+
+describe('the history’s lists', () => {
+  const review = notification({ id: 6 })
+  const assigned = notification({ id: 5, kind: 'assigned', read: true })
+  const woke = notification({ id: 4, kind: 'woke' })
+  const released = notification({ id: 3, kind: 'release_published', itemId: 0, itemKind: '', read: true })
+  const failed = notification({ id: 2, kind: 'run_failed', itemId: 0, itemKind: '', runId: 9 })
+  const unknown = notification({ id: 1, kind: 'mentions' as unknown as NotificationKind })
+  const all = [review, assigned, woke, released, failed, unknown]
+
+  it('opens on every entry of every type, and quick views twenty', () => {
+    expect(startLists).toEqual({ app: { show: 'all', type: 'all' }, github: { show: 'all', type: 'all' } })
+    expect(quickViewMax).toBe(20)
+  })
+
+  it('offers every type, each with its words', () => {
+    expect(appTypeOrder).toEqual(['all', 'review', 'assigned', 'snooze', 'release', 'run'])
+    expect(appTypeOrder.map((id) => appTypes[id].label)).toEqual([
+      'All',
+      'Reviews',
+      'Assigned',
+      'Snoozes',
+      'Releases',
+      'Runs',
+    ])
+
+    for (const id of appTypeOrder) {
+      expect(appTypes[id].none).not.toBe('')
+    }
+  })
+
+  it('types each entry, a release’s three kinds together, and an unknown kind as none', () => {
+    expect(all.map(appTypeOf)).toEqual(['review', 'assigned', 'snooze', 'release', 'run', ''])
+    expect(appTypeOf(notification({ kind: 'release_done' }))).toBe('release')
+    expect(appTypeOf(notification({ kind: 'release_failed' }))).toBe('release')
+  })
+
+  it('shows the unread or all, of a type or of every type', () => {
+    expect(filterEntries(all, 'all', 'all')).toEqual(all)
+    expect(filterEntries(all, 'unread', 'all')).toEqual([review, woke, failed, unknown])
+    expect(filterEntries(all, 'all', 'release')).toEqual([released])
+    expect(filterEntries(all, 'unread', 'release')).toEqual([])
+    expect(filterEntries(all, 'unread', 'run')).toEqual([failed])
+  })
+
+  it('finds an item’s unread entries, and none for no item', () => {
+    const items = [
+      notification({ id: 3, itemId: 1 }),
+      notification({ id: 2, itemId: 1, read: true }),
+      notification({ id: 1, itemId: 2 }),
+    ]
+
+    expect(unreadOf(items, 1)).toEqual([3])
+    expect(unreadOf(items, 3)).toEqual([])
+    expect(unreadOf([notification({ itemId: 0 })], 0)).toEqual([])
+  })
+
+  it('tells the entry a banner stood for from one that took its id after the history was cleared', () => {
+    const banner = { itemId: 1, url: 'https://github.com/acme-org/example-repo/pull/7', runId: 0 }
+
+    expect(bannerEntry(notification(), banner)).toBe(true)
+    expect(bannerEntry(notification({ itemId: 0 }), banner)).toBe(true)
+    expect(bannerEntry(notification({ itemId: 2, url: 'https://github.com/acme-org/other/pull/1' }), banner)).toBe(
+      false,
+    )
+    expect(bannerEntry(failed, { itemId: 0, url: '', runId: 9 })).toBe(true)
+    expect(bannerEntry(failed, { itemId: 0, url: '', runId: 8 })).toBe(false)
+    expect(bannerEntry(notification({ url: '' }), { itemId: 0, url: '', runId: 0 })).toBe(false)
   })
 })

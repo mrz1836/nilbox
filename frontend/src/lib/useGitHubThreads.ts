@@ -2,10 +2,13 @@ import { useEffect, useEffectEvent, useState } from 'react'
 
 import {
   checkGitHubThreadsNow,
+  githubThreadsList,
   githubThreadsSnapshot,
+  keepGitHubThreads,
   markGitHubThreadsDone,
   markGitHubThreadsRead,
   on,
+  type GitHubThreadList,
   type GitHubThreadsSnapshot,
 } from '../platform'
 import { attempt, start, type Result } from './call'
@@ -38,6 +41,14 @@ export interface GitHubThreadsState {
   reading: ReadonlySet<number>
   markError: string
   dismissMarkError: () => void
+  // list is every notification the app mirrors, read and unread, for the Notifications
+  // page, or null until it has been listed: only while listing, and kept as it was once
+  // the page stops listing. listError is why it could not be listed, or ''.
+  list: GitHubThreadList | null
+  listError: string
+  // keep takes back the queued clears with clearIDs, the Cleared view's Undo, and shows
+  // the mirror as Keep left it. It resolves with how that ended, and never rejects.
+  keep: (clearIDs: readonly number[]) => Promise<Result<GitHubThreadsSnapshot>>
 }
 
 // noIDs is the empty set, shared so it stays the same object.
@@ -45,13 +56,22 @@ const noIDs: ReadonlySet<number> = new Set()
 
 // useGitHubThreads reads what the app mirrors of the user's GitHub notifications, and
 // reads it again whenever the shell says it changed. Reading it asks GitHub nothing and
-// marks nothing read: only checkNow asks GitHub for a listing, and only markDone and
-// markRead, the user's clicks, change anything there. The window holds one, in App, which
-// the toolbar's button and the settings share.
-export function useGitHubThreads(): GitHubThreadsState {
+// marks nothing read: only checkNow asks GitHub for a listing, and only markDone,
+// markRead, and keep, the user's clicks, change anything there. While listing, as the
+// Notifications page's GitHub tab shows, it lists every notification too, again on each
+// change and after each mark. The window holds one, in App, which the toolbar's button,
+// the page, and the settings share.
+export function useGitHubThreads(listing = false): GitHubThreadsState {
   const mirror = useQuery(() => githubThreadsSnapshot(), [], { log: 'could not read the GitHub notifications' })
+  const listed = useQuery(() => githubThreadsList(), [], { enabled: listing })
+
+  // reread reads the mirror again, and the list while listing.
+  const reread = async () => {
+    await Promise.all([mirror.refetch(), listing ? listed.refetch() : Promise.resolve()])
+  }
+
   const reloadOnUpdate = useEffectEvent(() => {
-    void mirror.refetch()
+    void reread()
   })
 
   useEffect(
@@ -89,7 +109,7 @@ export function useGitHubThreads(): GitHubThreadsState {
       setMarkError(result.error)
     }
 
-    await mirror.refetch()
+    await reread()
 
     hold((was) => {
       const next = new Set(was)
@@ -106,6 +126,20 @@ export function useGitHubThreads(): GitHubThreadsState {
 
   const checkNow = async () => {
     const result = await checking.run()
+
+    if (result.ok) {
+      mirror.set(() => result.data)
+
+      if (listing) {
+        void listed.refetch()
+      }
+    }
+
+    return result
+  }
+
+  const keep = async (clearIDs: readonly number[]) => {
+    const result = await attempt(start(() => keepGitHubThreads([...clearIDs])))
 
     if (result.ok) {
       mirror.set(() => result.data)
@@ -131,5 +165,8 @@ export function useGitHubThreads(): GitHubThreadsState {
     dismissMarkError: () => {
       setMarkError('')
     },
+    list: listed.data ?? null,
+    listError: listed.error,
+    keep,
   }
 }

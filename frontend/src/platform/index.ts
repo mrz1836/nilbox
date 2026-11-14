@@ -106,6 +106,11 @@ export type GitHubThreadsSnapshot = Omit<NonNullLists<ghthreads.Snapshot>, 'unre
 export type GitHubThreadsStatus = NonNullLists<ghthreads.Status>
 export type GitHubThreadsAccess = ghthreads.Access
 export type GitHubThread = Omit<NonNullLists<ghthreads.Thread>, 'kind'> & { kind: item.Kind | '' }
+// GitHubThreadList is every thread the mirror holds, read and unread, for the Notifications
+// page. A thread's state is its item's as the last state check read it, '' until one did
+// and for a thread about no item.
+export type GitHubThreadList = Omit<NonNullLists<ghthreads.ThreadList>, 'threads'> & { threads: GitHubThread[] }
+export type GitHubThreadState = threadrules.State
 // Clearing them: the clears waiting to be sent (each of which Undo keeps), those that
 // settled, and how each stands; and what clearing would do now, for the cleanup sheet.
 export type QueuedClear = NonNullLists<ghthreads.QueuedClear>
@@ -444,6 +449,7 @@ export type Theme = settings.Theme
 export type TextSize = settings.TextSize
 export type MergeMethodSetting = settings.MergeMethod
 export type ReviewTab = settings.ReviewTab
+export type NotificationsTab = settings.NotificationsTab
 export type ConversationOrder = settings.ConversationOrder
 export type RefreshKind = settings.RefreshKind
 
@@ -611,6 +617,7 @@ export const {
   SetSectionCollapsed: setSectionCollapsed,
   SetProjectsTipDismissed: setProjectsTipDismissed,
   SetReviewTab: setReviewTab,
+  SetNotificationsTab: setNotificationsTab,
   SetConversationOrder: setConversationOrder,
   InboxOrder: getInboxOrder,
   SetStatusSort: setStatusSort,
@@ -813,10 +820,11 @@ export const {
 } = narrow(worktrees.Service)
 
 // The user's GitHub notifications. Snapshot reads what the app mirrors from the database
-// alone and never asks GitHub; CheckNow runs a pass now, once any pass under way has ended,
-// and returns the Snapshot after it. A pass also sends the clears that are due, once the
-// user turned clearing on or cleared one by hand. A "ghthreads:updated" event follows each
-// pass that changed what Snapshot shows.
+// alone and never asks GitHub, and List every thread it mirrors, read and unread, for the
+// Notifications page; CheckNow runs a pass now, once any pass under way has ended, and
+// returns the Snapshot after it. A pass also sends the clears that are due, once the user
+// turned clearing on or cleared one by hand. A "ghthreads:updated" event follows each pass
+// that changed what Snapshot or List shows.
 //
 // Preview says, from the database alone, what clearing would do now, as if it were on;
 // Clear and ClearItem clear threads by the user's own hand, at once and whether clearing is
@@ -826,6 +834,7 @@ export const {
 const githubThreads = narrow(ghthreads.Service)
 
 export const githubThreadsSnapshot: () => CancellablePromise<GitHubThreadsSnapshot> = githubThreads.Snapshot
+export const githubThreadsList: () => CancellablePromise<GitHubThreadList> = githubThreads.List
 export const checkGitHubThreadsNow: () => CancellablePromise<GitHubThreadsSnapshot> = githubThreads.CheckNow
 export const previewGitHubThreads: () => CancellablePromise<GitHubThreadsPreview> = githubThreads.Preview
 export const clearGitHubThreads: (threadIDs: number[]) => CancellablePromise<GitHubThreadsSnapshot> =
@@ -841,10 +850,15 @@ export const markGitHubThreadsDone: (threadIDs: number[]) => CancellablePromise<
 export const markGitHubThreadsRead: (threadIDs: number[]) => CancellablePromise<GitHubThreadsSnapshot> =
   githubThreads.MarkRead
 
+// The notification history. MarkAllRead marks every entry read (Mark all done), and
+// MarkRead and MarkUnread the entries with the ids given; opening the history marks
+// nothing. Clear forgets them all. A "notifications:updated" event follows each change.
 const notifications = narrow(notify.Service)
 
 export const {
-  MarkAllRead: markNotificationsRead,
+  MarkAllRead: markAllNotificationsRead,
+  MarkRead: markNotificationsRead,
+  MarkUnread: markNotificationsUnread,
   Clear: clearNotifications,
   BannerStatus: notificationBannerStatus,
   SendTest: sendTestNotification,

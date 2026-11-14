@@ -1,9 +1,25 @@
 import { describe, expect, it } from 'vitest'
 
+import { brand } from '../generated/brand'
 import { FIXED_NOW } from '../test/clock'
-import { githubThread, threadsStatus } from '../test/fixtures'
+import { githubThread, queuedClear, settledClear, threadsStatus } from '../test/fixtures'
 import {
   askAgainText,
+  byHandText,
+  clearsIn,
+  clearTriggers,
+  clearURL,
+  clearWhere,
+  doneURL,
+  filterThreads,
+  githubTypeOf,
+  githubTypeOrder,
+  githubTypes,
+  inboxURL,
+  settledText,
+  shownSettled,
+  stateWords,
+  triggerText,
   badgeText,
   buttonLabel,
   checkedText,
@@ -200,5 +216,141 @@ describe('groupURL', () => {
     expect(about('acme-org', '..')).toBe('https://github.com/notifications')
     expect(about('acme org', 'example-repo')).toBe('https://github.com/notifications')
     expect(about('acme-org', 'example-repo/../../evil')).toBe('https://github.com/notifications')
+  })
+})
+
+describe('threadGroups with read ones', () => {
+  it('counts each line’s unread apart from its notifications, and takes its item’s state', () => {
+    const groups = threadGroups([
+      githubThread({ id: 1, unread: false, state: '' }),
+      githubThread({ id: 2, unread: true, state: 'MERGED' }),
+      githubThread({ id: 3, unread: true, state: 'OPEN' }),
+      githubThread({ id: 4, number: 9, unread: false, state: 'CLOSED' }),
+    ])
+
+    expect(groups.map((g) => [g.count, g.ids, g.unread, g.unreadIds, g.state, g.threads.map((t) => t.id)])).toEqual([
+      [3, [1, 2, 3], 2, [2, 3], 'MERGED', [1, 2, 3]],
+      [1, [4], 0, [], 'CLOSED', [4]],
+    ])
+  })
+})
+
+describe('stateWords', () => {
+  it('chips a merged or closed item, and nothing else', () => {
+    expect(stateWords('MERGED')).toBe('Merged')
+    expect(stateWords('CLOSED')).toBe('Closed')
+    expect(stateWords('OPEN')).toBe('')
+    expect(stateWords('')).toBe('')
+  })
+})
+
+describe('the GitHub tab’s types', () => {
+  it('offers every type, each with its words', () => {
+    expect(githubTypeOrder.map((id) => githubTypes[id].label)).toEqual([
+      'All',
+      'Pull requests',
+      'Issues',
+      'Releases',
+      'Actions',
+      'Other',
+    ])
+
+    for (const id of githubTypeOrder) {
+      expect(githubTypes[id].none).not.toBe('')
+    }
+  })
+
+  it.each([
+    [{ kind: 'pr' as const, subjectType: 'PullRequest' }, 'pr'],
+    [{ kind: '' as const, subjectType: 'PullRequest' }, 'pr'],
+    [{ kind: 'issue' as const, subjectType: 'Issue' }, 'issue'],
+    [{ kind: '' as const, subjectType: 'Issue' }, 'issue'],
+    [{ kind: '' as const, subjectType: 'Release' }, 'release'],
+    [{ kind: '' as const, subjectType: 'CheckSuite' }, 'actions'],
+    [{ kind: '' as const, subjectType: 'WorkflowRun' }, 'actions'],
+    [{ kind: '' as const, subjectType: 'Discussion' }, 'other'],
+    [{ kind: '' as const, subjectType: 'RepositoryVulnerabilityAlert' }, 'other'],
+  ])('types %j as %s', (thread, want) => {
+    expect(githubTypeOf(thread)).toBe(want)
+  })
+
+  it('shows the unread or all, of a type or of every type, and no notification while Cleared shows', () => {
+    const pr = githubThread({ id: 1 })
+    const readIssue = githubThread({ id: 2, kind: 'issue', subjectType: 'Issue', unread: false })
+    const release = githubThread({ id: 3, kind: '', number: 0, subjectType: 'Release' })
+    const all = [pr, readIssue, release]
+
+    expect(filterThreads(all, 'all', 'all')).toEqual(all)
+    expect(filterThreads(all, 'unread', 'all')).toEqual([pr, release])
+    expect(filterThreads(all, 'all', 'issue')).toEqual([readIssue])
+    expect(filterThreads(all, 'unread', 'issue')).toEqual([])
+    expect(filterThreads(all, 'cleared', 'all')).toEqual([])
+  })
+})
+
+describe('the Cleared view’s words', () => {
+  it('moves the triggers’ words from Settings word for word, and words clearing by hand', () => {
+    expect(clearTriggers.map((t) => t.trigger)).toEqual([
+      'merged',
+      'pr_closed',
+      'issue_closed',
+      'reviewed',
+      'dismissed',
+      'unassigned',
+    ])
+    expect(triggerText('merged')).toBe('A pull request is merged')
+    expect(triggerText('reviewed')).toBe(`You submit a review in ${brand.name}`)
+    expect(triggerText('by_hand')).toBe(byHandText)
+    expect(triggerText('later' as Parameters<typeof triggerText>[0])).toBe('later')
+  })
+
+  it.each([
+    ['2026-06-15T12:00:12Z', 'in 12s'],
+    ['2026-06-15T12:00:00.4Z', 'in 1s'],
+    ['2026-06-15T12:05:00Z', 'in 5m'],
+    ['2026-06-15T12:00:00Z', 'any moment'],
+    ['2026-06-15T11:59:00Z', 'any moment'],
+    ['', ''],
+  ])('says a clear sent after %j goes %j', (sendAfter, want) => {
+    expect(clearsIn(FIXED_NOW, sendAfter)).toBe(want)
+  })
+
+  it.each([
+    [settledClear(), 'Marked done'],
+    [settledClear({ action: 'read' }), 'Marked read'],
+    [settledClear({ state: 'kept' }), 'Kept'],
+    [settledClear({ state: 'failed', error: 'GitHub refused it.' }), 'Couldn’t clear: GitHub refused it.'],
+    [settledClear({ state: 'failed' }), 'Couldn’t clear'],
+    [settledClear({ state: 'skipped', reason: 'new_activity' }), 'Skipped: there was new activity'],
+    [settledClear({ state: 'skipped', reason: 'still_open' }), 'Skipped: it was reopened'],
+    [settledClear({ state: 'skipped', reason: 'off' }), 'Skipped: clearing was turned off'],
+    [settledClear({ state: 'skipped', reason: 'rule_off' }), 'Skipped: its rule is off'],
+    [settledClear({ state: 'skipped', reason: 'already_read' }), 'Skipped: it was already read'],
+    [settledClear({ state: 'skipped', reason: 'not_item' }), 'Skipped: it isn’t a pull request or an issue'],
+    [settledClear({ state: 'skipped', reason: 'not_listed' }), 'Skipped: it left your GitHub inbox first'],
+    [settledClear({ state: 'skipped', reason: 'kept' }), 'Skipped: you kept it before'],
+    [settledClear({ state: 'skipped', reason: 'failed' }), 'Skipped: it failed before'],
+    [settledClear({ state: 'skipped', reason: '' }), 'Skipped'],
+    [settledClear({ state: 'queued' }), 'queued'],
+  ])('words how %j settled', (clear, want) => {
+    expect(settledText(clear)).toBe(want)
+  })
+
+  it('hides a skip the backend decided again', () => {
+    expect(shownSettled(settledClear())).toBe(true)
+    expect(shownSettled(settledClear({ state: 'skipped', reason: 'new_activity' }))).toBe(true)
+    expect(shownSettled(settledClear({ state: 'skipped', reason: 'changed' }))).toBe(false)
+    expect(shownSettled(settledClear({ state: 'skipped', reason: 'stale' }))).toBe(false)
+  })
+
+  it('says where a clear is, and opens its item, or else the GitHub inbox', () => {
+    expect(clearWhere(queuedClear())).toBe('example-repo #7')
+    expect(clearWhere(queuedClear({ number: 0 }))).toBe('example-repo')
+    expect(clearURL(settledClear())).toBe('https://github.com/acme-org/example-repo/pull/7')
+    expect(clearURL(queuedClear({ kind: 'issue', number: 3 }))).toBe(
+      'https://github.com/acme-org/example-repo/issues/3',
+    )
+    expect(clearURL(settledClear({ owner: 'acme org' }))).toBe(inboxURL)
+    expect(doneURL).toBe('https://github.com/notifications?query=is%3Adone')
   })
 })
