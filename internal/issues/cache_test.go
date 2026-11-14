@@ -11,13 +11,14 @@ import (
 	"github.com/mrz1836/nilbox/internal/issues/internal/queries"
 	"github.com/mrz1836/nilbox/internal/store"
 	"github.com/mrz1836/nilbox/internal/testutil"
+	"github.com/mrz1836/nilbox/internal/timeline"
 )
 
 // comments returns count comments of size bytes each.
-func comments(count, size int) []TimelineItem {
-	out := make([]TimelineItem, 0, count)
+func comments(count, size int) []timeline.Entry {
+	out := make([]timeline.Entry, 0, count)
 	for range count {
-		out = append(out, TimelineItem{Kind: EventComment, Body: strings.Repeat("a", size)})
+		out = append(out, timeline.Entry{Kind: timeline.KindComment, Body: strings.Repeat("a", size)})
 	}
 
 	return out
@@ -64,18 +65,6 @@ func TestFitCutsLongTextsInTurn(t *testing.T) {
 			}
 		})
 	}
-}
-
-func TestCutTextKeepsWholeRunes(t *testing.T) {
-	t.Parallel()
-
-	got, cut := cutText("héllo", 2)
-	assert.True(t, cut)
-	assert.Equal(t, "h", got, "é is two bytes: the cut backs off to its start")
-
-	got, cut = cutText("hello", 5)
-	assert.False(t, cut)
-	assert.Equal(t, "hello", got)
 }
 
 func TestTheCacheStaysWithinItsCaps(t *testing.T) {

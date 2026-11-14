@@ -1,6 +1,9 @@
 package issues
 
-import "github.com/mrz1836/nilbox/internal/textutil"
+import (
+	"github.com/mrz1836/nilbox/internal/textutil"
+	"github.com/mrz1836/nilbox/internal/timeline"
+)
 
 // result is what the action came to.
 func (a *action) result() Result {
@@ -41,15 +44,15 @@ func (a *action) message() string {
 
 // closedAs says what an issue someone else closed is closed as, "" when GitHub doesn't
 // say.
-func closedAs(reason StateReason) string {
+func closedAs(reason timeline.StateReason) string {
 	switch reason {
-	case ReasonCompleted:
+	case timeline.ReasonCompleted:
 		return " as completed"
-	case ReasonNotPlanned:
+	case timeline.ReasonNotPlanned:
 		return " as not planned"
-	case ReasonDuplicate:
+	case timeline.ReasonDuplicate:
 		return " as a duplicate"
-	case ReasonNone, ReasonReopened:
+	case timeline.ReasonNone, timeline.ReasonReopened:
 		return ""
 	default:
 		return ""

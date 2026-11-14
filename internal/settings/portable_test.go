@@ -110,6 +110,7 @@ func customize(t *testing.T, svc *Service, db *sql.DB, home string) string {
 		func() (Settings, error) { return svc.SetWindowSize(ctx, WindowSize{Width: 1000, Height: 700}) },
 		func() (Settings, error) { return svc.SetSectionCollapsed(ctx, ListAssigned, true) },
 		func() (Settings, error) { return svc.SetProjectsTipDismissed(ctx, true) },
+		func() (Settings, error) { return svc.SetReviewTab(ctx, ReviewTabComments) },
 	} {
 		_, err := set()
 		require.NoError(t, err)
@@ -132,6 +133,7 @@ func TestPortableSettingsRoundTrip(t *testing.T) {
 	assert.NotContains(t, string(data), "windowSize", "the window's memory stays out")
 	assert.NotContains(t, string(data), "collapsed")
 	assert.NotContains(t, string(data), "cleanupCardDismissed")
+	assert.NotContains(t, string(data), "reviewTab")
 
 	var read Portable
 	require.NoError(t, json.Unmarshal(data, &read))
@@ -161,6 +163,7 @@ func TestPortableSettingsRoundTrip(t *testing.T) {
 	assert.Equal(t, DefaultWindowSize(), got.WindowSize, "the window's memory is not imported")
 	assert.Empty(t, got.CollapsedSections)
 	assert.False(t, got.ProjectsTipDismissed)
+	assert.Equal(t, DefaultReviewTab, got.ReviewTab)
 
 	again, err := part.PlanPortable(t.Context(), read)
 	require.NoError(t, err)

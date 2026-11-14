@@ -18,4 +18,5 @@ type ReviewDiff struct {
 	ContextAt *time.Time
 	FetchedAt *time.Time
 	UsedAt    time.Time
+	SeenAt    *time.Time
 }

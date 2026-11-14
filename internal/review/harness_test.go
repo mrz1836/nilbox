@@ -41,6 +41,9 @@ var (
 	headB        = strings.Repeat("b", 40)                       //nolint:gochecknoglobals // a fixed test value
 	testNow      = time.Date(2026, 11, 9, 17, 0, 0, 0, time.UTC) //nolint:gochecknoglobals // a fixed test value
 	errNotCalled = errors.New("the fake was not set up for this call")
+
+	// updatedAt is GitHub's time of #7's newest activity, as every read says it.
+	updatedAt = testNow.Add(-time.Hour) //nolint:gochecknoglobals // a fixed test value
 )
 
 // storePulls stores, as a refresh of the inbox would, count pull requests of
@@ -89,6 +92,7 @@ type fakeInbox struct {
 	tries  int
 	acted  []Acted
 	read   []PullRead
+	peeks  int
 
 	// retryErr fails the account check of the retry with a fresh token, and recordErr the
 	// record of what an action made happen, as the Actor joins it to the action's error.
@@ -156,6 +160,15 @@ func (f *fakeInbox) Act(
 	return err
 }
 
+func (f *fakeInbox) Peek(ctx context.Context, _ int64, peek func(context.Context, github.Token, Target) error) error {
+	f.mu.Lock()
+	f.peeks++
+	target := f.target()
+	f.mu.Unlock()
+
+	return peek(ctx, github.NewToken("fake-token-1"), target)
+}
+
 func (f *fakeInbox) target() Target {
 	p := f.pull
 
@@ -177,6 +190,7 @@ const (
 	callComment = "comment"
 	callClose   = "close"
 	callApprove = "approve"
+	callEarlier = "earlier"
 )
 
 // fakeGitHub answers the sheet's requests and counts them.
@@ -216,6 +230,12 @@ type fakeGitHub struct {
 	comments []string
 	// approved names each run GitHub approved, as "owner/name:run ID", in order.
 	approved []string
+
+	// earlier is the page an earlier read answers, earlierErr its failure, and befores the
+	// cursors asked for.
+	earlier    *github.TimelinePage
+	earlierErr error
+	befores    []string
 }
 
 func (g *fakeGitHub) FetchPullReview(context.Context, github.Token, string) (*github.PullReview, error) {
@@ -405,6 +425,27 @@ func (g *fakeGitHub) ApproveWorkflowRun(_ context.Context, _ github.Token, name 
 	return nil
 }
 
+func (g *fakeGitHub) FetchTimeline(
+	_ context.Context, _ github.Token, kind item.Kind, _, before string,
+) (*github.TimelinePage, error) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+
+	g.count(callEarlier)
+	g.befores = append(g.befores, before)
+
+	switch {
+	case kind != item.KindPR:
+		return nil, github.ErrInvalidItemRef
+	case g.earlierErr != nil:
+		return nil, g.earlierErr
+	case g.earlier == nil:
+		return nil, errNotCalled
+	default:
+		return g.earlier, nil
+	}
+}
+
 func (g *fakeGitHub) count(name string) {
 	if g.calls == nil {
 		g.calls = map[string]int{}
@@ -532,7 +573,7 @@ func pullReview(head, status string) *github.PullReview {
 			Found: true,
 			Item: github.Item{
 				IsPR: true, NodeID: nodePR, Number: 7, Title: "Add the widget cache", State: github.StateOpen,
-				AuthorLogin: octoOther, RepoOwner: "acme-org", RepoName: "example-repo",
+				AuthorLogin: octoOther, RepoOwner: "acme-org", RepoName: "example-repo", UpdatedAt: updatedAt,
 			},
 			Details: github.ItemDetails{HeadOID: head},
 		},

@@ -1,7 +1,7 @@
 -- name: GetDiff :one
 -- GetDiff returns the cached review of the item with item_id, or sql.ErrNoRows when the
 -- sheet never read it.
-SELECT item_id, head_oid, total, complete, bytes, context, context_at, fetched_at, used_at
+SELECT item_id, head_oid, total, complete, bytes, context, context_at, fetched_at, used_at, seen_at
 FROM review_diffs
 WHERE item_id = ?;
 
@@ -24,7 +24,8 @@ ORDER BY position;
 
 -- name: UpsertDiff :exec
 -- UpsertDiff stores what the sheet read about the item with item_id: its files' head,
--- count, and size, and the context, replacing what was cached.
+-- count, and size, and the context, replacing what was cached, and leaves seen_at, which
+-- only OpenDiff moves, as it was.
 INSERT INTO review_diffs (item_id, head_oid, total, complete, bytes, context, context_at, fetched_at, used_at)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT (item_id) DO UPDATE SET
@@ -51,6 +52,11 @@ DELETE FROM review_diff_files WHERE item_id = ?;
 INSERT INTO review_diff_files (
     item_id, position, path, previous_path, status, additions, deletions, blob_sha, patch, patch_state
 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+-- name: OpenDiff :exec
+-- OpenDiff stamps the sheet's opening of the item with item_id: the read it shows, by
+-- GitHub's time of its newest activity, and when.
+UPDATE review_diffs SET seen_at = ?, used_at = ? WHERE item_id = ?;
 
 -- name: TouchDiff :exec
 -- TouchDiff stamps the use of the cached review of the item with item_id.

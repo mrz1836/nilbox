@@ -4,6 +4,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+
+	"github.com/mrz1836/nilbox/internal/timeline"
 )
 
 // readFacts are the facts of #12 once the sheet read it: open, assigned to the user, who
@@ -29,25 +31,25 @@ func TestTheStandings(t *testing.T) {
 		{
 			name: "closed as completed, by a pull request",
 			facts: func(f *Facts) {
-				f.Closed, f.StateReason, f.ClosedBy, f.ClosedAt = true, ReasonCompleted, "acme-org/example-repo#14", "t"
+				f.Closed, f.StateReason, f.ClosedBy, f.ClosedAt = true, timeline.ReasonCompleted, "acme-org/example-repo#14", "t"
 			},
 			want: Standing{State: StandingClosed, Sentence: "Closed as completed by acme-org/example-repo#14", At: "t"},
 		},
 		{
 			name:  "closed as not planned",
-			facts: func(f *Facts) { f.Closed, f.StateReason = true, ReasonNotPlanned },
+			facts: func(f *Facts) { f.Closed, f.StateReason = true, timeline.ReasonNotPlanned },
 			want:  Standing{State: StandingClosed, Sentence: "Closed as not planned"},
 		},
 		{
 			name: "closed as a duplicate",
 			facts: func(f *Facts) {
-				f.Closed, f.StateReason, f.DuplicateOf, f.ClosedBy = true, ReasonDuplicate, "acme-org/example-repo#3", octoOther
+				f.Closed, f.StateReason, f.DuplicateOf, f.ClosedBy = true, timeline.ReasonDuplicate, "acme-org/example-repo#3", octoOther
 			},
 			want: Standing{State: StandingClosed, Sentence: "Closed as a duplicate of acme-org/example-repo#3 by octo-other"},
 		},
 		{
 			name:  "closed as a duplicate of one the user can't see",
-			facts: func(f *Facts) { f.Closed, f.StateReason = true, ReasonDuplicate },
+			facts: func(f *Facts) { f.Closed, f.StateReason = true, timeline.ReasonDuplicate },
 			want:  Standing{State: StandingClosed, Sentence: "Closed as a duplicate"},
 		},
 		{

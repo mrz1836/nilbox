@@ -1,6 +1,6 @@
 package issues
 
-import "github.com/mrz1836/nilbox/internal/item"
+import "github.com/mrz1836/nilbox/internal/timeline"
 
 // Action is something the issue sheet can do with an issue.
 type Action string
@@ -66,47 +66,6 @@ const (
 	StandingOpen        StandingState = "open"
 )
 
-// StateReason is why an issue is closed, or was reopened, as GitHub says it.
-type StateReason string
-
-// The state reasons.
-const (
-	ReasonNone       StateReason = ""
-	ReasonCompleted  StateReason = "COMPLETED"
-	ReasonNotPlanned StateReason = "NOT_PLANNED"
-	ReasonDuplicate  StateReason = "DUPLICATE"
-	ReasonReopened   StateReason = "REOPENED"
-)
-
-// RefState is a pull request's or an issue's state.
-type RefState string
-
-// The states.
-const (
-	StateOpen   RefState = "OPEN"
-	StateClosed RefState = "CLOSED"
-	StateMerged RefState = "MERGED"
-)
-
-// EventKind is what one entry of an issue's timeline is.
-type EventKind string
-
-// The timeline's kinds.
-const (
-	EventComment    EventKind = "comment"
-	EventMentioned  EventKind = "mentioned"
-	EventLinked     EventKind = "linked"
-	EventUnlinked   EventKind = "unlinked"
-	EventClosed     EventKind = "closed"
-	EventReopened   EventKind = "reopened"
-	EventAssigned   EventKind = "assigned"
-	EventUnassigned EventKind = "unassigned"
-	EventLabeled    EventKind = "labeled"
-	EventUnlabeled  EventKind = "unlabeled"
-	EventRenamed    EventKind = "renamed"
-	EventDuplicate  EventKind = "duplicate"
-)
-
 // ChecksWord is a pull request's checks, in a word.
 type ChecksWord string
 
@@ -139,9 +98,9 @@ type Issue struct {
 	Title  string `json:"title"`
 	URL    string `json:"url"`
 
-	State       RefState    `json:"state"`
-	StateReason StateReason `json:"stateReason"`
-	ClosedAt    string      `json:"closedAt"`
+	State       timeline.RefState    `json:"state"`
+	StateReason timeline.StateReason `json:"stateReason"`
+	ClosedAt    string               `json:"closedAt"`
 
 	// Author opened it; IsBot says it is a bot, and Mine that it is the user.
 	Author string `json:"author"`
@@ -167,15 +126,15 @@ type Issue struct {
 
 	// Body is the description, BodyTrimmed whether the cache cut it short (its page has
 	// all of it), and EditedAt when it was last edited, or "".
-	Body        string     `json:"body"`
-	BodyTrimmed bool       `json:"bodyTrimmed"`
-	EditedAt    string     `json:"editedAt"`
-	Reactions   []Reaction `json:"reactions"`
+	Body        string              `json:"body"`
+	BodyTrimmed bool                `json:"bodyTrimmed"`
+	EditedAt    string              `json:"editedAt"`
+	Reactions   []timeline.Reaction `json:"reactions"`
 
-	Type      *IssueType `json:"type"`
-	Milestone *Milestone `json:"milestone"`
-	Labels    []Label    `json:"labels"`
-	Projects  []Project  `json:"projects"`
+	Type      *IssueType       `json:"type"`
+	Milestone *Milestone       `json:"milestone"`
+	Labels    []timeline.Label `json:"labels"`
+	Projects  []Project        `json:"projects"`
 
 	// Assignees and Participants are the first few of each, and More how many others.
 	Assignees        []Person `json:"assignees"`
@@ -183,21 +142,21 @@ type Issue struct {
 	Participants     []Person `json:"participants"`
 	MoreParticipants int      `json:"moreParticipants"`
 
-	Parent      *Linked `json:"parent"`
-	DuplicateOf *Linked `json:"duplicateOf"`
+	Parent      *timeline.Ref `json:"parent"`
+	DuplicateOf *timeline.Ref `json:"duplicateOf"`
 
 	// SubIssues are the first sub-issues, of SubIssuesTotal, SubIssuesDone of them done.
-	SubIssues      []Linked `json:"subIssues"`
-	SubIssuesTotal int      `json:"subIssuesTotal"`
-	SubIssuesDone  int      `json:"subIssuesDone"`
+	SubIssues      []timeline.Ref `json:"subIssues"`
+	SubIssuesTotal int            `json:"subIssuesTotal"`
+	SubIssuesDone  int            `json:"subIssuesDone"`
 
 	// Fixes are the pull requests that close it once merged, MoreFixes how many others;
 	// Mentioned the pull requests and issues that mentioned it, in the timeline read.
-	Fixes     []Fix    `json:"fixes"`
-	MoreFixes int      `json:"moreFixes"`
-	Mentioned []Linked `json:"mentioned"`
+	Fixes     []Fix          `json:"fixes"`
+	MoreFixes int            `json:"moreFixes"`
+	Mentioned []timeline.Ref `json:"mentioned"`
 
-	Timeline TimelinePage `json:"timeline"`
+	Timeline timeline.Page `json:"timeline"`
 
 	// LastSeenAt is GitHub's time of the newest activity in the read the sheet showed when
 	// the user last opened the issue, "" before then: what is newer is new to them.
@@ -216,12 +175,6 @@ type Issue struct {
 	Stale     bool   `json:"stale"`
 }
 
-// Reaction counts one kind of reaction to the description, by GitHub's name for it.
-type Reaction struct {
-	Content string `json:"content"`
-	Count   int    `json:"count"`
-}
-
 // IssueType is an issue's type, with its color as "#rrggbb" or "".
 type IssueType struct {
 	Name        string `json:"name"`
@@ -236,12 +189,6 @@ type Milestone struct {
 	DueOn    string  `json:"dueOn"`
 	State    string  `json:"state"`
 	Progress float64 `json:"progress"`
-}
-
-// Label is a label with its color as "#rrggbb", or "".
-type Label struct {
-	Name  string `json:"name"`
-	Color string `json:"color"`
 }
 
 // Project is the issue's place in a project, as its card shows it.
@@ -266,72 +213,14 @@ type Person struct {
 	Mine  bool   `json:"mine"`
 }
 
-// Linked is a pull request or an issue the sheet names.
-type Linked struct {
-	Kind        item.Kind   `json:"kind"`
-	Repo        string      `json:"repo"`
-	Number      int         `json:"number"`
-	Title       string      `json:"title"`
-	URL         string      `json:"url"`
-	State       RefState    `json:"state"`
-	StateReason StateReason `json:"stateReason"`
-	Draft       bool        `json:"draft"`
-}
-
 // Fix is a pull request that closes the issue once merged: where it merges, when it did,
 // and its checks and review.
 type Fix struct {
-	PR       Linked     `json:"pr"`
-	Base     string     `json:"base"`
-	MergedAt string     `json:"mergedAt"`
-	Checks   ChecksWord `json:"checks"`
-	Review   ReviewWord `json:"review"`
-}
-
-// TimelinePage is a page of the timeline, oldest first. Before is the cursor that reads the
-// items before it, "" when none come before it, and Total counts every item of the whole
-// timeline the sheet reads, so Total less the items the sheet holds is how many it doesn't.
-type TimelinePage struct {
-	Items  []TimelineItem `json:"items"`
-	Total  int            `json:"total"`
-	Before string         `json:"before"`
-}
-
-// TimelineItem is one comment or event. Which fields are set depends on Kind.
-type TimelineItem struct {
-	Kind       EventKind `json:"kind"`
-	ID         string    `json:"id"`
-	At         string    `json:"at"`
-	Actor      string    `json:"actor"`
-	ActorIsBot bool      `json:"actorIsBot"`
-	Mine       bool      `json:"mine"`
-
-	// A comment's text, page, author's relationship to the repository, and when it was
-	// edited; Trimmed says the cache cut the text short. Minimized says someone folded it
-	// away, and MinimizedReason why, as an upper-case word.
-	Body            string `json:"body"`
-	Trimmed         bool   `json:"trimmed"`
-	URL             string `json:"url"`
-	Association     string `json:"association"`
-	EditedAt        string `json:"editedAt"`
-	Minimized       bool   `json:"minimized"`
-	MinimizedReason string `json:"minimizedReason"`
-
-	// Ref is the other item an event names; WillClose a mention that closes the issue
-	// once merged; Commit a commit that closed it; DuplicateOf what a close as a duplicate
-	// names.
-	Ref         *Linked     `json:"ref"`
-	WillClose   bool        `json:"willClose"`
-	Commit      string      `json:"commit"`
-	DuplicateOf *Linked     `json:"duplicateOf"`
-	StateReason StateReason `json:"stateReason"`
-
-	Label    *Label `json:"label"`
-	Assignee string `json:"assignee"`
-
-	// From and To are a rename's titles.
-	From string `json:"from"`
-	To   string `json:"to"`
+	PR       timeline.Ref `json:"pr"`
+	Base     string       `json:"base"`
+	MergedAt string       `json:"mergedAt"`
+	Checks   ChecksWord   `json:"checks"`
+	Review   ReviewWord   `json:"review"`
 }
 
 // Seen is the comments the user saw: how many, and the newest by ID and time ("" for

@@ -56,6 +56,15 @@ func (r reviewInbox) Act(
 	return err
 }
 
+// Peek runs peek on the pull request with id through the inbox, which stores nothing.
+func (r reviewInbox) Peek(
+	ctx context.Context, id int64, peek func(context.Context, github.Token, review.Target) error,
+) error {
+	return r.actor.PeekPull(ctx, id, func(ctx context.Context, tok github.Token, t inbox.PullTarget) error {
+		return peek(ctx, tok, review.Target(t))
+	})
+}
+
 // reviewSettings hands the review sheet the settings it follows.
 type reviewSettings struct {
 	settings *settings.Service

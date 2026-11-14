@@ -6,11 +6,11 @@ import (
 	"errors"
 	"fmt"
 	"time"
-	"unicode/utf8"
 
 	"github.com/mrz1836/nilbox/internal/clock"
 	"github.com/mrz1836/nilbox/internal/issues/internal/queries"
 	"github.com/mrz1836/nilbox/internal/store"
+	"github.com/mrz1836/nilbox/internal/timeline"
 )
 
 // The sheet keeps what it read of each issue it opened in issue_views, which this package
@@ -41,15 +41,15 @@ type cachedView struct {
 	// UpdatedAt is GitHub's time of the issue's newest activity, as of the read.
 	UpdatedAt string `json:"updatedAt"`
 
-	State       RefState    `json:"state"`
-	StateReason StateReason `json:"stateReason"`
-	ClosedAt    string      `json:"closedAt"`
-	ClosedBy    string      `json:"closedBy"`
+	State       timeline.RefState    `json:"state"`
+	StateReason timeline.StateReason `json:"stateReason"`
+	ClosedAt    string               `json:"closedAt"`
+	ClosedBy    string               `json:"closedBy"`
 
-	Body        string     `json:"body"`
-	BodyTrimmed bool       `json:"bodyTrimmed"`
-	EditedAt    string     `json:"editedAt"`
-	Reactions   []Reaction `json:"reactions"`
+	Body        string              `json:"body"`
+	BodyTrimmed bool                `json:"bodyTrimmed"`
+	EditedAt    string              `json:"editedAt"`
+	Reactions   []timeline.Reaction `json:"reactions"`
 
 	Locked     bool   `json:"locked"`
 	LockReason string `json:"lockReason"`
@@ -57,19 +57,19 @@ type cachedView struct {
 	CanUpdate  bool   `json:"canUpdate"`
 	Mine       bool   `json:"mine"`
 
-	Type        *IssueType `json:"type"`
-	Milestone   *Milestone `json:"milestone"`
-	Parent      *Linked    `json:"parent"`
-	DuplicateOf *Linked    `json:"duplicateOf"`
+	Type        *IssueType    `json:"type"`
+	Milestone   *Milestone    `json:"milestone"`
+	Parent      *timeline.Ref `json:"parent"`
+	DuplicateOf *timeline.Ref `json:"duplicateOf"`
 
 	Assignees         []string `json:"assignees"`
 	AssigneesTotal    int      `json:"assigneesTotal"`
 	Participants      []string `json:"participants"`
 	ParticipantsTotal int      `json:"participantsTotal"`
 
-	SubIssues []Linked `json:"subIssues"`
-	Fixes     []Fix    `json:"fixes"`
-	FixCount  int      `json:"fixCount"`
+	SubIssues []timeline.Ref `json:"subIssues"`
+	Fixes     []Fix          `json:"fixes"`
+	FixCount  int            `json:"fixCount"`
 
 	// Comments counts the comments as of the read, Latest and LatestAt name the newest, and
 	// LatestMine says the user wrote it.
@@ -80,9 +80,9 @@ type cachedView struct {
 
 	// Timeline is the newest page of the conversation, oldest first; Total counts the whole
 	// conversation's items, and Before reads the ones before the page.
-	Timeline []TimelineItem `json:"timeline"`
-	Total    int            `json:"total"`
-	Before   string         `json:"before"`
+	Timeline []timeline.Entry `json:"timeline"`
+	Total    int              `json:"total"`
+	Before   string           `json:"before"`
 }
 
 // cached is one issue's row: its view, when it was read (zero once an action made it out
@@ -184,36 +184,9 @@ func fit(view cachedView) (string, error) {
 
 // trimmed cuts the description and every comment of view longer than limit bytes.
 func trimmed(view cachedView, limit int) cachedView {
-	if body, cut := cutText(view.Body, limit); cut {
-		view.Body, view.BodyTrimmed = body, true
-	}
-
-	items := make([]TimelineItem, len(view.Timeline))
-	copy(items, view.Timeline)
-
-	for i := range items {
-		if body, cut := cutText(items[i].Body, limit); cut {
-			items[i].Body, items[i].Trimmed = body, true
-		}
-	}
-
-	view.Timeline = items
+	view.Timeline = timeline.Cut(&view.Body, &view.BodyTrimmed, view.Timeline, limit)
 
 	return view
-}
-
-// cutText cuts s to at most limit bytes, on a rune boundary, and reports whether it did.
-func cutText(s string, limit int) (string, bool) {
-	if len(s) <= limit {
-		return s, false
-	}
-
-	end := limit
-	for end > 0 && !utf8.RuneStart(s[end]) {
-		end--
-	}
-
-	return s[:end], true
 }
 
 // prune drops the views unused for unusedFor, then, from the most recently used down, each

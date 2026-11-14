@@ -3,6 +3,8 @@ package issues
 import (
 	"strconv"
 	"strings"
+
+	"github.com/mrz1836/nilbox/internal/timeline"
 )
 
 // Facts are what the sheet knows of an issue, from its card and its last read, for Decide.
@@ -15,7 +17,7 @@ type Facts struct {
 	// Closed reports a closed issue: StateReason why, ClosedBy who or what closed it
 	// ("octo-other", "acme-org/api#14"), ClosedAt when, and DuplicateOf what it duplicates.
 	Closed      bool
-	StateReason StateReason
+	StateReason timeline.StateReason
 	ClosedBy    string
 	ClosedAt    string
 	DuplicateOf string
@@ -181,14 +183,14 @@ func closedSentence(f Facts) string {
 	var s string
 
 	switch f.StateReason {
-	case ReasonNotPlanned:
+	case timeline.ReasonNotPlanned:
 		s = "Closed as not planned"
-	case ReasonDuplicate:
+	case timeline.ReasonDuplicate:
 		s = "Closed as a duplicate"
 		if f.DuplicateOf != "" {
 			s += " of " + f.DuplicateOf
 		}
-	case ReasonCompleted, ReasonNone, ReasonReopened:
+	case timeline.ReasonCompleted, timeline.ReasonNone, timeline.ReasonReopened:
 		s = "Closed as completed"
 	default:
 		s = "Closed"

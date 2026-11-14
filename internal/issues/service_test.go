@@ -10,6 +10,7 @@ import (
 
 	"github.com/mrz1836/nilbox/internal/github"
 	"github.com/mrz1836/nilbox/internal/item"
+	"github.com/mrz1836/nilbox/internal/timeline"
 	"github.com/mrz1836/nilbox/internal/uierr"
 )
 
@@ -20,11 +21,11 @@ func TestOpenBeforeAnyReadShowsTheCard(t *testing.T) {
 	is := h.opened(t)
 
 	assert.Equal(t, Issue{
-		ID: issueID, Repo: exampleRepo, Number: 12, Title: parserBug, URL: issueURL, State: StateOpen,
+		ID: issueID, Repo: exampleRepo, Number: 12, Title: parserBug, URL: issueURL, State: timeline.StateOpen,
 		Author: octoOther, OpenedAt: stamp(openedAt), UpdatedAt: stamp(latestAt), Assigned: true,
-		Reactions: []Reaction{}, Labels: []Label{{Name: "bug", Color: "#d73a4a"}}, Projects: []Project{},
-		Assignees: []Person{}, Participants: []Person{}, SubIssues: []Linked{}, SubIssuesTotal: 3, SubIssuesDone: 1,
-		Fixes: []Fix{}, Mentioned: []Linked{}, Timeline: TimelinePage{Items: []TimelineItem{}},
+		Reactions: []timeline.Reaction{}, Labels: []timeline.Label{{Name: "bug", Color: "#d73a4a"}}, Projects: []Project{},
+		Assignees: []Person{}, Participants: []Person{}, SubIssues: []timeline.Ref{}, SubIssuesTotal: 3, SubIssuesDone: 1,
+		Fixes: []Fix{}, Mentioned: []timeline.Ref{}, Timeline: timeline.Page{Items: []timeline.Entry{}},
 		Seen:     Seen{Comments: 2},
 		Standing: Standing{State: StandingAssigned, Sentence: "Assigned to you", At: stamp(openedAt), Opened: true},
 		Offers: []Offer{
@@ -59,7 +60,7 @@ func TestRefreshReadsTheIssueOnce(t *testing.T) {
 
 	assert.Equal(t, "It drops the newline at the end of the file.", is.Body)
 	assert.Equal(t, &IssueType{Name: "Bug", Color: "#d73a4a", Description: "Something isn't working"}, is.Type)
-	assert.Equal(t, []Reaction{{Content: "THUMBS_UP", Count: 4}}, is.Reactions)
+	assert.Equal(t, []timeline.Reaction{{Content: "THUMBS_UP", Count: 4}}, is.Reactions)
 	assert.Equal(t, []Person{{Login: octoUser, Mine: true}}, is.Assignees)
 	assert.Equal(t, []Person{{Login: octoOther}, {Login: octoUser, Mine: true}}, is.Participants)
 	assert.Equal(t, 1, is.MoreParticipants)
@@ -72,10 +73,10 @@ func TestRefreshReadsTheIssueOnce(t *testing.T) {
 	assert.Equal(t, 40, is.Timeline.Total)
 	assert.Equal(t, cursor, is.Timeline.Before)
 	assert.True(t, is.Timeline.Items[0].Mine)
-	assert.Equal(t, EventMentioned, is.Timeline.Items[1].Kind)
-	assert.Equal(t, []Linked{{
+	assert.Equal(t, timeline.KindMentioned, is.Timeline.Items[1].Kind)
+	assert.Equal(t, []timeline.Ref{{
 		Kind: item.KindPR, Repo: exampleRepo, Number: 14, Title: "Keep the trailing newline",
-		URL: "https://github.com/acme-org/example-repo/pull/14", State: StateOpen,
+		URL: "https://github.com/acme-org/example-repo/pull/14", State: timeline.StateOpen,
 	}}, is.Mentioned)
 
 	assert.Equal(t, "Assigned to you", is.Standing.Sentence)
@@ -214,8 +215,8 @@ func TestAClosingReadIsShownOnceThenForgotten(t *testing.T) {
 	is, err := h.svc.ReadAgain(t.Context(), issueID)
 	require.NoError(t, err)
 
-	assert.Equal(t, StateClosed, is.State)
-	assert.Equal(t, ReasonNotPlanned, is.StateReason)
+	assert.Equal(t, timeline.StateClosed, is.State)
+	assert.Equal(t, timeline.ReasonNotPlanned, is.StateReason)
 	assert.Equal(t, "Parser bug", is.Title, "the read's own title: the inbox doesn't rewrite a closed issue's card")
 	assert.False(t, is.Assigned, "the issue left the lists")
 	assert.Equal(t, Standing{
@@ -313,9 +314,15 @@ func TestEarlierReadsAPageAndKeepsNothing(t *testing.T) {
 	page, err := h.svc.Earlier(t.Context(), issueID, cursor)
 	require.NoError(t, err)
 
-	assert.Equal(t, TimelinePage{Items: []TimelineItem{
-		{Kind: EventComment, ID: "IC_0", At: stamp(openedAt), Actor: octoUser, Mine: true, Body: "First."},
-		{Kind: EventLabeled, ID: "LE_1", At: stamp(openedAt), Actor: octoOther, Label: &Label{Name: "bug"}},
+	assert.Equal(t, timeline.Page{Items: []timeline.Entry{
+		{
+			Kind: timeline.KindComment, ID: "IC_0", At: stamp(openedAt), Actor: octoUser, Mine: true, Body: "First.",
+			LineComments: []timeline.LineComment{},
+		},
+		{
+			Kind: timeline.KindLabeled, ID: "LE_1", At: stamp(openedAt), Actor: octoOther, Label: &timeline.Label{Name: "bug"},
+			LineComments: []timeline.LineComment{},
+		},
 	}, Total: 40}, page, "the user's own marked, a type the sheet doesn't read left out, and no earlier page")
 	assert.Equal(t, []string{cursor}, h.github.befores)
 	assert.Equal(t, 1, h.inbox.peeks, "through the inbox, which stores nothing")

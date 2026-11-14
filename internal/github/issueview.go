@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/mrz1836/nilbox/internal/item"
 	"github.com/mrz1836/nilbox/internal/uierr"
 )
 
@@ -24,7 +25,8 @@ import (
 //   - The state (FetchIssueState): whether it is still open, whether the viewer may close
 //     it, and its newest comments, which a close reads first so it never closes over a
 //     comment the user hasn't seen.
-//   - An earlier page of the timeline (FetchIssueTimeline), read only when the user asks.
+//   - An earlier page of the timeline (FetchTimeline), read only when the user asks. The
+//     review sheet reads a pull request's earlier pages with the same query.
 //
 // GitHub's timeline pages run oldest first: the newest page is the last one, and its
 // startCursor reads the page before it. Its totalCount counts every item of the asked
@@ -38,12 +40,20 @@ const (
 	timelineSmallPage = 20
 )
 
-// timelineItemTypes are the timeline items the sheet reads: the comments, and the events a
-// conversation is followed by. The view and the earlier pages ask for the same ones, so a
-// page read later joins the first without a gap.
+// timelineItemTypes are the timeline items the issue sheet reads: the comments, and the
+// events a conversation is followed by. The view and the earlier pages ask for the same
+// ones, so a page read later joins the first without a gap.
 const timelineItemTypes = `[ISSUE_COMMENT, CROSS_REFERENCED_EVENT, CONNECTED_EVENT, DISCONNECTED_EVENT,
       CLOSED_EVENT, REOPENED_EVENT, ASSIGNED_EVENT, UNASSIGNED_EVENT, LABELED_EVENT, UNLABELED_EVENT,
       RENAMED_TITLE_EVENT, MARKED_AS_DUPLICATE_EVENT]`
+
+// pullTimelineItemTypes are the timeline items the review sheet reads of a pull request:
+// the issue sheet's, and the reviews and the events only a pull request has. Its commits are
+// left out, so a busy branch never crowds the comments out of the page.
+const pullTimelineItemTypes = `[ISSUE_COMMENT, CROSS_REFERENCED_EVENT, CONNECTED_EVENT, DISCONNECTED_EVENT,
+      CLOSED_EVENT, REOPENED_EVENT, ASSIGNED_EVENT, UNASSIGNED_EVENT, LABELED_EVENT, UNLABELED_EVENT,
+      RENAMED_TITLE_EVENT, MARKED_AS_DUPLICATE_EVENT, PULL_REQUEST_REVIEW, MERGED_EVENT,
+      HEAD_REF_FORCE_PUSHED_EVENT, REVIEW_REQUESTED_EVENT, READY_FOR_REVIEW_EVENT, CONVERT_TO_DRAFT_EVENT]`
 
 // issueViewQuery reads the issue sheet's view of one issue, and issueViewProjectsQuery the
 // same with the projects it is in (see DetailOptions).
@@ -83,15 +93,34 @@ fragment IssueViewFields on Issue {
 }
 ` + timelineFieldsFragment + refFieldsFragment + assigneeFieldsFragment
 
-// timelineFieldsFragment is what the sheet reads of each timeline item. Fields that more
-// than one item type has share a type and nullability, as GitHub requires of fields
-// merged under one name; a rename's subject, which would clash with a connection's, is
-// never asked for.
-const timelineFieldsFragment = `
+// timelineFieldsFragment is what the issue sheet reads of each timeline item, and
+// pullTimelineFieldsFragment what the review sheet reads of a pull request's: the same
+// items (timelineNodes), and the reviews and events only a pull request has
+// (pullTimelineNodes). A pull request's totalCount counts every item of its timeline,
+// whatever the types asked for (measured in November 2026: 25 where 11 were of the types
+// asked for), so its page is counted by filteredCount, which counts the items of the types
+// asked for up to the page's end: on the newest page, the whole timeline's.
+const (
+	timelineFieldsFragment = `
 fragment TimelineFields on IssueTimelineItemsConnection {
   totalCount
   pageInfo { hasPreviousPage startCursor }
-  nodes {
+  nodes {` + timelineNodes + `  }
+}
+`
+	pullTimelineFieldsFragment = `
+fragment PullTimelineFields on PullRequestTimelineItemsConnection {
+  totalCount filteredCount
+  pageInfo { hasPreviousPage startCursor }
+  nodes {` + timelineNodes + pullTimelineNodes + `  }
+}
+`
+)
+
+// timelineNodes selects each timeline item both sheets read. Fields that more than one item
+// type has share a type and nullability, as GitHub requires of fields merged under one
+// name; a rename's subject, which would clash with a connection's, is never asked for.
+const timelineNodes = `
     __typename
     ... on IssueComment {
       id url createdAt lastEditedAt body authorAssociation isMinimized minimizedReason viewerDidAuthor
@@ -120,8 +149,36 @@ fragment TimelineFields on IssueTimelineItemsConnection {
     ... on MarkedAsDuplicateEvent {
       id createdAt isCrossRepository actor { __typename login } canonical { ...RefFields } duplicate { ...RefFields }
     }
-  }
-}
+`
+
+// pullTimelineNodes selects the reviews and events only a pull request's timeline has. A
+// review reads its first line comments, each with the end of the diff hunk it is on; a
+// merge's commit is aliased, since a review's commit is asked for with other fields.
+const pullTimelineNodes = `    ... on PullRequestReview {
+      id url createdAt submittedAt lastEditedAt body state authorAssociation viewerDidAuthor
+      author { __typename login }
+      commit { oid }
+      lineComments: comments(first: 20) {
+        totalCount
+        nodes { id url createdAt body path line originalLine startLine originalStartLine outdated diffHunk }
+      }
+    }
+    ... on MergedEvent { id url createdAt actor { __typename login } mergeCommit: commit { abbreviatedOid } mergeRefName }
+    ... on HeadRefForcePushedEvent {
+      id createdAt actor { __typename login } beforeCommit { abbreviatedOid } afterCommit { abbreviatedOid }
+    }
+    ... on ReviewRequestedEvent {
+      id createdAt actor { __typename login }
+      requestedReviewer {
+        __typename
+        ... on User { login }
+        ... on Bot { login }
+        ... on Mannequin { login }
+        ... on Team { combinedSlug }
+      }
+    }
+    ... on ReadyForReviewEvent { id createdAt actor { __typename login } }
+    ... on ConvertToDraftEvent { id createdAt actor { __typename login } }
 `
 
 // refFieldsFragment names a pull request or issue another refers to. The two states are
@@ -160,22 +217,33 @@ const issueStateQuery = `query IssueState($id: ID!) {
 }
 `
 
-// issueTimelineQuery reads the page of an issue's timeline before a cursor, with the
-// issue's own number and repository, which tell it apart from the other side of a
-// connection. It costs one point.
-const issueTimelineQuery = `query IssueTimeline($id: ID!, $before: String!, $last: Int!) {
+// timelineQuery reads the page of an issue's or a pull request's timeline before a cursor,
+// with the item's own number and repository, which tell it apart from the other side of a
+// connection, and a pull request's head, which tells a review of an earlier commit. Each
+// kind's page is aliased, since the two connections are different types. It costs one
+// point for either kind (measured).
+const timelineQuery = `query Timeline($id: ID!, $before: String!, $last: Int!) {
   node(id: $id) {
     __typename
     ... on Issue {
       number repository { nameWithOwner }
-      timeline: timelineItems(last: $last, before: $before, itemTypes: ` + timelineItemTypes + `) { ...TimelineFields }
+      issueTimeline: timelineItems(last: $last, before: $before, itemTypes: ` + timelineItemTypes + `) {
+        ...TimelineFields
+      }
+    }
+    ... on PullRequest {
+      number repository { nameWithOwner } headRefOid
+      pullTimeline: timelineItems(last: $last, before: $before, itemTypes: ` + pullTimelineItemTypes + `) {
+        ...PullTimelineFields
+      }
     }
   }
   rateLimit { cost remaining resetAt limit used }
 }
-` + timelineFieldsFragment + refFieldsFragment + assigneeFieldsFragment
+` + timelineFieldsFragment + pullTimelineFieldsFragment + refFieldsFragment + assigneeFieldsFragment
 
-// The timeline items the sheet reads, by GitHub's type names.
+// The timeline items the sheets read, by GitHub's type names: both sheets' first, then
+// those only a pull request's timeline has.
 const (
 	TimelineComment           = "IssueComment"
 	TimelineCrossReferenced   = "CrossReferencedEvent"
@@ -189,6 +257,22 @@ const (
 	TimelineUnlabeled         = "UnlabeledEvent"
 	TimelineRenamed           = "RenamedTitleEvent"
 	TimelineMarkedAsDuplicate = "MarkedAsDuplicateEvent"
+
+	TimelineReview           = "PullRequestReview"
+	TimelineMerged           = "MergedEvent"
+	TimelineForcePushed      = "HeadRefForcePushedEvent"
+	TimelineReviewRequested  = "ReviewRequestedEvent"
+	TimelineReadyForReview   = "ReadyForReviewEvent"
+	TimelineConvertedToDraft = "ConvertToDraftEvent"
+)
+
+// A review's state, as GitHub's PullRequestReviewState says.
+const (
+	ReviewStateApproved         = "APPROVED"
+	ReviewStateChangesRequested = "CHANGES_REQUESTED"
+	ReviewStateCommented        = "COMMENTED"
+	ReviewStateDismissed        = "DISMISSED"
+	ReviewStatePending          = "PENDING"
 )
 
 // Why an issue is closed, or was reopened, as GitHub's stateReason says.
@@ -203,6 +287,10 @@ var (
 	// ErrIssueGone is returned for a read of an earlier page of an issue GitHub can no
 	// longer find: it was deleted, or the token can no longer see it.
 	ErrIssueGone = errors.New("GitHub can't find the issue")
+
+	// ErrPullGone is returned for a read of an earlier page of a pull request GitHub can no
+	// longer find.
+	ErrPullGone = errors.New("GitHub can't find the pull request")
 
 	// ErrInvalidCursor is returned for a timeline cursor GitHub could not have given: an
 	// empty one, or one longer than its cursors run.
@@ -358,7 +446,7 @@ type CommentMark struct {
 	Mine      bool
 }
 
-// TimelinePage is one page of an issue's timeline, oldest first.
+// TimelinePage is one page of an issue's or a pull request's timeline, oldest first.
 type TimelinePage struct {
 	Items []TimelineItem
 
@@ -366,15 +454,16 @@ type TimelinePage struct {
 	HasEarlier bool
 	Before     string
 
-	// Total counts every item of the types the sheet reads in the whole timeline.
+	// Total counts every item of the types the sheet reads in the whole timeline; on an
+	// earlier page of a pull request's, those up to the page's end.
 	Total int
 
 	// RateLimit is the GraphQL budget after the read that brought the page.
 	RateLimit QueryRate
 }
 
-// TimelineItem is one comment or event of an issue's timeline. Which fields are set
-// depends on its Type, one of the Timeline values.
+// TimelineItem is one comment, review, or event of an issue's or a pull request's
+// timeline. Which fields are set depends on its Type, one of the Timeline values.
 type TimelineItem struct {
 	Type      string
 	ID        string
@@ -385,8 +474,9 @@ type TimelineItem struct {
 	Actor     string
 	ActorType string
 
-	// A comment's text, page, its author's relationship to the repository, when it was
-	// last edited (zero when never), and whether the viewer wrote it.
+	// A comment's or a review's text, page, its author's relationship to the repository,
+	// when it was last edited (zero when never), and whether the viewer wrote it. A merge's
+	// page is its URL too.
 	Body        string
 	URL         string
 	Association string
@@ -408,8 +498,8 @@ type TimelineItem struct {
 	WillClose bool
 	CrossRepo bool
 
-	// Commit is the short SHA of the commit that closed it, whose page URL holds; and
-	// DuplicateOf the issue a close as a duplicate names.
+	// Commit is the short SHA of the commit that closed it, whose page URL holds, or of a
+	// merge's commit; and DuplicateOf the issue a close as a duplicate names.
 	Commit      string
 	DuplicateOf *ItemRef
 
@@ -423,6 +513,43 @@ type TimelineItem struct {
 	// PreviousTitle and CurrentTitle are a rename's titles.
 	PreviousTitle string
 	CurrentTitle  string
+
+	// ReviewState is a review's state (see the ReviewState values), and Outdated reports one
+	// left on an earlier commit than the pull request's head as of the read. LineComments are
+	// its first line comments, and LineCommentCount how many it has in all.
+	ReviewState      string
+	Outdated         bool
+	LineComments     []ReviewLineComment
+	LineCommentCount int
+
+	// Reviewer is whom a review was requested of: a user's login, or a team as "org/team".
+	Reviewer string
+
+	// Branch is the branch a merge went into.
+	Branch string
+
+	// BeforeCommit and AfterCommit are a force push's short SHAs, before and after it.
+	BeforeCommit string
+	AfterCommit  string
+}
+
+// ReviewLineComment is one of a review's line comments.
+type ReviewLineComment struct {
+	ID        string
+	URL       string
+	CreatedAt time.Time
+	Body      string
+
+	// Path is the file it is on, and Line the line it ends on, StartLine the one it starts
+	// on for one over several lines (else 0), as the diff it was left on numbers them when
+	// it is Outdated: the lines it was on have changed since.
+	Path      string
+	Line      int
+	StartLine int
+	Outdated  bool
+
+	// DiffHunk is the diff hunk it was left on, up to its line, as GitHub gives it.
+	DiffHunk string
 }
 
 // IssueState is what FetchIssueState read about an issue, as of now.
@@ -462,11 +589,11 @@ func (c *Client) FetchIssueState(ctx context.Context, tok Token, id string) (*Is
 	return state, Redact(err, tok)
 }
 
-// FetchIssueTimeline reads the page of the timeline of the issue with node ID id before
-// the cursor before, with one GraphQL request of one point. An issue GitHub can no longer
-// find returns ErrIssueGone.
-func (c *Client) FetchIssueTimeline(ctx context.Context, tok Token, id, before string) (*TimelinePage, error) {
-	page, err := c.fetchIssueTimeline(ctx, tok, id, before)
+// FetchTimeline reads the page of the timeline of the issue or pull request (kind) with
+// node ID id before the cursor before, with one GraphQL request. An issue GitHub can no
+// longer find returns ErrIssueGone, and a pull request ErrPullGone.
+func (c *Client) FetchTimeline(ctx context.Context, tok Token, kind item.Kind, id, before string) (*TimelinePage, error) {
+	page, err := c.fetchTimeline(ctx, tok, kind, id, before)
 
 	return page, Redact(err, tok)
 }
@@ -608,11 +735,15 @@ func (c *Client) fetchIssueState(ctx context.Context, tok Token, id string) (*Is
 // maxCursorBytes caps a timeline cursor: GitHub's are a few dozen bytes.
 const maxCursorBytes = 200
 
-// fetchIssueTimeline reads the page before the cursor, with a smaller page should the
-// answer be too large (paged).
-func (c *Client) fetchIssueTimeline(ctx context.Context, tok Token, id, before string) (*TimelinePage, error) {
+// fetchTimeline reads the page before the cursor, with a smaller page should the answer be
+// too large (paged).
+func (c *Client) fetchTimeline(ctx context.Context, tok Token, kind item.Kind, id, before string) (*TimelinePage, error) {
 	if id == "" {
 		return nil, fmt.Errorf("%w: no node ID", ErrInvalidItemRef)
+	}
+
+	if !kind.Valid() {
+		return nil, fmt.Errorf("%w: a timeline of a %q", ErrInvalidItemRef, kind)
 	}
 
 	if before == "" || len(before) > maxCursorBytes {
@@ -620,16 +751,18 @@ func (c *Client) fetchIssueTimeline(ctx context.Context, tok Token, id, before s
 	}
 
 	return paged(func(last int) (*TimelinePage, error) {
-		return c.sendIssueTimeline(ctx, tok, id, before, last)
+		return c.sendTimeline(ctx, tok, kind, id, before, last)
 	})
 }
 
-// sendIssueTimeline sends the timeline query for the last items before the cursor, and
-// decodes the answer.
-func (c *Client) sendIssueTimeline(ctx context.Context, tok Token, id, before string, last int) (*TimelinePage, error) {
-	req := graphQLRequest{Query: issueTimelineQuery, Variables: map[string]any{"id": id, "before": before, "last": last}}
+// sendTimeline sends the timeline query for the last items before the cursor, and decodes
+// the answer, which must be about an item of kind.
+func (c *Client) sendTimeline(
+	ctx context.Context, tok Token, kind item.Kind, id, before string, last int,
+) (*TimelinePage, error) {
+	req := graphQLRequest{Query: timelineQuery, Variables: map[string]any{"id": id, "before": before, "last": last}}
 
-	resp, _, err := postGraphQL[itemData](ctx, c, tok, "issue timeline", req, unlessData)
+	resp, _, err := postGraphQL[itemData](ctx, c, tok, "timeline", req, unlessData)
 	if err != nil {
 		return nil, err
 	}
@@ -639,28 +772,64 @@ func (c *Client) sendIssueTimeline(ctx context.Context, tok Token, id, before st
 			return nil, goneErr
 		}
 
-		return nil, uierr.New("GitHub can't find the issue any more, or your account can no longer see it.", ErrIssueGone)
+		return nil, timelineGone(kind)
 	}
 
+	page, err := timelineOf(resp.Data.Node, kind)
+	if err != nil {
+		return nil, err
+	}
+
+	page.RateLimit = resp.Data.RateLimit.queryRate()
+
+	return page, nil
+}
+
+// timelineGone is the error for a read of an earlier page of an item of kind GitHub can no
+// longer find.
+func timelineGone(kind item.Kind) error {
+	if kind == item.KindPR {
+		return uierr.New("GitHub can't find the pull request any more, or your account can no longer see it.",
+			ErrPullGone)
+	}
+
+	return uierr.New("GitHub can't find the issue any more, or your account can no longer see it.", ErrIssueGone)
+}
+
+// timelineOf decodes the timeline query's node, which must be an item of kind, into its page.
+func timelineOf(raw json.RawMessage, kind item.Kind) (*TimelinePage, error) {
 	var node struct {
 		TypeName   string `json:"__typename"`
 		Number     int    `json:"number"`
+		HeadRefOID string `json:"headRefOid"`
 		Repository *struct {
 			NameWithOwner string `json:"nameWithOwner"`
 		} `json:"repository"`
-		Timeline graphQLTimeline `json:"timeline"`
+		IssueTimeline graphQLTimeline `json:"issueTimeline"`
+		PullTimeline  graphQLTimeline `json:"pullTimeline"`
 	}
 
-	if err = json.Unmarshal(resp.Data.Node, &node); err != nil {
-		return nil, fmt.Errorf("%w: decode the issue timeline: %w", ErrMalformedResponse, err)
+	if err := json.Unmarshal(raw, &node); err != nil {
+		return nil, fmt.Errorf("%w: decode the timeline: %w", ErrMalformedResponse, err)
 	}
 
-	if node.TypeName != typeIssue || node.Repository == nil {
-		return nil, fmt.Errorf("%w: the ID is not an issue", ErrMalformedResponse)
+	want := typeIssue
+	if kind == item.KindPR {
+		want = typePullRequest
 	}
 
-	page := node.Timeline.page(ItemRef{Repo: node.Repository.NameWithOwner, Number: node.Number})
-	page.RateLimit = resp.Data.RateLimit.queryRate()
+	if node.TypeName != want || node.Repository == nil {
+		return nil, fmt.Errorf("%w: the ID is not a %s", ErrMalformedResponse, kind.Noun())
+	}
+
+	self := ItemRef{IsPR: kind == item.KindPR, Repo: node.Repository.NameWithOwner, Number: node.Number}
+	timeline := node.IssueTimeline
+
+	if kind == item.KindPR {
+		timeline = node.PullTimeline
+	}
+
+	page := timeline.page(self, node.HeadRefOID)
 
 	return &page, nil
 }
@@ -695,11 +864,8 @@ type issueViewNode struct {
 		TotalCount int           `json:"totalCount"`
 		Nodes      []*graphQLFix `json:"nodes"`
 	} `json:"fixes"`
-	ReactionGroups []*struct {
-		Content  string       `json:"content"`
-		Reactors graphQLCount `json:"reactors"`
-	} `json:"reactionGroups"`
-	LastComment struct {
+	ReactionGroups []*graphQLReactionGroup `json:"reactionGroups"`
+	LastComment    struct {
 		Nodes []*graphQLCommentMark `json:"nodes"`
 	} `json:"lastComment"`
 	Timeline graphQLTimeline `json:"timeline"`
@@ -726,8 +892,8 @@ func (n *issueViewNode) fill(v *IssueView, self ItemRef) {
 	v.SubIssues = itemRefs(n.SubIssueList.Nodes)
 	v.Fixes = fixes(n.Fixes.Nodes)
 	v.FixCount = shownCount(n.Fixes.TotalCount, len(n.Fixes.Nodes), len(v.Fixes))
-	v.Reactions = n.reactions()
-	v.Timeline = n.Timeline.page(self)
+	v.Reactions = reactionsOf(n.ReactionGroups)
+	v.Timeline = n.Timeline.page(self, "")
 
 	if t := n.IssueType; t != nil && t.Name != "" {
 		v.Type = IssueType{Name: t.Name, Description: t.Description, Color: projectColor(t.Color)}
@@ -738,11 +904,17 @@ func (n *issueViewNode) fill(v *IssueView, self ItemRef) {
 	}
 }
 
-// reactions counts the description's reactions, leaving out the kinds with none.
-func (n *issueViewNode) reactions() []Reaction {
+// graphQLReactionGroup counts one kind of reaction.
+type graphQLReactionGroup struct {
+	Content  string       `json:"content"`
+	Reactors graphQLCount `json:"reactors"`
+}
+
+// reactionsOf counts a description's reactions, leaving out the kinds with none.
+func reactionsOf(groups []*graphQLReactionGroup) []Reaction {
 	out := []Reaction{}
 
-	for _, g := range n.ReactionGroups {
+	for _, g := range groups {
 		if g != nil && g.Content != "" && g.Reactors.TotalCount > 0 {
 			out = append(out, Reaction{Content: g.Content, Count: g.Reactors.TotalCount})
 		}
@@ -831,9 +1003,10 @@ func (r *graphQLRef) itemRef() *ItemRef {
 	return &ref
 }
 
-// is reports whether r names the item self, which a connection's two sides tell apart.
+// is reports whether r names the item self, a pull request or an issue, which a
+// connection's two sides tell apart.
 func (r *ItemRef) is(self ItemRef) bool {
-	return r != nil && !r.IsPR && r.Number == self.Number && strings.EqualFold(r.Repo, self.Repo)
+	return r != nil && r.IsPR == self.IsPR && r.Number == self.Number && strings.EqualFold(r.Repo, self.Repo)
 }
 
 // itemRefs converts the pull requests and issues, skipping nulls and anything else.
@@ -923,23 +1096,26 @@ func commentMarks(nodes []*graphQLCommentMark) []CommentMark {
 	return out
 }
 
-// graphQLTimeline is a page of an issue's timeline (the TimelineFields fragment).
+// graphQLTimeline is a page of an issue's timeline (the TimelineFields fragment), or of a
+// pull request's (PullTimelineFields).
 type graphQLTimeline struct {
-	TotalCount int `json:"totalCount"`
-	PageInfo   struct {
+	TotalCount    int  `json:"totalCount"`
+	FilteredCount *int `json:"filteredCount"`
+	PageInfo      struct {
 		HasPreviousPage bool   `json:"hasPreviousPage"`
 		StartCursor     string `json:"startCursor"`
 	} `json:"pageInfo"`
 	Nodes []*graphQLTimelineNode `json:"nodes"`
 }
 
-// page converts the page, skipping nulls and items of types the sheet doesn't read. self
-// is the issue the timeline is of.
-func (t graphQLTimeline) page(self ItemRef) TimelinePage {
+// page converts the page, skipping nulls and items of types the sheets don't read. self is
+// the item the timeline is of, and head a pull request's head commit as of the read, which
+// tells a review of an earlier one ("" for an issue).
+func (t graphQLTimeline) page(self ItemRef, head string) TimelinePage {
 	page := TimelinePage{Items: []TimelineItem{}, HasEarlier: t.PageInfo.HasPreviousPage, Before: t.PageInfo.StartCursor}
 
 	for _, n := range t.Nodes {
-		if it, ok := n.item(self); ok {
+		if it, ok := n.item(self, head); ok {
 			page.Items = append(page.Items, it)
 		}
 	}
@@ -948,7 +1124,12 @@ func (t graphQLTimeline) page(self ItemRef) TimelinePage {
 		page.Before = ""
 	}
 
-	page.Total = max(t.TotalCount, len(page.Items))
+	total := t.TotalCount
+	if t.FilteredCount != nil {
+		total = *t.FilteredCount
+	}
+
+	page.Total = max(total, len(page.Items))
 
 	return page
 }
@@ -984,11 +1165,113 @@ type graphQLTimelineNode struct {
 	} `json:"label"`
 	PreviousTitle string `json:"previousTitle"`
 	CurrentTitle  string `json:"currentTitle"`
+
+	// A pull request's own: a review's, a merge's, a force push's, and a review request's.
+	SubmittedAt  time.Time            `json:"submittedAt"`
+	State        string               `json:"state"`
+	Commit       *graphQLCommit       `json:"commit"`
+	LineComments *graphQLLineComments `json:"lineComments"`
+	MergeCommit  *graphQLShortCommit  `json:"mergeCommit"`
+	MergeRefName string               `json:"mergeRefName"`
+	BeforeCommit *graphQLShortCommit  `json:"beforeCommit"`
+	AfterCommit  *graphQLShortCommit  `json:"afterCommit"`
+	Requested    *graphQLReviewer     `json:"requestedReviewer"`
 }
 
-// item converts the timeline item; ok is false for null, one without an ID, and a type the
-// sheet doesn't read. self is the issue the timeline is of.
-func (n *graphQLTimelineNode) item(self ItemRef) (TimelineItem, bool) {
+// graphQLShortCommit is a commit asked only for its short SHA.
+type graphQLShortCommit struct {
+	AbbreviatedOID string `json:"abbreviatedOid"`
+}
+
+// short returns the commit's short SHA, "" for a nil commit.
+func (c *graphQLShortCommit) short() string {
+	if c == nil {
+		return ""
+	}
+
+	return c.AbbreviatedOID
+}
+
+// graphQLReviewer is whom a review was requested of: a user, a bot, a mannequin, or a team.
+type graphQLReviewer struct {
+	TypeName     string `json:"__typename"`
+	Login        string `json:"login"`
+	CombinedSlug string `json:"combinedSlug"`
+}
+
+// name is the reviewer's login, or a team's "org/team"; "" for none.
+func (r *graphQLReviewer) name() string {
+	switch {
+	case r == nil:
+		return ""
+	case r.TypeName == "Team":
+		return r.CombinedSlug
+	default:
+		return r.Login
+	}
+}
+
+// graphQLLineComments are a review's first line comments, and how many it has.
+type graphQLLineComments struct {
+	TotalCount int                   `json:"totalCount"`
+	Nodes      []*graphQLLineComment `json:"nodes"`
+}
+
+// graphQLLineComment is one of a review's line comments. Its line numbers are null once
+// the lines it was on changed (outdated), when the original ones say where it was.
+type graphQLLineComment struct {
+	ID                string    `json:"id"`
+	URL               string    `json:"url"`
+	CreatedAt         time.Time `json:"createdAt"`
+	Body              string    `json:"body"`
+	Path              string    `json:"path"`
+	Line              *int      `json:"line"`
+	OriginalLine      *int      `json:"originalLine"`
+	StartLine         *int      `json:"startLine"`
+	OriginalStartLine *int      `json:"originalStartLine"`
+	Outdated          bool      `json:"outdated"`
+	DiffHunk          string    `json:"diffHunk"`
+}
+
+// comments converts the line comments, skipping nulls, and returns how many there are in
+// all.
+func (c *graphQLLineComments) comments() ([]ReviewLineComment, int) {
+	out := []ReviewLineComment{}
+	if c == nil {
+		return out, 0
+	}
+
+	for _, n := range c.Nodes {
+		if n == nil || n.ID == "" {
+			continue
+		}
+
+		out = append(out, ReviewLineComment{
+			ID: n.ID, URL: n.URL, CreatedAt: n.CreatedAt.UTC(), Body: n.Body, Path: n.Path,
+			Line: lineOf(n.Line, n.OriginalLine), StartLine: lineOf(n.StartLine, n.OriginalStartLine),
+			Outdated: n.Outdated, DiffHunk: n.DiffHunk,
+		})
+	}
+
+	return out, shownCount(c.TotalCount, len(c.Nodes), len(out))
+}
+
+// lineOf is a line comment's line: the current one, else the original, else 0.
+func lineOf(current, original *int) int {
+	for _, l := range []*int{current, original} {
+		if l != nil && *l > 0 {
+			return *l
+		}
+	}
+
+	return 0
+}
+
+// item converts the timeline item; ok is false for null, one without an ID, a type the
+// sheets don't read, a review still pending, and one that only comments and says nothing.
+// self is the item the timeline is of, and head a pull request's head commit as of the
+// read.
+func (n *graphQLTimelineNode) item(self ItemRef, head string) (TimelineItem, bool) {
 	if n == nil || n.ID == "" {
 		return TimelineItem{}, false
 	}
@@ -999,17 +1282,59 @@ func (n *graphQLTimelineNode) item(self ItemRef) (TimelineItem, bool) {
 	switch n.TypeName {
 	case TimelineComment:
 		n.comment(&out)
+	case TimelineReview:
+		return out, n.review(&out, head)
 	case TimelineCrossReferenced, TimelineConnected, TimelineDisconnected, TimelineMarkedAsDuplicate:
 		n.reference(&out, self)
 	case TimelineClosed, TimelineReopened:
 		n.stateChange(&out)
 	case TimelineAssigned, TimelineUnassigned, TimelineLabeled, TimelineUnlabeled, TimelineRenamed:
 		n.change(&out)
+	case TimelineMerged, TimelineForcePushed, TimelineReviewRequested, TimelineReadyForReview,
+		TimelineConvertedToDraft:
+		n.pullEvent(&out)
 	default:
 		return TimelineItem{}, false
 	}
 
 	return out, true
+}
+
+// review fills in a review's fields, and reports whether the sheet shows it: not one still
+// pending, which only its author sees, nor one that only comments and holds no text and no
+// line comment, which says nothing.
+func (n *graphQLTimelineNode) review(out *TimelineItem, head string) bool {
+	n.comment(out)
+	out.ReviewState = n.State
+	out.LineComments, out.LineCommentCount = n.LineComments.comments()
+
+	if !n.SubmittedAt.IsZero() {
+		out.CreatedAt = n.SubmittedAt.UTC()
+	}
+
+	commit := n.Commit.oid()
+	out.Outdated = head != "" && commit != "" && !strings.EqualFold(commit, head)
+
+	switch {
+	case n.State == ReviewStatePending:
+		return false
+	case n.State == ReviewStateCommented && strings.TrimSpace(n.Body) == "" && out.LineCommentCount == 0:
+		return false
+	default:
+		return true
+	}
+}
+
+// pullEvent fills in what a merge, a force push, or a review request names.
+func (n *graphQLTimelineNode) pullEvent(out *TimelineItem) {
+	switch n.TypeName {
+	case TimelineMerged:
+		out.Commit, out.Branch, out.URL = n.MergeCommit.short(), n.MergeRefName, n.URL
+	case TimelineForcePushed:
+		out.BeforeCommit, out.AfterCommit = n.BeforeCommit.short(), n.AfterCommit.short()
+	case TimelineReviewRequested:
+		out.Reviewer = n.Requested.name()
+	}
 }
 
 // comment fills in a comment's fields.

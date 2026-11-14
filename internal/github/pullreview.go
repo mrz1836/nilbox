@@ -9,37 +9,43 @@ import (
 )
 
 // pullReviewQuery reads what the review sheet shows about one pull request, by node ID,
-// in one request of about one point: what the item query reads (ItemFields and
-// DetailFields), so the inbox card is rewritten from the same answer, and ReviewFields:
-// the description, the base branch, the merge state, what the viewer may do (close it
-// included), the viewer's own latest review and pending reviews, auto-merge, the latest
-// review of each reviewer with its words, the first commit's message, which holds
-// Dependabot's metadata, the head commit's checks, each with whether it is required, its
+// in one request: what the item query reads (ItemFields and DetailFields), so the inbox
+// card is rewritten from the same answer, and ReviewFields: the description, when it was
+// last edited, and its reactions, the base branch, the merge state, what the viewer may do
+// (close it included), the viewer's own latest review and pending reviews, auto-merge, each
+// reviewer's latest review, the head commit's checks, each with whether it is required, its
 // check suites, which name the workflow runs that ended without a check (as a fork's runs
-// waiting for approval do) with each run's ID and page, and the issues the pull request
-// closes once it merges.
+// waiting for approval do) with each run's ID and page, the issues the pull request closes
+// once it merges, and the newest page of its conversation: its comments, its reviews, each
+// with its first line comments, and its events (PullTimelineFields).
 //
 // Fields DetailFields asks for with other arguments are aliased: GitHub refuses one name
 // asked for twice with different arguments. The head commit's suites are asked for under
 // DetailFields' own alias and arguments (headSuites), which GraphQL merges into one field,
 // so they are read once whatever each fragment selects of them.
-const pullReviewQuery = `query PullReview($id: ID!) {
+//
+// GitHub prices the whole read at one point, the conversation's newest hundred items and
+// each review's first twenty line comments included (measured in November 2026 on a pull
+// request with reviews, line comments, force pushes, and review requests).
+const pullReviewQuery = `query PullReview($id: ID!, $last: Int!) {
   node(id: $id) { ...ItemFields ...DetailFields ...ReviewFields }
   rateLimit { cost remaining resetAt limit used }
 }
-` + itemFieldsFragment + repoFieldsFragment + detailFieldsFragment + reviewFieldsFragment + refFieldsFragment
+` + itemFieldsFragment + repoFieldsFragment + detailFieldsFragment + reviewFieldsFragment + pullTimelineFieldsFragment +
+	refFieldsFragment + assigneeFieldsFragment
 
 // reviewFieldsFragment is what the review sheet reads beyond an inbox card.
 const reviewFieldsFragment = `
 fragment ReviewFields on PullRequest {
-  body baseRefName mergeStateStatus isMergeQueueEnabled
+  body lastEditedAt baseRefName mergeStateStatus isMergeQueueEnabled
   viewerDidAuthor viewerCanUpdateBranch viewerCanEnableAutoMerge viewerCanMergeAsAdmin viewerCanClose
   viewerLatestReview { state commit { oid } }
   pendingReviews: reviews(states: [PENDING]) { totalCount }
   autoMergeRequest { mergeMethod enabledAt enabledBy { login } }
   reviewBodies: latestReviews(first: 50) {
-    nodes { state body url submittedAt author { login } commit { oid } }
+    nodes { state url submittedAt author { login } commit { oid } }
   }
+  reactionGroups { content reactors { totalCount } }
   closes: closingIssuesReferences(first: 10) { totalCount nodes { ...RefFields } }
   checkList: statusCheckRollup {
     contexts(first: 100) {
@@ -62,6 +68,7 @@ fragment ReviewFields on PullRequest {
       }
     }
   }
+  timeline: timelineItems(last: $last, itemTypes: ` + pullTimelineItemTypes + `) { ...PullTimelineFields }
 }
 `
 
@@ -116,8 +123,13 @@ type PullReview struct {
 	// Update.Found is false, GitHub could not resolve the ID and the rest is zero.
 	Update ItemUpdate
 
-	// Body is the description, as markdown.
-	Body string
+	// Body is the description, as markdown, and LastEditedAt when it was last edited; zero
+	// when it never was.
+	Body         string
+	LastEditedAt time.Time
+
+	// Reactions counts the description's reactions, each kind with any.
+	Reactions []Reaction
 
 	// BaseRef is the branch the pull request merges into.
 	BaseRef string
@@ -171,6 +183,9 @@ type PullReview struct {
 	// that the viewer can see.
 	Closes     []ItemRef
 	CloseCount int
+
+	// Timeline is the newest page of its conversation.
+	Timeline TimelinePage
 }
 
 // ReviewMark is a review's state and the commit it was left on.
@@ -182,11 +197,10 @@ type ReviewMark struct {
 	Commit string
 }
 
-// Review is one reviewer's latest review.
+// Review is one reviewer's latest review; its text is in the conversation (Timeline).
 type Review struct {
 	Author string
 	State  string
-	Body   string
 	URL    string
 	Commit string
 
@@ -271,7 +285,8 @@ type MergeState struct {
 }
 
 // FetchPullReview reads what the review sheet shows about the pull request with node ID
-// id, as of now, with one GraphQL request.
+// id, as of now, with one GraphQL request, and again with a smaller page of its
+// conversation when the answer is larger than the client reads.
 func (c *Client) FetchPullReview(ctx context.Context, tok Token, id string) (*PullReview, error) {
 	review, err := c.fetchPullReview(ctx, tok, id)
 
@@ -287,13 +302,22 @@ func (c *Client) FetchMergeState(ctx context.Context, tok Token, id string) (*Me
 	return state, Redact(err, tok)
 }
 
-// fetchPullReview sends the pull review query and decodes the answer.
+// fetchPullReview sends the pull review query, with a smaller page of the conversation
+// should the answer be too large (paged).
 func (c *Client) fetchPullReview(ctx context.Context, tok Token, id string) (*PullReview, error) {
 	if id == "" {
 		return nil, fmt.Errorf("%w: no node ID", ErrInvalidItemRef)
 	}
 
-	req := graphQLRequest{Query: pullReviewQuery, Variables: map[string]any{"id": id}}
+	return paged(func(last int) (*PullReview, error) {
+		return c.sendPullReview(ctx, tok, id, last)
+	})
+}
+
+// sendPullReview sends the pull review query for the newest last items of the
+// conversation, and decodes the answer.
+func (c *Client) sendPullReview(ctx context.Context, tok Token, id string, last int) (*PullReview, error) {
+	req := graphQLRequest{Query: pullReviewQuery, Variables: map[string]any{"id": id, "last": last}}
 
 	resp, _, err := postGraphQL[itemData](ctx, c, tok, "pull review", req, unlessData)
 	if err != nil {
@@ -319,7 +343,9 @@ func (c *Client) fetchPullReview(ctx context.Context, tok Token, id string) (*Pu
 		return nil, fmt.Errorf("%w: decode the pull review: %w", ErrMalformedResponse, err)
 	}
 
-	fields.fill(review)
+	self := ItemRef{IsPR: true, Repo: update.Item.RepoOwner + "/" + update.Item.RepoName, Number: update.Item.Number}
+	fields.fill(review, self, update.Details.HeadOID)
+	review.Timeline.RateLimit = update.RateLimit
 
 	return review, nil
 }
@@ -374,15 +400,16 @@ func (c *Client) fetchMergeState(ctx context.Context, tok Token, id string) (*Me
 // reviewNode is the ReviewFields part of a pull review answer. GitHub's nulls decode to
 // zero values.
 type reviewNode struct {
-	Body                     string `json:"body"`
-	BaseRefName              string `json:"baseRefName"`
-	MergeStateStatus         string `json:"mergeStateStatus"`
-	IsMergeQueueEnabled      bool   `json:"isMergeQueueEnabled"`
-	ViewerDidAuthor          bool   `json:"viewerDidAuthor"`
-	ViewerCanUpdateBranch    bool   `json:"viewerCanUpdateBranch"`
-	ViewerCanEnableAutoMerge bool   `json:"viewerCanEnableAutoMerge"`
-	ViewerCanMergeAsAdmin    bool   `json:"viewerCanMergeAsAdmin"`
-	ViewerCanClose           bool   `json:"viewerCanClose"`
+	Body                     string    `json:"body"`
+	LastEditedAt             time.Time `json:"lastEditedAt"`
+	BaseRefName              string    `json:"baseRefName"`
+	MergeStateStatus         string    `json:"mergeStateStatus"`
+	IsMergeQueueEnabled      bool      `json:"isMergeQueueEnabled"`
+	ViewerDidAuthor          bool      `json:"viewerDidAuthor"`
+	ViewerCanUpdateBranch    bool      `json:"viewerCanUpdateBranch"`
+	ViewerCanEnableAutoMerge bool      `json:"viewerCanEnableAutoMerge"`
+	ViewerCanMergeAsAdmin    bool      `json:"viewerCanMergeAsAdmin"`
+	ViewerCanClose           bool      `json:"viewerCanClose"`
 	ViewerLatestReview       *struct {
 		State  string         `json:"state"`
 		Commit *graphQLCommit `json:"commit"`
@@ -392,7 +419,6 @@ type reviewNode struct {
 	ReviewBodies     struct {
 		Nodes []*struct {
 			State       string         `json:"state"`
-			Body        string         `json:"body"`
 			URL         string         `json:"url"`
 			SubmittedAt time.Time      `json:"submittedAt"`
 			Author      *graphQLActor  `json:"author"`
@@ -409,6 +435,8 @@ type reviewNode struct {
 		TotalCount int           `json:"totalCount"`
 		Nodes      []*graphQLRef `json:"nodes"`
 	} `json:"closes"`
+	ReactionGroups []*graphQLReactionGroup `json:"reactionGroups"`
+	Timeline       graphQLTimeline         `json:"timeline"`
 }
 
 // graphQLCommit is a commit asked only for its SHA.
@@ -535,9 +563,13 @@ func (n *reviewNode) suitesRan() map[string]bool {
 	return ran
 }
 
-// fill copies the review fields into r.
-func (n *reviewNode) fill(r *PullReview) {
+// fill copies the review fields into r, telling the pull request self apart from the other
+// side of a connection, and a review of an earlier commit than head.
+func (n *reviewNode) fill(r *PullReview, self ItemRef, head string) {
 	r.Body = n.Body
+	r.LastEditedAt = n.LastEditedAt.UTC()
+	r.Reactions = reactionsOf(n.ReactionGroups)
+	r.Timeline = n.Timeline.page(self, head)
 	r.BaseRef = n.BaseRefName
 	r.MergeState = n.MergeStateStatus
 	r.MergeQueue = n.IsMergeQueueEnabled
@@ -570,7 +602,7 @@ func (n *reviewNode) reviews() []Review {
 		}
 
 		out = append(out, Review{
-			Author: rev.Author.Login, State: rev.State, Body: rev.Body, URL: rev.URL, Commit: rev.Commit.oid(),
+			Author: rev.Author.Login, State: rev.State, URL: rev.URL, Commit: rev.Commit.oid(),
 			SubmittedAt: rev.SubmittedAt.UTC(),
 		})
 	}

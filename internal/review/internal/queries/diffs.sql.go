@@ -43,7 +43,7 @@ func (q *Queries) ExpireDiffContext(ctx context.Context, itemID int64) error {
 }
 
 const getDiff = `-- name: GetDiff :one
-SELECT item_id, head_oid, total, complete, bytes, context, context_at, fetched_at, used_at
+SELECT item_id, head_oid, total, complete, bytes, context, context_at, fetched_at, used_at, seen_at
 FROM review_diffs
 WHERE item_id = ?
 `
@@ -63,6 +63,7 @@ func (q *Queries) GetDiff(ctx context.Context, itemID int64) (ReviewDiff, error)
 		&i.ContextAt,
 		&i.FetchedAt,
 		&i.UsedAt,
+		&i.SeenAt,
 	)
 	return i, err
 }
@@ -245,6 +246,23 @@ func (q *Queries) ListDiffUsage(ctx context.Context) ([]ListDiffUsageRow, error)
 	return items, nil
 }
 
+const openDiff = `-- name: OpenDiff :exec
+UPDATE review_diffs SET seen_at = ?, used_at = ? WHERE item_id = ?
+`
+
+type OpenDiffParams struct {
+	SeenAt *time.Time
+	UsedAt time.Time
+	ItemID int64
+}
+
+// OpenDiff stamps the sheet's opening of the item with item_id: the read it shows, by
+// GitHub's time of its newest activity, and when.
+func (q *Queries) OpenDiff(ctx context.Context, arg OpenDiffParams) error {
+	_, err := q.db.ExecContext(ctx, openDiff, arg.SeenAt, arg.UsedAt, arg.ItemID)
+	return err
+}
+
 const pruneUnusedDiffs = `-- name: PruneUnusedDiffs :execrows
 DELETE FROM review_diffs WHERE used_at < ?
 `
@@ -323,7 +341,8 @@ type UpsertDiffParams struct {
 }
 
 // UpsertDiff stores what the sheet read about the item with item_id: its files' head,
-// count, and size, and the context, replacing what was cached.
+// count, and size, and the context, replacing what was cached, and leaves seen_at, which
+// only OpenDiff moves, as it was.
 func (q *Queries) UpsertDiff(ctx context.Context, arg UpsertDiffParams) error {
 	_, err := q.db.ExecContext(ctx, upsertDiff,
 		arg.ItemID,

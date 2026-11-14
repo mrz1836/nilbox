@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/mrz1836/nilbox/internal/item"
 	"github.com/mrz1836/nilbox/internal/uierr"
 )
 
@@ -419,7 +420,7 @@ func TestFetchIssueStateOfAnIssueThatIsGoneOrNone(t *testing.T) {
 	require.ErrorIs(t, err, ErrInvalidItemRef)
 }
 
-func TestFetchIssueTimelineSendsTheCursor(t *testing.T) {
+func TestFetchTimelineSendsTheCursor(t *testing.T) {
 	t.Parallel()
 
 	body := fixture(t, "issue_timeline_response.json")
@@ -435,7 +436,7 @@ func TestFetchIssueTimelineSendsTheCursor(t *testing.T) {
 		_, _ = w.Write(body)
 	})
 
-	page, err := client.FetchIssueTimeline(t.Context(), NewToken(fakeToken), "I_fakeNodeId12", "Y3Vyc29yOnYyOpfakeCursor12==")
+	page, err := client.FetchTimeline(t.Context(), NewToken(fakeToken), item.KindIssue, "I_fakeNodeId12", "Y3Vyc29yOnYyOpfakeCursor12==")
 	require.NoError(t, err)
 
 	assert.False(t, page.HasEarlier)
@@ -456,17 +457,17 @@ func TestFetchIssueTimelineSendsTheCursor(t *testing.T) {
 	assert.Nil(t, page.Items[3].Ref, "a close as a duplicate names no closer")
 }
 
-func TestFetchIssueTimelineOfAnIssueThatIsGone(t *testing.T) {
+func TestFetchTimelineOfAnIssueThatIsGone(t *testing.T) {
 	t.Parallel()
 
 	client := newTestClient(t, serveItem(`{"data":{"node":null},"errors":[{"type":"NOT_FOUND","message":"gone"}]}`))
 
-	_, err := client.FetchIssueTimeline(t.Context(), NewToken(fakeToken), "I_gone", "cursor")
+	_, err := client.FetchTimeline(t.Context(), NewToken(fakeToken), item.KindIssue, "I_gone", "cursor")
 	require.ErrorIs(t, err, ErrIssueGone)
 	assert.Equal(t, "GitHub can't find the issue any more, or your account can no longer see it.", uierr.Message(err))
 }
 
-func TestFetchIssueTimelineRefusesABadCursorAndWhatIsNotAnIssue(t *testing.T) {
+func TestFetchTimelineRefusesABadCursorAndWhatIsNotAnIssue(t *testing.T) {
 	t.Parallel()
 
 	var requests atomic.Int32
@@ -478,16 +479,16 @@ func TestFetchIssueTimelineRefusesABadCursorAndWhatIsNotAnIssue(t *testing.T) {
 	})
 
 	for _, before := range []string{"", strings.Repeat("c", maxCursorBytes+1)} {
-		_, err := client.FetchIssueTimeline(t.Context(), NewToken(fakeToken), "I_fakeNodeId12", before)
+		_, err := client.FetchTimeline(t.Context(), NewToken(fakeToken), item.KindIssue, "I_fakeNodeId12", before)
 		require.ErrorIs(t, err, ErrInvalidCursor)
 		require.NotErrorIs(t, err, ErrInvalidItemRef, "the issue itself is fine")
 	}
 
-	_, err := client.FetchIssueTimeline(t.Context(), NewToken(fakeToken), "", "cursor")
+	_, err := client.FetchTimeline(t.Context(), NewToken(fakeToken), item.KindIssue, "", "cursor")
 	require.ErrorIs(t, err, ErrInvalidItemRef)
 	assert.Zero(t, requests.Load(), "nothing is sent for a cursor or an ID that can't be one")
 
-	_, err = client.FetchIssueTimeline(t.Context(), NewToken(fakeToken), "PR_x", "cursor")
+	_, err = client.FetchTimeline(t.Context(), NewToken(fakeToken), item.KindIssue, "PR_x", "cursor")
 	require.ErrorIs(t, err, ErrMalformedResponse)
 
 	for name, body := range map[string]string{
@@ -495,12 +496,12 @@ func TestFetchIssueTimelineRefusesABadCursorAndWhatIsNotAnIssue(t *testing.T) {
 		"another null node":   `{"data":{"node":null},"errors":[{"type":"FORBIDDEN","message":"no"}]}`,
 		"not an object":       `{"data":{"node":"x"}}`,
 	} {
-		_, err = newTestClient(t, serveItem(body)).FetchIssueTimeline(t.Context(), NewToken(fakeToken), "I_x", "cursor")
+		_, err = newTestClient(t, serveItem(body)).FetchTimeline(t.Context(), NewToken(fakeToken), item.KindIssue, "I_x", "cursor")
 		require.Error(t, err, name)
 	}
 }
 
-func TestFetchIssueTimelineAsksForASmallerPageWhenTheAnswerIsTooLarge(t *testing.T) {
+func TestFetchTimelineAsksForASmallerPageWhenTheAnswerIsTooLarge(t *testing.T) {
 	t.Parallel()
 
 	body := fixture(t, "issue_timeline_response.json")
@@ -520,7 +521,7 @@ func TestFetchIssueTimelineAsksForASmallerPageWhenTheAnswerIsTooLarge(t *testing
 		_, _ = w.Write(body)
 	})
 
-	page, err := client.FetchIssueTimeline(t.Context(), NewToken(fakeToken), "I_fakeNodeId12", "cursor")
+	page, err := client.FetchTimeline(t.Context(), NewToken(fakeToken), item.KindIssue, "I_fakeNodeId12", "cursor")
 	require.NoError(t, err)
 	assert.Len(t, page.Items, 5)
 	assert.Equal(t, []int{timelinePage, timelineSmallPage}, pages.all())
@@ -538,12 +539,12 @@ func TestTimelineItemsOfAnUnknownSideOrKind(t *testing.T) {
 	assert.Nil(t, otherSide(self, other, nil))
 
 	// A closer that is a project, and an event without an ID, are no item to show.
-	it, ok := (&graphQLTimelineNode{TypeName: TimelineClosed, ID: "CE_x", Closer: &graphQLRef{TypeName: "ProjectV2"}}).item(self)
+	it, ok := (&graphQLTimelineNode{TypeName: TimelineClosed, ID: "CE_x", Closer: &graphQLRef{TypeName: "ProjectV2"}}).item(self, "")
 	require.True(t, ok)
 	assert.Nil(t, it.Ref)
 	assert.Empty(t, it.Commit)
 
-	_, ok = (&graphQLTimelineNode{TypeName: TimelineComment}).item(self)
+	_, ok = (&graphQLTimelineNode{TypeName: TimelineComment}).item(self, "")
 	assert.False(t, ok)
 
 	var missing *graphQLMilestone

@@ -16,6 +16,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/item"
 	"github.com/mrz1836/nilbox/internal/logging"
 	"github.com/mrz1836/nilbox/internal/repo"
+	"github.com/mrz1836/nilbox/internal/timeline"
 	"github.com/mrz1836/nilbox/internal/uierr"
 )
 
@@ -119,7 +120,7 @@ type Inbox interface {
 type GitHub interface {
 	FetchIssueView(ctx context.Context, tok github.Token, id string, opts github.DetailOptions) (*github.IssueView, error)
 	FetchIssueState(ctx context.Context, tok github.Token, id string) (*github.IssueState, error)
-	FetchIssueTimeline(ctx context.Context, tok github.Token, id, before string) (*github.TimelinePage, error)
+	FetchTimeline(ctx context.Context, tok github.Token, kind item.Kind, id, before string) (*github.TimelinePage, error)
 	AddComment(ctx context.Context, tok github.Token, ref item.Ref, body string) (*github.Comment, error)
 	CloseIssue(ctx context.Context, tok github.Token, ref item.Ref, reason string) (*github.IssueClosed, error)
 	FetchRepoLabels(ctx context.Context, tok github.Token, id string) (*github.RepoLabels, error)
@@ -249,16 +250,16 @@ func (s *Service) ReadAgain(ctx context.Context, id int64) (Issue, error) {
 
 // Earlier reads the page of the issue's timeline before the cursor before, which a page
 // the sheet holds gave: one GraphQL request, which stores nothing, not even in the cache.
-func (s *Service) Earlier(ctx context.Context, id int64, before string) (TimelinePage, error) {
+func (s *Service) Earlier(ctx context.Context, id int64, before string) (timeline.Page, error) {
 	card, err := s.issue(ctx, id)
 	if err != nil {
-		return TimelinePage{}, err
+		return timeline.Page{}, err
 	}
 
 	var page *github.TimelinePage
 
 	err = s.inbox.Peek(ctx, id, func(ctx context.Context, tok github.Token, t Target) error {
-		got, readErr := s.github.FetchIssueTimeline(ctx, tok, t.NodeID, before)
+		got, readErr := s.github.FetchTimeline(ctx, tok, item.KindIssue, t.NodeID, before)
 		page = got
 
 		return readErr
@@ -266,14 +267,14 @@ func (s *Service) Earlier(ctx context.Context, id int64, before string) (Timelin
 
 	switch {
 	case errors.Is(err, github.ErrInvalidCursor):
-		return TimelinePage{}, uierr.New("That part of the conversation can't be read. Reload the issue, then try again.",
+		return timeline.Page{}, uierr.New("That part of the conversation can't be read. Reload the issue, then try again.",
 			err)
 	case err != nil:
-		return TimelinePage{}, err
+		return timeline.Page{}, err
 	}
 
-	return TimelinePage{
-		Items: timelineItems(page.Items, card.Viewer), Total: max(page.Total, len(page.Items)), Before: page.Before,
+	return timeline.Page{
+		Items: timeline.Entries(page.Items, card.Viewer), Total: max(page.Total, len(page.Items)), Before: page.Before,
 	}, nil
 }
 
