@@ -36,7 +36,7 @@ const columns = {
   checks: 'min-w-[8ch]', // "No checks", the longest; fractions up to "999/999"
   reviews: 'min-w-[4.5ch]', // up to "99/99"
   comments: 'min-w-[3ch]', // up to "999"
-  size: 'min-w-[5ch]', // "XXL" with its border, in the badge's smaller font
+  size: 'min-w-[4ch]', // "XS", the widest grade, with its border, in the badge's smaller font
   added: 'min-w-[6.5ch]', // up to "+99,999"
   removed: 'min-w-[6.5ch]', // up to "−99,999"
   files: 'min-w-[6.6ch]', // up to "999 files"

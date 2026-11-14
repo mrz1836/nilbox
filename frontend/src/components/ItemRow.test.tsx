@@ -104,8 +104,8 @@ describe('ItemRow', () => {
     expect(slot('Reviews: 1 of 2 reviewers reviewed, 1 approved')).toHaveTextContent('1/2')
     expect(slot('4 comments')).toHaveTextContent('4')
 
-    const size = slot('Size L: 120 lines added and 30 removed across 6 files in 3 commits')
-    expect(within(size).getByText('L')).toBeInTheDocument()
+    const size = slot('Size M: 120 lines added and 30 removed across 6 files in 3 commits')
+    expect(within(size).getByText('M')).toBeInTheDocument()
     expect(within(size).getByText('+120')).toHaveClass('text-success')
     expect(within(size).getByText('−30')).toHaveClass('text-danger')
     expect(size).toHaveTextContent('6 files')

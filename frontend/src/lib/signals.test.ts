@@ -146,23 +146,21 @@ describe('reviewsSignal', () => {
 describe('sizeOf', () => {
   it.each<[number, Size]>([
     [0, 'XS'],
-    [9, 'XS'],
-    [10, 'S'],
-    [29, 'S'],
-    [30, 'M'],
-    [99, 'M'],
-    [100, 'L'],
-    [499, 'L'],
-    [500, 'XL'],
-    [999, 'XL'],
-    [1000, 'XXL'],
-    [250_000, 'XXL'],
+    [10, 'XS'],
+    [11, 'S'],
+    [50, 'S'],
+    [51, 'M'],
+    [200, 'M'],
+    [201, 'L'],
+    [500, 'L'],
+    [501, 'XL'],
+    [250_000, 'XL'],
   ])('grades %d changed lines as %s', (lines, size) => {
     expect(sizeOf(lines)).toBe(size)
   })
 
   it('says the size in words', () => {
-    expect(sizeText(120, 30, 6, 3)).toBe('Size L: 120 lines added and 30 removed across 6 files in 3 commits')
+    expect(sizeText(120, 30, 6, 3)).toBe('Size M: 120 lines added and 30 removed across 6 files in 3 commits')
     expect(sizeText(1, 0, 1, 1)).toBe('Size XS: 1 line added and 0 removed across 1 file in 1 commit')
   })
 })

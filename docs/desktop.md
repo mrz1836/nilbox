@@ -1006,7 +1006,7 @@ Each pull request or issue in the inbox is a card three lines high:
 | Checks | The latest commit's checks that passed, out of those that ran. Skipped checks count toward neither. | Green when all passed, yellow while any still run, red when any failed |
 | Reviews | Reviewers who have reviewed, out of everyone asked or who reviewed. The author's own replies don't count, and a reviewer asked again owes a new review. | Green once approved, red when changes were requested |
 | Comments | The conversation's comments, review comments included | None |
-| Size | XS (under 10 changed lines), S (under 30), M (under 100), L (under 500), XL (under 1,000), or XXL; then the lines added and removed, the files, and the commits | Added lines green, removed lines red |
+| Size | XS (10 or fewer changed lines), S (50 or fewer), M (200 or fewer), L (500 or fewer), or XL (more than 500), the same scale as the `size/*` labels; then the lines added and removed, the files, and the commits | Added lines green, removed lines red |
 | Sub-issues | On an issue with sub-issues, how many are done out of all of them, with a small bar | Green once all are done |
 | Projects | On an issue, the first GitHub project it is in, its status there, and its priority and size, then how many more projects. Click it to open the project. See [Issue projects](#issue-projects). | The status and fields in their project colors |
 | Labels | The first three labels with their GitHub colors, then how many more | None |

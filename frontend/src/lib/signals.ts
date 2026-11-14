@@ -124,21 +124,22 @@ export function reviewsSignal(reviews: Reviews): Signal<ReviewsKind> {
   return { kind: 'waiting', tone: 'muted', short, long }
 }
 
-export type Size = 'XS' | 'S' | 'M' | 'L' | 'XL' | 'XXL'
+export type Size = 'XS' | 'S' | 'M' | 'L' | 'XL'
 
-// sizes are the upper bounds, in changed lines, of every size but the largest: the
-// common size-label scale.
-const sizes: readonly (readonly [below: number, size: Size])[] = [
+// sizes are the inclusive upper bounds, in changed lines, of every size but the largest:
+// the scale of the shared PR Management workflow's size/* labels
+// (PR_MANAGEMENT_SIZE_*_THRESHOLD in .github/env/20-workflows.env), so a card's grade
+// reads as the label would.
+const sizes: readonly (readonly [max: number, size: Size])[] = [
   [10, 'XS'],
-  [30, 'S'],
-  [100, 'M'],
+  [50, 'S'],
+  [200, 'M'],
   [500, 'L'],
-  [1000, 'XL'],
 ]
 
 // sizeOf grades a pull request by the lines it adds and removes together.
 export function sizeOf(lines: number): Size {
-  return sizes.find(([below]) => lines < below)?.[1] ?? 'XXL'
+  return sizes.find(([max]) => lines <= max)?.[1] ?? 'XL'
 }
 
 // sizeText says how big a pull request is in words.
