@@ -13,7 +13,7 @@ numbers with the `magex measure:*` targets.
 |---|---|---|---|
 | Cold start to first paint | < 1 s | 583 ms | Met on the M1 Max with the integrations (544 ms before them); the M4 Pro build host measured 1013 ms with an earlier build, at the target rather than under it |
 | Inbox refresh | < 3 s | 2.44 s | Met once the inbox's items are known; the first refresh into an empty database takes 5–10 s |
-| Launch to prompt loaded | < 3 s | 6.86 s | **Not met**, one run: an upper bound that includes a held-back launch's check on GitHub and your shell starting in the new iTerm2 tab (see below) |
+| Launch to prompt loaded | < 3 s | 1.15 s | Met, one run, for a launch whose files check out; 3.13 s with the placeholder repository's held-back first request, which a real hold spends waiting for your click anyway (see below) |
 | App binary size | < 30 MB | 21.7 MB | Met (17.0 MB before the integrations: Release, Hooks, Repo scripts, and the tool installer) |
 | API budget at 5-minute cadence | < 2% | 1.20% | Met: 5 points a refresh |
 
@@ -181,13 +181,38 @@ bound for a pull request whose files check out. It then checks the process list 
 agent process's working directory (`lsof`) every 100 ms, and stops the agent as soon as it is
 found. The clone and the scratch data directory are deleted afterwards.
 
-**Result.** On the M1 Max (2026-11-11), run from iTerm2 with Claude Code: 6,859 ms (6.86 s),
-one run, over the 3 s target. It is an upper bound in two ways. It includes the held-back
-first request, whose check of the placeholder's files on GitHub can't succeed, then the
-confirmed one. And iTerm2's driver opens a tab with your default profile and types the launch
-script's path into it, so your interactive shell's startup files run before the script
-changes into the clone and starts the agent. How the time splits between those steps is not
-measured yet.
+**The steps.** The target notes when each step ends and prints how the time splits, on one
+line (`launch.steps`):
+
+- `held_ms`: the first request, held back by the file check that can't succeed. A freshly
+  started app also borrows the GitHub CLI's token on its first request to GitHub, which
+  `token_ms` times within it; an app that has been running holds the token already.
+- `confirmed_ms`: the confirmed request, up to the terminal's program starting. This is the
+  app's own work, the file check on GitHub included.
+- `terminal_ms`: `osascript` and iTerm2 opening the tab.
+- `agent_ms`: from iTerm2 accepting the launch to the agent running in the clone. This covers
+  the tab's shell starting with your startup files, the script, and the agent's own start.
+
+`launch.unheld_ms` is the time without the held-back first request: what a launch whose files
+check out costs in an app that has been running. Your shell's startup files are part of
+`agent_ms`; to see their share, run `time zsh -i -c exit` (or your shell's equivalent) in an
+iTerm2 tab, where they run as they do for a launch.
+
+**Result.** On the M1 Max (2026-11-14), with Claude Code: 3,132 ms (3.13 s), one run. It
+splits as `held_ms=1980` (`token_ms=43` within it), `confirmed_ms=135`, `terminal_ms=428`, and
+`agent_ms=588`, so `unheld_ms` is 1,152 ms (1.15 s): a launch whose files check out meets the
+3 s target with room to spare. Nearly two thirds of the total is the held-back first request.
+It does the same work as the confirmed one, which took 135 ms with its own check on GitHub, so
+the difference is most likely what a freshly started process pays on its first request (the
+first connection to GitHub among it), which an app that has been running has paid already; a
+second run would show whether it repeats. A real hold waits for your click on **Open
+anyway** besides. The tab's shell, the script, and the agent's start take 588 ms in all, so
+your startup files are a small part of it.
+
+The first run (2026-11-11), before the target split its time, measured 6,859 ms (6.86 s). It
+can't be split now. The likeliest difference is iTerm2 itself: an iTerm2 that isn't running
+has to start, and the AppleScript then waits up to 2 s for its window, while this run's 428 ms
+terminal step suggests iTerm2 was already running.
 
 Not measured on the build host: its build session cannot answer macOS's one-time prompt to let
 a process control iTerm2 (asking macOS without prompting,
