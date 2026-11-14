@@ -444,6 +444,7 @@ export type Theme = settings.Theme
 export type TextSize = settings.TextSize
 export type MergeMethodSetting = settings.MergeMethod
 export type ReviewTab = settings.ReviewTab
+export type ConversationOrder = settings.ConversationOrder
 export type RefreshKind = settings.RefreshKind
 
 export type SnoozeRules = NonNullLists<snooze.Rules>
@@ -610,6 +611,7 @@ export const {
   SetSectionCollapsed: setSectionCollapsed,
   SetProjectsTipDismissed: setProjectsTipDismissed,
   SetReviewTab: setReviewTab,
+  SetConversationOrder: setConversationOrder,
   InboxOrder: getInboxOrder,
   SetStatusSort: setStatusSort,
   SetListKind: setListKind,

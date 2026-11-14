@@ -105,7 +105,17 @@ describe('ReviewSheet', () => {
     platform.refreshReview.mockResolvedValue(
       review({
         body: 'Adds a **cache**.',
-        reviews: [{ author: 'octo-reviewer', state: 'APPROVED', url: '', submittedAt: '', outdated: true }],
+        reviews: [
+          {
+            author: 'octo-reviewer',
+            state: 'APPROVED',
+            url: '',
+            requested: false,
+            team: false,
+            submittedAt: '',
+            outdated: true,
+          },
+        ],
       }),
     )
     render(<Harness />)
@@ -115,7 +125,7 @@ describe('ReviewSheet', () => {
     expect(screen.getByText('Ready to merge')).toBeInTheDocument()
     expect(screen.getByText('1 of 3 in Assigned')).toBeInTheDocument()
     expect(screen.getByRole('region', { name: 'cache/cache.go' })).toBeInTheDocument()
-    expect(within(screen.getByRole('region', { name: 'Reviewers' })).getByRole('button')).toHaveTextContent(
+    expect(screen.getByRole('region', { name: 'Reviewers' })).toHaveTextContent(
       'octo-reviewerapprovedan earlier commit',
     )
     expect(await actionButton('Approve & squash-merge')).toBeEnabled()
@@ -1644,6 +1654,8 @@ describe('ReviewSheet tabs', () => {
           author: 'octo-reviewer',
           state: 'CHANGES_REQUESTED',
           url: 'https://github.com/acme-org/example-repo/pull/7#pullrequestreview-1',
+          requested: false,
+          team: false,
           submittedAt: '',
           outdated: false,
         },
@@ -1651,6 +1663,8 @@ describe('ReviewSheet tabs', () => {
           author: 'octo-third',
           state: 'APPROVED',
           url: 'https://github.com/acme-org/example-repo/pull/7#pullrequestreview-9',
+          requested: false,
+          team: false,
           submittedAt: '',
           outdated: false,
         },
@@ -1809,5 +1823,20 @@ describe('ReviewSheet tabs', () => {
 
     expect(await screen.findByText('No comments yet.')).toBeVisible()
     expect(screen.getByRole('tab', { name: 'Comments 0' })).toBeInTheDocument()
+  })
+})
+
+describe('ReviewSheet conversation order', () => {
+  it('moves between the orders with the arrows without stepping the list', async () => {
+    const onOrder = vi.fn()
+    platform.refreshReview.mockResolvedValue(review({ timeline: reviewTimeline() }))
+    render(<Harness tab="comments" onOrder={onOrder} />)
+
+    const oldest = await screen.findByRole('radio', { name: 'Oldest first' })
+    oldest.focus()
+    fireEvent.keyDown(oldest, { key: 'ArrowRight' })
+
+    expect(screen.getByText('1 of 3 in Assigned')).toBeInTheDocument()
+    expect(platform.openReview).not.toHaveBeenCalledWith(2)
   })
 })

@@ -289,8 +289,8 @@ type Review struct {
 
 	Checks []Check `json:"checks"`
 
-	// Reviews are each reviewer's latest review, the summary's list of reviewers; their
-	// text is in Timeline.
+	// Reviews are the summary's list of reviewers: each reviewer's latest review, whose text
+	// is in Timeline, then who the pull request still asks to review and hasn't (Requested).
 	Reviews []ReviewEntry `json:"reviews"`
 
 	// Timeline is the newest page of the conversation, oldest first: its comments, its
@@ -443,11 +443,15 @@ const (
 )
 
 // ReviewEntry is one reviewer's latest review: who, its state, and its page, whose URL the
-// conversation's entry of it has too.
+// conversation's entry of it has too. A reviewer the pull request asks to review and who
+// hasn't has no state, no page, and no time; Requested marks a request, of one who has
+// reviewed too when they were asked again, and Team a team's, whose Author is "org/team".
 type ReviewEntry struct {
-	Author string `json:"author"`
-	State  string `json:"state"`
-	URL    string `json:"url"`
+	Author    string `json:"author"`
+	State     string `json:"state"`
+	URL       string `json:"url"`
+	Requested bool   `json:"requested"`
+	Team      bool   `json:"team"`
 
 	// SubmittedAt is when it was submitted, as RFC 3339, or "".
 	SubmittedAt string `json:"submittedAt"`

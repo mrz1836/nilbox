@@ -196,6 +196,14 @@ export function SetCodexFast(on: boolean): $CancellablePromise<$models.Settings>
 }
 
 /**
+ * SetConversationOrder stores the order the sheets list a conversation in,
+ * ConversationOldest or ConversationNewest, and returns the settings with it.
+ */
+export function SetConversationOrder(order: $models.ConversationOrder): $CancellablePromise<$models.Settings> {
+    return $Call.ByID(3621925626, order);
+}
+
+/**
  * SetDefaultAgent stores the coding agent launches use when no launch default names one,
  * and returns the settings with it.
  */

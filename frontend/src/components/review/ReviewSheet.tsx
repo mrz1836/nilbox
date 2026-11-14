@@ -11,6 +11,7 @@ import {
   actOnReview,
   openExternal,
   type AgentSession,
+  type ConversationOrder,
   type InboxItem,
   type ItemResolution,
   type MergeMethod,
@@ -56,6 +57,10 @@ export interface ReviewSheetProps {
   // and onTab hears each choice, which the window remembers.
   tab: ReviewTab
   onTab: (tab: ReviewTab) => void
+  // order is the order the conversation is listed in, and onOrder hears the user choose
+  // another, which the window remembers.
+  order?: ConversationOrder
+  onOrder?: ((order: ConversationOrder) => void) | undefined
   launch: LaunchOptions | null
   resolution: ItemResolution | null
   sessions: readonly AgentSession[] | undefined
@@ -143,6 +148,8 @@ export function ReviewSheet({
   drafts,
   tab: openOn,
   onTab,
+  order = 'oldest',
+  onOrder,
   launch,
   resolution,
   sessions,
@@ -580,6 +587,8 @@ export function ReviewSheet({
                           earlierError={loaded.earlierError}
                           onQuote={quote}
                           onJump={jump}
+                          order={order}
+                          onOrder={onOrder}
                           empty={
                             <p className="text-sm text-muted">
                               {review.fetchedAt === '' ? 'Not read from GitHub yet.' : 'No comments yet.'}

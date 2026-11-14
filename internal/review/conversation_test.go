@@ -267,3 +267,35 @@ func TestEveryWriteOfTheContextFitsIt(t *testing.T) {
 	assert.True(t, r.Timeline.Items[0].Trimmed)
 	assert.Len(t, r.Timeline.Items[0].Body, 16<<10)
 }
+
+func TestTheReviewersListWhoIsStillAskedToReview(t *testing.T) {
+	t.Parallel()
+
+	pull := storedPull()
+	pull.ReviewUsers = []string{"Octo-Reviewer", octoUser}
+	pull.ReviewTeams = []string{"maintainers"}
+
+	got := withRequests([]ReviewEntry{
+		{Author: "octo-reviewer", State: "CHANGES_REQUESTED", URL: "u1"},
+		{Author: "octo-third", State: "APPROVED", URL: "u2"},
+	}, pull)
+
+	assert.Equal(t, []ReviewEntry{
+		{Author: "octo-reviewer", State: "CHANGES_REQUESTED", URL: "u1", Requested: true},
+		{Author: "octo-third", State: "APPROVED", URL: "u2"},
+		{Author: octoUser, Requested: true},
+		{Author: "acme-org/maintainers", Requested: true, Team: true},
+	}, got, "a reviewer asked again is marked on their review; the rest follow, people first")
+
+	assert.Equal(t, []ReviewEntry{}, withRequests(nil, storedPull()), "never nil")
+
+	h := newHarness(t)
+	h.inbox.mu.Lock()
+	h.inbox.pull.ReviewUsers = []string{"octo-fourth"}
+	h.inbox.mu.Unlock()
+
+	r, err := h.svc.Open(t.Context(), pullID)
+	require.NoError(t, err)
+	assert.Equal(t, []ReviewEntry{{Author: "octo-fourth", Requested: true}}, r.Reviews,
+		"asked before the sheet ever read the pull request, from the card alone")
+}

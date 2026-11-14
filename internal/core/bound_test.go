@@ -179,6 +179,9 @@ func boundCalls(t *testing.T) map[string]boundCall {
 		"settings.Service.SetReviewTab": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
 			return c.Settings.SetReviewTab(ctx, settings.ReviewTabComments)
 		},
+		"settings.Service.SetConversationOrder": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
+			return c.Settings.SetConversationOrder(ctx, settings.ConversationNewest)
+		},
 		"settings.Service.SetGitHubNotificationSwitch": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
 			return c.Settings.SetGitHubNotificationSwitch(ctx, threadrules.SwitchAuto, true)
 		},

@@ -33,6 +33,29 @@ import * as snooze$0 from "../snooze/models.js";
 import * as threadrules$0 from "../threadrules/models.js";
 
 /**
+ * ConversationOrder is the order the issue sheet and the review sheet list a conversation's
+ * entries in, under its description.
+ */
+export type ConversationOrder = "oldest" | "newest";
+
+/**
+ * The values of ConversationOrder, by the names of their Go constants.
+ */
+export const ConversationOrder = {
+    /**
+     * The conversation's orders.
+     */
+    ConversationOldest: "oldest",
+    ConversationNewest: "newest",
+
+    /**
+     * DefaultConversationOrder is the order of a fresh database: oldest first, as GitHub lists
+     * a conversation.
+     */
+    DefaultConversationOrder: "oldest",
+} as const;
+
+/**
  * InboxOrder is how the inbox orders and narrows its lists: which are sorted by project
  * status, the order of the statuses, and which show only one kind of item. Every field is
  * a plain value.
@@ -374,6 +397,12 @@ export interface Settings {
      * ReviewTab is the review sheet's tab the user last chose, which it opens on.
      */
     "reviewTab": ReviewTab;
+
+    /**
+     * ConversationOrder is the order the sheets list a conversation in, the one the user
+     * last chose.
+     */
+    "conversationOrder": ConversationOrder;
 
     /**
      * InboxOrder is which inbox lists are sorted by project status, and the order of the

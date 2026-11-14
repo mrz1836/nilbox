@@ -13,6 +13,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/item"
 	"github.com/mrz1836/nilbox/internal/prefs"
 	"github.com/mrz1836/nilbox/internal/store"
+	"github.com/mrz1836/nilbox/internal/textutil"
 )
 
 // Store gives the packages around the inbox what they need of its tables, without the
@@ -228,6 +229,11 @@ type ReviewItem struct {
 	Approvals        int
 	ChangesRequested int
 
+	// ReviewUsers and ReviewTeams are who the pull request asks to review, as of the last
+	// refresh: the logins of the people, and the slugs of the teams, in GitHub's order.
+	ReviewUsers []string
+	ReviewTeams []string
+
 	// HeadOID is the head commit, and AutoMerge the method auto-merge merges with, ""
 	// while it is off.
 	HeadOID   string
@@ -262,6 +268,16 @@ func (s *Store) ReviewItem(ctx context.Context, id int64) (ReviewItem, error) {
 		}
 	}
 
+	users, err := decodeColumn[string](r.ReviewUsers)
+	if err != nil {
+		return ReviewItem{}, fmt.Errorf("the review requests of item %d: %w", r.ID, err)
+	}
+
+	teams, err := decodeColumn[string](r.ReviewTeams)
+	if err != nil {
+		return ReviewItem{}, fmt.Errorf("the review requests of item %d: %w", r.ID, err)
+	}
+
 	return ReviewItem{
 		ID: r.ID, Kind: item.Kind(r.Kind), Number: int(r.Number), NodeID: r.NodeID, Title: r.Title, URL: r.URL,
 		AuthorLogin: r.AuthorLogin, AuthorType: r.AuthorType, AuthorAssociation: r.AuthorAssociation,
@@ -283,6 +299,7 @@ func (s *Store) ReviewItem(ctx context.Context, id int64) (ReviewItem, error) {
 		Reviewed: int(store.Deref(r.Reviewed)), Approvals: int(store.Deref(r.Approvals)),
 		ChangesRequested: int(store.Deref(r.ChangesRequested)), HeadOID: store.Deref(r.HeadOID),
 		AutoMerge: store.Deref(r.AutoMergeMethod), DetailsAt: store.Deref(r.DetailsFetchedAt).UTC(),
+		ReviewUsers: textutil.NonNil(users), ReviewTeams: textutil.NonNil(teams),
 	}, nil
 }
 

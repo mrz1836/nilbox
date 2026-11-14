@@ -98,6 +98,7 @@ func TestPrefDefaults(t *testing.T) {
 		InboxOrder:          InboxOrder{StatusSorted: []ListKey{}, StatusOrder: []string{}, Kinds: map[ListKey]ListKind{}},
 		MergeMethod:         DefaultMergeMethod,
 		ReviewTab:           DefaultReviewTab,
+		ConversationOrder:   DefaultConversationOrder,
 		Integrations: integrationprefs.Config{
 			Switches: map[integrationprefs.ID]integrationprefs.Switch{
 				integrationprefs.MageX: integrationprefs.SwitchAuto, integrationprefs.GoPreCommit: integrationprefs.SwitchAuto,
@@ -278,6 +279,7 @@ func TestSettersPersist(t *testing.T) {
 		InboxOrder:          InboxOrder{StatusSorted: []ListKey{}, StatusOrder: []string{}, Kinds: map[ListKey]ListKind{}},
 		MergeMethod:         DefaultMergeMethod,
 		ReviewTab:           DefaultReviewTab,
+		ConversationOrder:   DefaultConversationOrder,
 		Branches:            branchrules.Rules{Own: true, Protected: []string{"develop"}},
 		Integrations: integrationprefs.Config{
 			Switches: map[integrationprefs.ID]integrationprefs.Switch{
@@ -688,6 +690,10 @@ func TestSettersReturnTheStoredSettings(t *testing.T) {
 		{
 			"review tab", func() (Settings, error) { return svc.SetReviewTab(ctx, ReviewTabComments) },
 			func(s Settings) any { return s.ReviewTab }, ReviewTabComments,
+		},
+		{
+			"conversation order", func() (Settings, error) { return svc.SetConversationOrder(ctx, ConversationNewest) },
+			func(s Settings) any { return s.ConversationOrder }, ConversationNewest,
 		},
 		{
 			"window size", func() (Settings, error) { return svc.SetWindowSize(ctx, size) },

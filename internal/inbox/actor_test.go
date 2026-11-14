@@ -337,6 +337,15 @@ func TestStoreReadsAReviewItem(t *testing.T) {
 	assert.Equal(t, []string{"enhancement"}, got.Labels)
 	assert.Equal(t, "APPROVED", got.ReviewDecision)
 	assert.True(t, got.ReviewRequested)
+	assert.NotNil(t, got.ReviewUsers)
+	assert.NotNil(t, got.ReviewTeams)
+
+	h.exec(t, `UPDATE item_details SET review_users = '["octo-reviewer","octo-bot"]', review_teams = '["maintainers"]'`)
+
+	got, err = NewStore(h.pool, h.clock).ReviewItem(t.Context(), id)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"octo-reviewer", "octo-bot"}, got.ReviewUsers, "who it asks to review, in GitHub's order")
+	assert.Equal(t, []string{"maintainers"}, got.ReviewTeams)
 
 	_, err = NewStore(h.pool, h.clock).ReviewItem(t.Context(), 9999)
 	require.ErrorIs(t, err, item.ErrNotFound)

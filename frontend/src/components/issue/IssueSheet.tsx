@@ -15,6 +15,7 @@ import {
   actOnIssue,
   editIssue,
   type AgentSession,
+  type ConversationOrder,
   type InboxItem,
   type Issue,
   type IssueAction,
@@ -50,6 +51,10 @@ export interface IssueSheetProps {
   siblings: readonly InboxItem[]
   listTitle: string
   drafts: IssueDrafts
+  // order is the order the conversation is listed in, and onOrder hears the user choose
+  // another, which the window remembers.
+  order?: ConversationOrder
+  onOrder?: ((order: ConversationOrder) => void) | undefined
   launch: LaunchOptions | null
   resolution: ItemResolution | null
   sessions: readonly AgentSession[] | undefined
@@ -114,6 +119,8 @@ export function IssueSheet({
   siblings,
   listTitle,
   drafts,
+  order = 'oldest',
+  onOrder,
   launch,
   resolution,
   sessions,
@@ -357,6 +364,8 @@ export function IssueSheet({
                     loadingEarlier={loaded.loadingEarlier}
                     earlierError={loaded.earlierError}
                     onQuote={quote}
+                    order={order}
+                    onOrder={onOrder}
                   />
                 )}
               </main>

@@ -143,9 +143,9 @@ export function areasText(areas: readonly string[]): string {
 
 // CheckList lists checks, each with its dot and whether it is required; each opens its
 // page.
-function CheckList({ checks }: { checks: readonly ReviewCheck[] }) {
+function CheckList({ checks, label }: { checks: readonly ReviewCheck[]; label: string }) {
   return (
-    <ul className="mt-1 space-y-0.5">
+    <ul aria-label={label} className="mt-1 space-y-0.5">
       {checks.map((c, i) => (
         <li key={`${c.name}-${String(i)}`} className="flex min-w-0 items-center gap-1.5">
           <CheckDot outcome={c.outcome} />
@@ -233,11 +233,38 @@ function Unrun({ unrun }: { unrun: readonly ReviewUnrun[] }) {
   )
 }
 
-// Checks lists the head commit's checks that ran: the failing ones first, then those
-// running, then those passed. The ones skipped, which say nothing about the change, fold
-// away below them under their count. The list starts open, and folds away under its count,
-// which marks the checks running with their dot, so a folded list still shows CI at work.
-// Beneath it, the workflow runs that never ran a check and aren't passing (Unrun).
+// openChecks is how many checks the list shows open. A failing check always shows; the
+// checks running show beside them while every one of them fits, and the ones that passed
+// while they all do; any that don't fit fold away under their count.
+export const openChecks = 8
+
+// CheckGroup is a group of checks folded away under its count, as in "23 passed · 2
+// required", with the dot of their outcome.
+function CheckGroup({ checks, outcome, words }: { checks: readonly ReviewCheck[]; outcome: string; words: string }) {
+  const required = checks.filter((c) => c.required).length
+
+  return (
+    <details className="mt-1">
+      <summary className="cursor-default text-muted select-none">
+        <CheckDot outcome={outcome} /> {String(checks.length)} {words}
+        {required > 0 && ` · ${String(required)} required`}
+      </summary>
+      <CheckList checks={checks} label={`Checks ${words}`} />
+    </details>
+  )
+}
+
+// requiredFirst sorts checks with the required ones first, each kind in GitHub's order.
+function requiredFirst(checks: readonly ReviewCheck[]): ReviewCheck[] {
+  return checks.toSorted((a, b) => Number(b.required) - Number(a.required))
+}
+
+// Checks lists the head commit's checks, as few as tell what matters: every failing one,
+// then those running and those passed while they fit (openChecks), else each group folded
+// under its count, the required ones first; the skipped ones, which say nothing about the
+// change, always fold. The list starts open, and folds away under its count, which marks
+// the checks running with their dot, so a folded list still shows CI at work. Beneath it,
+// the workflow runs that never ran a check and aren't passing (Unrun).
 function Checks({ checks, unrun }: { checks: readonly ReviewCheck[]; unrun: readonly ReviewUnrun[] }) {
   if (checks.length === 0) {
     return (
@@ -248,9 +275,13 @@ function Checks({ checks, unrun }: { checks: readonly ReviewCheck[]; unrun: read
     )
   }
 
-  const order = { failed: 0, pending: 1, passed: 2 } as Record<string, number>
-  const ran = checks.filter((c) => c.outcome in order).sort((a, b) => (order[a.outcome] ?? 0) - (order[b.outcome] ?? 0))
-  const skipped = checks.filter((c) => !(c.outcome in order))
+  const failing = requiredFirst(checks.filter((c) => c.outcome === 'failed'))
+  const running = requiredFirst(checks.filter((c) => c.outcome === runningOutcome))
+  const passed = requiredFirst(checks.filter((c) => c.outcome === 'passed'))
+  const skipped = checks.filter((c) => !['failed', runningOutcome, 'passed'].includes(c.outcome))
+  const showRunning = failing.length + running.length <= openChecks
+  const showPassed = showRunning && failing.length + running.length + passed.length <= openChecks
+  const open = [...failing, ...(showRunning ? running : []), ...(showPassed ? passed : [])]
   const summary = checksSummary(checks)
 
   return (
@@ -264,21 +295,43 @@ function Checks({ checks, unrun }: { checks: readonly ReviewCheck[]; unrun: read
           </>
         )}
       </summary>
-      <CheckList checks={ran} />
-      {skipped.length > 0 && (
-        <details className="mt-1">
-          <summary className="cursor-default text-muted select-none">{String(skipped.length)} skipped</summary>
-          <CheckList checks={skipped} />
-        </details>
-      )}
+      {open.length > 0 && <CheckList checks={open} label="Checks" />}
+      {!showRunning && running.length > 0 && <CheckGroup checks={running} outcome={runningOutcome} words="running" />}
+      {!showPassed && passed.length > 0 && <CheckGroup checks={passed} outcome="passed" words="passed" />}
+      {skipped.length > 0 && <CheckGroup checks={skipped} outcome="skipped" words="skipped" />}
       <Unrun unrun={unrun} />
     </details>
   )
 }
 
-// Reviewers lists each reviewer's latest review in a line: their picture, their name, and
-// what they did, of an earlier commit or not. Each shows that review in the conversation,
-// where its words are (onShow), or on GitHub.
+// reviewerWords says what a reviewer did, or that they are still asked to: an earlier
+// review's state and, for one asked again, that they were.
+function reviewerWords(r: ReviewEntry): string {
+  if (r.state === '') {
+    return 'awaiting review'
+  }
+
+  return r.requested ? `${reviewWord(r.state)} · asked again` : reviewWord(r.state)
+}
+
+// ReviewerLine is one reviewer's line: their picture, their name, what they did, and
+// whether it was of an earlier commit.
+function ReviewerLine({ r }: { r: ReviewEntry }) {
+  return (
+    <>
+      <PersonAvatar login={r.author} />
+      <span className="min-w-0 truncate font-medium text-text">{r.author}</span>
+      <span className={`shrink-0 ${r.state === '' ? 'text-muted' : toneText[reviewTone(r.state)]}`}>
+        {reviewerWords(r)}
+      </span>
+      {r.outdated && <span className="shrink-0">an earlier commit</span>}
+    </>
+  )
+}
+
+// Reviewers lists each reviewer in a line: those who reviewed, each with their latest
+// review, then the people and teams still asked to review. A review shows in the
+// conversation, where its words are (onShow), or on GitHub; a request has nothing to show.
 function Reviewers({
   reviews,
   onShow,
@@ -290,29 +343,34 @@ function Reviewers({
     return null
   }
 
+  const line = 'flex w-full min-w-0 items-center gap-1.5 rounded px-1 py-0.5 text-left text-muted'
+
   return (
     <section aria-label="Reviewers" className="space-y-1 text-xs">
       <p className="text-muted">Reviewers</p>
       <ul className="space-y-0.5">
         {reviews.map((r) => (
-          <li key={r.author}>
-            <button
-              type="button"
-              title={onShow === undefined ? r.url : 'Show the review in Comments'}
-              onClick={() => {
-                if (onShow === undefined) {
-                  openExternal(r.url)
-                } else {
-                  onShow(r.url)
-                }
-              }}
-              className="flex w-full min-w-0 items-center gap-1.5 rounded px-1 py-0.5 text-left text-muted hover:bg-raised"
-            >
-              <PersonAvatar login={r.author} />
-              <span className="min-w-0 truncate font-medium text-text">{r.author}</span>
-              <span className={`shrink-0 ${toneText[reviewTone(r.state)]}`}>{reviewWord(r.state)}</span>
-              {r.outdated && <span className="shrink-0">an earlier commit</span>}
-            </button>
+          <li key={`${r.team ? 'team' : 'user'}:${r.author}`}>
+            {r.url === '' ? (
+              <p className={line}>
+                <ReviewerLine r={r} />
+              </p>
+            ) : (
+              <button
+                type="button"
+                title={onShow === undefined ? r.url : 'Show the review in Comments'}
+                onClick={() => {
+                  if (onShow === undefined) {
+                    openExternal(r.url)
+                  } else {
+                    onShow(r.url)
+                  }
+                }}
+                className={`${line} hover:bg-raised`}
+              >
+                <ReviewerLine r={r} />
+              </button>
+            )}
           </li>
         ))}
       </ul>
@@ -358,8 +416,9 @@ export function Readiness({ review }: { review: Review }) {
 }
 
 // ReviewSummary sums up a pull request in a few lines: what kind of change it is and where,
-// what a dependency update bumps, the issues it closes, its checks, its sensitive files,
-// and its reviewers.
+// what a dependency update bumps, its sensitive files, the issues it closes, its reviewers,
+// and its checks. The reviewers come before the checks, so however many checks run, who
+// reviewed and who still has to stays in view.
 export function ReviewSummary({ review, item, onFilesSettings, onShowReview }: ReviewSummaryProps) {
   const { change } = review
 
@@ -372,8 +431,8 @@ export function ReviewSummary({ review, item, onFilesSettings, onShowReview }: R
         {change.areas.length > 0 && <span className="text-xs text-muted">in {areasText(change.areas)}</span>}
       </div>
       <Closes review={review} />
-      <Checks checks={review.checks} unrun={review.unrun} />
       <Reviewers reviews={review.reviews} onShow={onShowReview} />
+      <Checks checks={review.checks} unrun={review.unrun} />
     </section>
   )
 }
