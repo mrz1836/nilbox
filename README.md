@@ -301,6 +301,8 @@ magex targets, and commands of your own.
 Everything Nilbox does, grouped by what you're doing. Expand any feature for the details; each
 links to its full write-up in the [Desktop Guide](docs/desktop.md).
 
+<br>
+
 ### <code>Your inbox</code>
 
 <details>
@@ -310,8 +312,9 @@ links to its full write-up in the [Desktop Guide](docs/desktop.md).
 - **Three lists**, each a GitHub search across every repository your account can see:
   **Review requested** (open pull requests that ask for your review), **Authored** (your open
   pull requests), and **Assigned** (open issues and pull requests assigned to you). Each shows up
-  to 100 items, with **N of M** when GitHub matched more. Archived repositories, and items merged
-  or closed since GitHub indexed them, never show.
+  to 100 items, with **N of M** when GitHub matched more, and a list with nothing in it, set
+  aside included, hides. Archived repositories, and items merged or closed since GitHub indexed
+  them, never show.
 - **Cards that answer "is it ready?"** in three lines: the title with **Draft**, **Conflicts**,
   and **Auto-merge · squash** tags; the repository, author, age, and a **bot**, **untrusted
   bot**, or **outside contributor** tag; then the checks passed out of those that ran, reviews,
@@ -436,6 +439,8 @@ More in [The item menu and edits on GitHub](docs/desktop.md#the-item-menu-and-ed
 
 </details>
 
+<br>
+
 ### <code>Review and merge</code>
 
 <details>
@@ -541,6 +546,8 @@ More in [Reviewing a pull request](docs/desktop.md#reviewing-a-pull-request) and
 [Edits on GitHub](docs/desktop.md#the-item-menu-and-edits-on-github).
 
 </details>
+
+<br>
 
 ### <code>Coding agents</code>
 
@@ -691,6 +698,8 @@ More in [Outside contributors](docs/desktop.md#outside-contributors) and
 [Sensitive files](docs/desktop.md#sensitive-files).
 
 </details>
+
+<br>
 
 ### <code>Your clones</code>
 
@@ -888,6 +897,8 @@ More in [Tools the app finds and installs](docs/desktop.md#tools-the-app-finds-a
 [Your shell's environment](docs/desktop.md#your-shells-environment).
 
 </details>
+
+<br>
 
 ### <code>The app</code>
 
