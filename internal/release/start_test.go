@@ -638,6 +638,11 @@ func TestAReleaseWhoseTerminalClosedIsCheckedForItsTagAndBranch(t *testing.T) {
 			r.after.set(r.tagged(recVersion, r.second, tt.sent))
 
 			id, _ := r.releaseInTerminal("sigterm-after-tag")
+
+			// The tab closes mid-run, not mid-start: once magex has said all it did, which is
+			// how the release knows the tag is its own.
+			rec := loadRecording(t, "sigterm-after-tag")
+			r.waitFor(id, rec.Lines[len(rec.Lines)-1].Text)
 			require.NoError(t, r.term.Close())
 
 			run := r.ended(id)

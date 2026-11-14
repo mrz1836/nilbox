@@ -350,6 +350,12 @@ func TestATerminalRunsWhatTheEngineOpensThere(t *testing.T) {
 			assert.True(t, held, "the clone is held while the terminal runs it")
 
 			if tt.closed {
+				// Once the command has written, as a user closes a tab on a run under way.
+				require.EventuallyWithT(t, func(c *assert.CollectT) {
+					out, outErr := h.Runs.Output(t.Context(), id, 0, 0)
+					require.NoError(c, outErr)
+					assert.Equal(c, "in the terminal\n", out.Text)
+				}, Wait, 20*time.Millisecond)
 				require.NoError(t, term.Close())
 			} else {
 				testutil.WriteFile(t, proceed, "")
