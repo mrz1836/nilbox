@@ -1720,10 +1720,13 @@ describe('ReviewSheet tabs', () => {
     platform.refreshReview.mockResolvedValue(withConversation())
     render(<Harness tab="comments" />)
 
-    // A hidden tab's controls have no names, so the file's block is found by its anchor.
+    // A hidden tab's controls have no names, so the file's block is found by its anchor, once
+    // React has rendered the hidden tab, which it does after the one shown.
     const conversation = await screen.findByRole('region', { name: 'Conversation' })
     const folded = () => document.getElementById('diff-cache_widget_go')?.querySelector('button[aria-expanded]')
-    expect(folded(), 'a long diff starts folded').toHaveAttribute('aria-expanded', 'false')
+    await waitFor(() => {
+      expect(folded(), 'a long diff starts folded').toHaveAttribute('aria-expanded', 'false')
+    })
 
     await userEvent.click(within(conversation).getByRole('button', { name: 'cache/widget.go:12' }))
 
