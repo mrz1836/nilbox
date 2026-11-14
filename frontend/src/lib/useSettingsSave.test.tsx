@@ -1,10 +1,11 @@
 import { act, renderHook } from '@testing-library/react'
+import type { ReactNode } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 
 import type { Settings } from '../platform'
 import { settings } from '../test/fixtures'
-import type { Result } from './call'
-import { useSettingsSave } from './useSettingsSave'
+import { serial, type Result } from './call'
+import { SettingsQueue, useSettingsSave } from './useSettingsSave'
 
 // deferred is a setter call the test settles.
 function deferred() {
@@ -85,6 +86,48 @@ describe('useSettingsSave', () => {
 
     expect(setter).toHaveBeenCalledExactlyOnceWith(1)
     expect(result.current.settings.snoozeDays).toBe(2)
+
+    await act(async () => {
+      first.resolve(settings({ snoozeDays: 1 }))
+      await done[0]
+    })
+
+    expect(setter).toHaveBeenLastCalledWith(2)
+
+    await act(async () => {
+      second.resolve(settings({ snoozeDays: 2 }))
+      await done[1]
+    })
+
+    expect(onSaved.mock.calls).toEqual([[settings({ snoozeDays: 1 })], [settings({ snoozeDays: 2 })]])
+  })
+
+  it('shares the window’s queue, so saves made in two places still go one at a time, in order', async () => {
+    const first = deferred()
+    const second = deferred()
+    const setter = vi.fn<(n: number) => Promise<Settings>>((n) => (n === 1 ? first.promise : second.promise))
+    const onSaved = vi.fn()
+    const queue = serial()
+    const wrapper = ({ children }: { children: ReactNode }) => <SettingsQueue value={queue}>{children}</SettingsQueue>
+    const { result } = renderHook(
+      () => ({ toolbar: useSettingsSave(settings(), onSaved), page: useSettingsSave(settings(), onSaved) }),
+      { wrapper },
+    )
+
+    let done: Promise<Result<Settings>>[] = []
+    act(() => {
+      done = [
+        result.current.toolbar.save({ snoozeDays: 1 }, () => setter(1)),
+        result.current.page.save({ snoozeDays: 2 }, () => setter(2)),
+      ]
+    })
+
+    await act(async () => {
+      await Promise.resolve()
+    })
+
+    // The page's change waits for the toolbar's, made first.
+    expect(setter).toHaveBeenCalledExactlyOnceWith(1)
 
     await act(async () => {
       first.resolve(settings({ snoozeDays: 1 }))

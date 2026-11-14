@@ -122,6 +122,27 @@ describe('matchSettings', () => {
     )
   })
 
+  it('finds the GitHub notification settings by the section’s name, right after Notifications', () => {
+    const match = matchSettings('github notifications')
+
+    expect(match?.sections.get('github')).toBe(settingsIndex.github.length)
+    expect(match?.isMatch('github', 'Read my GitHub notifications')).toBe(true)
+    expect(match?.isMatch('github', `You submit a review in ${brand.name}`)).toBe(true)
+    expect(sectionOrder.indexOf('github')).toBe(sectionOrder.indexOf('notifications') + 1)
+    expect(sectionInfo.github.label).toBe('GitHub notifications')
+  })
+
+  it.each([
+    ['mark done', 'What clearing does'],
+    ['inbox zero', 'Clear them automatically'],
+    ['watching', 'Include repositories you only watch'],
+    ['dependabot', 'Count bot activity after it closes as seen'],
+    ['unassign', 'You unassign yourself or remove yourself as reviewer'],
+    ['merged', 'A pull request is merged'],
+  ] as const)('finds the GitHub notification setting %j looks for', (query, label) => {
+    expect(matchSettings(query)?.isMatch('github', label)).toBe(true)
+  })
+
   it('finds a template’s rows by the agent each names', () => {
     const codex = matchSettings('codex')
 

@@ -1,11 +1,14 @@
 import type { RefObject } from 'react'
 
 import { counted, formatCount } from '../lib/format'
+import type { ThreadItem } from '../lib/githubThreads'
 import { scriptsBadgeTitle, type ScriptsBadge } from '../lib/scriptsTab'
+import type { GitHubThreadsState } from '../lib/useGitHubThreads'
 import type { NotificationsState } from '../lib/useNotifications'
-import type { Account, AppNotification, BudgetGauge } from '../platform'
+import type { Account, AppNotification, BudgetGauge, Settings } from '../platform'
 import { AccountMenu } from './AccountMenu'
 import { BudgetMenu } from './BudgetMenu'
+import { GitHubThreadsMenu } from './GitHubThreadsMenu'
 import { Logo } from './Logo'
 import { NotificationsMenu } from './NotificationsMenu'
 import { SearchField, type SearchFieldProps } from './SearchField'
@@ -46,6 +49,17 @@ export interface AppHeaderProps {
   notifications?: NotificationsState
   onOpenNotification?: (entry: AppNotification) => void
   onNotificationSettings?: () => void
+  // githubThreads is the user's GitHub notifications, which the button beside the bell
+  // shows; without it there is no button. settings are the stored settings, or null until
+  // they load, which say whether the app reads the notifications and clears them on its
+  // own. onOpenThread shows the item a notification is about, onGitHubThreadsSettings opens
+  // their settings, and onSettingsSaved receives the settings as stored after the button
+  // turned automatic clearing on.
+  githubThreads?: GitHubThreadsState
+  settings?: Settings | null
+  onOpenThread?: (item: ThreadItem) => void
+  onGitHubThreadsSettings?: () => void
+  onSettingsSaved?: (settings: Settings) => void
   // search is the current page's filter field, or undefined on a page with none, and
   // searchRef reaches its text field, for ⌘F to focus it.
   search?: SearchFieldProps | undefined
@@ -103,8 +117,8 @@ function tabCount(id: View, props: AppHeaderProps): TabCount {
 
 // AppHeader is the window's single toolbar, sitting beside the macOS window controls:
 // the logo, the view tabs (Inbox and Worktrees with their counts, Prompts), and on the
-// right the page's filter field, the notification bell, the API budget gauge, and the
-// account menu. The filter gives way first as the window narrows; the logo and the tabs
+// right the page's filter field, the notification bell, the GitHub notifications button,
+// the API budget gauge, and the account menu. The filter gives way first as the window narrows; the logo and the tabs
 // keep their size. The bar itself drags the window
 // (--wails-draggable), double-clicking it zooms, and the controls opt out so they take
 // clicks. The left inset clears the traffic lights. The bar's height and that inset line
@@ -121,6 +135,11 @@ export function AppHeader(props: AppHeaderProps) {
     notifications,
     onOpenNotification = () => undefined,
     onNotificationSettings = onOpenSettings,
+    githubThreads,
+    settings = null,
+    onOpenThread = () => undefined,
+    onGitHubThreadsSettings = onOpenSettings,
+    onSettingsSaved = () => undefined,
     search,
     searchRef,
   } = props
@@ -184,6 +203,15 @@ export function AppHeader(props: AppHeaderProps) {
             notifications={notifications}
             onOpen={onOpenNotification}
             onSettings={onNotificationSettings}
+          />
+        )}
+        {githubThreads !== undefined && (
+          <GitHubThreadsMenu
+            threads={githubThreads}
+            settings={settings}
+            onOpen={onOpenThread}
+            onSettings={onGitHubThreadsSettings}
+            onSettingsSaved={onSettingsSaved}
           />
         )}
         <BudgetMenu gauge={gauge} onCheck={onBudgetCheck} />

@@ -14,7 +14,10 @@ import {
   reviewResult,
   budgetGauge,
   fileCheck,
+  githubThread,
+  githubThreads,
   item,
+  itemThreads,
   notification,
   itemResolution,
   linkedItem,
@@ -979,6 +982,238 @@ describe('App', () => {
       expect(await screen.findByRole('region', { name: 'Notifications' })).toBeInTheDocument()
       expect(screen.getByRole('switch', { name: 'Show in the menu bar' })).toBeChecked()
     })
+  })
+})
+
+describe('App’s GitHub notifications', () => {
+  // unread are two unread notifications: one about the inbox's pull request #7, one about
+  // #9, which the inbox doesn't list.
+  const unread = () =>
+    githubThreads({
+      status: { count: 5, unread: 2 },
+      byItem: [itemThreads({ unread: 1 }), itemThreads({ number: 9 })],
+      unread: [githubThread(), githubThread({ id: 1002, number: 9, title: 'Bump the parser' })],
+    })
+
+  // toolbar is the window's toolbar, the first banner: a page that shows may hold another.
+  function toolbar(): HTMLElement {
+    const [first] = screen.getAllByRole('banner')
+
+    if (first === undefined) {
+      throw new Error('no toolbar')
+    }
+
+    return first
+  }
+
+  // openButton opens the toolbar's GitHub notifications button, once it shows, and returns
+  // the queries scoped to its panel.
+  async function openButton() {
+    await userEvent.click(await within(toolbar()).findByRole('button', { name: /^GitHub notifications/ }))
+
+    return within(screen.getByRole('dialog', { name: 'GitHub notifications' }))
+  }
+
+  // row returns the inbox row of the item titled title in the Review requested list.
+  async function row(title: string) {
+    const review = within(await screen.findByRole('region', { name: 'Review requested' }))
+
+    return review.getByRole('button', { name: title }).closest('li')
+  }
+
+  it('shows the item a notification is about in the inbox, and one it doesn’t list on GitHub', async () => {
+    platform.githubThreadsSnapshot.mockResolvedValue(unread())
+    await renderApp()
+    await screen.findByRole('region', { name: 'Review requested' })
+
+    await userEvent.click(screen.getByRole('button', { name: 'Worktrees' }))
+    await userEvent.click((await openButton()).getByRole('button', { name: /Add the widget cache/ }))
+
+    expect(screen.getByRole('button', { name: 'Inbox' })).toHaveAttribute('aria-pressed', 'true')
+    expect(await row('Add the widget cache')).toHaveAttribute('data-highlighted', 'true')
+    expect(platform.openExternal).not.toHaveBeenCalled()
+
+    await userEvent.click((await openButton()).getByRole('button', { name: /Bump the parser/ }))
+
+    expect(platform.openExternal).toHaveBeenCalledExactlyOnceWith('https://github.com/acme-org/example-repo/pull/9')
+  })
+
+  it('reads only the app’s own mirror as the button opens: it sends GitHub nothing and marks nothing read', async () => {
+    platform.githubThreadsSnapshot.mockResolvedValue(unread())
+    await renderApp()
+    await screen.findByRole('region', { name: 'Review requested' })
+    await screen.findByRole('button', { name: /^GitHub notifications/ })
+
+    for (const fn of Object.values(platform)) {
+      fn.mockClear()
+    }
+
+    await openButton()
+    await act(async () => {
+      await Promise.resolve()
+    })
+
+    const called = Object.entries(platform)
+      .filter(([, fn]) => fn.mock.calls.length > 0)
+      .map(([name]) => name)
+
+    expect(called).toEqual(['githubThreadsSnapshot'])
+  })
+
+  it('tags each card with its unread notifications on GitHub, and again as they change', async () => {
+    platform.githubThreadsSnapshot.mockResolvedValue(unread())
+    await renderApp()
+
+    expect(await screen.findByText('1 unread on GitHub')).toHaveAttribute(
+      'title',
+      '1 unread on GitHub · GitHub notified you: Review requested',
+    )
+
+    platform.githubThreadsSnapshot.mockResolvedValue(
+      githubThreads({ byItem: [itemThreads({ unread: 2, reasons: ['mention', 'review_requested'] })] }),
+    )
+    act(() => {
+      emit('ghthreads:updated')
+    })
+
+    expect(await screen.findByText('2 unread on GitHub')).toHaveAttribute(
+      'title',
+      '2 unread on GitHub · GitHub notified you: Mentioned, Review requested',
+    )
+  })
+
+  it('turns automatic clearing on from the button, keeps the settings it stored, and offers it no more', async () => {
+    platform.setGitHubNotificationSwitch.mockImplementation((name, on) =>
+      stored({ githubNotifications: { ...settings().githubNotifications, [name]: on } }),
+    )
+    await renderApp()
+    await screen.findByRole('region', { name: 'Review requested' })
+
+    await userEvent.click((await openButton()).getByRole('button', { name: 'Turn on automatic clearing' }))
+
+    await waitFor(() => {
+      expect(platform.checkGitHubThreadsNow).toHaveBeenCalledOnce()
+    })
+    expect(platform.setGitHubNotificationSwitch).toHaveBeenCalledExactlyOnceWith('auto', true)
+    expect(screen.queryByRole('button', { name: 'Turn on automatic clearing' })).not.toBeInTheDocument()
+  })
+
+  it('opens Settings → GitHub notifications from the button', async () => {
+    await renderApp()
+    await screen.findByRole('region', { name: 'Review requested' })
+
+    await userEvent.click((await openButton()).getByRole('button', { name: 'Settings' }))
+
+    expect(await screen.findByRole('region', { name: 'GitHub notifications' })).toBeInTheDocument()
+    expect(screen.getByRole('switch', { name: 'Read my GitHub notifications' })).toBeChecked()
+  })
+
+  it('hides the button while the app doesn’t read them', async () => {
+    platform.githubThreadsSnapshot.mockResolvedValue(githubThreads({ status: { reading: false } }))
+    await renderApp()
+    await screen.findByRole('region', { name: 'Review requested' })
+
+    expect(screen.queryByRole('button', { name: /^GitHub notifications/ })).not.toBeInTheDocument()
+  })
+
+  // toolbarButton is the toolbar's GitHub notifications button, or null while it is hidden.
+  function toolbarButton() {
+    return within(toolbar()).queryByRole('button', { name: /^GitHub notifications/ })
+  }
+
+  // rulesStored answers the GitHub notification setters as the backend stores them, on top
+  // of the app tests' own settings.
+  function rulesStored() {
+    platform.setGitHubNotificationSwitch.mockImplementation((name, on) =>
+      stored({ githubNotifications: { ...settings().githubNotifications, [name]: on } }),
+    )
+  }
+
+  // openGitHubSettings opens Settings → GitHub notifications from the button.
+  async function openGitHubSettings() {
+    await userEvent.click((await openButton()).getByRole('button', { name: 'Settings' }))
+    await screen.findByRole('region', { name: 'GitHub notifications' })
+  }
+
+  it('hides the button and every tag as soon as reading is turned off, and reads the mirror again', async () => {
+    rulesStored()
+    // The mirror still says it reads them: nothing tells the window otherwise yet.
+    platform.githubThreadsSnapshot.mockResolvedValue(unread())
+    await renderApp()
+    await screen.findByText('1 unread on GitHub')
+    await openGitHubSettings()
+    const reads = platform.githubThreadsSnapshot.mock.calls.length
+
+    await userEvent.click(screen.getByRole('switch', { name: 'Read my GitHub notifications' }))
+
+    await waitFor(() => {
+      expect(toolbarButton()).not.toBeInTheDocument()
+    })
+    expect(platform.githubThreadsSnapshot.mock.calls.length).toBeGreaterThan(reads)
+    expect(platform.checkGitHubThreadsNow).not.toHaveBeenCalled()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Close settings' }))
+    expect(await screen.findByRole('region', { name: 'Review requested' })).toBeInTheDocument()
+    expect(screen.queryByText('1 unread on GitHub')).not.toBeInTheDocument()
+  })
+
+  it('shares one mirror between the button, the cards, and the settings, so Check again in Settings updates all', async () => {
+    platform.githubThreadsSnapshot.mockResolvedValue(githubThreads({ status: { count: 3 } }))
+    platform.checkGitHubThreadsNow.mockResolvedValue(unread())
+    await renderApp()
+    await openGitHubSettings()
+
+    expect(listening('ghthreads:updated')).toBe(1)
+    expect(platform.githubThreadsSnapshot).toHaveBeenCalledTimes(2)
+
+    await userEvent.click(screen.getByRole('button', { name: 'Check again' }))
+
+    expect(await screen.findByText(/^5 in your GitHub inbox · checked/)).toBeInTheDocument()
+    expect(toolbarButton()).toHaveAccessibleName('GitHub notifications, 5 in your inbox, 2 unread')
+    expect(platform.checkGitHubThreadsNow).toHaveBeenCalledOnce()
+    // Opening the settings read the mirror once, as the button's opening did; nothing else.
+    expect(platform.githubThreadsSnapshot).toHaveBeenCalledTimes(2)
+  })
+
+  it('stores the button’s automatic clearing and a change made in Settings one at a time, in order', async () => {
+    let answer: (value: Settings) => void = () => undefined
+    platform.setGitHubNotificationSwitch.mockImplementation((name, on) => {
+      if (name === 'auto') {
+        return new Promise<Settings>((resolve) => {
+          answer = resolve
+        })
+      }
+
+      // The backend has stored the button's change first, so it holds it too.
+      return stored({ githubNotifications: { ...settings().githubNotifications, auto: true, [name]: on } })
+    })
+    await renderApp()
+    await screen.findByRole('region', { name: 'Review requested' })
+
+    const panel = await openButton()
+    await userEvent.click(panel.getByRole('button', { name: 'Turn on automatic clearing' }))
+    await userEvent.click(panel.getByRole('button', { name: 'Settings' }))
+    await screen.findByRole('region', { name: 'GitHub notifications' })
+    await userEvent.click(screen.getByRole('switch', { name: 'Include repositories you only watch' }))
+
+    // The change in Settings waits for the button's.
+    expect(platform.setGitHubNotificationSwitch.mock.calls).toEqual([['auto', true]])
+
+    await act(async () => {
+      answer(await stored({ githubNotifications: { ...settings().githubNotifications, auto: true } }))
+    })
+
+    await waitFor(() => {
+      expect(platform.setGitHubNotificationSwitch.mock.calls).toEqual([
+        ['auto', true],
+        ['watching', false],
+      ])
+    })
+    await waitFor(() => {
+      expect(screen.getByRole('switch', { name: 'Include repositories you only watch' })).not.toBeChecked()
+    })
+    expect(screen.getByRole('switch', { name: 'Clear them automatically' })).toBeChecked()
+    expect(platform.checkGitHubThreadsNow).toHaveBeenCalledOnce()
   })
 })
 

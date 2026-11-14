@@ -16,6 +16,7 @@ export type SettingsSection =
   | 'account'
   | 'appearance'
   | 'notifications'
+  | 'github'
   | 'refreshing'
   | 'snoozing'
   | 'reviewing'
@@ -40,7 +41,7 @@ export interface SectionGroup {
 // live, the profiles a launch runs with, the launch itself and what it trusts, and the
 // worktrees it leaves behind), then the tools, and About.
 export const sectionGroups: readonly SectionGroup[] = [
-  { heading: '', sections: ['account', 'appearance', 'notifications', 'refreshing'] },
+  { heading: '', sections: ['account', 'appearance', 'notifications', 'github', 'refreshing'] },
   { heading: 'Inbox', sections: ['snoozing', 'reviewing'] },
   { heading: 'Agents', sections: ['repositories', 'profiles', 'launching', 'trust', 'files', 'worktrees'] },
   { heading: 'Tools', sections: ['integrations'] },
@@ -60,6 +61,11 @@ export const sectionInfo: Readonly<Record<SettingsSection, { label: string; desc
   notifications: {
     label: 'Notifications',
     description: 'The menu bar icon, how long toasts stay, and the banners that tell you when something new needs you.',
+  },
+  github: {
+    label: 'GitHub notifications',
+    description:
+      'Whether the app reads your notifications on GitHub, and clears them there once the work behind them is done.',
   },
   refreshing: {
     label: 'Refreshing',
@@ -164,6 +170,34 @@ export const settingsIndex: Readonly<Record<SettingsSection, readonly SettingEnt
     { label: 'Test', keywords: ['test notification', 'send a test', 'sample banner', 'permission'] },
     { label: 'Agent sessions', keywords: ['session banners', ...agentNames] },
     ...banner(true),
+  ],
+  // The switches of reading and clearing, the moments that clear, what else counts, and
+  // what clearing does. Two of the moments name the product.
+  github: [
+    {
+      label: 'Read my GitHub notifications',
+      keywords: ['GitHub inbox', 'notifications', 'threads', 'unread', 'mirror', 'turn off', 'refused', 'token'],
+    },
+    {
+      label: 'Clear them automatically',
+      keywords: ['automatic clearing', 'auto clear', 'clean up', 'cleanup', 'housekeeping', 'inbox zero'],
+    },
+    { label: 'When to clear', keywords: ['triggers', 'finished', 'clearing'] },
+    { label: 'A pull request is merged', keywords: ['merge', 'trigger'] },
+    { label: 'A pull request is closed without merging', keywords: ['closed', 'trigger'] },
+    { label: 'An issue is closed', keywords: ['closed', 'trigger'] },
+    { label: `You submit a review in ${brand.name}`, keywords: ['approve', 'request changes', 'trigger'] },
+    { label: `You dismiss an item in ${brand.name}`, keywords: ['dismissed', 'archive', 'trigger'] },
+    {
+      label: 'You unassign yourself or remove yourself as reviewer',
+      keywords: ['unassigned', 'review request', 'trigger'],
+    },
+    { label: 'Include repositories you only watch', keywords: ['watching', 'subscribed', 'watched repositories'] },
+    {
+      label: 'Count bot activity after it closes as seen',
+      keywords: ['bots', 'dependabot', 'github-actions', 'bot comments'],
+    },
+    { label: 'What clearing does', keywords: ['mark done', 'mark read', 'done', 'read'] },
   ],
   snoozing: [
     { label: 'Snooze for', keywords: ['snooze length', 'days', 'default snooze', 'duration'] },
