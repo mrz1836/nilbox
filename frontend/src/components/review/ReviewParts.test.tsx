@@ -496,6 +496,46 @@ describe('ActionButton', () => {
     )
 
     expect(screen.getByRole('button', { name: 'Working…' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'More review actions' })).not.toHaveClass('bg-accent/14')
+  })
+
+  it('greys the menu’s arrow with a button held back, and still opens the menu', async () => {
+    const onSelect = vi.fn()
+    const offers = [offer({ action: 'comment', label: 'Comment' }), offer()]
+    const { rerender } = render(
+      <ActionButton
+        offers={offers}
+        selected="comment"
+        onSelect={onSelect}
+        onRun={vi.fn()}
+        busy={false}
+        blocked={() => 'Write something first.'}
+      />,
+    )
+
+    expect(screen.getByRole('button', { name: 'Comment' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Comment' })).toHaveAttribute('title', 'Write something first.')
+    const arrow = screen.getByRole('button', { name: 'More review actions' })
+    expect(arrow).toBeEnabled()
+    expect(arrow).not.toHaveClass('bg-accent/14')
+    await userEvent.click(arrow)
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Approve' }))
+    expect(onSelect).toHaveBeenCalledWith('approve')
+
+    // Once the action can run, both halves take the primary look.
+    rerender(
+      <ActionButton
+        offers={offers}
+        selected="comment"
+        onSelect={onSelect}
+        onRun={vi.fn()}
+        busy={false}
+        blocked={() => ''}
+      />,
+    )
+    expect(screen.getByRole('button', { name: 'Comment' })).toBeEnabled()
+    expect(screen.getByRole('button', { name: 'Comment' })).toHaveClass('bg-accent/14')
+    expect(screen.getByRole('button', { name: 'More review actions' })).toHaveClass('bg-accent/14')
   })
 
   it('runs a close when it is picked, and never makes it the button or the choice', async () => {

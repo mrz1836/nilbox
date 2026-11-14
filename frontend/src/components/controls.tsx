@@ -22,6 +22,14 @@ const tintedButtonClass =
 // primaryButtonClass marks a view's main action.
 export const primaryButtonClass = `${tintedButtonClass} border-accent/45 bg-accent/14 enabled:hover:border-accent/65 enabled:hover:bg-accent/22 [&>svg]:text-accent`
 
+// heldButtonClass is a control that still works beside a tinted button that is held back,
+// such as a split button's menu, so the two halves read as one: it looks like the tinted
+// button disabled, neutral and flat, but takes a quiet hover. Its neutral classes repeat
+// tintedButtonClass's disabled ones rather than share a list, since Tailwind generates only
+// the class names it finds written out whole.
+export const heldButtonClass =
+  'inline-flex items-center justify-center gap-1.5 rounded-md border border-border bg-raised px-3 py-1.5 text-sm font-medium text-muted transition enabled:active:translate-y-px hover:text-text [&>svg]:text-muted hover:[&>svg]:text-text'
+
 // dangerButtonClass confirms a destructive action.
 export const dangerButtonClass = `${tintedButtonClass} border-danger/45 bg-danger/14 enabled:hover:border-danger/65 enabled:hover:bg-danger/22 [&>svg]:text-danger`
 

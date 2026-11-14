@@ -353,6 +353,26 @@ describe('IssueSheet', () => {
     })
   })
 
+  it('greys the menu’s arrow while the button is held back, and tints it once the action can run', async () => {
+    render(<Harness />)
+
+    // With nothing to say, Comment is held back, and its arrow looks it but still opens.
+    expect(await actionButton('Comment')).toBeDisabled()
+    const arrow = screen.getByRole('button', { name: 'More issue actions' })
+    expect(arrow).toBeEnabled()
+    expect(arrow).not.toHaveClass('bg-accent/14')
+
+    await choose('Close as not planned')
+    expect(await actionButton('Close as not planned')).toBeEnabled()
+    expect(screen.getByRole('button', { name: 'More issue actions' })).toHaveClass('bg-accent/14')
+
+    await choose('Comment')
+    expect(screen.getByRole('button', { name: 'More issue actions' })).not.toHaveClass('bg-accent/14')
+    await write('On it.')
+    expect(await actionButton('Comment')).toBeEnabled()
+    expect(screen.getByRole('button', { name: 'More issue actions' })).toHaveClass('bg-accent/14')
+  })
+
   it('closes as not planned once confirmed, posting the text first, and shows each step', async () => {
     let finish: (r: IssueResult) => void = () => undefined
     platform.actOnIssue.mockReturnValue(

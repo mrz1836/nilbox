@@ -1,4 +1,4 @@
-import { buttonClass, primaryButtonClass } from '../controls'
+import { buttonClass, heldButtonClass, primaryButtonClass } from '../controls'
 import { CheckIcon, ChevronDownIcon } from '../icons'
 import { MenuButton, type MenuItem } from '../Menu'
 
@@ -48,12 +48,13 @@ export function menuOnly(action: string): boolean {
 
 // ActionButton is a sheet's split button: the action it runs, labelled with exactly what
 // happens, as in "Approve & squash-merge", and a menu of every action the sheet offers,
-// with why each one that can't run now can't. With no action to run on its own (no
-// primary, and none chosen) but some the user may pick, such as a write to the branch that
-// is never the button by default, it reads "Choose an action" and only opens the menu. An
-// action that runs only from the menu sits apart at the menu's foot and runs when picked,
-// as the extra items below it do; with nothing else to do, the sheet says so and keeps
-// them in a menu beside the words.
+// with why each one that can't run now can't. While the button's action is held back or
+// running, the menu's arrow turns as grey as the button and its menu still opens. With no
+// action to run on its own (no primary, and none chosen) but some the user may pick, such
+// as a write to the branch that is never the button by default, it reads "Choose an
+// action" and only opens the menu. An action that runs only from the menu sits apart at
+// the menu's foot and runs when picked, as the extra items below it do; with nothing else
+// to do, the sheet says so and keeps them in a menu beside the words.
 export function ActionButton<A extends string>({
   offers,
   selected,
@@ -124,12 +125,13 @@ export function ActionButton<A extends string>({
   }
 
   const reason = offer.enabled ? blocked(offer.action) : offer.reason
+  const held = busy || !offer.enabled || reason !== ''
 
   return (
     <div className="flex items-stretch">
       <button
         type="button"
-        disabled={busy || !offer.enabled || reason !== ''}
+        disabled={held}
         title={reason === '' ? `${offer.label} (⌘↩)` : reason}
         onClick={() => {
           onRun(offer.action)
@@ -144,7 +146,7 @@ export function ActionButton<A extends string>({
         items={items}
         // h-full: the menu wraps its button in a div, which the row stretches to the
         // label's height, so the button fills it rather than keep the icon's.
-        className={`${primaryButtonClass} h-full rounded-l-none border-l-0 px-1.5`}
+        className={`${held ? heldButtonClass : primaryButtonClass} h-full rounded-l-none border-l-0 px-1.5`}
       >
         <ChevronDownIcon className="size-3.5" />
       </MenuButton>
