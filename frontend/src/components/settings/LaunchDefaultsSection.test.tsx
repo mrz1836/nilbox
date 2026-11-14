@@ -43,8 +43,9 @@ function renderSection(stored: LaunchDefaults[] = [], onChanged = vi.fn(() => Pr
 
 beforeEach(() => {
   platform.listLaunchTargets.mockResolvedValue([
-    { owner: 'acme-org', name: '', items: 3 },
-    { owner: 'acme-org', name: 'api', items: 2 },
+    { owner: 'acme-org', name: '', items: 3, cloned: true },
+    { owner: 'acme-org', name: 'api', items: 2, cloned: false },
+    { owner: 'acme-org', name: 'example-repo', items: 0, cloned: true },
   ])
 })
 
@@ -102,6 +103,21 @@ describe('LaunchDefaultsSection', () => {
     })
     expect(onChanged).toHaveBeenCalledOnce()
     expect(await screen.findByText('Saved the defaults for acme-org.')).toBeInTheDocument()
+  })
+
+  it('offers the inbox’s and the clones’ orgs and repositories', async () => {
+    renderSection()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Add defaults' }))
+
+    const targets = 'datalist[id$="-targets"]'
+
+    await waitFor(() => {
+      expect(document.querySelectorAll(`${targets} option`)).toHaveLength(3)
+    })
+    expect(document.querySelector(`${targets} option[value="acme-org"]`)).toHaveTextContent('All repositories')
+    expect(document.querySelector(`${targets} option[value="acme-org/api"]`)).toHaveTextContent('2 in the inbox')
+    expect(document.querySelector(`${targets} option[value="acme-org/example-repo"]`)).toHaveTextContent('Local clone')
   })
 
   it('shows a repository what it inherits from its org', async () => {

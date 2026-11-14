@@ -645,7 +645,7 @@ func assemble(pool *sql.DB, info startup, opts Options, logger *slog.Logger) *Co
 		}),
 		LaunchDefaults: launchdefaults.NewService(launchdefaults.Config{
 			Store: defaultsStore, Profiles: profileStore, Prompts: promptStore, Repos: inboxRepos{store: inboxStore},
-			File: info.kept.defaultsFile, Logger: logger,
+			Clones: repoScripts, File: info.kept.defaultsFile, Logger: logger,
 		}),
 		Inbox:         inboxSvc,
 		Launcher:      launch,

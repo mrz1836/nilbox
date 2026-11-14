@@ -1142,7 +1142,8 @@ app:lint` reads.
   case; `Delete`, `Duplicate` ("<name> copy", right after the original), and `Move` (up or
   down past the nearest script shown in the clone named, so the move shows on that page)
   change the order, and `RepoNames` lists the clones' GitHub repositories for the editor's
-  Chosen list, reading origins four at a time and keeping each until the clone's
+  Chosen list and, through core, the launch defaults' targets (the Pinned and muted field
+  and Add defaults), reading origins four at a time and keeping each until the clone's
   `.git/config` changes, forgetting a clone no longer listed, and starting no more reads
   once the window cancels the call. `List` shows the ones whose scope includes the clone:
   every clone, one with a `go.mod` at its root, or its origin among the chosen

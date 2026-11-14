@@ -8,6 +8,7 @@ import type {
   LaunchDefaultsInput,
   LaunchRequest,
   LaunchSource,
+  LaunchTarget,
   Resolution,
 } from '../platform'
 
@@ -247,4 +248,18 @@ export function saveStatus(target: string, promptName: string, repo: string, s: 
   return notes.length === 0
     ? { tone: 'success', text: saved }
     : { tone: 'warning', text: `${saved} ${notes.join(' ')}` }
+}
+
+// targetHint says what a target the pickers offer is: an org covers all its repositories,
+// and a repository has items in the inbox, a local clone, or neither.
+export function targetHint(t: LaunchTarget): string {
+  if (t.name === '') {
+    return 'All repositories'
+  }
+
+  if (t.items > 0) {
+    return `${String(t.items)} in the inbox`
+  }
+
+  return t.cloned ? 'Local clone' : '0 in the inbox'
 }

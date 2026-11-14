@@ -18,14 +18,20 @@ import (
 	"github.com/mrz1836/nilbox/internal/testutil"
 )
 
-// acme is the fake org most tests use, and profileAlt the harness's Codex profile.
+// acme is the fake org most tests use, beta another, apiRepo a repository's name, and
+// profileAlt the harness's Codex profile.
 const (
 	acme       = "acme-org"
+	beta       = "beta-org"
+	apiRepo    = "api"
 	profileAlt = "alt"
 )
 
-// errFakeRepos is what failingRepos returns.
-var errFakeRepos = errors.New("repositories unreadable")
+// errFakeRepos is what failingRepos returns, and errFakeClones what failingClones does.
+var (
+	errFakeRepos  = errors.New("repositories unreadable")
+	errFakeClones = errors.New("clones unreadable")
+)
 
 // fakeRepos lists fixed repositories, as the inbox would.
 type fakeRepos []launchdefaults.Target
@@ -39,6 +45,20 @@ type failingRepos struct{}
 
 func (failingRepos) Repos(context.Context) ([]launchdefaults.Target, error) {
 	return nil, errFakeRepos
+}
+
+// fakeClones lists fixed origins, owner/name, as the clones' would be.
+type fakeClones []string
+
+func (f fakeClones) RepoNames(context.Context) ([]string, error) {
+	return f, nil
+}
+
+// failingClones cannot list the clones.
+type failingClones struct{}
+
+func (failingClones) RepoNames(context.Context) ([]string, error) {
+	return nil, errFakeClones
 }
 
 // harness is a launch defaults Service over a database with the starter prompts and a
@@ -88,6 +108,16 @@ func newHarness(t *testing.T) *harness {
 func (h *harness) withRepos(repos launchdefaults.RepoSource) *launchdefaults.Service {
 	return launchdefaults.NewService(launchdefaults.Config{
 		Store: h.store, Profiles: h.known, Prompts: h.library, Repos: repos,
+	})
+}
+
+// withSources returns a Service over the harness's stores that lists repos as the
+// repositories the inbox has seen and clones as the clones', logging to logs.
+func (h *harness) withSources(repos launchdefaults.RepoSource, clones launchdefaults.CloneSource,
+	logs *testutil.Logs,
+) *launchdefaults.Service {
+	return launchdefaults.NewService(launchdefaults.Config{
+		Store: h.store, Profiles: h.known, Prompts: h.library, Repos: repos, Clones: clones, Logger: logs.Logger(),
 	})
 }
 
@@ -322,7 +352,7 @@ func TestPromptUses(t *testing.T) {
 	require.NoError(t, err)
 	_, err = h.svc.Save(ctx, launchdefaults.Input{Owner: acme, Name: "example-repo", IssuePromptID: &h.work})
 	require.NoError(t, err)
-	_, err = h.svc.Save(ctx, launchdefaults.Input{Owner: "beta-org", Effort: "high"})
+	_, err = h.svc.Save(ctx, launchdefaults.Input{Owner: beta, Effort: "high"})
 	require.NoError(t, err)
 
 	uses, err := h.store.PromptUses(ctx)
@@ -340,17 +370,17 @@ func TestTargets(t *testing.T) {
 	h := newHarness(t)
 
 	got, err := h.withRepos(fakeRepos{
-		{Owner: acme, Name: "api", Items: 2},
+		{Owner: acme, Name: apiRepo, Items: 2},
 		{Owner: acme, Name: "web", Items: 1},
-		{Owner: "beta-org", Name: "tools"},
+		{Owner: beta, Name: "tools"},
 	}).Targets(t.Context())
 	require.NoError(t, err)
 	assert.Equal(t, []launchdefaults.Target{
 		{Owner: acme, Items: 3},
-		{Owner: acme, Name: "api", Items: 2},
+		{Owner: acme, Name: apiRepo, Items: 2},
 		{Owner: acme, Name: "web", Items: 1},
-		{Owner: "beta-org", Items: 0},
-		{Owner: "beta-org", Name: "tools", Items: 0},
+		{Owner: beta, Items: 0},
+		{Owner: beta, Name: "tools", Items: 0},
 	}, got)
 }
 
@@ -360,13 +390,13 @@ func TestTargetsGroupAnOwnerIgnoringCase(t *testing.T) {
 	h := newHarness(t)
 
 	got, err := h.withRepos(fakeRepos{
-		{Owner: "Acme-Org", Name: "api", Items: 2},
+		{Owner: "Acme-Org", Name: apiRepo, Items: 2},
 		{Owner: acme, Name: "web", Items: 1},
 	}).Targets(t.Context())
 	require.NoError(t, err)
 	assert.Equal(t, []launchdefaults.Target{
 		{Owner: "Acme-Org", Items: 3},
-		{Owner: "Acme-Org", Name: "api", Items: 2},
+		{Owner: "Acme-Org", Name: apiRepo, Items: 2},
 		{Owner: acme, Name: "web", Items: 1},
 	}, got, "one owner, named as its first repository spells it")
 }
@@ -380,12 +410,102 @@ func TestTargetsWithNoRepositories(t *testing.T) {
 	assert.Empty(t, got)
 }
 
+func TestTargetsAddTheClonesRepositories(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+
+	got, err := h.withSources(fakeRepos{
+		{Owner: acme, Name: apiRepo, Items: 2},
+		{Owner: "gamma-org", Name: "tools", Items: 1},
+	}, fakeClones{"beta-org/example-repo", "acme-org/web", "not a name"}, &testutil.Logs{}).Targets(t.Context())
+	require.NoError(t, err)
+	assert.Equal(t, []launchdefaults.Target{
+		{Owner: acme, Items: 2, Cloned: true},
+		{Owner: acme, Name: apiRepo, Items: 2},
+		{Owner: acme, Name: "web", Cloned: true},
+		{Owner: beta, Cloned: true},
+		{Owner: beta, Name: "example-repo", Cloned: true},
+		{Owner: "gamma-org", Items: 1},
+		{Owner: "gamma-org", Name: "tools", Items: 1},
+	}, got, "an org only a clone names gets its rows, in order among the inbox's, and a name that can't be one is left out")
+}
+
+func TestTargetsMarkAnInboxRepositoryCloned(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+
+	got, err := h.withSources(fakeRepos{
+		{Owner: "Acme-Org", Name: "Example-Repo", Items: 3},
+		{Owner: "Delta-Org", Name: "web"},
+	}, fakeClones{"acme-org/aaa-repo", "acme-org/example-repo", "delta-org/web"}, &testutil.Logs{}).Targets(t.Context())
+	require.NoError(t, err)
+	assert.Equal(t, []launchdefaults.Target{
+		{Owner: "Acme-Org", Items: 3, Cloned: true},
+		{Owner: acme, Name: "aaa-repo", Cloned: true},
+		{Owner: "Acme-Org", Name: "Example-Repo", Items: 3, Cloned: true},
+		{Owner: "Delta-Org", Cloned: true},
+		{Owner: "Delta-Org", Name: "web", Cloned: true},
+	}, got, "a repository both have is listed once, as the inbox spells it, and so is its org")
+}
+
+func TestTargetsWithClonesThatCantBeListed(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	inbox := fakeRepos{{Owner: acme, Name: apiRepo, Items: 2}}
+
+	logs := &testutil.Logs{}
+	got, err := h.withSources(inbox, failingClones{}, logs).Targets(t.Context())
+	require.NoError(t, err, "a location that can't be read never empties the list")
+	assert.Equal(t, []launchdefaults.Target{
+		{Owner: acme, Items: 2},
+		{Owner: acme, Name: apiRepo, Items: 2},
+	}, got)
+	assert.Contains(t, logs.String(), "could not list the clones' repositories")
+	assert.Contains(t, logs.String(), errFakeClones.Error())
+
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+
+	_, err = h.withSources(inbox, failingClones{}, &testutil.Logs{}).Targets(ctx)
+	require.ErrorIs(t, err, errFakeClones, "a caller that has gone gets the error")
+	require.ErrorContains(t, err, "list the clones' repositories")
+}
+
+func TestTargetsWithNoClones(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	inbox := fakeRepos{{Owner: acme, Name: apiRepo, Items: 2}}
+	want := []launchdefaults.Target{
+		{Owner: acme, Items: 2},
+		{Owner: acme, Name: apiRepo, Items: 2},
+	}
+
+	got, err := h.withSources(inbox, nil, &testutil.Logs{}).Targets(t.Context())
+	require.NoError(t, err)
+	assert.Equal(t, want, got, "with no clone source, the inbox's alone")
+
+	got, err = h.withSources(inbox, fakeClones{}, &testutil.Logs{}).Targets(t.Context())
+	require.NoError(t, err)
+	assert.Equal(t, want, got, "with no clones, the inbox's alone")
+
+	got, err = h.withSources(fakeRepos{}, fakeClones{"beta-org/example-repo"}, &testutil.Logs{}).Targets(t.Context())
+	require.NoError(t, err)
+	assert.Equal(t, []launchdefaults.Target{
+		{Owner: beta, Cloned: true},
+		{Owner: beta, Name: "example-repo", Cloned: true},
+	}, got, "with an empty inbox, the clones' alone")
+}
+
 func TestIndex(t *testing.T) {
 	t.Parallel()
 
 	idx := launchdefaults.NewIndex([]launchdefaults.Defaults{
 		{Owner: acme, Models: claude("opus")},
-		{Owner: acme, Name: "api", Effort: "high"},
+		{Owner: acme, Name: apiRepo, Effort: "high"},
 	})
 
 	org, own := idx.For(repo.Name{Owner: "ACME-ORG", Repo: "Api"})

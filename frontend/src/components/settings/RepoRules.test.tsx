@@ -79,18 +79,22 @@ describe('RepoRules', () => {
     expect(platform.setRepoRule).toHaveBeenLastCalledWith('acme-org', '')
   })
 
-  it('pins or mutes what is typed, offering the inbox’s orgs and repositories', async () => {
+  it('pins or mutes what is typed, offering the inbox’s and the clones’ orgs and repositories', async () => {
     platform.listLaunchTargets.mockResolvedValue([
-      { owner: 'acme-org', name: '', items: 3 },
-      { owner: 'acme-org', name: 'web', items: 2 },
+      { owner: 'acme-org', name: '', items: 3, cloned: false },
+      { owner: 'acme-org', name: 'web', items: 2, cloned: false },
+      { owner: 'beta-org', name: '', items: 0, cloned: true },
+      { owner: 'beta-org', name: 'example-repo', items: 0, cloned: true },
     ])
     platform.setRepoRule.mockResolvedValue(settings({ repoRules: { pinned: [], muted: ['acme-org/web'] } }))
     renderSection()
 
     await waitFor(() => {
-      expect(document.querySelectorAll('datalist option')).toHaveLength(2)
+      expect(document.querySelectorAll('datalist option')).toHaveLength(4)
     })
     expect(document.querySelector('datalist option[value="acme-org/web"]')).toHaveTextContent('2 in the inbox')
+    expect(document.querySelector('datalist option[value="beta-org"]')).toHaveTextContent('All repositories')
+    expect(document.querySelector('datalist option[value="beta-org/example-repo"]')).toHaveTextContent('Local clone')
 
     const add = screen.getByRole('button', { name: 'Mute' })
     expect(add).toBeDisabled()

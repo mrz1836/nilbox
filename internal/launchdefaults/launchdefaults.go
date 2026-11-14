@@ -10,6 +10,7 @@
 package launchdefaults
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -126,7 +127,8 @@ func anySet(m map[agent.ID]string) bool {
 	return false
 }
 
-// Target is an org or repository the inbox has seen, offered when adding defaults.
+// Target is an org or repository the inbox has seen or a clone's origin names, offered
+// when adding defaults and when pinning or muting.
 type Target struct {
 	// Owner is the org or user; Name is the repository, or "" for the owner.
 	Owner string `json:"owner"`
@@ -134,6 +136,10 @@ type Target struct {
 
 	// Items counts the inbox items listed for it now.
 	Items int `json:"items"`
+
+	// Cloned reports that a clone in the repository locations has this repository as its
+	// origin; for an owner, that one of its repositories is cloned.
+	Cloned bool `json:"cloned"`
 }
 
 // ProfileLookup finds an agent's stored profile by name, or returns
@@ -156,8 +162,15 @@ type RepoSource interface {
 	Repos(ctx context.Context) ([]Target, error)
 }
 
+// CloneSource lists the GitHub repositories of the clones in the repository locations.
+// *scripts.Service implements it.
+type CloneSource interface {
+	// RepoNames returns each clone's origin as owner/name, each once.
+	RepoNames(ctx context.Context) ([]string, error)
+}
+
 // Config holds a Service's dependencies. Store, Profiles, and Prompts are required;
-// Repos is needed only by Targets.
+// Repos is needed only by Targets, and Clones is optional.
 type Config struct {
 	// Store holds the launch defaults.
 	Store *Store
@@ -170,6 +183,10 @@ type Config struct {
 
 	// Repos lists the repositories offered when adding defaults.
 	Repos RepoSource
+
+	// Clones lists the clones' repositories, offered beside the inbox's. Nil offers the
+	// inbox's alone.
+	Clones CloneSource
 
 	// File is the copy of the launch defaults kept beside the database, written after
 	// every change to them. Optional.
@@ -185,6 +202,7 @@ type Service struct {
 	profiles ProfileLookup
 	prompts  PromptLookup
 	repos    RepoSource
+	clones   CloneSource
 	file     *File
 	logger   *slog.Logger
 }
@@ -192,8 +210,8 @@ type Service struct {
 // NewService returns a Service over cfg.
 func NewService(cfg Config) *Service {
 	return &Service{
-		store: cfg.Store, profiles: cfg.Profiles, prompts: cfg.Prompts, repos: cfg.Repos, file: cfg.File,
-		logger: logging.Or(cfg.Logger),
+		store: cfg.Store, profiles: cfg.Profiles, prompts: cfg.Prompts, repos: cfg.Repos, clones: cfg.Clones,
+		file: cfg.File, logger: logging.Or(cfg.Logger),
 	}
 }
 
@@ -255,29 +273,111 @@ func (s *Service) Remove(ctx context.Context, owner, name string) error {
 	return nil
 }
 
-// Targets lists the owners and repositories the inbox has seen, each owner before its
-// repositories, for choosing where to add defaults. Archived repositories are left out.
-// An owner's Items adds up its repositories'.
+// Targets lists the owners and repositories the inbox has seen, and those the clones in
+// the repository locations have as their origin, each owner before its repositories, by
+// owner and then name ignoring case, for choosing where to add defaults and what to pin or
+// mute. It asks GitHub nothing. The inbox leaves out the repositories it knows are
+// archived; a clone's is listed whatever GitHub says of it. A repository both have is
+// listed once, as the inbox spells it, which is GitHub's spelling, and marked Cloned. An
+// owner's Items adds up its repositories', it is Cloned when one of them is, and it is
+// spelled as the first of its repositories the inbox has, else as its first.
+//
+// The clones that can't be listed are logged and left out, so a location that can't be
+// read never empties the list; only a caller that has gone gets the error.
 func (s *Service) Targets(ctx context.Context) ([]Target, error) {
 	repos, err := s.repos.Repos(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("list the repositories: %w", err)
 	}
 
-	out := make([]Target, 0, len(repos))
-	owner := -1
+	all := make([]listed, len(repos))
+	for i, r := range repos {
+		all[i] = listed{Target: r, inbox: true}
+	}
 
-	for _, r := range repos {
-		if owner < 0 || !strings.EqualFold(out[owner].Owner, r.Owner) {
+	if all, err = s.withClones(ctx, all); err != nil {
+		return nil, err
+	}
+
+	// Stable, so the inbox's own order, which its query sorts the same way, stands.
+	slices.SortStableFunc(all, func(a, b listed) int {
+		return cmp.Or(compareFold(a.Owner, b.Owner), compareFold(a.Name, b.Name))
+	})
+
+	out := make([]Target, 0, len(all))
+	owner := -1
+	inboxNamed := false // the owner is spelled as one of the inbox's repositories
+
+	for _, r := range all {
+		switch {
+		case owner < 0 || !strings.EqualFold(out[owner].Owner, r.Owner):
 			out = append(out, Target{Owner: r.Owner})
-			owner = len(out) - 1
+			owner, inboxNamed = len(out)-1, r.inbox
+		case r.inbox && !inboxNamed:
+			out[owner].Owner, inboxNamed = r.Owner, true
 		}
 
 		out[owner].Items += r.Items
-		out = append(out, r)
+		out[owner].Cloned = out[owner].Cloned || r.Cloned
+		out = append(out, r.Target)
 	}
 
 	return out, nil
+}
+
+// listed is a repository Targets lists, and whether the inbox has it.
+type listed struct {
+	Target
+
+	inbox bool
+}
+
+// withClones marks Cloned the repositories in all that a clone has as its origin, and
+// adds the clones' others. A failure to list the clones is logged and all returned as it
+// is, unless ctx is done.
+func (s *Service) withClones(ctx context.Context, all []listed) ([]listed, error) {
+	if s.clones == nil {
+		return all, nil
+	}
+
+	names, err := s.clones.RepoNames(ctx)
+	if err != nil {
+		if ctx.Err() != nil {
+			return nil, fmt.Errorf("list the clones' repositories: %w", err)
+		}
+
+		s.logger.WarnContext(ctx, "could not list the clones' repositories", "error", err)
+
+		return all, nil
+	}
+
+	at := make(map[string]int, len(all)+len(names))
+	for i, r := range all {
+		at[repo.Name{Owner: r.Owner, Repo: r.Name}.Key()] = i
+	}
+
+	for _, name := range names {
+		n, err := repo.Parse(name)
+		if err != nil {
+			continue
+		}
+
+		if i, ok := at[n.Key()]; ok {
+			all[i].Cloned = true
+
+			continue
+		}
+
+		at[n.Key()] = len(all)
+		all = append(all, listed{Target: Target{Owner: n.Owner, Name: n.Repo, Cloned: true}})
+	}
+
+	return all, nil
+}
+
+// compareFold orders names ignoring case, as the inbox's query does.
+func compareFold(a, b string) int {
+	return cmp.Compare(strings.ToLower(a), strings.ToLower(b))
 }
 
 // saved writes the copy of the launch defaults after a change to them, or to a prompt

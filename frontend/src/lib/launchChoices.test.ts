@@ -13,6 +13,7 @@ import {
   savableChoices,
   saveStatus,
   shadowedChoices,
+  targetHint,
   withChoices,
 } from './launchChoices'
 
@@ -167,5 +168,14 @@ describe('saving defaults that would not apply', () => {
     expect(joinList(['model'])).toBe('model')
     expect(joinList(['model', 'effort'])).toBe('model and effort')
     expect(joinList(['model', 'effort', 'plan mode'])).toBe('model, effort, and plan mode')
+  })
+})
+
+describe('targetHint', () => {
+  it('says what each target the pickers offer is', () => {
+    expect(targetHint({ owner: 'acme-org', name: '', items: 0, cloned: false })).toBe('All repositories')
+    expect(targetHint({ owner: 'acme-org', name: 'api', items: 2, cloned: true })).toBe('2 in the inbox')
+    expect(targetHint({ owner: 'acme-org', name: 'example-repo', items: 0, cloned: true })).toBe('Local clone')
+    expect(targetHint({ owner: 'acme-org', name: 'web', items: 0, cloned: false })).toBe('0 in the inbox')
   })
 })

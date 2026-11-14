@@ -1,5 +1,6 @@
 import { useId, useState, type SubmitEvent } from 'react'
 
+import { targetHint } from '../../lib/launchChoices'
 import { parseTarget, ruleRows, targetKey, withRepoRule, type RuleRow } from '../../lib/repoRules'
 import { useQuery } from '../../lib/useQuery'
 import type { SettingsSave } from '../../lib/useSettingsSave'
@@ -136,7 +137,7 @@ export function RepoRules({ settings, save }: RepoRulesProps) {
             <datalist id={`${id}-targets`}>
               {(targets.data ?? noTargets).map((t) => (
                 <option key={optionText(t)} value={optionText(t)}>
-                  {t.name === '' ? 'All repositories' : `${String(t.items)} in the inbox`}
+                  {targetHint(t)}
                 </option>
               ))}
             </datalist>

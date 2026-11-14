@@ -92,7 +92,9 @@ func (s *Service) Move(ctx context.Context, id int64, way Direction, dir string)
 }
 
 // RepoNames returns the GitHub repositories of the clones in the repository locations,
-// owner/name, each once, sorted: what a script for chosen repositories can choose from.
+// owner/name, each once, sorted: what a script for chosen repositories can choose from,
+// and, through core, the launch defaults' targets (the Pinned and muted field and Add
+// defaults).
 // Each clone's origin is read with git, a few at a time, and kept until the clone's
 // .git/config changes, so the editor opens at once after the first time; a clone the
 // listing no longer holds is forgotten. Once the caller has gone (ctx is done, as when the

@@ -83,7 +83,8 @@ export interface Input {
 }
 
 /**
- * Target is an org or repository the inbox has seen, offered when adding defaults.
+ * Target is an org or repository the inbox has seen or a clone's origin names, offered
+ * when adding defaults and when pinning or muting.
  */
 export interface Target {
     /**
@@ -96,4 +97,10 @@ export interface Target {
      * Items counts the inbox items listed for it now.
      */
     "items": number;
+
+    /**
+     * Cloned reports that a clone in the repository locations has this repository as its
+     * origin; for an owner, that one of its repositories is cloned.
+     */
+    "cloned": boolean;
 }

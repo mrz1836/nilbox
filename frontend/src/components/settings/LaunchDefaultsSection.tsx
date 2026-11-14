@@ -11,7 +11,7 @@ import {
   pinSummary,
   promptApplies,
 } from '../../lib/launch'
-import { defaultsInput, emptyDefaults, findDefaults } from '../../lib/launchChoices'
+import { defaultsInput, emptyDefaults, findDefaults, targetHint } from '../../lib/launchChoices'
 import { useDebouncedQuery, useQuery } from '../../lib/useQuery'
 import {
   checkLaunchDefaults,
@@ -431,7 +431,7 @@ function DefaultsEditor({
           <datalist id={`${id}-targets`}>
             {(targets.data ?? noTargets).map((t) => (
               <option key={targetText(t.owner, t.name)} value={targetText(t.owner, t.name)}>
-                {t.name === '' ? 'All repositories' : `${String(t.items)} in the inbox`}
+                {targetHint(t)}
               </option>
             ))}
           </datalist>

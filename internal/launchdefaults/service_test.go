@@ -132,7 +132,7 @@ func TestListOrdersByOwnerThenRepositoryIgnoringCase(t *testing.T) {
 
 	h := newHarness(t)
 
-	for _, target := range [][2]string{{"beta-org", ""}, {acme, "web"}, {"Acme-Org", ""}, {acme, "API"}} {
+	for _, target := range [][2]string{{beta, ""}, {acme, "web"}, {"Acme-Org", ""}, {acme, "API"}} {
 		_, err := h.svc.Save(t.Context(), launchdefaults.Input{Owner: target[0], Name: target[1], Models: claude("opus")})
 		require.NoError(t, err)
 	}
@@ -145,7 +145,7 @@ func TestListOrdersByOwnerThenRepositoryIgnoringCase(t *testing.T) {
 		targets = append(targets, d.Target())
 	}
 
-	assert.Equal(t, []string{"Acme-Org", "acme-org/API", "acme-org/web", "beta-org"}, targets)
+	assert.Equal(t, []string{"Acme-Org", "acme-org/API", "acme-org/web", beta}, targets)
 }
 
 func TestServiceReportsAClosedDatabase(t *testing.T) {

@@ -49,9 +49,17 @@ export function Save($in: $models.Input): $CancellablePromise<$models.Defaults> 
 }
 
 /**
- * Targets lists the owners and repositories the inbox has seen, each owner before its
- * repositories, for choosing where to add defaults. Archived repositories are left out.
- * An owner's Items adds up its repositories'.
+ * Targets lists the owners and repositories the inbox has seen, and those the clones in
+ * the repository locations have as their origin, each owner before its repositories, by
+ * owner and then name ignoring case, for choosing where to add defaults and what to pin or
+ * mute. It asks GitHub nothing. The inbox leaves out the repositories it knows are
+ * archived; a clone's is listed whatever GitHub says of it. A repository both have is
+ * listed once, as the inbox spells it, which is GitHub's spelling, and marked Cloned. An
+ * owner's Items adds up its repositories', it is Cloned when one of them is, and it is
+ * spelled as the first of its repositories the inbox has, else as its first.
+ *
+ * The clones that can't be listed are logged and left out, so a location that can't be
+ * read never empties the list; only a caller that has gone gets the error.
  */
 export function Targets(): $CancellablePromise<$models.Target[] | null> {
     return $Call.ByID(1352571007);
