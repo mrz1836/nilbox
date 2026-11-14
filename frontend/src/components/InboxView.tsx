@@ -233,11 +233,13 @@ function firstMessage(...messages: string[]): string {
   return messages.find((m) => m !== '') ?? ''
 }
 
-// InboxView shows the three inbox lists across the full width, with a refresh control and
-// the time of the last refresh. Each list has tabs for what was snoozed or dismissed from
-// it and collapses from its header, and each triage action is confirmed by a toast with an
-// Undo. When every list is empty, the inbox throws a party above them (InboxNil). The
-// account and the API budget live in the toolbar.
+// InboxView shows the inbox lists across the full width, with a refresh control and the
+// time of the last refresh; only a list that holds something, in any of its tabs, shows.
+// Each list has tabs for what was snoozed or dismissed from it and collapses from its
+// header, and each triage action is confirmed by a toast with an Undo. When every list is
+// empty, the inbox throws a party in their place (InboxNil), above any list that still
+// holds what was snoozed, dismissed, or muted. The account and the API budget live in the
+// toolbar.
 //
 // While the toolbar's query filters the inbox, each list shows only its matching items,
 // open whatever its stored collapse state, and a list with no match hides; when nothing

@@ -5,7 +5,7 @@ import type { FilteredList } from '../lib/inboxFilter'
 import { ofKind, shownItems, statusRanking } from '../lib/listOrder'
 import { prefersReducedMotion } from '../lib/motion'
 import { statusesOf } from '../lib/statusOrder'
-import { tabOf, triageTabs, type TriagedList, type TriageTab } from '../lib/triage'
+import { isEmptyList, tabOf, triageTabs, type TriagedList, type TriageTab } from '../lib/triage'
 import { worktreeOf } from '../lib/itemWorktrees'
 import { sessionsOf } from '../lib/sessions'
 import type { AgentSession, InboxItem, ItemResolution, ListKind, Worktree } from '../platform'
@@ -118,9 +118,12 @@ export interface ListSectionProps {
 // and issues can show only one kind on its own tab, left of that, its count then reading
 // "N of M".
 //
+// A list with nothing in any of its tabs is hidden but stays mounted, and comes back on its
+// own tab once something arrives.
+//
 // While the inbox is filtered, each tab shows only its matching items, in its own order,
 // and counts them; a tab with none points to the tabs that have some. A list with no
-// match anywhere is hidden but stays mounted, so it comes back as it was.
+// match anywhere is hidden the same way, so it comes back as it was.
 export function ListSection({
   title,
   triaged,
@@ -151,6 +154,8 @@ export function ListSection({
   // The sheets step through the cards in this same order (shownItems).
   const items = shownItems(triaged, tab, matched, order)
   const filtering = matched !== undefined
+  // empty says the whole list holds nothing, whatever the filter leaves of it.
+  const empty = isEmptyList(triaged)
   // elsewhere are the other tabs that hold matches, for a tab that holds none.
   const elsewhere = filtering ? triageTabs.filter((t) => t !== tab && matched[t].length > 0) : []
   // The sort shows on the list's own tab while it has a status to sort by, or is sorted
@@ -175,6 +180,12 @@ export function ListSection({
     setHighlight(reveal.id)
   } else if (reveal === null && highlight !== null) {
     setHighlight(null)
+  }
+
+  // A list that empties goes back to its own tab, so what arrives later shows there rather
+  // than behind an empty Dismissed or Snoozed.
+  if (empty && tab !== 'inbox') {
+    setTab('inbox')
   }
 
   // A card asked for that the list's kind leaves out, as one a notification opens, shows
@@ -232,7 +243,7 @@ export function ListSection({
   return (
     <section
       aria-label={title}
-      hidden={filtering && triageTabs.every((t) => matched[t].length === 0)}
+      hidden={empty || (filtering && triageTabs.every((t) => matched[t].length === 0))}
       className="rounded-lg border border-border bg-surface"
     >
       <div className={`flex items-center gap-1 px-1.5 ${collapsed ? '' : 'border-b border-border'}`}>

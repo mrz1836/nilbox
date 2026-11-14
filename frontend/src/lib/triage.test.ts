@@ -8,6 +8,7 @@ import {
   findItem,
   isBackFromSnooze,
   isDismissed,
+  isEmptyList,
   isMuted,
   isPinned,
   isPinnedItself,
@@ -307,6 +308,24 @@ describe('findItem and tabOf', () => {
     expect(tabOf(triaged, 3)).toBe('dismissed')
     expect(tabOf(triaged, 9)).toBeNull()
     expect(tabOf(triageList(list([item({ id: 4, repoRule: 'muted' })]), FIXED_NOW), 4)).toBe('muted')
+  })
+})
+
+describe('isEmptyList', () => {
+  it('is empty only with nothing in any tab and nothing more GitHub matched', () => {
+    expect(isEmptyList(triageList(list([]), FIXED_NOW))).toBe(true)
+
+    for (const held of [
+      item({ id: 1 }),
+      item({ id: 2, snoozedUntil: '2026-06-18T12:00:00Z' }),
+      item({ id: 3, dismissedAt: '2026-06-15T09:00:00Z' }),
+      item({ id: 4, repoRule: 'muted' }),
+    ]) {
+      expect(isEmptyList(triageList(list([held]), FIXED_NOW))).toBe(false)
+    }
+
+    // GitHub matched items it didn't return, which the list reads as "0 of 3".
+    expect(isEmptyList(triageList(list([], 3), FIXED_NOW))).toBe(false)
   })
 })
 

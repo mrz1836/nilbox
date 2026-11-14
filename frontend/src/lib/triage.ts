@@ -272,6 +272,12 @@ export function tabOf(triaged: TriagedList, id: number): TriageTab | null {
   return triageTabs.find((tab) => triaged[tab].some((item) => item.id === id)) ?? null
 }
 
+// isEmptyList reports whether a sorted list holds nothing in any tab, counting what GitHub
+// matched beyond the items it returned. The inbox hides such a list.
+export function isEmptyList(list: TriagedList): boolean {
+  return list.total === 0 && triageTabs.every((tab) => list[tab].length === 0)
+}
+
 // TriagedInbox is the whole inbox sorted into its tabs at one time. Everything in the
 // window that shows triage (the lists, the Inbox tab's count, the party at nil) reads
 // this one sorting.

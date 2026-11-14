@@ -172,6 +172,13 @@ describe('App', () => {
   })
 
   it('keeps the inbox lists collapsed the way they were left, across views', async () => {
+    // Assigned holds an item too, so it shows: a list with nothing in it hides.
+    platform.getInboxSnapshot.mockResolvedValue(
+      snapshot({
+        reviewRequested: list([item()]),
+        assigned: list([item({ id: 2, kind: 'issue', number: 31, title: 'Crash on start' })]),
+      }),
+    )
     platform.getCollapsedSections.mockResolvedValue(['assigned'])
     await renderApp()
 

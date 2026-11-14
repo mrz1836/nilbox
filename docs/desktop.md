@@ -1174,7 +1174,8 @@ it. Refreshing one card reads its projects when the last whole refresh could.
 Each list has four tabs: the list itself with its count (**Review requested 14**), then
 **Snoozed**, **Dismissed**, and **Muted**, each counted once it holds anything. Snoozing or
 dismissing an item moves it out of every list it is in, so the lists only show what still needs
-you.
+you. A list with nothing in any of its four tabs hides until something arrives, and comes back
+on its own tab.
 
 - **Snooze** sets an item aside for a while. Hover a card and click the clock, which shows the
   length (**3d**), to snooze it for your default length; the arrow beside it offers 1 day, 2
@@ -1671,7 +1672,8 @@ the requests to GitHub's API.
 
 ## Inbox nil
 
-When every list is empty, the inbox throws a party above them: **inbox == nil**, a one-liner,
+When every list is empty, the inbox throws a party in their place, above any list that still
+holds what you snoozed, dismissed, or muted: **inbox == nil**, a one-liner,
 and a terminal that checks off each list, counts what you snoozed and dismissed (with when the
 first snooze comes back), and panics, having nothing left to do. Confetti flies from the
 **nil**. Empty the inbox while you watch, by triaging the last item or by a refresh that finds
@@ -1681,8 +1683,9 @@ confetti and a new one-liner each time.
 
 The party needs a successful refresh: an inbox that was never refreshed, or whose last refresh
 failed, is unknown rather than empty. A list whose **N of M** count shows more on GitHub than
-was fetched is not empty either. The lists stay below the party, so the **Snoozed** and
-**Dismissed** tabs are a click away, and an **Undo** that brings an item back ends it. With
+was fetched is not empty either. A list that holds something set aside stays below the party,
+so its **Snoozed** and **Dismissed** tabs are a click away, and an **Undo** that brings an item
+back ends it. With
 **Reduce motion** on (System Settings → Accessibility → Display), everything holds still and no
 confetti flies.
 

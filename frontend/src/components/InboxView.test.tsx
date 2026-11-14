@@ -205,15 +205,19 @@ describe('InboxView', () => {
 
     expect((await section('Review requested')).getByText('2 of 250')).toBeInTheDocument()
     expect((await section('Authored')).getByText('1')).toBeInTheDocument()
-    expect((await section('Assigned')).getByText('0')).toBeInTheDocument()
-    expect((await section('Assigned')).getByText('Nothing here.')).toBeInTheDocument()
+    // A list with nothing in it hides.
+    expect(screen.queryByRole('region', { name: 'Assigned' })).not.toBeInTheDocument()
   })
 
   it('says when the inbox has not been refreshed yet', async () => {
     render(<Harness launch={launchOptions} clock={fixedNow} />)
 
-    expect((await section('Authored')).getByText('Nothing here.')).toBeInTheDocument()
-    expect(screen.getByText('Not refreshed yet')).toBeInTheDocument()
+    expect(await screen.findByText('Not refreshed yet')).toBeInTheDocument()
+    await waitFor(() => {
+      expect(screen.queryByText('Loading the inbox…')).not.toBeInTheDocument()
+    })
+    // Nothing is in any list yet, so none shows.
+    expect(screen.queryByRole('region')).not.toBeInTheDocument()
   })
 
   it('shows launch controls only once the launch options are loaded', async () => {
@@ -368,7 +372,10 @@ describe('InboxView', () => {
 
     const { unmount } = render(<Harness launch={launchOptions} clock={fixedNow} />)
 
-    expect(await screen.findAllByText('Nothing here.')).toHaveLength(3)
+    await waitFor(() => {
+      expect(screen.queryByText('Loading the inbox…')).not.toBeInTheDocument()
+    })
+    expect(screen.queryByRole('region')).not.toBeInTheDocument()
     expect(platform.on).toHaveBeenCalledExactlyOnceWith('inbox:updated', expect.any(Function))
 
     act(() => {
@@ -411,11 +418,14 @@ describe('InboxView', () => {
 })
 
 describe('InboxView collapsing', () => {
+  // Every list holds an item, so every list shows; Authored's are the ones the tests fold.
   const authored = snapshot({
+    reviewRequested: list([item({ id: 3, number: 20, title: 'Add the widget cache' })]),
     authored: list([
       item({ id: 1, title: 'Fix the parser' }),
       item({ id: 2, number: 8, title: 'Bump the parser', snoozedUntil: '2026-06-18T12:00:00Z' }),
     ]),
+    assigned: list([item({ id: 4, kind: 'issue', number: 31, title: 'Crash on start' })]),
   })
 
   it('collapses a list from its header to just its tabs, and opens it again', async () => {
@@ -635,6 +645,7 @@ describe('InboxView triage', () => {
   })
 
   it('explains empty tabs', async () => {
+    platform.getInboxSnapshot.mockResolvedValue(snapshot({ reviewRequested: list([fresh]) }))
     render(<Harness launch={launchOptions} clock={fixedNow} />)
     const review = await section('Review requested')
 
@@ -646,9 +657,10 @@ describe('InboxView triage', () => {
   })
 
   it('moves between tabs with the arrow keys', async () => {
+    platform.getInboxSnapshot.mockResolvedValue(snapshot({ reviewRequested: list([fresh]) }))
     render(<Harness launch={launchOptions} clock={fixedNow} />)
     const review = await section('Review requested')
-    const inbox = review.getByRole('tab', { name: 'Review requested 0' })
+    const inbox = review.getByRole('tab', { name: 'Review requested 1' })
 
     expect(inbox).toHaveAttribute('tabIndex', '0')
     expect(review.getByRole('tab', { name: 'Snoozed' })).toHaveAttribute('tabIndex', '-1')
@@ -1143,22 +1155,37 @@ describe('InboxView at nil', () => {
   // party finds the party, when there is one.
   const party = () => screen.queryByRole('region', { name: 'inbox == nil' })
 
-  it('throws a party over the lists once a refresh finds every list empty', async () => {
+  it('throws a party in place of the lists once a refresh finds every list empty', async () => {
     platform.getInboxSnapshot.mockResolvedValue(snapshot({ lastRefreshedAt: refreshed }))
     render(<Harness launch={launchOptions} clock={fixedNow} />)
 
     expect(await screen.findByRole('region', { name: 'inbox == nil' })).toBeInTheDocument()
     // Opening the page at nil sprinkles; the achievement is for emptying it.
     expect(screen.queryByText('Achievement unlocked')).not.toBeInTheDocument()
-    // The lists stay, for what was snoozed or dismissed.
-    expect(await section('Review requested')).toBeTruthy()
-    expect(screen.getAllByText('Nothing here.')).toHaveLength(3)
+    // With nothing set aside, no list shows.
+    for (const title of ['Review requested', 'Authored', 'Assigned']) {
+      expect(screen.queryByRole('region', { name: title })).not.toBeInTheDocument()
+    }
+  })
+
+  it('keeps a list that holds what was snoozed beside the party', async () => {
+    const snoozed = { ...last, snoozedUntil: '2026-06-18T12:00:00Z' }
+    platform.getInboxSnapshot.mockResolvedValue(snapshot({ lastRefreshedAt: refreshed, authored: list([snoozed]) }))
+    render(<Harness launch={launchOptions} clock={fixedNow} />)
+
+    expect(await screen.findByRole('region', { name: 'inbox == nil' })).toBeInTheDocument()
+    expect((await section('Authored')).getByRole('tab', { name: 'Snoozed 1' })).toBeInTheDocument()
+    expect(screen.queryByRole('region', { name: 'Review requested' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('region', { name: 'Assigned' })).not.toBeInTheDocument()
   })
 
   it('throws no party before the first refresh, after an error, or while anything is left', async () => {
     platform.getInboxSnapshot.mockResolvedValueOnce(snapshot())
     const { unmount } = render(<Harness launch={launchOptions} clock={fixedNow} />)
-    expect(await screen.findAllByText('Nothing here.')).toHaveLength(3)
+    expect(await screen.findByText('Not refreshed yet')).toBeInTheDocument()
+    await waitFor(() => {
+      expect(screen.queryByText('Loading the inbox…')).not.toBeInTheDocument()
+    })
     expect(party()).not.toBeInTheDocument()
     unmount()
 
@@ -1199,6 +1226,91 @@ describe('InboxView at nil', () => {
 
     expect(await review.findByRole('button', { name: 'Add the widget cache' })).toBeInTheDocument()
     expect(party()).not.toBeInTheDocument()
+  })
+})
+
+describe('InboxView empty lists', () => {
+  const refreshed = '2026-06-15T11:55:00Z'
+  const fresh = item({ id: 1, title: 'Add the widget cache' })
+  const snoozed = item({ id: 2, number: 8, title: 'Bump the parser', snoozedUntil: '2026-06-18T12:00:00Z' })
+  const dismissed = item({ id: 3, number: 9, title: 'Rename the flag', dismissedAt: '2026-06-15T09:00:00Z' })
+  const muted = item({ id: 4, number: 11, title: 'Quiet change', repo: 'acme-org/quiet', repoRule: 'muted' })
+
+  it('hides a list with nothing in any tab, and shows the ones that hold something', async () => {
+    platform.getInboxSnapshot.mockResolvedValue(
+      snapshot({
+        lastRefreshedAt: refreshed,
+        reviewRequested: list([muted]),
+        assigned: list([item({ id: 5, kind: 'issue', number: 31, title: 'Crash on start' })]),
+      }),
+    )
+    render(<Harness launch={launchOptions} clock={fixedNow} />)
+
+    expect((await section('Review requested')).getByRole('tab', { name: 'Muted 1' })).toBeInTheDocument()
+    expect((await section('Assigned')).getByRole('button', { name: 'Crash on start' })).toBeInTheDocument()
+    expect(screen.queryByRole('region', { name: 'Authored' })).not.toBeInTheDocument()
+  })
+
+  it('shows a list that holds only what was snoozed, dismissed, or muted', async () => {
+    platform.getInboxSnapshot.mockResolvedValue(
+      snapshot({
+        lastRefreshedAt: refreshed,
+        reviewRequested: list([snoozed]),
+        authored: list([dismissed]),
+        assigned: list([muted]),
+      }),
+    )
+    render(<Harness launch={launchOptions} clock={fixedNow} />)
+
+    expect((await section('Review requested')).getByRole('tab', { name: 'Snoozed 1' })).toBeInTheDocument()
+    expect((await section('Authored')).getByRole('tab', { name: 'Dismissed 1' })).toBeInTheDocument()
+    expect((await section('Assigned')).getByRole('tab', { name: 'Muted 1' })).toBeInTheDocument()
+  })
+
+  it('hides a list emptied on another tab, which comes back on its own tab once an item arrives', async () => {
+    platform.getInboxSnapshot
+      .mockResolvedValueOnce(snapshot({ lastRefreshedAt: refreshed, authored: list([dismissed]) }))
+      .mockResolvedValueOnce(snapshot({ lastRefreshedAt: refreshed }))
+      .mockResolvedValueOnce(snapshot({ lastRefreshedAt: refreshed, authored: list([fresh]) }))
+    render(<Harness launch={launchOptions} clock={fixedNow} />)
+
+    const authored = await section('Authored')
+    await userEvent.click(authored.getByRole('tab', { name: 'Dismissed 1' }))
+    expect(authored.getByRole('button', { name: 'Rename the flag' })).toBeInTheDocument()
+
+    act(() => {
+      emit('inbox:updated')
+    })
+
+    await waitFor(() => {
+      expect(screen.queryByRole('region', { name: 'Authored' })).not.toBeInTheDocument()
+    })
+
+    act(() => {
+      emit('inbox:updated')
+    })
+
+    const back = await section('Authored')
+    expect(back.getByRole('tab', { name: 'Authored 1' })).toHaveAttribute('aria-selected', 'true')
+    expect(back.getByRole('button', { name: 'Add the widget cache' })).toBeInTheDocument()
+    expect(back.queryByText(/Nothing dismissed/)).not.toBeInTheDocument()
+  })
+
+  it('keeps an empty list hidden while the inbox is filtered', async () => {
+    platform.getInboxSnapshot.mockResolvedValue(
+      snapshot({ lastRefreshedAt: refreshed, reviewRequested: list([fresh]) }),
+    )
+    const view = render(<Harness launch={launchOptions} clock={fixedNow} query="widget" />)
+
+    expect(
+      (await section('Review requested')).getByRole('button', { name: 'Add the widget cache' }),
+    ).toBeInTheDocument()
+    expect(screen.queryByRole('region', { name: 'Authored' })).not.toBeInTheDocument()
+
+    view.rerender(<Harness launch={launchOptions} clock={fixedNow} />)
+
+    expect(await section('Review requested')).toBeTruthy()
+    expect(screen.queryByRole('region', { name: 'Authored' })).not.toBeInTheDocument()
   })
 })
 
