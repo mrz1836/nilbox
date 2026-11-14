@@ -227,6 +227,9 @@ type Settings struct {
 	// the GitHub projects an issue is in.
 	ProjectsTipDismissed bool `json:"projectsTipDismissed"`
 
+	// ReviewTab is the review sheet's tab the user last chose, which it opens on.
+	ReviewTab ReviewTab `json:"reviewTab"`
+
 	// InboxOrder is which inbox lists are sorted by project status, and the order of the
 	// statuses.
 	InboxOrder InboxOrder `json:"inboxOrder"`
@@ -721,6 +724,7 @@ func fromStored(stored map[string]string) Settings {
 		CollapsedSections: decodeCollapsed(stored),
 
 		ProjectsTipDismissed: prefval.Bool(stored[KeyProjectsTipDismissed], false),
+		ReviewTab:            reviewTabs().decode(stored[KeyReviewTab]),
 		InboxOrder:           decodeInboxOrder(stored),
 		MergeMethod:          mergeMethods().decode(stored[KeyMergeMethod]),
 		Integrations:         integrationprefs.Decode(stored),
@@ -844,7 +848,7 @@ func settingKeys() []string {
 		KeySnoozeDays, KeyWindowSize,
 		snooze.PrefWakeCommits, snooze.PrefWakeReviews, snooze.PrefWakeComments,
 		sensitive.PrefScope, sensitive.PrefOff, sensitive.PrefPatterns, KeyMenuBar, notifyprefs.KeyBannersOff, notifyprefs.KeyBannersOn, KeyTheme,
-		KeyTextSize, KeyToastSeconds, KeyProjectsTipDismissed, KeyMergeMethod, KeyRefreshInbox, KeyRefreshChecks, KeyRefreshWorktrees,
+		KeyTextSize, KeyToastSeconds, KeyProjectsTipDismissed, KeyReviewTab, KeyMergeMethod, KeyRefreshInbox, KeyRefreshChecks, KeyRefreshWorktrees,
 		KeyRefreshNotifications,
 	), append(append(append(append(collapsedKeys(), orderKeys()...), branchrules.Keys()...), reporules.Keys()...),
 		append(integrationprefs.Keys(), threadrules.Keys()...)...)...)

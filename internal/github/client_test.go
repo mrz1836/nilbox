@@ -415,8 +415,8 @@ func everyFetch() []fetchCall {
 			_, err := c.FetchIssueState(ctx, tok, "I_fakeNodeId1")
 			return err
 		}},
-		{name: "FetchIssueTimeline", graphQL: true, call: func(ctx context.Context, c *Client, tok Token) error {
-			_, err := c.FetchIssueTimeline(ctx, tok, "I_fakeNodeId1", "cursor")
+		{name: "FetchTimeline", graphQL: true, call: func(ctx context.Context, c *Client, tok Token) error {
+			_, err := c.FetchTimeline(ctx, tok, item.KindIssue, "I_fakeNodeId1", "cursor")
 			return err
 		}},
 		{name: "FetchPullHead", call: func(ctx context.Context, c *Client, tok Token) error {

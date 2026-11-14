@@ -5,6 +5,7 @@ import (
 
 	"github.com/mrz1836/nilbox/internal/bump"
 	"github.com/mrz1836/nilbox/internal/sensitive"
+	"github.com/mrz1836/nilbox/internal/timeline"
 )
 
 // Action is something the review sheet can do with a pull request.
@@ -262,8 +263,16 @@ type Review struct {
 	Commits   int      `json:"commits"`
 	Comments  int      `json:"comments"`
 
-	// Body is the description, as markdown.
-	Body string `json:"body"`
+	// OpenedAt is when it was opened, as RFC 3339, or "".
+	OpenedAt string `json:"openedAt"`
+
+	// Body is the description, as markdown, BodyTrimmed whether the cache cut it short (its
+	// page has all of it), EditedAt when it was last edited, or "", and Reactions its
+	// reactions.
+	Body        string              `json:"body"`
+	BodyTrimmed bool                `json:"bodyTrimmed"`
+	EditedAt    string              `json:"editedAt"`
+	Reactions   []timeline.Reaction `json:"reactions"`
 
 	// Bump is what a dependency update's title says about it, or nil for any other pull
 	// request.
@@ -278,8 +287,19 @@ type Review struct {
 	TotalFiles    int    `json:"totalFiles"`
 	FilesComplete bool   `json:"filesComplete"`
 
-	Checks  []Check       `json:"checks"`
+	Checks []Check `json:"checks"`
+
+	// Reviews are each reviewer's latest review, the summary's list of reviewers; their
+	// text is in Timeline.
 	Reviews []ReviewEntry `json:"reviews"`
+
+	// Timeline is the newest page of the conversation, oldest first: its comments, its
+	// reviews with their line comments, and its events.
+	Timeline timeline.Page `json:"timeline"`
+
+	// LastSeenAt is GitHub's time of the newest activity in the read the sheet showed when
+	// the user last opened the pull request, "" before then: what is newer is new to them.
+	LastSeenAt string `json:"lastSeenAt"`
 
 	// Unrun are the head commit's workflow runs that ended without a check and without
 	// passing (Unrun), which the checks list names beneath it.
@@ -422,11 +442,11 @@ const (
 	ReasonReopened   IssueReason = "REOPENED"
 )
 
-// ReviewEntry is one reviewer's latest review.
+// ReviewEntry is one reviewer's latest review: who, its state, and its page, whose URL the
+// conversation's entry of it has too.
 type ReviewEntry struct {
 	Author string `json:"author"`
 	State  string `json:"state"`
-	Body   string `json:"body"`
 	URL    string `json:"url"`
 
 	// SubmittedAt is when it was submitted, as RFC 3339, or "".

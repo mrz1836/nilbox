@@ -11,6 +11,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/github"
 	"github.com/mrz1836/nilbox/internal/item"
 	"github.com/mrz1836/nilbox/internal/textutil"
+	"github.com/mrz1836/nilbox/internal/timeline"
 	"github.com/mrz1836/nilbox/internal/uierr"
 )
 
@@ -173,7 +174,7 @@ type action struct {
 	outcome   Outcome
 	reason    string
 	by        string
-	closedAs  StateReason
+	closedAs  timeline.StateReason
 	steps     []string
 }
 
@@ -243,7 +244,7 @@ func (a *action) close(ctx context.Context, s *Service, tok github.Token) error 
 	a.acted.Closed = true
 
 	if closedFirst(closed, a.kind, a.viewer) {
-		a.outcome, a.closedAs = OutcomeAlreadyClosed, StateReason(strings.ToUpper(closed.Reason))
+		a.outcome, a.closedAs = OutcomeAlreadyClosed, timeline.StateReason(strings.ToUpper(closed.Reason))
 
 		return nil
 	}
@@ -265,7 +266,7 @@ func (a *action) check(state *github.IssueState) (bool, error) {
 		return true, uierr.New("GitHub can't find the issue any more, or your account can no longer see it.",
 			fmt.Errorf("%w: close %s", github.ErrIssueGone, a.ref))
 	case state.State != github.StateOpen:
-		a.acted.Closed, a.outcome, a.closedAs = true, OutcomeAlreadyClosed, StateReason(state.StateReason)
+		a.acted.Closed, a.outcome, a.closedAs = true, OutcomeAlreadyClosed, timeline.StateReason(state.StateReason)
 
 		return true, nil
 	case !state.CanClose:

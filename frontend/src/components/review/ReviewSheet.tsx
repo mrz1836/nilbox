@@ -1,12 +1,15 @@
-import { useId, useState, type ReactNode } from 'react'
+import { Activity, useId, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 
 import { refText } from '../../lib/format'
+import { PicturesContext, reviewPictureLogins, usePictures } from '../../lib/pictures'
 import type { ReviewDrafts } from '../../lib/reviewDrafts'
 import { placeIn, stepTo, useActionProgress, useSheetKeys, type SheetBack } from '../../lib/sheet'
+import { commentCount, entryAnchor, quoteInto } from '../../lib/timeline'
 import { useMutation } from '../../lib/useMutation'
 import { heldRuns, useReview } from '../../lib/useReview'
 import {
   actOnReview,
+  openExternal,
   type AgentSession,
   type InboxItem,
   type ItemResolution,
@@ -15,17 +18,21 @@ import {
   type ReviewAction,
   type ReviewOffer,
   type ReviewResult,
+  type ReviewTab,
   type Worktree,
 } from '../../platform'
+import { Description } from '../conversation/Description'
+import { Timeline } from '../conversation/Timeline'
 import { buttonClass } from '../controls'
 import { ErrorBanner } from '../ErrorBanner'
+import { CommentIcon, DocumentIcon } from '../icons'
 import type { LaunchOptions } from '../ItemRow'
-import { Markdown } from '../Markdown'
 import { Sheet } from '../Sheet'
+import { TabPanel, Tabs } from '../Tabs'
 import { WorkLine } from '../WorkLine'
 import { ActionProgress } from './ActionProgress'
 import { AgentVerdict } from './AgentVerdict'
-import { DiffView } from './DiffView'
+import { DiffView, fileAnchor, type Reveal } from './DiffView'
 import { FileList } from './FileList'
 import { HeldRuns } from './HeldRuns'
 import { menuOnly } from './ActionButton'
@@ -45,6 +52,10 @@ export interface ReviewSheetProps {
   siblings: readonly InboxItem[]
   listTitle: string
   drafts: ReviewDrafts
+  // tab is the tab of the larger column the sheet opens on, the one the user last chose,
+  // and onTab hears each choice, which the window remembers.
+  tab: ReviewTab
+  onTab: (tab: ReviewTab) => void
   launch: LaunchOptions | null
   resolution: ItemResolution | null
   sessions: readonly AgentSession[] | undefined
@@ -96,20 +107,42 @@ interface Notice {
   message: string
 }
 
-// ReviewSheet is the review sheet: a pull request's files and diffs, its description, what
-// it still needs to merge, the work on it (its worktree and agent session, in a line under
-// that), the latest agent's verdict, and the review to send. ← and → step through its list
-// while the user isn't typing, ⌘↩ runs the button's action, and Escape closes it. It
-// closes after an action, which the inbox's toast reports, except when the pull request
-// was pushed to since, when it stays open, with the draft, to reload, and after it approved
-// the workflow runs GitHub held, when it stays open, with the draft, and reads again until
-// their checks start (HeldRuns says so).
+// Scrollers are the scrolling boxes of the two tabs, whose places the sheet keeps across a
+// switch, and Places those places.
+type Scrollers = Record<ReviewTab, HTMLElement | null>
+type Places = Record<ReviewTab, number>
+
+// ConversationSkeleton is the conversation's placeholder while the first read comes.
+function ConversationSkeleton() {
+  return (
+    <div className="mx-auto max-w-3xl space-y-3">
+      {[0, 1].map((i) => (
+        <div key={i} className="rounded-md border border-border p-3">
+          <DescriptionSkeleton />
+        </div>
+      ))}
+    </div>
+  )
+}
+
+// ReviewSheet is the review sheet: a pull request's description, files, and diffs (Files),
+// its conversation (Comments), what it still needs to merge, the work on it (its worktree
+// and agent session, in a line under that), the latest agent's verdict, and the review to
+// send. The tab it opens on is the one the user last chose, and each keeps its place, and
+// what was being written in it, while the other shows. ← and → step through its list while
+// the user isn't typing or moving between the tabs, ⌘↩ runs the button's action, and
+// Escape closes it. It closes after an action, which the inbox's toast reports, except when
+// the pull request was pushed to since, when it stays open, with the draft, to reload, and
+// after it approved the workflow runs GitHub held, when it stays open, with the draft, and
+// reads again until their checks start (HeldRuns says so).
 export function ReviewSheet({
   id,
   item,
   siblings,
   listTitle,
   drafts,
+  tab: openOn,
+  onTab,
   launch,
   resolution,
   sessions,
@@ -126,9 +159,20 @@ export function ReviewSheet({
   toast,
 }: ReviewSheetProps) {
   const titleId = useId()
+  const tabsId = useId()
   const loaded = useReview(id)
   const review = loaded.review
+  const pictures = usePictures(review === null ? [] : reviewPictureLogins(review))
   const draft = drafts.get(id)
+  // tab shows at once on a click, and the window remembers it (onTab) behind it.
+  const [tab, setTab] = useState<ReviewTab>(openOn)
+  const scrollers = useRef<Scrollers>({ files: null, comments: null })
+  const places = useRef<Places>({ files: 0, comments: 0 })
+  // goingTo is where a jump scrolls once the tab it is in shows: a file's block or an
+  // entry's row, by ID.
+  const goingTo = useRef('')
+  const [reveal, setReveal] = useState<Reveal | null>(null)
+  const textRef = useRef<HTMLTextAreaElement>(null)
   const act = useMutation(actOnReview)
   const [confirming, setConfirming] = useState<ReviewOffer | null>(null)
   const [pushed, setPushed] = useState<Notice | null>(null)
@@ -247,6 +291,97 @@ export function ReviewSheet({
   const selected = review === null ? '' : selectedAction(review, draft.action)
   const reply = useReplyBody(id, review?.isBot ?? item?.authorIsBot ?? false, draft, selected)
 
+  // quoting is what a quote writes to: the pull request shown, its drafts, and the review's
+  // text, as the sheet last rendered. quote, made once, reads it, so the conversation's
+  // entries keep the same quote while the user types, and render again only when their own
+  // entry changes. A quote starts a comment, unless the user chose another action.
+  const quoting = useRef({ id, update: drafts.update, body: reply.body })
+
+  useLayoutEffect(() => {
+    quoting.current = { id, update: drafts.update, body: reply.body }
+  })
+
+  const [quote] = useState(() => (text: string) => {
+    const { id: at, update, body } = quoting.current
+
+    update(at, (d) => ({
+      ...d,
+      body: quoteInto(d.edited ? d.body : body, text),
+      edited: true,
+      action: d.action === '' ? 'comment' : d.action,
+    }))
+    textRef.current?.focus()
+  })
+
+  // chooseTab shows the tab next, keeping the place of the one it leaves, and remembers it,
+  // so the sheet opens on it from then on.
+  const chooseTab = (next: ReviewTab) => {
+    if (next === tab) {
+      return
+    }
+
+    places.current[tab] = scrollers.current[tab]?.scrollTop ?? 0
+    setTab(next)
+    onTab(next)
+  }
+
+  // jumpTo shows the tab at and scrolls to the element with the ID anchor in it, once it
+  // shows.
+  const jumpTo = (at: ReviewTab, anchor: string) => {
+    if (at === tab) {
+      document.getElementById(anchor)?.scrollIntoView({ block: 'start' })
+
+      return
+    }
+
+    goingTo.current = anchor
+    chooseTab(at)
+  }
+
+  // The tab shown goes back to its place, or to where a jump to it goes, once its Activity
+  // has shown it.
+  useLayoutEffect(() => {
+    const anchor = goingTo.current
+
+    goingTo.current = ''
+
+    const scroller = scrollers.current[tab]
+
+    if (anchor === '') {
+      if (scroller !== null) {
+        scroller.scrollTop = places.current[tab]
+      }
+    } else {
+      document.getElementById(anchor)?.scrollIntoView({ block: 'start' })
+    }
+  }, [tab])
+
+  // jump shows the file a line comment is on in Files, opening it if it is folded. It is
+  // made once, as quote is, for the conversation's entries, and reads the sheet's jumpTo as
+  // last rendered.
+  const jumping = useRef(jumpTo)
+
+  useLayoutEffect(() => {
+    jumping.current = jumpTo
+  })
+
+  const [jump] = useState(() => (path: string) => {
+    setReveal((r) => ({ path, n: (r?.n ?? 0) + 1 }))
+    jumping.current('files', fileAnchor(path))
+  })
+
+  // showReview shows a reviewer's review in Comments, or on GitHub while the conversation the
+  // sheet holds hasn't it.
+  const showReview = (url: string) => {
+    const entry = url === '' ? undefined : review?.timeline.items.find((e) => e.url === url)
+
+    if (entry === undefined) {
+      openExternal(url)
+    } else {
+      jumpTo('comments', entryAnchor(entry.id))
+    }
+  }
+
   // While an action runs, the sheet waits for it: it neither closes nor moves on, so the
   // outcome is never lost.
   const working = progress !== null
@@ -333,108 +468,192 @@ export function ReviewSheet({
             pull request arrives and its seconds run on. Before any copy, each column shows
             placeholders; with nothing read and nothing reading, only the error shows. */}
         {(review !== null || loaded.checking || loaded.error === '') && (
-          <div className="grid min-h-0 flex-1 grid-cols-[14rem_minmax(0,1fr)_22rem]">
-            <aside className="min-h-0 overflow-y-auto border-r border-border p-3">
-              {review === null || (reading && review.files.length === 0) ? (
-                <FileListSkeleton />
-              ) : (
-                <FileList review={review} viewed={draft.viewed} />
-              )}
-            </aside>
-            <main className="min-h-0 space-y-4 overflow-y-auto p-4">
-              {reading && <ReadingBanner key={id} target={target} />}
-              {review === null ? (
-                <>
-                  <div className="rounded-md border border-border p-3">
-                    <DescriptionSkeleton />
+          <PicturesContext value={pictures}>
+            <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_22rem]">
+              {/* The larger column holds two tabs, each kept mounted while the other shows, so
+                  a line comment being written, the files folded, and each tab's place stay. */}
+              <section aria-label="Pull request" className="flex min-h-0 flex-col">
+                <Tabs
+                  baseId={tabsId}
+                  label="Pull request"
+                  value={tab}
+                  onChange={chooseTab}
+                  tabs={[
+                    {
+                      value: 'files',
+                      label: 'Files',
+                      icon: <DocumentIcon className="size-3.5" />,
+                      count: review === null ? '' : String(review.totalFiles),
+                    },
+                    {
+                      value: 'comments',
+                      label: 'Comments',
+                      icon: <CommentIcon className="size-3.5" />,
+                      count:
+                        review === null || review.fetchedAt === ''
+                          ? ''
+                          : commentCount(review.timeline.items, review.timeline.before),
+                    },
+                  ]}
+                  className="flex shrink-0 gap-1 border-b border-border px-4 pt-3"
+                />
+                {reading && (
+                  <div className="shrink-0 px-4 pt-4">
+                    <ReadingBanner key={id} target={target} />
                   </div>
-                  <DiffSkeleton />
-                </>
-              ) : (
-                <>
-                  <section aria-label="Description" className="rounded-md border border-border p-3">
-                    {review.body.trim() !== '' ? (
-                      <Markdown text={review.body} />
-                    ) : reading ? (
-                      <DescriptionSkeleton />
-                    ) : (
-                      <p className="text-sm text-muted">
-                        {review.fetchedAt === '' ? 'Not read from GitHub yet.' : 'No description.'}
-                      </p>
-                    )}
-                  </section>
-                  {reading && review.files.length === 0 ? (
-                    <DiffSkeleton />
-                  ) : (
-                    <DiffView
-                      review={review}
-                      draft={draft}
-                      onDraft={onDraft}
-                      loading={loaded.loading}
-                      onLoad={(paths) => {
-                        void loaded.loadPatches(paths)
+                )}
+                <TabPanel baseId={tabsId} value={tab} className="flex min-h-0 flex-1 flex-col">
+                  <Activity mode={tab === 'files' ? 'visible' : 'hidden'}>
+                    <div className="grid min-h-0 flex-1 grid-cols-[14rem_minmax(0,1fr)]">
+                      <aside className="min-h-0 overflow-y-auto border-r border-border p-3">
+                        {review === null || (reading && review.files.length === 0) ? (
+                          <FileListSkeleton />
+                        ) : (
+                          <FileList review={review} viewed={draft.viewed} />
+                        )}
+                      </aside>
+                      <main
+                        ref={(el) => {
+                          scrollers.current.files = el
+                        }}
+                        className="min-h-0 space-y-4 overflow-y-auto p-4"
+                      >
+                        {review === null ? (
+                          <>
+                            <div className="rounded-md border border-border p-3">
+                              <DescriptionSkeleton />
+                            </div>
+                            <DiffSkeleton />
+                          </>
+                        ) : (
+                          <>
+                            <Description
+                              author={review.author}
+                              openedAt={review.openedAt}
+                              editedAt={review.editedAt}
+                              body={review.body}
+                              bodyTrimmed={review.bodyTrimmed}
+                              reactions={review.reactions}
+                              url={review.url}
+                              reading={reading}
+                              read={review.fetchedAt !== ''}
+                            />
+                            {reading && review.files.length === 0 ? (
+                              <DiffSkeleton />
+                            ) : (
+                              <DiffView
+                                review={review}
+                                draft={draft}
+                                onDraft={onDraft}
+                                loading={loaded.loading}
+                                onLoad={(paths) => {
+                                  void loaded.loadPatches(paths)
+                                }}
+                                reveal={reveal}
+                              />
+                            )}
+                          </>
+                        )}
+                      </main>
+                    </div>
+                  </Activity>
+                  <Activity mode={tab === 'comments' ? 'visible' : 'hidden'}>
+                    <div
+                      ref={(el) => {
+                        scrollers.current.comments = el
                       }}
-                    />
-                  )}
-                </>
-              )}
-            </main>
-            {review === null ? (
-              <aside className="min-h-0 border-l border-border p-4">
-                <span aria-hidden="true" className="skeleton mb-4 block h-3.5 w-36" />
-                <SummarySkeleton />
-              </aside>
-            ) : (
-              /* The review form sits below the scrolling summary, in no scrolling box of its
+                      className="min-h-0 flex-1 overflow-y-auto p-4"
+                    >
+                      {review === null || reading ? (
+                        <ConversationSkeleton />
+                      ) : (
+                        <Timeline
+                          key={`conversation-${String(id)}`}
+                          page={review.timeline}
+                          repo={review.repo}
+                          author={review.author}
+                          lastSeenAt={loaded.lastSeenAt}
+                          onEarlier={() => {
+                            void loaded.loadEarlier()
+                          }}
+                          loadingEarlier={loaded.loadingEarlier}
+                          earlierError={loaded.earlierError}
+                          onQuote={quote}
+                          onJump={jump}
+                          empty={
+                            <p className="text-sm text-muted">
+                              {review.fetchedAt === '' ? 'Not read from GitHub yet.' : 'No comments yet.'}
+                            </p>
+                          }
+                        />
+                      )}
+                    </div>
+                  </Activity>
+                </TabPanel>
+              </section>
+              {review === null ? (
+                <aside className="min-h-0 border-l border-border p-4">
+                  <span aria-hidden="true" className="skeleton mb-4 block h-3.5 w-36" />
+                  <SummarySkeleton />
+                </aside>
+              ) : (
+                /* The review form sits below the scrolling summary, in no scrolling box of its
                  own, so its menus open over the diff rather than being cut off at the column's
                  edge, and its button never scrolls out of view. The work line sits in the strip
                  above, outside the scroller, so its panel isn't cut off either. */
-              <aside className="flex min-h-0 flex-col border-l border-border">
-                {/* How close it is to merging, and the work on it, stay in view while the
+                <aside className="flex min-h-0 flex-col border-l border-border">
+                  {/* How close it is to merging, and the work on it, stay in view while the
                     summary scrolls. */}
-                <div className="shrink-0 space-y-1.5 border-b border-border px-4 py-3">
-                  <Readiness review={review} />
-                  <WorkLine worktree={worktree} sessions={sessions} agents={launch?.agents ?? []} />
-                </div>
-                <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4">
-                  {reading ? (
-                    <SummarySkeleton />
-                  ) : (
-                    <ReviewSummary review={review} item={item} onFilesSettings={onFilesSettings} />
-                  )}
-                  <AgentVerdict
-                    sessions={sessions}
-                    agents={launch?.agents ?? []}
-                    onUse={(text) => {
-                      onDraft((d) => ({
-                        ...d,
-                        body: text,
-                        edited: true,
-                        action: d.action === '' ? 'comment' : d.action,
-                      }))
-                    }}
-                  />
-                </div>
-                <div className="shrink-0 border-t border-border p-4">
-                  <ReviewComposer
-                    review={review}
-                    item={item}
-                    draft={draft}
-                    onDraft={onDraft}
-                    reply={reply}
-                    selected={selected}
-                    onRun={run}
-                    busy={act.pending}
-                    error={approving ? '' : actError}
-                    launch={launch}
-                    resolution={resolution}
-                    sessions={sessions}
-                    onManageReplies={onManageReplies}
-                  />
-                </div>
-              </aside>
-            )}
-          </div>
+                  <div className="shrink-0 space-y-1.5 border-b border-border px-4 py-3">
+                    <Readiness review={review} />
+                    <WorkLine worktree={worktree} sessions={sessions} agents={launch?.agents ?? []} />
+                  </div>
+                  <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4">
+                    {reading ? (
+                      <SummarySkeleton />
+                    ) : (
+                      <ReviewSummary
+                        review={review}
+                        item={item}
+                        onFilesSettings={onFilesSettings}
+                        onShowReview={showReview}
+                      />
+                    )}
+                    <AgentVerdict
+                      sessions={sessions}
+                      agents={launch?.agents ?? []}
+                      onUse={(text) => {
+                        onDraft((d) => ({
+                          ...d,
+                          body: text,
+                          edited: true,
+                          action: d.action === '' ? 'comment' : d.action,
+                        }))
+                      }}
+                    />
+                  </div>
+                  <div className="shrink-0 border-t border-border p-4">
+                    <ReviewComposer
+                      review={review}
+                      item={item}
+                      draft={draft}
+                      onDraft={onDraft}
+                      reply={reply}
+                      selected={selected}
+                      onRun={run}
+                      busy={act.pending}
+                      error={approving ? '' : actError}
+                      launch={launch}
+                      resolution={resolution}
+                      sessions={sessions}
+                      onManageReplies={onManageReplies}
+                      textRef={textRef}
+                    />
+                  </div>
+                </aside>
+              )}
+            </div>
+          </PicturesContext>
         )}
       </div>
       {progress !== null && (

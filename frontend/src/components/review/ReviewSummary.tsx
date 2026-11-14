@@ -6,9 +6,9 @@ import { issueLook } from '../../lib/issues'
 import { toneDot, toneText, type Tone } from '../../lib/signals'
 import type { InboxItem, ReadyState, Review, ReviewCheck, ReviewEntry, ReviewUnrun } from '../../platform'
 import { openExternal } from '../../platform'
+import { PersonAvatar } from '../Avatar'
 import { chipClass } from '../controls'
 import { ItemLink } from '../ItemLink'
-import { Markdown } from '../Markdown'
 import { SensitiveFiles } from '../SensitiveFiles'
 import { StatusDot } from '../StatusDot'
 
@@ -17,6 +17,9 @@ export interface ReviewSummaryProps {
   // item is the inbox card, whose sensitive-file check the summary shows.
   item: InboxItem | undefined
   onFilesSettings?: (() => void) | undefined
+  // onShowReview shows the review with url in the conversation; without it, or for one the
+  // sheet holds none of, a reviewer opens their review on GitHub.
+  onShowReview?: ((url: string) => void) | undefined
 }
 
 // readyTone is each readiness's color.
@@ -31,6 +34,19 @@ const readyTone: Readonly<Record<ReadyState, Tone>> = {
   auto_merge: 'success',
   unknown: 'muted',
   closed: 'muted',
+}
+
+// reviewTone is a reviewer's word's color: an approval is good news, a request for changes
+// an alarm, and the rest plain.
+function reviewTone(state: string): Tone {
+  switch (state) {
+    case 'APPROVED':
+      return 'success'
+    case 'CHANGES_REQUESTED':
+      return 'danger'
+    default:
+      return 'muted'
+  }
 }
 
 // reviewWord names a review's state.
@@ -260,24 +276,47 @@ function Checks({ checks, unrun }: { checks: readonly ReviewCheck[]; unrun: read
   )
 }
 
-// Reviews lists each reviewer's latest review, with its words.
-function Reviews({ reviews }: { reviews: readonly ReviewEntry[] }) {
+// Reviewers lists each reviewer's latest review in a line: their picture, their name, and
+// what they did, of an earlier commit or not. Each shows that review in the conversation,
+// where its words are (onShow), or on GitHub.
+function Reviewers({
+  reviews,
+  onShow,
+}: {
+  reviews: readonly ReviewEntry[]
+  onShow?: ((url: string) => void) | undefined
+}) {
   if (reviews.length === 0) {
     return null
   }
 
   return (
-    <ul className="space-y-2">
-      {reviews.map((r) => (
-        <li key={r.author} className="text-xs">
-          <p className="text-muted">
-            <span className="font-medium text-text">{r.author}</span> {reviewWord(r.state)}
-            {r.outdated && ' an earlier commit'}
-          </p>
-          {r.body !== '' && <Markdown text={r.body} className="mt-1" />}
-        </li>
-      ))}
-    </ul>
+    <section aria-label="Reviewers" className="space-y-1 text-xs">
+      <p className="text-muted">Reviewers</p>
+      <ul className="space-y-0.5">
+        {reviews.map((r) => (
+          <li key={r.author}>
+            <button
+              type="button"
+              title={onShow === undefined ? r.url : 'Show the review in Comments'}
+              onClick={() => {
+                if (onShow === undefined) {
+                  openExternal(r.url)
+                } else {
+                  onShow(r.url)
+                }
+              }}
+              className="flex w-full min-w-0 items-center gap-1.5 rounded px-1 py-0.5 text-left text-muted hover:bg-raised"
+            >
+              <PersonAvatar login={r.author} />
+              <span className="min-w-0 truncate font-medium text-text">{r.author}</span>
+              <span className={`shrink-0 ${toneText[reviewTone(r.state)]}`}>{reviewWord(r.state)}</span>
+              {r.outdated && <span className="shrink-0">an earlier commit</span>}
+            </button>
+          </li>
+        ))}
+      </ul>
+    </section>
   )
 }
 
@@ -320,8 +359,8 @@ export function Readiness({ review }: { review: Review }) {
 
 // ReviewSummary sums up a pull request in a few lines: what kind of change it is and where,
 // what a dependency update bumps, the issues it closes, its checks, its sensitive files,
-// and its reviews.
-export function ReviewSummary({ review, item, onFilesSettings }: ReviewSummaryProps) {
+// and its reviewers.
+export function ReviewSummary({ review, item, onFilesSettings, onShowReview }: ReviewSummaryProps) {
   const { change } = review
 
   return (
@@ -334,7 +373,7 @@ export function ReviewSummary({ review, item, onFilesSettings }: ReviewSummaryPr
       </div>
       <Closes review={review} />
       <Checks checks={review.checks} unrun={review.unrun} />
-      <Reviews reviews={review.reviews} />
+      <Reviewers reviews={review.reviews} onShow={onShowReview} />
     </section>
   )
 }

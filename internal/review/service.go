@@ -1,11 +1,12 @@
 // Package review is the review sheet: it shows one pull request (what it changes, its
-// description, checks, reviews, and what it still needs to merge) and acts on it at the
-// user's click: approve, request changes, comment, merge, turn on auto-merge, update the
-// branch, ask Dependabot to rebase, or close it.
+// description, checks, reviewers, its conversation, and what it still needs to merge) and
+// acts on it at the user's click: approve, request changes, comment, merge, turn on
+// auto-merge, update the branch, ask Dependabot to rebase, or close it.
 //
-// Open shows what the sheet read before, from its own cache, with no request; Refresh
-// reads the pull request again with one GraphQL request, and its files only when it was
-// pushed to since. Every action is pinned to the head commit the user saw, goes through
+// Open shows what the sheet read before, from its own cache, with no request, and starts a
+// visit, which tells what is new; Refresh reads the pull request again with one GraphQL
+// request, its conversation included, and its files only when it was pushed to since;
+// Earlier reads an earlier page of the conversation. Every action is pinned to the head commit the user saw, goes through
 // the inbox's Actor (the item's lock and the account check) and the GitHub client's write
 // gate, and is decided again (decide.go) before anything is sent. A merge never goes around
 // branch protection: it reads the merge state fresh first and merges only what GitHub says
@@ -38,11 +39,12 @@ import (
 	"github.com/mrz1836/nilbox/internal/repo"
 	"github.com/mrz1836/nilbox/internal/sensitive"
 	"github.com/mrz1836/nilbox/internal/textutil"
+	"github.com/mrz1836/nilbox/internal/timeline"
 	"github.com/mrz1836/nilbox/internal/uierr"
 )
 
 // refreshAfter is how long a context read from GitHub counts as current, so a sheet
-// opened again at once asks nothing.
+// opened again at once asks nothing, unless the inbox card shows activity since.
 const refreshAfter = 20 * time.Second
 
 // ErrNotPull is returned for an item that is not a pull request.
@@ -155,11 +157,13 @@ type PullRead struct {
 }
 
 // Inbox is what the sheet needs of the inbox: a stored pull request, and a read and an
-// action run with the inbox's footing (inbox.Actor).
+// action run with the inbox's footing (inbox.Actor), and a read that stores nothing, such
+// as an earlier page of the conversation.
 type Inbox interface {
 	Pull(ctx context.Context, id int64) (StoredPull, error)
 	Read(ctx context.Context, id int64, read func(context.Context, github.Token, Target) (PullRead, error)) error
 	Act(ctx context.Context, id int64, act func(context.Context, github.Token, Target) (Acted, error)) error
+	Peek(ctx context.Context, id int64, peek func(context.Context, github.Token, Target) error) error
 }
 
 // GitHub is the GitHub client's reads and writes the sheet uses. *github.Client
@@ -168,6 +172,7 @@ type GitHub interface {
 	FetchPullReview(ctx context.Context, tok github.Token, id string) (*github.PullReview, error)
 	FetchPullDiff(ctx context.Context, tok github.Token, ref item.Ref, head string) (*github.PullDiff, error)
 	FetchMergeState(ctx context.Context, tok github.Token, id string) (*github.MergeState, error)
+	FetchTimeline(ctx context.Context, tok github.Token, kind item.Kind, id, before string) (*github.TimelinePage, error)
 	SubmitReview(ctx context.Context, tok github.Token, ref item.Ref, in github.ReviewInput) (*github.SubmittedReview, error)
 	MergePull(ctx context.Context, tok github.Token, ref item.Ref, in github.MergeInput) (*github.Merged, error)
 	EnableAutoMerge(
@@ -248,15 +253,18 @@ func NewService(cfg Config) *Service {
 }
 
 // Open returns the pull request with id as the sheet last read it, from its cache and the
-// inbox, with no request: at once, and offline. Stale says whether a Refresh is due.
+// inbox, with no request: at once, and offline. It starts a visit: LastSeenAt is GitHub's
+// time of the newest activity in the read it shows, so what a refresh brings that is newer
+// is new to the user, and every Refresh and ReadAgain returns the same until the next Open.
+// Stale says whether a Refresh is due.
 func (s *Service) Open(ctx context.Context, id int64) (Review, error) {
-	return s.open(ctx, id, openPatchBytes)
+	return s.open(ctx, id, openPatchBytes, true)
 }
 
 // Refresh reads the pull request with id from GitHub, stores it, and returns it: one
 // GraphQL request, and its files only when it was pushed to since the sheet listed them.
-// A pull request read in the last 20 seconds is not read again. Two refreshes of one pull
-// request never run side by side.
+// A pull request read in the last 20 seconds is not read again, unless its card shows
+// activity since. Two refreshes of one pull request never run side by side.
 func (s *Service) Refresh(ctx context.Context, id int64) (Review, error) {
 	return s.refresh(ctx, id, false)
 }
@@ -308,6 +316,37 @@ func (s *Service) Patches(ctx context.Context, id int64, head string, paths []st
 	return out, nil
 }
 
+// Earlier reads the page of the conversation before the cursor before, which a page the
+// sheet holds gave: one GraphQL request, which stores nothing, not even in the cache.
+func (s *Service) Earlier(ctx context.Context, id int64, before string) (timeline.Page, error) {
+	pull, err := s.pull(ctx, id)
+	if err != nil {
+		return timeline.Page{}, err
+	}
+
+	var page *github.TimelinePage
+
+	err = s.inbox.Peek(ctx, id, func(ctx context.Context, tok github.Token, t Target) error {
+		got, readErr := s.github.FetchTimeline(ctx, tok, item.KindPR, t.NodeID, before)
+		page = got
+
+		return readErr
+	})
+
+	switch {
+	case errors.Is(err, github.ErrInvalidCursor):
+		return timeline.Page{}, uierr.New(
+			"That part of the conversation can't be read. Reload the pull request, then try again.", err,
+		)
+	case err != nil:
+		return timeline.Page{}, err
+	}
+
+	return timeline.Page{
+		Items: timeline.Entries(page.Items, pull.Viewer), Total: max(page.Total, len(page.Items)), Before: page.Before,
+	}, nil
+}
+
 // Replies returns the review replies for action, with the defaults.
 func (s *Service) Replies(ctx context.Context, action ReplyAction) (ReplyList, error) {
 	list, err := s.replies.Offered(ctx, action)
@@ -336,13 +375,14 @@ func (s *Service) refresh(ctx context.Context, id int64, force bool) (Review, er
 			return Review{}, err
 		}
 
-		return s.open(ctx, id, openPatchBytes)
+		return s.open(ctx, id, openPatchBytes, false)
 	})
 }
 
 // open builds the sheet from the inbox's stored pull request and the cache, with up to
-// budget bytes of patches, and stamps the cache's use.
-func (s *Service) open(ctx context.Context, id, budget int64) (Review, error) {
+// budget bytes of patches, and stamps the cache's use; visit says the user opened the
+// sheet, which starts a visit from the read the cache holds.
+func (s *Service) open(ctx context.Context, id, budget int64, visit bool) (Review, error) {
 	pull, err := s.pull(ctx, id)
 	if err != nil {
 		return Review{}, err
@@ -354,9 +394,7 @@ func (s *Service) open(ctx context.Context, id, budget int64) (Review, error) {
 	}
 
 	if c != nil {
-		if touchErr := s.cache.touch(ctx, id, s.now()); touchErr != nil {
-			s.logger.DebugContext(ctx, "could not stamp the cached review", "error", touchErr)
-		}
+		s.stampUse(ctx, id, c, visit)
 	}
 
 	cfg, err := s.settings.Sensitive(ctx)
@@ -370,6 +408,36 @@ func (s *Service) open(ctx context.Context, id, budget int64) (Review, error) {
 	}
 
 	return build(pull, c, sensitive.NewMatcher(cfg), pref), nil
+}
+
+// stampUse stamps the use of the cache c of the pull request with id, and, when visit is
+// set, the visit it starts: the read the cache holds, by GitHub's time of its newest
+// activity, which c.seenAt holds from then on. A read that doesn't say when it was leaves
+// the last visit's as it was.
+func (s *Service) stampUse(ctx context.Context, id int64, c *cached, visit bool) {
+	if !visit {
+		if err := s.cache.touch(ctx, id, s.now()); err != nil {
+			s.logger.DebugContext(ctx, "could not stamp the cached review", "error", err)
+		}
+
+		return
+	}
+
+	at, ok := parseStamp(c.context.UpdatedAt)
+	if !ok {
+		at, ok = parseStamp(c.seenAt)
+	}
+
+	var seenAt *time.Time
+
+	c.seenAt = ""
+	if ok {
+		seenAt, c.seenAt = &at, clock.Format(at)
+	}
+
+	if err := s.cache.open(ctx, id, seenAt, s.now()); err != nil {
+		s.logger.DebugContext(ctx, "could not stamp the cached review", "error", err)
+	}
 }
 
 // pull reads the stored pull request with id.
@@ -388,8 +456,9 @@ func (s *Service) pull(ctx context.Context, id int64) (StoredPull, error) {
 
 // read reads the pull request with id from GitHub, through the inbox, which stores the
 // card, and stores the rest in the cache. A context read in the last refreshAfter, of the
-// head the inbox knows, is not read again, unless GitHub was still working out whether it
-// can merge (the sheet reads again for the answer) or force is set.
+// head the inbox knows, whose card shows no activity since, is not read again, unless
+// GitHub was still working out whether it can merge (the sheet reads again for the answer)
+// or force is set.
 func (s *Service) read(ctx context.Context, id int64, force bool) error {
 	c, err := s.cache.load(ctx, id, 0)
 	if err != nil {
@@ -401,8 +470,7 @@ func (s *Service) read(ctx context.Context, id int64, force bool) error {
 		return err
 	}
 
-	if !force && c != nil && strings.EqualFold(c.head, pull.HeadOID) && s.now().Sub(c.contextAt) < refreshAfter &&
-		c.context.MergeState != github.MergeStateUnknown {
+	if !force && recent(pull, c, s.now()) {
 		return nil
 	}
 
@@ -425,7 +493,39 @@ func (s *Service) read(ctx context.Context, id int64, force bool) error {
 		return err
 	}
 
-	return s.store(ctx, id, got.review, got.diff)
+	return s.store(ctx, id, pull.Viewer, got.review, got.diff)
+}
+
+// recent reports that the cache c of pull holds a read recent enough to serve at now: of
+// the head the inbox knows, under refreshAfter old, with the card showing no activity since
+// (a comment the read doesn't have would never show), and with the merge state worked out.
+func recent(pull StoredPull, c *cached, now time.Time) bool {
+	if c == nil || !strings.EqualFold(c.head, pull.HeadOID) || now.Sub(c.contextAt) >= refreshAfter ||
+		c.context.MergeState == github.MergeStateUnknown {
+		return false
+	}
+
+	at, ok := parseStamp(c.context.UpdatedAt)
+
+	return ok && !pull.UpdatedAt.Truncate(time.Second).After(at)
+}
+
+// parseStamp reads a time stamp the cache wrote; ok is false for "" and for one it can't
+// read.
+func parseStamp(s string) (time.Time, bool) {
+	t, err := time.Parse(time.RFC3339, s)
+
+	return t, err == nil
+}
+
+// stamp writes t as every time the window reads is written (clock.Format), or "" for the
+// zero time.
+func stamp(t time.Time) string {
+	if t.IsZero() {
+		return ""
+	}
+
+	return clock.Format(t)
 }
 
 // fetch reads the pull request's context and, unless c holds its files at the head the
@@ -486,8 +586,11 @@ func changedFiles(diff *github.PullDiff, c *cached, review *github.PullReview) *
 }
 
 // store keeps what a read found: nothing for a pull request that is gone, merged, or
-// closed, whose cache is dropped; else its context, and its files when they were listed.
-func (s *Service) store(ctx context.Context, id int64, review *github.PullReview, diff *github.PullDiff) error {
+// closed, whose cache is dropped; else its context, the entries of viewer, the signed-in
+// account, marked, and its files when they were listed.
+func (s *Service) store(
+	ctx context.Context, id int64, viewer string, review *github.PullReview, diff *github.PullDiff,
+) error {
 	if review == nil {
 		return nil
 	}
@@ -496,7 +599,7 @@ func (s *Service) store(ctx context.Context, id int64, review *github.PullReview
 		return s.cache.drop(ctx, id)
 	}
 
-	return s.cache.save(ctx, id, contextOf(review), diff, s.now())
+	return s.cache.save(ctx, id, contextOf(review, viewer), diff, s.now())
 }
 
 // now returns the current time in UTC.
@@ -515,6 +618,7 @@ func build(pull StoredPull, c *cached, matcher *sensitive.Matcher, pref MethodPr
 		Additions: pull.Additions, Deletions: pull.Deletions, Commits: pull.Commits, Comments: pull.Comments,
 		AutoMerge: MergeMethod(pull.AutoMerge), Head: pull.HeadOID, Files: []File{}, Checks: []Check{}, Unrun: []Unrun{},
 		Reviews: []ReviewEntry{}, Closes: []Closing{}, TotalFiles: pull.ChangedFiles, Stale: true,
+		OpenedAt: stamp(pull.CreatedAt), Reactions: []timeline.Reaction{}, Timeline: timeline.Page{Items: []timeline.Entry{}},
 	}
 
 	if u, ok := bump.Parse(pull.Title); ok && r.IsBot {
@@ -538,6 +642,11 @@ func build(pull StoredPull, c *cached, matcher *sensitive.Matcher, pref MethodPr
 func (r *Review) fill(c *cached, matcher *sensitive.Matcher) {
 	pc := c.context
 	r.Head, r.State, r.Body, r.Stale = c.head, cmp.Or(pc.State, github.StateOpen), pc.Body, !strings.EqualFold(c.head, r.Head)
+	r.BodyTrimmed, r.EditedAt, r.Reactions = pc.BodyTrimmed, pc.EditedAt, textutil.NonNil(pc.Reactions)
+	r.Timeline = timeline.Page{
+		Items: timeline.NonNil(pc.Timeline), Total: max(pc.Total, len(pc.Timeline)), Before: pc.Before,
+	}
+	r.LastSeenAt = c.seenAt
 	r.Mine = r.Mine || pc.Mine
 	r.TotalFiles, r.FilesComplete = c.total, c.complete
 	r.Checks = textutil.NonNil(pc.Checks)
@@ -562,7 +671,7 @@ func (r *Review) fill(c *cached, matcher *sensitive.Matcher) {
 
 	for _, rev := range pc.Reviews {
 		entry := ReviewEntry{
-			Author: rev.Author, State: rev.State, Body: rev.Body, URL: rev.URL,
+			Author: rev.Author, State: rev.State, URL: rev.URL,
 			Outdated: rev.Commit != "" && !strings.EqualFold(rev.Commit, c.head),
 		}
 

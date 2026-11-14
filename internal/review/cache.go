@@ -7,9 +7,11 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/mrz1836/nilbox/internal/clock"
 	"github.com/mrz1836/nilbox/internal/github"
 	"github.com/mrz1836/nilbox/internal/review/internal/queries"
 	"github.com/mrz1836/nilbox/internal/store"
+	"github.com/mrz1836/nilbox/internal/timeline"
 )
 
 // The sheet keeps what it read of each pull request it opened, in review_diffs and
@@ -32,7 +34,17 @@ const (
 
 	// openPatchBytes caps the diffs Open returns at once; the rest are read with Patches.
 	openPatchBytes = 2 << 20
+
+	// maxContextBytes is the size one pull request's context is cut to fit: the long texts
+	// of its description and its conversation are cut in turn, down to nothing
+	// (fitContext). What is left, names and links in the pages GitHub gives, stays far
+	// below it.
+	maxContextBytes = 1 << 20
 )
+
+// trimSteps are the lengths, in bytes, the texts of a context too large to keep are cut to
+// in turn, the last emptying them.
+var trimSteps = []int{16 << 10, 4 << 10, 0} //nolint:gochecknoglobals // fixed lengths, read only
 
 // The stored patch states.
 const (
@@ -40,16 +52,26 @@ const (
 	storedCapped    = "cache_cap"
 )
 
-// pullContext is what the sheet read about a pull request beyond its inbox card.
+// pullContext is what the sheet read about a pull request beyond its inbox card. A context
+// an older build cached reads with zeros for what it lacks, until the sheet reads it again.
+// Times are RFC 3339, "" for none.
 type pullContext struct {
 	// Head is the head commit it was read at, and State OPEN, MERGED, or CLOSED.
 	Head  string `json:"head"`
 	State string `json:"state"`
 
-	Body       string `json:"body"`
-	BaseRef    string `json:"baseRef"`
-	MergeState string `json:"mergeState"`
-	MergeQueue bool   `json:"mergeQueue"`
+	// UpdatedAt is GitHub's time of the pull request's newest activity, as of the read.
+	UpdatedAt string `json:"updatedAt"`
+
+	// Body is the description, BodyTrimmed whether the cache cut it short, and EditedAt
+	// when it was last edited.
+	Body        string              `json:"body"`
+	BodyTrimmed bool                `json:"bodyTrimmed"`
+	EditedAt    string              `json:"editedAt"`
+	Reactions   []timeline.Reaction `json:"reactions"`
+	BaseRef     string              `json:"baseRef"`
+	MergeState  string              `json:"mergeState"`
+	MergeQueue  bool                `json:"mergeQueue"`
 
 	// Mine reports the viewer's own pull request.
 	Mine bool `json:"mine"`
@@ -81,28 +103,37 @@ type pullContext struct {
 	// none in a context an older build cached, until the sheet reads it again.
 	Closes     []Closing `json:"closes"`
 	CloseCount int       `json:"closeCount"`
+
+	// Timeline is the newest page of the conversation, oldest first; Total counts the whole
+	// conversation's entries, and Before reads the ones before the page.
+	Timeline []timeline.Entry `json:"timeline"`
+	Total    int              `json:"total"`
+	Before   string           `json:"before"`
 }
 
-// contextReview is one reviewer's latest review, as the cache keeps it.
+// contextReview is one reviewer's latest review, as the cache keeps it. Its text is in the
+// conversation; an older build's cache holds it too, which nothing reads.
 type contextReview struct {
 	Author      string    `json:"author"`
 	State       string    `json:"state"`
-	Body        string    `json:"body"`
 	URL         string    `json:"url"`
 	Commit      string    `json:"commit"`
 	SubmittedAt time.Time `json:"submittedAt"`
 }
 
-// contextOf converts what FetchPullReview read.
-func contextOf(r *github.PullReview) pullContext {
+// contextOf converts what FetchPullReview read, the entries of viewer, the signed-in
+// account, marked as theirs.
+func contextOf(r *github.PullReview, viewer string) pullContext {
 	c := pullContext{
-		Head: r.Update.Details.HeadOID, State: r.Update.Item.State, Body: r.Body, BaseRef: r.BaseRef,
+		Head: r.Update.Details.HeadOID, State: r.Update.Item.State, UpdatedAt: stamp(r.Update.Item.UpdatedAt),
+		Body: r.Body, EditedAt: stamp(r.LastEditedAt), Reactions: timeline.ReactionsOf(r.Reactions), BaseRef: r.BaseRef,
 		MergeState: r.MergeState, MergeQueue: r.MergeQueue, Mine: r.ViewerDidAuthor,
 		CanUpdateBranch: r.ViewerCanUpdateBranch, CanAutoMerge: r.ViewerCanEnableAutoMerge, CanBypass: r.ViewerCanBypass,
 		ViewerReview: r.ViewerReview.State, ViewerReviewAt: r.ViewerReview.Commit, PendingReviews: r.PendingReviews,
 		AutoMerge: r.AutoMerge.Method, CanClose: r.ViewerCanClose,
 		Reviews: make([]contextReview, 0, len(r.Reviews)), Checks: make([]Check, 0, len(r.Checks)),
 		Unrun: make([]Unrun, 0, len(r.Unrun)), Closes: make([]Closing, 0, len(r.Closes)), CloseCount: r.CloseCount,
+		Timeline: timeline.Entries(r.Timeline.Items, viewer), Total: r.Timeline.Total, Before: r.Timeline.Before,
 	}
 
 	for _, s := range r.Unrun {
@@ -120,7 +151,7 @@ func contextOf(r *github.PullReview) pullContext {
 
 	for _, rev := range r.Reviews {
 		c.Reviews = append(c.Reviews, contextReview{
-			Author: rev.Author, State: rev.State, Body: rev.Body, URL: rev.URL, Commit: rev.Commit,
+			Author: rev.Author, State: rev.State, URL: rev.URL, Commit: rev.Commit,
 			SubmittedAt: rev.SubmittedAt,
 		})
 	}
@@ -145,6 +176,10 @@ type cached struct {
 	// zero when not known.
 	contextAt time.Time
 	fetchedAt time.Time
+
+	// seenAt is GitHub's time of the newest activity in the read the sheet showed when it
+	// last opened the pull request, "" before then.
+	seenAt string
 
 	files []cachedFile
 }
@@ -202,6 +237,10 @@ func (c *cacheStore) load(ctx context.Context, id, budget int64) (*cached, error
 	out := &cached{
 		head: row.HeadOID, total: int(row.Total), complete: row.Complete, context: pc,
 		contextAt: store.Deref(row.ContextAt), fetchedAt: store.Deref(row.FetchedAt), files: make([]cachedFile, 0, len(rows)),
+	}
+
+	if row.SeenAt != nil {
+		out.seenAt = clock.Format(*row.SeenAt)
 	}
 
 	for _, r := range rows {
@@ -276,11 +315,11 @@ func (c *cacheStore) patches(ctx context.Context, id int64, positions []int64) (
 	return out, nil
 }
 
-// save stores what the sheet read of the item with id at now: the context, and, when
-// diff is not nil, the files in place of those cached. It prunes the cache in the same
-// transaction.
+// save stores what the sheet read of the item with id at now: the context, cut to fit,
+// and, when diff is not nil, the files in place of those cached. It prunes the cache in the
+// same transaction, and leaves seen_at as it was.
 func (c *cacheStore) save(ctx context.Context, id int64, pc pullContext, diff *github.PullDiff, now time.Time) error {
-	encoded, err := store.EncodeJSON(pc)
+	encoded, err := fitContext(pc)
 	if err != nil {
 		return err
 	}
@@ -305,6 +344,31 @@ func (c *cacheStore) save(ctx context.Context, id int64, pc pullContext, diff *g
 	}
 
 	return nil
+}
+
+// fitContext encodes pc, cutting its long texts in turn (trimSteps) until it fits
+// maxContextBytes: the description, and each comment, review, and line comment of the
+// conversation. Each text cut is marked, and keeps its page, where the whole text is; no
+// entry is dropped.
+func fitContext(pc pullContext) (string, error) {
+	encoded, err := store.EncodeJSON(pc)
+	if err != nil {
+		return "", fmt.Errorf("encode the cached review: %w", err)
+	}
+
+	for _, limit := range trimSteps {
+		if len(encoded) <= maxContextBytes {
+			break
+		}
+
+		pc.Timeline = timeline.Cut(&pc.Body, &pc.BodyTrimmed, pc.Timeline, limit)
+
+		if encoded, err = store.EncodeJSON(pc); err != nil {
+			return "", fmt.Errorf("encode the cached review: %w", err)
+		}
+	}
+
+	return encoded, nil
 }
 
 // saveDiff stores the files of diff, keeping each patch while the pull request's total
@@ -384,6 +448,16 @@ func prune(ctx context.Context, q *queries.Queries, keep int64, now time.Time) e
 
 		count--
 		bytes -= u.Bytes
+	}
+
+	return nil
+}
+
+// open stamps the sheet's opening of the item with id, now: it shows the read whose newest
+// activity GitHub timed at seenAt, nil for a read that doesn't say.
+func (c *cacheStore) open(ctx context.Context, id int64, seenAt *time.Time, now time.Time) error {
+	if err := c.q.OpenDiff(ctx, queries.OpenDiffParams{SeenAt: seenAt, UsedAt: now, ItemID: id}); err != nil {
+		return fmt.Errorf("stamp the cached review: %w", err)
 	}
 
 	return nil

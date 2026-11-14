@@ -95,9 +95,9 @@ describe('ReviewSummary', () => {
             { name: 'other', workflow: '', state: '?', outcome: 'odd', url: '', required: false },
           ],
           reviews: [
-            { author: 'a', state: 'CHANGES_REQUESTED', body: '', url: '', submittedAt: '', outdated: false },
-            { author: 'b', state: 'DISMISSED', body: '', url: '', submittedAt: '', outdated: false },
-            { author: 'c', state: 'COMMENTED', body: '', url: '', submittedAt: '', outdated: false },
+            { author: 'a', state: 'CHANGES_REQUESTED', url: '', submittedAt: '', outdated: false },
+            { author: 'b', state: 'DISMISSED', url: '', submittedAt: '', outdated: false },
+            { author: 'c', state: 'COMMENTED', url: '', submittedAt: '', outdated: false },
           ],
           change: { kind: 'code', label: 'Code', areas: [] },
         })}

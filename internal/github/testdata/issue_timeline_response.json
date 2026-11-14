@@ -6,7 +6,7 @@
             "repository": {
                 "nameWithOwner": "acme-org/example-repo"
             },
-            "timeline": {
+            "issueTimeline": {
                 "totalCount": 112,
                 "pageInfo": {
                     "hasPreviousPage": false,

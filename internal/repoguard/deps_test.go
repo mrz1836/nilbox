@@ -192,6 +192,14 @@ func boundaries() []boundary {
 				"and Replies interfaces, and knows nothing of the issue sheet",
 		},
 		{
+			pkg: "internal/timeline",
+			forbidden: append(slices.Clone(sheets),
+				"internal/store", "internal/review", "internal/issues", "internal/avatars", "internal/notify"),
+			why: "timeline is the conversation both sheets show, converted from the GitHub client's types; it " +
+				"knows no store, no service, and neither sheet, and by convention it imports only github, item, " +
+				"clock, and textutil",
+		},
+		{
 			pkg:       "internal/issues",
 			forbidden: append(slices.Clone(sheets), "internal/review"),
 			why:       "the issue sheet reaches the inbox through its own Inbox interface, and knows nothing of the review sheet",

@@ -97,6 +97,7 @@ func TestPrefDefaults(t *testing.T) {
 		CollapsedSections:   []ListKey{},
 		InboxOrder:          InboxOrder{StatusSorted: []ListKey{}, StatusOrder: []string{}, Kinds: map[ListKey]ListKind{}},
 		MergeMethod:         DefaultMergeMethod,
+		ReviewTab:           DefaultReviewTab,
 		Integrations: integrationprefs.Config{
 			Switches: map[integrationprefs.ID]integrationprefs.Switch{
 				integrationprefs.MageX: integrationprefs.SwitchAuto, integrationprefs.GoPreCommit: integrationprefs.SwitchAuto,
@@ -276,6 +277,7 @@ func TestSettersPersist(t *testing.T) {
 		CollapsedSections:   []ListKey{},
 		InboxOrder:          InboxOrder{StatusSorted: []ListKey{}, StatusOrder: []string{}, Kinds: map[ListKey]ListKind{}},
 		MergeMethod:         DefaultMergeMethod,
+		ReviewTab:           DefaultReviewTab,
 		Branches:            branchrules.Rules{Own: true, Protected: []string{"develop"}},
 		Integrations: integrationprefs.Config{
 			Switches: map[integrationprefs.ID]integrationprefs.Switch{
@@ -682,6 +684,10 @@ func TestSettersReturnTheStoredSettings(t *testing.T) {
 		{
 			"projects tip", func() (Settings, error) { return svc.SetProjectsTipDismissed(ctx, true) },
 			func(s Settings) any { return s.ProjectsTipDismissed }, true,
+		},
+		{
+			"review tab", func() (Settings, error) { return svc.SetReviewTab(ctx, ReviewTabComments) },
+			func(s Settings) any { return s.ReviewTab }, ReviewTabComments,
 		},
 		{
 			"window size", func() (Settings, error) { return svc.SetWindowSize(ctx, size) },

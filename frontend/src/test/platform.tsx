@@ -171,6 +171,7 @@ function answers(subscribe: Loose<Platform['on']>): { [K in keyof Platform]: Loo
     readReviewAgain: () => Promise.resolve(review()),
     reviewPatches: (_id, _head, paths) =>
       Promise.resolve((paths ?? []).map((path) => ({ path, patch: '@@ -1 +1 @@\n-a\n+b', patchState: '' as const }))),
+    reviewEarlier: () => Promise.resolve({ items: [], total: 0, before: '' }),
     actOnReview: () => Promise.resolve(reviewResult()),
     openIssue: (id) => Promise.resolve(issue({ id })),
     refreshIssue: (id) => Promise.resolve(issue({ id })),
@@ -251,6 +252,7 @@ function answers(subscribe: Loose<Platform['on']>): { [K in keyof Platform]: Loo
     getCollapsedSections: () => Promise.resolve([]),
     setSectionCollapsed: (section, collapsed) => stored({ collapsedSections: collapsed ? [section] : [] }),
     setProjectsTipDismissed: (projectsTipDismissed) => stored({ projectsTipDismissed }),
+    setReviewTab: (reviewTab) => stored({ reviewTab }),
     getInboxOrder: () => Promise.resolve({ statusSorted: [], statusOrder: [], kinds: {} }),
     setStatusSort: (section, on) =>
       stored({ inboxOrder: { statusSorted: on ? [section] : [], statusOrder: [], kinds: {} } }),

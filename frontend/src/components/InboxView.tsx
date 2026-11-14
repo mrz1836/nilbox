@@ -31,6 +31,7 @@ import {
   type RepoRules,
   type Review,
   type ReviewResult,
+  type ReviewTab,
   type Settings,
   type Worktree,
 } from '../platform'
@@ -113,6 +114,10 @@ export interface InboxViewProps {
   repoRules?: RepoRules | undefined
   onSettingsSaved?: (settings: Settings) => void
   onRepoRuleSettings?: () => void
+  // reviewTab is the review sheet's tab it opens on, the one the user last chose, and
+  // onReviewTab hears each choice, for the window to remember.
+  reviewTab?: ReviewTab | undefined
+  onReviewTab?: ((tab: ReviewTab) => void) | undefined
 }
 
 // SheetDrafts are the drafts of both sheets over the inbox: the review sheet's and the issue
@@ -259,6 +264,8 @@ export function InboxView({
   repoRules = noRepoRules,
   onSettingsSaved,
   onRepoRuleSettings,
+  reviewTab = 'files',
+  onReviewTab,
 }: InboxViewProps) {
   const {
     snapshot,
@@ -875,6 +882,10 @@ export function InboxView({
             siblings={siblings}
             listTitle={listTitle}
             drafts={drafts.review}
+            tab={reviewTab}
+            onTab={(tab) => {
+              onReviewTab?.(tab)
+            }}
             launch={launch}
             resolution={resolutions.get(viewing.id) ?? null}
             sessions={viewed === undefined ? undefined : sessionsOf(sessions, viewed)}

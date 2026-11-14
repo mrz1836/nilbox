@@ -27,6 +27,15 @@ export interface DiffViewProps {
   // loading are the paths whose diffs are being read, and onLoad reads more.
   loading: ReadonlySet<string>
   onLoad: (paths: string[]) => void
+  // reveal opens the file at its path, folded or not, each time its n changes: the sheet
+  // shows the file a line comment in the conversation is on.
+  reveal?: Reveal | null
+}
+
+// Reveal asks the diff to open the file at path; n tells one ask from the next.
+export interface Reveal {
+  path: string
+  n: number
 }
 
 // fileAnchor is the ID of a file's block, which the file list scrolls to.
@@ -70,6 +79,8 @@ function newLines(rows: readonly DiffRow[], start: number, end: number): string[
 interface FileDiffProps {
   file: ReviewFile
   url: string
+  // reveal, when it names this file, opens it each time its n changes.
+  reveal: Reveal | null
   viewed: boolean
   comments: readonly PendingComment[]
   loading: boolean
@@ -81,9 +92,28 @@ interface FileDiffProps {
 
 // FileDiff is one file's block: its header, which folds it and marks it viewed, and its
 // diff, or why there is none.
-function FileDiff({ file, url, viewed, comments, loading, onLoad, onViewed, onComment, onDelete }: FileDiffProps) {
+function FileDiff({
+  file,
+  url,
+  reveal,
+  viewed,
+  comments,
+  loading,
+  onLoad,
+  onViewed,
+  onComment,
+  onDelete,
+}: FileDiffProps) {
   const [open, setOpen] = useState(!startsCollapsed(file) && !viewed)
   const [editing, setEditing] = useState<Editing | null>(null)
+  // revealed is the last ask to reveal the file this block heard, which opens it once.
+  const [revealed, setRevealed] = useState(0)
+
+  if (reveal !== null && reveal.path === file.path && reveal.n !== revealed) {
+    setRevealed(reveal.n)
+    setOpen(true)
+  }
+
   const rows = file.patchState === '' ? parsePatch(file.patch) : []
 
   const clickLine = (e: MouseEvent, side: DiffSide, line: number) => {
@@ -353,10 +383,11 @@ function FileBody({
 }
 
 // DiffView is the pull request's diff, file by file, in GitHub's order: unified, added
-// and removed lines tinted, lock and generated files and long diffs folded to start with.
+// and removed lines tinted, lock and generated files and long diffs folded to start with,
+// and a file the sheet reveals opened.
 // A line number on a line GitHub takes comments on opens a comment there; shift-click
 // another for a range. Comments wait in the draft and go with the review.
-export function DiffView({ review, draft, onDraft, loading, onLoad }: DiffViewProps) {
+export function DiffView({ review, draft, onDraft, loading, onLoad, reveal = null }: DiffViewProps) {
   if (review.files.length === 0) {
     return (
       <p className="text-sm text-muted">
@@ -381,6 +412,7 @@ export function DiffView({ review, draft, onDraft, loading, onLoad }: DiffViewPr
           key={`${review.head}:${file.path}`}
           file={file}
           url={review.url}
+          reveal={reveal}
           viewed={draft.viewed.includes(file.path)}
           comments={draft.comments.filter((c) => c.path === file.path)}
           loading={loading.has(file.path)}

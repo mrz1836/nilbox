@@ -100,7 +100,8 @@ function inPopover(e: KeyboardEvent): boolean {
 
 // useSheetKeys gives the sheet whose title has titleId its keys while it is the dialog the
 // user is in and no menu or picker in it holds focus: ⌘↩ runs its button, and ← and → step
-// through its list while the user isn't typing, with no modifier held.
+// through its list while the user isn't typing, with no modifier held, unless a control in
+// the sheet took the key first.
 export function useSheetKeys(titleId: string, keys: SheetKeys): void {
   const onKey = useEffectEvent((e: KeyboardEvent) => {
     const dialog = document.querySelector(`dialog[aria-labelledby="${titleId}"]`)
@@ -117,7 +118,9 @@ export function useSheetKeys(titleId: string, keys: SheetKeys): void {
       return
     }
 
-    if (isTyping(e) || e.metaKey || e.altKey || e.ctrlKey) {
+    // A key a control in the sheet already took, as the tabs take an arrow to move between
+    // them, steps nothing.
+    if (isTyping(e) || e.metaKey || e.altKey || e.ctrlKey || e.defaultPrevented) {
       return
     }
 

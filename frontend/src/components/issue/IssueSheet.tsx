@@ -2,19 +2,12 @@ import { useId, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 
 import { attempt } from '../../lib/call'
 import { refText } from '../../lib/format'
-import {
-  changedSince,
-  closeNote,
-  issueHeldBack,
-  keepsDraft,
-  quoteInto,
-  selectedIssueAction,
-  standingTone,
-} from '../../lib/issues'
+import { changedSince, closeNote, issueHeldBack, keepsDraft, selectedIssueAction, standingTone } from '../../lib/issues'
 import type { IssueDraft, IssueDrafts } from '../../lib/issueDrafts'
 import { pictureLogins, PicturesContext, usePictures } from '../../lib/pictures'
 import { placeIn, stepTo, useActionProgress, useSheetKeys, type SheetBack } from '../../lib/sheet'
 import { toneDot, toneText } from '../../lib/signals'
+import { quoteInto } from '../../lib/timeline'
 import { formatAgo } from '../../lib/time'
 import { useIssue } from '../../lib/useIssue'
 import { useMutation } from '../../lib/useMutation'
@@ -31,6 +24,8 @@ import {
   type ItemResolution,
   type Worktree,
 } from '../../platform'
+import { Description } from '../conversation/Description'
+import { Timeline } from '../conversation/Timeline'
 import { buttonClass } from '../controls'
 import { ErrorBanner } from '../ErrorBanner'
 import type { LaunchOptions } from '../ItemRow'
@@ -40,7 +35,6 @@ import { AgentVerdict } from '../review/AgentVerdict'
 import { DescriptionSkeleton, ReadingBanner, SummarySkeleton } from '../review/ReviewLoading'
 import { Sheet } from '../Sheet'
 import { WorkLine } from '../WorkLine'
-import { Conversation } from './Conversation'
 import { IssueCloseDialog } from './IssueCloseDialog'
 import { IssueComposer } from './IssueComposer'
 import { IssueHeader } from './IssueHeader'
@@ -338,11 +332,25 @@ export function IssueSheet({
                     <DescriptionSkeleton />
                   </div>
                 ) : (
-                  <Conversation
+                  <Timeline
                     key={`conversation-${String(id)}`}
-                    issue={issue}
+                    lead={
+                      <Description
+                        author={issue.author}
+                        openedAt={issue.openedAt}
+                        editedAt={issue.editedAt}
+                        body={issue.body}
+                        bodyTrimmed={issue.bodyTrimmed}
+                        reactions={issue.reactions}
+                        url={issue.url}
+                        reading={reading}
+                        read={issue.fetchedAt !== ''}
+                      />
+                    }
+                    page={issue.timeline}
+                    repo={issue.repo}
+                    author={issue.author}
                     lastSeenAt={loaded.lastSeenAt}
-                    reading={reading}
                     onEarlier={() => {
                       void loaded.loadEarlier()
                     }}

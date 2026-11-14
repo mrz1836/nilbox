@@ -9,6 +9,7 @@ import (
 
 	"github.com/mrz1836/nilbox/internal/github"
 	"github.com/mrz1836/nilbox/internal/item"
+	"github.com/mrz1836/nilbox/internal/timeline"
 )
 
 func TestViewOfKeepsWhatTheSheetShows(t *testing.T) {
@@ -60,16 +61,16 @@ func TestViewOfKeepsWhatTheSheetShows(t *testing.T) {
 		Title: "1.5", URL: "https://github.com/acme-org/example-repo/milestone/2",
 		DueOn: "2026-12-01T00:00:00Z", State: "OPEN", Progress: 40,
 	}, view.Milestone)
-	assert.Equal(t, &Linked{
+	assert.Equal(t, &timeline.Ref{
 		Kind: item.KindIssue, Repo: exampleRepo, Number: 2, Title: "Parser",
-		State: StateOpen,
+		State: timeline.StateOpen,
 	}, view.Parent)
-	assert.Equal(t, ReasonCompleted, view.DuplicateOf.StateReason)
+	assert.Equal(t, timeline.ReasonCompleted, view.DuplicateOf.StateReason)
 	assert.Len(t, view.SubIssues, 1)
 	assert.Equal(t, []Fix{{
-		PR: Linked{
+		PR: timeline.Ref{
 			Kind: item.KindPR, Repo: exampleRepo, Number: 14, Title: "Keep the trailing newline",
-			State: StateMerged,
+			State: timeline.StateMerged,
 		},
 		Base: "main", MergedAt: stamp(merged), Checks: ChecksPassing, Review: ReviewApproved,
 	}}, view.Fixes)
@@ -78,8 +79,9 @@ func TestViewOfKeepsWhatTheSheetShows(t *testing.T) {
 	assert.Equal(t, "acme-org/example-repo#14", view.ClosedBy, "the newest close names what closed it")
 
 	last := view.Timeline[len(view.Timeline)-1]
-	assert.Equal(t, TimelineItem{
-		Kind: EventRenamed, ID: "RTE_1", At: stamp(latestAt), Actor: octoOther, From: "Parser bug", To: parserBug,
+	assert.Equal(t, timeline.Entry{
+		Kind: timeline.KindRenamed, ID: "RTE_1", At: stamp(latestAt), Actor: octoOther, From: "Parser bug", To: parserBug,
+		LineComments: []timeline.LineComment{},
 	}, last)
 	assert.True(t, view.Timeline[len(view.Timeline)-2].ActorIsBot)
 
@@ -88,26 +90,6 @@ func TestViewOfKeepsWhatTheSheetShows(t *testing.T) {
 
 	v.Timeline.Items = nil
 	assert.Empty(t, viewOf(v, octoUser).ClosedBy, "a page with no close names nobody")
-}
-
-func TestEveryTimelineTypeTheSheetReads(t *testing.T) {
-	t.Parallel()
-
-	for typ, want := range map[string]EventKind{
-		github.TimelineComment: EventComment, github.TimelineCrossReferenced: EventMentioned,
-		github.TimelineConnected: EventLinked, github.TimelineDisconnected: EventUnlinked,
-		github.TimelineClosed: EventClosed, github.TimelineReopened: EventReopened,
-		github.TimelineAssigned: EventAssigned, github.TimelineUnassigned: EventUnassigned,
-		github.TimelineLabeled: EventLabeled, github.TimelineUnlabeled: EventUnlabeled,
-		github.TimelineRenamed: EventRenamed, github.TimelineMarkedAsDuplicate: EventDuplicate,
-	} {
-		got, ok := eventKind(typ)
-		assert.True(t, ok, typ)
-		assert.Equal(t, want, got, typ)
-	}
-
-	_, ok := eventKind("PinnedEvent")
-	assert.False(t, ok)
 }
 
 func TestTheWordsOfAPullRequest(t *testing.T) {
@@ -131,18 +113,18 @@ func TestTheWordsOfAPullRequest(t *testing.T) {
 func TestMentionedListsEachOnceButTheFixes(t *testing.T) {
 	t.Parallel()
 
-	pr14 := Linked{Kind: item.KindPR, Repo: exampleRepo, Number: 14}
-	issue9 := Linked{Kind: item.KindIssue, Repo: "acme-org/api", Number: 9}
+	pr14 := timeline.Ref{Kind: item.KindPR, Repo: exampleRepo, Number: 14}
+	issue9 := timeline.Ref{Kind: item.KindIssue, Repo: "acme-org/api", Number: 9}
 
-	got := mentioned([]TimelineItem{
-		{Kind: EventMentioned, Ref: &pr14},
-		{Kind: EventMentioned, Ref: &issue9},
-		{Kind: EventLinked, Ref: &Linked{Repo: exampleRepo, Number: 15}},
-		{Kind: EventMentioned, Ref: &Linked{Kind: item.KindIssue, Repo: "ACME-org/API", Number: 9}},
-		{Kind: EventMentioned},
+	got := mentioned([]timeline.Entry{
+		{Kind: timeline.KindMentioned, Ref: &pr14},
+		{Kind: timeline.KindMentioned, Ref: &issue9},
+		{Kind: timeline.KindLinked, Ref: &timeline.Ref{Repo: exampleRepo, Number: 15}},
+		{Kind: timeline.KindMentioned, Ref: &timeline.Ref{Kind: item.KindIssue, Repo: "ACME-org/API", Number: 9}},
+		{Kind: timeline.KindMentioned},
 	}, []Fix{{PR: pr14}})
 
-	assert.Equal(t, []Linked{issue9}, got)
+	assert.Equal(t, []timeline.Ref{issue9}, got)
 }
 
 func TestStale(t *testing.T) {
@@ -173,7 +155,7 @@ func TestABuiltIssueHoldsNoNilList(t *testing.T) {
 		Fields: []github.ProjectField{{Name: "Priority", Value: "P1", Color: "#ff0000"}},
 	}}
 
-	is := build(card, &cached{view: cachedView{State: StateOpen}}, "", false)
+	is := build(card, &cached{view: cachedView{State: timeline.StateOpen}}, "", false)
 
 	assert.NotNil(t, is.Labels)
 	assert.NotNil(t, is.Reactions)
@@ -193,9 +175,9 @@ func TestTheFactsOfARead(t *testing.T) {
 	t.Parallel()
 
 	read := &cached{view: cachedView{
-		State: StateOpen, CanClose: true, LatestMine: true, LatestAt: "l", FixCount: 2,
-		Fixes:       []Fix{{PR: Linked{Repo: exampleRepo, Number: 14, State: StateOpen, Draft: true}}},
-		DuplicateOf: &Linked{Repo: exampleRepo, Number: 3},
+		State: timeline.StateOpen, CanClose: true, LatestMine: true, LatestAt: "l", FixCount: 2,
+		Fixes:       []Fix{{PR: timeline.Ref{Repo: exampleRepo, Number: 14, State: timeline.StateOpen, Draft: true}}},
+		DuplicateOf: &timeline.Ref{Repo: exampleRepo, Number: 3},
 	}}
 
 	f := factsOf(storedIssue(), read, false)
@@ -206,7 +188,7 @@ func TestTheFactsOfARead(t *testing.T) {
 	assert.Equal(t, "acme-org/example-repo#3", f.DuplicateOf)
 	assert.Equal(t, []FixFacts{{Ref: "acme-org/example-repo#14", Open: true, Draft: true}}, f.Fixes)
 
-	require.Equal(t, " as not planned", closedAs(ReasonNotPlanned))
-	require.Empty(t, closedAs(ReasonReopened))
+	require.Equal(t, " as not planned", closedAs(timeline.ReasonNotPlanned))
+	require.Empty(t, closedAs(timeline.ReasonReopened))
 	require.Empty(t, closedAs("ARCHIVED"))
 }

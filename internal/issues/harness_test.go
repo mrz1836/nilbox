@@ -410,7 +410,9 @@ func (g *fakeGitHub) FetchIssueState(context.Context, github.Token, string) (*gi
 	return s, nil
 }
 
-func (g *fakeGitHub) FetchIssueTimeline(_ context.Context, _ github.Token, _, before string) (*github.TimelinePage, error) {
+func (g *fakeGitHub) FetchTimeline(
+	_ context.Context, _ github.Token, _ item.Kind, _, before string,
+) (*github.TimelinePage, error) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 

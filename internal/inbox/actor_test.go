@@ -361,3 +361,48 @@ func TestTheCardShowsAutoMerge(t *testing.T) {
 	assert.Nil(t, autoMergeAt(github.AutoMerge{}))
 	assert.Nil(t, autoMergeAt(github.AutoMerge{Method: "MERGE"}), "on, but GitHub did not say since when")
 }
+
+func TestPeekPullStoresNothing(t *testing.T) {
+	t.Parallel()
+
+	h, ids := editHarness(t)
+	before := len(h.events.All())
+	runs := 0
+	actor := NewActor(h.svc)
+
+	err := actor.PeekPull(t.Context(), ids[1], func(_ context.Context, tok github.Token, target PullTarget) error {
+		runs++
+
+		assert.False(t, tok.IsZero())
+		assert.Equal(t, nodeID(1), target.NodeID)
+
+		return nil
+	})
+	require.NoError(t, err)
+	assert.Equal(t, 1, runs)
+	assert.Len(t, h.events.All(), before, "nothing stored, so nothing changed")
+
+	err = actor.PeekPull(t.Context(), ids[3], func(context.Context, github.Token, PullTarget) error {
+		runs++
+
+		return nil
+	})
+	require.ErrorIs(t, err, ErrNotPull, "an issue")
+
+	err = actor.PeekPull(t.Context(), ids[1], func(context.Context, github.Token, PullTarget) error {
+		return errMergeRefused
+	})
+	require.ErrorIs(t, err, errMergeRefused)
+	assert.Equal(t, 1, runs)
+
+	unlock, err := h.svc.items.lock(t.Context(), ids[1])
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+
+	err = actor.PeekPull(ctx, ids[1], func(context.Context, github.Token, PullTarget) error { return nil })
+	require.ErrorIs(t, err, context.Canceled, "it waits for other work on the pull request")
+
+	unlock()
+}

@@ -9,12 +9,9 @@ export {
 export {
     Action,
     ChecksWord,
-    EventKind,
     Outcome,
-    RefState,
     ReviewWord,
-    StandingState,
-    StateReason
+    StandingState
 } from "./models.js";
 
 export type {
@@ -25,20 +22,15 @@ export type {
     Fix,
     Issue,
     IssueType,
-    Label,
-    Linked,
     Milestone,
     Offer,
     Person,
     Project,
     ProjectField,
-    Reaction,
     Reply,
     RepoLabel,
     RepoLabels,
     Result,
     Seen,
-    Standing,
-    TimelineItem,
-    TimelinePage
+    Standing
 } from "./models.js";

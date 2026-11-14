@@ -40,6 +40,7 @@ import * as sessions from '../../bindings/github.com/mrz1836/nilbox/internal/ses
 import * as settings from '../../bindings/github.com/mrz1836/nilbox/internal/settings'
 import type * as snooze from '../../bindings/github.com/mrz1836/nilbox/internal/snooze'
 import type * as threadrules from '../../bindings/github.com/mrz1836/nilbox/internal/threadrules'
+import type * as timeline from '../../bindings/github.com/mrz1836/nilbox/internal/timeline'
 import * as worktrees from '../../bindings/github.com/mrz1836/nilbox/internal/worktrees'
 
 export type { CancellablePromise }
@@ -385,10 +386,9 @@ export type UpdateLevel = bump.Level
 export type Issue = NonNullLists<issues.Issue>
 export type IssueAction = issues.Action
 export type IssueActRequest = NonNullLists<issues.ActRequest>
-export type IssueEventKind = issues.EventKind
 export type IssueFix = NonNullLists<issues.Fix>
-export type IssueLabel = NonNullLists<issues.Label>
-export type IssueLinked = NonNullLists<issues.Linked>
+export type IssueLabel = NonNullLists<timeline.Label>
+export type IssueLinked = NonNullLists<timeline.Ref>
 export type IssueMilestone = NonNullLists<issues.Milestone>
 export type IssueOffer = NonNullLists<issues.Offer>
 export type IssueOutcome = issues.Outcome
@@ -403,13 +403,23 @@ export type IssueResult = NonNullLists<issues.Result>
 export type IssueSeen = NonNullLists<issues.Seen>
 export type IssueStanding = NonNullLists<issues.Standing>
 export type IssueStandingState = issues.StandingState
-export type IssueStateReason = issues.StateReason
-export type IssueTimelineItem = NonNullLists<issues.TimelineItem>
-export type IssueTimelinePage = NonNullLists<issues.TimelinePage>
+export type IssueStateReason = timeline.StateReason
 export type IssueType = NonNullLists<issues.IssueType>
 export type ChecksWord = issues.ChecksWord
-export type RefState = issues.RefState
+export type RefState = timeline.RefState
 export type ReviewWord = issues.ReviewWord
+
+// The conversation both sheets show, an issue's and a pull request's alike: its entries
+// (comments, reviews, and events), a page of them, what each is, the items they name, and
+// a review's comments on lines of the diff.
+export type TimelineEntry = NonNullLists<timeline.Entry>
+export type TimelinePage = NonNullLists<timeline.Page>
+export type TimelineKind = timeline.Kind
+export type TimelineRef = NonNullLists<timeline.Ref>
+export type TimelineLineComment = NonNullLists<timeline.LineComment>
+export type TimelineReviewState = timeline.ReviewState
+export type TimelineReaction = NonNullLists<timeline.Reaction>
+export type TimelineLabel = NonNullLists<timeline.Label>
 
 export type SensitiveCategory = NonNullLists<sensitive.Category>
 export type FileCheck = NonNullLists<sensitive.Check>
@@ -433,6 +443,7 @@ export type ListKind = settings.ListKind
 export type Theme = settings.Theme
 export type TextSize = settings.TextSize
 export type MergeMethodSetting = settings.MergeMethod
+export type ReviewTab = settings.ReviewTab
 export type RefreshKind = settings.RefreshKind
 
 export type SnoozeRules = NonNullLists<snooze.Rules>
@@ -517,6 +528,7 @@ export const {
   Refresh: refreshReview,
   ReadAgain: readReviewAgain,
   Patches: reviewPatches,
+  Earlier: reviewEarlier,
   Act: actOnReview,
   Replies: reviewReplies,
   FillReply: fillReply,
@@ -597,6 +609,7 @@ export const {
   CollapsedSections: getCollapsedSections,
   SetSectionCollapsed: setSectionCollapsed,
   SetProjectsTipDismissed: setProjectsTipDismissed,
+  SetReviewTab: setReviewTab,
   InboxOrder: getInboxOrder,
   SetStatusSort: setStatusSort,
   SetListKind: setListKind,

@@ -51,7 +51,7 @@ func TestFactsCountTheWorkflowRunsThatRanNoCheck(t *testing.T) {
 		},
 		{Name: "Auto-merge Trigger", Conclusion: github.SuiteAwaitsApproval},
 		{Name: "Auto-merge Trigger", Conclusion: "FAILURE", RunID: 107},
-	}})}
+	}}, octoUser)}
 
 	assert.Equal(t, []Unrun{
 		{Name: "PR Management", Approval: true, RunID: 106, URL: "https://github.com/acme-org/example-repo/actions/runs/106"},

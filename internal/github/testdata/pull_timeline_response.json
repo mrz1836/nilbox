@@ -1,0 +1,99 @@
+{
+    "data": {
+        "node": {
+            "__typename": "PullRequest",
+            "number": 94,
+            "repository": {
+                "nameWithOwner": "acme-org/example-repo"
+            },
+            "headRefOid": "1111111111111111111111111111111111111111",
+            "pullTimeline": {
+                "totalCount": 31,
+                "filteredCount": 3,
+                "pageInfo": {
+                    "hasPreviousPage": false,
+                    "startCursor": "Y3Vyc29yOnYyOpfakePullFirst94=="
+                },
+                "nodes": [
+                    {
+                        "__typename": "ConnectedEvent",
+                        "id": "CNE_fakeNodeId1",
+                        "createdAt": "2026-11-09T16:52:55Z",
+                        "isCrossRepository": false,
+                        "actor": {
+                            "__typename": "User",
+                            "login": "octo-maintainer"
+                        },
+                        "source": {
+                            "__typename": "PullRequest",
+                            "number": 94,
+                            "title": "Bump github/codeql-action",
+                            "url": "https://github.com/acme-org/example-repo/pull/94",
+                            "prState": "OPEN",
+                            "isDraft": false,
+                            "merged": false,
+                            "repository": {
+                                "nameWithOwner": "acme-org/example-repo"
+                            }
+                        },
+                        "subject": {
+                            "__typename": "Issue",
+                            "number": 12,
+                            "title": "Pin the code scanning action",
+                            "url": "https://github.com/acme-org/example-repo/issues/12",
+                            "issueState": "OPEN",
+                            "stateReason": null,
+                            "repository": {
+                                "nameWithOwner": "acme-org/example-repo"
+                            }
+                        }
+                    },
+                    {
+                        "__typename": "PullRequestReview",
+                        "id": "PRR_fakeNodeId0",
+                        "url": "https://github.com/acme-org/example-repo/pull/94#pullrequestreview-0",
+                        "createdAt": "2026-11-09T16:52:58Z",
+                        "submittedAt": "2026-11-09T16:52:59Z",
+                        "lastEditedAt": null,
+                        "body": "",
+                        "state": "DISMISSED",
+                        "authorAssociation": "MEMBER",
+                        "viewerDidAuthor": false,
+                        "author": {
+                            "__typename": "User",
+                            "login": "octo-reviewer"
+                        },
+                        "commit": {
+                            "oid": "3333333333333333333333333333333333333333"
+                        },
+                        "lineComments": {
+                            "totalCount": 0,
+                            "nodes": []
+                        }
+                    },
+                    {
+                        "__typename": "MergedEvent",
+                        "id": "ME_fakeNodeId1",
+                        "url": "https://github.com/acme-org/example-repo/pull/94#event-1",
+                        "createdAt": "2026-11-09T16:53:00Z",
+                        "actor": {
+                            "__typename": "User",
+                            "login": "octo-maintainer"
+                        },
+                        "mergeCommit": {
+                            "abbreviatedOid": "4444444"
+                        },
+                        "mergeRefName": "main"
+                    }
+                ]
+            }
+        },
+        "rateLimit": {
+            "cost": 1,
+            "remaining": 4990,
+            "resetAt": "2026-11-14T18:36:37Z",
+            "limit": 5000,
+            "used": 10
+        }
+    }
+}

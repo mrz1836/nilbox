@@ -365,6 +365,15 @@ export function SetRepoRule(target: string, rule: reporules$0.Rule): $Cancellabl
 }
 
 /**
+ * SetReviewTab stores the review sheet's tab the user chose, ReviewTabFiles or
+ * ReviewTabComments, which the sheet opens on from then on, and returns the settings with
+ * it.
+ */
+export function SetReviewTab(tab: $models.ReviewTab): $CancellablePromise<$models.Settings> {
+    return $Call.ByID(576705020, tab);
+}
+
+/**
  * SetRunsIn stores where the runs go, in the app or in the terminal chosen for launches,
  * and returns the settings with it. Nothing else hears of it: what starts a run (a
  * release, a hooks action, checks, or a script) reads the setting as it starts one.

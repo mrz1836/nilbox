@@ -59,6 +59,7 @@ import {
   on,
   openExternal,
   setProjectsTipDismissed,
+  setReviewTab,
   setIntegrationsAnnounced,
   setScriptsLastPage,
   setScriptsLastRepo,
@@ -667,9 +668,9 @@ export function App() {
     })
   }
 
-  // remember stores a change to the window's memory of the Scripts tab: that it was
-  // announced, or the page or clone it reopens on. What shows has changed already; a store
-  // that fails only means the next start doesn't remember it.
+  // remember stores a change to the window's memory: that the Scripts tab was announced, the
+  // page or clone it reopens on, or the review sheet's tab. What shows has changed already;
+  // a store that fails only means the next start doesn't remember it.
   const remember = (store: Promise<Settings>, what: string) => {
     void attempt(store).then((result) => {
       if (result.ok) {
@@ -847,6 +848,10 @@ export function App() {
               repoRules={config.settings?.repoRules}
               onSettingsSaved={setSettings}
               onRepoRuleSettings={openRepoRuleSettings}
+              reviewTab={config.settings?.reviewTab}
+              onReviewTab={(tab) => {
+                remember(setReviewTab(tab), 'the review sheet’s tab')
+              }}
             />
           </Activity>
           {nav.visited.has('worktrees') && (

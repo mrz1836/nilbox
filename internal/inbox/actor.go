@@ -458,6 +458,35 @@ func (a *Actor) PeekIssue(
 	return err
 }
 
+// PeekPull runs peek on the pull request with id, with a token, and stores nothing: a read
+// the card has no part in, such as an earlier page of its conversation. It holds the item's
+// lock, as every other work on the pull request does.
+func (a *Actor) PeekPull(
+	ctx context.Context, id int64, peek func(context.Context, github.Token, PullTarget) error,
+) error {
+	s := a.s
+
+	unlock, err := s.items.lock(ctx, id)
+	if err != nil {
+		return err
+	}
+
+	defer unlock()
+
+	row, err := s.targetRow(ctx, id, item.KindPR, false)
+	if err != nil {
+		return err
+	}
+
+	target := pullTargetOfRow(row)
+
+	_, err = github.WithToken(ctx, s.tokens, func(tok github.Token) (struct{}, error) {
+		return struct{}{}, peek(ctx, tok, target)
+	})
+
+	return err
+}
+
 // issueTargetOfRow converts a GetEditItem row of an issue; projects says to read its
 // projects.
 func issueTargetOfRow(row editRow, projects bool) IssueTarget {

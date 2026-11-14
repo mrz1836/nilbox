@@ -12,6 +12,10 @@ import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wails
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
+import * as timeline$0 from "../timeline/models.js";
+
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
 import * as $models from "./models.js";
 
 /**
@@ -39,10 +43,11 @@ export function Assignable(id: number, query: string): $CancellablePromise<$mode
 }
 
 /**
- * Avatars returns the profile pictures of the people with logins, as the sheet shows them
- * beside their names, as data: URLs keyed by login, leaving out anyone without one (see
- * avatars.Service.Pictures). Each picture is downloaded from GitHub's avatar host once and
- * kept, so the window loads nothing remote itself.
+ * Avatars returns the profile pictures of the people with logins, as the sheets show them
+ * beside their names (the review sheet's window asks through this one method too), as data:
+ * URLs keyed by login, leaving out anyone without one (see avatars.Service.Pictures). Each
+ * picture is downloaded from GitHub's avatar host once and kept, so the window loads
+ * nothing remote itself.
  */
 export function Avatars(logins: string[] | null): $CancellablePromise<{ [_ in string]?: string } | null> {
     return $Call.ByID(3078039022, logins);
@@ -52,7 +57,7 @@ export function Avatars(logins: string[] | null): $CancellablePromise<{ [_ in st
  * Earlier reads the page of the issue's timeline before the cursor before, which a page
  * the sheet holds gave: one GraphQL request, which stores nothing, not even in the cache.
  */
-export function Earlier(id: number, before: string): $CancellablePromise<$models.TimelinePage> {
+export function Earlier(id: number, before: string): $CancellablePromise<timeline$0.Page> {
     return $Call.ByID(2402674932, id, before);
 }
 

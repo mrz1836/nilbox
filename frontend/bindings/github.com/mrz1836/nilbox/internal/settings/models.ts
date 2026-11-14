@@ -183,6 +183,28 @@ export const RefreshKind = {
 } as const;
 
 /**
+ * ReviewTab is a tab of the review sheet's larger column: the files a pull request changes,
+ * beneath its description, or its conversation.
+ */
+export type ReviewTab = "files" | "comments";
+
+/**
+ * The values of ReviewTab, by the names of their Go constants.
+ */
+export const ReviewTab = {
+    /**
+     * The review sheet's tabs.
+     */
+    ReviewTabFiles: "files",
+    ReviewTabComments: "comments",
+
+    /**
+     * DefaultReviewTab is the tab a fresh database opens the review sheet on.
+     */
+    DefaultReviewTab: "files",
+} as const;
+
+/**
  * Settings is the full set of preferences as the UI shows them. Every field is a plain
  * value.
  */
@@ -347,6 +369,11 @@ export interface Settings {
      * the GitHub projects an issue is in.
      */
     "projectsTipDismissed": boolean;
+
+    /**
+     * ReviewTab is the review sheet's tab the user last chose, which it opens on.
+     */
+    "reviewTab": ReviewTab;
 
     /**
      * InboxOrder is which inbox lists are sorted by project status, and the order of the

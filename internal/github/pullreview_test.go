@@ -10,6 +10,9 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/mrz1836/nilbox/internal/item"
+	"github.com/mrz1836/nilbox/internal/uierr"
 )
 
 // sha1s is a commit SHA of one repeated digit, as the fixtures scrub them.
@@ -80,7 +83,7 @@ func TestFetchPullReviewReadsTheSheet(t *testing.T) {
 
 	assert.Equal(t, []Review{
 		{
-			Author: "octo-user", State: "COMMENTED", Body: "Could you check the changelog?", Commit: sha1s("2"),
+			Author: "octo-user", State: "COMMENTED", Commit: sha1s("2"),
 			URL:         "https://github.com/acme-org/example-repo/pull/94#pullrequestreview-1",
 			SubmittedAt: time.Date(2026, 11, 9, 17, 0, 0, 0, time.UTC),
 		},
@@ -219,7 +222,7 @@ func TestReviewChecksWithoutARollup(t *testing.T) {
 	t.Parallel()
 
 	review := &PullReview{}
-	(&reviewNode{}).fill(review)
+	(&reviewNode{}).fill(review, ItemRef{}, "")
 
 	assert.Equal(t, []Check{}, review.Checks)
 	assert.Equal(t, []UnrunSuite{}, review.Unrun)
@@ -319,4 +322,206 @@ func TestMergeable(t *testing.T) {
 	for _, status := range []string{MergeStateUnstable, MergeStateBlocked, MergeStateBehind, MergeStateDirty, MergeStateUnknown, ""} {
 		assert.False(t, Mergeable(status), status)
 	}
+}
+
+func TestFetchPullReviewReadsTheConversation(t *testing.T) {
+	t.Parallel()
+
+	body := fixture(t, "pull_review_response.json")
+
+	client := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		req := readIssueRequest(t, r)
+		assert.Contains(t, req.Query, "query PullReview($id: ID!, $last: Int!)")
+		assert.Contains(t, req.Query, "timeline: timelineItems(last: $last, itemTypes: "+pullTimelineItemTypes+")")
+		assert.Contains(t, req.Query, "fragment PullTimelineFields on PullRequestTimelineItemsConnection")
+		assert.Contains(t, req.Query, "totalCount filteredCount")
+		assert.Contains(t, req.Query, "lineComments: comments(first: 20)")
+		assert.Contains(t, req.Query, "mergeCommit: commit { abbreviatedOid }")
+		assert.Contains(t, req.Query, "reactionGroups { content reactors { totalCount } }")
+		assert.Equal(t, timelinePage, req.Variables.Last)
+
+		_, _ = w.Write(body)
+	})
+
+	review, err := client.FetchPullReview(t.Context(), NewToken(fakeToken), "PR_fakeNodeId94")
+	require.NoError(t, err)
+
+	assert.Equal(t, time.Date(2026, 11, 9, 16, 53, 30, 0, time.UTC), review.LastEditedAt)
+	assert.Equal(t, []Reaction{{Content: "THUMBS_UP", Count: 2}, {Content: "ROCKET", Count: 1}}, review.Reactions)
+	assert.NotContains(t, reviewFieldsFragment, "state body url", "a reviewer's text is read in the conversation alone")
+
+	page := review.Timeline
+	assert.True(t, page.HasEarlier)
+	assert.Equal(t, "Y3Vyc29yOnYyOpfakePullCursor94==", page.Before)
+	assert.Equal(t, 14, page.Total, "counted by filteredCount, since a pull request's totalCount counts every type")
+	assert.Equal(t, 1, page.RateLimit.Cost, "measured: the conversation costs no more than the read did without it")
+
+	types := make([]string, 0, len(page.Items))
+	for _, it := range page.Items {
+		types = append(types, it.Type)
+	}
+
+	assert.Equal(t, []string{
+		TimelineReviewRequested, TimelineReviewRequested, TimelineReviewRequested, TimelineComment, TimelineReview,
+		TimelineForcePushed, TimelineConvertedToDraft, TimelineReadyForReview, TimelineReview, TimelineReview,
+		TimelineReview,
+	}, types, "a pending review, a review that says nothing, and a null node are skipped")
+
+	assert.Equal(t, "octo-reviewer", page.Items[0].Reviewer)
+	assert.Equal(t, "acme-org/maintainers", page.Items[1].Reviewer, "a team by its org and slug")
+	assert.Empty(t, page.Items[2].Reviewer, "a reviewer the token can't see")
+	assert.True(t, page.Items[3].Mine)
+
+	mine := page.Items[4]
+	assert.Equal(t, ReviewStateCommented, mine.ReviewState)
+	assert.Equal(t, "Could you check the changelog?", mine.Body)
+	assert.Equal(t, time.Date(2026, 11, 9, 17, 0, 0, 0, time.UTC), mine.CreatedAt, "a review is timed by its submission")
+	assert.True(t, mine.Outdated, "left on an earlier commit than the head")
+	assert.True(t, mine.Mine)
+	assert.Equal(t, 3, mine.LineCommentCount, "the null one is one the token can't read, which isn't counted")
+	assert.Equal(t, []ReviewLineComment{
+		{
+			ID: "PRRC_fakeNodeId1", URL: "https://github.com/acme-org/example-repo/pull/94#discussion_r1",
+			CreatedAt: time.Date(2026, 11, 9, 16, 59, 50, 0, time.UTC), Body: "This pins the init step only.",
+			Path: ".github/workflows/codeql.yml", Line: 12, StartLine: 11,
+			DiffHunk: "@@ -5,6 +5,8 @@ jobs:\n       - uses: actions/checkout@v4\n-      - uses: github/codeql-action/init@v3\n" +
+				"+      - uses: github/codeql-action/init@v4\n+        with:\n+          languages: go",
+		},
+		{
+			ID: "PRRC_fakeNodeId2", URL: "https://github.com/acme-org/example-repo/pull/94#discussion_r2",
+			CreatedAt: time.Date(2026, 11, 9, 16, 59, 55, 0, time.UTC), Body: "And this one?",
+			Path: ".github/workflows/scan.yml", Line: 7, Outdated: true,
+			DiffHunk: "@@ -7 +7 @@\n-      - uses: github/codeql-action/analyze@v3\n+      - uses: github/codeql-action/analyze@v4",
+		},
+	}, mine.LineComments, "an outdated comment is placed by its original line")
+
+	assert.Equal(t, "2222222", page.Items[5].BeforeCommit)
+	assert.Equal(t, "1111111", page.Items[5].AfterCommit)
+	assert.Equal(t, "Bot", page.Items[5].ActorType)
+
+	changes := page.Items[8]
+	assert.Equal(t, ReviewStateChangesRequested, changes.ReviewState)
+	assert.False(t, changes.Outdated, "left on the head")
+	assert.Equal(t, time.Date(2026, 11, 9, 17, 4, 45, 0, time.UTC), changes.EditedAt)
+	assert.Equal(t, "COLLABORATOR", changes.Association)
+
+	approved := page.Items[9]
+	assert.Equal(t, ReviewStateApproved, approved.ReviewState)
+	assert.Empty(t, approved.Body)
+	assert.Empty(t, approved.LineComments)
+	assert.NotNil(t, approved.LineComments)
+	assert.Equal(t, "octo-reviewer", approved.Actor)
+
+	assert.Equal(t, "Bot", page.Items[10].ActorType)
+}
+
+func TestFetchPullReviewAsksForASmallerPageWhenTheAnswerIsTooLarge(t *testing.T) {
+	t.Parallel()
+
+	body := fixture(t, "pull_review_response.json")
+	pages := &pageSizes{}
+
+	client := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		req := readIssueRequest(t, r)
+		pages.add(req.Variables.Last)
+
+		if req.Variables.Last == timelinePage {
+			_, _ = io.WriteString(w, strings.Repeat(" ", maxResponseBytes+1))
+
+			return
+		}
+
+		_, _ = w.Write(body)
+	})
+
+	review, err := client.FetchPullReview(t.Context(), NewToken(fakeToken), "PR_fakeNodeId94")
+	require.NoError(t, err)
+	assert.Len(t, review.Timeline.Items, 11)
+	assert.Equal(t, []int{timelinePage, timelineSmallPage}, pages.all())
+}
+
+func TestFetchTimelineOfAPullRequest(t *testing.T) {
+	t.Parallel()
+
+	body := fixture(t, "pull_timeline_response.json")
+
+	client := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		req := readIssueRequest(t, r)
+		assert.Contains(t, req.Query, "... on PullRequest {\n      number repository { nameWithOwner } headRefOid")
+		assert.Contains(t, req.Query, "pullTimeline: timelineItems(last: $last, before: $before, itemTypes: "+
+			pullTimelineItemTypes+")")
+		assert.Contains(t, req.Query, "issueTimeline: timelineItems(last: $last, before: $before, itemTypes: "+
+			timelineItemTypes+")")
+		assert.Equal(t, "PR_fakeNodeId94", req.Variables.ID)
+		assert.Equal(t, "Y3Vyc29yOnYyOpfakePullCursor94==", req.Variables.Before)
+
+		_, _ = w.Write(body)
+	})
+
+	page, err := client.FetchTimeline(t.Context(), NewToken(fakeToken), item.KindPR, "PR_fakeNodeId94",
+		"Y3Vyc29yOnYyOpfakePullCursor94==")
+	require.NoError(t, err)
+
+	assert.False(t, page.HasEarlier)
+	assert.Empty(t, page.Before)
+	assert.Equal(t, 3, page.Total)
+	require.Len(t, page.Items, 3)
+
+	assert.Equal(t, &ItemRef{
+		Repo: "acme-org/example-repo", Number: 12, Title: "Pin the code scanning action",
+		URL: "https://github.com/acme-org/example-repo/issues/12", State: StateOpen,
+	}, page.Items[0].Ref, "the other side of a connection the pull request is on")
+
+	dismissed := page.Items[1]
+	assert.Equal(t, ReviewStateDismissed, dismissed.ReviewState, "a dismissed review is kept, though it says nothing")
+	assert.True(t, dismissed.Outdated, "left on another commit than the head the page names")
+
+	merged := page.Items[2]
+	assert.Equal(t, TimelineMerged, merged.Type)
+	assert.Equal(t, "4444444", merged.Commit)
+	assert.Equal(t, "main", merged.Branch)
+	assert.Equal(t, "https://github.com/acme-org/example-repo/pull/94#event-1", merged.URL)
+	assert.Equal(t, "octo-maintainer", merged.Actor)
+}
+
+func TestFetchTimelineOfAPullRequestThatIsGoneOrIsAnother(t *testing.T) {
+	t.Parallel()
+
+	client := newTestClient(t, serveItem(`{"data":{"node":null},"errors":[{"type":"NOT_FOUND","message":"gone"}]}`))
+
+	_, err := client.FetchTimeline(t.Context(), NewToken(fakeToken), item.KindPR, "PR_gone", "cursor")
+	require.ErrorIs(t, err, ErrPullGone)
+	assert.Equal(t, "GitHub can't find the pull request any more, or your account can no longer see it.",
+		uierr.Message(err))
+
+	issue := fixture(t, "issue_timeline_response.json")
+
+	_, err = newTestClient(t, serveItem(string(issue))).FetchTimeline(t.Context(), NewToken(fakeToken), item.KindPR,
+		"I_fakeNodeId12", "cursor")
+	require.ErrorIs(t, err, ErrMalformedResponse, "an issue's answer to a pull request's read")
+
+	_, err = client.FetchTimeline(t.Context(), NewToken(fakeToken), "commit", "C_x", "cursor")
+	require.ErrorIs(t, err, ErrInvalidItemRef)
+}
+
+func TestAReviewThatOnlyCommentsIsShownWithLineComments(t *testing.T) {
+	t.Parallel()
+
+	self := ItemRef{IsPR: true, Repo: "acme-org/example-repo", Number: 94}
+	node := &graphQLTimelineNode{
+		TypeName: TimelineReview, ID: "PRR_x", State: ReviewStateCommented,
+		LineComments: &graphQLLineComments{TotalCount: 1, Nodes: []*graphQLLineComment{{ID: "PRRC_x", Path: "a.go"}}},
+	}
+
+	it, ok := node.item(self, sha1s("1"))
+	require.True(t, ok, "a reply in a thread is a review that only holds its line comment")
+	assert.False(t, it.Outdated, "a review that names no commit is never outdated")
+	assert.Zero(t, it.LineComments[0].Line, "a comment with no line")
+
+	node.LineComments = nil
+	_, ok = node.item(self, sha1s("1"))
+	assert.False(t, ok)
+
+	assert.Empty(t, (*graphQLReviewer)(nil).name())
+	assert.Empty(t, (*graphQLShortCommit)(nil).short())
 }

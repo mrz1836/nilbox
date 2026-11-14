@@ -176,6 +176,9 @@ func boundCalls(t *testing.T) map[string]boundCall {
 		"settings.Service.SetProjectsTipDismissed": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
 			return c.Settings.SetProjectsTipDismissed(ctx, true)
 		},
+		"settings.Service.SetReviewTab": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
+			return c.Settings.SetReviewTab(ctx, settings.ReviewTabComments)
+		},
 		"settings.Service.SetGitHubNotificationSwitch": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
 			return c.Settings.SetGitHubNotificationSwitch(ctx, threadrules.SwitchAuto, true)
 		},
@@ -449,6 +452,7 @@ func boundCalls(t *testing.T) map[string]boundCall {
 		"review.Service.Open": func(ctx context.Context, c *Core, ids seededItems) (any, error) {
 			got, err := c.Review.Open(ctx, ids.item)
 			require.NotEmpty(t, got.Files)
+			require.NotEmpty(t, got.Timeline.Items)
 
 			return got, err
 		},
@@ -574,6 +578,7 @@ func unreachedBound() map[string]string {
 		"issues.Service.Refresh":            "reads GitHub; its issue is built as Open's",
 		"issues.Service.ReadAgain":          "reads GitHub; its issue is built as Open's",
 		"issues.Service.Earlier":            "reads GitHub; its items are converted as Open's",
+		"review.Service.Earlier":            "reads GitHub; its items are converted as Open's",
 		"issues.Service.Act":                "edits GitHub; its steps start empty",
 		"issues.Service.Labels":             "reads GitHub; its labels start empty, and an error returns them empty",
 		"issues.Service.Assignable":         "reads GitHub; it starts its list empty, and an error returns it empty",
@@ -707,9 +712,12 @@ func seedBound(t *testing.T) (*Core, seededItems) {
 		ItemOwner: boundOwner, ItemName: "example-repo", ItemNumber: 7, ItemState: string(worktrees.ItemMerged),
 	}))
 
-	// The review sheet's cache of the pull request, as a refresh leaves it.
+	// The review sheet's cache of the pull request, as a refresh leaves it, as sparse as an
+	// older build's but for a review in its conversation.
 	_, err = c.DB.ExecContext(ctx, `INSERT INTO review_diffs (item_id, head_oid, total, complete, context, context_at,
-		fetched_at, used_at) VALUES (?, 'abc123', 1, 1, '{"head":"abc123","state":"OPEN"}', ?, ?, ?)`, ids[0], now, now, now)
+		fetched_at, used_at) VALUES (?, 'abc123', 1, 1,
+		'{"head":"abc123","state":"OPEN","timeline":[{"kind":"reviewed","id":"PRR_1","body":"Nice."}]}', ?, ?, ?)`,
+		ids[0], now, now, now)
 	require.NoError(t, err)
 
 	_, err = c.DB.ExecContext(ctx, `INSERT INTO review_diff_files (item_id, position, path, status, additions, patch)

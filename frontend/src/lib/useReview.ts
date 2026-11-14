@@ -1,6 +1,6 @@
 // useReview loads the review sheet's pull request: at once from what the sheet read
 // before (Open, which asks GitHub nothing), then from GitHub (Refresh), and the diffs
-// Open left out, on demand.
+// Open left out and the conversation's earlier pages, on demand.
 
 import { useEffect, useState } from 'react'
 
@@ -8,15 +8,18 @@ import {
   openReview,
   readReviewAgain,
   refreshReview,
+  reviewEarlier,
   reviewPatches,
   type Review,
   type ReviewFilePatch,
 } from '../platform'
 import { attempt } from './call'
 import { useQuery } from './useQuery'
+import { useTimeline, type TimelineState } from './useTimeline'
 
-export interface ReviewState {
-  // review is the pull request as last read, or null until the first read answers.
+export interface ReviewState extends Omit<TimelineState, 'timeline'> {
+  // review is the pull request as last read, its conversation joined to the earlier pages
+  // read since, or null until the first read answers.
   review: Review | null
   // checking reports a read from GitHub under way.
   checking: boolean
@@ -125,7 +128,11 @@ export function useReview(id: number): ReviewState {
   const mine = (r: Review | undefined) => (r?.id === id ? r : undefined)
   const fresh = mine(refreshed.data)
   const base = fresh ?? mine(opened.data) ?? null
-  const review = base === null ? null : withPatches(base, patches)
+  const conversation = useTimeline(id, base, mine(opened.data) ?? fresh, reviewEarlier)
+  const review =
+    base === null || conversation.timeline === null
+      ? null
+      : withPatches({ ...base, timeline: conversation.timeline }, patches)
 
   const tries = retries.id === id ? retries.count : 0
   const unsure =
@@ -173,6 +180,10 @@ export function useReview(id: number): ReviewState {
 
   return {
     review,
+    lastSeenAt: conversation.lastSeenAt,
+    loadEarlier: conversation.loadEarlier,
+    loadingEarlier: conversation.loadingEarlier,
+    earlierError: conversation.earlierError,
     checking: refreshed.pending,
     error: refreshed.error === '' ? opened.error : refreshed.error,
     reload: () => {
