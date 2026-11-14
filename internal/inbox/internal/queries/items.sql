@@ -52,7 +52,8 @@ RETURNING id, reason_review_requested, reason_assigned;
 
 -- name: UpdateItem :exec
 -- UpdateItem rewrites what GitHub says about the stored item with id, in place. Its
--- account, repository, kind, number, and lists stay as they are.
+-- account, repository, kind, number, and lists stay as they are; only LeaveAnsweredReview,
+-- run after it, takes a pull request out of the review-requested list.
 UPDATE items SET
     node_id = ?,
     title = ?,
@@ -238,6 +239,16 @@ UPDATE items SET reason_assigned = 0, assign_left_at = ? WHERE id = ?;
 -- themselves off its requested reviewers, stamped with the item's updated_at on GitHub
 -- after the edit (see UpsertItem).
 UPDATE items SET reason_review_requested = 0, review_left_at = ? WHERE id = ?;
+
+-- name: LeaveAnsweredReview :exec
+-- LeaveAnsweredReview takes the item with id out of the review-requested list after a read
+-- of the pull request alone found GitHub no longer asks the user, as once the user (or an
+-- agent they launched) reviewed it, stamped with the item's updated_at on GitHub as read
+-- (see UpsertItem), so the whole refreshes whose search still lists it keep it out until
+-- it moves. Unlike LeaveReview, it changes only an item in that list: a read of one that
+-- isn't writes no stamp, so a request made later still arrives.
+UPDATE items SET reason_review_requested = 0, review_left_at = ?
+WHERE id = ? AND reason_review_requested = 1;
 
 -- name: ListRunningChecks :many
 -- ListRunningChecks returns the listed open pull requests of the account with login whose

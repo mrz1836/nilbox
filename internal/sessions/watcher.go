@@ -72,6 +72,11 @@ type AttentionSink interface {
 	Finished(ctx context.Context, s Session)
 }
 
+// Rereader hears the item a session worked on once the session stops working, so the
+// item is read again from GitHub: the agent may have reviewed, commented, or pushed.
+// Reread must not block. The inbox implements it, through core.
+type Rereader interface{ Reread(itemID int64) }
+
 // WatcherConfig holds a Watcher's dependencies. Store is required.
 type WatcherConfig struct {
 	Store *Store
@@ -85,6 +90,9 @@ type WatcherConfig struct {
 
 	// Optional: the moments a session needs the user are handed to Attention.
 	Attention AttentionSink
+
+	// Optional: the item of a session that stops working is handed to Rereader.
+	Rereader Rereader
 
 	// Events hears an event.SessionsUpdated whenever a session changes.
 	Events event.Sink
@@ -118,6 +126,7 @@ type Watcher struct {
 	observers map[agent.ID]Observer
 	toggle    Switch
 	attention AttentionSink
+	reread    Rereader
 	events    event.Sink
 	clock     clock.Clock
 	home      string
@@ -151,7 +160,7 @@ type Watcher struct {
 // NewWatcher returns a Watcher over cfg that has not started.
 func NewWatcher(cfg WatcherConfig) *Watcher {
 	w := &Watcher{
-		store: cfg.Store, observers: cfg.Observers, toggle: cfg.Switch, attention: cfg.Attention,
+		store: cfg.Store, observers: cfg.Observers, toggle: cfg.Switch, attention: cfg.Attention, reread: cfg.Rereader,
 		events: event.Or(cfg.Events), clock: clock.Or(cfg.Clock), home: cfg.Home, logger: logging.Or(cfg.Logger),
 		tick: cfg.Tick, debounce: cfg.Debounce, reviveIn: cfg.ReviveTick, window: cfg.ReviveWindow,
 		newID: cfg.NewID, wake: make(chan struct{}, 1), waiting: map[string]time.Time{}, known: map[string]State{},
@@ -436,7 +445,8 @@ func (w *Watcher) heed(ctx context.Context, now time.Time, changes []Change) {
 // heedOne takes in one change. A session whose agent could not be asked for a moment,
 // StateUnknown, changes nothing: what it reports next is compared with what it reported
 // before, so a prompt it still waits on is not announced twice, and a turn that finished
-// meanwhile is still announced.
+// meanwhile is still announced. A session that stops working, whatever it does next, has
+// its item handed to the Rereader.
 func (w *Watcher) heedOne(ctx context.Context, now time.Time, c Change) {
 	id, after := c.After.ID, c.After.State
 	if !c.StateChanged() || after == StateUnknown {
@@ -463,8 +473,21 @@ func (w *Watcher) heedOne(ctx context.Context, now time.Time, c Change) {
 		delete(w.waiting, id)
 	}
 
-	if w.attention != nil && before == StateWorking && after == StateIdle {
+	if before == StateWorking {
+		w.stoppedWorking(ctx, c)
+	}
+}
+
+// stoppedWorking takes in a session that was working and now does something else, as c
+// says: the AttentionSink hears a turn finished when the session is now idle, and the
+// Rereader hears the session's item whatever it does now.
+func (w *Watcher) stoppedWorking(ctx context.Context, c Change) {
+	if w.attention != nil && c.After.State == StateIdle {
 		w.attention.Finished(ctx, c.After.Session(w.home))
+	}
+
+	if w.reread != nil && c.After.ItemID > 0 {
+		w.reread.Reread(c.After.ItemID)
 	}
 }
 

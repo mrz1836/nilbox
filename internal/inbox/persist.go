@@ -26,6 +26,11 @@ type writer struct {
 	accountID int64
 	repos     map[string]int64
 
+	// login is the account's login for an item's own write, which takes a pull request
+	// GitHub no longer asks it to review out of that list (see answeredReview); '' for a
+	// whole refresh, whose searches say which lists each item is in.
+	login string
+
 	// details holds the items' details by node ID. An item without an entry keeps the
 	// details stored before.
 	details map[string]github.ItemDetails

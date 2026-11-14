@@ -646,3 +646,134 @@ func TestLedgerWaitingListsTheLongestWaitingFirst(t *testing.T) {
 	require.Len(t, got, 2)
 	assert.Equal(t, "launched-second", got[0].ID, "it has waited an hour longer")
 }
+
+// fakeRereader records the items the Rereader heard.
+type fakeRereader struct {
+	mu  sync.Mutex
+	ids []int64
+}
+
+func (f *fakeRereader) Reread(itemID int64) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	f.ids = append(f.ids, itemID)
+}
+
+func (f *fakeRereader) heard() []int64 {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	return slices.Clone(f.ids)
+}
+
+// rereading returns a Watcher like newWatched's whose sessions' items are handed to the
+// returned Rereader.
+func rereading(t *testing.T) (*watched, *fakeRereader) {
+	t.Helper()
+
+	reread := &fakeRereader{}
+	w := newWatched(t, func(cfg *sessions.WatcherConfig) { cfg.Rereader = reread })
+
+	return w, reread
+}
+
+// report has session s1 report s and waits for the Watcher to take it in.
+func (w *watched) report(s sessions.State) {
+	w.claude.set("s1", s)
+	time.Sleep(sessions.DefaultTick)
+	synctest.Wait()
+}
+
+func TestWatcherRereadsTheItemOfASessionThatStopsWorking(t *testing.T) {
+	t.Parallel()
+
+	stopped := []sessions.State{
+		sessions.StateIdle, sessions.StateNeedsInput, sessions.StateNeedsApproval, sessions.StateEnded,
+		sessions.StateFailed,
+	}
+
+	for _, after := range stopped {
+		t.Run(string(after), func(t *testing.T) {
+			t.Parallel()
+
+			synctest.Test(t, func(t *testing.T) {
+				w, reread := rereading(t)
+				w.run(t)
+
+				w.claude.set("s1", sessions.StateWorking)
+				w.start(t, "s1")
+				synctest.Wait()
+				assert.Empty(t, reread.heard(), "nothing while it starts and works")
+
+				w.report(after)
+				w.report(after)
+				assert.Equal(t, []int64{12}, reread.heard(), "its item, once")
+			})
+		})
+	}
+}
+
+func TestWatcherRereadsOnlyWhenASessionStopsWorking(t *testing.T) {
+	t.Parallel()
+
+	synctest.Test(t, func(t *testing.T) {
+		w, reread := rereading(t)
+		w.run(t)
+
+		w.claude.set("s1", sessions.StateWorking)
+		w.start(t, "s1")
+		synctest.Wait()
+
+		w.report(sessions.StateUnknown)
+		assert.Empty(t, reread.heard(), "a moment its agent could not be asked is no change")
+
+		w.report(sessions.StateWorking)
+		assert.Empty(t, reread.heard(), "it worked all along")
+
+		w.report(sessions.StateIdle)
+		assert.Equal(t, []int64{12}, reread.heard())
+
+		w.report(sessions.StateEnded)
+		assert.Equal(t, []int64{12}, reread.heard(), "an idle session that ends did no new work")
+	})
+}
+
+func TestWatcherRereadsNoItemASessionHasNone(t *testing.T) {
+	t.Parallel()
+
+	synctest.Test(t, func(t *testing.T) {
+		w, reread := rereading(t)
+		w.run(t)
+
+		r := record("s1", 12)
+		r.ItemID, r.LaunchedAt = 0, time.Now()
+
+		w.claude.set("s1", sessions.StateWorking)
+		require.NoError(t, w.ledger.Start(t.Context(), r))
+		synctest.Wait()
+
+		w.report(sessions.StateIdle)
+		assert.Equal(t, sessions.StateIdle, w.state(t, "s1"), "it stopped working")
+		assert.Empty(t, reread.heard())
+	})
+}
+
+func TestWatcherWithoutARereaderStillFollows(t *testing.T) {
+	t.Parallel()
+
+	synctest.Test(t, func(t *testing.T) {
+		w := newWatched(t)
+		w.run(t)
+
+		w.claude.set("s1", sessions.StateWorking)
+		w.start(t, "s1")
+		synctest.Wait()
+
+		w.report(sessions.StateIdle)
+
+		_, finished := w.attention.heard()
+		assert.Equal(t, []string{"s1"}, finished)
+		assert.Equal(t, sessions.StateIdle, w.state(t, "s1"))
+	})
+}

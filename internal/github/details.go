@@ -25,6 +25,11 @@ const (
 	detailsParallel = 4
 )
 
+// MaxReviewRequests is the most review requests a read of a pull request's details lists
+// (the fragment's reviewRequests(first: 50)): a read that lists this many may have left
+// some out, so it can't tell who else the pull request asks.
+const MaxReviewRequests = 50
+
 // detailsQuery reads what an inbox card shows about each pull request and issue, by node
 // ID: its labels and comment count and, for a pull request, its size, commits, merge
 // state, check results, and reviews. It is a separate request from the inbox query
@@ -202,8 +207,9 @@ type ItemDetails struct {
 	Checks  Checks
 	Reviews Reviews
 
-	// ReviewRequests is who a pull request asks to review, as of the read; empty for an
-	// issue.
+	// ReviewRequests is who a pull request asks to review, as of the read, at most
+	// MaxReviewRequests in all. For a pull request GitHub answered for, both lists are
+	// never nil, empty when it asks no one; for an issue they are nil.
 	ReviewRequests ReviewRequests
 
 	// AutoMerge is a pull request's auto-merge, when someone turned it on; zero when it is

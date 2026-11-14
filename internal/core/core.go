@@ -163,6 +163,12 @@ type Core struct {
 	// request, and nothing while none runs; the desktop shell runs it with the scheduler.
 	ChecksFollower *inbox.ChecksFollower
 
+	// Rereads reads again, one at a time, the item of each agent session that stops
+	// working, as the Watcher asks (one GraphQL point each), so a pull request the agent
+	// reviewed leaves Review requested at once; the desktop shell runs it with the other
+	// work. It is not bound.
+	Rereads *inbox.Rereads
+
 	// GHThreadsSyncer reads the user's GitHub notifications into GHThreads' mirror on
 	// start, then as often as the notifications' refresh setting says, never sooner than
 	// GitHub asks; the desktop shell runs it after the scheduler. It is not bound.
@@ -485,8 +491,12 @@ func assemble(pool *sql.DB, info startup, opts Options, logger *slog.Logger) *Co
 
 	recorder := timing.NewRecorder(timing.Config{Logger: logger, LogsDir: opts.Paths.Logs})
 
+	// A session that stops working has its item read again, one item at a time, so a
+	// review, a comment, or a push the agent made shows at once.
+	rereads := inbox.NewRereads(inboxSvc, logger)
+
 	registry := terminal.DefaultRegistry(runner)
-	follow := followSessions(pool, prefs, opts, logger, runner, registry, agentRunners)
+	follow := followSessions(pool, prefs, opts, logger, runner, registry, agentRunners, rereads)
 	followed.watcher = follow.watcher
 
 	// clones is the app's one set of clone locks: every job that changes a clone takes
@@ -678,6 +688,7 @@ func assemble(pool *sql.DB, info startup, opts Options, logger *slog.Logger) *Co
 		GHThreads:             ghThreads,
 		GHThreadsSyncer:       ghThreadsSyncer,
 		ChecksFollower:        checksFollower,
+		Rereads:               rereads,
 		Sweeper:               sweeper,
 		Timing:                recorder,
 		ShellEnv:              shellEnv,
@@ -825,10 +836,11 @@ type following struct {
 
 // followSessions builds what follows the agent sessions over the database: an observer
 // per agent, each through the agent's own supported interface, the user's master switch,
-// the session banners, and the terminal drivers that bring a session's tab forward.
+// the session banners, rereader, which reads a session's item again once it stops
+// working, and the terminal drivers that bring a session's tab forward.
 func followSessions(
 	pool *sql.DB, prefs *settings.Service, opts Options, logger *slog.Logger, runner execpath.Runner,
-	registry terminal.Registry, agentRunners func([]string) execpath.Runner,
+	registry terminal.Registry, agentRunners func([]string) execpath.Runner, rereader sessions.Rereader,
 ) following {
 	search := execpath.Search{Home: opts.Home}
 	store := sessions.NewStore(pool)
@@ -849,6 +861,7 @@ func followSessions(
 		},
 		Switch:    prefs,
 		Attention: notify.NewSessionBanners(notify.Config{Pool: pool, Poster: opts.Banners, Clock: opts.Clock, Logger: logger}),
+		Rereader:  rereader,
 		Events:    opts.Events,
 		Clock:     opts.Clock,
 		Home:      opts.Home,

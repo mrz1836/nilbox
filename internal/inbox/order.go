@@ -98,10 +98,13 @@ type itemWrite struct {
 	unlist bool
 }
 
-// itemUpdate is what an item's own refresh read: the account the item is stored for,
-// GitHub's answer, and the outcome of the file check it ran, if one was due.
+// itemUpdate is what an item's own refresh read: the account the item is stored for, by
+// id and login, GitHub's answer, and the outcome of the file check it ran, if one was due.
+// The login tells whether GitHub still asks that account to review a pull request (see
+// answeredReview); with none, the item stays in the lists it is in.
 type itemUpdate struct {
 	accountID int64
+	login     string
 	update    *github.ItemUpdate
 	files     map[string]fileCheck
 }
@@ -189,7 +192,7 @@ func (s *Service) applyItemWrite(ctx context.Context, tx *sql.Tx, w itemWrite, f
 
 	u, it := w.update, w.update.update.Item
 	wr := s.newWriter(tx)
-	wr.accountID, wr.files = u.accountID, u.files
+	wr.accountID, wr.login, wr.files = u.accountID, u.login, u.files
 	wr.details = map[string]github.ItemDetails{it.NodeID: u.update.Details}
 
 	if first {

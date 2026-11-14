@@ -229,3 +229,24 @@ func TestChecksFollowerOffFollowsNothingUntilOn(t *testing.T) {
 		<-done
 	})
 }
+
+func TestRefreshRunningTakesAReviewGitHubNoLongerAsksOutOfReviewRequested(t *testing.T) {
+	t.Parallel()
+
+	h, ids := followHarness(t)
+	h.clock.Advance(FollowInterval)
+
+	reviewed := withChecks("PENDING")
+	reviewed.ReviewRequests = github.ReviewRequests{Users: []string{}, Teams: []string{}}
+	still := withChecks("PENDING")
+	still.ReviewRequests = github.ReviewRequests{Users: []string{octoUser}, Teams: []string{}}
+	h.client.items = map[string]*github.ItemUpdate{nodeID(1): open(h, 1, reviewed), nodeID(3): open(h, 3, still)}
+
+	require.NoError(t, h.svc.refreshRunning(t.Context()))
+
+	snap, err := h.svc.Snapshot(t.Context())
+	require.NoError(t, err)
+	assert.ElementsMatch(t, []int{2, 3, 4}, numbers(snap.ReviewRequested), "only the pull request GitHub no longer asks leaves")
+	assert.Equal(t, "2026-01-10 12:00:45+00:00", h.reviewLeftAt(t, ids[1]))
+	assert.Empty(t, h.reviewLeftAt(t, ids[3]))
+}

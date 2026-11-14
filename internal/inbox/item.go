@@ -16,9 +16,12 @@ import (
 // as a pull request they just merged, shows without refreshing the whole inbox.
 //
 // An item still open gets its card and details rewritten and stays in the lists it is
-// in; only the searches of a whole refresh can tell which lists those are. An issue's
-// projects are read when the last whole refresh could read them; only a whole refresh
-// changes what the snapshot says about that. A pull request
+// in; only the searches of a whole refresh can tell which lists those are, with one
+// exception: a pull request in Review requested that GitHub no longer asks the user to
+// review, by name or through a team, leaves that list (see leaveAnsweredReview), as once
+// the user, or an agent they launched, reviewed it, and it tells no outcome for that. An
+// issue's projects are read when the last whole refresh could read them; only a whole
+// refresh changes what the snapshot says about that. A pull request
 // whose files are checked has them checked again when its head moved. An item
 // merged, closed, or deleted since, or whose repository was archived, leaves every list,
 // as a whole refresh would have it. New activity on a snoozed item can end the snooze.
@@ -93,7 +96,7 @@ func (s *Service) refreshItem(ctx context.Context, id int64) ([]Outcome, bool, e
 		return nil, false, err
 	}
 
-	update.accountID = stored.AccountID
+	update.accountID, update.login = stored.AccountID, stored.AccountLogin
 	w := itemWrite{id: id, seq: seq, update: &update}
 
 	wrote, err := s.storeItemWrite(ctx, w)
@@ -133,7 +136,9 @@ func (s *Service) fetchItem(
 }
 
 // rewrite stores what GitHub says about an open item in place, with its details and file
-// check, then ends the snoozes the new details give cause to.
+// check, takes a pull request GitHub no longer asks the account to review out of Review
+// requested (see leaveAnsweredReview), then ends the snoozes the new details give cause
+// to.
 func (w *writer) rewrite(ctx context.Context, id int64, it github.Item) error {
 	err := w.q.UpdateItem(ctx, queries.UpdateItemParams{
 		NodeID: it.NodeID, Title: it.Title, URL: it.URL, AuthorLogin: it.AuthorLogin, AuthorType: it.AuthorType,
@@ -149,11 +154,62 @@ func (w *writer) rewrite(ctx context.Context, id int64, it github.Item) error {
 		return err
 	}
 
+	if err = w.leaveAnsweredReview(ctx, id, it); err != nil {
+		return err
+	}
+
 	if err = w.saveFiles(ctx, id, it); err != nil {
 		return err
 	}
 
 	return w.wakeSnoozed(ctx)
+}
+
+// leaveAnsweredReview takes the pull request with id out of the Review requested list when
+// the details read with it say GitHub no longer asks the writer's account to review it (see
+// answeredReview), as once the user, or an agent they launched, reviewed it. It is stamped
+// with GitHub's time for the pull request as read, as the inbox's own edits are (see
+// UpsertItem), so a whole refresh whose search still lists it, as GitHub's index trails
+// the review, keeps it out and tells no arrival, until it moves: a review asked again then
+// arrives. An item not in the list is left alone. It tells no outcome, as LeaveReview
+// tells none of a list left.
+func (w *writer) leaveAnsweredReview(ctx context.Context, id int64, it github.Item) error {
+	d, ok := w.details[it.NodeID]
+	if !ok || !answeredReview(it, d, w.login) {
+		return nil
+	}
+
+	stamp := it.UpdatedAt.UTC()
+	if stamp.IsZero() {
+		stamp = w.now
+	}
+
+	err := w.q.LeaveAnsweredReview(ctx, queries.LeaveAnsweredReviewParams{ReviewLeftAt: &stamp, ID: id})
+	if err != nil {
+		return fmt.Errorf("take %s out of Review requested: %w", it.Ref(), err)
+	}
+
+	return nil
+}
+
+// answeredReview reports whether d, read with the pull request it, says GitHub no longer
+// asks login to review it: not by name, and through no team, since login may be on one, as
+// RemoveReviewRequest's answer counts it. A read that can't tell keeps the pull request
+// where it is: no login, an issue, request lists the read didn't bring (nil), or a list as
+// long as the read lists (MaxReviewRequests), which may have left login out.
+func answeredReview(it github.Item, d github.ItemDetails, login string) bool {
+	r := d.ReviewRequests
+
+	switch {
+	case !it.IsPR || login == "":
+		return false
+	case r.Users == nil || r.Teams == nil:
+		return false
+	case len(r.Teams) > 0 || len(r.Users) >= github.MaxReviewRequests:
+		return false
+	default:
+		return !r.Asks(login)
+	}
 }
 
 // unlistActed takes an item the user just merged or closed out of every list.

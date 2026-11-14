@@ -41,7 +41,8 @@ const (
 // refreshRunning reads again, in one request, the listed pull requests whose checks were
 // still running when the inbox last read them, neither dismissed nor snoozed, nor of a
 // repository or org the user muted, and stores each as RefreshItem would, so a card shows
-// its checks end about as soon as GitHub's own page does. A pull request whose checks end,
+// its checks end about as soon as GitHub's own page does, and one GitHub no longer asks the
+// user to review leaves Review requested, telling no outcome. A pull request whose checks end,
 // pass or fail, is left alone from then on. It asks GitHub nothing while none runs, and
 // leaves alone one read in the last little while. A pull request GitHub doesn't answer for
 // is left as it was, for the next whole refresh. Once it has let go of every pull request,
@@ -194,7 +195,7 @@ func (s *Service) storeFollowed(
 		}
 
 		w := itemWrite{id: r.ID, seq: seq, update: &itemUpdate{
-			accountID: r.AccountID, update: &update, files: got.files[r.ID],
+			accountID: r.AccountID, login: login, update: &update, files: got.files[r.ID],
 		}}
 
 		stored, err := s.storeItemWrite(ctx, w)

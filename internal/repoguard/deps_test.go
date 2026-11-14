@@ -76,8 +76,8 @@ func boundaries() []boundary {
 				"internal/launcher", "internal/settings", "internal/notify", "internal/inbox", "internal/github",
 				"internal/desktop", "internal/core",
 			},
-			why: "sessions follows the agents through its own Observer, Switch, Focuser, and AttentionSink interfaces, " +
-				"and never reaches GitHub",
+			why: "sessions follows the agents through its own Observer, Switch, Focuser, AttentionSink, and Rereader " +
+				"interfaces, and never reaches GitHub: the inbox reads a session's item again, through core",
 		},
 		{
 			pkg:       "internal/desktop",

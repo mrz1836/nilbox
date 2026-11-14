@@ -728,3 +728,31 @@ func TestRewrittenNamesTheItemsWhoseOwnRefreshIsReplayed(t *testing.T) {
 	got := rewritten([]itemWrite{{id: 1, update: &itemUpdate{}}, {id: 2, files: &filesRow{}}})
 	assert.Equal(t, map[int64]bool{1: true}, got)
 }
+
+func TestAnAnsweredReviewStaysOutThroughARefreshThatStartedEarlier(t *testing.T) {
+	t.Parallel()
+
+	h, id := itemHarness(t)
+	sink := &fakeSink{}
+	c := h.gatedTelling(sink)
+
+	// The refresh's search was sent before the review, so it still lists #1 as asking.
+	refresh := refreshUntilGate(t, h, c)
+
+	h.client.items = map[string]*github.ItemUpdate{nodeID(1): open(h, 1, asking([]string{}, []string{}))}
+
+	snap, err := h.svc.RefreshItem(bounded(t), id)
+	require.NoError(t, err)
+	assert.Equal(t, []int{2}, numbers(snap.ReviewRequested))
+
+	c.inboxGate.release()
+
+	got := await(t, refresh)
+	require.NoError(t, got.err)
+	assert.Equal(t, []int{2}, numbers(got.snap.ReviewRequested), "the refresh doesn't put the card back")
+	assert.Equal(t, []int{1}, numbers(got.snap.Assigned))
+	assert.Equal(t, "2026-01-10T12:10:00Z", itemByNumber(t, got.snap.Assigned, 1).UpdatedAt,
+		"the item's own read is newer than the refresh's, so it stands")
+	assert.Equal(t, "2026-01-10 12:10:00+00:00", h.reviewLeftAt(t, id))
+	assert.Empty(t, sink.calls, "and nothing arrives")
+}

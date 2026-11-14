@@ -415,3 +415,19 @@ func TestPeekPullStoresNothing(t *testing.T) {
 
 	unlock()
 }
+
+func TestReadPullTakesAReviewGitHubNoLongerAsksOutOfReviewRequested(t *testing.T) {
+	t.Parallel()
+
+	h, id := itemHarness(t)
+	reviewed := open(h, 1, asking([]string{"someone"}, []string{}))
+
+	snap, err := NewActor(h.svc).ReadPull(t.Context(), id, func(context.Context, github.Token, PullTarget) (PullRead, error) {
+		return PullRead{Update: reviewed}, nil
+	})
+	require.NoError(t, err)
+
+	assert.Equal(t, []int{2}, numbers(snap.ReviewRequested))
+	assert.Equal(t, []int{1}, numbers(snap.Assigned), "the assignment stays")
+	assert.Equal(t, "2026-01-10 12:10:00+00:00", h.reviewLeftAt(t, id))
+}

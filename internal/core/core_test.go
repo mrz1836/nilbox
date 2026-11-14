@@ -226,6 +226,7 @@ func TestServicesListsBoundServices(t *testing.T) {
 	assert.NotNil(t, c.ReleaseFollower)
 	assert.NotNil(t, c.Scheduler)
 	assert.NotNil(t, c.ChecksFollower)
+	assert.NotNil(t, c.Rereads)
 	assert.NotNil(t, c.ReleaseChecksFollower)
 	assert.NotNil(t, c.Watcher)
 	assert.NotNil(t, c.Timing)

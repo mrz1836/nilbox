@@ -368,15 +368,21 @@ app:lint` reads.
   a WebSocket it speaks itself, since only `internal/github` speaks HTTP), falling back to the
   rollout files. Each observer degrades to `StateUnknown` rather than guess, and a session's
   process says whether it still runs. Following never sends a session anything, and nothing here
-  reaches the network. `LastWords` reads a session's whole last message from the agent's own
-  files, on demand, for the review sheet. Each record keeps what its launch reported (the
-  permissions it started with, what it did to the item's worktree, and what it worked around),
-  which the card's sessions panel shows in place of a line on the row after the launch, and
-  `ShowFolder` shows a session's folder in Finder through core's `open -R` Revealer. The
-  bound `Forget` deletes an ended session's record on the user's click (the panel's ×),
-  refusing one still running (`ErrLive`; failed and unknown count as running) and counting
-  one already gone as done, and emits `event.SessionsUpdated`; the prune is otherwise the
-  only thing that deletes a session.
+  reaches the network. A session that stops working (idle, waiting on the user, ended, or
+  failed) hands its item to the inbox's `Rereads` (a desktop worker, through the `Rereader`
+  interface core wires), which reads it again, one GraphQL point each, one item at a time; a
+  single-item read (`RefreshItem`, the checks follower, the review sheet's `ReadPull`) takes a
+  pull request out of Review requested once GitHub no longer asks the user, by name or
+  through a team, stamped like the inbox's own edits (`review_left_at`), so a lagging search
+  keeps it out until it moves. `LastWords` reads a session's whole last message from the
+  agent's own files, on demand, for the review sheet. Each record keeps what its launch
+  reported (the permissions it started with, what it did to the item's worktree, and what it
+  worked around), which the card's sessions panel shows in place of a line on the row after
+  the launch, and `ShowFolder` shows a session's folder in Finder through core's `open -R`
+  Revealer. The bound `Forget` deletes an ended session's record on the user's click (the
+  panel's ×), refusing one still running (`ErrLive`; failed and unknown count as running) and
+  counting one already gone as done, and emits `event.SessionsUpdated`; the prune is
+  otherwise the only thing that deletes a session.
 - `internal/review/` is the review sheet's service. `Decide` is pure: from a pull request's
   facts it works out every action's offer and the one primary, and `Act` runs it again before
   any write. An offer with warnings asks first (`offers` sets `Offer.Confirm` for it), since

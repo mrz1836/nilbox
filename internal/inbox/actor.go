@@ -267,7 +267,8 @@ func (s *Service) actOn(
 }
 
 // ReadPull runs read on the pull request with id, with a token, and stores what it found,
-// as RefreshItem does with its own read: the card is rewritten from the answer, or the pull
+// as RefreshItem does with its own read: the card is rewritten from the answer, leaving
+// Review requested once GitHub no longer asks the user to review it, or the pull
 // request leaves the lists when it was merged, closed, or deleted since, and its files
 // are stored as its sensitive-file check when one is due and they belong to the head the
 // answer names. It returns the new snapshot. It never waits for a whole refresh, only for
@@ -322,9 +323,9 @@ func (s *Service) readPull(
 		return Snapshot{}, nil, err
 	}
 
-	return s.storeRead(ctx, row, itemWrite{
-		id: id, seq: seq, update: &itemUpdate{accountID: row.AccountID, update: got.Update, files: files},
-	})
+	return s.storeRead(ctx, row, itemWrite{id: id, seq: seq, update: &itemUpdate{
+		accountID: row.AccountID, login: row.AccountLogin, update: got.Update, files: files,
+	}})
 }
 
 // checkAnswer refuses a read's answer that is missing, or that is about another item than

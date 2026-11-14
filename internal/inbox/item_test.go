@@ -1,6 +1,7 @@
 package inbox
 
 import (
+	"strconv"
 	"testing"
 	"time"
 
@@ -360,4 +361,145 @@ func TestRefreshItemThatCannotBeSavedKeepsTheItem(t *testing.T) {
 			assert.Equal(t, [3]bool{true, false, true}, h.reasons(t, 1))
 		})
 	}
+}
+
+// asking is a pull request's details, as read on its own, with who it asks to review.
+func asking(users, teams []string) github.ItemDetails {
+	d := prDetails()
+	d.ReviewRequests = github.ReviewRequests{Users: users, Teams: teams}
+
+	return d
+}
+
+// reviewLeftAt returns the item's review_left_at, or "" when there is none.
+func (h *harness) reviewLeftAt(t *testing.T, id int64) string {
+	t.Helper()
+
+	return h.column(t, "SELECT COALESCE(review_left_at, '') FROM items WHERE id = ?", id)[0]
+}
+
+func TestRefreshItemTakesAReviewGitHubNoLongerAsksOutOfReviewRequested(t *testing.T) {
+	t.Parallel()
+
+	h, sink := arrivalHarness(t)
+	a, b := pr(1, "OWNER", false), pr(2, "OWNER", false)
+	h.seed(t, []github.Item{a, b}, nil, []github.Item{a})
+	id := h.storedItemNumbered(t, 1).ID
+	h.clock.Advance(10 * time.Minute)
+
+	// The user reviewed #1, so GitHub asks only someone else now; the review moved it.
+	reviewed := open(h, 1, asking([]string{"someone"}, []string{}))
+	h.client.items = map[string]*github.ItemUpdate{nodeID(1): reviewed}
+	calls := h.events.Count()
+
+	snap, err := h.svc.RefreshItem(t.Context(), id)
+	require.NoError(t, err)
+
+	assert.Equal(t, []int{2}, numbers(snap.ReviewRequested), "it leaves Review requested")
+	assert.Equal(t, []int{1}, numbers(snap.Assigned), "and stays in the lists GitHub still has it in")
+	assert.Equal(t, ReviewRequestNone, itemByNumber(t, snap.Assigned, 1).ReviewRequest)
+	assert.Equal(t, [3]bool{false, false, true}, h.reasons(t, 1))
+	assert.Equal(t, "2026-01-10 12:10:00+00:00", h.reviewLeftAt(t, id), "stamped with GitHub's time as read")
+	assert.Equal(t, calls+1, h.events.Count(), "the window hears of it")
+
+	// GitHub's search trails the review: it still lists #1, at the time the read saw.
+	h.client.inbox = fetched([]github.Item{reviewed.Item, b}, nil, []github.Item{reviewed.Item})
+	h.clock.Advance(time.Minute)
+
+	snap = h.refresh(t)
+
+	assert.Equal(t, []int{2}, numbers(snap.ReviewRequested), "a lagging search keeps it out")
+	assert.Equal(t, []int{1}, numbers(snap.Assigned))
+	assert.Empty(t, sink.calls, "and nothing arrives")
+
+	// The author asks the user again, which moves it.
+	again := reviewed.Item
+	again.UpdatedAt = h.clock.Now()
+	h.client.inbox = fetched([]github.Item{again, b}, nil, []github.Item{again})
+	h.clock.Advance(time.Minute)
+
+	snap = h.refresh(t)
+
+	assert.Equal(t, []int{1, 2}, numbers(snap.ReviewRequested), "a pull request that moved is believed")
+	assert.Equal(t, []string{"review_requested #1"}, kindsAndNumbers(sink.last()), "and arrives again")
+	assert.Empty(t, h.reviewLeftAt(t, id), "the stamp is cleared")
+}
+
+func TestRefreshItemKeepsAReviewGitHubMayStillAsk(t *testing.T) {
+	t.Parallel()
+
+	many := make([]string, 0, github.MaxReviewRequests)
+	for i := range github.MaxReviewRequests {
+		many = append(many, "reviewer-"+strconv.Itoa(i))
+	}
+
+	tests := []struct {
+		name    string
+		details github.ItemDetails
+	}{
+		{name: "the user by name", details: asking([]string{"someone", "Octo-User"}, []string{})},
+		{name: "a team the user may be on", details: asking([]string{}, []string{"backend"})},
+		{name: "as many as a read lists", details: asking(many, []string{})},
+		{name: "no request lists read", details: prDetails()},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			h, id := itemHarness(t)
+			h.client.items = map[string]*github.ItemUpdate{nodeID(1): open(h, 1, tt.details)}
+
+			snap, err := h.svc.RefreshItem(t.Context(), id)
+			require.NoError(t, err)
+
+			assert.Equal(t, []int{1, 2}, numbers(snap.ReviewRequested))
+			assert.Equal(t, [3]bool{true, false, true}, h.reasons(t, 1))
+			assert.Empty(t, h.reviewLeftAt(t, id))
+		})
+	}
+}
+
+func TestRefreshItemStampsNoItemOutOfReviewRequested(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	authored, assigned := pr(1, "OWNER", false), issue("example-repo", 2, "OWNER")
+	h.seed(t, nil, []github.Item{authored}, []github.Item{assigned})
+	h.clock.Advance(10 * time.Minute)
+
+	now := assigned
+	now.State, now.UpdatedAt = github.StateOpen, h.clock.Now()
+	h.client.items = map[string]*github.ItemUpdate{
+		nodeID(1): open(h, 1, asking([]string{}, []string{})),
+		nodeID(2): {Found: true, Item: now, Details: github.ItemDetails{Comments: 2}, RateLimit: itemRate()},
+	}
+
+	for _, number := range []int{1, 2} {
+		id := h.storedItemNumbered(t, number).ID
+
+		_, err := h.svc.RefreshItem(t.Context(), id)
+		require.NoError(t, err)
+
+		assert.Empty(t, h.reviewLeftAt(t, id), "#%d was never asked, so a request made later still arrives", number)
+	}
+
+	assert.Equal(t, [3]bool{false, true, false}, h.reasons(t, 1))
+	assert.Equal(t, [3]bool{false, false, true}, h.reasons(t, 2))
+}
+
+func TestAnsweredReview(t *testing.T) {
+	t.Parallel()
+
+	pull, iss := pr(1, "OWNER", false), issue("example-repo", 2, "OWNER")
+	none := asking([]string{}, []string{})
+
+	assert.True(t, answeredReview(pull, none, octoUser))
+	assert.True(t, answeredReview(pull, asking([]string{"someone"}, []string{}), octoUser))
+	assert.False(t, answeredReview(pull, asking([]string{"OCTO-USER"}, []string{}), octoUser), "by name, in any case")
+	assert.False(t, answeredReview(pull, asking([]string{}, []string{"backend"}), octoUser))
+	assert.False(t, answeredReview(pull, none, ""), "no account")
+	assert.False(t, answeredReview(iss, none, octoUser), "an issue asks no review")
+	assert.False(t, answeredReview(pull, asking(nil, []string{}), octoUser), "a read that brought no users")
+	assert.False(t, answeredReview(pull, asking([]string{}, nil), octoUser), "a read that brought no teams")
 }

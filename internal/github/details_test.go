@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -348,4 +349,11 @@ func TestReviewerKey(t *testing.T) {
 	assert.Equal(t, "team:reviewers", reviewerKey("Team", "", "Reviewers"))
 	assert.Empty(t, reviewerKey("Team", "", ""))
 	assert.Empty(t, reviewerKey("User", "", ""))
+}
+
+func TestMaxReviewRequestsIsWhatTheDetailsAskFor(t *testing.T) {
+	t.Parallel()
+
+	assert.Contains(t, detailFieldsFragment, "reviewRequests(first: "+strconv.Itoa(MaxReviewRequests)+")")
+	assert.Equal(t, 1, strings.Count(detailFieldsFragment, "reviewRequests("), "the fragment reads them once")
 }

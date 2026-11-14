@@ -398,6 +398,27 @@ func (q *Queries) GetStoredItem(ctx context.Context, id int64) (GetStoredItemRow
 	return i, err
 }
 
+const leaveAnsweredReview = `-- name: LeaveAnsweredReview :exec
+UPDATE items SET reason_review_requested = 0, review_left_at = ?
+WHERE id = ? AND reason_review_requested = 1
+`
+
+type LeaveAnsweredReviewParams struct {
+	ReviewLeftAt *time.Time
+	ID           int64
+}
+
+// LeaveAnsweredReview takes the item with id out of the review-requested list after a read
+// of the pull request alone found GitHub no longer asks the user, as once the user (or an
+// agent they launched) reviewed it, stamped with the item's updated_at on GitHub as read
+// (see UpsertItem), so the whole refreshes whose search still lists it keep it out until
+// it moves. Unlike LeaveReview, it changes only an item in that list: a read of one that
+// isn't writes no stamp, so a request made later still arrives.
+func (q *Queries) LeaveAnsweredReview(ctx context.Context, arg LeaveAnsweredReviewParams) error {
+	_, err := q.db.ExecContext(ctx, leaveAnsweredReview, arg.ReviewLeftAt, arg.ID)
+	return err
+}
+
 const leaveAssigned = `-- name: LeaveAssigned :exec
 UPDATE items SET reason_assigned = 0, assign_left_at = ? WHERE id = ?
 `
@@ -948,7 +969,8 @@ type UpdateItemParams struct {
 }
 
 // UpdateItem rewrites what GitHub says about the stored item with id, in place. Its
-// account, repository, kind, number, and lists stay as they are.
+// account, repository, kind, number, and lists stay as they are; only LeaveAnsweredReview,
+// run after it, takes a pull request out of the review-requested list.
 func (q *Queries) UpdateItem(ctx context.Context, arg UpdateItemParams) error {
 	_, err := q.db.ExecContext(ctx, updateItem,
 		arg.NodeID,
