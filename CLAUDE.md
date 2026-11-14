@@ -186,12 +186,16 @@ app:lint` reads.
   `internal/testutil` holds the fakes and fixtures the test suites share (a fresh database, an
   isolated git, `Commit` for a fixture file, git templates built once per test binary, the
   `Planter`, which plants fake programs in a clone's own config for the guard tests, recorded
-  runs of real tools, a runner, finder, clock, event sink, log, and fake tools); only tests
+  runs of real tools, a runner, finder, clock, event sink, log, fake tools, and
+  `TerminalScript`, the shell a fake terminal runs a run's command under); only tests
   may import it. `internal/scriptrun/scriptruntest` holds the runner the
   hooks, scripts, and release suites share, built on it: a real `scriptrun.Engine` and its
   Service over a fresh database, the next start over the same history (`Restart`, `Next`),
-  and `Ended` and `Await`, which look again only when the engine's `Changed` says the runs
-  changed, never on a timer; only tests may import it either. The repoguard guards on SQL and
+  a fake terminal app that runs each run meant for the user's terminal under `/bin/sh`
+  (`Terminal`, through `WithTerminal`; `Close` hangs it up mid-run), and `Ended` and `Await`,
+  which look again only when the engine's `Changed` says the runs changed, never on a timer
+  (`AwaitShell`, for the shell the engine notes without telling, alone polls); only tests
+  may import it either. The repoguard guards on SQL and
   on the git verbs the app runs treat both test-support packages as they treat `_test.go`
   files.
 - `internal/event/` holds the app's events, one Go type each with its name; services emit them

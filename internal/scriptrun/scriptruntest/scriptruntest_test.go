@@ -305,3 +305,69 @@ func TestRestartSettlesARunLeftGoing(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, run.Summary, settled.Summary, "a start after that leaves it as it was")
 }
+
+func TestATerminalRunsWhatTheEngineOpensThere(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		closed  bool
+		status  scriptrun.Status
+		summary string
+	}{
+		{name: "the command ends", status: scriptrun.StatusFailed, summary: "It exited with status 3."},
+		{
+			name: "the terminal closed mid-run", closed: true, status: scriptrun.StatusInterrupted,
+			summary: "The terminal closed while this was running.",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			home := testutil.RealTempDir(t)
+			term := NewTerminal(t)
+			h := New(t, home, nil, WithTerminal(term))
+			dir := clone(t, home)
+
+			// The command runs until the test ends it, or the terminal closes on it.
+			proceed := filepath.Join(t.TempDir(), "proceed")
+			path, env := testutil.FakeTool(t, "tool", testutil.FakeRun{
+				Stdout: "in the terminal\n", Sleep: time.Minute, WaitFor: proceed, Exit: 3,
+			})
+			term.Env = []string{env}
+
+			id, err := h.Engine.Start(t.Context(), scriptrun.Spec{
+				Kind: scriptrun.KindScript, Title: "Lint", Source: "magex", Repo: repo.Name{Owner: "acme-org", Repo: "sdk"},
+				Dir: dir, Argv: []string{path}, RunsIn: scriptrun.RunsInTerminal,
+			})
+			require.NoError(t, err)
+
+			h.AwaitShell(id)
+
+			_, held := h.Locks.Holder(dir)
+			assert.True(t, held, "the clone is held while the terminal runs it")
+
+			if tt.closed {
+				require.NoError(t, term.Close())
+			} else {
+				testutil.WriteFile(t, proceed, "")
+			}
+
+			run := h.Ended(id)
+			assert.Equal(t, tt.status, run.Status)
+			assert.Equal(t, tt.summary, run.Summary)
+			assert.Equal(t, scriptrun.RunsInTerminal, run.RunsIn)
+
+			opened := term.Opened()
+			require.Len(t, opened, 1, "the engine opened the run in the terminal")
+			assert.Equal(t, dir, opened[0].Dir)
+			assert.Equal(t, []string{path}, opened[0].Argv)
+
+			out, err := h.Runs.Output(t.Context(), id, 0, 0)
+			require.NoError(t, err)
+			assert.Equal(t, "in the terminal\n", out.Text, "what the command wrote reached the run's log")
+		})
+	}
+}
