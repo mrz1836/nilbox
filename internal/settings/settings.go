@@ -230,6 +230,10 @@ type Settings struct {
 	// ReviewTab is the review sheet's tab the user last chose, which it opens on.
 	ReviewTab ReviewTab `json:"reviewTab"`
 
+	// ConversationOrder is the order the sheets list a conversation in, the one the user
+	// last chose.
+	ConversationOrder ConversationOrder `json:"conversationOrder"`
+
 	// InboxOrder is which inbox lists are sorted by project status, and the order of the
 	// statuses.
 	InboxOrder InboxOrder `json:"inboxOrder"`
@@ -725,6 +729,7 @@ func fromStored(stored map[string]string) Settings {
 
 		ProjectsTipDismissed: prefval.Bool(stored[KeyProjectsTipDismissed], false),
 		ReviewTab:            reviewTabs().decode(stored[KeyReviewTab]),
+		ConversationOrder:    conversationOrders().decode(stored[KeyConversationOrder]),
 		InboxOrder:           decodeInboxOrder(stored),
 		MergeMethod:          mergeMethods().decode(stored[KeyMergeMethod]),
 		Integrations:         integrationprefs.Decode(stored),
@@ -848,7 +853,7 @@ func settingKeys() []string {
 		KeySnoozeDays, KeyWindowSize,
 		snooze.PrefWakeCommits, snooze.PrefWakeReviews, snooze.PrefWakeComments,
 		sensitive.PrefScope, sensitive.PrefOff, sensitive.PrefPatterns, KeyMenuBar, notifyprefs.KeyBannersOff, notifyprefs.KeyBannersOn, KeyTheme,
-		KeyTextSize, KeyToastSeconds, KeyProjectsTipDismissed, KeyReviewTab, KeyMergeMethod, KeyRefreshInbox, KeyRefreshChecks, KeyRefreshWorktrees,
+		KeyTextSize, KeyToastSeconds, KeyProjectsTipDismissed, KeyReviewTab, KeyConversationOrder, KeyMergeMethod, KeyRefreshInbox, KeyRefreshChecks, KeyRefreshWorktrees,
 		KeyRefreshNotifications,
 	), append(append(append(append(collapsedKeys(), orderKeys()...), branchrules.Keys()...), reporules.Keys()...),
 		append(integrationprefs.Keys(), threadrules.Keys()...)...)...)

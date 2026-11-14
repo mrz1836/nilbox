@@ -98,6 +98,11 @@ function inPopover(e: KeyboardEvent): boolean {
   return e.target instanceof Element && e.target.closest('[role="menu"], [role="dialog"]') !== null
 }
 
+// onRadio reports a key pressed on a radio button, whose arrows move between its choices.
+function onRadio(e: KeyboardEvent): boolean {
+  return e.target instanceof HTMLInputElement && e.target.type === 'radio'
+}
+
 // useSheetKeys gives the sheet whose title has titleId its keys while it is the dialog the
 // user is in and no menu or picker in it holds focus: ⌘↩ runs its button, and ← and → step
 // through its list while the user isn't typing, with no modifier held, unless a control in
@@ -119,8 +124,8 @@ export function useSheetKeys(titleId: string, keys: SheetKeys): void {
     }
 
     // A key a control in the sheet already took, as the tabs take an arrow to move between
-    // them, steps nothing.
-    if (isTyping(e) || e.metaKey || e.altKey || e.ctrlKey || e.defaultPrevented) {
+    // them, or one a radio button takes to move between its choices, steps nothing.
+    if (isTyping(e) || e.metaKey || e.altKey || e.ctrlKey || e.defaultPrevented || onRadio(e)) {
       return
     }
 

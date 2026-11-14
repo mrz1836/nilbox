@@ -253,6 +253,7 @@ function answers(subscribe: Loose<Platform['on']>): { [K in keyof Platform]: Loo
     setSectionCollapsed: (section, collapsed) => stored({ collapsedSections: collapsed ? [section] : [] }),
     setProjectsTipDismissed: (projectsTipDismissed) => stored({ projectsTipDismissed }),
     setReviewTab: (reviewTab) => stored({ reviewTab }),
+    setConversationOrder: (conversationOrder) => stored({ conversationOrder }),
     getInboxOrder: () => Promise.resolve({ statusSorted: [], statusOrder: [], kinds: {} }),
     setStatusSort: (section, on) =>
       stored({ inboxOrder: { statusSorted: on ? [section] : [], statusOrder: [], kinds: {} } }),

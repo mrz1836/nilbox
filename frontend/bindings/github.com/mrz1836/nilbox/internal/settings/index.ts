@@ -7,6 +7,7 @@ export {
 };
 
 export {
+    ConversationOrder,
     ListKey,
     ListKind,
     MergeMethod,

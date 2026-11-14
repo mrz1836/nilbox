@@ -95,9 +95,33 @@ describe('ReviewSummary', () => {
             { name: 'other', workflow: '', state: '?', outcome: 'odd', url: '', required: false },
           ],
           reviews: [
-            { author: 'a', state: 'CHANGES_REQUESTED', url: '', submittedAt: '', outdated: false },
-            { author: 'b', state: 'DISMISSED', url: '', submittedAt: '', outdated: false },
-            { author: 'c', state: 'COMMENTED', url: '', submittedAt: '', outdated: false },
+            {
+              author: 'a',
+              state: 'CHANGES_REQUESTED',
+              url: '',
+              requested: false,
+              team: false,
+              submittedAt: '',
+              outdated: false,
+            },
+            {
+              author: 'b',
+              state: 'DISMISSED',
+              url: '',
+              requested: false,
+              team: false,
+              submittedAt: '',
+              outdated: false,
+            },
+            {
+              author: 'c',
+              state: 'COMMENTED',
+              url: '',
+              requested: false,
+              team: false,
+              submittedAt: '',
+              outdated: false,
+            },
           ],
           change: { kind: 'code', label: 'Code', areas: [] },
         })}
@@ -106,10 +130,8 @@ describe('ReviewSummary', () => {
     )
 
     expect(screen.getByText('5 checks · 1 failing · 1 running').closest('details')).toHaveAttribute('open')
-    const [ran] = screen.getAllByRole('list')
-    expect(ran).toBeDefined()
     expect(
-      within(ran as HTMLElement)
+      within(screen.getByRole('list', { name: 'Checks' }))
         .getAllByRole('listitem')
         .map((li) => li.textContent),
     ).toEqual(['e2erequired', 'build', 'lint'])
@@ -853,5 +875,108 @@ describe('ReviewComposer helpers', () => {
     expect(sendsText(closeOffer())).toBe(true)
     expect(heldBack(offer({ action: 'comment' }), '\uFEFF', 0)).toBe('Write something, or add a line comment, first.')
     expect(heldBack(undefined, '', 0)).toBe('')
+  })
+})
+
+describe('ReviewSummary with many checks and reviewers', () => {
+  // checks are count checks with outcome, named after it, the first required ones of them
+  // required.
+  function checks(outcome: string, count: number, required = 0) {
+    return Array.from({ length: count }, (_, i) => ({
+      name: `${outcome} ${String(i + 1)}`,
+      workflow: '',
+      state: outcome.toUpperCase(),
+      outcome,
+      url: '',
+      required: i < required,
+    }))
+  }
+
+  // reviewer is a reviewer's line of the summary.
+  function reviewer(author: string, state: string, more: { requested?: boolean; team?: boolean; url?: string } = {}) {
+    return { author, state, url: '', requested: false, team: false, submittedAt: '', outdated: false, ...more }
+  }
+
+  it('keeps the reviewers above the checks, and folds the checks that pass once they run long', async () => {
+    render(
+      <ReviewSummary
+        review={review({
+          checks: [
+            ...checks('passed', 22, 2),
+            ...checks('pending', 3, 1),
+            ...checks('failed', 1),
+            ...checks('skipped', 8),
+          ],
+          reviews: [
+            reviewer('octo-reviewer', 'CHANGES_REQUESTED', { url: 'u1', requested: true }),
+            reviewer('octo-third', 'APPROVED', { url: 'u2' }),
+            reviewer('octo-fourth', '', { requested: true }),
+            reviewer('acme-org/maintainers', '', { requested: true, team: true }),
+          ],
+        })}
+        item={undefined}
+      />,
+    )
+
+    const reviewers = screen.getByRole('region', { name: 'Reviewers' })
+    const summary = screen.getByText(/^34 checks · 1 failing/).closest('details')
+    expect(summary).toHaveAttribute('open')
+    expect(reviewers.compareDocumentPosition(summary as Node), 'the reviewers come first').toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    )
+
+    expect(
+      within(reviewers)
+        .getAllByRole('listitem')
+        .map((li) => li.textContent),
+    ).toEqual([
+      'Oocto-reviewerrequested changes · asked again',
+      'Oocto-thirdapproved',
+      'Oocto-fourthawaiting review',
+      'Aacme-org/maintainersawaiting review',
+    ])
+    expect(within(reviewers).getAllByRole('button'), 'a request has no review to show').toHaveLength(2)
+
+    // What matters shows: the failing check, then those running, the required first.
+    expect(
+      within(screen.getByRole('list', { name: 'Checks' }))
+        .getAllByRole('listitem')
+        .map((li) => li.textContent),
+    ).toEqual(['failed 1', 'pending 1required', 'pending 2', 'pending 3'])
+
+    const passed = screen.getByText('22 passed · 2 required').closest('details')
+    expect(passed).not.toHaveAttribute('open')
+    expect(passed).toHaveTextContent('22 passed · 2 required')
+    expect(screen.getByText('8 skipped').closest('details')).not.toHaveAttribute('open')
+
+    await userEvent.click(screen.getByText('22 passed · 2 required'))
+    expect(within(screen.getByRole('list', { name: 'Checks passed' })).getAllByRole('listitem')[0]).toHaveTextContent(
+      'passed 1required',
+    )
+  })
+
+  it('shows every failing check, and folds the running once they don’t fit beside them', () => {
+    render(
+      <ReviewSummary
+        review={review({ checks: [...checks('failed', 3), ...checks('pending', 10), ...checks('passed', 2)] })}
+        item={undefined}
+      />,
+    )
+
+    expect(within(screen.getByRole('list', { name: 'Checks' })).getAllByRole('listitem')).toHaveLength(3)
+    expect(screen.getByText('10 running').closest('details')).not.toHaveAttribute('open')
+    expect(
+      screen.getByText('2 passed').closest('details'),
+      'nothing past what was folded shows open',
+    ).not.toHaveAttribute('open')
+  })
+
+  it('lists a short list in full', () => {
+    render(
+      <ReviewSummary review={review({ checks: [...checks('passed', 7), ...checks('failed', 1)] })} item={undefined} />,
+    )
+
+    expect(within(screen.getByRole('list', { name: 'Checks' })).getAllByRole('listitem')).toHaveLength(8)
+    expect(screen.queryByText(/passed$/)).not.toBeInTheDocument()
   })
 })

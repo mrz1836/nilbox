@@ -231,7 +231,7 @@ SELECT
     d.item_id AS details_item_id, d.labels, d.comments, d.additions, d.deletions, d.changed_files, d.commits,
     d.mergeable, d.checks_state, d.checks_passed, d.checks_failed, d.checks_pending, d.checks_skipped,
     d.checks_awaiting, d.review_decision, d.reviewers, d.reviewed, d.approvals, d.changes_requested, d.head_oid,
-    d.auto_merge_method, d.fetched_at AS details_fetched_at
+    d.auto_merge_method, d.review_users, d.review_teams, d.fetched_at AS details_fetched_at
 FROM items i
 JOIN repos r ON r.id = i.repo_id
 JOIN accounts a ON a.id = i.account_id
@@ -290,6 +290,8 @@ type GetReviewItemRow struct {
 	ChangesRequested      *int64
 	HeadOID               *string
 	AutoMergeMethod       *string
+	ReviewUsers           *string
+	ReviewTeams           *string
 	DetailsFetchedAt      *time.Time
 }
 
@@ -352,6 +354,8 @@ func (q *Queries) GetReviewItem(ctx context.Context, id int64) (GetReviewItemRow
 		&i.ChangesRequested,
 		&i.HeadOID,
 		&i.AutoMergeMethod,
+		&i.ReviewUsers,
+		&i.ReviewTeams,
 		&i.DetailsFetchedAt,
 	)
 	return i, err

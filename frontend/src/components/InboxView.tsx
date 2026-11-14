@@ -23,6 +23,7 @@ import {
   setRepoRule,
   type AfterMerge,
   type AgentSession,
+  type ConversationOrder,
   type InboxItem,
   type ItemKind,
   type ItemResolution,
@@ -118,6 +119,10 @@ export interface InboxViewProps {
   // onReviewTab hears each choice, for the window to remember.
   reviewTab?: ReviewTab | undefined
   onReviewTab?: ((tab: ReviewTab) => void) | undefined
+  // conversationOrder is the order both sheets list a conversation in, the one the user
+  // last chose, and onConversationOrder hears each choice, for the window to remember.
+  conversationOrder?: ConversationOrder | undefined
+  onConversationOrder?: ((order: ConversationOrder) => void) | undefined
 }
 
 // SheetDrafts are the drafts of both sheets over the inbox: the review sheet's and the issue
@@ -266,6 +271,8 @@ export function InboxView({
   onRepoRuleSettings,
   reviewTab = 'files',
   onReviewTab,
+  conversationOrder = 'oldest',
+  onConversationOrder,
 }: InboxViewProps) {
   const {
     snapshot,
@@ -283,6 +290,15 @@ export function InboxView({
     removeReviewRequest,
   } = inbox
   const { order, setStatusSort, setStatusOrder, setListKind } = inboxOrder
+  // chosenOrder is the conversations' order the user chose here, shared by both sheets at
+  // once, until the stored setting they remember it in comes back the same.
+  const [chosenOrder, setChosenOrder] = useState<ConversationOrder | null>(null)
+  const conversation = chosenOrder ?? conversationOrder
+
+  const chooseConversation = (next: ConversationOrder) => {
+    setChosenOrder(next)
+    onConversationOrder?.(next)
+  }
   const clock = useClock()
   const lastError = snapshot?.lastError ?? ''
   const error = firstMessage(refreshError, lastError, loadError)
@@ -886,6 +902,8 @@ export function InboxView({
             onTab={(tab) => {
               onReviewTab?.(tab)
             }}
+            order={conversation}
+            onOrder={chooseConversation}
             launch={launch}
             resolution={resolutions.get(viewing.id) ?? null}
             sessions={viewed === undefined ? undefined : sessionsOf(sessions, viewed)}
@@ -918,6 +936,8 @@ export function InboxView({
             siblings={siblings}
             listTitle={listTitle}
             drafts={drafts.issue}
+            order={conversation}
+            onOrder={chooseConversation}
             launch={launch}
             resolution={resolutions.get(viewing.id) ?? null}
             sessions={viewed === undefined ? undefined : sessionsOf(sessions, viewed)}

@@ -372,6 +372,7 @@ export function settings(overrides: Partial<Settings> = {}): Settings {
     collapsedSections: [],
     projectsTipDismissed: false,
     reviewTab: 'files',
+    conversationOrder: 'oldest',
     inboxOrder: { statusSorted: [], statusOrder: [], kinds: {} },
     mergeMethod: 'repo',
     integrations: integrationsConfig(),

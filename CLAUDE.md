@@ -456,7 +456,10 @@ app:lint` reads.
   holds GitHub's `updatedAt` of the read it shows, which only `Open` moves
   (`Review.LastSeenAt`). `Earlier` reads the conversation's page before a cursor
   (`FetchTimeline`) through the inbox's `PeekPull`, and stores it nowhere. The summary lists
-  each reviewer's latest review without its text, which is in the conversation. A merge that
+  each reviewer's latest review without its text, which is in the conversation, then who the
+  card says the pull request still asks to review (`withRequests`, from `review_users` and
+  `review_teams`, no request), above the checks, which show every failing one and fold the
+  rest under their counts once they pass `openChecks` rows. A merge that
   went through tells its `Merges` the repository, without waiting (core: the Release page's
   `Refresher`, which reads that repository's row again); a close tells it nothing. Nothing
   here lets an agent approve, merge, or close.
@@ -1230,7 +1233,9 @@ app:lint` reads.
   counts), and `lib/useTimeline.ts` (a visit's start and the earlier pages, joined). The review
   sheet shows it in its Comments tab, beside Files (the description and the diff), each kept
   mounted in an `Activity` while the other shows; the tab is the window's memory
-  (`ui.reviewTab`, which a backup never holds).
+  (`ui.reviewTab`, which a backup never holds), and so is the order both sheets list a
+  conversation in (`ui.conversationOrder`, oldest or newest first, under the description),
+  which the inbox shares between them.
   Theme colors come from the `--color-*` tokens `internal/brandgen` writes to
   `frontend/src/generated/theme.css`. Checkboxes and radio buttons take the `checkbox` and
   `radio` classes (`frontend/src/index.css`), which draw them in the app's own style: macOS

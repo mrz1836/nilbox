@@ -114,6 +114,11 @@ type StoredPull struct {
 	Approvals        int
 	ChangesRequested int
 
+	// ReviewUsers and ReviewTeams are who the pull request asks to review: the logins of
+	// the people, and the slugs of the teams.
+	ReviewUsers []string
+	ReviewTeams []string
+
 	HeadOID   string
 	AutoMerge string
 
@@ -630,6 +635,7 @@ func build(pull StoredPull, c *cached, matcher *sensitive.Matcher, pref MethodPr
 	}
 
 	r.Change = changeOf(r.Files, r.Bump != nil)
+	r.Reviews = withRequests(r.Reviews, pull)
 
 	plan := Decide(factsOf(pull, c, r), pref)
 	r.Offers, r.Primary, r.Readiness = textutil.NonNil(plan.Offers), plan.Primary, plan.Readiness
@@ -681,6 +687,31 @@ func (r *Review) fill(c *cached, matcher *sensitive.Matcher) {
 
 		r.Reviews = append(r.Reviews, entry)
 	}
+}
+
+// withRequests adds who pull asks to review to reviews, each reviewer's latest review: a
+// reviewer asked again is marked on their review, and each person and team asked who hasn't
+// reviewed follows the reviews, people first, in GitHub's order. A team is named
+// "org/team", its org the repository's owner.
+func withRequests(reviews []ReviewEntry, pull StoredPull) []ReviewEntry {
+	out := slices.Clone(reviews)
+
+	for _, login := range pull.ReviewUsers {
+		at := slices.IndexFunc(out, func(e ReviewEntry) bool { return !e.Team && strings.EqualFold(e.Author, login) })
+		if at >= 0 {
+			out[at].Requested = true
+
+			continue
+		}
+
+		out = append(out, ReviewEntry{Author: login, Requested: true})
+	}
+
+	for _, slug := range pull.ReviewTeams {
+		out = append(out, ReviewEntry{Author: pull.Owner + "/" + slug, Requested: true, Team: true})
+	}
+
+	return textutil.NonNil(out)
 }
 
 // fileOf is a cached file as the sheet shows it, with its sensitive category.

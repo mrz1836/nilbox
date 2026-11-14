@@ -30,6 +30,7 @@ import {
   prompts,
   review,
   reviewResult,
+  reviewTimeline,
   settings,
   snapshot,
 } from '../test/fixtures'
@@ -58,6 +59,7 @@ const manageReplies = vi.fn()
 const release = vi.fn<(offer: AfterMerge) => void>()
 const settingsSaved = vi.fn<(settings: Settings) => void>()
 const repoRuleSettings = vi.fn()
+const conversationOrdered = vi.fn()
 
 interface HarnessProps {
   launch: LaunchOptions | null
@@ -131,6 +133,7 @@ function Inbox({
       repoRules={repoRules}
       onSettingsSaved={settingsSaved}
       onRepoRuleSettings={repoRuleSettings}
+      onConversationOrder={conversationOrdered}
     />
   )
 }
@@ -2050,6 +2053,29 @@ describe('InboxView issue sheet', () => {
       expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
     })
     expect(opener, 'focus goes back to the card the first sheet was opened from').toHaveFocus()
+  })
+
+  it('lists both sheets’ conversations in the order chosen in either, and remembers it', async () => {
+    platform.getInboxSnapshot.mockResolvedValue(snapshot({ assigned: list([crash, item({ id: 1 })]) }))
+    platform.openIssue.mockResolvedValue(issue({ id: 2 }))
+    platform.refreshIssue.mockResolvedValue(issue({ id: 2 }))
+    platform.openReview.mockResolvedValue(review({ id: 1, timeline: reviewTimeline() }))
+    platform.refreshReview.mockResolvedValue(review({ id: 1, timeline: reviewTimeline() }))
+    render(<Harness launch={launchOptions} clock={fixedNow} reviews />)
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Parser drops the trailing newline' }))
+    const sheet = await screen.findByRole('dialog', { name: 'Parser drops the trailing newline' })
+    await userEvent.click(within(sheet).getByRole('radio', { name: 'Newest first' }))
+
+    expect(conversationOrdered).toHaveBeenCalledWith('newest')
+    const issueEntries = within(within(sheet).getByRole('list', { name: 'Entries' })).getAllByRole('article')
+    expect(issueEntries[0]).toHaveAccessibleName('octo-other’s comment')
+
+    await userEvent.click(within(sheet).getByRole('button', { name: 'Next' }))
+    const pull = await screen.findByRole('dialog', { name: 'Add the widget cache' })
+    await userEvent.click(await within(pull).findByRole('tab', { name: /^Comments/ }))
+
+    expect(within(pull).getByRole('radio', { name: 'Newest first' }), 'the other sheet lists it the same').toBeChecked()
   })
 
   it('opens an issue from its menu', async () => {
