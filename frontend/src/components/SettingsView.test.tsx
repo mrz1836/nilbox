@@ -142,6 +142,17 @@ describe('SettingsView', () => {
     expect(screen.getByRole('region', { name: 'Snoozing' })).toBeInTheDocument()
   })
 
+  it('opens each section at its top, wherever the last one was scrolled to', async () => {
+    renderSettings({ section: 'integrations' })
+
+    const integrations = screen.getByRole('region', { name: 'Integrations' })
+    integrations.scrollTop = 1500
+
+    await openSection('Back up and restore')
+
+    expect(screen.getByRole('region', { name: 'Back up and restore' }).scrollTop).toBe(0)
+  })
+
   it('opens on the account, with a sidebar of sections', () => {
     renderSettings()
 

@@ -223,7 +223,10 @@ export function SettingsView({
         ))}
       </nav>
       <SettingMatch value={(label) => match?.isMatch(section, label) ?? false}>
-        <section aria-labelledby={headingId} className="min-w-0 flex-1 overflow-y-auto">
+        {/* Each section gets a scroller of its own, so it opens at its top: one kept across
+            sections would keep a long section's place, and macOS's web view shows a short
+            section scrolled past its own end. */}
+        <section key={section} aria-labelledby={headingId} className="min-w-0 flex-1 overflow-y-auto">
           <div className="mx-auto max-w-2xl px-8 py-7">
             <h2 id={headingId} className="text-lg font-semibold">
               {current.label}

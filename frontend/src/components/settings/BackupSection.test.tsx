@@ -32,7 +32,7 @@ describe('BackupSection', () => {
     const never = within(screen.getByRole('list', { name: 'What a backup never holds' }))
     expect(never.getAllByRole('listitem')).toHaveLength(8)
     expect(never.getByText(`Your GitHub sign-in, which ${brand.name} never stores.`)).toBeInTheDocument()
-    expect(never.getByText(/repository scripts you trusted/)).toBeInTheDocument()
+    expect(never.getByText(/Repository scripts you trusted/)).toBeInTheDocument()
   })
 
   it('exports the categories left ticked to the file the user chooses', async () => {

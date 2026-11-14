@@ -107,10 +107,13 @@ export function PromptLibrary({
             <PlusIcon className="size-3.5" />
             {replies ? 'New reply' : 'New'}
           </button>
+          {/* The menu opens from the button's left edge, over the editor: lined up with its
+              right edge, it is wider than the sidebar and runs off the window. */}
           <MenuButton
             label="Import and export prompts"
             title="Import and export"
             items={actions}
+            align="left"
             className={`${quietButtonClass} py-1 aria-expanded:bg-raised aria-expanded:text-text`}
           >
             <MoreIcon className="size-3.5" />

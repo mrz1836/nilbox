@@ -42,12 +42,12 @@ export function sectionLabel(section: BackupSection): string {
 // neverBacked are what a backup never holds, each with why.
 export const neverBacked: readonly string[] = [
   `Your GitHub sign-in, which ${brand.name} never stores.`,
-  'Caches and mirrors: the inbox, diffs, issues, profile pictures, and your GitHub notifications, all read again.',
+  'Caches: the inbox, diffs, issues, profile pictures, and GitHub notifications, all read again.',
   'History: runs, agent sessions, notifications, and worktree records.',
   'What you did to each item, such as a dismissal or a snooze, which goes with the items read again.',
   `Agent profiles, which ${brand.name} finds on disk at each start.`,
-  'Which repository scripts you trusted: a file from elsewhere could approve a command for you, so you’re asked again.',
-  'The window’s memory: its size, the sections you folded, the tips you put away, and the last Scripts page.',
+  'Repository scripts you trusted, so a file from elsewhere can’t approve a command for you.',
+  'The window’s memory: its size, folded sections, tips put away, and the last Scripts page.',
   'Which copies of the tools were found, and which ones the app installed.',
 ]
 
