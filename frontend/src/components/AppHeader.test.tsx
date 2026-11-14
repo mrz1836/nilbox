@@ -3,8 +3,9 @@ import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 
 import { brand } from '../generated/brand'
+import { noTags } from '../lib/githubThreads'
 import { at } from '../test/clock'
-import { account, budgetGauge, notification, reading } from '../test/fixtures'
+import { account, budgetGauge, githubThread, githubThreads, notification, reading, settings } from '../test/fixtures'
 import { AppHeader, type AppHeaderProps } from './AppHeader'
 
 vi.mock('../platform', () => import('../test/platform').then((fake) => fake.platform))
@@ -51,6 +52,83 @@ describe('AppHeader', () => {
     await userEvent.click(screen.getByRole('button', { name: /^Notifications/ }))
     await userEvent.click(screen.getByRole('button', { name: 'Notification settings' }))
     expect(onNotificationSettings).toHaveBeenCalledOnce()
+  })
+
+  it('shows no GitHub notifications button without them', () => {
+    renderHeader()
+    expect(screen.queryByRole('button', { name: /^GitHub notifications/ })).not.toBeInTheDocument()
+  })
+
+  it('puts the GitHub notifications button between the bell and the budget gauge, and opens from it', async () => {
+    const { onOpenThread, onGitHubThreadsSettings } = renderHeader({
+      notifications: { log: { items: [], unread: 0 }, error: '', markRead: vi.fn(), markError: '', clear: vi.fn() },
+      githubThreads: {
+        snapshot: githubThreads({ status: { count: 3, unread: 1 }, unread: [githubThread()] }),
+        byItem: noTags,
+        error: '',
+        reload: vi.fn(),
+        checkNow: vi.fn(() => Promise.resolve({ ok: true as const, data: githubThreads() })),
+        checking: false,
+        checkError: '',
+      },
+      settings: settings({ githubNotifications: { ...settings().githubNotifications, auto: true } }),
+      onOpenThread: vi.fn(),
+      onGitHubThreadsSettings: vi.fn(),
+    })
+
+    const names = within(screen.getByRole('banner'))
+      .getAllByRole('button')
+      .map((b) => b.getAttribute('aria-label') ?? '')
+    const bell = names.indexOf('Notifications')
+    const github = names.indexOf('GitHub notifications, 3 in your inbox, 1 unread')
+
+    expect(bell).toBeGreaterThan(-1)
+    expect(github).toBe(bell + 1)
+    expect(names[github + 1]).toMatch(/budget/i)
+
+    await userEvent.click(screen.getByRole('button', { name: /^GitHub notifications/ }))
+    await userEvent.click(screen.getByRole('button', { name: /Add the widget cache/ }))
+    expect(onOpenThread).toHaveBeenCalledExactlyOnceWith({
+      owner: 'acme-org',
+      name: 'example-repo',
+      kind: 'pr',
+      number: 7,
+    })
+
+    await userEvent.click(screen.getByRole('button', { name: /^GitHub notifications/ }))
+    await userEvent.click(screen.getByRole('button', { name: 'Settings' }))
+    expect(onGitHubThreadsSettings).toHaveBeenCalledOnce()
+  })
+
+  it('opens the general settings from the GitHub notifications button when given nothing else to open', async () => {
+    const checkNow = vi.fn(() => Promise.resolve({ ok: true as const, data: githubThreads() }))
+    const { onOpenSettings } = renderHeader({
+      githubThreads: {
+        snapshot: githubThreads({ status: { count: 1, unread: 1 }, unread: [githubThread()] }),
+        byItem: noTags,
+        error: '',
+        reload: vi.fn(),
+        checkNow,
+        checking: false,
+        checkError: '',
+      },
+      settings: settings(),
+    })
+
+    // Without a way to show an item, a click on one only closes the panel.
+    await userEvent.click(screen.getByRole('button', { name: /^GitHub notifications/ }))
+    await userEvent.click(screen.getByRole('button', { name: /Add the widget cache/ }))
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+
+    // Turning clearing on still checks GitHub, with no one to hand the settings to.
+    await userEvent.click(screen.getByRole('button', { name: /^GitHub notifications/ }))
+    await userEvent.click(screen.getByRole('button', { name: 'Turn on automatic clearing' }))
+    await vi.waitFor(() => {
+      expect(checkNow).toHaveBeenCalledOnce()
+    })
+
+    await userEvent.click(screen.getByRole('button', { name: 'Settings' }))
+    expect(onOpenSettings).toHaveBeenCalledOnce()
   })
 
   it('opens the general settings from the bell when given no notification settings', async () => {

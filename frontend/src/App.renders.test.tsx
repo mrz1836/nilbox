@@ -5,14 +5,15 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 
 import type { ItemRowProps } from './components/ItemRow'
 import { triageList } from './lib/triage'
-import type { InboxItem, InboxSnapshot } from './platform'
+import type { InboxItem, InboxSnapshot, ItemThreads } from './platform'
 import { FIXED_NOW, fromNow } from './test/clock'
-import { details, fileCheck, item, list, rate, snapshot } from './test/fixtures'
+import { details, fileCheck, githubThreads, item, itemThreads, list, rate, snapshot } from './test/fixtures'
 import { emit, platform, renderApp } from './test/platform'
 
 // The render profile: a 300-item inbox, and how much of it renders again for a minute
-// tick, a background update that changes one item, collapsing a list, leaving the inbox
-// and coming back, and filtering it and clearing the filter. It runs twice. In the unit tests the components run as written,
+// tick, a background update that changes one item, a GitHub notifications update that
+// changes one item's tag, collapsing a list, leaving the inbox and coming back, and
+// filtering it and clearing the filter. It runs twice. In the unit tests the components run as written,
 // where the bounds below hold however much a parent renders again. `pnpm test:renders`
 // (vitest.renders.config.ts) runs it through the React Compiler, as the build ships, where
 // the tighter bounds hold, and prints what it measured.
@@ -153,6 +154,14 @@ function setUp() {
   }
 }
 
+// answerThreads answers the window's reads of the GitHub notifications with byItem, each
+// read a fresh copy, as a bound call returns freshly decoded JSON.
+function answerThreads(byItem: ItemThreads[]) {
+  platform.githubThreadsSnapshot.mockImplementation(() =>
+    Promise.resolve(structuredClone(githubThreads({ status: { count: 3, unread: 3 }, byItem }))),
+  )
+}
+
 // Profiled records each commit of the window, and the time React spent rendering it.
 function Profiled({ children }: { children: ReactNode }) {
   return (
@@ -177,6 +186,7 @@ describe('App rendering', () => {
   // accessibility tree of hundreds of rows takes longer than everything measured.
   it('renders a large inbox again only where it changed', { timeout: 60_000 }, async () => {
     const answer = setUp()
+    answerThreads([itemThreads({ number: 50, unread: 2 })])
     const rows = shown('reviewRequested') + shown('authored') + shown('assigned')
 
     const mounted = await measure(async () => {
@@ -206,6 +216,20 @@ describe('App rendering', () => {
     })
 
     expect(update.mounts).toBe(0)
+
+    // A GitHub notifications update that changes one item's tag: item 60's card gains one,
+    // while item 50's, read afresh, says what it said.
+    expect(screen.getByText('2 unread on GitHub')).toBeInTheDocument()
+    answerThreads([itemThreads({ number: 50, unread: 2 }), itemThreads({ number: 60, unread: 1 })])
+    const tag = await measure(async () => {
+      act(() => {
+        emit('ghthreads:updated')
+      })
+      await screen.findByText('1 unread on GitHub', {}, wait)
+    })
+
+    expect(screen.getByText('2 unread on GitHub')).toBeInTheDocument()
+    expect(tag.mounts).toBe(0)
 
     // Collapsing a list takes its rows out of the document.
     const collapse = await measure(async () => {
@@ -257,17 +281,18 @@ describe('App rendering', () => {
     // filtering renders only the rows it marks. As written, every render of a list renders
     // its rows again, a couple of times a step.
     const most = compiled
-      ? { update: 1, collapse: 0, away: 0, back: 0, filter: matches }
-      : { update: 2 * rows, collapse: rows, away: 2 * rows, back: rows, filter: 2 * rows }
+      ? { update: 1, tag: 1, collapse: 0, away: 0, back: 0, filter: matches }
+      : { update: 2 * rows, tag: 2 * rows, collapse: rows, away: 2 * rows, back: rows, filter: 2 * rows }
 
     expect(update.rows).toBeLessThanOrEqual(most.update)
+    expect(tag.rows).toBeLessThanOrEqual(most.tag)
     expect(collapse.rows).toBeLessThanOrEqual(most.collapse)
     expect(away.rows).toBeLessThanOrEqual(most.away)
     expect(back.rows).toBeLessThanOrEqual(most.back)
     expect(filter.rows).toBeLessThanOrEqual(most.filter)
 
     if (compiled) {
-      const steps = Object.entries({ mounted, tick, update, collapse, away, back, filter, clear }).map(
+      const steps = Object.entries({ mounted, tick, update, tag, collapse, away, back, filter, clear }).map(
         ([step, m]) => `  ${step}: ${String(m.rows)} / ${String(m.mounts)} / ${String(m.commits)} / ${String(m.ms)}`,
       )
 

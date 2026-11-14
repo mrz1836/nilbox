@@ -1,6 +1,7 @@
 import { memo } from 'react'
 
 import { counted } from '../lib/format'
+import type { ThreadTag } from '../lib/githubThreads'
 import { agentName } from '../lib/launch'
 import { leaving, useRowWork, workWords } from '../lib/rowWork'
 import { runningSession } from '../lib/sessions'
@@ -19,6 +20,7 @@ import {
   type Settings,
   type Worktree,
 } from '../platform'
+import { GitHubTag } from './GitHubTag'
 import { Highlight } from './Highlight'
 import { ArchiveIcon, ClockIcon, ExternalIcon, IssueIcon, PullRequestIcon } from './icons'
 import { ItemMenu, type EditActions } from './ItemMenu'
@@ -57,6 +59,9 @@ export interface ItemRowProps {
   worktree?: Worktree | undefined
   // sessions are the item's agent sessions, newest first, if it has any.
   sessions?: readonly AgentSession[] | undefined
+  // threads is the tag of the item's notifications on GitHub, if any are unread (see
+  // threadTags); it keeps its object while it shows the same.
+  threads?: ThreadTag | undefined
   // tab is the list tab the row is in: the inbox, Snoozed, or Dismissed.
   tab?: TriageTab
   // triage is what the row's snooze, dismiss, and restore buttons do; without it the row
@@ -300,6 +305,7 @@ export const ItemRow = memo(function ItemRow({
   resolution = null,
   worktree,
   sessions,
+  threads,
   tab = 'inbox',
   triage,
   edits,
@@ -379,6 +385,7 @@ export const ItemRow = memo(function ItemRow({
           {sessions !== undefined && (
             <SessionTag sessions={sessions} agents={launch?.agents ?? []} markWorktree={worktree === undefined} />
           )}
+          {threads !== undefined && <GitHubTag tag={threads} />}
         </div>
         <ItemSignals item={item} onFilterBy={onFilterBy} />
       </div>

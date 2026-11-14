@@ -12,6 +12,7 @@ import type * as agent from '../../bindings/github.com/mrz1836/nilbox/internal/a
 import * as appinfo from '../../bindings/github.com/mrz1836/nilbox/internal/appinfo'
 import * as branchrules from '../../bindings/github.com/mrz1836/nilbox/internal/branchrules'
 import * as budget from '../../bindings/github.com/mrz1836/nilbox/internal/budget'
+import * as ghthreads from '../../bindings/github.com/mrz1836/nilbox/internal/ghthreads'
 import type * as gitread from '../../bindings/github.com/mrz1836/nilbox/internal/gitread'
 import * as hooks from '../../bindings/github.com/mrz1836/nilbox/internal/hooks'
 import * as inbox from '../../bindings/github.com/mrz1836/nilbox/internal/inbox'
@@ -37,6 +38,7 @@ import type * as sensitive from '../../bindings/github.com/mrz1836/nilbox/intern
 import * as sessions from '../../bindings/github.com/mrz1836/nilbox/internal/sessions'
 import * as settings from '../../bindings/github.com/mrz1836/nilbox/internal/settings'
 import type * as snooze from '../../bindings/github.com/mrz1836/nilbox/internal/snooze'
+import type * as threadrules from '../../bindings/github.com/mrz1836/nilbox/internal/threadrules'
 import * as worktrees from '../../bindings/github.com/mrz1836/nilbox/internal/worktrees'
 
 export type { CancellablePromise }
@@ -92,6 +94,23 @@ export type BudgetGauge = NonNullLists<budget.Gauge>
 export type BudgetReading = NonNullLists<budget.Reading>
 export type BudgetRefresh = NonNullLists<budget.Refresh>
 export type BudgetWrites = NonNullLists<budget.Writes>
+
+// The user's GitHub notifications as the app mirrors them: the status of reading them, the
+// threads about each pull request or issue, and the newest unread. A thread about no item
+// (a release, a check suite, ...) has '' for its kind, which the generated type, a union of
+// the item kinds alone, leaves out. No URL GitHub gave is in any of them: the window
+// builds an item's link from its repository, kind, and number.
+export type GitHubThreadsSnapshot = Omit<NonNullLists<ghthreads.Snapshot>, 'unread'> & { unread: GitHubThread[] }
+export type GitHubThreadsStatus = NonNullLists<ghthreads.Status>
+export type GitHubThreadsAccess = ghthreads.Access
+export type ItemThreads = NonNullLists<ghthreads.ItemThreads>
+export type GitHubThread = Omit<NonNullLists<ghthreads.Thread>, 'kind'> & { kind: item.Kind | '' }
+// The user's rules for their GitHub notifications, from the settings, and the names their
+// setters take.
+export type ThreadRules = NonNullLists<threadrules.Rules>
+export type ThreadSwitch = threadrules.Switch
+export type ThreadTrigger = threadrules.Trigger
+export type ThreadAction = threadrules.Action
 
 export type DataReset = NonNullLists<appinfo.DataReset>
 export type Info = NonNullLists<appinfo.Info>
@@ -561,6 +580,10 @@ export const {
   SetScriptsSectionOpen: setScriptsSectionOpen,
   SetShowRuns: setShowRuns,
   SetRefreshInterval: setRefreshInterval,
+  SetGitHubNotificationSwitch: setGitHubNotificationSwitch,
+  SetGitHubNotificationTrigger: setGitHubNotificationTrigger,
+  SetGitHubNotificationAction: setGitHubNotificationAction,
+  SetGitHubCleanupCardDismissed: setGitHubCleanupCardDismissed,
 } = narrow(settings.Service)
 
 // The tools the app finds, installs, and runs for the user. List never waits for a
@@ -738,6 +761,15 @@ export const {
   RecentCleanups: recentCleanups,
   ClearCleanups: clearCleanups,
 } = narrow(worktrees.Service)
+
+// The user's GitHub notifications. Snapshot reads what the app mirrors from the database
+// alone and never asks GitHub; CheckNow runs a pass now, once any pass under way has ended,
+// and returns the Snapshot after it. A "ghthreads:updated" event follows each pass that
+// changed what Snapshot shows. Neither marks anything read or done.
+const githubThreads = narrow(ghthreads.Service)
+
+export const githubThreadsSnapshot: () => CancellablePromise<GitHubThreadsSnapshot> = githubThreads.Snapshot
+export const checkGitHubThreadsNow: () => CancellablePromise<GitHubThreadsSnapshot> = githubThreads.CheckNow
 
 const notifications = narrow(notify.Service)
 

@@ -158,15 +158,25 @@ interface SwitchRowProps {
   // describedBy lists more ids that describe the switch, such as an error the section
   // shows below its rows.
   describedBy?: string | false
+  // disabled holds the switch where it is, while another setting it needs is off.
+  disabled?: boolean
 }
 
 // SwitchRow is a setting turned on and off with a switch.
-export function SwitchRow({ checked, onChange, describedBy = false, error = '', ...row }: SwitchRowProps) {
+export function SwitchRow({
+  checked,
+  onChange,
+  describedBy = false,
+  error = '',
+  disabled = false,
+  ...row
+}: SwitchRowProps) {
   return (
     <SettingRow {...row} error={error}>
       <Switch
         id={row.controlId}
         checked={checked}
+        disabled={disabled}
         describedBy={rowDescribedBy(row.controlId, error, describedBy)}
         onChange={onChange}
       />

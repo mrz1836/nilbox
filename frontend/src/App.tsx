@@ -19,7 +19,7 @@ import { QuitDialog } from './components/QuitDialog'
 import type { SearchFieldProps } from './components/SearchField'
 import type { SettingsSection } from './components/SettingsView'
 import { defaultToastSeconds, Toast, type ToastMessage } from './components/Toast'
-import { attempt } from './lib/call'
+import { attempt, serial } from './lib/call'
 import { filterInbox, inboxItems, inboxSpec, inboxSuggestions } from './lib/inboxFilter'
 import { isFindKey, isTyping } from './lib/keys'
 import { cloneWhere } from './lib/locations'
@@ -29,19 +29,22 @@ import type { ReleaseRequest } from './lib/release'
 import type { RunRequest } from './lib/scriptRuns'
 import { foundToolsText, scriptsBadge, showsScripts } from './lib/scriptsTab'
 import { matchSettings } from './lib/settingsIndex'
+import { itemURL, noTags, threadItemKey, type ThreadItem } from './lib/githubThreads'
 import { itemWorktrees } from './lib/itemWorktrees'
 import { runningSession, sessionsOf } from './lib/sessions'
+import { useGitHubThreads } from './lib/useGitHubThreads'
 import { useSessions } from './lib/useSessions'
 import { agentName } from './lib/launch'
 import { offersProjects } from './lib/projects'
 import { useTextSize } from './lib/textSize'
-import { defaultSnoozeDays, findItem } from './lib/triage'
+import { defaultSnoozeDays, findItem, itemsByRef } from './lib/triage'
 import { useCollapsedSections } from './lib/useCollapsedSections'
 import { useBudget } from './lib/useBudget'
 import { useInbox } from './lib/useInbox'
 import { useInboxOrder } from './lib/useInboxOrder'
 import { useIntegrations } from './lib/useIntegrations'
 import { useScriptRuns } from './lib/useScriptRuns'
+import { SettingsQueue } from './lib/useSettingsSave'
 import { useIssueDrafts } from './lib/issueDrafts'
 import { useReviewDrafts } from './lib/reviewDrafts'
 import { useLaunchConfig } from './lib/useLaunchConfig'
@@ -352,8 +355,8 @@ function useQueryOf(query: string): string {
 // triage, the launch configuration (settings, profiles, prompts, launch defaults, and
 // each item's resolved launch settings) that the rows, the Prompts page, and the settings
 // page use, which inbox lists are collapsed, the automatic worktree cleanup's latest
-// news, the notification history, and the item the menu bar or a notification last
-// asked to show.
+// news, the notification history, the user's GitHub notifications, and the item the menu
+// bar or a notification last asked to show.
 //
 // Each page stays mounted once visited, hidden while another shows (Activity), so it
 // comes back as it was left: a list's tab, an unsaved prompt draft. A hidden page runs no
@@ -377,6 +380,12 @@ export function App() {
   // opens and again whenever one changes.
   const agentSessions = useSessions()
   const notifications = useNotifications()
+  // githubThreads are the user's GitHub notifications, as the app mirrors them: the
+  // toolbar's button, the inbox's cards, and their settings share them.
+  const githubThreads = useGitHubThreads()
+  // settingsQueue is the one queue every settings save in the window goes through
+  // (useSettingsSave), the toolbar's and the settings page's alike.
+  const [settingsQueue] = useState(serial)
   // sections lives here rather than in the inbox page, so the lists stay as they were
   // left without reading them again.
   const sections = useCollapsedSections()
@@ -586,6 +595,19 @@ export function App() {
     showItem(entry.itemId, entry.url)
   }
 
+  // openThread shows the item a GitHub notification is about, in the inbox while it is
+  // listed there, or on GitHub, at a link built from its repository, kind, and number.
+  const openThread = (thread: ThreadItem) => {
+    const listed = inbox.snapshot === null ? undefined : itemsByRef(inbox.snapshot).get(threadItemKey(thread))
+
+    showItem(listed?.item.id ?? 0, itemURL(thread))
+  }
+
+  // openGitHubThreadsSettings opens the GitHub notification settings.
+  const openGitHubThreadsSettings = () => {
+    go({ type: 'settings', section: 'github' })
+  }
+
   const closeSettings = () => {
     go({ type: 'closeSettings' })
   }
@@ -725,6 +747,9 @@ export function App() {
     )
   }
 
+  // githubReading is whether the app reads the GitHub notifications, as the settings say:
+  // turned off, the cards' tags go at once, before the mirror says so.
+  const githubReading = config.settings?.githubNotifications.read !== false
   const account = inbox.snapshot?.account ?? null
   const mode = (page: View) => (view === page ? 'visible' : 'hidden')
   const viewer = account?.login ?? ''
@@ -776,158 +801,167 @@ export function App() {
   // past the window and let the document scroll, toolbar and all. Clip, where hidden would
   // leave the column itself scrollable, leaves scrollIntoView and focus nothing to scroll.
   return (
-    <div className="relative flex h-screen flex-col overflow-clip bg-background text-text">
-      <AppHeader
-        view={view}
-        onViewChange={changeView}
-        account={account}
-        gauge={budget.gauge}
-        onBudgetCheck={budget.check}
-        inboxCount={triaged?.count ?? 0}
-        worktreeCount={sweeps.count}
-        worktreeAttention={sweeps.attention}
-        scripts={scriptsShown ? scriptsBadge(scriptRuns.runs, integrations.tools) : null}
-        onOpenSettings={openSettings}
-        notifications={notifications}
-        onOpenNotification={openNotification}
-        onNotificationSettings={openNotificationSettings}
-        search={view === 'prompts' || view === 'scripts' ? undefined : searchFor(view)}
-        searchRef={searchRef}
-      />
-      <DataResetNotice />
-      {config.error !== '' && (
-        <ErrorBanner className="mx-4 mt-4">Could not load the launch settings: {config.error}</ErrorBanner>
-      )}
-      <main className="min-h-0 flex-1 overflow-y-auto">
-        <Activity mode={mode('inbox')}>
-          <InboxView
-            inbox={inbox}
-            triaged={triaged}
-            launch={launch}
-            resolutions={config.resolutions}
-            worktrees={worktrees}
-            sessions={agentSessions.byItem}
-            snoozeDays={config.settings?.snoozeDays ?? defaultSnoozeDays}
-            toastSeconds={toastSeconds}
-            onSnoozeSettings={openSnoozeSettings}
-            onFilesSettings={openFilesSettings}
-            collapsed={sections.collapsed}
-            onCollapse={sections.setCollapsed}
-            reveal={revealer.reveal}
-            showing={view === 'inbox'}
-            offerProjects={offersProjects(inbox.snapshot, config.settings)}
-            onDismissProjects={dismissProjects}
-            inboxOrder={inboxOrder}
-            filter={inboxFilter}
-            onFilterBy={onFilterBy}
-            onClearFilter={() => {
-              go({ type: 'search', view: 'inbox', query: '' })
-            }}
-            drafts={{ review: reviewDrafts, issue: issueDrafts }}
-            onManageReplies={openPrompts}
-            onRelease={openRelease}
-            repoRules={config.settings?.repoRules}
-            onSettingsSaved={setSettings}
-            onRepoRuleSettings={openRepoRuleSettings}
-          />
-        </Activity>
-        {nav.visited.has('worktrees') && (
-          <Activity mode={mode('worktrees')}>
-            <Suspense fallback={<PageLoading />}>
-              <WorktreesView
-                reloadKey={sweeps.seq}
-                onSnapshot={sweeps.listed}
-                focusHistory={nav.historyFocus}
-                agentName={(id) => agentName(config.agents, id)}
-                launchFor={launchFor}
-                branchRules={config.settings?.branches}
-                onSummary={reportChange}
-                query={worktreesQuery}
-              />
-            </Suspense>
-          </Activity>
+    <SettingsQueue value={settingsQueue}>
+      <div className="relative flex h-screen flex-col overflow-clip bg-background text-text">
+        <AppHeader
+          view={view}
+          onViewChange={changeView}
+          account={account}
+          gauge={budget.gauge}
+          onBudgetCheck={budget.check}
+          inboxCount={triaged?.count ?? 0}
+          worktreeCount={sweeps.count}
+          worktreeAttention={sweeps.attention}
+          scripts={scriptsShown ? scriptsBadge(scriptRuns.runs, integrations.tools) : null}
+          onOpenSettings={openSettings}
+          notifications={notifications}
+          onOpenNotification={openNotification}
+          onNotificationSettings={openNotificationSettings}
+          githubThreads={githubThreads}
+          settings={config.settings}
+          onOpenThread={openThread}
+          onGitHubThreadsSettings={openGitHubThreadsSettings}
+          onSettingsSaved={saveSettings}
+          search={view === 'prompts' || view === 'scripts' ? undefined : searchFor(view)}
+          searchRef={searchRef}
+        />
+        <DataResetNotice />
+        {config.error !== '' && (
+          <ErrorBanner className="mx-4 mt-4">Could not load the launch settings: {config.error}</ErrorBanner>
         )}
-        {nav.visited.has('prompts') && (
-          <Activity mode={mode('prompts')}>
-            <Suspense fallback={<PageLoading />}>
-              <div className="h-full">
-                <PromptsView
+        <main className="min-h-0 flex-1 overflow-y-auto">
+          <Activity mode={mode('inbox')}>
+            <InboxView
+              inbox={inbox}
+              triaged={triaged}
+              launch={launch}
+              resolutions={config.resolutions}
+              worktrees={worktrees}
+              sessions={agentSessions.byItem}
+              threads={githubReading ? githubThreads.byItem : noTags}
+              snoozeDays={config.settings?.snoozeDays ?? defaultSnoozeDays}
+              toastSeconds={toastSeconds}
+              onSnoozeSettings={openSnoozeSettings}
+              onFilesSettings={openFilesSettings}
+              collapsed={sections.collapsed}
+              onCollapse={sections.setCollapsed}
+              reveal={revealer.reveal}
+              showing={view === 'inbox'}
+              offerProjects={offersProjects(inbox.snapshot, config.settings)}
+              onDismissProjects={dismissProjects}
+              inboxOrder={inboxOrder}
+              filter={inboxFilter}
+              onFilterBy={onFilterBy}
+              onClearFilter={() => {
+                go({ type: 'search', view: 'inbox', query: '' })
+              }}
+              drafts={{ review: reviewDrafts, issue: issueDrafts }}
+              onManageReplies={openPrompts}
+              onRelease={openRelease}
+              repoRules={config.settings?.repoRules}
+              onSettingsSaved={setSettings}
+              onRepoRuleSettings={openRepoRuleSettings}
+            />
+          </Activity>
+          {nav.visited.has('worktrees') && (
+            <Activity mode={mode('worktrees')}>
+              <Suspense fallback={<PageLoading />}>
+                <WorktreesView
+                  reloadKey={sweeps.seq}
+                  onSnapshot={sweeps.listed}
+                  focusHistory={nav.historyFocus}
+                  agentName={(id) => agentName(config.agents, id)}
+                  launchFor={launchFor}
+                  branchRules={config.settings?.branches}
+                  onSummary={reportChange}
+                  query={worktreesQuery}
+                />
+              </Suspense>
+            </Activity>
+          )}
+          {nav.visited.has('prompts') && (
+            <Activity mode={mode('prompts')}>
+              <Suspense fallback={<PageLoading />}>
+                <div className="h-full">
+                  <PromptsView
+                    agents={config.agents}
+                    prompts={config.prompts}
+                    replies={config.replies}
+                    defaults={config.defaultPrompts}
+                    variables={config.variables}
+                    items={config.items}
+                    onChanged={reload}
+                  />
+                </div>
+              </Suspense>
+            </Activity>
+          )}
+          {nav.visited.has('scripts') && (
+            <Activity mode={mode('scripts')}>
+              <Suspense fallback={<PageLoading />}>
+                <div className="h-full">
+                  <ScriptsView
+                    terminal={config.settings?.terminal ?? null}
+                    runsIn={config.settings?.integrations.runsIn ?? 'app'}
+                    where={config.settings === null ? '' : cloneWhere(config.settings)}
+                    integrations={integrations}
+                    scriptsSwitch={config.settings?.integrations.switches.scripts ?? 'auto'}
+                    runs={scriptRuns}
+                    request={releaseRequest}
+                    runRequest={runRequest}
+                    onOpenSettings={openSettingsAt}
+                    lastPage={config.settings?.integrations.lastPage ?? ''}
+                    lastRepo={config.settings?.integrations.lastRepo ?? ''}
+                    onPage={(page) => {
+                      remember(setScriptsLastPage(page), 'the Scripts page shown')
+                    }}
+                    onRepo={(dir) => {
+                      remember(setScriptsLastRepo(dir), 'the clone Repo scripts shows')
+                    }}
+                    sections={config.settings?.integrations.sections ?? {}}
+                    onSection={(section, open) => {
+                      remember(setScriptsSectionOpen(section, open), 'a Scripts section opened or folded')
+                    }}
+                    showRuns={config.settings?.integrations.showRuns ?? false}
+                    onShowRuns={(on) => {
+                      remember(setShowRuns(on), 'whether a run shows beside Repo scripts')
+                    }}
+                    repoRules={config.settings?.repoRules}
+                    onSettingsSaved={setSettings}
+                  />
+                </div>
+              </Suspense>
+            </Activity>
+          )}
+          {nav.visited.has('settings') && (
+            <Activity mode={mode('settings')}>
+              <Suspense fallback={<PageLoading />}>
+                <SettingsView
+                  initialSection={nav.settingsSection}
+                  opened={nav.settingsOpened}
+                  settings={config.settings}
                   agents={config.agents}
+                  profiles={config.profiles}
                   prompts={config.prompts}
-                  replies={config.replies}
-                  defaults={config.defaultPrompts}
-                  variables={config.variables}
-                  items={config.items}
-                  onChanged={reload}
+                  defaultPrompts={config.defaultPrompts}
+                  launchDefaults={config.launchDefaults}
+                  account={account}
+                  projectAccess={inbox.snapshot?.projectAccess ?? ''}
+                  theme={theme.theme}
+                  onThemeChange={theme.chooseTheme}
+                  onSaved={saveSettings}
+                  onLaunchChanged={reload}
+                  onClose={closeSettings}
+                  query={settingsQuery}
+                  githubThreads={githubThreads}
                 />
-              </div>
-            </Suspense>
-          </Activity>
-        )}
-        {nav.visited.has('scripts') && (
-          <Activity mode={mode('scripts')}>
-            <Suspense fallback={<PageLoading />}>
-              <div className="h-full">
-                <ScriptsView
-                  terminal={config.settings?.terminal ?? null}
-                  runsIn={config.settings?.integrations.runsIn ?? 'app'}
-                  where={config.settings === null ? '' : cloneWhere(config.settings)}
-                  integrations={integrations}
-                  scriptsSwitch={config.settings?.integrations.switches.scripts ?? 'auto'}
-                  runs={scriptRuns}
-                  request={releaseRequest}
-                  runRequest={runRequest}
-                  onOpenSettings={openSettingsAt}
-                  lastPage={config.settings?.integrations.lastPage ?? ''}
-                  lastRepo={config.settings?.integrations.lastRepo ?? ''}
-                  onPage={(page) => {
-                    remember(setScriptsLastPage(page), 'the Scripts page shown')
-                  }}
-                  onRepo={(dir) => {
-                    remember(setScriptsLastRepo(dir), 'the clone Repo scripts shows')
-                  }}
-                  sections={config.settings?.integrations.sections ?? {}}
-                  onSection={(section, open) => {
-                    remember(setScriptsSectionOpen(section, open), 'a Scripts section opened or folded')
-                  }}
-                  showRuns={config.settings?.integrations.showRuns ?? false}
-                  onShowRuns={(on) => {
-                    remember(setShowRuns(on), 'whether a run shows beside Repo scripts')
-                  }}
-                  repoRules={config.settings?.repoRules}
-                  onSettingsSaved={setSettings}
-                />
-              </div>
-            </Suspense>
-          </Activity>
-        )}
-        {nav.visited.has('settings') && (
-          <Activity mode={mode('settings')}>
-            <Suspense fallback={<PageLoading />}>
-              <SettingsView
-                initialSection={nav.settingsSection}
-                opened={nav.settingsOpened}
-                settings={config.settings}
-                agents={config.agents}
-                profiles={config.profiles}
-                prompts={config.prompts}
-                defaultPrompts={config.defaultPrompts}
-                launchDefaults={config.launchDefaults}
-                account={account}
-                projectAccess={inbox.snapshot?.projectAccess ?? ''}
-                theme={theme.theme}
-                onThemeChange={theme.chooseTheme}
-                onSaved={saveSettings}
-                onLaunchChanged={reload}
-                onClose={closeSettings}
-                query={settingsQuery}
-              />
-            </Suspense>
-          </Activity>
-        )}
-      </main>
-      <Toast toast={shownToast} seconds={toastSeconds} onClose={closeToast} />
-      <QuitDialog />
-    </div>
+              </Suspense>
+            </Activity>
+          )}
+        </main>
+        <Toast toast={shownToast} seconds={toastSeconds} onClose={closeToast} />
+        <QuitDialog />
+      </div>
+    </SettingsQueue>
   )
 }

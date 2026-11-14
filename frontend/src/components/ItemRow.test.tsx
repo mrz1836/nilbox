@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event'
 import type { ReactElement } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 
+import { tagOf, threadTags } from '../lib/githubThreads'
 import { itemWorktrees, worktreeOf } from '../lib/itemWorktrees'
 import type { InboxItem, Worktree } from '../platform'
 import { at } from '../test/clock'
@@ -11,8 +12,10 @@ import {
   agents,
   details,
   fileCheck,
+  githubThreads,
   item,
   itemResolution,
+  itemThreads,
   linkedItem,
   mainWorktree,
   profile,
@@ -531,6 +534,39 @@ describe('ItemRow worktree tag', () => {
     renderWith(item({ number: 8 }))
 
     expect(screen.queryByText(/^worktree/)).not.toBeInTheDocument()
+  })
+})
+
+describe('ItemRow GitHub tag', () => {
+  it('tags an item with its unread notifications on GitHub, after its session', () => {
+    const tags = threadTags(githubThreads({ byItem: [itemThreads({ unread: 2, reasons: ['mention'] })] }))
+    const pull = item()
+
+    render(
+      <ul>
+        <ItemRow item={pull} launch={launch} sessions={[agentSession()]} threads={tagOf(tags, pull)} />
+      </ul>,
+    )
+
+    const tag = screen.getByText('2 unread on GitHub')
+    const session = screen.getByRole('button', { name: /^Claude session/ })
+
+    expect(tag).toHaveAttribute('title', '2 unread on GitHub · GitHub notified you: Mentioned')
+    expect(tag.parentElement).toBe(session.closest('span')?.parentElement)
+    expect(session.compareDocumentPosition(tag) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+
+  it('tags nothing for an item with no unread notification', () => {
+    const tags = threadTags(githubThreads({ byItem: [itemThreads({ unread: 0, total: 2 })] }))
+    const pull = item()
+
+    render(
+      <ul>
+        <ItemRow item={pull} launch={launch} threads={tagOf(tags, pull)} />
+      </ul>,
+    )
+
+    expect(screen.queryByText(/on GitHub$/)).not.toBeInTheDocument()
   })
 })
 

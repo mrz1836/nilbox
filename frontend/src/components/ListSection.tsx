@@ -1,6 +1,7 @@
 import { useEffect, useEffectEvent, useId, useRef, useState } from 'react'
 
 import { formatCount } from '../lib/format'
+import { tagOf, type ThreadTag } from '../lib/githubThreads'
 import type { FilteredList } from '../lib/inboxFilter'
 import { ofKind, shownItems, statusRanking } from '../lib/listOrder'
 import { prefersReducedMotion } from '../lib/motion'
@@ -87,6 +88,9 @@ export interface ListSectionProps {
   // worktrees holds each item's worktree, from the Worktrees view's latest listing (see
   // itemWorktrees).
   worktrees: ReadonlyMap<string, Worktree>
+  // threads holds the tag of each item with unread notifications on GitHub, by itemKey
+  // (see threadTags).
+  threads: ReadonlyMap<string, ThreadTag>
   triage: TriageActions
   // edits is what each row's menu does beyond triage (see ItemMenu).
   edits?: EditActions
@@ -128,6 +132,7 @@ export function ListSection({
   resolutions,
   worktrees,
   sessions,
+  threads,
   triage,
   edits,
   collapsed,
@@ -354,6 +359,7 @@ export function ListSection({
                 resolution={resolutions.get(item.id) ?? null}
                 worktree={worktreeOf(worktrees, item)}
                 sessions={sessionsOf(sessions, item)}
+                threads={tagOf(threads, item)}
                 tab={tab}
                 triage={triage}
                 edits={edits}

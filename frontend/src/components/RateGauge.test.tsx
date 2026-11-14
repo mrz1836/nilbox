@@ -188,4 +188,35 @@ describe('RateGauge', () => {
 
     expect(screen.getByText('GitHub asked for a pause: changes resume in 5m')).toHaveClass('text-warning')
   })
+
+  it('counts the notifications the app cleared on GitHub, apart from the changes, and how it paces them', () => {
+    renderGauge(
+      budgetGauge({ chores: writes({ lastHour: 12, perHour: 300, perMinute: 50, reserve: 50 }), writes: writes() }),
+    )
+
+    expect(screen.getByText('Housekeeping on GitHub')).toBeInTheDocument()
+
+    const count = screen.getByTitle('12 in the last hour, of 300')
+    expect(count).toHaveTextContent(/^12 of 300$/)
+    expect(
+      screen.getByText(
+        `Notifications marked done or read for you in the last hour. Each spends 1 REST point. ${brand.name} clears at most 50 a minute and 300 an hour, apart from the changes above, and none while REST is down to its last 50.`,
+      ),
+    ).toBeInTheDocument()
+    // The edits count apart.
+    expect(screen.getByText('in the last hour').parentElement).toHaveTextContent('0 in the last hour')
+    expect(screen.queryByText(/housekeeping resumes/)).not.toBeInTheDocument()
+  })
+
+  it('says when GitHub asked the app to pause its housekeeping', () => {
+    renderGauge(budgetGauge({ chores: writes({ perHour: 300, heldUntil: '2026-06-15T12:05:00Z' }) }))
+
+    expect(screen.getByText('GitHub asked for a pause: housekeeping resumes in 5m')).toHaveClass('text-warning')
+  })
+
+  it('leaves the housekeeping out before the budgets have loaded', () => {
+    renderGauge(null)
+
+    expect(screen.queryByText('Housekeeping on GitHub')).not.toBeInTheDocument()
+  })
 })
