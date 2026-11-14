@@ -77,9 +77,9 @@ func (Measure) Refresh() error {
 
 // Launch times one real launch in iTerm2, from the launch request to the agent running in
 // the right directory with its prompt, on a placeholder pull request in a throwaway clone;
-// the agent is stopped as soon as it is found. When macOS has not allowed this process to
-// control iTerm2, it says so and succeeds without a number. agent= picks the coding agent,
-// claude (the default) or codex.
+// the agent is stopped as soon as it is found, and the time is split between the launch's
+// steps. When macOS has not allowed this process to control iTerm2, it says so and
+// succeeds without a number. agent= picks the coding agent, claude (the default) or codex.
 //
 //	magex measure:launch
 //	magex measure:launch agent=codex
