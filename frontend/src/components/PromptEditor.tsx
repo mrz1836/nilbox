@@ -60,6 +60,8 @@ export interface PromptEditorProps {
   onViewChange: (view: PromptView) => void
   // preview is the prompt filled in, shown in the text's place while previewing.
   preview: ReactNode
+  // actions sit at the end of the title's row, such as the stored prompt's menu.
+  actions?: ReactNode
 }
 
 // counter shows how much of a limit a value uses, in red once it is over.
@@ -82,13 +84,13 @@ function whereText(d: Diagnostic): string {
   return d.column > 0 ? `Line ${String(d.line)}, column ${String(d.column)}` : `Line ${String(d.line)}`
 }
 
-// PromptEditor is the form for one prompt: its large title, its nickname for the launch
-// menu, what it is for, its text in the template editor with the problems found in it,
-// and the launch settings it sets. Edit | Preview swaps the text for the prompt filled
-// in, in the same frame; the editor stays mounted meanwhile, so its undo history, caret,
-// and scroll are where they were on the way back. A review reply has the review it is
-// for in place of what it applies to, and no launch settings, since it never launches
-// anything.
+// PromptEditor is the form for one prompt: its large title, which stays in view with the
+// actions beside it while the rest scrolls, its nickname for the launch menu, what it is
+// for, its text in the template editor with the problems found in it, and the launch
+// settings it sets. Edit | Preview swaps the text for the prompt filled in, in the same
+// frame; the editor stays mounted meanwhile, so its undo history, caret, and scroll are
+// where they were on the way back. A review reply has the review it is for in place of
+// what it applies to, and no launch settings, since it never launches anything.
 export function PromptEditor({
   agents,
   draft,
@@ -103,6 +105,7 @@ export function PromptEditor({
   view,
   onViewChange,
   preview,
+  actions,
 }: PromptEditorProps) {
   const id = useId()
   const [settingsOpen, setSettingsOpen] = useState(false)
@@ -127,27 +130,30 @@ export function PromptEditor({
   const reply = draft.purpose === 'reply'
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-6 pt-5 pb-4">
-      <div className="flex flex-col gap-1">
-        <label htmlFor={`${id}-name`} className="sr-only">
-          Title
-        </label>
-        <input
-          id={`${id}-name`}
-          value={draft.name}
-          placeholder={
-            reply
-              ? 'Name this reply, such as “Approve with thanks”'
-              : 'Name this prompt, such as “Review a pull request”'
-          }
-          aria-invalid={(fieldErrors.name ?? '') !== ''}
-          aria-describedby={describedBy(`${id}-name`, fieldErrors.name, false)}
-          maxLength={maxNameLength + 20}
-          onChange={(e) => {
-            set({ name: e.target.value })
-          }}
-          className="-mx-2 rounded-md border border-transparent bg-transparent px-2 py-1 text-xl font-semibold tracking-tight text-text transition-colors outline-none placeholder:font-normal placeholder:text-muted/60 hover:border-border focus:border-accent/60 aria-invalid:border-danger"
-        />
+    <div className="flex min-h-0 flex-1 flex-col">
+      <div className="flex flex-col gap-1 px-6 pt-4">
+        <div className="flex items-center gap-3">
+          <label htmlFor={`${id}-name`} className="sr-only">
+            Title
+          </label>
+          <input
+            id={`${id}-name`}
+            value={draft.name}
+            placeholder={
+              reply
+                ? 'Name this reply, such as “Approve with thanks”'
+                : 'Name this prompt, such as “Review a pull request”'
+            }
+            aria-invalid={(fieldErrors.name ?? '') !== ''}
+            aria-describedby={describedBy(`${id}-name`, fieldErrors.name, false)}
+            maxLength={maxNameLength + 20}
+            onChange={(e) => {
+              set({ name: e.target.value })
+            }}
+            className="-ml-2 min-w-0 flex-1 rounded-md border border-transparent bg-transparent px-2 py-1 text-xl font-semibold tracking-tight text-text transition-colors outline-none placeholder:font-normal placeholder:text-muted/60 hover:border-border focus:border-accent/60 aria-invalid:border-danger"
+          />
+          {actions !== undefined && <div className="flex shrink-0 items-center gap-2">{actions}</div>}
+        </div>
         {(fieldErrors.name ?? '') !== '' && (
           <p id={`${id}-name-error`} role="alert" className="text-xs text-danger">
             {fieldErrors.name}
@@ -155,204 +161,208 @@ export function PromptEditor({
         )}
       </div>
 
-      <div className="flex flex-wrap items-start gap-x-6 gap-y-3">
-        <div className="w-48">
-          <Field
-            label="Nickname"
-            controlId={`${id}-nickname`}
-            hint={reply ? 'Shown when you pick a reply.' : 'Shown on the launch button.'}
-            error={fieldErrors.nickname}
-            aside={<Counter value={draft.nickname} limit={maxNicknameLength} />}
-          >
-            <input
-              id={`${id}-nickname`}
-              value={draft.nickname}
-              placeholder={reply ? 'LGTM' : 'Review'}
-              aria-invalid={(fieldErrors.nickname ?? '') !== ''}
-              aria-describedby={describedBy(`${id}-nickname`, fieldErrors.nickname, true)}
-              onChange={(e) => {
-                set({ nickname: e.target.value })
-              }}
-              className={`${fieldClass} w-full`}
-            />
-          </Field>
-        </div>
-        {reply && (
-          <div className="flex flex-col gap-1">
-            <span className="text-xs font-medium text-muted">Action</span>
-            <Segmented
-              label="Action"
-              value={draft.replyAction}
-              options={actionOptions}
-              // Only a comment reply can be for issues: a review is of a pull request.
-              onChange={(replyAction) => {
-                set(replyAction === 'comment' ? { replyAction } : { replyAction, appliesTo: 'pr' })
-              }}
-            />
-            {(fieldErrors.replyAction ?? '') !== '' && (
-              <p role="alert" className="max-w-sm text-xs text-danger">
-                {fieldErrors.replyAction}
-              </p>
-            )}
-          </div>
-        )}
-        {/* A comment reply can be for issues too; an approval and a request for changes
-            are reviews of a pull request. */}
-        {(!reply || draft.replyAction === 'comment') && (
-          <div className="flex flex-col gap-1">
-            <span className="text-xs font-medium text-muted">For</span>
-            <Segmented
-              label={reply ? 'What the reply is for' : 'What the prompt is for'}
-              value={draft.appliesTo}
-              options={appliesToOptions}
-              onChange={(appliesTo) => {
-                set({ appliesTo })
-              }}
-            />
-            {(fieldErrors.appliesTo ?? '') !== '' && (
-              <p role="alert" className="max-w-sm text-xs text-danger">
-                {fieldErrors.appliesTo}
-              </p>
-            )}
-          </div>
-        )}
-        {saved !== null && (
-          <div className="flex flex-col gap-1">
-            <span className="text-xs font-medium text-muted">Used as a default</span>
-            {reply ? (
-              <p className="flex items-center gap-1.5 py-1 text-[0.8125rem] text-text">
-                {saved.usage.replies.length > 0 && <StarIcon className="size-3.5 text-accent" />}
-                {replyUsageSummary(saved.usage.replies)}
-              </p>
-            ) : (
-              <p
-                title={usagePlaces(saved.usage).join('\n') || undefined}
-                className="flex items-center gap-1.5 py-1 text-[0.8125rem] text-text"
-              >
-                {saved.usage.defaults.length > 0 && <StarIcon className="size-3.5 text-accent" />}
-                {usageSummary(saved.usage)}
-              </p>
-            )}
-          </div>
-        )}
-      </div>
-
-      <div className="flex min-h-[18rem] flex-1 flex-col gap-2">
-        <div className="flex items-center gap-3">
-          <span className="text-xs font-medium text-muted">{reply ? 'Reply' : 'Prompt'}</span>
-          <Segmented
-            size="sm"
-            label={reply ? 'Show the reply as' : 'Show the prompt as'}
-            value={view}
-            options={viewOptions}
-            onChange={onViewChange}
-          />
-          <span className="ml-auto text-[0.6875rem] text-muted">
-            {view === 'edit' ? (
-              <>
-                Type <code className="font-mono">{'{{'}</code> for variables
-              </>
-            ) : reply ? (
-              'As the review sheet fills it in'
-            ) : (
-              'As a launch sends it'
-            )}
-          </span>
-        </div>
-        <div className="flex min-h-0 flex-1 flex-col" hidden={view === 'preview'}>
-          <TemplateEditor
-            id={`${id}-body`}
-            ref={editorRef}
-            label={reply ? 'Reply text' : 'Prompt text'}
-            value={draft.body}
-            onChange={(body) => {
-              set({ body })
-            }}
-            variables={variables}
-            diagnostics={diagnostics}
-            describedBy={`${id}-problems`}
-            placeholder={reply ? 'Thanks, @{{.Author}}!' : 'Review pull request #{{.Number}} in {{.Repo}}: {{.Title}}'}
-          />
-        </div>
-        {view === 'preview' && preview}
-        <div id={`${id}-problems`} aria-live="polite" className="flex flex-col gap-1">
-          {checked && errors.length === 0 && warnings.length === 0 && (
-            <p className="flex items-center gap-1.5 text-xs text-success">
-              <CircleCheckIcon className="size-3.5" />
-              No problems
-            </p>
-          )}
-          {[...errors, ...warnings].map((d) => (
-            <button
-              key={`${String(d.line)}:${String(d.column)}:${d.message}`}
-              type="button"
-              disabled={d.line === 0}
-              onClick={() => {
-                onReveal(d)
-              }}
-              className={`flex items-start gap-1.5 rounded-md px-1 py-0.5 text-left text-xs transition-colors enabled:hover:bg-raised ${d.severity === 'error' ? 'text-danger' : 'text-warning'}`}
+      <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-6 pt-4 pb-4">
+        <div className="flex flex-wrap items-start gap-x-6 gap-y-3">
+          <div className="w-48">
+            <Field
+              label="Nickname"
+              controlId={`${id}-nickname`}
+              hint={reply ? 'Shown when you pick a reply.' : 'Shown on the launch button.'}
+              error={fieldErrors.nickname}
+              aside={<Counter value={draft.nickname} limit={maxNicknameLength} />}
             >
-              <AlertIcon className="mt-px size-3.5 shrink-0" />
-              <span>
-                <span className="font-medium">{whereText(d)}:</span> {d.message}
-              </span>
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {!reply && (
-        <section aria-labelledby={`${id}-settings`} className="rounded-lg border border-border">
-          <button
-            id={`${id}-settings`}
-            type="button"
-            aria-expanded={settingsOpen}
-            onClick={() => {
-              setSettingsOpen((was) => !was)
-            }}
-            className="flex w-full items-center gap-2 rounded-lg px-3.5 py-2.5 text-left transition-colors hover:bg-raised/60"
-          >
-            <ChevronRightIcon
-              className={`size-3.5 text-muted transition-transform ${settingsOpen ? 'rotate-90' : ''}`}
-            />
-            <span className="text-sm font-medium">Launch settings</span>
-            <span className="flex min-w-0 flex-1 flex-wrap justify-end gap-1.5">
-              {settingsError && <span className="text-xs text-danger">Has a problem</span>}
-              {pins.length === 0 ? (
-                <span className="text-xs text-muted">Inherits everything</span>
-              ) : (
-                pins.map((pin) => (
-                  <span key={pin} className={chipClass}>
-                    {pin}
-                  </span>
-                ))
-              )}
-            </span>
-          </button>
-          {settingsOpen && (
-            <div className="grid grid-cols-2 gap-x-5 gap-y-4 border-t border-border px-3.5 pt-3 pb-4">
-              <p className="col-span-2 text-xs leading-relaxed text-muted">
-                Used whenever this prompt is chosen, over the org and repo defaults. The profile (the account) always
-                comes from the defaults or the launch menu.
-              </p>
-              <LaunchOverrideFields
-                id={id}
-                agents={agents}
-                values={draft}
-                onChange={set}
-                errors={fieldErrors}
-                modelHint="An alias or a full name."
-                flagsHint={
-                  <>
-                    Added after the profile&apos;s and the defaults&apos; flags, such as{' '}
-                    <code className="font-mono">--advisor fable</code>. Quote values with spaces.
-                  </>
-                }
+              <input
+                id={`${id}-nickname`}
+                value={draft.nickname}
+                placeholder={reply ? 'LGTM' : 'Review'}
+                aria-invalid={(fieldErrors.nickname ?? '') !== ''}
+                aria-describedby={describedBy(`${id}-nickname`, fieldErrors.nickname, true)}
+                onChange={(e) => {
+                  set({ nickname: e.target.value })
+                }}
+                className={`${fieldClass} w-full`}
               />
+            </Field>
+          </div>
+          {reply && (
+            <div className="flex flex-col gap-1">
+              <span className="text-xs font-medium text-muted">Action</span>
+              <Segmented
+                label="Action"
+                value={draft.replyAction}
+                options={actionOptions}
+                // Only a comment reply can be for issues: a review is of a pull request.
+                onChange={(replyAction) => {
+                  set(replyAction === 'comment' ? { replyAction } : { replyAction, appliesTo: 'pr' })
+                }}
+              />
+              {(fieldErrors.replyAction ?? '') !== '' && (
+                <p role="alert" className="max-w-sm text-xs text-danger">
+                  {fieldErrors.replyAction}
+                </p>
+              )}
             </div>
           )}
-        </section>
-      )}
+          {/* A comment reply can be for issues too; an approval and a request for changes
+            are reviews of a pull request. */}
+          {(!reply || draft.replyAction === 'comment') && (
+            <div className="flex flex-col gap-1">
+              <span className="text-xs font-medium text-muted">For</span>
+              <Segmented
+                label={reply ? 'What the reply is for' : 'What the prompt is for'}
+                value={draft.appliesTo}
+                options={appliesToOptions}
+                onChange={(appliesTo) => {
+                  set({ appliesTo })
+                }}
+              />
+              {(fieldErrors.appliesTo ?? '') !== '' && (
+                <p role="alert" className="max-w-sm text-xs text-danger">
+                  {fieldErrors.appliesTo}
+                </p>
+              )}
+            </div>
+          )}
+          {saved !== null && (
+            <div className="flex flex-col gap-1">
+              <span className="text-xs font-medium text-muted">Used as a default</span>
+              {reply ? (
+                <p className="flex items-center gap-1.5 py-1 text-[0.8125rem] text-text">
+                  {saved.usage.replies.length > 0 && <StarIcon className="size-3.5 text-accent" />}
+                  {replyUsageSummary(saved.usage.replies)}
+                </p>
+              ) : (
+                <p
+                  title={usagePlaces(saved.usage).join('\n') || undefined}
+                  className="flex items-center gap-1.5 py-1 text-[0.8125rem] text-text"
+                >
+                  {saved.usage.defaults.length > 0 && <StarIcon className="size-3.5 text-accent" />}
+                  {usageSummary(saved.usage)}
+                </p>
+              )}
+            </div>
+          )}
+        </div>
+
+        <div className="flex min-h-[18rem] flex-1 flex-col gap-2">
+          <div className="flex items-center gap-3">
+            <span className="text-xs font-medium text-muted">{reply ? 'Reply' : 'Prompt'}</span>
+            <Segmented
+              size="sm"
+              label={reply ? 'Show the reply as' : 'Show the prompt as'}
+              value={view}
+              options={viewOptions}
+              onChange={onViewChange}
+            />
+            <span className="ml-auto text-[0.6875rem] text-muted">
+              {view === 'edit' ? (
+                <>
+                  Type <code className="font-mono">{'{{'}</code> for variables
+                </>
+              ) : reply ? (
+                'As the review sheet fills it in'
+              ) : (
+                'As a launch sends it'
+              )}
+            </span>
+          </div>
+          <div className="flex min-h-0 flex-1 flex-col" hidden={view === 'preview'}>
+            <TemplateEditor
+              id={`${id}-body`}
+              ref={editorRef}
+              label={reply ? 'Reply text' : 'Prompt text'}
+              value={draft.body}
+              onChange={(body) => {
+                set({ body })
+              }}
+              variables={variables}
+              diagnostics={diagnostics}
+              describedBy={`${id}-problems`}
+              placeholder={
+                reply ? 'Thanks, @{{.Author}}!' : 'Review pull request #{{.Number}} in {{.Repo}}: {{.Title}}'
+              }
+            />
+          </div>
+          {view === 'preview' && preview}
+          <div id={`${id}-problems`} aria-live="polite" className="flex flex-col gap-1">
+            {checked && errors.length === 0 && warnings.length === 0 && (
+              <p className="flex items-center gap-1.5 text-xs text-success">
+                <CircleCheckIcon className="size-3.5" />
+                No problems
+              </p>
+            )}
+            {[...errors, ...warnings].map((d) => (
+              <button
+                key={`${String(d.line)}:${String(d.column)}:${d.message}`}
+                type="button"
+                disabled={d.line === 0}
+                onClick={() => {
+                  onReveal(d)
+                }}
+                className={`flex items-start gap-1.5 rounded-md px-1 py-0.5 text-left text-xs transition-colors enabled:hover:bg-raised ${d.severity === 'error' ? 'text-danger' : 'text-warning'}`}
+              >
+                <AlertIcon className="mt-px size-3.5 shrink-0" />
+                <span>
+                  <span className="font-medium">{whereText(d)}:</span> {d.message}
+                </span>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {!reply && (
+          <section aria-labelledby={`${id}-settings`} className="rounded-lg border border-border">
+            <button
+              id={`${id}-settings`}
+              type="button"
+              aria-expanded={settingsOpen}
+              onClick={() => {
+                setSettingsOpen((was) => !was)
+              }}
+              className="flex w-full items-center gap-2 rounded-lg px-3.5 py-2.5 text-left transition-colors hover:bg-raised/60"
+            >
+              <ChevronRightIcon
+                className={`size-3.5 text-muted transition-transform ${settingsOpen ? 'rotate-90' : ''}`}
+              />
+              <span className="text-sm font-medium">Launch settings</span>
+              <span className="flex min-w-0 flex-1 flex-wrap justify-end gap-1.5">
+                {settingsError && <span className="text-xs text-danger">Has a problem</span>}
+                {pins.length === 0 ? (
+                  <span className="text-xs text-muted">Inherits everything</span>
+                ) : (
+                  pins.map((pin) => (
+                    <span key={pin} className={chipClass}>
+                      {pin}
+                    </span>
+                  ))
+                )}
+              </span>
+            </button>
+            {settingsOpen && (
+              <div className="grid grid-cols-2 gap-x-5 gap-y-4 border-t border-border px-3.5 pt-3 pb-4">
+                <p className="col-span-2 text-xs leading-relaxed text-muted">
+                  Used whenever this prompt is chosen, over the org and repo defaults. The profile (the account) always
+                  comes from the defaults or the launch menu.
+                </p>
+                <LaunchOverrideFields
+                  id={id}
+                  agents={agents}
+                  values={draft}
+                  onChange={set}
+                  errors={fieldErrors}
+                  modelHint="An alias or a full name."
+                  flagsHint={
+                    <>
+                      Added after the profile&apos;s and the defaults&apos; flags, such as{' '}
+                      <code className="font-mono">--advisor fable</code>. Quote values with spaces.
+                    </>
+                  }
+                />
+              </div>
+            )}
+          </section>
+        )}
+      </div>
     </div>
   )
 }

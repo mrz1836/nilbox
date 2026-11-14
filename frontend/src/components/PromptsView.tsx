@@ -790,24 +790,6 @@ export function PromptsView({ agents, prompts, replies, defaults, variables, ite
           </div>
         ) : (
           <>
-            <div className="flex items-center justify-end gap-2 px-6 pt-4">
-              {saved?.starterKey !== '' && saved !== null && (
-                <span className="mr-auto text-xs text-muted">
-                  Starter {noun}
-                  {saved.modified ? ' · changed' : ''}
-                </span>
-              )}
-              {saved !== null && (
-                <MenuButton
-                  label={`More actions for ${saved.nickname}`}
-                  title="More actions"
-                  items={menuItems(saved)}
-                  className="flex size-8 items-center justify-center rounded-md text-muted transition-colors hover:bg-raised hover:text-text aria-expanded:bg-raised"
-                >
-                  <MoreIcon className="size-4" />
-                </MenuButton>
-              )}
-            </div>
             <PromptEditor
               agents={agents}
               draft={draft}
@@ -827,6 +809,26 @@ export function PromptsView({ agents, prompts, replies, defaults, variables, ite
               }}
               view={view}
               onViewChange={setView}
+              actions={
+                saved === null ? undefined : (
+                  <>
+                    {saved.starterKey !== '' && (
+                      <span className="text-xs whitespace-nowrap text-muted">
+                        Starter {noun}
+                        {saved.modified ? ' · changed' : ''}
+                      </span>
+                    )}
+                    <MenuButton
+                      label={`More actions for ${saved.nickname}`}
+                      title="More actions"
+                      items={menuItems(saved)}
+                      className="flex size-8 items-center justify-center rounded-md text-muted transition-colors hover:bg-raised hover:text-text aria-expanded:bg-raised"
+                    >
+                      <MoreIcon className="size-4" />
+                    </MenuButton>
+                  </>
+                )
+              }
               preview={
                 <PromptPreview
                   items={applicableItems}
