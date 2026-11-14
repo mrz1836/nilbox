@@ -1248,11 +1248,14 @@ Measured on an Apple Silicon Mac (M1 Max) running macOS 15, against the producti
 | Cold start to first paint      |   < 1 s |   0.58 s |
 | Inbox refresh                  |   < 3 s |   2.44 s |
 | Launch to prompt loaded        |   < 3 s |   1.15 s |
-| App binary size                | < 30 MB |  21.7 MB |
+| App binary size                | < 30 MB |  22.9 MB |
 | API budget at 5-minute cadence |   < 2 % |   1.20 % |
 
-The launch's time is for one whose files check out; [how it splits between its steps, and what a
-held-back launch adds](docs/performance.md#launch-to-prompt-loaded), is in the performance notes.
+Cold start and the refresh come from the build of 2026-11-11, once the integrations were done;
+the launch and the size were measured again on 2026-11-14, after the issue sheet and the GitHub
+notifications. The launch's time is for one whose files check out; [how it splits between its
+steps, and what a held-back launch adds](docs/performance.md#launch-to-prompt-loaded), is in the
+performance notes.
 
 Re-measure everything (size, startup, live read-only refreshes, and a real launch in iTerm2):
 
