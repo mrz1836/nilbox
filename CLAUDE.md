@@ -206,8 +206,9 @@ app:lint` reads.
   checks were running, but a muted repository's, read in one request through
   `(*github.Client).FetchItems`, and nothing while none runs; a pull request whose workflow
   runs GitHub holds for approval, `item_details.checks_awaiting`, which its card marks held
-  in place of the rollup's state, isn't running, and waits for the whole refresh), the sweeper (these three as often as Settings → Refreshing
-  says, through `periodic.RunEvery`, which core wakes on the Go-only
+  in place of the rollup's state, isn't running, and waits for the whole refresh), the
+  Release page's checks follower (`release.ChecksFollower`, below), the sweeper (these four
+  as often as Settings → Refreshing says, through `periodic.RunEvery`, which core wakes on the Go-only
   `event.IntervalsChanged` the settings setter emits, so a change applies at once), the GitHub
   notifications' `ghthreads.Syncer` (woken the same way), the budget's `Saver`, the sessions watcher, the Release page's
   refresher, and the Hooks page's scans as tracked work, starts the deferred work
@@ -986,7 +987,22 @@ app:lint` reads.
   of date too. A merge in the review sheet is patched in the same way: the review service
   tells its `Merges` (core wires the `Refresher`'s `Merged`) the repository a pull request
   merged into, and the `Refresher` reads it again, but only while the list could be patched
-  then, so a merge never puts the list out of date. The bound
+  then, so a merge never puts the list out of date. The `ChecksFollower`, a desktop
+  worker as often as Settings → Refreshing → **Release checks** says (`refresh.releaseChecks`,
+  45 seconds by default, 0 off, woken on `event.IntervalsChanged`), reads again the rows
+  whose default branch's newest commit's checks run (`PENDING` or `EXPECTED`), of no
+  repository muted now: at most `followChecksMax` (15, one status batch and at most one
+  comparison batch, about two points) a round, the longest unread first, each left alone
+  while read within `followChecksFresh` (25 s, by a refresh, a patch, or the round before,
+  `Service.readAt`), and none whose newest commit is older than `followChecksFor` (2 h), so
+  a check never reported can't spend the budget for good. It asks GitHub nothing while none
+  runs, and follows only a list it could patch (`patchable`: read from GitHub in this run,
+  from the locations as set now, current, its last read not failed), after the read of the
+  list under way (`startReading`). It reads each row as a patch does (`readRows`: status,
+  comparison, and clone state, so a push the checks run for shows too), but quietly: no
+  `event.ReleasesProgress`, never `Refreshing`, and only a row that changed keeps the list
+  and emits `event.ReleasesUpdated`. A round GitHub fails is logged and leaves the list
+  current, never out of date; the next round tries again. The bound
   `ReleaseResult` reads a run's outcome back as a typed `Result`, and the bound
   `OfferAfterMerge` answers the review sheet's offer after a merge from local state alone: the
   `integrations.offerAfterMerge` setting, magex, the default branch the Release page or the

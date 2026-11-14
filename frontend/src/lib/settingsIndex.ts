@@ -71,7 +71,8 @@ export const sectionInfo: Readonly<Record<SettingsSection, { label: string; desc
   },
   refreshing: {
     label: 'Refreshing',
-    description: 'How often the app reads the inbox, the running checks, and the worktrees again on its own.',
+    description:
+      'How often the app reads the inbox, the running checks, the Release page’s running checks, the worktrees, and the GitHub notifications again on its own.',
   },
   snoozing: {
     label: 'Snoozing',
@@ -242,6 +243,7 @@ export const settingsIndex: Readonly<Record<SettingsSection, readonly SettingEnt
     { label: 'How often', keywords: ['interval', 'refresh', 'poll', 'API budget', 'rate limit'] },
     { label: 'Inbox', keywords: ['refresh every', 'five minutes', 'interval', 'poll'] },
     { label: 'Running checks', keywords: ['CI', 'checks', 'pending', 'yellow', 'follow', 'interval'] },
+    { label: 'Release checks', keywords: ['Release page', 'CI', 'checks', 'default branch', 'follow', 'interval'] },
     { label: 'Worktrees', keywords: ['sweep', 'cleanup', 'interval'] },
     { label: 'GitHub notifications', keywords: ['notifications', 'GitHub inbox', 'poll interval', 'interval'] },
   ],

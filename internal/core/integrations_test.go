@@ -63,12 +63,12 @@ func TestAChangedIntervalWakesWhatRefreshesAndStaysInGo(t *testing.T) {
 	t.Parallel()
 
 	events := &testutil.Events{}
-	inboxRefresh, checks, sweep := &countWakes{}, &countWakes{}, &countWakes{}
-	relay := &followSwitch{sink: events, intervals: []waker{inboxRefresh, checks, sweep}}
+	inboxRefresh, checks, releaseChecks, sweep := &countWakes{}, &countWakes{}, &countWakes{}, &countWakes{}
+	relay := &followSwitch{sink: events, intervals: []waker{inboxRefresh, checks, releaseChecks, sweep}}
 
 	relay.Emit(event.IntervalsChanged{})
 
-	for _, w := range []*countWakes{inboxRefresh, checks, sweep} {
+	for _, w := range []*countWakes{inboxRefresh, checks, releaseChecks, sweep} {
 		assert.Equal(t, int32(1), w.n.Load())
 	}
 

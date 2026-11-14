@@ -92,6 +92,7 @@ func customize(t *testing.T, svc *Service, db *sql.DB, home string) string {
 		},
 		func() (Settings, error) { return svc.SetGitHubNotificationAction(ctx, threadrules.ActionRead) },
 		func() (Settings, error) { return svc.SetRefreshInterval(ctx, RefreshInbox, 600) },
+		func() (Settings, error) { return svc.SetRefreshInterval(ctx, RefreshReleaseChecks, 120) },
 		func() (Settings, error) { return svc.SetMergeMethod(ctx, MergeMethodSquash) },
 		func() (Settings, error) { return svc.SetTheme(ctx, ThemeDark) },
 		func() (Settings, error) { return svc.SetTextSize(ctx, TextSizeLarge) },
@@ -184,7 +185,7 @@ func TestPlanPortableLeavesOutWhatItRefusesWithANote(t *testing.T) {
 	text := TextSizeLarger
 	p := Portable{
 		Theme: &theme, TextSize: &text, DefaultProfiles: map[agent.ID]string{agent.Claude: profile, agent.Codex: "default"},
-		Refresh:      map[RefreshKind]int{RefreshChecks: refresh},
+		Refresh:      map[RefreshKind]int{RefreshChecks: refresh, RefreshReleaseChecks: refresh},
 		Integrations: &PortableIntegration{Paths: map[integrationprefs.ID]string{integrationprefs.GoPreCommit: notProgram}},
 	}
 
@@ -195,6 +196,8 @@ func TestPlanPortableLeavesOutWhatItRefusesWithANote(t *testing.T) {
 	assert.Equal(t, []string{
 		`Claude profile was left as it is. Unknown profile "missing".`,
 		"Follow running checks was left as it is. Unknown refresh interval: 7 seconds for checks.",
+		"Follow running checks on the Release page was left as it is. " +
+			"Unknown refresh interval: 7 seconds for releaseChecks.",
 		`Theme was left as it is. Unknown theme "dim": choose one of system, light, dark.`,
 		"Copy of go-pre-commit was left as it is. ~/notes.txt can't be run: it isn't executable.",
 	}, plan.Notes)

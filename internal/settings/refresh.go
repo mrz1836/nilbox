@@ -23,6 +23,10 @@ const (
 	// request.
 	RefreshChecks RefreshKind = "checks"
 
+	// RefreshReleaseChecks is the Release page's repositories whose newest commit's checks
+	// are running, read again from GitHub together.
+	RefreshReleaseChecks RefreshKind = "releaseChecks"
+
 	// RefreshWorktrees is the worktrees' sweep: each clone's worktrees, the pull requests
 	// and issues they belong to, and the automatic cleanup.
 	RefreshWorktrees RefreshKind = "worktrees"
@@ -37,6 +41,7 @@ const (
 const (
 	KeyRefreshInbox         = "refresh.inbox"
 	KeyRefreshChecks        = "refresh.checks"
+	KeyRefreshReleaseChecks = "refresh.releaseChecks"
 	KeyRefreshWorktrees     = "refresh.worktrees"
 	KeyRefreshNotifications = "refresh.notifications"
 )
@@ -45,6 +50,7 @@ const (
 const (
 	DefaultRefreshInbox         = 300
 	DefaultRefreshChecks        = 45
+	DefaultRefreshReleaseChecks = 45
 	DefaultRefreshWorktrees     = 300
 	DefaultRefreshNotifications = 300
 )
@@ -54,10 +60,11 @@ const (
 var ErrInvalidRefresh = errors.New("unknown refresh interval")
 
 // RefreshIntervals are how often, in seconds, the app reads each thing again on its own.
-// The checks' 0 is off.
+// Both checks follows' 0 is off.
 type RefreshIntervals struct {
 	Inbox         int `json:"inbox"`
 	Checks        int `json:"checks"`
+	ReleaseChecks int `json:"releaseChecks"`
 	Worktrees     int `json:"worktrees"`
 	Notifications int `json:"notifications"`
 }
@@ -66,17 +73,19 @@ type RefreshIntervals struct {
 type RefreshChoices struct {
 	Inbox         []int `json:"inbox"`
 	Checks        []int `json:"checks"`
+	ReleaseChecks []int `json:"releaseChecks"`
 	Worktrees     []int `json:"worktrees"`
 	Notifications []int `json:"notifications"`
 }
 
 // refreshChoices returns the intervals each kind can be set to. The inbox's shortest is
-// two minutes, since each whole refresh reads every item; the checks follow can be off;
-// the notifications' shortest is GitHub's own poll interval, a minute.
+// two minutes, since each whole refresh reads every item; either checks follow can be
+// off; the notifications' shortest is GitHub's own poll interval, a minute.
 func refreshChoices() RefreshChoices {
 	return RefreshChoices{
 		Inbox:         []int{120, 300, 600, 900, 1800, 3600},
 		Checks:        []int{0, 30, 45, 60, 120},
+		ReleaseChecks: []int{0, 30, 45, 60, 120},
 		Worktrees:     []int{300, 600, 900, 1800, 3600},
 		Notifications: []int{60, 120, 300, 600, 900, 1800, 3600},
 	}
@@ -85,8 +94,8 @@ func refreshChoices() RefreshChoices {
 // DefaultRefreshIntervals are the intervals of a fresh database.
 func DefaultRefreshIntervals() RefreshIntervals {
 	return RefreshIntervals{
-		Inbox: DefaultRefreshInbox, Checks: DefaultRefreshChecks, Worktrees: DefaultRefreshWorktrees,
-		Notifications: DefaultRefreshNotifications,
+		Inbox: DefaultRefreshInbox, Checks: DefaultRefreshChecks, ReleaseChecks: DefaultRefreshReleaseChecks,
+		Worktrees: DefaultRefreshWorktrees, Notifications: DefaultRefreshNotifications,
 	}
 }
 
@@ -107,6 +116,8 @@ func specOf(kind RefreshKind) (refreshSpec, bool) {
 		return refreshSpec{KeyRefreshInbox, choices.Inbox, DefaultRefreshInbox}, true
 	case RefreshChecks:
 		return refreshSpec{KeyRefreshChecks, choices.Checks, DefaultRefreshChecks}, true
+	case RefreshReleaseChecks:
+		return refreshSpec{KeyRefreshReleaseChecks, choices.ReleaseChecks, DefaultRefreshReleaseChecks}, true
 	case RefreshWorktrees:
 		return refreshSpec{KeyRefreshWorktrees, choices.Worktrees, DefaultRefreshWorktrees}, true
 	case RefreshNotifications:
@@ -135,8 +146,8 @@ func decodeRefreshIntervals(stored map[string]string) RefreshIntervals {
 	}
 
 	return RefreshIntervals{
-		Inbox: read(RefreshInbox), Checks: read(RefreshChecks), Worktrees: read(RefreshWorktrees),
-		Notifications: read(RefreshNotifications),
+		Inbox: read(RefreshInbox), Checks: read(RefreshChecks), ReleaseChecks: read(RefreshReleaseChecks),
+		Worktrees: read(RefreshWorktrees), Notifications: read(RefreshNotifications),
 	}
 }
 
@@ -148,6 +159,8 @@ func (r RefreshIntervals) Every(kind RefreshKind) time.Duration {
 		return time.Duration(r.Inbox) * time.Second
 	case RefreshChecks:
 		return time.Duration(r.Checks) * time.Second
+	case RefreshReleaseChecks:
+		return time.Duration(r.ReleaseChecks) * time.Second
 	case RefreshWorktrees:
 		return time.Duration(r.Worktrees) * time.Second
 	case RefreshNotifications:
@@ -195,5 +208,5 @@ func checkRefresh(kind RefreshKind, seconds int) (map[string]string, error) {
 // RefreshKinds returns every kind the app reads again on its own, in the order Settings
 // lists them.
 func RefreshKinds() []RefreshKind {
-	return []RefreshKind{RefreshInbox, RefreshChecks, RefreshWorktrees, RefreshNotifications}
+	return []RefreshKind{RefreshInbox, RefreshChecks, RefreshReleaseChecks, RefreshWorktrees, RefreshNotifications}
 }

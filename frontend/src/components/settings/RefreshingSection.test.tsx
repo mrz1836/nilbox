@@ -26,10 +26,13 @@ function labels(name: string): string[] {
 
 describe('RefreshingSection', () => {
   it('offers each interval Go allows, the stored one chosen and the defaults marked', () => {
-    renderSection(settings({ refresh: { inbox: 900, checks: 0, worktrees: 300, notifications: 60 } }))
+    renderSection(
+      settings({ refresh: { inbox: 900, checks: 0, releaseChecks: 120, worktrees: 300, notifications: 60 } }),
+    )
 
     expect(screen.getByRole('combobox', { name: 'Inbox' })).toHaveValue('900')
     expect(screen.getByRole('combobox', { name: 'Running checks' })).toHaveValue('0')
+    expect(screen.getByRole('combobox', { name: 'Release checks' })).toHaveValue('120')
     expect(screen.getByRole('combobox', { name: 'Worktrees' })).toHaveValue('300')
     expect(labels('Inbox')).toEqual([
       'Every 2 minutes',
@@ -48,6 +51,16 @@ describe('RefreshingSection', () => {
     ])
     expect(screen.getByRole('combobox', { name: 'Running checks' })).toHaveAccessibleDescription(
       /all in one request, about a point, until their checks end/,
+    )
+    expect(labels('Release checks')).toEqual([
+      'Off',
+      'Every 30 seconds',
+      'Every 45 seconds (default)',
+      'Every minute',
+      'Every 2 minutes',
+    ])
+    expect(screen.getByRole('combobox', { name: 'Release checks' })).toHaveAccessibleDescription(
+      /Release page’s repositories whose newest commit’s checks are still running, .*about two points.*Read GitHub again reads every repository at once/,
     )
     expect(screen.getByRole('combobox', { name: 'GitHub notifications' })).toHaveValue('60')
     expect(labels('GitHub notifications')).toEqual([
@@ -71,7 +84,22 @@ describe('RefreshingSection', () => {
 
     expect(platform.setRefreshInterval).toHaveBeenCalledExactlyOnceWith('checks', 30)
     expect(onSaved).toHaveBeenCalledExactlyOnceWith(
-      expect.objectContaining({ refresh: { inbox: 300, checks: 30, worktrees: 300, notifications: 300 } }),
+      expect.objectContaining({
+        refresh: { inbox: 300, checks: 30, releaseChecks: 45, worktrees: 300, notifications: 300 },
+      }),
+    )
+  })
+
+  it('stores the Release page’s checks follow apart, and turns it off', async () => {
+    const { onSaved } = renderSection()
+
+    await userEvent.selectOptions(screen.getByRole('combobox', { name: 'Release checks' }), '0')
+
+    expect(platform.setRefreshInterval).toHaveBeenCalledExactlyOnceWith('releaseChecks', 0)
+    expect(onSaved).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({
+        refresh: { inbox: 300, checks: 45, releaseChecks: 0, worktrees: 300, notifications: 300 },
+      }),
     )
   })
 

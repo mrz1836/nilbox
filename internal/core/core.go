@@ -158,9 +158,9 @@ type Core struct {
 	Scheduler *inbox.Scheduler
 	Sweeper   worktrees.Sweeper
 
-	// ChecksFollower reads again, every 45 seconds, the pull requests whose checks were
-	// still running, in one request, and nothing while none runs; the desktop shell runs
-	// it with the scheduler.
+	// ChecksFollower reads again, as often as Settings → Refreshing says (45 seconds by
+	// default, or never), the pull requests whose checks were still running, in one
+	// request, and nothing while none runs; the desktop shell runs it with the scheduler.
 	ChecksFollower *inbox.ChecksFollower
 
 	// GHThreadsSyncer reads the user's GitHub notifications into GHThreads' mirror on
@@ -205,6 +205,13 @@ type Core struct {
 	// restart, the page was shown the list kept from the last start. The desktop shell runs
 	// it as a worker. It is not bound.
 	ReleaseRefresher *release.Refresher
+
+	// ReleaseChecksFollower reads again, as often as Settings → Refreshing says (45
+	// seconds by default, or never), the Release page's repositories whose newest commit's
+	// checks were still running, and patches their rows into the list, quietly; nothing
+	// while none runs, nor until the page has read the list from GitHub in this run. The
+	// desktop shell runs it as a worker. It is not bound.
+	ReleaseChecksFollower *release.ChecksFollower
 
 	// ReleaseFollower follows each release that reached GitHub until its workflow
 	// publishes it, fails, or the follow reaches its limits, and resumes the follows a quit
@@ -604,12 +611,15 @@ func assemble(pool *sql.DB, info startup, opts Options, logger *slog.Logger) *Co
 	hookPage := newHooks(pool, opts, logger, deps)
 	repoScripts := newScripts(pool, opts, logger, deps, inboxStore)
 
-	// What reads the inbox, the running checks, and the worktrees again on its own does so
-	// as often as the settings say, and works its next wait out again once they change.
+	// What reads the inbox, the running checks, the Release page's running checks, and the
+	// worktrees again on its own does so as often as the settings say, and works its next
+	// wait out again once they change.
 	scheduler := inbox.NewScheduler(inboxSvc, refreshEvery(prefs, settings.RefreshInbox, logger), logger)
 	checksFollower := inbox.NewChecksFollower(inboxSvc, refreshEvery(prefs, settings.RefreshChecks, logger), logger)
+	releaseChecks := release.NewChecksFollower(releases, refreshEvery(prefs, settings.RefreshReleaseChecks, logger),
+		logger)
 	sweeper := worktrees.NewSweeper(sweeps, refreshEvery(prefs, settings.RefreshWorktrees, logger))
-	followed.intervals = []waker{scheduler, checksFollower, sweeper, ghThreadsSyncer}
+	followed.intervals = []waker{scheduler, checksFollower, releaseChecks, sweeper, ghThreadsSyncer}
 
 	// The review sheet and the issue sheet read and act through the inbox's one Actor.
 	actor := inbox.NewActor(inboxSvc)
@@ -660,34 +670,35 @@ func assemble(pool *sql.DB, info startup, opts Options, logger *slog.Logger) *Co
 			Pictures: avatars.NewService(avatars.Config{Pool: pool, Fetcher: client, Clock: opts.Clock, Logger: logger}),
 			Clock:    opts.Clock, Logger: logger,
 		}),
-		Watcher:          follow.watcher,
-		ShellSessions:    ShellSessions{ledger: follow.ledger, service: follow.service},
-		ShellSettings:    newShellSettings(prefs, pool, opts.Clock),
-		ProfileStore:     profileStore,
-		Scheduler:        scheduler,
-		GHThreads:        ghThreads,
-		GHThreadsSyncer:  ghThreadsSyncer,
-		ChecksFollower:   checksFollower,
-		Sweeper:          sweeper,
-		Timing:           recorder,
-		ShellEnv:         shellEnv,
-		Deferred:         &Deferred{steps: []func(context.Context){func(ctx context.Context) { _ = shellEnv.Read(ctx) }}},
-		Integrations:     tools,
-		ToolFinder:       toolFinder,
-		Runs:             runs,
-		ScriptRuns:       scriptRuns,
-		Release:          releases,
-		ReleaseRefresher: releaseRefresher,
-		ReleaseFollower:  releaseFollower,
-		Hooks:            hookPage,
-		HooksScans:       hooks.NewScans(hookPage),
-		Scripts:          repoScripts,
-		tokens:           tokens,
-		BudgetSaver:      budget.NewSaver(tracker, keeper, logger),
-		client:           client,
-		budget:           tracker,
-		budgetKeeper:     keeper,
-		dispatcher:       dispatcher,
+		Watcher:               follow.watcher,
+		ShellSessions:         ShellSessions{ledger: follow.ledger, service: follow.service},
+		ShellSettings:         newShellSettings(prefs, pool, opts.Clock),
+		ProfileStore:          profileStore,
+		Scheduler:             scheduler,
+		GHThreads:             ghThreads,
+		GHThreadsSyncer:       ghThreadsSyncer,
+		ChecksFollower:        checksFollower,
+		Sweeper:               sweeper,
+		Timing:                recorder,
+		ShellEnv:              shellEnv,
+		Deferred:              &Deferred{steps: []func(context.Context){func(ctx context.Context) { _ = shellEnv.Read(ctx) }}},
+		Integrations:          tools,
+		ToolFinder:            toolFinder,
+		Runs:                  runs,
+		ScriptRuns:            scriptRuns,
+		Release:               releases,
+		ReleaseRefresher:      releaseRefresher,
+		ReleaseFollower:       releaseFollower,
+		ReleaseChecksFollower: releaseChecks,
+		Hooks:                 hookPage,
+		HooksScans:            hooks.NewScans(hookPage),
+		Scripts:               repoScripts,
+		tokens:                tokens,
+		BudgetSaver:           budget.NewSaver(tracker, keeper, logger),
+		client:                client,
+		budget:                tracker,
+		budgetKeeper:          keeper,
+		dispatcher:            dispatcher,
 	}
 
 	// The backup reaches every category through its owner, so it is built once they are.

@@ -33,7 +33,9 @@ import * as $models from "./models.js";
  * A release that ends, or a pull request merged in the review sheet, changes one
  * repository's rows alone: while the Refresher runs, it reads that repository alone again
  * and patches its rows into the list, which stays as current as it was (queuePatch,
- * queueMerged). Meanwhile the list is served as it was, marked Refreshing.
+ * queueMerged). Meanwhile the list is served as it was, marked Refreshing. The rows whose
+ * newest commit's checks run are read again quietly, as often as the settings say, by the
+ * ChecksFollower (followChecks), which never marks the list Refreshing.
  *
  * Every list is served under the pinned and muted repositories as they are now, read on
  * each call: a muted repository is listed in GroupMuted, and GitHub is never asked about

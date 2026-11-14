@@ -154,17 +154,19 @@ export const MergeMethod = {
 export interface RefreshChoices {
     "inbox": number[] | null;
     "checks": number[] | null;
+    "releaseChecks": number[] | null;
     "worktrees": number[] | null;
     "notifications": number[] | null;
 }
 
 /**
  * RefreshIntervals are how often, in seconds, the app reads each thing again on its own.
- * The checks' 0 is off.
+ * Both checks follows' 0 is off.
  */
 export interface RefreshIntervals {
     "inbox": number;
     "checks": number;
+    "releaseChecks": number;
     "worktrees": number;
     "notifications": number;
 }
@@ -172,7 +174,7 @@ export interface RefreshIntervals {
 /**
  * RefreshKind names one of the things the app reads again on its own, on a timer.
  */
-export type RefreshKind = "inbox" | "checks" | "worktrees" | "notifications";
+export type RefreshKind = "inbox" | "checks" | "releaseChecks" | "worktrees" | "notifications";
 
 /**
  * The values of RefreshKind, by the names of their Go constants.
@@ -190,6 +192,12 @@ export const RefreshKind = {
      * request.
      */
     RefreshChecks: "checks",
+
+    /**
+     * RefreshReleaseChecks is the Release page's repositories whose newest commit's checks
+     * are running, read again from GitHub together.
+     */
+    RefreshReleaseChecks: "releaseChecks",
 
     /**
      * RefreshWorktrees is the worktrees' sweep: each clone's worktrees, the pull requests
@@ -429,8 +437,8 @@ export interface Settings {
 
     /**
      * Refresh is how often, in seconds, the app reads the inbox, the running checks, the
-     * worktrees, and the GitHub notifications again on its own, and RefreshChoices what each
-     * can be set to.
+     * Release page's running checks, the worktrees, and the GitHub notifications again on
+     * its own, and RefreshChoices what each can be set to.
      */
     "refresh": RefreshIntervals;
     "refreshChoices": RefreshChoices;

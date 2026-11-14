@@ -222,7 +222,9 @@ type Service struct {
 	// Refresher last patched the list, patching reports a patch queued or under way, so the
 	// list is served as refreshing, and outdated counts the times the list went out of date
 	// (outOfDate). rules are the pinned and muted repositories as last read, which the list is
-	// served under (arranged).
+	// served under (arranged). readAt holds when each repository's rows, by its key, were
+	// last read from GitHub in this run, by a refresh, a patch, or the checks follower
+	// (followChecks); a list kept from a past start holds none.
 	mu         sync.Mutex
 	last       Candidates
 	root       string
@@ -237,6 +239,7 @@ type Service struct {
 	patching   bool
 	outdated   int
 	rules      reporules.Rules
+	readAt     map[string]time.Time
 }
 
 // NewService returns a Service over cfg.
@@ -252,7 +255,7 @@ func NewService(cfg Config) *Service {
 		workflows: cfg.Workflows, records: cfg.Records, toFollow: map[int64]followed{},
 		wakeFollow: make(chan struct{}, 1),
 		wake:       make(chan struct{}, 1), wakePatch: make(chan struct{}, 1), reading: make(chan struct{}, 1),
-		facts: map[string]keptFacts{}, unpatched: map[string]bool{},
+		facts: map[string]keptFacts{}, unpatched: map[string]bool{}, readAt: map[string]time.Time{},
 	}
 
 	if s.env == nil {
@@ -286,7 +289,9 @@ func NewService(cfg Config) *Service {
 // A release that ends, or a pull request merged in the review sheet, changes one
 // repository's rows alone: while the Refresher runs, it reads that repository alone again
 // and patches its rows into the list, which stays as current as it was (queuePatch,
-// queueMerged). Meanwhile the list is served as it was, marked Refreshing.
+// queueMerged). Meanwhile the list is served as it was, marked Refreshing. The rows whose
+// newest commit's checks run are read again quietly, as often as the settings say, by the
+// ChecksFollower (followChecks), which never marks the list Refreshing.
 //
 // Every list is served under the pinned and muted repositories as they are now, read on
 // each call: a muted repository is listed in GroupMuted, and GitHub is never asked about
@@ -398,6 +403,7 @@ func (s *Service) refresh(ctx context.Context, roots localrepos.Roots) (Candidat
 	}
 
 	s.last, s.root, s.failure, s.has, s.kept, s.pending = got, root, "", true, false, false
+	s.readAt = readTimes(got.Repos, s.clock.Now())
 	s.keep(context.WithoutCancel(ctx), got, root)
 
 	// The repositories released before it began are read already: no patch reads them again.

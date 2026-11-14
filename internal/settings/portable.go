@@ -124,7 +124,8 @@ func portableOf(set Settings) Portable {
 			BotActivity: &gh.BotActivity,
 		},
 		Refresh: map[RefreshKind]int{
-			RefreshInbox: set.Refresh.Inbox, RefreshChecks: set.Refresh.Checks, RefreshWorktrees: set.Refresh.Worktrees,
+			RefreshInbox: set.Refresh.Inbox, RefreshChecks: set.Refresh.Checks,
+			RefreshReleaseChecks: set.Refresh.ReleaseChecks, RefreshWorktrees: set.Refresh.Worktrees,
 			RefreshNotifications: set.Refresh.Notifications,
 		},
 		MergeMethod: &set.MergeMethod, Theme: &set.Theme, TextSize: &set.TextSize, ToastSeconds: &set.ToastSeconds,
@@ -529,6 +530,8 @@ func refreshLabel(kind RefreshKind) string {
 		return "Refresh the inbox"
 	case RefreshChecks:
 		return "Follow running checks"
+	case RefreshReleaseChecks:
+		return "Follow running checks on the Release page"
 	case RefreshWorktrees:
 		return "Sweep the worktrees"
 	case RefreshNotifications:

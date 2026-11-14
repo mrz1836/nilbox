@@ -85,7 +85,8 @@ func tellRulesChanged(f rulesFollower) {
 }
 
 // waker is woken to look again: *integrations.Worker, and what reads things again on its
-// own (*inbox.Scheduler, *inbox.ChecksFollower, worktrees.Sweeper, *ghthreads.Syncer).
+// own (*inbox.Scheduler, *inbox.ChecksFollower, *release.ChecksFollower, worktrees.Sweeper,
+// *ghthreads.Syncer).
 type waker interface {
 	Wake()
 }

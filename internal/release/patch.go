@@ -4,6 +4,7 @@ import (
 	"context"
 	"maps"
 	"slices"
+	"time"
 
 	"github.com/mrz1836/nilbox/internal/event"
 	"github.com/mrz1836/nilbox/internal/repo"
@@ -199,6 +200,7 @@ func (s *Service) patch(ctx context.Context, names map[string]bool) bool {
 	sortCandidates(list.Repos)
 
 	s.last = list
+	s.stampRead(names)
 	s.keep(context.WithoutCancel(ctx), list, root)
 
 	return true
@@ -210,7 +212,7 @@ func (s *Service) readAgain(ctx context.Context, listed []clone) ([]Candidate, b
 	progress := newListProgress(s.events, s.progressEvery)
 	defer progress.End()
 
-	statuses, compares, err := s.askGitHub(ctx, listed, progress)
+	rows, err := s.readRows(ctx, listed, progress)
 	if err != nil {
 		if ctx.Err() == nil {
 			s.logger.WarnContext(ctx, "couldn't read a released repository again; the list will be read again in full",
@@ -220,14 +222,51 @@ func (s *Service) readAgain(ctx context.Context, listed []clone) ([]Candidate, b
 		return nil, false
 	}
 
+	return rows, true
+}
+
+// readRows reads the rows of the clones listed again, as a refresh does: GitHub's status of
+// each repository, the comparison its newest version needs, and the state of each clone
+// with something to release, telling progress of each phase; a nil progress tells nothing,
+// so the window shows no read under way. It fails when GitHub can't be read, worded for the
+// page, or with ctx's error when ctx ends first, since a clone read as ctx ended is marked
+// unreadable.
+func (s *Service) readRows(ctx context.Context, listed []clone, progress *listProgress) ([]Candidate, error) {
+	statuses, compares, err := s.askGitHub(ctx, listed, progress)
+	if err != nil {
+		return nil, err
+	}
+
 	rows := s.candidates(listed, statuses, compares)
 	s.checkClones(ctx, rows, statuses, progress)
 
-	if ctx.Err() != nil {
-		return nil, false // a clone read as ctx ended is marked unreadable
+	if err := ctx.Err(); err != nil {
+		return nil, err
 	}
 
-	return rows, true
+	return rows, nil
+}
+
+// readTimes returns when each repository list holds was read: at, every one. A row unread
+// since its repository was muted is stamped too: it is never followed while it is muted,
+// and a patch reads it once it is unmuted.
+func readTimes(list []Candidate, at time.Time) map[string]time.Time {
+	out := make(map[string]time.Time, len(list))
+
+	for _, c := range list {
+		out[c.origin.Key()] = at
+	}
+
+	return out
+}
+
+// stampRead records the repositories keys as read from GitHub now. The caller holds mu.
+func (s *Service) stampRead(keys map[string]bool) {
+	now := s.clock.Now()
+
+	for key := range keys {
+		s.readAt[key] = now
+	}
 }
 
 // patchable returns the clones the last list holds of names, when it can be patched: it

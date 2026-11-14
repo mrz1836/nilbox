@@ -23,7 +23,7 @@ export is a section of the file; one you leave unticked is absent.
     "defaultAgent": "claude",
     "defaultProfiles": {"claude": "default", "codex": "default"},
     "theme": "dark",
-    "refresh": {"inbox": 300, "checks": 45, "worktrees": 300, "notifications": 300}
+    "refresh": {"inbox": 300, "checks": 45, "releaseChecks": 45, "worktrees": 300, "notifications": 300}
   },
   "repositories": {
     "cloneRoot": "~/projects",
@@ -88,7 +88,7 @@ is each entry left out.
 | `sensitiveScope`, `sensitiveOff`, `sensitivePatterns` | Sensitive files: whose are checked, the built-in categories turned off, and your own patterns. |
 | `menuBar`, `bannersOff` | The menu bar icon, and the kinds of notification whose banners are off. |
 | `githubNotifications` | The GitHub notification rules: `read`, `auto`, `action`, `triggersOff`, `watching`, `botActivity`. |
-| `refresh` | How often, in seconds, the app reads `inbox`, `checks`, `worktrees`, and `notifications` again. |
+| `refresh` | How often, in seconds, the app reads `inbox`, `checks` (the pull requests' running checks), `releaseChecks` (the Release page's running checks), `worktrees`, and `notifications` again; `0` turns either checks follow off. |
 | `mergeMethod`, `theme`, `textSize`, `toastSeconds` | Reviewing and appearance. |
 | `inboxOrder` | Which inbox lists sort by project status, the order of the statuses, and which show one kind of item. |
 | `integrations` | Each integration's switch (`switches`), the copy of each tool you chose (`paths`, absolute, `""` for the one your shell finds), `runsIn`, `offerAfterMerge`, `magexTargets`, `repoFiles`, and `showRuns`. |

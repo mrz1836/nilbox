@@ -160,7 +160,7 @@ func assemble(
 	ui := &desktopUI{}
 	workers := []desktop.Worker{
 		c.Scheduler, c.GHThreadsSyncer, c.ChecksFollower, c.Sweeper, c.BudgetSaver, c.Watcher, c.ReleaseRefresher,
-		c.HooksScans,
+		c.ReleaseChecksFollower, c.HooksScans,
 	}
 	shell := desktop.New(desktop.Config{
 		Frontend:       ui,

@@ -250,8 +250,8 @@ type Settings struct {
 	GitHubNotifications threadrules.Rules `json:"githubNotifications"`
 
 	// Refresh is how often, in seconds, the app reads the inbox, the running checks, the
-	// worktrees, and the GitHub notifications again on its own, and RefreshChoices what each
-	// can be set to.
+	// Release page's running checks, the worktrees, and the GitHub notifications again on
+	// its own, and RefreshChoices what each can be set to.
 	Refresh        RefreshIntervals `json:"refresh"`
 	RefreshChoices RefreshChoices   `json:"refreshChoices"`
 }
@@ -854,7 +854,7 @@ func settingKeys() []string {
 		snooze.PrefWakeCommits, snooze.PrefWakeReviews, snooze.PrefWakeComments,
 		sensitive.PrefScope, sensitive.PrefOff, sensitive.PrefPatterns, KeyMenuBar, notifyprefs.KeyBannersOff, notifyprefs.KeyBannersOn, KeyTheme,
 		KeyTextSize, KeyToastSeconds, KeyProjectsTipDismissed, KeyReviewTab, KeyConversationOrder, KeyMergeMethod, KeyRefreshInbox, KeyRefreshChecks, KeyRefreshWorktrees,
-		KeyRefreshNotifications,
+		KeyRefreshNotifications, KeyRefreshReleaseChecks,
 	), append(append(append(append(collapsedKeys(), orderKeys()...), branchrules.Keys()...), reporules.Keys()...),
 		append(integrationprefs.Keys(), threadrules.Keys()...)...)...)
 }

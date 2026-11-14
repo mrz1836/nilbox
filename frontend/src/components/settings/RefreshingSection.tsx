@@ -7,7 +7,13 @@ import type { SectionProps } from './types'
 
 // defaults are each interval a fresh database starts at, in seconds, which its select
 // marks.
-const defaults: Readonly<Record<RefreshKind, number>> = { inbox: 300, checks: 45, worktrees: 300, notifications: 300 }
+const defaults: Readonly<Record<RefreshKind, number>> = {
+  inbox: 300,
+  checks: 45,
+  releaseChecks: 45,
+  worktrees: 300,
+  notifications: 300,
+}
 
 // rows are the things the app reads again on its own, each with what a read costs.
 const rows: readonly { kind: RefreshKind; label: string; description: string }[] = [
@@ -22,6 +28,12 @@ const rows: readonly { kind: RefreshKind; label: string; description: string }[]
     label: 'Running checks',
     description:
       'The pull requests whose checks are still running, all in one request, about a point, until their checks end. Nothing is read while no checks run.',
+  },
+  {
+    kind: 'releaseChecks',
+    label: 'Release checks',
+    description:
+      'The Release page’s repositories whose newest commit’s checks are still running, read again together, about two points, until their checks end. Nothing is read while none run; Read GitHub again reads every repository at once.',
   },
   {
     kind: 'worktrees',
@@ -60,9 +72,9 @@ export function everyWords(seconds: number): string {
 }
 
 // RefreshingSection holds how often the app reads the inbox, the running checks, the
-// worktrees, and the GitHub notifications again on its own, each a select of the intervals Go offers, saved as soon as
-// it is chosen; what reads them again works its next wait out from the new interval at
-// once.
+// Release page's running checks, the worktrees, and the GitHub notifications again on its
+// own, each a select of the intervals Go offers, saved as soon as it is chosen; what reads
+// them again works its next wait out from the new interval at once.
 export function RefreshingSection({ settings: stored, onSaved }: SectionProps) {
   const id = useId()
   const { settings, save, error } = useSettingsSave(stored, onSaved)

@@ -19,7 +19,8 @@ func TestRefreshIntervalsAreStoredAndWakeWhatRefreshes(t *testing.T) {
 
 	fresh, err := svc.Get(t.Context())
 	require.NoError(t, err)
-	assert.Equal(t, RefreshIntervals{Inbox: 300, Checks: 45, Worktrees: 300, Notifications: 300}, fresh.Refresh)
+	assert.Equal(t, RefreshIntervals{Inbox: 300, Checks: 45, ReleaseChecks: 45, Worktrees: 300, Notifications: 300},
+		fresh.Refresh)
 	assert.Equal(t, refreshChoices(), fresh.RefreshChoices)
 
 	got, err := svc.SetRefreshInterval(t.Context(), RefreshInbox, 900)
@@ -30,34 +31,49 @@ func TestRefreshIntervalsAreStoredAndWakeWhatRefreshes(t *testing.T) {
 	require.NoError(t, err)
 	assert.Zero(t, got.Refresh.Checks, "the checks follow can be off")
 
+	got, err = svc.SetRefreshInterval(t.Context(), RefreshReleaseChecks, 120)
+	require.NoError(t, err)
+	assert.Equal(t, 120, got.Refresh.ReleaseChecks, "the Release page's follow has its own interval")
+	assert.Zero(t, got.Refresh.Checks, "which leaves the pull requests' alone")
+
+	got, err = svc.SetRefreshInterval(t.Context(), RefreshReleaseChecks, 0)
+	require.NoError(t, err)
+	assert.Zero(t, got.Refresh.ReleaseChecks, "and can be off too")
+
 	_, err = svc.SetRefreshInterval(t.Context(), RefreshWorktrees, 1800)
 	require.NoError(t, err)
 
 	got, err = svc.SetRefreshInterval(t.Context(), RefreshNotifications, 60)
 	require.NoError(t, err)
-	assert.Equal(t, RefreshIntervals{Inbox: 900, Checks: 0, Worktrees: 1800, Notifications: 60}, got.Refresh,
-		"the notifications every minute, GitHub's own poll interval")
+	assert.Equal(t, RefreshIntervals{Inbox: 900, Checks: 0, ReleaseChecks: 0, Worktrees: 1800, Notifications: 60},
+		got.Refresh, "the notifications every minute, GitHub's own poll interval")
 	assert.Equal(t, []event.Event{
-		event.IntervalsChanged{}, event.IntervalsChanged{}, event.IntervalsChanged{}, event.IntervalsChanged{},
+		event.IntervalsChanged{},
+		event.IntervalsChanged{},
+		event.IntervalsChanged{},
+		event.IntervalsChanged{},
+		event.IntervalsChanged{},
+		event.IntervalsChanged{},
 	}, events.All())
 
 	for name, refused := range map[string]struct {
 		kind    RefreshKind
 		seconds int
 	}{
-		"an unknown kind":           {"releases", 300},
-		"an interval not offered":   {RefreshInbox, 7},
-		"the inbox off":             {RefreshInbox, 0},
-		"the worktrees every 30 s":  {RefreshWorktrees, 30},
-		"the checks every 10 hours": {RefreshChecks, 36000},
-		"the notifications off":     {RefreshNotifications, 0},
-		"the notifications at 30 s": {RefreshNotifications, 30},
+		"an unknown kind":            {"releases", 300},
+		"an interval not offered":    {RefreshInbox, 7},
+		"the inbox off":              {RefreshInbox, 0},
+		"the worktrees every 30 s":   {RefreshWorktrees, 30},
+		"the checks every 10 hours":  {RefreshChecks, 36000},
+		"the release checks at 10 s": {RefreshReleaseChecks, 10},
+		"the notifications off":      {RefreshNotifications, 0},
+		"the notifications at 30 s":  {RefreshNotifications, 30},
 	} {
 		_, err = svc.SetRefreshInterval(t.Context(), refused.kind, refused.seconds)
 		require.ErrorIs(t, err, ErrInvalidRefresh, name)
 	}
 
-	assert.Len(t, events.All(), 4, "a refused interval stores nothing and wakes nothing")
+	assert.Len(t, events.All(), 6, "a refused interval stores nothing and wakes nothing")
 
 	reread, err := svc.Get(t.Context())
 	require.NoError(t, err)
@@ -68,23 +84,42 @@ func TestRefreshIntervalsReadAStoredValueNotOfferedAsTheDefault(t *testing.T) {
 	t.Parallel()
 
 	got := decodeRefreshIntervals(map[string]string{
-		KeyRefreshInbox: "7", KeyRefreshChecks: "often", KeyRefreshWorktrees: "600", KeyRefreshNotifications: "45",
+		KeyRefreshInbox: "7", KeyRefreshChecks: "often", KeyRefreshReleaseChecks: "15", KeyRefreshWorktrees: "600",
+		KeyRefreshNotifications: "45",
 	})
 
 	assert.Equal(t, RefreshIntervals{
-		Inbox: DefaultRefreshInbox, Checks: DefaultRefreshChecks, Worktrees: 600,
-		Notifications: DefaultRefreshNotifications,
+		Inbox: DefaultRefreshInbox, Checks: DefaultRefreshChecks, ReleaseChecks: DefaultRefreshReleaseChecks,
+		Worktrees: 600, Notifications: DefaultRefreshNotifications,
 	}, got)
+
+	stored := decodeRefreshIntervals(map[string]string{KeyRefreshReleaseChecks: "0"})
+	assert.Zero(t, stored.ReleaseChecks, "off is stored as off")
+	assert.Equal(t, DefaultRefreshChecks, stored.Checks, "and leaves the pull requests' follow at its default")
 }
 
 func TestEveryTurnsAnIntervalIntoADuration(t *testing.T) {
 	t.Parallel()
 
-	r := RefreshIntervals{Inbox: 120, Checks: 0, Worktrees: 3600, Notifications: 60}
+	r := RefreshIntervals{Inbox: 120, Checks: 0, ReleaseChecks: 30, Worktrees: 3600, Notifications: 60}
 
 	assert.Equal(t, 2*time.Minute, r.Every(RefreshInbox))
 	assert.Zero(t, r.Every(RefreshChecks))
+	assert.Equal(t, 30*time.Second, r.Every(RefreshReleaseChecks))
 	assert.Equal(t, time.Hour, r.Every(RefreshWorktrees))
 	assert.Equal(t, time.Minute, r.Every(RefreshNotifications))
 	assert.Zero(t, r.Every("releases"))
+}
+
+func TestRefreshKindsListTheReleaseChecksAfterThePullRequests(t *testing.T) {
+	t.Parallel()
+
+	assert.Equal(t, []RefreshKind{
+		RefreshInbox, RefreshChecks, RefreshReleaseChecks, RefreshWorktrees, RefreshNotifications,
+	}, RefreshKinds())
+
+	choices := refreshChoices()
+	assert.Equal(t, choices.Checks, choices.ReleaseChecks, "the same cadence as the pull requests' checks")
+	assert.Equal(t, 45, DefaultRefreshReleaseChecks)
+	assert.Equal(t, "refresh.releaseChecks", KeyRefreshReleaseChecks)
 }

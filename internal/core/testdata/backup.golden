@@ -55,6 +55,7 @@
       "checks": 45,
       "inbox": 300,
       "notifications": 300,
+      "releaseChecks": 45,
       "worktrees": 300
     },
     "mergeMethod": "repo",

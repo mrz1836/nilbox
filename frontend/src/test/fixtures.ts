@@ -385,10 +385,11 @@ export function settings(overrides: Partial<Settings> = {}): Settings {
       botActivity: true,
       cleanupCardDismissed: false,
     },
-    refresh: { inbox: 300, checks: 45, worktrees: 300, notifications: 300 },
+    refresh: { inbox: 300, checks: 45, releaseChecks: 45, worktrees: 300, notifications: 300 },
     refreshChoices: {
       inbox: [120, 300, 600, 900, 1800, 3600],
       checks: [0, 30, 45, 60, 120],
+      releaseChecks: [0, 30, 45, 60, 120],
       worktrees: [300, 600, 900, 1800, 3600],
       notifications: [60, 120, 300, 600, 900, 1800, 3600],
     },
