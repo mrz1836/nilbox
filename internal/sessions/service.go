@@ -72,7 +72,8 @@ type Config struct {
 	// Home shows home as ~.
 	Home string
 
-	// Events hears an event.SessionsUpdated when a launch records a session.
+	// Events hears an event.SessionsUpdated when a launch records a session, and when the
+	// user forgets one.
 	Events event.Sink
 
 	// Words reads each agent's sessions' last messages in full, for LastWords; an agent
@@ -91,6 +92,7 @@ type Service struct {
 	ps      execpath.Runner
 	reveal  Revealer
 	home    string
+	events  event.Sink
 	words   map[agent.ID]WordsReader
 	clock   clock.Clock
 	logger  *slog.Logger
@@ -100,7 +102,8 @@ type Service struct {
 func NewService(cfg Config) *Service {
 	return &Service{
 		store: cfg.Store, toggle: cfg.Switch, focuser: cfg.Focuser, ps: cfg.PS, reveal: cfg.Reveal, home: cfg.Home,
-		words: wordsReaders(cfg.Words), clock: clock.Or(cfg.Clock), logger: logging.Or(cfg.Logger),
+		events: event.Or(cfg.Events), words: wordsReaders(cfg.Words), clock: clock.Or(cfg.Clock),
+		logger: logging.Or(cfg.Logger),
 	}
 }
 
@@ -194,6 +197,24 @@ func (s *Service) ShowFolder(ctx context.Context, id string) error {
 	}
 
 	return nil
+}
+
+// Forget forgets a session that has ended, on the user's click, so it leaves the card and
+// the panel, and tells the window. A session already forgotten counts as done, and one
+// still running is refused and kept.
+func (s *Service) Forget(ctx context.Context, id string) error {
+	err := s.store.Forget(ctx, id)
+
+	switch {
+	case err == nil, errors.Is(err, ErrNotFound):
+		s.events.Emit(event.SessionsUpdated{})
+
+		return nil
+	case errors.Is(err, ErrLive):
+		return uierr.New("This session is still running. Remove it once it has ended.", err)
+	default:
+		return err
+	}
 }
 
 // TTY returns the terminal device the process pid runs on, such as /dev/ttys004, asking

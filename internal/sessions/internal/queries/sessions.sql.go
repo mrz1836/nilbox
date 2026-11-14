@@ -96,6 +96,19 @@ func (q *Queries) EndedSince(ctx context.Context, arg EndedSinceParams) ([]Agent
 	return items, nil
 }
 
+const forgetEndedSession = `-- name: ForgetEndedSession :execrows
+DELETE FROM agent_sessions WHERE id = ?1 AND state = 'ended'
+`
+
+// ForgetEndedSession forgets one session, only once it has ended.
+func (q *Queries) ForgetEndedSession(ctx context.Context, id string) (int64, error) {
+	result, err := q.db.ExecContext(ctx, forgetEndedSession, id)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
 const getSession = `-- name: GetSession :one
 SELECT id, agent_session_id, resumed_from, agent, profile, config_dir, prompt, prompt_head, terminal,
     item_id, owner, name, kind, number, title, url, dir, clone_path, worktree, pid,

@@ -42,6 +42,9 @@ var (
 
 	// ErrInvalidRecord is returned for a session record missing what storing it needs.
 	ErrInvalidRecord = errors.New("invalid session record")
+
+	// ErrLive is returned by Forget for a session that has not ended.
+	ErrLive = errors.New("the session is still running")
 )
 
 // Record is one session as the ledger stores it.
@@ -363,6 +366,25 @@ func (s *Store) Prune(ctx context.Context, now time.Time) (int64, error) {
 	}
 
 	return forgot, nil
+}
+
+// Forget forgets one session that has ended. A session the ledger does not hold is
+// ErrNotFound, and one that has not ended is ErrLive and kept.
+func (s *Store) Forget(ctx context.Context, id string) error {
+	n, err := s.q.ForgetEndedSession(ctx, id)
+	if err != nil {
+		return fmt.Errorf("forget the session: %w", err)
+	}
+
+	if n > 0 {
+		return nil
+	}
+
+	if _, err = s.Get(ctx, id); err != nil {
+		return err
+	}
+
+	return ErrLive
 }
 
 // apply stores one observation at now, and returns the change it made, if it made one.
