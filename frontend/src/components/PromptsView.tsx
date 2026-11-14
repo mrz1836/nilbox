@@ -1,8 +1,9 @@
-import { useEffect, useEffectEvent, useId, useRef, useState } from 'react'
+import { useEffect, useEffectEvent, useRef, useState } from 'react'
+import { flushSync } from 'react-dom'
 
 import { brand } from '../generated/brand'
 import { counted, errorMessage, fileDate, fileName } from '../lib/format'
-import { isFindKey } from '../lib/keys'
+import { isFindKey, isPreviewKey } from '../lib/keys'
 import { kindPlural, promptApplies, usageCount, usagePlaces } from '../lib/launch'
 import { replyDefaultsText, replySlotPlaces, replySlots } from '../lib/replies'
 import { useMutation } from '../lib/useMutation'
@@ -47,10 +48,9 @@ import {
 } from './icons'
 import { ImportPromptsDialog, type ImportStart } from './ImportPromptsDialog'
 import { MenuButton, type MenuItem } from './Menu'
-import { PromptEditor } from './PromptEditor'
+import { PromptEditor, type PromptView } from './PromptEditor'
 import { PromptLibrary, type Selection } from './PromptLibrary'
 import { PromptPreview } from './PromptPreview'
-import { TabPanel, Tabs } from './Tabs'
 import type { TemplateEditorHandle } from './TemplateEditor'
 import { VariablesPanel } from './VariablesPanel'
 
@@ -86,12 +86,6 @@ type Pending =
 // Question is what the page asks before acting on a Pending: the confirm dialog's words,
 // and what confirming does.
 type Question = Omit<ConfirmDialogProps, 'onCancel'>
-
-// sidePanels are the tabs beside the editor.
-const sidePanels = [
-  { value: 'preview', label: 'Preview' },
-  { value: 'variables', label: 'Variables' },
-] as const
 
 // newPromptBody starts a new prompt with the item's address, so the variables show at
 // work from the first keystroke.
@@ -206,13 +200,17 @@ function touchedField(field: string, draft: PromptInput, start: PromptInput): bo
 }
 
 // PromptsView is the Prompts page: the prompt library on the left, the selected prompt's
-// editor in the middle, and its live preview and the variables cheat sheet on the right.
-// The library shows either the agent prompts or the review replies, and a stored prompt
-// always opens in its own part. Edits are checked by the backend as you type and saved
-// with Save (or ⌘S). Leaving a prompt with unsaved changes asks first.
+// editor in the middle, and the variables cheat sheet on the right. The editor's Edit |
+// Preview switch (⇧⌘P) shows the prompt filled in, live, in place of its text; the view
+// stays as you move between prompts, and a new one opens in Edit. Using the cheat sheet,
+// or pointing at a problem, while previewing goes back to Edit first. The library shows
+// either the agent prompts or the review replies, and a stored prompt always opens in its
+// own part. Edits are checked by the backend as you type and saved with Save (or ⌘S).
+// Leaving a prompt with unsaved changes asks first.
 export function PromptsView({ agents, prompts, replies, defaults, variables, items, onChanged }: PromptsViewProps) {
-  const id = useId()
   const editorRef = useRef<TemplateEditorHandle>(null)
+  // previewRef is the filled-in text's scroll region, which ⇧⌘P focuses.
+  const previewRef = useRef<HTMLDivElement>(null)
   // searchRef is the library's search field, which ⌘F focuses.
   const searchRef = useRef<HTMLInputElement>(null)
   // mode is the part of the library on show: the agent prompts or the review replies.
@@ -227,7 +225,8 @@ export function PromptsView({ agents, prompts, replies, defaults, variables, ite
   const [pickedItem, setPickedItem] = useState<number | null>(null)
   const [inWorktree, setInWorktree] = useState(true)
   const [atPrHead, setAtPrHead] = useState(true)
-  const [panel, setPanel] = useState<'preview' | 'variables'>('preview')
+  // view is what the editor's frame shows: the text to edit, or the text filled in.
+  const [view, setView] = useState<PromptView>('edit')
   const [status, setStatus] = useState<{ tone: 'error' | 'success'; text: string } | null>(null)
   const [pending, setPending] = useState<Pending | null>(null)
   // importing is the import under way in its dialog, or null.
@@ -294,6 +293,13 @@ export function PromptsView({ agents, prompts, replies, defaults, variables, ite
 
     setMode(shows)
     setSelection(next)
+
+    // A new prompt or reply is to be written, so it opens in Edit; any other keeps the
+    // view, so previews can be compared.
+    if (next?.kind === 'new') {
+      setView('edit')
+    }
+
     setBaseline(input)
     setDraft(input)
     setOpened((n) => n + 1)
@@ -398,14 +404,45 @@ export function PromptsView({ agents, prompts, replies, defaults, variables, ite
 
   const canSave = dirty && problemCount === 0 && hiddenProblems === 0 && !busy
 
-  // ⌘S saves while the page is showing, and ⌘F finds a prompt in the library: a page
-  // hidden behind another runs no effects, so it stops listening.
+  // showEditor shows the text to edit at once, so the text area can take focus straight
+  // after, as inserting a variable or pointing at a problem needs.
+  const showEditor = () => {
+    if (view !== 'edit') {
+      flushSync(() => {
+        setView('edit')
+      })
+    }
+  }
+
+  // toggleView switches between editing and previewing, and focuses what shows: the
+  // text area, or the filled-in text, so the keyboard scrolls it.
+  const toggleView = () => {
+    if (view === 'edit') {
+      flushSync(() => {
+        setView('preview')
+      })
+      previewRef.current?.focus()
+    } else {
+      showEditor()
+      editorRef.current?.focus()
+    }
+  }
+
+  // ⌘S saves while the page is showing, ⇧⌘P switches between editing and previewing,
+  // even while typing, and ⌘F finds a prompt in the library: a page hidden behind
+  // another runs no effects, so it stops listening.
   const saveOnKey = useEffectEvent((e: globalThis.KeyboardEvent) => {
     if (e.metaKey && e.key === 's') {
       e.preventDefault()
 
       if (canSave) {
         void save()
+      }
+    } else if (isPreviewKey(e)) {
+      e.preventDefault()
+
+      if (selection !== null) {
+        toggleView()
       }
     } else if (isFindKey(e)) {
       e.preventDefault()
@@ -785,8 +822,27 @@ export function PromptsView({ agents, prompts, replies, defaults, variables, ite
               editorRef={editorRef}
               checked={check !== null}
               onReveal={(d) => {
+                showEditor()
                 editorRef.current?.reveal(d.line, d.column, d.length)
               }}
+              view={view}
+              onViewChange={setView}
+              preview={
+                <PromptPreview
+                  items={applicableItems}
+                  itemId={previewItem}
+                  onItemChange={setPickedItem}
+                  inWorktree={inWorktree}
+                  onInWorktreeChange={setInWorktree}
+                  atPrHead={atPrHead}
+                  onAtPrHeadChange={setAtPrHead}
+                  forPRs={forPRs}
+                  result={check}
+                  hasErrors={diagnostics.some((d) => d.severity === 'error')}
+                  reply={replyMode}
+                  bodyRef={previewRef}
+                />
+              }
             />
             <footer className="flex items-center justify-end gap-2 border-t border-border px-6 py-3">
               <p
@@ -841,48 +897,22 @@ export function PromptsView({ agents, prompts, replies, defaults, variables, ite
       </section>
 
       {selection !== null && (
-        <aside
-          aria-label="Preview and variables"
-          className="hidden w-80 shrink-0 flex-col border-l border-border lg:flex"
-        >
-          <Tabs
-            baseId={id}
-            label="Side panel"
-            tabs={sidePanels}
-            value={panel}
-            onChange={setPanel}
-            className="flex gap-1 border-b border-border px-3 pt-3"
+        <aside aria-label="Variables" className="hidden w-80 shrink-0 flex-col border-l border-border lg:flex">
+          <h2 className="border-b border-border px-4 pt-3 pb-2 text-sm font-semibold">Variables</h2>
+          <VariablesPanel
+            variables={variables}
+            values={check?.values ?? null}
+            valuesFor={previewFor}
+            forIssuesOnly={draft.appliesTo === 'issue'}
+            onInsertVariable={(name) => {
+              showEditor()
+              editorRef.current?.insertVariable(name)
+            }}
+            onInsertText={(text) => {
+              showEditor()
+              editorRef.current?.insertText(text)
+            }}
           />
-          <TabPanel baseId={id} value={panel} className="flex min-h-0 flex-1 flex-col">
-            {panel === 'preview' ? (
-              <PromptPreview
-                items={applicableItems}
-                itemId={previewItem}
-                onItemChange={setPickedItem}
-                inWorktree={inWorktree}
-                onInWorktreeChange={setInWorktree}
-                atPrHead={atPrHead}
-                onAtPrHeadChange={setAtPrHead}
-                forPRs={forPRs}
-                result={check}
-                hasErrors={diagnostics.some((d) => d.severity === 'error')}
-                reply={replyMode}
-              />
-            ) : (
-              <VariablesPanel
-                variables={variables}
-                values={check?.values ?? null}
-                valuesFor={previewFor}
-                forIssuesOnly={draft.appliesTo === 'issue'}
-                onInsertVariable={(name) => {
-                  editorRef.current?.insertVariable(name)
-                }}
-                onInsertText={(text) => {
-                  editorRef.current?.insertText(text)
-                }}
-              />
-            )}
-          </TabPanel>
         </aside>
       )}
 

@@ -1927,11 +1927,14 @@ starter's title, text, and settings.
 
 **The page.** The library is on the left, grouped by what each prompt is for, with search; a
 star marks the app's defaults, and "Default in N places" counts the orgs and repositories that
-use one. The selected prompt's editor is in the middle, and on the right are the live
-**Preview** and the **Variables** cheat sheet. Save with **Save** or ⌘S; leaving a prompt with
-unsaved changes asks first, and a draft survives switching tabs. The **⋯** menu holds **Make
-the default for pull requests** (or issues), **Duplicate**, **Reset to original**, and
-**Delete**.
+use one. The selected prompt's editor is in the middle, and the **Variables** cheat sheet is
+always on the right, in a window wide enough for it. The editor's **Edit | Preview** switch
+(⇧⌘P, even while typing) shows the prompt filled in, live, in place of its text; it stays
+on as you move between prompts, so previews can be compared, and a new prompt opens in Edit.
+Clicking a variable or a problem while previewing goes back to Edit first. Save with **Save**
+or ⌘S; leaving a prompt with unsaved changes asks first, and a draft survives switching tabs.
+The **⋯** menu holds **Make the default for pull requests** (or issues), **Duplicate**,
+**Reset to original**, and **Delete**.
 
 **Deleting.** A prompt can be deleted once nothing uses it as a default. Deleting one that is
 the app's default for a kind, or an org's or repository's default, lists where it is used
@@ -1974,8 +1977,12 @@ applies to. Warnings, such as a pull-request-only variable in an issue prompt, o
 starts with a variable, don't block saving; errors do.
 
 **Preview.** The preview fills the prompt in for a real inbox item (or a sample), exactly as a
-launch would, with switches for **In a worktree** and **At the PR's head**. For an outside
-contributor's item it also shows the line every such prompt ends with.
+launch would, in the text's own frame and at its size, with the item to fill it in for and
+switches for **In a worktree** and **At the PR's head** above it. For an outside
+contributor's item it also shows the line every such prompt ends with. Below it are its
+length and **Copy**, which copies the text as a launch sends it, that line included. The
+text and its undo history are kept while previewing, so Edit picks up where it was. A review
+reply previews as the review sheet fills it in, with no session switches.
 
 **Launch settings.** A prompt can set a model and extra flags for each coding agent, on a tab
 per agent, and the effort, plan mode, and worktree for every agent; they win over the org's and

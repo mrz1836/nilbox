@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { isFindKey, isTyping } from './keys'
+import { isFindKey, isPreviewKey, isTyping } from './keys'
 
 // keydownOn is a key event dispatched at target, as the document's listeners see it.
 function keydownOn(target: EventTarget, init: KeyboardEventInit = {}): KeyboardEvent {
@@ -77,5 +77,19 @@ describe('isFindKey', () => {
     [{ key: 'g', metaKey: true }, false],
   ])('reads %j', (init, want) => {
     expect(isFindKey(new KeyboardEvent('keydown', init))).toBe(want)
+  })
+})
+
+describe('isPreviewKey', () => {
+  it.each<[KeyboardEventInit, boolean]>([
+    [{ key: 'p', metaKey: true, shiftKey: true }, true],
+    [{ key: 'P', metaKey: true, shiftKey: true }, true],
+    [{ key: 'p', metaKey: true }, false],
+    [{ key: 'p', shiftKey: true }, false],
+    [{ key: 'p', metaKey: true, shiftKey: true, ctrlKey: true }, false],
+    [{ key: 'p', metaKey: true, shiftKey: true, altKey: true }, false],
+    [{ key: 'o', metaKey: true, shiftKey: true }, false],
+  ])('reads %j', (init, want) => {
+    expect(isPreviewKey(new KeyboardEvent('keydown', init))).toBe(want)
   })
 })

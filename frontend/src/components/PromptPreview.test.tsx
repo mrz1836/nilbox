@@ -3,7 +3,10 @@ import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 
 import { checkResult, item } from '../test/fixtures'
+import { platform } from '../test/platform'
 import { PromptPreview, type PromptPreviewProps } from './PromptPreview'
+
+vi.mock('../platform', () => import('../test/platform').then((fake) => fake.platform))
 
 function props(overrides: Partial<PromptPreviewProps> = {}): PromptPreviewProps {
   return {
@@ -88,5 +91,54 @@ describe('PromptPreview', () => {
     )
     expect(screen.getByRole('alert')).toHaveTextContent('For this item the prompt is empty.')
     expect(screen.queryByText(/characters/)).not.toBeInTheDocument()
+  })
+
+  it('copies the filled-in prompt, and says so', async () => {
+    render(<PromptPreview {...props()} />)
+
+    await userEvent.click(screen.getByRole('button', { name: 'Copy the filled-in prompt' }))
+
+    expect(platform.copyText).toHaveBeenCalledWith(checkResult().preview)
+    expect(screen.getByRole('button', { name: 'Copy the filled-in prompt' })).toHaveTextContent('Copied')
+    expect(screen.getByRole('status')).toHaveTextContent('Copied to the clipboard')
+  })
+
+  it('copies the notice with the prompt, as a launch sends them', async () => {
+    const notice = 'This pull request comes from an outside contributor.'
+    render(<PromptPreview {...props({ result: checkResult({ notice }) })} />)
+
+    await userEvent.click(screen.getByRole('button', { name: 'Copy the filled-in prompt' }))
+
+    expect(platform.copyText).toHaveBeenCalledWith(`${checkResult().preview}\n${notice}\n`)
+  })
+
+  it('says when the clipboard refuses the text', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    platform.copyText.mockRejectedValueOnce(new Error('no clipboard'))
+    render(<PromptPreview {...props({ reply: true })} />)
+
+    await userEvent.click(screen.getByRole('button', { name: 'Copy the filled-in reply' }))
+
+    expect(screen.getByRole('button', { name: 'Copy the filled-in reply' })).toHaveTextContent('Copy failed')
+    expect(screen.getByRole('status')).toHaveTextContent('Select the text and copy it by hand')
+  })
+
+  it('offers no copy without a preview', () => {
+    const { rerender } = render(<PromptPreview {...props({ result: null })} />)
+    expect(screen.queryByRole('button', { name: /Copy/ })).not.toBeInTheDocument()
+
+    rerender(<PromptPreview {...props({ hasErrors: true })} />)
+    expect(screen.queryByRole('button', { name: /Copy/ })).not.toBeInTheDocument()
+
+    rerender(
+      <PromptPreview {...props({ result: checkResult({ previewError: 'For this item the prompt is empty.' }) })} />,
+    )
+    expect(screen.queryByRole('button', { name: /Copy/ })).not.toBeInTheDocument()
+  })
+
+  it('shows the filled-in text in a region the keyboard can scroll', () => {
+    render(<PromptPreview {...props()} />)
+
+    expect(screen.getByRole('region', { name: 'Filled-in prompt' })).toHaveAttribute('tabindex', '0')
   })
 })

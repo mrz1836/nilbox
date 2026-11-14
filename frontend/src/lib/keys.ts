@@ -22,3 +22,9 @@ export function isTyping(e: KeyboardEvent): boolean {
 export function isFindKey(e: KeyboardEvent): boolean {
   return e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey && e.key.toLowerCase() === 'f'
 }
+
+// isPreviewKey reports ⇧⌘P, which switches the prompt editor between writing and
+// previewing, as on GitHub: ⇧⌘ alone, so ⌘P, ⌃⇧⌘P, and ⌥⇧⌘P stay free.
+export function isPreviewKey(e: KeyboardEvent): boolean {
+  return e.metaKey && e.shiftKey && !e.ctrlKey && !e.altKey && e.key.toLowerCase() === 'p'
+}

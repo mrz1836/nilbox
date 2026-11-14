@@ -13,6 +13,8 @@ export interface TemplateEditorHandle {
   insertText: (text: string) => void
   // reveal selects a 1-based line and column (and length) and scrolls it into view.
   reveal: (line: number, column: number, length: number) => void
+  // focus puts the caret back in the text, where it was.
+  focus: () => void
 }
 
 export interface TemplateEditorProps {
@@ -242,6 +244,9 @@ export function TemplateEditor({
 
         textarea.scrollTop += pos.top - textarea.clientHeight / 3
         syncScroll()
+      },
+      focus: () => {
+        textareaRef.current?.focus()
       },
     }),
     [onChange],

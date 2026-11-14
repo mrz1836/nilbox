@@ -1,4 +1,4 @@
-import { useId, useState, type Ref } from 'react'
+import { useId, useState, type ReactNode, type Ref } from 'react'
 
 import { appliesToLabels, pinSummary, usagePlaces, usageSummary } from '../lib/launch'
 import { replyActionLabels, replyGroups, replyUsageSummary } from '../lib/replies'
@@ -12,7 +12,7 @@ import type {
   PromptVariable,
 } from '../platform'
 import { chipClass, describedBy, Field, fieldClass, Segmented, type SegmentOption } from './controls'
-import { AlertIcon, ChevronRightIcon, CircleCheckIcon, StarIcon } from './icons'
+import { AlertIcon, ChevronRightIcon, CircleCheckIcon, EyeIcon, PencilIcon, StarIcon } from './icons'
 import { LaunchOverrideFields } from './LaunchOverrideFields'
 import { TemplateEditor, type TemplateEditorHandle } from './TemplateEditor'
 
@@ -31,6 +31,14 @@ const actionOptions: readonly SegmentOption<PromptReplyAction>[] = replyGroups.m
   label: replyActionLabels[action],
 }))
 
+// PromptView is what the prompt's frame shows: its text to edit, or the text filled in.
+export type PromptView = 'edit' | 'preview'
+
+const viewOptions: readonly SegmentOption<PromptView>[] = [
+  { value: 'edit', label: 'Edit', icon: <PencilIcon className="size-3.5" />, title: 'Edit (⇧⌘P)' },
+  { value: 'preview', label: 'Preview', icon: <EyeIcon className="size-3.5" />, title: 'Preview (⇧⌘P)' },
+]
+
 export interface PromptEditorProps {
   // agents are the coding agents, whose models and flags a prompt can set.
   agents: readonly AgentInfo[]
@@ -47,6 +55,11 @@ export interface PromptEditorProps {
   onReveal: (d: Diagnostic) => void
   // checked reports whether the draft has been checked at least once.
   checked: boolean
+  // view is what the prompt's frame shows, and onViewChange switches it.
+  view: PromptView
+  onViewChange: (view: PromptView) => void
+  // preview is the prompt filled in, shown in the text's place while previewing.
+  preview: ReactNode
 }
 
 // counter shows how much of a limit a value uses, in red once it is over.
@@ -71,8 +84,11 @@ function whereText(d: Diagnostic): string {
 
 // PromptEditor is the form for one prompt: its large title, its nickname for the launch
 // menu, what it is for, its text in the template editor with the problems found in it,
-// and the launch settings it sets. A review reply has the review it is for in place of
-// what it applies to, and no launch settings, since it never launches anything.
+// and the launch settings it sets. Edit | Preview swaps the text for the prompt filled
+// in, in the same frame; the editor stays mounted meanwhile, so its undo history, caret,
+// and scroll are where they were on the way back. A review reply has the review it is
+// for in place of what it applies to, and no launch settings, since it never launches
+// anything.
 export function PromptEditor({
   agents,
   draft,
@@ -84,6 +100,9 @@ export function PromptEditor({
   editorRef,
   onReveal,
   checked,
+  view,
+  onViewChange,
+  preview,
 }: PromptEditorProps) {
   const id = useId()
   const [settingsOpen, setSettingsOpen] = useState(false)
@@ -219,25 +238,43 @@ export function PromptEditor({
       </div>
 
       <div className="flex min-h-[18rem] flex-1 flex-col gap-2">
-        <div className="flex items-baseline justify-between">
+        <div className="flex items-center gap-3">
           <span className="text-xs font-medium text-muted">{reply ? 'Reply' : 'Prompt'}</span>
-          <span className="text-[0.6875rem] text-muted">
-            Type <code className="font-mono">{'{{'}</code> for variables
+          <Segmented
+            size="sm"
+            label={reply ? 'Show the reply as' : 'Show the prompt as'}
+            value={view}
+            options={viewOptions}
+            onChange={onViewChange}
+          />
+          <span className="ml-auto text-[0.6875rem] text-muted">
+            {view === 'edit' ? (
+              <>
+                Type <code className="font-mono">{'{{'}</code> for variables
+              </>
+            ) : reply ? (
+              'As the review sheet fills it in'
+            ) : (
+              'As a launch sends it'
+            )}
           </span>
         </div>
-        <TemplateEditor
-          id={`${id}-body`}
-          ref={editorRef}
-          label={reply ? 'Reply text' : 'Prompt text'}
-          value={draft.body}
-          onChange={(body) => {
-            set({ body })
-          }}
-          variables={variables}
-          diagnostics={diagnostics}
-          describedBy={`${id}-problems`}
-          placeholder={reply ? 'Thanks, @{{.Author}}!' : 'Review pull request #{{.Number}} in {{.Repo}}: {{.Title}}'}
-        />
+        <div className="flex min-h-0 flex-1 flex-col" hidden={view === 'preview'}>
+          <TemplateEditor
+            id={`${id}-body`}
+            ref={editorRef}
+            label={reply ? 'Reply text' : 'Prompt text'}
+            value={draft.body}
+            onChange={(body) => {
+              set({ body })
+            }}
+            variables={variables}
+            diagnostics={diagnostics}
+            describedBy={`${id}-problems`}
+            placeholder={reply ? 'Thanks, @{{.Author}}!' : 'Review pull request #{{.Number}} in {{.Repo}}: {{.Title}}'}
+          />
+        </div>
+        {view === 'preview' && preview}
         <div id={`${id}-problems`} aria-live="polite" className="flex flex-col gap-1">
           {checked && errors.length === 0 && warnings.length === 0 && (
             <p className="flex items-center gap-1.5 text-xs text-success">

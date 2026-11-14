@@ -1,17 +1,9 @@
-import { useEffect, useState } from 'react'
-
-import { copyText } from '../platform'
+import { copyLabel, useCopy } from '../lib/useCopy'
 import { quietButtonClass } from './controls'
 import { CheckIcon, CopyIcon } from './icons'
 
 // copiedMs is how long the button says how a copy went before it offers to copy again.
-export const copiedMs = 2000
-
-// Copy is where the last copy stands: not tried, done, or refused by the clipboard.
-type Copy = 'idle' | 'copied' | 'failed'
-
-// copyLabel is what the button says at each.
-const copyLabel: Readonly<Record<Copy, string>> = { idle: 'Copy', copied: 'Copied', failed: 'Copy failed' }
+export { copiedMs } from '../lib/useCopy'
 
 export interface CommandLineProps {
   // command is the shell command, as the user types it.
@@ -28,33 +20,7 @@ export interface CommandLineProps {
 // on the command selects all of it, so it can be copied by hand when the clipboard
 // refuses.
 export function CommandLine({ command, prompt = true, className = '' }: CommandLineProps) {
-  const [copy, setCopy] = useState<Copy>('idle')
-
-  useEffect(() => {
-    if (copy === 'idle') {
-      return undefined
-    }
-
-    const timer = setTimeout(() => {
-      setCopy('idle')
-    }, copiedMs)
-
-    return () => {
-      clearTimeout(timer)
-    }
-  }, [copy])
-
-  const onCopy = () => {
-    copyText(command).then(
-      () => {
-        setCopy('copied')
-      },
-      (err: unknown) => {
-        console.error('could not copy the command', err)
-        setCopy('failed')
-      },
-    )
-  }
+  const { copy, onCopy } = useCopy('command')
 
   return (
     <div
@@ -68,7 +34,14 @@ export function CommandLine({ command, prompt = true, className = '' }: CommandL
         )}
         {command}
       </code>
-      <button type="button" aria-label="Copy the command" onClick={onCopy} className={`${quietButtonClass} shrink-0`}>
+      <button
+        type="button"
+        aria-label="Copy the command"
+        onClick={() => {
+          onCopy(command)
+        }}
+        className={`${quietButtonClass} shrink-0`}
+      >
         {copy === 'copied' ? <CheckIcon className="size-3.5 text-success" /> : <CopyIcon className="size-3.5" />}
         {copyLabel[copy]}
       </button>

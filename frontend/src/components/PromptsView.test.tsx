@@ -318,11 +318,16 @@ describe('PromptsView', () => {
     expect(screen.getByRole('button', { name: /Line 1, column 9/ })).toHaveTextContent('Did you mean .Title?')
     expect(screen.getByText('Fix 2 problems to save.')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled()
+
+    await userEvent.click(screen.getByRole('radio', { name: 'Preview' }))
     expect(screen.getByText('Fix the problems in the prompt to see it filled in.')).toBeInTheDocument()
 
+    // The problem is still listed under the preview, and pointing at it goes back to Edit.
     await userEvent.click(screen.getByRole('button', { name: /Line 1, column 9/ }))
 
     const body = screen.getByRole<HTMLTextAreaElement>('textbox', { name: 'Prompt text' })
+    expect(screen.getByRole('radio', { name: 'Edit' })).toBeChecked()
+    expect(body).toBeVisible()
     expect(body).toHaveFocus()
     expect([body.selectionStart, body.selectionEnd]).toEqual([8, 14])
   })
@@ -514,6 +519,7 @@ describe('PromptsView', () => {
   it('previews with the items the prompt applies to', async () => {
     render(<Harness />)
     await waitForCheck()
+    await userEvent.click(screen.getByRole('radio', { name: 'Preview' }))
 
     const preview = screen.getByRole('combobox', { name: 'Preview with' })
     expect(
@@ -543,21 +549,116 @@ describe('PromptsView', () => {
   it('inserts a variable from the cheat sheet', async () => {
     render(<Harness />)
 
-    await userEvent.click(screen.getByRole('tab', { name: 'Variables' }))
-
-    expect(screen.getByRole('tab', { name: 'Variables' })).toHaveAttribute('aria-selected', 'true')
-    expect(screen.getByRole('tabpanel')).toHaveTextContent('Values are for #7.')
+    const sheet = within(screen.getByRole('complementary', { name: 'Variables' }))
+    expect(sheet.getByRole('heading', { name: 'Variables' })).toBeInTheDocument()
+    expect(await sheet.findByText(/Values are for #7\./)).toBeInTheDocument()
 
     const body = screen.getByRole<HTMLTextAreaElement>('textbox', { name: 'Prompt text' })
     body.setSelectionRange(0, 0)
 
-    await userEvent.click(screen.getByRole('button', { name: /\{\{\.Number\}\}/ }))
+    await userEvent.click(sheet.getByRole('button', { name: /\{\{\.Number\}\}/ }))
 
     expect(body.value.startsWith('{{.Number}}')).toBe(true)
+  })
 
-    await userEvent.click(screen.getByRole('tab', { name: 'Variables' }))
-    await userEvent.keyboard('{ArrowLeft}')
-    expect(screen.getByRole('tab', { name: 'Preview' })).toHaveAttribute('aria-selected', 'true')
+  it('opens in Edit, and Preview shows the prompt filled in in the text’s place', async () => {
+    render(<Harness />)
+    await waitForCheck()
+
+    const body = screen.getByRole<HTMLTextAreaElement>('textbox', { name: 'Prompt text' })
+    expect(screen.getByRole('radiogroup', { name: 'Show the prompt as' })).toBeInTheDocument()
+    expect(screen.getByRole('radio', { name: 'Edit' })).toBeChecked()
+    expect(body).toBeVisible()
+    expect(screen.getByText('for variables', { exact: false })).toBeInTheDocument()
+    expect(screen.queryByRole('region', { name: 'Filled-in prompt' })).not.toBeInTheDocument()
+
+    await userEvent.type(body, ' Thanks!')
+    await userEvent.click(screen.getByRole('radio', { name: 'Preview' }))
+
+    expect(body).not.toBeVisible()
+    expect(screen.getByText('As a launch sends it')).toBeInTheDocument()
+    expect(
+      within(screen.getByRole('region', { name: 'Filled-in prompt' })).getByText(/Review pull request #7/),
+    ).toBeInTheDocument()
+    // The problems list stays under the frame.
+    expect(screen.getByText('No problems')).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('radio', { name: 'Edit' }))
+
+    expect(screen.getByRole('textbox', { name: 'Prompt text' })).toBe(body)
+    expect(body).toBeVisible()
+    expect(body.value.endsWith(' Thanks!')).toBe(true)
+    expect(screen.queryByRole('region', { name: 'Filled-in prompt' })).not.toBeInTheDocument()
+  })
+
+  it('switches between Edit and Preview with ⇧⌘P, even while typing', async () => {
+    render(<Harness />)
+    await waitForCheck()
+
+    const body = screen.getByRole<HTMLTextAreaElement>('textbox', { name: 'Prompt text' })
+    await userEvent.click(body)
+    const before = body.value
+
+    await userEvent.keyboard('{Meta>}{Shift>}p{/Shift}{/Meta}')
+
+    expect(screen.getByRole('radio', { name: 'Preview' })).toBeChecked()
+    expect(body).not.toBeVisible()
+    expect(screen.getByRole('region', { name: 'Filled-in prompt' })).toHaveFocus()
+
+    await userEvent.keyboard('{Meta>}{Shift>}p{/Shift}{/Meta}')
+
+    expect(screen.getByRole('radio', { name: 'Edit' })).toBeChecked()
+    expect(body).toBeVisible()
+    expect(body).toHaveFocus()
+    // The shortcut typed nothing.
+    expect(body.value).toBe(before)
+  })
+
+  it('goes back to Edit to insert a variable while previewing', async () => {
+    render(<Harness />)
+    await waitForCheck()
+
+    const body = screen.getByRole<HTMLTextAreaElement>('textbox', { name: 'Prompt text' })
+    body.setSelectionRange(0, 0)
+    await userEvent.click(screen.getByRole('radio', { name: 'Preview' }))
+    expect(body).not.toBeVisible()
+
+    await userEvent.click(
+      within(screen.getByRole('complementary', { name: 'Variables' })).getByRole('button', {
+        name: /\{\{\.Number\}\}/,
+      }),
+    )
+
+    expect(screen.getByRole('radio', { name: 'Edit' })).toBeChecked()
+    expect(body).toBeVisible()
+    expect(body.value.startsWith('{{.Number}}')).toBe(true)
+
+    // A syntax snippet goes in the same way.
+    await userEvent.click(screen.getByRole('radio', { name: 'Preview' }))
+    await userEvent.click(
+      within(screen.getByRole('region', { name: 'Syntax' })).getByRole('button', { name: /\{\{\/\* note \*\/\}\}/ }),
+    )
+
+    expect(screen.getByRole('radio', { name: 'Edit' })).toBeChecked()
+    expect(body.value).toContain('{{/*  */}}')
+  })
+
+  it('keeps the view while moving between prompts, and opens a new one in Edit', async () => {
+    render(<Harness />)
+    await waitForCheck()
+
+    await userEvent.click(screen.getByRole('radio', { name: 'Preview' }))
+    await userEvent.click(library().getByRole('button', { name: /Quick look/ }))
+
+    expect(screen.getByRole('textbox', { name: 'Nickname' })).toHaveValue('Quick look')
+    expect(screen.getByRole('radio', { name: 'Preview' })).toBeChecked()
+    expect(screen.getByRole('combobox', { name: 'Preview with' })).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: 'New' }))
+
+    expect(library().getByText('New prompt')).toBeInTheDocument()
+    expect(screen.getByRole('radio', { name: 'Edit' })).toBeChecked()
+    expect(screen.getByRole('textbox', { name: 'Prompt text' })).toBeVisible()
   })
 
   it('shows a check that could not run', async () => {
@@ -935,6 +1036,9 @@ describe('PromptsView review replies', () => {
     await waitFor(() => {
       expect(lastCheck().input.purpose).toBe('reply')
     })
+    await userEvent.click(screen.getByRole('radio', { name: 'Preview' }))
+    expect(screen.getByRole('radiogroup', { name: 'Show the reply as' })).toBeInTheDocument()
+    expect(screen.getByText('As the review sheet fills it in')).toBeInTheDocument()
 
     expect(lastCheck()).toEqual(expect.objectContaining({ id: 21, itemId: 1, inWorktree: false, atPrHead: false }))
     expect(

@@ -162,6 +162,15 @@ export function EyeIcon(props: IconProps) {
   )
 }
 
+// PencilIcon stands for writing or editing text.
+export function PencilIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M15.5 5.5l3 3M4.5 19.5l1-4L16 5a2.1 2.1 0 0 1 3 3L8.5 18.5l-4 1z" />
+    </Icon>
+  )
+}
+
 // CommentIcon stands for comments.
 export function CommentIcon(props: IconProps) {
   return (
