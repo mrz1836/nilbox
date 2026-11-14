@@ -393,6 +393,40 @@ describe('ReleaseSheet', () => {
     expect(onWatch).toHaveBeenCalledExactlyOnceWith(4)
   })
 
+  it('warns when the shell’s environment couldn’t be read, still offers the release, and drops it in iTerm2', async () => {
+    const unread =
+      `${brand.name} couldn't read your shell's environment, so your ssh agent (or your password manager's) ` +
+      'may be missing. If the push fails, release in your terminal.'
+
+    // As Decide works it out: a run in the terminal has the terminal's own environment.
+    platform.prepareRelease.mockImplementation((req) =>
+      offerFor(req).then((o) => ({
+        ...o,
+        checks:
+          req.runsIn === 'terminal'
+            ? []
+            : [releaseCheck({ id: 'shell', state: 'warn', text: unread, fixes: ['checkAgain'] })],
+      })),
+    )
+    renderSheet()
+
+    const s = await sheet()
+    const item = within(s.getByRole('list', { name: 'Checks' })).getByRole('listitem')
+
+    expect(item).toHaveTextContent(unread)
+    expect(item.querySelector('.sr-only')).toHaveTextContent('Warning:')
+    expect(s.getByRole('button', { name: 'Release v1.4.3' })).toBeEnabled()
+
+    await userEvent.click(within(item).getByRole('button', { name: 'Check again' }))
+    await waitFor(() => {
+      expect(lastRequest()).toMatchObject({ runsIn: 'app', refresh: true })
+    })
+
+    await userEvent.click(s.getByRole('radio', { name: 'iTerm2' }))
+    expect(await s.findByRole('button', { name: 'Release v1.4.3 in iTerm2' })).toBeEnabled()
+    expect(s.queryByText(unread)).not.toBeInTheDocument()
+  })
+
   it('says why the clone couldn’t be checked, and checks again', async () => {
     platform.prepareRelease.mockRejectedValueOnce(new Error('no clone of the repository'))
     renderSheet()

@@ -318,19 +318,9 @@ func (f *fakeProcs) sent() []syscall.Signal {
 	return append([]syscall.Signal(nil), f.signals...)
 }
 
-// shellScript is what a terminal's script does, without the pseudo-terminal: record the
-// shell's PID, run the command into the log, and write its exit status under a temporary
-// name and rename it. With NO_EXIT_FILE set, the shell ends without one, as when the
-// terminal window closes mid-run.
-const shellScript = `printf '%s\n' "$$" > "$PID_FILE"
-"$@" >> "$LOG_FILE" 2>&1
-status=$?
-if [ -n "${NO_EXIT_FILE:-}" ]; then exit "$status"; fi
-printf '%s\n' "$status" > "$EXIT_FILE.tmp" && mv "$EXIT_FILE.tmp" "$EXIT_FILE"
-exit "$status"`
-
-// fakeTerminal opens a run as a terminal would, with /bin/sh running shellScript, and no
-// window. It records each run it was asked to open.
+// fakeTerminal opens a run as a terminal would, with /bin/sh running
+// testutil.TerminalScript, and no window. It records each run it was asked to open.
+// scriptruntest.Terminal is the one the other suites share; these tests can't import it.
 type fakeTerminal struct {
 	t       *testing.T
 	err     error
@@ -381,7 +371,7 @@ func (f *fakeTerminal) OpenRun(ctx context.Context, run TerminalRun) error {
 	}
 
 	proc, err := execpath.Start(context.WithoutCancel(ctx), execpath.Cmd{
-		Path: "/bin/sh", Args: append([]string{"-c", shellScript, "sh"}, run.Argv...), Dir: run.Dir, Env: env,
+		Path: "/bin/sh", Args: append([]string{"-c", testutil.TerminalScript, "sh"}, run.Argv...), Dir: run.Dir, Env: env,
 	})
 	if err != nil {
 		return err

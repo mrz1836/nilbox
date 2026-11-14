@@ -1,7 +1,9 @@
 // Package scriptruntest is the runner the suites of scriptrun's kinds share (hooks,
 // scripts, and release): a real scriptrun Engine and its Service over a fresh database,
-// the app's next start over the same history, and waits for a run's end that look again
-// only when the engine says the runs changed, never on a timer.
+// the app's next start over the same history, a fake terminal app that runs each run
+// meant for the user's terminal under /bin/sh (Terminal), and waits for a run's end that
+// look again only when the engine says the runs changed, never on a timer (AwaitShell
+// alone polls, for a shell the engine notes without telling).
 //
 // It is test support only, built on internal/testutil: only _test.go files may import
 // it, which a repoguard test enforces, so none of it reaches the app.
@@ -17,6 +19,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/mrz1836/nilbox/internal/clonelock"
@@ -44,21 +47,36 @@ type Harness struct {
 	Engine *scriptrun.Engine
 	Runs   *scriptrun.Service
 
-	t       testing.TB
-	home    string
-	logger  *slog.Logger
-	changes *changes
-	wait    time.Duration
+	t        testing.TB
+	home     string
+	logger   *slog.Logger
+	terminal scriptrun.TerminalOpener
+	changes  *changes
+	wait     time.Duration
+}
+
+// Option sets up a Harness as New builds it.
+type Option func(*Harness)
+
+// WithTerminal has the harness's engines, the next start's included, open the runs in
+// the terminal in term, such as a Terminal. Without it, a run in the terminal fails to
+// start.
+func WithTerminal(term scriptrun.TerminalOpener) Option {
+	return func(h *Harness) { h.terminal = term }
 }
 
 // New returns a Harness whose runs' folders show under home with ~, and whose engine
 // logs to logger (nil discards).
-func New(t testing.TB, home string, logger *slog.Logger) *Harness {
+func New(t testing.TB, home string, logger *slog.Logger, opts ...Option) *Harness {
 	t.Helper()
 
 	h := &Harness{
 		DB: testutil.DB(t), LogDir: filepath.Join(t.TempDir(), "script-runs"), Locks: clonelock.New(),
 		t: t, home: home, logger: logger, changes: newChanges(), wait: Wait,
+	}
+
+	for _, opt := range opts {
+		opt(h)
 	}
 
 	h.Engine = h.engine(nil)
@@ -89,6 +107,29 @@ func (h *Harness) Await(cond func() bool, msgAndArgs ...any) {
 	h.t.Helper()
 
 	h.await(cond, func() string { return "the condition never held" }, msgAndArgs...)
+}
+
+// shellPoll is how often AwaitShell looks again.
+const shellPoll = 20 * time.Millisecond
+
+// AwaitShell waits until the engine has seen the shell the terminal runs the run id in:
+// its PID recorded, so the shell's end is read as the run's, with its exit status or
+// without one. A test that ends such a shell, as a user closes the terminal, waits for
+// this first, since a shell that comes and goes unseen reads as a terminal that never ran
+// the command, once the engine's wait for it is up. The engine tells no change as it notes
+// a shell (the window shows no PID, so telling it would only list the runs again), so this
+// wait alone looks again on a timer, every shellPoll, up to Wait, reading the run's
+// record as scriptrun's own tests do.
+func (h *Harness) AwaitShell(id int64) {
+	h.t.Helper()
+
+	require.EventuallyWithT(h.t, func(c *assert.CollectT) {
+		var pid int
+
+		err := h.DB.QueryRowContext(h.t.Context(), `SELECT pid FROM script_runs WHERE id = ?`, id).Scan(&pid)
+		require.NoError(c, err, "read run %d's record", id)
+		assert.Positive(c, pid, "the engine has noted run %d's shell", id)
+	}, h.wait, shellPoll)
 }
 
 // Next returns the runner as the app's next start builds it, over the same history, logs,
@@ -127,6 +168,7 @@ func (h *Harness) Restart(id int64, verifiers map[scriptrun.Kind]scriptrun.Verif
 func (h *Harness) engine(verifiers map[scriptrun.Kind]scriptrun.Verifier) *scriptrun.Engine {
 	e := scriptrun.NewEngine(scriptrun.Config{
 		DB: h.DB, Locks: h.Locks, LogDir: h.LogDir, Home: h.home, Logger: h.logger, Changed: h.changes.tell,
+		Terminal: h.terminal,
 	})
 
 	for kind, v := range verifiers {

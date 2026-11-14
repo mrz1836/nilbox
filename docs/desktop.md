@@ -941,9 +941,8 @@ Each pull request or issue in the inbox is a card three lines high:
    for the worktree's path. The inbox never lists the worktrees itself. An item with an agent
    session running, or one that ended in the last day, is tagged with what it is doing, as in
    **Claude · needs approval · 2m**; click it for the item's sessions (see
-   [Following a session](#following-a-session)). An item with unread
-   [notifications on GitHub](#github-notifications) is tagged with how many, as in **2 unread
-   on GitHub**; hover the tag for GitHub's reasons, such as **Review requested, Mentioned**.
+   [Following a session](#following-a-session)). The card says nothing of your
+   [notifications on GitHub](#github-notifications): the toolbar's GitHub button lists them.
 3. Its details, in a fixed order. Each detail before the projects and labels keeps the same
    width on every card, sized for the longest value a card should meet, so the details line up
    from card to card. Hover any of them for the whole sentence, which is also what a screen
@@ -1741,7 +1740,7 @@ sent.
 **The settings.** **Settings → GitHub notifications** also says what your GitHub inbox held at
 the last check, and when, with **Check again**; that GitHub refuses the token, and when it is
 asked again; or why the last check failed. Nilbox reads the newest 1,000, and says so when
-GitHub holds more. Turning reading off hides the button and the cards' tags at once, and
+GitHub holds more. Turning reading off hides the button at once, and
 turning reading or clearing on checks GitHub at once.
 
 **Clearing.** **Clear them automatically**, off by default and only while reading is on,

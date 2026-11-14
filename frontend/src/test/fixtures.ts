@@ -47,7 +47,6 @@ import type {
   IssueResult,
   IssueTimelineItem,
   IssueTimelinePage,
-  ItemThreads,
   InboxList,
   InboxSnapshot,
   Info,
@@ -1106,7 +1105,7 @@ export function githubThreads(
 ): GitHubThreadsSnapshot {
   const { status, ...rest } = overrides
 
-  return { byItem: [], unread: [], queued: [], backlog: 0, recent: [], ...rest, status: threadsStatus(status) }
+  return { unread: [], queued: [], backlog: 0, recent: [], ...rest, status: threadsStatus(status) }
 }
 
 // queuedClear is the notification about pull request #7 of example-repo, queued to be
@@ -1170,21 +1169,6 @@ export function previewThread(overrides: Partial<PreviewThread> = {}): PreviewTh
 // marking a notification done.
 export function threadsPreview(overrides: Partial<GitHubThreadsPreview> = {}): GitHubThreadsPreview {
   return { reading: true, auto: false, action: 'done', count: 0, repos: [], held: [], ...overrides }
-}
-
-// itemThreads are the threads about pull request #7 of example-repo: one, unread, asking
-// for the user's review.
-export function itemThreads(overrides: Partial<ItemThreads> = {}): ItemThreads {
-  return {
-    owner: 'acme-org',
-    name: 'example-repo',
-    kind: 'pr',
-    number: 7,
-    unread: 1,
-    total: 1,
-    reasons: ['review_requested'],
-    ...overrides,
-  }
 }
 
 // githubThread is an unread notification asking for the user's review of pull request #7

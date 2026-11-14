@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import { FIXED_NOW } from '../test/clock'
-import { githubThread, githubThreads, item, itemThreads, threadsStatus } from '../test/fixtures'
+import { githubThread, threadsStatus } from '../test/fixtures'
 import {
   askAgainText,
   badgeText,
@@ -10,16 +10,11 @@ import {
   countsText,
   groupWhere,
   itemURL,
-  noTags,
   reasonsText,
   reasonText,
   refusal,
-  tagText,
-  tagTitle,
   threadGroups,
   threadItem,
-  tagOf,
-  threadTags,
 } from './githubThreads'
 
 describe('threadItem and itemURL', () => {
@@ -154,81 +149,5 @@ describe('threadGroups', () => {
       ['thread-6', null, 'acme-org/example-repo · Release'],
       ['thread-7', null, 'Unknown'],
     ])
-  })
-})
-
-describe('threadTags', () => {
-  it('maps each item with unread notifications, leaving out those with none unread', () => {
-    const tags = threadTags(
-      githubThreads({
-        byItem: [itemThreads(), itemThreads({ number: 8, unread: 0, total: 2 }), itemThreads({ number: 9, unread: 2 })],
-      }),
-    )
-
-    expect([...tags.keys()]).toEqual(['acme-org/example-repo#7', 'acme-org/example-repo#9'])
-    expect(tagOf(tags, item({ repo: 'Acme-Org/Example-Repo', number: 9 }))?.unread).toBe(2)
-    expect(tagOf(tags, item({ number: 8 }))).toBeUndefined()
-  })
-
-  it('keeps each entry that shows the same, and the whole map when nothing changed', () => {
-    const was = threadTags(githubThreads({ byItem: [itemThreads(), itemThreads({ number: 9, unread: 2 })] }))
-    const same = threadTags(githubThreads({ byItem: [itemThreads(), itemThreads({ number: 9, unread: 2 })] }), was)
-    const changed = threadTags(githubThreads({ byItem: [itemThreads(), itemThreads({ number: 9, unread: 3 })] }), was)
-
-    expect(same).toBe(was)
-    expect(changed).not.toBe(was)
-    expect(changed.get('acme-org/example-repo#7')).toBe(was.get('acme-org/example-repo#7'))
-    expect(changed.get('acme-org/example-repo#9')).not.toBe(was.get('acme-org/example-repo#9'))
-    expect(changed.get('acme-org/example-repo#9')?.unread).toBe(3)
-  })
-
-  it('holds only what a card shows, so another read notification changes nothing', () => {
-    const was = threadTags(githubThreads({ byItem: [itemThreads({ unread: 2, total: 2 })] }))
-    const more = threadTags(githubThreads({ byItem: [itemThreads({ unread: 2, total: 5 })] }), was)
-
-    expect(was.get('acme-org/example-repo#7')).toEqual({ unread: 2, reasons: ['review_requested'] })
-    expect(more).toBe(was)
-  })
-
-  it('takes in a change of reasons, and lets an item that left go', () => {
-    const was = threadTags(githubThreads({ byItem: [itemThreads(), itemThreads({ number: 9 })] }))
-    const reasons = threadTags(githubThreads({ byItem: [itemThreads({ reasons: ['mention'] })] }), was)
-
-    expect(reasons.size).toBe(1)
-    expect(reasons.get('acme-org/example-repo#7')).not.toBe(was.get('acme-org/example-repo#7'))
-    expect(reasons.get('acme-org/example-repo#7')?.reasons).toEqual(['mention'])
-  })
-
-  it('holds nothing before the mirror loads, or while the app does not read them', () => {
-    const was = threadTags(githubThreads({ byItem: [itemThreads()] }))
-
-    expect(threadTags(null)).toBe(noTags)
-    expect(threadTags(githubThreads({ status: { reading: false }, byItem: [itemThreads()] }))).toBe(noTags)
-    expect(threadTags(githubThreads({ status: { reading: false } }), was)).toBe(noTags)
-    expect(threadTags(githubThreads())).toBe(noTags)
-    expect(threadTags(githubThreads(), was)).toBe(noTags)
-  })
-
-  it('keeps the newest entry of an item GitHub names in two cases', () => {
-    const tags = threadTags(
-      githubThreads({ byItem: [itemThreads({ unread: 2 }), itemThreads({ owner: 'Acme-Org', unread: 5 })] }),
-    )
-
-    expect(tags.size).toBe(1)
-    expect(tagOf(tags, item())?.unread).toBe(2)
-  })
-})
-
-describe('the card’s tag', () => {
-  it('counts the unread, in the singular for one', () => {
-    expect(tagText(1)).toBe('1 unread on GitHub')
-    expect(tagText(2)).toBe('2 unread on GitHub')
-  })
-
-  it('gives in its tooltip why GitHub notified you about the item, read notifications included', () => {
-    expect(tagTitle({ unread: 2, reasons: ['mention', 'review_requested'] })).toBe(
-      '2 unread on GitHub · GitHub notified you: Mentioned, Review requested',
-    )
-    expect(tagTitle({ unread: 1, reasons: [] })).toBe('1 unread on GitHub')
   })
 })

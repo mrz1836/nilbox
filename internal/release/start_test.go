@@ -44,6 +44,9 @@ const (
 type rigOptions struct {
 	base   string
 	module string
+
+	// terminal gives the runner a terminal (releaseRig.term) for the runs in it.
+	terminal bool
 }
 
 // releaseRig is a release end to end: a clone of a local bare origin, isolated from the
@@ -76,6 +79,9 @@ type releaseRig struct {
 	engine *scriptrun.Engine
 	runs   *scriptrun.Service
 
+	// term is the terminal the runs in it open in, with rigOptions.terminal, or nil.
+	term *scriptruntest.Terminal
+
 	tool     ToolFacts
 	magexEnv string
 }
@@ -95,7 +101,14 @@ func newReleaseRig(t *testing.T, opts rigOptions) *releaseRig {
 		Permission: "WRITE", DefaultBranch: branchMaster, HeadOID: r.second, Checks: ChecksSuccess,
 	}}}
 
-	r.runner = scriptruntest.New(t, r.root, r.logs.Logger())
+	var withTerm []scriptruntest.Option
+
+	if opts.terminal {
+		r.term = scriptruntest.NewTerminal(t)
+		withTerm = append(withTerm, scriptruntest.WithTerminal(r.term))
+	}
+
+	r.runner = scriptruntest.New(t, r.root, r.logs.Logger(), withTerm...)
 	r.locks, r.engine, r.runs = r.runner.Locks, r.runner.Engine, r.runner.Runs
 	r.notices, r.events = &fakeNotifier{}, &testutil.Events{}
 	r.magex("1.30.2", testutil.FakeRun{})
@@ -162,10 +175,21 @@ func requestFor(o Offer) StartRequest {
 func (r *releaseRig) release() int64 {
 	r.t.Helper()
 
-	o := r.prepare(PrepareRequest{})
+	return r.releaseIn("")
+}
+
+// releaseIn prepares a patch to run in runsIn, "" for the setting, and starts it there,
+// failing the test when it can't start.
+func (r *releaseRig) releaseIn(runsIn integrationprefs.RunsIn) int64 {
+	r.t.Helper()
+
+	o := r.prepare(PrepareRequest{RunsIn: runsIn})
 	require.True(r.t, o.Ready, "%+v", o.Checks)
 
-	id, err := r.svc.Start(r.t.Context(), requestFor(o))
+	req := requestFor(o)
+	req.RunsIn = runsIn
+
+	id, err := r.svc.Start(r.t.Context(), req)
 	require.NoError(r.t, err)
 	require.Positive(r.t, id)
 
@@ -518,6 +542,126 @@ func TestStartReleases(t *testing.T) {
 	_, err = r.svc.Prepare(t.Context(), PrepareRequest{Repo: sdkRepo})
 	require.NoError(t, err)
 	assert.Equal(t, 2, r.github.calls(), "a release ended: the sheet reads the clone again")
+}
+
+// releaseInTerminal starts a patch in the terminal with magex replaying recording, held
+// open until the test writes the file it returns or closes the terminal, and waits for
+// the engine to see its shell. The terminal's shell starts with the fake magex's entry, as the user's login
+// shell would hold the real one's PATH.
+func (r *releaseRig) releaseInTerminal(recording string) (int64, string) {
+	r.t.Helper()
+
+	proceed := filepath.Join(r.t.TempDir(), "proceed")
+	run := r.replay(recording)
+	run.Sleep, run.WaitFor = time.Minute, proceed
+
+	r.magex("1.30.2", run)
+	r.term.Env = []string{r.magexEnv}
+
+	id := r.releaseIn(integrationprefs.RunsInTerminal)
+	r.runner.AwaitShell(id)
+
+	return id, proceed
+}
+
+func TestAReleaseInTheTerminalIsVerifiedAsOneInTheApp(t *testing.T) {
+	t.Parallel()
+
+	r := newReleaseRig(t, rigOptions{base: shownVersion, terminal: true})
+	testutil.RunGit(t, r.clone, "checkout", "-q", "-b", recFeature)
+	r.after.set(r.tagged(recVersion, r.second, true))
+
+	id, proceed := r.releaseInTerminal("patch-feature-behind")
+
+	opened := r.term.Opened()
+	require.Len(t, opened, 1, "the release opened in the terminal")
+	assert.Equal(t, r.clone, opened[0].Dir)
+	assert.Equal(t, r.tool.Path, opened[0].Argv[0], "magex runs there itself")
+	assert.Contains(t, opened[0].Argv, "push=true")
+
+	holder, held := r.locks.Holder(r.clone)
+	require.True(t, held, "the clone is held while the terminal runs the release")
+	assert.Equal(t, clonelock.KindRelease, holder.Kind)
+
+	going, err := r.runs.Run(t.Context(), id)
+	require.NoError(t, err)
+	assert.True(t, going.Status.Live(), "Runs shows it going")
+	assert.Equal(t, scriptrun.RunsInTerminal, going.RunsIn, "in the terminal")
+
+	testutil.WriteFile(t, proceed, "") // magex ends, as it would in the user's terminal
+
+	run := r.ended(id)
+
+	assert.Equal(t, scriptrun.StatusSucceeded, run.Status)
+	assert.Equal(t, "v1.4.3 is on GitHub.", run.Summary)
+	assert.Equal(t, scriptrun.RunsInTerminal, run.RunsIn)
+	assert.Equal(t, Result{
+		Kind: ResultReleased, Version: recVersion, Tag: recVersion, Commit: r.second, Head: r.second, Tagged: true,
+		Branch: recFeature, Original: recFeature, Back: true,
+		TagURL:      "https://github.com/acme-org/sdk/releases/tag/v1.4.3",
+		WorkflowURL: "https://github.com/acme-org/sdk/actions?query=branch%3Av1.4.3",
+		Commands:    []string{},
+	}, resultOf(t, run), "verified as a release in the app is")
+	assert.Len(t, r.notices.all(), 1, "and told the same way")
+}
+
+func TestAReleaseWhoseTerminalClosedIsCheckedForItsTagAndBranch(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		sent    bool
+		status  scriptrun.Status
+		summary string
+		kind    ResultKind
+		told    int
+	}{
+		{
+			name: "its tag reached GitHub", sent: true, status: scriptrun.StatusSucceeded,
+			summary: "v1.4.3 is on GitHub.", kind: ResultReleased, told: 1,
+		},
+		{
+			name: "its tag stayed on this Mac", status: scriptrun.StatusInterrupted,
+			summary: "v1.4.3 is tagged on this Mac but isn't on GitHub.", kind: ResultNotPushed,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			r := newReleaseRig(t, rigOptions{base: shownVersion, terminal: true})
+			testutil.RunGit(t, r.clone, "checkout", "-q", "-b", recFeature)
+
+			// The user closes the terminal once magex tagged, and maybe pushed: magex is hung
+			// up where it is, and its shell ends with no exit status.
+			r.after.set(r.tagged(recVersion, r.second, tt.sent))
+
+			id, _ := r.releaseInTerminal("sigterm-after-tag")
+
+			// The tab closes mid-run, not mid-start: once magex has said all it did, which is
+			// how the release knows the tag is its own.
+			rec := loadRecording(t, "sigterm-after-tag")
+			r.waitFor(id, rec.Lines[len(rec.Lines)-1].Text)
+			require.NoError(t, r.term.Close())
+
+			run := r.ended(id)
+
+			res := resultOf(t, run)
+			assert.Equal(t, tt.status, run.Status)
+			assert.Equal(t, tt.summary, run.Summary)
+			assert.Equal(t, tt.kind, res.Kind)
+			assert.Equal(t, recVersion, res.Tag)
+			assert.True(t, res.Tagged, "its log says magex made the tag")
+			assert.Equal(t, recFeature, res.Branch, "it says where the clone is")
+			assert.True(t, res.Back)
+			assert.Equal(t, gitread.OperationNone, res.InProgress)
+			assert.Len(t, r.notices.all(), tt.told)
+
+			_, held := r.locks.Holder(r.clone)
+			assert.False(t, held, "the clone is free once the shell is gone")
+		})
+	}
 }
 
 func TestStartReleasedANewerCommit(t *testing.T) {

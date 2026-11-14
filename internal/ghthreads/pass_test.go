@@ -428,8 +428,6 @@ func TestReadingOffSendsNothing(t *testing.T) {
 	assert.False(t, snap.Status.Reading)
 	assert.Zero(t, snap.Status.Count)
 	assert.Zero(t, snap.Status.Unread)
-	assert.NotNil(t, snap.ByItem)
-	assert.Empty(t, snap.ByItem)
 	assert.NotNil(t, snap.Unread)
 	assert.Empty(t, snap.Unread)
 
@@ -507,7 +505,6 @@ func TestAccountSwitchWalksFully(t *testing.T) {
 	snap := r.snapshot()
 	assert.Equal(t, otherLogin, snap.Status.Account)
 	assert.Equal(t, 3, snap.Status.Count, "only this account's threads are shown")
-	assert.Len(t, snap.ByItem, 3)
 	assert.Equal(t, 60, r.rows(viewerLogin), "the other account's are kept a while")
 
 	r.clock.Advance(OtherAccountsKept)

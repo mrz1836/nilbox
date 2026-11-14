@@ -462,9 +462,7 @@ func boundCalls(t *testing.T) map[string]boundCall {
 		},
 		"ghthreads.Service.Snapshot": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
 			got, err := c.GHThreads.Snapshot(ctx)
-			require.Len(t, got.ByItem, 1, "the pull request's notification")
-			require.NotEmpty(t, got.ByItem[0].Reasons)
-			require.Len(t, got.Unread, 1)
+			require.Len(t, got.Unread, 1, "the pull request's notification")
 
 			return got, err
 		},
@@ -472,7 +470,7 @@ func boundCalls(t *testing.T) map[string]boundCall {
 			// The fake runner lends no token, so the pass asks GitHub nothing and says why.
 			got, err := c.GHThreads.CheckNow(ctx)
 			require.NotEmpty(t, got.Status.LastError)
-			require.Len(t, got.ByItem, 1, "what the last pass read stays")
+			require.Len(t, got.Unread, 1, "what the last pass read stays")
 
 			return got, err
 		},

@@ -3,7 +3,6 @@ import userEvent from '@testing-library/user-event'
 import type { ReactElement } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 
-import { noTags } from '../lib/githubThreads'
 import type { GitHubThreadsState } from '../lib/useGitHubThreads'
 import type { GitHubThreadsSnapshot, Settings, ThreadRules } from '../platform'
 import { at } from '../test/clock'
@@ -25,7 +24,6 @@ function state(
 ): GitHubThreadsState {
   return {
     snapshot,
-    byItem: noTags,
     error: '',
     reload: vi.fn(),
     checkNow: vi.fn(() => Promise.resolve({ ok: true as const, data: githubThreads() })),

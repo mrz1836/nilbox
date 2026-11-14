@@ -3,7 +3,6 @@ import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 
 import { brand } from '../generated/brand'
-import { noTags } from '../lib/githubThreads'
 import { at } from '../test/clock'
 import { account, budgetGauge, githubThread, githubThreads, notification, reading, settings } from '../test/fixtures'
 import { AppHeader, type AppHeaderProps } from './AppHeader'
@@ -64,7 +63,6 @@ describe('AppHeader', () => {
       notifications: { log: { items: [], unread: 0 }, error: '', markRead: vi.fn(), markError: '', clear: vi.fn() },
       githubThreads: {
         snapshot: githubThreads({ status: { count: 3, unread: 1 }, unread: [githubThread()] }),
-        byItem: noTags,
         error: '',
         reload: vi.fn(),
         checkNow: vi.fn(() => Promise.resolve({ ok: true as const, data: githubThreads() })),
@@ -105,7 +103,6 @@ describe('AppHeader', () => {
     const { onOpenSettings } = renderHeader({
       githubThreads: {
         snapshot: githubThreads({ status: { count: 1, unread: 1 }, unread: [githubThread()] }),
-        byItem: noTags,
         error: '',
         reload: vi.fn(),
         checkNow,

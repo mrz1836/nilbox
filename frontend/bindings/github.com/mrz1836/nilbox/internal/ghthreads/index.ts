@@ -13,7 +13,6 @@ export {
 } from "./models.js";
 
 export type {
-    ItemThreads,
     Preview,
     PreviewHeld,
     PreviewRepo,

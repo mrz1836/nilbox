@@ -17,7 +17,6 @@ import {
   githubThread,
   githubThreads,
   item,
-  itemThreads,
   notification,
   itemResolution,
   linkedItem,
@@ -991,7 +990,6 @@ describe('App’s GitHub notifications', () => {
   const unread = () =>
     githubThreads({
       status: { count: 5, unread: 2 },
-      byItem: [itemThreads({ unread: 1 }), itemThreads({ number: 9 })],
       unread: [githubThread(), githubThread({ id: 1002, number: 9, title: 'Bump the parser' })],
     })
 
@@ -1060,26 +1058,16 @@ describe('App’s GitHub notifications', () => {
     expect(called).toEqual(['githubThreadsSnapshot'])
   })
 
-  it('tags each card with its unread notifications on GitHub, and again as they change', async () => {
+  it('leaves the cards out of it: only the toolbar’s button shows the unread notifications', async () => {
     platform.githubThreadsSnapshot.mockResolvedValue(unread())
     await renderApp()
 
-    expect(await screen.findByText('1 unread on GitHub')).toHaveAttribute(
-      'title',
-      '1 unread on GitHub · GitHub notified you: Review requested',
-    )
+    const card = await row('Add the widget cache')
 
-    platform.githubThreadsSnapshot.mockResolvedValue(
-      githubThreads({ byItem: [itemThreads({ unread: 2, reasons: ['mention', 'review_requested'] })] }),
-    )
-    act(() => {
-      emit('ghthreads:updated')
+    await waitFor(() => {
+      expect(within(toolbar()).getByTestId('github-threads-count')).toHaveAttribute('data-unread', 'true')
     })
-
-    expect(await screen.findByText('2 unread on GitHub')).toHaveAttribute(
-      'title',
-      '2 unread on GitHub · GitHub notified you: Mentioned, Review requested',
-    )
+    expect(card).not.toHaveTextContent(/on GitHub/)
   })
 
   it('turns automatic clearing on from the button, keeps the settings it stored, and offers it no more', async () => {
@@ -1135,12 +1123,14 @@ describe('App’s GitHub notifications', () => {
     await screen.findByRole('region', { name: 'GitHub notifications' })
   }
 
-  it('hides the button and every tag as soon as reading is turned off, and reads the mirror again', async () => {
+  it('hides the button as soon as reading is turned off, and reads the mirror again', async () => {
     rulesStored()
     // The mirror still says it reads them: nothing tells the window otherwise yet.
     platform.githubThreadsSnapshot.mockResolvedValue(unread())
     await renderApp()
-    await screen.findByText('1 unread on GitHub')
+    await waitFor(() => {
+      expect(toolbarButton()).toHaveAccessibleName('GitHub notifications, 5 in your inbox, 2 unread')
+    })
     await openGitHubSettings()
     const reads = platform.githubThreadsSnapshot.mock.calls.length
 
@@ -1154,10 +1144,10 @@ describe('App’s GitHub notifications', () => {
 
     await userEvent.click(screen.getByRole('button', { name: 'Close settings' }))
     expect(await screen.findByRole('region', { name: 'Review requested' })).toBeInTheDocument()
-    expect(screen.queryByText('1 unread on GitHub')).not.toBeInTheDocument()
+    expect(toolbarButton()).not.toBeInTheDocument()
   })
 
-  it('shares one mirror between the button, the cards, and the settings, so Check again in Settings updates all', async () => {
+  it('shares one mirror between the button and the settings, so Check again in Settings updates both', async () => {
     platform.githubThreadsSnapshot.mockResolvedValue(githubThreads({ status: { count: 3 } }))
     platform.checkGitHubThreadsNow.mockResolvedValue(unread())
     await renderApp()

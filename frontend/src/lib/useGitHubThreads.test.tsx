@@ -1,9 +1,8 @@
 import { act, renderHook, waitFor } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 
-import { githubThreads, item, itemThreads } from '../test/fixtures'
+import { githubThreads } from '../test/fixtures'
 import { emit, listening, platform } from '../test/platform'
-import { tagOf } from './githubThreads'
 import { useGitHubThreads } from './useGitHubThreads'
 
 vi.mock('../platform', () => import('../test/platform').then((fake) => fake.platform))
@@ -31,35 +30,6 @@ describe('useGitHubThreads', () => {
     expect(listening('ghthreads:updated')).toBe(1)
     unmount()
     expect(listening('ghthreads:updated')).toBe(0)
-  })
-
-  it('keeps an item’s entry while its tag shows the same, so only a changed card renders again', async () => {
-    platform.githubThreadsSnapshot.mockResolvedValue(
-      githubThreads({ byItem: [itemThreads(), itemThreads({ number: 9, unread: 2 })] }),
-    )
-
-    const { result } = renderHook(() => useGitHubThreads())
-
-    await waitFor(() => {
-      expect(result.current.byItem.size).toBe(2)
-    })
-
-    const seven = tagOf(result.current.byItem, item())
-    const nine = tagOf(result.current.byItem, item({ number: 9 }))
-
-    platform.githubThreadsSnapshot.mockResolvedValue(
-      githubThreads({ byItem: [itemThreads(), itemThreads({ number: 9, unread: 3 })] }),
-    )
-    act(() => {
-      emit('ghthreads:updated')
-    })
-
-    await waitFor(() => {
-      expect(tagOf(result.current.byItem, item({ number: 9 }))?.unread).toBe(3)
-    })
-
-    expect(tagOf(result.current.byItem, item())).toBe(seven)
-    expect(tagOf(result.current.byItem, item({ number: 9 }))).not.toBe(nine)
   })
 
   it('reads the mirror again on request, from the database alone', async () => {

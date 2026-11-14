@@ -3,13 +3,11 @@ package ghthreads
 import (
 	"context"
 	"fmt"
-	"slices"
 	"time"
 
 	"github.com/mrz1836/nilbox/internal/clock"
 	"github.com/mrz1836/nilbox/internal/ghthreads/internal/queries"
 	"github.com/mrz1836/nilbox/internal/item"
-	"github.com/mrz1836/nilbox/internal/repo"
 	"github.com/mrz1836/nilbox/internal/store"
 	"github.com/mrz1836/nilbox/internal/threadrules"
 )
@@ -19,10 +17,6 @@ import (
 type Snapshot struct {
 	// Status is how reading the notifications goes, and how many there are.
 	Status Status `json:"status"`
-
-	// ByItem has one entry per pull request or issue with threads, the most recently
-	// updated first, for the cards' tags.
-	ByItem []ItemThreads `json:"byItem"`
 
 	// Unread are the newest MaxUnread unread threads, whatever their subject, the newest
 	// first.
@@ -128,23 +122,6 @@ type Status struct {
 	Truncated bool `json:"truncated"`
 }
 
-// ItemThreads are the threads about one pull request or issue.
-type ItemThreads struct {
-	// Owner and Name are the item's repository, Kind and Number the item.
-	Owner  string    `json:"owner"`
-	Name   string    `json:"name"`
-	Kind   item.Kind `json:"kind"`
-	Number int       `json:"number"`
-
-	// Unread is how many of its threads are unread, and Total how many there are.
-	Unread int `json:"unread"`
-	Total  int `json:"total"`
-
-	// Reasons are GitHub's reasons for its threads (review_requested, mention, author,
-	// ...), each once, that of the most recently updated thread first.
-	Reasons []string `json:"reasons"`
-}
-
 // Thread is one notification.
 type Thread struct {
 	// ID is GitHub's ID of the thread.
@@ -182,8 +159,7 @@ func compared(s Snapshot) Snapshot {
 // snapshot builds the Snapshot of st's account, with reading on or off.
 func (s *Service) snapshot(ctx context.Context, reading bool, st syncState) (Snapshot, error) {
 	out := Snapshot{
-		Status: st.status(reading), ByItem: []ItemThreads{}, Unread: []Thread{}, Queued: []QueuedClear{},
-		Recent: []SettledClear{},
+		Status: st.status(reading), Unread: []Thread{}, Queued: []QueuedClear{}, Recent: []SettledClear{},
 	}
 
 	if !reading || st.Account == "" {
@@ -195,11 +171,8 @@ func (s *Service) snapshot(ctx context.Context, reading bool, st syncState) (Sna
 		return Snapshot{}, fmt.Errorf("read the GitHub notifications: %w", err)
 	}
 
-	byItem := map[string]int{}
-
 	for i := range rows {
 		out.count(&rows[i])
-		out.group(&rows[i], byItem)
 	}
 
 	if err = s.ledger(ctx, &out, st); err != nil {
@@ -260,37 +233,6 @@ func (s *Snapshot) count(r *queries.ListThreadsRow) {
 	}
 }
 
-// group adds r, the next row, the newest first, to the entry of the pull request or issue
-// it is about, if any; byItem holds each entry's index by item key.
-func (s *Snapshot) group(r *queries.ListThreadsRow, byItem map[string]int) {
-	key, ok := itemKey(r)
-	if !ok {
-		return
-	}
-
-	at, found := byItem[key]
-	if !found {
-		at = len(s.ByItem)
-		byItem[key] = at
-
-		s.ByItem = append(s.ByItem, ItemThreads{
-			Owner: r.RepoOwner, Name: r.RepoName, Kind: item.Kind(r.ItemKind), Number: int(r.Number),
-			Reasons: []string{},
-		})
-	}
-
-	entry := &s.ByItem[at]
-	entry.Total++
-
-	if r.Unread {
-		entry.Unread++
-	}
-
-	if r.Reason != "" && !slices.Contains(entry.Reasons, r.Reason) {
-		entry.Reasons = append(entry.Reasons, r.Reason)
-	}
-}
-
 // status is the Status st records, with reading on or off.
 func (st syncState) status(reading bool) Status {
 	out := Status{
@@ -303,16 +245,6 @@ func (st syncState) status(reading bool) Status {
 	}
 
 	return out
-}
-
-// itemKey keys the pull request or issue a row is about, as GitHub compares them; ok is
-// false for a row about any other subject.
-func itemKey(r *queries.ListThreadsRow) (string, bool) {
-	if !item.Kind(r.ItemKind).Valid() || r.Number <= 0 {
-		return "", false
-	}
-
-	return item.Ref{Repo: repo.Name{Owner: r.RepoOwner, Repo: r.RepoName}, Number: int(r.Number)}.Key(), true
 }
 
 // shownThread is a row as the window shows it.

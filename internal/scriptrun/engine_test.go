@@ -165,6 +165,44 @@ func TestTheAppLogGetsOneLinePerRunAndNoOutput(t *testing.T) {
 	assert.NotContains(t, logged, "secret-env-value", "nor does the environment")
 }
 
+func TestASucceededRunsWarningsReachItsResultAndTheAppLogAsCounts(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	spec := h.spec(testutil.FakeRun{Stdout: "ok\n"})
+	spec.Finish = func(context.Context, Ending, Outcome) Outcome {
+		return Outcome{
+			Status: StatusSucceeded, Warnings: []string{"warning: secret-warning-text"},
+			Unrecognized: []string{"secret-odd-line"}, UnrecognizedCount: 3,
+		}
+	}
+
+	rec := h.ended(h.start(spec))
+
+	assert.Equal(t, StatusSucceeded, rec.Status)
+	assert.Equal(t, []string{"warning: secret-warning-text"}, rec.Result.Warnings, "the result keeps them on success too")
+	assert.Equal(t, []string{"secret-odd-line"}, rec.Result.Unrecognized)
+	assert.Equal(t, 3, rec.Result.UnrecognizedCount)
+
+	require.Eventually(t, func() bool { return strings.Contains(h.logs.String(), "a run ended") }, wait, poll)
+
+	logged := h.logs.String()
+
+	var ended string
+
+	for line := range strings.SplitSeq(logged, "\n") {
+		if strings.Contains(line, "a run ended") {
+			ended = line
+		}
+	}
+
+	assert.Contains(t, ended, "level=INFO", "a run that succeeded is no warning, whatever its tool warned")
+	assert.Contains(t, ended, "warnings=1")
+	assert.Contains(t, ended, "unrecognized=3", "every unrecognized line is counted, not only those kept")
+	assert.NotContains(t, logged, "secret-warning-text", "the app log counts the warnings, never their text")
+	assert.NotContains(t, logged, "secret-odd-line")
+}
+
 func TestStopEndsARunWithTheLadder(t *testing.T) {
 	t.Parallel()
 
