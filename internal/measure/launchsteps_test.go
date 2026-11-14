@@ -216,14 +216,14 @@ func TestLaunchReportLinesWithoutAHold(t *testing.T) {
 
 	report := LaunchReport{
 		Elapsed: 3 * time.Second, Steps: LaunchSteps{Known: true, Confirmed: time.Second, Agent: 2 * time.Second},
-		PID: 7, Terminal: "iterm2", Permission: "full access",
+		PID: 7, Terminal: "iterm2", Permission: "plan mode",
 	}
 
 	assert.Equal(t, []string{
 		"launch.ms=3000 s=3.00",
 		"launch.steps held_ms=0 token_ms=0 confirmed_ms=1000 terminal_ms=0 agent_ms=2000",
 		"launch.terminal=iterm2",
-		"launch.permission=full access",
+		"launch.permission=plan mode",
 		"launch.pid=7 (stopped)",
 	}, report.Lines(), "a launch that wasn't held back gives no unheld time")
 }
