@@ -1,3 +1,5 @@
+import type { ReactNode } from 'react'
+
 import { brand } from '../generated/brand'
 import {
   budgets,
@@ -171,42 +173,93 @@ function PaceRow({ pace, perHour }: { pace: Pace | null; perHour: number }) {
   )
 }
 
-// WritesRow says what the app changed on GitHub for the user in the last hour, such as
-// taking them off an item's assignees, and how it paces those changes: what each spends,
-// the most it makes, and the reserve it leaves for everything else signed in as the user.
-// While GitHub has asked for a pause, it says until when.
-function WritesRow({ writes, now }: { writes: BudgetWrites; now: Date }) {
-  const held = writesHeld(writes, now)
-  const until = formatUntil(now, writes.heldUntil)
+interface LaneRowProps {
+  heading: string
+  // lane is what the app sent GitHub lately in one lane of writes, and how it paces it.
+  lane: BudgetWrites
+  now: Date
+  // amount is what the lane sent lately, beside the heading.
+  amount: ReactNode
+  description: string
+  // resumes names what waits out GitHub's pause, with its verb: "changes resume".
+  resumes: string
+}
+
+// LaneRow says what the app sent GitHub lately in one of its lanes of writes, and how it
+// paces them. While GitHub has asked for a pause, which holds every lane, it says until
+// when.
+function LaneRow({ heading, lane, now, amount, description, resumes }: LaneRowProps) {
+  const held = writesHeld(lane, now)
+  const until = formatUntil(now, lane.heldUntil)
 
   return (
     <div className="border-t border-border px-4 py-3">
       <div className="flex items-baseline justify-between gap-4 text-sm">
-        <span className="font-medium">Changes on GitHub</span>
-        <span className="whitespace-nowrap tabular-nums">
-          {formatCount(writes.lastHour)}
-          <span className="text-muted"> in the last hour</span>
-        </span>
+        <span className="font-medium">{heading}</span>
+        {amount}
       </div>
-      <p className="mt-1 text-xs text-muted">
-        {`Each spends 1 REST point. ${brand.name} makes at most ${String(writes.perMinute)} a minute and ${String(writes.perHour)} an hour, and none while REST is down to its last ${formatCount(writes.reserve)}.`}
-      </p>
+      <p className="mt-1 text-xs text-muted">{description}</p>
       {held && (
         <p className="mt-1 text-xs font-medium text-warning">
           {until === 'now' || until === ''
-            ? 'GitHub asked for a pause: changes resume shortly'
-            : `GitHub asked for a pause: changes resume in ${until}`}
+            ? `GitHub asked for a pause: ${resumes} shortly`
+            : `GitHub asked for a pause: ${resumes} in ${until}`}
         </p>
       )}
     </div>
   )
 }
 
+// WritesRow says what the app changed on GitHub for the user in the last hour, such as
+// taking them off an item's assignees, and how it paces those changes: what each spends,
+// the most it makes, and the reserve it leaves for everything else signed in as the user.
+function WritesRow({ writes, now }: { writes: BudgetWrites; now: Date }) {
+  return (
+    <LaneRow
+      heading="Changes on GitHub"
+      lane={writes}
+      now={now}
+      amount={
+        <span className="whitespace-nowrap tabular-nums">
+          {formatCount(writes.lastHour)}
+          <span className="text-muted"> in the last hour</span>
+        </span>
+      }
+      description={`Each spends 1 REST point. ${brand.name} makes at most ${String(writes.perMinute)} a minute and ${String(writes.perHour)} an hour, and none while REST is down to its last ${formatCount(writes.reserve)}.`}
+      resumes="changes resume"
+    />
+  )
+}
+
+// ChoresRow says what the app cleared of the user's GitHub notifications in the last hour,
+// out of the most it clears in an hour, and how it paces that housekeeping: apart from the
+// changes above, with the same reserve.
+function ChoresRow({ chores, now }: { chores: BudgetWrites; now: Date }) {
+  return (
+    <LaneRow
+      heading="Housekeeping on GitHub"
+      lane={chores}
+      now={now}
+      amount={
+        <span
+          className="whitespace-nowrap tabular-nums"
+          title={`${formatCount(chores.lastHour)} in the last hour, of ${formatCount(chores.perHour)}`}
+        >
+          {formatCount(chores.lastHour)}
+          <span className="text-muted"> of {formatCount(chores.perHour)}</span>
+        </span>
+      }
+      description={`Notifications marked done or read for you in the last hour. Each spends 1 REST point. ${brand.name} clears at most ${String(chores.perMinute)} a minute and ${String(chores.perHour)} an hour, apart from the changes above, and none while REST is down to its last ${formatCount(chores.reserve)}.`}
+      resumes="housekeeping resumes"
+    />
+  )
+}
+
 // RateGauge details the GitHub API budgets behind the toolbar gauge: an overall level set
 // by the budget with the least left, then each budget's meter, what is left, when it
 // refills, and who used it, then what the inbox's own refreshes cost for the items they
-// track, and the changes the app made on GitHub. Every GitHub response the app gets
-// updates it.
+// track, the changes the app made on GitHub, and the notifications it cleared there.
+// Every GitHub response the app gets updates it.
 export function RateGauge({ gauge, now, titleId }: RateGaugeProps) {
   const summary = summarize(gauge, now)
 
@@ -229,6 +282,7 @@ export function RateGauge({ gauge, now, titleId }: RateGaugeProps) {
       </ul>
       {gauge !== null && <PaceRow pace={paceOf(gauge)} perHour={gauge.refreshesPerHour} />}
       {gauge !== null && <WritesRow writes={gauge.writes} now={now} />}
+      {gauge !== null && <ChoresRow chores={gauge.chores} now={now} />}
       <p className="border-t border-border px-4 py-2.5 text-xs text-muted">
         Shared with gh, your agents, and anything else signed in as you.
       </p>

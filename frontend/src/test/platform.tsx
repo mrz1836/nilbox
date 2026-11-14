@@ -26,6 +26,7 @@ import {
   cloneTarget,
   defaultPrompts,
   fileCheck,
+  githubThreads,
   hookActionResult,
   hookChecksResult,
   hookInstallAll,
@@ -100,6 +101,11 @@ function stored(change: Partial<real.Settings> = {}): Promise<real.Settings> {
 // sensitiveFiles is the fixture's sensitive-file choices with change made.
 function sensitiveFiles(change: Partial<real.Settings['sensitiveFiles']>): Partial<real.Settings> {
   return { sensitiveFiles: { ...settings().sensitiveFiles, ...change } }
+}
+
+// threadRules is the fixture's GitHub notification rules with change made.
+function threadRules(change: Partial<real.ThreadRules>): Partial<real.Settings> {
+  return { githubNotifications: { ...settings().githubNotifications, ...change } }
 }
 
 // fromInput is a prompt the editor saves, as the library lists it once stored.
@@ -256,6 +262,13 @@ function answers(subscribe: Loose<Platform['on']>): { [K in keyof Platform]: Loo
       stored({ integrations: integrationsConfig({ sections: { [section]: open } }) }),
     setShowRuns: (showRuns) => stored({ integrations: integrationsConfig({ showRuns }) }),
     setRefreshInterval: (kind, seconds) => stored({ refresh: { ...settings().refresh, [kind]: seconds } }),
+    setGitHubNotificationSwitch: (name, on) => stored(threadRules({ [name]: on })),
+    setGitHubNotificationTrigger: (trigger, on) => stored(threadRules({ triggersOff: on ? [] : [trigger] })),
+    setGitHubNotificationAction: (action) => stored(threadRules({ action })),
+    setGitHubCleanupCardDismissed: (cleanupCardDismissed) => stored(threadRules({ cleanupCardDismissed })),
+
+    githubThreadsSnapshot: () => Promise.resolve(githubThreads()),
+    checkGitHubThreadsNow: () => Promise.resolve(githubThreads()),
 
     listIntegrations: () => Promise.resolve(integrationTools()),
     checkIntegrationsAgain: () => Promise.resolve(integrationTools()),

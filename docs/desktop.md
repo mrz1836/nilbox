@@ -718,8 +718,8 @@ A single toolbar runs beside the macOS window controls. It holds the **Inbox**, 
 and **Prompts** tabs, and [**Scripts**](#the-scripts-tab) while mage-x or go-pre-commit is on, or
 you turned Scripts on,
 and, on the right, the page's [filter](#filtering), the
-[notification](#menu-bar-and-notifications) bell, the API budget gauge, and your profile
-picture. Drag the bar to move the window, and double-click it to zoom. As the window narrows,
+[notification](#menu-bar-and-notifications) bell, the [GitHub notifications](#github-notifications)
+button, the API budget gauge, and your profile picture. Drag the bar to move the window, and double-click it to zoom. As the window narrows,
 the filter gives way first.
 
 **Tab counts.** **Inbox** counts the items in your lists, leaving out what is snoozed or
@@ -790,6 +790,10 @@ straight away, and otherwise the next waits the new interval from the last one's
 Nilbox made on GitHub for you in the last hour, says how it paces them, and, while GitHub has
 asked it to pause, when the pause ends.
 
+**Housekeeping on GitHub.** Below it, the [GitHub notifications](#github-notifications) Nilbox
+marked done or read for you in the last hour, out of the most it clears in an hour. They are
+paced apart from the edits, with the same reserve, and a pause GitHub asks for holds both.
+
 **Kept across restarts.** The readings, what the app spent, and the last hour's edits are saved
 a second after each change, and once more as the app quits, and come back when it opens. The app spends nothing
 while it is closed, so the count it picks up still covers all it spent. Every GitHub request the
@@ -821,8 +825,9 @@ opens as large as the screen allows.
 
 **Settings** is a page of its own. Its sidebar lists the sections in the order the app is used:
 your account, appearance (the theme, the text size, and the size the window opens at),
-[notifications](#menu-bar-and-notifications) (the menu bar icon and which banners show), and
-refreshing (how often the inbox, the running checks, and the worktrees are read again); then,
+[notifications](#menu-bar-and-notifications) (the menu bar icon and which banners show),
+[GitHub notifications](#github-notifications) (whether the app reads them, and when they are
+cleared), and refreshing (how often the inbox, the running checks, and the worktrees are read again); then,
 under **Inbox**, snoozing (how long the [Snooze](#snooze-dismiss-and-pin) button sets an item
 aside, and what [wakes a snooze early](#waking-a-snooze-early)) and reviewing (the merge method
 and your [review replies](#review-replies)); under **Agents**, in the order you set them up,
@@ -936,7 +941,9 @@ Each pull request or issue in the inbox is a card three lines high:
    for the worktree's path. The inbox never lists the worktrees itself. An item with an agent
    session running, or one that ended in the last day, is tagged with what it is doing, as in
    **Claude · needs approval · 2m**; click it for the item's sessions (see
-   [Following a session](#following-a-session)).
+   [Following a session](#following-a-session)). An item with unread
+   [notifications on GitHub](#github-notifications) is tagged with how many, as in **2 unread
+   on GitHub**; hover the tag for GitHub's reasons, such as **Review requested, Mentioned**.
 3. Its details, in a fixed order. Each detail before the projects and labels keeps the same
    width on every card, sized for the longest value a card should meet, so the details line up
    from card to card. Hover any of them for the whole sentence, which is also what a screen
@@ -1712,6 +1719,42 @@ built app (`magex app:build`, `magex app:run`) but not in `magex app:dev`, which
 binary: there the history still fills, and Settings explains why no banner shows. Nothing
 about notifications leaves your Mac: they are made from what the inbox already reads and
 posted to macOS.
+
+<br>
+
+## GitHub notifications
+
+Nilbox keeps a copy of your GitHub inbox, the notifications GitHub keeps for you, read and
+unread but not done, read from GitHub as the inbox refreshes. **Settings → GitHub
+notifications → Read my GitHub notifications** turns it off; it is on by default.
+
+**The button.** Beside the bell, GitHub's mark counts what your GitHub inbox holds, up to
+**99+**, accented while any are unread, and shows nothing at none. While GitHub refuses your
+token the notifications, it shows an amber dot instead. Click it for the counts (*38 in your
+GitHub inbox · 5 unread*), why they can't be read and when Nilbox asks again, with **Check
+again**, and the newest 20 unread, grouped by the pull request or issue each is about. Click
+one to show its item in the inbox, or on GitHub when the inbox doesn't list it; one about
+something else, such as a release, is only listed. **Open on GitHub** opens your GitHub inbox,
+and **Settings** its settings. Opening it reads Nilbox's own copy: it asks GitHub nothing and
+marks nothing read. While automatic clearing is off, it offers **Turn on automatic clearing**.
+Every link is built from the item's repository and number; Nilbox opens no address GitHub
+sent.
+
+**The settings.** **Settings → GitHub notifications** also says what your GitHub inbox held at
+the last check, and when, with **Check again**; that GitHub refuses the token, and when it is
+asked again; or why the last check failed. Nilbox reads the newest 1,000, and says so when
+GitHub holds more. Turning reading off hides the button and the cards' tags at once.
+**Clear them automatically** (off by default, and only while reading is on) clears a
+notification on GitHub once the work behind it is done, at the moments under **When to
+clear**, unless a person's activity since is still unread on GitHub: read it there, and it
+clears on the next check. Each moment is on by default: a pull request merged, or closed
+without merging; an issue closed; a review you submit in Nilbox; an item you dismiss in
+Nilbox; and taking yourself off an item's assignees or reviewers. **Include repositories you
+only watch** clears one you get only by watching its repository too, **Count bot activity
+after it closes as seen** keeps a bot's activity after the moment from holding one back, and
+**What clearing does** chooses **Mark done**, which takes it out of your GitHub inbox, or
+**Mark read**, which leaves it there, so the button's count stays and only its accent goes.
+Turning reading or clearing on checks GitHub at once.
 
 <br>
 

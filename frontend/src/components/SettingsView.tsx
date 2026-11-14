@@ -1,6 +1,7 @@
 import { useEffect, useEffectEvent, useId, useRef, useState } from 'react'
 
 import type { Result } from '../lib/call'
+import type { GitHubThreadsState } from '../lib/useGitHubThreads'
 import { counted, formatCount } from '../lib/format'
 import { isTyping } from '../lib/keys'
 import { matchSettings, sectionGroups, sectionInfo, type SettingsSection } from '../lib/settingsIndex'
@@ -19,6 +20,7 @@ import { ChevronLeftIcon } from './icons'
 import { AboutSection } from './settings/AboutSection'
 import { AccountSection } from './settings/AccountSection'
 import { AppearanceSection } from './settings/AppearanceSection'
+import { GitHubNotificationsSection } from './settings/GitHubNotificationsSection'
 import { IntegrationsSection } from './settings/IntegrationsSection'
 import { LaunchingSection } from './settings/LaunchingSection'
 import { SettingMatch } from './settings/match'
@@ -70,6 +72,9 @@ export interface SettingsViewProps {
   // query is what "Find a setting" in the toolbar looks for, or '' while it looks for
   // nothing.
   query?: string
+  // githubThreads is the window's one mirror of the GitHub notifications, which their
+  // section shows and checks again; without it the section shows the rules alone.
+  githubThreads?: GitHubThreadsState | undefined
 }
 
 // SettingsView is the settings page: a sidebar of sections and the chosen section's
@@ -96,6 +101,7 @@ export function SettingsView({
   onLaunchChanged,
   onClose,
   query = '',
+  githubThreads,
 }: SettingsViewProps) {
   const headingId = useId()
   const [section, setSection] = useState<SectionId>(initialSection)
@@ -229,6 +235,12 @@ export function SettingsView({
               )}
               {section === 'notifications' &&
                 (settings === null ? loading : <NotificationsSection settings={settings} onSaved={onSaved} />)}
+              {section === 'github' &&
+                (settings === null ? (
+                  loading
+                ) : (
+                  <GitHubNotificationsSection settings={settings} onSaved={onSaved} threads={githubThreads ?? null} />
+                ))}
               {section === 'refreshing' &&
                 (settings === null ? loading : <RefreshingSection settings={settings} onSaved={onSaved} />)}
               {section === 'snoozing' &&

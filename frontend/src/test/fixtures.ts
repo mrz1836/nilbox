@@ -27,6 +27,9 @@ import type {
   LocationPreview,
   LocationState,
   FileCheck,
+  GitHubThread,
+  GitHubThreadsSnapshot,
+  GitHubThreadsStatus,
   HookActionResult,
   HookChecksResult,
   HookInstallAllResult,
@@ -43,6 +46,7 @@ import type {
   IssueResult,
   IssueTimelineItem,
   IssueTimelinePage,
+  ItemThreads,
   InboxList,
   InboxSnapshot,
   Info,
@@ -1069,6 +1073,67 @@ export function budgetGauge(overrides: Partial<BudgetGauge> = {}): BudgetGauge {
 // 5,000-point REST budget's reserve.
 export function writes(overrides: Partial<BudgetWrites> = {}): BudgetWrites {
   return { lastHour: 0, lastMinute: 0, perHour: 200, perMinute: 30, reserve: 50, heldUntil: '', ...overrides }
+}
+
+// threadsStatus is reading the user's GitHub notifications going well: the last pass a
+// minute before the tests' noon, with an empty GitHub inbox.
+export function threadsStatus(overrides: Partial<GitHubThreadsStatus> = {}): GitHubThreadsStatus {
+  return {
+    reading: true,
+    account: 'octo-user',
+    access: 'ok',
+    lastPassAt: '2026-06-15T11:59:00Z',
+    lastFullWalkAt: '2026-06-15T11:00:00Z',
+    lastError: '',
+    askAgainAt: '',
+    count: 0,
+    unread: 0,
+    truncated: false,
+    ...overrides,
+  }
+}
+
+// githubThreads is what the app mirrors of the user's GitHub notifications: by default
+// read a minute ago, with none in the GitHub inbox. Every test builds one here, with the
+// fields it cares about, so a field the backend adds needs a default in this one place.
+export function githubThreads(
+  overrides: Partial<Omit<GitHubThreadsSnapshot, 'status'>> & { status?: Partial<GitHubThreadsStatus> } = {},
+): GitHubThreadsSnapshot {
+  const { status, ...rest } = overrides
+
+  return { byItem: [], unread: [], ...rest, status: threadsStatus(status) }
+}
+
+// itemThreads are the threads about pull request #7 of example-repo: one, unread, asking
+// for the user's review.
+export function itemThreads(overrides: Partial<ItemThreads> = {}): ItemThreads {
+  return {
+    owner: 'acme-org',
+    name: 'example-repo',
+    kind: 'pr',
+    number: 7,
+    unread: 1,
+    total: 1,
+    reasons: ['review_requested'],
+    ...overrides,
+  }
+}
+
+// githubThread is an unread notification asking for the user's review of pull request #7
+// of example-repo, updated five minutes before the tests' noon.
+export function githubThread(overrides: Partial<GitHubThread> = {}): GitHubThread {
+  return {
+    id: 1001,
+    owner: 'acme-org',
+    name: 'example-repo',
+    kind: 'pr',
+    number: 7,
+    subjectType: 'PullRequest',
+    title: 'Add the widget cache',
+    reason: 'review_requested',
+    updatedAt: '2026-06-15T11:55:00Z',
+    ...overrides,
+  }
 }
 
 // avatarDataURL is a stand-in for a cached avatar; the image never decodes in jsdom.

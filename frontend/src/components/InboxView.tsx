@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 
 import { attempt } from '../lib/call'
 import { refText } from '../lib/format'
+import { noTags, type ThreadTag } from '../lib/githubThreads'
 import type { InboxFilter } from '../lib/inboxFilter'
 import type { IssueDrafts } from '../lib/issueDrafts'
 import { issueTone } from '../lib/issues'
@@ -66,6 +67,9 @@ export interface InboxViewProps {
   // sessions holds each item's agent sessions, newest first, by itemKey (useSessions);
   // empty until they load, and while the app does not follow sessions.
   sessions?: ReadonlyMap<string, readonly AgentSession[]>
+  // threads holds the tag of each item with unread notifications on GitHub, by itemKey
+  // (useGitHubThreads); empty until they load, and while the app does not read them.
+  threads?: ReadonlyMap<string, ThreadTag>
   // snoozeDays is how long a row's Snooze button hides an item.
   snoozeDays: number
   // toastSeconds is how long the inbox's toasts show, as set in Settings → Notifications.
@@ -239,6 +243,7 @@ export function InboxView({
   resolutions,
   worktrees = noWorktrees,
   sessions = noSessions,
+  threads = noTags,
   snoozeDays,
   toastSeconds = defaultToastSeconds,
   onSnoozeSettings,
@@ -843,6 +848,7 @@ export function InboxView({
               resolutions={resolutions}
               worktrees={worktrees}
               sessions={sessions}
+              threads={threads}
               triage={triage}
               edits={edits}
               collapsed={filter === null && collapsed.has(key)}
