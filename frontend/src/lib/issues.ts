@@ -5,12 +5,10 @@ import type {
   InboxItem,
   Issue,
   IssueAction,
-  IssueLabel,
   IssueOffer,
   IssueResult,
   IssueStandingState,
   IssueStateReason,
-  IssueTimelineItem,
   RefState,
 } from '../platform'
 import type { Tone } from './signals'
@@ -143,104 +141,6 @@ export function changedSince(issue: Issue, card: InboxItem | undefined): boolean
   return seconds(card.updatedAt) > seconds(issue.updatedAt) || (card.details?.comments ?? 0) > issue.seen.comments
 }
 
-// LabelRow is the labels one person added and removed in one minute, as one entry: mine
-// when the person is the user.
-export interface LabelRow {
-  kind: 'labels'
-  id: string
-  actor: string
-  actorIsBot: boolean
-  mine: boolean
-  at: string
-  added: IssueLabel[]
-  removed: IssueLabel[]
-}
-
-// TimelineRow is one entry of the conversation as the sheet lists it: a comment or an
-// event as GitHub read it, or labels grouped.
-export type TimelineRow = { kind: 'item'; item: IssueTimelineItem } | LabelRow
-
-// minuteOf is the minute an entry was made in, for grouping labels.
-function minuteOf(iso: string): string {
-  return iso.slice(0, 16)
-}
-
-// timelineRows lists the conversation's entries, the labels one person added and removed in
-// the same minute grouped into one.
-export function timelineRows(items: readonly IssueTimelineItem[]): TimelineRow[] {
-  const rows: TimelineRow[] = []
-
-  for (const it of items) {
-    if ((it.kind !== 'labeled' && it.kind !== 'unlabeled') || it.label === null) {
-      rows.push({ kind: 'item', item: it })
-
-      continue
-    }
-
-    const last = rows.at(-1)
-    const row: LabelRow =
-      last?.kind === 'labels' && last.actor === it.actor && minuteOf(last.at) === minuteOf(it.at)
-        ? last
-        : {
-            kind: 'labels',
-            id: it.id,
-            actor: it.actor,
-            actorIsBot: it.actorIsBot,
-            mine: it.mine,
-            at: it.at,
-            added: [],
-            removed: [],
-          }
-
-    if (row !== last) {
-      rows.push(row)
-    }
-
-    if (it.kind === 'labeled') {
-      row.added.push(it.label)
-    } else {
-      row.removed.push(it.label)
-    }
-  }
-
-  return rows
-}
-
-// rowKey tells the conversation's rows apart.
-export function rowKey(row: TimelineRow): string {
-  return row.kind === 'labels' ? row.id : row.item.id
-}
-
-// newSince is the index of the first row the user hasn't seen: newer than lastSeenAt,
-// GitHub's time of the read they last opened the issue on, and not their own. It is -1 on
-// a first visit, and when nothing is new.
-export function newSince(rows: readonly TimelineRow[], lastSeenAt: string): number {
-  const seen = ms(lastSeenAt)
-
-  if (Number.isNaN(seen)) {
-    return -1
-  }
-
-  return rows.findIndex((row) => {
-    const { mine, at } = row.kind === 'labels' ? row : row.item
-
-    return !mine && ms(at) > seen
-  })
-}
-
-// quoteInto adds text to body as a quote, each of its lines marked with "> ", and leaves a
-// line after it for the reply.
-export function quoteInto(body: string, text: string): string {
-  const quote = text
-    .trim()
-    .split('\n')
-    .map((line) => (line === '' ? '>' : `> ${line}`))
-    .join('\n')
-  const before = body.trim() === '' ? '' : `${body.replace(/\s+$/, '')}\n\n`
-
-  return `${before}${quote}\n\n`
-}
-
 // withReply is the comment once a reply the user picked fills it in: the reply alone while
 // the comment is empty, or still just the text the last pick filled in, else the user's
 // own text with the reply after it, as a quote is added, so a pick never loses what they
@@ -251,9 +151,4 @@ export function withReply(draft: { body: string; filled: string }, text: string)
   }
 
   return `${draft.body.replace(/\s+$/, '')}\n\n${text}`
-}
-
-// earlierCount is how many entries come before the ones the sheet holds, or 0 when none do.
-export function earlierCount(total: number, held: number, before: string): number {
-  return before === '' ? 0 : Math.max(total - held, 1)
 }

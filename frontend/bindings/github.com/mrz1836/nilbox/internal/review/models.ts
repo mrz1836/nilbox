@@ -7,6 +7,9 @@ import * as bump$0 from "../bump/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
 import * as sensitive$0 from "../sensitive/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
+import * as timeline$0 from "../timeline/models.js";
 
 /**
  * ActRequest is an action the user asked for.
@@ -652,9 +655,19 @@ export interface Review {
     "comments": number;
 
     /**
-     * Body is the description, as markdown.
+     * OpenedAt is when it was opened, as RFC 3339, or "".
+     */
+    "openedAt": string;
+
+    /**
+     * Body is the description, as markdown, BodyTrimmed whether the cache cut it short (its
+     * page has all of it), EditedAt when it was last edited, or "", and Reactions its
+     * reactions.
      */
     "body": string;
+    "bodyTrimmed": boolean;
+    "editedAt": string;
+    "reactions": timeline$0.Reaction[] | null;
 
     /**
      * Bump is what a dependency update's title says about it, or nil for any other pull
@@ -675,7 +688,24 @@ export interface Review {
     "totalFiles": number;
     "filesComplete": boolean;
     "checks": Check[] | null;
+
+    /**
+     * Reviews are each reviewer's latest review, the summary's list of reviewers; their
+     * text is in Timeline.
+     */
     "reviews": ReviewEntry[] | null;
+
+    /**
+     * Timeline is the newest page of the conversation, oldest first: its comments, its
+     * reviews with their line comments, and its events.
+     */
+    "timeline": timeline$0.Page;
+
+    /**
+     * LastSeenAt is GitHub's time of the newest activity in the read the sheet showed when
+     * the user last opened the pull request, "" before then: what is newer is new to them.
+     */
+    "lastSeenAt": string;
 
     /**
      * Unrun are the head commit's workflow runs that ended without a check and without
@@ -734,12 +764,12 @@ export interface Review {
 }
 
 /**
- * ReviewEntry is one reviewer's latest review.
+ * ReviewEntry is one reviewer's latest review: who, its state, and its page, whose URL the
+ * conversation's entry of it has too.
  */
 export interface ReviewEntry {
     "author": string;
     "state": string;
-    "body": string;
     "url": string;
 
     /**

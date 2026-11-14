@@ -11,6 +11,7 @@ export {
     ListKind,
     MergeMethod,
     RefreshKind,
+    ReviewTab,
     TextSize,
     Theme
 } from "./models.js";

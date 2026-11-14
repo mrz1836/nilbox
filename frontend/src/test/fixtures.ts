@@ -52,8 +52,9 @@ import type {
   IssueRepoLabels,
   IssueReply,
   IssueResult,
-  IssueTimelineItem,
-  IssueTimelinePage,
+  TimelineEntry,
+  TimelineLineComment,
+  TimelinePage,
   InboxList,
   InboxSnapshot,
   Info,
@@ -370,6 +371,7 @@ export function settings(overrides: Partial<Settings> = {}): Settings {
     toastSeconds: 12,
     collapsedSections: [],
     projectsTipDismissed: false,
+    reviewTab: 'files',
     inboxOrder: { statusSorted: [], statusOrder: [], kinds: {} },
     mergeMethod: 'repo',
     integrations: integrationsConfig(),
@@ -1612,7 +1614,11 @@ export function review(overrides: Partial<Review> = {}): Review {
     deletions: 30,
     commits: 3,
     comments: 4,
+    openedAt: '2026-06-14T12:00:00Z',
     body: 'Adds a cache in front of the widget store.',
+    bodyTrimmed: false,
+    editedAt: '',
+    reactions: [],
     bump: null,
     change: { kind: 'code', label: 'Code', areas: ['cache'] },
     files: [reviewFile()],
@@ -1621,6 +1627,8 @@ export function review(overrides: Partial<Review> = {}): Review {
     checks: [{ name: 'test', workflow: 'CI', state: 'SUCCESS', outcome: 'passed', url: '', required: true }],
     unrun: [],
     reviews: [],
+    timeline: { items: [], total: 0, before: '' },
+    lastSeenAt: '',
     closes: [],
     moreCloses: 0,
     readiness: { state: 'ready', sentence: 'Ready to merge', needs: [] },
@@ -1639,6 +1647,68 @@ export function review(overrides: Partial<Review> = {}): Review {
     head: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
     fetchedAt: '2026-06-15T11:59:00Z',
     stale: false,
+    ...overrides,
+  }
+}
+
+// lineComment is a review's comment on line 12 of the widget cache, on the head's diff.
+export function lineComment(overrides: Partial<TimelineLineComment> = {}): TimelineLineComment {
+  return {
+    id: 'PRRC_1',
+    url: 'https://github.com/acme-org/example-repo/pull/7#discussion_r1',
+    at: '2026-06-15T10:40:00Z',
+    path: 'cache/widget.go',
+    line: 12,
+    startLine: 0,
+    outdated: false,
+    body: 'Should this expire?',
+    trimmed: false,
+    hunk: [' func get() {', '+\treturn cache[key]'],
+    ...overrides,
+  }
+}
+
+// reviewEntry is octo-reviewer's review of pull request 7 in its conversation: changes
+// requested, with a word and a line comment.
+export function reviewEntry(overrides: Partial<TimelineEntry> = {}): TimelineEntry {
+  return issueEvent({
+    kind: 'reviewed',
+    id: 'PRR_1',
+    at: '2026-06-15T10:45:00Z',
+    actor: 'octo-reviewer',
+    body: 'Two things before this merges.',
+    url: 'https://github.com/acme-org/example-repo/pull/7#pullrequestreview-1',
+    association: 'MEMBER',
+    label: null,
+    reviewState: 'CHANGES_REQUESTED',
+    lineComments: [lineComment()],
+    ...overrides,
+  })
+}
+
+// reviewTimeline is pull request 7's conversation: the user's comment, octo-reviewer's
+// review with its line comment, and octo-other's reply, the whole of it.
+export function reviewTimeline(overrides: Partial<TimelinePage> = {}): TimelinePage {
+  return {
+    items: [
+      issueComment({
+        id: 'IC_1',
+        at: '2026-06-15T10:00:00Z',
+        actor: 'octo-user',
+        mine: true,
+        body: 'Is this ready for a look?',
+        url: 'https://github.com/acme-org/example-repo/pull/7#issuecomment-1',
+        association: 'OWNER',
+      }),
+      reviewEntry(),
+      issueComment({
+        id: 'IC_2',
+        body: 'Expiry comes in the next pull request.',
+        url: 'https://github.com/acme-org/example-repo/pull/7#issuecomment-2',
+      }),
+    ],
+    total: 3,
+    before: '',
     ...overrides,
   }
 }
@@ -1711,7 +1781,7 @@ export function pullRef(overrides: Partial<IssueLinked> = {}): IssueLinked {
 }
 
 // issueEvent is a timeline entry of issue 12: octo-other labeled it bug, two days ago.
-export function issueEvent(overrides: Partial<IssueTimelineItem> = {}): IssueTimelineItem {
+export function issueEvent(overrides: Partial<TimelineEntry> = {}): TimelineEntry {
   return {
     kind: 'labeled',
     id: 'LE_1',
@@ -1735,12 +1805,18 @@ export function issueEvent(overrides: Partial<IssueTimelineItem> = {}): IssueTim
     assignee: '',
     from: '',
     to: '',
+    reviewState: '',
+    outdated: false,
+    lineComments: [],
+    moreLineComments: 0,
+    reviewer: '',
+    branch: '',
     ...overrides,
   }
 }
 
 // issueComment is a comment on issue 12: octo-other's, an hour before the clock's now.
-export function issueComment(overrides: Partial<IssueTimelineItem> = {}): IssueTimelineItem {
+export function issueComment(overrides: Partial<TimelineEntry> = {}): TimelineEntry {
   return issueEvent({
     kind: 'comment',
     id: 'IC_2',
@@ -1755,7 +1831,7 @@ export function issueComment(overrides: Partial<IssueTimelineItem> = {}): IssueT
 
 // issueTimeline is issue 12's newest page: the user's comment, a mention by pull request
 // 14, and octo-other's comment, of 40 items in all.
-export function issueTimeline(overrides: Partial<IssueTimelinePage> = {}): IssueTimelinePage {
+export function issueTimeline(overrides: Partial<TimelinePage> = {}): TimelinePage {
   return {
     items: [
       issueComment({

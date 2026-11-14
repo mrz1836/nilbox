@@ -20,7 +20,7 @@ const readings: Readonly<Record<ItemKind, Reading>> = {
   pr: {
     icon: <PullRequestIcon className="size-4 text-accent" />,
     noun: 'the pull request',
-    coming: ['Description', 'Changed files', 'Checks', 'Reviews'],
+    coming: ['Description', 'Changed files', 'Checks', 'Comments'],
   },
   issue: {
     icon: <IssueIcon className="size-4 text-accent" />,

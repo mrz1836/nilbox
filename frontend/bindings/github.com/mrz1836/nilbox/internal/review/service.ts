@@ -12,6 +12,10 @@ import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wails
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
+import * as timeline$0 from "../timeline/models.js";
+
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
 import * as $models from "./models.js";
 
 /**
@@ -36,6 +40,14 @@ export function Act(req: $models.ActRequest): $CancellablePromise<$models.Result
 }
 
 /**
+ * Earlier reads the page of the conversation before the cursor before, which a page the
+ * sheet holds gave: one GraphQL request, which stores nothing, not even in the cache.
+ */
+export function Earlier(id: number, before: string): $CancellablePromise<timeline$0.Page> {
+    return $Call.ByID(3742553140, id, before);
+}
+
+/**
  * FillReply fills in the reply with replyID for the pull request with itemID, as the
  * text the review starts with.
  */
@@ -45,7 +57,10 @@ export function FillReply(itemID: number, replyID: number): $CancellablePromise<
 
 /**
  * Open returns the pull request with id as the sheet last read it, from its cache and the
- * inbox, with no request: at once, and offline. Stale says whether a Refresh is due.
+ * inbox, with no request: at once, and offline. It starts a visit: LastSeenAt is GitHub's
+ * time of the newest activity in the read it shows, so what a refresh brings that is newer
+ * is new to the user, and every Refresh and ReadAgain returns the same until the next Open.
+ * Stale says whether a Refresh is due.
  */
 export function Open(id: number): $CancellablePromise<$models.Review> {
     return $Call.ByID(3489299768, id);
@@ -72,8 +87,8 @@ export function ReadAgain(id: number): $CancellablePromise<$models.Review> {
 /**
  * Refresh reads the pull request with id from GitHub, stores it, and returns it: one
  * GraphQL request, and its files only when it was pushed to since the sheet listed them.
- * A pull request read in the last 20 seconds is not read again. Two refreshes of one pull
- * request never run side by side.
+ * A pull request read in the last 20 seconds is not read again, unless its card shows
+ * activity since. Two refreshes of one pull request never run side by side.
  */
 export function Refresh(id: number): $CancellablePromise<$models.Review> {
     return $Call.ByID(457723099, id);

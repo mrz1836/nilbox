@@ -441,12 +441,28 @@ app:lint` reads.
   place (`failedAfterComment`). A merge or a close takes the pull request out of every list
   (`Acted.Merged`, `Acted.Closed`) and drops its cache. It owns `review_diffs` and
   `review_diff_files`, a bounded cache of the diffs it read (per pull request, in all, and by
-  age), pruned in the same transaction that writes. A merge that went through tells its
-  `Merges` the repository, without waiting (core: the Release page's `Refresher`, which reads
-  that repository's row again); a close tells it nothing. Nothing here lets an agent approve,
-  merge, or close.
+  age), pruned in the same transaction that writes. The one read of the pull request
+  (`FetchPullReview`, one point, measured) brings its conversation too: the newest hundred
+  entries of its timeline (comments, reviews with their first twenty line comments, each with
+  the last lines of its diff hunk, and events; its commits left out), counted by GitHub's
+  `filteredCount`, since a pull request's `totalCount` counts every type, and twenty when the
+  answer is too large, with the description's edited time and reactions. Reviews still
+  pending, and ones that only comment and hold nothing, are dropped; a review of another
+  commit than the head is marked `Outdated`. The context the cache keeps holds the
+  conversation (`timeline.Entries`), cut to fit 1 MiB (`fitContext`, `timeline.Cut` at 16
+  KiB, then 4 KiB, then nothing, each cut marked) on every write, and a read under 20 seconds
+  old is served again only while the card shows no activity since it (`recent`), so a new
+  comment always shows. `Open` starts a visit as the issue sheet's does: `review_diffs.seen_at`
+  holds GitHub's `updatedAt` of the read it shows, which only `Open` moves
+  (`Review.LastSeenAt`). `Earlier` reads the conversation's page before a cursor
+  (`FetchTimeline`) through the inbox's `PeekPull`, and stores it nowhere. The summary lists
+  each reviewer's latest review without its text, which is in the conversation. A merge that
+  went through tells its `Merges` the repository, without waiting (core: the Release page's
+  `Refresher`, which reads that repository's row again); a close tells it nothing. Nothing
+  here lets an agent approve, merge, or close.
 - `internal/issues/` is the issue sheet's service, beside the review sheet's: neither imports
-  the other (the repoguard boundary test), and they share only the building blocks. `Decide`
+  the other (the repoguard boundary test), and they share only the building blocks, the
+  conversation's among them (`internal/timeline`). `Decide`
   is pure: from an issue's facts it works out where it stands (gone, closed as what and by
   whom, locked, a fix merged or in progress, the user replied last, assigned, open), the
   offers, and the one primary, and `Act` runs it again before any write. Comment is offered
@@ -463,8 +479,8 @@ app:lint` reads.
   issue at a time (`flight.Group`), through the inbox's `Actor` (`ReadIssue`), which rewrites
   the card from the same answer and under whose lock the cache is written; a read that finds
   the issue closed or gone is returned once, built from the read, and the cache dropped.
-  `Earlier` reads the timeline's page before a cursor through `PeekIssue`, and stores it
-  nowhere. Every action goes through `ActIssue` and tells each step as an
+  `Earlier` reads the timeline's page before a cursor (`FetchTimeline`, the review sheet's
+  query too) through `PeekIssue`, and stores it nowhere. Every action goes through `ActIssue` and tells each step as an
   `event.IssueProgress`. A close is pinned to the comments the user saw (the earlier of the
   request's `Seen` and the read's): every try, a token retry included, first reads the state
   and the newest ten comments (`FetchIssueState`); a comment someone else wrote since, or ten
@@ -477,7 +493,8 @@ app:lint` reads.
   inbox's own failure. After any action, under
   the item's lock, the cache is dropped (a close) or marked out of date. It owns
   `issue_views`, a bounded cache (1 MiB per issue, whose long texts are cut to 16 KiB, then 4
-  KiB, then emptied, each cut marked; 200 issues, 32 MiB, and 14 days unused in all), pruned in
+  KiB, then emptied, each cut marked, by `timeline.Cut`; 200 issues, 32 MiB, and 14 days unused
+  in all), pruned in
   the same transaction that writes. Unassign me is the inbox's own `Unassign`. `Replies` and
   `FillReply` offer and fill in the prompt library's comment replies for issues (a comment
   reply may apply to issues; a default reply, which only the review sheet starts from, must
@@ -490,10 +507,20 @@ app:lint` reads.
   make), never sending a step twice, stopping at the first that fails, and saying how many
   GitHub made (`EditResult`), so the window reads the issue again only then; the user takes
   themselves off with Unassign me alone.
-- `internal/avatars/` keeps the profile pictures of the people the issue sheet shows (who opened
-  the issue, its assignees and participants, and who wrote each comment shown in full, never a
-  bot), which the window asks for in one batch through the issue sheet's bound `Avatars` once the
-  sheet renders, so the conversation never waits on one. It owns `avatars`, one row per
+- `internal/timeline/` is the conversation both sheets show, an issue's and a pull request's:
+  its entries (`Entry`: comments, reviews with their line comments, and events), a page of
+  them (`Page`), and the items, labels, and reactions they name. `Entries` converts what the
+  GitHub client read, the viewer's own marked; `HunkTail` keeps a line comment's last four
+  lines of its diff hunk; `Cut` shortens the description and every text of the entries, each
+  cut marked, for a sheet's cache, whose own cap and steps stay its own; `NonNil` fills the
+  lists an older build's cache lacks. Its JSON is what the issue sheet's cache already held,
+  so no name or tag changes. It is a leaf: it imports only `github`, `item`, `clock`, and
+  `textutil`, never a service, the store, or either sheet (the repoguard boundary test).
+- `internal/avatars/` keeps the profile pictures of the people the sheets show (who opened the
+  issue or pull request, an issue's assignees and participants, a pull request's reviewers, and
+  who wrote each comment and review shown in full, never a bot), which the window asks for in
+  one batch through the issue sheet's bound `Avatars`, for both sheets, once a sheet renders, so
+  the conversation never waits on one. It owns `avatars`, one row per
   lower-cased login, downloaded by login (`FetchLoginAvatar`), at most four at a time, each once
   until it is a week old and shown again, a failed one not tried again for 30 minutes, and
   bounded (30 days unused, 2,000 rows, 16 MiB), pruned in the transaction that writes. The window
@@ -1197,6 +1224,13 @@ app:lint` reads.
   The React Compiler memoizes the build, so components hold no hand-written `useMemo` or
   `useCallback`, and the gate's render check (`pnpm test:renders`) profiles the compiled
   inbox. Tests stand in for Go only with the shared fake in `frontend/src/test/platform.tsx`.
+  Both sheets show a conversation with the same parts, never a copy of them:
+  `components/conversation/` (`Description`, `Timeline`, and `TimelineEntry`, which shows a
+  review with its line comments), `lib/timeline.ts` (its rows, what is new, a quote, and the
+  counts), and `lib/useTimeline.ts` (a visit's start and the earlier pages, joined). The review
+  sheet shows it in its Comments tab, beside Files (the description and the diff), each kept
+  mounted in an `Activity` while the other shows; the tab is the window's memory
+  (`ui.reviewTab`, which a backup never holds).
   Theme colors come from the `--color-*` tokens `internal/brandgen` writes to
   `frontend/src/generated/theme.css`. Checkboxes and radio buttons take the `checkbox` and
   `radio` classes (`frontend/src/index.css`), which draw them in the app's own style: macOS

@@ -3,7 +3,7 @@
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import * as item$0 from "../item/models.js";
+import * as timeline$0 from "../timeline/models.js";
 
 /**
  * ActRequest asks for an action on the issue with ItemID, pinned to Seen, the comments as
@@ -101,37 +101,11 @@ export interface EditResult {
 }
 
 /**
- * EventKind is what one entry of an issue's timeline is.
- */
-export type EventKind = "comment" | "mentioned" | "linked" | "unlinked" | "closed" | "reopened" | "assigned" | "unassigned" | "labeled" | "unlabeled" | "renamed" | "duplicate";
-
-/**
- * The values of EventKind, by the names of their Go constants.
- */
-export const EventKind = {
-    /**
-     * The timeline's kinds.
-     */
-    EventComment: "comment",
-    EventMentioned: "mentioned",
-    EventLinked: "linked",
-    EventUnlinked: "unlinked",
-    EventClosed: "closed",
-    EventReopened: "reopened",
-    EventAssigned: "assigned",
-    EventUnassigned: "unassigned",
-    EventLabeled: "labeled",
-    EventUnlabeled: "unlabeled",
-    EventRenamed: "renamed",
-    EventDuplicate: "duplicate",
-} as const;
-
-/**
  * Fix is a pull request that closes the issue once merged: where it merges, when it did,
  * and its checks and review.
  */
 export interface Fix {
-    "pr": Linked;
+    "pr": timeline$0.Ref;
     "base": string;
     "mergedAt": string;
     "checks": ChecksWord;
@@ -149,8 +123,8 @@ export interface Issue {
     "number": number;
     "title": string;
     "url": string;
-    "state": RefState;
-    "stateReason": StateReason;
+    "state": timeline$0.RefState;
+    "stateReason": timeline$0.StateReason;
     "closedAt": string;
 
     /**
@@ -192,10 +166,10 @@ export interface Issue {
     "body": string;
     "bodyTrimmed": boolean;
     "editedAt": string;
-    "reactions": Reaction[] | null;
+    "reactions": timeline$0.Reaction[] | null;
     "type": IssueType | null;
     "milestone": Milestone | null;
-    "labels": Label[] | null;
+    "labels": timeline$0.Label[] | null;
     "projects": Project[] | null;
 
     /**
@@ -205,13 +179,13 @@ export interface Issue {
     "moreAssignees": number;
     "participants": Person[] | null;
     "moreParticipants": number;
-    "parent": Linked | null;
-    "duplicateOf": Linked | null;
+    "parent": timeline$0.Ref | null;
+    "duplicateOf": timeline$0.Ref | null;
 
     /**
      * SubIssues are the first sub-issues, of SubIssuesTotal, SubIssuesDone of them done.
      */
-    "subIssues": Linked[] | null;
+    "subIssues": timeline$0.Ref[] | null;
     "subIssuesTotal": number;
     "subIssuesDone": number;
 
@@ -221,8 +195,8 @@ export interface Issue {
      */
     "fixes": Fix[] | null;
     "moreFixes": number;
-    "mentioned": Linked[] | null;
-    "timeline": TimelinePage;
+    "mentioned": timeline$0.Ref[] | null;
+    "timeline": timeline$0.Page;
 
     /**
      * LastSeenAt is GitHub's time of the newest activity in the read the sheet showed when
@@ -253,28 +227,6 @@ export interface IssueType {
     "name": string;
     "color": string;
     "description": string;
-}
-
-/**
- * Label is a label with its color as "#rrggbb", or "".
- */
-export interface Label {
-    "name": string;
-    "color": string;
-}
-
-/**
- * Linked is a pull request or an issue the sheet names.
- */
-export interface Linked {
-    "kind": item$0.Kind;
-    "repo": string;
-    "number": number;
-    "title": string;
-    "url": string;
-    "state": RefState;
-    "stateReason": StateReason;
-    "draft": boolean;
 }
 
 /**
@@ -370,31 +322,6 @@ export interface ProjectField {
     "value": string;
     "color": string;
 }
-
-/**
- * Reaction counts one kind of reaction to the description, by GitHub's name for it.
- */
-export interface Reaction {
-    "content": string;
-    "count": number;
-}
-
-/**
- * RefState is a pull request's or an issue's state.
- */
-export type RefState = "OPEN" | "CLOSED" | "MERGED";
-
-/**
- * The values of RefState, by the names of their Go constants.
- */
-export const RefState = {
-    /**
-     * The states.
-     */
-    StateOpen: "OPEN",
-    StateClosed: "CLOSED",
-    StateMerged: "MERGED",
-} as const;
 
 /**
  * Reply is a reply from the prompt library the composer offers: its ID, its title, and the
@@ -499,77 +426,3 @@ export const StandingState = {
     StandingAssigned: "assigned",
     StandingOpen: "open",
 } as const;
-
-/**
- * StateReason is why an issue is closed, or was reopened, as GitHub says it.
- */
-export type StateReason = "" | "COMPLETED" | "NOT_PLANNED" | "DUPLICATE" | "REOPENED";
-
-/**
- * The values of StateReason, by the names of their Go constants.
- */
-export const StateReason = {
-    /**
-     * The state reasons.
-     */
-    ReasonNone: "",
-    ReasonCompleted: "COMPLETED",
-    ReasonNotPlanned: "NOT_PLANNED",
-    ReasonDuplicate: "DUPLICATE",
-    ReasonReopened: "REOPENED",
-} as const;
-
-/**
- * TimelineItem is one comment or event. Which fields are set depends on Kind.
- */
-export interface TimelineItem {
-    "kind": EventKind;
-    "id": string;
-    "at": string;
-    "actor": string;
-    "actorIsBot": boolean;
-    "mine": boolean;
-
-    /**
-     * A comment's text, page, author's relationship to the repository, and when it was
-     * edited; Trimmed says the cache cut the text short. Minimized says someone folded it
-     * away, and MinimizedReason why, as an upper-case word.
-     */
-    "body": string;
-    "trimmed": boolean;
-    "url": string;
-    "association": string;
-    "editedAt": string;
-    "minimized": boolean;
-    "minimizedReason": string;
-
-    /**
-     * Ref is the other item an event names; WillClose a mention that closes the issue
-     * once merged; Commit a commit that closed it; DuplicateOf what a close as a duplicate
-     * names.
-     */
-    "ref": Linked | null;
-    "willClose": boolean;
-    "commit": string;
-    "duplicateOf": Linked | null;
-    "stateReason": StateReason;
-    "label": Label | null;
-    "assignee": string;
-
-    /**
-     * From and To are a rename's titles.
-     */
-    "from": string;
-    "to": string;
-}
-
-/**
- * TimelinePage is a page of the timeline, oldest first. Before is the cursor that reads the
- * items before it, "" when none come before it, and Total counts every item of the whole
- * timeline the sheet reads, so Total less the items the sheet holds is how many it doesn't.
- */
-export interface TimelinePage {
-    "items": TimelineItem[] | null;
-    "total": number;
-    "before": string;
-}

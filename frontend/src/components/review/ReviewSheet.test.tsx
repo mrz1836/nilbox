@@ -14,6 +14,7 @@ import {
   approveRunsOffer,
   closeOffer,
   heldRun,
+  issueComment,
   item,
   itemResolution,
   mergeOffer,
@@ -24,6 +25,7 @@ import {
   review,
   reviewFile,
   reviewResult,
+  reviewTimeline,
   worktree,
 } from '../../test/fixtures'
 import { emit, platform } from '../../test/platform'
@@ -64,6 +66,8 @@ function Harness({ onDone = vi.fn(), onClose = vi.fn(), ...props }: HarnessProps
       siblings={siblings}
       listTitle="Assigned"
       drafts={drafts}
+      tab="files"
+      onTab={vi.fn()}
       launch={null}
       resolution={null}
       sessions={undefined}
@@ -101,9 +105,7 @@ describe('ReviewSheet', () => {
     platform.refreshReview.mockResolvedValue(
       review({
         body: 'Adds a **cache**.',
-        reviews: [
-          { author: 'octo-reviewer', state: 'APPROVED', body: 'Nice', url: '', submittedAt: '', outdated: true },
-        ],
+        reviews: [{ author: 'octo-reviewer', state: 'APPROVED', url: '', submittedAt: '', outdated: true }],
       }),
     )
     render(<Harness />)
@@ -113,7 +115,9 @@ describe('ReviewSheet', () => {
     expect(screen.getByText('Ready to merge')).toBeInTheDocument()
     expect(screen.getByText('1 of 3 in Assigned')).toBeInTheDocument()
     expect(screen.getByRole('region', { name: 'cache/cache.go' })).toBeInTheDocument()
-    expect(screen.getByText(/approved an earlier commit/)).toBeInTheDocument()
+    expect(within(screen.getByRole('region', { name: 'Reviewers' })).getByRole('button')).toHaveTextContent(
+      'octo-reviewerapprovedan earlier commit',
+    )
     expect(await actionButton('Approve & squash-merge')).toBeEnabled()
   })
 
@@ -142,7 +146,7 @@ describe('ReviewSheet', () => {
       within(within(reading).getByRole('list', { name: 'Coming from GitHub' }))
         .getAllByRole('listitem')
         .map((part) => part.textContent),
-    ).toEqual(['Description', 'Changed files', 'Checks', 'Reviews'])
+    ).toEqual(['Description', 'Changed files', 'Checks', 'Comments'])
     expect(screen.getByText('Checking GitHub…')).toBeInTheDocument()
     unmount()
 
@@ -154,7 +158,8 @@ describe('ReviewSheet', () => {
     expect(await screen.findByRole('region', { name: 'Reading from GitHub' })).toHaveTextContent(
       'Reading acme-org/example-repo#7 from GitHub…',
     )
-    expect(screen.getByRole('region', { name: 'Description' })).not.toHaveTextContent(/./)
+    // Its header names who opened it; its text is a placeholder until the read answers.
+    expect(screen.getByRole('article', { name: 'Description' })).not.toHaveTextContent(/description|GitHub/)
     expect(screen.queryByRole('navigation', { name: 'Files' })).not.toBeInTheDocument()
     expect(screen.queryByRole('region', { name: 'Summary' })).not.toBeInTheDocument()
     unmountStub()
@@ -184,7 +189,7 @@ describe('ReviewSheet', () => {
       opened(review({ body: '', fetchedAt: '', files: [] }))
     })
 
-    expect(await screen.findByRole('region', { name: 'Description' })).toBeInTheDocument()
+    expect(await screen.findByRole('article', { name: 'Description' })).toBeInTheDocument()
     expect(banner).toBeInTheDocument()
   })
 
@@ -1618,5 +1623,188 @@ describe('selectedAction', () => {
   it('never keeps approving held runs, which runs only from the menu or the bar', () => {
     expect(selectedAction(held(), 'approve_runs')).toBe('approve_merge')
     expect(selectedAction(review({ offers: [approveRunsOffer()], primary: '' }), 'approve_runs')).toBe('')
+  })
+})
+
+describe('ReviewSheet tabs', () => {
+  // tabOf is the sheet's tab named name.
+  function tabOf(name: string) {
+    return screen.getByRole('tab', { name: new RegExp(`^${name}`) })
+  }
+
+  // conversation is the review of pull request 7 with its conversation, in a file of the
+  // review's line comment.
+  function withConversation(overrides: Parameters<typeof review>[0] = {}) {
+    return review({
+      files: [reviewFile(), reviewFile({ path: 'cache/widget.go', additions: 500 })],
+      totalFiles: 2,
+      timeline: reviewTimeline(),
+      reviews: [
+        {
+          author: 'octo-reviewer',
+          state: 'CHANGES_REQUESTED',
+          url: 'https://github.com/acme-org/example-repo/pull/7#pullrequestreview-1',
+          submittedAt: '',
+          outdated: false,
+        },
+        {
+          author: 'octo-third',
+          state: 'APPROVED',
+          url: 'https://github.com/acme-org/example-repo/pull/7#pullrequestreview-9',
+          submittedAt: '',
+          outdated: false,
+        },
+      ],
+      ...overrides,
+    })
+  }
+
+  it('counts the files and what people wrote, and opens on the tab last chosen', async () => {
+    platform.openReview.mockResolvedValue(withConversation({ fetchedAt: '' }))
+    platform.refreshReview.mockReturnValue(new Promise(() => undefined))
+    const { unmount } = render(<Harness />)
+
+    expect(await screen.findByRole('tab', { name: 'Files 2' })).toHaveAttribute('aria-selected', 'true')
+    expect(tabOf('Comments'), 'blank until the first read').toHaveAccessibleName('Comments')
+    unmount()
+
+    platform.openReview.mockResolvedValue(withConversation())
+    platform.refreshReview.mockResolvedValue(
+      withConversation({ timeline: reviewTimeline({ total: 9, before: 'Y3Vyc29y' }) }),
+    )
+    render(<Harness tab="comments" />)
+
+    expect(await screen.findByRole('tab', { name: 'Comments 4+' })).toHaveAttribute('aria-selected', 'true')
+    expect(screen.getByRole('region', { name: 'Conversation' })).toBeVisible()
+    expect(screen.getByRole('region', { name: 'Conversation' })).not.toContainElement(
+      screen.queryByRole('article', { name: 'Description' }),
+    )
+  })
+
+  it('remembers each tab chosen, and moves between them with the arrows without stepping the list', async () => {
+    const onTab = vi.fn()
+    platform.refreshReview.mockResolvedValue(withConversation())
+    render(<Harness onTab={onTab} />)
+
+    await userEvent.click(await screen.findByRole('tab', { name: 'Comments 4' }))
+    expect(onTab).toHaveBeenLastCalledWith('comments')
+    expect(screen.getByRole('region', { name: 'Conversation' })).toBeVisible()
+    expect(screen.getByRole('table', { name: 'Diff of cache/cache.go', hidden: true })).not.toBeVisible()
+
+    tabOf('Comments').focus()
+    await userEvent.keyboard('{ArrowLeft}')
+
+    expect(tabOf('Files')).toHaveAttribute('aria-selected', 'true')
+    expect(tabOf('Files')).toHaveFocus()
+    expect(onTab).toHaveBeenLastCalledWith('files')
+    expect(screen.getByText('1 of 3 in Assigned'), 'the arrow moved between the tabs alone').toBeInTheDocument()
+    expect(platform.openReview).not.toHaveBeenCalledWith(3)
+  })
+
+  it('keeps a line comment being written while the conversation shows', async () => {
+    platform.refreshReview.mockResolvedValue(withConversation())
+    render(<Harness />)
+
+    const diff = await screen.findByRole('table', { name: 'Diff of cache/cache.go' })
+    await userEvent.click(within(diff).getByRole('button', { name: 'Comment on line 3' }))
+    await userEvent.type(screen.getByRole('textbox', { name: 'Comment on line 3' }), 'Why three?')
+
+    await userEvent.click(tabOf('Comments'))
+    await userEvent.click(tabOf('Files'))
+
+    expect(screen.getByRole('textbox', { name: 'Comment on line 3' })).toHaveValue('Why three?')
+  })
+
+  it('shows the file a line comment is on, opening it if it is folded', async () => {
+    const scrolled = vi.spyOn(Element.prototype, 'scrollIntoView')
+    platform.refreshReview.mockResolvedValue(withConversation())
+    render(<Harness tab="comments" />)
+
+    // A hidden tab's controls have no names, so the file's block is found by its anchor.
+    const conversation = await screen.findByRole('region', { name: 'Conversation' })
+    const folded = () => document.getElementById('diff-cache_widget_go')?.querySelector('button[aria-expanded]')
+    expect(folded(), 'a long diff starts folded').toHaveAttribute('aria-expanded', 'false')
+
+    await userEvent.click(within(conversation).getByRole('button', { name: 'cache/widget.go:12' }))
+
+    expect(tabOf('Files')).toHaveAttribute('aria-selected', 'true')
+    expect(folded()).toHaveAttribute('aria-expanded', 'true')
+    expect(scrolled.mock.contexts.at(-1)).toHaveAttribute('id', 'diff-cache_widget_go')
+  })
+
+  it('shows a reviewer’s review in the conversation, or on GitHub when the sheet has none of it', async () => {
+    const scrolled = vi.spyOn(Element.prototype, 'scrollIntoView')
+    platform.refreshReview.mockResolvedValue(withConversation())
+    render(<Harness />)
+
+    const reviewers = await screen.findByRole('region', { name: 'Reviewers' })
+    await userEvent.click(within(reviewers).getByRole('button', { name: /octo-reviewer/ }))
+
+    expect(tabOf('Comments')).toHaveAttribute('aria-selected', 'true')
+    expect(scrolled.mock.contexts.at(-1)).toHaveAttribute('id', 'entry-PRR_1')
+
+    await userEvent.click(within(reviewers).getByRole('button', { name: /octo-third/ }))
+    expect(platform.openExternal).toHaveBeenCalledWith(
+      'https://github.com/acme-org/example-repo/pull/7#pullrequestreview-9',
+    )
+  })
+
+  it('quotes a comment into the review, as a comment, and focuses it', async () => {
+    platform.refreshReview.mockResolvedValue(withConversation())
+    render(<Harness tab="comments" />)
+
+    const reply = await screen.findByRole('article', { name: 'octo-other’s comment' })
+    await userEvent.click(within(reply).getByRole('button', { name: 'Quote reply' }))
+
+    // The quote goes after the text the review shows, the default reply here.
+    const box = screen.getByRole('textbox', { name: 'Your review' })
+    expect(box).toHaveValue(
+      'Reviewed and approved. Thanks, @octo-other!\n\n> Expiry comes in the next pull request.\n\n',
+    )
+    expect(box).toHaveFocus()
+    expect(await actionButton('Comment')).toBeInTheDocument()
+  })
+
+  it('marks what is new since the last visit, and scrolls to it once the conversation shows', async () => {
+    const scrolled = vi.spyOn(Element.prototype, 'scrollIntoView')
+    platform.openReview.mockResolvedValue(withConversation({ lastSeenAt: '2026-06-15T10:30:00Z' }))
+    platform.refreshReview.mockResolvedValue(withConversation({ lastSeenAt: '2026-06-15T10:30:00Z' }))
+    render(<Harness />)
+
+    expect(
+      await screen.findByRole('separator', { name: 'New since your last visit', hidden: true }),
+    ).toBeInTheDocument()
+    expect(scrolled, 'nothing scrolls while the conversation is hidden').not.toHaveBeenCalled()
+
+    await userEvent.click(tabOf('Comments'))
+
+    const divider = screen.getByRole('separator', { name: 'New since your last visit' })
+    expect(divider.nextElementSibling).toHaveTextContent('Two things before this merges.')
+    expect(scrolled.mock.contexts).toContain(divider)
+  })
+
+  it('reads the entries before the ones shown', async () => {
+    platform.refreshReview.mockResolvedValue(
+      withConversation({ timeline: reviewTimeline({ total: 5, before: 'Y3Vyc29y' }) }),
+    )
+    platform.reviewEarlier.mockResolvedValue({
+      items: [issueComment({ id: 'IC_0', body: 'The first word.' })],
+      total: 5,
+      before: '',
+    })
+    render(<Harness tab="comments" />)
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Show 2 earlier entries' }))
+
+    expect(platform.reviewEarlier).toHaveBeenCalledWith(1, 'Y3Vyc29y')
+    expect(await screen.findByText('The first word.')).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: 'Comments 5' })).toBeInTheDocument()
+  })
+
+  it('says a conversation with nothing in it holds no comments', async () => {
+    render(<Harness tab="comments" />)
+
+    expect(await screen.findByText('No comments yet.')).toBeVisible()
+    expect(screen.getByRole('tab', { name: 'Comments 0' })).toBeInTheDocument()
   })
 })

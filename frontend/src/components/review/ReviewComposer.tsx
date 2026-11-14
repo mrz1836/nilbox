@@ -1,4 +1,4 @@
-import { useId } from 'react'
+import { useId, type RefObject } from 'react'
 
 import { counted } from '../../lib/format'
 import type { ReviewDraft } from '../../lib/reviewDrafts'
@@ -40,6 +40,8 @@ export interface ReviewComposerProps {
   resolution: ItemResolution | null
   sessions: readonly AgentSession[] | undefined
   onManageReplies?: (() => void) | undefined
+  // textRef is the text box, which a quoted reply focuses.
+  textRef?: RefObject<HTMLTextAreaElement | null>
 }
 
 // replyActionOf is the review an action's text goes with, which decides the replies the
@@ -157,6 +159,7 @@ export function ReviewComposer({
   resolution,
   sessions,
   onManageReplies,
+  textRef,
 }: ReviewComposerProps) {
   const id = useId()
   const { list, fallback, body } = reply
@@ -201,6 +204,7 @@ export function ReviewComposer({
         </MenuButton>
       </div>
       <textarea
+        ref={textRef}
         id={id}
         rows={5}
         value={body}

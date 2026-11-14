@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from 'vitest'
 import type { Issue } from '../platform'
 import { issue, issueComment, issueTimeline } from '../test/fixtures'
 import { platform } from '../test/platform'
-import { joined, useIssue } from './useIssue'
+import { useIssue } from './useIssue'
 
 vi.mock('../platform', () => import('./../test/platform').then((fake) => fake.platform))
 
@@ -195,29 +195,5 @@ describe('useIssue', () => {
       await result.current.loadEarlier()
     })
     expect(result.current.earlierError, 'a read that worked clears it').toBe('')
-  })
-})
-
-describe('joined', () => {
-  const earlier = { id: 1, anchor: 'IC_5', items: comments(1, 4), before: 'c1' }
-
-  it('puts the earlier pages before the read they were read before', () => {
-    const page = issueTimeline({ items: comments(5, 2), before: 'c5' })
-
-    expect(joined(page, earlier).items.map((it) => it.id)).toEqual(['IC_1', 'IC_2', 'IC_3', 'IC_4', 'IC_5', 'IC_6'])
-    expect(joined(page, earlier).before).toBe('c1')
-    expect(joined(page, null)).toBe(page)
-  })
-
-  it('keeps them once newer entries pushed the read on, and drops them once it moved past them', () => {
-    const pushed = issueTimeline({ items: comments(3, 4), before: 'c3' })
-
-    expect(joined(pushed, earlier).items.map((it) => it.id)).toEqual(['IC_1', 'IC_2', 'IC_3', 'IC_4', 'IC_5', 'IC_6'])
-
-    const past = issueTimeline({ items: comments(7, 2), before: 'c7' })
-    expect(joined(past, earlier)).toBe(past)
-
-    const empty = issueTimeline({ items: [], before: '' })
-    expect(joined(empty, earlier)).toBe(empty)
   })
 })
