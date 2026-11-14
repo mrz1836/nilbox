@@ -212,6 +212,10 @@ export function ReleaseSheet({
     })
   }, [repo, dir, choice.branch, choice.bump, confirmed, choice.allowModulePath, choice.runsIn, checks])
   const offer = prepared.data
+  // rereading reports a fresh read of GitHub, origin, and the clone under way, which the
+  // sheet says. A Prepare for a new choice decides on the facts shown, so the sheet shows
+  // nothing for it: a line put in and taken out again would move everything below it.
+  const rereading = prepared.pending && owed
   const start = useMutation((req: ReleaseStartRequest) => startRelease(req))
   const [runId, setRunId] = useState<number | null>(null)
 
@@ -392,7 +396,7 @@ export function ReleaseSheet({
                   </span>
                 </div>
                 <div className="flex flex-col gap-2">
-                  {prepared.pending && (
+                  {rereading && (
                     <p role="status" className="flex items-center gap-2 text-xs text-muted">
                       <Spinner className="size-3.5" />
                       Checking again…
@@ -403,7 +407,7 @@ export function ReleaseSheet({
                     checks={offer.checks}
                     repo={repo}
                     dir={dir}
-                    checking={prepared.pending}
+                    checking={rereading}
                     onCheckAgain={readAgain}
                     onOpenSettings={onOpenSettings}
                     onWatch={onWatch}

@@ -530,6 +530,41 @@ describe('ReleaseSheet', () => {
     expect(onClose).toHaveBeenCalledOnce()
   })
 
+  it('chooses a bump from a click anywhere on its card', async () => {
+    platform.prepareRelease.mockImplementation(offerFor)
+    renderSheet()
+
+    const s = await sheet()
+
+    await userEvent.click(s.getByText('New features'))
+
+    expect(s.getByRole('radio', { name: /Minor/ })).toBeChecked()
+    await waitFor(() => {
+      expect(lastRequest()).toMatchObject({ bump: 'minor' })
+    })
+  })
+
+  it('shows nothing new while it decides again on a new choice, so nothing below moves', async () => {
+    platform.prepareRelease.mockImplementation(offerFor)
+    platform.prepareRelease.mockImplementationOnce((req) =>
+      offerFor(req).then((o) => ({ ...o, checks: [releaseCheck({ fixes: ['checkAgain'] })] })),
+    )
+    renderSheet()
+
+    const s = await sheet()
+
+    // The decision for the new choice is still under way.
+    platform.prepareRelease.mockImplementationOnce(() => new Promise(() => undefined))
+    await userEvent.click(s.getByRole('radio', { name: /Minor/ }))
+    await waitFor(() => {
+      expect(lastRequest()).toMatchObject({ bump: 'minor', refresh: false })
+    })
+
+    expect(s.queryByText('Checking again…')).not.toBeInTheDocument()
+    expect(s.getByRole('button', { name: 'Check again' })).toBeEnabled()
+    expect(s.getByRole('button', { name: 'Release v1.4.3' })).toBeDisabled()
+  })
+
   it('reads afresh after Check again even when a choice replaces that read before it is answered', async () => {
     platform.prepareRelease.mockResolvedValue(releaseOffer({ checks: [releaseCheck({ fixes: ['checkAgain'] })] }))
     renderSheet()

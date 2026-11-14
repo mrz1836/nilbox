@@ -35,35 +35,43 @@ export function BumpChoice({ bumps, value, onChange, disabled = false, onUpdate 
         const chosen = offer.bump === value
         const noteId = `${name}-${offer.bump}-note`
 
+        const choosable = offer.offered && !disabled
+
+        // The whole card is the radio's label, so a click anywhere on it chooses the bump,
+        // and selects none of its text. Update sits outside it: a label holds no button.
         return (
           <div
             key={offer.bump}
-            className={`flex flex-col gap-1 rounded-lg border px-3 py-2.5 transition-colors ${chosen ? 'border-accent/60 bg-accent/8' : 'border-border bg-surface'} ${offer.offered ? '' : 'opacity-75'}`}
+            className={`flex flex-col rounded-lg border transition-colors ${chosen ? 'border-accent/60 bg-accent/8' : 'border-border bg-surface'} ${choosable && !chosen ? 'hover:bg-raised' : ''} ${offer.offered ? '' : 'opacity-75'}`}
           >
-            <label className={`flex items-center gap-2 text-sm ${offer.offered && !disabled ? 'cursor-pointer' : ''}`}>
-              <input
-                type="radio"
-                name={name}
-                value={offer.bump}
-                checked={chosen}
-                disabled={disabled || !offer.offered}
-                aria-describedby={offer.note === '' ? undefined : noteId}
-                onChange={() => {
-                  onChange(offer.bump)
-                }}
-                className="radio"
-              />
-              <span className="font-medium">{label}</span>
-              <span className="ml-auto font-mono text-xs text-muted">{offer.version}</span>
+            <label
+              className={`flex flex-1 flex-col gap-1 px-3 py-2.5 select-none ${choosable ? 'cursor-pointer' : ''}`}
+            >
+              <span className="flex items-center gap-2 text-sm">
+                <input
+                  type="radio"
+                  name={name}
+                  value={offer.bump}
+                  checked={chosen}
+                  disabled={disabled || !offer.offered}
+                  aria-describedby={offer.note === '' ? undefined : noteId}
+                  onChange={() => {
+                    onChange(offer.bump)
+                  }}
+                  className="radio"
+                />
+                <span className="font-medium">{label}</span>
+                <span className="ml-auto font-mono text-xs text-muted">{offer.version}</span>
+              </span>
+              <span className="pl-6 text-xs text-muted">{purpose}</span>
+              {offer.note !== '' && (
+                <span id={noteId} className="pl-6 text-xs text-muted">
+                  {offer.note}
+                </span>
+              )}
             </label>
-            <p className="pl-6 text-xs text-muted">{purpose}</p>
-            {offer.note !== '' && (
-              <p id={noteId} className="pl-6 text-xs text-muted">
-                {offer.note}
-              </p>
-            )}
             {offer.fixes.includes('update') && (
-              <button type="button" onClick={onUpdate} className={`${quietButtonClass} ml-5 self-start`}>
+              <button type="button" onClick={onUpdate} className={`${quietButtonClass} mx-3 mb-2.5 ml-8 self-start`}>
                 Update magex in Settings
               </button>
             )}
