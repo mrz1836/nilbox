@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { brand } from '../generated/brand'
-import type { BranchResult, BranchRules, LinkedItem, MergedBranch, Worktree } from '../platform'
+import type { BranchResult, BranchRules, LinkedItem, MergedBranch, RemoveResult, Worktree } from '../platform'
 import { fixedNow } from '../test/clock'
 import {
   finishedWorktree,
@@ -1956,5 +1956,184 @@ describe('WorktreesView filter', () => {
 
     expect(await screen.findByText('No clone under ~/projects has linked worktrees.')).toBeInTheDocument()
     expect(screen.queryByText(/^No worktree matches/)).not.toBeInTheDocument()
+  })
+})
+
+// held is a promise the test settles itself, to see what shows while it is pending.
+function held<T>() {
+  let resolve: (value: T) => void = () => undefined
+  const promise = new Promise<T>((settle) => {
+    resolve = settle
+  })
+
+  return { promise, resolve }
+}
+
+// settle runs fn and lets what it settles land.
+async function settle(fn: () => void) {
+  await act(async () => {
+    fn()
+    await Promise.resolve()
+  })
+}
+
+describe('WorktreesView progress', () => {
+  const issue9Path = `${repoPath}/.claude/worktrees/issue-9`
+  const issue9Display = '~/projects/example-repo/.claude/worktrees/issue-9'
+
+  it('shows a removal under way on its row and in the toolbar, then what it did until the list lands', async () => {
+    render(<WorktreesView clock={fixedNow} />)
+    await repo('example-repo')
+
+    const removal = held<RemoveResult>()
+    platform.removeWorktree.mockReturnValue(removal.promise)
+    await userEvent.click(row(linkedDisplay).getByRole('button', { name: 'Remove' }))
+    await confirmWith('Remove')
+
+    expect(screen.getByRole('status')).toHaveTextContent('Removing example-repo/pr-7…')
+    expect(screen.getByText(linkedDisplay).closest('li')).toHaveAttribute('aria-busy', 'true')
+    expect(row(linkedDisplay).getByText('Removing…')).toBeInTheDocument()
+    expect(row(linkedDisplay).queryByRole('button', { name: 'Remove' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /^Remove all clean/ })).toBeDisabled()
+
+    const listing = held<ReturnType<typeof worktreesSnapshot>>()
+    platform.listWorktrees.mockReturnValue(listing.promise)
+    await settle(() => {
+      removal.resolve(removeResult())
+    })
+
+    expect(await row(linkedDisplay).findByText('Removed')).toBeInTheDocument()
+    expect(screen.getByText(linkedDisplay).closest('li')).not.toHaveAttribute('aria-busy')
+    expect(screen.getByRole('button', { name: 'Refreshing…' })).toBeDisabled()
+
+    await settle(() => {
+      listing.resolve(worktreesSnapshot({ repos: [worktreeRepo({ worktrees: [mainWorktree()] })], cleanCount: 0 }))
+    })
+
+    await vi.waitFor(() => {
+      expect(screen.queryByText(linkedDisplay)).not.toBeInTheDocument()
+    })
+    expect(screen.queryByText('Removing example-repo/pr-7…')).not.toBeInTheDocument()
+  })
+
+  it('shows a bulk removal under way on each worktree it takes, then which ones stayed', async () => {
+    const issue9 = worktree({
+      path: issue9Path,
+      displayPath: issue9Display,
+      branch: 'worktree-issue-9',
+      branches: [ownBranch({ name: 'worktree-issue-9' })],
+    })
+    platform.listWorktrees.mockResolvedValue(
+      worktreesSnapshot({ repos: [worktreeRepo({ worktrees: [mainWorktree(), worktree(), issue9] })], cleanCount: 2 }),
+    )
+    render(<WorktreesView clock={fixedNow} />)
+    await repo('example-repo')
+
+    const removal = held<RemoveResult[]>()
+    platform.removeAllCleanWorktrees.mockReturnValue(removal.promise)
+    await userEvent.click(screen.getByRole('button', { name: 'Remove all clean (2)' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Remove 2 worktrees' }))
+
+    expect(screen.getByRole('status')).toHaveTextContent('Removing 2 clean worktrees…')
+    expect(screen.getByRole('button', { name: 'Removing…' })).toBeDisabled()
+    expect(row(linkedDisplay).getByText('Removing…')).toBeInTheDocument()
+    expect(row(issue9Display).getByText('Removing…')).toBeInTheDocument()
+
+    platform.listWorktrees.mockReturnValue(held<ReturnType<typeof worktreesSnapshot>>().promise)
+    await settle(() => {
+      removal.resolve([
+        removeResult(),
+        removeResult({
+          path: issue9Path,
+          displayPath: issue9Display,
+          removed: false,
+          reason: 'has uncommitted changes',
+        }),
+      ])
+    })
+
+    expect(await row(linkedDisplay).findByText('Removed')).toBeInTheDocument()
+    expect(row(issue9Display).getByText('Left in place')).toBeInTheDocument()
+  })
+
+  it('shows an unlock under way on its row', async () => {
+    const stale = worktree({ locked: true, agentLock: true, staleLock: true, canUnlock: true, canRemove: false })
+    platform.listWorktrees.mockResolvedValue(
+      worktreesSnapshot({ repos: [worktreeRepo({ worktrees: [mainWorktree(), stale] })], cleanCount: 0 }),
+    )
+    render(<WorktreesView clock={fixedNow} />)
+    await repo('example-repo')
+
+    const unlock = held<undefined>()
+    platform.unlockWorktree.mockReturnValue(unlock.promise)
+    await userEvent.click(row(linkedDisplay).getByRole('button', { name: 'Unlock' }))
+
+    expect(screen.getByRole('status')).toHaveTextContent('Unlocking example-repo/pr-7…')
+    expect(row(linkedDisplay).getByText('Unlocking…')).toBeInTheDocument()
+
+    await settle(() => {
+      unlock.resolve(undefined)
+    })
+
+    expect(await screen.findByRole('status', { name: 'Unlocked example-repo/pr-7' })).toBeInTheDocument()
+  })
+
+  it('says a prune is under way on its clone’s button', async () => {
+    platform.listWorktrees.mockResolvedValue(worktreesSnapshot({ repos: [worktreeRepo({ hasStale: true })] }))
+    render(<WorktreesView clock={fixedNow} />)
+
+    const prune = held<undefined>()
+    platform.pruneWorktrees.mockReturnValue(prune.promise)
+    await userEvent.click((await repo('example-repo')).getByRole('button', { name: 'Prune' }))
+
+    expect(screen.getByRole('status')).toHaveTextContent('Pruning ~/projects/example-repo…')
+    expect((await repo('example-repo')).getByRole('button', { name: 'Pruning…' })).toBeDisabled()
+
+    await settle(() => {
+      prune.resolve(undefined)
+    })
+
+    expect(await (await repo('example-repo')).findByRole('button', { name: 'Prune' })).toBeEnabled()
+  })
+
+  it('says the merged branches are being deleted, on the toolbar and its button', async () => {
+    platform.mergedBranches.mockResolvedValue([mergedBranch()])
+    render(<WorktreesView clock={fixedNow} />)
+    await repo('example-repo')
+
+    const deletion = held<BranchResult[]>()
+    platform.deleteBranches.mockReturnValue(deletion.promise)
+    await userEvent.click(screen.getByRole('button', { name: 'Clean up merged branches…' }))
+    await userEvent.click(await screen.findByRole('button', { name: 'Delete 1 branch' }))
+
+    expect(screen.getByRole('status')).toHaveTextContent('Deleting 1 merged branch…')
+    expect(screen.getByRole('button', { name: 'Deleting branches…' })).toBeDisabled()
+
+    await settle(() => {
+      deletion.resolve([])
+    })
+
+    expect(await screen.findByRole('button', { name: 'Clean up merged branches…' })).toBeEnabled()
+  })
+
+  it('says the recently cleaned-up list is being cleared', async () => {
+    platform.recentCleanups.mockResolvedValue([worktreeCleanup()])
+    render(<WorktreesView clock={fixedNow} />)
+
+    const clear = held<undefined>()
+    platform.clearCleanups.mockReturnValue(clear.promise)
+
+    const list = within(await screen.findByRole('region', { name: 'Recently cleaned up' }))
+    await userEvent.click(list.getByRole('button', { name: 'Clear' }))
+
+    expect(list.getByRole('button', { name: 'Clearing…' })).toBeDisabled()
+
+    await settle(() => {
+      clear.resolve(undefined)
+    })
+
+    await vi.waitFor(() => {
+      expect(screen.queryByRole('region', { name: 'Recently cleaned up' })).not.toBeInTheDocument()
+    })
   })
 })

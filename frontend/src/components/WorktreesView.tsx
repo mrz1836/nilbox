@@ -57,13 +57,36 @@ function Checking({ progress, where }: { progress: WorktreesProgress | null; whe
   )
 }
 
+// Working says, while a change runs, what it is doing, as in "Removing example-repo/pr-7…".
+function Working({ text }: { text: string }) {
+  return (
+    <span role="status" className="flex min-w-0 items-center gap-2 font-medium text-text">
+      <Spinner className="size-3.5" />
+      <span className="truncate">{text}</span>
+    </span>
+  )
+}
+
+// Busy is a button's label while the change it started runs: a spinner and what it does.
+function Busy({ text }: { text: string }) {
+  return (
+    <>
+      <Spinner className="size-3.5" />
+      {text}
+    </>
+  )
+}
+
 // WorktreesView lists the git worktrees of every clone in the repository locations and removes
 // them safely. It loads when it opens, when its Refresh button is clicked, and when
 // reloadKey changes, never on a timer of its own: a listing runs git in every clone.
 // Whatever starts a listing, a quiet one after a background sweep included, the toolbar
 // says it is checking and how far it has got; otherwise, when the list was checked.
 // Removal follows what the backend allows, and every removal and cleanup asks first,
-// showing a box for each worktree and branch it would take.
+// showing a box for each worktree and branch it would take. While a change runs, the
+// toolbar says what it is doing, the button that started it says so too, and each
+// worktree it takes shows it; once done, each shows what became of it until the list
+// is read again.
 //
 // The toolbar's filter narrows the clones and worktrees shown, and says at the top when
 // nothing matches. The bulk cleanups still offer every worktree they would take, since
@@ -85,6 +108,9 @@ export function WorktreesView({
     checking,
     progress,
     disabled,
+    working,
+    workOn,
+    clearing,
     loadError,
     error,
     clearError,
@@ -99,14 +125,18 @@ export function WorktreesView({
   } = useWorktrees(props)
   const filter = filterWorktrees(repos, query, { agentName, errors })
   const shown = filter === null ? repos.map((repo) => ({ repo, worktrees: repo.worktrees })) : filter.repos
+  // doing is the change under way, while it runs; the listing after it shows as any does.
+  const doing = working !== null && !working.listing ? working : null
 
   return (
     <section aria-label="Worktrees" className="flex flex-col gap-4 p-4">
       <div className="flex flex-wrap items-center gap-3 text-sm">
         <button type="button" disabled={disabled} onClick={actions.refresh} className={plainButton}>
-          {loading ? 'Refreshing…' : 'Refresh'}
+          {loading ? <Busy text="Refreshing…" /> : 'Refresh'}
         </button>
-        {checking && snapshot !== null ? (
+        {doing !== null ? (
+          <Working text={doing.text} />
+        ) : checking && snapshot !== null ? (
           <Checking progress={progress} where={whereClones(snapshot.roots)} />
         ) : (
           snapshot !== null && (
@@ -124,7 +154,7 @@ export function WorktreesView({
             title="Find the local branches in your clones whose pull requests merged"
             className={plainButton}
           >
-            Clean up merged branches…
+            {doing?.kind === 'merged' ? <Busy text="Deleting branches…" /> : 'Clean up merged branches…'}
           </button>
           <button
             type="button"
@@ -132,7 +162,7 @@ export function WorktreesView({
             onClick={actions.askCleanUpFinished}
             className={plainButton}
           >
-            Clean up finished ({String(finishedCount)})
+            {doing?.kind === 'finished' ? <Busy text="Cleaning up…" /> : `Clean up finished (${String(finishedCount)})`}
           </button>
           <button
             type="button"
@@ -140,7 +170,7 @@ export function WorktreesView({
             onClick={actions.askRemoveAllClean}
             className={plainButton}
           >
-            Remove all clean ({String(cleanCount)})
+            {doing?.kind === 'all' ? <Busy text="Removing…" /> : `Remove all clean (${String(cleanCount)})`}
           </button>
         </span>
       </div>
@@ -182,6 +212,8 @@ export function WorktreesView({
           now={now}
           disabled={disabled}
           errors={errors}
+          workOn={workOn}
+          pruning={doing?.kind === 'prune' && doing.repo === repo.path}
           onPrune={actions.prune}
           onRemove={actions.askRemove}
           onForceRemove={actions.askForceRemove}
@@ -196,6 +228,7 @@ export function WorktreesView({
           cleanups={history}
           now={now}
           disabled={disabled}
+          clearing={clearing}
           error={clearError}
           onClear={actions.clearHistory}
           sectionRef={historyRef}

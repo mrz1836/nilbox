@@ -2,6 +2,7 @@ import { useState, type ReactNode } from 'react'
 
 import { brand } from '../../generated/brand'
 import { formatAge } from '../../lib/time'
+import type { RowWork } from '../../lib/useWorktrees'
 import {
   copyText,
   openExternal,
@@ -10,6 +11,8 @@ import {
   type Worktree,
   type WorktreeStage,
 } from '../../platform'
+import { AlertIcon, CircleCheckIcon } from '../icons'
+import { Spinner } from '../Spinner'
 import { buttonBase, plainButton, plural } from './shared'
 
 // badge is a status marker: weight and color mark it, with no pill around it.
@@ -27,6 +30,9 @@ export interface WorktreeRowProps {
   now: Date
   disabled: boolean
   error: string
+  // work is what the worktree shows of a change taking it: under way, done, or left in
+  // place; null when no change takes it.
+  work?: RowWork | null | undefined
   // agentName names a coding agent for people, as in "Codex".
   agentName?: ((id: AgentID) => string) | undefined
   // launch is the "Open in Claude" or "Open in Codex" control for the worktree's item,
@@ -234,6 +240,26 @@ function WorktreeNotes({ worktree }: { worktree: Worktree }) {
   )
 }
 
+// workTones are how each state of a change shows on its worktree.
+const workTones = {
+  doing: 'text-text',
+  done: 'text-success',
+  left: 'text-warning',
+} as const
+
+// WorkMark says, in place of a worktree's actions, what a change taking it is doing, or
+// what became of it once done, while the list is read again.
+function WorkMark({ work }: { work: RowWork }) {
+  return (
+    <span className={`inline-flex items-center gap-1.5 text-xs font-medium ${workTones[work.state]}`}>
+      {work.state === 'doing' && <Spinner className="size-3.5" />}
+      {work.state === 'done' && <CircleCheckIcon className="size-3.5" />}
+      {work.state === 'left' && <AlertIcon className="size-3.5" />}
+      {work.text}
+    </span>
+  )
+}
+
 // WorktreeActions offers only what the backend reports is allowed: Clean up for a
 // finished worktree, Unlock for a lock whose session has ended, Remove for a clean,
 // unlocked worktree, and Force remove for a dirty, unlocked one. The main worktree gets a
@@ -245,7 +271,7 @@ function WorktreeActions({
   onForceRemove,
   onUnlock,
   onCleanUp,
-}: Omit<WorktreeRowProps, 'now' | 'error' | 'agentName' | 'launch'>) {
+}: Omit<WorktreeRowProps, 'now' | 'error' | 'agentName' | 'launch' | 'work'>) {
   if (worktree.main) {
     return <span className="text-xs text-muted">main worktree</span>
   }
@@ -289,25 +315,37 @@ function WorktreeActions({
 
 // WorktreeRow is one worktree: its branch, status, actions, where it is, what it was made
 // for, and why it cannot simply be removed, with the failure of an action taken on it.
+// While a change takes it, the row is dimmed and busy, and says so in place of its
+// actions.
 export function WorktreeRow({
   worktree,
   now,
   disabled,
   error,
+  work = null,
   agentName = (id) => id,
   launch,
   ...actions
 }: WorktreeRowProps) {
   return (
-    <li className="flex flex-col gap-1.5 border-b border-border px-3 py-2.5 last:border-b-0">
+    <li
+      aria-busy={work?.state === 'doing' ? true : undefined}
+      className={`flex flex-col gap-1.5 border-b border-border px-3 py-2.5 transition-opacity last:border-b-0 ${work === null || work.state === 'left' ? '' : 'opacity-60'}`.trim()}
+    >
       <div className="flex flex-wrap items-center gap-2">
         <span className="font-medium">
           {worktree.detached || worktree.branch === '' ? 'detached' : worktree.branch}
         </span>
         <WorktreeStatus worktree={worktree} agentName={agentName} />
         <span className="ml-auto flex items-center gap-2">
-          {!worktree.main && !worktree.prunable && <CopyPath path={worktree.path} />}
-          <WorktreeActions worktree={worktree} disabled={disabled} {...actions} />
+          {work === null ? (
+            <>
+              {!worktree.main && !worktree.prunable && <CopyPath path={worktree.path} />}
+              <WorktreeActions worktree={worktree} disabled={disabled} {...actions} />
+            </>
+          ) : (
+            <WorkMark work={work} />
+          )}
         </span>
       </div>
       <p className="text-xs text-muted">

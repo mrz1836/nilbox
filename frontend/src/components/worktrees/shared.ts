@@ -6,6 +6,7 @@ export function plural(n: number, word: string): string {
 }
 
 // buttonBase is the shape of the view's buttons; each adds its own border color.
-export const buttonBase = 'rounded-md border px-3 py-1 text-sm font-medium disabled:opacity-60'
+export const buttonBase =
+  'inline-flex items-center gap-1.5 rounded-md border px-3 py-1 text-sm font-medium disabled:opacity-60'
 
 export const plainButton = `${buttonBase} border-border bg-surface hover:bg-raised`

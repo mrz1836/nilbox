@@ -4,6 +4,7 @@ import { formatAgo, formatFull } from '../../lib/time'
 import { openExternal, type LinkedItem, type WorktreeCleanup } from '../../platform'
 import { quietButtonClass } from '../controls'
 import { CircleCheckIcon, IssueIcon, PullRequestIcon } from '../icons'
+import { Spinner } from '../Spinner'
 
 // historyPreview is how many cleanups the history shows before "Show more".
 const historyPreview = 5
@@ -91,6 +92,8 @@ export interface CleanupHistoryProps {
   cleanups: readonly WorktreeCleanup[]
   now: Date
   disabled: boolean
+  // clearing reports the list being cleared.
+  clearing?: boolean | undefined
   error: string
   onClear: () => void
   sectionRef: Ref<HTMLElement>
@@ -99,7 +102,15 @@ export interface CleanupHistoryProps {
 // CleanupHistory lists the worktrees cleaned up most recently, by hand or automatically,
 // so a cleanup whose toast went by unseen can still be found. It shows the newest few, and
 // the rest on request.
-export function CleanupHistory({ cleanups, now, disabled, error, onClear, sectionRef }: CleanupHistoryProps) {
+export function CleanupHistory({
+  cleanups,
+  now,
+  disabled,
+  clearing = false,
+  error,
+  onClear,
+  sectionRef,
+}: CleanupHistoryProps) {
   const headingId = useId()
   const [expanded, setExpanded] = useState(false)
   const shown = expanded ? cleanups : cleanups.slice(0, historyPreview)
@@ -116,8 +127,20 @@ export function CleanupHistory({ cleanups, now, disabled, error, onClear, sectio
           Recently cleaned up
         </h2>
         <span className="text-xs text-muted">Everything in them was on GitHub</span>
-        <button type="button" disabled={disabled} onClick={onClear} className={`ml-auto ${quietButtonClass}`}>
-          Clear
+        <button
+          type="button"
+          disabled={disabled || clearing}
+          onClick={onClear}
+          className={`ml-auto ${quietButtonClass}`}
+        >
+          {clearing ? (
+            <>
+              <Spinner className="size-3" />
+              Clearing…
+            </>
+          ) : (
+            'Clear'
+          )}
         </button>
       </header>
       {error !== '' && (

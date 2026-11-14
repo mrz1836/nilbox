@@ -1,7 +1,8 @@
-import type { WorktreeErrors } from '../../lib/useWorktrees'
+import type { RowWork, WorktreeErrors } from '../../lib/useWorktrees'
 import type { ReactNode } from 'react'
 
 import type { AgentID, LinkedItem, Worktree, WorktreeRepo } from '../../platform'
+import { Spinner } from '../Spinner'
 import { plainButton, plural } from './shared'
 import { WorktreeRow } from './WorktreeRow'
 
@@ -13,6 +14,10 @@ export interface RepoSectionProps {
   now: Date
   disabled: boolean
   errors: WorktreeErrors
+  // workOn says what a worktree shows of the change under way, or null; pruning reports
+  // this repository being pruned.
+  workOn: (path: string) => RowWork | null
+  pruning: boolean
   onPrune: (repo: WorktreeRepo) => void
   onRemove: (repo: WorktreeRepo, worktree: Worktree) => void
   onForceRemove: (repo: WorktreeRepo, worktree: Worktree) => void
@@ -33,6 +38,8 @@ export function RepoSection({
   now,
   disabled,
   errors,
+  workOn,
+  pruning,
   onPrune,
   onRemove,
   onForceRemove,
@@ -60,7 +67,14 @@ export function RepoSection({
             }}
             className={`ml-auto ${plainButton}`}
           >
-            Prune
+            {pruning ? (
+              <>
+                <Spinner className="size-3.5" />
+                Pruning…
+              </>
+            ) : (
+              'Prune'
+            )}
           </button>
         )}
       </header>
@@ -79,6 +93,7 @@ export function RepoSection({
               now={now}
               disabled={disabled}
               error={errors.worktree(wt.path)}
+              work={workOn(wt.path)}
               agentName={agentName}
               launch={wt.item !== null && !wt.main ? launchFor?.(wt.item) : undefined}
               onRemove={() => {

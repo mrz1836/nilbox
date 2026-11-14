@@ -23,6 +23,7 @@ import {
   type WorktreesProgress,
   type WorktreesSnapshot,
 } from '../platform'
+import { counted } from './format'
 import { useMutation } from './useMutation'
 import { useQuery } from './useQuery'
 import { branchSummary, bulkSummary, failedSummary, shortName, singleSummary, type Summary } from './worktreeSummary'
@@ -76,6 +77,36 @@ export interface Bulk {
   verb: string
 }
 
+// WorkKind is a change the view makes: to one worktree, to one repository, or in bulk.
+export type WorkKind = 'remove' | 'force' | 'cleanUp' | 'unlock' | 'prune' | 'all' | 'finished' | 'merged'
+
+// Working is a change under way, as the view shows it until the listing after it lands:
+// what it is, what it says it is doing, the worktrees or the repository it works on, and
+// how far it has got.
+export interface Working {
+  kind: WorkKind
+  // text says what the change is doing, as in "Removing example-repo/pr-7…".
+  text: string
+  // doing and done are what each worktree it takes shows while it runs ("Removing…") and
+  // once it is done, while the list is read again ("Removed").
+  doing: string
+  done: string
+  // paths are the worktrees it takes, and repo the repository it works on, for a prune.
+  paths: readonly string[]
+  repo: string
+  // listing reports the change done, and the list being read again to show it.
+  listing: boolean
+  // left are the worktrees a bulk action took and left in place, as it reported them.
+  left: readonly string[]
+}
+
+// RowWork is what a worktree shows of a change taking it: under way, done, or left in
+// place by a bulk action, with the words to say so.
+export interface RowWork {
+  state: 'doing' | 'done' | 'left'
+  text: string
+}
+
 // WorktreeErrors looks up a single action's failure, which shows inline under the
 // worktree or the repository it was on.
 export interface WorktreeErrors {
@@ -108,6 +139,13 @@ export interface WorktreesState {
   progress: WorktreesProgress | null
   // disabled holds the actions while a change, or a listing that holds them, runs.
   disabled: boolean
+  // working is the change under way, until the listing after it lands, or null.
+  working: Working | null
+  // workOn says what the worktree at path shows of the change under way, or null when the
+  // change doesn't take it.
+  workOn: (path: string) => RowWork | null
+  // clearing reports the recently cleaned-up list being cleared.
+  clearing: boolean
   // loadError is why the latest listing failed, or ''.
   loadError: string
   // error is the failure that holds up the whole view: a bulk action's, else the
@@ -163,6 +201,7 @@ interface State {
   bulk: Bulk | null
   branchResults: BranchResult[] | null
   confirmation: Confirmation | null
+  working: Working | null
   // refreshing is a listing asked for here, by Refresh or after a change, which holds the
   // actions while it runs, as the first listing does. A listing after a background sweep
   // (reloadKey) runs quietly.
@@ -179,6 +218,9 @@ type Action =
   | { type: 'cancel' }
   | { type: 'refreshing' }
   | { type: 'refreshed' }
+  | { type: 'working'; work: Work }
+  | { type: 'worked'; left: readonly string[] }
+  | { type: 'idle' }
 
 const initialState: State = {
   failure: null,
@@ -186,7 +228,43 @@ const initialState: State = {
   bulk: null,
   branchResults: null,
   confirmation: null,
+  working: null,
   refreshing: false,
+}
+
+// Work is a change about to start, as the view will show it.
+type Work = Omit<Working, 'listing' | 'left'>
+
+// workWords are what each kind of change says it is doing, and has done.
+const workWords: Readonly<Record<WorkKind, { doing: string; done: string }>> = {
+  remove: { doing: 'Removing', done: 'Removed' },
+  force: { doing: 'Force removing', done: 'Force removed' },
+  cleanUp: { doing: 'Cleaning up', done: 'Cleaned up' },
+  unlock: { doing: 'Unlocking', done: 'Unlocked' },
+  prune: { doing: 'Pruning', done: 'Pruned' },
+  all: { doing: 'Removing', done: 'Removed' },
+  finished: { doing: 'Cleaning up', done: 'Cleaned up' },
+  merged: { doing: 'Deleting', done: 'Deleted' },
+}
+
+// work describes a change of kind on what, the worktrees at paths or the repository repo.
+function work(kind: WorkKind, what: string, paths: readonly string[], repo = ''): Work {
+  const words = workWords[kind]
+
+  return { kind, text: `${words.doing} ${what}…`, doing: `${words.doing}…`, done: words.done, paths, repo }
+}
+
+// rowWork is what the worktree at path shows of working, or null when it doesn't take it.
+function rowWork(working: Working | null, path: string): RowWork | null {
+  if (working === null || !working.paths.includes(path)) {
+    return null
+  }
+
+  if (!working.listing) {
+    return { state: 'doing', text: working.doing }
+  }
+
+  return working.left.includes(path) ? { state: 'left', text: 'Left in place' } : { state: 'done', text: working.done }
 }
 
 // reducer applies an action to the state. Every change, bulk action, and refresh starts
@@ -211,6 +289,14 @@ function reducer(state: State, action: Action): State {
       return { ...state, refreshing: true }
     case 'refreshed':
       return { ...state, refreshing: false }
+    case 'working':
+      return { ...state, working: { ...action.work, listing: false, left: [] } }
+    case 'worked':
+      return state.working === null
+        ? state
+        : { ...state, working: { ...state.working, listing: true, left: action.left } }
+    case 'idle':
+      return { ...state, working: null }
   }
 }
 
@@ -331,29 +417,41 @@ export function useWorktrees({
     }
   }
 
-  // run performs one change, then lists again. The change returns what it did; a
-  // failure is kept with where it happened, and failed names the change for its report.
-  const run = async (scope: Failure['scope'], path: string, failed: string, change: () => Promise<Summary>) => {
+  // run performs one change, shown as doing, then lists again. The change returns what it
+  // did; a failure is kept with where it happened, and failed names the change for its
+  // report.
+  const run = async (
+    scope: Failure['scope'],
+    path: string,
+    failed: string,
+    doing: Work,
+    change: () => Promise<Summary>,
+  ) => {
     resetMessages()
+    dispatch({ type: 'working', work: doing })
 
     const result = await changer.run(change)
 
     if (result.ok) {
       dispatch({ type: 'changed', notice: result.data })
       onSummary?.(result.data)
-      void reload()
+      dispatch({ type: 'worked', left: [] })
+      await reload()
     } else {
       dispatch({ type: 'failed', failure: { scope, path, message: result.error } })
       onSummary?.(failedSummary(failed, result.error))
     }
+
+    dispatch({ type: 'idle' })
   }
 
   // single makes one confirmed change to one worktree, with the branches ticked.
   const single = (confirmation: Extract<Confirmation, { repoPath: string }>, branches: string[]) => {
     const { repoPath, worktree: wt } = confirmation
-    const failed = `Couldn’t ${confirmation.kind === 'cleanUp' ? 'clean up' : 'remove'} ${shortName(wt.displayPath)}`
+    const name = shortName(wt.displayPath)
+    const failed = `Couldn’t ${confirmation.kind === 'cleanUp' ? 'clean up' : 'remove'} ${name}`
 
-    void run('worktree', wt.path, failed, async () => {
+    void run('worktree', wt.path, failed, work(confirmation.kind, name, [wt.path]), async () => {
       switch (confirmation.kind) {
         case 'remove':
           return singleSummary('Removed', wt, await removeWorktree(repoPath, wt.path, branches))
@@ -368,33 +466,55 @@ export function useWorktrees({
   // runBranches deletes the merged branches ticked, reports each outcome, and lists again.
   const runBranches = async (picks: BranchPick[]) => {
     resetMessages()
+    dispatch({ type: 'working', work: work('merged', counted(picks.length, 'merged branch', 'merged branches'), []) })
 
     const result = await brancher.run(picks)
 
     if (result.ok) {
       dispatch({ type: 'branchesDone', results: result.data })
       onSummary?.(branchSummary(result.data))
-      void reload()
+      dispatch({ type: 'worked', left: [] })
+      await reload()
     } else {
       onSummary?.(failedSummary('Couldn’t delete the branches', result.error))
     }
+
+    dispatch({ type: 'idle' })
   }
 
-  // runBulk performs a bulk action and reports each worktree's outcome; failed names the
-  // action for a report of its failure.
-  const runBulk = async (action: () => Promise<RemoveResult[]>, noun: string, verb: string, failed: string) => {
+  // runBulk performs a bulk action, shown as doing, and reports each worktree's outcome;
+  // failed names the action for a report of its failure.
+  const runBulk = async (
+    action: () => Promise<RemoveResult[]>,
+    doing: Work,
+    noun: string,
+    verb: string,
+    failed: string,
+  ) => {
     resetMessages()
+    dispatch({ type: 'working', work: doing })
 
     const result = await bulker.run(action)
 
     if (result.ok) {
       dispatch({ type: 'bulkDone', bulk: { results: result.data, noun, verb } })
       onSummary?.(bulkSummary(result.data, noun, verb))
-      void reload()
+      dispatch({ type: 'worked', left: result.data.filter((r) => !r.removed).map((r) => r.path) })
+      await reload()
     } else {
       onSummary?.(failedSummary(failed, result.error))
     }
+
+    dispatch({ type: 'idle' })
   }
+
+  // bulkWork describes a bulk action of kind on picks, the worktrees it takes, named noun.
+  const bulkWork = (kind: WorkKind, picks: readonly WorktreePick[], noun: string): Work =>
+    work(
+      kind,
+      counted(picks.length, noun, `${noun}s`),
+      picks.map((p) => p.path),
+    )
 
   const cleanCount = snapshot?.cleanCount ?? 0
   const finishedCount = snapshot?.finishedCount ?? 0
@@ -409,6 +529,9 @@ export function useWorktrees({
     checking,
     progress: checking ? heard : null,
     disabled: busy || loading,
+    working: state.working,
+    workOn: (path) => rowWork(state.working, path),
+    clearing: clearer.pending,
     loadError: listing.error,
     error: bulker.error !== '' ? bulker.error : brancher.error !== '' ? brancher.error : listing.error,
     clearError: clearer.error,
@@ -436,7 +559,9 @@ export function useWorktrees({
       dispatch({ type: 'ask', confirmation: { kind: 'cleanUp', repoPath: repo.path, worktree: wt } })
     },
     unlock: (repo, wt) => {
-      void run('worktree', wt.path, `Couldn’t unlock ${shortName(wt.displayPath)}`, async () => {
+      const name = shortName(wt.displayPath)
+
+      void run('worktree', wt.path, `Couldn’t unlock ${name}`, work('unlock', name, [wt.path]), async () => {
         await unlockWorktree(repo.path, wt.path)
 
         return {
@@ -447,7 +572,9 @@ export function useWorktrees({
       })
     },
     prune: (repo) => {
-      void run('repo', repo.path, `Couldn’t prune ${repo.displayPath}`, async () => {
+      const pruning = work('prune', repo.displayPath, [], repo.path)
+
+      void run('repo', repo.path, `Couldn’t prune ${repo.displayPath}`, pruning, async () => {
         await pruneWorktrees(repo.path)
 
         return {
@@ -479,6 +606,7 @@ export function useWorktrees({
         case 'all':
           void runBulk(
             () => removeAllCleanWorktrees(choice.picks ?? []),
+            bulkWork('all', choice.picks ?? [], 'clean worktree'),
             'clean worktree',
             'Removed',
             'Couldn’t remove the clean worktrees',
@@ -487,6 +615,7 @@ export function useWorktrees({
         case 'finished':
           void runBulk(
             () => cleanUpFinishedWorktrees(choice.picks ?? []),
+            bulkWork('finished', choice.picks ?? [], 'finished worktree'),
             'finished worktree',
             'Cleaned up',
             'Couldn’t clean up the finished worktrees',
