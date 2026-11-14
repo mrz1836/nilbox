@@ -29,7 +29,7 @@ import type { ReleaseRequest } from './lib/release'
 import type { RunRequest } from './lib/scriptRuns'
 import { foundToolsText, scriptsBadge, showsScripts } from './lib/scriptsTab'
 import { matchSettings } from './lib/settingsIndex'
-import { itemURL, noTags, threadItemKey, type ThreadItem } from './lib/githubThreads'
+import { itemURL, threadItemKey, type ThreadItem } from './lib/githubThreads'
 import { itemWorktrees } from './lib/itemWorktrees'
 import { runningSession, sessionsOf } from './lib/sessions'
 import { useGitHubThreads } from './lib/useGitHubThreads'
@@ -747,9 +747,6 @@ export function App() {
     )
   }
 
-  // githubReading is whether the app reads the GitHub notifications, as the settings say:
-  // turned off, the cards' tags go at once, before the mirror says so.
-  const githubReading = config.settings?.githubNotifications.read !== false
   const account = inbox.snapshot?.account ?? null
   const mode = (page: View) => (view === page ? 'visible' : 'hidden')
   const viewer = account?.login ?? ''
@@ -838,7 +835,6 @@ export function App() {
               resolutions={config.resolutions}
               worktrees={worktrees}
               sessions={agentSessions.byItem}
-              threads={githubReading ? githubThreads.byItem : noTags}
               snoozeDays={config.settings?.snoozeDays ?? defaultSnoozeDays}
               toastSeconds={toastSeconds}
               onSnoozeSettings={openSnoozeSettings}

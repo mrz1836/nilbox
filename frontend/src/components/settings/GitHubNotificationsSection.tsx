@@ -165,7 +165,7 @@ function ActionGroup({ action, onChoose, describedBy }: ActionGroupProps) {
 
 export interface GitHubNotificationsSectionProps extends SectionProps {
   // threads is the window's one mirror of the notifications (useGitHubThreads, in App),
-  // which the toolbar's button and the cards' tags show too; without it the section says
+  // which the toolbar's button shows too; without it the section says
   // nothing of how reading them goes.
   threads: GitHubThreadsState | null
 }
@@ -222,7 +222,7 @@ export function GitHubNotificationsSection({ settings: stored, onSaved, threads 
             description={
               <>
                 {brand.name} keeps a copy of your GitHub inbox on this Mac, read from GitHub as the inbox refreshes, and
-                tags each card with its unread notifications. Reading them changes nothing on GitHub.
+                lists what’s unread under the toolbar’s GitHub button. Reading them changes nothing on GitHub.
               </>
             }
             checked={rules.read}

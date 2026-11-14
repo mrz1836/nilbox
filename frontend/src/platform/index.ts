@@ -103,7 +103,6 @@ export type BudgetWrites = NonNullLists<budget.Writes>
 export type GitHubThreadsSnapshot = Omit<NonNullLists<ghthreads.Snapshot>, 'unread'> & { unread: GitHubThread[] }
 export type GitHubThreadsStatus = NonNullLists<ghthreads.Status>
 export type GitHubThreadsAccess = ghthreads.Access
-export type ItemThreads = NonNullLists<ghthreads.ItemThreads>
 export type GitHubThread = Omit<NonNullLists<ghthreads.Thread>, 'kind'> & { kind: item.Kind | '' }
 // Clearing them: the clears waiting to be sent (each of which Undo keeps), those that
 // settled, and how each stands; and what clearing would do now, for the cleanup sheet.

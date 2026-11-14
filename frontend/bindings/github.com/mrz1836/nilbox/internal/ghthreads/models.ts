@@ -75,31 +75,6 @@ export const ClearState = {
 } as const;
 
 /**
- * ItemThreads are the threads about one pull request or issue.
- */
-export interface ItemThreads {
-    /**
-     * Owner and Name are the item's repository, Kind and Number the item.
-     */
-    "owner": string;
-    "name": string;
-    "kind": item$0.Kind;
-    "number": number;
-
-    /**
-     * Unread is how many of its threads are unread, and Total how many there are.
-     */
-    "unread": number;
-    "total": number;
-
-    /**
-     * Reasons are GitHub's reasons for its threads (review_requested, mention, author,
-     * ...), each once, that of the most recently updated thread first.
-     */
-    "reasons": string[] | null;
-}
-
-/**
  * Preview is what clearing would do now, for the cleanup sheet and the card that first
  * offers it: the threads that would clear, by repository, and those held back, by reason.
  * It is decided as if clearing on its own were on, so it counts the candidates while it is
@@ -349,12 +324,6 @@ export interface Snapshot {
      * Status is how reading the notifications goes, and how many there are.
      */
     "status": Status;
-
-    /**
-     * ByItem has one entry per pull request or issue with threads, the most recently
-     * updated first, for the cards' tags.
-     */
-    "byItem": ItemThreads[] | null;
 
     /**
      * Unread are the newest MaxUnread unread threads, whatever their subject, the newest

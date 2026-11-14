@@ -562,9 +562,8 @@ app:lint` reads.
   select loop, recovering and logging a panic; its tests run in a `testing/synctest` bubble.
   The bound `Snapshot` reads the database alone, for the account the last pass read: the
   status (reading, the account, `Access`, the last pass and walk, the last error, when a
-  refused listing is sent again, the count, the unread count, and `Truncated`), `ByItem` (each
-  pull request or issue with threads: unread, total, and reasons) for the cards' tags, and
-  the newest 20 `Unread`, none with a URL GitHub gave; with reading off, its lists are empty.
+  refused listing is sent again, the count, the unread count, and `Truncated`), and the
+  newest 20 `Unread`, none with a URL GitHub gave; with reading off, its lists are empty.
   `CheckNow` runs a pass once any running has ended, lifting the back-off and ignoring the
   poll interval, and returns the `Snapshot`, whose status tells a pass that failed. A pass
   that changes what `Snapshot` shows, the passes' times aside, emits `event.GHThreadsUpdated`

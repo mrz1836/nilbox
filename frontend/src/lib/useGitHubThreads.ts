@@ -1,8 +1,7 @@
-import { useEffect, useEffectEvent, useState } from 'react'
+import { useEffect, useEffectEvent } from 'react'
 
 import { checkGitHubThreadsNow, githubThreadsSnapshot, on, type GitHubThreadsSnapshot } from '../platform'
 import type { Result } from './call'
-import { noTags, threadTags, type ThreadTag } from './githubThreads'
 import { useMutation } from './useMutation'
 import { useQuery } from './useQuery'
 
@@ -10,10 +9,6 @@ import { useQuery } from './useQuery'
 export interface GitHubThreadsState {
   // snapshot is what the app mirrors of them, or null until it has loaded.
   snapshot: GitHubThreadsSnapshot | null
-  // byItem holds the tag of each item with unread notifications, by itemKey (see
-  // threadTags); a tag keeps its object while it shows the same, so only a card whose tag
-  // changed renders again.
-  byItem: ReadonlyMap<string, ThreadTag>
   // error is why the mirror could not be read, or ''.
   error: string
   // reload reads the mirror again, from the database alone.
@@ -27,16 +22,10 @@ export interface GitHubThreadsState {
   checkError: string
 }
 
-// Tags is the cards' tags and the snapshot they were worked out from.
-interface Tags {
-  from: GitHubThreadsSnapshot | null
-  byItem: ReadonlyMap<string, ThreadTag>
-}
-
 // useGitHubThreads reads what the app mirrors of the user's GitHub notifications, and
 // reads it again whenever the shell says it changed. Reading it asks GitHub nothing and
 // marks nothing read: only checkNow asks GitHub, and only for a listing. The window holds
-// one, in App, which the toolbar's button, the cards' tags, and the settings share.
+// one, in App, which the toolbar's button and the settings share.
 export function useGitHubThreads(): GitHubThreadsState {
   const mirror = useQuery(() => githubThreadsSnapshot(), [], { log: 'could not read the GitHub notifications' })
   const reloadOnUpdate = useEffectEvent(() => {
@@ -53,12 +42,6 @@ export function useGitHubThreads(): GitHubThreadsState {
 
   const checking = useMutation(() => checkGitHubThreadsNow())
   const snapshot = mirror.data ?? null
-  const [tags, setTags] = useState<Tags>({ from: null, byItem: noTags })
-
-  // The tags follow each new snapshot, keeping every entry that shows the same.
-  if (tags.from !== snapshot) {
-    setTags({ from: snapshot, byItem: threadTags(snapshot, tags.byItem) })
-  }
 
   const checkNow = async () => {
     const result = await checking.run()
@@ -72,7 +55,6 @@ export function useGitHubThreads(): GitHubThreadsState {
 
   return {
     snapshot,
-    byItem: tags.byItem,
     error: mirror.error,
     reload: () => {
       void mirror.refetch()

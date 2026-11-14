@@ -1,7 +1,6 @@
 package ghthreads
 
 import (
-	"strconv"
 	"testing"
 	"time"
 
@@ -19,7 +18,6 @@ func TestSnapshotBeforeAnyPass(t *testing.T) {
 
 	assert.Equal(t, Snapshot{
 		Status: Status{Reading: true, Access: AccessUnchecked},
-		ByItem: []ItemThreads{},
 		Unread: []Thread{},
 		Queued: []QueuedClear{},
 		Recent: []SettledClear{},
@@ -71,19 +69,6 @@ func TestSnapshotCountsGroupsAndCaps(t *testing.T) {
 	for i, thread := range snap.Unread {
 		assert.Equal(t, firstID+int64(i), thread.ID, "newest first")
 	}
-
-	require.Len(t, snap.ByItem, 26, "one entry per pull request or issue; the release has none")
-	assert.Equal(t, ItemThreads{
-		Owner: owner, Name: exampleRepo, Kind: item.KindPR, Number: 1, Unread: 1, Total: 2,
-		Reasons: []string{"review_requested", "mention"},
-	}, snap.ByItem[0], "both threads about the first pull request, the newest's reason first")
-	assert.Equal(t, ItemThreads{
-		Owner: owner, Name: exampleRepo, Kind: item.KindIssue, Number: 70, Total: 1, Reasons: []string{"author"},
-	}, snap.ByItem[25])
-
-	for _, entry := range snap.ByItem[1:25] {
-		assert.Equal(t, 1, entry.Total, strconv.Itoa(entry.Number))
-	}
 }
 
 func TestSnapshotOfReleasesAndChecks(t *testing.T) {
@@ -98,7 +83,6 @@ func TestSnapshotOfReleasesAndChecks(t *testing.T) {
 
 	snap := r.snapshot()
 	assert.Equal(t, 1, snap.Status.Count, "counted")
-	assert.Empty(t, snap.ByItem, "but about no item")
 	require.Len(t, snap.Unread, 1)
 	assert.Equal(t, Thread{
 		ID: firstID, Owner: owner, Name: exampleRepo, SubjectType: "CheckSuite", Title: "CI failed", Reason: "ci_activity",

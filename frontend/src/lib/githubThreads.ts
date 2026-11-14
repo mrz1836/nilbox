@@ -1,10 +1,10 @@
 // The user's GitHub notifications as the window shows them: the toolbar button's badge and
-// counts, the newest unread grouped by the item each is about, each item card's tag, and
-// the words for GitHub's reasons. The backend mirrors them (internal/ghthreads) and gives
+// counts, the newest unread grouped by the item each is about, and the words for GitHub's
+// reasons. The backend mirrors them (internal/ghthreads) and gives
 // no URL GitHub returned: every link here is built from an item's repository, kind, and
 // number, with fixed strings.
 
-import type { GitHubThread, GitHubThreadsSnapshot, GitHubThreadsStatus, InboxItem, ItemKind } from '../platform'
+import type { GitHubThread, GitHubThreadsStatus, ItemKind } from '../platform'
 import { formatCount } from './format'
 import { itemKey } from './itemWorktrees'
 import { formatAgo, formatUntil } from './time'
@@ -33,7 +33,7 @@ function validSegment(s: string): boolean {
   return segment.test(s) && s !== '.' && s !== '..'
 }
 
-// threadItem is the item a thread or an entry of byItem is about, or null when it is
+// threadItem is the item a thread is about, or null when it is
 // about none (a release, a check suite, ...), or names it in a way no link could hold.
 export function threadItem(ref: {
   owner: string
@@ -237,84 +237,4 @@ export function groupWhere(group: ThreadGroup): string {
     : group.subjectType
 
   return [group.repo, subject].filter((part) => part !== '').join(' · ')
-}
-
-// ThreadTag is what an item's card shows of its notifications on GitHub: how many are
-// unread, and GitHub's reasons for every one about it, read ones included, the newest's
-// first. It holds nothing else, so a change the card doesn't show (another read thread)
-// hands it no new object.
-export interface ThreadTag {
-  unread: number
-  reasons: readonly string[]
-}
-
-// noTags is the empty map, shared so it stays the same object.
-export const noTags: ReadonlyMap<string, ThreadTag> = new Map()
-
-// sameTag reports whether two tags show the same.
-function sameTag(a: ThreadTag, b: ThreadTag): boolean {
-  return a.unread === b.unread && a.reasons.length === b.reasons.length && a.reasons.every((r, i) => r === b.reasons[i])
-}
-
-// threadTags maps each item with unread notifications, by itemKey, to its card's tag, from
-// the Snapshot's byItem. A tag that shows what it showed in was keeps was's object, and a
-// map with nothing changed is was itself, so a card whose tag stays as it was renders
-// nothing again.
-export function threadTags(
-  snapshot: GitHubThreadsSnapshot | null,
-  was: ReadonlyMap<string, ThreadTag> = noTags,
-): ReadonlyMap<string, ThreadTag> {
-  if (snapshot === null || !snapshot.status.reading) {
-    return was.size === 0 ? was : noTags
-  }
-
-  const out = new Map<string, ThreadTag>()
-  let changed = false
-
-  for (const entry of snapshot.byItem) {
-    if (entry.unread <= 0) {
-      continue
-    }
-
-    const key = threadItemKey(entry)
-
-    if (out.has(key)) {
-      continue
-    }
-
-    const tag: ThreadTag = { unread: entry.unread, reasons: entry.reasons }
-    const before = was.get(key)
-
-    if (before !== undefined && sameTag(before, tag)) {
-      out.set(key, before)
-    } else {
-      out.set(key, tag)
-      changed = true
-    }
-  }
-
-  if (!changed && out.size === was.size) {
-    return was
-  }
-
-  return out.size === 0 ? noTags : out
-}
-
-// tagOf returns the item's tag, if it has unread notifications.
-export function tagOf(tags: ReadonlyMap<string, ThreadTag>, item: InboxItem): ThreadTag | undefined {
-  return tags.get(itemKey(item.repo, item.number))
-}
-
-// tagText is a card's tag: "2 unread on GitHub".
-export function tagText(unread: number): string {
-  return `${formatCount(unread)} unread on GitHub`
-}
-
-// tagTitle is a card's tag's tooltip: how many of the item's notifications are unread, and
-// why GitHub notified the user about it at all, read notifications included: "2 unread on
-// GitHub · GitHub notified you: Mentioned, Review requested".
-export function tagTitle(tag: ThreadTag): string {
-  const reasons = reasonsText(tag.reasons)
-
-  return reasons === '' ? tagText(tag.unread) : `${tagText(tag.unread)} · GitHub notified you: ${reasons}`
 }
