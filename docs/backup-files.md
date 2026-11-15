@@ -23,7 +23,8 @@ export is a section of the file; one you leave unticked is absent.
     "defaultAgent": "claude",
     "defaultProfiles": {"claude": "default", "codex": "default"},
     "theme": "dark",
-    "refresh": {"inbox": 300, "checks": 45, "releaseChecks": 45, "worktrees": 300, "notifications": 300, "githubStatus": 1800}
+    "refresh": {"inbox": 300, "checks": 45, "releaseChecks": 45, "worktrees": 300, "notifications": 300, "serviceStatus": 1800},
+    "serviceStatus": {"off": [], "parts": ["github.pulls", "github.actions", "claude.api", "claude.code", "openai.codex-cli"]}
   },
   "repositories": {
     "cloneRoot": "~/projects",
@@ -88,7 +89,8 @@ is each entry left out.
 | `sensitiveScope`, `sensitiveOff`, `sensitivePatterns` | Sensitive files: whose are checked, the built-in categories turned off, and your own patterns. |
 | `menuBar`, `bannersOff` | The menu bar icon, and the kinds of notification whose banners are off. |
 | `githubNotifications` | The GitHub notification rules: `read`, `auto`, `action`, `triggersOff`, `watching`, `botActivity`. |
-| `refresh` | How often, in seconds, the app reads `inbox`, `checks` (the pull requests' running checks), `releaseChecks` (the Release page's running checks), `worktrees`, and `notifications` again, and how often it checks `githubStatus` (GitHub's own status page); `0` turns either checks follow, or the status check, off. |
+| `refresh` | How often, in seconds, the app reads `inbox`, `checks` (the pull requests' running checks), `releaseChecks` (the Release page's running checks), `worktrees`, and `notifications` again, and how often it checks `serviceStatus` (the status pages of the services you watch); `0` turns either checks follow, or the status check, off. A file from an older version names the status check `githubStatus`, which is read as `serviceStatus` unless the file holds that too. |
+| `serviceStatus` | What the service status check watches: `off`, the status pages turned off (`github`, `claude`, `openai`), and `parts`, every part watched, across the services, by the app's own names for them (such as `github.pulls`, `claude.api`, or `openai.codex-cli`). `parts` is the whole list: a part it leaves out is unticked. A name this version doesn't know is left out of an import, with a note. |
 | `mergeMethod`, `theme`, `textSize`, `toastSeconds` | Reviewing and appearance. |
 | `inboxOrder` | Which inbox lists sort by project status, the order of the statuses, and which show one kind of item. |
 | `integrations` | Each integration's switch (`switches`), the copy of each tool you chose (`paths`, absolute, `""` for the one your shell finds), `runsIn`, `offerAfterMerge`, `magexTargets`, `repoFiles`, and `showRuns`. |

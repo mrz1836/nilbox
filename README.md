@@ -191,7 +191,9 @@ Wails CLI is never installed: the build runs it with `go run` at the version `go
   built it.
 - **Firewalls:** a per-app firewall must let `bin/Nilbox.app/Contents/MacOS/nilbox` reach
   `api.github.com`, or every refresh times out. Blocking `avatars.githubusercontent.com` only
-  swaps profile pictures (yours, and those of the people an issue shows) for initials.
+  swaps profile pictures (yours, and those of the people an issue shows) for initials, and
+  blocking the status pages (`www.githubstatus.com`, `status.claude.com`, and
+  `status.openai.com`) only leaves the service status check saying it couldn't reach them.
 - **Data:** everything lives in `~/Library/Application Support/Nilbox`, readable only by you. The
   database is `nilbox.db` (SQLite, WAL mode), and a copy is saved before each schema migration
   (the three newest are kept). Your prompts and launch defaults are also kept in `prompts.json`
@@ -958,19 +960,27 @@ More in [The window](docs/desktop.md#the-window).
 - **Window size:** open at Compact, Standard, Large (the default), or Extra large.
 - **Refreshing:** how often the app reads the inbox (every 2 minutes to every hour), the pull
   requests whose checks are running (off, or every 30 seconds to every 2 minutes), and the
-  worktrees' sweep (every 5 minutes to every hour), and GitHub's status page (off, or every 5
-  minutes to every hour, 30 minutes by default). A change applies at once.
-- **Settings** covers your account, appearance, notifications, and refreshing; then the inbox
-  (snoozing and reviewing); the agents (repositories, profiles, launching, trust, sensitive files,
-  and worktrees, in the order you set them up); and the tools (integrations). **Find a setting**
-  in the toolbar narrows the sections to those with a match and marks the setting, and **⌘,**
-  opens Settings from anywhere.
+  worktrees' sweep (every 5 minutes to every hour). A change applies at once.
+- **Service status:** which services' status pages the app checks (GitHub, Claude, and OpenAI's
+  Codex, each with a switch), which of each one's parts you care about (Git Operations, API
+  Requests, Issues, Pull Requests, and Actions; the Claude API and Claude Code; and the Codex
+  API, Codex CLI, and Responses to start with), and how often (off, or every 5 minutes to every
+  hour, 30 minutes by default).
+- **Settings** covers your account, appearance, notifications, refreshing, and service status;
+  then the inbox (snoozing and reviewing); the agents (repositories, profiles, launching, trust,
+  sensitive files, and worktrees, in the order you set them up); and the tools (integrations).
+  **Find a setting** in the toolbar narrows the sections to those with a match and marks the
+  setting, and **⌘,** opens Settings from anywhere.
 - **The account menu** shows who is signed in, opens your GitHub profile (or click your name), and
-  opens GitHub's status page, for when GitHub is having an incident. **Report a bug** and **Send
-  feedback** open a new GitHub issue, filled in for you to read before you send it.
-- **GitHub status:** while GitHub's status page reports an incident, a warning shows beside the
-  budget gauge, amber or red, with the incidents and what they affect a click away. The check is
-  one small request outside the API, so it costs no budget.
+  lists each service whose status you watch with where it stands, opening its status page.
+  **Report a bug** and **Send feedback** open a new GitHub issue, filled in for you to read before
+  you send it.
+- **Service status:** while a part you watch of GitHub, Claude, or Codex has an incident, a
+  warning shows beside the budget gauge, amber or red, with the incidents and what they affect a
+  click away, and a banner tells you when it goes down and when it's back. An incident elsewhere,
+  such as GitHub's Copilot, stays quiet. Each check is one small request to the service's own
+  status page, outside any API, so it costs no budget, and nothing at all when the page hasn't
+  changed.
 - **About** shows the version, build, commit, and system, each coding agent's installed version,
   and the GitHub CLI's. **Report a bug** opens a GitHub issue with those details filled in, and
   your settings and integrations folded away beneath them, with nothing personal: no account,

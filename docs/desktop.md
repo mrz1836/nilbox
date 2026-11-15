@@ -108,12 +108,15 @@ not committed yet keeps the old build number; if a stale icon persists, clear th
 `sudo rm -rf /Library/Caches/com.apple.iconservices.store` and then
 `killall Dock WindowManager`.
 
-**Firewalls.** The app talks only to GitHub: `api.github.com` on every refresh, and
+**Firewalls.** The app talks to GitHub: `api.github.com` on every refresh, and
 `avatars.githubusercontent.com` to download profile pictures: yours once, and the pictures of the
 people an issue you open shows, each downloaded by login, without your token, kept in the
-database, and downloaded again at most once a week. A per-app firewall must allow
-`bin/Nilbox.app/Contents/MacOS/nilbox` to reach `api.github.com`, or every refresh times out.
-Blocking the avatar host only means initials show instead of pictures.
+database, and downloaded again at most once a week. The [service status](#the-window) check
+reads the status pages of the services you watch, `www.githubstatus.com`, `status.claude.com`,
+and `status.openai.com`, each sent only the request for its summary. A per-app firewall must
+allow `bin/Nilbox.app/Contents/MacOS/nilbox` to reach `api.github.com`, or every refresh times
+out. Blocking the avatar host only means initials show instead of pictures, and blocking a
+status page only means the check says it couldn't reach it.
 
 <br>
 
@@ -793,9 +796,10 @@ amber dot while a tool that's on can't be used. Hover a tab for what its number 
 **Prompts** has no count.
 
 **Account menu.** Click your picture for who is signed in, **Settings** (also ⌘,), **View
-GitHub profile** (or click your name or picture at the top), and **GitHub status**, which opens
-githubstatus.com in your browser, for when GitHub is having an incident and the inbox, reviews, or
-checks lag; while GitHub reports one, the item names it. Below them, **Report a bug** opens a
+GitHub profile** (or click your name or picture at the top), and **Service status**, a submenu
+with each service you watch and where it stands, each opening its status page in your browser,
+for when GitHub, Claude, or Codex is having an incident and the inbox, reviews, checks, or agents
+lag, and **Choose what to watch…**, which opens Settings → Service status. Below them, **Report a bug** opens a
 GitHub issue with your versions, settings, and integrations filled in, as Settings → About's
 button does, and **Send feedback** opens a blank issue with a `[Feedback]` title, a few prompts,
 and your version filled in. You read either on GitHub before you send it. After a refresh, the picture is downloaded from
@@ -804,14 +808,26 @@ offline. It is downloaded again only when GitHub reports a new picture, such as 
 change it or sign in as another account with `gh auth switch`. Until it arrives, the button
 shows your initial.
 
-**GitHub status.** Nilbox checks [GitHub's status page](https://www.githubstatus.com/) once
-after it opens and then every 30 minutes (set in **Settings → Refreshing**, or turned off there).
-Each check is one small request to githubstatus.com, outside GitHub's API, so it costs no budget
-and sends no token or anything of yours. While GitHub reports a problem, a warning icon shows just
-before the budget gauge: amber for a minor incident or maintenance, red for an outage. Click it for
-the incidents (each opens its page), the parts of GitHub affected, when it was checked, **Check
-again**, and **Status page**. The icon goes away once GitHub reports every system operational. A
-check that can't reach the page keeps the last reading and says so.
+**Service status.** Nilbox checks the status pages of the services it depends on,
+[GitHub's](https://www.githubstatus.com/), [Claude's](https://status.claude.com/), and
+[OpenAI's](https://status.openai.com/) (Codex), once after it opens and then every 30 minutes.
+**Settings → Service status** sets how often (or turns the check off), turns each service on or
+off, and ticks the parts of each that you care about. To start with, those are what Nilbox and
+the agents it launches use: GitHub's Git Operations, API Requests, Issues, Pull Requests, and
+Actions; the Claude API and Claude Code; and the Codex API, Codex CLI, and Responses. Only a
+part you watch counts, so an incident with GitHub's Copilot or Codespaces stays quiet, and so
+does an incident that names no part, unless it is a major or critical one. Each check is one
+small request to the service's own status page, outside any API, so it costs no budget and sends
+no token or anything of yours; GitHub's and Claude's pages answer a check with nothing new for
+free, and ticking a part needs no request at all. While a part you watch has a problem, a warning
+icon shows just before the budget gauge: amber for degraded performance or maintenance, red for
+an outage. Click it for a card per service in trouble, with the parts affected, the incidents
+(each opens its page) and where they stand, how many other incidents don't touch what you watch,
+when it was checked, **Check again**, and **Choose what to watch**. The icon goes away once every
+part you watch is working. A check that can't reach a page keeps the last reading and says so.
+A banner (**Service status changes** in Settings → Notifications, on by default) tells you when
+a part you watch goes down, and again when it's back; the first check after Nilbox opens, or
+after you change what you watch, never shows one.
 
 **API budget gauge.** The dial follows whichever GitHub budget has the least left: GraphQL,
 which the inbox spends, or REST and search, which `gh` and your agents spend from the same
@@ -858,8 +874,9 @@ read at all.
 hour, five minutes by default), the running checks (off, or every 30 seconds to every 2 minutes,
 45 seconds by default), the worktrees' sweep (every 5 minutes to every hour, five minutes by
 default), the [GitHub notifications](#github-notifications) (every minute to every hour, five
-minutes by default, and never sooner than GitHub asks), and the [GitHub status](#the-window)
-check (off, or every 5 minutes to every hour, 30 minutes by default; it costs no budget). A change applies at once: a refresh already due under the new interval starts
+minutes by default, and never sooner than GitHub asks). **Settings → Service status** sets how
+often the [service status](#the-window) check runs (off, or every 5 minutes to every hour, 30
+minutes by default; it costs no budget). A change applies at once: a refresh already due under the new interval starts
 straight away, and otherwise the next waits the new interval from the last one's end.
 
 **Changes on GitHub.** The panel also counts the [edits](#the-item-menu-and-edits-on-github)
@@ -1751,7 +1768,8 @@ its **Open Nilbox**, or the Dock icon brings the window back; quit from the icon
 ⌘Q. Turn the icon off in Settings → Notifications, and closing the window quits the app.
 
 **What is notified.** After each refresh, the app compares the lists with the last refresh's
-and records what newly needs you; a release or a run is recorded as it ends:
+and records what newly needs you; a release or a run is recorded as it ends, and a change of
+a service you watch as the status check finds it:
 
 | Kind | When |
 |---|---|
@@ -1762,6 +1780,7 @@ and records what newly needs you; a release or a run is recorded as it ends:
 | Published | The release workflow on GitHub publishes a release you started (*acme-org/sdk v1.4.3 is published*) |
 | Release workflow failed | A workflow the tag of a release you started ran fails on GitHub (*The goreleaser workflow failed for acme-org/sdk v1.4.3*) |
 | Run failed | A run from the Scripts tab (a release, a hook change, checks, a script, a tool's update, or a pull), in the app or in your terminal, fails or runs past its time limit; it names the run and its repository (or its folder) and says how it ended. One that couldn't start, one you stopped (Control-C, or closing its terminal window, included), and one a quit or a restart interrupted never notify |
+| Service status | A part you watch of [GitHub, Claude, or Codex](#the-window) goes down (*Claude: Partial outage*, with the parts affected and the incident), or is back (*Claude: Operational again*). The first check after the app opens, or after you change what you watch, never notifies |
 
 Nothing is recorded for the first refresh of an account (everything in it would be new), for
 an item you dismissed or that is still snoozed, or for a refresh that failed. A list that shows
@@ -1786,7 +1805,7 @@ open its item's review or issue sheet, however you open it; it stays read until 
 unread on the page. A banner left from before the history was cleared marks nothing, since its
 entry's number may belong to another by then.
 
-**Banners.** Each kind can also show a native macOS banner. All seven are on by default, and
+**Banners.** Each kind can also show a native macOS banner. All eight are on by default, and
 each has its own switch in Settings → Notifications. Two more switches there show a banner when
 an [agent session](#following-a-session) waits for you or finishes its turn; those start off,
 and the history doesn't keep them. A banner gives the kind, the repository
@@ -1798,7 +1817,8 @@ opens the tag on GitHub, the release once it is published, or the failed run onc
 failed. So is a failed run: its banner gives the repository (none for a folder
 that isn't one), what failed, and how it ended, and clicking it opens the run in Scripts → Runs.
 Failed runs that come within 2 seconds of each other show their banners together, and more
-than three as one, such as **5 new notifications: 5 failed runs**. Clicking a banner marks its
+than three as one, such as **5 new notifications: 5 failed runs**. A service status change is
+about no item too, and clicking its banner opens the incident, or the service's status page. Clicking a banner marks its
 entry read; a banner that sums several up marks none.
 
 The first time the app starts, macOS asks whether to allow its notifications. **Send a test**

@@ -25,9 +25,10 @@ are Nilbox's own, and they win wherever the two differ.
 4. **User data stays local.** Nilbox never sends a user's GitHub data, preferences, triage state,
    or caches anywhere except GitHub's own API. Installing a tool downloads its public release from
    GitHub's release download hosts (`github.DefaultDownloadHosts`), which get only the request for
-   that file: no token, and nothing of the user's. Checking GitHub's own status page
-   (`internal/ghstatus`, unless the user turns it off) reads its summary from
-   `github.DefaultStatusHost`, which likewise gets only that request.
+   that file: no token, and nothing of the user's. Checking the status pages of the services
+   it depends on (`internal/svcstatus`: GitHub's, Claude's, and OpenAI's, unless the user
+   turns the check or a page off) reads each one's summary from its host in
+   `github.DefaultStatusHosts`, which likewise gets only that request.
 5. **Optimize for local-first operation.** Nilbox should minimize network requests and rely on local caches and state wherever possible, ensuring responsiveness and reducing dependency on external services. Try and use the least amount of GitHub requests necessary for any operation.
 6. **No shell or Python scripts.** A build, check, or release step is a `magex` target written in
    Go (`magefiles/`, see Layout), never a `.sh`, `.py`, or other script, and a workflow runs the
@@ -153,8 +154,8 @@ app:lint` reads.
 - `internal/core/` assembles the app and builds every service the window binds: settings,
   profiles, prompts, launch defaults, inbox, review, issues, launcher, worktrees,
   notifications, app info, the API budget, sessions, integrations, script runs, release, hooks,
-  repository scripts, the mirror of the user's GitHub notifications, and the backup of the
-  user's setup.
+  repository scripts, the mirror of the user's GitHub notifications, the backup of the
+  user's setup, and the service status check.
   Every `internal/*` package is plain Go, built and tested on Linux without CGO.
 - Services share their building blocks rather than keep copies: `internal/repo` and
   `internal/item` name repositories, pull requests and issues, and their worktrees;
@@ -219,7 +220,7 @@ app:lint` reads.
   notifications' `ghthreads.Syncer` (woken the same way), the budget's `Saver`, the sessions watcher, the Release page's
   refresher, and the Hooks page's scans as tracked work, starts the deferred work
   (`core.Deferred`: the login-shell read first; the tool finder, the runs, the release
-  `Follower`, and the GitHub status `Checker` beside it) once after the first paint, never on the cold
+  `Follower`, and the service status `Checker` beside it) once after the first paint, never on the cold
   start, and shuts down in order (timers, then the work, then the database). It declares small interfaces that the Wails glue
   in `cmd/nilbox` implements, and imports no Wails. A window event is registered in
   `main_desktop.go` with `application.RegisterEvent`, which generates its TypeScript type and
@@ -237,8 +238,10 @@ app:lint` reads.
   a profile picture (`FetchAvatar`, the user's own by the URL GitHub gives, and anyone's by login
   through `FetchLoginAvatar`, which builds the avatar host's URL itself and refuses a login no user
   could have, such as a bot's), a public release file (`DownloadAsset`, https only, its
-  host and every redirect's on `DownloadHosts`), and GitHub's status page's summary
-  (`FetchStatus`, https on `StatusHost` alone, every redirect's too, at most 1 MiB). Never build an HTTP request anywhere else, nor run
+  host and every redirect's on `DownloadHosts`), and a status page's summary (`FetchStatus`:
+  GitHub's, Claude's, or OpenAI's, https on one of `StatusHosts` alone, a clean absolute path,
+  every redirect on the request's own host, at most 1 MiB, conditional on its last ETag, so a
+  304 carries no body). Never build an HTTP request anywhere else, nor run
   `gh api`;
   `internal/repoguard/githubrequests_test.go` fails the build if anything does. Every write goes
   through the `WriteGate`, a REST one through `edit` and a GraphQL mutation through `mutate`
@@ -687,22 +690,68 @@ app:lint` reads.
   Moments and settled clears are dropped 30 days on. It never imports the inbox, settings,
   core, notify, the sheets, or the desktop shell, and the inbox never imports it (the
   repoguard boundary test).
-- `internal/ghstatus/` follows GitHub's own status page, so the window can say when GitHub has
-  an incident. A check is one GET of the page's summary (`(*github.Client).FetchStatus`: the
-  overall state, the parts of GitHub not operational, and the incidents and maintenance under
-  way), outside the API, so it sends no token and costs no budget. The `Checker`, a deferred
-  desktop worker, checks once after the first paint and then as often as Settings →
-  Refreshing → **GitHub status** says (`refresh.githubStatus`, 30 minutes by default, 5
-  minutes to an hour, 0 off), through `periodic.RunEvery`, woken on `event.IntervalsChanged`.
-  The bound `Status` serves the last reading from memory (none is kept across runs), or
-  `StateOff` while the check is off; `CheckNow` (the popover's Check again) reads the page
-  unless a check ended within `FreshFor` (10 s), joining one under way. A check that fails
-  keeps the reading before it, with the reason in its `Error`, and is logged; each check
-  emits `event.GitHubStatusUpdated` (`githubstatus:updated`). The window shows nothing while
-  GitHub is operational, unchecked, or the check is off; otherwise an amber (minor,
-  maintenance) or red (major, critical) warning sits before the budget gauge, opening the
-  incidents, the parts affected, when it was checked, Check again, and the page, and the
-  account menu's GitHub status item names it.
+- `internal/statusprefs/` is the service status check's catalog and the user's choices of
+  what it watches. Each `Provider` (GitHub, Claude, OpenAI) has its page, where its summary is
+  read (`Host`, `Path`, and `Format`: Statuspage's `summary.json`, or incident.io's documented
+  widget API, `/api/v1/summary`, since OpenAI's Statuspage-shaped summary leaves Codex out),
+  and the `Part`s a user may watch, each named by the app's own stable `PartID`
+  (`github.pulls`, `claude.api`, `openai.codex-cli`, ...) and matched to the page by its
+  component ids (`PageIDs`), so a provider that issues new ids needs only a catalog edit and
+  the stored choices survive it. The defaults are what the app depends on: GitHub's Git
+  Operations, API Requests, Issues, Pull Requests, and Actions; Claude's API and Claude Code;
+  and OpenAI's Codex API, Codex CLI, and Responses. The choices are stored as changes from the
+  defaults, as notifyprefs stores the banners (`status.providersOff`, `status.partsOff` for
+  the default parts unticked, `status.partsOn` for the others ticked), so a part a later build
+  adds with `Default` is watched without the user doing anything; settings alone writes them
+  (`SetStatusProvider`, `SetStatusPart`, each in one `prefs.Update`, emitting the Go-only
+  `event.StatusRulesChanged`). Adding a provider is one catalog entry and its host in
+  `github.DefaultStatusHosts`, and a parser only for a new format. It is a leaf: it imports
+  only `prefval`.
+- `internal/svcstatus/` follows those status pages, so the window can say when a part the
+  user watches has an incident. A check is one GET of a provider's summary through
+  `(*github.Client).FetchStatus`, outside any API, so it sends no token and costs no budget,
+  and is conditional on the page's last ETag (GitHub's and Claude's give one; a 304 keeps the
+  reading). The pure parsers (`statuspage.go`, `incidentio.go`) turn each format into one
+  reading of components and incidents on one severity scale (`State`: operational <
+  maintenance < minor < major < critical; `full_outage` and `major_outage` are critical, an
+  impact of none is minor, anything unknown minor), and the pure `judge` (`relevant.go`)
+  decides by component, never by a page's overall state, which also turns for a Copilot or
+  Codespaces incident: a component matches a picked part by its page id, or else by name and,
+  where the part names one, group (OpenAI lists two components named Login); the parts watched
+  that aren't operational are `Affected`; an incident counts when it names a part watched, or
+  names none and is major or critical (`Unscoped`), and every other is counted in `Others`; a
+  Statuspage page's parts watched that it no longer lists are `Unlisted`, logged once. Each
+  provider's last reading is kept raw, in memory alone, and judged against the choices as they
+  are on every `Status`, so ticking a part costs no request. `Config.Rules` reads the interval
+  and the choices in one read of the settings (core's `statusRules`, the defaults, logged, when
+  the settings can't be read). The bound `Status` serves every provider in catalog order, off
+  while not watched (switched off, no part ticked) or the check off, and `CheckNow` (the
+  popover's Check again) reads, in parallel, each watched provider whose last check ended
+  `FreshFor` (10 s) ago or more, one `flight` key per provider, so a timed pass and a click
+  share a request; a check that fails keeps the reading before it, with the reason in its
+  `Error`, and is logged, and each pass emits one `event.ServiceStatusUpdated`
+  (`servicestatus:updated`). The `Checker`, a deferred desktop worker in its own select loop
+  (recovering and logging a panic; its tests run in a `testing/synctest` bubble), checks every
+  watched provider after the first paint, then each once its last check ended as long ago as
+  Settings → Service status says (`refresh.serviceStatus`, 30 minutes by default, 5 minutes to
+  an hour, 0 off; woken on `event.IntervalsChanged`), taking along any watched provider
+  checked half an interval ago or more, so the providers share one timer; on
+  `event.StatusRulesChanged` (core's relay calls `RulesChanged`) it drops what it keeps of a
+  provider no longer watched, its ETag included, sets the alerts' baselines quietly, tells the
+  window, and checks a provider turned on at once. Alerts (`alerts.go`, in memory): the first
+  reading after a start, or after a change of the choices, only sets the baseline, so a
+  restart during an incident repeats no banner; a state that rises into minor, major, or
+  critical above the level already known tells its `Notifier` ("Claude: Partial outage", the
+  parts affected and the first incident, opening the incident), one that falls back to
+  operational or maintenance after it tells "Claude: Operational again", and nothing else
+  does; core's `statusAlerts` records each as a `service_status` notification about no item,
+  with its banner (on by default). It never imports notify, settings, core, the inbox, or the
+  desktop shell (the repoguard boundary test). The window shows nothing while every watched
+  provider is operational, unchecked, or the check is off; otherwise one amber (minor,
+  maintenance) or red (major, critical) warning sits before the budget gauge, opening a card
+  per provider in trouble (its parts affected, its incidents with their stages, how many
+  others don't touch what is watched, and its last error), and the account menu's Service
+  status submenu names each watched provider's state.
 - `internal/bump/` reads a dependency update from a bot's pull request title into an `Update`,
   for the review sheet and the `.Dependency` prompt variables. It is pure and imports no
   service.
@@ -1370,8 +1419,8 @@ package imports the driver, and nothing imports an ORM (`internal/repoguard` enf
   pool-backed store from inside an open transaction: it waits on the lock the transaction holds.
 - **Prefs.** `internal/prefs` owns the `prefs` table. Any package reads any key, but each key has
   exactly one writer: settings writes the user's settings, including the rule keys that the trust,
-  snooze, sensitive, notifyprefs, branchrules, reporules, integrationprefs, and threadrules packages
-  declare; inbox
+  snooze, sensitive, notifyprefs, branchrules, reporules, integrationprefs, threadrules, and
+  statusprefs packages declare; inbox
   writes `inbox.*`; prompts writes `prompts.*` (the package doc has the full list). Settings and
   those leaves write a switch and a list of strings one way, through the leaf
   `internal/prefs/prefval` (`Bool` and `EncodeBool`, `List` and `EncodeList`, which stores a nil
