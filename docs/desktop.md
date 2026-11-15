@@ -228,8 +228,10 @@ notifications](#menu-bar-and-notifications)).
 - **Where the app is.** Only a copy in `/Applications` or `~/Applications`, in a folder it can
   write, updates itself (a rehearsal build also in its own folder, `bin/rehearsal/`). Anywhere
   else (the disk image, Downloads, a translocated copy) it still checks and tells you, but
-  downloads nothing: the banner says the version is available and to move the app to
-  Applications, as Settings → About does, and **Update** isn't offered.
+  downloads nothing: the banner says the version is *available* (never *ready*, even for one
+  downloaded before the app ran from there) and offers **Move to Applications**, as Settings →
+  About does, and **Update** isn't offered. On every launch from there, the app also asks once
+  ([Moving to Applications](#moving-to-applications)).
 - **Telling you.** In the window, a slim banner under the toolbar: *"Nilbox 0.3.0 is
   ready."* **Restart to update** · **What's new** · **Later** (*"…is available"* with **Update**
   under Just tell me). **Later** hides it for a day; a newer version shows it again. Once per
@@ -321,7 +323,9 @@ to date · checked 12m ago"*, *"Downloading 0.3.0… 42%"*, *"0.3.0 is ready"*, 
 failed: …"*, or why a build doesn't update), **Check for Updates** with its result in place,
 and what the banner offers, by the same rule: **Restart to update** or **Update** once a newer
 version is found, **Try again** and **Download manually** after one that didn't install, and
-**Download manually** alone after one that would fail the same way again.
+**Download manually** alone after one that would fail the same way again. Where the app can't
+update itself, it says why, with **Move to Applications** wherever moving it helps, as the
+banner and the move dialog offer it.
 
 **What a check sends.** Two GETs at most, both to GitHub's release download hosts: the latest
 release's manifest, `https://github.com/mrz1836/nilbox/releases/latest/download/manifest-darwin.json`,
@@ -399,7 +403,48 @@ file and its folder, to rename it `nilbox.db` before opening Nilbox again.
   disk image. Your data is untouched either way.
 - **It says to move the app to Applications first.** Only a copy in `/Applications` or
   `~/Applications`, in a folder it can write, replaces itself; a copy on the disk image, in
-  Downloads, or translocated by macOS checks and tells you, and downloads nothing.
+  Downloads, or translocated by macOS checks and tells you, and downloads nothing. Click **Move
+  to Applications** ([Moving to Applications](#moving-to-applications)). If something else
+  named `Nilbox.app` is in Applications, rename or remove it, then try again.
+
+### Moving to Applications
+
+A release or rehearsal build that runs where it can't update itself (from the disk image, from
+Downloads, or from the hidden, read-only copy macOS runs a downloaded app from until it is moved,
+App Translocation) asks, on every launch until it is moved: *"Move to Applications? Nilbox can
+only update itself from your Applications folder. It will reopen from there."* **Move to
+Applications** · **Not now**. **Not now** puts the question away for that launch; the update
+banner and Settings → About keep **Move to Applications**, which moves at once; all three
+offer it by the same rule. A build from source never asks. A copy in an Applications folder your account can't change isn't offered a
+move either: About says the account is why.
+
+- **Where it goes.** `/Applications/Nilbox.app` when you can write to `/Applications`, else
+  `~/Applications/Nilbox.app` (a standard user's), making `~/Applications` when it is missing.
+- **A copy already there.** One whose `Info.plist` names the app's bundle identifier is never
+  replaced: the dialog says *"Nilbox is already in Applications."* **Open it** · **Not now**.
+  **Open it** checks that copy's code signature and opens it; an older one then updates
+  itself. Anything else there (a link, a file, another app, a folder that isn't an app) stops
+  the move, and the dialog says what is in the way.
+- **The move.** The app makes the target's folder, empty, so the copy never goes into anything
+  that was there, then copies itself into it with `ditto --noqtn`, takes the quarantine mark a
+  download carries off the copy (`ditto` copies it as it copies every extended attribute, and a
+  marked copy would be translocated again), and checks the copy with `codesign --verify --deep
+  --strict`. A copy that fails, or doesn't pass the check, is removed, that folder alone, and
+  the dialog says why; nothing else changes. While it works, the dialog says *Moving to
+  Applications…* and holds its buttons.
+- **The reopen.** The app then quits the normal way and opens the copy once it has quit
+  (`open -n`, given five seconds, as the reopen after a reset is, so it never holds the app's
+  shutdown). While runs go in the app, the quit asks first, as every quit does; **Keep
+  running** leaves the copy in Applications, and it opens at whichever quit comes next. Only the
+  copy opens, once, even when a reset was asked for in the same run: the copy carries the reset
+  out. If the copy doesn't open, open it from Applications yourself.
+- **Not during an update's restart.** A restart into an update goes first: while one installs,
+  or finishes after a held quit, nothing offers the move, and a move asked for anyway is
+  refused with words that say so.
+- **The copy you opened stays.** Nothing deletes the copy you ran: the dialog says *"The copy
+  you opened stays where it is, and you can delete it."*, with **Show in Finder** (`open -R`)
+  where Finder can show it. A translocated copy runs from a folder macOS hides, so the dialog
+  offers no **Show in Finder** there; delete the copy you downloaded from Downloads.
 
 ### Rehearsing an update
 
