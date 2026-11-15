@@ -8,9 +8,10 @@ import { emptyDraft } from './reviewDrafts'
 import {
   aboutLine,
   bannerOf,
-  latestReleasePage,
   locationNote,
   locationWords,
+  namesRuns,
+  offerOf,
   questionWords,
   releasePageOf,
   runsGoingIn,
@@ -148,7 +149,7 @@ describe('bannerOf', () => {
       kind: 'working',
       text: 'Restarting into 0.3.0…',
       progress: null,
-      detail: 'Backing up your data first.',
+      detail: 'Backing up your data and preparing the update…',
     })
     expect(bannerOf(null, { step: 'restarting' }, '')).toEqual({
       kind: 'working',
@@ -169,7 +170,7 @@ describe('bannerOf', () => {
       kind: 'working',
       text: 'Restarting into 0.3.0…',
       progress: null,
-      detail: 'Backing up your data first.',
+      detail: 'Backing up your data and preparing the update…',
     })
   })
 
@@ -206,15 +207,36 @@ describe('aboutLine', () => {
   it('words a build that doesn’t update by why', () => {
     const off = updateStatus({ enabled: false, off: 'Updates are off in builds made from source.', state: 'off' })
 
-    expect(aboutLine(off)).toEqual({ text: 'Updates are off in builds made from source.', checkedAt: '', note: '' })
+    expect(aboutLine(off)).toEqual({
+      text: 'Updates are off in builds made from source.',
+      progress: null,
+      checkedAt: '',
+      note: '',
+    })
   })
 
   it('words each state', () => {
-    expect(aboutLine(updateStatus())).toEqual({ text: 'Up to date', checkedAt: '2026-06-15T11:48:00Z', note: '' })
-    expect(aboutLine(updateStatus({ lastChecked: '' }))).toEqual({ text: 'Not checked yet', checkedAt: '', note: '' })
+    expect(aboutLine(updateStatus())).toEqual({
+      text: 'Up to date',
+      progress: null,
+      checkedAt: '2026-06-15T11:48:00Z',
+      note: '',
+    })
+    expect(aboutLine(updateStatus({ lastChecked: '' }))).toEqual({
+      text: 'Not checked yet',
+      progress: null,
+      checkedAt: '',
+      note: '',
+    })
     expect(aboutLine(updateStatus({ state: 'checking', checking: true })).text).toBe('Checking…')
     expect(aboutLine(updateStatus({ checking: true })).text).toBe('Checking…')
-    expect(aboutLine(updateReady({ state: 'downloading', progress: 42 })).text).toBe('Downloading 0.3.0… 42%')
+    // The percentage stands apart from the words, which the row reads out as they change.
+    expect(aboutLine(updateReady({ state: 'downloading', progress: 42 }))).toEqual({
+      text: 'Downloading 0.3.0…',
+      progress: 42,
+      checkedAt: '',
+      note: '',
+    })
     expect(aboutLine(updateReady()).text).toBe('0.3.0 is ready')
     expect(aboutLine(updateReady({ state: 'available' })).text).toBe('0.3.0 is available')
     expect(aboutLine(updateReady({ state: 'installing' })).text).toBe('Restarting into 0.3.0…')
@@ -223,11 +245,13 @@ describe('aboutLine', () => {
   it('says the last check failed, and keeps a failure under a version found', () => {
     expect(aboutLine(updateStatus({ lastError: 'Couldn’t reach the releases: offline' }))).toEqual({
       text: 'Last check failed: Couldn’t reach the releases: offline.',
+      progress: null,
       checkedAt: '',
       note: '',
     })
     expect(aboutLine(updateReady({ lastError: 'Couldn’t install 0.3.0: no space' }))).toEqual({
       text: '0.3.0 is ready',
+      progress: null,
       checkedAt: '',
       note: 'Couldn’t install 0.3.0: no space.',
     })
@@ -296,7 +320,7 @@ describe('questionWords', () => {
     const pull = runGoing({ kind: 'gitPull', title: 'Pull main', stopRefused: 'git is writing the clone’s files' })
 
     expect(questionWords({ runs: [pull], sheets: 0 }).notes).toEqual([
-      `git is writing the clone’s files. Quitting waits up to a few seconds for it. If it hasn’t ended by then, it goes on after ${brand.name} closes.`,
+      `git is writing the clone’s files. Restarting waits up to a few seconds for it. If it hasn’t ended by then, it goes on after ${brand.name} closes.`,
     ])
     expect(questionWords({ runs: [pull, runGoing({ id: 9, kind: 'checks' })], sheets: 0 }).notes).toEqual([
       `A run that can’t be stopped right now is waited for up to a few seconds. If it doesn’t finish, it goes on after ${brand.name} closes.`,
@@ -357,16 +381,99 @@ describe('unsentSheets', () => {
   })
 })
 
-describe('release pages', () => {
-  const url = 'https://github.com/acme-org/example-repo/releases/tag/v0.3.0'
-
-  it('builds a version’s page and the newest release’s from any release page', () => {
-    expect(releasePageOf(url, '0.2.1')).toBe('https://github.com/acme-org/example-repo/releases/tag/v0.2.1')
-    expect(latestReleasePage(url)).toBe('https://github.com/acme-org/example-repo/releases/latest')
+describe('releasePageOf', () => {
+  it('builds a version’s page from any release page', () => {
+    expect(releasePageOf('https://github.com/acme-org/example-repo/releases/tag/v0.3.0', '0.2.1')).toBe(
+      'https://github.com/acme-org/example-repo/releases/tag/v0.2.1',
+    )
   })
 
   it('leaves any other URL as it is', () => {
     expect(releasePageOf('', '0.2.1')).toBe('')
-    expect(latestReleasePage('https://example.com/x')).toBe('https://example.com/x')
+    expect(releasePageOf('https://example.com/x', '0.2.1')).toBe('https://example.com/x')
+  })
+})
+
+describe('namesRuns', () => {
+  it('says a question named the runs, by name or as a whole, and not one that named none', () => {
+    expect(namesRuns({ runs: [runGoing()], sheets: 0 })).toBe(true)
+    expect(namesRuns({ runs: null, sheets: 1 })).toBe(true)
+    // The runs couldn't be listed beside text unsent: the question said nothing of runs.
+    expect(namesRuns({ runs: [], sheets: 1 })).toBe(false)
+  })
+})
+
+describe('offerOf', () => {
+  const none = { action: null, label: '', manual: false, move: false }
+  const failure = { version: '0.3.0', reason: 'The new copy didn’t open.', log: true }
+
+  it('offers nothing before the status loads, for a build that doesn’t update, or with nothing newer', () => {
+    expect(offerOf(null, idle)).toEqual(none)
+    expect(offerOf(updateReady({ enabled: false, state: 'off' }), idle)).toEqual(none)
+    expect(offerOf(updateStatus(), idle)).toEqual(none)
+  })
+
+  it('offers Restart to update for a version ready, and Update for one found', () => {
+    expect(offerOf(updateReady(), idle)).toEqual({ ...none, action: 'restart', label: 'Restart to update' })
+    expect(offerOf(updateReady({ state: 'available' }), idle)).toEqual({ ...none, action: 'update', label: 'Update' })
+    // Hidden with Later, or about to download quietly, it is still on offer in About.
+    expect(offerOf(updateReady({ bannerHidden: true }), { step: 'preparing' }).action).toBe('restart')
+  })
+
+  it('offers nothing while a version downloads or installs', () => {
+    expect(offerOf(updateReady({ state: 'downloading', progress: 4 }), idle)).toEqual(none)
+    expect(offerOf(updateReady({ state: 'installing' }), idle)).toEqual(none)
+  })
+
+  it('offers Try again and Download manually after a restart that failed', () => {
+    expect(offerOf(updateReady(), { step: 'failed', message: 'no space' })).toEqual({
+      action: 'retry',
+      label: 'Try again',
+      manual: true,
+      move: false,
+    })
+    expect(offerOf(updateStatus(), { step: 'failed', message: 'offline' }).action).toBe('retry')
+    // Before the status loads there is no page to download from, but Try again reads it.
+    expect(offerOf(null, { step: 'failed', message: 'offline' })).toEqual({
+      action: 'retry',
+      label: 'Try again',
+      manual: false,
+      move: false,
+    })
+  })
+
+  it('offers nothing after a held quit, whatever waits', () => {
+    expect(offerOf(updateReady(), { step: 'reopen', message: 'Quit and open again.' })).toEqual(none)
+  })
+
+  it('asks to move the app first where it can’t replace itself', () => {
+    const away = updateReady({ location: { ok: false, kind: 'translocated', target: '' } })
+
+    expect(offerOf(away, idle)).toEqual({ ...none, move: true })
+    expect(offerOf({ ...away, state: 'available' }, idle)).toEqual({ ...none, move: true })
+    expect(offerOf({ ...away, state: 'idle', latest: '', installFailed: failure }, idle)).toEqual({
+      ...none,
+      move: true,
+    })
+    expect(offerOf({ ...away, state: 'idle', latest: '' }, idle)).toEqual(none)
+  })
+
+  it('offers Try again and Download manually for the version that didn’t install, never a plain restart', () => {
+    const retry = { action: 'retry', label: 'Try again', manual: true, move: false }
+
+    expect(offerOf(updateReady({ installFailed: failure }), idle)).toEqual(retry)
+    // Nothing found since the launch yet: Try again checks first.
+    expect(offerOf(updateStatus({ latest: '', installFailed: failure }), idle)).toEqual(retry)
+    // A newer version found since is offered as any other.
+    expect(offerOf(updateReady({ latest: '0.3.1', installFailed: failure }), idle).action).toBe('restart')
+  })
+
+  it('offers Download manually alone for an install that can’t be tried again', () => {
+    const final = { ...failure, retryable: false } as typeof failure
+
+    expect(offerOf(updateReady({ installFailed: final }), idle)).toEqual({ ...none, manual: true })
+    expect(
+      offerOf(updateReady({ installFailed: { ...failure, retryable: true } as typeof failure }), idle).action,
+    ).toBe('retry')
   })
 })

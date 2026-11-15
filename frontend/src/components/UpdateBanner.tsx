@@ -1,7 +1,7 @@
-import type { ReactNode } from 'react'
+import { useEffect, useRef, type ReactNode } from 'react'
 
 import { brand } from '../generated/brand'
-import { latestReleasePage, locationNote, type Banner } from '../lib/update'
+import { locationNote, type Banner, type Offer } from '../lib/update'
 import type { UpdateControl } from '../lib/useUpdate'
 import { openExternal, type UpdateStatus } from '../platform'
 import { buttonClass, primaryButtonClass } from './controls'
@@ -25,29 +25,49 @@ export interface UpdateBannerProps {
 
 // Shell lays out one look of the banner: the icon, the words, and the buttons, in a row
 // as tall as a button whatever it holds, so moving from one look to the next never moves
-// the page; a failure's longer words wrap. A download's progress runs along its foot.
+// the page; a failure's longer words wrap, and in a narrow window the buttons wrap under
+// the words. A download's progress runs along its foot.
+//
+// focusFirst hands focus to the first button as the look appears, when nothing else has
+// it: a restart that fails, or is refused, after the button or the dialog that started it
+// went away, so a keyboard isn't left at the start of the page.
 function Shell({
   tone,
   icon,
   children,
   actions,
   progress = null,
+  focusFirst = false,
 }: {
   tone: 'offer' | 'warning'
   icon: ReactNode
   children: ReactNode
   actions?: ReactNode
   progress?: number | null
+  focusFirst?: boolean
 }) {
   const toneClass = tone === 'warning' ? 'border-warning' : 'border-border bg-surface'
+  const buttons = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const active = document.activeElement
+
+    if (focusFirst && (active === null || active === document.body)) {
+      buttons.current?.querySelector('button')?.focus()
+    }
+  }, [focusFirst])
 
   return (
     <div
-      className={`relative mx-4 mt-4 flex items-start gap-2.5 overflow-hidden rounded-md border py-1.5 pr-1.5 pl-3 text-sm ${toneClass}`}
+      className={`relative mx-4 mt-4 flex flex-wrap items-start gap-x-2.5 overflow-hidden rounded-md border py-1.5 pr-1.5 pl-3 text-sm ${toneClass}`}
     >
       <span className="flex h-[2.125rem] shrink-0 items-center">{icon}</span>
-      <p className="min-w-0 flex-1 py-[0.4375rem] leading-5">{children}</p>
-      {actions !== undefined && <div className="flex min-h-[2.125rem] shrink-0 items-center gap-1">{actions}</div>}
+      <p className="min-w-0 flex-[1_1_16rem] py-[0.4375rem] leading-5">{children}</p>
+      {actions !== undefined && (
+        <div ref={buttons} className="ml-auto flex min-h-[2.125rem] shrink-0 flex-wrap items-center justify-end gap-1">
+          {actions}
+        </div>
+      )}
       {progress !== null && (
         <div
           role="progressbar"
@@ -83,14 +103,14 @@ function WhatsNew({ status }: { status: UpdateStatus | null }) {
   )
 }
 
-// DownloadManually opens the newest release's page, which holds the disk image to install
-// by hand.
+// DownloadManually opens the version's release page, which holds the disk image to
+// install by hand.
 function DownloadManually({ status }: { status: UpdateStatus | null }) {
   return (
     <button
       type="button"
       onClick={() => {
-        openExternal(latestReleasePage(status?.releaseUrl ?? ''))
+        openExternal(status?.releaseUrl ?? '')
       }}
       className={linkButtonClass}
     >
@@ -100,12 +120,29 @@ function DownloadManually({ status }: { status: UpdateStatus | null }) {
   )
 }
 
-// Later hides the banner for a day.
-function Later({ onLater }: { onLater: () => void }) {
+// Later hides the banner, for a day unless hint says otherwise.
+function Later({ onLater, hint = 'Hide this for a day' }: { onLater: () => void; hint?: string }) {
   return (
-    <button type="button" title="Hide this for a day" onClick={onLater} className={linkButtonClass}>
+    <button type="button" title={hint} onClick={onLater} className={linkButtonClass}>
       Later
     </button>
+  )
+}
+
+// OfferButtons are what the update offers (offerOf), as About offers it too: its action,
+// with its words, and Download manually.
+function OfferButtons({ offer, update }: { offer: Offer; update: UpdateControl }) {
+  const plain = offer.action === 'retry'
+
+  return (
+    <>
+      {offer.action !== null && (
+        <button type="button" onClick={update.restart} className={`${plain ? buttonClass : primaryButtonClass} mr-1`}>
+          {offer.label}
+        </button>
+      )}
+      {offer.manual && <DownloadManually status={update.status} />}
+    </>
   )
 }
 
@@ -120,7 +157,7 @@ function Dismiss({ onDismiss }: { onDismiss: () => void }) {
 
 // Look is the banner's look for what it shows.
 function Look({ banner, update, onDetails }: { banner: Exclude<Banner, { kind: 'none' }> } & UpdateBannerProps) {
-  const { status, restart, later, dismiss } = update
+  const { status, offer, later, dismiss } = update
   const offerIcon = <UpdateIcon className="size-4 text-accent" />
   const warningIcon = <AlertIcon className="size-4 text-warning" />
 
@@ -133,9 +170,7 @@ function Look({ banner, update, onDetails }: { banner: Exclude<Banner, { kind: '
           icon={offerIcon}
           actions={
             <>
-              <button type="button" onClick={restart} className={`${primaryButtonClass} mr-1`}>
-                {banner.kind === 'ready' ? 'Restart to update' : 'Update'}
-              </button>
+              <OfferButtons offer={offer} update={update} />
               <WhatsNew status={status} />
               <Later onLater={later} />
             </>
@@ -165,8 +200,14 @@ function Look({ banner, update, onDetails }: { banner: Exclude<Banner, { kind: '
         </Shell>
       )
     case 'working':
+      // A download can take a while: Later hides its banner while it goes on.
       return (
-        <Shell tone="offer" icon={<Spinner className="size-4" />} progress={banner.progress}>
+        <Shell
+          tone="offer"
+          icon={<Spinner className="size-4" />}
+          progress={banner.progress}
+          actions={banner.progress === null ? undefined : <Later onLater={later} hint="Hide this while it downloads" />}
+        >
           {banner.text}
           {banner.progress !== null && (
             // The live region reads the words once; the bar says how far it has got.
@@ -188,7 +229,7 @@ function Look({ banner, update, onDetails }: { banner: Exclude<Banner, { kind: '
     case 'reopen':
       // No restart works in this run, so nothing offers one: the words say what does.
       return (
-        <Shell tone="warning" icon={warningIcon} actions={<Later onLater={later} />}>
+        <Shell tone="warning" icon={warningIcon} actions={<Later onLater={later} />} focusFirst>
           {banner.message}
         </Shell>
       )
@@ -199,13 +240,11 @@ function Look({ banner, update, onDetails }: { banner: Exclude<Banner, { kind: '
           icon={warningIcon}
           actions={
             <>
-              <button type="button" onClick={restart} className={`${buttonClass} mr-1`}>
-                Try again
-              </button>
-              <DownloadManually status={status} />
+              <OfferButtons offer={offer} update={update} />
               <Dismiss onDismiss={dismiss} />
             </>
           }
+          focusFirst
         >
           {banner.message}
         </Shell>
@@ -217,10 +256,7 @@ function Look({ banner, update, onDetails }: { banner: Exclude<Banner, { kind: '
           icon={warningIcon}
           actions={
             <>
-              <button type="button" onClick={restart} className={`${buttonClass} mr-1`}>
-                Try again
-              </button>
-              <DownloadManually status={status} />
+              <OfferButtons offer={offer} update={update} />
               <button type="button" onClick={onDetails} className={linkButtonClass}>
                 Details
               </button>
@@ -237,11 +273,12 @@ function Look({ banner, update, onDetails }: { banner: Exclude<Banner, { kind: '
 // UpdateBanner tells the user about the app's own update, above the page, where the data
 // notice shows: a version ready to restart into (Restart to update · What's new · Later),
 // one available to download and restart into as one click (Update), the restart under way
-// with the download's progress, a restart that just failed or the one before this launch
-// that didn't install (Try again · Download manually, and Details), a moment's wait while
-// the last update finishes, what to do after a held quit (no Try again, which can't work),
-// and an update the app can't install where it runs. What it shows is bannerOf's
-// (lib/update.ts).
+// with the download's progress (Later hides a download's), a restart that just failed or
+// the one before this launch that didn't install (Try again · Download manually, and
+// Details), a moment's wait while the last update finishes, what to do after a held quit
+// (no Try again, which can't work), and an update the app can't install where it runs.
+// What it shows is bannerOf's, and what it offers offerOf's (lib/update.ts), which About
+// offers too.
 //
 // The live region stays mounted, so each change is announced, politely; a download's
 // percentage is left out of it, so it isn't read out as it climbs. The banner makes its
@@ -254,7 +291,7 @@ export function UpdateBanner({ update, onDetails }: UpdateBannerProps) {
       {banner.kind !== 'none' && (
         <div className="grid grid-rows-[1fr] motion-safe:animate-notice-in">
           <div className="min-h-0 overflow-hidden">
-            <Look banner={banner} update={update} onDetails={onDetails} />
+            <Look key={banner.kind} banner={banner} update={update} onDetails={onDetails} />
           </div>
         </div>
       )}

@@ -131,7 +131,8 @@ describe('App’s update', () => {
 
     await userEvent.click(within(asked).getByRole('button', { name: 'Restart to update' }))
 
-    expect(platform.restartToUpdateNow).toHaveBeenCalledExactlyOnceWith(true)
+    // The question named no run, so Go is left to refuse one going rather than stop it.
+    expect(platform.restartToUpdateNow).toHaveBeenCalledExactlyOnceWith(false)
     await waitFor(() => {
       expect(banner()).toHaveTextContent('Restarting into 0.3.0…')
     })
@@ -218,6 +219,50 @@ describe('App’s update', () => {
 
     expect(await screen.findByRole('region', { name: 'About' })).toBeInTheDocument()
     expect(platform.markNotificationsRead).not.toHaveBeenCalled()
+  })
+
+  it('opens About for the update’s notification while Download it and tell me downloads quietly', async () => {
+    const quiet = updateReady({ state: 'available', mode: 'download' })
+    platform.getUpdateStatus.mockResolvedValue(quiet)
+    platform.showUpdateBanner.mockResolvedValue(quiet)
+    platform.listNotifications.mockResolvedValue({ items: [updateEntry], unread: 1 })
+    await renderApp()
+    await screen.findByRole('button', { name: '1 unread notifications' })
+
+    act(() => {
+      emit('inbox:reveal', { itemId: 0, url: '', runId: 0, runStarted: '', notificationId: 9 })
+    })
+
+    expect(await screen.findByRole('region', { name: 'About' })).toBeInTheDocument()
+    expect(banner()).toBeEmptyDOMElement()
+  })
+
+  it('opens a clicked banner as its entry opens, by the entry’s kind', async () => {
+    const page = 'https://github.com/acme-org/sdk/releases/tag/v1.2.0'
+    const released = notification({
+      id: 5,
+      kind: 'release_done',
+      itemId: 0,
+      itemKind: '',
+      repo: 'acme-org/sdk',
+      number: 0,
+      url: page,
+      runId: 7,
+      title: 'Released v1.2.0',
+    })
+    platform.listNotifications.mockResolvedValue({ items: [released], unread: 1 })
+    await renderApp()
+    await screen.findByRole('button', { name: '1 unread notifications' })
+
+    act(() => {
+      emit('inbox:reveal', { itemId: 0, url: page, runId: 7, runStarted: '', notificationId: 5 })
+    })
+
+    await waitFor(() => {
+      expect(platform.openExternal).toHaveBeenCalledExactlyOnceWith(page)
+    })
+    expect(platform.getScriptRun).not.toHaveBeenCalled()
+    expect(platform.markNotificationsRead).toHaveBeenCalledExactlyOnceWith([5])
   })
 
   it('shows the banner for the update’s entry in the history', async () => {

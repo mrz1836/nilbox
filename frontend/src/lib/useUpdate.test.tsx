@@ -2,9 +2,10 @@ import { act, renderHook, waitFor } from '@testing-library/react'
 import { describe, expect, it, onTestFinished, vi } from 'vitest'
 
 import { brand } from '../generated/brand'
-import type { DownloadAnswer, UpdateStatus } from '../platform'
+import type { DownloadAnswer, RestartAnswer, UpdateStatus } from '../platform'
 import { runGoing, scriptRun, updateReady, updateStatus } from '../test/fixtures'
 import { emit, platform } from '../test/platform'
+import { settlingWords } from './update'
 import { useRestartToUpdate, useUpdate, useUpdateControl, waitFor as waitForSettling } from './useUpdate'
 
 vi.mock('../platform', () => import('../test/platform').then((fake) => fake.platform))
@@ -19,8 +20,8 @@ function got(status: UpdateStatus): DownloadAnswer {
   return { downloaded: true, status }
 }
 
-// settling is the words Go refuses with while the last update may still be finishing, and
-// held those after a held quit.
+// settling is the words Go refuses with while the last update may still be finishing, which
+// the window says in its own (settlingWords), and held those after a held quit.
 const settling = 'The last update is still finishing. Try again in a moment.'
 const held = 'Quit Example and open it again, then restart to update.'
 
@@ -415,11 +416,13 @@ describe('useRestartToUpdate', () => {
     })
   })
 
-  it('asks about the text alone when the runs can’t be listed, and logs why', async () => {
+  it('asks about the text alone when the runs can’t be listed, and stops no run it didn’t name', async () => {
     const logged = vi.spyOn(console, 'error').mockImplementation(() => undefined)
     platform.getUpdateStatus.mockResolvedValue(updateReady())
     platform.listScriptRuns.mockRejectedValue(failure('The runs are busy.'))
-    const { result } = flow(() => 1)
+    platform.restartToUpdateNow.mockResolvedValueOnce({ restarted: false, runsGoing: [runGoing()], message: '' })
+    platform.restartToUpdateNow.mockReturnValueOnce(pending())
+    const { result, rerender } = flow(() => 1)
 
     act(() => {
       result.current.start()
@@ -432,6 +435,89 @@ describe('useRestartToUpdate', () => {
       'could not list the runs a restart would stop:',
       'The runs are busy.',
     )
+
+    // The question named no run, so confirming it lets Go refuse one going, which asks
+    // again, naming it, with the sheets counted again.
+    rerender({ count: () => 2 })
+    act(() => {
+      result.current.confirm()
+    })
+    await waitFor(() => {
+      expect(result.current.step).toEqual({ step: 'asking', question: { runs: [runGoing()], sheets: 2 } })
+    })
+    expect(platform.restartToUpdateNow.mock.calls).toEqual([[false]])
+
+    act(() => {
+      result.current.confirm()
+    })
+    await waitFor(() => {
+      expect(result.current.step).toEqual({ step: 'restarting' })
+    })
+    expect(platform.restartToUpdateNow.mock.calls).toEqual([[false], [true]])
+  })
+
+  it('asks about a run started while it asked about the text alone', async () => {
+    platform.getUpdateStatus.mockResolvedValue(updateReady())
+    platform.restartToUpdateNow.mockResolvedValueOnce({ restarted: false, runsGoing: [runGoing()], message: '' })
+    const { result } = flow(() => 1)
+
+    act(() => {
+      result.current.start()
+    })
+    await waitFor(() => {
+      expect(result.current.step).toEqual({ step: 'asking', question: { runs: [], sheets: 1 } })
+    })
+
+    act(() => {
+      result.current.confirm()
+    })
+    await waitFor(() => {
+      expect(result.current.step).toEqual({ step: 'asking', question: { runs: [runGoing()], sheets: 1 } })
+    })
+    expect(platform.restartToUpdateNow).toHaveBeenCalledExactlyOnceWith(false)
+  })
+
+  it('counts the text written while Go backed up, when it then refuses for the runs going', async () => {
+    let answered: (answer: RestartAnswer) => void = () => undefined
+    platform.getUpdateStatus.mockResolvedValue(updateReady())
+    platform.restartToUpdateNow.mockReturnValueOnce(
+      new Promise<RestartAnswer>((resolve) => {
+        answered = resolve
+      }),
+    )
+    const { result, rerender } = flow(() => 0)
+
+    act(() => {
+      result.current.start()
+    })
+    await waitFor(() => {
+      expect(result.current.step).toEqual({ step: 'restarting' })
+    })
+
+    rerender({ count: () => 1 })
+    await act(async () => {
+      answered({ restarted: false, runsGoing: [runGoing()], message: '' })
+      await Promise.resolve()
+    })
+
+    await waitFor(() => {
+      expect(result.current.step).toEqual({ step: 'asking', question: { runs: [runGoing()], sheets: 1 } })
+    })
+  })
+
+  it('confirms nothing unless it asks', async () => {
+    platform.getUpdateStatus.mockResolvedValue(updateReady())
+    const { result } = flow()
+
+    act(() => {
+      result.current.confirm()
+    })
+    await act(async () => {
+      await Promise.resolve()
+    })
+
+    expect(result.current.step).toEqual({ step: 'idle' })
+    expect(platform.restartToUpdateNow).not.toHaveBeenCalled()
   })
 
   it('leaves everything as it was on Not now, and can start again', async () => {
@@ -495,14 +581,14 @@ describe('useRestartToUpdate', () => {
       result.current.start()
     })
     await waitFor(() => {
-      expect(result.current.step).toEqual({ step: 'waiting', message: settling })
+      expect(result.current.step).toEqual({ step: 'waiting', message: settlingWords })
     })
 
     // Waiting is no failure: there is nothing to put away.
     act(() => {
       result.current.dismiss()
     })
-    expect(result.current.step).toEqual({ step: 'waiting', message: settling })
+    expect(result.current.step).toEqual({ step: 'waiting', message: settlingWords })
 
     // The start settling says the update changed; the restart can go ahead again.
     act(() => {
@@ -531,7 +617,7 @@ describe('useRestartToUpdate', () => {
       result.current.start()
       await vi.advanceTimersByTimeAsync(0)
     })
-    expect(result.current.step).toEqual({ step: 'waiting', message: settling })
+    expect(result.current.step).toEqual({ step: 'waiting', message: settlingWords })
     expect(platform.restartToUpdateNow).not.toHaveBeenCalled()
 
     await act(async () => {
@@ -626,6 +712,96 @@ describe('useUpdateControl', () => {
     })
   })
 
+  it('leaves the hiding to the update once it says so, so the banner comes back when its day is up', async () => {
+    platform.getUpdateStatus.mockResolvedValueOnce(updateReady())
+    platform.getUpdateStatus.mockResolvedValue(updateReady({ bannerHidden: true }))
+    const { result } = control()
+
+    await waitFor(() => {
+      expect(result.current.banner.kind).toBe('ready')
+    })
+    act(() => {
+      result.current.later()
+    })
+    await waitFor(() => {
+      expect(result.current.status?.bannerHidden).toBe(true)
+    })
+    expect(result.current.banner).toEqual({ kind: 'none' })
+
+    // A day on, the update stops hiding it, and so does the window.
+    platform.getUpdateStatus.mockResolvedValue(updateReady())
+    act(() => {
+      emit('updates:updated')
+    })
+    await waitFor(() => {
+      expect(result.current.banner).toEqual({ kind: 'ready', version: '0.3.0' })
+    })
+  })
+
+  it('shows the banner hidden with Later again once a restart is asked for', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    platform.getUpdateStatus.mockResolvedValue(updateReady())
+    platform.hideUpdateBanner.mockRejectedValue(failure('Locked.'))
+    platform.restartToUpdateNow.mockRejectedValue(failure('Couldn’t install 0.3.0: no space.'))
+    const { result } = control()
+
+    await waitFor(() => {
+      expect(result.current.banner.kind).toBe('ready')
+    })
+    act(() => {
+      result.current.later()
+    })
+    expect(result.current.banner).toEqual({ kind: 'none' })
+
+    // The menu bar's Update to 0.3.0… runs with the banner showing.
+    act(() => {
+      emit('updates:restart')
+    })
+    await waitFor(() => {
+      expect(result.current.banner.kind).toBe('failed')
+    })
+    act(() => {
+      result.current.dismiss()
+    })
+    expect(result.current.banner).toEqual({ kind: 'ready', version: '0.3.0' })
+  })
+
+  it('hides a download’s banner on Later while it downloads, and shows the restart after', async () => {
+    let downloaded: (answer: DownloadAnswer) => void = () => undefined
+    platform.getUpdateStatus.mockResolvedValue(updateReady({ state: 'available', mode: 'notify' }))
+    platform.downloadUpdate.mockReturnValue(
+      new Promise<DownloadAnswer>((resolve) => {
+        downloaded = resolve
+      }),
+    )
+    platform.restartToUpdateNow.mockReturnValue(pending())
+    const { result } = control()
+
+    await waitFor(() => {
+      expect(result.current.banner.kind).toBe('available')
+    })
+    act(() => {
+      result.current.restart()
+    })
+    await waitFor(() => {
+      expect(result.current.banner).toMatchObject({ kind: 'working', text: 'Downloading 0.3.0…' })
+    })
+
+    act(() => {
+      result.current.later()
+    })
+    expect(result.current.banner).toEqual({ kind: 'none' })
+    expect(platform.hideUpdateBanner).not.toHaveBeenCalled()
+
+    await act(async () => {
+      downloaded(got(updateReady()))
+      await Promise.resolve()
+    })
+    await waitFor(() => {
+      expect(result.current.banner).toMatchObject({ kind: 'working', text: 'Restarting into 0.3.0…' })
+    })
+  })
+
   it('keeps the banner hidden for the session when Later can’t be stored, and logs why', async () => {
     const logged = vi.spyOn(console, 'error').mockImplementation(() => undefined)
     platform.getUpdateStatus.mockResolvedValue(updateReady())
@@ -645,7 +821,7 @@ describe('useUpdateControl', () => {
     expect(result.current.banner).toEqual({ kind: 'none' })
   })
 
-  it('shows the banner again for a notification’s click, lifting Later, and says whether an update is on its way', async () => {
+  it('shows the banner again for a notification’s click, lifting Later, and says whether it shows anything', async () => {
     platform.getUpdateStatus.mockResolvedValue(updateReady())
     const { result } = control()
 
@@ -675,18 +851,84 @@ describe('useUpdateControl', () => {
     expect(pendingUpdate).toBe(false)
   })
 
-  it('counts on an update when the banner can’t be shown again, and logs why', async () => {
+  it('says whether the banner shows by the status it has when it can’t be shown again, and logs why', async () => {
     const logged = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    platform.getUpdateStatus.mockResolvedValue(updateReady())
     platform.showUpdateBanner.mockRejectedValue(failure('Locked.'))
     const { result } = control()
 
-    let pendingUpdate = false
+    let shows = true
     await act(async () => {
-      pendingUpdate = await result.current.reveal()
+      shows = await result.current.reveal()
+    })
+    // Before the status loads, nothing shows.
+    expect(shows).toBe(false)
+
+    await waitFor(() => {
+      expect(result.current.banner.kind).toBe('ready')
+    })
+    await act(async () => {
+      shows = await result.current.reveal()
     })
 
-    expect(pendingUpdate).toBe(true)
-    expect(logged).toHaveBeenCalledExactlyOnceWith('could not show the update’s banner:', 'Locked.')
+    expect(shows).toBe(true)
+    expect(logged).toHaveBeenCalledWith('could not show the update’s banner:', 'Locked.')
+  })
+
+  it('says the banner shows nothing while Download it and tell me downloads quietly', async () => {
+    const quiet = updateReady({ state: 'available', mode: 'download' })
+    platform.getUpdateStatus.mockResolvedValue(quiet)
+    platform.showUpdateBanner.mockResolvedValue(quiet)
+    const { result } = control()
+
+    await waitFor(() => {
+      expect(result.current.status).not.toBeNull()
+    })
+    let shows = true
+    await act(async () => {
+      shows = await result.current.reveal()
+    })
+
+    expect(shows).toBe(false)
+  })
+
+  it('says the banner shows nothing for a failure put away, whose version is never offered as ready', async () => {
+    const failed = updateReady({ installFailed: { version: '0.3.0', reason: 'It wouldn’t open.', log: false } })
+    platform.getUpdateStatus.mockResolvedValue(failed)
+    platform.showUpdateBanner.mockResolvedValue(failed)
+    const { result } = control()
+
+    await waitFor(() => {
+      expect(result.current.banner.kind).toBe('lastLaunch')
+    })
+    let shows = false
+    await act(async () => {
+      shows = await result.current.reveal()
+    })
+    expect(shows).toBe(true)
+
+    act(() => {
+      result.current.dismiss()
+    })
+    await act(async () => {
+      shows = await result.current.reveal()
+    })
+    expect(shows).toBe(false)
+  })
+
+  it('offers what the banner and About offer', async () => {
+    platform.getUpdateStatus.mockResolvedValue(updateReady())
+    const { result } = control()
+
+    expect(result.current.offer.action).toBeNull()
+    await waitFor(() => {
+      expect(result.current.offer).toEqual({
+        action: 'restart',
+        label: 'Restart to update',
+        manual: false,
+        move: false,
+      })
+    })
   })
 
   it('puts away the last launch’s failure for the session, never offering that version as ready', async () => {

@@ -3,7 +3,7 @@
 // pages. Everything here is pure; lib/useUpdate.ts holds the status and runs the restart.
 
 import { brand } from '../generated/brand'
-import type { RunGoing, ScriptRun, UpdateLocation, UpdateStatus } from '../platform'
+import type { InstallFailure, RunGoing, ScriptRun, UpdateLocation, UpdateStatus } from '../platform'
 import type { IssueDraft } from './issueDrafts'
 import type { ReviewDraft } from './reviewDrafts'
 import { heldReleaseText, heldRunText, releaseTagRisk, tagRisk } from './runsGoing'
@@ -27,12 +27,23 @@ export type RestartStep =
   | { step: 'reopen'; message: string }
 
 // RestartQuestion is what restarting would lose, which the window asks about first: the
-// runs going in the app it would stop (null when runs go but couldn't be listed), and how
-// many sheets hold text the user hasn't sent.
+// runs going in the app it would stop (null when Go says runs go but couldn't list them,
+// and empty when none were named), and how many sheets hold text the user hasn't sent.
 export interface RestartQuestion {
   runs: readonly RunGoing[] | null
   sheets: number
 }
+
+// namesRuns reports whether a question named the runs restarting would stop, by name or as
+// a whole: only then may confirming it stop them. A question that named none (the runs
+// couldn't be listed, or none went) leaves Go to refuse a run going, and asks again.
+export function namesRuns(question: RestartQuestion): boolean {
+  return question.runs === null || question.runs.length > 0
+}
+
+// settlingWords is what the window says while the last update may still be finishing:
+// its own words, since that can take a while.
+export const settlingWords = 'The last update is still finishing. This can take a minute or two.'
 
 // Banner is what the update banner shows, if anything:
 //   - ready: the update is downloaded, waiting for Restart to update;
@@ -65,19 +76,14 @@ export function downloadingWords(version: string): string {
   return `Downloading ${versionName(version)}…`
 }
 
-// downloadingText says how far a download has got: "Downloading 0.3.0… 42%".
-export function downloadingText(version: string, progress: number): string {
-  return `${downloadingWords(version)} ${String(progress)}%`
-}
-
 // restartingText says the app is restarting into a version.
 export function restartingText(version: string): string {
   return `Restarting into ${versionName(version)}…`
 }
 
-// backingUp is what a restart says while it backs up the data: Status tells a restart
-// under way (installing), which backs the data up first, from one waiting its turn.
-export const backingUp = 'Backing up your data first.'
+// backingUp is what a restart under way (installing) says it does, true from its start to
+// the quit: it backs the data up, then stages the update beside the app.
+export const backingUp = 'Backing up your data and preparing the update…'
 
 // working is what a restart under way shows, from the live status, so the version named
 // is the one being installed, which may be newer than the one first shown: a download's
@@ -166,6 +172,80 @@ export function bannerOf(status: UpdateStatus | null, flow: RestartStep, lastLau
   return ready ? { kind: 'ready', version: status.latest } : { kind: 'available', version: status.latest }
 }
 
+// OfferAction is what the window offers to do about the update: restart into the version
+// ready, update to the version found (download it, then restart), or try again after a
+// restart, or an install, that failed. Each runs the one restart (restartToUpdate).
+export type OfferAction = 'restart' | 'update' | 'retry'
+
+// Offer is what the window offers, the same in the banner and in Settings → About, so the
+// two never disagree: the action, with its words, or none; the release page, to download
+// and install by hand (Download manually); and whether the app must first move to
+// Applications.
+export interface Offer {
+  action: OfferAction | null
+  label: string
+  manual: boolean
+  move: boolean
+}
+
+// offerLabels are each action's words.
+const offerLabels: Readonly<Record<OfferAction, string>> = {
+  restart: 'Restart to update',
+  update: 'Update',
+  retry: 'Try again',
+}
+
+// offering is an offer of action, with change made.
+function offering(action: OfferAction | null, change: Partial<Offer> = {}): Offer {
+  return { action, label: action === null ? '' : offerLabels[action], manual: false, move: false, ...change }
+}
+
+// retryable reports whether an install that failed can be tried again from the copy kept,
+// as every one can until the status says one can't (installFailed.retryable).
+function retryable(failed: InstallFailure): boolean {
+  return !('retryable' in failed) || failed.retryable !== false
+}
+
+// offerOf works out what the window offers, from the update's status and the restart
+// (what the user put away changes only whether the banner shows, never what is offered):
+//   - after a restart that just failed, Try again, and Download manually once the status
+//     names a release page;
+//   - nothing for a build that doesn't update, before the status loads, or after a held
+//     quit, when no restart can work in this run;
+//   - where the app can't replace itself, that it must move first, and no restart;
+//   - after an install that failed at the last launch, for the version that failed (or
+//     none known), Try again and Download manually, or Download manually alone when it
+//     can't be tried again: never a plain Restart to update for it;
+//   - otherwise Restart to update for a version ready, Update for one found, and nothing
+//     while one downloads, installs, or none is newer.
+export function offerOf(status: UpdateStatus | null, flow: RestartStep): Offer {
+  if (flow.step === 'failed') {
+    return offering('retry', { manual: status !== null && status.releaseUrl !== '' })
+  }
+
+  if (status === null || !status.enabled || flow.step === 'reopen') {
+    return offering(null)
+  }
+
+  const pending = status.state === 'ready' || status.state === 'available'
+  const failed = status.installFailed
+  const failedOnOffer = failed.version !== '' && (failed.version === status.latest || status.latest === '')
+
+  if (!status.location.ok && (pending || failedOnOffer)) {
+    return offering(null, { move: true })
+  }
+
+  if (failedOnOffer) {
+    return retryable(failed) ? offering('retry', { manual: true }) : offering(null, { manual: true })
+  }
+
+  if (!pending) {
+    return offering(null)
+  }
+
+  return offering(status.state === 'ready' ? 'restart' : 'update')
+}
+
 // sentence ends words with a full stop, unless they end with one already.
 export function sentence(words: string): string {
   const trimmed = words.trim()
@@ -173,18 +253,21 @@ export function sentence(words: string): string {
   return trimmed === '' || /[.!?…]$/.test(trimmed) ? trimmed : `${trimmed}.`
 }
 
-// AboutLine is the Updates row's status in Settings → About: the words, and, for a check
-// that reached the releases with nothing new, when it ended, which the row shows as a
-// time ago; note is a failure to add under it, or ''.
+// AboutLine is the Updates row's status in Settings → About: the words; how far a download
+// has got (0 to 100), or null; and, for a check that reached the releases with nothing new,
+// when it ended, which the row shows as a time ago; note is a failure to add under it, or
+// ''. The row reads its words and note out as they change, never the climbing percentage
+// or the time.
 export interface AboutLine {
   text: string
+  progress: number | null
   checkedAt: string
   note: string
 }
 
 // aboutLine words where the update stands for Settings → About.
 export function aboutLine(status: UpdateStatus): AboutLine {
-  const line = (text: string, note = ''): AboutLine => ({ text, checkedAt: '', note })
+  const line = (text: string, note = ''): AboutLine => ({ text, progress: null, checkedAt: '', note })
   const note = sentence(status.lastError)
 
   if (!status.enabled) {
@@ -195,7 +278,7 @@ export function aboutLine(status: UpdateStatus): AboutLine {
     case 'installing':
       return line(restartingText(status.latest))
     case 'downloading':
-      return line(downloadingText(status.latest, status.progress))
+      return { ...line(downloadingWords(status.latest)), progress: status.progress }
     case 'ready':
       return line(`${status.latest} is ready`, note)
     case 'available':
@@ -212,9 +295,7 @@ export function aboutLine(status: UpdateStatus): AboutLine {
     return line(`Last check failed: ${note}`)
   }
 
-  return status.lastChecked === ''
-    ? line('Not checked yet')
-    : { text: 'Up to date', checkedAt: status.lastChecked, note: '' }
+  return status.lastChecked === '' ? line('Not checked yet') : { ...line('Up to date'), checkedAt: status.lastChecked }
 }
 
 // LocationWords say why the app can't update where it runs, and what to do.
@@ -286,8 +367,9 @@ export interface QuestionWords {
 // questionWords says what restarting to update would lose, in the quit dialog's words for
 // the runs: "Restarting stops Release v1.2.0 in acme-org/sdk and loses the text you
 // haven’t sent in 2 sheets."
-export function questionWords({ runs, sheets }: RestartQuestion): QuestionWords {
-  const stops = runs === null || runs.length > 0
+export function questionWords(question: RestartQuestion): QuestionWords {
+  const { runs, sheets } = question
+  const stops = namesRuns(question)
   const going = runs ?? []
   const parts = [stops && `stops ${runsText(runs)}`, sheets > 0 && `loses ${sheetsText(sheets)}`].filter(
     (part) => part !== false,
@@ -307,7 +389,7 @@ export function questionWords({ runs, sheets }: RestartQuestion): QuestionWords 
   const [heldRun] = held.filter((run) => run.kind !== 'release')
 
   if (heldRun !== undefined) {
-    notes.push(one ? `${sentence(heldRun.stopRefused)} ${heldRunText(true)}` : heldRunText(false))
+    notes.push(one ? `${sentence(heldRun.stopRefused)} ${heldRunText(true, 'Restarting')}` : heldRunText(false))
   }
 
   return { text, list: going.length > 1 ? going : [], notes }
@@ -342,13 +424,8 @@ export function unsentSheets(reviews: readonly ReviewDraft[], issues: readonly I
 const releaseTag = /\/releases\/tag\/v[^/]*$/
 
 // releasePageOf is the release page of version, from the URL of any release's page, or
-// that URL as it is when it isn't one.
+// that URL as it is when it isn't one: the page the toast's What's new opens for the
+// version an update installed, whichever version the status's releaseUrl names by then.
 export function releasePageOf(releaseUrl: string, version: string): string {
   return releaseTag.test(releaseUrl) ? releaseUrl.replace(releaseTag, `/releases/tag/v${version}`) : releaseUrl
-}
-
-// latestReleasePage is the page of the newest release, where the app downloads by hand,
-// from the URL of any release's page, or that URL as it is when it isn't one.
-export function latestReleasePage(releaseUrl: string): string {
-  return releaseTag.test(releaseUrl) ? releaseUrl.replace(releaseTag, '/releases/latest') : releaseUrl
 }

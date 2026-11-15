@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 
 import { brand } from '../../generated/brand'
-import type { RestartStep } from '../../lib/update'
+import { settlingWords, type RestartStep } from '../../lib/update'
 import type { Settings, UpdateStatus } from '../../platform'
 import { at } from '../../test/clock'
 import { settings, updateReady, updateStatus } from '../../test/fixtures'
@@ -25,10 +25,23 @@ function card(status: UpdateStatus | null, flow: RestartStep = { step: 'idle' },
   return { update, onSaved }
 }
 
-// line is the Updates row's status, a live region.
-function line() {
-  return screen.getByRole('status')
+// words are the Updates row's state, and note what it says under them: each a live region,
+// read out as it changes.
+function words() {
+  return screen.getAllByRole('status')[0]
 }
+
+function note() {
+  return screen.getAllByRole('status')[1]
+}
+
+// line is the whole status under the row's name: the words, a download's percentage or
+// when the last check ended, which aren't read out as they change, and the note.
+function line() {
+  return words()?.closest('div')
+}
+
+const releasePage = 'https://github.com/acme-org/example-repo/releases/tag/v0.3.0'
 
 const check = { name: 'Check for Updates' }
 
@@ -37,6 +50,9 @@ describe('UpdatesCard', () => {
     card(updateStatus())
 
     expect(line()).toHaveTextContent('Up to date · checked 12m ago')
+    // The time ago changes as it ticks, so it stays out of the live region.
+    expect(words()).toHaveTextContent(/^Up to date$/)
+    expect(note()).toBeEmptyDOMElement()
     expect(screen.getByRole('button', check)).toBeEnabled()
     expect(screen.queryByRole('button', { name: 'Restart to update' })).not.toBeInTheDocument()
   })
@@ -46,10 +62,11 @@ describe('UpdatesCard', () => {
     expect(line()).toHaveTextContent('Not checked yet')
   })
 
-  it('says it checks while the status loads, offering no check yet', () => {
+  it('says nothing while the status loads, offering no check yet', () => {
     card(null)
 
-    expect(line()).toHaveTextContent('Checking…')
+    expect(words()).toBeEmptyDOMElement()
+    expect(screen.queryByText('Checking…')).not.toBeInTheDocument()
     expect(screen.queryByRole('button', check)).not.toBeInTheDocument()
   })
 
@@ -64,6 +81,8 @@ describe('UpdatesCard', () => {
     card(updateReady({ state: 'downloading', progress: 42 }))
 
     expect(line()).toHaveTextContent('Downloading 0.3.0… 42%')
+    // The percentage climbs, so it stays out of the live region.
+    expect(words()).toHaveTextContent(/^Downloading 0\.3\.0…$/)
     expect(screen.getByRole('button', check)).toBeDisabled()
   })
 
@@ -92,20 +111,28 @@ describe('UpdatesCard', () => {
     expect(screen.getByRole('button', check)).toBeDisabled()
   })
 
-  it('lets the buttons go again once a restart failed, saying why under the version', () => {
-    card(updateReady({ lastError: 'Couldn’t install 0.3.0: no space.' }), { step: 'failed', message: 'no space' })
+  it('offers Try again and Download manually once a restart failed, as the banner does, saying why', async () => {
+    const { update } = card(updateReady({ lastError: 'Couldn’t install 0.3.0: no space.' }), {
+      step: 'failed',
+      message: 'no space',
+    })
 
-    expect(line()).toHaveTextContent('0.3.0 is ready')
-    expect(line()).toHaveTextContent('Couldn’t install 0.3.0: no space.')
-    expect(screen.getByRole('button', { name: 'Restart to update' })).toBeEnabled()
+    expect(words()).toHaveTextContent('0.3.0 is ready')
+    expect(note()).toHaveTextContent('Couldn’t install 0.3.0: no space.')
+    expect(screen.queryByRole('button', { name: 'Restart to update' })).not.toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Try again' }))
+    expect(update.restart).toHaveBeenCalledOnce()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Download manually' }))
+    expect(platform.openExternal).toHaveBeenCalledExactlyOnceWith(releasePage)
   })
 
   it('says quietly that the last update is still finishing, holding the buttons a moment', () => {
-    card(updateReady(), { step: 'waiting', message: 'The last update is still finishing. Try again in a moment.' })
+    card(updateReady(), { step: 'waiting', message: settlingWords })
 
-    const note = screen.getByText('The last update is still finishing. Try again in a moment.')
-
-    expect(note).toHaveClass('text-muted')
+    expect(note()).toHaveTextContent('The last update is still finishing. This can take a minute or two.')
+    expect(note()?.firstElementChild).toHaveClass('text-muted')
     expect(screen.getByRole('button', { name: 'Restart to update' })).toBeDisabled()
   })
 
@@ -214,6 +241,18 @@ describe('UpdatesCard', () => {
     expect(screen.queryByRole('button', { name: 'Restart to update' })).not.toBeInTheDocument()
     await userEvent.click(screen.getByRole('button', { name: 'Try again' }))
     expect(update.restart).toHaveBeenCalledOnce()
+    await userEvent.click(screen.getByRole('button', { name: 'Download manually' }))
+    expect(platform.openExternal).toHaveBeenCalledExactlyOnceWith(releasePage)
+  })
+
+  it('offers Download manually alone for an install that can’t be tried again', () => {
+    const final = { version: '0.3.0', reason: 'The copy kept is damaged.', log: false, retryable: false }
+
+    card(updateReady({ installFailed: final }))
+
+    expect(screen.getByRole('button', { name: 'Download manually' })).toBeEnabled()
+    expect(screen.queryByRole('button', { name: 'Try again' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Restart to update' })).not.toBeInTheDocument()
   })
 
   it('offers a newer version than the one that failed as any other', () => {

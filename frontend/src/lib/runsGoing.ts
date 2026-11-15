@@ -18,9 +18,9 @@ export function heldReleaseText(one: boolean): string {
 }
 
 // heldRunText says the same of any other run held back, as a pull is while git writes the
-// clone's files.
-export function heldRunText(one: boolean): string {
+// clone's files; doing names what closes the app, quitting (the default) or restarting.
+export function heldRunText(one: boolean, doing: 'Quitting' | 'Restarting' = 'Quitting'): string {
   return one
-    ? `Quitting waits up to a few seconds for it. If it hasn’t ended by then, it goes on after ${brand.name} closes.`
+    ? `${doing} waits up to a few seconds for it. If it hasn’t ended by then, it goes on after ${brand.name} closes.`
     : `A run that can’t be stopped right now is waited for up to a few seconds. If it doesn’t finish, it goes on after ${brand.name} closes.`
 }

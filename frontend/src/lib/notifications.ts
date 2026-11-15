@@ -260,6 +260,31 @@ export function bannerEntry(entry: AppNotification, banner: BannerRef): boolean 
   )
 }
 
+// BannerOpen is what a clicked banner opens: its run (Scripts → Runs), the update's banner,
+// or its item or page.
+export type BannerOpen = 'run' | 'update' | 'item'
+
+// bannerOpens works out what a clicked banner opens, as its entry in the log would: by
+// that entry's kind (entry, the log's entry with the banner's notification id), while it
+// is the one the banner stood for (bannerEntry); otherwise, as for an entry the log hasn't
+// loaded, by what the banner names: a run, nothing but its entry (named is whether it
+// names one), as only a new version's banner does, or an item or page.
+export function bannerOpens(entry: AppNotification | undefined, banner: BannerRef, named: boolean): BannerOpen {
+  if (entry !== undefined && bannerEntry(entry, banner)) {
+    if (opensRun(entry)) {
+      return 'run'
+    }
+
+    return opensUpdate(entry) ? 'update' : 'item'
+  }
+
+  if (banner.runId > 0) {
+    return 'run'
+  }
+
+  return named && updateBanner(banner) ? 'update' : 'item'
+}
+
 // bannerStatusText explains the state of the banners in Settings, or '' when they show.
 // The status is '' until it has been read.
 export function bannerStatusText(status: BannerStatus | ''): string {

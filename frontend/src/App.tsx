@@ -36,11 +36,11 @@ import {
 import { toggleFilter } from './lib/query'
 import {
   bannerEntry,
+  bannerOpens,
   filterEntries,
   opensRun,
   opensUpdate,
   startLists,
-  updateBanner,
   type NotificationLists,
 } from './lib/notifications'
 import type { ReleaseRequest } from './lib/release'
@@ -216,14 +216,16 @@ interface BannerClick {
 // failed run's banner is, opens the run with openRun instead, and one about a new version
 // of the app, whose banner names nothing but itself, shows the update's banner with
 // openUpdate. A clicked banner names the notification it stands for, which markBanner
-// marks read first. While held, as the first-run setup holds the window, a request is let
-// go.
+// marks read first, and opens what that entry opens, by its kind (entryOf looks it up in
+// the log), or by what the banner names when the log doesn't hold it. While held, as the
+// first-run setup holds the window, a request is let go.
 function useReveal(
   snapshot: InboxSnapshot | null,
   openInbox: () => void,
   openRun: (id: number, started: string) => void,
   openUpdate: () => void,
   markBanner: (click: BannerClick) => void,
+  entryOf: (id: number) => AppNotification | undefined,
   held: boolean,
 ) {
   const [reveal, setReveal] = useState<Reveal | null>(null)
@@ -250,23 +252,23 @@ function useReveal(
       return
     }
 
-    if (click.notificationId > 0) {
+    const named = click.notificationId > 0
+
+    if (named) {
       markBanner(click)
     }
 
-    if (click.runId > 0) {
-      openRun(click.runId, runStarted)
-
-      return
+    switch (bannerOpens(named ? entryOf(click.notificationId) : undefined, click, named)) {
+      case 'run':
+        openRun(click.runId, runStarted)
+        break
+      case 'update':
+        openUpdate()
+        break
+      case 'item':
+        show(click.itemId, click.url)
+        break
     }
-
-    if (click.notificationId > 0 && updateBanner(click)) {
-      openUpdate()
-
-      return
-    }
-
-    show(click.itemId, click.url)
   })
 
   useEffect(
@@ -622,24 +624,25 @@ export function App() {
   }
   // markBanner marks read the notification a clicked banner stands for, while the log's
   // entry with its id is still the one it stood for.
+  const entryOf = (id: number) => notifications.log.items.find((n) => n.id === id)
   const markBanner = (click: BannerClick) => {
-    const entry = notifications.log.items.find((n) => n.id === click.notificationId)
+    const entry = entryOf(click.notificationId)
 
     if (entry !== undefined && !entry.read && bannerEntry(entry, click)) {
       notifications.markRead([entry.id])
     }
   }
   // openUpdate shows the update's banner, lifting Later, as a click on its notification
-  // asks; with no update on its way any more, as once it installed, About says where the
-  // app stands.
+  // asks; when the banner would show nothing, as once the update installed, while a quiet
+  // download goes on, or with its failure put away, About says where the app stands.
   const openUpdate = () => {
-    void update.reveal().then((pending) => {
-      if (!pending) {
+    void update.reveal().then((shows) => {
+      if (!shows) {
         go({ type: 'settings', section: 'about' })
       }
     })
   }
-  const revealer = useReveal(inbox.snapshot, openInbox, openRun, openUpdate, markBanner, setup.showing)
+  const revealer = useReveal(inbox.snapshot, openInbox, openRun, openUpdate, markBanner, entryOf, setup.showing)
   const { clear: clearReveal, show: showItem } = revealer
 
   const changeView = (next: View) => {

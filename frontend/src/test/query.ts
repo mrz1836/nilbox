@@ -1,6 +1,6 @@
 import { vi } from 'vitest'
 
-import { bannerOf, type RestartStep } from '../lib/update'
+import { bannerOf, offerOf, type RestartStep } from '../lib/update'
 import type { IntegrationsState } from '../lib/useIntegrations'
 import type { Query } from '../lib/useQuery'
 import type { UpdateControl } from '../lib/useUpdate'
@@ -39,8 +39,8 @@ export function integrationsOf(
 }
 
 // updateOf is the app's update as useUpdateControl hands it to a component: a status, or
-// null while it loads, the restart flow at a step, and the banner they show, with its
-// moves as mocks a test reads.
+// null while it loads, the restart flow at a step, the banner they show, and what they
+// offer, with its moves as mocks a test reads.
 export function updateOf(
   status: UpdateStatus | null,
   flow: RestartStep = { step: 'idle' },
@@ -50,6 +50,7 @@ export function updateOf(
     status,
     flow,
     banner: bannerOf(status, flow, ''),
+    offer: offerOf(status, flow),
     restart: vi.fn(),
     later: vi.fn(),
     dismiss: vi.fn(),

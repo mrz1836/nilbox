@@ -14,7 +14,16 @@ import {
   type UpdateStatus,
 } from '../platform'
 import { attempt } from './call'
-import { bannerOf, runsGoingIn, type Banner, type RestartStep } from './update'
+import {
+  bannerOf,
+  namesRuns,
+  offerOf,
+  runsGoingIn,
+  settlingWords,
+  type Banner,
+  type Offer,
+  type RestartStep,
+} from './update'
 import { useQuery } from './useQuery'
 
 // UpdateQuery is the app's update as the window shows it.
@@ -51,8 +60,9 @@ export function useUpdate(): UpdateQuery {
 const downloadTries = 3
 
 // waitFor is the longest a restart waits, quietly, after the last update said it is still
-// finishing, before the banner offers the update again.
-export const waitFor = 10_000
+// finishing, before the banner offers the update again: the start settling, which tells
+// the window, usually ends the wait well before.
+export const waitFor = 60_000
 
 // RestartFlow is the window's one restart to update, which the banner, About, and the menu
 // bar (through "updates:restart") all start.
@@ -76,8 +86,13 @@ export interface RestartFlow {
 //  3. It asks first when restarting would lose something: text a sheet holds that the
 //     user hasn't sent (unsent counts the sheets), or runs going in the app, which Restart
 //     names when it refuses to stop them unasked. Text unsent asks at once, naming the
-//     runs going too, so one question covers both; otherwise Restart asks Go.
-//  4. Restart then backs the data up and restarts; the app quits inside it, so it returns
+//     runs going too, so one question covers both; otherwise Restart(false) asks Go, and
+//     a refusal asks, counting the sheets again.
+//  4. Confirmed, it restarts with Restart(true), which stops the runs, only when the
+//     question named them; a question that named none (they couldn't be listed, or none
+//     went) restarts with Restart(false), so a run going after all, or started while it
+//     asked, is refused and asked about too.
+//  5. Restart then backs the data up and restarts; the app quits inside it, so it returns
 //     only when something stopped the restart, whose words the banner shows.
 //
 // Two refusals are no failure to retry. While the last update may still be finishing, the
@@ -110,10 +125,11 @@ export function useRestartToUpdate(unsent: () => number): RestartFlow {
     end({ step: 'failed', message })
   }
 
-  // refuse ends on a refusal the window answers on its own: a moment's wait while the last
-  // update finishes, or, after a held quit, what to do instead of trying again.
+  // refuse ends on a refusal the window answers on its own: a wait while the last update
+  // finishes, in the window's own words, or, after a held quit, what to do instead of
+  // trying again.
   const refuse = ({ refusal, message }: Refused) => {
-    end(refusal === 'settling' ? { step: 'waiting', message } : { step: 'reopen', message })
+    end(refusal === 'settling' ? { step: 'waiting', message: settlingWords } : { step: 'reopen', message })
   }
 
   const restart = async (confirmed: boolean) => {
@@ -128,9 +144,14 @@ export function useRestartToUpdate(unsent: () => number): RestartFlow {
     } else if ('refusal' in answer.data) {
       refuse(answer.data)
     } else {
+      // Restart may have waited for a check or a download first: the sheets are counted
+      // as they are now, text written meanwhile included.
       const { runsGoing } = answer.data
 
-      setStep({ step: 'asking', question: { runs: runsGoing.length === 0 ? null : runsGoing, sheets: 0 } })
+      setStep({
+        step: 'asking',
+        question: { runs: runsGoing.length === 0 ? null : runsGoing, sheets: counter.current() },
+      })
     }
   }
 
@@ -278,7 +299,9 @@ export function useRestartToUpdate(unsent: () => number): RestartFlow {
     step,
     start,
     confirm: () => {
-      void restart(true)
+      if (step.step === 'asking') {
+        void restart(namesRuns(step.question))
+      }
     },
     cancel: () => {
       end({ step: 'idle' })
@@ -292,58 +315,80 @@ export function useRestartToUpdate(unsent: () => number): RestartFlow {
 }
 
 // UpdateControl is the app's update as the banner and Settings → About use it: where it
-// stands, the banner it shows, and the moves they make.
+// stands, the banner it shows, what both offer, and the moves they make.
 export interface UpdateControl {
   status: UpdateStatus | null
   flow: RestartStep
   banner: Banner
+  // offer is what the banner and About offer (offerOf), so the two never disagree.
+  offer: Offer
   // restart is restartToUpdate: Restart to update, Update, and Try again.
   restart: () => void
-  // later hides the banner for a day (Later), at once.
+  // later hides the banner for a day (Later), at once; on a download's banner, it hides
+  // that banner while the download goes on.
   later: () => void
   // dismiss puts away the failure the banner shows, for this session.
   dismiss: () => void
   // reveal shows the banner again, lifting Later, as a click on the update's notification
-  // asks; it resolves with whether an update is still on its way to show.
+  // asks; it resolves with whether the banner shows something.
   reveal: () => Promise<boolean>
   reload: () => Promise<void>
 }
 
-// pendingStates are the states with a newer version on its way.
-const pendingStates: readonly UpdateStatus['state'][] = ['available', 'downloading', 'ready', 'installing']
+// noBanner is the banner showing nothing.
+const noBanner: Banner = { kind: 'none' }
 
 // useUpdateControl is the window's one view of the app's update: the status, the restart
-// flow (unsent counts the sheets holding text not sent), and the banner, which Later hides
-// at once and a failure put away leaves for this session. The menu bar's Restart to Update
-// ("updates:restart") restarts as the banner does. After a held quit, when no restart can
-// work in this run, asking for one shows the banner that says what to do instead, Later or
-// not, and tries nothing.
+// flow (unsent counts the sheets holding text not sent), the banner, which Later hides at
+// once and a failure put away leaves for this session, and what both the banner and About
+// offer. The menu bar's Restart to Update ("updates:restart") restarts as the banner does.
+// After a held quit, when no restart can work in this run, asking for one shows the banner
+// that says what to do instead, Later or not, and tries nothing.
 export function useUpdateControl(flow: RestartFlow, update: UpdateQuery): UpdateControl {
   const { status, reload } = update
-  // laterFor is the version Later hid the banner of in this window, before the status says
-  // so; lastLaunchPut is the failed install the user put away.
+  // laterFor is the version Later hid the banner of in this window, until the status says
+  // the update hides it, for its day; it lasts the session only when the update couldn't
+  // store that (HideBanner failed). lastLaunchPut is the failed install the user put away,
+  // and downloadHidden a download's banner Later hid while it downloads.
   const [laterFor, setLaterFor] = useState('')
   const [lastLaunchPut, setLastLaunchPut] = useState('')
+  const [downloadHidden, setDownloadHidden] = useState(false)
+
+  if (laterFor !== '' && status !== null && status.bannerHidden && status.latest === laterFor) {
+    setLaterFor('')
+  }
+
   const hidden = status !== null && status.latest !== '' && status.latest === laterFor
-  const banner = bannerOf(hidden ? { ...status, bannerHidden: true } : status, flow.step, lastLaunchPut)
+  const shown = bannerOf(hidden ? { ...status, bannerHidden: true } : status, flow.step, lastLaunchPut)
+  const downloading = shown.kind === 'working' && shown.progress !== null
+
+  if (downloadHidden && !downloading) {
+    setDownloadHidden(false)
+  }
+
+  const banner = downloadHidden && downloading ? noBanner : shown
 
   const reveal = async () => {
     setLaterFor('')
+    setDownloadHidden(false)
 
-    const shown = await attempt(showUpdateBanner())
+    const lifted = await attempt(showUpdateBanner())
 
-    if (!shown.ok) {
-      console.error('could not show the update’s banner:', shown.error)
+    if (!lifted.ok) {
+      console.error('could not show the update’s banner:', lifted.error)
 
-      return true
+      return bannerOf(status, flow.step, lastLaunchPut).kind !== 'none'
     }
 
     void reload()
 
-    return pendingStates.includes(shown.data.state)
+    return bannerOf(lifted.data, flow.step, lastLaunchPut).kind !== 'none'
   }
 
   const restart = () => {
+    setLaterFor('')
+    setDownloadHidden(false)
+
     if (flow.step.step === 'reopen') {
       void reveal()
     } else {
@@ -367,8 +412,15 @@ export function useUpdateControl(flow: RestartFlow, update: UpdateQuery): Update
     status,
     flow: flow.step,
     banner,
+    offer: offerOf(status, flow.step),
     restart,
     later: () => {
+      if (downloading) {
+        setDownloadHidden(true)
+
+        return
+      }
+
       setLaterFor(status?.latest ?? '')
       void attempt(hideUpdateBanner()).then((result) => {
         if (!result.ok) {

@@ -8,6 +8,7 @@ import type { UpdateControl } from '../../lib/useUpdate'
 import { useSettingsSave } from '../../lib/useSettingsSave'
 import {
   checkForUpdates,
+  openExternal,
   setUpdateMode,
   showInstallLog,
   type Settings,
@@ -15,7 +16,7 @@ import {
   type UpdateStatus,
 } from '../../platform'
 import { buttonClass, chipClass, fieldClass, primaryButtonClass } from '../controls'
-import { AlertIcon, FolderIcon } from '../icons'
+import { AlertIcon, ExternalIcon, FolderIcon } from '../icons'
 import { RelativeTime } from '../RelativeTime'
 import { rowMatchClass, useSetting } from './match'
 import { ErrorText, Group, joinIds, rowDescribedBy, SettingRow } from './rows'
@@ -41,35 +42,39 @@ function noteOf(flow: RestartStep, failure: string): { text: string; tone: strin
   }
 }
 
-// StatusLine says where the update stands: the words, a check that found nothing new with
-// how long ago it ended, and a note under them. It is a live region, so Check for Updates'
-// result is read out where it shows.
+// StatusLine says where the update stands: the words, how far a download has got, a check
+// that found nothing new with how long ago it ended, and a note under them; nothing until
+// the status has loaded. The words and the note are live regions, so Check for Updates'
+// result is read out where it shows, but a download's climbing percentage and the time
+// ago are not.
 function StatusLine({ status, flow, id }: { status: UpdateStatus | null; flow: RestartStep; id: string }) {
-  const line = status === null ? { text: 'Checking…', checkedAt: '', note: '' } : aboutLine(status)
+  const line = status === null ? { text: '', progress: null, checkedAt: '', note: '' } : aboutLine(status)
   const note = noteOf(flow, line.note)
 
   return (
-    <div id={id} role="status" className="mt-0.5 text-xs text-muted">
-      <p>
-        {line.text}
+    <div id={id} className="mt-0.5 text-xs text-muted">
+      <p className="min-h-4">
+        <span role="status">{line.text}</span>
+        {line.progress !== null && <span className="tabular-nums"> {line.progress}%</span>}
         {line.checkedAt !== '' && (
-          <>
+          <span>
             {' · checked '}
             <RelativeTime iso={line.checkedAt} show={formatAgo} />
-          </>
+          </span>
         )}
       </p>
-      {note.text !== '' && <p className={`mt-0.5 ${note.tone}`}>{note.text}</p>}
+      <div role="status">{note.text !== '' && <p className={`mt-0.5 ${note.tone}`}>{note.text}</p>}</div>
     </div>
   )
 }
 
-// UpdatesRow is the Updates row: the build's update status, Check for Updates, and, with
-// a newer version found, Restart to update or Update, which run the window's one restart.
+// UpdatesRow is the Updates row: the build's update status, Check for Updates, and what
+// the update offers (offerOf), as the banner offers it: Restart to update, Update, or Try
+// again, which run the window's one restart, and Download manually.
 function UpdatesRow({ update }: { update: UpdateControl }) {
   const id = useId()
   const [marks] = useSetting('Updates')
-  const { status, flow } = update
+  const { status, flow, offer } = update
   const [checking, setChecking] = useState(false)
   const [error, setError] = useState('')
   const enabled = status?.enabled ?? false
@@ -83,11 +88,6 @@ function UpdatesRow({ update }: { update: UpdateControl }) {
     state === 'downloading' ||
     state === 'installing' ||
     (flow.step !== 'idle' && flow.step !== 'failed' && flow.step !== 'reopen')
-  const offer = status?.location.ok === true && (state === 'ready' || state === 'available') && flow.step !== 'reopen'
-  // retry is the version that failed to install at the last launch, on offer again: its
-  // restart is a Try again, beside the failure the card shows under this row.
-  const retry = status !== null && status.installFailed.version !== '' && status.installFailed.version === status.latest
-  const action = retry ? 'Try again' : state === 'ready' ? 'Restart to update' : 'Update'
 
   const check = async () => {
     setError('')
@@ -128,9 +128,21 @@ function UpdatesRow({ update }: { update: UpdateControl }) {
           >
             {checking || status?.checking === true ? 'Checking…' : 'Check for Updates'}
           </button>
-          {offer && (
+          {offer.manual && (
+            <button
+              type="button"
+              onClick={() => {
+                openExternal(status?.releaseUrl ?? '')
+              }}
+              className={buttonClass}
+            >
+              Download manually
+              <ExternalIcon className="size-3.5 text-muted" />
+            </button>
+          )}
+          {offer.action !== null && (
             <button type="button" disabled={busy} onClick={update.restart} className={primaryButtonClass}>
-              {action}
+              {offer.label}
             </button>
           )}
         </div>

@@ -7,6 +7,7 @@ import {
   appTypeOrder,
   appTypes,
   bannerEntry,
+  bannerOpens,
   bannerStatusText,
   entryRef,
   entryTitle,
@@ -199,5 +200,30 @@ describe('the history’s lists', () => {
     expect(bannerEntry(notification({ kind: 'woke', itemId: 0, url: '' }), none)).toBe(false)
     // A banner about an item never matches the update's entry.
     expect(bannerEntry(update, { ...none, itemId: 1 })).toBe(false)
+  })
+
+  it('opens what a clicked banner’s entry opens, by its kind', () => {
+    const none = { itemId: 0, url: '', runId: 0 }
+    const update = notification({ kind: 'update_ready', itemId: 0, itemKind: '', url: '' })
+    const page = 'https://github.com/acme-org/sdk/releases/tag/v1.2.0'
+    // An entry about a page that also names a run, which only a failed run's entry opens.
+    const released = notification({ kind: 'release_done', itemId: 0, itemKind: '', url: page, runId: 9 })
+
+    expect(bannerOpens(failed, { ...none, runId: 9 }, true)).toBe('run')
+    expect(bannerOpens(update, none, true)).toBe('update')
+    expect(bannerOpens(notification(), { ...none, itemId: 1 }, true)).toBe('item')
+    expect(bannerOpens(released, { ...none, url: page, runId: 9 }, true)).toBe('item')
+  })
+
+  it('opens what a clicked banner names when the log doesn’t hold its entry, or holds another', () => {
+    const none = { itemId: 0, url: '', runId: 0 }
+
+    expect(bannerOpens(undefined, { ...none, runId: 9 }, true)).toBe('run')
+    expect(bannerOpens(undefined, none, true)).toBe('update')
+    expect(bannerOpens(undefined, { ...none, itemId: 1 }, true)).toBe('item')
+    // A request that names no notification is never the update's.
+    expect(bannerOpens(undefined, none, false)).toBe('item')
+    // An entry of another kind that took the id after the history was cleared.
+    expect(bannerOpens(notification({ kind: 'woke', itemId: 0, url: '' }), none, true)).toBe('update')
   })
 })

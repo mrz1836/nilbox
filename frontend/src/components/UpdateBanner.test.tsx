@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 
 import { brand } from '../generated/brand'
-import type { RestartStep } from '../lib/update'
+import { settlingWords, type RestartStep } from '../lib/update'
 import type { UpdateStatus } from '../platform'
 import { updateReady, updateStatus } from '../test/fixtures'
 import { platform } from '../test/platform'
@@ -12,18 +12,30 @@ import { UpdateBanner } from './UpdateBanner'
 
 vi.mock('../platform', () => import('../test/platform').then((fake) => fake.platform))
 
-const latestPage = 'https://github.com/acme-org/example-repo/releases/latest'
 const releasePage = 'https://github.com/acme-org/example-repo/releases/tag/v0.3.0'
 
 // shown renders the banner for a status and a step of the restart, and returns the update
-// it was given, with its moves as mocks, and the onDetails it was given.
+// it was given, with its moves as mocks, the onDetails it was given, and a rerender with
+// another step.
 function shown(status: UpdateStatus | null, flow: RestartStep = { step: 'idle' }) {
   const update = updateOf(status, flow)
   const onDetails = vi.fn()
+  const { rerender } = render(<UpdateBanner update={update} onDetails={onDetails} />)
 
-  render(<UpdateBanner update={update} onDetails={onDetails} />)
+  return {
+    update,
+    onDetails,
+    showStep: (next: RestartStep) => {
+      rerender(<UpdateBanner update={updateOf(status, next)} onDetails={onDetails} />)
+    },
+  }
+}
 
-  return { update, onDetails }
+// buttons are the banner's buttons, by their words.
+function buttons() {
+  return within(banner())
+    .queryAllByRole('button')
+    .map((b) => b.getAttribute('aria-label') ?? b.textContent)
 }
 
 // banner is the banner's live region.
@@ -66,21 +78,27 @@ describe('UpdateBanner', () => {
     expect(screen.getByRole('button', { name: 'Later' })).toBeInTheDocument()
   })
 
-  it('shows a download’s progress, without reading its percentage out', () => {
-    shown(updateReady({ state: 'downloading', mode: 'notify', progress: 42 }), { step: 'downloading' })
+  it('shows a download’s progress, without reading its percentage out, and Later hides it', async () => {
+    const { update } = shown(updateReady({ state: 'downloading', mode: 'notify', progress: 42 }), {
+      step: 'downloading',
+    })
 
     const bar = screen.getByRole('progressbar', { name: 'Download' })
 
     expect(banner()).toHaveTextContent('Downloading 0.3.0… 42%')
     expect(bar).toHaveAttribute('aria-valuenow', '42')
     expect(within(banner()).getByText('42%', { exact: false })).toHaveAttribute('aria-hidden', 'true')
-    expect(within(banner()).queryByRole('button')).not.toBeInTheDocument()
+    expect(buttons()).toEqual(['Later'])
+    expect(screen.getByRole('button', { name: 'Later' })).toHaveAttribute('title', 'Hide this while it downloads')
+
+    await userEvent.click(screen.getByRole('button', { name: 'Later' }))
+    expect(update.later).toHaveBeenCalledOnce()
   })
 
   it('shows the restart under way, and the backup it starts with', () => {
     shown(updateReady({ state: 'installing' }), { step: 'restarting' })
 
-    expect(banner()).toHaveTextContent('Restarting into 0.3.0… Backing up your data first.')
+    expect(banner()).toHaveTextContent('Restarting into 0.3.0… Backing up your data and preparing the update…')
     expect(screen.queryByRole('progressbar')).not.toBeInTheDocument()
     expect(within(banner()).queryByRole('button')).not.toBeInTheDocument()
   })
@@ -100,17 +118,62 @@ describe('UpdateBanner', () => {
     expect(update.restart).toHaveBeenCalledOnce()
 
     await userEvent.click(screen.getByRole('button', { name: 'Download manually' }))
-    expect(platform.openExternal).toHaveBeenCalledExactlyOnceWith(latestPage)
+    expect(platform.openExternal).toHaveBeenCalledExactlyOnceWith(releasePage)
 
     await userEvent.click(screen.getByRole('button', { name: 'Dismiss' }))
     expect(update.dismiss).toHaveBeenCalledOnce()
     expect(screen.queryByRole('button', { name: 'Later' })).not.toBeInTheDocument()
   })
 
-  it('waits quietly while the last update finishes: no failure, nothing to click or put away', () => {
-    shown(updateReady(), { step: 'waiting', message: 'The last update is still finishing. Try again in a moment.' })
+  it('hands focus to Try again when a restart fails with nothing focused', () => {
+    const { showStep } = shown(updateReady(), { step: 'restarting' })
 
-    expect(banner()).toHaveTextContent('The last update is still finishing. Try again in a moment.')
+    expect(document.body).toHaveFocus()
+    showStep({ step: 'failed', message: 'Couldn’t back up your data first: the disk is full' })
+
+    expect(screen.getByRole('button', { name: 'Try again' })).toHaveFocus()
+  })
+
+  it('hands focus to Later when a restart is refused after a held quit', () => {
+    const { showStep } = shown(updateReady(), { step: 'restarting' })
+
+    showStep({ step: 'reopen', message: `Quit ${brand.name} and open it again, then restart to update.` })
+
+    expect(screen.getByRole('button', { name: 'Later' })).toHaveFocus()
+  })
+
+  it('leaves focus where it is when something has it', () => {
+    const { showStep } = shown(updateReady(), { step: 'restarting' })
+    const elsewhere = document.createElement('input')
+
+    document.body.append(elsewhere)
+    elsewhere.focus()
+    showStep({ step: 'failed', message: 'No space' })
+
+    expect(elsewhere).toHaveFocus()
+    elsewhere.remove()
+  })
+
+  it('takes no focus as the last launch’s failure shows', () => {
+    shown(updateReady({ installFailed: { version: '0.3.0', reason: 'It wouldn’t open.', log: true } }))
+
+    expect(document.body).toHaveFocus()
+  })
+
+  it('lets its buttons wrap under the words in a narrow window', () => {
+    shown(updateReady({ installFailed: { version: '0.3.0', reason: 'It wouldn’t open.', log: true } }))
+
+    const row = within(banner()).getByText(/didn’t install/).parentElement
+    const actions = screen.getByRole('button', { name: 'Details' }).parentElement
+
+    expect(row).toHaveClass('flex-wrap')
+    expect(actions).toHaveClass('ml-auto', 'flex-wrap')
+  })
+
+  it('waits quietly while the last update finishes: no failure, nothing to click or put away', () => {
+    shown(updateReady(), { step: 'waiting', message: settlingWords })
+
+    expect(banner()).toHaveTextContent('The last update is still finishing. This can take a minute or two.')
     expect(within(banner()).queryByRole('button')).not.toBeInTheDocument()
     expect(banner().querySelector('.border-warning')).toBeNull()
   })
@@ -143,13 +206,31 @@ describe('UpdateBanner', () => {
     expect(update.restart).toHaveBeenCalledOnce()
 
     await userEvent.click(screen.getByRole('button', { name: 'Download manually' }))
-    expect(platform.openExternal).toHaveBeenCalledExactlyOnceWith(latestPage)
+    expect(platform.openExternal).toHaveBeenCalledExactlyOnceWith(releasePage)
 
     await userEvent.click(screen.getByRole('button', { name: 'Details' }))
     expect(onDetails).toHaveBeenCalledOnce()
 
     await userEvent.click(screen.getByRole('button', { name: 'Dismiss' }))
     expect(update.dismiss).toHaveBeenCalledOnce()
+  })
+
+  it('offers Download manually alone for an install that can’t be tried again', () => {
+    const final = { version: '0.3.0', reason: 'The copy kept is damaged.', log: false, retryable: false }
+
+    shown(updateReady({ installFailed: final }))
+
+    expect(buttons()).toEqual(['Download manually', 'Details', 'Dismiss'])
+  })
+
+  it('offers the newer version found since the last launch’s failure as any other', async () => {
+    const { update } = shown(
+      updateReady({ latest: '0.3.1', installFailed: { version: '0.3.0', reason: 'It wouldn’t open.', log: true } }),
+    )
+
+    expect(buttons()).toEqual(['Restart to update', 'Details', 'Dismiss'])
+    await userEvent.click(screen.getByRole('button', { name: 'Restart to update' }))
+    expect(update.restart).toHaveBeenCalledOnce()
   })
 
   it('says how to let the app install an update where it can’t, with no Update to try', async () => {
@@ -187,11 +268,10 @@ describe('UpdateBanner', () => {
     expect(screen.queryByRole('button', { name: 'Restart to update' })).not.toBeInTheDocument()
   })
 
-  it('opens no page before the status loads', async () => {
+  it('offers no page before the status loads, only Try again', () => {
     shown(null, { step: 'failed', message: 'The app is closing.' })
 
-    await userEvent.click(screen.getByRole('button', { name: 'Download manually' }))
-    expect(platform.openExternal).toHaveBeenCalledExactlyOnceWith('')
+    expect(buttons()).toEqual(['Try again', 'Dismiss'])
   })
 
   it('makes its room gently as it appears, and at once with reduced motion', () => {
