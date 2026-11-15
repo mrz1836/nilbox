@@ -173,7 +173,8 @@ func (s *Service) on(ctx context.Context) (bool, error) {
 
 // changes is on for an action that downloads or installs: it also refuses while the start
 // isn't settled, with ErrSettling, so nothing overwrites the last install's record or
-// restarts while its helper may still be replacing the app.
+// restarts while its helper may still be replacing the app. The refusal carries
+// RefusalSettling, so the window waits it out quietly rather than call it a failure.
 func (s *Service) changes(ctx context.Context) error {
 	settled, err := s.on(ctx)
 	if err != nil {
@@ -181,7 +182,8 @@ func (s *Service) changes(ctx context.Context) error {
 	}
 
 	if !settled {
-		return uierr.New("The last update is still finishing. Try again in a moment.", ErrSettling)
+		return newRefusal(RefusalSettling,
+			uierr.New("The last update is still finishing. Try again in a moment.", ErrSettling))
 	}
 
 	return nil
