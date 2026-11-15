@@ -252,8 +252,8 @@ func TestOnlyAFailureOfTheUpdateItselfIsForGood(t *testing.T) {
 	for ending, retryable := range map[string]bool{
 		"installed application failed validation: sealed — restoring backup":           false,
 		"staged update is not installable: empty — aborting swap":                      false,
-		"launch new failed: exit 1 — restoring backup":                                 false,
-		"launch new failed: exit 1 — restoring backup\nrestore failed: busy":           false,
+		"launch new failed: exit 1 — restoring backup":                                 true,
+		"launch new failed: exit 1 — restoring backup\nrestore failed: busy":           true,
 		"parent did not exit within timeout: timeout — aborting swap":                  true,
 		"all swap attempts exhausted — relaunching intact original":                    true,
 		"backup failed: no space":                                                      true,
@@ -285,8 +285,8 @@ func TestHelperReasonWordsEachEnding(t *testing.T) {
 		"macOS didn't let " + brand.Name + " be replaced, and the old version couldn't be put back." + fix: {
 			"all swap attempts exhausted — restoring backup", "restore failed: rename: no such file",
 		},
-		"The new version wouldn't open, so the old one was put back.": {"launch new failed: exit 1 — restoring backup"},
-		"The new version wouldn't open, and the old one couldn't be put back." + fix: {
+		"macOS couldn't open the new version, so the old one was put back.": {"launch new failed: exit 1 — restoring backup"},
+		"macOS couldn't open the new version, and the old one couldn't be put back." + fix: {
 			"launch new failed: exit 1 — restoring backup", "restore failed: busy",
 		},
 		"The new version failed its signature check, and the old one couldn't be put back." + fix: {

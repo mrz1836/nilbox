@@ -269,10 +269,11 @@ window's banner and Settings → About's controls are still to come.
 - **An update that didn't install.** The menu bar says **0.3.0 didn't install**, with why when
   you hover, and what comes next depends on why:
   - When the moment was at fault (the app didn't quit in time, macOS didn't let it be
-    replaced, it couldn't be copied aside, or the log doesn't say), the update stays
-    downloaded, and the menu offers **Try Updating to 0.3.0 Again**.
-  - When the update itself was at fault (the new version failed its signature check,
-    couldn't be installed, or wouldn't open), it would fail the same way every time. The app
+    replaced or couldn't open the new version, it couldn't be copied aside, or the log
+    doesn't say), the update stays downloaded, and the menu offers **Try Updating to 0.3.0
+    Again**.
+  - When the update itself was at fault (the new version failed its signature check, or
+    couldn't be installed), it would fail the same way every time. The app
     throws the download away and remembers the release, by its version and SHA-512, as one
     that doesn't install (the last five, in `update.uninstallable`): no check downloads or
     offers it again, and the menu offers **Download 0.3.0 Manually…**, which opens its

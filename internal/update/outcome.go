@@ -308,13 +308,13 @@ func readTail(path string, limit int64) ([]byte, error) {
 
 // helperOutcome words why an install failed from the runtime's helper's log, whose lines
 // are "<time>: <message>" and never print the exit code, and reports whether the update
-// itself was at fault (payload), as it would be every time: it failed its signature check,
-// couldn't be installed, or wouldn't open. Any other ending, an unknown one included, was
-// the moment's (the app didn't quit in time, macOS kept it from being replaced, it couldn't
-// be copied aside), and trying again may work. The messages it ends on tell the code apart:
-// a swap that failed and whose restore failed too (14, 16, 20) left a broken install; every
-// other kept or put back the old version. Nothing of the log, its paths included, is
-// repeated.
+// itself was at fault (payload), as it would be every time: it failed its signature check, or
+// couldn't be installed. Any other ending, an unknown one included, was the moment's (the
+// app didn't quit in time, macOS kept it from being replaced or couldn't open the new
+// version, it couldn't be copied aside), and trying again may work. The messages it ends
+// on tell the code apart: a swap that failed and whose restore failed too (14, 16, 20) left
+// a broken install; every other kept or put back the old version. Nothing of the log, its
+// paths included, is repeated.
 func helperOutcome(log []byte) (reason string, payload bool) {
 	broken := bytes.Contains(log, []byte("restore failed"))
 
@@ -362,10 +362,11 @@ func helperEndings() []helperEnding {
 			payload: true,
 		},
 		{
+			// The helper only starts open -n on the new version, which fails when open itself
+			// can't be started, never because the new version is bad.
 			message: "launch new failed",
-			words:   "The new version wouldn't open, so the old one was put back.",
-			broken:  "The new version wouldn't open, and the old one couldn't be put back.",
-			payload: true,
+			words:   "macOS couldn't open the new version, so the old one was put back.",
+			broken:  "macOS couldn't open the new version, and the old one couldn't be put back.",
 		},
 		{
 			message: "all swap attempts exhausted",

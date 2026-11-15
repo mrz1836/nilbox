@@ -14,8 +14,8 @@ import (
 const maxUninstallable = 5
 
 // ErrUninstallable is returned by Download and Restart for an update a restart failed to
-// install for good: it failed its signature check, couldn't be installed, or wouldn't open,
-// as it would every time. Its release page is the way to get it.
+// install for good: it failed its signature check, or couldn't be installed, as it would
+// every time. Its release page is the way to get it.
 var ErrUninstallable = errors.New("the update failed to install before, the same way it would again")
 
 // uninstallable is an update a restart failed to install for good: its version and its

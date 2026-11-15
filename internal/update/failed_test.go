@@ -3,6 +3,7 @@ package update_test
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -49,7 +50,6 @@ func TestAnUpdateThatFailsForGoodIsNeverOfferedAgain(t *testing.T) {
 	for _, ending := range []string{
 		"installed application failed validation: sealed — restoring backup",
 		"staged update is not installable: empty — aborting swap",
-		"launch new failed: exit 1 — restoring backup",
 	} {
 		t.Run(ending, func(t *testing.T) {
 			t.Parallel()
@@ -87,6 +87,7 @@ func TestAFailureOfTheMomentKeepsTheUpdateOffered(t *testing.T) {
 		"parent did not exit within timeout: timeout — aborting swap",
 		"all swap attempts exhausted — relaunching intact original",
 		"backup failed: no space",
+		"launch new failed: exit 1 — restoring backup",
 		"something no one has seen",
 	} {
 		t.Run(ending, func(t *testing.T) {
@@ -103,6 +104,46 @@ func TestAFailureOfTheMomentKeepsTheUpdateOffered(t *testing.T) {
 			exited, err := r.restart(t, false)
 			require.NoError(t, err)
 			assert.True(t, exited, "trying again restarts")
+		})
+	}
+}
+
+func TestAnUpdateMacOSCouldntOpenStaysOffered(t *testing.T) {
+	t.Parallel()
+
+	// The helper only starts open -n on the new version: that fails when open itself can't
+	// be started (the helper's exit 15, or 16 with the restore failing too), never because
+	// the update is bad.
+	for name, tt := range map[string]struct {
+		log  []string
+		want string
+	}{
+		"the old version put back": {
+			log:  []string{"2026-11-15T12:00:01Z: launch new failed: fork/exec /usr/bin/open: resource busy — restoring backup"},
+			want: "macOS couldn't open the new version, so the old one was put back.",
+		},
+		"the old version not put back": {
+			log: []string{
+				"2026-11-15T12:00:01Z: launch new failed: fork/exec /usr/bin/open: resource busy — restoring backup",
+				"2026-11-15T12:00:02Z: restore failed: rename: busy",
+			},
+			want: "macOS couldn't open the new version, and the old one couldn't be put back.",
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			r := failedInstall(t, tt.log...)
+
+			s := r.status(t)
+			assert.Equal(t, next, s.InstallFailed.Version)
+			assert.True(t, s.InstallFailed.Retryable, "trying again may work")
+			assert.True(t, strings.HasPrefix(s.InstallFailed.Reason, tt.want), s.InstallFailed.Reason)
+			assert.Equal(t, update.StateReady, s.State, "the download is kept")
+			assert.Empty(t, r.memory.get(update.KeyUninstallable), "and nothing is remembered as uninstallable")
+
+			_, err := r.service.Download(t.Context())
+			require.NoError(t, err, "nothing refuses it")
 		})
 	}
 }
@@ -133,7 +174,7 @@ func TestANewerReleaseOrARebuildIsOfferedAfterAFailureForGood(t *testing.T) {
 	t.Run("a newer release", func(t *testing.T) {
 		t.Parallel()
 
-		r := failedInstall(t, "2026-11-15T12:00:01Z: launch new failed: exit 1 — restoring backup")
+		r := failedInstall(t, "2026-11-15T12:00:01Z: installed application failed validation: sealed — restoring backup")
 		r.release(t, later)
 
 		_, err := r.service.CheckNow(t.Context())
@@ -149,7 +190,7 @@ func TestANewerReleaseOrARebuildIsOfferedAfterAFailureForGood(t *testing.T) {
 	t.Run("the same version rebuilt", func(t *testing.T) {
 		t.Parallel()
 
-		r := failedInstall(t, "2026-11-15T12:00:01Z: launch new failed: exit 1 — restoring backup")
+		r := failedInstall(t, "2026-11-15T12:00:01Z: installed application failed validation: sealed — restoring backup")
 		body := []byte("the zipped bundle of " + next + ", rebuilt")
 		m := sign(t, next, body, r.private)
 		r.feed.publish(t, m, body)
@@ -174,7 +215,7 @@ func TestAFailureForGoodRecordedWithoutItsZipStaysOffered(t *testing.T) {
 	r := again
 	r.memory.put(update.KeyPendingInstall, `{"from":"`+running+`","to":"`+next+`","at":"2026-01-01T00:00:00Z","pid":31337}`)
 	helperLogIn(t, r, "2026-11-15T12:00:00Z: helper start",
-		"2026-11-15T12:00:01Z: launch new failed: exit 1 — restoring backup")
+		"2026-11-15T12:00:01Z: installed application failed validation: sealed — restoring backup")
 
 	require.Zero(t, r.engine.Settle(t.Context()))
 
@@ -196,7 +237,7 @@ func TestTheUpdatesThatFailedForGoodAreFewAndTheNewestKept(t *testing.T) {
 
 		r.memory.put(update.KeyPendingInstall, `{"from":"`+running+`","to":"`+version+`","at":"2026-01-01T00:00:00Z",`+
 			`"pid":31337,"sha512":"`+sha512Of(body)+`"}`)
-		helperLogIn(t, r, "2026-11-15T12:00:00Z: launch new failed: exit 1 — restoring backup")
+		helperLogIn(t, r, "2026-11-15T12:00:00Z: staged update is not installable: empty — aborting swap")
 
 		again := relaunch(t, r)
 		require.Zero(t, again.engine.Settle(t.Context()))

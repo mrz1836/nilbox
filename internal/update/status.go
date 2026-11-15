@@ -109,11 +109,11 @@ type InstallFailure struct {
 	Log bool `json:"log"`
 
 	// Retryable reports that trying the same update again may work: the failure was the
-	// moment's (the app didn't quit in time, macOS kept it from being replaced, it couldn't
-	// be copied aside, or the helper's log doesn't say), and the update stays offered. A
-	// failure of the update itself (it failed its signature check, couldn't be installed, or
-	// wouldn't open) fails the same way every time: that update is never offered again, and
-	// the release page is the way to get it.
+	// moment's (the app didn't quit in time, macOS kept it from being replaced or couldn't
+	// open the new version, it couldn't be copied aside, or the helper's log doesn't say),
+	// and the update stays offered. A failure of the update itself (it failed its signature
+	// check, or couldn't be installed) fails the same way every time: that update is never
+	// offered again, and the release page is the way to get it.
 	Retryable bool `json:"retryable"`
 }
 

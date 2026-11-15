@@ -851,14 +851,15 @@ app:lint` reads.
   version it ran from, with the runtime's helper log, `<TMPDIR>/wails-update-<pid>.log`,
   copied to `logs/update-<version>.log` and worded from the messages it ends on, which tell
   the helper's exit code, never repeating a path, and `Retryable` unless the update itself
-  was at fault: a payload failure, the new version failing its signature check, a staged
-  update not installable, or the new version not opening, fails the same way every time, so
-  its cache entry is dropped and its version and SHA-512 (`pendingInstall.sha512`) go into
-  `update.uninstallable` (the last five), which no check downloads, tells, or offers again,
-  and `Download` and `Restart` refuse (`ErrUninstallable`), while a newer version, or the
-  same one with another SHA-512, goes on as usual; any other ending (the app not quitting in
-  time, the swap's attempts or the copy aside failing, a missing or unknown log) keeps the
-  cache for a retry), then cleans up by exact name only (beside
+  was at fault: a payload failure, the new version failing its signature check or a staged
+  update not installable, fails the same way every time, so its cache entry is dropped and
+  its version and SHA-512 (`pendingInstall.sha512`) go into `update.uninstallable` (the
+  last five), which no check downloads, tells, or offers again, and `Download` and
+  `Restart` refuse (`ErrUninstallable`), while a newer version, or the same one with
+  another SHA-512, goes on as usual; any other ending (the app not quitting in time, the
+  swap's attempts or the copy aside failing, `open -n` of the new version failing to start,
+  which says nothing of the update, a missing or unknown log) keeps the cache for a
+  retry), then cleans up by exact name only (beside
   the bundle, `<bundle>.bak` and the `wails-update-*` folders holding this app's update or
   nothing; in the temporary folder, the last install's helper `.log`, any other process's
   once `HelperWindow` old and only when its first line names this bundle as the target, and
