@@ -734,8 +734,40 @@ func TestMacOSRunnerExceptionIsOnlyTheReleaseWorkflow(t *testing.T) {
 	// The exception is still needed: the release workflow exists and runs on macOS.
 	text, ok := readText(t, releaseWorkflow)
 	require.True(t, ok, "%s is missing; drop its exception", releaseWorkflow)
-	assert.NotEmpty(t, macOSValues(fileRunners(releaseWorkflow, text)),
-		"%s no longer selects a macOS runner; drop its exception", releaseWorkflow)
+
+	values := macOSValues(fileRunners(releaseWorkflow, text))
+	require.NotEmpty(t, values, "%s no longer selects a macOS runner; drop its exception", releaseWorkflow)
+
+	// Every macOS job runs on one label, pinned to a macOS version: never macos-latest,
+	// which moves on its own, nor an expression that could pick another.
+	labels := map[string]bool{}
+
+	for _, v := range values {
+		labels[runnerLabel(v)] = true
+	}
+
+	require.Len(t, labels, 1, "%s's macOS jobs run on one label: %v", releaseWorkflow, values)
+
+	for label := range labels {
+		assert.Regexp(t, `^macos-[0-9]+$`, label, "%s pins its macOS runner to a version", releaseWorkflow)
+	}
+}
+
+// runnerLabel returns the label of a "file:line: value" runner selection, without a
+// comment after it.
+func runnerLabel(selection string) string {
+	_, value, _ := strings.Cut(selection, ": ")
+	value, _, _ = strings.Cut(value, "#")
+
+	return strings.TrimSpace(value)
+}
+
+func TestRunnerLabel(t *testing.T) {
+	t.Parallel()
+
+	assert.Equal(t, "macos-26", runnerLabel("w.yml:7: macos-26"))
+	assert.Equal(t, "macos-26", runnerLabel("w.yml:7: macos-26 # pinned"))
+	assert.Equal(t, "${{ matrix.os }}", runnerLabel("w.yml:11: ${{ matrix.os }} # comment"))
 }
 
 func TestRunnerValues(t *testing.T) {

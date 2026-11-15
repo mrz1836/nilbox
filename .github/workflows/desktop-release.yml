@@ -1,12 +1,23 @@
 # ------------------------------------------------------------------------------------
 #  Desktop release
 #
-#  Purpose: Build, sign, and publish each release of the macOS app. On a v* tag it
-#  builds the universal app bundle with `magex app:package` (signed with the release's
-#  code-signing identity, its update manifest signed with the release key), waits for
-#  GoFortress to pass on the same tag, then creates the GitHub release as a draft,
-#  attaches the files, checks what GitHub holds, and publishes it last, so a release
-#  never shows without its files.
+#  Purpose: Build, sign, and publish each release of the macOS app, in four jobs:
+#
+#    check    Checks the tag, and whether this workflow already published its release.
+#    build    Builds the universal app bundle, unsigned (magex app:buildRelease), with no
+#             secret anywhere in the job, and hands it on as an artifact.
+#    publish  In the release environment: waits for GoFortress to pass on the same tag,
+#             checks and signs the bundle (magex app:signRelease), deletes the keychain
+#             and the key at once, then drafts the release, attaches the files, checks
+#             what GitHub holds, and publishes it last, so a release never shows without
+#             its files.
+#    smoke    For a stable tag that became the latest release, checks that
+#             releases/latest/download serves its manifest.
+#
+#  The secrets exist only between creating the signing keychain and deleting it, while
+#  only this repository's magefiles and Apple's tools run: no package manager, no
+#  frontend build, no compiler. No job restores a cache: Go and Node set up without one,
+#  and magex is downloaded from its release and checked against the release's checksums.
 #
 #  GoFortress runs every check on the tag but publishes nothing:
 #  .github/env/90-project.env sets ENABLE_RELEASE=false.
@@ -22,7 +33,7 @@
 #  and CODESIGN_P12_PASSWORD, and the variable CODESIGN_IDENTITY (the identity's name).
 #
 #  Every step is a magex target, a gh call, or a few lines of shell: no script files.
-#  The runner's bash is 3.2, so the shell avoids anything newer.
+#  The macOS runner's bash is 3.2, so the shell avoids anything newer.
 #
 #  Maintainer: @mrz1836
 # ------------------------------------------------------------------------------------
@@ -34,7 +45,7 @@ on:
     tags:
       - "v*"
 
-# Nothing by default: the job asks for what it needs.
+# Nothing by default: each job asks for what it needs.
 permissions: {}
 
 # One run per tag at a time, and a release under way is never cancelled.
@@ -47,29 +58,32 @@ defaults:
     shell: bash
 
 jobs:
-  release:
-    name: Build, sign, and publish
-    # The newest arm64 macOS image GitHub offers, pinned: never macos-latest, which
-    # moves on its own.
-    runs-on: macos-26
-    timeout-minutes: 90
-    environment: release
+  # ----------------------------------------------------------------------------------
+  # The tag, and whether this workflow already published its release
+  # ----------------------------------------------------------------------------------
+  check:
+    name: Check the tag
+    runs-on: ubuntu-26.04
+    timeout-minutes: 5
     permissions:
-      contents: write # create the draft release, attach its files, and publish it
-      actions: read # find and follow GoFortress's run for the tag
+      contents: read # read the tag's published release, if it has one
+    outputs:
+      tag: ${{ steps.tag.outputs.tag }}
+      version: ${{ steps.tag.outputs.version }}
+      prerelease: ${{ steps.tag.outputs.prerelease }}
+      published: ${{ steps.release.outputs.published }}
     steps:
-      # --------------------------------------------------------------------
-      # The tag
-      # --------------------------------------------------------------------
       - name: Validate the tag
         id: tag
         run: |
           set -euo pipefail
           # A tag name may hold characters a shell acts on, so it reaches the shell only
-          # as GITHUB_REF_NAME, never through an expression, and nothing else reads it
-          # until it is checked here.
-          pattern='^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$'
-          if [[ "$GITHUB_REF_TYPE" != "tag" || ! "$GITHUB_REF_NAME" =~ $pattern ]]; then
+          # as GITHUB_REF_NAME, never through an expression, and nothing reads it until it
+          # is checked here: semantic versioning as the app's update.ValidVersion reads it,
+          # with no leading zero in a number (v01.2.3) and no empty prerelease part
+          # (v1.2.3-..). A repository test holds this pattern to update.ValidVersion.
+          tag_pattern='^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-(0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*)(\.(0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*))*)?$'
+          if [[ "$GITHUB_REF_TYPE" != "tag" || ! "$GITHUB_REF_NAME" =~ $tag_pattern ]]; then
             echo "::error title=Not a release tag::A release tag looks like v1.2.3 or v1.2.3-rc.1, and this ref isn't one, so nothing was built."
             exit 1
           fi
@@ -85,42 +99,94 @@ jobs:
           } >> "$GITHUB_OUTPUT"
           echo "Releasing $GITHUB_REF_NAME (prerelease: $prerelease)"
 
-      - name: Check out the tag
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          # Every commit and tag: app:package checks that the tag names HEAD, and the
-          # build stamps git describe.
-          fetch-depth: 0
-          persist-credentials: false
-
-      - name: Refuse a release that is already published
+      - name: Look for a published release of the tag
+        id: release
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           TAG: ${{ steps.tag.outputs.tag }}
         run: |
           set -euo pipefail
-          # One line per release of the tag: false for a published one, true for a draft.
-          drafts="$(gh api --paginate "repos/$GH_REPO/releases?per_page=100" \
-            --jq ".[] | select(.tag_name == \"$TAG\") | .draft")"
-          case "$drafts" in
+          # One line per published release of the tag: true when it holds the update
+          # manifest, which only this workflow attaches.
+          found="$(gh api --paginate "repos/$GH_REPO/releases?per_page=100" \
+            --jq ".[] | select(.tag_name == \"$TAG\" and .draft == false) | ([.assets[].name] | index(\"manifest-darwin.json\") != null)")"
+          published=false
+          case "$found" in
+            "") echo "$TAG has no published release yet." ;;
             *false*)
-              echo "::error title=Already published::$TAG already has a published release, so nothing was built. GoFortress most likely published it: check that ENABLE_RELEASE=false in .github/env/90-project.env reaches its setup, whose summary should say release publishing is off. A broken release is fixed forward with a new tag."
+              echo "::error title=Published without its files::$TAG already has a published release without manifest-darwin.json, so nothing was built. GoFortress most likely published it: check that ENABLE_RELEASE=false in .github/env/90-project.env reaches its setup, whose summary says whether release publishing is on. A broken release is fixed forward with a new tag."
               exit 1
               ;;
-            *true*) echo "A draft of $TAG from an earlier attempt exists; it will be reused." ;;
-            *) echo "$TAG has no release yet." ;;
+            *)
+              echo "An earlier attempt of this workflow published $TAG, so nothing is built again; only the check of the latest release runs."
+              published=true
+              ;;
           esac
+          echo "published=$published" >> "$GITHUB_OUTPUT"
 
-      # --------------------------------------------------------------------
-      # Tools. No dependency or build caches: a release builds from what the tag
-      # pins, never from a cache another run could have written.
-      # --------------------------------------------------------------------
+  # ----------------------------------------------------------------------------------
+  # Build the unsigned bundle: third-party code runs here, so no secret does
+  # ----------------------------------------------------------------------------------
+  build:
+    name: Build the unsigned app
+    needs: check
+    if: needs.check.outputs.published == 'false'
+    # The newest arm64 macOS image GitHub offers, pinned: never macos-latest, which
+    # moves on its own.
+    runs-on: macos-26
+    timeout-minutes: 60
+    permissions:
+      contents: read # check out the tag
+    steps:
+      - name: Validate the tag
+        id: tag
+        run: |
+          set -euo pipefail
+          # A tag name may hold characters a shell acts on, so it reaches the shell only
+          # as GITHUB_REF_NAME, never through an expression, and nothing reads it until it
+          # is checked here: semantic versioning as the app's update.ValidVersion reads it,
+          # with no leading zero in a number (v01.2.3) and no empty prerelease part
+          # (v1.2.3-..). A repository test holds this pattern to update.ValidVersion.
+          tag_pattern='^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-(0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*)(\.(0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*))*)?$'
+          if [[ "$GITHUB_REF_TYPE" != "tag" || ! "$GITHUB_REF_NAME" =~ $tag_pattern ]]; then
+            echo "::error title=Not a release tag::A release tag looks like v1.2.3 or v1.2.3-rc.1, and this ref isn't one, so nothing was built."
+            exit 1
+          fi
+          echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Check out the tag
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # Every commit, branch, and tag: app:buildRelease checks that the tag names
+          # HEAD, the build stamps git describe, and the next step reads the default
+          # branch.
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Check the tag's commit is on the default branch
+        env:
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          set -euo pipefail
+          # An accident guard: a release is tagged on the default branch.
+          branch="refs/remotes/origin/$DEFAULT_BRANCH"
+          if ! git rev-parse --verify --quiet "$branch^{commit}" > /dev/null; then
+            echo "::error title=No default branch::The checkout holds no $branch to check the tag against."
+            exit 1
+          fi
+          if ! git merge-base --is-ancestor HEAD "$branch"; then
+            echo "::error title=Not on $DEFAULT_BRANCH::The tag names a commit that isn't on $DEFAULT_BRANCH, so nothing was built. Tag a commit on $DEFAULT_BRANCH."
+            exit 1
+          fi
+
       - name: Set up pnpm (version from frontend/package.json)
         uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
         with:
           package_json_file: frontend/package.json
 
+      # No dependency or build cache in any job: a release builds from what the tag
+      # pins, never from a cache another run could have written.
       - name: Set up Node.js (version from frontend/.nvmrc)
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
@@ -137,16 +203,40 @@ jobs:
         id: load-env
         uses: ./.github/actions/load-env
 
-      - name: Set up MAGE-X (version from .github/env)
-        uses: ./.github/actions/setup-magex
-        with:
-          magex-version: ${{ fromJSON(steps.load-env.outputs.env-json).MAGE_X_VERSION }}
-          runner-os: ${{ runner.os }}
+      # Not setup-magex, which restores magex from the Actions cache and checks it only
+      # when it downloads it.
+      - name: Install MAGE-X (version from .github/env, checked against its release)
+        env:
+          MAGE_X_VERSION: ${{ fromJSON(steps.load-env.outputs.env-json).MAGE_X_VERSION }}
+        run: |
+          set -euo pipefail
+          version_pattern='^v[0-9]+\.[0-9]+\.[0-9]+$'
+          sha_pattern='^[0-9a-f]{64}$'
+          if [[ ! "$MAGE_X_VERSION" =~ $version_pattern ]]; then
+            echo "::error title=MAGE_X_VERSION::MAGE_X_VERSION isn't a version such as v1.2.3."
+            exit 1
+          fi
+          archive="mage-x_${MAGE_X_VERSION#v}_darwin_arm64.tar.gz"
+          sums="mage-x_${MAGE_X_VERSION#v}_checksums.txt"
+          dir="$RUNNER_TEMP/magex"
+          rm -rf "$dir"
+          mkdir -p "$dir/bin"
+          for file in "$archive" "$sums"; do
+            curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' --retry 3 \
+              --output "$dir/$file" "https://github.com/mrz1836/mage-x/releases/download/$MAGE_X_VERSION/$file"
+          done
+          want="$(awk -v f="$archive" '$2 == f { print $1 }' "$dir/$sums")"
+          got="$(shasum -a 256 "$dir/$archive" | awk '{ print $1 }')"
+          if [[ ! "$want" =~ $sha_pattern || "$got" != "$want" ]]; then
+            echo "::error title=MAGE-X checksum::$archive doesn't match its release's checksums, so it wasn't installed."
+            exit 1
+          fi
+          tar -xzf "$dir/$archive" -C "$dir/bin" magex
+          echo "$dir/bin" >> "$GITHUB_PATH"
 
       # magex runs this repository's own targets (magefiles/) through the mage binary.
-      # Without mage on PATH it falls back to `go run` on magefiles/, which has no main
-      # function until mage generates one, so the build fails. Install the mage version
-      # go.mod pins.
+      # go install builds the version go.mod pins from the module proxy, checked against
+      # the checksum database, with no cache to restore it from.
       - name: Install mage (version from go.mod)
         run: |
           set -euo pipefail
@@ -154,16 +244,229 @@ jobs:
           go install "github.com/magefile/mage@${mage_version}"
           echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
 
-      # --------------------------------------------------------------------
-      # Build and sign
-      # --------------------------------------------------------------------
-      # A keychain of this run's own, with a password no one else ever sees.
-      # app:package puts it on the keychain search list while it signs, which codesign
-      # needs, and puts the list back afterwards.
+      - name: Build the unsigned bundle
+        env:
+          RELEASE_VERSION: ${{ steps.tag.outputs.version }}
+        run: magex app:buildRelease
+
+      # A tar keeps the bundle exactly as built; an artifact alone keeps no modes.
+      - name: Pack the unsigned bundle
+        env:
+          VERSION: ${{ steps.tag.outputs.version }}
+        run: |
+          set -euo pipefail
+          tar -C "bin/unsigned/$VERSION" -cf "$RUNNER_TEMP/unsigned-bundle.tar" .
+
+      - name: Hand the unsigned bundle to the publish job
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: unsigned-bundle
+          path: ${{ runner.temp }}/unsigned-bundle.tar
+          if-no-files-found: error
+          retention-days: 1
+
+  # ----------------------------------------------------------------------------------
+  # Sign and publish: the secrets live here, and only our magefiles and Apple's tools
+  # run while they do
+  # ----------------------------------------------------------------------------------
+  publish:
+    name: Sign and publish
+    needs: build
+    runs-on: macos-26
+    timeout-minutes: 75
+    environment: release
+    permissions:
+      contents: write # create the draft release, attach its files, and publish it
+      actions: read # find and follow GoFortress's run for the tag
+    steps:
+      - name: Validate the tag
+        id: tag
+        run: |
+          set -euo pipefail
+          # A tag name may hold characters a shell acts on, so it reaches the shell only
+          # as GITHUB_REF_NAME, never through an expression, and nothing reads it until it
+          # is checked here: semantic versioning as the app's update.ValidVersion reads it,
+          # with no leading zero in a number (v01.2.3) and no empty prerelease part
+          # (v1.2.3-..). A repository test holds this pattern to update.ValidVersion.
+          tag_pattern='^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-(0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*)(\.(0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*))*)?$'
+          if [[ "$GITHUB_REF_TYPE" != "tag" || ! "$GITHUB_REF_NAME" =~ $tag_pattern ]]; then
+            echo "::error title=Not a release tag::A release tag looks like v1.2.3 or v1.2.3-rc.1, and this ref isn't one, so nothing was signed."
+            exit 1
+          fi
+          version="${GITHUB_REF_NAME#v}"
+          prerelease=false
+          if [[ "$version" == *-* ]]; then
+            prerelease=true
+          fi
+          {
+            echo "tag=$GITHUB_REF_NAME"
+            echo "version=$version"
+            echo "prerelease=$prerelease"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Check the release environment's variable
+        env:
+          CODESIGN_IDENTITY: ${{ vars.CODESIGN_IDENTITY }}
+        run: |
+          set -euo pipefail
+          if [[ -z "$CODESIGN_IDENTITY" ]]; then
+            echo "::error title=Missing variable::The release environment has no CODESIGN_IDENTITY variable."
+            exit 1
+          fi
+
+      - name: Check out the tag
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # Every commit, branch, and tag: app:signRelease checks that the tag names
+          # HEAD, and the next step reads the default branch.
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Check the tag's commit is on the default branch
+        env:
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          set -euo pipefail
+          # An accident guard: a release is tagged on the default branch.
+          branch="refs/remotes/origin/$DEFAULT_BRANCH"
+          if ! git rev-parse --verify --quiet "$branch^{commit}" > /dev/null; then
+            echo "::error title=No default branch::The checkout holds no $branch to check the tag against."
+            exit 1
+          fi
+          if ! git merge-base --is-ancestor HEAD "$branch"; then
+            echo "::error title=Not on $DEFAULT_BRANCH::The tag names a commit that isn't on $DEFAULT_BRANCH, so nothing was signed. Tag a commit on $DEFAULT_BRANCH."
+            exit 1
+          fi
+
+      # Go and magex run this repository's magefiles; no pnpm and no Node in this job.
+      - name: Set up Go (version from go.mod)
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: false
+
+      - name: Load the .github/env settings
+        id: load-env
+        uses: ./.github/actions/load-env
+
+      # Not setup-magex, which restores magex from the Actions cache and checks it only
+      # when it downloads it.
+      - name: Install MAGE-X (version from .github/env, checked against its release)
+        env:
+          MAGE_X_VERSION: ${{ fromJSON(steps.load-env.outputs.env-json).MAGE_X_VERSION }}
+        run: |
+          set -euo pipefail
+          version_pattern='^v[0-9]+\.[0-9]+\.[0-9]+$'
+          sha_pattern='^[0-9a-f]{64}$'
+          if [[ ! "$MAGE_X_VERSION" =~ $version_pattern ]]; then
+            echo "::error title=MAGE_X_VERSION::MAGE_X_VERSION isn't a version such as v1.2.3."
+            exit 1
+          fi
+          archive="mage-x_${MAGE_X_VERSION#v}_darwin_arm64.tar.gz"
+          sums="mage-x_${MAGE_X_VERSION#v}_checksums.txt"
+          dir="$RUNNER_TEMP/magex"
+          rm -rf "$dir"
+          mkdir -p "$dir/bin"
+          for file in "$archive" "$sums"; do
+            curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' --retry 3 \
+              --output "$dir/$file" "https://github.com/mrz1836/mage-x/releases/download/$MAGE_X_VERSION/$file"
+          done
+          want="$(awk -v f="$archive" '$2 == f { print $1 }' "$dir/$sums")"
+          got="$(shasum -a 256 "$dir/$archive" | awk '{ print $1 }')"
+          if [[ ! "$want" =~ $sha_pattern || "$got" != "$want" ]]; then
+            echo "::error title=MAGE-X checksum::$archive doesn't match its release's checksums, so it wasn't installed."
+            exit 1
+          fi
+          tar -xzf "$dir/$archive" -C "$dir/bin" magex
+          echo "$dir/bin" >> "$GITHUB_PATH"
+
+      - name: Install mage (version from go.mod)
+        run: |
+          set -euo pipefail
+          mage_version="$(go list -m -f '{{.Version}}' github.com/magefile/mage)"
+          go install "github.com/magefile/mage@${mage_version}"
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+
+      # GoFortress started with this run, from the same push, and has been checking the
+      # same commit while the bundle built. Its run is fortress.yml's push run for the
+      # tag: the commit alone could also match a push to the default branch.
+      - name: Wait for GoFortress to pass on the tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ steps.tag.outputs.tag }}
+        run: |
+          set -euo pipefail
+          run_id=""
+          deadline=$((SECONDS + 600))
+          while :; do
+            if runs="$(gh run list --workflow fortress.yml --event push --commit "$GITHUB_SHA" --limit 20 \
+              --json databaseId,headBranch,status,conclusion)"; then
+              run_id="$(printf '%s' "$runs" | jq -r --arg tag "$TAG" 'map(select(.headBranch == $tag)) | first | .databaseId // empty')"
+              if [[ -n "$run_id" ]]; then
+                break
+              fi
+              echo "Waiting for GoFortress's run for $TAG to appear..."
+            else
+              echo "::warning title=GoFortress's runs::Couldn't list GoFortress's runs; trying again."
+            fi
+            if ((SECONDS >= deadline)); then
+              echo "::error title=No GoFortress run::GoFortress has no push run for $TAG after 10 minutes, and nothing was published. Check that it ran on the tag, then re-run this workflow's failed jobs."
+              exit 1
+            fi
+            sleep 20
+          done
+          echo "Following GoFortress: $GITHUB_SERVER_URL/$GH_REPO/actions/runs/$run_id"
+          if gh run watch "$run_id" --exit-status --interval 30 --compact; then
+            exit 0
+          fi
+          # The watch ended badly: GoFortress failed, or gh lost track of it. Ask how the
+          # run stands before saying which.
+          state="$(gh run view "$run_id" --json status,conclusion --jq '.status + " " + .conclusion')" || state="unknown"
+          case "$state" in
+            "completed success")
+              echo "GoFortress passed."
+              ;;
+            "completed "*)
+              echo "::error title=GoFortress failed::GoFortress failed for $TAG, and nothing was published. Re-run it, then re-run this workflow's failed jobs."
+              exit 1
+              ;;
+            *)
+              echo "::error title=Couldn't follow GoFortress::Couldn't follow GoFortress's run for $TAG (it reads: $state), and nothing was published. Once it has passed, re-run this workflow's failed jobs."
+              exit 1
+              ;;
+          esac
+
+      - name: Download the unsigned bundle
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: unsigned-bundle
+          path: ${{ runner.temp }}/artifact
+
+      - name: Unpack the unsigned bundle
+        id: unsigned
+        run: |
+          set -euo pipefail
+          dest="$RUNNER_TEMP/unsigned"
+          rm -rf "$dest"
+          mkdir "$dest"
+          # bsdtar refuses a name with .. or an absolute one, and never extracts through
+          # a link; app:signRelease then checks the bundle itself.
+          tar -C "$dest" -xf "$RUNNER_TEMP/artifact/unsigned-bundle.tar"
+          set -- "$dest"/*
+          if [[ $# -ne 1 || "$1" != *.app || ! -d "$1" ]]; then
+            echo "::error title=Unexpected artifact::The build artifact should hold one app bundle and nothing else."
+            exit 1
+          fi
+          echo "bundle=$1" >> "$GITHUB_OUTPUT"
+
+      # The secrets exist from here until the keychain and the key are deleted, two
+      # steps on, and only our own magefiles and Apple's tools run meanwhile.
       - name: Create the signing keychain
         env:
           KEYCHAIN: ${{ runner.temp }}/release-signing.keychain-db
           P12: ${{ runner.temp }}/release-signing.p12
+          CODESIGN_IDENTITY: ${{ vars.CODESIGN_IDENTITY }}
           CODESIGN_P12: ${{ secrets.CODESIGN_P12 }}
           CODESIGN_P12_PASSWORD: ${{ secrets.CODESIGN_P12_PASSWORD }}
         run: |
@@ -179,13 +482,20 @@ jobs:
           echo "::add-mask::$keychain_password"
           printf '%s' "$CODESIGN_P12" | base64 --decode > "$P12"
           security create-keychain -p "$keychain_password" "$KEYCHAIN"
-          # Unlocked for an hour, well past the build's signing.
+          # Unlocked for an hour, well past the signing.
           security set-keychain-settings -lut 3600 "$KEYCHAIN"
           security unlock-keychain -p "$keychain_password" "$KEYCHAIN"
           security import "$P12" -k "$KEYCHAIN" -P "$CODESIGN_P12_PASSWORD" -T /usr/bin/codesign
           # It prints the key's attributes otherwise.
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$keychain_password" "$KEYCHAIN" > /dev/null
           rm -f "$P12"
+          # Without -v: a self-signed identity isn't trusted, so -v counts it out, though
+          # it signs.
+          identities="$(security find-identity -p codesigning "$KEYCHAIN")"
+          if ! grep -q -i -F -- "$CODESIGN_IDENTITY" <<< "$identities"; then
+            echo "::error title=No signing identity::CODESIGN_P12 holds no code-signing identity that CODESIGN_IDENTITY names."
+            exit 1
+          fi
 
       - name: Write the update signing key
         env:
@@ -200,13 +510,31 @@ jobs:
           umask 077
           printf '%s\n' "$SIGNING_KEY_PEM" > "$KEY_FILE"
 
-      - name: Build, sign, and package the release
+      - name: Sign the bundle and package the release
         env:
           RELEASE_VERSION: ${{ steps.tag.outputs.version }}
           CODESIGN_IDENTITY: ${{ vars.CODESIGN_IDENTITY }}
           CODESIGN_KEYCHAIN: ${{ runner.temp }}/release-signing.keychain-db
           UPDATE_SIGNING_KEY: ${{ runner.temp }}/release-signing.key
-        run: magex app:package
+          BUNDLE: ${{ steps.unsigned.outputs.bundle }}
+        run: magex app:signRelease bundle="$BUNDLE"
+
+      # However the job ends; nothing after this needs the keychain or the key.
+      - name: Remove the signing keychain and key
+        if: always()
+        env:
+          KEYCHAIN: ${{ runner.temp }}/release-signing.keychain-db
+          P12: ${{ runner.temp }}/release-signing.p12
+          KEY_FILE: ${{ runner.temp }}/release-signing.key
+        run: |
+          set -euo pipefail
+          if [[ -e "$KEYCHAIN" ]]; then
+            # Also takes it off the search list, should app:signRelease have been stopped
+            # before it put the list back. The runner is thrown away after the job, so a
+            # failure here only warns.
+            security delete-keychain "$KEYCHAIN" || echo "::warning title=Keychain left::Couldn't delete the signing keychain."
+          fi
+          rm -f "$P12" "$KEY_FILE"
 
       - name: Check the release files
         id: files
@@ -216,8 +544,8 @@ jobs:
           set -euo pipefail
           dir="bin/release/$VERSION"
           magex app:verify dir="$dir" version="$VERSION"
-          # app:package names the files after the app, so they are read back here rather
-          # than spelled out: the zip is the one the signed manifest names.
+          # app:signRelease names the files after the app, so they are read back here
+          # rather than spelled out: the zip is the one the signed manifest names.
           zip="$(jq -r .file "$dir/manifest-darwin.json")"
           cd "$dir"
           set -- *.dmg
@@ -232,64 +560,12 @@ jobs:
             echo "app=${1%.dmg}"
           } >> "$GITHUB_OUTPUT"
 
-      # Nothing after this needs the keychain or the private key, so they go now rather
-      # than sit on disk through the wait for GoFortress, and on any failure or cancel.
-      - name: Remove the signing keychain and key
-        if: always()
-        env:
-          KEYCHAIN: ${{ runner.temp }}/release-signing.keychain-db
-          P12: ${{ runner.temp }}/release-signing.p12
-          KEY_FILE: ${{ runner.temp }}/release-signing.key
-        run: |
-          set -euo pipefail
-          if [[ -e "$KEYCHAIN" ]]; then
-            # Also takes it off the search list, should app:package have been stopped
-            # before it put the list back. The runner is thrown away after the job, so a
-            # failure here only warns.
-            security delete-keychain "$KEYCHAIN" || echo "::warning title=Keychain left::Couldn't delete the signing keychain."
-          fi
-          rm -f "$P12" "$KEY_FILE"
-
-      # --------------------------------------------------------------------
-      # Wait for GoFortress
-      # --------------------------------------------------------------------
-      # GoFortress started with this run, from the same push, and has been checking the
-      # same commit while this job built. Its run is fortress.yml's push run for the tag:
-      # the commit alone could also match a push to master.
-      - name: Wait for GoFortress to pass on the tag
-        env:
-          GH_TOKEN: ${{ github.token }}
-          GH_REPO: ${{ github.repository }}
-          TAG: ${{ steps.tag.outputs.tag }}
-        run: |
-          set -euo pipefail
-          run_id=""
-          deadline=$((SECONDS + 600))
-          while :; do
-            run_id="$(gh run list --workflow fortress.yml --event push --commit "$GITHUB_SHA" --limit 20 \
-              --json databaseId,headBranch,status,conclusion |
-              jq -r --arg tag "$TAG" 'map(select(.headBranch == $tag)) | first | .databaseId // empty')"
-            if [[ -n "$run_id" ]]; then
-              break
-            fi
-            if ((SECONDS >= deadline)); then
-              echo "::error title=No GoFortress run::GoFortress has no push run for $TAG after 10 minutes, and nothing was published. Check that it ran on the tag, then re-run this workflow's failed jobs."
-              exit 1
-            fi
-            echo "Waiting for GoFortress's run for $TAG to appear..."
-            sleep 20
-          done
-          echo "Following GoFortress: $GITHUB_SERVER_URL/$GH_REPO/actions/runs/$run_id"
-          if ! gh run watch "$run_id" --exit-status --interval 30 --compact; then
-            echo "::error title=GoFortress failed::GoFortress failed for $TAG, and nothing was published. Re-run it, then re-run this workflow's failed jobs."
-            exit 1
-          fi
-
-      # --------------------------------------------------------------------
-      # Publish: a draft first, which no one else sees, then the files, a check
-      # of what GitHub holds, and only then the release itself.
-      # --------------------------------------------------------------------
+      # ------------------------------------------------------------------------------
+      # Publish: a draft first, which no one else sees, then the files, a check of
+      # what GitHub holds, and only then the release itself.
+      # ------------------------------------------------------------------------------
       - name: Draft the release
+        id: draft
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
@@ -299,31 +575,41 @@ jobs:
           DMG: ${{ steps.files.outputs.dmg }}
         run: |
           set -euo pipefail
-          # Looked up again: GoFortress may have published while this job waited.
-          drafts="$(gh api --paginate "repos/$GH_REPO/releases?per_page=100" \
-            --jq ".[] | select(.tag_name == \"$TAG\") | .draft")"
-          case "$drafts" in
-            *false*)
-              echo "::error title=Already published::$TAG was published while this job waited, so nothing was attached. GoFortress most likely published it: check that ENABLE_RELEASE=false in .github/env/90-project.env reaches its setup."
+          # One line per release of the tag: draft, ours (published, with the manifest
+          # only this workflow attaches), or published (without it). Looked up now:
+          # GoFortress may have published while this job waited.
+          states="$(gh api --paginate "repos/$GH_REPO/releases?per_page=100" \
+            --jq ".[] | select(.tag_name == \"$TAG\") | if .draft then \"draft\" elif ([.assets[].name] | index(\"manifest-darwin.json\")) != null then \"ours\" else \"published\" end")"
+          published=false
+          case "$states" in
+            *published*)
+              echo "::error title=Published without its files::$TAG was published without manifest-darwin.json while this job waited, so nothing was attached. GoFortress most likely published it: check that ENABLE_RELEASE=false in .github/env/90-project.env reaches its setup."
               exit 1
               ;;
-            true)
-              echo "Reusing the draft of $TAG an earlier attempt left."
-              exit 0
+            *ours*)
+              echo "An earlier attempt of this workflow published $TAG; there is nothing left to publish."
+              published=true
               ;;
-            *true*)
+            draft)
+              echo "Reusing the draft of $TAG an earlier attempt left; it is checked before it is published."
+              ;;
+            *draft*)
               echo "::error title=Several drafts::$TAG has more than one draft release. Delete all but one, then re-run this workflow's failed jobs."
               exit 1
               ;;
+            *)
+              # The install note comes first; GitHub adds the notes it generates after it.
+              note="$RUNNER_TEMP/install-note.md"
+              printf '**Install:** download `%s`, drag %s to Applications, then System Settings → Privacy & Security → Open Anyway. Already installed? %s updates itself.\n' \
+                "$DMG" "$APP" "$APP" > "$note"
+              gh release create "$TAG" --draft --verify-tag --title "Release $TAG" \
+                --notes-file "$note" --generate-notes --prerelease="$PRERELEASE"
+              ;;
           esac
-          # The install note comes first; GitHub adds the notes it generates after it.
-          note="$RUNNER_TEMP/install-note.md"
-          printf '**Install:** download `%s`, drag %s to Applications, then System Settings → Privacy & Security → Open Anyway. Already installed? %s updates itself.\n' \
-            "$DMG" "$APP" "$APP" > "$note"
-          gh release create "$TAG" --draft --verify-tag --title "Release $TAG" \
-            --notes-file "$note" --generate-notes --prerelease="$PRERELEASE"
+          echo "published=$published" >> "$GITHUB_OUTPUT"
 
       - name: Attach the files
+        if: steps.draft.outputs.published == 'false'
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
@@ -338,13 +624,12 @@ jobs:
           gh release upload "$TAG" "$DIR/$ZIP" "$DIR/$DMG" "$DIR/SHA256SUMS" --clobber
           gh release upload "$TAG" "$DIR/manifest-darwin.json" --clobber
 
-      - name: Check the files GitHub holds
+      - name: Download the files GitHub holds
+        if: steps.draft.outputs.published == 'false'
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           TAG: ${{ steps.tag.outputs.tag }}
-          VERSION: ${{ steps.tag.outputs.version }}
-          DIR: ${{ steps.files.outputs.dir }}
           ZIP: ${{ steps.files.outputs.zip }}
           DMG: ${{ steps.files.outputs.dmg }}
         run: |
@@ -354,6 +639,18 @@ jobs:
           mkdir "$held"
           gh release download "$TAG" --dir "$held" \
             --pattern manifest-darwin.json --pattern "$ZIP" --pattern "$DMG" --pattern SHA256SUMS
+
+      # No token here: magex runs.
+      - name: Check the files GitHub holds
+        if: steps.draft.outputs.published == 'false'
+        env:
+          VERSION: ${{ steps.tag.outputs.version }}
+          DIR: ${{ steps.files.outputs.dir }}
+          ZIP: ${{ steps.files.outputs.zip }}
+          DMG: ${{ steps.files.outputs.dmg }}
+        run: |
+          set -euo pipefail
+          held="$RUNNER_TEMP/release-from-github"
           # The manifest and the zip, as the app will check them...
           magex app:verify dir="$held" version="$VERSION"
           # ...and every file, byte for byte the one this job built.
@@ -362,32 +659,80 @@ jobs:
           done
 
       - name: Publish the release
+        if: steps.draft.outputs.published == 'false'
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           TAG: ${{ steps.tag.outputs.tag }}
           PRERELEASE: ${{ steps.tag.outputs.prerelease }}
+          ZIP: ${{ steps.files.outputs.zip }}
+          DMG: ${{ steps.files.outputs.dmg }}
         run: |
           set -euo pipefail
-          # A stable release becomes the latest, which is what installed copies and the
-          # download link read; a prerelease never does.
-          latest=true
-          if [[ "$PRERELEASE" == "true" ]]; then
-            latest=false
+          # A draft this workflow wouldn't publish is refused: another title, or other
+          # files than the four it attached.
+          draft="$RUNNER_TEMP/draft.json"
+          gh release view "$TAG" --json isDraft,name,assets > "$draft"
+          files="$(jq -r '[.assets[].name] | sort | join(" ")' "$draft")"
+          want="$(printf '%s\n' "$ZIP" "$DMG" SHA256SUMS manifest-darwin.json | jq -R . | jq -r -s 'sort | join(" ")')"
+          if [[ "$(jq -r .isDraft "$draft")" != "true" || "$(jq -r .name "$draft")" != "Release $TAG" || "$files" != "$want" ]]; then
+            echo "::error title=Unexpected draft::The draft of $TAG should be titled \"Release $TAG\" and hold exactly $want; it holds $files. Fix or delete it, then re-run this workflow's failed jobs."
+            exit 1
+          fi
+          # A stable release becomes the latest, which installed copies and the download
+          # link read, only when it is newer than the latest one; a prerelease never does.
+          latest=false
+          if [[ "$PRERELEASE" == "false" ]]; then
+            current="$(gh release list --exclude-drafts --exclude-pre-releases --limit 100 --json tagName,isLatest \
+              --jq '.[] | select(.isLatest) | .tagName')"
+            stable='^v([0-9]+)\.([0-9]+)\.([0-9]+)$'
+            if [[ -z "$current" ]]; then
+              latest=true
+            elif [[ "$current" =~ $stable ]]; then
+              # Compared number by number: major, then minor, then patch.
+              o1=$((10#${BASH_REMATCH[1]})) o2=$((10#${BASH_REMATCH[2]})) o3=$((10#${BASH_REMATCH[3]}))
+              [[ "$TAG" =~ $stable ]]
+              n1=$((10#${BASH_REMATCH[1]})) n2=$((10#${BASH_REMATCH[2]})) n3=$((10#${BASH_REMATCH[3]}))
+              if ((n1 > o1 || (n1 == o1 && (n2 > o2 || (n2 == o2 && n3 > o3))))); then
+                latest=true
+              else
+                echo "::notice title=Not the latest::$current is newer than $TAG, so it stays the latest release."
+              fi
+            else
+              echo "::warning title=Latest left alone::The latest release, $current, isn't a vX.Y.Z version to compare with, so $TAG isn't marked the latest. Mark it by hand if it should be."
+            fi
           fi
           gh release edit "$TAG" --draft=false --prerelease="$PRERELEASE" --latest="$latest"
-          url="$(gh release view "$TAG" --json url --jq .url)"
-          echo "Published $url"
-          echo "Published [$TAG]($url) (prerelease: $PRERELEASE)." >> "$GITHUB_STEP_SUMMARY"
+          url="$(gh release view "$TAG" --json url --jq .url)" || url="$GITHUB_SERVER_URL/$GH_REPO/releases/tag/$TAG"
+          echo "Published $url (latest: $latest)"
+          echo "Published [$TAG]($url) (prerelease: $PRERELEASE, latest: $latest)." >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Check the latest release serves this version
-        if: steps.tag.outputs.prerelease == 'false'
+  # ----------------------------------------------------------------------------------
+  # Check what installed copies will read, apart, so trying it again signs nothing
+  # ----------------------------------------------------------------------------------
+  smoke:
+    name: Check the latest release
+    needs: [check, publish]
+    if: >-
+      always() && needs.check.result == 'success' && needs.check.outputs.prerelease == 'false' && (needs.publish.result == 'success' || needs.check.outputs.published == 'true')
+    runs-on: ubuntu-26.04
+    timeout-minutes: 10
+    permissions:
+      contents: read # read which release is the latest
+    steps:
+      - name: Check releases/latest/download serves this version
         env:
+          GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
-          TAG: ${{ steps.tag.outputs.tag }}
-          VERSION: ${{ steps.tag.outputs.version }}
+          TAG: ${{ needs.check.outputs.tag }}
+          VERSION: ${{ needs.check.outputs.version }}
         run: |
           set -euo pipefail
+          latest="$(gh api "repos/$GH_REPO/releases/latest" --jq .tag_name)"
+          if [[ "$latest" != "$TAG" ]]; then
+            echo "::notice title=Not the latest::$TAG isn't the latest release ($latest is), so releases/latest/download doesn't serve it; there is nothing to check."
+            exit 0
+          fi
           url="$GITHUB_SERVER_URL/$GH_REPO/releases/latest/download/manifest-darwin.json"
           # GitHub's download links can lag a publish by a few seconds.
           for attempt in 1 2 3 4 5 6; do
@@ -400,5 +745,5 @@ jobs:
             echo "Try $attempt: the latest release's manifest is ${served:-not there}; trying again in 10 seconds."
             sleep 10
           done
-          echo "::error title=Latest release not serving $TAG::$TAG is published, but $url serves ${served:-nothing}, not $VERSION. Check that $TAG is marked Latest and holds manifest-darwin.json."
+          echo "::error title=Latest release not serving $TAG::$TAG is the latest release, but $url serves ${served:-nothing}, not $VERSION. Check that it holds manifest-darwin.json."
           exit 1
