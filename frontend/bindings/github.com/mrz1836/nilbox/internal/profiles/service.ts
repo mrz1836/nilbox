@@ -32,3 +32,13 @@ export function Agents(): $CancellablePromise<$models.AgentInfo[] | null> {
 export function List(): $CancellablePromise<$models.Profile[] | null> {
     return $Call.ByID(2356274378);
 }
+
+/**
+ * Rediscover looks for the agents' profiles in the home directory again, as every start
+ * does (SyncHome), so a profile directory made, or an agent installed and run, since the
+ * app started shows without a restart, and returns every stored profile as List does. It
+ * never changes a stored profile, and keeps one whose directory is gone.
+ */
+export function Rediscover(): $CancellablePromise<$models.Profile[] | null> {
+    return $Call.ByID(1308713984);
+}

@@ -77,6 +77,9 @@ export interface SettingsViewProps {
   // githubThreads is the window's one mirror of the GitHub notifications, which their
   // section shows and checks again; without it the section shows the rules alone.
   githubThreads?: GitHubThreadsState | undefined
+  // onRunSetup opens the first-run setup again, which About offers, resolving with how
+  // storing that went; without it About offers no way to.
+  onRunSetup?: (() => Promise<Result<void>>) | undefined
 }
 
 // SettingsView is the settings page: a sidebar of sections and the chosen section's
@@ -104,6 +107,7 @@ export function SettingsView({
   onClose,
   query = '',
   githubThreads,
+  onRunSetup,
 }: SettingsViewProps) {
   const headingId = useId()
   const [section, setSection] = useState<SectionId>(initialSection)
@@ -299,7 +303,7 @@ export function SettingsView({
                   onThemeChange={onThemeChange}
                 />
               )}
-              {section === 'about' && <AboutSection />}
+              {section === 'about' && <AboutSection onRunSetup={onRunSetup} />}
             </div>
           </div>
         </section>

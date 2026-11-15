@@ -38,6 +38,7 @@ import * as scripts from '../../bindings/github.com/mrz1836/nilbox/internal/scri
 import type * as sensitive from '../../bindings/github.com/mrz1836/nilbox/internal/sensitive'
 import * as sessions from '../../bindings/github.com/mrz1836/nilbox/internal/sessions'
 import * as settings from '../../bindings/github.com/mrz1836/nilbox/internal/settings'
+import * as setup from '../../bindings/github.com/mrz1836/nilbox/internal/setup'
 import type * as snooze from '../../bindings/github.com/mrz1836/nilbox/internal/snooze'
 import type * as statusprefs from '../../bindings/github.com/mrz1836/nilbox/internal/statusprefs'
 import * as svcstatus from '../../bindings/github.com/mrz1836/nilbox/internal/svcstatus'
@@ -133,6 +134,20 @@ export type ThreadAction = threadrules.Action
 export type DataReset = NonNullLists<appinfo.DataReset>
 export type Info = NonNullLists<appinfo.Info>
 export type Restored = NonNullLists<appinfo.Restored>
+export type ResetReason = appinfo.ResetReason
+
+// The first-run setup: where it stands (whether it is done, and the step it opens on), the
+// GitHub step's check of the GitHub CLI's sign-in, the terminals launches can open in,
+// what the user's clones say about the tools the Tools step offers, and what a reset saved
+// before it asked for the restart.
+export type Setup = NonNullLists<setup.State>
+export type SetupStep = setup.Step
+export type GitHubSignIn = NonNullLists<setup.GitHub>
+export type GitHubState = setup.GitHubState
+export type GitHubProjects = setup.ProjectAccess
+export type TerminalChoice = NonNullLists<setup.TerminalChoice>
+export type SetupSignals = NonNullLists<setup.Signals>
+export type ResetStarted = NonNullLists<setup.ResetStarted>
 
 export type Account = NonNullLists<inbox.Account>
 export type Checks = NonNullLists<inbox.Checks>
@@ -309,6 +324,9 @@ export type LocationState = NonNullLists<localrepos.LocationState>
 export type LocationStatus = localrepos.State
 export type LocationPreview = NonNullLists<localrepos.Preview>
 export type LocationSuggestion = NonNullLists<localrepos.Suggestion>
+// CloneCandidate is a folder the setup suggests as the clone root or another location:
+// one where clones commonly live that holds some, with ~ for home.
+export type CloneCandidate = LocationSuggestion
 
 // AppNotification is an entry in the notification history. Its item's kind is '' for an
 // entry about no item, such as a release reaching GitHub, which the generated type, a
@@ -526,7 +544,26 @@ export const {
   RemoveReviewRequest: removeReviewRequest,
 } = narrow(inbox.Service)
 
-export const { List: listProfiles, Agents: listAgents } = narrow(profiles.Service)
+export const { List: listProfiles, Agents: listAgents, Rediscover: rediscoverProfiles } = narrow(profiles.Service)
+
+// The first-run setup. State says whether it shows and the step it opens on; SetStep
+// remembers the step, so a quit part way through opens there again; Finish marks it done
+// (and the shell then asks to allow banners, if the setup held the question), and Restart
+// opens it again from Welcome. GitHub checks the GitHub CLI's sign-in, one GraphQL point;
+// Terminals says which terminals are installed; Signals counts the clones that hold each
+// sign the Tools step looks for, with lstat alone. Reset asks for a fresh start once the
+// user typed reset: it saves a backup first, and the app quits and opens again on the
+// setup, its prompts, launch defaults, and scripts brought back.
+export const {
+  State: getSetup,
+  SetStep: setSetupStep,
+  Finish: finishSetup,
+  Restart: restartSetup,
+  GitHub: checkGitHub,
+  Terminals: listTerminals,
+  Signals: setupSignals,
+  Reset: resetApp,
+} = narrow(setup.Service)
 
 export const {
   Launch: launch,
@@ -609,6 +646,8 @@ export const {
   RemoveCloneLocation: removeCloneLocation,
   PreviewCloneLocation: previewCloneLocation,
   CheckCloneLocations: checkCloneLocations,
+  SuggestCloneRoots: suggestCloneRoots,
+  CreateCloneRoot: createCloneRoot,
   SetDefaultAgent: setDefaultAgent,
   SetDefaultProfile: setDefaultProfile,
   SetWorktreeDefault: setWorktreeDefault,

@@ -27,6 +27,7 @@ import type {
   LocationPreview,
   LocationState,
   FileCheck,
+  GitHubSignIn,
   GitHubThread,
   GitHubThreadList,
   GitHubThreadsPreview,
@@ -60,6 +61,9 @@ import type {
   InboxSnapshot,
   Info,
   InstallPlan,
+  Restored,
+  SetupSignals,
+  TerminalChoice,
   InstallResult,
   IntegrationsConfig,
   IntegrationTool,
@@ -127,8 +131,52 @@ export function appInfo(overrides: Partial<Info> = {}): Info {
     build: '0',
     system: 'macOS 15.1 (24B83)',
     arch: 'arm64',
+    sandbox: false,
     ...overrides,
   }
+}
+
+// restored is what a start brought back of the user's own: prompts, launch defaults, and
+// scripts, from a database set aside.
+export function restored(overrides: Partial<Restored> = {}): Restored {
+  return {
+    prompts: 12,
+    launchDefaults: 3,
+    scripts: 2,
+    from: '~/Library/Application Support/Example/example.db.reset-20261115T090000Z',
+    ...overrides,
+  }
+}
+
+// githubSignIn is the GitHub CLI's sign-in as the setup's GitHub step reads it: ready, as
+// octo-user, with the scopes the inbox needs and projects.
+export function githubSignIn(overrides: Partial<GitHubSignIn> = {}): GitHubSignIn {
+  return {
+    state: 'ready',
+    login: 'octo-user',
+    name: 'Octo User',
+    scopes: ['repo', 'read:org', 'read:project'],
+    missing: [],
+    unverified: false,
+    projects: 'granted',
+    cliVersion: '2.83.1',
+    fix: '',
+    message: '',
+    ...overrides,
+  }
+}
+
+// terminalChoices are the terminals launches can open in, both installed.
+export function terminalChoices(overrides: { iterm?: boolean } = {}): TerminalChoice[] {
+  return [
+    { id: 'iterm2', name: 'iTerm2', installed: overrides.iterm ?? true },
+    { id: 'terminal', name: 'Terminal', installed: true },
+  ]
+}
+
+// setupSignals counts the clones that hold each sign the Tools step looks for: none.
+export function setupSignals(overrides: Partial<SetupSignals> = {}): SetupSignals {
+  return { clones: 0, goModules: 0, mageX: 0, goPreCommit: 0, fortress: 0, ...overrides }
 }
 
 // agentVersions are both coding agents, installed, as their commands report their

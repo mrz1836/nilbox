@@ -76,6 +76,18 @@ function renderHeader(overrides: Partial<AppHeaderProps> = {}) {
 }
 
 describe('AppHeader', () => {
+  it('marks a window on a sandbox’s data with a Test data chip', () => {
+    renderHeader({ sandbox: true })
+
+    expect(screen.getByText('Test data')).toHaveAttribute('title', expect.stringContaining('magex app:run'))
+  })
+
+  it('shows no chip on the user’s own data', () => {
+    renderHeader()
+
+    expect(screen.queryByText('Test data')).not.toBeInTheDocument()
+  })
+
   it('shows no notification bell without a history', () => {
     renderHeader()
     expect(screen.queryByRole('button', { name: /unread notifications$/ })).not.toBeInTheDocument()

@@ -53,6 +53,7 @@ import { useInboxOrder } from './lib/useInboxOrder'
 import { useIntegrations } from './lib/useIntegrations'
 import { useScriptRuns } from './lib/useScriptRuns'
 import { SettingsQueue } from './lib/useSettingsSave'
+import { useSetup, type SetupControl } from './lib/useSetup'
 import { useIssueDrafts } from './lib/issueDrafts'
 import { useReviewDrafts } from './lib/reviewDrafts'
 import { useLaunchConfig } from './lib/useLaunchConfig'
@@ -63,6 +64,7 @@ import { useTriage } from './lib/useTriage'
 import { filterWorktrees, worktreeSpec, worktreeSuggestions } from './lib/worktreeFilter'
 import type { Summary } from './lib/worktreeSummary'
 import {
+  getAppInfo,
   getScriptRun,
   lastWorktreeSweep,
   on,
@@ -97,6 +99,15 @@ const PromptsView = lazy(() => import('./components/PromptsView').then((m) => ({
 const ScriptsView = lazy(() => import('./components/scripts/ScriptsView'))
 const SettingsView = lazy(() => import('./components/SettingsView').then((m) => ({ default: m.SettingsView })))
 const WorktreesView = lazy(() => import('./components/WorktreesView').then((m) => ({ default: m.WorktreesView })))
+// The first-run setup loads only when it shows, so a window opening on the inbox never
+// pays for it.
+const SetupView = lazy(() => import('./components/setup/SetupView'))
+
+// SetupCover stands over the window while the setup's code loads, opaque, so the inbox
+// never shows through before the setup's first frame.
+function SetupCover() {
+  return <div aria-hidden="true" data-testid="setup-cover" className="fixed inset-0 z-[55] bg-background" />
+}
 
 // PageLoading stands in for a page while its code loads, the first time it opens.
 function PageLoading() {
@@ -189,12 +200,14 @@ interface BannerClick {
 // instead. show opens the inbox at the item, so reveal is the request the inbox view
 // follows; clear drops it once another view opens. A notification about a run, as a
 // failed run's banner is, opens the run with openRun instead. A clicked banner names the
-// notification it stands for, which markBanner marks read first.
+// notification it stands for, which markBanner marks read first. While held, as the
+// first-run setup holds the window, a request is let go.
 function useReveal(
   snapshot: InboxSnapshot | null,
   openInbox: () => void,
   openRun: (id: number, started: string) => void,
   markBanner: (click: BannerClick) => void,
+  held: boolean,
 ) {
   const [reveal, setReveal] = useState<Reveal | null>(null)
   // requests numbers the requests, so asking for the same item again shows it again.
@@ -216,6 +229,10 @@ function useReveal(
 
   // The menu bar's request is read against the inbox as shown when it arrives.
   const showOnRequest = useEffectEvent((click: BannerClick, runStarted: string) => {
+    if (held) {
+      return
+    }
+
     if (click.notificationId > 0) {
       markBanner(click)
     }
@@ -407,6 +424,10 @@ function useQueryOf(query: string): string {
 // opens. The settings turn to the section asked for at every opening.
 export function App() {
   const theme = useTheme()
+  // setup is the first-run setup, which shows over the whole window until it ends.
+  const setup = useSetup()
+  // appInfo says, among the rest, whether the window runs on a sandbox's data.
+  const appInfo = useQuery(() => getAppInfo(), [], { log: 'could not read the app info' })
   const inbox = useInbox()
   const budget = useBudget()
   const triaged = useTriage(inbox.snapshot)
@@ -524,7 +545,7 @@ export function App() {
       notifications.markRead([entry.id])
     }
   }
-  const revealer = useReveal(inbox.snapshot, openInbox, openRun, markBanner)
+  const revealer = useReveal(inbox.snapshot, openInbox, openRun, markBanner, setup.showing)
   const { clear: clearReveal, show: showItem } = revealer
 
   const changeView = (next: View) => {
@@ -684,8 +705,12 @@ export function App() {
 
   // ⌘, opens the settings page, as in every Mac app. ⌘F, or / while not typing, focuses
   // the toolbar's field with its text selected; on Prompts, ⌘F belongs to the page's own
-  // search.
+  // search. None of them reaches the window beneath the first-run setup.
   const onShortcut = useEffectEvent((e: KeyboardEvent) => {
+    if (setup.showing) {
+      return
+    }
+
     if (e.metaKey && e.key === ',') {
       e.preventDefault()
       openSettings()
@@ -887,6 +912,15 @@ export function App() {
     }
   }
 
+  // setupControl is the setup, with its end showing the inbox beneath it.
+  const setupControl: SetupControl = {
+    ...setup,
+    finish: () => {
+      setup.finish()
+      changeView('inbox')
+    },
+  }
+
   // The window is one column the height of the screen: the toolbar, then the page area,
   // which alone scrolls (a page scrolls in it, or in panes of its own), so the toolbar never
   // leaves the window. The column is the containing block of everything absolutely
@@ -895,9 +929,17 @@ export function App() {
   // so one far down a long page (the protected branches in Settings → Worktrees) reached
   // past the window and let the document scroll, toolbar and all. Clip, where hidden would
   // leave the column itself scrollable, leaves scrollIntoView and focus nothing to scroll.
+  //
+  // The column is a stacking context of its own (isolate), so nothing inside it, a toast or
+  // a menu, paints over the first-run setup beside it, and it is inert while the setup
+  // shows. The quit dialog sits beside it, since an inert ancestor would make a modal inert
+  // too.
   return (
     <SettingsQueue value={settingsQueue}>
-      <div className="relative flex h-screen flex-col overflow-clip bg-background text-text">
+      <div
+        inert={setup.showing}
+        className="relative isolate flex h-screen flex-col overflow-clip bg-background text-text"
+      >
         <AppHeader
           view={view}
           onViewChange={changeView}
@@ -921,6 +963,7 @@ export function App() {
           onSettingsSaved={saveSettings}
           search={view === 'prompts' || view === 'scripts' ? undefined : searchFor(view)}
           searchRef={searchRef}
+          sandbox={appInfo.data?.sandbox ?? false}
         />
         <DataResetNotice />
         {config.error !== '' && (
@@ -1091,14 +1134,32 @@ export function App() {
                   onClose={closeSettings}
                   query={settingsQuery}
                   githubThreads={githubThreads}
+                  onRunSetup={setup.restart}
                 />
               </Suspense>
             </Activity>
           )}
         </main>
-        <Toast toast={shownToast} seconds={toastSeconds} onClose={closeToast} />
-        <QuitDialog />
+        {/* The setup holds the window's toasts until it ends. */}
+        <Toast toast={setup.showing ? null : shownToast} seconds={toastSeconds} onClose={closeToast} />
       </div>
+      {setup.showing && (
+        <Suspense fallback={<SetupCover />}>
+          <SetupView
+            control={setupControl}
+            theme={theme.theme}
+            onThemeChange={theme.chooseTheme}
+            settings={config.settings}
+            onSaved={saveSettings}
+            agents={config.agents}
+            profiles={config.profiles}
+            onLaunchChanged={reload}
+            inbox={inbox}
+            integrations={integrations}
+          />
+        </Suspense>
+      )}
+      <QuitDialog />
     </SettingsQueue>
   )
 }

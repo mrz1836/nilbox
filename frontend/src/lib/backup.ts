@@ -4,6 +4,9 @@
 import { brand } from '../generated/brand'
 import type { BackupChange, BackupCount, BackupSection } from '../platform'
 
+// backupFiles is the type of file a backup is saved as and read from.
+export const backupFiles = [{ name: `${brand.name} backup`, pattern: '*.json' }] as const
+
 // backupSections are the categories a backup holds, in the order it lists them, each
 // with the name the window gives it and what it holds.
 export const backupSections: readonly { section: BackupSection; label: string; about: string }[] = [

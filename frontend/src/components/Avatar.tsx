@@ -76,14 +76,14 @@ export function Avatar({ account, size }: AvatarProps) {
   )
 }
 
-// PersonAvatar is someone's profile picture, small, beside their name: the one the sheet
-// read for their login (PicturesContext), or their login's first letter until it comes, or
-// should it never, and a person glyph for no login, as for a deleted account. It is
-// decorative; the name beside it says who.
-export function PersonAvatar({ login }: { login: string }) {
+// PersonAvatar is someone's profile picture, small by default, beside their name: the one
+// the sheet read for their login (PicturesContext), or their login's first letter until it
+// comes, or should it never, and a person glyph for no login, as for a deleted account. It
+// is decorative; the name beside it says who.
+export function PersonAvatar({ login, size = 'xs' }: { login: string; size?: AvatarSize }) {
   return (
-    <Picture src={usePicture(login)} size="xs">
-      {login === '' ? <PersonIcon className={glyphs.xs} /> : login.charAt(0).toUpperCase()}
+    <Picture src={usePicture(login)} size={size}>
+      {login === '' ? <PersonIcon className={glyphs[size]} /> : login.charAt(0).toUpperCase()}
     </Picture>
   )
 }

@@ -1,7 +1,7 @@
 import { useId, useState } from 'react'
 
 import { brand } from '../../generated/brand'
-import { backupSections, doneText, neverBacked, sectionLabel } from '../../lib/backup'
+import { backupFiles, backupSections, doneText, neverBacked, sectionLabel } from '../../lib/backup'
 import { attempt, type Result } from '../../lib/call'
 import { errorMessage, fileDate, fileName } from '../../lib/format'
 import type { Theme } from '../../lib/theme'
@@ -32,9 +32,6 @@ export interface BackupSectionProps {
   theme: Theme
   onThemeChange: (theme: Theme) => Promise<Result<void>>
 }
-
-// backupFiles is the type of file a backup is saved as and read from.
-const backupFiles = [{ name: `${brand.name} backup`, pattern: '*.json' }]
 
 // exportedText says what an export wrote, and where, as in "Backed up to “x.json”:
 // Settings (24), Prompts and replies (12)."

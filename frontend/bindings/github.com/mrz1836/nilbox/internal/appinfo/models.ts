@@ -38,7 +38,8 @@ export interface AgentVersion {
 }
 
 /**
- * DataReset says where a database that could not be read was set aside, and why.
+ * DataReset says where a database that was set aside at startup went, and why: one that
+ * could not be read, or one the user asked to start over from.
  */
 export interface DataReset {
     /**
@@ -47,7 +48,7 @@ export interface DataReset {
     "path": string;
 
     /**
-     * Reason says why it could not be read.
+     * Reason says why it was set aside.
      */
     "reason": ResetReason;
 }
@@ -102,25 +103,32 @@ export interface Info {
     "dataReset"?: DataReset | null;
 
     /**
-     * Restored is set when the prompt library and the launch defaults were lost at
-     * startup, with the database they were in, and were brought back; it is nil
-     * otherwise.
+     * Restored is set when the prompt library, the launch defaults, or the user's own
+     * scripts were lost at startup, with the database they were in, and were brought back;
+     * it is nil otherwise.
      */
     "restored"?: Restored | null;
+
+    /**
+     * Sandbox is set when the app runs on a data directory named with --data-dir, such as
+     * the fresh one magex app:fresh opens, in place of the user's own, so the window can
+     * say it shows test data.
+     */
+    "sandbox": boolean;
 }
 
 /**
- * ResetReason says why the database could not be read. The values are the store
- * package's reasons for setting a database aside.
+ * ResetReason says why the database was set aside. The values are the store package's
+ * reasons for setting a database aside.
  */
-export type ResetReason = "corrupt" | "unmanaged" | "history";
+export type ResetReason = "corrupt" | "unmanaged" | "history" | "requested";
 
 /**
  * The values of ResetReason, by the names of their Go constants.
  */
 export const ResetReason = {
     /**
-     * Why the database could not be read.
+     * Why the database was set aside.
      *
      * ResetCorrupt is a file that is not a database, or is damaged.
      */
@@ -135,6 +143,11 @@ export const ResetReason = {
      * ResetHistory is a migration history this build disagrees with.
      */
     ResetHistory: "history",
+
+    /**
+     * ResetRequested is the user asking to start over, from Settings or magex app:reset.
+     */
+    ResetRequested: "requested",
 } as const;
 
 /**
@@ -142,15 +155,17 @@ export const ResetReason = {
  */
 export interface Restored {
     /**
-     * Prompts and LaunchDefaults count the prompts and the org and repository launch
-     * defaults that came back.
+     * Prompts, LaunchDefaults, and Scripts count the prompts, the org and repository
+     * launch defaults, and the user's own scripts that came back.
      */
     "prompts": number;
     "launchDefaults": number;
+    "scripts": number;
 
     /**
-     * From is the file they came from, with ~ for the home directory: the database set
-     * aside, or the copy of the prompt library kept beside the database.
+     * From is the file the prompts and launch defaults came from, with ~ for the home
+     * directory: the database set aside, or the copy of the prompt library kept beside the
+     * database. The scripts come back from the database set aside alone.
      */
     "from": string;
 }

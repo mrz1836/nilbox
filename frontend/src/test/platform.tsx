@@ -28,6 +28,7 @@ import {
   cloneTarget,
   defaultPrompts,
   fileCheck,
+  githubSignIn,
   githubThreadList,
   githubThreads,
   hookActionResult,
@@ -71,6 +72,8 @@ import {
   serviceStatus,
   sessionsSnapshot,
   settings,
+  setupSignals,
+  terminalChoices,
   snapshot,
   statusWatch,
   sweepReport,
@@ -156,6 +159,17 @@ function answers(subscribe: Loose<Platform['on']>): { [K in keyof Platform]: Loo
 
     listProfiles: () => Promise.resolve([profile(), profile({ agent: 'codex', folder: '~/.codex' })]),
     listAgents: () => Promise.resolve(agents()),
+    rediscoverProfiles: () => Promise.resolve([profile(), profile({ agent: 'codex', folder: '~/.codex' })]),
+
+    // The setup is done, so no test meets it unless it asks for it.
+    getSetup: () => Promise.resolve({ done: true, step: 'welcome' }),
+    setSetupStep: (step) => Promise.resolve({ done: false, step }),
+    finishSetup: () => Promise.resolve({ done: true, step: 'welcome' }),
+    restartSetup: () => Promise.resolve({ done: false, step: 'welcome' }),
+    checkGitHub: () => Promise.resolve(githubSignIn()),
+    listTerminals: () => Promise.resolve(terminalChoices()),
+    setupSignals: () => Promise.resolve(setupSignals()),
+    resetApp: () => Promise.resolve({ savedTo: '~/data/backups/example before reset 20261115T120000Z.json' }),
 
     launch: () => Promise.resolve(launchResult()),
     resolveLaunch: () => Promise.resolve(resolution()),
@@ -234,6 +248,8 @@ function answers(subscribe: Loose<Platform['on']>): { [K in keyof Platform]: Loo
     removeCloneLocation: () => stored(),
     previewCloneLocation: (path) => Promise.resolve(locationPreview({ path })),
     checkCloneLocations: () => Promise.resolve([locationState()]),
+    suggestCloneRoots: () => Promise.resolve([]),
+    createCloneRoot: (cloneRoot) => stored({ cloneRoot }),
     setDefaultAgent: (defaultAgent) => stored({ defaultAgent }),
     setDefaultProfile: (agent, name) => stored({ defaultProfiles: { ...settings().defaultProfiles, [agent]: name } }),
     setWorktreeDefault: (worktreeDefault) => stored({ worktreeDefault }),

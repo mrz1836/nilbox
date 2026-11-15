@@ -61,7 +61,7 @@ export interface Backup {
 /**
  * BackupKind says what a Backup is.
  */
-export type BackupKind = "library" | "set-aside" | "update";
+export type BackupKind = "library" | "set-aside" | "update" | "before-reset";
 
 /**
  * The values of BackupKind, by the names of their Go constants.
@@ -84,6 +84,12 @@ export const BackupKind = {
      * BackupUpdate is the database as it was before an update changed it.
      */
     BackupUpdate: "update",
+
+    /**
+     * BackupReset is the database as it was before the user asked to start over, which
+     * the app set aside for a fresh one.
+     */
+    BackupReset: "before-reset",
 } as const;
 
 /**

@@ -1,6 +1,7 @@
 import { brand } from '../../generated/brand'
 import { counted } from '../../lib/format'
 import { planPhrase } from '../../lib/launch'
+import { loginCommand } from '../../lib/profiles'
 import { useQuery } from '../../lib/useQuery'
 import { agentVersions, type AgentInfo, type Profile } from '../../platform'
 import { chipClass } from '../controls'
@@ -55,13 +56,6 @@ function profileTraits(agent: AgentInfo, profile: Profile): string[] {
   traits.push(permissionLabel(agent, profile.permissionMode))
 
   return traits
-}
-
-// loginCommand is the command that signs an agent in with a profile.
-function loginCommand(agent: AgentInfo, profile: Profile): string {
-  return profile.configDir === ''
-    ? `${agent.command} login`
-    : `${agent.configEnv}=${profile.folder} ${agent.command} login`
 }
 
 // Code is a short span of code in a note.

@@ -33,6 +33,7 @@ async function shownLabels(section: SettingsSection): Promise<string[]> {
       onSaved={vi.fn()}
       onLaunchChanged={() => Promise.resolve()}
       onClose={vi.fn()}
+      onRunSetup={() => Promise.resolve({ ok: true, data: undefined })}
     />,
   )
 

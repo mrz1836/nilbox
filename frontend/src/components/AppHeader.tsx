@@ -77,6 +77,9 @@ export interface AppHeaderProps {
   // searchRef reaches its text field, for ⌘F to focus it.
   search?: SearchFieldProps | undefined
   searchRef?: RefObject<HTMLInputElement | null>
+  // sandbox marks a window running on a sandbox's data (--data-dir), never the user's
+  // own, with a Test data chip beside the logo.
+  sandbox?: boolean
 }
 
 // TabCount is what a view tab counts: how many, what that means, whether some of them
@@ -189,6 +192,7 @@ export function AppHeader(props: AppHeaderProps) {
     onSettingsSaved = () => undefined,
     search,
     searchRef,
+    sandbox = false,
   } = props
 
   return (
@@ -196,6 +200,14 @@ export function AppHeader(props: AppHeaderProps) {
       <h1 className="flex shrink-0">
         <Logo />
       </h1>
+      {sandbox && (
+        <span
+          title="This window runs on fresh test data, not yours: magex app:run goes back to your own."
+          className="-ml-2 shrink-0 rounded-full border border-warning/60 bg-warning/10 px-2 py-px text-[0.6875rem] font-semibold whitespace-nowrap text-warning"
+        >
+          Test data
+        </span>
+      )}
       <nav aria-label="Views" className="flex shrink-0 items-center gap-0.5 [--wails-draggable:no-drag]">
         {tabs.map(({ id, label }) => {
           if (id === 'scripts' && (props.scripts ?? null) === null) {

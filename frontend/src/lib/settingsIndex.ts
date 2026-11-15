@@ -395,6 +395,22 @@ export const settingsIndex: Readonly<Record<SettingsSection, readonly SettingEnt
     },
     { label: 'Coding agents', keywords: ['agent versions', 'installed', ...agentNames] },
     { label: 'Tools', keywords: ['GitHub CLI', 'gh', 'versions', 'installed'] },
+    {
+      label: 'Setup',
+      keywords: [
+        'first-run setup',
+        'onboarding',
+        'wizard',
+        'run setup again',
+        'welcome',
+        'check my setup',
+        'get started',
+      ],
+    },
+    {
+      label: 'Reset',
+      keywords: ['reset', 'start over', 'fresh start', 'wipe', 'clear data', 'factory reset', 'erase', brand.name],
+    },
   ],
 }
 

@@ -1,7 +1,7 @@
 import { useState } from 'react'
 
 import { brand } from '../generated/brand'
-import { counted } from '../lib/format'
+import { cameBack } from '../lib/restored'
 import { useQuery } from '../lib/useQuery'
 import { getAppInfo, type DataReset, type Restored } from '../platform'
 import { AlertIcon, CheckIcon, XIcon } from './icons'
@@ -9,21 +9,6 @@ import { AlertIcon, CheckIcon, XIcon } from './icons'
 // Path shows a file's path in the notice.
 function Path({ path }: { path: string }) {
   return <code className="font-mono text-xs break-all">{path}</code>
-}
-
-// cameBack names what was brought back: "your prompt", or "your 4 prompts and 2 launch
-// defaults".
-function cameBack(r: Restored): string {
-  if (r.prompts + r.launchDefaults === 1) {
-    return r.prompts === 1 ? 'your prompt' : 'your launch default'
-  }
-
-  const parts = [
-    ...(r.prompts > 0 ? [counted(r.prompts, 'prompt', 'prompts')] : []),
-    ...(r.launchDefaults > 0 ? [counted(r.launchDefaults, 'launch default', 'launch defaults')] : []),
-  ]
-
-  return `your ${parts.join(' and ')}`
 }
 
 // Message words what happened to the data at startup.
@@ -49,16 +34,18 @@ function Message({ reset, restored }: { reset: DataReset | null; restored: Resto
 
 // DataResetNotice tells the user, once the window loads, what happened to their data at
 // startup: that the database could not be read, so it was set aside and the app started
-// with an empty one, and whether their prompts and launch defaults were brought back,
-// from the database set aside or from the copies kept beside it. The shell reports it
-// through the app info, since it happens before the window exists. The notice stays until
-// it is dismissed, and only for this run: the next start reads a working database. The
-// live region stays mounted, so the notice is announced when it appears.
+// with an empty one, and whether their prompts, launch defaults, and scripts were brought
+// back, from the database set aside or from the copies kept beside it. The shell reports
+// it through the app info, since it happens before the window exists. The notice stays
+// until it is dismissed, and only for this run: the next start reads a working database. A
+// reset the user asked for shows nothing here: the setup's Welcome says what came back.
+// The live region stays mounted, so the notice is announced when it appears.
 export function DataResetNotice() {
   const info = useQuery(() => getAppInfo(), [], { log: 'could not read the app info' })
   const [dismissed, setDismissed] = useState(false)
-  const reset = dismissed ? null : (info.data?.dataReset ?? null)
-  const restored = dismissed ? null : (info.data?.restored ?? null)
+  const requested = info.data?.dataReset?.reason === 'requested'
+  const reset = dismissed || requested ? null : (info.data?.dataReset ?? null)
+  const restored = dismissed || requested ? null : (info.data?.restored ?? null)
   // A reset that brought nothing back warns; prompts brought back on their own reassure.
   const warning = reset !== null && restored === null
 

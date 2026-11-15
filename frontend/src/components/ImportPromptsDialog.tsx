@@ -54,6 +54,10 @@ const backupKinds: Record<PromptBackupKind, { title: string; about: string }> = 
     title: 'Backup before an update',
     about: `${brand.name} took it before an update changed its data.`,
   },
+  'before-reset': {
+    title: 'Data before a reset',
+    about: `${brand.name} set it aside when you started over, and brought your prompts back from it.`,
+  },
 }
 
 // appliesText says what a prompt is for.

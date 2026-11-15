@@ -1,6 +1,7 @@
-import { useId } from 'react'
+import { useId, useState } from 'react'
 
 import { brand } from '../../generated/brand'
+import type { Result } from '../../lib/call'
 import { useQuery } from '../../lib/useQuery'
 import {
   agentVersions,
@@ -11,11 +12,12 @@ import {
   type AgentVersion,
   type Info,
 } from '../../platform'
-import { buttonClass } from '../controls'
-import { ExternalIcon } from '../icons'
+import { buttonClass, dangerButtonClass } from '../controls'
+import { ExternalIcon, ResetIcon } from '../icons'
 import { Logo } from '../Logo'
 import { cardMatchClass, useSetting } from './match'
-import { Group, Note, SectionIntro } from './rows'
+import { ResetDialog } from './ResetDialog'
+import { ErrorText, Group, Note, SectionIntro } from './rows'
 
 // aboutRows is what the About page lists: the release version and build number, the
 // commit the build came from, and the system it runs on, which a bug report needs.
@@ -93,9 +95,89 @@ function Versions({ list, error, what }: { list: readonly Installed[] | undefine
   )
 }
 
+// SetupGroup offers the first-run setup again: every step shows what is set already, so it
+// doubles as a check of the setup.
+function SetupGroup({ onRunSetup }: { onRunSetup: () => Promise<Result<void>> }) {
+  const [error, setError] = useState('')
+  const [running, setRunning] = useState(false)
+
+  const run = async () => {
+    setError('')
+    setRunning(true)
+
+    const result = await onRunSetup()
+
+    setRunning(false)
+
+    if (!result.ok) {
+      setError(result.error)
+    }
+  }
+
+  return (
+    <div className="flex flex-col gap-2">
+      <SectionIntro
+        title="Setup"
+        action={
+          <button
+            type="button"
+            disabled={running}
+            onClick={() => {
+              void run()
+            }}
+            className={`${buttonClass} shrink-0`}
+          >
+            Run setup again
+          </button>
+        }
+      >
+        Walk through the first-run setup again: GitHub, your clones, your agent, notifications, and your tools. Every
+        step shows what is set already, so it doubles as a check of your setup.
+      </SectionIntro>
+      <ErrorText error={error} />
+    </div>
+  )
+}
+
+// ResetGroup offers to start the app over on fresh data, asking first.
+function ResetGroup() {
+  const [asking, setAsking] = useState(false)
+
+  return (
+    <div className="flex flex-col gap-2">
+      <SectionIntro
+        title="Reset"
+        action={
+          <button
+            type="button"
+            onClick={() => {
+              setAsking(true)
+            }}
+            className={`${dangerButtonClass} shrink-0`}
+          >
+            <ResetIcon className="size-3.5" />
+            Reset {brand.name}…
+          </button>
+        }
+      >
+        Start over on fresh data, keeping your prompts, launch defaults, and your own scripts. {brand.name} saves a
+        backup of your setup first.
+      </SectionIntro>
+      {asking && (
+        <ResetDialog
+          onCancel={() => {
+            setAsking(false)
+          }}
+        />
+      )}
+    </div>
+  )
+}
+
 // AboutSection shows the product, the build it runs, the coding agents' and tools'
-// versions, and a way to report a bug with all of them filled in.
-export function AboutSection() {
+// versions, and a way to report a bug with all of them filled in; then the first-run setup,
+// to run again, and a reset of the app, to start over.
+export function AboutSection({ onRunSetup }: { onRunSetup?: (() => Promise<Result<void>>) | undefined }) {
   const id = useId()
   const about = useQuery(() => getAppInfo(), [])
   const agents = useQuery(() => agentVersions(), [])
@@ -149,6 +231,8 @@ export function AboutSection() {
           </button>
         </div>
       )}
+      {onRunSetup !== undefined && <SetupGroup onRunSetup={onRunSetup} />}
+      <ResetGroup />
       <Note>Your inbox, settings, and triage state stay on this Mac. {brand.name} talks only to GitHub.</Note>
     </div>
   )
