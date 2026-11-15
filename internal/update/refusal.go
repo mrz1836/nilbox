@@ -15,6 +15,11 @@ const (
 	// its quit was held, and the app is quitting on its own so the update installs, so the
 	// window says so calmly and offers nothing to click.
 	RefusalFinishing RefusalCode = "finishing"
+
+	// RefusalUninstallable is a download or a restart refused for an update that failed to
+	// install for good (ErrUninstallable): trying again fails the same way, so the window
+	// offers only its release page, never Try again.
+	RefusalUninstallable RefusalCode = "uninstallable"
 )
 
 // RefusalDetail is what the window gets beside a RefusalError's message: {"code": "..."}.

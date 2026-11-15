@@ -76,6 +76,7 @@ func TestAnUpdateThatFailsForGoodIsNeverOfferedAgain(t *testing.T) {
 
 			_, err = r.service.Download(t.Context())
 			require.ErrorIs(t, err, update.ErrUninstallable)
+			assert.JSONEq(t, `{"code":"uninstallable"}`, refusalDetail(t, err), "the window offers no Try again")
 		})
 	}
 }

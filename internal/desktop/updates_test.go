@@ -316,6 +316,44 @@ func TestTheMenusRestartAndUpdateAskTheWindow(t *testing.T) {
 	}
 }
 
+func TestTheMenusTryAgainAsksTheWindow(t *testing.T) {
+	t.Parallel()
+
+	synctest.Test(t, func(t *testing.T) {
+		r := newRig()
+		u := &fakeUpdates{log: r.log, st: updating(func(st *update.Status) {
+			ready(st)
+			st.InstallFailed = update.InstallFailure{
+				Version: nextVersion, Reason: "The app didn't quit in time.", Retryable: true,
+			}
+		})}
+		s := r.shell(withUpdates(u))
+
+		s.Start(t.Context())
+		s.Launched()
+		synctest.Wait()
+
+		again := menubar.UpdateRow{Label: "Try Updating to 0.3.0 Again", Action: menubar.UpdateRestart}
+		assert.Equal(t, []menubar.UpdateRow{
+			checkRow(),
+			{Label: "0.3.0 didn't install", Tooltip: "The app didn't quit in time."},
+			again,
+		}, updateRows(t, r))
+
+		shownBefore := r.window.shown()
+
+		s.UpdateAction(again.Action)
+		synctest.Wait()
+
+		assert.Equal(t, shownBefore+1, r.window.shown(), "the window comes forward")
+		assert.Contains(t, r.page.events(), event.WindowEvent(event.UpdateRestartRequested{}),
+			"and runs its one restart, as its banner's Try again does")
+		assert.Empty(t, r.lines("update"), "nothing downloads or restarts but in the window")
+
+		require.NoError(t, s.Stop())
+	})
+}
+
 // memory is the update's state, the update.* preferences, in a map.
 type memory struct {
 	mu     sync.Mutex

@@ -122,8 +122,8 @@ func (e *Engine) logKept(version string) bool {
 }
 
 // uninstallableError refuses to download or install version, which failed to install for
-// good.
+// good, coded RefusalUninstallable, so the window offers its release page alone.
 func uninstallableError(version string) error {
-	return uierr.New(version+" didn't install before, and would fail the same way again. Download it from its "+
-		"release page instead.", ErrUninstallable)
+	return newRefusal(RefusalUninstallable, uierr.New(version+" didn't install before, and would fail the same "+
+		"way again. Download it from its release page instead.", ErrUninstallable))
 }
