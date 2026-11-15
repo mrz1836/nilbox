@@ -47,16 +47,22 @@ func quitRunningApp(exe string, timeout time.Duration) (bool, error) {
 // window fails with error -600 (procNotFound), so it tries again until timeout, quietly,
 // and reports the last failure only if none succeeds.
 func openAfterQuit(bundle string, timeout time.Duration) error {
+	return openRetrying(timeout, bundle)
+}
+
+// openRetrying runs open with args as openAfterQuit does: again until timeout while it
+// fails, reporting the last failure only if none succeeds.
+func openRetrying(timeout time.Duration, args ...string) error {
 	deadline := time.Now().Add(timeout)
 
 	for {
-		out, err := exec.CommandContext(context.Background(), "open", bundle).CombinedOutput() //nolint:gosec // argv only, no shell
+		out, err := exec.CommandContext(context.Background(), "open", args...).CombinedOutput() //nolint:gosec // argv only, no shell
 		if err == nil {
 			return nil
 		}
 
 		if time.Now().After(deadline) {
-			return fmt.Errorf("open %s: %w: %s", bundle, err, strings.TrimSpace(string(out)))
+			return fmt.Errorf("open %s: %w: %s", strings.Join(args, " "), err, strings.TrimSpace(string(out)))
 		}
 
 		time.Sleep(appReopenPoll)

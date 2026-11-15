@@ -792,6 +792,8 @@ func TestMacOSTargetsRefuseOtherSystems(t *testing.T) {
 		{name: "app:build", run: App{}.Build},
 		{name: "app:open", run: App{}.Open},
 		{name: "app:run", run: App{}.Run},
+		{name: "app:reset", run: App{}.Reset},
+		{name: "app:fresh", run: App{}.Fresh},
 		{name: "brand:icons", run: Brand{}.Icons},
 		{name: "measure:startup", run: Measure{}.Startup},
 		{name: "measure:refresh", run: Measure{}.Refresh},

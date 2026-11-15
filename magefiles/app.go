@@ -19,6 +19,7 @@ import (
 	"github.com/magefile/mage/mg"
 	"github.com/magefile/mage/sh"
 
+	"github.com/mrz1836/nilbox/internal/appdata"
 	"github.com/mrz1836/nilbox/internal/brand"
 )
 
@@ -151,15 +152,22 @@ func (App) Lint() error {
 }
 
 // Dev runs the desktop app against the frontend dev server, with hot reload, and stops
-// the dev server when the app exits.
+// the dev server when the app exits. With fresh=true it runs on a fresh sandbox data
+// folder, as app:fresh opens, so the first-run setup shows: for building the setup itself.
 //
 //	magex app:dev
+//	magex app:dev fresh=true
 func (App) Dev() error {
 	if err := (Frontend{}).Install(); err != nil {
 		return err
 	}
 
 	if err := ensureDist(); err != nil {
+		return err
+	}
+
+	appArgs, err := devAppArgs(mageArg("fresh") == "true")
+	if err != nil {
 		return err
 	}
 
@@ -183,7 +191,8 @@ func (App) Dev() error {
 
 	ldflags := versionFlags(readBuildMeta()) + quietLinkerFlags()
 
-	app := exec.CommandContext(ctx, "go", "run", "-tags", desktopTag, "-ldflags", ldflags, "./cmd/"+brand.Slug) //nolint:gosec // argv only, no shell
+	goArgs := append([]string{"run", "-tags", desktopTag, "-ldflags", ldflags, "./cmd/" + brand.Slug}, appArgs...)
+	app := exec.CommandContext(ctx, "go", goArgs...) //nolint:gosec // argv only, no shell
 
 	app.Env = append(os.Environ(), "FRONTEND_DEVSERVER_URL="+devServerURL, "CGO_ENABLED=1")
 	app.Stdout = os.Stdout
@@ -200,6 +209,28 @@ func (App) Dev() error {
 	}
 
 	return nil
+}
+
+// devAppArgs are the arguments app:dev passes the app: none, or, with fresh, --data-dir
+// naming a fresh sandbox data folder, made as app:fresh makes one.
+func devAppArgs(fresh bool) ([]string, error) {
+	if !fresh {
+		return nil, nil
+	}
+
+	paths, err := appdata.Resolve()
+	if err != nil {
+		return nil, fmt.Errorf("find the app's data: %w", err)
+	}
+
+	dir, err := freshDataDir(paths, os.TempDir())
+	if err != nil {
+		return nil, err
+	}
+
+	say("Running on fresh data in " + dir + "; your own data is untouched.")
+
+	return []string{appdata.DataDirFlag + "=" + dir}, nil
 }
 
 // Build builds the production macOS app bundle, bin/<Name>.app: it checks the generated
@@ -223,15 +254,7 @@ func (App) Build() error {
 //
 //	magex app:open
 func (App) Open() error {
-	bundle, _, err := appBundle()
-	if errors.Is(err, errNoBundle) {
-		if err = (App{}).Build(); err != nil {
-			return err
-		}
-
-		bundle, _, err = appBundle()
-	}
-
+	bundle, _, err := builtBundle()
 	if err != nil {
 		return err
 	}
