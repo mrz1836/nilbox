@@ -31,8 +31,7 @@ const (
 
 // translocates reports whether macOS would run the bundle at bundle from a hidden, read-only
 // copy (App Translocation): its own folder carries the quarantine mark, and the mark's flags
-// lack qtnMoved, as a copy put there in Terminal (cp, mv), or left marked by a move cut off,
-// does. A mark that can't be read as one macOS writes counts as none, since macOS can't read
+// lack qtnMoved, as a copy put there in Terminal (cp, mv) does. A mark that can't be read as one macOS writes counts as none, since macOS can't read
 // it either. It reads the bundle's link itself, never what it points to, and changes nothing.
 func translocates(bundle string) (bool, error) {
 	mark := make([]byte, maxQuarantine)

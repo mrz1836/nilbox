@@ -229,6 +229,7 @@ func TestAStepThatSaysNothingIsWorded(t *testing.T) {
 		words string
 	}{
 		"an exit status": {err: fmt.Errorf("run ditto: %w", exitError{code: 1}), words: "ditto exited with status 1"},
+		"a signal":       {err: fmt.Errorf("run ditto: %w", exitError{code: -1}), words: "ditto was stopped before it finished"},
 		"no start":       {err: fmt.Errorf("run ditto: %w", fs.ErrNotExist), words: "ditto couldn't be run"},
 	} {
 		t.Run(name, func(t *testing.T) {

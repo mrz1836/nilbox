@@ -205,13 +205,22 @@ func (m *Mover) run(ctx context.Context, argv []string) ([]byte, error) {
 }
 
 // failed words how the program name ended when it wrote nothing to say why: the status it
-// exited with, or that it couldn't be run.
+// exited with, that something else stopped it (a signal, which leaves no status), or that it
+// couldn't be run at all.
 func failed(name string, err error) string {
-	if code := execpath.ExitCode(err); code >= 0 {
-		return name + " exited with status " + strconv.Itoa(code)
-	}
+	exit, ok := errors.AsType[interface {
+		error
+		ExitCode() int
+	}](err)
 
-	return name + " couldn't be run"
+	switch {
+	case !ok:
+		return name + " couldn't be run"
+	case exit.ExitCode() >= 0:
+		return name + " exited with status " + strconv.Itoa(exit.ExitCode())
+	default:
+		return name + " was stopped before it finished"
+	}
 }
 
 // OpenAfterQuit quits the app the normal way, which asks first while runs go in the app
