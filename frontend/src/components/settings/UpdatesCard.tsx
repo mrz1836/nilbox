@@ -123,11 +123,11 @@ function UpdatesRow({ update }: { update: UpdateControl }) {
           >
             {checking || status?.checking === true ? 'Checking…' : 'Check for Updates'}
           </button>
-          {offer.manual && (
+          {offer.page !== '' && (
             <button
               type="button"
               onClick={() => {
-                openExternal(status?.releaseUrl ?? '')
+                openExternal(offer.page)
               }}
               className={buttonClass}
             >

@@ -420,7 +420,8 @@ describe('namesRuns', () => {
 })
 
 describe('offerOf', () => {
-  const none = { action: null, label: '', manual: false, move: false }
+  const none = { action: null, label: '', page: '', move: false }
+  const page = (version: string) => `https://github.com/acme-org/example-repo/releases/tag/v${version}`
   const failure = { version: '0.3.0', reason: 'It didn’t quit in time.', log: true, retryable: true }
 
   it('offers nothing before the status loads, for a build that doesn’t update, or with nothing newer', () => {
@@ -445,15 +446,25 @@ describe('offerOf', () => {
     expect(offerOf(updateReady(), { step: 'failed', message: 'no space' })).toEqual({
       action: 'retry',
       label: 'Try again',
-      manual: true,
+      page: page('0.3.0'),
       move: false,
     })
-    expect(offerOf(updateStatus(), { step: 'failed', message: 'offline' }).action).toBe('retry')
+    // With nothing found, the status names the running version's page, which holds nothing
+    // to install: Download manually opens the page of the version that failed, if any.
+    expect(offerOf(updateStatus(), { step: 'failed', message: 'offline' })).toEqual({
+      ...none,
+      action: 'retry',
+      label: 'Try again',
+    })
+    expect(
+      offerOf(updateStatus({ installFailed: { ...failure, retryable: true } }), { step: 'failed', message: 'offline' })
+        .page,
+    ).toBe(page('0.3.0'))
     // Before the status loads there is no page to download from, but Try again reads it.
     expect(offerOf(null, { step: 'failed', message: 'offline' })).toEqual({
       action: 'retry',
       label: 'Try again',
-      manual: false,
+      page: '',
       move: false,
     })
   })
@@ -465,7 +476,7 @@ describe('offerOf', () => {
   it('offers Download manually alone after a restart refused for an update that fails for good', () => {
     expect(offerOf(updateReady(), { step: 'failed', message: 'It didn’t install before.', final: true })).toEqual({
       ...none,
-      manual: true,
+      page: page('0.3.0'),
     })
     expect(offerOf(null, { step: 'failed', message: 'It didn’t install before.', final: true })).toEqual(none)
   })
@@ -483,10 +494,12 @@ describe('offerOf', () => {
   })
 
   it('offers Try again and Download manually for the version that didn’t install, never a plain restart', () => {
-    const retry = { action: 'retry', label: 'Try again', manual: true, move: false }
+    const retry = { action: 'retry', label: 'Try again', page: page('0.3.0'), move: false }
 
     expect(offerOf(updateReady({ installFailed: failure }), idle)).toEqual(retry)
-    // Nothing found since the launch yet: Try again checks first.
+    // Nothing found since the launch yet: Try again checks first, and Download manually
+    // opens the page of the version that failed, never the running version's, which the
+    // status names while nothing is found.
     expect(offerOf(updateStatus({ latest: '', installFailed: failure }), idle)).toEqual(retry)
     // A newer version found since is offered as any other.
     expect(offerOf(updateReady({ latest: '0.3.1', installFailed: failure }), idle).action).toBe('restart')
@@ -495,8 +508,10 @@ describe('offerOf', () => {
   it('offers Download manually alone for an install that can’t be tried again', () => {
     const final = { ...failure, retryable: false }
 
-    expect(offerOf(updateReady({ installFailed: final }), idle)).toEqual({ ...none, manual: true })
-    expect(offerOf(updateReady({ state: 'available', installFailed: final }), idle)).toEqual({ ...none, manual: true })
-    expect(offerOf(updateStatus({ latest: '', installFailed: final }), idle)).toEqual({ ...none, manual: true })
+    const manual = { ...none, page: page('0.3.0') }
+
+    expect(offerOf(updateReady({ installFailed: final }), idle)).toEqual(manual)
+    expect(offerOf(updateReady({ state: 'available', installFailed: final }), idle)).toEqual(manual)
+    expect(offerOf(updateStatus({ latest: '', installFailed: final }), idle)).toEqual(manual)
   })
 })

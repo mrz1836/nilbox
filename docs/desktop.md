@@ -277,8 +277,9 @@ notifications](#menu-bar-and-notifications)).
   again** · **Download manually** · **Details**) and in Settings → About, with **Show log in
   Finder** for the helper's log, kept as `<data>/logs/update-<version>.log`. The version that
   failed is offered only as **Try again** (or not at all, below), never as a plain **Restart
-  to update**, until a newer one replaces it. Either way, it
-  removes what the update left behind (the staging folder and `.bak` beside the app, and the
+  to update**, until a newer one replaces it. **Download manually** opens the release page of
+  the version that failed, also before a check has found it again. Either way, it removes
+  what the update left behind (the staging folder and `.bak` beside the app, and the
   helper's files in the temporary folder), each by its exact name. While the update's helper
   may still be at work (its log not ended, under three minutes since the restart), the start
   leaves its backup, staging folder, and log alone and looks again later; until then

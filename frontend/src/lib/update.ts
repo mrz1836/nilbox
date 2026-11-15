@@ -193,13 +193,13 @@ export function bannerOf(status: UpdateStatus | null, flow: RestartStep, lastLau
 export type OfferAction = 'restart' | 'update' | 'retry'
 
 // Offer is what the window offers, the same in the banner and in Settings → About, so the
-// two never disagree: the action, with its words, or none; the release page, to download
-// and install by hand (Download manually); and whether the app must first move to
-// Applications.
+// two never disagree: the action, with its words, or none; the release page to download
+// and install by hand from (Download manually), or '' when that isn't offered; and whether
+// the app must first move to Applications.
 export interface Offer {
   action: OfferAction | null
   label: string
-  manual: boolean
+  page: string
   move: boolean
 }
 
@@ -212,23 +212,37 @@ const offerLabels: Readonly<Record<OfferAction, string>> = {
 
 // offering is an offer of action, with change made.
 function offering(action: OfferAction | null, change: Partial<Offer> = {}): Offer {
-  return { action, label: action === null ? '' : offerLabels[action], manual: false, move: false, ...change }
+  return { action, label: action === null ? '' : offerLabels[action], page: '', move: false, ...change }
+}
+
+// pageOf is the release page of the version a restart is about: the newer version found,
+// whose page the status names, or, with none found, the version that failed to install;
+// '' when neither is known, since the status then names the running version's page, which
+// holds nothing to install.
+function pageOf(status: UpdateStatus): string {
+  const failed = status.installFailed.version
+
+  if (status.latest !== '') {
+    return status.releaseUrl
+  }
+
+  return failed === '' ? '' : releasePageOf(status.releaseUrl, failed)
 }
 
 // offerOf works out what the window offers, from the update's status and the restart
 // (what the user put away changes only whether the banner shows, never what is offered):
 //   - after a restart that just failed, Try again, or nothing when trying again would fail
-//     the same way, and Download manually once the status names a release page;
+//     the same way, and Download manually for the version it was about, once known;
 //   - nothing for a build that doesn't update, or before the status loads;
 //   - where the app can't replace itself, that it must move first, and no restart;
 //   - after an install that failed at the last launch, for the version that failed (or
-//     none known), Try again and Download manually, or Download manually alone when it
-//     can't be tried again: never a plain Restart to update for it;
+//     none found since), Try again and Download manually of that version, or Download
+//     manually alone when it can't be tried again: never a plain Restart to update for it;
 //   - otherwise Restart to update for a version ready, Update for one found, and nothing
 //     while one downloads, installs, finishes installing, or none is newer.
 export function offerOf(status: UpdateStatus | null, flow: RestartStep): Offer {
   if (flow.step === 'failed') {
-    return offering(flow.final === true ? null : 'retry', { manual: status !== null && status.releaseUrl !== '' })
+    return offering(flow.final === true ? null : 'retry', { page: status === null ? '' : pageOf(status) })
   }
 
   if (status === null || !status.enabled) {
@@ -244,7 +258,7 @@ export function offerOf(status: UpdateStatus | null, flow: RestartStep): Offer {
   }
 
   if (failedOnOffer) {
-    return offering(failed.retryable ? 'retry' : null, { manual: true })
+    return offering(failed.retryable ? 'retry' : null, { page: releasePageOf(status.releaseUrl, failed.version) })
   }
 
   if (!pending) {

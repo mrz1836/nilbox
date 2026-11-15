@@ -103,14 +103,14 @@ function WhatsNew({ status }: { status: UpdateStatus | null }) {
   )
 }
 
-// DownloadManually opens the version's release page, which holds the disk image to
+// DownloadManually opens a version's release page (page), which holds the disk image to
 // install by hand.
-function DownloadManually({ status }: { status: UpdateStatus | null }) {
+function DownloadManually({ page }: { page: string }) {
   return (
     <button
       type="button"
       onClick={() => {
-        openExternal(status?.releaseUrl ?? '')
+        openExternal(page)
       }}
       className={linkButtonClass}
     >
@@ -141,7 +141,7 @@ function OfferButtons({ offer, update }: { offer: Offer; update: UpdateControl }
           {offer.label}
         </button>
       )}
-      {offer.manual && <DownloadManually status={update.status} />}
+      {offer.page !== '' && <DownloadManually page={offer.page} />}
     </>
   )
 }

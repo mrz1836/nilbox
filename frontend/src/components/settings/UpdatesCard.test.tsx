@@ -247,6 +247,16 @@ describe('UpdatesCard', () => {
     expect(platform.openExternal).toHaveBeenCalledExactlyOnceWith(releasePage)
   })
 
+  it('opens the page of the version that didn’t install while no version is found since', async () => {
+    const final = { version: '0.3.0', reason: 'It failed its signature check.', log: false, retryable: false }
+
+    // With nothing found, the status names the running version's page.
+    card(updateStatus({ installFailed: final }))
+
+    await userEvent.click(screen.getByRole('button', { name: 'Download manually' }))
+    expect(platform.openExternal).toHaveBeenCalledExactlyOnceWith(releasePage)
+  })
+
   it('offers Download manually alone for an install that can’t be tried again', () => {
     const final = { version: '0.3.0', reason: 'It failed its signature check.', log: false, retryable: false }
 

@@ -938,7 +938,7 @@ describe('useUpdateControl', () => {
       expect(result.current.offer).toEqual({
         action: 'restart',
         label: 'Restart to update',
-        manual: false,
+        page: '',
         move: false,
       })
     })
@@ -1082,6 +1082,11 @@ describe('useUpdateControl', () => {
     await waitFor(() => {
       expect(result.current.banner).toEqual({ kind: 'failed', message: uninstallable })
     })
-    expect(result.current.offer).toEqual({ action: null, label: '', manual: true, move: false })
+    expect(result.current.offer).toEqual({
+      action: null,
+      label: '',
+      page: 'https://github.com/acme-org/example-repo/releases/tag/v0.3.0',
+      move: false,
+    })
   })
 })

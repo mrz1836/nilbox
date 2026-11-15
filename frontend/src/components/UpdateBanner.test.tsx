@@ -239,6 +239,18 @@ describe('UpdateBanner', () => {
     expect(update.restart).toHaveBeenCalledOnce()
   })
 
+  it('opens the page of the version that didn’t install while no version is found since', async () => {
+    const failure = { version: '0.3.0', reason: 'It didn’t quit in time.', log: true, retryable: true }
+
+    // With nothing found, the status names the running version's page.
+    shown(updateStatus({ installFailed: failure }))
+
+    expect(banner()).toHaveTextContent(`The update to 0.3.0 didn’t install, so ${brand.name} is still on 0.2.0.`)
+    expect(buttons()).toEqual(['Try again', 'Download manually', 'Details', 'Dismiss'])
+    await userEvent.click(screen.getByRole('button', { name: 'Download manually' }))
+    expect(platform.openExternal).toHaveBeenCalledExactlyOnceWith(releasePage)
+  })
+
   it('says how to let the app install an update where it can’t, with no Update to try', async () => {
     // Nothing downloads there, so the version found stays available, in the default mode too.
     const { update } = shown(
