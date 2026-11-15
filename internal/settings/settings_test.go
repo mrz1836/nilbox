@@ -31,6 +31,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/testutil"
 	"github.com/mrz1836/nilbox/internal/threadrules"
 	"github.com/mrz1836/nilbox/internal/trust"
+	"github.com/mrz1836/nilbox/internal/updateprefs"
 )
 
 // newTestService returns a Service over a fresh database and a temp home directory.
@@ -120,6 +121,7 @@ func TestPrefDefaults(t *testing.T) {
 		RefreshChoices:  refreshChoices(),
 		ServiceStatus:   statusprefs.Defaults(),
 		StatusProviders: statusprefs.Catalog(),
+		UpdateMode:      updateprefs.ModeDownload,
 
 		DefaultProtectedBranches: []string{"main", "master"},
 	}, got)
@@ -254,6 +256,7 @@ func TestSettersPersist(t *testing.T) {
 	require.NoError(t, testutil.ErrOf(svc.SetGitHubNotificationSwitch(t.Context(), threadrules.SwitchWatching, false)))
 	require.NoError(t, testutil.ErrOf(svc.SetGitHubNotificationTrigger(t.Context(), threadrules.TriggerDismissed, false)))
 	require.NoError(t, testutil.ErrOf(svc.SetGitHubNotificationAction(t.Context(), threadrules.ActionRead)))
+	require.NoError(t, testutil.ErrOf(svc.SetUpdateMode(t.Context(), updateprefs.ModeOff)))
 
 	got, err := svc.Get(t.Context())
 	require.NoError(t, err)
@@ -305,6 +308,7 @@ func TestSettersPersist(t *testing.T) {
 		RefreshChoices:  refreshChoices(),
 		ServiceStatus:   statusprefs.Defaults(),
 		StatusProviders: statusprefs.Catalog(),
+		UpdateMode:      updateprefs.ModeOff,
 
 		DefaultProtectedBranches: branchrules.DefaultProtected(),
 		RepoRules:                reporules.Rules{Pinned: []string{}, Muted: []string{"acme-org"}},

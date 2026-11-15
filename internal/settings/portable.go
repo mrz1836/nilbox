@@ -23,6 +23,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/statusprefs"
 	"github.com/mrz1836/nilbox/internal/threadrules"
 	"github.com/mrz1836/nilbox/internal/uierr"
+	"github.com/mrz1836/nilbox/internal/updateprefs"
 )
 
 // BackupPart is the settings' part of a backup of the user's setup: their settings and, apart, their
@@ -70,6 +71,7 @@ type Portable struct {
 	ToastSeconds        *int                 `json:"toastSeconds,omitempty"`
 	InboxOrder          *InboxOrder          `json:"inboxOrder,omitempty"`
 	Integrations        *PortableIntegration `json:"integrations,omitempty"`
+	UpdateMode          *updateprefs.Mode    `json:"updateMode,omitempty"`
 }
 
 // legacyRefreshGitHubStatus is the refresh kind the service status check had while it read
@@ -175,6 +177,7 @@ func portableOf(set Settings) Portable {
 			OfferAfterMerge: &ig.OfferAfterMerge, MagexTargets: &ig.ScriptSources.MagexTargets,
 			RepoFiles: &ig.ScriptSources.RepoFiles, ShowRuns: &ig.ShowRuns,
 		},
+		UpdateMode: &set.UpdateMode,
 	}
 }
 
@@ -195,6 +198,7 @@ const (
 	tellsIntervals
 	tellsRepoRules
 	tellsStatusRules
+	tellsUpdates
 )
 
 // PortablePlan is what importing a backup's settings, or its repositories, does: the plan
@@ -300,8 +304,8 @@ func (bp *BackupPart) ApplyPortable(ctx context.Context, tx *sql.Tx, plan Portab
 // Announce emits, once each, the events the setters of the settings plan changed emit, as
 // they would had the user changed each one: the theme, the text size, the menu bar, the
 // sessions followed, the integrations, the GitHub notification rules, the refresh
-// intervals, the pinned and muted repositories, and what the service status check
-// watches.
+// intervals, the pinned and muted repositories, what the service status check watches,
+// and what the app does when a new version is out.
 func (bp *BackupPart) Announce(ctx context.Context, plan PortablePlan) {
 	s := bp.s
 
@@ -323,6 +327,7 @@ func (bp *BackupPart) Announce(ctx context.Context, plan PortablePlan) {
 		tellsIntervals:    event.IntervalsChanged{},
 		tellsRepoRules:    event.RepoRulesChanged{},
 		tellsStatusRules:  event.StatusRulesChanged{},
+		tellsUpdates:      event.UpdatesChanged{},
 	}
 
 	// A chosen copy wakes the tools' finder, which tells the window too.
@@ -437,6 +442,9 @@ func (s *Service) portableFields() []portableField {
 			func(_ context.Context, n int) (map[string]string, error) { return checkToastSeconds(n) }, seconds),
 		pointerField("Inbox sorting", tellsNothing, func(p Portable) *InboxOrder { return p.InboxOrder },
 			func(_ context.Context, order InboxOrder) (map[string]string, error) { return checkInboxOrder(order) }, nil),
+		pointerField("When a new version is out", tellsUpdates, func(p Portable) *updateprefs.Mode { return p.UpdateMode },
+			func(_ context.Context, m updateprefs.Mode) (map[string]string, error) { return checkUpdateMode(m) },
+			func(m updateprefs.Mode) string { return string(m) }),
 	)
 
 	return append(fields, s.integrationFields()...)

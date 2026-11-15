@@ -106,6 +106,9 @@ const (
 
 	// NameResetRequested is ResetRequested's name.
 	NameResetRequested = "app:resetRequested"
+
+	// NameUpdatesChanged is UpdatesChanged's name.
+	NameUpdatesChanged = "settings:updatesChanged"
 )
 
 // Event is something that happened, or was asked for, that another part of the app
@@ -366,6 +369,16 @@ type StatusRulesChanged struct{}
 
 // Name returns NameStatusRulesChanged.
 func (StatusRulesChanged) Name() string { return NameStatusRulesChanged }
+
+// UpdatesChanged says the user chose what the app does when a new version is out, and it
+// was stored. It stays in Go: core wakes the update check, which follows the new choice at
+// once (a version found while the app only told is downloaded once the user asks for
+// downloads); the window has the settings from the setter, and hears the update's status
+// changed.
+type UpdatesChanged struct{}
+
+// Name returns NameUpdatesChanged.
+func (UpdatesChanged) Name() string { return NameUpdatesChanged }
 
 // ScriptRunsUpdated says a run started, ended, or changed status, or the history changed:
 // the window lists the runs again and pulls what it shows. It never carries output.

@@ -65,6 +65,7 @@ func TestEveryEventHasItsOwnName(t *testing.T) {
 		{event.ServiceStatusUpdated{}, event.NameServiceStatusUpdated},
 		{event.SetupFinished{}, event.NameSetupFinished},
 		{event.ResetRequested{}, event.NameResetRequested},
+		{event.UpdatesChanged{}, event.NameUpdatesChanged},
 	}
 
 	seen := make(map[string]bool, len(all))
@@ -106,6 +107,7 @@ func TestTheWindowHearsOnlyTheWindowEvents(t *testing.T) {
 		event.StatusRulesChanged{},
 		event.SetupFinished{},
 		event.ResetRequested{},
+		event.UpdatesChanged{},
 	} {
 		_, ok := e.(event.WindowEvent)
 		assert.False(t, ok, "%s stays in Go", e.Name())

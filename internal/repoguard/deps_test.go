@@ -153,6 +153,12 @@ func boundaries() []boundary {
 				"the mirror",
 		},
 		{
+			pkg:       "internal/updateprefs",
+			forbidden: append(slices.Clone(noService), "internal/update", "internal/notify", "internal/event"),
+			why: "updateprefs declares the update setting's key and choices, which settings writes and the " +
+				"update package reads; it knows no store, service, or the update package itself",
+		},
+		{
 			pkg:       "internal/semver",
 			forbidden: noService,
 			why: "semver reads and compares versions for the integrations and the app's updates; it is a leaf " +
