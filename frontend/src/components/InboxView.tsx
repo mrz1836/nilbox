@@ -1,4 +1,4 @@
-import { useEffect, useEffectEvent, useLayoutEffect, useRef, useState } from 'react'
+import { lazy, Suspense, useEffect, useEffectEvent, useLayoutEffect, useRef, useState } from 'react'
 
 import { attempt } from '../lib/call'
 import { refText } from '../lib/format'
@@ -38,19 +38,34 @@ import {
 } from '../platform'
 import { ErrorBanner } from './ErrorBanner'
 import { InboxNil } from './InboxNil'
-import { IssueSheet } from './issue/IssueSheet'
 import { LinksContext, type Links } from './ItemLink'
 import { teamsText, type EditActions } from './ItemMenu'
 import type { LaunchOptions } from './ItemRow'
 import { ListSection, type Reveal } from './ListSection'
 import { ProjectsTip } from './ProjectsTip'
 import { RelativeTime } from './RelativeTime'
-import { ReviewSheet } from './review/ReviewSheet'
 import { defaultToastSeconds, Toast, type ToastMessage } from './Toast'
 import { SheetTriage, type TriageActions } from './TriageControls'
 
 export type { LaunchOptions } from './ItemRow'
 export type { Reveal } from './ListSection'
+
+// The review and issue sheets load on their own: the diff, the conversation, and the
+// markdown they show are not needed for the inbox's first paint, whose chunk stays under
+// the build's size limit without them. The inbox starts loading both once it has painted
+// (preloadSheets), so a card's first opening rarely waits for them.
+const loadReviewSheet = () => import('./review/ReviewSheet')
+const loadIssueSheet = () => import('./issue/IssueSheet')
+const ReviewSheet = lazy(() => loadReviewSheet().then((m) => ({ default: m.ReviewSheet })))
+const IssueSheet = lazy(() => loadIssueSheet().then((m) => ({ default: m.IssueSheet })))
+
+// preloadSheets starts loading both sheets' code. A load that fails is left to the sheet's
+// own load on its opening, which tries again.
+function preloadSheets() {
+  for (const load of [loadReviewSheet, loadIssueSheet]) {
+    load().catch(() => undefined)
+  }
+}
 
 export interface InboxViewProps {
   // inbox is the window's shared inbox state (useInbox).
@@ -384,6 +399,12 @@ export function InboxView({
 
   const [viewing, setViewing] = useState<Viewing | null>(null)
   const sheets = drafts !== undefined
+
+  useEffect(() => {
+    if (sheets) {
+      preloadSheets()
+    }
+  }, [sheets])
   // openedItem is the item last opened in its sheet, or 0 while none is, so each opening
   // is heard once: the page shown again (Activity), or an effect run twice, opens nothing
   // anew, and never undoes a Mark unread made since.
@@ -917,74 +938,76 @@ export function InboxView({
             />
           ))}
       <LinksContext value={links}>
-        {viewing !== null && sheets && viewing.kind === 'pr' && (
-          <ReviewSheet
-            id={viewing.id}
-            item={viewed}
-            siblings={siblings}
-            listTitle={listTitle}
-            drafts={drafts.review}
-            tab={reviewTab}
-            onTab={(tab) => {
-              onReviewTab?.(tab)
-            }}
-            order={conversation}
-            onOrder={chooseConversation}
-            launch={launch}
-            resolution={resolutions.get(viewing.id) ?? null}
-            sessions={viewed === undefined ? undefined : sessionsOf(sessions, viewed)}
-            worktree={viewed === undefined ? undefined : worktreeOf(worktrees, viewed)}
-            onNavigate={step}
-            onClose={() => {
-              setViewing(null)
-            }}
-            onDone={(result, r) => {
-              setViewing(null)
-              showToast({ text: result.message, detail: r.title, tone: resultTone(result) })
+        <Suspense fallback={null}>
+          {viewing !== null && sheets && viewing.kind === 'pr' && (
+            <ReviewSheet
+              id={viewing.id}
+              item={viewed}
+              siblings={siblings}
+              listTitle={listTitle}
+              drafts={drafts.review}
+              tab={reviewTab}
+              onTab={(tab) => {
+                onReviewTab?.(tab)
+              }}
+              order={conversation}
+              onOrder={chooseConversation}
+              launch={launch}
+              resolution={resolutions.get(viewing.id) ?? null}
+              sessions={viewed === undefined ? undefined : sessionsOf(sessions, viewed)}
+              worktree={viewed === undefined ? undefined : worktreeOf(worktrees, viewed)}
+              onNavigate={step}
+              onClose={() => {
+                setViewing(null)
+              }}
+              onDone={(result, r) => {
+                setViewing(null)
+                showToast({ text: result.message, detail: r.title, tone: resultTone(result) })
 
-              if (result.outcome === 'merged') {
-                offerRelease(r, toastCount.current)
-              }
-            }}
-            onFilesSettings={onFilesSettings}
-            onManageReplies={onManageReplies}
-            initialFocus={initialFocus}
-            refocus={viewing.refocus}
-            back={back}
-            triage={sheetTriageButtons}
-            toast={sheetToast}
-          />
-        )}
-        {viewing !== null && sheets && viewing.kind === 'issue' && (
-          <IssueSheet
-            id={viewing.id}
-            item={viewed}
-            siblings={siblings}
-            listTitle={listTitle}
-            drafts={drafts.issue}
-            order={conversation}
-            onOrder={chooseConversation}
-            launch={launch}
-            resolution={resolutions.get(viewing.id) ?? null}
-            sessions={viewed === undefined ? undefined : sessionsOf(sessions, viewed)}
-            worktree={viewed === undefined ? undefined : worktreeOf(worktrees, viewed)}
-            onNavigate={step}
-            onClose={() => {
-              setViewing(null)
-            }}
-            onDone={(result, is) => {
-              setViewing(null)
-              showToast({ text: result.message, detail: is.title, tone: issueTone(result) })
-            }}
-            onUnassign={unassignHere}
-            onManageReplies={onManageReplies}
-            initialFocus={initialFocus}
-            refocus={viewing.refocus}
-            back={back}
-            triage={sheetTriageButtons}
-            toast={sheetToast}
-          />
-        )}
+                if (result.outcome === 'merged') {
+                  offerRelease(r, toastCount.current)
+                }
+              }}
+              onFilesSettings={onFilesSettings}
+              onManageReplies={onManageReplies}
+              initialFocus={initialFocus}
+              refocus={viewing.refocus}
+              back={back}
+              triage={sheetTriageButtons}
+              toast={sheetToast}
+            />
+          )}
+          {viewing !== null && sheets && viewing.kind === 'issue' && (
+            <IssueSheet
+              id={viewing.id}
+              item={viewed}
+              siblings={siblings}
+              listTitle={listTitle}
+              drafts={drafts.issue}
+              order={conversation}
+              onOrder={chooseConversation}
+              launch={launch}
+              resolution={resolutions.get(viewing.id) ?? null}
+              sessions={viewed === undefined ? undefined : sessionsOf(sessions, viewed)}
+              worktree={viewed === undefined ? undefined : worktreeOf(worktrees, viewed)}
+              onNavigate={step}
+              onClose={() => {
+                setViewing(null)
+              }}
+              onDone={(result, is) => {
+                setViewing(null)
+                showToast({ text: result.message, detail: is.title, tone: issueTone(result) })
+              }}
+              onUnassign={unassignHere}
+              onManageReplies={onManageReplies}
+              initialFocus={initialFocus}
+              refocus={viewing.refocus}
+              back={back}
+              triage={sheetTriageButtons}
+              toast={sheetToast}
+            />
+          )}
+        </Suspense>
       </LinksContext>
       <Toast toast={sheetOpen ? null : toast} seconds={toastSeconds} onClose={closeToast} />
     </div>

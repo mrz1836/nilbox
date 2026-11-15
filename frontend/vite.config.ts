@@ -40,8 +40,18 @@ export default defineConfig({
     cssMinify: 'lightningcss',
     // The bundle loads from the app binary, not over a network. The inbox's chunk is all
     // the window loads before its first paint; the other pages are chunks of their own,
-    // loaded on their first visit (App.tsx). The limit stays as a tripwire for unexpected
-    // growth of any chunk.
+    // loaded on their first visit (App.tsx), and so are the review and issue sheets,
+    // loaded once the inbox has painted (InboxView.tsx). The limit stays as a tripwire for
+    // unexpected growth of any chunk.
     chunkSizeWarningLimit: 700,
+    rolldownOptions: {
+      checks: {
+        // Rolldown warns when plugins take most of a build. Here one always does, by
+        // design: the React Compiler runs through Babel on every source file, and the
+        // bundling itself is quick. node_modules is already left out of it (the Babel
+        // plugin's default), so the notice would show on every build and say nothing new.
+        bundlerTimings: false,
+      },
+    },
   },
 })
