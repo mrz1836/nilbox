@@ -38,11 +38,15 @@ import (
 )
 
 const (
-	// KeepBefore is how many of the copies an import saves first the app keeps.
+	// KeepBefore is how many of the copies an import saves first the app keeps, and how
+	// many of those a reset saves first.
 	KeepBefore = 5
 
 	// beforePrefix starts the name of each copy an import saves first.
 	beforePrefix = brand.Slug + " before import "
+
+	// resetPrefix starts the name of each copy a reset saves first.
+	resetPrefix = brand.Slug + " before reset "
 
 	// stampLayout stamps the name of each copy an import saves first; it sorts as text in
 	// time order.
@@ -344,7 +348,7 @@ func (s *Service) Import(ctx context.Context, req Request) (Imported, error) {
 		}
 	}
 
-	saved, err := s.saveBefore(ctx)
+	saved, err := s.saveBefore(ctx, importing())
 	if err != nil {
 		return Imported{}, err
 	}
@@ -537,10 +541,28 @@ func (s *Service) encode(ctx context.Context, sections []Section) ([]byte, []Sec
 	return data, counts, nil
 }
 
+// before is what a copy of the setup is saved before: an import, or a reset.
+type before struct {
+	// prefix starts each such copy's name, and what words it in an error.
+	prefix string
+	what   string
+}
+
+// importing is what an import saves first.
+func importing() before {
+	return before{prefix: beforePrefix, what: "the import"}
+}
+
+// resetting is what a reset saves first.
+func resetting() before {
+	return before{prefix: resetPrefix, what: "the reset"}
+}
+
 // saveBefore saves every category the Service has a part for into the backups folder, as
-// "<slug> before import <stamp>.json", and keeps the newest KeepBefore such copies. It
-// returns the copy's path.
-func (s *Service) saveBefore(ctx context.Context) (string, error) {
+// "<slug> before import <stamp>.json" (or "before reset", as b says), and keeps the newest
+// KeepBefore such copies. It returns the copy's path, or "" when the Service has no
+// folder to save it in.
+func (s *Service) saveBefore(ctx context.Context, b before) (string, error) {
 	if s.dir == "" {
 		return "", nil
 	}
@@ -555,30 +577,30 @@ func (s *Service) saveBefore(ctx context.Context) (string, error) {
 
 	data, _, err := s.encode(ctx, all)
 	if err != nil {
-		return "", fmt.Errorf("save the setup as it is before the import: %w", err)
+		return "", fmt.Errorf("save the setup as it is before %s: %w", b.what, err)
 	}
 
 	if err = os.MkdirAll(s.dir, appdata.PrivateDirPerm); err != nil {
-		return "", fmt.Errorf("save the setup as it is before the import: %w", err)
+		return "", fmt.Errorf("save the setup as it is before %s: %w", b.what, err)
 	}
 
-	path := filepath.Join(s.dir, beforePrefix+s.clock.Now().UTC().Format(stampLayout)+".json")
+	path := filepath.Join(s.dir, b.prefix+s.clock.Now().UTC().Format(stampLayout)+".json")
 
 	if err = appdata.WriteFile(path, data); err != nil {
-		return "", fmt.Errorf("save the setup as it is before the import: %w", err)
+		return "", fmt.Errorf("save the setup as it is before %s: %w", b.what, err)
 	}
 
-	s.prune(ctx)
+	s.prune(ctx, b)
 
 	return path, nil
 }
 
-// prune deletes the copies saved before an import but the newest KeepBefore. A copy it
+// prune deletes the copies saved before what b says but the newest KeepBefore. A copy it
 // can't delete is logged.
-func (s *Service) prune(ctx context.Context) {
+func (s *Service) prune(ctx context.Context, b before) {
 	entries, err := os.ReadDir(s.dir)
 	if err != nil {
-		s.logger.WarnContext(ctx, "could not list the backups saved before imports", "error", err)
+		s.logger.WarnContext(ctx, "could not list the backups saved before "+b.what, "error", err)
 
 		return
 	}
@@ -586,7 +608,7 @@ func (s *Service) prune(ctx context.Context) {
 	var names []string
 
 	for _, e := range entries {
-		if name := e.Name(); e.Type().IsRegular() && strings.HasPrefix(name, beforePrefix) &&
+		if name := e.Name(); e.Type().IsRegular() && strings.HasPrefix(name, b.prefix) &&
 			strings.HasSuffix(name, ".json") {
 			names = append(names, name)
 		}
@@ -596,10 +618,35 @@ func (s *Service) prune(ctx context.Context) {
 
 	for len(names) > KeepBefore {
 		if err = os.Remove(filepath.Join(s.dir, names[0])); err != nil {
-			s.logger.WarnContext(ctx, "could not delete an old backup saved before an import", "name", names[0],
+			s.logger.WarnContext(ctx, "could not delete an old backup saved before "+b.what, "name", names[0],
 				"error", err)
 		}
 
 		names = names[1:]
 	}
+}
+
+// Saver saves the user's whole setup before the app does something that loses it: a reset
+// the user asked for. It is a type of its own, apart from the Service, so the window, which
+// binds the Service, never reaches it.
+type Saver struct {
+	s *Service
+}
+
+// NewSaver returns the Saver over s, which saves every category s has a part for.
+func NewSaver(s *Service) *Saver {
+	return &Saver{s: s}
+}
+
+// SaveBeforeReset saves every category into the backups folder, as "<slug> before reset
+// <stamp>.json", the same file a backup the user exports holds, and keeps the newest
+// KeepBefore such copies. It returns the copy's path with ~ for the home directory, or ""
+// when there is no folder to save it in.
+func (sv *Saver) SaveBeforeReset(ctx context.Context) (string, error) {
+	saved, err := sv.s.saveBefore(ctx, resetting())
+	if err != nil || saved == "" {
+		return "", err
+	}
+
+	return paths.Tilde(saved, sv.s.home), nil
 }

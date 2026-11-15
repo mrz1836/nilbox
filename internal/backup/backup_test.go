@@ -59,9 +59,11 @@ type fakePart struct {
 	value   string
 	log     *journal
 
-	// plans are what Prepare says under each mode; prepareErr fails it.
+	// plans are what Prepare says under each mode; prepareErr fails it, and exportErr
+	// fails Export.
 	plans      map[Mode]Plan
 	prepareErr error
+	exportErr  error
 
 	// provides is what the prompts part says the library will hold, and seen what the part
 	// was told the prompts part provides.
@@ -75,6 +77,10 @@ type section struct {
 }
 
 func (f *fakePart) Export(context.Context) (json.RawMessage, int, error) {
+	if f.exportErr != nil {
+		return nil, 0, f.exportErr
+	}
+
 	raw, err := EncodeSection(section{Value: f.value})
 
 	return raw, 1, err
@@ -523,6 +529,80 @@ func TestImportSavesTheSetupFirstAndKeepsTheNewestFive(t *testing.T) {
 	for _, s := range Sections() {
 		assert.NotNil(t, f.Section(s), "%s: the copy holds every category", s)
 	}
+}
+
+func TestSaveBeforeResetKeepsItsOwnNewestFive(t *testing.T) {
+	t.Parallel()
+
+	r := newRig(t, "file")
+	path := r.export(t, SectionSettings)
+
+	p, err := r.svc.Preview(t.Context(), path)
+	require.NoError(t, err)
+
+	// One copy saved before an import, which the resets' copies never push out.
+	_, err = r.svc.Import(t.Context(), Request{Path: path, Hash: p.Hash, Mode: ModeMerge, Sections: []Section{SectionSettings}})
+	require.NoError(t, err)
+
+	saver := NewSaver(r.svc)
+
+	var last string
+
+	for range KeepBefore + 1 {
+		r.clock.Advance(time.Minute)
+
+		last, err = saver.SaveBeforeReset(t.Context())
+		require.NoError(t, err)
+	}
+
+	assert.Equal(t, "~/data/backups/"+resetPrefix+"20261114T170600Z.json", last, "the copy is named with ~ for home")
+
+	entries, err := os.ReadDir(r.dir)
+	require.NoError(t, err)
+
+	var resets, imports []string
+
+	for _, e := range entries {
+		switch {
+		case strings.HasPrefix(e.Name(), resetPrefix):
+			resets = append(resets, e.Name())
+		case strings.HasPrefix(e.Name(), beforePrefix):
+			imports = append(imports, e.Name())
+		}
+	}
+
+	assert.Len(t, resets, KeepBefore, "the newest five copies saved before a reset are kept")
+	assert.Equal(t, resetPrefix+"20261114T170200Z.json", resets[0])
+	assert.Len(t, imports, 1, "the copies saved before an import are kept apart")
+
+	data, err := os.ReadFile(filepath.Join(r.dir, resets[0]))
+	require.NoError(t, err)
+
+	f, err := Decode(data)
+	require.NoError(t, err)
+
+	for _, s := range Sections() {
+		assert.NotNil(t, f.Section(s), "%s: the copy holds every category", s)
+	}
+}
+
+func TestSaveBeforeResetFailsWhenThePartsCannotBeRead(t *testing.T) {
+	t.Parallel()
+
+	r := newRig(t, "file")
+	r.parts[SectionPrompts].exportErr = errBroken
+
+	_, err := NewSaver(r.svc).SaveBeforeReset(t.Context())
+	require.ErrorIs(t, err, errBroken)
+	assert.Contains(t, err.Error(), "before the reset")
+}
+
+func TestSaveBeforeResetWithNoFolderSavesNothing(t *testing.T) {
+	t.Parallel()
+
+	saved, err := NewSaver(NewService(Config{})).SaveBeforeReset(t.Context())
+	require.NoError(t, err)
+	assert.Empty(t, saved)
 }
 
 func TestSectionsAndModes(t *testing.T) {

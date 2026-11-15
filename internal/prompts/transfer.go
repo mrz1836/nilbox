@@ -69,6 +69,10 @@ const (
 
 	// BackupUpdate is the database as it was before an update changed it.
 	BackupUpdate BackupKind = "update"
+
+	// BackupReset is the database as it was before the user asked to start over, which
+	// the app set aside for a fresh one.
+	BackupReset BackupKind = "before-reset"
 )
 
 // Backup is a copy of the prompt library the app keeps, which Import can bring prompts
@@ -371,8 +375,22 @@ func (s *Service) libraryBackup() ([]backupFile, error) {
 	}
 }
 
-// databaseBackups lists the databases kept beside the database: those set aside, and the
-// backups taken before updates.
+// backupKind is what a database kept beside the app's own is, as the window names it.
+func backupKind(kind store.SnapshotKind) BackupKind {
+	switch kind {
+	case store.SnapshotSetAside:
+		return BackupSetAside
+	case store.SnapshotReset:
+		return BackupReset
+	case store.SnapshotBackup:
+		return BackupUpdate
+	default:
+		return BackupUpdate
+	}
+}
+
+// databaseBackups lists the databases kept beside the database: those set aside, those a
+// reset set aside, and the backups taken before updates.
 func (s *Service) databaseBackups() ([]backupFile, error) {
 	if s.database == "" {
 		return nil, nil
@@ -386,12 +404,7 @@ func (s *Service) databaseBackups() ([]backupFile, error) {
 	files := make([]backupFile, 0, len(snapshots))
 
 	for _, snap := range snapshots {
-		kind := BackupUpdate
-		if snap.Kind == store.SnapshotSetAside {
-			kind = BackupSetAside
-		}
-
-		files = append(files, backupFile{path: snap.Path, kind: kind, at: snap.At})
+		files = append(files, backupFile{path: snap.Path, kind: backupKind(snap.Kind), at: snap.At})
 	}
 
 	return files, nil

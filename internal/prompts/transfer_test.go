@@ -478,10 +478,13 @@ func TestBackupsListsEveryCopyNewestFirst(t *testing.T) {
 	s, _, dir := keeping(t)
 	db := filepath.Join(dir, "app.db")
 
-	// An older library with one prompt of the user's, set aside, and an update backup that
-	// cannot be read.
+	// An older library with one prompt of the user's, set aside, the library a reset set
+	// aside, and an update backup that cannot be read.
 	old := filepath.Join(dir, "app.db.broken-20261108T165152Z")
 	writeLibraryDB(t, old, mine("Security"), mine("Review"))
+
+	reset := filepath.Join(dir, "app.db.reset-20261107T120000Z")
+	writeLibraryDB(t, reset, mine("Security"))
 	testutil.WriteFile(t, db+".backup-20261106T201810Z-v10", "not a database at all, only text long enough")
 
 	_, err := s.Create(t.Context(), Input{Name: mineName, Nickname: mineName, AppliesTo: AppliesToAny, Body: lookAtURL})
@@ -489,7 +492,7 @@ func TestBackupsListsEveryCopyNewestFirst(t *testing.T) {
 
 	backups, err := s.Backups(t.Context())
 	require.NoError(t, err)
-	require.Len(t, backups, 3)
+	require.Len(t, backups, 4)
 
 	assert.Equal(t, BackupLibrary, backups[0].Kind, "the library file was written just now")
 	assert.Equal(t, len(Starters())+1, backups[0].Prompts)
@@ -497,10 +500,12 @@ func TestBackupsListsEveryCopyNewestFirst(t *testing.T) {
 	assert.Empty(t, backups[0].Error)
 
 	assert.Equal(t, Backup{Path: old, Kind: BackupSetAside, At: "2026-11-08T16:51:52Z", Prompts: 2, New: 2}, backups[1])
+	assert.Equal(t, Backup{Path: reset, Kind: BackupReset, At: "2026-11-07T12:00:00Z", Prompts: 1, New: 1}, backups[2],
+		"a reset's copy is named as one")
 
-	assert.Equal(t, BackupUpdate, backups[2].Kind)
-	assert.Equal(t, "2026-11-06T20:18:10Z", backups[2].At)
-	assert.NotEmpty(t, backups[2].Error)
+	assert.Equal(t, BackupUpdate, backups[3].Kind)
+	assert.Equal(t, "2026-11-06T20:18:10Z", backups[3].At)
+	assert.NotEmpty(t, backups[3].Error)
 }
 
 func TestPreviewImportReadsAListedBackup(t *testing.T) {
