@@ -192,7 +192,7 @@ describe('UpdatesCard', () => {
   })
 
   it('says the last launch’s update didn’t install, and why, and shows its log in Finder', async () => {
-    card(
+    const { update } = card(
       updateReady({
         installFailed: {
           version: '0.3.0',
@@ -209,6 +209,18 @@ describe('UpdatesCard', () => {
 
     await userEvent.click(screen.getByRole('button', { name: 'Show log in Finder' }))
     expect(platform.showInstallLog).toHaveBeenCalledOnce()
+
+    // The version that failed, ready again, is a Try again, never a plain Restart to update.
+    expect(screen.queryByRole('button', { name: 'Restart to update' })).not.toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Try again' }))
+    expect(update.restart).toHaveBeenCalledOnce()
+  })
+
+  it('offers a newer version than the one that failed as any other', () => {
+    card(updateReady({ latest: '0.3.1', installFailed: { version: '0.3.0', reason: 'It wouldn’t open.', log: false } }))
+
+    expect(screen.getByRole('button', { name: 'Restart to update' })).toBeEnabled()
+    expect(screen.getByText('The update to 0.3.0 didn’t install')).toBeInTheDocument()
   })
 
   it('says why the log couldn’t show, and offers none that wasn’t kept', async () => {

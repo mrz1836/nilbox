@@ -689,7 +689,7 @@ describe('useUpdateControl', () => {
     expect(logged).toHaveBeenCalledExactlyOnceWith('could not show the update’s banner:', 'Locked.')
   })
 
-  it('puts away the last launch’s failure for the session, then shows the update ready', async () => {
+  it('puts away the last launch’s failure for the session, never offering that version as ready', async () => {
     platform.getUpdateStatus.mockResolvedValue(
       updateReady({ installFailed: { version: '0.3.0', reason: 'It wouldn’t open.', log: false } }),
     )
@@ -702,13 +702,29 @@ describe('useUpdateControl', () => {
       result.current.dismiss()
     })
 
-    expect(result.current.banner).toEqual({ kind: 'ready', version: '0.3.0' })
+    expect(result.current.banner).toEqual({ kind: 'none' })
 
     // With nothing to put away, it does nothing.
     act(() => {
       result.current.dismiss()
     })
-    expect(result.current.banner).toEqual({ kind: 'ready', version: '0.3.0' })
+    expect(result.current.banner).toEqual({ kind: 'none' })
+  })
+
+  it('puts away a failure of an older version, then offers the newer one ready', async () => {
+    platform.getUpdateStatus.mockResolvedValue(
+      updateReady({ latest: '0.3.1', installFailed: { version: '0.3.0', reason: 'It wouldn’t open.', log: false } }),
+    )
+    const { result } = control()
+
+    await waitFor(() => {
+      expect(result.current.banner.kind).toBe('lastLaunch')
+    })
+    act(() => {
+      result.current.dismiss()
+    })
+
+    expect(result.current.banner).toEqual({ kind: 'ready', version: '0.3.1' })
   })
 
   it('puts away a restart’s failure, showing the banner as it was', async () => {

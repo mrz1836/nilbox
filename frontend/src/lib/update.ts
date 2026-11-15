@@ -109,7 +109,8 @@ function working(status: UpdateStatus | null, step: RestartStep['step']): Banner
 //   - nothing shows for a build that doesn't update, or before the status loads;
 //   - a restart under way that the window didn't start shows as working too;
 //   - after a held quit, what to do instead shows, unless hidden with Later;
-//   - the restart before this launch failing shows until put away;
+//   - the restart before this launch failing shows until put away, over the same version
+//     ready again (Try again restarts into it), which is never offered as plainly ready;
 //   - an update ready, or available, shows unless hidden with Later, as the location
 //     notice when the app can't update where it runs, where nothing downloads;
 //   - with Download it and tell me, an update found and not yet downloaded is about to
@@ -140,6 +141,12 @@ export function bannerOf(status: UpdateStatus | null, flow: RestartStep, lastLau
 
   if (failed.version !== '' && failed.version !== lastLaunchDismissed) {
     return { kind: 'lastLaunch', version: failed.version, current: status.current }
+  }
+
+  // The version that just failed to install stays downloaded, ready to try again, but is
+  // never offered as plainly ready: put away, its failure shows nothing.
+  if (failed.version !== '' && failed.version === status.latest) {
+    return { kind: 'none' }
   }
 
   const ready = status.state === 'ready'

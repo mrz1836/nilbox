@@ -97,12 +97,27 @@ describe('bannerOf', () => {
     expect(bannerOf(null, reopen, '')).toEqual({ kind: 'none' })
   })
 
-  it('says the last launch’s update didn’t install, until it is put away', () => {
+  it('says the last launch’s update didn’t install over the same version, ready again', () => {
+    // A rollback leaves the version that failed downloaded and ready: the failure wins, in
+    // every mode, Later or not, since its Try again restarts into it.
     const failed = updateReady({ installFailed: { version: '0.3.0', reason: 'It wouldn’t open.', log: true } })
 
     expect(bannerOf(failed, idle, '')).toEqual({ kind: 'lastLaunch', version: '0.3.0', current: '0.2.0' })
-    expect(bannerOf(failed, idle, '0.3.0')).toEqual({ kind: 'ready', version: '0.3.0' })
+    expect(bannerOf({ ...failed, mode: 'notify' }, idle, '')).toEqual({
+      kind: 'lastLaunch',
+      version: '0.3.0',
+      current: '0.2.0',
+    })
+    expect(bannerOf({ ...failed, bannerHidden: true }, idle, '').kind).toBe('lastLaunch')
+  })
+
+  it('never offers the version that just failed as plainly ready once its failure is put away', () => {
+    const failed = updateReady({ installFailed: { version: '0.3.0', reason: 'It wouldn’t open.', log: true } })
+
+    expect(bannerOf(failed, idle, '0.3.0')).toEqual({ kind: 'none' })
     expect(bannerOf({ ...failed, state: 'idle', latest: '' }, idle, '0.3.0')).toEqual({ kind: 'none' })
+    // A newer version than the one that failed is offered as any other.
+    expect(bannerOf({ ...failed, latest: '0.3.1' }, idle, '0.3.0')).toEqual({ kind: 'ready', version: '0.3.1' })
   })
 
   it('shows the restart under way from the live status: the download’s progress, then the restart', () => {

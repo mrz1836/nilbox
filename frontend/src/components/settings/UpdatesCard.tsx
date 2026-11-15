@@ -84,6 +84,10 @@ function UpdatesRow({ update }: { update: UpdateControl }) {
     state === 'installing' ||
     (flow.step !== 'idle' && flow.step !== 'failed' && flow.step !== 'reopen')
   const offer = status?.location.ok === true && (state === 'ready' || state === 'available') && flow.step !== 'reopen'
+  // retry is the version that failed to install at the last launch, on offer again: its
+  // restart is a Try again, beside the failure the card shows under this row.
+  const retry = status !== null && status.installFailed.version !== '' && status.installFailed.version === status.latest
+  const action = retry ? 'Try again' : state === 'ready' ? 'Restart to update' : 'Update'
 
   const check = async () => {
     setError('')
@@ -126,7 +130,7 @@ function UpdatesRow({ update }: { update: UpdateControl }) {
           </button>
           {offer && (
             <button type="button" disabled={busy} onClick={update.restart} className={primaryButtonClass}>
-              {state === 'ready' ? 'Restart to update' : 'Update'}
+              {action}
             </button>
           )}
         </div>

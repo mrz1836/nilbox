@@ -77,6 +77,26 @@ describe('App’s update', () => {
     expect(platform.ackUpdated).toHaveBeenCalledOnce()
   })
 
+  it('says which version an update installed whenever the status first says so, however late', async () => {
+    // The start reads how the last restart went only once it settles, which may be well
+    // after the window opened (the deferred work, or its fallback): the status tells it then.
+    await renderApp()
+    await screen.findByRole('region', { name: 'Review requested' })
+
+    expect(screen.queryByRole('group', { name: 'Notification' })).not.toBeInTheDocument()
+    expect(platform.ackUpdated).not.toHaveBeenCalled()
+
+    platform.getUpdateStatus.mockResolvedValue(updateStatus({ current: '0.3.0', justUpdated: '0.3.0' }))
+    act(() => {
+      emit('updates:updated')
+    })
+
+    expect(await screen.findByRole('group', { name: 'Notification' })).toHaveTextContent('Updated to 0.3.0')
+    await waitFor(() => {
+      expect(platform.ackUpdated).toHaveBeenCalledOnce()
+    })
+  })
+
   it('holds the toast while the first-run setup shows, so it is said where it can be seen', async () => {
     platform.getSetup.mockResolvedValue({ done: false, step: 'welcome' })
     platform.getUpdateStatus.mockResolvedValue(updateStatus({ current: '0.3.0', justUpdated: '0.3.0' }))
