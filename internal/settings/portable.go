@@ -126,7 +126,7 @@ func portableOf(set Settings) Portable {
 		Refresh: map[RefreshKind]int{
 			RefreshInbox: set.Refresh.Inbox, RefreshChecks: set.Refresh.Checks,
 			RefreshReleaseChecks: set.Refresh.ReleaseChecks, RefreshWorktrees: set.Refresh.Worktrees,
-			RefreshNotifications: set.Refresh.Notifications,
+			RefreshNotifications: set.Refresh.Notifications, RefreshGitHubStatus: set.Refresh.GitHubStatus,
 		},
 		MergeMethod: &set.MergeMethod, Theme: &set.Theme, TextSize: &set.TextSize, ToastSeconds: &set.ToastSeconds,
 		InboxOrder: &set.InboxOrder,
@@ -536,6 +536,8 @@ func refreshLabel(kind RefreshKind) string {
 		return "Sweep the worktrees"
 	case RefreshNotifications:
 		return "Read GitHub notifications every"
+	case RefreshGitHubStatus:
+		return "Check GitHub's status"
 	default:
 		return "Refresh " + string(kind)
 	}

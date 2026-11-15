@@ -53,6 +53,7 @@
     },
     "refresh": {
       "checks": 45,
+      "githubStatus": 1800,
       "inbox": 300,
       "notifications": 300,
       "releaseChecks": 45,

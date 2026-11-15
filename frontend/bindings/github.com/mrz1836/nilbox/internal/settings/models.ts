@@ -179,11 +179,12 @@ export interface RefreshChoices {
     "releaseChecks": number[] | null;
     "worktrees": number[] | null;
     "notifications": number[] | null;
+    "githubStatus": number[] | null;
 }
 
 /**
  * RefreshIntervals are how often, in seconds, the app reads each thing again on its own.
- * Both checks follows' 0 is off.
+ * Both checks follows' 0 is off, and so is the GitHub status check's.
  */
 export interface RefreshIntervals {
     "inbox": number;
@@ -191,12 +192,13 @@ export interface RefreshIntervals {
     "releaseChecks": number;
     "worktrees": number;
     "notifications": number;
+    "githubStatus": number;
 }
 
 /**
  * RefreshKind names one of the things the app reads again on its own, on a timer.
  */
-export type RefreshKind = "inbox" | "checks" | "releaseChecks" | "worktrees" | "notifications";
+export type RefreshKind = "inbox" | "checks" | "releaseChecks" | "worktrees" | "notifications" | "githubStatus";
 
 /**
  * The values of RefreshKind, by the names of their Go constants.
@@ -233,6 +235,13 @@ export const RefreshKind = {
      * poll interval asks.
      */
     RefreshNotifications: "notifications",
+
+    /**
+     * RefreshGitHubStatus is GitHub's own status page, which says whether GitHub has an
+     * incident: one small request to www.githubstatus.com, outside the API, so it costs no
+     * point of the budget.
+     */
+    RefreshGitHubStatus: "githubStatus",
 } as const;
 
 /**

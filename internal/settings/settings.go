@@ -859,7 +859,7 @@ func settingKeys() []string {
 		snooze.PrefWakeCommits, snooze.PrefWakeReviews, snooze.PrefWakeComments,
 		sensitive.PrefScope, sensitive.PrefOff, sensitive.PrefPatterns, KeyMenuBar, notifyprefs.KeyBannersOff, notifyprefs.KeyBannersOn, KeyTheme,
 		KeyTextSize, KeyToastSeconds, KeyProjectsTipDismissed, KeyReviewTab, KeyNotificationsTab, KeyConversationOrder, KeyMergeMethod, KeyRefreshInbox, KeyRefreshChecks, KeyRefreshWorktrees,
-		KeyRefreshNotifications, KeyRefreshReleaseChecks,
+		KeyRefreshNotifications, KeyRefreshReleaseChecks, KeyRefreshGitHubStatus,
 	), append(append(append(append(collapsedKeys(), orderKeys()...), branchrules.Keys()...), reporules.Keys()...),
 		append(integrationprefs.Keys(), threadrules.Keys()...)...)...)
 }
