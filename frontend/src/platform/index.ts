@@ -980,9 +980,10 @@ export interface RunGoing {
 
 // UpdateRefusal names a refusal of a download or a restart that the window answers on its
 // own, as Go's update.RefusalCode does: settling, while the last update may still be
-// finishing, which a moment's wait answers; or reopen, after a quit was held, which only
-// quitting the app and opening it again answers, so no retry is offered.
-export type UpdateRefusal = 'settling' | 'reopen'
+// finishing, or finishing, while a restart whose quit was held sees the app out, each of
+// which a moment's wait answers; or uninstallable, an update that failed to install for
+// good, which no retry fixes, so only its release page is offered.
+export type UpdateRefusal = 'settling' | 'finishing' | 'uninstallable'
 
 // Refused is a download or a restart refused for one of those reasons, with the backend's
 // words for it.
@@ -1058,7 +1059,7 @@ function runsGoingOf(err: unknown): { runsGoing: RunGoing[]; message: string } |
 }
 
 // refusals are the codes of the refusals the window knows.
-const refusals: readonly UpdateRefusal[] = ['settling', 'reopen']
+const refusals: readonly UpdateRefusal[] = ['settling', 'finishing', 'uninstallable']
 
 // isRefusal reports whether code is one of the refusals the window knows.
 function isRefusal(code: unknown): code is UpdateRefusal {

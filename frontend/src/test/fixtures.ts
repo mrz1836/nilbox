@@ -3041,7 +3041,7 @@ export function updateStatus(overrides: Partial<UpdateStatus> = {}): UpdateStatu
     lastError: '',
     bannerHidden: false,
     justUpdated: '',
-    installFailed: { version: '', reason: '', log: false },
+    installFailed: { version: '', reason: '', log: false, retryable: false },
     location: { ok: true, kind: 'applications', target: '/Applications/Example.app' },
     ...overrides,
   }

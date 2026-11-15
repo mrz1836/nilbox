@@ -16,6 +16,7 @@ import {
 import { attempt } from './call'
 import {
   bannerOf,
+  finishingWords,
   namesRuns,
   offerOf,
   runsGoingIn,
@@ -95,10 +96,11 @@ export interface RestartFlow {
 //  5. Restart then backs the data up and restarts; the app quits inside it, so it returns
 //     only when something stopped the restart, whose words the banner shows.
 //
-// Two refusals are no failure to retry. While the last update may still be finishing, the
-// download or the restart waits a moment (waiting), quietly, until the update next changes
-// or waitFor passes. After a held quit, no restart works until the app is quit and opened
-// again (reopen), which lasts the run.
+// Some refusals are no failure to retry. While the last update may still be finishing, or
+// a restart whose quit was held sees the app out, the download or the restart waits a
+// moment (waiting), quietly, until the update next changes or waitFor passes. An update
+// that failed to install for good fails (final) with nothing to try again: its release
+// page is the way to it.
 //
 // A start while one is under way, from a second click or the menu bar, does nothing. An
 // app that can't update where it runs restarts nothing: the banner says why, shown again
@@ -125,11 +127,21 @@ export function useRestartToUpdate(unsent: () => number): RestartFlow {
     end({ step: 'failed', message })
   }
 
-  // refuse ends on a refusal the window answers on its own: a wait while the last update
-  // finishes, in the window's own words, or, after a held quit, what to do instead of
-  // trying again.
+  // refuse ends on a refusal the window answers on its own, in its own words for a wait: a
+  // wait while the last update finishes or a held quit's restart sees the app out, or an
+  // update that can't be tried again, in the backend's words.
   const refuse = ({ refusal, message }: Refused) => {
-    end(refusal === 'settling' ? { step: 'waiting', message: settlingWords } : { step: 'reopen', message })
+    switch (refusal) {
+      case 'settling':
+        end({ step: 'waiting', message: settlingWords })
+        break
+      case 'finishing':
+        end({ step: 'waiting', message: finishingWords })
+        break
+      case 'uninstallable':
+        end({ step: 'failed', message, final: true })
+        break
+    }
   }
 
   const restart = async (confirmed: boolean) => {
@@ -341,9 +353,8 @@ const noBanner: Banner = { kind: 'none' }
 // useUpdateControl is the window's one view of the app's update: the status, the restart
 // flow (unsent counts the sheets holding text not sent), the banner, which Later hides at
 // once and a failure put away leaves for this session, and what both the banner and About
-// offer. The menu bar's Restart to Update ("updates:restart") restarts as the banner does.
-// After a held quit, when no restart can work in this run, asking for one shows the banner
-// that says what to do instead, Later or not, and tries nothing.
+// offer. The menu bar's Restart to Update, Update to X…, and Try Updating to X Again
+// ("updates:restart") restart as the banner does.
 export function useUpdateControl(flow: RestartFlow, update: UpdateQuery): UpdateControl {
   const { status, reload } = update
   // laterFor is the version Later hid the banner of in this window, until the status says
@@ -388,12 +399,7 @@ export function useUpdateControl(flow: RestartFlow, update: UpdateQuery): Update
   const restart = () => {
     setLaterFor('')
     setDownloadHidden(false)
-
-    if (flow.step.step === 'reopen') {
-      void reveal()
-    } else {
-      flow.start()
-    }
+    flow.start()
   }
 
   const restartOnRequest = useEffectEvent(() => {

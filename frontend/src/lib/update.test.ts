@@ -8,6 +8,7 @@ import { emptyDraft } from './reviewDrafts'
 import {
   aboutLine,
   bannerOf,
+  finishingWords,
   locationNote,
   locationWords,
   namesRuns,
@@ -87,21 +88,33 @@ describe('bannerOf', () => {
     ).toEqual({ kind: 'waiting', message: 'The last update is still finishing. Try again in a moment.' })
   })
 
-  it('says what to do after a held quit, unless Later hid it', () => {
-    const reopen: RestartStep = { step: 'reopen', message: 'Quit Example and open it again, then restart to update' }
+  it('says the update is finishing while the app quits on its own after a held quit, over everything', () => {
+    const finishing = {
+      kind: 'working',
+      text: 'Finishing the update…',
+      progress: null,
+      detail: `${brand.name} will reopen in a moment.`,
+    }
 
-    expect(bannerOf(updateReady(), reopen, '')).toEqual({
-      kind: 'reopen',
-      message: 'Quit Example and open it again, then restart to update.',
+    expect(bannerOf(updateReady({ state: 'finishing' }), idle, '')).toEqual(finishing)
+    expect(bannerOf(updateReady({ state: 'finishing', bannerHidden: true }), idle, '')).toEqual(finishing)
+    expect(bannerOf(updateReady({ state: 'finishing' }), { step: 'restarting' }, '')).toEqual(finishing)
+    expect(bannerOf(updateReady({ state: 'finishing' }), { step: 'waiting', message: finishingWords }, '')).toEqual(
+      finishing,
+    )
+    // Before the status says so, the restart's refusal says the same, quietly.
+    expect(bannerOf(updateReady(), { step: 'waiting', message: finishingWords }, '')).toEqual({
+      kind: 'waiting',
+      message: `Finishing the update… ${brand.name} will reopen in a moment.`,
     })
-    expect(bannerOf(updateReady({ bannerHidden: true }), reopen, '')).toEqual({ kind: 'none' })
-    expect(bannerOf(null, reopen, '')).toEqual({ kind: 'none' })
   })
 
   it('says the last launch’s update didn’t install over the same version, ready again', () => {
     // A rollback leaves the version that failed downloaded and ready: the failure wins, in
     // every mode, Later or not, since its Try again restarts into it.
-    const failed = updateReady({ installFailed: { version: '0.3.0', reason: 'It wouldn’t open.', log: true } })
+    const failed = updateReady({
+      installFailed: { version: '0.3.0', reason: 'It didn’t quit in time.', log: true, retryable: true },
+    })
 
     expect(bannerOf(failed, idle, '')).toEqual({ kind: 'lastLaunch', version: '0.3.0', current: '0.2.0' })
     expect(bannerOf({ ...failed, mode: 'notify' }, idle, '')).toEqual({
@@ -113,7 +126,9 @@ describe('bannerOf', () => {
   })
 
   it('never offers the version that just failed as plainly ready once its failure is put away', () => {
-    const failed = updateReady({ installFailed: { version: '0.3.0', reason: 'It wouldn’t open.', log: true } })
+    const failed = updateReady({
+      installFailed: { version: '0.3.0', reason: 'It didn’t quit in time.', log: true, retryable: true },
+    })
 
     expect(bannerOf(failed, idle, '0.3.0')).toEqual({ kind: 'none' })
     expect(bannerOf({ ...failed, state: 'idle', latest: '' }, idle, '0.3.0')).toEqual({ kind: 'none' })
@@ -240,6 +255,7 @@ describe('aboutLine', () => {
     expect(aboutLine(updateReady()).text).toBe('0.3.0 is ready')
     expect(aboutLine(updateReady({ state: 'available' })).text).toBe('0.3.0 is available')
     expect(aboutLine(updateReady({ state: 'installing' })).text).toBe('Restarting into 0.3.0…')
+    expect(aboutLine(updateReady({ state: 'finishing' })).text).toBe('Finishing the update…')
   })
 
   it('says the last check failed, and keeps a failure under a version found', () => {
@@ -405,7 +421,7 @@ describe('namesRuns', () => {
 
 describe('offerOf', () => {
   const none = { action: null, label: '', manual: false, move: false }
-  const failure = { version: '0.3.0', reason: 'The new copy didn’t open.', log: true }
+  const failure = { version: '0.3.0', reason: 'It didn’t quit in time.', log: true, retryable: true }
 
   it('offers nothing before the status loads, for a build that doesn’t update, or with nothing newer', () => {
     expect(offerOf(null, idle)).toEqual(none)
@@ -442,8 +458,16 @@ describe('offerOf', () => {
     })
   })
 
-  it('offers nothing after a held quit, whatever waits', () => {
-    expect(offerOf(updateReady(), { step: 'reopen', message: 'Quit and open again.' })).toEqual(none)
+  it('offers nothing while the app quits on its own to finish an update', () => {
+    expect(offerOf(updateReady({ state: 'finishing' }), idle)).toEqual(none)
+  })
+
+  it('offers Download manually alone after a restart refused for an update that fails for good', () => {
+    expect(offerOf(updateReady(), { step: 'failed', message: 'It didn’t install before.', final: true })).toEqual({
+      ...none,
+      manual: true,
+    })
+    expect(offerOf(null, { step: 'failed', message: 'It didn’t install before.', final: true })).toEqual(none)
   })
 
   it('asks to move the app first where it can’t replace itself', () => {
@@ -469,11 +493,10 @@ describe('offerOf', () => {
   })
 
   it('offers Download manually alone for an install that can’t be tried again', () => {
-    const final = { ...failure, retryable: false } as typeof failure
+    const final = { ...failure, retryable: false }
 
     expect(offerOf(updateReady({ installFailed: final }), idle)).toEqual({ ...none, manual: true })
-    expect(
-      offerOf(updateReady({ installFailed: { ...failure, retryable: true } as typeof failure }), idle).action,
-    ).toBe('retry')
+    expect(offerOf(updateReady({ state: 'available', installFailed: final }), idle)).toEqual({ ...none, manual: true })
+    expect(offerOf(updateStatus({ latest: '', installFailed: final }), idle)).toEqual({ ...none, manual: true })
   })
 })

@@ -134,12 +134,13 @@ describe('UpdateBanner', () => {
     expect(screen.getByRole('button', { name: 'Try again' })).toHaveFocus()
   })
 
-  it('hands focus to Later when a restart is refused after a held quit', () => {
+  it('hands focus to Download manually when the update can’t be tried again', () => {
     const { showStep } = shown(updateReady(), { step: 'restarting' })
 
-    showStep({ step: 'reopen', message: `Quit ${brand.name} and open it again, then restart to update.` })
+    showStep({ step: 'failed', message: '0.3.0 didn’t install before', final: true })
 
-    expect(screen.getByRole('button', { name: 'Later' })).toHaveFocus()
+    expect(buttons()).toEqual(['Download manually', 'Dismiss'])
+    expect(screen.getByRole('button', { name: 'Download manually' })).toHaveFocus()
   })
 
   it('leaves focus where it is when something has it', () => {
@@ -155,13 +156,21 @@ describe('UpdateBanner', () => {
   })
 
   it('takes no focus as the last launch’s failure shows', () => {
-    shown(updateReady({ installFailed: { version: '0.3.0', reason: 'It wouldn’t open.', log: true } }))
+    shown(
+      updateReady({
+        installFailed: { version: '0.3.0', reason: 'It didn’t quit in time.', log: true, retryable: true },
+      }),
+    )
 
     expect(document.body).toHaveFocus()
   })
 
   it('lets its buttons wrap under the words in a narrow window', () => {
-    shown(updateReady({ installFailed: { version: '0.3.0', reason: 'It wouldn’t open.', log: true } }))
+    shown(
+      updateReady({
+        installFailed: { version: '0.3.0', reason: 'It didn’t quit in time.', log: true, retryable: true },
+      }),
+    )
 
     const row = within(banner()).getByText(/didn’t install/).parentElement
     const actions = screen.getByRole('button', { name: 'Details' }).parentElement
@@ -178,26 +187,20 @@ describe('UpdateBanner', () => {
     expect(banner().querySelector('.border-warning')).toBeNull()
   })
 
-  it('says what to do after a held quit, offering no Try again, which can’t work', async () => {
-    const { update } = shown(updateReady(), {
-      step: 'reopen',
-      message: `Quit ${brand.name} and open it again, then restart to update.`,
-    })
+  it('says the update is finishing as the app quits on its own after a held quit, with nothing to click', () => {
+    shown(updateReady({ state: 'finishing', bannerHidden: true }), { step: 'restarting' })
 
-    expect(banner()).toHaveTextContent(`Quit ${brand.name} and open it again, then restart to update.`)
-    expect(
-      within(banner())
-        .getAllByRole('button')
-        .map((b) => b.textContent),
-    ).toEqual(['Later'])
-
-    await userEvent.click(screen.getByRole('button', { name: 'Later' }))
-    expect(update.later).toHaveBeenCalledOnce()
+    expect(banner()).toHaveTextContent(`Finishing the update… ${brand.name} will reopen in a moment.`)
+    expect(within(banner()).queryByRole('button')).not.toBeInTheDocument()
+    expect(screen.queryByRole('progressbar')).not.toBeInTheDocument()
+    expect(banner().querySelector('.border-warning')).toBeNull()
   })
 
   it('says the last launch’s update didn’t install: Try again, Download manually, Details', async () => {
     const { update, onDetails } = shown(
-      updateReady({ installFailed: { version: '0.3.0', reason: 'It wouldn’t open.', log: true } }),
+      updateReady({
+        installFailed: { version: '0.3.0', reason: 'It didn’t quit in time.', log: true, retryable: true },
+      }),
     )
 
     expect(banner()).toHaveTextContent(`The update to 0.3.0 didn’t install, so ${brand.name} is still on 0.2.0.`)
@@ -225,7 +228,10 @@ describe('UpdateBanner', () => {
 
   it('offers the newer version found since the last launch’s failure as any other', async () => {
     const { update } = shown(
-      updateReady({ latest: '0.3.1', installFailed: { version: '0.3.0', reason: 'It wouldn’t open.', log: true } }),
+      updateReady({
+        latest: '0.3.1',
+        installFailed: { version: '0.3.0', reason: 'It didn’t quit in time.', log: true, retryable: true },
+      }),
     )
 
     expect(buttons()).toEqual(['Restart to update', 'Details', 'Dismiss'])

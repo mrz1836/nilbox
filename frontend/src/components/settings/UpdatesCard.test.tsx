@@ -136,19 +136,20 @@ describe('UpdatesCard', () => {
     expect(screen.getByRole('button', { name: 'Restart to update' })).toBeDisabled()
   })
 
-  it('says what to do after a held quit, offering no restart, which can’t work in this run', () => {
-    card(updateReady({ lastError: `Couldn’t restart into 0.3.0, because ${brand.name} didn’t quit.` }), {
-      step: 'reopen',
-      message: `Quit ${brand.name} and open it again, then restart to update.`,
-    })
+  it('says the update is finishing as the app quits on its own, holding the buttons', () => {
+    card(updateReady({ state: 'finishing' }))
 
-    expect(line()).toHaveTextContent('0.3.0 is ready')
-    expect(screen.getByText(`Quit ${brand.name} and open it again, then restart to update.`)).toHaveClass(
-      'text-warning',
-    )
-    expect(line()).not.toHaveTextContent('didn’t quit')
+    expect(words()).toHaveTextContent('Finishing the update…')
     expect(screen.queryByRole('button', { name: 'Restart to update' })).not.toBeInTheDocument()
-    expect(screen.getByRole('button', check)).toBeEnabled()
+    expect(screen.getByRole('button', check)).toBeDisabled()
+  })
+
+  it('offers only the release page after a restart refused for an update that fails for good', () => {
+    card(updateReady(), { step: 'failed', message: '0.3.0 didn’t install before.', final: true })
+
+    expect(screen.getByRole('button', { name: 'Download manually' })).toBeEnabled()
+    expect(screen.queryByRole('button', { name: 'Try again' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Restart to update' })).not.toBeInTheDocument()
   })
 
   it('says the restart under way', () => {
@@ -223,15 +224,16 @@ describe('UpdatesCard', () => {
       updateReady({
         installFailed: {
           version: '0.3.0',
-          reason: 'The new version failed its signature check, so the old one was put back.',
+          reason: 'macOS didn’t let the update replace the app, so the old one was put back.',
           log: true,
+          retryable: true,
         },
       }),
     )
 
     expect(screen.getByText('The update to 0.3.0 didn’t install')).toBeInTheDocument()
     expect(
-      screen.getByText('The new version failed its signature check, so the old one was put back.'),
+      screen.getByText('macOS didn’t let the update replace the app, so the old one was put back.'),
     ).toBeInTheDocument()
 
     await userEvent.click(screen.getByRole('button', { name: 'Show log in Finder' }))
@@ -246,17 +248,25 @@ describe('UpdatesCard', () => {
   })
 
   it('offers Download manually alone for an install that can’t be tried again', () => {
-    const final = { version: '0.3.0', reason: 'The copy kept is damaged.', log: false, retryable: false }
+    const final = { version: '0.3.0', reason: 'It failed its signature check.', log: false, retryable: false }
 
-    card(updateReady({ installFailed: final }))
+    card(updateReady({ state: 'available', installFailed: final }))
 
     expect(screen.getByRole('button', { name: 'Download manually' })).toBeEnabled()
     expect(screen.queryByRole('button', { name: 'Try again' })).not.toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Restart to update' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Update' })).not.toBeInTheDocument()
+    expect(
+      screen.getByText('Trying it again would fail the same way, so download it from its release page.'),
+    ).toBeInTheDocument()
   })
 
   it('offers a newer version than the one that failed as any other', () => {
-    card(updateReady({ latest: '0.3.1', installFailed: { version: '0.3.0', reason: 'It wouldn’t open.', log: false } }))
+    card(
+      updateReady({
+        latest: '0.3.1',
+        installFailed: { version: '0.3.0', reason: 'It didn’t quit in time.', log: false, retryable: true },
+      }),
+    )
 
     expect(screen.getByRole('button', { name: 'Restart to update' })).toBeEnabled()
     expect(screen.getByText('The update to 0.3.0 didn’t install')).toBeInTheDocument()
@@ -264,7 +274,7 @@ describe('UpdatesCard', () => {
 
   it('says why the log couldn’t show, and offers none that wasn’t kept', async () => {
     platform.showInstallLog.mockRejectedValue(new Error('gone', { cause: { message: 'The log is gone.' } }))
-    const failed = { version: '0.3.0', reason: 'It wouldn’t open.', log: true }
+    const failed = { version: '0.3.0', reason: 'It didn’t quit in time.', log: true, retryable: true }
     const { unmount } = render(
       <UpdatesCard update={updateOf(updateReady({ installFailed: failed }))} settings={null} onSaved={vi.fn()} />,
       { wrapper: at() },

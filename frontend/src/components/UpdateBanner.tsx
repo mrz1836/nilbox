@@ -226,13 +226,6 @@ function Look({ banner, update, onDetails }: { banner: Exclude<Banner, { kind: '
           {banner.message}
         </Shell>
       )
-    case 'reopen':
-      // No restart works in this run, so nothing offers one: the words say what does.
-      return (
-        <Shell tone="warning" icon={warningIcon} actions={<Later onLater={later} />} focusFirst>
-          {banner.message}
-        </Shell>
-      )
     case 'failed':
       return (
         <Shell
@@ -275,8 +268,9 @@ function Look({ banner, update, onDetails }: { banner: Exclude<Banner, { kind: '
 // one available to download and restart into as one click (Update), the restart under way
 // with the download's progress (Later hides a download's), a restart that just failed or
 // the one before this launch that didn't install (Try again · Download manually, and
-// Details), a moment's wait while the last update finishes, what to do after a held quit
-// (no Try again, which can't work), and an update the app can't install where it runs.
+// Details, or Download manually alone for an update that fails the same way every time), a
+// moment's wait while the last update finishes, the app quitting on its own to finish an
+// update whose quit was held, and an update the app can't install where it runs.
 // What it shows is bannerOf's, and what it offers offerOf's (lib/update.ts), which About
 // offers too.
 //

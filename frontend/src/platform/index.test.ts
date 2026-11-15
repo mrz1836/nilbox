@@ -388,7 +388,10 @@ describe('restartToUpdateNow', () => {
       refused({ message: 'The last update is still finishing.', detail: { code: 'settling' } }),
     )
     mocks.update.Restart.mockRejectedValueOnce(
-      refused({ message: 'Quit the app and open it again, then restart to update.', detail: { code: 'reopen' } }),
+      refused({ message: 'The app is quitting to finish the update.', detail: { code: 'finishing' } }),
+    )
+    mocks.update.Restart.mockRejectedValueOnce(
+      refused({ message: '0.3.0 didn’t install before.', detail: { code: 'uninstallable' } }),
     )
 
     await expect(platform.restartToUpdateNow(true)).resolves.toEqual({
@@ -398,8 +401,13 @@ describe('restartToUpdateNow', () => {
     })
     await expect(platform.restartToUpdateNow(true)).resolves.toEqual({
       restarted: false,
-      refusal: 'reopen',
-      message: 'Quit the app and open it again, then restart to update.',
+      refusal: 'finishing',
+      message: 'The app is quitting to finish the update.',
+    })
+    await expect(platform.restartToUpdateNow(true)).resolves.toEqual({
+      restarted: false,
+      refusal: 'uninstallable',
+      message: '0.3.0 didn’t install before.',
     })
   })
 

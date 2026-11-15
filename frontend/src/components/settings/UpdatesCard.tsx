@@ -30,16 +30,11 @@ const modes: readonly { value: UpdateMode; label: string }[] = [
 ]
 
 // noteOf is what the Updates row says under the status: a moment's wait while the last
-// update finishes, quietly; what to do after a held quit; or the last failure.
+// update finishes, quietly, or the last failure.
 function noteOf(flow: RestartStep, failure: string): { text: string; tone: string } {
-  switch (flow.step) {
-    case 'waiting':
-      return { text: sentence(flow.message), tone: 'text-muted' }
-    case 'reopen':
-      return { text: sentence(flow.message), tone: 'text-warning' }
-    default:
-      return { text: failure, tone: 'text-danger' }
-  }
+  return flow.step === 'waiting'
+    ? { text: sentence(flow.message), tone: 'text-muted' }
+    : { text: failure, tone: 'text-danger' }
 }
 
 // StatusLine says where the update stands: the words, how far a download has got, a check
@@ -79,15 +74,15 @@ function UpdatesRow({ update }: { update: UpdateControl }) {
   const [error, setError] = useState('')
   const enabled = status?.enabled ?? false
   const state = status?.state ?? 'idle'
-  // busy is any step of the update under way, a moment's wait included, which holds the
-  // buttons. After a held quit nothing is under way, but no restart is offered: none works
-  // in this run.
+  // busy is any step of the update under way, a moment's wait and the app quitting on its
+  // own to finish an update included, which holds the buttons.
   const busy =
     checking ||
     (status?.checking ?? false) ||
     state === 'downloading' ||
     state === 'installing' ||
-    (flow.step !== 'idle' && flow.step !== 'failed' && flow.step !== 'reopen')
+    state === 'finishing' ||
+    (flow.step !== 'idle' && flow.step !== 'failed')
 
   const check = async () => {
     setError('')
@@ -174,6 +169,11 @@ function InstallFailedRow({ status }: { status: UpdateStatus }) {
         <div className="min-w-0">
           <p className="text-sm font-medium">The update to {failed.version} didn’t install</p>
           <p className="mt-0.5 text-xs text-muted">{failed.reason}</p>
+          {!failed.retryable && (
+            <p className="mt-0.5 text-xs text-muted">
+              Trying it again would fail the same way, so download it from its release page.
+            </p>
+          )}
           <ErrorText error={error} className="mt-1" />
         </div>
       </div>

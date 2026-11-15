@@ -283,7 +283,9 @@ describe('App’s update', () => {
 
   it('opens About from a failed install’s Details', async () => {
     platform.getUpdateStatus.mockResolvedValue(
-      updateReady({ installFailed: { version: '0.3.0', reason: 'It wouldn’t open.', log: false } }),
+      updateReady({
+        installFailed: { version: '0.3.0', reason: 'It didn’t quit in time.', log: false, retryable: true },
+      }),
     )
     await renderApp()
 
@@ -294,6 +296,6 @@ describe('App’s update', () => {
 
     const about = await screen.findByRole('region', { name: 'About' })
 
-    expect(await within(about).findByText('It wouldn’t open.')).toBeInTheDocument()
+    expect(await within(about).findByText('It didn’t quit in time.')).toBeInTheDocument()
   })
 })

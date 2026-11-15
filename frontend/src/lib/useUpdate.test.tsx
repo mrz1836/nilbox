@@ -5,7 +5,7 @@ import { brand } from '../generated/brand'
 import type { DownloadAnswer, RestartAnswer, UpdateStatus } from '../platform'
 import { runGoing, scriptRun, updateReady, updateStatus } from '../test/fixtures'
 import { emit, platform } from '../test/platform'
-import { settlingWords } from './update'
+import { finishingWords, settlingWords } from './update'
 import { useRestartToUpdate, useUpdate, useUpdateControl, waitFor as waitForSettling } from './useUpdate'
 
 vi.mock('../platform', () => import('../test/platform').then((fake) => fake.platform))
@@ -20,10 +20,13 @@ function got(status: UpdateStatus): DownloadAnswer {
   return { downloaded: true, status }
 }
 
-// settling is the words Go refuses with while the last update may still be finishing, which
-// the window says in its own (settlingWords), and held those after a held quit.
+// settling is the words Go refuses with while the last update may still be finishing, and
+// quitting those while a restart whose quit was held sees the app out: the window says
+// each in its own (settlingWords, finishingWords). uninstallable is Go's refusal of an
+// update that failed to install for good.
 const settling = 'The last update is still finishing. Try again in a moment.'
-const held = 'Quit Example and open it again, then restart to update.'
+const quitting = 'Example is quitting to finish the update.'
+const uninstallable = '0.3.0 didn’t install before, and would fail the same way again.'
 
 // pending is a call that never answers, so a step stays under way.
 function pending<T>(): Promise<T> {
@@ -649,23 +652,31 @@ describe('useRestartToUpdate', () => {
     expect(result.current.step).toEqual({ step: 'failed', message: 'Couldn’t install 0.3.0.' })
   })
 
-  it('says what to do after a held quit, for the rest of the run, with nothing to retry', async () => {
+  it('waits quietly while a restart whose quit was held sees the app out', async () => {
     platform.getUpdateStatus.mockResolvedValue(updateReady())
-    platform.restartToUpdateNow.mockResolvedValue({ restarted: false, refusal: 'reopen', message: held })
+    platform.restartToUpdateNow.mockResolvedValue({ restarted: false, refusal: 'finishing', message: quitting })
     const { result } = flow()
 
     act(() => {
       result.current.start()
     })
     await waitFor(() => {
-      expect(result.current.step).toEqual({ step: 'reopen', message: held })
+      expect(result.current.step).toEqual({ step: 'waiting', message: finishingWords })
     })
+  })
+
+  it('fails with nothing to try again for an update that failed to install for good', async () => {
+    platform.getUpdateStatus.mockResolvedValue(updateReady({ state: 'available', mode: 'notify' }))
+    platform.downloadUpdate.mockResolvedValue({ downloaded: false, refusal: 'uninstallable', message: uninstallable })
+    const { result } = flow()
 
     act(() => {
-      result.current.dismiss()
-      emit('updates:updated')
+      result.current.start()
     })
-    expect(result.current.step).toEqual({ step: 'reopen', message: held })
+    await waitFor(() => {
+      expect(result.current.step).toEqual({ step: 'failed', message: uninstallable, final: true })
+    })
+    expect(platform.restartToUpdateNow).not.toHaveBeenCalled()
   })
 })
 
@@ -893,7 +904,9 @@ describe('useUpdateControl', () => {
   })
 
   it('says the banner shows nothing for a failure put away, whose version is never offered as ready', async () => {
-    const failed = updateReady({ installFailed: { version: '0.3.0', reason: 'It wouldn’t open.', log: false } })
+    const failed = updateReady({
+      installFailed: { version: '0.3.0', reason: 'It didn’t quit in time.', log: false, retryable: true },
+    })
     platform.getUpdateStatus.mockResolvedValue(failed)
     platform.showUpdateBanner.mockResolvedValue(failed)
     const { result } = control()
@@ -933,7 +946,9 @@ describe('useUpdateControl', () => {
 
   it('puts away the last launch’s failure for the session, never offering that version as ready', async () => {
     platform.getUpdateStatus.mockResolvedValue(
-      updateReady({ installFailed: { version: '0.3.0', reason: 'It wouldn’t open.', log: false } }),
+      updateReady({
+        installFailed: { version: '0.3.0', reason: 'It didn’t quit in time.', log: false, retryable: true },
+      }),
     )
     const { result } = control()
 
@@ -955,7 +970,10 @@ describe('useUpdateControl', () => {
 
   it('puts away a failure of an older version, then offers the newer one ready', async () => {
     platform.getUpdateStatus.mockResolvedValue(
-      updateReady({ latest: '0.3.1', installFailed: { version: '0.3.0', reason: 'It wouldn’t open.', log: false } }),
+      updateReady({
+        latest: '0.3.1',
+        installFailed: { version: '0.3.0', reason: 'It didn’t quit in time.', log: false, retryable: true },
+      }),
     )
     const { result } = control()
 
@@ -1010,9 +1028,13 @@ describe('useUpdateControl', () => {
     expect(platform.restartToUpdateNow).toHaveBeenCalledOnce()
   })
 
-  it('shows what to do after a held quit, Later or not, and asks Go for no restart again', async () => {
+  it('says the update is finishing once a held quit’s restart returns, with nothing to click', async () => {
     platform.getUpdateStatus.mockResolvedValue(updateReady())
-    platform.restartToUpdateNow.mockResolvedValue({ restarted: false, refusal: 'reopen', message: held })
+    platform.restartToUpdateNow.mockImplementation(() => {
+      platform.getUpdateStatus.mockResolvedValue(updateReady({ state: 'finishing' }))
+
+      return Promise.resolve({ restarted: true, status: updateReady({ state: 'finishing' }) })
+    })
     const { result } = control()
 
     await waitFor(() => {
@@ -1022,22 +1044,44 @@ describe('useUpdateControl', () => {
       result.current.restart()
     })
     await waitFor(() => {
-      expect(result.current.banner).toEqual({ kind: 'reopen', message: held })
+      expect(platform.restartToUpdateNow).toHaveBeenCalledOnce()
+    })
+    // The update tells the window it changed, as it does once it finishes.
+    act(() => {
+      emit('updates:updated')
     })
 
-    act(() => {
-      result.current.later()
-    })
-    expect(result.current.banner).toEqual({ kind: 'none' })
-
-    // The menu bar's Restart to Update shows it again, and restarts nothing.
-    act(() => {
-      emit('updates:restart')
-    })
     await waitFor(() => {
-      expect(result.current.banner).toEqual({ kind: 'reopen', message: held })
+      expect(result.current.banner).toEqual({
+        kind: 'working',
+        text: 'Finishing the update…',
+        progress: null,
+        detail: `${brand.name} will reopen in a moment.`,
+      })
     })
-    expect(platform.showUpdateBanner).toHaveBeenCalledOnce()
-    expect(platform.restartToUpdateNow).toHaveBeenCalledOnce()
+    expect(result.current.flow).toEqual({ step: 'idle' })
+    expect(result.current.offer.action).toBeNull()
+  })
+
+  it('offers only the release page after a restart refused for an update that fails for good', async () => {
+    platform.getUpdateStatus.mockResolvedValue(updateReady())
+    platform.restartToUpdateNow.mockResolvedValue({
+      restarted: false,
+      refusal: 'uninstallable',
+      message: uninstallable,
+    })
+    const { result } = control()
+
+    await waitFor(() => {
+      expect(result.current.banner.kind).toBe('ready')
+    })
+    act(() => {
+      result.current.restart()
+    })
+
+    await waitFor(() => {
+      expect(result.current.banner).toEqual({ kind: 'failed', message: uninstallable })
+    })
+    expect(result.current.offer).toEqual({ action: null, label: '', manual: true, move: false })
   })
 })

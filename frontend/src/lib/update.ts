@@ -3,7 +3,7 @@
 // pages. Everything here is pure; lib/useUpdate.ts holds the status and runs the restart.
 
 import { brand } from '../generated/brand'
-import type { InstallFailure, RunGoing, ScriptRun, UpdateLocation, UpdateStatus } from '../platform'
+import type { RunGoing, ScriptRun, UpdateLocation, UpdateStatus } from '../platform'
 import type { IssueDraft } from './issueDrafts'
 import type { ReviewDraft } from './reviewDrafts'
 import { heldReleaseText, heldRunText, releaseTagRisk, tagRisk } from './runsGoing'
@@ -12,9 +12,10 @@ import { heldReleaseText, heldRunText, releaseTagRisk, tagRisk } from './runsGoi
 // the newer version first (a Try again with nothing found yet); getting it ready to ask,
 // with what it shows unchanged; downloading it first, as Just tell me's Update does;
 // asking first, as the question says; restarting, once Restart is called; failed, with the
-// backend's words for why; waiting, refused for a moment while the last update may still
-// be finishing, which is no failure; or reopen, refused because a quit was held in this
-// run, which no retry answers until the app is quit and opened again.
+// backend's words for why, final when trying again would fail the same way (an update that
+// failed to install for good); or waiting, refused for a moment while the last update may
+// still be finishing, or a restart whose quit was held sees the app out, which is no
+// failure.
 export type RestartStep =
   | { step: 'idle' }
   | { step: 'checking' }
@@ -22,9 +23,8 @@ export type RestartStep =
   | { step: 'downloading' }
   | { step: 'asking'; question: RestartQuestion }
   | { step: 'restarting' }
-  | { step: 'failed'; message: string }
+  | { step: 'failed'; message: string; final?: true }
   | { step: 'waiting'; message: string }
-  | { step: 'reopen'; message: string }
 
 // RestartQuestion is what restarting would lose, which the window asks about first: the
 // runs going in the app it would stop (null when Go says runs go but couldn't list them,
@@ -45,6 +45,15 @@ export function namesRuns(question: RestartQuestion): boolean {
 // its own words, since that can take a while.
 export const settlingWords = 'The last update is still finishing. This can take a minute or two.'
 
+// finishingText and finishingDetail are what the window says while a restart whose quit
+// was held sees the app out (finishing): the app quits on its own, and the update's helper
+// installs the update and opens it.
+export const finishingText = 'Finishing the update…'
+export const finishingDetail = `${brand.name} will reopen in a moment.`
+
+// finishingWords say both, as one line.
+export const finishingWords = `${finishingText} ${finishingDetail}`
+
 // Banner is what the update banner shows, if anything:
 //   - ready: the update is downloaded, waiting for Restart to update;
 //   - available: a newer version is out, which Update downloads and restarts into;
@@ -52,7 +61,6 @@ export const settlingWords = 'The last update is still finishing. This can take 
 //     a download has got (progress, 0 to 100), or null for work with no measure;
 //   - failed: the restart the user asked for just failed, with why;
 //   - waiting: the last update is still finishing, so the restart waits a moment, quietly;
-//   - reopen: a quit was held, so the app must be quit and opened again to restart;
 //   - lastLaunch: the restart before this launch didn't install its update;
 //   - location: an update waits, but the app can't replace itself where it runs.
 export type Banner =
@@ -62,7 +70,6 @@ export type Banner =
   | { kind: 'working'; text: string; progress: number | null; detail: string }
   | { kind: 'failed'; message: string }
   | { kind: 'waiting'; message: string }
-  | { kind: 'reopen'; message: string }
   | { kind: 'lastLaunch'; version: string; current: string }
   | { kind: 'location'; version: string; ready: boolean }
 
@@ -85,11 +92,18 @@ export function restartingText(version: string): string {
 // the quit: it backs the data up, then stages the update beside the app.
 export const backingUp = 'Backing up your data and preparing the update…'
 
+// finishing is what a restart whose quit was held shows while the app quits on its own.
+const finishing: Banner = { kind: 'working', text: finishingText, progress: null, detail: finishingDetail }
+
 // working is what a restart under way shows, from the live status, so the version named
 // is the one being installed, which may be newer than the one first shown: a download's
 // progress, determinate, or the restart itself, with no measure.
 function working(status: UpdateStatus | null, step: RestartStep['step']): Banner {
   const version = status?.latest ?? ''
+
+  if (status?.state === 'finishing') {
+    return finishing
+  }
 
   if (step === 'checking') {
     return { kind: 'working', text: 'Checking for updates…', progress: null, detail: '' }
@@ -110,11 +124,12 @@ function working(status: UpdateStatus | null, step: RestartStep['step']): Banner
 // bannerOf works out what the update banner shows, from the update's status, the
 // window's restart, and the failure the user put away this session (lastLaunchDismissed,
 // a version, or ''):
+//   - a restart whose quit was held, as the app quits on its own to finish it, wins over
+//     everything, Later or not;
 //   - the restart's failure, its wait while the last update finishes, then the restart
-//     under way, win over everything;
+//     under way, win over the rest;
 //   - nothing shows for a build that doesn't update, or before the status loads;
 //   - a restart under way that the window didn't start shows as working too;
-//   - after a held quit, what to do instead shows, unless hidden with Later;
 //   - the restart before this launch failing shows until put away, over the same version
 //     ready again (Try again restarts into it), which is never offered as plainly ready;
 //   - an update ready, or available, shows unless hidden with Later, as the location
@@ -123,6 +138,10 @@ function working(status: UpdateStatus | null, step: RestartStep['step']): Banner
 //     download quietly, so nothing shows until it is ready, unless its download failed.
 // Background checks and downloads never show: About tells them.
 export function bannerOf(status: UpdateStatus | null, flow: RestartStep, lastLaunchDismissed: string): Banner {
+  if (status?.state === 'finishing') {
+    return finishing
+  }
+
   if (flow.step === 'failed' || flow.step === 'waiting') {
     return { kind: flow.step, message: sentence(flow.message) }
   }
@@ -137,10 +156,6 @@ export function bannerOf(status: UpdateStatus | null, flow: RestartStep, lastLau
 
   if (status.state === 'installing') {
     return working(status, 'restarting')
-  }
-
-  if (flow.step === 'reopen') {
-    return status.bannerHidden ? { kind: 'none' } : { kind: 'reopen', message: sentence(flow.message) }
   }
 
   const failed = status.installFailed
@@ -200,30 +215,23 @@ function offering(action: OfferAction | null, change: Partial<Offer> = {}): Offe
   return { action, label: action === null ? '' : offerLabels[action], manual: false, move: false, ...change }
 }
 
-// retryable reports whether an install that failed can be tried again from the copy kept,
-// as every one can until the status says one can't (installFailed.retryable).
-function retryable(failed: InstallFailure): boolean {
-  return !('retryable' in failed) || failed.retryable !== false
-}
-
 // offerOf works out what the window offers, from the update's status and the restart
 // (what the user put away changes only whether the banner shows, never what is offered):
-//   - after a restart that just failed, Try again, and Download manually once the status
-//     names a release page;
-//   - nothing for a build that doesn't update, before the status loads, or after a held
-//     quit, when no restart can work in this run;
+//   - after a restart that just failed, Try again, or nothing when trying again would fail
+//     the same way, and Download manually once the status names a release page;
+//   - nothing for a build that doesn't update, or before the status loads;
 //   - where the app can't replace itself, that it must move first, and no restart;
 //   - after an install that failed at the last launch, for the version that failed (or
 //     none known), Try again and Download manually, or Download manually alone when it
 //     can't be tried again: never a plain Restart to update for it;
 //   - otherwise Restart to update for a version ready, Update for one found, and nothing
-//     while one downloads, installs, or none is newer.
+//     while one downloads, installs, finishes installing, or none is newer.
 export function offerOf(status: UpdateStatus | null, flow: RestartStep): Offer {
   if (flow.step === 'failed') {
-    return offering('retry', { manual: status !== null && status.releaseUrl !== '' })
+    return offering(flow.final === true ? null : 'retry', { manual: status !== null && status.releaseUrl !== '' })
   }
 
-  if (status === null || !status.enabled || flow.step === 'reopen') {
+  if (status === null || !status.enabled) {
     return offering(null)
   }
 
@@ -236,7 +244,7 @@ export function offerOf(status: UpdateStatus | null, flow: RestartStep): Offer {
   }
 
   if (failedOnOffer) {
-    return retryable(failed) ? offering('retry', { manual: true }) : offering(null, { manual: true })
+    return offering(failed.retryable ? 'retry' : null, { manual: true })
   }
 
   if (!pending) {
@@ -277,6 +285,8 @@ export function aboutLine(status: UpdateStatus): AboutLine {
   switch (status.state) {
     case 'installing':
       return line(restartingText(status.latest))
+    case 'finishing':
+      return line(finishingText)
     case 'downloading':
       return { ...line(downloadingWords(status.latest)), progress: status.progress }
     case 'ready':
