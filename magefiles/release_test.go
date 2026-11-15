@@ -43,9 +43,6 @@ const (
 	originalKeychains = "    \"/Library/Keychains/My Keys.keychain-db\"\n    \"/Library/Keychains/System.keychain\"\n"
 )
 
-// bundleName is the app bundle's folder name.
-const bundleName = brand.Name + ".app"
-
 // keychainFile makes an empty file where CODESIGN_KEYCHAIN would name a keychain, named
 // as testKeychain is, and returns its path.
 func keychainFile(t *testing.T) string {
@@ -256,30 +253,94 @@ func testConfig(t *testing.T, keys releaseKeys, keychain string) packageConfig {
 	}
 }
 
+// unsignedBundle is where app:buildRelease builds the unsigned bundle of testVersion.
+func unsignedBundle() string {
+	return filepath.Join(unsignedRoot, testVersion, bundleName)
+}
+
+// releaseBuildLines are the tool lines building testVersion's unsigned bundle logs, as
+// patterns: the frontend, both slices, lipo, and the Info.plist, into bin/unsigned. No
+// security and no codesign line is among them.
+func releaseBuildLines() []string {
+	q := regexp.QuoteMeta
+	exe := bundleExecutable(unsignedBundle())
+	plist := filepath.Join(unsignedBundle(), "Contents", "Info.plist")
+
+	goBuild := func(arch string) string {
+		return q("go GOARCH="+arch+" build -tags desktop,production -trimpath -buildvcs=false -ldflags -s -w -X main.version=") +
+			`\S+` + q(" -X main.commit=") + `\S+` + q(" -X main.buildDate=") + `\S+` +
+			q(" -X main.release="+testVersion+" -X main.buildNumber=") + `\S+` + q(" -X main.flavor=release -o ") +
+			q(filepath.Join(unsignedRoot, testVersion)+"/.slices-") + `\S+` + q("/"+brand.Slug+"-"+arch+" ./cmd/"+brand.Slug)
+	}
+
+	return []string{
+		q("pnpm install --frozen-lockfile"),
+		q("pnpm build"),
+		goBuild("arm64"),
+		goBuild("amd64"),
+		q("lipo -create -output "+exe+" ") + `\S+` + q("/"+brand.Slug+"-arm64 ") + `\S+` + q("/"+brand.Slug+"-amd64"),
+		q("lipo -archs " + exe),
+		q("plutil -replace CFBundleShortVersionString -string 1.2.3 " + plist),
+		q("plutil -replace CFBundleVersion -string " + brandgen.PlaceholderVersion + " " + plist),
+	}
+}
+
+// releaseSignLines are the tool lines signing the unsigned bundle at unsigned and
+// packaging testVersion log, as patterns: the bundle's architectures read, then, with
+// keychain first on the search list (none when keychain is ""), the copy in bin/release
+// signed and verified, the zip, the disk image, and its signature, and the list put back.
+func releaseSignLines(unsigned, keychain string) []string {
+	q := regexp.QuoteMeta
+	out := filepath.Join(releaseRoot, testVersion)
+	bundle := filepath.Join(out, bundleName)
+	names := update.AssetNames(testVersion)
+	keychains := q("/Library/Keychains/My Keys.keychain-db /Library/Keychains/System.keychain")
+
+	sign := "codesign --force --sign " + testIdentity + " "
+	if keychain != "" {
+		sign += "--keychain " + keychain + " "
+	}
+
+	sign += "--timestamp=none "
+
+	lines := []string{q("lipo -archs " + bundleExecutable(unsigned))}
+
+	if keychain != "" {
+		lines = append(lines,
+			q("security list-keychains -d user"),
+			q("security list-keychains -d user -s "+keychain+" ")+keychains)
+	}
+
+	lines = append(lines,
+		q(sign+bundle),
+		q("codesign --verify --deep --strict "+bundle),
+		q("ditto -c -k --norsrc --keepParent "+bundle+" "+filepath.Join(out, names.Zip)),
+		q("ditto "+bundle+" "+out+"/.dmg-")+`\S+`+q("/"+bundleName),
+		q("hdiutil create -volname "+brand.Name+" -srcfolder "+out+"/.dmg-")+`\S+`+
+			q(" -ov -format ULMO "+filepath.Join(out, names.DMG)),
+		q(sign+filepath.Join(out, names.DMG)),
+		q("codesign --verify --strict "+filepath.Join(out, names.DMG)))
+
+	if keychain != "" {
+		lines = append(lines, q("security list-keychains -d user -s ")+keychains)
+	}
+
+	return lines
+}
+
 //nolint:paralleltest // changes the process's working directory, environment, PATH, and standard output
 func TestPackageRelease(t *testing.T) {
 	keys := releaseKeyPair(1)
 	out := filepath.Join("bin", "release", testVersion)
 	bundle := filepath.Join(out, bundleName)
 	exe := filepath.Join(bundle, "Contents", "MacOS", brand.Slug)
-	plist := filepath.Join(bundle, "Contents", "Info.plist")
 	names := update.AssetNames(testVersion)
-	q := regexp.QuoteMeta
-	keychains := q("/Library/Keychains/My Keys.keychain-db /Library/Keychains/System.keychain")
-
-	goBuild := func(arch string) string {
-		return q("go GOARCH="+arch+" build -tags desktop,production -trimpath -buildvcs=false -ldflags -s -w -X main.version=") +
-			`\S+` + q(" -X main.commit=") + `\S+` + q(" -X main.buildDate=") + `\S+` +
-			q(" -X main.release="+testVersion+" -X main.buildNumber=") + `\S+` + q(" -X main.flavor=release -o ") +
-			`\S+` + q("/"+brand.Slug+"-"+arch+" ./cmd/"+brand.Slug)
-	}
 
 	t.Run("builds, signs, packages, and verifies a universal release", func(t *testing.T) {
 		dir := inTempDir(t)
 		checkout(t, dir)
 		_, log := releaseTools(t, "v"+testVersion)
 		keychain := keychainFile(t)
-		signed := q("codesign --force --sign "+testIdentity+" --keychain "+keychain+" --timestamp=none ") + "%s"
 
 		var err error
 
@@ -287,27 +348,9 @@ func TestPackageRelease(t *testing.T) {
 
 		require.NoError(t, err)
 
-		requireLines(t, []string{
-			q("pnpm install --frozen-lockfile"),
-			q("pnpm build"),
-			q("security list-keychains -d user"),
-			q("security list-keychains -d user -s "+keychain+" ") + keychains,
-			goBuild("arm64"),
-			goBuild("amd64"),
-			q("lipo -create -output "+exe+" ") + `\S+` + q("/"+brand.Slug+"-arm64 ") + `\S+` + q("/"+brand.Slug+"-amd64"),
-			q("lipo -archs " + exe),
-			q("plutil -replace CFBundleShortVersionString -string 1.2.3 " + plist),
-			q("plutil -replace CFBundleVersion -string " + brandgen.PlaceholderVersion + " " + plist),
-			fmtPattern(signed, q(bundle)),
-			q("codesign --verify --deep --strict " + bundle),
-			q("ditto -c -k --norsrc --keepParent " + bundle + " " + filepath.Join(out, names.Zip)),
-			q("ditto "+bundle+" "+out+"/.dmg-") + `\S+` + q("/"+bundleName),
-			q("hdiutil create -volname "+brand.Name+" -srcfolder "+out+"/.dmg-") + `\S+` +
-				q(" -ov -format ULMO "+filepath.Join(out, names.DMG)),
-			fmtPattern(signed, q(filepath.Join(out, names.DMG))),
-			q("codesign --verify --strict " + filepath.Join(out, names.DMG)),
-			q("security list-keychains -d user -s ") + keychains,
-		}, toolLines(t, log))
+		// The keychain goes on the search list only once the bundle is built: no build tool
+		// runs while it is there.
+		requireLines(t, append(releaseBuildLines(), releaseSignLines(unsignedBundle(), keychain)...), toolLines(t, log))
 
 		assert.Equal(t, []string{
 			"git rev-parse --verify --quiet refs/tags/v" + testVersion + "^{commit}",
@@ -467,11 +510,6 @@ func TestPackageRelease(t *testing.T) {
 			assert.Contains(t, err.Error(), tt.wantErr)
 		})
 	}
-}
-
-// fmtPattern fills the one %s in pattern with arg.
-func fmtPattern(pattern, arg string) string {
-	return strings.Replace(pattern, "%s", arg, 1)
 }
 
 // sha256Hex returns the SHA-256 of the file at path, as hex.

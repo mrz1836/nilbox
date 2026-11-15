@@ -43,6 +43,13 @@ const (
 	// releaseRoot holds each release's files, in a folder named for its version.
 	releaseRoot = "bin/release"
 
+	// unsignedRoot holds each release's unsigned bundle, alone in a folder named for its
+	// version, which app:buildRelease builds and app:signRelease signs.
+	unsignedRoot = "bin/unsigned"
+
+	// bundleName is the app bundle's folder name.
+	bundleName = brand.Name + ".app"
+
 	// dmgFormat is the disk image's format: compressed with LZMA, which macOS reads since
 	// 10.15, and about a third smaller than the zlib UDZO.
 	dmgFormat = "ULMO"
@@ -71,8 +78,18 @@ var (
 	errNoReleaseKey = errors.New("no release key pinned yet: make one with magex app:keygen and pin its public key " +
 		"as update.ReleaseKey")
 
-	// errMissingEnv is returned when app:package lacks a required environment variable.
-	errMissingEnv = errors.New("app:package needs these environment variables")
+	// errMissingEnv is returned when app:package or app:signRelease lacks a required
+	// environment variable.
+	errMissingEnv = errors.New("signing a release needs these environment variables")
+
+	// errBundlePath is returned when app:signRelease isn't given the absolute path of an
+	// unsigned bundle outside the release's own folder.
+	errBundlePath = errors.New("bundle= must be the absolute path of the unsigned " + bundleName +
+		" app:buildRelease built, outside " + releaseRoot)
+
+	// errUnsignedBundle is returned for a bundle to sign that isn't an unsigned bundle as
+	// app:buildRelease builds it.
+	errUnsignedBundle = errors.New("not an unsigned bundle as app:buildRelease builds it")
 
 	// errBadVersion is returned for a RELEASE_VERSION that isn't a release's version.
 	errBadVersion = errors.New(envReleaseVersion + " is not a release version such as 0.3.0 or 0.3.0-rc.1")
@@ -119,10 +136,11 @@ var (
 // pins. It reads RELEASE_VERSION, the version without its v, whose tag must name HEAD in a
 // working tree with no changes; CODESIGN_IDENTITY, a name or SHA-1, never - (ad hoc);
 // CODESIGN_KEYCHAIN, optionally, the absolute path of a keychain that holds the identity,
-// which goes on the keychain search list while the target runs; and UPDATE_SIGNING_KEY,
-// the path to the private key app:keygen wrote.
+// which goes on the keychain search list while the bundle is signed; and
+// UPDATE_SIGNING_KEY, the path to the private key app:keygen wrote. It is
+// app:buildRelease, then app:signRelease of the bundle that built, in one target.
 //
-//	RELEASE_VERSION=0.3.0 CODESIGN_IDENTITY=<identity> UPDATE_SIGNING_KEY=<key file> magex app:package
+//	RELEASE_VERSION=0.4.0 CODESIGN_IDENTITY=<identity> UPDATE_SIGNING_KEY=<key file> magex app:package
 func (App) Package() error {
 	if runtime.GOOS != "darwin" {
 		return errNeedsMacOS
@@ -134,6 +152,45 @@ func (App) Package() error {
 	}
 
 	return packageRelease(cfg)
+}
+
+// BuildRelease builds the first half of app:package, which needs no secret: the
+// release's universal bundle for Apple silicon and Intel, unsigned, alone in
+// bin/unsigned/<version>/. It reads RELEASE_VERSION, whose tag must name HEAD in a working
+// tree with no changes, and refuses while the app pins no release key, as app:package
+// does. app:signRelease signs what it builds.
+//
+//	RELEASE_VERSION=0.4.0 magex app:buildRelease
+func (App) BuildRelease() error {
+	if runtime.GOOS != "darwin" {
+		return errNeedsMacOS
+	}
+
+	_, err := buildReleaseBundle(os.Getenv(envReleaseVersion), pinnedReleaseKey)
+
+	return err
+}
+
+// SignRelease builds the second half of app:package from the unsigned bundle
+// app:buildRelease built: given its absolute path as bundle=, it checks the bundle (named
+// as the app's, alone in its folder, folders and regular files only, unsigned, and
+// universal), copies it into bin/release/<version>/, signs it, and builds the release's
+// other files there, exactly as app:package does. It reads the environment app:package
+// reads, and checks the tag and the working tree as it does.
+//
+//	RELEASE_VERSION=0.4.0 CODESIGN_IDENTITY=<identity> UPDATE_SIGNING_KEY=<key file> \
+//	  magex app:signRelease bundle=<absolute path of bin/unsigned/0.4.0/<Name>.app>
+func (App) SignRelease() error {
+	if runtime.GOOS != "darwin" {
+		return errNeedsMacOS
+	}
+
+	cfg, err := packageConfigFromEnv(pinnedReleaseKey)
+	if err != nil {
+		return err
+	}
+
+	return signReleaseBundle(cfg, mageArg("bundle"))
 }
 
 // Verify checks a release's files as the app will: the update manifest in dir, against
@@ -206,9 +263,9 @@ func cleanPath(path string) string {
 }
 
 // packageRelease builds the release cfg describes, the steps App.Package runs once it
-// knows it is on macOS. Everything it can check without building, the version, the
-// identity, the keychain, the keys, the tag, and the working tree, it checks before any
-// tool but git runs.
+// knows it is on macOS: app:buildRelease's, then app:signRelease's. Everything it can
+// check without building, the version, the identity, the keychain, the keys, the tag, and
+// the working tree, it checks before any tool but git runs.
 func packageRelease(cfg packageConfig) error {
 	keys, err := cfg.check()
 	if err != nil {
@@ -223,11 +280,229 @@ func packageRelease(cfg packageConfig) error {
 		return err
 	}
 
-	if err = prepareBuild(); err != nil {
+	bundle, err := buildUnsignedRelease(cfg.version)
+	if err != nil {
 		return err
 	}
 
-	return withKeychain(cfg.keychain, func() error { return buildRelease(cfg, keys) })
+	return signRelease(cfg, keys, bundle)
+}
+
+// buildReleaseBundle builds the unsigned bundle of the release of version, the steps
+// App.BuildRelease runs once it knows it is on macOS, and returns its path. It refuses
+// while no release key is pinned (releaseKey, as app:package does, so a release that could
+// never ship isn't built), a version out of form, a tag that doesn't name HEAD, and a
+// working tree with changes, before any tool but git runs.
+func buildReleaseBundle(version, releaseKey string) (string, error) {
+	switch {
+	case releaseKey == "":
+		return "", errNoReleaseKey
+	case !update.ValidVersion(version):
+		return "", fmt.Errorf("%w: %q", errBadVersion, version)
+	}
+
+	if err := checkReleaseTag(version); err != nil {
+		return "", err
+	}
+
+	if err := checkCleanTree(); err != nil {
+		return "", err
+	}
+
+	return buildUnsignedRelease(version)
+}
+
+// signReleaseBundle signs the unsigned bundle at bundle and packages the release cfg
+// describes, the steps App.SignRelease runs once it knows it is on macOS. Before the
+// keychain search list is touched, it checks what packageRelease checks, and that bundle
+// is an absolute path outside the release's own folder, which packaging empties first.
+func signReleaseBundle(cfg packageConfig, bundle string) error {
+	keys, err := cfg.check()
+	if err != nil {
+		return err
+	}
+
+	if err = checkBundlePath(bundle, cfg.version); err != nil {
+		return err
+	}
+
+	if err = checkReleaseTag(cfg.version); err != nil {
+		return err
+	}
+
+	if err = checkCleanTree(); err != nil {
+		return err
+	}
+
+	return signRelease(cfg, keys, filepath.Clean(bundle))
+}
+
+// checkBundlePath fails unless bundle is an absolute path outside the release folder of
+// version, which packaging the release empties before it copies the bundle in.
+func checkBundlePath(bundle, version string) error {
+	if bundle == "" || !filepath.IsAbs(bundle) {
+		return fmt.Errorf("%w: %q", errBundlePath, bundle)
+	}
+
+	out, err := filepath.Abs(filepath.Join(filepath.FromSlash(releaseRoot), version))
+	if err != nil {
+		return fmt.Errorf("find the release's folder: %w", err)
+	}
+
+	rel, err := filepath.Rel(out, filepath.Clean(bundle))
+	if err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return fmt.Errorf("%w: %s is inside it", errBundlePath, bundle)
+	}
+
+	return nil
+}
+
+// buildUnsignedRelease checks the brand files, builds the frontend, and builds the release
+// of version's universal bundle, unsigned, into a fresh bin/unsigned/<version>/, alone in
+// it. It returns the bundle's path.
+func buildUnsignedRelease(version string) (string, error) {
+	if err := prepareBuild(); err != nil {
+		return "", err
+	}
+
+	dir := filepath.Join(filepath.FromSlash(unsignedRoot), version)
+	bundle := filepath.Join(dir, bundleName)
+
+	if err := freshFolder(dir); err != nil {
+		return "", err
+	}
+
+	spec := bundleSpec{bundle: bundle, meta: releaseMeta(readBuildMeta(), version), arches: releaseArches()}
+	if _, err := buildUnsignedBundle(spec); err != nil {
+		return "", err
+	}
+
+	say("✅ Built the unsigned bundle " + bundle)
+
+	return bundle, nil
+}
+
+// signRelease checks the unsigned bundle at unsigned, then, with cfg's keychain first on
+// the search list, signs a copy of it and builds the release's other files with it, as
+// buildRelease does.
+func signRelease(cfg packageConfig, keys releaseKeys, unsigned string) error {
+	if err := checkUnsignedBundle(unsigned); err != nil {
+		return err
+	}
+
+	return withKeychain(cfg.keychain, func() error { return buildRelease(cfg, keys, unsigned) })
+}
+
+// checkUnsignedBundle fails unless bundle is an unsigned bundle as app:buildRelease builds
+// it: a folder (not a link) named as the app's, alone in its folder, holding only folders
+// and regular files (no link, which is the one way out of it), its Info.plist and binary
+// among them, no code signature yet, and a binary lipo reads both release architectures
+// in. A workflow's build artifact is checked so before it is signed.
+func checkUnsignedBundle(bundle string) error {
+	info, err := os.Lstat(bundle)
+
+	switch {
+	case err != nil:
+		return fmt.Errorf("%w: %w", errUnsignedBundle, err)
+	case !info.IsDir():
+		return fmt.Errorf("%w: %s is not a folder", errUnsignedBundle, bundle)
+	case filepath.Base(bundle) != bundleName:
+		return fmt.Errorf("%w: %s isn't named %s", errUnsignedBundle, bundle, bundleName)
+	}
+
+	if err = checkAlone(bundle); err != nil {
+		return err
+	}
+
+	if err = checkBundleEntries(bundle); err != nil {
+		return err
+	}
+
+	return checkArches(bundleExecutable(bundle), releaseArches())
+}
+
+// checkAlone fails unless bundle is the only entry of its folder, as it is in
+// app:buildRelease's folder and in the build artifact a workflow hands app:signRelease.
+func checkAlone(bundle string) error {
+	entries, err := os.ReadDir(filepath.Dir(bundle))
+	if err != nil {
+		return fmt.Errorf("%w: %w", errUnsignedBundle, err)
+	}
+
+	others := make([]string, 0, len(entries))
+
+	for _, e := range entries {
+		if e.Name() != filepath.Base(bundle) {
+			others = append(others, e.Name())
+		}
+	}
+
+	if len(others) > 0 {
+		return fmt.Errorf("%w: it must be alone in its folder, which also holds %s", errUnsignedBundle,
+			strings.Join(others, ", "))
+	}
+
+	return nil
+}
+
+// checkBundleEntries walks bundle inside an os.Root, so nothing it reads lies outside it,
+// and fails on an entry that is neither a folder nor a regular file, on a code signature,
+// and when the Info.plist or the binary is missing.
+func checkBundleEntries(bundle string) error {
+	root, err := os.OpenRoot(bundle)
+	if err != nil {
+		return fmt.Errorf("%w: %w", errUnsignedBundle, err)
+	}
+	defer func() { _ = root.Close() }()
+
+	files := map[string]bool{}
+
+	err = fs.WalkDir(root.FS(), ".", func(name string, d fs.DirEntry, walkErr error) error {
+		switch {
+		case walkErr != nil:
+			return walkErr
+		case !d.IsDir() && !d.Type().IsRegular():
+			return fmt.Errorf("%w: %s is a link or a special file", errUnsignedBundle, name)
+		case name == "Contents/_CodeSignature":
+			return fmt.Errorf("%w: it is signed already", errUnsignedBundle)
+		}
+
+		files[name] = d.Type().IsRegular()
+
+		return nil
+	})
+	if err != nil {
+		if errors.Is(err, errUnsignedBundle) {
+			return err
+		}
+
+		return fmt.Errorf("%w: %w", errUnsignedBundle, err)
+	}
+
+	for _, want := range []string{"Contents/Info.plist", "Contents/MacOS/" + brand.Slug} {
+		if !files[want] {
+			return fmt.Errorf("%w: it lacks %s", errUnsignedBundle, want)
+		}
+	}
+
+	return nil
+}
+
+// copyBundle copies the bundle at src to dst, which must not exist yet, read through an
+// os.Root of src; checkUnsignedBundle has refused a link or a special file inside it,
+// which the copy refuses too. Modes are set again before the copy is signed.
+func copyBundle(src, dst string) error {
+	root, err := os.OpenRoot(src)
+	if err != nil {
+		return fmt.Errorf("copy the unsigned bundle: %w", err)
+	}
+	defer func() { _ = root.Close() }()
+
+	if err = os.CopyFS(dst, root.FS()); err != nil {
+		return fmt.Errorf("copy the unsigned bundle: %w", err)
+	}
+
+	return nil
 }
 
 // check refuses a release that could never ship: a version out of form, an ad hoc
@@ -377,21 +652,22 @@ func releaseMeta(meta buildMeta, version string) buildMeta {
 	return meta
 }
 
-// buildRelease builds every file of the release cfg describes into its folder, signing
-// with keys, then checks them as the app and app:verify will, and reports their sizes.
-func buildRelease(cfg packageConfig, keys releaseKeys) error {
+// buildRelease builds every file of the release cfg describes into its own fresh folder
+// from the unsigned bundle at unsigned, which it leaves as it is: a copy of the bundle,
+// signed, then its zip, the disk image, SHA256SUMS, and the manifest, signed with keys.
+// Last, it checks them as the app and app:verify will, and reports their sizes.
+func buildRelease(cfg packageConfig, keys releaseKeys, unsigned string) error {
 	out := filepath.Join(filepath.FromSlash(releaseRoot), cfg.version)
 	names := update.AssetNames(cfg.version)
-	bundle := filepath.Join(out, brand.Name+".app")
+	bundle := filepath.Join(out, bundleName)
 	zipPath := filepath.Join(out, names.Zip)
 	dmgPath := filepath.Join(out, names.DMG)
 	sign := signer{identity: cfg.identity, keychain: cfg.keychain}
 
 	steps := []func() error{
 		func() error { return freshFolder(out) },
-		func() error {
-			return assembleBundle(bundleSpec{bundle: bundle, meta: releaseMeta(readBuildMeta(), cfg.version), arches: releaseArches(), signer: sign})
-		},
+		func() error { return copyBundle(unsigned, bundle) },
+		func() error { return signBundle(bundle, bundleExecutable(bundle), sign) },
 		func() error { return verifySignature(bundle, "--deep") },
 		func() error { return zipBundle(bundle, zipPath) },
 		func() error { return makeDMG(bundle, dmgPath, sign) },
@@ -410,9 +686,11 @@ func buildRelease(cfg packageConfig, keys releaseKeys) error {
 	return nil
 }
 
-// freshFolder empties dir of an earlier run's files, creating it when it is missing.
+// freshFolder empties dir of an earlier run's files, creating it when it is missing. dir is
+// always bin/release/<version> or bin/unsigned/<version>, for a version its caller has
+// held to update.ValidVersion, so it names no folder outside them.
 func freshFolder(dir string) error {
-	if err := os.RemoveAll(dir); err != nil {
+	if err := os.RemoveAll(dir); err != nil { //nolint:gosec // a release folder under bin/, named for a checked version
 		return fmt.Errorf("remove the earlier files in %s: %w", dir, err)
 	}
 
