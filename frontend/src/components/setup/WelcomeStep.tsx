@@ -203,10 +203,6 @@ export function WelcomeStep({
             className="nil-rise mt-8 flex flex-wrap items-center justify-center gap-3"
             style={{ animationDelay: '320ms' }}
           >
-            <button type="button" onClick={onStart} className={`${primaryButtonClass} px-5 py-2 text-base`}>
-              Let’s go
-              <ChevronRightIcon className="size-4" />
-            </button>
             <button
               type="button"
               onClick={() => {
@@ -216,6 +212,10 @@ export function WelcomeStep({
             >
               <ImportIcon className="size-3.5 text-muted" />
               Restore from a backup…
+            </button>
+            <button type="button" onClick={onStart} className={`${primaryButtonClass} px-5 py-2 text-base`}>
+              Let’s go
+              <ChevronRightIcon className="size-4" />
             </button>
           </div>
           <button type="button" onClick={onSkip} className={`${quietButtonClass} mt-4`}>
