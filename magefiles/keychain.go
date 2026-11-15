@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
-	"path/filepath"
 	"strings"
 	"sync"
 	"syscall"
@@ -46,24 +45,19 @@ func withKeychain(keychain string, fn func() error) (err error) {
 	return fn()
 }
 
-// useKeychain puts keychain first on the user's keychain search list and returns a
-// function that sets the list back to exactly what it was, once however often it is
-// called.
+// useKeychain puts keychain, an absolute path, first on the user's keychain search list
+// and returns a function that sets the list back to exactly what it was, once however
+// often it is called.
 func useKeychain(keychain string) (func() error, error) {
-	abs, err := filepath.Abs(keychain)
-	if err != nil {
-		return nil, fmt.Errorf("resolve the keychain %s: %w", keychain, err)
-	}
-
 	original, err := keychainSearchList()
 	if err != nil {
 		return nil, err
 	}
 
-	list := []string{abs}
+	list := []string{keychain}
 
 	for _, k := range original {
-		if k != abs {
+		if k != keychain {
 			list = append(list, k)
 		}
 	}
@@ -126,14 +120,23 @@ func setKeychainSearchList(list []string) error {
 	return nil
 }
 
-// onInterrupt runs fn when the process is interrupted (Control-C, or SIGTERM) before
-// stop is called, then delivers the signal again, so it does what it would have done
-// without the hook. stop ends the hook; after it, fn never runs.
+// onInterrupt runs fn when the process is interrupted before stop is called, and lets
+// the target clean up after itself where it can:
+//
+//   - Control-C (SIGINT): fn runs, and the signal is left to mage, which stops the target
+//     and gives it time to clean up. Control-C at a terminal stops the build's tools too,
+//     so the target fails on its own and its deferred cleanup runs. Sending SIGINT again
+//     would be mage's second Control-C, which exits at once and skips that cleanup.
+//   - SIGTERM or SIGHUP, which mage leaves alone: fn runs, then the signal is delivered
+//     again with its default action, ending the process. What it leaves (the slices and
+//     the disk image's folder) is in the release's own folder, which the next run clears.
+//
+// stop ends the hook; after it, fn never runs.
 func onInterrupt(fn func()) (stop func()) {
 	signals := make(chan os.Signal, 1)
 	done := make(chan struct{})
 
-	signal.Notify(signals, os.Interrupt, syscall.SIGTERM)
+	signal.Notify(signals, os.Interrupt, syscall.SIGTERM, syscall.SIGHUP)
 
 	go func() {
 		select {
@@ -141,7 +144,7 @@ func onInterrupt(fn func()) (stop func()) {
 			fn()
 			signal.Stop(signals)
 
-			if s, ok := sig.(syscall.Signal); ok {
+			if s, ok := sig.(syscall.Signal); ok && s != syscall.SIGINT {
 				_ = syscall.Kill(os.Getpid(), s)
 			}
 		case <-done:

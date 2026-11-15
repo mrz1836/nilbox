@@ -1411,6 +1411,37 @@ func TestReportSize(t *testing.T) {
 	})
 }
 
+func TestNormalizeModes(t *testing.T) {
+	t.Parallel()
+
+	bundle := filepath.Join(t.TempDir(), "Example.app")
+	exe := filepath.Join(bundle, "Contents", "MacOS", brand.Slug)
+	helper := filepath.Join(bundle, "Contents", "Resources", "helper")
+	plist := filepath.Join(bundle, "Contents", "Info.plist")
+
+	testutil.WriteFileMode(t, exe, "binary", 0o600)
+	testutil.WriteFileMode(t, helper, "script", 0o700)
+	testutil.WriteFileMode(t, plist, "<plist/>", 0o664)
+	require.NoError(t, os.Chmod(filepath.Join(bundle, "Contents"), 0o700)) //nolint:gosec // as a umask of 077 leaves a folder
+	require.NoError(t, os.Symlink("Info.plist", filepath.Join(bundle, "Contents", "Link")))
+
+	require.NoError(t, normalizeModes(bundle, exe))
+
+	for path, want := range map[string]os.FileMode{
+		bundle:                            0o755,
+		filepath.Join(bundle, "Contents"): 0o755,
+		exe:                               0o755,
+		helper:                            0o755,
+		plist:                             0o644,
+	} {
+		info, err := os.Stat(path)
+		require.NoError(t, err)
+		assert.Equal(t, want, info.Mode().Perm(), path)
+	}
+
+	require.Error(t, normalizeModes(filepath.Join(t.TempDir(), "missing.app"), exe))
+}
+
 //nolint:paralleltest // changes the process's working directory, PATH, and standard output
 func TestBuildBundle(t *testing.T) {
 	bundle := filepath.Join("bin", "Example.app")

@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -56,9 +57,9 @@ func prepareBuild() error {
 }
 
 // assembleBundle builds the bundle spec describes from a built frontend: it compiles the
-// desktop binary, adds the Info.plist with the build's versions and the app icon, signs
-// the bundle, and reports the binary's size. A previous bundle at the same path is
-// removed first.
+// desktop binary, adds the Info.plist with the build's versions and the app icon, sets
+// every mode as an app's (whatever the umask), signs the bundle, and reports the binary's
+// size. A previous bundle at the same path is removed first.
 func assembleBundle(spec bundleSpec) error {
 	contents := filepath.Join(spec.bundle, "Contents")
 	exe := filepath.Join(contents, "MacOS", brand.Slug)
@@ -71,7 +72,7 @@ func assembleBundle(spec bundleSpec) error {
 		return fmt.Errorf("create the bundle: %w", err)
 	}
 
-	if err := buildExecutable(exe, spec.meta, spec.arches); err != nil {
+	if err := buildExecutable(exe, spec.meta, spec.arches, filepath.Dir(spec.bundle)); err != nil {
 		return err
 	}
 
@@ -80,6 +81,10 @@ func assembleBundle(spec bundleSpec) error {
 	}
 
 	if err := copyIconSet(filepath.Join(contents, "Resources")); err != nil {
+		return err
+	}
+
+	if err := normalizeModes(spec.bundle, exe); err != nil {
 		return err
 	}
 
@@ -92,13 +97,15 @@ func assembleBundle(spec bundleSpec) error {
 
 // buildExecutable compiles the desktop binary into exe: for this Mac's processor when
 // arches is empty, else one slice for each GOARCH in arches, combined into one universal
-// binary.
-func buildExecutable(exe string, meta buildMeta, arches []string) error {
+// binary. The slices are built in a folder of their own inside scratch, which is removed
+// once they are combined; a run cut off before that leaves it there, beside the bundle,
+// for the next run to clear.
+func buildExecutable(exe string, meta buildMeta, arches []string, scratch string) error {
 	if len(arches) == 0 {
 		return buildDesktopBinary(exe, meta, "")
 	}
 
-	dir, err := os.MkdirTemp("", brand.Slug+"-slices-")
+	dir, err := os.MkdirTemp(scratch, ".slices-")
 	if err != nil {
 		return fmt.Errorf("create a folder for the slices: %w", err)
 	}
@@ -124,6 +131,60 @@ func buildExecutable(exe string, meta buildMeta, arches []string) error {
 	}
 
 	return checkArches(exe, arches)
+}
+
+// normalizeModes gives every folder in bundle and every executable (exe, and any file with
+// an execute bit) mode 0755, and every other file 0644, so the bundle the zip and the disk
+// image hold reads the same whatever umask built it. Links are left alone. It works inside
+// an os.Root of the bundle, so nothing it changes can lie outside it.
+func normalizeModes(bundle, exe string) error {
+	root, err := os.OpenRoot(bundle)
+	if err != nil {
+		return fmt.Errorf("set the bundle's modes: %w", err)
+	}
+	defer func() { _ = root.Close() }()
+
+	exeRel, err := filepath.Rel(bundle, exe)
+	if err != nil {
+		return fmt.Errorf("set the bundle's modes: %w", err)
+	}
+
+	err = fs.WalkDir(root.FS(), ".", func(name string, d fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+
+		mode, ok, modeErr := appMode(d, name == filepath.ToSlash(exeRel))
+		if modeErr != nil || !ok {
+			return modeErr
+		}
+
+		return root.Chmod(name, mode)
+	})
+	if err != nil {
+		return fmt.Errorf("set the bundle's modes: %w", err)
+	}
+
+	return nil
+}
+
+// appMode is the mode an app bundle's entry d gets: 0755 for a folder or an executable
+// (exe, or a file with an execute bit), 0644 for any other file, and none (ok false) for
+// a link.
+func appMode(d fs.DirEntry, exe bool) (os.FileMode, bool, error) {
+	info, err := d.Info()
+	if err != nil {
+		return 0, false, err
+	}
+
+	switch {
+	case info.Mode()&fs.ModeSymlink != 0:
+		return 0, false, nil
+	case d.IsDir() || exe || info.Mode()&0o111 != 0:
+		return 0o755, true, nil
+	default:
+		return 0o644, true, nil
+	}
 }
 
 // lipoArch is the name lipo gives the architecture of a GOARCH.

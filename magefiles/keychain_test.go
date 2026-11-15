@@ -169,14 +169,36 @@ exit 1`)
 	})
 }
 
+// signalWait is how long the interrupt tests wait for a signal to arrive.
+const signalWait = 5 * time.Second
+
+// hear makes the test hear sig as mage would, so a signal delivered again doesn't end the
+// test binary, and returns the channel it arrives on.
+func hear(t *testing.T, sig os.Signal) chan os.Signal {
+	t.Helper()
+
+	heard := make(chan os.Signal, 2)
+	signal.Notify(heard, sig)
+	t.Cleanup(func() { signal.Stop(heard) })
+
+	return heard
+}
+
+// await fails the test unless ch receives within signalWait.
+func await[T any](t *testing.T, ch <-chan T, what string) {
+	t.Helper()
+
+	select {
+	case <-ch:
+	case <-time.After(signalWait):
+		t.Fatal(what)
+	}
+}
+
 //nolint:paralleltest // signals reach the whole process
 func TestOnInterrupt(t *testing.T) {
-	t.Run("an interrupt runs fn, then goes on to whoever else hears it", func(t *testing.T) {
-		// The test hears the interrupt too, as mage does, so delivering it again doesn't
-		// end the test binary.
-		heard := make(chan os.Signal, 2)
-		signal.Notify(heard, os.Interrupt)
-		t.Cleanup(func() { signal.Stop(heard) })
+	t.Run("Control-C runs fn and is left to mage, never sent again", func(t *testing.T) {
+		heard := hear(t, os.Interrupt)
 
 		ran := make(chan struct{})
 		stop := onInterrupt(func() { close(ran) })
@@ -184,20 +206,31 @@ func TestOnInterrupt(t *testing.T) {
 
 		require.NoError(t, syscall.Kill(os.Getpid(), syscall.SIGINT))
 
-		select {
-		case <-ran:
-		case <-time.After(5 * time.Second):
-			t.Fatal("fn never ran")
-		}
+		await(t, ran, "fn never ran")
+		await(t, heard, "mage never heard the interrupt")
 
-		for range 2 {
-			select {
-			case <-heard:
-			case <-time.After(5 * time.Second):
-				t.Fatal("the interrupt was not delivered again")
-			}
+		select {
+		case <-heard:
+			t.Fatal("the interrupt was sent again, which mage takes as a second Control-C")
+		case <-time.After(200 * time.Millisecond):
 		}
 	})
+
+	for _, sig := range []syscall.Signal{syscall.SIGTERM, syscall.SIGHUP} {
+		t.Run(sig.String()+" runs fn, then is delivered again", func(t *testing.T) {
+			heard := hear(t, sig)
+
+			ran := make(chan struct{})
+			stop := onInterrupt(func() { close(ran) })
+			t.Cleanup(stop)
+
+			require.NoError(t, syscall.Kill(os.Getpid(), sig))
+
+			await(t, ran, "fn never ran")
+			await(t, heard, "the signal never arrived")
+			await(t, heard, "the signal was not delivered again")
+		})
+	}
 
 	t.Run("after stop, fn never runs", func(t *testing.T) {
 		ran := false

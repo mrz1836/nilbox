@@ -13,6 +13,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"syscall"
 	"testing"
@@ -34,7 +35,8 @@ const (
 	// testIdentity is the code-signing identity the packaging tests sign with, by SHA-1.
 	testIdentity = "0123456789ABCDEF0123456789ABCDEF01234567"
 
-	// testKeychain is the keychain the packaging tests name, with a space, as a path may hold.
+	// testKeychain is the keychain the search list tests name, with a space, as a path may
+	// hold. The packaging tests make a real file of the same name (keychainFile).
 	testKeychain = "/keychains/CI Signing.keychain-db"
 
 	// originalKeychains is the keychain search list before a test, as security prints it.
@@ -43,6 +45,17 @@ const (
 
 // bundleName is the app bundle's folder name.
 const bundleName = brand.Name + ".app"
+
+// keychainFile makes an empty file where CODESIGN_KEYCHAIN would name a keychain, named
+// as testKeychain is, and returns its path.
+func keychainFile(t *testing.T) string {
+	t.Helper()
+
+	path := filepath.Join(t.TempDir(), filepath.Base(testKeychain))
+	testutil.WriteFile(t, path, "")
+
+	return path
+}
 
 // releaseKeyPair returns the throwaway key pair seeded by seed, the same on every run.
 func releaseKeyPair(seed byte) releaseKeys {
@@ -121,8 +134,8 @@ func bundleEntries() []zipEntry {
 
 // releaseTools puts a fake of every tool app:package runs on an isolated PATH, each
 // logging its name and arguments to one shared log, and returns the PATH directory, so a
-// test can replace a tool, and the log's path: a git whose describe --exact-match names
-// tag; a go that logs GOARCH and writes a binary after -o; a lipo that writes the
+// test can replace a tool, and the log's path: a git whose tag (when not "") names HEAD's
+// commit, $FAKE_TAG_AT's when set, and whose status prints $FAKE_DIRTY; a go that logs GOARCH and writes a binary after -o; a lipo that writes the
 // universal binary and reads x86_64 and arm64 in it; a ditto that zips by copying a zip of
 // a bundle and copies a folder by making it; an hdiutil that writes the disk image; a
 // security that keeps the keychain search list in a file, starting at originalKeychains;
@@ -151,7 +164,14 @@ func releaseTools(t *testing.T, tag string) (string, string) {
 	}
 
 	fakeTool(t, dir, "git", `printf 'git %s\n' "$*" >> "$TOOLS_LOG"
-if [ "$*" = "describe --tags --exact-match" ] && [ -n "$FAKE_TAG" ]; then echo "$FAKE_TAG"; exit 0; fi
+case "$*" in
+  "rev-parse --verify --quiet HEAD^{commit}") echo headcommit; exit 0 ;;
+  "rev-parse --verify --quiet refs/tags/"*)
+    if [ -n "$FAKE_TAG" ] && [ "$4" = "refs/tags/$FAKE_TAG^{commit}" ]; then echo "${FAKE_TAG_AT:-headcommit}"; exit 0; fi
+    exit 1 ;;
+  "tag --points-at HEAD") if [ -z "$FAKE_TAG_AT" ]; then echo "$FAKE_TAG"; fi; exit 0 ;;
+  "status --porcelain") printf '%s' "$FAKE_DIRTY"; exit 0 ;;
+esac
 exit 128`)
 	fakeTool(t, dir, "go", `printf 'go GOARCH=%s %s\n' "$GOARCH" "$*" >> "$TOOLS_LOG"
 while [ $# -gt 0 ]; do
@@ -239,7 +259,6 @@ func TestPackageRelease(t *testing.T) {
 	names := update.AssetNames(testVersion)
 	q := regexp.QuoteMeta
 	keychains := q("/Library/Keychains/My Keys.keychain-db /Library/Keychains/System.keychain")
-	signed := q("codesign --force --sign "+testIdentity+" --keychain "+testKeychain+" --timestamp=none ") + "%s"
 
 	goBuild := func(arch string) string {
 		return q("go GOARCH="+arch+" build -tags desktop,production -trimpath -buildvcs=false -ldflags -s -w -X main.version=") +
@@ -252,10 +271,12 @@ func TestPackageRelease(t *testing.T) {
 		dir := inTempDir(t)
 		checkout(t, dir)
 		_, log := releaseTools(t, "v"+testVersion)
+		keychain := keychainFile(t)
+		signed := q("codesign --force --sign "+testIdentity+" --keychain "+keychain+" --timestamp=none ") + "%s"
 
 		var err error
 
-		stdout := captureStdout(t, func() { err = packageRelease(testConfig(t, keys, testKeychain)) })
+		stdout := captureStdout(t, func() { err = packageRelease(testConfig(t, keys, keychain)) })
 
 		require.NoError(t, err)
 
@@ -263,7 +284,7 @@ func TestPackageRelease(t *testing.T) {
 			q("pnpm install --frozen-lockfile"),
 			q("pnpm build"),
 			q("security list-keychains -d user"),
-			q("security list-keychains -d user -s "+testKeychain+" ") + keychains,
+			q("security list-keychains -d user -s "+keychain+" ") + keychains,
 			goBuild("arm64"),
 			goBuild("amd64"),
 			q("lipo -create -output "+exe+" ") + `\S+` + q("/"+brand.Slug+"-arm64 ") + `\S+` + q("/"+brand.Slug+"-amd64"),
@@ -281,7 +302,11 @@ func TestPackageRelease(t *testing.T) {
 			q("security list-keychains -d user -s ") + keychains,
 		}, toolLines(t, log))
 
-		assert.Equal(t, "git describe --tags --exact-match", logLines(t, log)[0], "the tag is checked before anything builds")
+		assert.Equal(t, []string{
+			"git rev-parse --verify --quiet refs/tags/v" + testVersion + "^{commit}",
+			"git rev-parse --verify --quiet HEAD^{commit}",
+			"git status --porcelain",
+		}, logLines(t, log)[:3], "the tag and the working tree are checked before anything builds")
 		assert.NotContains(t, readFile(t, log), "main.updateFeed", "a release reads the feed GitHub serves")
 		assert.NotContains(t, readFile(t, log), "main.updateKey", "a release verifies with the key it pins")
 		assert.Equal(t, originalKeychains, readFile(t, os.Getenv("KEYCHAIN_LIST")), "the search list is back as it was")
@@ -299,7 +324,7 @@ func TestPackageRelease(t *testing.T) {
 			"the disk image's folder is gone")
 		assert.Equal(t, "universal", readFile(t, exe))
 
-		require.NoError(t, verifyRelease(out, keys.public))
+		require.NoError(t, verifyRelease(out, testVersion, keys.public))
 		assert.Contains(t, stdout, "Built the arm64 slice (6 bytes")
 		assert.Contains(t, stdout, "Built the amd64 slice (6 bytes")
 		assert.Contains(t, stdout, "✅ "+names.Zip+" matches its signed manifest ("+testVersion+", darwin-universal)")
@@ -308,6 +333,44 @@ func TestPackageRelease(t *testing.T) {
 		sums := readFile(t, filepath.Join(out, names.Sums))
 		assert.Equal(t, sha256Hex(t, filepath.Join(out, names.DMG))+"  "+names.DMG+"\n"+
 			sha256Hex(t, filepath.Join(out, names.Zip))+"  "+names.Zip+"\n", sums)
+	})
+
+	t.Run("the bundle's modes don't depend on the umask", func(t *testing.T) {
+		dir := inTempDir(t)
+		checkout(t, dir)
+		releaseTools(t, "v"+testVersion)
+
+		original := syscall.Umask(0o077)
+
+		t.Cleanup(func() { syscall.Umask(original) })
+
+		captureStdout(t, func() { require.NoError(t, packageRelease(testConfig(t, keys, ""))) })
+
+		modes := map[string]os.FileMode{}
+
+		require.NoError(t, filepath.WalkDir(bundle, func(path string, d fs.DirEntry, err error) error {
+			require.NoError(t, err)
+
+			info, err := d.Info()
+			require.NoError(t, err)
+
+			rel, err := filepath.Rel(bundle, path)
+			require.NoError(t, err)
+
+			modes[rel] = info.Mode().Perm()
+
+			return nil
+		}))
+
+		assert.Equal(t, map[string]os.FileMode{
+			".":                            0o755,
+			"Contents":                     0o755,
+			"Contents/Info.plist":          0o644,
+			"Contents/MacOS":               0o755,
+			"Contents/MacOS/" + brand.Slug: 0o755,
+			"Contents/Resources":           0o755,
+			"Contents/Resources/" + brandgen.IconFile + ".icns": 0o644,
+		}, modes, "a umask of 077 would leave 0700 and 0600 in the zip and the disk image")
 	})
 
 	t.Run("signs from the search list when no keychain is named", func(t *testing.T) {
@@ -330,7 +393,7 @@ func TestPackageRelease(t *testing.T) {
 
 		var err error
 
-		captureStdout(t, func() { err = packageRelease(testConfig(t, keys, testKeychain)) })
+		captureStdout(t, func() { err = packageRelease(testConfig(t, keys, keychainFile(t))) })
 
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "make the disk image")
@@ -411,7 +474,6 @@ func sha256Hex(t *testing.T, path string) string {
 	return hex.EncodeToString(sum[:])
 }
 
-//nolint:paralleltest // changes the process's working directory, environment, and PATH
 func TestPackageReleaseRefusesBeforeAnyToolRuns(t *testing.T) {
 	keys := releaseKeyPair(1)
 	other := releaseKeyPair(2)
@@ -419,6 +481,8 @@ func TestPackageReleaseRefusesBeforeAnyToolRuns(t *testing.T) {
 	tests := []struct {
 		name    string
 		tag     string
+		at      string // the commit the tag names, when not HEAD's
+		dirty   string // what git status prints
 		change  func(t *testing.T, cfg *packageConfig)
 		wantErr error  // the error it fails with, or nil to match wantMsg alone
 		wantMsg string // a part of the error's text
@@ -448,8 +512,25 @@ func TestPackageReleaseRefusesBeforeAnyToolRuns(t *testing.T) {
 		{name: "a signing key the app doesn't pin", tag: "v" + testVersion, change: func(t *testing.T, cfg *packageConfig) {
 			cfg.signingKey = writeSigningKey(t, other)
 		}, wantErr: errKeyMismatch},
-		{name: "no tag on HEAD", wantErr: errNoExactTag},
-		{name: "the tag of another version", tag: "v1.2.4", wantErr: errTagMismatch, wantMsg: "HEAD's tag is v1.2.4"},
+		{name: "a relative keychain", tag: "v" + testVersion, change: func(_ *testing.T, cfg *packageConfig) {
+			cfg.keychain = "build.keychain-db"
+		}, wantErr: errKeychainPath},
+		{name: "a missing keychain", tag: "v" + testVersion, change: func(t *testing.T, cfg *packageConfig) {
+			cfg.keychain = filepath.Join(t.TempDir(), "missing.keychain-db")
+		}, wantErr: fs.ErrNotExist},
+		{name: "a keychain that is a folder", tag: "v" + testVersion, change: func(t *testing.T, cfg *packageConfig) {
+			cfg.keychain = t.TempDir()
+		}, wantErr: errKeychainPath, wantMsg: "is not a file"},
+		{name: "no tag on HEAD", wantErr: errNoReleaseTag, wantMsg: "HEAD's tags: none"},
+		{name: "the tag of another version", tag: "v1.2.4", wantErr: errNoReleaseTag, wantMsg: "HEAD's tags: v1.2.4"},
+		{
+			name: "the version's tag on another commit", tag: "v" + testVersion, at: "othercommit", wantErr: errTagMismatch,
+			wantMsg: "check out v" + testVersion,
+		},
+		{
+			name: "changes in the working tree", tag: "v" + testVersion, dirty: " M main.go\n?? notes.go\n", wantErr: errDirtyTree,
+			wantMsg: "M main.go; ?? notes.go",
+		},
 	}
 
 	for _, tt := range tests {
@@ -457,8 +538,10 @@ func TestPackageReleaseRefusesBeforeAnyToolRuns(t *testing.T) {
 			dir := inTempDir(t)
 			checkout(t, dir)
 			_, log := releaseTools(t, tt.tag)
+			t.Setenv("FAKE_TAG_AT", tt.at)
+			t.Setenv("FAKE_DIRTY", tt.dirty)
 
-			cfg := testConfig(t, keys, testKeychain)
+			cfg := testConfig(t, keys, keychainFile(t))
 			if tt.change != nil {
 				tt.change(t, &cfg)
 			}
@@ -528,42 +611,115 @@ func TestPackageConfigFromEnv(t *testing.T) {
 
 //nolint:paralleltest // changes the process's working directory and environment
 func TestCheckReleaseTag(t *testing.T) {
-	t.Run("the version's tag on HEAD", func(t *testing.T) {
+	// repo makes a repository of one empty commit in a fresh working directory.
+	repo := func(t *testing.T) {
+		t.Helper()
+
 		isolateGit(t)
 		inTempDir(t)
 		git(t, "init", "-q")
 		git(t, "commit", "-q", "--allow-empty", "-m", "first")
+	}
+
+	t.Run("the version's tag on HEAD", func(t *testing.T) {
+		repo(t)
 		git(t, "tag", "v0.3.0")
 
 		require.NoError(t, checkReleaseTag("0.3.0"))
-		require.ErrorIs(t, checkReleaseTag("0.3.1"), errTagMismatch)
+		require.ErrorIs(t, checkReleaseTag("0.3.1"), errNoReleaseTag)
+	})
+
+	t.Run("HEAD carries the release candidate's tag and the release's", func(t *testing.T) {
+		repo(t)
+		git(t, "tag", "v0.2.0-rc.1")
+		git(t, "tag", "-a", "-m", "release", "v0.2.0")
+
+		require.NoError(t, checkReleaseTag("0.2.0-rc.1"), "the candidate's run again finds its tag")
+		require.NoError(t, checkReleaseTag("0.2.0"), "an annotated tag names its commit")
+
+		err := checkReleaseTag("0.2.1")
+		require.ErrorIs(t, err, errNoReleaseTag)
+		assert.Contains(t, err.Error(), "HEAD's tags: v0.2.0, v0.2.0-rc.1")
 	})
 
 	t.Run("a tag on an earlier commit", func(t *testing.T) {
-		isolateGit(t)
-		inTempDir(t)
-		git(t, "init", "-q")
-		git(t, "commit", "-q", "--allow-empty", "-m", "first")
+		repo(t)
 		git(t, "tag", "v0.3.0")
 		git(t, "commit", "-q", "--allow-empty", "-m", "second")
 
-		require.ErrorIs(t, checkReleaseTag("0.3.0"), errNoExactTag)
+		err := checkReleaseTag("0.3.0")
+		require.ErrorIs(t, err, errTagMismatch)
+		assert.Contains(t, err.Error(), "HEAD's tags: none")
 	})
 
-	t.Run("no tag at all", func(t *testing.T) {
+	t.Run("a branch named as the tag is no tag", func(t *testing.T) {
+		repo(t)
+		git(t, "branch", "v0.3.0")
+
+		require.ErrorIs(t, checkReleaseTag("0.3.0"), errNoReleaseTag)
+	})
+}
+
+//nolint:paralleltest // changes the process's working directory and environment
+func TestCheckCleanTree(t *testing.T) {
+	t.Run("a clean tree", func(t *testing.T) {
 		isolateGit(t)
-		inTempDir(t)
+		dir := inTempDir(t)
+		git(t, "init", "-q")
+		testutil.WriteFile(t, filepath.Join(dir, "main.go"), "package main\n")
+		git(t, "add", "main.go")
+		git(t, "commit", "-q", "-m", "first")
+		testutil.WriteFile(t, filepath.Join(dir, ".gitignore"), "bin/\n")
+		git(t, "add", ".gitignore")
+		git(t, "commit", "-q", "-m", "ignore")
+		testutil.WriteFile(t, filepath.Join(dir, "bin", "built"), "ignored")
+
+		require.NoError(t, checkCleanTree(), "an ignored file is no change")
+
+		testutil.WriteFile(t, filepath.Join(dir, "main.go"), "package main // changed\n")
+
+		err := checkCleanTree()
+		require.ErrorIs(t, err, errDirtyTree)
+		assert.Contains(t, err.Error(), "M main.go")
+
+		git(t, "checkout", "--", "main.go")
+		testutil.WriteFile(t, filepath.Join(dir, "extra.go"), "package main\n")
+		require.ErrorIs(t, checkCleanTree(), errDirtyTree, "an untracked file would be built in")
+	})
+
+	t.Run("many changes are counted", func(t *testing.T) {
+		isolateGit(t)
+		dir := inTempDir(t)
 		git(t, "init", "-q")
 		git(t, "commit", "-q", "--allow-empty", "-m", "first")
 
-		require.ErrorIs(t, checkReleaseTag("0.3.0"), errNoExactTag)
+		for i := range 8 {
+			testutil.WriteFile(t, filepath.Join(dir, "f"+strconv.Itoa(i)), "x")
+		}
+
+		err := checkCleanTree()
+		require.ErrorIs(t, err, errDirtyTree)
+		assert.Contains(t, err.Error(), ", and 3 more")
+	})
+
+	t.Run("outside a repository", func(t *testing.T) {
+		isolateGit(t)
+		dir := inTempDir(t)
+		t.Setenv("GIT_CEILING_DIRECTORIES", filepath.Dir(dir))
+
+		err := checkCleanTree()
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "read the working tree's changes")
 	})
 }
 
 func TestReleaseMeta(t *testing.T) {
 	t.Parallel()
 
-	meta := releaseMeta("0.2.0-rc.1")
+	meta := releaseMeta(buildMeta{version: "v0.2.0-rc.1", commit: "abc1234", bundleBuild: "42"}, "0.2.0-rc.1")
+
+	assert.Equal(t, "v0.2.0-rc.1", meta.version, "git's metadata is kept")
+	assert.Equal(t, "42", meta.bundleBuild)
 
 	assert.Equal(t, "0.2.0-rc.1", meta.release)
 	assert.Equal(t, "0.2.0", meta.bundleVersion)
@@ -595,20 +751,35 @@ func TestCheckZipLayout(t *testing.T) {
 		{name: "one bundle without folder entries", entries: []zipEntry{
 			{name: bundleName + "/Contents/Info.plist"}, {name: bundleName + "/Contents/MacOS/" + brand.Slug},
 		}},
-		{name: "a link that stays inside", entries: append(bundleEntries(),
-			zipEntry{name: bundleName + "/Contents/Current", target: "MacOS"})},
 		{name: "resource forks beside it", entries: append(bundleEntries(),
 			zipEntry{name: "__MACOSX/"}, zipEntry{name: "__MACOSX/" + bundleName + "/._Contents", body: "fork"}), wantErr: "__MACOSX"},
 		{name: "two bundles", entries: append(bundleEntries(), zipEntry{name: "Other.app/"}), wantErr: "Other.app"},
 		{name: "a stray file", entries: append(bundleEntries(), zipEntry{name: "README", body: "stray"}), wantErr: "README"},
 		{name: "a name that climbs out", entries: append(bundleEntries(),
-			zipEntry{name: bundleName + "/../evil", body: "x"}), wantErr: "evil"},
-		{name: "an absolute name", entries: append(bundleEntries(), zipEntry{name: "/" + bundleName + "/x", body: "x"}), wantErr: "beside"},
-		{name: "a backslash", entries: append(bundleEntries(), zipEntry{name: bundleName + `\..\x`, body: "x"}), wantErr: "beside"},
-		{name: "a link out of the bundle", entries: append(bundleEntries(),
-			zipEntry{name: bundleName + "/Contents/out", target: "../../.."}), wantErr: "points out"},
+			zipEntry{name: bundleName + "/../evil", body: "x"}), wantErr: "not a clean name"},
+		{
+			name: "an absolute name", entries: append(bundleEntries(), zipEntry{name: "/" + bundleName + "/x", body: "x"}),
+			wantErr: "not a clean name",
+		},
+		{
+			name: "a backslash", entries: append(bundleEntries(), zipEntry{name: bundleName + `\..\x`, body: "x"}),
+			wantErr: "not a clean name",
+		},
+		{name: "a name starting with ./", entries: append(bundleEntries(),
+			zipEntry{name: "./" + bundleName + "/Contents/Extra", body: "x"}), wantErr: "not a clean name"},
+		{name: "a name with //", entries: append(bundleEntries(),
+			zipEntry{name: bundleName + "//Contents/Extra", body: "x"}), wantErr: "not a clean name"},
+		{name: "an entry twice", entries: append(bundleEntries(),
+			zipEntry{name: bundleName + "/Contents/Info.plist", body: "<plist>other</plist>"}), wantErr: "appears twice"},
+		{name: "a folder twice, once without its slash", entries: append(bundleEntries(),
+			zipEntry{name: bundleName + "/Contents", body: "file"}), wantErr: "appears twice"},
+		{name: "a link that stays inside", entries: append(bundleEntries(),
+			zipEntry{name: bundleName + "/Contents/Current", target: "MacOS"}), wantErr: "is a link"},
+		{name: "a chain of links that climbs out", entries: append(bundleEntries(),
+			zipEntry{name: bundleName + "/Contents/MacOS/up", target: "../.."},
+			zipEntry{name: bundleName + "/Contents/MacOS/esc", target: "up/../outside"}), wantErr: "is a link"},
 		{name: "a link to an absolute path", entries: append(bundleEntries(),
-			zipEntry{name: bundleName + "/Contents/out", target: "/etc"}), wantErr: "points out"},
+			zipEntry{name: bundleName + "/Contents/out", target: "/etc"}), wantErr: "is a link"},
 		{name: "no executable", entries: bundleEntries()[:4], wantErr: "lacks " + bundleName + "/Contents/MacOS/" + brand.Slug},
 		{name: "empty", wantErr: "lacks"},
 	}
@@ -697,7 +868,7 @@ func TestVerifyRelease(t *testing.T) {
 
 		var err error
 
-		out := captureStdout(t, func() { err = verifyRelease(dir, keys.public) })
+		out := captureStdout(t, func() { err = verifyRelease(dir, "", keys.public) })
 
 		require.NoError(t, err)
 		assert.Equal(t, "✅ "+update.AssetNames("0.3.0").Zip+" matches its signed manifest (0.3.0, darwin-universal)\n", out)
@@ -706,32 +877,32 @@ func TestVerifyRelease(t *testing.T) {
 	t.Run("another key", func(t *testing.T) {
 		dir := releaseFolder(t, keys)
 
-		require.ErrorIs(t, verifyRelease(dir, other.public), update.ErrSignature)
+		require.ErrorIs(t, verifyRelease(dir, "", other.public), update.ErrSignature)
 	})
 
 	t.Run("a zip changed after signing", func(t *testing.T) {
 		dir := releaseFolder(t, keys)
 		testutil.WriteFile(t, filepath.Join(dir, update.AssetNames("0.3.0").Zip), "the zap")
 
-		require.ErrorIs(t, verifyRelease(dir, keys.public), update.ErrMismatch)
+		require.ErrorIs(t, verifyRelease(dir, "", keys.public), update.ErrMismatch)
 	})
 
 	t.Run("no zip", func(t *testing.T) {
 		dir := releaseFolder(t, keys)
 		require.NoError(t, os.Remove(filepath.Join(dir, update.AssetNames("0.3.0").Zip)))
 
-		require.ErrorIs(t, verifyRelease(dir, keys.public), fs.ErrNotExist)
+		require.ErrorIs(t, verifyRelease(dir, "", keys.public), fs.ErrNotExist)
 	})
 
 	t.Run("no manifest", func(t *testing.T) {
-		require.ErrorIs(t, verifyRelease(t.TempDir(), keys.public), fs.ErrNotExist)
+		require.ErrorIs(t, verifyRelease(t.TempDir(), "", keys.public), fs.ErrNotExist)
 	})
 
 	t.Run("a manifest over the limit", func(t *testing.T) {
 		dir := t.TempDir()
 		testutil.WriteFile(t, filepath.Join(dir, update.ManifestName), strings.Repeat(" ", update.MaxManifestBytes+1))
 
-		require.ErrorIs(t, verifyRelease(dir, keys.public), update.ErrInvalid)
+		require.ErrorIs(t, verifyRelease(dir, "", keys.public), update.ErrInvalid)
 	})
 
 	t.Run("another platform's manifest", func(t *testing.T) {
@@ -746,7 +917,7 @@ func TestVerifyRelease(t *testing.T) {
 		require.NoError(t, err)
 		testutil.WriteFile(t, filepath.Join(dir, update.ManifestName), string(body))
 
-		require.ErrorIs(t, verifyRelease(dir, keys.public), errOtherPlatform)
+		require.ErrorIs(t, verifyRelease(dir, "", keys.public), errOtherPlatform)
 	})
 }
 
@@ -802,144 +973,119 @@ func TestWriteManifest(t *testing.T) {
 //nolint:paralleltest // changes the process's standard output
 func TestVerifyPinned(t *testing.T) {
 	keys := releaseKeyPair(1)
+	pinned := update.EncodeKey(keys.public)
 	dir := releaseFolder(t, keys)
 
-	captureStdout(t, func() { require.NoError(t, verifyPinned(dir, update.EncodeKey(keys.public))) })
+	captureStdout(t, func() {
+		require.NoError(t, verifyPinned(dir, "", pinned))
+		require.NoError(t, verifyPinned(dir, "0.3.0", pinned), "the version it was asked for")
+		require.NoError(t, verifyPinned(dir, "v0.3.0", pinned), "a tag's v is dropped")
+	})
 
-	require.ErrorIs(t, verifyPinned("", update.EncodeKey(keys.public)), errNoReleaseDir)
-	require.ErrorIs(t, verifyPinned(dir, ""), errNoReleaseKey)
-	require.ErrorIs(t, verifyPinned(dir, "not a key"), update.ErrKey)
+	err := verifyPinned(dir, "0.3.1", pinned)
+	require.ErrorIs(t, err, errOtherVersion, "a stale pair can't pass for another release")
+	assert.Contains(t, err.Error(), "0.3.0, not 0.3.1")
+
+	require.ErrorIs(t, verifyPinned(dir, "latest", pinned), errOtherVersion)
+	require.ErrorIs(t, verifyPinned("", "", pinned), errNoReleaseDir)
+	require.ErrorIs(t, verifyPinned(dir, "", ""), errNoReleaseKey)
+	require.ErrorIs(t, verifyPinned(dir, "", "not a key"), update.ErrKey)
+}
+
+// pinKey makes key the release key the targets check against for the rest of the test.
+func pinKey(t *testing.T, key string) {
+	t.Helper()
+
+	original := pinnedReleaseKey
+	pinnedReleaseKey = key
+
+	t.Cleanup(func() { pinnedReleaseKey = original })
+}
+
+func TestTargetsReadThePinnedKey(t *testing.T) {
+	t.Parallel()
+
+	assert.Equal(t, update.ReleaseKey, pinnedReleaseKey, "the targets check against the key the app pins")
 }
 
 func TestAppVerify(t *testing.T) {
-	if update.ReleaseKey != "" {
-		t.Skip("covers the refusal before a release key is pinned")
-	}
+	keys := releaseKeyPair(1)
+	dir := releaseFolder(t, keys)
 
-	t.Setenv(mageArgsJSON, `["dir=`+t.TempDir()+`"]`)
-	require.ErrorIs(t, App{}.Verify(), errNoReleaseKey)
+	t.Run("checks the folder against the pinned key", func(t *testing.T) {
+		pinKey(t, update.EncodeKey(keys.public))
+		t.Setenv(mageArgsJSON, `["dir=`+dir+`","version=0.3.0"]`)
 
-	t.Setenv(mageArgsJSON, `[]`)
-	require.ErrorIs(t, App{}.Verify(), errNoReleaseDir)
+		out := captureStdout(t, func() { require.NoError(t, App{}.Verify()) })
+		assert.Contains(t, out, "matches its signed manifest (0.3.0")
+
+		t.Setenv(mageArgsJSON, `["dir=`+dir+`","version=0.4.0"]`)
+		require.ErrorIs(t, App{}.Verify(), errOtherVersion)
+	})
+
+	t.Run("another key", func(t *testing.T) {
+		pinKey(t, update.EncodeKey(releaseKeyPair(2).public))
+		t.Setenv(mageArgsJSON, `["dir=`+dir+`"]`)
+
+		require.ErrorIs(t, App{}.Verify(), update.ErrSignature)
+	})
+
+	t.Run("no key pinned", func(t *testing.T) {
+		pinKey(t, "")
+		t.Setenv(mageArgsJSON, `["dir=`+dir+`"]`)
+
+		require.ErrorIs(t, App{}.Verify(), errNoReleaseKey)
+	})
+
+	t.Run("no folder", func(t *testing.T) {
+		pinKey(t, update.EncodeKey(keys.public))
+		t.Setenv(mageArgsJSON, `[]`)
+
+		require.ErrorIs(t, App{}.Verify(), errNoReleaseDir)
+	})
 }
 
+//nolint:paralleltest // swaps the pinned key and changes the process's working directory, environment, PATH, and standard output
 func TestAppPackageOnMacOS(t *testing.T) {
 	onlyOnMacOS(t)
 
-	if update.ReleaseKey != "" {
-		t.Skip("covers the refusal before a release key is pinned")
+	keys := releaseKeyPair(1)
+
+	setEnv := func(t *testing.T) {
+		t.Helper()
+
+		t.Setenv(envReleaseVersion, testVersion)
+		t.Setenv(envCodesignIdentity, testIdentity)
+		t.Setenv(envCodesignKeychain, keychainFile(t))
+		t.Setenv(envUpdateSigningKey, writeSigningKey(t, keys))
 	}
 
-	t.Setenv(envReleaseVersion, testVersion)
-	t.Setenv(envCodesignIdentity, testIdentity)
-	t.Setenv(envUpdateSigningKey, "/keys/release.key")
+	t.Run("packages from the environment, against the pinned key", func(t *testing.T) {
+		dir := inTempDir(t)
+		checkout(t, dir)
+		releaseTools(t, "v"+testVersion)
+		setEnv(t)
+		pinKey(t, update.EncodeKey(keys.public))
 
-	require.ErrorIs(t, App{}.Package(), errNoReleaseKey)
-}
+		captureStdout(t, func() { require.NoError(t, App{}.Package()) })
 
-//nolint:paralleltest // changes the process's standard output
-func TestKeygen(t *testing.T) {
-	t.Run("writes the private key and prints the public key", func(t *testing.T) {
-		repo := t.TempDir()
-		out := filepath.Join(t.TempDir(), "keys")
-
-		var err error
-
-		stdout := captureStdout(t, func() { err = keygen(out, repo) })
-
-		require.NoError(t, err)
-
-		path := filepath.Join(out, signingKeyFile)
-		info, err := os.Stat(path)
-		require.NoError(t, err)
-		assert.Equal(t, os.FileMode(0o600), info.Mode().Perm(), "readable by its owner alone")
-
-		dirInfo, err := os.Stat(out)
-		require.NoError(t, err)
-		assert.Equal(t, os.FileMode(0o700), dirInfo.Mode().Perm())
-
-		private, err := update.ParsePrivateKey([]byte(readFile(t, path)))
-		require.NoError(t, err)
-
-		lines := strings.Split(strings.TrimSpace(stdout), "\n")
-		assert.Equal(t, update.EncodeKey(update.PublicKeyOf(private)), lines[len(lines)-1], "the public key, last, alone")
-		assert.NotContains(t, stdout, "PRIVATE KEY")
-		assert.NotContains(t, stdout, strings.Split(readFile(t, path), "\n")[1], "nothing of the private key")
+		require.NoError(t, verifyRelease(filepath.Join("bin", "release", testVersion), testVersion, keys.public))
 	})
 
-	t.Run("never overwrites a key", func(t *testing.T) {
-		repo := t.TempDir()
-		out := t.TempDir()
-		path := filepath.Join(out, signingKeyFile)
-		testutil.WriteFile(t, path, "the key kept")
+	t.Run("refuses while no key is pinned", func(t *testing.T) {
+		setEnv(t)
+		pinKey(t, "")
 
-		err := keygen(out, repo)
-
-		require.ErrorIs(t, err, fs.ErrExist)
-		assert.Equal(t, "the key kept", readFile(t, path))
+		require.ErrorIs(t, App{}.Package(), errNoReleaseKey)
 	})
 
-	t.Run("refuses a folder inside the repository", func(t *testing.T) {
-		repo := t.TempDir()
-		outside := t.TempDir()
-		link := filepath.Join(outside, "into-repo")
-		require.NoError(t, os.Symlink(repo, link))
+	t.Run("refuses a signing key that isn't the pinned key's half", func(t *testing.T) {
+		dir := inTempDir(t)
+		checkout(t, dir)
+		releaseTools(t, "v"+testVersion)
+		setEnv(t)
+		pinKey(t, update.EncodeKey(releaseKeyPair(2).public))
 
-		for _, out := range []string{
-			repo,
-			filepath.Join(repo, "keys"),
-			filepath.Join(repo, "not", "made", "yet"),
-			filepath.Join(link, "keys"),
-		} {
-			require.ErrorIs(t, keygen(out, repo), errInRepository, out)
-		}
-
-		entries, err := os.ReadDir(repo)
-		require.NoError(t, err)
-		assert.Empty(t, entries, "nothing is written")
+		require.ErrorIs(t, App{}.Package(), errKeyMismatch)
 	})
-
-	t.Run("refuses no folder", func(t *testing.T) {
-		require.ErrorIs(t, keygen("", t.TempDir()), errNoKeyFolder)
-	})
-
-	t.Run("a folder that can't be made", func(t *testing.T) {
-		file := filepath.Join(t.TempDir(), "file")
-		testutil.WriteFile(t, file, "")
-
-		require.ErrorIs(t, keygen(filepath.Join(file, "keys"), t.TempDir()), syscall.ENOTDIR)
-	})
-}
-
-func TestAppKeygen(t *testing.T) {
-	repo := inTempDir(t)
-	out := filepath.Join(t.TempDir(), "keys")
-
-	t.Setenv(mageArgsJSON, `["out=`+filepath.Join(repo, "keys")+`"]`)
-	require.ErrorIs(t, App{}.Keygen(), errInRepository, "the working directory is the repository")
-
-	t.Setenv(mageArgsJSON, `["out=`+out+`"]`)
-	captureStdout(t, func() { require.NoError(t, App{}.Keygen()) })
-	assert.FileExists(t, filepath.Join(out, signingKeyFile))
-}
-
-func TestWithin(t *testing.T) {
-	t.Parallel()
-
-	root := t.TempDir()
-
-	for path, want := range map[string]bool{
-		root:                                  true,
-		filepath.Join(root, "a"):              true,
-		filepath.Join(root, "a", "b"):         true,
-		filepath.Join(root, "..", "sibling"):  false,
-		root + "-other":                       false,
-		filepath.Join(root, "a", "..", ".."):  false,
-		filepath.Join(root, "..a-not-parent"): true,
-	} {
-		got, err := within(path, root)
-
-		require.NoError(t, err)
-		assert.Equal(t, want, got, path)
-	}
 }

@@ -4,8 +4,8 @@ package main
 
 import (
 	"archive/zip"
+	"context"
 	"crypto/ed25519"
-	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
@@ -13,6 +13,7 @@ import (
 	"io"
 	"io/fs"
 	"os"
+	"os/exec"
 	"path"
 	"path/filepath"
 	"runtime"
@@ -42,9 +43,6 @@ const (
 	// releaseRoot holds each release's files, in a folder named for its version.
 	releaseRoot = "bin/release"
 
-	// signingKeyFile is the name app:keygen gives the private key it writes.
-	signingKeyFile = "release.key"
-
 	// dmgFormat is the disk image's format: compressed with LZMA, which macOS reads since
 	// 10.15, and about a third smaller than the zlib UDZO.
 	dmgFormat = "ULMO"
@@ -53,6 +51,13 @@ const (
 	// PEM block.
 	maxSigningKeyBytes = 64 << 10
 )
+
+// pinnedReleaseKey is the release key app:package and app:verify check against:
+// update.ReleaseKey, which tests replace with a throwaway key of their own, so the targets'
+// wiring stays tested once a key is pinned.
+//
+//nolint:gochecknoglobals // tests swap in a throwaway key
+var pinnedReleaseKey = update.ReleaseKey
 
 // releaseArches are the architectures a release's universal binary holds: Apple silicon
 // and Intel.
@@ -75,11 +80,20 @@ var (
 	// errAdHoc is returned for an identity that would sign ad hoc.
 	errAdHoc = errors.New(envCodesignIdentity + " must name a code-signing identity: a release is never signed ad hoc")
 
-	// errNoExactTag is returned when HEAD carries no tag.
-	errNoExactTag = errors.New("HEAD has no tag; a release is built from the commit its tag names")
+	// errNoReleaseTag is returned when no tag names the version to release.
+	errNoReleaseTag = errors.New("no tag names " + envReleaseVersion + "; a release is built from the commit its tag names")
 
-	// errTagMismatch is returned when the tag on HEAD names another version.
-	errTagMismatch = errors.New(envReleaseVersion + " does not match the tag on HEAD")
+	// errTagMismatch is returned when the version's tag names another commit than HEAD.
+	errTagMismatch = errors.New("the tag of " + envReleaseVersion + " names another commit than HEAD")
+
+	// errDirtyTree is returned when the working tree holds changes its tag doesn't.
+	errDirtyTree = errors.New("the working tree has changes the tag doesn't hold; commit or stash them, so the " +
+		"release is built from its tag alone")
+
+	// errKeychainPath is returned for a CODESIGN_KEYCHAIN that isn't an absolute path to a
+	// file: security reads a relative one under ~/Library/Keychains, codesign from the
+	// working folder, so the two could disagree.
+	errKeychainPath = errors.New(envCodesignKeychain + " must be the absolute path of a keychain file")
 
 	// errKeyMismatch is returned when the private key doesn't match the key the app pins.
 	errKeyMismatch = errors.New("the signing key does not match the release key the app pins")
@@ -87,27 +101,26 @@ var (
 	// errZipLayout is returned for a zip that holds anything but the app bundle.
 	errZipLayout = errors.New("the zip must hold exactly the app bundle")
 
-	// errInRepository is returned for a key folder inside the repository.
-	errInRepository = errors.New("keep the private key outside the repository")
-
-	// errNoKeyFolder is returned when app:keygen is given no folder.
-	errNoKeyFolder = errors.New("name a folder outside the repository: magex app:keygen out=<folder>")
-
 	// errNoReleaseDir is returned when app:verify is given no folder.
 	errNoReleaseDir = errors.New("name the folder that holds the release's files: magex app:verify dir=<folder>")
 
 	// errOtherPlatform is returned for a manifest of another platform than releases ship.
 	errOtherPlatform = errors.New("the manifest is for another platform")
+
+	// errOtherVersion is returned for a manifest of another version than app:verify was
+	// asked to check.
+	errOtherVersion = errors.New("the manifest is for another version")
 )
 
 // Package builds a release of the macOS app into bin/release/<version>/: a universal
 // bundle for Apple silicon and Intel, signed with a code-signing identity; its zip, which
 // updates install; a signed disk image for first installs; SHA256SUMS; and the update
 // manifest, signed with the release's private key and verified against the key the app
-// pins. It reads RELEASE_VERSION, which must be the exact tag on HEAD without its v;
-// CODESIGN_IDENTITY, a name or SHA-1, never - (ad hoc); CODESIGN_KEYCHAIN, optionally, a
-// keychain that holds the identity, which goes on the keychain search list while the
-// target runs; and UPDATE_SIGNING_KEY, the path to the private key app:keygen wrote.
+// pins. It reads RELEASE_VERSION, the version without its v, whose tag must name HEAD in a
+// working tree with no changes; CODESIGN_IDENTITY, a name or SHA-1, never - (ad hoc);
+// CODESIGN_KEYCHAIN, optionally, the absolute path of a keychain that holds the identity,
+// which goes on the keychain search list while the target runs; and UPDATE_SIGNING_KEY,
+// the path to the private key app:keygen wrote.
 //
 //	RELEASE_VERSION=0.3.0 CODESIGN_IDENTITY=<identity> UPDATE_SIGNING_KEY=<key file> magex app:package
 func (App) Package() error {
@@ -115,7 +128,7 @@ func (App) Package() error {
 		return errNeedsMacOS
 	}
 
-	cfg, err := packageConfigFromEnv(update.ReleaseKey)
+	cfg, err := packageConfigFromEnv(pinnedReleaseKey)
 	if err != nil {
 		return err
 	}
@@ -123,27 +136,15 @@ func (App) Package() error {
 	return packageRelease(cfg)
 }
 
-// Keygen makes the release key, the Ed25519 key pair whose private half signs every
-// release's update manifest: it writes the private key to <out>/release.key (PKCS#8 PEM,
-// readable by you alone) and prints the public key, base64, to pin as update.ReleaseKey.
-// It refuses a folder inside the repository and never overwrites a key.
-//
-//	magex app:keygen out=<a folder outside the repository>
-func (App) Keygen() error {
-	repo, err := os.Getwd()
-	if err != nil {
-		return fmt.Errorf("find the repository: %w", err)
-	}
-
-	return keygen(mageArg("out"), repo)
-}
-
 // Verify checks a release's files as the app will: the update manifest in dir, against
-// the release key the app pins, and the zip it names, by its size and SHA-512.
+// the release key the app pins, and the zip it names, by its size and SHA-512. With
+// version (with or without its v) it also refuses a manifest of any other version, so a
+// stale pair can't pass for this release.
 //
 //	magex app:verify dir=bin/release/<version>
+//	magex app:verify dir=<folder> version=0.3.0
 func (App) Verify() error {
-	return verifyPinned(mageArg("dir"), update.ReleaseKey)
+	return verifyPinned(mageArg("dir"), mageArg("version"), pinnedReleaseKey)
 }
 
 // packageConfig is what packageRelease builds a release from.
@@ -173,7 +174,7 @@ func packageConfigFromEnv(releaseKey string) (packageConfig, error) {
 	cfg := packageConfig{
 		version:    os.Getenv(envReleaseVersion),
 		identity:   os.Getenv(envCodesignIdentity),
-		keychain:   os.Getenv(envCodesignKeychain),
+		keychain:   cleanPath(os.Getenv(envCodesignKeychain)),
 		signingKey: os.Getenv(envUpdateSigningKey),
 		releaseKey: releaseKey,
 	}
@@ -195,9 +196,19 @@ func packageConfigFromEnv(releaseKey string) (packageConfig, error) {
 	return cfg, nil
 }
 
+// cleanPath returns path cleaned, or "" for "".
+func cleanPath(path string) string {
+	if path == "" {
+		return ""
+	}
+
+	return filepath.Clean(path)
+}
+
 // packageRelease builds the release cfg describes, the steps App.Package runs once it
 // knows it is on macOS. Everything it can check without building, the version, the
-// identity, the keys, and the tag, it checks before any tool runs.
+// identity, the keychain, the keys, the tag, and the working tree, it checks before any
+// tool but git runs.
 func packageRelease(cfg packageConfig) error {
 	keys, err := cfg.check()
 	if err != nil {
@@ -205,6 +216,10 @@ func packageRelease(cfg packageConfig) error {
 	}
 
 	if err = checkReleaseTag(cfg.version); err != nil {
+		return err
+	}
+
+	if err = checkCleanTree(); err != nil {
 		return err
 	}
 
@@ -216,8 +231,8 @@ func packageRelease(cfg packageConfig) error {
 }
 
 // check refuses a release that could never ship: a version out of form, an ad hoc
-// identity, or a private key that isn't the release key's other half. It returns both
-// halves.
+// identity, a keychain that isn't an absolute path to a file, or a private key that isn't
+// the release key's other half. It returns both halves.
 func (c packageConfig) check() (releaseKeys, error) {
 	switch {
 	case c.releaseKey == "":
@@ -226,6 +241,10 @@ func (c packageConfig) check() (releaseKeys, error) {
 		return releaseKeys{}, fmt.Errorf("%w: %q", errBadVersion, c.version)
 	case c.identity == "" || c.identity == adHoc:
 		return releaseKeys{}, errAdHoc
+	}
+
+	if err := checkKeychain(c.keychain); err != nil {
+		return releaseKeys{}, err
 	}
 
 	public, err := update.ParseKey([]byte(c.releaseKey))
@@ -266,24 +285,89 @@ func readSigningKey(path string) (ed25519.PrivateKey, error) {
 	return key, nil
 }
 
-// checkReleaseTag fails unless HEAD's exact tag is version's, v and all.
-func checkReleaseTag(version string) error {
-	tag := gitOutput("describe", "--tags", "--exact-match")
+// checkKeychain fails unless keychain is "" (the search list's) or the absolute path of a
+// file, the one value both security and codesign are given.
+func checkKeychain(keychain string) error {
+	if keychain == "" {
+		return nil
+	}
 
-	switch {
-	case tag == "":
-		return errNoExactTag
-	case tag != "v"+version:
-		return fmt.Errorf("%w: %s is %s, and HEAD's tag is %s", errTagMismatch, envReleaseVersion, version, tag)
+	if !filepath.IsAbs(keychain) {
+		return fmt.Errorf("%w: %s", errKeychainPath, keychain)
+	}
+
+	info, err := os.Stat(keychain)
+	if err != nil {
+		return fmt.Errorf("%w: %w", errKeychainPath, err)
+	}
+
+	if !info.Mode().IsRegular() {
+		return fmt.Errorf("%w: %s is not a file", errKeychainPath, keychain)
 	}
 
 	return nil
 }
 
-// releaseMeta is the version metadata of a release of version: git's, with version as
-// the release and its numeric core as the bundle's version, and the release flavor.
-func releaseMeta(version string) buildMeta {
-	meta := readBuildMeta()
+// checkReleaseTag fails unless the tag v<version> names HEAD's commit. HEAD may carry
+// other tags beside it, as a release does that follows its own release candidate.
+func checkReleaseTag(version string) error {
+	tag := "v" + version
+	tagged := gitOutput("rev-parse", "--verify", "--quiet", "refs/tags/"+tag+"^{commit}")
+	head := gitOutput("rev-parse", "--verify", "--quiet", "HEAD^{commit}")
+
+	switch {
+	case tagged == "":
+		return fmt.Errorf("%w: there is no tag %s (HEAD's tags: %s)", errNoReleaseTag, tag, headTags())
+	case tagged != head:
+		return fmt.Errorf("%w: check out %s, or tag HEAD (HEAD's tags: %s)", errTagMismatch, tag, headTags())
+	}
+
+	return nil
+}
+
+// headTags names the tags on HEAD, for an error, or says there are none.
+func headTags() string {
+	tags := strings.Fields(gitOutput("tag", "--points-at", "HEAD"))
+	if len(tags) == 0 {
+		return "none"
+	}
+
+	return strings.Join(tags, ", ")
+}
+
+// maxDirtyNamed is how many changed files errDirtyTree names before it counts the rest.
+const maxDirtyNamed = 5
+
+// checkCleanTree fails unless git status finds the working tree exactly as HEAD holds it,
+// with no untracked file either (one in a package would be built into the release). A
+// status git can't read fails too.
+func checkCleanTree() error {
+	out, err := exec.CommandContext(context.Background(), "git", "status", "--porcelain").Output()
+	if err != nil {
+		return fmt.Errorf("read the working tree's changes with git status: %w", err)
+	}
+
+	changed := strings.Split(strings.TrimRight(string(out), "\n"), "\n")
+	if len(changed) == 1 && changed[0] == "" {
+		return nil
+	}
+
+	named := changed[:min(len(changed), maxDirtyNamed)]
+	for i, line := range named {
+		named[i] = strings.TrimSpace(line)
+	}
+
+	more := ""
+	if extra := len(changed) - len(named); extra > 0 {
+		more = fmt.Sprintf(", and %d more", extra)
+	}
+
+	return fmt.Errorf("%w: %s%s", errDirtyTree, strings.Join(named, "; "), more)
+}
+
+// releaseMeta is the version metadata of a release of version: meta, git's, with version
+// as the release and its numeric core as the bundle's version, and the release flavor.
+func releaseMeta(meta buildMeta, version string) buildMeta {
 	meta.release = version
 	meta.bundleVersion = numericCore(version)
 	meta.flavor = flavorRelease
@@ -304,14 +388,14 @@ func buildRelease(cfg packageConfig, keys releaseKeys) error {
 	steps := []func() error{
 		func() error { return freshFolder(out) },
 		func() error {
-			return assembleBundle(bundleSpec{bundle: bundle, meta: releaseMeta(cfg.version), arches: releaseArches(), signer: sign})
+			return assembleBundle(bundleSpec{bundle: bundle, meta: releaseMeta(readBuildMeta(), cfg.version), arches: releaseArches(), signer: sign})
 		},
 		func() error { return verifySignature(bundle, "--deep") },
 		func() error { return zipBundle(bundle, zipPath) },
 		func() error { return makeDMG(bundle, dmgPath, sign) },
 		func() error { return writeSums(filepath.Join(out, names.Sums), zipPath, dmgPath) },
 		func() error { return writeManifest(filepath.Join(out, names.Manifest), cfg.version, zipPath, keys) },
-		func() error { return verifyRelease(out, keys.public) },
+		func() error { return verifyRelease(out, cfg.version, keys.public) },
 		func() error { return reportRelease(out, names) },
 	}
 
@@ -361,8 +445,10 @@ func zipBundle(bundle, zipPath string) error {
 
 // checkZipLayout fails unless the zip at zipPath holds exactly the bundle top, as the
 // app's installer requires: one top-level entry, top, with the bundle's executable and
-// Info.plist inside it, no other entry beside it (a __MACOSX folder of resource forks, a
-// second bundle, a stray file), and no name or link that leads out of it.
+// Info.plist inside it, and nothing beside it (a __MACOSX folder of resource forks, a
+// second bundle, a stray file). Every name must be clean (no ./, no .., no //, no
+// backslash, not absolute) and appear once, and no entry may be a link: the bundle holds
+// none, and a link is the one way out of it a name alone can't show.
 func checkZipLayout(zipPath, top string) error {
 	r, err := zip.OpenReader(zipPath)
 	if err != nil {
@@ -370,23 +456,13 @@ func checkZipLayout(zipPath, top string) error {
 	}
 	defer func() { _ = r.Close() }()
 
-	required := map[string]bool{
-		top + "/Contents/Info.plist":          false,
-		top + "/Contents/MacOS/" + brand.Slug: false,
+	names, err := zipNames(r.File, top)
+	if err != nil {
+		return err
 	}
 
-	for _, f := range r.File {
-		if err = checkZipEntry(f, top); err != nil {
-			return err
-		}
-
-		if _, ok := required[f.Name]; ok {
-			required[f.Name] = true
-		}
-	}
-
-	for name, found := range required {
-		if !found {
+	for _, name := range []string{top + "/Contents/Info.plist", top + "/Contents/MacOS/" + brand.Slug} {
+		if !names[name] {
 			return fmt.Errorf("%w: it lacks %s", errZipLayout, name)
 		}
 	}
@@ -394,46 +470,42 @@ func checkZipLayout(zipPath, top string) error {
 	return nil
 }
 
-// checkZipEntry fails unless f is the bundle top or inside it, and, when it is a link,
-// points inside it too.
-func checkZipEntry(f *zip.File, top string) error {
-	name := f.Name
-	if !inside(name, top) {
-		return fmt.Errorf("%w: %q is beside %s", errZipLayout, name, top)
+// zipNames checks every entry as checkZipEntry does, refuses a name that appears twice,
+// and returns the names, without a folder's trailing slash.
+func zipNames(files []*zip.File, top string) (map[string]bool, error) {
+	names := make(map[string]bool, len(files))
+
+	for _, f := range files {
+		name, err := checkZipEntry(f, top)
+		if err != nil {
+			return nil, err
+		}
+
+		if names[name] {
+			return nil, fmt.Errorf("%w: %q appears twice", errZipLayout, f.Name)
+		}
+
+		names[name] = true
 	}
 
-	if f.Mode()&fs.ModeSymlink == 0 {
-		return nil
-	}
-
-	rc, err := f.Open()
-	if err != nil {
-		return fmt.Errorf("read the link %s in the zip: %w", name, err)
-	}
-	defer func() { _ = rc.Close() }()
-
-	target, err := io.ReadAll(io.LimitReader(rc, 4096))
-	if err != nil {
-		return fmt.Errorf("read the link %s in the zip: %w", name, err)
-	}
-
-	if t := string(target); path.IsAbs(t) || !inside(path.Join(path.Dir(name), t), top) {
-		return fmt.Errorf("%w: the link %q points out of %s", errZipLayout, name, top)
-	}
-
-	return nil
+	return names, nil
 }
 
-// inside reports whether the zip entry name is top or within it, with no element that
-// climbs out.
-func inside(name, top string) bool {
-	if strings.Contains(name, `\`) || path.IsAbs(name) || slices.Contains(strings.Split(name, "/"), "..") {
-		return false
+// checkZipEntry fails unless f is no link and its name is clean and is top or inside it.
+// It returns the name without a folder's trailing slash.
+func checkZipEntry(f *zip.File, top string) (string, error) {
+	name := strings.TrimSuffix(f.Name, "/")
+
+	switch {
+	case f.Mode()&fs.ModeSymlink != 0:
+		return "", fmt.Errorf("%w: %q is a link", errZipLayout, f.Name)
+	case name == "" || strings.Contains(name, `\`) || path.IsAbs(name) || path.Clean(name) != name:
+		return "", fmt.Errorf("%w: %q is not a clean name", errZipLayout, f.Name)
+	case name != top && !strings.HasPrefix(name, top+"/"):
+		return "", fmt.Errorf("%w: %q is beside %s", errZipLayout, f.Name, top)
 	}
 
-	clean := path.Clean(name)
-
-	return clean == top || strings.HasPrefix(clean, top+"/")
+	return name, nil
 }
 
 // makeDMG makes the disk image first installs open, at dmg: the bundle beside a link to
@@ -549,13 +621,18 @@ func writeManifest(path, version, zipPath string, keys releaseKeys) error {
 }
 
 // verifyPinned checks the release in dir as verifyRelease does, against releaseKey, the
-// key the app pins.
-func verifyPinned(dir, releaseKey string) error {
+// key the app pins, and, when version isn't "", holds it to that version (with or without
+// its v).
+func verifyPinned(dir, version, releaseKey string) error {
+	version = strings.TrimPrefix(version, "v")
+
 	switch {
 	case dir == "":
 		return errNoReleaseDir
 	case releaseKey == "":
 		return errNoReleaseKey
+	case version != "" && !update.ValidVersion(version):
+		return fmt.Errorf("%w: version=%s is not a release version", errOtherVersion, version)
 	}
 
 	key, err := update.ParseKey([]byte(releaseKey))
@@ -563,13 +640,14 @@ func verifyPinned(dir, releaseKey string) error {
 		return fmt.Errorf("read the release key the app pins: %w", err)
 	}
 
-	return verifyRelease(dir, key)
+	return verifyRelease(dir, version, key)
 }
 
 // verifyRelease checks the release in dir as the app will: its update manifest, at most
-// update.MaxManifestBytes, in form, for the platform releases ship, and signed by key's
-// private half; then the zip it names, by its size and SHA-512.
-func verifyRelease(dir string, key ed25519.PublicKey) error {
+// update.MaxManifestBytes, in form, for the platform releases ship (and for version, when
+// it isn't ""), and signed by key's private half; then the zip it names, by its size and
+// SHA-512.
+func verifyRelease(dir, version string, key ed25519.PublicKey) error {
 	m, err := readManifest(filepath.Join(dir, update.ManifestName))
 	if err != nil {
 		return err
@@ -581,6 +659,10 @@ func verifyRelease(dir string, key ed25519.PublicKey) error {
 
 	if m.Platform != update.Platform {
 		return fmt.Errorf("%w: %s, not %s", errOtherPlatform, m.Platform, update.Platform)
+	}
+
+	if version != "" && m.Version != version {
+		return fmt.Errorf("%w: %s, not %s", errOtherVersion, m.Version, version)
 	}
 
 	// Verify held the file's name to its exact form, so it names a file in dir.
@@ -630,113 +712,4 @@ func reportRelease(out string, names update.Assets) error {
 	}
 
 	return nil
-}
-
-// keygen makes the release key in out, which must not be inside repo, as App.Keygen
-// describes.
-func keygen(out, repo string) error {
-	if out == "" {
-		return errNoKeyFolder
-	}
-
-	in, err := within(out, repo)
-	if err != nil {
-		return err
-	}
-
-	if in {
-		return fmt.Errorf("%w: %s is inside %s", errInRepository, out, repo)
-	}
-
-	if err = os.MkdirAll(out, 0o700); err != nil {
-		return fmt.Errorf("create %s: %w", out, err)
-	}
-
-	public, private, err := ed25519.GenerateKey(rand.Reader)
-	if err != nil {
-		return fmt.Errorf("generate the release key: %w", err)
-	}
-
-	body, err := update.EncodePrivateKey(private)
-	if err != nil {
-		return err
-	}
-
-	path := filepath.Join(out, signingKeyFile)
-	if err = writeNewFile(path, body, 0o600); err != nil {
-		return err
-	}
-
-	say("Wrote the release's private key to " + path + ". Keep it secret and back it up: without it, no install " +
-		"can verify an update again.")
-	say("The public key, base64, to pin as update.ReleaseKey:")
-	say(update.EncodeKey(public))
-
-	return nil
-}
-
-// writeNewFile writes body to a new file at path with mode perm, refusing a file that is
-// already there.
-func writeNewFile(path string, body []byte, perm os.FileMode) error {
-	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, perm) //nolint:gosec // a folder app:keygen was named
-	if err != nil {
-		return fmt.Errorf("create %s: %w", path, err)
-	}
-
-	if _, err = f.Write(body); err != nil {
-		_ = f.Close()
-
-		return fmt.Errorf("write %s: %w", path, err)
-	}
-
-	if err = f.Close(); err != nil {
-		return fmt.Errorf("write %s: %w", path, err)
-	}
-
-	return nil
-}
-
-// within reports whether path is root or inside it, each made absolute with its links
-// resolved, as far as it exists.
-func within(path, root string) (bool, error) {
-	p, err := resolvedPath(path)
-	if err != nil {
-		return false, err
-	}
-
-	r, err := resolvedPath(root)
-	if err != nil {
-		return false, err
-	}
-
-	rel, err := filepath.Rel(r, p)
-	if err != nil {
-		return false, fmt.Errorf("compare %s with %s: %w", path, root, err)
-	}
-
-	return rel == "." || (rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))), nil
-}
-
-// resolvedPath returns path made absolute, with the links of its longest part that exists
-// resolved and the rest, which doesn't exist yet, joined on as written.
-func resolvedPath(path string) (string, error) {
-	abs, err := filepath.Abs(path)
-	if err != nil {
-		return "", fmt.Errorf("resolve %s: %w", path, err)
-	}
-
-	var rest []string
-
-	for dir := abs; ; dir = filepath.Dir(dir) {
-		resolved, evalErr := filepath.EvalSymlinks(dir)
-		if evalErr == nil {
-			return filepath.Join(append([]string{resolved}, rest...)...), nil
-		}
-
-		if !errors.Is(evalErr, fs.ErrNotExist) || filepath.Dir(dir) == dir {
-			return "", fmt.Errorf("resolve %s: %w", path, evalErr)
-		}
-
-		rest = append([]string{filepath.Base(dir)}, rest...)
-	}
 }
