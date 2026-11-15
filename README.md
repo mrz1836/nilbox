@@ -306,7 +306,7 @@ links to its full write-up in the [Desktop Guide](docs/desktop.md).
 ### <code>Your inbox</code>
 
 <details>
-<summary><strong>One inbox, every repository</strong>: Review requested, Authored, and Assigned, across everything your account can see</summary>
+<summary><strong>One inbox, every repository</strong>: your reviews, pull requests, and assignments</summary>
 <br/>
 
 - **Three lists**, each a GitHub search across every repository your account can see:
@@ -338,7 +338,7 @@ More in [Inbox cards](docs/desktop.md#inbox-cards).
 </details>
 
 <details>
-<summary><strong>Filter as you type</strong>: GitHub-style keys over what's already in the window, with no request to GitHub</summary>
+<summary><strong>Filter as you type</strong>: GitHub-style keys, with no request to GitHub</summary>
 <br/>
 
 - **⌘F** or **/** focuses the toolbar's field, which filters the page you're on: the inbox, the
@@ -364,7 +364,7 @@ More in [Filtering](docs/desktop.md#filtering).
 </details>
 
 <details>
-<summary><strong>Issue projects</strong>: each issue's project status, priority, size, and sub-issue progress, with a status sort in your own order</summary>
+<summary><strong>Issue projects</strong>: status, priority, size, and sub-issue progress on each card</summary>
 <br/>
 
 - **On the card:** the GitHub project an issue is in, its status there in the project's color, and
@@ -386,7 +386,7 @@ More in [Issue projects](docs/desktop.md#issue-projects).
 </details>
 
 <details>
-<summary><strong>Triage that stays on your Mac</strong>: snooze, dismiss, or pin, pin or mute whole repositories and orgs, with wake rules that end a snooze early, and a party at inbox nil</summary>
+<summary><strong>Triage that stays on your Mac</strong>: snooze, dismiss, pin, and mute</summary>
 <br/>
 
 - **Snooze** an item for 1 day, 2 days, 3 days, 1 week, 2 weeks, or 30 days (3 days by default).
@@ -416,7 +416,7 @@ More in [Snooze, dismiss, and pin](docs/desktop.md#snooze-dismiss-and-pin) and
 </details>
 
 <details>
-<summary><strong>The item menu and edits on GitHub</strong>: take yourself off an item from its card, checked against GitHub's answer and paced within your budget</summary>
+<summary><strong>The item menu and edits on GitHub</strong>: take yourself off an item from its card</summary>
 <br/>
 
 - **One menu per card:** the **⋯** beside the triage buttons opens a pull request in the review
@@ -444,7 +444,7 @@ More in [The item menu and edits on GitHub](docs/desktop.md#the-item-menu-and-ed
 ### <code>Review and merge</code>
 
 <details>
-<summary><strong>The review sheet</strong>: a pull request's files, diff, checks, and reviews in one panel, with one button for the action that fits</summary>
+<summary><strong>The review sheet</strong>: a pull request's diff, checks, and reviews in one panel</summary>
 <br/>
 
 - **Everything in one place:** click a pull request's title for its files and diffs, its
@@ -483,7 +483,7 @@ More in [Reviewing a pull request](docs/desktop.md#reviewing-a-pull-request).
 </details>
 
 <details>
-<summary><strong>The issue sheet</strong>: an issue's whole conversation, where it stands, and what fixes it, with comment and close a click away</summary>
+<summary><strong>The issue sheet</strong>: read, comment on, and close an issue in the app</summary>
 <br/>
 
 - **Read it here:** click an issue's title for its description and conversation, oldest first,
@@ -514,7 +514,7 @@ More in [Reading an issue](docs/desktop.md#reading-an-issue).
 </details>
 
 <details>
-<summary><strong>Merges you can trust</strong>: pinned to the commit you saw, confirmed every time, and never past branch protection unless you choose to</summary>
+<summary><strong>Merges you can trust</strong>: pinned to the commit you saw and confirmed every time</summary>
 <br/>
 
 - **Every merge asks first,** with the methods the repository allows (starting on the one
@@ -552,7 +552,7 @@ More in [Reviewing a pull request](docs/desktop.md#reviewing-a-pull-request) and
 ### <code>Coding agents</code>
 
 <details>
-<summary><strong>One-click launch</strong>: Claude Code or OpenAI Codex in iTerm2 or Terminal.app, in the item's own worktree, with your prompt loaded</summary>
+<summary><strong>One-click launch</strong>: Claude Code or OpenAI Codex in the item's own worktree</summary>
 <br/>
 
 - **Two agents, one button:** **Open in Claude** or **Open in Codex** starts the agent in a new
@@ -590,7 +590,7 @@ More in [Launching a session](docs/desktop.md#launching-a-session) and
 </details>
 
 <details>
-<summary><strong>Profiles, the launch menu, and launch defaults</strong>: each repository and org launches on the right account, agent, prompt, and model</summary>
+<summary><strong>Profiles and launch defaults</strong>: each repository launches with the right setup</summary>
 <br/>
 
 - **Profiles:** `~/.claude` and `~/.codex` are each agent's `default` profile, and each
@@ -619,7 +619,7 @@ More in [Coding agents and profiles](docs/desktop.md#coding-agents-and-profiles)
 </details>
 
 <details>
-<summary><strong>Follow every session</strong>: what each agent is doing, for how long, and what it last said, on its card and in the menu bar</summary>
+<summary><strong>Follow every session</strong>: what each agent is doing and what it last said</summary>
 <br/>
 
 - **On the card:** a tag such as **Claude · needs approval · 2m** follows the item's newest
@@ -642,7 +642,7 @@ More in [Following a session](docs/desktop.md#following-a-session).
 </details>
 
 <details>
-<summary><strong>Prompt library and review replies</strong>: Go templates with highlighting, autocomplete, checking, and a live preview, kept safe outside the database</summary>
+<summary><strong>Prompt library and review replies</strong>: Go templates with a live preview</summary>
 <br/>
 
 - **Prompts are Go `text/template`s** with variables such as `{{.Title}}`, `{{.Branch}}`,
@@ -673,7 +673,7 @@ More in [Prompts](docs/desktop.md#prompts).
 </details>
 
 <details>
-<summary><strong>Trust and sensitive files</strong>: outside contributors launch in plan mode, and risky file changes are flagged before an agent sees them</summary>
+<summary><strong>Trust and sensitive files</strong>: plan mode for outsiders, and risky files flagged</summary>
 <br/>
 
 - **Outside contributors:** items from forks, people outside the project, and bots not on your
@@ -707,7 +707,7 @@ The **Scripts** tab, with Release, Hooks, Repo scripts, and Runs, appears while 
 go-pre-commit is on in **Settings → Integrations**, or while you turn Scripts on there.
 
 <details>
-<summary><strong>Worktrees and branches</strong>: every worktree in your repository locations, cleaned up once its pull request merges, never at the cost of work</summary>
+<summary><strong>Worktrees and branches</strong>: cleaned up once merged, never at the cost of work</summary>
 <br/>
 
 - **Every worktree, in one view:** the **Worktrees** tab lists every linked worktree of the clones
@@ -747,7 +747,7 @@ More in [The Worktrees view](docs/desktop.md#the-worktrees-view) and
 </details>
 
 <details>
-<summary><strong>Release in two clicks</strong>: every clone with unreleased changes; magex tags and pushes the exact version, then Nilbox follows it to published</summary>
+<summary><strong>Release in two clicks</strong>: tag and push with magex, followed to published</summary>
 <br/>
 
 - **Every clone, one list:** each clone in your repository locations whose `origin` is on GitHub, grouped
@@ -788,7 +788,7 @@ More in [Release](docs/desktop.md#release).
 </details>
 
 <details>
-<summary><strong>Git hooks</strong>: go-pre-commit's hook installed and kept current across every clone, and its checks run with a clear result</summary>
+<summary><strong>Git hooks</strong>: go-pre-commit's hook installed and kept current in every clone</summary>
 <br/>
 
 - **Every clone with a go-pre-commit config,** grouped into **Needs attention** (no hook yet, an
@@ -813,7 +813,7 @@ More in [Hooks](docs/desktop.md#hooks).
 </details>
 
 <details>
-<summary><strong>Repo scripts</strong>: a clone's t3.json scripts, VS Code tasks, magex targets, and your own commands, one click each</summary>
+<summary><strong>Repo scripts</strong>: tasks, magex targets, and your own commands, one click each</summary>
 <br/>
 
 - **A clone's own commands:** its `t3.json` scripts, the `.vscode/tasks.json` tasks Nilbox can run
@@ -845,7 +845,7 @@ More in [Repo scripts](docs/desktop.md#repo-scripts).
 </details>
 
 <details>
-<summary><strong>Runs</strong>: every release, hook change, check, script, pull, and tool update, with its live log, in Nilbox or your terminal</summary>
+<summary><strong>Runs</strong>: every release, check, script, and update, with its live log</summary>
 <br/>
 
 - **One list:** every run, with its status, its result, and its full log (colors kept), plus
@@ -873,7 +873,7 @@ More in [Runs](docs/desktop.md#runs) and [The Scripts tab](docs/desktop.md#the-s
 </details>
 
 <details>
-<summary><strong>Your tools, found and kept current</strong>: mage-x and go-pre-commit found the way your terminal finds them, and updated after a checksum check</summary>
+<summary><strong>Your tools, found and kept current</strong>: mage-x and go-pre-commit, verified</summary>
 <br/>
 
 - **Found the way your terminal finds them:** after the first paint, Nilbox reads your login
@@ -903,7 +903,7 @@ More in [Tools the app finds and installs](docs/desktop.md#tools-the-app-finds-a
 ### <code>The app</code>
 
 <details>
-<summary><strong>Menu bar and notifications</strong>: a live count, sessions waiting for you, native banners, and a history of the last 200</summary>
+<summary><strong>Menu bar and notifications</strong>: a live count, native banners, and a history</summary>
 <br/>
 
 - **A menu bar icon** shows how many items need you. Its menu lists the agent sessions waiting for
@@ -928,7 +928,7 @@ More in [Menu bar and notifications](docs/desktop.md#menu-bar-and-notifications)
 </details>
 
 <details>
-<summary><strong>API budget gauge</strong>: a live dial for the GitHub budget closest to running out, counting every request the app makes</summary>
+<summary><strong>API budget gauge</strong>: a live dial for the budget closest to running out</summary>
 <br/>
 
 - **Always in view:** the toolbar's dial follows whichever GitHub budget has the least left
@@ -948,7 +948,7 @@ More in [The window](docs/desktop.md#the-window).
 </details>
 
 <details>
-<summary><strong>Settings, appearance, and About</strong>: themes, text and window sizes, refresh intervals, a settings search, and a bug report with nothing personal</summary>
+<summary><strong>Settings, appearance, and About</strong>: themes, text size, intervals, and search</summary>
 <br/>
 
 - **Themes:** follow the system, or pin Light or Dark. The window cross-fades to the new palette,
@@ -958,14 +958,19 @@ More in [The window](docs/desktop.md#the-window).
 - **Window size:** open at Compact, Standard, Large (the default), or Extra large.
 - **Refreshing:** how often the app reads the inbox (every 2 minutes to every hour), the pull
   requests whose checks are running (off, or every 30 seconds to every 2 minutes), and the
-  worktrees' sweep (every 5 minutes to every hour). A change applies at once.
+  worktrees' sweep (every 5 minutes to every hour), and GitHub's status page (off, or every 5
+  minutes to every hour, 30 minutes by default). A change applies at once.
 - **Settings** covers your account, appearance, notifications, and refreshing; then the inbox
   (snoozing and reviewing); the agents (repositories, profiles, launching, trust, sensitive files,
   and worktrees, in the order you set them up); and the tools (integrations). **Find a setting**
   in the toolbar narrows the sections to those with a match and marks the setting, and **⌘,**
   opens Settings from anywhere.
-- **The account menu** shows who is signed in, opens your GitHub profile, and opens GitHub's status
-  page, for when GitHub is having an incident.
+- **The account menu** shows who is signed in, opens your GitHub profile (or click your name), and
+  opens GitHub's status page, for when GitHub is having an incident. **Report a bug** and **Send
+  feedback** open a new GitHub issue, filled in for you to read before you send it.
+- **GitHub status:** while GitHub's status page reports an incident, a warning shows beside the
+  budget gauge, amber or red, with the incidents and what they affect a click away. The check is
+  one small request outside the API, so it costs no budget.
 - **About** shows the version, build, commit, and system, each coding agent's installed version,
   and the GitHub CLI's. **Report a bug** opens a GitHub issue with those details filled in, and
   your settings and integrations folded away beneath them, with nothing personal: no account,

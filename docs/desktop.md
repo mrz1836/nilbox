@@ -793,12 +793,25 @@ amber dot while a tool that's on can't be used. Hover a tab for what its number 
 **Prompts** has no count.
 
 **Account menu.** Click your picture for who is signed in, **Settings** (also ⌘,), **View
-GitHub profile**, and **GitHub status**, which opens githubstatus.com in your browser, for when
-GitHub is having an incident and the inbox, reviews, or checks lag. After a refresh, the picture is downloaded from
+GitHub profile** (or click your name or picture at the top), and **GitHub status**, which opens
+githubstatus.com in your browser, for when GitHub is having an incident and the inbox, reviews, or
+checks lag; while GitHub reports one, the item names it. Below them, **Report a bug** opens a
+GitHub issue with your versions, settings, and integrations filled in, as Settings → About's
+button does, and **Send feedback** opens a blank issue with a `[Feedback]` title, a few prompts,
+and your version filled in. You read either on GitHub before you send it. After a refresh, the picture is downloaded from
 `avatars.githubusercontent.com` without your token and cached in the database, so it shows
 offline. It is downloaded again only when GitHub reports a new picture, such as after you
 change it or sign in as another account with `gh auth switch`. Until it arrives, the button
 shows your initial.
+
+**GitHub status.** Nilbox checks [GitHub's status page](https://www.githubstatus.com/) once
+after it opens and then every 30 minutes (set in **Settings → Refreshing**, or turned off there).
+Each check is one small request to githubstatus.com, outside GitHub's API, so it costs no budget
+and sends no token or anything of yours. While GitHub reports a problem, a warning icon shows just
+before the budget gauge: amber for a minor incident or maintenance, red for an outage. Click it for
+the incidents (each opens its page), the parts of GitHub affected, when it was checked, **Check
+again**, and **Status page**. The icon goes away once GitHub reports every system operational. A
+check that can't reach the page keeps the last reading and says so.
 
 **API budget gauge.** The dial follows whichever GitHub budget has the least left: GraphQL,
 which the inbox spends, or REST and search, which `gh` and your agents spend from the same
@@ -844,8 +857,9 @@ read at all.
 **How often.** **Settings → Refreshing** sets each interval: the inbox (every 2 minutes to every
 hour, five minutes by default), the running checks (off, or every 30 seconds to every 2 minutes,
 45 seconds by default), the worktrees' sweep (every 5 minutes to every hour, five minutes by
-default), and the [GitHub notifications](#github-notifications) (every minute to every hour, five
-minutes by default, and never sooner than GitHub asks). A change applies at once: a refresh already due under the new interval starts
+default), the [GitHub notifications](#github-notifications) (every minute to every hour, five
+minutes by default, and never sooner than GitHub asks), and the [GitHub status](#the-window)
+check (off, or every 5 minutes to every hour, 30 minutes by default; it costs no budget). A change applies at once: a refresh already due under the new interval starts
 straight away, and otherwise the next waits the new interval from the last one's end.
 
 **Changes on GitHub.** The panel also counts the [edits](#the-item-menu-and-edits-on-github)

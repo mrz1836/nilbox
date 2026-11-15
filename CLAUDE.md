@@ -25,7 +25,9 @@ are Nilbox's own, and they win wherever the two differ.
 4. **User data stays local.** Nilbox never sends a user's GitHub data, preferences, triage state,
    or caches anywhere except GitHub's own API. Installing a tool downloads its public release from
    GitHub's release download hosts (`github.DefaultDownloadHosts`), which get only the request for
-   that file: no token, and nothing of the user's.
+   that file: no token, and nothing of the user's. Checking GitHub's own status page
+   (`internal/ghstatus`, unless the user turns it off) reads its summary from
+   `github.DefaultStatusHost`, which likewise gets only that request.
 5. **Optimize for local-first operation.** Nilbox should minimize network requests and rely on local caches and state wherever possible, ensuring responsiveness and reducing dependency on external services. Try and use the least amount of GitHub requests necessary for any operation.
 6. **No shell or Python scripts.** A build, check, or release step is a `magex` target written in
    Go (`magefiles/`, see Layout), never a `.sh`, `.py`, or other script, and a workflow runs the
@@ -124,7 +126,11 @@ Settings → About's **Report a bug** opens `.github/ISSUE_TEMPLATE/bug_report.y
 (`internal/core/bugreport.go`, `appinfo.StateReader`) with nothing personal in them, a name or
 path of the user's own told only as the default or the user's own, or counted; its test fails on
 any. The form is synced, so if a sync renames that field, the button stops filling
-it in. The `internal/appinfo` tests read the form and fail when that happens. The `magefiles`
+it in. The `internal/appinfo` tests read the form and fail when that happens. The account
+menu's **Report a bug** opens the same link, and its **Send feedback** opens GitHub's own blank
+issue (`template=BLANK_ISSUE`, `appinfo.FeedbackURL`) with a `[Feedback]` title, a few prompts,
+and the app's version filled in; a synced `config.yml` with `blank_issues_enabled: false` would
+turn that link into the template chooser. The `magefiles`
 tests likewise fail if the synced `10-mage-x.env` stops pinning golangci-lint, which `magex
 app:lint` reads.
 
@@ -212,8 +218,8 @@ app:lint` reads.
   `event.IntervalsChanged` the settings setter emits, so a change applies at once), the GitHub
   notifications' `ghthreads.Syncer` (woken the same way), the budget's `Saver`, the sessions watcher, the Release page's
   refresher, and the Hooks page's scans as tracked work, starts the deferred work
-  (`core.Deferred`: the login-shell read first; the tool finder, the runs, and the release
-  `Follower` beside it) once after the first paint, never on the cold
+  (`core.Deferred`: the login-shell read first; the tool finder, the runs, the release
+  `Follower`, and the GitHub status `Checker` beside it) once after the first paint, never on the cold
   start, and shuts down in order (timers, then the work, then the database). It declares small interfaces that the Wails glue
   in `cmd/nilbox` implements, and imports no Wails. A window event is registered in
   `main_desktop.go` with `application.RegisterEvent`, which generates its TypeScript type and
@@ -227,11 +233,12 @@ app:lint` reads.
 - `internal/budget/` keeps the GitHub API budget current. The one shared `github.Client` hands
   every response's rate-limit reading, and what the request spent, to its `Tracker`
   (`github.RateObserver`), whose state the `Saver` keeps across runs. Every GitHub request goes
-  through `(*github.Client).do`, apart from two downloads that aren't the API and carry no token:
+  through `(*github.Client).do`, apart from three reads that aren't the API and carry no token:
   a profile picture (`FetchAvatar`, the user's own by the URL GitHub gives, and anyone's by login
   through `FetchLoginAvatar`, which builds the avatar host's URL itself and refuses a login no user
-  could have, such as a bot's) and a public release file (`DownloadAsset`, https only, its
-  host and every redirect's on `DownloadHosts`). Never build an HTTP request anywhere else, nor run
+  could have, such as a bot's), a public release file (`DownloadAsset`, https only, its
+  host and every redirect's on `DownloadHosts`), and GitHub's status page's summary
+  (`FetchStatus`, https on `StatusHost` alone, every redirect's too, at most 1 MiB). Never build an HTTP request anywhere else, nor run
   `gh api`;
   `internal/repoguard/githubrequests_test.go` fails the build if anything does. Every write goes
   through the `WriteGate`, a REST one through `edit` and a GraphQL mutation through `mutate`
@@ -680,6 +687,22 @@ app:lint` reads.
   Moments and settled clears are dropped 30 days on. It never imports the inbox, settings,
   core, notify, the sheets, or the desktop shell, and the inbox never imports it (the
   repoguard boundary test).
+- `internal/ghstatus/` follows GitHub's own status page, so the window can say when GitHub has
+  an incident. A check is one GET of the page's summary (`(*github.Client).FetchStatus`: the
+  overall state, the parts of GitHub not operational, and the incidents and maintenance under
+  way), outside the API, so it sends no token and costs no budget. The `Checker`, a deferred
+  desktop worker, checks once after the first paint and then as often as Settings →
+  Refreshing → **GitHub status** says (`refresh.githubStatus`, 30 minutes by default, 5
+  minutes to an hour, 0 off), through `periodic.RunEvery`, woken on `event.IntervalsChanged`.
+  The bound `Status` serves the last reading from memory (none is kept across runs), or
+  `StateOff` while the check is off; `CheckNow` (the popover's Check again) reads the page
+  unless a check ended within `FreshFor` (10 s), joining one under way. A check that fails
+  keeps the reading before it, with the reason in its `Error`, and is logged; each check
+  emits `event.GitHubStatusUpdated` (`githubstatus:updated`). The window shows nothing while
+  GitHub is operational, unchecked, or the check is off; otherwise an amber (minor,
+  maintenance) or red (major, critical) warning sits before the budget gauge, opening the
+  incidents, the parts affected, when it was checked, Check again, and the page, and the
+  account menu's GitHub status item names it.
 - `internal/bump/` reads a dependency update from a bot's pull request title into an `Update`,
   for the review sheet and the `.Dependency` prompt variables. It is pure and imports no
   service.
