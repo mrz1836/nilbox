@@ -215,8 +215,9 @@ that show it are still to come.)
   from its release's tag (the second GET), at most 200 MiB and within ten minutes, into
   `<data>/updates/<version>/`, beside its manifest. Only a zip whose size and SHA-512 match the
   manifest is kept; every start checks a kept update again, so one waiting is ready at once. A
-  download that fails is tried again at the next due check, not before (a click on **Update**
-  always tries). A newer release replaces the one waiting.
+  download that fails is tried again at the next due check, not before, unless you click
+  **Check for Updates** or **Update**, which try at once. A newer release replaces the one
+  waiting.
 - **Pulling a bad release.** Deleting a release's `manifest-darwin.json` (GitHub then answers
   404) withdraws the update: the next check of every install finds no manifest, reads as up to
   date, and throws away an update downloaded and waiting, so nobody installs it.
@@ -233,11 +234,13 @@ that show it are still to come.)
   the database beside it (`<data>/nilbox.db.backup-<stamp>-v<schema>`, the newest three kept, as
   before a migration; a backup the update took under ten minutes ago is used again), stages the
   update beside itself, and quits, and the update replaces the app and opens it. A restart that
-  fails before the app quits, or a quit something held back, leaves the update ready and says
-  why; one the next start finds didn't install says so, and keeps its log as
-  `<data>/logs/update-<version>.log`. While the update's helper may still be at work (its log
-  not ended, under three minutes since the restart), the next start leaves its backup, staging
-  folder, and log alone and looks again later.
+  fails before the app quits leaves the update ready and says why. If something held the quit
+  back, the app can't restart again until it quits: quit it, open it again, and restart from
+  there, where the update is still ready. One the next start finds didn't install says so, and
+  keeps its log as `<data>/logs/update-<version>.log`. While the update's helper may still be
+  at work (its log not ended, under three minutes since the restart), the next start leaves
+  its backup, staging folder, and log alone and looks again later; until then **Update** and
+  restarting wait, saying the last update is still finishing.
 
 **When a new version is out** (Settings → About) is **Download it and tell me** (the default),
 **Just tell me** (no download until you click **Update**, which downloads and restarts), or

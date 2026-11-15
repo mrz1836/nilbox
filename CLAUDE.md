@@ -817,7 +817,8 @@ app:lint` reads.
   zip matching its manifest is kept, with its manifest beside it, and every start checks each
   kept update again, so one waiting is ready at once. A background download that failed is
   remembered by its version and SHA-512 and tried again only at the next due check, never on
-  the ticks between (a click on Update always tries). One operation (a check, a download, a
+  the ticks between (a click on Update tries, and so does Check for Updates, which forgets
+  the failure and has the `Worker` download at once). One operation (a check, a download, a
   restart) runs at a time. A failure changes no state: it is the status's `LastError`, worded
   with no raw error, path, or URL in it (`reachWords`, `downloadWords`, and the restart's own
   sentences), and a check that reached the releases is the last check, a manifest it refused
@@ -835,7 +836,9 @@ app:lint` reads.
   is under `HelperWindow` (3 minutes) old and its helper's log hasn't ended on a final
   message, the helper may still be restoring the old app, so the start settles nothing (no
   outcome, no cleanup, the record kept) and the `Worker` settles again once it may have
-  ended. It checks a minute later (`FirstCheckAfter`), then, through `periodic.RunEvery` on a
+  ended; meanwhile the bound `Download` and `Restart` refuse with `ErrSettling` ("The last
+  update is still finishing. Try again in a moment."), and `CheckNow` checks but downloads
+  nothing. It checks a minute later (`FirstCheckAfter`), then, through `periodic.RunEvery` on a
   15-minute tick, whenever six hours passed on the wall clock (`CheckEvery`), since timers
   stand still while a Mac sleeps; a Wake (the settings' Go-only `event.UpdatesChanged`, or a
   manual check that found a version to download) has it look at once. A timed check tells
@@ -860,7 +863,9 @@ app:lint` reads.
   quit something held), goes back to ready with `LastError`, clears the record even once the
   call's context ended, removes the staging folder, and, once the quit was let through, emits
   the Go-only `event.UpdateRestartFailed`, which has the shell hold a quit while runs go
-  again. `HideBanner` (Later) hides the banner of the version found for a day, `ShowBanner`
+  again. After a `Restart` that returned nil, the runtime refuses another restart until the
+  app quits, so every later restart in that run is refused too, saying to quit and open the
+  app again, where the update is still ready. `HideBanner` (Later) hides the banner of the version found for a day, `ShowBanner`
   lifts it, `AckUpdated` forgets the toast, and `ShowInstallLog` shows the kept log in
   Finder. It writes only the `update.*` state keys (`update.lastCheck`, `update.notified`,
   `update.bannerHiddenUntil`, `update.lastRunRelease`, `update.pendingInstall`), never
@@ -868,7 +873,9 @@ app:lint` reads.
   feed, the preferences (`Memory`), the backup, the runs (`Runs`, over the run engine), and
   the notifications (the repoguard boundary test). `store.RestoreBackup` copies a backup into
   a temporary file beside the database before it sets the database aside and renames the
-  copy into place, putting the database back when the rename fails.
+  copy into place, putting the database back when the rename fails; with no database there,
+  it removes a `-wal` or `-shm` left behind first. Every open removes the copies a restore
+  cut short left (`.<db>.restore-<digits>.tmp`, regular files five minutes old or more).
 - `internal/updateprefs/` declares the update setting, `update.mode` (`Mode`: `download`, the
   default, "Download it and tell me"; `notify`, "Just tell me"; `off`, "Don't check"), which
   settings alone writes (`SetUpdateMode`, emitting the Go-only `event.UpdatesChanged`) and
