@@ -100,6 +100,30 @@ describe('UpdatesCard', () => {
     expect(screen.getByRole('button', { name: 'Restart to update' })).toBeEnabled()
   })
 
+  it('says quietly that the last update is still finishing, holding the buttons a moment', () => {
+    card(updateReady(), { step: 'waiting', message: 'The last update is still finishing. Try again in a moment.' })
+
+    const note = screen.getByText('The last update is still finishing. Try again in a moment.')
+
+    expect(note).toHaveClass('text-muted')
+    expect(screen.getByRole('button', { name: 'Restart to update' })).toBeDisabled()
+  })
+
+  it('says what to do after a held quit, offering no restart, which can’t work in this run', () => {
+    card(updateReady({ lastError: `Couldn’t restart into 0.3.0, because ${brand.name} didn’t quit.` }), {
+      step: 'reopen',
+      message: `Quit ${brand.name} and open it again, then restart to update.`,
+    })
+
+    expect(line()).toHaveTextContent('0.3.0 is ready')
+    expect(screen.getByText(`Quit ${brand.name} and open it again, then restart to update.`)).toHaveClass(
+      'text-warning',
+    )
+    expect(line()).not.toHaveTextContent('didn’t quit')
+    expect(screen.queryByRole('button', { name: 'Restart to update' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', check)).toBeEnabled()
+  })
+
   it('says the restart under way', () => {
     card(updateReady({ state: 'installing' }))
 

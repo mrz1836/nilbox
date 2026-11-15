@@ -1,11 +1,11 @@
 import { act, renderHook, waitFor } from '@testing-library/react'
-import { describe, expect, it, vi } from 'vitest'
+import { describe, expect, it, onTestFinished, vi } from 'vitest'
 
 import { brand } from '../generated/brand'
-import type { UpdateStatus } from '../platform'
+import type { DownloadAnswer, UpdateStatus } from '../platform'
 import { runGoing, scriptRun, updateReady, updateStatus } from '../test/fixtures'
 import { emit, platform } from '../test/platform'
-import { useRestartToUpdate, useUpdate, useUpdateControl } from './useUpdate'
+import { useRestartToUpdate, useUpdate, useUpdateControl, waitFor as waitForSettling } from './useUpdate'
 
 vi.mock('../platform', () => import('../test/platform').then((fake) => fake.platform))
 
@@ -13,6 +13,16 @@ vi.mock('../platform', () => import('../test/platform').then((fake) => fake.plat
 function failure(message: string): Error {
   return new Error(message.toLowerCase(), { cause: { message } })
 }
+
+// got is a download that went through, with the status after it.
+function got(status: UpdateStatus): DownloadAnswer {
+  return { downloaded: true, status }
+}
+
+// settling is the words Go refuses with while the last update may still be finishing, and
+// held those after a held quit.
+const settling = 'The last update is still finishing. Try again in a moment.'
+const held = 'Quit Example and open it again, then restart to update.'
 
 // pending is a call that never answers, so a step stays under way.
 function pending<T>(): Promise<T> {
@@ -126,7 +136,7 @@ describe('useRestartToUpdate', () => {
   })
 
   it('downloads a version only found first, showing it downloads, then restarts', async () => {
-    let downloaded: (status: UpdateStatus) => void = () => undefined
+    let downloaded: (answer: DownloadAnswer) => void = () => undefined
     platform.getUpdateStatus.mockResolvedValue(updateReady({ state: 'available', mode: 'notify' }))
     platform.downloadUpdate.mockReturnValue(
       new Promise((resolve) => {
@@ -144,7 +154,7 @@ describe('useRestartToUpdate', () => {
     expect(platform.restartToUpdateNow).not.toHaveBeenCalled()
 
     await act(async () => {
-      downloaded(updateReady())
+      downloaded(got(updateReady()))
       await Promise.resolve()
     })
 
@@ -156,8 +166,8 @@ describe('useRestartToUpdate', () => {
   it('downloads again when a newer version turned up meanwhile, and waits for one downloading', async () => {
     platform.getUpdateStatus.mockResolvedValue(updateReady({ state: 'downloading', progress: 10 }))
     platform.downloadUpdate
-      .mockResolvedValueOnce(updateReady({ state: 'available', latest: '0.3.1' }))
-      .mockResolvedValueOnce(updateReady({ latest: '0.3.1' }))
+      .mockResolvedValueOnce(got(updateReady({ state: 'available', latest: '0.3.1' })))
+      .mockResolvedValueOnce(got(updateReady({ latest: '0.3.1' })))
     const { result } = flow()
 
     act(() => {
@@ -378,7 +388,7 @@ describe('useRestartToUpdate', () => {
   })
 
   it('counts the sheets once the download is done, so text written meanwhile counts', async () => {
-    let downloaded: (status: UpdateStatus) => void = () => undefined
+    let downloaded: (answer: DownloadAnswer) => void = () => undefined
     platform.getUpdateStatus.mockResolvedValue(updateReady({ state: 'available', mode: 'notify' }))
     platform.downloadUpdate.mockReturnValue(
       new Promise((resolve) => {
@@ -396,7 +406,7 @@ describe('useRestartToUpdate', () => {
 
     rerender({ count: () => 1 })
     await act(async () => {
-      downloaded(updateReady())
+      downloaded(got(updateReady()))
       await Promise.resolve()
     })
 
@@ -476,24 +486,100 @@ describe('useRestartToUpdate', () => {
     expect(result.current.step).toEqual({ step: 'idle' })
   })
 
-  it('runs the same restart when the menu bar asks for one', async () => {
+  it('waits quietly while the last update is still finishing, until the update next changes', async () => {
     platform.getUpdateStatus.mockResolvedValue(updateReady())
-    platform.restartToUpdateNow.mockResolvedValue({ restarted: false, runsGoing: [runGoing()], message: '' })
+    platform.restartToUpdateNow.mockResolvedValue({ restarted: false, refusal: 'settling', message: settling })
     const { result } = flow()
 
     act(() => {
-      emit('updates:restart')
+      result.current.start()
     })
-
     await waitFor(() => {
-      expect(result.current.step).toEqual({ step: 'asking', question: { runs: [runGoing()], sheets: 0 } })
+      expect(result.current.step).toEqual({ step: 'waiting', message: settling })
     })
 
-    // Asked again while it asks, it does nothing.
+    // Waiting is no failure: there is nothing to put away.
     act(() => {
-      emit('updates:restart')
+      result.current.dismiss()
     })
-    expect(platform.restartToUpdateNow).toHaveBeenCalledOnce()
+    expect(result.current.step).toEqual({ step: 'waiting', message: settling })
+
+    // The start settling says the update changed; the restart can go ahead again.
+    act(() => {
+      emit('updates:updated')
+    })
+    expect(result.current.step).toEqual({ step: 'idle' })
+
+    act(() => {
+      result.current.start()
+    })
+    await waitFor(() => {
+      expect(platform.restartToUpdateNow).toHaveBeenCalledTimes(2)
+    })
+  })
+
+  it('waits quietly for the download too, and offers the update again after a while', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    onTestFinished(() => {
+      vi.useRealTimers()
+    })
+    platform.getUpdateStatus.mockResolvedValue(updateReady({ state: 'available', mode: 'notify' }))
+    platform.downloadUpdate.mockResolvedValue({ downloaded: false, refusal: 'settling', message: settling })
+    const { result } = flow()
+
+    await act(async () => {
+      result.current.start()
+      await vi.advanceTimersByTimeAsync(0)
+    })
+    expect(result.current.step).toEqual({ step: 'waiting', message: settling })
+    expect(platform.restartToUpdateNow).not.toHaveBeenCalled()
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(waitForSettling - 1)
+    })
+    expect(result.current.step.step).toBe('waiting')
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1)
+    })
+    expect(result.current.step).toEqual({ step: 'idle' })
+  })
+
+  it('leaves a step that isn’t a wait as it is when the update changes', async () => {
+    platform.getUpdateStatus.mockResolvedValue(updateReady())
+    platform.restartToUpdateNow.mockRejectedValue(failure('Couldn’t install 0.3.0.'))
+    const { result } = flow()
+
+    act(() => {
+      result.current.start()
+    })
+    await waitFor(() => {
+      expect(result.current.step.step).toBe('failed')
+    })
+
+    act(() => {
+      emit('updates:updated')
+    })
+    expect(result.current.step).toEqual({ step: 'failed', message: 'Couldn’t install 0.3.0.' })
+  })
+
+  it('says what to do after a held quit, for the rest of the run, with nothing to retry', async () => {
+    platform.getUpdateStatus.mockResolvedValue(updateReady())
+    platform.restartToUpdateNow.mockResolvedValue({ restarted: false, refusal: 'reopen', message: held })
+    const { result } = flow()
+
+    act(() => {
+      result.current.start()
+    })
+    await waitFor(() => {
+      expect(result.current.step).toEqual({ step: 'reopen', message: held })
+    })
+
+    act(() => {
+      result.current.dismiss()
+      emit('updates:updated')
+    })
+    expect(result.current.step).toEqual({ step: 'reopen', message: held })
   })
 })
 
@@ -644,5 +730,56 @@ describe('useUpdateControl', () => {
       result.current.dismiss()
     })
     expect(result.current.banner).toEqual({ kind: 'ready', version: '0.3.0' })
+  })
+
+  it('runs the same restart when the menu bar asks for one', async () => {
+    platform.getUpdateStatus.mockResolvedValue(updateReady())
+    platform.restartToUpdateNow.mockResolvedValue({ restarted: false, runsGoing: [runGoing()], message: '' })
+    const { result } = control()
+
+    act(() => {
+      emit('updates:restart')
+    })
+
+    await waitFor(() => {
+      expect(result.current.flow).toEqual({ step: 'asking', question: { runs: [runGoing()], sheets: 0 } })
+    })
+
+    // Asked again while it asks, it does nothing.
+    act(() => {
+      emit('updates:restart')
+    })
+    expect(platform.restartToUpdateNow).toHaveBeenCalledOnce()
+  })
+
+  it('shows what to do after a held quit, Later or not, and asks Go for no restart again', async () => {
+    platform.getUpdateStatus.mockResolvedValue(updateReady())
+    platform.restartToUpdateNow.mockResolvedValue({ restarted: false, refusal: 'reopen', message: held })
+    const { result } = control()
+
+    await waitFor(() => {
+      expect(result.current.banner.kind).toBe('ready')
+    })
+    act(() => {
+      result.current.restart()
+    })
+    await waitFor(() => {
+      expect(result.current.banner).toEqual({ kind: 'reopen', message: held })
+    })
+
+    act(() => {
+      result.current.later()
+    })
+    expect(result.current.banner).toEqual({ kind: 'none' })
+
+    // The menu bar's Restart to Update shows it again, and restarts nothing.
+    act(() => {
+      emit('updates:restart')
+    })
+    await waitFor(() => {
+      expect(result.current.banner).toEqual({ kind: 'reopen', message: held })
+    })
+    expect(platform.showUpdateBanner).toHaveBeenCalledOnce()
+    expect(platform.restartToUpdateNow).toHaveBeenCalledOnce()
   })
 })

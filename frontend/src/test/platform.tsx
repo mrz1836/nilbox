@@ -417,7 +417,7 @@ function answers(subscribe: Loose<Platform['on']>): { [K in keyof Platform]: Loo
     // action answers with the status after it, as the update's service does.
     getUpdateStatus: () => Promise.resolve(updateStatus()),
     checkForUpdates: () => Promise.resolve(updateStatus()),
-    downloadUpdate: () => Promise.resolve(updateReady()),
+    downloadUpdate: () => Promise.resolve({ downloaded: true, status: updateReady() }),
     hideUpdateBanner: () => Promise.resolve(updateReady({ bannerHidden: true })),
     showUpdateBanner: () => Promise.resolve(updateReady()),
     ackUpdated: () => Promise.resolve(updateStatus()),

@@ -63,13 +63,38 @@ describe('bannerOf', () => {
   it('says why an update waiting can’t install where the app runs', () => {
     const location: UpdateLocation = { ok: false, kind: 'elsewhere', target: '/Applications/Example.app' }
 
+    // Nothing downloads there, so a version found stays available, whatever the setting.
+    for (const mode of ['download', 'notify', 'off'] as const) {
+      expect(bannerOf(updateReady({ location, state: 'available', mode }), idle, '')).toEqual({
+        kind: 'location',
+        version: '0.3.0',
+        ready: false,
+      })
+    }
+    // One kept from before it moved there is ready.
     expect(bannerOf(updateReady({ location }), idle, '')).toEqual({ kind: 'location', version: '0.3.0', ready: true })
-    expect(bannerOf(updateReady({ location, state: 'available', mode: 'notify' }), idle, '')).toEqual({
-      kind: 'location',
-      version: '0.3.0',
-      ready: false,
-    })
     expect(bannerOf(updateReady({ location, bannerHidden: true }), idle, '')).toEqual({ kind: 'none' })
+  })
+
+  it('waits quietly while the last update finishes, over everything', () => {
+    expect(
+      bannerOf(
+        updateReady({ bannerHidden: true }),
+        { step: 'waiting', message: 'The last update is still finishing. Try again in a moment.' },
+        '',
+      ),
+    ).toEqual({ kind: 'waiting', message: 'The last update is still finishing. Try again in a moment.' })
+  })
+
+  it('says what to do after a held quit, unless Later hid it', () => {
+    const reopen: RestartStep = { step: 'reopen', message: 'Quit Example and open it again, then restart to update' }
+
+    expect(bannerOf(updateReady(), reopen, '')).toEqual({
+      kind: 'reopen',
+      message: 'Quit Example and open it again, then restart to update.',
+    })
+    expect(bannerOf(updateReady({ bannerHidden: true }), reopen, '')).toEqual({ kind: 'none' })
+    expect(bannerOf(null, reopen, '')).toEqual({ kind: 'none' })
   })
 
   it('says the last launch’s update didn’t install, until it is put away', () => {

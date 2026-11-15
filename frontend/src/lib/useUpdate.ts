@@ -10,6 +10,7 @@ import {
   on,
   restartToUpdateNow,
   showUpdateBanner,
+  type Refused,
   type UpdateStatus,
 } from '../platform'
 import { attempt } from './call'
@@ -49,6 +50,10 @@ export function useUpdate(): UpdateQuery {
 // version while one downloads leaves that newer one to download next.
 const downloadTries = 3
 
+// waitFor is the longest a restart waits, quietly, after the last update said it is still
+// finishing, before the banner offers the update again.
+export const waitFor = 10_000
+
 // RestartFlow is the window's one restart to update, which the banner, About, and the menu
 // bar (through "updates:restart") all start.
 export interface RestartFlow {
@@ -75,6 +80,11 @@ export interface RestartFlow {
 //  4. Restart then backs the data up and restarts; the app quits inside it, so it returns
 //     only when something stopped the restart, whose words the banner shows.
 //
+// Two refusals are no failure to retry. While the last update may still be finishing, the
+// download or the restart waits a moment (waiting), quietly, until the update next changes
+// or waitFor passes. After a held quit, no restart works until the app is quit and opened
+// again (reopen), which lasts the run.
+//
 // A start while one is under way, from a second click or the menu bar, does nothing. An
 // app that can't update where it runs restarts nothing: the banner says why, shown again
 // if Later hid it.
@@ -100,6 +110,12 @@ export function useRestartToUpdate(unsent: () => number): RestartFlow {
     end({ step: 'failed', message })
   }
 
+  // refuse ends on a refusal the window answers on its own: a moment's wait while the last
+  // update finishes, or, after a held quit, what to do instead of trying again.
+  const refuse = ({ refusal, message }: Refused) => {
+    end(refusal === 'settling' ? { step: 'waiting', message } : { step: 'reopen', message })
+  }
+
   const restart = async (confirmed: boolean) => {
     setStep({ step: 'restarting' })
 
@@ -109,6 +125,8 @@ export function useRestartToUpdate(unsent: () => number): RestartFlow {
       fail(answer.error)
     } else if (answer.data.restarted) {
       end({ step: 'idle' })
+    } else if ('refusal' in answer.data) {
+      refuse(answer.data)
     } else {
       const { runsGoing } = answer.data
 
@@ -182,7 +200,13 @@ export function useRestartToUpdate(unsent: () => number): RestartFlow {
         return null
       }
 
-      status = downloaded.data
+      if (!downloaded.data.downloaded) {
+        refuse(downloaded.data)
+
+        return null
+      }
+
+      status = downloaded.data.status
     }
 
     return status
@@ -221,17 +245,34 @@ export function useRestartToUpdate(unsent: () => number): RestartFlow {
     void run()
   }
 
-  const startOnRequest = useEffectEvent(() => {
-    start()
+  // A wait while the last update finishes ends at the next change of the update, as the
+  // start settling is, or after waitFor, whichever comes first: the banner then offers the
+  // update again, and the same click goes ahead once it can.
+  const settled = useEffectEvent(() => {
+    setStep((was) => (was.step === 'waiting' ? { step: 'idle' } : was))
   })
 
   useEffect(
     () =>
-      on('updates:restart', () => {
-        startOnRequest()
+      on('updates:updated', () => {
+        settled()
       }),
     [],
   )
+
+  useEffect(() => {
+    if (step.step !== 'waiting') {
+      return undefined
+    }
+
+    const timer = setTimeout(() => {
+      settled()
+    }, waitFor)
+
+    return () => {
+      clearTimeout(timer)
+    }
+  }, [step])
 
   return {
     step,
@@ -273,7 +314,10 @@ const pendingStates: readonly UpdateStatus['state'][] = ['available', 'downloadi
 
 // useUpdateControl is the window's one view of the app's update: the status, the restart
 // flow (unsent counts the sheets holding text not sent), and the banner, which Later hides
-// at once and a failure put away leaves for this session.
+// at once and a failure put away leaves for this session. The menu bar's Restart to Update
+// ("updates:restart") restarts as the banner does. After a held quit, when no restart can
+// work in this run, asking for one shows the banner that says what to do instead, Later or
+// not, and tries nothing.
 export function useUpdateControl(flow: RestartFlow, update: UpdateQuery): UpdateControl {
   const { status, reload } = update
   // laterFor is the version Later hid the banner of in this window, before the status says
@@ -283,11 +327,47 @@ export function useUpdateControl(flow: RestartFlow, update: UpdateQuery): Update
   const hidden = status !== null && status.latest !== '' && status.latest === laterFor
   const banner = bannerOf(hidden ? { ...status, bannerHidden: true } : status, flow.step, lastLaunchPut)
 
+  const reveal = async () => {
+    setLaterFor('')
+
+    const shown = await attempt(showUpdateBanner())
+
+    if (!shown.ok) {
+      console.error('could not show the update’s banner:', shown.error)
+
+      return true
+    }
+
+    void reload()
+
+    return pendingStates.includes(shown.data.state)
+  }
+
+  const restart = () => {
+    if (flow.step.step === 'reopen') {
+      void reveal()
+    } else {
+      flow.start()
+    }
+  }
+
+  const restartOnRequest = useEffectEvent(() => {
+    restart()
+  })
+
+  useEffect(
+    () =>
+      on('updates:restart', () => {
+        restartOnRequest()
+      }),
+    [],
+  )
+
   return {
     status,
     flow: flow.step,
     banner,
-    restart: flow.start,
+    restart,
     later: () => {
       setLaterFor(status?.latest ?? '')
       void attempt(hideUpdateBanner()).then((result) => {
@@ -305,21 +385,7 @@ export function useUpdateControl(flow: RestartFlow, update: UpdateQuery): Update
         setLastLaunchPut(banner.version)
       }
     },
-    reveal: async () => {
-      setLaterFor('')
-
-      const shown = await attempt(showUpdateBanner())
-
-      if (!shown.ok) {
-        console.error('could not show the update’s banner:', shown.error)
-
-        return true
-      }
-
-      void reload()
-
-      return pendingStates.includes(shown.data.state)
-    },
+    reveal,
     reload,
   }
 }

@@ -949,18 +949,17 @@ export const {
 
 // The app's own updates. Status reads where the update stands, from memory and the stored
 // state alone, never the network; CheckForUpdates checks now, in every mode, and returns the
-// status, whose lastError tells a check that failed (the call itself succeeds); Download
-// downloads the newer version found and returns the status, ready; HideBanner is the
-// banner's Later, for a day, and ShowBanner lifts it, as a click on the update's
+// status, whose lastError tells a check that failed (the call itself succeeds); HideBanner
+// is the banner's Later, for a day, and ShowBanner lifts it, as a click on the update's
 // notification does; AckUpdated forgets the version this launch updated to, once the window
 // has said so; ShowInstallLog shows the log of an update that didn't install in Finder. An
 // "updates:updated" event follows every change, a download's progress included, and
 // "updates:restart" asks the window to restart to update (restartToUpdate in
-// lib/useUpdate.ts), as the menu bar's Restart to Update does.
+// lib/useUpdate.ts), as the menu bar's Restart to Update does. downloadUpdate and
+// restartToUpdateNow, below, read what their refusals carry.
 export const {
   Status: getUpdateStatus,
   CheckNow: checkForUpdates,
-  Download: downloadUpdate,
   HideBanner: hideUpdateBanner,
   ShowBanner: showUpdateBanner,
   AckUpdated: ackUpdated,
@@ -979,12 +978,45 @@ export interface RunGoing {
   stopRefused: string
 }
 
+// UpdateRefusal names a refusal of a download or a restart that the window answers on its
+// own, as Go's update.RefusalCode does: settling, while the last update may still be
+// finishing, which a moment's wait answers; or reopen, after a quit was held, which only
+// quitting the app and opening it again answers, so no retry is offered.
+export type UpdateRefusal = 'settling' | 'reopen'
+
+// Refused is a download or a restart refused for one of those reasons, with the backend's
+// words for it.
+export interface Refused {
+  refusal: UpdateRefusal
+  message: string
+}
+
 // RestartAnswer is how asking to restart to update ended: the update is installing, and
-// the app quits (Restart rarely returns then), or the restart was held back because runs
-// go in the app, which it would stop: those runs, or an empty list when they couldn't be
-// listed, for the window to ask about, with the backend's words for why.
+// the app quits (Restart rarely returns then); the restart was held back because runs go in
+// the app, which it would stop: those runs, or an empty list when they couldn't be listed,
+// for the window to ask about, with the backend's words for why; or it was refused for a
+// reason the window answers on its own.
 export type RestartAnswer =
-  { restarted: true; status: UpdateStatus } | { restarted: false; runsGoing: RunGoing[]; message: string }
+  | { restarted: true; status: UpdateStatus }
+  | { restarted: false; runsGoing: RunGoing[]; message: string }
+  | ({ restarted: false } & Refused)
+
+// DownloadAnswer is how asking to download the newer version ended: downloaded and
+// checked, with the status, ready; or refused for a reason the window answers on its own.
+export type DownloadAnswer = { downloaded: true; status: UpdateStatus } | ({ downloaded: false } & Refused)
+
+// causeOf reads what a failed call's cause carries beside its message: the backend's words
+// for the user, and its detail, or null when the failure carries no cause.
+function causeOf(err: unknown): { detail: unknown; message: string } | null {
+  if (!(err instanceof Error) || typeof err.cause !== 'object' || err.cause === null) {
+    return null
+  }
+
+  const { cause } = err
+  const message = 'message' in cause && typeof cause.message === 'string' ? cause.message : ''
+
+  return { detail: 'detail' in cause ? cause.detail : undefined, message }
+}
 
 // runFields are the fields of a RunGoing, with the type each holds.
 const runFields = {
@@ -1013,37 +1045,76 @@ function runGoingOf(value: unknown): RunGoing | null {
 // can't read; a list it can't read at all, like one Go couldn't list, is empty, which
 // means runs are going without saying which.
 function runsGoingOf(err: unknown): { runsGoing: RunGoing[]; message: string } | null {
-  if (!(err instanceof Error) || typeof err.cause !== 'object' || err.cause === null) {
-    return null
-  }
+  const cause = causeOf(err)
+  const detail = cause?.detail
 
-  const { cause } = err
-  const detail: unknown = 'detail' in cause ? cause.detail : undefined
-
-  if (typeof detail !== 'object' || detail === null || !('runsGoing' in detail)) {
+  if (cause === null || typeof detail !== 'object' || detail === null || !('runsGoing' in detail)) {
     return null
   }
 
   const listed = Array.isArray(detail.runsGoing) ? (detail.runsGoing as unknown[]) : []
-  const runsGoing = listed.map(runGoingOf).filter((run) => run !== null)
-  const message = 'message' in cause && typeof cause.message === 'string' ? cause.message : ''
 
-  return { runsGoing, message }
+  return { runsGoing: listed.map(runGoingOf).filter((run) => run !== null), message: cause.message }
+}
+
+// refusals are the codes of the refusals the window knows.
+const refusals: readonly UpdateRefusal[] = ['settling', 'reopen']
+
+// isRefusal reports whether code is one of the refusals the window knows.
+function isRefusal(code: unknown): code is UpdateRefusal {
+  return refusals.some((r) => r === code)
+}
+
+// refusedOf reads a refusal the window answers on its own from the failed call's cause,
+// whose detail Go sends as {"code": "..."} (update.RefusalDetail), with the backend's
+// words for the user. It returns null for any other failure, a code this build doesn't
+// know included.
+function refusedOf(err: unknown): Refused | null {
+  const cause = causeOf(err)
+  const detail = cause?.detail
+
+  if (cause === null || typeof detail !== 'object' || detail === null || !('code' in detail)) {
+    return null
+  }
+
+  return isRefusal(detail.code) ? { refusal: detail.code, message: cause.message } : null
+}
+
+// downloadUpdate downloads the newer version found and checks it, as Just tell me's Update
+// does before it restarts, and resolves with the status, ready. While the last update may
+// still be finishing, it resolves refused, for the window to wait out; any other failure
+// rejects with the backend's words.
+export function downloadUpdate(): CancellablePromise<DownloadAnswer> {
+  return narrow(update.Service)
+    .Download()
+    .then(
+      (status): DownloadAnswer => ({ downloaded: true, status }),
+      (err: unknown): DownloadAnswer => {
+        const refused = refusedOf(err)
+
+        if (refused === null) {
+          throw err
+        }
+
+        return { downloaded: false, ...refused }
+      },
+    )
 }
 
 // restartToUpdateNow installs the update that is ready and restarts into it. Unless
 // confirmed, it is held back while runs go in the app, which it would stop: it then
 // resolves with those runs, for the window to ask about first. Confirmed, it stops them.
-// It backs up the data first. Any other failure, which leaves the update ready again,
-// rejects with the backend's words. It may wait for a check or a download under way
-// first, for up to the download's limit.
+// While the last update may still be finishing, or after a quit was held in this run, it
+// resolves refused, saying which. It backs up the data first. Any other failure, which
+// leaves the update ready again, rejects with the backend's words. It may wait for a check
+// or a download under way first, for up to the download's limit.
 export function restartToUpdateNow(confirmed: boolean): CancellablePromise<RestartAnswer> {
   return narrow(update.Service)
     .Restart(confirmed)
     .then(
       (status): RestartAnswer => ({ restarted: true, status }),
       (err: unknown): RestartAnswer => {
-        const held = runsGoingOf(err)
+        const held = runsGoingOf(err) ?? refusedOf(err)
 
         if (held === null) {
           throw err

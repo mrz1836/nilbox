@@ -5,7 +5,7 @@ import { latestReleasePage, locationNote, type Banner } from '../lib/update'
 import type { UpdateControl } from '../lib/useUpdate'
 import { openExternal, type UpdateStatus } from '../platform'
 import { buttonClass, primaryButtonClass } from './controls'
-import { AlertIcon, ExternalIcon, UpdateIcon, XIcon } from './icons'
+import { AlertIcon, ClockIcon, ExternalIcon, UpdateIcon, XIcon } from './icons'
 import { Spinner } from './Spinner'
 
 // linkButtonClass is a quiet text button in the banner, such as What's new and Later,
@@ -178,6 +178,20 @@ function Look({ banner, update, onDetails }: { banner: Exclude<Banner, { kind: '
           {banner.detail !== '' && <span className="text-muted"> {banner.detail}</span>}
         </Shell>
       )
+    case 'waiting':
+      // A moment's wait, not a failure: calm, with nothing to click, and gone by itself.
+      return (
+        <Shell tone="offer" icon={<ClockIcon className="size-4 text-info" />}>
+          {banner.message}
+        </Shell>
+      )
+    case 'reopen':
+      // No restart works in this run, so nothing offers one: the words say what does.
+      return (
+        <Shell tone="warning" icon={warningIcon} actions={<Later onLater={later} />}>
+          {banner.message}
+        </Shell>
+      )
     case 'failed':
       return (
         <Shell
@@ -224,8 +238,10 @@ function Look({ banner, update, onDetails }: { banner: Exclude<Banner, { kind: '
 // notice shows: a version ready to restart into (Restart to update · What's new · Later),
 // one available to download and restart into as one click (Update), the restart under way
 // with the download's progress, a restart that just failed or the one before this launch
-// that didn't install (Try again · Download manually, and Details), and an update the app
-// can't install where it runs. What it shows is bannerOf's (lib/update.ts).
+// that didn't install (Try again · Download manually, and Details), a moment's wait while
+// the last update finishes, what to do after a held quit (no Try again, which can't work),
+// and an update the app can't install where it runs. What it shows is bannerOf's
+// (lib/update.ts).
 //
 // The live region stays mounted, so each change is announced, politely; a download's
 // percentage is left out of it, so it isn't read out as it climbs. The banner makes its

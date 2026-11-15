@@ -3,7 +3,7 @@ import { useId, useState } from 'react'
 import { brand } from '../../generated/brand'
 import { attempt } from '../../lib/call'
 import { formatAgo } from '../../lib/time'
-import { aboutLine, locationWords } from '../../lib/update'
+import { aboutLine, locationWords, sentence, type RestartStep } from '../../lib/update'
 import type { UpdateControl } from '../../lib/useUpdate'
 import { useSettingsSave } from '../../lib/useSettingsSave'
 import {
@@ -28,11 +28,25 @@ const modes: readonly { value: UpdateMode; label: string }[] = [
   { value: 'off', label: 'Don’t check' },
 ]
 
+// noteOf is what the Updates row says under the status: a moment's wait while the last
+// update finishes, quietly; what to do after a held quit; or the last failure.
+function noteOf(flow: RestartStep, failure: string): { text: string; tone: string } {
+  switch (flow.step) {
+    case 'waiting':
+      return { text: sentence(flow.message), tone: 'text-muted' }
+    case 'reopen':
+      return { text: sentence(flow.message), tone: 'text-warning' }
+    default:
+      return { text: failure, tone: 'text-danger' }
+  }
+}
+
 // StatusLine says where the update stands: the words, a check that found nothing new with
-// how long ago it ended, and a failure under them. It is a live region, so Check for
-// Updates' result is read out where it shows.
-function StatusLine({ status, id }: { status: UpdateStatus | null; id: string }) {
+// how long ago it ended, and a note under them. It is a live region, so Check for Updates'
+// result is read out where it shows.
+function StatusLine({ status, flow, id }: { status: UpdateStatus | null; flow: RestartStep; id: string }) {
   const line = status === null ? { text: 'Checking…', checkedAt: '', note: '' } : aboutLine(status)
+  const note = noteOf(flow, line.note)
 
   return (
     <div id={id} role="status" className="mt-0.5 text-xs text-muted">
@@ -45,7 +59,7 @@ function StatusLine({ status, id }: { status: UpdateStatus | null; id: string })
           </>
         )}
       </p>
-      {line.note !== '' && <p className="mt-0.5 text-danger">{line.note}</p>}
+      {note.text !== '' && <p className={`mt-0.5 ${note.tone}`}>{note.text}</p>}
     </div>
   )
 }
@@ -60,14 +74,16 @@ function UpdatesRow({ update }: { update: UpdateControl }) {
   const [error, setError] = useState('')
   const enabled = status?.enabled ?? false
   const state = status?.state ?? 'idle'
-  // busy is any step of the update under way, which holds the buttons.
+  // busy is any step of the update under way, a moment's wait included, which holds the
+  // buttons. After a held quit nothing is under way, but no restart is offered: none works
+  // in this run.
   const busy =
     checking ||
     (status?.checking ?? false) ||
     state === 'downloading' ||
     state === 'installing' ||
-    (flow.step !== 'idle' && flow.step !== 'failed')
-  const offer = status?.location.ok === true && (state === 'ready' || state === 'available')
+    (flow.step !== 'idle' && flow.step !== 'failed' && flow.step !== 'reopen')
+  const offer = status?.location.ok === true && (state === 'ready' || state === 'available') && flow.step !== 'reopen'
 
   const check = async () => {
     setError('')
@@ -92,7 +108,7 @@ function UpdatesRow({ update }: { update: UpdateControl }) {
           Updates
           {status?.flavor === 'rehearsal' && <span className={chipClass}>Rehearsal build</span>}
         </p>
-        <StatusLine status={status} id={`${id}-status`} />
+        <StatusLine status={status} flow={flow} id={`${id}-status`} />
         <ErrorText id={`${id}-error`} error={error} className="mt-1" />
       </div>
       {enabled && (

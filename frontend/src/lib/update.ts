@@ -11,8 +11,10 @@ import { heldReleaseText, heldRunText, releaseTagRisk, tagRisk } from './runsGoi
 // RestartStep is where the window's restart to update stands: nothing under way; finding
 // the newer version first (a Try again with nothing found yet); getting it ready to ask,
 // with what it shows unchanged; downloading it first, as Just tell me's Update does;
-// asking first, as the question says; restarting, once Restart is called; or failed, with
-// the backend's words for why.
+// asking first, as the question says; restarting, once Restart is called; failed, with the
+// backend's words for why; waiting, refused for a moment while the last update may still
+// be finishing, which is no failure; or reopen, refused because a quit was held in this
+// run, which no retry answers until the app is quit and opened again.
 export type RestartStep =
   | { step: 'idle' }
   | { step: 'checking' }
@@ -21,6 +23,8 @@ export type RestartStep =
   | { step: 'asking'; question: RestartQuestion }
   | { step: 'restarting' }
   | { step: 'failed'; message: string }
+  | { step: 'waiting'; message: string }
+  | { step: 'reopen'; message: string }
 
 // RestartQuestion is what restarting would lose, which the window asks about first: the
 // runs going in the app it would stop (null when runs go but couldn't be listed), and how
@@ -36,6 +40,8 @@ export interface RestartQuestion {
 //   - working: a restart under way, or the download or check it starts with, and how far
 //     a download has got (progress, 0 to 100), or null for work with no measure;
 //   - failed: the restart the user asked for just failed, with why;
+//   - waiting: the last update is still finishing, so the restart waits a moment, quietly;
+//   - reopen: a quit was held, so the app must be quit and opened again to restart;
 //   - lastLaunch: the restart before this launch didn't install its update;
 //   - location: an update waits, but the app can't replace itself where it runs.
 export type Banner =
@@ -44,6 +50,8 @@ export type Banner =
   | { kind: 'available'; version: string }
   | { kind: 'working'; text: string; progress: number | null; detail: string }
   | { kind: 'failed'; message: string }
+  | { kind: 'waiting'; message: string }
+  | { kind: 'reopen'; message: string }
   | { kind: 'lastLaunch'; version: string; current: string }
   | { kind: 'location'; version: string; ready: boolean }
 
@@ -96,18 +104,20 @@ function working(status: UpdateStatus | null, step: RestartStep['step']): Banner
 // bannerOf works out what the update banner shows, from the update's status, the
 // window's restart, and the failure the user put away this session (lastLaunchDismissed,
 // a version, or ''):
-//   - the restart's failure, then the restart under way, win over everything;
+//   - the restart's failure, its wait while the last update finishes, then the restart
+//     under way, win over everything;
 //   - nothing shows for a build that doesn't update, or before the status loads;
 //   - a restart under way that the window didn't start shows as working too;
+//   - after a held quit, what to do instead shows, unless hidden with Later;
 //   - the restart before this launch failing shows until put away;
 //   - an update ready, or available, shows unless hidden with Later, as the location
-//     notice when the app can't update where it runs;
+//     notice when the app can't update where it runs, where nothing downloads;
 //   - with Download it and tell me, an update found and not yet downloaded is about to
 //     download quietly, so nothing shows until it is ready, unless its download failed.
 // Background checks and downloads never show: About tells them.
 export function bannerOf(status: UpdateStatus | null, flow: RestartStep, lastLaunchDismissed: string): Banner {
-  if (flow.step === 'failed') {
-    return { kind: 'failed', message: sentence(flow.message) }
+  if (flow.step === 'failed' || flow.step === 'waiting') {
+    return { kind: flow.step, message: sentence(flow.message) }
   }
 
   if (flow.step === 'checking' || flow.step === 'downloading' || flow.step === 'restarting') {
@@ -122,6 +132,10 @@ export function bannerOf(status: UpdateStatus | null, flow: RestartStep, lastLau
     return working(status, 'restarting')
   }
 
+  if (flow.step === 'reopen') {
+    return status.bannerHidden ? { kind: 'none' } : { kind: 'reopen', message: sentence(flow.message) }
+  }
+
   const failed = status.installFailed
 
   if (failed.version !== '' && failed.version !== lastLaunchDismissed) {
@@ -129,7 +143,10 @@ export function bannerOf(status: UpdateStatus | null, flow: RestartStep, lastLau
   }
 
   const ready = status.state === 'ready'
-  const available = status.state === 'available' && (status.mode !== 'download' || status.lastError !== '')
+  // Where the app can't replace itself, nothing downloads on its own, so a version found
+  // stays available, and is told as soon as it is found.
+  const quiet = status.mode === 'download' && status.location.ok && status.lastError === ''
+  const available = status.state === 'available' && !quiet
 
   if (status.latest === '' || status.bannerHidden || (!ready && !available)) {
     return { kind: 'none' }

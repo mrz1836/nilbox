@@ -107,6 +107,31 @@ describe('UpdateBanner', () => {
     expect(screen.queryByRole('button', { name: 'Later' })).not.toBeInTheDocument()
   })
 
+  it('waits quietly while the last update finishes: no failure, nothing to click or put away', () => {
+    shown(updateReady(), { step: 'waiting', message: 'The last update is still finishing. Try again in a moment.' })
+
+    expect(banner()).toHaveTextContent('The last update is still finishing. Try again in a moment.')
+    expect(within(banner()).queryByRole('button')).not.toBeInTheDocument()
+    expect(banner().querySelector('.border-warning')).toBeNull()
+  })
+
+  it('says what to do after a held quit, offering no Try again, which can’t work', async () => {
+    const { update } = shown(updateReady(), {
+      step: 'reopen',
+      message: `Quit ${brand.name} and open it again, then restart to update.`,
+    })
+
+    expect(banner()).toHaveTextContent(`Quit ${brand.name} and open it again, then restart to update.`)
+    expect(
+      within(banner())
+        .getAllByRole('button')
+        .map((b) => b.textContent),
+    ).toEqual(['Later'])
+
+    await userEvent.click(screen.getByRole('button', { name: 'Later' }))
+    expect(update.later).toHaveBeenCalledOnce()
+  })
+
   it('says the last launch’s update didn’t install: Try again, Download manually, Details', async () => {
     const { update, onDetails } = shown(
       updateReady({ installFailed: { version: '0.3.0', reason: 'It wouldn’t open.', log: true } }),
@@ -127,15 +152,19 @@ describe('UpdateBanner', () => {
     expect(update.dismiss).toHaveBeenCalledOnce()
   })
 
-  it('says how to let the app install an update where it can’t, with no Restart to try', async () => {
+  it('says how to let the app install an update where it can’t, with no Update to try', async () => {
+    // Nothing downloads there, so the version found stays available, in the default mode too.
     const { update } = shown(
-      updateReady({ location: { ok: false, kind: 'diskImage', target: '/Applications/Example.app' } }),
+      updateReady({
+        state: 'available',
+        location: { ok: false, kind: 'diskImage', target: '/Applications/Example.app' },
+      }),
     )
 
     expect(banner()).toHaveTextContent(
-      `${brand.name} 0.3.0 is ready. Move ${brand.name} to your Applications folder to install it.`,
+      `${brand.name} 0.3.0 is available. Move ${brand.name} to your Applications folder to install it.`,
     )
-    expect(screen.queryByRole('button', { name: 'Restart to update' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Update' })).not.toBeInTheDocument()
 
     await userEvent.click(screen.getByRole('button', { name: 'Later' }))
     expect(update.later).toHaveBeenCalledOnce()
@@ -143,18 +172,19 @@ describe('UpdateBanner', () => {
     expect(platform.openExternal).toHaveBeenCalledExactlyOnceWith(releasePage)
   })
 
-  it('says an update available can’t install where the app runs, too', () => {
+  it('says why where the account can’t change the folder, and calls one kept from before ready', () => {
     shown(
       updateReady({
-        state: 'available',
+        state: 'ready',
         mode: 'notify',
         location: { ok: false, kind: 'applications', target: '/Applications/Example.app' },
       }),
     )
 
     expect(banner()).toHaveTextContent(
-      `${brand.name} 0.3.0 is available. Your account can’t change the folder it’s in, so it can’t install it.`,
+      `${brand.name} 0.3.0 is ready. Your account can’t change the folder it’s in, so it can’t install it.`,
     )
+    expect(screen.queryByRole('button', { name: 'Restart to update' })).not.toBeInTheDocument()
   })
 
   it('opens no page before the status loads', async () => {
