@@ -30,6 +30,9 @@ import * as sensitive$0 from "../sensitive/models.js";
 import * as snooze$0 from "../snooze/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
+import * as statusprefs$0 from "../statusprefs/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
 import * as threadrules$0 from "../threadrules/models.js";
 
 /**
@@ -179,12 +182,12 @@ export interface RefreshChoices {
     "releaseChecks": number[] | null;
     "worktrees": number[] | null;
     "notifications": number[] | null;
-    "githubStatus": number[] | null;
+    "serviceStatus": number[] | null;
 }
 
 /**
  * RefreshIntervals are how often, in seconds, the app reads each thing again on its own.
- * Both checks follows' 0 is off, and so is the GitHub status check's.
+ * Both checks follows' 0 is off, and so is the service status check's.
  */
 export interface RefreshIntervals {
     "inbox": number;
@@ -192,13 +195,13 @@ export interface RefreshIntervals {
     "releaseChecks": number;
     "worktrees": number;
     "notifications": number;
-    "githubStatus": number;
+    "serviceStatus": number;
 }
 
 /**
  * RefreshKind names one of the things the app reads again on its own, on a timer.
  */
-export type RefreshKind = "inbox" | "checks" | "releaseChecks" | "worktrees" | "notifications" | "githubStatus";
+export type RefreshKind = "inbox" | "checks" | "releaseChecks" | "worktrees" | "notifications" | "serviceStatus";
 
 /**
  * The values of RefreshKind, by the names of their Go constants.
@@ -237,11 +240,12 @@ export const RefreshKind = {
     RefreshNotifications: "notifications",
 
     /**
-     * RefreshGitHubStatus is GitHub's own status page, which says whether GitHub has an
-     * incident: one small request to www.githubstatus.com, outside the API, so it costs no
+     * RefreshServiceStatus is the status pages of the services the app depends on
+     * (GitHub's, Claude's, and OpenAI's), which say whether a part the user watches has an
+     * incident: one small request to each page watched, outside any API, so it costs no
      * point of the budget.
      */
-    RefreshGitHubStatus: "githubStatus",
+    RefreshServiceStatus: "serviceStatus",
 } as const;
 
 /**
@@ -474,11 +478,23 @@ export interface Settings {
 
     /**
      * Refresh is how often, in seconds, the app reads the inbox, the running checks, the
-     * Release page's running checks, the worktrees, and the GitHub notifications again on
-     * its own, and RefreshChoices what each can be set to.
+     * Release page's running checks, the worktrees, the GitHub notifications, and the
+     * status pages again on its own, and RefreshChoices what each can be set to.
      */
     "refresh": RefreshIntervals;
     "refreshChoices": RefreshChoices;
+
+    /**
+     * ServiceStatus is what the service status check watches: which providers' status
+     * pages are on, and which of each one's parts count (see the statusprefs package).
+     */
+    "serviceStatus": statusprefs$0.Config;
+
+    /**
+     * StatusProviders are the providers the check can watch, with their parts, for the
+     * settings page to list.
+     */
+    "statusProviders": statusprefs$0.Provider[] | null;
 }
 
 /**

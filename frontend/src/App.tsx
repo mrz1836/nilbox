@@ -40,6 +40,7 @@ import { matchSettings } from './lib/settingsIndex'
 import { itemWorktrees } from './lib/itemWorktrees'
 import { runningSession, sessionsOf } from './lib/sessions'
 import { useGitHubThreads } from './lib/useGitHubThreads'
+import { useServiceStatus } from './lib/useServiceStatus'
 import { useSessions } from './lib/useSessions'
 import { agentName } from './lib/launch'
 import { offersProjects } from './lib/projects'
@@ -47,7 +48,6 @@ import { useTextSize } from './lib/textSize'
 import { defaultSnoozeDays, findItem } from './lib/triage'
 import { useCollapsedSections } from './lib/useCollapsedSections'
 import { useBudget } from './lib/useBudget'
-import { useGitHubStatus } from './lib/useGitHubStatus'
 import { useInbox } from './lib/useInbox'
 import { useInboxOrder } from './lib/useInboxOrder'
 import { useIntegrations } from './lib/useIntegrations'
@@ -411,10 +411,10 @@ export function App() {
   const budget = useBudget()
   const triaged = useTriage(inbox.snapshot)
   const config = useLaunchConfig(inbox.snapshot)
-  // githubStatus is GitHub's own status page as the app last read it, which the toolbar
-  // warns of while GitHub reports a problem; turning its check off or on in the settings
-  // shows at once.
-  const githubStatus = useGitHubStatus(config.settings?.refresh.githubStatus)
+  // serviceStatus is where the services the user watches stand, from the status pages as
+  // the app last read them, which the toolbar warns of while a part watched has a problem;
+  // turning the check off or on, or changing what is watched, in the settings shows at once.
+  const serviceStatus = useServiceStatus(config.settings?.refresh.serviceStatus, config.settings?.serviceStatus)
   // reviewDrafts keeps what the user wrote in the review sheet, for the session.
   const reviewDrafts = useReviewDrafts()
   // issueDrafts keeps what the user wrote in the issue sheet, for the session.
@@ -650,6 +650,11 @@ export function App() {
   // openNotificationSettings opens the menu bar and notification settings.
   const openNotificationSettings = () => {
     go({ type: 'settings', section: 'notifications' })
+  }
+
+  // openServiceStatusSettings opens what the service status check watches.
+  const openServiceStatusSettings = () => {
+    go({ type: 'settings', section: 'status' })
   }
 
   // openNotification marks a history entry read and shows its item, or opens its page or
@@ -899,7 +904,8 @@ export function App() {
           account={account}
           gauge={budget.gauge}
           onBudgetCheck={budget.check}
-          githubStatus={githubStatus}
+          serviceStatus={serviceStatus}
+          onServiceStatusSettings={openServiceStatusSettings}
           inboxCount={triaged?.count ?? 0}
           worktreeCount={sweeps.count}
           worktreeAttention={sweeps.attention}

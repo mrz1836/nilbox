@@ -30,6 +30,7 @@ import { ProfilesSection } from './settings/ProfilesSection'
 import { RepositoriesSection } from './settings/RepositoriesSection'
 import { ReviewingSection } from './settings/ReviewingSection'
 import { SensitiveFilesSection } from './settings/SensitiveFilesSection'
+import { ServiceStatusSection } from './settings/ServiceStatusSection'
 import { SnoozingSection } from './settings/SnoozingSection'
 import { TrustSection } from './settings/TrustSection'
 import { RefreshingSection } from './settings/RefreshingSection'
@@ -247,6 +248,8 @@ export function SettingsView({
                 ))}
               {section === 'refreshing' &&
                 (settings === null ? loading : <RefreshingSection settings={settings} onSaved={onSaved} />)}
+              {section === 'status' &&
+                (settings === null ? loading : <ServiceStatusSection settings={settings} onSaved={onSaved} />)}
               {section === 'snoozing' &&
                 (settings === null ? loading : <SnoozingSection settings={settings} onSaved={onSaved} />)}
               {section === 'reviewing' &&

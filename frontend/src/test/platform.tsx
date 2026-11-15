@@ -29,7 +29,6 @@ import {
   defaultPrompts,
   fileCheck,
   githubThreadList,
-  githubStatus,
   githubThreads,
   hookActionResult,
   hookChecksResult,
@@ -69,9 +68,11 @@ import {
   scriptClones,
   scriptRun,
   scriptRunChunk,
+  serviceStatus,
   sessionsSnapshot,
   settings,
   snapshot,
+  statusWatch,
   sweepReport,
   threadsPreview,
   userScript,
@@ -138,8 +139,8 @@ function answers(subscribe: Loose<Platform['on']>): { [K in keyof Platform]: Loo
 
     getBudget: () => Promise.resolve(budgetGauge()),
     checkBudget: () => Promise.resolve(budgetGauge()),
-    getGitHubStatus: () => Promise.resolve(githubStatus()),
-    checkGitHubStatus: () => Promise.resolve(githubStatus()),
+    getServiceStatus: () => Promise.resolve(serviceStatus()),
+    checkServiceStatus: () => Promise.resolve(serviceStatus()),
 
     getInboxSnapshot: inbox,
     refreshInbox: inbox,
@@ -286,6 +287,20 @@ function answers(subscribe: Loose<Platform['on']>): { [K in keyof Platform]: Loo
       stored({ integrations: integrationsConfig({ sections: { [section]: open } }) }),
     setShowRuns: (showRuns) => stored({ integrations: integrationsConfig({ showRuns }) }),
     setRefreshInterval: (kind, seconds) => stored({ refresh: { ...settings().refresh, [kind]: seconds } }),
+    setStatusProvider: (id, on) =>
+      stored({
+        serviceStatus: { watch: statusWatch().watch.map((w) => (w.provider === id ? { ...w, on } : w)) },
+      }),
+    setStatusPart: (id, on) =>
+      stored({
+        serviceStatus: {
+          watch: statusWatch().watch.map((w) =>
+            id.startsWith(`${w.provider}.`)
+              ? { ...w, parts: on ? [...w.parts.filter((p) => p !== id), id] : w.parts.filter((p) => p !== id) }
+              : w,
+          ),
+        },
+      }),
     setGitHubNotificationSwitch: (name, on) => stored(threadRules({ [name]: on })),
     setGitHubNotificationTrigger: (trigger, on) => stored(threadRules({ triggersOff: on ? [] : [trigger] })),
     setGitHubNotificationAction: (action) => stored(threadRules({ action })),

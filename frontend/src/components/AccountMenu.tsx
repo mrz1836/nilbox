@@ -1,20 +1,61 @@
-import { brief, toneFill, toneOf, toneText } from '../lib/githubStatus'
-import { bugReportURL, feedbackURL, openExternal, type Account, type GitHubStatus } from '../platform'
+import type { ReactNode } from 'react'
+
+import { stateLabel, toneFill, toneOf, toneText, troubled, watched, worst } from '../lib/serviceStatus'
+import {
+  bugReportURL,
+  feedbackURL,
+  openExternal,
+  type Account,
+  type ServiceState,
+  type ServiceStatus,
+} from '../platform'
 import { Avatar } from './Avatar'
 import { BugIcon, CommentIcon, ExternalIcon, PulseIcon, SlidersIcon } from './icons'
 import { MenuButton, type MenuItem } from './Menu'
 
-// githubStatusUrl is GitHub's own status page, which says when GitHub has an incident:
-// the inbox, reviews, and checks can lag or fail while it does.
-export const githubStatusUrl = 'https://www.githubstatus.com/'
-
 export interface AccountMenuProps {
   // account is null before the inbox has loaded; its login is "" before the first refresh.
   account: Account | null
-  // githubStatus is the last reading of GitHub's status page, which the GitHub status item
-  // names while GitHub reports a problem; null or absent, it names nothing.
-  githubStatus?: GitHubStatus | null
+  // serviceStatus is where the services the user watches stand, which the Service status
+  // item names while a part watched has a problem, and lists, a provider each; null or
+  // absent, it names and lists nothing.
+  serviceStatus?: ServiceStatus | null
   onOpenSettings: () => void
+  // onChooseWatch opens Settings → Service status; it defaults to onOpenSettings.
+  onChooseWatch?: () => void
+}
+
+// stateHint is a state as a menu item's hint: its words, toned with a dot while it is in
+// trouble, and quiet otherwise.
+function stateHint(state: ServiceState): ReactNode {
+  const tone = toneOf(state)
+
+  if (tone === null) {
+    return stateLabel(state)
+  }
+
+  return (
+    <span className={`inline-flex items-center gap-1.5 ${toneText[tone]}`}>
+      <span aria-hidden="true" className={`size-1.5 rounded-full ${toneFill[tone]}`} />
+      {stateLabel(state)}
+    </span>
+  )
+}
+
+// serviceItems are the Service status submenu: each provider watched, its state as a hint,
+// opening its status page, then a way to choose what to watch.
+function serviceItems(status: ServiceStatus | null, chooseWatch: () => void): MenuItem[] {
+  const items: MenuItem[] = watched(status).map((provider) => ({
+    label: provider.name,
+    hint: stateHint(provider.state),
+    onSelect: () => {
+      openExternal(provider.url)
+    },
+  }))
+
+  items.push({ label: 'Choose what to watch…', divided: items.length > 0, onSelect: chooseWatch })
+
+  return items
 }
 
 // openMade opens a link Go makes now, such as a bug report with the versions as they are,
@@ -71,13 +112,19 @@ function AccountCard({ account, close }: { account: Account | null; close: () =>
 
 // AccountMenu is the toolbar's profile button. It shows the signed-in account's picture
 // and opens a menu with who is signed in, Settings, the account's GitHub profile, and
-// GitHub's status page, which names what the page reports while GitHub has a problem, then
-// a way to report a bug or send feedback, signed in or not. Everything but Settings opens
-// in the browser: the bug report and the feedback as a new issue on the project's
-// repository, filled in for the user to read before sending.
-export function AccountMenu({ account, githubStatus = null, onOpenSettings }: AccountMenuProps) {
+// Service status, which names the worst problem a service the user watches reports and
+// opens a submenu of each one's status page, then a way to report a bug or send feedback,
+// signed in or not. Everything but Settings and choosing what to watch opens in the
+// browser: the bug report and the feedback as a new issue on the project's repository,
+// filled in for the user to read before sending.
+export function AccountMenu({
+  account,
+  serviceStatus = null,
+  onOpenSettings,
+  onChooseWatch = onOpenSettings,
+}: AccountMenuProps) {
   const login = account?.login ?? ''
-  const tone = githubStatus === null ? null : toneOf(githubStatus.state)
+  const trouble = troubled(serviceStatus)
   const items: MenuItem[] = [
     {
       label: 'Settings',
@@ -99,18 +146,10 @@ export function AccountMenu({ account, githubStatus = null, onOpenSettings }: Ac
 
   items.push(
     {
-      label: 'GitHub status',
+      label: 'Service status',
       icon: <PulseIcon className="size-4 text-muted" />,
-      hint:
-        githubStatus === null || tone === null ? undefined : (
-          <span className={`inline-flex items-center gap-1.5 ${toneText[tone]}`}>
-            <span aria-hidden="true" className={`size-1.5 rounded-full ${toneFill[tone]}`} />
-            {brief(githubStatus.state)}
-          </span>
-        ),
-      onSelect: () => {
-        openExternal(githubStatusUrl)
-      },
+      hint: trouble.length === 0 ? undefined : stateHint(worst(trouble)),
+      items: () => serviceItems(serviceStatus, onChooseWatch),
     },
     {
       label: 'Report a bug',

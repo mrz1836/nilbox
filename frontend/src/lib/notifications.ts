@@ -60,6 +60,13 @@ export const notificationKinds: readonly KindDescription[] = [
       'A run from the Scripts tab fails or runs past its time limit, in the app or in your terminal. A run you stop never notifies.',
   },
   {
+    kind: 'service_status',
+    title: 'Service status',
+    label: 'Service status changes',
+    description:
+      'A part of GitHub, Claude, or OpenAI you watch goes down, or comes back, as its status page says. Choose what you watch in Service status.',
+  },
+  {
     kind: 'session_needs_you',
     session: true,
     title: 'Session waiting for you',
@@ -79,8 +86,9 @@ export const notificationKinds: readonly KindDescription[] = [
 export const sessionBannerHint = 'Claude Code and Codex can already notify through your terminal, so these start off.'
 
 // inboxKinds and sessionKinds are the kinds of notification the history keeps (the
-// inbox's, a release's (reaching GitHub, published, or its workflow failing), and a run that
-// failed), and those about the agent sessions, which it does not.
+// inbox's, a release's (reaching GitHub, published, or its workflow failing), a run that
+// failed, and a service the user watches going down or coming back), and those about the
+// agent sessions, which it does not.
 export const inboxKinds = notificationKinds.filter((k) => k.session !== true)
 export const sessionKinds = notificationKinds.filter((k) => k.session === true)
 
@@ -144,7 +152,7 @@ export const startLists: NotificationLists = {
 
 // AppTypeID is one of the app tab's types, as its Type control offers it and type: names
 // it in the toolbar's field.
-export type AppTypeID = 'all' | 'review' | 'assigned' | 'snooze' | 'release' | 'run'
+export type AppTypeID = 'all' | 'review' | 'assigned' | 'snooze' | 'release' | 'run' | 'status'
 
 // AppType is a type's name, the kinds of entry it lists (none for every kind), and what
 // the page says when it lists none.
@@ -167,10 +175,11 @@ export const appTypes: Readonly<Record<AppTypeID, AppType>> = {
     none: 'No releases.',
   },
   run: { label: 'Runs', kinds: ['run_failed'], none: 'No failed runs.' },
+  status: { label: 'Status', kinds: ['service_status'], none: 'No service status changes.' },
 }
 
 // appTypeOrder is the order the page offers the types in.
-export const appTypeOrder: readonly AppTypeID[] = ['all', 'review', 'assigned', 'snooze', 'release', 'run']
+export const appTypeOrder: readonly AppTypeID[] = ['all', 'review', 'assigned', 'snooze', 'release', 'run', 'status']
 
 // appTypeOf is the type an entry belongs to, or '' for a kind this build doesn't know.
 export function appTypeOf(entry: AppNotification): Exclude<AppTypeID, 'all'> | '' {

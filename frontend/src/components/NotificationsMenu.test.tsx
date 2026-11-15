@@ -312,6 +312,35 @@ describe('NotificationsMenu', () => {
     expect(publishedEntry.querySelector('.text-danger svg')).toBeNull()
   })
 
+  it('shows a service status change with its own words, and opens it', async () => {
+    const change = notification({
+      id: 9,
+      kind: 'service_status',
+      itemId: 0,
+      itemKind: '',
+      repo: '',
+      number: 0,
+      title: 'Claude: Partial outage',
+      detail: 'Claude API · Elevated errors on Claude API',
+      url: 'https://status.claude.com/incidents/x1',
+    })
+    render(
+      <NotificationsMenu notifications={state({ log: logOf([change]) })} onOpen={onOpen} onSettings={onSettings} />,
+    )
+
+    const panel = await open()
+    const entry = panel.getByRole('button', { name: entryName('Claude: Partial outage') })
+
+    expect(entry).toHaveTextContent('Service status')
+    expect(entry).toHaveTextContent('Claude API · Elevated errors on Claude API')
+    expect(entry).not.toHaveAttribute('title')
+    expect(entry.querySelector('.text-danger svg')).toBeNull()
+
+    await userEvent.click(entry)
+
+    expect(onOpen).toHaveBeenCalledWith(change)
+  })
+
   it('says when there is nothing yet, offers no Clear, and opens the settings', async () => {
     render(<NotificationsMenu notifications={state()} onOpen={onOpen} onSettings={onSettings} />)
 

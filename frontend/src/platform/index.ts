@@ -13,7 +13,6 @@ import * as appinfo from '../../bindings/github.com/mrz1836/nilbox/internal/appi
 import * as backup from '../../bindings/github.com/mrz1836/nilbox/internal/backup'
 import * as branchrules from '../../bindings/github.com/mrz1836/nilbox/internal/branchrules'
 import * as budget from '../../bindings/github.com/mrz1836/nilbox/internal/budget'
-import * as ghstatus from '../../bindings/github.com/mrz1836/nilbox/internal/ghstatus'
 import * as ghthreads from '../../bindings/github.com/mrz1836/nilbox/internal/ghthreads'
 import type * as gitread from '../../bindings/github.com/mrz1836/nilbox/internal/gitread'
 import * as hooks from '../../bindings/github.com/mrz1836/nilbox/internal/hooks'
@@ -40,6 +39,8 @@ import type * as sensitive from '../../bindings/github.com/mrz1836/nilbox/intern
 import * as sessions from '../../bindings/github.com/mrz1836/nilbox/internal/sessions'
 import * as settings from '../../bindings/github.com/mrz1836/nilbox/internal/settings'
 import type * as snooze from '../../bindings/github.com/mrz1836/nilbox/internal/snooze'
+import type * as statusprefs from '../../bindings/github.com/mrz1836/nilbox/internal/statusprefs'
+import * as svcstatus from '../../bindings/github.com/mrz1836/nilbox/internal/svcstatus'
 import type * as threadrules from '../../bindings/github.com/mrz1836/nilbox/internal/threadrules'
 import type * as timeline from '../../bindings/github.com/mrz1836/nilbox/internal/timeline'
 import * as worktrees from '../../bindings/github.com/mrz1836/nilbox/internal/worktrees'
@@ -105,9 +106,6 @@ export type BudgetWrites = NonNullLists<budget.Writes>
 // builds an item's link from its repository, kind, and number.
 export type GitHubThreadsSnapshot = Omit<NonNullLists<ghthreads.Snapshot>, 'unread'> & { unread: GitHubThread[] }
 export type GitHubThreadsStatus = NonNullLists<ghthreads.Status>
-export type GitHubStatus = NonNullLists<ghstatus.Status>
-export type GitHubStatusState = ghstatus.State
-export type GitHubStatusIncident = NonNullLists<ghstatus.Incident>
 export type GitHubThreadsAccess = ghthreads.Access
 export type GitHubThread = Omit<NonNullLists<ghthreads.Thread>, 'kind'> & { kind: item.Kind | '' }
 // GitHubThreadList is every thread the mirror holds, read and unread, for the Notifications
@@ -457,6 +455,20 @@ export type NotificationsTab = settings.NotificationsTab
 export type ConversationOrder = settings.ConversationOrder
 export type RefreshKind = settings.RefreshKind
 
+// The service status check: where the services the user watches stand (GitHub, Claude,
+// OpenAI), each provider's parts affected and incidents that touch them; and, from the
+// settings, the catalog of what can be watched and the user's choices.
+export type ServiceStatus = NonNullLists<svcstatus.Status>
+export type ServiceProvider = NonNullLists<svcstatus.Provider>
+export type ServiceIncident = NonNullLists<svcstatus.Incident>
+export type ServiceState = svcstatus.State
+export type IncidentStage = svcstatus.Stage
+export type StatusConfig = NonNullLists<statusprefs.Config>
+export type StatusProvider = NonNullLists<statusprefs.Provider>
+export type StatusPart = NonNullLists<statusprefs.Part>
+export type StatusProviderID = statusprefs.ProviderID
+export type StatusPartID = statusprefs.PartID
+
 export type SnoozeRules = NonNullLists<snooze.Rules>
 export type WakeReasons = NonNullLists<snooze.Reasons>
 export type WakeReview = snooze.ReviewOutcome
@@ -642,6 +654,8 @@ export const {
   SetScriptsSectionOpen: setScriptsSectionOpen,
   SetShowRuns: setShowRuns,
   SetRefreshInterval: setRefreshInterval,
+  SetStatusProvider: setStatusProvider,
+  SetStatusPart: setStatusPart,
   SetGitHubNotificationSwitch: setGitHubNotificationSwitch,
   SetGitHubNotificationTrigger: setGitHubNotificationTrigger,
   SetGitHubNotificationAction: setGitHubNotificationAction,
@@ -855,14 +869,15 @@ export const markGitHubThreadsDone: (threadIDs: number[]) => CancellablePromise<
 export const markGitHubThreadsRead: (threadIDs: number[]) => CancellablePromise<GitHubThreadsSnapshot> =
   githubThreads.MarkRead
 
-// GitHub's own status page. Status returns the last reading, which the app takes once
-// after the first paint and then as often as Settings → Refreshing says, reading nothing
-// from the network itself, or the state off while the check is off; CheckNow reads the page
-// now, unless it did moments ago. A failed check keeps the last reading and says why in its
-// error. A "githubstatus:updated" event follows each check.
-const githubStatus = narrow(ghstatus.Service)
+// The status pages of the services the user watches. Status judges each provider's last
+// reading against what the user watches now, reading nothing from the network itself, so
+// a change of the ticked parts shows at once; a provider not watched, or every one while
+// the check is off, is off. CheckNow reads again each page watched that it didn't read
+// moments ago. A failed check keeps the last reading and says why in its provider's error.
+// A "servicestatus:updated" event follows each pass, and each change of what is watched.
+const serviceStatus = narrow(svcstatus.Service)
 
-export const { Status: getGitHubStatus, CheckNow: checkGitHubStatus } = githubStatus
+export const { Status: getServiceStatus, CheckNow: checkServiceStatus } = serviceStatus
 
 // The notification history. MarkAllRead marks every entry read (Mark all done), and
 // MarkRead and MarkUnread the entries with the ids given; opening the history marks

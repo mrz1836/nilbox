@@ -7,12 +7,12 @@ import { at } from '../test/clock'
 import {
   account,
   budgetGauge,
-  githubIncident,
-  githubStatus,
   githubThread,
   githubThreads,
   notification,
   reading,
+  serviceIncident,
+  serviceStatus,
   settings,
 } from '../test/fixtures'
 import type { GitHubThreadsState } from '../lib/useGitHubThreads'
@@ -256,20 +256,28 @@ describe('AppHeader', () => {
     expect(screen.getByRole('button', { name: 'Account: octo-user' })).toBeInTheDocument()
   })
 
-  it('shows no GitHub status warning while every system is operational', () => {
-    renderHeader({ githubStatus: { status: githubStatus(), checking: false, check: vi.fn() } })
-    expect(screen.queryByRole('button', { name: /^GitHub status/ })).not.toBeInTheDocument()
+  it('shows no service status warning while everything watched works', () => {
+    renderHeader({ serviceStatus: { status: serviceStatus(), checking: false, check: vi.fn() } })
+    expect(screen.queryByRole('button', { name: /^Service status/ })).not.toBeInTheDocument()
   })
 
-  it('puts the GitHub status warning just before the budget gauge, and names it in the account menu', async () => {
-    renderHeader({ githubStatus: { status: githubIncident(), checking: false, check: vi.fn() } })
+  it('puts the service status warning just before the budget gauge, and names it in the account menu', async () => {
+    const onServiceStatusSettings = vi.fn()
+    renderHeader({
+      serviceStatus: { status: serviceIncident(), checking: false, check: vi.fn() },
+      onServiceStatusSettings,
+    })
 
-    const warning = screen.getByRole('button', { name: 'GitHub status: Partial system outage' })
+    const warning = screen.getByRole('button', { name: 'Service status: Partial outage on Claude' })
     const gauge = screen.getByRole('button', { name: /^API budget/ })
     expect(warning.compareDocumentPosition(gauge) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
 
+    await userEvent.click(warning)
+    await userEvent.click(screen.getByRole('button', { name: 'Choose what to watch' }))
+    expect(onServiceStatusSettings).toHaveBeenCalledOnce()
+
     await userEvent.click(screen.getByRole('button', { name: 'Account: octo-user' }))
-    expect(screen.getByRole('menuitem', { name: /^GitHub status,\s*Partial outage$/ })).toBeInTheDocument()
+    expect(screen.getByRole('menuitem', { name: /^Service status,\s*Partial outage$/ })).toBeInTheDocument()
   })
 
   it('leads with the logo: the mark beside the wordmark, named by the product name alone', () => {

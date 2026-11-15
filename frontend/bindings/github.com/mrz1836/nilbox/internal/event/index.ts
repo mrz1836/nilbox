@@ -9,7 +9,6 @@ export {
 export type {
     BudgetUpdated,
     GHThreadsUpdated,
-    GitHubStatusUpdated,
     HooksUpdated,
     InboxUpdated,
     IssueProgress,
@@ -21,6 +20,7 @@ export type {
     ReviewProgress,
     ScriptRunProgress,
     ScriptRunsUpdated,
+    ServiceStatusUpdated,
     SessionsUpdated,
     ToolsUpdated,
     WorktreesProgress,

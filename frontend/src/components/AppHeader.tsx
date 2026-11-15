@@ -3,17 +3,17 @@ import type { RefObject } from 'react'
 import { brand } from '../generated/brand'
 import { counted, formatCount } from '../lib/format'
 import { scriptsBadgeTitle, type ScriptsBadge } from '../lib/scriptsTab'
-import type { GitHubStatusState } from '../lib/useGitHubStatus'
 import type { GitHubThreadsState } from '../lib/useGitHubThreads'
 import type { NotificationsState } from '../lib/useNotifications'
+import type { ServiceStatusState } from '../lib/useServiceStatus'
 import type { Account, AppNotification, BudgetGauge, NotificationsTab, Settings } from '../platform'
 import { AccountMenu } from './AccountMenu'
 import { BudgetMenu } from './BudgetMenu'
-import { GitHubStatusMenu } from './GitHubStatusMenu'
 import { GitHubThreadsMenu } from './GitHubThreadsMenu'
 import { Logo } from './Logo'
 import { NotificationsMenu } from './NotificationsMenu'
 import { SearchField, type SearchFieldProps } from './SearchField'
+import { ServiceStatusMenu } from './ServiceStatusMenu'
 
 // View is the page the window shows. Settings is opened from the account menu (or ⌘,)
 // rather than from a tab.
@@ -37,10 +37,13 @@ export interface AppHeaderProps {
   gauge: BudgetGauge | null
   // onBudgetCheck reads every budget from GitHub now; the budget menu asks while it is open.
   onBudgetCheck?: () => void
-  // githubStatus is GitHub's own status page, which shows a warning beside the budget gauge
-  // while GitHub reports a problem, and a word on the account menu's GitHub status; without
-  // it there is neither.
-  githubStatus?: GitHubStatusState
+  // serviceStatus is where the services the user watches stand (GitHub, Claude, OpenAI),
+  // which shows a warning beside the budget gauge while a part watched has a problem, and
+  // each provider watched in the account menu's Service status; without it there is
+  // neither. onServiceStatusSettings opens Settings → Service status, where the user
+  // chooses what to watch; it defaults to onOpenSettings.
+  serviceStatus?: ServiceStatusState
+  onServiceStatusSettings?: () => void
   // inboxCount is how many items are in the inbox; the Inbox tab shows it when it is not 0.
   inboxCount?: number
   // worktreeCount is how many linked worktrees are on disk, and worktreeAttention how many
@@ -159,8 +162,8 @@ function tabCount(id: View, props: AppHeaderProps): TabCount {
 // the logo, the view tabs (Inbox, Notifications, and Worktrees with their counts, Prompts,
 // and Scripts while an integration is on), and on the
 // right the page's filter field, the notification bell, the GitHub notifications button,
-// a warning while GitHub's status page reports a problem, the API budget gauge, and the
-// account menu. The filter gives way first as the window narrows; the logo and the tabs
+// a warning while a service the user watches reports a problem, the API budget gauge, and
+// the account menu. The filter gives way first as the window narrows; the logo and the tabs
 // keep their size. The bar itself drags the window
 // (--wails-draggable), double-clicking it zooms, and the controls opt out so they take
 // clicks. The left inset clears the traffic lights. The bar's height and that inset line
@@ -173,7 +176,7 @@ export function AppHeader(props: AppHeaderProps) {
     account,
     gauge,
     onBudgetCheck,
-    githubStatus,
+    serviceStatus,
     onOpenSettings,
     notifications,
     onOpenNotification = () => undefined,
@@ -182,6 +185,7 @@ export function AppHeader(props: AppHeaderProps) {
     githubThreads,
     settings = null,
     onGitHubThreadsSettings = onOpenSettings,
+    onServiceStatusSettings = onOpenSettings,
     onSettingsSaved = () => undefined,
     search,
     searchRef,
@@ -270,9 +274,16 @@ export function AppHeader(props: AppHeaderProps) {
             }
           />
         )}
-        {githubStatus !== undefined && <GitHubStatusMenu github={githubStatus} />}
+        {serviceStatus !== undefined && (
+          <ServiceStatusMenu service={serviceStatus} onChooseWatch={onServiceStatusSettings} />
+        )}
         <BudgetMenu gauge={gauge} onCheck={onBudgetCheck} />
-        <AccountMenu account={account} githubStatus={githubStatus?.status ?? null} onOpenSettings={onOpenSettings} />
+        <AccountMenu
+          account={account}
+          serviceStatus={serviceStatus?.status ?? null}
+          onOpenSettings={onOpenSettings}
+          onChooseWatch={onServiceStatusSettings}
+        />
       </div>
     </header>
   )

@@ -18,13 +18,6 @@ export interface GHThreadsUpdated {
 }
 
 /**
- * GitHubStatusUpdated says a check of GitHub's status page ended, or the check was turned
- * on or off: the window reads the status again.
- */
-export interface GitHubStatusUpdated {
-}
-
-/**
  * HooksUpdated says the Hooks page's list changed: a clone was scanned again, or a hooks
  * action or a checks run ended. The window reads the list again, which serves what is kept
  * and scans again only the clones that changed.
@@ -195,6 +188,13 @@ export interface ScriptRunProgress {
  * the window lists the runs again and pulls what it shows. It never carries output.
  */
 export interface ScriptRunsUpdated {
+}
+
+/**
+ * ServiceStatusUpdated says a pass of the service status check ended, whether its checks
+ * worked or not, or what the user watches changed: the window reads the status again.
+ */
+export interface ServiceStatusUpdated {
 }
 
 /**

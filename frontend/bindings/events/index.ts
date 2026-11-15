@@ -24,11 +24,6 @@ export const BudgetUpdated = "budget:updated";
 export const GhthreadsUpdated = "ghthreads:updated";
 
 /**
- * Name of the custom event "githubstatus:updated".
- */
-export const GithubstatusUpdated = "githubstatus:updated";
-
-/**
  * Name of the custom event "hooks:updated".
  */
 export const HooksUpdated = "hooks:updated";
@@ -77,6 +72,11 @@ export const ScriptrunsProgress = "scriptruns:progress";
  * Name of the custom event "scriptruns:updated".
  */
 export const ScriptrunsUpdated = "scriptruns:updated";
+
+/**
+ * Name of the custom event "servicestatus:updated".
+ */
+export const ServicestatusUpdated = "servicestatus:updated";
 
 /**
  * Name of the custom event "sessions:updated".

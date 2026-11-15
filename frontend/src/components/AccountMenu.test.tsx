@@ -2,24 +2,33 @@ import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 
-import type { Account, GitHubStatus } from '../platform'
-import { account, githubIncident, githubStatus, signedOut } from '../test/fixtures'
+import type { Account, ServiceStatus } from '../platform'
+import { account, claudeOutage, serviceIncident, serviceProvider, serviceStatus, signedOut } from '../test/fixtures'
 import { platform } from '../test/platform'
 import { AccountMenu } from './AccountMenu'
 
 vi.mock('../platform', () => import('../test/platform').then((fake) => fake.platform))
 
-function renderMenu(who: Account | null = account(), status: GitHubStatus | null = null) {
+function renderMenu(who: Account | null = account(), status: ServiceStatus | null = null) {
   const onOpenSettings = vi.fn()
+  const onChooseWatch = vi.fn()
 
   render(
     <>
-      <AccountMenu account={who} githubStatus={status} onOpenSettings={onOpenSettings} />
+      <AccountMenu account={who} serviceStatus={status} onOpenSettings={onOpenSettings} onChooseWatch={onChooseWatch} />
       <button type="button">Elsewhere</button>
     </>,
   )
 
-  return { onOpenSettings, trigger: screen.getByRole('button', { name: /^Account/ }) }
+  return { onOpenSettings, onChooseWatch, trigger: screen.getByRole('button', { name: /^Account/ }) }
+}
+
+// openServiceStatus opens the menu and its Service status submenu, and returns the submenu.
+async function openServiceStatus(trigger: HTMLElement): Promise<HTMLElement> {
+  await userEvent.click(trigger)
+  await userEvent.click(screen.getByRole('menuitem', { name: /^Service status/ }))
+
+  return screen.getByRole('menu', { name: 'Service status' })
 }
 
 describe('AccountMenu', () => {
@@ -32,7 +41,7 @@ describe('AccountMenu', () => {
     expect(trigger.querySelector('img')).not.toBeNull()
   })
 
-  it('opens a menu with the account, Settings, the GitHub profile, GitHub’s status, a bug report, and feedback', async () => {
+  it('opens a menu with the account, Settings, the GitHub profile, Service status, a bug report, and feedback', async () => {
     const { trigger } = renderMenu()
 
     await userEvent.click(trigger)
@@ -47,7 +56,7 @@ describe('AccountMenu', () => {
       within(menu)
         .getAllByRole('menuitem')
         .map((item) => item.textContent),
-    ).toEqual(['Settings⌘,', 'View GitHub profile', 'GitHub status', 'Report a bug', 'Send feedback'])
+    ).toEqual(['Settings⌘,', 'View GitHub profile', 'Service status', 'Report a bug', 'Send feedback'])
     expect(within(menu).getByRole('menuitem', { name: /Settings/ })).toHaveFocus()
   })
 
@@ -126,42 +135,87 @@ describe('AccountMenu', () => {
     expect(screen.queryByRole('menu')).not.toBeInTheDocument()
   })
 
-  it('opens GitHub’s status page in the browser', async () => {
-    const { trigger } = renderMenu()
+  it('lists each provider watched with its state, each opening its status page', async () => {
+    const { trigger } = renderMenu(account(), serviceIncident(claudeOutage()))
 
-    await userEvent.click(trigger)
-    await userEvent.click(screen.getByRole('menuitem', { name: 'GitHub status' }))
+    const submenu = await openServiceStatus(trigger)
 
-    expect(platform.openExternal).toHaveBeenCalledWith('https://www.githubstatus.com/')
+    expect(
+      within(submenu)
+        .getAllByRole('menuitem')
+        .map((item) => item.textContent),
+    ).toEqual(['GitHub, Operational', 'Claude, Partial outage', 'OpenAI, Operational', 'Choose what to watch…'])
+    expect(within(submenu).getByRole('menuitem', { name: /^Claude/ })).toHaveAccessibleName(
+      /^Claude,\s*Partial outage$/,
+    )
+    expect(within(within(submenu).getByRole('menuitem', { name: /^Claude/ })).getByText('Partial outage')).toHaveClass(
+      'text-danger',
+    )
+
+    await userEvent.click(within(submenu).getByRole('menuitem', { name: /^Claude/ }))
+
+    expect(platform.openExternal).toHaveBeenCalledWith('https://status.claude.com/')
     expect(screen.queryByRole('menu')).not.toBeInTheDocument()
   })
 
-  it('names an outage GitHub reports beside GitHub status, in red', async () => {
-    const { trigger } = renderMenu(account(), githubIncident())
+  it('leaves out a provider not watched, and opens what to watch', async () => {
+    const { trigger, onChooseWatch, onOpenSettings } = renderMenu(
+      account(),
+      serviceStatus({}, serviceProvider({ id: 'openai', name: 'OpenAI', state: 'off' })),
+    )
+
+    const submenu = await openServiceStatus(trigger)
+
+    expect(
+      within(submenu)
+        .getAllByRole('menuitem')
+        .map((item) => item.textContent),
+    ).toEqual(['GitHub, Operational', 'Claude, Operational', 'Choose what to watch…'])
+
+    await userEvent.click(within(submenu).getByRole('menuitem', { name: 'Choose what to watch…' }))
+
+    expect(onChooseWatch).toHaveBeenCalledOnce()
+    expect(onOpenSettings).not.toHaveBeenCalled()
+  })
+
+  it('offers only what to watch before the first reading', async () => {
+    const { trigger } = renderMenu()
+
+    const submenu = await openServiceStatus(trigger)
+
+    expect(
+      within(submenu)
+        .getAllByRole('menuitem')
+        .map((item) => item.textContent),
+    ).toEqual(['Choose what to watch…'])
+  })
+
+  it('names the worst problem beside Service status, an outage in red', async () => {
+    const { trigger } = renderMenu(account(), serviceIncident())
 
     await userEvent.click(trigger)
 
-    const item = screen.getByRole('menuitem', { name: /^GitHub status/ })
-    expect(item).toHaveAccessibleName(/^GitHub status,\s*Partial outage$/)
+    const item = screen.getByRole('menuitem', { name: /^Service status/ })
+    expect(item).toHaveAccessibleName(/^Service status,\s*Partial outage$/)
     expect(within(item).getByText('Partial outage')).toHaveClass('text-danger')
   })
 
-  it('names maintenance beside GitHub status, in amber', async () => {
-    const { trigger } = renderMenu(account(), githubStatus({ state: 'maintenance' }))
+  it('names maintenance beside Service status, in amber', async () => {
+    const { trigger } = renderMenu(account(), serviceIncident(serviceProvider({ state: 'maintenance' })))
 
     await userEvent.click(trigger)
 
-    const item = screen.getByRole('menuitem', { name: /^GitHub status/ })
-    expect(item).toHaveAccessibleName(/^GitHub status,\s*Maintenance$/)
+    const item = screen.getByRole('menuitem', { name: /^Service status/ })
+    expect(item).toHaveAccessibleName(/^Service status,\s*Maintenance$/)
     expect(within(item).getByText('Maintenance')).toHaveClass('text-warning')
   })
 
-  it('names nothing beside GitHub status while every system is operational', async () => {
-    const { trigger } = renderMenu(account(), githubStatus())
+  it('names nothing beside Service status while everything watched works', async () => {
+    const { trigger } = renderMenu(account(), serviceStatus())
 
     await userEvent.click(trigger)
 
-    expect(screen.getByRole('menuitem', { name: /^GitHub status/ })).toHaveAccessibleName('GitHub status')
+    expect(screen.getByRole('menuitem', { name: /^Service status/ })).toHaveAccessibleName('Service status')
   })
 
   it('moves between items with the arrow keys, Home, and End, wrapping at the ends', async () => {
@@ -170,7 +224,7 @@ describe('AccountMenu', () => {
 
     const settings = screen.getByRole('menuitem', { name: /Settings/ })
     const profile = screen.getByRole('menuitem', { name: 'View GitHub profile' })
-    const status = screen.getByRole('menuitem', { name: 'GitHub status' })
+    const status = screen.getByRole('menuitem', { name: 'Service status' })
     const bug = screen.getByRole('menuitem', { name: 'Report a bug' })
     const feedback = screen.getByRole('menuitem', { name: 'Send feedback' })
 
@@ -237,7 +291,7 @@ describe('AccountMenu', () => {
     expect(screen.getByText('Signed in to GitHub')).toBeInTheDocument()
   })
 
-  it('offers Settings, GitHub’s status, a bug report, and feedback before the first refresh', async () => {
+  it('offers Settings, Service status, a bug report, and feedback before the first refresh', async () => {
     const { trigger } = renderMenu(signedOut)
 
     expect(trigger).toHaveAccessibleName('Account')
@@ -246,7 +300,7 @@ describe('AccountMenu', () => {
     expect(screen.getByText('Not signed in yet')).toBeInTheDocument()
     expect(screen.getAllByRole('menuitem').map((item) => item.textContent)).toEqual([
       'Settings⌘,',
-      'GitHub status',
+      'Service status',
       'Report a bug',
       'Send feedback',
     ])

@@ -18,6 +18,7 @@ export type SettingsSection =
   | 'notifications'
   | 'github'
   | 'refreshing'
+  | 'status'
   | 'snoozing'
   | 'reviewing'
   | 'launching'
@@ -43,7 +44,7 @@ export interface SectionGroup {
 // worktrees it leaves behind), then the tools, and last the setup as a whole, kept in a
 // backup, and About.
 export const sectionGroups: readonly SectionGroup[] = [
-  { heading: '', sections: ['account', 'appearance', 'notifications', 'github', 'refreshing'] },
+  { heading: '', sections: ['account', 'appearance', 'notifications', 'github', 'refreshing', 'status'] },
   { heading: 'Inbox', sections: ['snoozing', 'reviewing'] },
   { heading: 'Agents', sections: ['repositories', 'profiles', 'launching', 'trust', 'files', 'worktrees'] },
   { heading: 'Tools', sections: ['integrations'] },
@@ -72,7 +73,12 @@ export const sectionInfo: Readonly<Record<SettingsSection, { label: string; desc
   refreshing: {
     label: 'Refreshing',
     description:
-      'How often the app reads the inbox, the running checks, the Release page’s running checks, the worktrees, and the GitHub notifications again on its own, and how often it checks GitHub’s status page.',
+      'How often the app reads the inbox, the running checks, the Release page’s running checks, the worktrees, and the GitHub notifications again on its own.',
+  },
+  status: {
+    label: 'Service status',
+    description:
+      'The status pages of the services the app depends on, how often they are checked, and which parts of each you watch.',
   },
   snoozing: {
     label: 'Snoozing',
@@ -246,9 +252,26 @@ export const settingsIndex: Readonly<Record<SettingsSection, readonly SettingEnt
     { label: 'Release checks', keywords: ['Release page', 'CI', 'checks', 'default branch', 'follow', 'interval'] },
     { label: 'Worktrees', keywords: ['sweep', 'cleanup', 'interval'] },
     { label: 'GitHub notifications', keywords: ['notifications', 'GitHub inbox', 'poll interval', 'interval'] },
+  ],
+  // How often, then one card per status page, by the provider's name, the backend's
+  // catalog: each card's parts are found by the words for its provider.
+  status: [
     {
-      label: 'GitHub status',
-      keywords: ['githubstatus.com', 'status page', 'incident', 'outage', 'downtime', 'interval'],
+      label: 'Check every',
+      keywords: ['interval', 'status page', 'incident', 'outage', 'downtime', 'off', 'poll'],
+    },
+    { label: 'What to watch', keywords: ['parts', 'components', 'tick', 'relevant', 'warning', 'toolbar'] },
+    {
+      label: 'Status page',
+      keywords: ['provider', 'incident', 'outage', 'components', 'parts', 'turn off'],
+      template: {
+        pattern: /^.+ status page$/,
+        examples: {
+          GitHub: ['githubstatus.com', 'Git Operations', 'API Requests', 'Pull Requests', 'Actions', 'Copilot'],
+          Claude: ['Anthropic', 'status.claude.com', 'Claude API', 'Claude Code', 'claude.ai'],
+          OpenAI: ['Codex', 'Codex CLI', 'ChatGPT', 'Responses', 'status.openai.com'],
+        },
+      },
     },
   ],
   worktrees: [

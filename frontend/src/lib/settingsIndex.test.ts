@@ -153,6 +153,26 @@ describe('matchSettings', () => {
     expect(matchSettings(query)?.isMatch('github', label)).toBe(true)
   })
 
+  it('finds the service status settings by the section’s name, right after Refreshing', () => {
+    const match = matchSettings('service status')
+
+    expect(match?.sections.get('status')).toBe(settingsIndex.status.length)
+    expect(match?.isMatch('status', 'Check every')).toBe(true)
+    expect(match?.isMatch('status', 'Claude status page')).toBe(true)
+    expect(match?.isMatch('refreshing', 'Inbox')).toBe(false)
+    expect(sectionOrder.indexOf('status')).toBe(sectionOrder.indexOf('refreshing') + 1)
+    expect(sectionInfo.status.label).toBe('Service status')
+  })
+
+  it('finds a status page’s card by its provider, and the parts it lists', () => {
+    expect(matchSettings('codex')?.isMatch('status', 'OpenAI status page')).toBe(true)
+    expect(matchSettings('codex')?.isMatch('status', 'GitHub status page')).toBe(false)
+    expect(matchSettings('pull requests')?.isMatch('status', 'GitHub status page')).toBe(true)
+    expect(matchSettings('anthropic')?.isMatch('status', 'Claude status page')).toBe(true)
+    expect(matchSettings('outage')?.isMatch('status', 'Check every')).toBe(true)
+    expect(matchSettings('githubstatus')?.isMatch('refreshing', 'GitHub notifications')).toBe(false)
+  })
+
   it('finds a template’s rows by the agent each names', () => {
     const codex = matchSettings('codex')
 

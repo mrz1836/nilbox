@@ -4,9 +4,10 @@
 /**
  * Kind is a kind of notification: one of the inbox's kinds of arrival (see
  * inbox.Arrival), a moment an agent session needs the user, or an event about no item,
- * such as a release that reached GitHub or a run that failed.
+ * such as a release that reached GitHub, a run that failed, or a service the user watches
+ * going down or coming back.
  */
-export type Kind = "review_requested" | "assigned" | "woke" | "session_needs_you" | "session_finished" | "release_done" | "release_published" | "release_failed" | "run_failed";
+export type Kind = "review_requested" | "assigned" | "woke" | "session_needs_you" | "session_finished" | "release_done" | "release_published" | "release_failed" | "run_failed" | "service_status";
 
 /**
  * The values of Kind, by the names of their Go constants.
@@ -58,4 +59,10 @@ export const Kind = {
      * KindRunFailed is a run from the Scripts tab that failed or ran past its time limit.
      */
     KindRunFailed: "run_failed",
+
+    /**
+     * KindServiceStatus is a part of a service the user watches going down, or coming
+     * back (see the svcstatus package).
+     */
+    KindServiceStatus: "service_status",
 } as const;

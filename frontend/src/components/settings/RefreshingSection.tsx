@@ -1,23 +1,27 @@
 import { useId, useState } from 'react'
 
 import { useSettingsSave } from '../../lib/useSettingsSave'
-import { setRefreshInterval, type RefreshKind, type Settings } from '../../platform'
+import { setRefreshInterval, type Settings } from '../../platform'
 import { Group, Note, SectionIntro, SettingRow } from './rows'
 import type { SectionProps } from './types'
 
-// defaults are each interval a fresh database starts at, in seconds, which its select
-// marks.
-const defaults: Readonly<Record<RefreshKind, number>> = {
+// IntervalKind is one of the intervals the settings hold, as Settings → Refreshing and
+// Settings → Service status set them.
+export type IntervalKind = keyof Settings['refresh']
+
+// refreshDefaults are each interval a fresh database starts at, in seconds, which its
+// select marks. The service status check's is chosen in Settings → Service status.
+export const refreshDefaults: Readonly<Record<IntervalKind, number>> = {
   inbox: 300,
   checks: 45,
   releaseChecks: 45,
   worktrees: 300,
   notifications: 300,
-  githubStatus: 1800,
+  serviceStatus: 1800,
 }
 
 // rows are the things the app reads again on its own, each with what a read costs.
-const rows: readonly { kind: RefreshKind; label: string; description: string }[] = [
+const rows: readonly { kind: IntervalKind; label: string; description: string }[] = [
   {
     kind: 'inbox',
     label: 'Inbox',
@@ -48,12 +52,6 @@ const rows: readonly { kind: RefreshKind; label: string; description: string }[]
     description:
       'Your GitHub inbox, listed from GitHub: free when nothing changed, and never sooner than GitHub asks. The refresh button in the GitHub notifications panel checks at once.',
   },
-  {
-    kind: 'githubStatus',
-    label: 'GitHub status',
-    description:
-      'GitHub’s own status page, githubstatus.com, checked for incidents: one small request outside the API, so it costs no points. While GitHub reports a problem, a warning shows in the toolbar.',
-  },
 ]
 
 // everyWords words an interval: "Every 45 seconds", "Every 5 minutes", "Every hour", or
@@ -80,16 +78,16 @@ export function everyWords(seconds: number): string {
 
 // RefreshingSection holds how often the app reads the inbox, the running checks, the
 // Release page's running checks, the worktrees, and the GitHub notifications again on its
-// own, and how often it checks GitHub's status page, each a select of the intervals Go
-// offers, saved as soon as it is chosen; what reads them again works its next wait out
-// from the new interval at once.
+// own, each a select of the intervals Go offers, saved as soon as it is chosen; what reads
+// them again works its next wait out from the new interval at once. How often the status
+// pages are checked is in Settings → Service status.
 export function RefreshingSection({ settings: stored, onSaved }: SectionProps) {
   const id = useId()
   const { settings, save, error } = useSettingsSave(stored, onSaved)
   // changed is the interval changed last, beside which a refusal shows.
-  const [changed, setChanged] = useState<RefreshKind>('inbox')
+  const [changed, setChanged] = useState<IntervalKind>('inbox')
 
-  const choose = (kind: RefreshKind, seconds: number) => {
+  const choose = (kind: IntervalKind, seconds: number) => {
     setChanged(kind)
 
     const refresh: Settings['refresh'] = { ...settings.refresh, [kind]: seconds }
@@ -127,7 +125,7 @@ export function RefreshingSection({ settings: stored, onSaved }: SectionProps) {
                 {settings.refreshChoices[row.kind].map((seconds) => (
                   <option key={seconds} value={seconds}>
                     {everyWords(seconds)}
-                    {seconds === defaults[row.kind] ? ' (default)' : ''}
+                    {seconds === refreshDefaults[row.kind] ? ' (default)' : ''}
                   </option>
                 ))}
               </select>

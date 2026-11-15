@@ -3,7 +3,18 @@ import type { ReactNode } from 'react'
 import { entryTitle, entryWhere, kindTitle } from '../../lib/notifications'
 import { formatAgo, formatFull } from '../../lib/time'
 import type { AppNotification, NotificationKind } from '../../platform'
-import { AssignIcon, BellIcon, CheckIcon, CircleCheckIcon, ClockIcon, DotIcon, EyeIcon, TagIcon, XIcon } from '../icons'
+import {
+  AssignIcon,
+  BellIcon,
+  CheckIcon,
+  CircleCheckIcon,
+  ClockIcon,
+  DotIcon,
+  EyeIcon,
+  PulseIcon,
+  TagIcon,
+  XIcon,
+} from '../icons'
 import { RelativeTime } from '../RelativeTime'
 
 // kindIcons are each kind's icon in the history. A kind this build does not know, as
@@ -16,6 +27,7 @@ const kindIcons: Readonly<Partial<Record<NotificationKind, (props: { className?:
   release_published: CircleCheckIcon,
   release_failed: XIcon,
   run_failed: XIcon,
+  service_status: PulseIcon,
 }
 
 // kindTones color the icon of a kind that tells of something gone wrong, as the Runs page

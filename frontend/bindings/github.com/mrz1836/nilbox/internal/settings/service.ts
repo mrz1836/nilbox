@@ -45,6 +45,9 @@ import * as sensitive$0 from "../sensitive/models.js";
 import * as snooze$0 from "../snooze/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
+import * as statusprefs$0 from "../statusprefs/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
 import * as threadrules$0 from "../threadrules/models.js";
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
@@ -506,6 +509,26 @@ export function SetSnoozeWake(rules: snooze$0.Rules): $CancellablePromise<$model
  */
 export function SetStatusOrder(order: string[] | null): $CancellablePromise<$models.Settings> {
     return $Call.ByID(3712144813, order);
+}
+
+/**
+ * SetStatusPart ticks or unticks a part of a provider to watch (see statusprefs.Catalog),
+ * and returns the settings with it. A part this build doesn't know is refused. The list
+ * it is stored in is read and written in one update, so two quick changes never lose
+ * either.
+ */
+export function SetStatusPart(id: statusprefs$0.PartID, on: boolean): $CancellablePromise<$models.Settings> {
+    return $Call.ByID(3042840294, id, on);
+}
+
+/**
+ * SetStatusProvider turns a provider's status page on or off (see statusprefs.Catalog),
+ * and returns the settings with it. A provider this build doesn't know is refused. The
+ * providers off are read and written in one update, so two quick changes never lose
+ * either.
+ */
+export function SetStatusProvider(id: statusprefs$0.ProviderID, on: boolean): $CancellablePromise<$models.Settings> {
+    return $Call.ByID(1063031482, id, on);
 }
 
 /**

@@ -32,7 +32,6 @@ import type {
   GitHubThreadsPreview,
   GitHubThreadsSnapshot,
   GitHubThreadsStatus,
-  GitHubStatus,
   HookActionResult,
   HookChecksResult,
   HookInstallAllResult,
@@ -111,6 +110,11 @@ import type {
   WorktreeCleanup,
   WorktreeRepo,
   WorktreesSnapshot,
+  ServiceProvider,
+  ServiceStatus,
+  StatusConfig,
+  StatusPart,
+  StatusProvider,
 } from '../platform'
 
 // appInfo is a development build's identity on macOS, with no data reset.
@@ -388,15 +392,17 @@ export function settings(overrides: Partial<Settings> = {}): Settings {
       botActivity: true,
       cleanupCardDismissed: false,
     },
-    refresh: { inbox: 300, checks: 45, releaseChecks: 45, worktrees: 300, notifications: 300, githubStatus: 1800 },
+    refresh: { inbox: 300, checks: 45, releaseChecks: 45, worktrees: 300, notifications: 300, serviceStatus: 1800 },
     refreshChoices: {
       inbox: [120, 300, 600, 900, 1800, 3600],
       checks: [0, 30, 45, 60, 120],
       releaseChecks: [0, 30, 45, 60, 120],
       worktrees: [300, 600, 900, 1800, 3600],
       notifications: [60, 120, 300, 600, 900, 1800, 3600],
-      githubStatus: [0, 300, 600, 900, 1800, 3600],
+      serviceStatus: [0, 300, 600, 900, 1800, 3600],
     },
+    serviceStatus: statusWatch(),
+    statusProviders: statusProviders(),
     ...overrides,
   }
 }
@@ -1158,37 +1164,131 @@ export function writes(overrides: Partial<BudgetWrites> = {}): BudgetWrites {
   return { lastHour: 0, lastMinute: 0, perHour: 200, perMinute: 30, reserve: 50, heldUntil: '', ...overrides }
 }
 
-// githubStatus is GitHub's status page read a minute before the tests' noon, with every
-// system operational.
-export function githubStatus(overrides: Partial<GitHubStatus> = {}): GitHubStatus {
+// statusProviders is the catalog of status pages the service status check reads, as Go
+// sends it in the settings: GitHub's, Claude's, and OpenAI's parts, with the defaults
+// ticked.
+export function statusProviders(): StatusProvider[] {
+  const part = (id: string, name: string, def = false, group = ''): StatusPart => ({ id, name, group, default: def })
+
+  return [
+    {
+      id: 'github',
+      name: 'GitHub',
+      pageUrl: 'https://www.githubstatus.com/',
+      parts: [
+        part('github.git', 'Git Operations', true),
+        part('github.api', 'API Requests', true),
+        part('github.issues', 'Issues', true),
+        part('github.pulls', 'Pull Requests', true),
+        part('github.actions', 'Actions', true),
+        part('github.webhooks', 'Webhooks'),
+        part('github.copilot', 'Copilot'),
+      ],
+    },
+    {
+      id: 'claude',
+      name: 'Claude',
+      pageUrl: 'https://status.claude.com/',
+      parts: [
+        part('claude.api', 'Claude API', true),
+        part('claude.code', 'Claude Code', true),
+        part('claude.ai', 'claude.ai'),
+        part('claude.gov', 'Claude for Government'),
+      ],
+    },
+    {
+      id: 'openai',
+      name: 'OpenAI',
+      pageUrl: 'https://status.openai.com/',
+      parts: [
+        part('openai.codex-api', 'Codex API', true, 'Codex'),
+        part('openai.codex-cli', 'Codex CLI', true, 'Codex'),
+        part('openai.codex-web', 'Codex Web', false, 'Codex'),
+        part('openai.responses', 'Responses', true, 'APIs'),
+        part('openai.login', 'Login', false, 'ChatGPT'),
+      ],
+    },
+  ]
+}
+
+// statusWatch is what a fresh database watches: every provider on, each with its default
+// parts ticked.
+export function statusWatch(): StatusConfig {
   return {
+    watch: statusProviders().map((p) => ({
+      provider: p.id,
+      on: true,
+      parts: p.parts.filter((part) => part.default).map((part) => part.id),
+    })),
+  }
+}
+
+// serviceProvider is a provider watched, read a minute before the tests' noon, with
+// everything it watches operational.
+export function serviceProvider(overrides: Partial<ServiceProvider> = {}): ServiceProvider {
+  return {
+    id: 'github',
+    name: 'GitHub',
+    url: 'https://www.githubstatus.com/',
     state: 'operational',
-    description: 'All Systems Operational',
+    affected: [],
     incidents: [],
-    components: [],
+    others: 0,
+    unlisted: [],
     checkedAt: '2026-06-15T11:59:00Z',
     error: '',
-    url: 'https://www.githubstatus.com/',
     ...overrides,
   }
 }
 
-// githubIncident is GitHub's status page during a partial outage of Actions.
-export function githubIncident(overrides: Partial<GitHubStatus> = {}): GitHubStatus {
-  return githubStatus({
+// serviceStatus is every provider watched, read a minute before the tests' noon, with
+// everything they watch operational; providers replaces the ones given by id.
+export function serviceStatus(
+  overrides: Partial<Omit<ServiceStatus, 'providers'>> = {},
+  ...providers: ServiceProvider[]
+): ServiceStatus {
+  const base = [
+    serviceProvider(),
+    serviceProvider({ id: 'claude', name: 'Claude', url: 'https://status.claude.com/' }),
+    serviceProvider({ id: 'openai', name: 'OpenAI', url: 'https://status.openai.com/' }),
+  ]
+
+  return {
+    state: 'operational',
+    checkedAt: '2026-06-15T11:59:00Z',
+    providers: base.map((p) => providers.find((q) => q.id === p.id) ?? p),
+    ...overrides,
+  }
+}
+
+// claudeOutage is Claude in a partial outage of the Claude API.
+export function claudeOutage(overrides: Partial<ServiceProvider> = {}): ServiceProvider {
+  return serviceProvider({
+    id: 'claude',
+    name: 'Claude',
+    url: 'https://status.claude.com/',
     state: 'major',
-    description: 'Partial System Outage',
+    affected: [{ id: 'claude.api', name: 'Claude API', state: 'major' }],
     incidents: [
       {
-        name: 'Incident with Actions',
-        status: 'investigating',
-        impact: 'major',
-        url: 'https://www.githubstatus.com/incidents/x1',
+        name: 'Elevated errors on Claude API',
+        stage: 'identified',
+        state: 'major',
+        url: 'https://status.claude.com/incidents/x1',
+        parts: ['Claude API'],
+        unscoped: false,
+        maintenance: false,
       },
     ],
-    components: [{ name: 'Actions', status: 'partial_outage' }],
+    others: 1,
     ...overrides,
   })
+}
+
+// serviceIncident is the service status while Claude has a partial outage of the Claude
+// API and the rest is operational.
+export function serviceIncident(provider: ServiceProvider = claudeOutage()): ServiceStatus {
+  return serviceStatus({ state: provider.state }, provider)
 }
 
 // threadsStatus is reading the user's GitHub notifications going well: the last pass a

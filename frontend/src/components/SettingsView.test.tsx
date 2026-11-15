@@ -169,6 +169,7 @@ describe('SettingsView', () => {
       'Notifications',
       'GitHub notifications',
       'Refreshing',
+      'Service status',
       'Snoozing',
       'Reviewing',
       'Repositories',
@@ -1549,7 +1550,7 @@ describe('SettingsView search', () => {
 
     rerender(<SettingsView {...searchProps('')} />)
 
-    expect(sidebar()).toHaveLength(16)
+    expect(sidebar()).toHaveLength(17)
     expect(sidebar()).toContain('Account')
     expect(screen.getByRole('region', { name: 'Notifications' })).toBeInTheDocument()
     expect(matched()).toEqual([])

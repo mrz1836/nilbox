@@ -30,6 +30,7 @@ describe('notifications', () => {
       'release_published',
       'release_failed',
       'run_failed',
+      'service_status',
       'session_needs_you',
       'session_finished',
     ])
@@ -43,6 +44,7 @@ describe('notifications', () => {
     expect(kindTitle('release_published')).toBe('Published')
     expect(kindTitle('release_failed')).toBe('Release workflow failed')
     expect(kindTitle('run_failed')).toBe('Run failed')
+    expect(kindTitle('service_status')).toBe('Service status')
     // A kind another build stored, outside the ones this build knows.
     expect(kindTitle('mentions' as unknown as NotificationKind)).toBe('Notification')
   })
@@ -102,7 +104,8 @@ describe('the history’s lists', () => {
   const released = notification({ id: 3, kind: 'release_published', itemId: 0, itemKind: '', read: true })
   const failed = notification({ id: 2, kind: 'run_failed', itemId: 0, itemKind: '', runId: 9 })
   const unknown = notification({ id: 1, kind: 'mentions' as unknown as NotificationKind })
-  const all = [review, assigned, woke, released, failed, unknown]
+  const status = notification({ id: 0, kind: 'service_status', itemId: 0, itemKind: '', read: true })
+  const all = [review, assigned, woke, released, failed, unknown, status]
 
   it('opens on every entry of every type, and quick views twenty', () => {
     expect(startLists).toEqual({ app: { show: 'all', type: 'all' }, github: { show: 'all', type: 'all' } })
@@ -110,7 +113,7 @@ describe('the history’s lists', () => {
   })
 
   it('offers every type, each with its words', () => {
-    expect(appTypeOrder).toEqual(['all', 'review', 'assigned', 'snooze', 'release', 'run'])
+    expect(appTypeOrder).toEqual(['all', 'review', 'assigned', 'snooze', 'release', 'run', 'status'])
     expect(appTypeOrder.map((id) => appTypes[id].label)).toEqual([
       'All',
       'Reviews',
@@ -118,6 +121,7 @@ describe('the history’s lists', () => {
       'Snoozes',
       'Releases',
       'Runs',
+      'Status',
     ])
 
     for (const id of appTypeOrder) {
@@ -126,7 +130,7 @@ describe('the history’s lists', () => {
   })
 
   it('types each entry, a release’s three kinds together, and an unknown kind as none', () => {
-    expect(all.map(appTypeOf)).toEqual(['review', 'assigned', 'snooze', 'release', 'run', ''])
+    expect(all.map(appTypeOf)).toEqual(['review', 'assigned', 'snooze', 'release', 'run', '', 'status'])
     expect(appTypeOf(notification({ kind: 'release_done' }))).toBe('release')
     expect(appTypeOf(notification({ kind: 'release_failed' }))).toBe('release')
   })
@@ -137,6 +141,7 @@ describe('the history’s lists', () => {
     expect(filterEntries(all, 'all', 'release')).toEqual([released])
     expect(filterEntries(all, 'unread', 'release')).toEqual([])
     expect(filterEntries(all, 'unread', 'run')).toEqual([failed])
+    expect(filterEntries(all, 'all', 'status')).toEqual([status])
   })
 
   it('finds an item’s unread entries, and none for no item', () => {
