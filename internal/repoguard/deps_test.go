@@ -153,6 +153,12 @@ func boundaries() []boundary {
 				"the mirror",
 		},
 		{
+			pkg:       "internal/semver",
+			forbidden: noService,
+			why: "semver reads and compares versions for the integrations and the app's updates; it is a leaf " +
+				"that knows no store or service",
+		},
+		{
 			pkg:       "internal/prefs/prefval",
 			forbidden: noService,
 			why: "prefval spells the switches and lists that settings and the leaves declaring its keys store; " +
