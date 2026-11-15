@@ -156,16 +156,25 @@ app:lint` reads.
   `updater.HandleHelperMode()` first, since an update's helper is this binary run again,
   before anything opens the data. A rehearsal build (`main.flavor=rehearsal`, `magex
   app:rehearse`) always runs on its own data directory beside the user's
-  (`appdata.ResolveRehearsal`, named `brand.RehearsalDataDirName`), whatever `--data-dir`
+  (`appdata.ResolveRehearsal`, named `brand.RehearsalDataDirName`, or `brand.RehearsalSlug`
+  on Linux, as the user's is named), whatever `--data-dir`
   says, with the **Test data** chip, since the update opens the new version with no
   arguments. `update_desktop.go` is the engine's `Installer` over the runtime's updater,
   headless, whose one provider serves the zip from the update cache with its SHA-512
-  (`desktop.NewArtifact` never hands over a zip without one); the menu bar's update rows are
-  `menubar.UpdateRows`, their clicks `Shell.UpdateAction` (a restart runs apart from the
-  shell's tracked work, which the quit inside it waits for). The startup dialog for data a
-  newer build saved offers the newest backup this build opens (`desktop.RestoreOffer`,
-  `FindRestore`), puts it back on a click (`desktop.PutBack`, `store.RestoreBackup`), and
-  opens the app again from `PostShutdown` through `desktop.RelaunchArgs`, as a reset does.
+  (`desktop.NewArtifact` never hands over a zip without one); its `Restart` waits up to 30
+  seconds for the helper to stand by, so it never runs on the main thread. The menu bar's
+  update rows are `menubar.UpdateRows` (an update that didn't install shows "<version>
+  didn't install", then Try Updating to <version> Again while `InstallFailed.Retryable`, or
+  else Download <version> Manually…, `UpdateManual`, which opens the release page through
+  `desktop.Config.Browser`, the runtime's `Browser.OpenURL`), their clicks
+  `Shell.UpdateAction` (a restart runs apart from the shell's tracked work, which the quit
+  inside it waits for). The startup dialog for data a newer build saved offers the newest
+  backup this build opens (`desktop.RestoreOffer`, `FindRestore`; Escape quits, and no key
+  puts the backup back, since the runtime's macOS alert gives a button Return or Escape,
+  never both), puts it back on a click (`desktop.PutBack`, `store.RestoreBackup`, a failure
+  worded by `desktop.PutBackFailure` with what to do), and opens the app again from
+  `PostShutdown` through `desktop.RelaunchArgs`, as a reset does, the `open -n` bounded to
+  five seconds.
 - `internal/brand/` holds product identity, design tokens, and the logo mark. The palette tests
   enforce WCAG AA contrast for every text color in both themes. `internal/brandgen/` generates
   the frontend theme tokens, `build/darwin/Info.plist`, and the icon artwork (the app icon
@@ -841,17 +850,27 @@ app:lint` reads.
   `update.lastRunRelease`, as after an install by hand; `InstallFailed` when it still runs the
   version it ran from, with the runtime's helper log, `<TMPDIR>/wails-update-<pid>.log`,
   copied to `logs/update-<version>.log` and worded from the messages it ends on, which tell
-  the helper's exit code, never repeating a path), then cleans up by exact name only (beside
+  the helper's exit code, never repeating a path, and `Retryable` unless the update itself
+  was at fault: a payload failure, the new version failing its signature check, a staged
+  update not installable, or the new version not opening, fails the same way every time, so
+  its cache entry is dropped and its version and SHA-512 (`pendingInstall.sha512`) go into
+  `update.uninstallable` (the last five), which no check downloads, tells, or offers again,
+  and `Download` and `Restart` refuse (`ErrUninstallable`), while a newer version, or the
+  same one with another SHA-512, goes on as usual; any other ending (the app not quitting in
+  time, the swap's attempts or the copy aside failing, a missing or unknown log) keeps the
+  cache for a retry), then cleans up by exact name only (beside
   the bundle, `<bundle>.bak` and the `wails-update-*` folders holding this app's update or
   nothing; in the temporary folder, the last install's helper `.log`, any other process's
   once `HelperWindow` old and only when its first line names this bundle as the target, and
   the `.ready` files of those processes alone), then loads the cache. While the last install
   is under `HelperWindow` (3 minutes) old and its helper's log hasn't ended on a final
-  message, the helper may still be restoring the old app, so the start settles nothing (no
+  message (one ending on the old app being put back counts once `<bundle>.bak` is gone),
+  the helper may still be restoring the old app, so the start settles nothing (no
   outcome, no cleanup, the record kept) and the `Worker` settles again once it may have
   ended; meanwhile the bound `Download` and `Restart` refuse with `ErrSettling` ("The last
   update is still finishing. Try again in a moment."), and `CheckNow` checks but downloads
-  nothing. It checks a minute later (`FirstCheckAfter`), then, through `periodic.RunEvery` on a
+  nothing. It checks a minute later (`FirstCheckAfter`), or at once on a Wake within that
+  minute, then, through `periodic.RunEvery` on a
   15-minute tick, whenever six hours passed on the wall clock (`CheckEvery`), since timers
   stand still while a Mac sleeps; a Wake (the settings' Go-only `event.UpdatesChanged`, or a
   manual check that found a version to download) has it look at once. A timed check tells
@@ -866,22 +885,30 @@ app:lint` reads.
   again (`CheckFile`; a damaged or missing one is dropped, back to available, downloaded
   again when downloads are on, and the refusal says so), backs the database up first
   (`store.Backup`, through its `DataBackup`, reusing one it took under `BackupReuse`, 10
-  minutes, ago) and stops when that fails, records `update.pendingInstall` (`{from, to, at,
-  pid}`), stages the update through the `Installer` the shell attaches (`Attach`), checks
-  again, unless confirmed, that no run started meanwhile, and only then emits
+  minutes, ago) and stops when that fails, stages the update through the `Installer` the
+  shell attaches (`Attach`), checks again, unless confirmed, that no run started meanwhile,
+  records `update.pendingInstall` (`{from, to, at, pid, sha512}`) only then, so a quit while
+  the update is staged leaves no record of an install that never began, and emits
   `event.QuitConfirmed{Restarting: true}` before `Installer.Restart`, inside which the app
-  exits: the shell then lets every quit through, whatever runs go, but quits nothing itself,
-  since a held quit would leave the runtime's helper to reopen this copy beside the new one.
-  A failure before the quit, or a `Restart` that returns nil with the app still running (a
-  quit something held), goes back to ready with `LastError`, clears the record even once the
-  call's context ended, removes the staging folder, and, once the quit was let through, emits
-  the Go-only `event.UpdateRestartFailed`, which has the shell hold a quit while runs go
-  again. After a `Restart` that returned nil, the runtime refuses another restart until the
-  app quits, so every later restart in that run is refused too, saying to quit and open the
-  app again, where the update is still ready. `HideBanner` (Later) hides the banner of the version found for a day, `ShowBanner`
+  exits: the shell then lets every quit through, whatever runs go, since a held quit would
+  leave the runtime's helper to reopen this copy beside the new one. A failure before the
+  quit, or a `Restart` that returns an error, goes back to ready with `LastError`, clears
+  the record even once the call's context ended, removes the staging folder, and, once the
+  quit was let through, emits the Go-only `event.UpdateRestartFailed`, which has the shell
+  hold a quit while runs go again. A `Restart` that returns nil with the app still running
+  (a quit something held) left the helper standing by, which can't be called back, so the
+  restart is finishing (`StateFinishing`, "Finishing the update…"): the staging folder and
+  the record stay, a later restart is refused (`ErrFinishing`), and the Go-only
+  `event.UpdateQuitHeld` has the shell see the app out (`Shell.finishRestart`): every quit
+  stays let through, it asks to quit again every `desktop.FinishQuitEvery` (5 s),
+  `FinishQuitTries` (4) times, off the main thread, and, the app still running
+  `FinishWithin` (25 s) after the hold, stops the shell in order (closing the database,
+  waited for at most `FinishStopWithin`, 3 s) and exits (`desktop.Config.Exit`, `os.Exit`
+  but in tests), before the helper's 30-second wait ends, logging each step. `HideBanner` (Later) hides the banner of the version found for a day, `ShowBanner`
   lifts it, `AckUpdated` forgets the toast, and `ShowInstallLog` shows the kept log in
   Finder. It writes only the `update.*` state keys (`update.lastCheck`, `update.notified`,
-  `update.bannerHiddenUntil`, `update.lastRunRelease`, `update.pendingInstall`), never
+  `update.bannerHiddenUntil`, `update.lastRunRelease`, `update.pendingInstall`,
+  `update.uninstallable`), never
   `update.mode`, and imports no service, no store or prefs, and no HTTP: core adapts the
   feed, the preferences (`Memory`), the backup, the runs (`Runs`, over the run engine), and
   the notifications (the repoguard boundary test). `store.RestoreBackup` copies a backup into
@@ -1626,7 +1653,8 @@ package imports the driver, and nothing imports an ORM (`internal/repoguard` enf
   and dropped, never carried out. `store.Backup` takes a backup of the open database whenever
   asked, as an update's restart does before it installs, named and pruned exactly as the
   migrations' (`migrate.Backup`: `<path>.backup-<UTC stamp>-v<schema>`, the newest three of
-  both kept), and `store.RestoreBackup` puts one of those backups back in the database's place
+  both kept; `store.Snapshots` reads the schema only from a name ending `-v<digits>` or
+  `-v<digits>-<n>`, so a copy renamed `-v4-copy` names none), and `store.RestoreBackup` puts one of those backups back in the database's place
   for an older build that finds a newer schema: it refuses a file that isn't one of the
   database's own backups, waits for another copy to let go, sets the database aside as
   `<path>.broken-<UTC stamp>` with its `-wal` and `-shm`, and copies the backup in, putting the
