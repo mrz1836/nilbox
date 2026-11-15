@@ -22,14 +22,28 @@ function working({ variant, work, leaving }: MoveDialogState): string {
   return leaving ? 'Reopening from Applications…' : 'Moving to Applications…'
 }
 
+// told is what the dialog's status tells a screen reader as it changes: what it is doing
+// while it works, and, once the question turns to the copy in Applications, that one is
+// there, since the buttons it was on went off as it worked.
+function told(dialog: MoveDialogState): string {
+  const doing = working(dialog)
+
+  if (doing === '' && dialog.variant === 'exists') {
+    return `${brand.name} is already in Applications.`
+  }
+
+  return doing
+}
+
 // MoveDialog offers to move the app into Applications, the one place it can update itself
 // from, on every launch from anywhere else until it is moved: Move to Applications copies
 // it there, and the app reopens from the copy; Not now, the safe choice, which it starts
 // on, puts it away for this launch. When a copy is in Applications already, it offers to
 // open that one instead (Open it). Either way the copy the user opened stays where it is,
 // which they can show in Finder and delete, unless macOS opened it from a hidden folder.
-// While the move runs, its buttons are off and its main button says so; a failure shows
-// its words, and leaves everything as it was. It shows nothing while closed.
+// While the move runs, its buttons are off and its main button says so; then focus is back
+// on Not now, and its status says what changed. A failure shows its words, and leaves
+// everything as it was. It shows nothing while closed.
 export function MoveDialog({ move }: MoveDialogProps) {
   const { dialog, location } = move
 
@@ -68,7 +82,7 @@ export function MoveDialog({ move }: MoveDialogProps) {
         </p>
       )}
       <p role="status" className="sr-only">
-        {doing}
+        {told(dialog)}
       </p>
     </ConfirmDialog>
   )

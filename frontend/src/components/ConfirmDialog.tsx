@@ -1,4 +1,4 @@
-import { useId, useRef, type ReactNode } from 'react'
+import { useEffect, useId, useRef, type ReactNode } from 'react'
 
 import { useModalDialog } from '../lib/useModalDialog'
 import { buttonClass, dangerButtonClass, primaryButtonClass } from './controls'
@@ -21,7 +21,8 @@ export interface ConfirmDialogProps {
   confirmDisabled?: boolean
   // busy marks work the confirm button started as under way: both buttons are off, the
   // confirm button turns beside its label, which says what is happening, and Escape
-  // cancels nothing until it ends.
+  // cancels nothing until it ends. Focus a button lost as it went off comes back to the
+  // safe choice when the work ends, as it was when the dialog opened.
   busy?: boolean
   // size gives the dialog room for a list: wide for prompts to choose among, large for a
   // long list grouped by repository.
@@ -62,6 +63,29 @@ export function ConfirmDialog({
     }
   }
   const cancel = useModalDialog(dialogRef, cancelWhenIdle, () => cancelRef.current ?? confirmRef.current)
+
+  // wasBusy is busy as the last render had it. A button turned off loses focus, so once the
+  // work ends with focus nowhere in the dialog, or on one of its buttons, the safe choice
+  // takes it, as when the dialog opened: the user stays in the dialog, at its failure or a
+  // new question, never on a button that now does something else. Focus the user moved to
+  // another control in it meanwhile stays there.
+  const wasBusy = useRef(busy)
+
+  useEffect(() => {
+    const ended = wasBusy.current && !busy
+    const dialog = dialogRef.current
+    const active = document.activeElement
+
+    wasBusy.current = busy
+
+    if (!ended || dialog === null) {
+      return
+    }
+
+    if (!dialog.contains(active) || active === confirmRef.current || active === cancelRef.current) {
+      ;(cancelRef.current ?? confirmRef.current)?.focus()
+    }
+  }, [busy])
 
   return (
     <dialog

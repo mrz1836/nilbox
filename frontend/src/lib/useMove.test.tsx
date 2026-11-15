@@ -173,7 +173,7 @@ describe('useMoveToApplications', () => {
     expect(platform.moveToApplications).toHaveBeenCalledTimes(2)
   })
 
-  it('shows Open it’s failure in the same question', async () => {
+  it('shows Open it’s failure, turning the question back to the move its words say to make', async () => {
     platform.moveToApplications.mockResolvedValue(moveResult({ outcome: 'exists' }))
     platform.openInApplications.mockRejectedValue(failure('The copy in /Applications didn’t pass its signature check.'))
     const { result } = move()
@@ -190,12 +190,21 @@ describe('useMoveToApplications', () => {
 
     await waitFor(() => {
       expect(result.current.dialog).toEqual({
-        variant: 'exists',
+        variant: 'move',
         work: null,
         leaving: false,
         error: 'The copy in /Applications didn’t pass its signature check.',
       })
     })
+
+    // Moving again looks again: a copy still there is offered again.
+    act(() => {
+      result.current.confirm()
+    })
+    await waitFor(() => {
+      expect(result.current.dialog).toEqual({ variant: 'exists', work: null, leaving: false, error: '' })
+    })
+    expect(platform.moveToApplications).toHaveBeenCalledTimes(2)
   })
 
   it('puts the question away for this launch on Not now, and the banner and About move at once', async () => {

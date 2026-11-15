@@ -56,7 +56,8 @@ export interface MoveControl {
 // Applications and checks it (MoveToApplications), then the app quits the normal way and
 // the copy opens; a copy there already is never replaced, and the dialog offers to open it
 // (OpenInApplications) instead. A second click while one is under way does nothing, and a
-// failure shows its words in the dialog, with nothing changed.
+// failure shows its words in the dialog, with nothing changed: Open it's turns the
+// question back to the move, which its words say to do.
 //
 // The quit asks first while runs go in the app, in its own dialog: the move dialog closes
 // then, and if the user keeps the app running, the copy waits in Applications, and opens
@@ -120,6 +121,10 @@ export function useMoveToApplications(offer: Offer, location: UpdateLocation | n
     if (answer.ok) {
       setVariant('exists')
     } else {
+      // Every refusal of Open it says to move this copy instead (the one there is gone,
+      // still marked as downloaded, or signed otherwise), so the question turns back to the
+      // move, its words beside it.
+      setVariant('move')
       setError(answer.error)
     }
   }

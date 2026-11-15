@@ -155,11 +155,39 @@ describe('MoveDialog', () => {
 
     gate.answer?.(moveResult({ outcome: 'exists' }))
 
-    await userEvent.click(await screen.findByRole('button', { name: 'Open it' }))
+    // The new question is told, and starts on its safe choice, as a dialog that opens does.
+    const open = await screen.findByRole('button', { name: 'Open it' })
+    expect(within(screen.getByRole('dialog')).getByRole('status')).toHaveTextContent(
+      `${brand.name} is already in Applications.`,
+    )
+    expect(screen.getByRole('button', { name: 'Not now' })).toHaveFocus()
+
+    await userEvent.click(open)
     expect(platform.openInApplications).toHaveBeenCalledOnce()
     await waitFor(() => {
       expect(screen.getByRole('button', { name: 'Opening it…' })).toBeDisabled()
     })
+  })
+
+  it('turns back to the move when Open it is refused, its words told, focus on Not now', async () => {
+    platform.moveToApplications.mockResolvedValue(moveResult({ outcome: 'exists' }))
+    platform.openInApplications.mockRejectedValue(
+      new Error('refused', {
+        cause: {
+          message:
+            'The copy in /Applications is still marked as downloaded, so macOS would open it from a hidden folder, where it can’t update itself. Move it to the Trash, then move this one there.',
+        },
+      }),
+    )
+    render(<Live status={updateStatus({ location: updateLocation() })} />)
+
+    await userEvent.click(screen.getByRole('button', { name: 'Move to Applications' }))
+    await userEvent.click(await screen.findByRole('button', { name: 'Open it' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Move it to the Trash, then move this one there.')
+    expect(screen.getByRole('dialog', { name: 'Move to Applications?' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Move to Applications' })).toBeEnabled()
+    expect(screen.getByRole('button', { name: 'Not now' })).toHaveFocus()
   })
 
   it('goes away for this launch on Not now, over the real move', async () => {
