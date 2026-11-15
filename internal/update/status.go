@@ -52,6 +52,11 @@ const (
 	// StateInstalling is a restart under way: the data backed up, the update staged, the
 	// app about to quit.
 	StateInstalling State = "installing"
+
+	// StateFinishing is a restart whose quit was held (a modal panel, say) after the
+	// runtime's helper started: the update stays staged and recorded, and the app quits on
+	// its own within moments so the helper installs it.
+	StateFinishing State = "finishing"
 )
 
 // LocationKind says where the running app is, which decides whether it can replace itself.
@@ -90,7 +95,8 @@ type Location struct {
 	Target string `json:"target"`
 }
 
-// InstallFailure is the update the last restart didn't install.
+// InstallFailure is the update the last restart didn't install, or, in a later run, the
+// newest version found, when an earlier restart failed to install it for good.
 type InstallFailure struct {
 	// Version is the version it was meant to install, or "" when the last restart
 	// installed what it meant to, or there was none.
@@ -101,6 +107,14 @@ type InstallFailure struct {
 
 	// Log reports that the helper's log was kept, which ShowInstallLog shows.
 	Log bool `json:"log"`
+
+	// Retryable reports that trying the same update again may work: the failure was the
+	// moment's (the app didn't quit in time, macOS kept it from being replaced, it couldn't
+	// be copied aside, or the helper's log doesn't say), and the update stays offered. A
+	// failure of the update itself (it failed its signature check, couldn't be installed, or
+	// wouldn't open) fails the same way every time: that update is never offered again, and
+	// the release page is the way to get it.
+	Retryable bool `json:"retryable"`
 }
 
 // Status is the app's update as the window shows it. Every field is a plain value.

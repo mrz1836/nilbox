@@ -129,6 +129,16 @@ func (u *desktopUI) Quit() {
 	}
 }
 
+// OpenURL opens url in the user's browser, for the menu's Download Manually….
+func (u *desktopUI) OpenURL(url string) error {
+	app := u.app.Load()
+	if app == nil {
+		return errNoApp
+	}
+
+	return app.Browser.OpenURL(url)
+}
+
 // screenOf is the screen the window is on, or the primary screen when that cannot be told,
 // or nil when there is neither.
 func (u *desktopUI) screenOf(window *application.WebviewWindow) *application.Screen {

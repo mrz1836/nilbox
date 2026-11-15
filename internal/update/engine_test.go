@@ -572,7 +572,7 @@ func TestStatusJSONIsTheFrontendsContract(t *testing.T) {
 		"flavor", "enabled", "off", "current", "mode", "state", "checking", "progress", "latest", "releaseUrl",
 		"lastChecked", "lastError", "bannerHidden", "justUpdated", "installFailed", "location",
 	}, names)
-	assert.JSONEq(t, `{"version":"","reason":"","log":false}`, string(fields["installFailed"]))
+	assert.JSONEq(t, `{"version":"","reason":"","log":false,"retryable":false}`, string(fields["installFailed"]))
 	assert.JSONEq(t, `{"ok":false,"kind":"","target":""}`, string(fields["location"]))
 	assert.NotContains(t, string(data), "null", "no null list or map reaches the window")
 }

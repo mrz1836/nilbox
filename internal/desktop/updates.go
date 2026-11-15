@@ -22,6 +22,23 @@ type Updates interface {
 	Restart(ctx context.Context, confirmed bool) (update.Status, error)
 }
 
+// URLOpener opens a web page in the user's browser: the desktop runtime's.
+type URLOpener interface {
+	OpenURL(url string) error
+}
+
+// After a restart to update whose quit was held (event.UpdateQuitHeld), the shell asks to
+// quit again every FinishQuitEvery, FinishQuitTries times, and, the app still running
+// FinishWithin after the hold, shuts down in order, waiting for that at most
+// FinishStopWithin, and exits: the update's helper, which can't be called back, waits 30
+// seconds for the app to exit before it gives up and installs nothing.
+const (
+	FinishQuitEvery  = 5 * time.Second
+	FinishQuitTries  = 4
+	FinishWithin     = 25 * time.Second
+	FinishStopWithin = 3 * time.Second
+)
+
 // UpdateAction does what a click on a row of the update's part of the menu bar asks, in
 // the background: a check, the restart into the version ready, or the download of the
 // version found and then the restart. How a check or a refused restart went shows on the
@@ -42,7 +59,104 @@ func (s *Shell) UpdateAction(action menubar.UpdateAction) {
 		s.restartUntracked()
 	case menubar.UpdateDownload:
 		s.goTracked(s.downloadAndRestart)
+	case menubar.UpdateManual:
+		s.goTracked(s.openReleasePage)
 	case menubar.UpdateNone:
+	}
+}
+
+// openReleasePage opens the release page of the version found in the browser, to download
+// it by hand.
+func (s *Shell) openReleasePage(ctx context.Context) {
+	st, err := s.updates.Status(ctx)
+	if err != nil {
+		if ctx.Err() == nil {
+			s.logger.WarnContext(ctx, "could not read the update to open its release page", "error", err)
+		}
+
+		return
+	}
+
+	if s.browser == nil {
+		s.logger.WarnContext(ctx, "this build can't open the release page", "url", st.ReleaseURL)
+
+		return
+	}
+
+	if err = s.browser.OpenURL(st.ReleaseURL); err != nil {
+		s.logger.WarnContext(ctx, "could not open the release page", "url", st.ReleaseURL, "error", err)
+	}
+}
+
+// finishRestart sees the app out once a restart to update's quit was held, once: every quit
+// stays let through, and seeOut, apart from the tracked work, asks to quit again, then
+// shuts down in order and exits.
+func (s *Shell) finishRestart() {
+	if !s.finishing.CompareAndSwap(false, true) {
+		return
+	}
+
+	s.restarting.Store(true)
+	s.logger.Warn("the restart to update's quit was held; quitting again to finish the update",
+		"within", FinishWithin.String())
+
+	go s.seeOut()
+}
+
+// seeOut asks the app to quit every FinishQuitEvery, FinishQuitTries times, each ask on a
+// goroutine of its own, since a quit waits for the main thread whatever holds it; and, the
+// process still running FinishWithin on, exits once the shell has stopped, which closes the
+// data in order, or FinishStopWithin later, whichever comes first, so the update's helper
+// still finds the app gone within its wait. A quit that goes through ends the process
+// before then.
+func (s *Shell) seeOut() {
+	asks := time.NewTicker(FinishQuitEvery)
+	defer asks.Stop()
+
+	deadline := time.NewTimer(FinishWithin)
+	defer deadline.Stop()
+
+	for tries := 0; ; {
+		select {
+		case <-asks.C:
+			if tries < FinishQuitTries {
+				tries++
+				s.logger.Info("asking to quit again to finish the update", "try", tries)
+
+				go s.app.Quit()
+			}
+		case <-deadline.C:
+			s.logger.Warn("the app still runs; shutting down in order to finish the update")
+			s.stopWithin(FinishStopWithin)
+			s.logger.Info("exiting, so the update's helper installs the update")
+			s.exit(0)
+
+			return
+		}
+	}
+}
+
+// stopWithin stops the shell, which closes the data in order, waiting for it at most
+// limit; a stop that takes longer goes on, and the caller exits anyway.
+func (s *Shell) stopWithin(limit time.Duration) {
+	stopped := make(chan struct{})
+
+	go func() {
+		defer close(stopped)
+
+		if err := s.Stop(); err != nil {
+			s.logger.Warn("could not close the data in order", "error", err)
+		}
+	}()
+
+	timeout := time.NewTimer(limit)
+	defer timeout.Stop()
+
+	select {
+	case <-stopped:
+	case <-timeout.C:
+		s.logger.Warn("the shutdown is taking too long; exiting before the update's helper gives up",
+			"waited", limit.String())
 	}
 }
 

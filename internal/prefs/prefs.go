@@ -36,8 +36,10 @@
 //   - update writes every update.* key but update.mode: when it last checked
 //     (update.lastCheck), the last version it told of (update.notified), the banner hidden
 //     with Later (update.bannerHiddenUntil), the version the app last ran as
-//     (update.lastRunRelease), and the install a restart began, read and cleared at the next
-//     start (update.pendingInstall).
+//     (update.lastRunRelease), the install a restart began, read and cleared at the next
+//     start (update.pendingInstall), and the last five releases that failed to install for
+//     good, by version and SHA-512, which no check downloads or offers again
+//     (update.uninstallable).
 //
 // A Store from New runs each call on the pool. One joined to a transaction with WithTx
 // runs every call inside it, so prefs are written together with another owner's tables

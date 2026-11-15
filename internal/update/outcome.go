@@ -76,7 +76,7 @@ func (e *Engine) helperBusy(p pendingInstall) time.Duration {
 	}
 
 	log, err := readTail(helperLog(e.tempDir, p.PID), maxHelperLog)
-	if err == nil && helperFinished(log) {
+	if err == nil && helperFinished(log, e.bundle) {
 		return 0
 	}
 
@@ -85,13 +85,16 @@ func (e *Engine) helperBusy(p pendingInstall) time.Duration {
 
 // helperFinished reports whether the runtime's helper's log ends on a message after which
 // the helper touches neither the app nor its copy: done, gave up before changing anything,
-// or failed to restore. One that ends on "restoring backup" is still restoring.
-func helperFinished(log []byte) bool {
+// or failed to restore. One that ends on "restoring backup" has finished once the copy of
+// the old app, <bundle>.bak, is gone: a restore that worked logs nothing more, renames the
+// copy into place, and its last act is to open the app, this one; while the copy is there,
+// it is still restoring.
+func helperFinished(log []byte, bundle string) bool {
 	lines := bytes.Split(bytes.TrimSpace(log), []byte("\n"))
 	last := lines[len(lines)-1]
 
 	if bytes.Contains(last, []byte("restoring backup")) {
-		return false
+		return bundle != "" && !exists(bundle+".bak")
 	}
 
 	for _, final := range []string{
@@ -118,6 +121,16 @@ func helperFinished(log []byte) bool {
 func (e *Engine) readOutcome(ctx context.Context, stored map[string]string, pending pendingInstall, hasPending bool,
 ) int {
 	updated, failed := e.outcome(ctx, pending, hasPending, stored[KeyLastRunRelease])
+
+	// An update that failed for good is never offered again; one recorded without its
+	// zip's SHA-512 can't be told apart from the same version rebuilt, so it stays offered.
+	if failed.Version != "" && !failed.Retryable {
+		if pending.SHA512 == "" {
+			failed.Retryable = true
+		} else {
+			e.rememberUninstallable(ctx, failed.Version, pending.SHA512, failed.Reason)
+		}
+	}
 
 	e.mu.Lock()
 	e.st.justUpdated, e.st.failed = updated, failed
@@ -182,10 +195,10 @@ func decodePending(stored string) (pendingInstall, bool) {
 }
 
 // keepHelperLog copies the end of the helper's log of the install p into the logs folder,
-// as update-<version>.log, and words why the install failed from it. A missing log is
-// worded as one.
+// as update-<version>.log, and words why the install failed from it, and whether trying
+// again may work. A missing log is worded as one, and may.
 func (e *Engine) keepHelperLog(ctx context.Context, p pendingInstall) InstallFailure {
-	out := InstallFailure{Version: p.To}
+	out := InstallFailure{Version: p.To, Retryable: true}
 
 	data, err := readTail(helperLog(e.tempDir, p.PID), maxHelperLog)
 	if err != nil {
@@ -198,7 +211,10 @@ func (e *Engine) keepHelperLog(ctx context.Context, p pendingInstall) InstallFai
 		return out
 	}
 
-	out.Reason = helperReason(data)
+	var payload bool
+
+	out.Reason, payload = helperOutcome(data)
+	out.Retryable = !payload
 
 	if e.logs == "" {
 		return out
@@ -220,7 +236,9 @@ func (e *Engine) installLog(version string) string {
 	return filepath.Join(e.logs, "update-"+version+".log")
 }
 
-// loadCache takes the update kept in the cache, checked again, as the one ready.
+// loadCache takes the update kept in the cache, checked again, as the one ready. One that
+// failed to install for good is dropped, but stays the version found, so the window can
+// say it didn't install and where to get it.
 func (e *Engine) loadCache(ctx context.Context) {
 	entry, ok, err := e.cache.Load(e.current)
 	if err != nil {
@@ -233,9 +251,27 @@ func (e *Engine) loadCache(ctx context.Context) {
 
 	m := entry.Manifest
 
+	if e.blocked(ctx, m) {
+		e.logger.InfoContext(ctx, "dropping the update kept, which failed to install for good", "version", m.Version)
+		e.prune(ctx, "")
+
+		e.mu.Lock()
+		e.st.found = &m
+		e.mu.Unlock()
+
+		return
+	}
+
 	e.mu.Lock()
 	e.st.ready, e.st.found = &entry, &m
 	e.mu.Unlock()
+}
+
+// exists reports whether something is at path.
+func exists(path string) bool {
+	_, err := os.Lstat(path)
+
+	return err == nil
 }
 
 // readTail reads the last limit bytes of the regular file at path.
@@ -270,12 +306,16 @@ func readTail(path string, limit int64) ([]byte, error) {
 	return data, nil
 }
 
-// helperReason words why an install failed from the runtime's helper's log, whose lines
-// are "<time>: <message>" and never print the exit code. The messages it ends on tell the
-// code apart: a swap that failed and whose restore failed too (14, 16, 20) left a broken
-// install; every other kept or put back the old version. Nothing of the log, its paths
-// included, is repeated.
-func helperReason(log []byte) string {
+// helperOutcome words why an install failed from the runtime's helper's log, whose lines
+// are "<time>: <message>" and never print the exit code, and reports whether the update
+// itself was at fault (payload), as it would be every time: it failed its signature check,
+// couldn't be installed, or wouldn't open. Any other ending, an unknown one included, was
+// the moment's (the app didn't quit in time, macOS kept it from being replaced, it couldn't
+// be copied aside), and trying again may work. The messages it ends on tell the code apart:
+// a swap that failed and whose restore failed too (14, 16, 20) left a broken install; every
+// other kept or put back the old version. Nothing of the log, its paths included, is
+// repeated.
+func helperOutcome(log []byte) (reason string, payload bool) {
 	broken := bytes.Contains(log, []byte("restore failed"))
 
 	for _, ending := range helperEndings() {
@@ -285,22 +325,23 @@ func helperReason(log []byte) string {
 
 		if broken && ending.broken != "" {
 			return ending.broken + " Rename " + brand.Name + ".app.bak to " + brand.Name +
-				".app in its folder, or install " + brand.Name + " again."
+				".app in its folder, or install " + brand.Name + " again.", ending.payload
 		}
 
-		return ending.words
+		return ending.words, ending.payload
 	}
 
-	return "The update didn't install, and its log doesn't say why."
+	return "The update didn't install, and its log doesn't say why.", false
 }
 
 // helperEnding is a message the runtime's helper logs on its way out, and what it means:
 // words, or, when a restore failed after it (the helper's codes 14, 16, and 20, which leave
-// a broken install), broken.
+// a broken install), broken; and whether the update itself was at fault (payload).
 type helperEnding struct {
 	message string
 	words   string
 	broken  string
+	payload bool
 }
 
 // helperEndings are the helper's endings, the most telling first.
@@ -311,17 +352,20 @@ func helperEndings() []helperEnding {
 		{
 			message: "staged update is not installable",
 			words:   "The downloaded update couldn't be installed, so nothing was changed.",
+			payload: true,
 		},
 		{message: "backup failed", words: brand.Name + " couldn't be copied aside first, so nothing was changed."},
 		{
 			message: "installed application failed validation",
 			words:   "The new version failed its signature check, so the old one was put back.",
 			broken:  "The new version failed its signature check, and the old one couldn't be put back.",
+			payload: true,
 		},
 		{
 			message: "launch new failed",
 			words:   "The new version wouldn't open, so the old one was put back.",
 			broken:  "The new version wouldn't open, and the old one couldn't be put back.",
+			payload: true,
 		},
 		{
 			message: "all swap attempts exhausted",

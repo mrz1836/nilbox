@@ -663,14 +663,37 @@ func TestTheMenusRestartLetsTheQuitThrough(t *testing.T) {
 	})
 }
 
-func TestARestartWhoseQuitWasHeldHoldsQuitsAgain(t *testing.T) {
+// exits records the statuses the shell exited with.
+type exits struct {
+	mu    sync.Mutex
+	codes []int
+}
+
+func (e *exits) exit(code int) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+
+	e.codes = append(e.codes, code)
+}
+
+func (e *exits) all() []int {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+
+	return append([]int(nil), e.codes...)
+}
+
+func TestARestartWhoseQuitIsHeldSeesTheAppOut(t *testing.T) {
 	t.Parallel()
 
 	synctest.Test(t, func(t *testing.T) {
 		r := newRig()
 		relay := &event.Relay{}
 		u := realUpdate(t, r.log, relay, realOpts{held: true})
-		s := r.shell(withUpdates(u), func(cfg *desktop.Config) { cfg.QuitGuard = quitGuard{} })
+		exited := &exits{}
+		s := r.shell(withUpdates(u), func(cfg *desktop.Config) {
+			cfg.QuitGuard, cfg.Exit = quitGuard{}, exited.exit
+		})
 		relay.Connect(s)
 
 		s.Start(t.Context())
@@ -687,12 +710,123 @@ func TestARestartWhoseQuitWasHeldHoldsQuitsAgain(t *testing.T) {
 		synctest.Wait()
 
 		assert.Equal(t, []string{"installer staged 0.3.0", "installer restarted"}, r.lines("installer"))
-		assert.False(t, s.ShouldQuit(), "the app runs on, so the guard holds a quit while runs go again")
+		assert.True(t, s.ShouldQuit(), "every quit stays let through")
+		assert.Equal(t, []menubar.UpdateRow{{Label: "Check for Updates…"}, {
+			Label:   "Finishing the update…",
+			Tooltip: brand.Name + " is quitting to install 0.3.0. If it doesn't, quit it and open it again.",
+		}}, updateRows(t, r), "the restart row is never offered again")
 
-		rows := updateRows(t, r)
-		require.Len(t, rows, 3)
-		assert.Equal(t, "Restart failed", rows[2].Label)
-		assert.Contains(t, rows[2].Tooltip, "didn't quit", "the update says why")
+		time.Sleep(desktop.FinishQuitEvery * desktop.FinishQuitTries)
+		synctest.Wait()
+		assert.Equal(t, desktop.FinishQuitTries, r.app.quitCount(), "the quit is asked for again")
+		assert.Empty(t, exited.all(), "not yet")
+		assert.Empty(t, r.lines(dataClosed))
+
+		time.Sleep(desktop.FinishWithin - desktop.FinishQuitEvery*desktop.FinishQuitTries)
+		synctest.Wait()
+		assert.Equal(t, []string{dataClosed}, r.lines(dataClosed), "the shell shut down in order")
+		assert.Equal(t, []int{0}, exited.all(), "then exited, so the helper installs the update")
+		assert.Equal(t, desktop.FinishQuitTries, r.app.quitCount(), "no more asks once the tries are spent")
+		assert.Contains(t, r.logs.String(), "the app still runs; shutting down in order to finish the update")
+	})
+}
+
+func TestAShutdownThatHangsStillExitsBeforeTheHelperGivesUp(t *testing.T) {
+	t.Parallel()
+
+	synctest.Test(t, func(t *testing.T) {
+		r := newRig()
+		relay := &event.Relay{}
+		u := realUpdate(t, r.log, relay, realOpts{held: true})
+		exited := &exits{}
+		release := make(chan struct{})
+		s := r.shell(withUpdates(u), func(cfg *desktop.Config) {
+			cfg.QuitGuard, cfg.Exit = quitGuard{}, exited.exit
+			cfg.StopTimeout = time.Minute
+			cfg.Workers = []desktop.Worker{&fakeWorker{name: "stuck", log: r.log, release: release}}
+		})
+		relay.Connect(s)
+
+		s.Start(t.Context())
+		s.Launched()
+		synctest.Wait()
+
+		_, err := u.CheckNow(t.Context())
+		require.NoError(t, err)
+
+		_, err = u.Download(t.Context())
+		require.NoError(t, err)
+
+		held := time.Now()
+
+		s.UpdateAction(menubar.UpdateRestart)
+		synctest.Wait()
+
+		time.Sleep(desktop.FinishWithin)
+		synctest.Wait()
+		assert.Empty(t, exited.all(), "the shutdown waits for the stuck work")
+
+		time.Sleep(desktop.FinishStopWithin)
+		synctest.Wait()
+		assert.Equal(t, []int{0}, exited.all(), "but no longer than the helper waits")
+		assert.Less(t, time.Since(held), 30*time.Second, "within the helper's 30 seconds")
+		assert.Contains(t, r.logs.String(), "the shutdown is taking too long")
+
+		close(release)
+		synctest.Wait()
+	})
+}
+
+// browser records the pages it opens.
+type browser struct {
+	mu     sync.Mutex
+	opened []string
+}
+
+func (b *browser) OpenURL(url string) error {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	b.opened = append(b.opened, url)
+
+	return nil
+}
+
+func (b *browser) pages() []string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	return append([]string(nil), b.opened...)
+}
+
+func TestTheMenusManualDownloadOpensTheReleasePage(t *testing.T) {
+	t.Parallel()
+
+	synctest.Test(t, func(t *testing.T) {
+		r := newRig()
+		page := "https://example.com/releases/tag/v0.3.0"
+		pages := &browser{}
+		u := &fakeUpdates{log: r.log, st: updating(func(st *update.Status) {
+			st.State, st.Latest, st.ReleaseURL = update.StateAvailable, nextVersion, page
+			st.InstallFailed = update.InstallFailure{Version: nextVersion, Reason: "It failed its signature check."}
+		})}
+		s := r.shell(withUpdates(u), func(cfg *desktop.Config) { cfg.Browser = pages })
+
+		s.Start(t.Context())
+		s.Launched()
+		synctest.Wait()
+
+		assert.Equal(t, []menubar.UpdateRow{
+			checkRow(),
+			{Label: "0.3.0 didn't install", Tooltip: "It failed its signature check."},
+			{Label: "Download 0.3.0 Manually…", Tooltip: page, Action: menubar.UpdateManual},
+		}, updateRows(t, r))
+
+		s.UpdateAction(menubar.UpdateManual)
+		synctest.Wait()
+
+		assert.Equal(t, []string{page}, pages.pages())
+		assert.Empty(t, r.lines("update"), "nothing is downloaded or installed")
 
 		require.NoError(t, s.Stop())
 	})

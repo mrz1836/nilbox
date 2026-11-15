@@ -35,9 +35,14 @@ const (
 	// outcome of the last restart is read.
 	KeyLastRunRelease = "update.lastRunRelease"
 
-	// KeyPendingInstall is the install a restart began, {from, to, at, pid}, set just
-	// before the app quits for it and read and cleared at the next start.
+	// KeyPendingInstall is the install a restart began, {from, to, at, pid, sha512}, set
+	// just before the app quits for it and read and cleared at the next start.
 	KeyPendingInstall = "update.pendingInstall"
+
+	// KeyUninstallable is the updates a restart failed to install for good (each
+	// {version, sha512, reason}, the newest few), which are never downloaded or offered
+	// again: a later release, or the same version rebuilt, is.
+	KeyUninstallable = "update.uninstallable"
 )
 
 // Timing.
@@ -290,9 +295,10 @@ type state struct {
 	failedDownload string
 	quiet          string
 
-	// quitHeld is set once a restart's Installer returned with the app still running: the
-	// runtime refuses another restart until the app quits, so this run installs nothing more.
-	quitHeld bool
+	// finishing is set once a restart's Installer returned with the app still running: the
+	// runtime's helper waits for this process to exit, with the update staged and recorded,
+	// and the shell quits the app on its own (event.UpdateQuitHeld). Nothing else installs.
+	finishing bool
 }
 
 // NewEngine returns an Engine over cfg. A source build, a release with no key pinned, or a
@@ -407,7 +413,7 @@ func (e *Engine) Status(ctx context.Context) (Status, error) {
 		return out, nil
 	}
 
-	stored, err := e.memory.GetMany(ctx, updateprefs.KeyMode, KeyLastCheck, KeyBannerHidden)
+	stored, err := e.memory.GetMany(ctx, updateprefs.KeyMode, KeyLastCheck, KeyBannerHidden, KeyUninstallable)
 	if err != nil {
 		return Status{}, fmt.Errorf("read the update's status: %w", err)
 	}
@@ -421,6 +427,10 @@ func (e *Engine) Status(ctx context.Context) (Status, error) {
 
 	out.State, out.Latest = st.phase()
 	out.Checking, out.LastError, out.JustUpdated, out.InstallFailed = st.checking, st.lastErr, st.justUpdated, st.failed
+
+	if st.found != nil && out.Latest == st.found.Version {
+		out.InstallFailed = e.foundFailure(out.InstallFailed, *st.found, stored[KeyUninstallable])
+	}
 
 	if st.downloading != nil && st.downloading.Size > 0 {
 		out.Progress = int(min(100, st.written*100/st.downloading.Size))
@@ -439,6 +449,23 @@ func (e *Engine) Status(ctx context.Context) (Status, error) {
 	return out, nil
 }
 
+// foundFailure is how the last install of found went, as the window shows it beside the
+// version found, from failed, this run's, and stored, the releases that failed to install
+// for good (KeyUninstallable): with none this run, an earlier run's failure of found for
+// good; and a failure of found's version for good that found, a rebuild with another
+// SHA-512, may get past, made retryable.
+func (e *Engine) foundFailure(failed InstallFailure, found Manifest, stored string) InstallFailure {
+	switch {
+	case failed.Version == "":
+		return e.failedForGood(stored, found)
+	case failed.Version == found.Version && !failed.Retryable:
+		_, forGood := lookup(decodeUninstallable(stored), found.Version, found.SHA512)
+		failed.Retryable = !forGood
+	}
+
+	return failed
+}
+
 // storedMode reads the mode the user chose, or the default when it can't be read.
 func (e *Engine) storedMode(ctx context.Context) updateprefs.Mode {
 	if e.memory == nil {
@@ -455,9 +482,11 @@ func (e *Engine) storedMode(ctx context.Context) updateprefs.Mode {
 
 // phase works out the state and the version it is about from what the engine holds.
 func (st state) phase() (State, string) {
+	if restarting, ok := st.restartPhase(); ok {
+		return restarting, st.ready.Manifest.Version
+	}
+
 	switch {
-	case st.installing && st.ready != nil:
-		return StateInstalling, st.ready.Manifest.Version
 	case st.downloading != nil:
 		return StateDownloading, st.downloading.Version
 	case st.found != nil && (st.ready == nil || st.ready.Manifest.Version != st.found.Version):
@@ -468,6 +497,21 @@ func (st state) phase() (State, string) {
 		return StateChecking, ""
 	default:
 		return StateIdle, ""
+	}
+}
+
+// restartPhase is the state of a restart of the update ready: finishing once its quit was
+// held, installing while it runs; ok is false with none.
+func (st state) restartPhase() (State, bool) {
+	switch {
+	case st.ready == nil:
+		return "", false
+	case st.finishing:
+		return StateFinishing, true
+	case st.installing:
+		return StateInstalling, true
+	default:
+		return "", false
 	}
 }
 
@@ -535,6 +579,10 @@ type pendingInstall struct {
 	To   string    `json:"to"`
 	At   time.Time `json:"at"`
 	PID  int       `json:"pid"`
+
+	// SHA512 is the zip's, which tells a failed install's update apart from the same
+	// version rebuilt.
+	SHA512 string `json:"sha512,omitempty"`
 }
 
 // tilde writes path with ~ for home.

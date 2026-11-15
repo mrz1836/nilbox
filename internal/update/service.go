@@ -138,13 +138,18 @@ func (s *Service) AckUpdated(ctx context.Context) (Status, error) {
 // ShowInstallLog shows the log of the update the last restart didn't install in Finder,
 // the copy kept in the logs folder.
 func (s *Service) ShowInstallLog(ctx context.Context) error {
-	failed := s.e.view().failed
+	status, err := s.e.Status(ctx)
+	if err != nil {
+		return err
+	}
+
+	failed := status.InstallFailed
 	if !failed.Log || !ValidVersion(failed.Version) {
 		return uierr.New("No log of that update was kept.", ErrNoLog)
 	}
 
 	path := s.e.installLog(failed.Version)
-	if _, err := os.Stat(path); err != nil {
+	if _, err = os.Stat(path); err != nil {
 		return uierr.New("The update's log is gone from the logs folder.", fmt.Errorf("%w: %w", ErrNoLog, err))
 	}
 

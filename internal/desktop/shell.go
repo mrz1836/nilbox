@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"os"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -161,6 +162,14 @@ type Config struct {
 	// that updates. Optional: without it, the menu offers no update.
 	Updates Updates
 
+	// Browser opens a web page in the user's browser, as the menu bar's Download X Manually…
+	// does. Optional: without it, the page isn't opened, which is logged.
+	Browser URLOpener
+
+	// Exit ends the process with a status, once a restart to update whose quit was held has
+	// shut the shell down in order. It defaults to os.Exit.
+	Exit func(code int)
+
 	// Workers run in the background from Start until Stop, started in this order.
 	Workers []Worker
 
@@ -220,6 +229,8 @@ type Shell struct {
 	settings Settings
 	sessions Sessions
 	updates  Updates
+	browser  URLOpener
+	exit     func(code int)
 	workers  []Worker
 	deferred []Worker
 	data     io.Closer
@@ -283,6 +294,10 @@ type Shell struct {
 	// fails clears it.
 	restarting atomic.Bool
 
+	// finishing is set once a restart to update's quit was held: the shell sees the app out
+	// (seeOut), once.
+	finishing atomic.Bool
+
 	// relaunch is set once the user asked for a reset: the app quits and opens again,
 	// and its next start carries the reset out.
 	relaunch atomic.Bool
@@ -306,9 +321,14 @@ func New(cfg Config) *Shell {
 		inbox: cfg.Inbox, settings: cfg.Settings, sessions: cfg.Sessions, updates: cfg.Updates, workers: cfg.Workers,
 		deferred: cfg.Deferred,
 		data:     cfg.Data, banners: cfg.Banners, guard: cfg.QuitGuard,
+		browser: cfg.Browser, exit: cfg.Exit,
 		clock: clock.Or(cfg.Clock), stdout: orDiscard(cfg.Stdout), logger: logging.Or(cfg.Logger),
 		measure: cfg.MeasureStartup, stopTimeout: cfg.StopTimeout, measureTimeout: cfg.MeasureTimeout,
 		lifetime: lifetime, cancel: cancel, redraw: make(chan struct{}, 1),
+	}
+
+	if s.exit == nil {
+		s.exit = os.Exit
 	}
 
 	if s.stopTimeout <= 0 {
@@ -403,7 +423,8 @@ func (s *Shell) Emit(e event.Event) {
 	case event.FirstPaint:
 		s.firstPaint(e.Measurement)
 		s.startDeferred()
-	case event.QuitConfirmed, event.SetupFinished, event.ResetRequested, event.UpdateRestartFailed:
+	case event.QuitConfirmed, event.SetupFinished, event.ResetRequested, event.UpdateRestartFailed,
+		event.UpdateQuitHeld:
 		s.appEvent(e)
 	case event.WindowEvent:
 		s.frontend.Emit(e)
@@ -552,6 +573,8 @@ func (s *Shell) appEvent(e event.Event) {
 		s.quitAnyway()
 	case event.UpdateRestartFailed:
 		s.restarting.Store(false)
+	case event.UpdateQuitHeld:
+		s.finishRestart()
 	case event.SetupFinished:
 		s.setupFinished()
 	case event.ResetRequested:

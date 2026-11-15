@@ -262,6 +262,7 @@ func assemble(l launch) (*application.App, *desktop.Shell, error) {
 			c.Deferred, c.ToolFinder, c.Runs, c.ReleaseFollower, c.ServiceStatusChecker, c.UpdateWorker,
 		},
 		Updates:        c.Updates,
+		Browser:        ui,
 		Data:           c,
 		Banners:        banners.poster(),
 		QuitGuard:      c.Runs,

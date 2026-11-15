@@ -30,6 +30,9 @@ var (
 	// errOtherRelease is returned by the cache provider asked for a release it doesn't
 	// hold.
 	errOtherRelease = errors.New("the update cache holds another release")
+
+	// errNoApp is returned by a call on the runtime before the app exists.
+	errNoApp = errors.New("the desktop app isn't running yet")
 )
 
 // installer installs an update through the desktop runtime's updater (update.Installer),
@@ -86,10 +89,11 @@ func (i *installer) Install(ctx context.Context, zip, version string, size int64
 	return nil
 }
 
-// Restart starts the runtime's helper, waits for it to stand by, and quits the app, which
-// exits inside it. It is never called on the main thread, where the quit would wait on
-// itself: the menu bar runs it in a goroutine of its own, and the window's bound calls run
-// on goroutines of the runtime's, which the shell's shutdown never waits for.
+// Restart starts the runtime's helper, waits up to 30 seconds for it to stand by, and
+// quits the app, which exits inside it. It is never called on the main thread, since that
+// wait would freeze the menus and the window while it lasts: the menu bar runs it in a
+// goroutine of its own, untracked, since the quit stops the shell, which waits for its
+// tracked work, and the window's bound calls run on goroutines of the runtime's.
 func (i *installer) Restart(ctx context.Context) error {
 	if err := i.updater.Restart(ctx); err != nil {
 		return fmt.Errorf("start the update's helper: %w", err)

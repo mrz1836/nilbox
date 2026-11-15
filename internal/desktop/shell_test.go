@@ -282,7 +282,7 @@ func TestStopShutsDownInOrder(t *testing.T) {
 		lines := withoutTray(r.log.all())
 		require.Len(t, lines, 7)
 		assert.ElementsMatch(t, []string{"scheduler started", "sweeper started", "refresh started"}, lines[:3])
-		assert.Equal(t, []string{"refresh returned", "scheduler returned", "sweeper returned", "data closed"}, lines[3:],
+		assert.Equal(t, []string{"refresh returned", "scheduler returned", "sweeper returned", dataClosed}, lines[3:],
 			"every piece of work returns before the data is closed")
 
 		// The snooze and the measurement timers were stopped: neither fires later.
@@ -316,12 +316,12 @@ func TestStopGivesUpWaitingAfterTheTimeout(t *testing.T) {
 		require.NoError(t, s.Stop())
 
 		assert.Equal(t, 3*time.Second, time.Since(start))
-		assert.Equal(t, []string{"stuck started", "data closed"}, r.log.all(), "the data is closed anyway")
+		assert.Equal(t, []string{"stuck started", dataClosed}, r.log.all(), "the data is closed anyway")
 
 		close(release)
 		synctest.Wait()
 
-		assert.Equal(t, []string{"stuck started", "data closed", "stuck returned"}, r.log.all())
+		assert.Equal(t, []string{"stuck started", dataClosed, "stuck returned"}, r.log.all())
 	})
 }
 
@@ -355,7 +355,7 @@ func TestStopReturnsTheCloseErrorEveryTime(t *testing.T) {
 
 	require.ErrorIs(t, s.Stop(), errFakeClose, "Stop works without Start")
 	require.ErrorIs(t, s.Stop(), errFakeClose)
-	assert.Equal(t, []string{"data closed"}, r.log.all(), "the data is closed once")
+	assert.Equal(t, []string{dataClosed}, r.log.all(), "the data is closed once")
 }
 
 func TestStopWithoutData(t *testing.T) {
@@ -398,7 +398,7 @@ func TestAStoppedShellDoesNothing(t *testing.T) {
 
 		synctest.Wait()
 
-		assert.Equal(t, []string{"data closed"}, r.log.all(), "no work starts, and the icon is never touched")
+		assert.Equal(t, []string{dataClosed}, r.log.all(), "no work starts, and the icon is never touched")
 		assert.Empty(t, r.page.events())
 		assert.Empty(t, r.window.openings())
 		assert.Zero(t, r.window.shown())
@@ -446,7 +446,7 @@ func TestRefreshNowIsTrackedWork(t *testing.T) {
 		assert.Equal(t, []string{"refresh started"}, r.log.all())
 
 		require.NoError(t, s.Stop())
-		assert.Equal(t, []string{"refresh started", "refresh returned", "data closed"}, r.log.all())
+		assert.Equal(t, []string{"refresh started", "refresh returned", dataClosed}, r.log.all())
 	})
 }
 
@@ -665,9 +665,9 @@ func TestQuitAnywayStopsThenQuits(t *testing.T) {
 		// them before the data closes.
 		require.True(t, s.ShouldQuit())
 		require.NoError(t, s.Stop())
-		assert.Equal(t, []string{"runs started", "runs returned", "data closed"},
+		assert.Equal(t, []string{"runs started", "runs returned", dataClosed},
 			slices.DeleteFunc(r.log.all(), func(line string) bool {
-				return !strings.HasPrefix(line, "runs ") && line != "data closed"
+				return !strings.HasPrefix(line, "runs ") && line != dataClosed
 			}))
 	})
 }

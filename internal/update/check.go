@@ -27,8 +27,8 @@ var (
 // tick is the Worker's look at whether something is due: a check, once CheckEvery has
 // passed on the wall clock since the last one, downloading what it finds when the update
 // downloads on its own; or, then, a version found that isn't downloaded, unless its
-// download failed already, which only the next due check tries again. With Don't check it
-// does nothing.
+// download failed already, which only the next due check tries again, or it failed to
+// install for good, which is never downloaded again. With Don't check it does nothing.
 func (e *Engine) tick(ctx context.Context) error {
 	if !e.Enabled() {
 		return nil
@@ -56,7 +56,7 @@ func (e *Engine) tick(ctx context.Context) error {
 	}
 
 	m := e.toDownload()
-	if m == nil || !e.downloads(mode) || e.failedBefore(*m) {
+	if m == nil || !e.downloads(mode) || e.failedBefore(*m) || e.blocked(ctx, *m) {
 		return nil
 	}
 
@@ -95,6 +95,12 @@ func (e *Engine) background(ctx context.Context, mode updateprefs.Mode) error {
 	m, found, err := e.check(ctx)
 	if err != nil || !found {
 		return err
+	}
+
+	// An update that failed to install for good is found, so the window can say so, but
+	// never downloaded or told of again.
+	if e.blocked(ctx, m) {
+		return nil
 	}
 
 	if !e.downloads(mode) {
@@ -162,7 +168,7 @@ func downloadKey(m Manifest) string {
 // the user is looking at the result; one the Worker downloads now (downloads on) is marked
 // told, quietly, only once it is ready, so a download that fails still lets a later timed
 // check tell of it. A download that failed before is tried again at once, never left for
-// the next due check.
+// the next due check. One that failed to install for good is only found.
 func (e *Engine) checkNow(ctx context.Context) error {
 	if e.view().downloading != nil {
 		return nil
@@ -178,7 +184,7 @@ func (e *Engine) checkNow(ctx context.Context) error {
 
 	release()
 
-	if !found {
+	if !found || e.blocked(ctx, m) {
 		return nil
 	}
 
@@ -198,8 +204,9 @@ func (e *Engine) checkNow(ctx context.Context) error {
 }
 
 // downloadNow downloads the newer version found, as Update asks with Just tell me before
-// it restarts, a download that failed before included. The caller sees a failure, which
-// the status's LastError keeps too.
+// it restarts, a download that failed before included, but never one that failed to
+// install for good (ErrUninstallable). The caller sees a failure, which the status's
+// LastError keeps too.
 func (e *Engine) downloadNow(ctx context.Context) error {
 	if !e.location.OK {
 		return locationError()
@@ -215,6 +222,10 @@ func (e *Engine) downloadNow(ctx context.Context) error {
 	st := e.view()
 	if st.found == nil {
 		return uierr.New("There's no new version to download. Check for updates first.", ErrNothingToDownload)
+	}
+
+	if e.blocked(ctx, *st.found) {
+		return uninstallableError(st.found.Version)
 	}
 
 	if !e.needsDownload(*st.found) {

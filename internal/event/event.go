@@ -118,6 +118,9 @@ const (
 
 	// NameUpdateRestartFailed is UpdateRestartFailed's name.
 	NameUpdateRestartFailed = "updates:restartFailed"
+
+	// NameUpdateQuitHeld is UpdateQuitHeld's name.
+	NameUpdateQuitHeld = "updates:quitHeld"
 )
 
 // Event is something that happened, or was asked for, that another part of the app
@@ -419,6 +422,16 @@ type UpdateRestartFailed struct{}
 
 // Name returns NameUpdateRestartFailed.
 func (UpdateRestartFailed) Name() string { return NameUpdateRestartFailed }
+
+// UpdateQuitHeld says a restart to update staged the update and started the runtime's
+// helper, but the quit that should have ended the app was held (a modal panel, say), so the
+// app runs on while the helper waits for it to exit. It stays in Go: the shell asks to quit
+// again a few times and, failing that, shuts down in order and exits, so the helper
+// installs the update instead of opening this copy again beside it.
+type UpdateQuitHeld struct{}
+
+// Name returns NameUpdateQuitHeld.
+func (UpdateQuitHeld) Name() string { return NameUpdateQuitHeld }
 
 // ScriptRunsUpdated says a run started, ended, or changed status, or the history changed:
 // the window lists the runs again and pulls what it shows. It never carries output.

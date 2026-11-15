@@ -23,7 +23,17 @@ func CleanUp(bundle, tempDir string, pid int, now time.Time) []error {
 
 // HelperReason words why an install failed from the helper's log.
 func HelperReason(log []byte) string {
-	return helperReason(log)
+	reason, _ := helperOutcome(log)
+
+	return reason
+}
+
+// HelperRetryable reports whether trying the install the helper's log tells of again may
+// work.
+func HelperRetryable(log []byte) bool {
+	_, payload := helperOutcome(log)
+
+	return !payload
 }
 
 // Locate works out where the bundle is, with writable standing in for the system's answer.

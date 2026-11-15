@@ -34,11 +34,14 @@ func pending(t *testing.T, r *rig, to string) {
 	record(t, r, from, to, update.HelperWindow+time.Minute)
 }
 
-// record stores the record of an install from from to to, begun by oldPID age ago.
+// record stores the record of an install from from to to, begun by oldPID age ago, of the
+// zip a test release of to holds.
 func record(t *testing.T, r *rig, from, to string, age time.Duration) {
 	t.Helper()
 
-	body, err := json.Marshal(map[string]any{"from": from, "to": to, "at": r.clock.Now().Add(-age).UTC(), "pid": oldPID})
+	body, err := json.Marshal(map[string]any{
+		"from": from, "to": to, "at": r.clock.Now().Add(-age).UTC(), "pid": oldPID, "sha512": sha512Of(zipOf(to)),
+	})
 	require.NoError(t, err)
 
 	r.memory.put(update.KeyPendingInstall, string(body))
@@ -143,6 +146,7 @@ func TestAFailedInstallKeepsTheHelpersLog(t *testing.T) {
 	failed := r.status(t).InstallFailed
 	assert.Equal(t, update.InstallFailure{
 		Version: next, Reason: "The new version failed its signature check, so the old one was put back.", Log: true,
+		Retryable: false,
 	}, failed)
 	assert.NotContains(t, failed.Reason, "/Applications", "no path from the log is repeated")
 
@@ -239,6 +243,26 @@ func TestARecordThatNamesNoReleaseIsDropped(t *testing.T) {
 		assert.Empty(t, s.InstallFailed.Version, stored)
 		assert.Empty(t, s.JustUpdated, stored)
 		assert.Empty(t, r.memory.get(update.KeyPendingInstall), stored)
+	}
+}
+
+func TestOnlyAFailureOfTheUpdateItselfIsForGood(t *testing.T) {
+	t.Parallel()
+
+	for ending, retryable := range map[string]bool{
+		"installed application failed validation: sealed — restoring backup":           false,
+		"staged update is not installable: empty — aborting swap":                      false,
+		"launch new failed: exit 1 — restoring backup":                                 false,
+		"launch new failed: exit 1 — restoring backup\nrestore failed: busy":           false,
+		"parent did not exit within timeout: timeout — aborting swap":                  true,
+		"all swap attempts exhausted — relaunching intact original":                    true,
+		"backup failed: no space":                                                      true,
+		"stat target failed: no such file":                                             true,
+		"something no one has seen":                                                    true,
+		"swap succeeded on attempt 1\nhelper done":                                     true,
+		"all swap attempts exhausted — restoring backup\nrestore failed: rename: gone": true,
+	} {
+		assert.Equal(t, retryable, update.HelperRetryable([]byte("2026-11-15T12:00:00Z: "+ending+"\n")), ending)
 	}
 }
 

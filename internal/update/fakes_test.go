@@ -44,14 +44,20 @@ func zipOf(version string) []byte {
 	return []byte("the zipped bundle of " + version)
 }
 
+// sha512Of is body's SHA-512, in hex, as a manifest names it.
+func sha512Of(body []byte) string {
+	sum := sha512.Sum512(body)
+
+	return hex.EncodeToString(sum[:])
+}
+
 // sign signs a manifest for body at version with private, as a release's would be.
 func sign(t *testing.T, version string, body []byte, private ed25519.PrivateKey) update.Manifest {
 	t.Helper()
 
-	sum := sha512.Sum512(body)
 	m, err := update.Sign(update.Manifest{
 		Version: version, Platform: update.Platform, File: update.FileName(update.Platform, version),
-		Size: int64(len(body)), SHA512: hex.EncodeToString(sum[:]),
+		Size: int64(len(body)), SHA512: sha512Of(body),
 	}, private)
 	require.NoError(t, err)
 
