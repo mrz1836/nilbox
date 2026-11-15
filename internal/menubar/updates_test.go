@@ -133,6 +133,26 @@ func TestUpdateRows(t *testing.T) {
 			},
 		},
 		{
+			name: "no version found after a restart that may work if tried again",
+			st: on(func(st *update.Status) {
+				st.ReleaseURL = update.ReleaseURL("0.2.0")
+				st.InstallFailed = update.InstallFailure{Version: newer, Reason: "It didn't quit in time.", Retryable: true}
+			}),
+			want: []menubar.UpdateRow{check(), {Label: "0.3.0 didn't install", Tooltip: "It didn't quit in time."}},
+		},
+		{
+			name: "no version found after a restart that failed for good",
+			st: on(func(st *update.Status) {
+				st.ReleaseURL = update.ReleaseURL("0.2.0")
+				st.InstallFailed = update.InstallFailure{Version: newer, Reason: "It failed its signature check."}
+			}),
+			want: []menubar.UpdateRow{
+				check(),
+				{Label: "0.3.0 didn't install", Tooltip: "It failed its signature check."},
+				{Label: "Download 0.3.0 Manually…", Tooltip: update.ReleaseURL(newer), Action: menubar.UpdateManual},
+			},
+		},
+		{
 			name: "a failure of another version than the one found",
 			st: on(func(st *update.Status) {
 				st.State, st.Latest = update.StateReady, "0.3.1"

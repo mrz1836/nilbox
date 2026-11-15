@@ -68,7 +68,8 @@ func (s *Shell) UpdateAction(action menubar.UpdateAction) {
 	}
 }
 
-// openReleasePage opens the release page of the version found in the browser, to download
+// openReleasePage opens, in the browser, the release page of the version found, or of the
+// one the last restart didn't install when none is found (menubar.ManualURL), to download
 // it by hand.
 func (s *Shell) openReleasePage(ctx context.Context) {
 	st, err := s.updates.Status(ctx)
@@ -80,14 +81,15 @@ func (s *Shell) openReleasePage(ctx context.Context) {
 		return
 	}
 
+	page := menubar.ManualURL(st)
 	if s.browser == nil {
-		s.logger.WarnContext(ctx, "this build can't open the release page", "url", st.ReleaseURL)
+		s.logger.WarnContext(ctx, "this build can't open the release page", "url", page)
 
 		return
 	}
 
-	if err = s.browser.OpenURL(st.ReleaseURL); err != nil {
-		s.logger.WarnContext(ctx, "could not open the release page", "url", st.ReleaseURL, "error", err)
+	if err = s.browser.OpenURL(page); err != nil {
+		s.logger.WarnContext(ctx, "could not open the release page", "url", page, "error", err)
 	}
 }
 

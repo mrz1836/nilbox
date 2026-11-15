@@ -166,7 +166,8 @@ app:lint` reads.
   update rows are `menubar.UpdateRows` (an update that didn't install shows "<version>
   didn't install", then Try Updating to <version> Again while `InstallFailed.Retryable`, or
   else Download <version> Manually…, `UpdateManual`, which opens the release page through
-  `desktop.Config.Browser`, the runtime's `Browser.OpenURL`), their clicks
+  `desktop.Config.Browser`, the runtime's `Browser.OpenURL`: the version found's, or, with
+  none found, the one that didn't install, `menubar.ManualURL`), their clicks
   `Shell.UpdateAction` (a restart runs apart from the shell's tracked work, which the quit
   inside it waits for). The startup dialog for data a newer build saved offers the newest
   backup this build opens (`desktop.RestoreOffer`, `FindRestore`; Escape quits, and no key

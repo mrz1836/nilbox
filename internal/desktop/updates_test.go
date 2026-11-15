@@ -906,5 +906,38 @@ func TestTheMenusManualDownloadOpensTheReleasePage(t *testing.T) {
 	})
 }
 
+func TestTheMenusManualDownloadWithNoVersionFoundOpensTheFailedVersionsPage(t *testing.T) {
+	t.Parallel()
+
+	synctest.Test(t, func(t *testing.T) {
+		r := newRig()
+		pages := &browser{}
+		u := &fakeUpdates{log: r.log, st: updating(func(st *update.Status) {
+			st.Latest, st.ReleaseURL = "", update.ReleaseURL("0.2.0")
+			st.InstallFailed = update.InstallFailure{Version: nextVersion, Reason: "It failed its signature check."}
+		})}
+		s := r.shell(withUpdates(u), func(cfg *desktop.Config) { cfg.Browser = pages })
+
+		s.Start(t.Context())
+		s.Launched()
+		synctest.Wait()
+
+		failedPage := update.ReleaseURL(nextVersion)
+		assert.Equal(t, []menubar.UpdateRow{
+			checkRow(),
+			{Label: "0.3.0 didn't install", Tooltip: "It failed its signature check."},
+			{Label: "Download 0.3.0 Manually…", Tooltip: failedPage, Action: menubar.UpdateManual},
+		}, updateRows(t, r))
+
+		s.UpdateAction(menubar.UpdateManual)
+		synctest.Wait()
+
+		assert.Equal(t, []string{failedPage}, pages.pages(), "the failed version's page, not the running one's")
+		assert.Empty(t, r.lines("update"), "nothing is downloaded or installed")
+
+		require.NoError(t, s.Stop())
+	})
+}
+
 // Compile-time check: the update's bound face is what the menu bar offers.
 var _ desktop.Updates = (*update.Service)(nil)

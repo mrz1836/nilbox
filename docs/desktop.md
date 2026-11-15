@@ -280,6 +280,10 @@ window's banner and Settings → About's controls are still to come.
     offers it again, and the menu offers **Download 0.3.0 Manually…**, which opens its
     release page. A newer version, or the same version built again (another SHA-512), is
     offered as usual.
+  - When no version is found yet (before the first check, or when the download kept
+    can't be read), the line still shows. **Check for Updates…** is the way to try again,
+    and an update that failed for good still gets **Download 0.3.0 Manually…**, which opens
+    0.3.0's own release page, never the running version's.
 
 **What a check sends.** Two GETs at most, both to GitHub's release download hosts: the latest
 release's manifest, `https://github.com/mrz1836/nilbox/releases/latest/download/manifest-darwin.json`,

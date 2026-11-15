@@ -119,31 +119,68 @@ func checkRow(st update.Status) UpdateRow {
 	}
 }
 
-// versionRows are the rows of the newer version, while there is one: its row, or, when the
-// last restart didn't install it, a line saying so, then Try Updating to X Again or
-// Download X Manually….
-func versionRows(st update.Status) []UpdateRow {
-	row, ok := installRow(st)
-	if st.Latest == "" || st.InstallFailed.Version != st.Latest {
-		if !ok {
-			return nil
-		}
-
-		return []UpdateRow{row}
+// ManualURL is the release page Download X Manually… opens: the version found's, or, when
+// none is found and the last restart didn't install X, X's own (Status.ReleaseURL is then
+// the running version's).
+func ManualURL(st update.Status) string {
+	if st.Latest == "" && st.InstallFailed.Version != "" {
+		return update.ReleaseURL(st.InstallFailed.Version)
 	}
 
+	return st.ReleaseURL
+}
+
+// versionRows are the rows of the newer version, while there is one: its row, or, when the
+// last restart didn't install it, its failed install's rows (failedRows). With no version
+// found, the failed install's rows still show (unfoundRows).
+func versionRows(st update.Status) []UpdateRow {
+	switch failed := st.InstallFailed.Version; {
+	case st.Latest == "" && failed != "":
+		return unfoundRows(st)
+	case st.Latest == "" || failed != st.Latest:
+		if row, ok := installRow(st); ok {
+			return []UpdateRow{row}
+		}
+
+		return nil
+	default:
+		return failedRows(st)
+	}
+}
+
+// failedRows are the rows of version X found when the last restart didn't install it: a
+// line saying so, then Try Updating to X Again, or Download X Manually…, which opens its
+// release page, when X fails the same way every time.
+func failedRows(st update.Status) []UpdateRow {
+	row, ok := installRow(st)
 	rows := []UpdateRow{{Label: st.Latest + " didn't install", Tooltip: st.InstallFailed.Reason}}
 
 	switch {
 	case !st.InstallFailed.Retryable && (st.State == update.StateAvailable || st.State == update.StateReady):
 		rows = append(rows, UpdateRow{
-			Label: "Download " + st.Latest + " Manually…", Tooltip: st.ReleaseURL, Action: UpdateManual,
+			Label: "Download " + st.Latest + " Manually…", Tooltip: ManualURL(st), Action: UpdateManual,
 		})
 	case ok && row.Action != UpdateNone:
 		row.Label = "Try Updating to " + st.Latest + " Again"
 		rows = append(rows, row)
 	case ok:
 		rows = append(rows, row)
+	}
+
+	return rows
+}
+
+// unfoundRows are the rows of a restart that didn't install X while no version is found:
+// a line saying so, and Download X Manually… when X fails the same way every time. Check
+// for Updates… is the way to try again.
+func unfoundRows(st update.Status) []UpdateRow {
+	failed := st.InstallFailed.Version
+	rows := []UpdateRow{{Label: failed + " didn't install", Tooltip: st.InstallFailed.Reason}}
+
+	if !st.InstallFailed.Retryable {
+		rows = append(rows, UpdateRow{
+			Label: "Download " + failed + " Manually…", Tooltip: ManualURL(st), Action: UpdateManual,
+		})
 	}
 
 	return rows
