@@ -190,6 +190,56 @@ version, so a stale pair can't pass for this release.
 
 <br>
 
+## Updates
+
+A release of the app updates itself: it checks for a new version on its own, downloads it
+quietly, checks it against the key built into the app, and installs it on one click, after
+backing your data up. Nothing in your Applications folder changes until you click. (What's
+below is in the app's core; the banner, Settings → About's controls, and the menu bar items
+that show it are still to come.)
+
+**How it works.**
+
+- **Checking.** About a minute after the app opens, then whenever six hours have passed on the
+  clock (a Mac that slept checks at its next look, every fifteen minutes), the app reads the
+  latest release's `manifest-darwin.json` from GitHub. That's one GET to GitHub's release
+  download hosts (`github.com`, which redirects to `release-assets.githubusercontent.com`), with
+  no token and nothing of yours, and no API budget. A latest release with no manifest yet reads
+  as up to date.
+- **Trusting it.** The manifest is taken only when its Ed25519 signature verifies with the key
+  the app pins (`update.ReleaseKey`), it is for this Mac's build (`darwin-universal`), and its
+  version is a release, not a prerelease, newer than the one running. Anything else is an error
+  the app keeps, and nothing is downloaded.
+- **Downloading.** With **Download it and tell me**, the zip the manifest names is downloaded
+  from its release's tag (the second GET), at most 200 MB and within ten minutes, into
+  `<data>/updates/<version>/`, beside its manifest. Only a zip whose size and SHA-512 match the
+  manifest is kept; every start checks a kept update again, so one waiting is ready at once.
+  A newer release replaces the one waiting, and a release whose manifest is pulled withdraws
+  it.
+- **Telling you.** Once per version, as a notification (**New version**, which Settings →
+  Notifications can turn off) that brings the window forward. A failure is never a
+  notification: the app keeps it, and the next look tries again.
+- **Restarting.** Restarting asks first while a run goes in the app, naming it. Then the app
+  backs up the database beside it (`<data>/nilbox.db.backup-<stamp>-v<schema>`, the newest three
+  kept, as before a migration), stages the update beside itself, and quits, and the update
+  replaces the app and opens it. A restart that fails before the app quits leaves the update
+  ready and says why; one the next start finds didn't install says so, and keeps its log as
+  `<data>/logs/update-<version>.log`.
+
+**When a new version is out** (Settings → About) is **Download it and tell me** (the default),
+**Just tell me** (no download until you click **Update**, which downloads and restarts), or
+**Don't check** (no checks on their own). **Check for Updates** works in every mode.
+
+**The three flavors.** What a build does is stamped into it (`main.flavor`):
+
+| Flavor | Made by | Updates |
+|---|---|---|
+| `source` | `magex app:build`, `app:run`, `app:dev` | Never: "Updates are off in builds made from source." |
+| `release` | `magex app:package` | From GitHub's latest release, trusting only the pinned key. Off while no key is pinned. |
+| `rehearsal` | `magex app:rehearse` (not yet built) | From a local folder, trusting the key the build was given, to try an update end to end on one Mac. |
+
+<br>
+
 ## How the desktop shell is kept out of CI
 
 Everything except the window is plain Go in untagged `internal/*` packages, built, tested, and
