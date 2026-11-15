@@ -805,3 +805,14 @@ func TestBackupRefusesADatabaseWithNoHistory(t *testing.T) {
 	_, err = migrate.Backup(t.Context(), db, "", migrate.Options{})
 	require.ErrorIs(t, err, migrate.ErrNoBackupPath)
 }
+
+func TestABackupThatFailsOutsideAMigrationSaysNothingOfMigrating(t *testing.T) {
+	t.Parallel()
+
+	db, path := openDB(t)
+	apply(t, db, path, firstN(1), clock())
+
+	_, err := migrate.Backup(t.Context(), db, filepath.Join(t.TempDir(), "missing", "test.db"), migrate.Options{})
+	require.ErrorContains(t, err, "write the backup")
+	assert.NotContains(t, err.Error(), "migrating")
+}

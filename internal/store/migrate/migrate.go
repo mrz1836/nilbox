@@ -89,7 +89,7 @@ var (
 	ErrInvalidMigration = errors.New("invalid migration file")
 
 	// ErrNoBackupPath is returned when a backup is required but no database path is known.
-	ErrNoBackupPath = errors.New("a database file path is required to back up before migrating")
+	ErrNoBackupPath = errors.New("a database file path is required to back it up")
 )
 
 // embedded holds the migrations shipped with the binary.
@@ -204,7 +204,7 @@ func Apply(ctx context.Context, db *sql.DB, dbPath string, opts Options) (Result
 	// A brand-new database has no data to protect, so only a migrated one is backed up.
 	if from > 0 {
 		if result.Backup, err = backup(ctx, db, dbPath, from, opts); err != nil {
-			return result, err
+			return result, fmt.Errorf("back up database before migrating: %w", err)
 		}
 	}
 
@@ -485,7 +485,7 @@ func backup(ctx context.Context, db *sql.DB, dbPath string, from int, opts Optio
 	}
 
 	if _, err = db.ExecContext(ctx, `VACUUM INTO ?`, target); err != nil {
-		return "", fmt.Errorf("back up database before migrating: %w", err)
+		return "", fmt.Errorf("write the backup: %w", err)
 	}
 
 	if err = os.Chmod(target, appdata.PrivateFilePerm); err != nil {
