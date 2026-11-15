@@ -119,6 +119,25 @@ func TestDevelopmentBuilds(t *testing.T) {
 	assert.False(t, Version{Raw: "1.30.0"}.OlderThan("1.30.0"))
 }
 
+func TestToolVersionsCompareBySemanticVersioning(t *testing.T) {
+	t.Parallel()
+
+	// A build's metadata never counts in a comparison.
+	assert.True(t, Version{Raw: "1.2.3+build.5"}.AtLeast("1.2.3"))
+	assert.False(t, Version{Raw: "1.2.3+build.5"}.OlderThan("1.2.3"))
+
+	// A prerelease comes before its release, and its identifiers compare numerically.
+	assert.True(t, Version{Raw: "1.2.3-rc.1"}.OlderThan("1.2.3"))
+	assert.True(t, Version{Raw: "1.2.3-rc.10"}.AtLeast("1.2.3-rc.9"))
+
+	// A version semantic versioning refuses is never at least, nor older than, anything:
+	// a numeric identifier with a leading zero, an empty identifier, or a part missing.
+	for _, raw := range []string{"1.2.3-rc.01", "1.2.3+bad..x", "1.2.3-", "1.2", "01.2.3"} {
+		assert.False(t, Version{Raw: raw}.AtLeast("1.0.0"), "%s isn't a version", raw)
+		assert.False(t, Version{Raw: raw}.OlderThan("99.0.0"), "%s isn't a version", raw)
+	}
+}
+
 func TestFeaturesFollowTheVersion(t *testing.T) {
 	t.Parallel()
 
