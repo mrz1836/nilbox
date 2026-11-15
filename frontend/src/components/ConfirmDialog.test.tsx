@@ -208,4 +208,24 @@ describe('ConfirmDialog tones', () => {
 
     expect(screen.getByRole('button', { name: 'Got it' })).toHaveFocus()
   })
+
+  it('holds both buttons and Escape while the work it started is under way', async () => {
+    const onCancel = vi.fn()
+
+    render(
+      <ConfirmDialog title="Copy it?" confirmLabel="Copying…" busy onConfirm={vi.fn()} onCancel={onCancel}>
+        It takes a moment.
+      </ConfirmDialog>,
+    )
+
+    const working = screen.getByRole('button', { name: 'Copying…' })
+
+    expect(working).toBeDisabled()
+    expect(working).toHaveAttribute('aria-busy', 'true')
+    expect(screen.getByRole('button', { name: 'Cancel' })).toBeDisabled()
+
+    await userEvent.keyboard('{Escape}')
+    expect(onCancel).not.toHaveBeenCalled()
+    expect(screen.getByRole('dialog')).toBeInTheDocument()
+  })
 })

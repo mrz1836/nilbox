@@ -28,6 +28,7 @@ import {
   type RestartQuestion,
   type RestartStep,
 } from './update'
+import { useMoveToApplications, type MoveControl } from './useMove'
 import { useQuery } from './useQuery'
 
 // UpdateQuery is the app's update as the window shows it.
@@ -392,13 +393,18 @@ export function useRestartToUpdate(unsent: () => number): RestartFlow {
 }
 
 // UpdateControl is the app's update as the banner and Settings → About use it: where it
-// stands, the banner it shows, what both offer, and the moves they make.
+// stands, the banner it shows, what both offer, and the moves they make, the move into
+// Applications among them.
 export interface UpdateControl {
   status: UpdateStatus | null
   flow: RestartStep
   banner: Banner
-  // offer is what the banner and About offer (offerOf), so the two never disagree.
+  // offer is what the banner, About, and the move dialog offer (offerOf), so none of them
+  // disagrees.
   offer: Offer
+  // move is the move into Applications, which the move dialog asks on launch, and the
+  // banner and About offer, wherever the offer says.
+  move: MoveControl
   // restart is restartToUpdate: Restart to update, Update, and Try again.
   restart: () => void
   // later hides the banner for a day (Later), at once; on a download's banner, it hides
@@ -417,9 +423,11 @@ const noBanner: Banner = { kind: 'none' }
 
 // useUpdateControl is the window's one view of the app's update: the status, the restart
 // flow (unsent counts the sheets holding text not sent), the banner, which Later hides at
-// once and a failure put away leaves for this session, and what both the banner and About
-// offer. The menu bar's Restart to Update, Update to X…, and Try Updating to X Again
-// ("updates:restart") restart as the banner does.
+// once and a failure put away leaves for this session, what the banner, About, and the
+// move dialog offer, and the move into Applications. While the move dialog asks, the
+// banner's own word about where the app runs waits, so the window asks once. The menu
+// bar's Restart to Update, Update to X…, and Try Updating to X Again ("updates:restart")
+// restart as the banner does.
 export function useUpdateControl(flow: RestartFlow, update: UpdateQuery): UpdateControl {
   const { status, reload } = update
   // laterFor is the version Later hid the banner of in this window, until the status says
@@ -442,7 +450,10 @@ export function useUpdateControl(flow: RestartFlow, update: UpdateQuery): Update
     setDownloadHidden(false)
   }
 
-  const banner = downloadHidden && downloading ? noBanner : shown
+  const offer = offerOf(status, flow.step)
+  const move = useMoveToApplications(offer, status?.location ?? null)
+  const asking = shown.kind === 'location' && move.dialog !== null
+  const banner = (downloadHidden && downloading) || asking ? noBanner : shown
 
   const reveal = async () => {
     setLaterFor('')
@@ -485,7 +496,8 @@ export function useUpdateControl(flow: RestartFlow, update: UpdateQuery): Update
     status,
     flow: flow.step,
     banner,
-    offer: offerOf(status, flow.step),
+    offer,
+    move,
     restart,
     later: () => {
       if (downloading) {

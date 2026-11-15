@@ -147,6 +147,11 @@ export type UpdateState = update.State
 export type UpdateFlavor = update.Flavor
 export type UpdateLocation = NonNullLists<update.Location>
 export type UpdateLocationKind = update.LocationKind
+// MoveResult is what moving the app into Applications, or opening the copy there, did:
+// moved (the app quits and the copy opens), exists (a copy is there already, which Open it
+// opens), or opening (the copy there opens once the app quits), and the copy's path.
+export type MoveResult = NonNullLists<update.MoveResult>
+export type MoveOutcome = update.MoveOutcome
 export type InstallFailure = NonNullLists<update.InstallFailure>
 export type UpdateMode = updateprefs.Mode
 
@@ -957,6 +962,13 @@ export const {
 // "updates:restart" asks the window to restart to update (restartToUpdate in
 // lib/useUpdate.ts), as the menu bar's Restart to Update does. downloadUpdate and
 // restartToUpdateNow, below, read what their refusals carry.
+//
+// Where the app can't update itself (status.location.movable), MoveToApplications copies it
+// into Applications, checks the copy, and quits the normal way, which asks first while runs
+// go, opening the copy once it has; with a copy there already it replaces nothing and says
+// so (exists), and OpenInApplications opens that one the same way. ShowAppInFinder shows the
+// copy the user opened, which a move leaves where it is. A failure rejects with the
+// backend's words, and nothing has changed.
 export const {
   Status: getUpdateStatus,
   CheckNow: checkForUpdates,
@@ -964,6 +976,9 @@ export const {
   ShowBanner: showUpdateBanner,
   AckUpdated: ackUpdated,
   ShowInstallLog: showInstallLog,
+  MoveToApplications: moveToApplications,
+  OpenInApplications: openInApplications,
+  ShowAppInFinder: showAppInFinder,
 } = narrow(update.Service)
 
 // RunGoing is a run going in the app that restarting to update would stop, as Go's

@@ -13,6 +13,7 @@ import {
 import { AppHeader, type View } from './components/AppHeader'
 import { DataResetNotice } from './components/DataResetNotice'
 import { ErrorBanner } from './components/ErrorBanner'
+import { MoveDialog } from './components/MoveDialog'
 import { UpdateBanner } from './components/UpdateBanner'
 import { UpdateRestartDialog } from './components/UpdateRestartDialog'
 import { InboxView, type LaunchOptions, type Reveal } from './components/InboxView'
@@ -519,9 +520,10 @@ export function App() {
   const reviewDrafts = useReviewDrafts()
   // issueDrafts keeps what the user wrote in the issue sheet, for the session.
   const issueDrafts = useIssueDrafts()
-  // update is the app's own update: its status, the banner, and the one restart to update,
-  // which asks first while a sheet holds text not sent, or a run goes; updated says once
-  // which version an update installed.
+  // update is the app's own update: its status, the banner, the one restart to update,
+  // which asks first while a sheet holds text not sent, or a run goes, and the move into
+  // Applications, which the update offers on every launch where moving lets it update;
+  // updated says once which version an update installed.
   const updateStatus = useUpdate()
   const restartFlow = useRestartToUpdate(() => unsentSheets(reviewDrafts.all(), issueDrafts.all()))
   const update = useUpdateControl(restartFlow, updateStatus)
@@ -1274,6 +1276,7 @@ export function App() {
       )}
       <QuitDialog />
       <UpdateRestartDialog flow={restartFlow.step} onConfirm={restartFlow.confirm} onCancel={restartFlow.cancel} />
+      <MoveDialog move={update.move} />
     </SettingsQueue>
   )
 }

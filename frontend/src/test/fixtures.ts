@@ -120,6 +120,9 @@ import type {
   StatusPart,
   StatusProvider,
   RunGoing,
+  MoveResult,
+  UpdateLocation,
+  UpdateLocationKind,
   UpdateStatus,
 } from '../platform'
 
@@ -3042,9 +3045,26 @@ export function updateStatus(overrides: Partial<UpdateStatus> = {}): UpdateStatu
     bannerHidden: false,
     justUpdated: '',
     installFailed: { version: '', reason: '', log: false, retryable: false },
-    location: { ok: true, kind: 'applications', target: '/Applications/Example.app' },
+    location: { ok: true, kind: 'applications', target: '/Applications/Example.app', movable: false },
     ...overrides,
   }
+}
+
+// updateLocation is where a release build runs that can't update itself, which a move
+// would put in /Applications: in Downloads unless kind says elsewhere, movable unless it is
+// in an Applications folder already.
+export function updateLocation(kind: UpdateLocationKind = 'elsewhere'): UpdateLocation {
+  return {
+    ok: false,
+    kind,
+    target: '/Applications/Example.app',
+    movable: kind !== 'applications' && kind !== 'userApplications',
+  }
+}
+
+// moveResult is how moving the app into Applications ended: moved, by default.
+export function moveResult(overrides: Partial<MoveResult> = {}): MoveResult {
+  return { outcome: 'moved', target: '/Applications/Example.app', ...overrides }
 }
 
 // updateReady is 0.3.0 downloaded and checked, waiting for a restart to install it.

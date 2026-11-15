@@ -3,7 +3,8 @@ import { useId, useState } from 'react'
 import { brand } from '../../generated/brand'
 import { attempt } from '../../lib/call'
 import { formatAgo } from '../../lib/time'
-import { aboutLine, locationWords, sentence, type RestartStep } from '../../lib/update'
+import { aboutLine, locationWords, sentence, type Offer, type RestartStep } from '../../lib/update'
+import type { MoveControl } from '../../lib/useMove'
 import type { UpdateControl } from '../../lib/useUpdate'
 import { useSettingsSave } from '../../lib/useSettingsSave'
 import {
@@ -197,8 +198,11 @@ function InstallFailedRow({ status }: { status: UpdateStatus }) {
   )
 }
 
-// LocationRow says the app can't update where it runs, and how to let it.
-function LocationRow({ status }: { status: UpdateStatus }) {
+// LocationRow says the app can't update where it runs, and how to let it: Move to
+// Applications, wherever the update's offer has it (offerOf, as the banner and the move
+// dialog offer it), which runs the window's one move (lib/useMove.ts), held while it is
+// under way.
+function LocationRow({ status, offer, move }: { status: UpdateStatus; offer: Offer; move: MoveControl }) {
   const { title, hint } = locationWords(status.location)
 
   return (
@@ -210,6 +214,16 @@ function LocationRow({ status }: { status: UpdateStatus }) {
           <p className="mt-0.5 text-xs text-muted">{hint}</p>
         </div>
       </div>
+      {offer.move && (
+        <button
+          type="button"
+          disabled={move.dialog !== null && move.dialog.work !== null}
+          onClick={move.move}
+          className={`${primaryButtonClass} shrink-0`}
+        >
+          Move to Applications
+        </button>
+      )}
     </div>
   )
 }
@@ -290,7 +304,9 @@ export function UpdatesCard({ update, settings, onSaved }: UpdatesCardProps) {
     <Group>
       <UpdatesRow update={update} />
       {enabled && status !== null && status.installFailed.version !== '' && <InstallFailedRow status={status} />}
-      {enabled && status !== null && !status.location.ok && <LocationRow status={status} />}
+      {enabled && status !== null && !status.location.ok && (
+        <LocationRow status={status} offer={update.offer} move={update.move} />
+      )}
       {settings !== null && (
         <ModeRow
           settings={settings}

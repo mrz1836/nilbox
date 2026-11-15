@@ -3,7 +3,7 @@ import { describe, expect, it, onTestFinished, vi } from 'vitest'
 
 import { brand } from '../generated/brand'
 import type { DownloadAnswer, RestartAnswer, RunGoing, UpdateStatus } from '../platform'
-import { runGoing, scriptRun, updateReady, updateStatus } from '../test/fixtures'
+import { runGoing, scriptRun, updateLocation, updateReady, updateStatus } from '../test/fixtures'
 import { emit, platform } from '../test/platform'
 import { finishingWords, settlingWords } from './update'
 import { useRestartToUpdate, useUpdate, useUpdateControl, waitFor as waitForSettling } from './useUpdate'
@@ -408,7 +408,7 @@ describe('useRestartToUpdate', () => {
 
   it('restarts nothing where the app can’t update, showing the banner that says why again', async () => {
     const logged = vi.spyOn(console, 'error').mockImplementation(() => undefined)
-    const elsewhere = updateReady({ location: { ok: false, kind: 'elsewhere', target: '/Applications/Example.app' } })
+    const elsewhere = updateReady({ location: updateLocation() })
     platform.getUpdateStatus.mockResolvedValue(elsewhere)
     const { result } = flow()
 
@@ -947,6 +947,24 @@ describe('useUpdateControl', () => {
       expect(result.current.banner).toEqual({ kind: 'ready', version: '0.3.0' })
     })
     expect(result.current.flow).toEqual({ step: 'idle' })
+  })
+
+  it('leaves the banner’s word about where the app runs to the move dialog while it asks', async () => {
+    platform.getUpdateStatus.mockResolvedValue(updateReady({ state: 'available', location: updateLocation() }))
+    const { result } = control()
+
+    // The dialog asks on launch, so the banner says nothing about moving meanwhile.
+    await waitFor(() => {
+      expect(result.current.move.dialog).not.toBeNull()
+    })
+    expect(result.current.banner).toEqual({ kind: 'none' })
+
+    act(() => {
+      result.current.move.dismiss()
+    })
+
+    expect(result.current.move.dialog).toBeNull()
+    expect(result.current.banner).toEqual({ kind: 'location', version: '0.3.0' })
   })
 
   it('hides the banner at once on Later, and reads the status again', async () => {

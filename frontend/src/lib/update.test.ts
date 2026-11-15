@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import { brand } from '../generated/brand'
 import type { UpdateLocation } from '../platform'
-import { runGoing, scriptRun, updateReady, updateStatus } from '../test/fixtures'
+import { runGoing, scriptRun, updateLocation, updateReady, updateStatus } from '../test/fixtures'
 import { emptyIssueDraft } from './issueDrafts'
 import { emptyDraft } from './reviewDrafts'
 import {
@@ -74,18 +74,17 @@ describe('bannerOf', () => {
   })
 
   it('says why an update waiting can’t install where the app runs', () => {
-    const location: UpdateLocation = { ok: false, kind: 'elsewhere', target: '/Applications/Example.app' }
+    const location = updateLocation()
 
     // Nothing downloads there, so a version found stays available, whatever the setting.
     for (const mode of ['download', 'notify', 'off'] as const) {
       expect(bannerOf(updateReady({ location, state: 'available', mode }), idle, '')).toEqual({
         kind: 'location',
         version: '0.3.0',
-        ready: false,
       })
     }
-    // One kept from before it moved there is ready.
-    expect(bannerOf(updateReady({ location }), idle, '')).toEqual({ kind: 'location', version: '0.3.0', ready: true })
+    // One kept from before it moved there can't install either.
+    expect(bannerOf(updateReady({ location }), idle, '')).toEqual({ kind: 'location', version: '0.3.0' })
     expect(bannerOf(updateReady({ location, bannerHidden: true }), idle, '')).toEqual({ kind: 'none' })
   })
 
@@ -311,23 +310,37 @@ describe('aboutLine', () => {
       note: 'Couldn’t install 0.3.0: no space.',
     })
   })
+
+  it('calls a version kept from before the app ran where it can’t install available, never ready', () => {
+    for (const kind of ['elsewhere', 'translocated', 'diskImage', 'applications'] as const) {
+      expect(aboutLine(updateReady({ location: updateLocation(kind) })).text).toBe('0.3.0 is available')
+    }
+  })
 })
 
 describe('locationWords and locationNote', () => {
   it('ask to move the app into the Applications folder it would go in', () => {
-    const location: UpdateLocation = { ok: false, kind: 'translocated', target: '~/Applications/Example.app' }
+    const location: UpdateLocation = {
+      ok: false,
+      kind: 'translocated',
+      target: '~/Applications/Example.app',
+      movable: false,
+    }
 
     expect(locationWords(location)).toEqual({
       title: `Move ${brand.name} to Applications to update it`,
       hint: `${brand.name} can only update itself from your Applications folder. Move it to ~/Applications, then open it from there.`,
     })
+    expect(locationWords({ ...location, movable: true }).hint).toBe(
+      `${brand.name} can only update itself from your Applications folder. Moving it puts it in ~/Applications, and it reopens from there.`,
+    )
     expect(locationWords({ ...location, target: '' }).hint).toContain('Move it to your Applications folder,')
     expect(locationNote(location)).toBe(`Move ${brand.name} to your Applications folder to install it.`)
   })
 
   it('say an Applications folder the account can’t change is why', () => {
     for (const kind of ['applications', 'userApplications'] as const) {
-      const location: UpdateLocation = { ok: false, kind, target: '/Applications/Example.app' }
+      const location = updateLocation(kind)
 
       expect(locationWords(location).title).toBe(`${brand.name} can’t update itself here`)
       expect(locationNote(location)).toBe('Your account can’t change the folder it’s in, so it can’t install it.')
@@ -555,16 +568,50 @@ describe('offerOf', () => {
     expect(offerOf(null, { step: 'failed', message: 'It didn’t install before.', final: true })).toEqual(none)
   })
 
-  it('asks to move the app first where it can’t replace itself', () => {
-    const away = updateReady({ location: { ok: false, kind: 'translocated', target: '' } })
+  it('offers Move to Applications alone where moving the app lets it update, whatever is newer', () => {
+    const move = { ...none, move: true }
 
-    expect(offerOf(away, idle)).toEqual({ ...none, move: true })
-    expect(offerOf({ ...away, state: 'available' }, idle)).toEqual({ ...none, move: true })
-    expect(offerOf({ ...away, state: 'idle', latest: '', installFailed: failure }, idle)).toEqual({
-      ...none,
+    for (const kind of ['elsewhere', 'translocated', 'diskImage'] as const) {
+      const away = updateReady({ location: updateLocation(kind) })
+
+      expect(offerOf(away, idle)).toEqual(move)
+      expect(offerOf({ ...away, state: 'available' }, idle)).toEqual(move)
+      expect(offerOf({ ...away, state: 'idle', latest: '', installFailed: failure }, idle)).toEqual(move)
+      // Nothing newer: the move dialog and About still offer it.
+      expect(offerOf({ ...away, state: 'idle', latest: '' }, idle)).toEqual(move)
+      expect(offerOf({ ...away, state: 'checking', latest: '' }, idle)).toEqual(move)
+    }
+
+    // A flavor of either that updates offers it; a rehearsal too.
+    expect(offerOf(updateStatus({ flavor: 'rehearsal', location: updateLocation() }), idle)).toEqual(move)
+  })
+
+  it('never offers the move where it gains nothing, or while a restart installs or finishes', () => {
+    // In an Applications folder the account can't change, the app can't update and a move
+    // wouldn't help: nothing is offered, not even a restart.
+    for (const kind of ['applications', 'userApplications'] as const) {
+      expect(offerOf(updateReady({ location: updateLocation(kind) }), idle)).toEqual(none)
+    }
+
+    expect(offerOf(updateStatus(), idle)).toEqual(none)
+    expect(
+      offerOf(updateStatus({ enabled: false, flavor: 'source', state: 'off', location: updateLocation() }), idle),
+    ).toEqual(none)
+    expect(offerOf(null, idle)).toEqual(none)
+
+    // Go refuses a move while a restart into an update runs, which goes first.
+    for (const state of ['installing', 'finishing'] as const) {
+      expect(offerOf(updateReady({ state, location: updateLocation() }), idle)).toEqual(none)
+    }
+  })
+
+  it('keeps Move to Applications beside a restart that just failed where moving lets it update', () => {
+    expect(offerOf(updateReady({ location: updateLocation() }), { step: 'failed', message: 'offline' })).toEqual({
+      action: 'retry',
+      label: 'Try again',
+      page: page('0.3.0'),
       move: true,
     })
-    expect(offerOf({ ...away, state: 'idle', latest: '' }, idle)).toEqual(none)
   })
 
   it('offers Try again and Download manually for the version that didn’t install, never a plain restart', () => {

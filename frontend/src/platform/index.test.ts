@@ -18,6 +18,9 @@ const mocks = vi.hoisted(() => ({
     ShowBanner: vi.fn(),
     AckUpdated: vi.fn(),
     ShowInstallLog: vi.fn(),
+    MoveToApplications: vi.fn(),
+    OpenInApplications: vi.fn(),
+    ShowAppInFinder: vi.fn(),
   },
   events: { On: vi.fn<(name: string, callback: (event: { data: unknown }) => void) => () => void>() },
   browser: { OpenURL: vi.fn() },
@@ -302,6 +305,9 @@ describe('the update’s calls', () => {
       [platform.showUpdateBanner, mocks.update.ShowBanner],
       [platform.ackUpdated, mocks.update.AckUpdated],
       [platform.showInstallLog, mocks.update.ShowInstallLog],
+      [platform.moveToApplications, mocks.update.MoveToApplications],
+      [platform.openInApplications, mocks.update.OpenInApplications],
+      [platform.showAppInFinder, mocks.update.ShowAppInFinder],
     ]
 
     for (const [call, binding] of calls) {

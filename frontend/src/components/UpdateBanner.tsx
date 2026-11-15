@@ -129,13 +129,19 @@ function Later({ onLater, hint = 'Hide this for a day' }: { onLater: () => void;
   )
 }
 
-// OfferButtons are what the update offers (offerOf), as About offers it too: its action,
-// with its words, and Download manually.
+// OfferButtons are what the update offers (offerOf), as About offers it too: Move to
+// Applications, which runs the window's one move (lib/useMove.ts), its action, with its
+// words, and Download manually.
 function OfferButtons({ offer, update }: { offer: Offer; update: UpdateControl }) {
   const plain = offer.action === 'retry'
 
   return (
     <>
+      {offer.move && (
+        <button type="button" onClick={update.move.move} className={`${primaryButtonClass} mr-1`}>
+          Move to Applications
+        </button>
+      )}
       {offer.action !== null && (
         <button type="button" onClick={update.restart} className={`${plain ? buttonClass : primaryButtonClass} mr-1`}>
           {offer.label}
@@ -182,19 +188,23 @@ function Look({ banner, update, onDetails }: { banner: Exclude<Banner, { kind: '
         </Shell>
       )
     case 'location':
+      // Nothing downloads where the app can't replace itself, so the version is only ever
+      // available here; moving the app into Applications, where the offer has it, is what
+      // lets it install.
       return (
         <Shell
           tone="offer"
           icon={offerIcon}
           actions={
             <>
+              <OfferButtons offer={offer} update={update} />
               <WhatsNew status={status} />
               <Later onLater={later} />
             </>
           }
         >
           <span className="font-medium">
-            {brand.name} {banner.version} is {banner.ready ? 'ready' : 'available'}.
+            {brand.name} {banner.version} is available.
           </span>{' '}
           {status !== null && <span className="text-muted">{locationNote(status.location)}</span>}
         </Shell>
@@ -277,9 +287,11 @@ function Look({ banner, update, onDetails }: { banner: Exclude<Banner, { kind: '
 // Details, or Download manually alone for an update that fails the same way every time;
 // a newer version found since is named, and its Restart to update or Update offered), a
 // moment's wait while the last update finishes, the app quitting on its own to finish an
-// update whose quit was held, and an update the app can't install where it runs.
-// What it shows is bannerOf's, and what it offers offerOf's (lib/update.ts), which About
-// offers too.
+// update whose quit was held, and a version available that the app can't install where it
+// runs, with Move to Applications wherever moving it lets it (lib/useMove.ts). What it
+// shows is bannerOf's, and what it offers offerOf's (lib/update.ts), which About and the
+// move dialog offer from too; it says nothing about where the app runs while that dialog
+// asks.
 //
 // The live region stays mounted, so each change is announced, politely; a download's
 // percentage is left out of it, so it isn't read out as it climbs. The banner makes its

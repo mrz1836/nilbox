@@ -2,6 +2,7 @@ import { useId, useRef, type ReactNode } from 'react'
 
 import { useModalDialog } from '../lib/useModalDialog'
 import { buttonClass, dangerButtonClass, primaryButtonClass } from './controls'
+import { Spinner } from './Spinner'
 
 export interface ConfirmDialogProps {
   title: string
@@ -18,6 +19,10 @@ export interface ConfirmDialogProps {
   cancelLabel?: string | null
   // confirmDisabled turns the confirm button off, such as while nothing is chosen.
   confirmDisabled?: boolean
+  // busy marks work the confirm button started as under way: both buttons are off, the
+  // confirm button turns beside its label, which says what is happening, and Escape
+  // cancels nothing until it ends.
+  busy?: boolean
   // size gives the dialog room for a list: wide for prompts to choose among, large for a
   // long list grouped by repository.
   size?: 'normal' | 'wide' | 'large'
@@ -44,13 +49,19 @@ export function ConfirmDialog({
   tone = 'danger',
   cancelLabel = 'Cancel',
   confirmDisabled = false,
+  busy = false,
   size = 'normal',
 }: ConfirmDialogProps) {
   const id = useId()
   const dialogRef = useRef<HTMLDialogElement>(null)
   const cancelRef = useRef<HTMLButtonElement>(null)
   const confirmRef = useRef<HTMLButtonElement>(null)
-  const cancel = useModalDialog(dialogRef, onCancel, () => cancelRef.current ?? confirmRef.current)
+  const cancelWhenIdle = () => {
+    if (!busy) {
+      onCancel()
+    }
+  }
+  const cancel = useModalDialog(dialogRef, cancelWhenIdle, () => cancelRef.current ?? confirmRef.current)
 
   return (
     <dialog
@@ -71,17 +82,19 @@ export function ConfirmDialog({
       </div>
       <div className="mt-4 flex justify-end gap-2">
         {cancelLabel !== null && (
-          <button ref={cancelRef} type="button" onClick={onCancel} className={buttonClass}>
+          <button ref={cancelRef} type="button" disabled={busy} onClick={onCancel} className={buttonClass}>
             {cancelLabel}
           </button>
         )}
         <button
           ref={confirmRef}
           type="button"
-          disabled={confirmDisabled}
+          disabled={confirmDisabled || busy}
+          aria-busy={busy || undefined}
           onClick={onConfirm}
           className={tone === 'danger' ? dangerButtonClass : primaryButtonClass}
         >
+          {busy && <Spinner className="size-3.5" />}
           {confirmLabel}
         </button>
       </div>
