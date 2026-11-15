@@ -152,7 +152,20 @@ app:lint` reads.
   reset the user asked for quits the app and opens it again from `PostShutdown`, once the
   shell has closed the database: `open -n <bundle>` (`desktop.RelaunchArgs`, pure and tested on
   Linux, which a run outside a `.app` bundle, as `magex app:dev`'s, skips), with the sandbox's
-  `--data-dir` when it ran on one.
+  `--data-dir` when it ran on one. `main()` runs the desktop runtime's
+  `updater.HandleHelperMode()` first, since an update's helper is this binary run again,
+  before anything opens the data. A rehearsal build (`main.flavor=rehearsal`, `magex
+  app:rehearse`) always runs on its own data directory beside the user's
+  (`appdata.ResolveRehearsal`, named `brand.RehearsalDataDirName`), whatever `--data-dir`
+  says, with the **Test data** chip, since the update opens the new version with no
+  arguments. `update_desktop.go` is the engine's `Installer` over the runtime's updater,
+  headless, whose one provider serves the zip from the update cache with its SHA-512
+  (`desktop.NewArtifact` never hands over a zip without one); the menu bar's update rows are
+  `menubar.UpdateRows`, their clicks `Shell.UpdateAction` (a restart runs apart from the
+  shell's tracked work, which the quit inside it waits for). The startup dialog for data a
+  newer build saved offers the newest backup this build opens (`desktop.RestoreOffer`,
+  `FindRestore`), puts it back on a click (`desktop.PutBack`, `store.RestoreBackup`), and
+  opens the app again from `PostShutdown` through `desktop.RelaunchArgs`, as a reset does.
 - `internal/brand/` holds product identity, design tokens, and the logo mark. The palette tests
   enforce WCAG AA contrast for every text color in both themes. `internal/brandgen/` generates
   the frontend theme tokens, `build/darwin/Info.plist`, and the icon artwork (the app icon
