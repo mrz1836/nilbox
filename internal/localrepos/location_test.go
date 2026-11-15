@@ -1,8 +1,10 @@
 package localrepos
 
 import (
+	"io/fs"
 	"os"
 	"path/filepath"
+	"syscall"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -56,6 +58,28 @@ func TestClassify(t *testing.T) {
 	assert.True(t, KindFolder.Valid())
 	assert.True(t, KindClone.Valid())
 	assert.False(t, Kind("").Valid())
+}
+
+func TestStatErrorSaysWhyAFolderCantBeRead(t *testing.T) {
+	t.Parallel()
+
+	home := t.TempDir()
+	dir := filepath.Join(home, "Documents", "GitHub")
+	failed := func(errno error) error {
+		return statError(dir, home, &fs.PathError{Op: "stat", Path: dir, Err: errno})
+	}
+
+	err := failed(syscall.EPERM)
+	require.ErrorIs(t, err, syscall.EPERM)
+	assert.Equal(t, "macOS doesn't let "+brand.Name+" read ~/Documents/GitHub. "+
+		"Allow it in System Settings → Privacy & Security → Files & Folders.", uierr.Message(err),
+		"macOS keeps the app out of Documents until the user allows it")
+
+	err = failed(syscall.EACCES)
+	require.ErrorIs(t, err, syscall.EACCES)
+	assert.Equal(t, "Couldn't read ~/Documents/GitHub.", uierr.Message(err))
+
+	require.ErrorIs(t, failed(syscall.ENOENT), ErrLocationNotFound)
 }
 
 func TestCheckAddable(t *testing.T) {

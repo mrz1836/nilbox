@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 
 	"github.com/mrz1836/nilbox/internal/brand"
 	"github.com/mrz1836/nilbox/internal/paths"
@@ -51,17 +52,15 @@ var (
 )
 
 // Classify works out what the folder at dir is, with stat alone: a clone, when it holds
-// a .git entry, else a folder. A path that doesn't exist, or isn't a folder, is refused
-// in words the window shows, with home written as ~.
+// a .git entry, else a folder. A path that doesn't exist, can't be read, or isn't a
+// folder is refused in words the window shows, with home written as ~.
 func Classify(dir, home string) (Kind, error) {
 	info, err := os.Stat(dir)
+	if err != nil {
+		return "", statError(dir, home, err)
+	}
 
-	switch {
-	case errors.Is(err, fs.ErrNotExist):
-		return "", uierr.New(paths.Tilde(dir, home)+" doesn't exist.", fmt.Errorf("%w: %s", ErrLocationNotFound, dir))
-	case err != nil:
-		return "", uierr.New("Couldn't read "+paths.Tilde(dir, home)+".", fmt.Errorf("read %s: %w", dir, err))
-	case !info.IsDir():
+	if !info.IsDir() {
 		return "", uierr.New(paths.Tilde(dir, home)+" is a file, not a folder.", fmt.Errorf("%w: %s", ErrNotAFolder, dir))
 	}
 
@@ -70,6 +69,23 @@ func Classify(dir, home string) (Kind, error) {
 	}
 
 	return KindFolder, nil
+}
+
+// statError words err, the failure to read the folder at dir, for the window. It covers a
+// folder that doesn't exist, one macOS keeps the app out of until the user allows it (in
+// Documents, on the Desktop, in Downloads, or on a share), and any other failure.
+func statError(dir, home string, err error) error {
+	shown := paths.Tilde(dir, home)
+
+	switch {
+	case errors.Is(err, fs.ErrNotExist):
+		return uierr.New(shown+" doesn't exist.", fmt.Errorf("%w: %s", ErrLocationNotFound, dir))
+	case errors.Is(err, syscall.EPERM):
+		return uierr.New("macOS doesn't let "+brand.Name+" read "+shown+
+			". Allow it in System Settings → Privacy & Security → Files & Folders.", fmt.Errorf("read %s: %w", dir, err))
+	default:
+		return uierr.New("Couldn't read "+shown+".", fmt.Errorf("read %s: %w", dir, err))
+	}
 }
 
 // CheckAddable refuses a folder that can't be a repository location, in words the window

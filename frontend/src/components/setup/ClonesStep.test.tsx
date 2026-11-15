@@ -4,7 +4,7 @@ import { useState } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import type { LocationState, Settings } from '../../platform'
-import { locationState, settings } from '../../test/fixtures'
+import { locationPreview, locationState, settings } from '../../test/fixtures'
 import { platform } from '../../test/platform'
 import { queryOf } from '../../test/query'
 import { ClonesStep } from './ClonesStep'
@@ -15,12 +15,18 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 
-// Stateful holds the settings as the window does, taking each one a setter returns.
-function Stateful({ states }: { states: LocationState[] | undefined }) {
-  const [shown, setShown] = useState<Settings>(settings())
+// Stateful holds the settings as the window does, starting from initial and taking each one
+// a setter returns.
+function Stateful({ states, initial = settings() }: { states: LocationState[] | undefined; initial?: Settings }) {
+  const [shown, setShown] = useState<Settings>(initial)
   const query = queryOf(states)
 
   return <ClonesStep settings={shown} onSaved={setShown} states={query} />
+}
+
+// lookInDocuments asks the step to look in GitHub Desktop's folder.
+async function lookInDocuments() {
+  await userEvent.click(screen.getByRole('button', { name: 'Look in ~/Documents/GitHub' }))
 }
 
 // noMotion asks for less motion, so the clone count shows at once.
@@ -175,6 +181,99 @@ describe('ClonesStep', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Choose another folder…' }))
 
     expect(await screen.findByRole('alert')).toHaveTextContent('/nowhere doesn’t exist.')
+  })
+
+  it('looks in GitHub Desktop’s folder only when asked, since macOS asks first', async () => {
+    noMotion()
+    platform.previewCloneLocation.mockResolvedValue(locationPreview({ path: '~/Documents/GitHub', clones: 12 }))
+    render(<Stateful states={[locationState({ clones: 42 })]} />)
+
+    expect(screen.getByText(/macOS asks before .+ looks in Documents\./)).toBeInTheDocument()
+    expect(platform.previewCloneLocation).not.toHaveBeenCalled()
+
+    await lookInDocuments()
+
+    expect(platform.previewCloneLocation).toHaveBeenCalledExactlyOnceWith('~/Documents/GitHub')
+    const found = within(await screen.findByRole('region', { name: 'Folders with clones' }))
+    expect(found.getByText('~/Documents/GitHub')).toBeInTheDocument()
+    expect(found.getByText(/12 clones/)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Look in ~/Documents/GitHub' })).not.toBeInTheDocument()
+
+    await userEvent.click(found.getByRole('button', { name: 'Add ~/Documents/GitHub as a location' }))
+
+    expect(platform.addCloneLocations).toHaveBeenCalledWith(['~/Documents/GitHub'])
+    await waitFor(() => {
+      expect(screen.queryByRole('region', { name: 'Folders with clones' })).not.toBeInTheDocument()
+    })
+  })
+
+  it('offers the folders inside GitHub Desktop’s folder in place of the clone root', async () => {
+    platform.previewCloneLocation.mockResolvedValue(
+      locationPreview({
+        path: '~/Documents/GitHub',
+        clones: 0,
+        inside: [{ path: '~/Documents/GitHub/acme-org', clones: 2 }],
+      }),
+    )
+    render(<Stateful states={[locationState({ state: 'missing', clones: 0 })]} />)
+
+    expect(await screen.findByRole('button', { name: 'Start fresh in ~/projects' })).toBeInTheDocument()
+
+    await lookInDocuments()
+
+    const found = within(await screen.findByRole('region', { name: 'Folders with clones' }))
+    expect(found.getByText('~/Documents/GitHub/acme-org')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Start fresh in ~/projects' })).not.toBeInTheDocument()
+
+    await userEvent.click(found.getByRole('button', { name: 'Use as clone root' }))
+
+    expect(platform.setCloneRoot).toHaveBeenCalledWith('~/Documents/GitHub/acme-org')
+  })
+
+  it.each([
+    [locationPreview({ path: '~/Documents/GitHub', clones: 0 }), 'No clones in ~/Documents/GitHub.'],
+    [
+      locationPreview({ path: '~/Documents/GitHub', covered: '~/Documents/GitHub is listed already.' }),
+      '~/Documents/GitHub is listed already.',
+    ],
+  ])('says when GitHub Desktop’s folder has nothing to add', async (preview, said) => {
+    noMotion()
+    platform.previewCloneLocation.mockResolvedValue(preview)
+    render(<Stateful states={[locationState()]} />)
+
+    await lookInDocuments()
+
+    expect(await screen.findByRole('status')).toHaveTextContent(said)
+    expect(screen.queryByRole('region', { name: 'Folders with clones' })).not.toBeInTheDocument()
+  })
+
+  it('says why it couldn’t look in GitHub Desktop’s folder, and lets the user try again', async () => {
+    noMotion()
+    platform.previewCloneLocation.mockRejectedValueOnce(
+      new Error('macOS doesn’t let it read ~/Documents/GitHub. Allow it in System Settings.'),
+    )
+    render(<Stateful states={[locationState()]} />)
+
+    await lookInDocuments()
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Allow it in System Settings.')
+
+    await lookInDocuments()
+
+    expect(await screen.findByRole('region', { name: 'Folders with clones' })).toBeInTheDocument()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+
+  it('never offers to look in GitHub Desktop’s folder once the locations hold it', () => {
+    noMotion()
+    render(
+      <Stateful
+        states={[locationState({ path: '~/Documents/GitHub' })]}
+        initial={settings({ cloneRoot: '~/Documents/GitHub' })}
+      />,
+    )
+
+    expect(screen.queryByRole('button', { name: 'Look in ~/Documents/GitHub' })).not.toBeInTheDocument()
   })
 
   it('folds the other repository locations away', async () => {

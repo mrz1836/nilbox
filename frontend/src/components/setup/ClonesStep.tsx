@@ -5,6 +5,7 @@ import { attempt } from '../../lib/call'
 import { counted, formatCount } from '../../lib/format'
 import { prefersReducedMotion } from '../../lib/motion'
 import { rootNeedsAttention } from '../../lib/setup'
+import { useMutation } from '../../lib/useMutation'
 import type { Query } from '../../lib/useQuery'
 import { useQuery } from '../../lib/useQuery'
 import { useSettingsSave } from '../../lib/useSettingsSave'
@@ -12,14 +13,16 @@ import {
   addCloneLocations,
   chooseFolder,
   createCloneRoot,
+  previewCloneLocation,
   setCloneRoot,
   suggestCloneRoots,
   type CloneCandidate,
+  type LocationPreview,
   type LocationState,
   type Settings,
 } from '../../platform'
 import { buttonClass, primaryButtonClass, quietButtonClass } from '../controls'
-import { AlertIcon, ChevronRightIcon, CircleCheckIcon, FolderIcon, PlusIcon } from '../icons'
+import { AlertIcon, ChevronRightIcon, CircleCheckIcon, FolderIcon, PlusIcon, SearchIcon } from '../icons'
 import { CloneLocations, rootMarker } from '../settings/CloneLocations'
 import { Spinner } from '../Spinner'
 
@@ -176,6 +179,37 @@ function Suggestions({ candidates, asRoot, busy, onUse, onAdd }: SuggestionsProp
   )
 }
 
+// documentsFolder is where GitHub Desktop clones by default. It is in Documents, which macOS
+// guards: reading anything there makes macOS ask the user first, even to find that it
+// isn't there. So the step looks in it only when the user asks, never on its own.
+const documentsFolder = '~/Documents/GitHub'
+
+// DocumentsLook is what the look in documentsFolder found: the folders with clones to
+// offer, or else a note that says why there are none.
+interface DocumentsLook {
+  found: CloneCandidate[]
+  note: string
+}
+
+// documentsLookOf reads the preview of documentsFolder. It offers the folder itself when
+// clones sit directly inside it, or else the folders inside it that hold some. With none,
+// or a folder the locations hold already, it says so.
+function documentsLookOf(preview: LocationPreview): DocumentsLook {
+  if (preview.covered !== '') {
+    return { found: [], note: preview.covered }
+  }
+
+  if (preview.clones > 0) {
+    return { found: [{ path: preview.path, clones: preview.clones }], note: '' }
+  }
+
+  if (preview.inside.length > 0) {
+    return { found: preview.inside, note: '' }
+  }
+
+  return { found: [], note: `No clones in ${preview.path}.` }
+}
+
 export interface ClonesStepProps {
   settings: Settings
   onSaved: (settings: Settings) => void
@@ -187,9 +221,10 @@ export interface ClonesStepProps {
 // ClonesStep finds the user's clones: the clone root as it reads now, and the other folders
 // in their home that hold clones, whatever they are named. Each folder can be added beside
 // the clone root, or, when the root is missing or holds no clones, used in its place. With
-// none found and no clone root, it offers a fresh one made for them, and says where it
-// never looks. Any other folder can be chosen, and, folded away, the other repository
-// locations show as Settings shows them.
+// none found and no clone root, it offers a fresh one made for them. It looks in GitHub
+// Desktop's folder in Documents when the user asks, since macOS asks first. Any other
+// folder can be chosen, and, folded away, the other repository locations show as Settings
+// shows them.
 export function ClonesStep({ settings: stored, onSaved, states }: ClonesStepProps) {
   const { settings, save, error } = useSettingsSave(stored, onSaved)
   const root = states.data?.find((s) => s.primary)
@@ -203,6 +238,9 @@ export function ClonesStep({ settings: stored, onSaved, states }: ClonesStepProp
   )
   const [busy, setBusy] = useState(false)
   const [note, setNote] = useState('')
+  // documents is what the look in GitHub Desktop's folder found, null until the user asks.
+  const [documents, setDocuments] = useState<DocumentsLook | null>(null)
+  const documentsLook = useMutation(() => previewCloneLocation(documentsFolder))
 
   // run stores one change, then reads the locations again.
   const run = async (change: Partial<Settings>, call: () => PromiseLike<Settings>, done: string) => {
@@ -243,7 +281,18 @@ export function ClonesStep({ settings: stored, onSaved, states }: ClonesStepProp
     }
   }
 
-  const found = candidates.data ?? []
+  const lookInDocuments = async () => {
+    const result = await documentsLook.run()
+
+    if (result.ok) {
+      setDocuments(documentsLookOf(result.data))
+    }
+  }
+
+  // held reports a folder that is the clone root or another location already.
+  const held = (path: string) => path === settings.cloneRoot || settings.cloneLocations.some((l) => l.path === path)
+  const found = [...(candidates.data ?? []), ...(documents?.found ?? []).filter((c) => !held(c.path))]
+  const lookable = documents === null && !held(documentsFolder)
 
   return (
     <div className="flex flex-col gap-5">
@@ -266,8 +315,8 @@ export function ClonesStep({ settings: stored, onSaved, states }: ClonesStepProp
             No clones turned up in your home folder. Start fresh: new clones will go in {settings.cloneRoot}.
           </p>
           <p className="text-xs text-muted">
-            Keep them in Documents, on the Desktop, or on another disk? Choose that folder: {brand.name} doesn’t look
-            there on its own, since macOS asks first.
+            Keep them in Documents, on the Desktop, or on another disk? Choose that folder below: {brand.name} doesn’t
+            look there on its own.
           </p>
           <button type="button" disabled={busy} onClick={startFresh} className={primaryButtonClass}>
             Start fresh in {settings.cloneRoot}
@@ -276,19 +325,49 @@ export function ClonesStep({ settings: stored, onSaved, states }: ClonesStepProp
         </div>
       )}
 
-      <div className="flex flex-wrap items-center gap-3">
-        <button
-          type="button"
-          disabled={busy}
-          onClick={() => {
-            void choose()
-          }}
-          className={buttonClass}
-        >
-          <FolderIcon className="size-3.5 text-muted" />
-          Choose another folder…
-        </button>
-        {(busy || states.pending) && <Spinner />}
+      <div className="flex flex-col gap-2">
+        <div className="flex flex-wrap items-center gap-3">
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => {
+              void choose()
+            }}
+            className={buttonClass}
+          >
+            <FolderIcon className="size-3.5 text-muted" />
+            Choose another folder…
+          </button>
+          {lookable && (
+            <button
+              type="button"
+              disabled={busy || documentsLook.pending}
+              onClick={() => {
+                void lookInDocuments()
+              }}
+              className={buttonClass}
+            >
+              <SearchIcon className="size-3.5 text-muted" />
+              Look in {documentsFolder}
+            </button>
+          )}
+          {(busy || states.pending || documentsLook.pending) && <Spinner />}
+        </div>
+        {lookable && (
+          <p className="text-xs text-muted">
+            GitHub Desktop clones into {documentsFolder}. macOS asks before {brand.name} looks in Documents.
+          </p>
+        )}
+        {documents !== null && documents.note !== '' && (
+          <p role="status" className="text-xs text-muted">
+            {documents.note}
+          </p>
+        )}
+        {documentsLook.error !== '' && (
+          <p role="alert" className="text-xs text-danger">
+            {documentsLook.error}
+          </p>
+        )}
       </div>
 
       {note !== '' && (

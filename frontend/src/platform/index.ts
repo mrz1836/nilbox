@@ -325,7 +325,7 @@ export type LocationStatus = localrepos.State
 export type LocationPreview = NonNullLists<localrepos.Preview>
 export type LocationSuggestion = NonNullLists<localrepos.Suggestion>
 // CloneCandidate is a folder the setup suggests as the clone root or another location:
-// one where clones commonly live that holds some, with ~ for home.
+// one in the home folder that holds clones, whatever its name, with ~ for home.
 export type CloneCandidate = LocationSuggestion
 
 // AppNotification is an entry in the notification history. Its item's kind is '' for an

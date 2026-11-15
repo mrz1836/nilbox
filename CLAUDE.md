@@ -294,7 +294,9 @@ app:lint` reads.
   the rest, which macOS guards or which hold no clones), or a folder a disk is mounted on.
   It reads the mounts from the kernel's table with `MNT_NOWAIT` (`mountPoints`), so it
   never asks a share, a cloud drive, or a virtual machine's files, and never makes macOS
-  ask the user. No location is searched recursively.
+  ask the user. The Clones step looks in GitHub Desktop's `~/Documents/GitHub` only on the
+  user's click (`PreviewCloneLocation`), and `Classify` words a folder macOS keeps the app
+  out of (`EPERM`) with where to allow it. No location is searched recursively.
   One `Reader`, which core builds and hands every service that reads the locations, bounds
   each read of another location than the clone root, the resolution of its links included,
   to `DefaultReadLimit` (5 s) and keeps one of each going per location: a share that hangs
