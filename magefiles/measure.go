@@ -84,7 +84,7 @@ func (Measure) Refresh() error {
 //	magex measure:launch
 //	magex measure:launch agent=codex
 func (Measure) Launch() error {
-	if runtime.GOOS != "darwin" {
+	if runtime.GOOS != goosMacOS {
 		return errNeedsMacOS
 	}
 
@@ -151,7 +151,7 @@ func (Measure) All() error {
 // appBundle returns the built app bundle and its executable, or an error naming the
 // build step when it is missing.
 func appBundle() (bundle, exe string, err error) {
-	if runtime.GOOS != "darwin" {
+	if runtime.GOOS != goosMacOS {
 		return "", "", errNeedsMacOS
 	}
 

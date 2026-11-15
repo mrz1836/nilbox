@@ -142,7 +142,7 @@ var (
 //
 //	RELEASE_VERSION=0.4.0 CODESIGN_IDENTITY=<identity> UPDATE_SIGNING_KEY=<key file> magex app:package
 func (App) Package() error {
-	if runtime.GOOS != "darwin" {
+	if runtime.GOOS != goosMacOS {
 		return errNeedsMacOS
 	}
 
@@ -162,7 +162,7 @@ func (App) Package() error {
 //
 //	RELEASE_VERSION=0.4.0 magex app:buildRelease
 func (App) BuildRelease() error {
-	if runtime.GOOS != "darwin" {
+	if runtime.GOOS != goosMacOS {
 		return errNeedsMacOS
 	}
 
@@ -181,7 +181,7 @@ func (App) BuildRelease() error {
 //	RELEASE_VERSION=0.4.0 CODESIGN_IDENTITY=<identity> UPDATE_SIGNING_KEY=<key file> \
 //	  magex app:signRelease bundle=<absolute path of bin/unsigned/0.4.0/<Name>.app>
 func (App) SignRelease() error {
-	if runtime.GOOS != "darwin" {
+	if runtime.GOOS != goosMacOS {
 		return errNeedsMacOS
 	}
 

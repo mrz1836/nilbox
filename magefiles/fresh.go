@@ -33,7 +33,7 @@ const freshPrefix = brand.Slug + "-fresh-"
 //
 //	magex app:reset
 func (App) Reset() error {
-	if runtime.GOOS != "darwin" {
+	if runtime.GOOS != goosMacOS {
 		return errNeedsMacOS
 	}
 
@@ -59,7 +59,7 @@ func (App) Reset() error {
 //
 //	magex app:fresh
 func (App) Fresh() error {
-	if runtime.GOOS != "darwin" {
+	if runtime.GOOS != goosMacOS {
 		return errNeedsMacOS
 	}
 
