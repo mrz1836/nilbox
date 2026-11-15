@@ -1,20 +1,20 @@
-import { render, screen, within } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 
-import type { Account } from '../platform'
-import { account, signedOut } from '../test/fixtures'
+import type { Account, GitHubStatus } from '../platform'
+import { account, githubIncident, githubStatus, signedOut } from '../test/fixtures'
 import { platform } from '../test/platform'
 import { AccountMenu } from './AccountMenu'
 
 vi.mock('../platform', () => import('../test/platform').then((fake) => fake.platform))
 
-function renderMenu(who: Account | null = account()) {
+function renderMenu(who: Account | null = account(), status: GitHubStatus | null = null) {
   const onOpenSettings = vi.fn()
 
   render(
     <>
-      <AccountMenu account={who} onOpenSettings={onOpenSettings} />
+      <AccountMenu account={who} githubStatus={status} onOpenSettings={onOpenSettings} />
       <button type="button">Elsewhere</button>
     </>,
   )
@@ -32,7 +32,7 @@ describe('AccountMenu', () => {
     expect(trigger.querySelector('img')).not.toBeNull()
   })
 
-  it('opens a menu with the account, Settings, the GitHub profile, and GitHub’s status', async () => {
+  it('opens a menu with the account, Settings, the GitHub profile, GitHub’s status, a bug report, and feedback', async () => {
     const { trigger } = renderMenu()
 
     await userEvent.click(trigger)
@@ -47,8 +47,62 @@ describe('AccountMenu', () => {
       within(menu)
         .getAllByRole('menuitem')
         .map((item) => item.textContent),
-    ).toEqual(['Settings⌘,', 'View GitHub profile', 'GitHub status'])
+    ).toEqual(['Settings⌘,', 'View GitHub profile', 'GitHub status', 'Report a bug', 'Send feedback'])
     expect(within(menu).getByRole('menuitem', { name: /Settings/ })).toHaveFocus()
+  })
+
+  it('opens the GitHub profile from the account card and closes the menu', async () => {
+    const { trigger } = renderMenu()
+
+    await userEvent.click(trigger)
+    await userEvent.click(screen.getByText('Octo User'))
+
+    expect(platform.openExternal).toHaveBeenCalledWith('https://github.com/octo-user')
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument()
+    expect(trigger).toHaveFocus()
+  })
+
+  it('opens a bug report made now in the browser', async () => {
+    const { trigger } = renderMenu()
+
+    await userEvent.click(trigger)
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Report a bug' }))
+
+    expect(platform.bugReportURL).toHaveBeenCalledOnce()
+    await waitFor(() => {
+      expect(platform.openExternal).toHaveBeenCalledWith(
+        'https://github.com/acme-org/example-repo/issues/new?template=bug_report.yml',
+      )
+    })
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument()
+  })
+
+  it('opens feedback in the browser', async () => {
+    const { trigger } = renderMenu()
+
+    await userEvent.click(trigger)
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Send feedback' }))
+
+    expect(platform.feedbackURL).toHaveBeenCalledOnce()
+    await waitFor(() => {
+      expect(platform.openExternal).toHaveBeenCalledWith(
+        'https://github.com/acme-org/example-repo/issues/new?template=BLANK_ISSUE',
+      )
+    })
+  })
+
+  it('opens nothing when the link cannot be made', async () => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    platform.feedbackURL.mockRejectedValue(new Error('the app is closing'))
+    const { trigger } = renderMenu()
+
+    await userEvent.click(trigger)
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Send feedback' }))
+
+    await waitFor(() => {
+      expect(error).toHaveBeenCalledWith('could not make the feedback link', expect.any(Error))
+    })
+    expect(platform.openExternal).not.toHaveBeenCalled()
   })
 
   it('opens Settings and puts focus back on the button', async () => {
@@ -82,6 +136,34 @@ describe('AccountMenu', () => {
     expect(screen.queryByRole('menu')).not.toBeInTheDocument()
   })
 
+  it('names an outage GitHub reports beside GitHub status, in red', async () => {
+    const { trigger } = renderMenu(account(), githubIncident())
+
+    await userEvent.click(trigger)
+
+    const item = screen.getByRole('menuitem', { name: /^GitHub status/ })
+    expect(item).toHaveAccessibleName(/^GitHub status,\s*Partial outage$/)
+    expect(within(item).getByText('Partial outage')).toHaveClass('text-danger')
+  })
+
+  it('names maintenance beside GitHub status, in amber', async () => {
+    const { trigger } = renderMenu(account(), githubStatus({ state: 'maintenance' }))
+
+    await userEvent.click(trigger)
+
+    const item = screen.getByRole('menuitem', { name: /^GitHub status/ })
+    expect(item).toHaveAccessibleName(/^GitHub status,\s*Maintenance$/)
+    expect(within(item).getByText('Maintenance')).toHaveClass('text-warning')
+  })
+
+  it('names nothing beside GitHub status while every system is operational', async () => {
+    const { trigger } = renderMenu(account(), githubStatus())
+
+    await userEvent.click(trigger)
+
+    expect(screen.getByRole('menuitem', { name: /^GitHub status/ })).toHaveAccessibleName('GitHub status')
+  })
+
   it('moves between items with the arrow keys, Home, and End, wrapping at the ends', async () => {
     const { trigger } = renderMenu()
     await userEvent.click(trigger)
@@ -89,23 +171,29 @@ describe('AccountMenu', () => {
     const settings = screen.getByRole('menuitem', { name: /Settings/ })
     const profile = screen.getByRole('menuitem', { name: 'View GitHub profile' })
     const status = screen.getByRole('menuitem', { name: 'GitHub status' })
+    const bug = screen.getByRole('menuitem', { name: 'Report a bug' })
+    const feedback = screen.getByRole('menuitem', { name: 'Send feedback' })
 
     await userEvent.keyboard('{ArrowDown}')
     expect(profile).toHaveFocus()
     await userEvent.keyboard('{ArrowDown}')
     expect(status).toHaveFocus()
     await userEvent.keyboard('{ArrowDown}')
+    expect(bug).toHaveFocus()
+    await userEvent.keyboard('{ArrowDown}')
+    expect(feedback).toHaveFocus()
+    await userEvent.keyboard('{ArrowDown}')
     expect(settings).toHaveFocus()
     await userEvent.keyboard('{ArrowUp}')
-    expect(status).toHaveFocus()
+    expect(feedback).toHaveFocus()
     await userEvent.keyboard('{Home}')
     expect(settings).toHaveFocus()
     await userEvent.keyboard('{End}')
-    expect(status).toHaveFocus()
+    expect(feedback).toHaveFocus()
 
     // Other keys are left alone.
     await userEvent.keyboard('x')
-    expect(status).toHaveFocus()
+    expect(feedback).toHaveFocus()
   })
 
   it('opens from the keyboard at the first or the last item', async () => {
@@ -120,7 +208,7 @@ describe('AccountMenu', () => {
     expect(trigger).toHaveFocus()
 
     await userEvent.keyboard('{ArrowUp}')
-    expect(screen.getByRole('menuitem', { name: 'GitHub status' })).toHaveFocus()
+    expect(screen.getByRole('menuitem', { name: 'Send feedback' })).toHaveFocus()
 
     // Enter on an item activates it.
     await userEvent.keyboard('{Home}{Enter}')
@@ -128,11 +216,13 @@ describe('AccountMenu', () => {
   })
 
   it('closes on a click outside', async () => {
-    const { trigger } = renderMenu()
+    const { trigger } = renderMenu(signedOut)
 
+    // The card before the first refresh opens nothing, so a click on it keeps the menu.
     await userEvent.click(trigger)
-    await userEvent.click(screen.getByText('Octo User'))
+    await userEvent.click(screen.getByText('Not signed in yet'))
     expect(screen.getByRole('menu')).toBeInTheDocument()
+    expect(platform.openExternal).not.toHaveBeenCalled()
 
     await userEvent.click(screen.getByRole('button', { name: 'Elsewhere' }))
     expect(screen.queryByRole('menu')).not.toBeInTheDocument()
@@ -147,14 +237,19 @@ describe('AccountMenu', () => {
     expect(screen.getByText('Signed in to GitHub')).toBeInTheDocument()
   })
 
-  it('offers Settings and GitHub’s status before the first refresh', async () => {
+  it('offers Settings, GitHub’s status, a bug report, and feedback before the first refresh', async () => {
     const { trigger } = renderMenu(signedOut)
 
     expect(trigger).toHaveAccessibleName('Account')
     await userEvent.click(trigger)
 
     expect(screen.getByText('Not signed in yet')).toBeInTheDocument()
-    expect(screen.getAllByRole('menuitem').map((item) => item.textContent)).toEqual(['Settings⌘,', 'GitHub status'])
+    expect(screen.getAllByRole('menuitem').map((item) => item.textContent)).toEqual([
+      'Settings⌘,',
+      'GitHub status',
+      'Report a bug',
+      'Send feedback',
+    ])
   })
 
   it('works before the inbox has loaded', async () => {

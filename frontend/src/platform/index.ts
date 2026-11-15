@@ -13,6 +13,7 @@ import * as appinfo from '../../bindings/github.com/mrz1836/nilbox/internal/appi
 import * as backup from '../../bindings/github.com/mrz1836/nilbox/internal/backup'
 import * as branchrules from '../../bindings/github.com/mrz1836/nilbox/internal/branchrules'
 import * as budget from '../../bindings/github.com/mrz1836/nilbox/internal/budget'
+import * as ghstatus from '../../bindings/github.com/mrz1836/nilbox/internal/ghstatus'
 import * as ghthreads from '../../bindings/github.com/mrz1836/nilbox/internal/ghthreads'
 import type * as gitread from '../../bindings/github.com/mrz1836/nilbox/internal/gitread'
 import * as hooks from '../../bindings/github.com/mrz1836/nilbox/internal/hooks'
@@ -104,6 +105,9 @@ export type BudgetWrites = NonNullLists<budget.Writes>
 // builds an item's link from its repository, kind, and number.
 export type GitHubThreadsSnapshot = Omit<NonNullLists<ghthreads.Snapshot>, 'unread'> & { unread: GitHubThread[] }
 export type GitHubThreadsStatus = NonNullLists<ghthreads.Status>
+export type GitHubStatus = NonNullLists<ghstatus.Status>
+export type GitHubStatusState = ghstatus.State
+export type GitHubStatusIncident = NonNullLists<ghstatus.Incident>
 export type GitHubThreadsAccess = ghthreads.Access
 export type GitHubThread = Omit<NonNullLists<ghthreads.Thread>, 'kind'> & { kind: item.Kind | '' }
 // GitHubThreadList is every thread the mirror holds, read and unread, for the Notifications
@@ -492,6 +496,7 @@ export const {
   AgentVersions: agentVersions,
   ToolVersions: toolVersions,
   BugReportURL: bugReportURL,
+  FeedbackURL: feedbackURL,
 } = narrow(appinfo.Service)
 
 export const { Gauge: getBudget, Check: checkBudget } = narrow(budget.Service)
@@ -849,6 +854,15 @@ export const markGitHubThreadsDone: (threadIDs: number[]) => CancellablePromise<
   githubThreads.MarkDone
 export const markGitHubThreadsRead: (threadIDs: number[]) => CancellablePromise<GitHubThreadsSnapshot> =
   githubThreads.MarkRead
+
+// GitHub's own status page. Status returns the last reading, which the app takes once
+// after the first paint and then as often as Settings → Refreshing says, reading nothing
+// from the network itself, or the state off while the check is off; CheckNow reads the page
+// now, unless it did moments ago. A failed check keeps the last reading and says why in its
+// error. A "githubstatus:updated" event follows each check.
+const githubStatus = narrow(ghstatus.Service)
+
+export const { Status: getGitHubStatus, CheckNow: checkGitHubStatus } = githubStatus
 
 // The notification history. MarkAllRead marks every entry read (Mark all done), and
 // MarkRead and MarkUnread the entries with the ids given; opening the history marks

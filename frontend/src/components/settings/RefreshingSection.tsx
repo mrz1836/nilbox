@@ -13,6 +13,7 @@ const defaults: Readonly<Record<RefreshKind, number>> = {
   releaseChecks: 45,
   worktrees: 300,
   notifications: 300,
+  githubStatus: 1800,
 }
 
 // rows are the things the app reads again on its own, each with what a read costs.
@@ -47,6 +48,12 @@ const rows: readonly { kind: RefreshKind; label: string; description: string }[]
     description:
       'Your GitHub inbox, listed from GitHub: free when nothing changed, and never sooner than GitHub asks. The refresh button in the GitHub notifications panel checks at once.',
   },
+  {
+    kind: 'githubStatus',
+    label: 'GitHub status',
+    description:
+      'GitHub’s own status page, githubstatus.com, checked for incidents: one small request outside the API, so it costs no points. While GitHub reports a problem, a warning shows in the toolbar.',
+  },
 ]
 
 // everyWords words an interval: "Every 45 seconds", "Every 5 minutes", "Every hour", or
@@ -73,8 +80,9 @@ export function everyWords(seconds: number): string {
 
 // RefreshingSection holds how often the app reads the inbox, the running checks, the
 // Release page's running checks, the worktrees, and the GitHub notifications again on its
-// own, each a select of the intervals Go offers, saved as soon as it is chosen; what reads
-// them again works its next wait out from the new interval at once.
+// own, and how often it checks GitHub's status page, each a select of the intervals Go
+// offers, saved as soon as it is chosen; what reads them again works its next wait out
+// from the new interval at once.
 export function RefreshingSection({ settings: stored, onSaved }: SectionProps) {
   const id = useId()
   const { settings, save, error } = useSettingsSave(stored, onSaved)

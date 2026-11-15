@@ -47,6 +47,7 @@ import { useTextSize } from './lib/textSize'
 import { defaultSnoozeDays, findItem } from './lib/triage'
 import { useCollapsedSections } from './lib/useCollapsedSections'
 import { useBudget } from './lib/useBudget'
+import { useGitHubStatus } from './lib/useGitHubStatus'
 import { useInbox } from './lib/useInbox'
 import { useInboxOrder } from './lib/useInboxOrder'
 import { useIntegrations } from './lib/useIntegrations'
@@ -410,6 +411,10 @@ export function App() {
   const budget = useBudget()
   const triaged = useTriage(inbox.snapshot)
   const config = useLaunchConfig(inbox.snapshot)
+  // githubStatus is GitHub's own status page as the app last read it, which the toolbar
+  // warns of while GitHub reports a problem; turning its check off or on in the settings
+  // shows at once.
+  const githubStatus = useGitHubStatus(config.settings?.refresh.githubStatus)
   // reviewDrafts keeps what the user wrote in the review sheet, for the session.
   const reviewDrafts = useReviewDrafts()
   // issueDrafts keeps what the user wrote in the issue sheet, for the session.
@@ -894,6 +899,7 @@ export function App() {
           account={account}
           gauge={budget.gauge}
           onBudgetCheck={budget.check}
+          githubStatus={githubStatus}
           inboxCount={triaged?.count ?? 0}
           worktreeCount={sweeps.count}
           worktreeAttention={sweeps.attention}

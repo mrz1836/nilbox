@@ -29,6 +29,7 @@ import {
   defaultPrompts,
   fileCheck,
   githubThreadList,
+  githubStatus,
   githubThreads,
   hookActionResult,
   hookChecksResult,
@@ -133,9 +134,12 @@ function answers(subscribe: Loose<Platform['on']>): { [K in keyof Platform]: Loo
     agentVersions: () => Promise.resolve(agentVersions()),
     toolVersions: () => Promise.resolve(toolVersions()),
     bugReportURL: () => Promise.resolve('https://github.com/acme-org/example-repo/issues/new?template=bug_report.yml'),
+    feedbackURL: () => Promise.resolve('https://github.com/acme-org/example-repo/issues/new?template=BLANK_ISSUE'),
 
     getBudget: () => Promise.resolve(budgetGauge()),
     checkBudget: () => Promise.resolve(budgetGauge()),
+    getGitHubStatus: () => Promise.resolve(githubStatus()),
+    checkGitHubStatus: () => Promise.resolve(githubStatus()),
 
     getInboxSnapshot: inbox,
     refreshInbox: inbox,

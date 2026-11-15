@@ -72,7 +72,7 @@ export const sectionInfo: Readonly<Record<SettingsSection, { label: string; desc
   refreshing: {
     label: 'Refreshing',
     description:
-      'How often the app reads the inbox, the running checks, the Release page’s running checks, the worktrees, and the GitHub notifications again on its own.',
+      'How often the app reads the inbox, the running checks, the Release page’s running checks, the worktrees, and the GitHub notifications again on its own, and how often it checks GitHub’s status page.',
   },
   snoozing: {
     label: 'Snoozing',
@@ -246,6 +246,10 @@ export const settingsIndex: Readonly<Record<SettingsSection, readonly SettingEnt
     { label: 'Release checks', keywords: ['Release page', 'CI', 'checks', 'default branch', 'follow', 'interval'] },
     { label: 'Worktrees', keywords: ['sweep', 'cleanup', 'interval'] },
     { label: 'GitHub notifications', keywords: ['notifications', 'GitHub inbox', 'poll interval', 'interval'] },
+    {
+      label: 'GitHub status',
+      keywords: ['githubstatus.com', 'status page', 'incident', 'outage', 'downtime', 'interval'],
+    },
   ],
   worktrees: [
     { label: 'Clean up after merging', keywords: ['automatic cleanup', 'auto cleanup', 'remove worktrees', 'sweep'] },

@@ -32,6 +32,7 @@ import type {
   GitHubThreadsPreview,
   GitHubThreadsSnapshot,
   GitHubThreadsStatus,
+  GitHubStatus,
   HookActionResult,
   HookChecksResult,
   HookInstallAllResult,
@@ -387,13 +388,14 @@ export function settings(overrides: Partial<Settings> = {}): Settings {
       botActivity: true,
       cleanupCardDismissed: false,
     },
-    refresh: { inbox: 300, checks: 45, releaseChecks: 45, worktrees: 300, notifications: 300 },
+    refresh: { inbox: 300, checks: 45, releaseChecks: 45, worktrees: 300, notifications: 300, githubStatus: 1800 },
     refreshChoices: {
       inbox: [120, 300, 600, 900, 1800, 3600],
       checks: [0, 30, 45, 60, 120],
       releaseChecks: [0, 30, 45, 60, 120],
       worktrees: [300, 600, 900, 1800, 3600],
       notifications: [60, 120, 300, 600, 900, 1800, 3600],
+      githubStatus: [0, 300, 600, 900, 1800, 3600],
     },
     ...overrides,
   }
@@ -1154,6 +1156,39 @@ export function budgetGauge(overrides: Partial<BudgetGauge> = {}): BudgetGauge {
 // 5,000-point REST budget's reserve.
 export function writes(overrides: Partial<BudgetWrites> = {}): BudgetWrites {
   return { lastHour: 0, lastMinute: 0, perHour: 200, perMinute: 30, reserve: 50, heldUntil: '', ...overrides }
+}
+
+// githubStatus is GitHub's status page read a minute before the tests' noon, with every
+// system operational.
+export function githubStatus(overrides: Partial<GitHubStatus> = {}): GitHubStatus {
+  return {
+    state: 'operational',
+    description: 'All Systems Operational',
+    incidents: [],
+    components: [],
+    checkedAt: '2026-06-15T11:59:00Z',
+    error: '',
+    url: 'https://www.githubstatus.com/',
+    ...overrides,
+  }
+}
+
+// githubIncident is GitHub's status page during a partial outage of Actions.
+export function githubIncident(overrides: Partial<GitHubStatus> = {}): GitHubStatus {
+  return githubStatus({
+    state: 'major',
+    description: 'Partial System Outage',
+    incidents: [
+      {
+        name: 'Incident with Actions',
+        status: 'investigating',
+        impact: 'major',
+        url: 'https://www.githubstatus.com/incidents/x1',
+      },
+    ],
+    components: [{ name: 'Actions', status: 'partial_outage' }],
+    ...overrides,
+  })
 }
 
 // threadsStatus is reading the user's GitHub notifications going well: the last pass a

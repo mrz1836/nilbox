@@ -54,6 +54,17 @@ export function PulseIcon(props: IconProps) {
   )
 }
 
+// BugIcon stands for reporting a bug.
+export function BugIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M9.5 9.5V8a2.5 2.5 0 0 1 5 0v1.5M10.2 6.2 8.5 4.5M13.8 6.2l1.7-1.7" />
+      <path d="M8 9.5h8a1 1 0 0 1 1 1V14a5 5 0 0 1-10 0v-3.5a1 1 0 0 1 1-1zM12 12.5V19" />
+      <path d="M7 13H4M17 13h3M7.3 10.6 5 9.2M16.7 10.6 19 9.2M7.7 16.5 5 18.5M16.3 16.5l2.7 2" />
+    </Icon>
+  )
+}
+
 // PersonIcon stands in for an account with no login yet.
 export function PersonIcon(props: IconProps) {
   return (

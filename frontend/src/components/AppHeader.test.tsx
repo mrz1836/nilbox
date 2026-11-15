@@ -4,7 +4,17 @@ import { describe, expect, it, vi } from 'vitest'
 
 import { brand } from '../generated/brand'
 import { at } from '../test/clock'
-import { account, budgetGauge, githubThread, githubThreads, notification, reading, settings } from '../test/fixtures'
+import {
+  account,
+  budgetGauge,
+  githubIncident,
+  githubStatus,
+  githubThread,
+  githubThreads,
+  notification,
+  reading,
+  settings,
+} from '../test/fixtures'
 import type { GitHubThreadsState } from '../lib/useGitHubThreads'
 import type { NotificationsState } from '../lib/useNotifications'
 import type { AppNotification, GitHubThreadsSnapshot } from '../platform'
@@ -244,6 +254,22 @@ describe('AppHeader', () => {
     expect(screen.queryByText(brand.tagline)).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: /^API budget: Healthy/ })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Account: octo-user' })).toBeInTheDocument()
+  })
+
+  it('shows no GitHub status warning while every system is operational', () => {
+    renderHeader({ githubStatus: { status: githubStatus(), checking: false, check: vi.fn() } })
+    expect(screen.queryByRole('button', { name: /^GitHub status/ })).not.toBeInTheDocument()
+  })
+
+  it('puts the GitHub status warning just before the budget gauge, and names it in the account menu', async () => {
+    renderHeader({ githubStatus: { status: githubIncident(), checking: false, check: vi.fn() } })
+
+    const warning = screen.getByRole('button', { name: 'GitHub status: Partial system outage' })
+    const gauge = screen.getByRole('button', { name: /^API budget/ })
+    expect(warning.compareDocumentPosition(gauge) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Account: octo-user' }))
+    expect(screen.getByRole('menuitem', { name: /^GitHub status,\s*Partial outage$/ })).toBeInTheDocument()
   })
 
   it('leads with the logo: the mark beside the wordmark, named by the product name alone', () => {

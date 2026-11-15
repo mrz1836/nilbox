@@ -27,7 +27,9 @@ function labels(name: string): string[] {
 describe('RefreshingSection', () => {
   it('offers each interval Go allows, the stored one chosen and the defaults marked', () => {
     renderSection(
-      settings({ refresh: { inbox: 900, checks: 0, releaseChecks: 120, worktrees: 300, notifications: 60 } }),
+      settings({
+        refresh: { inbox: 900, checks: 0, releaseChecks: 120, worktrees: 300, notifications: 60, githubStatus: 1800 },
+      }),
     )
 
     expect(screen.getByRole('combobox', { name: 'Inbox' })).toHaveValue('900')
@@ -85,7 +87,32 @@ describe('RefreshingSection', () => {
     expect(platform.setRefreshInterval).toHaveBeenCalledExactlyOnceWith('checks', 30)
     expect(onSaved).toHaveBeenCalledExactlyOnceWith(
       expect.objectContaining({
-        refresh: { inbox: 300, checks: 30, releaseChecks: 45, worktrees: 300, notifications: 300 },
+        refresh: { inbox: 300, checks: 30, releaseChecks: 45, worktrees: 300, notifications: 300, githubStatus: 1800 },
+      }),
+    )
+  })
+
+  it('checks GitHub’s status every half hour by default, and turns it off', async () => {
+    const { onSaved } = renderSection()
+
+    const status = screen.getByRole('combobox', { name: 'GitHub status' })
+    expect(status).toHaveValue('1800')
+    expect(labels('GitHub status')).toEqual([
+      'Off',
+      'Every 5 minutes',
+      'Every 10 minutes',
+      'Every 15 minutes',
+      'Every 30 minutes (default)',
+      'Every hour',
+    ])
+    expect(status).toHaveAccessibleDescription(/outside the API, so it costs no points.*a warning shows in the toolbar/)
+
+    await userEvent.selectOptions(status, '0')
+
+    expect(platform.setRefreshInterval).toHaveBeenCalledExactlyOnceWith('githubStatus', 0)
+    expect(onSaved).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({
+        refresh: { inbox: 300, checks: 45, releaseChecks: 45, worktrees: 300, notifications: 300, githubStatus: 0 },
       }),
     )
   })
@@ -98,7 +125,7 @@ describe('RefreshingSection', () => {
     expect(platform.setRefreshInterval).toHaveBeenCalledExactlyOnceWith('releaseChecks', 0)
     expect(onSaved).toHaveBeenCalledExactlyOnceWith(
       expect.objectContaining({
-        refresh: { inbox: 300, checks: 45, releaseChecks: 0, worktrees: 300, notifications: 300 },
+        refresh: { inbox: 300, checks: 45, releaseChecks: 0, worktrees: 300, notifications: 300, githubStatus: 1800 },
       }),
     )
   })

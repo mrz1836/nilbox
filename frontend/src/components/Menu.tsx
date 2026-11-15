@@ -58,8 +58,9 @@ export interface MenuButtonProps {
   // heading is a caption above the items.
   heading?: string
   // header is content above the items, set apart from them by a line, such as the account
-  // the menu belongs to.
-  header?: ReactNode
+  // the menu belongs to. A function gets close, which closes the menu and puts focus back
+  // on the button, for a header that acts as an item does when clicked.
+  header?: ReactNode | ((close: () => void) => ReactNode)
   // panelClassName sizes the menu: by default it is at least 13rem wide.
   panelClassName?: string
 }
@@ -403,7 +404,11 @@ export function MenuButton({
         align={align}
         className={`z-40 shadow-black/20 ${panelClassName} ${header === undefined ? 'p-1.5' : ''}`}
       >
-        {header}
+        {typeof header === 'function'
+          ? header(() => {
+              close(true)
+            })
+          : header}
         {heading !== undefined && (
           <p aria-hidden="true" className="px-2.5 pt-1 pb-1.5 text-xs font-medium text-muted">
             {heading}

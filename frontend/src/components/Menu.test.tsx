@@ -29,6 +29,37 @@ describe('MenuButton', () => {
     expect(screen.getByRole('menuitem', { name: 'Duplicate' })).toHaveFocus()
   })
 
+  it('hands a header given as a function the way to close the menu', async () => {
+    const onOpen = vi.fn()
+    render(
+      <MenuButton
+        label="Account"
+        items={items()}
+        header={(close) => (
+          <button
+            type="button"
+            onClick={() => {
+              close()
+              onOpen()
+            }}
+          >
+            Octo User
+          </button>
+        )}
+      >
+        ⋯
+      </MenuButton>,
+    )
+    const button = screen.getByRole('button', { name: 'Account' })
+
+    await userEvent.click(button)
+    await userEvent.click(screen.getByRole('button', { name: 'Octo User' }))
+
+    expect(onOpen).toHaveBeenCalledOnce()
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument()
+    expect(button).toHaveFocus()
+  })
+
   it('opens a menu that focuses its first enabled item', async () => {
     render(
       <MenuButton label="More actions" items={items()}>
