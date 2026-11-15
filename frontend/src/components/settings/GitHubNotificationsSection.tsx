@@ -1,7 +1,7 @@
 import { useId } from 'react'
 
 import { brand } from '../../generated/brand'
-import { askAgainText, checkedText, refusal } from '../../lib/githubThreads'
+import { askAgainText, checkedText, clearTriggers, refusal } from '../../lib/githubThreads'
 import type { GitHubThreadsState } from '../../lib/useGitHubThreads'
 import { useNowAs } from '../../lib/useNow'
 import { useSettingsSave } from '../../lib/useSettingsSave'
@@ -18,37 +18,6 @@ import { RefreshIcon } from '../icons'
 import { rowMatchClass, useSetting } from './match'
 import { ErrorText, Group, joinIds, Note, SectionIntro, SwitchRow } from './rows'
 import type { SectionProps } from './types'
-
-// triggers are the moments the work behind a notification is finished, each with its own
-// switch, in the order the backend lists them. Clearing by hand has none.
-const triggers: readonly { trigger: ThreadTrigger; label: string; description: string }[] = [
-  { trigger: 'merged', label: 'A pull request is merged', description: 'Here or anywhere else.' },
-  {
-    trigger: 'pr_closed',
-    label: 'A pull request is closed without merging',
-    description: 'Here or anywhere else.',
-  },
-  {
-    trigger: 'issue_closed',
-    label: 'An issue is closed',
-    description: 'As completed or as not planned, here or anywhere else.',
-  },
-  {
-    trigger: 'reviewed',
-    label: `You submit a review in ${brand.name}`,
-    description: 'A review that approves the pull request or requests changes.',
-  },
-  {
-    trigger: 'dismissed',
-    label: `You dismiss an item in ${brand.name}`,
-    description: 'From its card or its sheet.',
-  },
-  {
-    trigger: 'unassigned',
-    label: 'You unassign yourself or remove yourself as reviewer',
-    description: 'With Unassign me or Remove me as reviewer, from its card or its sheet.',
-  },
-]
 
 // actions are what clearing a notification can do, the default first.
 const actions: readonly { value: ThreadAction; label: string }[] = [
@@ -256,7 +225,7 @@ export function GitHubNotificationsSection({ settings: stored, onSaved, threads 
           Read it there, and it clears on the next check.
         </SectionIntro>
         <Group>
-          {triggers.map(({ trigger, label, description }) => (
+          {clearTriggers.map(({ trigger, label, description }) => (
             <SwitchRow
               key={trigger}
               label={label}

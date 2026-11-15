@@ -15,8 +15,8 @@ import (
 func TestABannerClickRevealsItsItem(t *testing.T) {
 	t.Parallel()
 
-	banner := notify.Banner{ID: "review-7", Title: "Review requested", ItemID: 7, URL: exampleURL}
-	want := event.RevealItem{ItemID: 7, URL: exampleURL}
+	banner := notify.Banner{ID: "review-7", Title: "Review requested", ItemID: 7, URL: exampleURL, NotificationID: 3}
+	want := event.RevealItem{ItemID: 7, URL: exampleURL, NotificationID: 3}
 
 	assert.Equal(t, want, desktop.BannerClicked(desktop.BannerData(banner)), "handed back as written")
 
@@ -60,6 +60,8 @@ func TestABannerClickReadsWhatItCan(t *testing.T) {
 		"a run":            {data: map[string]any{"itemId": 0, "url": "", "runId": float64(42)}, want: event.RevealItem{RunID: 42}},
 		"a text run id":    {data: map[string]any{"runId": "42"}, want: event.RevealItem{}},
 		"a number start":   {data: map[string]any{"runId": 42, "runStarted": 7}, want: event.RevealItem{RunID: 42}},
+		"a notification":   {data: map[string]any{"notificationId": float64(3)}, want: event.RevealItem{NotificationID: 3}},
+		"a text entry id":  {data: map[string]any{"itemId": 8, "notificationId": "3"}, want: event.RevealItem{ItemID: 8}},
 	} {
 		assert.Equal(t, c.want, desktop.BannerClicked(c.data), name)
 	}

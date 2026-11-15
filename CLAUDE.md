@@ -604,6 +604,13 @@ app:lint` reads.
   status (reading, the account, `Access`, the last pass and walk, the last error, when a
   refused listing is sent again, the count, the unread count, and `Truncated`), and the
   newest 20 `Unread`, none with a URL GitHub gave; with reading off, its lists are empty.
+  The bound `List` reads every thread the mirror holds for that account, read and unread,
+  each with its item's state as the last state check read it (`Thread.State`), for the
+  Notifications page, with the same status: `snapshot` and `List` share one row walk
+  (`listed`), so both count alike. The `Snapshot` also holds an unexported fingerprint of
+  every listed thread (its id, unread, state, title, reason, and update time), which JSON and
+  the bindings skip but `tell`'s comparison sees, so a pass that changes a thread past the
+  newest unread still tells the window.
   `CheckNow` runs a pass once any running has ended, lifting the back-off and ignoring the
   poll interval, and returns the `Snapshot`, whose status tells a pass that failed. A pass
   that changes what `Snapshot` shows, the passes' times aside, emits `event.GHThreadsUpdated`
@@ -1259,6 +1266,17 @@ app:lint` reads.
   (`ui.reviewTab`, which a backup never holds), and so is the order both sheets list a
   conversation in (`ui.conversationOrder`, oldest or newest first, under the description),
   which the inbox shares between them.
+  `components/notifications/` is the Notifications page (`NotificationsView`, loaded on its
+  first visit), whose tabs are the app's own history (`AppNotificationsTab`) and the user's
+  GitHub notifications (`GitHubNotificationsTab`, with the Cleared view, `ClearedList`), each
+  listed by day (`DayGroups`); the toolbar's bell and GitHub button are quick views of it
+  and share its rows (`EntryRow`, `ThreadRow`), so a row is never copied. Its tab is the
+  window's memory (`ui.notificationsTab`); each tab's Show and Type live in App's `Nav`, so
+  the toolbar's field (`lib/notificationFilter.ts`) counts what the list shows. Opening the
+  bell marks nothing: an entry is marked read when opened, by its ✓, by a click on its
+  banner (`event.RevealItem.NotificationID`, checked against the entry's item, page, or run,
+  since Clear history hands ids out again), or when its item's sheet opens (`InboxView`'s
+  `onItemOpened`, once per opening).
   Theme colors come from the `--color-*` tokens `internal/brandgen` writes to
   `frontend/src/generated/theme.css`. Checkboxes and radio buttons take the `checkbox` and
   `radio` classes (`frontend/src/index.css`), which draw them in the app's own style: macOS

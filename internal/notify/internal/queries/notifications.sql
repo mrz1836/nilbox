@@ -30,3 +30,13 @@ UPDATE notifications SET read_at = sqlc.arg(read_at) WHERE read_at IS NULL;
 -- name: ClearNotifications :exec
 -- ClearNotifications removes every notification.
 DELETE FROM notifications;
+
+-- name: MarkRead :execrows
+-- MarkRead marks the unread notifications among ids read at read_at, and returns how many it
+-- marked.
+UPDATE notifications SET read_at = sqlc.arg(read_at) WHERE read_at IS NULL AND id IN (sqlc.slice(ids));
+
+-- name: MarkUnread :execrows
+-- MarkUnread marks the read notifications among ids unread again, and returns how many it
+-- marked.
+UPDATE notifications SET read_at = NULL WHERE read_at IS NOT NULL AND id IN (sqlc.slice(ids));

@@ -52,6 +52,12 @@ type Banner struct {
 	// RunStarted when it started, which the window checks first.
 	RunID      int64
 	RunStarted string
+
+	// NotificationID is the log's entry the banner stands for, which a click on it marks
+	// read, or 0 for a banner that stands for none or many (a summary, a session's, the
+	// test banner). The window marks it only while the entry with that id is about the
+	// banner's item, page, or run, since the log hands an id out again once it is cleared.
+	NotificationID int64
 }
 
 // Poster shows banners. The desktop shell implements it over the system's notification
@@ -113,15 +119,16 @@ func banner(n Notification) Banner {
 	}
 
 	return Banner{
-		ID:         brand.Slug + "-" + strconv.FormatInt(n.ID, 10),
-		Title:      kindTitles[n.Kind],
-		Subtitle:   subtitle,
-		Body:       body,
-		Thread:     string(n.Kind),
-		ItemID:     n.ItemID,
-		URL:        n.URL,
-		RunID:      n.RunID,
-		RunStarted: n.RunStarted,
+		ID:             brand.Slug + "-" + strconv.FormatInt(n.ID, 10),
+		Title:          kindTitles[n.Kind],
+		Subtitle:       subtitle,
+		Body:           body,
+		Thread:         string(n.Kind),
+		ItemID:         n.ItemID,
+		URL:            n.URL,
+		RunID:          n.RunID,
+		RunStarted:     n.RunStarted,
+		NotificationID: n.ID,
 	}
 }
 

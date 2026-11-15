@@ -15,6 +15,7 @@ import {
   budgetGauge,
   fileCheck,
   githubThread,
+  githubThreadList,
   githubThreads,
   item,
   notification,
@@ -915,7 +916,7 @@ describe('App', () => {
     // bar or on a notification.
     function reveal(itemId: number, url = '') {
       act(() => {
-        emit('inbox:reveal', { itemId, url, runId: 0, runStarted: '' })
+        emit('inbox:reveal', { itemId, url, runId: 0, runStarted: '', notificationId: 0 })
       })
     }
 
@@ -969,20 +970,22 @@ describe('App', () => {
       await renderApp()
       await screen.findByRole('region', { name: 'Review requested' })
 
-      await userEvent.click(await screen.findByRole('button', { name: 'Notifications, 1 unread' }))
-      expect(platform.markNotificationsRead).toHaveBeenCalledOnce()
+      await userEvent.click(await screen.findByRole('button', { name: '1 unread notifications' }))
+      expect(platform.markNotificationsRead).not.toHaveBeenCalled()
+      expect(platform.markAllNotificationsRead).not.toHaveBeenCalled()
 
       const history = within(screen.getByRole('dialog', { name: 'Notifications' }))
-      await userEvent.click(history.getByRole('button', { name: /Add the widget cache/ }))
+      await userEvent.click(history.getByRole('button', { name: /^(?!Done: ).*Add the widget cache/ }))
 
       expect(await row('Add the widget cache')).toHaveAttribute('data-highlighted', 'true')
+      expect(platform.markNotificationsRead).toHaveBeenCalledExactlyOnceWith([1])
     })
 
     it('opens the notification settings from the bell', async () => {
       await renderApp()
       await screen.findByRole('region', { name: 'Review requested' })
 
-      await userEvent.click(screen.getByRole('button', { name: 'Notifications' }))
+      await userEvent.click(screen.getByRole('button', { name: 'No unread notifications' }))
       await userEvent.click(screen.getByRole('button', { name: 'Notification settings' }))
 
       expect(await screen.findByRole('region', { name: 'Notifications' })).toBeInTheDocument()
@@ -1308,7 +1311,7 @@ describe('App’s filter field', () => {
 
   function reveal(itemId: number) {
     act(() => {
-      emit('inbox:reveal', { itemId, url: '', runId: 0, runStarted: '' })
+      emit('inbox:reveal', { itemId, url: '', runId: 0, runStarted: '', notificationId: 0 })
     })
   }
 
@@ -1725,9 +1728,9 @@ describe('the Scripts tab', () => {
     platform.listNotifications.mockResolvedValue({ items: [released], unread: 1 })
     await renderApp()
 
-    await userEvent.click(await screen.findByRole('button', { name: 'Notifications, 1 unread' }))
+    await userEvent.click(await screen.findByRole('button', { name: '1 unread notifications' }))
 
-    const entry = screen.getByRole('button', { name: /v1\.4\.3 is on GitHub/ })
+    const entry = screen.getByRole('button', { name: /^(?!Done: ).*v1\.4\.3 is on GitHub/ })
 
     expect(entry).toHaveTextContent('Released')
     expect(entry).toHaveTextContent('sdk · Tagged a1b2c3d on master.')
@@ -1756,9 +1759,9 @@ describe('the Scripts tab', () => {
 
   // openFailedEntry opens the bell and clicks the failed run's entry.
   async function openFailedEntry() {
-    await userEvent.click(await screen.findByRole('button', { name: 'Notifications, 1 unread' }))
+    await userEvent.click(await screen.findByRole('button', { name: '1 unread notifications' }))
 
-    const entry = screen.getByRole('button', { name: /Checks failed: Checks · all files/ })
+    const entry = screen.getByRole('button', { name: /^(?!Done: ).*Checks failed: Checks · all files/ })
 
     expect(entry).toHaveTextContent('Run failed')
     expect(entry).toHaveTextContent('example-repo · 4 passed, 1 failed: whitespace.')
@@ -1789,7 +1792,7 @@ describe('the Scripts tab', () => {
 
     await views().findByRole('button', { name: 'Scripts' })
     act(() => {
-      emit('inbox:reveal', { itemId: 0, url: '', runId: 7, runStarted: '2026-11-10T16:00:00Z' })
+      emit('inbox:reveal', { itemId: 0, url: '', runId: 7, runStarted: '2026-11-10T16:00:00Z', notificationId: 0 })
     })
 
     expect(await screen.findByRole('heading', { name: 'Checks · all files', level: 2 })).toBeInTheDocument()
@@ -1845,9 +1848,254 @@ describe('the Scripts tab', () => {
     // The banner's click says so too.
     await userEvent.click(within(await toast()).getByRole('button', { name: 'Close' }))
     act(() => {
-      emit('inbox:reveal', { itemId: 0, url: '', runId: 7, runStarted: '2026-11-10T16:00:00Z' })
+      emit('inbox:reveal', { itemId: 0, url: '', runId: 7, runStarted: '2026-11-10T16:00:00Z', notificationId: 0 })
     })
 
     expect(within(await toast()).getByText('Turn on an integration in Settings to see your runs.')).toBeInTheDocument()
+  })
+})
+
+describe('the Notifications page', () => {
+  const views = () => within(screen.getByRole('navigation', { name: 'Views' }))
+  // review is an unread review request for the inbox's pull request #7, and older a read
+  // one about another item.
+  const review = () => notification({ id: 3, itemId: 1 })
+  const older = () =>
+    notification({
+      id: 2,
+      itemId: 5,
+      number: 12,
+      title: 'Bump the parser',
+      read: true,
+      createdAt: '2026-06-14T09:00:00Z',
+    })
+
+  it('opens from its tab beside the Inbox, on the tab last chosen, and remembers a choice', async () => {
+    platform.getSettings.mockImplementation(() => stored({ notificationsTab: 'github' }))
+    platform.listNotifications.mockResolvedValue({ items: [review(), older()], unread: 1 })
+    await renderApp()
+
+    const tab = await views().findByRole('button', { name: 'Notifications' })
+
+    await waitFor(() => {
+      expect(tab).toHaveTextContent('Notifications1')
+    })
+    await userEvent.click(tab)
+
+    const tabs = within(await screen.findByRole('tablist', { name: 'Notifications' }))
+
+    expect(tabs.getByRole('tab', { name: 'GitHub' })).toHaveAttribute('aria-selected', 'true')
+    expect(platform.githubThreadsList).toHaveBeenCalled()
+
+    await userEvent.click(tabs.getByRole('tab', { name: `${brand.name} 1` }))
+
+    expect(platform.setNotificationsTab).toHaveBeenCalledExactlyOnceWith('app')
+    expect(await screen.findByRole('list', { name: 'Yesterday' })).toHaveTextContent('Bump the parser')
+  })
+
+  it('lists every GitHub notification only while its GitHub tab shows', async () => {
+    await renderApp()
+    await screen.findByRole('region', { name: 'Review requested' })
+
+    await userEvent.click(views().getByRole('button', { name: 'Notifications' }))
+    await screen.findByRole('tablist', { name: 'Notifications' })
+
+    expect(platform.githubThreadsList).not.toHaveBeenCalled()
+  })
+
+  it('opens on each quick view’s tab from its View all', async () => {
+    platform.listNotifications.mockResolvedValue({ items: [review()], unread: 1 })
+    platform.githubThreadsSnapshot.mockResolvedValue(
+      githubThreads({ status: { count: 1, unread: 1 }, unread: [githubThread()] }),
+    )
+    platform.githubThreadsList.mockResolvedValue(githubThreadList({ threads: [githubThread()] }))
+    await renderApp()
+
+    await userEvent.click(await screen.findByRole('button', { name: /^GitHub notifications/ }))
+    await userEvent.click(screen.getByRole('button', { name: 'View all' }))
+
+    const tabs = within(await screen.findByRole('tablist', { name: 'Notifications' }))
+
+    expect(views().getByRole('button', { name: 'Notifications' })).toHaveAttribute('aria-pressed', 'true')
+    expect(tabs.getByRole('tab', { name: 'GitHub 1' })).toHaveAttribute('aria-selected', 'true')
+    expect(await screen.findByRole('list', { name: 'Today' })).toHaveTextContent('Add the widget cache')
+
+    await userEvent.click(screen.getByRole('button', { name: '1 unread notifications' }))
+    await userEvent.click(screen.getByRole('button', { name: 'View all' }))
+
+    expect(tabs.getByRole('tab', { name: `${brand.name} 1` })).toHaveAttribute('aria-selected', 'true')
+    expect(platform.setNotificationsTab).not.toHaveBeenCalled()
+  })
+
+  it('filters with the toolbar’s field, which ⌘F focuses, counting what the list shows', async () => {
+    platform.listNotifications.mockResolvedValue({ items: [review(), older()], unread: 1 })
+    await renderApp()
+
+    await userEvent.click(await views().findByRole('button', { name: 'Notifications' }))
+    await screen.findByRole('tablist', { name: 'Notifications' })
+
+    await userEvent.keyboard('{Meta>}f{/Meta}')
+
+    const field = screen.getByRole('combobox', { name: 'Filter notifications' })
+
+    expect(field).toHaveFocus()
+    await userEvent.type(field, 'parser')
+
+    const header = within(field.closest('header') as HTMLElement)
+
+    await waitFor(() => {
+      expect(header.getByRole('status')).toHaveTextContent('1 match')
+    })
+    const page = within(screen.getByRole('tabpanel'))
+
+    expect(page.queryByText('Add the widget cache')).not.toBeInTheDocument()
+    expect(page.getByText('Bump the parser')).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('radio', { name: 'Unread' }))
+
+    expect(await screen.findByText('No notifications match')).toBeInTheDocument()
+    expect(header.getByRole('status')).toHaveTextContent('No matches')
+
+    await userEvent.click(screen.getByRole('button', { name: 'Clear the filter' }))
+    expect(field).toHaveValue('')
+  })
+
+  it('counts and suggests what the GitHub tab lists', async () => {
+    platform.getSettings.mockImplementation(() => stored({ notificationsTab: 'github' }))
+    platform.githubThreadsList.mockResolvedValue(
+      githubThreadList({ threads: [githubThread(), githubThread({ id: 1002, number: 9, title: 'Fix the parser' })] }),
+    )
+    await renderApp()
+
+    await userEvent.click(await views().findByRole('button', { name: 'Notifications' }))
+    await screen.findByRole('list', { name: 'Today' })
+
+    const field = screen.getByRole('combobox', { name: 'Filter notifications' })
+    await userEvent.type(field, '#9')
+
+    await waitFor(() => {
+      expect(within(field.closest('header') as HTMLElement).getByRole('status')).toHaveTextContent('1 match')
+    })
+
+    await userEvent.clear(field)
+    await userEvent.type(field, 'reason:')
+
+    expect(await screen.findByRole('option', { name: /review_requested/ })).toBeInTheDocument()
+
+    await userEvent.clear(field)
+    await userEvent.click(screen.getByRole('radio', { name: 'Cleared' }))
+    await userEvent.type(field, 'parser')
+
+    expect(within(field.closest('header') as HTMLElement).queryByRole('status')).not.toHaveTextContent('match')
+  })
+
+  it('suggests what the app tab lists', async () => {
+    platform.listNotifications.mockResolvedValue({ items: [review(), older()], unread: 1 })
+    await renderApp()
+
+    await userEvent.click(await views().findByRole('button', { name: 'Notifications' }))
+    await screen.findByRole('tablist', { name: 'Notifications' })
+    await userEvent.type(screen.getByRole('combobox', { name: 'Filter notifications' }), 'type:')
+
+    expect(await screen.findByRole('option', { name: /review/ })).toBeInTheDocument()
+  })
+
+  it('opens an entry from the page, marking it read', async () => {
+    platform.listNotifications.mockResolvedValue({ items: [review()], unread: 1 })
+    await renderApp()
+
+    await userEvent.click(await views().findByRole('button', { name: 'Notifications' }))
+    await userEvent.click(await screen.findByRole('button', { name: /^(?!Done: ).*Add the widget cache/ }))
+
+    expect(platform.markNotificationsRead).toHaveBeenCalledExactlyOnceWith([3])
+    expect(views().getByRole('button', { name: 'Inbox' })).toHaveAttribute('aria-pressed', 'true')
+  })
+
+  it('shows a GitHub notification’s item in the inbox', async () => {
+    platform.getSettings.mockImplementation(() => stored({ notificationsTab: 'github' }))
+    platform.githubThreadsList.mockResolvedValue(githubThreadList({ threads: [githubThread()] }))
+    await renderApp()
+
+    await screen.findByRole('region', { name: 'Review requested' })
+    await userEvent.click(views().getByRole('button', { name: 'Notifications' }))
+    await userEvent.click(await screen.findByRole('button', { name: 'Show in inbox: Add the widget cache' }))
+
+    expect(views().getByRole('button', { name: 'Inbox' })).toHaveAttribute('aria-pressed', 'true')
+    expect(platform.openExternal).not.toHaveBeenCalled()
+  })
+
+  describe('marking read without asking', () => {
+    // click is a click on a banner, as the shell sends it.
+    function click(change: { itemId?: number; url?: string; runId?: number; notificationId: number }) {
+      act(() => {
+        emit('inbox:reveal', { itemId: 0, url: '', runId: 0, runStarted: '', ...change })
+      })
+    }
+
+    it('marks a clicked banner’s entry read, but only while the entry is the one it stood for', async () => {
+      platform.listNotifications.mockResolvedValue({
+        items: [
+          review(),
+          notification({ id: 4, itemId: 5, number: 12, url: 'https://github.com/acme-org/other/pull/12' }),
+        ],
+        unread: 2,
+      })
+      await renderApp()
+      await screen.findByRole('region', { name: 'Review requested' })
+      await screen.findByRole('button', { name: '2 unread notifications' })
+
+      // A banner left from before the history was cleared, whose id another entry took.
+      click({ itemId: 1, url: 'https://github.com/acme-org/example-repo/pull/7', notificationId: 4 })
+      expect(platform.markNotificationsRead).not.toHaveBeenCalled()
+
+      // One the log no longer holds.
+      click({ itemId: 1, notificationId: 99 })
+      expect(platform.markNotificationsRead).not.toHaveBeenCalled()
+
+      click({ itemId: 1, url: 'https://github.com/acme-org/example-repo/pull/7', notificationId: 3 })
+      expect(platform.markNotificationsRead).toHaveBeenCalledExactlyOnceWith([3])
+
+      // Read now, the same banner clicked again marks nothing.
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: '1 unread notifications' })).toBeInTheDocument()
+      })
+      click({ itemId: 1, url: 'https://github.com/acme-org/example-repo/pull/7', notificationId: 3 })
+      expect(platform.markNotificationsRead).toHaveBeenCalledOnce()
+    })
+
+    it('marks a failed run’s banner read before opening the run', async () => {
+      platform.listNotifications.mockResolvedValue({
+        items: [notification({ id: 6, kind: 'run_failed', itemId: 0, itemKind: '', runId: 7, url: '' })],
+        unread: 1,
+      })
+      await renderApp()
+      await screen.findByRole('button', { name: '1 unread notifications' })
+
+      click({ runId: 7, notificationId: 6 })
+
+      expect(platform.markNotificationsRead).toHaveBeenCalledExactlyOnceWith([6])
+    })
+
+    it('marks an item’s entries read when its sheet opens, once each opening', async () => {
+      platform.listNotifications.mockResolvedValue({
+        items: [review(), notification({ id: 1, itemId: 1, kind: 'woke' })],
+        unread: 2,
+      })
+      await renderApp()
+      await screen.findByRole('button', { name: '2 unread notifications' })
+
+      await userEvent.click(await screen.findByRole('button', { name: 'Add the widget cache' }))
+      await screen.findByRole('dialog', { name: 'Add the widget cache' })
+
+      await waitFor(() => {
+        expect(platform.markNotificationsRead).toHaveBeenCalledExactlyOnceWith([3, 1])
+      })
+
+      // Another view and back: the sheet is still open, and nothing is marked anew.
+      await userEvent.click(views().getByRole('button', { name: 'Notifications' }))
+      await userEvent.click(views().getByRole('button', { name: 'Inbox' }))
+
+      expect(platform.markNotificationsRead).toHaveBeenCalledOnce()
+    })
   })
 })

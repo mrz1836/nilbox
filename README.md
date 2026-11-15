@@ -914,12 +914,16 @@ More in [Tools the app finds and installs](docs/desktop.md#tools-the-app-finds-a
   Scripts tab that fail, each kind with its own switch, all on by default. Two more, for agent
   sessions that wait for you or finish a turn, start off.
 - **Clicking a banner** brings the window forward with its item in view, or opens the release or
-  the run it's about. More than three at once are summed up in one banner, and **Send a test**
-  shows a sample.
-- **A notification history** behind the toolbar's bell keeps the newest 200, with an unread
-  count.
+  the run it's about, and marks it read. More than three at once are summed up in one banner,
+  and **Send a test** shows a sample.
+- **The toolbar's bell** is a quick view of what is unread: opening it marks nothing, and each
+  entry's **✓** takes it off the bell.
+- **A Notifications page** keeps the newest 1,000, by day, with Show, Type, search, and Mark
+  unread, beside every GitHub notification Nilbox keeps a copy of, read ones too, and what
+  clearing did, with **Undo**.
 
-More in [Menu bar and notifications](docs/desktop.md#menu-bar-and-notifications).
+More in [Menu bar and notifications](docs/desktop.md#menu-bar-and-notifications) and
+[The Notifications page](docs/desktop.md#the-notifications-page).
 
 </details>
 

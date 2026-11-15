@@ -143,7 +143,8 @@ func (q *Queries) ListItemThreads(ctx context.Context, accountLogin string) ([]L
 }
 
 const listThreads = `-- name: ListThreads :many
-SELECT thread_id, reason, unread, updated_at, subject_type, subject_title, repo_owner, repo_name, item_kind, number
+SELECT thread_id, reason, unread, updated_at, subject_type, subject_title, repo_owner, repo_name, item_kind, number,
+    subject_state
 FROM gh_threads
 WHERE account_login = ?
 ORDER BY updated_at DESC, thread_id DESC
@@ -160,6 +161,7 @@ type ListThreadsRow struct {
 	RepoName     string
 	ItemKind     string
 	Number       int64
+	SubjectState string
 }
 
 // ListThreads returns what the window shows of every thread of the account's, the most
@@ -184,6 +186,7 @@ func (q *Queries) ListThreads(ctx context.Context, accountLogin string) ([]ListT
 			&i.RepoName,
 			&i.ItemKind,
 			&i.Number,
+			&i.SubjectState,
 		); err != nil {
 			return nil, err
 		}

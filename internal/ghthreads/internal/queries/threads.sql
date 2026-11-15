@@ -76,7 +76,8 @@ WHERE account_login = sqlc.arg(account_login) AND repo_owner = sqlc.arg(repo_own
 -- name: ListThreads :many
 -- ListThreads returns what the window shows of every thread of the account's, the most
 -- recently updated first.
-SELECT thread_id, reason, unread, updated_at, subject_type, subject_title, repo_owner, repo_name, item_kind, number
+SELECT thread_id, reason, unread, updated_at, subject_type, subject_title, repo_owner, repo_name, item_kind, number,
+    subject_state
 FROM gh_threads
 WHERE account_login = ?
 ORDER BY updated_at DESC, thread_id DESC;

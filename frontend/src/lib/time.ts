@@ -123,6 +123,39 @@ export function formatWhen(now: Date, when: Date, locale?: string): string {
   return dateFormat(locale, { weekday: 'short', month: 'short', day: 'numeric', ...year }).format(when)
 }
 
+// dayHeading names the day of iso for a list grouped by day, against now: "Today",
+// "Yesterday", the weekday within the past week ("Wednesday"), then the date ("Jun 3"),
+// with the year when it is not this one ("Dec 30, 2025"). A time later than today, as a
+// clock set wrong could write, reads as today. An empty or unparseable time reads as "".
+// locale is for tests; the app uses the system's.
+export function dayHeading(now: Date, iso: string, locale?: string): string {
+  const ms = parseTime(iso)
+
+  if (ms === undefined) {
+    return ''
+  }
+
+  const when = new Date(ms)
+  // Rounding absorbs the 23- and 25-hour days around a change of the clocks.
+  const days = Math.round((startOfDay(now) - startOfDay(when)) / dayMs)
+
+  if (days <= 0) {
+    return 'Today'
+  }
+
+  if (days === 1) {
+    return 'Yesterday'
+  }
+
+  if (days < 7) {
+    return dateFormat(locale, { weekday: 'long' }).format(when)
+  }
+
+  const year = when.getFullYear() === now.getFullYear() ? {} : { year: 'numeric' as const }
+
+  return dateFormat(locale, { month: 'short', day: 'numeric', ...year }).format(when)
+}
+
 // formatFull names a time in full, for a tooltip: "Saturday, November 8, 2026 at 3:42 PM".
 export function formatFull(iso: string, locale?: string): string {
   const ms = parseTime(iso)

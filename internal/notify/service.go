@@ -210,13 +210,44 @@ func (s *Service) List(ctx context.Context) (Log, error) {
 	return s.store.Log(ctx)
 }
 
-// MarkAllRead marks every notification read, as the history does once it is opened.
+// MarkAllRead marks every notification read, as the history's Mark all done does.
 func (s *Service) MarkAllRead(ctx context.Context) error {
 	if err := s.store.MarkAllRead(ctx, s.clock.Now()); err != nil {
 		return err
 	}
 
 	s.notify()
+
+	return nil
+}
+
+// MarkRead marks the notifications with ids read: the user opened them, clicked their
+// banner, opened their item, or marked them done. The window is told only when one was
+// unread.
+func (s *Service) MarkRead(ctx context.Context, ids []int64) error {
+	n, err := s.store.MarkRead(ctx, s.clock.Now(), ids)
+	if err != nil {
+		return err
+	}
+
+	if n > 0 {
+		s.notify()
+	}
+
+	return nil
+}
+
+// MarkUnread marks the notifications with ids unread again, which puts them back in the
+// bell's quick view. The window is told only when one was read.
+func (s *Service) MarkUnread(ctx context.Context, ids []int64) error {
+	n, err := s.store.MarkUnread(ctx, ids)
+	if err != nil {
+		return err
+	}
+
+	if n > 0 {
+		s.notify()
+	}
 
 	return nil
 }

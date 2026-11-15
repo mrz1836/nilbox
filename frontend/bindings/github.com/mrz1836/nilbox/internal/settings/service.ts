@@ -334,6 +334,15 @@ export function SetNotificationBanner(kind: notifyprefs$0.Kind, on: boolean): $C
 }
 
 /**
+ * SetNotificationsTab stores the Notifications page's tab the user chose,
+ * NotificationsTabApp or NotificationsTabGitHub, which the page opens on from then on, and
+ * returns the settings with it.
+ */
+export function SetNotificationsTab(tab: $models.NotificationsTab): $CancellablePromise<$models.Settings> {
+    return $Call.ByID(2013544762, tab);
+}
+
+/**
  * SetOfferAfterMerge stores whether merging a pull request in the review sheet offers to
  * release its repository, and returns the settings with it. Nothing else hears of it: the
  * review sheet asks Release whether to offer as each merge lands.

@@ -35,6 +35,9 @@ function state(
     reading: new Set(),
     markError: '',
     dismissMarkError: vi.fn(),
+    list: null,
+    listError: '',
+    keep: vi.fn(() => Promise.resolve({ ok: true as const, data: githubThreads() })),
     ...overrides,
   }
 }
@@ -413,6 +416,26 @@ describe('GitHubThreadsMenu', () => {
 
     await userEvent.click((await open()).getByRole('button', { name: 'Settings' }))
     expect(onSettings).toHaveBeenCalledOnce()
+    expect(screen.queryByRole('button', { name: 'View all' })).not.toBeInTheDocument()
+  })
+
+  it('opens the Notifications page from its footer', async () => {
+    const onViewAll = vi.fn()
+    render(
+      <GitHubThreadsMenu
+        threads={state(githubThreads())}
+        settings={settings()}
+        onSettings={onSettings}
+        onSettingsSaved={onSettingsSaved}
+        onViewAll={onViewAll}
+      />,
+    )
+
+    await userEvent.click((await open()).getByRole('button', { name: 'View all' }))
+
+    expect(onViewAll).toHaveBeenCalledOnce()
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    expect(calledPlatform()).toEqual([])
   })
 
   it('shows a check under way, and says why the last one failed', async () => {

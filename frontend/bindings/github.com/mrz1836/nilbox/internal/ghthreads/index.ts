@@ -21,5 +21,6 @@ export type {
     SettledClear,
     Snapshot,
     Status,
-    Thread
+    Thread,
+    ThreadList
 } from "./models.js";

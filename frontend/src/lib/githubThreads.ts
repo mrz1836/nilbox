@@ -4,13 +4,24 @@
 // no URL GitHub returned: every link here is built from an item's repository, kind, and
 // number, with fixed strings.
 
-import type { GitHubThread, GitHubThreadsStatus, ItemKind } from '../platform'
+import { brand } from '../generated/brand'
+import type {
+  GitHubThread,
+  GitHubThreadState,
+  GitHubThreadsStatus,
+  ItemKind,
+  QueuedClear,
+  SettledClear,
+  ThreadTrigger,
+} from '../platform'
 import { formatCount } from './format'
 import { itemKey } from './itemWorktrees'
 import { formatAgo, formatUntil } from './time'
 
-// inboxURL is the user's GitHub inbox on the web.
+// inboxURL is the user's GitHub inbox on the web, and doneURL its Done view, which lists
+// what was marked done: every clear that marked one.
 export const inboxURL = 'https://github.com/notifications'
+export const doneURL = 'https://github.com/notifications?query=is%3Adone'
 
 // refusedText is what the window says while GitHub refuses the token the notifications,
 // when the status carries no words of its own.
@@ -173,8 +184,9 @@ export function askAgainText(now: Date, status: GitHubThreadsStatus): string {
   return until === 'now' ? 'Asks GitHub again at the next check.' : `Asks GitHub again in ${until}.`
 }
 
-// ThreadGroup is one line of the toolbar's list of unread notifications: every unread
-// notification about one item, or one about no item.
+// ThreadGroup is one line of a list of notifications: every notification about one item,
+// or one about no item. The toolbar's panel lists the unread alone; the Notifications page
+// lists the read too.
 export interface ThreadGroup {
   key: string
   // item is the item the notifications are about, or null for one about no item.
@@ -188,14 +200,22 @@ export interface ThreadGroup {
   reasons: string[]
   // updatedAt is when the newest of them last changed.
   updatedAt: string
-  // count is how many unread notifications the line stands for, and ids are theirs, which
-  // opening the line marks read and its Done marks done.
+  // count is how many notifications the line stands for, and ids are theirs, which its
+  // Done marks done; unread is how many of them are unread, and unreadIds theirs, which
+  // opening the line, or its Mark read, marks read.
   count: number
   ids: number[]
+  unread: number
+  unreadIds: number[]
+  // state is its item's state as the newest notification that knows it says, or '' when
+  // none does, as for one about no item.
+  state: GitHubThreadState
+  // threads are the notifications themselves, the newest first.
+  threads: GitHubThread[]
 }
 
-// threadGroups groups the newest unread notifications, the newest first, by the item each
-// is about, in the order of each item's newest; one about no item stands alone.
+// threadGroups groups notifications, the newest first, by the item each is about, in the
+// order of each item's newest; one about no item stands alone.
 export function threadGroups(threads: readonly GitHubThread[]): ThreadGroup[] {
   const groups: ThreadGroup[] = []
   const byKey = new Map<string, ThreadGroup>()
@@ -203,36 +223,252 @@ export function threadGroups(threads: readonly GitHubThread[]): ThreadGroup[] {
   for (const t of threads) {
     const item = threadItem(t)
     const key = item === null ? `thread-${String(t.id)}` : threadItemKey(item)
-    const found = byKey.get(key)
+    let group = byKey.get(key)
 
-    if (found !== undefined) {
-      found.count += 1
-      found.ids.push(t.id)
-
-      if (t.reason !== '' && !found.reasons.includes(t.reason)) {
-        found.reasons.push(t.reason)
+    if (group === undefined) {
+      group = {
+        key,
+        item,
+        title: t.title,
+        subjectType: t.subjectType,
+        repo: t.owner === '' || t.name === '' ? '' : `${t.owner}/${t.name}`,
+        reasons: [],
+        updatedAt: t.updatedAt,
+        count: 0,
+        ids: [],
+        unread: 0,
+        unreadIds: [],
+        state: '',
+        threads: [],
       }
 
-      continue
+      byKey.set(key, group)
+      groups.push(group)
     }
 
-    const group: ThreadGroup = {
-      key,
-      item,
-      title: t.title,
-      subjectType: t.subjectType,
-      repo: t.owner === '' || t.name === '' ? '' : `${t.owner}/${t.name}`,
-      reasons: t.reason === '' ? [] : [t.reason],
-      updatedAt: t.updatedAt,
-      count: 1,
-      ids: [t.id],
+    group.count += 1
+    group.ids.push(t.id)
+    group.threads.push(t)
+
+    if (t.unread) {
+      group.unread += 1
+      group.unreadIds.push(t.id)
     }
 
-    byKey.set(key, group)
-    groups.push(group)
+    if (t.reason !== '' && !group.reasons.includes(t.reason)) {
+      group.reasons.push(t.reason)
+    }
+
+    if (group.state === '') {
+      group.state = t.state
+    }
   }
 
   return groups
+}
+
+// stateWords words an item's state for its line's chip: merged or closed, which the user
+// may be done with; an open item, or one whose state isn't known, has none.
+export function stateWords(state: GitHubThreadState): string {
+  switch (state) {
+    case 'MERGED':
+      return 'Merged'
+    case 'CLOSED':
+      return 'Closed'
+    default:
+      return ''
+  }
+}
+
+// GitHubShow is what the page's GitHub tab shows: the unread notifications, every one, or
+// what clearing did.
+export type GitHubShow = 'unread' | 'all' | 'cleared'
+
+// GitHubTypeID is one of the GitHub tab's types, as its Type control offers it and type:
+// names it in the toolbar's field.
+export type GitHubTypeID = 'all' | 'pr' | 'issue' | 'release' | 'actions' | 'other'
+
+// GitHubType is a type's name, and what the page says when it lists none.
+export interface GitHubType {
+  label: string
+  none: string
+}
+
+// githubTypes are the GitHub tab's types: pull requests, issues, releases, workflow runs,
+// and every other subject together.
+export const githubTypes: Readonly<Record<GitHubTypeID, GitHubType>> = {
+  all: { label: 'All', none: 'Nothing in your GitHub inbox.' },
+  pr: { label: 'Pull requests', none: 'No notifications about pull requests.' },
+  issue: { label: 'Issues', none: 'No notifications about issues.' },
+  release: { label: 'Releases', none: 'No notifications about releases.' },
+  actions: { label: 'Actions', none: 'No notifications about workflow runs.' },
+  other: { label: 'Other', none: 'No other notifications.' },
+}
+
+// githubTypeOrder is the order the page offers the types in.
+export const githubTypeOrder: readonly GitHubTypeID[] = ['all', 'pr', 'issue', 'release', 'actions', 'other']
+
+// githubTypeOf is the type a notification belongs to, by what it is about.
+export function githubTypeOf(thread: { kind: ItemKind | ''; subjectType: string }): Exclude<GitHubTypeID, 'all'> {
+  if (thread.kind === 'pr' || thread.subjectType === 'PullRequest') {
+    return 'pr'
+  }
+
+  if (thread.kind === 'issue' || thread.subjectType === 'Issue') {
+    return 'issue'
+  }
+
+  switch (thread.subjectType) {
+    case 'Release':
+      return 'release'
+    case 'CheckSuite':
+    case 'WorkflowRun':
+      return 'actions'
+    default:
+      return 'other'
+  }
+}
+
+// filterThreads picks the notifications a list shows, in their order: the unread alone or
+// all of them, of one type or every type. Cleared lists the clears instead, and no
+// notification.
+export function filterThreads(threads: readonly GitHubThread[], show: GitHubShow, type: GitHubTypeID): GitHubThread[] {
+  if (show === 'cleared') {
+    return []
+  }
+
+  return threads.filter((t) => (show === 'all' || t.unread) && (type === 'all' || githubTypeOf(t) === type))
+}
+
+// ClearTrigger is a moment the work behind a notification is finished, which clears it
+// once its switch is on, as Settings lists it.
+export interface ClearTrigger {
+  trigger: ThreadTrigger
+  label: string
+  description: string
+}
+
+// clearTriggers are the moments the work behind a notification is finished, each with its
+// own switch, in the order the backend lists them. Clearing by hand has none. Settings
+// lists them, the Cleared view says which one cleared a notification, and the settings'
+// search index matches their labels word for word.
+export const clearTriggers: readonly ClearTrigger[] = [
+  { trigger: 'merged', label: 'A pull request is merged', description: 'Here or anywhere else.' },
+  {
+    trigger: 'pr_closed',
+    label: 'A pull request is closed without merging',
+    description: 'Here or anywhere else.',
+  },
+  {
+    trigger: 'issue_closed',
+    label: 'An issue is closed',
+    description: 'As completed or as not planned, here or anywhere else.',
+  },
+  {
+    trigger: 'reviewed',
+    label: `You submit a review in ${brand.name}`,
+    description: 'A review that approves the pull request or requests changes.',
+  },
+  {
+    trigger: 'dismissed',
+    label: `You dismiss an item in ${brand.name}`,
+    description: 'From its card or its sheet.',
+  },
+  {
+    trigger: 'unassigned',
+    label: 'You unassign yourself or remove yourself as reviewer',
+    description: 'With Unassign me or Remove me as reviewer, from its card or its sheet.',
+  },
+]
+
+// byHandText says a notification was cleared by the user's own hand, which has no switch.
+export const byHandText = 'You cleared it'
+
+// triggerText says why a notification cleared: its trigger's label, or that the user
+// cleared it. A trigger this build doesn't know shows as the backend wrote it.
+export function triggerText(trigger: ThreadTrigger): string {
+  if (trigger === 'by_hand') {
+    return byHandText
+  }
+
+  return clearTriggers.find((t) => t.trigger === trigger)?.label ?? trigger
+}
+
+// clearsIn says when a queued clear goes: "in 12s", "in 5m", or "any moment" once its
+// hold is over.
+export function clearsIn(now: Date, sendAfter: string): string {
+  const at = Date.parse(sendAfter)
+
+  if (Number.isNaN(at)) {
+    return ''
+  }
+
+  const seconds = Math.ceil((at - now.getTime()) / 1000)
+
+  if (seconds <= 0) {
+    return 'any moment'
+  }
+
+  return seconds < 60 ? `in ${String(seconds)}s` : `in ${formatUntil(now, sendAfter)}`
+}
+
+// skipWords say why a clear was skipped. Skips the backend decided again (changed, stale)
+// aren't shown, so they have none.
+const skipWords: Readonly<Record<string, string>> = {
+  off: 'clearing was turned off',
+  rule_off: 'its rule is off',
+  still_open: 'it was reopened',
+  new_activity: 'there was new activity',
+  already_read: 'it was already read',
+  not_item: 'it isn’t a pull request or an issue',
+  not_listed: 'it left your GitHub inbox first',
+  kept: 'you kept it before',
+  failed: 'it failed before',
+}
+
+// shownSettled reports a settled clear the Cleared view lists: every one but a skip the
+// backend decided again, which says nothing that happened.
+export function shownSettled(clear: SettledClear): boolean {
+  return !(clear.state === 'skipped' && (clear.reason === 'changed' || clear.reason === 'stale'))
+}
+
+// settledText says how a clear settled: "Marked done", "Marked read", "Kept", "Couldn’t
+// clear: …", or "Skipped: …".
+export function settledText(clear: SettledClear): string {
+  switch (clear.state) {
+    case 'sent':
+      return clear.action === 'read' ? 'Marked read' : 'Marked done'
+    case 'kept':
+      return 'Kept'
+    case 'failed':
+      return clear.error === '' ? 'Couldn’t clear' : `Couldn’t clear: ${clear.error}`
+    case 'skipped': {
+      const why = Object.hasOwn(skipWords, clear.reason) ? skipWords[clear.reason] : undefined
+
+      return why === undefined ? 'Skipped' : `Skipped: ${why}`
+    }
+    default:
+      return clear.state
+  }
+}
+
+// clearItem is the item a queued or settled clear is about, or null when it names none a
+// link could hold.
+export function clearItem(clear: QueuedClear | SettledClear): ThreadItem | null {
+  return threadItem(clear)
+}
+
+// clearWhere says what a clear is about: "example-repo #7", or its repository alone.
+export function clearWhere(clear: QueuedClear | SettledClear): string {
+  return clear.number > 0 ? `${clear.name} #${String(clear.number)}` : clear.name
+}
+
+// clearURL is where a clear's line opens on GitHub: its item's page, or else the GitHub
+// inbox.
+export function clearURL(clear: QueuedClear | SettledClear): string {
+  const item = clearItem(clear)
+
+  return item === null ? inboxURL : itemURL(item)
 }
 
 // subjectWords are the subjects GitHub names, worded, for a notification about no item.

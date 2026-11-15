@@ -441,4 +441,31 @@ export interface Thread {
      * UpdatedAt is when it last changed on GitHub, as RFC 3339.
      */
     "updatedAt": string;
+
+    /**
+     * Unread is whether it is unread on GitHub.
+     */
+    "unread": boolean;
+
+    /**
+     * State is its pull request's or issue's state as the last state check read it,
+     * StateUnknown until one did and for any other subject.
+     */
+    "state": threadrules$0.State;
+}
+
+/**
+ * ThreadList is every thread the mirror holds for the account the last pass read, read and
+ * unread, as the Notifications page lists them. No URL GitHub gave is in it either.
+ */
+export interface ThreadList {
+    /**
+     * Status is the Snapshot's: how reading goes, and how many there are.
+     */
+    "status": Status;
+
+    /**
+     * Threads are every one, the most recently updated first.
+     */
+    "threads": Thread[] | null;
 }

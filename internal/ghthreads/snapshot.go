@@ -3,6 +3,9 @@ package ghthreads
 import (
 	"context"
 	"fmt"
+	"hash/fnv"
+	"io"
+	"strconv"
 	"time"
 
 	"github.com/mrz1836/nilbox/internal/clock"
@@ -32,6 +35,23 @@ type Snapshot struct {
 
 	// Recent are the latest MaxRecent clears that settled, the latest first.
 	Recent []SettledClear `json:"recent"`
+
+	// listed is a fingerprint of every thread the mirror lists for the account (its id,
+	// unread, state, title, reason, and update time), read and unread, past the newest
+	// MaxUnread too: List shows them all, so a pass that changes any of them differs from
+	// the Snapshot told before, and tells the window. Unexported, it never reaches the
+	// window, which compares nothing with it.
+	listed uint64
+}
+
+// ThreadList is every thread the mirror holds for the account the last pass read, read and
+// unread, as the Notifications page lists them. No URL GitHub gave is in it either.
+type ThreadList struct {
+	// Status is the Snapshot's: how reading goes, and how many there are.
+	Status Status `json:"status"`
+
+	// Threads are every one, the most recently updated first.
+	Threads []Thread `json:"threads"`
 }
 
 // QueuedClear is a clear waiting to be sent.
@@ -146,6 +166,13 @@ type Thread struct {
 
 	// UpdatedAt is when it last changed on GitHub, as RFC 3339.
 	UpdatedAt string `json:"updatedAt"`
+
+	// Unread is whether it is unread on GitHub.
+	Unread bool `json:"unread"`
+
+	// State is its pull request's or issue's state as the last state check read it,
+	// StateUnknown until one did and for any other subject.
+	State threadrules.State `json:"state"`
 }
 
 // compared is s as a pass compares it with the last one told: the passes' times left out,
@@ -156,30 +183,103 @@ func compared(s Snapshot) Snapshot {
 	return s
 }
 
+// List returns every thread the mirror holds for the account the last pass read, read and
+// unread, the most recently updated first, with the Snapshot's status, from the database
+// alone: it never asks GitHub. With reading turned off, or before a pass read an account,
+// its status says so and its list is empty.
+func (s *Service) List(ctx context.Context) (ThreadList, error) {
+	rules, err := s.rules.ThreadRules(ctx)
+	if err != nil {
+		return ThreadList{}, fmt.Errorf("read the rules for GitHub notifications: %w", err)
+	}
+
+	st, err := s.loadState(ctx)
+	if err != nil {
+		return ThreadList{}, err
+	}
+
+	status, rows, err := s.listed(ctx, rules.Read, st)
+	if err != nil {
+		return ThreadList{}, err
+	}
+
+	out := ThreadList{Status: status, Threads: make([]Thread, 0, len(rows))}
+	for i := range rows {
+		out.Threads = append(out.Threads, shownThread(&rows[i]))
+	}
+
+	return out, nil
+}
+
 // snapshot builds the Snapshot of st's account, with reading on or off.
 func (s *Service) snapshot(ctx context.Context, reading bool, st syncState) (Snapshot, error) {
-	out := Snapshot{
-		Status: st.status(reading), Unread: []Thread{}, Queued: []QueuedClear{}, Recent: []SettledClear{},
+	status, rows, err := s.listed(ctx, reading, st)
+	if err != nil {
+		return Snapshot{}, err
 	}
+
+	out := Snapshot{Status: status, Unread: []Thread{}, Queued: []QueuedClear{}, Recent: []SettledClear{}}
 
 	if !reading || st.Account == "" {
 		return out, nil
 	}
 
-	rows, err := s.q.ListThreads(ctx, st.Account)
-	if err != nil {
-		return Snapshot{}, fmt.Errorf("read the GitHub notifications: %w", err)
-	}
+	h := fnv.New64a()
 
 	for i := range rows {
-		out.count(&rows[i])
+		r := &rows[i]
+		printThread(h, r)
+
+		if r.Unread && len(out.Unread) < MaxUnread {
+			out.Unread = append(out.Unread, shownThread(r))
+		}
 	}
+
+	out.listed = h.Sum64()
 
 	if err = s.ledger(ctx, &out, st); err != nil {
 		return Snapshot{}, err
 	}
 
 	return out, nil
+}
+
+// listed reads every thread of st's account, the newest first, and the Status st records
+// with their counts: none with reading off or before a pass read an account. Snapshot and
+// List share it, so both count alike.
+func (s *Service) listed(ctx context.Context, reading bool, st syncState) (Status, []queries.ListThreadsRow, error) {
+	status := st.status(reading)
+
+	if !reading || st.Account == "" {
+		return status, nil, nil
+	}
+
+	rows, err := s.q.ListThreads(ctx, st.Account)
+	if err != nil {
+		return Status{}, nil, fmt.Errorf("read the GitHub notifications: %w", err)
+	}
+
+	for i := range rows {
+		status.Count++
+
+		if rows[i].Unread {
+			status.Unread++
+		}
+	}
+
+	return status, rows, nil
+}
+
+// printThread writes what List shows of r that a pass may change into w, for Snapshot's
+// fingerprint: its id, unread, state, title, reason, and update time, each ended by a zero
+// byte.
+func printThread(w io.Writer, r *queries.ListThreadsRow) {
+	for _, part := range []string{
+		strconv.FormatInt(r.ThreadID, 10), strconv.FormatBool(r.Unread), r.SubjectState, r.SubjectTitle, r.Reason,
+		stamp(r.UpdatedAt),
+	} {
+		_, _ = io.WriteString(w, part+"\x00")
+	}
 }
 
 // ledger adds the clears of st's account to out: those queued, the backlog, and the latest
@@ -217,22 +317,6 @@ func (s *Service) ledger(ctx context.Context, out *Snapshot, st syncState) error
 	return nil
 }
 
-// count counts r, the next row, the newest first, and lists it among the unread while
-// they are fewer than MaxUnread.
-func (s *Snapshot) count(r *queries.ListThreadsRow) {
-	s.Status.Count++
-
-	if !r.Unread {
-		return
-	}
-
-	s.Status.Unread++
-
-	if len(s.Unread) < MaxUnread {
-		s.Unread = append(s.Unread, shownThread(r))
-	}
-}
-
 // status is the Status st records, with reading on or off.
 func (st syncState) status(reading bool) Status {
 	out := Status{
@@ -252,6 +336,7 @@ func shownThread(r *queries.ListThreadsRow) Thread {
 	return Thread{
 		ID: r.ThreadID, Owner: r.RepoOwner, Name: r.RepoName, Kind: item.Kind(r.ItemKind), Number: int(r.Number),
 		SubjectType: r.SubjectType, Title: r.SubjectTitle, Reason: r.Reason, UpdatedAt: stamp(r.UpdatedAt),
+		Unread: r.Unread, State: threadrules.State(r.SubjectState),
 	}
 }
 

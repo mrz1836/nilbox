@@ -1,4 +1,5 @@
 import type { AppNotification, BannerStatus, NotificationKind } from '../platform'
+import type { GitHubShow, GitHubTypeID } from './githubThreads'
 
 // The kinds of notification, as the backend names them (internal/notify), with what the
 // history calls each one and how Settings describes its banners.
@@ -117,6 +118,99 @@ export function entryTitle(entry: AppNotification): string | undefined {
   }
 
   return entry.itemKind === '' ? entry.repo : `${entry.repo} #${String(entry.number)}`
+}
+
+// quickViewMax is how many unread entries the bell's quick view lists; the rest wait on
+// the Notifications page.
+export const quickViewMax = 20
+
+// NotificationShow is what a list of the Notifications page shows: the unread alone, or
+// every entry, the read too.
+export type NotificationShow = 'unread' | 'all'
+
+// NotificationLists are the Notifications page's Show and Type on each tab, which the
+// window holds, so the toolbar's field counts what the list shows.
+export interface NotificationLists {
+  app: { show: NotificationShow; type: AppTypeID }
+  github: { show: GitHubShow; type: GitHubTypeID }
+}
+
+// startLists are the page's lists as the window opens: every entry, of every type, since
+// the page is the history.
+export const startLists: NotificationLists = {
+  app: { show: 'all', type: 'all' },
+  github: { show: 'all', type: 'all' },
+}
+
+// AppTypeID is one of the app tab's types, as its Type control offers it and type: names
+// it in the toolbar's field.
+export type AppTypeID = 'all' | 'review' | 'assigned' | 'snooze' | 'release' | 'run'
+
+// AppType is a type's name, the kinds of entry it lists (none for every kind), and what
+// the page says when it lists none.
+export interface AppType {
+  label: string
+  kinds: readonly NotificationKind[]
+  none: string
+}
+
+// appTypes are the app tab's types: a release's three kinds together, each other kind
+// alone.
+export const appTypes: Readonly<Record<AppTypeID, AppType>> = {
+  all: { label: 'All', kinds: [], none: 'No notifications yet.' },
+  review: { label: 'Reviews', kinds: ['review_requested'], none: 'No review requests.' },
+  assigned: { label: 'Assigned', kinds: ['assigned'], none: 'Nothing assigned to you.' },
+  snooze: { label: 'Snoozes', kinds: ['woke'], none: 'No snoozes ended early.' },
+  release: {
+    label: 'Releases',
+    kinds: ['release_done', 'release_published', 'release_failed'],
+    none: 'No releases.',
+  },
+  run: { label: 'Runs', kinds: ['run_failed'], none: 'No failed runs.' },
+}
+
+// appTypeOrder is the order the page offers the types in.
+export const appTypeOrder: readonly AppTypeID[] = ['all', 'review', 'assigned', 'snooze', 'release', 'run']
+
+// appTypeOf is the type an entry belongs to, or '' for a kind this build doesn't know.
+export function appTypeOf(entry: AppNotification): Exclude<AppTypeID, 'all'> | '' {
+  for (const id of appTypeOrder) {
+    if (id !== 'all' && appTypes[id].kinds.includes(entry.kind)) {
+      return id
+    }
+  }
+
+  return ''
+}
+
+// filterEntries picks the entries a list shows, in their order: the unread alone or all of
+// them, of one type or every type.
+export function filterEntries(
+  items: readonly AppNotification[],
+  show: NotificationShow,
+  type: AppTypeID,
+): AppNotification[] {
+  const { kinds } = appTypes[type]
+
+  return items.filter((n) => (show === 'all' || !n.read) && (kinds.length === 0 || kinds.includes(n.kind)))
+}
+
+// unreadOf is the ids of the unread entries about an item, which opening the item marks
+// read.
+export function unreadOf(items: readonly AppNotification[], itemId: number): number[] {
+  return itemId <= 0 ? [] : items.filter((n) => !n.read && n.itemId === itemId).map((n) => n.id)
+}
+
+// bannerEntry reports whether the log's entry a clicked banner names is the one it stood
+// for: the log hands an id out again once it is cleared, so a banner left from before
+// stands for the entry with its id only while that entry is about the banner's item, page,
+// or run.
+export function bannerEntry(entry: AppNotification, banner: { itemId: number; url: string; runId: number }): boolean {
+  return (
+    (banner.itemId > 0 && entry.itemId === banner.itemId) ||
+    (banner.runId > 0 && entry.runId === banner.runId) ||
+    (banner.url !== '' && entry.url === banner.url)
+  )
 }
 
 // bannerStatusText explains the state of the banners in Settings, or '' when they show.

@@ -120,8 +120,8 @@ is each entry left out.
 - **Agent profiles.** They are found in your home directory on every start.
 - **Script trust.** A file from elsewhere could otherwise pre-approve a repository's command,
   so each repository command asks again before its first run.
-- **The window's memory.** Its size, folded sections, tips put away, and the Scripts tab's last
-  page and clone.
+- **The window's memory.** Its size, folded sections, tips put away, the Notifications page's
+  tab, and the Scripts tab's last page and clone.
 - **Tool detection and install records.** The app finds the tools again.
 
 <br>

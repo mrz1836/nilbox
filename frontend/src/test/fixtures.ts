@@ -28,6 +28,7 @@ import type {
   LocationState,
   FileCheck,
   GitHubThread,
+  GitHubThreadList,
   GitHubThreadsPreview,
   GitHubThreadsSnapshot,
   GitHubThreadsStatus,
@@ -372,6 +373,7 @@ export function settings(overrides: Partial<Settings> = {}): Settings {
     collapsedSections: [],
     projectsTipDismissed: false,
     reviewTab: 'files',
+    notificationsTab: 'app',
     conversationOrder: 'oldest',
     inboxOrder: { statusSorted: [], statusOrder: [], kinds: {} },
     mergeMethod: 'repo',
@@ -1260,8 +1262,18 @@ export function githubThread(overrides: Partial<GitHubThread> = {}): GitHubThrea
     title: 'Add the widget cache',
     reason: 'review_requested',
     updatedAt: '2026-06-15T11:55:00Z',
+    unread: true,
+    state: 'OPEN',
     ...overrides,
   }
+}
+
+// githubThreadList is every notification the app mirrors, for the Notifications page: by
+// default none, read a minute ago. The status takes the same overrides as githubThreads'.
+export function githubThreadList(
+  overrides: { threads?: GitHubThread[]; status?: Partial<GitHubThreadsStatus> } = {},
+): GitHubThreadList {
+  return { threads: overrides.threads ?? [], status: threadsStatus(overrides.status) }
 }
 
 // avatarDataURL is a stand-in for a cached avatar; the image never decodes in jsdom.

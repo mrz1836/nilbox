@@ -162,9 +162,10 @@ func (InboxUpdated) window() {}
 
 // RevealItem asks for the window to come forward with an item in view, for a click on
 // the item in the menu bar or on its notification, or with the run a notification is about
-// open in Scripts → Runs. A request that names no item, URL, or run, such as a click on a
-// banner that stands for many items, only brings the window forward; the frontend is not
-// told.
+// open in Scripts → Runs. A click on a banner also names the notification it stands for,
+// which the window marks read. A request that names no item, URL, run, or notification,
+// such as a click on a banner that stands for many items, only brings the window forward;
+// the frontend is not told.
 type RevealItem struct {
 	// ItemID is the stored item to show, or 0 for none.
 	ItemID int64 `json:"itemId"`
@@ -178,6 +179,12 @@ type RevealItem struct {
 	// with that ID started then.
 	RunID      int64  `json:"runId"`
 	RunStarted string `json:"runStarted"`
+
+	// NotificationID is the notification a clicked banner stands for, which the window
+	// marks read, or 0 for none: a summary's, a session's, the menu bar's, or a session's
+	// focus. The window marks it only while the log's entry with that ID is about this
+	// item, URL, or run, since the log hands an ID out again once it is cleared.
+	NotificationID int64 `json:"notificationId"`
 }
 
 // Name returns NameRevealItem.

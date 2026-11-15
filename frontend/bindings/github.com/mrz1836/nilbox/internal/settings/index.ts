@@ -11,6 +11,7 @@ export {
     ListKey,
     ListKind,
     MergeMethod,
+    NotificationsTab,
     RefreshKind,
     ReviewTab,
     TextSize,

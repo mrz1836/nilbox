@@ -138,6 +138,20 @@
     pointer-events: none;
     user-select: none;
   }
+
+  /* A row of the Notifications page off screen skips rendering too, so a history of a
+     thousand costs little more than the rows in view; until laid out once it holds a
+     typical row's height. A row on its way to GitHub (aria-busy, on itself or inside)
+     renders in full, since WebKit stops a spinner inside content-visibility: auto. */
+  .notification-row {
+    content-visibility: auto;
+    contain-intrinsic-size: auto 4.25rem;
+  }
+
+  .notification-row[aria-busy='true'],
+  .notification-row:has([aria-busy='true']) {
+    content-visibility: visible;
+  }
 }
 
 @layer components {

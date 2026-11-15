@@ -31,8 +31,11 @@
 // mirrored and counted, never checked.
 //
 // The Syncer runs a pass as often as the notifications' refresh setting says, never sooner
-// than GitHub's X-Poll-Interval asks, and the window reads the mirror through Snapshot alone, which asks
-// GitHub nothing. Each pass that changes what Snapshot shows emits event.GHThreadsUpdated.
+// than GitHub's X-Poll-Interval asks, and the window reads the mirror through Snapshot (the
+// counts, the newest unread, and the clears) and List (every thread, read and unread, for
+// the Notifications page), neither of which asks GitHub anything. Each pass that changes
+// what either shows emits event.GHThreadsUpdated: Snapshot holds a fingerprint of every
+// thread List shows, so a change past the newest unread counts too.
 // A pass then decides which threads clear, queues them in the gh_thread_clears ledger, and
 // sends the ones due; the Syncer also runs a pass when the inbox tells of something the user
 // finished (Settler), when the rules change, and when a queued clear comes due.

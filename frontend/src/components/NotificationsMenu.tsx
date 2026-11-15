@@ -1,135 +1,61 @@
-import { useId, useState, type ReactNode } from 'react'
+import { useId } from 'react'
 
-import { formatAgo } from '../lib/time'
 import { formatCount } from '../lib/format'
-import { entryTitle, entryWhere, kindTitle } from '../lib/notifications'
-import { useMutation } from '../lib/useMutation'
+import { quickViewMax } from '../lib/notifications'
 import type { NotificationsState } from '../lib/useNotifications'
 import { usePopover } from '../lib/usePopover'
-import type { AppNotification, NotificationKind } from '../platform'
+import type { AppNotification } from '../platform'
 import { quietButtonClass } from './controls'
-import { AssignIcon, BellIcon, CircleCheckIcon, ClockIcon, EyeIcon, SlidersIcon, TagIcon, XIcon } from './icons'
+import { BellIcon, CheckIcon, HistoryIcon, SlidersIcon } from './icons'
+import { EntryRow } from './notifications/EntryRow'
 import { PopoverPanel } from './PopoverPanel'
-import { RelativeTime } from './RelativeTime'
 
 export interface NotificationsMenuProps {
   notifications: NotificationsState
-  // onOpen shows an entry's item: in the inbox while it is there, on GitHub after; an
-  // entry about no item opens its page, as a release does, or its run, as a failed run does.
+  // onOpen shows an entry's item, and marks the entry read: in the inbox while it is there,
+  // on GitHub after; an entry about no item opens its page, as a release does, or its run,
+  // as a failed run does.
   onOpen: (entry: AppNotification) => void
   // onSettings opens the notification settings.
   onSettings: () => void
+  // onViewAll opens the Notifications page on the app's own tab; without it there is no
+  // View all.
+  onViewAll?: (() => void) | undefined
 }
 
-// kindIcons are each kind's icon in the history. A kind this build does not know, as
-// another build may have stored, shows the bell.
-const kindIcons: Readonly<Partial<Record<NotificationKind, (props: { className?: string }) => ReactNode>>> = {
-  review_requested: EyeIcon,
-  assigned: AssignIcon,
-  woke: ClockIcon,
-  release_done: TagIcon,
-  release_published: CircleCheckIcon,
-  release_failed: XIcon,
-  run_failed: XIcon,
+// bellLabel names the bell with how many entries are unread. It never reads as the
+// Notifications tab's name alone, so the two are told apart.
+export function bellLabel(unread: number): string {
+  return unread === 0 ? 'No unread notifications' : `${formatCount(unread)} unread notifications`
 }
 
-// kindTones color the icon of a kind that tells of something gone wrong, as the Runs page
-// marks a failed run; every other kind's icon is muted.
-const kindTones: Readonly<Partial<Record<NotificationKind, string>>> = {
-  release_failed: 'text-danger',
-  run_failed: 'text-danger',
-}
-
-// bellLabel names the bell with how many entries are unread.
-function bellLabel(unread: number): string {
-  return unread === 0 ? 'Notifications' : `Notifications, ${formatCount(unread)} unread`
-}
-
-interface EntryProps {
-  entry: AppNotification
-  // fresh marks an entry that was unread when the history opened.
-  fresh: boolean
-  onOpen: () => void
-}
-
-// Entry is one notification in the history: what happened, to which item, and when.
-function Entry({ entry, fresh, onOpen }: EntryProps) {
-  const Icon = kindIcons[entry.kind] ?? BellIcon
-  const tone = kindTones[entry.kind] ?? 'text-muted'
-  const where = entryWhere(entry)
-
-  return (
-    <li>
-      <button
-        type="button"
-        onClick={onOpen}
-        title={entryTitle(entry)}
-        className="flex w-full items-start gap-3 px-4 py-2.5 text-left transition-colors hover:bg-raised focus-visible:bg-raised focus-visible:outline-none"
-      >
-        <span className={`relative mt-0.5 shrink-0 ${tone}`}>
-          <Icon className="size-4" />
-          {fresh && (
-            <span
-              data-testid="notification-unread"
-              aria-hidden="true"
-              className="absolute -top-0.5 -right-0.5 size-1.5 rounded-full bg-accent ring-2 ring-surface"
-            />
-          )}
-        </span>
-        <span className="min-w-0 flex-1">
-          <span className="flex items-baseline justify-between gap-3">
-            <span className="truncate text-xs font-medium text-muted">
-              {fresh && <span className="sr-only">Unread: </span>}
-              {kindTitle(entry.kind)}
-            </span>
-            <RelativeTime
-              iso={entry.createdAt}
-              show={formatAgo}
-              className="shrink-0 text-[0.6875rem] text-muted tabular-nums"
-            />
-          </span>
-          <span className="mt-0.5 block truncate text-sm font-medium">{entry.title}</span>
-          {where !== '' && <span className="block truncate text-xs text-muted">{where}</span>}
-        </span>
-      </button>
-    </li>
-  )
-}
-
-// NotificationsMenu is the toolbar's bell: how many notifications are unread, and a click
-// opens the history, newest first. Opening it marks everything read, while the entries
-// that were unread stay marked until it closes. An entry opens its item.
-export function NotificationsMenu({ notifications, onOpen, onSettings }: NotificationsMenuProps) {
+// NotificationsMenu is the toolbar's bell, a quick view of the unread notifications: how
+// many are unread, and a click opens the newest of them, up to quickViewMax. Opening it
+// marks nothing. An entry opens its item and is marked read; its Done (✓) marks it read
+// without opening it, which takes it off the bell and keeps it in the history; Mark all
+// done does that to them all. View all opens the Notifications page, which keeps the whole
+// history.
+export function NotificationsMenu({ notifications, onOpen, onSettings, onViewAll }: NotificationsMenuProps) {
   const id = useId()
   const popover = usePopover<HTMLButtonElement, HTMLDivElement>({ focus: 'panel' })
   const { open, toggle, close, triggerRef } = popover
-  const { log, error, markRead, markError, clear } = notifications
-  const items = log.items
-  const [fresh, setFresh] = useState<ReadonlySet<number>>(new Set())
-  const clearing = useMutation(clear)
-
-  const onToggle = () => {
-    if (!open) {
-      setFresh(new Set(items.filter((n) => !n.read).map((n) => n.id)))
-      clearing.reset()
-
-      if (log.unread > 0) {
-        markRead()
-      }
-    }
-
-    toggle()
-  }
+  const { log, error, markRead, markAllRead, markError } = notifications
+  const unread = log.items.filter((n) => !n.read)
+  const shown = unread.slice(0, quickViewMax)
+  const more = unread.length - shown.length
 
   const label = bellLabel(log.unread)
   const failure =
-    clearing.error !== ''
-      ? `Could not clear: ${clearing.error}`
-      : markError !== ''
-        ? `Could not mark them read: ${markError}`
-        : error !== ''
-          ? `Could not load the notifications: ${error}`
-          : ''
+    markError !== ''
+      ? `Could not mark them read: ${markError}`
+      : error !== ''
+        ? `Could not load the notifications: ${error}`
+        : ''
+
+  const viewAll = () => {
+    close()
+    onViewAll?.()
+  }
 
   return (
     <div className="relative">
@@ -141,7 +67,7 @@ export function NotificationsMenu({ notifications, onOpen, onSettings }: Notific
         aria-haspopup="dialog"
         aria-expanded={open}
         aria-controls={open ? id : undefined}
-        onClick={onToggle}
+        onClick={toggle}
         className="relative flex size-8 items-center justify-center rounded-md text-muted transition-colors hover:bg-raised hover:text-text aria-expanded:bg-raised aria-expanded:text-text"
       >
         <BellIcon className="size-[1.125rem]" />
@@ -167,15 +93,10 @@ export function NotificationsMenu({ notifications, onOpen, onSettings }: Notific
           <h2 id={`${id}-title`} className="text-sm font-semibold">
             Notifications
           </h2>
-          {items.length > 0 && (
-            <button
-              type="button"
-              onClick={() => {
-                void clearing.run()
-              }}
-              className={`ml-auto ${quietButtonClass}`}
-            >
-              Clear
+          {unread.length > 0 && (
+            <button type="button" onClick={markAllRead} className={`ml-auto ${quietButtonClass}`}>
+              <CheckIcon className="size-3.5" />
+              Mark all done
             </button>
           )}
         </div>
@@ -184,36 +105,63 @@ export function NotificationsMenu({ notifications, onOpen, onSettings }: Notific
             {failure}
           </p>
         )}
-        {items.length === 0 ? (
+        {log.items.length === 0 ? (
           <div className="px-4 py-6 text-center">
             <p className="text-sm font-medium">No notifications yet</p>
             <p className="mt-1 text-xs text-muted">
-              New review requests, assignments, and snoozes that end early show up here.
+              New review requests, assignments, snoozes that end early, releases, and failed runs show up here.
             </p>
           </div>
+        ) : unread.length === 0 ? (
+          <div className="px-4 py-6 text-center">
+            <p className="text-sm font-medium">You’re all caught up</p>
+            <p className="mt-1 text-xs text-muted">Past notifications are on the Notifications page.</p>
+          </div>
         ) : (
-          <ul aria-label="Notification history" className="min-h-0 flex-1 divide-y divide-border overflow-y-auto">
-            {items.map((entry) => (
-              <Entry
+          <ul aria-label="Unread notifications" className="min-h-0 flex-1 divide-y divide-border overflow-y-auto">
+            {shown.map((entry) => (
+              <EntryRow
                 key={entry.id}
+                compact
                 entry={entry}
-                fresh={fresh.has(entry.id) || !entry.read}
                 onOpen={() => {
                   close()
                   onOpen(entry)
                 }}
+                onDone={() => {
+                  markRead([entry.id])
+                }}
               />
             ))}
+            {more > 0 && (
+              <li className="px-4 py-2 text-xs text-muted">
+                {formatCount(more)} more unread
+                {onViewAll !== undefined && (
+                  <>
+                    {' · '}
+                    <button type="button" onClick={viewAll} className="font-medium text-text hover:underline">
+                      View all
+                    </button>
+                  </>
+                )}
+              </li>
+            )}
           </ul>
         )}
-        <div className="border-t border-border px-2 py-1.5">
+        <div className="flex items-center gap-1 border-t border-border px-2 py-1.5">
+          {onViewAll !== undefined && (
+            <button type="button" onClick={viewAll} className={quietButtonClass}>
+              <HistoryIcon className="size-3.5" />
+              View all
+            </button>
+          )}
           <button
             type="button"
             onClick={() => {
               close()
               onSettings()
             }}
-            className={quietButtonClass}
+            className={`ml-auto ${quietButtonClass}`}
           >
             <SlidersIcon className="size-3.5" />
             Notification settings

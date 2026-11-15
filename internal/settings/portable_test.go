@@ -112,6 +112,7 @@ func customize(t *testing.T, svc *Service, db *sql.DB, home string) string {
 		func() (Settings, error) { return svc.SetSectionCollapsed(ctx, ListAssigned, true) },
 		func() (Settings, error) { return svc.SetProjectsTipDismissed(ctx, true) },
 		func() (Settings, error) { return svc.SetReviewTab(ctx, ReviewTabComments) },
+		func() (Settings, error) { return svc.SetNotificationsTab(ctx, NotificationsTabGitHub) },
 		func() (Settings, error) { return svc.SetConversationOrder(ctx, ConversationNewest) },
 	} {
 		_, err := set()
@@ -136,6 +137,7 @@ func TestPortableSettingsRoundTrip(t *testing.T) {
 	assert.NotContains(t, string(data), "collapsed")
 	assert.NotContains(t, string(data), "cleanupCardDismissed")
 	assert.NotContains(t, string(data), "reviewTab")
+	assert.NotContains(t, string(data), "notificationsTab")
 	assert.NotContains(t, string(data), "conversationOrder")
 
 	var read Portable
@@ -167,6 +169,7 @@ func TestPortableSettingsRoundTrip(t *testing.T) {
 	assert.Empty(t, got.CollapsedSections)
 	assert.False(t, got.ProjectsTipDismissed)
 	assert.Equal(t, DefaultReviewTab, got.ReviewTab)
+	assert.Equal(t, DefaultNotificationsTab, got.NotificationsTab)
 	assert.Equal(t, DefaultConversationOrder, got.ConversationOrder)
 
 	again, err := part.PlanPortable(t.Context(), read)

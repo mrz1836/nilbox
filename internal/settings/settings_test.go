@@ -98,6 +98,7 @@ func TestPrefDefaults(t *testing.T) {
 		InboxOrder:          InboxOrder{StatusSorted: []ListKey{}, StatusOrder: []string{}, Kinds: map[ListKey]ListKind{}},
 		MergeMethod:         DefaultMergeMethod,
 		ReviewTab:           DefaultReviewTab,
+		NotificationsTab:    DefaultNotificationsTab,
 		ConversationOrder:   DefaultConversationOrder,
 		Integrations: integrationprefs.Config{
 			Switches: map[integrationprefs.ID]integrationprefs.Switch{
@@ -279,6 +280,7 @@ func TestSettersPersist(t *testing.T) {
 		InboxOrder:          InboxOrder{StatusSorted: []ListKey{}, StatusOrder: []string{}, Kinds: map[ListKey]ListKind{}},
 		MergeMethod:         DefaultMergeMethod,
 		ReviewTab:           DefaultReviewTab,
+		NotificationsTab:    DefaultNotificationsTab,
 		ConversationOrder:   DefaultConversationOrder,
 		Branches:            branchrules.Rules{Own: true, Protected: []string{"develop"}},
 		Integrations: integrationprefs.Config{
@@ -690,6 +692,10 @@ func TestSettersReturnTheStoredSettings(t *testing.T) {
 		{
 			"review tab", func() (Settings, error) { return svc.SetReviewTab(ctx, ReviewTabComments) },
 			func(s Settings) any { return s.ReviewTab }, ReviewTabComments,
+		},
+		{
+			"notifications tab", func() (Settings, error) { return svc.SetNotificationsTab(ctx, NotificationsTabGitHub) },
+			func(s Settings) any { return s.NotificationsTab }, NotificationsTabGitHub,
 		},
 		{
 			"conversation order", func() (Settings, error) { return svc.SetConversationOrder(ctx, ConversationNewest) },

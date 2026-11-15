@@ -64,7 +64,8 @@ export interface Notification {
     "createdAt": string;
 
     /**
-     * Read reports whether the user has seen it in the history.
+     * Read reports whether the user is done with it: opened it, clicked its banner, opened
+     * its item, or marked it done. Opening the history marks nothing.
      */
     "read": boolean;
 

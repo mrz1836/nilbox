@@ -58,6 +58,16 @@ export function Keep(clearIDs: number[] | null): $CancellablePromise<$models.Sna
 }
 
 /**
+ * List returns every thread the mirror holds for the account the last pass read, read and
+ * unread, the most recently updated first, with the Snapshot's status, from the database
+ * alone: it never asks GitHub. With reading turned off, or before a pass read an account,
+ * its status says so and its list is empty.
+ */
+export function List(): $CancellablePromise<$models.ThreadList> {
+    return $Call.ByID(3916309130);
+}
+
+/**
  * MarkDone marks the threads with ids done on GitHub at the user's click, the panel's Done,
  * which takes them out of the user's inbox there: any thread the mirror lists for the
  * account the last pass read, whatever its subject and whatever the rules say clearing

@@ -3,6 +3,7 @@
 
 export {
     Action,
+    State,
     Switch,
     Trigger
 } from "./models.js";

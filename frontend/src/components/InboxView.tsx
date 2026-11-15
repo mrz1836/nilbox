@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useEffect, useEffectEvent, useLayoutEffect, useRef, useState } from 'react'
 
 import { attempt } from '../lib/call'
 import { refText } from '../lib/format'
@@ -123,6 +123,9 @@ export interface InboxViewProps {
   // last chose, and onConversationOrder hears each choice, for the window to remember.
   conversationOrder?: ConversationOrder | undefined
   onConversationOrder?: ((order: ConversationOrder) => void) | undefined
+  // onItemOpened hears each item opened in its sheet, once per opening, however it was
+  // opened: the window marks the item's notifications read.
+  onItemOpened?: ((itemId: number) => void) | undefined
 }
 
 // SheetDrafts are the drafts of both sheets over the inbox: the review sheet's and the issue
@@ -275,6 +278,7 @@ export function InboxView({
   onReviewTab,
   conversationOrder = 'oldest',
   onConversationOrder,
+  onItemOpened,
 }: InboxViewProps) {
   const {
     snapshot,
@@ -380,6 +384,26 @@ export function InboxView({
 
   const [viewing, setViewing] = useState<Viewing | null>(null)
   const sheets = drafts !== undefined
+  // openedItem is the item last opened in its sheet, or 0 while none is, so each opening
+  // is heard once: the page shown again (Activity), or an effect run twice, opens nothing
+  // anew, and never undoes a Mark unread made since.
+  const openedItem = useRef(0)
+  const itemOpened = useEffectEvent((id: number) => {
+    onItemOpened?.(id)
+  })
+  const viewingId = viewing === null || !sheets ? 0 : viewing.id
+
+  useEffect(() => {
+    if (viewingId === openedItem.current) {
+      return
+    }
+
+    openedItem.current = viewingId
+
+    if (viewingId > 0) {
+      itemOpened(viewingId)
+    }
+  }, [viewingId])
   // shown is the snapshot the lists show, for the menu's review to find an item's list in
   // when it is chosen, without a new action for every snapshot.
   const shown = useRef(snapshot)
