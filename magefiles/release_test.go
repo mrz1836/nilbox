@@ -177,7 +177,7 @@ case "$*" in
     if [ -n "$FAKE_TAG" ] && [ "$4" = "refs/tags/$FAKE_TAG^{commit}" ]; then echo "${FAKE_TAG_AT:-headcommit}"; exit 0; fi
     exit 1 ;;
   "tag --points-at HEAD") if [ -z "$FAKE_TAG_AT" ]; then echo "$FAKE_TAG"; fi; exit 0 ;;
-  "status --porcelain") printf '%s' "$FAKE_DIRTY"; exit 0 ;;
+  "status --porcelain --untracked-files=normal --ignore-submodules=none") printf '%s' "$FAKE_DIRTY"; exit 0 ;;
 esac
 exit 128`)
 	fakeTool(t, dir, "go", `printf 'go GOARCH=%s %s\n' "$GOARCH" "$*" >> "$TOOLS_LOG"
@@ -312,7 +312,7 @@ func TestPackageRelease(t *testing.T) {
 		assert.Equal(t, []string{
 			"git rev-parse --verify --quiet refs/tags/v" + testVersion + "^{commit}",
 			"git rev-parse --verify --quiet HEAD^{commit}",
-			"git status --porcelain",
+			"git status --porcelain --untracked-files=normal --ignore-submodules=none",
 		}, logLines(t, log)[:3], "the tag and the working tree are checked before anything builds")
 		assert.NotContains(t, readFile(t, log), "main.updateFeed", "a release reads the feed GitHub serves")
 		assert.NotContains(t, readFile(t, log), "main.updateKey", "a release verifies with the key it pins")
@@ -694,6 +694,28 @@ func TestCheckCleanTree(t *testing.T) {
 		git(t, "checkout", "--", "main.go")
 		testutil.WriteFile(t, filepath.Join(dir, "extra.go"), "package main\n")
 		require.ErrorIs(t, checkCleanTree(), errDirtyTree, "an untracked file would be built in")
+	})
+
+	t.Run("a git config that hides untracked files hides none from the check", func(t *testing.T) {
+		isolateGit(t)
+		dir := inTempDir(t)
+
+		global := filepath.Join(t.TempDir(), "gitconfig")
+		testutil.WriteFile(t, global, "[status]\n\tshowUntrackedFiles = no\n[diff]\n\tignoreSubmodules = all\n")
+		t.Setenv("GIT_CONFIG_GLOBAL", global)
+
+		git(t, "init", "-q")
+		git(t, "commit", "-q", "--allow-empty", "-m", "first")
+		testutil.WriteFile(t, filepath.Join(dir, "extra.go"), "package main\n")
+
+		require.Empty(t, git(t, "status", "--porcelain"), "the user's config hides the untracked file from a plain status")
+
+		err := checkCleanTree()
+		require.ErrorIs(t, err, errDirtyTree)
+		assert.Contains(t, err.Error(), "?? extra.go")
+
+		git(t, "config", "status.showUntrackedFiles", "no")
+		require.ErrorIs(t, checkCleanTree(), errDirtyTree, "the clone's own config hides nothing either")
 	})
 
 	t.Run("many changes are counted", func(t *testing.T) {

@@ -339,10 +339,12 @@ func headTags() string {
 const maxDirtyNamed = 5
 
 // checkCleanTree fails unless git status finds the working tree exactly as HEAD holds it,
-// with no untracked file either (one in a package would be built into the release). A
-// status git can't read fails too.
+// with no untracked file either (one in a package would be built into the release). Its
+// flags beat the user's config (status.showUntrackedFiles, a submodule's ignore setting),
+// which could otherwise hide a change. A status git can't read fails too.
 func checkCleanTree() error {
-	out, err := exec.CommandContext(context.Background(), "git", "status", "--porcelain").Output()
+	out, err := exec.CommandContext(context.Background(), "git", "status", "--porcelain",
+		"--untracked-files=normal", "--ignore-submodules=none").Output()
 	if err != nil {
 		return fmt.Errorf("read the working tree's changes with git status: %w", err)
 	}

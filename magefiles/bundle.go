@@ -59,7 +59,8 @@ func prepareBuild() error {
 // assembleBundle builds the bundle spec describes from a built frontend: it compiles the
 // desktop binary, adds the Info.plist with the build's versions and the app icon, sets
 // every mode as an app's (whatever the umask), signs the bundle, sets the modes again for
-// the seal codesign wrote, and reports the binary's size. A previous bundle at the same path is removed first.
+// the seal codesign wrote, and reports the binary's size. A previous bundle at the same
+// path is removed first.
 func assembleBundle(spec bundleSpec) error {
 	contents := filepath.Join(spec.bundle, "Contents")
 	exe := filepath.Join(contents, "MacOS", brand.Slug)

@@ -151,19 +151,20 @@ It reads four environment variables:
 
 Before it builds anything, it checks the version, the identity, the keychain, that the private
 key is the other half of the key the app pins (`update.ReleaseKey`), the tag, and that the
-working tree is clean. Then it checks the brand files, builds the frontend, and builds the desktop binary twice, for `arm64` and `amd64`, with
-`-X main.flavor=release`, combining the two with `lipo` and checking `lipo -archs`. The
-bundle's `CFBundleShortVersionString` is the version's numeric core (`0.3.0` for
-`0.3.0-rc.1`), which is what macOS expects; the version the app reports keeps the whole. Every
-folder and executable in the bundle gets mode 0755 and every other file 0644, whatever the
-umask, so the zip and the disk image hold the same modes on any machine. It signs the bundle
-without a timestamp (`--timestamp=none`, which asks no server), verifies it
+working tree is clean, untracked files included, whatever your git config hides from `git
+status`. Then it checks the brand files, builds the frontend, and builds the desktop binary
+twice, for `arm64` and `amd64`, with `-X main.flavor=release`, combining the two with `lipo` and
+checking `lipo -archs`. The bundle's `CFBundleShortVersionString` is the version's numeric core
+(`0.3.0` for `0.3.0-rc.1`), which is what macOS expects; the version the app reports keeps the
+whole. Every folder and executable in the bundle gets mode 0755 and every other file 0644,
+whatever the umask, so the zip and the disk image hold the same modes on any machine. It signs
+the bundle without a timestamp (`--timestamp=none`, which asks no server), verifies it
 (`codesign --verify --deep --strict`), zips it and checks the zip (one top-level bundle, every
-name clean and listed once, and no links), makes, signs, and verifies
-the disk image, writes `SHA256SUMS`, then signs the manifest and verifies it against the pinned
-key, so a private key that doesn't match the app's fails here, never in a user's hands. Last, it
-checks the files as `magex app:verify` does and prints each one's size. While no release key is
-pinned, it refuses with "no release key pinned yet".
+name clean and listed once, and no links), makes, signs, and verifies the disk image, writes
+`SHA256SUMS`, then signs the manifest and verifies it against the pinned key, so a private key
+that doesn't match the app's fails here, never in a user's hands. Last, it checks the files as
+`magex app:verify` does and prints each one's size. While no release key is pinned, it refuses
+with "no release key pinned yet".
 
 **The keychain search list.** `codesign` finds an identity only in a keychain on the user's
 search list, even one named with `--keychain`. With `CODESIGN_KEYCHAIN` set, the target puts
@@ -177,8 +178,9 @@ it left in the release's folder. It never looks for the identity with `security 
 `<folder>/release.key` (PKCS#8 PEM, readable by you alone) and prints only its public half, in
 base64, to pin as `update.ReleaseKey`. It refuses a folder inside the repository, comparing
 folders as files, so another case of the repository's name, a link, or a firmlink doesn't get
-past it, and never overwrites a key, and `.gitignore` keeps `*.key`, `release.key`, and `*.p12` out all the same.
-Keep the private key backed up: without it, no install can verify an update again.
+past it, and never overwrites a key, and `.gitignore` keeps `*.key`, `release.key`, and
+`*.p12` out all the same. Keep the private key backed up: without it, no install can verify an
+update again.
 
 `magex app:verify dir=<folder>` checks a release's folder as the app will: its
 `manifest-darwin.json` (at most 16 KiB, no field the format lacks, every field in form, for
@@ -215,8 +217,8 @@ and it sits behind the `desktop` build tag:
   pass includes. Fake tools on an isolated `PATH` stand in for pnpm, go, rsvg-convert, and the
   macOS-only commands (`plutil`, `codesign`, `iconutil`, `open`, and, for packaging a release,
   `lipo`, `ditto`, `hdiutil`, and `security`), so CI on Linux runs the bundle assembly, the
-  release packaging, and the icon rendering steps too. On a Mac, the same tests also run `app:open`,
-  `app:run`, and `app:check` end to end against those fakes.
+  release packaging, and the icon rendering steps too. On a Mac, the same tests also run
+  `app:open`, `app:run`, and `app:check` end to end against those fakes.
 
 CI runs the fortress workflows on ubuntu for the Go code, `.github/workflows/frontend.yml` for
 `magex frontend:gate`, and `.github/workflows/sqlc.yml` for `magex db:check`. No macOS runner is
