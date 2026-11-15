@@ -65,7 +65,8 @@ function StatusLine({ status, flow, id }: { status: UpdateStatus | null; flow: R
 
 // UpdatesRow is the Updates row: the build's update status, Check for Updates, and what
 // the update offers (offerOf), as the banner offers it: Restart to update, Update, or Try
-// again, which run the window's one restart, and Download manually.
+// again, which run the window's one restart, and Download manually. In a narrow window the
+// buttons wrap under the status, as the banner's do, so its words keep their room.
 function UpdatesRow({ update }: { update: UpdateControl }) {
   const id = useId()
   const [marks] = useSetting('Updates')
@@ -101,8 +102,11 @@ function UpdatesRow({ update }: { update: UpdateControl }) {
   }
 
   return (
-    <div {...marks} className={`flex items-center justify-between gap-6 px-4 py-3.5 ${rowMatchClass}`}>
-      <div className="min-w-0">
+    <div
+      {...marks}
+      className={`flex flex-wrap items-center justify-between gap-x-6 gap-y-3 px-4 py-3.5 ${rowMatchClass}`}
+    >
+      <div className="min-w-0 flex-[1_1_16rem]">
         <p className="flex items-center gap-2 text-sm font-medium">
           Updates
           {status?.flavor === 'rehearsal' && <span className={chipClass}>Rehearsal build</span>}
@@ -111,7 +115,7 @@ function UpdatesRow({ update }: { update: UpdateControl }) {
         <ErrorText id={`${id}-error`} error={error} className="mt-1" />
       </div>
       {enabled && (
-        <div className="flex shrink-0 items-center gap-2">
+        <div className="ml-auto flex min-w-0 flex-wrap items-center justify-end gap-2">
           <button
             type="button"
             disabled={busy}
