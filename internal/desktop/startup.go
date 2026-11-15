@@ -16,6 +16,10 @@ type Failure struct {
 
 	// Message is its text: what went wrong, and what to do about it where that is known.
 	Message string
+
+	// Restore is the backup the dialog offers to put back beside Quit (see Offering), or
+	// nil for none.
+	Restore *Restore
 }
 
 // StartupFailure words err, which stopped the app from starting, for the error dialog
