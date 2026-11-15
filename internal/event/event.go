@@ -10,6 +10,7 @@ package event
 
 import (
 	"sync/atomic"
+	"time"
 
 	"github.com/mrz1836/nilbox/internal/timing"
 )
@@ -427,8 +428,14 @@ func (UpdateRestartFailed) Name() string { return NameUpdateRestartFailed }
 // helper, but the quit that should have ended the app was held (a modal panel, say), so the
 // app runs on while the helper waits for it to exit. It stays in Go: the shell asks to quit
 // again a few times and, failing that, shuts down in order and exits, so the helper
-// installs the update instead of opening this copy again beside it.
-type UpdateQuitHeld struct{}
+// installs the update instead of giving up and opening this copy again beside it.
+type UpdateQuitHeld struct {
+	// HelperStarted is when the restart began starting the helper, just before the
+	// runtime's restart was called: the helper's wait for the app to exit starts soon
+	// after, so the shell times its exit from here, never from when this arrived, which a
+	// quit slow to return delays.
+	HelperStarted time.Time
+}
 
 // Name returns NameUpdateQuitHeld.
 func (UpdateQuitHeld) Name() string { return NameUpdateQuitHeld }

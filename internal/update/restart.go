@@ -8,6 +8,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/mrz1836/nilbox/internal/brand"
 	"github.com/mrz1836/nilbox/internal/event"
@@ -187,9 +188,13 @@ func (e *Engine) restart(ctx context.Context, confirmed bool) error {
 	// by, and a quit held back would leave the helper to reopen this copy beside the new.
 	e.events.Emit(event.QuitConfirmed{Restarting: true})
 
+	// The helper's wait for this process to exit starts once it stands by, inside Restart,
+	// so a held quit's exit is timed from here.
+	started := e.clock.Now()
+
 	err = installer.Restart(ctx)
 	if err == nil {
-		e.finish(ctx, version)
+		e.finish(ctx, version, started)
 
 		return nil
 	}
@@ -199,12 +204,13 @@ func (e *Engine) restart(ctx context.Context, confirmed bool) error {
 
 // finish handles a restart whose helper stands by while the app runs on, its quit held:
 // the update stays staged and recorded for the helper, which installs it once this process
-// exits, and the shell is told to see the app out (event.UpdateQuitHeld).
-func (e *Engine) finish(ctx context.Context, version string) {
+// exits, and the shell is told to see the app out (event.UpdateQuitHeld), timed from
+// started, when the restart began starting the helper.
+func (e *Engine) finish(ctx context.Context, version string, started time.Time) {
 	e.logger.WarnContext(ctx, "the restart returned with the app still running; quitting to finish the update",
-		"version", version)
+		"version", version, "after", e.clock.Now().Sub(started).String())
 	e.change(func(st *state) { st.finishing = true })
-	e.events.Emit(event.UpdateQuitHeld{})
+	e.events.Emit(event.UpdateQuitHeld{HelperStarted: started})
 }
 
 // prepare checks a restart can begin and takes the operation for it: the app where it can

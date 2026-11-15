@@ -305,6 +305,15 @@ func TestARestartWhoseQuitIsHeldFinishesTheUpdate(t *testing.T) {
 		_ = os.MkdirAll(filepath.Join(staging, brand.Name+".app"), 0o700)
 	}
 
+	// The runtime's restart starts the helper, then the quit it asks for takes 4 seconds to
+	// come back.
+	var called time.Time
+
+	r.installer.onRestart = func() {
+		called = r.clock.Now()
+		r.clock.sleep(4 * time.Second)
+	}
+
 	exited, err := r.restart(t, false)
 	require.False(t, exited)
 	require.NoError(t, err, "the restart goes on: the app quits on its own")
@@ -323,7 +332,18 @@ func TestARestartWhoseQuitIsHeldFinishesTheUpdate(t *testing.T) {
 
 	assert.Equal(t, []event.Event{event.QuitConfirmed{Restarting: true}}, r.quitEvents(),
 		"the quit stays let through: nothing tells the shell to hold it again")
-	assert.Contains(t, r.events.All(), event.Event(event.UpdateQuitHeld{}), "the shell is told to see the app out")
+
+	var held []event.UpdateQuitHeld
+
+	for _, e := range r.events.All() {
+		if h, ok := e.(event.UpdateQuitHeld); ok {
+			held = append(held, h)
+		}
+	}
+
+	require.Len(t, held, 1, "the shell is told to see the app out")
+	assert.False(t, held[0].HelperStarted.After(called), "timed from before the runtime's restart started the helper")
+	assert.Less(t, called.Sub(held[0].HelperStarted), time.Second, "just before, not when the quit came back")
 
 	// Nothing else installs meanwhile.
 	exited, err = r.restart(t, true)

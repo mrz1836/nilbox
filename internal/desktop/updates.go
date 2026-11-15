@@ -29,9 +29,12 @@ type URLOpener interface {
 
 // After a restart to update whose quit was held (event.UpdateQuitHeld), the shell asks to
 // quit again every FinishQuitEvery, FinishQuitTries times, and, the app still running
-// FinishWithin after the hold, shuts down in order, waiting for that at most
-// FinishStopWithin, and exits: the update's helper, which can't be called back, waits 30
-// seconds for the app to exit before it gives up and installs nothing.
+// FinishWithin after the restart began starting the update's helper
+// (UpdateQuitHeld.HelperStarted), shuts down in order, waiting for that at most
+// FinishStopWithin, and exits. The helper, which can't be called back, waits 30 seconds
+// from just after that moment for the app to exit, before it gives up, installs nothing,
+// and opens this copy again; timing the exit from the event's arrival instead would lose
+// however long the held quit took to come back.
 const (
 	FinishQuitEvery  = 5 * time.Second
 	FinishQuitTries  = 4
@@ -90,30 +93,43 @@ func (s *Shell) openReleasePage(ctx context.Context) {
 
 // finishRestart sees the app out once a restart to update's quit was held, once: every quit
 // stays let through, and seeOut, apart from the tracked work, asks to quit again, then
-// shuts down in order and exits.
-func (s *Shell) finishRestart() {
+// shuts down in order and exits FinishWithin after helperStarted, when the restart began
+// starting the update's helper (or after now, when that wasn't told).
+func (s *Shell) finishRestart(helperStarted time.Time) {
 	if !s.finishing.CompareAndSwap(false, true) {
 		return
 	}
 
 	s.restarting.Store(true)
-	s.logger.Warn("the restart to update's quit was held; quitting again to finish the update",
-		"within", FinishWithin.String())
 
-	go s.seeOut()
+	left := FinishWithin
+	if !helperStarted.IsZero() {
+		left -= s.clock.Now().Sub(helperStarted)
+	}
+
+	s.logger.Warn("the restart to update's quit was held; quitting again to finish the update",
+		"within", max(left, 0).String())
+
+	go s.seeOut(left)
 }
 
 // seeOut asks the app to quit every FinishQuitEvery, FinishQuitTries times, each ask on a
 // goroutine of its own, since a quit waits for the main thread whatever holds it; and, the
-// process still running FinishWithin on, exits once the shell has stopped, which closes the
-// data in order, or FinishStopWithin later, whichever comes first, so the update's helper
-// still finds the app gone within its wait. A quit that goes through ends the process
-// before then.
-func (s *Shell) seeOut() {
+// process still running once left has passed, leaves (shuts down in order and exits), so
+// the update's helper still finds the app gone within its wait. With no time left, it
+// leaves at once. A quit that goes through ends the process before then.
+func (s *Shell) seeOut(left time.Duration) {
+	if left <= 0 {
+		s.logger.Warn("the update's helper is nearly done waiting; shutting down in order to finish the update")
+		s.leave()
+
+		return
+	}
+
 	asks := time.NewTicker(FinishQuitEvery)
 	defer asks.Stop()
 
-	deadline := time.NewTimer(FinishWithin)
+	deadline := time.NewTimer(left)
 	defer deadline.Stop()
 
 	for tries := 0; ; {
@@ -127,13 +143,19 @@ func (s *Shell) seeOut() {
 			}
 		case <-deadline.C:
 			s.logger.Warn("the app still runs; shutting down in order to finish the update")
-			s.stopWithin(FinishStopWithin)
-			s.logger.Info("exiting, so the update's helper installs the update")
-			s.exit(0)
+			s.leave()
 
 			return
 		}
 	}
+}
+
+// leave exits once the shell has stopped, which closes the data in order, or
+// FinishStopWithin later, whichever comes first.
+func (s *Shell) leave() {
+	s.stopWithin(FinishStopWithin)
+	s.logger.Info("exiting, so the update's helper installs the update")
+	s.exit(0)
 }
 
 // stopWithin stops the shell, which closes the data in order, waiting for it at most

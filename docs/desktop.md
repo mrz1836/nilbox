@@ -253,10 +253,11 @@ window's banner and Settings → About's controls are still to come.
 - **A quit held back.** If something holds back the quit a restart asks for, the update is
   already staged and its helper is waiting, so the app sees itself out: the menu bar says
   **Finishing the update…** (with Check for Updates… and the restart off), the app asks to
-  quit again every five seconds, four times, and if it still runs 25 seconds after the hold,
-  it closes its data in order (waiting at most three seconds for that) and exits, before the
-  helper's 30 seconds run out. The staging folder and the note the new version reads are
-  kept, so the update installs as usual. Each step is in the app's log.
+  quit again every five seconds, four times, and if it still runs 25 seconds after the
+  restart started the update's helper (timed from then, not from when the held quit came
+  back), it closes its data in order (waiting at most three seconds for that) and exits,
+  before the helper's 30 seconds run out. The staging folder and the note the new version
+  reads are kept, so the update installs as usual. Each step is in the app's log.
 - **After the restart.** The new version's first start reads how it went, from a note the old
   one left: updated, or, when the old version opens again instead, why it didn't install, in
   words, with the helper's log kept as `<data>/logs/update-<version>.log`. Either way, it
@@ -347,10 +348,10 @@ file and its folder, to rename it `nilbox.db` before opening Nilbox again.
   in `<data>/logs/update-<version>.log`. The app and your data are as they were. The menu
   bar offers **Try Updating to 0.3.0 Again** when trying again may work, or **Download 0.3.0
   Manually…** when the update itself was at fault (see *An update that didn't install*).
-- **Finishing the update…** The app exits on its own within 25 seconds, and the new version
-  opens. Should the helper give up first (it waits 30 seconds), nothing changes: open Nilbox
-  again, and it says it didn't quit in time, and the menu offers **Try Updating to 0.3.0
-  Again**.
+- **Finishing the update…** The app exits on its own within 28 seconds of the restart
+  starting the update's helper, and the new version opens. Should the helper give up first
+  (it waits 30 seconds), it installs nothing and opens the old version again: it says it
+  didn't quit in time, and the menu offers **Try Updating to 0.3.0 Again**.
 - **A broken install.** If the swap fails and putting the old app back fails too (rare), the
   old app is `Nilbox.app.bak` beside where the app was. Quit Nilbox, delete what is left of
   `Nilbox.app`, and rename `Nilbox.app.bak` to `Nilbox.app`, or install Nilbox again from its

@@ -457,6 +457,10 @@ type installer struct {
 	// held has Restart return with the app running, as when something held the quit;
 	// otherwise it waits, as the app would exit inside it, until ctx ends.
 	held bool
+
+	// returnsAfter is how long a held Restart takes to come back once it started the
+	// helper, as a quit slow to return.
+	returnsAfter time.Duration
 }
 
 func (i installer) Install(_ context.Context, _, version string, _ int64, _ string) error {
@@ -469,6 +473,8 @@ func (i installer) Restart(ctx context.Context) error {
 	i.log.add("installer restarted")
 
 	if i.held {
+		time.Sleep(i.returnsAfter)
+
 		return nil
 	}
 
@@ -524,8 +530,9 @@ type realOpts struct {
 	elsewhere bool
 
 	// held has the installer's restart return with the app running, as when something held
-	// the quit.
-	held bool
+	// the quit, returnsAfter after it started the helper.
+	held         bool
+	returnsAfter time.Duration
 
 	// going are the runs going in the app.
 	going []update.Run
@@ -556,7 +563,7 @@ func realUpdate(t *testing.T, log *journal, relay *event.Relay, opts realOpts) *
 		Writable: func(string) bool { return true },
 		Backup:   dataBackup{log: log}, Runs: runs{going: opts.going}, Events: relay,
 	})
-	engine.Attach(installer{log: log, held: opts.held})
+	engine.Attach(installer{log: log, held: opts.held, returnsAfter: opts.returnsAfter})
 
 	return update.NewService(engine)
 }
@@ -729,6 +736,73 @@ func TestARestartWhoseQuitIsHeldSeesTheAppOut(t *testing.T) {
 		assert.Equal(t, desktop.FinishQuitTries, r.app.quitCount(), "no more asks once the tries are spent")
 		assert.Contains(t, r.logs.String(), "the app still runs; shutting down in order to finish the update")
 	})
+}
+
+func TestAHeldQuitIsTimedFromTheHelpersStartNotFromWhenTheQuitCameBack(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		returns  time.Duration // how long the held quit took to come back
+		asks     int           // the asks to quit before the exit
+		lastWord string        // what the log says as the shell leaves
+	}{
+		{
+			name: "the quit came back 4 seconds on", returns: 4 * time.Second, asks: desktop.FinishQuitTries,
+			lastWord: "the app still runs; shutting down in order to finish the update",
+		},
+		{
+			name: "the quit came back after the helper's start plus FinishWithin", returns: 27 * time.Second,
+			lastWord: "the update's helper is nearly done waiting; shutting down in order to finish the update",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			synctest.Test(t, func(t *testing.T) {
+				r := newRig()
+				relay := &event.Relay{}
+				u := realUpdate(t, r.log, relay, realOpts{held: true, returnsAfter: tt.returns})
+				exited := &exits{}
+				s := r.shell(withUpdates(u), func(cfg *desktop.Config) {
+					cfg.QuitGuard, cfg.Exit = quitGuard{}, exited.exit
+				})
+				relay.Connect(s)
+
+				s.Start(t.Context())
+				s.Launched()
+				synctest.Wait()
+
+				_, err := u.CheckNow(t.Context())
+				require.NoError(t, err)
+
+				_, err = u.Download(t.Context())
+				require.NoError(t, err)
+
+				// The helper's 30 seconds start as the restart starts it, here.
+				helperStarted := time.Now()
+
+				s.UpdateAction(menubar.UpdateRestart)
+				synctest.Wait()
+
+				exitBy := max(desktop.FinishWithin, tt.returns)
+
+				time.Sleep(exitBy - time.Second)
+				synctest.Wait()
+				assert.Empty(t, exited.all(), "not yet")
+
+				time.Sleep(time.Second)
+				synctest.Wait()
+				assert.Equal(t, []int{0}, exited.all(), "exited %s after the helper started", exitBy)
+				assert.Less(t, time.Since(helperStarted), 30*time.Second, "within the helper's 30 seconds")
+				assert.Equal(t, tt.asks, r.app.quitCount())
+				assert.Equal(t, []string{dataClosed}, r.lines(dataClosed), "the shell shut down in order")
+				assert.Contains(t, r.logs.String(), tt.lastWord)
+			})
+		})
+	}
 }
 
 func TestAShutdownThatHangsStillExitsBeforeTheHelperGivesUp(t *testing.T) {

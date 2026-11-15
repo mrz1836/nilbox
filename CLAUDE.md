@@ -903,9 +903,11 @@ app:lint` reads.
   `event.UpdateQuitHeld` has the shell see the app out (`Shell.finishRestart`): every quit
   stays let through, it asks to quit again every `desktop.FinishQuitEvery` (5 s),
   `FinishQuitTries` (4) times, off the main thread, and, the app still running
-  `FinishWithin` (25 s) after the hold, stops the shell in order (closing the database,
-  waited for at most `FinishStopWithin`, 3 s) and exits (`desktop.Config.Exit`, `os.Exit`
-  but in tests), before the helper's 30-second wait ends, logging each step. `HideBanner` (Later) hides the banner of the version found for a day, `ShowBanner`
+  `FinishWithin` (25 s) after `UpdateQuitHeld.HelperStarted` (stamped by the engine just
+  before `Installer.Restart`, since the helper's wait starts inside it, and at once when
+  that is already past), stops the shell in order (closing the database, waited for at
+  most `FinishStopWithin`, 3 s) and exits (`desktop.Config.Exit`, `os.Exit` but in tests),
+  before the helper's 30-second wait ends, logging each step. `HideBanner` (Later) hides the banner of the version found for a day, `ShowBanner`
   lifts it, `AckUpdated` forgets the toast, and `ShowInstallLog` shows the kept log in
   Finder. It writes only the `update.*` state keys (`update.lastCheck`, `update.notified`,
   `update.bannerHiddenUntil`, `update.lastRunRelease`, `update.pendingInstall`,

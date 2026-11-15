@@ -574,7 +574,7 @@ func (s *Shell) appEvent(e event.Event) {
 	case event.UpdateRestartFailed:
 		s.restarting.Store(false)
 	case event.UpdateQuitHeld:
-		s.finishRestart()
+		s.finishRestart(e.HelperStarted)
 	case event.SetupFinished:
 		s.setupFinished()
 	case event.ResetRequested:
