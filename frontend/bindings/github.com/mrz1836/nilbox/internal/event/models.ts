@@ -213,6 +213,23 @@ export interface ToolsUpdated {
 }
 
 /**
+ * UpdateRestartRequested asks the window to restart to update, as the menu bar's Restart
+ * to Update does: every restart starts in the window, which asks first when restarting
+ * would lose something.
+ */
+export interface UpdateRestartRequested {
+}
+
+/**
+ * UpdatesUpdated says the app's update changed: a check started or ended, a download got
+ * further (a few times a second at most), a version is ready, a restart began or failed,
+ * or Later was chosen or lifted. The window reads the update's status again, and the menu
+ * bar redraws.
+ */
+export interface UpdatesUpdated {
+}
+
+/**
  * WorktreesPhase is how far a listing of the worktrees has got.
  */
 export type WorktreesPhase = "clones" | "listing" | "checking" | "github";

@@ -61,6 +61,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/svcstatus"
 	"github.com/mrz1836/nilbox/internal/timing"
 	"github.com/mrz1836/nilbox/internal/toolinstall"
+	"github.com/mrz1836/nilbox/internal/update"
 	"github.com/mrz1836/nilbox/internal/worklog"
 	"github.com/mrz1836/nilbox/internal/worktrees"
 )
@@ -121,6 +122,19 @@ type Options struct {
 	// magex app:fresh opens, in place of the user's own; the window says it shows test
 	// data.
 	Sandbox bool
+
+	// Flavor is the kind of build (main.flavor): a release or a rehearsal updates itself,
+	// and any other build never does. Release is the version it compares a newer one with.
+	Flavor update.Flavor
+
+	// UpdateFeed is the folder a rehearsal reads its releases from, and UpdateKey the raw
+	// public key it trusts; a release ignores both and trusts update.ReleaseKey alone.
+	UpdateFeed string
+	UpdateKey  string
+
+	// Bundle is the running app's bundle, as the desktop bootstrap finds it, or "" outside
+	// one: an update is staged beside it, and the start cleans up what one leaves there.
+	Bundle string
 }
 
 // Core is the assembled app: the database and every service.
@@ -153,6 +167,7 @@ type Core struct {
 	Backup         *backup.Service
 	ServiceStatus  *svcstatus.Service
 	Setup          *setup.Service
+	Updates        *update.Service
 
 	// ShellSettings are the settings the desktop shell reads when the app launches. They
 	// are not bound.
@@ -242,6 +257,16 @@ type Core struct {
 	// work. It is not bound.
 	ServiceStatusChecker *svcstatus.Checker
 
+	// UpdateEngine checks for, downloads, and installs the app's updates; Updates is its
+	// bound face. The desktop shell attaches the Installer it restarts with (Attach) once
+	// the desktop runtime is created. It is not bound.
+	UpdateEngine *update.Engine
+
+	// UpdateWorker reads how the last restart to update went, cleans up after it, and
+	// runs the timed checks (a minute in, then every six hours by the wall clock). The
+	// desktop shell runs it as deferred work. It is not bound.
+	UpdateWorker *update.Worker
+
 	// HooksScans holds the Hooks page's scans, which run apart from the window's calls, to
 	// the app's lifetime: the app's quit ends them, and the desktop shell, which runs it as
 	// a worker, waits for them before it closes the database. It is not bound.
@@ -328,7 +353,7 @@ func (c *Core) Services() []any {
 	return []any{
 		c.Settings, c.Profiles, c.Prompts, c.LaunchDefaults, c.Inbox, c.Launcher, c.Worktrees, c.Notifications,
 		c.AppInfo, c.Budget, c.Sessions, c.Review, c.Issues, c.Integrations, c.ScriptRuns, c.Release, c.Hooks,
-		c.Scripts, c.GHThreads, c.Backup, c.ServiceStatus, c.Setup,
+		c.Scripts, c.GHThreads, c.Backup, c.ServiceStatus, c.Setup, c.Updates,
 	}
 }
 
@@ -558,6 +583,14 @@ func assemble(pool *sql.DB, info startup, opts Options, logger *slog.Logger) *Co
 	runs := newRuns(pool, opts, clones, terminals, runner, dispatcher, logger)
 	scriptRuns := scriptrun.NewService(runs)
 
+	// The app's updates read GitHub's release download hosts through the shared client, no
+	// token and no budget, in a release build alone, and a change of what to do when a new
+	// version is out wakes their check.
+	updateEngine, updateWorker := newUpdates(pool, opts, updateDeps{
+		client: client, runs: runs, history: scriptRuns, dispatcher: dispatcher, reveal: revealer(runner),
+	}, logger)
+	followed.updates = updateWorker
+
 	tools := integrations.NewService(integrations.Config{
 		Prefs: prefsstore.New(pool, opts.Clock), Env: shellEnv, Releases: latestReleases{tokens: tokens, client: client},
 		Home: opts.Home, Clock: opts.Clock, Events: opts.Events, Logger: logger, Runner: toolRunners, DB: pool,
@@ -667,7 +700,7 @@ func assemble(pool *sql.DB, info startup, opts Options, logger *slog.Logger) *Co
 			Finder:    search,
 			Runner:    versionRunner,
 			Home:      opts.Home,
-			State:     bugReportState{settings: prefs, tools: tools, logger: logger},
+			State:     bugReportState{settings: prefs, tools: tools, updates: updateEngine, logger: logger},
 		}),
 		Budget: budget.NewService(budget.Config{
 			Tracker: tracker, Reader: rateReader{tokens: tokens, client: client}, Clock: opts.Clock,
@@ -710,6 +743,9 @@ func assemble(pool *sql.DB, info startup, opts Options, logger *slog.Logger) *Co
 		Hooks:                 hookPage,
 		HooksScans:            hooks.NewScans(hookPage),
 		Scripts:               repoScripts,
+		Updates:               update.NewService(updateEngine),
+		UpdateEngine:          updateEngine,
+		UpdateWorker:          updateWorker,
 		tokens:                tokens,
 		BudgetSaver:           budget.NewSaver(tracker, keeper, logger),
 		client:                client,

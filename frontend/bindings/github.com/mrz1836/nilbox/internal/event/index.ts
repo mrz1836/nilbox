@@ -23,6 +23,8 @@ export type {
     ServiceStatusUpdated,
     SessionsUpdated,
     ToolsUpdated,
+    UpdateRestartRequested,
+    UpdatesUpdated,
     WorktreesProgress,
     WorktreesUpdated
 } from "./models.js";

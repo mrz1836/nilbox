@@ -451,6 +451,7 @@ export function settings(overrides: Partial<Settings> = {}): Settings {
     },
     serviceStatus: statusWatch(),
     statusProviders: statusProviders(),
+    updateMode: 'download',
     ...overrides,
   }
 }

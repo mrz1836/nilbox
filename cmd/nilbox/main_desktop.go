@@ -62,6 +62,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/settings"
 	"github.com/mrz1836/nilbox/internal/setup"
 	"github.com/mrz1836/nilbox/internal/svcstatus"
+	"github.com/mrz1836/nilbox/internal/update"
 	"github.com/mrz1836/nilbox/internal/worktrees"
 )
 
@@ -369,6 +370,7 @@ func binders() []func(svc any) (application.Service, bool) {
 		binder[sessions.Service], binder[review.Service], binder[issues.Service], binder[integrations.Service],
 		binder[scriptrun.Service], binder[releases.Service], binder[hooks.Service], binder[scripts.Service],
 		binder[ghthreads.Service], binder[backup.Service], binder[svcstatus.Service], binder[setup.Service],
+		binder[update.Service],
 	}
 }
 

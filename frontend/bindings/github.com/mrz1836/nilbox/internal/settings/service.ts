@@ -49,6 +49,9 @@ import * as statusprefs$0 from "../statusprefs/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
 import * as threadrules$0 from "../threadrules/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
+import * as updateprefs$0 from "../updateprefs/models.js";
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
@@ -596,6 +599,16 @@ export function SetToastSeconds(seconds: number): $CancellablePromise<$models.Se
  */
 export function SetTrustedBots(bots: string[] | null): $CancellablePromise<$models.Settings> {
     return $Call.ByID(2221826650, bots);
+}
+
+/**
+ * SetUpdateMode stores what the app does when a new version is out (see the updateprefs
+ * package): download it and tell the user, just tell them, or make no timed checks. It
+ * returns the settings with it. Once it is stored, an event.UpdatesChanged is emitted, so
+ * the update check follows the new choice at once.
+ */
+export function SetUpdateMode(mode: updateprefs$0.Mode): $CancellablePromise<$models.Settings> {
+    return $Call.ByID(2663021563, mode);
 }
 
 /**

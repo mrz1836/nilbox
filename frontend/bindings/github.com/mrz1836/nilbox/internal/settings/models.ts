@@ -34,6 +34,9 @@ import * as statusprefs$0 from "../statusprefs/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
 import * as threadrules$0 from "../threadrules/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
+import * as updateprefs$0 from "../updateprefs/models.js";
 
 /**
  * ConversationOrder is the order the issue sheet and the review sheet list a conversation's
@@ -495,6 +498,12 @@ export interface Settings {
      * settings page to list.
      */
     "statusProviders": statusprefs$0.Provider[] | null;
+
+    /**
+     * UpdateMode is what the app does when a new version is out: download it and tell the
+     * user, just tell them, or make no timed checks (see the updateprefs package).
+     */
+    "updateMode": updateprefs$0.Mode;
 }
 
 /**
