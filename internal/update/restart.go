@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
 	"strconv"
 	"strings"
 
@@ -28,8 +29,15 @@ var (
 	// desktop runtime attached an Installer.
 	ErrNoInstaller = errors.New("this build can't install updates")
 
+	// ErrDamaged is returned by a restart whose downloaded update no longer matches its
+	// manifest, or is gone.
+	ErrDamaged = errors.New("the downloaded update is damaged")
+
 	// errNoBackup is why a restart in a build that backs nothing up installs nothing.
 	errNoBackup = errors.New("nothing backs up the database")
+
+	// errQuitHeld is why a restart whose Installer returned with the app running failed.
+	errQuitHeld = errors.New("the restart returned without the app quitting")
 
 	// ErrOff is returned by what a build that can't update refuses.
 	ErrOff = errors.New("updates are off in this build")
@@ -110,20 +118,25 @@ func where(r Run) string {
 // restart installs the update that is ready and restarts into it, as the window asks once
 // the user clicks Restart to update:
 //
-//  1. While runs go in the app, a restart the user hasn't confirmed is refused with a
-//     RunsGoingError naming them.
-//  2. The database is backed up; a backup that fails stops the restart.
-//  3. The install about to happen is recorded (KeyPendingInstall), for the next start to
+//  1. It refuses where the app can't replace itself, and, unless confirmed, while runs go
+//     in the app, with a RunsGoingError naming them.
+//  2. The zip is checked against its manifest again; a damaged or missing one is dropped,
+//     to be downloaded again, and nothing else happens.
+//  3. The database is backed up (a backup this engine took under BackupReuse ago serves
+//     again); a backup that fails stops the restart.
+//  4. The install about to happen is recorded (KeyPendingInstall), for the next start to
 //     read how it went.
-//  4. The Installer stages the update beside the running bundle.
-//  5. The quit is let through (event.QuitConfirmed, Restarting), whatever runs go, since a
+//  5. The Installer stages the update beside the running bundle.
+//  6. Unless confirmed, a run that started meanwhile refuses it as in step 1.
+//  7. The quit is let through (event.QuitConfirmed, Restarting), whatever runs go, since a
 //     held quit would leave the runtime's helper to reopen this copy beside the new one;
 //     then the Installer restarts, and the app exits inside it.
 //
-// Everything the next start needs is written before step 5. Any failure before the app
-// quits goes back to ready, with the failure as LastError, the record cleared, and the
-// staging folder removed; once the quit was let through, the shell holds a quit while runs
-// go again (event.UpdateRestartFailed).
+// Everything the next start needs is written before step 7. Any failure before the app
+// quits goes back to ready, with the failure as LastError worded with no path, the record
+// cleared, and the staging folder removed; once the quit was let through, the shell holds a
+// quit while runs go again (event.UpdateRestartFailed). So does a restart that returns with
+// the app still running, as one whose quit something held.
 func (e *Engine) restart(ctx context.Context, confirmed bool) error {
 	installer, entry, release, err := e.prepare(ctx, confirmed)
 	if err != nil {
@@ -134,27 +147,29 @@ func (e *Engine) restart(ctx context.Context, confirmed bool) error {
 
 	version := entry.Manifest.Version
 
+	if err = e.checkReady(ctx, entry); err != nil {
+		return err
+	}
+
 	e.change(func(st *state) { st.installing, st.lastErr = true, "" })
 
-	if e.backup == nil {
-		return e.rollBack(ctx, version, false, uierr.New("Couldn't back up your data first, so nothing was installed.", errNoBackup))
+	if err = e.backUp(ctx); err != nil {
+		return e.rollBack(ctx, version, false, err)
 	}
-
-	backup, err := e.backup.BackUp(ctx)
-	if err != nil {
-		return e.rollBack(ctx, version, false, uierr.New("Couldn't back up your data first: "+uierr.Message(err), err))
-	}
-
-	e.logger.InfoContext(ctx, "backed up the data before installing the update", "version", version,
-		"backup", e.tilde(backup))
 
 	if err = e.recordPending(ctx, version); err != nil {
-		return e.rollBack(ctx, version, false, uierr.New("Couldn't get ready to install "+version+": "+uierr.Message(err), err))
+		return e.rollBack(ctx, version, false, uierr.New("Couldn't get ready to install "+version+".", err))
 	}
 
 	m := entry.Manifest
 	if err = installer.Install(ctx, entry.Zip, version, m.Size, m.SHA512); err != nil {
-		return e.rollBack(ctx, version, false, uierr.New("Couldn't install "+version+": "+uierr.Message(err), err))
+		return e.rollBack(ctx, version, false, uierr.New("Couldn't get "+version+" ready to install.", err))
+	}
+
+	if !confirmed && e.runs != nil && e.runs.Active() {
+		e.undo(ctx, false)
+
+		return e.runsGoing(ctx)
 	}
 
 	e.logger.InfoContext(ctx, "restarting into the update", "from", e.current, "to", version)
@@ -165,24 +180,26 @@ func (e *Engine) restart(ctx context.Context, confirmed bool) error {
 
 	err = installer.Restart(ctx)
 	if err == nil {
-		e.logger.ErrorContext(ctx, "the restart returned without the app quitting; the update's helper may open "+
-			"the app again", "version", version)
-
-		return nil
+		// The app runs on: something held the quit. The runtime's helper waits a moment for
+		// the app to quit, and the runtime refuses another restart in this run.
+		return e.rollBack(ctx, version, true, uierr.New("Couldn't restart into "+version+", because "+brand.Name+
+			" didn't quit. Quit "+brand.Name+" and open it again to finish updating.", errQuitHeld))
 	}
 
-	return e.rollBack(ctx, version, true, uierr.New("Couldn't restart into "+version+": "+uierr.Message(err), err))
+	return e.rollBack(ctx, version, true, uierr.New("Couldn't restart into "+version+".", err))
 }
 
-// prepare checks a restart can begin and takes the operation for it: the update ready, an
-// Installer attached, nothing downloading, and, unless confirmed, no run going in the app.
-// It returns what lets go of the operation.
+// prepare checks a restart can begin and takes the operation for it: the app where it can
+// replace itself, an Installer attached, nothing downloading, the update ready, and, unless
+// confirmed, no run going in the app. It returns what lets go of the operation.
 func (e *Engine) prepare(ctx context.Context, confirmed bool) (Installer, Entry, func(), error) {
 	e.mu.Lock()
 	installer, downloading := e.installer, e.st.downloading != nil
 	e.mu.Unlock()
 
 	switch {
+	case !e.location.OK:
+		return nil, Entry{}, nil, locationError()
 	case installer == nil:
 		return nil, Entry{}, nil, uierr.New("This build can't install updates.", ErrNoInstaller)
 	case downloading:
@@ -204,15 +221,101 @@ func (e *Engine) prepare(ctx context.Context, confirmed bool) (Installer, Entry,
 	if !confirmed && e.runs != nil && e.runs.Active() {
 		release()
 
-		runs, listErr := e.runs.Going(ctx)
-		if listErr != nil {
-			e.logger.WarnContext(ctx, "could not list the runs a restart would stop", "error", listErr)
-		}
-
-		return nil, Entry{}, nil, newRunsGoing(runs)
+		return nil, Entry{}, nil, e.runsGoing(ctx)
 	}
 
 	return installer, *st.ready, release, nil
+}
+
+// runsGoing refuses a restart while runs go, naming them as they can be listed.
+func (e *Engine) runsGoing(ctx context.Context) error {
+	runs, err := e.runs.Going(ctx)
+	if err != nil {
+		e.logger.WarnContext(ctx, "could not list the runs a restart would stop", "error", err)
+	}
+
+	return newRunsGoing(runs)
+}
+
+// checkReady checks the zip of the update ready against its manifest once more. A zip
+// damaged or gone since is dropped from the cache, the version is found but no longer
+// downloaded (available), the Worker downloads it again when the update downloads on its
+// own, and the restart is refused with words saying so.
+func (e *Engine) checkReady(ctx context.Context, entry Entry) error {
+	err := checkZip(entry)
+	if err == nil {
+		return nil
+	}
+
+	e.logger.WarnContext(ctx, "the update kept is damaged or gone; dropping it", "version", entry.Manifest.Version,
+		"error", err)
+	e.prune(ctx, "")
+
+	again := "Click Update to download it again."
+	if e.downloads(e.mode(ctx)) {
+		again = "It's downloading again."
+	}
+
+	refusal := uierr.New("The downloaded "+entry.Manifest.Version+" was damaged, so it was thrown away. "+again,
+		fmt.Errorf("%w: %w", ErrDamaged, err))
+
+	e.change(func(st *state) { st.ready, st.lastErr = nil, uierr.Message(refusal) })
+
+	if e.downloads(e.mode(ctx)) {
+		e.wakeWorker()
+	}
+
+	return refusal
+}
+
+// checkZip checks entry's zip against its manifest.
+func checkZip(entry Entry) error {
+	f, err := os.Open(entry.Zip)
+	if err != nil {
+		return fmt.Errorf("open the downloaded update: %w", err)
+	}
+
+	defer func() { _ = f.Close() }()
+
+	return CheckFile(entry.Manifest, f)
+}
+
+// backUp backs the database up before an install, unless a backup this engine took is
+// still there and under BackupReuse old: a restart tried again soon after reuses it, so
+// retries never push out the older backups (those before migrations among them) the
+// restore needs. The schema can't change while the app runs, so the backup is of the same
+// schema. A failure is worded with no path.
+func (e *Engine) backUp(ctx context.Context) error {
+	if e.backup == nil {
+		return uierr.New("Couldn't back up your data first, so nothing was installed.", errNoBackup)
+	}
+
+	now := e.clock.Now()
+
+	e.mu.Lock()
+	last := e.lastBackup
+	e.mu.Unlock()
+
+	if last.path != "" && !now.Before(last.at) && now.Sub(last.at) < BackupReuse {
+		if _, err := os.Stat(last.path); err == nil {
+			e.logger.InfoContext(ctx, "a backup taken moments ago serves this install too", "backup", e.tilde(last.path))
+
+			return nil
+		}
+	}
+
+	path, err := e.backup.BackUp(ctx)
+	if err != nil {
+		return uierr.New("Couldn't back up your data first, so nothing was installed.", err)
+	}
+
+	e.logger.InfoContext(ctx, "backed up the data before installing the update", "backup", e.tilde(path))
+
+	e.mu.Lock()
+	e.lastBackup = backupTaken{path: path, at: now}
+	e.mu.Unlock()
+
+	return nil
 }
 
 // recordPending records the install about to happen, committed before the app quits.
@@ -229,26 +332,32 @@ func (e *Engine) recordPending(ctx context.Context, version string) error {
 	return nil
 }
 
-// rollBack undoes a restart that failed before the app quit: the update is ready again,
-// with err as LastError, the install's record is cleared, and the runtime's staging folder
-// beside the bundle is removed. quitLet reports that the quit was let through already,
-// which the shell is told to hold again. It returns err.
+// rollBack undoes a restart that failed before the app quit (undo), with err, worded, as
+// LastError, and logs err whole. It returns err.
 func (e *Engine) rollBack(ctx context.Context, version string, quitLet bool, err error) error {
+	e.logger.WarnContext(ctx, "the update didn't install", "version", version, "error", err)
+	e.undo(ctx, quitLet)
+	e.change(func(st *state) { st.lastErr = uierr.Message(err) })
+
+	return err
+}
+
+// undo takes back a restart that won't go on: the update is ready again, the install's
+// record is cleared, even when ctx has ended, and the runtime's staging folder beside the
+// bundle is removed. quitLet reports that the quit was let through already, which the
+// shell is told to hold again.
+func (e *Engine) undo(ctx context.Context, quitLet bool) {
 	if quitLet {
 		e.events.Emit(event.UpdateRestartFailed{})
 	}
 
-	e.logger.WarnContext(ctx, "the update didn't install", "version", version, "error", err)
-
-	if delErr := e.memory.Delete(ctx, KeyPendingInstall); delErr != nil {
-		e.logger.WarnContext(ctx, "could not clear the install's record", "error", delErr)
+	if err := e.memory.Delete(context.WithoutCancel(ctx), KeyPendingInstall); err != nil {
+		e.logger.WarnContext(ctx, "could not clear the install's record", "error", err)
 	}
 
-	for _, cleanErr := range removeStaging(e.bundle) {
-		e.logger.WarnContext(ctx, "could not remove the update's staging folder", "error", cleanErr)
+	for _, err := range removeStaging(e.bundle) {
+		e.logger.WarnContext(ctx, "could not remove the update's staging folder", "error", err)
 	}
 
-	e.change(func(st *state) { st.installing, st.lastErr = false, uierr.Message(err) })
-
-	return err
+	e.change(func(st *state) { st.installing = false })
 }

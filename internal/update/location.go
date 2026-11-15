@@ -15,6 +15,11 @@ const systemApplications = "/Applications"
 // the one in home), a path macOS translocated it to, a mounted volume such as a disk image,
 // or elsewhere, which "" (no bundle) is too.
 func Classify(bundle, home string) LocationKind {
+	return classify(bundle, home, systemApplications)
+}
+
+// classify is Classify with the system's Applications folder at applications.
+func classify(bundle, home, applications string) LocationKind {
 	if bundle == "" {
 		return LocationElsewhere
 	}
@@ -26,7 +31,7 @@ func Classify(bundle, home string) LocationKind {
 		return LocationTranslocated
 	case strings.HasPrefix(clean, "/Volumes/"):
 		return LocationDiskImage
-	case strings.HasPrefix(clean, systemApplications+"/"):
+	case strings.HasPrefix(clean, filepath.Clean(applications)+"/"):
 		return LocationApplications
 	case home != "" && strings.HasPrefix(clean, filepath.Join(home, "Applications")+"/"):
 		return LocationUserApplications
@@ -51,15 +56,15 @@ func BundleOf(exe string) string {
 
 // locate works out where the bundle is, whether the app can update there (in an
 // Applications folder whose folder the user can write to, where the update is staged), and
-// where moving it would put it: the system's Applications folder when writable, else the
-// one in home.
-func locate(bundle, home string, writable func(string) bool) Location {
-	kind := Classify(bundle, home)
+// where moving it would put it: the system's Applications folder, applications, when
+// writable, else the one in home.
+func locate(bundle, home, applications string, writable func(string) bool) Location {
+	kind := classify(bundle, home, applications)
 	inApplications := kind == LocationApplications || kind == LocationUserApplications
 
 	target := filepath.Join(home, "Applications", brand.Name+".app")
-	if writable(systemApplications) {
-		target = filepath.Join(systemApplications, brand.Name+".app")
+	if writable(applications) {
+		target = filepath.Join(applications, brand.Name+".app")
 	}
 
 	return Location{

@@ -9,6 +9,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -201,6 +202,10 @@ func TestARehearsalCoreUpdatesFromItsFolderAfterABackup(t *testing.T) {
 	opts := testOptions(t)
 	opts.Flavor, opts.Release, opts.UpdateFeed = update.FlavorRehearsal, "0.2.0", feed
 	opts.UpdateKey = update.EncodeKey(update.PublicKeyOf(private))
+
+	// Only a copy in an Applications folder updates itself.
+	opts.Bundle = filepath.Join(opts.Home, "Applications", brand.Name+".app")
+	require.NoError(t, os.MkdirAll(opts.Bundle, 0o700))
 
 	c := bootstrap(t, opts)
 	installer := &stagedInstall{}

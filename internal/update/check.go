@@ -5,7 +5,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 
+	"github.com/mrz1836/nilbox/internal/brand"
 	"github.com/mrz1836/nilbox/internal/clock"
 	"github.com/mrz1836/nilbox/internal/event"
 	"github.com/mrz1836/nilbox/internal/progress"
@@ -13,13 +15,20 @@ import (
 	"github.com/mrz1836/nilbox/internal/updateprefs"
 )
 
-// ErrNothingToDownload is returned by Download when no newer version is known.
-var ErrNothingToDownload = errors.New("no newer version to download")
+var (
+	// ErrNothingToDownload is returned by Download when no newer version is known.
+	ErrNothingToDownload = errors.New("no newer version to download")
+
+	// ErrLocation is returned by Download and Restart while the app runs where it can't
+	// replace itself: a translocated copy, a disk image, or a folder the user can't write to.
+	ErrLocation = errors.New("the app runs where it can't update itself")
+)
 
 // tick is the Worker's look at whether something is due: a check, once CheckEvery has
-// passed on the wall clock since the last one, downloading what it finds as the setting
-// says; or, with downloads on and a version found that isn't downloaded, the download. With
-// Don't check it does nothing.
+// passed on the wall clock since the last one, downloading what it finds when the update
+// downloads on its own; or, then, a version found that isn't downloaded, unless its
+// download failed already, which only the next due check tries again. With Don't check it
+// does nothing.
 func (e *Engine) tick(ctx context.Context) error {
 	if !e.Enabled() {
 		return nil
@@ -46,15 +55,18 @@ func (e *Engine) tick(ctx context.Context) error {
 		return e.background(ctx, mode)
 	}
 
-	if m := e.toDownload(); mode == updateprefs.ModeDownload && m != nil {
-		if err = e.download(ctx, *m); err != nil {
-			return err
-		}
-
-		e.tell(ctx, Notice{Version: m.Version, Ready: true})
+	m := e.toDownload()
+	if m == nil || !e.downloads(mode) || e.failedBefore(*m) {
+		return nil
 	}
 
-	return nil
+	return e.fetch(ctx, *m)
+}
+
+// downloads reports whether the update downloads on its own: with Download it and tell me,
+// where the app can replace itself. Elsewhere a check only tells.
+func (e *Engine) downloads(mode updateprefs.Mode) bool {
+	return mode == updateprefs.ModeDownload && e.location.OK
 }
 
 // checkDue reports whether CheckEvery has passed since the last check, by the wall clock,
@@ -75,35 +87,80 @@ func (e *Engine) checkDue(ctx context.Context) (bool, error) {
 	return now.Sub(last) >= CheckEvery || now.Before(last), nil
 }
 
-// background runs a timed check, the caller holding the operation: with downloads on, a
-// version found is downloaded and the user told it is ready; with Just tell me, told it is
-// available. Each version is told once.
+// background runs a timed check, the caller holding the operation. When the update
+// downloads on its own, a version found is downloaded, a failed one included (once per due
+// check), and the user told it is ready; otherwise told it is available. Each version is
+// told once.
 func (e *Engine) background(ctx context.Context, mode updateprefs.Mode) error {
 	m, found, err := e.check(ctx)
 	if err != nil || !found {
 		return err
 	}
 
-	if mode == updateprefs.ModeDownload {
-		if e.needsDownload(m) {
-			if err = e.download(ctx, m); err != nil {
-				return err
-			}
-		}
-
-		e.tell(ctx, Notice{Version: m.Version, Ready: true})
+	if !e.downloads(mode) {
+		e.tell(ctx, Notice{Version: m.Version, Ready: !e.needsDownload(m)})
 
 		return nil
 	}
 
-	e.tell(ctx, Notice{Version: m.Version, Ready: !e.needsDownload(m)})
+	if e.needsDownload(m) {
+		return e.fetch(ctx, m)
+	}
+
+	e.toldReady(ctx, m.Version)
 
 	return nil
 }
 
-// checkNow is a check the user asked for, which works in every mode: it reads the latest
-// release, and a newer version it finds is marked told without a notification, since the
-// user is looking at the result. With downloads on, the Worker downloads it at once.
+// fetch downloads m on the Worker's behalf, the caller holding the operation, and tells the
+// user it is ready. A download that fails is remembered, so the ticks between due checks
+// never fetch it again, and the user, who never saw it ready, is told once a later one
+// works.
+func (e *Engine) fetch(ctx context.Context, m Manifest) error {
+	if err := e.download(ctx, m); err != nil {
+		e.change(func(st *state) {
+			st.failedDownload = downloadKey(m)
+
+			if st.quiet == m.Version {
+				st.quiet = ""
+			}
+		})
+
+		return err
+	}
+
+	e.toldReady(ctx, m.Version)
+
+	return nil
+}
+
+// toldReady tells the user version is ready, once: quietly, marked told alone, when a
+// manual check showed it found.
+func (e *Engine) toldReady(ctx context.Context, version string) {
+	if e.view().quiet == version {
+		e.markTold(ctx, version)
+
+		return
+	}
+
+	e.tell(ctx, Notice{Version: version, Ready: true})
+}
+
+// failedBefore reports whether m's download failed last time it was fetched.
+func (e *Engine) failedBefore(m Manifest) bool {
+	return e.view().failedDownload == downloadKey(m)
+}
+
+// downloadKey names a release's zip: its version and SHA-512.
+func downloadKey(m Manifest) string {
+	return m.Version + " " + m.SHA512
+}
+
+// checkNow is a check the user asked for, which works in every mode. A newer version it
+// finds that is available or ready at once is marked told without a notification, since
+// the user is looking at the result; one the Worker downloads now (downloads on) is marked
+// told, quietly, only once it is ready, so a download that fails still lets a later timed
+// check tell of it.
 func (e *Engine) checkNow(ctx context.Context) error {
 	if e.view().downloading != nil {
 		return nil
@@ -123,18 +180,26 @@ func (e *Engine) checkNow(ctx context.Context) error {
 		return nil
 	}
 
-	e.markTold(ctx, m.Version)
-
-	if e.mode(ctx) == updateprefs.ModeDownload && e.needsDownload(m) {
+	if e.downloads(e.mode(ctx)) && e.needsDownload(m) {
+		e.change(func(st *state) { st.quiet = m.Version })
 		e.wakeWorker()
+
+		return nil
 	}
+
+	e.markTold(ctx, m.Version)
 
 	return nil
 }
 
 // downloadNow downloads the newer version found, as Update asks with Just tell me before
-// it restarts. The caller sees a failure, which the status's LastError keeps too.
+// it restarts, a download that failed before included. The caller sees a failure, which
+// the status's LastError keeps too.
 func (e *Engine) downloadNow(ctx context.Context) error {
+	if !e.location.OK {
+		return locationError()
+	}
+
 	release, err := e.acquire(ctx)
 	if err != nil {
 		return err
@@ -152,7 +217,7 @@ func (e *Engine) downloadNow(ctx context.Context) error {
 	}
 
 	if err = e.download(ctx, *st.found); err != nil {
-		return uierr.New("Couldn't download "+st.found.Version+": "+uierr.Message(err), err)
+		return uierr.New("Couldn't download "+st.found.Version+": "+downloadWords(err), err)
 	}
 
 	e.markTold(ctx, st.found.Version)
@@ -160,24 +225,32 @@ func (e *Engine) downloadNow(ctx context.Context) error {
 	return nil
 }
 
+// locationError refuses what the app can't do where it runs.
+func locationError() error {
+	return uierr.New("Move "+brand.Name+" to Applications to update it.", ErrLocation)
+}
+
 // check reads the latest release and takes what it says, the caller holding the
 // operation: a newer version it verifies is found, and returned with found set; no
 // release, or none newer, means up to date, and an update waiting that the releases no
-// longer offer is dropped. A failure is kept as LastError and changes nothing else; only a
-// check that reached the releases counts as the last check.
+// longer offer is dropped (deleting a release's manifest withdraws it). A failure is kept
+// as LastError and changes nothing else. A check counts as the last check once it reached
+// the releases, a manifest it refused included.
 func (e *Engine) check(ctx context.Context) (Manifest, bool, error) {
 	e.change(func(st *state) { st.checking = true })
 	defer e.change(func(st *state) { st.checking = false })
 
-	m, found, err := e.latest(ctx)
+	m, found, reached, err := e.latest(ctx)
+	if reached {
+		if setErr := e.memory.SetMany(ctx, map[string]string{KeyLastCheck: clock.Format(e.clock.Now())}); setErr != nil {
+			e.logger.WarnContext(ctx, "could not remember when the update check ran", "error", setErr)
+		}
+	}
+
 	if err != nil {
 		e.failed(ctx, "the update check failed", err)
 
 		return Manifest{}, false, err
-	}
-
-	if err = e.memory.SetMany(ctx, map[string]string{KeyLastCheck: clock.Format(e.clock.Now())}); err != nil {
-		e.logger.WarnContext(ctx, "could not remember when the update check ran", "error", err)
 	}
 
 	if !found {
@@ -192,29 +265,33 @@ func (e *Engine) check(ctx context.Context) (Manifest, bool, error) {
 	return m, true, nil
 }
 
-// latest reads the latest release's manifest and returns it, with found set, once it checks
-// out and is newer than the running build; found is false when there is none, or none
-// newer.
-func (e *Engine) latest(ctx context.Context) (Manifest, bool, error) {
+// latest reads the latest release's manifest, within ManifestLimit, and returns it, with
+// found set, once it checks out and is newer than the running build; found is false when
+// there is none, or none newer. reached reports that the releases answered, a manifest
+// refused included.
+func (e *Engine) latest(ctx context.Context) (m Manifest, found, reached bool, err error) {
+	ctx, cancel := context.WithTimeout(ctx, ManifestLimit)
+	defer cancel()
+
 	data, err := e.feed.Manifest(ctx)
 	if errors.Is(err, ErrNoRelease) {
-		return Manifest{}, false, nil
+		return Manifest{}, false, true, nil
 	}
 
 	if err != nil {
-		return Manifest{}, false, uierr.New("Couldn't reach the releases: "+uierr.Message(err), err)
+		return Manifest{}, false, false, uierr.New("Couldn't reach the releases: "+reachWords(err), err)
 	}
 
-	m, err := Parse(data)
+	m, err = Parse(data)
 	if err != nil {
-		return Manifest{}, false, uierr.New("The latest release's update manifest can't be read.", err)
+		return Manifest{}, false, true, uierr.New("The latest release's update manifest can't be read.", err)
 	}
 
 	if err = accept(m, e.key); err != nil {
-		return Manifest{}, false, uierr.New("The latest release's update didn't check out, so it wasn't used.", err)
+		return Manifest{}, false, true, uierr.New("The latest release's update didn't check out, so it wasn't used.", err)
 	}
 
-	return m, newer(m.Version, e.current), nil
+	return m, newer(m.Version, e.current), true, nil
 }
 
 // needsDownload reports whether m isn't the update downloaded already.
@@ -268,22 +345,54 @@ func (e *Engine) download(ctx context.Context, m Manifest) error {
 		return err
 	}
 
-	e.change(func(st *state) { st.downloading, st.written, st.ready, st.lastErr = nil, 0, &entry, "" })
+	e.change(func(st *state) {
+		st.downloading, st.written, st.ready, st.lastErr, st.failedDownload = nil, 0, &entry, "", ""
+	})
 	e.prune(ctx, m.Version)
 
 	return nil
 }
 
-// downloadWords says why a download failed.
+// tryAgain is why a read of the releases failed when nothing says more.
+const tryAgain = "check the connection, then try again."
+
+// reachWords says why the latest release's manifest couldn't be read. Like downloadWords,
+// it never repeats a raw error, which could name a path on this Mac or a URL: only a time
+// limit, or words a feed gave its failure (uierr).
+func reachWords(err error) string {
+	switch {
+	case errors.Is(err, context.DeadlineExceeded):
+		return "they didn't answer within " + ManifestLimit.String() + "."
+	case worded(err):
+		return uierr.Message(err)
+	default:
+		return tryAgain
+	}
+}
+
+// downloadWords says why a download failed, never repeating a raw error.
 func downloadWords(err error) string {
+	var pathErr *fs.PathError
+
 	switch {
 	case errors.Is(err, context.DeadlineExceeded):
 		return "it took longer than " + DownloadLimit.String() + "."
 	case errors.Is(err, ErrMismatch):
 		return "it didn't match the release's manifest, so it was thrown away."
-	default:
+	case worded(err):
 		return uierr.Message(err)
+	case errors.As(err, &pathErr):
+		return "it couldn't be saved on this Mac."
+	default:
+		return tryAgain
 	}
+}
+
+// worded reports whether err carries words for the user (a uierr.Error in its chain).
+func worded(err error) bool {
+	_, ok := errors.AsType[*uierr.Error](err)
+
+	return ok
 }
 
 // tell tells the user of n once per version, through the Notifier.

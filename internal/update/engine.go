@@ -14,7 +14,6 @@ import (
 	"github.com/mrz1836/nilbox/internal/event"
 	"github.com/mrz1836/nilbox/internal/logging"
 	"github.com/mrz1836/nilbox/internal/paths"
-	"github.com/mrz1836/nilbox/internal/semver"
 	"github.com/mrz1836/nilbox/internal/updateprefs"
 )
 
@@ -58,8 +57,22 @@ const (
 	// for 30 seconds sooner.
 	DownloadLimit = 10 * time.Minute
 
+	// ManifestLimit bounds a read of the latest release's manifest, which holds the one
+	// operation while it runs.
+	ManifestLimit = time.Minute
+
 	// HideFor is how long Later hides the banner.
 	HideFor = 24 * time.Hour
+
+	// BackupReuse is how long a backup a restart took serves a restart tried again, so
+	// retries never push out the older backups the restore needs.
+	BackupReuse = 10 * time.Minute
+
+	// HelperWindow is how long after a restart the runtime's helper may still be at work
+	// (30 seconds waiting for the app to quit, up to 90 checking the new bundle's
+	// signature, its swaps and restores): while its log hasn't ended, the start leaves its
+	// files, and the record of the install, alone until then.
+	HelperWindow = 3 * time.Minute
 )
 
 // offInSource is why a build made from source doesn't update.
@@ -166,9 +179,11 @@ type Config struct {
 	Logs  string
 
 	// Bundle is the running app's bundle, as the desktop shell finds it, or "" when it
-	// runs outside one; Home is the home folder.
-	Bundle string
-	Home   string
+	// runs outside one; Home is the home folder. Applications is the Applications folder
+	// every user shares, /Applications when "" (tests point it at a folder of their own).
+	Bundle       string
+	Home         string
+	Applications string
 
 	// TempDir is where the runtime's helper writes its log and readiness files
 	// (os.TempDir() when ""), and PID the running app's process (os.Getpid() when 0),
@@ -227,14 +242,23 @@ type Engine struct {
 	// op is held by the one operation running.
 	op chan struct{}
 
-	// settled runs the start's outcome, cleanup, and cache load once.
-	settled sync.Once
+	// settleMu guards settled, which is set once the start's outcome, cleanup, and cache
+	// load have run.
+	settleMu sync.Mutex
+	settled  bool
 
 	// mu guards the fields below.
-	mu        sync.Mutex
-	st        state
-	installer Installer
-	wake      func()
+	mu         sync.Mutex
+	st         state
+	installer  Installer
+	wake       func()
+	lastBackup backupTaken
+}
+
+// backupTaken is the backup the last restart took: where, and when.
+type backupTaken struct {
+	path string
+	at   time.Time
 }
 
 // state is the engine's memory of where the update stands.
@@ -252,6 +276,12 @@ type state struct {
 	lastErr     string
 	justUpdated string
 	failed      InstallFailure
+
+	// failedDownload names the zip (downloadKey) whose download the Worker tried last and
+	// that failed, which only a due check fetches again; quiet is the version a manual check
+	// showed found, which is marked told without a notification once it is ready.
+	failedDownload string
+	quiet          string
 }
 
 // NewEngine returns an Engine over cfg. A source build, a release with no key pinned, or a
@@ -278,7 +308,12 @@ func NewEngine(cfg Config) *Engine {
 		writable = canWrite
 	}
 
-	e.location = locate(cfg.Bundle, cfg.Home, writable)
+	applications := cfg.Applications
+	if applications == "" {
+		applications = systemApplications
+	}
+
+	e.location = locate(cfg.Bundle, cfg.Home, applications, writable)
 	e.flavor, e.key, e.off = resolve(cfg)
 	e.feed = cfg.Feed
 
@@ -306,7 +341,7 @@ func resolve(cfg Config) (Flavor, ed25519.PublicKey, string) {
 		return FlavorSource, nil, offInSource
 	}
 
-	if _, ok := semver.Parse(cfg.Current); !ok {
+	if !ValidVersion(cfg.Current) {
 		return flavor, nil, "Updates are off: this build's version isn't a release's."
 	}
 
@@ -349,6 +384,9 @@ func (e *Engine) Status(ctx context.Context) (Status, error) {
 	}
 
 	if !e.Enabled() {
+		// A build that doesn't update still says what the user chose, as the bug report does.
+		out.Mode = e.storedMode(ctx)
+
 		return out, nil
 	}
 
@@ -382,6 +420,20 @@ func (e *Engine) Status(ctx context.Context) (Status, error) {
 	out.BannerHidden = out.Latest != "" && hidden.Version == out.Latest && e.clock.Now().Before(hidden.Until)
 
 	return out, nil
+}
+
+// storedMode reads the mode the user chose, or the default when it can't be read.
+func (e *Engine) storedMode(ctx context.Context) updateprefs.Mode {
+	if e.memory == nil {
+		return updateprefs.DefaultMode
+	}
+
+	stored, err := e.memory.GetMany(ctx, updateprefs.KeyMode)
+	if err != nil {
+		return updateprefs.DefaultMode
+	}
+
+	return updateprefs.Decode(stored[updateprefs.KeyMode])
 }
 
 // phase works out the state and the version it is about from what the engine holds.

@@ -10,6 +10,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/mrz1836/nilbox/internal/appdata"
 	"github.com/mrz1836/nilbox/internal/brand"
@@ -23,38 +24,99 @@ const maxHelperLog = 1 << 20
 // and loads the update kept in the cache, once per run, in that order, so the helper's log
 // is read before the cleanup removes it. The Worker runs it first, and every bound action
 // before it acts. A build that doesn't update does nothing.
-func (e *Engine) settle(ctx context.Context) {
-	e.settled.Do(func() {
-		if !e.Enabled() {
-			return
-		}
+//
+// While the runtime's helper may still be at work on the last install (recorded under
+// HelperWindow ago, and its log not ended on a final message), it does nothing at all, so
+// neither the copy of the old app the helper restores from nor its staging folder is
+// removed under it, and returns how long to wait before settling again; 0 once settled.
+func (e *Engine) settle(ctx context.Context) time.Duration {
+	e.settleMu.Lock()
+	defer e.settleMu.Unlock()
 
-		pid := e.readOutcome(ctx)
+	if e.settled || !e.Enabled() {
+		return 0
+	}
 
-		for _, err := range cleanUp(e.bundle, e.tempDir, pid, e.clock.Now()) {
-			e.logger.WarnContext(ctx, "could not clean up after an update", "error", err)
-		}
-
-		e.loadCache(ctx)
-		e.events.Emit(event.UpdatesUpdated{})
-	})
-}
-
-// readOutcome reads the install the last restart began, if any, and words how it went:
-// the running build is the version it installed (JustUpdated), or isn't (InstallFailed,
-// with the helper's log kept in the logs folder as update-<version>.log). With no install
-// recorded, a build newer than the one that ran last was installed by hand: that's
-// JustUpdated too. It then records this build as the one that ran last, clears the record,
-// and returns the process the record names, whose helper files the cleanup removes.
-func (e *Engine) readOutcome(ctx context.Context) int {
 	stored, err := e.memory.GetMany(ctx, KeyPendingInstall, KeyLastRunRelease)
 	if err != nil {
 		e.logger.WarnContext(ctx, "could not read how the last update went", "error", err)
 
-		return 0
+		stored = map[string]string{}
 	}
 
 	pending, hasPending := decodePending(stored[KeyPendingInstall])
+	if hasPending {
+		if wait := e.helperBusy(pending); wait > 0 {
+			e.logger.InfoContext(ctx, "the last update's helper may still be at work; settling later", "wait", wait)
+
+			return wait
+		}
+	}
+
+	pid := e.readOutcome(ctx, stored, pending, hasPending)
+
+	for _, err := range cleanUp(e.bundle, e.tempDir, pid, e.clock.Now()) {
+		e.logger.WarnContext(ctx, "could not clean up after an update", "error", err)
+	}
+
+	e.loadCache(ctx)
+	e.settled = true
+	e.events.Emit(event.UpdatesUpdated{})
+
+	return 0
+}
+
+// helperBusy says how long the runtime's helper may still be at work on the install p
+// recorded: the rest of HelperWindow while its log hasn't ended on a final message, and 0
+// once it has, or the window has passed.
+func (e *Engine) helperBusy(p pendingInstall) time.Duration {
+	age := e.clock.Now().Sub(p.At)
+	if age < 0 || age >= HelperWindow {
+		return 0
+	}
+
+	log, err := readTail(helperLog(e.tempDir, p.PID), maxHelperLog)
+	if err == nil && helperFinished(log) {
+		return 0
+	}
+
+	return HelperWindow - age
+}
+
+// helperFinished reports whether the runtime's helper's log ends on a message after which
+// the helper touches neither the app nor its copy: done, gave up before changing anything,
+// or failed to restore. One that ends on "restoring backup" is still restoring.
+func helperFinished(log []byte) bool {
+	lines := bytes.Split(bytes.TrimSpace(log), []byte("\n"))
+	last := lines[len(lines)-1]
+
+	if bytes.Contains(last, []byte("restoring backup")) {
+		return false
+	}
+
+	for _, final := range []string{
+		"helper done", "restore failed", "relaunched original after parent-timeout abort", "relaunch original failed",
+		"relaunching intact original", "stat target failed", "stat new failed", "staged update is not installable",
+		"backup failed",
+	} {
+		if bytes.Contains(last, []byte(final)) {
+			return true
+		}
+	}
+
+	return false
+}
+
+// readOutcome words how the install p the last restart began, if any, went: the running
+// build is the version it installed (JustUpdated); the version it started from
+// (InstallFailed, with the helper's log kept in the logs folder as update-<version>.log);
+// or neither, installed by hand since (JustUpdated when newer than the one it started
+// from). With no install recorded, a build newer than the one that ran last was installed
+// by hand: that's JustUpdated too. It then records this build as the one that ran last,
+// clears the record, and returns the process the record names, whose helper files the
+// cleanup removes.
+func (e *Engine) readOutcome(ctx context.Context, stored map[string]string, pending pendingInstall, hasPending bool,
+) int {
 	updated, failed := e.outcome(ctx, pending, hasPending, stored[KeyLastRunRelease])
 
 	e.mu.Lock()
@@ -79,8 +141,12 @@ func (e *Engine) outcome(ctx context.Context, p pendingInstall, hasPending bool,
 	switch {
 	case hasPending && p.To == e.current:
 		return e.current, InstallFailure{}
-	case hasPending:
+	case hasPending && p.From == e.current:
 		return "", e.keepHelperLog(ctx, p)
+	case hasPending && newer(e.current, p.From):
+		return e.current, InstallFailure{}
+	case hasPending:
+		return "", InstallFailure{}
 	case last != "" && newer(e.current, last):
 		return e.current, InstallFailure{}
 	default:

@@ -11,6 +11,8 @@ import (
 	"maps"
 	"os"
 	"path/filepath"
+	"runtime"
+	"strconv"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -35,7 +37,6 @@ const (
 var (
 	errFakeNetwork = errors.New("fake: the network is down")
 	errFakeDisk    = errors.New("fake: the disk is full")
-	errFakeHelper  = errors.New("fake: the helper never stood by")
 )
 
 // zipOf is the zip a test release of version holds.
@@ -236,27 +237,41 @@ type fakeInstaller struct {
 	installErr error
 	restartErr error
 
-	// onRestart sees the moment Restart is called.
+	// returns makes Restart return nil, as the runtime's does when something held the
+	// quit; otherwise, with no restartErr, Restart ends the goroutine that called it, as the
+	// app exits inside the real one.
+	returns bool
+
+	// onInstall and onRestart see the moments Install and Restart are called.
+	onInstall func()
 	onRestart func()
 }
 
 func (f *fakeInstaller) Install(_ context.Context, zip, version string, size int64, sha512 string) error {
 	f.mu.Lock()
-	defer f.mu.Unlock()
-
 	f.installs = append(f.installs, install{zip: zip, version: version, size: size, sha512: sha512})
+	onInstall, err := f.onInstall, f.installErr
+	f.mu.Unlock()
 
-	return f.installErr
+	if onInstall != nil {
+		onInstall()
+	}
+
+	return err
 }
 
 func (f *fakeInstaller) Restart(context.Context) error {
 	f.mu.Lock()
 	f.restarts++
-	onRestart, err := f.onRestart, f.restartErr
+	onRestart, err, returns := f.onRestart, f.restartErr, f.returns
 	f.mu.Unlock()
 
 	if onRestart != nil {
 		onRestart()
+	}
+
+	if err == nil && !returns {
+		runtime.Goexit()
 	}
 
 	return err
@@ -282,18 +297,24 @@ func (f *fakeRuns) Going(context.Context) ([]update.Run, error) { return f.going
 
 // fakeBackup backs up the database, or fails.
 type fakeBackup struct {
+	dir   string
 	calls atomic.Int32
 	err   error
 }
 
 func (f *fakeBackup) BackUp(context.Context) (string, error) {
-	f.calls.Add(1)
+	n := f.calls.Add(1)
 
 	if f.err != nil {
 		return "", f.err
 	}
 
-	return "/data/" + brand.Slug + ".db.backup-20261115T120000Z-v4", nil
+	path := filepath.Join(f.dir, brand.Slug+".db.backup-20261115T12000"+strconv.Itoa(int(n))+"Z-v4")
+	if err := os.WriteFile(path, []byte("a backup"), 0o600); err != nil {
+		return "", err
+	}
+
+	return path, nil
 }
 
 // fakeNotifier records what the user is told.
@@ -372,14 +393,14 @@ func newRig(t *testing.T, change ...func(*update.Config)) *rig {
 	require.NoError(t, os.MkdirAll(filepath.Join(bundle, "Contents", "MacOS"), 0o700))
 
 	r := &rig{
-		feed: newFeed(), memory: newMemory(), installer: &fakeInstaller{}, runs: &fakeRuns{}, backup: &fakeBackup{},
+		feed: newFeed(), memory: newMemory(), installer: &fakeInstaller{}, runs: &fakeRuns{}, backup: &fakeBackup{dir: root},
 		notifier: &fakeNotifier{}, reveal: &fakeReveal{}, events: &testutil.Events{}, clock: &wallClock{},
 		private: private,
 	}
 
 	r.cfg = update.Config{
 		Flavor: update.FlavorRehearsal, Current: running, Feed: r.feed, Key: update.EncodeKey(public),
-		Memory: r.memory, Cache: filepath.Join(root, "updates"), Logs: filepath.Join(root, "logs"), Bundle: bundle,
+		Memory: r.memory, Cache: filepath.Join(root, "updates"), Logs: filepath.Join(root, "logs"), Bundle: bundle, Applications: apps,
 		Home: filepath.Join(root, "home"), TempDir: filepath.Join(root, "tmp"), PID: 4242,
 		Backup: r.backup, Runs: r.runs, Notifier: r.notifier, Reveal: r.reveal, Events: r.events, Clock: r.clock,
 		Writable: func(string) bool { return true },
@@ -408,6 +429,28 @@ func (r *rig) release(t *testing.T, version string) update.Manifest {
 	r.feed.publish(t, m, zipOf(version))
 
 	return m
+}
+
+// restart asks the rig to restart into the update ready, on a goroutine of its own, and
+// waits for it: exited reports that it never returned, as a restart that reached the
+// installer's Restart doesn't, the app exiting inside it; otherwise err is what it
+// returned.
+func (r *rig) restart(t *testing.T, confirmed bool) (exited bool, err error) {
+	t.Helper()
+
+	done := make(chan struct{})
+	returned := false
+
+	go func() {
+		defer close(done)
+
+		_, err = r.service.Restart(t.Context(), confirmed)
+		returned = true
+	}()
+
+	<-done
+
+	return !returned, err
 }
 
 // mode sets what the app does when a new version is out.

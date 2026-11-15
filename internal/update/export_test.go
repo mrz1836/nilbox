@@ -11,9 +11,9 @@ func (e *Engine) Tick(ctx context.Context) error {
 }
 
 // Settle reads the last restart's outcome, cleans up, and loads the cache, as the Worker
-// does first.
-func (e *Engine) Settle(ctx context.Context) {
-	e.settle(ctx)
+// does first, and returns how long to wait before settling again.
+func (e *Engine) Settle(ctx context.Context) time.Duration {
+	return e.settle(ctx)
 }
 
 // CleanUp removes what updates leave behind, as the start does.
@@ -28,5 +28,5 @@ func HelperReason(log []byte) string {
 
 // Locate works out where the bundle is, with writable standing in for the system's answer.
 func Locate(bundle, home string, writable func(string) bool) Location {
-	return locate(bundle, home, writable)
+	return locate(bundle, home, systemApplications, writable)
 }

@@ -13,7 +13,8 @@ import (
 // never on the cold start, and never bound.
 //
 // It first reads how the last restart went, cleans up after it, and loads the update kept
-// in the cache (so one waiting is ready at once, with no download); FirstCheckAfter later it
+// in the cache (so one waiting is ready at once, with no download), waiting first while the
+// last install's helper may still be at work (HelperWindow); FirstCheckAfter later it
 // looks whether a check is due, and again every TickEvery: a check is due once CheckEvery
 // has passed on the wall clock since the last, since timers stand still while a Mac sleeps.
 // A Wake (the setting changed, or a manual check found a version to download) has it look
@@ -41,7 +42,13 @@ func (w *Worker) Run(ctx context.Context) {
 		return
 	}
 
-	w.e.settle(ctx)
+	// While the last install's helper may still be at work, the start settles once it
+	// can't be, before any check.
+	for wait := w.e.settle(ctx); wait > 0; wait = w.e.settle(ctx) {
+		if clock.Sleep(ctx, wait) != nil {
+			return
+		}
+	}
 
 	if clock.Sleep(ctx, FirstCheckAfter) != nil {
 		return

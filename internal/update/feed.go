@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 
 	"github.com/mrz1836/nilbox/internal/brand"
+	"github.com/mrz1836/nilbox/internal/uierr"
 )
 
 // ErrNoRelease is returned by a Feed whose latest release has no manifest: none is out yet,
@@ -41,6 +42,9 @@ func ZipURL(version, file string) string {
 	return brand.Repository + "/releases/download/v" + version + "/" + file
 }
 
+// folderUnread is why a rehearsal's folder failed, worded with no path.
+const folderUnread = "The rehearsal's folder can't be read."
+
 // FolderFeed reads the releases from a folder holding one release's manifest
 // (ManifestName) and its zip, as magex app:rehearse writes them: a rehearsal's feed, read
 // from disk with no network at all.
@@ -57,14 +61,14 @@ func (f FolderFeed) Manifest(_ context.Context) ([]byte, error) {
 	}
 
 	if err != nil {
-		return nil, fmt.Errorf("read the update manifest: %w", err)
+		return nil, uierr.New(folderUnread, fmt.Errorf("read the update manifest: %w", err))
 	}
 
 	defer func() { _ = file.Close() }()
 
 	data, err := io.ReadAll(io.LimitReader(file, MaxManifestBytes+1))
 	if err != nil {
-		return nil, fmt.Errorf("read the update manifest: %w", err)
+		return nil, uierr.New(folderUnread, fmt.Errorf("read the update manifest: %w", err))
 	}
 
 	return data, nil
@@ -77,8 +81,12 @@ func (f FolderFeed) Download(ctx context.Context, _, file string, w io.Writer) e
 	}
 
 	src, err := os.Open(filepath.Join(f.Dir, file)) //nolint:gosec // a plain name, in the rehearsal's own folder
+	if errors.Is(err, fs.ErrNotExist) {
+		return uierr.New("The rehearsal's folder doesn't hold the update's zip.", fmt.Errorf("read the update: %w", err))
+	}
+
 	if err != nil {
-		return fmt.Errorf("read the update: %w", err)
+		return uierr.New(folderUnread, fmt.Errorf("read the update: %w", err))
 	}
 
 	defer func() { _ = src.Close() }()

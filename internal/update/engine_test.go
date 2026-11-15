@@ -4,6 +4,7 @@ import (
 	"crypto/ed25519"
 	"encoding/base64"
 	"encoding/json"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -45,6 +46,15 @@ func TestASourceBuildIsOffWhateverElseIsSet(t *testing.T) {
 	}
 }
 
+func TestABuildThatDoesntUpdateStillSaysTheUsersChoice(t *testing.T) {
+	t.Parallel()
+
+	r := newRig(t, func(c *update.Config) { c.Flavor = update.FlavorSource })
+	r.mode(updateprefs.ModeNotify)
+
+	assert.Equal(t, updateprefs.ModeNotify, r.status(t).Mode)
+}
+
 func TestAReleaseTrustsThePinnedKeyAloneAndIsOffWithoutOne(t *testing.T) {
 	t.Parallel()
 
@@ -81,6 +91,9 @@ func TestARehearsalNeedsARawKeyAFeedAndAReleaseVersion(t *testing.T) {
 		"no cache":               func(c *update.Config) { c.Cache = "" },
 		"a version from source":  func(c *update.Config) { c.Current = "dev" },
 		"a version with no core": func(c *update.Config) { c.Current = "0.2" },
+		"a version with a v":     func(c *update.Config) { c.Current = "v0.2.0" },
+		"build metadata":         func(c *update.Config) { c.Current = "0.2.0+meta" },
+		"a leading zero":         func(c *update.Config) { c.Current = "0.2.0-rc.01" },
 	} {
 		r := newRig(t, change)
 		assert.False(t, r.engine.Enabled(), name)
@@ -239,10 +252,17 @@ func TestADownloadThatDoesntMatchIsThrownAway(t *testing.T) {
 		assert.Contains(t, s.LastError, "didn't match the release's manifest", name)
 		assert.Empty(t, r.cached(t), "nothing is kept: %s", name)
 		assert.Empty(t, r.notifier.all(), name)
+
+		// The ticks between due checks never fetch it again.
+		for range 4 {
+			require.NoError(t, r.engine.Tick(t.Context()), name)
+		}
+
+		assert.Equal(t, int32(1), r.feed.downloads.Load(), "one download, not one per tick: %s", name)
 	}
 }
 
-func TestAFetchErrorKeepsNothing(t *testing.T) {
+func TestAFailedDownloadIsTriedOncePerDueCheck(t *testing.T) {
 	t.Parallel()
 
 	r := newRig(t)
@@ -253,15 +273,75 @@ func TestAFetchErrorKeepsNothing(t *testing.T) {
 
 	s := r.status(t)
 	assert.Equal(t, update.StateAvailable, s.State)
-	assert.Contains(t, s.LastError, "the network is down")
+	assert.Equal(t, "Couldn't download "+next+": check the connection, then try again.", s.LastError)
 	assert.Empty(t, r.cached(t))
 
-	// The next look tries again.
+	// A day of ticks: one download per due check, none between them.
+	for tick := range 4 * 24 {
+		r.clock.sleep(update.TickEvery)
+
+		err := r.engine.Tick(t.Context())
+		if (tick+1)%24 == 0 {
+			require.Error(t, err, "the due check tries again")
+		} else {
+			require.NoError(t, err)
+		}
+	}
+
+	assert.Equal(t, int32(5), r.feed.downloads.Load(), "the first, then one per due check")
+	assert.Equal(t, int32(5), r.feed.manifests.Load(), "the checks alone read the manifest")
+
+	// Once the network is back, the next due check downloads it, and nothing before.
 	r.feed.downloadErr = nil
 
 	require.NoError(t, r.engine.Tick(t.Context()))
+	assert.Equal(t, update.StateAvailable, r.status(t).State)
+
+	r.clock.sleep(update.CheckEvery)
+	require.NoError(t, r.engine.Tick(t.Context()))
 	assert.Equal(t, update.StateReady, r.status(t).State)
 	assert.Empty(t, r.status(t).LastError)
+	assert.Equal(t, []update.Notice{{Version: next, Ready: true}}, r.notifier.all())
+
+	// The user's own click always tries.
+	other := newRig(t)
+	other.mode(updateprefs.ModeNotify)
+	other.release(t, next)
+	other.feed.downloadErr = errFakeNetwork
+	require.NoError(t, other.engine.Tick(t.Context()))
+
+	_, err := other.service.Download(t.Context())
+	require.Error(t, err)
+
+	other.feed.downloadErr = nil
+
+	s, err = other.service.Download(t.Context())
+	require.NoError(t, err)
+	assert.Equal(t, update.StateReady, s.State)
+}
+
+func TestWhereTheAppCantReplaceItselfAChecksOnlyTells(t *testing.T) {
+	t.Parallel()
+
+	r := newRig(t, func(c *update.Config) { c.Applications = "" })
+	r.release(t, next)
+
+	s := r.status(t)
+	assert.False(t, s.Location.OK)
+	assert.Equal(t, update.LocationElsewhere, s.Location.Kind)
+
+	require.NoError(t, r.engine.Tick(t.Context()))
+	assert.Equal(t, update.StateAvailable, r.status(t).State, "found, and not downloaded, with downloads on")
+	assert.Zero(t, r.feed.downloads.Load())
+	assert.Equal(t, []update.Notice{{Version: next}}, r.notifier.all(), "told it is available")
+
+	_, err := r.service.Download(t.Context())
+	require.ErrorIs(t, err, update.ErrLocation)
+	assert.Equal(t, "Move "+brand.Name+" to Applications to update it.", uierr.Message(err))
+
+	_, err = r.service.CheckNow(t.Context())
+	require.NoError(t, err, "checking still works")
+	assert.Zero(t, r.feed.downloads.Load())
 }
 
 func TestTheManifestRules(t *testing.T) {
@@ -346,8 +426,65 @@ func TestTheManifestRules(t *testing.T) {
 		require.NoError(t, err, name)
 		assert.Equal(t, update.StateIdle, s.State, name)
 		assert.Contains(t, s.LastError, tt.words, name)
-		assert.Empty(t, s.LastChecked, "a manifest refused isn't a check that worked: %s", name)
+		assert.NotEmpty(t, s.LastChecked, "a manifest reached and refused counts as a check: %s", name)
 		assert.Zero(t, r.feed.downloads.Load(), name)
+
+		// So the ticks before the next due check read nothing more.
+		require.NoError(t, r.engine.Tick(t.Context()), name)
+		assert.Equal(t, int32(1), r.feed.manifests.Load(), name)
+	}
+}
+
+func TestAReadOfTheReleasesThatFailsIsNoCheck(t *testing.T) {
+	t.Parallel()
+
+	r := newRig(t)
+	r.feed.set(nil, errFakeNetwork)
+
+	require.Error(t, r.engine.Tick(t.Context()))
+	assert.Empty(t, r.status(t).LastChecked, "the releases never answered")
+
+	require.Error(t, r.engine.Tick(t.Context()))
+	assert.Equal(t, int32(2), r.feed.manifests.Load(), "the next tick tries again")
+}
+
+func TestAFailedReadOfTheReleasesNeverShowsTheRawError(t *testing.T) {
+	t.Parallel()
+
+	private := &fs.PathError{Op: "open", Path: "/srv/private-user/feed", Err: fs.ErrPermission}
+
+	for name, tt := range map[string]struct {
+		manifest, download error
+		words              string
+	}{
+		"a manifest the network lost": {
+			manifest: errFakeNetwork, words: "Couldn't reach the releases: check the connection, then try again.",
+		},
+		"a manifest read from a path": {
+			manifest: private, words: "Couldn't reach the releases: check the connection, then try again.",
+		},
+		"a manifest whose feed worded its failure": {
+			manifest: uierr.New("The rehearsal's folder can't be read.", private),
+			words:    "Couldn't reach the releases: The rehearsal's folder can't be read.",
+		},
+		"a download saved to a path": {
+			download: private, words: "Couldn't download " + next + ": it couldn't be saved on this Mac.",
+		},
+	} {
+		r := newRig(t)
+		r.release(t, next)
+		r.feed.downloadErr = tt.download
+
+		if tt.manifest != nil {
+			r.feed.set(nil, tt.manifest)
+		}
+
+		require.Error(t, r.engine.Tick(t.Context()), name)
+
+		s := r.status(t)
+		assert.Equal(t, tt.words, s.LastError, name)
+		assert.NotContains(t, s.LastError, "/srv", name)
+		assert.NotContains(t, s.LastError, "fake", name)
 	}
 }
 
@@ -376,190 +513,6 @@ func TestANewerReleaseReplacesTheOneWaitingAndAPulledOneIsWithdrawn(t *testing.T
 	require.NoError(t, err)
 	assert.Equal(t, update.StateIdle, s.State)
 	assert.Empty(t, r.cached(t))
-}
-
-func TestRestartInstallsTheUpdateAfterABackupAndLetsTheQuitThrough(t *testing.T) {
-	t.Parallel()
-
-	r := newRig(t)
-	m := r.release(t, next)
-	require.NoError(t, r.engine.Tick(t.Context()))
-
-	var atRestart struct {
-		quit    []event.Event
-		pending string
-		state   update.State
-	}
-
-	r.installer.onRestart = func() {
-		atRestart.quit = r.quitEvents()
-		atRestart.pending = r.memory.get(update.KeyPendingInstall)
-		atRestart.state = r.status(t).State
-	}
-
-	_, err := r.service.Restart(t.Context(), false)
-	require.NoError(t, err)
-
-	installs, restarts := r.installer.calls()
-	assert.Equal(t, []install{{
-		zip: filepath.Join(r.cfg.Cache, next, m.File), version: next, size: m.Size, sha512: m.SHA512,
-	}}, installs)
-	assert.Equal(t, 1, restarts)
-	assert.Equal(t, int32(1), r.backup.calls.Load(), "the data is backed up first")
-
-	assert.Equal(t, []event.Event{event.QuitConfirmed{Restarting: true}}, atRestart.quit,
-		"the quit is let through before the installer quits the app, with no run going too")
-	assert.Equal(t, update.StateInstalling, atRestart.state)
-
-	var pending map[string]any
-	require.NoError(t, json.Unmarshal([]byte(atRestart.pending), &pending))
-	assert.Equal(t, running, pending["from"])
-	assert.Equal(t, next, pending["to"])
-	assert.InDelta(t, 4242, pending["pid"], 0, "the app's process names the helper's log")
-	assert.NotEmpty(t, pending["at"])
-}
-
-func TestRestartRefusesWhileRunsGoUnlessConfirmed(t *testing.T) {
-	t.Parallel()
-
-	r := newRig(t)
-	r.release(t, next)
-	require.NoError(t, r.engine.Tick(t.Context()))
-
-	release := update.Run{ID: 7, Kind: "release", Title: "Release v1.2.0", Repo: "acme-org/example-repo"}
-
-	r.runs.active.Store(true)
-	r.runs.going = []update.Run{release}
-
-	_, err := r.service.Restart(t.Context(), false)
-	require.ErrorIs(t, err, update.ErrRunsGoing)
-	assert.Equal(t, "Restarting stops Release v1.2.0 in acme-org/example-repo.", uierr.Message(err))
-
-	goingErr, ok := err.(interface{ Detail() any })
-	require.True(t, ok)
-
-	detail, jsonErr := json.Marshal(goingErr.Detail())
-	require.NoError(t, jsonErr)
-	assert.JSONEq(t, `{"runsGoing":[{"id":7,"kind":"release","title":"Release v1.2.0",`+
-		`"repo":"acme-org/example-repo","dir":"","stopRefused":""}]}`, string(detail))
-
-	installs, restarts := r.installer.calls()
-	assert.Empty(t, installs, "nothing is installed")
-	assert.Zero(t, restarts)
-	assert.Zero(t, r.backup.calls.Load(), "nothing is backed up")
-	assert.Empty(t, r.quitEvents(), "the quit is left alone")
-	assert.Equal(t, update.StateReady, r.status(t).State)
-
-	_, err = r.service.Restart(t.Context(), true)
-	require.NoError(t, err)
-	assert.Equal(t, []event.Event{event.QuitConfirmed{Restarting: true}}, r.quitEvents())
-
-	_, restarts = r.installer.calls()
-	assert.Equal(t, 1, restarts, "confirmed, it restarts, stopping the runs")
-}
-
-func TestRunsGoingWordsTheRuns(t *testing.T) {
-	t.Parallel()
-
-	r := newRig(t)
-	r.release(t, next)
-	require.NoError(t, r.engine.Tick(t.Context()))
-	r.runs.active.Store(true)
-
-	for want, going := range map[string][]update.Run{
-		"Restarting stops the runs going in " + brand.Name + ".": nil,
-		"Restarting stops Checks in ~/projects/tool.":            {{Title: "Checks", Dir: "~/projects/tool"}},
-		"Restarting stops the 2 runs going in " + brand.Name + ": Release v1.2.0, Pull main.": {
-			{Title: "Release v1.2.0"}, {Title: "Pull main"},
-		},
-	} {
-		r.runs.going = going
-
-		_, err := r.service.Restart(t.Context(), false)
-		require.ErrorIs(t, err, update.ErrRunsGoing)
-		assert.Equal(t, want, uierr.Message(err))
-	}
-}
-
-func TestABackupThatFailsStopsTheRestart(t *testing.T) {
-	t.Parallel()
-
-	r := newRig(t)
-	r.release(t, next)
-	require.NoError(t, r.engine.Tick(t.Context()))
-	r.backup.err = errFakeDisk
-
-	_, err := r.service.Restart(t.Context(), false)
-	require.ErrorIs(t, err, errFakeDisk)
-	assert.Equal(t, "Couldn't back up your data first: "+uierr.Message(errFakeDisk), uierr.Message(err))
-
-	installs, restarts := r.installer.calls()
-	assert.Empty(t, installs)
-	assert.Zero(t, restarts)
-	assert.Empty(t, r.memory.get(update.KeyPendingInstall))
-	assert.Empty(t, r.quitEvents())
-
-	s := r.status(t)
-	assert.Equal(t, update.StateReady, s.State, "back to ready")
-	assert.Equal(t, uierr.Message(err), s.LastError)
-}
-
-func TestAnInstallOrRestartErrorGoesBackToReady(t *testing.T) {
-	t.Parallel()
-
-	for name, tt := range map[string]struct {
-		installErr, restartErr error
-		quit                   []event.Event
-	}{
-		"install": {installErr: errFakeDisk, quit: []event.Event{}},
-		"restart": {
-			restartErr: errFakeHelper,
-			quit:       []event.Event{event.QuitConfirmed{Restarting: true}, event.UpdateRestartFailed{}},
-		},
-	} {
-		r := newRig(t)
-		r.release(t, next)
-		require.NoError(t, r.engine.Tick(t.Context()))
-
-		staging := filepath.Join(filepath.Dir(r.cfg.Bundle), "wails-update-123")
-		require.NoError(t, os.MkdirAll(filepath.Join(staging, brand.Name+".app"), 0o700))
-
-		r.installer.installErr, r.installer.restartErr = tt.installErr, tt.restartErr
-
-		_, err := r.service.Restart(t.Context(), false)
-		require.Error(t, err, name)
-		assert.Contains(t, uierr.Message(err), next, name)
-
-		s := r.status(t)
-		assert.Equal(t, update.StateReady, s.State, name)
-		assert.Equal(t, uierr.Message(err), s.LastError, name)
-		assert.Empty(t, r.memory.get(update.KeyPendingInstall), "the record is cleared: %s", name)
-		assert.NoDirExists(t, staging, "the staging folder is removed: %s", name)
-		assert.Equal(t, tt.quit, r.quitEvents(), "the shell holds a quit again once one was let through: %s", name)
-	}
-}
-
-func TestRestartNeedsAnUpdateReadyAndAnInstaller(t *testing.T) {
-	t.Parallel()
-
-	r := newRig(t)
-
-	_, err := r.service.Restart(t.Context(), false)
-	require.ErrorIs(t, err, update.ErrNotReady)
-
-	r.mode(updateprefs.ModeNotify)
-	r.release(t, next)
-	require.NoError(t, r.engine.Tick(t.Context()))
-
-	_, err = r.service.Restart(t.Context(), true)
-	require.ErrorIs(t, err, update.ErrNotReady, "an update found but not downloaded isn't ready")
-
-	bare := newRig(t)
-	bare.engine.Attach(nil)
-
-	_, err = bare.service.Restart(t.Context(), false)
-	require.ErrorIs(t, err, update.ErrNoInstaller)
-	assert.Equal(t, "This build can't install updates.", uierr.Message(err))
 }
 
 func TestLaterHidesTheBannerForADayAndANewerVersionShowsIt(t *testing.T) {
@@ -629,11 +582,11 @@ func TestStatusOfAFreshRehearsal(t *testing.T) {
 
 	r := newRig(t)
 
-	// The rig's Applications folder is a temporary one, so it counts as elsewhere.
+	// The rig's app is in an Applications folder of its own, which stands in for the system's.
 	assert.Equal(t, update.Status{
 		Flavor: update.FlavorRehearsal, Enabled: true, Current: running, Mode: updateprefs.ModeDownload,
 		State: update.StateIdle, ReleaseURL: update.ReleaseURL(running),
-		Location: update.Location{Kind: update.LocationElsewhere, Target: "/Applications/" + brand.Name + ".app"},
+		Location: update.Location{OK: true, Kind: update.LocationApplications, Target: r.cfg.Bundle},
 	}, r.status(t))
 }
 

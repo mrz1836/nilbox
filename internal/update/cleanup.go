@@ -1,8 +1,10 @@
 package update
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -14,16 +16,9 @@ import (
 	"github.com/mrz1836/nilbox/internal/brand"
 )
 
-const (
-	// stagingPrefix starts the folders the desktop runtime's updater stages an update in,
-	// beside the bundle.
-	stagingPrefix = "wails-update-"
-
-	// strayAge is how old a helper's log or readiness file of another process must be
-	// before the start's cleanup removes it, so a file another app's update is using
-	// right now is left alone.
-	strayAge = time.Hour
-)
+// stagingPrefix starts the folders the desktop runtime's updater stages an update in,
+// beside the bundle, and its helper's files in the temporary folder.
+const stagingPrefix = "wails-update-"
 
 var (
 	// helperLogPattern matches the runtime's helper log in the temporary folder:
@@ -47,8 +42,9 @@ func helperLog(tempDir string, pid int) string {
 //     keeps while it swaps, and the runtime's staging folders, <prefix>*, that hold this
 //     app's update (its bundle or its zip) or nothing;
 //   - in the temporary folder, the helper's log, <prefix><pid>.log, and readiness file,
-//     <prefix><pid>-<n>.ready, which leak on every update: the files of the process pid
-//     (the app that last restarted to update) at once, and any other's once strayAge old.
+//     <prefix><pid>-<n>.ready, which leak on every update: those of the process pid (the
+//     app that last restarted to update), and those of another process whose log names
+//     this bundle as its target, once HelperWindow old. Other apps' are never touched.
 //
 // A neighbor with a like name (<prefix>notes, <bundle>.bak2) is never touched.
 func cleanUp(bundle, tempDir string, pid int, now time.Time) []error {
@@ -60,7 +56,7 @@ func cleanUp(bundle, tempDir string, pid int, now time.Time) []error {
 		}
 	}
 
-	return append(errs, removeHelperFiles(tempDir, pid, now)...)
+	return append(errs, removeHelperFiles(tempDir, bundle, pid, now)...)
 }
 
 // removeStaging removes the runtime's staging folders beside bundle that hold this app's
@@ -121,9 +117,11 @@ func holdsOurUpdate(dir string) (bool, error) {
 	return len(listed) == 0, nil
 }
 
-// removeHelperFiles removes the helper's logs and readiness files in tempDir: pid's at
-// once, any other's once strayAge old.
-func removeHelperFiles(tempDir string, pid int, now time.Time) []error {
+// removeHelperFiles removes this app's helper logs and readiness files in tempDir: the
+// process pid's (the one the last install's record names), and those of any other process
+// whose log names this app's bundle as its target, once HelperWindow old. Another app's
+// files, which share the folder and the names, are left alone.
+func removeHelperFiles(tempDir, bundle string, pid int, now time.Time) []error {
 	listed, err := os.ReadDir(tempDir)
 	if err != nil {
 		return []error{fmt.Errorf("look for an update's leftovers in the temporary folder: %w", err)}
@@ -131,49 +129,133 @@ func removeHelperFiles(tempDir string, pid int, now time.Time) []error {
 
 	var errs []error
 
-	for _, item := range listed {
-		if leftHelperFile(item, pid, now) {
-			if err = removeIfExists(filepath.Join(tempDir, item.Name())); err != nil {
-				errs = append(errs, err)
-			}
+	for _, name := range helperFiles(tempDir, listed, bundle, pid, now) {
+		if err := removeIfExists(filepath.Join(tempDir, name)); err != nil {
+			errs = append(errs, err)
 		}
 	}
 
 	return errs
 }
 
-// leftHelperFile reports whether item is a helper's log or readiness file to remove: pid's,
-// or another's once strayAge old.
-func leftHelperFile(item fs.DirEntry, pid int, now time.Time) bool {
-	owner, ok := helperFileOwner(item.Name())
-	if !ok || !item.Type().IsRegular() {
-		return false
+// helperFiles names the files of listed, in tempDir, that removeHelperFiles removes: this
+// app's helper logs, then the readiness files of the processes they, or pid, are named for.
+func helperFiles(tempDir string, listed []fs.DirEntry, bundle string, pid int, now time.Time) []string {
+	ours := map[int]bool{}
+	if pid > 0 {
+		ours[pid] = true
 	}
 
-	if owner == pid {
-		return true
+	var names []string
+
+	for _, item := range listed {
+		if owner, ok := ourHelperLog(tempDir, item, bundle, pid, now); ok {
+			ours[owner] = true
+
+			names = append(names, item.Name())
+		}
 	}
 
-	info, err := item.Info()
+	for _, item := range listed {
+		if owner, ok := fileOwner(readyPattern, item); ok && ours[owner] {
+			names = append(names, item.Name())
+		}
+	}
 
-	return err == nil && now.Sub(info.ModTime()) >= strayAge
+	return names
 }
 
-// helperFileOwner returns the process a helper's log or readiness file is named for, and
-// whether name is one.
-func helperFileOwner(name string) (int, bool) {
-	m := helperLogPattern.FindStringSubmatch(name)
-	if m == nil {
-		m = readyPattern.FindStringSubmatch(name)
-	}
-
-	if m == nil {
+// ourHelperLog reports whether item, in tempDir, is a helper log of this app's to remove,
+// and the process it is named for: pid's, or another's naming bundle once HelperWindow old.
+func ourHelperLog(tempDir string, item fs.DirEntry, bundle string, pid int, now time.Time) (int, bool) {
+	owner, ok := fileOwner(helperLogPattern, item)
+	if !ok {
 		return 0, false
 	}
 
-	pid, err := strconv.Atoi(m[1])
+	if owner == pid {
+		return owner, true
+	}
 
-	return pid, err == nil
+	info, err := item.Info()
+	if err != nil || now.Sub(info.ModTime()) < HelperWindow {
+		return 0, false
+	}
+
+	return owner, namesBundle(filepath.Join(tempDir, item.Name()), bundle)
+}
+
+// fileOwner returns the process the regular file item is named for under pattern, and
+// whether it is one.
+func fileOwner(pattern *regexp.Regexp, item fs.DirEntry) (int, bool) {
+	m := pattern.FindStringSubmatch(item.Name())
+	if m == nil || !item.Type().IsRegular() {
+		return 0, false
+	}
+
+	owner, err := strconv.Atoi(m[1])
+
+	return owner, err == nil
+}
+
+// helperStart starts the first line of the runtime's helper log, before the target's path.
+const helperStart = "helper start: target="
+
+// namesBundle reports whether the helper log at path is of an install into bundle: its
+// first line, "<time>: helper start: target=<path> new=<path> pid=<pid>", names it.
+func namesBundle(path, bundle string) bool {
+	if bundle == "" {
+		return false
+	}
+
+	head, err := readHead(path, 4096)
+	if err != nil {
+		return false
+	}
+
+	line, _, _ := bytes.Cut(head, []byte("\n"))
+
+	_, rest, ok := bytes.Cut(line, []byte(helperStart))
+	if !ok {
+		return false
+	}
+
+	target, _, ok := bytes.Cut(rest, []byte(" new="))
+
+	return ok && sameBundle(string(target), bundle)
+}
+
+// sameBundle reports whether a and b are the same bundle: the same path, or, when both
+// exist, the same folder.
+func sameBundle(a, b string) bool {
+	if filepath.Clean(a) == filepath.Clean(b) {
+		return true
+	}
+
+	infoA, errA := os.Stat(a)
+	infoB, errB := os.Stat(b)
+
+	return errA == nil && errB == nil && os.SameFile(infoA, infoB)
+}
+
+// readHead reads the first n bytes of the regular file at path, or fewer when it is
+// shorter.
+func readHead(path string, n int) ([]byte, error) {
+	f, err := os.Open(path) //nolint:gosec // a helper log in the temporary folder, by its exact name
+	if err != nil {
+		return nil, fmt.Errorf("read a helper log: %w", err)
+	}
+
+	defer func() { _ = f.Close() }()
+
+	head := make([]byte, n)
+
+	read, err := io.ReadFull(f, head)
+	if err != nil && !errors.Is(err, io.ErrUnexpectedEOF) && !errors.Is(err, io.EOF) {
+		return nil, fmt.Errorf("read a helper log: %w", err)
+	}
+
+	return head[:read], nil
 }
 
 // removeIfExists removes path and what it holds; a missing one is no error.

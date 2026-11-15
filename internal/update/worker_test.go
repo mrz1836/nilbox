@@ -163,6 +163,69 @@ func TestAManualCheckWithDownloadsOnDownloadsAtOnceAndTellsNothing(t *testing.T)
 	})
 }
 
+func TestAManualFindWhoseDownloadFailsIsToldLater(t *testing.T) {
+	t.Parallel()
+
+	synctest.Test(t, func(t *testing.T) {
+		r := newRig(t)
+
+		_, stop := runWorker(t, r)
+		defer stop()
+
+		after(update.FirstCheckAfter)
+
+		r.release(t, next)
+		r.feed.downloadErr = errFakeNetwork
+
+		_, err := r.service.CheckNow(t.Context())
+		require.NoError(t, err)
+
+		after(time.Millisecond)
+		assert.Equal(t, update.StateAvailable, r.status(t).State, "the Worker's download failed")
+		assert.Empty(t, r.memory.get(update.KeyNotified), "a version never ready isn't marked told")
+
+		// The next due check downloads it, and tells of it, since the user never saw it ready.
+		r.feed.downloadErr = nil
+		r.clock.sleep(update.CheckEvery)
+		after(update.TickEvery)
+
+		assert.Equal(t, update.StateReady, r.status(t).State)
+		assert.Equal(t, []update.Notice{{Version: next, Ready: true}}, r.notifier.all())
+	})
+}
+
+func TestAManifestReadThatHangsEndsWithinItsLimit(t *testing.T) {
+	t.Parallel()
+
+	synctest.Test(t, func(t *testing.T) {
+		r := newRig(t)
+		r.feed.gate = make(chan struct{}) // never opened
+
+		done := make(chan struct{})
+
+		go func() {
+			defer close(done)
+
+			_, _ = r.service.CheckNow(t.Context())
+		}()
+
+		after(update.ManifestLimit - time.Second)
+
+		select {
+		case <-done:
+			require.FailNow(t, "the check ended before its limit")
+		default:
+		}
+
+		after(time.Second)
+		<-done
+
+		s := r.status(t)
+		assert.Contains(t, s.LastError, "Couldn't reach the releases")
+		assert.False(t, s.Checking, "the operation is let go")
+	})
+}
+
 func TestTurningDownloadsOnDownloadsWhatWasFound(t *testing.T) {
 	t.Parallel()
 

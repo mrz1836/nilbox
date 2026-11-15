@@ -11,6 +11,7 @@ import (
 
 	"github.com/mrz1836/nilbox/internal/brand"
 	"github.com/mrz1836/nilbox/internal/testutil"
+	"github.com/mrz1836/nilbox/internal/uierr"
 	"github.com/mrz1836/nilbox/internal/update"
 )
 
@@ -49,7 +50,13 @@ func TestAFolderFeed(t *testing.T) {
 		require.ErrorIs(t, feed.Download(t.Context(), next, bad, &out), update.ErrInvalid, bad)
 	}
 
-	require.Error(t, feed.Download(t.Context(), next, "missing.zip", &out))
+	err = feed.Download(t.Context(), next, "missing.zip", &out)
+	require.Error(t, err)
+	assert.Equal(t, "The rehearsal's folder doesn't hold the update's zip.", uierr.Message(err), "worded with no path")
+
+	_, err = update.FolderFeed{Dir: filepath.Join(dir, file)}.Manifest(t.Context())
+	require.Error(t, err, "a folder that is a file can't be read")
+	assert.Equal(t, "The rehearsal's folder can't be read.", uierr.Message(err))
 
 	canceled, cancel := context.WithCancel(t.Context())
 	cancel()

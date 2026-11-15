@@ -21,11 +21,24 @@ import (
 // oldPID is the process of the app that restarted to update, in the outcome tests.
 const oldPID = 31337
 
-// pending stores the record of an install from running to to, begun by oldPID.
+// pending stores the record of an install to to, begun by oldPID long enough ago that its
+// helper is done: from the version before running when to is running, else from running.
 func pending(t *testing.T, r *rig, to string) {
 	t.Helper()
 
-	body, err := json.Marshal(map[string]any{"from": "0.1.0", "to": to, "at": time.Now().UTC(), "pid": oldPID})
+	from := running
+	if to == running {
+		from = "0.1.0"
+	}
+
+	record(t, r, from, to, update.HelperWindow+time.Minute)
+}
+
+// record stores the record of an install from from to to, begun by oldPID age ago.
+func record(t *testing.T, r *rig, from, to string, age time.Duration) {
+	t.Helper()
+
+	body, err := json.Marshal(map[string]any{"from": from, "to": to, "at": r.clock.Now().Add(-age).UTC(), "pid": oldPID})
 	require.NoError(t, err)
 
 	r.memory.put(update.KeyPendingInstall, string(body))
@@ -70,6 +83,27 @@ func TestTheOutcomeOfTheLastRestart(t *testing.T) {
 			name:    "a newer build installed by hand",
 			before:  func(_ *testing.T, r *rig) { r.memory.put(update.KeyLastRunRelease, "0.1.0") },
 			updated: running,
+		},
+		{
+			name: "a newer build installed by hand after an update that didn't install",
+			before: func(t *testing.T, r *rig) {
+				record(t, r, "0.1.0", "0.1.5", update.HelperWindow+time.Minute)
+				helperLogIn(t, r, "2026-11-15T12:00:00Z: helper start", "2026-11-15T12:00:30Z: backup failed: full")
+			},
+			updated: running,
+		},
+		{
+			name: "a build installed by hand that is neither the one updated from nor to",
+			before: func(t *testing.T, r *rig) {
+				record(t, r, "0.1.0", next, update.HelperWindow+time.Minute)
+			},
+			updated: running,
+		},
+		{
+			name: "an older build installed by hand",
+			before: func(t *testing.T, r *rig) {
+				record(t, r, later, "0.4.0", update.HelperWindow+time.Minute)
+			},
 		},
 		{name: "the first run ever", before: func(*testing.T, *rig) {}},
 		{name: "the same version", before: func(_ *testing.T, r *rig) { r.memory.put(update.KeyLastRunRelease, running) }},
@@ -136,6 +170,60 @@ func TestAFailedInstallWithNoLogSaysSo(t *testing.T) {
 	err := r.service.ShowInstallLog(t.Context())
 	require.ErrorIs(t, err, update.ErrNoLog)
 	assert.Equal(t, "No log of that update was kept.", uierr.Message(err))
+}
+
+func TestTheStartLeavesAHelperStillAtWorkAlone(t *testing.T) {
+	t.Parallel()
+
+	r := newRig(t)
+	bak := r.cfg.Bundle + ".bak"
+	staging := filepath.Join(filepath.Dir(r.cfg.Bundle), "wails-update-9")
+	log := filepath.Join(r.cfg.TempDir, "wails-update-"+strconv.Itoa(oldPID)+".log")
+
+	require.NoError(t, os.MkdirAll(filepath.Join(bak, "Contents"), 0o700))
+	require.NoError(t, os.MkdirAll(staging, 0o700))
+	record(t, r, running, next, time.Minute)
+	helperLogIn(t, r, "2026-11-15T12:00:00Z: helper start",
+		"2026-11-15T12:00:40Z: launch new failed: exit 1 — restoring backup")
+
+	wait := r.engine.Settle(t.Context())
+	assert.InDelta(t, float64(update.HelperWindow-time.Minute), float64(wait), float64(time.Second),
+		"settle again once the helper can't be at work")
+	assert.DirExists(t, bak, "the copy the helper restores from stays")
+	assert.DirExists(t, staging)
+	assert.FileExists(t, log)
+	assert.NotEmpty(t, r.memory.get(update.KeyPendingInstall), "the record stays")
+	assert.Empty(t, r.status(t).InstallFailed.Version, "nothing is told yet")
+
+	// Once the window has passed, the start settles.
+	r.clock.sleep(wait)
+
+	assert.Zero(t, r.engine.Settle(t.Context()))
+	assert.NoDirExists(t, bak)
+	assert.NoDirExists(t, staging)
+	assert.Equal(t, next, r.status(t).InstallFailed.Version)
+	assert.Empty(t, r.memory.get(update.KeyPendingInstall))
+}
+
+func TestTheStartSettlesAtOnceOnceTheHelpersLogHasEnded(t *testing.T) {
+	t.Parallel()
+
+	for _, last := range []string{
+		"helper done", "restore failed: busy", "relaunched original after parent-timeout abort",
+		"all swap attempts exhausted — relaunching intact original", "backup failed: no space",
+	} {
+		r := newRig(t)
+		record(t, r, running, next, 10*time.Second)
+		helperLogIn(t, r, "2026-11-15T12:00:00Z: helper start", "2026-11-15T12:00:09Z: "+last)
+
+		assert.Zero(t, r.engine.Settle(t.Context()), last)
+		assert.Empty(t, r.memory.get(update.KeyPendingInstall), last)
+	}
+
+	// A recent install whose helper left no log yet waits too.
+	r := newRig(t)
+	record(t, r, running, next, 10*time.Second)
+	assert.Positive(t, r.engine.Settle(t.Context()))
 }
 
 func TestARecordThatNamesNoReleaseIsDropped(t *testing.T) {
