@@ -367,6 +367,7 @@ function answers(subscribe: Loose<Platform['on']>): { [K in keyof Platform]: Loo
     markScriptRunSeen: done,
     clearScriptRunHistory: done,
     quitAnyway: done,
+    keepRunning: done,
 
     listReleaseCandidates: () => Promise.resolve(releaseCandidates()),
     prepareRelease: () => Promise.resolve(releaseOffer()),

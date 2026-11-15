@@ -72,6 +72,9 @@ const (
 	// NameQuitConfirmed is QuitConfirmed's name.
 	NameQuitConfirmed = "app:quitConfirmed"
 
+	// NameQuitKept is QuitKept's name.
+	NameQuitKept = "app:quitKept"
+
 	// NameReleasesUpdated is ReleasesUpdated's name.
 	NameReleasesUpdated = "releases:updated"
 
@@ -485,6 +488,14 @@ type QuitConfirmed struct {
 
 // Name returns NameQuitConfirmed.
 func (QuitConfirmed) Name() string { return NameQuitConfirmed }
+
+// QuitKept says the user chose to keep the app running when its quit asked first (Keep
+// running). It stays in Go: the desktop shell forgets the copy a move to Applications asked
+// to open once the app quits, so a later quit opens nothing.
+type QuitKept struct{}
+
+// Name returns NameQuitKept.
+func (QuitKept) Name() string { return NameQuitKept }
 
 // ReleasesUpdated says the Release page's list changed: it was read again from GitHub, in
 // full or, after a release ended, for the repository released alone; a release ended, and

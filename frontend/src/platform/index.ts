@@ -739,7 +739,8 @@ export const {
 // terminal, newest first. A "scriptruns:updated" event follows each start, end, or change
 // of status, never output: the window reads a live run's output by polling Output from
 // where it left off. Stop works only on a run going in the app; Run again never on a
-// release. QuitAnyway answers the "app:quitRequested" question: stop the runs and quit.
+// release. QuitAnyway answers the "app:quitRequested" question: stop the runs and quit;
+// KeepRunning its other answer, which also forgets the copy a move asked to open at the quit.
 export const {
   Runs: listScriptRuns,
   Run: getScriptRun,
@@ -751,6 +752,7 @@ export const {
   MarkSeen: markScriptRunSeen,
   ClearHistory: clearScriptRunHistory,
   QuitAnyway: quitAnyway,
+  KeepRunning: keepRunning,
 } = narrow(scriptrun.Service)
 
 // Releases: the repositories the Release page lists (kept however old unless refresh

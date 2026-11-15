@@ -553,6 +553,22 @@ func TestQuitAnywayCallsQuit(t *testing.T) {
 	NewService(NewEngine(Config{})).QuitAnyway(t.Context()) // without Quit, nothing happens
 }
 
+func TestKeepRunningCallsKept(t *testing.T) {
+	t.Parallel()
+
+	quits, kept := 0, 0
+	h := newHarness(t, func(cfg *Config) {
+		cfg.Quit = func() { quits++ }
+		cfg.Kept = func() { kept++ }
+	})
+
+	h.s.KeepRunning(t.Context())
+	assert.Equal(t, 1, kept)
+	assert.Zero(t, quits, "keeping the app running quits nothing")
+
+	NewService(NewEngine(Config{})).KeepRunning(t.Context()) // without Kept, nothing happens
+}
+
 func TestSizeText(t *testing.T) {
 	t.Parallel()
 

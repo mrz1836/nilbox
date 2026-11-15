@@ -774,7 +774,7 @@ func assemble(pool *sql.DB, info startup, opts Options, logger *slog.Logger) *Co
 // reaches it as event.ScriptRunProgress, which names the run. A run that failed is told to
 // the user through dispatcher (run_failed). A run in the terminal opens through terminals,
 // and the user's choice to stop the runs and quit reaches the desktop shell as
-// event.QuitConfirmed.
+// event.QuitConfirmed, or to keep running as event.QuitKept.
 func newRuns(
 	pool *sql.DB, opts Options, clones *clonelock.Set, terminals terminalRuns, runner execpath.Runner,
 	dispatcher *notify.Dispatcher, logger *slog.Logger,
@@ -793,6 +793,7 @@ func newRuns(
 		Terminal:   terminals,
 		Reveal:     revealer(runner),
 		Quit:       func() { events.Emit(event.QuitConfirmed{}) },
+		Kept:       func() { events.Emit(event.QuitKept{}) },
 	})
 }
 

@@ -249,6 +249,15 @@ func (s *Service) QuitAnyway(_ context.Context) {
 	}
 }
 
+// KeepRunning is the user's other answer to quitting while runs go in the app: keep it
+// running. The runs go on, and the desktop shell forgets what the quit was to do after,
+// such as opening the copy a move to Applications made.
+func (s *Service) KeepRunning(_ context.Context) {
+	if s.e.kept != nil {
+		s.e.kept()
+	}
+}
+
 // view returns rec as the window shows it.
 func (s *Service) view(rec Record) Run {
 	l := s.e.goingRun(rec.ID)

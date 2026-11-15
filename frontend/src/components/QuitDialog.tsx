@@ -5,7 +5,7 @@ import { attempt } from '../lib/call'
 import { counted } from '../lib/format'
 import { heldReleaseText, heldRunText, releaseTagRisk, tagRisk } from '../lib/runsGoing'
 import { runWhere } from '../lib/scriptRuns'
-import { listScriptRuns, on, quitAnyway, type ScriptRun } from '../platform'
+import { keepRunning, listScriptRuns, on, quitAnyway, type ScriptRun } from '../platform'
 import { ConfirmDialog } from './ConfirmDialog'
 
 // held reports a run whose kind holds Stop back for now, as a release does while magex
@@ -64,8 +64,10 @@ function question(going: readonly ScriptRun[]): ReactNode {
 
 // QuitDialog asks, when the user quits while runs go in the app, whether to stop them and
 // quit or keep running. The shell asks for it (app:quitRequested); by then a run may have
-// ended, so it lists the runs again, and quits at once when none is going any more. It
-// shows nothing until asked.
+// ended, so it lists the runs again, and quits at once when none is going any more. Keep
+// running tells the shell, which forgets what the quit was to do after, so the copy a move
+// to Applications asked to open doesn't open at some later quit. It shows nothing until
+// asked.
 export function QuitDialog() {
   // going are the runs it asks about, or null while it asks nothing.
   const [going, setGoing] = useState<readonly ScriptRun[] | null>(null)
@@ -121,6 +123,11 @@ export function QuitDialog() {
       onConfirm={quit}
       onCancel={() => {
         setGoing(null)
+        void attempt(keepRunning()).then((result) => {
+          if (!result.ok) {
+            console.error('could not keep running:', result.error)
+          }
+        })
       }}
     >
       {question(going)}

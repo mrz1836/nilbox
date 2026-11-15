@@ -303,7 +303,8 @@ type Shell struct {
 	relaunch atomic.Bool
 
 	// reopen is the bundle to open once the app has quit, the copy a move to Applications
-	// made or found, or nil: the last asked for, opened once (RelaunchCommand).
+	// made or found, or nil: the last asked for, opened once (RelaunchCommand), and
+	// forgotten when the user keeps the app running at the quit's question.
 	reopen atomic.Pointer[string]
 
 	// bannersHeld is set while the first-run setup shows at launch, which holds the
@@ -427,7 +428,7 @@ func (s *Shell) Emit(e event.Event) {
 	case event.FirstPaint:
 		s.firstPaint(e.Measurement)
 		s.startDeferred()
-	case event.QuitConfirmed, event.SetupFinished, event.ResetRequested, event.UpdateRestartFailed,
+	case event.QuitConfirmed, event.QuitKept, event.SetupFinished, event.ResetRequested, event.UpdateRestartFailed,
 		event.UpdateQuitHeld:
 		s.appEvent(e)
 	case event.WindowEvent:
@@ -563,9 +564,10 @@ func (s *Shell) Relaunching() bool {
 }
 
 // appEvent acts on what the user decided about the app itself: to stop the runs and quit,
-// that the first-run setup ended, or to start over, which quits so the app opens again. A
-// restart to update's confirmation only lets the quit through, which its installer makes,
-// until the restart fails.
+// to keep it running, which forgets the copy a move asked to open once it quits, that the
+// first-run setup ended, or to start over, which quits so the app opens again. A restart to
+// update's confirmation only lets the quit through, which its installer makes, until the
+// restart fails.
 func (s *Shell) appEvent(e event.Event) {
 	switch e := e.(type) {
 	case event.QuitConfirmed:
@@ -576,6 +578,8 @@ func (s *Shell) appEvent(e event.Event) {
 		}
 
 		s.quitAnyway()
+	case event.QuitKept:
+		s.reopen.Store(nil)
 	case event.UpdateRestartFailed:
 		s.restarting.Store(false)
 	case event.UpdateQuitHeld:

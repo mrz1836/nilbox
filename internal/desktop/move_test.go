@@ -166,9 +166,9 @@ func TestAMovedCopyOpensOnceTheAppHasQuit(t *testing.T) {
 	})
 }
 
-// A quit the user holds back, as when runs go in the app, leaves the copy to open at the
-// next quit, and asking again, as Open it does then, still opens one bundle, once.
-func TestAHeldQuitKeepsTheCopyForTheNextQuitAndOpensItOnce(t *testing.T) {
+// A quit that asks first, as when runs go in the app, keeps the copy for the quit the user
+// lets through, and asking again, as Open it does, still opens one bundle, once.
+func TestAQuitThatAsksFirstOpensTheCopyOnceTheUserLetsItThrough(t *testing.T) {
 	t.Parallel()
 
 	synctest.Test(t, func(t *testing.T) {
@@ -186,25 +186,62 @@ func TestAHeldQuitKeepsTheCopyForTheNextQuitAndOpensItOnce(t *testing.T) {
 		synctest.Wait()
 		assert.Equal(t, []event.WindowEvent{event.QuitRequested{}}, r.page.events())
 
-		// The user keeps running, then moves again, which finds the copy and opens it.
-		s.OpenAfterQuit(movedTo)
+		// Another bundle asked for before the user answers is the one opened.
+		s.OpenAfterQuit("/Users/example/Applications/Example.app")
 		synctest.Wait()
 
 		argv, ok := s.RelaunchCommand(movedFrom+"/Contents/MacOS/example", "")
 		require.True(t, ok)
-		assert.Equal(t, []string{desktop.OpenBin, "-n", movedTo}, argv, "one command, opening the copy once")
-
-		// Another bundle asked for later is the one opened.
-		s.OpenAfterQuit("/Users/example/Applications/Example.app")
-		synctest.Wait()
-
-		argv, _ = s.RelaunchCommand(movedFrom+"/Contents/MacOS/example", "")
-		assert.Equal(t, []string{desktop.OpenBin, "-n", "/Users/example/Applications/Example.app"}, argv)
+		assert.Equal(t, []string{desktop.OpenBin, "-n", "/Users/example/Applications/Example.app"}, argv,
+			"one command, opening the last copy asked for once")
 
 		// Stop and quit lets it through.
 		s.Emit(event.QuitConfirmed{})
 		synctest.Wait()
 		assert.True(t, s.ShouldQuit())
+
+		require.NoError(t, s.Stop())
+	})
+}
+
+// Keep running forgets the copy: the app runs on from where it is, and a later quit, days
+// on, opens nothing it didn't ask for then. Open it asks again.
+func TestKeepRunningForgetsTheCopy(t *testing.T) {
+	t.Parallel()
+
+	synctest.Test(t, func(t *testing.T) {
+		r := newRig()
+		guard := &fakeGuard{}
+		guard.active.Store(true)
+
+		s := r.shell(func(c *desktop.Config) { c.QuitGuard = guard })
+		exe := movedFrom + "/Contents/MacOS/example"
+
+		s.OpenAfterQuit(movedTo)
+		synctest.Wait()
+		assert.False(t, s.ShouldQuit())
+
+		s.Emit(event.QuitKept{})
+		synctest.Wait()
+
+		_, ok := s.RelaunchCommand(exe, "")
+		assert.False(t, ok, "a later quit opens nothing")
+
+		s.OpenAfterQuit(movedTo)
+		synctest.Wait()
+
+		argv, ok := s.RelaunchCommand(exe, "")
+		require.True(t, ok, "Open it asks again")
+		assert.Equal(t, []string{desktop.OpenBin, "-n", movedTo}, argv)
+
+		// Keep running beside a reset still opens this bundle, for the reset.
+		s.Emit(event.QuitKept{})
+		s.Emit(event.ResetRequested{})
+		synctest.Wait()
+
+		argv, ok = s.RelaunchCommand(exe, "")
+		require.True(t, ok)
+		assert.Equal(t, []string{desktop.OpenBin, "-n", movedFrom}, argv)
 
 		require.NoError(t, s.Stop())
 	})

@@ -115,9 +115,9 @@ func (m *Mover) run(ctx context.Context, argv []string) error {
 
 // OpenAfterQuit quits the app the normal way, which asks first while runs go in the app
 // (ShouldQuit), and has it open the bundle at bundle once it has quit (RelaunchCommand): the
-// copy a move to Applications made or found. A quit the user holds back leaves the bundle
-// for the next quit, whichever asks for it; asked again, it opens one bundle, the last asked
-// for, once. Once the shell is stopping it does nothing.
+// copy a move to Applications made or found. Asked again, it opens one bundle, the last
+// asked for, once; a quit the user keeps from going through (Keep running, event.QuitKept)
+// forgets it, so a later quit opens nothing. Once the shell is stopping it does nothing.
 func (s *Shell) OpenAfterQuit(bundle string) {
 	if s.stopping.Load() {
 		return
