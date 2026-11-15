@@ -65,7 +65,9 @@ pins.
 | `magex app:fresh` | Opens `bin/Nilbox.app` on a fresh [sandbox](#a-sandbox-on-fresh-data) data folder, your prompts and launch defaults copied in, leaving your own data as it is; `magex app:run` goes back to it |
 | `magex app:reset` | [Starts the app over](#starting-over) on your own data: quits it, asks for the reset, and opens it again, which carries the reset out |
 | `magex app:check` | Runs `app:bindingsCheck`, `app:lint`, `app:test`, and `app:build` |
-| `magex app:package` | Builds a release into `bin/release/<version>/`: a universal bundle (Apple silicon and Intel) signed with a code-signing identity, its zip, a signed `Nilbox.dmg`, `SHA256SUMS`, and the signed update manifest, checked against the release key the app pins ([Packaging a release](#packaging-a-release)) |
+| `magex app:package` | Builds a release into `bin/release/<version>/`: a universal bundle (Apple silicon and Intel) signed with a code-signing identity, its zip, a signed `Nilbox.dmg`, `SHA256SUMS`, and the signed update manifest, checked against the release key the app pins ([Packaging a release](#packaging-a-release)); `app:buildRelease`, then `app:signRelease`, in one target |
+| `magex app:buildRelease` | The first half of `app:package`, which needs no secret: builds the release's universal bundle, unsigned, alone in `bin/unsigned/<version>/` |
+| `magex app:signRelease bundle=<path>` | The second half: checks the unsigned bundle at the absolute `<path>` that `app:buildRelease` built, signs a copy of it, and builds the release's other files in `bin/release/<version>/`, as `app:package` does |
 | `magex app:keygen out=<folder>` | Makes the release key: writes its Ed25519 private half to `<folder>/release.key` (`~/` allowed), outside the repository, and prints the public half to pin |
 | `magex app:verify dir=<folder> [version=<version>]` | Checks a release's `manifest-darwin.json` against the release key the app pins, and the zip it names by its size and SHA-512, as the app will; with `version`, it also refuses a manifest of another version |
 | `magex app:rehearse case=normal\|tampered\|broken` | Builds a pair of rehearsal builds to try an update end to end on this Mac: A (`0.0.1`) as `bin/rehearsal/A/Nilbox.app`, and B (`0.0.2`) as a release's zip and signed manifest in `bin/rehearsal/feed/`, which A reads as its releases; signed with `CODESIGN_IDENTITY` (and `CODESIGN_KEYCHAIN`), and prints the steps ([Rehearsing an update](#rehearsing-an-update)) |
@@ -167,10 +169,26 @@ that doesn't match the app's fails here, never in a user's hands. Last, it check
 `magex app:verify` does and prints each one's size. While no release key is pinned, it refuses
 with "no release key pinned yet".
 
+**In two halves.** `app:package` is `magex app:buildRelease`, then `magex app:signRelease`, in
+one target, and each half also runs on its own, which is how the release workflow keeps every
+secret away from the build's tools.
+
+- `app:buildRelease` reads `RELEASE_VERSION` alone. It checks the version, the tag, and the
+  working tree as `app:package` does, refuses while no release key is pinned, and builds the
+  universal bundle, unsigned, alone in `bin/unsigned/<version>/`. It needs no secret.
+- `app:signRelease bundle=<path>` takes the absolute path of that bundle, outside
+  `bin/release/<version>/`, and reads all four variables. It makes every check `app:package`
+  makes but the build's, then checks the bundle before it touches the keychain: named
+  `Nilbox.app`, alone in its folder, only folders and regular files in it (no link, the one way
+  out of it), its `Info.plist` and binary there, not signed yet, and a binary `lipo -archs` reads
+  both architectures in. It signs a copy in `bin/release/<version>/`, leaving the unsigned bundle
+  as it was, sets the modes before signing as after (a build artifact keeps none), and builds
+  the other files as `app:package` does.
+
 **The keychain search list.** `codesign` finds an identity only in a keychain on the user's
 search list, even one named with `--keychain`. With `CODESIGN_KEYCHAIN` set, the target puts
-that keychain first on the list while it runs, and puts the list back exactly as it was when it
-ends, fails, or is interrupted. On Control-C the target then stops as the build's tools do and
+that keychain first on the list once the bundle is built, while it signs, and puts the list
+back exactly as it was when it ends, fails, or is interrupted. On Control-C the target then stops as the build's tools do and
 cleans up after itself; on `SIGTERM` or `SIGHUP` it ends at once, and the next run clears what
 it left in the release's folder. It never looks for the identity with `security find-identity
 -v`, which counts a self-signed identity as not valid though it signs.
@@ -517,63 +535,101 @@ To clean up, delete `bin/rehearsal` and the rehearsal's data directory,
 ## Publishing a release
 
 Each release is built, signed, and published by
-[`desktop-release.yml`](../.github/workflows/desktop-release.yml), which runs `magex
-app:package` on a macOS runner. It is the one workflow that may use macOS: a repository test
-(`TestNoMacOSRunners`) holds every other to ubuntu. GoFortress still runs every check on the tag,
-but publishes nothing itself (`ENABLE_RELEASE=false` in `.github/env/90-project.env`), so a
-release never shows without its files.
+[`desktop-release.yml`](../.github/workflows/desktop-release.yml) on macOS runners. It is the one
+workflow that may use macOS: a repository test (`TestNoMacOSRunners`) holds every other to
+ubuntu, and this one to a single pinned `macos-<version>` label. GoFortress still runs every
+check on the tag, but publishes nothing itself (`ENABLE_RELEASE=false` in
+`.github/env/90-project.env`), so a release never shows without its files. Another repository
+test (`TestGoFortressReadsEnableRelease`) fails while that line is set but GoFortress's synced
+`fortress.yml` and `fortress-setup-config.yml` don't read `ENABLE_RELEASE`: until they do,
+GoFortress would publish a tag's release before its files exist, and an immutable release
+could never get them.
+
+**Before the first tag.**
+
+1. Create the `release` environment (Settings → Environments → New environment). Under
+   **Deployment branches and tags**, choose **Selected branches and tags** and add one **Tag**
+   rule, `v*`, and nothing else. Create it before any tag is pushed: when a workflow names an
+   environment that doesn't exist, GitHub creates it with no rule at all.
+2. Add its secrets and its variable:
+
+   | Name | Kind | What it is |
+   |---|---|---|
+   | `UPDATE_SIGNING_KEY` | Secret | The release key's private half, the PEM file `magex app:keygen` wrote |
+   | `CODESIGN_P12` | Secret | The code-signing certificate and its key, a `.p12` file in base64. Export it with macOS's `/usr/bin/openssl`, or with `-legacy` from OpenSSL 3 or newer, or `security import` refuses it |
+   | `CODESIGN_P12_PASSWORD` | Secret | The `.p12` file's password |
+   | `CODESIGN_IDENTITY` | Variable | The code-signing identity's name (or SHA-1), passed to `app:signRelease` |
+
+3. Recommended: a tag ruleset on `refs/tags/v*` (Settings → Rules → Rulesets) that limits who
+   may create, update, or delete release tags. Anyone who can push a `v*` tag runs this
+   workflow, as the tagged commit holds it, with the environment's secrets.
+4. Recommended: under Settings → Actions → General, require actions to be pinned to a
+   full-length commit SHA, as every workflow here pins them.
 
 **How to release.**
 
 1. Merge to `master`.
 2. Tag it from the app's own [Release](#release) page, or with `magex version:bump bump=patch
-   push=true`. A tag with a suffix, such as `v0.3.0-rc.1`, is a prerelease.
+   push=true`. A tag with a suffix, such as `v0.4.0-rc.1`, is a prerelease.
 3. The tag starts two workflows at once: **GoFortress** runs every check, and **Desktop
-   release** builds and signs meanwhile.
-4. Once GoFortress passes, Desktop release drafts the release, attaches the zip, the disk image,
-   `SHA256SUMS`, and the update manifest, checks them on GitHub, and publishes it, all together.
+   release** builds the app meanwhile.
+4. Once GoFortress passes, Desktop release signs the app, drafts the release, attaches the zip,
+   the disk image, `SHA256SUMS`, and the update manifest, checks them on GitHub, and publishes
+   it, all together.
 5. The app's Release page follows both runs and says *published* at that moment, when the update
    is live.
 
-**What the workflow does,** on a `v*` tag and nothing else:
+**What the workflow does,** on a `v*` tag and nothing else, in four jobs:
 
-1. Checks the tag is a release's (`v1.2.3`, or `v1.2.3-rc.1` for a prerelease), reading it only
-   from the environment, then checks it out.
-2. Stops if the tag already has a published release: GoFortress most likely published it, so
-   check that `ENABLE_RELEASE=false` reaches its setup, whose summary says whether release
-   publishing is on. A draft left by an earlier attempt is reused.
-3. Sets up Go, pnpm, Node, and magex, with no dependency or build cache, so the build uses only
-   what the tag pins.
-4. Makes a keychain of its own in the runner's temporary folder, imports the code-signing
-   certificate into it, and writes the release key there, readable by the runner alone.
-5. Runs `magex app:package` and `magex app:verify`, then deletes the keychain and the key, which
-   nothing after needs. They are deleted however the job ends.
-6. Waits for GoFortress's run for the tag, which has been checking the same commit meanwhile.
-   If it fails, nothing is published.
-7. Creates the release as a draft, which no one else sees, titled `Release <tag>`: the install
-   note first, then the notes GitHub generates from the pull requests merged since the last
-   release, marked a prerelease for a tag with a suffix.
-8. Attaches the zip, the disk image, and `SHA256SUMS`, then the manifest last.
-9. Downloads them back from the draft, checks the manifest and the zip with `magex app:verify`,
-   and compares every file with what it built.
-10. Publishes it. A stable release becomes the latest; a prerelease never does.
-11. For a stable release, checks that `releases/latest/download/manifest-darwin.json` serves the
-    new version.
+1. **Check the tag** (ubuntu, read-only). The tag must be a release version as the app reads
+   one (`update.ValidVersion`, with its `v`: `v0.4.0` or `v0.4.0-rc.1`, never `v01.4.0` or
+   `v0.4.0-..`), read only from the environment; a repository test holds the workflow's pattern
+   to the app's rule. If the tag already has a published release holding
+   `manifest-darwin.json`, an earlier attempt of this workflow published it, so nothing is built
+   again and only the last job runs. A published release without that file stops the run:
+   GoFortress most likely published it, so check that `ENABLE_RELEASE=false` reaches its setup,
+   whose summary says whether release publishing is on.
+2. **Build the unsigned app** (macOS, read-only, no secret anywhere in the job). It checks out the
+   tag and stops unless its commit is on the default branch, a guard against tagging the wrong
+   commit. It sets up Go, pnpm, and Node with no dependency or build cache, and magex from its
+   GitHub release, checked against that release's checksums, never from a cache; mage is built
+   from the module proxy, checked against Go's checksum database. Then it runs `magex
+   app:buildRelease` and hands the unsigned bundle, in a tar, to the next job as an artifact
+   kept for a day.
+3. **Sign and publish** (macOS, the `release` environment, `contents: write` and `actions:
+   read`).
+   - It checks the tag, the `CODESIGN_IDENTITY` variable, and the default branch again, and
+     sets up Go and magex the same way, with no pnpm and no Node.
+   - It waits for GoFortress's run for the tag, which has been checking the same commit
+     meanwhile. A poll that fails is tried again; if the run fails, nothing is published, and
+     if the workflow loses track of it, it says so rather than calling it a failure.
+   - It unpacks the artifact, makes a keychain of its own in the runner's temporary folder,
+     imports the code-signing certificate, checks the identity is there (with `security
+     find-identity`, never `-v`), writes the release key there, readable by the runner alone,
+     runs `magex app:signRelease`, and deletes the keychain and the key at once, however the
+     job ends. The secrets exist only from the keychain's making to its deletion, while only
+     this repository's magefiles and Apple's tools run.
+   - It checks the files with `magex app:verify`, then creates the release as a draft, which no
+     one else sees, titled `Release <tag>`: the install note first, then the notes GitHub
+     generates from the pull requests merged since the last release, marked a prerelease for a
+     tag with a suffix. A draft an earlier attempt left is reused.
+   - It attaches the zip, the disk image, and `SHA256SUMS`, then the manifest last, downloads
+     them back, and checks the manifest and the zip with `magex app:verify` and every file
+     byte for byte against what it built.
+   - It refuses to publish a draft titled otherwise, or holding other files than those four.
+     Then it publishes it, as the latest release only when it is a stable release newer than
+     the latest one, compared number by number; a prerelease never is.
+4. **Check the latest release** (ubuntu, read-only). For a stable release that became the
+   latest, it checks that `releases/latest/download/manifest-darwin.json` serves the new
+   version. It is a job of its own, so trying it again signs nothing.
 
-**The `release` environment.** The workflow's job runs in a GitHub environment named `release`,
-whose deployment rule admits only `v*` tags, so no branch or pull request ever runs with its
-secrets. It holds:
-
-| Name | Kind | What it is |
-|---|---|---|
-| `UPDATE_SIGNING_KEY` | Secret | The release key's private half, the PEM file `magex app:keygen` wrote |
-| `CODESIGN_P12` | Secret | The code-signing certificate and its key, a `.p12` file in base64. Export it with macOS's `/usr/bin/openssl`, or with `-legacy` from OpenSSL 3 or newer, or `security import` refuses it |
-| `CODESIGN_P12_PASSWORD` | Secret | The `.p12` file's password |
-| `CODESIGN_IDENTITY` | Variable | The code-signing identity's name (or SHA-1), passed to `app:package` |
+`GH_TOKEN` reaches only the steps that run `gh`, never one that runs magex, mage, Go, or pnpm.
 
 **Trying again.** Use Actions' **Re-run failed jobs** on the Desktop release run. It keeps the
 tag, the workflow as the tag holds it, and the secrets, so the workflow needs no manual trigger.
-It reuses the draft an earlier attempt left and replaces its files.
+A failed build builds again; a failed publish job waits for GoFortress, signs again, reuses the
+draft it left, and replaces its files; once the release is published, a re-run finds it, says
+an earlier attempt published it, and only checks the latest release.
 
 **When something goes wrong.**
 
@@ -628,7 +684,7 @@ and it sits behind the `desktop` build tag:
 
 CI runs the fortress workflows on ubuntu for the Go code, `.github/workflows/frontend.yml` for
 `magex frontend:gate`, and `.github/workflows/sqlc.yml` for `magex db:check`. No check runs on
-macOS, so `magex app:check` is a local step; the one macOS runner builds releases
+macOS, so `magex app:check` is a local step; only the release workflow's jobs run on macOS
 ([Publishing a release](#publishing-a-release)).
 
 <br>

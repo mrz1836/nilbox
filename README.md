@@ -1184,9 +1184,10 @@ magex version:bump bump=patch push=true branch=master
 
 The tag starts two workflows. GoFortress runs every check on it but publishes nothing
 (`ENABLE_RELEASE=false` in `.github/env/90-project.env`), and
-[desktop-release.yml](.github/workflows/desktop-release.yml) builds the universal macOS app on a
-macOS runner, signs it, waits for GoFortress to pass, and then publishes the release with its zip,
-disk image, checksums, and signed update manifest attached. `magex app:build` stamps the app with
+[desktop-release.yml](.github/workflows/desktop-release.yml) builds the universal macOS app,
+unsigned, on a macOS runner with no secret in reach, waits for GoFortress to pass, then signs it
+in a job of its own and publishes the release with its zip, disk image, checksums, and signed
+update manifest attached. `magex app:build` stamps the app with
 the same version, build number, and commit, all shown in Settings → About. The
 [Desktop Guide](docs/desktop.md#publishing-a-release) has the details, the secrets the workflow
 needs, and what to do when a release goes wrong.
@@ -1205,11 +1206,11 @@ its own release workflow:
 - **fortress-security-scans.yml** — Security scanning with gitleaks, govulncheck, and Nancy
 - **fortress-coverage.yml** — Code coverage reporting to Codecov
 - **fortress.yml** — Runs every check above on pull requests, `master`, and `v*` tags; on a tag it publishes nothing here (`ENABLE_RELEASE=false`)
-- **desktop-release.yml** — On a `v*` tag, builds and signs the macOS app on a macOS runner, waits for GoFortress to pass, then publishes the release with its files
+- **desktop-release.yml** — On a `v*` tag, builds the macOS app on a macOS runner, waits for GoFortress to pass, then signs it in a separate job and publishes the release with its files
 - **frontend.yml** — The frontend gate (`magex frontend:gate`): install, format check, lint, typecheck, tests, and the render check
 - **sqlc.yml** — Checks that the generated queries match their SQL and that every query prepares
 
-No check runs on macOS, so `magex app:check` runs locally; the one macOS runner builds releases.
+No check runs on macOS, so `magex app:check` runs locally; only the release workflow's jobs run on macOS.
 See all workflows in [`.github/workflows/`](.github/workflows/).
 
 </details>

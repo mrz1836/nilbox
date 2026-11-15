@@ -62,7 +62,7 @@ enters `go.mod`.
 
 On macOS, a change to the desktop shell, the bound services, or the frontend must also pass
 `magex app:check` (bindings drift check, desktop lint, desktop tests, and the app bundle
-build). No CI check runs on macOS (the one macOS runner, `desktop-release.yml`'s, only builds
+build). No CI check runs on macOS (only `desktop-release.yml`'s jobs do, and they build
 releases), so this check is local.
 
 <br>
