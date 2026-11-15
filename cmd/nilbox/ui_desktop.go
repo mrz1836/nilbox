@@ -37,10 +37,10 @@ func (u *desktopUI) Emit(e event.WindowEvent) {
 	}
 }
 
-// Open opens the window in theme and at size, with its page showing text at textSize. The
-// window is never smaller than the minimum for the text size, and both fit the primary
-// screen's work area.
-func (u *desktopUI) Open(theme settings.Theme, size settings.WindowSize, textSize settings.TextSize) {
+// Open opens the window in theme and at size, with its page showing text at textSize, and
+// the first-run setup from its first frame when setup is set. The window is never smaller
+// than the minimum for the text size, and both fit the primary screen's work area.
+func (u *desktopUI) Open(theme settings.Theme, size settings.WindowSize, textSize settings.TextSize, setup bool) {
 	app := u.app.Load()
 	if app == nil {
 		return
@@ -59,6 +59,7 @@ func (u *desktopUI) Open(theme settings.Theme, size settings.WindowSize, textSiz
 		size:     size,
 		least:    least,
 		textSize: textSize,
+		setup:    setup,
 	}))
 	window := u.window
 	u.appearance.Unlock()
@@ -221,18 +222,21 @@ func workArea(screen *application.Screen) (width, height int) {
 }
 
 // windowSpec is what the window opens with: the palette its background is in, its size
-// and the smallest it can be resized to, in points, and the text size its page shows.
+// and the smallest it can be resized to, in points, the text size its page shows, and
+// whether its page opens on the first-run setup.
 type windowSpec struct {
 	dark     bool
 	size     settings.WindowSize
 	least    settings.WindowSize
 	textSize settings.TextSize
+	setup    bool
 }
 
 // baseWindowOptions are the window settings shared by every OS, for the window spec: on
 // the native background of the dark or light palette, so the frame never flashes a
-// different color before the page paints, and with the text size in the page's URL, so
-// its first frame already shows text at that size.
+// different color before the page paints, and with the text size and the setup in the
+// page's URL, so its first frame already shows text at that size, on the setup when it
+// shows.
 func baseWindowOptions(spec windowSpec) application.WebviewWindowOptions {
 	return application.WebviewWindowOptions{
 		Title:            brand.Name,
@@ -240,7 +244,7 @@ func baseWindowOptions(spec windowSpec) application.WebviewWindowOptions {
 		Height:           spec.size.Height,
 		MinWidth:         spec.least.Width,
 		MinHeight:        spec.least.Height,
-		URL:              desktop.PageURL(spec.textSize),
+		URL:              desktop.PageURL(spec.textSize, spec.setup),
 		BackgroundColour: backgroundColour(spec.dark),
 	}
 }

@@ -18,15 +18,28 @@ func TestPageURLCarriesTheTextSize(t *testing.T) {
 	t.Parallel()
 
 	for _, size := range []settings.TextSize{settings.TextSizeDefault, settings.TextSizeLarge, settings.TextSizeLarger} {
-		got := desktop.PageURL(size)
+		got := desktop.PageURL(size, false)
 
 		parsed, err := url.Parse(got)
 		require.NoError(t, err, got)
 		assert.Equal(t, "/", parsed.Path, "the page is the app's root")
 		assert.Equal(t, string(size), parsed.Query().Get(desktop.TextSizeParam), got)
+		assert.False(t, parsed.Query().Has(desktop.SetupParam), "no setup, no parameter: %s", got)
 	}
 
-	assert.Equal(t, "/?textSize=larger", desktop.PageURL(settings.TextSizeLarger))
+	assert.Equal(t, "/?textSize=larger", desktop.PageURL(settings.TextSizeLarger, false))
+}
+
+func TestPageURLSaysTheSetupShows(t *testing.T) {
+	t.Parallel()
+
+	got := desktop.PageURL(settings.TextSizeLarge, true)
+
+	parsed, err := url.Parse(got)
+	require.NoError(t, err, got)
+	assert.Equal(t, desktop.SetupValue, parsed.Query().Get(desktop.SetupParam))
+	assert.Equal(t, string(settings.TextSizeLarge), parsed.Query().Get(desktop.TextSizeParam))
+	assert.Equal(t, "/?setup=1&textSize=large", got)
 }
 
 func TestThePageReadsTheTextSizeParameter(t *testing.T) {
@@ -34,6 +47,16 @@ func TestThePageReadsTheTextSizeParameter(t *testing.T) {
 
 	assert.Contains(t, pageTextSizeSource(t), "'"+desktop.TextSizeParam+"'",
 		"the page must read the text size from the parameter the shell sets")
+}
+
+func TestThePageReadsTheSetupParameter(t *testing.T) {
+	t.Parallel()
+
+	source, err := os.ReadFile(filepath.Join("..", "..", "frontend", "src", "lib", "setup.ts"))
+	require.NoError(t, err)
+	assert.Contains(t, string(source), "'"+desktop.SetupParam+"'",
+		"the page must read whether the setup shows from the parameter the shell sets")
+	assert.Contains(t, string(source), "'"+desktop.SetupValue+"'")
 }
 
 func TestThePageScalesTextAsTheShellSizesTheWindow(t *testing.T) {

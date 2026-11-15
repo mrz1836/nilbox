@@ -59,8 +59,8 @@ type Frontend interface {
 type Window interface {
 	// Open opens the window at size, shrunk to fit the screen, in the native appearance
 	// and on the background of theme, with its page showing text at textSize from the
-	// first frame.
-	Open(theme settings.Theme, size settings.WindowSize, textSize settings.TextSize)
+	// first frame, and the first-run setup from its first frame when setup is set.
+	Open(theme settings.Theme, size settings.WindowSize, textSize settings.TextSize, setup bool)
 
 	// Show brings the window forward: shown if it was closed into the menu bar, restored
 	// if it was minimized, and the app made active.
@@ -118,6 +118,9 @@ type Settings interface {
 	MenuBar(ctx context.Context) (bool, error)
 	WindowSize(ctx context.Context) (settings.WindowSize, error)
 	TextSize(ctx context.Context) (settings.TextSize, error)
+
+	// SetupPending reports whether the first-run setup shows when the window opens.
+	SetupPending(ctx context.Context) (bool, error)
 }
 
 // Worker is background work that runs while the app is open, such as the inbox's
@@ -166,8 +169,8 @@ type Config struct {
 	// Data is what Stop closes last, once the background work is done: the database.
 	Data io.Closer
 
-	// Banners is asked at launch to allow notifications. Nil means this build cannot
-	// show them, and nothing is asked.
+	// Banners is asked at launch to allow notifications, or, while the first-run setup
+	// shows, once it ends. Nil means this build cannot show them, and nothing is asked.
 	Banners Authorizer
 
 	// QuitGuard holds a quit while it reports work going, until the user confirms. Nil
@@ -259,9 +262,18 @@ type Shell struct {
 	drawn        bool
 	drawnWaiting []menubar.Waiting
 
-	// quitConfirmed is set once the user chose to stop the runs and quit, which lets every
-	// later quit through.
+	// quitConfirmed is set once the user chose to stop the runs and quit, or asked for a
+	// reset, which lets every later quit through.
 	quitConfirmed atomic.Bool
+
+	// relaunch is set once the user asked for a reset: the app quits and opens again,
+	// and its next start carries the reset out.
+	relaunch atomic.Bool
+
+	// bannersHeld is set while the first-run setup shows at launch, which holds the
+	// question to allow banners until it ends, and bannersAsked once the question is asked.
+	bannersHeld  atomic.Bool
+	bannersAsked atomic.Bool
 
 	timedOut atomic.Bool
 	stopOnce sync.Once
@@ -346,8 +358,10 @@ func (s *Shell) Stop() error {
 // change also redraws the menu bar, and a sessions change does when the sessions waiting
 // for the user read otherwise than the menu shows them, a request to reveal an item brings
 // the window forward, a theme or menu bar change reaches the window or the icon, the
-// first paint ends a startup measurement or starts the deferred work, and the user's
-// choice to stop the runs and quit quits. It never waits for a redraw or the quit.
+// first paint ends a startup measurement or starts the deferred work, the user's choice to
+// stop the runs and quit quits, the end of the first-run setup asks to allow banners if
+// the setup held the question, and a reset the user asked for quits so the app opens
+// again. It never waits for a redraw or the quit.
 func (s *Shell) Emit(e event.Event) {
 	if s.stopping.Load() {
 		return
@@ -367,33 +381,39 @@ func (s *Shell) Emit(e event.Event) {
 	case event.FirstPaint:
 		s.firstPaint(e.Measurement)
 		s.startDeferred()
-	case event.QuitConfirmed:
-		s.quitAnyway()
+	case event.QuitConfirmed, event.SetupFinished, event.ResetRequested:
+		s.appEvent(e)
 	case event.WindowEvent:
 		s.frontend.Emit(e)
 	}
 }
 
-// Launched opens the window in the stored theme, at the stored size and text size, shows
-// the menu bar icon when it is on, asks once to allow banners, arms the deferred work's
-// fallback, and starts a startup measurement's timeout. The desktop runtime calls it once the app has launched, when the
-// system appearance the System theme follows is known. A setting that cannot be read falls
-// back to its default, with a note on Stderr.
+// Launched opens the window in the stored theme, at the stored size and text size, on the
+// first-run setup when it shows, shows the menu bar icon when it is on, asks once to allow
+// banners, unless the setup shows, which holds the question until it ends, arms the
+// deferred work's fallback, and starts a startup measurement's timeout. The desktop
+// runtime calls it once the app has launched, when the system appearance the System theme
+// follows is known. A setting that cannot be read falls back to its default, with a note on
+// Stderr.
 func (s *Shell) Launched() {
 	if s.stopping.Load() {
 		return
 	}
 
-	s.window.Open(s.storedTheme(), s.storedWindowSize(), s.storedTextSize())
+	setup := s.storedSetupPending()
+	s.window.Open(s.storedTheme(), s.storedWindowSize(), s.storedTextSize(), setup)
 
 	if s.storedMenuBar() {
 		s.setMenuBar(true)
 	}
 
-	// The question waits for the user, for minutes if need be, and touches nothing Stop
-	// closes, so it runs apart from the tracked work: quitting never waits for it.
-	if s.banners != nil && !s.measure {
-		go s.askForBanners()
+	// The macOS question, out of the blue the moment the window opens, would come before
+	// the user knows what the app does: the setup asks on its Notifications step, and the
+	// shell asks as it ends.
+	if setup {
+		s.bannersHeld.Store(true)
+	} else {
+		s.askForBannersOnce()
 	}
 
 	if s.measure {
@@ -485,6 +505,26 @@ func (s *Shell) Stopping() bool {
 // the run then exits with a failure status.
 func (s *Shell) TimedOut() bool {
 	return s.timedOut.Load()
+}
+
+// Relaunching reports whether the app quits to open again, as a reset the user asked for
+// does: the desktop runtime opens the app again once it has shut down (see RelaunchArgs).
+func (s *Shell) Relaunching() bool {
+	return s.relaunch.Load()
+}
+
+// appEvent acts on what the user decided about the app itself: to stop the runs and quit,
+// that the first-run setup ended, or to start over, which quits so the app opens again.
+func (s *Shell) appEvent(e event.Event) {
+	switch e.(type) {
+	case event.QuitConfirmed:
+		s.quitAnyway()
+	case event.SetupFinished:
+		s.setupFinished()
+	case event.ResetRequested:
+		s.relaunch.Store(true)
+		s.quitAnyway()
+	}
 }
 
 // applySetting brings a theme, text size, or menu bar change to the window or the icon.
@@ -614,6 +654,19 @@ func (s *Shell) storedTextSize() settings.TextSize {
 	return size
 }
 
+// storedSetupPending reports whether the first-run setup shows, or that it doesn't when
+// that cannot be read, so a passing problem never traps the user in it.
+func (s *Shell) storedSetupPending() bool {
+	pending, err := s.settings.SetupPending(s.lifetime)
+	if err != nil {
+		s.logger.Warn("could not read whether the setup shows; opening the inbox", "error", err)
+
+		return false
+	}
+
+	return pending
+}
+
 // storedMenuBar is the stored menu bar setting, or the default when it cannot be read.
 func (s *Shell) storedMenuBar() bool {
 	on, err := s.settings.MenuBar(s.lifetime)
@@ -626,10 +679,31 @@ func (s *Shell) storedMenuBar() bool {
 	return on
 }
 
+// askForBannersOnce asks the user, the first time, to allow notifications, once per run
+// and never in a startup measurement. The question waits for the user, for minutes if need
+// be, and touches nothing Stop closes, so it runs apart from the tracked work: quitting
+// never waits for it.
+func (s *Shell) askForBannersOnce() {
+	if s.banners == nil || s.measure || !s.bannersAsked.CompareAndSwap(false, true) {
+		return
+	}
+
+	go s.askForBanners()
+}
+
 // askForBanners asks the user, the first time, to allow notifications.
 func (s *Shell) askForBanners() {
 	if _, err := s.banners.Authorize(); err != nil {
 		s.logger.Warn("could not ask to show notifications", "error", err)
+	}
+}
+
+// setupFinished asks to allow banners once the first-run setup ends, when it held the
+// question at launch, so a user who skipped its Notifications step is still asked as they
+// land in the inbox. A setup run again from Settings held nothing, and asks nothing.
+func (s *Shell) setupFinished() {
+	if s.bannersHeld.CompareAndSwap(true, false) {
+		s.askForBannersOnce()
 	}
 }
 

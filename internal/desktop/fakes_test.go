@@ -70,6 +70,7 @@ type opening struct {
 	theme    settings.Theme
 	size     settings.WindowSize
 	textSize settings.TextSize
+	setup    bool
 }
 
 // fakeWindow records what the window was asked to do.
@@ -81,11 +82,11 @@ type fakeWindow struct {
 	textSizes []settings.TextSize
 }
 
-func (w *fakeWindow) Open(theme settings.Theme, size settings.WindowSize, textSize settings.TextSize) {
+func (w *fakeWindow) Open(theme settings.Theme, size settings.WindowSize, textSize settings.TextSize, setup bool) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
-	w.opened = append(w.opened, opening{theme: theme, size: size, textSize: textSize})
+	w.opened = append(w.opened, opening{theme: theme, size: size, textSize: textSize, setup: setup})
 }
 
 func (w *fakeWindow) Show() {
@@ -258,12 +259,15 @@ func (f *fakeInbox) readCount() int {
 	return f.reads
 }
 
-// fakeSettings serves fixed settings, or fails every read with err.
+// fakeSettings serves fixed settings, or fails every read with err. The first-run setup
+// is done unless setup is set, or fails to read with setupErr.
 type fakeSettings struct {
 	theme    settings.Theme
 	menuBar  bool
 	size     settings.WindowSize
 	textSize settings.TextSize
+	setup    bool
+	setupErr error
 	err      error
 }
 
@@ -297,6 +301,14 @@ func (f fakeSettings) TextSize(context.Context) (settings.TextSize, error) {
 	}
 
 	return f.textSize, nil
+}
+
+func (f fakeSettings) SetupPending(context.Context) (bool, error) {
+	if f.setupErr != nil {
+		return true, f.setupErr
+	}
+
+	return f.setup, nil
 }
 
 // fakeWorker runs until its context ends, then takes linger more and, when release is

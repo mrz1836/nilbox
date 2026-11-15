@@ -13,7 +13,8 @@
 // window, times live inbox refreshes against a scratch database, and prints the report.
 // Those lines are the only output on stdout. Everything else the app has to say goes to
 // its one logger (internal/logging): text on stderr, and JSON in the log file. --debug
-// keeps Debug records too.
+// keeps Debug records too. --data-dir=<absolute path> runs the app on that data directory,
+// logs included, in place of the user's own: a sandbox, as magex app:fresh opens.
 package main
 
 import (
@@ -24,6 +25,7 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"slices"
 	"syscall"
 
@@ -39,6 +41,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/core"
 	"github.com/mrz1836/nilbox/internal/desktop"
 	"github.com/mrz1836/nilbox/internal/event"
+	"github.com/mrz1836/nilbox/internal/execpath"
 	"github.com/mrz1836/nilbox/internal/ghthreads"
 	"github.com/mrz1836/nilbox/internal/hooks"
 	"github.com/mrz1836/nilbox/internal/inbox"
@@ -57,6 +60,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/scripts"
 	"github.com/mrz1836/nilbox/internal/sessions"
 	"github.com/mrz1836/nilbox/internal/settings"
+	"github.com/mrz1836/nilbox/internal/setup"
 	"github.com/mrz1836/nilbox/internal/svcstatus"
 	"github.com/mrz1836/nilbox/internal/worktrees"
 )
@@ -83,7 +87,7 @@ func main() {
 // the status the process exits with: 0, or 1 once the error that ended the run is logged.
 // Without a data directory there is no log file, so that failure reaches stderr alone.
 func run(args []string, stdout io.Writer) int {
-	paths, err := appdata.Resolve()
+	paths, err := dataPaths(args)
 
 	logger, logs := logging.New(paths, logging.Level(args, os.Getenv))
 	defer func() { _ = logs.Close() }()
@@ -103,6 +107,28 @@ func run(args []string, stdout io.Writer) int {
 	return 0
 }
 
+// dataPaths are the data locations the run uses: the data directory args name with
+// --data-dir, a sandbox's, or else the user's own.
+func dataPaths(args []string) (appdata.Paths, error) {
+	dir, err := appdata.FromArgs(args)
+
+	switch {
+	case err != nil:
+		return appdata.Paths{}, err
+	case dir != "":
+		return appdata.NewPaths(dir), nil
+	default:
+		return appdata.Resolve()
+	}
+}
+
+// sandboxDir is the data directory args name with --data-dir, or "" for the user's own.
+func sandboxDir(args []string) string {
+	dir, _ := appdata.FromArgs(args)
+
+	return dir
+}
+
 // start assembles the core and the shell, then runs the window until the app quits. On
 // macOS the app exits from inside Run once it terminates, so the shell stops in the
 // runtime's shutdown hook. An error that stops the app from starting is shown in a
@@ -117,7 +143,10 @@ func start(args []string, stdout io.Writer, paths appdata.Paths, logger *slog.Lo
 		return measureRefresh(stdout, home, logger)
 	}
 
-	app, shell, err := assemble(paths, home, stdout, logger, slices.Contains(args, measure.StartupFlag))
+	app, shell, err := assemble(launch{
+		paths: paths, home: home, sandbox: sandboxDir(args), stdout: stdout, logger: logger,
+		measureStartup: slices.Contains(args, measure.StartupFlag),
+	})
 	if err != nil {
 		return startFailed(args, logger, err)
 	}
@@ -127,25 +156,37 @@ func start(args []string, stdout io.Writer, paths appdata.Paths, logger *slog.Lo
 	return errors.Join(runErr, shell.Stop())
 }
 
+// launch is what one run of the app starts from: its data locations, the home directory,
+// a sandbox's data directory ("" for the user's own), where a startup measurement prints,
+// the logger, and whether this run is a startup measurement.
+type launch struct {
+	paths          appdata.Paths
+	home           string
+	sandbox        string
+	stdout         io.Writer
+	logger         *slog.Logger
+	measureStartup bool
+}
+
 // assemble bootstraps the core, builds the shell over it, and creates the app, which
 // starts and stops the shell with its own lifecycle.
-func assemble(
-	paths appdata.Paths, home string, stdout io.Writer, logger *slog.Logger, measureStartup bool,
-) (*application.App, *desktop.Shell, error) {
+func assemble(l launch) (*application.App, *desktop.Shell, error) {
 	// The services are built before the shell that hears their events, which needs them;
 	// the relay carries the events once the shell is connected.
 	relay := &event.Relay{}
-	banners := newBanners(logger, relay)
+	banners := newBanners(l.logger, relay)
+	logger := l.logger
 
 	c, err := core.Bootstrap(context.Background(), core.Options{
-		Paths:   paths,
-		Home:    home,
+		Paths:   l.paths,
+		Home:    l.home,
 		Version: version,
 		Release: release,
 		Build:   buildNumber,
 		Events:  relay,
 		Banners: banners.poster(),
 		Logger:  logger,
+		Sandbox: l.sandbox != "",
 	})
 	if err != nil {
 		return nil, nil, err
@@ -176,9 +217,9 @@ func assemble(
 		Data:           c,
 		Banners:        banners.poster(),
 		QuitGuard:      c.Runs,
-		Stdout:         stdout,
+		Stdout:         l.stdout,
 		Logger:         logger,
-		MeasureStartup: measureStartup,
+		MeasureStartup: l.measureStartup,
 	})
 	relay.Connect(shell)
 
@@ -197,10 +238,16 @@ func assemble(
 		// Every quit asks first, while runs are going in the app.
 		ShouldQuit: shell.ShouldQuit,
 		// A timed-out measurement run exits with a failure status. On macOS the app exits
-		// from inside Run, with a success status unless this hook exits first.
+		// from inside Run, with a success status unless this hook exits first. A reset the
+		// user asked for opens the app again here, once the shell has stopped and closed
+		// the database, so the next start carries it out.
 		PostShutdown: func() {
 			if shell.TimedOut() {
 				os.Exit(1)
+			}
+
+			if shell.Relaunching() {
+				relaunch(l.sandbox, logger)
 			}
 		},
 	})
@@ -220,6 +267,33 @@ func assemble(
 	})
 
 	return app, shell, nil
+}
+
+// relaunch opens the app again, on the sandbox's data directory when it ran on one, as a
+// reset the user asked for does. A run outside a .app bundle, as `magex app:dev`'s, only
+// quits: its next start carries the reset out.
+func relaunch(sandbox string, logger *slog.Logger) {
+	exe, err := os.Executable()
+	if err != nil {
+		logger.Warn("could not open the app again after the reset; open it to finish", "error", err)
+
+		return
+	}
+
+	if resolved, resolveErr := filepath.EvalSymlinks(exe); resolveErr == nil {
+		exe = resolved
+	}
+
+	argv, ok := desktop.RelaunchArgs(exe, sandbox)
+	if !ok {
+		logger.Info("the app runs outside a bundle, so it only quits; open it again to finish the reset")
+
+		return
+	}
+
+	if _, _, err = (execpath.Exec{}).Run(context.Background(), argv[0], argv[1:]...); err != nil {
+		logger.Warn("could not open the app again after the reset; open it to finish", "error", err)
+	}
 }
 
 // registerEvents registers each window event's data type under its name. The runtime
@@ -288,7 +362,7 @@ func binders() []func(svc any) (application.Service, bool) {
 		binder[worktrees.Service], binder[notify.Service], binder[appinfo.Service], binder[budget.Service],
 		binder[sessions.Service], binder[review.Service], binder[issues.Service], binder[integrations.Service],
 		binder[scriptrun.Service], binder[releases.Service], binder[hooks.Service], binder[scripts.Service],
-		binder[ghthreads.Service], binder[backup.Service], binder[svcstatus.Service],
+		binder[ghthreads.Service], binder[backup.Service], binder[svcstatus.Service], binder[setup.Service],
 	}
 }
 
