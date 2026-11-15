@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -269,6 +270,76 @@ func TestRestoreBackupPutsTheDatabaseBackWhenTheRenameFails(t *testing.T) {
 	assert.Empty(t, restoreCopies(t, path), "and the copy removed")
 	assert.Equal(t, "after the update", prefIn(t, path), "nothing changed")
 	assert.FileExists(t, backup)
+}
+
+func TestRestoreBackupWithNoDatabaseRemovesTheLogsLeftBehind(t *testing.T) {
+	t.Parallel()
+
+	path := filepath.Join(t.TempDir(), "app.db")
+	setPref(t, path, "kept")
+
+	opened, err := store.Open(t.Context(), path)
+	require.NoError(t, err)
+
+	backup, err := store.Backup(t.Context(), opened.DB, path)
+	require.NoError(t, err)
+	require.NoError(t, opened.DB.Close())
+
+	require.NoError(t, os.Remove(path))
+	testutil.WriteFile(t, path+"-wal", "the log of a database that is gone")
+	testutil.WriteFile(t, path+"-shm", "its index")
+
+	aside, err := store.RestoreBackup(t.Context(), path, backup)
+	require.NoError(t, err)
+	assert.Empty(t, aside)
+	assert.NoFileExists(t, path+"-wal", "the copy isn't paired with another database's log")
+	assert.NoFileExists(t, path+"-shm")
+	assert.Equal(t, "kept", prefIn(t, path))
+}
+
+func TestOpenSweepsTheCopiesARestoreCutShortLeft(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "app.db")
+	old := time.Now().Add(-store.StaleRestoreAfter - time.Minute)
+
+	files := map[string]bool{
+		".app.db.restore-123.tmp":      true,  // a copy a crash left
+		".app.db.restore-4.tmp":        true,  // any digits
+		".app.db.restore-abc.tmp":      false, // not os.CreateTemp's digits
+		".app.db.restore-.tmp":         false, // no digits at all
+		".app.db.restore-123.tmp.keep": false,
+		"app.db.restore-123.tmp":       false, // not hidden
+		".other.db.restore-123.tmp":    false, // another database's
+	}
+
+	for name := range files {
+		testutil.WriteFile(t, filepath.Join(dir, name), "a copy")
+		require.NoError(t, os.Chtimes(filepath.Join(dir, name), old, old))
+	}
+
+	fresh := filepath.Join(dir, ".app.db.restore-456.tmp")
+	testutil.WriteFile(t, fresh, "a restore copying now")
+
+	folder := filepath.Join(dir, ".app.db.restore-789.tmp")
+	require.NoError(t, os.Mkdir(folder, 0o700))
+	require.NoError(t, os.Chtimes(folder, old, old))
+
+	opened, err := store.Open(t.Context(), path)
+	require.NoError(t, err)
+	require.NoError(t, opened.DB.Close())
+
+	for name, swept := range files {
+		if swept {
+			assert.NoFileExists(t, filepath.Join(dir, name), name)
+		} else {
+			assert.FileExists(t, filepath.Join(dir, name), name)
+		}
+	}
+
+	assert.FileExists(t, fresh, "a copy under way is left alone")
+	assert.DirExists(t, folder, "only a file is removed")
 }
 
 // restoreCopies lists the copies of a backup a restore left beside the database at path.

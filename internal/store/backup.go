@@ -2,6 +2,7 @@ package store
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"database/sql"
 	"errors"
@@ -10,6 +11,8 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
+	"time"
 
 	"github.com/mrz1836/nilbox/internal/appdata"
 	"github.com/mrz1836/nilbox/internal/store/migrate"
@@ -72,7 +75,7 @@ func restoreBackup(ctx context.Context, path, backup string, opts options) (stri
 
 	_, err = os.Lstat(path)
 	if errors.Is(err, fs.ErrNotExist) {
-		return "", renameInto(opts, tmp, path)
+		return "", renameIntoEmpty(opts, tmp, path)
 	}
 
 	if err != nil {
@@ -97,6 +100,87 @@ func restoreBackup(ctx context.Context, path, backup string, opts options) (stri
 	}
 
 	return moved.target, nil
+}
+
+// renameIntoEmpty renames the copy tmp to path, where no database is. A -wal or -shm left
+// there is of a database that is gone, and would be read with the copy as if it were the
+// copy's own log, so it is removed first.
+func renameIntoEmpty(opts options, tmp, path string) error {
+	var errs []error
+
+	for _, suffix := range []string{"-wal", "-shm"} {
+		if err := os.Remove(path + suffix); err != nil && !errors.Is(err, fs.ErrNotExist) {
+			errs = append(errs, fmt.Errorf("restore the backup: remove a log with no database: %w", err))
+		}
+	}
+
+	if len(errs) > 0 {
+		return errors.Join(errs...)
+	}
+
+	return renameInto(opts, tmp, path)
+}
+
+const (
+	// restoreCopyPrefix and restoreCopySuffix frame the name of the copy a restore makes
+	// beside the database: .<base>.restore-<digits>.tmp, as os.CreateTemp fills in its
+	// pattern.
+	restoreCopyPrefix = ".restore-"
+	restoreCopySuffix = ".tmp"
+
+	// staleRestoreAfter is how old a copy a restore left beside the database must be
+	// before the next open removes it: older than any restore still copying.
+	staleRestoreAfter = 5 * time.Minute
+)
+
+// sweepRestoreCopies removes the copies of a backup that a restore cut short (a crash, a
+// power cut) left beside the database at path, each as large as the database: named
+// exactly as copyBeside names them, regular files, and last written staleRestoreAfter
+// before now or earlier, so a restore under way in another copy of the app keeps its own.
+// A copy it can't remove is left for the next open: none holds anything the app needs.
+func sweepRestoreCopies(path string, now time.Time) {
+	dir, base := filepath.Split(filepath.Clean(path))
+	dir = cmp.Or(dir, ".")
+
+	listed, err := os.ReadDir(dir)
+	if err != nil {
+		return
+	}
+
+	for _, item := range listed {
+		if !isRestoreCopy(base, item.Name()) || !item.Type().IsRegular() {
+			continue
+		}
+
+		info, err := item.Info()
+		if err != nil || now.Sub(info.ModTime()) < staleRestoreAfter {
+			continue
+		}
+
+		_ = os.Remove(filepath.Join(dir, item.Name()))
+	}
+}
+
+// isRestoreCopy reports whether name is a copy a restore makes beside the database named
+// base: .<base>.restore-<digits>.tmp.
+func isRestoreCopy(base, name string) bool {
+	middle, ok := strings.CutPrefix(name, "."+base+restoreCopyPrefix)
+	if !ok {
+		return false
+	}
+
+	digits, ok := strings.CutSuffix(middle, restoreCopySuffix)
+	if !ok || digits == "" {
+		return false
+	}
+
+	for _, r := range digits {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+
+	return true
 }
 
 // renameInto renames the copy tmp to path with opts' rename.
@@ -169,7 +253,7 @@ func copyBeside(from, path string) (string, error) {
 
 	defer func() { _ = src.Close() }()
 
-	tmp, err := os.CreateTemp(filepath.Dir(path), "."+filepath.Base(path)+".restore-*.tmp")
+	tmp, err := os.CreateTemp(filepath.Dir(path), "."+filepath.Base(path)+restoreCopyPrefix+"*"+restoreCopySuffix)
 	if err != nil {
 		return "", fmt.Errorf("restore the backup: %w", err)
 	}

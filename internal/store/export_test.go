@@ -6,6 +6,9 @@ import (
 	"time"
 )
 
+// StaleRestoreAfter is how old a copy a restore left must be before an open removes it.
+const StaleRestoreAfter = staleRestoreAfter
+
 // SetAside sets the database at path aside, as Open does when it cannot use one, and
 // returns where it went.
 func SetAside(path string, now time.Time) (string, error) {

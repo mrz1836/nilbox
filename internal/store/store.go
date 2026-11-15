@@ -309,8 +309,11 @@ func waitUnshared(ctx context.Context, path string, opts options) error {
 }
 
 // openMigrated opens the database at path, creating it when needed, and applies the
-// pending migrations. On an error the pool is closed again.
+// pending migrations. It first removes the copies a restore cut short left beside it
+// (sweepRestoreCopies). On an error the pool is closed again.
 func openMigrated(ctx context.Context, path string, opts options) (*sql.DB, error) {
+	sweepRestoreCopies(path, opts.now())
+
 	if err := createFile(path); err != nil {
 		return nil, err
 	}
