@@ -265,6 +265,12 @@ type Shell struct {
 	// for a minute.
 	updateNote menubar.UpdateNote
 
+	// moves counts the moves to Applications under way, each holding every quit
+	// (HoldQuit), and quitHeld records a quit asked for while one ran, which goes ahead
+	// once the last lets go.
+	moves    int
+	quitHeld bool
+
 	// deferStarted is set once the deferred work has started, and deferTimer is its
 	// fallback, armed at launch.
 	deferStarted bool
@@ -301,6 +307,11 @@ type Shell struct {
 	// relaunch is set once the user asked for a reset: the app quits and opens again,
 	// and its next start carries the reset out.
 	relaunch atomic.Bool
+
+	// reopen is the bundle to open once the app has quit, the copy a move to Applications
+	// made or found, or nil: the last asked for, opened once (RelaunchCommand), and
+	// forgotten when the user keeps the app running at the quit's question.
+	reopen atomic.Pointer[string]
 
 	// bannersHeld is set while the first-run setup shows at launch, which holds the
 	// question to allow banners until it ends, and bannersAsked once the question is asked.
@@ -423,7 +434,7 @@ func (s *Shell) Emit(e event.Event) {
 	case event.FirstPaint:
 		s.firstPaint(e.Measurement)
 		s.startDeferred()
-	case event.QuitConfirmed, event.SetupFinished, event.ResetRequested, event.UpdateRestartFailed,
+	case event.QuitConfirmed, event.QuitKept, event.SetupFinished, event.ResetRequested, event.UpdateRestartFailed,
 		event.UpdateQuitHeld:
 		s.appEvent(e)
 	case event.WindowEvent:
@@ -513,12 +524,26 @@ func (s *Shell) Quit() {
 
 // ShouldQuit answers the desktop runtime's question whether the app may quit now, which
 // every quit asks: the menu's, the menu bar's, the system's at a logout, and a restart to
-// update's. It says yes unless the quit guard reports runs going in the app and the user
-// hasn't chosen to stop them, nor a restart to update let the quit through; then it brings
-// the window forward, asks the page to ask the user, and says no. It runs on the main
-// thread, so it answers at once and does the rest in the background.
+// update's. A restart to update, and a shell already stopping, always go through. Otherwise,
+// while a move to Applications runs (HoldQuit), it says no and brings the window forward,
+// where the move shows, and the quit goes ahead once the move ends. Else it says yes unless
+// the quit guard reports runs going in the app and the user hasn't chosen to stop them;
+// then it brings the window forward, asks the page to ask the user, and says no. It runs on
+// the main thread, so it answers at once and does the rest in the background.
 func (s *Shell) ShouldQuit() bool {
-	if s.guard == nil || s.quitConfirmed.Load() || s.restarting.Load() || s.stopping.Load() || !s.guard.Active() {
+	if s.restarting.Load() || s.stopping.Load() {
+		return true
+	}
+
+	if s.heldForMove() {
+		s.goTracked(func(context.Context) {
+			s.window.Show()
+		})
+
+		return false
+	}
+
+	if s.guard == nil || s.quitConfirmed.Load() || !s.guard.Active() {
 		return true
 	}
 
@@ -552,15 +577,17 @@ func (s *Shell) TimedOut() bool {
 }
 
 // Relaunching reports whether the app quits to open again, as a reset the user asked for
-// does: the desktop runtime opens the app again once it has shut down (see RelaunchArgs).
+// does: the desktop runtime opens the app again once it has shut down (see
+// RelaunchCommand).
 func (s *Shell) Relaunching() bool {
 	return s.relaunch.Load()
 }
 
 // appEvent acts on what the user decided about the app itself: to stop the runs and quit,
-// that the first-run setup ended, or to start over, which quits so the app opens again. A
-// restart to update's confirmation only lets the quit through, which its installer makes,
-// until the restart fails.
+// to keep it running, which forgets the copy a move asked to open once it quits, that the
+// first-run setup ended, or to start over, which quits so the app opens again. A restart to
+// update's confirmation only lets the quit through, which its installer makes, until the
+// restart fails.
 func (s *Shell) appEvent(e event.Event) {
 	switch e := e.(type) {
 	case event.QuitConfirmed:
@@ -571,6 +598,8 @@ func (s *Shell) appEvent(e event.Event) {
 		}
 
 		s.quitAnyway()
+	case event.QuitKept:
+		s.reopen.Store(nil)
 	case event.UpdateRestartFailed:
 		s.restarting.Store(false)
 	case event.UpdateQuitHeld:

@@ -80,6 +80,7 @@ import {
   threadsPreview,
   updateReady,
   updateStatus,
+  moveResult,
   userScript,
   variables,
   worktreesSnapshot,
@@ -366,6 +367,7 @@ function answers(subscribe: Loose<Platform['on']>): { [K in keyof Platform]: Loo
     markScriptRunSeen: done,
     clearScriptRunHistory: done,
     quitAnyway: done,
+    keepRunning: done,
 
     listReleaseCandidates: () => Promise.resolve(releaseCandidates()),
     prepareRelease: () => Promise.resolve(releaseOffer()),
@@ -424,6 +426,10 @@ function answers(subscribe: Loose<Platform['on']>): { [K in keyof Platform]: Loo
     showInstallLog: done,
     restartToUpdateNow: () => Promise.resolve({ restarted: true, status: updateReady({ state: 'installing' }) }),
     setUpdateMode: (updateMode) => stored({ updateMode }),
+    // A move goes ahead: the app would quit, and the copy open from Applications.
+    moveToApplications: () => Promise.resolve(moveResult()),
+    openInApplications: () => Promise.resolve(moveResult({ outcome: 'opening' })),
+    showAppInFinder: done,
 
     listNotifications: () => Promise.resolve({ items: [], unread: 0 }),
     markAllNotificationsRead: done,

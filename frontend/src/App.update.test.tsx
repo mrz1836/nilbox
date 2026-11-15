@@ -3,7 +3,17 @@ import userEvent from '@testing-library/user-event'
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { brand } from './generated/brand'
-import { item, list, notification, scriptRun, snapshot, updateReady, updateStatus } from './test/fixtures'
+import {
+  item,
+  list,
+  moveResult,
+  notification,
+  scriptRun,
+  snapshot,
+  updateLocation,
+  updateReady,
+  updateStatus,
+} from './test/fixtures'
 import { emit, platform, renderApp } from './test/platform'
 
 vi.mock('./platform', () => import('./test/platform').then((fake) => fake.platform))
@@ -297,5 +307,126 @@ describe('App’s update', () => {
     const about = await screen.findByRole('region', { name: 'About' })
 
     expect(await within(about).findByText('It didn’t quit in time.')).toBeInTheDocument()
+  })
+})
+
+// moveQuestion is the move dialog as it first asks.
+const moveQuestion = { name: 'Move to Applications?' }
+
+describe('App’s move into Applications', () => {
+  it('asks on launch where the app can’t update, and Not now puts it away for the launch', async () => {
+    platform.getUpdateStatus.mockResolvedValue(updateStatus({ location: updateLocation('translocated') }))
+    await renderApp()
+
+    const dialog = await screen.findByRole('dialog', moveQuestion)
+    expect(dialog).toHaveTextContent('The copy you opened stays where it is, and you can delete it.')
+
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Not now' }))
+
+    expect(screen.queryByRole('dialog', moveQuestion)).not.toBeInTheDocument()
+    expect(platform.moveToApplications).not.toHaveBeenCalled()
+
+    // The status read again, as every change of the update has it read, asks nothing more.
+    act(() => {
+      emit('updates:updated')
+    })
+    await waitFor(() => {
+      expect(platform.getUpdateStatus).toHaveBeenCalledTimes(2)
+    })
+    expect(screen.queryByRole('dialog', moveQuestion)).not.toBeInTheDocument()
+  })
+
+  it('never asks in a build made from source', async () => {
+    platform.getUpdateStatus.mockResolvedValue(
+      updateStatus({
+        flavor: 'source',
+        enabled: false,
+        state: 'off',
+        off: 'Updates are off in builds made from source.',
+        location: { ...updateLocation(), movable: false },
+      }),
+    )
+    await renderApp()
+    await screen.findByRole('region', { name: 'Review requested' })
+
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  })
+
+  it('moves from the dialog, saying so while it works', async () => {
+    platform.getUpdateStatus.mockResolvedValue(updateStatus({ location: updateLocation('diskImage') }))
+    platform.moveToApplications.mockReturnValue(new Promise(() => undefined))
+    await renderApp()
+
+    const dialog = await screen.findByRole('dialog', moveQuestion)
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Move to Applications' }))
+
+    expect(within(dialog).getByRole('button', { name: 'Moving to Applications…' })).toBeDisabled()
+    expect(platform.moveToApplications).toHaveBeenCalledOnce()
+  })
+
+  // The quit's question can open while the move's dialog shows, as when a move that went
+  // ahead quits while runs go: it opens over that dialog, and has the keys, though the page
+  // renders it first.
+  it('hands the keys to the quit’s question over the move’s dialog', async () => {
+    platform.getUpdateStatus.mockResolvedValue(updateStatus({ location: updateLocation('diskImage') }))
+    platform.moveToApplications.mockReturnValue(new Promise(() => undefined))
+    platform.listScriptRuns.mockResolvedValue([
+      scriptRun({ status: 'running', exitCode: null, finishedAt: '', canStop: true }),
+    ])
+    await renderApp()
+
+    const moving = await screen.findByRole('dialog', moveQuestion)
+    await userEvent.click(within(moving).getByRole('button', { name: 'Move to Applications' }))
+
+    act(() => {
+      emit('app:quitRequested')
+    })
+    const quit = await screen.findByRole('dialog', { name: `Quit ${brand.name}?` })
+
+    await userEvent.keyboard('{Escape}')
+
+    expect(quit).not.toBeInTheDocument()
+    expect(platform.keepRunning).toHaveBeenCalledOnce()
+    expect(within(moving).getByRole('button', { name: 'Moving to Applications…' })).toBeDisabled()
+  })
+
+  it('offers the move in the banner once the dialog is put away, calling the version available', async () => {
+    platform.getUpdateStatus.mockResolvedValue(updateReady({ location: updateLocation() }))
+    await renderApp()
+
+    const dialog = await screen.findByRole('dialog', moveQuestion)
+    // The banner leaves where the app runs to the dialog while it asks.
+    expect(banner()).toBeEmptyDOMElement()
+
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Not now' }))
+
+    expect(banner()).toHaveTextContent(`${brand.name} 0.3.0 is available.`)
+    await userEvent.click(within(banner()).getByRole('button', { name: 'Move to Applications' }))
+
+    expect(await screen.findByRole('dialog', moveQuestion)).toBeInTheDocument()
+    expect(platform.moveToApplications).toHaveBeenCalledOnce()
+  })
+
+  it('keeps Move to Applications in About after Not now, which opens a copy already there', async () => {
+    platform.getUpdateStatus.mockResolvedValue(updateStatus({ location: updateLocation() }))
+    platform.moveToApplications.mockResolvedValue(moveResult({ outcome: 'exists' }))
+    await renderApp()
+
+    const dialog = await screen.findByRole('dialog', moveQuestion)
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Not now' }))
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Account: octo-user' }))
+    await userEvent.click(screen.getByRole('menuitem', { name: /Settings/ }))
+    const sections = await screen.findByRole('navigation', { name: 'Settings sections' })
+    await userEvent.click(within(sections).getByRole('button', { name: 'About' }))
+    const about = await screen.findByRole('region', { name: 'About' })
+
+    await userEvent.click(await within(about).findByRole('button', { name: 'Move to Applications' }))
+
+    const opening = await screen.findByRole('dialog', { name: `Open ${brand.name} from Applications?` })
+    expect(opening).toHaveTextContent(`${brand.name} is already in Applications.`)
+
+    await userEvent.click(within(opening).getByRole('button', { name: 'Open it' }))
+    expect(platform.openInApplications).toHaveBeenCalledOnce()
   })
 })

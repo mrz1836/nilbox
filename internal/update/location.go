@@ -56,23 +56,31 @@ func BundleOf(exe string) string {
 
 // locate works out where the bundle is, whether the app can update there (in an
 // Applications folder, or in rehearsal, a rehearsal's own folder, "" for none, whose folder
-// the user can write to, where the update is staged), and where moving it would put it: the
-// system's Applications folder, applications, when writable, else the one in home. A bundle
-// in rehearsal keeps the kind its path has, and moving it still puts it in Applications.
+// the user can write to, where the update is staged), where moving it would put it
+// (moveTarget), and whether Move to Applications can: a bundle that can't update where it
+// is, outside every Applications folder. A bundle in rehearsal keeps the kind its path has,
+// and moving it still puts it in Applications.
 func locate(bundle, home, applications, rehearsal string, writable func(string) bool) Location {
 	kind := classify(bundle, home, applications)
-	inApplications := kind == LocationApplications || kind == LocationUserApplications || within(bundle, rehearsal)
-
-	target := filepath.Join(home, "Applications", brand.Name+".app")
-	if writable(applications) {
-		target = filepath.Join(applications, brand.Name+".app")
-	}
+	inApplications := kind == LocationApplications || kind == LocationUserApplications
+	ok := (inApplications || within(bundle, rehearsal)) && writable(filepath.Dir(filepath.Clean(bundle)))
 
 	return Location{
-		OK:     inApplications && writable(filepath.Dir(filepath.Clean(bundle))),
-		Kind:   kind,
-		Target: paths.Tilde(target, home),
+		OK:      ok,
+		Kind:    kind,
+		Target:  paths.Tilde(moveTarget(home, applications, writable), home),
+		Movable: !ok && !inApplications && bundle != "",
 	}
+}
+
+// moveTarget is where moving the app puts it: in the system's Applications folder,
+// applications, when the user can write to it, else in the one in home.
+func moveTarget(home, applications string, writable func(string) bool) string {
+	if writable(applications) {
+		return filepath.Join(applications, brand.Name+".app")
+	}
+
+	return filepath.Join(home, "Applications", brand.Name+".app")
 }
 
 // within reports whether path lies inside folder; nothing lies inside "".

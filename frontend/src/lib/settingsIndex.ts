@@ -407,6 +407,8 @@ export const settingsIndex: Readonly<Record<SettingsSection, readonly SettingEnt
         'download',
         'install',
         'rehearsal build',
+        'move to applications',
+        'applications folder',
       ],
     },
     {

@@ -24,6 +24,15 @@ export function ClearHistory(): $CancellablePromise<void> {
 }
 
 /**
+ * KeepRunning is the user's other answer to quitting while runs go in the app: keep it
+ * running. The runs go on, and the desktop shell forgets what the quit was to do after,
+ * such as opening the copy a move to Applications made.
+ */
+export function KeepRunning(): $CancellablePromise<void> {
+    return $Call.ByID(71666742);
+}
+
+/**
  * MarkSeen records that the user has seen a run.
  */
 export function MarkSeen(id: number): $CancellablePromise<void> {

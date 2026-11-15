@@ -63,8 +63,12 @@ func TestLocate(t *testing.T) {
 	}, update.Locate(testHome+"/Applications/"+app, testHome, notSystem))
 
 	assert.Equal(t, update.Location{
-		OK: false, Kind: update.LocationElsewhere, Target: "/Applications/" + app,
+		OK: false, Kind: update.LocationElsewhere, Target: "/Applications/" + app, Movable: true,
 	}, update.Locate(testHome+"/Downloads/"+app, testHome, everywhere))
+
+	assert.Equal(t, update.Location{
+		OK: false, Kind: update.LocationElsewhere, Target: "~/Applications/" + app,
+	}, update.Locate("", testHome, notSystem), "no bundle, nothing to move")
 }
 
 // A rehearsal build updates itself in its own folder as in an Applications folder, and a

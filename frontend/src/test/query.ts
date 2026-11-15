@@ -2,6 +2,7 @@ import { vi } from 'vitest'
 
 import { bannerOf, offerOf, type RestartStep } from '../lib/update'
 import type { IntegrationsState } from '../lib/useIntegrations'
+import type { MoveControl } from '../lib/useMove'
 import type { Query } from '../lib/useQuery'
 import type { UpdateControl } from '../lib/useUpdate'
 import type { IntegrationTools, UpdateStatus } from '../platform'
@@ -38,9 +39,24 @@ export function integrationsOf(
   }
 }
 
+// moveOf is the move into Applications as useMoveToApplications hands it to a component,
+// for a status, or null while it loads: its dialog closed, with its moves as mocks a test
+// reads. Whether it is offered is the update's offer's (offerOf).
+export function moveOf(status: UpdateStatus | null, overrides: Partial<MoveControl> = {}): MoveControl {
+  return {
+    location: status?.location ?? null,
+    dialog: null,
+    move: vi.fn(),
+    confirm: vi.fn(),
+    dismiss: vi.fn(),
+    reveal: vi.fn(),
+    ...overrides,
+  }
+}
+
 // updateOf is the app's update as useUpdateControl hands it to a component: a status, or
-// null while it loads, the restart flow at a step, the banner they show, and what they
-// offer, with its moves as mocks a test reads.
+// null while it loads, the restart flow at a step, the banner they show, what they offer,
+// and the move into Applications, with its moves as mocks a test reads.
 export function updateOf(
   status: UpdateStatus | null,
   flow: RestartStep = { step: 'idle' },
@@ -51,6 +67,7 @@ export function updateOf(
     flow,
     banner: bannerOf(status, flow, ''),
     offer: offerOf(status, flow),
+    move: moveOf(status),
     restart: vi.fn(),
     later: vi.fn(),
     dismiss: vi.fn(),

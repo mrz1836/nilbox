@@ -208,4 +208,59 @@ describe('ConfirmDialog tones', () => {
 
     expect(screen.getByRole('button', { name: 'Got it' })).toHaveFocus()
   })
+
+  it('holds both buttons and Escape while the work it started is under way', async () => {
+    const onCancel = vi.fn()
+
+    render(
+      <ConfirmDialog title="Copy it?" confirmLabel="Copying…" busy onConfirm={vi.fn()} onCancel={onCancel}>
+        It takes a moment.
+      </ConfirmDialog>,
+    )
+
+    const working = screen.getByRole('button', { name: 'Copying…' })
+
+    expect(working).toBeDisabled()
+    expect(working).toHaveAttribute('aria-busy', 'true')
+    expect(screen.getByRole('button', { name: 'Cancel' })).toBeDisabled()
+
+    await userEvent.keyboard('{Escape}')
+    expect(onCancel).not.toHaveBeenCalled()
+    expect(screen.getByRole('dialog')).toBeInTheDocument()
+  })
+
+  it('gives focus back to the safe choice once the work ends, as a button turned off loses it', () => {
+    const dialog = (busy: boolean) => (
+      <ConfirmDialog title="Copy it?" confirmLabel="Copy" busy={busy} onConfirm={vi.fn()} onCancel={vi.fn()}>
+        It takes a moment.
+        <button type="button">Show it</button>
+      </ConfirmDialog>
+    )
+    const { rerender } = render(dialog(false))
+
+    screen.getByRole('button', { name: 'Copy' }).focus()
+    rerender(dialog(true))
+    // A browser moves focus off a button turned off, out of the dialog; jsdom leaves it,
+    // so the test moves it out.
+    const outside = document.createElement('button')
+    document.body.append(outside)
+    outside.focus()
+
+    rerender(dialog(false))
+    expect(screen.getByRole('button', { name: 'Cancel' })).toHaveFocus()
+    outside.remove()
+
+    // Left on the button that started the work, it moves too: that button may now do
+    // something else.
+    screen.getByRole('button', { name: 'Copy' }).focus()
+    rerender(dialog(true))
+    rerender(dialog(false))
+    expect(screen.getByRole('button', { name: 'Cancel' })).toHaveFocus()
+
+    // Focus the user moved elsewhere in the dialog meanwhile stays there.
+    rerender(dialog(true))
+    screen.getByRole('button', { name: 'Show it' }).focus()
+    rerender(dialog(false))
+    expect(screen.getByRole('button', { name: 'Show it' })).toHaveFocus()
+  })
 })

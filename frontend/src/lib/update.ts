@@ -86,7 +86,8 @@ export const finishingWords = `${finishingText} ${finishingDetail}`
 //   - lastLaunch: the restart before this launch didn't install its update, with the newer
 //     version on offer in its place, ready or available, which its button installs, or
 //     null when the offer is the version that failed (or none);
-//   - location: an update waits, but the app can't replace itself where it runs.
+//   - location: a newer version is out, but the app can't replace itself where it runs,
+//     so nothing downloads: it is only ever available there.
 export type Banner =
   | { kind: 'none' }
   | { kind: 'ready'; version: string }
@@ -95,7 +96,7 @@ export type Banner =
   | { kind: 'failed'; message: string }
   | { kind: 'waiting'; message: string }
   | { kind: 'lastLaunch'; version: string; current: string; newer: NewerVersion | null }
-  | { kind: 'location'; version: string; ready: boolean }
+  | { kind: 'location'; version: string }
 
 // NewerVersion is a version on offer other than the one that failed to install: ready to
 // restart into, or available to download first.
@@ -229,7 +230,7 @@ export function bannerOf(status: UpdateStatus | null, flow: RestartStep, lastLau
   }
 
   if (!status.location.ok) {
-    return { kind: 'location', version: status.latest, ready }
+    return { kind: 'location', version: status.latest }
   }
 
   return ready ? { kind: 'ready', version: status.latest } : { kind: 'available', version: status.latest }
@@ -240,10 +241,11 @@ export function bannerOf(status: UpdateStatus | null, flow: RestartStep, lastLau
 // restart, or an install, that failed. Each runs the one restart (restartToUpdate).
 export type OfferAction = 'restart' | 'update' | 'retry'
 
-// Offer is what the window offers, the same in the banner and in Settings → About, so the
-// two never disagree: the action, with its words, or none; the release page to download
-// and install by hand from (Download manually), or '' when that isn't offered; and whether
-// the app must first move to Applications.
+// Offer is what the window offers, the same in the banner, in Settings → About, and in the
+// move dialog, so none of them disagrees: the action, with its words, or none; the release
+// page to download and install by hand from (Download manually), or '' when that isn't
+// offered; and whether it offers to move the app into Applications (Move to Applications),
+// which the move dialog also asks on every launch until the app is moved.
 export interface Offer {
   action: OfferAction | null
   label: string
@@ -277,33 +279,52 @@ function pageOf(status: UpdateStatus): string {
   return failed === '' ? '' : releasePageOf(status.releaseUrl, failed)
 }
 
+// movable reports whether the window offers to move the app into Applications: a build
+// that updates, running where it can't update itself and a move lets it (location.movable),
+// with no restart installing or finishing, which goes first and which Go refuses a move
+// during.
+function movable(status: UpdateStatus | null): boolean {
+  return (
+    status !== null &&
+    status.enabled &&
+    status.location.movable &&
+    status.state !== 'installing' &&
+    status.state !== 'finishing'
+  )
+}
+
 // offerOf works out what the window offers, from the update's status and the restart
 // (what the user put away changes only whether the banner shows, never what is offered):
+//   - Move to Applications wherever moving the app lets it update itself (movable), a
+//     newer version out or not, beside whatever else is offered;
 //   - after a restart that just failed, Try again, or nothing when trying again would fail
 //     the same way, and Download manually for the version it was about, once known;
 //   - nothing for a build that doesn't update, or before the status loads;
-//   - where the app can't replace itself, that it must move first, and no restart;
+//   - where the app can't replace itself, no restart and no Download manually: only the
+//     move, where it is offered;
 //   - after an install that failed at the last launch, for the version that failed (or
 //     none found since), Try again and Download manually of that version, or Download
 //     manually alone when it can't be tried again: never a plain Restart to update for it;
 //   - otherwise Restart to update for a version ready, Update for one found, and nothing
 //     while one downloads, installs, finishes installing, or none is newer.
 export function offerOf(status: UpdateStatus | null, flow: RestartStep): Offer {
+  const move = movable(status)
+
   if (flow.step === 'failed') {
-    return offering(flow.final === true ? null : 'retry', { page: status === null ? '' : pageOf(status) })
+    return offering(flow.final === true ? null : 'retry', { page: status === null ? '' : pageOf(status), move })
   }
 
   if (status === null || !status.enabled) {
     return offering(null)
   }
 
+  if (!status.location.ok) {
+    return offering(null, { move })
+  }
+
   const pending = status.state === 'ready' || status.state === 'available'
   const failed = status.installFailed
   const failedOnOffer = failed.version !== '' && (failed.version === status.latest || status.latest === '')
-
-  if (!status.location.ok && (pending || failedOnOffer)) {
-    return offering(null, { move: true })
-  }
 
   if (failedOnOffer) {
     return offering(failed.retryable ? 'retry' : null, { page: releasePageOf(status.releaseUrl, failed.version) })
@@ -352,7 +373,9 @@ export function aboutLine(status: UpdateStatus): AboutLine {
     case 'downloading':
       return { ...line(downloadingWords(status.latest)), progress: status.progress }
     case 'ready':
-      return line(`${status.latest} is ready`, note)
+      // Where the app can't replace itself, one kept from before it moved there can't
+      // install: it is only available.
+      return line(`${status.latest} is ${status.location.ok ? 'ready' : 'available'}`, note)
     case 'available':
       return line(`${status.latest} is available`, note)
     default:
@@ -378,7 +401,8 @@ export interface LocationWords {
 
 // locationWords words a location the app can't update in: an Applications folder its
 // account can't change, or anywhere else, from where it moves into the Applications folder
-// it would go in (the target's folder).
+// it would go in (the target's folder), by Move to Applications when it is movable, else by
+// hand.
 export function locationWords(location: UpdateLocation): LocationWords {
   if (location.kind === 'applications' || location.kind === 'userApplications') {
     return {
@@ -389,10 +413,13 @@ export function locationWords(location: UpdateLocation): LocationWords {
 
   const slash = location.target.lastIndexOf('/')
   const folder = slash > 0 ? location.target.slice(0, slash) : 'your Applications folder'
+  const how = location.movable
+    ? `Moving it puts it in ${folder}, and it reopens from there.`
+    : `Move it to ${folder}, then open it from there.`
 
   return {
     title: `Move ${brand.name} to Applications to update it`,
-    hint: `${brand.name} can only update itself from your Applications folder. Move it to ${folder}, then open it from there.`,
+    hint: `${brand.name} can only update itself from your Applications folder. ${how}`,
   }
 }
 

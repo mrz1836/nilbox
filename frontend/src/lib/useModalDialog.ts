@@ -34,11 +34,43 @@ export function nextFocus(dialog: HTMLElement, backwards: boolean): HTMLElement 
   return null
 }
 
-// isTopmost reports whether dialog is the open modal the user is in: the last open
-// dialog in the page, as one opened from inside another (a confirmation over the review
-// sheet) comes after it.
+// opened lists the modals useModalDialog has open, in the order they opened: the order the
+// browser stacks them in, the last on top, wherever each sits in the page.
+const opened: HTMLDialogElement[] = []
+
+// isTopmost reports whether dialog is the open modal the user is in: the one the browser
+// shows on top, the last useModalDialog opened, as a confirmation opened over the review
+// sheet is, or the quit's question opened while another dialog shows, though the page
+// renders that one later. A dialog inside another is over it, whichever opened first, as a
+// picker in a sheet is. A dialog opened any other way counts by its place in the page,
+// beneath those.
 export function isTopmost(dialog: HTMLDialogElement): boolean {
-  return Array.from(document.querySelectorAll('dialog[open]')).at(-1) === dialog
+  const open = opened.filter((d) => d.open && d.isConnected)
+  let top = open.at(-1)
+
+  if (top === undefined) {
+    return Array.from(document.querySelectorAll('dialog[open]')).at(-1) === dialog
+  }
+
+  for (let inner = innerOf(top, open); inner !== undefined; inner = innerOf(top, open)) {
+    top = inner
+  }
+
+  return top === dialog
+}
+
+// innerOf is the last of open to have opened inside outer, or undefined for none.
+function innerOf(outer: HTMLDialogElement, open: readonly HTMLDialogElement[]): HTMLDialogElement | undefined {
+  return open.findLast((d) => d !== outer && outer.contains(d))
+}
+
+// forget takes dialog out of the opened modals.
+function forget(dialog: HTMLDialogElement): void {
+  const at = opened.indexOf(dialog)
+
+  if (at !== -1) {
+    opened.splice(at, 1)
+  }
 }
 
 // useCloseWhenHidden closes, through onClose, a modal <dialog> whose page hides while it is
@@ -90,9 +122,10 @@ export interface ModalCancelEvent {
 // mounted: it opens it as a modal (the rest of the page inert and dimmed behind it) and
 // moves focus to what initialFocus returns, keeps Tab inside it, cancels on Escape (and,
 // with the backdrop option, on a click on the backdrop), and gives focus back to where it
-// was when it first opened as it closes. Only the topmost open dialog hears the keys, so a
-// confirmation opened over another dialog handles its own Escape and Tab. It returns the
-// dialog's cancel handler, for a close request the system sends.
+// was when it first opened as it closes. Only the topmost open dialog hears the keys, the
+// last opened (isTopmost), so a confirmation opened over another dialog handles its own
+// Escape and Tab. It returns the dialog's cancel handler, for a close request the system
+// sends.
 export function useModalDialog(
   ref: RefObject<HTMLDialogElement | null>,
   onCancel: () => void,
@@ -118,11 +151,19 @@ export function useModalDialog(
       opener.current = document.activeElement
     }
 
-    dialog?.showModal()
+    if (dialog !== null) {
+      forget(dialog)
+      dialog.showModal()
+      opened.push(dialog)
+    }
+
     focusFirst()
 
     return () => {
-      dialog?.close()
+      if (dialog !== null) {
+        forget(dialog)
+        dialog.close()
+      }
 
       const back = opener.current
 

@@ -1,7 +1,8 @@
-import { useId, useRef, type ReactNode } from 'react'
+import { useEffect, useId, useRef, type ReactNode } from 'react'
 
 import { useModalDialog } from '../lib/useModalDialog'
 import { buttonClass, dangerButtonClass, primaryButtonClass } from './controls'
+import { Spinner } from './Spinner'
 
 export interface ConfirmDialogProps {
   title: string
@@ -18,6 +19,11 @@ export interface ConfirmDialogProps {
   cancelLabel?: string | null
   // confirmDisabled turns the confirm button off, such as while nothing is chosen.
   confirmDisabled?: boolean
+  // busy marks work the confirm button started as under way: both buttons are off, the
+  // confirm button turns beside its label, which says what is happening, and Escape
+  // cancels nothing until it ends. Focus a button lost as it went off comes back to the
+  // safe choice when the work ends, as it was when the dialog opened.
+  busy?: boolean
   // size gives the dialog room for a list: wide for prompts to choose among, large for a
   // long list grouped by repository.
   size?: 'normal' | 'wide' | 'large'
@@ -44,13 +50,42 @@ export function ConfirmDialog({
   tone = 'danger',
   cancelLabel = 'Cancel',
   confirmDisabled = false,
+  busy = false,
   size = 'normal',
 }: ConfirmDialogProps) {
   const id = useId()
   const dialogRef = useRef<HTMLDialogElement>(null)
   const cancelRef = useRef<HTMLButtonElement>(null)
   const confirmRef = useRef<HTMLButtonElement>(null)
-  const cancel = useModalDialog(dialogRef, onCancel, () => cancelRef.current ?? confirmRef.current)
+  const cancelWhenIdle = () => {
+    if (!busy) {
+      onCancel()
+    }
+  }
+  const cancel = useModalDialog(dialogRef, cancelWhenIdle, () => cancelRef.current ?? confirmRef.current)
+
+  // wasBusy is busy as the last render had it. A button turned off loses focus, so once the
+  // work ends with focus nowhere in the dialog, or on one of its buttons, the safe choice
+  // takes it, as when the dialog opened: the user stays in the dialog, at its failure or a
+  // new question, never on a button that now does something else. Focus the user moved to
+  // another control in it meanwhile stays there.
+  const wasBusy = useRef(busy)
+
+  useEffect(() => {
+    const ended = wasBusy.current && !busy
+    const dialog = dialogRef.current
+    const active = document.activeElement
+
+    wasBusy.current = busy
+
+    if (!ended || dialog === null) {
+      return
+    }
+
+    if (!dialog.contains(active) || active === confirmRef.current || active === cancelRef.current) {
+      ;(cancelRef.current ?? confirmRef.current)?.focus()
+    }
+  }, [busy])
 
   return (
     <dialog
@@ -71,17 +106,19 @@ export function ConfirmDialog({
       </div>
       <div className="mt-4 flex justify-end gap-2">
         {cancelLabel !== null && (
-          <button ref={cancelRef} type="button" onClick={onCancel} className={buttonClass}>
+          <button ref={cancelRef} type="button" disabled={busy} onClick={onCancel} className={buttonClass}>
             {cancelLabel}
           </button>
         )}
         <button
           ref={confirmRef}
           type="button"
-          disabled={confirmDisabled}
+          disabled={confirmDisabled || busy}
+          aria-busy={busy || undefined}
           onClick={onConfirm}
           className={tone === 'danger' ? dangerButtonClass : primaryButtonClass}
         >
+          {busy && <Spinner className="size-3.5" />}
           {confirmLabel}
         </button>
       </div>

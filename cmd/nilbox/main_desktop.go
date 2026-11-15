@@ -287,21 +287,28 @@ func assemble(l launch) (*application.App, *desktop.Shell, error) {
 		// Every quit asks first, while runs are going in the app.
 		ShouldQuit: shell.ShouldQuit,
 		// A timed-out measurement run exits with a failure status. On macOS the app exits
-		// from inside Run, with a success status unless this hook exits first. A reset the
-		// user asked for opens the app again here, once the shell has stopped and closed
-		// the database, so the next start carries it out.
+		// from inside Run, with a success status unless this hook exits first. Once the
+		// shell has stopped and closed the database, the app opens again here: the copy a
+		// move to Applications made or found, or, after a reset the user asked for, this
+		// bundle, so the next start carries the reset out. Either opens once.
 		PostShutdown: func() {
 			if shell.TimedOut() {
 				os.Exit(1)
 			}
 
-			if shell.Relaunching() {
-				relaunch(l.sandbox, "the reset", logger)
+			argv, ok := shell.RelaunchCommand(executable(), l.sandbox)
+
+			switch {
+			case ok:
+				openAgain(argv, "the app quit to open again", logger)
+			case shell.Relaunching():
+				logger.Info("the app runs outside a bundle, so it only quits; open it again to finish the reset")
 			}
 		},
 	})
 	ui.attach(app, shell)
 	attachInstaller(app, c.UpdateEngine, logger)
+	attachMover(c.UpdateEngine, shell)
 
 	app.Event.OnApplicationEvent(events.Common.ApplicationStarted, func(*application.ApplicationEvent) {
 		shell.Launched()
@@ -338,6 +345,17 @@ func attachInstaller(app *application.App, engine *update.Engine, logger *slog.L
 	engine.Attach(i)
 }
 
+// attachMover hands the update engine the mover it moves the app into Applications with,
+// in a build that updates: ditto and codesign run by their absolute paths through execpath,
+// and the copy opens through the shell once the app has quit the normal way.
+func attachMover(engine *update.Engine, shell *desktop.Shell) {
+	if !engine.Enabled() {
+		return
+	}
+
+	engine.AttachMover(desktop.NewMover(execpath.Exec{}, shell))
+}
+
 // executable is the running executable, its links resolved, or "" when it can't be told.
 func executable() string {
 	exe, err := os.Executable()
@@ -369,6 +387,13 @@ func relaunch(sandbox, after string, logger *slog.Logger) {
 		return
 	}
 
+	openAgain(argv, after, logger)
+}
+
+// openAgain runs argv, the command that opens the app again once it has quit (open -n),
+// within relaunchWithin, and logs a failure; after names why, for the log. It runs as the
+// app shuts down, on the main thread, so the bound keeps it from holding that shutdown.
+func openAgain(argv []string, after string, logger *slog.Logger) {
 	ctx, cancel := context.WithTimeout(context.Background(), relaunchWithin)
 	defer cancel()
 

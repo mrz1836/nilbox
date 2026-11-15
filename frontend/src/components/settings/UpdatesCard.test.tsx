@@ -6,9 +6,9 @@ import { brand } from '../../generated/brand'
 import { settlingWords, type RestartStep } from '../../lib/update'
 import type { Settings, UpdateStatus } from '../../platform'
 import { at } from '../../test/clock'
-import { settings, updateReady, updateStatus } from '../../test/fixtures'
+import { settings, updateLocation, updateReady, updateStatus } from '../../test/fixtures'
 import { platform } from '../../test/platform'
-import { updateOf } from '../../test/query'
+import { moveOf, updateOf } from '../../test/query'
 import { AboutSection } from './AboutSection'
 import { UpdatesCard } from './UpdatesCard'
 
@@ -171,7 +171,7 @@ describe('UpdatesCard', () => {
         enabled: false,
         state: 'off',
         off: 'Updates are off in builds made from source.',
-        location: { ok: false, kind: 'elsewhere', target: '/Applications/Example.app' },
+        location: { ...updateLocation(), movable: false },
       }),
     )
 
@@ -298,16 +298,49 @@ describe('UpdatesCard', () => {
     expect(screen.queryByRole('button', { name: 'Show log in Finder' })).not.toBeInTheDocument()
   })
 
-  it('says the app must be in Applications to update, and offers no restart there', () => {
-    card(updateReady({ location: { ok: false, kind: 'translocated', target: '/Applications/Example.app' } }))
+  it('says the app must be in Applications to update, offering the move and no restart there', async () => {
+    const { update } = card(updateReady({ location: updateLocation('translocated') }))
 
     expect(screen.getByText(`Move ${brand.name} to Applications to update it`)).toBeInTheDocument()
     expect(
       screen.getByText(
-        `${brand.name} can only update itself from your Applications folder. Move it to /Applications, then open it from there.`,
+        `${brand.name} can only update itself from your Applications folder. Moving it puts it in /Applications, and it reopens from there.`,
       ),
     ).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Restart to update' })).not.toBeInTheDocument()
+    // Nothing downloads there, so one kept from before it moved there is only available.
+    expect(line()).toHaveTextContent('0.3.0 is available')
+
+    await userEvent.click(screen.getByRole('button', { name: 'Move to Applications' }))
+    expect(update.move.move).toHaveBeenCalledOnce()
+  })
+
+  it('holds Move to Applications while the move is under way', () => {
+    const status = updateStatus({ location: updateLocation('diskImage') })
+
+    render(
+      <UpdatesCard
+        update={updateOf(
+          status,
+          { step: 'idle' },
+          {
+            move: moveOf(status, { dialog: { variant: 'move', work: 'moving', leaving: false, error: '' } }),
+          },
+        )}
+        settings={settings()}
+        onSaved={vi.fn()}
+      />,
+      { wrapper: at() },
+    )
+
+    expect(screen.getByRole('button', { name: 'Move to Applications' })).toBeDisabled()
+  })
+
+  it('offers no move where the account can’t change the Applications folder the app is in', () => {
+    card(updateStatus({ location: updateLocation('applications') }))
+
+    expect(screen.getByText(`${brand.name} can’t update itself here`)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Move to Applications' })).not.toBeInTheDocument()
   })
 
   it('chooses what happens when a new version is out, and reads the status again', async () => {

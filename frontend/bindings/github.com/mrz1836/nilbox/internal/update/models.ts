@@ -88,6 +88,14 @@ export interface Location {
      * when the user can write to it, else the one in the home folder.
      */
     "target": string;
+
+    /**
+     * Movable reports that Move to Applications can put the app at Target: a build that
+     * updates, running from its bundle on a disk image, from a path macOS translocated it
+     * to, or from anywhere else outside an Applications folder. A copy in an Applications
+     * folder its account can't change isn't movable: it is in Applications already.
+     */
+    "movable": boolean;
 }
 
 /**
@@ -127,6 +135,52 @@ export const LocationKind = {
      */
     LocationElsewhere: "elsewhere",
 } as const;
+
+/**
+ * MoveOutcome is how a move to Applications, or an Open it, ended.
+ */
+export type MoveOutcome = "moved" | "exists" | "opening";
+
+/**
+ * The values of MoveOutcome, by the names of their Go constants.
+ */
+export const MoveOutcome = {
+    /**
+     * The outcomes. A failure is an error, in words.
+     *
+     * MoveMoved is the app copied into Applications and checked: the app quits the normal
+     * way, and the copy opens once it has.
+     */
+    MoveMoved: "moved",
+
+    /**
+     * MoveExists is a copy of the app already in Applications: nothing was copied or
+     * replaced, and OpenInApplications opens that copy, which updates itself when it is
+     * older.
+     */
+    MoveExists: "exists",
+
+    /**
+     * MoveOpening is the copy in Applications checked: the app quits the normal way, and
+     * that copy opens once it has.
+     */
+    MoveOpening: "opening",
+} as const;
+
+/**
+ * MoveResult is what a move to Applications, or an Open it, did.
+ */
+export interface MoveResult {
+    /**
+     * Outcome says what happened.
+     */
+    "outcome": MoveOutcome;
+
+    /**
+     * Target is the copy in Applications, with ~ for home.
+     */
+    "target": string;
+}
 
 /**
  * State is where the app's update stands.

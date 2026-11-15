@@ -115,8 +115,9 @@ type Config struct {
 	Reveal Revealer
 
 	// Quit is what the Service's QuitAnyway calls: the user chose to stop the runs and
-	// quit.
+	// quit. Kept is what its KeepRunning calls: the user chose to keep the app running.
 	Quit func()
+	Kept func()
 }
 
 // Engine starts runs and follows them to their end. It is safe for concurrent use. Run
@@ -135,6 +136,7 @@ type Engine struct {
 	terminal   TerminalOpener
 	reveal     Revealer
 	quit       func()
+	kept       func()
 
 	// slots holds a token per run going in the app.
 	slots chan struct{}
@@ -187,7 +189,8 @@ func NewEngine(cfg Config) *Engine {
 	return &Engine{
 		store: runStore{db: cfg.DB, q: queries.New(cfg.DB)}, locks: locks, files: logFiles{dir: cfg.LogDir}, home: cfg.Home,
 		clock: clock.Or(cfg.Clock), logger: logging.Or(cfg.Logger), changed: cfg.Changed, progressed: cfg.Progressed,
-		failed: cfg.Failed, terminal: cfg.Terminal, reveal: cfg.Reveal, quit: cfg.Quit, slots: make(chan struct{}, Slots),
+		failed: cfg.Failed, terminal: cfg.Terminal, reveal: cfg.Reveal, quit: cfg.Quit, kept: cfg.Kept,
+		slots:      make(chan struct{}, Slots),
 		keep:       retention{runs: KeepRuns, bytes: KeepLogBytes},
 		compaction: compaction{over: CompactOver, head: CompactHead, tail: CompactTail},
 		tailEvery:  tailEvery, quitKill: QuitKillAfter, quitGrace: quitGrace, pidWait: pidWait,

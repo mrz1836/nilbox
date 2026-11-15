@@ -3,6 +3,8 @@ package update
 import (
 	"context"
 	"time"
+
+	"github.com/mrz1836/nilbox/internal/procs"
 )
 
 // Tick runs one of the Worker's looks at once.
@@ -39,4 +41,30 @@ func HelperRetryable(log []byte) bool {
 // Locate works out where the bundle is, with writable standing in for the system's answer.
 func Locate(bundle, home string, writable func(string) bool) Location {
 	return locate(bundle, home, systemApplications, "", writable)
+}
+
+// MarkInstalling has the engine say a restart into an update is under way, as restart does
+// before it installs.
+func (e *Engine) MarkInstalling() {
+	e.change(func(st *state) { st.installing = true })
+}
+
+// MarkFinishing has the engine say a restart whose quit was held is finishing, as finish
+// does once the Installer returns with the app still running, and nothing else: no
+// restart is marked installing.
+func (e *Engine) MarkFinishing() {
+	e.change(func(st *state) { st.finishing = true })
+}
+
+// StubProbe has the engine tell whether a process runs with probe, as procs.Probe does.
+func (e *Engine) StubProbe(probe func(pid int) procs.Liveness) {
+	e.probe = probe
+}
+
+// StageMarker is the name of the file a move marks its hidden folder with.
+const StageMarker = stageMarker
+
+// BundleID reads the bundle identifier of the app bundle at bundle from its Info.plist.
+func BundleID(bundle string) (string, error) {
+	return bundleID(bundle)
 }

@@ -167,6 +167,23 @@ describe('QuitDialog', () => {
 
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
     expect(platform.quitAnyway).not.toHaveBeenCalled()
+    expect(platform.keepRunning).toHaveBeenCalledOnce()
+  })
+
+  it('keeps running on Escape too, and tells the shell even when that fails', async () => {
+    const logged = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    platform.keepRunning.mockRejectedValue(new Error('the shell is gone'))
+    await askToQuit([release])
+    await dialog()
+
+    await userEvent.keyboard('{Escape}')
+
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    await waitFor(() => {
+      expect(logged).toHaveBeenCalledWith('could not keep running:', 'the shell is gone')
+    })
+    expect(platform.keepRunning).toHaveBeenCalledOnce()
+    expect(platform.quitAnyway).not.toHaveBeenCalled()
   })
 
   it('lists several runs, says what stopping a release can leave, and stops them and quits', async () => {

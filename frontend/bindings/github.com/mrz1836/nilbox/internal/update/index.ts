@@ -9,11 +9,13 @@ export {
 export {
     Flavor,
     LocationKind,
+    MoveOutcome,
     State
 } from "./models.js";
 
 export type {
     InstallFailure,
     Location,
+    MoveResult,
     Status
 } from "./models.js";

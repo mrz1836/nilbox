@@ -5,7 +5,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { brand } from '../generated/brand'
 import { settlingWords, type RestartStep } from '../lib/update'
 import type { UpdateStatus } from '../platform'
-import { updateReady, updateStatus } from '../test/fixtures'
+import { updateLocation, updateReady, updateStatus } from '../test/fixtures'
 import { platform } from '../test/platform'
 import { updateOf } from '../test/query'
 import { UpdateBanner } from './UpdateBanner'
@@ -264,7 +264,7 @@ describe('UpdateBanner', () => {
     const { update } = shown(
       updateReady({
         state: 'available',
-        location: { ok: false, kind: 'diskImage', target: '/Applications/Example.app' },
+        location: updateLocation('diskImage'),
       }),
     )
 
@@ -279,19 +279,41 @@ describe('UpdateBanner', () => {
     expect(platform.openExternal).toHaveBeenCalledExactlyOnceWith(releasePage)
   })
 
-  it('says why where the account can’t change the folder, and calls one kept from before ready', () => {
-    shown(
-      updateReady({
-        state: 'ready',
-        mode: 'notify',
-        location: { ok: false, kind: 'applications', target: '/Applications/Example.app' },
-      }),
-    )
+  it('says why where the account can’t change the folder, calling one kept from before available', () => {
+    // A version downloaded before the app ran from there can't install either: it is only
+    // available, and nothing offers to move an app that is in Applications already.
+    shown(updateReady({ state: 'ready', mode: 'notify', location: updateLocation('applications') }))
 
     expect(banner()).toHaveTextContent(
-      `${brand.name} 0.3.0 is ready. Your account can’t change the folder it’s in, so it can’t install it.`,
+      `${brand.name} 0.3.0 is available. Your account can’t change the folder it’s in, so it can’t install it.`,
     )
     expect(screen.queryByRole('button', { name: 'Restart to update' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Move to Applications' })).not.toBeInTheDocument()
+  })
+
+  it('offers to move the app where it can’t install an update, calling it available, never ready', async () => {
+    for (const state of ['available', 'ready'] as const) {
+      const status = updateReady({ state, location: updateLocation('translocated') })
+      const update = updateOf(status)
+      const { unmount } = render(<UpdateBanner update={update} onDetails={vi.fn()} />)
+
+      expect(banner()).toHaveTextContent(`${brand.name} 0.3.0 is available.`)
+      expect(banner()).not.toHaveTextContent('ready')
+
+      await userEvent.click(screen.getByRole('button', { name: 'Move to Applications' }))
+      expect(update.move.move).toHaveBeenCalledOnce()
+      unmount()
+    }
+  })
+
+  it('leaves the word about where the app runs to the move dialog while it asks', () => {
+    const status = updateReady({ state: 'available', location: updateLocation() })
+
+    render(
+      <UpdateBanner update={updateOf(status, { step: 'idle' }, { banner: { kind: 'none' } })} onDetails={vi.fn()} />,
+    )
+
+    expect(banner()).toBeEmptyDOMElement()
   })
 
   it('offers no page before the status loads, only Try again', () => {
