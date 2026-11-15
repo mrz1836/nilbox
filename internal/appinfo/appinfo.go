@@ -5,8 +5,9 @@
 // runs on; AgentVersions reads the installed coding agents' versions, ToolVersions the
 // other tools' (the GitHub CLI), and BugReportURL opens a new bug report with all of them
 // filled in, and with the app's state as its StateReader words it: the settings and the
-// integrations, with nothing personal in them. The user reads the report on GitHub before
-// sending it, and the app sends nothing itself. When the
+// integrations, with nothing personal in them. FeedbackURL opens a new blank issue with a
+// feedback title, a few prompts, and the app's version filled in. The user reads either on
+// GitHub before sending it, and the app sends nothing itself. When the
 // database could not be read at startup and was set aside, or the prompt library and
 // launch defaults were brought back into a new one, Info says so, so the window can tell the user once it
 // loads: the window does not exist yet when that happens, so an event would be lost. When the window has painted its first frame, the frontend calls
@@ -34,6 +35,14 @@ const (
 	// environmentField is the id of the bug report form's environment field, which the
 	// bug report link fills in.
 	environmentField = "environment"
+
+	// feedbackTemplate is GitHub's own blank issue, which the feedback link fills in, since
+	// each of the repository's issue forms is for one kind of report.
+	feedbackTemplate = "BLANK_ISSUE"
+
+	// feedbackTitle starts a feedback issue's title, as each issue form's title starts with
+	// its kind; the user writes the rest.
+	feedbackTitle = "[Feedback] "
 )
 
 // Info is the app's identity, its versions, the system it runs on, and whether its data
@@ -285,6 +294,37 @@ func bugReportURL(info Info, agents []AgentVersion, tools []ToolVersion, state [
 	q.Set(environmentField, environment(info, agents, tools, state))
 
 	return brand.Repository + "/issues/new?" + q.Encode()
+}
+
+// FeedbackURL returns the link that opens a new blank issue on GitHub for feedback, with
+// its title started and its body holding a few prompts for the user to answer and the
+// app's version and system, so the feedback says which build it is about.
+func (s *Service) FeedbackURL() string {
+	q := url.Values{}
+	q.Set("template", feedbackTemplate)
+	q.Set("title", feedbackTitle)
+	q.Set("body", feedbackBody(s.info))
+
+	return brand.Repository + "/issues/new?" + q.Encode()
+}
+
+// feedbackBody is a feedback issue's body: a note on what to write, which GitHub doesn't
+// show once it is sent, two prompts with room under each, and the build and system it
+// came from.
+func feedbackBody(info Info) string {
+	return fmt.Sprintf(`<!-- Thanks for sharing. Write as much or as little as you like: what works for you, what gets in your way, or what you wish %[1]s did. Leave out tokens, passwords, and anything private. -->
+
+### What's on your mind?
+
+
+
+### What would make it better?
+
+
+
+---
+<sub>%[1]s %[2]s (%[3]s) · %[4]s, %[5]s</sub>
+`, brand.Name, info.Release, info.Build, info.System, info.Arch)
 }
 
 // ReportFirstPaint records that the window painted its first frame. Only the first report

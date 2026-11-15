@@ -35,6 +35,15 @@ export function BugReportURL(): $CancellablePromise<string> {
 }
 
 /**
+ * FeedbackURL returns the link that opens a new blank issue on GitHub for feedback, with
+ * its title started and its body holding a few prompts for the user to answer and the
+ * app's version and system, so the feedback says which build it is about.
+ */
+export function FeedbackURL(): $CancellablePromise<string> {
+    return $Call.ByID(1168029505);
+}
+
+/**
  * Info returns the product's identity, its versions, the system it runs on, and whether
  * its data was reset at startup.
  */

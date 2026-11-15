@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 	"time"
 
@@ -155,6 +156,26 @@ func TestBugReportFormHasTheEnvironmentField(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.Contains(t, string(form), "id: "+environmentField+"\n")
+}
+
+func TestFeedbackURLOpensABlankIssueWithPrompts(t *testing.T) {
+	t.Parallel()
+
+	s := NewService(Config{Version: "abc1234", Release: "0.1.0", Build: "16", System: "macOS 15.1 (24B83)"})
+
+	u, err := url.Parse(s.FeedbackURL())
+	require.NoError(t, err)
+
+	assert.Equal(t, brand.Repository+"/issues/new", u.Scheme+"://"+u.Host+u.Path)
+	assert.Equal(t, "BLANK_ISSUE", u.Query().Get("template"))
+	assert.Equal(t, "[Feedback] ", u.Query().Get("title"))
+
+	body := u.Query().Get("body")
+	assert.Contains(t, body, "### What's on your mind?\n")
+	assert.Contains(t, body, "### What would make it better?\n")
+	assert.Contains(t, body, "what you wish "+brand.Name+" did")
+	assert.True(t, strings.HasSuffix(body,
+		"\n---\n<sub>"+brand.Name+" 0.1.0 (16) · macOS 15.1 (24B83), "+runtime.GOARCH+"</sub>\n"), body)
 }
 
 func TestReportFirstPaintEmitsOnce(t *testing.T) {
