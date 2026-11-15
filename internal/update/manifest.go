@@ -1,6 +1,7 @@
 package update
 
 import (
+	"bytes"
 	"crypto/ed25519"
 	"crypto/sha512"
 	"encoding/base64"
@@ -56,8 +57,10 @@ var (
 
 // versionPattern matches a release's version as its tag names it, without the v:
 // MAJOR.MINOR.PATCH, with a prerelease's suffix when it has one (0.2.0-rc.1), and no build
-// metadata.
-var versionPattern = regexp.MustCompile(`^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$`)
+// metadata. As semver requires, no number (a prerelease's numeric identifiers included)
+// has a leading zero.
+var versionPattern = regexp.MustCompile(`^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)` +
+	`(-(0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*)(\.(0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*))*)?$`)
 
 // platformPattern matches a platform's name: lowercase words joined by hyphens.
 var platformPattern = regexp.MustCompile(`^[a-z0-9]+(-[a-z0-9]+)*$`)
@@ -151,11 +154,12 @@ func Sign(m Manifest, key ed25519.PrivateKey) (Manifest, error) {
 }
 
 // Verify checks m: every field in form, and the signature made by key's private half
-// over SignedMessage(m). Whether the app takes the release, its platform and version
-// against the running build's, is the caller's to decide.
+// over SignedMessage(m). It refuses a key ParseKey would refuse (a point of small order
+// among them). Whether the app takes the release, its platform and version against the
+// running build's, is the caller's to decide.
 func Verify(m Manifest, key ed25519.PublicKey) error {
-	if len(key) != ed25519.PublicKeySize {
-		return fmt.Errorf("%w: a public key is %d bytes, not %d", ErrKey, ed25519.PublicKeySize, len(key))
+	if err := checkPublicKey(key); err != nil {
+		return err
 	}
 
 	if err := checkForm(m); err != nil {
@@ -174,16 +178,24 @@ func Verify(m Manifest, key ed25519.PublicKey) error {
 	return nil
 }
 
-// Parse reads a manifest from its JSON, refusing one larger than MaxManifestBytes. It
-// checks no field: Verify does.
+// Parse reads a manifest from its JSON, refusing one larger than MaxManifestBytes, a
+// field the format doesn't have, or anything after the object. It checks no field's
+// value: Verify does.
 func Parse(data []byte) (Manifest, error) {
 	if len(data) > MaxManifestBytes {
 		return Manifest{}, fmt.Errorf("%w: larger than %d bytes", ErrInvalid, MaxManifestBytes)
 	}
 
+	dec := json.NewDecoder(bytes.NewReader(data))
+	dec.DisallowUnknownFields()
+
 	var m Manifest
-	if err := json.Unmarshal(data, &m); err != nil {
+	if err := dec.Decode(&m); err != nil {
 		return Manifest{}, fmt.Errorf("%w: %w", ErrInvalid, err)
+	}
+
+	if _, err := dec.Token(); !errors.Is(err, io.EOF) {
+		return Manifest{}, fmt.Errorf("%w: more after the manifest", ErrInvalid)
 	}
 
 	return m, nil
@@ -214,7 +226,8 @@ func Digest(r io.Reader) (int64, string, error) {
 
 // CheckFile reads r, the file m names, and fails with ErrMismatch unless it holds exactly
 // m.Size bytes whose SHA-512 is m.SHA512. It reads at most one byte past m.Size, so a file
-// that runs on is refused without being read to its end.
+// that runs on is refused without being read to its end. Call it only on a manifest Verify
+// accepted: Verify is what holds m.Size to MaxFileBytes, and so bounds the read.
 func CheckFile(m Manifest, r io.Reader) error {
 	size, sum, err := Digest(io.LimitReader(r, m.Size+1))
 	if err != nil {
