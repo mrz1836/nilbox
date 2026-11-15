@@ -13,6 +13,7 @@ import {
   EyeIcon,
   PulseIcon,
   TagIcon,
+  UpdateIcon,
   XIcon,
 } from '../icons'
 import { RelativeTime } from '../RelativeTime'
@@ -28,6 +29,7 @@ const kindIcons: Readonly<Partial<Record<NotificationKind, (props: { className?:
   release_failed: XIcon,
   run_failed: XIcon,
   service_status: PulseIcon,
+  update_ready: UpdateIcon,
 }
 
 // kindTones color the icon of a kind that tells of something gone wrong, as the Runs page

@@ -1,3 +1,4 @@
+import { brand } from '../generated/brand'
 import type { AppNotification, BannerStatus, NotificationKind } from '../platform'
 import type { GitHubShow, GitHubTypeID } from './githubThreads'
 
@@ -67,6 +68,12 @@ export const notificationKinds: readonly KindDescription[] = [
       'A part of GitHub, Claude, or OpenAI you watch goes down, or comes back, as its status page says. Choose what you watch in Service status.',
   },
   {
+    kind: 'update_ready',
+    title: 'New version',
+    label: 'New versions',
+    description: `A new version of ${brand.name} is downloaded and ready to restart into, or, with Just tell me, out to download. You hear of each version once.`,
+  },
+  {
     kind: 'session_needs_you',
     session: true,
     title: 'Session waiting for you',
@@ -87,8 +94,8 @@ export const sessionBannerHint = 'Claude Code and Codex can already notify throu
 
 // inboxKinds and sessionKinds are the kinds of notification the history keeps (the
 // inbox's, a release's (reaching GitHub, published, or its workflow failing), a run that
-// failed, and a service the user watches going down or coming back), and those about the
-// agent sessions, which it does not.
+// failed, a service the user watches going down or coming back, and a new version of the
+// app), and those about the agent sessions, which it does not.
 export const inboxKinds = notificationKinds.filter((k) => k.session !== true)
 export const sessionKinds = notificationKinds.filter((k) => k.session === true)
 
@@ -110,6 +117,12 @@ export function entryRef(entry: AppNotification): string {
 // "sdk · Tagged a1b2c3d on master.", either alone when the other is ''.
 export function entryWhere(entry: AppNotification): string {
   return [entryRef(entry), entry.detail].filter((part) => part !== '').join(' · ')
+}
+
+// opensUpdate reports an entry about a new version of the app, which opens the update's
+// banner, Later or not.
+export function opensUpdate(entry: AppNotification): boolean {
+  return entry.kind === 'update_ready'
 }
 
 // opensRun reports an entry that opens a run, as a failed run's does: Scripts → Runs with
@@ -152,7 +165,7 @@ export const startLists: NotificationLists = {
 
 // AppTypeID is one of the app tab's types, as its Type control offers it and type: names
 // it in the toolbar's field.
-export type AppTypeID = 'all' | 'review' | 'assigned' | 'snooze' | 'release' | 'run' | 'status'
+export type AppTypeID = 'all' | 'review' | 'assigned' | 'snooze' | 'release' | 'run' | 'status' | 'update'
 
 // AppType is a type's name, the kinds of entry it lists (none for every kind), and what
 // the page says when it lists none.
@@ -176,10 +189,20 @@ export const appTypes: Readonly<Record<AppTypeID, AppType>> = {
   },
   run: { label: 'Runs', kinds: ['run_failed'], none: 'No failed runs.' },
   status: { label: 'Status', kinds: ['service_status'], none: 'No service status changes.' },
+  update: { label: 'Updates', kinds: ['update_ready'], none: `No new versions of ${brand.name} yet.` },
 }
 
 // appTypeOrder is the order the page offers the types in.
-export const appTypeOrder: readonly AppTypeID[] = ['all', 'review', 'assigned', 'snooze', 'release', 'run', 'status']
+export const appTypeOrder: readonly AppTypeID[] = [
+  'all',
+  'review',
+  'assigned',
+  'snooze',
+  'release',
+  'run',
+  'status',
+  'update',
+]
 
 // appTypeOf is the type an entry belongs to, or '' for a kind this build doesn't know.
 export function appTypeOf(entry: AppNotification): Exclude<AppTypeID, 'all'> | '' {
@@ -210,15 +233,30 @@ export function unreadOf(items: readonly AppNotification[], itemId: number): num
   return itemId <= 0 ? [] : items.filter((n) => !n.read && n.itemId === itemId).map((n) => n.id)
 }
 
+// BannerRef is what a clicked banner names besides its entry: its item, page, or run, or
+// none of them, as a new version's banner does.
+export interface BannerRef {
+  itemId: number
+  url: string
+  runId: number
+}
+
+// updateBanner reports a clicked banner that names nothing but its entry, as only a new
+// version's banner does.
+export function updateBanner(banner: BannerRef): boolean {
+  return banner.itemId <= 0 && banner.runId <= 0 && banner.url === ''
+}
+
 // bannerEntry reports whether the log's entry a clicked banner names is the one it stood
 // for: the log hands an id out again once it is cleared, so a banner left from before
 // stands for the entry with its id only while that entry is about the banner's item, page,
-// or run.
-export function bannerEntry(entry: AppNotification, banner: { itemId: number; url: string; runId: number }): boolean {
+// or run, or, for a banner about none, while it is about a new version.
+export function bannerEntry(entry: AppNotification, banner: BannerRef): boolean {
   return (
     (banner.itemId > 0 && entry.itemId === banner.itemId) ||
     (banner.runId > 0 && entry.runId === banner.runId) ||
-    (banner.url !== '' && entry.url === banner.url)
+    (banner.url !== '' && entry.url === banner.url) ||
+    (updateBanner(banner) && opensUpdate(entry))
   )
 }
 

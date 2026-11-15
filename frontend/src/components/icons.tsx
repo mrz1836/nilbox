@@ -606,6 +606,16 @@ export function BoxIcon(props: IconProps) {
   )
 }
 
+// UpdateIcon stands for a new version of the app: an arrow coming down into a circle.
+export function UpdateIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <circle cx="12" cy="12" r="8.25" />
+      <path d="M12 7.75v8M8.75 12.75 12 16l3.25-3.25" />
+    </Icon>
+  )
+}
+
 // FolderIcon stands for a folder shown in Finder.
 export function FolderIcon(props: IconProps) {
   return (
