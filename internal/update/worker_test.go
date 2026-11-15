@@ -163,6 +163,32 @@ func TestAManualCheckWithDownloadsOnDownloadsAtOnceAndTellsNothing(t *testing.T)
 	})
 }
 
+func TestAManualCheckInTheFirstMinuteDownloadsAtOnce(t *testing.T) {
+	t.Parallel()
+
+	synctest.Test(t, func(t *testing.T) {
+		r := newRig(t)
+
+		_, stop := runWorker(t, r)
+		defer stop()
+
+		after(10 * time.Second)
+
+		r.release(t, next)
+
+		_, err := r.service.CheckNow(t.Context())
+		require.NoError(t, err)
+
+		after(time.Millisecond)
+		assert.Equal(t, update.StateReady, r.status(t).State, "the Worker's first wait ends on the wake")
+		assert.Equal(t, int32(1), r.feed.downloads.Load())
+		assert.Equal(t, int32(1), r.feed.manifests.Load(), "the click's check alone: the look found it wasn't due")
+
+		after(update.FirstCheckAfter)
+		assert.Equal(t, int32(1), r.feed.manifests.Load(), "and the first minute's end checks nothing more")
+	})
+}
+
 func TestAManualFindWhoseDownloadFailsIsToldLater(t *testing.T) {
 	t.Parallel()
 
