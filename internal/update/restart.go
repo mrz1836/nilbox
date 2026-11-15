@@ -8,6 +8,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/mrz1836/nilbox/internal/brand"
 	"github.com/mrz1836/nilbox/internal/event"
@@ -36,17 +37,13 @@ var (
 	// errNoBackup is why a restart in a build that backs nothing up installs nothing.
 	errNoBackup = errors.New("nothing backs up the database")
 
-	// errQuitHeld is why a restart whose Installer returned with the app running failed,
-	// and why every restart after it in the same run is refused.
-	errQuitHeld = errors.New("the restart returned without the app quitting")
+	// ErrFinishing is returned by a restart while an earlier one finishes: its quit was
+	// held, and the app is quitting on its own so the update installs.
+	ErrFinishing = errors.New("a restart to update is finishing")
 
 	// ErrOff is returned by what a build that can't update refuses.
 	ErrOff = errors.New("updates are off in this build")
 )
-
-// reopenToUpdate is what the user does after a restart whose quit was held: the update
-// stays ready, and the next run installs it.
-const reopenToUpdate = "Quit " + brand.Name + " and open it again, then restart to update."
 
 // RunsGoingError refuses a restart the user hasn't confirmed while runs go in the app. Its
 // message names them, and Detail hands them to the desktop runtime, which sends them to the
@@ -123,16 +120,18 @@ func where(r Run) string {
 // restart installs the update that is ready and restarts into it, as the window asks once
 // the user clicks Restart to update:
 //
-//  1. It refuses where the app can't replace itself, and, unless confirmed, while runs go
-//     in the app, with a RunsGoingError naming them.
+//  1. It refuses where the app can't replace itself, an update that failed to install for
+//     good, and, unless confirmed, while runs go in the app, with a RunsGoingError naming
+//     them.
 //  2. The zip is checked against its manifest again; a damaged or missing one is dropped,
 //     to be downloaded again, and nothing else happens.
 //  3. The database is backed up (a backup this engine took under BackupReuse ago serves
 //     again); a backup that fails stops the restart.
-//  4. The install about to happen is recorded (KeyPendingInstall), for the next start to
-//     read how it went.
-//  5. The Installer stages the update beside the running bundle.
-//  6. Unless confirmed, a run that started meanwhile refuses it as in step 1.
+//  4. The Installer stages the update beside the running bundle.
+//  5. Unless confirmed, a run that started meanwhile refuses it as in step 1.
+//  6. The install about to happen is recorded (KeyPendingInstall), for the next start to
+//     read how it went: only now, so a quit that comes while the update is staged leaves
+//     no record of an install that never began.
 //  7. The quit is let through (event.QuitConfirmed, Restarting), whatever runs go, since a
 //     held quit would leave the runtime's helper to reopen this copy beside the new one;
 //     then the Installer restarts, and the app exits inside it.
@@ -140,10 +139,14 @@ func where(r Run) string {
 // Everything the next start needs is written before step 7. Any failure before the app
 // quits goes back to ready, with the failure as LastError worded with no path, the record
 // cleared, and the staging folder removed; once the quit was let through, the shell holds a
-// quit while runs go again (event.UpdateRestartFailed). So does a restart that returns with
-// the app still running, as one whose quit something held; since the runtime then refuses
-// another restart until the app quits, every later restart in this run is refused, saying
-// to quit and open the app again, where the update is still ready.
+// quit while runs go again (event.UpdateRestartFailed).
+//
+// A restart that returns with the app still running, with no error, is one whose helper
+// stands by but whose quit something held (a modal panel, say). The helper can't be called
+// back: it waits for this process to exit, then installs the staged update, and, should
+// the process outlive its wait, opens this copy again beside it. So the restart is
+// finishing (StateFinishing): the staging folder and the record stay, the quit stays let
+// through, and the shell quits the app on its own (event.UpdateQuitHeld).
 func (e *Engine) restart(ctx context.Context, confirmed bool) error {
 	installer, entry, release, err := e.prepare(ctx, confirmed)
 	if err != nil {
@@ -164,10 +167,6 @@ func (e *Engine) restart(ctx context.Context, confirmed bool) error {
 		return e.rollBack(ctx, version, false, err)
 	}
 
-	if err = e.recordPending(ctx, version); err != nil {
-		return e.rollBack(ctx, version, false, uierr.New("Couldn't get ready to install "+version+".", err))
-	}
-
 	m := entry.Manifest
 	if err = installer.Install(ctx, entry.Zip, version, m.Size, m.SHA512); err != nil {
 		return e.rollBack(ctx, version, false, uierr.New("Couldn't get "+version+" ready to install.", err))
@@ -179,43 +178,49 @@ func (e *Engine) restart(ctx context.Context, confirmed bool) error {
 		return e.runsGoing(ctx)
 	}
 
+	if err = e.recordPending(ctx, m); err != nil {
+		return e.rollBack(ctx, version, false, uierr.New("Couldn't get ready to install "+version+".", err))
+	}
+
 	e.logger.InfoContext(ctx, "restarting into the update", "from", e.current, "to", version)
 
 	// The quit must never be held: Restart quits the app once the runtime's helper stands
 	// by, and a quit held back would leave the helper to reopen this copy beside the new.
 	e.events.Emit(event.QuitConfirmed{Restarting: true})
 
+	// The helper's wait for this process to exit starts once it stands by, inside Restart,
+	// so a held quit's exit is timed from here.
+	started := e.clock.Now()
+
 	err = installer.Restart(ctx)
 	if err == nil {
-		// The app runs on: something held the quit. The runtime refuses another restart
-		// until the app quits, and the staging folder its helper waits on is removed below,
-		// so quitting now installs nothing: the update stays ready for the next run.
-		e.change(func(st *state) { st.quitHeld = true })
+		e.finish(ctx, version, started)
 
-		return e.rollBack(ctx, version, true, uierr.New("Couldn't restart into "+version+", because "+brand.Name+
-			" didn't quit. "+reopenToUpdate, errQuitHeld))
+		return nil
 	}
 
 	return e.rollBack(ctx, version, true, uierr.New("Couldn't restart into "+version+".", err))
 }
 
-// prepare checks a restart can begin and takes the operation for it: the app where it can
-// replace itself, an Installer attached, nothing downloading, the update ready, and, unless
-// confirmed, no run going in the app. It returns what lets go of the operation.
-func (e *Engine) prepare(ctx context.Context, confirmed bool) (Installer, Entry, func(), error) {
-	e.mu.Lock()
-	installer, downloading, quitHeld := e.installer, e.st.downloading != nil, e.st.quitHeld
-	e.mu.Unlock()
+// finish handles a restart whose helper stands by while the app runs on, its quit held:
+// the update stays staged and recorded for the helper, which installs it once this process
+// exits, and the shell is told to see the app out (event.UpdateQuitHeld), timed from
+// started, when the restart began starting the helper.
+func (e *Engine) finish(ctx context.Context, version string, started time.Time) {
+	e.logger.WarnContext(ctx, "the restart returned with the app still running; quitting to finish the update",
+		"version", version, "after", e.clock.Now().Sub(started).String())
+	e.change(func(st *state) { st.finishing = true })
+	e.events.Emit(event.UpdateQuitHeld{HelperStarted: started})
+}
 
-	switch {
-	case !e.location.OK:
-		return nil, Entry{}, nil, locationError()
-	case installer == nil:
-		return nil, Entry{}, nil, uierr.New("This build can't install updates.", ErrNoInstaller)
-	case quitHeld:
-		return nil, Entry{}, nil, uierr.New(reopenToUpdate, errQuitHeld)
-	case downloading:
-		return nil, Entry{}, nil, uierr.New("Wait for the download to finish, then restart.", ErrBusy)
+// prepare checks a restart can begin and takes the operation for it: the app where it can
+// replace itself, an Installer attached, no restart finishing, nothing downloading, the
+// update ready and installable, and, unless confirmed, no run going in the app. It returns
+// what lets go of the operation.
+func (e *Engine) prepare(ctx context.Context, confirmed bool) (Installer, Entry, func(), error) {
+	installer, err := e.restartable()
+	if err != nil {
+		return nil, Entry{}, nil, err
 	}
 
 	release, err := e.acquire(ctx)
@@ -230,6 +235,12 @@ func (e *Engine) prepare(ctx context.Context, confirmed bool) (Installer, Entry,
 		return nil, Entry{}, nil, uierr.New("There's no update ready to install yet.", ErrNotReady)
 	}
 
+	if e.blocked(ctx, st.ready.Manifest) {
+		release()
+
+		return nil, Entry{}, nil, uninstallableError(st.ready.Manifest.Version)
+	}
+
 	if !confirmed && e.runs != nil && e.runs.Active() {
 		release()
 
@@ -237,6 +248,28 @@ func (e *Engine) prepare(ctx context.Context, confirmed bool) (Installer, Entry,
 	}
 
 	return installer, *st.ready, release, nil
+}
+
+// restartable returns the Installer a restart installs through, or why none can begin
+// before the operation is taken: the app where it can't replace itself, no Installer, a
+// restart finishing, or a download running.
+func (e *Engine) restartable() (Installer, error) {
+	e.mu.Lock()
+	installer, downloading, finishing := e.installer, e.st.downloading != nil, e.st.finishing
+	e.mu.Unlock()
+
+	switch {
+	case !e.location.OK:
+		return nil, locationError()
+	case installer == nil:
+		return nil, uierr.New("This build can't install updates.", ErrNoInstaller)
+	case finishing:
+		return nil, uierr.New(brand.Name+" is quitting to finish the update.", ErrFinishing)
+	case downloading:
+		return nil, uierr.New("Wait for the download to finish, then restart.", ErrBusy)
+	default:
+		return installer, nil
+	}
 }
 
 // runsGoing refuses a restart while runs go, naming them as they can be listed.
@@ -330,9 +363,11 @@ func (e *Engine) backUp(ctx context.Context) error {
 	return nil
 }
 
-// recordPending records the install about to happen, committed before the app quits.
-func (e *Engine) recordPending(ctx context.Context, version string) error {
-	body, err := json.Marshal(pendingInstall{From: e.current, To: version, At: e.clock.Now().UTC(), PID: e.pid})
+// recordPending records the install of m about to happen, committed before the app quits.
+func (e *Engine) recordPending(ctx context.Context, m Manifest) error {
+	body, err := json.Marshal(pendingInstall{
+		From: e.current, To: m.Version, At: e.clock.Now().UTC(), PID: e.pid, SHA512: m.SHA512,
+	})
 	if err != nil {
 		return fmt.Errorf("record the install: %w", err)
 	}

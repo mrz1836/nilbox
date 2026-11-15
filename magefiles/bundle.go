@@ -272,6 +272,12 @@ type buildMeta struct {
 	bundleVersion string // the release version macOS shows, its numeric core, e.g. 0.2.0 (CFBundleShortVersionString)
 	bundleBuild   string // the build number, the commit count, e.g. 42 (CFBundleVersion)
 	flavor        string // the kind of build, flavorRelease for a release or "" for a build from source (main.flavor)
+
+	// updateFeed is the folder a rehearsal reads its releases from, an absolute path, and
+	// updateKey the public key, base64, it trusts them with (main.updateFeed and
+	// main.updateKey); every other build leaves both "".
+	updateFeed string
+	updateKey  string
 }
 
 // readBuildMeta derives the version metadata from git; outside a git checkout it falls
@@ -332,13 +338,23 @@ func gitOutput(args ...string) string {
 
 // versionFlags returns the linker flags that stamp the build's version metadata into the
 // desktop command, which reports it on the About page, and its flavor, which a build from
-// source leaves empty.
+// source leaves empty, and, for a rehearsal, the folder it reads its releases from and the
+// key it trusts. The folder is single-quoted, which go reads as one value however many
+// spaces it holds; a rehearsal never names one that holds a quote (rehearsalConfig.check).
 func versionFlags(meta buildMeta) string {
 	flags := fmt.Sprintf("-X main.version=%s -X main.commit=%s -X main.buildDate=%s -X main.release=%s -X main.buildNumber=%s",
 		meta.version, meta.commit, meta.date, meta.release, meta.bundleBuild)
 
 	if meta.flavor != "" {
 		flags += " -X main.flavor=" + meta.flavor
+	}
+
+	if meta.updateFeed != "" {
+		flags += " -X 'main.updateFeed=" + meta.updateFeed + "'"
+	}
+
+	if meta.updateKey != "" {
+		flags += " -X main.updateKey=" + meta.updateKey
 	}
 
 	return flags

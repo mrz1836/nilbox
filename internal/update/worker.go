@@ -14,9 +14,10 @@ import (
 //
 // It first reads how the last restart went, cleans up after it, and loads the update kept
 // in the cache (so one waiting is ready at once, with no download), waiting first while the
-// last install's helper may still be at work (HelperWindow); FirstCheckAfter later it
-// looks whether a check is due, and again every TickEvery: a check is due once CheckEvery
-// has passed on the wall clock since the last, since timers stand still while a Mac sleeps.
+// last install's helper may still be at work (HelperWindow); FirstCheckAfter later, or at
+// once when woken first, it looks whether a check is due, and again every TickEvery: a
+// check is due once CheckEvery has passed on the wall clock since the last, since timers
+// stand still while a Mac sleeps.
 // A Wake (the setting changed, or a manual check found a version to download) has it look
 // at once. Its checks and the window's never overlap.
 type Worker struct {
@@ -34,9 +35,9 @@ func NewWorker(e *Engine) *Worker {
 	return w
 }
 
-// Run settles the start, waits FirstCheckAfter, and then looks every TickEvery, or when
-// woken, until ctx ends, returning once the look in flight has. A build that doesn't
-// update returns at once.
+// Run settles the start, waits FirstCheckAfter (or for a Wake), and then looks every
+// TickEvery, or when woken, until ctx ends, returning once the look in flight has. A build
+// that doesn't update returns at once.
 func (w *Worker) Run(ctx context.Context) {
 	if !w.e.Enabled() {
 		return
@@ -50,7 +51,7 @@ func (w *Worker) Run(ctx context.Context) {
 		}
 	}
 
-	if clock.Sleep(ctx, FirstCheckAfter) != nil {
+	if !w.firstWait(ctx) {
 		return
 	}
 
@@ -65,6 +66,23 @@ func (w *Worker) Wake() {
 	case w.wake <- struct{}{}:
 	default:
 	}
+}
+
+// firstWait waits FirstCheckAfter, or until a Wake, which has the first look run at once,
+// as a manual check in the first minute that found a version to download asks; it reports
+// false once ctx ends.
+func (w *Worker) firstWait(ctx context.Context) bool {
+	timer := time.NewTimer(FirstCheckAfter)
+	defer timer.Stop()
+
+	select {
+	case <-ctx.Done():
+		return false
+	case <-timer.C:
+	case <-w.wake:
+	}
+
+	return true
 }
 
 // every is TickEvery, or no wait at all once woken, so the look runs at once.

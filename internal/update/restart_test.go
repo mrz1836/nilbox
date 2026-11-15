@@ -293,34 +293,80 @@ func TestAnInstallOrRestartErrorGoesBackToReadyWordedWithNoPath(t *testing.T) {
 	}
 }
 
-func TestARestartThatReturnsWithTheAppRunningIsNoLongerInstalling(t *testing.T) {
+func TestARestartWhoseQuitIsHeldFinishesTheUpdate(t *testing.T) {
 	t.Parallel()
 
-	r, _ := ready(t)
+	r, m := ready(t)
 	r.installer.returns = true
+
+	// The runtime stages the update beside the app, as the real one does.
+	staging := filepath.Join(filepath.Dir(r.cfg.Bundle), "wails-update-7")
+	r.installer.onInstall = func() {
+		_ = os.MkdirAll(filepath.Join(staging, brand.Name+".app"), 0o700)
+	}
+
+	// The runtime's restart starts the helper, then the quit it asks for takes 4 seconds to
+	// come back.
+	var called time.Time
+
+	r.installer.onRestart = func() {
+		called = r.clock.Now()
+		r.clock.sleep(4 * time.Second)
+	}
 
 	exited, err := r.restart(t, false)
 	require.False(t, exited)
-	require.Error(t, err)
-	assert.Equal(t, "Couldn't restart into "+next+", because "+brand.Name+" didn't quit. Quit "+brand.Name+
-		" and open it again, then restart to update.", uierr.Message(err))
+	require.NoError(t, err, "the restart goes on: the app quits on its own")
 
 	s := r.status(t)
-	assert.Equal(t, update.StateReady, s.State, "no longer installing")
-	assert.Equal(t, uierr.Message(err), s.LastError)
-	assert.Empty(t, r.memory.get(update.KeyPendingInstall), "the record is cleared")
-	assert.Equal(t, []event.Event{event.QuitConfirmed{Restarting: true}, event.UpdateRestartFailed{}}, r.quitEvents(),
-		"the shell holds a quit while runs go again")
+	assert.Equal(t, update.StateFinishing, s.State)
+	assert.Equal(t, next, s.Latest)
+	assert.Empty(t, s.LastError)
+	assert.DirExists(t, staging, "the helper finds its payload once the app exits")
 
-	// The runtime refuses another restart until the app quits, so this run tries none.
+	var pending map[string]any
+	require.NoError(t, json.Unmarshal([]byte(r.memory.get(update.KeyPendingInstall)), &pending),
+		"the record stays, for the next start")
+	assert.Equal(t, next, pending["to"])
+	assert.Equal(t, m.SHA512, pending["sha512"])
+
+	assert.Equal(t, []event.Event{event.QuitConfirmed{Restarting: true}}, r.quitEvents(),
+		"the quit stays let through: nothing tells the shell to hold it again")
+
+	var held []event.UpdateQuitHeld
+
+	for _, e := range r.events.All() {
+		if h, ok := e.(event.UpdateQuitHeld); ok {
+			held = append(held, h)
+		}
+	}
+
+	require.Len(t, held, 1, "the shell is told to see the app out")
+	assert.False(t, held[0].HelperStarted.After(called), "timed from before the runtime's restart started the helper")
+	assert.Less(t, called.Sub(held[0].HelperStarted), time.Second, "just before, not when the quit came back")
+
+	// Nothing else installs meanwhile.
 	exited, err = r.restart(t, true)
 	require.False(t, exited)
-	require.Error(t, err)
-	assert.Equal(t, "Quit "+brand.Name+" and open it again, then restart to update.", uierr.Message(err))
+	require.ErrorIs(t, err, update.ErrFinishing)
+	assert.Equal(t, brand.Name+" is quitting to finish the update.", uierr.Message(err))
 	assert.Len(t, r.installer.installs, 1, "nothing is staged again")
 	assert.Equal(t, 1, r.installer.restarts)
-	assert.Empty(t, r.memory.get(update.KeyPendingInstall), "no record is written")
-	assert.Equal(t, update.StateReady, r.status(t).State, "the update stays ready for the next run")
+}
+
+func TestTheInstallIsRecordedOnlyOnceTheUpdateIsStaged(t *testing.T) {
+	t.Parallel()
+
+	r, _ := ready(t)
+
+	var atInstall string
+
+	r.installer.onInstall = func() { atInstall = r.memory.get(update.KeyPendingInstall) }
+
+	exited, err := r.restart(t, false)
+	require.NoError(t, err)
+	require.True(t, exited)
+	assert.Empty(t, atInstall, "a quit while the update is staged leaves no record of an install that never began")
 }
 
 func TestNothingDownloadsOrInstallsWhileTheLastUpdateMayStillBeFinishing(t *testing.T) {

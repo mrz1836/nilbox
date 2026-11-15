@@ -1,6 +1,7 @@
 package update_test
 
 import (
+	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -64,4 +65,43 @@ func TestLocate(t *testing.T) {
 	assert.Equal(t, update.Location{
 		OK: false, Kind: update.LocationElsewhere, Target: "/Applications/" + app,
 	}, update.Locate(testHome+"/Downloads/"+app, testHome, everywhere))
+}
+
+// A rehearsal build updates itself in its own folder as in an Applications folder, and a
+// release never does: moving either still puts it in Applications.
+func TestARehearsalUpdatesInItsOwnFolderAndAReleaseNever(t *testing.T) {
+	t.Parallel()
+
+	app := brand.Name + ".app"
+
+	tests := []struct {
+		name   string
+		flavor update.Flavor
+		bundle string // under the rig's root
+		want   bool
+	}{
+		{name: "a rehearsal in its folder", flavor: update.FlavorRehearsal, bundle: "rehearsal/A/" + app, want: true},
+		{name: "a rehearsal elsewhere", flavor: update.FlavorRehearsal, bundle: "Downloads/" + app},
+		{name: "a rehearsal in a folder named like its own", flavor: update.FlavorRehearsal, bundle: "rehearsal-old/A/" + app},
+		{name: "a release in a rehearsal's folder", flavor: update.FlavorRelease, bundle: "rehearsal/A/" + app},
+		{name: "a source build in a rehearsal's folder", flavor: update.FlavorSource, bundle: "rehearsal/A/" + app},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			r := newRig(t, func(c *update.Config) {
+				root := filepath.Dir(c.Applications)
+				c.Flavor, c.Bundle = tt.flavor, filepath.Join(root, tt.bundle)
+				c.RehearsalFolder = filepath.Join(root, "rehearsal")
+			})
+
+			got := r.status(t).Location
+
+			assert.Equal(t, tt.want, got.OK)
+			assert.Equal(t, update.LocationElsewhere, got.Kind, "the kind is its path's")
+			assert.Equal(t, filepath.Join(r.cfg.Applications, app), got.Target, "moving it still puts it in Applications")
+		})
+	}
 }

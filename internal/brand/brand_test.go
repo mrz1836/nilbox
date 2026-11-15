@@ -25,6 +25,10 @@ func TestIdentity(t *testing.T) {
 	assert.True(t, strings.HasSuffix(BundleID, "."+Slug), "bundle ID must end with the slug")
 	assert.Regexp(t, `^[a-z0-9]+(\.[a-z0-9-]+)+$`, BundleID)
 	assert.Equal(t, Name, DataDirName)
+	assert.NotEqual(t, DataDirName, RehearsalDataDirName, "a rehearsal keeps its data apart from the user's")
+	assert.True(t, strings.HasPrefix(RehearsalDataDirName, DataDirName+" "), "it reads as the app's, beside it")
+	assert.Equal(t, Slug+"-rehearsal", RehearsalSlug, "named as the slug names the user's")
+	assert.Regexp(t, `^[a-z][a-z0-9-]*$`, RehearsalSlug)
 }
 
 func TestPalettesAreCompleteAndValid(t *testing.T) {

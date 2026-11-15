@@ -147,7 +147,7 @@ func TestStopWaitsForDeferredWork(t *testing.T) {
 
 		require.NoError(t, s.Stop())
 
-		assert.Equal(t, []string{"shellenv started", "shellenv returned", "data closed"},
+		assert.Equal(t, []string{"shellenv started", "shellenv returned", dataClosed},
 			append(r.lines("shellenv"), r.lines("data")...), "the data closes after the deferred work returned")
 	})
 }

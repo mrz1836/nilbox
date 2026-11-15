@@ -55,12 +55,13 @@ func BundleOf(exe string) string {
 }
 
 // locate works out where the bundle is, whether the app can update there (in an
-// Applications folder whose folder the user can write to, where the update is staged), and
-// where moving it would put it: the system's Applications folder, applications, when
-// writable, else the one in home.
-func locate(bundle, home, applications string, writable func(string) bool) Location {
+// Applications folder, or in rehearsal, a rehearsal's own folder, "" for none, whose folder
+// the user can write to, where the update is staged), and where moving it would put it: the
+// system's Applications folder, applications, when writable, else the one in home. A bundle
+// in rehearsal keeps the kind its path has, and moving it still puts it in Applications.
+func locate(bundle, home, applications, rehearsal string, writable func(string) bool) Location {
 	kind := classify(bundle, home, applications)
-	inApplications := kind == LocationApplications || kind == LocationUserApplications
+	inApplications := kind == LocationApplications || kind == LocationUserApplications || within(bundle, rehearsal)
 
 	target := filepath.Join(home, "Applications", brand.Name+".app")
 	if writable(applications) {
@@ -72,4 +73,13 @@ func locate(bundle, home, applications string, writable func(string) bool) Locat
 		Kind:   kind,
 		Target: paths.Tilde(target, home),
 	}
+}
+
+// within reports whether path lies inside folder; nothing lies inside "".
+func within(path, folder string) bool {
+	if path == "" || folder == "" {
+		return false
+	}
+
+	return strings.HasPrefix(filepath.Clean(path), filepath.Clean(folder)+string(filepath.Separator))
 }

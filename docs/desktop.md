@@ -68,6 +68,7 @@ pins.
 | `magex app:package` | Builds a release into `bin/release/<version>/`: a universal bundle (Apple silicon and Intel) signed with a code-signing identity, its zip, a signed `Nilbox.dmg`, `SHA256SUMS`, and the signed update manifest, checked against the release key the app pins ([Packaging a release](#packaging-a-release)) |
 | `magex app:keygen out=<folder>` | Makes the release key: writes its Ed25519 private half to `<folder>/release.key` (`~/` allowed), outside the repository, and prints the public half to pin |
 | `magex app:verify dir=<folder> [version=<version>]` | Checks a release's `manifest-darwin.json` against the release key the app pins, and the zip it names by its size and SHA-512, as the app will; with `version`, it also refuses a manifest of another version |
+| `magex app:rehearse case=normal\|tampered\|broken` | Builds a pair of rehearsal builds to try an update end to end on this Mac: A (`0.0.1`) as `bin/rehearsal/A/Nilbox.app`, and B (`0.0.2`) as a release's zip and signed manifest in `bin/rehearsal/feed/`, which A reads as its releases; signed with `CODESIGN_IDENTITY` (and `CODESIGN_KEYCHAIN`), and prints the steps ([Rehearsing an update](#rehearsing-an-update)) |
 | `magex db:generate` | Regenerates each table owner's typed queries from its `queries/*.sql` and the migrations, with the sqlc version `.github/env/90-project.env` pins |
 | `magex db:check` | Fails when the generated queries are stale or a query does not prepare against the schema the migrations build |
 | `magex measure:startup` | Startup to the first frame on screen, over six launches |
@@ -194,9 +195,9 @@ version, so a stale pair can't pass for this release.
 
 A release of the app updates itself: it checks for a new version on its own, downloads it
 quietly, checks it against the key built into the app, and installs it on one click, after
-backing your data up. Nothing in your Applications folder changes until you click. (What's
-below is in the app's core; the banner, Settings → About's controls, and the menu bar items
-that show it are still to come.)
+backing your data up. Nothing in your Applications folder changes until you click. For now the
+menu bar offers the update ([Menu bar and notifications](#menu-bar-and-notifications)); the
+window's banner and Settings → About's controls are still to come.
 
 **How it works.**
 
@@ -207,6 +208,9 @@ that show it are still to come.)
   `release-assets.githubusercontent.com`), with no token and nothing of yours, and no API
   budget. A latest release with no manifest yet reads as up to date. A read that reached GitHub
   counts as a check even when the manifest is refused; one that never got an answer doesn't.
+  The menu bar's **Check for Updates…** checks at once, whatever **When a new version is out**
+  says, and shows how it went for a minute: **Up to date (0.2.0)**, **Check failed** (hover for
+  why), or the version it found.
 - **Trusting it.** The manifest is taken only when its Ed25519 signature verifies with the key
   the app pins (`update.ReleaseKey`), it is for this Mac's build (`darwin-universal`), and its
   version is a release, not a prerelease, newer than the one running. Anything else is an error
@@ -222,37 +226,184 @@ that show it are still to come.)
   404) withdraws the update: the next check of every install finds no manifest, reads as up to
   date, and throws away an update downloaded and waiting, so nobody installs it.
 - **Where the app is.** Only a copy in `/Applications` or `~/Applications`, in a folder it can
-  write, updates itself. Anywhere else (the disk image, Downloads, a translocated copy) it still
-  checks and tells you, but downloads nothing, and **Update** says to move the app to
-  Applications first.
+  write, updates itself (a rehearsal build also in its own folder, `bin/rehearsal/`). Anywhere
+  else (the disk image, Downloads, a translocated copy) it still checks and tells you, but
+  downloads nothing, and **Update** says to move the app to Applications first (the menu bar:
+  **Move to Applications to update**).
 - **Telling you.** Once per version, as a notification (**New version**, which Settings →
   Notifications can turn off) that brings the window forward, as soon as the update is ready
-  (or, where it isn't downloaded, available). A failure is never a notification: the app keeps
-  it, and the next look tries again.
-- **Restarting.** Restarting asks first while a run goes in the app, naming it. Then the app
-  checks the downloaded zip again (a damaged one is thrown away and downloaded again), backs up
-  the database beside it (`<data>/nilbox.db.backup-<stamp>-v<schema>`, the newest three kept, as
-  before a migration; a backup the update took under ten minutes ago is used again), stages the
-  update beside itself, and quits, and the update replaces the app and opens it. A restart that
-  fails before the app quits leaves the update ready and says why. If something held the quit
-  back, the app can't restart again until it quits: quit it, open it again, and restart from
-  there, where the update is still ready. One the next start finds didn't install says so, and
-  keeps its log as `<data>/logs/update-<version>.log`. While the update's helper may still be
-  at work (its log not ended, under three minutes since the restart), the next start leaves
-  its backup, staging folder, and log alone and looks again later; until then **Update** and
-  restarting wait, saying the last update is still finishing.
+  (or, where it isn't downloaded, available), and in the menu bar as **Restart to Update
+  (0.3.0)**. A failure is never a notification: the app keeps it, and the next look tries
+  again.
+- **Restarting.** The menu bar's **Restart to Update** never stops a run: while one goes in the
+  app, it restarts nothing and says so on the menu's status line (**Not restarted: a run is
+  going**, naming it when you hover). Otherwise the app checks the downloaded zip again (a
+  damaged one is thrown away and downloaded again), backs up the database beside it
+  (`<data>/nilbox.db.backup-<stamp>-v<schema>`, the newest three kept, as before a migration;
+  a backup the update took under ten minutes ago is used again), stages the update beside
+  itself, in a `wails-update-*` folder, and quits. The update's helper, the app's own program
+  run again, waits for the app to quit (up to 30 seconds), copies the old app aside as
+  `Nilbox.app.bak`, moves the new one into its place, checks the new one's code signature
+  (`codesign --verify --deep --strict`, held to what the old one passed), opens it, and
+  removes the copy and the staging folder. It opens the new version with `open -n`, which
+  hands it the old one's environment: a variable set where the old one started (a terminal,
+  say) reaches the new one too. In a rehearsal on one Mac (`case=normal`), the new version
+  was running 2.8 seconds after the click. A restart that fails before the app quits leaves
+  the update ready and says why.
+- **A quit held back.** If something holds back the quit a restart asks for, the update is
+  already staged and its helper is waiting, so the app sees itself out: the menu bar says
+  **Finishing the update…** (with Check for Updates… and the restart off), the app asks to
+  quit again every five seconds, four times, and if it still runs 25 seconds after the
+  restart started the update's helper (timed from then, not from when the held quit came
+  back), it closes its data in order (waiting at most three seconds for that) and exits,
+  before the helper's 30 seconds run out. The staging folder and the note the new version
+  reads are kept, so the update installs as usual. Each step is in the app's log.
+- **After the restart.** The new version's first start reads how it went, from a note the old
+  one left: updated, or, when the old version opens again instead, why it didn't install, in
+  words, with the helper's log kept as `<data>/logs/update-<version>.log`. Either way, it
+  removes what the update left behind (the staging folder and `.bak` beside the app, and the
+  helper's files in the temporary folder), each by its exact name. While the update's helper
+  may still be at work (its log not ended, under three minutes since the restart), the start
+  leaves its backup, staging folder, and log alone and looks again later; until then
+  **Update** and restarting wait, saying the last update is still finishing. A log that ends
+  with the helper putting the old app back counts as ended once `Nilbox.app.bak` is gone.
+- **An update that didn't install.** The menu bar says **0.3.0 didn't install**, with why when
+  you hover, and what comes next depends on why:
+  - When the moment was at fault (the app didn't quit in time, macOS didn't let it be
+    replaced or couldn't open the new version, it couldn't be copied aside, or the log
+    doesn't say), the update stays downloaded, and the menu offers **Try Updating to 0.3.0
+    Again**.
+  - When the update itself was at fault (the new version failed its signature check, or
+    couldn't be installed), it would fail the same way every time. The app
+    throws the download away and remembers the release, by its version and SHA-512, as one
+    that doesn't install (the last five, in `update.uninstallable`): no check downloads or
+    offers it again, and the menu offers **Download 0.3.0 Manually…**, which opens its
+    release page. A newer version, or the same version built again (another SHA-512), is
+    offered as usual.
+  - When no version is found yet (before the first check, or when the download kept
+    can't be read), the line still shows. **Check for Updates…** is the way to try again,
+    and an update that failed for good still gets **Download 0.3.0 Manually…**, which opens
+    0.3.0's own release page, never the running version's.
+
+**What a check sends.** Two GETs at most, both to GitHub's release download hosts: the latest
+release's manifest, `https://github.com/mrz1836/nilbox/releases/latest/download/manifest-darwin.json`,
+and, once a newer version checks out, its zip, from the URL of that release's tag. Each sends
+nothing but the request for that file: no token, no cookie, and nothing of yours, and neither
+spends API budget. A rehearsal build reads its releases from a folder and sends nothing.
+
+**Firewalls.** Updates need `github.com`, which redirects each download to
+`release-assets.githubusercontent.com` (and, for some releases,
+`objects.githubusercontent.com`). Blocking any of them only means a check or a download fails,
+which the menu says; nothing else changes.
+
+**Where things live.**
+
+| What | Where |
+|---|---|
+| The update waiting for a restart | `<data>/updates/<version>/`: its zip and manifest, removed once installed or replaced, or once it failed to install for good |
+| The releases that don't install | `update.uninstallable` in the database: the last five, each a version and its SHA-512, never downloaded or offered again |
+| The backup taken before each install | `<data>/nilbox.db.backup-<stamp>-v<schema>`, beside the database; the newest three are kept, the migrations' backups among them |
+| The update's staging folder | `wails-update-*` beside the app, removed after the swap, or by the next start |
+| The old app during the swap | `Nilbox.app.bak` beside the app, removed once the new one opens |
+| The helper's log | The temporary folder (`$TMPDIR/wails-update-<pid>.log`) while it runs; removed after an update that installed, and kept as `<data>/logs/update-<version>.log` after one that didn't |
+
+
 
 **When a new version is out** (Settings → About) is **Download it and tell me** (the default),
-**Just tell me** (no download until you click **Update**, which downloads and restarts), or
-**Don't check** (no checks on their own). **Check for Updates** works in every mode.
+**Just tell me** (no download until you click **Update**, or the menu bar's **Update to
+0.3.0…**, which downloads and restarts), or **Don't check** (no checks on their own). **Check
+for Updates** works in every mode.
 
 **The three flavors.** What a build does is stamped into it (`main.flavor`):
 
-| Flavor | Made by | Updates |
-|---|---|---|
-| `source` | `magex app:build`, `app:run`, `app:dev` | Never: "Updates are off in builds made from source." |
-| `release` | `magex app:package` | From GitHub's latest release, trusting only the pinned key. Off while no key is pinned. |
-| `rehearsal` | `magex app:rehearse` (not yet built) | From a local folder, trusting the key the build was given, to try an update end to end on one Mac. |
+| Flavor | Made by | Updates | Data |
+|---|---|---|---|
+| `source` | `magex app:build`, `app:run`, `app:dev` | Never: "Updates are off in builds made from source." | Yours, or a sandbox's with `--data-dir` |
+| `release` | `magex app:package` | From GitHub's latest release, trusting only the pinned key. Off while no key is pinned. | Yours, or a sandbox's with `--data-dir` |
+| `rehearsal` | `magex app:rehearse` | From a local folder, trusting the key the build was given, to try an update end to end on one Mac; in an Applications folder or in the folder it was built in, `bin/rehearsal/` | Always its own, `~/Library/Application Support/Nilbox Rehearsal`, beside yours, whatever `--data-dir` says, with the **Test data** chip |
+
+A rehearsal build keeps its own data because the update opens the new version with no
+arguments: a `--data-dir` would not survive the swap, and the new version would open on your
+data.
+
+**Going back to an older version.** A version can't open data a newer version has migrated: it
+says *Nilbox needs an update* and quits. When a backup it can open is beside the database (one
+whose name ends `-v<schema>`, or `-v<schema>-<n>`, with a schema it has; a copy renamed to end
+otherwise, such as `-v4-copy`, is never offered), the dialog also offers **Use my data from
+Nov 14, 3:02 PM**, the newest such backup. That sets the newer database aside as
+`nilbox.db.broken-<stamp>` (with its `-wal` and `-shm`, kept until you remove it), copies the
+backup into its place, and opens the app again on it. What changed since the backup won't be
+there; the newer data stays beside it, and **Restore from a backup** on the Prompts page can
+bring its prompts back. While the backup is offered, Escape quits and Return does nothing, so
+no key puts the backup back by accident; without it, Return quits. If the backup can't be put
+back, the dialog says what to do: when another copy of Nilbox still has the data open, nothing
+was changed, so quit that copy and open Nilbox again; when the newer data was set aside but the
+backup couldn't take its place (rare), no data is in place, and the dialog names the set-aside
+file and its folder, to rename it `nilbox.db` before opening Nilbox again.
+
+**Troubleshooting.**
+
+- **Check failed.** Hover the menu's line for why. Most often GitHub can't be reached, or a
+  firewall blocks the hosts above. The next look tries again.
+- **Download failed: it didn't match the release's manifest.** The zip changed after the
+  release was signed, or arrived damaged. Nothing is kept or installed, and a later look tries
+  again.
+- **The update didn't install.** The old version opens again and says why; the helper's log is
+  in `<data>/logs/update-<version>.log`. The app and your data are as they were. The menu
+  bar offers **Try Updating to 0.3.0 Again** when trying again may work, or **Download 0.3.0
+  Manually…** when the update itself was at fault (see *An update that didn't install*).
+- **Finishing the update…** The app exits on its own within 28 seconds of the restart
+  starting the update's helper, and the new version opens. Should the helper give up first
+  (it waits 30 seconds), it installs nothing and opens the old version again: it says it
+  didn't quit in time, and the menu offers **Try Updating to 0.3.0 Again**.
+- **A broken install.** If the swap fails and putting the old app back fails too (rare), the
+  old app is `Nilbox.app.bak` beside where the app was. Quit Nilbox, delete what is left of
+  `Nilbox.app`, and rename `Nilbox.app.bak` to `Nilbox.app`, or install Nilbox again from its
+  disk image. Your data is untouched either way.
+- **It says to move the app to Applications first.** Only a copy in `/Applications` or
+  `~/Applications`, in a folder it can write, replaces itself; a copy on the disk image, in
+  Downloads, or translocated by macOS checks and tells you, and downloads nothing.
+
+### Rehearsing an update
+
+`magex app:rehearse` builds two versions of the app to try an update end to end on one Mac,
+in place or from the Applications folder, without a release:
+
+```bash
+CODESIGN_IDENTITY=<identity> magex app:rehearse case=normal
+```
+
+- **A** (`0.0.1`) is `bin/rehearsal/A/Nilbox.app`, and **B** (`0.0.2`) is a release's zip and
+  signed manifest in `bin/rehearsal/feed/`, the folder A reads as its releases. Both are built
+  for this Mac's processor (the manifest still names `darwin-universal`, the platform the app
+  accepts) and trust a key pair made for that run alone, whose private half is never written
+  anywhere. Both run on the rehearsal's own data directory, never on yours.
+- `CODESIGN_IDENTITY` signs both (`-` signs ad hoc), and `CODESIGN_KEYCHAIN`, when set, goes on
+  the keychain search list while the target runs, as it does for `app:package`.
+- `case=normal` installs. `case=tampered` changes one byte of B's zip after its manifest is
+  signed: A must refuse the download and stay. `case=broken` changes a file B's signature
+  seals after B is signed: the helper must find B failing its signature check once swapped in,
+  put A back, and A must say the update didn't install.
+
+The target prints the steps, the simplest first. A rehearsal build has the app's bundle
+identifier, so quit your own Nilbox first. Then open `bin/rehearsal/A/Nilbox.app` where it is
+and, in the menu bar menu, choose **Check for Updates…** and **Restart to Update (0.0.2)**: a
+rehearsal build, and only a rehearsal build, also updates itself in the folder it was built in
+(core's `rehearsalFolder`, the folder that holds its feed). To rehearse from the Applications
+folder instead, as a release updates, the steps move your own copy aside first, if there is
+one (`ditto` merges into a bundle that is there), and print the commands that put it back:
+
+```bash
+[ ! -e /Applications/Nilbox.app ] || mv /Applications/Nilbox.app ~/Nilbox-before-rehearsal.app
+ditto bin/rehearsal/A/Nilbox.app /Applications/Nilbox.app
+open /Applications/Nilbox.app
+# ... Check for Updates…, Restart to Update (0.0.2), then quit it, and put your copy back:
+rm -rf /Applications/Nilbox.app
+[ ! -e ~/Nilbox-before-rehearsal.app ] || mv ~/Nilbox-before-rehearsal.app /Applications/Nilbox.app
+```
+
+To clean up, delete `bin/rehearsal` and the rehearsal's data directory,
+`~/Library/Application Support/Nilbox Rehearsal`.
 
 <br>
 
@@ -1963,12 +2114,16 @@ dark menu bar. Click it for its menu:
   for the rest. Hover an item for its full title. Click it to bring the window forward with the
   item in view: its list opens at the tab that holds it, and its row scrolls into view,
   highlighted for a moment.
+- In a build that updates itself (see [Updates](#updates)): **Check for Updates…** (**Checking
+  for Updates…** while a check runs), then **Restart to Update (0.3.0)** once a new version is
+  ready, or **Update to 0.3.0…** while one is found but not downloaded, and, for a minute after
+  the menu's own check or a restart it couldn't make, a line saying how it went.
 - **Refresh Now**, and when the last refresh finished, or that it failed (hover for why).
 - **Quit Nilbox** (⌘Q).
 
 The menu is redrawn whenever the inbox changes, after a refresh or a snooze, dismissal, or pin
-in the window, when a snooze ends, and when a session changes what it is doing, so the count is
-right without waiting for a refresh.
+in the window, when a snooze ends, when a session changes what it is doing, and when the
+update's rows change, so the count is right without waiting for a refresh.
 
 **Closing the window.** While the icon is in the menu bar, closing the window only hides it:
 the app keeps refreshing, keeps the count current, and can still show notifications. The icon,

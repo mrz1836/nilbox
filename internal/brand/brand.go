@@ -23,4 +23,12 @@ const (
 
 	// DataDirName is the name of the per-user application data directory.
 	DataDirName = Name
+
+	// RehearsalDataDirName is the name of a rehearsal build's data directory, beside the
+	// per-user one: a rehearsal (magex app:rehearse) never reads or writes the user's data.
+	RehearsalDataDirName = DataDirName + " Rehearsal"
+
+	// RehearsalSlug names a rehearsal build's data directory where the user's is named by
+	// Slug, as on Linux.
+	RehearsalSlug = Slug + "-rehearsal"
 )

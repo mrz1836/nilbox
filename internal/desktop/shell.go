@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"os"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -157,6 +158,18 @@ type Config struct {
 	// menu lists the inbox alone.
 	Sessions Sessions
 
+	// Updates is the app's update, which the menu bar offers above Refresh Now in a build
+	// that updates. Optional: without it, the menu offers no update.
+	Updates Updates
+
+	// Browser opens a web page in the user's browser, as the menu bar's Download X Manually…
+	// does. Optional: without it, the page isn't opened, which is logged.
+	Browser URLOpener
+
+	// Exit ends the process with a status, once a restart to update whose quit was held has
+	// shut the shell down in order. It defaults to os.Exit.
+	Exit func(code int)
+
 	// Workers run in the background from Start until Stop, started in this order.
 	Workers []Worker
 
@@ -215,6 +228,9 @@ type Shell struct {
 	inbox    Inbox
 	settings Settings
 	sessions Sessions
+	updates  Updates
+	browser  URLOpener
+	exit     func(code int)
 	workers  []Worker
 	deferred []Worker
 	data     io.Closer
@@ -245,6 +261,10 @@ type Shell struct {
 	snooze   *time.Timer
 	measured *time.Timer
 
+	// updateNote is what the menu bar last asked of the update, whose status line shows
+	// for a minute.
+	updateNote menubar.UpdateNote
+
 	// deferStarted is set once the deferred work has started, and deferTimer is its
 	// fallback, armed at launch.
 	deferStarted bool
@@ -256,11 +276,13 @@ type Shell struct {
 	redraw chan struct{}
 	full   atomic.Bool
 
-	// drawn reports that the menu was drawn, and drawnWaiting are the rows of the sessions
-	// waiting for the user it was drawn with, so a sessions change that leaves them as
-	// they were redraws nothing. Only the redraw loop touches them.
+	// drawn reports that the menu was drawn, and drawnWaiting and drawnUpdates are the rows
+	// of the sessions waiting for the user and of the update it was drawn with, so a
+	// sessions or update change that leaves them as they were redraws nothing. Only the
+	// redraw loop touches them.
 	drawn        bool
 	drawnWaiting []menubar.Waiting
+	drawnUpdates menubar.Updates
 
 	// quitConfirmed is set once the user chose to stop the runs and quit, or asked for a
 	// reset, which lets every later quit through.
@@ -271,6 +293,10 @@ type Shell struct {
 	// back would leave the helper to open the app again beside the new one. A restart that
 	// fails clears it.
 	restarting atomic.Bool
+
+	// finishing is set once a restart to update's quit was held: the shell sees the app out
+	// (seeOut), once.
+	finishing atomic.Bool
 
 	// relaunch is set once the user asked for a reset: the app quits and opens again,
 	// and its next start carries the reset out.
@@ -292,11 +318,17 @@ func New(cfg Config) *Shell {
 
 	s := &Shell{
 		frontend: cfg.Frontend, window: cfg.Window, tray: cfg.Tray, app: cfg.App,
-		inbox: cfg.Inbox, settings: cfg.Settings, sessions: cfg.Sessions, workers: cfg.Workers, deferred: cfg.Deferred,
-		data: cfg.Data, banners: cfg.Banners, guard: cfg.QuitGuard,
+		inbox: cfg.Inbox, settings: cfg.Settings, sessions: cfg.Sessions, updates: cfg.Updates, workers: cfg.Workers,
+		deferred: cfg.Deferred,
+		data:     cfg.Data, banners: cfg.Banners, guard: cfg.QuitGuard,
+		browser: cfg.Browser, exit: cfg.Exit,
 		clock: clock.Or(cfg.Clock), stdout: orDiscard(cfg.Stdout), logger: logging.Or(cfg.Logger),
 		measure: cfg.MeasureStartup, stopTimeout: cfg.StopTimeout, measureTimeout: cfg.MeasureTimeout,
 		lifetime: lifetime, cancel: cancel, redraw: make(chan struct{}, 1),
+	}
+
+	if s.exit == nil {
+		s.exit = os.Exit
 	}
 
 	if s.stopTimeout <= 0 {
@@ -361,8 +393,9 @@ func (s *Shell) Stop() error {
 }
 
 // Emit acts on e, until the shell stops: a window event goes on to the page, an inbox
-// change also redraws the menu bar, and a sessions change does when the sessions waiting
-// for the user read otherwise than the menu shows them, a request to reveal an item brings
+// change also redraws the menu bar, and a sessions or update change does when the
+// sessions waiting for the user or the update's rows read otherwise than the menu shows
+// them, a request to reveal an item brings
 // the window forward, a theme or menu bar change reaches the window or the icon, the
 // first paint ends a startup measurement or starts the deferred work, the user's choice to
 // stop the runs and quit quits, the end of the first-run setup asks to allow banners if
@@ -379,7 +412,10 @@ func (s *Shell) Emit(e event.Event) {
 		s.askRedraw()
 	case event.SessionsUpdated:
 		s.frontend.Emit(e)
-		s.askSessionsRedraw()
+		s.askChangedRedraw()
+	case event.UpdatesUpdated:
+		s.frontend.Emit(e)
+		s.askChangedRedraw()
 	case event.RevealItem:
 		s.reveal(e)
 	case event.ThemeChanged, event.TextSizeChanged, event.MenuBarChanged:
@@ -387,7 +423,8 @@ func (s *Shell) Emit(e event.Event) {
 	case event.FirstPaint:
 		s.firstPaint(e.Measurement)
 		s.startDeferred()
-	case event.QuitConfirmed, event.SetupFinished, event.ResetRequested, event.UpdateRestartFailed:
+	case event.QuitConfirmed, event.SetupFinished, event.ResetRequested, event.UpdateRestartFailed,
+		event.UpdateQuitHeld:
 		s.appEvent(e)
 	case event.WindowEvent:
 		s.frontend.Emit(e)
@@ -536,6 +573,8 @@ func (s *Shell) appEvent(e event.Event) {
 		s.quitAnyway()
 	case event.UpdateRestartFailed:
 		s.restarting.Store(false)
+	case event.UpdateQuitHeld:
+		s.finishRestart(e.HelperStarted)
 	case event.SetupFinished:
 		s.setupFinished()
 	case event.ResetRequested:

@@ -1,6 +1,7 @@
-// Package menubar works out what the app's menu bar icon shows for the stored inbox and
-// the agent sessions: how many items need the user, beside the icon, and in its menu the
-// sessions waiting for the user first, then a short list of the items, by list. The
+// Package menubar works out what the app's menu bar icon shows for the stored inbox, the
+// agent sessions, and the app's update: how many items need the user, beside the icon, and
+// in its menu the sessions waiting for the user first, then a short list of the items, by
+// list, then Check for Updates… and the update ready, in a build that updates. The
 // desktop shell draws the result with native menu items; this package decides what they
 // say, so it builds and is tested on any OS.
 package menubar
@@ -59,6 +60,10 @@ type Summary struct {
 	// NextChange is when the soonest snooze ends, and Count goes up without anything being
 	// stored, or the zero time when no snooze is running.
 	NextChange time.Time
+
+	// Updates is the app's update in the menu, above Refresh Now, which the shell works out
+	// from the update's status with UpdateRows; Summarize leaves it empty.
+	Updates Updates
 }
 
 // Section is one list in the menu.

@@ -791,6 +791,7 @@ func TestMacOSTargetsRefuseOtherSystems(t *testing.T) {
 	}{
 		{name: "app:build", run: App{}.Build},
 		{name: "app:package", run: App{}.Package},
+		{name: "app:rehearse", run: App{}.Rehearse},
 		{name: "app:open", run: App{}.Open},
 		{name: "app:run", run: App{}.Run},
 		{name: "app:reset", run: App{}.Reset},
@@ -1073,6 +1074,18 @@ func TestVersionFlags(t *testing.T) {
 
 		assert.Equal(t, versionFlags(meta)+" -X main.flavor=release", versionFlags(release))
 	})
+
+	t.Run("a rehearsal stamps its feed, quoted, and its key", func(t *testing.T) {
+		t.Parallel()
+
+		rehearsal := meta
+		rehearsal.flavor = flavorRehearsal
+		rehearsal.updateFeed = "/projects/a repo/bin/rehearsal/feed"
+		rehearsal.updateKey = "c29tZSBrZXk="
+
+		assert.Equal(t, versionFlags(meta)+" -X main.flavor=rehearsal -X 'main.updateFeed=/projects/a repo/bin/rehearsal/feed'"+
+			" -X main.updateKey=c29tZSBrZXk=", versionFlags(rehearsal))
+	})
 }
 
 //nolint:paralleltest // changes the process's working directory
@@ -1080,13 +1093,18 @@ func TestVersionFlagsStampDeclaredVariables(t *testing.T) {
 	inRepoRoot(t)
 
 	declared := packageVars(t, filepath.Join("cmd", brand.Slug, "main_desktop.go"))
-	stamped := regexp.MustCompile(`-X main\.(\w+)=`).FindAllStringSubmatch(versionFlags(buildMeta{flavor: flavorRelease}), -1)
+	rehearsal := buildMeta{flavor: flavorRehearsal, updateFeed: "/feed", updateKey: "key"}
+	stamped := regexp.MustCompile(`-X '?main\.(\w+)=`).FindAllStringSubmatch(versionFlags(rehearsal), -1)
 
 	require.NotEmpty(t, stamped)
 
+	names := make([]string, 0, len(stamped))
 	for _, match := range stamped {
+		names = append(names, match[1])
 		assert.Contains(t, declared, match[1], "the linker ignores -X for an undeclared variable")
 	}
+
+	assert.Subset(t, names, []string{"flavor", "updateFeed", "updateKey"})
 }
 
 func TestMacOSMinimumMatchesTheInfoPlist(t *testing.T) {

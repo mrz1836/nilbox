@@ -21,8 +21,9 @@ var trayIcon []byte
 
 // tray is the menu bar icon: the mark, with how many items need the user beside it, and a
 // menu that opens the window, lists the agent sessions waiting for the user and then the
-// items by list, refreshes, and quits. A click on a session brings its terminal forward. The shell
-// decides when it shows and what it says; its clicks go back to the shell.
+// items by list, offers the app's update in a build that updates, refreshes, and quits. A
+// click on a session brings its terminal forward. The shell decides when it shows and what
+// it says; its clicks go back to the shell.
 //
 // Every change runs on the main thread, in the order it was asked for, so its fields
 // need no lock, and the shell never waits for the main thread, which its shutdown can
@@ -115,6 +116,8 @@ func (t *tray) build(sum menubar.Summary) {
 		m.AddSeparator()
 	}
 
+	addUpdates(m, sum.Updates, shell)
+
 	m.Add("Refresh Now").OnClick(func(*application.Context) { shell.RefreshNow() })
 
 	status := m.Add(sum.Status).SetEnabled(false)
@@ -126,6 +129,33 @@ func (t *tray) build(sum menubar.Summary) {
 	m.Add("Quit " + brand.Name).SetAccelerator("CmdOrCtrl+Q").OnClick(func(*application.Context) { shell.Quit() })
 
 	m.Update()
+}
+
+// addUpdates adds the update's rows, Check for Updates… and the version ready, then a
+// separator: a row with an action does it through the shell when clicked, and one without
+// is shown disabled, with its tooltip. A build that doesn't update has none, and adds
+// nothing.
+func addUpdates(m *application.Menu, updates menubar.Updates, shell *desktop.Shell) {
+	if len(updates.Rows) == 0 {
+		return
+	}
+
+	for _, row := range updates.Rows {
+		item := m.Add(row.Label)
+		if row.Tooltip != "" {
+			item.SetTooltip(row.Tooltip)
+		}
+
+		if row.Action == menubar.UpdateNone {
+			item.SetEnabled(false)
+
+			continue
+		}
+
+		item.OnClick(func(*application.Context) { shell.UpdateAction(row.Action) })
+	}
+
+	m.AddSeparator()
 }
 
 // addWaiting lists the agent sessions waiting for the user, under their heading, each

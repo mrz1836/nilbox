@@ -230,6 +230,32 @@ func TestARehearsalCoreUpdatesFromItsFolderAfterABackup(t *testing.T) {
 	assert.Equal(t, store.SnapshotBackup, snapshots[0].Kind)
 }
 
+// A rehearsal updates itself from the folder magex app:rehearse builds it into, beside its
+// feed; a release with the same bundle and options never does.
+func TestOnlyARehearsalUpdatesItselfBesideItsFeed(t *testing.T) {
+	t.Parallel()
+
+	for flavor, want := range map[update.Flavor]bool{update.FlavorRehearsal: true, update.FlavorRelease: false} {
+		t.Run(string(flavor), func(t *testing.T) {
+			t.Parallel()
+
+			root := t.TempDir()
+			opts := testOptions(t)
+			opts.Flavor, opts.Release = flavor, "0.2.0"
+			opts.UpdateFeed = filepath.Join(root, "feed")
+			opts.UpdateKey = update.EncodeKey(update.PublicKeyOf(ed25519.NewKeyFromSeed(bytes.Repeat([]byte{7}, ed25519.SeedSize))))
+			opts.Bundle = filepath.Join(root, "A", brand.Name+".app")
+			require.NoError(t, os.MkdirAll(opts.Bundle, 0o700))
+
+			s, err := bootstrap(t, opts).Updates.Status(t.Context())
+			require.NoError(t, err)
+
+			assert.Equal(t, want, s.Location.OK)
+			assert.Equal(t, update.LocationElsewhere, s.Location.Kind)
+		})
+	}
+}
+
 func TestABuiltCoreKeepsASourceBuildsUpdatesOff(t *testing.T) {
 	t.Parallel()
 

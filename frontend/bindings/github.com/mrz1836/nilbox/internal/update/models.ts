@@ -37,7 +37,8 @@ export const Flavor = {
 } as const;
 
 /**
- * InstallFailure is the update the last restart didn't install.
+ * InstallFailure is the update the last restart didn't install, or, in a later run, the
+ * newest version found, when an earlier restart failed to install it for good.
  */
 export interface InstallFailure {
     /**
@@ -55,6 +56,16 @@ export interface InstallFailure {
      * Log reports that the helper's log was kept, which ShowInstallLog shows.
      */
     "log": boolean;
+
+    /**
+     * Retryable reports that trying the same update again may work: the failure was the
+     * moment's (the app didn't quit in time, macOS kept it from being replaced or couldn't
+     * open the new version, it couldn't be copied aside, or the helper's log doesn't say),
+     * and the update stays offered. A failure of the update itself (it failed its signature
+     * check, or couldn't be installed) fails the same way every time: that update is never
+     * offered again, and the release page is the way to get it.
+     */
+    "retryable": boolean;
 }
 
 /**
@@ -120,7 +131,7 @@ export const LocationKind = {
 /**
  * State is where the app's update stands.
  */
-export type State = "off" | "idle" | "checking" | "downloading" | "available" | "ready" | "installing";
+export type State = "off" | "idle" | "checking" | "downloading" | "available" | "ready" | "installing" | "finishing";
 
 /**
  * The values of State, by the names of their Go constants.
@@ -165,6 +176,13 @@ export const State = {
      * app about to quit.
      */
     StateInstalling: "installing",
+
+    /**
+     * StateFinishing is a restart whose quit was held (a modal panel, say) after the
+     * runtime's helper started: the update stays staged and recorded, and the app quits on
+     * its own within moments so the helper installs it.
+     */
+    StateFinishing: "finishing",
 } as const;
 
 /**

@@ -335,6 +335,9 @@ func (w *fakeWorker) Run(ctx context.Context) {
 	w.log.add("%s returned", w.name)
 }
 
+// dataClosed is the line fakeData records as it closes.
+const dataClosed = "data closed"
+
 // fakeData records its closing.
 type fakeData struct {
 	log *journal
@@ -342,7 +345,7 @@ type fakeData struct {
 }
 
 func (d *fakeData) Close() error {
-	d.log.add("data closed")
+	d.log.add(dataClosed)
 
 	return d.err
 }
