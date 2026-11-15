@@ -14,7 +14,10 @@
 // Those lines are the only output on stdout. Everything else the app has to say goes to
 // its one logger (internal/logging): text on stderr, and JSON in the log file. --debug
 // keeps Debug records too. --data-dir=<absolute path> runs the app on that data directory,
-// logs included, in place of the user's own: a sandbox, as magex app:fresh opens.
+// logs included, in place of the user's own: a sandbox, as magex app:fresh opens. A
+// rehearsal build (magex app:rehearse) always runs on its own data directory, beside the
+// user's, whatever its arguments say: the update it rehearses opens the new version with
+// none.
 package main
 
 import (
@@ -27,10 +30,13 @@ import (
 	"os/signal"
 	"path/filepath"
 	"slices"
+	"sync/atomic"
 	"syscall"
+	"time"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 	"github.com/wailsapp/wails/v3/pkg/events"
+	"github.com/wailsapp/wails/v3/pkg/updater"
 
 	"github.com/mrz1836/nilbox/frontend"
 	"github.com/mrz1836/nilbox/internal/appdata"
@@ -76,15 +82,27 @@ var (
 	release     = "0.0.0"
 	buildNumber = "0"
 
-	// flavor is the kind of build: "release" for one magex app:package made, and empty
-	// for one made from source (magex app:build, app:run, app:dev), which stamps none.
+	// flavor is the kind of build: "release" for one magex app:package made, "rehearsal"
+	// for one magex app:rehearse made, and empty for one made from source (magex app:build,
+	// app:run, app:dev), which stamps none.
 	flavor string
+
+	// updateFeed is the folder a rehearsal build reads its releases from, and updateKey the
+	// public key, base64, it trusts them with: magex app:rehearse stamps both, and every
+	// other flavor ignores them.
+	updateFeed string
+	updateKey  string
 )
 
 // errUnbound is returned for a core service no binder wraps.
 var errUnbound = errors.New("the desktop bootstrap has no binder for a core service; add one to binders")
 
 func main() {
+	// An update's helper is this binary run again, to swap the bundles once the app it
+	// replaces has quit: it does that here and exits, before anything reads the arguments
+	// or opens the data that app may still hold.
+	updater.HandleHelperMode()
+
 	os.Exit(run(os.Args[1:], os.Stdout))
 }
 
@@ -98,7 +116,7 @@ func run(args []string, stdout io.Writer) int {
 	defer func() { _ = logs.Close() }()
 
 	if err != nil {
-		err = startFailed(args, logger, fmt.Errorf("find the data directory: %w", err))
+		err = startFailed(args, logger, fmt.Errorf("find the data directory: %w", err), "")
 	} else {
 		err = start(args, stdout, paths, logger)
 	}
@@ -112,9 +130,14 @@ func run(args []string, stdout io.Writer) int {
 	return 0
 }
 
-// dataPaths are the data locations the run uses: the data directory args name with
-// --data-dir, a sandbox's, or else the user's own.
+// dataPaths are the data locations the run uses: a rehearsal build's own, beside the
+// user's, whatever args say; the data directory args name with --data-dir, a sandbox's; or
+// else the user's own.
 func dataPaths(args []string) (appdata.Paths, error) {
+	if rehearsal() {
+		return appdata.ResolveRehearsal()
+	}
+
 	dir, err := appdata.FromArgs(args)
 
 	switch {
@@ -127,11 +150,22 @@ func dataPaths(args []string) (appdata.Paths, error) {
 	}
 }
 
-// sandboxDir is the data directory args name with --data-dir, or "" for the user's own.
+// sandboxDir is the data directory args name with --data-dir, or "" for the user's own,
+// or a rehearsal build's, which finds its own and so needs none passed when it opens
+// again.
 func sandboxDir(args []string) string {
+	if rehearsal() {
+		return ""
+	}
+
 	dir, _ := appdata.FromArgs(args)
 
 	return dir
+}
+
+// rehearsal reports whether this is a rehearsal build, which runs on its own data.
+func rehearsal() bool {
+	return update.Flavor(flavor) == update.FlavorRehearsal
 }
 
 // start assembles the core and the shell, then runs the window until the app quits. On
@@ -141,7 +175,7 @@ func sandboxDir(args []string) string {
 func start(args []string, stdout io.Writer, paths appdata.Paths, logger *slog.Logger) error {
 	home, err := os.UserHomeDir()
 	if err != nil {
-		return startFailed(args, logger, fmt.Errorf("find the home directory: %w", err))
+		return startFailed(args, logger, fmt.Errorf("find the home directory: %w", err), "")
 	}
 
 	if slices.Contains(args, measure.RefreshFlag) {
@@ -153,7 +187,7 @@ func start(args []string, stdout io.Writer, paths appdata.Paths, logger *slog.Lo
 		measureStartup: slices.Contains(args, measure.StartupFlag),
 	})
 	if err != nil {
-		return startFailed(args, logger, err)
+		return startFailed(args, logger, err, paths.DB)
 	}
 
 	runErr := app.Run()
@@ -191,7 +225,13 @@ func assemble(l launch) (*application.App, *desktop.Shell, error) {
 		Events:  relay,
 		Banners: banners.poster(),
 		Logger:  logger,
-		Sandbox: l.sandbox != "",
+		// A rehearsal build runs on test data of its own, which the window says, as a
+		// sandbox's.
+		Sandbox:    l.sandbox != "" || rehearsal(),
+		Flavor:     update.Flavor(buildFlavor()),
+		UpdateFeed: updateFeed,
+		UpdateKey:  updateKey,
+		Bundle:     update.BundleOf(executable()),
 	})
 	if err != nil {
 		return nil, nil, err
@@ -210,15 +250,18 @@ func assemble(l launch) (*application.App, *desktop.Shell, error) {
 		c.ReleaseRefresher, c.ReleaseChecksFollower, c.HooksScans,
 	}
 	shell := desktop.New(desktop.Config{
-		Frontend:       ui,
-		Window:         ui,
-		Tray:           &tray{ui: ui},
-		App:            ui,
-		Inbox:          c.Inbox,
-		Settings:       c.ShellSettings,
-		Sessions:       c.ShellSessions,
-		Workers:        workers,
-		Deferred:       []desktop.Worker{c.Deferred, c.ToolFinder, c.Runs, c.ReleaseFollower, c.ServiceStatusChecker},
+		Frontend: ui,
+		Window:   ui,
+		Tray:     &tray{ui: ui},
+		App:      ui,
+		Inbox:    c.Inbox,
+		Settings: c.ShellSettings,
+		Sessions: c.ShellSessions,
+		Workers:  workers,
+		Deferred: []desktop.Worker{
+			c.Deferred, c.ToolFinder, c.Runs, c.ReleaseFollower, c.ServiceStatusChecker, c.UpdateWorker,
+		},
+		Updates:        c.Updates,
 		Data:           c,
 		Banners:        banners.poster(),
 		QuitGuard:      c.Runs,
@@ -252,11 +295,12 @@ func assemble(l launch) (*application.App, *desktop.Shell, error) {
 			}
 
 			if shell.Relaunching() {
-				relaunch(l.sandbox, logger)
+				relaunch(l.sandbox, "the reset", logger)
 			}
 		},
 	})
 	ui.attach(app, shell)
+	attachInstaller(app, c.UpdateEngine, logger)
 
 	app.Event.OnApplicationEvent(events.Common.ApplicationStarted, func(*application.ApplicationEvent) {
 		shell.Launched()
@@ -274,30 +318,53 @@ func assemble(l launch) (*application.App, *desktop.Shell, error) {
 	return app, shell, nil
 }
 
-// relaunch opens the app again, on the sandbox's data directory when it ran on one, as a
-// reset the user asked for does. A run outside a .app bundle, as `magex app:dev`'s, only
-// quits: its next start carries the reset out.
-func relaunch(sandbox string, logger *slog.Logger) {
-	exe, err := os.Executable()
+// attachInstaller hands the update engine the installer it restarts with, over the
+// runtime's updater, in a build that updates; a build that doesn't sets nothing up. An
+// installer that can't be set up is logged, and a restart to update then says this build
+// can't install updates.
+func attachInstaller(app *application.App, engine *update.Engine, logger *slog.Logger) {
+	if !engine.Enabled() {
+		return
+	}
+
+	i, err := newInstaller(app.Updater, release)
 	if err != nil {
-		logger.Warn("could not open the app again after the reset; open it to finish", "error", err)
+		logger.Error("could not set up the installer; updates can't be installed", "error", err)
 
 		return
+	}
+
+	engine.Attach(i)
+}
+
+// executable is the running executable, its links resolved, or "" when it can't be told.
+func executable() string {
+	exe, err := os.Executable()
+	if err != nil {
+		return ""
 	}
 
 	if resolved, resolveErr := filepath.EvalSymlinks(exe); resolveErr == nil {
 		exe = resolved
 	}
 
-	argv, ok := desktop.RelaunchArgs(exe, sandbox)
+	return exe
+}
+
+// relaunch opens the app again once it has quit, on the sandbox's data directory when it
+// ran on one: after a reset the user asked for, and after putting a backup back in place
+// of data a newer build saved; after names which, for the log. A run outside a .app
+// bundle, as `magex app:dev`'s, only quits: its next start carries the change out.
+func relaunch(sandbox, after string, logger *slog.Logger) {
+	argv, ok := desktop.RelaunchArgs(executable(), sandbox)
 	if !ok {
-		logger.Info("the app runs outside a bundle, so it only quits; open it again to finish the reset")
+		logger.Info("the app runs outside a bundle, so it only quits; open it again to finish", "after", after)
 
 		return
 	}
 
-	if _, _, err = (execpath.Exec{}).Run(context.Background(), argv[0], argv[1:]...); err != nil {
-		logger.Warn("could not open the app again after the reset; open it to finish", "error", err)
+	if _, _, err := (execpath.Exec{}).Run(context.Background(), argv[0], argv[1:]...); err != nil {
+		logger.Warn("could not open the app again; open it to finish", "after", after, "error", err)
 	}
 }
 
@@ -401,16 +468,39 @@ func boundOptions() application.ServiceOptions {
 
 // startFailed returns err, which stopped the app from starting, with the build's details.
 // Outside a measurement run it first logs the error, shows it in a native dialog, and
-// exits with a failure status once the dialog is dismissed.
-func startFailed(args []string, logger *slog.Logger, err error) error {
+// exits with a failure status once the dialog is dismissed. db is the database's file, or
+// "" when the data couldn't be found: for data a newer build saved, the dialog offers to
+// put back the newest backup beside it this build can open.
+func startFailed(args []string, logger *slog.Logger, err error, db string) error {
 	wrapped := fmt.Errorf("start the app (%s, %s build, commit %s, built %s): %w",
 		version, buildFlavor(), commit, buildDate, err)
 
-	if !slices.Contains(args, measure.StartupFlag) && !slices.Contains(args, measure.RefreshFlag) {
-		failStartup(logger, wrapped, desktop.StartupFailure(err))
+	if slices.Contains(args, measure.StartupFlag) || slices.Contains(args, measure.RefreshFlag) {
+		return wrapped
 	}
 
+	failure := desktop.StartupFailure(err)
+
+	restore, ok, findErr := desktop.FindRestore(err, db, time.Now())
+	if findErr != nil {
+		logger.Warn("could not look for a backup to offer", "error", findErr)
+	}
+
+	if ok {
+		failure = failure.Offering(restore)
+		logger.Info("offering to put a backup back", "backup", filepath.Base(restore.Backup), "taken", restore.At)
+	}
+
+	failStartup(logger, wrapped, failure, putBack{db: db, sandbox: sandboxDir(args)})
+
 	return wrapped
+}
+
+// putBack is where a startup dialog that offers a backup puts it back: the database's
+// file, and the sandbox's data directory the app opens on again, or "".
+type putBack struct {
+	db      string
+	sandbox string
 }
 
 // buildFlavor names the kind of build this is: the flavor the linker stamped, or
@@ -428,8 +518,16 @@ func buildFlavor() string {
 // is dismissed. The log file is written unbuffered, so exiting without closing it loses
 // nothing. The dialog needs a running app, so a bare one, with no window and no services,
 // runs just to show it.
-func failStartup(logger *slog.Logger, err error, failure desktop.Failure) {
+//
+// A failure that offers a backup (failure.Restore) has a button beside Quit that puts it
+// back in place of the database at to.db, setting the newer one aside, and then quits and
+// opens the app again, as a reset does, once the bare app has shut down; the app exits
+// with a success status then. A backup that can't be put back says so in a dialog of its
+// own, and Quit quits.
+func failStartup(logger *slog.Logger, err error, failure desktop.Failure, to putBack) {
 	logger.Error("the app could not start", "error", err)
+
+	var restored atomic.Bool
 
 	app := application.New(application.Options{
 		Name:        brand.Name,
@@ -437,18 +535,58 @@ func failStartup(logger *slog.Logger, err error, failure desktop.Failure) {
 		Icon:        appIcon(),
 		// On macOS the app exits from inside Run once it terminates, with a success
 		// status unless this hook exits first.
-		PostShutdown: func() { os.Exit(1) },
+		PostShutdown: func() {
+			if restored.Load() {
+				relaunch(to.sandbox, "putting a backup back", logger)
+				os.Exit(0)
+			}
+
+			os.Exit(1)
+		},
 	})
 
+	// The dialog's click runs on the main thread; the copy runs off it, and so does the
+	// quit, which waits for the main thread.
+	putBackNow := func() {
+		go func() {
+			aside, putErr := desktop.PutBack(context.Background(), to.db, *failure.Restore)
+			if putErr != nil {
+				logger.Error("could not put the backup back", "backup", filepath.Base(failure.Restore.Backup),
+					"error", putErr)
+				showFailure(app, desktop.PutBackFailure(putErr), nil)
+
+				return
+			}
+
+			logger.Info("put the backup back in place of the newer data; opening the app again",
+				"backup", filepath.Base(failure.Restore.Backup), "newer", filepath.Base(aside))
+			restored.Store(true)
+			app.Quit()
+		}()
+	}
+
 	app.Event.OnApplicationEvent(events.Common.ApplicationStarted, func(*application.ApplicationEvent) {
-		dialog := app.Dialog.Error().SetTitle(failure.Title).SetMessage(failure.Message)
-		dialog.AddButton("Quit").SetAsDefault().OnClick(app.Quit)
-		dialog.Show()
+		showFailure(app, failure, putBackNow)
 	})
 
 	_ = app.Run()
 
 	os.Exit(1)
+}
+
+// showFailure shows failure in a native error dialog whose Quit quits app, with its
+// backup's button beside it, which runs putBack, when it offers one and putBack is set.
+func showFailure(app *application.App, failure desktop.Failure, putBack func()) {
+	dialog := app.Dialog.Error().SetTitle(failure.Title).SetMessage(failure.Message)
+
+	// macOS shows the buttons right to left, the last added rightmost: Quit stays the
+	// default, on the right.
+	if failure.Restore != nil && putBack != nil {
+		dialog.AddButton(failure.Restore.Button).OnClick(putBack)
+	}
+
+	dialog.AddButton("Quit").SetAsDefault().SetAsCancel().OnClick(app.Quit)
+	dialog.Show()
 }
 
 // measureRefresh times live inbox refreshes the way the app makes them, against a scratch
