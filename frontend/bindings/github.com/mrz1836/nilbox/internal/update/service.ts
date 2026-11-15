@@ -54,6 +54,29 @@ export function HideBanner(): $CancellablePromise<$models.Status> {
 }
 
 /**
+ * MoveToApplications moves the app into Applications, where it can update itself, as the
+ * move dialog asks: it copies the running bundle to Location.Target, checks the copy's
+ * signature, and quits the app the normal way, which asks first while runs go in the app,
+ * opening the copy once it has quit; the result is MoveMoved. A copy of the app there
+ * already is never replaced: the result is MoveExists, for OpenInApplications. Anything else
+ * there, a copy that fails, or one that doesn't pass its check (which is removed) is an
+ * error in words, and nothing changes. The bundle that runs is never touched.
+ */
+export function MoveToApplications(): $CancellablePromise<$models.MoveResult> {
+    return $Call.ByID(2153149440);
+}
+
+/**
+ * OpenInApplications opens the copy of the app already in Applications, as Open it asks,
+ * once its signature checks out: it quits the app the normal way, which asks first while
+ * runs go, and opens that copy once it has quit, which updates itself when it is older. The
+ * result is MoveOpening.
+ */
+export function OpenInApplications(): $CancellablePromise<$models.MoveResult> {
+    return $Call.ByID(3922502143);
+}
+
+/**
  * Restart installs the update that is ready and restarts into it. While runs go in the app,
  * it refuses with a RunsGoingError naming them unless confirmed, so the window can ask
  * first; confirmed, it stops them. It backs up the database first and refuses to go on
@@ -63,6 +86,15 @@ export function HideBanner(): $CancellablePromise<$models.Status> {
  */
 export function Restart(confirmed: boolean): $CancellablePromise<$models.Status> {
     return $Call.ByID(286179774, confirmed);
+}
+
+/**
+ * ShowAppInFinder shows the running app in Finder, so the user can delete the copy they
+ * opened once it has moved to Applications. A copy macOS translocated runs from a folder it
+ * hides, which Finder can't show.
+ */
+export function ShowAppInFinder(): $CancellablePromise<void> {
+    return $Call.ByID(2561104526);
 }
 
 /**

@@ -302,6 +302,10 @@ type Shell struct {
 	// and its next start carries the reset out.
 	relaunch atomic.Bool
 
+	// reopen is the bundle to open once the app has quit, the copy a move to Applications
+	// made or found, or nil: the last asked for, opened once (RelaunchCommand).
+	reopen atomic.Pointer[string]
+
 	// bannersHeld is set while the first-run setup shows at launch, which holds the
 	// question to allow banners until it ends, and bannersAsked once the question is asked.
 	bannersHeld  atomic.Bool
@@ -552,7 +556,8 @@ func (s *Shell) TimedOut() bool {
 }
 
 // Relaunching reports whether the app quits to open again, as a reset the user asked for
-// does: the desktop runtime opens the app again once it has shut down (see RelaunchArgs).
+// does: the desktop runtime opens the app again once it has shut down (see
+// RelaunchCommand).
 func (s *Shell) Relaunching() bool {
 	return s.relaunch.Load()
 }
