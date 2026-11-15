@@ -31,10 +31,18 @@ const quarantine = "com.apple.quarantine"
 func signedBundle(t *testing.T, bundle string) {
 	t.Helper()
 
+	signedBundleOf(t, bundle, "/usr/bin/true")
+}
+
+// signedBundleOf is signedBundle with a copy of from as the program: another build, signed
+// ad hoc, has another designated requirement.
+func signedBundleOf(t *testing.T, bundle, from string) {
+	t.Helper()
+
 	plist, err := os.ReadFile(filepath.Join("..", "..", "build", "darwin", "Info.plist"))
 	require.NoError(t, err)
 
-	program, err := os.ReadFile("/usr/bin/true")
+	program, err := os.ReadFile(from) //nolint:gosec // a system program
 	require.NoError(t, err)
 
 	require.NoError(t, os.MkdirAll(filepath.Join(bundle, "Contents", "MacOS"), 0o700))
@@ -51,6 +59,32 @@ func signedBundle(t *testing.T, bundle string) {
 	} {
 		require.NoError(t, unix.Setxattr(path, quarantine, mark, 0))
 	}
+}
+
+// clearMark takes the quarantine mark off every file of the bundle at bundle, as a copy the
+// user moved with Finder and opened has none that counts.
+func clearMark(t *testing.T, bundle string) {
+	t.Helper()
+
+	require.NoError(t, desktop.Unquarantine(bundle))
+}
+
+// hidden lists the hidden entries in folder: what a move might leave beside its copy.
+func hidden(t *testing.T, folder string) []string {
+	t.Helper()
+
+	listed, err := os.ReadDir(folder)
+	require.NoError(t, err)
+
+	var names []string
+
+	for _, item := range listed {
+		if item.Name()[0] == '.' {
+			names = append(names, item.Name())
+		}
+	}
+
+	return names
 }
 
 // moveRig is the real update engine over a bundle in a scratch Downloads folder, with a
@@ -123,8 +157,9 @@ func TestMoveToApplicationsIntegration(t *testing.T) {
 
 		assert.Equal(t, update.MoveResult{Outcome: update.MoveMoved, Target: target}, got)
 
-		_, stderr, err := (execpath.Exec{}).Run(t.Context(), desktop.VerifyArgs(target)[0], desktop.VerifyArgs(target)[1:]...)
+		_, stderr, err := (execpath.Exec{}).Run(t.Context(), desktop.CodesignBin, "--verify", "--deep", "--strict", target)
 		require.NoError(t, err, "the copy checks out: %s", stderr)
+		assert.Empty(t, hidden(t, m.apps), "and nothing is left beside it")
 
 		want, err := os.ReadFile(filepath.Join(m.bundle, "Contents", "MacOS", brand.Slug))
 		require.NoError(t, err)
@@ -177,9 +212,79 @@ func TestMoveToApplicationsIntegration(t *testing.T) {
 
 		listed, err := os.ReadDir(m.apps)
 		require.NoError(t, err)
-		assert.Empty(t, listed, "the copy is removed, and nothing else was there")
+		assert.Empty(t, listed, "the copy is removed with its hidden folder, and nothing else was there")
 		assert.Zero(t, m.r.app.quitCount(), "nothing quits")
 		assert.FileExists(t, filepath.Join(m.bundle, "Contents", "Resources", "added.txt"), "the bundle that ran stays")
+
+		require.NoError(t, m.shell.Stop())
+	})
+
+	t.Run("Open it refuses a copy signed otherwise", func(t *testing.T) {
+		t.Parallel()
+
+		m := newMoveRig(t, t.TempDir())
+		target := filepath.Join(m.apps, brand.Name+".app")
+		// Another build signed ad hoc, as one from source is: its requirement is its own.
+		signedBundleOf(t, target, "/usr/bin/false")
+		clearMark(t, target)
+
+		got, err := m.service.MoveToApplications(t.Context())
+		require.NoError(t, err)
+		assert.Equal(t, update.MoveExists, got.Outcome)
+
+		_, err = m.service.OpenInApplications(t.Context())
+		require.ErrorIs(t, err, update.ErrMoveFailed)
+		t.Logf("refused: %s", uierr.Message(err))
+		assert.Contains(t, uierr.Message(err), "it isn't signed the way this copy is")
+		assert.Zero(t, m.r.app.quitCount(), "nothing quits")
+
+		require.NoError(t, m.shell.Stop())
+	})
+
+	t.Run("Open it refuses a copy still marked as downloaded", func(t *testing.T) {
+		t.Parallel()
+
+		m := newMoveRig(t, t.TempDir())
+		target := filepath.Join(m.apps, brand.Name+".app")
+		// Copied in Terminal, as cp and mv do, marks and all.
+		_, stderr, err := (execpath.Exec{}).Run(t.Context(), desktop.DittoBin, m.bundle, target)
+		require.NoError(t, err, string(stderr))
+
+		_, err = m.service.OpenInApplications(t.Context())
+		require.ErrorIs(t, err, update.ErrQuarantined)
+		t.Logf("refused: %s", uierr.Message(err))
+
+		_, err = unix.Getxattr(target, quarantine, nil)
+		require.NoError(t, err, "the mark is left on a copy the user never opened")
+
+		// Moved with Finder, the mark gains the flag that lets it open where it is.
+		require.NoError(t, unix.Setxattr(target, quarantine, []byte("0181;6560a000;Safari;"), 0))
+
+		got, err := m.service.OpenInApplications(t.Context())
+		require.NoError(t, err)
+		assert.Equal(t, update.MoveOpening, got.Outcome)
+
+		require.NoError(t, m.shell.Stop())
+	})
+
+	t.Run("a later move removes what a cut-off move left", func(t *testing.T) {
+		t.Parallel()
+
+		m := newMoveRig(t, t.TempDir())
+		stage := filepath.Join(m.apps, "."+brand.Name+".app.moving-12345")
+		require.NoError(t, os.Mkdir(stage, 0o700))
+
+		_, stderr, err := (execpath.Exec{}).Run(t.Context(), desktop.DittoBin, m.bundle, filepath.Join(stage, brand.Name+".app"))
+		require.NoError(t, err, string(stderr))
+
+		old := time.Now().Add(-update.MoveLimit - 2*time.Minute)
+		require.NoError(t, os.Chtimes(stage, old, old))
+
+		got, err := m.service.MoveToApplications(t.Context())
+		require.NoError(t, err)
+		assert.Equal(t, update.MoveMoved, got.Outcome)
+		assert.NoDirExists(t, stage)
+		assert.Empty(t, hidden(t, m.apps))
 
 		require.NoError(t, m.shell.Stop())
 	})

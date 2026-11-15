@@ -6,3 +6,8 @@ package desktop
 func unquarantine(string) error {
 	return nil
 }
+
+// translocates reports nothing outside macOS, where no app is translocated.
+func translocates(string) (bool, error) {
+	return false, nil
+}

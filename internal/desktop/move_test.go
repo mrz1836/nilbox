@@ -3,6 +3,10 @@ package desktop_test
 import (
 	"context"
 	"errors"
+	"fmt"
+	"io/fs"
+	"slices"
+	"strconv"
 	"testing"
 	"testing/synctest"
 	"time"
@@ -18,6 +22,13 @@ import (
 
 var errFakeExit = errors.New("fake: exit status 1")
 
+// exitError is a program's exit with status code, as execpath.Exec reports one.
+type exitError struct{ code int }
+
+func (e exitError) Error() string { return "exit status " + strconv.Itoa(e.code) }
+
+func (e exitError) ExitCode() int { return e.code }
+
 // The paths the move tests use: a bundle opened from Downloads, with a space in its folder's
 // name, and where moving it puts it.
 const (
@@ -25,13 +36,32 @@ const (
 	movedTo   = "/Applications/Example.app"
 )
 
+// releaseRequirement is a release's designated requirement, as codesign writes it.
+const releaseRequirement = `identifier "com.example.app" and certificate leaf = H"0123456789abcdef0123456789abcdef01234567"`
+
+// signedLike answers codesign's display of the app that runs with requirement, as written
+// (out), and every other command with nothing.
+func signedLike(out string) func(context.Context, []string) ([]byte, []byte, error) {
+	return func(_ context.Context, argv []string) ([]byte, []byte, error) {
+		if slices.Contains(argv, "--display") {
+			return []byte(out), []byte("Executable=" + movedFrom + "/Contents/MacOS/example\n"), nil
+		}
+
+		return nil, nil, nil
+	}
+}
+
 func TestTheMoveRunsDittoThenCodesignWithEachPathAnArgumentOfItsOwn(t *testing.T) {
 	t.Parallel()
 
 	assert.Equal(t, []string{"/usr/bin/ditto", "--noqtn", movedFrom, movedTo}, desktop.CopyArgs(movedFrom, movedTo))
-	assert.Equal(t, []string{"/usr/bin/codesign", "--verify", "--deep", "--strict", movedTo}, desktop.VerifyArgs(movedTo))
+	assert.Equal(t, []string{"/usr/bin/codesign", "--display", "--requirements", "-", movedFrom},
+		desktop.RequirementArgs(movedFrom))
+	assert.Equal(t, []string{
+		"/usr/bin/codesign", "--verify", "--deep", "--strict", "--test-requirement", "=" + releaseRequirement, movedTo,
+	}, desktop.VerifyArgs(movedTo, releaseRequirement))
 
-	runner := &testutil.Runner{}
+	runner := &testutil.Runner{Script: signedLike("designated => " + releaseRequirement + "\n")}
 	cleared := []string{}
 	m := desktop.NewMoverClearing(runner, newRig().shell(), func(bundle string) error {
 		assert.Len(t, runner.Calls(), 1, "once ditto has copied")
@@ -43,12 +73,87 @@ func TestTheMoveRunsDittoThenCodesignWithEachPathAnArgumentOfItsOwn(t *testing.T
 
 	require.NoError(t, m.Copy(t.Context(), movedFrom, movedTo))
 	assert.Equal(t, []string{movedTo}, cleared, "the copy's quarantine mark is taken off, not the original's")
-	require.NoError(t, m.Verify(t.Context(), movedTo))
+	require.NoError(t, m.Verify(t.Context(), movedTo, movedFrom))
 
 	assert.Equal(t, [][]string{
 		{"/usr/bin/ditto", "--noqtn", movedFrom, movedTo},
-		{"/usr/bin/codesign", "--verify", "--deep", "--strict", movedTo},
-	}, runner.Calls(), "by their absolute paths, every value one argument")
+		{"/usr/bin/codesign", "--display", "--requirements", "-", movedFrom},
+		{"/usr/bin/codesign", "--verify", "--deep", "--strict", "--test-requirement", "=" + releaseRequirement, movedTo},
+	}, runner.Calls(), "by their absolute paths, every value one argument, the copy checked against the app that runs")
+}
+
+// codesign writes the requirement it works out for a signature that holds none of its own,
+// as an ad hoc one, as a comment; either is the one the copy must meet.
+func TestTheCopyMustMeetTheRequirementOfTheAppThatRuns(t *testing.T) {
+	t.Parallel()
+
+	adHoc := `cdhash H"2db3c2a6ce55241d061cdc6b05a107c58938355b"`
+
+	for name, tt := range map[string]struct{ out, want string }{
+		"a release":        {out: "designated => " + releaseRequirement + "\n", want: releaseRequirement},
+		"ad hoc":           {out: "# designated => " + adHoc + "\n", want: adHoc},
+		"among the others": {out: "host => anchor apple\n  designated => " + releaseRequirement + "  \n", want: releaseRequirement},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			runner := &testutil.Runner{Script: signedLike(tt.out)}
+			m := desktop.NewMoverClearing(runner, newRig().shell(), func(string) error { return nil })
+
+			require.NoError(t, m.Verify(t.Context(), movedTo, movedFrom))
+
+			calls := runner.Calls()
+			require.Len(t, calls, 2)
+			assert.Equal(t, desktop.VerifyArgs(movedTo, tt.want), calls[1])
+		})
+	}
+}
+
+func TestACopySignedOtherwiseFailsInWords(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name   string
+		script func(context.Context, []string) ([]byte, []byte, error)
+		words  string
+	}{
+		{
+			name: "signed otherwise, as a build from source beside a release",
+			script: func(ctx context.Context, argv []string) ([]byte, []byte, error) {
+				if slices.Contains(argv, "--verify") {
+					return nil, []byte("test-requirement: code failed to satisfy specified code requirement(s)\n"),
+						exitError{code: 3}
+				}
+
+				return signedLike("designated => "+releaseRequirement)(ctx, argv)
+			},
+			words: "it isn't signed the way this copy is",
+		},
+		{
+			name: "the app that runs can't be read",
+			script: func(_ context.Context, argv []string) ([]byte, []byte, error) {
+				return nil, []byte(argv[len(argv)-1] + ": code object is not signed at all\n"), exitError{code: 1}
+			},
+			words: "the signature of the copy that runs can't be read: " + movedFrom + ": code object is not signed at all",
+		},
+		{
+			name:   "no requirement named",
+			script: signedLike("host => anchor apple\n"),
+			words:  "the signature of the copy that runs names no requirement to check against",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			m := desktop.NewMoverClearing(&testutil.Runner{Script: tt.script}, newRig().shell(), func(string) error { return nil })
+
+			err := m.Verify(t.Context(), movedTo, movedFrom)
+			require.Error(t, err)
+			assert.Equal(t, tt.words, uierr.Message(err))
+		})
+	}
 }
 
 func TestACopyWhoseMarkStaysFails(t *testing.T) {
@@ -73,7 +178,11 @@ func TestTheMoveRefusesAnythingButABundlesPath(t *testing.T) {
 	} {
 		require.Error(t, m.Copy(t.Context(), path, movedTo), path)
 		require.Error(t, m.Copy(t.Context(), movedFrom, path), path)
-		require.Error(t, m.Verify(t.Context(), path), path)
+		require.Error(t, m.Verify(t.Context(), path, movedFrom), path)
+		require.Error(t, m.Verify(t.Context(), movedTo, path), path)
+
+		_, err := m.Translocates(path)
+		require.Error(t, err, path)
 	}
 
 	assert.Empty(t, runner.Calls(), "nothing runs")
@@ -82,12 +191,15 @@ func TestTheMoveRefusesAnythingButABundlesPath(t *testing.T) {
 func TestTheMoveSaysWhyAStepFailedInTheProgramsWords(t *testing.T) {
 	t.Parallel()
 
-	runner := &testutil.Runner{Script: func(_ context.Context, argv []string) ([]byte, []byte, error) {
-		if argv[0] == desktop.DittoBin {
+	runner := &testutil.Runner{Script: func(ctx context.Context, argv []string) ([]byte, []byte, error) {
+		switch {
+		case argv[0] == desktop.DittoBin:
 			return nil, []byte("\nditto: " + movedTo + "/Contents: No space left on device\nmore\n"), errFakeExit
+		case slices.Contains(argv, "--verify"):
+			return nil, nil, fmt.Errorf("run codesign: %w", exitError{code: 1})
 		}
 
-		return nil, nil, errFakeExit
+		return signedLike("designated => "+releaseRequirement)(ctx, argv)
 	}}
 	m := desktop.NewMoverClearing(runner, newRig().shell(), func(string) error { return nil })
 
@@ -95,9 +207,32 @@ func TestTheMoveSaysWhyAStepFailedInTheProgramsWords(t *testing.T) {
 	require.ErrorIs(t, err, errFakeExit)
 	assert.Equal(t, "ditto: "+movedTo+"/Contents: No space left on device", uierr.Message(err))
 
-	err = m.Verify(t.Context(), movedTo)
-	require.ErrorIs(t, err, errFakeExit)
-	assert.Equal(t, "fake: exit status 1", uierr.Message(err), "with nothing written, the failure itself")
+	err = m.Verify(t.Context(), movedTo, movedFrom)
+	require.ErrorAs(t, err, new(exitError))
+	assert.Equal(t, "codesign exited with status 1", uierr.Message(err), "with nothing written, how it ended")
+}
+
+// A program that writes nothing to say why is never worded in Go's own text.
+func TestAStepThatSaysNothingIsWorded(t *testing.T) {
+	t.Parallel()
+
+	for name, tt := range map[string]struct {
+		err   error
+		words string
+	}{
+		"an exit status": {err: fmt.Errorf("run ditto: %w", exitError{code: 1}), words: "ditto exited with status 1"},
+		"no start":       {err: fmt.Errorf("run ditto: %w", fs.ErrNotExist), words: "ditto couldn't be run"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			m := desktop.NewMoverClearing(&testutil.Runner{Err: tt.err}, newRig().shell(), func(string) error { return nil })
+
+			err := m.Copy(t.Context(), movedFrom, movedTo)
+			require.ErrorIs(t, err, tt.err)
+			assert.Equal(t, tt.words, uierr.Message(err))
+		})
+	}
 }
 
 func TestAMoveStoppedAtItsLimitSaysSo(t *testing.T) {
@@ -118,6 +253,24 @@ func TestAMoveStoppedAtItsLimitSaysSo(t *testing.T) {
 		require.ErrorIs(t, err, context.DeadlineExceeded)
 		assert.Equal(t, "ditto took too long and was stopped", uierr.Message(err))
 	})
+}
+
+func TestTranslocatesReadsTheCopysMarkAndRunsNothing(t *testing.T) {
+	t.Parallel()
+
+	runner := &testutil.Runner{}
+	asked := []string{}
+	m := desktop.NewMoverMarked(runner, newRig().shell(), func(bundle string) (bool, error) {
+		asked = append(asked, bundle)
+
+		return true, nil
+	})
+
+	marked, err := m.Translocates(movedTo)
+	require.NoError(t, err)
+	assert.True(t, marked)
+	assert.Equal(t, []string{movedTo}, asked)
+	assert.Empty(t, runner.Calls())
 }
 
 func TestOpenArgsOpenTheBundleAsANewInstance(t *testing.T) {
@@ -244,6 +397,114 @@ func TestKeepRunningForgetsTheCopy(t *testing.T) {
 		assert.Equal(t, []string{desktop.OpenBin, "-n", movedFrom}, argv)
 
 		require.NoError(t, s.Stop())
+	})
+}
+
+// A move holds every quit until it ends, so its copy is never cut off partway: the window
+// comes forward, where the move shows, nothing is asked, and the quit goes ahead, once, as
+// the last move lets go.
+func TestAMoveHoldsEveryQuitUntilItEnds(t *testing.T) {
+	t.Parallel()
+
+	synctest.Test(t, func(t *testing.T) {
+		r := newRig()
+		s := r.shell(func(c *desktop.Config) { c.QuitGuard = &fakeGuard{} })
+
+		first := s.HoldQuit()
+		second := s.HoldQuit()
+
+		assert.False(t, s.ShouldQuit(), "a quit waits for the move")
+		synctest.Wait()
+		assert.Equal(t, 1, r.window.shown(), "the window comes forward, where the move shows")
+		assert.Empty(t, r.page.events(), "and nothing is asked")
+
+		s.Emit(event.QuitConfirmed{})
+		synctest.Wait()
+		assert.Equal(t, 1, r.app.quitCount(), "Stop and quit asks for the quit")
+		assert.False(t, s.ShouldQuit(), "which waits for the move too")
+
+		first()
+		synctest.Wait()
+		assert.Equal(t, 1, r.app.quitCount(), "not while another move runs")
+		assert.False(t, s.ShouldQuit())
+
+		second()
+		second()
+		synctest.Wait()
+		assert.Equal(t, 2, r.app.quitCount(), "the held quit goes ahead once, as the last move lets go")
+		assert.True(t, s.ShouldQuit())
+
+		require.NoError(t, s.Stop())
+	})
+}
+
+func TestAMoveThatEndsWithNoQuitAskedQuitsNothing(t *testing.T) {
+	t.Parallel()
+
+	synctest.Test(t, func(t *testing.T) {
+		r := newRig()
+		s := r.shell()
+
+		s.HoldQuit()()
+		synctest.Wait()
+		assert.Zero(t, r.app.quitCount())
+		assert.True(t, s.ShouldQuit())
+
+		require.NoError(t, s.Stop())
+	})
+}
+
+// A move that goes ahead asks for the quit as it ends, and the quit waits for the move to
+// let go, so the app quits once.
+func TestAMovedCopyOpensOnceTheMoveLetsGo(t *testing.T) {
+	t.Parallel()
+
+	synctest.Test(t, func(t *testing.T) {
+		r := newRig()
+		s := r.shell()
+		m := desktop.NewMover(&testutil.Runner{}, s)
+
+		release := m.HoldQuit()
+		m.OpenAfterQuit(movedTo)
+		synctest.Wait()
+		assert.Zero(t, r.app.quitCount(), "not while the move holds the quit")
+
+		release()
+		synctest.Wait()
+		assert.Equal(t, 1, r.app.quitCount())
+
+		argv, ok := s.RelaunchCommand(movedFrom+"/Contents/MacOS/example", "")
+		require.True(t, ok)
+		assert.Equal(t, []string{desktop.OpenBin, "-n", movedTo}, argv)
+
+		require.NoError(t, s.Stop())
+	})
+}
+
+// A restart to update goes through whatever a move holds, since its helper opens the new
+// version; and once the shell stops, a move's end quits nothing.
+func TestARestartOrAStopGoesThroughAMove(t *testing.T) {
+	t.Parallel()
+
+	synctest.Test(t, func(t *testing.T) {
+		r := newRig()
+		s := r.shell()
+		release := s.HoldQuit()
+
+		s.Emit(event.QuitConfirmed{Restarting: true})
+		synctest.Wait()
+		assert.True(t, s.ShouldQuit())
+
+		s.Emit(event.UpdateRestartFailed{})
+		synctest.Wait()
+		assert.False(t, s.ShouldQuit())
+
+		require.NoError(t, s.Stop())
+		assert.True(t, s.ShouldQuit())
+
+		release()
+		synctest.Wait()
+		assert.Zero(t, r.app.quitCount())
 	})
 }
 

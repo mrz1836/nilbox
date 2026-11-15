@@ -7,6 +7,21 @@ func Unquarantine(bundle string) error {
 	return unquarantine(bundle)
 }
 
+// Translocates reports whether macOS would run the bundle at bundle from a hidden copy, by
+// its quarantine mark.
+func Translocates(bundle string) (bool, error) {
+	return translocates(bundle)
+}
+
+// NewMoverMarked is NewMover with marked standing in for the read of a copy's quarantine
+// mark.
+func NewMoverMarked(runner execpath.Runner, shell *Shell, marked func(bundle string) (bool, error)) *Mover {
+	m := NewMover(runner, shell)
+	m.marked = marked
+
+	return m
+}
+
 // NewMoverClearing is NewMover with unmark standing in for the removal of the quarantine
 // mark, so a test of the commands needs no copy on disk.
 func NewMoverClearing(runner execpath.Runner, shell *Shell, unmark func(bundle string) error) *Mover {

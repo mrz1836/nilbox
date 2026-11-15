@@ -21,8 +21,19 @@ import (
 // MoveLimit bounds a move to Applications: the copy, and the check of its signature.
 const MoveLimit = 5 * time.Minute
 
+// leftoverAfter is how old a folder a move made beside its target must be before a later
+// move removes it as a leftover (sweepLeftovers): older than any move still under way, in
+// another copy of the app too, can be.
+const leftoverAfter = MoveLimit + time.Minute
+
 // maxInfoPlist bounds the read of a bundle's Info.plist, which is a few kilobytes.
 const maxInfoPlist = 1 << 20
+
+// stagePrefix names the hidden folder a move makes beside its target, in the same folder, to
+// copy and check the app in before the copy takes the target's place: a random suffix
+// follows it (os.MkdirTemp). So a copy cut off partway, or never checked, is never where the
+// app goes, and a later move knows the leftover as its own.
+const stagePrefix = "." + brand.Name + ".app.moving-"
 
 var (
 	// ErrCantMove is returned by a move where there is nothing to move: the app runs from
@@ -52,24 +63,42 @@ var (
 	// ErrMoveFailed is returned by a move whose copy failed, or didn't pass its signature
 	// check, and by OpenInApplications for a copy that doesn't pass it.
 	ErrMoveFailed = errors.New("the move failed")
+
+	// ErrQuarantined is returned by OpenInApplications for a copy macOS would open from a
+	// hidden folder (Mover.Translocates), where it can't update itself.
+	ErrQuarantined = errors.New("the copy in Applications is still marked as downloaded")
 )
 
 // Mover moves the app into an Applications folder: the desktop shell's, which copies with
-// ditto and checks the copy with codesign, both through execpath, and opens a bundle once
-// the app has quit. The engine works out where the copy goes and makes its folder; the
-// Mover only runs the programs and the relaunch.
+// ditto and checks the copy with codesign, both through execpath, holds the app's quit while
+// a move runs, and opens a bundle once the app has quit. The engine works out where the copy
+// goes, makes the folder it is copied into, and puts it in place; the Mover only runs the
+// programs, reads the quarantine mark, and holds and relaunches.
 type Mover interface {
+	// HoldQuit holds every quit of the app while a move runs, so its copy is never cut off
+	// partway: a quit asked for meanwhile waits, and goes ahead once the func it returns
+	// lets go, which the move calls once, as it ends.
+	HoldQuit() (release func())
+
 	// Copy copies the app's bundle at from into to, an empty folder the engine has just
-	// made for it. Its error says why in a few words (uierr.Message).
+	// made for it, and takes the quarantine mark a download carries off the copy. Its error
+	// says why in a few words (uierr.Message).
 	Copy(ctx context.Context, from, to string) error
 
-	// Verify checks the code signature of the bundle at bundle, deeply and strictly. Its
-	// error says why in a few words.
-	Verify(ctx context.Context, bundle string) error
+	// Verify checks the code signature of the bundle at bundle, deeply and strictly, and
+	// that it meets the designated requirement of the bundle at like, the app that runs:
+	// signed as this copy is. Its error says why in a few words.
+	Verify(ctx context.Context, bundle, like string) error
+
+	// Translocates reports whether macOS would open the bundle at bundle from a hidden,
+	// read-only copy (App Translocation), as it does an app still marked as downloaded that
+	// the user never moved with Finder: one that can't update itself.
+	Translocates(bundle string) (bool, error)
 
 	// OpenAfterQuit quits the app the normal way, which asks first while runs go in the
-	// app, and opens the bundle at bundle once it has quit. Asked again, as after a quit
-	// the user held back, it still opens one bundle, once: the last it was asked to.
+	// app, and opens the bundle at bundle once it has quit. Asked again, it still opens one
+	// bundle, once: the last it was asked to. A quit the user keeps from going through
+	// opens nothing.
 	OpenAfterQuit(bundle string)
 }
 
@@ -112,17 +141,19 @@ func (e *Engine) AttachMover(m Mover) {
 }
 
 // moveToApplications moves the app into Applications, as the move dialog's Move to
-// Applications asks: where the app can't update itself, it copies the running bundle to
-// the target (the Applications folder every user shares when the user can write to it,
-// else the one in home, made when missing) and checks the copy's signature, then has the
-// Mover quit the app and open the copy. It never touches the bundle that runs, which the
-// user may delete once the copy opens.
+// Applications asks: where the app can't update itself, it copies the running bundle beside
+// the target (the Applications folder every user shares when the user can write to it, else
+// the one in home, made when missing), into a hidden folder of its own (stage), checks the
+// copy's signature there, and only then renames it into the target, so a copy cut off
+// partway, or never checked, is never where the app goes. It then has the Mover quit the app
+// and open the copy. It never touches the bundle that runs, which the user may delete once
+// the copy opens. The Mover holds the app's quit from the move's start to its end.
 //
 // A copy of the app at the target already, by its bundle ID, is never replaced: the result
 // says so (MoveExists), for Open it, which opens that copy. Anything else there (a link, a
-// file, another app, a folder that isn't an app) is ErrTargetTaken. The target's folder is
-// made first, so the copy goes into a folder nothing else holds, and a copy that fails or
-// doesn't pass its check is removed, that folder alone.
+// file, another app, a folder that isn't an app) is ErrTargetTaken, as is something that
+// appears there while the copy is made (renameNew). A copy that fails, doesn't pass its
+// check, or can't be put in place is removed with its hidden folder, that folder alone.
 func (e *Engine) moveToApplications(ctx context.Context) (MoveResult, error) {
 	mover, done, err := e.startMove()
 	if err != nil {
@@ -148,7 +179,8 @@ func (e *Engine) moveToApplications(ctx context.Context) (MoveResult, error) {
 		return MoveResult{}, e.taken(target, found)
 	}
 
-	if err = e.claim(target); err != nil {
+	stage, err := e.stage(ctx, target)
+	if err != nil {
 		return MoveResult{}, err
 	}
 
@@ -158,15 +190,23 @@ func (e *Engine) moveToApplications(ctx context.Context) (MoveResult, error) {
 	defer cancel()
 
 	folder := e.tilde(filepath.Dir(target))
-
-	if err = mover.Copy(work, e.bundle, target); err != nil {
-		return MoveResult{}, e.discard(ctx, target,
-			"Couldn't copy "+brand.Name+" into "+folder+": "+e.plain(uierr.Message(err)), err)
+	staged := filepath.Join(stage, filepath.Base(target))
+	// The programs name the copy where it is made, which the user never sees: by the target.
+	said := func(err error) string {
+		return e.plain(strings.ReplaceAll(uierr.Message(err), staged, target))
 	}
 
-	if err = mover.Verify(work, target); err != nil {
-		return MoveResult{}, e.discard(ctx, target,
-			"The copy in "+folder+" didn't pass its signature check, so nothing was moved: "+e.plain(uierr.Message(err)), err)
+	if err = mover.Copy(work, e.bundle, staged); err != nil {
+		return MoveResult{}, e.discard(ctx, stage, "Couldn't copy "+brand.Name+" into "+folder+": "+said(err), err)
+	}
+
+	if err = mover.Verify(work, staged, e.bundle); err != nil {
+		return MoveResult{}, e.discard(ctx, stage,
+			"The copy in "+folder+" didn't pass its signature check, so nothing was moved: "+said(err), err)
+	}
+
+	if err = e.place(ctx, stage, staged, target); err != nil {
+		return MoveResult{}, err
 	}
 
 	e.logger.InfoContext(ctx, "moved the app to Applications; it opens from there once this copy quits",
@@ -177,8 +217,11 @@ func (e *Engine) moveToApplications(ctx context.Context) (MoveResult, error) {
 }
 
 // openInApplications opens the copy of the app already in Applications, as Open it asks,
-// once its signature checks out: the Mover quits the app the normal way, and opens that copy
-// once it has. Nothing is copied or replaced.
+// once it would open where it is and its signature checks out: the Mover quits the app the
+// normal way, and opens that copy once it has. A copy macOS would open from a hidden folder,
+// still marked as downloaded, is refused (ErrQuarantined), and so is one not signed as this
+// copy is, such as a build from source, which never updates itself. Nothing is copied,
+// replaced, or unmarked: the user never opened that copy.
 func (e *Engine) openInApplications(ctx context.Context) (MoveResult, error) {
 	mover, done, err := e.startMove()
 	if err != nil {
@@ -192,21 +235,35 @@ func (e *Engine) openInApplications(ctx context.Context) (MoveResult, error) {
 		return MoveResult{}, err
 	}
 
+	folder := e.tilde(filepath.Dir(target))
+
 	switch found, findErr := e.find(ctx, target); {
 	case findErr != nil:
 		return MoveResult{}, findErr
 	case found == foundNothing:
-		return MoveResult{}, uierr.New(brand.Name+" isn't in "+e.tilde(filepath.Dir(target))+" any more. Move it there "+
-			"instead.", ErrNoCopy)
+		return MoveResult{}, uierr.New(brand.Name+" isn't in "+folder+" any more. Move it there instead.", ErrNoCopy)
 	case found != foundOurs:
 		return MoveResult{}, e.taken(target, found)
+	}
+
+	switch marked, markErr := mover.Translocates(target); {
+	case markErr != nil:
+		e.logger.WarnContext(ctx, "could not read whether the copy in Applications is marked as downloaded; "+
+			"checking its signature alone", "target", e.tilde(target), "error", markErr)
+	case marked:
+		e.logger.InfoContext(ctx, "the copy in Applications is still marked as downloaded; not opening it",
+			"target", e.tilde(target))
+
+		return MoveResult{}, uierr.New("The copy in "+folder+" is still marked as downloaded, so macOS would open it "+
+			"from a hidden folder, where it can't update itself. Move it to the Trash, then move this one there.",
+			ErrQuarantined)
 	}
 
 	work, cancel := context.WithTimeout(context.WithoutCancel(ctx), MoveLimit)
 	defer cancel()
 
-	if err = mover.Verify(work, target); err != nil {
-		return MoveResult{}, uierr.New(textutil.Sentence("The copy in "+e.tilde(filepath.Dir(target))+
+	if err = mover.Verify(work, target, e.bundle); err != nil {
+		return MoveResult{}, uierr.New(textutil.Sentence("The copy in "+folder+
 			" didn't pass its signature check, so it wasn't opened: "+e.plain(uierr.Message(err)))+
 			" Move it to the Trash, then move this one there.", fmt.Errorf("%w: %w", ErrMoveFailed, err))
 	}
@@ -235,10 +292,11 @@ func (e *Engine) showApp(ctx context.Context) error {
 
 // startMove checks a move can begin and takes the one move: a build that updates, running
 // where moving it helps, not restarting into an update (installing, or finishing once its
-// quit was held), with a Mover attached, and no move under way. It returns what lets go of
-// the move. Where a move helps, nothing installs, so a restart under way is never met;
-// were one, it goes first: its helper replaces this copy and opens the new version, which
-// a move's quit and reopen would race.
+// quit was held), with a Mover attached, and no move under way. It holds the app's quit
+// (Mover.HoldQuit) and returns what lets go of both, once the move has ended. Where a move
+// helps, nothing installs, so a restart under way is never met; were one, it goes first:
+// its helper replaces this copy and opens the new version, which a move's quit and reopen
+// would race.
 func (e *Engine) startMove() (Mover, func(), error) {
 	e.mu.Lock()
 	mover, installing, finishing := e.mover, e.st.installing, e.st.finishing
@@ -261,7 +319,12 @@ func (e *Engine) startMove() (Mover, func(), error) {
 		return nil, nil, uierr.New(brand.Name+" is already moving to Applications.", ErrMoving)
 	}
 
-	return mover, e.moving.Unlock, nil
+	release := mover.HoldQuit()
+
+	return mover, func() {
+		e.moving.Unlock()
+		release()
+	}, nil
 }
 
 // notMovable says why the app isn't moved from where it runs.
@@ -363,45 +426,150 @@ func (e *Engine) taken(target string, f found) error {
 		", so nothing was moved. Rename or remove it, then try again.", ErrTargetTaken)
 }
 
-// claim makes the target's folder, empty, for the copy: the Applications folder in home
-// first, when the move goes there and it is missing. Making it fails when anything is
-// there already, so the copy never goes into, and a failed copy's removal never touches,
-// anything the move didn't make.
-func (e *Engine) claim(target string) error {
+// stage makes the hidden folder beside target that the copy is made and checked in before
+// it takes target's place, and returns it: the Applications folder in home first, when the
+// move goes there and it is missing; then, once what earlier moves left there is swept
+// (sweepLeftovers), a folder of this move's own (stagePrefix and a random suffix), and in it
+// the empty bundle, named as target is, that the copy goes into. Both are made new, so the
+// copy never goes into, and a failed copy's removal never touches, anything the move didn't
+// make, and the rename into place stays in one file system.
+func (e *Engine) stage(ctx context.Context, target string) (string, error) {
 	parent := filepath.Dir(target)
+	refused := func(err error) error {
+		return uierr.New("Couldn't copy "+brand.Name+" into "+e.tilde(parent)+", so nothing was moved.",
+			fmt.Errorf("%w: %w", ErrMoveFailed, err))
+	}
+
 	if parent == filepath.Join(e.home, "Applications") {
 		if err := os.Mkdir(parent, 0o755); err != nil && !errors.Is(err, fs.ErrExist) { //nolint:gosec // an Applications folder, which every app reads
-			return uierr.New("Couldn't make "+e.tilde(parent)+", so nothing was moved.", fmt.Errorf("%w: %w", ErrMoveFailed, err))
+			return "", uierr.New("Couldn't make "+e.tilde(parent)+", so nothing was moved.", fmt.Errorf("%w: %w", ErrMoveFailed, err))
 		}
 	}
 
-	if err := os.Mkdir(target, 0o755); err != nil { //nolint:gosec // an app bundle, which the system reads
+	e.sweepLeftovers(ctx, parent)
+
+	stage, err := os.MkdirTemp(parent, stagePrefix+"*")
+	if err != nil {
+		return "", refused(err)
+	}
+
+	if err = os.Mkdir(filepath.Join(stage, filepath.Base(target)), 0o755); err != nil { //nolint:gosec // an app bundle, which the system reads
+		if removeErr := os.Remove(stage); removeErr != nil {
+			e.logger.WarnContext(ctx, "could not remove the folder a move made", "stage", e.tilde(stage), "error", removeErr)
+		}
+
+		return "", refused(err)
+	}
+
+	return stage, nil
+}
+
+// place renames the checked copy at staged into target, never over anything that appeared
+// there since the move looked (renameNew), then removes stage, which it leaves empty. A
+// copy that can't be put in place is removed with stage.
+func (e *Engine) place(ctx context.Context, stage, staged, target string) error {
+	if err := renameNew(staged, target); err != nil {
 		if errors.Is(err, fs.ErrExist) {
-			return uierr.New("Something appeared at "+e.tilde(target)+" just now, so nothing was moved. Try again.",
+			return e.discard(ctx, stage, "Something appeared at "+e.tilde(target)+" just now, so nothing was moved. Try again.",
 				fmt.Errorf("%w: %w", ErrTargetTaken, err))
 		}
 
-		return uierr.New("Couldn't copy "+brand.Name+" into "+e.tilde(parent)+", so nothing was moved.",
-			fmt.Errorf("%w: %w", ErrMoveFailed, err))
+		return e.discard(ctx, stage, "Couldn't put the copy in "+e.tilde(filepath.Dir(target))+", so nothing was moved.", err)
+	}
+
+	if err := os.Remove(stage); err != nil {
+		e.logger.WarnContext(ctx, "could not remove the folder a move made", "stage", e.tilde(stage), "error", err)
 	}
 
 	return nil
 }
 
-// discard removes the copy at target, which claim made, after a copy that failed or didn't
-// pass its check, and returns the failure worded as words says, logged whole. A copy that
-// can't be removed is named, for the user to remove.
-func (e *Engine) discard(ctx context.Context, target, words string, cause error) error {
-	e.logger.WarnContext(ctx, "the move to Applications failed; removing the copy", "target", e.tilde(target),
+// sweepLeftovers removes, from folder, what earlier moves left there: a folder named as a
+// move's own (stagePrefix), not a link, older than any move still under way can be
+// (leftoverAfter), holding nothing at all or nothing but the app (its Info.plist naming
+// brand.BundleID), as a move cut off partway leaves (a crash, a power cut, a quit the move
+// couldn't hold). Anything else is left as it is, and a leftover that can't be removed is
+// logged: neither stops the move.
+func (e *Engine) sweepLeftovers(ctx context.Context, folder string) {
+	listed, err := os.ReadDir(folder)
+	if err != nil {
+		e.logger.WarnContext(ctx, "could not look for what earlier moves left", "folder", e.tilde(folder), "error", err)
+
+		return
+	}
+
+	now := e.clock.Now()
+
+	for _, item := range listed {
+		if !strings.HasPrefix(item.Name(), stagePrefix) || item.Name() == stagePrefix || !item.IsDir() {
+			continue
+		}
+
+		stage := filepath.Join(folder, item.Name())
+		if !e.leftover(ctx, stage, now) {
+			continue
+		}
+
+		if err = os.RemoveAll(stage); err != nil {
+			e.logger.WarnContext(ctx, "could not remove what an earlier move left", "stage", e.tilde(stage), "error", err)
+
+			continue
+		}
+
+		e.logger.InfoContext(ctx, "removed what an earlier move left", "stage", e.tilde(stage))
+	}
+}
+
+// leftover reports whether stage, a folder named as a move's own, is one an earlier move
+// left: old enough at now, and holding nothing, or nothing but a copy of the app.
+func (e *Engine) leftover(ctx context.Context, stage string, now time.Time) bool {
+	info, err := os.Lstat(stage)
+	if err != nil || !info.IsDir() || now.Sub(info.ModTime()) < leftoverAfter {
+		return false
+	}
+
+	inside, err := os.ReadDir(stage)
+	if err != nil {
+		return false
+	}
+
+	if len(inside) == 0 || len(inside) == 1 && isOurCopy(stage, inside[0]) {
+		return true
+	}
+
+	e.logger.InfoContext(ctx, "a folder named as a move's leftover holds something else; leaving it",
+		"stage", e.tilde(stage))
+
+	return false
+}
+
+// isOurCopy reports whether item, in folder, is a copy of the app a move made: a folder
+// named as the app is, whose Info.plist names brand.BundleID.
+func isOurCopy(folder string, item fs.DirEntry) bool {
+	if item.Name() != brand.Name+".app" || !item.IsDir() {
+		return false
+	}
+
+	id, err := bundleID(filepath.Join(folder, item.Name()))
+
+	return err == nil && id == brand.BundleID
+}
+
+// discard removes stage, the hidden folder a move made, with the copy in it, after a copy
+// that failed, didn't pass its check, or couldn't be put in place, and returns the failure
+// worded as words says, logged whole. A folder that can't be removed is named, for the user
+// to remove; the next move removes it too, once it can.
+func (e *Engine) discard(ctx context.Context, stage, words string, cause error) error {
+	e.logger.WarnContext(ctx, "the move to Applications failed; removing the copy", "stage", e.tilde(stage),
 		"error", cause)
 
 	words = textutil.Sentence(words)
 
-	if err := os.RemoveAll(target); err != nil {
-		e.logger.WarnContext(ctx, "could not remove the copy a failed move left", "target", e.tilde(target),
+	if err := os.RemoveAll(stage); err != nil {
+		e.logger.WarnContext(ctx, "could not remove the copy a failed move left", "stage", e.tilde(stage),
 			"error", err)
 
-		words += " Move " + e.tilde(target) + " to the Trash before you try again."
+		words += " Move " + e.tilde(stage) + " to the Trash."
 	}
 
 	return uierr.New(words, fmt.Errorf("%w: %w", ErrMoveFailed, cause))
