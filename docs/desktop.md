@@ -195,9 +195,9 @@ version, so a stale pair can't pass for this release.
 
 A release of the app updates itself: it checks for a new version on its own, downloads it
 quietly, checks it against the key built into the app, and installs it on one click, after
-backing your data up. Nothing in your Applications folder changes until you click. For now the
-menu bar offers the update ([Menu bar and notifications](#menu-bar-and-notifications)); the
-window's banner and Settings → About's controls are still to come.
+backing your data up. Nothing in your Applications folder changes until you click. The window
+offers it in a banner and in Settings → About, and the menu bar beside them ([Menu bar and
+notifications](#menu-bar-and-notifications)).
 
 **How it works.**
 
@@ -228,16 +228,22 @@ window's banner and Settings → About's controls are still to come.
 - **Where the app is.** Only a copy in `/Applications` or `~/Applications`, in a folder it can
   write, updates itself (a rehearsal build also in its own folder, `bin/rehearsal/`). Anywhere
   else (the disk image, Downloads, a translocated copy) it still checks and tells you, but
-  downloads nothing, and **Update** says to move the app to Applications first (the menu bar:
-  **Move to Applications to update**).
-- **Telling you.** Once per version, as a notification (**New version**, which Settings →
-  Notifications can turn off) that brings the window forward, as soon as the update is ready
-  (or, where it isn't downloaded, available), and in the menu bar as **Restart to Update
-  (0.3.0)**. A failure is never a notification: the app keeps it, and the next look tries
-  again.
-- **Restarting.** The menu bar's **Restart to Update** never stops a run: while one goes in the
-  app, it restarts nothing and says so on the menu's status line (**Not restarted: a run is
-  going**, naming it when you hover). Otherwise the app checks the downloaded zip again (a
+  downloads nothing: the banner says the version is available and to move the app to
+  Applications, as Settings → About does, and **Update** isn't offered.
+- **Telling you.** In the window, a slim banner under the toolbar: *"Nilbox 0.3.0 is
+  ready."* **Restart to update** · **What's new** · **Later** (*"…is available"* with **Update**
+  under Just tell me). **Later** hides it for a day; a newer version shows it again. Once per
+  version, also a notification (**New version**, which Settings → Notifications can turn off)
+  that brings the window forward with the banner showing, Later or not, as soon as the update is
+  ready (or, where it isn't downloaded, available), and keeps an entry in the notification
+  history; and in the menu bar as **Restart to Update (0.3.0)**. A download of its own, a
+  check, and a failure on its own never show a banner or a notification: Settings → About says
+  how they went, and the next look tries again.
+- **Restarting.** Every restart starts in the window: the banner's **Restart to update**,
+  About's, and the menu bar's **Restart to Update**, which brings the window forward first. With
+  Just tell me it downloads first, with the download's progress in the banner. It asks first, in
+  one question, when restarting would lose something: a run going in the app, named, or text
+  you haven't sent in a review or issue sheet. Then the app checks the downloaded zip again (a
   damaged one is thrown away and downloaded again), backs up the database beside it
   (`<data>/nilbox.db.backup-<stamp>-v<schema>`, the newest three kept, as before a migration;
   a backup the update took under ten minutes ago is used again), stages the update beside
@@ -249,7 +255,7 @@ window's banner and Settings → About's controls are still to come.
   hands it the old one's environment: a variable set where the old one started (a terminal,
   say) reaches the new one too. In a rehearsal on one Mac (`case=normal`), the new version
   was running 2.8 seconds after the click. A restart that fails before the app quits leaves
-  the update ready and says why.
+  the update ready and says why in the banner (**Try again** · **Download manually**).
 - **A quit held back.** If something holds back the quit a restart asks for, the update is
   already staged and its helper is waiting, so the app sees itself out: the menu bar says
   **Finishing the update…** (with Check for Updates… and the restart off), the app asks to
@@ -259,13 +265,16 @@ window's banner and Settings → About's controls are still to come.
   before the helper's 30 seconds run out. The staging folder and the note the new version
   reads are kept, so the update installs as usual. Each step is in the app's log.
 - **After the restart.** The new version's first start reads how it went, from a note the old
-  one left: updated, or, when the old version opens again instead, why it didn't install, in
-  words, with the helper's log kept as `<data>/logs/update-<version>.log`. Either way, it
+  one left: updated, which a toast says once (*"Updated to 0.3.0"* · **What's new**), or, when
+  the old version opens again instead, why it didn't install, in words, in the banner (**Try
+  again** · **Download manually** · **Details**) and in Settings → About, with **Show log in
+  Finder** for the helper's log, kept as `<data>/logs/update-<version>.log`. Either way, it
   removes what the update left behind (the staging folder and `.bak` beside the app, and the
   helper's files in the temporary folder), each by its exact name. While the update's helper
   may still be at work (its log not ended, under three minutes since the restart), the start
   leaves its backup, staging folder, and log alone and looks again later; until then
-  **Update** and restarting wait, saying the last update is still finishing. A log that ends
+  **Update** and restarting wait, and the banner says quietly that the last update is still
+  finishing, then offers the update again. A log that ends
   with the helper putting the old app back counts as ended once `Nilbox.app.bak` is gone.
 - **An update that didn't install.** The menu bar says **0.3.0 didn't install**, with why when
   you hover, and what comes next depends on why:
@@ -285,6 +294,11 @@ window's banner and Settings → About's controls are still to come.
     and an update that failed for good still gets **Download 0.3.0 Manually…**, which opens
     0.3.0's own release page, never the running version's.
 
+**Settings → About** shows the build's updates under its version: where the update stands (*"Up
+to date · checked 12m ago"*, *"Downloading 0.3.0… 42%"*, *"0.3.0 is ready"*, *"Last check
+failed: …"*, or why a build doesn't update), **Check for Updates** with its result in place,
+and **Restart to update** or **Update** once a newer version is found.
+
 **What a check sends.** Two GETs at most, both to GitHub's release download hosts: the latest
 release's manifest, `https://github.com/mrz1836/nilbox/releases/latest/download/manifest-darwin.json`,
 and, once a newer version checks out, its zip, from the URL of that release's tag. Each sends
@@ -294,7 +308,7 @@ spends API budget. A rehearsal build reads its releases from a folder and sends 
 **Firewalls.** Updates need `github.com`, which redirects each download to
 `release-assets.githubusercontent.com` (and, for some releases,
 `objects.githubusercontent.com`). Blocking any of them only means a check or a download fails,
-which the menu says; nothing else changes.
+which the window and the menu say; nothing else changes.
 
 **Where things live.**
 
@@ -306,7 +320,6 @@ which the menu says; nothing else changes.
 | The update's staging folder | `wails-update-*` beside the app, removed after the swap, or by the next start |
 | The old app during the swap | `Nilbox.app.bak` beside the app, removed once the new one opens |
 | The helper's log | The temporary folder (`$TMPDIR/wails-update-<pid>.log`) while it runs; removed after an update that installed, and kept as `<data>/logs/update-<version>.log` after one that didn't |
-
 
 
 **When a new version is out** (Settings → About) is **Download it and tell me** (the default),
@@ -2116,8 +2129,9 @@ dark menu bar. Click it for its menu:
   highlighted for a moment.
 - In a build that updates itself (see [Updates](#updates)): **Check for Updates…** (**Checking
   for Updates…** while a check runs), then **Restart to Update (0.3.0)** once a new version is
-  ready, or **Update to 0.3.0…** while one is found but not downloaded, and, for a minute after
-  the menu's own check or a restart it couldn't make, a line saying how it went.
+  ready, or **Update to 0.3.0…** while one is found but not downloaded, which bring the window
+  forward and restart there, as its banner does, asking first when restarting would lose
+  something; and, for a minute after the menu's own check, a line saying how it went.
 - **Refresh Now**, and when the last refresh finished, or that it failed (hover for why).
 - **Quit Nilbox** (⌘Q).
 
