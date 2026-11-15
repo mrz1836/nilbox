@@ -3,6 +3,9 @@ package desktop
 import (
 	"context"
 	"errors"
+	"io/fs"
+	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/mrz1836/nilbox/internal/brand"
@@ -110,8 +113,10 @@ func (f Failure) Offering(r Restore) Failure {
 // saved: the newer database, with its -wal and -shm files, is set aside beside it, kept
 // until the user removes it, and the backup is copied into its place (store.RestoreBackup).
 // The next start opens it and brings it up to date. It returns where the newer database
-// was set aside; a failure, which leaves the newer database in place, is worded for the
-// dialog that says so.
+// was set aside. A failure is worded for the dialog that says so (PutBackFailure words
+// what to do): almost always the newer database is still in place, but when the copy
+// couldn't be renamed into place and the newer database couldn't be put back either, no
+// database is left there, and the newer one is the file set aside.
 func PutBack(ctx context.Context, db string, r Restore) (string, error) {
 	aside, err := store.RestoreBackup(ctx, db, r.Backup)
 	if err != nil {
@@ -121,11 +126,57 @@ func PutBack(ctx context.Context, db string, r Restore) (string, error) {
 	return aside, nil
 }
 
-// PutBackFailure words a failure to put a backup back, for the dialog that says so before
-// the app quits.
-func PutBackFailure(err error) Failure {
+// PutBackFailure words err, a failure to put a backup back in place of the database at db,
+// for the dialog that says so before the app quits, with what to do: quit the other copy
+// that holds the data open; when no database is left at db, rename the newer one, set
+// aside beside it, back into place; otherwise update the app to open the newer data.
+func PutBackFailure(db string, err error) Failure {
+	title := brand.Name + " couldn't put your data back"
+
+	if store.IsBusy(err) {
+		return Failure{
+			Title: title,
+			Message: "Another copy of " + brand.Name + " still has your data open, so nothing was changed. Quit it, " +
+				"then open " + brand.Name + " again.",
+		}
+	}
+
+	if aside, gone := setAsideOnly(db); gone {
+		return Failure{
+			Title: title,
+			Message: "Your newer data was set aside as " + filepath.Base(aside) + ", and couldn't be put back, so " +
+				"no data is in place. Your data is safe in that file, in " + filepath.Dir(db) + ". Rename it to " +
+				filepath.Base(db) + ", then open " + brand.Name + " again.\n\n" + uierr.Message(err),
+		}
+	}
+
 	return Failure{
-		Title:   brand.Name + " couldn't put your data back",
+		Title:   title,
 		Message: uierr.Message(err) + "\n\nUpdate " + brand.Name + " to open the newer data.",
 	}
+}
+
+// setAsideOnly reports whether no database is at db, and names the newest one set aside
+// beside it, when there is one.
+func setAsideOnly(db string) (string, bool) {
+	if db == "" {
+		return "", false
+	}
+
+	if _, err := os.Lstat(db); !errors.Is(err, fs.ErrNotExist) {
+		return "", false
+	}
+
+	snapshots, err := store.Snapshots(db)
+	if err != nil {
+		return "", false
+	}
+
+	for _, s := range snapshots { // the newest first
+		if s.Kind == store.SnapshotSetAside {
+			return s.Path, true
+		}
+	}
+
+	return "", false
 }

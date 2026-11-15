@@ -223,7 +223,7 @@ func TestAPutBackThatFailsSaysSoAndKeepsTheData(t *testing.T) {
 	_, err := desktop.PutBack(t.Context(), path, desktop.Restore{Backup: stray})
 	require.ErrorIs(t, err, store.ErrNotABackup)
 
-	got := desktop.PutBackFailure(err)
+	got := desktop.PutBackFailure(path, err)
 	assert.Equal(t, brand.Name+" couldn't put your data back", got.Title)
 	assert.True(t, strings.HasPrefix(got.Message, "Your data couldn't be put back: "), got.Message)
 	assert.True(t, strings.HasSuffix(got.Message, "\n\nUpdate "+brand.Name+" to open the newer data."), got.Message)
@@ -232,4 +232,31 @@ func TestAPutBackThatFailsSaysSoAndKeepsTheData(t *testing.T) {
 	body, err := os.ReadFile(path) //nolint:gosec // the test's own file
 	require.NoError(t, err)
 	assert.Equal(t, "the newer data", string(body))
+}
+
+func TestAPutBackWhileAnotherCopyHoldsTheDataSaysToQuitIt(t *testing.T) {
+	t.Parallel()
+
+	err := lockedDatabaseError(t)
+	require.True(t, store.IsBusy(err), "the fixture is a lock: %v", err)
+
+	got := desktop.PutBackFailure(filepath.Join(t.TempDir(), brand.Slug+".db"), err)
+
+	assert.Equal(t, "Another copy of "+brand.Name+" still has your data open, so nothing was changed. Quit it, "+
+		"then open "+brand.Name+" again.", got.Message)
+}
+
+func TestAPutBackThatLeftNoDataSaysWhereTheNewerDataIs(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	db := filepath.Join(dir, brand.Slug+".db")
+	testutil.WriteFile(t, filepath.Join(dir, brand.Slug+".db.broken-20261101T000000Z"), "an older incident")
+	testutil.WriteFile(t, filepath.Join(dir, brand.Slug+".db.broken-20261115T120000Z"), "the newer data")
+
+	got := desktop.PutBackFailure(db, errFakeStartup)
+
+	assert.Equal(t, "Your newer data was set aside as "+brand.Slug+".db.broken-20261115T120000Z, and couldn't be put "+
+		"back, so no data is in place. Your data is safe in that file, in "+dir+". Rename it to "+brand.Slug+
+		".db, then open "+brand.Name+" again.\n\nCreate data directory: the disk is full.", got.Message)
 }

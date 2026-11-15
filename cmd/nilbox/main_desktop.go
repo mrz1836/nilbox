@@ -352,10 +352,15 @@ func executable() string {
 	return exe
 }
 
+// relaunchWithin is how long the relaunch's open may take: it runs as the app shuts down,
+// on the main thread, and open returns as soon as Launch Services has the app.
+const relaunchWithin = 5 * time.Second
+
 // relaunch opens the app again once it has quit, on the sandbox's data directory when it
 // ran on one: after a reset the user asked for, and after putting a backup back in place
 // of data a newer build saved; after names which, for the log. A run outside a .app
-// bundle, as `magex app:dev`'s, only quits: its next start carries the change out.
+// bundle, as `magex app:dev`'s, only quits: its next start carries the change out. open
+// gets relaunchWithin, so it never holds the shutdown it runs in, on the main thread.
 func relaunch(sandbox, after string, logger *slog.Logger) {
 	argv, ok := desktop.RelaunchArgs(executable(), sandbox)
 	if !ok {
@@ -364,7 +369,10 @@ func relaunch(sandbox, after string, logger *slog.Logger) {
 		return
 	}
 
-	if _, _, err := (execpath.Exec{}).Run(context.Background(), argv[0], argv[1:]...); err != nil {
+	ctx, cancel := context.WithTimeout(context.Background(), relaunchWithin)
+	defer cancel()
+
+	if _, _, err := (execpath.Exec{}).Run(ctx, argv[0], argv[1:]...); err != nil {
 		logger.Warn("could not open the app again; open it to finish", "after", after, "error", err)
 	}
 }
@@ -554,7 +562,7 @@ func failStartup(logger *slog.Logger, err error, failure desktop.Failure, to put
 			if putErr != nil {
 				logger.Error("could not put the backup back", "backup", filepath.Base(failure.Restore.Backup),
 					"error", putErr)
-				showFailure(app, desktop.PutBackFailure(putErr), nil)
+				showFailure(app, desktop.PutBackFailure(to.db, putErr), nil)
 
 				return
 			}
@@ -577,16 +585,25 @@ func failStartup(logger *slog.Logger, err error, failure desktop.Failure, to put
 
 // showFailure shows failure in a native error dialog whose Quit quits app, with its
 // backup's button beside it, which runs putBack, when it offers one and putBack is set.
+//
+// The runtime's macOS alert gives a button Return when it is the default and Escape only
+// when it isn't, never both. With a backup offered, Quit takes Escape, the safe answer,
+// and no button takes Return, so no key puts the backup back by accident; alone, Quit takes
+// Return.
 func showFailure(app *application.App, failure desktop.Failure, putBack func()) {
 	dialog := app.Dialog.Error().SetTitle(failure.Title).SetMessage(failure.Message)
 
-	// macOS shows the buttons right to left, the last added rightmost: Quit stays the
-	// default, on the right.
-	if failure.Restore != nil && putBack != nil {
-		dialog.AddButton(failure.Restore.Button).OnClick(putBack)
+	// macOS shows the buttons right to left, the last added rightmost: Quit stays on the
+	// right.
+	if failure.Restore == nil || putBack == nil {
+		dialog.AddButton("Quit").SetAsDefault().OnClick(app.Quit)
+		dialog.Show()
+
+		return
 	}
 
-	dialog.AddButton("Quit").SetAsDefault().SetAsCancel().OnClick(app.Quit)
+	dialog.AddButton(failure.Restore.Button).OnClick(putBack)
+	dialog.AddButton("Quit").SetAsCancel().OnClick(app.Quit)
 	dialog.Show()
 }
 
