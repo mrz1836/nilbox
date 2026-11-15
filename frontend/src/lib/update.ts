@@ -35,10 +35,23 @@ export interface RestartQuestion {
 }
 
 // namesRuns reports whether a question named the runs restarting would stop, by name or as
-// a whole: only then may confirming it stop them. A question that named none (the runs
-// couldn't be listed, or none went) leaves Go to refuse a run going, and asks again.
+// a whole, which its words then say it stops.
 export function namesRuns(question: RestartQuestion): boolean {
   return question.runs === null || question.runs.length > 0
+}
+
+// covers reports whether a question the user confirmed named every run Go names as going
+// now (going), so a restart that stops them stops only runs the user was shown: each by
+// its id, or, when Go can't list them (going is empty), the runs as a whole. A run that
+// started while it asked, or the runs going when it named none, asks again.
+export function covers(question: RestartQuestion, going: readonly RunGoing[]): boolean {
+  const { runs } = question
+
+  if (going.length === 0) {
+    return runs === null
+  }
+
+  return runs !== null && going.every((run) => runs.some((shown) => shown.id === run.id))
 }
 
 // settlingWords is what the window says while the last update may still be finishing:

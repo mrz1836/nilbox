@@ -8,6 +8,7 @@ import { emptyDraft } from './reviewDrafts'
 import {
   aboutLine,
   bannerOf,
+  covers,
   finishingWords,
   locationNote,
   locationWords,
@@ -453,6 +454,27 @@ describe('namesRuns', () => {
     expect(namesRuns({ runs: null, sheets: 1 })).toBe(true)
     // The runs couldn't be listed beside text unsent: the question said nothing of runs.
     expect(namesRuns({ runs: [], sheets: 1 })).toBe(false)
+  })
+})
+
+describe('covers', () => {
+  const pull = runGoing({ id: 8, kind: 'gitPull', title: 'Pull main' })
+
+  it('says a question confirmed named every run going now, by its id', () => {
+    expect(covers({ runs: [runGoing()], sheets: 0 }, [runGoing()])).toBe(true)
+    expect(covers({ runs: [runGoing(), pull], sheets: 1 }, [pull])).toBe(true)
+  })
+
+  it('says it didn’t for a run started while it asked, or runs going when it named none', () => {
+    expect(covers({ runs: [runGoing()], sheets: 0 }, [runGoing(), pull])).toBe(false)
+    expect(covers({ runs: [], sheets: 1 }, [runGoing()])).toBe(false)
+    expect(covers({ runs: null, sheets: 0 }, [runGoing()])).toBe(false)
+  })
+
+  it('takes runs Go can’t list as named only by a question about the runs as a whole', () => {
+    expect(covers({ runs: null, sheets: 0 }, [])).toBe(true)
+    expect(covers({ runs: [runGoing()], sheets: 0 }, [])).toBe(false)
+    expect(covers({ runs: [], sheets: 1 }, [])).toBe(false)
   })
 })
 

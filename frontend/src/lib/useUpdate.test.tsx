@@ -2,7 +2,7 @@ import { act, renderHook, waitFor } from '@testing-library/react'
 import { describe, expect, it, onTestFinished, vi } from 'vitest'
 
 import { brand } from '../generated/brand'
-import type { DownloadAnswer, RestartAnswer, UpdateStatus } from '../platform'
+import type { DownloadAnswer, RestartAnswer, RunGoing, UpdateStatus } from '../platform'
 import { runGoing, scriptRun, updateReady, updateStatus } from '../test/fixtures'
 import { emit, platform } from '../test/platform'
 import { finishingWords, settlingWords } from './update'
@@ -27,6 +27,12 @@ function got(status: UpdateStatus): DownloadAnswer {
 const settling = 'The last update is still finishing. Try again in a moment.'
 const quitting = 'Example is quitting to finish the update.'
 const uninstallable = '0.3.0 didn’t install before, and would fail the same way again.'
+
+// refusedFor is Restart refusing to stop the runs going unasked, naming them (none when Go
+// couldn't list them).
+function refusedFor(runs: RunGoing[]): RestartAnswer {
+  return { restarted: false, runsGoing: runs, message: '' }
+}
 
 // pending is a call that never answers, so a step stays under way.
 function pending<T>(): Promise<T> {
@@ -313,9 +319,10 @@ describe('useRestartToUpdate', () => {
     expect(platform.restartToUpdateNow).not.toHaveBeenCalled()
   })
 
-  it('asks first while runs go, naming them, and restarts confirmed', async () => {
+  it('asks first while runs go, naming them, and restarts confirmed once Go names no other', async () => {
     platform.getUpdateStatus.mockResolvedValue(updateReady())
-    platform.restartToUpdateNow.mockResolvedValueOnce({ restarted: false, runsGoing: [runGoing()], message: '' })
+    platform.restartToUpdateNow.mockResolvedValueOnce(refusedFor([runGoing()]))
+    platform.restartToUpdateNow.mockResolvedValueOnce(refusedFor([runGoing()]))
     platform.restartToUpdateNow.mockReturnValueOnce(pending())
     const { result } = flow()
 
@@ -331,9 +338,105 @@ describe('useRestartToUpdate', () => {
     })
 
     await waitFor(() => {
+      expect(platform.restartToUpdateNow.mock.calls).toEqual([[false], [false], [true]])
+    })
+    expect(result.current.step).toEqual({ step: 'restarting' })
+  })
+
+  it('asks again, naming it, about a run started while it asked, and stops it only once confirmed', async () => {
+    const pull = runGoing({ id: 8, kind: 'gitPull', title: 'Pull main', repo: 'acme-org/api' })
+    platform.getUpdateStatus.mockResolvedValue(updateReady())
+    platform.restartToUpdateNow.mockResolvedValueOnce(refusedFor([runGoing()]))
+    platform.restartToUpdateNow.mockResolvedValueOnce(refusedFor([runGoing(), pull]))
+    platform.restartToUpdateNow.mockResolvedValueOnce(refusedFor([runGoing(), pull]))
+    platform.restartToUpdateNow.mockReturnValueOnce(pending())
+    const { result } = flow()
+
+    act(() => {
+      result.current.start()
+    })
+    await waitFor(() => {
+      expect(result.current.step).toEqual({ step: 'asking', question: { runs: [runGoing()], sheets: 0 } })
+    })
+
+    // The pull started while the dialog named the release alone: confirming asks Go
+    // first, which names both, so nothing stops yet.
+    act(() => {
+      result.current.confirm()
+    })
+    await waitFor(() => {
+      expect(result.current.step).toEqual({ step: 'asking', question: { runs: [runGoing(), pull], sheets: 0 } })
+    })
+    expect(platform.restartToUpdateNow.mock.calls).toEqual([[false], [false]])
+
+    act(() => {
+      result.current.confirm()
+    })
+    await waitFor(() => {
+      expect(platform.restartToUpdateNow.mock.calls).toEqual([[false], [false], [false], [true]])
+    })
+  })
+
+  it('restarts unconfirmed when the runs it named ended while it asked', async () => {
+    platform.getUpdateStatus.mockResolvedValue(updateReady())
+    platform.restartToUpdateNow.mockResolvedValueOnce(refusedFor([runGoing()]))
+    platform.restartToUpdateNow.mockReturnValueOnce(pending())
+    const { result } = flow()
+
+    act(() => {
+      result.current.start()
+    })
+    await waitFor(() => {
+      expect(result.current.step.step).toBe('asking')
+    })
+
+    act(() => {
+      result.current.confirm()
+    })
+    await waitFor(() => {
       expect(result.current.step).toEqual({ step: 'restarting' })
     })
-    expect(platform.restartToUpdateNow.mock.calls).toEqual([[false], [true]])
+    expect(platform.restartToUpdateNow.mock.calls).toEqual([[false], [false]])
+  })
+
+  it('stops the runs it asked about as a whole while Go still can’t list them, and asks once it can', async () => {
+    platform.getUpdateStatus.mockResolvedValue(updateReady())
+    platform.restartToUpdateNow.mockResolvedValueOnce(refusedFor([]))
+    platform.restartToUpdateNow.mockResolvedValueOnce(refusedFor([runGoing()]))
+    platform.restartToUpdateNow.mockResolvedValueOnce(refusedFor([]))
+    platform.restartToUpdateNow.mockResolvedValueOnce(refusedFor([]))
+    platform.restartToUpdateNow.mockReturnValueOnce(pending())
+    const { result } = flow()
+
+    act(() => {
+      result.current.start()
+    })
+    await waitFor(() => {
+      expect(result.current.step).toEqual({ step: 'asking', question: { runs: null, sheets: 0 } })
+    })
+
+    // Go lists them now: the question named none by name, so it asks again, naming them.
+    act(() => {
+      result.current.confirm()
+    })
+    await waitFor(() => {
+      expect(result.current.step).toEqual({ step: 'asking', question: { runs: [runGoing()], sheets: 0 } })
+    })
+
+    // Go can't list them again: a question that named them can't tell a new one apart,
+    // so it asks about the runs as a whole, which confirming then stops.
+    act(() => {
+      result.current.confirm()
+    })
+    await waitFor(() => {
+      expect(result.current.step).toEqual({ step: 'asking', question: { runs: null, sheets: 0 } })
+    })
+    act(() => {
+      result.current.confirm()
+    })
+    await waitFor(() => {
+      expect(platform.restartToUpdateNow.mock.calls).toEqual([[false], [false], [false], [false], [true]])
+    })
   })
 
   it('asks about the runs as a whole when Go couldn’t list them', async () => {
@@ -383,12 +486,39 @@ describe('useRestartToUpdate', () => {
     expect(platform.listScriptRuns).toHaveBeenCalledExactlyOnceWith({ kinds: [], repo: '' })
     expect(platform.restartToUpdateNow).not.toHaveBeenCalled()
 
+    // Go names the release the question listed: confirmed, it stops it.
+    platform.restartToUpdateNow.mockResolvedValueOnce(refusedFor([runGoing()]))
     act(() => {
       result.current.confirm()
     })
     await waitFor(() => {
-      expect(platform.restartToUpdateNow).toHaveBeenCalledExactlyOnceWith(true)
+      expect(platform.restartToUpdateNow.mock.calls).toEqual([[false], [true]])
     })
+  })
+
+  it('asks again about a run started while it asked about the text and the runs it listed', async () => {
+    const pull = runGoing({ id: 8, kind: 'gitPull', title: 'Pull main', repo: 'acme-org/api' })
+    platform.getUpdateStatus.mockResolvedValue(updateReady())
+    platform.listScriptRuns.mockResolvedValue([
+      scriptRun({ id: 7, kind: 'release', title: 'Release v1.2.0', repo: 'acme-org/sdk', canStop: true }),
+    ])
+    platform.restartToUpdateNow.mockResolvedValueOnce(refusedFor([runGoing(), pull]))
+    const { result } = flow(() => 1)
+
+    act(() => {
+      result.current.start()
+    })
+    await waitFor(() => {
+      expect(result.current.step.step).toBe('asking')
+    })
+
+    act(() => {
+      result.current.confirm()
+    })
+    await waitFor(() => {
+      expect(result.current.step).toEqual({ step: 'asking', question: { runs: [runGoing(), pull], sheets: 1 } })
+    })
+    expect(platform.restartToUpdateNow).toHaveBeenCalledExactlyOnceWith(false)
   })
 
   it('counts the sheets once the download is done, so text written meanwhile counts', async () => {
@@ -423,7 +553,8 @@ describe('useRestartToUpdate', () => {
     const logged = vi.spyOn(console, 'error').mockImplementation(() => undefined)
     platform.getUpdateStatus.mockResolvedValue(updateReady())
     platform.listScriptRuns.mockRejectedValue(failure('The runs are busy.'))
-    platform.restartToUpdateNow.mockResolvedValueOnce({ restarted: false, runsGoing: [runGoing()], message: '' })
+    platform.restartToUpdateNow.mockResolvedValueOnce(refusedFor([runGoing()]))
+    platform.restartToUpdateNow.mockResolvedValueOnce(refusedFor([runGoing()]))
     platform.restartToUpdateNow.mockReturnValueOnce(pending())
     const { result, rerender } = flow(() => 1)
 
@@ -454,9 +585,9 @@ describe('useRestartToUpdate', () => {
       result.current.confirm()
     })
     await waitFor(() => {
-      expect(result.current.step).toEqual({ step: 'restarting' })
+      expect(platform.restartToUpdateNow.mock.calls).toEqual([[false], [false], [true]])
     })
-    expect(platform.restartToUpdateNow.mock.calls).toEqual([[false], [true]])
+    expect(result.current.step).toEqual({ step: 'restarting' })
   })
 
   it('asks about a run started while it asked about the text alone', async () => {

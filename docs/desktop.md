@@ -248,7 +248,9 @@ notifications](#menu-bar-and-notifications)).
   Just tell me it downloads first, with the download's progress in the banner (**Later** hides
   it while the download goes on). It asks first, in one question, when restarting would lose
   something: a run going in the app, named, or text you haven't sent in a review or issue
-  sheet. It stops only runs it named: one it couldn't list, or that started while it asked, is
+  sheet. It stops only runs it named: confirming asks the app again first, which refuses
+  before backing anything up while runs go, and a run it didn't name (one it couldn't list,
+  one going when it asked about your text alone, or one that started while it asked) is
   asked about again. Then the app checks the downloaded zip again (a
   damaged one is thrown away and downloaded again), backs up the database beside it
   (`<data>/nilbox.db.backup-<stamp>-v<schema>`, the newest three kept, as before a migration;

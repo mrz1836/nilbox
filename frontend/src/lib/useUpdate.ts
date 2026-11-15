@@ -11,18 +11,20 @@ import {
   restartToUpdateNow,
   showUpdateBanner,
   type Refused,
+  type RunGoing,
   type UpdateStatus,
 } from '../platform'
 import { attempt } from './call'
 import {
   bannerOf,
+  covers,
   finishingWords,
-  namesRuns,
   offerOf,
   runsGoingIn,
   settlingWords,
   type Banner,
   type Offer,
+  type RestartQuestion,
   type RestartStep,
 } from './update'
 import { useQuery } from './useQuery'
@@ -89,10 +91,10 @@ export interface RestartFlow {
 //     names when it refuses to stop them unasked. Text unsent asks at once, naming the
 //     runs going too, so one question covers both; otherwise Restart(false) asks Go, and
 //     a refusal asks, counting the sheets again.
-//  4. Confirmed, it restarts with Restart(true), which stops the runs, only when the
-//     question named them; a question that named none (they couldn't be listed, or none
-//     went) restarts with Restart(false), so a run going after all, or started while it
-//     asked, is refused and asked about too.
+//  4. Confirmed, it asks Go again with Restart(false), which refuses before it backs
+//     anything up while runs go: only when the question named every run Go names then
+//     (covers) does it restart with Restart(true), which stops them, so a run that started
+//     while it asked, or one going when the question named none, is asked about again.
 //  5. Restart then backs the data up and restarts; the app quits inside it, so it returns
 //     only when something stopped the restart, whose words the banner shows.
 //
@@ -144,7 +146,15 @@ export function useRestartToUpdate(unsent: () => number): RestartFlow {
     }
   }
 
-  const restart = async (confirmed: boolean) => {
+  // ask asks first, naming runs, the sheets counted as they are now.
+  const ask = (runs: readonly RunGoing[] | null) => {
+    setStep({ step: 'asking', question: { runs, sheets: counter.current() } })
+  }
+
+  // restart calls Restart(confirmed), asked being the question the user confirmed, or null
+  // when nothing was asked. Unconfirmed, a refusal for the runs going restarts confirmed
+  // only when asked named them all, and asks otherwise.
+  const restart = async (asked: RestartQuestion | null, confirmed = false): Promise<void> => {
     setStep({ step: 'restarting' })
 
     const answer = await attempt(restartToUpdateNow(confirmed))
@@ -155,15 +165,14 @@ export function useRestartToUpdate(unsent: () => number): RestartFlow {
       end({ step: 'idle' })
     } else if ('refusal' in answer.data) {
       refuse(answer.data)
+    } else if (!confirmed && asked !== null && covers(asked, answer.data.runsGoing)) {
+      await restart(asked, true)
     } else {
       // Restart may have waited for a check or a download first: the sheets are counted
       // as they are now, text written meanwhile included.
       const { runsGoing } = answer.data
 
-      setStep({
-        step: 'asking',
-        question: { runs: runsGoing.length === 0 ? null : runsGoing, sheets: counter.current() },
-      })
+      ask(runsGoing.length === 0 ? null : runsGoing)
     }
   }
 
@@ -255,7 +264,7 @@ export function useRestartToUpdate(unsent: () => number): RestartFlow {
     const sheets = counter.current()
 
     if (sheets === 0) {
-      await restart(false)
+      await restart(null)
 
       return
     }
@@ -312,7 +321,7 @@ export function useRestartToUpdate(unsent: () => number): RestartFlow {
     start,
     confirm: () => {
       if (step.step === 'asking') {
-        void restart(namesRuns(step.question))
+        void restart(step.question)
       }
     },
     cancel: () => {
