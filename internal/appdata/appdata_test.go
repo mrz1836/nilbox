@@ -114,6 +114,7 @@ func TestNewPaths(t *testing.T) {
 	assert.Equal(t, filepath.Join(root, "backups"), p.Backups)
 	assert.Equal(t, filepath.Join(root, "launch"), p.Launch)
 	assert.Equal(t, filepath.Join(root, "logs"), p.Logs)
+	assert.Equal(t, filepath.Join(root, "reset-request.json"), p.ResetRequest)
 }
 
 func TestResolve(t *testing.T) {

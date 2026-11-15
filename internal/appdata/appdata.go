@@ -1,11 +1,14 @@
 // Package appdata resolves where the application keeps its per-user data: the SQLite
 // database, the copies of the prompt library and the launch defaults kept beside it,
 // generated launch scripts, and logs. It also writes and reads those files, readable
-// only by the user.
+// only by the user, and the request to start over that the next start carries out
+// (RequestReset).
 //
 // The location follows each operating system's convention. The resolver itself is a pure
 // function of the OS name, the home directory, and the environment, so every branch is
-// testable on any host even though only macOS is supported at run time today.
+// testable on any host even though only macOS is supported at run time today. A run may
+// name another location with DataDirFlag (FromArgs), as a sandbox to test the app on
+// fresh data does.
 package appdata
 
 import (
@@ -45,9 +48,10 @@ type Paths struct {
 	DB             string // the SQLite database file
 	Prompts        string // the copy of the prompt library kept beside the database
 	LaunchDefaults string // the copy of the launch defaults kept beside the database
-	Backups        string // the copies of the user's setup an import saves before it changes anything
+	Backups        string // the copies of the user's setup an import or a reset saves before it changes anything
 	Launch         string // generated launch scripts and prompt files
 	Logs           string // log files
+	ResetRequest   string // the request to start over that the next start carries out (see RequestReset)
 }
 
 // NewPaths returns the data locations under root.
@@ -60,6 +64,7 @@ func NewPaths(root string) Paths {
 		Backups:        filepath.Join(root, "backups"),
 		Launch:         filepath.Join(root, "launch"),
 		Logs:           filepath.Join(root, "logs"),
+		ResetRequest:   filepath.Join(root, "reset-request.json"),
 	}
 }
 

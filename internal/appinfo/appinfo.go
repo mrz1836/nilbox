@@ -8,10 +8,12 @@
 // integrations, with nothing personal in them. FeedbackURL opens a new blank issue with a
 // feedback title, a few prompts, and the app's version filled in. The user reads either on
 // GitHub before sending it, and the app sends nothing itself. When the
-// database could not be read at startup and was set aside, or the prompt library and
-// launch defaults were brought back into a new one, Info says so, so the window can tell the user once it
-// loads: the window does not exist yet when that happens, so an event would be lost. When the window has painted its first frame, the frontend calls
-// ReportFirstPaint, which records the startup time once.
+// database was set aside at startup (it could not be read, or the user asked to start
+// over), or the prompt library, launch defaults, and the user's own scripts were brought
+// back into a new one, Info says so, so the window can tell the user once it loads: the
+// window does not exist yet when that happens, so an event would be lost. Info also says
+// when the app runs on a sandbox's data (--data-dir). When the window has painted its
+// first frame, the frontend calls ReportFirstPaint, which records the startup time once.
 package appinfo
 
 import (
@@ -76,38 +78,46 @@ type Info struct {
 	// aside and the app started with an empty one; it is nil otherwise.
 	DataReset *DataReset `json:"dataReset,omitempty"`
 
-	// Restored is set when the prompt library and the launch defaults were lost at
-	// startup, with the database they were in, and were brought back; it is nil
-	// otherwise.
+	// Restored is set when the prompt library, the launch defaults, or the user's own
+	// scripts were lost at startup, with the database they were in, and were brought back;
+	// it is nil otherwise.
 	Restored *Restored `json:"restored,omitempty"`
+
+	// Sandbox is set when the app runs on a data directory named with --data-dir, such as
+	// the fresh one magex app:fresh opens, in place of the user's own, so the window can
+	// say it shows test data.
+	Sandbox bool `json:"sandbox"`
 }
 
 // Restored says what of the user's own was brought back at startup, and from where.
 type Restored struct {
-	// Prompts and LaunchDefaults count the prompts and the org and repository launch
-	// defaults that came back.
+	// Prompts, LaunchDefaults, and Scripts count the prompts, the org and repository
+	// launch defaults, and the user's own scripts that came back.
 	Prompts        int `json:"prompts"`
 	LaunchDefaults int `json:"launchDefaults"`
+	Scripts        int `json:"scripts"`
 
-	// From is the file they came from, with ~ for the home directory: the database set
-	// aside, or the copy of the prompt library kept beside the database.
+	// From is the file the prompts and launch defaults came from, with ~ for the home
+	// directory: the database set aside, or the copy of the prompt library kept beside the
+	// database. The scripts come back from the database set aside alone.
 	From string `json:"from"`
 }
 
-// DataReset says where a database that could not be read was set aside, and why.
+// DataReset says where a database that was set aside at startup went, and why: one that
+// could not be read, or one the user asked to start over from.
 type DataReset struct {
 	// Path is where the database was moved, with ~ for the home directory.
 	Path string `json:"path"`
 
-	// Reason says why it could not be read.
+	// Reason says why it was set aside.
 	Reason ResetReason `json:"reason"`
 }
 
-// ResetReason says why the database could not be read. The values are the store
-// package's reasons for setting a database aside.
+// ResetReason says why the database was set aside. The values are the store package's
+// reasons for setting a database aside.
 type ResetReason string
 
-// Why the database could not be read.
+// Why the database was set aside.
 const (
 	// ResetCorrupt is a file that is not a database, or is damaged.
 	ResetCorrupt ResetReason = "corrupt"
@@ -117,6 +127,9 @@ const (
 
 	// ResetHistory is a migration history this build disagrees with.
 	ResetHistory ResetReason = "history"
+
+	// ResetRequested is the user asking to start over, from Settings or magex app:reset.
+	ResetRequested ResetReason = "requested"
 )
 
 // StateReader words what a bug report says of the app's state, for whoever reads the
@@ -165,9 +178,12 @@ type Config struct {
 	// DataReset is set when the database was set aside at startup.
 	DataReset *DataReset
 
-	// Restored is set when the prompt library and launch defaults were brought back at
-	// startup.
+	// Restored is set when the prompt library, the launch defaults, or the user's own
+	// scripts were brought back at startup.
 	Restored *Restored
+
+	// Sandbox is set when the app runs on a data directory named with --data-dir.
+	Sandbox bool
 
 	// Finder finds the coding agents' and the tools' commands, and Runner runs their
 	// --version.
@@ -209,6 +225,7 @@ func NewService(cfg Config) *Service {
 		Arch:      runtime.GOARCH,
 		DataReset: cfg.DataReset,
 		Restored:  cfg.Restored,
+		Sandbox:   cfg.Sandbox,
 	}
 
 	return &Service{
