@@ -15,6 +15,7 @@ declare module "@wailsio/runtime" {
             "app:quitRequested": event$0.QuitRequested;
             "budget:updated": event$0.BudgetUpdated;
             "ghthreads:updated": event$0.GHThreadsUpdated;
+            "githubstatus:updated": event$0.GitHubStatusUpdated;
             "hooks:updated": event$0.HooksUpdated;
             "inbox:reveal": event$0.RevealItem;
             "inbox:updated": event$0.InboxUpdated;

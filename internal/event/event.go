@@ -94,6 +94,9 @@ const (
 
 	// NameGHThreadsUpdated is GHThreadsUpdated's name.
 	NameGHThreadsUpdated = "ghthreads:updated"
+
+	// NameGitHubStatusUpdated is GitHubStatusUpdated's name.
+	NameGitHubStatusUpdated = "githubstatus:updated"
 )
 
 // Event is something that happened, or was asked for, that another part of the app
@@ -148,6 +151,7 @@ func WindowEvents() []WindowEvent {
 		HooksUpdated{},
 		WorktreesProgress{},
 		GHThreadsUpdated{},
+		GitHubStatusUpdated{},
 	}
 }
 
@@ -485,6 +489,15 @@ type GHThreadsUpdated struct{}
 func (GHThreadsUpdated) Name() string { return NameGHThreadsUpdated }
 
 func (GHThreadsUpdated) window() {}
+
+// GitHubStatusUpdated says a check of GitHub's status page ended, whether it worked or not:
+// the window reads the status again.
+type GitHubStatusUpdated struct{}
+
+// Name returns NameGitHubStatusUpdated.
+func (GitHubStatusUpdated) Name() string { return NameGitHubStatusUpdated }
+
+func (GitHubStatusUpdated) window() {}
 
 // Discard is a Sink that drops every event.
 type Discard struct{}

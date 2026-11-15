@@ -77,6 +77,18 @@ func boundCalls(t *testing.T) map[string]boundCall {
 		"appinfo.Service.ToolVersions": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
 			return c.AppInfo.ToolVersions(ctx), nil
 		},
+		"ghstatus.Service.Status": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
+			return c.GitHubStatus.Status(ctx), nil
+		},
+		"ghstatus.Service.CheckNow": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
+			// Off, so the check reads nothing from the network; ghstatus's own tests read
+			// a page.
+			if _, err := c.Settings.SetRefreshInterval(ctx, settings.RefreshGitHubStatus, 0); err != nil {
+				return nil, err
+			}
+
+			return c.GitHubStatus.CheckNow(ctx), nil
+		},
 		"settings.Service.Get": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
 			return c.Settings.Get(ctx)
 		},

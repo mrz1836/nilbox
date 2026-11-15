@@ -9,6 +9,7 @@ export {
 export type {
     BudgetUpdated,
     GHThreadsUpdated,
+    GitHubStatusUpdated,
     HooksUpdated,
     InboxUpdated,
     IssueProgress,

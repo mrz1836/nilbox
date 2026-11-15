@@ -27,6 +27,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/clonelock"
 	"github.com/mrz1836/nilbox/internal/event"
 	"github.com/mrz1836/nilbox/internal/execpath"
+	"github.com/mrz1836/nilbox/internal/ghstatus"
 	"github.com/mrz1836/nilbox/internal/ghthreads"
 	"github.com/mrz1836/nilbox/internal/github"
 	"github.com/mrz1836/nilbox/internal/gitread"
@@ -143,6 +144,7 @@ type Core struct {
 	Scripts        *scripts.Service
 	GHThreads      *ghthreads.Service
 	Backup         *backup.Service
+	GitHubStatus   *ghstatus.Service
 
 	// ShellSettings are the settings the desktop shell reads when the app launches. They
 	// are not bound.
@@ -224,6 +226,12 @@ type Core struct {
 	// cut off. The desktop shell runs it as deferred work, beside Runs: a release Runs
 	// verifies as on GitHub after a restart is handed to it once recorded. It is not bound.
 	ReleaseFollower *release.Follower
+
+	// GitHubStatusChecker checks GitHub's own status page as often as Settings →
+	// Refreshing says (every 30 minutes by default, or never), so the window can say when
+	// GitHub has an incident; GitHubStatus is its bound face. The desktop shell runs it as
+	// deferred work. It is not bound.
+	GitHubStatusChecker *ghstatus.Checker
 
 	// HooksScans holds the Hooks page's scans, which run apart from the window's calls, to
 	// the app's lifetime: the app's quit ends them, and the desktop shell, which runs it as
@@ -308,7 +316,7 @@ func (c *Core) Services() []any {
 	return []any{
 		c.Settings, c.Profiles, c.Prompts, c.LaunchDefaults, c.Inbox, c.Launcher, c.Worktrees, c.Notifications,
 		c.AppInfo, c.Budget, c.Sessions, c.Review, c.Issues, c.Integrations, c.ScriptRuns, c.Release, c.Hooks,
-		c.Scripts, c.GHThreads, c.Backup,
+		c.Scripts, c.GHThreads, c.Backup, c.GitHubStatus,
 	}
 }
 
@@ -629,7 +637,14 @@ func assemble(pool *sql.DB, info startup, opts Options, logger *slog.Logger) *Co
 	releaseChecks := release.NewChecksFollower(releases, refreshEvery(prefs, settings.RefreshReleaseChecks, logger),
 		logger)
 	sweeper := worktrees.NewSweeper(sweeps, refreshEvery(prefs, settings.RefreshWorktrees, logger))
-	followed.intervals = []waker{scheduler, checksFollower, releaseChecks, sweeper, ghThreadsSyncer}
+	// GitHub's own status page is read through the shared client, outside the API, so it
+	// costs no budget and carries no token.
+	githubStatus := ghstatus.NewService(ghstatus.Config{
+		Fetcher: client, Every: refreshEvery(prefs, settings.RefreshGitHubStatus, logger), Clock: opts.Clock,
+		Events: opts.Events, Logger: logger,
+	})
+	githubStatusChecker := ghstatus.NewChecker(githubStatus)
+	followed.intervals = []waker{scheduler, checksFollower, releaseChecks, sweeper, ghThreadsSyncer, githubStatusChecker}
 
 	// The review sheet and the issue sheet read and act through the inbox's one Actor.
 	actor := inbox.NewActor(inboxSvc)
@@ -700,6 +715,8 @@ func assemble(pool *sql.DB, info startup, opts Options, logger *slog.Logger) *Co
 		Release:               releases,
 		ReleaseRefresher:      releaseRefresher,
 		ReleaseFollower:       releaseFollower,
+		GitHubStatus:          githubStatus,
+		GitHubStatusChecker:   githubStatusChecker,
 		ReleaseChecksFollower: releaseChecks,
 		Hooks:                 hookPage,
 		HooksScans:            hooks.NewScans(hookPage),
