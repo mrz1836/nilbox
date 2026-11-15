@@ -100,9 +100,6 @@ type fakeMover struct {
 	markErr   error
 	markAsked []string
 
-	// likes records the bundle each Verify compared with: the app that runs.
-	likes []string
-
 	// holding counts the quit holds taken and not let go of, holds every one taken, and
 	// heldOnCopy the holding count as each copy was made.
 	holding, holds int
@@ -169,10 +166,9 @@ func (m *fakeMover) Copy(_ context.Context, from, to string) error {
 	return copyErr
 }
 
-func (m *fakeMover) Verify(_ context.Context, bundle, like string) error {
+func (m *fakeMover) Verify(_ context.Context, bundle string) error {
 	m.mu.Lock()
 	m.calls = append(m.calls, "verify "+stageless(bundle))
-	m.likes = append(m.likes, like)
 	onVerify := m.onVerify
 	m.mu.Unlock()
 
@@ -258,6 +254,11 @@ func newMoveRig(t *testing.T, change ...func(*update.Config)) (*rig, *fakeMover)
 		writeBundle(t, r.cfg.Bundle, brand.BundleID, running)
 	}
 
+	// The engine starts once the bundle it runs from is there, as the app's does.
+	r.engine = update.NewEngine(r.cfg)
+	r.engine.Attach(r.installer)
+	r.service = update.NewService(r.engine)
+
 	m := &fakeMover{}
 	r.engine.AttachMover(m)
 
@@ -279,7 +280,6 @@ func TestMovingPutsTheAppInTheSharedApplicationsFolderWhenItCan(t *testing.T) {
 		"open " + target,
 	}, m.all(), "copied and checked beside the target, then opened from there once the app quits")
 	assert.Equal(t, []bool{true}, m.emptyOnCopy, "the copy goes into a folder the move made, empty")
-	assert.Equal(t, []string{r.cfg.Bundle}, m.likes, "checked against the app that runs")
 	assert.FileExists(t, filepath.Join(target, "Contents", "Info.plist"), "the copy is put in place")
 	assert.Empty(t, stages(t, r.cfg.Applications), "and its hidden folder removed")
 	assert.NoDirExists(t, filepath.Join(r.cfg.Home, "Applications"), "home's Applications folder is never made")
@@ -845,7 +845,6 @@ func TestOpenItOpensTheCopyInApplicationsOnceItChecksOut(t *testing.T) {
 	assert.Equal(t, update.MoveResult{Outcome: update.MoveOpening, Target: target}, got)
 	assert.Equal(t, []string{"verify " + target, "open " + target}, m.all(), "checked, then opened once the app quits")
 	assert.Equal(t, []string{target}, m.markAsked, "asked first whether macOS would open it where it is")
-	assert.Equal(t, []string{r.cfg.Bundle}, m.likes, "checked against the app that runs")
 	assert.FileExists(t, filepath.Join(target, "Contents", "MacOS", brand.Slug), "left as it was")
 }
 
@@ -872,6 +871,56 @@ func TestOpenItRefusesACopyMacOSWouldOpenFromAHiddenFolder(t *testing.T) {
 		uierr.Message(err))
 	assert.Empty(t, m.all(), "nothing checked or opened")
 	assert.FileExists(t, filepath.Join(target, "Contents", "MacOS", brand.Slug), "left as it was")
+}
+
+// When this app's own signature can't be read, nothing is known of the copy: a move moves
+// nothing, and Open it never tells the user to throw that copy away, but to open it
+// themselves.
+func TestAnOwnSignatureThatCantBeReadBlamesNoCopy(t *testing.T) {
+	t.Parallel()
+
+	own := uierr.New("code object is not signed at all", fmt.Errorf("%w: %w", update.ErrOwnSignature, errFakeCodesign))
+
+	r, m := newMoveRig(t)
+	m.verifyErr = own
+
+	_, err := r.service.MoveToApplications(t.Context())
+	require.ErrorIs(t, err, update.ErrOwnSignature)
+	require.ErrorIs(t, err, update.ErrMoveFailed)
+	assert.Equal(t, brand.Name+" couldn't read its own signature, so it couldn't check the copy in "+r.cfg.Applications+
+		", and nothing was moved: code object is not signed at all.", uierr.Message(err))
+	assert.Empty(t, stages(t, r.cfg.Applications), "the copy is removed")
+
+	target := filepath.Join(r.cfg.Applications, app)
+	writeBundle(t, target, brand.BundleID, "0.1.0")
+
+	_, err = r.service.OpenInApplications(t.Context())
+	require.ErrorIs(t, err, update.ErrOwnSignature)
+	assert.Equal(t, brand.Name+" couldn't read its own signature, so it couldn't check the copy in "+r.cfg.Applications+
+		", and didn't open it: code object is not signed at all. Open that copy from "+r.cfg.Applications+" yourself.",
+		uierr.Message(err))
+	assert.NotContains(t, uierr.Message(err), "Trash")
+	assert.DirExists(t, target, "left as it was")
+}
+
+// The bundle that runs, dragged into Applications while it runs, is still this app, though
+// the path it ran from is gone: it is never offered as a copy of its own to open.
+func TestTheRunningAppMovedWhileItRunsIsNeverItsOwnCopy(t *testing.T) {
+	t.Parallel()
+
+	r, m := newMoveRig(t)
+	target := filepath.Join(r.cfg.Applications, app)
+	require.NoError(t, os.Rename(r.cfg.Bundle, target))
+
+	for _, call := range []func(context.Context) (update.MoveResult, error){
+		r.service.MoveToApplications, r.service.OpenInApplications,
+	} {
+		_, err := call(t.Context())
+		require.ErrorIs(t, err, update.ErrCantMove)
+		assert.Equal(t, brand.Name+" already runs from Applications.", uierr.Message(err))
+	}
+
+	assert.Empty(t, m.all())
 }
 
 // A mark that can't be read stops nothing: the signature is still checked.

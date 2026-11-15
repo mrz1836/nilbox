@@ -5,6 +5,7 @@ import (
 	"crypto/ed25519"
 	"encoding/json"
 	"fmt"
+	"io/fs"
 	"log/slog"
 	"os"
 	"sync"
@@ -260,8 +261,11 @@ type Engine struct {
 	// moving is held by the one move to Applications running.
 	moving sync.Mutex
 
-	// probe says whether a process runs, so a move tells another copy's move under way from
-	// what a cut-off one left (procs.Probe).
+	// self is the bundle the app ran from as it started, which a move never takes for a
+	// copy of its own, however it was moved since; nil when it couldn't be read. probe says
+	// whether a process runs, so a move tells another copy's move under way from what a cut-off
+	// one left (procs.Probe).
+	self  fs.FileInfo
 	probe func(pid int) procs.Liveness
 
 	// op is held by the one operation running.
@@ -351,6 +355,13 @@ func NewEngine(cfg Config) *Engine {
 	}
 
 	e.applications, e.writable, e.probe = applications, writable, procs.Probe
+
+	if cfg.Bundle != "" {
+		if info, err := os.Stat(cfg.Bundle); err == nil {
+			e.self = info
+		}
+	}
+
 	e.location = locate(cfg.Bundle, cfg.Home, applications, rehearsal, writable)
 	e.flavor, e.key, e.off = resolve(cfg)
 	e.feed = cfg.Feed

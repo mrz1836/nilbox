@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -49,12 +50,14 @@ func CopyArgs(from, to string) []string {
 	return []string{DittoBin, "--noqtn", from, to}
 }
 
-// RequirementArgs is the command that writes the designated requirement of the bundle at
-// bundle to its output: `codesign --display --requirements -`. For a release, signed with
-// the release identity, it is `identifier "<bundle ID>" and certificate leaf = H"<SHA-1>"`,
-// the same for every build; for a build signed ad hoc, the cdhash of that build alone.
-func RequirementArgs(bundle string) []string {
-	return []string{CodesignBin, "--display", "--requirements", "-", bundle}
+// RequirementArgs is the command that writes the designated requirement of of to its output:
+// `codesign --display --requirements -`, of a running process by its ID (the app that runs,
+// whatever has become of the path it ran from) or a bundle by its path, an argument of its
+// own. For a release, signed with the release identity, it is `identifier "<bundle ID>" and
+// certificate leaf = H"<SHA-1>"`, the same for every build; for a build signed ad hoc, the
+// cdhash of that build alone.
+func RequirementArgs(of string) []string {
+	return []string{CodesignBin, "--display", "--requirements", "-", of}
 }
 
 // VerifyArgs is the command that checks the code signature of the bundle at bundle, every
@@ -88,6 +91,11 @@ type Mover struct {
 	runner execpath.Runner
 	shell  *Shell
 
+	// self is the app that runs as codesign is given it (RequirementArgs): this process's
+	// ID, whose code the kernel knows however its bundle was moved, or a bundle's path in
+	// tests.
+	self string
+
 	// unmark takes the quarantine mark off a copy (unquarantine), and marked reads whether
 	// macOS would translocate one (translocates); tests stand in for both.
 	unmark func(bundle string) error
@@ -97,7 +105,9 @@ type Mover struct {
 // NewMover returns the Mover that runs ditto and codesign through runner, and holds, quits,
 // and reopens through shell.
 func NewMover(runner execpath.Runner, shell *Shell) *Mover {
-	return &Mover{runner: runner, shell: shell, unmark: unquarantine, marked: translocates}
+	return &Mover{
+		runner: runner, shell: shell, self: strconv.Itoa(os.Getpid()), unmark: unquarantine, marked: translocates,
+	}
 }
 
 // HoldQuit holds every quit of the app while a move runs (Shell.HoldQuit).
@@ -138,22 +148,26 @@ func (m *Mover) Copy(ctx context.Context, from, to string) error {
 }
 
 // Verify checks the code signature of the bundle at bundle, and that it meets the designated
-// requirement of the bundle at like, the app that runs (RequirementArgs, then VerifyArgs): a
-// copy signed otherwise, such as a build from source beside a release, fails, worded as
-// such. Its error says why in codesign's words otherwise.
-func (m *Mover) Verify(ctx context.Context, bundle, like string) error {
-	if !isBundle(bundle) || !isBundle(like) {
-		return fmt.Errorf("%w: verify %q like %q", errNotABundle, bundle, like)
+// requirement of the app that runs, read from this process (RequirementArgs, then
+// VerifyArgs): a copy signed otherwise, such as a build from source beside a release, fails,
+// worded as such. When that requirement can't be read, the error holds
+// update.ErrOwnSignature, since the copy was never judged. Its error says why in codesign's
+// words otherwise.
+func (m *Mover) Verify(ctx context.Context, bundle string) error {
+	if !isBundle(bundle) {
+		return fmt.Errorf("%w: verify %q", errNotABundle, bundle)
 	}
 
-	out, err := m.run(ctx, RequirementArgs(like))
+	out, err := m.run(ctx, RequirementArgs(m.self))
 	if err != nil {
-		return uierr.New("the signature of the copy that runs can't be read: "+uierr.Message(err), err)
+		return uierr.New(strings.TrimPrefix(uierr.Message(err), m.self+": "),
+			fmt.Errorf("%w: %w", update.ErrOwnSignature, err))
 	}
 
 	requirement, ok := designated(out)
 	if !ok {
-		return uierr.New("the signature of the copy that runs names no requirement to check against", errNoRequirement)
+		return uierr.New("it names no requirement to check a copy against",
+			fmt.Errorf("%w: %w", update.ErrOwnSignature, errNoRequirement))
 	}
 
 	_, err = m.run(ctx, VerifyArgs(bundle, requirement))

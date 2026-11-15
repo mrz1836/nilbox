@@ -121,7 +121,8 @@ func newMoveRig(t *testing.T, root string) moveRig {
 		Bundle: m.bundle, Home: m.home, Applications: m.apps,
 	})
 	m.shell = m.r.shell()
-	engine.AttachMover(desktop.NewMover(execpath.Exec{}, m.shell))
+	// The test's own process is no build of the app: copies are checked against the bundle.
+	engine.AttachMover(desktop.NewMover(execpath.Exec{}, m.shell).SignedLike(m.bundle))
 	m.service = update.NewService(engine)
 
 	return m
@@ -301,6 +302,21 @@ func TestMoveToApplicationsIntegration(t *testing.T) {
 		assert.Equal(t, []string{filepath.Base(live)}, hidden(t, m.apps))
 
 		require.NoError(t, m.shell.Stop())
+	})
+
+	t.Run("the requirement is read from the process that runs", func(t *testing.T) {
+		t.Parallel()
+
+		// The real codesign reads this test process's own requirement by its ID; a copy of
+		// another program never meets it, and says so, never that the app's own signature
+		// couldn't be read.
+		bundle := filepath.Join(t.TempDir(), brand.Name+".app")
+		signedBundle(t, bundle)
+
+		err := desktop.NewMover(execpath.Exec{}, newRig().shell()).Verify(t.Context(), bundle)
+		require.Error(t, err)
+		require.NotErrorIs(t, err, update.ErrOwnSignature, uierr.Message(err))
+		assert.Equal(t, "it isn't signed the way this copy is", uierr.Message(err))
 	})
 
 	t.Run("a real build", func(t *testing.T) {

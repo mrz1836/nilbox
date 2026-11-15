@@ -30,3 +30,11 @@ func NewMoverClearing(runner execpath.Runner, shell *Shell, unmark func(bundle s
 
 	return m
 }
+
+// SignedLike has the Mover check a copy against the designated requirement of the bundle at
+// bundle, in place of this process's, as a test's own process is no build of the app.
+func (m *Mover) SignedLike(bundle string) *Mover {
+	m.self = bundle
+
+	return m
+}

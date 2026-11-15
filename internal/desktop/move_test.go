@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"os"
 	"slices"
 	"strconv"
 	"testing"
@@ -18,6 +19,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/event"
 	"github.com/mrz1836/nilbox/internal/testutil"
 	"github.com/mrz1836/nilbox/internal/uierr"
+	"github.com/mrz1836/nilbox/internal/update"
 )
 
 var errFakeExit = errors.New("fake: exit status 1")
@@ -57,6 +59,8 @@ func TestTheMoveRunsDittoThenCodesignWithEachPathAnArgumentOfItsOwn(t *testing.T
 	assert.Equal(t, []string{"/usr/bin/ditto", "--noqtn", movedFrom, movedTo}, desktop.CopyArgs(movedFrom, movedTo))
 	assert.Equal(t, []string{"/usr/bin/codesign", "--display", "--requirements", "-", movedFrom},
 		desktop.RequirementArgs(movedFrom))
+	assert.Equal(t, []string{"/usr/bin/codesign", "--display", "--requirements", "-", "4242"},
+		desktop.RequirementArgs("4242"), "a process by its ID")
 	assert.Equal(t, []string{
 		"/usr/bin/codesign", "--verify", "--deep", "--strict", "--test-requirement", "=" + releaseRequirement, movedTo,
 	}, desktop.VerifyArgs(movedTo, releaseRequirement))
@@ -73,13 +77,14 @@ func TestTheMoveRunsDittoThenCodesignWithEachPathAnArgumentOfItsOwn(t *testing.T
 
 	require.NoError(t, m.Copy(t.Context(), movedFrom, movedTo))
 	assert.Equal(t, []string{movedTo}, cleared, "the copy's quarantine mark is taken off, not the original's")
-	require.NoError(t, m.Verify(t.Context(), movedTo, movedFrom))
+	require.NoError(t, m.Verify(t.Context(), movedTo))
 
 	assert.Equal(t, [][]string{
 		{"/usr/bin/ditto", "--noqtn", movedFrom, movedTo},
-		{"/usr/bin/codesign", "--display", "--requirements", "-", movedFrom},
+		{"/usr/bin/codesign", "--display", "--requirements", "-", strconv.Itoa(os.Getpid())},
 		{"/usr/bin/codesign", "--verify", "--deep", "--strict", "--test-requirement", "=" + releaseRequirement, movedTo},
-	}, runner.Calls(), "by their absolute paths, every value one argument, the copy checked against the app that runs")
+	}, runner.Calls(), "by their absolute paths, every value one argument, the copy checked against the process that "+
+		"runs, whatever has become of the path it ran from")
 }
 
 // codesign writes the requirement it works out for a signature that holds none of its own,
@@ -100,7 +105,7 @@ func TestTheCopyMustMeetTheRequirementOfTheAppThatRuns(t *testing.T) {
 			runner := &testutil.Runner{Script: signedLike(tt.out)}
 			m := desktop.NewMoverClearing(runner, newRig().shell(), func(string) error { return nil })
 
-			require.NoError(t, m.Verify(t.Context(), movedTo, movedFrom))
+			require.NoError(t, m.Verify(t.Context(), movedTo))
 
 			calls := runner.Calls()
 			require.Len(t, calls, 2)
@@ -116,6 +121,7 @@ func TestACopySignedOtherwiseFailsInWords(t *testing.T) {
 		name   string
 		script func(context.Context, []string) ([]byte, []byte, error)
 		words  string
+		own    bool // the app's own signature couldn't be read, so the copy was never judged
 	}{
 		{
 			name: "signed otherwise, as a build from source beside a release",
@@ -134,12 +140,14 @@ func TestACopySignedOtherwiseFailsInWords(t *testing.T) {
 			script: func(_ context.Context, argv []string) ([]byte, []byte, error) {
 				return nil, []byte(argv[len(argv)-1] + ": code object is not signed at all\n"), exitError{code: 1}
 			},
-			words: "the signature of the copy that runs can't be read: " + movedFrom + ": code object is not signed at all",
+			words: "code object is not signed at all",
+			own:   true,
 		},
 		{
 			name:   "no requirement named",
 			script: signedLike("host => anchor apple\n"),
-			words:  "the signature of the copy that runs names no requirement to check against",
+			words:  "it names no requirement to check a copy against",
+			own:    true,
 		},
 	}
 
@@ -149,9 +157,10 @@ func TestACopySignedOtherwiseFailsInWords(t *testing.T) {
 
 			m := desktop.NewMoverClearing(&testutil.Runner{Script: tt.script}, newRig().shell(), func(string) error { return nil })
 
-			err := m.Verify(t.Context(), movedTo, movedFrom)
+			err := m.Verify(t.Context(), movedTo)
 			require.Error(t, err)
 			assert.Equal(t, tt.words, uierr.Message(err))
+			assert.Equal(t, tt.own, errors.Is(err, update.ErrOwnSignature))
 		})
 	}
 }
@@ -178,8 +187,7 @@ func TestTheMoveRefusesAnythingButABundlesPath(t *testing.T) {
 	} {
 		require.Error(t, m.Copy(t.Context(), path, movedTo), path)
 		require.Error(t, m.Copy(t.Context(), movedFrom, path), path)
-		require.Error(t, m.Verify(t.Context(), path, movedFrom), path)
-		require.Error(t, m.Verify(t.Context(), movedTo, path), path)
+		require.Error(t, m.Verify(t.Context(), path), path)
 
 		_, err := m.Translocates(path)
 		require.Error(t, err, path)
@@ -207,7 +215,7 @@ func TestTheMoveSaysWhyAStepFailedInTheProgramsWords(t *testing.T) {
 	require.ErrorIs(t, err, errFakeExit)
 	assert.Equal(t, "ditto: "+movedTo+"/Contents: No space left on device", uierr.Message(err))
 
-	err = m.Verify(t.Context(), movedTo, movedFrom)
+	err = m.Verify(t.Context(), movedTo)
 	require.ErrorAs(t, err, new(exitError))
 	assert.Equal(t, "codesign exited with status 1", uierr.Message(err), "with nothing written, how it ended")
 }

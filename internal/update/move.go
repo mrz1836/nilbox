@@ -79,6 +79,11 @@ var (
 	// ErrQuarantined is returned by OpenInApplications for a copy macOS would open from a
 	// hidden folder (Mover.Translocates), where it can't update itself.
 	ErrQuarantined = errors.New("the copy in Applications is still marked as downloaded")
+
+	// ErrOwnSignature is in the chain of a Mover's Verify that couldn't read the designated
+	// requirement of the app that runs, which a copy is checked against: the copy itself
+	// was never judged.
+	ErrOwnSignature = errors.New("the app's own signature couldn't be read")
 )
 
 // Mover moves the app into an Applications folder: the desktop shell's, which copies with
@@ -98,9 +103,10 @@ type Mover interface {
 	Copy(ctx context.Context, from, to string) error
 
 	// Verify checks the code signature of the bundle at bundle, deeply and strictly, and
-	// that it meets the designated requirement of the bundle at like, the app that runs:
-	// signed as this copy is. Its error says why in a few words.
-	Verify(ctx context.Context, bundle, like string) error
+	// that it meets the designated requirement of the app that runs, read from its process:
+	// signed as this copy is. Its error says why in a few words, with ErrOwnSignature in its
+	// chain when that requirement couldn't be read.
+	Verify(ctx context.Context, bundle string) error
 
 	// Translocates reports whether macOS would open the bundle at bundle from a hidden,
 	// read-only copy (App Translocation), as it does an app still marked as downloaded that
@@ -212,9 +218,8 @@ func (e *Engine) moveToApplications(ctx context.Context) (MoveResult, error) {
 		return MoveResult{}, e.discard(ctx, stage, "Couldn't copy "+brand.Name+" into "+folder+": "+said(err), err)
 	}
 
-	if err = mover.Verify(work, staged, e.bundle); err != nil {
-		return MoveResult{}, e.discard(ctx, stage,
-			"The copy in "+folder+" didn't pass its signature check, so nothing was moved: "+said(err), err)
+	if err = mover.Verify(work, staged); err != nil {
+		return MoveResult{}, e.discard(ctx, stage, unchecked(folder, said(err), err), err)
 	}
 
 	if err = e.place(ctx, stage, staged, target); err != nil {
@@ -274,16 +279,41 @@ func (e *Engine) openInApplications(ctx context.Context) (MoveResult, error) {
 	work, cancel := context.WithTimeout(context.WithoutCancel(ctx), MoveLimit)
 	defer cancel()
 
-	if err = mover.Verify(work, target, e.bundle); err != nil {
-		return MoveResult{}, uierr.New(textutil.Sentence("The copy in "+folder+
-			" didn't pass its signature check, so it wasn't opened: "+e.plain(uierr.Message(err)))+
-			" Move it to the Trash, then move this one there.", fmt.Errorf("%w: %w", ErrMoveFailed, err))
+	if err = mover.Verify(work, target); err != nil {
+		return MoveResult{}, e.unopened(folder, err)
 	}
 
 	e.logger.InfoContext(ctx, "opening the copy of the app in Applications once this one quits", "target", e.tilde(target))
 	mover.OpenAfterQuit(target)
 
 	return MoveResult{Outcome: MoveOpening, Target: e.tilde(target)}, nil
+}
+
+// unchecked words why a move's copy in folder didn't pass its check, which failed with err,
+// whose words are said: the copy's own fault, or this app's signature that couldn't be read.
+func unchecked(folder, said string, err error) string {
+	if errors.Is(err, ErrOwnSignature) {
+		return brand.Name + " couldn't read its own signature, so it couldn't check the copy in " + folder +
+			", and nothing was moved: " + said
+	}
+
+	return "The copy in " + folder + " didn't pass its signature check, so nothing was moved: " + said
+}
+
+// unopened words why Open it didn't open the copy in folder, whose check failed with err: a
+// copy that didn't pass it is the copy's fault, and the user is told to move it to the Trash
+// and move this one instead; but when this app's own signature couldn't be read, nothing is
+// known of the copy, which the user may open from there themselves.
+func (e *Engine) unopened(folder string, err error) error {
+	cause := fmt.Errorf("%w: %w", ErrMoveFailed, err)
+
+	if errors.Is(err, ErrOwnSignature) {
+		return uierr.New(textutil.Sentence(brand.Name+" couldn't read its own signature, so it couldn't check the copy in "+
+			folder+", and didn't open it: "+e.plain(uierr.Message(err)))+" Open that copy from "+folder+" yourself.", cause)
+	}
+
+	return uierr.New(textutil.Sentence("The copy in "+folder+" didn't pass its signature check, so it wasn't opened: "+
+		e.plain(uierr.Message(err)))+" Move it to the Trash, then move this one there.", cause)
 }
 
 // showApp shows the running bundle in Finder, so the user can delete it once the copy in
@@ -411,11 +441,24 @@ func (e *Engine) find(ctx context.Context, target string) (found, error) {
 		return foundOtherApp, nil
 	}
 
-	if running, statErr := os.Stat(e.bundle); statErr == nil && os.SameFile(running, info) {
+	if e.isSelf(info) {
 		return 0, uierr.New(brand.Name+" already runs from Applications.", ErrCantMove)
 	}
 
 	return foundOurs, nil
+}
+
+// isSelf reports whether info, a folder's, is the bundle that runs: the folder it ran from
+// as it started (self), which a bundle the user drags elsewhere on its disk while it runs
+// still is, or what its path holds now.
+func (e *Engine) isSelf(info fs.FileInfo) bool {
+	if e.self != nil && os.SameFile(e.self, info) {
+		return true
+	}
+
+	running, err := os.Stat(e.bundle)
+
+	return err == nil && os.SameFile(running, info)
 }
 
 // taken refuses a move whose target holds something else, saying what.
