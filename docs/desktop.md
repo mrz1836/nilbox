@@ -241,7 +241,8 @@ notifications](#menu-bar-and-notifications)).
   check, and a failure on its own never show a banner or a notification: Settings → About says
   how they went, and the next look tries again.
 - **Restarting.** Every restart starts in the window: the banner's **Restart to update**,
-  About's, and the menu bar's **Restart to Update**, which brings the window forward first. With
+  About's, and the menu bar's **Restart to Update**, **Update to 0.3.0…**, and **Try Updating
+  to 0.3.0 Again**, which bring the window forward first. With
   Just tell me it downloads first, with the download's progress in the banner (**Later** hides
   it while the download goes on). It asks first, in one question, when restarting would lose
   something: a run going in the app, named, or text you haven't sent in a review or issue
@@ -261,20 +262,22 @@ notifications](#menu-bar-and-notifications)).
   the update ready and says why in the banner (**Try again** · **Download manually**, which
   opens the version's release page, with its disk image).
 - **A quit held back.** If something holds back the quit a restart asks for, the update is
-  already staged and its helper is waiting, so the app sees itself out: the menu bar says
-  **Finishing the update…** (with Check for Updates… and the restart off), the app asks to
-  quit again every five seconds, four times, and if it still runs 25 seconds after the
-  restart started the update's helper (timed from then, not from when the held quit came
-  back), it closes its data in order (waiting at most three seconds for that) and exits,
-  before the helper's 30 seconds run out. The staging folder and the note the new version
-  reads are kept, so the update installs as usual. Each step is in the app's log.
+  already staged and its helper is waiting, so the app sees itself out: the banner says
+  *"Finishing the update… Nilbox will reopen in a moment."*, with nothing to click, the menu
+  bar **Finishing the update…** (with Check for Updates… and the restart off), and a restart
+  asked for meanwhile waits quietly. The app asks to quit again every five seconds, four
+  times, and if it still runs 25 seconds after the restart started the update's helper
+  (timed from then, not from when the held quit came back), it closes its data in order
+  (waiting at most three seconds for that) and exits, before the helper's 30 seconds run
+  out. The staging folder and the note the new version reads are kept, so the update
+  installs as usual. Each step is in the app's log.
 - **After the restart.** The new version's first start reads how it went, from a note the old
   one left: updated, which a toast says once (*"Updated to 0.3.0"* · **What's new**), or, when
   the old version opens again instead, why it didn't install, in words, in the banner (**Try
   again** · **Download manually** · **Details**) and in Settings → About, with **Show log in
   Finder** for the helper's log, kept as `<data>/logs/update-<version>.log`. The version that
-  failed stays downloaded, and is offered only as **Try again**, never as a plain **Restart to
-  update**, until a newer one replaces it. Either way, it
+  failed is offered only as **Try again** (or not at all, below), never as a plain **Restart
+  to update**, until a newer one replaces it. Either way, it
   removes what the update left behind (the staging folder and `.bak` beside the app, and the
   helper's files in the temporary folder), each by its exact name. While the update's helper
   may still be at work (its log not ended, under three minutes since the restart), the start
@@ -286,25 +289,24 @@ notifications](#menu-bar-and-notifications)).
   you hover, and what comes next depends on why:
   - When the moment was at fault (the app didn't quit in time, macOS didn't let it be
     replaced or couldn't open the new version, it couldn't be copied aside, or the log
-    doesn't say), the update stays downloaded, and the menu offers **Try Updating to 0.3.0
-    Again**.
+    doesn't say), the update stays downloaded: the banner and Settings → About offer **Try
+    again** and **Download manually**, and the menu **Try Updating to 0.3.0 Again**, which
+    restarts in the window as the banner does.
   - When the update itself was at fault (the new version failed its signature check, or
     couldn't be installed), it would fail the same way every time. The app
     throws the download away and remembers the release, by its version and SHA-512, as one
     that doesn't install (the last five, in `update.uninstallable`): no check downloads or
-    offers it again, and the menu offers **Download 0.3.0 Manually…**, which opens its
-    release page. A newer version, or the same version built again (another SHA-512), is
-    offered as usual.
-  - When no version is found yet (before the first check, or when the download kept
-    can't be read), the line still shows. **Check for Updates…** is the way to try again,
-    and an update that failed for good still gets **Download 0.3.0 Manually…**, which opens
-    0.3.0's own release page, never the running version's.
+    offers it again. The banner and Settings → About offer **Download manually** alone,
+    never **Try again**, and the menu **Download 0.3.0 Manually…**; each opens its release
+    page. A newer version, or the same version built again (another SHA-512), is offered as
+    usual.
 
 **Settings → About** shows the build's updates under its version: where the update stands (*"Up
 to date · checked 12m ago"*, *"Downloading 0.3.0… 42%"*, *"0.3.0 is ready"*, *"Last check
 failed: …"*, or why a build doesn't update), **Check for Updates** with its result in place,
 and what the banner offers, by the same rule: **Restart to update** or **Update** once a newer
-version is found, and **Try again** and **Download manually** after one that didn't install.
+version is found, **Try again** and **Download manually** after one that didn't install, and
+**Download manually** alone after one that would fail the same way again.
 
 **What a check sends.** Two GETs at most, both to GitHub's release download hosts: the latest
 release's manifest, `https://github.com/mrz1836/nilbox/releases/latest/download/manifest-darwin.json`,

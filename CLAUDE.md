@@ -176,8 +176,9 @@ app:lint` reads.
   only a question that named the runs confirms with `Restart(true)`, any other with
   `Restart(false)` again). What the banner and Settings → About offer is one pure rule
   (`offerOf` in `frontend/src/lib/update.ts`). The window tells a refusal it answers on its
-  own (the last update still finishing, a restart finishing after a held quit) by the
-  `update.RefusalError` code in its detail, never by its words. The startup dialog for data
+  own (the last update still finishing, a restart finishing after a held quit, which it
+  waits out quietly, and an update that failed to install for good, which it offers only the
+  release page for) by the `update.RefusalError` code in its detail, never by its words. The startup dialog for data
   a newer build saved offers the newest backup this build opens (`desktop.RestoreOffer`,
   `FindRestore`; Escape quits, and no key puts the backup back, since the runtime's macOS
   alert gives a button Return or Escape, never both), puts it back on a click
