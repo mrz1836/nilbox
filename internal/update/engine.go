@@ -14,6 +14,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/event"
 	"github.com/mrz1836/nilbox/internal/logging"
 	"github.com/mrz1836/nilbox/internal/paths"
+	"github.com/mrz1836/nilbox/internal/procs"
 	"github.com/mrz1836/nilbox/internal/updateprefs"
 )
 
@@ -259,6 +260,10 @@ type Engine struct {
 	// moving is held by the one move to Applications running.
 	moving sync.Mutex
 
+	// probe says whether a process runs, so a move tells another copy's move under way from
+	// what a cut-off one left (procs.Probe).
+	probe func(pid int) procs.Liveness
+
 	// op is held by the one operation running.
 	op chan struct{}
 
@@ -345,7 +350,7 @@ func NewEngine(cfg Config) *Engine {
 		rehearsal = cfg.RehearsalFolder
 	}
 
-	e.applications, e.writable = applications, writable
+	e.applications, e.writable, e.probe = applications, writable, procs.Probe
 	e.location = locate(cfg.Bundle, cfg.Home, applications, rehearsal, writable)
 	e.flavor, e.key, e.off = resolve(cfg)
 	e.feed = cfg.Feed

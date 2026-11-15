@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"testing"
 	"time"
 
@@ -271,20 +272,33 @@ func TestMoveToApplicationsIntegration(t *testing.T) {
 		t.Parallel()
 
 		m := newMoveRig(t, t.TempDir())
-		stage := filepath.Join(m.apps, "."+brand.Name+".app.moving-12345")
-		require.NoError(t, os.Mkdir(stage, 0o700))
 
-		_, stderr, err := (execpath.Exec{}).Run(t.Context(), desktop.DittoBin, m.bundle, filepath.Join(stage, brand.Name+".app"))
+		// mark marks a stage as a move of process pid's, as a move does before it copies.
+		mark := func(stage string, pid int) {
+			require.NoError(t, os.Mkdir(stage, 0o700))
+			require.NoError(t, os.WriteFile(filepath.Join(stage, ".moving"),
+				[]byte(brand.BundleID+"\n"+strconv.Itoa(pid)+"\n"), 0o600))
+		}
+
+		// This run's own move, cut off as ditto copied the program: no Info.plist yet.
+		cut := filepath.Join(m.apps, "."+brand.Name+".app.moving-12345")
+		mark(cut, os.Getpid())
+
+		_, stderr, err := (execpath.Exec{}).Run(t.Context(), desktop.DittoBin, filepath.Join(m.bundle, "Contents", "MacOS"),
+			filepath.Join(cut, brand.Name+".app", "Contents", "MacOS"))
 		require.NoError(t, err, string(stderr))
+		require.NoFileExists(t, filepath.Join(cut, brand.Name+".app", "Contents", "Info.plist"))
 
-		old := time.Now().Add(-update.MoveLimit - 2*time.Minute)
-		require.NoError(t, os.Chtimes(stage, old, old))
+		// Another copy of the app's move under way: its process runs.
+		live := filepath.Join(m.apps, "."+brand.Name+".app.moving-67890")
+		mark(live, os.Getppid())
 
 		got, err := m.service.MoveToApplications(t.Context())
 		require.NoError(t, err)
 		assert.Equal(t, update.MoveMoved, got.Outcome)
-		assert.NoDirExists(t, stage)
-		assert.Empty(t, hidden(t, m.apps))
+		assert.NoDirExists(t, cut, "the cut-off move's folder is removed")
+		assert.DirExists(t, live, "a move under way is left")
+		assert.Equal(t, []string{filepath.Base(live)}, hidden(t, m.apps))
 
 		require.NoError(t, m.shell.Stop())
 	})

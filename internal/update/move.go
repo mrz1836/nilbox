@@ -9,11 +9,13 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/mrz1836/nilbox/internal/brand"
 	"github.com/mrz1836/nilbox/internal/paths"
+	"github.com/mrz1836/nilbox/internal/procs"
 	"github.com/mrz1836/nilbox/internal/textutil"
 	"github.com/mrz1836/nilbox/internal/uierr"
 )
@@ -22,9 +24,19 @@ import (
 const MoveLimit = 5 * time.Minute
 
 // leftoverAfter is how old a folder a move made beside its target must be before a later
-// move removes it as a leftover (sweepLeftovers): older than any move still under way, in
-// another copy of the app too, can be.
+// move removes it as a leftover when it can't tell whether the copy of the app that made it
+// still runs (sweepLeftovers): older than a move, whose copy and check MoveLimit bounds, then
+// takes, unless the Mac slept through it, which MoveLimit's timer doesn't count.
 const leftoverAfter = MoveLimit + time.Minute
+
+// stageMarker names the file a move writes into its hidden folder before it copies anything
+// there: the app's bundle ID and the move's process ID, one to a line. It tells a later
+// move the folder is a move's own, and whether the copy of the app that made it still runs,
+// however far the copy had got (ditto writes the bundle's Info.plist almost last).
+const stageMarker = ".moving"
+
+// maxStageMarker bounds the read of a stage's marker, a few dozen bytes.
+const maxStageMarker = 1 << 10
 
 // maxInfoPlist bounds the read of a bundle's Info.plist, which is a few kilobytes.
 const maxInfoPlist = 1 << 20
@@ -453,8 +465,13 @@ func (e *Engine) stage(ctx context.Context, target string) (string, error) {
 		return "", refused(err)
 	}
 
-	if err = os.Mkdir(filepath.Join(stage, filepath.Base(target)), 0o755); err != nil { //nolint:gosec // an app bundle, which the system reads
-		if removeErr := os.Remove(stage); removeErr != nil {
+	marker := []byte(brand.BundleID + "\n" + strconv.Itoa(e.pid) + "\n")
+	if err = os.WriteFile(filepath.Join(stage, stageMarker), marker, 0o600); err == nil {
+		err = os.Mkdir(filepath.Join(stage, filepath.Base(target)), 0o755) //nolint:gosec // an app bundle, which the system reads
+	}
+
+	if err != nil {
+		if removeErr := os.RemoveAll(stage); removeErr != nil {
 			e.logger.WarnContext(ctx, "could not remove the folder a move made", "stage", e.tilde(stage), "error", removeErr)
 		}
 
@@ -465,8 +482,8 @@ func (e *Engine) stage(ctx context.Context, target string) (string, error) {
 }
 
 // place renames the checked copy at staged into target, never over anything that appeared
-// there since the move looked (renameNew), then removes stage, which it leaves empty. A
-// copy that can't be put in place is removed with stage.
+// there since the move looked (renameNew), then removes stage, which it leaves holding its
+// marker alone. A copy that can't be put in place is removed with stage.
 func (e *Engine) place(ctx context.Context, stage, staged, target string) error {
 	if err := renameNew(staged, target); err != nil {
 		if errors.Is(err, fs.ErrExist) {
@@ -477,19 +494,18 @@ func (e *Engine) place(ctx context.Context, stage, staged, target string) error 
 		return e.discard(ctx, stage, "Couldn't put the copy in "+e.tilde(filepath.Dir(target))+", so nothing was moved.", err)
 	}
 
-	if err := os.Remove(stage); err != nil {
+	if err := os.RemoveAll(stage); err != nil {
 		e.logger.WarnContext(ctx, "could not remove the folder a move made", "stage", e.tilde(stage), "error", err)
 	}
 
 	return nil
 }
 
-// sweepLeftovers removes, from folder, what earlier moves left there: a folder named as a
-// move's own (stagePrefix), not a link, older than any move still under way can be
-// (leftoverAfter), holding nothing at all or nothing but the app (its Info.plist naming
-// brand.BundleID), as a move cut off partway leaves (a crash, a power cut, a quit the move
-// couldn't hold). Anything else is left as it is, and a leftover that can't be removed is
-// logged: neither stops the move.
+// sweepLeftovers removes, from folder, what earlier moves left there, as a move cut off
+// partway (a crash, a power cut, a force quit) leaves it: a folder named as a move's own
+// (stagePrefix), not a link, marked by a move (stageOwner) and holding nothing else but the
+// copy, however far it had got, whose maker no longer runs (leftover). Anything else is left
+// as it is, and a leftover that can't be removed is logged: neither stops the move.
 func (e *Engine) sweepLeftovers(ctx context.Context, folder string) {
 	listed, err := os.ReadDir(folder)
 	if err != nil {
@@ -521,10 +537,13 @@ func (e *Engine) sweepLeftovers(ctx context.Context, folder string) {
 }
 
 // leftover reports whether stage, a folder named as a move's own, is one an earlier move
-// left: old enough at now, and holding nothing, or nothing but a copy of the app.
+// left at now: marked by a move of this run, which no move runs in now (moves take turns),
+// or of a process that is gone; or, when whether its maker runs can't be told, or nothing
+// marks it (cut off before it was marked), older than leftoverAfter. A folder whose maker
+// still runs is a move another copy of the app is making, and is left.
 func (e *Engine) leftover(ctx context.Context, stage string, now time.Time) bool {
 	info, err := os.Lstat(stage)
-	if err != nil || !info.IsDir() || now.Sub(info.ModTime()) < leftoverAfter {
+	if err != nil || !info.IsDir() {
 		return false
 	}
 
@@ -533,26 +552,69 @@ func (e *Engine) leftover(ctx context.Context, stage string, now time.Time) bool
 		return false
 	}
 
-	if len(inside) == 0 || len(inside) == 1 && isOurCopy(stage, inside[0]) {
-		return true
+	stale := now.Sub(info.ModTime()) >= leftoverAfter
+
+	if len(inside) == 0 {
+		return stale
 	}
 
-	e.logger.InfoContext(ctx, "a folder named as a move's leftover holds something else; leaving it",
-		"stage", e.tilde(stage))
+	owner, ok := stageOwner(stage, inside)
+	if !ok {
+		e.logger.InfoContext(ctx, "a folder named as a move's leftover holds something else; leaving it",
+			"stage", e.tilde(stage))
 
-	return false
-}
-
-// isOurCopy reports whether item, in folder, is a copy of the app a move made: a folder
-// named as the app is, whose Info.plist names brand.BundleID.
-func isOurCopy(folder string, item fs.DirEntry) bool {
-	if item.Name() != brand.Name+".app" || !item.IsDir() {
 		return false
 	}
 
-	id, err := bundleID(filepath.Join(folder, item.Name()))
+	if owner == e.pid {
+		return true
+	}
 
-	return err == nil && id == brand.BundleID
+	switch e.probe(owner) {
+	case procs.Gone:
+		return true
+	case procs.Running:
+		return false
+	case procs.Unknown:
+		return stale
+	}
+
+	return stale
+}
+
+// stageOwner returns the process a move's folder names as its maker: the folder holds its
+// marker, a regular file, never a link, naming brand.BundleID and a process ID, and nothing
+// else but the copy, a folder (never a link) named as the app is, however far it had got.
+func stageOwner(stage string, inside []fs.DirEntry) (int, bool) {
+	marked := false
+
+	for _, item := range inside {
+		switch {
+		case item.Name() == stageMarker && item.Type().IsRegular():
+			marked = true
+		case item.Name() == brand.Name+".app" && item.IsDir():
+		default:
+			return 0, false
+		}
+	}
+
+	if !marked {
+		return 0, false
+	}
+
+	raw, err := paths.ReadHead(filepath.Join(stage, stageMarker), maxStageMarker)
+	if err != nil {
+		return 0, false
+	}
+
+	id, pid, ok := strings.Cut(strings.TrimSpace(string(raw)), "\n")
+	if !ok || id != brand.BundleID {
+		return 0, false
+	}
+
+	owner, err := strconv.Atoi(pid)
+
+	return owner, err == nil
 }
 
 // discard removes stage, the hidden folder a move made, with the copy in it, after a copy

@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -18,6 +19,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/mrz1836/nilbox/internal/brand"
+	"github.com/mrz1836/nilbox/internal/procs"
 	"github.com/mrz1836/nilbox/internal/testutil"
 	"github.com/mrz1836/nilbox/internal/uierr"
 	"github.com/mrz1836/nilbox/internal/update"
@@ -1017,58 +1019,98 @@ func TestAMoveHoldsTheQuitFromItsStartToItsEnd(t *testing.T) {
 	assert.Zero(t, holds)
 }
 
-// A move cut off partway (a crash, a power cut) leaves its hidden folder beside the target;
-// a later move removes it, but only a folder named as a move's own, old enough that no move
-// still runs in it, holding nothing, or nothing but a copy of the app. Anything else is
-// left.
+// A move cut off partway (a crash, a power cut, a force quit) leaves its hidden folder
+// beside the target, however far the copy had got; a later move removes it once the copy
+// of the app that made it no longer runs, as its marker says, even when the copy never got
+// its Info.plist, which ditto writes almost last. Anything else is left: a folder whose
+// maker still runs (another copy's move under way), one not marked, holding anything else,
+// or reached through a link.
 func TestALaterMoveRemovesWhatACutOffMoveLeft(t *testing.T) {
 	t.Parallel()
 
+	const (
+		moving  = 7001 // a process that runs: another copy of the app, moving
+		gone    = 7002 // one that is gone
+		unknown = 7003 // one whose state can't be told
+	)
+
 	r, m := newMoveRig(t)
+	r.engine.StubProbe(func(pid int) procs.Liveness {
+		switch pid {
+		case moving:
+			return procs.Running
+		case gone:
+			return procs.Gone
+		default:
+			return procs.Unknown
+		}
+	})
+
 	apps := r.cfg.Applications
 	old := time.Now().Add(-update.MoveLimit - 2*time.Minute)
 
 	// leave makes a leftover named name, with what holds puts in it, last changed at.
-	leave := func(name string, at time.Time, holds func(stage string)) string {
+	leave := func(name string, at time.Time, holds ...func(stage string)) string {
 		stage := filepath.Join(apps, name)
 		require.NoError(t, os.Mkdir(stage, 0o700))
 
-		if holds != nil {
-			holds(stage)
+		for _, put := range holds {
+			put(stage)
 		}
 
 		require.NoError(t, os.Chtimes(stage, at, at))
 
 		return stage
 	}
-	ours := func(stage string) { writeBundle(t, filepath.Join(stage, app), brand.BundleID, running) }
-
-	removed := []string{
-		leave("."+app+".moving-1", old, ours),
-		leave("."+app+".moving-2", old, nil),
+	marked := func(id string, pid int) func(string) {
+		return func(stage string) {
+			require.NoError(t, os.WriteFile(filepath.Join(stage, update.StageMarker),
+				[]byte(id+"\n"+strconv.Itoa(pid)+"\n"), 0o600))
+		}
 	}
-	kept := []string{
-		leave("."+app+".moving-3", time.Now(), ours),
-		leave("."+app+".moving-4", old, func(stage string) {
-			writeBundle(t, filepath.Join(stage, app), "com.example.other", "1.0.0")
-		}),
-		leave("."+app+".moving-5", old, func(stage string) {
-			ours(stage)
-			require.NoError(t, os.WriteFile(filepath.Join(stage, "notes.txt"), []byte("mine"), 0o600))
-		}),
-		leave("."+app+".moving-6", old, func(stage string) {
-			require.NoError(t, os.MkdirAll(filepath.Join(stage, app, "Contents"), 0o700))
-		}),
-		leave("."+app+".other", old, ours),
+	whole := func(stage string) { writeBundle(t, filepath.Join(stage, app), brand.BundleID, running) }
+	// cutOff is a copy ditto was cut off in: its program and resources, no Info.plist yet.
+	cutOff := func(stage string) {
+		require.NoError(t, os.MkdirAll(filepath.Join(stage, app, "Contents", "MacOS"), 0o700))
+		require.NoError(t, os.WriteFile(filepath.Join(stage, app, "Contents", "MacOS", brand.Slug), []byte("part"), 0o600))
+	}
+
+	removed := map[string]string{
+		"this run's own":                    leave("."+app+".moving-1", time.Now(), marked(brand.BundleID, 4242), whole),
+		"cut off before its Info.plist":     leave("."+app+".moving-2", time.Now(), marked(brand.BundleID, gone), cutOff),
+		"marked, before the copy began":     leave("."+app+".moving-3", time.Now(), marked(brand.BundleID, gone)),
+		"maker unknown, and old":            leave("."+app+".moving-4", old, marked(brand.BundleID, unknown), cutOff),
+		"cut off before it was marked, old": leave("."+app+".moving-5", old),
+	}
+	kept := map[string]string{
+		"its maker still moving":              leave("."+app+".moving-6", old, marked(brand.BundleID, moving), cutOff),
+		"maker unknown, and young":            leave("."+app+".moving-7", time.Now(), marked(brand.BundleID, unknown), whole),
+		"cut off before it was marked, young": leave("."+app+".moving-8", time.Now()),
+		"not marked":                          leave("."+app+".moving-9", old, whole),
+		"marked by another app":               leave("."+app+".moving-10", old, marked("com.example.other", gone), whole),
+		"holding something else too": leave("."+app+".moving-11", old, marked(brand.BundleID, gone), whole,
+			func(stage string) {
+				require.NoError(t, os.WriteFile(filepath.Join(stage, "notes.txt"), []byte("mine"), 0o600))
+			}),
+		"named otherwise": leave("."+app+".other", old, marked(brand.BundleID, gone), whole),
 	}
 
 	elsewhere := filepath.Join(filepath.Dir(apps), "Elsewhere")
 	writeBundle(t, filepath.Join(elsewhere, app), brand.BundleID, running)
+	require.NoError(t, os.WriteFile(filepath.Join(elsewhere, update.StageMarker),
+		[]byte(brand.BundleID+"\n"+strconv.Itoa(gone)+"\n"), 0o600))
 
-	link := filepath.Join(apps, "."+app+".moving-7")
+	kept["a marker that is a link"] = leave("."+app+".moving-12", old, whole, func(stage string) {
+		require.NoError(t, os.Symlink(filepath.Join(elsewhere, update.StageMarker), filepath.Join(stage, update.StageMarker)))
+	})
+	kept["a copy that is a link"] = leave("."+app+".moving-13", old, marked(brand.BundleID, gone), func(stage string) {
+		require.NoError(t, os.Symlink(filepath.Join(elsewhere, app), filepath.Join(stage, app)))
+	})
+
+	link := filepath.Join(apps, "."+app+".moving-14")
 	require.NoError(t, os.Symlink(elsewhere, link))
 
-	file := filepath.Join(apps, "."+app+".moving-8")
+	file := filepath.Join(apps, "."+app+".moving-15")
 	require.NoError(t, os.WriteFile(file, []byte("a file"), 0o600))
 
 	got, err := r.service.MoveToApplications(t.Context())
@@ -1076,19 +1118,43 @@ func TestALaterMoveRemovesWhatACutOffMoveLeft(t *testing.T) {
 	assert.Equal(t, update.MoveMoved, got.Outcome)
 	assert.Len(t, m.all(), 3)
 
-	for _, stage := range removed {
-		assert.NoDirExists(t, stage)
+	for why, stage := range removed {
+		assert.NoDirExists(t, stage, why)
 	}
 
-	for _, stage := range kept {
-		assert.DirExists(t, stage)
+	for why, stage := range kept {
+		assert.DirExists(t, stage, why)
 	}
 
 	assert.FileExists(t, file)
 	assert.FileExists(t, filepath.Join(elsewhere, app, "Contents", "Info.plist"), "a link is never followed")
+	assert.FileExists(t, filepath.Join(elsewhere, update.StageMarker))
 
 	_, err = os.Lstat(link)
 	require.NoError(t, err, "nor removed")
+}
+
+// A move marks its hidden folder before it copies anything there, with the app's bundle ID
+// and its process, and leaves no marker behind.
+func TestAMoveMarksItsFolderBeforeItCopies(t *testing.T) {
+	t.Parallel()
+
+	r, m := newMoveRig(t)
+
+	var marker []byte
+
+	m.onCopy = func(to string) {
+		var err error
+
+		marker, err = os.ReadFile(filepath.Join(filepath.Dir(to), update.StageMarker))
+		require.NoError(t, err)
+	}
+
+	_, err := r.service.MoveToApplications(t.Context())
+	require.NoError(t, err)
+	assert.Equal(t, brand.BundleID+"\n4242\n", string(marker))
+	assert.Empty(t, stages(t, r.cfg.Applications), "the folder goes, marker and all")
+	assert.NoFileExists(t, filepath.Join(r.cfg.Applications, app, update.StageMarker), "and the copy holds none")
 }
 
 func TestOpenItRefusesACopyThatDoesntCheckOut(t *testing.T) {
