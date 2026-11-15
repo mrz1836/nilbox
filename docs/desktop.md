@@ -239,7 +239,9 @@ notifications](#menu-bar-and-notifications)).
   history (a click on either shows the banner again, or Settings → About when the banner has
   nothing to show); and in the menu bar as **Restart to Update (0.3.0)**. A download of its own, a
   check, and a failure on its own never show a banner or a notification: Settings → About says
-  how they went, and the next look tries again.
+  how they went, and the next look tries again. With **Download it and tell me**, a version
+  whose download failed stays out of the banner too, while About and the menu bar offer
+  **Update** for it.
 - **Restarting.** Every restart starts in the window: the banner's **Restart to update**,
   About's, and the menu bar's **Restart to Update**, **Update to 0.3.0…**, and **Try Updating
   to 0.3.0 Again**, which bring the window forward first. With

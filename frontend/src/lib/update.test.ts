@@ -49,11 +49,20 @@ describe('bannerOf', () => {
     })
   })
 
-  it('stays quiet while Download it and tell me fetches what it found, unless the download failed', () => {
+  it('stays quiet while Download it and tell me fetches what it found, a download that failed included', () => {
     expect(bannerOf(updateReady({ state: 'available' }), idle, '')).toEqual({ kind: 'none' })
     expect(bannerOf(updateReady({ state: 'downloading', progress: 40 }), idle, '')).toEqual({ kind: 'none' })
+    // A download of its own that failed is About's to say: the next look tries again.
     expect(
       bannerOf(updateReady({ state: 'available', lastError: 'Couldn’t download 0.3.0: it stalled.' }), idle, ''),
+    ).toEqual({ kind: 'none' })
+    // Just tell me tells a version found, whatever a download said.
+    expect(
+      bannerOf(
+        updateReady({ state: 'available', mode: 'notify', lastError: 'Couldn’t download 0.3.0: it stalled.' }),
+        idle,
+        '',
+      ),
     ).toEqual({ kind: 'available', version: '0.3.0' })
   })
 

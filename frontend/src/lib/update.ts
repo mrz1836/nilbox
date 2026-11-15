@@ -155,8 +155,9 @@ function working(status: UpdateStatus | null, step: RestartStep['step']): Banner
 //   - an update ready, or available, shows unless hidden with Later, as the location
 //     notice when the app can't update where it runs, where nothing downloads;
 //   - with Download it and tell me, an update found and not yet downloaded is about to
-//     download quietly, so nothing shows until it is ready, unless its download failed.
-// Background checks and downloads never show: About tells them.
+//     download quietly, so nothing shows until it is ready, even when a download failed:
+//     the next look tries again, and About and the menu bar offer Update meanwhile.
+// Background checks and downloads, and their failures, never show: About tells them.
 export function bannerOf(status: UpdateStatus | null, flow: RestartStep, lastLaunchDismissed: string): Banner {
   if (status?.state === 'finishing') {
     return finishing
@@ -198,7 +199,7 @@ export function bannerOf(status: UpdateStatus | null, flow: RestartStep, lastLau
   const ready = status.state === 'ready'
   // Where the app can't replace itself, nothing downloads on its own, so a version found
   // stays available, and is told as soon as it is found.
-  const quiet = status.mode === 'download' && status.location.ok && status.lastError === ''
+  const quiet = status.mode === 'download' && status.location.ok
   const available = status.state === 'available' && !quiet
 
   if (status.latest === '' || status.bannerHidden || (!ready && !available)) {
