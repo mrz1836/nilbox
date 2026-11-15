@@ -85,7 +85,10 @@ func TestPageLinkStaysOnTheProvidersHost(t *testing.T) {
 
 	for raw, want := range map[string]string{
 		"https://status.openai.com//incidents/x": "https://status.openai.com/incidents/x",
-		"https://STATUS.openai.com/incidents/x":  "https://STATUS.openai.com/incidents/x",
+		"https://STATUS.openai.com/incidents/x":  "https://status.openai.com/incidents/x",
+		"https://stAtus.openAi.Com#0000000":      "https://status.openai.com/#0000000",
+		"https://status.openai.com?x=1":          "https://status.openai.com/?x=1",
+		"https://status.openai.com":              "https://status.openai.com/",
 		"https://status.openai.com.example.com/": "https://status.openai.com/",
 		"https://user@status.openai.com/x":       "https://status.openai.com/",
 		"javascript:alert(1)":                    "https://status.openai.com/",
