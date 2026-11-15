@@ -794,57 +794,81 @@ app:lint` reads.
   The `Engine` (never bound; `Service` is the window's face, `Worker` its timed checks) checks,
   downloads, and installs the app's updates. What a build does is its `Flavor`'s, which core
   works out from `core.Options` (`updateSource`): a source build is off ("Updates are off in
-  builds made from source."); a release reads GitHub's latest release through core's
-  `githubFeed` over `(*github.Client).DownloadAsset` (the manifest from the latest release's
-  download link, at most 16 KiB, a 404, `github.ErrDownloadMissing`, reading as no release;
-  the zip from its tag's, `ZipURL`, at most 200 MiB) and trusts `ReleaseKey` alone, whatever
-  `UpdateFeed` and `UpdateKey` say, and is off while it is empty; a rehearsal reads a local
-  folder (`FolderFeed`) and trusts its own raw base64 key (never a PEM block, never a point of
-  small order). A check takes a manifest only once `Verify` passes, its platform is the
-  build's, its version a release's (no prerelease) and newer than the running one
-  (`internal/semver`); no release, or none newer, is up to date, and an update waiting that the
-  releases no longer offer is dropped. With downloads on, the zip goes into
+  builds made from source."), its `Status` still telling the mode the user chose; a release
+  reads GitHub's latest release through core's `githubFeed` over
+  `(*github.Client).DownloadAsset` (the manifest from the latest release's download link, at
+  most 16 KiB, a 404, `github.ErrDownloadMissing`, reading as no release; the zip from its
+  tag's, `ZipURL`, at most 200 MiB) and trusts `ReleaseKey` alone, whatever `UpdateFeed` and
+  `UpdateKey` say, and is off while it is empty; a rehearsal reads a local folder
+  (`FolderFeed`, its failures worded with no path) and trusts its own raw base64 key (never a
+  PEM block, never a point of small order). The running version must pass `ValidVersion`, or
+  updates are off. A check reads the manifest within `ManifestLimit` (a minute) and takes it
+  only once `Verify` passes, its platform is the build's, its version a release's (no
+  prerelease) and newer than the running one (`internal/semver`); no release, or none newer,
+  is up to date, and an update waiting that the releases no longer offer is dropped, so
+  deleting a release's manifest withdraws it from every install (the lever for pulling a bad
+  release). Where the app can update itself is `Location` (`OK` only in `/Applications` or
+  `~/Applications`, in a folder it can write); elsewhere checks still run and tell, nothing
+  downloads on its own, and `Download` and `Restart` refuse with `ErrLocation` ("Move
+  Nilbox to Applications to update it."). With downloads on, the zip goes into
   `<data>/updates/<version>/` (`Cache`, `appdata.Paths.Updates`) through a temporary file, hashed
   as it arrives, stopped at the manifest's size, within `DownloadLimit` (10 minutes), its
   progress told as `event.UpdatesUpdated` a few times a second (`internal/progress`); only a
   zip matching its manifest is kept, with its manifest beside it, and every start checks each
-  kept update again, so one waiting is ready at once. One operation (a check, a download, a
-  restart) runs at a time. A failure changes no state: it is the status's `LastError`, and
-  only a check that reached the releases is the last check. The `Worker` (deferred work)
-  settles the start first: it reads the outcome of the last restart from
-  `update.pendingInstall` (`JustUpdated` when the running build is the version it installed,
-  or when one newer than `update.lastRunRelease` was installed by hand; else `InstallFailed`,
-  with the runtime's helper log, `<TMPDIR>/wails-update-<pid>.log`, copied to
-  `logs/update-<version>.log` and worded from the messages it ends on, which tell the
-  helper's exit code, never repeating a path), then cleans up by exact name only (beside the
-  bundle, `<bundle>.bak` and the `wails-update-*` folders holding this app's update or
-  nothing; in the temporary folder, the helper's `.log` and `.ready` files, the last update's
-  at once and any other's once an hour old), then loads the cache. It checks a minute later
-  (`FirstCheckAfter`), then, through `periodic.RunEvery` on a 15-minute tick, whenever six
-  hours passed on the wall clock (`CheckEvery`), since timers stand still while a Mac sleeps;
-  a Wake (the settings' Go-only `event.UpdatesChanged`, or a manual check that found a version
-  to download) has it look at once. A timed check tells each version once (`update.notified`,
-  through its `Notifier`: core's `updateNotices`, an `update_ready` notification about no
-  item, which opens nothing, so a click brings the window forward); Don't check makes none;
+  kept update again, so one waiting is ready at once. A background download that failed is
+  remembered by its version and SHA-512 and tried again only at the next due check, never on
+  the ticks between (a click on Update always tries). One operation (a check, a download, a
+  restart) runs at a time. A failure changes no state: it is the status's `LastError`, worded
+  with no raw error, path, or URL in it (`reachWords`, `downloadWords`, and the restart's own
+  sentences), and a check that reached the releases is the last check, a manifest it refused
+  included. The `Worker` (deferred work) settles the start first: it reads the outcome of the
+  last restart from `update.pendingInstall` (`JustUpdated` when the running build is the
+  version it installed, newer than the one it ran from, or, with no record, newer than
+  `update.lastRunRelease`, as after an install by hand; `InstallFailed` when it still runs the
+  version it ran from, with the runtime's helper log, `<TMPDIR>/wails-update-<pid>.log`,
+  copied to `logs/update-<version>.log` and worded from the messages it ends on, which tell
+  the helper's exit code, never repeating a path), then cleans up by exact name only (beside
+  the bundle, `<bundle>.bak` and the `wails-update-*` folders holding this app's update or
+  nothing; in the temporary folder, the last install's helper `.log`, any other process's
+  once `HelperWindow` old and only when its first line names this bundle as the target, and
+  the `.ready` files of those processes alone), then loads the cache. While the last install
+  is under `HelperWindow` (3 minutes) old and its helper's log hasn't ended on a final
+  message, the helper may still be restoring the old app, so the start settles nothing (no
+  outcome, no cleanup, the record kept) and the `Worker` settles again once it may have
+  ended. It checks a minute later (`FirstCheckAfter`), then, through `periodic.RunEvery` on a
+  15-minute tick, whenever six hours passed on the wall clock (`CheckEvery`), since timers
+  stand still while a Mac sleeps; a Wake (the settings' Go-only `event.UpdatesChanged`, or a
+  manual check that found a version to download) has it look at once. A timed check tells
+  each version once (`update.notified`, through its `Notifier`: core's `updateNotices`, an
+  `update_ready` notification about no item, which opens nothing, so a click brings the window
+  forward), once it is ready, or available where it doesn't download; Don't check makes none;
   `CheckNow` works in every mode, downloads nothing in Don't check or Just tell me, and marks
-  what it finds told without a notification. `Restart(confirmed)` refuses while runs go in
-  the app, unless confirmed, with a `RunsGoingError` whose `Detail` (`{"runsGoing": [...]}`,
-  through `desktop.MarshalError`) names them; it backs the database up first
-  (`store.Backup`, through its `DataBackup`) and stops when that fails, records
-  `update.pendingInstall` (`{from, to, at, pid}`), stages the update through the `Installer`
-  the shell attaches (`Attach`), and always emits `event.QuitConfirmed{Restarting: true}`
-  before `Installer.Restart`, inside which the app exits: the shell then lets every quit
-  through, whatever runs go, but quits nothing itself, since a held quit would leave the
-  runtime's helper to reopen this copy beside the new one. A failure before the quit goes back
-  to ready with `LastError`, clears the record, removes the staging folder, and, once the quit
-  was let through, emits the Go-only `event.UpdateRestartFailed`, which has the shell hold a
-  quit while runs go again. `HideBanner` (Later) hides the banner of the version found for a
-  day, `ShowBanner` lifts it, `AckUpdated` forgets the toast, and `ShowInstallLog` shows the
-  kept log in Finder. It writes only the `update.*` state keys (`update.lastCheck`,
-  `update.notified`, `update.bannerHiddenUntil`, `update.lastRunRelease`,
-  `update.pendingInstall`), never `update.mode`, and imports no service, no store or prefs, and
-  no HTTP: core adapts the feed, the preferences (`Memory`), the backup, the runs (`Runs`, over
-  the run engine), and the notifications (the repoguard boundary test).
+  what it finds told without a notification once it is available or ready, so a download it
+  started that fails still lets a later check tell of it. `Restart(confirmed)` refuses while
+  runs go in the app, unless confirmed, with a `RunsGoingError` whose `Detail` (`{"runsGoing":
+  [...]}`, through `desktop.MarshalError`) names them; it checks the zip against its manifest
+  again (`CheckFile`; a damaged or missing one is dropped, back to available, downloaded
+  again when downloads are on, and the refusal says so), backs the database up first
+  (`store.Backup`, through its `DataBackup`, reusing one it took under `BackupReuse`, 10
+  minutes, ago) and stops when that fails, records `update.pendingInstall` (`{from, to, at,
+  pid}`), stages the update through the `Installer` the shell attaches (`Attach`), checks
+  again, unless confirmed, that no run started meanwhile, and only then emits
+  `event.QuitConfirmed{Restarting: true}` before `Installer.Restart`, inside which the app
+  exits: the shell then lets every quit through, whatever runs go, but quits nothing itself,
+  since a held quit would leave the runtime's helper to reopen this copy beside the new one.
+  A failure before the quit, or a `Restart` that returns nil with the app still running (a
+  quit something held), goes back to ready with `LastError`, clears the record even once the
+  call's context ended, removes the staging folder, and, once the quit was let through, emits
+  the Go-only `event.UpdateRestartFailed`, which has the shell hold a quit while runs go
+  again. `HideBanner` (Later) hides the banner of the version found for a day, `ShowBanner`
+  lifts it, `AckUpdated` forgets the toast, and `ShowInstallLog` shows the kept log in
+  Finder. It writes only the `update.*` state keys (`update.lastCheck`, `update.notified`,
+  `update.bannerHiddenUntil`, `update.lastRunRelease`, `update.pendingInstall`), never
+  `update.mode`, and imports no service, no store or prefs, and no HTTP: core adapts the
+  feed, the preferences (`Memory`), the backup, the runs (`Runs`, over the run engine), and
+  the notifications (the repoguard boundary test). `store.RestoreBackup` copies a backup into
+  a temporary file beside the database before it sets the database aside and renames the
+  copy into place, putting the database back when the rename fails.
 - `internal/updateprefs/` declares the update setting, `update.mode` (`Mode`: `download`, the
   default, "Download it and tell me"; `notify`, "Just tell me"; `off`, "Don't check"), which
   settings alone writes (`SetUpdateMode`, emitting the Go-only `event.UpdatesChanged`) and

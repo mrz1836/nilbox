@@ -202,29 +202,42 @@ that show it are still to come.)
 
 - **Checking.** About a minute after the app opens, then whenever six hours have passed on the
   clock (a Mac that slept checks at its next look, every fifteen minutes), the app reads the
-  latest release's `manifest-darwin.json` from GitHub. That's one GET to GitHub's release
-  download hosts (`github.com`, which redirects to `release-assets.githubusercontent.com`), with
-  no token and nothing of yours, and no API budget. A latest release with no manifest yet reads
-  as up to date.
+  latest release's `manifest-darwin.json` from GitHub, giving up after a minute. That's one GET
+  to GitHub's release download hosts (`github.com`, which redirects to
+  `release-assets.githubusercontent.com`), with no token and nothing of yours, and no API
+  budget. A latest release with no manifest yet reads as up to date. A read that reached GitHub
+  counts as a check even when the manifest is refused; one that never got an answer doesn't.
 - **Trusting it.** The manifest is taken only when its Ed25519 signature verifies with the key
   the app pins (`update.ReleaseKey`), it is for this Mac's build (`darwin-universal`), and its
   version is a release, not a prerelease, newer than the one running. Anything else is an error
   the app keeps, and nothing is downloaded.
 - **Downloading.** With **Download it and tell me**, the zip the manifest names is downloaded
-  from its release's tag (the second GET), at most 200 MB and within ten minutes, into
+  from its release's tag (the second GET), at most 200 MiB and within ten minutes, into
   `<data>/updates/<version>/`, beside its manifest. Only a zip whose size and SHA-512 match the
-  manifest is kept; every start checks a kept update again, so one waiting is ready at once.
-  A newer release replaces the one waiting, and a release whose manifest is pulled withdraws
-  it.
+  manifest is kept; every start checks a kept update again, so one waiting is ready at once. A
+  download that fails is tried again at the next due check, not before (a click on **Update**
+  always tries). A newer release replaces the one waiting.
+- **Pulling a bad release.** Deleting a release's `manifest-darwin.json` (GitHub then answers
+  404) withdraws the update: the next check of every install finds no manifest, reads as up to
+  date, and throws away an update downloaded and waiting, so nobody installs it.
+- **Where the app is.** Only a copy in `/Applications` or `~/Applications`, in a folder it can
+  write, updates itself. Anywhere else (the disk image, Downloads, a translocated copy) it still
+  checks and tells you, but downloads nothing, and **Update** says to move the app to
+  Applications first.
 - **Telling you.** Once per version, as a notification (**New version**, which Settings →
-  Notifications can turn off) that brings the window forward. A failure is never a
-  notification: the app keeps it, and the next look tries again.
+  Notifications can turn off) that brings the window forward, as soon as the update is ready
+  (or, where it isn't downloaded, available). A failure is never a notification: the app keeps
+  it, and the next look tries again.
 - **Restarting.** Restarting asks first while a run goes in the app, naming it. Then the app
-  backs up the database beside it (`<data>/nilbox.db.backup-<stamp>-v<schema>`, the newest three
-  kept, as before a migration), stages the update beside itself, and quits, and the update
-  replaces the app and opens it. A restart that fails before the app quits leaves the update
-  ready and says why; one the next start finds didn't install says so, and keeps its log as
-  `<data>/logs/update-<version>.log`.
+  checks the downloaded zip again (a damaged one is thrown away and downloaded again), backs up
+  the database beside it (`<data>/nilbox.db.backup-<stamp>-v<schema>`, the newest three kept, as
+  before a migration; a backup the update took under ten minutes ago is used again), stages the
+  update beside itself, and quits, and the update replaces the app and opens it. A restart that
+  fails before the app quits, or a quit something held back, leaves the update ready and says
+  why; one the next start finds didn't install says so, and keeps its log as
+  `<data>/logs/update-<version>.log`. While the update's helper may still be at work (its log
+  not ended, under three minutes since the restart), the next start leaves its backup, staging
+  folder, and log alone and looks again later.
 
 **When a new version is out** (Settings → About) is **Download it and tell me** (the default),
 **Just tell me** (no download until you click **Update**, which downloads and restarts), or
