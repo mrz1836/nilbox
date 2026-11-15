@@ -871,7 +871,9 @@ app:lint` reads.
   alone) never touch what was there, then the copy and its check through the `Mover` the
   shell attaches (`AttachMover`), which then quits the normal way and opens the copy once the
   app has quit (`MoveMoved`). One move runs at a time (`ErrMoving`), its copy bounded by
-  `MoveLimit` and never cut short by the window's call; the bundle that runs is never
+  `MoveLimit` and never cut short by the window's call, and none starts while a restart
+  into an update installs or finishes after a held quit, which goes first (`ErrUpdating`,
+  with `ErrFinishing` for the latter, each worded for the window); the bundle that runs is never
   touched, and `ShowAppInFinder` shows it, but for a translocated one. With downloads on, the zip goes into
   `<data>/updates/<version>/` (`Cache`, `appdata.Paths.Updates`) through a temporary file, hashed
   as it arrives, stopped at the manifest's size, within `DownloadLimit` (10 minutes), its

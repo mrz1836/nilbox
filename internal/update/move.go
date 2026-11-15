@@ -37,7 +37,8 @@ var (
 	ErrMoving = errors.New("the app is moving already")
 
 	// ErrUpdating is returned by a move while the app restarts into an update, which goes
-	// first: the restart quits the app, and its helper opens the new version.
+	// first: the restart quits the app, and its helper opens the new version. A move while a
+	// restart whose quit was held finishes is ErrFinishing too.
 	ErrUpdating = errors.New("the app is restarting into an update")
 
 	// ErrTargetTaken is returned by a move when something other than a copy of the app is
@@ -233,12 +234,14 @@ func (e *Engine) showApp(ctx context.Context) error {
 }
 
 // startMove checks a move can begin and takes the one move: a build that updates, running
-// where moving it helps, not restarting into an update, with a Mover attached, and no move
-// under way. It returns what lets go of the move. Where a move helps, nothing installs, so
-// a restart under way is never met; were one, it goes first.
+// where moving it helps, not restarting into an update (installing, or finishing once its
+// quit was held), with a Mover attached, and no move under way. It returns what lets go of
+// the move. Where a move helps, nothing installs, so a restart under way is never met;
+// were one, it goes first: its helper replaces this copy and opens the new version, which
+// a move's quit and reopen would race.
 func (e *Engine) startMove() (Mover, func(), error) {
 	e.mu.Lock()
-	mover, installing := e.mover, e.st.installing
+	mover, installing, finishing := e.mover, e.st.installing, e.st.finishing
 	e.mu.Unlock()
 
 	switch {
@@ -246,6 +249,9 @@ func (e *Engine) startMove() (Mover, func(), error) {
 		return nil, nil, uierr.New(e.off, ErrOff)
 	case !e.location.Movable:
 		return nil, nil, e.notMovable()
+	case finishing:
+		return nil, nil, uierr.New(brand.Name+" is quitting to finish an update. Move it once the update has opened.",
+			fmt.Errorf("%w: %w", ErrUpdating, ErrFinishing))
 	case installing:
 		return nil, nil, uierr.New(brand.Name+" is restarting into an update. Move it once the update has opened.",
 			ErrUpdating)

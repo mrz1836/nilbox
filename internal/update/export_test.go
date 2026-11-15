@@ -47,6 +47,13 @@ func (e *Engine) MarkInstalling() {
 	e.change(func(st *state) { st.installing = true })
 }
 
+// MarkFinishing has the engine say a restart whose quit was held is finishing, as finish
+// does once the Installer returns with the app still running, and nothing else: no
+// restart is marked installing.
+func (e *Engine) MarkFinishing() {
+	e.change(func(st *state) { st.finishing = true })
+}
+
 // BundleID reads the bundle identifier of the app bundle at bundle from its Info.plist.
 func BundleID(bundle string) (string, error) {
 	return bundleID(bundle)

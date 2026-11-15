@@ -532,6 +532,29 @@ func TestAMoveWaitsForARestartIntoAnUpdate(t *testing.T) {
 	assert.NoDirExists(t, filepath.Join(r.cfg.Applications, app))
 }
 
+// A restart whose quit was held finishes first: the app is quitting on its own so the
+// update's helper installs it, and a move waits for it, in words, copying nothing.
+func TestAMoveWaitsForARestartThatIsFinishing(t *testing.T) {
+	t.Parallel()
+
+	r, m := newMoveRig(t)
+	r.engine.MarkFinishing()
+
+	for _, call := range []func(context.Context) (update.MoveResult, error){
+		r.service.MoveToApplications, r.service.OpenInApplications,
+	} {
+		_, err := call(t.Context())
+		require.ErrorIs(t, err, update.ErrUpdating)
+		require.ErrorIs(t, err, update.ErrFinishing)
+		assert.Equal(t, brand.Name+" is quitting to finish an update. Move it once the update has opened.",
+			uierr.Message(err))
+	}
+
+	assert.Empty(t, m.all())
+	assert.NoDirExists(t, filepath.Join(r.cfg.Applications, app))
+	assert.NoDirExists(t, filepath.Join(r.cfg.Home, "Applications"))
+}
+
 func TestAMoveNeedsAMover(t *testing.T) {
 	t.Parallel()
 
