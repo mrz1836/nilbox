@@ -45,11 +45,12 @@ func (s *Shell) askRedraw() {
 	s.signalRedraw()
 }
 
-// askSessionsRedraw asks for the menu bar to be redrawn when the sessions waiting for the
-// user read otherwise than when it was last drawn. A session runs through many changes
-// the menu doesn't show, such as each thing its agent says, and each would otherwise read
-// the inbox and rebuild the menu. It never waits, and folds into a pending ask.
-func (s *Shell) askSessionsRedraw() {
+// askChangedRedraw asks for the menu bar to be redrawn when the sessions waiting for the
+// user, or the update's rows, read otherwise than when it was last drawn. A session runs
+// through many changes the menu doesn't show, such as each thing its agent says, and an
+// update's download tells how far it has got a few times a second; each would otherwise
+// read the inbox and rebuild the menu. It never waits, and folds into a pending ask.
+func (s *Shell) askChangedRedraw() {
 	s.signalRedraw()
 }
 
@@ -63,7 +64,7 @@ func (s *Shell) signalRedraw() {
 
 // redrawTray redraws the menu bar each time it is asked to, one redraw at a time, until
 // ctx ends: in full when any ask since the last redraw was for that, else only when the
-// sessions waiting for the user changed.
+// sessions waiting for the user or the update's rows changed.
 func (s *Shell) redrawTray(ctx context.Context) {
 	for {
 		select {
@@ -73,43 +74,47 @@ func (s *Shell) redrawTray(ctx context.Context) {
 			if s.full.Swap(false) {
 				s.drawTray(ctx)
 			} else {
-				s.redrawSessions(ctx)
+				s.redrawChanged(ctx)
 			}
 		}
 	}
 }
 
-// redrawSessions draws the menu bar as drawTray does, but only when the rows of the
-// sessions waiting for the user differ from the ones it was last drawn with, or it has
-// not been drawn.
-func (s *Shell) redrawSessions(ctx context.Context) {
+// redrawChanged draws the menu bar as drawTray does, but only when the rows of the
+// sessions waiting for the user or of the update differ from the ones it was last drawn
+// with, or it has not been drawn.
+func (s *Shell) redrawChanged(ctx context.Context) {
 	if !s.showsTray() {
 		return
 	}
 
-	waiting := s.waiting(ctx)
-	if s.drawn && slices.Equal(menubar.WaitingEntries(waiting), s.drawnWaiting) {
+	now := s.clock.Now()
+	waiting, updates := s.waiting(ctx), s.updateRows(ctx, now)
+
+	if s.drawn && slices.Equal(menubar.WaitingEntries(waiting), s.drawnWaiting) && sameUpdates(updates, s.drawnUpdates) {
 		return
 	}
 
-	s.drawTrayWith(ctx, waiting)
+	s.drawTrayWith(ctx, now, waiting, updates)
 }
 
-// drawTray draws the icon's count and menu from the stored inbox and the sessions waiting
-// for the user, while the icon shows, and sets the timer for the soonest snooze to end,
-// which changes the count with nothing stored.
+// drawTray draws the icon's count and menu from the stored inbox, the sessions waiting
+// for the user, and the update, while the icon shows, and sets the timer for the soonest
+// snooze to end, which changes the count with nothing stored, or the update's status line
+// to end.
 func (s *Shell) drawTray(ctx context.Context) {
 	if !s.showsTray() {
 		return
 	}
 
-	s.drawTrayWith(ctx, s.waiting(ctx))
+	now := s.clock.Now()
+	s.drawTrayWith(ctx, now, s.waiting(ctx), s.updateRows(ctx, now))
 }
 
-// drawTrayWith draws the icon's count and menu from the stored inbox and waiting, and
-// keeps waiting's rows, for the next sessions change to compare with. A menu it could not
-// draw is drawn in full on that change.
-func (s *Shell) drawTrayWith(ctx context.Context, waiting []sessions.Session) {
+// drawTrayWith draws the icon's count and menu at now from the stored inbox, waiting, and
+// updates, and keeps waiting's rows and updates, for the next change to compare with. A
+// menu it could not draw is drawn in full on that change.
+func (s *Shell) drawTrayWith(ctx context.Context, now time.Time, waiting []sessions.Session, updates menubar.Updates) {
 	snap, err := s.inbox.Snapshot(ctx)
 	if err != nil {
 		if ctx.Err() == nil {
@@ -121,12 +126,12 @@ func (s *Shell) drawTrayWith(ctx context.Context, waiting []sessions.Session) {
 		return
 	}
 
-	now := s.clock.Now()
 	sum := menubar.Summarize(snap, waiting, now)
+	sum.Updates = updates
 
 	s.tray.Draw(sum)
-	s.drawn, s.drawnWaiting = true, menubar.WaitingEntries(waiting)
-	s.wakeAt(sum.NextChange, now)
+	s.drawn, s.drawnWaiting, s.drawnUpdates = true, menubar.WaitingEntries(waiting), updates
+	s.wakeAt(soonest(sum.NextChange, updates.Until), now)
 }
 
 // waiting returns the sessions waiting for the user, or none when they cannot be read,
@@ -156,8 +161,9 @@ func (s *Shell) showsTray() bool {
 	return s.trayOn && !s.stopping.Load()
 }
 
-// wakeAt sets the one snooze timer to redraw the menu bar just after next, replacing any
-// timer set before. A zero next sets none, and so does a hidden icon or a stopping shell.
+// wakeAt sets the one timer to redraw the menu bar just after next (the soonest snooze's
+// end, or the update's status line's), replacing any timer set before. A zero next sets
+// none, and so does a hidden icon or a stopping shell.
 func (s *Shell) wakeAt(next, now time.Time) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
