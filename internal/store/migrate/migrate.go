@@ -458,6 +458,20 @@ func verifyHistory(migrations []Migration, applied map[int]appliedMigration) err
 	return nil
 }
 
+// Backup copies the migrated database db, whose file is dbPath, to a backup beside it named
+// as the backups Apply takes are, <dbPath>.backup-<UTC stamp>-v<schema>, schema being the
+// newest migration applied to it, and prunes the backups to the newest opts.KeepBackups,
+// Apply's and its own together. It returns the backup file path. The copy is taken with
+// VACUUM INTO, so it is a whole database whatever is written meanwhile.
+func Backup(ctx context.Context, db *sql.DB, dbPath string, opts Options) (string, error) {
+	applied, err := readApplied(ctx, db)
+	if err != nil {
+		return "", err
+	}
+
+	return backup(ctx, db, dbPath, newestVersion(applied), opts.withDefaults())
+}
+
 // backup copies the database to <dbPath>.backup-<UTC stamp>-v<from> and prunes old
 // backups. It returns the backup file path.
 func backup(ctx context.Context, db *sql.DB, dbPath string, from int, opts Options) (string, error) {

@@ -26,6 +26,13 @@ func OpenWith(ctx context.Context, path string, src fs.FS, now func() time.Time)
 	return open(ctx, path, options{migrations: src, now: now})
 }
 
+// RestoreBackupWith restores backup at path as RestoreBackup does, checking tries times
+// that no other connection has the database open, and calling wait between the checks.
+func RestoreBackupWith(ctx context.Context, path, backup string, tries int, wait func(context.Context) error,
+) (string, error) {
+	return restoreBackup(ctx, path, backup, options{busyTries: tries, busyWait: wait})
+}
+
 // OpenFreshWith starts over at path as OpenFresh does, naming the database it sets aside
 // by now, checking tries times that no other connection has it open, and calling wait
 // between the checks.

@@ -52,6 +52,7 @@ type Paths struct {
 	Launch         string // generated launch scripts and prompt files
 	Logs           string // log files
 	ResetRequest   string // the request to start over that the next start carries out (see RequestReset)
+	Updates        string // the app's own updates, downloaded and checked, each in a folder named for its version
 }
 
 // NewPaths returns the data locations under root.
@@ -65,13 +66,14 @@ func NewPaths(root string) Paths {
 		Launch:         filepath.Join(root, "launch"),
 		Logs:           filepath.Join(root, "logs"),
 		ResetRequest:   filepath.Join(root, "reset-request.json"),
+		Updates:        filepath.Join(root, "updates"),
 	}
 }
 
 // Ensure creates every data directory that does not exist yet, readable only by the
 // user. Existing directories are left as they are.
 func (p Paths) Ensure() error {
-	for _, dir := range []string{p.Root, p.Launch, p.Logs} {
+	for _, dir := range []string{p.Root, p.Launch, p.Logs, p.Updates} {
 		if err := os.MkdirAll(dir, PrivateDirPerm); err != nil {
 			return fmt.Errorf("create data directory: %w", err)
 		}

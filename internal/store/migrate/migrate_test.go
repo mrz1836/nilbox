@@ -754,3 +754,54 @@ func TestCheckReportsWhatItCannotRead(t *testing.T) {
 	require.NoError(t, db.Close())
 	require.ErrorContains(t, migrate.Check(t.Context(), db, migrate.Options{Source: firstN(1)}), "inspect schema")
 }
+
+func TestBackupNamesAndPrunesAsApplyDoes(t *testing.T) {
+	t.Parallel()
+
+	db, path := openDB(t)
+	now := clock()
+
+	apply(t, db, path, firstN(2), now)
+
+	_, err := db.ExecContext(t.Context(), `INSERT INTO alpha (label) VALUES ('kept')`)
+	require.NoError(t, err)
+
+	written := make([]string, 0, 4)
+
+	for range 4 {
+		backup, backupErr := migrate.Backup(t.Context(), db, path, migrate.Options{Now: now})
+		require.NoError(t, backupErr)
+		assert.Regexp(t, `test\.db\.backup-\d{8}T\d{6}Z-v2$`, backup, "named for the schema the database has")
+
+		written = append(written, backup)
+	}
+
+	assert.Equal(t, written[1:], backups(t, path), "the newest three are kept")
+
+	info, err := os.Stat(written[3])
+	require.NoError(t, err)
+	assert.Equal(t, os.FileMode(0o600), info.Mode().Perm())
+
+	var label string
+	require.NoError(t, openPath(t, written[3]).QueryRowContext(t.Context(), `SELECT label FROM alpha`).Scan(&label))
+	assert.Equal(t, "kept", label, "the backup holds the data")
+
+	// A migration's own backup counts among the newest three.
+	res := apply(t, db, path, firstN(3), now)
+	assert.Equal(t, append(slices.Clone(written[2:]), res.Backup), backups(t, path))
+}
+
+func TestBackupRefusesADatabaseWithNoHistory(t *testing.T) {
+	t.Parallel()
+
+	db, path := openDB(t)
+
+	_, err := migrate.Backup(t.Context(), db, path, migrate.Options{})
+	require.ErrorContains(t, err, "read migration history")
+	assert.Empty(t, backups(t, path))
+
+	apply(t, db, path, firstN(1), clock())
+
+	_, err = migrate.Backup(t.Context(), db, "", migrate.Options{})
+	require.ErrorIs(t, err, migrate.ErrNoBackupPath)
+}

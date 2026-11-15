@@ -40,6 +40,12 @@
 // other connection has it open, waiting a few seconds for a copy of the app that is still
 // quitting, and starts a fresh database in its place, which Opened.Reset says with
 // ResetRequested. PruneResetCopies keeps the newest few of those.
+//
+// Backup takes a backup of the open database whenever asked, as the app does before it
+// installs an update, named and pruned as the migrations' own backups are, and
+// RestoreBackup puts one of those backups back in the database's place, setting the
+// database there aside as one Open could not use, so an older build can go back to the
+// data from before a newer one migrated it.
 package store
 
 import (
