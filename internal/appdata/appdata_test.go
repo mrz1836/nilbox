@@ -159,7 +159,9 @@ func TestEnsureCreatesDirectories(t *testing.T) {
 
 	require.NoError(t, p.Ensure())
 
-	for _, dir := range []string{p.Root, p.Launch, p.Logs} {
+	assert.Equal(t, filepath.Join(p.Root, "updates"), p.Updates)
+
+	for _, dir := range []string{p.Root, p.Launch, p.Logs, p.Updates} {
 		info, err := os.Stat(dir)
 		require.NoError(t, err)
 		assert.True(t, info.IsDir(), dir)

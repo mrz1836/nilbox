@@ -58,6 +58,8 @@ func TestWindowEventsGoOnToThePage(t *testing.T) {
 		event.WorktreesProgress{},
 		event.GHThreadsUpdated{},
 		event.ServiceStatusUpdated{},
+		event.UpdatesUpdated{},
+		event.UpdateRestartRequested{},
 	}, r.page.events(), "the shell's own events stay in Go")
 }
 
@@ -590,6 +592,34 @@ func TestQuitBlockedWhileRunsActive(t *testing.T) {
 		assert.Equal(t, 1, r.app.quitCount(), "Stop and quit quits")
 		assert.True(t, s.ShouldQuit(), "and lets that quit through, though the runs still go")
 		assert.Equal(t, []event.WindowEvent{event.QuitRequested{}}, r.page.events(), "nothing more is asked")
+	})
+}
+
+func TestARestartToUpdateLetsTheQuitThroughWithoutQuitting(t *testing.T) {
+	t.Parallel()
+
+	synctest.Test(t, func(t *testing.T) {
+		r := newRig()
+		guard := &fakeGuard{}
+		guard.active.Store(true)
+
+		s := r.shell(func(c *desktop.Config) { c.QuitGuard = guard })
+
+		s.Emit(event.QuitConfirmed{Restarting: true})
+		synctest.Wait()
+
+		assert.Zero(t, r.app.quitCount(), "the restart's installer quits the app, not the shell")
+		assert.True(t, s.ShouldQuit(), "the restart's quit goes through, though runs go")
+		assert.Zero(t, r.window.shown(), "nothing is asked")
+		assert.Empty(t, r.page.events())
+
+		s.Emit(event.UpdateRestartFailed{})
+		synctest.Wait()
+
+		assert.False(t, s.ShouldQuit(), "once the restart failed, a quit waits for the runs again")
+		synctest.Wait()
+		assert.Equal(t, []event.WindowEvent{event.QuitRequested{}}, r.page.events())
+		assert.Zero(t, r.app.quitCount())
 	})
 }
 

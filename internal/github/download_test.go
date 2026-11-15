@@ -242,10 +242,16 @@ func TestDownloadAssetFailsOnAnErrorStatus(t *testing.T) {
 
 	client, servers := downloadServers(t, []http.HandlerFunc{
 		func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusNotFound) },
-	}, 0)
+		func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusForbidden) },
+	}, 0, 1)
 
 	_, err := client.DownloadAsset(t.Context(), servers[0].URL+"/file", io.Discard, 1<<20)
 	require.ErrorIs(t, err, ErrUnexpectedStatus)
+	require.ErrorIs(t, err, ErrDownloadMissing, "a 404 says the release has no such file")
+
+	_, err = client.DownloadAsset(t.Context(), servers[1].URL+"/file", io.Discard, 1<<20)
+	require.ErrorIs(t, err, ErrUnexpectedStatus)
+	require.NotErrorIs(t, err, ErrDownloadMissing)
 }
 
 func TestDownloadAssetStopsWhenCanceled(t *testing.T) {

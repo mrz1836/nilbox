@@ -96,39 +96,6 @@ func TestParseVersionVariants(t *testing.T) {
 	}
 }
 
-func TestCompareVersions(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		a, b string
-		want int
-	}{
-		{"1.29.5", "1.29.5", 0},
-		{"v1.29.5", "1.29.5", 0},
-		{"1.29.5", "1.30.0", -1},
-		{"1.30.0", "1.29.5", 1},
-		{"1.10.0", "1.9.9", 1},
-		{"2.0.0", "1.99.99", 1},
-		{"1.30.0-rc.1", "1.30.0", -1},
-		{"1.30.0-rc.2", "1.30.0-rc.10", -1},
-		{"1.30.0-alpha", "1.30.0-alpha.1", -1},
-		{"1.30.0-1", "1.30.0-alpha", -1},
-		{"1.30.0+build.5", "1.30.0", 0},
-		{"1.29.6-0.20261105041738-9a61f25f00aa", "1.29.5", 1},
-	}
-
-	for _, tt := range tests {
-		got, ok := compareVersions(tt.a, tt.b)
-		require.True(t, ok, "%s vs %s", tt.a, tt.b)
-		assert.Equal(t, tt.want, got, "%s vs %s", tt.a, tt.b)
-	}
-
-	for _, bad := range []string{"", "dev", "1.2", "1.2.3.4", "01.2.3", "1.2.x", "1.2.3-", "-1.2.3"} {
-		_, ok := compareVersions(bad, "1.0.0")
-		assert.False(t, ok, "%q isn't a version", bad)
-	}
-}
-
 func TestDevelopmentBuilds(t *testing.T) {
 	t.Parallel()
 
@@ -150,6 +117,25 @@ func TestDevelopmentBuilds(t *testing.T) {
 	assert.False(t, Version{Raw: "1.11.0"}.AtLeast("1.12.0"))
 	assert.True(t, Version{Raw: recordedMagex}.OlderThan("1.30.0"))
 	assert.False(t, Version{Raw: "1.30.0"}.OlderThan("1.30.0"))
+}
+
+func TestToolVersionsCompareBySemanticVersioning(t *testing.T) {
+	t.Parallel()
+
+	// A build's metadata never counts in a comparison.
+	assert.True(t, Version{Raw: "1.2.3+build.5"}.AtLeast("1.2.3"))
+	assert.False(t, Version{Raw: "1.2.3+build.5"}.OlderThan("1.2.3"))
+
+	// A prerelease comes before its release, and its identifiers compare numerically.
+	assert.True(t, Version{Raw: "1.2.3-rc.1"}.OlderThan("1.2.3"))
+	assert.True(t, Version{Raw: "1.2.3-rc.10"}.AtLeast("1.2.3-rc.9"))
+
+	// A version semantic versioning refuses is never at least, nor older than, anything:
+	// a numeric identifier with a leading zero, an empty identifier, or a part missing.
+	for _, raw := range []string{"1.2.3-rc.01", "1.2.3+bad..x", "1.2.3-", "1.2", "01.2.3"} {
+		assert.False(t, Version{Raw: raw}.AtLeast("1.0.0"), "%s isn't a version", raw)
+		assert.False(t, Version{Raw: raw}.OlderThan("99.0.0"), "%s isn't a version", raw)
+	}
 }
 
 func TestFeaturesFollowTheVersion(t *testing.T) {

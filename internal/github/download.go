@@ -31,6 +31,10 @@ var (
 
 	// ErrDownloadStalled is returned when a download sends nothing for too long.
 	ErrDownloadStalled = errors.New("the download stalled")
+
+	// ErrDownloadMissing is returned when GitHub has no such release file (HTTP 404), as a
+	// latest release that hasn't attached it yet answers. It is an ErrUnexpectedStatus too.
+	ErrDownloadMissing = errors.New("GitHub has no such release file")
 )
 
 // DefaultDownloadHosts returns the hosts a release download may come from: github.com,
@@ -80,7 +84,12 @@ func (c *Client) DownloadAsset(ctx context.Context, rawURL string, w io.Writer, 
 
 	defer func() { _ = resp.Body.Close() }()
 
-	if resp.StatusCode != http.StatusOK {
+	switch resp.StatusCode {
+	case http.StatusOK:
+	case http.StatusNotFound:
+		return 0, fmt.Errorf("download %s: %w: %w: HTTP %d", u.Path, ErrDownloadMissing, ErrUnexpectedStatus,
+			resp.StatusCode)
+	default:
 		return 0, fmt.Errorf("download %s: %w: HTTP %d", u.Path, ErrUnexpectedStatus, resp.StatusCode)
 	}
 

@@ -89,6 +89,16 @@ export const SessionsUpdated = "sessions:updated";
 export const ToolsUpdated = "tools:updated";
 
 /**
+ * Name of the custom event "updates:restart".
+ */
+export const UpdatesRestart = "updates:restart";
+
+/**
+ * Name of the custom event "updates:updated".
+ */
+export const UpdatesUpdated = "updates:updated";
+
+/**
  * Name of the custom event "worktrees:progress".
  */
 export const WorktreesProgress = "worktrees:progress";

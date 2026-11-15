@@ -266,6 +266,12 @@ type Shell struct {
 	// reset, which lets every later quit through.
 	quitConfirmed atomic.Bool
 
+	// restarting is set while a restart to update lets every quit through, whatever runs
+	// go: its installer quits the app once the update's helper stands by, and a quit held
+	// back would leave the helper to open the app again beside the new one. A restart that
+	// fails clears it.
+	restarting atomic.Bool
+
 	// relaunch is set once the user asked for a reset: the app quits and opens again,
 	// and its next start carries the reset out.
 	relaunch atomic.Bool
@@ -381,7 +387,7 @@ func (s *Shell) Emit(e event.Event) {
 	case event.FirstPaint:
 		s.firstPaint(e.Measurement)
 		s.startDeferred()
-	case event.QuitConfirmed, event.SetupFinished, event.ResetRequested:
+	case event.QuitConfirmed, event.SetupFinished, event.ResetRequested, event.UpdateRestartFailed:
 		s.appEvent(e)
 	case event.WindowEvent:
 		s.frontend.Emit(e)
@@ -469,12 +475,13 @@ func (s *Shell) Quit() {
 }
 
 // ShouldQuit answers the desktop runtime's question whether the app may quit now, which
-// every quit asks: the menu's, the menu bar's, and the system's at a logout. It says yes
-// unless the quit guard reports runs going in the app and the user hasn't chosen to stop
-// them; then it brings the window forward, asks the page to ask the user, and says no. It
-// runs on the main thread, so it answers at once and does the rest in the background.
+// every quit asks: the menu's, the menu bar's, the system's at a logout, and a restart to
+// update's. It says yes unless the quit guard reports runs going in the app and the user
+// hasn't chosen to stop them, nor a restart to update let the quit through; then it brings
+// the window forward, asks the page to ask the user, and says no. It runs on the main
+// thread, so it answers at once and does the rest in the background.
 func (s *Shell) ShouldQuit() bool {
-	if s.guard == nil || s.quitConfirmed.Load() || s.stopping.Load() || !s.guard.Active() {
+	if s.guard == nil || s.quitConfirmed.Load() || s.restarting.Load() || s.stopping.Load() || !s.guard.Active() {
 		return true
 	}
 
@@ -514,11 +521,21 @@ func (s *Shell) Relaunching() bool {
 }
 
 // appEvent acts on what the user decided about the app itself: to stop the runs and quit,
-// that the first-run setup ended, or to start over, which quits so the app opens again.
+// that the first-run setup ended, or to start over, which quits so the app opens again. A
+// restart to update's confirmation only lets the quit through, which its installer makes,
+// until the restart fails.
 func (s *Shell) appEvent(e event.Event) {
-	switch e.(type) {
+	switch e := e.(type) {
 	case event.QuitConfirmed:
+		if e.Restarting {
+			s.restarting.Store(true)
+
+			return
+		}
+
 		s.quitAnyway()
+	case event.UpdateRestartFailed:
+		s.restarting.Store(false)
 	case event.SetupFinished:
 		s.setupFinished()
 	case event.ResetRequested:

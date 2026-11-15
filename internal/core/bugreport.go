@@ -14,6 +14,8 @@ import (
 	"github.com/mrz1836/nilbox/internal/integrations"
 	"github.com/mrz1836/nilbox/internal/profiles"
 	"github.com/mrz1836/nilbox/internal/settings"
+	"github.com/mrz1836/nilbox/internal/update"
+	"github.com/mrz1836/nilbox/internal/updateprefs"
 )
 
 // bugReportState words the app's state for a bug report (appinfo.StateReader): the
@@ -25,10 +27,12 @@ import (
 type bugReportState struct {
 	settings *settings.Service
 	tools    *integrations.Service
+	updates  *update.Engine
 	logger   *slog.Logger
 }
 
-// BugReportState returns the settings and the integrations, as the report words them.
+// BugReportState returns the settings, the app's updates, and the integrations, as the
+// report words them.
 func (b bugReportState) BugReportState(ctx context.Context) []appinfo.StateSection {
 	var (
 		out   []appinfo.StateSection
@@ -45,6 +49,8 @@ func (b bugReportState) BugReportState(ctx context.Context) []appinfo.StateSecti
 		}
 	}
 
+	out = append(out, b.updatesState(ctx)...)
+
 	if b.tools != nil {
 		list, err := b.tools.List(ctx)
 		if err != nil {
@@ -57,6 +63,23 @@ func (b bugReportState) BugReportState(ctx context.Context) []appinfo.StateSecti
 	}
 
 	return out
+}
+
+// updatesState is the app's updates as the report words them, or nothing when they can't
+// be read.
+func (b bugReportState) updatesState(ctx context.Context) []appinfo.StateSection {
+	if b.updates == nil {
+		return nil
+	}
+
+	status, err := b.updates.Status(ctx)
+	if err != nil {
+		b.logger.WarnContext(ctx, "a bug report leaves out the updates", "error", err)
+
+		return nil
+	}
+
+	return []appinfo.StateSection{updatesSection(status)}
 }
 
 // onOff words a switch.
@@ -156,6 +179,53 @@ func settingsSection(s settings.Settings) appinfo.StateSection {
 			s.MergeMethod, len(s.InboxOrder.StatusSorted), len(s.InboxOrder.Kinds), len(s.CollapsedSections)),
 		fmt.Sprintf("Repositories and orgs: %d pinned, %d muted", len(s.RepoRules.Pinned), len(s.RepoRules.Muted)),
 	}}
+}
+
+// updateModeWords words what the app does when a new version is out, as Settings does.
+func updateModeWords(mode updateprefs.Mode) string {
+	switch mode {
+	case updateprefs.ModeNotify:
+		return "just tell me"
+	case updateprefs.ModeOff:
+		return "don't check"
+	case updateprefs.ModeDownload:
+		return "download it and tell me"
+	default:
+		return string(mode)
+	}
+}
+
+// updatesSection words the app's updates for a bug report: the setting, the kind of
+// build, whether it updates, where the update stands, and the outcome of the last restart
+// to update. No path or log is written out.
+func updatesSection(s update.Status) appinfo.StateSection {
+	line := fmt.Sprintf("Updates: %s · %s build", updateModeWords(s.Mode), s.Flavor)
+
+	switch {
+	case !s.Enabled:
+		line += " · off"
+	case s.Latest != "":
+		line += fmt.Sprintf(" · %s, %s", s.State, s.Latest)
+	default:
+		line += " · " + string(s.State)
+	}
+
+	if s.InstallFailed.Version != "" {
+		line += " · last update: " + s.InstallFailed.Version + " didn't install"
+	}
+
+	return appinfo.StateSection{Title: "Updates", Lines: []string{
+		line, fmt.Sprintf("Location: %s · can update there: %s", s.Location.Kind, yesNo(s.Location.OK)),
+	}}
+}
+
+// yesNo words a yes or no.
+func yesNo(yes bool) string {
+	if yes {
+		return "yes"
+	}
+
+	return "no"
 }
 
 // sourceWords names where a copy of a tool came from, or "" for a source it doesn't know.

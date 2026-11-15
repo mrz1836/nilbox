@@ -60,6 +60,10 @@ const (
 	// KindServiceStatus is a part of a service the user watches going down, or coming
 	// back (see the svcstatus package).
 	KindServiceStatus Kind = "service_status"
+
+	// KindUpdateReady is a new version of the app, downloaded and ready to restart into, or
+	// only available with Just tell me (see the update package). It is told once per version.
+	KindUpdateReady Kind = "update_ready"
 )
 
 // ErrUnknownKind is returned for a kind of notification that is not one of Kinds.
@@ -69,7 +73,7 @@ var ErrUnknownKind = errors.New("unknown kind of notification")
 func Kinds() []Kind {
 	return []Kind{
 		KindReviewRequested, KindAssigned, KindWoke, KindSessionNeedsYou, KindSessionFinished, KindReleaseDone,
-		KindReleasePublished, KindReleaseFailed, KindRunFailed, KindServiceStatus,
+		KindReleasePublished, KindReleaseFailed, KindRunFailed, KindServiceStatus, KindUpdateReady,
 	}
 }
 

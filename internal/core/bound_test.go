@@ -42,6 +42,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/statusprefs"
 	"github.com/mrz1836/nilbox/internal/testutil"
 	"github.com/mrz1836/nilbox/internal/threadrules"
+	"github.com/mrz1836/nilbox/internal/updateprefs"
 	"github.com/mrz1836/nilbox/internal/worklog"
 	"github.com/mrz1836/nilbox/internal/worktrees"
 )
@@ -234,6 +235,9 @@ func boundCalls(t *testing.T) map[string]boundCall {
 		},
 		"settings.Service.SetToastSeconds": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
 			return c.Settings.SetToastSeconds(ctx, 20)
+		},
+		"settings.Service.SetUpdateMode": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
+			return c.Settings.SetUpdateMode(ctx, updateprefs.ModeNotify)
 		},
 		"settings.Service.SetWindowSize": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
 			return c.Settings.SetWindowSize(ctx, settings.DefaultWindowSize())

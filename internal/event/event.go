@@ -106,6 +106,18 @@ const (
 
 	// NameResetRequested is ResetRequested's name.
 	NameResetRequested = "app:resetRequested"
+
+	// NameUpdatesChanged is UpdatesChanged's name.
+	NameUpdatesChanged = "settings:updatesChanged"
+
+	// NameUpdatesUpdated is UpdatesUpdated's name.
+	NameUpdatesUpdated = "updates:updated"
+
+	// NameUpdateRestartRequested is UpdateRestartRequested's name.
+	NameUpdateRestartRequested = "updates:restart"
+
+	// NameUpdateRestartFailed is UpdateRestartFailed's name.
+	NameUpdateRestartFailed = "updates:restartFailed"
 )
 
 // Event is something that happened, or was asked for, that another part of the app
@@ -161,6 +173,8 @@ func WindowEvents() []WindowEvent {
 		WorktreesProgress{},
 		GHThreadsUpdated{},
 		ServiceStatusUpdated{},
+		UpdatesUpdated{},
+		UpdateRestartRequested{},
 	}
 }
 
@@ -367,6 +381,45 @@ type StatusRulesChanged struct{}
 // Name returns NameStatusRulesChanged.
 func (StatusRulesChanged) Name() string { return NameStatusRulesChanged }
 
+// UpdatesChanged says the user chose what the app does when a new version is out, and it
+// was stored. It stays in Go: core wakes the update check, which follows the new choice at
+// once (a version found while the app only told is downloaded once the user asks for
+// downloads); the window has the settings from the setter, and hears the update's status
+// changed.
+type UpdatesChanged struct{}
+
+// Name returns NameUpdatesChanged.
+func (UpdatesChanged) Name() string { return NameUpdatesChanged }
+
+// UpdatesUpdated says the app's update changed: a check started or ended, a download got
+// further (a few times a second at most), a version is ready, a restart began or failed,
+// or Later was chosen or lifted. The window reads the update's status again, and the menu
+// bar redraws.
+type UpdatesUpdated struct{}
+
+// Name returns NameUpdatesUpdated.
+func (UpdatesUpdated) Name() string { return NameUpdatesUpdated }
+
+func (UpdatesUpdated) window() {}
+
+// UpdateRestartRequested asks the window to restart to update, as the menu bar's Restart
+// to Update does: every restart starts in the window, which asks first when restarting
+// would lose something.
+type UpdateRestartRequested struct{}
+
+// Name returns NameUpdateRestartRequested.
+func (UpdateRestartRequested) Name() string { return NameUpdateRestartRequested }
+
+func (UpdateRestartRequested) window() {}
+
+// UpdateRestartFailed says a restart to update failed after its QuitConfirmed let the
+// quit through, and the app runs on. It stays in Go: the shell holds a quit while runs go
+// again.
+type UpdateRestartFailed struct{}
+
+// Name returns NameUpdateRestartFailed.
+func (UpdateRestartFailed) Name() string { return NameUpdateRestartFailed }
+
 // ScriptRunsUpdated says a run started, ended, or changed status, or the history changed:
 // the window lists the runs again and pulls what it shows. It never carries output.
 type ScriptRunsUpdated struct{}
@@ -400,7 +453,15 @@ func (QuitRequested) window() {}
 
 // QuitConfirmed says the user chose to stop the runs and quit. The desktop shell hears it,
 // lets the next quit through, and quits; shutdown stops the runs.
-type QuitConfirmed struct{}
+//
+// A restart to update sends it with Restarting set, just before the update's installer
+// quits the app itself: the shell then lets every quit through, whatever runs go, but
+// quits nothing, since a quit of its own could come before the installer's helper stands
+// by. A held quit would leave that helper to open this copy again beside the new one.
+type QuitConfirmed struct {
+	// Restarting marks the restart to update's confirmation, which quits nothing itself.
+	Restarting bool
+}
 
 // Name returns NameQuitConfirmed.
 func (QuitConfirmed) Name() string { return NameQuitConfirmed }

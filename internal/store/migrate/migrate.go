@@ -89,7 +89,7 @@ var (
 	ErrInvalidMigration = errors.New("invalid migration file")
 
 	// ErrNoBackupPath is returned when a backup is required but no database path is known.
-	ErrNoBackupPath = errors.New("a database file path is required to back up before migrating")
+	ErrNoBackupPath = errors.New("a database file path is required to back it up")
 )
 
 // embedded holds the migrations shipped with the binary.
@@ -204,7 +204,7 @@ func Apply(ctx context.Context, db *sql.DB, dbPath string, opts Options) (Result
 	// A brand-new database has no data to protect, so only a migrated one is backed up.
 	if from > 0 {
 		if result.Backup, err = backup(ctx, db, dbPath, from, opts); err != nil {
-			return result, err
+			return result, fmt.Errorf("back up database before migrating: %w", err)
 		}
 	}
 
@@ -458,6 +458,20 @@ func verifyHistory(migrations []Migration, applied map[int]appliedMigration) err
 	return nil
 }
 
+// Backup copies the migrated database db, whose file is dbPath, to a backup beside it named
+// as the backups Apply takes are, <dbPath>.backup-<UTC stamp>-v<schema>, schema being the
+// newest migration applied to it, and prunes the backups to the newest opts.KeepBackups,
+// Apply's and its own together. It returns the backup file path. The copy is taken with
+// VACUUM INTO, so it is a whole database whatever is written meanwhile.
+func Backup(ctx context.Context, db *sql.DB, dbPath string, opts Options) (string, error) {
+	applied, err := readApplied(ctx, db)
+	if err != nil {
+		return "", err
+	}
+
+	return backup(ctx, db, dbPath, newestVersion(applied), opts.withDefaults())
+}
+
 // backup copies the database to <dbPath>.backup-<UTC stamp>-v<from> and prunes old
 // backups. It returns the backup file path.
 func backup(ctx context.Context, db *sql.DB, dbPath string, from int, opts Options) (string, error) {
@@ -471,7 +485,7 @@ func backup(ctx context.Context, db *sql.DB, dbPath string, from int, opts Optio
 	}
 
 	if _, err = db.ExecContext(ctx, `VACUUM INTO ?`, target); err != nil {
-		return "", fmt.Errorf("back up database before migrating: %w", err)
+		return "", fmt.Errorf("write the backup: %w", err)
 	}
 
 	if err = os.Chmod(target, appdata.PrivateFilePerm); err != nil {

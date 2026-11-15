@@ -40,6 +40,12 @@
 // other connection has it open, waiting a few seconds for a copy of the app that is still
 // quitting, and starts a fresh database in its place, which Opened.Reset says with
 // ResetRequested. PruneResetCopies keeps the newest few of those.
+//
+// Backup takes a backup of the open database whenever asked, as the app does before it
+// installs an update, named and pruned as the migrations' own backups are, and
+// RestoreBackup puts one of those backups back in the database's place, setting the
+// database there aside as one Open could not use, so an older build can go back to the
+// data from before a newer one migrated it.
 package store
 
 import (
@@ -137,6 +143,9 @@ type options struct {
 
 	// busyWait waits between those checks. Nil waits freshBusyPause on the real clock.
 	busyWait func(ctx context.Context) error
+
+	// rename renames a restored copy into the database's place. Nil is os.Rename.
+	rename func(oldPath, newPath string) error
 }
 
 // Open opens (creating if needed) the database at path and applies pending migrations,
@@ -235,6 +244,10 @@ func (o options) withDefaults() options {
 		o.busyWait = func(ctx context.Context) error { return clock.Sleep(ctx, freshBusyPause) }
 	}
 
+	if o.rename == nil {
+		o.rename = os.Rename
+	}
+
 	return o
 }
 
@@ -296,8 +309,11 @@ func waitUnshared(ctx context.Context, path string, opts options) error {
 }
 
 // openMigrated opens the database at path, creating it when needed, and applies the
-// pending migrations. On an error the pool is closed again.
+// pending migrations. It first removes the copies a restore cut short left beside it
+// (sweepRestoreCopies). On an error the pool is closed again.
 func openMigrated(ctx context.Context, path string, opts options) (*sql.DB, error) {
+	sweepRestoreCopies(path, opts.now())
+
 	if err := createFile(path); err != nil {
 		return nil, err
 	}

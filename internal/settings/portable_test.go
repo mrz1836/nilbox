@@ -25,6 +25,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/store"
 	"github.com/mrz1836/nilbox/internal/testutil"
 	"github.com/mrz1836/nilbox/internal/threadrules"
+	"github.com/mrz1836/nilbox/internal/updateprefs"
 )
 
 // Values the portable tests use more than once.
@@ -112,6 +113,7 @@ func customize(t *testing.T, svc *Service, db *sql.DB, home string) string {
 		func() (Settings, error) { return svc.SetRunsIn(ctx, integrationprefs.RunsInTerminal) },
 		func() (Settings, error) { return svc.SetScriptSources(ctx, false, true) },
 		func() (Settings, error) { return svc.SetShowRuns(ctx, true) },
+		func() (Settings, error) { return svc.SetUpdateMode(ctx, updateprefs.ModeNotify) },
 		// The window's memory, which a backup never holds.
 		func() (Settings, error) { return svc.SetWindowSize(ctx, WindowSize{Width: 1000, Height: 700}) },
 		func() (Settings, error) { return svc.SetSectionCollapsed(ctx, ListAssigned, true) },
@@ -263,11 +265,12 @@ func TestAnnounceTellsEachChangeOnce(t *testing.T) {
 	magex := filepath.Join(home, "magex")
 	testutil.WriteExecutable(t, magex, "")
 
-	dark, size, off, on := ThemeDark, TextSizeLarge, false, true
+	dark, size, off, on, notify := ThemeDark, TextSizeLarge, false, true, updateprefs.ModeNotify
 	p := Portable{
 		Theme: &dark, TextSize: &size, MenuBar: &off, FollowSessions: &off, WorktreeDefault: &off,
 		GitHubNotifications: &PortableThreadRules{Auto: &on, Watching: &off},
 		Refresh:             map[RefreshKind]int{RefreshInbox: 600, RefreshChecks: 30},
+		UpdateMode:          &notify,
 		Integrations: &PortableIntegration{
 			Switches: map[integrationprefs.ID]integrationprefs.Switch{integrationprefs.MageX: integrationprefs.SwitchOn},
 			Paths:    map[integrationprefs.ID]string{integrationprefs.MageX: magex},
@@ -291,6 +294,7 @@ func TestAnnounceTellsEachChangeOnce(t *testing.T) {
 		event.IntegrationsChanged{CopyChosen: true},
 		event.ThreadRulesChanged{},
 		event.IntervalsChanged{},
+		event.UpdatesChanged{},
 	}, events.All(), "each setter's event, once")
 
 	quiet := &testutil.Events{}

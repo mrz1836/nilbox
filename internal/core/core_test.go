@@ -213,7 +213,7 @@ func TestServicesListsBoundServices(t *testing.T) {
 	assert.Equal(t, []any{
 		c.Settings, c.Profiles, c.Prompts, c.LaunchDefaults, c.Inbox, c.Launcher, c.Worktrees, c.Notifications,
 		c.AppInfo, c.Budget, c.Sessions, c.Review, c.Issues, c.Integrations, c.ScriptRuns, c.Release, c.Hooks,
-		c.Scripts, c.GHThreads, c.Backup, c.ServiceStatus, c.Setup,
+		c.Scripts, c.GHThreads, c.Backup, c.ServiceStatus, c.Setup, c.Updates,
 	}, services)
 
 	for _, s := range services {
@@ -231,6 +231,9 @@ func TestServicesListsBoundServices(t *testing.T) {
 	assert.NotNil(t, c.ReleaseChecksFollower)
 	assert.NotNil(t, c.Watcher)
 	assert.NotNil(t, c.Timing)
+	assert.NotNil(t, c.UpdateEngine)
+	assert.NotNil(t, c.UpdateWorker)
+	assert.False(t, c.UpdateEngine.Enabled(), "a build of no flavor is a source build, which never updates")
 }
 
 func TestTheSweeperSweepsTheWorktreeService(t *testing.T) {

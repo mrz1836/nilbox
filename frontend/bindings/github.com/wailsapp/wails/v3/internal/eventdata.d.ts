@@ -28,6 +28,8 @@ declare module "@wailsio/runtime" {
             "servicestatus:updated": event$0.ServiceStatusUpdated;
             "sessions:updated": event$0.SessionsUpdated;
             "tools:updated": event$0.ToolsUpdated;
+            "updates:restart": event$0.UpdateRestartRequested;
+            "updates:updated": event$0.UpdatesUpdated;
             "worktrees:progress": event$0.WorktreesProgress;
             "worktrees:updated": event$0.WorktreesUpdated;
         }

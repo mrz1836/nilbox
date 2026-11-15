@@ -75,8 +75,10 @@ func (s ShellSettings) TextSize(ctx context.Context) (settings.TextSize, error) 
 // event.ThreadRulesChanged stays in Go as well: the mirror of the user's GitHub
 // notifications decides every thread again at once under the new rules. So does an
 // event.StatusRulesChanged: the service status check forgets a status page turned off,
-// checks one turned on, and tells the window. The watcher, the finder, the Release page,
-// the mirror, and the status check are set once, before any setting can change.
+// checks one turned on, and tells the window. An event.UpdatesChanged stays in Go too: the
+// update's check follows the new choice at once, and the window hears the update changed.
+// The watcher, the finder, the Release page, the mirror, the status check, and the
+// update's check are set once, before any setting can change.
 type followSwitch struct {
 	sink        event.Sink
 	watcher     *sessions.Watcher
@@ -85,6 +87,7 @@ type followSwitch struct {
 	releases    rulesFollower
 	threadRules rulesFollower
 	statusRules rulesFollower
+	updates     waker
 }
 
 // rulesFollower hears that the user changed rules it follows: the pinned and muted
@@ -101,9 +104,9 @@ func tellRulesChanged(f rulesFollower) {
 	}
 }
 
-// waker is woken to look again: *integrations.Worker, and what reads things again on its
-// own (*inbox.Scheduler, *inbox.ChecksFollower, *release.ChecksFollower, worktrees.Sweeper,
-// *ghthreads.Syncer, *svcstatus.Checker).
+// waker is woken to look again: *integrations.Worker, *update.Worker, and what reads
+// things again on its own (*inbox.Scheduler, *inbox.ChecksFollower,
+// *release.ChecksFollower, worktrees.Sweeper, *ghthreads.Syncer, *svcstatus.Checker).
 type waker interface {
 	Wake()
 }
@@ -111,8 +114,9 @@ type waker interface {
 // Emit passes e on, waking the watcher first for an event.SessionsUpdated, turns an
 // event.IntegrationsChanged into a wake of the tool finder or an event.ToolsUpdated, an
 // event.RepoRulesChanged into an event.InboxUpdated and a word to the Release page, an
-// event.ThreadRulesChanged into a word to the mirror of the GitHub notifications, and an
-// event.StatusRulesChanged into a word to the service status check.
+// event.ThreadRulesChanged into a word to the mirror of the GitHub notifications, an
+// event.StatusRulesChanged into a word to the service status check, and an
+// event.UpdatesChanged into a wake of the update's check and an event.UpdatesUpdated.
 func (f *followSwitch) Emit(e event.Event) {
 	if f.followRules(e) {
 		return
@@ -144,8 +148,8 @@ func (f *followSwitch) Emit(e event.Event) {
 	f.sink.Emit(e)
 }
 
-// followRules passes a change of rules on to what follows them, and reports whether e was
-// one; none reaches the window as it is.
+// followRules passes a change of rules, or of what to do with a new version, on to what
+// follows them, and reports whether e was one; none reaches the window as it is.
 func (f *followSwitch) followRules(e event.Event) bool {
 	switch e.(type) {
 	case event.ThreadRulesChanged:
@@ -155,6 +159,12 @@ func (f *followSwitch) followRules(e event.Event) bool {
 	case event.RepoRulesChanged:
 		f.sink.Emit(event.InboxUpdated{})
 		tellRulesChanged(f.releases)
+	case event.UpdatesChanged:
+		if f.updates != nil {
+			f.updates.Wake()
+		}
+
+		f.sink.Emit(event.UpdatesUpdated{})
 	default:
 		return false
 	}

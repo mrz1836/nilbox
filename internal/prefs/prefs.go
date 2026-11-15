@@ -11,8 +11,9 @@
 //     integrations.*, scripts.*: the scripts.magexTargets and scripts.repoFiles switches of
 //     Repo scripts' sources, and scripts.lastPage and scripts.lastRepo, where the Scripts
 //     tab and Repo scripts reopen, threadrules.*: whether the user's GitHub notifications
-//     are read, and whether, how, and when they are cleared, and status.*: which status
-//     pages the service status check reads, and which of each one's parts it watches).
+//     are read, and whether, how, and when they are cleared, status.*: which status
+//     pages the service status check reads, and which of each one's parts it watches, and
+//     update.mode, which updateprefs declares: what the app does when a new version is out).
 //   - inbox writes inbox.*: the account and status of the last refresh, and the cached
 //     avatar.
 //   - prompts writes prompts.*: the default prompts and the starters already added.
@@ -32,6 +33,11 @@
 //   - setup writes setup.*: whether the first-run setup is done (setup.done), which it
 //     decides once per database at startup, and the step the user was on (setup.step),
 //     where it opens again.
+//   - update writes every update.* key but update.mode: when it last checked
+//     (update.lastCheck), the last version it told of (update.notified), the banner hidden
+//     with Later (update.bannerHiddenUntil), the version the app last ran as
+//     (update.lastRunRelease), and the install a restart began, read and cleared at the next
+//     start (update.pendingInstall).
 //
 // A Store from New runs each call on the pool. One joined to a transaction with WithTx
 // runs every call inside it, so prefs are written together with another owner's tables

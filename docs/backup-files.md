@@ -94,6 +94,7 @@ is each entry left out.
 | `mergeMethod`, `theme`, `textSize`, `toastSeconds` | Reviewing and appearance. |
 | `inboxOrder` | Which inbox lists sort by project status, the order of the statuses, and which show one kind of item. |
 | `integrations` | Each integration's switch (`switches`), the copy of each tool you chose (`paths`, absolute, `""` for the one your shell finds), `runsIn`, `offerAfterMerge`, `magexTargets`, `repoFiles`, and `showRuns`. |
+| `updateMode` | What the app does when a new version is out: `download` (download it and tell me), `notify` (just tell me), or `off` (don't check). |
 
 ### Repositories
 
@@ -125,6 +126,8 @@ is each entry left out.
 - **The window's memory.** Its size, folded sections, tips put away, the Notifications page's
   tab, and the Scripts tab's last page and clone.
 - **Tool detection and install records.** The app finds the tools again.
+- **The app's own updates.** When it last checked, the version it last told you of, Later, and
+  the downloaded update: the next check finds them again.
 
 <br>
 

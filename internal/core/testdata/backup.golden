@@ -98,7 +98,8 @@
       "magexTargets": true,
       "repoFiles": true,
       "showRuns": false
-    }
+    },
+    "updateMode": "download"
   },
   "repositories": {
     "cloneRoot": "~/projects",

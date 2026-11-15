@@ -7,7 +7,7 @@
  * such as a release that reached GitHub, a run that failed, or a service the user watches
  * going down or coming back.
  */
-export type Kind = "review_requested" | "assigned" | "woke" | "session_needs_you" | "session_finished" | "release_done" | "release_published" | "release_failed" | "run_failed" | "service_status";
+export type Kind = "review_requested" | "assigned" | "woke" | "session_needs_you" | "session_finished" | "release_done" | "release_published" | "release_failed" | "run_failed" | "service_status" | "update_ready";
 
 /**
  * The values of Kind, by the names of their Go constants.
@@ -65,4 +65,10 @@ export const Kind = {
      * back (see the svcstatus package).
      */
     KindServiceStatus: "service_status",
+
+    /**
+     * KindUpdateReady is a new version of the app, downloaded and ready to restart into, or
+     * only available with Just tell me (see the update package). It is told once per version.
+     */
+    KindUpdateReady: "update_ready",
 } as const;

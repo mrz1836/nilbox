@@ -5,8 +5,9 @@ import (
 	"bytes"
 	"errors"
 	"regexp"
-	"strconv"
 	"strings"
+
+	"github.com/mrz1836/nilbox/internal/semver"
 )
 
 // ErrNoVersion is returned when a tool's output holds no version this package can read.
@@ -41,7 +42,7 @@ func (v Version) AtLeast(minimum string) bool {
 		return false
 	}
 
-	c, ok := compareVersions(v.Raw, minimum)
+	c, ok := semver.Compare(v.Raw, minimum)
 
 	return ok && c >= 0
 }
@@ -53,121 +54,13 @@ func (v Version) OlderThan(other string) bool {
 		return false
 	}
 
-	c, ok := compareVersions(v.Raw, other)
+	c, ok := semver.Compare(v.Raw, other)
 
 	return ok && c < 0
 }
 
 // pseudoVersion matches the timestamp and commit of a Go pseudo-version.
 var pseudoVersion = regexp.MustCompile(`(^|[.-])\d{14}-[0-9a-f]{12}($|[+])`)
-
-// semver is a parsed MAJOR.MINOR.PATCH[-PRE][+BUILD] version.
-type semver struct {
-	core [3]int
-	pre  []string
-}
-
-// parseSemver reads a version, with or without a leading v; ok is false when it isn't one.
-func parseSemver(raw string) (semver, bool) {
-	raw = strings.TrimPrefix(raw, "v")
-	raw, _, _ = strings.Cut(raw, "+")
-	core, pre, hasPre := strings.Cut(raw, "-")
-
-	parts := strings.Split(core, ".")
-	if len(parts) != 3 {
-		return semver{}, false
-	}
-
-	var out semver
-
-	for i, part := range parts {
-		n, err := strconv.Atoi(part)
-		if err != nil || n < 0 || part == "" || (len(part) > 1 && part[0] == '0') {
-			return semver{}, false
-		}
-
-		out.core[i] = n
-	}
-
-	if hasPre {
-		if pre == "" {
-			return semver{}, false
-		}
-
-		out.pre = strings.Split(pre, ".")
-	}
-
-	return out, true
-}
-
-// compareVersions compares two versions by semantic versioning's precedence: -1, 0, or 1,
-// and false when either isn't a version.
-func compareVersions(a, b string) (int, bool) {
-	va, okA := parseSemver(a)
-	vb, okB := parseSemver(b)
-
-	if !okA || !okB {
-		return 0, false
-	}
-
-	for i := range va.core {
-		if c := cmpInt(va.core[i], vb.core[i]); c != 0 {
-			return c, true
-		}
-	}
-
-	return comparePre(va.pre, vb.pre), true
-}
-
-// comparePre compares prerelease identifiers: a release sorts after any prerelease, and
-// identifiers compare one by one, numbers numerically and below words.
-func comparePre(a, b []string) int {
-	switch {
-	case len(a) == 0 && len(b) == 0:
-		return 0
-	case len(a) == 0:
-		return 1
-	case len(b) == 0:
-		return -1
-	}
-
-	for i := 0; i < len(a) && i < len(b); i++ {
-		if c := compareIdent(a[i], b[i]); c != 0 {
-			return c
-		}
-	}
-
-	return cmpInt(len(a), len(b))
-}
-
-// compareIdent compares two prerelease identifiers: numbers numerically, and below words.
-func compareIdent(a, b string) int {
-	na, errA := strconv.Atoi(a)
-	nb, errB := strconv.Atoi(b)
-
-	switch {
-	case errA == nil && errB == nil:
-		return cmpInt(na, nb)
-	case errA == nil:
-		return -1
-	case errB == nil:
-		return 1
-	default:
-		return strings.Compare(a, b)
-	}
-}
-
-// cmpInt compares two ints.
-func cmpInt(a, b int) int {
-	switch {
-	case a < b:
-		return -1
-	case a > b:
-		return 1
-	default:
-		return 0
-	}
-}
 
 // ansiEscape matches a terminal escape sequence: a CSI sequence such as a color, or an
 // OSC sequence such as a link.

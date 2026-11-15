@@ -28,7 +28,11 @@ are Nilbox's own, and they win wherever the two differ.
    that file: no token, and nothing of the user's. Checking the status pages of the services
    it depends on (`internal/svcstatus`: GitHub's, Claude's, and OpenAI's, unless the user
    turns the check or a page off) reads each one's summary from its host in
-   `github.DefaultStatusHosts`, which likewise gets only that request.
+   `github.DefaultStatusHosts`, which likewise gets only that request. Checking for an update
+   of the app itself (`internal/update`, in a release build alone: a build from source never
+   checks, and a rehearsal reads a local folder) makes two GETs to GitHub's release download
+   hosts, the latest release's manifest and, when it is newer, its zip, with no token and
+   nothing of the user's, and spends no API budget.
 5. **Optimize for local-first operation.** Nilbox should minimize network requests and rely on local caches and state wherever possible, ensuring responsiveness and reducing dependency on external services. Try and use the least amount of GitHub requests necessary for any operation.
 6. **No shell or Python scripts.** A build, check, or release step is a `magex` target written in
    Go (`magefiles/`, see Layout), never a `.sh`, `.py`, or other script, and a workflow runs the
@@ -162,7 +166,7 @@ app:lint` reads.
   profiles, prompts, launch defaults, inbox, review, issues, launcher, worktrees,
   notifications, app info, the API budget, sessions, integrations, script runs, release, hooks,
   repository scripts, the mirror of the user's GitHub notifications, the backup of the
-  user's setup, the service status check, and the first-run setup.
+  user's setup, the service status check, the first-run setup, and the app's updates.
   Every `internal/*` package is plain Go, built and tested on Linux without CGO.
 - Services share their building blocks rather than keep copies: `internal/repo` and
   `internal/item` name repositories, pull requests and issues, and their worktrees;
@@ -769,7 +773,7 @@ app:lint` reads.
   per provider in trouble (its parts affected, its incidents with their stages, how many
   others don't touch what is watched, and its last error), and the account menu's Service
   status submenu names each watched provider's state.
-- `internal/update/` is how the app will update itself. For now it holds the manifest each
+- `internal/update/` is how the app updates itself. It holds the manifest each
   release attaches (`manifest-darwin.json`, `ManifestName`): its JSON (`Manifest`, `Encode`, and
   `Parse`, which refuses one over 16 KiB, a field the format lacks, or anything after it), the
   fixed lines its Ed25519 signature covers (`SignedMessage`: the format, the platform, the
@@ -785,7 +789,102 @@ app:lint` reads.
   boundary test). `magefiles/release.go` builds and checks releases with it (`magex
   app:package`, `app:verify`), and `magefiles/keygen.go` makes the release key (`magex
   app:keygen`), so the packaging and the app agree on what a valid release is; while
-  `ReleaseKey` is empty, `app:package` and `app:verify` refuse.
+  `ReleaseKey` is empty, `app:package` and `app:verify` refuse, and a test pins the SHA-256 of
+  the constant, so changing the trust root takes two deliberate edits.
+  The `Engine` (never bound; `Service` is the window's face, `Worker` its timed checks) checks,
+  downloads, and installs the app's updates. What a build does is its `Flavor`'s, which core
+  works out from `core.Options` (`updateSource`): a source build is off ("Updates are off in
+  builds made from source."), its `Status` still telling the mode the user chose; a release
+  reads GitHub's latest release through core's `githubFeed` over
+  `(*github.Client).DownloadAsset` (the manifest from the latest release's download link, at
+  most 16 KiB, a 404, `github.ErrDownloadMissing`, reading as no release; the zip from its
+  tag's, `ZipURL`, at most 200 MiB) and trusts `ReleaseKey` alone, whatever `UpdateFeed` and
+  `UpdateKey` say, and is off while it is empty; a rehearsal reads a local folder
+  (`FolderFeed`, its failures worded with no path) and trusts its own raw base64 key (never a
+  PEM block, never a point of small order). The running version must pass `ValidVersion`, or
+  updates are off. A check reads the manifest within `ManifestLimit` (a minute) and takes it
+  only once `Verify` passes, its platform is the build's, its version a release's (no
+  prerelease) and newer than the running one (`internal/semver`); no release, or none newer,
+  is up to date, and an update waiting that the releases no longer offer is dropped, so
+  deleting a release's manifest withdraws it from every install (the lever for pulling a bad
+  release). Where the app can update itself is `Location` (`OK` only in `/Applications` or
+  `~/Applications`, in a folder it can write); elsewhere checks still run and tell, nothing
+  downloads on its own, and `Download` and `Restart` refuse with `ErrLocation` ("Move
+  Nilbox to Applications to update it."). With downloads on, the zip goes into
+  `<data>/updates/<version>/` (`Cache`, `appdata.Paths.Updates`) through a temporary file, hashed
+  as it arrives, stopped at the manifest's size, within `DownloadLimit` (10 minutes), its
+  progress told as `event.UpdatesUpdated` a few times a second (`internal/progress`); only a
+  zip matching its manifest is kept, with its manifest beside it, and every start checks each
+  kept update again, so one waiting is ready at once. A background download that failed is
+  remembered by its version and SHA-512 and tried again only at the next due check, never on
+  the ticks between (a click on Update tries, and so does Check for Updates, which forgets
+  the failure and has the `Worker` download at once). One operation (a check, a download, a
+  restart) runs at a time. A failure changes no state: it is the status's `LastError`, worded
+  with no raw error, path, or URL in it (`reachWords`, `downloadWords`, and the restart's own
+  sentences), and a check that reached the releases is the last check, a manifest it refused
+  included. The `Worker` (deferred work) settles the start first: it reads the outcome of the
+  last restart from `update.pendingInstall` (`JustUpdated` when the running build is the
+  version it installed, newer than the one it ran from, or, with no record, newer than
+  `update.lastRunRelease`, as after an install by hand; `InstallFailed` when it still runs the
+  version it ran from, with the runtime's helper log, `<TMPDIR>/wails-update-<pid>.log`,
+  copied to `logs/update-<version>.log` and worded from the messages it ends on, which tell
+  the helper's exit code, never repeating a path), then cleans up by exact name only (beside
+  the bundle, `<bundle>.bak` and the `wails-update-*` folders holding this app's update or
+  nothing; in the temporary folder, the last install's helper `.log`, any other process's
+  once `HelperWindow` old and only when its first line names this bundle as the target, and
+  the `.ready` files of those processes alone), then loads the cache. While the last install
+  is under `HelperWindow` (3 minutes) old and its helper's log hasn't ended on a final
+  message, the helper may still be restoring the old app, so the start settles nothing (no
+  outcome, no cleanup, the record kept) and the `Worker` settles again once it may have
+  ended; meanwhile the bound `Download` and `Restart` refuse with `ErrSettling` ("The last
+  update is still finishing. Try again in a moment."), and `CheckNow` checks but downloads
+  nothing. It checks a minute later (`FirstCheckAfter`), then, through `periodic.RunEvery` on a
+  15-minute tick, whenever six hours passed on the wall clock (`CheckEvery`), since timers
+  stand still while a Mac sleeps; a Wake (the settings' Go-only `event.UpdatesChanged`, or a
+  manual check that found a version to download) has it look at once. A timed check tells
+  each version once (`update.notified`, through its `Notifier`: core's `updateNotices`, an
+  `update_ready` notification about no item, which opens nothing, so a click brings the window
+  forward), once it is ready, or available where it doesn't download; Don't check makes none;
+  `CheckNow` works in every mode, downloads nothing in Don't check or Just tell me, and marks
+  what it finds told without a notification once it is available or ready, so a download it
+  started that fails still lets a later check tell of it. `Restart(confirmed)` refuses while
+  runs go in the app, unless confirmed, with a `RunsGoingError` whose `Detail` (`{"runsGoing":
+  [...]}`, through `desktop.MarshalError`) names them; it checks the zip against its manifest
+  again (`CheckFile`; a damaged or missing one is dropped, back to available, downloaded
+  again when downloads are on, and the refusal says so), backs the database up first
+  (`store.Backup`, through its `DataBackup`, reusing one it took under `BackupReuse`, 10
+  minutes, ago) and stops when that fails, records `update.pendingInstall` (`{from, to, at,
+  pid}`), stages the update through the `Installer` the shell attaches (`Attach`), checks
+  again, unless confirmed, that no run started meanwhile, and only then emits
+  `event.QuitConfirmed{Restarting: true}` before `Installer.Restart`, inside which the app
+  exits: the shell then lets every quit through, whatever runs go, but quits nothing itself,
+  since a held quit would leave the runtime's helper to reopen this copy beside the new one.
+  A failure before the quit, or a `Restart` that returns nil with the app still running (a
+  quit something held), goes back to ready with `LastError`, clears the record even once the
+  call's context ended, removes the staging folder, and, once the quit was let through, emits
+  the Go-only `event.UpdateRestartFailed`, which has the shell hold a quit while runs go
+  again. After a `Restart` that returned nil, the runtime refuses another restart until the
+  app quits, so every later restart in that run is refused too, saying to quit and open the
+  app again, where the update is still ready. `HideBanner` (Later) hides the banner of the version found for a day, `ShowBanner`
+  lifts it, `AckUpdated` forgets the toast, and `ShowInstallLog` shows the kept log in
+  Finder. It writes only the `update.*` state keys (`update.lastCheck`, `update.notified`,
+  `update.bannerHiddenUntil`, `update.lastRunRelease`, `update.pendingInstall`), never
+  `update.mode`, and imports no service, no store or prefs, and no HTTP: core adapts the
+  feed, the preferences (`Memory`), the backup, the runs (`Runs`, over the run engine), and
+  the notifications (the repoguard boundary test). `store.RestoreBackup` copies a backup into
+  a temporary file beside the database before it sets the database aside and renames the
+  copy into place, putting the database back when the rename fails; with no database there,
+  it removes a `-wal` or `-shm` left behind first. Every open removes the copies a restore
+  cut short left (`.<db>.restore-<digits>.tmp`, regular files five minutes old or more).
+- `internal/updateprefs/` declares the update setting, `update.mode` (`Mode`: `download`, the
+  default, "Download it and tell me"; `notify`, "Just tell me"; `off`, "Don't check"), which
+  settings alone writes (`SetUpdateMode`, emitting the Go-only `event.UpdatesChanged`) and
+  backups carry (`updateMode`), and the update package reads. It is a leaf that imports nothing
+  of the app's.
+- `internal/semver/` reads semantic versions and compares them by precedence (`Parse`,
+  `Compare`, `Version.Prerelease`), held to semver 2.0 (no leading zero in a number, a
+  prerelease's numeric identifiers included), for the integrations' tool versions and the
+  app's updates alike. It is a leaf.
 - `internal/bump/` reads a dependency update from a bot's pull request title into an `Update`,
   for the review sheet and the `.Dependency` prompt variables. It is pure and imports no
   service.
@@ -1481,10 +1580,10 @@ package imports the driver, and nothing imports an ORM (`internal/repoguard` enf
   pool-backed store from inside an open transaction: it waits on the lock the transaction holds.
 - **Prefs.** `internal/prefs` owns the `prefs` table. Any package reads any key, but each key has
   exactly one writer: settings writes the user's settings, including the rule keys that the trust,
-  snooze, sensitive, notifyprefs, branchrules, reporules, integrationprefs, threadrules, and
-  statusprefs packages declare; inbox
-  writes `inbox.*`; prompts writes `prompts.*`; setup writes `setup.*` (the package doc has the
-  full list). Settings and
+  snooze, sensitive, notifyprefs, branchrules, reporules, integrationprefs, threadrules,
+  statusprefs, and updateprefs packages declare (`update.mode` among them); inbox
+  writes `inbox.*`; prompts writes `prompts.*`; setup writes `setup.*`; update writes its state,
+  the other `update.*` keys (the package doc has the full list). Settings and
   those leaves write a switch and a list of strings one way, through the leaf
   `internal/prefs/prefval` (`Bool` and `EncodeBool`, `List` and `EncodeList`, which stores a nil
   list as `[]`).
@@ -1511,7 +1610,14 @@ package imports the driver, and nothing imports an ORM (`internal/repoguard` enf
   `store.PruneResetCopies` keeps the newest three, and the request is cleared. A database still
   held is a busy error, the startup dialog's, with the request kept for the next start; with
   no database file there is nothing to set aside, and a request that can't be read is logged
-  and dropped, never carried out.
+  and dropped, never carried out. `store.Backup` takes a backup of the open database whenever
+  asked, as an update's restart does before it installs, named and pruned exactly as the
+  migrations' (`migrate.Backup`: `<path>.backup-<UTC stamp>-v<schema>`, the newest three of
+  both kept), and `store.RestoreBackup` puts one of those backups back in the database's place
+  for an older build that finds a newer schema: it refuses a file that isn't one of the
+  database's own backups, waits for another copy to let go, sets the database aside as
+  `<path>.broken-<UTC stamp>` with its `-wal` and `-shm`, and copies the backup in, putting the
+  database back when the copy fails.
 - **Prompts, launch defaults, and the user's scripts outlive the database.** They are what the user made, which
   GitHub can't give back. `prompts.LibraryFile` rewrites `prompts.json` beside the database
   after every change to the library, and `launchdefaults.File` rewrites

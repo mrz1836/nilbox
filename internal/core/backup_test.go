@@ -21,7 +21,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/testutil"
 )
 
-var update = flag.Bool("update", false, "rewrite the golden files from the current output") //nolint:gochecknoglobals // a test flag
+var updateGolden = flag.Bool("update", false, "rewrite the golden files from the current output") //nolint:gochecknoglobals // a test flag
 
 // backupOptions are testOptions with a fixed clock and version, so a backup reads the same
 // on every run.
@@ -77,7 +77,7 @@ func TestBackupExportMatchesTheGolden(t *testing.T) {
 	require.NoError(t, err)
 
 	golden := filepath.Join("testdata", "backup.golden")
-	if *update {
+	if *updateGolden {
 		require.NoError(t, os.WriteFile(golden, data, 0o600)) //nolint:gosec // the test's own golden file
 	}
 

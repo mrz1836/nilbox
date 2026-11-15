@@ -5,8 +5,8 @@
 // complete set of settings. Setters validate their value before storing it and reject
 // anything unknown with a sentinel error. Settings writes every key it declares, and the
 // keys the trust, snooze, sensitive, notifyprefs, branchrules, reporules,
-// integrationprefs, threadrules, and statusprefs packages declare and decode; see the
-// prefs package for which package writes the others.
+// integrationprefs, threadrules, statusprefs, and updateprefs packages declare and decode;
+// see the prefs package for which package writes the others.
 package settings
 
 import (
@@ -41,6 +41,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/store"
 	"github.com/mrz1836/nilbox/internal/threadrules"
 	"github.com/mrz1836/nilbox/internal/trust"
+	"github.com/mrz1836/nilbox/internal/updateprefs"
 )
 
 // Preference keys.
@@ -267,6 +268,10 @@ type Settings struct {
 	// StatusProviders are the providers the check can watch, with their parts, for the
 	// settings page to list.
 	StatusProviders []statusprefs.Provider `json:"statusProviders"`
+
+	// UpdateMode is what the app does when a new version is out: download it and tell the
+	// user, just tell them, or make no timed checks (see the updateprefs package).
+	UpdateMode updateprefs.Mode `json:"updateMode"`
 }
 
 // ProfileLookup finds an agent's stored profile by name, or returns
@@ -752,6 +757,7 @@ func fromStored(stored map[string]string) Settings {
 		RefreshChoices:       refreshChoices(),
 		ServiceStatus:        statusprefs.Decode(stored),
 		StatusProviders:      statusprefs.Catalog(),
+		UpdateMode:           updateprefs.Decode(stored[updateprefs.KeyMode]),
 	}
 
 	if v := agent.ID(stored[KeyDefaultAgent]); agent.Known(v) {
@@ -870,7 +876,7 @@ func settingKeys() []string {
 		snooze.PrefWakeCommits, snooze.PrefWakeReviews, snooze.PrefWakeComments,
 		sensitive.PrefScope, sensitive.PrefOff, sensitive.PrefPatterns, KeyMenuBar, notifyprefs.KeyBannersOff, notifyprefs.KeyBannersOn, KeyTheme,
 		KeyTextSize, KeyToastSeconds, KeyProjectsTipDismissed, KeyReviewTab, KeyNotificationsTab, KeyConversationOrder, KeyMergeMethod, KeyRefreshInbox, KeyRefreshChecks, KeyRefreshWorktrees,
-		KeyRefreshNotifications, KeyRefreshReleaseChecks, KeyRefreshServiceStatus,
+		KeyRefreshNotifications, KeyRefreshReleaseChecks, KeyRefreshServiceStatus, updateprefs.KeyMode,
 	), append(append(append(append(collapsedKeys(), orderKeys()...), branchrules.Keys()...), reporules.Keys()...),
 		append(append(integrationprefs.Keys(), threadrules.Keys()...), statusprefs.Keys()...)...)...)
 }
