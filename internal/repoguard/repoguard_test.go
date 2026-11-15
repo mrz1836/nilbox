@@ -670,25 +670,72 @@ func fileRunners(rel, text string) []string {
 	}
 }
 
-func TestNoMacOSRunners(t *testing.T) {
-	t.Parallel()
+// releaseWorkflow builds, signs, and publishes each release of the desktop app.
+const releaseWorkflow = ".github/workflows/desktop-release.yml"
+
+// macOSRunnerExceptions are the only files allowed to select a macOS runner. There is one:
+// the release workflow, which builds the app with cgo against WebKit, combines its two
+// architectures with lipo, and signs it with codesign, all of which need macOS. The
+// repository is public, so a standard macOS runner costs nothing (approved 2026-11-14).
+// Every check still runs on ubuntu.
+func macOSRunnerExceptions() []string {
+	return []string{releaseWorkflow}
+}
+
+// macOSRunners returns "file:line: value" for every macOS runner the repository's files
+// select, but in the files macOSRunnerExceptions names.
+func macOSRunners(t *testing.T) []string {
+	t.Helper()
 
 	var found []string
 
 	for _, rel := range repoFiles(t) {
+		if slices.Contains(macOSRunnerExceptions(), rel) {
+			continue
+		}
+
 		text, ok := readText(t, rel)
 		if !ok {
 			continue
 		}
 
-		for _, v := range fileRunners(rel, text) {
-			if strings.Contains(strings.ToLower(v), "macos") {
-				found = append(found, v)
-			}
+		found = append(found, macOSValues(fileRunners(rel, text))...)
+	}
+
+	return found
+}
+
+// macOSValues returns the runner selections that name macOS.
+func macOSValues(values []string) []string {
+	var found []string
+
+	for _, v := range values {
+		if strings.Contains(strings.ToLower(v), "macos") {
+			found = append(found, v)
 		}
 	}
 
-	assert.Empty(t, found, "CI runs on ubuntu runners only; macOS runners are not used")
+	return found
+}
+
+func TestNoMacOSRunners(t *testing.T) {
+	t.Parallel()
+
+	assert.Empty(t, macOSRunners(t), "CI runs on ubuntu runners only; only "+releaseWorkflow+" may use macOS")
+}
+
+func TestMacOSRunnerExceptionIsOnlyTheReleaseWorkflow(t *testing.T) {
+	t.Parallel()
+
+	// One file, by its exact path: no folder, no pattern, and no env file, whose *_RUNNER
+	// settings every workflow reads.
+	assert.Equal(t, []string{releaseWorkflow}, macOSRunnerExceptions())
+
+	// The exception is still needed: the release workflow exists and runs on macOS.
+	text, ok := readText(t, releaseWorkflow)
+	require.True(t, ok, "%s is missing; drop its exception", releaseWorkflow)
+	assert.NotEmpty(t, macOSValues(fileRunners(releaseWorkflow, text)),
+		"%s no longer selects a macOS runner; drop its exception", releaseWorkflow)
 }
 
 func TestRunnerValues(t *testing.T) {

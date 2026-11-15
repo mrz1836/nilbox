@@ -1,0 +1,404 @@
+# ------------------------------------------------------------------------------------
+#  Desktop release
+#
+#  Purpose: Build, sign, and publish each release of the macOS app. On a v* tag it
+#  builds the universal app bundle with `magex app:package` (signed with the release's
+#  code-signing identity, its update manifest signed with the release key), waits for
+#  GoFortress to pass on the same tag, then creates the GitHub release as a draft,
+#  attaches the files, checks what GitHub holds, and publishes it last, so a release
+#  never shows without its files.
+#
+#  GoFortress runs every check on the tag but publishes nothing:
+#  .github/env/90-project.env sets ENABLE_RELEASE=false.
+#
+#  Triggers: the push of a v* tag, and nothing else. Its runs are the tag's own push
+#  runs, so the release environment, limited to v* tags, admits them, and no other ref
+#  ever sees its secrets. To try again, use Actions' "Re-run failed jobs", which keeps
+#  the tag, this file as the tag holds it, and the secrets; it reuses the draft an
+#  earlier attempt left.
+#
+#  The release environment holds the secrets UPDATE_SIGNING_KEY (the release key's
+#  private half, PEM), CODESIGN_P12 (the code-signing certificate and key, base64),
+#  and CODESIGN_P12_PASSWORD, and the variable CODESIGN_IDENTITY (the identity's name).
+#
+#  Every step is a magex target, a gh call, or a few lines of shell: no script files.
+#  The runner's bash is 3.2, so the shell avoids anything newer.
+#
+#  Maintainer: @mrz1836
+# ------------------------------------------------------------------------------------
+
+name: Desktop release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+# Nothing by default: the job asks for what it needs.
+permissions: {}
+
+# One run per tag at a time, and a release under way is never cancelled.
+concurrency:
+  group: desktop-release-${{ github.ref_name }}
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  release:
+    name: Build, sign, and publish
+    # The newest arm64 macOS image GitHub offers, pinned: never macos-latest, which
+    # moves on its own.
+    runs-on: macos-26
+    timeout-minutes: 90
+    environment: release
+    permissions:
+      contents: write # create the draft release, attach its files, and publish it
+      actions: read # find and follow GoFortress's run for the tag
+    steps:
+      # --------------------------------------------------------------------
+      # The tag
+      # --------------------------------------------------------------------
+      - name: Validate the tag
+        id: tag
+        run: |
+          set -euo pipefail
+          # A tag name may hold characters a shell acts on, so it reaches the shell only
+          # as GITHUB_REF_NAME, never through an expression, and nothing else reads it
+          # until it is checked here.
+          pattern='^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$'
+          if [[ "$GITHUB_REF_TYPE" != "tag" || ! "$GITHUB_REF_NAME" =~ $pattern ]]; then
+            echo "::error title=Not a release tag::A release tag looks like v1.2.3 or v1.2.3-rc.1, and this ref isn't one, so nothing was built."
+            exit 1
+          fi
+          version="${GITHUB_REF_NAME#v}"
+          prerelease=false
+          if [[ "$version" == *-* ]]; then
+            prerelease=true
+          fi
+          {
+            echo "tag=$GITHUB_REF_NAME"
+            echo "version=$version"
+            echo "prerelease=$prerelease"
+          } >> "$GITHUB_OUTPUT"
+          echo "Releasing $GITHUB_REF_NAME (prerelease: $prerelease)"
+
+      - name: Check out the tag
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # Every commit and tag: app:package checks that the tag names HEAD, and the
+          # build stamps git describe.
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Refuse a release that is already published
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ steps.tag.outputs.tag }}
+        run: |
+          set -euo pipefail
+          # One line per release of the tag: false for a published one, true for a draft.
+          drafts="$(gh api --paginate "repos/$GH_REPO/releases?per_page=100" \
+            --jq ".[] | select(.tag_name == \"$TAG\") | .draft")"
+          case "$drafts" in
+            *false*)
+              echo "::error title=Already published::$TAG already has a published release, so nothing was built. GoFortress most likely published it: check that ENABLE_RELEASE=false in .github/env/90-project.env reaches its setup, whose summary should say release publishing is off. A broken release is fixed forward with a new tag."
+              exit 1
+              ;;
+            *true*) echo "A draft of $TAG from an earlier attempt exists; it will be reused." ;;
+            *) echo "$TAG has no release yet." ;;
+          esac
+
+      # --------------------------------------------------------------------
+      # Tools. No dependency or build caches: a release builds from what the tag
+      # pins, never from a cache another run could have written.
+      # --------------------------------------------------------------------
+      - name: Set up pnpm (version from frontend/package.json)
+        uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+        with:
+          package_json_file: frontend/package.json
+
+      - name: Set up Node.js (version from frontend/.nvmrc)
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: frontend/.nvmrc
+          package-manager-cache: false
+
+      - name: Set up Go (version from go.mod)
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: false
+
+      - name: Load the .github/env settings
+        id: load-env
+        uses: ./.github/actions/load-env
+
+      - name: Set up MAGE-X (version from .github/env)
+        uses: ./.github/actions/setup-magex
+        with:
+          magex-version: ${{ fromJSON(steps.load-env.outputs.env-json).MAGE_X_VERSION }}
+          runner-os: ${{ runner.os }}
+
+      # magex runs this repository's own targets (magefiles/) through the mage binary.
+      # Without mage on PATH it falls back to `go run` on magefiles/, which has no main
+      # function until mage generates one, so the build fails. Install the mage version
+      # go.mod pins.
+      - name: Install mage (version from go.mod)
+        run: |
+          set -euo pipefail
+          mage_version="$(go list -m -f '{{.Version}}' github.com/magefile/mage)"
+          go install "github.com/magefile/mage@${mage_version}"
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+
+      # --------------------------------------------------------------------
+      # Build and sign
+      # --------------------------------------------------------------------
+      # A keychain of this run's own, with a password no one else ever sees.
+      # app:package puts it on the keychain search list while it signs, which codesign
+      # needs, and puts the list back afterwards.
+      - name: Create the signing keychain
+        env:
+          KEYCHAIN: ${{ runner.temp }}/release-signing.keychain-db
+          P12: ${{ runner.temp }}/release-signing.p12
+          CODESIGN_P12: ${{ secrets.CODESIGN_P12 }}
+          CODESIGN_P12_PASSWORD: ${{ secrets.CODESIGN_P12_PASSWORD }}
+        run: |
+          set -euo pipefail
+          for name in CODESIGN_P12 CODESIGN_P12_PASSWORD; do
+            if [[ -z "${!name}" ]]; then
+              echo "::error title=Missing secret::The release environment has no $name secret."
+              exit 1
+            fi
+          done
+          umask 077
+          keychain_password="$(openssl rand -hex 32)"
+          echo "::add-mask::$keychain_password"
+          printf '%s' "$CODESIGN_P12" | base64 --decode > "$P12"
+          security create-keychain -p "$keychain_password" "$KEYCHAIN"
+          # Unlocked for an hour, well past the build's signing.
+          security set-keychain-settings -lut 3600 "$KEYCHAIN"
+          security unlock-keychain -p "$keychain_password" "$KEYCHAIN"
+          security import "$P12" -k "$KEYCHAIN" -P "$CODESIGN_P12_PASSWORD" -T /usr/bin/codesign
+          # It prints the key's attributes otherwise.
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$keychain_password" "$KEYCHAIN" > /dev/null
+          rm -f "$P12"
+
+      - name: Write the update signing key
+        env:
+          KEY_FILE: ${{ runner.temp }}/release-signing.key
+          SIGNING_KEY_PEM: ${{ secrets.UPDATE_SIGNING_KEY }}
+        run: |
+          set -euo pipefail
+          if [[ -z "$SIGNING_KEY_PEM" ]]; then
+            echo "::error title=Missing secret::The release environment has no UPDATE_SIGNING_KEY secret."
+            exit 1
+          fi
+          umask 077
+          printf '%s\n' "$SIGNING_KEY_PEM" > "$KEY_FILE"
+
+      - name: Build, sign, and package the release
+        env:
+          RELEASE_VERSION: ${{ steps.tag.outputs.version }}
+          CODESIGN_IDENTITY: ${{ vars.CODESIGN_IDENTITY }}
+          CODESIGN_KEYCHAIN: ${{ runner.temp }}/release-signing.keychain-db
+          UPDATE_SIGNING_KEY: ${{ runner.temp }}/release-signing.key
+        run: magex app:package
+
+      - name: Check the release files
+        id: files
+        env:
+          VERSION: ${{ steps.tag.outputs.version }}
+        run: |
+          set -euo pipefail
+          dir="bin/release/$VERSION"
+          magex app:verify dir="$dir" version="$VERSION"
+          # app:package names the files after the app, so they are read back here rather
+          # than spelled out: the zip is the one the signed manifest names.
+          zip="$(jq -r .file "$dir/manifest-darwin.json")"
+          cd "$dir"
+          set -- *.dmg
+          if [[ $# -ne 1 || ! -f "$1" || ! -f "$zip" || ! -f SHA256SUMS ]]; then
+            echo "::error title=Unexpected release files::$dir should hold one zip, one disk image, SHA256SUMS, and manifest-darwin.json."
+            exit 1
+          fi
+          {
+            echo "dir=$dir"
+            echo "zip=$zip"
+            echo "dmg=$1"
+            echo "app=${1%.dmg}"
+          } >> "$GITHUB_OUTPUT"
+
+      # Nothing after this needs the keychain or the private key, so they go now rather
+      # than sit on disk through the wait for GoFortress, and on any failure or cancel.
+      - name: Remove the signing keychain and key
+        if: always()
+        env:
+          KEYCHAIN: ${{ runner.temp }}/release-signing.keychain-db
+          P12: ${{ runner.temp }}/release-signing.p12
+          KEY_FILE: ${{ runner.temp }}/release-signing.key
+        run: |
+          set -euo pipefail
+          if [[ -e "$KEYCHAIN" ]]; then
+            # Also takes it off the search list, should app:package have been stopped
+            # before it put the list back. The runner is thrown away after the job, so a
+            # failure here only warns.
+            security delete-keychain "$KEYCHAIN" || echo "::warning title=Keychain left::Couldn't delete the signing keychain."
+          fi
+          rm -f "$P12" "$KEY_FILE"
+
+      # --------------------------------------------------------------------
+      # Wait for GoFortress
+      # --------------------------------------------------------------------
+      # GoFortress started with this run, from the same push, and has been checking the
+      # same commit while this job built. Its run is fortress.yml's push run for the tag:
+      # the commit alone could also match a push to master.
+      - name: Wait for GoFortress to pass on the tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ steps.tag.outputs.tag }}
+        run: |
+          set -euo pipefail
+          run_id=""
+          deadline=$((SECONDS + 600))
+          while :; do
+            run_id="$(gh run list --workflow fortress.yml --event push --commit "$GITHUB_SHA" --limit 20 \
+              --json databaseId,headBranch,status,conclusion |
+              jq -r --arg tag "$TAG" 'map(select(.headBranch == $tag)) | first | .databaseId // empty')"
+            if [[ -n "$run_id" ]]; then
+              break
+            fi
+            if ((SECONDS >= deadline)); then
+              echo "::error title=No GoFortress run::GoFortress has no push run for $TAG after 10 minutes, and nothing was published. Check that it ran on the tag, then re-run this workflow's failed jobs."
+              exit 1
+            fi
+            echo "Waiting for GoFortress's run for $TAG to appear..."
+            sleep 20
+          done
+          echo "Following GoFortress: $GITHUB_SERVER_URL/$GH_REPO/actions/runs/$run_id"
+          if ! gh run watch "$run_id" --exit-status --interval 30 --compact; then
+            echo "::error title=GoFortress failed::GoFortress failed for $TAG, and nothing was published. Re-run it, then re-run this workflow's failed jobs."
+            exit 1
+          fi
+
+      # --------------------------------------------------------------------
+      # Publish: a draft first, which no one else sees, then the files, a check
+      # of what GitHub holds, and only then the release itself.
+      # --------------------------------------------------------------------
+      - name: Draft the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ steps.tag.outputs.tag }}
+          PRERELEASE: ${{ steps.tag.outputs.prerelease }}
+          APP: ${{ steps.files.outputs.app }}
+          DMG: ${{ steps.files.outputs.dmg }}
+        run: |
+          set -euo pipefail
+          # Looked up again: GoFortress may have published while this job waited.
+          drafts="$(gh api --paginate "repos/$GH_REPO/releases?per_page=100" \
+            --jq ".[] | select(.tag_name == \"$TAG\") | .draft")"
+          case "$drafts" in
+            *false*)
+              echo "::error title=Already published::$TAG was published while this job waited, so nothing was attached. GoFortress most likely published it: check that ENABLE_RELEASE=false in .github/env/90-project.env reaches its setup."
+              exit 1
+              ;;
+            true)
+              echo "Reusing the draft of $TAG an earlier attempt left."
+              exit 0
+              ;;
+            *true*)
+              echo "::error title=Several drafts::$TAG has more than one draft release. Delete all but one, then re-run this workflow's failed jobs."
+              exit 1
+              ;;
+          esac
+          # The install note comes first; GitHub adds the notes it generates after it.
+          note="$RUNNER_TEMP/install-note.md"
+          printf '**Install:** download `%s`, drag %s to Applications, then System Settings → Privacy & Security → Open Anyway. Already installed? %s updates itself.\n' \
+            "$DMG" "$APP" "$APP" > "$note"
+          gh release create "$TAG" --draft --verify-tag --title "Release $TAG" \
+            --notes-file "$note" --generate-notes --prerelease="$PRERELEASE"
+
+      - name: Attach the files
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ steps.tag.outputs.tag }}
+          DIR: ${{ steps.files.outputs.dir }}
+          ZIP: ${{ steps.files.outputs.zip }}
+          DMG: ${{ steps.files.outputs.dmg }}
+        run: |
+          set -euo pipefail
+          # --clobber replaces what an earlier attempt attached; the draft is no one
+          # else's to see. The manifest goes last, once the zip it names is there.
+          gh release upload "$TAG" "$DIR/$ZIP" "$DIR/$DMG" "$DIR/SHA256SUMS" --clobber
+          gh release upload "$TAG" "$DIR/manifest-darwin.json" --clobber
+
+      - name: Check the files GitHub holds
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ steps.tag.outputs.tag }}
+          VERSION: ${{ steps.tag.outputs.version }}
+          DIR: ${{ steps.files.outputs.dir }}
+          ZIP: ${{ steps.files.outputs.zip }}
+          DMG: ${{ steps.files.outputs.dmg }}
+        run: |
+          set -euo pipefail
+          held="$RUNNER_TEMP/release-from-github"
+          rm -rf "$held"
+          mkdir "$held"
+          gh release download "$TAG" --dir "$held" \
+            --pattern manifest-darwin.json --pattern "$ZIP" --pattern "$DMG" --pattern SHA256SUMS
+          # The manifest and the zip, as the app will check them...
+          magex app:verify dir="$held" version="$VERSION"
+          # ...and every file, byte for byte the one this job built.
+          for file in manifest-darwin.json "$ZIP" "$DMG" SHA256SUMS; do
+            cmp "$DIR/$file" "$held/$file"
+          done
+
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ steps.tag.outputs.tag }}
+          PRERELEASE: ${{ steps.tag.outputs.prerelease }}
+        run: |
+          set -euo pipefail
+          # A stable release becomes the latest, which is what installed copies and the
+          # download link read; a prerelease never does.
+          latest=true
+          if [[ "$PRERELEASE" == "true" ]]; then
+            latest=false
+          fi
+          gh release edit "$TAG" --draft=false --prerelease="$PRERELEASE" --latest="$latest"
+          url="$(gh release view "$TAG" --json url --jq .url)"
+          echo "Published $url"
+          echo "Published [$TAG]($url) (prerelease: $PRERELEASE)." >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Check the latest release serves this version
+        if: steps.tag.outputs.prerelease == 'false'
+        env:
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ steps.tag.outputs.tag }}
+          VERSION: ${{ steps.tag.outputs.version }}
+        run: |
+          set -euo pipefail
+          url="$GITHUB_SERVER_URL/$GH_REPO/releases/latest/download/manifest-darwin.json"
+          # GitHub's download links can lag a publish by a few seconds.
+          for attempt in 1 2 3 4 5 6; do
+            served="$(curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' \
+              --max-time 30 "$url" | jq -r .version)" || served=""
+            if [[ "$served" == "$VERSION" ]]; then
+              echo "The latest release's manifest is $VERSION."
+              exit 0
+            fi
+            echo "Try $attempt: the latest release's manifest is ${served:-not there}; trying again in 10 seconds."
+            sleep 10
+          done
+          echo "::error title=Latest release not serving $TAG::$TAG is published, but $url serves ${served:-nothing}, not $VERSION. Check that $TAG is marked Latest and holds manifest-darwin.json."
+          exit 1
