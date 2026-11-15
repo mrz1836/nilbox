@@ -89,6 +89,36 @@ describe('useModalDialog', () => {
     expect(onCancel).toHaveBeenCalledOnce()
   })
 
+  it('hands the keys to the dialog opened last, wherever the page renders it', async () => {
+    const first = vi.fn()
+    const second = vi.fn()
+
+    // The second dialog opens after the first, though the page renders it before.
+    const { rerender } = render(
+      <>
+        <div id="before" />
+        <Inner onCancel={first} />
+      </>,
+    )
+    rerender(
+      <>
+        <Inner onCancel={second} />
+        <Inner onCancel={first} />
+      </>,
+    )
+
+    const [earlierInPage, laterInPage] = screen.getAllByRole('dialog', { name: 'Inner' })
+    if (!(earlierInPage instanceof HTMLDialogElement) || !(laterInPage instanceof HTMLDialogElement)) {
+      throw new Error('two dialogs are open')
+    }
+    expect(isTopmost(earlierInPage)).toBe(true)
+    expect(isTopmost(laterInPage)).toBe(false)
+
+    await userEvent.keyboard('{Escape}')
+    expect(second).toHaveBeenCalledOnce()
+    expect(first).not.toHaveBeenCalled()
+  })
+
   it('cancels a close request the system sends', () => {
     const onCancel = vi.fn()
     render(<Modal onCancel={onCancel} />)

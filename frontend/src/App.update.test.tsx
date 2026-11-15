@@ -364,6 +364,32 @@ describe('App’s move into Applications', () => {
     expect(platform.moveToApplications).toHaveBeenCalledOnce()
   })
 
+  // The quit's question can open while the move's dialog shows, as when a move that went
+  // ahead quits while runs go: it opens over that dialog, and has the keys, though the page
+  // renders it first.
+  it('hands the keys to the quit’s question over the move’s dialog', async () => {
+    platform.getUpdateStatus.mockResolvedValue(updateStatus({ location: updateLocation('diskImage') }))
+    platform.moveToApplications.mockReturnValue(new Promise(() => undefined))
+    platform.listScriptRuns.mockResolvedValue([
+      scriptRun({ status: 'running', exitCode: null, finishedAt: '', canStop: true }),
+    ])
+    await renderApp()
+
+    const moving = await screen.findByRole('dialog', moveQuestion)
+    await userEvent.click(within(moving).getByRole('button', { name: 'Move to Applications' }))
+
+    act(() => {
+      emit('app:quitRequested')
+    })
+    const quit = await screen.findByRole('dialog', { name: `Quit ${brand.name}?` })
+
+    await userEvent.keyboard('{Escape}')
+
+    expect(quit).not.toBeInTheDocument()
+    expect(platform.keepRunning).toHaveBeenCalledOnce()
+    expect(within(moving).getByRole('button', { name: 'Moving to Applications…' })).toBeDisabled()
+  })
+
   it('offers the move in the banner once the dialog is put away, calling the version available', async () => {
     platform.getUpdateStatus.mockResolvedValue(updateReady({ location: updateLocation() }))
     await renderApp()
