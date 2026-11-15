@@ -87,6 +87,7 @@ var kindTitles = map[notifyprefs.Kind]string{
 	KindReleaseFailed:    "Release workflow failed",
 	KindRunFailed:        "Run failed",
 	KindServiceStatus:    "Service status",
+	KindUpdateReady:      "New version",
 }
 
 // summaryNouns name each kind in a summary banner, singular and plural.
@@ -101,6 +102,7 @@ var summaryNouns = map[notifyprefs.Kind][2]string{
 	KindReleaseFailed:    {"release workflow failed", "release workflows failed"},
 	KindRunFailed:        {"failed run", "failed runs"},
 	KindServiceStatus:    {"service status change", "service status changes"},
+	KindUpdateReady:      {"new version", "new versions"},
 }
 
 // maxTitleRunes bounds an item title in a banner body; the system wraps and cuts the rest.

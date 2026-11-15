@@ -63,6 +63,11 @@ const (
 	// KindServiceStatus is a part of a service the user watches going down, or coming back.
 	// It is about no item, and opens the incident or the status page.
 	KindServiceStatus = notifyprefs.KindServiceStatus
+
+	// KindUpdateReady is a new version of the app, ready to restart into, or available. It
+	// is about no item, and opens nothing: a click brings the window forward, where the
+	// update's banner shows.
+	KindUpdateReady = notifyprefs.KindUpdateReady
 )
 
 // Keep is how many notifications the log keeps; recording more drops the oldest.
@@ -74,8 +79,8 @@ type Notification struct {
 	ID int64 `json:"id"`
 
 	// Kind is KindReviewRequested, KindAssigned, KindWoke, one of a release's kinds
-	// (KindReleaseDone, KindReleasePublished, or KindReleaseFailed), KindRunFailed, or
-	// KindServiceStatus.
+	// (KindReleaseDone, KindReleasePublished, or KindReleaseFailed), KindRunFailed,
+	// KindServiceStatus, or KindUpdateReady.
 	Kind notifyprefs.Kind `json:"kind"`
 
 	// CreatedAt is when it was recorded, as RFC 3339.

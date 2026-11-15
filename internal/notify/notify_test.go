@@ -122,10 +122,10 @@ func TestKindsAreTheInboxArrivals(t *testing.T) {
 
 	assert.Equal(t, []notifyprefs.Kind{
 		KindReviewRequested, KindAssigned, KindWoke, KindSessionNeedsYou, KindSessionFinished, KindReleaseDone,
-		KindReleasePublished, KindReleaseFailed, KindRunFailed, KindServiceStatus,
+		KindReleasePublished, KindReleaseFailed, KindRunFailed, KindServiceStatus, KindUpdateReady,
 	}, notifyprefs.Kinds(),
 		"the kinds the settings list are the inbox's kinds of arrival, in order, then the sessions', a release's, "+
-			"a failed run's, and a service status change's")
+			"a failed run's, a service status change's, and a new version's")
 }
 
 // releaseEntry is the entry for acme-org/sdk's v1.4.3 reaching GitHub.
