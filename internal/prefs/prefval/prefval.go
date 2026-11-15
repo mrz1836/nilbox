@@ -1,7 +1,8 @@
 // Package prefval reads and writes the two shapes of value most preferences hold: a
 // switch, stored as a boolean, and a list, stored as a JSON array of strings. Settings and
 // the leaves that declare its keys (trust, sensitive, notifyprefs, branchrules, reporules,
-// integrationprefs, and threadrules) share it, so every switch and list is spelled one way.
+// integrationprefs, threadrules, and statusprefs) share it, so every switch and list is
+// spelled one way.
 //
 // It is a leaf: it imports only the standard library, never the store or a service.
 package prefval
