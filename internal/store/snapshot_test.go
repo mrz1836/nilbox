@@ -234,6 +234,8 @@ func TestSnapshotsListsTheKeptDatabasesNewestFirst(t *testing.T) {
 		"app.db.broken-20261108T165152Z-shm",
 		"app.db.broken-20261108T165152Z-1",
 		"app.db.broken-not-a-stamp",
+		"app.db.reset-20261109T120000Z",
+		"app.db.reset-20261109T120000Z-wal",
 		"other.db.broken-20261108T165152Z",
 		"prompts.json",
 	} {
@@ -253,6 +255,7 @@ func TestSnapshotsListsTheKeptDatabasesNewestFirst(t *testing.T) {
 	}
 
 	assert.Equal(t, []store.SnapshotFile{
+		{Path: filepath.Join(dir, "app.db.reset-20261109T120000Z"), Kind: store.SnapshotReset, At: at("20261109T120000Z")},
 		{Path: filepath.Join(dir, "app.db.broken-20261108T165152Z-1"), Kind: store.SnapshotSetAside, At: at("20261108T165152Z")},
 		{Path: filepath.Join(dir, "app.db.broken-20261108T165152Z"), Kind: store.SnapshotSetAside, At: at("20261108T165152Z")},
 		{Path: filepath.Join(dir, "app.db.backup-20261107T031018Z-v12"), Kind: store.SnapshotBackup, At: at("20261107T031018Z")},

@@ -62,6 +62,9 @@ const (
 
 	// SnapshotBackup is a copy taken before migrations changed the database.
 	SnapshotBackup SnapshotKind = "backup"
+
+	// SnapshotReset is a database OpenFresh set aside when the user asked to start over.
+	SnapshotReset SnapshotKind = "before-reset"
 )
 
 // SnapshotFile is a database file kept beside the app's own.
@@ -77,8 +80,9 @@ type SnapshotFile struct {
 }
 
 // Snapshots lists the databases kept beside the database at path, the newest first: the
-// ones Open set aside, which are kept until the user removes them, and the backups taken
-// before migrations, of which the newest few are kept. A missing directory holds none.
+// ones Open set aside, which are kept until the user removes them, the ones OpenFresh set
+// aside as the user asked, and the backups taken before migrations, of which the newest
+// few of each are kept. A missing directory holds none.
 func Snapshots(path string) ([]SnapshotFile, error) {
 	dir, base := filepath.Split(path)
 
@@ -124,6 +128,7 @@ func snapshotFile(base, name string) (SnapshotFile, bool) {
 		kind   SnapshotKind
 	}{
 		{base + asideInfix, SnapshotSetAside},
+		{base + resetInfix, SnapshotReset},
 		{base + migrate.BackupInfix, SnapshotBackup},
 	}
 

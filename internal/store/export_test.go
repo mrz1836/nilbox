@@ -9,7 +9,7 @@ import (
 // SetAside sets the database at path aside, as Open does when it cannot use one, and
 // returns where it went.
 func SetAside(path string, now time.Time) (string, error) {
-	moved, err := setAside(path, now)
+	moved, err := setAside(path, now, asideInfix)
 
 	return moved.target, err
 }
@@ -24,4 +24,12 @@ func ResetReasonOf(err error) (ResetReason, bool) {
 // for the embedded ones) and naming a database it sets aside by now.
 func OpenWith(ctx context.Context, path string, src fs.FS, now func() time.Time) (Opened, error) {
 	return open(ctx, path, options{migrations: src, now: now})
+}
+
+// OpenFreshWith starts over at path as OpenFresh does, naming the database it sets aside
+// by now, checking tries times that no other connection has it open, and calling wait
+// between the checks.
+func OpenFreshWith(ctx context.Context, path string, now func() time.Time, tries int, wait func(context.Context) error,
+) (Opened, error) {
+	return openFresh(ctx, path, options{now: now, busyTries: tries, busyWait: wait})
 }

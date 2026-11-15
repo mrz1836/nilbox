@@ -1,10 +1,13 @@
 package store
 
 import (
+	"cmp"
 	"errors"
 	"fmt"
 	"io/fs"
 	"os"
+	"path/filepath"
+	"slices"
 	"time"
 
 	sqlite3 "modernc.org/sqlite/lib"
@@ -14,8 +17,17 @@ import (
 )
 
 const (
-	// asideInfix sits between a database's path and the stamp of when it was set aside.
+	// asideInfix sits between a database's path and the stamp of when Open set it aside,
+	// as one it could not use.
 	asideInfix = ".broken-"
+
+	// resetInfix sits between a database's path and the stamp of when OpenFresh set it
+	// aside, as the user asked.
+	resetInfix = ".reset-"
+
+	// KeepResetCopies is how many of the databases OpenFresh set aside PruneResetCopies
+	// keeps: the newest.
+	KeepResetCopies = 3
 
 	// maxAsideNameAttempts bounds the search for a free name to set a database aside
 	// under.
@@ -26,7 +38,8 @@ const (
 // taken.
 var ErrNoAsideName = errors.New("no free name to set the database aside under")
 
-// ResetReason says why Open could not use a database and set it aside.
+// ResetReason says why a database was set aside: Open could not use it, or the user asked
+// for a fresh one (OpenFresh).
 type ResetReason string
 
 const (
@@ -41,19 +54,25 @@ const (
 	// a migration it records has changed since it ran, or one older than its newest
 	// never ran.
 	ResetHistory ResetReason = "history"
+
+	// ResetRequested means the user asked to start over: the database could be used, and
+	// OpenFresh set it aside for a fresh one.
+	ResetRequested ResetReason = "requested"
 )
 
-// Reset reports a database Open could not use. The database was renamed, with its -wal
-// and -shm files, and a fresh one was created at the original path.
+// Reset reports a database set aside: one Open could not use, or one OpenFresh set aside
+// as the user asked. The database was renamed, with its -wal and -shm files, and a fresh
+// one was created at the original path.
 type Reset struct {
 	// Path is where the database is now. Its -wal and -shm files, when it had them, sit
 	// beside it under the same name with those suffixes, so SQLite still opens it whole.
 	Path string
 
-	// Reason says why it could not be used.
+	// Reason says why it was set aside.
 	Reason ResetReason
 
-	// Err is the error opening or migrating it returned.
+	// Err is the error opening or migrating it returned, or nil for a reset the user
+	// asked for.
 	Err error
 }
 
@@ -95,10 +114,11 @@ type aside struct {
 func fileSuffixes() [3]string { return [...]string{"-wal", "-shm", ""} }
 
 // setAside renames the database at path, with its -wal and -shm files when it has them,
-// to a free <path>.broken-<UTC stamp> name. When a rename fails, the files already moved
-// are put back.
-func setAside(path string, now time.Time) (aside, error) {
-	target, err := freeAsideName(path + asideInfix + clock.Stamp(now))
+// to a free <path><infix><UTC stamp> name: <path>.broken-<stamp> for one Open could not
+// use, <path>.reset-<stamp> for one the user asked to start over from. When a rename
+// fails, the files already moved are put back.
+func setAside(path string, now time.Time, infix string) (aside, error) {
+	target, err := freeAsideName(path + infix + clock.Stamp(now))
 	if err != nil {
 		return aside{}, err
 	}
@@ -184,4 +204,63 @@ func anyExists(names ...string) (bool, error) {
 	}
 
 	return false, nil
+}
+
+// PruneResetCopies deletes the databases OpenFresh set aside beside the database at path,
+// with their -wal and -shm files, but the newest KeepResetCopies, so a reset the user asks
+// for again and again never fills the disk. The databases Open set aside, as ones it could
+// not use, are never deleted: the user may still want what they hold. A file it cannot
+// delete is named in the error, and the rest are still deleted.
+func PruneResetCopies(path string) error {
+	dir, base := filepath.Split(path)
+
+	copies, err := resetCopies(cmp.Or(dir, "."), base)
+	if err != nil {
+		return err
+	}
+
+	var errs []error
+
+	for len(copies) > KeepResetCopies {
+		errs = append(errs, removeCopy(filepath.Join(dir, copies[0]))...)
+		copies = copies[1:]
+	}
+
+	return errors.Join(errs...)
+}
+
+// resetCopies lists the names of the databases OpenFresh set aside in dir beside the
+// database named base, the oldest first: the stamp sorts as text in time order, and a name
+// taken twice in one second gets a numeric suffix, which sorts after the plain one.
+func resetCopies(dir, base string) ([]string, error) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil, fmt.Errorf("list the databases set aside by a reset: %w", err)
+	}
+
+	var copies []string
+
+	for _, e := range entries {
+		if file, ok := snapshotFile(base, e.Name()); ok && file.Kind == SnapshotReset && e.Type().IsRegular() {
+			copies = append(copies, e.Name())
+		}
+	}
+
+	slices.Sort(copies)
+
+	return copies, nil
+}
+
+// removeCopy deletes the database set aside at path, with its -wal and -shm files, and
+// returns what it could not delete.
+func removeCopy(path string) []error {
+	var errs []error
+
+	for _, suffix := range fileSuffixes() {
+		if err := os.Remove(path + suffix); err != nil && !errors.Is(err, fs.ErrNotExist) {
+			errs = append(errs, fmt.Errorf("delete an old database set aside by a reset: %w", err))
+		}
+	}
+
+	return errs
 }

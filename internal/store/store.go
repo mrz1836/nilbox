@@ -34,6 +34,12 @@
 //   - Anything else, such as a database another process has open, a permission error,
 //     a full disk, or a migration that failed after its backup, is returned as an
 //     error, and the file is never moved.
+//
+// A database the app could use may be set aside too, when the user asks to start over:
+// OpenFresh renames it, with its -wal and -shm files, to <path>.reset-<UTC stamp> once no
+// other connection has it open, waiting a few seconds for a copy of the app that is still
+// quitting, and starts a fresh database in its place, which Opened.Reset says with
+// ResetRequested. PruneResetCopies keeps the newest few of those.
 package store
 
 import (
@@ -51,6 +57,7 @@ import (
 	sqlite3 "modernc.org/sqlite/lib"
 
 	"github.com/mrz1836/nilbox/internal/appdata"
+	"github.com/mrz1836/nilbox/internal/clock"
 	"github.com/mrz1836/nilbox/internal/store/migrate"
 )
 
@@ -83,6 +90,14 @@ const (
 	// SQLite allows one writer at a time, so more connections would only queue on the
 	// write lock; a few let reads run beside a write.
 	maxConns = 4
+
+	// freshBusyTries and freshBusyPause bound how long OpenFresh waits for another
+	// connection to let go of the database: each check waits for the lock as the probe
+	// does (a quarter second), then pauses as long, so about five seconds in all, as long
+	// as a copy of the app that is quitting waits for its work before it closes the
+	// database.
+	freshBusyTries = 10
+	freshBusyPause = 250 * time.Millisecond
 )
 
 var (
@@ -102,8 +117,9 @@ type Opened struct {
 	// DB is the database's connection pool. The caller closes it.
 	DB *sql.DB
 
-	// Reset is set when the database at the path could not be used and was set aside
-	// for a fresh, empty one, and is nil otherwise.
+	// Reset is set when the database at the path was set aside for a fresh, empty one:
+	// Open could not use it, or OpenFresh set it aside as the user asked. It is nil
+	// otherwise.
 	Reset *Reset
 }
 
@@ -114,6 +130,13 @@ type options struct {
 
 	// now stamps the name a database is set aside under. Nil means time.Now.
 	now func() time.Time
+
+	// busyTries is how many times OpenFresh checks that no other connection has the
+	// database open before it gives up. Zero means freshBusyTries.
+	busyTries int
+
+	// busyWait waits between those checks. Nil waits freshBusyPause on the real clock.
+	busyWait func(ctx context.Context) error
 }
 
 // Open opens (creating if needed) the database at path and applies pending migrations,
@@ -124,20 +147,25 @@ func Open(ctx context.Context, path string) (Opened, error) {
 	return open(ctx, path, options{})
 }
 
+// OpenFresh starts over, as the user asked: it sets the database at path aside as
+// <path>.reset-<UTC stamp>, with its -wal and -shm files, and opens a fresh, migrated one
+// in its place, which Opened.Reset reports with ResetRequested and no error. It moves
+// nothing while another connection has the database open, waiting about five seconds for
+// one that is letting go, as a copy of the app that is quitting does, and then returns an
+// error IsBusy tells apart; it puts the files back when the fresh database cannot be
+// opened. With no database at path there is nothing to set aside, and it opens one as
+// Open does. The caller closes Opened.DB.
+func OpenFresh(ctx context.Context, path string) (Opened, error) {
+	return openFresh(ctx, path, options{})
+}
+
 // open is Open with its migrations and clock chosen by opts.
 func open(ctx context.Context, path string, opts options) (Opened, error) {
-	if path == "" {
-		return Opened{}, ErrEmptyPath
+	if err := checkPath(path); err != nil {
+		return Opened{}, err
 	}
 
-	// The driver splits the DSN at the first '?', so such a path would be truncated.
-	if strings.Contains(path, "?") {
-		return Opened{}, ErrInvalidPath
-	}
-
-	if opts.now == nil {
-		opts.now = time.Now
-	}
+	opts = opts.withDefaults()
 
 	db, err := openMigrated(ctx, path, opts)
 	if err == nil {
@@ -152,6 +180,64 @@ func open(ctx context.Context, path string, opts options) (Opened, error) {
 	return startFresh(ctx, path, opts, Reset{Reason: reason, Err: err})
 }
 
+// openFresh is OpenFresh with its migrations, clock, and waits chosen by opts.
+func openFresh(ctx context.Context, path string, opts options) (Opened, error) {
+	if err := checkPath(path); err != nil {
+		return Opened{}, err
+	}
+
+	opts = opts.withDefaults()
+
+	if _, err := os.Lstat(path); errors.Is(err, fs.ErrNotExist) {
+		// Setting aside an empty file the open would create holds nothing to bring back.
+		return open(ctx, path, opts)
+	} else if err != nil {
+		return Opened{}, fmt.Errorf("start a fresh database: %w", err)
+	}
+
+	if err := waitUnshared(ctx, path, opts); err != nil {
+		return Opened{}, fmt.Errorf("start a fresh database: set the old one aside: %w", err)
+	}
+
+	opened, err := replace(ctx, path, opts, resetInfix, Reset{Reason: ResetRequested})
+	if err != nil {
+		return Opened{}, fmt.Errorf("start a fresh database: %w", err)
+	}
+
+	return opened, nil
+}
+
+// checkPath returns an error for a path the database cannot be opened at.
+func checkPath(path string) error {
+	if path == "" {
+		return ErrEmptyPath
+	}
+
+	// The driver splits the DSN at the first '?', so such a path would be truncated.
+	if strings.Contains(path, "?") {
+		return ErrInvalidPath
+	}
+
+	return nil
+}
+
+// withDefaults returns o with every unset option at its default.
+func (o options) withDefaults() options {
+	if o.now == nil {
+		o.now = time.Now
+	}
+
+	if o.busyTries <= 0 {
+		o.busyTries = freshBusyTries
+	}
+
+	if o.busyWait == nil {
+		o.busyWait = func(ctx context.Context) error { return clock.Sleep(ctx, freshBusyPause) }
+	}
+
+	return o
+}
+
 // startFresh sets aside the database at path, which reset says cannot be used, and
 // opens a fresh one in its place. It moves nothing while another connection has the
 // database open, and puts the files back when the fresh database cannot be opened.
@@ -160,16 +246,28 @@ func startFresh(ctx context.Context, path string, opts options, reset Reset) (Op
 		return Opened{}, fmt.Errorf("%w; set it aside: %w", reset.Err, err)
 	}
 
-	moved, err := setAside(path, opts.now())
+	opened, err := replace(ctx, path, opts, asideInfix, reset)
 	if err != nil {
-		return Opened{}, fmt.Errorf("%w; set it aside: %w", reset.Err, err)
+		return Opened{}, fmt.Errorf("%w; %w", reset.Err, err)
+	}
+
+	return opened, nil
+}
+
+// replace renames the database at path to a name under infix and opens a fresh one in its
+// place, which reset, with its new Path, reports. It puts the files back when the fresh
+// database cannot be opened. The caller has checked no other connection has it open.
+func replace(ctx context.Context, path string, opts options, infix string, reset Reset) (Opened, error) {
+	moved, err := setAside(path, opts.now(), infix)
+	if err != nil {
+		return Opened{}, fmt.Errorf("set it aside: %w", err)
 	}
 
 	reset.Path = moved.target
 
 	db, err := openMigrated(ctx, path, opts)
 	if err != nil {
-		err = fmt.Errorf("%w; start a fresh database in its place: %w", reset.Err, err)
+		err = fmt.Errorf("start a fresh database in its place: %w", err)
 
 		if putErr := moved.putBack(); putErr != nil {
 			return Opened{}, fmt.Errorf("%w; put it back from %s: %w", err, reset.Path, putErr)
@@ -179,6 +277,22 @@ func startFresh(ctx context.Context, path string, opts options, reset Reset) (Op
 	}
 
 	return Opened{DB: db, Reset: &reset}, nil
+}
+
+// waitUnshared returns once this process alone has the database at path open, as
+// checkUnshared finds, checking again while another connection has it, up to opts'
+// busyTries, with opts' busyWait between checks. Any other failure returns at once.
+func waitUnshared(ctx context.Context, path string, opts options) error {
+	for try := 1; ; try++ {
+		err := checkUnshared(ctx, path)
+		if err == nil || !IsBusy(err) || try >= opts.busyTries {
+			return err
+		}
+
+		if err = opts.busyWait(ctx); err != nil {
+			return fmt.Errorf("wait for another copy of the app to let go of the database: %w", err)
+		}
+	}
 }
 
 // openMigrated opens the database at path, creating it when needed, and applies the
