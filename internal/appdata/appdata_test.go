@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -99,6 +100,74 @@ func TestDirUnsupported(t *testing.T) {
 			require.ErrorIs(t, err, appdata.ErrUnsupportedOS)
 		})
 	}
+}
+
+func TestRehearsalDirIsBesideTheUsersAndNeverIt(t *testing.T) {
+	t.Parallel()
+
+	home := filepath.Join("/", "tmp", "home")
+
+	tests := []struct {
+		goos string
+		vars map[string]string
+	}{
+		{goos: "darwin"},
+		{goos: "linux"},
+		{goos: "linux", vars: map[string]string{"XDG_DATA_HOME": filepath.Join("/", "tmp", "xdg-data")}},
+		{goos: "windows", vars: map[string]string{"APPDATA": filepath.Join("C:", "Users", "example", "AppData")}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.goos, func(t *testing.T) {
+			t.Parallel()
+
+			users, err := appdata.Dir(tt.goos, home, env(tt.vars))
+			require.NoError(t, err)
+
+			got, err := appdata.RehearsalDir(tt.goos, home, env(tt.vars))
+			require.NoError(t, err)
+
+			assert.Equal(t, filepath.Join(filepath.Dir(users), brand.RehearsalDataDirName), got)
+			assert.NotEqual(t, users, got)
+
+			for _, pair := range [][2]string{{users, got}, {got, users}} {
+				rel, relErr := filepath.Rel(pair[0], pair[1])
+				require.NoError(t, relErr)
+				assert.True(t, strings.HasPrefix(rel, ".."), "%s is inside %s", pair[1], pair[0])
+			}
+		})
+	}
+
+	_, err := appdata.RehearsalDir("darwin", "", env(nil))
+	require.ErrorIs(t, err, appdata.ErrNoHomeDir, "no home is no data directory, never the user's")
+}
+
+func TestResolveRehearsal(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_DATA_HOME", "")
+
+	if runtime.GOOS == "windows" {
+		t.Setenv("APPDATA", filepath.Join(home, "AppData"))
+	}
+
+	p, err := appdata.ResolveRehearsal()
+	if runtime.GOOS != "darwin" && runtime.GOOS != "linux" && runtime.GOOS != "windows" {
+		require.ErrorIs(t, err, appdata.ErrUnsupportedOS)
+
+		return
+	}
+
+	require.NoError(t, err)
+
+	want, err := appdata.RehearsalDir(runtime.GOOS, home, os.Getenv)
+	require.NoError(t, err)
+	assert.Equal(t, appdata.NewPaths(want), p)
+
+	users, err := appdata.Resolve()
+	require.NoError(t, err)
+	assert.NotEqual(t, users.Root, p.Root)
+	assert.NotEqual(t, users.DB, p.DB)
 }
 
 func TestNewPaths(t *testing.T) {

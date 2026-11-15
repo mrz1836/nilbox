@@ -95,6 +95,33 @@ func Resolve() (Paths, error) {
 	return NewPaths(root), nil
 }
 
+// ResolveRehearsal returns the data locations of a rehearsal build for the current user on
+// the current OS (see RehearsalDir).
+func ResolveRehearsal() (Paths, error) {
+	home, _ := os.UserHomeDir()
+
+	root, err := RehearsalDir(runtime.GOOS, home, os.Getenv)
+	if err != nil {
+		return Paths{}, err
+	}
+
+	return NewPaths(root), nil
+}
+
+// RehearsalDir returns the data directory of a rehearsal build, one magex app:rehearse
+// makes to try an update end to end on one Mac: beside the per-user data directory Dir
+// returns, named brand.RehearsalDataDirName. An update opens the new version with no
+// arguments, so a rehearsal finds its data here on its own, and never reads or writes the
+// user's.
+func RehearsalDir(goos, home string, getenv func(key string) string) (string, error) {
+	dir, err := Dir(goos, home, getenv)
+	if err != nil {
+		return "", err
+	}
+
+	return filepath.Join(filepath.Dir(dir), brand.RehearsalDataDirName), nil
+}
+
 // Dir returns the per-user data directory for the given OS, home directory, and
 // environment lookup:
 //
