@@ -10,6 +10,8 @@ export interface Drafts<D> {
   get: (id: number) => D
   update: (id: number, change: (draft: D) => D) => void
   clear: (id: number) => void
+  // all lists every draft kept, as restarting the app would lose them.
+  all: () => readonly D[]
 }
 
 // useDrafts keeps the drafts for as long as the component that holds them lives: the
@@ -30,5 +32,6 @@ export function useDrafts<D>(empty: D): Drafts<D> {
         return next
       })
     },
+    all: () => [...drafts.values()],
   }
 }

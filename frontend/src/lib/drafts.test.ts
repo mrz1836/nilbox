@@ -30,4 +30,24 @@ describe('useDrafts', () => {
 
     expect(result.current.get(12)).toBe(empty)
   })
+
+  it('lists every draft kept, and none once each is cleared', () => {
+    const { result } = renderHook(() => useDrafts(empty))
+
+    expect(result.current.all()).toEqual([])
+
+    act(() => {
+      result.current.update(12, () => ({ body: 'One' }))
+      result.current.update(14, () => ({ body: 'Two' }))
+    })
+
+    expect(result.current.all()).toEqual([{ body: 'One' }, { body: 'Two' }])
+
+    act(() => {
+      result.current.clear(12)
+      result.current.clear(14)
+    })
+
+    expect(result.current.all()).toEqual([])
+  })
 })

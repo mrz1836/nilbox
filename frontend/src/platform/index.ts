@@ -44,6 +44,8 @@ import type * as statusprefs from '../../bindings/github.com/mrz1836/nilbox/inte
 import * as svcstatus from '../../bindings/github.com/mrz1836/nilbox/internal/svcstatus'
 import type * as threadrules from '../../bindings/github.com/mrz1836/nilbox/internal/threadrules'
 import type * as timeline from '../../bindings/github.com/mrz1836/nilbox/internal/timeline'
+import * as update from '../../bindings/github.com/mrz1836/nilbox/internal/update'
+import type * as updateprefs from '../../bindings/github.com/mrz1836/nilbox/internal/updateprefs'
 import * as worktrees from '../../bindings/github.com/mrz1836/nilbox/internal/worktrees'
 
 export type { CancellablePromise }
@@ -135,6 +137,18 @@ export type DataReset = NonNullLists<appinfo.DataReset>
 export type Info = NonNullLists<appinfo.Info>
 export type Restored = NonNullLists<appinfo.Restored>
 export type ResetReason = appinfo.ResetReason
+
+// The app's own updates: where the update stands (UpdateStatus, with the newer version
+// found, the download's progress, the restart under way, and how the last restart went),
+// what kind of build this is, where it runs from, and the setting that says what to do
+// when a new version is out (Settings.updateMode).
+export type UpdateStatus = NonNullLists<update.Status>
+export type UpdateState = update.State
+export type UpdateFlavor = update.Flavor
+export type UpdateLocation = NonNullLists<update.Location>
+export type UpdateLocationKind = update.LocationKind
+export type InstallFailure = NonNullLists<update.InstallFailure>
+export type UpdateMode = updateprefs.Mode
 
 // The first-run setup: where it stands (whether it is done, and the step it opens on), the
 // GitHub step's check of the GitHub CLI's sign-in, the terminals launches can open in,
@@ -699,6 +713,7 @@ export const {
   SetGitHubNotificationTrigger: setGitHubNotificationTrigger,
   SetGitHubNotificationAction: setGitHubNotificationAction,
   SetGitHubCleanupCardDismissed: setGitHubCleanupCardDismissed,
+  SetUpdateMode: setUpdateMode,
 } = narrow(settings.Service)
 
 // The tools the app finds, installs, and runs for the user. List never waits for a
@@ -931,6 +946,113 @@ export const {
   BannerStatus: notificationBannerStatus,
   SendTest: sendTestNotification,
 } = notifications
+
+// The app's own updates. Status reads where the update stands, from memory and the stored
+// state alone, never the network; CheckForUpdates checks now, in every mode, and returns the
+// status, whose lastError tells a check that failed (the call itself succeeds); Download
+// downloads the newer version found and returns the status, ready; HideBanner is the
+// banner's Later, for a day, and ShowBanner lifts it, as a click on the update's
+// notification does; AckUpdated forgets the version this launch updated to, once the window
+// has said so; ShowInstallLog shows the log of an update that didn't install in Finder. An
+// "updates:updated" event follows every change, a download's progress included, and
+// "updates:restart" asks the window to restart to update (restartToUpdate in
+// lib/useUpdate.ts), as the menu bar's Restart to Update does.
+export const {
+  Status: getUpdateStatus,
+  CheckNow: checkForUpdates,
+  Download: downloadUpdate,
+  HideBanner: hideUpdateBanner,
+  ShowBanner: showUpdateBanner,
+  AckUpdated: ackUpdated,
+  ShowInstallLog: showInstallLog,
+} = narrow(update.Service)
+
+// RunGoing is a run going in the app that restarting to update would stop, as Go's
+// update.Run names it: its id, kind, and title, its repository ("owner/name", or '') and
+// folder (with ~ for home), and why it can't be stopped right now, or ''.
+export interface RunGoing {
+  id: number
+  kind: string
+  title: string
+  repo: string
+  dir: string
+  stopRefused: string
+}
+
+// RestartAnswer is how asking to restart to update ended: the update is installing, and
+// the app quits (Restart rarely returns then), or the restart was held back because runs
+// go in the app, which it would stop: those runs, or an empty list when they couldn't be
+// listed, for the window to ask about, with the backend's words for why.
+export type RestartAnswer =
+  { restarted: true; status: UpdateStatus } | { restarted: false; runsGoing: RunGoing[]; message: string }
+
+// runFields are the fields of a RunGoing, with the type each holds.
+const runFields = {
+  id: 'number',
+  kind: 'string',
+  title: 'string',
+  repo: 'string',
+  dir: 'string',
+  stopRefused: 'string',
+}
+
+// runGoingOf reads one run of a refusal's detail, or null when it isn't one.
+function runGoingOf(value: unknown): RunGoing | null {
+  if (typeof value !== 'object' || value === null) {
+    return null
+  }
+
+  const fields = value as Record<string, unknown>
+
+  return Object.entries(runFields).every(([name, type]) => typeof fields[name] === type) ? (value as RunGoing) : null
+}
+
+// runsGoingOf reads the runs a refused restart names from the failed call's cause, whose
+// detail Go sends as {"runsGoing": [...]} (update.RunsGoingDetail), with the backend's
+// words for the user. It returns null for any other failure, and leaves out an entry it
+// can't read; a list it can't read at all, like one Go couldn't list, is empty, which
+// means runs are going without saying which.
+function runsGoingOf(err: unknown): { runsGoing: RunGoing[]; message: string } | null {
+  if (!(err instanceof Error) || typeof err.cause !== 'object' || err.cause === null) {
+    return null
+  }
+
+  const { cause } = err
+  const detail: unknown = 'detail' in cause ? cause.detail : undefined
+
+  if (typeof detail !== 'object' || detail === null || !('runsGoing' in detail)) {
+    return null
+  }
+
+  const listed = Array.isArray(detail.runsGoing) ? (detail.runsGoing as unknown[]) : []
+  const runsGoing = listed.map(runGoingOf).filter((run) => run !== null)
+  const message = 'message' in cause && typeof cause.message === 'string' ? cause.message : ''
+
+  return { runsGoing, message }
+}
+
+// restartToUpdateNow installs the update that is ready and restarts into it. Unless
+// confirmed, it is held back while runs go in the app, which it would stop: it then
+// resolves with those runs, for the window to ask about first. Confirmed, it stops them.
+// It backs up the data first. Any other failure, which leaves the update ready again,
+// rejects with the backend's words. It may wait for a check or a download under way
+// first, for up to the download's limit.
+export function restartToUpdateNow(confirmed: boolean): CancellablePromise<RestartAnswer> {
+  return narrow(update.Service)
+    .Restart(confirmed)
+    .then(
+      (status): RestartAnswer => ({ restarted: true, status }),
+      (err: unknown): RestartAnswer => {
+        const held = runsGoingOf(err)
+
+        if (held === null) {
+          throw err
+        }
+
+        return { restarted: false, ...held }
+      },
+    )
+}
 
 // listNotifications reads the notification history, typed so its entries can be about no
 // item (AppNotification).

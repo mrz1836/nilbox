@@ -1,8 +1,10 @@
 import { vi } from 'vitest'
 
+import { bannerOf, type RestartStep } from '../lib/update'
 import type { IntegrationsState } from '../lib/useIntegrations'
 import type { Query } from '../lib/useQuery'
-import type { IntegrationTools } from '../platform'
+import type { UpdateControl } from '../lib/useUpdate'
+import type { IntegrationTools, UpdateStatus } from '../platform'
 
 // queryOf is a read as useQuery hands it to a component: data answered, or undefined while
 // it loads, with refetch and set as mocks a test reads.
@@ -32,6 +34,27 @@ export function integrationsOf(
     checkAgain: vi.fn(() => Promise.resolve()),
     reload: vi.fn(() => Promise.resolve()),
     replace: vi.fn(),
+    ...overrides,
+  }
+}
+
+// updateOf is the app's update as useUpdateControl hands it to a component: a status, or
+// null while it loads, the restart flow at a step, and the banner they show, with its
+// moves as mocks a test reads.
+export function updateOf(
+  status: UpdateStatus | null,
+  flow: RestartStep = { step: 'idle' },
+  overrides: Partial<UpdateControl> = {},
+): UpdateControl {
+  return {
+    status,
+    flow,
+    banner: bannerOf(status, flow, ''),
+    restart: vi.fn(),
+    later: vi.fn(),
+    dismiss: vi.fn(),
+    reveal: vi.fn(() => Promise.resolve(true)),
+    reload: vi.fn(() => Promise.resolve()),
     ...overrides,
   }
 }
