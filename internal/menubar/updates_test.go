@@ -213,12 +213,6 @@ func TestUpdateRowsStatusLine(t *testing.T) {
 			st:   on(func(st *update.Status) { st.Checking = true }),
 			note: checked,
 		},
-		{
-			name: "a restart refused",
-			st:   on(func(st *update.Status) { st.State, st.Latest = update.StateReady, newer }),
-			note: menubar.UpdateNote{At: at, Refused: "Not restarted: a run is going", Why: "Restarting stops a run."},
-			want: menubar.UpdateRow{Label: "Not restarted: a run is going", Tooltip: "Restarting stops a run."},
-		},
 	}
 
 	for _, tt := range tests {

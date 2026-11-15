@@ -268,7 +268,9 @@ notifications](#menu-bar-and-notifications)).
   one left: updated, which a toast says once (*"Updated to 0.3.0"* · **What's new**), or, when
   the old version opens again instead, why it didn't install, in words, in the banner (**Try
   again** · **Download manually** · **Details**) and in Settings → About, with **Show log in
-  Finder** for the helper's log, kept as `<data>/logs/update-<version>.log`. Either way, it
+  Finder** for the helper's log, kept as `<data>/logs/update-<version>.log`. The version that
+  failed stays downloaded, and is offered only as **Try again**, never as a plain **Restart to
+  update**, until a newer one replaces it. Either way, it
   removes what the update left behind (the staging folder and `.bak` beside the app, and the
   helper's files in the temporary folder), each by its exact name. While the update's helper
   may still be at work (its log not ended, under three minutes since the restart), the start
