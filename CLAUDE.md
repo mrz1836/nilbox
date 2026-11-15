@@ -195,10 +195,12 @@ app:lint` reads.
   nothing elsewhere), and reads a copy's mark there too (`translocates`: its own folder's,
   without the flag a Finder move adds); checks a copy with `codesign --verify --deep
   --strict --test-requirement =<requirement>` (`desktop.VerifyArgs`), the requirement the
-  app that runs designates (`desktop.RequirementArgs`, `codesign --display --requirements
-  -`), so a copy signed otherwise fails, worded, and words a program that wrote nothing by
-  how it ended; holds every quit while a move runs (`Shell.HoldQuit`: `ShouldQuit` says no
-  and shows the window, and the quit goes ahead, once, as the last move lets go); and
+  app that runs designates, read from its process ID (`desktop.RequirementArgs`, `codesign
+  --display --requirements - <pid>`), so a copy signed otherwise fails, worded, and a
+  requirement that can't be read holds `update.ErrOwnSignature`; words a program that wrote
+  nothing by how it ended (an exit status, a signal, or no start); holds every quit while a
+  move runs (`Shell.HoldQuit`: `ShouldQuit` says no and shows the window, and the quit goes
+  ahead, once, as the last move lets go); and
   `Shell.OpenAfterQuit` quits the normal way, which the quit guard holds while runs go,
   keeping the copy for the quit the user lets through: **Keep running** (the bound
   `scriptrun.Service.KeepRunning`, the Go-only `event.QuitKept`) forgets it.
@@ -877,19 +879,26 @@ app:lint` reads.
   else `~/Applications`, made when missing), a copy of the app already there, by its
   `Info.plist`'s bundle identifier (`bundleID`, never a link followed), never replaced
   (`MoveExists`, for `OpenInApplications`, which checks that copy's signature against the
-  running app's requirement and opens it), anything else there refused (`ErrTargetTaken`), and otherwise the copy made and checked
-  in a hidden folder of the move's own beside the target (`stage`, `stagePrefix`, an empty
-  bundle in it), through the `Mover` the shell attaches (`AttachMover`), and only then renamed
-  into the target, never over anything that appeared there (`place`, `renameNew`: RENAME_EXCL
-  on macOS), so a copy cut off or never checked is never where the app goes, and a failed
-  copy's removal (`discard`, that folder alone) never touches what was there; a later move
-  removes such a folder a cut-off move left (`sweepLeftovers`: named so, older than
-  `leftoverAfter`, holding nothing or only a copy of the app); then the Mover quits the
-  normal way and opens the copy once the app has quit (`MoveMoved`). `OpenInApplications`
-  refuses a copy macOS would open from a hidden folder (`Mover.Translocates`,
-  `ErrQuarantined`), leaving its mark, before the check. Every move holds the app's quit
-  from its start to its end (`Mover.HoldQuit`). One move runs at a time (`ErrMoving`), its
-  copy bounded by `MoveLimit` and never cut short by the window's call, and none starts
+  running app's requirement and opens it), anything else there refused (`ErrTargetTaken`), and
+  otherwise the copy made and checked in a hidden folder of the move's own beside the target
+  (`stage`, `stagePrefix`, its marker and an empty bundle in it), through the `Mover` the shell
+  attaches (`AttachMover`), and only then renamed into the target, never over anything that
+  appeared there (`place`, `renameNew`: RENAME_EXCL on macOS), so a copy cut off or never
+  checked is never where the app goes, and a failed copy's removal (`discard`, that folder
+  alone) never touches what was there; a later move removes such a folder a cut-off move left
+  (`sweepLeftovers`: named so, marked before the copy began by `stageMarker`, the bundle ID and
+  the move's process, holding nothing else but the copy however far it got, and its maker this
+  run or gone by `procs.Probe`, or, when that can't be told, older than `leftoverAfter`); then
+  the Mover quits the normal way and opens the copy once the app has quit (`MoveMoved`).
+  `OpenInApplications` refuses a copy macOS would open from a hidden folder
+  (`Mover.Translocates`, `ErrQuarantined`), leaving its mark, before the check, and a check that
+  couldn't read the app's own signature (`ErrOwnSignature`) blames no copy. The bundle that runs
+  is never its own copy, by the folder it started from too (`isSelf`), so one dragged into
+  Applications while it runs still reads as itself. Every move holds the app's quit from its
+  start to its end (`Mover.HoldQuit`): its copy and check within `MoveLimit`, the steps around
+  them (the sweep, the unmarking, the rename, a failed copy's removal) moments more. One move
+  runs at a time (`ErrMoving`), its copy bounded by `MoveLimit` and never cut short by the
+  window's call, and none starts
   while a restart into an update installs or finishes after a held quit, which goes first (`ErrUpdating`,
   with `ErrFinishing` for the latter, each worded for the window); the bundle that runs is never
   touched, and `ShowAppInFinder` shows it, but for a translocated one. With downloads on, the zip goes into

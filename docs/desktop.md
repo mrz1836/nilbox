@@ -427,10 +427,14 @@ move either: About says the account is why.
   with Finder (copied there in Terminal, with `cp` or `mv`) would open from a hidden folder,
   where it can't update itself, so the dialog asks you to move it to the Trash and move this
   copy instead. The mark is left as it is, since you never opened that copy. Second, it must
-  be signed as this copy is (`codesign --verify --deep --strict` with this copy's designated
-  requirement, `--test-requirement`): a release's is the release identity's, the same for
-  every release, so a build from source, which never updates itself, is refused the same way.
-  A rehearsal signed ad hoc only opens a copy of the same build. Anything else there (a link,
+  be signed as this copy is (`codesign --verify --deep --strict` with the designated
+  requirement of the app that runs, `--test-requirement`, read from its process, so it holds
+  however the app was moved while it runs): a release's is the release identity's, the same
+  for every release, so a build from source, which never updates itself, is refused the same
+  way. A rehearsal signed ad hoc only opens a copy of the same build. If the app can't read its
+  own signature, the dialog says so and asks you to open that copy yourself, never to throw it
+  away. The app you are running, dragged into Applications while it runs, is never offered as
+  a copy of its own. Anything else there (a link,
   a file, another app, a folder that isn't an app) stops the move, and the dialog says what is
   in the way. When **Open it** is refused, the dialog asks to move again, with why beside it.
 - **The move.** The app copies itself, with `ditto --noqtn`, into a hidden folder of its own
@@ -441,11 +445,17 @@ move either: About says the account is why.
   anything that appeared there meanwhile, so a copy cut off partway, or never checked, is
   never where the app goes. A copy that fails, doesn't pass the check, or can't be put in
   place is removed with its hidden folder, that folder alone, and the dialog says why; nothing
-  else changes. A hidden folder a move cut off by a crash or a power cut left is removed by the
-  next move, once it is older than any move could still be running in, and only when it holds
-  nothing but a copy of the app. While it works, the dialog says *Moving to Applications…* and
-  holds its buttons, and every quit waits for it (the window comes forward, where the move
-  shows): the quit goes ahead once the move ends, within its five-minute limit.
+  else changes. Before it copies anything, the move marks its hidden folder with the app's
+  bundle identifier and its process. A hidden folder a move cut off by a crash, a power cut, or
+  a force quit left there, however far the copy had got, is removed by the next move once the
+  copy of the app that made it no longer runs (or, when that can't be told, once it is older
+  than a move takes); one holding anything else, or not marked, is left as it is. While it
+  works, the dialog says *Moving to Applications…* and holds its buttons, and every quit waits
+  for it (the window comes forward, where the move shows), going ahead once the move ends: the
+  copy and its check stop after five minutes, and the steps around them (clearing what
+  earlier moves left, taking the mark off, the rename, removing a copy that failed) take
+  moments more. A Mac that sleeps through a move doesn't count the sleep against those five
+  minutes.
 - **The reopen.** The app then quits the normal way and opens the copy once it has quit
   (`open -n`, given five seconds, as the reopen after a reset is, so it never holds the app's
   shutdown). While runs go in the app, the quit asks first, as every quit does; **Keep

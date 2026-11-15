@@ -60,9 +60,10 @@ export interface MoveControl {
 // question back to the move, which its words say to do.
 //
 // The quit asks first while runs go in the app, in its own dialog: the move dialog closes
-// then, and if the user keeps the app running, the copy waits in Applications, and opens
-// at the next quit. That question can come before the move's own answer, so a quit asked
-// while the work is under way closes the dialog as soon as the work has gone ahead.
+// then. Stop and quit opens the copy; Keep running leaves it in Applications and opens
+// nothing at a later quit, and Move to Applications then offers Open it. That question can
+// come before the move's own answer, so a quit asked while the work is under way closes the
+// dialog as soon as the work has gone ahead.
 export function useMoveToApplications(offer: Offer, location: UpdateLocation | null): MoveControl {
   // shown is whether the dialog shows: on launch, as soon as the move is offered; open once
   // the banner or About asks for it; closed once put away.
@@ -138,7 +139,7 @@ export function useMoveToApplications(offer: Offer, location: UpdateLocation | n
   }
 
   // A quit held while runs go asks in its own dialog: this one gives way, and the copy opens
-  // at whichever quit goes through.
+  // only if the user lets that quit through.
   const onQuitAsked = useEffectEvent(() => {
     if (stage.current === 'leaving') {
       giveWay()
