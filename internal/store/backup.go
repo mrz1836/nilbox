@@ -38,37 +38,47 @@ func Backup(ctx context.Context, db *sql.DB, path string) (string, error) {
 }
 
 // RestoreBackup puts backup, one of the backups beside the database at path (a
-// SnapshotBackup, as Backup and the migrations take), in the database's place. The
-// database there now, with its -wal and -shm files, is first set aside under the name Open
-// gives one it can't use, <path>.broken-<UTC stamp>, and kept until the user removes it;
-// then the backup is copied, not moved, to path, so the backup stays as it was. It returns
-// where the database was set aside, or "" when there was none to set aside.
+// SnapshotBackup, as Backup and the migrations take), in the database's place. The backup
+// is first copied, not moved, into a temporary file beside the database, so the backup
+// stays as it was and the slow part changes nothing; only then is the database there now,
+// with its -wal and -shm files, set aside under the name Open gives one it can't use,
+// <path>.broken-<UTC stamp>, and kept until the user removes it, and the copy renamed into
+// its place. It returns where the database was set aside, or "" when there was none.
 //
 // Nothing may have the database open: it waits a moment for another connection to let go,
-// as a copy of the app that is quitting, and fails otherwise, moving nothing. When the copy
-// fails, the database is put back. The next Open opens the restored database and brings it
-// up to date with the migrations.
+// as a copy of the app that is quitting, and fails otherwise, moving nothing. When the
+// rename fails, the database is put back. Whatever fails, the copy is removed. The next
+// Open opens the restored database and brings it up to date with the migrations.
 func RestoreBackup(ctx context.Context, path, backup string) (string, error) {
 	return restoreBackup(ctx, path, backup, options{})
 }
 
-// restoreBackup is RestoreBackup with opts: the time the database is set aside at, and how
-// long to wait for another connection to let go of it.
+// restoreBackup is RestoreBackup with opts: the time the database is set aside at, how long
+// to wait for another connection to let go of it, and how the copy is renamed into place.
 func restoreBackup(ctx context.Context, path, backup string, opts options) (string, error) {
 	if err := checkBackup(path, backup); err != nil {
 		return "", err
 	}
 
-	_, err := os.Lstat(path)
+	opts = opts.withDefaults()
+
+	tmp, err := copyBeside(backup, path)
+	if err != nil {
+		return "", err
+	}
+
+	// After the rename, the copy is the database: removing tmp then finds nothing.
+	defer func() { _ = os.Remove(tmp) }()
+
+	_, err = os.Lstat(path)
 	if errors.Is(err, fs.ErrNotExist) {
-		return "", copyInPlace(backup, path)
+		return "", renameInto(opts, tmp, path)
 	}
 
 	if err != nil {
 		return "", fmt.Errorf("restore the backup: %w", err)
 	}
 
-	opts = opts.withDefaults()
 	if err = waitUnshared(ctx, path, opts); err != nil {
 		return "", fmt.Errorf("restore the backup: %w", err)
 	}
@@ -78,7 +88,7 @@ func restoreBackup(ctx context.Context, path, backup string, opts options) (stri
 		return "", fmt.Errorf("restore the backup: %w", err)
 	}
 
-	if err = copyInPlace(backup, path); err != nil {
+	if err = renameInto(opts, tmp, path); err != nil {
 		if putErr := moved.putBack(); putErr != nil {
 			return "", fmt.Errorf("%w; put the database back from %s: %w", err, moved.target, putErr)
 		}
@@ -87,6 +97,15 @@ func restoreBackup(ctx context.Context, path, backup string, opts options) (stri
 	}
 
 	return moved.target, nil
+}
+
+// renameInto renames the copy tmp to path with opts' rename.
+func renameInto(opts options, tmp, path string) error {
+	if err := opts.rename(tmp, path); err != nil {
+		return fmt.Errorf("restore the backup: %w", err)
+	}
+
+	return nil
 }
 
 // checkBackup refuses a backup that isn't a regular file named as one of the database's
@@ -140,24 +159,24 @@ func readHead(path string, n int) ([]byte, error) {
 	return head[:read], nil
 }
 
-// copyInPlace copies the file at from to path, user-only: into a temporary file beside path
-// first, flushed to disk, then renamed over it, so path never holds part of a database.
-func copyInPlace(from, path string) error {
+// copyBeside copies the file at from into a user-only temporary file beside path, flushed
+// to disk, and returns its path. A copy that fails leaves nothing.
+func copyBeside(from, path string) (string, error) {
 	src, err := os.Open(from) //nolint:gosec // one of the database's own backups, beside it
 	if err != nil {
-		return fmt.Errorf("restore the backup: %w", err)
+		return "", fmt.Errorf("restore the backup: %w", err)
 	}
 
 	defer func() { _ = src.Close() }()
 
 	tmp, err := os.CreateTemp(filepath.Dir(path), "."+filepath.Base(path)+".restore-*.tmp")
 	if err != nil {
-		return fmt.Errorf("restore the backup: %w", err)
+		return "", fmt.Errorf("restore the backup: %w", err)
 	}
 
 	name := tmp.Name()
-	fail := func(err error) error {
-		return errors.Join(fmt.Errorf("restore the backup: %w", err), tmp.Close(), os.Remove(name))
+	fail := func(err error) (string, error) {
+		return "", errors.Join(fmt.Errorf("restore the backup: %w", err), tmp.Close(), os.Remove(name))
 	}
 
 	if err = tmp.Chmod(appdata.PrivateFilePerm); err != nil {
@@ -173,12 +192,8 @@ func copyInPlace(from, path string) error {
 	}
 
 	if err = tmp.Close(); err != nil {
-		return errors.Join(fmt.Errorf("restore the backup: %w", err), os.Remove(name))
+		return "", errors.Join(fmt.Errorf("restore the backup: %w", err), os.Remove(name))
 	}
 
-	if err = os.Rename(name, path); err != nil {
-		return errors.Join(fmt.Errorf("restore the backup: %w", err), os.Remove(name))
-	}
-
-	return nil
+	return name, nil
 }

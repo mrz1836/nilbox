@@ -143,6 +143,9 @@ type options struct {
 
 	// busyWait waits between those checks. Nil waits freshBusyPause on the real clock.
 	busyWait func(ctx context.Context) error
+
+	// rename renames a restored copy into the database's place. Nil is os.Rename.
+	rename func(oldPath, newPath string) error
 }
 
 // Open opens (creating if needed) the database at path and applies pending migrations,
@@ -239,6 +242,10 @@ func (o options) withDefaults() options {
 
 	if o.busyWait == nil {
 		o.busyWait = func(ctx context.Context) error { return clock.Sleep(ctx, freshBusyPause) }
+	}
+
+	if o.rename == nil {
+		o.rename = os.Rename
 	}
 
 	return o

@@ -33,6 +33,13 @@ func RestoreBackupWith(ctx context.Context, path, backup string, tries int, wait
 	return restoreBackup(ctx, path, backup, options{busyTries: tries, busyWait: wait})
 }
 
+// RestoreBackupRenaming restores backup at path as RestoreBackup does, renaming the copy
+// into place with rename.
+func RestoreBackupRenaming(ctx context.Context, path, backup string, rename func(oldPath, newPath string) error,
+) (string, error) {
+	return restoreBackup(ctx, path, backup, options{rename: rename})
+}
+
 // OpenFreshWith starts over at path as OpenFresh does, naming the database it sets aside
 // by now, checking tries times that no other connection has it open, and calling wait
 // between the checks.

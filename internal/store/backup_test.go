@@ -212,6 +212,73 @@ func TestRestoreBackupRefusesWhileTheDatabaseIsOpen(t *testing.T) {
 	assert.True(t, store.IsBusy(err), "the database is busy: %v", err)
 	assert.Equal(t, 2, waits, "it waits between its tries for the other copy to let go")
 	assert.Empty(t, setAsideFiles(t, path), "nothing moved while the database is open")
+	assert.Empty(t, restoreCopies(t, path), "the copy made first is removed")
+}
+
+func TestRestoreBackupCopiesBeforeItMovesAnything(t *testing.T) {
+	t.Parallel()
+
+	path := filepath.Join(t.TempDir(), "app.db")
+	setPref(t, path, "before the update")
+
+	opened, err := store.Open(t.Context(), path)
+	require.NoError(t, err)
+
+	backup, err := store.Backup(t.Context(), opened.DB, path)
+	require.NoError(t, err)
+	require.NoError(t, opened.DB.Close())
+
+	setPref(t, path, "after the update")
+
+	// By the time the copy is renamed into place, the copy is whole and the database aside.
+	var copied, asideByThen []string
+
+	_, err = store.RestoreBackupRenaming(t.Context(), path, backup, func(oldPath, newPath string) error {
+		copied = restoreCopies(t, path)
+		asideByThen = setAsideFiles(t, path)
+
+		return os.Rename(oldPath, newPath)
+	})
+	require.NoError(t, err)
+	assert.Len(t, copied, 1, "the backup was copied beside the database first")
+	assert.Len(t, asideByThen, 1, "then the database set aside")
+	assert.Empty(t, restoreCopies(t, path))
+	assert.Equal(t, "before the update", prefIn(t, path))
+}
+
+func TestRestoreBackupPutsTheDatabaseBackWhenTheRenameFails(t *testing.T) {
+	t.Parallel()
+
+	path := filepath.Join(t.TempDir(), "app.db")
+	setPref(t, path, "before the update")
+
+	opened, err := store.Open(t.Context(), path)
+	require.NoError(t, err)
+
+	backup, err := store.Backup(t.Context(), opened.DB, path)
+	require.NoError(t, err)
+	require.NoError(t, opened.DB.Close())
+
+	setPref(t, path, "after the update")
+
+	_, err = store.RestoreBackupRenaming(t.Context(), path, backup, func(string, string) error {
+		return os.ErrPermission
+	})
+	require.ErrorIs(t, err, os.ErrPermission)
+	assert.Empty(t, setAsideFiles(t, path), "the database is put back")
+	assert.Empty(t, restoreCopies(t, path), "and the copy removed")
+	assert.Equal(t, "after the update", prefIn(t, path), "nothing changed")
+	assert.FileExists(t, backup)
+}
+
+// restoreCopies lists the copies of a backup a restore left beside the database at path.
+func restoreCopies(t *testing.T, path string) []string {
+	t.Helper()
+
+	found, err := filepath.Glob(filepath.Join(filepath.Dir(path), "."+filepath.Base(path)+".restore-*"))
+	require.NoError(t, err)
+
+	return found
 }
 
 // kinds lists the kinds of snapshots.
