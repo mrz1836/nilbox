@@ -2,6 +2,7 @@ import { useEffect, useEffectEvent, useId, useRef, useState } from 'react'
 
 import type { Result } from '../lib/call'
 import type { GitHubThreadsState } from '../lib/useGitHubThreads'
+import type { UpdateControl } from '../lib/useUpdate'
 import { counted, formatCount } from '../lib/format'
 import { isTyping } from '../lib/keys'
 import { matchSettings, sectionGroups, sectionInfo, type SettingsSection } from '../lib/settingsIndex'
@@ -80,6 +81,9 @@ export interface SettingsViewProps {
   // onRunSetup opens the first-run setup again, which About offers, resolving with how
   // storing that went; without it About offers no way to.
   onRunSetup?: (() => Promise<Result<void>>) | undefined
+  // update is the app's update, which About shows under the version; without it About
+  // leaves it out.
+  update?: UpdateControl | undefined
 }
 
 // SettingsView is the settings page: a sidebar of sections and the chosen section's
@@ -108,6 +112,7 @@ export function SettingsView({
   query = '',
   githubThreads,
   onRunSetup,
+  update,
 }: SettingsViewProps) {
   const headingId = useId()
   const [section, setSection] = useState<SectionId>(initialSection)
@@ -303,7 +308,9 @@ export function SettingsView({
                   onThemeChange={onThemeChange}
                 />
               )}
-              {section === 'about' && <AboutSection onRunSetup={onRunSetup} />}
+              {section === 'about' && (
+                <AboutSection onRunSetup={onRunSetup} update={update} settings={settings} onSaved={onSaved} />
+              )}
             </div>
           </div>
         </section>
