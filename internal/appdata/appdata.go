@@ -110,7 +110,8 @@ func ResolveRehearsal() (Paths, error) {
 
 // RehearsalDir returns the data directory of a rehearsal build, one magex app:rehearse
 // makes to try an update end to end on one Mac: beside the per-user data directory Dir
-// returns, named brand.RehearsalDataDirName. An update opens the new version with no
+// returns, named as it is: brand.RehearsalSlug on Linux, whose is named by the slug, and
+// brand.RehearsalDataDirName elsewhere. An update opens the new version with no
 // arguments, so a rehearsal finds its data here on its own, and never reads or writes the
 // user's.
 func RehearsalDir(goos, home string, getenv func(key string) string) (string, error) {
@@ -119,7 +120,12 @@ func RehearsalDir(goos, home string, getenv func(key string) string) (string, er
 		return "", err
 	}
 
-	return filepath.Join(filepath.Dir(dir), brand.RehearsalDataDirName), nil
+	name := brand.RehearsalDataDirName
+	if goos == "linux" {
+		name = brand.RehearsalSlug
+	}
+
+	return filepath.Join(filepath.Dir(dir), name), nil
 }
 
 // Dir returns the per-user data directory for the given OS, home directory, and

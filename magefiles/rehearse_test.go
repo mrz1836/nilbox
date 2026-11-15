@@ -60,6 +60,31 @@ func stampedKey(t *testing.T, line string) string {
 	return m[1]
 }
 
+// filesUnder lists every file under root but folders, by its slash-separated path from
+// root, in the order filepath.WalkDir finds them.
+func filesUnder(t *testing.T, root string) []string {
+	t.Helper()
+
+	var files []string
+
+	require.NoError(t, filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+		require.NoError(t, err)
+
+		if d.IsDir() {
+			return nil
+		}
+
+		rel, err := filepath.Rel(root, path)
+		require.NoError(t, err)
+
+		files = append(files, filepath.ToSlash(rel))
+
+		return nil
+	}))
+
+	return files
+}
+
 //nolint:paralleltest // changes the process's working directory, environment, PATH, and standard output
 func TestRehearse(t *testing.T) {
 	q := regexp.QuoteMeta
@@ -126,37 +151,46 @@ func TestRehearse(t *testing.T) {
 		assert.DirExists(t, p.a)
 		assert.NoDirExists(t, p.stage, "B's bundle is gone once zipped")
 
-		entries, err := os.ReadDir(p.feed)
-		require.NoError(t, err)
-		require.Len(t, entries, 2)
-		assert.Equal(t, update.AssetNames(rehearsalTo).Zip, entries[0].Name())
-		assert.Equal(t, update.ManifestName, entries[1].Name())
-
-		require.NoError(t, filepath.WalkDir(dir, func(path string, d fs.DirEntry, walkErr error) error {
-			require.NoError(t, walkErr)
-
-			if !d.IsDir() {
-				assert.NotContains(t, readFile(t, path), "PRIVATE KEY", "the private key is written nowhere: %s", path)
-			}
-
-			return nil
-		}))
+		app := "A/" + brand.Name + ".app/Contents/"
+		assert.Equal(t, []string{
+			app + "Info.plist",
+			app + "MacOS/" + brand.Slug,
+			app + "Resources/" + brandgen.IconFile + ".icns",
+			app + "_CodeSignature/CodeResources",
+			"feed/" + update.AssetNames(rehearsalTo).Zip,
+			"feed/" + update.ManifestName,
+		}, filesUnder(t, cfg.root), "the rehearsal holds A and B's release alone: no key, no scratch file")
 
 		data, err := appdata.RehearsalDir(runtime.GOOS, rehearsalHome, os.Getenv)
 		require.NoError(t, err)
 
-		for _, want := range []string{
+		installed := "/Applications/" + brand.Name + ".app"
+		aside := "~/" + brand.Name + "-before-rehearsal.app"
+
+		assert.Contains(t, stdout, strings.Join([]string{
 			"✅ The rehearsal is ready (case=normal): A is 0.0.1, B is 0.0.2.",
+			"  A:    " + p.a,
+			"  feed: " + p.feed + " (B's zip and its signed manifest, which A reads as its releases)",
 			"  data: " + paths.Tilde(data, rehearsalHome) + " (both builds run on it, never on your own data)",
-			"  1. ditto " + p.a + " /Applications/" + brand.Name + ".app",
-			"  2. open /Applications/" + brand.Name + ".app",
-			"  3. In the menu bar menu, choose Check for Updates…, then Restart to Update (0.0.2).",
-			"Or rehearse without the Applications folder: a rehearsal build updates itself in " + cfg.root +
-				" too, so open " + p.a + " and do step 3.",
-			"What should happen: " + brand.Name + " quits, and 0.0.2 opens in its place",
-		} {
-			assert.Contains(t, stdout, want)
-		}
+			"",
+			"To rehearse in place (quit " + brand.Name + " first; a rehearsal build updates itself in " + cfg.root + "):",
+			"  1. open " + p.a,
+			"  2. In the menu bar menu, choose Check for Updates…, then Restart to Update (0.0.2).",
+			"",
+			"What should happen: " + brand.Name + " quits, and 0.0.2 opens in its place in a few seconds, its data " +
+				"backed up first beside the database.",
+			"",
+		}, "\n"), "the in-place route comes first")
+
+		assert.Contains(t, stdout, strings.Join([]string{
+			"  1. [ ! -e " + installed + " ] || mv " + installed + " " + aside,
+			"  2. ditto " + p.a + " " + installed,
+			"  3. open " + installed,
+			"  4. Do step 2 above.",
+			"Then quit it, and put your copy back:",
+			"  rm -rf " + installed,
+			"  [ ! -e " + aside + " ] || mv " + aside + " " + installed,
+		}, "\n"), "the Applications route moves the user's copy aside, and says how to put it back")
 	})
 
 	t.Run("each run trusts a key of its own", func(t *testing.T) {

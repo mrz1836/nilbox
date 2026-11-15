@@ -305,6 +305,7 @@ func printRehearsal(cfg rehearsalConfig, p rehearsalPaths) error {
 	}
 
 	installed := "/Applications/" + brand.Name + ".app"
+	aside := rehearsalAside()
 
 	lines := []string{
 		"",
@@ -313,16 +314,23 @@ func printRehearsal(cfg rehearsalConfig, p rehearsalPaths) error {
 		"  feed: " + p.feed + " (B's zip and its signed manifest, which A reads as its releases)",
 		"  data: " + paths.Tilde(data, cfg.home) + " (both builds run on it, never on your own data)",
 		"",
-		"To rehearse from the Applications folder (quit " + brand.Name + " first; ditto merges into a bundle " +
-			"that is there, so move any " + installed + " to the Trash before step 1):",
-		"  1. ditto " + p.a + " " + installed,
-		"  2. open " + installed,
-		"  3. In the menu bar menu, choose Check for Updates…, then " + rehearsalNext(cfg.kase) + ".",
-		"",
-		"Or rehearse without the Applications folder: a rehearsal build updates itself in " + cfg.root +
-			" too, so open " + p.a + " and do step 3.",
+		"To rehearse in place (quit " + brand.Name + " first; a rehearsal build updates itself in " + cfg.root +
+			"):",
+		"  1. open " + p.a,
+		"  2. In the menu bar menu, choose Check for Updates…, then " + rehearsalNext(cfg.kase) + ".",
 		"",
 		"What should happen: " + rehearsalExpect(cfg.kase),
+		"",
+		"Or rehearse from the Applications folder, as a release updates (quit " + brand.Name + " first). Step 1 " +
+			"moves your copy aside, if there is one; ditto merges into a bundle that is there, so go on only once " +
+			"it left none (if " + aside + " is there from an earlier rehearsal, put it back first):",
+		"  1. [ ! -e " + installed + " ] || mv " + installed + " " + aside,
+		"  2. ditto " + p.a + " " + installed,
+		"  3. open " + installed,
+		"  4. Do step 2 above.",
+		"Then quit it, and put your copy back:",
+		"  rm -rf " + installed,
+		"  [ ! -e " + aside + " ] || mv " + aside + " " + installed,
 	}
 
 	for _, line := range lines {
@@ -330,6 +338,13 @@ func printRehearsal(cfg rehearsalConfig, p rehearsalPaths) error {
 	}
 
 	return nil
+}
+
+// rehearsalAside is where the steps move the user's own copy from the Applications folder
+// while the rehearsal runs there: in the home folder, which the next rehearsal's build
+// never empties, as it does its own folder.
+func rehearsalAside() string {
+	return "~/" + brand.Name + "-before-rehearsal.app"
 }
 
 // rehearsalNext is what to choose after the check, for kase.

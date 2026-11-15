@@ -110,11 +110,15 @@ func TestRehearsalDirIsBesideTheUsersAndNeverIt(t *testing.T) {
 	tests := []struct {
 		goos string
 		vars map[string]string
+		want string // the rehearsal's folder, named as the user's is
 	}{
-		{goos: "darwin"},
-		{goos: "linux"},
-		{goos: "linux", vars: map[string]string{"XDG_DATA_HOME": filepath.Join("/", "tmp", "xdg-data")}},
-		{goos: "windows", vars: map[string]string{"APPDATA": filepath.Join("C:", "Users", "example", "AppData")}},
+		{goos: "darwin", want: brand.RehearsalDataDirName},
+		{goos: "linux", want: brand.RehearsalSlug},
+		{goos: "linux", vars: map[string]string{"XDG_DATA_HOME": filepath.Join("/", "tmp", "xdg-data")}, want: brand.RehearsalSlug},
+		{
+			goos: "windows", vars: map[string]string{"APPDATA": filepath.Join("C:", "Users", "example", "AppData")},
+			want: brand.RehearsalDataDirName,
+		},
 	}
 
 	for _, tt := range tests {
@@ -127,7 +131,7 @@ func TestRehearsalDirIsBesideTheUsersAndNeverIt(t *testing.T) {
 			got, err := appdata.RehearsalDir(tt.goos, home, env(tt.vars))
 			require.NoError(t, err)
 
-			assert.Equal(t, filepath.Join(filepath.Dir(users), brand.RehearsalDataDirName), got)
+			assert.Equal(t, filepath.Join(filepath.Dir(users), tt.want), got)
 			assert.NotEqual(t, users, got)
 
 			for _, pair := range [][2]string{{users, got}, {got, users}} {
