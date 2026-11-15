@@ -236,14 +236,17 @@ notifications](#menu-bar-and-notifications)).
   version, also a notification (**New version**, which Settings → Notifications can turn off)
   that brings the window forward with the banner showing, Later or not, as soon as the update is
   ready (or, where it isn't downloaded, available), and keeps an entry in the notification
-  history; and in the menu bar as **Restart to Update (0.3.0)**. A download of its own, a
+  history (a click on either shows the banner again, or Settings → About when the banner has
+  nothing to show); and in the menu bar as **Restart to Update (0.3.0)**. A download of its own, a
   check, and a failure on its own never show a banner or a notification: Settings → About says
   how they went, and the next look tries again.
 - **Restarting.** Every restart starts in the window: the banner's **Restart to update**,
   About's, and the menu bar's **Restart to Update**, which brings the window forward first. With
-  Just tell me it downloads first, with the download's progress in the banner. It asks first, in
-  one question, when restarting would lose something: a run going in the app, named, or text
-  you haven't sent in a review or issue sheet. Then the app checks the downloaded zip again (a
+  Just tell me it downloads first, with the download's progress in the banner (**Later** hides
+  it while the download goes on). It asks first, in one question, when restarting would lose
+  something: a run going in the app, named, or text you haven't sent in a review or issue
+  sheet. It stops only runs it named: one it couldn't list, or that started while it asked, is
+  asked about again. Then the app checks the downloaded zip again (a
   damaged one is thrown away and downloaded again), backs up the database beside it
   (`<data>/nilbox.db.backup-<stamp>-v<schema>`, the newest three kept, as before a migration;
   a backup the update took under ten minutes ago is used again), stages the update beside
@@ -255,7 +258,8 @@ notifications](#menu-bar-and-notifications)).
   hands it the old one's environment: a variable set where the old one started (a terminal,
   say) reaches the new one too. In a rehearsal on one Mac (`case=normal`), the new version
   was running 2.8 seconds after the click. A restart that fails before the app quits leaves
-  the update ready and says why in the banner (**Try again** · **Download manually**).
+  the update ready and says why in the banner (**Try again** · **Download manually**, which
+  opens the version's release page, with its disk image).
 - **A quit held back.** If something holds back the quit a restart asks for, the update is
   already staged and its helper is waiting, so the app sees itself out: the menu bar says
   **Finishing the update…** (with Check for Updates… and the restart off), the app asks to
@@ -276,7 +280,7 @@ notifications](#menu-bar-and-notifications)).
   may still be at work (its log not ended, under three minutes since the restart), the start
   leaves its backup, staging folder, and log alone and looks again later; until then
   **Update** and restarting wait, and the banner says quietly that the last update is still
-  finishing, then offers the update again. A log that ends
+  finishing, which can take a minute or two, then offers the update again. A log that ends
   with the helper putting the old app back counts as ended once `Nilbox.app.bak` is gone.
 - **An update that didn't install.** The menu bar says **0.3.0 didn't install**, with why when
   you hover, and what comes next depends on why:
@@ -299,7 +303,8 @@ notifications](#menu-bar-and-notifications)).
 **Settings → About** shows the build's updates under its version: where the update stands (*"Up
 to date · checked 12m ago"*, *"Downloading 0.3.0… 42%"*, *"0.3.0 is ready"*, *"Last check
 failed: …"*, or why a build doesn't update), **Check for Updates** with its result in place,
-and **Restart to update** or **Update** once a newer version is found.
+and what the banner offers, by the same rule: **Restart to update** or **Update** once a newer
+version is found, and **Try again** and **Download manually** after one that didn't install.
 
 **What a check sends.** Two GETs at most, both to GitHub's release download hosts: the latest
 release's manifest, `https://github.com/mrz1836/nilbox/releases/latest/download/manifest-darwin.json`,
