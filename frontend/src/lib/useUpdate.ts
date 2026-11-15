@@ -84,6 +84,9 @@ export interface RestartFlow {
 // asked for:
 //
 //  1. With nothing found yet, as a Try again after a failed install may meet, it checks.
+//     While a restart is under way already, or one whose quit was held sees the app out,
+//     it stops there, asking nothing: the banner shows that restart. A banner Later hid
+//     shows again, so how this restart ends shows there.
 //  2. With the newer version not downloaded (Just tell me's Update, or one found since), it
 //     downloads it first, which the banner shows as it goes.
 //  3. It asks first when restarting would lose something: text a sheet holds that the
@@ -177,7 +180,8 @@ export function useRestartToUpdate(unsent: () => number): RestartFlow {
   }
 
   // ready makes sure there is an update downloaded to restart into, and returns its
-  // status, or null once it has failed, or found the app can't update where it runs.
+  // status, or null once it has failed, found the app can't update where it runs, or found
+  // a restart under way already.
   const ready = async (): Promise<UpdateStatus | null> => {
     const read = await attempt(getUpdateStatus())
 
@@ -195,13 +199,29 @@ export function useRestartToUpdate(unsent: () => number): RestartFlow {
       return null
     }
 
-    if (!status.location.ok) {
+    // A restart under way, or one whose quit was held, quits the app on its own: nothing
+    // is asked, since nothing the user answers would keep their text.
+    if (status.state === 'finishing') {
+      end({ step: 'waiting', message: finishingWords })
+
+      return null
+    }
+
+    if (status.state === 'installing') {
+      end({ step: 'idle' })
+
+      return null
+    }
+
+    if (status.bannerHidden || !status.location.ok) {
       const shown = await attempt(showUpdateBanner())
 
       if (!shown.ok) {
         console.error('could not show the update’s banner:', shown.error)
       }
+    }
 
+    if (!status.location.ok) {
       end({ step: 'idle' })
 
       return null
@@ -405,6 +425,8 @@ export function useUpdateControl(flow: RestartFlow, update: UpdateQuery): Update
     return bannerOf(lifted.data, flow.step, lastLaunchPut).kind !== 'none'
   }
 
+  // A restart shows the banner again, so how it ends shows there: Later held here goes at
+  // once, and the restart lifts Later the update stored before it goes on.
   const restart = () => {
     setLaterFor('')
     setDownloadHidden(false)

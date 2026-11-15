@@ -107,6 +107,63 @@ describe('useRestartToUpdate', () => {
     expect(platform.restartToUpdateNow).toHaveBeenCalledExactlyOnceWith(false)
     expect(platform.downloadUpdate).not.toHaveBeenCalled()
     expect(platform.listScriptRuns).not.toHaveBeenCalled()
+    expect(platform.showUpdateBanner).not.toHaveBeenCalled()
+  })
+
+  it('shows the banner Later hid again before it restarts, so how the restart ends shows', async () => {
+    platform.getUpdateStatus.mockResolvedValue(updateReady({ bannerHidden: true }))
+    platform.restartToUpdateNow.mockReturnValue(pending())
+    const { result } = flow()
+
+    act(() => {
+      result.current.start()
+    })
+
+    await waitFor(() => {
+      expect(result.current.step).toEqual({ step: 'restarting' })
+    })
+    expect(platform.showUpdateBanner).toHaveBeenCalledOnce()
+    expect(platform.showUpdateBanner.mock.invocationCallOrder[0]).toBeLessThan(
+      platform.restartToUpdateNow.mock.invocationCallOrder[0] ?? 0,
+    )
+  })
+
+  it('asks nothing while a restart whose quit was held sees the app out, text unsent or not', async () => {
+    platform.getUpdateStatus.mockResolvedValue(updateReady({ state: 'finishing' }))
+    const { result } = flow(() => 1)
+
+    act(() => {
+      result.current.start()
+    })
+
+    await waitFor(() => {
+      expect(result.current.step).toEqual({ step: 'waiting', message: finishingWords })
+    })
+    expect(platform.listScriptRuns).not.toHaveBeenCalled()
+    expect(platform.downloadUpdate).not.toHaveBeenCalled()
+    expect(platform.restartToUpdateNow).not.toHaveBeenCalled()
+  })
+
+  it('asks nothing and starts nothing while a restart is under way already', async () => {
+    platform.getUpdateStatus.mockResolvedValue(updateReady({ state: 'installing' }))
+    const { result } = flow(() => 1)
+
+    act(() => {
+      result.current.start()
+    })
+    await waitFor(() => {
+      expect(result.current.step).toEqual({ step: 'idle' })
+    })
+    expect(platform.listScriptRuns).not.toHaveBeenCalled()
+    expect(platform.restartToUpdateNow).not.toHaveBeenCalled()
+
+    // It holds nothing back: a later start reads the update again.
+    act(() => {
+      result.current.start()
+    })
+    await waitFor(() => {
+      expect(platform.getUpdateStatus).toHaveBeenCalledTimes(2)
+    })
   })
 
   it('goes back to nothing under way once Restart returns without quitting', async () => {
@@ -901,6 +958,52 @@ describe('useUpdateControl', () => {
     })
     await waitFor(() => {
       expect(result.current.banner.kind).toBe('failed')
+    })
+    act(() => {
+      result.current.dismiss()
+    })
+    expect(result.current.banner).toEqual({ kind: 'ready', version: '0.3.0' })
+  })
+
+  it('shows the banner the update hid for Later again once a restart is asked for', async () => {
+    platform.getUpdateStatus.mockResolvedValue(updateReady())
+    platform.hideUpdateBanner.mockImplementation(() => {
+      platform.getUpdateStatus.mockResolvedValue(updateReady({ bannerHidden: true }))
+
+      return Promise.resolve(updateReady({ bannerHidden: true }))
+    })
+    platform.showUpdateBanner.mockImplementation(() => {
+      platform.getUpdateStatus.mockResolvedValue(updateReady())
+
+      return Promise.resolve(updateReady())
+    })
+    platform.restartToUpdateNow.mockRejectedValue(failure('Couldn’t install 0.3.0: no space.'))
+    const { result } = control()
+
+    await waitFor(() => {
+      expect(result.current.banner.kind).toBe('ready')
+    })
+    act(() => {
+      result.current.later()
+    })
+    await waitFor(() => {
+      expect(result.current.status?.bannerHidden).toBe(true)
+    })
+
+    act(() => {
+      emit('updates:restart')
+    })
+    await waitFor(() => {
+      expect(result.current.banner.kind).toBe('failed')
+    })
+    expect(platform.showUpdateBanner).toHaveBeenCalledOnce()
+
+    // The update tells the window it shows the banner again, as it does once it lifts Later.
+    act(() => {
+      emit('updates:updated')
+    })
+    await waitFor(() => {
+      expect(result.current.status?.bannerHidden).toBe(false)
     })
     act(() => {
       result.current.dismiss()

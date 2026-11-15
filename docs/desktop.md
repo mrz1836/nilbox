@@ -244,7 +244,9 @@ notifications](#menu-bar-and-notifications)).
   **Update** for it.
 - **Restarting.** Every restart starts in the window: the banner's **Restart to update**,
   About's, and the menu bar's **Restart to Update**, **Update to 0.3.0…**, and **Try Updating
-  to 0.3.0 Again**, which bring the window forward first. With
+  to 0.3.0 Again**, which bring the window forward first, and show the banner again if
+  **Later** hid it, so how the restart ends shows there. A restart asked for while one is
+  already under way, or finishing, asks nothing and starts nothing. With
   Just tell me it downloads first, with the download's progress in the banner (**Later** hides
   it while the download goes on). It asks first, in one question, when restarting would lose
   something: a run going in the app, named, or text you haven't sent in a review or issue
