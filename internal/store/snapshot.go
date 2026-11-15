@@ -160,22 +160,42 @@ func snapshotFile(base, name string) (SnapshotFile, bool) {
 	return SnapshotFile{}, false
 }
 
-// backupSchema reads the schema from what follows a backup's stamp: -v<schema>, then
-// perhaps -<n> when two backups took the same second. Anything else names none: 0.
+// backupSchema reads the schema from what follows a backup's stamp: -v<schema> at the end,
+// or -v<schema>-<n> when two backups took the same second, each a plain decimal number.
+// Anything else, such as -v4-copy, names none: 0.
 func backupSchema(rest string) int {
-	digits, ok := strings.CutPrefix(rest, "-v")
+	rest, ok := strings.CutPrefix(rest, "-v")
 	if !ok {
 		return 0
 	}
 
-	digits, _, _ = strings.Cut(digits, "-")
+	digits, suffix, same := strings.Cut(rest, "-")
+	if !isNumber(digits) || (same && !isNumber(suffix)) {
+		return 0
+	}
 
 	schema, err := strconv.Atoi(digits)
-	if err != nil || schema < 0 || strconv.Itoa(schema) != digits {
+	if err != nil {
 		return 0
 	}
 
 	return schema
+}
+
+// isNumber reports whether s is a plain decimal number, as strconv.Itoa writes one: digits
+// alone, with no leading zero.
+func isNumber(s string) bool {
+	if s == "" || (len(s) > 1 && s[0] == '0') {
+		return false
+	}
+
+	for _, r := range s {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+
+	return true
 }
 
 // Snapshot is a read-only view of a database file the app keeps but no longer opens as
