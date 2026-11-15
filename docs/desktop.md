@@ -592,23 +592,32 @@ could never get them.
 2. **Build the unsigned app** (macOS, read-only, no secret anywhere in the job). It checks out the
    tag and stops unless its commit is on the default branch, a guard against tagging the wrong
    commit. It sets up Go, pnpm, and Node with no dependency or build cache, and magex from its
-   GitHub release, checked against that release's checksums, never from a cache; mage is built
-   from the module proxy, checked against Go's checksum database. Then it runs `magex
-   app:buildRelease` and hands the unsigned bundle, in a tar, to the next job as an artifact
-   kept for a day.
+   GitHub release, checked against that release's checksums, never from a cache, first on
+   `PATH` so nothing shadows it; mage is built from the module proxy, checked against Go's
+   checksum database. Then it runs `magex app:buildRelease` and hands the unsigned bundle, in
+   a tar, to the next job as an artifact kept for 7 days.
 3. **Sign and publish** (macOS, the `release` environment, `contents: write` and `actions:
    read`).
-   - It checks the tag, the `CODESIGN_IDENTITY` variable, and the default branch again, and
-     sets up Go and magex the same way, with no pnpm and no Node.
+   - First, before the artifact or any secret, it looks for a published release of the tag
+     holding `manifest-darwin.json`: if an earlier attempt published it, the job has nothing
+     left to do and succeeds at once.
+   - It checks the `CODESIGN_IDENTITY` variable and the default branch again, and sets up Go
+     and magex the same way, with no pnpm and no Node. Then it has mage compile the
+     magefiles into a binary, before any secret exists; with `MAGEFILE_HASHFAST` set for the
+     job, every later magex call runs that binary as it is, so nothing is compiled while the
+     keychain is unlocked.
    - It waits for GoFortress's run for the tag, which has been checking the same commit
      meanwhile. A poll that fails is tried again; if the run fails, nothing is published, and
      if the workflow loses track of it, it says so rather than calling it a failure.
-   - It unpacks the artifact, makes a keychain of its own in the runner's temporary folder,
-     imports the code-signing certificate, checks the identity is there (with `security
+   - It unpacks the artifact (one bundle, plainly named), makes a keychain of its own in the
+     runner's temporary folder, imports the code-signing certificate, checks that an identity
+     whose SHA-1 or whole name is `CODESIGN_IDENTITY` is there (with `security
      find-identity`, never `-v`), writes the release key there, readable by the runner alone,
      runs `magex app:signRelease`, and deletes the keychain and the key at once, however the
-     job ends. The secrets exist only from the keychain's making to its deletion, while only
-     this repository's magefiles and Apple's tools run.
+     job ends. The secrets exist only from the keychain's making to its deletion. Meanwhile
+     only the magefiles binary compiled before runs, which is this repository's code and the
+     Go modules it links as `go.sum` pins them, with Apple's tools: no npm or Node code runs
+     in this job at all.
    - It checks the files with `magex app:verify`, then creates the release as a draft, which no
      one else sees, titled `Release <tag>`: the install note first, then the notes GitHub
      generates from the pull requests merged since the last release, marked a prerelease for a
@@ -629,7 +638,9 @@ could never get them.
 tag, the workflow as the tag holds it, and the secrets, so the workflow needs no manual trigger.
 A failed build builds again; a failed publish job waits for GoFortress, signs again, reuses the
 draft it left, and replaces its files; once the release is published, a re-run finds it, says
-an earlier attempt published it, and only checks the latest release.
+an earlier attempt published it, and only checks the latest release. The unsigned bundle the
+publish job signs is kept for 7 days; after that, use **Re-run all jobs**, which builds it
+again.
 
 **When something goes wrong.**
 
