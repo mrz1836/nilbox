@@ -2115,7 +2115,7 @@ describe('InboxView issue sheet', () => {
     await userEvent.click(await screen.findByRole('button', { name: 'Parser drops the trailing newline' }))
 
     const sheet = await screen.findByRole('dialog', { name: 'Parser drops the trailing newline' })
-    await userEvent.type(within(sheet).getByRole('textbox', { name: 'Your comment' }), 'Done.')
+    await userEvent.type(await within(sheet).findByRole('textbox', { name: 'Your comment' }), 'Done.')
     await userEvent.click(within(sheet).getByRole('button', { name: 'Comment' }))
 
     const toast = await screen.findByRole('group', { name: 'Notification' })
