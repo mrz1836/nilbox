@@ -399,6 +399,10 @@ func cloneChangingVerbs() []string {
 // checkout.
 const worktreeMakerFile = "internal/worktrees/create.go"
 
+// resetWordFile declares the word the user types to confirm a reset of the app, which is
+// spelled as one of the verbs TestNoGitCommandChangesAClone looks for.
+const resetWordFile = "internal/setup/reset.go"
+
 // clonePullerFile is the only production file allowed to pull: Repo scripts' pull of the
 // branch a clone is on from the branch it follows on origin, fast-forward only, on the
 // user's click. It runs no other git command that changes a clone.
@@ -433,7 +437,13 @@ func TestNoGitCommandChangesAClone(t *testing.T) {
 	assertMakerFetchesOnlyItsOwnRefs(t, maker)
 	assertPullerOnlyFastForwards(t)
 
-	found := productionGoHits(t, verbs, worktreeMakerFile, clonePullerFile)
+	// The one such word that runs nothing: the word the user types to confirm a reset of
+	// the app, which no git command sees. Only its declaration, in its own file, is let
+	// through.
+	confirm := "const ResetWord = " + `"re` + `set"`
+	found := slices.DeleteFunc(productionGoHits(t, verbs, worktreeMakerFile, clonePullerFile), func(hit string) bool {
+		return strings.HasPrefix(hit, resetWordFile+":") && strings.HasSuffix(hit, ": "+confirm)
+	})
 	found = append(found, productionGoHits(t, worktreeAdd, worktreeMakerFile)...)
 
 	assert.Empty(t, found, "nothing changes a clone's own checkout: no checkout, stash, branch switch, pull, reset, "+

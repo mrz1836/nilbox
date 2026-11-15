@@ -85,8 +85,9 @@ func boundaries() []boundary {
 		},
 		{
 			pkg:       "internal/desktop",
-			forbidden: []string{"internal/core"},
-			why:       "the shell reaches the services through the interfaces it declares; the desktop bootstrap wires the core into it",
+			forbidden: []string{"internal/core", "internal/setup"},
+			why: "the shell reaches the services through the interfaces it declares, and hears whether the setup " +
+				"shows through its Settings; the desktop bootstrap wires the core into it",
 		},
 		{
 			pkg: "internal/bump",
@@ -230,6 +231,15 @@ func boundaries() []boundary {
 			forbidden: append([]string{"internal/prompts", "internal/launchdefaults", "internal/scripts"}, services...),
 			why: "the backup reaches each category's owner only through its Part, which core adapts; the owners " +
 				"import its plan's words, never the reverse",
+		},
+		{
+			pkg: "internal/setup",
+			forbidden: []string{
+				inbox, settings, "internal/core", "internal/desktop", "internal/store", "internal/backup",
+				"internal/scriptrun", "internal/integrations", "internal/profiles", "internal/notify",
+			},
+			why: "the setup reaches the inbox, the clones, the runs, and the backup through the narrow interfaces it " +
+				"declares, which core adapts, and keeps its state through its Memory",
 		},
 	}
 }

@@ -100,6 +100,12 @@ const (
 
 	// NameServiceStatusUpdated is ServiceStatusUpdated's name.
 	NameServiceStatusUpdated = "servicestatus:updated"
+
+	// NameSetupFinished is SetupFinished's name.
+	NameSetupFinished = "setup:finished"
+
+	// NameResetRequested is ResetRequested's name.
+	NameResetRequested = "app:resetRequested"
 )
 
 // Event is something that happened, or was asked for, that another part of the app
@@ -510,6 +516,23 @@ type ServiceStatusUpdated struct{}
 func (ServiceStatusUpdated) Name() string { return NameServiceStatusUpdated }
 
 func (ServiceStatusUpdated) window() {}
+
+// SetupFinished says the user finished the first-run setup, or skipped it. The desktop
+// shell hears it and asks once to allow notification banners, which it held while the setup
+// showed, so the question comes when the user lands in the inbox, not before they know what
+// the app does.
+type SetupFinished struct{}
+
+// Name returns NameSetupFinished.
+func (SetupFinished) Name() string { return NameSetupFinished }
+
+// ResetRequested says the user asked to start over, and the request is written: the
+// desktop shell lets the quit through, quits, and opens the app again, whose start carries
+// the reset out.
+type ResetRequested struct{}
+
+// Name returns NameResetRequested.
+func (ResetRequested) Name() string { return NameResetRequested }
 
 // Discard is a Sink that drops every event.
 type Discard struct{}
