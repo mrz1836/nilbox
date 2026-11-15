@@ -10,6 +10,7 @@ import {
   bannerOf,
   covers,
   finishingWords,
+  foundSince,
   locationNote,
   locationWords,
   namesRuns,
@@ -475,6 +476,20 @@ describe('covers', () => {
     expect(covers({ runs: null, sheets: 0 }, [])).toBe(true)
     expect(covers({ runs: [runGoing()], sheets: 0 }, [])).toBe(false)
     expect(covers({ runs: [], sheets: 1 }, [])).toBe(false)
+  })
+})
+
+describe('foundSince', () => {
+  it('says another version than the one readied is on offer', () => {
+    expect(foundSince(updateReady({ state: 'available', latest: '0.3.1' }), '0.3.0')).toBe(true)
+    expect(foundSince(updateReady({ state: 'downloading', latest: '0.3.1' }), '0.3.0')).toBe(true)
+    expect(foundSince(updateReady({ latest: '0.3.1' }), '0.3.0')).toBe(true)
+  })
+
+  it('says nothing new for the same version, none, or nothing on offer', () => {
+    expect(foundSince(updateReady({ state: 'available' }), '0.3.0')).toBe(false)
+    expect(foundSince(updateStatus(), '0.3.0')).toBe(false)
+    expect(foundSince(updateReady({ state: 'installing', latest: '0.3.1' }), '0.3.0')).toBe(false)
   })
 })
 

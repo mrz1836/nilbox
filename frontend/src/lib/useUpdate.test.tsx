@@ -166,6 +166,65 @@ describe('useRestartToUpdate', () => {
     })
   })
 
+  it('readies a newer version a check found while Restart waited, and restarts into it, the answer standing', async () => {
+    const notify = (overrides: Partial<UpdateStatus> = {}) => updateReady({ mode: 'notify', ...overrides })
+    platform.getUpdateStatus.mockResolvedValue(notify())
+    platform.listScriptRuns.mockResolvedValue([])
+    // Restart waited for a check, which found 0.3.1, so nothing was ready to install.
+    platform.restartToUpdateNow.mockImplementationOnce(() => {
+      platform.getUpdateStatus.mockResolvedValue(notify({ state: 'available', latest: '0.3.1' }))
+
+      return Promise.reject(failure('There’s no update ready to install yet.'))
+    })
+    platform.restartToUpdateNow.mockReturnValueOnce(pending())
+    platform.downloadUpdate.mockResolvedValue(got(notify({ latest: '0.3.1' })))
+    const { result } = flow(() => 1)
+
+    act(() => {
+      result.current.start()
+    })
+    await waitFor(() => {
+      expect(result.current.step).toEqual({ step: 'asking', question: { runs: [], sheets: 1 } })
+    })
+    act(() => {
+      result.current.confirm()
+    })
+
+    await waitFor(() => {
+      expect(platform.restartToUpdateNow.mock.calls).toEqual([[false], [false]])
+    })
+    expect(platform.downloadUpdate).toHaveBeenCalledOnce()
+    // The text was asked about: it isn't asked about again for the newer version.
+    expect(result.current.step).toEqual({ step: 'restarting' })
+    expect(platform.listScriptRuns).toHaveBeenCalledOnce()
+  })
+
+  it('readies a newer version once, then says why the restart failed', async () => {
+    platform.getUpdateStatus.mockResolvedValue(updateReady())
+    platform.restartToUpdateNow.mockImplementationOnce(() => {
+      platform.getUpdateStatus.mockResolvedValue(updateReady({ state: 'available', latest: '0.3.1' }))
+
+      return Promise.reject(failure('There’s no update ready to install yet.'))
+    })
+    platform.restartToUpdateNow.mockImplementationOnce(() => {
+      platform.getUpdateStatus.mockResolvedValue(updateReady({ state: 'available', latest: '0.3.2' }))
+
+      return Promise.reject(failure('There’s no update ready to install yet.'))
+    })
+    platform.downloadUpdate.mockResolvedValue(got(updateReady({ latest: '0.3.1' })))
+    const { result } = flow()
+
+    act(() => {
+      result.current.start()
+    })
+
+    await waitFor(() => {
+      expect(result.current.step).toEqual({ step: 'failed', message: 'There’s no update ready to install yet.' })
+    })
+    expect(platform.restartToUpdateNow).toHaveBeenCalledTimes(2)
+    expect(platform.downloadUpdate).toHaveBeenCalledOnce()
+  })
+
   it('goes back to nothing under way once Restart returns without quitting', async () => {
     platform.getUpdateStatus.mockResolvedValue(updateReady())
     const { result } = flow()

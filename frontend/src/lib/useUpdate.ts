@@ -19,6 +19,7 @@ import {
   bannerOf,
   covers,
   finishingWords,
+  foundSince,
   offerOf,
   runsGoingIn,
   settlingWords,
@@ -99,7 +100,10 @@ export interface RestartFlow {
 //     (covers) does it restart with Restart(true), which stops them, so a run that started
 //     while it asked, or one going when the question named none, is asked about again.
 //  5. Restart then backs the data up and restarts; the app quits inside it, so it returns
-//     only when something stopped the restart, whose words the banner shows.
+//     only when something stopped the restart, whose words the banner shows. Restart
+//     waits for a check under way first: when that check found a newer version than the
+//     one readied, so there is nothing ready to install, it readies the newer one and goes
+//     on, once, the question already answered still standing.
 //
 // Some refusals are no failure to retry. While the last update may still be finishing, or
 // a restart whose quit was held sees the app out, the download or the restart waits a
@@ -118,6 +122,9 @@ export function useRestartToUpdate(unsent: () => number): RestartFlow {
   // counter is the latest unsent, read once the download is done, so text written while
   // the update downloaded counts too.
   const counter = useRef(unsent)
+  // readied is the version the restart under way got ready to install, and whether it has
+  // readied a newer one found while Restart waited already, which it does once at most.
+  const readied = useRef({ version: '', again: false })
 
   useLayoutEffect(() => {
     counter.current = unsent
@@ -163,7 +170,7 @@ export function useRestartToUpdate(unsent: () => number): RestartFlow {
     const answer = await attempt(restartToUpdateNow(confirmed))
 
     if (!answer.ok) {
-      fail(answer.error)
+      await failed(answer.error, asked)
     } else if (answer.data.restarted) {
       end({ step: 'idle' })
     } else if ('refusal' in answer.data) {
@@ -177,6 +184,24 @@ export function useRestartToUpdate(unsent: () => number): RestartFlow {
 
       ask(runsGoing.length === 0 ? null : runsGoing)
     }
+  }
+
+  // failed ends a restart that failed with message, unless a check it waited for found a
+  // newer version than the one readied, which left nothing ready to install: that one is
+  // readied and the restart goes on, once.
+  const failed = async (message: string, asked: RestartQuestion | null) => {
+    if (!readied.current.again) {
+      const read = await attempt(getUpdateStatus())
+
+      if (read.ok && foundSince(read.data, readied.current.version)) {
+        readied.current.again = true
+        await go(asked)
+
+        return
+      }
+    }
+
+    fail(message)
   }
 
   // ready makes sure there is an update downloaded to restart into, and returns its
@@ -274,17 +299,22 @@ export function useRestartToUpdate(unsent: () => number): RestartFlow {
     return status
   }
 
-  const run = async () => {
-    setStep({ step: 'preparing' })
+  // go gets the update ready and restarts into it, asked being the question the user
+  // already confirmed, or null. Text a sheet holds that the question didn't count, as
+  // all of it is before anything was asked, asks first, naming the runs going too.
+  const go = async (asked: RestartQuestion | null) => {
+    const status = await ready()
 
-    if ((await ready()) === null) {
+    if (status === null) {
       return
     }
 
+    readied.current.version = status.latest
+
     const sheets = counter.current()
 
-    if (sheets === 0) {
-      await restart(null)
+    if (sheets <= (asked?.sheets ?? 0)) {
+      await restart(asked)
 
       return
     }
@@ -296,6 +326,12 @@ export function useRestartToUpdate(unsent: () => number): RestartFlow {
     }
 
     setStep({ step: 'asking', question: { runs: listed.ok ? runsGoingIn(listed.data) : [], sheets } })
+  }
+
+  const run = async () => {
+    setStep({ step: 'preparing' })
+    readied.current = { version: '', again: false }
+    await go(null)
   }
 
   const start = () => {

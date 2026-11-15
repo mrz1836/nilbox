@@ -54,6 +54,15 @@ export function covers(question: RestartQuestion, going: readonly RunGoing[]): b
   return runs !== null && going.every((run) => runs.some((shown) => shown.id === run.id))
 }
 
+// foundSince reports whether the update offers another version than the one a restart got
+// ready (version), ready, downloading, or available to download: one a check found while
+// the restart waited for it, which leaves nothing ready to install until it is readied.
+export function foundSince(status: UpdateStatus, version: string): boolean {
+  const pending = status.state === 'ready' || status.state === 'available' || status.state === 'downloading'
+
+  return pending && status.latest !== '' && status.latest !== version
+}
+
 // settlingWords is what the window says while the last update may still be finishing:
 // its own words, since that can take a while.
 export const settlingWords = 'The last update is still finishing. This can take a minute or two.'

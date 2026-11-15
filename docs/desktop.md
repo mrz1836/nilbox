@@ -253,7 +253,9 @@ notifications](#menu-bar-and-notifications)).
   sheet. It stops only runs it named: confirming asks the app again first, which refuses
   before backing anything up while runs go, and a run it didn't name (one it couldn't list,
   one going when it asked about your text alone, or one that started while it asked) is
-  asked about again. Then the app checks the downloaded zip again (a
+  asked about again. If the restart waited for a check that found a newer version, it
+  downloads that one and restarts into it, once, without asking again what you already
+  answered. Then the app checks the downloaded zip again (a
   damaged one is thrown away and downloaded again), backs up the database beside it
   (`<data>/nilbox.db.backup-<stamp>-v<schema>`, the newest three kept, as before a migration;
   a backup the update took under ten minutes ago is used again), stages the update beside
