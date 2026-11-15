@@ -197,6 +197,78 @@ func TestPreviewAndCheckCloneLocations(t *testing.T) {
 	}, states)
 }
 
+func TestSuggestCloneRoots(t *testing.T) {
+	t.Parallel()
+
+	r := newLocationsRig(t)
+	r.add(t, "~/src/tools")
+
+	got, err := r.svc.SuggestCloneRoots(t.Context())
+	require.NoError(t, err)
+	assert.Equal(t, []localrepos.Suggestion{{Path: "~/src/acme-org", Clones: 1}}, got,
+		"the clone root and the locations already there are no suggestion")
+}
+
+func TestCreateCloneRoot(t *testing.T) {
+	t.Parallel()
+
+	svc, _, home := newTestService(t)
+
+	got, err := svc.CreateCloneRoot(t.Context(), " ~/code/github/ ")
+	require.NoError(t, err)
+	assert.Equal(t, "~/code/github", got.CloneRoot, "stored as typed, trimmed and cleaned")
+
+	info, err := os.Stat(filepath.Join(home, "code", "github"))
+	require.NoError(t, err)
+	assert.True(t, info.IsDir(), "the folder and its parents are made")
+
+	got, err = svc.CreateCloneRoot(t.Context(), "~/code/github")
+	require.NoError(t, err, "a folder already there is fine")
+	assert.Equal(t, "~/code/github", got.CloneRoot)
+}
+
+func TestCreateCloneRootRefuses(t *testing.T) {
+	t.Parallel()
+
+	svc, _, home := newTestService(t)
+	testutil.WriteFile(t, filepath.Join(home, "notes"), "a file")
+
+	tests := []struct {
+		name string
+		root string
+		want string
+		is   error
+	}{
+		{
+			name: "a relative path", root: "code", want: "Type the folder's full path, or one starting with ~/.",
+			is: ErrInvalidCloneRoot,
+		},
+		{
+			name: "a hidden folder", root: "~/.code", want: "~/.code is hidden, and the app never looks in hidden folders.",
+			is: localrepos.ErrLocationRefused,
+		},
+		{
+			name: "the whole disk", root: "/", want: "/ is the whole disk; choose a folder inside it.",
+			is: localrepos.ErrLocationRefused,
+		},
+		{name: "a file in the way", root: "~/notes/code", want: "Couldn't make ~/notes/code.", is: ErrInvalidCloneRoot},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			_, err := svc.CreateCloneRoot(t.Context(), tt.root)
+			require.ErrorIs(t, err, tt.is)
+			assert.Equal(t, tt.want, uierr.Message(err))
+		})
+	}
+
+	stored, err := svc.Get(t.Context())
+	require.NoError(t, err)
+	assert.Equal(t, DefaultCloneRoot, stored.CloneRoot, "nothing refused is stored")
+}
+
 func TestWithGitReadsAClonesOrigin(t *testing.T) {
 	t.Parallel()
 

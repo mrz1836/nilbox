@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io/fs"
+	"os"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -109,6 +111,50 @@ func (s *Service) PreviewCloneLocation(ctx context.Context, dir string) (localre
 	}
 
 	return localrepos.Survey(ctx, expanded, roots, s.home, s.git)
+}
+
+// cloneRootPerm is the mode of a clone root CreateCloneRoot makes: a folder of the user's
+// own, as git clone makes the folders it clones into.
+const cloneRootPerm fs.FileMode = 0o755
+
+// SuggestCloneRoots suggests folders under home that could be the clone root or another
+// repository location, for the setup, when the clone root is missing or holds no clones:
+// the folders where clones commonly live that have some, the most clones first, leaving
+// out those the locations already hold, with ~ for home (see localrepos.Candidates). It
+// reads with stat and ReadDir alone, and runs no git.
+func (s *Service) SuggestCloneRoots(ctx context.Context) ([]localrepos.Suggestion, error) {
+	roots, err := s.storedRoots(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	return localrepos.Candidates(s.home, roots), nil
+}
+
+// CreateCloneRoot makes the folder root, with any parents it lacks, and stores it as the
+// clone root, returning the settings with it, for a user starting fresh, whose clones will
+// go there. Like SetCloneRoot, it takes an absolute or ~-relative path and stores it as
+// entered, trimmed and cleaned; a folder already there is fine. A folder that can't be a
+// repository location (the whole disk, a hidden one, one inside a git folder or the app's
+// worktrees folder, a linked worktree), and one that can't be made, as where a file
+// stands, are refused in words the window shows.
+func (s *Service) CreateCloneRoot(ctx context.Context, root string) (Settings, error) {
+	dir, err := paths.ExpandHome(root, s.home)
+	if err != nil {
+		return Settings{}, uierr.New("Type the folder's full path, or one starting with ~/.",
+			fmt.Errorf("%w: %w", ErrInvalidCloneRoot, err))
+	}
+
+	if err = localrepos.CheckAddable(dir, s.home); err != nil {
+		return Settings{}, err
+	}
+
+	if err = os.MkdirAll(dir, cloneRootPerm); err != nil {
+		return Settings{}, uierr.New("Couldn't make "+paths.Tilde(dir, s.home)+".",
+			fmt.Errorf("%w: %w", ErrInvalidCloneRoot, err))
+	}
+
+	return s.SetCloneRoot(ctx, root)
 }
 
 // CheckCloneLocations reads how the clone root and each of the other repository

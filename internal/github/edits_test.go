@@ -299,7 +299,7 @@ func TestFetchViewerReadsTheTokensAccount(t *testing.T) {
 	client, rates := observingClient(t, func(w http.ResponseWriter, r *http.Request) {
 		raw, err := io.ReadAll(r.Body)
 		assert.NoError(t, err)
-		assert.Contains(t, string(raw), "viewer { login }")
+		assert.Contains(t, string(raw), "viewer { login name url }")
 
 		setRateHeaders(w, ResourceGraphQL, 4999, 1)
 		_, _ = io.WriteString(w, `{"data":{"viewer":{"login":"octo-user"},"rateLimit":{"cost":1}}}`)
@@ -315,6 +315,44 @@ func TestFetchViewerReadsTheTokensAccount(t *testing.T) {
 	}
 
 	assert.Equal(t, 1, total, "the check spends its query's point")
+}
+
+func TestFetchSignInReadsTheAccountAndItsScopes(t *testing.T) {
+	t.Parallel()
+
+	client, rates := observingClient(t, func(w http.ResponseWriter, _ *http.Request) {
+		setRateHeaders(w, ResourceGraphQL, 4999, 1)
+		w.Header().Set("X-OAuth-Scopes", "repo, read:org, read:project")
+		_, _ = io.WriteString(w, `{"data":{"viewer":{"login":"octo-user","name":"Octo User",`+
+			`"url":"https://github.com/octo-user"},"rateLimit":{"cost":1}}}`)
+	})
+
+	in, err := client.FetchSignIn(t.Context(), NewToken(fakeToken))
+	require.NoError(t, err)
+	assert.Equal(t, SignIn{
+		Login: octoUser, Name: "Octo User", URL: "https://github.com/octo-user", Scopes: "repo, read:org, read:project",
+	}, in)
+
+	total := 0
+	for _, o := range rates.all() {
+		total += o.spent
+	}
+
+	assert.Equal(t, 1, total, "one query, whose point the budget counts")
+}
+
+func TestFetchSignInKeepsTheTokenOutOfItsErrors(t *testing.T) {
+	t.Parallel()
+
+	client := newTestClient(t, func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+		_, _ = io.WriteString(w, `{"message":"Bad credentials `+fakeToken+`"}`)
+	})
+
+	_, err := client.FetchSignIn(t.Context(), NewToken(fakeToken))
+	require.Error(t, err)
+	assert.True(t, IsBadCredentials(err), "the setup tells a refused token apart")
+	assert.NotContains(t, err.Error(), fakeToken)
 }
 
 func TestFetchViewerRefusesAnAnswerWithoutALogin(t *testing.T) {

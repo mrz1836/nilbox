@@ -104,13 +104,76 @@ type Service struct {
 	home   string
 	finder execpath.Finder
 	models *modelsCache
+	logger *slog.Logger
+}
+
+// Option configures a Service.
+type Option func(*Service)
+
+// WithLogger has a Service log what Rediscover skips or removes. Without it nothing is
+// logged.
+func WithLogger(l *slog.Logger) Option {
+	return func(s *Service) { s.logger = l }
 }
 
 // NewService returns a Service over the profiles in store. home is where each agent's
 // default profile directory lives, and is shown as ~ in each profile's Folder. finder
 // finds each agent's program for Agents; nil reports every agent as not installed.
-func NewService(store *Store, home string, finder execpath.Finder) *Service {
-	return &Service{store: store, home: home, finder: finder, models: newModelsCache()}
+func NewService(store *Store, home string, finder execpath.Finder, opts ...Option) *Service {
+	s := &Service{store: store, home: home, finder: finder, models: newModelsCache()}
+
+	for _, opt := range opts {
+		opt(s)
+	}
+
+	s.logger = logging.Or(s.logger)
+
+	return s
+}
+
+// Rediscover looks for the agents' profiles in the home directory again, as every start
+// does (SyncHome), so a profile directory made, or an agent installed and run, since the
+// app started shows without a restart, and returns every stored profile as List does. It
+// never changes a stored profile, and keeps one whose directory is gone.
+func (s *Service) Rediscover(ctx context.Context) ([]Profile, error) {
+	if err := SyncHome(ctx, s.store, s.home, s.logger); err != nil {
+		return nil, err
+	}
+
+	return s.List(ctx)
+}
+
+// SyncHome brings the stored agent profiles in line with home. It first removes unedited
+// profiles whose directory holds no agent config (another tool's folder that happens to be
+// named ~/.claude-<name>), then records every profile discovered under home. It never
+// changes a stored profile, and keeps any that was edited or whose directory is gone.
+// Pruning comes first so a name freed by a removed row can be taken by the directory that
+// now owns it. A home directory that cannot be read only skips discovery, with a warning:
+// the profiles already stored still work, and the inbox does not need them.
+func SyncHome(ctx context.Context, stored *Store, home string, logger *slog.Logger) error {
+	logger = logging.Or(logger)
+
+	removed, err := stored.Prune(ctx, logger)
+	if err != nil {
+		return fmt.Errorf("prune profiles: %w", err)
+	}
+
+	if len(removed) > 0 {
+		logger.InfoContext(ctx, "removed profiles whose directory holds no agent config", "profiles", removed)
+	}
+
+	found, err := Discover(home, logger)
+	if err != nil {
+		logger.WarnContext(ctx, "profile discovery skipped", "error", err)
+
+		return nil
+	}
+
+	if err = stored.Sync(ctx, found); err != nil {
+		return fmt.Errorf("sync profiles: %w", err)
+	}
+
+	return nil
 }
 
 // List returns every stored profile, grouped by agent in the agents' order, each agent's

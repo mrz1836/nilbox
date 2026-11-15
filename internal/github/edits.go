@@ -197,14 +197,37 @@ func (c *Client) RemoveReviewRequest(ctx context.Context, tok Token, ref item.Re
 // FetchViewer returns the login of the account tok belongs to, with a one-point GraphQL
 // query, so an edit can be checked against the account whose inbox the user sees.
 func (c *Client) FetchViewer(ctx context.Context, tok Token) (string, error) {
-	login, err := c.fetchViewer(ctx, tok)
+	in, err := c.fetchSignIn(ctx, tok)
 
-	return login, Redact(err, tok)
+	return in.Login, Redact(err, tok)
+}
+
+// SignIn is the account a token belongs to, as the setup shows it, and the scopes the
+// token reports.
+type SignIn struct {
+	// Login, Name, and URL are the account's login, its display name ("" when it has
+	// none), and its profile page.
+	Login string
+	Name  string
+	URL   string
+
+	// Scopes is the token's X-OAuth-Scopes header, which CheckScopes and ProjectsScope
+	// read: "" for a token that reports none, such as a fine-grained one.
+	Scopes string
+}
+
+// FetchSignIn returns the account tok belongs to and the scopes the token reports, with
+// the same one-point GraphQL query FetchViewer sends, so the setup can tell the user
+// whether the GitHub CLI's sign-in gives the inbox what it needs.
+func (c *Client) FetchSignIn(ctx context.Context, tok Token) (SignIn, error) {
+	in, err := c.fetchSignIn(ctx, tok)
+
+	return in, Redact(err, tok)
 }
 
 // viewerQuery reads the token's account, and the query's cost, which the budget counts.
 const viewerQuery = `query Viewer {
-  viewer { login }
+  viewer { login name url }
   rateLimit { cost remaining resetAt limit used }
 }`
 
@@ -213,18 +236,19 @@ type viewerData struct {
 	Viewer graphQLViewer `json:"viewer"`
 }
 
-// fetchViewer sends the viewer query.
-func (c *Client) fetchViewer(ctx context.Context, tok Token) (string, error) {
-	resp, _, err := postGraphQL[viewerData](ctx, c, tok, "viewer", graphQLRequest{Query: viewerQuery}, anyError)
+// fetchSignIn sends the viewer query.
+func (c *Client) fetchSignIn(ctx context.Context, tok Token) (SignIn, error) {
+	resp, header, err := postGraphQL[viewerData](ctx, c, tok, "viewer", graphQLRequest{Query: viewerQuery}, anyError)
 	if err != nil {
-		return "", err
+		return SignIn{}, err
 	}
 
-	if resp.Data.Viewer.Login == "" {
-		return "", fmt.Errorf("%w: the viewer has no login", ErrMalformedResponse)
+	v := resp.Data.Viewer
+	if v.Login == "" {
+		return SignIn{}, fmt.Errorf("%w: the viewer has no login", ErrMalformedResponse)
 	}
 
-	return resp.Data.Viewer.Login, nil
+	return SignIn{Login: v.Login, Name: v.Name, URL: v.URL, Scopes: header.Get(scopesHeader)}, nil
 }
 
 // restLogin is a user or bot in a REST answer.

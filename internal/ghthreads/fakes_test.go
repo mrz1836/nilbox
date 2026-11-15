@@ -474,7 +474,7 @@ func (f *fakeGitHub) serveGraphQL(w http.ResponseWriter, r *http.Request) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
-	if strings.Contains(req.Query, "viewer { login }") {
+	if strings.Contains(req.Query, "query Viewer") {
 		f.got = append(f.got, listedRequest{kind: "viewer"})
 		_, _ = fmt.Fprintf(w, `{"data": {"viewer": {"login": %q}, "rateLimit": {"cost": 1}}}`, f.viewer)
 
