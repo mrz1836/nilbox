@@ -159,9 +159,16 @@ func releaseTools(t *testing.T, tag string) (string, string) {
 
 	dir := isolatedPath(t)
 
-	for _, name := range []string{"pnpm", "plutil", "codesign"} {
+	for _, name := range []string{"pnpm", "plutil"} {
 		fakeTool(t, dir, name, `printf '`+name+` %s\n' "$*" >> "$TOOLS_LOG"`)
 	}
+
+	// codesign seals a bundle it signs in Contents/_CodeSignature, as the real one does.
+	fakeTool(t, dir, "codesign", `printf 'codesign %s\n' "$*" >> "$TOOLS_LOG"
+for a; do last="$a"; done
+case "$1:$last" in
+  --force:*.app) /bin/mkdir -p "$last/Contents/_CodeSignature"; printf 'seal' > "$last/Contents/_CodeSignature/CodeResources" ;;
+esac`)
 
 	fakeTool(t, dir, "git", `printf 'git %s\n' "$*" >> "$TOOLS_LOG"
 case "$*" in
@@ -363,12 +370,14 @@ func TestPackageRelease(t *testing.T) {
 		}))
 
 		assert.Equal(t, map[string]os.FileMode{
-			".":                            0o755,
-			"Contents":                     0o755,
-			"Contents/Info.plist":          0o644,
-			"Contents/MacOS":               0o755,
-			"Contents/MacOS/" + brand.Slug: 0o755,
-			"Contents/Resources":           0o755,
+			".":                                     0o755,
+			"Contents":                              0o755,
+			"Contents/Info.plist":                   0o644,
+			"Contents/_CodeSignature":               0o755,
+			"Contents/_CodeSignature/CodeResources": 0o644,
+			"Contents/MacOS":                        0o755,
+			"Contents/MacOS/" + brand.Slug:          0o755,
+			"Contents/Resources":                    0o755,
 			"Contents/Resources/" + brandgen.IconFile + ".icns": 0o644,
 		}, modes, "a umask of 077 would leave 0700 and 0600 in the zip and the disk image")
 	})

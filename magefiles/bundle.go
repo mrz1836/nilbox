@@ -58,8 +58,8 @@ func prepareBuild() error {
 
 // assembleBundle builds the bundle spec describes from a built frontend: it compiles the
 // desktop binary, adds the Info.plist with the build's versions and the app icon, sets
-// every mode as an app's (whatever the umask), signs the bundle, and reports the binary's
-// size. A previous bundle at the same path is removed first.
+// every mode as an app's (whatever the umask), signs the bundle, sets the modes again for
+// the seal codesign wrote, and reports the binary's size. A previous bundle at the same path is removed first.
 func assembleBundle(spec bundleSpec) error {
 	contents := filepath.Join(spec.bundle, "Contents")
 	exe := filepath.Join(contents, "MacOS", brand.Slug)
@@ -90,6 +90,12 @@ func assembleBundle(spec bundleSpec) error {
 
 	if err := spec.signer.sign(spec.bundle); err != nil {
 		return fmt.Errorf("sign the bundle %s: %w", spec.signer, err)
+	}
+
+	// codesign writes the seal (_CodeSignature) under the umask too; a mode is no part of
+	// the signature, so setting it again leaves the signature valid.
+	if err := normalizeModes(spec.bundle, exe); err != nil {
+		return err
 	}
 
 	return reportSize(spec.bundle, exe)
