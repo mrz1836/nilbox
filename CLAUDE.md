@@ -192,9 +192,16 @@ app:lint` reads.
   A build that updates attaches the engine's `Mover` too (`desktop.Mover`, over
   `execpath.Exec`): it copies the bundle with `ditto --noqtn` (`desktop.CopyArgs`), takes the
   quarantine mark ditto still copies off every file of the copy, in Go (`move_darwin.go`;
-  nothing elsewhere), checks it with `codesign --verify --deep --strict`
-  (`desktop.VerifyArgs`), and `Shell.OpenAfterQuit` quits the normal way, which the quit
-  guard holds while runs go, keeping the copy for whichever quit goes through.
+  nothing elsewhere), and reads a copy's mark there too (`translocates`: its own folder's,
+  without the flag a Finder move adds); checks a copy with `codesign --verify --deep
+  --strict --test-requirement =<requirement>` (`desktop.VerifyArgs`), the requirement the
+  app that runs designates (`desktop.RequirementArgs`, `codesign --display --requirements
+  -`), so a copy signed otherwise fails, worded, and words a program that wrote nothing by
+  how it ended; holds every quit while a move runs (`Shell.HoldQuit`: `ShouldQuit` says no
+  and shows the window, and the quit goes ahead, once, as the last move lets go); and
+  `Shell.OpenAfterQuit` quits the normal way, which the quit guard holds while runs go,
+  keeping the copy for the quit the user lets through: **Keep running** (the bound
+  `scriptrun.Service.KeepRunning`, the Go-only `event.QuitKept`) forgets it.
   `PostShutdown` runs the one command `Shell.RelaunchCommand` works out: the copy
   (`desktop.OpenArgs`, `open -n <bundle>`, the bundle-path sibling of `RelaunchArgs`), else
   this bundle after a reset, so the app never opens twice, within the same five seconds.
@@ -202,7 +209,11 @@ app:lint` reads.
   `components/MoveDialog.tsx`), which `useUpdateControl` holds: wherever `offerOf` offers
   the move (`Offer.move`: a build that updates, `update.Location.Movable`, no restart
   installing or finishing), the dialog asks on every launch, Not now for that launch, and
-  the update banner's offer buttons and Settings → About's location row offer it too.
+  the update banner's offer buttons and Settings → About's location row offer it too. A
+  refused Open it turns the question back to the move, and as the work ends focus goes back
+  to Not now (`ConfirmDialog`'s `busy`). The quit's question, opened over the dialog, has the
+  keys: the topmost modal is the one opened last (`isTopmost` in `lib/useModalDialog.ts`),
+  wherever the page renders it.
 - `internal/brand/` holds product identity, design tokens, and the logo mark. The palette tests
   enforce WCAG AA contrast for every text color in both themes. `internal/brandgen/` generates
   the frontend theme tokens, `build/darwin/Info.plist`, and the icon artwork (the app icon
@@ -865,14 +876,21 @@ app:lint` reads.
   `MoveToApplications` moves it: the target worked out again (`/Applications` when writable,
   else `~/Applications`, made when missing), a copy of the app already there, by its
   `Info.plist`'s bundle identifier (`bundleID`, never a link followed), never replaced
-  (`MoveExists`, for `OpenInApplications`, which checks that copy's signature and opens it),
-  anything else there refused (`ErrTargetTaken`), and otherwise the target's folder made
-  empty first (`claim`), so the copy and a failed copy's removal (`discard`, that folder
-  alone) never touch what was there, then the copy and its check through the `Mover` the
-  shell attaches (`AttachMover`), which then quits the normal way and opens the copy once the
-  app has quit (`MoveMoved`). One move runs at a time (`ErrMoving`), its copy bounded by
-  `MoveLimit` and never cut short by the window's call, and none starts while a restart
-  into an update installs or finishes after a held quit, which goes first (`ErrUpdating`,
+  (`MoveExists`, for `OpenInApplications`, which checks that copy's signature against the
+  running app's requirement and opens it), anything else there refused (`ErrTargetTaken`), and otherwise the copy made and checked
+  in a hidden folder of the move's own beside the target (`stage`, `stagePrefix`, an empty
+  bundle in it), through the `Mover` the shell attaches (`AttachMover`), and only then renamed
+  into the target, never over anything that appeared there (`place`, `renameNew`: RENAME_EXCL
+  on macOS), so a copy cut off or never checked is never where the app goes, and a failed
+  copy's removal (`discard`, that folder alone) never touches what was there; a later move
+  removes such a folder a cut-off move left (`sweepLeftovers`: named so, older than
+  `leftoverAfter`, holding nothing or only a copy of the app); then the Mover quits the
+  normal way and opens the copy once the app has quit (`MoveMoved`). `OpenInApplications`
+  refuses a copy macOS would open from a hidden folder (`Mover.Translocates`,
+  `ErrQuarantined`), leaving its mark, before the check. Every move holds the app's quit
+  from its start to its end (`Mover.HoldQuit`). One move runs at a time (`ErrMoving`), its
+  copy bounded by `MoveLimit` and never cut short by the window's call, and none starts
+  while a restart into an update installs or finishes after a held quit, which goes first (`ErrUpdating`,
   with `ErrFinishing` for the latter, each worded for the window); the bundle that runs is never
   touched, and `ShowAppInFinder` shows it, but for a translocated one. With downloads on, the zip goes into
   `<data>/updates/<version>/` (`Cache`, `appdata.Paths.Updates`) through a temporary file, hashed

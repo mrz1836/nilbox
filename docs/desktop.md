@@ -422,22 +422,37 @@ move either: About says the account is why.
   `~/Applications/Nilbox.app` (a standard user's), making `~/Applications` when it is missing.
 - **A copy already there.** One whose `Info.plist` names the app's bundle identifier is never
   replaced: the dialog says *"Nilbox is already in Applications."* **Open it** · **Not now**.
-  **Open it** checks that copy's code signature and opens it; an older one then updates
-  itself. Anything else there (a link, a file, another app, a folder that isn't an app) stops
-  the move, and the dialog says what is in the way.
-- **The move.** The app makes the target's folder, empty, so the copy never goes into anything
-  that was there, then copies itself into it with `ditto --noqtn`, takes the quarantine mark a
-  download carries off the copy (`ditto` copies it as it copies every extended attribute, and a
-  marked copy would be translocated again), and checks the copy with `codesign --verify --deep
-  --strict`. A copy that fails, or doesn't pass the check, is removed, that folder alone, and
-  the dialog says why; nothing else changes. While it works, the dialog says *Moving to
-  Applications…* and holds its buttons.
+  **Open it** opens that copy, and an older one then updates itself, once two checks pass.
+  First, the copy must open where it is: one still marked as downloaded that you never moved
+  with Finder (copied there in Terminal, with `cp` or `mv`) would open from a hidden folder,
+  where it can't update itself, so the dialog asks you to move it to the Trash and move this
+  copy instead. The mark is left as it is, since you never opened that copy. Second, it must
+  be signed as this copy is (`codesign --verify --deep --strict` with this copy's designated
+  requirement, `--test-requirement`): a release's is the release identity's, the same for
+  every release, so a build from source, which never updates itself, is refused the same way.
+  A rehearsal signed ad hoc only opens a copy of the same build. Anything else there (a link,
+  a file, another app, a folder that isn't an app) stops the move, and the dialog says what is
+  in the way. When **Open it** is refused, the dialog asks to move again, with why beside it.
+- **The move.** The app copies itself, with `ditto --noqtn`, into a hidden folder of its own
+  beside where it goes (`.Nilbox.app.moving-<number>`, in the same Applications folder), takes
+  the quarantine mark a download carries off the copy (`ditto` copies it as it copies every
+  extended attribute, and a marked copy would be translocated again), and checks it there, as
+  **Open it** checks a copy already there. Only then is it renamed into place, never over
+  anything that appeared there meanwhile, so a copy cut off partway, or never checked, is
+  never where the app goes. A copy that fails, doesn't pass the check, or can't be put in
+  place is removed with its hidden folder, that folder alone, and the dialog says why; nothing
+  else changes. A hidden folder a move cut off by a crash or a power cut left is removed by the
+  next move, once it is older than any move could still be running in, and only when it holds
+  nothing but a copy of the app. While it works, the dialog says *Moving to Applications…* and
+  holds its buttons, and every quit waits for it (the window comes forward, where the move
+  shows): the quit goes ahead once the move ends, within its five-minute limit.
 - **The reopen.** The app then quits the normal way and opens the copy once it has quit
   (`open -n`, given five seconds, as the reopen after a reset is, so it never holds the app's
   shutdown). While runs go in the app, the quit asks first, as every quit does; **Keep
-  running** leaves the copy in Applications, and it opens at whichever quit comes next. Only the
-  copy opens, once, even when a reset was asked for in the same run: the copy carries the reset
-  out. If the copy doesn't open, open it from Applications yourself.
+  running** leaves the copy in Applications and this copy running, and a later quit opens
+  nothing: to open the copy then, click **Move to Applications** again, which offers **Open
+  it**. Only the copy opens, once, even when a reset was asked for in the same run: the copy
+  carries the reset out. If the copy doesn't open, open it from Applications yourself.
 - **Not during an update's restart.** A restart into an update goes first: while one installs,
   or finishes after a held quit, nothing offers the move, and a move asked for anyway is
   refused with words that say so.
@@ -822,10 +837,12 @@ all go through one runner, which keeps a record of each run and its whole output
   finish, unsignaled, and the next start follows it. The question says so for such a release:
   stopping waits up to a few seconds, and the release may finish after the app closes. A
   release the app hasn't finished checking on GitHub by then stays recorded as going, and the
-  next start checks it. Runs in your terminal are left running. Closing the window never
-  asks: the app keeps running in the menu bar. A logout, a restart, or a shutdown asks the app to
-  quit too, so while a run goes in the app, macOS cancels it and names the app, as Terminal does for
-  a running command; answer the question, then try again.
+  next start checks it. Runs in your terminal are left running. While the app moves itself to
+  Applications, a quit waits for the move instead, then goes ahead
+  ([Moving to Applications](#moving-to-applications)). Closing the window never asks: the app
+  keeps running in the menu bar. A logout, a restart, or a shutdown asks the app to quit too,
+  so while a run goes in the app, macOS cancels it and names the app, as Terminal does for a
+  running command; answer the question, then try again.
 - **After a crash or a restart.** Once the window paints, the app checks every run still recorded
   as going. A run in the app whose process group is still alive, and started when the record says,
   shows *Still running from before Nilbox restarted*: its log is followed again, and **Stop** works.
