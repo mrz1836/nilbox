@@ -2,11 +2,12 @@
 
 Nilbox is a macOS desktop app: a Go core, a [Wails v3](https://wails.io) shell, and a React +
 TypeScript + Vite + Tailwind frontend in `frontend/`. This guide covers the one-time setup, the
-build targets, how the desktop shell is kept out of the Linux CI build, and what the app does
-on your machine: where it keeps its data, how the window and the inbox cards are laid out, how
-it finds your coding agents (Claude Code and OpenAI Codex) and their profiles, how prompts and
-launch defaults decide what a session starts with, how it follows each session it starts, how it
-decides what an item may do, and how it makes, keeps track of, and cleans up git worktrees.
+build targets, packaging a release, how the desktop shell is kept out of the Linux CI build, and
+what the app does on your machine: where it keeps its data, how the window and the inbox cards
+are laid out, how it finds your coding agents (Claude Code and OpenAI Codex) and their profiles,
+how prompts and launch defaults decide what a session starts with, how it follows each session it
+starts, how it decides what an item may do, and how it makes, keeps track of, and cleans up git
+worktrees.
 
 Measured startup, refresh, launch, size, and API-budget numbers, and how they were taken, are
 in [performance.md](performance.md).
@@ -64,6 +65,9 @@ pins.
 | `magex app:fresh` | Opens `bin/Nilbox.app` on a fresh [sandbox](#a-sandbox-on-fresh-data) data folder, your prompts and launch defaults copied in, leaving your own data as it is; `magex app:run` goes back to it |
 | `magex app:reset` | [Starts the app over](#starting-over) on your own data: quits it, asks for the reset, and opens it again, which carries the reset out |
 | `magex app:check` | Runs `app:bindingsCheck`, `app:lint`, `app:test`, and `app:build` |
+| `magex app:package` | Builds a release into `bin/release/<version>/`: a universal bundle (Apple silicon and Intel) signed with a code-signing identity, its zip, a signed `Nilbox.dmg`, `SHA256SUMS`, and the signed update manifest, checked against the release key the app pins ([Packaging a release](#packaging-a-release)) |
+| `magex app:keygen out=<folder>` | Makes the release key: writes its Ed25519 private half to `<folder>/release.key` (`~/` allowed), outside the repository, and prints the public half to pin |
+| `magex app:verify dir=<folder> [version=<version>]` | Checks a release's `manifest-darwin.json` against the release key the app pins, and the zip it names by its size and SHA-512, as the app will; with `version`, it also refuses a manifest of another version |
 | `magex db:generate` | Regenerates each table owner's typed queries from its `queries/*.sql` and the migrations, with the sqlc version `.github/env/90-project.env` pins |
 | `magex db:check` | Fails when the generated queries are stale or a query does not prepare against the schema the migrations build |
 | `magex measure:startup` | Startup to the first frame on screen, over six launches |
@@ -90,8 +94,9 @@ magex app:check
 ```
 
 **Signing.** `magex app:build` signs the bundle ad hoc (`codesign --force --sign -`), which is
-enough to run it on the machine that built it. Distribution signing and notarization are not
-part of the build.
+enough to run it on the machine that built it. A release (`magex app:package`) is signed with a
+self-signed code-signing identity instead, so every release keeps the same designated
+requirement. Nothing is notarized.
 
 **Versions.** `magex app:build` stamps the build's versions from git: the release version
 (the latest tag, `0.0.0` before the first release), a build number (the commit count), and the
@@ -104,7 +109,8 @@ once per build of its command and kept until the command changes, as when it upd
 so opening About again runs nothing; hover a version for where its command is. Its **Report a
 bug** button opens a new GitHub issue with all of it filled in: the versions only, never their
 paths. The bundle's `Info.plist` carries the
-release version and the build number too. macOS caches app icons by that build number, so a
+release version, only its numeric core for a prerelease (`0.2.0` for `0.2.0-rc.1`), and the
+build number too. macOS caches app icons by that build number, so a
 new commit is what refreshes the icon Stage Manager and Finder show. An icon change you have
 not committed yet keeps the old build number; if a stale icon persists, clear the cache with
 `sudo rm -rf /Library/Caches/com.apple.iconservices.store` and then
@@ -119,6 +125,68 @@ and `status.openai.com`, each sent only the request for its summary. A per-app f
 allow `bin/Nilbox.app/Contents/MacOS/nilbox` to reach `api.github.com`, or every refresh times
 out. Blocking the avatar host only means initials show instead of pictures, and blocking a
 status page only means the check says it couldn't reach it.
+
+<br>
+
+## Packaging a release
+
+`magex app:package` builds the files a GitHub release of the app attaches, on a Mac, into
+`bin/release/<version>/`:
+
+| File | What it is |
+|---|---|
+| `Nilbox_<version>_darwin_universal.zip` | The bundle, zipped with `ditto -c -k --norsrc --keepParent`: what updates install. The target checks that it holds exactly `Nilbox.app`, with nothing beside it |
+| `Nilbox.dmg` | The disk image first installs open: the bundle beside a link to Applications, compressed as ULMO (LZMA, about a third smaller than UDZO), and signed with the same identity. Its name holds no version, so a link to the latest release's copy never changes |
+| `SHA256SUMS` | The SHA-256 of the zip and the disk image, for checking a download by hand (`shasum -a 256 -c SHA256SUMS`) |
+| `manifest-darwin.json` | The update manifest: the version, the platform (`darwin-universal`), the zip's name, size, and SHA-512, and an Ed25519 signature over all of them |
+
+It reads four environment variables:
+
+| Variable | Meaning |
+|---|---|
+| `RELEASE_VERSION` | Required: the version without its `v`, such as `0.3.0` or `0.3.0-rc.1`. Its tag, `v<version>`, must name `HEAD`'s commit (other tags may sit beside it, as a release's does beside its last candidate's), and the working tree must hold no changes, untracked files included, or the target stops |
+| `CODESIGN_IDENTITY` | Required: the code-signing identity, by its name or its SHA-1. Never `-`: a release is not signed ad hoc |
+| `CODESIGN_KEYCHAIN` | Optional: the absolute path of a keychain file that holds the identity, such as CI's temporary one. The same path goes to `security` and `codesign`, so a relative one is refused |
+| `UPDATE_SIGNING_KEY` | Required: the path to the release key's private half, the PEM file `magex app:keygen` wrote |
+
+Before it builds anything, it checks the version, the identity, the keychain, that the private
+key is the other half of the key the app pins (`update.ReleaseKey`), the tag, and that the
+working tree is clean, untracked files included, whatever your git config hides from `git
+status`. Then it checks the brand files, builds the frontend, and builds the desktop binary
+twice, for `arm64` and `amd64`, with `-X main.flavor=release`, combining the two with `lipo` and
+checking `lipo -archs`. The bundle's `CFBundleShortVersionString` is the version's numeric core
+(`0.3.0` for `0.3.0-rc.1`), which is what macOS expects; the version the app reports keeps the
+whole. Every folder and executable in the bundle gets mode 0755 and every other file 0644,
+whatever the umask, so the zip and the disk image hold the same modes on any machine. It signs
+the bundle without a timestamp (`--timestamp=none`, which asks no server), verifies it
+(`codesign --verify --deep --strict`), zips it and checks the zip (one top-level bundle, every
+name clean and listed once, and no links), makes, signs, and verifies the disk image, writes
+`SHA256SUMS`, then signs the manifest and verifies it against the pinned key, so a private key
+that doesn't match the app's fails here, never in a user's hands. Last, it checks the files as
+`magex app:verify` does and prints each one's size. While no release key is pinned, it refuses
+with "no release key pinned yet".
+
+**The keychain search list.** `codesign` finds an identity only in a keychain on the user's
+search list, even one named with `--keychain`. With `CODESIGN_KEYCHAIN` set, the target puts
+that keychain first on the list while it runs, and puts the list back exactly as it was when it
+ends, fails, or is interrupted. On Control-C the target then stops as the build's tools do and
+cleans up after itself; on `SIGTERM` or `SIGHUP` it ends at once, and the next run clears what
+it left in the release's folder. It never looks for the identity with `security find-identity
+-v`, which counts a self-signed identity as not valid though it signs.
+
+**The release key.** `magex app:keygen out=<folder>` writes a new Ed25519 private key to
+`<folder>/release.key` (PKCS#8 PEM, readable by you alone) and prints only its public half, in
+base64, to pin as `update.ReleaseKey`. It refuses a folder inside the repository, comparing
+folders as files, so another case of the repository's name, a link, or a firmlink doesn't get
+past it, and never overwrites a key, and `.gitignore` keeps `*.key`, `release.key`, and
+`*.p12` out all the same. Keep the private key backed up: without it, no install can verify an
+update again.
+
+`magex app:verify dir=<folder>` checks a release's folder as the app will: its
+`manifest-darwin.json` (at most 16 KiB, no field the format lacks, every field in form, for
+`darwin-universal`, and signed by the pinned key), then the zip it names, by its size and
+SHA-512. With `version=<version>` (its `v` optional), it also refuses a manifest of any other
+version, so a stale pair can't pass for this release.
 
 <br>
 
@@ -147,9 +215,10 @@ and it sits behind the `desktop` build tag:
 - A repository test fails if anything outside the desktop bootstrap imports Wails.
 - The `magex` targets in `magefiles/` are tested under the `mage` build tag, which the combined
   pass includes. Fake tools on an isolated `PATH` stand in for pnpm, go, rsvg-convert, and the
-  macOS-only commands (`plutil`, `codesign`, `iconutil`, `open`), so CI on Linux runs the bundle
-  assembly and icon rendering steps too. On a Mac, the same tests also run `app:open`,
-  `app:run`, and `app:check` end to end against those fakes.
+  macOS-only commands (`plutil`, `codesign`, `iconutil`, `open`, and, for packaging a release,
+  `lipo`, `ditto`, `hdiutil`, and `security`), so CI on Linux runs the bundle assembly, the
+  release packaging, and the icon rendering steps too. On a Mac, the same tests also run
+  `app:open`, `app:run`, and `app:check` end to end against those fakes.
 
 CI runs the fortress workflows on ubuntu for the Go code, `.github/workflows/frontend.yml` for
 `magex frontend:gate`, and `.github/workflows/sqlc.yml` for `magex db:check`. No macOS runner is

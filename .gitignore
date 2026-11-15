@@ -40,7 +40,14 @@ coverage.out
 # Node modules
 node_modules/
 
-# Build output and local build caches (magex build writes the headless binary into cmd/nilbox/)
+# Signing keys and certificates never enter the repository: magex app:keygen writes the
+# release key outside it, and a code-signing certificate is exported as a .p12
+*.p12
+*.key
+release.key
+
+# Build output and local build caches (magex build writes the headless binary into cmd/nilbox/,
+# and magex app:package each release into bin/release/<version>/)
 /bin/
 /cmd/nilbox/nilbox
 .mage-cache/

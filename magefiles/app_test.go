@@ -790,6 +790,7 @@ func TestMacOSTargetsRefuseOtherSystems(t *testing.T) {
 		run  func() error
 	}{
 		{name: "app:build", run: App{}.Build},
+		{name: "app:package", run: App{}.Package},
 		{name: "app:open", run: App{}.Open},
 		{name: "app:run", run: App{}.Run},
 		{name: "app:reset", run: App{}.Reset},
@@ -1047,17 +1048,31 @@ func TestVersionFlags(t *testing.T) {
 	t.Parallel()
 
 	meta := buildMeta{
-		version:       "v1.2.3-4-gabc1234",
+		version:       "v1.2.3-rc.1-4-gabc1234",
 		commit:        "abc1234",
 		date:          "2026-11-07T00:00:00Z",
+		release:       "1.2.3-rc.1",
 		bundleVersion: "1.2.3",
 		bundleBuild:   "42",
 	}
 
-	assert.Equal(t,
-		"-X main.version=v1.2.3-4-gabc1234 -X main.commit=abc1234 -X main.buildDate=2026-11-07T00:00:00Z "+
-			"-X main.release=1.2.3 -X main.buildNumber=42",
-		versionFlags(meta))
+	t.Run("a build from source stamps no flavor", func(t *testing.T) {
+		t.Parallel()
+
+		assert.Equal(t,
+			"-X main.version=v1.2.3-rc.1-4-gabc1234 -X main.commit=abc1234 -X main.buildDate=2026-11-07T00:00:00Z "+
+				"-X main.release=1.2.3-rc.1 -X main.buildNumber=42",
+			versionFlags(meta), "main.release keeps the whole version, the prerelease's suffix included")
+	})
+
+	t.Run("a release stamps its flavor", func(t *testing.T) {
+		t.Parallel()
+
+		release := meta
+		release.flavor = flavorRelease
+
+		assert.Equal(t, versionFlags(meta)+" -X main.flavor=release", versionFlags(release))
+	})
 }
 
 //nolint:paralleltest // changes the process's working directory
@@ -1065,7 +1080,7 @@ func TestVersionFlagsStampDeclaredVariables(t *testing.T) {
 	inRepoRoot(t)
 
 	declared := packageVars(t, filepath.Join("cmd", brand.Slug, "main_desktop.go"))
-	stamped := regexp.MustCompile(`-X main\.(\w+)=`).FindAllStringSubmatch(versionFlags(buildMeta{}), -1)
+	stamped := regexp.MustCompile(`-X main\.(\w+)=`).FindAllStringSubmatch(versionFlags(buildMeta{flavor: flavorRelease}), -1)
 
 	require.NotEmpty(t, stamped)
 
@@ -1091,8 +1106,10 @@ func TestReadBuildMeta(t *testing.T) {
 
 		assert.Equal(t, "dev", meta.version)
 		assert.Equal(t, "none", meta.commit)
+		assert.Equal(t, brandgen.PlaceholderVersion, meta.release)
 		assert.Equal(t, brandgen.PlaceholderVersion, meta.bundleVersion)
 		assert.Equal(t, brandgen.PlaceholderVersion, meta.bundleBuild)
+		assert.Empty(t, meta.flavor, "a build from source stamps no flavor")
 
 		_, err := time.Parse(time.RFC3339, meta.date)
 		require.NoError(t, err)
@@ -1126,8 +1143,24 @@ func TestReadBuildMeta(t *testing.T) {
 
 		assert.Equal(t, "v1.2.3-1-g"+head, meta.version)
 		assert.Equal(t, head, meta.commit)
+		assert.Equal(t, "1.2.3", meta.release)
 		assert.Equal(t, "1.2.3", meta.bundleVersion)
 		assert.Equal(t, "2", meta.bundleBuild)
+		assert.Empty(t, meta.flavor)
+	})
+
+	t.Run("after a prerelease's tag", func(t *testing.T) {
+		isolateGit(t)
+		inTempDir(t)
+		git(t, "init", "-q")
+		git(t, "commit", "-q", "--allow-empty", "-m", "first")
+		git(t, "tag", "v0.2.0-rc.1")
+
+		meta := readBuildMeta()
+
+		assert.Equal(t, "v0.2.0-rc.1", meta.version)
+		assert.Equal(t, "0.2.0-rc.1", meta.release, "main.release keeps the whole version")
+		assert.Equal(t, "0.2.0", meta.bundleVersion, "macOS gets the numeric core")
 	})
 
 	t.Run("uncommitted changes", func(t *testing.T) {
@@ -1155,16 +1188,25 @@ func TestBuildDesktopBinary(t *testing.T) {
 	}
 
 	t.Run("builds the tagged production binary for the oldest supported macOS", func(t *testing.T) {
-		log := fakeGo(t, `printf '%s|%s|%s|%s\n' "$CGO_ENABLED" "$CGO_CFLAGS" "$CGO_LDFLAGS" "$MACOSX_DEPLOYMENT_TARGET" >> "$log"`)
+		unsetenv(t, "GOARCH")
+		log := fakeGo(t, `printf '%s|%s|%s|%s|%s\n' "$CGO_ENABLED" "$CGO_CFLAGS" "$CGO_LDFLAGS" "$MACOSX_DEPLOYMENT_TARGET" "$GOARCH" >> "$log"`)
 		minVersion := "-mmacosx-version-min=" + macOSMinVersion
 
-		require.NoError(t, buildDesktopBinary("bin/app", meta))
+		require.NoError(t, buildDesktopBinary("bin/app", meta, ""))
 
 		assert.Equal(t, []string{
 			"build -tags desktop,production -trimpath -buildvcs=false -ldflags -s -w " + versionFlags(meta) +
 				" -o bin/app ./cmd/" + brand.Slug,
-			"1|" + minVersion + "|" + minVersion + "|" + macOSMinVersion,
-		}, logLines(t, log))
+			"1|" + minVersion + "|" + minVersion + "|" + macOSMinVersion + "|",
+		}, logLines(t, log), "this Mac's own processor: no GOARCH")
+	})
+
+	t.Run("builds for another architecture", func(t *testing.T) {
+		log := fakeGo(t, `printf 'GOARCH=%s CGO_ENABLED=%s\n' "$GOARCH" "$CGO_ENABLED" >> "$log"`)
+
+		require.NoError(t, buildDesktopBinary("bin/app-amd64", meta, "amd64"))
+
+		assert.Equal(t, "GOARCH=amd64 CGO_ENABLED=1", logLines(t, log)[1])
 	})
 
 	t.Run("quiets Apple's newer linker about duplicate libraries", func(t *testing.T) {
@@ -1172,7 +1214,7 @@ func TestBuildDesktopBinary(t *testing.T) {
 		fakeTool(t, dir, "ld", `echo "@(#)PROGRAM:ld PROJECT:ld-1167.5" >&2`)
 		log := fakeLoggedTool(t, dir, "go", "")
 
-		require.NoError(t, buildDesktopBinary("bin/app", meta))
+		require.NoError(t, buildDesktopBinary("bin/app", meta, ""))
 
 		assert.Equal(t, []string{
 			"build -tags desktop,production -trimpath -buildvcs=false -ldflags -s -w " + versionFlags(meta) +
@@ -1183,7 +1225,7 @@ func TestBuildDesktopBinary(t *testing.T) {
 	t.Run("the build fails", func(t *testing.T) {
 		fakeGo(t, "exit 1")
 
-		err := buildDesktopBinary("bin/app", meta)
+		err := buildDesktopBinary("bin/app", meta, "")
 
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "build the desktop binary")
@@ -1367,6 +1409,37 @@ func TestReportSize(t *testing.T) {
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "read the binary size")
 	})
+}
+
+func TestNormalizeModes(t *testing.T) {
+	t.Parallel()
+
+	bundle := filepath.Join(t.TempDir(), "Example.app")
+	exe := filepath.Join(bundle, "Contents", "MacOS", brand.Slug)
+	helper := filepath.Join(bundle, "Contents", "Resources", "helper")
+	plist := filepath.Join(bundle, "Contents", "Info.plist")
+
+	testutil.WriteFileMode(t, exe, "binary", 0o600)
+	testutil.WriteFileMode(t, helper, "script", 0o700)
+	testutil.WriteFileMode(t, plist, "<plist/>", 0o664)
+	require.NoError(t, os.Chmod(filepath.Join(bundle, "Contents"), 0o700)) //nolint:gosec // as a umask of 077 leaves a folder
+	require.NoError(t, os.Symlink("Info.plist", filepath.Join(bundle, "Contents", "Link")))
+
+	require.NoError(t, normalizeModes(bundle, exe))
+
+	for path, want := range map[string]os.FileMode{
+		bundle:                            0o755,
+		filepath.Join(bundle, "Contents"): 0o755,
+		exe:                               0o755,
+		helper:                            0o755,
+		plist:                             0o644,
+	} {
+		info, err := os.Stat(path)
+		require.NoError(t, err)
+		assert.Equal(t, want, info.Mode().Perm(), path)
+	}
+
+	require.Error(t, normalizeModes(filepath.Join(t.TempDir(), "missing.app"), exe))
 }
 
 //nolint:paralleltest // changes the process's working directory, PATH, and standard output

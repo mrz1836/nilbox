@@ -769,6 +769,23 @@ app:lint` reads.
   per provider in trouble (its parts affected, its incidents with their stages, how many
   others don't touch what is watched, and its last error), and the account menu's Service
   status submenu names each watched provider's state.
+- `internal/update/` is how the app will update itself. For now it holds the manifest each
+  release attaches (`manifest-darwin.json`, `ManifestName`): its JSON (`Manifest`, `Encode`, and
+  `Parse`, which refuses one over 16 KiB, a field the format lacks, or anything after it), the
+  fixed lines its Ed25519 signature covers (`SignedMessage`: the format, the platform, the
+  version, the zip's name, its size, and its SHA-512, so none can change without the key),
+  `Sign` and `Verify` (every field held to its form, so none can pass for another: the version
+  a release's, as semver allows it, the zip's name exactly `FileName`, its size at most 200
+  MiB), `Digest` and `CheckFile` (a zip's size and SHA-512 against a manifest `Verify`
+  accepted), the keys (`ParseKey`: raw base64 or a PKIX PEM block, never a private key and
+  never an Ed25519 point of small order, under which a signature could be forged, which
+  `Verify` refuses too; `ParsePrivateKey` and `EncodePrivateKey`, PKCS#8), the release's asset
+  names (`AssetNames`, from `brand.Name`), and `ReleaseKey`, the public key the app pins, empty
+  until the release key is made. Stdlib crypto only, no service, no HTTP (the repoguard
+  boundary test). `magefiles/release.go` builds and checks releases with it (`magex
+  app:package`, `app:verify`), and `magefiles/keygen.go` makes the release key (`magex
+  app:keygen`), so the packaging and the app agree on what a valid release is; while
+  `ReleaseKey` is empty, `app:package` and `app:verify` refuse.
 - `internal/bump/` reads a dependency update from a bot's pull request title into an `Update`,
   for the review sheet and the `.Dependency` prompt variables. It is pure and imports no
   service.
