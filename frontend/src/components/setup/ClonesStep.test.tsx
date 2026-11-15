@@ -29,13 +29,40 @@ function noMotion() {
 }
 
 describe('ClonesStep', () => {
-  it('counts the clones directly inside the clone root', () => {
+  it('counts the clones directly inside the clone root', async () => {
     noMotion()
     render(<Stateful states={[locationState({ clones: 42 })]} />)
 
     expect(screen.getByTestId('clone-count')).toHaveTextContent('42')
     expect(screen.getByText('Found them. New clones go here too.')).toBeInTheDocument()
-    expect(platform.suggestCloneRoots).not.toHaveBeenCalled()
+    await waitFor(() => {
+      expect(platform.suggestCloneRoots).toHaveBeenCalled()
+    })
+    expect(screen.queryByRole('region', { name: 'Folders with clones' })).not.toBeInTheDocument()
+  })
+
+  it('offers the other folders with clones beside a clone root that has some', async () => {
+    noMotion()
+    platform.suggestCloneRoots.mockResolvedValue([{ path: '~/go/src/github.com/acme-org', clones: 3 }])
+    render(<Stateful states={[locationState({ clones: 42 })]} />)
+
+    const found = within(await screen.findByRole('region', { name: 'Folders with clones' }))
+    expect(found.getByText('Found clones in other folders too:')).toBeInTheDocument()
+    expect(found.queryByRole('button', { name: 'Use as clone root' })).not.toBeInTheDocument()
+
+    await userEvent.click(found.getByRole('button', { name: 'Add ~/go/src/github.com/acme-org as a location' }))
+
+    expect(platform.addCloneLocations).toHaveBeenCalledWith(['~/go/src/github.com/acme-org'])
+  })
+
+  it('offers no folder until the clone root has been read', async () => {
+    platform.suggestCloneRoots.mockResolvedValue([{ path: '~/code', clones: 23 }])
+    render(<Stateful states={undefined} />)
+
+    await waitFor(() => {
+      expect(platform.suggestCloneRoots).toHaveBeenCalled()
+    })
+    expect(screen.queryByRole('region', { name: 'Folders with clones' })).not.toBeInTheDocument()
   })
 
   it('counts up to the clones found, frame by frame', () => {
@@ -81,6 +108,7 @@ describe('ClonesStep', () => {
     render(<Stateful states={[locationState({ state: 'missing', clones: 0 })]} />)
 
     const found = within(await screen.findByRole('region', { name: 'Folders with clones' }))
+    expect(found.getByText('Found clones in these folders:')).toBeInTheDocument()
     expect(found.getByText('~/code')).toBeInTheDocument()
     expect(found.getByText(/23 clones/)).toBeInTheDocument()
 
@@ -98,7 +126,10 @@ describe('ClonesStep', () => {
   it('starts fresh in the clone root when no clones turn up', async () => {
     render(<Stateful states={[locationState({ state: 'missing', clones: 0 })]} />)
 
-    await userEvent.click(await screen.findByRole('button', { name: 'Start fresh in ~/projects' }))
+    expect(await screen.findByText(/No clones turned up in your home folder\./)).toBeInTheDocument()
+    expect(screen.getByText(/on another disk\? Choose that folder/)).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Start fresh in ~/projects' }))
 
     expect(platform.createCloneRoot).toHaveBeenCalledWith('~/projects')
     expect(await screen.findByRole('status')).toHaveTextContent('Made ~/projects for your clones.')

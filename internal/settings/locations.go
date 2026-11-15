@@ -118,10 +118,11 @@ func (s *Service) PreviewCloneLocation(ctx context.Context, dir string) (localre
 const cloneRootPerm fs.FileMode = 0o755
 
 // SuggestCloneRoots suggests folders under home that could be the clone root or another
-// repository location, for the setup, when the clone root is missing or holds no clones:
-// the folders where clones commonly live that have some, the most clones first, leaving
-// out those the locations already hold, with ~ for home (see localrepos.Candidates). It
-// reads with stat and ReadDir alone, and runs no git.
+// repository location, for the setup. It returns the folders in home that have clones,
+// whatever they are named, one level down too, the most clones first, leaving out those
+// the locations already hold, with ~ for home. It never reads macOS's guarded folders or
+// another disk (see localrepos.Candidates). It reads with stat and ReadDir alone, and
+// runs no git.
 func (s *Service) SuggestCloneRoots(ctx context.Context) ([]localrepos.Suggestion, error) {
 	roots, err := s.storedRoots(ctx)
 	if err != nil {

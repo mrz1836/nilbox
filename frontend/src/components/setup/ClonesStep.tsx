@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type CSSProperties } from 'react'
 
+import { brand } from '../../generated/brand'
 import { attempt } from '../../lib/call'
 import { counted, formatCount } from '../../lib/format'
 import { prefersReducedMotion } from '../../lib/motion'
@@ -115,17 +116,22 @@ function RootCard({ path, root }: { path: string; root: LocationState | undefine
 
 interface SuggestionsProps {
   candidates: readonly CloneCandidate[]
+  // asRoot offers each folder as the clone root too, since the one set is missing or holds
+  // no clones; otherwise each is offered only beside it.
+  asRoot: boolean
   busy: boolean
   onUse: (path: string) => void
   onAdd: (path: string) => void
 }
 
-// Suggestions lists the folders where clones were found, the most first: each can be the
-// clone root, or be added beside it.
-function Suggestions({ candidates, busy, onUse, onAdd }: SuggestionsProps) {
+// Suggestions lists the folders where clones were found, the most first: each can be added
+// beside the clone root, or, when that has none, be the clone root.
+function Suggestions({ candidates, asRoot, busy, onUse, onAdd }: SuggestionsProps) {
   return (
     <section aria-label="Folders with clones" className="flex flex-col gap-2">
-      <p className="text-sm font-medium">Found clones in these folders:</p>
+      <p className="text-sm font-medium">
+        {asRoot ? 'Found clones in these folders:' : 'Found clones in other folders too:'}
+      </p>
       <ul className="divide-y divide-border rounded-lg border border-border bg-surface">
         {candidates.map((c, i) => (
           <li
@@ -138,16 +144,18 @@ function Suggestions({ candidates, busy, onUse, onAdd }: SuggestionsProps) {
               <span className="font-mono text-sm">{c.path}</span>
               <span className="text-sm text-muted"> · {counted(c.clones, 'clone', 'clones')}</span>
             </p>
-            <button
-              type="button"
-              disabled={busy}
-              onClick={() => {
-                onUse(c.path)
-              }}
-              className={i === 0 ? primaryButtonClass : buttonClass}
-            >
-              Use as clone root
-            </button>
+            {asRoot && (
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => {
+                  onUse(c.path)
+                }}
+                className={i === 0 ? primaryButtonClass : buttonClass}
+              >
+                Use as clone root
+              </button>
+            )}
             <button
               type="button"
               disabled={busy}
@@ -156,7 +164,7 @@ function Suggestions({ candidates, busy, onUse, onAdd }: SuggestionsProps) {
               onClick={() => {
                 onAdd(c.path)
               }}
-              className={quietButtonClass}
+              className={asRoot ? quietButtonClass : buttonClass}
             >
               <PlusIcon className="size-3.5" />
               Add as a location
@@ -176,11 +184,12 @@ export interface ClonesStepProps {
   states: Query<LocationState[]>
 }
 
-// ClonesStep finds the user's clones: the clone root as it reads now; when it is missing
-// or holds no clones, the folders where clones commonly live that hold some, each to use as
-// the clone root or add beside it, or, with none, a fresh clone root made for them; any
-// other folder chosen; and, folded away, the other repository locations, as Settings shows
-// them.
+// ClonesStep finds the user's clones: the clone root as it reads now, and the other folders
+// in their home that hold clones, whatever they are named. Each folder can be added beside
+// the clone root, or, when the root is missing or holds no clones, used in its place. With
+// none found and no clone root, it offers a fresh one made for them, and says where it
+// never looks. Any other folder can be chosen, and, folded away, the other repository
+// locations show as Settings shows them.
 export function ClonesStep({ settings: stored, onSaved, states }: ClonesStepProps) {
   const { settings, save, error } = useSettingsSave(stored, onSaved)
   const root = states.data?.find((s) => s.primary)
@@ -190,7 +199,7 @@ export function ClonesStep({ settings: stored, onSaved, states }: ClonesStepProp
   const candidates = useQuery(
     () => suggestCloneRoots(),
     [settings.cloneRoot, JSON.stringify(settings.cloneLocations)],
-    { enabled: suggest, log: 'could not look for folders with clones' },
+    { log: 'could not look for folders with clones' },
   )
   const [busy, setBusy] = useState(false)
   const [note, setNote] = useState('')
@@ -247,14 +256,18 @@ export function ClonesStep({ settings: stored, onSaved, states }: ClonesStepProp
         </p>
       )}
 
-      {suggest && candidates.data !== undefined && found.length > 0 && (
-        <Suggestions candidates={found} busy={busy} onUse={chooseRoot} onAdd={addLocation} />
+      {root !== undefined && found.length > 0 && (
+        <Suggestions candidates={found} asRoot={suggest} busy={busy} onUse={chooseRoot} onAdd={addLocation} />
       )}
 
       {missing && candidates.data !== undefined && found.length === 0 && (
         <div className="flex flex-col items-start gap-3 rounded-lg border border-border bg-surface px-4 py-4">
           <p className="text-sm text-muted">
-            No clones turned up in the usual places. Start fresh: new clones will go in {settings.cloneRoot}.
+            No clones turned up in your home folder. Start fresh: new clones will go in {settings.cloneRoot}.
+          </p>
+          <p className="text-xs text-muted">
+            Keep them in Documents, on the Desktop, or on another disk? Choose that folder: {brand.name} doesn’t look
+            there on its own, since macOS asks first.
           </p>
           <button type="button" disabled={busy} onClick={startFresh} className={primaryButtonClass}>
             Start fresh in {settings.cloneRoot}

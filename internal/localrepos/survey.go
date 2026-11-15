@@ -185,47 +185,61 @@ func (r Roots) parentOf(dir, home string) Suggestion {
 // across them. It returns the insideKept with the most, whether more had some, and whether
 // the look stopped at its bounds.
 func (r Roots) inside(dir, home string) (kept []Suggestion, more, partial bool) {
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		return []Suggestion{}, false, false
-	}
+	look := insideLook{roots: r, home: home, budget: insideEntries}
+	look.in(dir)
 
-	look := insideLook{roots: r, home: home, budget: insideEntries, found: []Suggestion{}}
-
-	for _, entry := range entries {
-		if !look.next(filepath.Join(dir, entry.Name())) {
-			break
-		}
-	}
-
-	found := look.found
-
-	slices.SortStableFunc(found, func(a, b Suggestion) int {
-		return cmp.Or(b.Clones-a.Clones, strings.Compare(a.Path, b.Path))
-	})
-
-	if len(found) > insideKept {
-		return found[:insideKept], true, look.partial
-	}
-
-	return found, false, look.partial
+	return look.kept()
 }
 
 // insideLook is inside's look one level down, as it goes: the subfolders it looked into,
 // the entries it may still read, what it found, and whether it stopped at its bounds.
+// skip, when set, names a subfolder it never reads, such as one a disk is mounted on.
 type insideLook struct {
 	roots   Roots
 	home    string
+	skip    func(dir string) bool
 	folders int
 	budget  int
 	found   []Suggestion
 	partial bool
 }
 
-// next looks into sub, a subfolder's path, unless it is hidden or not a folder, and
-// reports whether the look goes on: not once it reaches its bounds.
+// in looks into each subfolder of dir until the look reaches its bounds. A folder that
+// can't be read has none.
+func (l *insideLook) in(dir string) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return
+	}
+
+	for _, entry := range entries {
+		if !l.next(filepath.Join(dir, entry.Name())) {
+			return
+		}
+	}
+}
+
+// kept is what the look found: the insideKept with the most clones first, whether more had
+// some, and whether the look stopped at its bounds. The list is never nil.
+func (l *insideLook) kept() (kept []Suggestion, more, partial bool) {
+	found := make([]Suggestion, 0, len(l.found))
+	found = append(found, l.found...)
+
+	slices.SortStableFunc(found, func(a, b Suggestion) int {
+		return cmp.Or(b.Clones-a.Clones, strings.Compare(a.Path, b.Path))
+	})
+
+	if len(found) > insideKept {
+		return found[:insideKept], true, l.partial
+	}
+
+	return found, false, l.partial
+}
+
+// next looks into sub, a subfolder's path, unless the look leaves it alone, and reports
+// whether the look goes on: not once it reaches its bounds.
 func (l *insideLook) next(sub string) bool {
-	if hidden(sub) || !isFolder(sub) {
+	if l.leaves(sub) {
 		return true
 	}
 
@@ -246,6 +260,12 @@ func (l *insideLook) next(sub string) bool {
 	}
 
 	return true
+}
+
+// leaves reports whether the look leaves sub alone, never reading it: a hidden folder, one
+// it skips, or anything but a folder.
+func (l *insideLook) leaves(sub string) bool {
+	return hidden(sub) || (l.skip != nil && l.skip(sub)) || !isFolder(sub)
 }
 
 // countClones counts the clones directly inside dir, reading at most budget entries, and

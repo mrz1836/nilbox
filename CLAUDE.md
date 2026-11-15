@@ -286,7 +286,15 @@ app:lint` reads.
   others, so a cache keyed by it stays valid. `Survey` previews a folder before it is added,
   with what to add instead (the folders inside one with no clones of its own, at most 100
   subfolders and 5,000 entries looked at, or the folder of a clone that holds others), and
-  `Check` says how each stored location reads now. No location is searched recursively.
+  `Check` says how each stored location reads now. `Candidates` suggests folders for the
+  setup's Clones step: every folder directly in home that holds clones, whatever its name,
+  or the folders one level down inside it that do, and the same in GOPATH's and ghq's
+  layouts, 20,000 entries at most in all, the common names first. It never reads a hidden
+  folder, a link in home, macOS's own folders (Desktop, Documents, Downloads, Library, and
+  the rest, which macOS guards or which hold no clones), or a folder a disk is mounted on.
+  It reads the mounts from the kernel's table with `MNT_NOWAIT` (`mountPoints`), so it
+  never asks a share, a cloud drive, or a virtual machine's files, and never makes macOS
+  ask the user. No location is searched recursively.
   One `Reader`, which core builds and hands every service that reads the locations, bounds
   each read of another location than the clone root, the resolution of its links included,
   to `DefaultReadLimit` (5 s) and keeps one of each going per location: a share that hangs

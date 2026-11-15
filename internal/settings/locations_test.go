@@ -14,6 +14,9 @@ import (
 	"github.com/mrz1836/nilbox/internal/uierr"
 )
 
+// workFolder is the rig's folder location to be, with the clones web and cli.
+const workFolder = "~/work"
+
 // locationsRig is a Service over a home holding the clone root, ~/projects, with the
 // clone api; a folder location to be, ~/work, with the clones web and cli; a single clone,
 // ~/Desktop/exp; and a folder of owners, ~/src.
@@ -59,7 +62,7 @@ func TestAddCloneLocations(t *testing.T) {
 		{Path: "~/src/acme-org", Kind: localrepos.KindFolder},
 	}, got, "trimmed, stored with ~ however typed, and classified")
 
-	got = r.add(t, "~/src/tools", "~/work")
+	got = r.add(t, "~/src/tools", workFolder)
 	assert.Len(t, got, 4, "several at once")
 
 	stored, err := r.svc.Get(t.Context())
@@ -71,7 +74,7 @@ func TestAddCloneLocationsRefuses(t *testing.T) {
 	t.Parallel()
 
 	r := newLocationsRig(t)
-	r.add(t, "~/work")
+	r.add(t, workFolder)
 
 	testutil.WriteFile(t, filepath.Join(r.home, "notes.txt"), "x")
 	require.NoError(t, os.MkdirAll(filepath.Join(r.home, ".hidden"), 0o700))
@@ -110,7 +113,7 @@ func TestAddCloneLocationsRefuses(t *testing.T) {
 
 	stored, err := r.svc.Get(t.Context())
 	require.NoError(t, err)
-	assert.Equal(t, []localrepos.Location{{Path: "~/work", Kind: localrepos.KindFolder}}, stored.CloneLocations,
+	assert.Equal(t, []localrepos.Location{{Path: workFolder, Kind: localrepos.KindFolder}}, stored.CloneLocations,
 		"all or none: the clone before the refused one isn't added")
 }
 
@@ -133,10 +136,10 @@ func TestAddCloneLocationsDropsTheClonesAFolderCovers(t *testing.T) {
 	r := newLocationsRig(t)
 	r.add(t, "~/work/web", "~/Desktop/exp")
 
-	got := r.add(t, "~/work")
+	got := r.add(t, workFolder)
 	assert.Equal(t, []localrepos.Location{
 		{Path: "~/Desktop/exp", Kind: localrepos.KindClone},
-		{Path: "~/work", Kind: localrepos.KindFolder},
+		{Path: workFolder, Kind: localrepos.KindFolder},
 	}, got, "~/work/web is inside ~/work now")
 }
 
@@ -144,14 +147,14 @@ func TestRemoveCloneLocation(t *testing.T) {
 	t.Parallel()
 
 	r := newLocationsRig(t)
-	r.add(t, "~/work", "~/Desktop/exp")
+	r.add(t, workFolder, "~/Desktop/exp")
 
 	got, err := r.svc.RemoveCloneLocation(t.Context(), filepath.Join(r.home, "work")+"/")
 	require.NoError(t, err)
 	assert.Equal(t, []localrepos.Location{{Path: "~/Desktop/exp", Kind: localrepos.KindClone}}, got.CloneLocations,
 		"matched as the same folder")
 
-	got, err = r.svc.RemoveCloneLocation(t.Context(), "~/work")
+	got, err = r.svc.RemoveCloneLocation(t.Context(), workFolder)
 	require.NoError(t, err, "removing one that isn't listed is no error")
 	assert.Len(t, got.CloneLocations, 1)
 
@@ -170,10 +173,10 @@ func TestPreviewAndCheckCloneLocations(t *testing.T) {
 	r.add(t, "~/work/web")
 	r.svc.git = &testutil.Runner{Stdout: "remote.origin.url https://github.com/acme-org/example-repo.git\n"}
 
-	preview, err := r.svc.PreviewCloneLocation(t.Context(), "~/work")
+	preview, err := r.svc.PreviewCloneLocation(t.Context(), workFolder)
 	require.NoError(t, err)
 	assert.Equal(t, localrepos.Preview{
-		Path: "~/work", Kind: localrepos.KindFolder, Clones: 2, Inside: []localrepos.Suggestion{},
+		Path: workFolder, Kind: localrepos.KindFolder, Clones: 2, Inside: []localrepos.Suggestion{},
 		Replaces: []string{"~/work/web"},
 	}, preview)
 
@@ -205,8 +208,8 @@ func TestSuggestCloneRoots(t *testing.T) {
 
 	got, err := r.svc.SuggestCloneRoots(t.Context())
 	require.NoError(t, err)
-	assert.Equal(t, []localrepos.Suggestion{{Path: "~/src/acme-org", Clones: 1}}, got,
-		"the clone root and the locations already there are no suggestion")
+	assert.Equal(t, []localrepos.Suggestion{{Path: workFolder, Clones: 2}, {Path: "~/src/acme-org", Clones: 1}}, got,
+		"the clone root and the locations already there are no suggestion, and Desktop is never read")
 }
 
 func TestCreateCloneRoot(t *testing.T) {
@@ -302,7 +305,7 @@ func TestDecodeCloneLocationsIsLenient(t *testing.T) {
 			raw: `[{"path":" ~/work/ ","kind":"folder"},{"path":"relative","kind":"folder"},` +
 				`{"path":"~/odd","kind":"bucket"},{"path":"/srv/exp","kind":"clone"},{"path":"~","kind":"folder"}]`,
 			want: []localrepos.Location{
-				{Path: "~/work", Kind: localrepos.KindFolder},
+				{Path: workFolder, Kind: localrepos.KindFolder},
 				{Path: "/srv/exp", Kind: localrepos.KindClone},
 				{Path: "~", Kind: localrepos.KindFolder},
 			},
