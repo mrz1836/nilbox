@@ -7,8 +7,8 @@ import (
 	"github.com/mrz1836/nilbox/internal/update"
 )
 
-// NoteFor is how long the menu's status line shows how a check, or a restart, the menu
-// itself asked for went.
+// NoteFor is how long the menu's status line shows how a check the menu itself asked for
+// went.
 const NoteFor = time.Minute
 
 // UpdateAction is what a row of the update's part of the menu does when clicked.
@@ -22,11 +22,12 @@ const (
 	// UpdateCheck checks for a new version now.
 	UpdateCheck UpdateAction = "check"
 
-	// UpdateRestart restarts into the version downloaded and checked.
+	// UpdateRestart restarts into the version downloaded and checked, in the window, which
+	// asks first when restarting would lose something.
 	UpdateRestart UpdateAction = "restart"
 
 	// UpdateDownload downloads the version found, then restarts into it, as Just tell me
-	// leaves one.
+	// leaves one, in the window as UpdateRestart does.
 	UpdateDownload UpdateAction = "download"
 
 	// UpdateManual opens the release page of the version found, to download it by hand, as
@@ -45,8 +46,8 @@ type UpdateRow struct {
 }
 
 // Updates is the update's part of the menu, above Refresh Now: Check for Updates…, the
-// version ready or found, and, for a minute after the menu asked for a check or a restart,
-// a line saying how it went. A build that doesn't update shows none of it.
+// version ready or found, and, for a minute after the menu asked for a check, a line saying
+// how it went. A build that doesn't update shows none of it.
 type Updates struct {
 	// Rows are the rows, in order, or none.
 	Rows []UpdateRow
@@ -57,7 +58,8 @@ type Updates struct {
 }
 
 // UpdateNote is what the menu itself last asked of the update, as the shell remembers it:
-// a check, or a restart or download that was refused, and when it ended.
+// a check, and when it ended. A restart, and Just tell me's download, are the window's,
+// which says how they went.
 type UpdateNote struct {
 	// At is when it ended; the zero time is nothing asked.
 	At time.Time
@@ -66,11 +68,6 @@ type UpdateNote struct {
 	// wrong, as its status's LastError, or "".
 	Checked    bool
 	CheckError string
-
-	// Refused is the line a restart or a download the menu asked for shows when it was
-	// refused or failed, and Why its words, or "".
-	Refused string
-	Why     string
 }
 
 // UpdateRows works out the update's part of the menu from its status at now, and what the
@@ -85,8 +82,8 @@ type UpdateNote struct {
 //     or Download X Manually…, which opens its release page, when X fails the same way
 //     every time;
 //   - for NoteFor after the menu's own check: Up to date (current), Check failed, or, when
-//     the check found a version whose download then failed, Download failed; after a
-//     restart or download it refused, the refusal. Each says more in its tooltip.
+//     the check found a version whose download then failed, Download failed. Each says
+//     more in its tooltip.
 //
 // A build that doesn't update gets none.
 func UpdateRows(st update.Status, note UpdateNote, now time.Time) Updates {
@@ -212,8 +209,6 @@ func installRow(st update.Status) (UpdateRow, bool) {
 // noteRow is the status line note leaves, while it has something to say.
 func noteRow(st update.Status, note UpdateNote) (UpdateRow, bool) {
 	switch {
-	case note.Refused != "":
-		return UpdateRow{Label: note.Refused, Tooltip: note.Why}, true
 	case !note.Checked || st.Checking:
 		return UpdateRow{}, false
 	case note.CheckError != "":

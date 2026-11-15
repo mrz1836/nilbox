@@ -7,8 +7,18 @@ import * as platform from './index'
 // cover the calls the platform adds something to.
 const mocks = vi.hoisted(() => ({
   inbox: { CheckFiles: vi.fn() },
-  settings: { SetWindowSize: vi.fn() },
+  settings: { SetWindowSize: vi.fn(), SetUpdateMode: vi.fn() },
   scripts: { Run: vi.fn(), Repos: vi.fn(), List: vi.fn() },
+  update: {
+    Status: vi.fn(),
+    CheckNow: vi.fn(),
+    Download: vi.fn(),
+    Restart: vi.fn(),
+    HideBanner: vi.fn(),
+    ShowBanner: vi.fn(),
+    AckUpdated: vi.fn(),
+    ShowInstallLog: vi.fn(),
+  },
   events: { On: vi.fn<(name: string, callback: (event: { data: unknown }) => void) => () => void>() },
   browser: { OpenURL: vi.fn() },
   clipboard: { SetText: vi.fn() },
@@ -29,6 +39,7 @@ vi.mock('@wailsio/runtime', () => ({
 vi.mock('../../bindings/github.com/mrz1836/nilbox/internal/inbox', () => ({ Service: mocks.inbox }))
 vi.mock('../../bindings/github.com/mrz1836/nilbox/internal/settings', () => ({ Service: mocks.settings }))
 vi.mock('../../bindings/github.com/mrz1836/nilbox/internal/scripts', () => ({ Service: mocks.scripts }))
+vi.mock('../../bindings/github.com/mrz1836/nilbox/internal/update', () => ({ Service: mocks.update }))
 
 const url = 'https://github.com/acme-org/example-repo/pull/7'
 
@@ -277,6 +288,194 @@ describe('runScript', () => {
     mocks.scripts.Run.mockReturnValue(new CancellablePromise<number>(() => undefined, cancelled))
 
     await platform.runScript(request).cancel()
+
+    expect(cancelled).toHaveBeenCalledOnce()
+  })
+})
+
+describe('the update’s calls', () => {
+  it('reach the update’s bindings, and the setting’s setter', async () => {
+    const calls: [() => PromiseLike<unknown>, ReturnType<typeof vi.fn>][] = [
+      [platform.getUpdateStatus, mocks.update.Status],
+      [platform.checkForUpdates, mocks.update.CheckNow],
+      [platform.hideUpdateBanner, mocks.update.HideBanner],
+      [platform.showUpdateBanner, mocks.update.ShowBanner],
+      [platform.ackUpdated, mocks.update.AckUpdated],
+      [platform.showInstallLog, mocks.update.ShowInstallLog],
+    ]
+
+    for (const [call, binding] of calls) {
+      binding.mockResolvedValue('answer')
+
+      await expect(call()).resolves.toBe('answer')
+      expect(binding).toHaveBeenCalledOnce()
+    }
+
+    mocks.settings.SetUpdateMode.mockResolvedValue({ updateMode: 'notify' })
+    await expect(platform.setUpdateMode('notify')).resolves.toEqual({ updateMode: 'notify' })
+    expect(mocks.settings.SetUpdateMode).toHaveBeenCalledExactlyOnceWith('notify')
+  })
+})
+
+describe('restartToUpdateNow', () => {
+  const release: platform.RunGoing = {
+    id: 7,
+    kind: 'release',
+    title: 'Release v1.2.0',
+    repo: 'acme-org/sdk',
+    dir: '~/projects/sdk',
+    stopRefused: '',
+  }
+
+  // refused is a restart refused as the desktop runtime delivers it: the full text, and
+  // the cause the backend encoded.
+  function refused(cause: unknown): Error {
+    return new Error('runs are going in the app', { cause })
+  }
+
+  it('asks Go to restart, confirmed or not, and resolves with the status should it return', async () => {
+    mocks.update.Restart.mockResolvedValue({ state: 'installing' })
+
+    await expect(platform.restartToUpdateNow(false)).resolves.toEqual({
+      restarted: true,
+      status: { state: 'installing' },
+    })
+    await platform.restartToUpdateNow(true)
+    expect(mocks.update.Restart.mock.calls).toEqual([[false], [true]])
+  })
+
+  it('resolves with the runs a refusal names, and the backend’s words for it', async () => {
+    mocks.update.Restart.mockRejectedValueOnce(
+      refused({ message: 'Restarting stops Release v1.2.0 in acme-org/sdk.', detail: { runsGoing: [release] } }),
+    )
+    mocks.update.Restart.mockRejectedValueOnce(refused({ detail: { runsGoing: [] } }))
+
+    await expect(platform.restartToUpdateNow(false)).resolves.toEqual({
+      restarted: false,
+      runsGoing: [release],
+      message: 'Restarting stops Release v1.2.0 in acme-org/sdk.',
+    })
+    await expect(platform.restartToUpdateNow(false)).resolves.toEqual({
+      restarted: false,
+      runsGoing: [],
+      message: '',
+    })
+  })
+
+  it('reads the runs defensively: an entry it can’t read is left out, a list it can’t read is none', async () => {
+    mocks.update.Restart.mockRejectedValueOnce(
+      refused({
+        message: 'Runs are going.',
+        detail: { runsGoing: [release, null, 'a run', { ...release, id: '7' }, { ...release, title: undefined }] },
+      }),
+    )
+    mocks.update.Restart.mockRejectedValueOnce(refused({ message: 'Runs are going.', detail: { runsGoing: 'many' } }))
+
+    await expect(platform.restartToUpdateNow(false)).resolves.toEqual({
+      restarted: false,
+      runsGoing: [release],
+      message: 'Runs are going.',
+    })
+    await expect(platform.restartToUpdateNow(false)).resolves.toEqual({
+      restarted: false,
+      runsGoing: [],
+      message: 'Runs are going.',
+    })
+  })
+
+  it('resolves with a refusal the window answers on its own, by its code, never its words', async () => {
+    mocks.update.Restart.mockRejectedValueOnce(
+      refused({ message: 'The last update is still finishing.', detail: { code: 'settling' } }),
+    )
+    mocks.update.Restart.mockRejectedValueOnce(
+      refused({ message: 'The app is quitting to finish the update.', detail: { code: 'finishing' } }),
+    )
+    mocks.update.Restart.mockRejectedValueOnce(
+      refused({ message: '0.3.0 didn’t install before.', detail: { code: 'uninstallable' } }),
+    )
+
+    await expect(platform.restartToUpdateNow(true)).resolves.toEqual({
+      restarted: false,
+      refusal: 'settling',
+      message: 'The last update is still finishing.',
+    })
+    await expect(platform.restartToUpdateNow(true)).resolves.toEqual({
+      restarted: false,
+      refusal: 'finishing',
+      message: 'The app is quitting to finish the update.',
+    })
+    await expect(platform.restartToUpdateNow(true)).resolves.toEqual({
+      restarted: false,
+      refusal: 'uninstallable',
+      message: '0.3.0 didn’t install before.',
+    })
+  })
+
+  it('rejects with any other failure', async () => {
+    const failures = [
+      new Error('plain'),
+      'not an error',
+      refused(null),
+      refused({ message: 'Couldn’t install 0.3.0: no space.' }),
+      refused({ message: 'odd', detail: 'a string' }),
+      refused({ message: 'odd', detail: { question: 'not runs' } }),
+      refused({ message: 'odd', detail: { code: 'a code this build doesn’t know' } }),
+      refused({ message: 'odd', detail: { code: 7 } }),
+      // Words alone are never read as a refusal.
+      refused({ message: 'The last update is still finishing. Try again in a moment.' }),
+    ]
+
+    for (const failure of failures) {
+      mocks.update.Restart.mockRejectedValueOnce(failure)
+
+      await expect(platform.restartToUpdateNow(false)).rejects.toBe(failure)
+    }
+  })
+
+  it('cancels the bound call when the caller cancels', async () => {
+    const cancelled = vi.fn()
+    mocks.update.Restart.mockReturnValue(new CancellablePromise<unknown>(() => undefined, cancelled))
+
+    await platform.restartToUpdateNow(false).cancel()
+
+    expect(cancelled).toHaveBeenCalledOnce()
+  })
+})
+
+describe('downloadUpdate', () => {
+  it('downloads the newer version, and resolves with the status, ready', async () => {
+    mocks.update.Download.mockResolvedValue({ state: 'ready' })
+
+    await expect(platform.downloadUpdate()).resolves.toEqual({ downloaded: true, status: { state: 'ready' } })
+    expect(mocks.update.Download).toHaveBeenCalledOnce()
+  })
+
+  it('resolves with a wait while the last update is still finishing', async () => {
+    mocks.update.Download.mockRejectedValue(
+      new Error('the last update may still be finishing', {
+        cause: { message: 'The last update is still finishing. Try again in a moment.', detail: { code: 'settling' } },
+      }),
+    )
+
+    await expect(platform.downloadUpdate()).resolves.toEqual({
+      downloaded: false,
+      refusal: 'settling',
+      message: 'The last update is still finishing. Try again in a moment.',
+    })
+  })
+
+  it('rejects with any other failure', async () => {
+    const failure = new Error('stalled', { cause: { message: 'Couldn’t download 0.3.0: it stalled.' } })
+    mocks.update.Download.mockRejectedValue(failure)
+
+    await expect(platform.downloadUpdate()).rejects.toBe(failure)
+  })
+
+  it('cancels the bound call when the caller cancels', async () => {
+    const cancelled = vi.fn()
+    mocks.update.Download.mockReturnValue(new CancellablePromise<unknown>(() => undefined, cancelled))
+
+    await platform.downloadUpdate().cancel()
 
     expect(cancelled).toHaveBeenCalledOnce()
   })

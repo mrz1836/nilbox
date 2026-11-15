@@ -2,6 +2,7 @@ import { useId, useState } from 'react'
 
 import { brand } from '../../generated/brand'
 import type { Result } from '../../lib/call'
+import type { UpdateControl } from '../../lib/useUpdate'
 import { useQuery } from '../../lib/useQuery'
 import {
   agentVersions,
@@ -11,6 +12,7 @@ import {
   toolVersions,
   type AgentVersion,
   type Info,
+  type Settings,
 } from '../../platform'
 import { buttonClass, dangerButtonClass } from '../controls'
 import { ExternalIcon, ResetIcon } from '../icons'
@@ -18,6 +20,7 @@ import { Logo } from '../Logo'
 import { cardMatchClass, useSetting } from './match'
 import { ResetDialog } from './ResetDialog'
 import { ErrorText, Group, Note, SectionIntro } from './rows'
+import { UpdatesCard } from './UpdatesCard'
 
 // aboutRows is what the About page lists: the release version and build number, the
 // commit the build came from, and the system it runs on, which a bug report needs.
@@ -174,10 +177,20 @@ function ResetGroup() {
   )
 }
 
-// AboutSection shows the product, the build it runs, the coding agents' and tools'
-// versions, and a way to report a bug with all of them filled in; then the first-run setup,
-// to run again, and a reset of the app, to start over.
-export function AboutSection({ onRunSetup }: { onRunSetup?: (() => Promise<Result<void>>) | undefined }) {
+export interface AboutSectionProps {
+  // onRunSetup opens the first-run setup again; without it About offers no way to.
+  onRunSetup?: (() => Promise<Result<void>>) | undefined
+  // update is the app's update, which the Updates card under the version shows, with the
+  // settings its choice of what to do is stored in; without it the card doesn't show.
+  update?: UpdateControl | undefined
+  settings?: Settings | null
+  onSaved?: (settings: Settings) => void
+}
+
+// AboutSection shows the product, the build it runs and its updates, the coding agents'
+// and tools' versions, and a way to report a bug with all of them filled in; then the
+// first-run setup, to run again, and a reset of the app, to start over.
+export function AboutSection({ onRunSetup, update, settings = null, onSaved = () => undefined }: AboutSectionProps) {
   const id = useId()
   const about = useQuery(() => getAppInfo(), [])
   const agents = useQuery(() => agentVersions(), [])
@@ -197,6 +210,7 @@ export function AboutSection({ onRunSetup }: { onRunSetup?: (() => Promise<Resul
       <div {...marks} className={`rounded-lg ${cardMatchClass}`}>
         <Rows rows={aboutRows(info, failure)} />
       </div>
+      {update !== undefined && <UpdatesCard update={update} settings={settings} onSaved={onSaved} />}
       <section aria-labelledby={`${id}-agents`} className="flex flex-col gap-2">
         <SectionIntro id={`${id}-agents`} title="Coding agents">
           The versions installed, as each agent&apos;s command reports them.

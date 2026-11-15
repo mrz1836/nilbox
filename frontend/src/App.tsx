@@ -13,6 +13,8 @@ import {
 import { AppHeader, type View } from './components/AppHeader'
 import { DataResetNotice } from './components/DataResetNotice'
 import { ErrorBanner } from './components/ErrorBanner'
+import { UpdateBanner } from './components/UpdateBanner'
+import { UpdateRestartDialog } from './components/UpdateRestartDialog'
 import { InboxView, type LaunchOptions, type Reveal } from './components/InboxView'
 import { LaunchControls } from './components/LaunchControls'
 import { QuitDialog } from './components/QuitDialog'
@@ -32,7 +34,15 @@ import {
   notificationSpec,
 } from './lib/notificationFilter'
 import { toggleFilter } from './lib/query'
-import { bannerEntry, filterEntries, opensRun, startLists, type NotificationLists } from './lib/notifications'
+import {
+  bannerEntry,
+  bannerOpens,
+  filterEntries,
+  opensRun,
+  opensUpdate,
+  startLists,
+  type NotificationLists,
+} from './lib/notifications'
 import type { ReleaseRequest } from './lib/release'
 import type { RunRequest } from './lib/scriptRuns'
 import { foundToolsText, scriptsBadge, showsScripts } from './lib/scriptsTab'
@@ -61,9 +71,12 @@ import { useNotifications } from './lib/useNotifications'
 import { useQuery } from './lib/useQuery'
 import { useTheme } from './lib/useTheme'
 import { useTriage } from './lib/useTriage'
+import { releasePageOf, unsentSheets } from './lib/update'
+import { useRestartToUpdate, useUpdate, useUpdateControl } from './lib/useUpdate'
 import { filterWorktrees, worktreeSpec, worktreeSuggestions } from './lib/worktreeFilter'
 import type { Summary } from './lib/worktreeSummary'
 import {
+  ackUpdated,
   getAppInfo,
   getScriptRun,
   lastWorktreeSweep,
@@ -88,6 +101,7 @@ import {
   type RemoveResult,
   type Settings,
   type SweepReport,
+  type UpdateStatus,
   type WorktreesSnapshot,
 } from './platform'
 
@@ -199,14 +213,19 @@ interface BannerClick {
 // entry in the notification history. An item no longer in the inbox opens on GitHub
 // instead. show opens the inbox at the item, so reveal is the request the inbox view
 // follows; clear drops it once another view opens. A notification about a run, as a
-// failed run's banner is, opens the run with openRun instead. A clicked banner names the
-// notification it stands for, which markBanner marks read first. While held, as the
+// failed run's banner is, opens the run with openRun instead, and one about a new version
+// of the app, whose banner names nothing but itself, shows the update's banner with
+// openUpdate. A clicked banner names the notification it stands for, which markBanner
+// marks read first, and opens what that entry opens, by its kind (entryOf looks it up in
+// the log), or by what the banner names when the log doesn't hold it. While held, as the
 // first-run setup holds the window, a request is let go.
 function useReveal(
   snapshot: InboxSnapshot | null,
   openInbox: () => void,
   openRun: (id: number, started: string) => void,
+  openUpdate: () => void,
   markBanner: (click: BannerClick) => void,
+  entryOf: (id: number) => AppNotification | undefined,
   held: boolean,
 ) {
   const [reveal, setReveal] = useState<Reveal | null>(null)
@@ -233,17 +252,23 @@ function useReveal(
       return
     }
 
-    if (click.notificationId > 0) {
+    const named = click.notificationId > 0
+
+    if (named) {
       markBanner(click)
     }
 
-    if (click.runId > 0) {
-      openRun(click.runId, runStarted)
-
-      return
+    switch (bannerOpens(named ? entryOf(click.notificationId) : undefined, click, named)) {
+      case 'run':
+        openRun(click.runId, runStarted)
+        break
+      case 'update':
+        openUpdate()
+        break
+      case 'item':
+        show(click.itemId, click.url)
+        break
     }
-
-    show(click.itemId, click.url)
   })
 
   useEffect(
@@ -290,6 +315,60 @@ function useFoundTools(tools: IntegrationTools | null, shown: boolean, ready: bo
   }
 
   return { toast, close, announced }
+}
+
+// updatedToastId is the id of the toast that says the app updated, apart from every other
+// toast's.
+const updatedToastId = Number.MIN_SAFE_INTEGER
+
+// useUpdatedToast says once, as the window opens on the version an update installed,
+// "Updated to 0.3.0", with What's new, and then tells the update it was said (AckUpdated),
+// so no later start says it again. While held, as the first-run setup holds the window, it
+// waits, so the toast is never said where it can't be seen.
+function useUpdatedToast(status: UpdateStatus | null, held: boolean) {
+  // told is the version said, and page its release page, while the toast shows.
+  const [told, setTold] = useState('')
+  const [shown, setShown] = useState<{ version: string; page: string } | null>(null)
+  const version = status?.justUpdated ?? ''
+
+  if (!held && status !== null && version !== '' && version !== told) {
+    setTold(version)
+    setShown({ version, page: releasePageOf(status.releaseUrl, version) })
+  }
+
+  useEffect(() => {
+    if (told === '') {
+      return
+    }
+
+    void attempt(ackUpdated()).then((result) => {
+      if (!result.ok) {
+        console.error('could not record that the update was said:', result.error)
+      }
+    })
+  }, [told])
+
+  const close = () => {
+    setShown(null)
+  }
+
+  const toast: ToastMessage | null =
+    shown === null
+      ? null
+      : {
+          id: updatedToastId,
+          text: `Updated to ${shown.version}`,
+          tone: 'success',
+          action: {
+            label: 'What’s new',
+            onClick: () => {
+              openExternal(shown.page)
+              close()
+            },
+          },
+        }
+
+  return { toast, close }
 }
 
 // SearchView is a page the toolbar's field filters; Prompts searches in its own sidebar,
@@ -440,6 +519,13 @@ export function App() {
   const reviewDrafts = useReviewDrafts()
   // issueDrafts keeps what the user wrote in the issue sheet, for the session.
   const issueDrafts = useIssueDrafts()
+  // update is the app's own update: its status, the banner, and the one restart to update,
+  // which asks first while a sheet holds text not sent, or a run goes; updated says once
+  // which version an update installed.
+  const updateStatus = useUpdate()
+  const restartFlow = useRestartToUpdate(() => unsentSheets(reviewDrafts.all(), issueDrafts.all()))
+  const update = useUpdateControl(restartFlow, updateStatus)
+  const updated = useUpdatedToast(updateStatus.status, setup.showing)
   // The text size follows the stored settings; until they load, it is the size the
   // window opened at (main.tsx).
   useTextSize(config.settings?.textSize)
@@ -538,14 +624,25 @@ export function App() {
   }
   // markBanner marks read the notification a clicked banner stands for, while the log's
   // entry with its id is still the one it stood for.
+  const entryOf = (id: number) => notifications.log.items.find((n) => n.id === id)
   const markBanner = (click: BannerClick) => {
-    const entry = notifications.log.items.find((n) => n.id === click.notificationId)
+    const entry = entryOf(click.notificationId)
 
     if (entry !== undefined && !entry.read && bannerEntry(entry, click)) {
       notifications.markRead([entry.id])
     }
   }
-  const revealer = useReveal(inbox.snapshot, openInbox, openRun, markBanner, setup.showing)
+  // openUpdate shows the update's banner, lifting Later, as a click on its notification
+  // asks; when the banner would show nothing, as once the update installed, while a quiet
+  // download goes on, or with its failure put away, About says where the app stands.
+  const openUpdate = () => {
+    void update.reveal().then((shows) => {
+      if (!shows) {
+        go({ type: 'settings', section: 'about' })
+      }
+    })
+  }
+  const revealer = useReveal(inbox.snapshot, openInbox, openRun, openUpdate, markBanner, entryOf, setup.showing)
   const { clear: clearReveal, show: showItem } = revealer
 
   const changeView = (next: View) => {
@@ -631,15 +728,18 @@ export function App() {
   const closeRunToast = () => {
     setRunToast(null)
   }
-  const shownToast = foundToast ?? runToast ?? changeShown
+  // The update's toast says what the window opened on, so it shows first.
+  const shownToast = updated.toast ?? foundToast ?? runToast ?? changeShown
   const closeToast =
-    foundToast !== null
-      ? found.close
-      : runToast !== null
-        ? closeRunToast
-        : changeToast === null
-          ? closeSweepToast
-          : closeChangeToast
+    updated.toast !== null
+      ? updated.close
+      : foundToast !== null
+        ? found.close
+        : runToast !== null
+          ? closeRunToast
+          : changeToast === null
+            ? closeSweepToast
+            : closeChangeToast
   // toastSeconds is how long every toast shows, the inbox's too, as set in Settings.
   const toastSeconds = config.settings?.toastSeconds ?? defaultToastSeconds
 
@@ -687,6 +787,12 @@ export function App() {
 
     if (opensRun(entry)) {
       openRun(entry.runId, entry.runStarted)
+
+      return
+    }
+
+    if (opensUpdate(entry)) {
+      openUpdate()
 
       return
     }
@@ -966,6 +1072,12 @@ export function App() {
           sandbox={appInfo.data?.sandbox ?? false}
         />
         <DataResetNotice />
+        <UpdateBanner
+          update={update}
+          onDetails={() => {
+            openSettingsAt('about')
+          }}
+        />
         {config.error !== '' && (
           <ErrorBanner className="mx-4 mt-4">Could not load the launch settings: {config.error}</ErrorBanner>
         )}
@@ -1135,6 +1247,7 @@ export function App() {
                   query={settingsQuery}
                   githubThreads={githubThreads}
                   onRunSetup={setup.restart}
+                  update={update}
                 />
               </Suspense>
             </Activity>
@@ -1160,6 +1273,7 @@ export function App() {
         </Suspense>
       )}
       <QuitDialog />
+      <UpdateRestartDialog flow={restartFlow.step} onConfirm={restartFlow.confirm} onCancel={restartFlow.cancel} />
     </SettingsQueue>
   )
 }

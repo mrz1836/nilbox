@@ -7,6 +7,7 @@ import {
   appTypeOrder,
   appTypes,
   bannerEntry,
+  bannerOpens,
   bannerStatusText,
   entryRef,
   entryTitle,
@@ -15,9 +16,11 @@ import {
   kindTitle,
   notificationKinds,
   opensRun,
+  opensUpdate,
   quickViewMax,
   startLists,
   unreadOf,
+  updateBanner,
 } from './notifications'
 
 describe('notifications', () => {
@@ -31,6 +34,7 @@ describe('notifications', () => {
       'release_failed',
       'run_failed',
       'service_status',
+      'update_ready',
       'session_needs_you',
       'session_finished',
     ])
@@ -45,6 +49,7 @@ describe('notifications', () => {
     expect(kindTitle('release_failed')).toBe('Release workflow failed')
     expect(kindTitle('run_failed')).toBe('Run failed')
     expect(kindTitle('service_status')).toBe('Service status')
+    expect(kindTitle('update_ready')).toBe('New version')
     // A kind another build stored, outside the ones this build knows.
     expect(kindTitle('mentions' as unknown as NotificationKind)).toBe('Notification')
   })
@@ -89,6 +94,16 @@ describe('notifications', () => {
     expect(opensRun(notification({ runId: 5 }))).toBe(false)
   })
 
+  it('opens the update’s banner only from a new version’s entry', () => {
+    const update = notification({ kind: 'update_ready', itemId: 0, itemKind: '', number: 0, repo: '', url: '' })
+
+    expect(opensUpdate(update)).toBe(true)
+    expect(opensUpdate(notification())).toBe(false)
+    expect(entryWhere({ ...update, detail: 'Restart to update when you’re ready.' })).toBe(
+      'Restart to update when you’re ready.',
+    )
+  })
+
   it('explains banners that cannot show, and says nothing when they do', () => {
     expect(bannerStatusText('on')).toBe('')
     expect(bannerStatusText('')).toBe('')
@@ -113,7 +128,7 @@ describe('the history’s lists', () => {
   })
 
   it('offers every type, each with its words', () => {
-    expect(appTypeOrder).toEqual(['all', 'review', 'assigned', 'snooze', 'release', 'run', 'status'])
+    expect(appTypeOrder).toEqual(['all', 'review', 'assigned', 'snooze', 'release', 'run', 'status', 'update'])
     expect(appTypeOrder.map((id) => appTypes[id].label)).toEqual([
       'All',
       'Reviews',
@@ -122,6 +137,7 @@ describe('the history’s lists', () => {
       'Releases',
       'Runs',
       'Status',
+      'Updates',
     ])
 
     for (const id of appTypeOrder) {
@@ -133,6 +149,7 @@ describe('the history’s lists', () => {
     expect(all.map(appTypeOf)).toEqual(['review', 'assigned', 'snooze', 'release', 'run', '', 'status'])
     expect(appTypeOf(notification({ kind: 'release_done' }))).toBe('release')
     expect(appTypeOf(notification({ kind: 'release_failed' }))).toBe('release')
+    expect(appTypeOf(notification({ kind: 'update_ready' }))).toBe('update')
   })
 
   it('shows the unread or all, of a type or of every type', () => {
@@ -167,5 +184,46 @@ describe('the history’s lists', () => {
     expect(bannerEntry(failed, { itemId: 0, url: '', runId: 9 })).toBe(true)
     expect(bannerEntry(failed, { itemId: 0, url: '', runId: 8 })).toBe(false)
     expect(bannerEntry(notification({ url: '' }), { itemId: 0, url: '', runId: 0 })).toBe(false)
+  })
+
+  it('tells a new version’s banner, which names nothing but its entry, by the entry’s kind', () => {
+    const none = { itemId: 0, url: '', runId: 0 }
+    const update = notification({ kind: 'update_ready', itemId: 0, itemKind: '', url: '' })
+
+    expect(updateBanner(none)).toBe(true)
+    expect(updateBanner({ ...none, itemId: 1 })).toBe(false)
+    expect(updateBanner({ ...none, runId: 2 })).toBe(false)
+    expect(updateBanner({ ...none, url: 'https://github.com/acme-org/sdk/releases' })).toBe(false)
+
+    expect(bannerEntry(update, none)).toBe(true)
+    // An entry of another kind that took the id after the history was cleared.
+    expect(bannerEntry(notification({ kind: 'woke', itemId: 0, url: '' }), none)).toBe(false)
+    // A banner about an item never matches the update's entry.
+    expect(bannerEntry(update, { ...none, itemId: 1 })).toBe(false)
+  })
+
+  it('opens what a clicked banner’s entry opens, by its kind', () => {
+    const none = { itemId: 0, url: '', runId: 0 }
+    const update = notification({ kind: 'update_ready', itemId: 0, itemKind: '', url: '' })
+    const page = 'https://github.com/acme-org/sdk/releases/tag/v1.2.0'
+    // An entry about a page that also names a run, which only a failed run's entry opens.
+    const released = notification({ kind: 'release_done', itemId: 0, itemKind: '', url: page, runId: 9 })
+
+    expect(bannerOpens(failed, { ...none, runId: 9 }, true)).toBe('run')
+    expect(bannerOpens(update, none, true)).toBe('update')
+    expect(bannerOpens(notification(), { ...none, itemId: 1 }, true)).toBe('item')
+    expect(bannerOpens(released, { ...none, url: page, runId: 9 }, true)).toBe('item')
+  })
+
+  it('opens what a clicked banner names when the log doesn’t hold its entry, or holds another', () => {
+    const none = { itemId: 0, url: '', runId: 0 }
+
+    expect(bannerOpens(undefined, { ...none, runId: 9 }, true)).toBe('run')
+    expect(bannerOpens(undefined, none, true)).toBe('update')
+    expect(bannerOpens(undefined, { ...none, itemId: 1 }, true)).toBe('item')
+    // A request that names no notification is never the update's.
+    expect(bannerOpens(undefined, none, false)).toBe('item')
+    // An entry of another kind that took the id after the history was cleared.
+    expect(bannerOpens(notification({ kind: 'woke', itemId: 0, url: '' }), none, true)).toBe('update')
   })
 })

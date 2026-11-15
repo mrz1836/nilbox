@@ -264,7 +264,8 @@ func (e *Engine) restartable() (Installer, error) {
 	case installer == nil:
 		return nil, uierr.New("This build can't install updates.", ErrNoInstaller)
 	case finishing:
-		return nil, uierr.New(brand.Name+" is quitting to finish the update.", ErrFinishing)
+		return nil, newRefusal(RefusalFinishing,
+			uierr.New(brand.Name+" is quitting to finish the update.", ErrFinishing))
 	case downloading:
 		return nil, uierr.New("Wait for the download to finish, then restart.", ErrBusy)
 	default:

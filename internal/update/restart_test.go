@@ -21,6 +21,19 @@ import (
 // errFakeRename stands in for an error of the runtime's updater that names a path.
 var errFakeRename = errors.New("rename /srv/private-place/wails-update-1/X.app: operation not permitted")
 
+// refusalDetail is the detail the window gets beside err, as JSON: a RefusalError's code.
+func refusalDetail(t *testing.T, err error) string {
+	t.Helper()
+
+	refused, ok := errors.AsType[*update.RefusalError](err)
+	require.True(t, ok, "a coded refusal")
+
+	detail, jsonErr := json.Marshal(refused.Detail())
+	require.NoError(t, jsonErr)
+
+	return string(detail)
+}
+
 // ready returns a rig with next downloaded and ready.
 func ready(t *testing.T) (*rig, update.Manifest) {
 	t.Helper()
@@ -350,6 +363,7 @@ func TestARestartWhoseQuitIsHeldFinishesTheUpdate(t *testing.T) {
 	require.False(t, exited)
 	require.ErrorIs(t, err, update.ErrFinishing)
 	assert.Equal(t, brand.Name+" is quitting to finish the update.", uierr.Message(err))
+	assert.JSONEq(t, `{"code":"finishing"}`, refusalDetail(t, err), "the window waits it out quietly")
 	assert.Len(t, r.installer.installs, 1, "nothing is staged again")
 	assert.Equal(t, 1, r.installer.restarts)
 }
@@ -388,9 +402,11 @@ func TestNothingDownloadsOrInstallsWhileTheLastUpdateMayStillBeFinishing(t *test
 	_, err = r.service.Download(t.Context())
 	require.ErrorIs(t, err, update.ErrSettling)
 	assert.Equal(t, "The last update is still finishing. Try again in a moment.", uierr.Message(err))
+	assert.JSONEq(t, `{"code":"settling"}`, refusalDetail(t, err), "the window waits it out quietly")
 
 	_, err = r.service.Restart(t.Context(), true)
 	require.ErrorIs(t, err, update.ErrSettling, "confirmed or not")
+	assert.JSONEq(t, `{"code":"settling"}`, refusalDetail(t, err))
 
 	assert.Zero(t, r.feed.downloads.Load())
 	assert.Empty(t, r.installer.installs)

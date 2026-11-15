@@ -2,24 +2,21 @@ package desktop
 
 import (
 	"context"
-	"errors"
 	"slices"
-	"strconv"
 	"time"
 
+	"github.com/mrz1836/nilbox/internal/event"
 	"github.com/mrz1836/nilbox/internal/menubar"
 	"github.com/mrz1836/nilbox/internal/uierr"
 	"github.com/mrz1836/nilbox/internal/update"
 )
 
-// Updates is the app's update as the menu bar offers it: its status, Check for Updates…,
-// the download of a version Just tell me left found, and the restart into the version
-// ready. *update.Service implements it.
+// Updates is the app's update as the menu bar offers it: its status, and Check for
+// Updates…. *update.Service implements it. A restart, and the download Just tell me's
+// Update starts it with, are the window's (UpdateAction).
 type Updates interface {
 	Status(ctx context.Context) (update.Status, error)
 	CheckNow(ctx context.Context) (update.Status, error)
-	Download(ctx context.Context) (update.Status, error)
-	Restart(ctx context.Context, confirmed bool) (update.Status, error)
 }
 
 // URLOpener opens a web page in the user's browser: the desktop runtime's.
@@ -42,12 +39,16 @@ const (
 	FinishStopWithin = 3 * time.Second
 )
 
-// UpdateAction does what a click on a row of the update's part of the menu bar asks, in
-// the background: a check, the restart into the version ready, or the download of the
-// version found and then the restart. How a check or a refused restart went shows on the
-// menu's status line for menubar.NoteFor, in place of the line an earlier action left. The
-// restart is never confirmed here: while runs go in the app it is refused, and the refusal
-// shows on that line.
+// UpdateAction does what a click on a row of the update's part of the menu bar asks. A
+// check runs in the background, and how it went shows on the menu's status line for
+// menubar.NoteFor, in place of the line an earlier check left. Restart to Update, Update to
+// X… (the download Just tell me leaves to a click, then the restart), and Try Updating to X
+// Again (either of them, after an install that may work if tried again) bring the window
+// forward and ask it to restart (event.UpdateRestartRequested), so every restart runs the
+// window's one flow: it downloads first when it must, asks first when restarting would stop
+// a run or lose text a sheet holds, and says why when the restart doesn't go ahead. The
+// window is only ever hidden, never gone, so its page hears the request. Download X
+// Manually… opens the version's release page in the browser.
 func (s *Shell) UpdateAction(action menubar.UpdateAction) {
 	if s.updates == nil || s.stopping.Load() || action == menubar.UpdateNone {
 		return
@@ -58,10 +59,9 @@ func (s *Shell) UpdateAction(action menubar.UpdateAction) {
 	switch action {
 	case menubar.UpdateCheck:
 		s.goTracked(s.checkForUpdates)
-	case menubar.UpdateRestart:
-		s.restartUntracked()
-	case menubar.UpdateDownload:
-		s.goTracked(s.downloadAndRestart)
+	case menubar.UpdateRestart, menubar.UpdateDownload:
+		s.window.Show()
+		s.frontend.Emit(event.UpdateRestartRequested{})
 	case menubar.UpdateManual:
 		s.goTracked(s.openReleasePage)
 	case menubar.UpdateNone:
@@ -198,84 +198,6 @@ func (s *Shell) checkForUpdates(ctx context.Context) {
 	}
 
 	s.setUpdateNote(note)
-}
-
-// downloadAndRestart downloads the version found, then restarts into it; a download that
-// fails is noted.
-func (s *Shell) downloadAndRestart(ctx context.Context) {
-	if _, err := s.updates.Download(ctx); err != nil {
-		if ctx.Err() == nil {
-			s.logger.WarnContext(ctx, "the menu bar's update download failed", "error", err)
-			s.setUpdateNote(refusal(err, "Download failed", s.clock.Now()))
-		}
-
-		return
-	}
-
-	s.restartUntracked()
-}
-
-// restartUntracked restarts into the version ready, apart from the tracked work: the
-// restart quits the app once the update is staged, and the quit stops the shell, which
-// waits for its tracked work, so the restart is not tracked work itself. Once the shell is
-// stopping it starts nothing.
-func (s *Shell) restartUntracked() {
-	if s.stopping.Load() {
-		return
-	}
-
-	go s.restart(s.lifetime)
-}
-
-// restart restarts into the version ready, unconfirmed, and notes why it didn't go ahead.
-// It returns only when the restart didn't happen: otherwise the app quits inside it.
-func (s *Shell) restart(ctx context.Context) {
-	_, err := s.updates.Restart(ctx, false)
-	if err == nil || ctx.Err() != nil {
-		return
-	}
-
-	s.logger.InfoContext(ctx, "the menu bar's restart to update didn't go ahead", "error", err)
-	s.setUpdateNote(restartRefusal(err, s.clock.Now()))
-}
-
-// restartRefusal is the status line of a restart that was refused at at: the runs going,
-// counted, the app where it can't replace itself, or that it failed; its tooltip has the
-// words.
-func restartRefusal(err error, at time.Time) menubar.UpdateNote {
-	note := refusal(err, "Restart failed", at)
-
-	var going *update.RunsGoingError
-	if !errors.As(err, &going) {
-		return note
-	}
-
-	switch n := len(going.Runs); n {
-	case 0:
-		note.Refused, note.Why = "Not restarted: runs are going", note.Why+" Restart once they have ended."
-	case 1:
-		note.Refused, note.Why = "Not restarted: a run is going", note.Why+" Restart once it has ended."
-	default:
-		note.Refused = "Not restarted: " + strconv.Itoa(n) + " runs are going"
-		note.Why += " Restart once they have ended."
-	}
-
-	return note
-}
-
-// refusal is the status line of a download or a restart that err stopped at at: failed,
-// as label says; where the app can't replace itself, that it must move to Applications
-// first; or, while the last update may still be finishing, that it is. Its tooltip has the
-// words.
-func refusal(err error, label string, at time.Time) menubar.UpdateNote {
-	switch {
-	case errors.Is(err, update.ErrLocation):
-		label = "Move to Applications to update"
-	case errors.Is(err, update.ErrSettling):
-		label = "The last update is still finishing"
-	}
-
-	return menubar.UpdateNote{At: at, Refused: label, Why: uierr.Message(err)}
 }
 
 // setUpdateNote keeps note as what the menu last asked of the update, and redraws the

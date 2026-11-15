@@ -168,14 +168,25 @@ app:lint` reads.
   else Download <version> Manually…, `UpdateManual`, which opens the release page through
   `desktop.Config.Browser`, the runtime's `Browser.OpenURL`: the version found's, or, with
   none found, the one that didn't install, `menubar.ManualURL`), their clicks
-  `Shell.UpdateAction` (a restart runs apart from the shell's tracked work, which the quit
-  inside it waits for). The startup dialog for data a newer build saved offers the newest
-  backup this build opens (`desktop.RestoreOffer`, `FindRestore`; Escape quits, and no key
-  puts the backup back, since the runtime's macOS alert gives a button Return or Escape,
-  never both), puts it back on a click (`desktop.PutBack`, `store.RestoreBackup`, a failure
-  worded by `desktop.PutBackFailure` with what to do), and opens the app again from
-  `PostShutdown` through `desktop.RelaunchArgs`, as a reset does, the `open -n` bounded to
-  five seconds.
+  `Shell.UpdateAction`: a check runs as tracked work, and Restart to Update, Update to X…,
+  and Try Updating to X Again bring the window forward and emit
+  `event.UpdateRestartRequested` (`updates:restart`), so every restart runs the window's one
+  flow (`restartToUpdate` in `frontend/src/lib/useUpdate.ts`: download first, then
+  `Restart(false)`, whose refusal names the runs going for the window to ask about, sheets
+  counted then; with text a sheet hasn't sent, it asks first, naming the runs it lists; a
+  confirmation calls `Restart(false)` again and goes on to `Restart(true)` only when the
+  question named every run that refusal names, matched by id (`covers` in
+  `frontend/src/lib/update.ts`), else it asks again). What the banner and Settings → About offer is one pure rule
+  (`offerOf` in `frontend/src/lib/update.ts`). The window tells a refusal it answers on its
+  own (the last update still finishing, a restart finishing after a held quit, which it
+  waits out quietly, and an update that failed to install for good, which it offers only the
+  release page for) by the `update.RefusalError` code in its detail, never by its words. The startup dialog for data
+  a newer build saved offers the newest backup this build opens (`desktop.RestoreOffer`,
+  `FindRestore`; Escape quits, and no key puts the backup back, since the runtime's macOS
+  alert gives a button Return or Escape, never both), puts it back on a click
+  (`desktop.PutBack`, `store.RestoreBackup`, a failure worded by `desktop.PutBackFailure`
+  with what to do), and opens the app again from `PostShutdown` through
+  `desktop.RelaunchArgs`, as a reset does, the `open -n` bounded to five seconds.
 - `internal/brand/` holds product identity, design tokens, and the logo mark. The palette tests
   enforce WCAG AA contrast for every text color in both themes. `internal/brandgen/` generates
   the frontend theme tokens, `build/darwin/Info.plist`, and the icon artwork (the app icon

@@ -78,6 +78,8 @@ import {
   statusWatch,
   sweepReport,
   threadsPreview,
+  updateReady,
+  updateStatus,
   userScript,
   variables,
   worktreesSnapshot,
@@ -410,6 +412,18 @@ function answers(subscribe: Loose<Platform['on']>): { [K in keyof Platform]: Loo
     lastWorktreeSweep: () => Promise.resolve(sweepReport({ seq: 0 })),
     recentCleanups: () => Promise.resolve([]),
     clearCleanups: done,
+
+    // A release build, up to date: no banner shows unless a test asks for one. Every
+    // action answers with the status after it, as the update's service does.
+    getUpdateStatus: () => Promise.resolve(updateStatus()),
+    checkForUpdates: () => Promise.resolve(updateStatus()),
+    downloadUpdate: () => Promise.resolve({ downloaded: true, status: updateReady() }),
+    hideUpdateBanner: () => Promise.resolve(updateReady({ bannerHidden: true })),
+    showUpdateBanner: () => Promise.resolve(updateReady()),
+    ackUpdated: () => Promise.resolve(updateStatus()),
+    showInstallLog: done,
+    restartToUpdateNow: () => Promise.resolve({ restarted: true, status: updateReady({ state: 'installing' }) }),
+    setUpdateMode: (updateMode) => stored({ updateMode }),
 
     listNotifications: () => Promise.resolve({ items: [], unread: 0 }),
     markAllNotificationsRead: done,

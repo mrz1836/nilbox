@@ -28,22 +28,18 @@ import (
 // nextVersion is the version the update tests offer, newer than the 0.2.0 running.
 const nextVersion = "0.3.0"
 
-var (
-	errFakeReleases = errors.New("fake: GitHub didn't answer")
-	errFakeHelper   = errors.New("fake: the update's helper didn't stand by")
-)
+// errFakeReleases stands in for a check that couldn't reach the releases.
+var errFakeReleases = errors.New("fake: GitHub didn't answer")
 
 // fakeUpdates is the update as the menu bar sees it: a status, and a record of what was
 // asked of it.
 type fakeUpdates struct {
 	log *journal
 
-	mu          sync.Mutex
-	st          update.Status
-	checked     update.Status // what a check leaves
-	checkErr    error
-	downloadErr error
-	restartErr  error
+	mu       sync.Mutex
+	st       update.Status
+	checked  update.Status // what a check leaves
+	checkErr error
 }
 
 func (f *fakeUpdates) Status(context.Context) (update.Status, error) {
@@ -62,24 +58,6 @@ func (f *fakeUpdates) CheckNow(context.Context) (update.Status, error) {
 	f.st = f.checked
 
 	return f.st, f.checkErr
-}
-
-func (f *fakeUpdates) Download(context.Context) (update.Status, error) {
-	f.log.add("update downloaded")
-
-	f.mu.Lock()
-	defer f.mu.Unlock()
-
-	return f.st, f.downloadErr
-}
-
-func (f *fakeUpdates) Restart(_ context.Context, confirmed bool) (update.Status, error) {
-	f.log.add("update restarted, confirmed %t", confirmed)
-
-	f.mu.Lock()
-	defer f.mu.Unlock()
-
-	return f.st, f.restartErr
 }
 
 func (f *fakeUpdates) set(st update.Status) {
@@ -279,126 +257,100 @@ func TestTheMenusCheckShowsItsResultForAMinute(t *testing.T) {
 	}
 }
 
-func TestTheMenusUpdateDownloadsThenRestarts(t *testing.T) {
+func TestTheMenusRestartAndUpdateAskTheWindow(t *testing.T) {
 	t.Parallel()
 
-	found := updating(func(st *update.Status) { st.State, st.Latest = update.StateAvailable, nextVersion })
-
-	t.Run("a download that works restarts, unconfirmed", func(t *testing.T) {
-		t.Parallel()
-
-		synctest.Test(t, func(t *testing.T) {
-			r := newRig()
-			s := r.shell(withUpdates(&fakeUpdates{log: r.log, st: found}))
-
-			s.Start(t.Context())
-			s.Launched()
-			synctest.Wait()
-
-			assert.Equal(t, []menubar.UpdateRow{checkRow(), {Label: "Update to 0.3.0…", Action: menubar.UpdateDownload}},
-				updateRows(t, r))
-
-			s.UpdateAction(menubar.UpdateDownload)
-			synctest.Wait()
-
-			assert.Equal(t, []string{"update downloaded", "update restarted, confirmed false"}, r.lines("update"))
-
-			require.NoError(t, s.Stop())
-		})
-	})
-
-	t.Run("a download that fails says so, and restarts nothing", func(t *testing.T) {
-		t.Parallel()
-
-		synctest.Test(t, func(t *testing.T) {
-			r := newRig()
-			u := &fakeUpdates{
-				log: r.log, st: found, downloadErr: uierr.New("Couldn't download 0.3.0: it took too long.", errFakeReleases),
-			}
-			s := r.shell(withUpdates(u))
-
-			s.Start(t.Context())
-			s.Launched()
-			synctest.Wait()
-
-			s.UpdateAction(menubar.UpdateDownload)
-			synctest.Wait()
-
-			assert.Equal(t, []string{"update downloaded"}, r.lines("update"))
-			assert.Equal(t, menubar.UpdateRow{Label: "Download failed", Tooltip: "Couldn't download 0.3.0: it took too long."},
-				updateRows(t, r)[2])
-
-			require.NoError(t, s.Stop())
-		})
-	})
-}
-
-func TestTheMenuSaysTheLastUpdateIsStillFinishing(t *testing.T) {
-	t.Parallel()
-
-	settling := uierr.New("The last update is still finishing. Try again in a moment.", update.ErrSettling)
-	want := menubar.UpdateRow{
-		Label: "The last update is still finishing", Tooltip: "The last update is still finishing. Try again in a moment.",
+	tests := []struct {
+		action menubar.UpdateAction
+		st     update.Status
+		row    menubar.UpdateRow
+	}{
+		{
+			action: menubar.UpdateRestart, st: updating(ready),
+			row: menubar.UpdateRow{Label: "Restart to Update (0.3.0)", Action: menubar.UpdateRestart},
+		},
+		{
+			action: menubar.UpdateDownload,
+			st:     updating(func(st *update.Status) { st.State, st.Latest = update.StateAvailable, nextVersion }),
+			row:    menubar.UpdateRow{Label: "Update to 0.3.0…", Action: menubar.UpdateDownload},
+		},
 	}
 
-	for _, action := range []menubar.UpdateAction{menubar.UpdateDownload, menubar.UpdateRestart} {
-		t.Run(string(action), func(t *testing.T) {
+	for _, tt := range tests {
+		t.Run(string(tt.action), func(t *testing.T) {
 			t.Parallel()
 
 			synctest.Test(t, func(t *testing.T) {
 				r := newRig()
-				st := updating(func(st *update.Status) { st.State, st.Latest = update.StateAvailable, nextVersion })
-				u := &fakeUpdates{log: r.log, st: st, downloadErr: settling, restartErr: settling}
+				u := &fakeUpdates{log: r.log, st: tt.st, checked: tt.st}
 				s := r.shell(withUpdates(u))
 
 				s.Start(t.Context())
 				s.Launched()
 				synctest.Wait()
 
-				s.UpdateAction(action)
+				// A check's line shows until the next thing the menu asks.
+				s.UpdateAction(menubar.UpdateCheck)
+				synctest.Wait()
+				require.Len(t, updateRows(t, r), 2, "the check found the version it offered")
+
+				shownBefore := r.window.shown()
+
+				s.UpdateAction(tt.action)
 				synctest.Wait()
 
-				assert.Equal(t, want, updateRows(t, r)[2])
+				assert.Equal(t, shownBefore+1, r.window.shown(), "the window comes forward")
+				assert.Contains(t, r.page.events(), event.WindowEvent(event.UpdateRestartRequested{}),
+					"and is asked to restart, as its banner does")
+				assert.Equal(t, []string{"update checked"}, r.lines("update"),
+					"nothing downloads or restarts but in the window")
+				assert.Equal(t, []menubar.UpdateRow{checkRow(), tt.row}, updateRows(t, r), "the check's line is gone")
 
 				require.NoError(t, s.Stop())
+
+				s.UpdateAction(tt.action)
+				synctest.Wait()
+				assert.Equal(t, shownBefore+1, r.window.shown(), "a stopped shell asks nothing")
 			})
 		})
 	}
 }
 
-func TestTheMenusRestartThatFailsSaysSo(t *testing.T) {
+func TestTheMenusTryAgainAsksTheWindow(t *testing.T) {
 	t.Parallel()
 
 	synctest.Test(t, func(t *testing.T) {
 		r := newRig()
-		u := &fakeUpdates{log: r.log, st: updating(ready), restartErr: uierr.New("Couldn't restart into 0.3.0.", errFakeHelper)}
+		u := &fakeUpdates{log: r.log, st: updating(func(st *update.Status) {
+			ready(st)
+			st.InstallFailed = update.InstallFailure{
+				Version: nextVersion, Reason: "The app didn't quit in time.", Retryable: true,
+			}
+		})}
 		s := r.shell(withUpdates(u))
 
 		s.Start(t.Context())
 		s.Launched()
 		synctest.Wait()
 
-		s.UpdateAction(menubar.UpdateRestart)
+		again := menubar.UpdateRow{Label: "Try Updating to 0.3.0 Again", Action: menubar.UpdateRestart}
+		assert.Equal(t, []menubar.UpdateRow{
+			checkRow(),
+			{Label: "0.3.0 didn't install", Tooltip: "The app didn't quit in time."},
+			again,
+		}, updateRows(t, r))
+
+		shownBefore := r.window.shown()
+
+		s.UpdateAction(again.Action)
 		synctest.Wait()
 
-		assert.Equal(t, []string{"update restarted, confirmed false"}, r.lines("update"))
-		assert.Equal(t, menubar.UpdateRow{Label: "Restart failed", Tooltip: "Couldn't restart into 0.3.0."}, updateRows(t, r)[2])
-		assert.Contains(t, r.logs.String(), "the menu bar's restart to update didn't go ahead")
-
-		u.mu.Lock()
-		u.restartErr = nil
-		u.mu.Unlock()
-
-		s.UpdateAction(menubar.UpdateRestart)
-		synctest.Wait()
-		assert.Equal(t, []menubar.UpdateRow{checkRow(), {Label: "Restart to Update (0.3.0)", Action: menubar.UpdateRestart}},
-			updateRows(t, r), "a new restart clears the line the last one left")
+		assert.Equal(t, shownBefore+1, r.window.shown(), "the window comes forward")
+		assert.Contains(t, r.page.events(), event.WindowEvent(event.UpdateRestartRequested{}),
+			"and runs its one restart, as its banner's Try again does")
+		assert.Empty(t, r.lines("update"), "nothing downloads or restarts but in the window")
 
 		require.NoError(t, s.Stop())
-
-		s.UpdateAction(menubar.UpdateRestart)
-		synctest.Wait()
-		assert.Len(t, r.lines("update"), 2, "a stopped shell starts nothing")
 	})
 }
 
@@ -568,45 +520,7 @@ func realUpdate(t *testing.T, log *journal, relay *event.Relay, opts realOpts) *
 	return update.NewService(engine)
 }
 
-func TestTheMenusRestartRefusesWhileARunGoes(t *testing.T) {
-	t.Parallel()
-
-	synctest.Test(t, func(t *testing.T) {
-		r := newRig()
-		relay := &event.Relay{}
-		release := update.Run{ID: 7, Kind: "release", Title: "Release v1.2.0", Repo: "acme-org/example-repo"}
-		s := r.shell(withUpdates(realUpdate(t, r.log, relay, realOpts{going: []update.Run{release}})))
-		relay.Connect(s)
-
-		s.Start(t.Context())
-		s.Launched()
-		synctest.Wait()
-
-		s.UpdateAction(menubar.UpdateCheck)
-		synctest.Wait()
-		assert.Equal(t, []menubar.UpdateRow{checkRow(), {Label: "Update to 0.3.0…", Action: menubar.UpdateDownload}},
-			updateRows(t, r), "the check found 0.3.0; with no worker running, nothing downloads it yet")
-
-		s.UpdateAction(menubar.UpdateDownload)
-		synctest.Wait()
-
-		assert.Equal(t, []menubar.UpdateRow{
-			checkRow(),
-			{Label: "Restart to Update (0.3.0)", Action: menubar.UpdateRestart},
-			{
-				Label:   "Not restarted: a run is going",
-				Tooltip: "Restarting stops Release v1.2.0 in acme-org/example-repo. Restart once it has ended.",
-			},
-		}, updateRows(t, r), "downloaded and ready, but a run is going")
-		assert.Empty(t, r.lines("installer"), "nothing was staged")
-		assert.Empty(t, r.lines("data"), "nothing was backed up")
-		assert.Zero(t, r.app.quitCount())
-
-		require.NoError(t, s.Stop())
-	})
-}
-
-func TestTheMenuSaysToMoveAnAppThatCantReplaceItself(t *testing.T) {
+func TestTheMenuOffersTheUpdateWhereTheAppCantReplaceItself(t *testing.T) {
 	t.Parallel()
 
 	synctest.Test(t, func(t *testing.T) {
@@ -622,21 +536,31 @@ func TestTheMenuSaysToMoveAnAppThatCantReplaceItself(t *testing.T) {
 		s.UpdateAction(menubar.UpdateCheck)
 		synctest.Wait()
 		assert.Equal(t, []menubar.UpdateRow{checkRow(), {Label: "Update to 0.3.0…", Action: menubar.UpdateDownload}},
-			updateRows(t, r), "it checks and tells where it is")
-
-		s.UpdateAction(menubar.UpdateDownload)
-		synctest.Wait()
-
-		assert.Equal(t, menubar.UpdateRow{
-			Label: "Move to Applications to update", Tooltip: "Move " + brand.Name + " to Applications to update it.",
-		}, updateRows(t, r)[2])
+			updateRows(t, r), "it checks and tells where it is; the window says to move it")
 		assert.Empty(t, r.lines("installer"), "nothing was staged")
 
 		require.NoError(t, s.Stop())
 	})
 }
 
-func TestTheMenusRestartLetsTheQuitThrough(t *testing.T) {
+// restartInTheWindow restarts as the window does once the user confirmed, in the
+// background, since the app quits inside a restart that goes ahead; it returns what ends it
+// and what it returned, once it has.
+func restartInTheWindow(t *testing.T, u *update.Service) (context.CancelFunc, <-chan error) {
+	t.Helper()
+
+	ctx, cancel := context.WithCancel(t.Context())
+	done := make(chan error, 1)
+
+	go func() {
+		_, err := u.Restart(ctx, true)
+		done <- err
+	}()
+
+	return cancel, done
+}
+
+func TestTheWindowsRestartLetsTheQuitThrough(t *testing.T) {
 	t.Parallel()
 
 	synctest.Test(t, func(t *testing.T) {
@@ -658,13 +582,17 @@ func TestTheMenusRestartLetsTheQuitThrough(t *testing.T) {
 
 		require.False(t, s.ShouldQuit(), "the guard holds a quit while runs go")
 
-		s.UpdateAction(menubar.UpdateRestart)
+		cancel, done := restartInTheWindow(t, u)
+
 		synctest.Wait()
 
 		assert.Equal(t, []string{"data backed up", "installer staged 0.3.0", "installer restarted"},
 			append(r.lines("data"), r.lines("installer")...))
 		assert.True(t, s.ShouldQuit(), "the restart let the quit through, which its installer makes")
 		assert.Zero(t, r.app.quitCount(), "the shell quits nothing itself")
+
+		cancel()
+		require.Error(t, <-done, "the app would have quit inside the restart; ended here, it returns")
 
 		require.NoError(t, s.Stop())
 	})
@@ -713,7 +641,10 @@ func TestARestartWhoseQuitIsHeldSeesTheAppOut(t *testing.T) {
 		_, err = u.Download(t.Context())
 		require.NoError(t, err)
 
-		s.UpdateAction(menubar.UpdateRestart)
+		cancel, done := restartInTheWindow(t, u)
+		defer cancel()
+
+		require.NoError(t, <-done, "the restart goes on: the app quits on its own")
 		synctest.Wait()
 
 		assert.Equal(t, []string{"installer staged 0.3.0", "installer restarted"}, r.lines("installer"))
@@ -784,7 +715,9 @@ func TestAHeldQuitIsTimedFromTheHelpersStartNotFromWhenTheQuitCameBack(t *testin
 				// The helper's 30 seconds start as the restart starts it, here.
 				helperStarted := time.Now()
 
-				s.UpdateAction(menubar.UpdateRestart)
+				cancel, done := restartInTheWindow(t, u)
+				defer cancel()
+
 				synctest.Wait()
 
 				exitBy := max(desktop.FinishWithin, tt.returns)
@@ -800,6 +733,7 @@ func TestAHeldQuitIsTimedFromTheHelpersStartNotFromWhenTheQuitCameBack(t *testin
 				assert.Equal(t, tt.asks, r.app.quitCount())
 				assert.Equal(t, []string{dataClosed}, r.lines(dataClosed), "the shell shut down in order")
 				assert.Contains(t, r.logs.String(), tt.lastWord)
+				require.NoError(t, <-done, "the restart went on: the app quit on its own")
 			})
 		})
 	}
@@ -833,7 +767,10 @@ func TestAShutdownThatHangsStillExitsBeforeTheHelperGivesUp(t *testing.T) {
 
 		held := time.Now()
 
-		s.UpdateAction(menubar.UpdateRestart)
+		cancel, done := restartInTheWindow(t, u)
+		defer cancel()
+
+		require.NoError(t, <-done)
 		synctest.Wait()
 
 		time.Sleep(desktop.FinishWithin)

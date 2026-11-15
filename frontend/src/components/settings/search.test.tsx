@@ -2,7 +2,8 @@ import { act, render, screen } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 
 import { sectionInfo, sectionOrder, settingsIndex, type SettingsSection } from '../../lib/settingsIndex'
-import { account, agents, defaultPrompts, profile, prompts, settings } from '../../test/fixtures'
+import { account, agents, defaultPrompts, profile, prompts, settings, updateStatus } from '../../test/fixtures'
+import { updateOf } from '../../test/query'
 import { SettingsView } from '../SettingsView'
 import { SettingMatch } from './match'
 import { ChoiceRow, SectionIntro, SettingRow } from './rows'
@@ -34,6 +35,7 @@ async function shownLabels(section: SettingsSection): Promise<string[]> {
       onLaunchChanged={() => Promise.resolve()}
       onClose={vi.fn()}
       onRunSetup={() => Promise.resolve({ ok: true, data: undefined })}
+      update={updateOf(updateStatus())}
     />,
   )
 

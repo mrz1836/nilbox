@@ -119,6 +119,8 @@ import type {
   StatusConfig,
   StatusPart,
   StatusProvider,
+  RunGoing,
+  UpdateStatus,
 } from '../platform'
 
 // appInfo is a development build's identity on macOS, with no data reset.
@@ -3019,4 +3021,58 @@ export function questionError(
   message = 'Confirm “Test” before it runs.',
 ): Error {
   return new Error(`the command needs the user's trust: ${question.ref}`, { cause: { message, detail: question } })
+}
+
+// updateStatus is a release build of 0.2.0 in /Applications, up to date: its last check,
+// twelve minutes before the tests' noon, found nothing newer, and nothing failed.
+export function updateStatus(overrides: Partial<UpdateStatus> = {}): UpdateStatus {
+  return {
+    flavor: 'release',
+    enabled: true,
+    off: '',
+    current: '0.2.0',
+    mode: 'download',
+    state: 'idle',
+    checking: false,
+    progress: 0,
+    latest: '',
+    releaseUrl: 'https://github.com/acme-org/example-repo/releases/tag/v0.2.0',
+    lastChecked: '2026-06-15T11:48:00Z',
+    lastError: '',
+    bannerHidden: false,
+    justUpdated: '',
+    installFailed: { version: '', reason: '', log: false, retryable: false },
+    location: { ok: true, kind: 'applications', target: '/Applications/Example.app' },
+    ...overrides,
+  }
+}
+
+// updateReady is 0.3.0 downloaded and checked, waiting for a restart to install it.
+export function updateReady(overrides: Partial<UpdateStatus> = {}): UpdateStatus {
+  return updateStatus({
+    state: 'ready',
+    latest: '0.3.0',
+    releaseUrl: 'https://github.com/acme-org/example-repo/releases/tag/v0.3.0',
+    ...overrides,
+  })
+}
+
+// runGoing is a release running in the app, which restarting to update would stop.
+export function runGoing(overrides: Partial<RunGoing> = {}): RunGoing {
+  return {
+    id: 7,
+    kind: 'release',
+    title: 'Release v1.2.0',
+    repo: 'acme-org/sdk',
+    dir: '~/projects/sdk',
+    stopRefused: '',
+    ...overrides,
+  }
+}
+
+// runsGoingError is a restart refused while runs go in the app, as the desktop runtime
+// delivers it: the full text for the console, and the cause the window reads, with the
+// backend's words and the runs as its detail (Go's update.RunsGoingDetail).
+export function runsGoingError(runs: readonly RunGoing[] = [runGoing()], message = 'Restarting stops runs.'): Error {
+  return new Error('runs are going in the app', { cause: { message, detail: { runsGoing: runs } } })
 }
