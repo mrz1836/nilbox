@@ -164,19 +164,23 @@ func parse(p statusprefs.Provider, body []byte) (reading, error) {
 	}
 }
 
-// pageLink returns raw when it is an https link on the provider's own host, its path
-// cleaned, and the provider's page otherwise, so nothing a page says can send the window
-// elsewhere.
+// pageLink returns raw when it is an https link on the provider's own host, written with
+// the catalog's host and its path cleaned ("/" when it has none), and the provider's page
+// otherwise, so nothing a page says can send the window elsewhere.
 func pageLink(p statusprefs.Provider, raw string) string {
 	u, err := url.Parse(raw)
 	if err != nil || u.Scheme != "https" || u.User != nil || !strings.EqualFold(u.Host, p.Host) {
 		return p.PageURL
 	}
 
-	if u.Path != "" {
+	u.Host = p.Host
+	if u.Path == "" {
+		u.Path = "/"
+	} else {
 		u.Path = path.Clean(u.Path)
-		u.RawPath = ""
 	}
+
+	u.RawPath = ""
 
 	return u.String()
 }

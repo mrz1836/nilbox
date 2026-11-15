@@ -20,6 +20,7 @@ func FuzzParse(f *testing.F) {
 		`{"status": {"indicator": "none"}, "components": [{"id": "a", "group": true, "group_id": "a"}]}`,
 		`{"status": {"indicator": "x"}, "incidents": [{"id": "/", "components": [{"group_id": "nope"}]}]}`,
 		`{"ongoing_incidents": [{"url": "https://status.openai.com/../../x", "affected_components": [{}]}]}`,
+		`{"ongoing_incidents": [{"url": "https://stAtus.openAi.Com#0000000", "affected_components": [{}]}]}`,
 		`{"ongoing_incidents": [], "in_progress_maintenances": [{"url": "//evil.example.com/"}]}`,
 		`[]`, `null`, ``, `{`,
 	} {
