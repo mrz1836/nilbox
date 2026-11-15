@@ -74,6 +74,10 @@ var (
 	buildDate   = "unknown"
 	release     = "0.0.0"
 	buildNumber = "0"
+
+	// flavor is the kind of build: "release" for one magex app:package made, and empty
+	// for one made from source (magex app:build, app:run, app:dev), which stamps none.
+	flavor string
 )
 
 // errUnbound is returned for a core service no binder wraps.
@@ -395,13 +399,24 @@ func boundOptions() application.ServiceOptions {
 // Outside a measurement run it first logs the error, shows it in a native dialog, and
 // exits with a failure status once the dialog is dismissed.
 func startFailed(args []string, logger *slog.Logger, err error) error {
-	wrapped := fmt.Errorf("start the app (%s, commit %s, built %s): %w", version, commit, buildDate, err)
+	wrapped := fmt.Errorf("start the app (%s, %s build, commit %s, built %s): %w",
+		version, buildFlavor(), commit, buildDate, err)
 
 	if !slices.Contains(args, measure.StartupFlag) && !slices.Contains(args, measure.RefreshFlag) {
 		failStartup(logger, wrapped, desktop.StartupFailure(err))
 	}
 
 	return wrapped
+}
+
+// buildFlavor names the kind of build this is: the flavor the linker stamped, or
+// "source" for a build made from source.
+func buildFlavor() string {
+	if flavor == "" {
+		return "source"
+	}
+
+	return flavor
 }
 
 // failStartup logs err, shows failure in a native error dialog, since nobody sees stderr

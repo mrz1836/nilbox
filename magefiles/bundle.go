@@ -4,10 +4,12 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -17,21 +19,51 @@ import (
 	"github.com/mrz1836/nilbox/internal/brandgen"
 )
 
+// errArches is returned when a universal binary lacks an architecture it was built for,
+// or holds one it wasn't.
+var errArches = errors.New("the universal binary holds other architectures than it was built for")
+
+// adHoc is the codesign identity that signs ad hoc: no certificate, enough to run the
+// bundle on the Mac that built it.
+const adHoc = "-"
+
+// bundleSpec is the app bundle assembleBundle builds.
+type bundleSpec struct {
+	bundle string    // where the bundle goes
+	meta   buildMeta // the version metadata stamped into it
+	arches []string  // the GOARCH values to build and combine with lipo, or none for this Mac's own
+	signer signer    // what signs it
+}
+
 // buildBundle builds the production app bundle at bundle, the steps App.Build runs once
-// it knows it is on macOS.
+// it knows it is on macOS: a build from source, for this Mac's processor, signed ad hoc.
 func buildBundle(bundle string) error {
+	if err := prepareBuild(); err != nil {
+		return err
+	}
+
+	return assembleBundle(bundleSpec{bundle: bundle, meta: readBuildMeta(), signer: signer{identity: adHoc}})
+}
+
+// prepareBuild checks the generated brand files and app icons, then builds the frontend
+// the desktop binary embeds.
+func prepareBuild() error {
 	if err := checkBrandFiles(); err != nil {
 		return err
 	}
 
-	if err := (Frontend{}).Build(); err != nil {
-		return err
-	}
+	return (Frontend{}).Build()
+}
 
-	contents := filepath.Join(bundle, "Contents")
+// assembleBundle builds the bundle spec describes from a built frontend: it compiles the
+// desktop binary, adds the Info.plist with the build's versions and the app icon, signs
+// the bundle, and reports the binary's size. A previous bundle at the same path is
+// removed first.
+func assembleBundle(spec bundleSpec) error {
+	contents := filepath.Join(spec.bundle, "Contents")
 	exe := filepath.Join(contents, "MacOS", brand.Slug)
 
-	if err := os.RemoveAll(bundle); err != nil {
+	if err := os.RemoveAll(spec.bundle); err != nil {
 		return fmt.Errorf("remove the previous bundle: %w", err)
 	}
 
@@ -39,13 +71,11 @@ func buildBundle(bundle string) error {
 		return fmt.Errorf("create the bundle: %w", err)
 	}
 
-	meta := readBuildMeta()
-
-	if err := buildDesktopBinary(exe, meta); err != nil {
+	if err := buildExecutable(exe, spec.meta, spec.arches); err != nil {
 		return err
 	}
 
-	if err := writeInfoPlist(filepath.Join(contents, "Info.plist"), meta); err != nil {
+	if err := writeInfoPlist(filepath.Join(contents, "Info.plist"), spec.meta); err != nil {
 		return err
 	}
 
@@ -53,11 +83,116 @@ func buildBundle(bundle string) error {
 		return err
 	}
 
-	if err := sh.RunV("codesign", "--force", "--sign", "-", bundle); err != nil {
-		return fmt.Errorf("sign the bundle ad hoc: %w", err)
+	if err := spec.signer.sign(spec.bundle); err != nil {
+		return fmt.Errorf("sign the bundle %s: %w", spec.signer, err)
 	}
 
-	return reportSize(bundle, exe)
+	return reportSize(spec.bundle, exe)
+}
+
+// buildExecutable compiles the desktop binary into exe: for this Mac's processor when
+// arches is empty, else one slice for each GOARCH in arches, combined into one universal
+// binary.
+func buildExecutable(exe string, meta buildMeta, arches []string) error {
+	if len(arches) == 0 {
+		return buildDesktopBinary(exe, meta, "")
+	}
+
+	dir, err := os.MkdirTemp("", brand.Slug+"-slices-")
+	if err != nil {
+		return fmt.Errorf("create a folder for the slices: %w", err)
+	}
+	defer func() { _ = os.RemoveAll(dir) }()
+
+	parts := make([]string, 0, len(arches))
+
+	for _, arch := range arches {
+		part := filepath.Join(dir, brand.Slug+"-"+arch)
+		if err = buildDesktopBinary(part, meta, arch); err != nil {
+			return err
+		}
+
+		if err = reportSlice(arch, part); err != nil {
+			return err
+		}
+
+		parts = append(parts, part)
+	}
+
+	if err = sh.RunV("lipo", append([]string{"-create", "-output", exe}, parts...)...); err != nil {
+		return fmt.Errorf("combine the slices with lipo: %w", err)
+	}
+
+	return checkArches(exe, arches)
+}
+
+// lipoArch is the name lipo gives the architecture of a GOARCH.
+func lipoArch(goarch string) string {
+	if goarch == "amd64" {
+		return "x86_64"
+	}
+
+	return goarch
+}
+
+// checkArches fails unless lipo reads exactly the architectures of arches in exe.
+func checkArches(exe string, arches []string) error {
+	out, err := sh.Output("lipo", "-archs", exe)
+	if err != nil {
+		return fmt.Errorf("read the binary's architectures: %w", err)
+	}
+
+	got := strings.Fields(out)
+	want := make([]string, 0, len(arches))
+
+	for _, arch := range arches {
+		want = append(want, lipoArch(arch))
+	}
+
+	slices.Sort(got)
+	slices.Sort(want)
+
+	if !slices.Equal(got, want) {
+		return fmt.Errorf("%w: lipo -archs reads %q, not %q", errArches, strings.Join(got, " "), strings.Join(want, " "))
+	}
+
+	return nil
+}
+
+// signer signs code with codesign: ad hoc, or with a code-signing identity.
+type signer struct {
+	identity string // the identity's name or SHA-1, or adHoc
+	keychain string // the keychain that holds the identity, or "" for the search list
+}
+
+// String says how the signer signs, for an error.
+func (s signer) String() string {
+	if s.identity == adHoc {
+		return "ad hoc"
+	}
+
+	return "as " + s.identity
+}
+
+// args are codesign's arguments to sign path. Ad hoc they are the ones app:build has
+// always used; with an identity they name its keychain when there is one, and ask for no
+// timestamp, which would send the signature to Apple's server.
+func (s signer) args(path string) []string {
+	if s.identity == adHoc {
+		return []string{"--force", "--sign", adHoc, path}
+	}
+
+	args := []string{"--force", "--sign", s.identity}
+	if s.keychain != "" {
+		args = append(args, "--keychain", s.keychain)
+	}
+
+	return append(args, "--timestamp=none", path)
+}
+
+// sign signs path, a bundle or a disk image.
+func (s signer) sign(path string) error {
+	return sh.RunV("codesign", s.args(path)...)
 }
 
 // buildMeta is the version metadata stamped into a build.
@@ -65,8 +200,10 @@ type buildMeta struct {
 	version       string // the build's version, e.g. v0.1.0-3-gabc1234
 	commit        string // the short commit hash
 	date          string // the build time, RFC 3339 UTC
-	bundleVersion string // the release version macOS shows, e.g. 0.1.0 (CFBundleShortVersionString)
+	release       string // the release version, e.g. 0.2.0-rc.1 (main.release)
+	bundleVersion string // the release version macOS shows, its numeric core, e.g. 0.2.0 (CFBundleShortVersionString)
 	bundleBuild   string // the build number, the commit count, e.g. 42 (CFBundleVersion)
+	flavor        string // the kind of build, flavorRelease for a release or "" for a build from source (main.flavor)
 }
 
 // readBuildMeta derives the version metadata from git; outside a git checkout it falls
@@ -80,6 +217,7 @@ func readBuildMeta() buildMeta {
 		version:       "dev",
 		commit:        "none",
 		date:          time.Now().UTC().Format(time.RFC3339),
+		release:       brandgen.PlaceholderVersion,
 		bundleVersion: brandgen.PlaceholderVersion,
 		bundleBuild:   brandgen.PlaceholderVersion,
 	}
@@ -93,7 +231,8 @@ func readBuildMeta() buildMeta {
 	}
 
 	if out := gitOutput("describe", "--tags", "--abbrev=0"); out != "" {
-		meta.bundleVersion = strings.TrimPrefix(out, "v")
+		meta.release = strings.TrimPrefix(out, "v")
+		meta.bundleVersion = numericCore(meta.release)
 	}
 
 	if out := gitOutput("rev-list", "--count", "HEAD"); out != "" {
@@ -101,6 +240,15 @@ func readBuildMeta() buildMeta {
 	}
 
 	return meta
+}
+
+// numericCore returns the MAJOR.MINOR.PATCH of version, which is all macOS expects of a
+// bundle's version: 0.2.0 for 0.2.0-rc.1.
+func numericCore(version string) string {
+	core, _, _ := strings.Cut(version, "+")
+	core, _, _ = strings.Cut(core, "-")
+
+	return core
 }
 
 // gitOutput returns git's trimmed output, or "" when git fails (for example, describe in
@@ -115,10 +263,17 @@ func gitOutput(args ...string) string {
 }
 
 // versionFlags returns the linker flags that stamp the build's version metadata into the
-// desktop command, which reports it on the About page.
+// desktop command, which reports it on the About page, and its flavor, which a build from
+// source leaves empty.
 func versionFlags(meta buildMeta) string {
-	return fmt.Sprintf("-X main.version=%s -X main.commit=%s -X main.buildDate=%s -X main.release=%s -X main.buildNumber=%s",
-		meta.version, meta.commit, meta.date, meta.bundleVersion, meta.bundleBuild)
+	flags := fmt.Sprintf("-X main.version=%s -X main.commit=%s -X main.buildDate=%s -X main.release=%s -X main.buildNumber=%s",
+		meta.version, meta.commit, meta.date, meta.release, meta.bundleBuild)
+
+	if meta.flavor != "" {
+		flags += " -X main.flavor=" + meta.flavor
+	}
+
+	return flags
 }
 
 // quietLinkerFlags returns linker flags that quiet Apple's linker about duplicate
@@ -137,14 +292,19 @@ func quietLinkerFlags() string {
 	return " -extldflags=-Wl,-no_warn_duplicate_libraries"
 }
 
-// buildDesktopBinary compiles the production desktop binary into exe.
-func buildDesktopBinary(exe string, meta buildMeta) error {
+// buildDesktopBinary compiles the production desktop binary into exe, for goarch, or for
+// this Mac's processor when goarch is "".
+func buildDesktopBinary(exe string, meta buildMeta, goarch string) error {
 	minVersion := "-mmacosx-version-min=" + macOSMinVersion
 	env := map[string]string{
 		"CGO_ENABLED":              "1",
 		"CGO_CFLAGS":               minVersion,
 		"CGO_LDFLAGS":              minVersion,
 		"MACOSX_DEPLOYMENT_TARGET": macOSMinVersion,
+	}
+
+	if goarch != "" {
+		env["GOARCH"] = goarch
 	}
 
 	err := sh.RunWithV(env, "go", "build",
@@ -227,6 +387,20 @@ func reportSize(bundle, exe string) error {
 
 	//nolint:forbidigo // mage target output
 	fmt.Printf("✅ Built %s (binary %d bytes, %.1f MB)\n", bundle, info.Size(), float64(info.Size())/1e6)
+
+	return nil
+}
+
+// reportSlice prints the size of one architecture's slice of a universal binary, which
+// the per-architecture size target is held to.
+func reportSlice(arch, path string) error {
+	info, err := os.Stat(path)
+	if err != nil {
+		return fmt.Errorf("read the %s slice's size: %w", arch, err)
+	}
+
+	//nolint:forbidigo // mage target output
+	fmt.Printf("Built the %s slice (%d bytes, %.1f MB)\n", arch, info.Size(), float64(info.Size())/1e6)
 
 	return nil
 }
