@@ -59,6 +59,10 @@ const (
 	// KindRunFailed is a run from the Scripts tab that failed or ran past its time limit. It
 	// is about no item, and names the run.
 	KindRunFailed = notifyprefs.KindRunFailed
+
+	// KindServiceStatus is a part of a service the user watches going down, or coming back.
+	// It is about no item, and opens the incident or the status page.
+	KindServiceStatus = notifyprefs.KindServiceStatus
 )
 
 // Keep is how many notifications the log keeps; recording more drops the oldest.
@@ -70,7 +74,8 @@ type Notification struct {
 	ID int64 `json:"id"`
 
 	// Kind is KindReviewRequested, KindAssigned, KindWoke, one of a release's kinds
-	// (KindReleaseDone, KindReleasePublished, or KindReleaseFailed), or KindRunFailed.
+	// (KindReleaseDone, KindReleasePublished, or KindReleaseFailed), KindRunFailed, or
+	// KindServiceStatus.
 	Kind notifyprefs.Kind `json:"kind"`
 
 	// CreatedAt is when it was recorded, as RFC 3339.
