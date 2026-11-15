@@ -258,6 +258,12 @@ function Look({ banner, update, onDetails }: { banner: Exclude<Banner, { kind: '
           }
         >
           The update to {banner.version} didn’t install, so {brand.name} is still on {banner.current}.
+          {banner.newer !== null && (
+            <span className="font-medium">
+              {' '}
+              {banner.newer.version} is {banner.newer.ready ? 'ready' : 'available'}.
+            </span>
+          )}
         </Shell>
       )
   }
@@ -268,7 +274,8 @@ function Look({ banner, update, onDetails }: { banner: Exclude<Banner, { kind: '
 // one available to download and restart into as one click (Update), the restart under way
 // with the download's progress (Later hides a download's), a restart that just failed or
 // the one before this launch that didn't install (Try again · Download manually, and
-// Details, or Download manually alone for an update that fails the same way every time), a
+// Details, or Download manually alone for an update that fails the same way every time;
+// a newer version found since is named, and its Restart to update or Update offered), a
 // moment's wait while the last update finishes, the app quitting on its own to finish an
 // update whose quit was held, and an update the app can't install where it runs.
 // What it shows is bannerOf's, and what it offers offerOf's (lib/update.ts), which About

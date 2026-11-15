@@ -116,13 +116,41 @@ describe('bannerOf', () => {
       installFailed: { version: '0.3.0', reason: 'It didn’t quit in time.', log: true, retryable: true },
     })
 
-    expect(bannerOf(failed, idle, '')).toEqual({ kind: 'lastLaunch', version: '0.3.0', current: '0.2.0' })
+    expect(bannerOf(failed, idle, '')).toEqual({
+      kind: 'lastLaunch',
+      version: '0.3.0',
+      current: '0.2.0',
+      newer: null,
+    })
     expect(bannerOf({ ...failed, mode: 'notify' }, idle, '')).toEqual({
       kind: 'lastLaunch',
       version: '0.3.0',
       current: '0.2.0',
+      newer: null,
     })
     expect(bannerOf({ ...failed, bannerHidden: true }, idle, '').kind).toBe('lastLaunch')
+  })
+
+  it('names a newer version found since the one that didn’t install, which its button installs', () => {
+    const failure = { version: '0.3.0', reason: 'It didn’t quit in time.', log: true, retryable: true }
+
+    expect(bannerOf(updateReady({ latest: '0.3.1', installFailed: failure }), idle, '')).toEqual({
+      kind: 'lastLaunch',
+      version: '0.3.0',
+      current: '0.2.0',
+      newer: { version: '0.3.1', ready: true },
+    })
+    expect(
+      bannerOf(updateReady({ state: 'available', mode: 'notify', latest: '0.3.1', installFailed: failure }), idle, ''),
+    ).toMatchObject({ kind: 'lastLaunch', newer: { version: '0.3.1', ready: false } })
+    // One downloading is offered nothing yet, so the banner names nothing either.
+    expect(
+      bannerOf(updateReady({ state: 'downloading', latest: '0.3.1', installFailed: failure }), idle, ''),
+    ).toMatchObject({ kind: 'lastLaunch', newer: null })
+    expect(bannerOf(updateStatus({ installFailed: failure }), idle, '')).toMatchObject({
+      kind: 'lastLaunch',
+      newer: null,
+    })
   })
 
   it('never offers the version that just failed as plainly ready once its failure is put away', () => {

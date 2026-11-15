@@ -226,17 +226,25 @@ describe('UpdateBanner', () => {
     expect(buttons()).toEqual(['Download manually', 'Details', 'Dismiss'])
   })
 
-  it('offers the newer version found since the last launch’s failure as any other', async () => {
-    const { update } = shown(
-      updateReady({
-        latest: '0.3.1',
-        installFailed: { version: '0.3.0', reason: 'It didn’t quit in time.', log: true, retryable: true },
-      }),
-    )
+  it('names the newer version found since the last launch’s failure, and offers it as any other', async () => {
+    const failure = { version: '0.3.0', reason: 'It didn’t quit in time.', log: true, retryable: true }
+    const { update } = shown(updateReady({ latest: '0.3.1', installFailed: failure }))
 
+    expect(banner()).toHaveTextContent(
+      `The update to 0.3.0 didn’t install, so ${brand.name} is still on 0.2.0. 0.3.1 is ready.`,
+    )
     expect(buttons()).toEqual(['Restart to update', 'Details', 'Dismiss'])
     await userEvent.click(screen.getByRole('button', { name: 'Restart to update' }))
     expect(update.restart).toHaveBeenCalledOnce()
+  })
+
+  it('names a newer version found since that is still to download, as Just tell me leaves it', () => {
+    const failure = { version: '0.3.0', reason: 'It didn’t quit in time.', log: true, retryable: true }
+
+    shown(updateReady({ state: 'available', mode: 'notify', latest: '0.3.1', installFailed: failure }))
+
+    expect(banner()).toHaveTextContent('still on 0.2.0. 0.3.1 is available.')
+    expect(buttons()).toEqual(['Update', 'Details', 'Dismiss'])
   })
 
   it('opens the page of the version that didn’t install while no version is found since', async () => {

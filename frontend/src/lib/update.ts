@@ -61,7 +61,9 @@ export const finishingWords = `${finishingText} ${finishingDetail}`
 //     a download has got (progress, 0 to 100), or null for work with no measure;
 //   - failed: the restart the user asked for just failed, with why;
 //   - waiting: the last update is still finishing, so the restart waits a moment, quietly;
-//   - lastLaunch: the restart before this launch didn't install its update;
+//   - lastLaunch: the restart before this launch didn't install its update, with the newer
+//     version on offer in its place, ready or available, which its button installs, or
+//     null when the offer is the version that failed (or none);
 //   - location: an update waits, but the app can't replace itself where it runs.
 export type Banner =
   | { kind: 'none' }
@@ -70,8 +72,25 @@ export type Banner =
   | { kind: 'working'; text: string; progress: number | null; detail: string }
   | { kind: 'failed'; message: string }
   | { kind: 'waiting'; message: string }
-  | { kind: 'lastLaunch'; version: string; current: string }
+  | { kind: 'lastLaunch'; version: string; current: string; newer: NewerVersion | null }
   | { kind: 'location'; version: string; ready: boolean }
+
+// NewerVersion is a version on offer other than the one that failed to install: ready to
+// restart into, or available to download first.
+export interface NewerVersion {
+  version: string
+  ready: boolean
+}
+
+// newerThanFailed is the version on offer in place of the one that failed to install
+// (failed), or null when the offer is that version, or nothing is on offer.
+function newerThanFailed(status: UpdateStatus, failed: string): NewerVersion | null {
+  const pending = status.state === 'ready' || status.state === 'available'
+
+  return pending && status.latest !== '' && status.latest !== failed
+    ? { version: status.latest, ready: status.state === 'ready' }
+    : null
+}
 
 // versionName is a version as the window names it, or a stand-in when none is known.
 function versionName(version: string): string {
@@ -131,7 +150,8 @@ function working(status: UpdateStatus | null, step: RestartStep['step']): Banner
 //   - nothing shows for a build that doesn't update, or before the status loads;
 //   - a restart under way that the window didn't start shows as working too;
 //   - the restart before this launch failing shows until put away, over the same version
-//     ready again (Try again restarts into it), which is never offered as plainly ready;
+//     ready again (Try again restarts into it), which is never offered as plainly ready,
+//     and names a newer version found since, which its button installs;
 //   - an update ready, or available, shows unless hidden with Later, as the location
 //     notice when the app can't update where it runs, where nothing downloads;
 //   - with Download it and tell me, an update found and not yet downloaded is about to
@@ -161,7 +181,12 @@ export function bannerOf(status: UpdateStatus | null, flow: RestartStep, lastLau
   const failed = status.installFailed
 
   if (failed.version !== '' && failed.version !== lastLaunchDismissed) {
-    return { kind: 'lastLaunch', version: failed.version, current: status.current }
+    return {
+      kind: 'lastLaunch',
+      version: failed.version,
+      current: status.current,
+      newer: newerThanFailed(status, failed.version),
+    }
   }
 
   // The version that just failed to install stays downloaded, ready to try again, but is
