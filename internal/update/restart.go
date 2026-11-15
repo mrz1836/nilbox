@@ -36,12 +36,17 @@ var (
 	// errNoBackup is why a restart in a build that backs nothing up installs nothing.
 	errNoBackup = errors.New("nothing backs up the database")
 
-	// errQuitHeld is why a restart whose Installer returned with the app running failed.
+	// errQuitHeld is why a restart whose Installer returned with the app running failed,
+	// and why every restart after it in the same run is refused.
 	errQuitHeld = errors.New("the restart returned without the app quitting")
 
 	// ErrOff is returned by what a build that can't update refuses.
 	ErrOff = errors.New("updates are off in this build")
 )
+
+// reopenToUpdate is what the user does after a restart whose quit was held: the update
+// stays ready, and the next run installs it.
+const reopenToUpdate = "Quit " + brand.Name + " and open it again, then restart to update."
 
 // RunsGoingError refuses a restart the user hasn't confirmed while runs go in the app. Its
 // message names them, and Detail hands them to the desktop runtime, which sends them to the
@@ -136,7 +141,9 @@ func where(r Run) string {
 // quits goes back to ready, with the failure as LastError worded with no path, the record
 // cleared, and the staging folder removed; once the quit was let through, the shell holds a
 // quit while runs go again (event.UpdateRestartFailed). So does a restart that returns with
-// the app still running, as one whose quit something held.
+// the app still running, as one whose quit something held; since the runtime then refuses
+// another restart until the app quits, every later restart in this run is refused, saying
+// to quit and open the app again, where the update is still ready.
 func (e *Engine) restart(ctx context.Context, confirmed bool) error {
 	installer, entry, release, err := e.prepare(ctx, confirmed)
 	if err != nil {
@@ -180,10 +187,13 @@ func (e *Engine) restart(ctx context.Context, confirmed bool) error {
 
 	err = installer.Restart(ctx)
 	if err == nil {
-		// The app runs on: something held the quit. The runtime's helper waits a moment for
-		// the app to quit, and the runtime refuses another restart in this run.
+		// The app runs on: something held the quit. The runtime refuses another restart
+		// until the app quits, and the staging folder its helper waits on is removed below,
+		// so quitting now installs nothing: the update stays ready for the next run.
+		e.change(func(st *state) { st.quitHeld = true })
+
 		return e.rollBack(ctx, version, true, uierr.New("Couldn't restart into "+version+", because "+brand.Name+
-			" didn't quit. Quit "+brand.Name+" and open it again to finish updating.", errQuitHeld))
+			" didn't quit. "+reopenToUpdate, errQuitHeld))
 	}
 
 	return e.rollBack(ctx, version, true, uierr.New("Couldn't restart into "+version+".", err))
@@ -194,7 +204,7 @@ func (e *Engine) restart(ctx context.Context, confirmed bool) error {
 // confirmed, no run going in the app. It returns what lets go of the operation.
 func (e *Engine) prepare(ctx context.Context, confirmed bool) (Installer, Entry, func(), error) {
 	e.mu.Lock()
-	installer, downloading := e.installer, e.st.downloading != nil
+	installer, downloading, quitHeld := e.installer, e.st.downloading != nil, e.st.quitHeld
 	e.mu.Unlock()
 
 	switch {
@@ -202,6 +212,8 @@ func (e *Engine) prepare(ctx context.Context, confirmed bool) (Installer, Entry,
 		return nil, Entry{}, nil, locationError()
 	case installer == nil:
 		return nil, Entry{}, nil, uierr.New("This build can't install updates.", ErrNoInstaller)
+	case quitHeld:
+		return nil, Entry{}, nil, uierr.New(reopenToUpdate, errQuitHeld)
 	case downloading:
 		return nil, Entry{}, nil, uierr.New("Wait for the download to finish, then restart.", ErrBusy)
 	}

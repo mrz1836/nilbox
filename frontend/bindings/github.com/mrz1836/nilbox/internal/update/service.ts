@@ -27,7 +27,8 @@ export function AckUpdated(): $CancellablePromise<$models.Status> {
 /**
  * CheckNow checks for a new version now, in every mode, Don't check included, and returns
  * the status, whose LastError tells a check that failed. A version it finds is shown
- * without a notification; with Download it and tell me, it downloads at once. While the
+ * without a notification; with Download it and tell me, the Worker downloads it at once,
+ * a download that failed before included, but only once the start is settled. While the
  * update downloads, it returns the status as it is.
  */
 export function CheckNow(): $CancellablePromise<$models.Status> {
@@ -37,7 +38,8 @@ export function CheckNow(): $CancellablePromise<$models.Status> {
 /**
  * Download downloads the newer version found and checks it, and returns the status, ready:
  * what Update asks for with Just tell me, before it restarts. A version downloaded already
- * is ready as it is.
+ * is ready as it is. While the last install's helper may still be at work, it refuses with
+ * ErrSettling.
  */
 export function Download(): $CancellablePromise<$models.Status> {
     return $Call.ByID(2634202307);
@@ -57,7 +59,7 @@ export function HideBanner(): $CancellablePromise<$models.Status> {
  * first; confirmed, it stops them. It backs up the database first and refuses to go on
  * without the backup. The app quits inside it once the update is staged, so it returns only
  * when something stopped the restart: the update is then ready again, and the error says
- * why.
+ * why. While the last install's helper may still be at work, it refuses with ErrSettling.
  */
 export function Restart(confirmed: boolean): $CancellablePromise<$models.Status> {
     return $Call.ByID(286179774, confirmed);

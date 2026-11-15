@@ -139,6 +139,7 @@ func (e *Engine) fetch(ctx context.Context, m Manifest) error {
 func (e *Engine) toldReady(ctx context.Context, version string) {
 	if e.view().quiet == version {
 		e.markTold(ctx, version)
+		e.change(func(st *state) { st.quiet = "" })
 
 		return
 	}
@@ -160,7 +161,8 @@ func downloadKey(m Manifest) string {
 // finds that is available or ready at once is marked told without a notification, since
 // the user is looking at the result; one the Worker downloads now (downloads on) is marked
 // told, quietly, only once it is ready, so a download that fails still lets a later timed
-// check tell of it.
+// check tell of it. A download that failed before is tried again at once, never left for
+// the next due check.
 func (e *Engine) checkNow(ctx context.Context) error {
 	if e.view().downloading != nil {
 		return nil
@@ -181,7 +183,10 @@ func (e *Engine) checkNow(ctx context.Context) error {
 	}
 
 	if e.downloads(e.mode(ctx)) && e.needsDownload(m) {
-		e.change(func(st *state) { st.quiet = m.Version })
+		// The click tries again at once: a download that failed before is forgotten, so
+		// the Worker's look fetches it now, and a mark left by an earlier click whose
+		// download never ran gives way to this click's.
+		e.change(func(st *state) { st.failedDownload, st.quiet = "", m.Version })
 		e.wakeWorker()
 
 		return nil

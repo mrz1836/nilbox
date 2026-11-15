@@ -282,6 +282,10 @@ type state struct {
 	// showed found, which is marked told without a notification once it is ready.
 	failedDownload string
 	quiet          string
+
+	// quitHeld is set once a restart's Installer returned with the app still running: the
+	// runtime refuses another restart until the app quits, so this run installs nothing more.
+	quitHeld bool
 }
 
 // NewEngine returns an Engine over cfg. A source build, a release with no key pinned, or a

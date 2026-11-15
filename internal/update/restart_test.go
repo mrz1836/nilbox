@@ -303,7 +303,7 @@ func TestARestartThatReturnsWithTheAppRunningIsNoLongerInstalling(t *testing.T) 
 	require.False(t, exited)
 	require.Error(t, err)
 	assert.Equal(t, "Couldn't restart into "+next+", because "+brand.Name+" didn't quit. Quit "+brand.Name+
-		" and open it again to finish updating.", uierr.Message(err))
+		" and open it again, then restart to update.", uierr.Message(err))
 
 	s := r.status(t)
 	assert.Equal(t, update.StateReady, s.State, "no longer installing")
@@ -311,6 +311,54 @@ func TestARestartThatReturnsWithTheAppRunningIsNoLongerInstalling(t *testing.T) 
 	assert.Empty(t, r.memory.get(update.KeyPendingInstall), "the record is cleared")
 	assert.Equal(t, []event.Event{event.QuitConfirmed{Restarting: true}, event.UpdateRestartFailed{}}, r.quitEvents(),
 		"the shell holds a quit while runs go again")
+
+	// The runtime refuses another restart until the app quits, so this run tries none.
+	exited, err = r.restart(t, true)
+	require.False(t, exited)
+	require.Error(t, err)
+	assert.Equal(t, "Quit "+brand.Name+" and open it again, then restart to update.", uierr.Message(err))
+	assert.Len(t, r.installer.installs, 1, "nothing is staged again")
+	assert.Equal(t, 1, r.installer.restarts)
+	assert.Empty(t, r.memory.get(update.KeyPendingInstall), "no record is written")
+	assert.Equal(t, update.StateReady, r.status(t).State, "the update stays ready for the next run")
+}
+
+func TestNothingDownloadsOrInstallsWhileTheLastUpdateMayStillBeFinishing(t *testing.T) {
+	t.Parallel()
+
+	r := newRig(t)
+	r.mode(updateprefs.ModeNotify)
+	r.release(t, next)
+	record(t, r, running, next, time.Minute)
+	helperLogIn(t, r, "2026-11-15T12:00:00Z: helper start")
+
+	recorded := r.memory.get(update.KeyPendingInstall)
+
+	// A check may run, and finds the release, but downloads nothing.
+	s, err := r.service.CheckNow(t.Context())
+	require.NoError(t, err)
+	assert.Equal(t, update.StateAvailable, s.State)
+
+	_, err = r.service.Download(t.Context())
+	require.ErrorIs(t, err, update.ErrSettling)
+	assert.Equal(t, "The last update is still finishing. Try again in a moment.", uierr.Message(err))
+
+	_, err = r.service.Restart(t.Context(), true)
+	require.ErrorIs(t, err, update.ErrSettling, "confirmed or not")
+
+	assert.Zero(t, r.feed.downloads.Load())
+	assert.Empty(t, r.installer.installs)
+	assert.Zero(t, r.installer.restarts)
+	assert.Empty(t, r.quitEvents())
+	assert.Equal(t, recorded, r.memory.get(update.KeyPendingInstall), "the last install's record is left alone")
+
+	// Once the helper can't be at work any more, the start settles, and they go ahead.
+	r.clock.sleep(update.HelperWindow)
+
+	s, err = r.service.Download(t.Context())
+	require.NoError(t, err)
+	assert.Equal(t, update.StateReady, s.State)
+	assert.Equal(t, int32(1), r.feed.downloads.Load())
 }
 
 func TestRestartNeedsTheAppInApplicationsAnUpdateReadyAndAnInstaller(t *testing.T) {

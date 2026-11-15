@@ -194,6 +194,76 @@ func TestAManualFindWhoseDownloadFailsIsToldLater(t *testing.T) {
 	})
 }
 
+func TestAManualCheckTriesAFailedDownloadAgainAtOnce(t *testing.T) {
+	t.Parallel()
+
+	synctest.Test(t, func(t *testing.T) {
+		r := newRig(t)
+		r.release(t, next)
+		r.feed.downloadErr = errFakeNetwork
+
+		_, stop := runWorker(t, r)
+		defer stop()
+
+		after(update.FirstCheckAfter)
+		require.Equal(t, update.StateAvailable, r.status(t).State, "the timed check's download failed")
+		require.Equal(t, int32(1), r.feed.downloads.Load())
+
+		// A click while the network is still down tries again at once.
+		_, err := r.service.CheckNow(t.Context())
+		require.NoError(t, err)
+
+		after(time.Millisecond)
+		assert.Equal(t, int32(2), r.feed.downloads.Load(), "the click tried again")
+
+		// The ticks between due checks still leave it alone.
+		r.feed.downloadErr = nil
+		r.clock.sleep(time.Hour)
+		after(update.TickEvery)
+		assert.Equal(t, int32(2), r.feed.downloads.Load())
+		assert.Equal(t, update.StateAvailable, r.status(t).State)
+
+		// Once the network is back, a click downloads it at once, not at the next due check.
+		_, err = r.service.CheckNow(t.Context())
+		require.NoError(t, err)
+
+		after(time.Millisecond)
+		assert.Equal(t, int32(3), r.feed.downloads.Load())
+		assert.Equal(t, update.StateReady, r.status(t).State)
+		assert.Empty(t, r.notifier.all(), "the user who clicked sees it ready")
+		assert.Equal(t, next, r.memory.get(update.KeyNotified), "and it is marked told")
+	})
+}
+
+func TestAClickWhoseRetryFailsLetsALaterCheckTell(t *testing.T) {
+	t.Parallel()
+
+	synctest.Test(t, func(t *testing.T) {
+		r := newRig(t)
+		r.release(t, next)
+		r.feed.downloadErr = errFakeNetwork
+
+		_, stop := runWorker(t, r)
+		defer stop()
+
+		after(update.FirstCheckAfter)
+
+		_, err := r.service.CheckNow(t.Context())
+		require.NoError(t, err)
+
+		after(time.Millisecond)
+		assert.Equal(t, int32(2), r.feed.downloads.Load())
+
+		// The click's mark went with its download, so the due check that works tells.
+		r.feed.downloadErr = nil
+		r.clock.sleep(update.CheckEvery)
+		after(update.TickEvery)
+
+		assert.Equal(t, update.StateReady, r.status(t).State)
+		assert.Equal(t, []update.Notice{{Version: next, Ready: true}}, r.notifier.all())
+	})
+}
+
 func TestAManifestReadThatHangsEndsWithinItsLimit(t *testing.T) {
 	t.Parallel()
 
