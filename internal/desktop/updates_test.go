@@ -715,7 +715,9 @@ func TestAHeldQuitIsTimedFromTheHelpersStartNotFromWhenTheQuitCameBack(t *testin
 				// The helper's 30 seconds start as the restart starts it, here.
 				helperStarted := time.Now()
 
-				s.UpdateAction(menubar.UpdateRestart)
+				cancel, done := restartInTheWindow(t, u)
+				defer cancel()
+
 				synctest.Wait()
 
 				exitBy := max(desktop.FinishWithin, tt.returns)
@@ -731,6 +733,7 @@ func TestAHeldQuitIsTimedFromTheHelpersStartNotFromWhenTheQuitCameBack(t *testin
 				assert.Equal(t, tt.asks, r.app.quitCount())
 				assert.Equal(t, []string{dataClosed}, r.lines(dataClosed), "the shell shut down in order")
 				assert.Contains(t, r.logs.String(), tt.lastWord)
+				require.NoError(t, <-done, "the restart went on: the app quit on its own")
 			})
 		})
 	}
