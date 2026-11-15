@@ -310,6 +310,11 @@ notifications](#menu-bar-and-notifications)).
     never **Try again**, and the menu **Download 0.3.0 Manually…**; each opens its release
     page. A newer version, or the same version built again (another SHA-512), is offered as
     usual.
+  - When no version is found yet (before the first check, or when the download kept
+    can't be read), the menu's line still shows. **Check for Updates…** is the way to try
+    again there, as **Try again** is in the window, and an update that failed for good still
+    gets **Download 0.3.0 Manually…**, which, like the window's, opens 0.3.0's own release
+    page, never the running version's.
 
 **Settings → About** shows the build's updates under its version: where the update stands (*"Up
 to date · checked 12m ago"*, *"Downloading 0.3.0… 42%"*, *"0.3.0 is ready"*, *"Last check
