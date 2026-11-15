@@ -20,7 +20,7 @@ func TestRefreshIntervalsAreStoredAndWakeWhatRefreshes(t *testing.T) {
 	fresh, err := svc.Get(t.Context())
 	require.NoError(t, err)
 	assert.Equal(t, RefreshIntervals{
-		Inbox: 300, Checks: 45, ReleaseChecks: 45, Worktrees: 300, Notifications: 300, GitHubStatus: 1800,
+		Inbox: 300, Checks: 45, ReleaseChecks: 45, Worktrees: 300, Notifications: 300, ServiceStatus: 1800,
 	}, fresh.Refresh)
 	assert.Equal(t, refreshChoices(), fresh.RefreshChoices)
 
@@ -48,11 +48,11 @@ func TestRefreshIntervalsAreStoredAndWakeWhatRefreshes(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, 60, got.Refresh.Notifications, "the notifications every minute, GitHub's own poll interval")
 
-	got, err = svc.SetRefreshInterval(t.Context(), RefreshGitHubStatus, 0)
+	got, err = svc.SetRefreshInterval(t.Context(), RefreshServiceStatus, 0)
 	require.NoError(t, err)
 	assert.Equal(t, RefreshIntervals{
-		Inbox: 900, Checks: 0, ReleaseChecks: 0, Worktrees: 1800, Notifications: 60, GitHubStatus: 0,
-	}, got.Refresh, "the GitHub status check can be off")
+		Inbox: 900, Checks: 0, ReleaseChecks: 0, Worktrees: 1800, Notifications: 60, ServiceStatus: 0,
+	}, got.Refresh, "the service status check can be off")
 	assert.Equal(t, []event.Event{
 		event.IntervalsChanged{},
 		event.IntervalsChanged{},
@@ -75,7 +75,7 @@ func TestRefreshIntervalsAreStoredAndWakeWhatRefreshes(t *testing.T) {
 		"the release checks at 10 s": {RefreshReleaseChecks, 10},
 		"the notifications off":      {RefreshNotifications, 0},
 		"the notifications at 30 s":  {RefreshNotifications, 30},
-		"the GitHub status at 60 s":  {RefreshGitHubStatus, 60},
+		"the service status at 60 s": {RefreshServiceStatus, 60},
 	} {
 		_, err = svc.SetRefreshInterval(t.Context(), refused.kind, refused.seconds)
 		require.ErrorIs(t, err, ErrInvalidRefresh, name)
@@ -93,12 +93,12 @@ func TestRefreshIntervalsReadAStoredValueNotOfferedAsTheDefault(t *testing.T) {
 
 	got := decodeRefreshIntervals(map[string]string{
 		KeyRefreshInbox: "7", KeyRefreshChecks: "often", KeyRefreshReleaseChecks: "15", KeyRefreshWorktrees: "600",
-		KeyRefreshNotifications: "45", KeyRefreshGitHubStatus: "45",
+		KeyRefreshNotifications: "45", KeyRefreshServiceStatus: "45",
 	})
 
 	assert.Equal(t, RefreshIntervals{
 		Inbox: DefaultRefreshInbox, Checks: DefaultRefreshChecks, ReleaseChecks: DefaultRefreshReleaseChecks,
-		Worktrees: 600, Notifications: DefaultRefreshNotifications, GitHubStatus: DefaultRefreshGitHubStatus,
+		Worktrees: 600, Notifications: DefaultRefreshNotifications, ServiceStatus: DefaultRefreshServiceStatus,
 	}, got)
 
 	stored := decodeRefreshIntervals(map[string]string{KeyRefreshReleaseChecks: "0"})
@@ -110,7 +110,7 @@ func TestEveryTurnsAnIntervalIntoADuration(t *testing.T) {
 	t.Parallel()
 
 	r := RefreshIntervals{
-		Inbox: 120, Checks: 0, ReleaseChecks: 30, Worktrees: 3600, Notifications: 60, GitHubStatus: 1800,
+		Inbox: 120, Checks: 0, ReleaseChecks: 30, Worktrees: 3600, Notifications: 60, ServiceStatus: 1800,
 	}
 
 	assert.Equal(t, 2*time.Minute, r.Every(RefreshInbox))
@@ -118,7 +118,7 @@ func TestEveryTurnsAnIntervalIntoADuration(t *testing.T) {
 	assert.Equal(t, 30*time.Second, r.Every(RefreshReleaseChecks))
 	assert.Equal(t, time.Hour, r.Every(RefreshWorktrees))
 	assert.Equal(t, time.Minute, r.Every(RefreshNotifications))
-	assert.Equal(t, 30*time.Minute, r.Every(RefreshGitHubStatus))
+	assert.Equal(t, 30*time.Minute, r.Every(RefreshServiceStatus))
 	assert.Zero(t, r.Every("releases"))
 }
 
@@ -126,7 +126,7 @@ func TestRefreshKindsListTheReleaseChecksAfterThePullRequests(t *testing.T) {
 	t.Parallel()
 
 	assert.Equal(t, []RefreshKind{
-		RefreshInbox, RefreshChecks, RefreshReleaseChecks, RefreshWorktrees, RefreshNotifications, RefreshGitHubStatus,
+		RefreshInbox, RefreshChecks, RefreshReleaseChecks, RefreshWorktrees, RefreshNotifications, RefreshServiceStatus,
 	}, RefreshKinds())
 
 	choices := refreshChoices()
@@ -135,10 +135,10 @@ func TestRefreshKindsListTheReleaseChecksAfterThePullRequests(t *testing.T) {
 	assert.Equal(t, "refresh.releaseChecks", KeyRefreshReleaseChecks)
 }
 
-func TestTheGitHubStatusIsCheckedEveryHalfHourByDefault(t *testing.T) {
+func TestTheServiceStatusIsCheckedEveryHalfHourByDefault(t *testing.T) {
 	t.Parallel()
 
-	assert.Equal(t, 1800, DefaultRefreshIntervals().GitHubStatus)
-	assert.Equal(t, []int{0, 300, 600, 900, 1800, 3600}, refreshChoices().GitHubStatus, "off, or 5 minutes to an hour")
-	assert.Equal(t, "refresh.githubStatus", KeyRefreshGitHubStatus)
+	assert.Equal(t, 1800, DefaultRefreshIntervals().ServiceStatus)
+	assert.Equal(t, []int{0, 300, 600, 900, 1800, 3600}, refreshChoices().ServiceStatus, "off, or 5 minutes to an hour")
+	assert.Equal(t, "refresh.serviceStatus", KeyRefreshServiceStatus)
 }

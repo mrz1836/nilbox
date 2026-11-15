@@ -39,7 +39,6 @@ import (
 	"github.com/mrz1836/nilbox/internal/core"
 	"github.com/mrz1836/nilbox/internal/desktop"
 	"github.com/mrz1836/nilbox/internal/event"
-	"github.com/mrz1836/nilbox/internal/ghstatus"
 	"github.com/mrz1836/nilbox/internal/ghthreads"
 	"github.com/mrz1836/nilbox/internal/hooks"
 	"github.com/mrz1836/nilbox/internal/inbox"
@@ -58,6 +57,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/scripts"
 	"github.com/mrz1836/nilbox/internal/sessions"
 	"github.com/mrz1836/nilbox/internal/settings"
+	"github.com/mrz1836/nilbox/internal/svcstatus"
 	"github.com/mrz1836/nilbox/internal/worktrees"
 )
 
@@ -172,7 +172,7 @@ func assemble(
 		Settings:       c.ShellSettings,
 		Sessions:       c.ShellSessions,
 		Workers:        workers,
-		Deferred:       []desktop.Worker{c.Deferred, c.ToolFinder, c.Runs, c.ReleaseFollower, c.GitHubStatusChecker},
+		Deferred:       []desktop.Worker{c.Deferred, c.ToolFinder, c.Runs, c.ReleaseFollower, c.ServiceStatusChecker},
 		Data:           c,
 		Banners:        banners.poster(),
 		QuitGuard:      c.Runs,
@@ -244,7 +244,7 @@ func registerEvents() {
 	application.RegisterEvent[event.HooksUpdated](event.NameHooksUpdated)
 	application.RegisterEvent[event.WorktreesProgress](event.NameWorktreesProgress)
 	application.RegisterEvent[event.GHThreadsUpdated](event.NameGHThreadsUpdated)
-	application.RegisterEvent[event.GitHubStatusUpdated](event.NameGitHubStatusUpdated)
+	application.RegisterEvent[event.ServiceStatusUpdated](event.NameServiceStatusUpdated)
 }
 
 // services wraps every service the core binds, in the core's order. A service no binder
@@ -288,7 +288,7 @@ func binders() []func(svc any) (application.Service, bool) {
 		binder[worktrees.Service], binder[notify.Service], binder[appinfo.Service], binder[budget.Service],
 		binder[sessions.Service], binder[review.Service], binder[issues.Service], binder[integrations.Service],
 		binder[scriptrun.Service], binder[releases.Service], binder[hooks.Service], binder[scripts.Service],
-		binder[ghthreads.Service], binder[backup.Service], binder[ghstatus.Service],
+		binder[ghthreads.Service], binder[backup.Service], binder[svcstatus.Service],
 	}
 }
 

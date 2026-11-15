@@ -12,31 +12,12 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// statusSummaryJSON is a status page summary during an incident, trimmed from the shape
-// www.githubstatus.com answers with.
-const statusSummaryJSON = `{
-  "page": {"id": "kctbh9vrtdwd", "name": "GitHub", "url": "https://www.githubstatus.com"},
-  "components": [
-    {"id": "a", "name": "Git Operations", "status": "operational", "group": false},
-    {"id": "b", "name": "Actions", "status": "partial_outage", "group": false},
-    {"id": "c", "name": "Pull Requests", "status": "degraded_performance", "group": false},
-    {"id": "d", "name": "Everything", "status": "partial_outage", "group": true}
-  ],
-  "incidents": [
-    {"id": "x1y2z3", "name": "Incident with Actions", "status": "investigating", "impact": "major",
-     "shortlink": "https://stspg.io/abc"},
-    {"id": "../../elsewhere", "name": "A bad id", "status": "investigating", "impact": "minor"}
-  ],
-  "scheduled_maintenances": [
-    {"id": "m1", "name": "Database upgrade", "status": "in_progress", "impact": "maintenance"},
-    {"id": "m2", "name": "Next week", "status": "scheduled", "impact": "maintenance"}
-  ],
-  "status": {"indicator": "major", "description": "Partial System Outage"}
-}`
+// summaryPath is the path the tests read, a Statuspage summary's.
+const summaryPath = "/api/v2/summary.json"
 
-// newStatusServer serves handler over TLS and returns a client whose status host is the
-// server.
-func newStatusServer(t *testing.T, handler http.HandlerFunc) *Client {
+// newStatusServer serves handler over TLS and returns a client whose one status host is
+// the server, and that host.
+func newStatusServer(t *testing.T, handler http.HandlerFunc) (*Client, string) {
 	t.Helper()
 
 	srv := httptest.NewTLSServer(handler)
@@ -45,81 +26,102 @@ func newStatusServer(t *testing.T, handler http.HandlerFunc) *Client {
 	u, err := url.Parse(srv.URL)
 	require.NoError(t, err)
 
-	return &Client{HTTP: srv.Client(), UserAgent: testUserAgent, StatusHost: u.Host}
+	return &Client{HTTP: srv.Client(), UserAgent: testUserAgent, StatusHosts: []string{u.Host}}, u.Host
 }
 
-func TestFetchStatusReadsTheSummary(t *testing.T) {
+func TestFetchStatusReadsTheSummaryAsSent(t *testing.T) {
 	t.Parallel()
 
-	var host string
-
-	client := newStatusServer(t, func(w http.ResponseWriter, r *http.Request) {
+	client, host := newStatusServer(t, func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, http.MethodGet, r.Method)
-		assert.Equal(t, statusPath, r.URL.Path)
-		assert.Empty(t, r.Header.Get("Authorization"), "the status page is public; no token is sent")
+		assert.Equal(t, summaryPath, r.URL.Path)
+		assert.Empty(t, r.Header.Get("Authorization"), "a status page is public; no token is sent")
+		assert.Empty(t, r.Header.Get("If-None-Match"), "no ETag, no condition")
 		assert.Equal(t, testUserAgent, r.Header.Get("User-Agent"))
 		assert.Equal(t, "application/json", r.Header.Get("Accept"))
 
-		host = r.Host
-		_, _ = w.Write([]byte(statusSummaryJSON))
+		w.Header().Set("ETag", `W/"abc"`)
+		_, _ = w.Write([]byte(`{"status": {"indicator": "none"}}`))
 	})
 
-	status, err := client.FetchStatus(t.Context())
+	got, err := client.FetchStatus(t.Context(), StatusRequest{Host: host, Path: summaryPath})
 	require.NoError(t, err)
 
-	assert.Equal(t, &ServiceStatus{
-		Indicator:   StatusMajor,
-		Description: "Partial System Outage",
-		Incidents: []StatusIncident{
-			{
-				Name: "Incident with Actions", Status: "investigating", Impact: "major",
-				URL: "https://" + host + "/incidents/x1y2z3",
-			},
-			{
-				Name: "Database upgrade", Status: "in_progress", Impact: StatusMaintenance,
-				URL: "https://" + host + "/incidents/m1",
-			},
-		},
-		Components: []StatusComponent{
-			{Name: "Actions", Status: "partial_outage"},
-			{Name: "Pull Requests", Status: "degraded_performance"},
-		},
-	}, status, "an id that isn't one path segment, maintenance not under way, and a group are left out")
+	assert.Equal(t, StatusAnswer{Body: []byte(`{"status": {"indicator": "none"}}`), ETag: `W/"abc"`}, got)
 }
 
-func TestFetchStatusOperationalListsNothing(t *testing.T) {
+func TestFetchStatusSendsTheETagAndTakesA304(t *testing.T) {
 	t.Parallel()
 
-	client := newStatusServer(t, func(w http.ResponseWriter, _ *http.Request) {
-		_, _ = w.Write([]byte(`{"components": [{"name": "Actions", "status": "operational"}], "incidents": [],
-			"status": {"indicator": "none", "description": "All Systems Operational"}}`))
+	client, host := newStatusServer(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("If-None-Match") == `W/"abc"` {
+			w.WriteHeader(http.StatusNotModified)
+
+			return
+		}
+
+		w.Header().Set("ETag", `W/"def"`)
+		w.WriteHeader(http.StatusNotModified)
 	})
 
-	status, err := client.FetchStatus(t.Context())
+	got, err := client.FetchStatus(t.Context(), StatusRequest{Host: host, Path: summaryPath, ETag: `W/"abc"`})
 	require.NoError(t, err)
+	assert.Equal(t, StatusAnswer{ETag: `W/"abc"`, NotModified: true}, got, "a 304 carries the ETag sent on")
 
-	assert.Equal(t, &ServiceStatus{
-		Indicator: StatusNone, Description: "All Systems Operational",
-		Incidents: []StatusIncident{}, Components: []StatusComponent{},
-	}, status)
+	got, err = client.FetchStatus(t.Context(), StatusRequest{Host: host, Path: summaryPath, ETag: `W/"old"`})
+	require.NoError(t, err)
+	assert.Equal(t, StatusAnswer{ETag: `W/"def"`, NotModified: true}, got, "or the one it names")
+
+	_, err = client.FetchStatus(t.Context(), StatusRequest{Host: host, Path: summaryPath})
+	require.ErrorIs(t, err, ErrUnexpectedStatus, "a 304 to a request without an ETag answers nothing")
+}
+
+func TestFetchStatusRefusesAHostOffTheList(t *testing.T) {
+	t.Parallel()
+
+	var reads atomic.Int32
+
+	client, _ := newStatusServer(t, func(http.ResponseWriter, *http.Request) { reads.Add(1) })
+
+	for _, host := range []string{"status.example.com", "", "user@" + client.StatusHosts[0]} {
+		_, err := client.FetchStatus(t.Context(), StatusRequest{Host: host, Path: summaryPath})
+		require.ErrorIs(t, err, ErrStatusURL, host)
+	}
+
+	assert.Zero(t, reads.Load(), "nothing is sent")
+}
+
+func TestFetchStatusRefusesAPathThatIsntAbsoluteAndClean(t *testing.T) {
+	t.Parallel()
+
+	var reads atomic.Int32
+
+	client, host := newStatusServer(t, func(http.ResponseWriter, *http.Request) { reads.Add(1) })
+
+	for _, p := range []string{"", "api/v2/summary.json", "/api/../summary.json", "/api//summary.json", "/api/"} {
+		_, err := client.FetchStatus(t.Context(), StatusRequest{Host: host, Path: p})
+		require.ErrorIs(t, err, ErrStatusURL, p)
+	}
+
+	assert.Zero(t, reads.Load(), "nothing is sent")
 }
 
 func TestFetchStatusFollowsRedirectsOnTheHostOnly(t *testing.T) {
 	t.Parallel()
 
-	client := newStatusServer(t, func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == statusPath {
+	client, host := newStatusServer(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == summaryPath {
 			http.Redirect(w, r, "/moved.json", http.StatusFound)
 
 			return
 		}
 
-		_, _ = w.Write([]byte(`{"status": {"indicator": "minor", "description": "Minor Service Outage"}}`))
+		_, _ = w.Write([]byte(`{}`))
 	})
 
-	status, err := client.FetchStatus(t.Context())
+	got, err := client.FetchStatus(t.Context(), StatusRequest{Host: host, Path: summaryPath})
 	require.NoError(t, err)
-	assert.Equal(t, StatusMinor, status.Indicator)
+	assert.Equal(t, []byte(`{}`), got.Body)
 
 	var off atomic.Int32
 
@@ -128,11 +130,16 @@ func TestFetchStatusFollowsRedirectsOnTheHostOnly(t *testing.T) {
 	}))
 	t.Cleanup(elsewhere.Close)
 
-	away := newStatusServer(t, func(w http.ResponseWriter, r *http.Request) {
+	elsewhereURL, err := url.Parse(elsewhere.URL)
+	require.NoError(t, err)
+
+	away, awayHost := newStatusServer(t, func(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, elsewhere.URL+"/summary.json", http.StatusFound)
 	})
+	// Even a host on the list is off limits once the read started on another.
+	away.StatusHosts = append(away.StatusHosts, elsewhereURL.Host)
 
-	_, err = away.FetchStatus(t.Context())
+	_, err = away.FetchStatus(t.Context(), StatusRequest{Host: awayHost, Path: summaryPath})
 	require.ErrorIs(t, err, ErrStatusURL)
 	assert.Zero(t, off.Load(), "a redirect off the host is never followed")
 }
@@ -145,28 +152,30 @@ func TestFetchStatusRefusesWhatIsntASummary(t *testing.T) {
 		body   string
 	}{
 		"an error status":  {http.StatusServiceUnavailable, `{}`},
-		"not JSON":         {http.StatusOK, `<html>down</html>`},
-		"no state":         {http.StatusOK, `{"status": {}}`},
 		"a body too large": {http.StatusOK, `{"x": "` + strings.Repeat("a", maxStatusBytes) + `"}`},
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 
-			client := newStatusServer(t, func(w http.ResponseWriter, _ *http.Request) {
+			client, host := newStatusServer(t, func(w http.ResponseWriter, _ *http.Request) {
 				w.WriteHeader(tc.status)
 				_, _ = w.Write([]byte(tc.body))
 			})
 
-			status, err := client.FetchStatus(t.Context())
-			require.Error(t, err)
-			assert.Nil(t, status)
+			got, err := client.FetchStatus(t.Context(), StatusRequest{Host: host, Path: summaryPath})
+			require.ErrorIs(t, err, ErrUnexpectedStatus)
+			assert.Contains(t, err.Error(), "read the status page at "+host)
+			assert.Equal(t, StatusAnswer{}, got)
 		})
 	}
 }
 
-func TestStatusHostDefaultsToGitHubs(t *testing.T) {
+func TestStatusHostsDefaultToTheThreePages(t *testing.T) {
 	t.Parallel()
 
-	assert.Equal(t, DefaultStatusHost, (&Client{}).statusHost())
-	assert.Equal(t, DefaultStatusHost, NewClient("1.0.0").StatusHost)
+	want := []string{"www.githubstatus.com", "status.claude.com", "status.openai.com"}
+
+	assert.Equal(t, want, DefaultStatusHosts())
+	assert.Equal(t, want, (&Client{}).statusHosts())
+	assert.Equal(t, want, NewClient("1.0.0").StatusHosts)
 }

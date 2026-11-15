@@ -5,13 +5,14 @@
 //
 //   - settings writes the user's settings, among them the clone root and the other
 //     repository locations (clones.root and clones.locations), and the rules that the
-//     trust, snooze, sensitive, notifyprefs, branchrules, reporules, integrationprefs, and
-//     threadrules packages declare and decode (trust.*, snooze.*, files.*, notify.*,
-//     branches.*, repos.*: the pinned and muted repositories and orgs, integrations.*,
-//     scripts.*: the scripts.magexTargets and scripts.repoFiles switches of Repo scripts'
-//     sources, and scripts.lastPage and scripts.lastRepo, where the Scripts tab and Repo
-//     scripts reopen, and threadrules.*: whether the user's GitHub notifications are read,
-//     and whether, how, and when they are cleared).
+//     trust, snooze, sensitive, notifyprefs, branchrules, reporules, integrationprefs,
+//     threadrules, and statusprefs packages declare and decode (trust.*, snooze.*,
+//     files.*, notify.*, branches.*, repos.*: the pinned and muted repositories and orgs,
+//     integrations.*, scripts.*: the scripts.magexTargets and scripts.repoFiles switches of
+//     Repo scripts' sources, and scripts.lastPage and scripts.lastRepo, where the Scripts
+//     tab and Repo scripts reopen, threadrules.*: whether the user's GitHub notifications
+//     are read, and whether, how, and when they are cleared, and status.*: which status
+//     pages the service status check reads, and which of each one's parts it watches).
 //   - inbox writes inbox.*: the account and status of the last refresh, and the cached
 //     avatar.
 //   - prompts writes prompts.*: the default prompts and the starters already added.

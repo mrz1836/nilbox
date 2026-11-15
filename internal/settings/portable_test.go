@@ -21,6 +21,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/reporules"
 	"github.com/mrz1836/nilbox/internal/sensitive"
 	"github.com/mrz1836/nilbox/internal/snooze"
+	"github.com/mrz1836/nilbox/internal/statusprefs"
 	"github.com/mrz1836/nilbox/internal/store"
 	"github.com/mrz1836/nilbox/internal/testutil"
 	"github.com/mrz1836/nilbox/internal/threadrules"
@@ -93,6 +94,10 @@ func customize(t *testing.T, svc *Service, db *sql.DB, home string) string {
 		func() (Settings, error) { return svc.SetGitHubNotificationAction(ctx, threadrules.ActionRead) },
 		func() (Settings, error) { return svc.SetRefreshInterval(ctx, RefreshInbox, 600) },
 		func() (Settings, error) { return svc.SetRefreshInterval(ctx, RefreshReleaseChecks, 120) },
+		func() (Settings, error) { return svc.SetRefreshInterval(ctx, RefreshServiceStatus, 600) },
+		func() (Settings, error) { return svc.SetStatusProvider(ctx, statusprefs.ProviderOpenAI, false) },
+		func() (Settings, error) { return svc.SetStatusPart(ctx, "claude.ai", true) },
+		func() (Settings, error) { return svc.SetStatusPart(ctx, "github.actions", false) },
 		func() (Settings, error) { return svc.SetMergeMethod(ctx, MergeMethodSquash) },
 		func() (Settings, error) { return svc.SetTheme(ctx, ThemeDark) },
 		func() (Settings, error) { return svc.SetTextSize(ctx, TextSizeLarge) },

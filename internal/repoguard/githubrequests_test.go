@@ -23,8 +23,9 @@ import (
 //   - inside it, a request is built only in (*Client).do, in (*Client).FetchAvatar,
 //     which downloads the profile picture from GitHub's avatar host, and in
 //     (*Client).DownloadAsset, which downloads a public release file from GitHub's
-//     download hosts, and in (*Client).FetchStatus, which reads GitHub's status page
-//     from its own host; none is the API, sends a token, or costs budget;
+//     download hosts, and in (*Client).FetchStatus, which reads a status page (GitHub's,
+//     Claude's, or OpenAI's) from its own host, one of github.DefaultStatusHosts; none is
+//     the API, sends a token, or costs budget;
 //   - nothing runs the GitHub CLI's api command, which would spend the same budget behind
 //     the app's back. (gh auth token and gh repo clone stay allowed: the first spends
 //     nothing, and the clone is git's.)

@@ -27,6 +27,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/reporules"
 	"github.com/mrz1836/nilbox/internal/sensitive"
 	"github.com/mrz1836/nilbox/internal/snooze"
+	"github.com/mrz1836/nilbox/internal/statusprefs"
 	"github.com/mrz1836/nilbox/internal/testutil"
 	"github.com/mrz1836/nilbox/internal/threadrules"
 	"github.com/mrz1836/nilbox/internal/trust"
@@ -115,8 +116,10 @@ func TestPrefDefaults(t *testing.T) {
 			Read: true, Action: threadrules.ActionDone, TriggersOff: []threadrules.Trigger{}, Watching: true,
 			BotActivity: true,
 		},
-		Refresh:        DefaultRefreshIntervals(),
-		RefreshChoices: refreshChoices(),
+		Refresh:         DefaultRefreshIntervals(),
+		RefreshChoices:  refreshChoices(),
+		ServiceStatus:   statusprefs.Defaults(),
+		StatusProviders: statusprefs.Catalog(),
 
 		DefaultProtectedBranches: []string{"main", "master"},
 	}, got)
@@ -298,8 +301,10 @@ func TestSettersPersist(t *testing.T) {
 			Read: true, Auto: true, Action: threadrules.ActionRead,
 			TriggersOff: []threadrules.Trigger{threadrules.TriggerDismissed}, Watching: false, BotActivity: true,
 		},
-		Refresh:        DefaultRefreshIntervals(),
-		RefreshChoices: refreshChoices(),
+		Refresh:         DefaultRefreshIntervals(),
+		RefreshChoices:  refreshChoices(),
+		ServiceStatus:   statusprefs.Defaults(),
+		StatusProviders: statusprefs.Catalog(),
 
 		DefaultProtectedBranches: branchrules.DefaultProtected(),
 		RepoRules:                reporules.Rules{Pinned: []string{}, Muted: []string{"acme-org"}},

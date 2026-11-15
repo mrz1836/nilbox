@@ -5,8 +5,8 @@
 // complete set of settings. Setters validate their value before storing it and reject
 // anything unknown with a sentinel error. Settings writes every key it declares, and the
 // keys the trust, snooze, sensitive, notifyprefs, branchrules, reporules,
-// integrationprefs, and threadrules packages declare and decode; see the prefs package for
-// which package writes the others.
+// integrationprefs, threadrules, and statusprefs packages declare and decode; see the
+// prefs package for which package writes the others.
 package settings
 
 import (
@@ -37,6 +37,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/reporules"
 	"github.com/mrz1836/nilbox/internal/sensitive"
 	"github.com/mrz1836/nilbox/internal/snooze"
+	"github.com/mrz1836/nilbox/internal/statusprefs"
 	"github.com/mrz1836/nilbox/internal/store"
 	"github.com/mrz1836/nilbox/internal/threadrules"
 	"github.com/mrz1836/nilbox/internal/trust"
@@ -254,10 +255,18 @@ type Settings struct {
 	GitHubNotifications threadrules.Rules `json:"githubNotifications"`
 
 	// Refresh is how often, in seconds, the app reads the inbox, the running checks, the
-	// Release page's running checks, the worktrees, and the GitHub notifications again on
-	// its own, and RefreshChoices what each can be set to.
+	// Release page's running checks, the worktrees, the GitHub notifications, and the
+	// status pages again on its own, and RefreshChoices what each can be set to.
 	Refresh        RefreshIntervals `json:"refresh"`
 	RefreshChoices RefreshChoices   `json:"refreshChoices"`
+
+	// ServiceStatus is what the service status check watches: which providers' status
+	// pages are on, and which of each one's parts count (see the statusprefs package).
+	ServiceStatus statusprefs.Config `json:"serviceStatus"`
+
+	// StatusProviders are the providers the check can watch, with their parts, for the
+	// settings page to list.
+	StatusProviders []statusprefs.Provider `json:"statusProviders"`
 }
 
 // ProfileLookup finds an agent's stored profile by name, or returns
@@ -741,6 +750,8 @@ func fromStored(stored map[string]string) Settings {
 		GitHubNotifications:  threadrules.Decode(stored),
 		Refresh:              decodeRefreshIntervals(stored),
 		RefreshChoices:       refreshChoices(),
+		ServiceStatus:        statusprefs.Decode(stored),
+		StatusProviders:      statusprefs.Catalog(),
 	}
 
 	if v := agent.ID(stored[KeyDefaultAgent]); agent.Known(v) {
@@ -859,7 +870,7 @@ func settingKeys() []string {
 		snooze.PrefWakeCommits, snooze.PrefWakeReviews, snooze.PrefWakeComments,
 		sensitive.PrefScope, sensitive.PrefOff, sensitive.PrefPatterns, KeyMenuBar, notifyprefs.KeyBannersOff, notifyprefs.KeyBannersOn, KeyTheme,
 		KeyTextSize, KeyToastSeconds, KeyProjectsTipDismissed, KeyReviewTab, KeyNotificationsTab, KeyConversationOrder, KeyMergeMethod, KeyRefreshInbox, KeyRefreshChecks, KeyRefreshWorktrees,
-		KeyRefreshNotifications, KeyRefreshReleaseChecks, KeyRefreshGitHubStatus,
+		KeyRefreshNotifications, KeyRefreshReleaseChecks, KeyRefreshServiceStatus,
 	), append(append(append(append(collapsedKeys(), orderKeys()...), branchrules.Keys()...), reporules.Keys()...),
-		append(integrationprefs.Keys(), threadrules.Keys()...)...)...)
+		append(append(integrationprefs.Keys(), threadrules.Keys()...), statusprefs.Keys()...)...)...)
 }

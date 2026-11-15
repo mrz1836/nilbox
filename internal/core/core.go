@@ -27,7 +27,6 @@ import (
 	"github.com/mrz1836/nilbox/internal/clonelock"
 	"github.com/mrz1836/nilbox/internal/event"
 	"github.com/mrz1836/nilbox/internal/execpath"
-	"github.com/mrz1836/nilbox/internal/ghstatus"
 	"github.com/mrz1836/nilbox/internal/ghthreads"
 	"github.com/mrz1836/nilbox/internal/github"
 	"github.com/mrz1836/nilbox/internal/gitread"
@@ -57,6 +56,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/settings"
 	"github.com/mrz1836/nilbox/internal/shellenv"
 	"github.com/mrz1836/nilbox/internal/store"
+	"github.com/mrz1836/nilbox/internal/svcstatus"
 	"github.com/mrz1836/nilbox/internal/timing"
 	"github.com/mrz1836/nilbox/internal/toolinstall"
 	"github.com/mrz1836/nilbox/internal/worklog"
@@ -144,7 +144,7 @@ type Core struct {
 	Scripts        *scripts.Service
 	GHThreads      *ghthreads.Service
 	Backup         *backup.Service
-	GitHubStatus   *ghstatus.Service
+	ServiceStatus  *svcstatus.Service
 
 	// ShellSettings are the settings the desktop shell reads when the app launches. They
 	// are not bound.
@@ -227,11 +227,12 @@ type Core struct {
 	// verifies as on GitHub after a restart is handed to it once recorded. It is not bound.
 	ReleaseFollower *release.Follower
 
-	// GitHubStatusChecker checks GitHub's own status page as often as Settings →
-	// Refreshing says (every 30 minutes by default, or never), so the window can say when
-	// GitHub has an incident; GitHubStatus is its bound face. The desktop shell runs it as
-	// deferred work. It is not bound.
-	GitHubStatusChecker *ghstatus.Checker
+	// ServiceStatusChecker checks the status pages of the services the user watches
+	// (GitHub's, Claude's, OpenAI's) as often as Settings → Service status says (every 30
+	// minutes by default, or never), so the window can say when a part watched has an
+	// incident; ServiceStatus is its bound face. The desktop shell runs it as deferred
+	// work. It is not bound.
+	ServiceStatusChecker *svcstatus.Checker
 
 	// HooksScans holds the Hooks page's scans, which run apart from the window's calls, to
 	// the app's lifetime: the app's quit ends them, and the desktop shell, which runs it as
@@ -316,7 +317,7 @@ func (c *Core) Services() []any {
 	return []any{
 		c.Settings, c.Profiles, c.Prompts, c.LaunchDefaults, c.Inbox, c.Launcher, c.Worktrees, c.Notifications,
 		c.AppInfo, c.Budget, c.Sessions, c.Review, c.Issues, c.Integrations, c.ScriptRuns, c.Release, c.Hooks,
-		c.Scripts, c.GHThreads, c.Backup, c.GitHubStatus,
+		c.Scripts, c.GHThreads, c.Backup, c.ServiceStatus,
 	}
 }
 
@@ -637,14 +638,17 @@ func assemble(pool *sql.DB, info startup, opts Options, logger *slog.Logger) *Co
 	releaseChecks := release.NewChecksFollower(releases, refreshEvery(prefs, settings.RefreshReleaseChecks, logger),
 		logger)
 	sweeper := worktrees.NewSweeper(sweeps, refreshEvery(prefs, settings.RefreshWorktrees, logger))
-	// GitHub's own status page is read through the shared client, outside the API, so it
-	// costs no budget and carries no token.
-	githubStatus := ghstatus.NewService(ghstatus.Config{
-		Fetcher: client, Every: refreshEvery(prefs, settings.RefreshGitHubStatus, logger), Clock: opts.Clock,
-		Events: opts.Events, Logger: logger,
+	// The status pages of the services the user watches are read through the shared client,
+	// outside any API, so they cost no budget and carry no token; a part watched going down,
+	// or coming back, is told as a notification about no item.
+	serviceStatus := svcstatus.NewService(svcstatus.Config{
+		Fetcher: client, Rules: statusRules(prefs, logger), Notifier: statusAlerts{dispatcher: dispatcher},
+		Clock: opts.Clock, Events: opts.Events, Logger: logger,
 	})
-	githubStatusChecker := ghstatus.NewChecker(githubStatus)
-	followed.intervals = []waker{scheduler, checksFollower, releaseChecks, sweeper, ghThreadsSyncer, githubStatusChecker}
+	serviceStatusChecker := svcstatus.NewChecker(serviceStatus)
+	followed.intervals = []waker{scheduler, checksFollower, releaseChecks, sweeper, ghThreadsSyncer, serviceStatusChecker}
+	// A status page turned on or off, or a part ticked, reaches the check at once.
+	followed.statusRules = serviceStatusChecker
 
 	// The review sheet and the issue sheet read and act through the inbox's one Actor.
 	actor := inbox.NewActor(inboxSvc)
@@ -715,8 +719,8 @@ func assemble(pool *sql.DB, info startup, opts Options, logger *slog.Logger) *Co
 		Release:               releases,
 		ReleaseRefresher:      releaseRefresher,
 		ReleaseFollower:       releaseFollower,
-		GitHubStatus:          githubStatus,
-		GitHubStatusChecker:   githubStatusChecker,
+		ServiceStatus:         serviceStatus,
+		ServiceStatusChecker:  serviceStatusChecker,
 		ReleaseChecksFollower: releaseChecks,
 		Hooks:                 hookPage,
 		HooksScans:            hooks.NewScans(hookPage),

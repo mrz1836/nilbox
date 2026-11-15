@@ -26,54 +26,58 @@ type boundary struct {
 // boundaries are the package dependencies the app keeps cut. A forbidden path covers
 // the packages under it too.
 func boundaries() []boundary {
-	// inbox is the inbox's package, which many boundaries name.
-	const inbox = "internal/inbox"
+	// inbox and settings are the inbox's and the settings' packages, which many boundaries
+	// name.
+	const (
+		inbox    = "internal/inbox"
+		settings = "internal/settings"
+	)
 
 	// services are the app's services that a building block below them never imports,
 	// and noService adds the store: what a leaf that serves any of them never imports.
-	services := []string{"internal/github", "internal/settings", inbox, "internal/core"}
+	services := []string{"internal/github", settings, inbox, "internal/core"}
 	noService := append([]string{"internal/store"}, services...)
 	// sheets are what the review sheet and the issue sheet reach only through the
 	// interfaces each declares.
 	sheets := []string{
-		inbox, "internal/settings", "internal/prompts", "internal/launcher", "internal/worktrees",
+		inbox, settings, "internal/prompts", "internal/launcher", "internal/worktrees",
 		"internal/sessions", "internal/core", "internal/desktop",
 	}
 
 	return []boundary{
 		{
-			pkg:       "internal/settings",
+			pkg:       settings,
 			forbidden: []string{"internal/notify", "internal/inbox", "internal/github", "internal/integrations"},
 			why: "settings stores preferences; the services that read them depend on it, never the reverse " +
 				"(it writes the integrations' keys through integrationprefs)",
 		},
 		{
 			pkg:       "internal/worktrees",
-			forbidden: []string{"internal/inbox", "internal/github", "internal/settings"},
+			forbidden: []string{"internal/inbox", "internal/github", settings},
 			why:       "worktrees reads its settings and GitHub's answers through its own SettingsReader and GitHub interfaces",
 		},
 		{
 			pkg:       "internal/launcher",
-			forbidden: []string{"internal/inbox", "internal/github", "internal/settings"},
+			forbidden: []string{"internal/inbox", "internal/github", settings},
 			why:       "the launcher reads items, file checks, and settings through its ItemStore, FileChecker, and SettingsReader interfaces",
 		},
 		{
 			pkg: "internal/event",
 			forbidden: []string{
-				"internal/core", "internal/inbox", "internal/settings", "internal/worktrees", "internal/notify",
+				"internal/core", "internal/inbox", settings, "internal/worktrees", "internal/notify",
 				"internal/appinfo", "internal/store",
 			},
 			why: "every service emits events, so the event types depend on none of them",
 		},
 		{
 			pkg:       "internal/budget",
-			forbidden: []string{"internal/core", "internal/inbox", "internal/worktrees", "internal/settings", "internal/store"},
+			forbidden: []string{"internal/core", "internal/inbox", "internal/worktrees", settings, "internal/store"},
 			why:       "the budget hears the GitHub client's readings and the inbox's refreshes, and keeps its state, through interfaces",
 		},
 		{
 			pkg: "internal/sessions",
 			forbidden: []string{
-				"internal/launcher", "internal/settings", "internal/notify", "internal/inbox", "internal/github",
+				"internal/launcher", settings, "internal/notify", "internal/inbox", "internal/github",
 				"internal/desktop", "internal/core",
 			},
 			why: "sessions follows the agents through its own Observer, Switch, Focuser, AttentionSink, and Rereader " +
@@ -87,7 +91,7 @@ func boundaries() []boundary {
 		{
 			pkg: "internal/bump",
 			forbidden: []string{
-				"internal/github", "internal/inbox", "internal/prompts", "internal/settings", "internal/store",
+				"internal/github", "internal/inbox", "internal/prompts", settings, "internal/store",
 			},
 			why: "bump reads a dependency update from its title alone; prompts and the review sheet call it, never the reverse",
 		},
@@ -115,6 +119,23 @@ func boundaries() []boundary {
 				"a thread from them and what it is given alone; this rule keeps it off the store, the GitHub client, " +
 				"settings, the inbox, core, the notifications, the clock, the integrations, and the mirror of the " +
 				"notifications that obeys it, and by convention it imports only item and prefval",
+		},
+		{
+			pkg: "internal/statusprefs",
+			forbidden: append(slices.Clone(noService),
+				"internal/notify", "internal/notifyprefs", "internal/clock", "internal/svcstatus", "internal/event"),
+			why: "statusprefs declares the service status check's catalog and the settings keys of what it watches, " +
+				"which settings writes; it knows no store, service, or the check that obeys it, and by convention " +
+				"it imports only prefval",
+		},
+		{
+			pkg: "internal/svcstatus",
+			forbidden: []string{
+				"internal/notify", settings, "internal/core", inbox, "internal/desktop", "internal/store",
+			},
+			why: "svcstatus reads the status pages through the GitHub client's FetchStatus, its settings through its " +
+				"Config's Rules, and tells of a change through its own Notifier, which core adapts to the " +
+				"notifications; it keeps its readings in memory alone",
 		},
 		{
 			pkg:       "internal/ghthreads",

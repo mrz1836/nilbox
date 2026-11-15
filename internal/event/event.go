@@ -92,11 +92,14 @@ const (
 	// NameThreadRulesChanged is ThreadRulesChanged's name.
 	NameThreadRulesChanged = "settings:threadRulesChanged"
 
+	// NameStatusRulesChanged is StatusRulesChanged's name.
+	NameStatusRulesChanged = "settings:statusRulesChanged"
+
 	// NameGHThreadsUpdated is GHThreadsUpdated's name.
 	NameGHThreadsUpdated = "ghthreads:updated"
 
-	// NameGitHubStatusUpdated is GitHubStatusUpdated's name.
-	NameGitHubStatusUpdated = "githubstatus:updated"
+	// NameServiceStatusUpdated is ServiceStatusUpdated's name.
+	NameServiceStatusUpdated = "servicestatus:updated"
 )
 
 // Event is something that happened, or was asked for, that another part of the app
@@ -151,7 +154,7 @@ func WindowEvents() []WindowEvent {
 		HooksUpdated{},
 		WorktreesProgress{},
 		GHThreadsUpdated{},
-		GitHubStatusUpdated{},
+		ServiceStatusUpdated{},
 	}
 }
 
@@ -325,7 +328,7 @@ func (IntegrationsChanged) Name() string { return NameIntegrationsChanged }
 
 // IntervalsChanged says the user changed how often the app reads something again on its
 // own (the inbox, the running checks, the Release page's running checks, the worktrees,
-// the GitHub notifications), and it was stored. It stays in Go: core wakes what reads them
+// the GitHub notifications, the status pages), and it was stored. It stays in Go: core wakes what reads them
 // again, which works its next wait out from the new interval.
 type IntervalsChanged struct{}
 
@@ -348,6 +351,15 @@ type ThreadRulesChanged struct{}
 
 // Name returns NameThreadRulesChanged.
 func (ThreadRulesChanged) Name() string { return NameThreadRulesChanged }
+
+// StatusRulesChanged says the user turned a status page on or off, or ticked or unticked
+// a part of one to watch, and it was stored. It stays in Go: core has the service status
+// check follow it, forgetting a provider turned off and checking one turned on at once;
+// the window has the settings from the setter already, and hears the status changed.
+type StatusRulesChanged struct{}
+
+// Name returns NameStatusRulesChanged.
+func (StatusRulesChanged) Name() string { return NameStatusRulesChanged }
 
 // ScriptRunsUpdated says a run started, ended, or changed status, or the history changed:
 // the window lists the runs again and pulls what it shows. It never carries output.
@@ -490,14 +502,14 @@ func (GHThreadsUpdated) Name() string { return NameGHThreadsUpdated }
 
 func (GHThreadsUpdated) window() {}
 
-// GitHubStatusUpdated says a check of GitHub's status page ended, whether it worked or not:
-// the window reads the status again.
-type GitHubStatusUpdated struct{}
+// ServiceStatusUpdated says a pass of the service status check ended, whether its checks
+// worked or not, or what the user watches changed: the window reads the status again.
+type ServiceStatusUpdated struct{}
 
-// Name returns NameGitHubStatusUpdated.
-func (GitHubStatusUpdated) Name() string { return NameGitHubStatusUpdated }
+// Name returns NameServiceStatusUpdated.
+func (ServiceStatusUpdated) Name() string { return NameServiceStatusUpdated }
 
-func (GitHubStatusUpdated) window() {}
+func (ServiceStatusUpdated) window() {}
 
 // Discard is a Sink that drops every event.
 type Discard struct{}

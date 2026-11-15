@@ -114,9 +114,10 @@ type Client struct {
 	// defaults to DefaultAvatarHost; tests point it at a local server.
 	AvatarHost string
 
-	// StatusHost is the only host FetchStatus reads GitHub's status from, as host or
-	// host:port. It defaults to DefaultStatusHost; tests point it at a local server.
-	StatusHost string
+	// StatusHosts are the only hosts FetchStatus reads a status page from, as host or
+	// host:port; a read may be redirected only on its own host. They default to
+	// DefaultStatusHosts; tests point them at a local server.
+	StatusHosts []string
 
 	// DownloadHosts are the only hosts DownloadAsset downloads from, and may be redirected
 	// to, as host or host:port. They default to DefaultDownloadHosts; tests point them at a
@@ -151,8 +152,8 @@ func NewClient(version string) *Client {
 		HTTP:       &http.Client{Timeout: defaultTimeout},
 		UserAgent:  brand.Slug + "/" + version,
 		AvatarHost: DefaultAvatarHost,
-		StatusHost: DefaultStatusHost,
 
+		StatusHosts:   DefaultStatusHosts(),
 		DownloadHosts: DefaultDownloadHosts(),
 	}
 }

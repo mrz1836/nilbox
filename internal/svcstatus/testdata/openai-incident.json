@@ -1,0 +1,25 @@
+{
+    "page_title": "OpenAI",
+    "page_url": "https://status.openai.com/",
+    "ongoing_incidents": [
+        {
+            "name": "Delayed Costs Data in the Compliance API",
+            "status": "monitoring",
+            "url": "https://status.openai.com//incidents/01M7ATRS6BMZ61E4JDHJGM79Y0",
+            "id": "01M7ATRS6BMZ61E4JDHJGM79Y0",
+            "current_worst_impact": "degraded_performance",
+            "affected_components": [
+                {
+                    "id": "01JNKS9D9S72PMP1938PVFFQN4",
+                    "name": "Compliance API",
+                    "group_name": "ChatGPT",
+                    "current_status": "degraded_performance"
+                }
+            ],
+            "last_update_at": "2026-11-14T05:31:20.182Z",
+            "last_update_message": "We are monitoring the affected services to confirm recovery. Delays in cost data are still expected."
+        }
+    ],
+    "in_progress_maintenances": [],
+    "scheduled_maintenances": []
+}

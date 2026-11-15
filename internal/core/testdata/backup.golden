@@ -53,11 +53,26 @@
     },
     "refresh": {
       "checks": 45,
-      "githubStatus": 1800,
       "inbox": 300,
       "notifications": 300,
       "releaseChecks": 45,
+      "serviceStatus": 1800,
       "worktrees": 300
+    },
+    "serviceStatus": {
+      "off": [],
+      "parts": [
+        "github.git",
+        "github.api",
+        "github.issues",
+        "github.pulls",
+        "github.actions",
+        "claude.api",
+        "claude.code",
+        "openai.codex-api",
+        "openai.codex-cli",
+        "openai.responses"
+      ]
     },
     "mergeMethod": "repo",
     "theme": "system",

@@ -3,6 +3,7 @@ package settings
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"maps"
 	"reflect"
@@ -19,6 +20,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/prefs/prefval"
 	"github.com/mrz1836/nilbox/internal/sensitive"
 	"github.com/mrz1836/nilbox/internal/snooze"
+	"github.com/mrz1836/nilbox/internal/statusprefs"
 	"github.com/mrz1836/nilbox/internal/threadrules"
 	"github.com/mrz1836/nilbox/internal/uierr"
 )
@@ -61,12 +63,48 @@ type Portable struct {
 	BannersOff          *[]notifyprefs.Kind  `json:"bannersOff,omitempty"`
 	GitHubNotifications *PortableThreadRules `json:"githubNotifications,omitempty"`
 	Refresh             map[RefreshKind]int  `json:"refresh,omitempty"`
+	ServiceStatus       *PortableStatus      `json:"serviceStatus,omitempty"`
 	MergeMethod         *MergeMethod         `json:"mergeMethod,omitempty"`
 	Theme               *Theme               `json:"theme,omitempty"`
 	TextSize            *TextSize            `json:"textSize,omitempty"`
 	ToastSeconds        *int                 `json:"toastSeconds,omitempty"`
 	InboxOrder          *InboxOrder          `json:"inboxOrder,omitempty"`
 	Integrations        *PortableIntegration `json:"integrations,omitempty"`
+}
+
+// legacyRefreshGitHubStatus is the refresh kind the service status check had while it read
+// GitHub's status page alone, which an older backup holds. It is no RefreshKind of its own.
+const legacyRefreshGitHubStatus = "githubStatus"
+
+// UnmarshalJSON reads a backup's settings, taking an older backup's interval of the GitHub
+// status check as the service status check's, unless the backup holds that too.
+func (p *Portable) UnmarshalJSON(data []byte) error {
+	type plain Portable
+
+	var v plain
+	if err := json.Unmarshal(data, &v); err != nil {
+		return err
+	}
+
+	if n, ok := v.Refresh[RefreshKind(legacyRefreshGitHubStatus)]; ok {
+		if _, has := v.Refresh[RefreshServiceStatus]; !has {
+			v.Refresh[RefreshServiceStatus] = n
+		}
+
+		delete(v.Refresh, RefreshKind(legacyRefreshGitHubStatus))
+	}
+
+	*p = Portable(v)
+
+	return nil
+}
+
+// PortableStatus is what the service status check watches in portable form, each left as
+// it is when a backup lacks it: the status pages turned off, and every part watched,
+// across the providers, by the app's own names for them (statusprefs.PartID).
+type PortableStatus struct {
+	Off   *[]statusprefs.ProviderID `json:"off,omitempty"`
+	Parts *[]statusprefs.PartID     `json:"parts,omitempty"`
 }
 
 // PortableThreadRules are the rules for the user's GitHub notifications in portable form,
@@ -111,6 +149,7 @@ func (bp *BackupPart) Portable(ctx context.Context) (Portable, error) {
 func portableOf(set Settings) Portable {
 	ig := set.Integrations
 	gh := set.GitHubNotifications
+	off, picked := set.ServiceStatus.Off(), set.ServiceStatus.Picked()
 
 	return Portable{
 		DefaultAgent: &set.DefaultAgent, DefaultProfiles: maps.Clone(set.DefaultProfiles), Terminal: &set.Terminal,
@@ -126,9 +165,10 @@ func portableOf(set Settings) Portable {
 		Refresh: map[RefreshKind]int{
 			RefreshInbox: set.Refresh.Inbox, RefreshChecks: set.Refresh.Checks,
 			RefreshReleaseChecks: set.Refresh.ReleaseChecks, RefreshWorktrees: set.Refresh.Worktrees,
-			RefreshNotifications: set.Refresh.Notifications, RefreshGitHubStatus: set.Refresh.GitHubStatus,
+			RefreshNotifications: set.Refresh.Notifications, RefreshServiceStatus: set.Refresh.ServiceStatus,
 		},
-		MergeMethod: &set.MergeMethod, Theme: &set.Theme, TextSize: &set.TextSize, ToastSeconds: &set.ToastSeconds,
+		ServiceStatus: &PortableStatus{Off: &off, Parts: &picked},
+		MergeMethod:   &set.MergeMethod, Theme: &set.Theme, TextSize: &set.TextSize, ToastSeconds: &set.ToastSeconds,
 		InboxOrder: &set.InboxOrder,
 		Integrations: &PortableIntegration{
 			Switches: maps.Clone(ig.Switches), Paths: maps.Clone(ig.Paths), RunsIn: &ig.RunsIn,
@@ -154,6 +194,7 @@ const (
 	tellsThreadRules
 	tellsIntervals
 	tellsRepoRules
+	tellsStatusRules
 )
 
 // PortablePlan is what importing a backup's settings, or its repositories, does: the plan
@@ -178,6 +219,10 @@ type portableField struct {
 
 	// show words p's value of the field, or "" to say nothing of it.
 	show func(p Portable) string
+
+	// notes words what of p's value of the field is left out though the rest is imported,
+	// or nil for a field that leaves nothing out.
+	notes func(p Portable) []string
 }
 
 // PlanPortable works out what importing p, a backup's settings, does, changing nothing:
@@ -218,6 +263,12 @@ func (plan *PortablePlan) planField(ctx context.Context, f portableField, p, cur
 		return
 	}
 
+	if f.notes != nil {
+		for _, note := range f.notes(p) {
+			plan.AddNote(note)
+		}
+	}
+
 	if reflect.DeepEqual(fromStored(withWrites(stored, writes)), before) {
 		plan.Add(backup.Item{Label: f.label, Change: backup.ChangeSame})
 
@@ -249,7 +300,8 @@ func (bp *BackupPart) ApplyPortable(ctx context.Context, tx *sql.Tx, plan Portab
 // Announce emits, once each, the events the setters of the settings plan changed emit, as
 // they would had the user changed each one: the theme, the text size, the menu bar, the
 // sessions followed, the integrations, the GitHub notification rules, the refresh
-// intervals, and the pinned and muted repositories.
+// intervals, the pinned and muted repositories, and what the service status check
+// watches.
 func (bp *BackupPart) Announce(ctx context.Context, plan PortablePlan) {
 	s := bp.s
 
@@ -270,6 +322,7 @@ func (bp *BackupPart) Announce(ctx context.Context, plan PortablePlan) {
 		tellsThreadRules:  event.ThreadRulesChanged{},
 		tellsIntervals:    event.IntervalsChanged{},
 		tellsRepoRules:    event.RepoRulesChanged{},
+		tellsStatusRules:  event.StatusRulesChanged{},
 	}
 
 	// A chosen copy wakes the tools' finder, which tells the window too.
@@ -368,6 +421,8 @@ func (s *Service) portableFields() []portableField {
 		})
 	}
 
+	fields = append(fields, statusFields()...)
+
 	fields = append(fields,
 		pointerField("Merge method", tellsNothing, func(p Portable) *MergeMethod { return p.MergeMethod },
 			func(_ context.Context, m MergeMethod) (map[string]string, error) { return checkMergeMethod(m) },
@@ -419,6 +474,47 @@ func threadFields() []portableField {
 		switchField("Count a bot's activity as seen", threadrules.SwitchBotActivity,
 			func(r PortableThreadRules) *bool { return r.BotActivity }),
 	}
+}
+
+// statusFields are what the service status check watches, as a backup can hold it: the
+// status pages turned off, and the parts watched. An id this build doesn't know is left
+// out with a note, and the rest imported.
+func statusFields() []portableField {
+	status := func(p Portable) PortableStatus {
+		if p.ServiceStatus == nil {
+			return PortableStatus{}
+		}
+
+		return *p.ServiceStatus
+	}
+
+	off := pointerField("Status pages checked", tellsStatusRules,
+		func(p Portable) *[]statusprefs.ProviderID { return status(p).Off },
+		func(_ context.Context, off []statusprefs.ProviderID) (map[string]string, error) {
+			writes, _ := checkStatusOff(off)
+
+			return writes, nil
+		}, nil)
+	off.notes = func(p Portable) []string {
+		_, notes := checkStatusOff(*status(p).Off)
+
+		return notes
+	}
+
+	parts := pointerField("Parts of status pages watched", tellsStatusRules,
+		func(p Portable) *[]statusprefs.PartID { return status(p).Parts },
+		func(_ context.Context, parts []statusprefs.PartID) (map[string]string, error) {
+			writes, _ := checkStatusParts(parts)
+
+			return writes, nil
+		}, nil)
+	parts.notes = func(p Portable) []string {
+		_, notes := checkStatusParts(*status(p).Parts)
+
+		return notes
+	}
+
+	return []portableField{off, parts}
 }
 
 // integrationFields are the integrations' settings a backup can hold.
@@ -536,8 +632,8 @@ func refreshLabel(kind RefreshKind) string {
 		return "Sweep the worktrees"
 	case RefreshNotifications:
 		return "Read GitHub notifications every"
-	case RefreshGitHubStatus:
-		return "Check GitHub's status"
+	case RefreshServiceStatus:
+		return "Check service status"
 	default:
 		return "Refresh " + string(kind)
 	}

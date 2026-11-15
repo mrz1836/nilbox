@@ -38,6 +38,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/sensitive"
 	"github.com/mrz1836/nilbox/internal/settings"
 	"github.com/mrz1836/nilbox/internal/snooze"
+	"github.com/mrz1836/nilbox/internal/statusprefs"
 	"github.com/mrz1836/nilbox/internal/testutil"
 	"github.com/mrz1836/nilbox/internal/threadrules"
 	"github.com/mrz1836/nilbox/internal/worklog"
@@ -77,17 +78,17 @@ func boundCalls(t *testing.T) map[string]boundCall {
 		"appinfo.Service.ToolVersions": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
 			return c.AppInfo.ToolVersions(ctx), nil
 		},
-		"ghstatus.Service.Status": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
-			return c.GitHubStatus.Status(ctx), nil
+		"svcstatus.Service.Status": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
+			return c.ServiceStatus.Status(ctx), nil
 		},
-		"ghstatus.Service.CheckNow": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
-			// Off, so the check reads nothing from the network; ghstatus's own tests read
-			// a page.
-			if _, err := c.Settings.SetRefreshInterval(ctx, settings.RefreshGitHubStatus, 0); err != nil {
+		"svcstatus.Service.CheckNow": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
+			// Off, so the check reads nothing from the network; svcstatus's own tests read
+			// the pages.
+			if _, err := c.Settings.SetRefreshInterval(ctx, settings.RefreshServiceStatus, 0); err != nil {
 				return nil, err
 			}
 
-			return c.GitHubStatus.CheckNow(ctx), nil
+			return c.ServiceStatus.CheckNow(ctx), nil
 		},
 		"settings.Service.Get": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
 			return c.Settings.Get(ctx)
@@ -202,6 +203,12 @@ func boundCalls(t *testing.T) map[string]boundCall {
 		},
 		"settings.Service.SetGitHubNotificationTrigger": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
 			return c.Settings.SetGitHubNotificationTrigger(ctx, threadrules.TriggerReviewed, false)
+		},
+		"settings.Service.SetStatusProvider": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
+			return c.Settings.SetStatusProvider(ctx, statusprefs.ProviderOpenAI, false)
+		},
+		"settings.Service.SetStatusPart": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
+			return c.Settings.SetStatusPart(ctx, "claude.ai", true)
 		},
 		"settings.Service.SetGitHubNotificationAction": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
 			return c.Settings.SetGitHubNotificationAction(ctx, threadrules.ActionRead)
