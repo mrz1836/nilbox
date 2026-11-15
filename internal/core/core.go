@@ -1,7 +1,8 @@
 // Package core assembles the app: it prepares the data directory, opens and migrates the
-// database, syncs the discovered agent profiles, brings back the prompt library and
-// launch defaults the database lost, adds the starter prompts, and builds every service
-// the window binds to.
+// database (starting over first when the user asked to), syncs the discovered agent
+// profiles, brings back the prompt library, the launch defaults, and the user's own scripts
+// the database lost, adds the starter prompts, decides once whether the first-run setup
+// shows, and builds every service the window binds to.
 //
 // Core is plain Go with no desktop dependency, so the whole startup path is tested on any
 // OS. The desktop shell only adds the window, binds Services, hears the services' events,
@@ -54,6 +55,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/sessions/observe/claude"
 	"github.com/mrz1836/nilbox/internal/sessions/observe/codex"
 	"github.com/mrz1836/nilbox/internal/settings"
+	"github.com/mrz1836/nilbox/internal/setup"
 	"github.com/mrz1836/nilbox/internal/shellenv"
 	"github.com/mrz1836/nilbox/internal/store"
 	"github.com/mrz1836/nilbox/internal/svcstatus"
@@ -114,6 +116,11 @@ type Options struct {
 	// paint. Nil runs the real shell; tests hand in a fake, so no test runs the
 	// developer's own shell.
 	ShellStarter shellenv.Starter
+
+	// Sandbox marks a run on a data directory named with --data-dir, such as the fresh one
+	// magex app:fresh opens, in place of the user's own; the window says it shows test
+	// data.
+	Sandbox bool
 }
 
 // Core is the assembled app: the database and every service.
@@ -145,6 +152,7 @@ type Core struct {
 	GHThreads      *ghthreads.Service
 	Backup         *backup.Service
 	ServiceStatus  *svcstatus.Service
+	Setup          *setup.Service
 
 	// ShellSettings are the settings the desktop shell reads when the app launches. They
 	// are not bound.
@@ -258,12 +266,13 @@ type Core struct {
 }
 
 // Bootstrap prepares the data directory, opens the database (backing it up and applying
-// any pending migrations, or setting it aside for a fresh one when it cannot be used),
-// syncs the agent profiles found under the home directory, brings back the prompt
-// library and the launch defaults when the database holds a new library (from the
-// database set aside, or else from the copies kept beside it), adds any starter prompt
-// not added before, and builds every service. It contacts no network; the scheduler does that
-// once started.
+// any pending migrations, setting it aside for a fresh one when it cannot be used, or when
+// the user asked to start over), syncs the agent profiles found under the home directory,
+// brings back the prompt library and the launch defaults when the database holds a new
+// library (from the database set aside, or else from the copies kept beside it), and the
+// user's own scripts from a database set aside, adds any starter prompt not added before,
+// decides once whether the first-run setup shows, and builds every service. It contacts no
+// network; the scheduler does that once started.
 func Bootstrap(ctx context.Context, opts Options) (*Core, error) {
 	if opts.Paths.Root == "" {
 		return nil, ErrNoDataDir
@@ -279,7 +288,7 @@ func Bootstrap(ctx context.Context, opts Options) (*Core, error) {
 
 	logger := logging.Or(opts.Logger)
 
-	opened, err := store.Open(ctx, opts.Paths.DB)
+	opened, err := openData(ctx, opts.Paths, logger)
 	if err != nil {
 		return nil, err
 	}
@@ -287,7 +296,7 @@ func Bootstrap(ctx context.Context, opts Options) (*Core, error) {
 	pool := opened.DB
 	reset := dataReset(ctx, opened.Reset, opts.Home, logger)
 
-	if err = syncProfiles(ctx, profiles.NewStore(pool, opts.Clock), opts.Home, logger); err != nil {
+	if err = profiles.SyncHome(ctx, profiles.NewStore(pool, opts.Clock), opts.Home, logger); err != nil {
 		_ = pool.Close()
 
 		return nil, err
@@ -295,6 +304,7 @@ func Bootstrap(ctx context.Context, opts Options) (*Core, error) {
 
 	keeper := newKept(pool, opts, logger)
 	restored := keeper.restore(ctx, opened.Reset)
+	restored.scripts = restoreScripts(ctx, pool, opts, opened.Reset, logger)
 
 	if err = prompts.Seed(ctx, keeper.prompts); err != nil {
 		_ = pool.Close()
@@ -303,8 +313,9 @@ func Bootstrap(ctx context.Context, opts Options) (*Core, error) {
 	}
 
 	keeper.keep(ctx, restored.prompts.From != "")
+	adoptSetup(ctx, pool, opts.Clock, logger)
 
-	info := startup{reset: reset, restored: restored.info(opts.Home), kept: keeper}
+	info := startup{reset: reset, restored: restored.info(opts.Home, opened.Reset), kept: keeper}
 
 	c := assemble(pool, info, opts, logger)
 	c.restoreBudget(ctx, logger)
@@ -317,7 +328,7 @@ func (c *Core) Services() []any {
 	return []any{
 		c.Settings, c.Profiles, c.Prompts, c.LaunchDefaults, c.Inbox, c.Launcher, c.Worktrees, c.Notifications,
 		c.AppInfo, c.Budget, c.Sessions, c.Review, c.Issues, c.Integrations, c.ScriptRuns, c.Release, c.Hooks,
-		c.Scripts, c.GHThreads, c.Backup, c.ServiceStatus,
+		c.Scripts, c.GHThreads, c.Backup, c.ServiceStatus, c.Setup,
 	}
 }
 
@@ -363,38 +374,6 @@ func (c *Core) restoreBudget(ctx context.Context, logger *slog.Logger) {
 	c.budget.Seed(storedRates(snap.Rate))
 }
 
-// syncProfiles brings the stored agent profiles in line with home. It first removes
-// unedited profiles whose directory holds no agent config (another tool's folder that
-// happens to be named ~/.claude-<name>), then records every profile discovered under
-// home. It never changes a stored profile, and keeps any that was edited or whose
-// directory is gone. Pruning comes first so a name freed by a removed row can be taken
-// by the directory that now owns it. A home directory that cannot be read only skips
-// discovery, with a warning: the profiles already stored still work, and the inbox does
-// not need them.
-func syncProfiles(ctx context.Context, stored *profiles.Store, home string, logger *slog.Logger) error {
-	removed, err := stored.Prune(ctx, logger)
-	if err != nil {
-		return fmt.Errorf("prune profiles: %w", err)
-	}
-
-	if len(removed) > 0 {
-		logger.InfoContext(ctx, "removed profiles whose directory holds no agent config", "profiles", removed)
-	}
-
-	found, err := profiles.Discover(home, logger)
-	if err != nil {
-		logger.WarnContext(ctx, "profile discovery skipped", "error", err)
-
-		return nil
-	}
-
-	if err = stored.Sync(ctx, found); err != nil {
-		return fmt.Errorf("sync profiles: %w", err)
-	}
-
-	return nil
-}
-
 // startup is what Bootstrap learned before the services were built.
 type startup struct {
 	// reset is set when the database was set aside, and restored when the prompt library
@@ -406,15 +385,21 @@ type startup struct {
 	kept *kept
 }
 
-// dataReset logs a database Open set aside, and returns what the window tells the user
-// about it, or nil when there was none.
+// dataReset logs a database set aside at startup, as one that could not be used or one
+// the user asked to start over from, and returns what the window tells the user about it,
+// or nil when there was none.
 func dataReset(ctx context.Context, reset *store.Reset, home string, logger *slog.Logger) *appinfo.DataReset {
 	if reset == nil {
 		return nil
 	}
 
-	logger.WarnContext(ctx, "the database could not be used; it was set aside and a fresh one started",
-		"path", reset.Path, "reason", reset.Reason, "error", reset.Err)
+	if reset.Reason == store.ResetRequested {
+		logger.InfoContext(ctx, "the database was set aside and a fresh one started, as the user asked",
+			"path", reset.Path)
+	} else {
+		logger.WarnContext(ctx, "the database could not be used; it was set aside and a fresh one started",
+			"path", reset.Path, "reason", reset.Reason, "error", reset.Err)
+	}
 
 	return &appinfo.DataReset{Path: paths.Tilde(reset.Path, home), Reason: appinfo.ResetReason(reset.Reason)}
 }
@@ -656,7 +641,7 @@ func assemble(pool *sql.DB, info startup, opts Options, logger *slog.Logger) *Co
 	c := &Core{
 		DB:       pool,
 		Settings: prefs,
-		Profiles: profiles.NewService(profileStore, opts.Home, search),
+		Profiles: profiles.NewService(profileStore, opts.Home, search, profiles.WithLogger(logger)),
 		Prompts: prompts.NewService(prompts.Config{
 			Store: promptStore, Usage: defaultsStore, Source: previews,
 			File: info.kept.promptFile, Database: opts.Paths.DB, App: opts.Version, Clock: opts.Clock, Logger: logger,
@@ -678,6 +663,7 @@ func assemble(pool *sql.DB, info startup, opts Options, logger *slog.Logger) *Co
 			Events:    opts.Events,
 			DataReset: info.reset,
 			Restored:  info.restored,
+			Sandbox:   opts.Sandbox,
 			Finder:    search,
 			Runner:    versionRunner,
 			Home:      opts.Home,
@@ -701,7 +687,6 @@ func assemble(pool *sql.DB, info startup, opts Options, logger *slog.Logger) *Co
 		}),
 		Watcher:               follow.watcher,
 		ShellSessions:         ShellSessions{ledger: follow.ledger, service: follow.service},
-		ShellSettings:         newShellSettings(prefs, pool, opts.Clock),
 		ProfileStore:          profileStore,
 		Scheduler:             scheduler,
 		GHThreads:             ghThreads,
@@ -735,6 +720,13 @@ func assemble(pool *sql.DB, info startup, opts Options, logger *slog.Logger) *Co
 
 	// The backup reaches every category through its owner, so it is built once they are.
 	c.Backup = newBackup(pool, c, promptStore, opts, logger)
+
+	// The setup saves a backup before a reset, so it is built once the backup is.
+	c.Setup = newSetup(pool, opts, setupDeps{
+		tokens: tokens, client: client, info: c.AppInfo, registry: registry, settings: prefs, locations: locations,
+		runs: runs, backup: c.Backup,
+	}, logger)
+	c.ShellSettings = newShellSettings(prefs, c.Setup, pool, opts.Clock)
 
 	return c
 }

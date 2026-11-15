@@ -37,6 +37,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/scripts"
 	"github.com/mrz1836/nilbox/internal/sensitive"
 	"github.com/mrz1836/nilbox/internal/settings"
+	"github.com/mrz1836/nilbox/internal/setup"
 	"github.com/mrz1836/nilbox/internal/snooze"
 	"github.com/mrz1836/nilbox/internal/statusprefs"
 	"github.com/mrz1836/nilbox/internal/testutil"
@@ -159,6 +160,12 @@ func boundCalls(t *testing.T) map[string]boundCall {
 		"settings.Service.CheckCloneLocations": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
 			return c.Settings.CheckCloneLocations(ctx)
 		},
+		"settings.Service.SuggestCloneRoots": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
+			return c.Settings.SuggestCloneRoots(ctx)
+		},
+		"settings.Service.CreateCloneRoot": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
+			return c.Settings.CreateCloneRoot(ctx, "~/code")
+		},
 		"settings.Service.SetTrustedBots": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
 			return c.Settings.SetTrustedBots(ctx, nil)
 		},
@@ -233,6 +240,20 @@ func boundCalls(t *testing.T) map[string]boundCall {
 		},
 		"profiles.Service.List": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
 			return c.Profiles.List(ctx)
+		},
+		"profiles.Service.Rediscover": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
+			return c.Profiles.Rediscover(ctx)
+		},
+		// The fake runner runs no gh, so the sign-in reads as no GitHub CLI, or as signed
+		// out where gh is installed, and never as ready.
+		"setup.Service.GitHub": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
+			got, err := c.Setup.GitHub(ctx)
+			assert.Contains(t, []setup.GitHubState{setup.GitHubNoCLI, setup.GitHubSignedOut}, got.State)
+
+			return got, err
+		},
+		"setup.Service.Terminals": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
+			return c.Setup.Terminals(ctx), nil
 		},
 		"prompts.Service.List": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
 			return c.Prompts.List(ctx)

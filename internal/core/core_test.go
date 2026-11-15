@@ -213,7 +213,7 @@ func TestServicesListsBoundServices(t *testing.T) {
 	assert.Equal(t, []any{
 		c.Settings, c.Profiles, c.Prompts, c.LaunchDefaults, c.Inbox, c.Launcher, c.Worktrees, c.Notifications,
 		c.AppInfo, c.Budget, c.Sessions, c.Review, c.Issues, c.Integrations, c.ScriptRuns, c.Release, c.Hooks,
-		c.Scripts, c.GHThreads, c.Backup, c.ServiceStatus,
+		c.Scripts, c.GHThreads, c.Backup, c.ServiceStatus, c.Setup,
 	}, services)
 
 	for _, s := range services {
@@ -396,6 +396,7 @@ func TestTheWindowShowsEveryReasonTheStoreSetsADatabaseAside(t *testing.T) {
 		store.ResetCorrupt:   appinfo.ResetCorrupt,
 		store.ResetUnmanaged: appinfo.ResetUnmanaged,
 		store.ResetHistory:   appinfo.ResetHistory,
+		store.ResetRequested: appinfo.ResetRequested,
 	} {
 		got := dataReset(t.Context(), &store.Reset{Path: "/data/app.db.broken", Reason: stored}, "/home", logger)
 		require.NotNil(t, got)

@@ -12,20 +12,34 @@ import (
 	"github.com/mrz1836/nilbox/internal/prefs"
 	"github.com/mrz1836/nilbox/internal/sessions"
 	"github.com/mrz1836/nilbox/internal/settings"
+	"github.com/mrz1836/nilbox/internal/setup"
 )
 
 // ShellSettings are the settings the desktop shell reads when the app launches: the theme,
-// whether the menu bar icon shows, the window size, and the text size. It is not bound to the window, so
-// the size, which only the shell reads on its own, stays out of the frontend's API.
+// whether the menu bar icon shows, the window size, the text size, and whether the
+// first-run setup shows. It is not bound to the window, so the size, which only the shell
+// reads on its own, stays out of the frontend's API.
 type ShellSettings struct {
 	settings *settings.Service
+	setup    *setup.Service
 	prefs    *prefs.Store
 }
 
-// newShellSettings returns the shell's settings over the settings service and the
-// preferences in pool.
-func newShellSettings(svc *settings.Service, pool *sql.DB, c clock.Clock) ShellSettings {
-	return ShellSettings{settings: svc, prefs: prefs.New(pool, c)}
+// newShellSettings returns the shell's settings over the settings service, the setup, and
+// the preferences in pool.
+func newShellSettings(svc *settings.Service, setupSvc *setup.Service, pool *sql.DB, c clock.Clock) ShellSettings {
+	return ShellSettings{settings: svc, setup: setupSvc, prefs: prefs.New(pool, c)}
+}
+
+// SetupPending reports whether the first-run setup shows when the window opens: the
+// window then opens on it, and the shell holds the question to allow banners until it ends.
+func (s ShellSettings) SetupPending(ctx context.Context) (bool, error) {
+	state, err := s.setup.State(ctx)
+	if err != nil {
+		return false, err
+	}
+
+	return !state.Done, nil
 }
 
 // Theme returns the stored theme, or the default.

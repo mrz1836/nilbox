@@ -13,6 +13,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/launchdefaults"
 	"github.com/mrz1836/nilbox/internal/paths"
 	"github.com/mrz1836/nilbox/internal/prompts"
+	"github.com/mrz1836/nilbox/internal/scripts"
 	"github.com/mrz1836/nilbox/internal/store"
 )
 
@@ -40,22 +41,55 @@ func newKept(pool *sql.DB, opts Options, logger *slog.Logger) *kept {
 	}
 }
 
-// restored is what restore brought back.
+// restored is what restore brought back, and the user's own scripts restoreScripts did.
 type restored struct {
 	prompts  prompts.Restored
 	defaults int
+	scripts  int
 }
 
 // info returns what the window tells the user about what was brought back, or nil when
-// nothing was.
-func (r restored) info(home string) *appinfo.Restored {
-	if r.prompts.From == "" || r.prompts.Count+r.defaults == 0 {
+// nothing was. The prompts and launch defaults name where they came from; scripts that
+// came back on their own came from the database set aside, which reset names.
+func (r restored) info(home string, reset *store.Reset) *appinfo.Restored {
+	from := r.prompts.From
+	if r.prompts.Count+r.defaults == 0 {
+		from = ""
+	}
+
+	if from == "" && r.scripts > 0 && reset != nil {
+		from = reset.Path
+	}
+
+	if from == "" {
 		return nil
 	}
 
 	return &appinfo.Restored{
-		Prompts: r.prompts.Count, LaunchDefaults: r.defaults, From: paths.Tilde(r.prompts.From, home),
+		Prompts: r.prompts.Count, LaunchDefaults: r.defaults, Scripts: r.scripts, From: paths.Tilde(from, home),
 	}
+}
+
+// restoreScripts brings back the user's own scripts from the database set aside at
+// startup, when reset says one was, as after a reset the user asked for or a database the
+// app could not use, and returns how many came back. They have no copy kept beside the
+// database, so a database deleted brings none back. What can't be brought back is logged,
+// never fatal.
+func restoreScripts(ctx context.Context, pool *sql.DB, opts Options, reset *store.Reset, logger *slog.Logger) int {
+	if reset == nil {
+		return 0
+	}
+
+	n, err := scripts.Restore(ctx, pool, opts.Clock, reset.Path)
+	if err != nil {
+		logger.WarnContext(ctx, "could not bring back your scripts", "from", reset.Path, "error", err)
+	}
+
+	if n > 0 {
+		logger.InfoContext(ctx, "brought back your scripts", "scripts", n, "from", reset.Path)
+	}
+
+	return n
 }
 
 // restore brings back the prompt library when the database holds a new one, as after it
