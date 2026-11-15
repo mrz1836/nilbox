@@ -165,6 +165,12 @@ func boundaries() []boundary {
 				"which core adapts; a tool's own updater runs through scriptrun, never the reverse",
 		},
 		{
+			pkg:       "internal/update",
+			forbidden: append(slices.Clone(noService), "internal/desktop", "internal/notify", "internal/scriptrun"),
+			why: "update holds the release manifest's format and its checks, which the release targets in magefiles " +
+				"share; it reaches GitHub, the settings, and the shell only through what core adapts",
+		},
+		{
 			pkg:       "internal/clonelock",
 			forbidden: noService,
 			why:       "clonelock keeps one job at a time on each clone for whatever changes one; it knows no service",
