@@ -1,6 +1,6 @@
 import { act, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest'
+import { beforeAll, beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest'
 
 import { brand } from './generated/brand'
 import type { Settings, TerminalID, AgentID, RemoveResult, TextSize } from './platform'
@@ -51,6 +51,20 @@ function stored(change: Partial<Settings> = {}): Promise<Settings> {
     settings({ defaultProfiles: { claude: 'work', codex: 'default' }, worktreeDefault: false, ...change }),
   )
 }
+
+// The views App loads apart from its first paint are imported once before the tests, so no
+// test pays a view's cold, instrumented import inside the second a findBy waits: on a busy
+// runner, the first test to open Settings otherwise ran out of that second, whichever test
+// it was.
+beforeAll(async () => {
+  await Promise.all([
+    import('./components/notifications/NotificationsView'),
+    import('./components/PromptsView'),
+    import('./components/scripts/ScriptsView'),
+    import('./components/SettingsView'),
+    import('./components/WorktreesView'),
+  ])
+})
 
 // The platform fake answers every call. These answers are the app tests' own: settings
 // that launch with the work profile and outside a worktree, and an inbox of one item.
