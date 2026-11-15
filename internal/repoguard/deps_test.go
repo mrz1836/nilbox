@@ -177,10 +177,14 @@ func boundaries() []boundary {
 				"which core adapts; a tool's own updater runs through scriptrun, never the reverse",
 		},
 		{
-			pkg:       "internal/update",
-			forbidden: append(slices.Clone(noService), "internal/desktop", "internal/notify", "internal/scriptrun"),
+			pkg: "internal/update",
+			forbidden: append(slices.Clone(noService),
+				"internal/desktop", "internal/notify", "internal/scriptrun", "internal/prefs"),
 			why: "update holds the release manifest's format and its checks, which the release targets in magefiles " +
-				"share; it reaches GitHub, the settings, and the shell only through what core adapts",
+				"share, and checks, downloads, and installs the app's updates; it reads the releases through its " +
+				"Feed, keeps its state through Memory, backs up the database through DataBackup, asks about the " +
+				"runs through Runs, tells of a new version through its Notifier, and installs through the " +
+				"Installer the shell attaches, all of which core adapts",
 		},
 		{
 			pkg:       "internal/clonelock",
