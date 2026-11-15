@@ -57,10 +57,12 @@ pins.
 | `magex app:bindingsCheck` | Regenerates the bindings into a temporary directory and fails on any drift |
 | `magex app:lint` | Lints the desktop-tagged Go code (the desktop shell and the frontend embed) |
 | `magex app:test` | Runs the desktop-tagged tests, which run the desktop runtime itself (a bound method's error reaching the window worded); `magex test` builds without the tag |
-| `magex app:dev` | Runs the app against the Vite dev server with hot reload |
+| `magex app:dev` | Runs the app against the Vite dev server with hot reload; `magex app:dev fresh=true` runs it on a fresh [sandbox](#a-sandbox-on-fresh-data) data folder, so the [first-run setup](#first-run-setup) shows |
 | `magex app:build` | Builds the production bundle `bin/Nilbox.app` and signs it ad hoc for local use |
 | `magex app:open` | Opens `bin/Nilbox.app` as it is, building it first when it is missing; a running copy is only brought to the front |
 | `magex app:run` | Builds `bin/Nilbox.app`, quits the copy already running, and opens the fresh build: the one command after a change |
+| `magex app:fresh` | Opens `bin/Nilbox.app` on a fresh [sandbox](#a-sandbox-on-fresh-data) data folder, your prompts and launch defaults copied in, leaving your own data as it is; `magex app:run` goes back to it |
+| `magex app:reset` | [Starts the app over](#starting-over) on your own data: quits it, asks for the reset, and opens it again, which carries the reset out |
 | `magex app:check` | Runs `app:bindingsCheck`, `app:lint`, `app:test`, and `app:build` |
 | `magex db:generate` | Regenerates each table owner's typed queries from its `queries/*.sql` and the migrations, with the sqlc version `.github/env/90-project.env` pins |
 | `magex db:check` | Fails when the generated queries are stale or a query does not prepare against the schema the migrations build |
@@ -155,6 +157,35 @@ used, so `magex app:check` is a local step.
 
 <br>
 
+## First-run setup
+
+On a fresh database, as on a new install, after a [reset](#starting-over), or in a
+[sandbox](#a-sandbox-on-fresh-data), the app opens on its setup, over the whole window: a few
+steps that take you from the first launch to a filled inbox and a working agent launch. An
+install from before the setup, whose inbox ever signed in, is adopted as done once, at
+startup, and never sees it. The top bar says where you are (**Step 2 of 5 · 3 to go**), the
+rail beside the step lists every step, and each one you have reached is a way back to it.
+Every choice is saved as you make it, through the same setters Settings uses, and so is the
+step you are on: quitting part way through opens the setup there again. Enter continues
+while focus isn't in a field or on a control; Escape never skips.
+
+| Step | What it does |
+|---|---|
+| **Welcome** | Picks the theme, and offers to restore a [backup](#backing-up-your-setup), as on a new Mac. After a reset it says what came back; run again from Settings, it welcomes you back |
+| **Connect GitHub** | Checks the GitHub CLI's sign-in, one GraphQL point, as the step opens, on **Check again**, and whenever the window comes back to the front: gh missing (`brew install gh`), signed out (`gh auth login`), missing scopes (`gh auth refresh -s repo,read:org`), a refused token, or GitHub out of reach, each with its command to copy; once ready, the account, its scopes, and whether it reads projects. The first time it reads ready, the inbox and your GitHub notifications start filling, so they are there by the end |
+| **Find your clones** | The clone root as it reads now. When it is missing or holds no clones, the folders where clones commonly live (`~/projects`, `~/code`, `~/src`, `~/Developer`, `~/go/src/github.com`, and a few more, one level down too) that hold some, each to use as the clone root or add beside it; with none, **Start fresh** makes the clone root. Any other folder can be chosen, and the other repository locations are folded away below |
+| **Pick your agent** | Each coding agent with its version, or where to get it; its profiles, and the command that signs one in; the default, the profile a launch runs with, the terminal (iTerm2 or Terminal, installed ones only: a default iTerm2 that isn't installed moves to Terminal), and whether each session gets its own worktree |
+| **Stay in the loop** | Turns banners on with a sample, which makes macOS ask once; the agent sessions' banners; the menu bar icon; and the mirror of your GitHub notifications, and clearing them |
+| **Add your tools** | Only when it fits: mage-x or go-pre-commit is installed, or a clone uses one of them, runs go-fortress, or is a Go module (a few fixed paths in each clone, looked at with `lstat` alone). It says why it is suggested, shows each tool's card as Settings → Integrations does, and is always skippable |
+| **Finish** | Throws confetti, prints a `go test`-style log of the setup with a **Fix** beside whatever needs attention, previews the inbox, and opens it |
+
+macOS asks to allow banners only once the setup ends, or from its Notifications step, never
+the moment the window opens. **Skip setup** ends it at any step. **Settings → About → Run
+setup again** opens it from Welcome, every step showing what is set already, so it doubles as
+a check of your setup.
+
+<br>
+
 ## Data location
 
 The app keeps its database, launch files, and logs in one directory, created on first start
@@ -167,12 +198,16 @@ and readable only by you:
 | Windows (not yet supported) | `%AppData%\Nilbox` |
 
 The database is `nilbox.db` (SQLite, WAL mode). Before a schema migration changes an existing
-database, a copy of it is saved next to it, and the three newest copies are kept. Beside it,
+database, a copy of it is saved next to it, and the three newest copies are kept. A
+[reset](#starting-over) sets the database aside as `nilbox.db.reset-<UTC time>`, and keeps the
+three newest of those too. Beside it,
 `prompts.json` and `launch-defaults.json` hold copies of your prompt library and your launch
 defaults in plain JSON, each rewritten after every change (see
 [Keeping your prompts](#keeping-your-prompts)). Agent profiles need no copy: they are found in
 your home directory on every start. `backups/` holds the copies of your setup an import of a
-[backup](#backing-up-your-setup) saves before it changes anything, the five newest. GitHub tokens are never
+[backup](#backing-up-your-setup) saves before it changes anything, the five newest, and the
+copies a reset saves first (`nilbox before reset <UTC time>.json`), the five newest of those.
+A reset asked for and not yet carried out waits in `reset-request.json`. GitHub tokens are never
 stored there, nor anywhere else: the app borrows the token from `gh auth token` and keeps it in
 memory only. It reuses the token for up to ten minutes, and asks `gh` again sooner when GitHub
 refuses it or `gh`'s account changes (`gh auth switch`, `login`, or `logout`).
@@ -199,6 +234,10 @@ and the app quits. A database another process has open, such as an older copy of
 that is still running, or one that can't be written, is never moved. Like anything else that
 stops the app from starting, it is shown in an error dialog, which says what to do where that
 is known, and the app quits once you dismiss it.
+
+**Another data folder.** Started with `--data-dir=<absolute path>`, the app keeps everything,
+its logs included, in that folder instead, and never touches the directory above. It is how
+the [sandbox](#a-sandbox-on-fresh-data) runs; a relative path is refused.
 
 <br>
 
@@ -250,6 +289,40 @@ says where once it is done; the five newest are kept, so an import you regret is
 import away. The import itself is all or nothing: every category is applied together, and a
 failure in any leaves every one as it was. It reads the file again first, and refuses one that
 changed since you opened it.
+
+<br>
+
+## Starting over
+
+**Settings → About → Reset Nilbox…** starts the app over on fresh data, once you type `reset`
+to confirm. It saves a backup of your whole setup first, as an import does (to
+`backups/nilbox before reset <UTC time>.json`), refusing the reset when that fails, and it
+waits while runs are going in the app. Then it asks for the reset, quits, and opens again; the
+start carries the reset out before anything opens the database, and opens on the
+[first-run setup](#first-run-setup), whose Welcome says what came back. From a terminal,
+`magex app:reset` does the same: it quits the running app, asks for the reset, and opens it.
+
+| Starts over | Stays |
+|---|---|
+| Settings and repository locations, pinned and muted repositories and orgs, triage, the cached inbox, the notification history, the mirror of your GitHub notifications, worktree records, session history, run history, script trust, tool records, and the cached diffs, conversations, and profile pictures | Your prompts, launch defaults, and your own scripts, which come back from the database set aside; `backups/` and `logs/`; your clones and worktrees on disk (the next listing records them again); your agents' own config; and GitHub itself |
+
+The database is set aside, with its `-wal` and `-shm` files, as `nilbox.db.reset-<UTC time>`,
+and the newest three such copies are kept. To undo a reset, quit the app and rename the newest
+copy back to `nilbox.db`. Should another copy of the app still have the database open, the
+start stops with a dialog that says so, and the reset waits for the next start: it never
+starts on the old data unannounced.
+
+### A sandbox on fresh data
+
+`magex app:fresh` opens the app on a fresh data folder of its own, so you can try the
+first-run setup, or anything else, on clean data while your own data stays exactly as it is:
+it builds the bundle when it is missing, quits the running copy, makes
+`$TMPDIR/nilbox-fresh-*` (removing the ones it made before), copies your `prompts.json` and
+`launch-defaults.json` in, and opens the app with `--data-dir` pointing at it. A **Test data**
+chip beside the logo marks the window, so the sandbox is never mistaken for your app;
+`magex app:run` goes back to your own data. `magex app:dev fresh=true` does the same with hot
+reload, for building the setup itself; banners show as unavailable there, as in any
+development run.
 
 <br>
 

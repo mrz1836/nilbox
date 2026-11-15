@@ -215,7 +215,10 @@ Full setup and every build target: [docs/desktop.md](docs/desktop.md#build-targe
 
 ## ⚡ Quick Start
 
-Six steps, in the order you'll use them.
+Six steps, in the order you'll use them. On the first launch Nilbox walks you through the first
+few itself: a short [setup](docs/desktop.md#first-run-setup) checks your GitHub sign-in, finds
+your clones, picks your agent and terminal, and sets up your notifications, with the command
+that fixes anything missing. **Settings → About → Run setup again** brings it back.
 
 <br>
 
@@ -984,7 +987,9 @@ More in [The window](docs/desktop.md#the-window).
 - **About** shows the version, build, commit, and system, each coding agent's installed version,
   and the GitHub CLI's. **Report a bug** opens a GitHub issue with those details filled in, and
   your settings and integrations folded away beneath them, with nothing personal: no account,
-  repository, path, or name of your own.
+  repository, path, or name of your own. **Run setup again** walks the first-run setup once
+  more, and **Reset Nilbox…** [starts over](docs/desktop.md#starting-over) on fresh data,
+  keeping your prompts, launch defaults, and scripts.
 
 More in [The window](docs/desktop.md#the-window).
 
@@ -1002,7 +1007,7 @@ More in [The window](docs/desktop.md#the-window).
 | ✅ iTerm2 and Terminal.app            | **Supported** | iTerm2 by default                                                   |
 | ✅ mage-x and go-pre-commit           | **Supported** | Releases, Git hooks, and repository scripts in the Scripts tab      |
 | ✅ Mute or pin repositories and orgs  | **Supported** | Hide or raise everything from a repository or org at once           |
-| 🚧 First-run setup                   | **Planned**   | A GitHub CLI check, plus agent and terminal preferences             |
+| ✅ First-run setup                    | **Supported** | GitHub, clones, agent, terminal, notifications, and tools, in steps |
 | 🚧 Security alert sweeps             | **Planned**   | Sweep security alerts across every repository                       |
 | 🚧 More coding agents and terminals  | **Planned**   | Beyond Claude Code, Codex, iTerm2, and Terminal.app                 |
 | 🚧 More integrations                 | **Planned**   | Beyond mage-x and go-pre-commit                                     |

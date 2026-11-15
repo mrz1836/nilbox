@@ -141,7 +141,14 @@ app:lint` reads.
 
 - `cmd/nilbox/` is the application entry point: a headless build by default, and the Wails
   desktop app with the `desktop` build tag (`main_desktop.go`). Only the desktop bootstrap
-  imports Wails.
+  imports Wails. `--data-dir=<absolute path>` (`appdata.FromArgs`, `appdata.DataDirFlag`),
+  read before anything else, runs the app on that data directory, its logs included, in place
+  of the user's own: the sandbox `magex app:fresh` and `magex app:dev fresh=true` open, which
+  `core.Options.Sandbox` tells the window (`appinfo.Info.Sandbox`, a **Test data** chip). A
+  reset the user asked for quits the app and opens it again from `PostShutdown`, once the
+  shell has closed the database: `open -n <bundle>` (`desktop.RelaunchArgs`, pure and tested on
+  Linux, which a run outside a `.app` bundle, as `magex app:dev`'s, skips), with the sandbox's
+  `--data-dir` when it ran on one.
 - `internal/brand/` holds product identity, design tokens, and the logo mark. The palette tests
   enforce WCAG AA contrast for every text color in both themes. `internal/brandgen/` generates
   the frontend theme tokens, `build/darwin/Info.plist`, and the icon artwork (the app icon
@@ -155,7 +162,7 @@ app:lint` reads.
   profiles, prompts, launch defaults, inbox, review, issues, launcher, worktrees,
   notifications, app info, the API budget, sessions, integrations, script runs, release, hooks,
   repository scripts, the mirror of the user's GitHub notifications, the backup of the
-  user's setup, and the service status check.
+  user's setup, the service status check, and the first-run setup.
   Every `internal/*` package is plain Go, built and tested on Linux without CGO.
 - Services share their building blocks rather than keep copies: `internal/repo` and
   `internal/item` name repositories, pull requests and issues, and their worktrees;
@@ -1323,7 +1330,35 @@ app:lint` reads.
   deleted but one a launch default the import keeps still names; scripts identical to the
   file's keep their IDs. A backup never holds the GitHub sign-in, caches, mirrors, history,
   per-item triage, agent profiles, script trust (a file from elsewhere could pre-approve a
-  repository's command), the window's memory, or tool detection.
+  repository's command), the window's memory, or tool detection. Its `Saver` (`NewSaver`, a
+  type of its own, never bound) saves the whole setup before a reset the user asked for, to
+  `<data>/backups/<slug> before reset <stamp>.json`, the newest `KeepBefore` of those kept apart
+  from the import's.
+- `internal/setup/` is the first-run setup's service: where the user is in it and whether it
+  is done, kept in `setup.done` and `setup.step` (a `Step`, a named string type), which it
+  alone writes through its narrow `Memory` (core's `prefs.Store`), and which a backup never
+  holds. `setup.Adopt`, never bound, decides once per database at startup (core's
+  `adoptSetup`) whether the setup shows: while no `setup.*` key is stored, done when the inbox
+  ever signed in (`inbox.Store.ViewerLogin`, an install from before the setup), else not; once
+  decided it never decides again, and a state that was never stored reads as done, so a
+  passing problem never traps the user. `SetStep` remembers the step, `Finish` marks it done
+  and emits the Go-only `event.SetupFinished` (the shell then asks to allow banners, which it
+  held while the setup showed at launch), and `Restart` opens it again from Welcome (Settings
+  → About → Run setup again). Its checks: `GitHub` reads the GitHub CLI's sign-in through its
+  `Account` (core: `github.WithToken` and `(*github.Client).FetchSignIn`, the one-point viewer
+  query `FetchViewer` sends, widened to `login name url`, with the token's `X-OAuth-Scopes`)
+  into one of six `GitHubState`s with the command that fixes it, never an error but a check
+  the window gave up on; `Terminals` says which terminals are installed
+  (`terminal.Registry.Installed`, over `/Applications` and `~/Applications`; Terminal always
+  is); `Signals` counts the clones, every repository location's through the shared
+  `localrepos.Reader`, that hold each sign the Tools step looks for (a `go.mod`, mage-x's and
+  go-pre-commit's config, go-fortress's workflow), fixed paths with `os.Lstat` alone. `Reset`,
+  once the user typed `ResetWord`, refuses while runs go in the app (its `Runs`), saves a
+  backup first through its `Saver`, refusing the reset when that fails, writes the request
+  (`appdata.RequestReset`, `<data>/reset-request.json`), and emits the Go-only
+  `event.ResetRequested`, which the shell answers by letting the quit through and quitting to
+  open again. It reaches nothing else, and the boundary test keeps it from the inbox, the
+  settings, the store, the runs, and the backup, which core adapts.
 - `internal/measure/` and `magefiles/measure.go` take the numbers in
   [`docs/performance.md`](docs/performance.md).
 - `frontend/` is the React + TypeScript + Vite + Tailwind app. It reaches Go only through the
@@ -1392,7 +1427,7 @@ package imports the driver, and nothing imports an ORM (`internal/repoguard` enf
   migration; change the schema with a new `NNNN_<name>.sql`. Nothing else creates, alters, or
   drops a table. Never squash or edit a migration a build has shipped: every existing database
   then reads as a history this build disagrees with and is set aside, and only the prompt
-  library comes back on its own.
+  library, the launch defaults, and the user's own scripts come back on their own.
 - **Ownership.** Every table has one owner package (`tableOwners` in
   `internal/repoguard/datalayer_test.go`): profiles owns `agent_profiles`, keyed by `(agent,
   name)`, and worklog owns `worktree_records` and `worktree_cleanups`, for instance. The owner
@@ -1421,7 +1456,8 @@ package imports the driver, and nothing imports an ORM (`internal/repoguard` enf
   exactly one writer: settings writes the user's settings, including the rule keys that the trust,
   snooze, sensitive, notifyprefs, branchrules, reporules, integrationprefs, threadrules, and
   statusprefs packages declare; inbox
-  writes `inbox.*`; prompts writes `prompts.*` (the package doc has the full list). Settings and
+  writes `inbox.*`; prompts writes `prompts.*`; setup writes `setup.*` (the package doc has the
+  full list). Settings and
   those leaves write a switch and a list of strings one way, through the leaf
   `internal/prefs/prefval` (`Bool` and `EncodeBool`, `List` and `EncodeList`, which stores a nil
   list as `[]`).
@@ -1439,8 +1475,17 @@ package imports the driver, and nothing imports an ORM (`internal/repoguard` enf
   `<path>.broken-<UTC stamp>` once no other process has it open; a fresh database starts in its
   place, and `Opened.Reset` reaches the window as a notice. A database from a newer build is
   refused with `store.ErrNewerSchema` and left untouched. Any other failure (a lock, a
-  permission, a full disk, a failed migration) is a plain error, and nothing is moved.
-- **Prompts and launch defaults outlive the database.** They are what the user made, which
+  permission, a full disk, a failed migration) is a plain error, and nothing is moved. A reset
+  the user asked for (Settings → About, or `magex app:reset`, each writing
+  `appdata.RequestReset`'s request) is carried out by the next start, in core's `openData`,
+  before anything opens the database: `store.OpenFresh` waits about five seconds for another
+  copy of the app to let go, then sets the database aside as `<path>.reset-<UTC stamp>`
+  (`ResetRequested`, no error) for a fresh one, putting it back when the fresh one fails;
+  `store.PruneResetCopies` keeps the newest three, and the request is cleared. A database still
+  held is a busy error, the startup dialog's, with the request kept for the next start; with
+  no database file there is nothing to set aside, and a request that can't be read is logged
+  and dropped, never carried out.
+- **Prompts, launch defaults, and the user's scripts outlive the database.** They are what the user made, which
   GitHub can't give back. `prompts.LibraryFile` rewrites `prompts.json` beside the database
   after every change to the library, and `launchdefaults.File` rewrites
   `launch-defaults.json` after every change to the launch defaults or the library, since it
@@ -1448,7 +1493,10 @@ package imports the driver, and nothing imports an ORM (`internal/repoguard` enf
   back before `Seed` runs, from the database set aside or else from `prompts.json`, and core
   (`internal/core/kept.go`) restores the launch defaults from the same place, matched to the
   restored prompts. Core writes each copy at startup only when it is missing or the data was
-  just restored, so a loss in the database never overwrites a copy. Agent profiles need no
+  just restored, so a loss in the database never overwrites a copy. The user's own scripts
+  have no copy, but come back from a database set aside, whatever the reason (`scripts.Restore`,
+  beside the restore of the prompts, only into an empty list, each checked as `Save` checks
+  it), so a reset keeps them. Agent profiles need no
   copy: discovery finds them on every start, and nothing in the app edits one. `store.OpenSnapshot` reads a kept database of any
   schema, read-only and tolerant of missing columns, for the restore and for **Restore from a
   backup**. Import and restore go through one planner (`internal/prompts/importer.go`), which
