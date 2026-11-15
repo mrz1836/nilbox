@@ -40,3 +40,14 @@ func HelperRetryable(log []byte) bool {
 func Locate(bundle, home string, writable func(string) bool) Location {
 	return locate(bundle, home, systemApplications, "", writable)
 }
+
+// MarkInstalling has the engine say a restart into an update is under way, as restart does
+// before it installs.
+func (e *Engine) MarkInstalling() {
+	e.change(func(st *state) { st.installing = true })
+}
+
+// BundleID reads the bundle identifier of the app bundle at bundle from its Info.plist.
+func BundleID(bundle string) (string, error) {
+	return bundleID(bundle)
+}

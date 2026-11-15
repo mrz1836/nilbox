@@ -251,6 +251,14 @@ type Engine struct {
 	logger   *slog.Logger
 	location Location
 
+	// applications is the Applications folder every user shares, and writable says whether
+	// the user may create files in a folder: a move works its target out from them again.
+	applications string
+	writable     func(dir string) bool
+
+	// moving is held by the one move to Applications running.
+	moving sync.Mutex
+
 	// op is held by the one operation running.
 	op chan struct{}
 
@@ -263,6 +271,7 @@ type Engine struct {
 	mu         sync.Mutex
 	st         state
 	installer  Installer
+	mover      Mover
 	wake       func()
 	lastBackup backupTaken
 }
@@ -336,9 +345,13 @@ func NewEngine(cfg Config) *Engine {
 		rehearsal = cfg.RehearsalFolder
 	}
 
+	e.applications, e.writable = applications, writable
 	e.location = locate(cfg.Bundle, cfg.Home, applications, rehearsal, writable)
 	e.flavor, e.key, e.off = resolve(cfg)
 	e.feed = cfg.Feed
+
+	// Only a build that updates offers to move: moving any other gains nothing.
+	e.location.Movable = e.location.Movable && e.off == ""
 
 	if e.off == "" {
 		e.cache = NewCache(cfg.Cache, e.key)

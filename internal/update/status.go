@@ -93,6 +93,12 @@ type Location struct {
 	// Target is where moving it would put it, with ~ for home: the Applications folder
 	// when the user can write to it, else the one in the home folder.
 	Target string `json:"target"`
+
+	// Movable reports that Move to Applications can put the app at Target: a build that
+	// updates, running from its bundle on a disk image, from a path macOS translocated it
+	// to, or from anywhere else outside an Applications folder. A copy in an Applications
+	// folder its account can't change isn't movable: it is in Applications already.
+	Movable bool `json:"movable"`
 }
 
 // InstallFailure is the update the last restart didn't install, or, in a later run, the

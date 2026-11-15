@@ -160,6 +160,32 @@ func (s *Service) ShowInstallLog(ctx context.Context) error {
 	return s.e.reveal.Reveal(ctx, path) //nolint:wrapcheck // the revealer words its own failure
 }
 
+// MoveToApplications moves the app into Applications, where it can update itself, as the
+// move dialog asks: it copies the running bundle to Location.Target, checks the copy's
+// signature, and quits the app the normal way, which asks first while runs go in the app,
+// opening the copy once it has quit; the result is MoveMoved. A copy of the app there
+// already is never replaced: the result is MoveExists, for OpenInApplications. Anything else
+// there, a copy that fails, or one that doesn't pass its check (which is removed) is an
+// error in words, and nothing changes. The bundle that runs is never touched.
+func (s *Service) MoveToApplications(ctx context.Context) (MoveResult, error) {
+	return s.e.moveToApplications(ctx)
+}
+
+// OpenInApplications opens the copy of the app already in Applications, as Open it asks,
+// once its signature checks out: it quits the app the normal way, which asks first while
+// runs go, and opens that copy once it has quit, which updates itself when it is older. The
+// result is MoveOpening.
+func (s *Service) OpenInApplications(ctx context.Context) (MoveResult, error) {
+	return s.e.openInApplications(ctx)
+}
+
+// ShowAppInFinder shows the running app in Finder, so the user can delete the copy they
+// opened once it has moved to Applications. A copy macOS translocated runs from a folder it
+// hides, which Finder can't show.
+func (s *Service) ShowAppInFinder(ctx context.Context) error {
+	return s.e.showApp(ctx)
+}
+
 // on refuses an action in a build that doesn't update, and settles the start first. It
 // reports whether the start is settled: while the last install's helper may still be at
 // work (HelperWindow), it isn't, and nothing may download or install.
