@@ -1176,23 +1176,20 @@ magex app:check      # macOS: bindings drift check, desktop lint, desktop tests,
 <summary><strong><code>Releases</code></strong></summary>
 <br/>
 
-This project uses [goreleaser](https://github.com/goreleaser/goreleaser) to publish releases to
-GitHub. To get started, install it via:
-
-```bash
-brew install goreleaser
-```
-
-The release process is defined in the [.goreleaser.yml](.goreleaser.yml) configuration file. Then
-create and push a new Git tag using:
+Create and push a new Git tag, from the app's own Release page or with:
 
 ```bash
 magex version:bump bump=patch push=true branch=master
 ```
 
-The tag triggers [fortress-release.yml](.github/workflows/fortress-release.yml), which publishes the
-release and its changelog. `magex app:build` stamps the app with the same version, build number,
-and commit, all shown in Settings → About.
+The tag starts two workflows. GoFortress runs every check on it but publishes nothing
+(`ENABLE_RELEASE=false` in `.github/env/90-project.env`), and
+[desktop-release.yml](.github/workflows/desktop-release.yml) builds the universal macOS app on a
+macOS runner, signs it, waits for GoFortress to pass, and then publishes the release with its zip,
+disk image, checksums, and signed update manifest attached. `magex app:build` stamps the app with
+the same version, build number, and commit, all shown in Settings → About. The
+[Desktop Guide](docs/desktop.md#publishing-a-release) has the details, the secrets the workflow
+needs, and what to do when a release goes wrong.
 
 </details>
 
@@ -1200,18 +1197,20 @@ and commit, all shown in Settings → About.
 <summary><strong><code>GitHub Workflows</code></strong></summary>
 <br/>
 
-Nilbox uses the **Fortress** workflow system for its Go CI/CD, plus a dedicated frontend gate:
+Nilbox uses the **Fortress** workflow system for its Go CI/CD, plus a dedicated frontend gate and
+its own release workflow:
 
 - **fortress-test-suite.yml** — Complete Go test suite, built on Linux without CGO
 - **fortress-code-quality.yml** — Code quality checks (gofmt, golangci-lint, staticcheck)
 - **fortress-security-scans.yml** — Security scanning with gitleaks, govulncheck, and Nancy
 - **fortress-coverage.yml** — Code coverage reporting to Codecov
-- **fortress-release.yml** — Automated releases via GoReleaser
+- **fortress.yml** — Runs every check above on pull requests, `master`, and `v*` tags; on a tag it publishes nothing here (`ENABLE_RELEASE=false`)
+- **desktop-release.yml** — On a `v*` tag, builds and signs the macOS app on a macOS runner, waits for GoFortress to pass, then publishes the release with its files
 - **frontend.yml** — The frontend gate (`magex frontend:gate`): install, format check, lint, typecheck, tests, and the render check
 - **sqlc.yml** — Checks that the generated queries match their SQL and that every query prepares
 
-The desktop shell needs macOS, so `magex app:check` runs locally. See all workflows in
-[`.github/workflows/`](.github/workflows/).
+No check runs on macOS, so `magex app:check` runs locally; the one macOS runner builds releases.
+See all workflows in [`.github/workflows/`](.github/workflows/).
 
 </details>
 

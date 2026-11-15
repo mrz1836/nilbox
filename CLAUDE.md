@@ -62,7 +62,8 @@ enters `go.mod`.
 
 On macOS, a change to the desktop shell, the bound services, or the frontend must also pass
 `magex app:check` (bindings drift check, desktop lint, desktop tests, and the app bundle
-build). CI has no macOS runner, so this check is local.
+build). No CI check runs on macOS (the one macOS runner, `desktop-release.yml`'s, only builds
+releases), so this check is local.
 
 <br>
 
@@ -123,8 +124,8 @@ lost, so keep project rules in this file and project CI and tooling settings in
   `.github/tech-conventions/`, `.github/ISSUE_TEMPLATE/`, `.github/docs/`, and `.vscode/`
 - `.github/env/`, except `20-guardian.env`, `90-project.env`, and `99-local.env`
 
-Files the shared source doesn't have, such as `.github/workflows/frontend.yml` and
-`.github/workflows/sqlc.yml`, are left alone.
+Files the shared source doesn't have, such as `.github/workflows/frontend.yml`,
+`.github/workflows/sqlc.yml`, and `.github/workflows/desktop-release.yml`, are left alone.
 
 Settings → About's **Report a bug** opens `.github/ISSUE_TEMPLATE/bug_report.yml` and fills in its
 `environment` field: the versions, then the settings and integrations, which core words

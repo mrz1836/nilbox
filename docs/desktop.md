@@ -2,12 +2,12 @@
 
 Nilbox is a macOS desktop app: a Go core, a [Wails v3](https://wails.io) shell, and a React +
 TypeScript + Vite + Tailwind frontend in `frontend/`. This guide covers the one-time setup, the
-build targets, packaging a release, how the desktop shell is kept out of the Linux CI build, and
-what the app does on your machine: where it keeps its data, how the window and the inbox cards
-are laid out, how it finds your coding agents (Claude Code and OpenAI Codex) and their profiles,
-how prompts and launch defaults decide what a session starts with, how it follows each session it
-starts, how it decides what an item may do, and how it makes, keeps track of, and cleans up git
-worktrees.
+build targets, packaging and publishing a release, how the desktop shell is kept out of the Linux
+CI build, and what the app does on your machine: where it keeps its data, how the window and the
+inbox cards are laid out, how it finds your coding agents (Claude Code and OpenAI Codex) and their
+profiles, how prompts and launch defaults decide what a session starts with, how it follows each
+session it starts, how it decides what an item may do, and how it makes, keeps track of, and
+cleans up git worktrees.
 
 Measured startup, refresh, launch, size, and API-budget numbers, and how they were taken, are
 in [performance.md](performance.md).
@@ -514,6 +514,88 @@ To clean up, delete `bin/rehearsal` and the rehearsal's data directory,
 
 <br>
 
+## Publishing a release
+
+Each release is built, signed, and published by
+[`desktop-release.yml`](../.github/workflows/desktop-release.yml), which runs `magex
+app:package` on a macOS runner. It is the one workflow that may use macOS: a repository test
+(`TestNoMacOSRunners`) holds every other to ubuntu. GoFortress still runs every check on the tag,
+but publishes nothing itself (`ENABLE_RELEASE=false` in `.github/env/90-project.env`), so a
+release never shows without its files.
+
+**How to release.**
+
+1. Merge to `master`.
+2. Tag it from the app's own [Release](#release) page, or with `magex version:bump bump=patch
+   push=true`. A tag with a suffix, such as `v0.3.0-rc.1`, is a prerelease.
+3. The tag starts two workflows at once: **GoFortress** runs every check, and **Desktop
+   release** builds and signs meanwhile.
+4. Once GoFortress passes, Desktop release drafts the release, attaches the zip, the disk image,
+   `SHA256SUMS`, and the update manifest, checks them on GitHub, and publishes it, all together.
+5. The app's Release page follows both runs and says *published* at that moment, when the update
+   is live.
+
+**What the workflow does,** on a `v*` tag and nothing else:
+
+1. Checks the tag is a release's (`v1.2.3`, or `v1.2.3-rc.1` for a prerelease), reading it only
+   from the environment, then checks it out.
+2. Stops if the tag already has a published release: GoFortress most likely published it, so
+   check that `ENABLE_RELEASE=false` reaches its setup, whose summary says whether release
+   publishing is on. A draft left by an earlier attempt is reused.
+3. Sets up Go, pnpm, Node, and magex, with no dependency or build cache, so the build uses only
+   what the tag pins.
+4. Makes a keychain of its own in the runner's temporary folder, imports the code-signing
+   certificate into it, and writes the release key there, readable by the runner alone.
+5. Runs `magex app:package` and `magex app:verify`, then deletes the keychain and the key, which
+   nothing after needs. They are deleted however the job ends.
+6. Waits for GoFortress's run for the tag, which has been checking the same commit meanwhile.
+   If it fails, nothing is published.
+7. Creates the release as a draft, which no one else sees, titled `Release <tag>`: the install
+   note first, then the notes GitHub generates from the pull requests merged since the last
+   release, marked a prerelease for a tag with a suffix.
+8. Attaches the zip, the disk image, and `SHA256SUMS`, then the manifest last.
+9. Downloads them back from the draft, checks the manifest and the zip with `magex app:verify`,
+   and compares every file with what it built.
+10. Publishes it. A stable release becomes the latest; a prerelease never does.
+11. For a stable release, checks that `releases/latest/download/manifest-darwin.json` serves the
+    new version.
+
+**The `release` environment.** The workflow's job runs in a GitHub environment named `release`,
+whose deployment rule admits only `v*` tags, so no branch or pull request ever runs with its
+secrets. It holds:
+
+| Name | Kind | What it is |
+|---|---|---|
+| `UPDATE_SIGNING_KEY` | Secret | The release key's private half, the PEM file `magex app:keygen` wrote |
+| `CODESIGN_P12` | Secret | The code-signing certificate and its key, a `.p12` file in base64. Export it with macOS's `/usr/bin/openssl`, or with `-legacy` from OpenSSL 3 or newer, or `security import` refuses it |
+| `CODESIGN_P12_PASSWORD` | Secret | The `.p12` file's password |
+| `CODESIGN_IDENTITY` | Variable | The code-signing identity's name (or SHA-1), passed to `app:package` |
+
+**Trying again.** Use Actions' **Re-run failed jobs** on the Desktop release run. It keeps the
+tag, the workflow as the tag holds it, and the secrets, so the workflow needs no manual trigger.
+It reuses the draft an earlier attempt left and replaces its files.
+
+**When something goes wrong.**
+
+- **GoFortress failed on the tag:** nothing was published. Fix it or re-run it, and once it is
+  green, **Re-run failed jobs** on Desktop release. A broken tag is fixed forward with a new tag;
+  a pushed tag is never moved.
+- **Desktop release failed partway:** nothing is public until its last steps. At worst a draft
+  exists, which no one else sees. Fix the cause, then **Re-run failed jobs**.
+- **A bad release shipped:** fix it forward with a patch release; installed copies take only a
+  newer version, so they update once it is out. A published release can't be changed: the
+  repository's releases are immutable, so its files can't be replaced or deleted. To keep more
+  copies from taking it meanwhile, mark the release before it as the latest again (`gh release
+  edit <earlier tag> --latest`), so `releases/latest/download/manifest-darwin.json` serves that
+  release's older version, which offers no update.
+- **The release key leaked or was lost:** make a new one with `magex app:keygen`, and ship a
+  release whose app pins it, signed with the new key. Copies on older versions can't verify it,
+  so they need one reinstall by hand; say so in the release notes and the README.
+- **The certificate expired or was replaced:** the next build's identity changes, which costs
+  everyone one Automation prompt. A ten-year certificate makes this rare.
+
+<br>
+
 ## How the desktop shell is kept out of CI
 
 Everything except the window is plain Go in untagged `internal/*` packages, built, tested, and
@@ -545,8 +627,9 @@ and it sits behind the `desktop` build tag:
   `app:open`, `app:run`, and `app:check` end to end against those fakes.
 
 CI runs the fortress workflows on ubuntu for the Go code, `.github/workflows/frontend.yml` for
-`magex frontend:gate`, and `.github/workflows/sqlc.yml` for `magex db:check`. No macOS runner is
-used, so `magex app:check` is a local step.
+`magex frontend:gate`, and `.github/workflows/sqlc.yml` for `magex db:check`. No check runs on
+macOS, so `magex app:check` is a local step; the one macOS runner builds releases
+([Publishing a release](#publishing-a-release)).
 
 <br>
 
