@@ -229,6 +229,9 @@ func TestSnapshotsListsTheKeptDatabasesNewestFirst(t *testing.T) {
 		"app.db-wal",
 		"app.db.backup-20261106T201810Z-v10",
 		"app.db.backup-20261107T031018Z-v12",
+		"app.db.backup-20261107T031018Z-v12-1",
+		"app.db.backup-20261105T000000Z-vX",
+		"app.db.backup-20261104T000000Z",
 		"app.db.broken-20261108T165152Z",
 		"app.db.broken-20261108T165152Z-wal",
 		"app.db.broken-20261108T165152Z-shm",
@@ -258,9 +261,21 @@ func TestSnapshotsListsTheKeptDatabasesNewestFirst(t *testing.T) {
 		{Path: filepath.Join(dir, "app.db.reset-20261109T120000Z"), Kind: store.SnapshotReset, At: at("20261109T120000Z")},
 		{Path: filepath.Join(dir, "app.db.broken-20261108T165152Z-1"), Kind: store.SnapshotSetAside, At: at("20261108T165152Z")},
 		{Path: filepath.Join(dir, "app.db.broken-20261108T165152Z"), Kind: store.SnapshotSetAside, At: at("20261108T165152Z")},
-		{Path: filepath.Join(dir, "app.db.backup-20261107T031018Z-v12"), Kind: store.SnapshotBackup, At: at("20261107T031018Z")},
-		{Path: filepath.Join(dir, "app.db.backup-20261106T201810Z-v10"), Kind: store.SnapshotBackup, At: at("20261106T201810Z")},
-	}, got)
+		{
+			Path: filepath.Join(dir, "app.db.backup-20261107T031018Z-v12-1"), Kind: store.SnapshotBackup,
+			At: at("20261107T031018Z"), Schema: 12,
+		},
+		{
+			Path: filepath.Join(dir, "app.db.backup-20261107T031018Z-v12"), Kind: store.SnapshotBackup,
+			At: at("20261107T031018Z"), Schema: 12,
+		},
+		{
+			Path: filepath.Join(dir, "app.db.backup-20261106T201810Z-v10"), Kind: store.SnapshotBackup,
+			At: at("20261106T201810Z"), Schema: 10,
+		},
+		{Path: filepath.Join(dir, "app.db.backup-20261105T000000Z-vX"), Kind: store.SnapshotBackup, At: at("20261105T000000Z")},
+		{Path: filepath.Join(dir, "app.db.backup-20261104T000000Z"), Kind: store.SnapshotBackup, At: at("20261104T000000Z")},
+	}, got, "a backup's schema is read from its name, 0 when it names none")
 }
 
 func TestSnapshotsOfAMissingDirectoryIsEmpty(t *testing.T) {

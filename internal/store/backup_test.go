@@ -78,7 +78,12 @@ func TestBackupNamesAndPrunesAsTheMigrationsDo(t *testing.T) {
 
 	for _, s := range snapshots {
 		assert.Equal(t, store.SnapshotBackup, s.Kind, "listed as a backup")
+		assert.Equal(t, newest, s.Schema, "with the schema it holds")
 	}
+
+	latest, err := store.LatestSchema()
+	require.NoError(t, err)
+	assert.Equal(t, newest, latest, "this build's newest migration")
 }
 
 func TestBackupOfAClosedDatabaseFails(t *testing.T) {

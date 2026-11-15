@@ -40,6 +40,23 @@ func Backup(ctx context.Context, db *sql.DB, path string) (string, error) {
 	return backup, nil
 }
 
+// LatestSchema returns the newest migration this build has. A database whose own newest is
+// newer was saved by a newer build, which Open refuses (ErrNewerSchema); a backup whose
+// schema (SnapshotFile.Schema) is no newer opens here, brought up to date.
+func LatestSchema() (int, error) {
+	migrations, err := migrate.Load(migrate.Embedded())
+	if err != nil {
+		return 0, fmt.Errorf("read the migrations: %w", err)
+	}
+
+	newest := 0
+	for _, m := range migrations {
+		newest = max(newest, m.Version)
+	}
+
+	return newest, nil
+}
+
 // RestoreBackup puts backup, one of the backups beside the database at path (a
 // SnapshotBackup, as Backup and the migrations take), in the database's place. The backup
 // is first copied, not moved, into a temporary file beside the database, so the backup

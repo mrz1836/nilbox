@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -77,6 +78,11 @@ type SnapshotFile struct {
 
 	// At is when it was set aside or backed up, read from its name, in UTC.
 	At time.Time
+
+	// Schema is the newest migration a backup holds, read from its name's -v<schema>, or 0
+	// for a file that names none: one set aside, or a backup of a database no migration
+	// had touched.
+	Schema int
 }
 
 // Snapshots lists the databases kept beside the database at path, the newest first: the
@@ -143,10 +149,33 @@ func snapshotFile(base, name string) (SnapshotFile, bool) {
 			continue
 		}
 
-		return SnapshotFile{Kind: k.kind, At: at.UTC()}, true
+		file := SnapshotFile{Kind: k.kind, At: at.UTC()}
+		if k.kind == SnapshotBackup {
+			file.Schema = backupSchema(rest[len(clock.StampLayout):])
+		}
+
+		return file, true
 	}
 
 	return SnapshotFile{}, false
+}
+
+// backupSchema reads the schema from what follows a backup's stamp: -v<schema>, then
+// perhaps -<n> when two backups took the same second. Anything else names none: 0.
+func backupSchema(rest string) int {
+	digits, ok := strings.CutPrefix(rest, "-v")
+	if !ok {
+		return 0
+	}
+
+	digits, _, _ = strings.Cut(digits, "-")
+
+	schema, err := strconv.Atoi(digits)
+	if err != nil || schema < 0 || strconv.Itoa(schema) != digits {
+		return 0
+	}
+
+	return schema
 }
 
 // Snapshot is a read-only view of a database file the app keeps but no longer opens as
