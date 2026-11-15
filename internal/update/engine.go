@@ -185,6 +185,13 @@ type Config struct {
 	Home         string
 	Applications string
 
+	// RehearsalFolder is a folder a rehearsal build updates itself in, as it would in an
+	// Applications folder: the one magex app:rehearse builds it into, which core works out
+	// from the rehearsal's feed, so a rehearsal runs end to end without touching an
+	// Applications folder. Every other flavor ignores it: a release updates itself only in
+	// an Applications folder.
+	RehearsalFolder string
+
 	// TempDir is where the runtime's helper writes its log and readiness files
 	// (os.TempDir() when ""), and PID the running app's process (os.Getpid() when 0),
 	// which names the helper's log.
@@ -317,7 +324,13 @@ func NewEngine(cfg Config) *Engine {
 		applications = systemApplications
 	}
 
-	e.location = locate(cfg.Bundle, cfg.Home, applications, writable)
+	// A rehearsal alone updates itself in its own folder too.
+	rehearsal := ""
+	if cfg.Flavor == FlavorRehearsal {
+		rehearsal = cfg.RehearsalFolder
+	}
+
+	e.location = locate(cfg.Bundle, cfg.Home, applications, rehearsal, writable)
 	e.flavor, e.key, e.off = resolve(cfg)
 	e.feed = cfg.Feed
 

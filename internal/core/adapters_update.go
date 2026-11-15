@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"path/filepath"
 
 	"github.com/mrz1836/nilbox/internal/brand"
 	"github.com/mrz1836/nilbox/internal/github"
@@ -37,7 +38,7 @@ func newUpdates(pool *sql.DB, opts Options, deps updateDeps, logger *slog.Logger
 	engine := update.NewEngine(update.Config{
 		Flavor: flavor, Current: opts.Release, Feed: feed, Key: key,
 		Memory: prefsstore.New(pool, opts.Clock), Cache: opts.Paths.Updates, Logs: opts.Paths.Logs,
-		Bundle: opts.Bundle, Home: opts.Home,
+		Bundle: opts.Bundle, Home: opts.Home, RehearsalFolder: rehearsalFolder(opts),
 		Backup:   dataBackup{pool: pool, path: opts.Paths.DB},
 		Runs:     updateRuns{engine: deps.runs, history: deps.history},
 		Notifier: updateNotices{dispatcher: deps.dispatcher},
@@ -67,6 +68,18 @@ func updateSource(opts Options, client *github.Client) (update.Flavor, update.Fe
 	default:
 		return update.FlavorSource, nil, ""
 	}
+}
+
+// rehearsalFolder is the folder a rehearsal build updates itself in beside the Applications
+// folders: the one that holds its feed, where magex app:rehearse builds A too, so a
+// rehearsal runs end to end without an Applications folder; "" for every other flavor,
+// which the engine ignores it for besides.
+func rehearsalFolder(opts Options) string {
+	if opts.Flavor != update.FlavorRehearsal || opts.UpdateFeed == "" {
+		return ""
+	}
+
+	return filepath.Dir(filepath.Clean(opts.UpdateFeed))
 }
 
 // githubFeed reads the releases from GitHub's release download hosts through the shared

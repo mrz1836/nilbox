@@ -28,5 +28,5 @@ func HelperReason(log []byte) string {
 
 // Locate works out where the bundle is, with writable standing in for the system's answer.
 func Locate(bundle, home string, writable func(string) bool) Location {
-	return locate(bundle, home, systemApplications, writable)
+	return locate(bundle, home, systemApplications, "", writable)
 }
