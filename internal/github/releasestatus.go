@@ -28,6 +28,10 @@ const (
 	releaseTagsMax    = 20
 	releaseCommitsMax = 10
 
+	// releaseChecksMax is how many of the newest commit's checks and statuses the read of
+	// one repository lists (FetchRepoReleaseStatus).
+	releaseChecksMax = 100
+
 	// releasePrefix is what both release queries ask about each repository under, with its
 	// index, as in r0.
 	releasePrefix = "r"
@@ -42,23 +46,35 @@ const (
 	errorForbidden = "FORBIDDEN"
 )
 
-// releaseStatusFragment is what the status query reads of each repository, with
-// releaseTagsMax in place of its verb: whether it is archived, the viewer's access, the
-// default branch and its newest commit with that commit's check rollup, and the newest
-// tags by commit date, each with what it points at and, for an annotated tag, what the tag
-// object points at.
+// releaseStatusFragment is what the status query reads of each repository, with what the
+// rollup adds to its state (releaseChecksFields, or nothing) and releaseTagsMax in place of
+// its verbs: whether it is archived, the viewer's access, the default branch and its newest
+// commit with that commit's check rollup, and the newest tags by commit date, each with what
+// it points at and, for an annotated tag, what the tag object points at.
 const releaseStatusFragment = `
 fragment ReleaseStatusFields on Repository {
   isArchived viewerPermission
   defaultBranchRef {
     name
-    target { oid ... on Commit { committedDate messageHeadline statusCheckRollup { state } } }
+    target { oid ... on Commit { committedDate messageHeadline statusCheckRollup { state%s } } }
   }
   refs(refPrefix: "refs/tags/", first: %d, orderBy: {field: TAG_COMMIT_DATE, direction: DESC}) {
     nodes { name target { __typename oid ... on Tag { target { __typename oid } } } }
   }
 }
 `
+
+// releaseChecksFields is what the read of one repository adds to its newest commit's
+// rollup, with releaseChecksMax in place of its verb: each check run, with the workflow it
+// belongs to, and each commit status, with its page. GitHub counts one connection more,
+// which stays within the query's one point.
+const releaseChecksFields = ` contexts(first: %d) {
+      nodes {
+        __typename
+        ... on CheckRun { name conclusion status detailsUrl checkSuite { workflowRun { workflow { name } } } }
+        ... on StatusContext { context state targetUrl }
+      }
+    }`
 
 // releaseCompareFragment is what the compare query reads of a comparison, with
 // releaseCommitsMax in place of its verb: how far the head is ahead, and its newest
@@ -92,6 +108,10 @@ type ReleaseStatus struct {
 	// HeadChecks is the rollup state of Head's checks and statuses: SUCCESS, PENDING,
 	// FAILURE, ERROR, or EXPECTED, and "" when it has none.
 	HeadChecks string
+
+	// HeadCheckList is each of Head's check runs and commit statuses, at most 100, which
+	// only FetchRepoReleaseStatus reads; FetchReleaseStatus leaves it nil.
+	HeadCheckList []Check
 
 	// Tags are the repository's newest tags by commit date, newest first, at most 20. Never
 	// nil.
@@ -160,13 +180,28 @@ func (c *Client) FetchReleaseStatus(
 ) (map[string]ReleaseStatus, error) {
 	out, err := sendReleaseBatches(ctx, uniqueBy(repos, repo.Name.Key),
 		func(ctx context.Context, batch []repo.Name) (map[string]ReleaseStatus, error) {
-			return c.fetchReleaseStatus(ctx, tok, batch)
+			return c.fetchReleaseStatus(ctx, tok, batch, false)
 		}, answered)
 	if err != nil {
 		return nil, Redact(err, tok)
 	}
 
 	return out, nil
+}
+
+// FetchRepoReleaseStatus reads one repository's status as FetchReleaseStatus does, and with
+// it each of its newest commit's check runs and commit statuses (HeadCheckList), in the
+// same query, for the same one point, which the budget hears. ok is false when GitHub can't
+// resolve the repository or won't show it to the token.
+func (c *Client) FetchRepoReleaseStatus(ctx context.Context, tok Token, name repo.Name) (ReleaseStatus, bool, error) {
+	got, err := c.fetchReleaseStatus(ctx, tok, []repo.Name{name}, true)
+	if err != nil {
+		return ReleaseStatus{}, false, Redact(err, tok)
+	}
+
+	status, ok := got[name.Key()]
+
+	return status, ok, nil
 }
 
 // FetchReleaseCompare reads, for each request, how far its branch is ahead of its tag,
@@ -306,9 +341,12 @@ func uniqueBy[T any](items []T, key func(T) string) []T {
 	})
 }
 
-// fetchReleaseStatus sends one status query and returns its answers by repository key.
-func (c *Client) fetchReleaseStatus(ctx context.Context, tok Token, repos []repo.Name) (map[string]ReleaseStatus, error) {
-	query, err := releaseStatusQuery(repos)
+// fetchReleaseStatus sends one status query and returns its answers by repository key,
+// each with its newest commit's checks one by one when checks is set.
+func (c *Client) fetchReleaseStatus(
+	ctx context.Context, tok Token, repos []repo.Name, checks bool,
+) (map[string]ReleaseStatus, error) {
+	query, err := releaseStatusQuery(repos, checks)
 	if err != nil {
 		return nil, err
 	}
@@ -321,7 +359,7 @@ func (c *Client) fetchReleaseStatus(ctx context.Context, tok Token, repos []repo
 	out := make(map[string]ReleaseStatus, len(repos))
 
 	for i, r := range repos {
-		if status, ok := (*resp.Data)[batchAlias(releasePrefix, i)].status(); ok {
+		if status, ok := (*resp.Data)[batchAlias(releasePrefix, i)].status(checks); ok {
 			out[r.Key()] = status
 		}
 	}
@@ -354,9 +392,10 @@ func (c *Client) fetchReleaseCompare(
 	return out, nil
 }
 
-// releaseStatusQuery asks about each repository under its own alias. The repository is
-// written by repoField, so no name can break out of its argument.
-func releaseStatusQuery(repos []repo.Name) (string, error) {
+// releaseStatusQuery asks about each repository under its own alias, and, when checks is
+// set, about each of its newest commit's checks too. The repository is written by
+// repoField, so no name can break out of its argument.
+func releaseStatusQuery(repos []repo.Name, checks bool) (string, error) {
 	var b strings.Builder
 
 	b.WriteString("query ReleaseStatus {\n")
@@ -373,7 +412,13 @@ func releaseStatusQuery(repos []repo.Name) (string, error) {
 	// The query's own cost, so the API budget counts it; the key is not an alias, so no
 	// repository looks it up.
 	b.WriteString("  rateLimit { cost }\n}\n")
-	fmt.Fprintf(&b, releaseStatusFragment, releaseTagsMax)
+
+	rollup := ""
+	if checks {
+		rollup = fmt.Sprintf(releaseChecksFields, releaseChecksMax)
+	}
+
+	fmt.Fprintf(&b, releaseStatusFragment, rollup, releaseTagsMax)
 
 	return b.String(), nil
 }
@@ -435,7 +480,10 @@ type releaseCommit struct {
 	MessageHeadline   string    `json:"messageHeadline"`
 	CommittedDate     time.Time `json:"committedDate"`
 	StatusCheckRollup *struct {
-		State string `json:"state"`
+		State    string `json:"state"`
+		Contexts struct {
+			Nodes []*graphQLCheck `json:"nodes"`
+		} `json:"contexts"`
 	} `json:"statusCheckRollup"`
 }
 
@@ -454,8 +502,9 @@ type releaseTagNode struct {
 	} `json:"target"`
 }
 
-// status converts one repository's answer; ok is false when there is none.
-func (r *releaseStatusRepo) status() (ReleaseStatus, bool) {
+// status converts one repository's answer, with its newest commit's checks one by one when
+// checks is set; ok is false when there is none.
+func (r *releaseStatusRepo) status(checks bool) (ReleaseStatus, bool) {
 	if r == nil {
 		return ReleaseStatus{}, false
 	}
@@ -464,9 +513,17 @@ func (r *releaseStatusRepo) status() (ReleaseStatus, bool) {
 		Archived: r.IsArchived, ViewerPermission: r.ViewerPermission, Tags: make([]ReleaseTag, 0, len(r.Refs.Nodes)),
 	}
 
+	if checks {
+		out.HeadCheckList = []Check{}
+	}
+
 	if ref := r.DefaultBranchRef; ref != nil {
 		out.DefaultBranch = ref.Name
 		out.Head, out.HeadChecks = ref.Target.commit(), ref.Target.checks()
+
+		if checks {
+			out.HeadCheckList = ref.Target.checkList()
+		}
 	}
 
 	for _, n := range r.Refs.Nodes {
@@ -494,6 +551,23 @@ func (n *releaseCommit) checks() string {
 	}
 
 	return n.StatusCheckRollup.State
+}
+
+// checkList converts each of the commit's check runs and commit statuses, skipping nulls
+// and other nodes; empty, never nil, when it has none.
+func (n *releaseCommit) checkList() []Check {
+	out := []Check{}
+	if n == nil || n.StatusCheckRollup == nil {
+		return out
+	}
+
+	for _, c := range n.StatusCheckRollup.Contexts.Nodes {
+		if check, ok := c.check(); ok {
+			out = append(out, check)
+		}
+	}
+
+	return out
 }
 
 // tag converts one tag, peeling an annotated tag to its commit; ok is false for a null or

@@ -229,6 +229,27 @@ func TestGatherACleanClone(t *testing.T) {
 	assert.Equal(t, r.second, o.Head)
 }
 
+func TestGatherNamesTheChecksThatFailed(t *testing.T) {
+	t.Parallel()
+
+	r := newGatherRig(t)
+	failing := []FailedCheck{{Name: "coverage/project", Status: true}}
+	status := r.github.statuses[name("sdk").Key()]
+	status.Checks, status.Failing = ChecksFailure, failing
+	r.github.statuses[name("sdk").Key()] = status
+
+	f := r.gather(t, Choice{RunsIn: integrationprefs.RunsInApp})
+	assert.Equal(t, failing, f.Repo.Failing)
+	assert.Equal(t, [][]repo.Name{{name("sdk")}}, r.github.asked, "one read of the repository")
+
+	o := Decide(f)
+	got, ok := checkOf(o, CheckChecks)
+	require.True(t, ok)
+	assert.Equal(t, "coverage/project is failing on "+r.second[:shortOIDLen], got.Text)
+	assert.Equal(t, []Fix{FixView, FixCheckAgain}, got.Fixes)
+	assert.True(t, o.Ready, "failing checks only warn")
+}
+
 func TestGatherFindsWhatMatters(t *testing.T) {
 	t.Parallel()
 

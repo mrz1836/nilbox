@@ -208,7 +208,8 @@ func TestFetchReleaseStatusReadsEachRepository(t *testing.T) {
 		assert.Contains(t, query, `r4: repository(owner: "acme-org", name: "single-sign-on") { ...ReleaseStatusFields }`)
 		assert.Contains(t, query, "fragment ReleaseStatusFields on Repository {")
 		assert.Contains(t, query, "isArchived viewerPermission")
-		assert.Contains(t, query, "statusCheckRollup { state }")
+		assert.Contains(t, query, "statusCheckRollup { state }", "the list reads the rollup's state alone")
+		assert.NotContains(t, query, "contexts(")
 		assert.Contains(t, query, `refs(refPrefix: "refs/tags/", first: 20, orderBy: {field: TAG_COMMIT_DATE, direction: DESC})`)
 		assert.Contains(t, query, "... on Tag { target { __typename oid } }", "an annotated tag is peeled to what it marks")
 		assert.Contains(t, query, "rateLimit { cost }", "the query reports its cost")
@@ -254,6 +255,145 @@ func TestFetchReleaseStatusReadsEachRepository(t *testing.T) {
 	assert.NotContains(t, got, repos[4].Key())
 }
 
+// repoReleaseStatusBody answers the read of one repository: a failing head whose checks
+// are a check run that passed, one that failed, a commit status that failed, a null node,
+// and a node of a type the client doesn't know.
+const repoReleaseStatusBody = `{
+  "data": {
+    "r0": {
+      "isArchived": false,
+      "viewerPermission": "ADMIN",
+      "defaultBranchRef": {
+        "name": "master",
+        "target": {"oid": "4444444444444444444444444444444444444444", "committedDate": "2026-11-09T15:04:05Z",
+          "messageHeadline": "Add the release page", "statusCheckRollup": {"state": "FAILURE", "contexts": {"nodes": [
+            {"__typename": "CheckRun", "name": "Lint", "status": "COMPLETED", "conclusion": "SUCCESS",
+              "detailsUrl": "https://github.com/acme-org/example-repo/actions/runs/1/job/2",
+              "checkSuite": {"workflowRun": {"workflow": {"name": "CI"}}}},
+            {"__typename": "CheckRun", "name": "Test", "status": "COMPLETED", "conclusion": "TIMED_OUT",
+              "detailsUrl": "https://github.com/acme-org/example-repo/actions/runs/1/job/3",
+              "checkSuite": {"workflowRun": {"workflow": {"name": "CI"}}}},
+            {"__typename": "StatusContext", "context": "coverage/project", "state": "FAILURE",
+              "targetUrl": "https://coverage.example.com/acme-org/example-repo"},
+            null,
+            {"__typename": "SomethingNew"}
+          ]}}}
+      },
+      "refs": {"nodes": []}
+    },
+    "rateLimit": {"cost": 1}
+  }
+}`
+
+func TestFetchRepoReleaseStatusListsTheHeadsChecks(t *testing.T) {
+	t.Parallel()
+
+	var queries atomic.Int32
+
+	client := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		queries.Add(1)
+
+		query := readReleaseQuery(t, r)
+		assert.True(t, strings.HasPrefix(query, "query ReleaseStatus {"), "a query, never a mutation")
+		assert.Equal(t, 1, releaseAliases(query))
+		assert.Contains(t, query, `r0: repository(owner: "acme-org", name: "example-repo") { ...ReleaseStatusFields }`)
+		assert.Contains(t, query, "statusCheckRollup { state contexts(first: 100) {")
+		assert.Contains(t, query, "... on StatusContext { context state targetUrl }", "a commit status is read too")
+		assert.Contains(t, query, "rateLimit { cost }", "the query reports its cost")
+
+		_, _ = io.WriteString(w, repoReleaseStatusBody)
+	})
+
+	got, ok, err := client.FetchRepoReleaseStatus(t.Context(), NewToken(fakeToken),
+		repo.Name{Owner: filesOwner, Repo: exampleRepo})
+	require.NoError(t, err)
+	require.True(t, ok)
+	assert.Equal(t, int32(1), queries.Load(), "the checks come in the status's own query")
+
+	assert.Equal(t, sha1s("4"), got.Head.OID)
+	assert.Equal(t, "FAILURE", got.HeadChecks)
+	assert.Equal(t, []Check{
+		{
+			Kind: CheckKindRun, Name: "Lint", Workflow: "CI", State: "SUCCESS", Outcome: CheckPassed,
+			URL: "https://github.com/acme-org/example-repo/actions/runs/1/job/2",
+		},
+		{
+			Kind: CheckKindRun, Name: "Test", Workflow: "CI", State: "TIMED_OUT", Outcome: CheckFailed,
+			URL: "https://github.com/acme-org/example-repo/actions/runs/1/job/3",
+		},
+		{
+			Kind: CheckKindStatus, Name: "coverage/project", State: "FAILURE", Outcome: CheckFailed,
+			URL: "https://coverage.example.com/acme-org/example-repo",
+		},
+	}, got.HeadCheckList, "a null node and one of an unknown type are skipped")
+}
+
+func TestFetchRepoReleaseStatusWithoutChecksOrRepository(t *testing.T) {
+	t.Parallel()
+
+	t.Run("a head without checks lists none", func(t *testing.T) {
+		t.Parallel()
+
+		client := newTestClient(t, func(w http.ResponseWriter, _ *http.Request) {
+			_, _ = io.WriteString(w, `{"data": {"r0": {"viewerPermission": "WRITE", "defaultBranchRef": {"name": "main",
+				"target": {"oid": "7777777777777777777777777777777777777777", "statusCheckRollup": null}},
+				"refs": {"nodes": []}}, "rateLimit": {"cost": 1}}}`)
+		})
+
+		got, ok, err := client.FetchRepoReleaseStatus(t.Context(), NewToken(fakeToken),
+			repo.Name{Owner: filesOwner, Repo: exampleRepo})
+		require.NoError(t, err)
+		require.True(t, ok)
+		assert.Empty(t, got.HeadChecks)
+		assert.NotNil(t, got.HeadCheckList)
+		assert.Empty(t, got.HeadCheckList)
+	})
+
+	t.Run("an empty repository lists none", func(t *testing.T) {
+		t.Parallel()
+
+		client := newTestClient(t, func(w http.ResponseWriter, _ *http.Request) {
+			_, _ = io.WriteString(w, `{"data": {"r0": {"viewerPermission": "WRITE", "defaultBranchRef": null,
+				"refs": {"nodes": []}}, "rateLimit": {"cost": 1}}}`)
+		})
+
+		got, ok, err := client.FetchRepoReleaseStatus(t.Context(), NewToken(fakeToken),
+			repo.Name{Owner: filesOwner, Repo: exampleRepo})
+		require.NoError(t, err)
+		require.True(t, ok)
+		assert.Equal(t, ReleaseStatus{ViewerPermission: "WRITE", Tags: []ReleaseTag{}, HeadCheckList: []Check{}}, got)
+	})
+
+	t.Run("a repository GitHub can't find isn't found", func(t *testing.T) {
+		t.Parallel()
+
+		client := newTestClient(t, func(w http.ResponseWriter, _ *http.Request) {
+			_, _ = io.WriteString(w, `{"data": {"r0": null, "rateLimit": {"cost": 1}}, "errors": [{"type": "NOT_FOUND",
+				"path": ["r0"], "message": "Could not resolve to a Repository with the name 'acme-org/deleted-repo'."}]}`)
+		})
+
+		_, ok, err := client.FetchRepoReleaseStatus(t.Context(), NewToken(fakeToken),
+			repo.Name{Owner: filesOwner, Repo: "deleted-repo"})
+		require.NoError(t, err)
+		assert.False(t, ok)
+	})
+
+	t.Run("a failure keeps the token out of its words", func(t *testing.T) {
+		t.Parallel()
+
+		client := newTestClient(t, func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusInternalServerError)
+			_, _ = io.WriteString(w, "boom "+fakeToken)
+		})
+
+		_, ok, err := client.FetchRepoReleaseStatus(t.Context(), NewToken(fakeToken),
+			repo.Name{Owner: filesOwner, Repo: exampleRepo})
+		require.Error(t, err)
+		assert.False(t, ok)
+		assert.NotContains(t, err.Error(), fakeToken)
+	})
+}
+
 func TestFetchReleaseCompareReadsEachRepository(t *testing.T) {
 	t.Parallel()
 
@@ -291,7 +431,7 @@ func TestReleaseQueriesQuoteEveryValue(t *testing.T) {
 
 	hostile := repo.Name{Owner: `acme"org`, Repo: "x) { viewer { login } }"}
 
-	status, err := releaseStatusQuery([]repo.Name{hostile})
+	status, err := releaseStatusQuery([]repo.Name{hostile}, false)
 	require.NoError(t, err)
 	assert.Contains(t, status, `r0: repository(owner: "acme\"org", name: "x) { viewer { login } }") { ...ReleaseStatusFields }`,
 		"a name stays inside its JSON string")

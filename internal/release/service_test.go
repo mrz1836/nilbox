@@ -77,6 +77,19 @@ func (f *fakeGitHub) ReleaseStatus(
 	return out, nil
 }
 
+// RepoStatus answers the sheet's read of one repository from the same statuses, counted
+// as a status read of it.
+func (f *fakeGitHub) RepoStatus(ctx context.Context, name repo.Name) (RepoStatus, bool, error) {
+	got, err := f.ReleaseStatus(ctx, []repo.Name{name}, nil)
+	if err != nil {
+		return RepoStatus{}, false, err
+	}
+
+	status, ok := got[name.Key()]
+
+	return status, ok, nil
+}
+
 func (f *fakeGitHub) ReleaseCompare(
 	_ context.Context, reqs []CompareRequest, answered func(n int),
 ) (map[string]Compare, error) {

@@ -99,20 +99,65 @@ func (r releaseGitHub) ReleaseStatus(
 	out := make(map[string]release.RepoStatus, len(got))
 
 	for key, st := range got {
-		tags := make([]release.Tag, 0, len(st.Tags))
-		for _, t := range st.Tags {
-			tags = append(tags, release.Tag{Name: t.Name, Commit: t.CommitOID})
-		}
-
-		out[key] = release.RepoStatus{
-			Archived: st.Archived, Permission: st.ViewerPermission, DefaultBranch: st.DefaultBranch,
-			HeadOID: st.Head.OID, HeadAt: st.Head.CommittedAt, Headline: st.Head.Headline,
-			Checks: release.Checks(st.HeadChecks),
-			Tags:   tags,
-		}
+		out[key] = releaseRepoStatus(st)
 	}
 
 	return out, nil
+}
+
+// RepoStatus is the release sheet's read of one repository: round one, with its newest
+// commit's failed checks, in the same query.
+func (r releaseGitHub) RepoStatus(ctx context.Context, name repo.Name) (release.RepoStatus, bool, error) {
+	type answer struct {
+		status github.ReleaseStatus
+		found  bool
+	}
+
+	got, err := github.WithToken(ctx, r.tokens, func(tok github.Token) (answer, error) {
+		st, found, err := r.client.FetchRepoReleaseStatus(ctx, tok, name)
+
+		return answer{status: st, found: found}, err
+	})
+	if err != nil {
+		return release.RepoStatus{}, false, releaseSignedOut(err)
+	}
+
+	if !got.found {
+		return release.RepoStatus{}, false, nil
+	}
+
+	out := releaseRepoStatus(got.status)
+	out.Failing = failedChecks(got.status.HeadCheckList)
+
+	return out, true, nil
+}
+
+// releaseRepoStatus converts the client's status of one repository.
+func releaseRepoStatus(st github.ReleaseStatus) release.RepoStatus {
+	tags := make([]release.Tag, 0, len(st.Tags))
+	for _, t := range st.Tags {
+		tags = append(tags, release.Tag{Name: t.Name, Commit: t.CommitOID})
+	}
+
+	return release.RepoStatus{
+		Archived: st.Archived, Permission: st.ViewerPermission, DefaultBranch: st.DefaultBranch,
+		HeadOID: st.Head.OID, HeadAt: st.Head.CommittedAt, Headline: st.Head.Headline,
+		Checks: release.Checks(st.HeadChecks),
+		Tags:   tags,
+	}
+}
+
+// failedChecks are the checks that failed among a commit's, in GitHub's order.
+func failedChecks(checks []github.Check) []release.FailedCheck {
+	out := []release.FailedCheck{}
+
+	for _, c := range checks {
+		if c.Outcome == github.CheckFailed {
+			out = append(out, release.FailedCheck{Name: c.Name, Status: c.Kind == github.CheckKindStatus})
+		}
+	}
+
+	return out
 }
 
 // ReleaseCompare is round two: how far each default branch is ahead of its version tag.

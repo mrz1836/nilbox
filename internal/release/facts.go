@@ -129,10 +129,11 @@ type RepoFacts struct {
 	Permission string
 
 	// DefaultBranch is its default branch, and HeadOID and Checks its newest commit and
-	// that commit's checks.
+	// that commit's checks, Failing those of them that failed.
 	DefaultBranch string
 	HeadOID       string
 	Checks        Checks
+	Failing       []FailedCheck
 
 	// Branches are those of main and master that origin has (D10).
 	Branches []string
@@ -383,20 +384,21 @@ func (g *Gatherer) tool(ctx context.Context) ToolFacts {
 	return g.tools.ReleaseTool(ctx)
 }
 
-// repo asks GitHub about the repository: one repository's status, round one.
+// repo asks GitHub about the repository: its status, round one, with the newest commit's
+// failed checks.
 func (g *Gatherer) repo(ctx context.Context, name repo.Name) RepoFacts {
 	out := RepoFacts{Name: name, Branches: []string{}}
 
-	got, err := g.github.ReleaseStatus(ctx, []repo.Name{name}, nil)
+	status, found, err := g.github.RepoStatus(ctx, name)
 	if err != nil {
 		out.Error = repoError(name, err)
 
 		return out
 	}
 
-	status, found := got[name.Key()]
 	out.Found, out.Archived, out.Permission = found, status.Archived, status.Permission
 	out.DefaultBranch, out.HeadOID, out.Checks = status.DefaultBranch, status.HeadOID, status.Checks
+	out.Failing = status.Failing
 
 	return out
 }

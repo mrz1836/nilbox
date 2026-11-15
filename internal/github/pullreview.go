@@ -208,7 +208,8 @@ type Review struct {
 	SubmittedAt time.Time
 }
 
-// Check is one check run or commit status on a pull request's head commit.
+// Check is one check run or commit status on a commit: a pull request's head, or the
+// newest commit of a repository's default branch (ReleaseStatus.HeadCheckList).
 type Check struct {
 	// Kind is CheckKindRun or CheckKindStatus.
 	Kind string
@@ -230,7 +231,8 @@ type Check struct {
 	// URL is the check's page, "" when it has none.
 	URL string
 
-	// Required reports a check the base branch requires.
+	// Required reports a check the base branch requires; false off a pull request, where
+	// GitHub isn't asked.
 	Required bool
 }
 

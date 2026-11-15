@@ -494,6 +494,12 @@ names the version.
   each: **Open Settings**, **Update magex in Settings**, **Open in terminal** (your terminal in
   the clone, running nothing), **Check again**, **View on GitHub**, **Watch the run**, and
   **Copy** for a command the app never runs itself.
+- **The checks on the newest commit** are GitHub's own rollup of them, which counts commit
+  statuses (a coverage service's, say) as well as Actions runs, so it can fail while every
+  workflow passed. A failing line names what failed (*codecov/project is failing on 4ce994b*;
+  past three, two and a count), read in the same query as the rest, and **View on GitHub** opens
+  the commit's checks, or the commit itself when a commit status failed, since the checks page
+  lists none. A failing or running line offers **Check again**, which reads GitHub afresh.
 - **What's in it:** the newest commits since the newest version, from GitHub (up to 10, three
   shown until you ask for the rest, with GitHub's comparison for any past those), each linked
   to its commit.

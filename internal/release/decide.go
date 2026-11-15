@@ -628,12 +628,12 @@ func (d decider) ciCheck() (Check, bool) {
 	case ChecksSuccess:
 		return checkOK(CheckChecks, "Checks passed on "+short), true
 	case ChecksFailure, ChecksError:
-		out := checkWarn(CheckChecks, "Checks are failing on "+short, FixView)
-		out.Link = checksURL(r.Name, r.HeadOID)
+		out := checkWarn(CheckChecks, failingText(r.Failing, short), FixView, FixCheckAgain)
+		out.Link = failingURL(r)
 
 		return out, true
 	case ChecksPending, ChecksExpected:
-		return checkWarn(CheckChecks, "Checks are still running on "+short), true
+		return checkWarn(CheckChecks, "Checks are still running on "+short, FixCheckAgain), true
 	case ChecksNone:
 		return Check{}, false
 	default:
@@ -1000,7 +1000,52 @@ func isDigits(s string) bool {
 
 // checksURL is the page of a commit's checks on GitHub.
 func checksURL(name repo.Name, oid string) string {
-	return "https://github.com/" + name.String() + "/commit/" + oid + "/checks"
+	return commitURL(name, oid) + "/checks"
+}
+
+// commitURL is a commit's page on GitHub, whose status lists its check runs and its commit
+// statuses alike.
+func commitURL(name repo.Name, oid string) string {
+	return "https://github.com/" + name.String() + "/commit/" + oid
+}
+
+// failingURL is where the checks line's View on GitHub shows what failed on the newest
+// commit: its checks page when every check that failed is a check run, and otherwise its
+// own page, since the checks page lists no commit status.
+func failingURL(r RepoFacts) string {
+	if len(r.Failing) > 0 && !slices.ContainsFunc(r.Failing, func(c FailedCheck) bool { return c.Status }) {
+		return checksURL(r.Name, r.HeadOID)
+	}
+
+	return commitURL(r.Name, r.HeadOID)
+}
+
+// failedNamed is how many of the checks that failed the checks line names; past it, it
+// names one fewer and counts the rest.
+const failedNamed = 3
+
+// failingText says which checks failed on the commit short, by name, a name twice once,
+// or only that checks failed when GitHub listed none of them.
+func failingText(failed []FailedCheck, short string) string {
+	names := make([]string, 0, len(failed))
+
+	for _, c := range failed {
+		if c.Name != "" && !slices.Contains(names, c.Name) {
+			names = append(names, c.Name)
+		}
+	}
+
+	switch {
+	case len(names) == 0:
+		return "Checks are failing on " + short
+	case len(names) == 1:
+		return names[0] + " is failing on " + short
+	case len(names) > failedNamed:
+		rest := textutil.Counted(len(names)-failedNamed+1, "more check", "more checks")
+		names = append(names[:failedNamed-1:failedNamed-1], rest)
+	}
+
+	return textutil.Series(names) + " are failing on " + short
 }
 
 // hasState reports whether any check is in state.

@@ -30,6 +30,9 @@ import (
 	"github.com/mrz1836/nilbox/internal/testutil"
 )
 
+// fakeGHPath is where the tests' token sources find a gh that is never run for real.
+const fakeGHPath = "/opt/fake/bin/gh"
+
 // errSignedOut is what gh says when no account is signed in.
 var errSignedOut = errors.New("not logged in to any GitHub hosts")
 
@@ -133,7 +136,7 @@ func TestLatestReleasesAdaptsGitHubsAnswer(t *testing.T) {
 	t.Cleanup(srv.Close)
 
 	releases := latestReleases{
-		tokens: github.NewTokenSource(&testutil.Runner{Stdout: "test-token-not-real\n"}, testutil.Finder{Path: "/opt/fake/bin/gh"}),
+		tokens: github.NewTokenSource(&testutil.Runner{Stdout: "test-token-not-real\n"}, testutil.Finder{Path: fakeGHPath}),
 		client: &github.Client{BaseURL: srv.URL, HTTP: srv.Client()},
 	}
 
@@ -161,7 +164,7 @@ func TestLatestReleasesAsksNothingWhenSignedOut(t *testing.T) {
 	t.Cleanup(srv.Close)
 
 	releases := latestReleases{
-		tokens: github.NewTokenSource(&testutil.Runner{Err: errSignedOut}, testutil.Finder{Path: "/opt/fake/bin/gh"}),
+		tokens: github.NewTokenSource(&testutil.Runner{Err: errSignedOut}, testutil.Finder{Path: fakeGHPath}),
 		client: &github.Client{BaseURL: srv.URL, HTTP: srv.Client()},
 	}
 
@@ -341,7 +344,7 @@ func TestReleaseGitHubAdaptsBothRounds(t *testing.T) {
 	t.Cleanup(srv.Close)
 
 	gh := releaseGitHub{
-		tokens: github.NewTokenSource(&testutil.Runner{Stdout: "test-token-not-real\n"}, testutil.Finder{Path: "/opt/fake/bin/gh"}),
+		tokens: github.NewTokenSource(&testutil.Runner{Stdout: "test-token-not-real\n"}, testutil.Finder{Path: fakeGHPath}),
 		client: &github.Client{BaseURL: srv.URL, HTTP: srv.Client()},
 	}
 	sdk := repo.Name{Owner: boundOwner, Repo: boundRepo}
@@ -366,6 +369,57 @@ func TestReleaseGitHubAdaptsBothRounds(t *testing.T) {
 	assert.Equal(t, []int{1, 1}, answered, "each round tells the page as GitHub answers")
 }
 
+func TestReleaseGitHubNamesTheSheetsFailedChecks(t *testing.T) {
+	t.Parallel()
+
+	var requests atomic.Int32
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests.Add(1)
+
+		body, _ := io.ReadAll(r.Body)
+		if strings.Contains(string(body), "deleted-repo") {
+			_, _ = io.WriteString(w, `{"data":{"r0":null,"rateLimit":{"cost":1}},"errors":[{"type":"NOT_FOUND",
+				"path":["r0"],"message":"Could not resolve to a Repository with the name 'acme-org/deleted-repo'."}]}`)
+
+			return
+		}
+
+		_, _ = io.WriteString(w, `{"data":{"r0":{"isArchived":false,"viewerPermission":"WRITE",
+			"defaultBranchRef":{"name":"master","target":{"oid":"c2","messageHeadline":"Fix retries",
+			"committedDate":"2026-11-10T04:00:00Z","statusCheckRollup":{"state":"FAILURE","contexts":{"nodes":[
+			{"__typename":"CheckRun","name":"Lint","status":"COMPLETED","conclusion":"SUCCESS"},
+			{"__typename":"CheckRun","name":"Test","status":"COMPLETED","conclusion":"FAILURE"},
+			{"__typename":"CheckRun","name":"Bench","status":"IN_PROGRESS","conclusion":null},
+			{"__typename":"StatusContext","context":"coverage/project","state":"FAILURE"},
+			{"__typename":"StatusContext","context":"coverage/unit","state":"SUCCESS"}]}}}},
+			"refs":{"nodes":[]}},"rateLimit":{"cost":1}}}`)
+	}))
+	t.Cleanup(srv.Close)
+
+	gh := releaseGitHub{
+		tokens: github.NewTokenSource(&testutil.Runner{Stdout: "test-token-not-real\n"}, testutil.Finder{Path: fakeGHPath}),
+		client: &github.Client{BaseURL: srv.URL, HTTP: srv.Client()},
+	}
+	sdk := repo.Name{Owner: boundOwner, Repo: boundRepo}
+
+	status, found, err := gh.RepoStatus(t.Context(), sdk)
+	require.NoError(t, err)
+	require.True(t, found)
+	assert.Equal(t, release.RepoStatus{
+		Permission: "WRITE", DefaultBranch: "master", HeadOID: "c2",
+		HeadAt: time.Date(2026, 11, 10, 4, 0, 0, 0, time.UTC), Headline: "Fix retries",
+		Checks:  release.ChecksFailure,
+		Failing: []release.FailedCheck{{Name: "Test"}, {Name: "coverage/project", Status: true}},
+		Tags:    []release.Tag{},
+	}, status, "only what failed, a commit status marked as one")
+	assert.Equal(t, int32(1), requests.Load(), "one query reads the status and its checks")
+
+	_, found, err = gh.RepoStatus(t.Context(), repo.Name{Owner: boundOwner, Repo: "deleted-repo"})
+	require.NoError(t, err)
+	assert.False(t, found, "a repository GitHub can't find isn't found")
+}
+
 func TestReleaseGitHubAsksNothingWhenSignedOut(t *testing.T) {
 	t.Parallel()
 
@@ -375,12 +429,15 @@ func TestReleaseGitHubAsksNothingWhenSignedOut(t *testing.T) {
 	t.Cleanup(srv.Close)
 
 	gh := releaseGitHub{
-		tokens: github.NewTokenSource(&testutil.Runner{Err: errSignedOut}, testutil.Finder{Path: "/opt/fake/bin/gh"}),
+		tokens: github.NewTokenSource(&testutil.Runner{Err: errSignedOut}, testutil.Finder{Path: fakeGHPath}),
 		client: &github.Client{BaseURL: srv.URL, HTTP: srv.Client()},
 	}
 	sdk := repo.Name{Owner: boundOwner, Repo: boundRepo}
 
 	_, err := gh.ReleaseStatus(t.Context(), []repo.Name{sdk}, nil)
+	require.ErrorIs(t, err, release.ErrSignedOut)
+
+	_, _, err = gh.RepoStatus(t.Context(), sdk)
 	require.ErrorIs(t, err, release.ErrSignedOut)
 
 	_, err = gh.ReleaseCompare(t.Context(), []release.CompareRequest{{Repo: sdk, Tag: "v1.4.2", Branch: "master"}}, nil)
@@ -465,7 +522,7 @@ func TestReleaseGitHubReadsTheWorkflowAndTheBudgetCountsEveryPoll(t *testing.T) 
 	// stand-in.
 	c.client.BaseURL, c.client.HTTP = srv.URL, srv.Client()
 	gh := releaseGitHub{
-		tokens: github.NewTokenSource(&testutil.Runner{Stdout: "test-token-not-real\n"}, testutil.Finder{Path: "/opt/fake/bin/gh"}),
+		tokens: github.NewTokenSource(&testutil.Runner{Stdout: "test-token-not-real\n"}, testutil.Finder{Path: fakeGHPath}),
 		client: c.client,
 	}
 	sdk := repo.Name{Owner: boundOwner, Repo: boundRepo}

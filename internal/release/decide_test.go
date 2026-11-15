@@ -558,19 +558,59 @@ func otherCases() []decideCase {
 		},
 		{
 			name: "checks failing", id: CheckChecks, state: CheckWarn, text: "Checks are failing on a1b2c3d",
-			fixes: []Fix{FixView}, change: func(f *Facts) { f.Repo.Checks = ChecksFailure },
+			fixes: []Fix{FixView, FixCheckAgain}, change: func(f *Facts) { f.Repo.Checks = ChecksFailure },
 		},
 		{
 			name: "checks erred", id: CheckChecks, state: CheckWarn, text: "Checks are failing on a1b2c3d",
-			fixes: []Fix{FixView}, change: func(f *Facts) { f.Repo.Checks = ChecksError },
+			fixes: []Fix{FixView, FixCheckAgain}, change: func(f *Facts) { f.Repo.Checks = ChecksError },
+		},
+		{
+			name: "one check failing", id: CheckChecks, state: CheckWarn, text: "coverage/project is failing on a1b2c3d",
+			fixes: []Fix{FixView, FixCheckAgain},
+			change: func(f *Facts) {
+				f.Repo.Checks = ChecksFailure
+				f.Repo.Failing = []FailedCheck{{Name: "coverage/project", Status: true}}
+			},
+		},
+		{
+			name: "one check failing twice", id: CheckChecks, state: CheckWarn, text: "Test is failing on a1b2c3d",
+			fixes: []Fix{FixView, FixCheckAgain},
+			change: func(f *Facts) {
+				f.Repo.Checks = ChecksFailure
+				f.Repo.Failing = []FailedCheck{{Name: "Test"}, {Name: ""}, {Name: "Test"}}
+			},
+		},
+		{
+			name: "two checks failing", id: CheckChecks, state: CheckWarn, text: "Lint and Test are failing on a1b2c3d",
+			fixes: []Fix{FixView, FixCheckAgain},
+			change: func(f *Facts) {
+				f.Repo.Checks = ChecksFailure
+				f.Repo.Failing = []FailedCheck{{Name: "Lint"}, {Name: "Test"}}
+			},
+		},
+		{
+			name: "three checks failing", id: CheckChecks, state: CheckWarn,
+			text: "Lint, Test, and coverage/project are failing on a1b2c3d", fixes: []Fix{FixView, FixCheckAgain},
+			change: func(f *Facts) {
+				f.Repo.Checks = ChecksFailure
+				f.Repo.Failing = []FailedCheck{{Name: "Lint"}, {Name: "Test"}, {Name: "coverage/project", Status: true}}
+			},
+		},
+		{
+			name: "many checks failing", id: CheckChecks, state: CheckWarn,
+			text: "Lint, Test, and 3 more checks are failing on a1b2c3d", fixes: []Fix{FixView, FixCheckAgain},
+			change: func(f *Facts) {
+				f.Repo.Checks = ChecksFailure
+				f.Repo.Failing = []FailedCheck{{Name: "Lint"}, {Name: "Test"}, {Name: "Vet"}, {Name: "Fuzz"}, {Name: "Bench"}}
+			},
 		},
 		{
 			name: "checks running", id: CheckChecks, state: CheckWarn, text: "Checks are still running on a1b2c3d",
-			change: func(f *Facts) { f.Repo.Checks = ChecksPending },
+			fixes: []Fix{FixCheckAgain}, change: func(f *Facts) { f.Repo.Checks = ChecksPending },
 		},
 		{
 			name: "checks expected", id: CheckChecks, state: CheckWarn, text: "Checks are still running on a1b2c3d",
-			change: func(f *Facts) { f.Repo.Checks = ChecksExpected },
+			fixes: []Fix{FixCheckAgain}, change: func(f *Facts) { f.Repo.Checks = ChecksExpected },
 		},
 		{name: "no checks", id: CheckChecks, absent: true, change: func(f *Facts) { f.Repo.Checks = ChecksNone }},
 		{name: "checks unknown", id: CheckChecks, absent: true, change: func(f *Facts) { f.Repo.Checks = "NEW" }},
@@ -607,15 +647,38 @@ func otherCases() []decideCase {
 func TestDecideCheckDetails(t *testing.T) {
 	t.Parallel()
 
-	t.Run("a failing check links its commit's checks", func(t *testing.T) {
+	t.Run("failing check runs link their commit's checks", func(t *testing.T) {
 		t.Parallel()
 
 		f := readyFacts()
-		f.Repo.Checks = ChecksFailure
+		f.Repo.Checks, f.Repo.Failing = ChecksFailure, []FailedCheck{{Name: "Lint"}, {Name: "Test"}}
 
 		got, ok := checkOf(Decide(f), CheckChecks)
 		require.True(t, ok)
 		assert.Equal(t, "https://github.com/acme-org/sdk/commit/"+newestOID+"/checks", got.Link)
+	})
+
+	t.Run("a failing commit status links its commit, whose checks page doesn't list it", func(t *testing.T) {
+		t.Parallel()
+
+		f := readyFacts()
+		f.Repo.Checks = ChecksFailure
+		f.Repo.Failing = []FailedCheck{{Name: "Test"}, {Name: "coverage/project", Status: true}}
+
+		got, ok := checkOf(Decide(f), CheckChecks)
+		require.True(t, ok)
+		assert.Equal(t, "https://github.com/acme-org/sdk/commit/"+newestOID, got.Link)
+	})
+
+	t.Run("checks failing unnamed link their commit, which shows them all", func(t *testing.T) {
+		t.Parallel()
+
+		f := readyFacts()
+		f.Repo.Checks = ChecksError
+
+		got, ok := checkOf(Decide(f), CheckChecks)
+		require.True(t, ok)
+		assert.Equal(t, "https://github.com/acme-org/sdk/commit/"+newestOID, got.Link)
 	})
 
 	t.Run("the busy run can be watched", func(t *testing.T) {

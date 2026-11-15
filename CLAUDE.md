@@ -960,7 +960,9 @@ app:lint` reads.
   and a refresh that fails or is cut short keeps nothing. `version.go` works the next version
   out exactly as magex does, tested against a table recorded from the real magex. A release
   follows the review sheet's template: the `Gatherer` reads its `Facts` at once (magex through
-  a `ToolSource`, GitHub's status of the one repository, origin's refs with one `ls-remote`,
+  a `ToolSource`, GitHub's status of the one repository with its newest commit's checks and
+  statuses, which the checks line names when they fail, in `GitHub.RepoStatus`'s one query
+  (the list's batches read the rollup's state alone), origin's refs with one `ls-remote`,
   and the clone with `gitread`), and the pure `Decide` works out the sheet's `Offer`: every
   check, every bump's version over the clone's and origin's tags, the Major gate, and the
   argv, `push=true` (never the bare word) plus `expect=`, `json=true`, and `ff-only` only for a

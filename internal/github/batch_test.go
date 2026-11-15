@@ -72,7 +72,13 @@ func TestBatchedQueriesText(t *testing.T) {
 		{
 			name: "release status query",
 			query: func() (string, error) {
-				return releaseStatusQuery([]repo.Name{plain, hostile})
+				return releaseStatusQuery([]repo.Name{plain, hostile}, false)
+			},
+		},
+		{
+			name: "release status query with checks",
+			query: func() (string, error) {
+				return releaseStatusQuery([]repo.Name{hostile}, true)
 			},
 		},
 		{
@@ -151,7 +157,7 @@ func TestBatchedQueriesRefuseValuesThatAreNotUTF8(t *testing.T) {
 		{
 			name: "release status, a name",
 			query: func() (string, error) {
-				return releaseStatusQuery([]repo.Name{badName})
+				return releaseStatusQuery([]repo.Name{badName}, false)
 			},
 			want: `encode the repository's name: "example-\xff"`,
 		},

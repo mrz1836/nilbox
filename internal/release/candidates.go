@@ -75,8 +75,22 @@ type RepoStatus struct {
 	Headline      string
 	Checks        Checks
 
+	// Failing are the newest commit's checks that failed, in GitHub's order, which only
+	// GitHub.RepoStatus reads; nil from ReleaseStatus.
+	Failing []FailedCheck
+
 	// Tags are the newest tags by commit date, each with the commit it points at.
 	Tags []Tag
+}
+
+// FailedCheck is a check run or commit status that failed on a commit.
+type FailedCheck struct {
+	// Name is the check run's name, or the commit status's context.
+	Name string
+
+	// Status reports a commit status, as a coverage service posts, rather than a check run:
+	// the commit's checks page on GitHub lists only check runs.
+	Status bool
 }
 
 // Tag is a tag and the commit it points at, peeled through an annotated tag.
@@ -109,10 +123,13 @@ type Commit struct {
 // with a version, how far the default branch is ahead of it. Both key their answers by
 // repo.Name.Key(), and leave out a repository GitHub can't find. answered, when set, is
 // told as GitHub answers each batch, with how many of repos or reqs it held, from any
-// goroutine; nil hears nothing. Core adapts the client.
+// goroutine; nil hears nothing. RepoStatus is the sheet's read of one repository, its
+// status with the newest commit's failed checks (RepoStatus.Failing) in the same one
+// query; ok is false when GitHub can't find it. Core adapts the client.
 type GitHub interface {
 	ReleaseStatus(ctx context.Context, repos []repo.Name, answered func(n int)) (map[string]RepoStatus, error)
 	ReleaseCompare(ctx context.Context, reqs []CompareRequest, answered func(n int)) (map[string]Compare, error)
+	RepoStatus(ctx context.Context, name repo.Name) (status RepoStatus, ok bool, err error)
 }
 
 // Candidate is a repository the Release page lists, with the clone it releases from.
