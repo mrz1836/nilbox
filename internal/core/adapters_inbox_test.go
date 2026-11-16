@@ -34,7 +34,7 @@ VALUES (1, 'acme-org', 'example-repo', ?, ?)`, now, now)
 	testutil.Exec(t, db, `INSERT INTO notifications (kind, created_at, item_id) VALUES ('arrival', ?, 6), ('run_failed', ?, NULL)`,
 		now, now)
 
-	got, err := itemKeepers(db).KeptItems(t.Context())
+	got, err := itemKeepers(db, &engineWaker{}).KeptItems(t.Context())
 	require.NoError(t, err)
 	assert.Equal(t, []int64{5, 6}, got, "a session's item and a notification's, never one no row names")
 }

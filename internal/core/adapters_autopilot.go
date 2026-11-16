@@ -16,6 +16,8 @@ import (
 	"github.com/mrz1836/nilbox/internal/autopilot/facts"
 	"github.com/mrz1836/nilbox/internal/autopilotprefs"
 	"github.com/mrz1836/nilbox/internal/budget"
+	"github.com/mrz1836/nilbox/internal/clock"
+	"github.com/mrz1836/nilbox/internal/event"
 	"github.com/mrz1836/nilbox/internal/github"
 	"github.com/mrz1836/nilbox/internal/inbox"
 	"github.com/mrz1836/nilbox/internal/item"
@@ -278,4 +280,185 @@ func (n starterNames) StarterNames(ctx context.Context) (map[string]string, erro
 	}
 
 	return out, nil
+}
+
+// autopilotEngine is what Autopilot's engine is built over beside its service: the inbox's
+// store and service, for its reads and the read right before a start; the GitHub client
+// and token source, for the states of the items that left a watch; and the lock in the
+// data folder.
+type autopilotEngine struct {
+	store   *inbox.Store
+	inbox   *inbox.Service
+	faces   *inbox.Routines
+	tokens  *github.TokenSource
+	client  *github.Client
+	lock    string
+	events  event.Sink
+	clock   clock.Clock
+	logger  *slog.Logger
+	service *autopilot.Service
+}
+
+// newAutopilotEngine builds the engine that runs the routines. No step's dispatcher is
+// registered yet: each part registers its own as it is built, and until then the Service
+// keeps every routine in Dry run, so the engine records what would run.
+func newAutopilotEngine(deps autopilotEngine) *autopilot.Engine {
+	return autopilot.NewEngine(deps.service, autopilot.EngineConfig{
+		Items: engineItems{
+			autopilotItems: autopilotItems{store: deps.store, inbox: deps.faces}, service: deps.inbox,
+			tokens: deps.tokens, client: deps.client, clock: deps.clock, logger: deps.logger,
+		},
+		Lock: autopilot.NewLock(deps.lock), Events: deps.events,
+	})
+}
+
+// engineItems reads the inbox for Autopilot's engine (autopilot.EngineItems).
+type engineItems struct {
+	autopilotItems
+
+	service *inbox.Service
+	tokens  *github.TokenSource
+	client  *github.Client
+	clock   clock.Clock
+	logger  *slog.Logger
+}
+
+// ItemStates returns what is stored of each item's state.
+func (a engineItems) ItemStates(ctx context.Context, ids []int64) (map[int64]autopilot.ItemState, error) {
+	got, err := a.store.ItemStates(ctx, ids)
+	if err != nil {
+		return nil, err
+	}
+
+	out := make(map[int64]autopilot.ItemState, len(got))
+	for id, st := range got {
+		out[id] = autopilot.ItemState{State: st.State, FetchedAt: st.FetchedAt, Listed: st.Listed, Watched: st.Watched}
+	}
+
+	return out, nil
+}
+
+// InboxStatus returns the account signed in, the last refresh, and the searches' answers.
+func (a engineItems) InboxStatus(ctx context.Context) (autopilot.InboxStatus, error) {
+	st, err := a.store.ReadStatus(ctx)
+	if err != nil {
+		return autopilot.InboxStatus{}, err
+	}
+
+	out := autopilot.InboxStatus{
+		Viewer: st.Viewer, LastRefresh: st.LastRefresh, WatchedAt: st.WatchedAt, WatchPaused: st.Watches.Paused,
+		Searches: make(map[string]autopilot.SearchState, len(st.Watches.Searches)),
+	}
+
+	for key, s := range st.Watches.Searches {
+		at, _ := time.Parse(time.RFC3339, s.At)
+		out.Searches[key] = autopilot.SearchState{Answered: s.Answered, At: at, Error: s.Error, Truncated: s.Truncated}
+	}
+
+	return out, nil
+}
+
+// ReadStates reads the states of the stored items among ids from GitHub, one request for
+// Autopilot, and records them in the inbox.
+func (a engineItems) ReadStates(ctx context.Context, ids []int64) error {
+	got, err := a.store.ItemStates(ctx, ids)
+	if err != nil || len(got) == 0 {
+		return err
+	}
+
+	refs := make([]item.Ref, 0, len(got))
+	for _, st := range got {
+		refs = append(refs, st.Ref)
+	}
+
+	ctx = github.WithPurpose(ctx, github.PurposeAutopilot)
+	noter := stateNoter{Client: a.client, store: a.store, logger: a.logger}
+
+	_, err = github.WithToken(ctx, a.tokens, func(tok github.Token) (map[string]github.ItemState, error) {
+		return noter.FetchItemStates(ctx, tok, refs)
+	})
+
+	return err
+}
+
+// ReadItem reads one item again from GitHub, as its own refresh does.
+func (a engineItems) ReadItem(ctx context.Context, id int64) error {
+	_, err := a.service.RefreshItem(github.WithPurpose(ctx, github.PurposeAutopilot), id)
+
+	return err
+}
+
+// WatchNow sends the routines' searches now.
+func (a engineItems) WatchNow(ctx context.Context) error {
+	return a.inbox.WatchNow(ctx)
+}
+
+// engineWaker wakes Autopilot's engine once it is built: the inbox is built before it, and
+// tells it of the items it stored, and of what it saw happen to items.
+type engineWaker struct {
+	engine *autopilot.Engine
+}
+
+// ItemsChanged wakes the engine, once there is one.
+func (w *engineWaker) ItemsChanged(ids []int64) {
+	if w.engine != nil {
+		w.engine.ItemsChanged(ids)
+	}
+}
+
+// KeptItems returns the items the ledger refers to, which the inbox's prune keeps.
+func (w *engineWaker) KeptItems(ctx context.Context) ([]int64, error) {
+	if w.engine == nil {
+		return nil, nil
+	}
+
+	return w.engine.KeptItems(ctx)
+}
+
+// Wake wakes the engine, once there is one, as a change of Autopilot's settings does.
+func (w *engineWaker) Wake() {
+	if w.engine != nil {
+		w.engine.Wake()
+	}
+}
+
+// outcomesFanOut tells what the user finished from the inbox, and the items the inbox saw
+// close or leave its lists, both to the mirror of the user's GitHub notifications and to
+// Autopilot's engine, each without waiting on the other (inbox.OutcomeSink).
+type outcomesFanOut struct {
+	threads ghThreadOutcomes
+	engine  *engineWaker
+}
+
+// Settle tells both.
+func (o outcomesFanOut) Settle(ctx context.Context, outcomes []inbox.Outcome) {
+	o.threads.Settle(ctx, outcomes)
+
+	if o.engine == nil || o.engine.engine == nil {
+		return
+	}
+
+	told := make([]autopilot.Outcome, 0, len(outcomes))
+	for _, out := range outcomes {
+		told = append(told, autopilot.Outcome{Kind: string(out.Kind), Ref: out.Ref, At: out.At})
+	}
+
+	o.engine.engine.Outcomes(told)
+}
+
+// engineOnInbox passes the inbox's events on, and wakes Autopilot's engine when the inbox
+// stored a change, as a whole refresh does, so the engine evaluates what it stored at once
+// rather than at its next tick.
+type engineOnInbox struct {
+	sink   event.Sink
+	engine *engineWaker
+}
+
+// Emit passes e on, waking the engine for an event.InboxUpdated.
+func (o engineOnInbox) Emit(e event.Event) {
+	event.Or(o.sink).Emit(e)
+
+	if _, ok := e.(event.InboxUpdated); ok {
+		o.engine.Wake()
+	}
 }
