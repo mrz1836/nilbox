@@ -1,9 +1,11 @@
 // Package bump recognizes a dependency-update pull request from its title, as Dependabot
-// and Renovate write them, and says how big its version jump is.
+// and Renovate write them, and says how big its version jump is; and reads which bot's
+// branch it is on, and the ecosystem a Dependabot branch names, from its head branch.
 //
-// It reads only the title, so it needs no request of its own. It is conservative: a title
-// it cannot read with confidence is not a dependency update, since calling an ordinary
-// pull request one is worse than missing one.
+// It reads only the title and the branch's name, so it needs no request of its own. It is
+// conservative: a title it cannot read with confidence is not a dependency update, since
+// calling an ordinary pull request one is worse than missing one, and a branch it cannot
+// read names no ecosystem.
 package bump
 
 import (
