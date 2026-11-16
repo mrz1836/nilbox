@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/mrz1836/nilbox/internal/fence"
+	"github.com/mrz1836/nilbox/internal/textutil"
 )
 
 // How Claude Code keeps the tools presets, as S4 measured them on Claude Code 2.1.325:
@@ -77,7 +78,7 @@ func claudeFenceReviewed() []string {
 		"--restricted", "--setting-sources", "--settings", "--strict-mcp-config", "--tools",
 		// Settings keys.
 		"attribution.commit", "attribution.pr", "disableAllHooks", "enableAllProjectMcpServers",
-		"hooks.PreToolUse[].hooks[].args", "hooks.PreToolUse[].hooks[].command", "hooks.PreToolUse[].hooks[].onFailure",
+		"hooks.PreToolUse[].hooks[].command", "hooks.PreToolUse[].hooks[].onFailure",
 		"hooks.PreToolUse[].hooks[].timeout", "hooks.PreToolUse[].hooks[].type", "hooks.PreToolUse[].matcher",
 		"includeCoAuthoredBy", "permissions.allow", "permissions.deny", "permissions.disableBypassPermissionsMode",
 		"sandbox.allowUnsandboxedCommands", "sandbox.autoAllowBashIfSandboxed", "sandbox.enabled",
@@ -190,13 +191,21 @@ type claudeHookMatcher struct {
 	Hooks   []claudeHook `json:"hooks"`
 }
 
-// claudeHook is one command hook, run without a shell (its exec form, with args).
+// claudeHook is one command hook: a command line its shell runs, which names the app's
+// executable and the hook mode's flag, each quoted as one word. It is the hook's shell
+// form, which S4 ran on every call; the exec form (args) would leave the flag off on a
+// build that doesn't know it, and the app would start rather than decide the call.
 type claudeHook struct {
-	Type      string   `json:"type"`
-	Command   string   `json:"command"`
-	Args      []string `json:"args"`
-	Timeout   int      `json:"timeout"`
-	OnFailure string   `json:"onFailure"`
+	Type      string `json:"type"`
+	Command   string `json:"command"`
+	Timeout   int    `json:"timeout"`
+	OnFailure string `json:"onFailure"`
+}
+
+// claudeHookCommand is the fence hook's command line: the app's own executable in its
+// hook mode, for the run's folder.
+func claudeHookCommand(program, runDir string) string {
+	return textutil.ShellQuote(program) + " " + textutil.ShellQuote(fence.HookArg(runDir))
 }
 
 // claudeAttribution is the text a commit and a pull request credit the agent with: none.
@@ -240,7 +249,7 @@ func claudeFenceSettings(f *Fence, built fence.Fence, program, runDir string) cl
 		Hooks: claudeHooks{PreToolUse: []claudeHookMatcher{{
 			Matcher: "*",
 			Hooks: []claudeHook{{
-				Type: "command", Command: program, Args: []string{fence.HookArg(runDir)}, Timeout: claudeHookTimeout,
+				Type: "command", Command: claudeHookCommand(program, runDir), Timeout: claudeHookTimeout,
 				OnFailure: claudeHookBlocks,
 			}},
 		}}},

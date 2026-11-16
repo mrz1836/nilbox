@@ -182,10 +182,7 @@ settings.json:
         "hooks": [
           {
             "type": "command",
-            "command": "/Applications/App.app/Contents/MacOS/App",
-            "args": [
-              "--fence-hook-v1=/Users/example/Library/Application Support/App/agent-runs/00000000-0000-4000-8000-000000000012"
-            ],
+            "command": "'/Applications/App.app/Contents/MacOS/App' '--fence-hook-v1=/Users/example/Library/Application Support/App/agent-runs/00000000-0000-4000-8000-000000000012'",
             "timeout": 30,
             "onFailure": "block"
           }

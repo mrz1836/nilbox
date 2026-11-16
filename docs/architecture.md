@@ -2320,8 +2320,9 @@ Bash,Read`; the edit presets drop them with `--tools Bash,Read,Edit,Write,Grep,G
 those runs in `dontAsk`, so a profile's full access can't loosen it and a profile without a mode
 can't break it. The profile's own keeps the user's settings alone (`--setting-sources user`) with
 the click's flags. Every one adds `--strict-mcp-config` and `--settings <run folder>/settings.json`,
-whose Go types (`claudeSettings`) hold the rules, the fence hook in its exec form (the app's own
-executable and `HookArg`, 30 seconds, `onFailure: block`), hooks left on, attribution off (and
+whose Go types (`claudeSettings`) hold the rules, the fence hook as a command line (the app's own
+executable and `HookArg`, each quoted as one word, never the exec form, whose flag a build that
+doesn't know it would drop; 30 seconds, `onFailure: block`), hooks left on, attribution off (and
 the older `includeCoAuthoredBy`), project MCP servers off, bypass mode off for a fixed preset,
 and for the edit presets the sandbox (on, a hard failure when it can't start, no unsandboxed
 retry, and no auto-allow, so the rules still decide; local binding, for a test's server). A test

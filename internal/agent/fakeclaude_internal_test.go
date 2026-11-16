@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/mrz1836/nilbox/internal/fence"
@@ -195,7 +196,11 @@ func (f *fakeClaude) runHooks(t *testing.T, c fence.Call) bool {
 			})
 			require.NoError(t, err)
 
-			code, ok := fence.RunHook(h.Args, bytes.NewReader(payload), &bytes.Buffer{})
+			words := shellWords(t, h.Command)
+			require.Len(t, words, 2, "the hook is the app's executable and its flag")
+			require.Equal(t, testProgram, words[0])
+
+			code, ok := fence.RunHook(words[1:], bytes.NewReader(payload), &bytes.Buffer{})
 			require.True(t, ok, "the hook runs in its hook mode")
 			require.Equal(t, "block", h.OnFailure, "a hook that fails blocks its call")
 
@@ -206,6 +211,32 @@ func (f *fakeClaude) runHooks(t *testing.T, c fence.Call) bool {
 	}
 
 	return false
+}
+
+// shellWords splits a command line of single-quoted words, as textutil.ShellQuote writes
+// them, the way a POSIX shell does.
+func shellWords(t *testing.T, line string) []string {
+	t.Helper()
+
+	words := regexp.MustCompile(`(?:'[^']*'|\\.)+`).FindAllString(line, -1)
+	require.Equal(t, line, strings.Join(words, " "), "the hook's command line is quoted words alone")
+
+	part := regexp.MustCompile(`'([^']*)'|\\(.)`)
+
+	out := make([]string, 0, len(words))
+	for _, w := range words {
+		out = append(out, part.ReplaceAllString(w, "$1$2"))
+	}
+
+	return out
+}
+
+func TestTheHookCommandIsTheAppInItsHookMode(t *testing.T) {
+	t.Parallel()
+
+	line := claudeHookCommand("/Applications/It's.app/Contents/MacOS/App", "/Users/example/a b/run")
+	assert.Equal(t, []string{"/Applications/It's.app/Contents/MacOS/App", "--fence-hook-v1=/Users/example/a b/run"},
+		shellWords(t, line), "each word quoted whole, a quote in a path included")
 }
 
 // sandboxRun runs a command the sandbox holds: the sandbox check writes its proof and is
