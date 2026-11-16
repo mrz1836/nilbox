@@ -1,0 +1,4 @@
+# The sentence spec.Sentence writes for testdata/templates/review-members.json. Rewrite with
+# go test ./internal/autopilot/spec -run TestSentenceGolden -update
+
+When a pull request in acme-org/api out of draft appears, if the author is a member, no sensitive file changed, and the lines changed are under 400, run "Review" in the background, read only, with the review profile on Opus at high effort, then post its verdict. Once per commit, at most 2 tries per pull request.

@@ -1,0 +1,4 @@
+# The sentence spec.Sentence writes for testdata/templates/ask-for-a-repro-on-quiet-bugs.json. Rewrite with
+# go test ./internal/autopilot/spec -run TestSentenceGolden -update
+
+When an item in your Assigned list goes quiet for 14 days, if it's an issue, the labels include bug, and the labels don't include needs-repro, comment your "Question" reply and add the needs-repro label. At most 2 tries per item.

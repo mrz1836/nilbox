@@ -1,0 +1,4 @@
+# The sentence spec.Sentence writes for testdata/templates/fix-dependabot-security-then-merge.json. Rewrite with
+# go test ./internal/autopilot/spec -run TestSentenceGolden -update
+
+When checks fail on pull requests by Dependabot in your account and acme-org, once every check has settled, if a failed check's name contains codeql, gitleaks, govulncheck, nancy, osv, or security, run "Fix dependency security" in the background; if it pushed, wait for the checks; if they pass, turn auto-merge back on if it was on, else merge it when GitHub allows. Once per commit, at most 2 tries per pull request.

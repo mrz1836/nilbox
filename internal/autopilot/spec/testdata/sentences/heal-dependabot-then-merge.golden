@@ -1,0 +1,4 @@
+# The sentence spec.Sentence writes for testdata/templates/heal-dependabot-then-merge.json. Rewrite with
+# go test ./internal/autopilot/spec -run TestSentenceGolden -update
+
+When checks fail on pull requests by Dependabot in acme-labs and acme-org, once every check has settled, if the update type is minor or patch, run "Heal Dependabot PR" in the background, with the default profile on Sonnet at medium effort for acme-labs and the work profile on Opus at high effort for acme-org; if it pushed, wait for the checks; if they pass, turn auto-merge back on if it was on, else merge it with squash when GitHub allows; if they still fail, tell me. Once per commit, at most 2 tries per pull request.

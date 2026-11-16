@@ -1,0 +1,4 @@
+# The sentence spec.Sentence writes for testdata/templates/ask-dependabot-to-rebase.json. Rewrite with
+# go test ./internal/autopilot/spec -run TestSentenceGolden -update
+
+When a pull request by Dependabot in your account has merge conflicts, ask Dependabot to rebase. Once per commit, at most 2 tries per pull request.

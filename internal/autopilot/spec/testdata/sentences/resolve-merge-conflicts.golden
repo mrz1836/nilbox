@@ -1,0 +1,4 @@
+# The sentence spec.Sentence writes for testdata/templates/resolve-merge-conflicts.json. Rewrite with
+# go test ./internal/autopilot/spec -run TestSentenceGolden -update
+
+When a pull request in your Authored list has merge conflicts, run "Resolve conflicts" in the background. At most 2 tries per pull request.

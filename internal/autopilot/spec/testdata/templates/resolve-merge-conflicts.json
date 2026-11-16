@@ -1,0 +1,32 @@
+{
+    "version": 1,
+    "watch": {
+        "sources": [
+            {
+                "lists": [
+                    "authored"
+                ]
+            }
+        ]
+    },
+    "trigger": {
+        "event": "merge_conflicts"
+    },
+    "conditions": {
+        "match": "all",
+        "of": []
+    },
+    "steps": [
+        {
+            "agent": {
+                "prompt": {
+                    "starter": "resolve-conflicts"
+                },
+                "fence": {
+                    "tools": "editTestPush"
+                }
+            }
+        }
+    ],
+    "limits": {}
+}

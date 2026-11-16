@@ -1,0 +1,4 @@
+# The sentence spec.Sentence writes for testdata/templates/triage-busy-issues.json. Rewrite with
+# go test ./internal/autopilot/spec -run TestSentenceGolden -update
+
+When an issue in acme-org/example-repo labeled "help wanted" or triage not labeled wontfix matching language:go gets 3 new comments, if the title matches the regex ^(bug|crash): and this routine's tries are under 3, run "Triage" in the background, read only, with Codex's work profile, then tell me. Once a day, at most 3 tries per issue, at most 5 runs a day, 2 hours between tries, up to $5 a day.

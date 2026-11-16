@@ -1,0 +1,37 @@
+{
+    "version": 1,
+    "watch": {
+        "sources": [
+            {
+                "search": {
+                    "kind": "pr",
+                    "authors": [
+                        "app/dependabot"
+                    ],
+                    "where": [
+                        "@me"
+                    ]
+                }
+            }
+        ]
+    },
+    "trigger": {
+        "event": "merge_conflicts"
+    },
+    "conditions": {
+        "match": "all",
+        "of": []
+    },
+    "steps": [
+        {
+            "github": [
+                {
+                    "rebase": {}
+                }
+            ]
+        }
+    ],
+    "limits": {
+        "oncePer": "headCommit"
+    }
+}

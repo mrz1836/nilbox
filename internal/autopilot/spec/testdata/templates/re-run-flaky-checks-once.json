@@ -1,0 +1,57 @@
+{
+    "version": 1,
+    "watch": {
+        "sources": [
+            {
+                "lists": [
+                    "authored"
+                ]
+            },
+            {
+                "search": {
+                    "kind": "pr",
+                    "authors": [
+                        "app/dependabot"
+                    ],
+                    "where": [
+                        "@me"
+                    ]
+                }
+            }
+        ]
+    },
+    "trigger": {
+        "event": "checks_failed"
+    },
+    "conditions": {
+        "match": "all",
+        "of": [
+            {
+                "field": "checks.failedNames",
+                "op": "hasAny",
+                "values": [
+                    "e2e / browser",
+                    "integration / flaky-suite"
+                ]
+            }
+        ]
+    },
+    "steps": [
+        {
+            "agent": {
+                "prompt": {
+                    "starter": "rerun-failed-jobs"
+                },
+                "model": "haiku",
+                "effort": "low",
+                "fence": {
+                    "tools": "githubTasks"
+                }
+            }
+        }
+    ],
+    "limits": {
+        "oncePer": "headCommit",
+        "triesPerItem": 1
+    }
+}

@@ -1,0 +1,4 @@
+# The sentence spec.Sentence writes for testdata/templates/pre-review-what-asks-for-me.json. Rewrite with
+# go test ./internal/autopilot/spec -run TestSentenceGolden -update
+
+When a pull request in your Review requested list gets new commits, the first one included, if it isn't a draft and its size is XS, S, M, or L, run "Quick look" in the background, read only. At most 2 tries per pull request.

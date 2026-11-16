@@ -1,0 +1,4 @@
+# The sentence spec.Sentence writes for testdata/templates/re-run-flaky-checks-once.json. Rewrite with
+# go test ./internal/autopilot/spec -run TestSentenceGolden -update
+
+When checks fail on pull requests in your Authored list, or by Dependabot in your account, once every check has settled, if the failed checks' names include "e2e / browser" or "integration / flaky-suite", run "Re-run failed jobs" in the background, GitHub tasks only, with Haiku at low effort. Once per commit, at most 1 try per pull request.

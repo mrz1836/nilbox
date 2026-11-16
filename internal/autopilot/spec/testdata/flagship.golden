@@ -1,0 +1,79 @@
+# The flagship routine as spec.Load normalizes it, then indented. Rewrite with
+# go test ./internal/autopilot/spec -run TestFlagshipGolden -update
+
+{
+  "version": 1,
+  "watch": {
+    "sources": [
+      {
+        "search": {
+          "kind": "pr",
+          "authors": [
+            "app/dependabot"
+          ],
+          "where": [
+            "@me",
+            "org:acme-org"
+          ]
+        }
+      }
+    ]
+  },
+  "trigger": {
+    "event": "checks_failed",
+    "waitForChecks": true
+  },
+  "conditions": {
+    "match": "all",
+    "of": [
+      {
+        "field": "checks.failedNames",
+        "op": "anyContains",
+        "values": [
+          "codeql",
+          "gitleaks",
+          "govulncheck",
+          "nancy",
+          "osv",
+          "security"
+        ]
+      }
+    ]
+  },
+  "steps": [
+    {
+      "agent": {
+        "agent": "inherit",
+        "prompt": {
+          "starter": "fix-dependency-security"
+        },
+        "where": "background",
+        "fence": {
+          "budget": {
+            "usd": 3
+          },
+          "timeoutMinutes": 30,
+          "tools": "editTestPush"
+        }
+      }
+    },
+    {
+      "waitForChecks": {
+        "settleMinutes": 2,
+        "giveUpHours": 2
+      },
+      "onlyIf": "pushed"
+    },
+    {
+      "tellMe": {
+        "when": "verdict"
+      }
+    }
+  ],
+  "limits": {
+    "oncePer": "headCommit",
+    "triesPerItem": 2,
+    "runsPerDay": 10,
+    "waitMinutes": 30
+  }
+}
