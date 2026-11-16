@@ -378,6 +378,8 @@ export type AutopilotGlance = NonNullLists<autopilot.Glance>
 export type AutopilotRoutine = Omit<NonNullLists<autopilot.Routine>, 'brokenReason'> & {
   brokenReason: autopilotspec.Reason | ''
 }
+export type AutopilotFigures = NonNullLists<autopilot.RoutineFigures>
+export type AutopilotRoutineName = NonNullLists<autopilot.RoutineName>
 export type AutopilotDraft = NonNullLists<autopilot.Draft>
 export type AutopilotMode = autopilotprefs.Mode
 export const AutopilotMode = autopilotprefs.Mode
@@ -1010,7 +1012,8 @@ const serviceStatus = narrow(svcstatus.Service)
 export const { Status: getServiceStatus, CheckNow: checkServiceStatus } = serviceStatus
 
 // Autopilot, the Autopilot tab's. Glance is Autopilot at a glance, which the tab counts;
-// List the routines, each marked when it belongs to another account or is broken; Engine
+// List the routines, each marked when it belongs to another account or is broken, with
+// its figures; Names every routine's name, a deleted one's too, for the marks; Engine
 // what the engine last did, and whether this copy runs it. Activity is a page of what the
 // routines did before a match (0 for the newest), by day; ItemHistory one item's, which its
 // ⚡ chip opens; LatestMatches each item's newest match, which the chip says. Watching lists
@@ -1023,6 +1026,7 @@ const autopilotService = narrow(autopilot.Service)
 
 export const {
   Glance: getAutopilotGlance,
+  RoutineNames: routineNames,
   Delete: deleteRoutine,
   Matching: routineMatching,
   Watching: routineWatching,

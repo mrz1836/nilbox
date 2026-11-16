@@ -13,6 +13,7 @@ import type {
   AutopilotActivityPage,
   AutopilotEffect,
   AutopilotEngine,
+  AutopilotFigures,
   AutopilotGlance,
   AutopilotGroup,
   AutopilotItemRef,
@@ -326,10 +327,17 @@ export function routine(overrides: Partial<AutopilotRoutine> = {}): AutopilotRou
     problems: [],
     dryRunOnly: [],
     lastError: '',
+    figures: routineFigures(),
     createdAt: '2026-06-14T09:00:00Z',
     updatedAt: '2026-06-15T08:00:00Z',
     ...overrides,
   }
+}
+
+// routineFigures are what a routine's ledger says of it: nothing matched yet, unless
+// overrides say.
+export function routineFigures(overrides: Partial<AutopilotFigures> = {}): AutopilotFigures {
+  return { today: 0, wouldRunToday: 0, waiting: 0, lastAt: null, lastDryRun: false, ...overrides }
 }
 
 // itemRef is the ledger's copy of pull request 7 of example-repo, item 1.

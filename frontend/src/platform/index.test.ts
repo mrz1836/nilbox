@@ -16,6 +16,7 @@ const mocks = vi.hoisted(() => ({
   },
   autopilot: {
     Glance: vi.fn(),
+    RoutineNames: vi.fn(),
     List: vi.fn(),
     Duplicate: vi.fn(),
     Delete: vi.fn(),
@@ -326,6 +327,7 @@ describe('Autopilot’s calls', () => {
     const calls: [() => PromiseLike<unknown>, ReturnType<typeof vi.fn>, unknown[]][] = [
       [() => platform.getAutopilotGlance(), mocks.autopilot.Glance, []],
       [() => platform.listRoutines(), mocks.autopilot.List, []],
+      [() => platform.routineNames(), mocks.autopilot.RoutineNames, []],
       [() => platform.duplicateRoutine(3), mocks.autopilot.Duplicate, [3]],
       [() => platform.deleteRoutine(3), mocks.autopilot.Delete, [3]],
       [() => platform.setRoutineEnabled(3, true, 'fromNow'), mocks.autopilot.SetEnabled, [3, true, 'fromNow']],

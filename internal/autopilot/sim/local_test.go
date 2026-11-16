@@ -451,6 +451,87 @@ func TestARestoreStepRunsAtOnceInACatchUp(t *testing.T) {
 	})
 }
 
+// figuresOf returns the routine id's figures as List gives them.
+func figuresOf(t *testing.T, s *sim.Sim, id int64) autopilot.RoutineFigures {
+	t.Helper()
+
+	list, err := s.Service.List(t.Context())
+	require.NoError(t, err)
+
+	for _, r := range list {
+		if r.ID == id {
+			return r.Figures
+		}
+	}
+
+	require.Failf(t, "not listed", "routine %d", id)
+
+	return autopilot.RoutineFigures{}
+}
+
+func TestEachRoutineIsListedWithItsOwnFigures(t *testing.T) {
+	t.Parallel()
+
+	synctest.Test(t, func(t *testing.T) {
+		s, r := snoozing(t, autopilotprefs.ModeAuto, botPR(1), botPR(2))
+
+		got := figuresOf(t, s, r.ID)
+		assert.Equal(t, 2, got.Today)
+		assert.Zero(t, got.WouldRunToday)
+		require.NotNil(t, got.LastAt)
+		assert.False(t, got.LastDryRun)
+
+		// The next day nothing is today's, and the newest is still when it last matched.
+		s.Sleep(24 * time.Hour)
+		got = figuresOf(t, s, r.ID)
+		assert.Zero(t, got.Today)
+		require.NotNil(t, got.LastAt)
+	})
+
+	synctest.Test(t, func(t *testing.T) {
+		s, r := snoozing(t, autopilotprefs.ModeDryRun, botPR(1))
+
+		got := figuresOf(t, s, r.ID)
+		assert.Zero(t, got.Today)
+		assert.Equal(t, 1, got.WouldRunToday)
+		assert.True(t, got.LastDryRun, "its newest match is a Dry run's")
+	})
+
+	synctest.Test(t, func(t *testing.T) {
+		// Turned on from now on, over what already matched: its baseline counts for nothing.
+		s := sim.New(t)
+		s.World.Add(sim.Item{Number: 1, Watched: true})
+		s.Begin()
+		s.Refresh()
+
+		r := s.Save("Pin bumps", sim.Pins(), autopilotprefs.ModeAuto)
+		s.Enable(r.ID, autopilot.CurrentFromNow)
+		s.Refresh()
+		require.Equal(t, []sim.Row{row(1, autopilot.StateBaseline, "", autopilot.ReasonFromNow, "appears:item")}, s.Ledger())
+
+		got := figuresOf(t, s, r.ID)
+		assert.Zero(t, got.Today)
+		assert.Nil(t, got.LastAt, "a baseline is nothing the routine did")
+	})
+}
+
+func TestTheNamesOfDeletedRoutinesStayForWhatTheyDid(t *testing.T) {
+	t.Parallel()
+
+	synctest.Test(t, func(t *testing.T) {
+		s, r := snoozing(t, autopilotprefs.ModeAuto, botPR(1))
+		require.NoError(t, s.Service.Delete(t.Context(), r.ID))
+
+		names, err := s.Service.RoutineNames(t.Context())
+		require.NoError(t, err)
+		assert.Contains(t, names, autopilot.RoutineName{ID: r.ID, Name: r.Name, Deleted: true})
+
+		list, err := s.Service.List(t.Context())
+		require.NoError(t, err)
+		assert.Empty(t, list)
+	})
+}
+
 func TestEachItemsLatestMatchIsWhatItsChipSays(t *testing.T) {
 	t.Parallel()
 

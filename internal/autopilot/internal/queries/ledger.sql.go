@@ -903,6 +903,51 @@ func (q *Queries) ListLedgerItems(ctx context.Context) ([]*int64, error) {
 	return items, nil
 }
 
+const listMatchHeads = `-- name: ListMatchHeads :many
+SELECT id, dry_run, created_at FROM autopilot_matches WHERE id IN (/*SLICE:ids*/?)
+`
+
+type ListMatchHeadsRow struct {
+	ID        int64
+	DryRun    bool
+	CreatedAt time.Time
+}
+
+// ListMatchHeads returns when each match among ids was recorded, and whether it is a Dry
+// run's.
+func (q *Queries) ListMatchHeads(ctx context.Context, ids []int64) ([]ListMatchHeadsRow, error) {
+	query := listMatchHeads
+	var queryParams []interface{}
+	if len(ids) > 0 {
+		for _, v := range ids {
+			queryParams = append(queryParams, v)
+		}
+		query = strings.Replace(query, "/*SLICE:ids*/?", strings.Repeat(",?", len(ids))[1:], 1)
+	} else {
+		query = strings.Replace(query, "/*SLICE:ids*/?", "NULL", 1)
+	}
+	rows, err := q.db.QueryContext(ctx, query, queryParams...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListMatchHeadsRow{}
+	for rows.Next() {
+		var i ListMatchHeadsRow
+		if err := rows.Scan(&i.ID, &i.DryRun, &i.CreatedAt); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listMatchRuns = `-- name: ListMatchRuns :many
 SELECT id, match_id, routine_id, item_id, repo_owner, repo_name, kind, number, title, url, step, runner, agent, github_action, script_run_id, session_id, agent_session_id, status, outcome, verdict, profile, model, effort, preset, clone_path, worktree, head_before, run_commit, head_after, display_command, budget_reserved, budget_unit, cost, tokens_in, tokens_out, cache_read_tokens, turns, summary, error, manual, counted, log_cleared, queued_at, started_at, finished_at, verified_at, updated_at FROM autopilot_runs WHERE match_id IN (/*SLICE:ids*/?) ORDER BY id
 `
@@ -1138,6 +1183,59 @@ func (q *Queries) ListPrunableMatches(ctx context.Context, cutoff *time.Time) ([
 	for rows.Next() {
 		var i ListPrunableMatchesRow
 		if err := rows.Scan(&i.ID, &i.ItemID); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listRoutineFigures = `-- name: ListRoutineFigures :many
+SELECT
+    routine_id,
+    CAST(SUM(CASE WHEN dry_run = 0 AND created_at >= ?1 THEN 1 ELSE 0 END) AS INTEGER) AS today,
+    CAST(SUM(CASE WHEN dry_run = 1 AND created_at >= ?1 THEN 1 ELSE 0 END) AS INTEGER) AS would_run_today,
+    CAST(SUM(CASE WHEN state = 'waiting' THEN 1 ELSE 0 END) AS INTEGER) AS waiting,
+    CAST(MAX(id) AS INTEGER) AS last_id
+FROM autopilot_matches
+WHERE state IN ('waiting', 'blocked', 'queued', 'running', 'verifying', 'done', 'skipped', 'dismissed')
+GROUP BY routine_id
+`
+
+type ListRoutineFiguresRow struct {
+	RoutineID     int64
+	Today         int64
+	WouldRunToday int64
+	Waiting       int64
+	LastID        int64
+}
+
+// ListRoutineFigures returns, for each routine with a match that did something or waits to
+// (as ListLatestItemMatches counts them), how many it recorded since since, real ones and
+// a Dry run's apart, how many wait for the user, and its newest one's ID: each routine's
+// line in the routine list.
+func (q *Queries) ListRoutineFigures(ctx context.Context, since time.Time) ([]ListRoutineFiguresRow, error) {
+	rows, err := q.db.QueryContext(ctx, listRoutineFigures, since)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListRoutineFiguresRow{}
+	for rows.Next() {
+		var i ListRoutineFiguresRow
+		if err := rows.Scan(
+			&i.RoutineID,
+			&i.Today,
+			&i.WouldRunToday,
+			&i.Waiting,
+			&i.LastID,
+		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)

@@ -160,6 +160,7 @@ function answers(subscribe: Loose<Platform['on']>): { [K in keyof Platform]: Loo
     // No routine, and no history, unless a test asks for them.
     AutopilotMode: { ModeDryRun: 'dryRun', ModeAsk: 'ask', ModeAuto: 'auto', DefaultMode: 'ask' },
     listRoutines: () => Promise.resolve([]),
+    routineNames: () => Promise.resolve([]),
     duplicateRoutine: (id) => Promise.resolve(routine({ id: id + 10, name: 'Snooze passing bot PRs copy' })),
     deleteRoutine: done,
     setRoutineEnabled: (id, enabled) =>

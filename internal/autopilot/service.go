@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"slices"
+	"time"
 
 	"github.com/mrz1836/nilbox/internal/autopilot/internal/queries"
 	"github.com/mrz1836/nilbox/internal/autopilot/spec"
@@ -12,10 +13,16 @@ import (
 )
 
 // List returns every routine not deleted, in the user's order, each marked when it
-// belongs to another account than the one signed in, or when it is broken. A broken
-// routine is listed with why, beside the others, and never rewritten.
+// belongs to another account than the one signed in, or when it is broken, and with its
+// figures (what it did today, what waits, when it last matched). A broken routine is
+// listed with why, beside the others, and never rewritten.
 func (s *Service) List(ctx context.Context) ([]Routine, error) {
 	rows, err := s.store.all(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	figures, err := s.figures(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -24,7 +31,92 @@ func (s *Service) List(ctx context.Context) ([]Routine, error) {
 	out := make([]Routine, 0, len(rows))
 
 	for _, row := range rows {
-		out = append(out, routineOf(row, v))
+		r := routineOf(row, v)
+		r.Figures = figures[row.ID]
+		out = append(out, r)
+	}
+
+	return out, nil
+}
+
+// figures reads every routine's figures from the ledger, by routine: today's counts from
+// local midnight, in the clock's own zone.
+func (s *Service) figures(ctx context.Context) (map[int64]RoutineFigures, error) {
+	out := map[int64]RoutineFigures{}
+
+	if s.store.q == nil {
+		return out, nil
+	}
+
+	now := s.clock.Now()
+	midnight := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+	l := s.ledger()
+
+	rows, err := l.q.ListRoutineFigures(ctx, midnight.UTC())
+	if err != nil {
+		return nil, uierr.New("Autopilot's history couldn't be read.", err)
+	}
+
+	heads, err := matchHeads(ctx, l, rows)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, r := range rows {
+		f := RoutineFigures{Today: int(r.Today), WouldRunToday: int(r.WouldRunToday), Waiting: int(r.Waiting)}
+
+		if h, ok := heads[r.LastID]; ok {
+			at := h.CreatedAt
+			f.LastAt, f.LastDryRun = &at, h.DryRun
+		}
+
+		out[r.RoutineID] = f
+	}
+
+	return out, nil
+}
+
+// matchHeads reads when each routine's newest match among rows was recorded, by match.
+func matchHeads(ctx context.Context, l *ledger, rows []queries.ListRoutineFiguresRow) (map[int64]queries.ListMatchHeadsRow, error) {
+	out := map[int64]queries.ListMatchHeadsRow{}
+	if len(rows) == 0 {
+		return out, nil
+	}
+
+	last := make([]int64, 0, len(rows))
+	for _, r := range rows {
+		last = append(last, r.LastID)
+	}
+
+	got, err := l.q.ListMatchHeads(ctx, last)
+	if err != nil {
+		return nil, uierr.New("Autopilot's history couldn't be read.", err)
+	}
+
+	for _, h := range got {
+		out[h.ID] = h
+	}
+
+	return out, nil
+}
+
+// RoutineNames returns every routine's name by its ID, the deleted ones included, for the marks
+// and history the window shows of a routine that may have gone since. It reads the
+// database alone, and the list is never nil.
+func (s *Service) RoutineNames(ctx context.Context) ([]RoutineName, error) {
+	out := []RoutineName{}
+
+	if s.store.q == nil {
+		return out, nil
+	}
+
+	rows, err := s.ledger().q.ListRoutineNames(ctx)
+	if err != nil {
+		return out, uierr.New("The routines' names couldn't be read.", err)
+	}
+
+	for _, r := range rows {
+		out = append(out, RoutineName{ID: r.ID, Name: r.Name, Deleted: r.DeletedAt != nil})
 	}
 
 	return out, nil

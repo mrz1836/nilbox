@@ -134,8 +134,9 @@ export function LetActAgain(id: number, itemID: number): $CancellablePromise<voi
 
 /**
  * List returns every routine not deleted, in the user's order, each marked when it
- * belongs to another account than the one signed in, or when it is broken. A broken
- * routine is listed with why, beside the others, and never rewritten.
+ * belongs to another account than the one signed in, or when it is broken, and with its
+ * figures (what it did today, what waits, when it last matched). A broken routine is
+ * listed with why, beside the others, and never rewritten.
  */
 export function List(): $CancellablePromise<$models.Routine[] | null> {
     return $Call.ByID(970115387);
@@ -158,6 +159,15 @@ export function Matching(d: $models.Draft): $CancellablePromise<$models.Matching
  */
 export function Reorder(ids: number[] | null): $CancellablePromise<$models.Routine[] | null> {
     return $Call.ByID(998538810, ids);
+}
+
+/**
+ * RoutineNames returns every routine's name by its ID, the deleted ones included, for the marks
+ * and history the window shows of a routine that may have gone since. It reads the
+ * database alone, and the list is never nil.
+ */
+export function RoutineNames(): $CancellablePromise<$models.RoutineName[] | null> {
+    return $Call.ByID(291239883);
 }
 
 /**

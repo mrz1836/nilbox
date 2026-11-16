@@ -82,8 +82,32 @@ type Routine struct {
 	// LastError is the last error it met, in the window's words, "" for none.
 	LastError string `json:"lastError"`
 
+	// Figures are what its ledger says of it, for its line in the list: filled in by List
+	// alone, zero elsewhere.
+	Figures RoutineFigures `json:"figures"`
+
 	CreatedAt time.Time `json:"createdAt"`
 	UpdatedAt time.Time `json:"updatedAt"`
+}
+
+// RoutineFigures are what a routine's matches that did something or wait to (never a
+// baseline, nor one that closed as its item or the routine moved on) say of it: how many
+// it recorded today, from local midnight, real ones and a Dry run's apart, how many wait
+// for the user, and when its newest one was recorded and whether that was a Dry run's.
+type RoutineFigures struct {
+	Today         int        `json:"today"`
+	WouldRunToday int        `json:"wouldRunToday"`
+	Waiting       int        `json:"waiting"`
+	LastAt        *time.Time `json:"lastAt"`
+	LastDryRun    bool       `json:"lastDryRun"`
+}
+
+// RoutineName is a routine's name by its ID, a deleted one's included, for the window's
+// marks and history that name it.
+type RoutineName struct {
+	ID      int64  `json:"id"`
+	Name    string `json:"name"`
+	Deleted bool   `json:"deleted"`
 }
 
 // Draft is a routine as the builder saves it.
