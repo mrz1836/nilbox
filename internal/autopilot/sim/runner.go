@@ -20,14 +20,17 @@ type Runner struct {
 	going   map[int64]autopilot.Job
 	started []autopilot.Job
 	stopped []int64
+	asked   []int64
 	closed  bool
 
 	// gate holds a start until Release, or with startFirst its answer once it started;
-	// aliveErr has Alive fail; stopFails is how many Stops fail before one goes through.
+	// aliveErr has Alive fail; stopFails is how many Stops fail before one goes through;
+	// stopGate holds every Stop until ReleaseStops.
 	gate       chan struct{}
 	startFirst bool
 	aliveErr   error
 	stopFails  int
+	stopGate   chan struct{}
 }
 
 // NewRunner returns a runner with nothing going.
@@ -96,6 +99,26 @@ func (r *Runner) FailStops(n int) {
 	r.stopFails = n
 }
 
+// HoldStops holds every Stop until ReleaseStops, as a runner that takes its time over a
+// stop: the engine has asked it, and its answer, done or failed, isn't back yet.
+func (r *Runner) HoldStops() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	r.stopGate = make(chan struct{})
+}
+
+// ReleaseStops lets the Stops through.
+func (r *Runner) ReleaseStops() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	if r.stopGate != nil {
+		close(r.stopGate)
+		r.stopGate = nil
+	}
+}
+
 // Forget forgets a run, as a run that ended with no one told does.
 func (r *Runner) Forget(runID int64) {
 	r.mu.Lock()
@@ -150,8 +173,22 @@ func (r *Runner) Dispatch(ctx context.Context, job autopilot.Job) (autopilot.Res
 	return autopilot.Result{Running: true}, nil
 }
 
-// Stop stops a run, and tells the engine.
-func (r *Runner) Stop(_ context.Context, runID int64) error {
+// Stop stops a run, and tells the engine; while HoldStops holds them, it waits for
+// ReleaseStops first.
+func (r *Runner) Stop(ctx context.Context, runID int64) error {
+	r.mu.Lock()
+	r.asked = append(r.asked, runID)
+	gate := r.stopGate
+	r.mu.Unlock()
+
+	if gate != nil {
+		select {
+		case <-gate:
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
+
 	r.mu.Lock()
 
 	if r.stopFails > 0 {
@@ -235,6 +272,15 @@ func (r *Runner) Stopped() []int64 {
 	defer r.mu.Unlock()
 
 	return slices.Clone(r.stopped)
+}
+
+// StopsAsked returns the run of every Stop asked, in order: one held, one that failed,
+// and one that reached its run alike.
+func (r *Runner) StopsAsked() []int64 {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	return slices.Clone(r.asked)
 }
 
 // Finish ends a run as end says (its RunID is filled in, and its outcome done unless it
