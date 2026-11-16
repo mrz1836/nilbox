@@ -826,11 +826,12 @@ func (l *lexer) ansiNumber(base, n int) string {
 	}
 
 	v, err := strconv.ParseUint(string(l.src[start:l.i]), base, 32)
-	if err != nil || l.i == start {
+	if err != nil || l.i == start || v > utf8.MaxRune {
+		// No digits, or a code point past Unicode's, which decodes to nothing.
 		return ""
 	}
 
-	return string(rune(v)) //nolint:gosec // a rune from at most 8 hex digits, which string() bounds
+	return string(rune(v))
 }
 
 // assign reports a word that sets a variable: a name, then an unquoted =.

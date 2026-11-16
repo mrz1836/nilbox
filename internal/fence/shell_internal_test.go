@@ -8,6 +8,9 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// gitPush is the command most of the reader's cases hide.
+const gitPush = "git push"
+
 // programs returns every simple command of a line as its words joined, for a test to
 // compare.
 func programs(t *testing.T, line string) []string {
@@ -36,20 +39,22 @@ func TestReadShellFindsEveryCommand(t *testing.T) {
 		{line: "cd x && git push --force", want: []string{"cd x", "git push --force"}},
 		{line: "a; b || c | d & e", want: []string{"a", "b", "c", "d", "e"}},
 		{line: "echo $(git push -f origin x)", want: []string{"echo $(git push -f origin x)", "git push -f origin x"}},
-		{line: "echo `git push`", want: []string{"echo `git push`", "git push"}},
+		{line: "echo `git push`", want: []string{"echo `git push`", gitPush}},
 		{line: "diff <(git show a) <(git show b)", want: []string{"git show a", "git show b", "diff"}},
-		{line: "(cd x; git push)", want: []string{"cd x", "git push"}},
+		{line: "(cd x; git push)", want: []string{"cd x", gitPush}},
 		{line: "f() { git push --force; }; f", want: []string{"f", "git push --force", "f"}},
-		{line: "if true; then git push; fi", want: []string{"true", "git push"}},
+		{line: "if true; then git push; fi", want: []string{"true", gitPush}},
 		{line: "for b in a c; do git push origin $b; done", want: []string{"git push origin $b"}},
-		{line: "'g''it' pu\\sh", want: []string{"git push"}},
-		{line: "$'\\x67it' push", want: []string{"git push"}},
+		{line: "'g''it' pu\\sh", want: []string{gitPush}},
+		{line: "$'\\x67it' push", want: []string{gitPush}},
+		{line: "$'\\u0067\\147it' push", want: []string{"ggit push"}},
+		{line: "$'\\UFFFFFFFFgit' push", want: []string{gitPush}},
 		{line: "git commit -F - <<'EOF'\nfix the push\nEOF\ngo test", want: []string{"git commit -F -", "go test"}},
-		{line: "cat <<EOF\n$(git push)\nEOF", want: []string{"cat", "git push"}},
+		{line: "cat <<EOF\n$(git push)\nEOF", want: []string{"cat", gitPush}},
 		{line: "ls # git push", want: []string{"ls"}},
 		{line: "echo a \\\n  b", want: []string{"echo a b"}},
-		{line: "time git push", want: []string{"git push"}},
-		{line: "echo $((1 + $(git push)))", want: []string{"git push", "echo $((1 + $(git push)))"}},
+		{line: "time git push", want: []string{gitPush}},
+		{line: "echo $((1 + $(git push)))", want: []string{gitPush, "echo $((1 + $(git push)))"}},
 	}
 
 	for _, tt := range tests {
