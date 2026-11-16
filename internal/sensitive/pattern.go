@@ -213,3 +213,28 @@ func shorten(p string) string {
 
 	return textutil.Truncate(p, limit+1)
 }
+
+// Pattern is one compiled pattern, in the syntax the package describes, for matching
+// paths outside any category: a routine's condition on the paths a pull request changes.
+type Pattern struct {
+	p pattern
+}
+
+// CompilePattern compiles one pattern as the user's own patterns are compiled, or
+// returns an ErrInvalidPattern saying why it can't be used: a pattern that matches every
+// file is refused here too.
+func CompilePattern(raw string) (Pattern, error) {
+	p, err := compile(raw)
+	if err != nil {
+		return Pattern{}, err
+	}
+
+	return Pattern{p: p}, nil
+}
+
+// Match reports whether the pattern matches a repository path, ignoring case.
+func (p Pattern) Match(filePath string) bool {
+	names := splitPath(filePath)
+
+	return len(names) > 0 && len(p.p.segs) > 0 && p.p.match(names)
+}
