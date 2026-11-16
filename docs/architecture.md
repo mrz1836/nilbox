@@ -839,9 +839,10 @@ item's own read, the follower, a whole refresh, or another service's state (`Not
 have stored it while the pass read GitHub: an item whose card, details, state, or lists
 changed since the pass compared it, or that was stored after its request went out, is newer,
 and keeps what that read stored, only its rows written while it is open; one stored merged,
-or closed by such a read, or whose rows went since (an unlist takes a closed or gone item out
-of every search), is gone: its rows are deleted, never written, and it isn't told as changed;
-one deleted since is stored again as new. Then each item (`UpsertWatchedItem`, which never
+or closed by such a read, or, for a pass, whose rows went since (an unlist takes a closed or
+gone item out of every search; a test's results have no rows, which a pass may drop for any
+reason), is gone: its rows are deleted, never written, and it isn't told as changed; one
+deleted since is stored again as new. Then each item (`UpsertWatchedItem`, which never
 touches the reason flags or the times an item arrived in a list, and never writes a state over
 `MERGED`; its repository through `EnsureRepo`, which keeps what is stored, or whole from the
 details), its details, its rows (`UpsertWatch`), and each search's state. A stored item whose
@@ -852,9 +853,15 @@ full replaces its rows (`DeleteUnseenWatches`), a truncated or `Partial` one kee
 didn't return, stale, for `staleTailFor` (a week), and one that failed marks every row stale
 (`MarkSearchStale`); the rows of a search no routine has are deleted (`DeleteWatchesNotIn`).
 The closed results' state is recorded through `SetRefStateBefore`, read before the pass's
-request went out, so an item stored since keeps the newer read. A refresh still fetching that
-started before the pass's request applies the items whose card and details the pass stored
-again (the replays of `order.go`). Then `Config.Changed` hears the items stored as changed,
+request went out, so an item stored since keeps the newer read. Under the same lock, the pass
+records in the write order the number its fetch took for every item whose card or state it
+wrote (`writeOrder.stated`, through `orderStored`): an item's own read or a follower round
+that went out before the pass and lands after it is superseded, as by a whole refresh, and
+stores nothing over them. A refresh still fetching that started before the pass's request
+applies again the items whose card and details the pass stored, and the states it wrote (a
+`stateWrite` each, through `SetItemState`), on top of its own (the replays of `order.go`).
+`stated` drops what is no later than the whole refresh before the last, so it stays as small
+as what was stored lately. Then `Config.Changed` hears the items stored as changed,
 outside every lock, which core turns into the Go-only `event.InboxItemsChanged`; the
 follower's rounds, an item's own read, and an action on it tell it too. Each pass's
 `WatchPass` (its time in all and after the inbox's store, its requests and points, its results
@@ -881,18 +888,24 @@ that carries them: the inbox's searches (`UpsertItem`), an item's own read and t
 (`UpdateItem`, `UnlistItem`, which also drops a closed or gone item's watch rows), the closed
 items a refresh's searches returned (`SetRefState`), the routines' searches and a test's
 (`SetRefStateBefore` for their closed results), and the states the worktree sweep and the
-notifications mirror read (`Store.NoteStates`, through core's `itemStates` and `stateNoter`,
-with when each read went out). Every one of them stamps `fetched_at`, and none writes over a
-`MERGED`. `NoteStates` runs outside the inbox's order, so an item stored at or after its read
-went out keeps that newer read (`SetRefStateBefore`). `review_requested_at` and `assigned_at`
+notifications mirror read (`Store.NoteStates`, through core's `itemStates` and `stateNoter`).
+Every one of them stamps `fetched_at`, and none writes over a `MERGED`, which is final: not
+`UpsertItem`, `UpdateItem`, `UnlistItem`, `UpsertWatchedItem`, `SetRefState`,
+`SetRefStateBefore`, or `SetItemState`. A close can open again, so it is ordered rather than
+guarded: another service numbers its read in the inbox's write order as it goes out
+(`Store.StartRead`, a `StateRead`; core hands the Service its Store as `Config.Store`, so the
+two share one order), and `NoteStates` stores by it as a pass does: an item stored at or after
+the read went out keeps that newer read (`SetRefStateBefore`), an item's own read that went
+out before it stores nothing over it (`stated`), and a whole refresh still fetching that went
+out before it applies the state again on top of its own. `review_requested_at` and `assigned_at`
 keep when the inbox first saw an item in Review requested and in Assigned while it stays
 there, cleared once it leaves (`ClearArrivalStamps`, and every query that takes it out), for
 the routines' fire keys. Each whole refresh prunes, in its own transaction, the items in no
 list, watched by no search, with no triage, that no read brought for 30 days (`PruneItems`);
 what else refers to an item comes from `Config.Keep` (`ItemKeeper`), read before the
 transaction, so a later owner of a reference, as a routine's ledger, extends the rule there.
-Core hands it `inbox.Keepers` (one failing fails the whole, so the prune keeps everything)
-over the agent sessions' items (`sessions.Store.KeptItems`: `agent_sessions.item_id` has no
+Core hands it `inbox.Keepers` (one failing fails the whole, and then the refresh prunes
+nothing, keeping everything, logs why, and goes on) over the agent sessions' items (`sessions.Store.KeptItems`: `agent_sessions.item_id` has no
 foreign key, so a pruned item would leave a dangling id, or a reused one) and the
 notifications' (`notify.Store.KeptItems`: `notifications.item_id` would be cleared, and the
 entry would no longer open its item). A worktree record and a GitHub notification thread name
@@ -909,11 +922,12 @@ repository rules applied), `Store.FactsEnv`, `Store.WatchedItems` (a routine's l
 searches' rows, stale ones included), `Store.Suggest` and `KnownOwners` (the builder's
 suggestions, labels and check names counted in Go from their JSON columns), `Store.WatchStatus`,
 and, through `inbox.Routines`, `SearchNow` (a draft's searches read now and stored as a pass
-stores them, `recheck` included, with no rows, so the prune takes them in time; the details of
-an item no search watches are read only when missing or older than `detailsStaleAfter`, since
-the passes keep the watched ones current and a test only looks; nothing is sent while the
-budget is under a quarter, `ErrLowBudget`) and `ReadChecks` (`github.FetchChecks` into
-`item_checks`, returning what it cost, which a test adds to its points).
+stores them, `recheck` and the write order included, with no rows, so the prune takes them in
+time; the details of an item no search watches are read only when missing, older than
+`detailsStaleAfter`, or its state moved, since the passes keep the watched ones current and a
+test only looks, and its card is stored all the same; nothing is sent while the budget is
+under a quarter, `ErrLowBudget`) and `ReadChecks` (`github.FetchChecks` into `item_checks`,
+returning what it cost, which a test adds to its points, and `ErrLowBudget` too).
 
 **Check names.** `github.FetchChecks` reads each pull request's checks on its head commit, a
 fragment of its own (`CheckFields`) modeled on the review sheet's `checkList` selection, with
@@ -1239,5 +1253,6 @@ what the draft's searches would add to each refresh (`Costs.Estimate`, core's `w
 the requests the refresh packs them into, by what each matched, at most a page, and a full
 page for one that failed, at what the last watch pass cost a request, at the refresh's pace,
 as a share of the GraphQL budget). While the GraphQL budget is under a quarter of its size the
-inbox sends nothing (`ErrLowBudget`): the result says so (`LowBudget`), each search it had no
-answer for says why, no check name is read, and the lists' items are still decided.
+inbox sends nothing (`ErrLowBudget`, from `SearchNow` or, when every search came from the
+cache, `ReadChecks`): the result says so (`LowBudget`), each search it had no answer for says
+why, no check name is read, and the lists' items are still decided.

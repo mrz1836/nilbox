@@ -356,19 +356,25 @@ changing the package, and keep the section and its summary in step.
   watched items that are new or changed with no lock held, and stores them, their
   `item_watches` rows, and each search's state (`inbox.watches`) through the order, after
   reading again under the lock what is stored of them (`recheck`), so a read stored since its
-  request went out stands, a merge never reopens, and the rows of an item closed or unlisted
-  since never come back; then it tells `Config.Changed` (core's Go-only
-  `event.InboxItemsChanged`). A watched item is in no list or count; a failed search, a
-  truncated one's tail, and a partial answer's missing items keep their rows, stale; an item
-  whose details didn't come back keeps its card, to be read again; no pass, and no routine's
-  test, goes out under a quarter of the GraphQL budget; the follower takes the watched pull
-  requests a routine follows, muted or not, after the listed ones; `items.state` is written by
-  every read that carries it (`NoteStates`, outside the order, never over a merge or a newer
-  read); items nothing refers to are pruned after 30 days (`Config.Keep`, `inbox.Keepers`
-  over the agent sessions' and the notifications' items in core); and a guard test decides
-  every query that reads the reason flags (`TestEveryReasonFlagQueryIsDecided`). Autopilot's
-  own reads (`SearchNow`, `ReadChecks`) go through `inbox.Routines`, never the bound Service,
-  whose `ItemsByID` serves a routine's Watching list.
+  request went out stands, and the rows of an item closed or unlisted since never come back;
+  then it records in the write order every card and state it stored (`writeOrder.stated`), so
+  an item's own read or a follower round that went out before it stores nothing over them,
+  and a whole refresh still fetching applies its states again; then it tells
+  `Config.Changed` (core's Go-only `event.InboxItemsChanged`). No write ever puts a merged
+  item's state back (every query that writes `items.state`). A watched item is in no list or
+  count; a failed search, a truncated one's tail, and a partial answer's missing items keep
+  their rows, stale; an item whose details didn't come back keeps its card, to be read again;
+  no pass, and no routine's test or its check names, goes out under a quarter of the GraphQL
+  budget; the follower takes the watched pull requests a routine follows, muted or not, after
+  the listed ones; `items.state` is written by every read that carries it, another service's
+  through `Store.NoteStates` in the order its read went out (`Store.StartRead`, the Store
+  core hands the Service as `Config.Store`, so they share one write order); items nothing
+  refers to are pruned after 30 days (`Config.Keep`, `inbox.Keepers` over the agent sessions'
+  and the notifications' items in core, a refresh that can't read them pruning nothing); and
+  a guard test decides every query that reads the reason flags
+  (`TestEveryReasonFlagQueryIsDecided`). Autopilot's own reads (`SearchNow`, `ReadChecks`) go
+  through `inbox.Routines`, never the bound Service, whose `ItemsByID` serves a routine's
+  Watching list.
   Full design: [docs/architecture.md](docs/architecture.md#internalinbox)
 - `internal/launcher/` resolves a launch (the agent first, then that agent's profile, model,
   and flags), plans it, and writes its files; `internal/launcher/terminal/` renders the launch

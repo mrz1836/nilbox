@@ -2484,8 +2484,10 @@ read again in the room that read leaves, up to 15 a refresh, the oldest first, s
 read GitHub doesn't answer leaves its items as they were, to be read again next time. A
 watched pull request whose routine acts on its checks is followed like a listed one while its
 checks run (see [the inbox cards](#inbox-cards)), whatever repository it is in, a muted one
-included. A read of an item's own that finds it merged or closed while the searches are being
-read stands: the searches never bring it back.
+included. Reads are stored in the order they went out: a read of an item's own that finds it
+merged or closed while the searches are being read stands, and the searches never bring it
+back; the searches finding it merged or closed stand over a read of its own that went out
+before them. A merged item's state never changes again, whatever a read says.
 
 **When a search fails.** A search GitHub doesn't answer, or a request that times out, never
 fails the refresh: its items are kept, marked as not read this time, so they don't look as if
