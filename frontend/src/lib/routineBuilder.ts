@@ -10,17 +10,22 @@ import type {
   AutopilotCatalog,
   AutopilotDraft,
   AutopilotEstimate,
+  AutopilotEvent,
   AutopilotField,
+  AutopilotInvolving,
   AutopilotMode,
   AutopilotOp,
   AutopilotOutcome,
   AutopilotPart,
   AutopilotProblem,
   AutopilotRoutine,
+  AutopilotSearch,
+  AutopilotSetting,
   AutopilotSpec,
   AutopilotStep,
   AutopilotStepKind,
   AutopilotTestResult,
+  AutopilotTrigger,
   ItemKind,
 } from '../platform'
 import { counted } from './format'
@@ -111,14 +116,77 @@ export function sameDraft(a: AutopilotDraft, b: AutopilotDraft): boolean {
   )
 }
 
-// watchChanged reports a change to what a routine watches, fires on, or checks: what the
-// question about current matches is asked for.
+// watchChanged reports a change to what a routine watches, fires on, checks, or fires once
+// per: what the question about current matches is asked for. Once per decides the
+// occurrence each match is for, so a change of it makes every current match a new one.
 export function watchChanged(before: AutopilotSpec, after: AutopilotSpec): boolean {
   return (
     canonical(before.watch) !== canonical(after.watch) ||
     canonical(before.trigger) !== canonical(after.trigger) ||
-    canonical(before.conditions) !== canonical(after.conditions)
+    canonical(before.conditions) !== canonical(after.conditions) ||
+    (before.limits.oncePer ?? '') !== (after.limits.oncePer ?? '')
   )
+}
+
+// testedKeys are what a test's findings hold for: its matches and records for the routine,
+// what it watches, fires on, checks, and fires once per (key); its searches' notes and cost
+// for what it watches (watch); and its warnings, which are by step, for its steps too
+// (steps).
+export function testedKeys(id: number, spec: AutopilotSpec): { key: string; watch: string; steps: string } {
+  return {
+    key: canonical({
+      id,
+      watch: spec.watch,
+      trigger: spec.trigger,
+      conditions: spec.conditions,
+      oncePer: spec.limits.oncePer,
+    }),
+    watch: canonical(spec.watch),
+    steps: canonical(spec.steps),
+  }
+}
+
+// defaultSchedule is when On a schedule fires until it is changed: every day at 09:00.
+export const defaultSchedule: NonNullable<AutopilotTrigger['schedule']> = { every: 'day', at: '09:00' }
+
+// newTrigger is the trigger event as When starts it, with what it needs to fire filled in
+// as the block shows it: On a schedule's every day at 09:00.
+export function newTrigger(catalog: AutopilotCatalog, event: AutopilotEvent): AutopilotTrigger {
+  const info = catalog.triggers.find((t) => t.event === event)
+
+  return info?.options.some((o) => o.id === 'schedule') === true
+    ? { event, schedule: { ...defaultSchedule } }
+    : { event }
+}
+
+// prOnlyInvolving is how a search involves you that only a pull request can: asking for
+// your review.
+const prOnlyInvolving: AutopilotInvolving = 'reviewRequested'
+
+// involvingFor are the ways a search of kind can involve you: an issue's leave out asking
+// for your review.
+export function involvingFor(kind: AutopilotSearch['kind']): AutopilotInvolving[] {
+  const all: AutopilotInvolving[] = ['assigned', 'reviewRequested', 'mentioned']
+
+  return kind === 'issue' ? all.filter((v) => v !== prOnlyInvolving) : all
+}
+
+// withKind is search looking for kind ('' for both): a search of issues drops what only a
+// pull request has (its base and head branches, its state, and asking for your review),
+// which the block no longer shows for it.
+export function withKind(search: AutopilotSearch, kind: AutopilotSearch['kind'] | ''): AutopilotSearch {
+  if (kind !== 'pr' && kind !== 'issue') {
+    return omit(search, 'kind')
+  }
+
+  if (kind === 'pr') {
+    return { ...search, kind }
+  }
+
+  const involving = (search.involving ?? []).filter((v) => v !== prOnlyInvolving)
+  const rest = omit(omit(omit(omit(search, 'base'), 'headPrefix'), 'state'), 'involving')
+
+  return { ...rest, kind, ...(involving.length > 0 ? { involving } : {}) }
 }
 
 // stepKinds are the keys a step may set, one each, in the catalog's order.
@@ -393,18 +461,53 @@ export function problemsExactly(
   return problems.filter((p) => p.part === part && p.field === path)
 }
 
-// placed are the parts each block shows its own problems in; any other part's show at the
-// top.
-const placed: readonly AutopilotPart[] = ['watch', 'trigger', 'conditions', 'steps', 'limits']
+// shownIn reports a problem one of spec's blocks shows where it is: When and Limits show
+// every problem of theirs; Watch its own and each source's, at it or inside it; If its own
+// (the top list's match and its count) and each condition's or group's, whatever is inside
+// it; and Then its own and each step's.
+function shownIn(spec: AutopilotSpec, p: AutopilotProblem): boolean {
+  const inside = (count: number, at: (i: number) => string) =>
+    Array.from({ length: count }, (_, i) => at(i)).some((path) => atPath(p.field, path))
 
-// unplaced are the problems no block shows: the version's, the notices', the tools'.
-export function unplaced(problems: readonly AutopilotProblem[]): AutopilotProblem[] {
-  return problems.filter((p) => !placed.includes(p.part))
+  switch (p.part) {
+    case 'trigger':
+    case 'limits':
+      return true
+    case 'watch':
+      return (
+        p.field === '' || p.field === 'sources' || inside(spec.watch.sources.length, (i) => `sources[${String(i)}]`)
+      )
+    case 'conditions':
+      return p.field === 'of' || p.field === 'match' || inside(spec.conditions.of.length, (i) => `of[${String(i)}]`)
+    case 'steps':
+      return p.field === '' || inside(spec.steps.length, (i) => `[${String(i)}]`)
+    default:
+      return false
+  }
+}
+
+// unshown are the problems no block of spec shows, which the builder lists at the top: the
+// version's, the notices', the tools', and any at a place the blocks don't draw, as an
+// imported spec can hold.
+export function unshown(problems: readonly AutopilotProblem[], spec: AutopilotSpec): AutopilotProblem[] {
+  return problems.filter((p) => !shownIn(spec, p))
+}
+
+// openRange is a range that bounds nothing, for a setting the catalog doesn't list.
+const openRange = { min: 0, max: Number.MAX_SAFE_INTEGER, default: 0, unit: '' } as const
+
+// settingRange is a whole-number setting's bounds and default, as the catalog lists them
+// among settings.
+export function settingRange(
+  settings: readonly AutopilotSetting[],
+  id: string,
+): { min: number; max: number; default: number; unit: string } {
+  return settings.find((s) => s.id === id)?.range ?? openRange
 }
 
 // heldWhy says, of each kind of step this build can't run yet, what it waits for.
 const heldWhy: Readonly<Partial<Record<AutopilotStepKind, string>>> = {
-  agent: 'until this Mac can run agents',
+  agent: `until this version of ${brand.name} can run agents`,
   github: `until this version of ${brand.name} can send GitHub actions`,
   markDone: `until this version of ${brand.name} can mark GitHub notifications done`,
   waitForChecks: `until this version of ${brand.name} can follow an agent’s push`,
@@ -413,7 +516,7 @@ const heldWhy: Readonly<Partial<Record<AutopilotStepKind, string>>> = {
 }
 
 // dryRunWhy says why a routine with steps of kinds runs in Dry run alone, a sentence a
-// kind: "Agent steps run in Dry run until this Mac can run agents."
+// kind: "Agent steps run in Dry run until this version of <brand> can run agents."
 export function dryRunWhy(catalog: AutopilotCatalog, kinds: readonly AutopilotStepKind[]): string {
   return kinds
     .map((k) => {
@@ -435,13 +538,15 @@ function percentText(percent: number): string {
 }
 
 // costLine says what a draft's searches add to each refresh: "About 1 point a refresh
-// (0.2% of the budget)", or that watching the inbox lists alone costs nothing more.
-export function costLine(estimate: AutopilotEstimate): string {
-  if (estimate.requests === 0) {
-    return 'Nothing more a refresh: the inbox reads its lists already.'
-  }
+// (0.2% of the budget)", or that watching the inbox lists alone costs nothing more; and,
+// of a test of earlier searches (stale), that it is the last test's.
+export function costLine(estimate: AutopilotEstimate, stale = false): string {
+  const line =
+    estimate.requests === 0
+      ? 'Nothing more a refresh: the inbox reads its lists already.'
+      : `About ${counted(estimate.pointsPerRefresh, 'point', 'points')} a refresh (${percentText(estimate.percent)} of the budget)`
 
-  return `About ${counted(estimate.pointsPerRefresh, 'point', 'points')} a refresh (${percentText(estimate.percent)} of the budget)`
+  return stale ? `${line.replace(/\.$/, '')} · as last tested, before the searches changed` : line
 }
 
 // testHeadline says what a test found: "3 of 7 pull requests match now", and how many it

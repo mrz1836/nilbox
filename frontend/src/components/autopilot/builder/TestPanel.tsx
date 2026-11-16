@@ -8,7 +8,7 @@ import { Spinner } from '../../Spinner'
 
 export interface TestPanelProps {
   // result is the last test of the draft, undefined before one answered; stale reports one
-  // of an earlier draft, whose watch, trigger, or conditions changed since.
+  // of an earlier draft, whose watch, trigger, conditions, or Once per changed since.
   result: AutopilotTestResult | undefined
   stale: boolean
   // testing reports a test under way, and error why the last one failed.
@@ -99,7 +99,8 @@ export function TestPanel({ result, stale, testing, error, ready, kinds, mode, o
       )}
       {stale && !testing && (
         <p className="text-xs text-muted">
-          What it watches, fires on, or checks changed since this test: Test again to see what it matches now.
+          What it watches, fires on, checks, or fires once per changed since this test: Test again to see what it
+          matches now.
         </p>
       )}
       {result?.lowBudget === true && (

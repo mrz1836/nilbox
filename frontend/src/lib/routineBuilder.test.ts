@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import { brand } from '../generated/brand'
-import type { AutopilotSpec, AutopilotStep } from '../platform'
+import type { AutopilotProblem, AutopilotSpec, AutopilotStep } from '../platform'
 import { autopilotCatalog, routine, routineTest } from '../test/fixtures'
 import {
   actsOn,
@@ -29,12 +29,17 @@ import {
   scratchDraft,
   scratchSpec,
   stepKindOf,
+  settingRange,
+  testedKeys,
   testedLabel,
   testHeadline,
   toolsOf,
-  unplaced,
+  unshown,
   watchChanged,
   watchKinds,
+  withKind,
+  involvingFor,
+  newTrigger,
 } from './routineBuilder'
 
 const catalog = autopilotCatalog()
@@ -95,6 +100,11 @@ describe('a draft', () => {
     expect(watchChanged(before, { ...before, watch: { sources: [{ lists: ['authored'] }] } })).toBe(true)
     expect(watchChanged(before, { ...before, trigger: { event: 'appears' } })).toBe(true)
     expect(watchChanged(before, { ...before, conditions: { match: 'any', of: [] } })).toBe(true)
+    // Once per decides which occurrence each current match is for.
+    expect(watchChanged(before, { ...before, limits: { oncePer: 'day' } })).toBe(true)
+    expect(watchChanged({ ...before, limits: { oncePer: 'day' } }, { ...before, limits: { oncePer: 'day' } })).toBe(
+      false,
+    )
   })
 
   it('leaves a key out', () => {
@@ -270,13 +280,106 @@ describe('the problems', () => {
     expect(problemsAt(problems, 'conditions').length).toBe(3)
     expect(problemsAt(problems, 'watch', 'sources[0]').length).toBe(1)
     expect(problemsExactly(problems, 'conditions', 'of[1]').map((p) => p.message)).toEqual(['here'])
-    expect(unplaced(problems).map((p) => p.part)).toEqual(['version'])
+  })
+
+  it('show at the top only where no block draws them', () => {
+    const spec: AutopilotSpec = {
+      ...scratchSpec(),
+      conditions: {
+        match: 'all',
+        of: [{ field: 'item.title', op: 'contains', value: 'x' }, { group: { match: 'any', of: [] } }],
+      },
+    }
+    const at = (part: AutopilotProblem['part'], field: string): AutopilotProblem => ({ part, field, message: field })
+
+    expect(
+      unshown(
+        [
+          at('version', ''),
+          at('trigger', 'schedule.at'),
+          at('limits', 'activeHours.days[0]'),
+          at('watch', 'sources'),
+          at('watch', 'sources[0]'),
+          at('watch', 'sources[0].search.where'),
+          at('watch', 'sources[3]'),
+          at('conditions', 'of'),
+          at('conditions', 'match'),
+          at('conditions', 'of[0].value'),
+          at('conditions', 'of[1].group.of'),
+          at('conditions', 'of[4]'),
+          at('steps', ''),
+          at('steps', '[0].note'),
+          at('steps', '[2]'),
+        ],
+        spec,
+      ).map((p) => `${p.part}.${p.field}`),
+    ).toEqual(['version.', 'watch.sources[3]', 'conditions.of[4]', 'steps.[2]'])
+  })
+})
+
+describe('what a test holds for', () => {
+  it('keys its matches by what decides them, its notes by the searches, and its warnings by the steps too', () => {
+    const spec = scratchSpec()
+    const was = testedKeys(3, spec)
+
+    expect(testedKeys(3, { ...spec, steps: [{ pin: {} }] })).toEqual({ ...was, steps: canonical([{ pin: {} }]) })
+    expect(testedKeys(3, { ...spec, limits: { runsPerDay: 2 } })).toEqual(was)
+
+    const oncePer = testedKeys(3, { ...spec, limits: { oncePer: 'day' } })
+
+    expect(oncePer.key).not.toBe(was.key)
+    expect(oncePer.watch).toBe(was.watch)
+
+    const watched = testedKeys(3, { ...spec, watch: { sources: [{ lists: ['authored'] }] } })
+
+    expect(watched.key).not.toBe(was.key)
+    expect(watched.watch).not.toBe(was.watch)
+    expect(testedKeys(4, spec).key).not.toBe(was.key)
+  })
+})
+
+describe('a trigger and a search as they start', () => {
+  it('stores the schedule On a schedule shows, and nothing for another trigger', () => {
+    expect(newTrigger(catalog, 'schedule')).toEqual({ event: 'schedule', schedule: { every: 'day', at: '09:00' } })
+    expect(newTrigger(catalog, 'checks_failed')).toEqual({ event: 'checks_failed' })
+  })
+
+  it('drops what only a pull request has once a search looks for issues', () => {
+    const search = {
+      kind: 'pr' as const,
+      where: ['@me'],
+      base: 'main',
+      headPrefix: 'dependabot/',
+      state: ['failing' as const],
+      involving: ['reviewRequested' as const, 'mentioned' as const],
+      labels: ['security'],
+    }
+
+    expect(withKind(search, 'issue')).toEqual({
+      kind: 'issue',
+      where: ['@me'],
+      involving: ['mentioned'],
+      labels: ['security'],
+    })
+    expect(withKind({ ...search, involving: ['reviewRequested'] }, 'issue')).not.toHaveProperty('involving')
+    expect(withKind(search, '')).toEqual(omit(search, 'kind'))
+    expect(withKind({ ...search, kind: 'issue' }, 'pr')).toEqual(search)
+    expect(involvingFor('issue')).toEqual(['assigned', 'mentioned'])
+    expect(involvingFor('pr')).toEqual(['assigned', 'reviewRequested', 'mentioned'])
+  })
+
+  it('reads a setting’s bounds and default from the catalog', () => {
+    expect(settingRange(catalog.stepSettings, 'snooze.days')).toEqual({ min: 1, max: 365, default: 3, unit: 'days' })
+    expect(settingRange(catalog.agentSettings, 'budgetTokens')).toMatchObject({ min: 10_000, default: 200_000 })
+    expect(settingRange(catalog.limits, 'nothing').default).toBe(0)
   })
 })
 
 describe('the words', () => {
   it('say why steps run in Dry run alone', () => {
-    expect(dryRunWhy(catalog, ['agent'])).toBe('Agent steps run in Dry run until this Mac can run agents.')
+    expect(dryRunWhy(catalog, ['agent'])).toBe(
+      `Agent steps run in Dry run until this version of ${brand.name} can run agents.`,
+    )
     expect(dryRunWhy(catalog, ['merge'])).toBe(
       `“Merge it” runs in Dry run until this version of ${brand.name} can merge.`,
     )
@@ -294,6 +397,10 @@ describe('the words', () => {
     )
     expect(costLine({ requests: 9, pointsPerRefresh: 90, pointsPerHour: 1080, percent: 21.6 })).toContain('(22% of')
     expect(costLine({ requests: 0, pointsPerRefresh: 0, pointsPerHour: 0, percent: 0 })).toContain('Nothing more')
+    // A test of earlier searches says so.
+    expect(costLine({ requests: 1, pointsPerRefresh: 1, pointsPerHour: 12, percent: 0.24 }, true)).toBe(
+      'About 1 point a refresh (0.2% of the budget) · as last tested, before the searches changed',
+    )
   })
 
   it('say what a test found, and what it spent', () => {

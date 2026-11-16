@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { useState } from 'react'
 import { describe, expect, it } from 'vitest'
@@ -122,6 +122,37 @@ describe('a token field', () => {
 
     await user.type(field(), '{Enter}')
     expect(stored().textContent).toBe('app/renovate')
+  })
+
+  it('leaves an input method’s Enter and comma to it, WebKit’s confirming Enter too', async () => {
+    const user = userEvent.setup()
+    render(<Field start={['octo-reviewer']} suggestions={[]} />)
+
+    await user.click(field())
+    fireEvent.compositionStart(field())
+    fireEvent.change(field(), { target: { value: 'ni,' } })
+    expect(field()).toHaveValue('ni,')
+    fireEvent.keyDown(field(), { key: 'Enter', isComposing: true })
+    fireEvent.change(field(), { target: { value: '你' } })
+    fireEvent.compositionEnd(field())
+    // WebKit ends the composition before the keydown of the Enter that confirms it.
+    fireEvent.keyDown(field(), { key: 'Enter', keyCode: 229 })
+    expect(stored().textContent).toBe('octo-reviewer')
+
+    fireEvent.keyDown(field(), { key: 'Enter' })
+    expect(stored().textContent).toBe('octo-reviewer|你')
+  })
+
+  it('keeps focus in the field once a token’s × takes it away, and names its list only while it shows', async () => {
+    const user = userEvent.setup()
+    render(<Field start={['octo-reviewer']} invalid describedBy="why" />)
+
+    expect(field()).not.toHaveAttribute('aria-controls')
+    expect(field()).toHaveAttribute('aria-describedby', 'why')
+
+    await user.click(screen.getByRole('button', { name: 'Remove octo-reviewer' }))
+    expect(field()).toHaveFocus()
+    expect(field()).toHaveAttribute('aria-controls', screen.getByRole('listbox').id)
   })
 
   it('arrows through nothing when it has nothing to suggest', async () => {

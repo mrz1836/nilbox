@@ -1,9 +1,16 @@
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { useState } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 
-import type { AutopilotDraft, AutopilotSpec, AutopilotStepKind } from '../../../platform'
+import { brand } from '../../../generated/brand'
+import type {
+  AutopilotCatalog,
+  AutopilotDraft,
+  AutopilotSetting,
+  AutopilotSpec,
+  AutopilotStepKind,
+} from '../../../platform'
 import {
   agents,
   autopilotCatalog,
@@ -52,6 +59,7 @@ interface HarnessProps {
   saving?: boolean
   saveError?: string
   name?: string
+  catalog?: AutopilotCatalog
 }
 
 // Harness holds the draft as the tab does, the builder's delays at nothing.
@@ -62,6 +70,7 @@ function Harness({
   saving = false,
   saveError = '',
   name = 'Fix security',
+  catalog = autopilotCatalog(),
 }: HarnessProps) {
   const [start] = useState<AutopilotDraft>(() => ({ id: isNew ? 0 : 9, name, description: '', spec }))
   const [draft, setDraft] = useState<AutopilotDraft>(isNew ? { ...start, mode: 'ask' } : start)
@@ -74,7 +83,7 @@ function Harness({
       sentence={isNew ? '' : 'When checks fail, as it was saved.'}
       mode="ask"
       heldKinds={heldKinds}
-      catalog={autopilotCatalog()}
+      catalog={catalog}
       suggestions={routineSuggestions()}
       viewer="octo-user"
       agentKit={{
@@ -350,12 +359,23 @@ describe('the routine builder', () => {
     expect(watch.getByText('Search 2: GitHub refused it.')).toBeInTheDocument()
     expect(watch.getByText('Nothing more a refresh: the inbox reads its lists already.')).toBeInTheDocument()
 
+    // A change to what it fires on leaves the searches as tested: their words and their
+    // cost stand.
+    await user.selectOptions(block('When').getByRole('combobox', { name: 'Trigger' }), 'appears')
+    expect(screen.getByText(/changed since this test: Test again/)).toBeInTheDocument()
+    expect(watch.getByText('Search 2: GitHub refused it.')).toBeInTheDocument()
+    expect(watch.getByText('Nothing more a refresh: the inbox reads its lists already.')).toBeInTheDocument()
+
     // A change to what it watches leaves the test's words behind, said to be of an earlier
-    // draft, until it is tried again; the cost line stays the last test's.
+    // draft, until it is tried again; the cost line says it is the last test's.
     await user.selectOptions(watch.getByRole('combobox', { name: 'Look for' }), 'issue')
     expect(watch.queryByText('Search 2: GitHub refused it.')).not.toBeInTheDocument()
     expect(screen.getByText(/changed since this test: Test again/)).toBeInTheDocument()
-    expect(watch.getByText('Nothing more a refresh: the inbox reads its lists already.')).toBeInTheDocument()
+    expect(
+      watch.getByText(
+        'Nothing more a refresh: the inbox reads its lists already · as last tested, before the searches changed',
+      ),
+    ).toBeInTheDocument()
     expect(platform.testRoutine).toHaveBeenCalledOnce()
   })
 
@@ -1041,7 +1061,9 @@ describe('saving', () => {
     platform.describeRoutine.mockResolvedValue(described({ dryRunOnly: ['agent'] }))
     renderBuilder({ isNew: true })
 
-    expect(await screen.findByText('Agent steps run in Dry run until this Mac can run agents.')).toBeInTheDocument()
+    expect(
+      await screen.findByText(`Agent steps run in Dry run until this version of ${brand.name} can run agents.`),
+    ).toBeInTheDocument()
     expect(
       within(screen.getByRole('radiogroup', { name: 'Mode' })).getByRole('radio', { name: 'Dry run' }),
     ).toBeChecked()
@@ -1055,5 +1077,282 @@ describe('saving', () => {
     renderBuilder()
 
     expect(await screen.findByText(/Once saved, it runs in Dry run\. Agent steps run in Dry run/)).toBeInTheDocument()
+  })
+
+  it('keeps the last reading’s notes, and Save, while the next reading of the draft is on its way', async () => {
+    const user = userEvent.setup()
+    platform.describeRoutine.mockResolvedValue(
+      described({ warnings: [{ part: 'steps', field: '[2]', message: 'it tells you a lot' }] }),
+    )
+    renderBuilder()
+
+    const then = block('Then')
+    const save = screen.getByRole('button', { name: 'Save' })
+
+    expect(await then.findByText('It tells you a lot.')).toBeInTheDocument()
+    await user.type(screen.getByRole('textbox', { name: 'Name' }), ' now')
+    await waitFor(() => {
+      expect(save).toBeEnabled()
+    })
+
+    // The next reading never comes: the last one stands meanwhile.
+    platform.describeRoutine.mockReturnValue(new Promise(() => undefined))
+    await user.type(block('Limits').getByRole('spinbutton', { name: 'Runs a day' }), '4')
+    expect(platform.describeRoutine.mock.lastCall?.[0].spec.limits.runsPerDay).toBe(4)
+    expect(then.getByText('It tells you a lot.')).toBeInTheDocument()
+    expect(save).toBeEnabled()
+    await user.keyboard('{Meta>}s{/Meta}')
+    expect(onSave).toHaveBeenCalledOnce()
+  })
+
+  it('saves with ⌘S whatever Caps Lock says, and never under a dialog or a sheet', async () => {
+    const user = userEvent.setup()
+    renderBuilder()
+
+    await user.type(screen.getByRole('textbox', { name: 'Name' }), ' now')
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Save' })).toBeEnabled()
+    })
+
+    // Caps Lock makes the key S, with no Shift.
+    fireEvent.keyDown(document.body, { key: 'S', metaKey: true })
+    expect(onSave).toHaveBeenCalledOnce()
+
+    // ⇧⌘S is another command.
+    fireEvent.keyDown(document.body, { key: 'S', metaKey: true, shiftKey: true })
+    expect(onSave).toHaveBeenCalledOnce()
+
+    const dialog = document.createElement('dialog')
+
+    document.body.append(dialog)
+    dialog.showModal()
+    fireEvent.keyDown(document.body, { key: 's', metaKey: true })
+    expect(onSave).toHaveBeenCalledOnce()
+    dialog.remove()
+  })
+})
+
+describe('each part as it is', () => {
+  it('keeps a test’s warning on the step it is about, and says the test is stale once Once per changes', async () => {
+    platform.testRoutine.mockResolvedValue(
+      routineTest({
+        warnings: [{ part: 'steps', field: '[0]', message: 'most of its items aren’t in your inbox lists' }],
+      }),
+    )
+    const user = userEvent.setup()
+    renderBuilder({ spec: { ...flagship(), steps: [{ pin: {} }, { notify: {} }] } })
+    await testNow(user)
+
+    const then = block('Then')
+
+    expect(await then.findByText('Most of its items aren’t in your inbox lists.')).toBeInTheDocument()
+
+    // A warning by step goes with the steps as tested, never onto the step that moves up.
+    await user.click(then.getByRole('button', { name: 'Remove step 1' }))
+    expect(then.queryByText('Most of its items aren’t in your inbox lists.')).not.toBeInTheDocument()
+    expect(screen.queryByText(/changed since this test/)).not.toBeInTheDocument()
+
+    // Once per decides which occurrence each match is for, so the test is of an earlier draft.
+    await user.selectOptions(block('Limits').getByRole('combobox', { name: 'Once per' }), 'day')
+    expect(screen.getByText(/changed since this test: Test again/)).toBeInTheDocument()
+  })
+
+  it('shows what is wrong with an empty group where the group is', async () => {
+    platform.describeRoutine.mockResolvedValue(
+      described({
+        sentence: '',
+        problems: [
+          { part: 'conditions', field: 'of[1].group.of', message: 'add a condition to the group, or remove it' },
+        ],
+      }),
+    )
+    renderBuilder({
+      spec: {
+        ...flagship(),
+        conditions: {
+          match: 'all',
+          of: [
+            { field: 'checks.failedNames', op: 'anyContains', values: ['security'] },
+            { group: { match: 'any', of: [] } },
+          ],
+        },
+      },
+    })
+
+    expect(await block('If').findByText('Add a condition to the group, or remove it.')).toBeInTheDocument()
+    expect(screen.getAllByText('Add a condition to the group, or remove it.')).toHaveLength(1)
+  })
+
+  it('shows a problem no block draws at the top, and one a block draws only there', async () => {
+    platform.describeRoutine.mockResolvedValue(
+      described({
+        sentence: '',
+        problems: [
+          { part: 'watch', field: 'sources[0]', message: 'a source is inbox lists or a search, not both' },
+          { part: 'steps', field: '[7]', message: 'a step the routine doesn’t have' },
+        ],
+      }),
+    )
+    renderBuilder()
+
+    expect(await block('Watch').findByText('A source is inbox lists or a search, not both.')).toBeInTheDocument()
+
+    const far = screen.getByText('A step the routine doesn’t have.')
+
+    expect(block('Then').queryByText('A step the routine doesn’t have.')).not.toBeInTheDocument()
+    expect(far).toBeInTheDocument()
+  })
+
+  it('stores the schedule On a schedule shows', async () => {
+    const user = userEvent.setup()
+    renderBuilder()
+
+    await user.selectOptions(block('When').getByRole('combobox', { name: 'Trigger' }), 'schedule')
+    expect(spec().trigger).toEqual({ event: 'schedule', schedule: { every: 'day', at: '09:00' } })
+    expect(block('When').getByRole('combobox', { name: 'How often' })).toHaveValue('day')
+  })
+
+  it('shows a first step’s Only if, which nothing before it can meet, so its problem shows where it is', () => {
+    renderBuilder({ spec: { ...flagship(), steps: [{ notify: {}, onlyIf: 'pushed' }] } })
+
+    expect(block('Then').getByRole('combobox', { name: 'Step 1 runs' })).toHaveValue('pushed')
+  })
+
+  it('drops what only a pull request has once a search looks for issues', async () => {
+    const user = userEvent.setup()
+    renderBuilder({
+      spec: {
+        ...flagship(),
+        watch: {
+          sources: [
+            {
+              search: {
+                kind: 'pr',
+                where: ['@me'],
+                base: 'main',
+                headPrefix: 'dependabot/',
+                state: ['failing'],
+                involving: ['reviewRequested', 'mentioned'],
+              },
+            },
+          ],
+        },
+      },
+    })
+
+    const watch = block('Watch')
+
+    expect(watch.getByRole('checkbox', { name: 'Asking for your review' })).toBeChecked()
+    await user.selectOptions(watch.getByRole('combobox', { name: 'Look for' }), 'issue')
+    expect(spec().watch.sources[0]?.search).toEqual({ kind: 'issue', where: ['@me'], involving: ['mentioned'] })
+    expect(watch.queryByRole('checkbox', { name: 'Asking for your review' })).not.toBeInTheDocument()
+    expect(watch.queryByRole('textbox', { name: 'Into branch' })).not.toBeInTheDocument()
+  })
+
+  it('shows a field that doesn’t fit what the routine acts on as itself, with its problem', () => {
+    renderBuilder({
+      spec: {
+        ...flagship(),
+        watch: { sources: [{ search: { kind: 'issue', where: ['@me'] } }] },
+        trigger: { event: 'appears' },
+        conditions: { match: 'all', of: [{ field: 'pr.lines', op: 'gt', value: '10' }] },
+      },
+    })
+
+    const field = block('If').getByRole('combobox', { name: 'Condition 1: field' })
+
+    expect(field).toHaveValue('pr.lines')
+    expect(field).toHaveDisplayValue('Lines changed')
+  })
+
+  it('describes an invalid value by what is wrong with it', async () => {
+    platform.describeRoutine.mockResolvedValue(
+      described({
+        sentence: '',
+        problems: [
+          { part: 'watch', field: 'sources[0].search.where', message: 'name a user, an org, or a repository' },
+          { part: 'conditions', field: 'of[0].values', message: 'give at least one value' },
+        ],
+      }),
+    )
+    renderBuilder()
+
+    const where = await block('Watch').findByRole('combobox', { name: 'Where' })
+
+    await waitFor(() => {
+      expect(where).toHaveAccessibleDescription('Name a user, an org, or a repository.')
+    })
+    expect(block('If').getByRole('combobox', { name: 'Condition 1: values' })).toHaveAccessibleDescription(
+      'Give at least one value.',
+    )
+  })
+})
+
+describe('the agent step as it is', () => {
+  // agentOnly is a routine whose one step is the agent's.
+  function agentOnly(agent: NonNullable<AutopilotSpec['steps'][number]['agent']>): AutopilotSpec {
+    return { ...flagship(), steps: [{ agent }] }
+  }
+
+  it('names a starter it doesn’t offer by the library’s nickname', () => {
+    renderBuilder({
+      spec: {
+        ...agentOnly({ agent: 'inherit', prompt: { starter: 'fix-checks' } }),
+        watch: { sources: [{ search: { kind: 'issue', where: ['@me'] } }] },
+        trigger: { event: 'appears' },
+      },
+    })
+
+    expect(block('Then').getByRole('combobox', { name: 'Prompt' })).toHaveDisplayValue('Fix checks')
+  })
+
+  it('drops an effort the agent it changes to doesn’t take, and keeps one it does', async () => {
+    const user = userEvent.setup()
+    const { unmount } = renderBuilder({
+      spec: agentOnly({ agent: 'codex', prompt: { itemDefault: true }, effort: 'ultra' }),
+    })
+
+    await user.click(block('Then').getByRole('button', { name: 'Change' }))
+    await user.selectOptions(block('Then').getByRole('combobox', { name: 'Agent' }), 'claude')
+    expect(spec().steps[0]?.agent).toEqual({ agent: 'claude', prompt: { itemDefault: true }, profile: '', model: '' })
+    unmount()
+
+    renderBuilder({ spec: agentOnly({ agent: 'codex', prompt: { itemDefault: true }, effort: 'high' }) })
+    await user.click(block('Then').getByRole('button', { name: 'Change' }))
+    await user.selectOptions(block('Then').getByRole('combobox', { name: 'Agent' }), 'claude')
+    expect(spec().steps[0]?.agent).toMatchObject({ agent: 'claude', effort: 'high' })
+  })
+
+  it('shows the model’s problem once, at the model while Change is open', async () => {
+    platform.describeRoutine.mockResolvedValue(
+      described({ problems: [{ part: 'steps', field: '[0].agent.model', message: 'opus-x isn’t one of its models' }] }),
+    )
+    const user = userEvent.setup()
+    renderBuilder({ spec: agentOnly({ agent: 'inherit', prompt: { itemDefault: true }, model: 'opus-x' }) })
+
+    const then = block('Then')
+
+    expect(await then.findByText('Opus-x isn’t one of its models.')).toBeInTheDocument()
+    await user.click(then.getByRole('button', { name: 'Change' }))
+    expect(then.getAllByText(/opus-x isn’t one of its models/i)).toHaveLength(1)
+  })
+
+  it('takes its numbers’ defaults and bounds from the catalog', () => {
+    const catalog = autopilotCatalog()
+    const withDefault = (list: AutopilotSetting[], id: string, value: number) =>
+      list.map((s) => (s.id === id && s.range !== null ? { ...s, range: { ...s.range, default: value } } : s))
+
+    catalog.agentSettings = withDefault(withDefault(catalog.agentSettings, 'timeoutMinutes', 45), 'budget', 450)
+    catalog.stepSettings = withDefault(catalog.stepSettings, 'snooze.days', 5)
+    renderBuilder({
+      catalog,
+      spec: { ...flagship(), steps: [{ agent: { agent: 'inherit', prompt: { itemDefault: true } } }, { snooze: {} }] },
+    })
+
+    const then = block('Then')
+
+    expect(then.getByRole('spinbutton', { name: 'Time limit' })).toHaveAttribute('placeholder', '45')
+    expect(then.getByText('default $4.50')).toBeInTheDocument()
+    expect(then.getByRole('spinbutton', { name: 'Step 2: days to snooze' })).toHaveAttribute('placeholder', '5')
   })
 })

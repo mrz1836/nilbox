@@ -1,7 +1,7 @@
 import { useId, useState } from 'react'
 
 import { agentName, anyEffortChoices, effortLabel, isAgentPrompt, modelLabel, promptApplies } from '../../../lib/launch'
-import { omit, placeOf, problemsAt, toolsOf } from '../../../lib/routineBuilder'
+import { omit, placeOf, problemsAt, settingRange, toolsOf } from '../../../lib/routineBuilder'
 import type {
   AgentID,
   AgentInfo,
@@ -105,6 +105,12 @@ export function AgentStepBlock({ kit, agentKit, path, kinds, step, onChange }: A
   const known =
     current === 'item' ||
     offered.some((p) => (p.starterKey !== '' ? `starter:${p.starterKey}` : `nickname:${p.nickname}`) === current)
+  // A prompt the menu doesn't offer is kept as itself, named as the library names it: a
+  // starter by the nickname of the user's copy, while the library has one.
+  const unlisted =
+    (step.prompt.starter ?? '') !== ''
+      ? (agentKit.prompts.find((p) => p.starterKey === step.prompt.starter)?.nickname ?? step.prompt.starter ?? '')
+      : (step.prompt.nickname ?? '')
   const patch = (change: Partial<AutopilotAgentStep>) => {
     onChange({ ...step, ...change })
   }
@@ -112,9 +118,26 @@ export function AgentStepBlock({ kit, agentKit, path, kinds, step, onChange }: A
   const setFence = (next: AutopilotFence) => {
     onChange(Object.keys(next).length === 0 ? omit(step, 'fence') : { ...step, fence: next })
   }
+  const modelProblems = problemsAt(kit.problems, 'steps', `${field}.model`)
+  const effortProblems = problemsAt(kit.problems, 'steps', `${field}.effort`)
   const errors: Record<string, string | undefined> = {
-    [`models.${agentID}`]: problemsAt(kit.problems, 'steps', `${field}.model`)[0]?.message,
-    effort: problemsAt(kit.problems, 'steps', `${field}.effort`)[0]?.message,
+    [`models.${agentID}`]: modelProblems[0]?.message,
+    effort: effortProblems[0]?.message,
+  }
+  // Change ▸ shows the model's and the effort's problems at their fields, so the notes
+  // below leave them out while it is open.
+  const notes = problemsAt(kit.problems, 'steps', field).filter(
+    (p) => !changing || (!modelProblems.includes(p) && !effortProblems.includes(p)),
+  )
+  const timeout = settingRange(kit.catalog.agentSettings, 'timeoutMinutes')
+  // pickAgent changes the agent: a model and a profile are one agent's own, and an effort
+  // the new one doesn't take goes too.
+  const pickAgent = (value: string) => {
+    const next = value === 'inherit' ? agentKit.defaultAgent : (value as AgentID)
+    const levels = agentKit.agents.find((a) => a.id === next)?.effortLevels ?? []
+    const effortFits = (step.effort ?? '') === '' || levels.some((l) => l.value === step.effort)
+
+    onChange({ ...(effortFits ? step : omit(step, 'effort')), agent: value, profile: '', model: '' })
   }
 
   return (
@@ -128,6 +151,7 @@ export function AgentStepBlock({ kit, agentKit, path, kinds, step, onChange }: A
             id={`${id}-prompt`}
             value={current}
             aria-invalid={promptProblems.length > 0}
+            aria-describedby={promptProblems.length > 0 ? `${id}-notes` : undefined}
             onChange={(e) => {
               patch({ prompt: promptRef(e.target.value) })
             }}
@@ -143,7 +167,7 @@ export function AgentStepBlock({ kit, agentKit, path, kinds, step, onChange }: A
                 </option>
               )
             })}
-            {!known && <option value={current}>{current.slice(current.indexOf(':') + 1)}</option>}
+            {!known && <option value={current}>{unlisted}</option>}
           </select>
           <button type="button" onClick={agentKit.onEditPrompts} className={`${quietButtonClass} ml-auto`}>
             Edit in Prompts
@@ -210,8 +234,7 @@ export function AgentStepBlock({ kit, agentKit, path, kinds, step, onChange }: A
                 id={`${id}-agent`}
                 value={inherits ? 'inherit' : (step.agent ?? '')}
                 onChange={(e) => {
-                  // A model and a profile are one agent's own.
-                  patch({ agent: e.target.value, profile: '', model: '' })
+                  pickAgent(e.target.value)
                 }}
                 className={`${fieldClass} py-1`}
               >
@@ -305,16 +328,16 @@ export function AgentStepBlock({ kit, agentKit, path, kinds, step, onChange }: A
       {place === 'background' ? (
         <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm">
           <span className="text-xs text-muted">Fence</span>
-          <Budget id={`${id}-budget`} fence={fence} onChange={setFence} />
+          <Budget id={`${id}-budget`} kit={kit} fence={fence} onChange={setFence} />
           <span className="inline-flex items-center gap-1.5">
             <span className="text-muted">Time</span>
             <NumberField
               id={`${id}-time`}
               label="Time limit"
               value={fence.timeoutMinutes}
-              fallback={30}
-              min={5}
-              max={180}
+              fallback={timeout.default}
+              min={timeout.min}
+              max={timeout.max}
               unit="min"
               onChange={(n) => {
                 setFence(n === null ? omit(fence, 'timeoutMinutes') : { ...fence, timeoutMinutes: n })
@@ -356,7 +379,7 @@ export function AgentStepBlock({ kit, agentKit, path, kinds, step, onChange }: A
           A terminal run is exactly a click’s launch, with its access; nothing the app can see follows it but a notice.
         </p>
       )}
-      <Notes problems={problemsAt(kit.problems, 'steps', field)} warnings={problemsAt(kit.warnings, 'steps', field)} />
+      <Notes id={`${id}-notes`} problems={notes} warnings={problemsAt(kit.warnings, 'steps', field)} />
     </div>
   )
 }
@@ -371,20 +394,26 @@ function withTri(step: AutopilotAgentStep, key: 'planMode' | 'worktree', value: 
   return value === null ? omit(step, key) : { ...step, [key]: value }
 }
 
-// Budget is a background run's budget per run, in dollars or in tokens: the default $3.00
-// until set, with Reset.
+// Budget is a background run's budget per run, in dollars or in tokens: the catalog's
+// default ($3.00) until set, with Reset, each unit's bounds the catalog's too.
 function Budget({
   id,
+  kit,
   fence,
   onChange,
 }: {
   id: string
+  kit: BuilderKit
   fence: AutopilotFence
   onChange: (fence: AutopilotFence) => void
 }) {
   const budget = fence.budget
   const tokens = budget?.tokens !== undefined && budget.tokens !== null
   const set = budget !== undefined && budget !== null
+  // The dollar budget's range is in cents, which the spec's dollars meet exactly.
+  const cents = settingRange(kit.catalog.agentSettings, 'budget')
+  const inTokens = settingRange(kit.catalog.agentSettings, 'budgetTokens')
+  const dollars = { min: cents.min / 100, max: cents.max / 100, default: cents.default / 100 }
 
   return (
     <span className="inline-flex items-center gap-1.5">
@@ -396,7 +425,10 @@ function Budget({
         id={`${id}-unit`}
         value={tokens ? 'tokens' : 'usd'}
         onChange={(e) => {
-          onChange({ ...fence, budget: e.target.value === 'tokens' ? { tokens: 200_000 } : { usd: 3 } })
+          onChange({
+            ...fence,
+            budget: e.target.value === 'tokens' ? { tokens: inTokens.default } : { usd: dollars.default },
+          })
         }}
         className={`${fieldClass} py-1`}
       >
@@ -410,11 +442,11 @@ function Budget({
         id={id}
         type="number"
         inputMode="decimal"
-        min={tokens ? 10_000 : 0.5}
-        max={tokens ? 50_000_000 : 50}
-        step={tokens ? 10_000 : 0.5}
+        min={tokens ? inTokens.min : dollars.min}
+        max={tokens ? inTokens.max : dollars.max}
+        step={tokens ? inTokens.min : dollars.min}
         value={tokens ? (budget.tokens ?? '') : (budget?.usd ?? '')}
-        placeholder={tokens ? '200000' : '3.00'}
+        placeholder={tokens ? String(inTokens.default) : dollars.default.toFixed(2)}
         onChange={(e) => {
           const n = e.target.valueAsNumber
 
@@ -434,7 +466,7 @@ function Budget({
           }}
         />
       ) : (
-        <span className="text-xs text-muted">default $3.00</span>
+        <span className="text-xs text-muted">{`default $${dollars.default.toFixed(2)}`}</span>
       )}
     </span>
   )

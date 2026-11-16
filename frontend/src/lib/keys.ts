@@ -23,6 +23,11 @@ export function isFindKey(e: KeyboardEvent): boolean {
   return e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey && e.key.toLowerCase() === 'f'
 }
 
+// isSaveKey reports ⌘S, with Caps Lock on too: ⌘ alone, since ⇧⌘S is Save As.
+export function isSaveKey(e: KeyboardEvent): boolean {
+  return e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey && e.key.toLowerCase() === 's'
+}
+
 // isPreviewKey reports ⇧⌘P, which switches the prompt editor between writing and
 // previewing, as on GitHub: ⇧⌘ alone, so ⌘P, ⌃⇧⌘P, and ⌥⇧⌘P stay free.
 export function isPreviewKey(e: KeyboardEvent): boolean {

@@ -2,7 +2,9 @@ import { useEffect, useEffectEvent, useId, useState } from 'react'
 
 import { modeHelp, modeLabels, modeOrder } from '../../../lib/autopilot'
 import { counted } from '../../../lib/format'
-import { actsOn, canonical, costLine, dryRunWhy, sameDraft, unplaced } from '../../../lib/routineBuilder'
+import { isSaveKey } from '../../../lib/keys'
+import { actsOn, canonical, costLine, dryRunWhy, sameDraft, testedKeys, unshown } from '../../../lib/routineBuilder'
+import { anyModalOpen } from '../../../lib/useModalDialog'
 import { useMutation } from '../../../lib/useMutation'
 import { useDebouncedQuery } from '../../../lib/useQuery'
 import {
@@ -84,7 +86,9 @@ export function RoutineBuilder({
     [key],
     describeDelay,
   )
-  const current = described.data?.key === key ? described.data.d : undefined
+  // The last reading stays until the next arrives, so an edit hides no problem and holds
+  // no Save while the draft rests; Save checks the draft again whatever it showed.
+  const current = described.data?.d
   const problems = current?.problems ?? []
   const warnings = current?.warnings ?? []
   // The last sentence that read stays while the draft has problems.
@@ -94,33 +98,33 @@ export function RoutineBuilder({
     setLastSentence(current.sentence)
   }
 
-  const testKey = canonical({
-    id: draft.id ?? 0,
-    watch: spec.watch,
-    trigger: spec.trigger,
-    conditions: spec.conditions,
-  })
+  const keys = testedKeys(draft.id ?? 0, spec)
   const ready = current !== undefined && problems.length === 0
   // A test runs only on asking, since its searches cost points; what it found stays, said to
-  // be of an earlier draft once what it watches, fires on, or checks changed since.
+  // be of an earlier draft once what it watches, fires on, checks, or fires once per changed
+  // since, its warnings shown only while the steps are as tested, since they are by step.
   const tester = useMutation((d: AutopilotDraft) => testRoutine(d))
-  const [tested, setTested] = useState<{ key: string; result: AutopilotTestResult } | null>(null)
+  const [tested, setTested] = useState<(ReturnType<typeof testedKeys> & { result: AutopilotTestResult }) | null>(null)
   const test = async () => {
-    const asked = testKey
+    const asked = keys
     const result = await tester.run(draft)
 
     if (result.ok) {
-      setTested({ key: asked, result: result.data })
+      setTested({ ...asked, result: result.data })
     }
   }
   const lastTest = tested?.result
+  const testCurrent = tested !== null && tested.key === keys.key
+  const testWarnings = tested !== null && testCurrent && tested.steps === keys.steps ? tested.result.warnings : []
+  const searchesTested = tested !== null && tested.watch === keys.watch
+  const searchNotes = tested !== null && searchesTested ? tested.result.searches : []
   const kinds = actsOn(catalog, spec)
   const kit: BuilderKit = {
     catalog,
     suggestions,
     viewer,
     problems,
-    warnings: [...warnings, ...(tested?.key === testKey ? (lastTest?.warnings ?? []) : [])],
+    warnings: [...warnings, ...testWarnings],
   }
   const dirty = !sameDraft(draft, baseline)
   const named = draft.name.trim() !== ''
@@ -133,12 +137,13 @@ export function RoutineBuilder({
     onChange({ ...draft, spec: { ...spec, ...change } })
   }
 
-  // ⌘S saves while the tab shows: a hidden tab runs no effects, so it stops listening.
+  // ⌘S saves while the tab shows: a hidden tab runs no effects, so it stops listening. A
+  // dialog or a sheet open over the page, the question a save asks among them, keeps it.
   const onKey = useEffectEvent((e: globalThis.KeyboardEvent) => {
-    if (e.metaKey && e.key === 's') {
+    if (isSaveKey(e)) {
       e.preventDefault()
 
-      if (canSave) {
+      if (canSave && !anyModalOpen()) {
         onSave()
       }
     }
@@ -194,6 +199,7 @@ export function RoutineBuilder({
             value={draft.name}
             maxLength={80}
             aria-invalid={dirty && !named}
+            aria-describedby={dirty && !named ? `${id}-status` : undefined}
             onChange={(e) => {
               onChange({ ...draft, name: e.target.value })
             }}
@@ -228,7 +234,7 @@ export function RoutineBuilder({
         >
           {lastSentence === '' ? 'The sentence it reads as shows here once it has every part it needs.' : lastSentence}
         </p>
-        <Notes problems={unplaced(problems)} warnings={unplaced(warnings)} />
+        <Notes problems={unshown(problems, spec)} warnings={unshown(warnings, spec)} />
       </div>
       <WatchBlock
         kit={kit}
@@ -236,8 +242,8 @@ export function RoutineBuilder({
         onChange={(sources) => {
           set({ watch: { sources } })
         }}
-        cost={lastTest === undefined ? '' : costLine(lastTest.estimate)}
-        tested={tested?.key === testKey ? (lastTest?.searches ?? []) : []}
+        cost={lastTest === undefined ? '' : costLine(lastTest.estimate, !searchesTested)}
+        tested={searchNotes}
       />
       <WhenBlock
         kit={kit}
@@ -273,7 +279,7 @@ export function RoutineBuilder({
       />
       <TestPanel
         result={lastTest}
-        stale={tested !== null && tested.key !== testKey}
+        stale={tested !== null && !testCurrent}
         testing={tester.pending}
         error={tester.error}
         ready={ready}
@@ -285,6 +291,7 @@ export function RoutineBuilder({
       />
       <footer className="sticky bottom-0 flex items-center justify-end gap-2 border-t border-border bg-background py-3">
         <p
+          id={`${id}-status`}
           role={status.tone === 'error' ? 'alert' : 'status'}
           className={`mr-auto min-w-0 truncate text-xs ${status.tone === 'error' ? 'text-danger' : 'text-muted'}`}
           title={status.text}

@@ -1,6 +1,6 @@
 import { useId } from 'react'
 
-import { omit, problemsAt, watchKinds } from '../../../lib/routineBuilder'
+import { defaultSchedule, newTrigger, omit, problemsAt, watchKinds } from '../../../lib/routineBuilder'
 import type { AutopilotEvent, AutopilotSpec, AutopilotTrigger } from '../../../platform'
 import { fieldClass } from '../../controls'
 import { Block, Notes, NumberField, type BuilderKit } from './parts'
@@ -63,7 +63,7 @@ export function WhenBlock({ kit, spec, onChange }: WhenBlockProps) {
           id={`${id}-event`}
           value={trigger.event}
           onChange={(e) => {
-            onChange({ event: e.target.value as AutopilotEvent })
+            onChange(newTrigger(kit.catalog, e.target.value as AutopilotEvent))
           }}
           className={`${fieldClass} py-1`}
         >
@@ -142,8 +142,8 @@ export function WhenBlock({ kit, spec, onChange }: WhenBlockProps) {
             )
           }
 
-          // On a schedule.
-          const schedule = trigger.schedule ?? { every: 'day' as const, at: '09:00' }
+          // On a schedule, which starts with the schedule it shows stored (newTrigger).
+          const schedule = trigger.schedule ?? defaultSchedule
 
           return (
             <span key={o.id} className="inline-flex flex-wrap items-center gap-1.5">

@@ -435,6 +435,7 @@ export type AutopilotLimits = NonNullLists<autopilotspec.Limits>
 export type AutopilotProblem = NonNullLists<autopilotspec.Problem>
 export type AutopilotPart = autopilotspec.Part
 export type AutopilotCatalog = NonNullLists<autopilotcatalog.Catalog>
+export type AutopilotSetting = NonNullLists<autopilotcatalog.Setting>
 export type AutopilotField = NonNullLists<autopilotcatalog.Field>
 export type AutopilotOp = NonNullLists<autopilotcatalog.OpInfo>
 export type AutopilotOpID = autopilotcatalog.Op

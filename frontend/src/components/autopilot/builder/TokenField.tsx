@@ -1,4 +1,4 @@
-import { useId, useState, type KeyboardEvent } from 'react'
+import { useId, useRef, useState, type KeyboardEvent } from 'react'
 
 import { XIcon } from '../../icons'
 
@@ -32,11 +32,16 @@ export interface TokenFieldProps {
 // maxShown caps the suggestions listed at once.
 const maxShown = 8
 
+// imeKeyCode is the key code of a key an input method takes.
+const imeKeyCode = 229
+
 // TokenField is a list of values as tokens, [Dependabot ×], with a text field that adds
 // more: it suggests what the app has seen as the user types, and takes anything else typed
-// too. Enter or a comma adds what is typed, or the suggestion picked with the arrows;
-// Backspace in an empty field, or a token's ×, takes one away; Escape closes the
-// suggestions.
+// too. Enter or a comma adds what is typed, or the suggestion picked with the arrows, but
+// never while an input method composes; Backspace in an empty field, or a token's ×, takes
+// one away, focus staying in the field; Escape closes the suggestions. It names its list
+// (aria-controls) only while the list shows, and describedBy names what says why it is
+// invalid.
 export function TokenField({
   id,
   label,
@@ -54,6 +59,9 @@ export function TokenField({
   const [text, setText] = useState('')
   const [active, setActive] = useState(-1)
   const [open, setOpen] = useState(false)
+  // composing reports an input method composing text, whose Enter and comma are its own.
+  const composing = useRef(false)
+  const inputRef = useRef<HTMLInputElement>(null)
   const lower = text.trim().toLowerCase()
   const has = (value: string) => tokens.some((t) => t.toLowerCase() === value.toLowerCase())
   const options = suggestions
@@ -94,6 +102,16 @@ export function TokenField({
   }
 
   const onKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
+    // An input method's keys, Enter that confirms its text among them, are its own. WebKit
+    // ends the composition before that Enter, whose keydown then says it isn't composing,
+    // but it carries the key code 229 every input method's key does.
+    // eslint-disable-next-line @typescript-eslint/no-deprecated -- keyCode 229 is the only sign of WebKit's confirming Enter
+    const imeKey = e.nativeEvent.keyCode === imeKeyCode
+
+    if (e.nativeEvent.isComposing || composing.current || imeKey) {
+      return
+    }
+
     switch (e.key) {
       case 'Enter':
       case ',':
@@ -153,6 +171,9 @@ export function TokenField({
               title="Remove"
               onClick={() => {
                 onChange(tokens.filter((x) => x !== t))
+                // The × goes with its token, so focus stays in the field rather than
+                // falling to the page.
+                inputRef.current?.focus()
               }}
               className="rounded-sm p-0.5 text-muted hover:bg-border hover:text-text"
             >
@@ -161,6 +182,7 @@ export function TokenField({
           </span>
         ))}
         <input
+          ref={inputRef}
           id={id}
           type="text"
           role="combobox"
@@ -168,7 +190,7 @@ export function TokenField({
           placeholder={tokens.length === 0 ? placeholder : ''}
           aria-label={label}
           aria-expanded={shown}
-          aria-controls={listId}
+          aria-controls={shown ? listId : undefined}
           aria-autocomplete="list"
           aria-activedescendant={activeId}
           aria-invalid={invalid}
@@ -180,7 +202,7 @@ export function TokenField({
           onChange={(e) => {
             const next = e.target.value
 
-            if (next.endsWith(',')) {
+            if (next.endsWith(',') && !composing.current) {
               setText(next.slice(0, -1))
 
               return
@@ -189,6 +211,12 @@ export function TokenField({
             setText(next)
             setOpen(true)
             setActive(-1)
+          }}
+          onCompositionStart={() => {
+            composing.current = true
+          }}
+          onCompositionEnd={() => {
+            composing.current = false
           }}
           onFocus={() => {
             setOpen(true)
