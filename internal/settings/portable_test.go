@@ -128,6 +128,7 @@ func customize(t *testing.T, svc *Service, db *sql.DB, home string) string {
 		func() (Settings, error) { return svc.SetWindowSize(ctx, WindowSize{Width: 1000, Height: 700}) },
 		func() (Settings, error) { return svc.SetSectionCollapsed(ctx, ListAssigned, true) },
 		func() (Settings, error) { return svc.SetProjectsTipDismissed(ctx, true) },
+		func() (Settings, error) { return svc.SetKeptRunningTold(ctx, true) },
 		func() (Settings, error) { return svc.SetReviewTab(ctx, ReviewTabComments) },
 		func() (Settings, error) { return svc.SetNotificationsTab(ctx, NotificationsTabGitHub) },
 		func() (Settings, error) { return svc.SetConversationOrder(ctx, ConversationNewest) },
@@ -185,6 +186,7 @@ func TestPortableSettingsRoundTrip(t *testing.T) {
 	assert.Equal(t, DefaultWindowSize(), got.WindowSize, "the window's memory is not imported")
 	assert.Empty(t, got.CollapsedSections)
 	assert.False(t, got.ProjectsTipDismissed)
+	assert.False(t, got.KeptRunningTold)
 	assert.Equal(t, DefaultReviewTab, got.ReviewTab)
 	assert.Equal(t, DefaultNotificationsTab, got.NotificationsTab)
 	assert.Equal(t, DefaultConversationOrder, got.ConversationOrder)

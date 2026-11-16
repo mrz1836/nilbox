@@ -60,7 +60,7 @@ func (s *Shell) UpdateAction(action menubar.UpdateAction) {
 	case menubar.UpdateCheck:
 		s.goTracked(s.checkForUpdates)
 	case menubar.UpdateRestart, menubar.UpdateDownload:
-		s.window.Show()
+		s.showWindow()
 		s.frontend.Emit(event.UpdateRestartRequested{})
 	case menubar.UpdateManual:
 		s.goTracked(s.openReleasePage)

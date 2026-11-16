@@ -20,6 +20,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/github"
 	"github.com/mrz1836/nilbox/internal/inbox"
 	"github.com/mrz1836/nilbox/internal/item"
+	"github.com/mrz1836/nilbox/internal/notify"
 	"github.com/mrz1836/nilbox/internal/periodic"
 	prefsstore "github.com/mrz1836/nilbox/internal/prefs"
 	"github.com/mrz1836/nilbox/internal/prompts"
@@ -289,8 +290,8 @@ func (n starterNames) StarterNames(ctx context.Context) (map[string]string, erro
 
 // autopilotEngine is what Autopilot's engine is built over beside its service: the inbox's
 // store and service, for its reads and the read right before a start; the GitHub client
-// and token source, for the states of the items that left a watch; and the lock in the
-// data folder.
+// and token source, for the states of the items that left a watch; the lock in the data
+// folder; and the notifications, which its notices and problems are told through.
 type autopilotEngine struct {
 	store   *inbox.Store
 	inbox   *inbox.Service
@@ -301,21 +302,32 @@ type autopilotEngine struct {
 	events  event.Sink
 	logger  *slog.Logger
 	service *autopilot.Service
+	notices *notify.Dispatcher
 }
 
 // newAutopilotEngine builds the engine that runs the routines. Each part registers its own
 // dispatcher as it is built: the inbox's triage runs the triage steps (Triage, which the
-// engine registers as the triage dispatcher), and until a part's is, the Service keeps a
-// routine with one of its steps in Dry run, so the engine records what would run.
+// engine registers as the triage dispatcher), and the notices run Notify me and Tell me
+// through the notifications, which also tell each problem once; until a part's is, the
+// Service keeps a routine with one of its steps in Dry run, so the engine records what
+// would run.
 func newAutopilotEngine(deps autopilotEngine) *autopilot.Engine {
-	return autopilot.NewEngine(deps.service, autopilot.EngineConfig{
+	cfg := autopilot.EngineConfig{
 		Items: engineItems{
 			autopilotItems: autopilotItems{store: deps.store, inbox: deps.faces}, service: deps.inbox,
 			tokens: deps.tokens, client: deps.client, logger: deps.logger,
 		},
 		Triage: inboxTriage{faces: deps.faces},
 		Lock:   autopilot.NewLock(deps.lock), Events: deps.events,
-	})
+	}
+
+	if deps.notices != nil {
+		sink := autopilotNotices{dispatcher: deps.notices}
+		cfg.Dispatchers = map[catalog.Dispatcher]autopilot.Dispatcher{catalog.DispatchNotices: autopilot.NewNotices(sink)}
+		cfg.Problems = autopilot.NewProblemNotices(sink)
+	}
+
+	return autopilot.NewEngine(deps.service, cfg)
 }
 
 // inboxTriage runs a routine's triage steps, and their Undo, through the inbox's own triage

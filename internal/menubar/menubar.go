@@ -1,7 +1,9 @@
 // Package menubar works out what the app's menu bar icon shows for the stored inbox, the
-// agent sessions, and the app's update: how many items need the user, beside the icon, and
-// in its menu the sessions waiting for the user first, then a short list of the items, by
-// list, then Check for Updates… and the update ready, in a build that updates. The
+// agent sessions, Autopilot, and the app's update: how many items need the user, beside
+// the icon, and in its menu the sessions waiting for the user first, then a short list of
+// the items, by list, then Autopilot's group while the user has a routine (its agents
+// working, the matches waiting for the user, and Pause Autopilot), then Check for
+// Updates… and the update ready, in a build that updates. The
 // desktop shell draws the result with native menu items; this package decides what they
 // say, so it builds and is tested on any OS.
 package menubar
@@ -61,6 +63,11 @@ type Summary struct {
 	// stored, or the zero time when no snooze is running.
 	NextChange time.Time
 
+	// Autopilot is the menu's Autopilot group, after the lists: the agent runs working, the
+	// matches waiting for the user, and Pause Autopilot. It shows only while the user has a
+	// routine. The count beside the icon stays the inbox's.
+	Autopilot Autopilot
+
 	// Updates is the app's update in the menu, above Refresh Now, which the shell works out
 	// from the update's status with UpdateRows; Summarize leaves it empty.
 	Updates Updates
@@ -114,16 +121,18 @@ type Waiting struct {
 //nolint:gochecknoglobals // a fixed table
 var sectionTitles = [...]string{"Review requested", "Authored", "Assigned"}
 
-// Summarize works out what the menu bar shows for snap and the sessions waiting for the
-// user at now, with times shown in now's location. An item in more than one list is
-// listed once, under the first, as the count counts it.
-func Summarize(snap inbox.Snapshot, waiting []sessions.Session, now time.Time) Summary {
+// Summarize works out what the menu bar shows for snap, the sessions waiting for the user,
+// and Autopilot at now, with times shown in now's location. An item in more than one list
+// is listed once, under the first, as the count counts it. Autopilot's group shows only
+// while the user has a routine, and adds nothing to the count.
+func Summarize(snap inbox.Snapshot, waiting []sessions.Session, autopilot AutopilotState, now time.Time) Summary {
 	out := Summary{
 		Count:      snap.NeedsYou(now),
 		Status:     status(snap, now),
 		Failed:     snap.LastError != "",
 		Error:      snap.LastError,
 		NextChange: snap.NextSnoozeEnd(now),
+		Autopilot:  AutopilotGroup(autopilot, now),
 	}
 
 	out.Label = label(out.Count)

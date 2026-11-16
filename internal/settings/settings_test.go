@@ -703,6 +703,10 @@ func TestSettersReturnTheStoredSettings(t *testing.T) {
 			func(s Settings) any { return s.ProjectsTipDismissed }, true,
 		},
 		{
+			"kept running told", func() (Settings, error) { return svc.SetKeptRunningTold(ctx, true) },
+			func(s Settings) any { return s.KeptRunningTold }, true,
+		},
+		{
 			"review tab", func() (Settings, error) { return svc.SetReviewTab(ctx, ReviewTabComments) },
 			func(s Settings) any { return s.ReviewTab }, ReviewTabComments,
 		},

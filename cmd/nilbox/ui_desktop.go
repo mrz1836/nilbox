@@ -184,9 +184,10 @@ func (u *desktopUI) paintBackground() {
 	u.window.SetBackgroundColour(backgroundColour(settings.IsDark(u.theme, app.Env.IsDarkMode())))
 }
 
-// closing keeps the app running in the menu bar when its window is closed while the menu
-// bar icon is shown: the window hides, and the icon or the Dock brings it back. Otherwise,
-// and when the app is quitting, the window closes, which quits the app.
+// closing keeps the app running when its window is closed while the menu bar icon is
+// shown, or while Autopilot has a routine on or an agent working (the shell's
+// HidesOnClose): the window hides, and the icon or the Dock brings it back. Otherwise, and
+// when the app is quitting, the window closes, which quits the app.
 func (u *desktopUI) closing(e *application.WindowEvent) {
 	if !u.shell.HidesOnClose() {
 		return

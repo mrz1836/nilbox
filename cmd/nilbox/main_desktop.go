@@ -264,6 +264,7 @@ func assemble(l launch) (*application.App, *desktop.Shell, error) {
 			c.AutopilotEngine,
 		},
 		Updates:        c.Updates,
+		Autopilot:      c.ShellAutopilot,
 		Browser:        ui,
 		Data:           c,
 		Banners:        banners.poster(),
@@ -430,6 +431,7 @@ func registerEvents() {
 	application.RegisterEvent[event.UpdatesUpdated](event.NameUpdatesUpdated)
 	application.RegisterEvent[event.AutopilotUpdated](event.NameAutopilotUpdated)
 	application.RegisterEvent[event.UpdateRestartRequested](event.NameUpdateRestartRequested)
+	application.RegisterEvent[event.KeptRunning](event.NameKeptRunning)
 }
 
 // services wraps every service the core binds, in the core's order. A service no binder
