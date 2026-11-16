@@ -48,7 +48,7 @@ func (q *Queries) DeleteRoutine(ctx context.Context, arg DeleteRoutineParams) (i
 }
 
 const getRoutine = `-- name: GetRoutine :one
-SELECT id, account_login, name, description, enabled, mode, spec, spec_version, template_key, sort_order,
+SELECT id, account_login, name, name_key, description, enabled, mode, spec, spec_version, template_key, sort_order,
        enabled_at, last_error, broken_reason, created_at, updated_at, deleted_at
 FROM autopilot_routines
 WHERE id = ?1 AND deleted_at IS NULL
@@ -62,6 +62,7 @@ func (q *Queries) GetRoutine(ctx context.Context, id int64) (AutopilotRoutine, e
 		&i.ID,
 		&i.AccountLogin,
 		&i.Name,
+		&i.NameKey,
 		&i.Description,
 		&i.Enabled,
 		&i.Mode,
@@ -81,12 +82,12 @@ func (q *Queries) GetRoutine(ctx context.Context, id int64) (AutopilotRoutine, e
 
 const insertRoutine = `-- name: InsertRoutine :one
 INSERT INTO autopilot_routines (
-    account_login, name, description, enabled, mode, spec, spec_version, template_key, sort_order, enabled_at,
-    broken_reason, created_at, updated_at
+    account_login, name, name_key, description, enabled, mode, spec, spec_version, template_key, sort_order,
+    enabled_at, broken_reason, created_at, updated_at
 ) VALUES (
     ?1, ?2, ?3, ?4, ?5,
     ?6, ?7, ?8, ?9, ?10,
-    ?11, ?12, ?13
+    ?11, ?12, ?13, ?14
 )
 RETURNING id
 `
@@ -94,6 +95,7 @@ RETURNING id
 type InsertRoutineParams struct {
 	AccountLogin string
 	Name         string
+	NameKey      string
 	Description  string
 	Enabled      bool
 	Mode         string
@@ -112,6 +114,7 @@ func (q *Queries) InsertRoutine(ctx context.Context, arg InsertRoutineParams) (i
 	row := q.db.QueryRowContext(ctx, insertRoutine,
 		arg.AccountLogin,
 		arg.Name,
+		arg.NameKey,
 		arg.Description,
 		arg.Enabled,
 		arg.Mode,
@@ -130,7 +133,7 @@ func (q *Queries) InsertRoutine(ctx context.Context, arg InsertRoutineParams) (i
 }
 
 const listRoutines = `-- name: ListRoutines :many
-SELECT id, account_login, name, description, enabled, mode, spec, spec_version, template_key, sort_order,
+SELECT id, account_login, name, name_key, description, enabled, mode, spec, spec_version, template_key, sort_order,
        enabled_at, last_error, broken_reason, created_at, updated_at, deleted_at
 FROM autopilot_routines
 WHERE deleted_at IS NULL
@@ -151,6 +154,7 @@ func (q *Queries) ListRoutines(ctx context.Context) ([]AutopilotRoutine, error) 
 			&i.ID,
 			&i.AccountLogin,
 			&i.Name,
+			&i.NameKey,
 			&i.Description,
 			&i.Enabled,
 			&i.Mode,
@@ -180,19 +184,19 @@ func (q *Queries) ListRoutines(ctx context.Context) ([]AutopilotRoutine, error) 
 
 const routineNamed = `-- name: RoutineNamed :one
 SELECT id FROM autopilot_routines
-WHERE name = ?1 AND id <> ?2 AND deleted_at IS NULL
+WHERE name_key = ?1 AND id <> ?2 AND deleted_at IS NULL
 LIMIT 1
 `
 
 type RoutineNamedParams struct {
-	Name      string
+	NameKey   string
 	OtherThan int64
 }
 
-// RoutineNamed returns the ID of the routine not deleted, other than other_than, named
-// name, ignoring case, or sql.ErrNoRows when there is none.
+// RoutineNamed returns the ID of the routine not deleted, other than other_than, whose
+// name folds to name_key, or sql.ErrNoRows when there is none.
 func (q *Queries) RoutineNamed(ctx context.Context, arg RoutineNamedParams) (int64, error) {
-	row := q.db.QueryRowContext(ctx, routineNamed, arg.Name, arg.OtherThan)
+	row := q.db.QueryRowContext(ctx, routineNamed, arg.NameKey, arg.OtherThan)
 	var id int64
 	err := row.Scan(&id)
 	return id, err
@@ -268,20 +272,22 @@ const updateRoutine = `-- name: UpdateRoutine :execrows
 UPDATE autopilot_routines SET
     account_login = ?1,
     name = ?2,
-    description = ?3,
-    enabled = ?4,
-    mode = ?5,
-    spec = ?6,
-    spec_version = ?7,
-    enabled_at = ?8,
-    broken_reason = ?9,
-    updated_at = ?10
-WHERE id = ?11 AND deleted_at IS NULL
+    name_key = ?3,
+    description = ?4,
+    enabled = ?5,
+    mode = ?6,
+    spec = ?7,
+    spec_version = ?8,
+    enabled_at = ?9,
+    broken_reason = ?10,
+    updated_at = ?11
+WHERE id = ?12 AND deleted_at IS NULL
 `
 
 type UpdateRoutineParams struct {
 	AccountLogin string
 	Name         string
+	NameKey      string
 	Description  string
 	Enabled      bool
 	Mode         string
@@ -299,6 +305,7 @@ func (q *Queries) UpdateRoutine(ctx context.Context, arg UpdateRoutineParams) (i
 	result, err := q.db.ExecContext(ctx, updateRoutine,
 		arg.AccountLogin,
 		arg.Name,
+		arg.NameKey,
 		arg.Description,
 		arg.Enabled,
 		arg.Mode,

@@ -12,6 +12,7 @@ type AutopilotRoutine struct {
 	ID           int64
 	AccountLogin string
 	Name         string
+	NameKey      string
 	Description  string
 	Enabled      bool
 	Mode         string

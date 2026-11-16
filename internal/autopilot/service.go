@@ -142,8 +142,8 @@ func (s *Service) insertNew(ctx context.Context, q *queries.Queries, sv saved) (
 	now := s.clock.Now()
 
 	id, err := q.InsertRoutine(ctx, queries.InsertRoutineParams{
-		AccountLogin: sv.viewer, Name: sv.name, Description: sv.desc, Mode: string(modeFor(sv.mode, sv.spec)),
-		Spec: sv.data, SpecVersion: int64(sv.spec.Version), TemplateKey: sv.template, SortOrder: int64(len(rows)),
+		AccountLogin: sv.viewer, Name: sv.name, NameKey: nameKey(sv.name), Description: sv.desc,
+		Mode: string(modeFor(sv.mode, sv.spec)), Spec: sv.data, SpecVersion: int64(sv.spec.Version), TemplateKey: sv.template, SortOrder: int64(len(rows)),
 		CreatedAt: now, UpdatedAt: now,
 	})
 	if err != nil {
@@ -177,7 +177,7 @@ func (s *Service) update(ctx context.Context, q *queries.Queries, id int64, sv s
 	}
 
 	n, err := q.UpdateRoutine(ctx, queries.UpdateRoutineParams{
-		AccountLogin: account, Name: sv.name, Description: sv.desc, Enabled: row.Enabled,
+		AccountLogin: account, Name: sv.name, NameKey: nameKey(sv.name), Description: sv.desc, Enabled: row.Enabled,
 		Mode: string(modeFor(mode, sv.spec)), Spec: sv.data, SpecVersion: int64(sv.spec.Version),
 		EnabledAt: row.EnabledAt, UpdatedAt: s.clock.Now(), ID: id,
 	})
@@ -244,8 +244,8 @@ func (s *Service) Duplicate(ctx context.Context, id int64) (Routine, error) {
 		var err error
 
 		row.ID, err = q.InsertRoutine(ctx, queries.InsertRoutineParams{
-			AccountLogin: row.AccountLogin, Name: row.Name, Description: row.Description, Mode: row.Mode,
-			Spec: row.Spec, SpecVersion: row.SpecVersion, TemplateKey: row.TemplateKey, SortOrder: int64(len(rows)),
+			AccountLogin: row.AccountLogin, Name: row.Name, NameKey: nameKey(row.Name), Description: row.Description,
+			Mode: row.Mode, Spec: row.Spec, SpecVersion: row.SpecVersion, TemplateKey: row.TemplateKey, SortOrder: int64(len(rows)),
 			BrokenReason: row.BrokenReason, CreatedAt: now, UpdatedAt: now,
 		})
 		if err != nil {

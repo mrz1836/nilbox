@@ -379,8 +379,8 @@ func checkSpec(s spec.Spec) ([]byte, spec.Spec, error) {
 	return nil, spec.Spec{}, uierr.New("The routine can't be saved: "+textutil.Sentence(err.Error()), err)
 }
 
-// storedSpec is a spec as a restore or an import stores it: compact, with its version and
-// why it won't load, if it won't.
+// storedSpec is a spec as a restore or an import stores it: normalized as Save stores one
+// when it loads, else compact as it was, with its version and why it won't load.
 type storedSpec struct {
 	data    string
 	version int64
@@ -390,8 +390,10 @@ type storedSpec struct {
 	refusal error
 }
 
-// keepSpec reads raw, a spec brought back or imported as it was, for storing: compacted,
-// with the version it says and why it won't load, refusing what is no JSON object.
+// keepSpec reads raw, a spec brought back or imported, for storing, refusing what is no
+// JSON object: one that loads is stored normalized, encoded as Save encodes one, and one
+// that doesn't (as a newer build's) compacted but as it was, never rewritten, with the
+// version it says and why it won't load.
 func keepSpec(raw json.RawMessage) (storedSpec, error) {
 	var buf bytes.Buffer
 
@@ -406,9 +408,19 @@ func keepSpec(raw json.RawMessage) (storedSpec, error) {
 	l := load(buf.String())
 	out := storedSpec{data: buf.String(), version: peekVersion(buf.Bytes()), spec: l.spec, loads: l.broken == nil}
 
-	if l.broken != nil {
-		out.broken, out.refusal = l.broken.Reason, l.broken
+	if out.loads {
+		data, err := spec.Encode(l.spec)
+		if err != nil {
+			return storedSpec{}, err
+		}
+
+		out.data, out.version = string(data), int64(l.spec.Version)
+
+		return out, nil
 	}
+
+	// A spec that won't load is the routine's all the same: it is kept as it was, broken.
+	out.broken, out.refusal = l.broken.Reason, l.broken
 
 	return out, nil
 }

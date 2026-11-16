@@ -144,8 +144,9 @@ func (r *rig) insertRaw(t *testing.T, name, mode, specJSON string) int64 {
 	t.Helper()
 
 	res, err := r.db.ExecContext(t.Context(), `INSERT INTO autopilot_routines
-		(account_login, name, mode, spec, spec_version, sort_order, created_at, updated_at)
-		VALUES (?, ?, ?, ?, 2, 99, ?, ?)`, viewer, name, mode, specJSON, startedAt(), startedAt())
+		(account_login, name, name_key, mode, spec, spec_version, sort_order, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, 2, 99, ?, ?)`, viewer, name, autopilot.NameKey(name), mode, specJSON, startedAt(),
+		startedAt())
 	require.NoError(t, err)
 
 	id, err := res.LastInsertId()

@@ -246,15 +246,15 @@ func insertKept(ctx context.Context, q *queries.Queries, clk clock.Clock, k kept
 ) (queries.AutopilotRoutine, error) {
 	now := clk.Now()
 	row := queries.AutopilotRoutine{
-		AccountLogin: k.account, Name: k.name, Description: k.desc, Mode: string(k.mode), Spec: k.spec.data,
-		SpecVersion: k.spec.version, TemplateKey: k.template, SortOrder: place, BrokenReason: string(k.spec.broken),
-		CreatedAt: now, UpdatedAt: now,
+		AccountLogin: k.account, Name: k.name, NameKey: nameKey(k.name), Description: k.desc, Mode: string(k.mode),
+		Spec: k.spec.data, SpecVersion: k.spec.version, TemplateKey: k.template, SortOrder: place,
+		BrokenReason: string(k.spec.broken), CreatedAt: now, UpdatedAt: now,
 	}
 
 	id, err := q.InsertRoutine(ctx, queries.InsertRoutineParams{
-		AccountLogin: row.AccountLogin, Name: row.Name, Description: row.Description, Mode: row.Mode, Spec: row.Spec,
-		SpecVersion: row.SpecVersion, TemplateKey: row.TemplateKey, SortOrder: row.SortOrder,
-		BrokenReason: row.BrokenReason, CreatedAt: now, UpdatedAt: now,
+		AccountLogin: row.AccountLogin, Name: row.Name, NameKey: row.NameKey, Description: row.Description,
+		Mode: row.Mode, Spec: row.Spec, SpecVersion: row.SpecVersion, TemplateKey: row.TemplateKey,
+		SortOrder: row.SortOrder, BrokenReason: row.BrokenReason, CreatedAt: now, UpdatedAt: now,
 	})
 	if err != nil {
 		return queries.AutopilotRoutine{}, fmt.Errorf("save the routine %q: %w", k.name, err)

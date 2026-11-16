@@ -6,13 +6,13 @@ import (
 	"errors"
 	"fmt"
 	"slices"
-	"strings"
 	"time"
 
 	"github.com/mrz1836/nilbox/internal/autopilot/internal/queries"
 	"github.com/mrz1836/nilbox/internal/autopilot/spec"
 	"github.com/mrz1836/nilbox/internal/autopilotprefs"
 	"github.com/mrz1836/nilbox/internal/backup"
+	"github.com/mrz1836/nilbox/internal/brand"
 	"github.com/mrz1836/nilbox/internal/clock"
 	"github.com/mrz1836/nilbox/internal/uierr"
 )
@@ -57,10 +57,12 @@ type BackupPlan struct {
 // nothing. Each routine must have a name and a definition that loads; one that doesn't
 // (as one a newer build wrote) is left out, with a note on why, as is a second routine of
 // a name. Routines are matched by name, ignoring case: a match whose definition,
-// description, and mode are the file's is left as it is, another is saved over and
-// switched off, and a routine of a name this Mac lacks is added, off, at the end. Replace
-// also deletes every routine the file doesn't name, and puts the rest in the file's order.
-// A routine whose mode this build doesn't know takes the mode new routines start in.
+// description, and mode are the file's is left as it is, on or off, another is saved over
+// and switched off, and a routine of a name this Mac lacks is added, off, at the end.
+// Replace also deletes every routine the file doesn't name, and puts the rest in the
+// file's order. A routine here that a newer build wrote is never saved over or deleted,
+// under either mode: it is left as it is, with a note. A routine whose mode this build
+// doesn't know takes the mode new routines start in.
 func (bp *BackupPart) PlanBackup(ctx context.Context, b Bundle, mode backup.Mode) (BackupPlan, error) {
 	current, err := bp.s.store.all(ctx)
 	if err != nil {
@@ -84,10 +86,13 @@ func (bp *BackupPart) PlanBackup(ctx context.Context, b Bundle, mode backup.Mode
 			continue
 		}
 
+		change, kept := k.change(current, matched)
+		if kept != "" {
+			out.AddNote(newerNote(kept))
+		}
+
 		out.routines = append(out.routines, k)
-		out.Add(backup.Item{
-			Label: k.name, Change: k.change(current, matched), Detail: spec.Sentence(k.spec.spec, v.names),
-		})
+		out.Add(backup.Item{Label: k.name, Change: change, Detail: spec.Sentence(k.spec.spec, v.names)})
 	}
 
 	if mode == backup.ModeReplace {
@@ -99,33 +104,55 @@ func (bp *BackupPart) PlanBackup(ctx context.Context, b Bundle, mode backup.Mode
 
 // holds reports whether the plan imports a routine named name, ignoring case.
 func (p *BackupPlan) holds(name string) bool {
-	return slices.ContainsFunc(p.routines, func(o keptRoutine) bool { return strings.EqualFold(o.name, name) })
+	return slices.ContainsFunc(p.routines, func(o keptRoutine) bool { return sameName(o.name, name) })
 }
 
-// planRemoves lists each of current that matched doesn't hold as one Replace deletes.
+// planRemoves lists each of current that matched doesn't hold as one Replace deletes, but
+// a routine a newer build wrote, which is kept, with a note.
 func (p *BackupPlan) planRemoves(current []queries.AutopilotRoutine, matched map[int64]bool, v view) {
 	for _, c := range current {
-		if !matched[c.ID] {
+		switch {
+		case matched[c.ID]:
+		case newerBuild(c):
+			p.AddNote(newerNote(c.Name))
+		default:
 			p.Add(backup.Item{Label: c.Name, Change: backup.ChangeRemove, Detail: routineOf(c, v).Sentence})
 		}
 	}
 }
 
 // change says what importing k does to the routines in current: adds it, saves over the
-// routine of its name, or leaves that routine as it is, marking the routine matched.
-func (k keptRoutine) change(current []queries.AutopilotRoutine, matched map[int64]bool) backup.Change {
-	i := slices.IndexFunc(current, func(c queries.AutopilotRoutine) bool { return strings.EqualFold(c.Name, k.name) })
+// routine of its name, or leaves that routine as it is, marking the routine matched. A
+// routine a newer build wrote is left as it is, and its name returned for a note.
+func (k keptRoutine) change(current []queries.AutopilotRoutine, matched map[int64]bool) (backup.Change, string) {
+	i := slices.IndexFunc(current, func(c queries.AutopilotRoutine) bool { return sameName(c.Name, k.name) })
 	if i < 0 {
-		return backup.ChangeAdd
+		return backup.ChangeAdd, ""
 	}
 
 	matched[current[i].ID] = true
 
-	if k.same(current[i]) {
-		return backup.ChangeSame
+	switch {
+	case newerBuild(current[i]):
+		return backup.ChangeSame, current[i].Name
+	case k.same(current[i]):
+		return backup.ChangeSame, ""
+	default:
+		return backup.ChangeUpdate, ""
 	}
+}
 
-	return backup.ChangeUpdate
+// newerBuild reports a routine whose stored spec a newer build wrote, which nothing here
+// saves over, deletes by an import, or rewrites.
+func newerBuild(row queries.AutopilotRoutine) bool {
+	b := load(row.Spec).broken
+
+	return b != nil && b.Reason == spec.ReasonNewer
+}
+
+// newerNote says an import leaves the routine name, which a newer build wrote, as it is.
+func newerNote(name string) string {
+	return fmt.Sprintf("The routine “%s” here was made by a newer %s: left as it is.", name, brand.Name)
 }
 
 // checkImport reads one of a backup's routines as it is stored, or says why it is left
@@ -239,9 +266,10 @@ type routineImport struct {
 }
 
 // place stores k: over the routine of its name, which is switched off unless it is the
-// same, or else as a new routine, off, at the end.
+// same or a newer build wrote it, either of which is left as it is, or else as a new
+// routine, off, at the end.
 func (im *routineImport) place(ctx context.Context, k keptRoutine) error {
-	i := slices.IndexFunc(im.rows, func(r queries.AutopilotRoutine) bool { return strings.EqualFold(r.Name, k.name) })
+	i := slices.IndexFunc(im.rows, func(r queries.AutopilotRoutine) bool { return sameName(r.Name, k.name) })
 	if i < 0 {
 		k.account = im.viewer
 
@@ -263,7 +291,7 @@ func (im *routineImport) place(ctx context.Context, k keptRoutine) error {
 		im.order = append(im.order, row)
 	}
 
-	if k.same(row) {
+	if newerBuild(row) || k.same(row) {
 		im.count = im.count.With(backup.ChangeSame)
 
 		return nil
@@ -275,8 +303,8 @@ func (im *routineImport) place(ctx context.Context, k keptRoutine) error {
 	}
 
 	_, err := im.q.UpdateRoutine(ctx, queries.UpdateRoutineParams{
-		AccountLogin: account, Name: row.Name, Description: k.desc, Mode: string(k.mode), Spec: k.spec.data,
-		SpecVersion: k.spec.version, UpdatedAt: im.clock.Now(), ID: row.ID,
+		AccountLogin: account, Name: row.Name, NameKey: nameKey(row.Name), Description: k.desc, Mode: string(k.mode),
+		Spec: k.spec.data, SpecVersion: k.spec.version, UpdatedAt: im.clock.Now(), ID: row.ID,
 	})
 	if err != nil {
 		return fmt.Errorf("save the routine %q: %w", row.Name, err)
@@ -287,10 +315,17 @@ func (im *routineImport) place(ctx context.Context, k keptRoutine) error {
 	return nil
 }
 
-// dropUnmatched deletes each routine no routine of the file's matched, as Replace does.
+// dropUnmatched deletes each routine no routine of the file's matched, as Replace does,
+// but one a newer build wrote, which keeps its place after the file's.
 func (im *routineImport) dropUnmatched(ctx context.Context) error {
 	for _, r := range im.rows {
 		if im.matched[r.ID] {
+			continue
+		}
+
+		if newerBuild(r) {
+			im.order = append(im.order, r)
+
 			continue
 		}
 

@@ -25,11 +25,14 @@
 --
 -- A routine is deleted softly: deleted_at is set, and the row stays, so its history keeps
 -- its name and its sentence. Names are unique, ignoring case, among the routines not
--- deleted.
+-- deleted: name_key is the name folded in Go (Unicode's simple case folding, as
+-- strings.EqualFold compares), which every comparison of names uses, since NOCASE folds
+-- ASCII alone.
 CREATE TABLE autopilot_routines (
     id            INTEGER  PRIMARY KEY,
     account_login TEXT     NOT NULL DEFAULT '' COLLATE NOCASE,
-    name          TEXT     NOT NULL COLLATE NOCASE CHECK (name <> ''),
+    name          TEXT     NOT NULL CHECK (name <> ''),
+    name_key      TEXT     NOT NULL CHECK (name_key <> ''),
     description   TEXT     NOT NULL DEFAULT '',
     enabled       BOOLEAN  NOT NULL DEFAULT 0 CHECK (enabled IN (0, 1)),
     mode          TEXT     NOT NULL CHECK (mode <> ''),
@@ -47,6 +50,6 @@ CREATE TABLE autopilot_routines (
     CHECK (deleted_at IS NULL OR enabled = 0)
 );
 
-CREATE UNIQUE INDEX autopilot_routines_name ON autopilot_routines (name) WHERE deleted_at IS NULL;
+CREATE UNIQUE INDEX autopilot_routines_name_key ON autopilot_routines (name_key) WHERE deleted_at IS NULL;
 
 CREATE INDEX autopilot_routines_order ON autopilot_routines (sort_order, id) WHERE deleted_at IS NULL;

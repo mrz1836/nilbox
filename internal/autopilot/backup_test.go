@@ -1,6 +1,7 @@
 package autopilot_test
 
 import (
+	"bytes"
 	"database/sql"
 	"encoding/json"
 	"testing"
@@ -180,6 +181,112 @@ func TestImportLeavesOutWhatItCantUseWithANote(t *testing.T) {
 	require.Len(t, got, 2)
 	assert.Equal(t, autopilotprefs.ModeDryRun, got[1].Mode,
 		"an unknown mode takes the default, and a step this build can't run keeps it in Dry run")
+}
+
+func TestAnImportLeavesARoutineANewerBuildWroteAsItIs(t *testing.T) {
+	t.Parallel()
+
+	const newer = `{"version":2,"somethingNew":true}`
+
+	note := "The routine “Fix checks” here was made by a newer " + brand.Name + ": left as it is."
+
+	for _, mode := range []backup.Mode{backup.ModeMerge, backup.ModeReplace} {
+		here := newRig(t, autopilotprefs.ModeAsk)
+		id := here.insertRaw(t, "Fix checks", "auto", newer)
+
+		b := autopilot.Bundle{Format: autopilot.BundleFormat, Routines: []autopilot.BundleRoutine{
+			{Name: "fix checks", Mode: autopilotprefs.ModeDryRun, Spec: mustSpec(t, notifySpec())},
+		}}
+
+		plan, count := importInto(t, here, b, mode)
+		assert.Equal(t, []string{note}, plan.Notes, mode)
+		assert.Equal(t, map[string]backup.Change{"fix checks": backup.ChangeSame}, changes(plan.Plan), mode)
+		assert.Equal(t, backup.Count{Same: 1}, count, mode)
+
+		assert.Equal(t, newer, here.storedSpec(t, id), "%s never saves over a newer build's routine", mode)
+
+		got, err := here.svc.Get(t.Context(), id)
+		require.NoError(t, err)
+		assert.Equal(t, "Fix checks", got.Name)
+	}
+}
+
+func TestReplaceNeverDeletesARoutineANewerBuildWrote(t *testing.T) {
+	t.Parallel()
+
+	here := newRig(t, autopilotprefs.ModeAsk)
+	gone := here.save(t, draft("Only here", notifySpec()))
+	id := here.insertRaw(t, "From the future", "auto", `{"version":2}`)
+
+	b := autopilot.Bundle{Format: autopilot.BundleFormat, Routines: []autopilot.BundleRoutine{
+		{Name: "From the file", Mode: autopilotprefs.ModeAsk, Spec: mustSpec(t, notifySpec())},
+	}}
+
+	plan, count := importInto(t, here, b, backup.ModeReplace)
+	assert.Equal(t, []string{
+		"The routine “From the future” here was made by a newer " + brand.Name + ": left as it is.",
+	}, plan.Notes)
+	assert.Equal(t, map[string]backup.Change{
+		"From the file": backup.ChangeAdd, "Only here": backup.ChangeRemove,
+	}, changes(plan.Plan), "the newer build's routine is no removal")
+	assert.Equal(t, backup.Count{Add: 1, Remove: 1}, count)
+
+	_, err := here.svc.Get(t.Context(), gone.ID)
+	require.ErrorIs(t, err, autopilot.ErrNotFound)
+
+	assert.Equal(t, []string{"From the file", "From the future"}, routineNames(here.list(t)),
+		"the file's routines, then the one kept")
+	assert.Equal(t, id, here.list(t)[1].ID)
+}
+
+func TestAnImportStoresASpecNormalized(t *testing.T) {
+	t.Parallel()
+
+	// The file's spec, as a hand or another build may write it: spaced, its lists unsorted
+	// and repeated, the conditions' match left out.
+	raw := json.RawMessage(`{
+		"version": 1,
+		"watch": {"sources": [{"lists": ["assigned", "authored", "assigned"]}]},
+		"trigger": {"event": "checks_failed"},
+		"conditions": {"of": []},
+		"steps": [{"notify": {"note": "  Have a look  "}}],
+		"limits": {}
+	}`)
+
+	here := newRig(t, autopilotprefs.ModeAsk)
+	importInto(t, here, autopilot.Bundle{Format: autopilot.BundleFormat, Routines: []autopilot.BundleRoutine{
+		{Name: "Spaced", Mode: autopilotprefs.ModeAsk, Spec: raw},
+	}}, backup.ModeMerge)
+
+	got := here.list(t)
+	require.Len(t, got, 1)
+
+	decoded, err := spec.Decode(compacted(t, raw))
+	require.NoError(t, err)
+
+	want, err := spec.Encode(spec.Normalize(decoded))
+	require.NoError(t, err)
+	assert.Equal(t, string(want), here.storedSpec(t, got[0].ID), "stored as Save stores one")
+}
+
+// routineNames returns each routine's name, in order.
+func routineNames(routines []autopilot.Routine) []string {
+	out := make([]string, 0, len(routines))
+	for _, r := range routines {
+		out = append(out, r.Name)
+	}
+
+	return out
+}
+
+// compacted returns raw compacted.
+func compacted(t *testing.T, raw json.RawMessage) []byte {
+	t.Helper()
+
+	var buf bytes.Buffer
+	require.NoError(t, json.Compact(&buf, raw))
+
+	return buf.Bytes()
 }
 
 // mustSpec returns s as stored.

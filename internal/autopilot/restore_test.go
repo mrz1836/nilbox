@@ -1,6 +1,7 @@
 package autopilot_test
 
 import (
+	"encoding/json"
 	"path/filepath"
 	"testing"
 
@@ -8,6 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/mrz1836/nilbox/internal/autopilot"
+	"github.com/mrz1836/nilbox/internal/autopilot/catalog"
 	"github.com/mrz1836/nilbox/internal/autopilot/spec"
 	"github.com/mrz1836/nilbox/internal/autopilotprefs"
 	"github.com/mrz1836/nilbox/internal/testutil"
@@ -177,4 +179,39 @@ func TestRestoreKeepsANewerBuildsRoutineAsItWas(t *testing.T) {
 	assert.Equal(t, "Two lines", routines[1].Name, "a name is made one line")
 	assert.Equal(t, autopilotprefs.ModeDryRun, routines[1].Mode, "a mode this build doesn't know is Dry run")
 	assert.Equal(t, spec.ReasonInvalid, routines[1].BrokenReason)
+}
+
+func TestRestoreStoresASpecThatLoadsNormalized(t *testing.T) {
+	t.Parallel()
+
+	spaced := `{
+      "version": 1,
+      "watch": {"sources": [{"lists": ["assigned", "authored", "assigned"]}]},
+      "trigger": {"event": "checks_failed"},
+      "conditions": {"of": []},
+      "steps": [{"notify": {"note": "  Have a look  "}}],
+      "limits": {}
+    }`
+
+	path := filepath.Join(t.TempDir(), "autopilot.json")
+	testutil.WriteFile(t, path, `{"format": "`+autopilot.BundleFormat+`", "routines": [
+    {"name": "Spaced", "mode": "ask", "spec": `+spaced+`}
+  ]}`)
+
+	fresh := newRig(t, autopilotprefs.ModeAsk)
+
+	_, err := autopilot.Restore(t.Context(), fresh.db, fresh.clock, "", autopilot.NewFile(path, "", nil))
+	require.NoError(t, err)
+
+	routines := fresh.list(t)
+	require.Len(t, routines, 1)
+
+	decoded, err := spec.Decode(compacted(t, json.RawMessage(spaced)))
+	require.NoError(t, err)
+
+	want, err := spec.Encode(spec.Normalize(decoded))
+	require.NoError(t, err)
+	assert.Equal(t, string(want), fresh.storedSpec(t, routines[0].ID), "stored as Save stores one")
+	assert.Equal(t, []catalog.ListSource{catalog.SourceAuthored, catalog.SourceAssigned},
+		routines[0].Spec.Watch.Sources[0].Lists)
 }

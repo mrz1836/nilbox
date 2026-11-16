@@ -8,6 +8,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"unicode"
 	"unicode/utf8"
 
 	"github.com/mrz1836/nilbox/internal/autopilot/internal/queries"
@@ -75,9 +76,34 @@ func (r routineStore) inTx(ctx context.Context, fn func(q *queries.Queries) erro
 	})
 }
 
+// nameKey folds a routine's name for comparing it with another, ignoring case: each rune
+// is replaced by the smallest rune it folds to under Unicode's simple case folding, so two
+// names have one key exactly when strings.EqualFold says they are the same. Every
+// comparison of names, in Go and in the database's uniqueness (name_key), uses it, since
+// SQLite's NOCASE folds ASCII alone.
+func nameKey(name string) string {
+	return strings.Map(foldRune, name)
+}
+
+// foldRune returns the smallest rune in r's simple case folding orbit.
+func foldRune(r rune) rune {
+	least := r
+
+	for f := unicode.SimpleFold(r); f != r; f = unicode.SimpleFold(f) {
+		least = min(least, f)
+	}
+
+	return least
+}
+
+// sameName reports whether two routines' names are the same, ignoring case.
+func sameName(a, b string) bool {
+	return nameKey(a) == nameKey(b)
+}
+
 // checkFree refuses name when a routine not deleted other than id has it, ignoring case.
 func checkFree(ctx context.Context, q *queries.Queries, name string, id int64) error {
-	_, err := q.RoutineNamed(ctx, queries.RoutineNamedParams{Name: name, OtherThan: id})
+	_, err := q.RoutineNamed(ctx, queries.RoutineNamedParams{NameKey: nameKey(name), OtherThan: id})
 
 	switch {
 	case errors.Is(err, sql.ErrNoRows):
@@ -109,7 +135,7 @@ func renumber(ctx context.Context, q *queries.Queries, order []queries.Autopilot
 // rows has, ignoring case, cut to fit MaxNameRunes.
 func freeName(name string, rows []queries.AutopilotRoutine) string {
 	taken := func(n string) bool {
-		return slices.ContainsFunc(rows, func(r queries.AutopilotRoutine) bool { return strings.EqualFold(r.Name, n) })
+		return slices.ContainsFunc(rows, func(r queries.AutopilotRoutine) bool { return sameName(r.Name, n) })
 	}
 
 	if !taken(name) {
