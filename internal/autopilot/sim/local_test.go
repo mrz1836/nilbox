@@ -1,0 +1,349 @@
+package sim_test
+
+import (
+	"os"
+	"path/filepath"
+	"testing"
+	"testing/synctest"
+	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	"github.com/mrz1836/nilbox/internal/autopilot"
+	"github.com/mrz1836/nilbox/internal/autopilot/catalog"
+	"github.com/mrz1836/nilbox/internal/autopilot/sim"
+	"github.com/mrz1836/nilbox/internal/autopilot/spec"
+	"github.com/mrz1836/nilbox/internal/autopilotprefs"
+	"github.com/mrz1836/nilbox/internal/prefs"
+	"github.com/mrz1836/nilbox/internal/snooze"
+)
+
+// The local steps, through the inbox's own triage: what each did, marked with its routine;
+// Undo; and the routine leaving alone what the user took back.
+
+// snoozeBots is the Snooze passing bot PRs template, as the templates write it.
+func snoozeBots(t *testing.T) spec.Spec {
+	t.Helper()
+
+	raw, err := os.ReadFile(filepath.Join("..", "spec", "testdata", "templates", "snooze-passing-bot-prs.json"))
+	require.NoError(t, err)
+
+	sp, err := spec.Load(raw)
+	require.NoError(t, err)
+
+	return sp
+}
+
+// passedKey is Checks pass's fire key on commit n of the pull request number.
+func passedKey(number, n int) string {
+	return "checks_passed:commit:" + sim.Commit(number, n)
+}
+
+// botPR is a Dependabot patch update in Review requested whose checks passed: no member
+// of the repository, as GitHub says of the bot.
+func botPR(number int) sim.Item {
+	return sim.Item{Number: number, ReviewRequested: true, Checks: passing, Passed: 4, Association: "NONE"}
+}
+
+// snoozing starts a simulation with the pull requests its, the routine Snooze passing bot
+// PRs on in mode, after a refresh.
+func snoozing(t *testing.T, mode autopilotprefs.Mode, its ...sim.Item) (*sim.Sim, autopilot.Routine) {
+	t.Helper()
+
+	s := sim.New(t)
+	for _, it := range its {
+		s.World.Add(it)
+	}
+
+	s.Begin()
+	s.Refresh()
+
+	r := s.Save("Snooze passing bot PRs", snoozeBots(t), mode)
+	s.Enable(r.ID, autopilot.CurrentRun)
+	s.Refresh()
+
+	return s, r
+}
+
+// groups returns every grouped line of Activity's first page, newest day first.
+func groups(t *testing.T, s *sim.Sim) []autopilot.ActivityGroup {
+	t.Helper()
+
+	page, err := s.Service.Activity(t.Context(), 0, 500)
+	require.NoError(t, err)
+
+	var out []autopilot.ActivityGroup
+	for _, d := range page.Days {
+		out = append(out, d.Groups...)
+	}
+
+	return out
+}
+
+// snoozedBy asserts that #number is snoozed until days from at, by the routine id (0 for
+// the user).
+func snoozedBy(t *testing.T, s *sim.Sim, number, days int, at time.Time, id int64) {
+	t.Helper()
+
+	it := s.InboxItem(number)
+	assert.Equal(t, at.AddDate(0, 0, days).UTC().Truncate(time.Second).Format(time.RFC3339), it.SnoozedUntil, "#%d", number)
+	assert.Equal(t, id, it.SetAsideBy, "#%d", number)
+}
+
+func TestSnoozePassingBotPRsSnoozesTheTrustedBotsPatchAndMinorUpdates(t *testing.T) {
+	t.Parallel()
+
+	synctest.Test(t, func(t *testing.T) {
+		start := sim.Start()
+		member := sim.Item{Number: 3, Assigned: true, Checks: passing, Passed: 4, Author: "octo-member"}
+		failing := botPR(4)
+		failing.Checks, failing.Failed, failing.Passed = "FAILURE", 1, 3
+		major := botPR(2)
+		major.Title = "Bump example-lib from 1.0.0 to 2.0.0"
+		searched := sim.Item{Number: 5, Watched: true, Checks: passing, Passed: 4}
+
+		s, r := snoozing(t, autopilotprefs.ModeAuto, botPR(1), major, member, failing, searched)
+
+		want := []sim.Row{row(1, autopilot.StateDone, "", autopilot.ReasonRan, passedKey(1, 1))}
+		assert.Equal(t, want, s.Ledger(), "only the bot's patch update, whose checks passed, in the lists it watches")
+		snoozedBy(t, s, 1, 3, start, r.ID)
+
+		for _, n := range []int{2, 3, 4} {
+			assert.Empty(t, s.InboxItem(n).SnoozedUntil, "#%d stays in the inbox", n)
+		}
+
+		lines := groups(t, s)
+		require.Len(t, lines, 1)
+		assert.Equal(t, "Snoozed 1", lines[0].Words)
+		assert.Equal(t, catalog.StepSnooze, lines[0].Action)
+		assert.Equal(t, r.Name, lines[0].Routine)
+		assert.Len(t, lines[0].Undo, 1, "it can be undone")
+		assert.Equal(t, []int64{s.Matches()[0].ID}, lines[0].Matches)
+
+		// Once per head commit: refreshes and a restart snooze nothing again.
+		s.Refresh()
+		s.Restart()
+		s.Advance(10*time.Minute, true)
+		assert.Equal(t, want, s.Ledger())
+		assert.Len(t, s.Triage.Calls(), 1)
+
+		// Dependabot rebases it: a bot's push doesn't wake the snooze, and the new commit
+		// passing is a new occurrence, which snoozes it again for the routine's length.
+		s.World.Push(1, sim.Commit(1, 2))
+		s.World.Pass(1)
+		s.Advance(5*time.Minute, true)
+
+		got := s.Ledger()
+		require.Len(t, got, 2)
+		assert.Equal(t, row(1, autopilot.StateDone, "", autopilot.ReasonRan, passedKey(1, 2)), got[1])
+		snoozedBy(t, s, 1, 3, s.Clock.Now(), r.ID)
+		assert.Equal(t, "Snoozed 2", groups(t, s)[0].Words, "the day's line counts both")
+	})
+}
+
+func TestSnoozePassingBotPRsWakesByTheUsersRules(t *testing.T) {
+	t.Parallel()
+
+	synctest.Test(t, func(t *testing.T) {
+		s, r := snoozing(t, autopilotprefs.ModeAuto, botPR(1))
+		require.NoError(t, prefs.New(s.DB, s.Clock).SetMany(t.Context(), map[string]string{snooze.PrefWakeComments: "1"}))
+		snoozedBy(t, s, 1, 3, sim.Start(), r.ID)
+
+		s.World.Change(1, func(it *sim.Item) { it.Comments++ })
+		s.Advance(5*time.Minute, true)
+
+		it := s.InboxItem(1)
+		require.NotNil(t, it.WokeBy, "a comment woke it, as the user's rules say")
+		assert.Equal(t, snooze.Reasons{Comments: 1}, *it.WokeBy)
+		assert.Len(t, s.Ledger(), 1, "the same commit doesn't snooze it again")
+	})
+}
+
+func TestSnoozePassingBotPRsRunsAtOnceInAskFirstAndRecordsInDryRun(t *testing.T) {
+	t.Parallel()
+
+	synctest.Test(t, func(t *testing.T) {
+		s, r := snoozing(t, autopilotprefs.ModeAsk, botPR(1))
+
+		assert.Equal(t, []sim.Row{row(1, autopilot.StateDone, "", autopilot.ReasonRan, passedKey(1, 1))}, s.Ledger(),
+			"a local step needs no OK")
+		snoozedBy(t, s, 1, 3, sim.Start(), r.ID)
+	})
+
+	synctest.Test(t, func(t *testing.T) {
+		s, _ := snoozing(t, autopilotprefs.ModeDryRun, botPR(1))
+
+		dry := sim.Row{Number: 1, State: autopilot.StateDone, Reason: autopilot.ReasonWouldRun, DryRun: true, Key: passedKey(1, 1)}
+		assert.Equal(t, []sim.Row{dry}, s.Ledger())
+		assert.Empty(t, s.InboxItem(1).SnoozedUntil, "Dry run records what would run, and changes nothing")
+		assert.Empty(t, s.Triage.Calls())
+		assert.Empty(t, groups(t, s))
+	})
+}
+
+func TestALocalStepActsOnAnOutsideContributorsItem(t *testing.T) {
+	t.Parallel()
+
+	synctest.Test(t, func(t *testing.T) {
+		stranger := sim.Item{Number: 1, Watched: true, Author: "a-stranger", Association: "NONE", CrossRepo: true}
+		s, r := started(t, sim.Pins(), autopilotprefs.ModeAuto)
+		s.World.Add(stranger)
+		s.Refresh()
+
+		assert.Equal(t, []sim.Row{row(1, autopilot.StateDone, "", autopilot.ReasonRan, "appears:item")}, s.Ledger())
+		assert.Equal(t, r.ID, s.InboxItem(1).PinnedBy, "a pin puts no one's text in front of an agent")
+	})
+}
+
+func TestUndoPutsBackOnlyWhatIsStillAsTheRoutineLeftIt(t *testing.T) {
+	t.Parallel()
+
+	synctest.Test(t, func(t *testing.T) {
+		s, r := snoozing(t, autopilotprefs.ModeAuto, botPR(1), botPR(2), botPR(3))
+		ctx := t.Context()
+
+		lines := groups(t, s)
+		require.Len(t, lines, 1)
+		require.Equal(t, "Snoozed 3", lines[0].Words)
+		require.Len(t, lines[0].Undo, 3)
+
+		// The user snoozes #2 again themselves, which takes the routine's snooze back, and
+		// dismisses #3, which goes further than it.
+		_, err := s.Inbox.Snooze(ctx, s.ItemID(2), 7)
+		require.NoError(t, err)
+		_, err = s.Inbox.Dismiss(ctx, s.ItemID(3))
+		require.NoError(t, err)
+		s.Settle()
+
+		line := groups(t, s)[0]
+		assert.Equal(t, 1, line.Reversed, "the user took one back")
+		assert.Len(t, line.Undo, 1, "only #1 is still as the routine left it")
+
+		effects := map[int]int64{}
+
+		for _, m := range s.Matches() {
+			require.Len(t, m.Effects, 1)
+			effects[m.Item.Number] = m.Effects[0].ID
+		}
+
+		undone, err := s.Service.Undo(ctx, []int64{effects[1], effects[2], effects[3]})
+		require.NoError(t, err)
+		assert.Equal(t, []int64{effects[1]}, undone.PutBack)
+		assert.Equal(t, []int64{effects[3]}, undone.Left, "changed since: left as the user left it")
+		assert.Equal(t, []int64{effects[2]}, undone.Skipped, "the user took it back already")
+		assert.Equal(t, "Put back 1 item. 1 changed since, so it's left as it is.", undone.Words)
+
+		assert.Empty(t, s.InboxItem(1).SnoozedUntil, "#1 is back in the inbox")
+		snoozedBy(t, s, 2, 7, sim.Start(), 0)
+		assert.NotEmpty(t, s.InboxItem(3).DismissedAt, "#3 stays dismissed")
+
+		again, err := s.Service.Undo(ctx, []int64{effects[1]})
+		require.NoError(t, err)
+		assert.Equal(t, []int64{effects[1]}, again.Skipped, "a second Undo changes nothing")
+
+		line = groups(t, s)[0]
+		assert.Equal(t, 1, line.Undone)
+		assert.Empty(t, line.Undo)
+
+		// Undo and the user's own snooze left the routine hands off #1 and #2; #3, which the
+		// user only went further with, isn't.
+		page, err := s.Service.Activity(ctx, 0, 0)
+		require.NoError(t, err)
+		require.Len(t, page.LeftAlone, 2)
+
+		why := map[int]string{}
+
+		for _, l := range page.LeftAlone {
+			assert.Equal(t, r.ID, l.RoutineID)
+			why[l.Item.Number] = l.Why
+		}
+
+		assert.Equal(t, map[int]string{1: "You undid what it did.", 2: "You snoozed it again yourself."}, why)
+	})
+}
+
+func TestARoutineLeavesAloneWhatYouTookBackUntilYouLetItActAgain(t *testing.T) {
+	t.Parallel()
+
+	synctest.Test(t, func(t *testing.T) {
+		s, r := snoozing(t, autopilotprefs.ModeAuto, botPR(1), botPR(2))
+		ctx := t.Context()
+		one := s.ItemID(1)
+
+		_, err := s.Inbox.Restore(ctx, one)
+		require.NoError(t, err)
+		s.Settle()
+
+		explained, err := s.Service.Explain(ctx, r.ID, one)
+		require.NoError(t, err)
+		assert.True(t, explained.LeftAlone)
+		assert.Contains(t, explained.Ledger, "Left alone: you took back what it did here. Let it act again to change that.")
+
+		tested, err := s.Service.Test(ctx, autopilot.Draft{ID: r.ID, Name: r.Name, Spec: r.Spec})
+		require.NoError(t, err)
+
+		for _, it := range tested.Items {
+			assert.Equal(t, it.Number == 1, it.LeftAlone, "#%d", it.Number)
+		}
+
+		// Both are rebased and pass again: the routine snoozes #2, and leaves #1 alone.
+		for _, n := range []int{1, 2} {
+			s.World.Push(n, sim.Commit(n, 2))
+			s.World.Pass(n)
+		}
+
+		s.Advance(10*time.Minute, true)
+
+		keys := map[string]bool{}
+		for _, m := range s.Ledger() {
+			keys[m.Key] = true
+		}
+
+		assert.True(t, keys[passedKey(2, 2)])
+		assert.False(t, keys[passedKey(1, 2)], "left alone: no match is recorded")
+		assert.Empty(t, s.InboxItem(1).SnoozedUntil, "as the user left it")
+
+		require.NoError(t, s.Service.LetActAgain(ctx, r.ID, one))
+		s.Settle()
+
+		got := s.Ledger()
+		assert.Equal(t, row(1, autopilot.StateDone, "", autopilot.ReasonRan, passedKey(1, 2)), got[len(got)-1],
+			"let act again, it snoozes #1 for the commit that holds now")
+		snoozedBy(t, s, 1, 3, s.Clock.Now(), r.ID)
+	})
+}
+
+func TestUnpinningWhatARoutinePinnedLeavesItHandsOff(t *testing.T) {
+	t.Parallel()
+
+	synctest.Test(t, func(t *testing.T) {
+		s, r := started(t, sim.Pins(), autopilotprefs.ModeAuto)
+		ctx := t.Context()
+		one := s.ItemID(1)
+
+		require.Equal(t, r.ID, s.InboxItem(1).PinnedBy, "the pin is marked with the routine")
+
+		_, err := s.Inbox.Unpin(ctx, one)
+		require.NoError(t, err)
+		s.Settle()
+
+		assert.Zero(t, s.InboxItem(1).PinnedBy)
+
+		page, err := s.Service.Activity(ctx, 0, 0)
+		require.NoError(t, err)
+		require.Len(t, page.LeftAlone, 1)
+		assert.Equal(t, "You unpinned what it pinned.", page.LeftAlone[0].Why)
+		assert.Equal(t, 1, page.LeftAlone[0].Item.Number)
+
+		effect := s.Effects()[0]
+		assert.NotNil(t, effect.ReversedAt, "the effect is taken back")
+		assert.False(t, effect.CanUndo)
+
+		require.NoError(t, s.Service.LetActAgain(ctx, r.ID, one))
+
+		page, err = s.Service.Activity(ctx, 0, 0)
+		require.NoError(t, err)
+		assert.Empty(t, page.LeftAlone)
+	})
+}
