@@ -209,11 +209,18 @@ export interface TestResult {
     "watched": number;
 
     /**
-     * Points is what the test spent of the GraphQL budget; 0 when its searches were read
-     * within the last minute, which Cached says.
+     * Points is what the test spent of the GraphQL budget: its searches, the details of
+     * the items they returned, and the check names it read. Cached says its searches were
+     * read within the last minute, and cost nothing again.
      */
     "points": number;
     "cached": boolean;
+
+    /**
+     * LowBudget says the GraphQL budget was under a quarter of its size, so the test sent
+     * nothing: each search it had no answer for says so, and no check name was read.
+     */
+    "lowBudget": boolean;
 
     /**
      * Estimate is what the draft's searches would add to each refresh.

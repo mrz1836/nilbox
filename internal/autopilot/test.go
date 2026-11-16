@@ -37,10 +37,23 @@ const (
 
 	// defaultLimit is the GraphQL budget an estimate assumes without Costs.
 	defaultLimit = 5000
+
+	// newSearch is an estimate's count for a search with no answer, which the refresh packs
+	// as a full page, and fullPage the most a search returns.
+	newSearch = -1
+	fullPage  = 100
 )
 
 // ErrNoItems is returned by a Service with no Items for a read that needs the inbox.
 var ErrNoItems = errors.New("the inbox can't be read")
+
+// ErrLowBudget is Items' SearchNow sending nothing while the GraphQL budget is under a
+// quarter of its size, as the refresh's watch passes pause then.
+var ErrLowBudget = errors.New("the GraphQL budget is low")
+
+// lowBudgetError is a search's error in a test that sent none for want of budget.
+const lowBudgetError = "Your GitHub API budget is under a quarter of its size, so this search wasn't read. " +
+	"Try again once it refills."
 
 // Items reads the inbox for the routines. Core adapts the inbox.
 type Items interface {
@@ -59,11 +72,13 @@ type Items interface {
 
 	// SearchNow reads searches from GitHub now and stores what they return, as the
 	// refresh's watch pass does, and returns each one's results by query, and what it cost
-	// in GraphQL points.
+	// in GraphQL points. While the GraphQL budget is low it sends nothing, and its error
+	// is ErrLowBudget.
 	SearchNow(ctx context.Context, queries []string) (map[string]SearchResult, int, error)
 
-	// ReadChecks reads and stores the check names of the pull requests among ids.
-	ReadChecks(ctx context.Context, ids []int64) error
+	// ReadChecks reads and stores the check names of the pull requests among ids, and
+	// returns what that cost in GraphQL points.
+	ReadChecks(ctx context.Context, ids []int64) (int, error)
 }
 
 // SearchResult is what one search read now found.
@@ -83,8 +98,8 @@ type SearchResult struct {
 // Costs gives what the routines' searches cost a refresh, as recorded. Core adapts the
 // inbox's last watch pass, the settings, and the API budget.
 type Costs interface {
-	// Estimate returns what searches that returned counts results each last cost a
-	// refresh and an hour.
+	// Estimate returns what searches cost a refresh and an hour, packed by counts: what
+	// each matched, at most a page, or -1 for one with no answer, packed as a full page.
 	Estimate(ctx context.Context, counts []int) (Estimate, error)
 }
 
@@ -199,10 +214,15 @@ type TestResult struct {
 	Unknown int `json:"unknown"`
 	Watched int `json:"watched"`
 
-	// Points is what the test spent of the GraphQL budget; 0 when its searches were read
-	// within the last minute, which Cached says.
+	// Points is what the test spent of the GraphQL budget: its searches, the details of
+	// the items they returned, and the check names it read. Cached says its searches were
+	// read within the last minute, and cost nothing again.
 	Points int  `json:"points"`
 	Cached bool `json:"cached"`
+
+	// LowBudget says the GraphQL budget was under a quarter of its size, so the test sent
+	// nothing: each search it had no answer for says so, and no check name was read.
+	LowBudget bool `json:"lowBudget"`
 
 	// Estimate is what the draft's searches would add to each refresh.
 	Estimate Estimate `json:"estimate"`
@@ -263,8 +283,9 @@ type cachedSearch struct {
 // stored as the refresh stores watched items; the routine is evaluated on each, with the
 // check names of the pull requests that need them read too (one batch); the searches are
 // checked for an owner the inbox has never seen; and the result says what the test spent
-// and what the searches would cost each refresh. A draft whose spec has problems is
-// refused with them, as Save refuses it. It changes no routine, and runs nothing.
+// and what the searches would cost each refresh. While the GraphQL budget is low it sends
+// nothing, and says so (LowBudget). A draft whose spec has problems is refused with them,
+// as Save refuses it. It changes no routine, and runs nothing.
 func (s *Service) Test(ctx context.Context, d Draft) (TestResult, error) {
 	out := TestResult{Searches: []TestSearch{}, Items: []TestItem{}}
 
@@ -297,7 +318,7 @@ func (s *Service) Test(ctx context.Context, d Draft) (TestResult, error) {
 	ids := union(listed, found)
 	out.Watched = len(ids)
 
-	if out.Items, err = s.evaluate(ctx, sp, ids); err != nil {
+	if out.Items, err = s.evaluate(ctx, sp, ids, &out); err != nil {
 		return out, err
 	}
 
@@ -323,18 +344,23 @@ func counts(items []TestItem) (matched, unknown int) {
 }
 
 // testSearches reads each query, from the cache when a test read it within testFor, and
-// records each one's outcome in out. It returns the IDs they found, in order.
+// records each one's outcome in out. It returns the IDs they found, in order. While the
+// budget is low, the queries it has no answer for say so, and out does.
 func (s *Service) testSearches(ctx context.Context, queries []watch.Query, out *TestResult) ([]int64, error) {
 	now := s.clock.Now()
 	results, missing := s.tests.fresh(queries, now)
 
 	if len(missing) > 0 {
 		read, points, err := s.items.SearchNow(ctx, missing)
-		if err != nil {
+
+		switch {
+		case errors.Is(err, ErrLowBudget):
+			out.LowBudget = true
+		case err != nil:
 			return nil, err
 		}
 
-		out.Points = points
+		out.Points += points
 
 		s.tests.keep(read, now)
 
@@ -348,10 +374,13 @@ func (s *Service) testSearches(ctx context.Context, queries []watch.Query, out *
 	var ids []int64
 
 	for _, q := range queries {
-		r := results[q.Text]
+		r, answered := results[q.Text]
 		ts := TestSearch{Query: q.Text, Count: r.Count, Returned: len(r.IDs), Truncated: r.Truncated, Warnings: []string{}}
 
-		if r.Err != nil {
+		switch {
+		case !answered && out.LowBudget:
+			ts.Error = lowBudgetError
+		case r.Err != nil:
 			ts.Error = uierr.Message(r.Err)
 		}
 
@@ -483,8 +512,9 @@ func union(a, b []int64) []int64 {
 }
 
 // evaluate decides the routine sp on each item of ids, reading the check names of the pull
-// requests whose decision needs them (one batch), the matches first, then the unknowns.
-func (s *Service) evaluate(ctx context.Context, sp spec.Spec, ids []int64) ([]TestItem, error) {
+// requests whose decision needs them (one batch, added to out's points; none while the
+// budget is low), the matches first, then the unknowns.
+func (s *Service) evaluate(ctx context.Context, sp spec.Spec, ids []int64, out *TestResult) ([]TestItem, error) {
 	ids = ids[:min(len(ids), maxTestItems)]
 	if len(ids) == 0 {
 		return []TestItem{}, nil
@@ -497,9 +527,12 @@ func (s *Service) evaluate(ctx context.Context, sp spec.Spec, ids []int64) ([]Te
 		return nil, err
 	}
 
-	if len(need) > 0 {
-		if err = s.items.ReadChecks(ctx, need[:min(len(need), maxTestChecks)]); err != nil {
-			s.logger.WarnContext(ctx, "a routine's test could not read the check names", "error", err)
+	if len(need) > 0 && !out.LowBudget {
+		points, readErr := s.items.ReadChecks(ctx, need[:min(len(need), maxTestChecks)])
+		out.Points += points
+
+		if readErr != nil {
+			s.logger.WarnContext(ctx, "a routine's test could not read the check names", "error", readErr)
 		} else if items, _, err = s.decide(ctx, sp, ids, now); err != nil {
 			return nil, err
 		}
@@ -540,12 +573,18 @@ func (s *Service) decide(ctx context.Context, sp spec.Spec, ids []int64, now tim
 	return out, need, nil
 }
 
-// estimate works out what the searches would add to each refresh, from what they returned
+// estimate works out what the searches would add to each refresh, packed as the refresh
+// packs them, by what each matched (at most a page; a full page for one with no answer),
 // and the recorded costs.
 func (s *Service) estimate(ctx context.Context, searches []TestSearch) Estimate {
 	counts := make([]int, 0, len(searches))
+
 	for _, sr := range searches {
-		counts = append(counts, sr.Returned)
+		if sr.Error != "" {
+			counts = append(counts, newSearch)
+		} else {
+			counts = append(counts, min(sr.Count, fullPage))
+		}
 	}
 
 	if len(counts) == 0 {

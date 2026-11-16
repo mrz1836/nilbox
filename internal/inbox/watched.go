@@ -3,7 +3,9 @@ package inbox
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
+	"slices"
 	"time"
 
 	"github.com/mrz1836/nilbox/internal/github"
@@ -62,15 +64,20 @@ func (s *Service) ItemsByID(ctx context.Context, ids []int64) ([]Item, error) {
 	return out, nil
 }
 
+// ErrLowBudget is a routine's test refused while the GraphQL budget is under a quarter of
+// its size, as the watch passes pause then (PausedLowBudget).
+var ErrLowBudget = errors.New("the GraphQL budget is low")
+
 // readChecks reads the checks of the stored pull requests among ids on their head commits,
 // with whether each is required, and stores them in item_checks, replacing what was
 // stored: Autopilot asks for the pull requests whose conditions need check names. An id
 // that isn't a stored pull request is left out. It costs one GraphQL point per batch of 25,
-// counted for Autopilot, and tells the Changed seam the items it stored.
-func (s *Service) readChecks(ctx context.Context, ids []int64) error {
+// counted for Autopilot, returns what it cost, and tells the Changed seam the items it
+// stored.
+func (s *Service) readChecks(ctx context.Context, ids []int64) (int, error) {
 	nodes, err := s.pullNodes(ctx, ids)
 	if err != nil || len(nodes) == 0 {
-		return err
+		return 0, err
 	}
 
 	ctx = github.WithPurpose(ctx, github.PurposeAutopilot)
@@ -80,21 +87,23 @@ func (s *Service) readChecks(ctx context.Context, ids []int64) error {
 		nodeIDs = append(nodeIDs, node)
 	}
 
+	slices.Sort(nodeIDs)
+
 	read, err := github.WithToken(ctx, s.tokens, func(tok github.Token) (*github.ChecksRead, error) {
 		return s.client.FetchChecks(ctx, tok, nodeIDs)
 	})
 	if err != nil {
-		return fmt.Errorf("read the checks: %w", err)
+		return 0, fmt.Errorf("read the checks: %w", err)
 	}
 
 	stored, err := s.storeChecks(ctx, nodes, read)
 	if err != nil {
-		return err
+		return read.RateLimit.Cost, err
 	}
 
 	s.tellChanged(stored)
 
-	return nil
+	return read.RateLimit.Cost, nil
 }
 
 // pullNodes returns the node ID of each stored pull request among ids, with its id.
@@ -196,9 +205,11 @@ type SearchOutcome struct {
 // searchNow reads searches from GitHub now, for a routine's test, and stores what they
 // return as the watch pass does, without any search's rows, so nothing watches the items
 // on the test's account: the prune of old items takes them in time unless a routine comes
-// to watch them. The details of the items that are new or changed are read too. It
-// returns each search's outcome, by query, and what it cost in GraphQL points, counted for
-// Autopilot.
+// to watch them. The details are read of the watched items that are new or changed, as a
+// pass reads them, and of the others only when missing or older than detailsStaleAfter
+// (see judge). It returns each search's outcome, by query, and what it cost in GraphQL
+// points, counted for Autopilot. While the GraphQL budget is under a quarter of its size it
+// sends nothing and returns ErrLowBudget, as the passes pause.
 func (s *Service) searchNow(ctx context.Context, texts []string) (map[string]SearchOutcome, int, error) {
 	ctx = github.WithPurpose(ctx, github.PurposeAutopilot)
 
@@ -207,7 +218,11 @@ func (s *Service) searchNow(ctx context.Context, texts []string) (map[string]Sea
 		return nil, 0, fmt.Errorf("read the signed-in account: %w", err)
 	}
 
-	job := &watchJob{login: login, stored: make(chan struct{})}
+	if s.budgetPause(ctx, login) != "" {
+		return nil, 0, ErrLowBudget
+	}
+
+	job := &watchJob{login: login, stored: make(chan struct{}), test: true}
 	for _, q := range texts {
 		job.searches = append(job.searches, Watch{Key: q, Query: q})
 	}
@@ -224,11 +239,13 @@ func (s *Service) searchNow(ctx context.Context, texts []string) (map[string]Sea
 		return nil, 0, err
 	}
 
+	// Details that didn't come back leave their items as stored (see storeResult), and the
+	// test decides on what it has.
 	if err = s.readPassDetails(ctx, &plan); err != nil {
-		return nil, 0, err
+		s.logger.WarnContext(ctx, "a routine's test could not read the items' details", "error", err)
 	}
 
-	ids, err := s.storeTested(ctx, seq, plan)
+	ids, err := s.storeTested(ctx, seq, &plan)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -255,9 +272,11 @@ func outcomeOf(q string, answer github.WatchResult, ids map[string]int64) Search
 	return o
 }
 
-// storeTested stores a test's open results and their details, as a pass does, and none of
-// its searches' rows, and returns each result's id by node ID.
-func (s *Service) storeTested(ctx context.Context, seq uint64, plan passPlan) (map[string]int64, error) {
+// storeTested stores a test's open results and their details, as a pass does, reading
+// again under the store lock what is stored of them first (recheck), and none of its
+// searches' rows. It returns each result's id by node ID; one stored merged, or closed
+// since, is left out.
+func (s *Service) storeTested(ctx context.Context, seq uint64, plan *passPlan) (map[string]int64, error) {
 	if plan.accountID == 0 {
 		return map[string]int64{}, nil
 	}
@@ -265,22 +284,17 @@ func (s *Service) storeTested(ctx context.Context, seq uint64, plan passPlan) (m
 	s.order.mu.Lock()
 	defer s.order.mu.Unlock()
 
-	ids := make(map[string]int64, len(plan.order))
+	var ids map[string]int64
 
 	err := store.InTx(ctx, s.db, func(tx *sql.Tx) error {
 		w := s.newWriter(tx)
 		w.accountID, w.details = plan.accountID, plan.details
 
-		for _, node := range plan.order {
-			id, err := w.storeWatchedItem(ctx, plan.results[node])
-			if err != nil {
-				return err
-			}
+		var err error
 
-			ids[node] = id
-		}
+		ids, err = w.storeResults(ctx, plan, false)
 
-		return w.wakeSnoozed(ctx)
+		return err
 	})
 	if err != nil {
 		return nil, fmt.Errorf("save the searched items: %w", err)

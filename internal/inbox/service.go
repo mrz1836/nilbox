@@ -190,7 +190,7 @@ type Config struct {
 	// Usage is told what each refresh it stores cost, and how many items it tracked.
 	Usage RefreshUsage
 
-	// Watches gives the routines' searches, which each whole refresh reads beside the
+	// Watches gives the routines' searches, which each whole refresh reads after the
 	// inbox's own lists (see watches.go), while its WatchPasses run. Nil reads none.
 	Watches WatchSource
 
@@ -200,7 +200,8 @@ type Config struct {
 	Changed func(ids []int64)
 
 	// Keep names the stored items something outside the inbox refers to, which the prune
-	// of old items keeps (see pruneOld). Nil keeps none beyond the inbox's own.
+	// of old items keeps (see pruneOld); Keepers joins several. Nil keeps none beyond the
+	// inbox's own.
 	Keep ItemKeeper
 
 	// Logger receives what a call cannot report as its error, at Debug: an avatar that
@@ -289,8 +290,8 @@ func (s *Service) Refresh(ctx context.Context) (Snapshot, error) {
 }
 
 // runRefresh is one whole refresh, run once for every caller that asked meanwhile. The
-// routines' searches go out beside it, on the watch pass's own goroutine, which stores
-// what they watch once this has stored the inbox and told the window (see watches.go).
+// routines' searches go out once it has stored the inbox and told the window, on the watch
+// pass's own goroutine, which stores what they watch (see watches.go).
 func (s *Service) runRefresh(ctx context.Context) (Snapshot, error) {
 	ctx = github.WithPurpose(ctx, github.PurposeInbox)
 

@@ -7,6 +7,7 @@ import (
 	"slices"
 	"sync"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/stretchr/testify/assert"
@@ -136,6 +137,9 @@ type fakeItems struct {
 	searched [][]string
 	read     [][]int64
 	err      error
+
+	// searchErr fails SearchNow alone, as the inbox does while the budget is low.
+	searchErr error
 }
 
 func (f *fakeItems) Suggestions(context.Context) (autopilot.Suggestions, error) {
@@ -193,16 +197,20 @@ func (f *fakeItems) SearchNow(_ context.Context, queries []string) (map[string]a
 		out[q] = f.searches[q]
 	}
 
+	if f.searchErr != nil {
+		return nil, 0, f.searchErr
+	}
+
 	return out, 2, f.err
 }
 
-func (f *fakeItems) ReadChecks(_ context.Context, ids []int64) error {
+func (f *fakeItems) ReadChecks(_ context.Context, ids []int64) (int, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
 	f.read = append(f.read, slices.Clone(ids))
 
-	return nil
+	return 1, nil
 }
 
 // readIDs is every ID whose checks were read. The caller holds mu.
@@ -323,7 +331,7 @@ func TestTestTriesTheDraftOnItsItemsNow(t *testing.T) {
 	assert.Equal(t, q.Text, got.Searches[0].Query)
 	assert.Equal(t, 2, got.Searches[0].Count)
 	assert.Empty(t, got.Searches[0].Warnings, "the inbox has seen acme-org")
-	assert.Equal(t, 2, got.Points)
+	assert.Equal(t, 3, got.Points, "the searches' two points and the check names' one")
 	assert.False(t, got.Cached)
 	assert.Equal(t, 2, got.Watched)
 	assert.Equal(t, [][]int64{{7, 8}}, items.read, "the check names its decision needs are read, once")
@@ -338,7 +346,7 @@ func TestTestTriesTheDraftOnItsItemsNow(t *testing.T) {
 	again, err := r.svc.Test(t.Context(), d)
 	require.NoError(t, err)
 	assert.True(t, again.Cached, "a search read within the minute isn't read again")
-	assert.Zero(t, again.Points)
+	assert.Equal(t, 1, again.Points, "only the check names it reads again")
 	assert.Len(t, items.searched, 1)
 
 	r.clock.Advance(time.Minute)
@@ -391,4 +399,117 @@ func TestTestSaysWhenTheInboxCantBeRead(t *testing.T) {
 
 	_, err = failing.svc.Test(t.Context(), draft("Any", searchSpec(catalog.EventAppears, orgSearch)))
 	require.Error(t, err)
+}
+
+func TestRebuildsRunOneAtATimeSoTheLastReadStoresLast(t *testing.T) {
+	t.Parallel()
+
+	synctest.Test(t, func(t *testing.T) {
+		r := newRig(t, autopilotprefs.ModeDryRun)
+		off := r.save(t, draft("Off", searchSpec(catalog.EventAppears, orgSearch)))
+		searches := autopilot.NewSearches(r.svc)
+
+		arrived, release := r.accounts.holdNext()
+		first := make(chan struct{})
+
+		go func() {
+			defer close(first)
+
+			searches.Rebuild(t.Context()) // reads the routine off, then waits on the account
+		}()
+
+		<-arrived
+
+		// The routine comes on, and its own rebuild runs while the first still waits.
+		testutil.Exec(t, r.db, `UPDATE autopilot_routines SET enabled = 1, enabled_at = ? WHERE id = ?`, startedAt(), off.ID)
+
+		second := make(chan struct{})
+
+		go func() {
+			defer close(second)
+
+			searches.Rebuild(t.Context())
+		}()
+
+		synctest.Wait()
+		release()
+		<-first
+		<-second
+
+		assert.Len(t, searches.Current().Searches, 1, "the rebuild that read the routine on stores last")
+	})
+}
+
+func TestTestSendsNothingWhileTheBudgetIsLow(t *testing.T) {
+	t.Parallel()
+
+	q := query(t, orgSearch)
+	items := &fakeItems{
+		rows:      map[int64]facts.Row{7: failingPR(7, 70)},
+		owners:    map[string]bool{"acme-org": true},
+		listed:    map[catalog.ListSource][]int64{catalog.SourceAuthored: {7}},
+		searchErr: autopilot.ErrLowBudget,
+	}
+	r := itemsRig(t, items)
+
+	s := searchSpec(catalog.EventChecksFailed, orgSearch)
+	s.Watch.Sources = append(s.Watch.Sources, spec.Source{Lists: []catalog.ListSource{catalog.SourceAuthored}})
+	s.Conditions = spec.Conditions{Match: spec.MatchAll, Of: []spec.Clause{
+		{Field: catalog.FieldID("checks.failedNames"), Op: catalog.Op("anyContains"), Values: []string{"security"}},
+	}}
+
+	got, err := r.svc.Test(t.Context(), draft("Low", s))
+	require.NoError(t, err, "a low budget is said, not failed")
+	assert.True(t, got.LowBudget)
+	require.Len(t, got.Searches, 1)
+	assert.Equal(t, q.Text, got.Searches[0].Query)
+	assert.Contains(t, got.Searches[0].Error, "budget")
+	assert.Zero(t, got.Points)
+	assert.Empty(t, items.read, "no check name is read either")
+	require.Len(t, got.Items, 1, "the lists' items are still tried")
+	assert.Equal(t, eval.Unknown, got.Items[0].Match)
+}
+
+func TestTheEstimatePacksBySearchesMatchCounts(t *testing.T) {
+	t.Parallel()
+
+	matched, failed := query(t, orgSearch), query(t, mineSearch)
+	costs := &recordingCosts{}
+	items := &fakeItems{
+		searches: map[string]autopilot.SearchResult{
+			matched.Text: {IDs: []int64{7}, Count: 40},
+			failed.Text:  {IDs: []int64{}, Err: errLocked},
+		},
+		rows:   map[int64]facts.Row{7: failingPR(7, 70)},
+		owners: map[string]bool{"acme-org": true},
+	}
+	r := itemsRig(t, items)
+	r.svc = autopilot.NewService(autopilot.Config{
+		Pool: r.db, Prefs: prefs{cfg: autopilotprefs.Defaults()}, Accounts: r.accounts, Names: names{},
+		File: autopilot.NewFile(filepath.Join(t.TempDir(), "autopilot.json"), "v0.0.0-test", r.clock), Clock: r.clock,
+		Logger: r.logs.Logger(), Items: items, Costs: costs,
+	})
+
+	_, err := r.svc.Test(t.Context(), draft("Two", searchSpec(catalog.EventAppears, orgSearch, mineSearch)))
+	require.NoError(t, err)
+
+	costs.mu.Lock()
+	defer costs.mu.Unlock()
+
+	assert.Equal(t, [][]int{{40, -1}}, costs.counts,
+		"a search is packed by what it matched, and one that failed as a full page, never as nothing")
+}
+
+// recordingCosts estimates as fakeCosts does, recording the counts it was asked about.
+type recordingCosts struct {
+	mu     sync.Mutex
+	counts [][]int
+}
+
+func (c *recordingCosts) Estimate(ctx context.Context, counts []int) (autopilot.Estimate, error) {
+	c.mu.Lock()
+	c.counts = append(c.counts, slices.Clone(counts))
+	c.mu.Unlock()
+
+	return fakeCosts{}.Estimate(ctx, counts)
 }

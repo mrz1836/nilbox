@@ -655,29 +655,75 @@ func (q *Queries) SetItemState(ctx context.Context, arg SetItemStateParams) erro
 }
 
 const setRefState = `-- name: SetRefState :exec
-UPDATE items SET state = ?1, closed_at = ?2
-WHERE number = ?3
-  AND repo_id IN (SELECT id FROM repos WHERE owner = ?4 AND name = ?5)
+UPDATE items SET
+    state = ?1,
+    closed_at = ?2,
+    fetched_at = CASE WHEN items.fetched_at < ?3 THEN ?3 ELSE items.fetched_at END
+WHERE number = ?4
+  AND repo_id IN (SELECT id FROM repos WHERE owner = ?5 AND name = ?6)
+  AND items.state <> 'MERGED'
 `
 
 type SetRefStateParams struct {
-	State    string
-	ClosedAt *time.Time
-	Number   int64
-	Owner    string
-	Name     string
+	State     string
+	ClosedAt  *time.Time
+	FetchedAt time.Time
+	Number    int64
+	Owner     string
+	Name      string
 }
 
 // SetRefState records the state of every stored item of the repository named owner and
-// name, which match ignoring case, with number, and when it closed, as another service's
-// read of the item's state said. Nothing changes when none is stored.
+// name, which match ignoring case, with number, and when it closed, as a whole refresh's
+// searches said, and stamps fetched_at, which only moves on. A merged item keeps its
+// state, since nothing comes back from a merge. Nothing changes when none is stored. The
+// refresh applies the item writes stored while it fetched after this (see order.go), so
+// it needs no guard of SetRefStateBefore's.
 func (q *Queries) SetRefState(ctx context.Context, arg SetRefStateParams) error {
 	_, err := q.db.ExecContext(ctx, setRefState,
 		arg.State,
 		arg.ClosedAt,
+		arg.FetchedAt,
 		arg.Number,
 		arg.Owner,
 		arg.Name,
+	)
+	return err
+}
+
+const setRefStateBefore = `-- name: SetRefStateBefore :exec
+UPDATE items SET
+    state = ?1,
+    closed_at = ?2,
+    fetched_at = CASE WHEN items.fetched_at < ?3 THEN ?3 ELSE items.fetched_at END
+WHERE number = ?4
+  AND repo_id IN (SELECT id FROM repos WHERE owner = ?5 AND name = ?6)
+  AND items.state <> 'MERGED'
+  AND items.fetched_at < ?7
+`
+
+type SetRefStateBeforeParams struct {
+	State      string
+	ClosedAt   *time.Time
+	FetchedAt  time.Time
+	Number     int64
+	Owner      string
+	Name       string
+	ReadBefore time.Time
+}
+
+// SetRefStateBefore is SetRefState for a read that went out at read_before outside a whole
+// refresh (a watch pass's searches, another service's read): an item stored at or after
+// read_before keeps what that newer read stored.
+func (q *Queries) SetRefStateBefore(ctx context.Context, arg SetRefStateBeforeParams) error {
+	_, err := q.db.ExecContext(ctx, setRefStateBefore,
+		arg.State,
+		arg.ClosedAt,
+		arg.FetchedAt,
+		arg.Number,
+		arg.Owner,
+		arg.Name,
+		arg.ReadBefore,
 	)
 	return err
 }
@@ -761,8 +807,8 @@ ON CONFLICT (account_id, repo_id, kind, number) DO UPDATE SET
     head_ref = excluded.head_ref,
     item_created_at = excluded.item_created_at,
     item_updated_at = excluded.item_updated_at,
-    state = CASE WHEN excluded.state <> '' THEN excluded.state ELSE items.state END,
-    closed_at = CASE WHEN excluded.state <> '' THEN excluded.closed_at ELSE items.closed_at END,
+    state = CASE WHEN excluded.state = '' OR items.state = 'MERGED' THEN items.state ELSE excluded.state END,
+    closed_at = CASE WHEN excluded.state = '' OR items.state = 'MERGED' THEN items.closed_at ELSE excluded.closed_at END,
     fetched_at = excluded.fetched_at
 RETURNING id
 `
@@ -790,9 +836,9 @@ type UpsertWatchedItemParams struct {
 
 // UpsertWatchedItem stores what a routine's search says about an item, and returns its id.
 // A new item is in no list; one already stored for the same account, repository, kind,
-// and number has what GitHub says rewritten, its state included, and keeps its lists, the
-// times it arrived in them, and the lists the user left, which only the inbox's own
-// searches and reads change.
+// and number has what GitHub says rewritten, its state included but over a merge, which
+// nothing comes back from, and keeps its lists, the times it arrived in them, and the
+// lists the user left, which only the inbox's own searches and reads change.
 func (q *Queries) UpsertWatchedItem(ctx context.Context, arg UpsertWatchedItemParams) (int64, error) {
 	row := q.db.QueryRowContext(ctx, upsertWatchedItem,
 		arg.AccountID,

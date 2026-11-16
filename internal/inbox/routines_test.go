@@ -83,7 +83,9 @@ func TestReadChecksStoresThemForTheFacts(t *testing.T) {
 			{Kind: github.CheckKindRun, Name: "test", Workflow: "CI", Outcome: github.CheckSkipped, CompletedAt: done},
 		}}}
 
-		require.NoError(t, NewRoutines(h.svc).ReadChecks(t.Context(), []int64{ids[7], 999}))
+		points, err := NewRoutines(h.svc).ReadChecks(t.Context(), []int64{ids[7], 999})
+		require.NoError(t, err)
+		assert.Equal(t, 1, points, "what the read cost is told")
 		assert.Equal(t, [][]string{{nodeID(7)}}, h.client.checksIDs, "only the stored pull requests are asked about")
 
 		rows, err := NewStore(h.pool, h.clock).FactsRows(t.Context(), []int64{ids[7]})
@@ -158,7 +160,8 @@ func TestSuggestReadsTheStoredItems(t *testing.T) {
 			{Name: "lint", Workflow: "CI", Outcome: github.CheckPassed},
 			{Name: "CodeQL", Outcome: github.CheckPassed},
 		}}}
-		require.NoError(t, NewRoutines(h.svc).ReadChecks(t.Context(), []int64{ids[7]}))
+		_, err := NewRoutines(h.svc).ReadChecks(t.Context(), []int64{ids[7]})
+		require.NoError(t, err)
 
 		got, err := NewStore(h.pool, h.clock).Suggest(t.Context())
 		require.NoError(t, err)
@@ -212,20 +215,44 @@ func TestNoteStatesRecordsAnotherServicesRead(t *testing.T) {
 	h, id := itemHarness(t)
 	ref := item.Ref{Repo: repo.Name{Owner: acmeOrg, Repo: "example-repo"}, Number: 1, Kind: item.KindPR}
 	closed := time.Date(2026, 1, 9, 0, 0, 0, 0, time.UTC)
+	notes := NewStore(h.pool, h.clock)
 
-	require.NoError(t, NewStore(h.pool, h.clock).NoteStates(t.Context(), []item.Ref{ref},
-		map[string]github.ItemState{ref.Key(): {State: github.StateMerged, ClosedAt: closed}}))
+	state := func() (string, *time.Time) {
+		var (
+			s  string
+			at *time.Time
+		)
 
-	var (
-		state string
-		at    *time.Time
-	)
+		require.NoError(t, h.pool.QueryRowContext(t.Context(), `SELECT state, closed_at FROM items WHERE id = ?`, id).
+			Scan(&s, &at))
 
-	require.NoError(t, h.pool.QueryRowContext(t.Context(), `SELECT state, closed_at FROM items WHERE id = ?`, id).
-		Scan(&state, &at))
-	assert.Equal(t, github.StateMerged, state)
+		return s, at
+	}
+
+	note := func(readAt time.Time, s string, at time.Time) {
+		require.NoError(t, notes.NoteStates(t.Context(), readAt, []item.Ref{ref},
+			map[string]github.ItemState{ref.Key(): {State: s, ClosedAt: at}}))
+	}
+
+	before := h.clock.Now().Add(-time.Hour) // itemHarness stored the item ten minutes ago
+	note(before, github.StateClosed, closed)
+
+	got, _ := state()
+	assert.NotEqual(t, github.StateClosed, got, "a read that went out before the item was stored keeps the newer read")
+
+	h.clock.Advance(time.Minute)
+	note(h.clock.Now(), github.StateMerged, closed)
+
+	got, at := state()
+	assert.Equal(t, github.StateMerged, got)
 	require.NotNil(t, at)
 	assert.True(t, closed.Equal(*at))
+
+	h.clock.Advance(time.Minute)
+	note(h.clock.Now(), github.StateOpen, time.Time{})
+
+	got, _ = state()
+	assert.Equal(t, github.StateMerged, got, "nothing comes back from a merge")
 
 	snap, err := h.svc.Snapshot(t.Context())
 	require.NoError(t, err)

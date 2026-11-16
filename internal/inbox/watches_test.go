@@ -343,47 +343,6 @@ func TestARefreshStoresTheInboxWhenTheWatchRequestFails(t *testing.T) {
 	})
 }
 
-func TestAFailingWatchRequestNeverCancelsTheInboxQuery(t *testing.T) {
-	t.Parallel()
-
-	synctest.Test(t, func(t *testing.T) {
-		h := newWatchHarness(t)
-		defer func() { h.stop() }() // the worker is started again below
-
-		h.startWatching(t)
-
-		c := &gatedClient{fakeClient: h.client, inboxGate: newGate(t)}
-		h.svc = NewService(Config{
-			Pool: h.pool, Tokens: h.tokens, Client: c, Clock: h.clock, Events: h.events, Logger: h.logs.Logger(),
-			Watches: h.source, Changed: h.hear,
-		})
-
-		h.stop()
-
-		ctx, cancel := context.WithCancel(t.Context())
-		done := make(chan struct{})
-
-		go func() {
-			defer close(done)
-
-			h.svc.runWatchPasses(ctx)
-		}()
-
-		h.stop = func() { cancel(); <-done }
-		h.client.watchErr = errWatchDown
-
-		refresh := async(func() (Snapshot, error) { return h.svc.Refresh(t.Context()) })
-
-		c.inboxGate.waitArrived(t)
-		synctest.Wait() // the watch request has failed by now, while the inbox query waits
-		c.inboxGate.release()
-
-		got := await(t, refresh)
-		require.NoError(t, got.err, "the inbox query was not canceled")
-		assert.Equal(t, []int{1}, numbers(got.snap.ReviewRequested))
-	})
-}
-
 func TestTheInboxIsStoredAndToldBeforeTheWatchPassStores(t *testing.T) {
 	t.Parallel()
 
@@ -585,28 +544,49 @@ func TestNoWatchRequestWhileTheBudgetIsLow(t *testing.T) {
 		defer h.stop()
 
 		h.startWatching(t)
+		h.refresh(t)
+		synctest.Wait()
+
+		calls := func() int {
+			h.client.mu.Lock()
+			defer h.client.mu.Unlock()
+
+			return len(h.client.watchCalls)
+		}
+
+		paused := func() string {
+			status, err := NewStore(h.pool, h.clock).WatchStatus(t.Context())
+			require.NoError(t, err)
+
+			return status.Paused
+		}
+
+		sent := calls()
+		require.Equal(t, 1, sent)
+
+		h.next()
 
 		low := fetched([]github.Item{pr(1, "OWNER", false)}, nil, nil)
 		low.RateLimit.Remaining, low.RateLimit.Used = 1000, 4000
 		h.client.inbox = low
-		h.refresh(t) // stores the low reading; this refresh's pass was decided before it
+		h.refresh(t) // the pass reads the budget the inbox query just left
 		synctest.Wait()
 
-		h.client.mu.Lock()
-		calls := len(h.client.watchCalls)
-		h.client.mu.Unlock()
+		assert.Equal(t, sent, calls(), "the budget is under a quarter")
+		assert.Equal(t, PausedLowBudget, paused())
+		assert.Len(t, h.watchRows(t), 2, "the rows are kept")
 
+		_, _, err := NewRoutines(h.svc).SearchNow(t.Context(), []string{otherQuery})
+		require.ErrorIs(t, err, ErrLowBudget, "a routine's test waits for the budget too")
+		assert.Equal(t, sent, calls())
+
+		h.next()
+		h.client.inbox = fetched([]github.Item{pr(1, "OWNER", false)}, nil, nil)
 		h.refresh(t)
 		synctest.Wait()
 
-		h.client.mu.Lock()
-		assert.Len(t, h.client.watchCalls, calls, "the budget is under a quarter")
-		h.client.mu.Unlock()
-
-		status, err := NewStore(h.pool, h.clock).WatchStatus(t.Context())
-		require.NoError(t, err)
-		assert.Equal(t, PausedLowBudget, status.Paused)
-		assert.Len(t, h.watchRows(t), 2, "the rows are kept")
+		assert.Equal(t, sent+1, calls(), "the passes go on once the budget is back over a quarter")
+		assert.Empty(t, paused())
 	})
 }
 
@@ -813,6 +793,442 @@ func TestOldDetailsAreReadOnlyInTheRoomLeft(t *testing.T) {
 	full := plan(watchDetailsBatch, 40)
 	full.fillStale()
 	assert.Empty(t, reads(full), "never a request more")
+}
+
+// itemState reads the stored state of the item with id.
+func (h *watchHarness) itemState(t *testing.T, id int64) string {
+	t.Helper()
+
+	var state string
+
+	require.NoError(t, h.pool.QueryRowContext(t.Context(), `SELECT state FROM items WHERE id = ?`, id).Scan(&state))
+
+	return state
+}
+
+// watchesOf returns the numbers of the items the watch rows hold.
+func (h *watchHarness) watchesOf(t *testing.T) []int {
+	t.Helper()
+
+	rows := h.watchRows(t)
+	out := make([]int, 0, len(rows))
+
+	for _, r := range rows {
+		out = append(out, r.number)
+	}
+
+	return out
+}
+
+// merged is what an item's own read says of #number once it merged.
+func (h *watchHarness) merged(number int) *github.ItemUpdate {
+	it := dependabot(number)
+	it.State, it.ClosedAt = github.StateMerged, h.clock.Now()
+
+	return &github.ItemUpdate{Found: true, Item: it, Details: watchedPRDetails(headB, "SUCCESS"), RateLimit: itemRate()}
+}
+
+func TestAMergeReadWhileThePassReadsDetailsStands(t *testing.T) {
+	t.Parallel()
+
+	synctest.Test(t, func(t *testing.T) {
+		h := newWatchHarness(t)
+		defer h.stop()
+
+		h.startWatching(t)
+		h.refresh(t)
+		synctest.Wait()
+
+		id := h.storedItems(t)[1].ID
+		require.Equal(t, []int{1, 7}, h.watchesOf(t))
+
+		// #7 has a new head, so the pass reads its details, and waits on GitHub there.
+		h.next()
+		h.client.watches[depQuery] = answer(watched(pr(1, "OWNER", false), headA, "SUCCESS"),
+			watched(dependabot(7), headB, "PENDING"))
+		h.client.details[nodeID(7)] = watchedPRDetails(headB, "PENDING")
+		h.client.watchDetailsGate = newGate(t)
+
+		h.refresh(t)
+		h.client.watchDetailsGate.waitArrived(t)
+
+		// Meanwhile a read of #7's own finds it merged, and takes it out of the searches.
+		h.clock.Advance(time.Second)
+		h.client.items = map[string]*github.ItemUpdate{nodeID(7): h.merged(7)}
+		_, err := h.svc.RefreshItem(t.Context(), id)
+		require.NoError(t, err)
+		require.Equal(t, []int{1}, h.watchesOf(t))
+
+		told := len(h.changed.all())
+
+		h.client.watchDetailsGate.release()
+		synctest.Wait()
+
+		assert.Equal(t, github.StateMerged, h.itemState(t, id), "the pass never stores its older open over the merge")
+		assert.Equal(t, []int{1}, h.watchesOf(t), "and never brings its rows back")
+		assert.NotContains(t, h.changed.all()[told:], id, "nor tells it as changed")
+	})
+}
+
+func TestAListingStoredWhileThePassReadsDetailsStands(t *testing.T) {
+	t.Parallel()
+
+	synctest.Test(t, func(t *testing.T) {
+		h := newWatchHarness(t)
+		defer h.stop()
+
+		h.startWatching(t)
+		h.refresh(t)
+		synctest.Wait()
+
+		h.next()
+
+		searched := dependabot(7)
+		searched.Title = "Bump as the search read it"
+		h.client.watches[depQuery] = answer(watched(pr(1, "OWNER", false), headA, "SUCCESS"),
+			watched(searched, headB, "PENDING"))
+		h.client.details[nodeID(7)] = watchedPRDetails(headB, "PENDING")
+		h.client.watchDetailsGate = newGate(t)
+
+		h.refresh(t)
+		h.client.watchDetailsGate.waitArrived(t)
+
+		// A whole refresh lists #7 while the pass waits, with a newer title.
+		h.clock.Advance(time.Second)
+
+		listed := dependabot(7)
+		listed.Title = "Bump as the inbox listed it"
+		h.client.inbox = fetched([]github.Item{pr(1, "OWNER", false)}, []github.Item{listed}, nil)
+		h.refresh(t)
+
+		h.client.watchDetailsGate.release()
+		synctest.Wait()
+
+		var title string
+
+		require.NoError(t, h.pool.QueryRowContext(t.Context(), `SELECT title FROM items WHERE number = 7`).Scan(&title))
+		assert.Equal(t, "Bump as the inbox listed it", title, "the refresh's newer card stands")
+		assert.Equal(t, []int{1, 7}, h.watchesOf(t), "while the search still returns it")
+	})
+}
+
+func TestAMergeReadWhileATestReadsDetailsStands(t *testing.T) {
+	t.Parallel()
+
+	synctest.Test(t, func(t *testing.T) {
+		h := newWatchHarness(t)
+		defer h.stop()
+
+		h.seed(t, []github.Item{pr(1, "OWNER", false)}, nil, nil)
+		synctest.Wait()
+
+		h.client.watches = map[string]github.WatchResult{otherQuery: answer(watched(dependabot(9), headA, "FAILURE"))}
+		h.client.details[nodeID(9)] = watchedPRDetails(headA, "FAILURE")
+
+		got, _, err := h.svc.searchNow(t.Context(), []string{otherQuery})
+		require.NoError(t, err)
+		require.Len(t, got[otherQuery].IDs, 1)
+
+		id := got[otherQuery].IDs[0]
+
+		// Half an hour on, a test reads #9's details again, and waits on GitHub there.
+		h.clock.Advance(detailsStaleAfter + time.Minute)
+		h.client.watchDetailsGate = newGate(t)
+
+		var again map[string]SearchOutcome
+
+		tested := make(chan error, 1)
+
+		go func() {
+			var searchErr error
+
+			again, _, searchErr = h.svc.searchNow(t.Context(), []string{otherQuery})
+			tested <- searchErr
+		}()
+
+		h.client.watchDetailsGate.waitArrived(t)
+		h.clock.Advance(time.Second)
+		h.client.items = map[string]*github.ItemUpdate{nodeID(9): h.merged(9)}
+		_, err = h.svc.RefreshItem(t.Context(), id)
+		require.NoError(t, err)
+
+		h.client.watchDetailsGate.release()
+
+		require.NoError(t, <-tested)
+		assert.Empty(t, again[otherQuery].IDs, "the test leaves out what was merged since")
+		assert.Equal(t, github.StateMerged, h.itemState(t, id), "and never stores its older open over it")
+	})
+}
+
+func TestDetailsThatDidntComeBackAreReadAgainByTheNextPass(t *testing.T) {
+	t.Parallel()
+
+	synctest.Test(t, func(t *testing.T) {
+		h := newWatchHarness(t)
+		defer h.stop()
+
+		h.startWatching(t)
+		h.refresh(t)
+		synctest.Wait()
+
+		id := h.storedItems(t)[1].ID
+		told := len(h.changed.all())
+
+		updatedAt := func() time.Time {
+			var at time.Time
+
+			require.NoError(t, h.pool.QueryRowContext(t.Context(), `SELECT item_updated_at FROM items WHERE id = ?`, id).
+				Scan(&at))
+
+			return at.UTC()
+		}
+
+		before := updatedAt()
+
+		// #7 has a new comment: only its update time moves, and its details don't come back.
+		h.next()
+
+		commented := dependabot(7)
+		commented.UpdatedAt = commented.UpdatedAt.Add(time.Hour)
+		h.client.watches[depQuery] = answer(watched(pr(1, "OWNER", false), headA, "SUCCESS"),
+			watched(commented, headA, "SUCCESS"))
+		h.client.watchDetailsErr = errFakeNetwork
+
+		h.refresh(t)
+		synctest.Wait()
+
+		assert.True(t, before.Equal(updatedAt()), "its card keeps the update time its details were read at")
+		assert.Len(t, h.changed.all(), told, "and it isn't told as changed")
+		assert.Equal(t, []int{1, 7}, h.watchesOf(t), "while it stays watched")
+
+		h.next()
+		h.client.watchDetailsErr = nil
+		h.client.mu.Lock()
+		h.client.detailsIDs, h.client.detailsOpts = nil, nil
+		h.client.mu.Unlock()
+
+		h.refresh(t)
+		synctest.Wait()
+
+		assert.Equal(t, [][]string{{nodeID(7)}}, h.watchedDetails(), "the next pass reads it again")
+		assert.True(t, commented.UpdatedAt.UTC().Equal(updatedAt()))
+		assert.Contains(t, h.changed.all()[told:], id)
+	})
+}
+
+func TestATestReadsAnUnwatchedItemsDetailsOnlyWhenOld(t *testing.T) {
+	t.Parallel()
+
+	synctest.Test(t, func(t *testing.T) {
+		h := newWatchHarness(t)
+		defer h.stop()
+
+		h.seed(t, []github.Item{pr(1, "OWNER", false)}, nil, nil)
+		synctest.Wait()
+
+		h.client.watches = map[string]github.WatchResult{otherQuery: answer(watched(dependabot(9), headA, "FAILURE"))}
+		h.client.details[nodeID(9)] = watchedPRDetails(headA, "FAILURE")
+
+		test := func() {
+			h.client.mu.Lock()
+			h.client.detailsIDs, h.client.detailsOpts = nil, nil
+			h.client.mu.Unlock()
+
+			_, _, err := h.svc.searchNow(t.Context(), []string{otherQuery})
+			require.NoError(t, err)
+		}
+
+		test()
+		assert.Equal(t, [][]string{{nodeID(9)}}, h.watchedDetails(), "new, so its details are read")
+
+		h.clock.Advance(10 * time.Minute)
+
+		commented := dependabot(9)
+		commented.UpdatedAt = commented.UpdatedAt.Add(time.Hour)
+		h.client.watches[otherQuery] = answer(watched(commented, headA, "FAILURE"))
+
+		test()
+		assert.Empty(t, h.watchedDetails(), "an item no search watches is read again only once its details are old")
+
+		h.clock.Advance(detailsStaleAfter)
+		test()
+		assert.Equal(t, [][]string{{nodeID(9)}}, h.watchedDetails(), "as they are half an hour on")
+	})
+}
+
+func TestTheWatchRequestGoesOutOnlyOnceTheInboxIsStored(t *testing.T) {
+	t.Parallel()
+
+	synctest.Test(t, func(t *testing.T) {
+		h := newWatchHarness(t)
+		defer func() { h.stop() }() // the worker is started again below
+
+		h.startWatching(t)
+
+		c := &gatedClient{fakeClient: h.client, inboxGate: newGate(t)}
+		h.svc = NewService(Config{
+			Pool: h.pool, Tokens: h.tokens, Client: c, Clock: h.clock, Events: h.events, Logger: h.logs.Logger(),
+			Watches: h.source, Changed: h.hear,
+		})
+
+		h.stop()
+
+		ctx, cancel := context.WithCancel(t.Context())
+		done := make(chan struct{})
+
+		go func() {
+			defer close(done)
+
+			h.svc.runWatchPasses(ctx)
+		}()
+
+		h.stop = func() { cancel(); <-done }
+		h.client.watchErr = errWatchDown
+
+		calls := func() int {
+			h.client.mu.Lock()
+			defer h.client.mu.Unlock()
+
+			return len(h.client.watchCalls)
+		}
+
+		refresh := async(func() (Snapshot, error) { return h.svc.Refresh(t.Context()) })
+
+		c.inboxGate.waitArrived(t)
+		synctest.Wait()
+		assert.Zero(t, calls(), "nothing is sent beside the inbox query")
+		c.inboxGate.release()
+
+		got := await(t, refresh)
+		require.NoError(t, got.err, "a watch request that fails never fails the refresh")
+		assert.Equal(t, []int{1}, numbers(got.snap.ReviewRequested))
+
+		synctest.Wait()
+		assert.Equal(t, 1, calls(), "the request went out once the inbox was stored")
+	})
+}
+
+func TestAPassThatPanicsStillEnds(t *testing.T) {
+	t.Parallel()
+
+	synctest.Test(t, func(t *testing.T) {
+		h := newWatchHarness(t)
+		defer h.stop()
+
+		h.startWatching(t)
+		h.client.watchPanic = true
+
+		since := h.clock.Now()
+		h.refresh(t)
+
+		ctx, cancel := context.WithTimeout(t.Context(), time.Minute)
+		defer cancel()
+
+		_, err := h.svc.awaitPass(ctx, since)
+		require.NoError(t, err, "what waits for the pass hears it end")
+		assert.Contains(t, h.logs.String(), "panicked")
+
+		h.client.mu.Lock()
+		h.client.watchPanic = false
+		h.client.mu.Unlock()
+
+		h.next()
+		h.refresh(t)
+		synctest.Wait()
+		assert.Equal(t, []int{1, 7}, h.watchesOf(t), "and the next refresh's pass runs")
+	})
+}
+
+// runningChecks lists #1 to #listed and watches #101 on, following them, all with their
+// checks running, each answering a read with its checks passed, the watched ones read
+// longest ago, which alone would put them first; it returns the listed ones' node IDs.
+func (h *watchHarness) runningChecks(t *testing.T, listed, followed int) map[string]bool {
+	t.Helper()
+
+	var (
+		items   []github.Item
+		results []github.WatchItem
+		nodes   = map[string]bool{}
+	)
+
+	h.client.items = map[string]*github.ItemUpdate{}
+
+	for n := 1; n <= listed; n++ {
+		items = append(items, pr(n, "OWNER", false))
+		h.client.details[nodeID(n)] = withChecks("PENDING")
+		h.client.items[nodeID(n)] = open(h.harness, n, withChecks("SUCCESS"))
+		nodes[nodeID(n)] = true
+	}
+
+	for n := 101; n < 101+followed; n++ {
+		results = append(results, watched(dependabot(n), headA, "PENDING"))
+		h.client.details[nodeID(n)] = watchedPRDetails(headA, "PENDING")
+		h.client.items[nodeID(n)] = open(h.harness, n, withChecks("SUCCESS"))
+	}
+
+	h.seed(t, items, nil, nil)
+	synctest.Wait()
+
+	h.source.set(Watch{Key: depQuery, Query: depQuery, Follow: true})
+	h.client.watches = map[string]github.WatchResult{depQuery: answer(results...)}
+	h.clock.Advance(time.Minute)
+	h.refresh(t)
+	synctest.Wait()
+
+	h.exec(t, `UPDATE item_details SET fetched_at = ? WHERE item_id IN (SELECT item_id FROM item_watches)
+  AND item_id NOT IN (SELECT id FROM items WHERE reason_review_requested = 1)`, h.clock.Now().Add(-time.Hour))
+	h.clock.Advance(FollowInterval)
+
+	return nodes
+}
+
+func TestTheFollowerReadsInBatchesTheListedFirst(t *testing.T) {
+	t.Parallel()
+
+	synctest.Test(t, func(t *testing.T) {
+		h := newWatchHarness(t)
+		defer h.stop()
+
+		nodes := h.runningChecks(t, 40, 20)
+
+		require.NoError(t, h.svc.refreshRunning(t.Context()))
+
+		require.Len(t, h.client.itemsIDs, 2, "50 pull requests, in two requests")
+
+		read := map[string]bool{}
+
+		for _, ids := range h.client.itemsIDs {
+			assert.LessOrEqual(t, len(ids), followBatch)
+
+			for _, id := range ids {
+				read[id] = true
+			}
+		}
+
+		assert.Len(t, read, followMax)
+
+		for node := range nodes {
+			assert.True(t, read[node], "every listed pull request is read before a watched one: %s", node)
+		}
+	})
+}
+
+func TestKeepersKeepWhatAnyOfThemNames(t *testing.T) {
+	t.Parallel()
+
+	got, err := Keepers{fixedKeep{ids: []int64{3, 1}}, nil, fixedKeep{ids: []int64{1, 2}}}.KeptItems(t.Context())
+	require.NoError(t, err)
+	assert.Equal(t, []int64{1, 2, 3}, got)
+
+	_, err = Keepers{fixedKeep{ids: []int64{1}}, failingKeep{}}.KeptItems(t.Context())
+	require.ErrorIs(t, err, errWatchDown, "one that fails fails the whole, so the prune keeps everything")
+}
+
+// failingKeep is an ItemKeeper that can't say what it keeps.
+type failingKeep struct{}
+
+func (failingKeep) KeptItems(context.Context) ([]int64, error) {
+	return nil, errWatchDown
 }
 
 // inboxUpdates counts the inbox changes events heard.

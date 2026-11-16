@@ -465,11 +465,17 @@ func (s *Store) KnownOwners(ctx context.Context) (map[string]bool, error) {
 
 // NoteStates records the state another service read of each item in states, by its ref's
 // key, as a read of the inbox's own would: every stored item of that repository and number
-// takes it. It never touches the lists.
-func (s *Store) NoteStates(ctx context.Context, refs []item.Ref, states map[string]github.ItemState) error {
+// takes it, and is stamped as read at readAt, when that read went out. It runs outside the
+// inbox's order, so a merged item keeps its state, and an item a read of the inbox's
+// stored at or after readAt keeps what that newer read stored (see SetRefState). It never
+// touches the lists.
+func (s *Store) NoteStates(ctx context.Context, readAt time.Time, refs []item.Ref, states map[string]github.ItemState,
+) error {
 	if len(states) == 0 {
 		return nil
 	}
+
+	readAt = readAt.UTC()
 
 	return store.InTx(ctx, s.db, func(tx *sql.Tx) error {
 		q := s.q.WithTx(tx)
@@ -480,12 +486,8 @@ func (s *Store) NoteStates(ctx context.Context, refs []item.Ref, states map[stri
 				continue
 			}
 
-			err := q.SetRefState(ctx, queries.SetRefStateParams{
-				State: st.State, ClosedAt: timeOrNil(st.ClosedAt), Number: int64(ref.Number),
-				Owner: ref.Repo.Owner, Name: ref.Repo.Repo,
-			})
-			if err != nil {
-				return fmt.Errorf("save the state of %s: %w", ref, err)
+			if err := setRefState(ctx, q, ref, st.State, st.ClosedAt, readAt, &readAt); err != nil {
+				return err
 			}
 		}
 

@@ -3,6 +3,7 @@ package core
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"log/slog"
 	"math"
@@ -15,6 +16,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/autopilot/facts"
 	"github.com/mrz1836/nilbox/internal/autopilotprefs"
 	"github.com/mrz1836/nilbox/internal/budget"
+	"github.com/mrz1836/nilbox/internal/clock"
 	"github.com/mrz1836/nilbox/internal/github"
 	"github.com/mrz1836/nilbox/internal/inbox"
 	"github.com/mrz1836/nilbox/internal/item"
@@ -118,10 +120,15 @@ func (a autopilotItems) KnownOwners(ctx context.Context) (map[string]bool, error
 	return a.store.KnownOwners(ctx)
 }
 
-// SearchNow reads queries from GitHub now, storing what they return.
+// SearchNow reads queries from GitHub now, storing what they return, or sends nothing
+// while the GraphQL budget is low (autopilot.ErrLowBudget).
 func (a autopilotItems) SearchNow(ctx context.Context, queries []string) (map[string]autopilot.SearchResult, int, error) {
 	got, points, err := a.inbox.SearchNow(ctx, queries)
-	if err != nil {
+
+	switch {
+	case errors.Is(err, inbox.ErrLowBudget):
+		return nil, 0, fmt.Errorf("%w: %w", autopilot.ErrLowBudget, err)
+	case err != nil:
 		return nil, 0, err
 	}
 
@@ -133,8 +140,9 @@ func (a autopilotItems) SearchNow(ctx context.Context, queries []string) (map[st
 	return out, points, nil
 }
 
-// ReadChecks reads and stores the check names of the pull requests among ids.
-func (a autopilotItems) ReadChecks(ctx context.Context, ids []int64) error {
+// ReadChecks reads and stores the check names of the pull requests among ids, and
+// returns what that cost in GraphQL points.
+func (a autopilotItems) ReadChecks(ctx context.Context, ids []int64) (int, error) {
 	return a.inbox.ReadChecks(ctx, ids)
 }
 
@@ -184,30 +192,34 @@ type stateNoter struct {
 	*github.Client
 
 	store  *inbox.Store
+	clock  clock.Clock
 	logger *slog.Logger
 }
 
-// FetchItemStates reads the states of refs, and records them in the inbox.
+// FetchItemStates reads the states of refs, and records them in the inbox as read when the
+// request went out.
 func (n stateNoter) FetchItemStates(ctx context.Context, tok github.Token, refs []item.Ref,
 ) (map[string]github.ItemState, error) {
+	readAt := clock.Or(n.clock).Now()
+
 	states, err := n.Client.FetchItemStates(ctx, tok, refs)
 	if err == nil {
-		noteStates(ctx, n.store, refs, states, n.logger)
+		noteStates(ctx, n.store, readAt, refs, states, n.logger)
 	}
 
 	return states, err
 }
 
-// noteStates records in the inbox the states another service read, logging a failure: the
-// inbox's next read records them anyway.
-func noteStates(ctx context.Context, store *inbox.Store, refs []item.Ref, states map[string]github.ItemState,
-	logger *slog.Logger,
+// noteStates records in the inbox the states another service read, in a read that went
+// out at readAt, logging a failure: the inbox's next read records them anyway.
+func noteStates(ctx context.Context, store *inbox.Store, readAt time.Time, refs []item.Ref,
+	states map[string]github.ItemState, logger *slog.Logger,
 ) {
 	if store == nil {
 		return
 	}
 
-	if err := store.NoteStates(ctx, refs, states); err != nil {
+	if err := store.NoteStates(ctx, readAt, refs, states); err != nil {
 		logger.DebugContext(ctx, "could not record the items' states in the inbox", "error", err)
 	}
 }

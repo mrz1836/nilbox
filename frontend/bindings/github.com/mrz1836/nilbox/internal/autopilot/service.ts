@@ -118,8 +118,9 @@ export function Suggest(): $CancellablePromise<$models.Suggestions> {
  * stored as the refresh stores watched items; the routine is evaluated on each, with the
  * check names of the pull requests that need them read too (one batch); the searches are
  * checked for an owner the inbox has never seen; and the result says what the test spent
- * and what the searches would cost each refresh. A draft whose spec has problems is
- * refused with them, as Save refuses it. It changes no routine, and runs nothing.
+ * and what the searches would cost each refresh. While the GraphQL budget is low it sends
+ * nothing, and says so (LowBudget). A draft whose spec has problems is refused with them,
+ * as Save refuses it. It changes no routine, and runs nothing.
  */
 export function Test(d: $models.Draft): $CancellablePromise<$models.TestResult> {
     return $Call.ByID(99462951, d);

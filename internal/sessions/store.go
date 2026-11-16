@@ -191,6 +191,18 @@ func NewStore(db *sql.DB) *Store {
 	return &Store{db: db, q: queries.New(db)}
 }
 
+// KeptItems returns each inbox item a session was launched for, once, which the inbox's
+// prune of old items keeps while the ledger names it (inbox.ItemKeeper): a record's
+// item_id has no foreign key.
+func (s *Store) KeptItems(ctx context.Context) ([]int64, error) {
+	ids, err := s.q.ListSessionItems(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("read the sessions' items: %w", err)
+	}
+
+	return ids, nil
+}
+
 // Insert records a session just launched. A session the agent already named is linked
 // at once.
 func (s *Store) Insert(ctx context.Context, r Record) error {

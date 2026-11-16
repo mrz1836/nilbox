@@ -133,8 +133,11 @@ type fakeClient struct {
 	checksIDs  [][]string
 
 	// watchDetailsGate, when set, holds a details request that reads the repositories, as
-	// only the watch pass asks, until it opens.
+	// only the watch pass asks, until it opens, and watchDetailsErr fails such a request.
+	// watchPanic makes the watch request panic.
 	watchDetailsGate *gate
+	watchDetailsErr  error
+	watchPanic       bool
 }
 
 func (c *fakeClient) FetchInbox(_ context.Context, tok github.Token) (*github.Inbox, error) {
@@ -181,6 +184,10 @@ func (c *fakeClient) FetchDetails(
 
 	if c.detailsErr != nil {
 		return nil, github.Redact(c.detailsErr, tok)
+	}
+
+	if c.watchDetailsErr != nil && opts.Repository {
+		return nil, github.Redact(c.watchDetailsErr, tok)
 	}
 
 	out := &github.Details{
@@ -330,6 +337,10 @@ func (c *fakeClient) FetchWatches(
 	c.gotTokens = append(c.gotTokens, tok.Reveal())
 	c.watchCalls = append(c.watchCalls, slices.Clone(searches))
 
+	if c.watchPanic {
+		panic("the watch request broke")
+	}
+
 	if c.watchErr != nil {
 		return nil, github.Redact(c.watchErr, tok)
 	}
@@ -356,7 +367,7 @@ func (c *fakeClient) FetchChecks(_ context.Context, tok github.Token, ids []stri
 	c.gotTokens = append(c.gotTokens, tok.Reveal())
 	c.checksIDs = append(c.checksIDs, slices.Clone(ids))
 
-	out := &github.ChecksRead{Items: map[string]github.HeadChecks{}, Requests: 1}
+	out := &github.ChecksRead{Items: map[string]github.HeadChecks{}, RateLimit: github.QueryRate{Cost: 1}, Requests: 1}
 
 	for _, id := range ids {
 		if h, ok := c.checks[id]; ok {

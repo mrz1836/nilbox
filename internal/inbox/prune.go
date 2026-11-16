@@ -7,6 +7,7 @@ import (
 
 	"github.com/mrz1836/nilbox/internal/github"
 	"github.com/mrz1836/nilbox/internal/inbox/internal/queries"
+	"github.com/mrz1836/nilbox/internal/item"
 )
 
 // pruneAfter is how long an item nothing refers to is kept after the last read that
@@ -42,7 +43,9 @@ func (w *writer) saveLists(ctx context.Context, got refreshed) error {
 		return err
 	}
 
-	if err := w.saveClosedStates(ctx, got.closed); err != nil {
+	// The refresh applies again, after this, every item write stored while it fetched (see
+	// order.go), so its closed results' state needs no guard of its own.
+	if err := w.saveClosedStates(ctx, got.closed, nil); err != nil {
 		return err
 	}
 
@@ -51,9 +54,10 @@ func (w *writer) saveLists(ctx context.Context, got refreshed) error {
 
 // pruneOld deletes the items nothing refers to that no read has brought for pruneAfter,
 // but kept: in no list, watched by no routine's search, and with no triage of the user's
-// (PruneItems). Each one's details, file check, and checks go with it. What else refers
-// to an item is the Keep seam's, so a later owner of such a reference extends the rule
-// there, never here.
+// (PruneItems). Each one's details, file check, checks, and the caches of its sheets go
+// with it, by their foreign keys. What else refers to an item is the Keep seam's (core
+// hands it Keepers over the agent sessions and the notifications), so a later owner of
+// such a reference extends the rule there, never here.
 func (w *writer) pruneOld(ctx context.Context, kept []int64) error {
 	keep := append([]int64{0}, kept...)
 
@@ -64,18 +68,42 @@ func (w *writer) pruneOld(ctx context.Context, kept []int64) error {
 	return nil
 }
 
-// saveClosedStates records the state of the items a refresh's searches returned merged or
-// closed, which the index trails, as their own reads would: the searches read no more of
-// them.
-func (w *writer) saveClosedStates(ctx context.Context, closed []github.Item) error {
+// saveClosedStates records the state of the items a refresh's or a pass's searches
+// returned merged or closed, which the index trails, as their own reads would: the
+// searches read no more of them. A merged item keeps its state, and with readBefore, when
+// the searches went out, an item stored since keeps what that newer read stored.
+func (w *writer) saveClosedStates(ctx context.Context, closed []github.Item, readBefore *time.Time) error {
 	for _, it := range closed {
-		err := w.q.SetRefState(ctx, queries.SetRefStateParams{
-			State: it.State, ClosedAt: timeOrNil(it.ClosedAt), Number: int64(it.Number),
-			Owner: it.RepoOwner, Name: it.RepoName,
-		})
-		if err != nil {
-			return fmt.Errorf("save the state of %s: %w", it.Ref(), err)
+		if err := setRefState(ctx, w.q, it.Ref(), it.State, it.ClosedAt, w.now, readBefore); err != nil {
+			return err
 		}
+	}
+
+	return nil
+}
+
+// setRefState records the state of every stored item of ref's repository and number, as
+// a read said, stamping fetched_at with stamp; with readBefore, an item stored at or after
+// it keeps what that newer read stored (SetRefStateBefore).
+func setRefState(
+	ctx context.Context, q *queries.Queries, ref item.Ref, state string, closedAt, stamp time.Time, readBefore *time.Time,
+) error {
+	var err error
+
+	if readBefore == nil {
+		err = q.SetRefState(ctx, queries.SetRefStateParams{
+			State: state, ClosedAt: timeOrNil(closedAt), FetchedAt: stamp.UTC(), Number: int64(ref.Number),
+			Owner: ref.Repo.Owner, Name: ref.Repo.Repo,
+		})
+	} else {
+		err = q.SetRefStateBefore(ctx, queries.SetRefStateBeforeParams{
+			State: state, ClosedAt: timeOrNil(closedAt), FetchedAt: stamp.UTC(), Number: int64(ref.Number),
+			Owner: ref.Repo.Owner, Name: ref.Repo.Repo, ReadBefore: readBefore.UTC(),
+		})
+	}
+
+	if err != nil {
+		return fmt.Errorf("save the state of %s: %w", ref, err)
 	}
 
 	return nil

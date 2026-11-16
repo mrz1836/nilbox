@@ -31,9 +31,9 @@ RETURNING id;
 -- name: UpsertWatchedItem :one
 -- UpsertWatchedItem stores what a routine's search says about an item, and returns its id.
 -- A new item is in no list; one already stored for the same account, repository, kind,
--- and number has what GitHub says rewritten, its state included, and keeps its lists, the
--- times it arrived in them, and the lists the user left, which only the inbox's own
--- searches and reads change.
+-- and number has what GitHub says rewritten, its state included but over a merge, which
+-- nothing comes back from, and keeps its lists, the times it arrived in them, and the
+-- lists the user left, which only the inbox's own searches and reads change.
 INSERT INTO items (
     account_id, repo_id, kind, number, node_id, title, url, author_login, author_type, author_association,
     is_cross_repository, is_draft, head_ref, item_created_at, item_updated_at, fetched_at, state, closed_at
@@ -50,8 +50,8 @@ ON CONFLICT (account_id, repo_id, kind, number) DO UPDATE SET
     head_ref = excluded.head_ref,
     item_created_at = excluded.item_created_at,
     item_updated_at = excluded.item_updated_at,
-    state = CASE WHEN excluded.state <> '' THEN excluded.state ELSE items.state END,
-    closed_at = CASE WHEN excluded.state <> '' THEN excluded.closed_at ELSE items.closed_at END,
+    state = CASE WHEN excluded.state = '' OR items.state = 'MERGED' THEN items.state ELSE excluded.state END,
+    closed_at = CASE WHEN excluded.state = '' OR items.state = 'MERGED' THEN items.closed_at ELSE excluded.closed_at END,
     fetched_at = excluded.fetched_at
 RETURNING id;
 
@@ -62,11 +62,31 @@ UPDATE items SET state = ?, closed_at = ? WHERE id = ?;
 
 -- name: SetRefState :exec
 -- SetRefState records the state of every stored item of the repository named owner and
--- name, which match ignoring case, with number, and when it closed, as another service's
--- read of the item's state said. Nothing changes when none is stored.
-UPDATE items SET state = sqlc.arg(state), closed_at = sqlc.narg(closed_at)
+-- name, which match ignoring case, with number, and when it closed, as a whole refresh's
+-- searches said, and stamps fetched_at, which only moves on. A merged item keeps its
+-- state, since nothing comes back from a merge. Nothing changes when none is stored. The
+-- refresh applies the item writes stored while it fetched after this (see order.go), so
+-- it needs no guard of SetRefStateBefore's.
+UPDATE items SET
+    state = sqlc.arg(state),
+    closed_at = sqlc.narg(closed_at),
+    fetched_at = CASE WHEN items.fetched_at < sqlc.arg(fetched_at) THEN sqlc.arg(fetched_at) ELSE items.fetched_at END
 WHERE number = sqlc.arg(number)
-  AND repo_id IN (SELECT id FROM repos WHERE owner = sqlc.arg(owner) AND name = sqlc.arg(name));
+  AND repo_id IN (SELECT id FROM repos WHERE owner = sqlc.arg(owner) AND name = sqlc.arg(name))
+  AND items.state <> 'MERGED';
+
+-- name: SetRefStateBefore :exec
+-- SetRefStateBefore is SetRefState for a read that went out at read_before outside a whole
+-- refresh (a watch pass's searches, another service's read): an item stored at or after
+-- read_before keeps what that newer read stored.
+UPDATE items SET
+    state = sqlc.arg(state),
+    closed_at = sqlc.narg(closed_at),
+    fetched_at = CASE WHEN items.fetched_at < sqlc.arg(fetched_at) THEN sqlc.arg(fetched_at) ELSE items.fetched_at END
+WHERE number = sqlc.arg(number)
+  AND repo_id IN (SELECT id FROM repos WHERE owner = sqlc.arg(owner) AND name = sqlc.arg(name))
+  AND items.state <> 'MERGED'
+  AND items.fetched_at < sqlc.arg(read_before);
 
 -- name: UpsertWatch :exec
 -- UpsertWatch records that the search with watch_key returned the item with item_id now:

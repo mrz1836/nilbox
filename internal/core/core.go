@@ -185,7 +185,7 @@ type Core struct {
 	Scheduler *inbox.Scheduler
 	Sweeper   worktrees.Sweeper
 
-	// WatchPasses stores what the routines' searches watch, which each refresh reads beside
+	// WatchPasses stores what the routines' searches watch, which each refresh reads after
 	// the inbox's own lists, once the refresh has stored the inbox; the desktop shell runs
 	// it with the scheduler, before it. Without it running no refresh reads the searches.
 	// It is not bound.
@@ -503,14 +503,14 @@ func assemble(ctx context.Context, pool *sql.DB, info startup, opts Options, log
 	// read through the same lane. What the user finishes from the inbox reaches the
 	// mirror as the inbox's outcomes, and a change to the rules through the settings' events.
 	ghThreads := ghthreads.NewService(ghthreads.Config{
-		Pool: pool, Tokens: tokens, Client: stateNoter{Client: client, store: inboxStore, logger: logger},
+		Pool: pool, Tokens: tokens, Client: stateNoter{Client: client, store: inboxStore, clock: clock.Or(opts.Clock), logger: logger},
 		Rules: ghThreadRules{prefs: prefsstore.New(pool, opts.Clock)},
 		Holds: ghThreadHolds{settings: prefs}, Clock: opts.Clock, Events: opts.Events, Logger: logger,
 	})
 	ghThreadsSyncer := ghthreads.NewSyncer(ghThreads, refreshEvery(prefs, settings.RefreshNotifications, logger), logger)
 	followed.threadRules = ghThreadsSyncer
 
-	// The routines' searches are read beside the inbox's own lists, from the snapshot
+	// The routines' searches are read after the inbox's own lists, from the snapshot
 	// Autopilot's service keeps, which is filled in once the service is built, below; what
 	// the inbox stores of them, outside a whole refresh, is told as a Go-only event.
 	watchSource := &autopilotWatches{}
@@ -527,6 +527,7 @@ func assemble(ctx context.Context, pool *sql.DB, info startup, opts Options, log
 		Usage:    tracker,
 		Watches:  watchSource,
 		Changed:  func(ids []int64) { events.Emit(event.InboxItemsChanged{IDs: ids}) },
+		Keep:     itemKeepers(pool),
 		Logger:   logger,
 	})
 
@@ -563,7 +564,7 @@ func assemble(ctx context.Context, pool *sql.DB, info startup, opts Options, log
 		Home:     opts.Home,
 		Reader:   locations,
 		Clock:    opts.Clock,
-		GitHub:   itemStates{tokens: tokens, client: client, inbox: inboxStore, logger: logger},
+		GitHub:   itemStates{tokens: tokens, client: client, inbox: inboxStore, clock: clock.Or(opts.Clock), logger: logger},
 		Records:  workLog,
 		Procs:    procs.System{Run: runner},
 		History:  workLog,

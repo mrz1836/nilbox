@@ -13,10 +13,11 @@ import (
 )
 
 // The routines' searches reach the inbox as one snapshot, a WatchSet, which the Service
-// builds again from the stored routines after every change to one and keeps in an atomic
-// value: each inbox refresh reads it as it starts, and never waits on anything of
-// Autopilot's. Only the enabled routines of the account signed in, that load, are in it;
-// a search two routines share is in it once, under its key.
+// builds again from the stored routines after every change to one, one build at a time,
+// and keeps in an atomic value: each inbox refresh reads it as it starts, and waits on
+// nothing of Autopilot's but, when the account signed in changed, a build of its own.
+// Only the enabled routines of the account signed in, that load, are in it; a search two
+// routines share is in it once, under its key.
 
 // WatchSearch is one routine search the inbox reads beside its own lists.
 type WatchSearch struct {
@@ -47,9 +48,13 @@ type WatchSet struct {
 	BuiltAt time.Time
 }
 
-// watchSet holds the Service's snapshot.
+// watchSet holds the Service's snapshot. build is held, as a one-slot channel, from a
+// rebuild's read of the routines to its store, so rebuilds run one at a time and the last
+// to read stores last: two side by side could otherwise store the older read over the
+// newer.
 type watchSet struct {
 	current atomic.Pointer[WatchSet]
+	build   chan struct{}
 }
 
 // Searches is the face of the routines' searches the inbox reads, which the window never
@@ -89,9 +94,19 @@ func (s *Service) currentWatches() WatchSet {
 // rebuildWatches builds the snapshot of the routines' searches again from the stored
 // routines and the account signed in, keeps it, and returns it. A routine that is off,
 // broken, of another account, or whose search won't build for the account is left out. It
-// reads the database, a few milliseconds' work; a read that fails keeps the snapshot as it
+// reads the database, a few milliseconds' work, one rebuild at a time (watchSet.build); a
+// read that fails, or a ctx that ends while another rebuild runs, keeps the snapshot as it
 // was, logged.
 func (s *Service) rebuildWatches(ctx context.Context) WatchSet {
+	select {
+	case s.watches.build <- struct{}{}:
+		defer func() { <-s.watches.build }()
+	case <-ctx.Done():
+		s.logger.WarnContext(ctx, "gave up building the routines' searches", "error", ctx.Err())
+
+		return s.currentWatches()
+	}
+
 	rows, err := s.store.all(ctx)
 	if err != nil {
 		s.logger.WarnContext(ctx, "could not read the routines for their searches", "error", err)

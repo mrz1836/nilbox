@@ -19,23 +19,27 @@ import (
 	"github.com/mrz1836/nilbox/internal/uierr"
 )
 
-// The routines' searches are read beside the inbox's own, in a request of their own, and
+// The routines' searches are read after the inbox's own, in requests of their own, and
 // what they watch is stored after the inbox, by the watch pass:
 //
-//   - A whole refresh hands the pass its searches as it starts, so their request goes out
-//     alongside the inbox query, on the pass's own goroutine, outside the refresh's
-//     errgroup: a search that fails, or a request that does, never fails the refresh or
-//     cancels the inbox query, and the refresh stores and returns on the inbox's own
-//     requests.
-//   - Once the refresh has stored the inbox and told the window, the pass compares each
-//     result with what is stored (a read, with no lock), reads the details of the watched
-//     items that are new or changed (with no lock), and stores them, their searches' rows,
-//     and the searches' state through the inbox's order (writeOrder.mu, held only for the
-//     write), then says which items it stored (Config.Changed).
+//   - A whole refresh hands the pass its searches as it starts, and the pass waits, on its
+//     own goroutine and outside the refresh's errgroup, until the refresh has stored the
+//     inbox and told the window. Only then do its requests go out, so they never slow the
+//     inbox query down, and a search that fails, or a request that does, never fails the
+//     refresh: the refresh stores and returns on the inbox's own requests.
+//   - The pass compares each result with what is stored (a read, with no lock), reads the
+//     details of the watched items that are new or changed (with no lock), and stores them,
+//     their searches' rows, and the searches' state through the inbox's order
+//     (writeOrder.mu, held only for the write), then says which items it stored
+//     (Config.Changed).
+//   - Under the lock, it reads again what is stored of its results first, and leaves alone
+//     what was stored since its request went out or since it compared (see recheck): a
+//     read that found an item merged or closed while the pass read GitHub stands, and its
+//     rows are never brought back.
 //   - One pass runs at a time: a refresh that finds one running sends no watch request of
 //     its own.
-//   - No pass is sent while the GraphQL budget is under a quarter of its size; the searches'
-//     rows are kept, and the state says why.
+//   - No pass is sent while the GraphQL budget, as the inbox's own query just left it, is
+//     under a quarter of its size; the searches' rows are kept, and the state says why.
 const (
 	// detailsStaleAfter is how old a watched item's details may be before a pass reads
 	// them again whatever its search says, which catches what the search can't see, such
@@ -93,13 +97,41 @@ type ItemKeeper interface {
 	KeptItems(ctx context.Context) ([]int64, error)
 }
 
+// Keepers is an ItemKeeper over several: the items any of them names are kept.
+type Keepers []ItemKeeper
+
+// KeptItems returns the items every keeper names, each once. One that fails fails the
+// whole, so the prune keeps everything rather than an item one of them refers to.
+func (k Keepers) KeptItems(ctx context.Context) ([]int64, error) {
+	var out []int64
+
+	for _, keeper := range k {
+		if keeper == nil {
+			continue
+		}
+
+		ids, err := keeper.KeptItems(ctx)
+		if err != nil {
+			return nil, err
+		}
+
+		out = append(out, ids...)
+	}
+
+	slices.Sort(out)
+
+	return slices.Compact(out), nil
+}
+
 // WatchPass is what one watch pass did, for the log, the measurements, and the tests.
 type WatchPass struct {
-	// At is when its request went out.
+	// At is when its request went out, once the inbox was stored; when it sent none, when
+	// it began.
 	At time.Time
 
-	// Took is how long it ran, from its request to its write; After is how long of that
-	// came after the inbox was stored, which is what it adds to a refresh.
+	// Took is how long it ran, from its request to its write; After is how long it ran
+	// after the inbox was stored, which is when its request goes out, so the two differ only
+	// by the moment it takes to decide.
 	Took  time.Duration
 	After time.Duration
 
@@ -122,11 +154,16 @@ type WatchPass struct {
 }
 
 // watchJob is one refresh's watch request: its searches, the account, and when the inbox
+// is stored. paused is why the pass sends none, which the pass works out once the inbox
 // is stored.
 type watchJob struct {
 	login    string
 	searches []Watch
 	paused   string
+
+	// test marks a routine's test (searchNow), which judges the items no search watches
+	// by their details' age alone (see judge).
+	test bool
 
 	// stored closes once the refresh that sent it stored the inbox, or gave up.
 	stored chan struct{}
@@ -162,8 +199,8 @@ type watchPasses struct {
 	cleaned bool
 }
 
-// startWatchPass hands the worker this refresh's watch request, so it goes out beside the
-// inbox query, and returns the job the refresh releases once it stored the inbox; nil when
+// startWatchPass hands the worker this refresh's watch request, which goes out once the
+// refresh has stored the inbox, and returns the job the refresh releases then; nil when
 // there is nothing to send: no source, no account, a pass still running, or no search and
 // no rows to drop.
 func (s *Service) startWatchPass(ctx context.Context) *watchJob {
@@ -187,9 +224,6 @@ func (s *Service) startWatchPass(ctx context.Context) *watchJob {
 	}
 
 	job := &watchJob{login: login, searches: searches, stored: make(chan struct{})}
-	if len(searches) > 0 {
-		job.paused = s.budgetPause(ctx, login)
-	}
 
 	select {
 	case s.passes.jobs <- job:
@@ -240,20 +274,25 @@ func (s *Service) runWatchPasses(ctx context.Context) {
 	}
 }
 
-// runPassJob runs one job's pass, logging a failure or a panic, and frees the worker.
+// runPassJob runs one job's pass, logging a failure or a panic, records what it did, and
+// frees the worker: the record is kept and AwaitPass told even when the pass panicked.
 func (s *Service) runPassJob(ctx context.Context, job *watchJob) {
-	defer s.passes.busy.Store(false)
+	report := WatchPass{At: s.now(), Searches: len(job.searches)}
+	failed := true
 
 	defer func() {
 		if p := recover(); p != nil {
 			s.logger.ErrorContext(ctx, passJob+" panicked", "panic", p)
 		}
+
+		s.endPass(report, len(job.searches) == 0 && !failed)
 	}()
 
 	passCtx, cancel := context.WithTimeout(github.WithPurpose(ctx, github.PurposeWatches), passTimeout)
 	defer cancel()
 
-	report, err := s.watchPass(passCtx, job)
+	got, err := s.watchPass(passCtx, job)
+	report, failed = got, err != nil
 
 	switch {
 	case err != nil && ctx.Err() == nil:
@@ -263,13 +302,19 @@ func (s *Service) runPassJob(ctx context.Context, job *watchJob) {
 			"items", report.Items, "read", report.Read, "changed", report.Changed, "points", report.Points,
 			"took", report.Took, "after_inbox", report.After, "paused", report.Paused)
 	}
+}
 
+// endPass records what a pass did, tells AwaitPass, and frees the worker. cleaned says
+// the pass had no search and deleted every search's rows.
+func (s *Service) endPass(report WatchPass, cleaned bool) {
 	s.passes.mu.Lock()
 	s.passes.last = &report
-	s.passes.cleaned = len(job.searches) == 0 && err == nil
+	s.passes.cleaned = cleaned
 	close(s.passes.ended)
 	s.passes.ended = make(chan struct{})
 	s.passes.mu.Unlock()
+
+	s.passes.busy.Store(false)
 }
 
 // awaitPass waits for a watch pass whose request went out at since or later to end, or
@@ -304,26 +349,10 @@ func (s *Service) lastWatchPass() (WatchPass, bool) {
 	return *s.passes.last, true
 }
 
-// watchPass sends a job's searches, waits for the inbox to be stored, and stores what the
-// searches watch (see the notes at the top of this file).
+// watchPass waits for the inbox to be stored, sends a job's searches, and stores what they
+// watch (see the notes at the top of this file).
 func (s *Service) watchPass(ctx context.Context, job *watchJob) (WatchPass, error) {
-	started := s.now()
-	report := WatchPass{At: started, Searches: len(job.searches), Paused: job.paused}
-	seq := s.startFetch()
-
-	var (
-		got *github.Watches
-		err error
-	)
-
-	if len(job.searches) > 0 && job.paused == "" {
-		got, err = s.fetchWatches(ctx, job)
-		if err != nil {
-			return report, err
-		}
-	}
-
-	waited := s.now()
+	report := WatchPass{At: s.now(), Searches: len(job.searches)}
 
 	select {
 	case <-job.stored:
@@ -332,6 +361,13 @@ func (s *Service) watchPass(ctx context.Context, job *watchJob) (WatchPass, erro
 	}
 
 	released := s.now()
+
+	started, seq, got, err := s.sendPass(ctx, job)
+	report.At, report.Paused = started, job.paused
+
+	if err != nil {
+		return report, err
+	}
 
 	plan, err := s.planPass(ctx, job, got, started)
 	if err != nil {
@@ -350,7 +386,7 @@ func (s *Service) watchPass(ctx context.Context, job *watchJob) (WatchPass, erro
 	s.tellChanged(changed)
 
 	done := s.now()
-	report.Took, report.After = done.Sub(started), done.Sub(maxTime(released, waited))
+	report.Took, report.After = done.Sub(started), done.Sub(released)
 	report.Failed, report.Items, report.Read, report.Changed = plan.failed(), plan.count(), len(plan.details), len(changed)
 
 	if got != nil {
@@ -360,13 +396,23 @@ func (s *Service) watchPass(ctx context.Context, job *watchJob) (WatchPass, erro
 	return report, nil
 }
 
-// maxTime returns the later of a and b.
-func maxTime(a, b time.Time) time.Time {
-	if a.After(b) {
-		return a
+// sendPass works out, once the inbox is stored, whether the budget lets the job's searches
+// go (job.paused), numbers the pass's fetch, and sends them. It returns when the request
+// went out, its number, and what GitHub answered: nil when nothing was sent.
+func (s *Service) sendPass(ctx context.Context, job *watchJob) (time.Time, uint64, *github.Watches, error) {
+	if len(job.searches) > 0 {
+		job.paused = s.budgetPause(ctx, job.login)
 	}
 
-	return b
+	started, seq := s.now(), s.startFetch()
+
+	if len(job.searches) == 0 || job.paused != "" {
+		return started, seq, nil, nil
+	}
+
+	got, err := s.fetchWatches(ctx, job)
+
+	return started, seq, got, err
 }
 
 // fetchWatches sends the job's searches with a token, each packed as it returned last
@@ -419,17 +465,26 @@ type passPlan struct {
 	started time.Time
 }
 
-// passItem is one open result of a pass, and what is stored of it.
+// passItem is one open result of a pass, and what is stored of it. stored is what the
+// pass compared it with, and then what recheck read again under the store lock.
 type passItem struct {
 	item     github.WatchItem
 	stored   *queries.ListWatchBaselineRow
 	follow   bool
-	read     bool
-	newer    bool
-	stale    bool
-	changed  bool
-	listed   bool
 	searches []string
+
+	// read says its details are read; stale that they are only old (fillStale); changed
+	// that it is told as changed once stored.
+	read    bool
+	stale   bool
+	changed bool
+
+	// listed is an item in an inbox list, whose card and details are the refresh's; newer
+	// one a read stored after the pass's request went out, which stands; gone one stored
+	// merged, or closed or out of every search since, which keeps no row (see judge).
+	listed bool
+	newer  bool
+	gone   bool
 }
 
 // failed counts the searches GitHub didn't answer; none while the pass was paused.
@@ -484,6 +539,8 @@ func (s *Service) planPass(ctx context.Context, job *watchJob, got *github.Watch
 		}
 	}
 
+	plan.dropClosed()
+
 	if accountID == 0 || len(plan.order) == 0 {
 		return plan, nil
 	}
@@ -506,7 +563,7 @@ func (s *Service) compareStored(ctx context.Context, plan *passPlan) error {
 
 	now := s.now()
 	for _, id := range plan.order {
-		plan.results[id].judge(plan.started, now)
+		plan.results[id].judge(plan.started, now, plan.job.test)
 	}
 
 	plan.fillStale()
@@ -538,10 +595,25 @@ func (p *passPlan) add(w Watch, it github.WatchItem) {
 	item.searches = append(item.searches, w.Key)
 }
 
+// dropClosed takes out of the open results an item another search returned merged or
+// closed: the requests read it a moment apart, and the close is the one kept.
+func (p *passPlan) dropClosed() {
+	for _, it := range p.closed {
+		if _, ok := p.results[it.NodeID]; ok {
+			delete(p.results, it.NodeID)
+			p.order = slices.DeleteFunc(p.order, func(id string) bool { return id == it.NodeID })
+		}
+	}
+}
+
 // judge works out what a pass does with the item: a listed one has its details from the
 // refresh, and only its watch rows are stored; one a later read stored is left as it is;
-// any other is stored, and its details read when needsDetails says so.
-func (p *passItem) judge(started, now time.Time) {
+// one stored merged, or closed by such a read, keeps no row, since the search's open is
+// older; any other is stored, and its details read when needsDetails says so, or, new to
+// the watches, when they are missing or older than detailsStaleAfter. A test (test) reads
+// the details of an item no search watches only then: the passes keep the watched ones
+// current, and a test only looks.
+func (p *passItem) judge(started, now time.Time, test bool) {
 	st := p.stored
 	if st == nil {
 		p.read, p.changed = true, true
@@ -549,16 +621,58 @@ func (p *passItem) judge(started, now time.Time) {
 		return
 	}
 
-	p.listed = st.ReasonReviewRequested || st.ReasonAuthored || st.ReasonAssigned
-	p.newer = st.FetchedAt.After(started) || readAfter(st.DetailsFetchedAt, started)
+	p.listed = inAList(st)
+	p.newer = storedAfter(st, started)
+	p.gone = heldClosed(st, p.newer)
 
-	if p.listed || p.newer {
+	if p.gone || p.listed || p.newer {
 		return
 	}
 
-	p.read = needsDetails(p.item, st)
-	p.stale = !p.read && !readAfter(st.DetailsFetchedAt, now.Add(-detailsStaleAfter))
-	p.changed = p.read || moved(p.item, st)
+	p.read, p.stale = readsOf(p.item, st, now, test)
+	p.changed = p.read || moved(p.item, st) || !st.Watched
+}
+
+// readsOf works out whether a pass reads a stored item's details (read), or only would as
+// room allows since they are old (stale): see judge.
+func readsOf(it github.WatchItem, st *queries.ListWatchBaselineRow, now time.Time, test bool) (read, stale bool) {
+	old := !readAfter(st.DetailsFetchedAt, now.Add(-detailsStaleAfter))
+
+	switch {
+	case !st.Watched && test:
+		return old, false
+	case !st.Watched:
+		return old || needsDetails(it, st), false
+	default:
+		read = needsDetails(it, st)
+
+		return read, !read && old
+	}
+}
+
+// inAList reports whether what is stored of an item has it in an inbox list.
+func inAList(st *queries.ListWatchBaselineRow) bool {
+	return st.ReasonReviewRequested || st.ReasonAuthored || st.ReasonAssigned
+}
+
+// storedAfter reports whether an item's card or details were stored after since.
+func storedAfter(st *queries.ListWatchBaselineRow, since time.Time) bool {
+	return st.FetchedAt.After(since) || readAfter(st.DetailsFetchedAt, since)
+}
+
+// heldClosed reports whether what is stored of an item the search returned open stands
+// against it: merged, which no pull request comes back from, or closed by a read stored
+// after the search went out (newer). A close stored before is older than the search,
+// which says the item opened again.
+func heldClosed(st *queries.ListWatchBaselineRow, newer bool) bool {
+	switch st.State {
+	case github.StateMerged:
+		return true
+	case github.StateClosed:
+		return newer
+	default:
+		return false
+	}
 }
 
 // readAfter reports whether details read at at were read after since; never when they
@@ -567,17 +681,68 @@ func readAfter(at *time.Time, since time.Time) bool {
 	return at != nil && at.After(since)
 }
 
-// moved reports whether the item's card moved since it was stored: new to the watches, or
-// another update time, state, or draft flag.
+// moved reports whether the item's card moved since it was stored: another update time,
+// state, or draft flag.
 func moved(it github.WatchItem, st *queries.ListWatchBaselineRow) bool {
-	return !st.Watched || !st.ItemUpdatedAt.Equal(it.UpdatedAt.UTC()) || st.State != it.State || st.IsDraft != it.IsDraft
+	return !st.ItemUpdatedAt.Equal(it.UpdatedAt.UTC()) || st.State != it.State || st.IsDraft != it.IsDraft
+}
+
+// recheck judges the item again on what recheck read of it under the store lock (now,
+// nil when nothing is stored), against what the pass compared it with: an item stored
+// since then, or since the pass's request went out, is newer, and keeps its card and
+// details; one whose rows went since, as a read that found it merged, closed, or gone
+// takes them away, is gone too; one deleted since is stored again as new.
+func (p *passItem) recheck(now *queries.ListWatchBaselineRow, started time.Time) {
+	before := p.stored
+
+	if now == nil {
+		if before != nil {
+			p.stored, p.listed, p.newer, p.gone, p.changed = nil, false, false, false, true
+		}
+
+		return
+	}
+
+	since := before == nil || storedSince(before, now)
+
+	p.stored = now
+	p.listed = inAList(now)
+	p.newer = since || storedAfter(now, started)
+	p.gone = heldClosed(now, p.newer) || unwatchedSince(before, now)
+
+	if p.listed || p.newer || p.gone {
+		p.changed = false
+	}
+}
+
+// unwatchedSince reports whether an item that had watch rows when the pass compared it has
+// none now: a read that found it merged, closed, or gone took them away.
+func unwatchedSince(before, now *queries.ListWatchBaselineRow) bool {
+	return before != nil && before.Watched && !now.Watched
+}
+
+// storedSince reports whether a write changed what is stored of an item between two reads
+// of it: its card, its details, its state, or its lists.
+func storedSince(a, b *queries.ListWatchBaselineRow) bool {
+	return !a.FetchedAt.Equal(b.FetchedAt) || !sameStamp(a.DetailsFetchedAt, b.DetailsFetchedAt) || a.State != b.State ||
+		a.ReasonReviewRequested != b.ReasonReviewRequested || a.ReasonAuthored != b.ReasonAuthored ||
+		a.ReasonAssigned != b.ReasonAssigned
+}
+
+// sameStamp reports whether two optional times are both missing or equal.
+func sameStamp(a, b *time.Time) bool {
+	if a == nil || b == nil {
+		return a == b
+	}
+
+	return a.Equal(*b)
 }
 
 // needsDetails reports whether a watched item's details are read again because it moved:
-// it is new to the watches or has none; its update time, head commit, base branch, checks'
-// state, or draft flag moved; or its checks were still running at the last read, or GitHub
-// hadn't worked out whether it merges. Details older than detailsStaleAfter are read too,
-// as room allows (see fillStale).
+// it has none; its update time, state, head commit, base branch, checks' state, or draft
+// flag moved; or its checks were still running at the last read, or GitHub hadn't worked
+// out whether it merges. Details older than detailsStaleAfter are read too, as room allows
+// (see fillStale).
 func needsDetails(it github.WatchItem, st *queries.ListWatchBaselineRow) bool {
 	switch {
 	case st.DetailsItemID == nil || st.DetailsFetchedAt == nil || moved(it, st):
@@ -654,8 +819,9 @@ func (s *Service) readPassDetails(ctx context.Context, plan *passPlan) error {
 		return s.client.FetchDetails(ctx, tok, ids, plan.options)
 	})
 
-	// A batch that failed leaves its items for the next pass, which finds them unread; the
-	// batches that succeeded are kept.
+	// A batch that failed leaves its items for the next pass: they are stored without their
+	// card moving (see storeResult), so it finds them changed again. The batches that
+	// succeeded are kept.
 	if details != nil {
 		plan.details = details.Items
 		plan.detailRequests, plan.detailPoints = details.Requests, details.RateLimit.Cost
@@ -668,9 +834,10 @@ func (s *Service) readPassDetails(ctx context.Context, plan *passPlan) error {
 	return nil
 }
 
-// storePass stores what plan read, in one transaction under the store lock: each watched
-// item and its details, the closed results' state, each search's rows and state, and no
-// row of a search no routine has. It returns the items it stored as changed.
+// storePass stores what plan read, in one transaction under the store lock: what is
+// stored of its results is read again first (recheck), then each watched item and its
+// details, the closed results' state, each search's rows and state, and no row of a search
+// no routine has. It returns the items it stored as changed.
 func (s *Service) storePass(ctx context.Context, seq uint64, plan *passPlan) ([]int64, error) {
 	s.order.mu.Lock()
 	defer s.order.mu.Unlock()
@@ -681,12 +848,13 @@ func (s *Service) storePass(ctx context.Context, seq uint64, plan *passPlan) ([]
 		w := s.newWriter(tx)
 		w.accountID, w.details = plan.accountID, plan.details
 
-		var err error
-
 		if plan.accountID != 0 {
-			if changed, err = w.storeWatched(ctx, plan); err != nil {
+			stored, err := w.storeResults(ctx, plan, true)
+			if err != nil {
 				return err
 			}
+
+			changed = plan.changedOf(stored)
 		}
 
 		return w.storeSearches(ctx, plan)
@@ -705,7 +873,7 @@ func (s *Service) storePass(ctx context.Context, seq uint64, plan *passPlan) ([]
 }
 
 // replays returns the item writes a refresh still fetching applies again: one for each item
-// whose details the pass stored.
+// whose card and details the pass stored.
 func (p *passPlan) replays(seq uint64) []itemWrite {
 	var out []itemWrite
 
@@ -713,7 +881,7 @@ func (p *passPlan) replays(seq uint64) []itemWrite {
 		item := p.results[id]
 
 		d, ok := p.details[id]
-		if !ok || item.stored == nil || item.listed || item.newer {
+		if !ok || item.stored == nil || item.listed || item.newer || item.gone {
 			continue
 		}
 
@@ -726,25 +894,39 @@ func (p *passPlan) replays(seq uint64) []itemWrite {
 	return out
 }
 
-// storeWatched stores the pass's watched items, their details and rows, and the closed
-// results' state, and returns the items it stored as changed.
-func (w *writer) storeWatched(ctx context.Context, plan *passPlan) ([]int64, error) {
-	var changed []int64
+// changedOf returns the ids of the items stored, by node ID, that the pass tells as
+// changed.
+func (p *passPlan) changedOf(stored map[string]int64) []int64 {
+	var out []int64
 
-	for _, nodeID := range plan.order {
-		item := plan.results[nodeID]
+	for _, node := range p.order {
+		if id, ok := stored[node]; ok && p.results[node].changed {
+			out = append(out, id)
+		}
+	}
 
-		id, err := w.storeWatchedItem(ctx, item)
+	return out
+}
+
+// storeResults reads again what is stored of the plan's results (recheck), then stores
+// each one, with its watch rows when rows is set (a pass's, never a test's), the closed
+// results' state, and the snoozes woken. It returns the id of every result stored or left
+// as stored, by node ID; a gone one is left out.
+func (w *writer) storeResults(ctx context.Context, plan *passPlan, rows bool) (map[string]int64, error) {
+	if err := w.recheck(ctx, plan); err != nil {
+		return nil, err
+	}
+
+	ids := make(map[string]int64, len(plan.order))
+
+	for _, node := range plan.order {
+		id, kept, err := w.storeOne(ctx, plan.results[node], rows)
 		if err != nil {
 			return nil, err
 		}
 
-		if item.changed {
-			changed = append(changed, id)
-		}
-
-		if err = w.storeWatchRows(ctx, id, item); err != nil {
-			return nil, err
+		if kept {
+			ids[node] = id
 		}
 	}
 
@@ -753,11 +935,65 @@ func (w *writer) storeWatched(ctx context.Context, plan *passPlan) ([]int64, err
 		closed = append(closed, it.Item)
 	}
 
-	if err := w.saveClosedStates(ctx, closed); err != nil {
+	if err := w.saveClosedStates(ctx, closed, &plan.started); err != nil {
 		return nil, err
 	}
 
-	return changed, w.wakeSnoozed(ctx)
+	return ids, w.wakeSnoozed(ctx)
+}
+
+// storeOne stores one result (storeResult), and its watch rows when rows is set, or takes
+// a gone one out of every search. It returns the result's id, and false for a gone one.
+func (w *writer) storeOne(ctx context.Context, item *passItem, rows bool) (int64, bool, error) {
+	if item.gone {
+		return 0, false, w.forgetGone(ctx, item, rows)
+	}
+
+	id, err := w.storeResult(ctx, item)
+	if err != nil || !rows {
+		return id, err == nil, err
+	}
+
+	return id, true, w.storeWatchRows(ctx, id, item)
+}
+
+// recheck reads again, under the store lock, what is stored of the plan's results, and
+// judges each against what the pass compared it with (see passItem.recheck), so a read
+// stored while the pass read GitHub stands.
+func (w *writer) recheck(ctx context.Context, plan *passPlan) error {
+	if len(plan.order) == 0 {
+		return nil
+	}
+
+	rows, err := w.q.ListWatchBaseline(ctx, queries.ListWatchBaselineParams{AccountID: plan.accountID, NodeIds: plan.order})
+	if err != nil {
+		return fmt.Errorf("read the watched items again: %w", err)
+	}
+
+	now := make(map[string]*queries.ListWatchBaselineRow, len(rows))
+	for i := range rows {
+		now[rows[i].NodeID] = &rows[i]
+	}
+
+	for _, node := range plan.order {
+		plan.results[node].recheck(now[node], plan.started)
+	}
+
+	return nil
+}
+
+// forgetGone takes a gone item out of every routine's search, when the pass stores rows:
+// what is stored says it no longer matches one.
+func (w *writer) forgetGone(ctx context.Context, item *passItem, rows bool) error {
+	if !rows || item.stored == nil {
+		return nil
+	}
+
+	if err := w.q.DeleteItemWatches(ctx, item.stored.ID); err != nil {
+		return fmt.Errorf("take %s out of the routines' searches: %w", item.item.Ref(), err)
+	}
+
+	return nil
 }
 
 // storeWatchRows records that each of the item's searches returned it now.
@@ -772,16 +1008,33 @@ func (w *writer) storeWatchRows(ctx context.Context, id int64, item *passItem) e
 	return nil
 }
 
-// storeWatchedItem stores one watched item: a listed one, or one a later read stored, is
-// left as it is; any other is stored with its repository, and its details when the pass
-// read them. It returns the item's id.
-func (w *writer) storeWatchedItem(ctx context.Context, item *passItem) (int64, error) {
-	if item.stored != nil && (item.listed || item.newer) {
-		return item.stored.ID, nil
+// storeResult stores one result and returns its id: a listed one, or one a later read
+// stored, is left as it is; a stored one whose details the pass meant to read, or whose
+// card moved, but whose details didn't come back, is left as it is too, so the next pass
+// finds it changed and reads it again, and it isn't told as changed; any other is stored
+// with its repository, and its details when the pass read them. A new one is stored
+// without its details when they didn't come back, and isn't told as changed until a pass
+// reads them.
+func (w *writer) storeResult(ctx context.Context, item *passItem) (int64, error) {
+	_, read := w.details[item.item.NodeID]
+
+	switch st := item.stored; {
+	case st != nil && (item.listed || item.newer):
+		return st.ID, nil
+	case st != nil && !read && (item.read || moved(item.item, st)):
+		item.changed = false
+
+		return st.ID, nil
+	case st == nil && !read:
+		item.changed = false
 	}
 
-	it := item.item
+	return w.storeWatchedItem(ctx, item.item)
+}
 
+// storeWatchedItem stores what a search said of an item, with its repository, and its
+// details when the pass read them, and returns its id.
+func (w *writer) storeWatchedItem(ctx context.Context, it github.WatchItem) (int64, error) {
 	repoID, err := w.watchedRepoID(ctx, it)
 	if err != nil {
 		return 0, err
@@ -832,8 +1085,9 @@ func (w *writer) watchedRepoID(ctx context.Context, it github.WatchItem) (int64,
 }
 
 // storeSearches stores each search's rows and state: a search answered in full replaces
-// its rows; a truncated one keeps the rows past its page, stale, for staleTailFor; one
-// that failed keeps every row, stale. The rows of a search no routine has are deleted.
+// its rows; a truncated one, or one GitHub couldn't read in full (Partial), keeps the
+// rows it didn't return, stale, for staleTailFor; one that failed keeps every row, stale.
+// The rows of a search no routine has are deleted.
 func (w *writer) storeSearches(ctx context.Context, plan *passPlan) error {
 	state, err := readWatchState(ctx, w.prefs)
 	if err != nil {
@@ -878,15 +1132,9 @@ func (w *writer) storeSearch(ctx context.Context, plan *passPlan, key string, st
 		st.Error, st.FailedAt = uierr.Message(answer.Err), new(w.now)
 
 		return st, nil
-	case answer.Truncated():
-		if err := w.q.DeleteStaleWatches(ctx, queries.DeleteStaleWatchesParams{
-			WatchKey: key, SeenAt: w.now.Add(-staleTailFor),
-		}); err != nil {
-			return st, fmt.Errorf("forget a search's old tail: %w", err)
-		}
-
-		if err := w.q.MarkWatchesStale(ctx, queries.MarkWatchesStaleParams{WatchKey: key, SeenAt: w.now}); err != nil {
-			return st, fmt.Errorf("keep a search's tail: %w", err)
+	case answer.Truncated() || answer.Partial:
+		if err := w.keepTail(ctx, key); err != nil {
+			return st, err
 		}
 	default:
 		if err := w.q.DeleteUnseenWatches(ctx, queries.DeleteUnseenWatchesParams{WatchKey: key, SeenAt: w.now}); err != nil {
@@ -898,6 +1146,22 @@ func (w *writer) storeSearch(ctx context.Context, plan *passPlan, key string, st
 		Answered: true, Count: answer.IssueCount, Returned: len(answer.Items), Truncated: answer.Truncated(),
 		At: new(w.now),
 	}, nil
+}
+
+// keepTail keeps the rows of the search with key that its answer didn't return, stale,
+// and forgets those that have stayed out of its answers for staleTailFor.
+func (w *writer) keepTail(ctx context.Context, key string) error {
+	if err := w.q.DeleteStaleWatches(ctx, queries.DeleteStaleWatchesParams{
+		WatchKey: key, SeenAt: w.now.Add(-staleTailFor),
+	}); err != nil {
+		return fmt.Errorf("forget a search's old tail: %w", err)
+	}
+
+	if err := w.q.MarkWatchesStale(ctx, queries.MarkWatchesStaleParams{WatchKey: key, SeenAt: w.now}); err != nil {
+		return fmt.Errorf("keep a search's tail: %w", err)
+	}
+
+	return nil
 }
 
 // watchState is what the inbox keeps of the routines' searches between passes, under
@@ -1055,14 +1319,15 @@ func NewRoutines(s *Service) *Routines {
 	return &Routines{svc: s}
 }
 
-// SearchNow reads searches from GitHub now, for a routine's test (see searchNow).
+// SearchNow reads searches from GitHub now, for a routine's test, or returns ErrLowBudget
+// while the GraphQL budget is low (see searchNow).
 func (r *Routines) SearchNow(ctx context.Context, texts []string) (map[string]SearchOutcome, int, error) {
 	return r.svc.searchNow(ctx, texts)
 }
 
-// ReadChecks reads and stores the checks of the stored pull requests among ids (see
-// readChecks).
-func (r *Routines) ReadChecks(ctx context.Context, ids []int64) error {
+// ReadChecks reads and stores the checks of the stored pull requests among ids, and
+// returns what that cost in GraphQL points (see readChecks).
+func (r *Routines) ReadChecks(ctx context.Context, ids []int64) (int, error) {
 	return r.svc.readChecks(ctx, ids)
 }
 
