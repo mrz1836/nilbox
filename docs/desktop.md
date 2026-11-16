@@ -2504,9 +2504,10 @@ and the button reads **Resume Autopilot**.
 **The routines.** Each row shows the routine's name, a status line, and its switch. The status
 line says its mode and what it is doing or did: *Autopilot · 2 waiting*, *Autopilot · 6 today*,
 *Dry run · 3 would run today*, *Ask first · ran 2h ago*, *Dry run · would have run 2h ago*,
-*Autopilot · off*, counted from the whole history, whatever Activity has loaded; a routine's
-first look, which only notes what already matched, counts in none of them. Or, instead, it
-says why the routine can't run: its last
+*Autopilot · off*, counted from the whole history, whatever Activity has loaded. *Today*
+turns over at midnight, and *ran* is when it last ran, even while something newer waits; a
+routine's first look, which only notes what already matched, counts in none of them. Or,
+instead, it says why the routine can't run: its last
 error, a search GitHub refuses, or *Made by a newer Nilbox: update to edit it*, which has no
 switch. A routine that belongs to another GitHub account than the one signed in is greyed, says
 *Belongs to @other-login*, has no switch, and doesn't run. Its **⋯** menu holds:
