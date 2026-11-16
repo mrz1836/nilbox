@@ -9,6 +9,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/autopilot/internal/queries"
 	"github.com/mrz1836/nilbox/internal/autopilot/spec"
 	"github.com/mrz1836/nilbox/internal/autopilotprefs"
+	"github.com/mrz1836/nilbox/internal/textutil"
 	"github.com/mrz1836/nilbox/internal/uierr"
 )
 
@@ -144,11 +145,19 @@ func (s *Service) Get(ctx context.Context, id int64) (Routine, error) {
 // new routines start in, and belongs to the account signed in; one saved before keeps
 // its switch, its place, and its template, and its mode unless d names one. A routine with
 // a step this build can't run yet is stored in Dry run, whatever the mode. A routine a
-// newer build wrote can't be saved over.
+// newer build wrote can't be saved over, and one naming a prompt the library doesn't have,
+// or one that doesn't fit, is refused as a spec with problems is.
 func (s *Service) save(ctx context.Context, d Draft) (Routine, error) {
 	saving, err := checkDraft(d)
 	if err != nil {
 		return Routine{}, err
+	}
+
+	if problems := s.promptProblems(ctx, saving.spec); len(problems) > 0 {
+		v := &spec.ValidationError{Problems: problems}
+
+		return Routine{}, uierr.New(textutil.Sentence("The routine isn't valid yet: "+problems[0].Message),
+			&ProblemsError{err: v})
 	}
 
 	// The settings and the account are read before the transaction, which would wait on

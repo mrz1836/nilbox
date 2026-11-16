@@ -233,6 +233,34 @@ export interface Cycle {
 }
 
 /**
+ * Described is a draft as the builder shows it before it is saved.
+ */
+export interface Described {
+    /**
+     * Sentence says the draft in one sentence, as the routine list will; "" while it has
+     * problems, so the builder keeps the last one that read.
+     */
+    "sentence": string;
+
+    /**
+     * Problems are what keeps it from being saved, each where it is in the spec.
+     */
+    "problems": spec$0.Problem[] | null;
+
+    /**
+     * Warnings are what may make it do less than meant, or more than is wise, each where
+     * it is; none keeps it from being saved.
+     */
+    "warnings": spec$0.Problem[] | null;
+
+    /**
+     * DryRunOnly are the kinds of step it has that this build can't run yet, so it runs
+     * in Dry run alone, whatever its mode.
+     */
+    "dryRunOnly": catalog$0.StepKind[] | null;
+}
+
+/**
  * Draft is a routine as the builder saves it.
  */
 export interface Draft {
@@ -891,6 +919,18 @@ export interface TestItem {
      * routine leaves none alone.
      */
     "leftAlone": boolean;
+
+    /**
+     * Record says what the routine's history holds of the occurrence it fires for now, in
+     * the window's words ("It already ran on this.", "Waiting for your OK."), "" for none:
+     * a match the routine has no record of is one it would run on. A new routine has none.
+     */
+    "record": string;
+
+    /**
+     * Listed reports an item in one of the inbox lists, where triage shows.
+     */
+    "listed": boolean;
 }
 
 /**
@@ -937,6 +977,12 @@ export interface TestResult {
      * Estimate is what the draft's searches would add to each refresh.
      */
     "estimate": Estimate;
+
+    /**
+     * Warnings are what the test found may make the draft do less than meant, each where it
+     * is in the spec, beside each search's own.
+     */
+    "warnings": spec$0.Problem[] | null;
 }
 
 /**

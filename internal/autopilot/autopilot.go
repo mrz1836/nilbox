@@ -18,7 +18,10 @@
 // The routines' searches reach the inbox as a snapshot the Service builds again after
 // every change to a routine (Searches, watches.go), which each refresh reads as it starts.
 // The builder reads the inbox through Items: what the stored items suggest (Suggest), the
-// items a routine watches (Watching), and a draft tried on its items now (Test).
+// items a routine watches (Watching), and a draft tried on its items now (Test). Describe
+// reads a draft as it is edited, asking GitHub nothing: its sentence, the problems that
+// keep it from being saved (the spec's own, and the prompts its steps name, checked
+// against the Library), and its warnings.
 //
 // The Engine runs the routines (engine.go): one loop, the only writer of the ledger
 // (ledger.go: what each routine did with each item it matched, once per occurrence), which
@@ -30,8 +33,8 @@
 // leaves the routine hands off the item (effects.go).
 //
 // The package reaches the rest of the app only through the narrow interfaces it declares
-// (Prefs, Accounts, Names, Items, Costs, EngineItems, Triage, the dispatchers, Holds, and
-// ProblemSink), which core adapts; it never imports the inbox,
+// (Prefs, Accounts, Names, Library, Items, Costs, EngineItems, Triage, the dispatchers,
+// Holds, and ProblemSink), which core adapts; it never imports the inbox,
 // the sheets, the launcher, the worktrees, the sessions, the runs, the notifications, the
 // settings, the desktop shell, or core.
 package autopilot
@@ -111,6 +114,10 @@ type Config struct {
 	// words.
 	Names Names
 
+	// Library lists the prompt library, which Describe and Save check the prompts a
+	// routine's steps name against; nil checks none.
+	Library Library
+
 	// File is the copy of the routines kept beside the database, written again after
 	// every change; nil keeps none.
 	File *File
@@ -142,6 +149,7 @@ type Service struct {
 	prefs    Prefs
 	accounts Accounts
 	names    Names
+	library  Library
 	file     *File
 	items    Items
 	costs    Costs
@@ -165,7 +173,7 @@ func NewService(cfg Config) *Service {
 
 	return &Service{
 		store: newRoutineStore(cfg.Pool, clk), prefs: cfg.Prefs, accounts: cfg.Accounts, names: cfg.Names,
-		file: cfg.File, items: cfg.Items, costs: cfg.Costs, clock: clk, logger: logging.Or(cfg.Logger),
+		library: cfg.Library, file: cfg.File, items: cfg.Items, costs: cfg.Costs, clock: clk, logger: logging.Or(cfg.Logger),
 		watches: watchSet{build: make(chan struct{}, 1)}, tests: testCache{read: map[string]cachedSearch{}},
 		offers: cfg.Offers.orCatalog(),
 	}

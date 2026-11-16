@@ -20,6 +20,7 @@ export type {
     ActivityPage,
     Cleared,
     Cycle,
+    Described,
     Draft,
     Effect,
     EngineStatus,

@@ -15,6 +15,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/autopilot/spec"
 	"github.com/mrz1836/nilbox/internal/autopilot/watch"
 	"github.com/mrz1836/nilbox/internal/item"
+	"github.com/mrz1836/nilbox/internal/textutil"
 	"github.com/mrz1836/nilbox/internal/uierr"
 )
 
@@ -228,6 +229,10 @@ type TestResult struct {
 
 	// Estimate is what the draft's searches would add to each refresh.
 	Estimate Estimate `json:"estimate"`
+
+	// Warnings are what the test found may make the draft do less than meant, each where it
+	// is in the spec, beside each search's own.
+	Warnings []spec.Problem `json:"warnings"`
 }
 
 // TestSearch is one of a draft's searches, as a test read it.
@@ -271,6 +276,14 @@ type TestItem struct {
 	// did there: it doesn't act on it, matching or not, until Let it act again. A new
 	// routine leaves none alone.
 	LeftAlone bool `json:"leftAlone"`
+
+	// Record says what the routine's history holds of the occurrence it fires for now, in
+	// the window's words ("It already ran on this.", "Waiting for your OK."), "" for none:
+	// a match the routine has no record of is one it would run on. A new routine has none.
+	Record string `json:"record"`
+
+	// Listed reports an item in one of the inbox lists, where triage shows.
+	Listed bool `json:"listed"`
 }
 
 // testCache keeps the searches tests read, by query, for testFor.
@@ -294,7 +307,7 @@ type cachedSearch struct {
 // nothing, and says so (LowBudget). A draft whose spec has problems is refused with them,
 // as Save refuses it. It changes no routine, and runs nothing.
 func (s *Service) Test(ctx context.Context, d Draft) (TestResult, error) {
-	out := TestResult{Searches: []TestSearch{}, Items: []TestItem{}}
+	out := TestResult{Searches: []TestSearch{}, Items: []TestItem{}, Warnings: []spec.Problem{}}
 
 	_, sp, err := checkSpec(d.Spec)
 	if err != nil {
@@ -333,10 +346,113 @@ func (s *Service) Test(ctx context.Context, d Draft) (TestResult, error) {
 		return out, err
 	}
 
+	if err = s.markRecords(ctx, d.ID, out.Items); err != nil {
+		return out, err
+	}
+
 	out.Matched, out.Unknown = counts(out.Items)
 	out.Estimate = s.estimate(ctx, out.Searches)
+	warnTruncated(out.Searches)
+	out.Warnings = testWarnings(sp, out.Items)
 
 	return out, nil
+}
+
+// warnTruncated warns of each search that matches more than a page: only the most
+// recently updated are checked.
+func warnTruncated(searches []TestSearch) {
+	for i, ts := range searches {
+		if ts.Truncated {
+			searches[i].Warnings = append(searches[i].Warnings, fmt.Sprintf(
+				"This search matches %s; only the newest %d are checked.",
+				textutil.Counted(ts.Count, "item", "items"), fullPage,
+			))
+		}
+	}
+}
+
+// testWarnings returns what a test found may make sp do less than meant: triage steps
+// when most of the items it watches aren't in the inbox lists, so triage won't change
+// what the user sees.
+func testWarnings(sp spec.Spec, items []TestItem) []spec.Problem {
+	out := []spec.Problem{}
+
+	outside := 0
+
+	for _, it := range items {
+		if !it.Listed {
+			outside++
+		}
+	}
+
+	if len(items) == 0 || outside*2 <= len(items) {
+		return out
+	}
+
+	for i, st := range sp.Steps {
+		if slices.Contains(triageSteps(), st.Kind()) {
+			info, _ := catalog.StepByKind(st.Kind())
+			out = append(out, spec.Problem{
+				Part: spec.PartSteps, Field: fmt.Sprintf("[%d]", i),
+				Message: fmt.Sprintf("%d of the %d items it watches now aren't in your inbox lists, so %s won't "+
+					"change what you see of them.", outside, len(items), info.Label),
+			})
+		}
+	}
+
+	return out
+}
+
+// markRecords says, of each item, what the routine id's history holds of the occurrence
+// it fires for now: its real record, else what a Dry run recorded. A new routine (0) has
+// none.
+func (s *Service) markRecords(ctx context.Context, id int64, items []TestItem) error {
+	if id == 0 || s.store.db == nil {
+		return nil
+	}
+
+	keys, err := s.ledger().keys(ctx, id)
+	if err != nil {
+		return uierr.New("The routine's history couldn't be read.", err)
+	}
+
+	for i, it := range items {
+		if it.FireKey == "" {
+			continue
+		}
+
+		if row, ok := keys[matchKey{item: it.ID, fire: it.FireKey}]; ok && !reopensRow(row) {
+			items[i].Record = recordWords(State(row.State), Reason(row.Reason))
+		} else if _, ok := keys[matchKey{item: it.ID, fire: it.FireKey, dryRun: true}]; ok {
+			items[i].Record = "Dry run recorded what it would do."
+		}
+	}
+
+	return nil
+}
+
+// recordWords says what a routine's record of an occurrence holds, as a test's row shows
+// it.
+func recordWords(state State, reason Reason) string {
+	switch {
+	case state == StateSkipped && reason == ReasonTries:
+		return "It gave up: its tries are used."
+	case state == StateClosed:
+		return "Closed: " + textutil.Sentence(strings.ReplaceAll(string(reason), "_", " "))
+	}
+
+	words := map[State]string{
+		StateWaiting: "Waiting for your OK.", StateBlocked: "Can't start yet.", StateQueued: "Queued.",
+		StateRunning: "Working now.", StateVerifying: "Waiting for the checks on its commit.",
+		StateDone: "It already ran on this.", StateSkipped: "Skipped.", StateDismissed: "You skipped it.",
+		StateBaseline: "It already matched when you chose only what changes from now on.",
+	}
+
+	if w, ok := words[state]; ok {
+		return w
+	}
+
+	return textutil.Sentence(string(state))
 }
 
 // markLeftAlone marks the items the routine id leaves alone, none for a new routine (0).
@@ -593,10 +709,12 @@ func (s *Service) decide(ctx context.Context, sp spec.Spec, ids []int64, now tim
 
 	for _, f := range all {
 		d := eval.Evaluate(sp, f, eval.History{}, now)
+		lists := f.Value(catalog.FieldLists)
 
 		out = append(out, TestItem{
 			ID: f.Item.ID, Kind: f.Item.Kind, Repo: f.Item.Repo, Number: f.Item.Number, Title: f.Item.Title,
 			URL: f.Item.URL, Match: d.Match, FireKey: d.FireKey, Needs: nonNil(d.Needs), Trace: nonNil(d.Trace),
+			Listed: lists.Known() && len(lists.List) > 0,
 		})
 
 		if d.Match == eval.Unknown && slices.Contains(d.Needs, facts.NeedChecks) {

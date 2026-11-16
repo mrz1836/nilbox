@@ -1,0 +1,2485 @@
+{
+  "triggers": [
+    {
+      "event": "appears",
+      "label": "Appears",
+      "help": "is in the watch",
+      "kinds": [
+        "pr",
+        "issue"
+      ],
+      "oncePer": "item",
+      "options": []
+    },
+    {
+      "event": "new_commits",
+      "label": "New commits",
+      "help": "has a head commit this routine hasn't seen",
+      "kinds": [
+        "pr"
+      ],
+      "oncePer": "head commit",
+      "options": [
+        {
+          "id": "firstToo",
+          "label": "Also when it first appears",
+          "default": true,
+          "range": null
+        },
+        {
+          "id": "ownPushesToo",
+          "label": "Also on commits a routine pushed",
+          "default": false,
+          "range": null
+        }
+      ]
+    },
+    {
+      "event": "checks_failed",
+      "label": "Checks fail",
+      "help": "has a failed or errored check on its head commit",
+      "kinds": [
+        "pr"
+      ],
+      "oncePer": "head commit",
+      "options": [
+        {
+          "id": "waitForChecks",
+          "label": "Wait until every check has finished",
+          "default": true,
+          "range": null
+        },
+        {
+          "id": "settleMinutes",
+          "label": "Settle for",
+          "default": false,
+          "range": {
+            "min": 0,
+            "max": 60,
+            "default": 2,
+            "unit": "minutes"
+          }
+        }
+      ]
+    },
+    {
+      "event": "checks_passed",
+      "label": "Checks pass",
+      "help": "has every check passing, and settled, on its head commit",
+      "kinds": [
+        "pr"
+      ],
+      "oncePer": "head commit",
+      "options": [
+        {
+          "id": "settleMinutes",
+          "label": "Settle for",
+          "default": false,
+          "range": {
+            "min": 0,
+            "max": 60,
+            "default": 2,
+            "unit": "minutes"
+          }
+        }
+      ]
+    },
+    {
+      "event": "changes_requested",
+      "label": "Changes requested",
+      "help": "gets a new request for changes, or its review decision turns to one",
+      "kinds": [
+        "pr"
+      ],
+      "oncePer": "review round",
+      "options": []
+    },
+    {
+      "event": "approved",
+      "label": "Approved",
+      "help": "is approved: the decision, or a new approval",
+      "kinds": [
+        "pr"
+      ],
+      "oncePer": "head commit",
+      "options": []
+    },
+    {
+      "event": "merge_conflicts",
+      "label": "Merge conflicts",
+      "help": "conflicts with its base branch",
+      "kinds": [
+        "pr"
+      ],
+      "oncePer": "head commit",
+      "options": []
+    },
+    {
+      "event": "falls_behind",
+      "label": "Falls behind",
+      "help": "is behind its base branch, with no conflict",
+      "kinds": [
+        "pr"
+      ],
+      "oncePer": "head commit and base",
+      "options": []
+    },
+    {
+      "event": "labeled",
+      "label": "Labeled",
+      "help": "carries a given label",
+      "kinds": [
+        "pr",
+        "issue"
+      ],
+      "oncePer": "item and label",
+      "options": [
+        {
+          "id": "label",
+          "label": "Label",
+          "default": false,
+          "range": null
+        }
+      ]
+    },
+    {
+      "event": "ready_for_review",
+      "label": "Ready for review",
+      "help": "isn't a draft, whether it opened ready or turned ready",
+      "kinds": [
+        "pr"
+      ],
+      "oncePer": "item",
+      "options": []
+    },
+    {
+      "event": "review_requested",
+      "label": "Review requested",
+      "help": "newly asks for your review",
+      "kinds": [
+        "pr"
+      ],
+      "oncePer": "request",
+      "options": []
+    },
+    {
+      "event": "assigned",
+      "label": "Assigned to me",
+      "help": "is newly assigned to you",
+      "kinds": [
+        "pr",
+        "issue"
+      ],
+      "oncePer": "assignment",
+      "options": []
+    },
+    {
+      "event": "new_comments",
+      "label": "New comments",
+      "help": "gains new comments since the routine last fired, or since it first saw the item",
+      "kinds": [
+        "pr",
+        "issue"
+      ],
+      "oncePer": "comment count",
+      "options": [
+        {
+          "id": "count",
+          "label": "Comments",
+          "default": false,
+          "range": {
+            "min": 1,
+            "max": 100,
+            "default": 1,
+            "unit": "comments"
+          }
+        }
+      ]
+    },
+    {
+      "event": "goes_quiet",
+      "label": "Goes quiet",
+      "help": "has had no activity for a number of days",
+      "kinds": [
+        "pr",
+        "issue"
+      ],
+      "oncePer": "last activity",
+      "options": [
+        {
+          "id": "days",
+          "label": "Days",
+          "default": false,
+          "range": {
+            "min": 1,
+            "max": 365,
+            "default": 7,
+            "unit": "days"
+          }
+        }
+      ]
+    },
+    {
+      "event": "schedule",
+      "label": "On a schedule",
+      "help": "holds the conditions at a set time",
+      "kinds": [
+        "pr",
+        "issue"
+      ],
+      "oncePer": "scheduled time",
+      "options": [
+        {
+          "id": "schedule",
+          "label": "When",
+          "default": false,
+          "range": null
+        }
+      ]
+    },
+    {
+      "event": "manual",
+      "label": "Only when I run it",
+      "help": "is picked from an item's menu by you",
+      "kinds": [
+        "pr",
+        "issue"
+      ],
+      "oncePer": "each click",
+      "options": []
+    }
+  ],
+  "groups": [
+    {
+      "id": "item",
+      "label": "Item"
+    },
+    {
+      "id": "repo",
+      "label": "Repository"
+    },
+    {
+      "id": "pr",
+      "label": "Pull request"
+    },
+    {
+      "id": "checks",
+      "label": "Checks"
+    },
+    {
+      "id": "files",
+      "label": "Files"
+    },
+    {
+      "id": "dep",
+      "label": "Dependency update"
+    },
+    {
+      "id": "history",
+      "label": "History"
+    }
+  ],
+  "fields": [
+    {
+      "id": "item.kind",
+      "group": "item",
+      "type": "choice",
+      "label": "Kind",
+      "words": {
+        "noun": "it",
+        "plural": false,
+        "one": "",
+        "yes": "",
+        "no": ""
+      },
+      "kinds": [
+        "pr",
+        "issue"
+      ],
+      "choices": [
+        {
+          "value": "pr",
+          "label": "a pull request"
+        },
+        {
+          "value": "issue",
+          "label": "an issue"
+        }
+      ],
+      "cost": 0
+    },
+    {
+      "id": "item.title",
+      "group": "item",
+      "type": "text",
+      "label": "Title",
+      "words": {
+        "noun": "the title",
+        "plural": false,
+        "one": "",
+        "yes": "",
+        "no": ""
+      },
+      "kinds": [
+        "pr",
+        "issue"
+      ],
+      "choices": [],
+      "cost": 0
+    },
+    {
+      "id": "item.labels",
+      "group": "item",
+      "type": "list",
+      "label": "Labels",
+      "words": {
+        "noun": "the labels",
+        "plural": true,
+        "one": "a label",
+        "yes": "it has no labels",
+        "no": "it has a label"
+      },
+      "kinds": [
+        "pr",
+        "issue"
+      ],
+      "choices": [],
+      "patterns": "glob",
+      "cost": 1
+    },
+    {
+      "id": "item.author",
+      "group": "item",
+      "type": "text",
+      "label": "Author",
+      "words": {
+        "noun": "the author's login",
+        "plural": false,
+        "one": "",
+        "yes": "",
+        "no": ""
+      },
+      "kinds": [
+        "pr",
+        "issue"
+      ],
+      "choices": [],
+      "cost": 0
+    },
+    {
+      "id": "item.authorIsBot",
+      "group": "item",
+      "type": "bool",
+      "label": "Author is a bot",
+      "words": {
+        "noun": "",
+        "plural": false,
+        "one": "",
+        "yes": "the author is a bot",
+        "no": "the author isn't a bot"
+      },
+      "kinds": [
+        "pr",
+        "issue"
+      ],
+      "choices": [],
+      "cost": 0
+    },
+    {
+      "id": "item.trust",
+      "group": "item",
+      "type": "choice",
+      "label": "Trust",
+      "words": {
+        "noun": "the author",
+        "plural": false,
+        "one": "",
+        "yes": "",
+        "no": ""
+      },
+      "kinds": [
+        "pr",
+        "issue"
+      ],
+      "choices": [
+        {
+          "value": "member",
+          "label": "a member"
+        },
+        {
+          "value": "bot",
+          "label": "a trusted bot"
+        },
+        {
+          "value": "outside",
+          "label": "an outside contributor"
+        }
+      ],
+      "cost": 0
+    },
+    {
+      "id": "item.association",
+      "group": "item",
+      "type": "choice",
+      "label": "Author's association",
+      "words": {
+        "noun": "the author's association",
+        "plural": false,
+        "one": "",
+        "yes": "",
+        "no": ""
+      },
+      "kinds": [
+        "pr",
+        "issue"
+      ],
+      "choices": [
+        {
+          "value": "OWNER",
+          "label": "owner"
+        },
+        {
+          "value": "MEMBER",
+          "label": "member"
+        },
+        {
+          "value": "COLLABORATOR",
+          "label": "collaborator"
+        },
+        {
+          "value": "CONTRIBUTOR",
+          "label": "contributor"
+        },
+        {
+          "value": "FIRST_TIME_CONTRIBUTOR",
+          "label": "first-time contributor"
+        },
+        {
+          "value": "FIRST_TIMER",
+          "label": "first-timer"
+        },
+        {
+          "value": "MANNEQUIN",
+          "label": "mannequin"
+        },
+        {
+          "value": "NONE",
+          "label": "none"
+        }
+      ],
+      "cost": 0
+    },
+    {
+      "id": "item.age",
+      "group": "item",
+      "type": "duration",
+      "label": "Age",
+      "words": {
+        "noun": "it's been open",
+        "plural": false,
+        "one": "",
+        "yes": "",
+        "no": ""
+      },
+      "kinds": [
+        "pr",
+        "issue"
+      ],
+      "choices": [],
+      "cost": 0
+    },
+    {
+      "id": "item.idle",
+      "group": "item",
+      "type": "duration",
+      "label": "Time since its last activity",
+      "words": {
+        "noun": "it's been quiet",
+        "plural": false,
+        "one": "",
+        "yes": "",
+        "no": ""
+      },
+      "kinds": [
+        "pr",
+        "issue"
+      ],
+      "choices": [],
+      "cost": 0
+    },
+    {
+      "id": "item.comments",
+      "group": "item",
+      "type": "number",
+      "label": "Comments",
+      "words": {
+        "noun": "the comments",
+        "plural": true,
+        "one": "",
+        "yes": "",
+        "no": ""
+      },
+      "kinds": [
+        "pr",
+        "issue"
+      ],
+      "choices": [],
+      "cost": 1
+    },
+    {
+      "id": "item.lists",
+      "group": "item",
+      "type": "list",
+      "label": "Inbox lists",
+      "words": {
+        "noun": "its inbox lists",
+        "plural": true,
+        "one": "an inbox list",
+        "yes": "it's in no inbox list",
+        "no": "it's in an inbox list"
+      },
+      "kinds": [
+        "pr",
+        "issue"
+      ],
+      "choices": [
+        {
+          "value": "reviewRequested",
+          "label": "Review requested"
+        },
+        {
+          "value": "authored",
+          "label": "Authored"
+        },
+        {
+          "value": "assigned",
+          "label": "Assigned"
+        }
+      ],
+      "cost": 0
+    },
+    {
+      "id": "item.snoozed",
+      "group": "item",
+      "type": "bool",
+      "label": "Snoozed",
+      "words": {
+        "noun": "",
+        "plural": false,
+        "one": "",
+        "yes": "it's snoozed",
+        "no": "it isn't snoozed"
+      },
+      "kinds": [
+        "pr",
+        "issue"
+      ],
+      "choices": [],
+      "cost": 0
+    },
+    {
+      "id": "item.dismissed",
+      "group": "item",
+      "type": "bool",
+      "label": "Dismissed",
+      "words": {
+        "noun": "",
+        "plural": false,
+        "one": "",
+        "yes": "it's dismissed",
+        "no": "it isn't dismissed"
+      },
+      "kinds": [
+        "pr",
+        "issue"
+      ],
+      "choices": [],
+      "cost": 0
+    },
+    {
+      "id": "item.pinned",
+      "group": "item",
+      "type": "bool",
+      "label": "Pinned",
+      "words": {
+        "noun": "",
+        "plural": false,
+        "one": "",
+        "yes": "it's pinned",
+        "no": "it isn't pinned"
+      },
+      "kinds": [
+        "pr",
+        "issue"
+      ],
+      "choices": [],
+      "cost": 0
+    },
+    {
+      "id": "item.mine",
+      "group": "item",
+      "type": "bool",
+      "label": "Opened by me",
+      "words": {
+        "noun": "",
+        "plural": false,
+        "one": "",
+        "yes": "you opened it",
+        "no": "you didn't open it"
+      },
+      "kinds": [
+        "pr",
+        "issue"
+      ],
+      "choices": [],
+      "cost": 0
+    },
+    {
+      "id": "repo.owner",
+      "group": "repo",
+      "type": "text",
+      "label": "Owner",
+      "words": {
+        "noun": "the repository's owner",
+        "plural": false,
+        "one": "",
+        "yes": "",
+        "no": ""
+      },
+      "kinds": [
+        "pr",
+        "issue"
+      ],
+      "choices": [],
+      "cost": 0
+    },
+    {
+      "id": "repo.name",
+      "group": "repo",
+      "type": "text",
+      "label": "Name",
+      "words": {
+        "noun": "the repository's name",
+        "plural": false,
+        "one": "",
+        "yes": "",
+        "no": ""
+      },
+      "kinds": [
+        "pr",
+        "issue"
+      ],
+      "choices": [],
+      "cost": 0
+    },
+    {
+      "id": "repo.fullName",
+      "group": "repo",
+      "type": "text",
+      "label": "Owner and name",
+      "words": {
+        "noun": "the repository",
+        "plural": false,
+        "one": "",
+        "yes": "",
+        "no": ""
+      },
+      "kinds": [
+        "pr",
+        "issue"
+      ],
+      "choices": [],
+      "cost": 0
+    },
+    {
+      "id": "repo.visibility",
+      "group": "repo",
+      "type": "choice",
+      "label": "Visibility",
+      "words": {
+        "noun": "the repository",
+        "plural": false,
+        "one": "",
+        "yes": "",
+        "no": ""
+      },
+      "kinds": [
+        "pr",
+        "issue"
+      ],
+      "choices": [
+        {
+          "value": "public",
+          "label": "public"
+        },
+        {
+          "value": "private",
+          "label": "private"
+        },
+        {
+          "value": "internal",
+          "label": "internal"
+        }
+      ],
+      "cost": 0
+    },
+    {
+      "id": "repo.language",
+      "group": "repo",
+      "type": "text",
+      "label": "Language",
+      "words": {
+        "noun": "the repository's language",
+        "plural": false,
+        "one": "",
+        "yes": "",
+        "no": ""
+      },
+      "kinds": [
+        "pr",
+        "issue"
+      ],
+      "choices": [],
+      "cost": 0
+    },
+    {
+      "id": "repo.fork",
+      "group": "repo",
+      "type": "bool",
+      "label": "Is a fork",
+      "words": {
+        "noun": "",
+        "plural": false,
+        "one": "",
+        "yes": "the repository is a fork",
+        "no": "the repository isn't a fork"
+      },
+      "kinds": [
+        "pr",
+        "issue"
+      ],
+      "choices": [],
+      "cost": 0
+    },
+    {
+      "id": "repo.permission",
+      "group": "repo",
+      "type": "choice",
+      "label": "Your permission",
+      "words": {
+        "noun": "your permission",
+        "plural": false,
+        "one": "",
+        "yes": "",
+        "no": ""
+      },
+      "kinds": [
+        "pr",
+        "issue"
+      ],
+      "choices": [
+        {
+          "value": "admin",
+          "label": "admin"
+        },
+        {
+          "value": "maintain",
+          "label": "maintain"
+        },
+        {
+          "value": "write",
+          "label": "write"
+        },
+        {
+          "value": "triage",
+          "label": "triage"
+        },
+        {
+          "value": "read",
+          "label": "read"
+        }
+      ],
+      "cost": 0
+    },
+    {
+      "id": "repo.hasClone",
+      "group": "repo",
+      "type": "bool",
+      "label": "Has a local clone",
+      "words": {
+        "noun": "",
+        "plural": false,
+        "one": "",
+        "yes": "you have a clone of it",
+        "no": "you have no clone of it"
+      },
+      "kinds": [
+        "pr",
+        "issue"
+      ],
+      "choices": [],
+      "cost": 0
+    },
+    {
+      "id": "repo.muted",
+      "group": "repo",
+      "type": "bool",
+      "label": "Is muted",
+      "words": {
+        "noun": "",
+        "plural": false,
+        "one": "",
+        "yes": "the repository is muted",
+        "no": "the repository isn't muted"
+      },
+      "kinds": [
+        "pr",
+        "issue"
+      ],
+      "choices": [],
+      "cost": 0
+    },
+    {
+      "id": "repo.pinned",
+      "group": "repo",
+      "type": "bool",
+      "label": "Is pinned",
+      "words": {
+        "noun": "",
+        "plural": false,
+        "one": "",
+        "yes": "the repository is pinned",
+        "no": "the repository isn't pinned"
+      },
+      "kinds": [
+        "pr",
+        "issue"
+      ],
+      "choices": [],
+      "cost": 0
+    },
+    {
+      "id": "repo.allowsUpdateBranch",
+      "group": "repo",
+      "type": "bool",
+      "label": "Allows updating branches",
+      "words": {
+        "noun": "",
+        "plural": false,
+        "one": "",
+        "yes": "the repository allows updating branches",
+        "no": "the repository doesn't allow updating branches"
+      },
+      "kinds": [
+        "pr"
+      ],
+      "choices": [],
+      "cost": 0
+    },
+    {
+      "id": "pr.draft",
+      "group": "pr",
+      "type": "bool",
+      "label": "Draft",
+      "words": {
+        "noun": "",
+        "plural": false,
+        "one": "",
+        "yes": "it's a draft",
+        "no": "it isn't a draft"
+      },
+      "kinds": [
+        "pr"
+      ],
+      "choices": [],
+      "cost": 0
+    },
+    {
+      "id": "pr.base",
+      "group": "pr",
+      "type": "text",
+      "label": "Base branch",
+      "words": {
+        "noun": "the base branch",
+        "plural": false,
+        "one": "",
+        "yes": "",
+        "no": ""
+      },
+      "kinds": [
+        "pr"
+      ],
+      "choices": [],
+      "cost": 1
+    },
+    {
+      "id": "pr.head",
+      "group": "pr",
+      "type": "text",
+      "label": "Head branch",
+      "words": {
+        "noun": "the head branch",
+        "plural": false,
+        "one": "",
+        "yes": "",
+        "no": ""
+      },
+      "kinds": [
+        "pr"
+      ],
+      "choices": [],
+      "cost": 0
+    },
+    {
+      "id": "pr.fromFork",
+      "group": "pr",
+      "type": "bool",
+      "label": "From a fork",
+      "words": {
+        "noun": "",
+        "plural": false,
+        "one": "",
+        "yes": "it's from a fork",
+        "no": "it isn't from a fork"
+      },
+      "kinds": [
+        "pr"
+      ],
+      "choices": [],
+      "cost": 0
+    },
+    {
+      "id": "pr.size",
+      "group": "pr",
+      "type": "choice",
+      "label": "Size",
+      "words": {
+        "noun": "its size",
+        "plural": false,
+        "one": "",
+        "yes": "",
+        "no": ""
+      },
+      "kinds": [
+        "pr"
+      ],
+      "choices": [
+        {
+          "value": "XS",
+          "label": "XS"
+        },
+        {
+          "value": "S",
+          "label": "S"
+        },
+        {
+          "value": "M",
+          "label": "M"
+        },
+        {
+          "value": "L",
+          "label": "L"
+        },
+        {
+          "value": "XL",
+          "label": "XL"
+        }
+      ],
+      "cost": 1
+    },
+    {
+      "id": "pr.lines",
+      "group": "pr",
+      "type": "number",
+      "label": "Lines changed",
+      "words": {
+        "noun": "the lines changed",
+        "plural": true,
+        "one": "",
+        "yes": "",
+        "no": ""
+      },
+      "kinds": [
+        "pr"
+      ],
+      "choices": [],
+      "cost": 1
+    },
+    {
+      "id": "pr.files",
+      "group": "pr",
+      "type": "number",
+      "label": "Files changed",
+      "words": {
+        "noun": "the files changed",
+        "plural": true,
+        "one": "",
+        "yes": "",
+        "no": ""
+      },
+      "kinds": [
+        "pr"
+      ],
+      "choices": [],
+      "cost": 1
+    },
+    {
+      "id": "pr.commits",
+      "group": "pr",
+      "type": "number",
+      "label": "Commits",
+      "words": {
+        "noun": "the commits",
+        "plural": true,
+        "one": "",
+        "yes": "",
+        "no": ""
+      },
+      "kinds": [
+        "pr"
+      ],
+      "choices": [],
+      "cost": 1
+    },
+    {
+      "id": "pr.conflicts",
+      "group": "pr",
+      "type": "bool",
+      "label": "Has conflicts",
+      "words": {
+        "noun": "",
+        "plural": false,
+        "one": "",
+        "yes": "it has merge conflicts",
+        "no": "it has no merge conflicts"
+      },
+      "kinds": [
+        "pr"
+      ],
+      "choices": [],
+      "cost": 1
+    },
+    {
+      "id": "pr.behind",
+      "group": "pr",
+      "type": "bool",
+      "label": "Behind its base",
+      "words": {
+        "noun": "",
+        "plural": false,
+        "one": "",
+        "yes": "it's behind its base branch",
+        "no": "it isn't behind its base branch"
+      },
+      "kinds": [
+        "pr"
+      ],
+      "choices": [],
+      "cost": 1
+    },
+    {
+      "id": "pr.reviewDecision",
+      "group": "pr",
+      "type": "choice",
+      "label": "Review decision",
+      "words": {
+        "noun": "the review decision",
+        "plural": false,
+        "one": "",
+        "yes": "",
+        "no": ""
+      },
+      "kinds": [
+        "pr"
+      ],
+      "choices": [
+        {
+          "value": "approved",
+          "label": "approved"
+        },
+        {
+          "value": "changesRequested",
+          "label": "changes requested"
+        },
+        {
+          "value": "reviewRequired",
+          "label": "review required"
+        },
+        {
+          "value": "none",
+          "label": "none"
+        }
+      ],
+      "cost": 1
+    },
+    {
+      "id": "pr.approvals",
+      "group": "pr",
+      "type": "number",
+      "label": "Approvals",
+      "words": {
+        "noun": "the approvals",
+        "plural": true,
+        "one": "",
+        "yes": "",
+        "no": ""
+      },
+      "kinds": [
+        "pr"
+      ],
+      "choices": [],
+      "cost": 1
+    },
+    {
+      "id": "pr.changesRequested",
+      "group": "pr",
+      "type": "number",
+      "label": "Changes requested",
+      "words": {
+        "noun": "the requests for changes",
+        "plural": true,
+        "one": "",
+        "yes": "",
+        "no": ""
+      },
+      "kinds": [
+        "pr"
+      ],
+      "choices": [],
+      "cost": 1
+    },
+    {
+      "id": "pr.asksMe",
+      "group": "pr",
+      "type": "bool",
+      "label": "Asks for my review",
+      "words": {
+        "noun": "",
+        "plural": false,
+        "one": "",
+        "yes": "it asks for your review",
+        "no": "it doesn't ask for your review"
+      },
+      "kinds": [
+        "pr"
+      ],
+      "choices": [],
+      "cost": 1
+    },
+    {
+      "id": "pr.autoMerge",
+      "group": "pr",
+      "type": "bool",
+      "label": "Auto-merge on",
+      "words": {
+        "noun": "",
+        "plural": false,
+        "one": "",
+        "yes": "auto-merge is on",
+        "no": "auto-merge is off"
+      },
+      "kinds": [
+        "pr"
+      ],
+      "choices": [],
+      "cost": 1
+    },
+    {
+      "id": "checks.state",
+      "group": "checks",
+      "type": "choice",
+      "label": "State",
+      "words": {
+        "noun": "the checks' state",
+        "plural": false,
+        "one": "",
+        "yes": "",
+        "no": ""
+      },
+      "kinds": [
+        "pr"
+      ],
+      "choices": [
+        {
+          "value": "success",
+          "label": "passing"
+        },
+        {
+          "value": "failure",
+          "label": "failing"
+        },
+        {
+          "value": "error",
+          "label": "erroring"
+        },
+        {
+          "value": "pending",
+          "label": "pending"
+        },
+        {
+          "value": "expected",
+          "label": "expected"
+        },
+        {
+          "value": "none",
+          "label": "no checks"
+        }
+      ],
+      "cost": 1
+    },
+    {
+      "id": "checks.failed",
+      "group": "checks",
+      "type": "number",
+      "label": "Failed checks",
+      "words": {
+        "noun": "the failed checks",
+        "plural": true,
+        "one": "",
+        "yes": "",
+        "no": ""
+      },
+      "kinds": [
+        "pr"
+      ],
+      "choices": [],
+      "cost": 1
+    },
+    {
+      "id": "checks.pending",
+      "group": "checks",
+      "type": "number",
+      "label": "Pending checks",
+      "words": {
+        "noun": "the pending checks",
+        "plural": true,
+        "one": "",
+        "yes": "",
+        "no": ""
+      },
+      "kinds": [
+        "pr"
+      ],
+      "choices": [],
+      "cost": 1
+    },
+    {
+      "id": "checks.passed",
+      "group": "checks",
+      "type": "number",
+      "label": "Passed checks",
+      "words": {
+        "noun": "the passed checks",
+        "plural": true,
+        "one": "",
+        "yes": "",
+        "no": ""
+      },
+      "kinds": [
+        "pr"
+      ],
+      "choices": [],
+      "cost": 1
+    },
+    {
+      "id": "checks.failedNames",
+      "group": "checks",
+      "type": "list",
+      "label": "A failed check's name",
+      "words": {
+        "noun": "the failed checks' names",
+        "plural": true,
+        "one": "a failed check's name",
+        "yes": "no check failed",
+        "no": "a check failed"
+      },
+      "kinds": [
+        "pr"
+      ],
+      "choices": [],
+      "patterns": "glob",
+      "cost": 2
+    },
+    {
+      "id": "checks.names",
+      "group": "checks",
+      "type": "list",
+      "label": "A check's name",
+      "words": {
+        "noun": "the checks' names",
+        "plural": true,
+        "one": "a check's name",
+        "yes": "it has no checks",
+        "no": "it has checks"
+      },
+      "kinds": [
+        "pr"
+      ],
+      "choices": [],
+      "patterns": "glob",
+      "cost": 2
+    },
+    {
+      "id": "checks.requiredFailed",
+      "group": "checks",
+      "type": "bool",
+      "label": "A required check failed",
+      "words": {
+        "noun": "",
+        "plural": false,
+        "one": "",
+        "yes": "a required check failed",
+        "no": "no required check failed"
+      },
+      "kinds": [
+        "pr"
+      ],
+      "choices": [],
+      "cost": 2
+    },
+    {
+      "id": "checks.awaitingApproval",
+      "group": "checks",
+      "type": "bool",
+      "label": "Runs awaiting approval",
+      "words": {
+        "noun": "",
+        "plural": false,
+        "one": "",
+        "yes": "workflow runs wait for a maintainer",
+        "no": "no workflow run waits for a maintainer"
+      },
+      "kinds": [
+        "pr"
+      ],
+      "choices": [],
+      "cost": 1
+    },
+    {
+      "id": "files.paths",
+      "group": "files",
+      "type": "list",
+      "label": "Changed paths",
+      "words": {
+        "noun": "the changed paths",
+        "plural": true,
+        "one": "a changed path",
+        "yes": "no file changed",
+        "no": "a file changed"
+      },
+      "kinds": [
+        "pr"
+      ],
+      "choices": [],
+      "patterns": "gitignore",
+      "cost": 3
+    },
+    {
+      "id": "files.sensitive",
+      "group": "files",
+      "type": "list",
+      "label": "Sensitive categories touched",
+      "words": {
+        "noun": "the sensitive categories touched",
+        "plural": true,
+        "one": "a sensitive category",
+        "yes": "no sensitive file changed",
+        "no": "a sensitive file changed"
+      },
+      "kinds": [
+        "pr"
+      ],
+      "choices": [
+        {
+          "value": "agent",
+          "label": "agent config"
+        },
+        {
+          "value": "workflows",
+          "label": "workflows"
+        },
+        {
+          "value": "tooling",
+          "label": "build tooling"
+        },
+        {
+          "value": "review",
+          "label": "review rules"
+        },
+        {
+          "value": "dependencies",
+          "label": "dependencies"
+        },
+        {
+          "value": "custom",
+          "label": "your patterns"
+        }
+      ],
+      "cost": 3
+    },
+    {
+      "id": "dep.tool",
+      "group": "dep",
+      "type": "choice",
+      "label": "Tool",
+      "words": {
+        "noun": "the update's tool",
+        "plural": false,
+        "one": "",
+        "yes": "",
+        "no": ""
+      },
+      "kinds": [
+        "pr"
+      ],
+      "choices": [
+        {
+          "value": "dependabot",
+          "label": "Dependabot"
+        },
+        {
+          "value": "renovate",
+          "label": "Renovate"
+        },
+        {
+          "value": "none",
+          "label": "neither"
+        }
+      ],
+      "cost": 0
+    },
+    {
+      "id": "dep.ecosystem",
+      "group": "dep",
+      "type": "choice",
+      "label": "Ecosystem",
+      "words": {
+        "noun": "the ecosystem",
+        "plural": false,
+        "one": "",
+        "yes": "",
+        "no": ""
+      },
+      "kinds": [
+        "pr"
+      ],
+      "choices": [
+        {
+          "value": "gomod",
+          "label": "Go modules"
+        },
+        {
+          "value": "npm",
+          "label": "npm, Yarn, and pnpm"
+        },
+        {
+          "value": "github-actions",
+          "label": "GitHub Actions"
+        },
+        {
+          "value": "docker",
+          "label": "Docker"
+        },
+        {
+          "value": "docker-compose",
+          "label": "Docker Compose"
+        },
+        {
+          "value": "pip",
+          "label": "pip"
+        },
+        {
+          "value": "uv",
+          "label": "uv"
+        },
+        {
+          "value": "bundler",
+          "label": "Bundler"
+        },
+        {
+          "value": "cargo",
+          "label": "Cargo"
+        },
+        {
+          "value": "composer",
+          "label": "Composer"
+        },
+        {
+          "value": "maven",
+          "label": "Maven"
+        },
+        {
+          "value": "gradle",
+          "label": "Gradle"
+        },
+        {
+          "value": "nuget",
+          "label": "NuGet"
+        },
+        {
+          "value": "terraform",
+          "label": "Terraform"
+        },
+        {
+          "value": "gitsubmodule",
+          "label": "Git submodules"
+        },
+        {
+          "value": "mix",
+          "label": "Hex (Mix)"
+        },
+        {
+          "value": "elm",
+          "label": "Elm"
+        },
+        {
+          "value": "pub",
+          "label": "Pub"
+        },
+        {
+          "value": "swift",
+          "label": "Swift"
+        },
+        {
+          "value": "devcontainers",
+          "label": "Dev containers"
+        },
+        {
+          "value": "bun",
+          "label": "Bun"
+        },
+        {
+          "value": "helm",
+          "label": "Helm"
+        }
+      ],
+      "cost": 0
+    },
+    {
+      "id": "dep.package",
+      "group": "dep",
+      "type": "text",
+      "label": "Package",
+      "words": {
+        "noun": "the package",
+        "plural": false,
+        "one": "",
+        "yes": "",
+        "no": ""
+      },
+      "kinds": [
+        "pr"
+      ],
+      "choices": [],
+      "cost": 0
+    },
+    {
+      "id": "dep.from",
+      "group": "dep",
+      "type": "text",
+      "label": "From version",
+      "words": {
+        "noun": "the version it updates from",
+        "plural": false,
+        "one": "",
+        "yes": "",
+        "no": ""
+      },
+      "kinds": [
+        "pr"
+      ],
+      "choices": [],
+      "cost": 0
+    },
+    {
+      "id": "dep.to",
+      "group": "dep",
+      "type": "text",
+      "label": "To version",
+      "words": {
+        "noun": "the version it updates to",
+        "plural": false,
+        "one": "",
+        "yes": "",
+        "no": ""
+      },
+      "kinds": [
+        "pr"
+      ],
+      "choices": [],
+      "cost": 0
+    },
+    {
+      "id": "dep.updateType",
+      "group": "dep",
+      "type": "choice",
+      "label": "Update type",
+      "words": {
+        "noun": "the update type",
+        "plural": false,
+        "one": "",
+        "yes": "",
+        "no": ""
+      },
+      "kinds": [
+        "pr"
+      ],
+      "choices": [
+        {
+          "value": "major",
+          "label": "major"
+        },
+        {
+          "value": "minor",
+          "label": "minor"
+        },
+        {
+          "value": "patch",
+          "label": "patch"
+        }
+      ],
+      "cost": 0
+    },
+    {
+      "id": "dep.grouped",
+      "group": "dep",
+      "type": "bool",
+      "label": "Grouped update",
+      "words": {
+        "noun": "",
+        "plural": false,
+        "one": "",
+        "yes": "it's a grouped update",
+        "no": "it isn't a grouped update"
+      },
+      "kinds": [
+        "pr"
+      ],
+      "choices": [],
+      "cost": 0
+    },
+    {
+      "id": "dep.security",
+      "group": "dep",
+      "type": "bool",
+      "label": "Security update",
+      "words": {
+        "noun": "",
+        "plural": false,
+        "one": "",
+        "yes": "it's a security update",
+        "no": "it isn't a security update"
+      },
+      "kinds": [
+        "pr"
+      ],
+      "choices": [],
+      "cost": 0
+    },
+    {
+      "id": "history.tries",
+      "group": "history",
+      "type": "number",
+      "label": "This routine's tries",
+      "words": {
+        "noun": "this routine's tries",
+        "plural": true,
+        "one": "",
+        "yes": "",
+        "no": ""
+      },
+      "kinds": [
+        "pr",
+        "issue"
+      ],
+      "choices": [],
+      "cost": 0
+    },
+    {
+      "id": "history.lastOutcome",
+      "group": "history",
+      "type": "choice",
+      "label": "Its last outcome",
+      "words": {
+        "noun": "this routine's last outcome",
+        "plural": false,
+        "one": "",
+        "yes": "",
+        "no": ""
+      },
+      "kinds": [
+        "pr",
+        "issue"
+      ],
+      "choices": [
+        {
+          "value": "none",
+          "label": "none yet"
+        },
+        {
+          "value": "done",
+          "label": "done"
+        },
+        {
+          "value": "failed",
+          "label": "failed"
+        },
+        {
+          "value": "gaveUp",
+          "label": "gave up"
+        },
+        {
+          "value": "dismissed",
+          "label": "skipped by you"
+        },
+        {
+          "value": "passed",
+          "label": "the checks passed"
+        },
+        {
+          "value": "stillFails",
+          "label": "the checks still fail"
+        }
+      ],
+      "cost": 0
+    }
+  ],
+  "ops": [
+    {
+      "id": "is",
+      "type": "text",
+      "label": "is",
+      "help": "",
+      "arity": "one",
+      "negation": "isNot"
+    },
+    {
+      "id": "isNot",
+      "type": "text",
+      "label": "isn't",
+      "help": "",
+      "arity": "one",
+      "negation": "is"
+    },
+    {
+      "id": "contains",
+      "type": "text",
+      "label": "contains",
+      "help": "",
+      "arity": "one",
+      "negation": "notContains"
+    },
+    {
+      "id": "notContains",
+      "type": "text",
+      "label": "doesn't contain",
+      "help": "",
+      "arity": "one",
+      "negation": "contains"
+    },
+    {
+      "id": "startsWith",
+      "type": "text",
+      "label": "starts with",
+      "help": "",
+      "arity": "one",
+      "negation": ""
+    },
+    {
+      "id": "matches",
+      "type": "text",
+      "label": "matches the pattern",
+      "help": "* matches any run of characters and ? one, ignoring case.",
+      "arity": "one",
+      "negation": ""
+    },
+    {
+      "id": "matchesRegex",
+      "type": "text",
+      "label": "matches the regex",
+      "help": "A Go (RE2) regular expression, ignoring case.",
+      "arity": "one",
+      "negation": ""
+    },
+    {
+      "id": "hasAny",
+      "type": "list",
+      "label": "has any of",
+      "help": "",
+      "arity": "many",
+      "negation": "hasNone"
+    },
+    {
+      "id": "hasAll",
+      "type": "list",
+      "label": "has all of",
+      "help": "Holds every one of them; an empty list holds none, so it doesn't match.",
+      "arity": "many",
+      "negation": ""
+    },
+    {
+      "id": "hasNone",
+      "type": "list",
+      "label": "has none of",
+      "help": "",
+      "arity": "many",
+      "negation": "hasAny"
+    },
+    {
+      "id": "anyContains",
+      "type": "list",
+      "label": "contains any of",
+      "help": "",
+      "arity": "many",
+      "negation": "noneContains"
+    },
+    {
+      "id": "noneContains",
+      "type": "list",
+      "label": "contains none of",
+      "help": "",
+      "arity": "many",
+      "negation": "anyContains"
+    },
+    {
+      "id": "anyMatches",
+      "type": "list",
+      "label": "any matches",
+      "help": "",
+      "arity": "many",
+      "negation": ""
+    },
+    {
+      "id": "allMatch",
+      "type": "list",
+      "label": "all match",
+      "help": "Every one matches one of the patterns; an empty list doesn't match, so a pull request that changes no file never has all its paths under docs/.",
+      "arity": "many",
+      "negation": ""
+    },
+    {
+      "id": "isEmpty",
+      "type": "list",
+      "label": "is empty",
+      "help": "",
+      "arity": "none",
+      "negation": "notEmpty"
+    },
+    {
+      "id": "notEmpty",
+      "type": "list",
+      "label": "isn't empty",
+      "help": "",
+      "arity": "none",
+      "negation": "isEmpty"
+    },
+    {
+      "id": "eq",
+      "type": "number",
+      "label": "=",
+      "help": "",
+      "arity": "one",
+      "negation": "ne"
+    },
+    {
+      "id": "ne",
+      "type": "number",
+      "label": "≠",
+      "help": "",
+      "arity": "one",
+      "negation": "eq"
+    },
+    {
+      "id": "lt",
+      "type": "number",
+      "label": "\u003c",
+      "help": "",
+      "arity": "one",
+      "negation": "gte"
+    },
+    {
+      "id": "lte",
+      "type": "number",
+      "label": "≤",
+      "help": "",
+      "arity": "one",
+      "negation": "gt"
+    },
+    {
+      "id": "gt",
+      "type": "number",
+      "label": "\u003e",
+      "help": "",
+      "arity": "one",
+      "negation": "lte"
+    },
+    {
+      "id": "gte",
+      "type": "number",
+      "label": "≥",
+      "help": "",
+      "arity": "one",
+      "negation": "lt"
+    },
+    {
+      "id": "isYes",
+      "type": "bool",
+      "label": "is yes",
+      "help": "",
+      "arity": "none",
+      "negation": "isNo"
+    },
+    {
+      "id": "isNo",
+      "type": "bool",
+      "label": "is no",
+      "help": "",
+      "arity": "none",
+      "negation": "isYes"
+    },
+    {
+      "id": "oneOf",
+      "type": "choice",
+      "label": "is any of",
+      "help": "",
+      "arity": "many",
+      "negation": "noneOf"
+    },
+    {
+      "id": "noneOf",
+      "type": "choice",
+      "label": "is none of",
+      "help": "",
+      "arity": "many",
+      "negation": "oneOf"
+    },
+    {
+      "id": "moreThan",
+      "type": "duration",
+      "label": "more than",
+      "help": "",
+      "arity": "one",
+      "negation": ""
+    },
+    {
+      "id": "lessThan",
+      "type": "duration",
+      "label": "less than",
+      "help": "",
+      "arity": "one",
+      "negation": ""
+    }
+  ],
+  "lists": [
+    {
+      "id": "reviewRequested",
+      "label": "Review requested",
+      "kinds": [
+        "pr"
+      ]
+    },
+    {
+      "id": "authored",
+      "label": "Authored",
+      "kinds": [
+        "pr",
+        "issue"
+      ]
+    },
+    {
+      "id": "assigned",
+      "label": "Assigned",
+      "kinds": [
+        "pr",
+        "issue"
+      ]
+    }
+  ],
+  "steps": [
+    {
+      "kind": "notify",
+      "label": "Notify me",
+      "help": "A banner and an entry in the Notifications page, with the reason.",
+      "dispatcher": "notices",
+      "local": true,
+      "asksFirst": false,
+      "undo": false,
+      "kinds": [
+        "pr",
+        "issue"
+      ],
+      "offered": true
+    },
+    {
+      "kind": "pin",
+      "label": "Pin",
+      "help": "Pins it in the inbox, marked with the routine that did it.",
+      "dispatcher": "triage",
+      "local": true,
+      "asksFirst": false,
+      "undo": true,
+      "kinds": [
+        "pr",
+        "issue"
+      ],
+      "offered": true
+    },
+    {
+      "kind": "snooze",
+      "label": "Snooze",
+      "help": "Snoozes it for a number of days, under your wake rules. What you set aside yourself stays as you left it.",
+      "dispatcher": "triage",
+      "local": true,
+      "asksFirst": false,
+      "undo": true,
+      "kinds": [
+        "pr",
+        "issue"
+      ],
+      "offered": true
+    },
+    {
+      "kind": "dismiss",
+      "label": "Dismiss",
+      "help": "Dismisses it from the inbox until it's restored. What you set aside yourself stays as you left it.",
+      "dispatcher": "triage",
+      "local": true,
+      "asksFirst": false,
+      "undo": true,
+      "kinds": [
+        "pr",
+        "issue"
+      ],
+      "offered": true
+    },
+    {
+      "kind": "restore",
+      "label": "Restore",
+      "help": "Brings it back from a snooze or a dismissal, yours too, to your attention when the routine's conditions hold.",
+      "dispatcher": "triage",
+      "local": true,
+      "asksFirst": false,
+      "undo": true,
+      "kinds": [
+        "pr",
+        "issue"
+      ],
+      "offered": true
+    },
+    {
+      "kind": "markDone",
+      "label": "Mark the GitHub notification done",
+      "help": "Marks this item's GitHub notifications done, as the Notifications page's Done does.",
+      "dispatcher": "github",
+      "local": true,
+      "asksFirst": false,
+      "undo": false,
+      "kinds": [
+        "pr",
+        "issue"
+      ],
+      "offered": false
+    },
+    {
+      "kind": "github",
+      "label": "GitHub actions",
+      "help": "The app's own writes, pinned to the head the match was decided on.",
+      "dispatcher": "github",
+      "local": false,
+      "asksFirst": true,
+      "undo": false,
+      "kinds": [
+        "pr",
+        "issue"
+      ],
+      "offered": false
+    },
+    {
+      "kind": "agent",
+      "label": "Run a coding agent",
+      "help": "Starts the routine's agent on the item with a library prompt.",
+      "dispatcher": "agent",
+      "local": false,
+      "asksFirst": true,
+      "undo": false,
+      "kinds": [
+        "pr",
+        "issue"
+      ],
+      "offered": false
+    },
+    {
+      "kind": "waitForChecks",
+      "label": "Wait for the checks",
+      "help": "Follows the checks on the agent's pushed commit until every one has finished and settled.",
+      "dispatcher": "verify",
+      "local": false,
+      "asksFirst": false,
+      "undo": false,
+      "kinds": [
+        "pr"
+      ],
+      "offered": false
+    },
+    {
+      "kind": "merge",
+      "label": "Merge it",
+      "help": "Once the checks passed, turns auto-merge back on if it was on, else merges when GitHub allows.",
+      "dispatcher": "merging",
+      "local": false,
+      "asksFirst": true,
+      "undo": false,
+      "kinds": [
+        "pr"
+      ],
+      "offered": false
+    },
+    {
+      "kind": "postReview",
+      "label": "Post the agent's review",
+      "help": "Posts what a read-only agent step wrote, as a comment or as its verdict.",
+      "dispatcher": "review",
+      "local": false,
+      "asksFirst": true,
+      "undo": false,
+      "kinds": [
+        "pr"
+      ],
+      "offered": false
+    },
+    {
+      "kind": "tellMe",
+      "label": "Tell me",
+      "help": "A notice when the routine reaches this step, with what happened.",
+      "dispatcher": "notices",
+      "local": true,
+      "asksFirst": false,
+      "undo": false,
+      "kinds": [
+        "pr",
+        "issue"
+      ],
+      "offered": true
+    }
+  ],
+  "githubActions": [],
+  "outcomes": [
+    {
+      "id": "passed",
+      "label": "the checks passed",
+      "from": "waitForChecks"
+    },
+    {
+      "id": "stillFails",
+      "label": "the checks still fail",
+      "from": "waitForChecks"
+    },
+    {
+      "id": "pushed",
+      "label": "it pushed",
+      "from": "agent"
+    },
+    {
+      "id": "notPushed",
+      "label": "it didn't push",
+      "from": "agent"
+    },
+    {
+      "id": "approve",
+      "label": "its verdict was approve",
+      "from": "agent"
+    },
+    {
+      "id": "requestChanges",
+      "label": "its verdict was request changes",
+      "from": "agent"
+    }
+  ],
+  "presets": [
+    {
+      "id": "readOnly",
+      "label": "Read only",
+      "help": "Reads and plans; changes nothing.",
+      "mayPush": false,
+      "readOnly": true
+    },
+    {
+      "id": "githubTasks",
+      "label": "GitHub tasks only",
+      "help": "Only the gh commands for small GitHub changes: re-run failed jobs, a comment, a label.",
+      "mayPush": false,
+      "readOnly": false
+    },
+    {
+      "id": "editTest",
+      "label": "Edit and test, no push",
+      "help": "Edits and runs the repository's checks; never pushes.",
+      "mayPush": false,
+      "readOnly": false
+    },
+    {
+      "id": "editTestPush",
+      "label": "Edit, test, and push to the PR's branch",
+      "help": "As Edit and test, plus exactly one push, to the pull request's own branch.",
+      "mayPush": true,
+      "readOnly": false
+    },
+    {
+      "id": "profile",
+      "label": "The profile's own permissions",
+      "help": "Exactly what a click passes, within the fence's hard lines.",
+      "mayPush": true,
+      "readOnly": false
+    }
+  ],
+  "agentSettings": [
+    {
+      "id": "prompt",
+      "label": "Prompt",
+      "help": "A library prompt for the item's kind.",
+      "default": "the template's",
+      "range": null,
+      "choices": []
+    },
+    {
+      "id": "where",
+      "label": "Where",
+      "help": "A terminal run is exactly a click's launch, and defaults its routine to Ask first.",
+      "default": "In the background",
+      "range": null,
+      "choices": [
+        {
+          "value": "background",
+          "label": "In the background"
+        },
+        {
+          "value": "terminal",
+          "label": "In my terminal"
+        }
+      ]
+    },
+    {
+      "id": "agent",
+      "label": "Agent",
+      "help": "The launch defaults' agent, as a click.",
+      "default": "Inherit",
+      "range": null,
+      "choices": []
+    },
+    {
+      "id": "profile",
+      "label": "Profile",
+      "help": "The launch defaults' profile, as a click.",
+      "default": "Inherit",
+      "range": null,
+      "choices": []
+    },
+    {
+      "id": "fallbacks",
+      "label": "Fallbacks",
+      "help": "Profiles to use when one is out of usage, another agent's included.",
+      "default": "None",
+      "range": {
+        "min": 0,
+        "max": 3,
+        "default": 0,
+        "unit": "profiles"
+      },
+      "choices": []
+    },
+    {
+      "id": "model",
+      "label": "Model",
+      "help": "",
+      "default": "Inherit",
+      "range": null,
+      "choices": []
+    },
+    {
+      "id": "effort",
+      "label": "Effort",
+      "help": "",
+      "default": "Inherit",
+      "range": null,
+      "choices": []
+    },
+    {
+      "id": "planMode",
+      "label": "Plan mode",
+      "help": "For terminal runs; in the background, Tools decides.",
+      "default": "Inherit",
+      "range": null,
+      "choices": []
+    },
+    {
+      "id": "worktree",
+      "label": "Worktree",
+      "help": "For terminal runs; in the background, always on.",
+      "default": "Inherit",
+      "range": null,
+      "choices": []
+    },
+    {
+      "id": "launchFor",
+      "label": "Launch settings per org or repository",
+      "help": "Rows that override the agent, profile, model, and effort for one org or repository.",
+      "default": "None",
+      "range": null,
+      "choices": []
+    },
+    {
+      "id": "budget",
+      "label": "Budget per run",
+      "help": "Dollars, for an agent that enforces one, or tokens, for any agent whose stream reports usage.",
+      "default": "$3",
+      "range": {
+        "min": 50,
+        "max": 5000,
+        "default": 300,
+        "unit": "cents"
+      },
+      "choices": []
+    },
+    {
+      "id": "timeoutMinutes",
+      "label": "Time limit",
+      "help": "",
+      "default": "30 min",
+      "range": {
+        "min": 5,
+        "max": 180,
+        "default": 30,
+        "unit": "minutes"
+      },
+      "choices": []
+    },
+    {
+      "id": "tools",
+      "label": "Tools",
+      "help": "",
+      "default": "Edit, test, and push",
+      "range": null,
+      "choices": [
+        {
+          "value": "readOnly",
+          "label": "Read only"
+        },
+        {
+          "value": "githubTasks",
+          "label": "GitHub tasks only"
+        },
+        {
+          "value": "editTest",
+          "label": "Edit and test, no push"
+        },
+        {
+          "value": "editTestPush",
+          "label": "Edit, test, and push to the PR's branch"
+        },
+        {
+          "value": "profile",
+          "label": "The profile's own permissions"
+        }
+      ]
+    },
+    {
+      "id": "allow",
+      "label": "Extra commands to allow",
+      "help": "Never loosens the fence's hard lines.",
+      "default": "None",
+      "range": null,
+      "choices": []
+    },
+    {
+      "id": "deny",
+      "label": "Extra commands to deny",
+      "help": "",
+      "default": "None",
+      "range": null,
+      "choices": []
+    }
+  ],
+  "limits": [
+    {
+      "id": "oncePer",
+      "label": "Once per",
+      "help": "",
+      "default": "The trigger's",
+      "range": null,
+      "choices": [
+        {
+          "value": "item",
+          "label": "item"
+        },
+        {
+          "value": "headCommit",
+          "label": "head commit"
+        },
+        {
+          "value": "day",
+          "label": "day"
+        }
+      ]
+    },
+    {
+      "id": "triesPerItem",
+      "label": "Tries per item",
+      "help": "",
+      "default": "2",
+      "range": {
+        "min": 1,
+        "max": 10,
+        "default": 2,
+        "unit": "tries"
+      },
+      "choices": []
+    },
+    {
+      "id": "runsPerDay",
+      "label": "Runs a day",
+      "help": "",
+      "default": "10",
+      "range": {
+        "min": 1,
+        "max": 100,
+        "default": 10,
+        "unit": "runs"
+      },
+      "choices": []
+    },
+    {
+      "id": "waitMinutes",
+      "label": "Wait between tries on one item",
+      "help": "",
+      "default": "30 min",
+      "range": {
+        "min": 0,
+        "max": 1440,
+        "default": 30,
+        "unit": "minutes"
+      },
+      "choices": []
+    },
+    {
+      "id": "activeHours",
+      "label": "Active hours",
+      "help": "",
+      "default": "Always",
+      "range": null,
+      "choices": []
+    },
+    {
+      "id": "budgetPerDay",
+      "label": "Daily budget",
+      "help": "In dollars or in tokens; Settings → Autopilot's daily cap still holds beside it.",
+      "default": "Off",
+      "range": {
+        "min": 100,
+        "max": 50000,
+        "default": 0,
+        "unit": "cents"
+      },
+      "choices": []
+    }
+  ]
+}

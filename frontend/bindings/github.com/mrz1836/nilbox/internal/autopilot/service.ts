@@ -69,6 +69,17 @@ export function Delete(id: number): $CancellablePromise<void> {
 }
 
 /**
+ * Describe reads the draft d as the builder shows it while it is edited: its sentence,
+ * the problems Save would refuse it for (the spec's own, and a prompt the library doesn't
+ * have or that doesn't apply to the items it acts on), its warnings, and the steps this
+ * build runs only in Dry run. It saves nothing, reads only the prompt library and the
+ * settings, and never asks GitHub.
+ */
+export function Describe(d: $models.Draft): $CancellablePromise<$models.Described> {
+    return $Call.ByID(2101860014, d);
+}
+
+/**
  * Duplicate saves a copy of the routine id, switched off and called "<name> copy", right
  * after it in the list, and returns the copy. The copy belongs to the account signed in,
  * or to the routine's own when none is.

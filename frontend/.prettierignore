@@ -2,6 +2,8 @@
 bindings/
 src/generated/
 pnpm-lock.yaml
+# The Autopilot catalog the builder's tests render, written by a Go test from the catalog.
+src/test/autopilotCatalog.json
 
 # Build and test output.
 dist/
