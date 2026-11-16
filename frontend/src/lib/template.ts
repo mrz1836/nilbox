@@ -37,6 +37,7 @@ const functions = new Set([
   'printf',
   'print',
   'println',
+  'shellquote',
   'call',
   'index',
   'slice',

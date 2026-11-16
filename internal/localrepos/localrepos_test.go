@@ -348,6 +348,28 @@ func TestRemoteFor(t *testing.T) {
 	assert.False(t, ok)
 }
 
+// TestRemoteForSkipsARemoteGitWouldReadAsAnOption checks that a remote named like an
+// option is never chosen, though "-" sorts before every letter: another remote for the
+// repository is, and with none the clone has no remote for it.
+func TestRemoteForSkipsARemoteGitWouldReadAsAnOption(t *testing.T) {
+	t.Parallel()
+
+	clone := LocalRepo{Remotes: map[string]repo.Name{
+		"--upload-pack=touch": exampleRepo(),
+		"-x":                  exampleRepo(),
+		"upstream":            exampleRepo(),
+	}}
+
+	remote, ok := clone.RemoteFor(exampleRepo())
+	assert.True(t, ok)
+	assert.Equal(t, "upstream", remote)
+
+	delete(clone.Remotes, "upstream")
+
+	_, ok = clone.RemoteFor(exampleRepo())
+	assert.False(t, ok)
+}
+
 func TestInspect(t *testing.T) {
 	t.Parallel()
 

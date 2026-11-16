@@ -45,6 +45,18 @@ describe('tokenize', () => {
     ])
   })
 
+  it('reads shellquote as a function', () => {
+    expect(kinds('`git switch {{shellquote .Branch}}`')).toEqual([
+      'text:`git switch ',
+      'delim:{{',
+      'function:shellquote',
+      'code: ',
+      'variable:.Branch',
+      'delim:}}',
+      'text:`',
+    ])
+  })
+
   it('reads root variables, local variables, and dotted paths', () => {
     expect(kinds('{{$.Title}}{{$n := .Number}}{{.Title.Len}}')).toEqual([
       'delim:{{',

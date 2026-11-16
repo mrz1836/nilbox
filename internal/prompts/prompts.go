@@ -7,7 +7,8 @@
 // and explains each problem with its line and column. The app adds the starter prompts
 // once each (see Seed), and from then on every prompt is the user's to change or delete,
 // except while it is a default somewhere: Delete refuses a prompt that is in use, and
-// Update refuses to stop it applying to a kind it is a default for.
+// Update refuses to stop it applying to a kind it is a default for. A starter the user
+// never changed takes a later build's text (Starter.Earlier).
 //
 // A Store reads and writes the library; the launcher and the launch defaults read it
 // through interfaces of their own. The Service the window binds to checks prompts before

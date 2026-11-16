@@ -279,6 +279,13 @@ func cleanImport(in BundlePrompt) (BundlePrompt, []string) {
 	p.Name, p.Nickname = cmpOr(p.Name, p.Nickname, untitledName), cmpOr(p.Nickname, p.Name, untitledNickname)
 	p.Name, p.Nickname = textutil.Clip(p.Name, maxNameRunes), textutil.Clip(p.Nickname, maxNicknameRunes)
 
+	// A starter whose text is still one an earlier build shipped comes in with this
+	// build's text, its title and settings as the file has them, as Seed brings a stored
+	// copy up to date, so a file never brings back a text a later build fixed.
+	if current, ok := upToDate(bundledAsPrompt(p)); ok {
+		p.Body = current.Body
+	}
+
 	if p.Purpose == PurposeReply {
 		return cleanReply(p)
 	}
