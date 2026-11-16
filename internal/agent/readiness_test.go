@@ -1,6 +1,8 @@
 package agent
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -93,6 +95,30 @@ func TestParseSignInCodex(t *testing.T) {
 	assert.Equal(t, SignedOut, got.State)
 
 	assert.Equal(t, SignInUnknown, ParseSignIn("other", []byte("Logged in"), true).State)
+}
+
+// TestParseSignInCodexRecorded reads what codex-cli 0.163.0's `login status` wrote, to
+// stderr alone, recorded and sanitized.
+func TestParseSignInCodexRecorded(t *testing.T) {
+	t.Parallel()
+
+	in, err := os.ReadFile(filepath.Join("testdata", "codex", "login-status-signed-in.stderr.txt"))
+	require.NoError(t, err)
+
+	out, err := os.ReadFile(filepath.Join("testdata", "codex", "login-status-signed-out.stderr.txt"))
+	require.NoError(t, err)
+
+	// What core hands the parser: stdout (empty), a newline, then stderr.
+	assert.Equal(t, SignIn{State: SignedIn, Method: "chatgpt"}, ParseSignIn(Codex, append([]byte("\n"), in...), true))
+	assert.Equal(t, SignedOut, ParseSignIn(Codex, append([]byte("\n"), out...), false).State,
+		"it exits 1 when signed out")
+}
+
+func TestParseSignInClaudeIgnoresWhatFollowsItsJSON(t *testing.T) {
+	t.Parallel()
+
+	got := ParseSignIn(Claude, []byte(`{"loggedIn": true, "subscriptionType": "max"}`+"\n"+"a warning on stderr\n"), true)
+	assert.Equal(t, SignIn{State: SignedIn, Subscription: "max"}, got)
 }
 
 func TestSignInKeepsNoKeyText(t *testing.T) {

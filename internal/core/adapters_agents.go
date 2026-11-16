@@ -61,6 +61,14 @@ type agentDeps struct {
 	// runners runs an agent's command with an environment of its own.
 	runners func(env []string) execpath.Runner
 
+	// environ is the login shell's environment, and whether it was read; nil reads this
+	// process's. The checks never log a variable's name or value.
+	environ func() ([]string, bool)
+
+	// finder finds programs as the agent does; nil searches the login shell's PATH, then
+	// the well-known folders.
+	finder execpath.Finder
+
 	// github checks the GitHub sign-in as the setup does, for Check again; nil until the
 	// setup is built, which is after the routines.
 	github func(ctx context.Context) (setup.GitHub, error)
@@ -645,7 +653,11 @@ func githubCheck(g setup.GitHub) autopilot.ReadyCheck {
 
 // search finds programs as the agent does: on the login shell's PATH, then the well-known
 // folders.
-func (r *readyChecks) search() execpath.Search {
+func (r *readyChecks) search() execpath.Finder {
+	if r.deps.finder != nil {
+		return r.deps.finder
+	}
+
 	s := r.deps.search
 	if r.deps.shell != nil {
 		s.Path = r.deps.shell.Path()
@@ -702,7 +714,7 @@ func (r *readyChecks) agentCheck(ctx context.Context, id string, fresh bool) aut
 // runner runs an agent's command with env, the login shell's when nil.
 func (r *readyChecks) runner(env []string) execpath.Runner {
 	if r.deps.runners == nil {
-		return execpath.Exec{Search: r.search(), Env: env}
+		return execpath.Exec{Search: r.deps.search, Env: env}
 	}
 
 	return r.deps.runners(env)
@@ -769,16 +781,18 @@ func (r *readyChecks) profile(ctx context.Context, s settings.Settings, id, name
 	}
 
 	return r.slowly("profile:"+id+"/"+name, fresh, func() autopilot.ReadyCheck {
-		stdout, _, runErr := r.runner(env).Run(ctx, path, a.SignInArgs...)
+		// Codex writes its sign-in to stderr alone; Claude Code's JSON comes on stdout.
+		stdout, stderr, runErr := r.runner(env).Run(ctx, path, a.SignInArgs...)
+		out := append(append(slices.Clone(stdout), '\n'), stderr...)
 
-		return signInCheck(label, agent.ParseSignIn(a.ID, stdout, runErr == nil), loginFix(a, p.ConfigDir, r.deps.home))
+		return signInCheck(label, agent.ParseSignIn(a.ID, out, runErr == nil), loginFix(a, p.ConfigDir, r.deps.home))
 	})
 }
 
 // shellEnv is the login shell's environment, or this process's before it is read.
 func (r *readyChecks) shellEnv() []string {
-	if r.deps.shell != nil {
-		if env, read := r.deps.shell.Env(); read {
+	if r.deps.environ != nil {
+		if env, read := r.deps.environ(); read {
 			return env
 		}
 	}

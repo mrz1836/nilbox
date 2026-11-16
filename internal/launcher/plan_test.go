@@ -536,7 +536,7 @@ func TestBuildPlanForCodex(t *testing.T) {
 	assert.True(t, got.PromptLast)
 	assert.Equal(t, agent.Codex, got.Agent)
 	assert.Equal(t, map[string]string{codexConfigEnv: absPath("home", ".codex_work")}, got.Env)
-	assert.Equal(t, []string{"OPENAI_API_KEY", "CODEX_API_KEY"}, got.Unset,
+	assert.Equal(t, []string{"OPENAI_API_KEY", "CODEX_API_KEY", "CODEX_ACCESS_TOKEN"}, got.Unset,
 		"an API key in the environment never signs Codex in while the setting is off")
 
 	req.UseAPIKey = true
@@ -555,7 +555,7 @@ func TestBuildPlanForCodex(t *testing.T) {
 
 	got, err = BuildPlan(req)
 	require.NoError(t, err)
-	assert.Equal(t, []string{codexConfigEnv, "OPENAI_API_KEY", "CODEX_API_KEY"}, got.Unset,
+	assert.Equal(t, []string{codexConfigEnv, "OPENAI_API_KEY", "CODEX_API_KEY", "CODEX_ACCESS_TOKEN"}, got.Unset,
 		"the default profile runs without CODEX_HOME")
 
 	req.Profile.ExtraArgs = []string{"-c", "sandbox_mode=danger-full-access"}

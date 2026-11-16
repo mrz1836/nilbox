@@ -174,7 +174,7 @@ func (s launchSettings) Get(ctx context.Context) (LaunchSettings, error) {
 	return LaunchSettings{
 		DefaultAgent: all.DefaultAgent, DefaultProfiles: all.DefaultProfiles, WorktreeDefault: all.WorktreeDefault,
 		Terminal: all.Terminal, CloneRoot: all.CloneRoot, CloneLocations: all.CloneLocations, TrustedBots: all.TrustedBots,
-		EffortOverrides: all.CodexEffort, FastMode: all.CodexFast,
+		EffortOverrides: all.CodexEffort, FastMode: all.CodexFast, APIKeys: all.APIKeys(),
 	}, nil
 }
 
@@ -192,6 +192,9 @@ type fakeMaker struct {
 
 	// notice is what the fake says it worked around, or "".
 	notice string
+
+	// dirty is how many files an existing worktree has uncommitted.
+	dirty int
 }
 
 // worktreeOf is where the fake makes a request's worktree.
@@ -233,7 +236,7 @@ func (m *fakeMaker) answer(req WorktreeRequest) Worktree {
 	wt := Worktree{Path: path, Branch: "worktree-" + filepath.Base(path), Action: WorktreeCreate, Dirty: 0, Notice: m.notice}
 
 	if _, err := os.Stat(path); err == nil {
-		wt.Action, wt.Head = WorktreeResume, m.head
+		wt.Action, wt.Head, wt.Dirty = WorktreeResume, m.head, m.dirty
 	} else if req.Kind == item.KindPR {
 		wt.Base = "the pull request's head"
 	} else {

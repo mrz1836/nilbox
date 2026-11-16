@@ -199,7 +199,7 @@ func TestPreviewMatchesLaunch(t *testing.T) {
 	codex, err := h.service().Preview(t.Context(), LaunchRequest{ItemID: h.issue, Agent: agent.Codex, Profile: "work"})
 	require.NoError(t, err)
 	assert.Equal(t, "codex --sandbox workspace-write -- <prompt>", codex.Command, "Codex's prompt comes last")
-	assert.Equal(t, []string{"unset OPENAI_API_KEY", "unset CODEX_API_KEY", "CODEX_HOME=~/.codex_work"}, codex.Env)
+	assert.Equal(t, []string{"unset OPENAI_API_KEY", "unset CODEX_API_KEY", "unset CODEX_ACCESS_TOKEN", "CODEX_HOME=~/.codex_work"}, codex.Env)
 	assert.Equal(t, "origin/main", codex.Worktree.Base)
 }
 

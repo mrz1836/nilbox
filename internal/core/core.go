@@ -731,7 +731,7 @@ func assemble(ctx context.Context, pool *sql.DB, info startup, opts Options, log
 	agents := agentDeps{
 		launch: launch, prompts: promptStore, profiles: profileStore, settings: prefs, defaults: defaultsStore,
 		inbox: inboxStore, status: serviceStatus, shell: shellEnv, search: search, registry: registry,
-		banners: opts.Banners, home: opts.Home, logger: logger, runners: agentRunners,
+		banners: opts.Banners, home: opts.Home, logger: logger, runners: agentRunners, environ: shellEnv.Env,
 	}
 	readiness := newReadyChecks(agents)
 	routines := newAutopilot(pool, opts, autopilotDeps{

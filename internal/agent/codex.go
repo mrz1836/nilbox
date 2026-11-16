@@ -50,9 +50,12 @@ func (codex) info() Agent {
 		ModelsCache:     "models_cache.json",
 		VersionArgs:     []string{"--version"},
 		SignInArgs:      []string{"login", "status"},
-		KeyEnv:          []string{"OPENAI_API_KEY", "CODEX_API_KEY"},
-		LoginArgs:       []string{"login"},
-		StatusPart:      "openai.codex-cli",
+		// CODEX_API_KEY and CODEX_ACCESS_TOKEN override the ChatGPT sign-in (codex-cli
+		// 0.163.0, while `codex login status` still says ChatGPT); OPENAI_API_KEY doesn't
+		// today, and is dropped too to be safe.
+		KeyEnv:     []string{"OPENAI_API_KEY", "CODEX_API_KEY", "CODEX_ACCESS_TOKEN"},
+		LoginArgs:  []string{"login"},
+		StatusPart: "openai.codex-cli",
 	}
 }
 

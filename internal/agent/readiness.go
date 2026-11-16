@@ -54,8 +54,9 @@ func ParseVersion(out []byte) string {
 	return string(versionPattern.Find(out))
 }
 
-// ParseSignIn reads what the agent's SignInArgs printed, and whether the command exited
-// cleanly. An agent this build doesn't know is unknown.
+// ParseSignIn reads what the agent's SignInArgs printed, on stdout and stderr together (Codex's
+// `login status` writes to stderr alone), and whether the command exited cleanly. An agent
+// this build doesn't know is unknown.
 func ParseSignIn(id ID, out []byte, exitOK bool) SignIn {
 	switch id {
 	case Claude:
@@ -84,7 +85,9 @@ type claudeStatus struct {
 func claudeSignIn(out []byte, exitOK bool) SignIn {
 	var st claudeStatus
 
-	if start := bytes.IndexByte(out, '{'); start >= 0 && json.Unmarshal(out[start:], &st) == nil && st.LoggedIn != nil {
+	// The first JSON value is the status; whatever follows it (stderr's text) is left.
+	if start := bytes.IndexByte(out, '{'); start >= 0 && json.NewDecoder(bytes.NewReader(out[start:])).Decode(&st) == nil &&
+		st.LoggedIn != nil {
 		if !*st.LoggedIn {
 			return SignIn{State: SignedOut}
 		}

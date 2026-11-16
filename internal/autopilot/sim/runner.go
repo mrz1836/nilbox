@@ -31,11 +31,33 @@ type Runner struct {
 	aliveErr   error
 	stopFails  int
 	stopGate   chan struct{}
+
+	// answers are what the next starts answer with instead of starting, as a launch the
+	// launcher held back does, and held the jobs each answered.
+	answers []autopilot.Result
+	held    []autopilot.Job
 }
 
 // NewRunner returns a runner with nothing going.
 func NewRunner() *Runner {
 	return &Runner{going: map[int64]autopilot.Job{}}
+}
+
+// AnswerWith has the next starts answer with each of results in turn instead of starting,
+// as launches the launcher held back.
+func (r *Runner) AnswerWith(results ...autopilot.Result) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	r.answers = append(r.answers, results...)
+}
+
+// Held returns the jobs answered with AnswerWith's results, in order.
+func (r *Runner) Held() []autopilot.Job {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	return slices.Clone(r.held)
 }
 
 // Close closes the runner, as the run engine closes at quit: a start fails with
@@ -140,6 +162,15 @@ func (r *Runner) Lose(runID int64) {
 // Dispatch starts a run.
 func (r *Runner) Dispatch(ctx context.Context, job autopilot.Job) (autopilot.Result, error) {
 	r.mu.Lock()
+	if len(r.answers) > 0 {
+		res := r.answers[0]
+		r.answers = r.answers[1:]
+		r.held = append(r.held, job)
+		r.mu.Unlock()
+
+		return res, nil
+	}
+
 	gate, first := r.gate, r.startFirst
 
 	if first {

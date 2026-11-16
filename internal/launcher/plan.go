@@ -346,9 +346,10 @@ func addDirs(dirs []string) ([]string, error) {
 //     default profile unsets it, so the agent's own default sign-in is used.
 //   - Unless useKey, the variables that would sign the agent in with an API key in place of
 //     the profile's own sign-in (agent.Agent.KeyEnv: Claude Code's ANTHROPIC_API_KEY and
-//     ANTHROPIC_AUTH_TOKEN, Codex's OPENAI_API_KEY and CODEX_API_KEY) are unset, and left
-//     out of the profile's env, so the profile's sign-in is the one used. With useKey, a
-//     key in the environment passes through, as the user's setting asked.
+//     ANTHROPIC_AUTH_TOKEN, Codex's OPENAI_API_KEY, CODEX_API_KEY, and
+//     CODEX_ACCESS_TOKEN) are unset, and left out of the profile's env, so the profile's
+//     sign-in is the one used. With useKey, a key in the environment passes through, as
+//     the user's setting asked.
 func AgentEnv(a agent.Agent, p profiles.Profile, useKey bool) (map[string]string, []string, error) {
 	env := make(map[string]string, len(p.Env)+1)
 	for key, value := range p.Env {
