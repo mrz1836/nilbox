@@ -230,12 +230,27 @@ func TestTwoCopiesNeverUndoEachOthersWatches(t *testing.T) {
 		m := only(t, s)
 		require.Equal(t, autopilot.BlockAsk, m.BlockedBy)
 
-		// The other copy's refreshes send no search, so they never drop the holder's rows.
+		// A routine with a search of its own, switched on in the copy that runs the engine,
+		// which the other copy's snapshot doesn't have: the other copy's refreshes send no
+		// search at all, so they never drop the rows of that one.
+		labeled := sim.Pins()
+		labeled.Watch.Sources[0].Search.Labels = []string{"dependencies"}
+		pins := s.Save("Pin labeled", labeled, autopilotprefs.ModeAsk)
+		s.Enable(pins.ID, autopilot.CurrentRun)
+		s.Refresh()
+
+		watched, err := s.Service.Watching(t.Context(), pins.ID)
+		require.NoError(t, err)
+		require.Len(t, watched, 1)
+
 		other.Refresh()
 		other.Refresh()
 		s.Advance(time.Minute, false)
 
-		assert.Equal(t, autopilot.BlockAsk, only(t, s).BlockedBy, "the match still waits, never closed as left")
+		watched, err = s.Service.Watching(t.Context(), pins.ID)
+		require.NoError(t, err)
+		assert.Len(t, watched, 1, "the other copy's refresh left the holder's rows alone")
+		assert.Equal(t, autopilot.BlockAsk, s.Matches()[0].BlockedBy, "the match still waits, never closed as left")
 	})
 }
 
