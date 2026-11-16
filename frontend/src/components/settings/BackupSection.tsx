@@ -160,8 +160,8 @@ export function BackupSection({ onSaved, onLaunchChanged, theme, onThemeChange }
             </button>
           }
         >
-          Saves your settings, repositories, prompts and replies, launch defaults, your own scripts, and your Autopilot
-          routines to one file, readable only by you, to keep or to bring to another Mac.
+          Saves your settings, repositories, prompts and replies, launch defaults, and your own scripts to one file,
+          readable only by you, to keep or to bring to another Mac.
         </SectionIntro>
         <OutcomeLine outcome={exported} />
       </div>

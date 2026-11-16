@@ -20,7 +20,6 @@ const wiped = [
 
 const kept = [
   'Your prompts, launch defaults, and your own scripts',
-  'Your Autopilot routines, switched off',
   'Your backups and logs',
   'Your clones and worktrees on disk, your agents’ own config, and GitHub itself',
 ]

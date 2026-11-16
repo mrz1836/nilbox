@@ -206,6 +206,31 @@ func TestABugReportCountsTheRoutinesAndNamesNone(t *testing.T) {
 	assert.Empty(t, bugReportState{}.autopilotState(ctx, c), "no Autopilot, no section")
 }
 
+func TestABugReportSaysNothingOfAutopilotWithoutARoutine(t *testing.T) {
+	t.Parallel()
+
+	ctx := t.Context()
+	logger := slog.New(slog.DiscardHandler)
+	routines := autopilot.NewService(autopilot.Config{Pool: testutil.DB(t)})
+
+	c := autopilotprefs.Defaults()
+	c.Paused = true
+
+	assert.Empty(t, bugReportState{routines: routines, logger: logger}.autopilotState(ctx, c),
+		"no routine, no section, whatever the settings")
+
+	made, err := routines.Save(ctx, autopilot.Draft{Name: "Gone", Spec: boundSpec()})
+	require.NoError(t, err)
+	require.NoError(t, routines.Delete(ctx, made.ID))
+
+	assert.Empty(t, bugReportState{routines: routines, logger: logger}.autopilotState(ctx, c),
+		"a deleted routine counts as none")
+
+	unreadable := autopilot.NewService(autopilot.Config{Pool: testutil.ClosedDB(t)})
+	assert.Empty(t, bugReportState{routines: unreadable, logger: logger}.autopilotState(ctx, c),
+		"routines that can't be read leave the section out")
+}
+
 // viewerLogin is an account signed in as login.
 type viewerLogin string
 

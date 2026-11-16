@@ -35,11 +35,6 @@ export const backupSections: readonly { section: BackupSection; label: string; a
     label: 'Your scripts',
     about: 'The scripts you saved in Repo scripts, in their order.',
   },
-  {
-    section: 'autopilot',
-    label: 'Autopilot routines',
-    about: 'Your Autopilot routines, in their order, never their history. They arrive switched off.',
-  },
 ]
 
 // sectionLabel is the name the window gives a category.

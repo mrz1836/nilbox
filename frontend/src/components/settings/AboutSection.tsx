@@ -163,8 +163,8 @@ function ResetGroup() {
           </button>
         }
       >
-        Start over on fresh data, keeping your prompts, launch defaults, your own scripts, and your Autopilot routines.{' '}
-        {brand.name} saves a backup of your setup first.
+        Start over on fresh data, keeping your prompts, launch defaults, and your own scripts. {brand.name} saves a
+        backup of your setup first.
       </SectionIntro>
       {asking && (
         <ResetDialog

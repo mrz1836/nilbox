@@ -71,22 +71,27 @@ func (b bugReportState) BugReportState(ctx context.Context) []appinfo.StateSecti
 
 // autopilotState is Autopilot as the report words it: its settings, and its routines
 // counted by mode, by switch, and by whether they are broken or another account's, never
-// named; or nothing when there is no Autopilot. Routines that can't be read are left out.
+// named. It says nothing while the user has no routine (not deleted), or the routines
+// can't be read, which is logged.
 func (b bugReportState) autopilotState(ctx context.Context, c autopilotprefs.Config) []appinfo.StateSection {
 	if b.routines == nil {
 		return nil
 	}
 
-	section := appinfo.StateSection{Title: "Autopilot", Lines: []string{autopilotSettingsLine(c)}}
-
 	list, err := b.routines.List(ctx)
 	if err != nil {
 		b.logger.WarnContext(ctx, "a bug report leaves out the routines", "error", err)
-	} else {
-		section.Lines = append(section.Lines, routinesLine(list))
+
+		return nil
 	}
 
-	return []appinfo.StateSection{section}
+	if len(list) == 0 {
+		return nil
+	}
+
+	return []appinfo.StateSection{{
+		Title: "Autopilot", Lines: []string{autopilotSettingsLine(c), routinesLine(list)},
+	}}
 }
 
 // autopilotSettingsLine words Autopilot's settings: whether it is paused, the mode new
