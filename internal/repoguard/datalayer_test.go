@@ -64,6 +64,7 @@ func tableOwners() map[string]string {
 		"item_local_state":    inboxOwner,
 		"item_watches":        inboxOwner,
 		"item_checks":         inboxOwner,
+		"item_agent_changes":  inboxOwner,
 		"rate_snapshots":      inboxOwner,
 		"prefs":               "prefs",
 		"agent_profiles":      "profiles",

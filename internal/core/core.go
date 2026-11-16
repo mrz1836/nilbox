@@ -611,7 +611,9 @@ func assemble(ctx context.Context, pool *sql.DB, info startup, opts Options, log
 		Sessions:  workLog,
 		Ledger:    sessionLedger{ledger: follow.ledger},
 		Trust:     trusters(opts.Home, logger),
-		Files:     launchFiles{Service: inboxSvc, routines: inbox.NewRoutines(inboxSvc)},
+		Files: agentFiles{
+			files: launchFiles{Service: inboxSvc, routines: inbox.NewRoutines(inboxSvc)}, changes: inboxStore,
+		},
 		Reader:    locations,
 		Logger:    logger,
 	})
