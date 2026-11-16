@@ -310,3 +310,32 @@ func TestAProblemThatCantBeToldIsToldLater(t *testing.T) {
 		assert.True(t, status.Problems[0].Told)
 	})
 }
+
+func TestTheOtherCopyFollowsAPauseWithinATick(t *testing.T) {
+	t.Parallel()
+
+	synctest.Test(t, func(t *testing.T) {
+		s, _ := securityRig(t, 1, autopilotprefs.ModeAuto)
+
+		other := s.Copy()
+		other.Begin()
+		other.Refresh()
+		other.Advance(2*time.Minute, false)
+
+		told := other.Events.Count()
+
+		glance, err := other.Service.Glance(t.Context())
+		require.NoError(t, err)
+		require.False(t, glance.Paused)
+
+		// The first copy pauses Autopilot: the second runs no cycle that would say so.
+		s.Change(func(c *autopilotprefs.Config) { c.Paused = true })
+		other.Advance(time.Minute, false)
+
+		assert.Greater(t, other.Events.Count(), told, "a tick of the other copy tells its window and its menu bar")
+
+		told = other.Events.Count()
+		other.Advance(3*time.Minute, false)
+		assert.Equal(t, told, other.Events.Count(), "and says nothing while nothing changes")
+	})
+}

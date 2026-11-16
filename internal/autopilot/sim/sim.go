@@ -101,15 +101,17 @@ type Sim struct {
 	Runner *Runner
 
 	// Triage is the inbox's own triage, which the triage steps run through, as core
-	// wires it; Local is the fake notices part, and GitHub the fake GitHub part.
+	// wires it, and GitHub the fake GitHub part.
 	Triage   *Triage
-	Local    *Dispatcher
 	GitHub   *Dispatcher
 	Settings *Settings
 	Lock     string
 
 	// Notices hears what the real notices dispatcher, and the problems, tell the user.
 	Notices *Notices
+
+	// Events hears what this copy's engine tells the window (autopilot:updated).
+	Events *testutil.Events
 
 	// Logs hears what the app logs.
 	Logs *testutil.Logs
@@ -134,9 +136,9 @@ func New(t *testing.T) *Sim {
 	cfg := autopilotprefs.Defaults()
 
 	s := &Sim{
-		t: t, DB: testutil.DB(t), Clock: clk, World: NewWorld(clk), Runner: NewRunner(), Local: &Dispatcher{},
+		t: t, DB: testutil.DB(t), Clock: clk, World: NewWorld(clk), Runner: NewRunner(),
 		GitHub: &Dispatcher{}, Settings: &Settings{cfg: cfg}, Lock: filepath.Join(t.TempDir(), "autopilot.lock"),
-		Logs: &testutil.Logs{}, Notices: &Notices{},
+		Logs: &testutil.Logs{}, Notices: &Notices{}, Events: &testutil.Events{},
 	}
 	s.Triage = &Triage{sim: s}
 
@@ -154,8 +156,9 @@ func New(t *testing.T) *Sim {
 // world, lock, and settings, with an engine of its own and a runner of its own.
 func (s *Sim) Copy() *Sim {
 	other := &Sim{
-		t: s.t, DB: s.DB, Clock: s.Clock, World: s.World, Runner: NewRunner(), Local: &Dispatcher{},
+		t: s.t, DB: s.DB, Clock: s.Clock, World: s.World, Runner: NewRunner(),
 		GitHub: &Dispatcher{}, Settings: s.Settings, Lock: s.Lock, Logs: s.Logs, Notices: &Notices{},
+		Events: &testutil.Events{},
 	}
 	other.Triage = &Triage{sim: other}
 
@@ -206,7 +209,7 @@ func (s *Sim) Begin() {
 		Dispatchers: map[catalog.Dispatcher]autopilot.Dispatcher{
 			catalog.DispatchGitHub: s.GitHub, catalog.DispatchNotices: autopilot.NewNotices(s.Notices),
 		},
-		Problems: autopilot.NewProblemNotices(s.Notices),
+		Problems: autopilot.NewProblemNotices(s.Notices), Events: s.Events,
 	})
 	fan.engine.Store(s.Engine)
 	s.Runner.attach(s.Engine)

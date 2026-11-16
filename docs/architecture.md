@@ -1389,8 +1389,11 @@ and logged, and the loop holds off cycles for a minute; commands are still answe
   holder sends the routines' searches at all (`Searches.HoldsWatches`, which the inbox's
   `WatchHolder` reads before a watch pass), so two copies on one data folder never replace each
   other's rows; the holder builds its snapshot of the searches again from the database on every
-  tick, which catches a routine changed in the other copy. The system lets go of the lock when
-  the process ends.
+  tick, which catches a routine changed in the other copy. A copy that doesn't hold it reads
+  `Glance` on every tick and sends `autopilot:updated` when it reads otherwise than on the tick
+  before (`followElsewhere`), since it runs no cycle that would: a Pause or a routine switched
+  on in the holder reaches its menu bar and its window's close within a minute. The system
+  lets go of the lock when the process ends.
 - **The runs going** are checked when the lock is taken and on every tick (`reconcile`), but
   those a worker of this copy is starting or dispatching, and those whose `RunEnded` is on its
   way. A GitHub action still recorded as going was cut off by a quit or a crash, maybe after
@@ -1697,10 +1700,12 @@ draws the menu in full, so a write that failed takes back the tick the menu put 
 click itself.
 
 **The shell** (`internal/desktop/autopilot.go`). The shell reads Autopilot's state at its
-start and on every `autopilot:updated` (which core's relay also sends on each
-`AutopilotChanged`, so Pause changed in Settings, in a copy that doesn't hold the engine
-too, reaches the menu's tick), in its one redraw loop, whether or not the icon shows,
-and keeps what it last said of keeping the app running and of Pause. `HidesOnClose` answers on
+start and on every `autopilot:updated`, in its one redraw loop, whether or not the icon
+shows. Core's relay sends one on each `AutopilotChanged`, so a Pause made in Settings reaches
+the tick of the copy it was made in at once, whether or not that copy holds the engine; a
+Pause made in another copy reaches a copy that doesn't hold the engine on its next engine
+tick (`followElsewhere`, within a minute), and the copy that holds it on its next cycle. It
+keeps what it last read of keeping the app running and of Pause. `HidesOnClose` answers on
 the main thread from that alone: yes while the icon shows, and yes while Autopilot has a
 routine on or an agent working, whatever the icon setting, since the close would otherwise
 quit the app (`ApplicationShouldTerminateAfterLastWindowClosed`) and quietly stop them; the

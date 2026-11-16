@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log/slog"
 	"maps"
+	"slices"
 	"sync"
 	"time"
 
@@ -252,6 +253,10 @@ type Engine struct {
 	stateReads map[int64]time.Time
 	checksRead map[int64]time.Time
 	holdOff    time.Time
+
+	// glanced is Autopilot at a glance as this copy last read it on a tick while another
+	// copy held the engine, nil before it did (followElsewhere).
+	glanced *Glance
 
 	// statesAsked are the items whose states a worker reads now; runnerClosed reports a
 	// runner that refused a start as it closed, so no agent starts until the next start;
@@ -504,16 +509,52 @@ func (e *Engine) await(ctx context.Context, tick <-chan time.Time) bool {
 
 // onTick does what each tick does while this copy holds the engine: it builds the
 // routines' searches again from the database, which catches a routine changed in another
-// copy of the app, and checks the runs the ledger records as going.
+// copy of the app, and checks the runs the ledger records as going. While another copy
+// holds it, the tick follows what that copy changes (followElsewhere).
 func (e *Engine) onTick(ctx context.Context) {
 	if !e.holding() {
+		e.followElsewhere(ctx)
+
 		return
 	}
 
+	e.glanced = nil
 	e.svc.rebuildWatches(ctx)
 	e.retryEnds(ctx)
 	e.unstrand(ctx)
 	e.reconcile(ctx)
+}
+
+// followElsewhere reads Autopilot at a glance, on a tick while another copy of the app
+// holds the engine, and tells the window and the shell (autopilot:updated) when it reads
+// otherwise than on the tick before: this copy runs no cycle that would, so a Pause, a
+// routine switched on or off, or an agent's run that the other copy changed reaches this
+// copy's menu bar and its window's close within a tick. The first read only sets what the
+// next is compared with.
+func (e *Engine) followElsewhere(ctx context.Context) {
+	g, err := e.svc.Glance(ctx)
+	if err != nil {
+		if ctx.Err() == nil {
+			e.logger.DebugContext(ctx, "could not read Autopilot while another copy runs it", "error", err)
+		}
+
+		return
+	}
+
+	changed := e.glanced != nil && !sameGlance(*e.glanced, g)
+	e.glanced = &g
+
+	if changed {
+		e.notify()
+	}
+}
+
+// sameGlance reports whether two glances read alike.
+func sameGlance(a, b Glance) bool {
+	return a.Routines == b.Routines && a.Enabled == b.Enabled && a.Paused == b.Paused && a.NeedsYou == b.NeedsYou &&
+		slices.EqualFunc(a.Working, b.Working, func(x, y WorkingRun) bool {
+			return x.RunID == y.RunID && x.CreatedAt.Equal(y.CreatedAt) && x.StartedAt.Equal(y.StartedAt)
+		})
 }
 
 // HoldsWatches reports whether this copy of the app reads the routines' searches: only
