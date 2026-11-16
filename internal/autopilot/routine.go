@@ -132,7 +132,8 @@ type Draft struct {
 	TemplateKey string `json:"templateKey,omitempty"`
 
 	// Current is what to do with the items the routine matches now that it has no record
-	// of, when it is on and its Watch, When, or If changed; left out, it runs on them too.
+	// of, when it is on and its Watch, When, If, or Once per changed; left out, it runs on
+	// them too.
 	Current Current `json:"current,omitempty"`
 }
 

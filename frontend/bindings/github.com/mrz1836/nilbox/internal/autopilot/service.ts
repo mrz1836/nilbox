@@ -169,8 +169,9 @@ export function List(): $CancellablePromise<$models.Routine[] | null> {
 /**
  * Matching counts the items the draft d matches now that its routine (d.ID, 0 for a new
  * one) has no record of, reading its searches now unless a test read them within a minute,
- * for the question asked when it is turned on, leaves Dry run, or its Watch, When, or If
- * changes: "3 pull requests match right now". It changes nothing.
+ * for the question asked when it is turned on, leaves Dry run, or its Watch, When, If, or
+ * Once per changes: "3 pull requests match right now", and says when the count may be
+ * short (Incomplete). It changes nothing.
  */
 export function Matching(d: $models.Draft): $CancellablePromise<$models.Matching> {
     return $Call.ByID(4103963572, d);
@@ -206,7 +207,7 @@ export function RunNow(id: number, itemID: number): $CancellablePromise<$models.
 
 /**
  * Save stores d, as save says, and with d.Current CurrentFromNow, records what the routine
- * matches now as its baseline, when it is on and its Watch, When, or If changed.
+ * matches now as its baseline, when it is on and its Watch, When, If, or Once per changed.
  */
 export function Save(d: $models.Draft): $CancellablePromise<$models.Routine> {
     return $Call.ByID(2395905870, d);

@@ -151,6 +151,16 @@ func TestDescribeAndSaveCheckTheAgentStepsPrompt(t *testing.T) {
 	got, err := r.svc.Describe(t.Context(), draft("Any item", s))
 	require.NoError(t, err)
 	assert.Empty(t, got.Problems, "a nickname matches ignoring case, and a prompt for any item fits")
+
+	issues := agentSpec()
+	issues.Trigger = spec.Trigger{Event: catalog.EventAppears}
+	issues.Watch.Sources = []spec.Source{{Search: &watch.Search{Kind: item.KindIssue, Where: []string{watch.Me}}}}
+
+	only, err := r.svc.Describe(t.Context(), draft("Issues", issues))
+	require.NoError(t, err)
+	require.Len(t, only.Problems, 1)
+	assert.Equal(t, `"Fix checks" is written for pull requests, and this routine acts only on issues: `+
+		"pick a prompt for issues", only.Problems[0].Message, "a routine of issues alone acts on nothing else")
 }
 
 func TestAPromptLibraryThatCantBeReadChecksNothing(t *testing.T) {
@@ -163,7 +173,7 @@ func TestAPromptLibraryThatCantBeReadChecksNothing(t *testing.T) {
 
 	got, err := r.svc.Describe(t.Context(), draft("Locked", s))
 	require.NoError(t, err)
-	assert.Empty(t, got.Problems, "the engine checks again before a start")
+	assert.Empty(t, got.Problems, "a library that can't be read refuses nothing")
 	assert.Contains(t, r.logs.String(), "could not read the prompt library")
 }
 
@@ -225,6 +235,12 @@ func TestTestSaysWhatTheHistoryHoldsOfEachMatch(t *testing.T) {
 	s := searchSpec(catalog.EventChecksFailed, orgSearch)
 	s.Trigger.WaitForChecks = new(false)
 	s.Steps = []spec.Step{{Snooze: &spec.SnoozeStep{}}}
+
+	searchesAlone, err := r.svc.Test(t.Context(), draft("Searches alone", s))
+	require.NoError(t, err)
+	assert.Empty(t, searchesAlone.Warnings, "Describe warns of triage over searches alone, so Test says it once")
+
+	s.Watch.Sources = append(s.Watch.Sources, spec.Source{Lists: []catalog.ListSource{catalog.SourceAssigned}})
 	saved := r.save(t, draft("Snooze failing", s))
 	d := draft("Snooze failing", s)
 	d.ID = saved.ID
@@ -257,20 +273,20 @@ func TestTestSaysWhatTheHistoryHoldsOfEachMatch(t *testing.T) {
 	testutil.Exec(t, r.db, `INSERT INTO repos (id, owner, name, created_at, updated_at)
 		VALUES (1, 'acme-org', 'example-repo', ?, ?)`, now, now)
 
-	for _, id := range []int64{7, 9} {
+	for _, id := range []int64{7, 8, 9} {
 		testutil.Exec(t, r.db, `INSERT INTO items (id, account_id, repo_id, kind, number, item_created_at, item_updated_at,
 			fetched_at) VALUES (?, 1, 1, 'pr', ?, ?, ?, ?)`, id, id*10, now, now, now)
 	}
 
 	for _, rec := range []struct {
-		item  int64
-		state string
-		dry   bool
-	}{{7, "done", false}, {9, "would_run", true}} {
+		item          int64
+		state, reason string
+		dry           bool
+	}{{7, "done", "ran", false}, {8, "closed", "merged", false}, {9, "done", "would_run", true}} {
 		testutil.Exec(t, r.db, `INSERT INTO autopilot_matches (routine_id, item_id, repo_owner, repo_name, kind, number,
 			fire_key, dry_run, state, reason, created_at, updated_at, decided_at) VALUES (?, ?, 'acme-org', 'example-repo',
-			'pr', 1, ?, ?, ?, ?, ?, ?, ?)`, saved.ID, rec.item, byID[rec.item].FireKey, rec.dry, recState(rec.state),
-			recReason(rec.state), now, now, now)
+			'pr', 1, ?, ?, ?, ?, ?, ?, ?)`, saved.ID, rec.item, byID[rec.item].FireKey, rec.dry, rec.state, rec.reason,
+			now, now, now)
 	}
 
 	again, err := r.svc.Test(t.Context(), d)
@@ -281,7 +297,7 @@ func TestTestSaysWhatTheHistoryHoldsOfEachMatch(t *testing.T) {
 		case 7:
 			assert.Equal(t, "It already ran on this.", it.Record)
 		case 8:
-			assert.Empty(t, it.Record)
+			assert.Equal(t, "Closed: it merged.", it.Record, "a closed record says why in Activity's words")
 		case 9:
 			assert.Contains(t, it.Record, "Dry run", "a Dry run's record is said apart, since it uses nothing up")
 		}
@@ -293,22 +309,4 @@ func TestTestSaysWhatTheHistoryHoldsOfEachMatch(t *testing.T) {
 	for _, it := range fresh.Items {
 		assert.Empty(t, it.Record, "a new routine has no history")
 	}
-}
-
-// recState and recReason are a test record's state and reason: a run that ended, or a Dry
-// run's "would run".
-func recState(s string) string {
-	if s == "would_run" {
-		return "done"
-	}
-
-	return s
-}
-
-func recReason(s string) string {
-	if s == "would_run" {
-		return "would_run"
-	}
-
-	return "ran"
 }

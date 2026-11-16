@@ -16,6 +16,10 @@ const (
 	MinRunTokens, MaxRunTokens                                  = 10_000, 50_000_000
 	MinTimeoutMinutes, MaxTimeoutMinutes, DefaultTimeoutMinutes = 5, 180, 30
 
+	// StartRunTokens is the budget in tokens the builder starts at once a budget is set in
+	// tokens; a budget set in neither is DefaultRunCents in dollars.
+	StartRunTokens = 200_000
+
 	// MaxFallbacks caps the profiles an agent step falls back to when one is out of
 	// usage.
 	MaxFallbacks = 3
@@ -94,6 +98,11 @@ func AgentSettings() []Setting {
 			Range: &Range{Min: MinRunCents, Max: MaxRunCents, Default: DefaultRunCents, Unit: "cents"},
 		},
 		{
+			ID: "budgetTokens", Label: "Budget per run in tokens", Default: "None",
+			Help:  "The budget set in tokens, starting at its default once switched to tokens.",
+			Range: &Range{Min: MinRunTokens, Max: MaxRunTokens, Default: StartRunTokens, Unit: "tokens"},
+		},
+		{
 			ID: "timeoutMinutes", Label: "Time limit", Default: "30 min",
 			Range: &Range{Min: MinTimeoutMinutes, Max: MaxTimeoutMinutes, Default: DefaultTimeoutMinutes, Unit: "minutes"},
 		},
@@ -130,6 +139,25 @@ func Limits() []Setting {
 			ID: "budgetPerDay", Label: "Daily budget", Default: "Off",
 			Help:  "In dollars or in tokens; Settings → Autopilot's daily cap still holds beside it.",
 			Range: &Range{Min: MinDayCents, Max: MaxDayCents, Unit: "cents"},
+		},
+	}
+}
+
+// StepSettings returns the whole-number settings of the steps other than the agent's, each
+// named "<step>.<setting>" as the spec spells them, in the builder's order.
+func StepSettings() []Setting {
+	return []Setting{
+		{
+			ID: "snooze.days", Label: "Days to snooze", Default: "3 days",
+			Range: &Range{Min: MinSnoozeDays, Max: MaxSnoozeDays, Default: DefaultSnoozeDays, Unit: "days"},
+		},
+		{
+			ID: "waitForChecks.settleMinutes", Label: "Minutes to settle", Default: "2 min",
+			Range: &Range{Min: MinSettleMinutes, Max: MaxSettleMinutes, Default: DefaultSettleMinutes, Unit: "minutes"},
+		},
+		{
+			ID: "waitForChecks.giveUpHours", Label: "Hours before giving up", Default: "2 h",
+			Range: &Range{Min: MinGiveUpHours, Max: MaxGiveUpHours, Default: DefaultGiveUpHours, Unit: "hours"},
 		},
 	}
 }
@@ -188,6 +216,7 @@ type Catalog struct {
 	Presets       []PresetInfo     `json:"presets"`
 	AgentSettings []Setting        `json:"agentSettings"`
 	Limits        []Setting        `json:"limits"`
+	StepSettings  []Setting        `json:"stepSettings"`
 }
 
 // All returns the whole catalog, with every list empty rather than nil, so the window
@@ -196,7 +225,7 @@ func All() Catalog {
 	c := Catalog{
 		Triggers: Triggers(), Groups: Groups(), Fields: Fields(), Ops: Ops(), Lists: ListSources(), Steps: Steps(),
 		GitHubActions: GitHubActions(), Outcomes: Outcomes(), Presets: Presets(), AgentSettings: AgentSettings(),
-		Limits: Limits(),
+		Limits: Limits(), StepSettings: StepSettings(),
 	}
 
 	for i := range c.Triggers {
@@ -207,7 +236,7 @@ func All() Catalog {
 		c.Fields[i].Choices = textutil.NonNil(c.Fields[i].Choices)
 	}
 
-	for _, settings := range [][]Setting{c.AgentSettings, c.Limits} {
+	for _, settings := range [][]Setting{c.AgentSettings, c.Limits, c.StepSettings} {
 		for i := range settings {
 			settings[i].Choices = textutil.NonNil(settings[i].Choices)
 		}

@@ -171,7 +171,7 @@ export interface Cleared {
 
 /**
  * Current is what to do with the items a routine matches now that it has no record of,
- * when it is turned on, leaves Dry run, or its Watch, When, or If changes.
+ * when it is turned on, leaves Dry run, or its Watch, When, If, or Once per changes.
  */
 export type Current = "run" | "fromNow";
 
@@ -294,7 +294,8 @@ export interface Draft {
 
     /**
      * Current is what to do with the items the routine matches now that it has no record
-     * of, when it is on and its Watch, When, or If changed; left out, it runs on them too.
+     * of, when it is on and its Watch, When, If, or Once per changed; left out, it runs on
+     * them too.
      */
     "current"?: Current;
 }
@@ -583,7 +584,8 @@ export interface MatchStep {
 
 /**
  * Matching is what the question about current matches says: how many items the routine
- * matches now that it has no record of, by kind. With none, nothing is asked.
+ * matches now that it has no record of, by kind. Only with none, none it can't decide, and
+ * nothing left unread, is nothing asked.
  */
 export interface Matching {
     "count": number;
@@ -594,6 +596,14 @@ export interface Matching {
      * Unknown counts the items it can't decide yet.
      */
     "unknown": number;
+
+    /**
+     * Incomplete reports a count that may be short, since not everything the routine
+     * watches was read: a search wasn't (the budget was low, or GitHub didn't answer it), or
+     * matched more than the page a search returns, or the routine watches more items than a
+     * test tries. The engine, reading them later, may act on more than Count says.
+     */
+    "incomplete": boolean;
 }
 
 /**

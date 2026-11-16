@@ -170,7 +170,7 @@ function answers(subscribe: Loose<Platform['on']>): { [K in keyof Platform]: Loo
     setRoutineEnabled: (id, enabled) =>
       Promise.resolve(routine({ id, enabled, enabledAt: enabled ? '2026-06-15T12:00:00Z' : null })),
     setRoutineMode: (id, mode) => Promise.resolve(routine({ id, mode })),
-    routineMatching: () => Promise.resolve({ count: 0, pullRequests: 0, issues: 0, unknown: 0 }),
+    routineMatching: () => Promise.resolve({ count: 0, pullRequests: 0, issues: 0, unknown: 0, incomplete: false }),
     routineWatching: () => Promise.resolve([]),
     getAutopilotEngine: () => Promise.resolve(autopilotEngine()),
     autopilotActivity: () => Promise.resolve(activityPage({ days: [] })),

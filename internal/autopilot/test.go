@@ -373,9 +373,14 @@ func warnTruncated(searches []TestSearch) {
 
 // testWarnings returns what a test found may make sp do less than meant: triage steps
 // when most of the items it watches aren't in the inbox lists, so triage won't change
-// what the user sees.
+// what the user sees. A watch of searches alone gets none, since Describe already warns
+// each triage step of it (triageWarnings), and the step would say it twice.
 func testWarnings(sp spec.Spec, items []TestItem) []spec.Problem {
 	out := []spec.Problem{}
+
+	if onlySearches(sp.Watch) {
+		return out
+	}
 
 	outside := 0
 
@@ -432,20 +437,21 @@ func (s *Service) markRecords(ctx context.Context, id int64, items []TestItem) e
 }
 
 // recordWords says what a routine's record of an occurrence holds, as a test's row shows
-// it.
+// it: a record that closed, was skipped, or was dismissed for a reason says it in
+// Activity's words (reasonWords); any other says where it stands.
 func recordWords(state State, reason Reason) string {
-	switch {
-	case state == StateSkipped && reason == ReasonTries:
-		return "It gave up: its tries are used."
-	case state == StateClosed:
-		return "Closed: " + textutil.Sentence(strings.ReplaceAll(string(reason), "_", " "))
+	ended := state == StateClosed || state == StateSkipped || state == StateDismissed
+
+	if w, ok := reasonWords()[reason]; ended && ok && reason != ReasonRan && reason != ReasonWouldRun {
+		return w + "."
 	}
 
 	words := map[State]string{
 		StateWaiting: "Waiting for your OK.", StateBlocked: "Can't start yet.", StateQueued: "Queued.",
 		StateRunning: "Working now.", StateVerifying: "Waiting for the checks on its commit.",
-		StateDone: "It already ran on this.", StateSkipped: "Skipped.", StateDismissed: "You skipped it.",
-		StateBaseline: "It already matched when you chose only what changes from now on.",
+		StateDone: "It already ran on this.", StateClosed: "Closed.", StateSkipped: "Skipped.",
+		StateDismissed: "You skipped it.",
+		StateBaseline:  "It already matched when you chose only what changes from now on.",
 	}
 
 	if w, ok := words[state]; ok {
@@ -453,6 +459,31 @@ func recordWords(state State, reason Reason) string {
 	}
 
 	return textutil.Sentence(string(state))
+}
+
+// reasonWords are Activity's words for why a match closed, each reason's label in the
+// window's reasonChips (frontend/src/lib/autopilot.ts), which a test holds them to.
+func reasonWords() map[Reason]string {
+	return map[Reason]string{
+		ReasonRan:             "Ran",
+		ReasonWouldRun:        "Would run",
+		ReasonTries:           "Gave up",
+		ReasonOutside:         "Skipped: an outside contributor's",
+		ReasonYouSkipped:      "You skipped it",
+		ReasonYouStopped:      "Stopped by you",
+		ReasonMerged:          "Closed: it merged",
+		ReasonItemClosed:      "Closed: the item closed",
+		ReasonGone:            "Closed: the item is gone",
+		ReasonLeftWatch:       "Closed: it left the watch",
+		ReasonMovedOn:         "Closed: it moved on",
+		ReasonNoLongerMatches: "Closed: no longer matches",
+		ReasonRoutineChanged:  "Closed: the routine changed",
+		ReasonRoutineOff:      "Closed: the routine was off",
+		ReasonNotOffered:      "Closed: its step isn't offered",
+		ReasonFailed:          "A step failed",
+		ReasonFromNow:         "Already matched when you turned it on",
+		ReasonHandsOff:        "Left alone",
+	}
 }
 
 // markLeftAlone marks the items the routine id leaves alone, none for a new routine (0).

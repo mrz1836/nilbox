@@ -52,7 +52,7 @@ func ids() []string {
 		out = append(out, choiceValues(f.Choices)...)
 	}
 
-	for _, s := range slices.Concat(c.AgentSettings, c.Limits) {
+	for _, s := range slices.Concat(c.AgentSettings, c.Limits, c.StepSettings) {
 		out = append(out, s.ID)
 		out = append(out, choiceValues(s.Choices)...)
 	}
@@ -401,6 +401,30 @@ func TestPresets(t *testing.T) {
 	def, ok := catalog.PresetByID(catalog.DefaultPreset)
 	assert.True(t, ok)
 	assert.True(t, def.MayPush, "the default lets the flagship push its fix")
+}
+
+// TestEverySettingsDefaultIsInItsRange checks the settings the builder reads its numbers
+// from: each one's default, where it has one, is a value it takes, and the step settings
+// name a step the catalog lists.
+func TestEverySettingsDefaultIsInItsRange(t *testing.T) {
+	t.Parallel()
+
+	c := catalog.All()
+
+	for _, s := range slices.Concat(c.AgentSettings, c.Limits, c.StepSettings) {
+		if s.Range != nil && s.Range.Default != 0 {
+			assert.True(t, s.Range.Holds(s.Range.Default), "%s's default is in range", s.ID)
+		}
+	}
+
+	for _, s := range c.StepSettings {
+		kind, _, ok := strings.Cut(s.ID, ".")
+		require.True(t, ok, s.ID)
+
+		_, listed := catalog.StepByKind(catalog.StepKind(kind))
+		assert.True(t, listed, "%s names a step", s.ID)
+		assert.NotNil(t, s.Range, "%s is a whole number", s.ID)
+	}
 }
 
 // TestRangesMatchTheirOwners checks the ranges the catalog keeps beside the packages

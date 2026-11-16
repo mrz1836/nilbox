@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strconv"
 	"time"
 
@@ -33,7 +34,7 @@ var (
 )
 
 // Current is what to do with the items a routine matches now that it has no record of,
-// when it is turned on, leaves Dry run, or its Watch, When, or If changes.
+// when it is turned on, leaves Dry run, or its Watch, When, If, or Once per changes.
 type Current string
 
 // The choices for what matches now.
@@ -442,7 +443,8 @@ func (s *Service) StopAll(ctx context.Context) error {
 }
 
 // Matching is what the question about current matches says: how many items the routine
-// matches now that it has no record of, by kind. With none, nothing is asked.
+// matches now that it has no record of, by kind. Only with none, none it can't decide, and
+// nothing left unread, is nothing asked.
 type Matching struct {
 	Count        int `json:"count"`
 	PullRequests int `json:"pullRequests"`
@@ -450,12 +452,19 @@ type Matching struct {
 
 	// Unknown counts the items it can't decide yet.
 	Unknown int `json:"unknown"`
+
+	// Incomplete reports a count that may be short, since not everything the routine
+	// watches was read: a search wasn't (the budget was low, or GitHub didn't answer it), or
+	// matched more than the page a search returns, or the routine watches more items than a
+	// test tries. The engine, reading them later, may act on more than Count says.
+	Incomplete bool `json:"incomplete"`
 }
 
 // Matching counts the items the draft d matches now that its routine (d.ID, 0 for a new
 // one) has no record of, reading its searches now unless a test read them within a minute,
-// for the question asked when it is turned on, leaves Dry run, or its Watch, When, or If
-// changes: "3 pull requests match right now". It changes nothing.
+// for the question asked when it is turned on, leaves Dry run, or its Watch, When, If, or
+// Once per changes: "3 pull requests match right now", and says when the count may be
+// short (Incomplete). It changes nothing.
 func (s *Service) Matching(ctx context.Context, d Draft) (Matching, error) {
 	res, err := s.Test(ctx, d)
 	if err != nil {
@@ -467,13 +476,20 @@ func (s *Service) Matching(ctx context.Context, d Draft) (Matching, error) {
 		return Matching{}, err
 	}
 
-	out := Matching{}
+	out := Matching{Incomplete: incomplete(res)}
 
 	for _, it := range res.Items {
 		out.add(it, recorded)
 	}
 
 	return out, nil
+}
+
+// incomplete reports a test that didn't read everything its routine watches: a search with
+// no answer, or past a page, the budget too low to read, or more items than it tries.
+func incomplete(res TestResult) bool {
+	return res.LowBudget || res.Watched > len(res.Items) ||
+		slices.ContainsFunc(res.Searches, func(ts TestSearch) bool { return ts.Error != "" || ts.Truncated })
 }
 
 // add counts it, unless the routine has a record of its occurrence, or leaves it alone.
