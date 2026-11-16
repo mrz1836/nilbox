@@ -212,10 +212,17 @@ func TestSearchNowStoresItsResultsWithoutWatchingThem(t *testing.T) {
 func TestNoteStatesRecordsAnotherServicesRead(t *testing.T) {
 	t.Parallel()
 
-	h, id := itemHarness(t)
+	h := newHarness(t)
 	ref := item.Ref{Repo: repo.Name{Owner: acmeOrg, Repo: "example-repo"}, Number: 1, Kind: item.KindPR}
 	closed := time.Date(2026, 1, 9, 0, 0, 0, 0, time.UTC)
 	notes := NewStore(h.pool, h.clock)
+
+	// A read that goes out before the item is stored.
+	early := notes.StartRead()
+
+	h.clock.Advance(time.Minute)
+	h.seed(t, []github.Item{pr(1, "OWNER", false)}, nil, nil)
+	id := h.storedItems(t)[0].ID
 
 	state := func() (string, *time.Time) {
 		var (
@@ -229,19 +236,18 @@ func TestNoteStatesRecordsAnotherServicesRead(t *testing.T) {
 		return s, at
 	}
 
-	note := func(readAt time.Time, s string, at time.Time) {
-		require.NoError(t, notes.NoteStates(t.Context(), readAt, []item.Ref{ref},
+	note := func(read StateRead, s string, at time.Time) {
+		require.NoError(t, notes.NoteStates(t.Context(), read, []item.Ref{ref},
 			map[string]github.ItemState{ref.Key(): {State: s, ClosedAt: at}}))
 	}
 
-	before := h.clock.Now().Add(-time.Hour) // itemHarness stored the item ten minutes ago
-	note(before, github.StateClosed, closed)
+	note(early, github.StateClosed, closed)
 
 	got, _ := state()
 	assert.NotEqual(t, github.StateClosed, got, "a read that went out before the item was stored keeps the newer read")
 
 	h.clock.Advance(time.Minute)
-	note(h.clock.Now(), github.StateMerged, closed)
+	note(notes.StartRead(), github.StateMerged, closed)
 
 	got, at := state()
 	assert.Equal(t, github.StateMerged, got)
@@ -249,7 +255,7 @@ func TestNoteStatesRecordsAnotherServicesRead(t *testing.T) {
 	assert.True(t, closed.Equal(*at))
 
 	h.clock.Advance(time.Minute)
-	note(h.clock.Now(), github.StateOpen, time.Time{})
+	note(notes.StartRead(), github.StateOpen, time.Time{})
 
 	got, _ = state()
 	assert.Equal(t, github.StateMerged, got, "nothing comes back from a merge")

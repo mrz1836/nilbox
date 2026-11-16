@@ -16,7 +16,6 @@ import (
 	"github.com/mrz1836/nilbox/internal/autopilot/facts"
 	"github.com/mrz1836/nilbox/internal/autopilotprefs"
 	"github.com/mrz1836/nilbox/internal/budget"
-	"github.com/mrz1836/nilbox/internal/clock"
 	"github.com/mrz1836/nilbox/internal/github"
 	"github.com/mrz1836/nilbox/internal/inbox"
 	"github.com/mrz1836/nilbox/internal/item"
@@ -141,9 +140,15 @@ func (a autopilotItems) SearchNow(ctx context.Context, queries []string) (map[st
 }
 
 // ReadChecks reads and stores the check names of the pull requests among ids, and
-// returns what that cost in GraphQL points.
+// returns what that cost in GraphQL points, or sends nothing while the GraphQL budget is
+// low (autopilot.ErrLowBudget).
 func (a autopilotItems) ReadChecks(ctx context.Context, ids []int64) (int, error) {
-	return a.inbox.ReadChecks(ctx, ids)
+	points, err := a.inbox.ReadChecks(ctx, ids)
+	if errors.Is(err, inbox.ErrLowBudget) {
+		return 0, fmt.Errorf("%w: %w", autopilot.ErrLowBudget, err)
+	}
+
+	return points, err
 }
 
 // watchCosts estimates what routine searches add to a refresh (autopilot.Costs): as many
@@ -192,34 +197,43 @@ type stateNoter struct {
 	*github.Client
 
 	store  *inbox.Store
-	clock  clock.Clock
 	logger *slog.Logger
 }
 
-// FetchItemStates reads the states of refs, and records them in the inbox as read when the
-// request went out.
+// FetchItemStates reads the states of refs, and records them in the inbox in the order
+// the request went out.
 func (n stateNoter) FetchItemStates(ctx context.Context, tok github.Token, refs []item.Ref,
 ) (map[string]github.ItemState, error) {
-	readAt := clock.Or(n.clock).Now()
+	read := startRead(n.store)
 
 	states, err := n.Client.FetchItemStates(ctx, tok, refs)
 	if err == nil {
-		noteStates(ctx, n.store, readAt, refs, states, n.logger)
+		noteStates(ctx, n.store, read, refs, states, n.logger)
 	}
 
 	return states, err
 }
 
-// noteStates records in the inbox the states another service read, in a read that went
-// out at readAt, logging a failure: the inbox's next read records them anyway.
-func noteStates(ctx context.Context, store *inbox.Store, readAt time.Time, refs []item.Ref,
+// startRead numbers a read of items' states going out now in the inbox's write order; the
+// zero StateRead, which records nothing, without a store.
+func startRead(store *inbox.Store) inbox.StateRead {
+	if store == nil {
+		return inbox.StateRead{}
+	}
+
+	return store.StartRead()
+}
+
+// noteStates records in the inbox the states another service read, in the read numbered
+// read, logging a failure: the inbox's next read records them anyway.
+func noteStates(ctx context.Context, store *inbox.Store, read inbox.StateRead, refs []item.Ref,
 	states map[string]github.ItemState, logger *slog.Logger,
 ) {
 	if store == nil {
 		return
 	}
 
-	if err := store.NoteStates(ctx, readAt, refs, states); err != nil {
+	if err := store.NoteStates(ctx, read, refs, states); err != nil {
 		logger.DebugContext(ctx, "could not record the items' states in the inbox", "error", err)
 	}
 }

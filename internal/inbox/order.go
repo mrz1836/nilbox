@@ -3,9 +3,12 @@ package inbox
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"sync"
+	"time"
 
 	"github.com/mrz1836/nilbox/internal/github"
+	"github.com/mrz1836/nilbox/internal/inbox/internal/queries"
 	"github.com/mrz1836/nilbox/internal/store"
 )
 
@@ -33,6 +36,13 @@ import (
 //     merged and drops it (see dropClosed), so nothing ever supersedes it.
 //   - Two pieces of work on one item never overlap at all: itemLocks runs them one at a
 //     time.
+//   - A watch pass, a routine's test, and another service's read of items' states
+//     (Store.NoteStates) store outside an item write, so each records, for every item whose
+//     card or state it stored, the number its fetch took (writeOrder.stated). An item's own
+//     refresh that started before and finishes after stores nothing, as if a whole refresh
+//     had superseded it, and a whole refresh still fetching that started before applies
+//     their states again on top of its own (a stateWrite each), as it applies an item's
+//     own refresh. A merge is final besides: no write puts a merged item's state back.
 //
 // A refresh writes the triage columns only to end snoozes (see wakeSnoozed), comparing
 // each running snooze's baseline with the details stored, inside its own transaction, so
@@ -57,6 +67,44 @@ type writeOrder struct {
 	// small as the inbox.
 	refreshed map[int64]uint64
 	checked   map[int64]uint64
+
+	// stated holds, for each item a watch pass, a routine's test, or another service's
+	// read of its state stored outside an item write, the number that fetch took: an
+	// item's own refresh numbered before it is superseded. lastRefresh is the number of the
+	// last whole refresh stored; each one drops the entries no later than the one before
+	// it, so stated stays as small as what was stored lately.
+	stated      map[int64]uint64
+	lastRefresh uint64
+}
+
+// noteStated records that the fetch numbered seq stored the card or the state of each
+// item of ids, outside an item write. The caller holds mu.
+func (o *writeOrder) noteStated(ids []int64, seq uint64) {
+	if len(ids) == 0 {
+		return
+	}
+
+	if o.stated == nil {
+		o.stated = make(map[int64]uint64, len(ids))
+	}
+
+	for _, id := range ids {
+		o.stated[id] = max(o.stated[id], seq)
+	}
+}
+
+// replayStates hands a whole refresh still fetching, that started before the fetch
+// numbered seq, the states that fetch stored, to apply again on top of its own. The
+// caller holds mu.
+func (o *writeOrder) replayStates(seq uint64, states []stateWrite) {
+	r := o.refresh
+	if r == nil || seq <= r.seq {
+		return
+	}
+
+	for _, st := range states {
+		r.replays = append(r.replays, itemWrite{id: st.id, seq: seq, noted: &st})
+	}
 }
 
 // refreshInFlight is a whole refresh between the start of its fetch and its store: its
@@ -67,22 +115,32 @@ type refreshInFlight struct {
 	replays []itemWrite
 }
 
-// supersedes reports whether a whole refresh that started after w already stored what w
-// would: the item's card for an item's own refresh, its file check for a file check. A
-// merge's unlisting is never superseded. The caller holds mu.
+// supersedes reports whether a fetch that started after w already stored what w would:
+// the item's card for an item's own refresh, which a whole refresh, a watch pass, a
+// routine's test, or another service's read of its state supersedes (stated); its file
+// check for a file check. A merge's unlisting is never superseded. The caller holds mu.
 func (o *writeOrder) supersedes(w itemWrite) bool {
 	switch {
 	case w.unlist:
 		return false
 	case w.update != nil:
-		return o.refreshed[w.id] > w.seq
+		return o.refreshed[w.id] > w.seq || o.stated[w.id] > w.seq
 	default:
 		return o.checked[w.id] > w.seq
 	}
 }
 
-// itemWrite is what one item's own refresh, a check of its files, or a merge stores:
-// exactly one of update, files, and unlist is set.
+// stateWrite is an item's state, and when it closed, as a read outside an item write
+// stored it: what a whole refresh still fetching applies again (replayStates).
+type stateWrite struct {
+	id       int64
+	state    string
+	closedAt time.Time
+}
+
+// itemWrite is what one item's own refresh, a check of its files, a merge, or a state a
+// read stored outside an item write stores: exactly one of update, files, unlist, and
+// noted is set.
 type itemWrite struct {
 	// id is the item's id, and seq the number its fetch took.
 	id  int64
@@ -98,6 +156,10 @@ type itemWrite struct {
 	// state that left it in (StateMerged or StateClosed), "" when it didn't say.
 	unlist bool
 	state  string
+
+	// noted is a state a read stored outside an item write, applied again by a whole
+	// refresh only.
+	noted *stateWrite
 }
 
 // itemUpdate is what an item's own refresh read: the account the item is stored for, by
@@ -190,6 +252,8 @@ func (s *Service) applyItemWrite(ctx context.Context, tx *sql.Tx, w itemWrite, f
 		return true, s.newWriter(tx).unlistActed(ctx, w.id, w.state)
 	case w.files != nil:
 		return false, upsertFiles(ctx, s.q.WithTx(tx), *w.files)
+	case w.noted != nil:
+		return false, setItemState(ctx, s.q.WithTx(tx), *w.noted)
 	}
 
 	u, it := w.update, w.update.update.Item
@@ -264,6 +328,26 @@ func (s *Service) storedBy(seq uint64, w *writer) {
 	}
 
 	s.order.refreshed, s.order.checked = refreshed, checked
+
+	// An item's own refresh still fetching that started before the refresh before this one
+	// is long gone, so what supersedes it is forgotten.
+	for id, at := range s.order.stated {
+		if at <= s.order.lastRefresh {
+			delete(s.order.stated, id)
+		}
+	}
+
+	s.order.lastRefresh = seq
+}
+
+// setItemState stores a state a read stored outside an item write again, as a whole
+// refresh applies it on top of its own (see replayStates).
+func setItemState(ctx context.Context, q *queries.Queries, st stateWrite) error {
+	if err := q.SetItemState(ctx, queries.SetItemStateParams{State: st.state, ClosedAt: timeOrNil(st.closedAt), ID: st.id}); err != nil {
+		return fmt.Errorf("save the state of item %d: %w", st.id, err)
+	}
+
+	return nil
 }
 
 // itemLocks holds a lock per item while work on it runs, so an item's own refresh and the

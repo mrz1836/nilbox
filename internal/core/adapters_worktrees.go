@@ -5,7 +5,6 @@ import (
 	"log/slog"
 	"os"
 
-	"github.com/mrz1836/nilbox/internal/clock"
 	"github.com/mrz1836/nilbox/internal/execpath"
 	"github.com/mrz1836/nilbox/internal/github"
 	"github.com/mrz1836/nilbox/internal/inbox"
@@ -36,17 +35,15 @@ type itemStates struct {
 	tokens github.Tokens
 	client *github.Client
 
-	// inbox, when set, records each state read, as the inbox's own reads do, as read when
-	// clock (the system's when nil) said the read went out; logger hears a record that
-	// failed.
+	// inbox, when set, records each state read, as the inbox's own reads do, in the order
+	// the read went out; logger hears a record that failed.
 	inbox  *inbox.Store
-	clock  clock.Clock
 	logger *slog.Logger
 }
 
 // ItemStates asks GitHub about refs. A token GitHub refuses is borrowed again once.
 func (s itemStates) ItemStates(ctx context.Context, refs []item.Ref) (map[string]worktrees.ItemState, error) {
-	readAt := clock.Or(s.clock).Now()
+	read := startRead(s.inbox)
 
 	states, err := github.WithToken(ctx, s.tokens, func(tok github.Token) (map[string]github.ItemState, error) {
 		return s.client.FetchItemStates(ctx, tok, refs)
@@ -55,7 +52,7 @@ func (s itemStates) ItemStates(ctx context.Context, refs []item.Ref) (map[string
 		return nil, err
 	}
 
-	noteStates(ctx, s.inbox, readAt, refs, states, logging.Or(s.logger))
+	noteStates(ctx, s.inbox, read, refs, states, logging.Or(s.logger))
 
 	out := make(map[string]worktrees.ItemState, len(states))
 	for key, state := range states {

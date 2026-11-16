@@ -17,23 +17,28 @@ import (
 const pruneAfter = 30 * 24 * time.Hour
 
 // keptItems returns the items something outside the inbox refers to, which the prune
-// keeps, read before a whole refresh's transaction; none without a Keep seam.
-func (s *Service) keptItems(ctx context.Context) ([]int64, error) {
+// keeps, read before a whole refresh's transaction; none without a Keep seam. ok is false
+// when they couldn't be read, which is logged: the refresh then prunes nothing, keeping
+// everything, and goes on.
+func (s *Service) keptItems(ctx context.Context) (ids []int64, ok bool) {
 	if s.keep == nil {
-		return nil, nil
+		return nil, true
 	}
 
 	ids, err := s.keep.KeptItems(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("read the items kept: %w", err)
+		s.logger.WarnContext(ctx, "could not read the items kept, so this refresh prunes no old item", "error", err)
+
+		return nil, false
 	}
 
-	return ids, nil
+	return ids, true
 }
 
 // saveLists stores a whole refresh's lists: the repositories of the items left out, the
 // items with their reason flags, the state of the items its searches returned merged or
-// closed, and then the prune of the old items.
+// closed, and then the prune of the old items, unless what else refers to an item
+// couldn't be read.
 func (w *writer) saveLists(ctx context.Context, got refreshed) error {
 	if err := w.saveRepos(ctx, got.archived); err != nil {
 		return err
@@ -45,8 +50,12 @@ func (w *writer) saveLists(ctx context.Context, got refreshed) error {
 
 	// The refresh applies again, after this, every item write stored while it fetched (see
 	// order.go), so its closed results' state needs no guard of its own.
-	if err := w.saveClosedStates(ctx, got.closed, nil); err != nil {
+	if err := w.saveClosedStates(ctx, got.closed); err != nil {
 		return err
+	}
+
+	if !got.keptRead {
+		return nil
 	}
 
 	return w.pruneOld(ctx, got.kept)
@@ -68,43 +77,70 @@ func (w *writer) pruneOld(ctx context.Context, kept []int64) error {
 	return nil
 }
 
-// saveClosedStates records the state of the items a refresh's or a pass's searches
-// returned merged or closed, which the index trails, as their own reads would: the
-// searches read no more of them. A merged item keeps its state, and with readBefore, when
-// the searches went out, an item stored since keeps what that newer read stored.
-func (w *writer) saveClosedStates(ctx context.Context, closed []github.Item, readBefore *time.Time) error {
+// saveClosedStates records the state of the items a whole refresh's searches returned
+// merged or closed, which the index trails, as their own reads would: the searches read
+// no more of them. A merged item keeps its state.
+func (w *writer) saveClosedStates(ctx context.Context, closed []github.Item) error {
 	for _, it := range closed {
-		if err := setRefState(ctx, w.q, it.Ref(), it.State, it.ClosedAt, w.now, readBefore); err != nil {
-			return err
+		err := w.q.SetRefState(ctx, queries.SetRefStateParams{
+			State: it.State, ClosedAt: timeOrNil(it.ClosedAt), FetchedAt: w.now, Number: int64(it.Number),
+			Owner: it.RepoOwner, Name: it.RepoName,
+		})
+		if err != nil {
+			return fmt.Errorf("save the state of %s: %w", it.Ref(), err)
 		}
 	}
 
 	return nil
 }
 
-// setRefState records the state of every stored item of ref's repository and number, as
-// a read said, stamping fetched_at with stamp; with readBefore, an item stored at or after
-// it keeps what that newer read stored (SetRefStateBefore).
-func setRefState(
-	ctx context.Context, q *queries.Queries, ref item.Ref, state string, closedAt, stamp time.Time, readBefore *time.Time,
-) error {
-	var err error
+// noteClosedStates records the state of the items a pass's or a test's searches, which
+// went out at readBefore, returned merged or closed, as saveClosedStates does, and
+// returns the states it wrote, for the write order: an item stored at or after
+// readBefore keeps what that newer read stored.
+func (w *writer) noteClosedStates(ctx context.Context, closed []github.Item, readBefore time.Time) ([]stateWrite, error) {
+	var out []stateWrite
 
-	if readBefore == nil {
-		err = q.SetRefState(ctx, queries.SetRefStateParams{
-			State: state, ClosedAt: timeOrNil(closedAt), FetchedAt: stamp.UTC(), Number: int64(ref.Number),
-			Owner: ref.Repo.Owner, Name: ref.Repo.Repo,
-		})
-	} else {
-		err = q.SetRefStateBefore(ctx, queries.SetRefStateBeforeParams{
-			State: state, ClosedAt: timeOrNil(closedAt), FetchedAt: stamp.UTC(), Number: int64(ref.Number),
-			Owner: ref.Repo.Owner, Name: ref.Repo.Repo, ReadBefore: readBefore.UTC(),
-		})
+	for _, it := range closed {
+		wrote, err := setRefStateBefore(ctx, w.q, it.Ref(), it.State, it.ClosedAt, w.now, readBefore)
+		if err != nil {
+			return nil, err
+		}
+
+		out = append(out, wrote...)
 	}
 
+	return out, nil
+}
+
+// setRefStateBefore records the state of every stored item of ref's repository and number
+// stored before readBefore, as a read that went out then said, stamping fetched_at with
+// stamp, and returns the states it wrote (SetRefStateBefore).
+func setRefStateBefore(
+	ctx context.Context, q *queries.Queries, ref item.Ref, state string, closedAt, stamp, readBefore time.Time,
+) ([]stateWrite, error) {
+	ids, err := q.SetRefStateBefore(ctx, queries.SetRefStateBeforeParams{
+		State: state, ClosedAt: timeOrNil(closedAt), FetchedAt: stamp.UTC(), Number: int64(ref.Number),
+		Owner: ref.Repo.Owner, Name: ref.Repo.Repo, ReadBefore: readBefore.UTC(),
+	})
 	if err != nil {
-		return fmt.Errorf("save the state of %s: %w", ref, err)
+		return nil, fmt.Errorf("save the state of %s: %w", ref, err)
 	}
 
-	return nil
+	out := make([]stateWrite, 0, len(ids))
+	for _, id := range ids {
+		out = append(out, stateWrite{id: id, state: state, closedAt: closedAt})
+	}
+
+	return out, nil
+}
+
+// stateIDs returns the ids of the items states names.
+func stateIDs(states []stateWrite) []int64 {
+	out := make([]int64, 0, len(states))
+	for _, st := range states {
+		out = append(out, st.id)
+	}
+
+	return out
 }

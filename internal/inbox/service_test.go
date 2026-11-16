@@ -138,6 +138,10 @@ type fakeClient struct {
 	watchDetailsGate *gate
 	watchDetailsErr  error
 	watchPanic       bool
+
+	// itemsFail fails, as with a network error, a FetchItems request that holds this node
+	// ID; the others are answered.
+	itemsFail string
 }
 
 func (c *fakeClient) FetchInbox(_ context.Context, tok github.Token) (*github.Inbox, error) {
@@ -255,6 +259,10 @@ func (c *fakeClient) FetchItems(
 
 	if c.itemErr != nil {
 		return nil, github.Redact(c.itemErr, tok)
+	}
+
+	if c.itemsFail != "" && slices.Contains(ids, c.itemsFail) {
+		return nil, errFakeNetwork
 	}
 
 	out := &github.ItemUpdates{Items: map[string]github.ItemUpdate{}, ProjectsRefused: opts.Projects && c.refuseProjects}

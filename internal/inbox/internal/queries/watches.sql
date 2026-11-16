@@ -57,8 +57,9 @@ RETURNING id;
 
 -- name: SetItemState :exec
 -- SetItemState records the state of the item with id, and when it closed, as a read that
--- carries no more of it said. Nothing changes when no item has id.
-UPDATE items SET state = ?, closed_at = ? WHERE id = ?;
+-- carries no more of it said: a state a whole refresh applies again on top of its own (see
+-- order.go). A merged item keeps its state. Nothing changes when no item has id.
+UPDATE items SET state = ?, closed_at = ? WHERE id = ? AND state <> 'MERGED';
 
 -- name: SetRefState :exec
 -- SetRefState records the state of every stored item of the repository named owner and
@@ -75,10 +76,11 @@ WHERE number = sqlc.arg(number)
   AND repo_id IN (SELECT id FROM repos WHERE owner = sqlc.arg(owner) AND name = sqlc.arg(name))
   AND items.state <> 'MERGED';
 
--- name: SetRefStateBefore :exec
+-- name: SetRefStateBefore :many
 -- SetRefStateBefore is SetRefState for a read that went out at read_before outside a whole
 -- refresh (a watch pass's searches, another service's read): an item stored at or after
--- read_before keeps what that newer read stored.
+-- read_before keeps what that newer read stored. It returns the ids of the items it wrote,
+-- which the write order records (see order.go).
 UPDATE items SET
     state = sqlc.arg(state),
     closed_at = sqlc.narg(closed_at),
@@ -86,7 +88,8 @@ UPDATE items SET
 WHERE number = sqlc.arg(number)
   AND repo_id IN (SELECT id FROM repos WHERE owner = sqlc.arg(owner) AND name = sqlc.arg(name))
   AND items.state <> 'MERGED'
-  AND items.fetched_at < sqlc.arg(read_before);
+  AND items.fetched_at < sqlc.arg(read_before)
+RETURNING id;
 
 -- name: UpsertWatch :exec
 -- UpsertWatch records that the search with watch_key returned the item with item_id now:

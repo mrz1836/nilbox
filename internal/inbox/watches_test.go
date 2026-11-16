@@ -15,6 +15,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/event"
 	"github.com/mrz1836/nilbox/internal/github"
 	"github.com/mrz1836/nilbox/internal/inbox/internal/queries"
+	"github.com/mrz1836/nilbox/internal/item"
 	"github.com/mrz1836/nilbox/internal/testutil"
 )
 
@@ -79,7 +80,11 @@ type watchHarness struct {
 
 	source  *fakeWatches
 	changed *changedLog
-	stop    func()
+
+	// notes is the Store whose NoteStates shares the Service's write order, and halt stops
+	// the running worker.
+	notes *Store
+	halt  func()
 }
 
 // newWatchHarness returns a watchHarness with its worker running; the test defers stop.
@@ -88,9 +93,24 @@ func newWatchHarness(t *testing.T) *watchHarness {
 
 	h := &watchHarness{harness: newHarness(t), source: &fakeWatches{}, changed: &changedLog{}}
 	h.client.details = map[string]github.ItemDetails{}
+	h.notes = NewStore(h.pool, h.clock)
+	h.serve(t, h.client)
+
+	return h
+}
+
+// serve builds the harness's Service over client, its write order shared with notes, and
+// runs its watch pass worker, stopping the one before.
+func (h *watchHarness) serve(t *testing.T, client Client) {
+	t.Helper()
+
+	if h.halt != nil {
+		h.halt()
+	}
+
 	h.svc = NewService(Config{
-		Pool: h.pool, Tokens: h.tokens, Client: h.client, Clock: h.clock, Events: h.events, Logger: h.logs.Logger(),
-		Watches: h.source, Changed: h.hear,
+		Pool: h.pool, Tokens: h.tokens, Client: client, Clock: h.clock, Events: h.events, Logger: h.logs.Logger(),
+		Watches: h.source, Changed: h.hear, Store: h.notes,
 	})
 
 	ctx, cancel := context.WithCancel(t.Context())
@@ -102,12 +122,25 @@ func newWatchHarness(t *testing.T) *watchHarness {
 		h.svc.runWatchPasses(ctx)
 	}()
 
-	h.stop = func() {
+	h.halt = func() {
 		cancel()
 		<-done
 	}
+}
 
-	return h
+// gatedWatching puts the harness's Service behind a gatedClient over its fake client.
+func (h *watchHarness) gatedWatching(t *testing.T) *gatedClient {
+	t.Helper()
+
+	c := &gatedClient{fakeClient: h.client}
+	h.serve(t, c)
+
+	return c
+}
+
+// stop stops the worker running now.
+func (h *watchHarness) stop() {
+	h.halt()
 }
 
 // hear records what the Changed seam heard, and what the inbox showed then.
@@ -960,6 +993,161 @@ func TestAMergeReadWhileATestReadsDetailsStands(t *testing.T) {
 	})
 }
 
+// olderReadLandsAfterAPass has #7's own read go out and read it open, then a pass find it
+// in state, and then the read land, and returns #7's id.
+func (h *watchHarness) olderReadLandsAfterAPass(t *testing.T, state string) int64 {
+	t.Helper()
+
+	h.startWatching(t)
+	h.refresh(t)
+	synctest.Wait()
+
+	id := h.storedItems(t)[1].ID
+	c := h.gatedWatching(t)
+	c.itemGate = newGate(t)
+
+	h.client.items = map[string]*github.ItemUpdate{nodeID(7): open(h.harness, 7, watchedPRDetails(headA, "SUCCESS"))}
+	read := async(func() (Snapshot, error) { return h.svc.RefreshItem(t.Context(), id) })
+
+	c.itemGate.waitArrived(t)
+
+	// The pass's searches go out after the read, and find #7 closed or merged.
+	h.next()
+
+	closed := watched(dependabot(7), headA, "SUCCESS")
+	closed.State, closed.ClosedAt = state, h.clock.Now()
+	h.client.watches[depQuery] = answer(watched(pr(1, "OWNER", false), headA, "SUCCESS"), closed)
+
+	h.refresh(t)
+	synctest.Wait()
+	require.Equal(t, state, h.itemState(t, id), "the pass records the state it found")
+
+	c.itemGate.release()
+	require.NoError(t, await(t, read).err)
+	synctest.Wait()
+
+	return id
+}
+
+func TestAnOlderItemReadNeverReopensAMergeAPassStored(t *testing.T) {
+	t.Parallel()
+
+	synctest.Test(t, func(t *testing.T) {
+		h := newWatchHarness(t)
+		defer h.stop()
+
+		id := h.olderReadLandsAfterAPass(t, github.StateMerged)
+		assert.Equal(t, github.StateMerged, h.itemState(t, id), "the read that went out first stores nothing over it")
+	})
+}
+
+func TestAnOlderItemReadNeverReopensACloseAPassStored(t *testing.T) {
+	t.Parallel()
+
+	synctest.Test(t, func(t *testing.T) {
+		h := newWatchHarness(t)
+		defer h.stop()
+
+		id := h.olderReadLandsAfterAPass(t, github.StateClosed)
+		assert.Equal(t, github.StateClosed, h.itemState(t, id), "a close can reopen, but only by a newer read")
+	})
+}
+
+func TestANewerReadNeverReopensAMerge(t *testing.T) {
+	t.Parallel()
+
+	h, id := itemHarness(t)
+	h.exec(t, `UPDATE items SET state = 'MERGED' WHERE id = ?`, id)
+
+	// GitHub never answers a merged pull request as open; a read that does is wrong, and so
+	// is a stale listing.
+	h.client.items = map[string]*github.ItemUpdate{nodeID(1): open(h, 1, prDetails())}
+	_, err := h.svc.RefreshItem(t.Context(), id)
+	require.NoError(t, err)
+
+	var state string
+
+	require.NoError(t, h.pool.QueryRowContext(t.Context(), `SELECT state FROM items WHERE id = ?`, id).Scan(&state))
+	assert.Equal(t, github.StateMerged, state, "an item's own read never writes over a merge")
+
+	listed := pr(1, "OWNER", false)
+	listed.State = github.StateOpen
+	h.client.inbox = fetched([]github.Item{listed}, nil, nil)
+	h.refresh(t)
+
+	require.NoError(t, h.pool.QueryRowContext(t.Context(), `SELECT state FROM items WHERE id = ?`, id).Scan(&state))
+	assert.Equal(t, github.StateMerged, state, "nor does a whole refresh's listing")
+}
+
+func TestAnOlderItemReadNeverReopensACloseAnotherServiceRead(t *testing.T) {
+	t.Parallel()
+
+	synctest.Test(t, func(t *testing.T) {
+		h := newWatchHarness(t)
+		defer h.stop()
+
+		h.startWatching(t)
+		h.refresh(t)
+		synctest.Wait()
+
+		id := h.storedItems(t)[1].ID
+		c := h.gatedWatching(t)
+		c.itemGate = newGate(t)
+
+		h.client.items = map[string]*github.ItemUpdate{nodeID(7): open(h.harness, 7, watchedPRDetails(headA, "SUCCESS"))}
+		read := async(func() (Snapshot, error) { return h.svc.RefreshItem(t.Context(), id) })
+
+		c.itemGate.waitArrived(t)
+
+		// The worktree sweep's read goes out after it, and finds #7 closed.
+		h.clock.Advance(time.Second)
+
+		ref := dependabot(7).Ref()
+		require.NoError(t, h.notes.NoteStates(t.Context(), h.notes.StartRead(), []item.Ref{ref},
+			map[string]github.ItemState{ref.Key(): {State: github.StateClosed, ClosedAt: h.clock.Now()}}))
+
+		c.itemGate.release()
+		require.NoError(t, await(t, read).err)
+
+		assert.Equal(t, github.StateClosed, h.itemState(t, id), "the read that went out first stores nothing over it")
+	})
+}
+
+func TestARefreshStillFetchingTakesAStateReadAfterIt(t *testing.T) {
+	t.Parallel()
+
+	synctest.Test(t, func(t *testing.T) {
+		h := newWatchHarness(t)
+		defer h.stop()
+
+		h.seed(t, []github.Item{pr(1, "OWNER", false)}, nil, nil)
+		synctest.Wait()
+
+		id := h.storedItems(t)[0].ID
+		c := h.gatedWatching(t)
+		c.inboxGate = newGate(t)
+
+		listed := pr(1, "OWNER", false)
+		listed.State = github.StateOpen
+		h.client.inbox = fetched([]github.Item{listed}, nil, nil)
+		refresh := async(func() (Snapshot, error) { return h.svc.Refresh(t.Context()) })
+
+		c.inboxGate.waitArrived(t)
+
+		// Another service reads #1 after the refresh went out, and finds it closed.
+		h.clock.Advance(time.Second)
+
+		ref := listed.Ref()
+		require.NoError(t, h.notes.NoteStates(t.Context(), h.notes.StartRead(), []item.Ref{ref},
+			map[string]github.ItemState{ref.Key(): {State: github.StateClosed, ClosedAt: h.clock.Now()}}))
+
+		c.inboxGate.release()
+		require.NoError(t, await(t, refresh).err)
+
+		assert.Equal(t, github.StateClosed, h.itemState(t, id), "the refresh applies the newer read again, over its own")
+	})
+}
+
 func TestDetailsThatDidntComeBackAreReadAgainByTheNextPass(t *testing.T) {
 	t.Parallel()
 
@@ -1056,33 +1244,154 @@ func TestATestReadsAnUnwatchedItemsDetailsOnlyWhenOld(t *testing.T) {
 	})
 }
 
+func TestATestStoresTheCardOfAnUnwatchedItemThatMoved(t *testing.T) {
+	t.Parallel()
+
+	synctest.Test(t, func(t *testing.T) {
+		h := newWatchHarness(t)
+		defer h.stop()
+
+		h.seed(t, []github.Item{pr(1, "OWNER", false)}, nil, nil)
+		synctest.Wait()
+
+		h.client.watches = map[string]github.WatchResult{otherQuery: answer(watched(dependabot(9), headA, "FAILURE"))}
+		h.client.details[nodeID(9)] = watchedPRDetails(headA, "FAILURE")
+
+		test := func() SearchOutcome {
+			h.client.mu.Lock()
+			h.client.detailsIDs, h.client.detailsOpts = nil, nil
+			h.client.mu.Unlock()
+
+			got, _, err := h.svc.searchNow(t.Context(), []string{otherQuery})
+			require.NoError(t, err)
+
+			return got[otherQuery]
+		}
+
+		id := test().IDs[0]
+
+		card := func() (string, time.Time) {
+			var (
+				state string
+				at    time.Time
+			)
+
+			require.NoError(t, h.pool.QueryRowContext(t.Context(), `SELECT state, item_updated_at FROM items WHERE id = ?`, id).
+				Scan(&state, &at))
+
+			return state, at.UTC()
+		}
+
+		// A new comment moves only its update time: its details stay unread, as they are
+		// fresh, but its card moves.
+		h.clock.Advance(10 * time.Minute)
+
+		commented := dependabot(9)
+		commented.UpdatedAt = commented.UpdatedAt.Add(time.Hour)
+		h.client.watches[otherQuery] = answer(watched(commented, headA, "FAILURE"))
+
+		require.Equal(t, []int64{id}, test().IDs)
+		assert.Empty(t, h.watchedDetails())
+
+		_, at := card()
+		assert.True(t, commented.UpdatedAt.UTC().Equal(at), "the card of a test's result moves with its search")
+
+		// Closed since, and open again: its details are read for the new state.
+		h.exec(t, `UPDATE items SET state = 'CLOSED' WHERE id = ?`, id)
+		h.clock.Advance(time.Minute)
+
+		reopened := commented
+		reopened.UpdatedAt = reopened.UpdatedAt.Add(time.Hour)
+		h.client.watches[otherQuery] = answer(watched(reopened, headA, "FAILURE"))
+
+		require.Equal(t, []int64{id}, test().IDs)
+		assert.Equal(t, [][]string{{nodeID(9)}}, h.watchedDetails(), "a state that moved is read")
+
+		state, _ := card()
+		assert.Equal(t, github.StateOpen, state, "and its card is open again")
+	})
+}
+
+func TestATestKeepsAResultAPassStoppedWatching(t *testing.T) {
+	t.Parallel()
+
+	synctest.Test(t, func(t *testing.T) {
+		h := newWatchHarness(t)
+		defer h.stop()
+
+		h.startWatching(t)
+		h.refresh(t)
+		synctest.Wait()
+
+		id := h.storedItems(t)[1].ID
+
+		// A test whose search returns #7 at a new head reads its details, and waits there.
+		h.next()
+		h.client.watches[otherQuery] = answer(watched(dependabot(7), headB, "SUCCESS"))
+		h.client.details[nodeID(7)] = watchedPRDetails(headB, "SUCCESS")
+		h.client.watchDetailsGate = newGate(t)
+
+		var tested map[string]SearchOutcome
+
+		done := make(chan error, 1)
+
+		go func() {
+			var err error
+
+			tested, _, err = h.svc.searchNow(t.Context(), []string{otherQuery})
+			done <- err
+		}()
+
+		h.client.watchDetailsGate.waitArrived(t)
+
+		// Meanwhile the routine is edited away, and a pass drops its search's rows.
+		h.source.set()
+		h.refresh(t)
+		synctest.Wait()
+		require.Empty(t, h.watchRows(t))
+
+		h.client.watchDetailsGate.release()
+		require.NoError(t, <-done)
+		assert.Equal(t, []int64{id}, tested[otherQuery].IDs, "an open result stays the test's, whatever a pass dropped")
+	})
+}
+
+func TestAPartialSearchDropsNothingFromTheWatch(t *testing.T) {
+	t.Parallel()
+
+	synctest.Test(t, func(t *testing.T) {
+		h := newWatchHarness(t)
+		defer h.stop()
+
+		h.startWatching(t)
+		h.refresh(t)
+		synctest.Wait()
+
+		h.next()
+		h.client.watches[depQuery] = github.WatchResult{
+			IssueCount: 1, Items: []github.WatchItem{watched(dependabot(7), headA, "SUCCESS")}, Partial: true,
+		}
+
+		h.refresh(t)
+		synctest.Wait()
+
+		assert.Equal(t, []watchRow{
+			{key: depQuery, number: 1, stale: true, follow: true}, {key: depQuery, number: 7, follow: true},
+		}, h.watchRows(t), "an item GitHub may have failed alone is kept, stale")
+	})
+}
+
 func TestTheWatchRequestGoesOutOnlyOnceTheInboxIsStored(t *testing.T) {
 	t.Parallel()
 
 	synctest.Test(t, func(t *testing.T) {
 		h := newWatchHarness(t)
-		defer func() { h.stop() }() // the worker is started again below
+		defer h.stop()
 
 		h.startWatching(t)
 
-		c := &gatedClient{fakeClient: h.client, inboxGate: newGate(t)}
-		h.svc = NewService(Config{
-			Pool: h.pool, Tokens: h.tokens, Client: c, Clock: h.clock, Events: h.events, Logger: h.logs.Logger(),
-			Watches: h.source, Changed: h.hear,
-		})
-
-		h.stop()
-
-		ctx, cancel := context.WithCancel(t.Context())
-		done := make(chan struct{})
-
-		go func() {
-			defer close(done)
-
-			h.svc.runWatchPasses(ctx)
-		}()
-
-		h.stop = func() { cancel(); <-done }
+		c := h.gatedWatching(t)
+		c.inboxGate = newGate(t)
 		h.client.watchErr = errWatchDown
 
 		calls := func() int {
@@ -1210,6 +1519,86 @@ func TestTheFollowerReadsInBatchesTheListedFirst(t *testing.T) {
 		for node := range nodes {
 			assert.True(t, read[node], "every listed pull request is read before a watched one: %s", node)
 		}
+	})
+}
+
+func TestAFollowerBatchThatFailsLeavesItsPullRequestsForTheNextRound(t *testing.T) {
+	t.Parallel()
+
+	synctest.Test(t, func(t *testing.T) {
+		h := newWatchHarness(t)
+		defer h.stop()
+
+		h.runningChecks(t, 40, 0)
+		h.client.itemsFail = nodeID(1) // the batch that holds #1, of #1 to #25
+
+		err := h.svc.refreshRunning(t.Context())
+		require.ErrorIs(t, err, errFakeNetwork, "the failed request is reported")
+		require.Len(t, h.client.itemsIDs, 2)
+
+		checks := func(number int) string {
+			var state string
+
+			require.NoError(t, h.pool.QueryRowContext(t.Context(), `SELECT d.checks_state FROM item_details d
+JOIN items i ON i.id = d.item_id WHERE i.number = ?`, number).Scan(&state))
+
+			return state
+		}
+
+		for n := 1; n <= 25; n++ {
+			assert.Equal(t, "PENDING", checks(n), "#%d's request failed, so it is read again next round", n)
+		}
+
+		for n := 26; n <= 40; n++ {
+			assert.Equal(t, "SUCCESS", checks(n), "#%d's request was answered, and is stored", n)
+		}
+	})
+}
+
+func TestAKeeperThatCantBeReadOnlySkipsThePrune(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	h.svc = NewService(Config{
+		Pool: h.pool, Tokens: h.tokens, Client: h.client, Clock: h.clock, Logger: h.logs.Logger(),
+		Keep: Keepers{failingKeep{}},
+	})
+	h.seed(t, []github.Item{pr(1, "OWNER", false)}, nil, nil)
+	h.client.inbox = fetched(nil, nil, nil)
+	h.refresh(t)
+
+	h.clock.Advance(pruneAfter + time.Hour)
+	h.refresh(t) // must succeed
+
+	assert.Len(t, h.storedItems(t), 1, "an item something may refer to is kept")
+	assert.Contains(t, h.logs.String(), "prunes no old item")
+}
+
+func TestReadChecksWaitsForTheBudget(t *testing.T) {
+	t.Parallel()
+
+	synctest.Test(t, func(t *testing.T) {
+		h := newWatchHarness(t)
+		defer h.stop()
+
+		h.startWatching(t)
+		h.refresh(t)
+		synctest.Wait()
+
+		id := h.storedItems(t)[1].ID
+
+		h.next()
+
+		low := fetched([]github.Item{pr(1, "OWNER", false)}, nil, nil)
+		low.RateLimit.Remaining, low.RateLimit.Used = 1000, 4000
+		h.client.inbox = low
+		h.refresh(t)
+		synctest.Wait()
+
+		points, err := NewRoutines(h.svc).ReadChecks(t.Context(), []int64{id})
+		require.ErrorIs(t, err, ErrLowBudget)
+		assert.Zero(t, points)
+		assert.Empty(t, h.client.checksIDs, "nothing is sent under a quarter of the budget")
 	})
 }
 

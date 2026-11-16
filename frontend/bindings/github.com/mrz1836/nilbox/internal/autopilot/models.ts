@@ -218,7 +218,8 @@ export interface TestResult {
 
     /**
      * LowBudget says the GraphQL budget was under a quarter of its size, so the test sent
-     * nothing: each search it had no answer for says so, and no check name was read.
+     * nothing: each search it had no answer for says so, and no check name was read, even
+     * when every search came from the last minute's cache.
      */
     "lowBudget": boolean;
 

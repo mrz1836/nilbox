@@ -712,7 +712,7 @@ func TestARefreshSupersedesOnlyOlderWritesOfWhatItStored(t *testing.T) {
 func TestARefreshKeepsTheLastCheckOfEachItemStillListed(t *testing.T) {
 	t.Parallel()
 
-	var s Service
+	s := Service{order: &writeOrder{}}
 
 	s.order.checked = map[int64]uint64{1: 3, 2: 3}
 	s.storedBy(5, &writer{saved: []savedEntry{{id: 1}, {id: 3}}, checked: map[int64]bool{3: true}})

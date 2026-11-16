@@ -463,6 +463,11 @@ type passPlan struct {
 	// started is when the pass's request went out: an item a later read stored is left as
 	// that read stored it.
 	started time.Time
+
+	// wrote holds the items whose card the store wrote, and states the states it wrote of
+	// the closed results, for the write order (orderStored).
+	wrote  []int64
+	states []stateWrite
 }
 
 // passItem is one open result of a pass, and what is stored of it. stored is what the
@@ -611,8 +616,9 @@ func (p *passPlan) dropClosed() {
 // one stored merged, or closed by such a read, keeps no row, since the search's open is
 // older; any other is stored, and its details read when needsDetails says so, or, new to
 // the watches, when they are missing or older than detailsStaleAfter. A test (test) reads
-// the details of an item no search watches only then: the passes keep the watched ones
-// current, and a test only looks.
+// the details of an item no search watches only then, or when its state moved (a reopen,
+// say): the passes keep the watched ones current, and a test only looks; it stores the
+// card that moved all the same (see storeResult).
 func (p *passItem) judge(started, now time.Time, test bool) {
 	st := p.stored
 	if st == nil {
@@ -640,7 +646,7 @@ func readsOf(it github.WatchItem, st *queries.ListWatchBaselineRow, now time.Tim
 
 	switch {
 	case !st.Watched && test:
-		return old, false
+		return old || st.State != it.State, false
 	case !st.Watched:
 		return old || needsDetails(it, st), false
 	default:
@@ -690,9 +696,10 @@ func moved(it github.WatchItem, st *queries.ListWatchBaselineRow) bool {
 // recheck judges the item again on what recheck read of it under the store lock (now,
 // nil when nothing is stored), against what the pass compared it with: an item stored
 // since then, or since the pass's request went out, is newer, and keeps its card and
-// details; one whose rows went since, as a read that found it merged, closed, or gone
-// takes them away, is gone too; one deleted since is stored again as new.
-func (p *passItem) recheck(now *queries.ListWatchBaselineRow, started time.Time) {
+// details; for a pass, one whose rows went since, as a read that found it merged, closed,
+// or gone takes them away, is gone too (a test's results have no rows, which a pass may
+// drop for any reason); one deleted since is stored again as new.
+func (p *passItem) recheck(now *queries.ListWatchBaselineRow, started time.Time, test bool) {
 	before := p.stored
 
 	if now == nil {
@@ -708,7 +715,7 @@ func (p *passItem) recheck(now *queries.ListWatchBaselineRow, started time.Time)
 	p.stored = now
 	p.listed = inAList(now)
 	p.newer = since || storedAfter(now, started)
-	p.gone = heldClosed(now, p.newer) || unwatchedSince(before, now)
+	p.gone = heldClosed(now, p.newer) || (!test && unwatchedSince(before, now))
 
 	if p.listed || p.newer || p.gone {
 		p.changed = false
@@ -849,7 +856,7 @@ func (s *Service) storePass(ctx context.Context, seq uint64, plan *passPlan) ([]
 		w.accountID, w.details = plan.accountID, plan.details
 
 		if plan.accountID != 0 {
-			stored, err := w.storeResults(ctx, plan, true)
+			stored, err := w.storeResults(ctx, plan)
 			if err != nil {
 				return err
 			}
@@ -863,13 +870,23 @@ func (s *Service) storePass(ctx context.Context, seq uint64, plan *passPlan) ([]
 		return nil, fmt.Errorf("save the watched items: %w", err)
 	}
 
-	// A refresh fetching now that started before this pass's request takes what it stored
-	// again, as it takes an item's own read (see order.go).
+	s.orderStored(seq, plan)
+
+	return changed, nil
+}
+
+// orderStored records in the write order what a pass or a test that fetched as seq
+// stored, under order.mu: an item's own refresh that started before it, and lands after,
+// stores nothing over a card or a state it wrote; and a whole refresh fetching now that
+// started before it takes what it stored again, as it takes an item's own read (see
+// order.go).
+func (s *Service) orderStored(seq uint64, plan *passPlan) {
+	s.order.noteStated(slices.Concat(plan.wrote, stateIDs(plan.states)), seq)
+	s.order.replayStates(seq, plan.states)
+
 	if r := s.order.refresh; r != nil && seq > r.seq {
 		r.replays = append(r.replays, plan.replays(seq)...)
 	}
-
-	return changed, nil
 }
 
 // replays returns the item writes a refresh still fetching applies again: one for each item
@@ -912,7 +929,9 @@ func (p *passPlan) changedOf(stored map[string]int64) []int64 {
 // each one, with its watch rows when rows is set (a pass's, never a test's), the closed
 // results' state, and the snoozes woken. It returns the id of every result stored or left
 // as stored, by node ID; a gone one is left out.
-func (w *writer) storeResults(ctx context.Context, plan *passPlan, rows bool) (map[string]int64, error) {
+func (w *writer) storeResults(ctx context.Context, plan *passPlan) (map[string]int64, error) {
+	plan.wrote, plan.states = nil, nil
+
 	if err := w.recheck(ctx, plan); err != nil {
 		return nil, err
 	}
@@ -920,7 +939,7 @@ func (w *writer) storeResults(ctx context.Context, plan *passPlan, rows bool) (m
 	ids := make(map[string]int64, len(plan.order))
 
 	for _, node := range plan.order {
-		id, kept, err := w.storeOne(ctx, plan.results[node], rows)
+		id, kept, err := w.storeOne(ctx, plan, plan.results[node])
 		if err != nil {
 			return nil, err
 		}
@@ -935,23 +954,37 @@ func (w *writer) storeResults(ctx context.Context, plan *passPlan, rows bool) (m
 		closed = append(closed, it.Item)
 	}
 
-	if err := w.saveClosedStates(ctx, closed, &plan.started); err != nil {
+	states, err := w.noteClosedStates(ctx, closed, plan.started)
+	if err != nil {
 		return nil, err
 	}
+
+	plan.states = states
 
 	return ids, w.wakeSnoozed(ctx)
 }
 
-// storeOne stores one result (storeResult), and its watch rows when rows is set, or takes
-// a gone one out of every search. It returns the result's id, and false for a gone one.
-func (w *writer) storeOne(ctx context.Context, item *passItem, rows bool) (int64, bool, error) {
+// storeOne stores one result (storeResult), recording in plan.wrote the item whose card
+// it wrote, and its watch rows for a pass, never a test; or takes a gone one out of every
+// search. It returns the result's id, and false for a gone one.
+func (w *writer) storeOne(ctx context.Context, plan *passPlan, item *passItem) (int64, bool, error) {
+	test := plan.job.test
+
 	if item.gone {
-		return 0, false, w.forgetGone(ctx, item, rows)
+		return 0, false, w.forgetGone(ctx, item, !test)
 	}
 
-	id, err := w.storeResult(ctx, item)
-	if err != nil || !rows {
-		return id, err == nil, err
+	id, wrote, err := w.storeResult(ctx, item, test)
+	if err != nil {
+		return 0, false, err
+	}
+
+	if wrote {
+		plan.wrote = append(plan.wrote, id)
+	}
+
+	if test {
+		return id, true, nil
 	}
 
 	return id, true, w.storeWatchRows(ctx, id, item)
@@ -976,7 +1009,7 @@ func (w *writer) recheck(ctx context.Context, plan *passPlan) error {
 	}
 
 	for _, node := range plan.order {
-		plan.results[node].recheck(now[node], plan.started)
+		plan.results[node].recheck(now[node], plan.started, plan.job.test)
 	}
 
 	return nil
@@ -1008,28 +1041,38 @@ func (w *writer) storeWatchRows(ctx context.Context, id int64, item *passItem) e
 	return nil
 }
 
-// storeResult stores one result and returns its id: a listed one, or one a later read
-// stored, is left as it is; a stored one whose details the pass meant to read, or whose
-// card moved, but whose details didn't come back, is left as it is too, so the next pass
-// finds it changed and reads it again, and it isn't told as changed; any other is stored
-// with its repository, and its details when the pass read them. A new one is stored
-// without its details when they didn't come back, and isn't told as changed until a pass
-// reads them.
-func (w *writer) storeResult(ctx context.Context, item *passItem) (int64, error) {
+// storeResult stores one result and returns its id, and whether it wrote its card: a
+// listed one, or one a later read stored, is left as it is; a stored one whose details the
+// pass meant to read, or (for a pass) whose card moved, but whose details didn't come
+// back, is left as it is too, so the next pass finds it changed and reads it again, and it
+// isn't told as changed; any other is stored with its repository, and its details when
+// the pass read them. A test that left a moved card's details unread on purpose (see
+// judge) stores the card. A new one is stored without its details when they didn't come
+// back, and isn't told as changed until a pass reads them.
+func (w *writer) storeResult(ctx context.Context, item *passItem, test bool) (int64, bool, error) {
 	_, read := w.details[item.item.NodeID]
 
 	switch st := item.stored; {
 	case st != nil && (item.listed || item.newer):
-		return st.ID, nil
-	case st != nil && !read && (item.read || moved(item.item, st)):
+		return st.ID, false, nil
+	case st != nil && !read && unreadMove(item, test):
 		item.changed = false
 
-		return st.ID, nil
+		return st.ID, false, nil
 	case st == nil && !read:
 		item.changed = false
 	}
 
-	return w.storeWatchedItem(ctx, item.item)
+	id, err := w.storeWatchedItem(ctx, item.item)
+
+	return id, err == nil, err
+}
+
+// unreadMove reports whether a stored result whose details didn't come with the store
+// keeps its card: its details were meant to be read, or, for a pass, its card moved. A
+// test leaves a moved card's details unread on purpose, and stores the card.
+func unreadMove(item *passItem, test bool) bool {
+	return item.read || (!test && moved(item.item, item.stored))
 }
 
 // storeWatchedItem stores what a search said of an item, with its repository, and its

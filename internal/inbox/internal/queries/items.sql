@@ -12,10 +12,10 @@ WHERE account_id = ?;
 -- rewritten, with one exception: a list the user left from the inbox (assign_left_at,
 -- review_left_at) stays left while the item has not moved since, since GitHub's search
 -- index trails the edit; once the item moves past the stamp, the search is believed and the
--- stamp cleared. The item's state is rewritten when the search said it (a state not empty), and
--- review_requested_at and assigned_at keep when the item first arrived in each list while
--- it stays in it, stamped with fetched_at when it arrives; ClearArrivalStamps clears them
--- once it leaves.
+-- stamp cleared. The item's state is rewritten when the search said it (a state not empty),
+-- but never over a merge, which nothing comes back from; and review_requested_at and
+-- assigned_at keep when the item first arrived in each list while it stays in it, stamped
+-- with fetched_at when it arrives; ClearArrivalStamps clears them once it leaves.
 INSERT INTO items (
     account_id, repo_id, kind, number, node_id, title, url, author_login, author_type, author_association,
     is_cross_repository, is_draft, head_ref, item_created_at, item_updated_at,
@@ -60,8 +60,8 @@ ON CONFLICT (account_id, repo_id, kind, number) DO UPDATE SET
         WHEN excluded.reason_assigned = 1 THEN COALESCE(items.assigned_at, excluded.fetched_at)
         ELSE NULL
     END,
-    state = CASE WHEN excluded.state <> '' THEN excluded.state ELSE items.state END,
-    closed_at = CASE WHEN excluded.state <> '' THEN NULL ELSE items.closed_at END,
+    state = CASE WHEN excluded.state = '' OR items.state = 'MERGED' THEN items.state ELSE excluded.state END,
+    closed_at = CASE WHEN excluded.state = '' OR items.state = 'MERGED' THEN items.closed_at ELSE NULL END,
     fetched_at = excluded.fetched_at
 RETURNING id, reason_review_requested, reason_assigned;
 
@@ -78,9 +78,9 @@ WHERE account_id = ?
 
 -- name: UpdateItem :exec
 -- UpdateItem rewrites what GitHub says about the stored item with id, in place, its state
--- when the read said it (a state not empty). Its account, repository, kind, number, and lists
--- stay as they are; only LeaveAnsweredReview, run after it, takes a pull request out of
--- the review-requested list.
+-- when the read said it (a state not empty), but never over a merge, which nothing comes
+-- back from. Its account, repository, kind, number, and lists stay as they are; only
+-- LeaveAnsweredReview, run after it, takes a pull request out of the review-requested list.
 UPDATE items SET
     node_id = sqlc.arg(node_id),
     title = sqlc.arg(title),
@@ -93,21 +93,21 @@ UPDATE items SET
     head_ref = sqlc.arg(head_ref),
     item_created_at = sqlc.arg(item_created_at),
     item_updated_at = sqlc.arg(item_updated_at),
-    state = CASE WHEN CAST(sqlc.arg(state) AS TEXT) <> '' THEN CAST(sqlc.arg(state) AS TEXT) ELSE state END,
-    closed_at = CASE WHEN CAST(sqlc.arg(state) AS TEXT) <> '' THEN sqlc.narg(closed_at) ELSE closed_at END,
+    state = CASE WHEN CAST(sqlc.arg(state) AS TEXT) = '' OR state = 'MERGED' THEN state ELSE CAST(sqlc.arg(state) AS TEXT) END,
+    closed_at = CASE WHEN CAST(sqlc.arg(state) AS TEXT) = '' OR state = 'MERGED' THEN closed_at ELSE sqlc.narg(closed_at) END,
     fetched_at = sqlc.arg(fetched_at)
 WHERE id = sqlc.arg(id);
 
 -- name: UnlistItem :exec
 -- UnlistItem takes the item with id out of every list, as a refresh does with an item no
 -- search returns, stamps fetched_at, and records its state and when it closed when the
--- read said (a state not empty). The row stays, since local state may reference it. The times
--- it arrived in Review requested and Assigned go with the lists.
+-- read said (a state not empty), but never over a merge. The row stays, since local state
+-- may reference it. The times it arrived in Review requested and Assigned go with the lists.
 UPDATE items SET
     reason_review_requested = 0, reason_authored = 0, reason_assigned = 0,
     review_requested_at = NULL, assigned_at = NULL,
-    state = CASE WHEN CAST(sqlc.arg(state) AS TEXT) <> '' THEN CAST(sqlc.arg(state) AS TEXT) ELSE state END,
-    closed_at = CASE WHEN CAST(sqlc.arg(state) AS TEXT) <> '' THEN sqlc.narg(closed_at) ELSE closed_at END,
+    state = CASE WHEN CAST(sqlc.arg(state) AS TEXT) = '' OR state = 'MERGED' THEN state ELSE CAST(sqlc.arg(state) AS TEXT) END,
+    closed_at = CASE WHEN CAST(sqlc.arg(state) AS TEXT) = '' OR state = 'MERGED' THEN closed_at ELSE sqlc.narg(closed_at) END,
     fetched_at = sqlc.arg(fetched_at)
 WHERE id = sqlc.arg(id);
 

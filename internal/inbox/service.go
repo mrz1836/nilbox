@@ -204,6 +204,11 @@ type Config struct {
 	// inbox's own.
 	Keep ItemKeeper
 
+	// Store, when set, is the Store whose NoteStates stores through this Service's write
+	// order (see order.go), so a state another service read and the inbox's own reads are
+	// stored in the order they went out. Nil gives the Service an order of its own.
+	Store *Store
+
 	// Logger receives what a call cannot report as its error, at Debug: an avatar that
 	// could not be downloaded, and a snapshot that could not be read after a write.
 	// Without it they are not logged.
@@ -245,8 +250,9 @@ type Service struct {
 	// items runs the work on one item one piece at a time.
 	items itemLocks
 
-	// order keeps the stores of what GitHub said in the order their fetches started.
-	order writeOrder
+	// order keeps the stores of what GitHub said in the order their fetches started; it is
+	// Config.Store's when one is given, so its NoteStates is ordered with them.
+	order *writeOrder
 
 	snapshots snapshotCache
 	scopes    scopeCache
@@ -264,6 +270,7 @@ func NewService(cfg Config) *Service {
 		client: cfg.Client, clock: c, events: event.Or(cfg.Events), arrivals: cfg.Arrivals, outcomes: cfg.Outcomes,
 		usage: cfg.Usage, logger: logging.Or(cfg.Logger), watchSource: cfg.Watches, changedSink: cfg.Changed,
 		keep: cfg.Keep, passes: watchPasses{jobs: make(chan *watchJob, 1), ended: make(chan struct{})},
+		order: orderOf(cfg.Store),
 	}
 }
 
@@ -377,10 +384,8 @@ func (s *Service) refresh(ctx context.Context) (refreshTold, error) {
 	}
 
 	// What else refers to an item is read before the store's transaction, which a read of
-	// the pool would wait on.
-	if got.kept, err = s.keptItems(ctx); err != nil {
-		return refreshTold{}, err
-	}
+	// the pool would wait on; a read that fails only skips the prune.
+	got.kept, got.keptRead = s.keptItems(ctx)
 
 	told, err := s.save(ctx, seq, got)
 	if err == nil && s.usage != nil {
@@ -498,8 +503,10 @@ type refreshed struct {
 	// current or the download failed.
 	avatar *downloadedAvatar
 
-	// kept are the items something outside the inbox refers to, which the prune keeps.
-	kept []int64
+	// kept are the items something outside the inbox refers to, which the prune keeps, and
+	// keptRead is false when they couldn't be read, so the refresh prunes nothing.
+	kept     []int64
+	keptRead bool
 }
 
 // downloadedAvatar is the viewer's avatar as a data URL, and where it came from.

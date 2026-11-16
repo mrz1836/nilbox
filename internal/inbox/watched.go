@@ -73,11 +73,21 @@ var ErrLowBudget = errors.New("the GraphQL budget is low")
 // stored: Autopilot asks for the pull requests whose conditions need check names. An id
 // that isn't a stored pull request is left out. It costs one GraphQL point per batch of 25,
 // counted for Autopilot, returns what it cost, and tells the Changed seam the items it
-// stored.
+// stored. While the GraphQL budget is under a quarter of its size it sends nothing and
+// returns ErrLowBudget, as a test's searches do.
 func (s *Service) readChecks(ctx context.Context, ids []int64) (int, error) {
 	nodes, err := s.pullNodes(ctx, ids)
 	if err != nil || len(nodes) == 0 {
 		return 0, err
+	}
+
+	login, _, err := s.prefs.Get(ctx, prefViewer)
+	if err != nil {
+		return 0, fmt.Errorf("read the signed-in account: %w", err)
+	}
+
+	if s.budgetPause(ctx, login) != "" {
+		return 0, ErrLowBudget
 	}
 
 	ctx = github.WithPurpose(ctx, github.PurposeAutopilot)
@@ -292,7 +302,7 @@ func (s *Service) storeTested(ctx context.Context, seq uint64, plan *passPlan) (
 
 		var err error
 
-		ids, err = w.storeResults(ctx, plan, false)
+		ids, err = w.storeResults(ctx, plan)
 
 		return err
 	})
@@ -300,9 +310,7 @@ func (s *Service) storeTested(ctx context.Context, seq uint64, plan *passPlan) (
 		return nil, fmt.Errorf("save the searched items: %w", err)
 	}
 
-	if r := s.order.refresh; r != nil && seq > r.seq {
-		r.replays = append(r.replays, plan.replays(seq)...)
-	}
+	s.orderStored(seq, plan)
 
 	return ids, nil
 }

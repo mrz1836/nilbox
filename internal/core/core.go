@@ -503,7 +503,7 @@ func assemble(ctx context.Context, pool *sql.DB, info startup, opts Options, log
 	// read through the same lane. What the user finishes from the inbox reaches the
 	// mirror as the inbox's outcomes, and a change to the rules through the settings' events.
 	ghThreads := ghthreads.NewService(ghthreads.Config{
-		Pool: pool, Tokens: tokens, Client: stateNoter{Client: client, store: inboxStore, clock: clock.Or(opts.Clock), logger: logger},
+		Pool: pool, Tokens: tokens, Client: stateNoter{Client: client, store: inboxStore, logger: logger},
 		Rules: ghThreadRules{prefs: prefsstore.New(pool, opts.Clock)},
 		Holds: ghThreadHolds{settings: prefs}, Clock: opts.Clock, Events: opts.Events, Logger: logger,
 	})
@@ -528,6 +528,7 @@ func assemble(ctx context.Context, pool *sql.DB, info startup, opts Options, log
 		Watches:  watchSource,
 		Changed:  func(ids []int64) { events.Emit(event.InboxItemsChanged{IDs: ids}) },
 		Keep:     itemKeepers(pool),
+		Store:    inboxStore,
 		Logger:   logger,
 	})
 
@@ -564,7 +565,7 @@ func assemble(ctx context.Context, pool *sql.DB, info startup, opts Options, log
 		Home:     opts.Home,
 		Reader:   locations,
 		Clock:    opts.Clock,
-		GitHub:   itemStates{tokens: tokens, client: client, inbox: inboxStore, clock: clock.Or(opts.Clock), logger: logger},
+		GitHub:   itemStates{tokens: tokens, client: client, inbox: inboxStore, logger: logger},
 		Records:  workLog,
 		Procs:    procs.System{Run: runner},
 		History:  workLog,

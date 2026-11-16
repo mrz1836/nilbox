@@ -77,7 +77,8 @@ type Items interface {
 	SearchNow(ctx context.Context, queries []string) (map[string]SearchResult, int, error)
 
 	// ReadChecks reads and stores the check names of the pull requests among ids, and
-	// returns what that cost in GraphQL points.
+	// returns what that cost in GraphQL points. While the GraphQL budget is low it sends
+	// nothing, and its error is ErrLowBudget.
 	ReadChecks(ctx context.Context, ids []int64) (int, error)
 }
 
@@ -221,7 +222,8 @@ type TestResult struct {
 	Cached bool `json:"cached"`
 
 	// LowBudget says the GraphQL budget was under a quarter of its size, so the test sent
-	// nothing: each search it had no answer for says so, and no check name was read.
+	// nothing: each search it had no answer for says so, and no check name was read, even
+	// when every search came from the last minute's cache.
 	LowBudget bool `json:"lowBudget"`
 
 	// Estimate is what the draft's searches would add to each refresh.
@@ -531,10 +533,15 @@ func (s *Service) evaluate(ctx context.Context, sp spec.Spec, ids []int64, out *
 		points, readErr := s.items.ReadChecks(ctx, need[:min(len(need), maxTestChecks)])
 		out.Points += points
 
-		if readErr != nil {
+		switch {
+		case errors.Is(readErr, ErrLowBudget):
+			out.LowBudget = true // the searches came from the cache, so this is the first to say
+		case readErr != nil:
 			s.logger.WarnContext(ctx, "a routine's test could not read the check names", "error", readErr)
-		} else if items, _, err = s.decide(ctx, sp, ids, now); err != nil {
-			return nil, err
+		default:
+			if items, _, err = s.decide(ctx, sp, ids, now); err != nil {
+				return nil, err
+			}
 		}
 	}
 

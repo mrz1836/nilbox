@@ -638,7 +638,7 @@ func (q *Queries) MarkWatchesStale(ctx context.Context, arg MarkWatchesStalePara
 }
 
 const setItemState = `-- name: SetItemState :exec
-UPDATE items SET state = ?, closed_at = ? WHERE id = ?
+UPDATE items SET state = ?, closed_at = ? WHERE id = ? AND state <> 'MERGED'
 `
 
 type SetItemStateParams struct {
@@ -648,7 +648,8 @@ type SetItemStateParams struct {
 }
 
 // SetItemState records the state of the item with id, and when it closed, as a read that
-// carries no more of it said. Nothing changes when no item has id.
+// carries no more of it said: a state a whole refresh applies again on top of its own (see
+// order.go). A merged item keeps its state. Nothing changes when no item has id.
 func (q *Queries) SetItemState(ctx context.Context, arg SetItemStateParams) error {
 	_, err := q.db.ExecContext(ctx, setItemState, arg.State, arg.ClosedAt, arg.ID)
 	return err
@@ -691,7 +692,7 @@ func (q *Queries) SetRefState(ctx context.Context, arg SetRefStateParams) error 
 	return err
 }
 
-const setRefStateBefore = `-- name: SetRefStateBefore :exec
+const setRefStateBefore = `-- name: SetRefStateBefore :many
 UPDATE items SET
     state = ?1,
     closed_at = ?2,
@@ -700,6 +701,7 @@ WHERE number = ?4
   AND repo_id IN (SELECT id FROM repos WHERE owner = ?5 AND name = ?6)
   AND items.state <> 'MERGED'
   AND items.fetched_at < ?7
+RETURNING id
 `
 
 type SetRefStateBeforeParams struct {
@@ -714,9 +716,10 @@ type SetRefStateBeforeParams struct {
 
 // SetRefStateBefore is SetRefState for a read that went out at read_before outside a whole
 // refresh (a watch pass's searches, another service's read): an item stored at or after
-// read_before keeps what that newer read stored.
-func (q *Queries) SetRefStateBefore(ctx context.Context, arg SetRefStateBeforeParams) error {
-	_, err := q.db.ExecContext(ctx, setRefStateBefore,
+// read_before keeps what that newer read stored. It returns the ids of the items it wrote,
+// which the write order records (see order.go).
+func (q *Queries) SetRefStateBefore(ctx context.Context, arg SetRefStateBeforeParams) ([]int64, error) {
+	rows, err := q.db.QueryContext(ctx, setRefStateBefore,
 		arg.State,
 		arg.ClosedAt,
 		arg.FetchedAt,
@@ -725,7 +728,25 @@ func (q *Queries) SetRefStateBefore(ctx context.Context, arg SetRefStateBeforePa
 		arg.Name,
 		arg.ReadBefore,
 	)
-	return err
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []int64{}
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const upsertChecks = `-- name: UpsertChecks :exec

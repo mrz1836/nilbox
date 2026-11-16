@@ -1232,8 +1232,8 @@ const unlistItem = `-- name: UnlistItem :exec
 UPDATE items SET
     reason_review_requested = 0, reason_authored = 0, reason_assigned = 0,
     review_requested_at = NULL, assigned_at = NULL,
-    state = CASE WHEN CAST(?1 AS TEXT) <> '' THEN CAST(?1 AS TEXT) ELSE state END,
-    closed_at = CASE WHEN CAST(?1 AS TEXT) <> '' THEN ?2 ELSE closed_at END,
+    state = CASE WHEN CAST(?1 AS TEXT) = '' OR state = 'MERGED' THEN state ELSE CAST(?1 AS TEXT) END,
+    closed_at = CASE WHEN CAST(?1 AS TEXT) = '' OR state = 'MERGED' THEN closed_at ELSE ?2 END,
     fetched_at = ?3
 WHERE id = ?4
 `
@@ -1247,8 +1247,8 @@ type UnlistItemParams struct {
 
 // UnlistItem takes the item with id out of every list, as a refresh does with an item no
 // search returns, stamps fetched_at, and records its state and when it closed when the
-// read said (a state not empty). The row stays, since local state may reference it. The times
-// it arrived in Review requested and Assigned go with the lists.
+// read said (a state not empty), but never over a merge. The row stays, since local state
+// may reference it. The times it arrived in Review requested and Assigned go with the lists.
 func (q *Queries) UnlistItem(ctx context.Context, arg UnlistItemParams) error {
 	_, err := q.db.ExecContext(ctx, unlistItem,
 		arg.State,
@@ -1272,8 +1272,8 @@ UPDATE items SET
     head_ref = ?9,
     item_created_at = ?10,
     item_updated_at = ?11,
-    state = CASE WHEN CAST(?12 AS TEXT) <> '' THEN CAST(?12 AS TEXT) ELSE state END,
-    closed_at = CASE WHEN CAST(?12 AS TEXT) <> '' THEN ?13 ELSE closed_at END,
+    state = CASE WHEN CAST(?12 AS TEXT) = '' OR state = 'MERGED' THEN state ELSE CAST(?12 AS TEXT) END,
+    closed_at = CASE WHEN CAST(?12 AS TEXT) = '' OR state = 'MERGED' THEN closed_at ELSE ?13 END,
     fetched_at = ?14
 WHERE id = ?15
 `
@@ -1297,9 +1297,9 @@ type UpdateItemParams struct {
 }
 
 // UpdateItem rewrites what GitHub says about the stored item with id, in place, its state
-// when the read said it (a state not empty). Its account, repository, kind, number, and lists
-// stay as they are; only LeaveAnsweredReview, run after it, takes a pull request out of
-// the review-requested list.
+// when the read said it (a state not empty), but never over a merge, which nothing comes
+// back from. Its account, repository, kind, number, and lists stay as they are; only
+// LeaveAnsweredReview, run after it, takes a pull request out of the review-requested list.
 func (q *Queries) UpdateItem(ctx context.Context, arg UpdateItemParams) error {
 	_, err := q.db.ExecContext(ctx, updateItem,
 		arg.NodeID,
@@ -1366,8 +1366,8 @@ ON CONFLICT (account_id, repo_id, kind, number) DO UPDATE SET
         WHEN excluded.reason_assigned = 1 THEN COALESCE(items.assigned_at, excluded.fetched_at)
         ELSE NULL
     END,
-    state = CASE WHEN excluded.state <> '' THEN excluded.state ELSE items.state END,
-    closed_at = CASE WHEN excluded.state <> '' THEN NULL ELSE items.closed_at END,
+    state = CASE WHEN excluded.state = '' OR items.state = 'MERGED' THEN items.state ELSE excluded.state END,
+    closed_at = CASE WHEN excluded.state = '' OR items.state = 'MERGED' THEN items.closed_at ELSE NULL END,
     fetched_at = excluded.fetched_at
 RETURNING id, reason_review_requested, reason_assigned
 `
@@ -1409,10 +1409,10 @@ type UpsertItemRow struct {
 // rewritten, with one exception: a list the user left from the inbox (assign_left_at,
 // review_left_at) stays left while the item has not moved since, since GitHub's search
 // index trails the edit; once the item moves past the stamp, the search is believed and the
-// stamp cleared. The item's state is rewritten when the search said it (a state not empty), and
-// review_requested_at and assigned_at keep when the item first arrived in each list while
-// it stays in it, stamped with fetched_at when it arrives; ClearArrivalStamps clears them
-// once it leaves.
+// stamp cleared. The item's state is rewritten when the search said it (a state not empty),
+// but never over a merge, which nothing comes back from; and review_requested_at and
+// assigned_at keep when the item first arrived in each list while it stays in it, stamped
+// with fetched_at when it arrives; ClearArrivalStamps clears them once it leaves.
 func (q *Queries) UpsertItem(ctx context.Context, arg UpsertItemParams) (UpsertItemRow, error) {
 	row := q.db.QueryRowContext(ctx, upsertItem,
 		arg.AccountID,

@@ -463,34 +463,81 @@ func (s *Store) KnownOwners(ctx context.Context) (map[string]bool, error) {
 	return out, nil
 }
 
+// StateRead is when another service's read of items' states went out, in the inbox's
+// write order: what NoteStates stores that read's states by. The zero StateRead records
+// nothing.
+type StateRead struct {
+	seq uint64
+	at  time.Time
+}
+
+// StartRead numbers a read of items' states that goes out now, in the write order of the
+// Service built with this Store (Config.Store), for its NoteStates.
+func (s *Store) StartRead() StateRead {
+	s.order.mu.Lock()
+	defer s.order.mu.Unlock()
+
+	s.order.next++
+
+	return StateRead{seq: s.order.next, at: s.clock.Now().UTC()}
+}
+
 // NoteStates records the state another service read of each item in states, by its ref's
-// key, as a read of the inbox's own would: every stored item of that repository and number
-// takes it, and is stamped as read at readAt, when that read went out. It runs outside the
-// inbox's order, so a merged item keeps its state, and an item a read of the inbox's
-// stored at or after readAt keeps what that newer read stored (see SetRefState). It never
-// touches the lists.
-func (s *Store) NoteStates(ctx context.Context, readAt time.Time, refs []item.Ref, states map[string]github.ItemState,
+// key, in the read that went out as read, as a read of the inbox's own would: every
+// stored item of that repository and number takes it, and is stamped as read then. It
+// stores through the write order (see order.go): a merged item keeps its state; an item a
+// read of the inbox's stored at or after the read went out keeps what that newer read
+// stored (SetRefStateBefore); an item's own refresh that went out before it, and lands
+// after, stores nothing over it; and a whole refresh still fetching that went out before
+// it applies the state again on top of its own. It never touches the lists.
+func (s *Store) NoteStates(ctx context.Context, read StateRead, refs []item.Ref, states map[string]github.ItemState,
 ) error {
-	if len(states) == 0 {
+	if len(states) == 0 || read.seq == 0 {
 		return nil
 	}
 
-	readAt = readAt.UTC()
+	s.order.mu.Lock()
+	defer s.order.mu.Unlock()
 
-	return store.InTx(ctx, s.db, func(tx *sql.Tx) error {
-		q := s.q.WithTx(tx)
+	var wrote []stateWrite
 
-		for _, ref := range refs {
-			st, ok := states[ref.Key()]
-			if !ok || st.State == "" {
-				continue
-			}
+	err := store.InTx(ctx, s.db, func(tx *sql.Tx) error {
+		var err error
 
-			if err := setRefState(ctx, q, ref, st.State, st.ClosedAt, readAt, &readAt); err != nil {
-				return err
-			}
+		wrote, err = noteRefStates(ctx, s.q.WithTx(tx), read, refs, states)
+
+		return err
+	})
+	if err != nil {
+		return err
+	}
+
+	s.order.noteStated(stateIDs(wrote), read.seq)
+	s.order.replayStates(read.seq, wrote)
+
+	return nil
+}
+
+// noteRefStates records the state read of each item of refs that states holds, as
+// NoteStates does, and returns the states it wrote.
+func noteRefStates(ctx context.Context, q *queries.Queries, read StateRead, refs []item.Ref,
+	states map[string]github.ItemState,
+) ([]stateWrite, error) {
+	var wrote []stateWrite
+
+	for _, ref := range refs {
+		st, ok := states[ref.Key()]
+		if !ok || st.State == "" {
+			continue
 		}
 
-		return nil
-	})
+		got, err := setRefStateBefore(ctx, q, ref, st.State, st.ClosedAt, read.at, read.at)
+		if err != nil {
+			return nil, err
+		}
+
+		wrote = append(wrote, got...)
+	}
+
+	return wrote, nil
 }

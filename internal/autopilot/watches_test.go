@@ -138,8 +138,10 @@ type fakeItems struct {
 	read     [][]int64
 	err      error
 
-	// searchErr fails SearchNow alone, as the inbox does while the budget is low.
+	// searchErr fails SearchNow alone, and checksErr ReadChecks, as the inbox does while
+	// the budget is low.
 	searchErr error
+	checksErr error
 }
 
 func (f *fakeItems) Suggestions(context.Context) (autopilot.Suggestions, error) {
@@ -207,6 +209,10 @@ func (f *fakeItems) SearchNow(_ context.Context, queries []string) (map[string]a
 func (f *fakeItems) ReadChecks(_ context.Context, ids []int64) (int, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+
+	if f.checksErr != nil {
+		return 0, f.checksErr
+	}
 
 	f.read = append(f.read, slices.Clone(ids))
 
@@ -468,6 +474,36 @@ func TestTestSendsNothingWhileTheBudgetIsLow(t *testing.T) {
 	assert.Empty(t, items.read, "no check name is read either")
 	require.Len(t, got.Items, 1, "the lists' items are still tried")
 	assert.Equal(t, eval.Unknown, got.Items[0].Match)
+}
+
+func TestATestFromTheCacheReadsNoCheckNameWhileTheBudgetIsLow(t *testing.T) {
+	t.Parallel()
+
+	q := query(t, orgSearch)
+	items := &fakeItems{
+		searches: map[string]autopilot.SearchResult{q.Text: {IDs: []int64{7}, Count: 1}},
+		rows:     map[int64]facts.Row{7: failingPR(7, 70)},
+		owners:   map[string]bool{"acme-org": true},
+	}
+	r := itemsRig(t, items)
+
+	d := draft("Security", searchSpec(catalog.EventChecksFailed, orgSearch))
+	d.Spec.Conditions = spec.Conditions{Match: spec.MatchAll, Of: []spec.Clause{
+		{Field: catalog.FieldID("checks.failedNames"), Op: catalog.Op("anyContains"), Values: []string{"security"}},
+	}}
+
+	_, err := r.svc.Test(t.Context(), d)
+	require.NoError(t, err)
+
+	items.mu.Lock()
+	items.checksErr = autopilot.ErrLowBudget
+	items.mu.Unlock()
+
+	got, err := r.svc.Test(t.Context(), d)
+	require.NoError(t, err)
+	assert.True(t, got.Cached, "the searches come from the last minute's cache")
+	assert.True(t, got.LowBudget, "and the check names, which would go out, wait for the budget")
+	assert.NotContains(t, r.logs.String(), "could not read the check names", "a low budget is said, not logged as a failure")
 }
 
 func TestTheEstimatePacksBySearchesMatchCounts(t *testing.T) {
