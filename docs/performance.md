@@ -18,8 +18,8 @@ numbers with the `magex measure:*` targets.
 | Release binary, per architecture | < 30 MB a slice | 23.9 MB arm64, 25.9 MB x86_64 | Met by v0.3.1's universal build; the download itself, 16.9 MB as the disk image and 20.8 MB as the update's zip, is reported, not held to a target (see [Release footprint](#release-footprint)) |
 | API budget at 5-minute cadence | < 2% | 1.20% | Met: 5 points a refresh; 0.72% (3 points) with the 20-item inbox measured again in November 2026 |
 | API budget with five routine searches | < 2% in all | 1.20–1.68% | Met: 4 to 7 points a refresh, by how many items the searches watch (see [Routine searches](#routine-searches)) |
-| The searches' cost to the inbox's store | No regression beyond the noise | 2.93 s → 2.81 s, 2.79 s → 3.11 s | Met within GitHub's spread for five searches over one account; a busy org's five added 0.3 s to the median, inside the run-to-run spread (see below) |
-| The watch pass, after the inbox's store | < 1 s, steady | 26 ms, or one details request | Met while nothing changed: 26 ms of the app's own work for 300 watched items; a pass with changed or half-hour-old items adds one request, 0.8–3.9 s of GitHub's time, which nothing waits on |
+| The searches' cost to the inbox's store | No regression beyond the noise | 2.90 s → 2.98 s, 2.82 s → 2.65 s | Met: the searches go out once the inbox is stored, so nothing shares GitHub's time with the inbox query; sent beside it, a busy org's five had added 0.3 s to the median (see below) |
+| The watch pass, after the inbox's store | < 1 s of the app's own work, steady | 26 ms | Met: 26 ms of the app's own work for 300 watched items; GitHub's time for the searches and the changed items' details, 3.3–7.1 s after the store, is waited on by nothing |
 
 Measured on an Apple Silicon Mac (M1 Max, 32 GB memory) running macOS 15.8, over its regular
 network connection. The first numbers were taken on the build host, a second Mac (M4 Pro,
@@ -384,10 +384,10 @@ through the shared client, so the API budget gauge counts it.
 ### Routine searches
 
 **What is measured.** A refresh with five [routine searches](desktop.md#routine-searches)
-beside the inbox's own: the time to the inbox's store (the inbox query and the listed items'
-details, side by side, as without searches), the searches' requests, sent beside them, and the
-watch pass after the store, which reads the details of the watched items that are new or
-changed and writes what the searches watch. Two sets of five were measured: five searches over
+after the inbox's own: the time to the inbox's store (the inbox query and the listed items'
+details, side by side, as without searches), then the watch pass after the store, which sends
+the searches' requests, reads the details of the watched items that are new or changed, and
+writes what the searches watch. Two sets of five were measured: five searches over
 the signed-in account alone (Dependabot's pull requests, those ready for review, the issues,
 those whose checks fail, and those whose checks run), which watch 3 items beyond the inbox's
 20; and five over the account and its busiest org (Dependabot's pull requests in each, the
@@ -398,37 +398,42 @@ which match 1,233 items and watch 297, each search its 100 most recently updated
 account's five searches to the scratch database, then times each refresh to the inbox's store
 and waits for its watch pass. On the M1 Max (2026-11-16) the app binary could not reach
 `api.github.com` (each run timed out connecting, as a per-app firewall holding a new binary
-does), so the numbers below were taken by sending the app's own query texts (`inboxQuery`,
-`detailsQuery`, `watchesQuery` over `packWatches`, and `detailsRepoQuery`) through `gh api
-graphql`, side by side as the app sends them, alternating rounds without and with the searches.
-Each `gh` call adds its own startup, about 0.3–0.4 s, to every time below, alike with and
-without the searches. The app's own work in a steady pass comes from `BenchmarkWatchPass` in
-`internal/inbox`.
+does), so the numbers below were taken by hand, sending the app's own query texts
+(`inboxQuery`, `detailsQuery`, `watchesQuery` over `packWatches`, and `detailsRepoQuery`)
+through `gh api graphql` as the app sends them: the inbox query and the listed items' details
+side by side, then, once they answered, the searches' requests four at a time, then the
+details of up to five changed watched items (all of them on the first pass), alternating
+rounds without and with the searches. Each `gh` call adds its own startup, about 0.3–0.4 s, to
+every time below, alike with and without the searches. The app's own work in a steady pass
+comes from `BenchmarkWatchPass` in `internal/inbox`.
 
-**The inbox's store.** Without searches, the 20-item inbox took 2.94, 2.78, and 2.93 s (median
-2.93 s), 3 points each; with the account's five searches beside it, 3.03, 2.67, and 2.81 s
-(median 2.81 s), still 3 points. With the busy org's five, eleven rounds each: without, a median
-of 2.79 s (2.44 to 4.90 s); with, 3.11 s (2.26 to 5.42 s), the searches' requests running 3.8 to
-5.3 s beside it. The account's five change nothing; the org's add about 0.3 s to the median,
-which is inside GitHub's run-to-run spread but held across the rounds, so it is GitHub serving
-the heavier searches beside the inbox query rather than anything the app waits for. The app's
-own work in a whole refresh is 23.3 ms (`BenchmarkRefreshCycle`, 20.4 ms before the searches,
-the arrival stamps, and the prune).
+**The inbox's store.** With the searches sent after it, five rounds over the account: without
+them a median of 2.90 s (2.77 to 3.30 s), with the account's five 2.98 s (2.53 to 3.34 s), 3
+points each. Six rounds over the busy org: without, 2.82 s (2.52 to 2.96 s); with, 2.65 s (2.55
+to 3.16 s). Neither set moves the store beyond GitHub's run-to-run spread. Before, when the
+searches went out beside the inbox query, the account's five changed nothing (2.93 s without,
+2.81 s with), but the org's added about 0.3 s to the median across eleven rounds (2.79 s
+without, 3.11 s with, the searches running 3.8 to 5.3 s beside it): GitHub serving the heavier
+searches beside the inbox query, which is why they now wait for the store. The app's own work
+in a whole refresh is 23.3 ms (`BenchmarkRefreshCycle`, 20.4 ms before the searches, the
+arrival stamps, and the prune).
 
 **The searches.** A new search is packed as a full page, so the first refresh after the org's
 five were added sent them in 5 requests (5 points, 4.7–4.9 s); from the second, packed by what
-each returned, they took 3 requests (3 points). The account's five, which return a handful of
+each matched, they took 3 requests (3 points). The account's five, which return a handful of
 items, took one request (1 point, 2.4–2.5 s) once their counts were known.
 
 **The watch pass.** Its first pass over the org's 297 new items read every one's details with
 its repository: in batches of 25, four side by side, five of the twelve requests ran past
 GitHub's 10-second limit and failed, which is why the pass reads watched items 15 to a request
-(`watchDetailsBatch`): 20 requests, 20 points, 22 s, none failed, once. A steady pass with
-nothing changed reads no details and takes the app 26 ms for 300 watched items
-(`BenchmarkWatchPass`). A pass with changed items, or with details half an hour old, reads them
-in one request of up to 15 (1 point, 0.8–3.9 s of GitHub's time after the store, which nothing
-waits on: the inbox is already shown); details that are only old fill the room the changed
-ones leave, or one request when none changed, so they never add more.
+(`watchDetailsBatch`): 20 requests, 20 points, 22 s, none failed, once; with its 5 search
+requests, the whole first pass took 33.5 s after the store. A steady pass with nothing changed
+reads no details and takes the app 26 ms for 300 watched items (`BenchmarkWatchPass`); with up
+to five changed items it read them in one more request, the org's pass taking 4.5 to 7.1 s
+after the store (median 5.4 s, 4 points) and the account's 3.3 to 4.0 s (2 points), which
+nothing waits on: the inbox is already shown. Details that are only old fill the room the
+changed ones leave, or one request when none changed, so they never add more; at 15 a pass,
+300 watched items each come round about every 100 minutes at the five-minute refresh.
 
 **The budget.** At a refresh every five minutes, with 12 refreshes an hour and 5,000 points:
 

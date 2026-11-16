@@ -15,7 +15,7 @@ step with the change.
   commands that change a clone
 - [`internal/release`](#internalrelease): the Release page's service
 - [`internal/scripts`](#internalscripts): Repo scripts' service
-- [`internal/inbox`](#internalinbox): the routines' searches, read beside the inbox, and the
+- [`internal/inbox`](#internalinbox): the routines' searches, read after the inbox's store, and the
   inbox's reads for Autopilot
 - [`internal/autopilot`](#internalautopilot): the routines core, Autopilot's pure leaves
 
@@ -770,24 +770,28 @@ restart with Stop held again and that same `Finish`. Run again pulls the same br
 ## internal/inbox
 
 These notes cover what the inbox does for Autopilot: the routines' searches, which each
-refresh reads beside the inbox's own three lists, and the reads Autopilot makes through it.
+refresh reads after the inbox's own three lists, and the reads Autopilot makes through it.
 The inbox's own refresh, triage, edits, and the review sheet's Actor are described in the
 package's doc comments.
 
-**The searches, beside the refresh.** `Config.Watches` (`WatchSource`) gives the searches of
-the enabled routines of the account signed in, each key once, from the snapshot Autopilot's
-service keeps (core's `autopilotWatches`, which builds it again first when the account
-changed). `runRefresh` hands the watch pass's worker (`WatchPasses`, a desktop worker the shell
-starts before the scheduler) a job as the refresh starts, so the searches' requests go out
-beside the inbox query, on the worker's goroutine, outside the refresh's `errgroup`: a search
-that fails, or a request that does, never fails the refresh or cancels the inbox query, and
-the refresh stores and returns on the inbox's own requests. The job is released once the
-refresh has stored the inbox and told the window; only then does the pass compare and store.
-One pass runs at a time: a refresh that finds one running hands over no job (the scheduler
-never skips a tick; `periodic.RunEvery` waits after each refresh). No job is handed over
-before an account is known, nor, once the searches' rows are gone, while no routine has a
-search. While the GraphQL budget the last read left is under a quarter of its size (and won't
-refill first), the job sends no request and only records `PausedLowBudget`, keeping every row.
+**The searches, after the refresh's store.** `Config.Watches` (`WatchSource`) gives the
+searches of the enabled routines of the account signed in, each key once, from the snapshot
+Autopilot's service keeps (core's `autopilotWatches`, which builds it again first when the
+account changed). `runRefresh` hands the watch pass's worker (`WatchPasses`, a desktop worker
+the shell starts before the scheduler) a job as the refresh starts, and the pass waits, on the
+worker's goroutine and outside the refresh's `errgroup`, until the refresh has stored the
+inbox and told the window (the job's release); only then do its requests go out, so they
+never share GitHub's time with the inbox query (beside it, the heavier searches cost the
+inbox's store about 0.3 s, measured in November 2026), and a search that fails, or a request
+that does, never fails the refresh: the refresh stores and returns on the inbox's own
+requests, and never waits for the pass. One pass runs at a time: a refresh that finds one
+running hands over no job (the scheduler never skips a tick; `periodic.RunEvery` waits after
+each refresh). No job is handed over before an account is known, nor, once the searches' rows
+are gone, while no routine has a search. While the GraphQL budget the inbox query just left is
+under a quarter of its size (and won't refill first), the pass sends no request and only
+records `PausedLowBudget`, keeping every row. A pass that fails is logged, and one that
+panics is recovered; either way its `WatchPass` is kept and `AwaitPass` told (`endPass`, in a
+`defer`).
 
 **The request.** `github.FetchWatches` packs the searches into requests by how many results
 each returned last time (`inbox.watches` keeps each search's last count; a new one counts as a
@@ -796,42 +800,63 @@ side, a point each. GitHub resolves a request's aliases one after another and an
 runs past about 10 seconds with a 502 and an HTML body: measured in November 2026, five searches
 of 295 results in one request failed that way every time. A request that fails, as with that
 502 or with errors and no data (`EXCESSIVE_PAGINATION`), fails each of its searches; an error
-whose path names one alias fails that search alone. Only a refused token fails the call, so
-`WithToken` borrows a fresh one. The searches read a lean fragment (`WatchFields`): what the
+whose path stops at one alias or its `nodes` fails that search alone; one whose path goes on
+to a result (`["w0", "nodes", 3, ...]`) leaves that result out and marks the search `Partial`;
+one with no path marks every search of its request `Partial`, keeping the data. A query that
+can't be written into a request (not UTF-8) fails its search before anything is sent, and the
+others go on. Only a refused token fails the call, so `WithToken` borrows a fresh one. The searches read a lean fragment (`WatchFields`): what the
 inbox stores of an item (its own fields, its state, when it closed), its head commit, base
 branch, and the checks' overall state (finished checks don't move `updatedAt`, so the state
 must be in the search), and its repository's node ID, owner, name, and archived flag.
 `mergeable`, `mergeStateStatus`, `reviewDecision`, and the repository's other fields cost
 GitHub time per result, so they come with the details, read by ID.
 
-**The pass.** Once the inbox is stored, `planPass` gathers the open results (a closed or merged
-one, which the index can trail, only records its state; an archived repository's is left out),
-each node once with the searches that returned it and whether any follows the checks, and
-compares each with what is stored (`ListWatchBaseline`, a read, no lock). A listed item has
-its details from the refresh, and only its rows are stored; one a later read stored (its
-`fetched_at` after the pass's request went out) is left as that read stored it; any other is
-stored, and its details read when `needsDetails` says: new to the watches or with no details;
-another update time, draft flag, or state; a pull request's other head commit, base branch, or
-checks' state, checks still running at the last read, or a merge state GitHub hadn't worked
-out. Details at least `detailsStaleAfter` (30 minutes) old, and nothing else, are read as room
-allows (`fillStale`, oldest first): in the room the moved items leave in the last request, or
-one request when none moved, so they never add more than one. The details are read with the
-repository whole (`DetailOptions.Repository`, the `DetailRepo` fragment), with no lock,
-`watchDetailsBatch` (15) to a request (`DetailOptions.Batch`), the requests that succeeded kept
-when one fails (`DetailOptions.Partial`): GitHub reads an item it hasn't lately more slowly, and
-four requests of 25 newly watched pull requests side by side ran past its 10-second limit
-(measured in November 2026), while of 15 none did. `storePass` then writes, in one transaction
-under `order.mu`: each
-item (`UpsertWatchedItem`, which never touches the reason flags or the times an item arrived
-in a list; its repository through `EnsureRepo`, which keeps what is stored, or whole from the
-details), its details, its rows (`UpsertWatch`), and each search's state; a search answered in
-full replaces its rows (`DeleteUnseenWatches`), a truncated one keeps the rows past its page,
-stale, for `staleTailFor` (a week), and one that failed marks every row stale
-(`MarkSearchStale`); the rows of a search no routine has are deleted (`DeleteWatchesNotIn`). A
-refresh still fetching that started before the pass's request applies the items whose details
-the pass stored again (the replays of `order.go`). Then `Config.Changed` hears the items stored
-as changed, outside every lock, which core turns into the Go-only `event.InboxItemsChanged`;
-the follower's rounds, an item's own read, and an action on it tell it too. Each pass's
+**The pass.** Once the inbox is stored and the requests answered, `planPass` gathers the open
+results (a closed or merged one, which the index can trail, only records its state, and takes
+the item out of the open results another search returned; an archived repository's is left
+out), each node once with the searches that returned it and whether any follows the checks,
+and compares each with what is stored (`ListWatchBaseline`, a read, no lock). A listed item
+has its details from the refresh, and only its rows are stored; one a later read stored (its
+`fetched_at` or its details' after the pass's request went out) is left as that read stored
+it, and keeps no row when that read left it closed; one stored merged keeps no row, since
+nothing comes back from a merge and the search's open is older; any other is stored, and its
+details read when `needsDetails` says: no details; another update time, draft flag, or state;
+a pull request's other head commit, base branch, or checks' state, checks still running at the
+last read, or a merge state GitHub hadn't worked out; or, new to the watches, details missing
+or older than `detailsStaleAfter`. Details at least `detailsStaleAfter` (30 minutes) old, and
+nothing else, are read as room allows (`fillStale`, oldest first): in the room the moved items
+leave in the last request, or one request when none moved, so they never add more than one,
+and with some 300 watched items each comes round about every 20 passes. The details are read
+with the repository whole (`DetailOptions.Repository`, the `DetailRepo` fragment), with no
+lock, `watchDetailsBatch` (15) to a request (`DetailOptions.Batch`), the requests that
+succeeded kept when one fails (`DetailOptions.Partial`): GitHub reads an item it hasn't lately
+more slowly, and four requests of 25 newly watched pull requests side by side ran past its
+10-second limit (measured in November 2026), while of 15 none did.
+
+`storePass` then writes, in one transaction under `order.mu`. It first reads again what is
+stored of every result (`recheck`, `ListWatchBaseline` inside the transaction), since an
+item's own read, the follower, a whole refresh, or another service's state (`NoteStates`) may
+have stored it while the pass read GitHub: an item whose card, details, state, or lists
+changed since the pass compared it, or that was stored after its request went out, is newer,
+and keeps what that read stored, only its rows written while it is open; one stored merged,
+or closed by such a read, or whose rows went since (an unlist takes a closed or gone item out
+of every search), is gone: its rows are deleted, never written, and it isn't told as changed;
+one deleted since is stored again as new. Then each item (`UpsertWatchedItem`, which never
+touches the reason flags or the times an item arrived in a list, and never writes a state over
+`MERGED`; its repository through `EnsureRepo`, which keeps what is stored, or whole from the
+details), its details, its rows (`UpsertWatch`), and each search's state. A stored item whose
+details the pass meant to read, or whose card moved, but whose details didn't come back,
+keeps its card, so its old update time makes the next pass read it again, and isn't told as
+changed; a new one is stored without them, told once a pass reads them. A search answered in
+full replaces its rows (`DeleteUnseenWatches`), a truncated or `Partial` one keeps the rows it
+didn't return, stale, for `staleTailFor` (a week), and one that failed marks every row stale
+(`MarkSearchStale`); the rows of a search no routine has are deleted (`DeleteWatchesNotIn`).
+The closed results' state is recorded through `SetRefStateBefore`, read before the pass's
+request went out, so an item stored since keeps the newer read. A refresh still fetching that
+started before the pass's request applies the items whose card and details the pass stored
+again (the replays of `order.go`). Then `Config.Changed` hears the items stored as changed,
+outside every lock, which core turns into the Go-only `event.InboxItemsChanged`; the
+follower's rounds, an item's own read, and an action on it tell it too. Each pass's
 `WatchPass` (its time in all and after the inbox's store, its requests and points, its results
 and details read) is logged at Debug and kept for `Routines.LastWatchPass` and
 `Routines.AwaitPass`, which the refresh measurement waits on.
@@ -844,22 +869,38 @@ list, no count, and not the menu bar's; `PruneFiles` keeps a watched item's file
 defaults; `ListRunningChecks` adds the watched pull requests a search follows
 (`item_watches.follow`, set for routines whose trigger reads checks), and `followable` leaves
 out a muted repository's only for a listed one no search follows, since a routine watches a
-muted repository on purpose; `GetEditItem` says whether an item is watched, so the Actor acts
-on a watched item's sheet as on a listed one's, while the review and issue sheets' reads take
-any stored item.
+muted repository on purpose, and takes the listed ones before those only a search follows
+when a round holds more than `followMax` (50); a round reads them `followBatch` (25) to a
+request, side by side, storing what the answered requests read when another fails, since
+GitHub works out each one's merge state as it answers; `GetEditItem` says whether an item is
+watched, so the Actor acts on a watched item's sheet as on a listed one's, while the review
+and issue sheets' reads take any stored item.
 
 **State, arrivals, and the prune.** `items.state` and `closed_at` are written by every read
 that carries them: the inbox's searches (`UpsertItem`), an item's own read and the follower's
 (`UpdateItem`, `UnlistItem`, which also drops a closed or gone item's watch rows), the closed
-items a refresh's searches returned (`SetRefState`), the routines' searches, and the states
-the worktree sweep and the notifications mirror read (`Store.NoteStates`, through core's
-`itemStates` and `stateNoter`). `review_requested_at` and `assigned_at` keep when the inbox
-first saw an item in Review requested and in Assigned while it stays there, cleared once it
-leaves (`ClearArrivalStamps`, and every query that takes it out), for the routines' fire keys.
-Each whole refresh prunes, in its own transaction, the items in no list, watched by no search,
-with no triage, that no read brought for 30 days (`PruneItems`); what else refers to an item
-comes from `Config.Keep` (`ItemKeeper`), read before the transaction, so a later owner of a
-reference, as a routine's ledger, extends the rule there.
+items a refresh's searches returned (`SetRefState`), the routines' searches and a test's
+(`SetRefStateBefore` for their closed results), and the states the worktree sweep and the
+notifications mirror read (`Store.NoteStates`, through core's `itemStates` and `stateNoter`,
+with when each read went out). Every one of them stamps `fetched_at`, and none writes over a
+`MERGED`. `NoteStates` runs outside the inbox's order, so an item stored at or after its read
+went out keeps that newer read (`SetRefStateBefore`). `review_requested_at` and `assigned_at`
+keep when the inbox first saw an item in Review requested and in Assigned while it stays
+there, cleared once it leaves (`ClearArrivalStamps`, and every query that takes it out), for
+the routines' fire keys. Each whole refresh prunes, in its own transaction, the items in no
+list, watched by no search, with no triage, that no read brought for 30 days (`PruneItems`);
+what else refers to an item comes from `Config.Keep` (`ItemKeeper`), read before the
+transaction, so a later owner of a reference, as a routine's ledger, extends the rule there.
+Core hands it `inbox.Keepers` (one failing fails the whole, so the prune keeps everything)
+over the agent sessions' items (`sessions.Store.KeptItems`: `agent_sessions.item_id` has no
+foreign key, so a pruned item would leave a dangling id, or a reused one) and the
+notifications' (`notify.Store.KeptItems`: `notifications.item_id` would be cleared, and the
+entry would no longer open its item). A worktree record and a GitHub notification thread name
+their item by repository and number, so a pruned item comes back for them with the next read.
+The rows that hang off an item by its id go with it, by their foreign keys' cascade: its
+details, file check, and check names, and the review sheet's `review_diffs` (with
+`review_diff_files`) and the issue sheet's `issue_views`, which are only caches and are read
+again on the next visit. (An item with watch rows or local state is never pruned.)
 
 **The reads for Autopilot.** The bound Service adds only `ItemsByID`, the rows of a routine's
 Watching list (listed and watched items alike, as a snapshot shows them). Everything else is
@@ -868,8 +909,11 @@ repository rules applied), `Store.FactsEnv`, `Store.WatchedItems` (a routine's l
 searches' rows, stale ones included), `Store.Suggest` and `KnownOwners` (the builder's
 suggestions, labels and check names counted in Go from their JSON columns), `Store.WatchStatus`,
 and, through `inbox.Routines`, `SearchNow` (a draft's searches read now and stored as a pass
-stores them, with no rows, so the prune takes them in time) and `ReadChecks`
-(`github.FetchChecks` into `item_checks`).
+stores them, `recheck` included, with no rows, so the prune takes them in time; the details of
+an item no search watches are read only when missing or older than `detailsStaleAfter`, since
+the passes keep the watched ones current and a test only looks; nothing is sent while the
+budget is under a quarter, `ErrLowBudget`) and `ReadChecks` (`github.FetchChecks` into
+`item_checks`, returning what it cost, which a test adds to its points).
 
 **Check names.** `github.FetchChecks` reads each pull request's checks on its head commit, a
 fragment of its own (`CheckFields`) modeled on the review sheet's `checkList` selection, with
@@ -879,7 +923,12 @@ is required takes the pull request's own ID (`isRequired(pullRequestId:)`), whic
 can't take, so each alias asks for it beside the fragment, over the same contexts in the same
 order. A name repeats, once per event that ran it; `item_checks` stores every run, and
 `facts.Build` dedupes them. `HeadChecks.Settled` is the newest completion once every check has
-finished, stored as `settled_at`.
+finished, stored as `settled_at`, by the facts' own rule (`HeadCheck.Running`): a check runs
+while it is pending, or has no completion time and wasn't skipped. A head with more than a
+page (100) of checks is read in part (`Complete` false): its names are partial, so a negation
+over them is unknown, and it settles once every check read has finished and the rollup over
+all of them (`HeadChecks.Rollup`, and the details' checks state for the facts) says the rest
+have too, at the newest time read.
 
 **The budget's purposes.** Each request's context names what it was sent for
 (`github.WithPurpose`): the refresh is `PurposeInbox`, the watch pass `PurposeWatches`, the
@@ -887,8 +936,10 @@ checks follower `PurposeFollower`, and `SearchNow` and `ReadChecks` `PurposeAuto
 anything else is `PurposeOther`. The client hands the purpose to the `Tracker` with each
 reading (`RateReading.Purpose`, which the tracker strips before it keeps the reading), and the
 tracker splits each budget's spend by it (`Reading.Purposes`, kept across runs, a state saved
-before the split counting as the rest), so the shares add up to `Spent`. The budget menu's one
-line for Autopilot is `watches` and `autopilot` together, shown only while they are above zero.
+before the split, and a purpose this build doesn't know, counting as the rest), so the shares
+add up to `Spent`. The budget menu's one line for Autopilot is `watches` and `autopilot`
+together, shown only while they are above zero; the follower's rounds, which read the watched
+pull requests a routine follows in the listed ones' requests, stay `follower`.
 
 ## internal/autopilot
 
@@ -1159,7 +1210,10 @@ for that account (`watch.Build`, "your account" written as its login), each key 
 routines that share it, and `Follow` set when one of their triggers reads the checks (Checks
 fail, Checks pass). It keeps them in an atomic value, which `Searches.Current` reads at once,
 never waiting on anything; `Searches` (`NewSearches`) is the inbox's face of it, never bound.
-A routine that is off, broken, another account's, or whose search won't build is left out.
+Builds run one at a time (`watchSet.build`, a one-slot channel held from the read of the
+routines to the store), so the last to read stores last: two side by side, a change's and a
+new account's, could otherwise store the older read over the newer. A routine that is off,
+broken, another account's, or whose search won't build is left out.
 
 **`Suggest`** returns what the stored items hold for the builder (`Items.Suggestions`): the
 people and the bots who opened them, the owners of their repositories, their labels, and
@@ -1179,7 +1233,11 @@ since GitHub answers an unknown user, org, or repository with nothing and no err
 routine is evaluated on each item (`eval.Evaluate`, with no history yet) from its facts
 (`Items.Facts`), and the check names of the pull requests whose decision waits on them are
 read, one batch of 25 (`Items.ReadChecks`), before they are decided again; the matches come
-first, then the unknowns. The result says what the test spent (`Points`, none when cached) and
+first, then the unknowns. The result says what the test spent (`Points`: the searches, the
+details they read, and the check names, the searches costing nothing again when `Cached`) and
 what the draft's searches would add to each refresh (`Costs.Estimate`, core's `watchCosts`:
-the requests the refresh packs them into, at what the last watch pass cost a request, at the
-refresh's pace, as a share of the GraphQL budget).
+the requests the refresh packs them into, by what each matched, at most a page, and a full
+page for one that failed, at what the last watch pass cost a request, at the refresh's pace,
+as a share of the GraphQL budget). While the GraphQL budget is under a quarter of its size the
+inbox sends nothing (`ErrLowBudget`): the result says so (`LowBudget`), each search it had no
+answer for says why, no check name is read, and the lists' items are still decided.

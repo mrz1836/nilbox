@@ -297,7 +297,8 @@ changing the package, and keep the section and its summary in step.
   into the one `event.Sink` they are given. `internal/desktop/` is the shell's logic: it hears
   those events, keeps the menu bar current with what `internal/menubar` works out, runs the
   scheduler, the checks follower (`inbox.ChecksFollower`: the listed pull requests whose
-  checks were running, but a muted repository's, read in one request through
+  checks were running, but a muted repository's, and those a routine's search follows, 50 a
+  round at most, the listed first, read 25 to a request side by side through
   `(*github.Client).FetchItems`, and nothing while none runs; a pull request whose workflow
   runs GitHub holds for approval, `item_details.checks_awaiting`, which its card marks held
   in place of the rollup's state, isn't running, and waits for the whole refresh), the
@@ -350,18 +351,24 @@ changing the package, and keep the section and its summary in step.
 - `internal/inbox/` also reads the routines' searches beside its own lists. A refresh hands its
   watch pass (`WatchPasses`, a desktop worker run before the scheduler) the searches
   `Config.Watches` gives, whose requests (`github.FetchWatches`, packed a few searches to a
-  request) go out beside the inbox query, outside its errgroup, so the refresh stores and
-  returns on the inbox's own; once the inbox is stored and told, the pass reads the details of
-  the watched items that are new or changed with no lock held, then stores them, their
-  `item_watches` rows, and each search's state (`inbox.watches`) through the order, and tells
-  `Config.Changed` (core's Go-only `event.InboxItemsChanged`). A watched item is in no list or
-  count; a failed search, and a truncated one's tail, keep their rows, stale; no pass goes out
-  under a quarter of the GraphQL budget; the follower takes the watched pull requests a routine
-  follows, muted or not; `items.state` is written by every read that carries it; items nothing
-  refers to are pruned after 30 days (`Config.Keep` adds what else refers); and a guard test
-  decides every query that reads the reason flags (`TestEveryReasonFlagQueryIsDecided`).
-  Autopilot's own reads (`SearchNow`, `ReadChecks`) go through `inbox.Routines`, never the bound
-  Service, whose `ItemsByID` serves a routine's Watching list.
+  request) go out only once the refresh has stored and told the inbox, outside its errgroup,
+  so the refresh stores and returns on the inbox's own; the pass then reads the details of the
+  watched items that are new or changed with no lock held, and stores them, their
+  `item_watches` rows, and each search's state (`inbox.watches`) through the order, after
+  reading again under the lock what is stored of them (`recheck`), so a read stored since its
+  request went out stands, a merge never reopens, and the rows of an item closed or unlisted
+  since never come back; then it tells `Config.Changed` (core's Go-only
+  `event.InboxItemsChanged`). A watched item is in no list or count; a failed search, a
+  truncated one's tail, and a partial answer's missing items keep their rows, stale; an item
+  whose details didn't come back keeps its card, to be read again; no pass, and no routine's
+  test, goes out under a quarter of the GraphQL budget; the follower takes the watched pull
+  requests a routine follows, muted or not, after the listed ones; `items.state` is written by
+  every read that carries it (`NoteStates`, outside the order, never over a merge or a newer
+  read); items nothing refers to are pruned after 30 days (`Config.Keep`, `inbox.Keepers`
+  over the agent sessions' and the notifications' items in core); and a guard test decides
+  every query that reads the reason flags (`TestEveryReasonFlagQueryIsDecided`). Autopilot's
+  own reads (`SearchNow`, `ReadChecks`) go through `inbox.Routines`, never the bound Service,
+  whose `ItemsByID` serves a routine's Watching list.
   Full design: [docs/architecture.md](docs/architecture.md#internalinbox)
 - `internal/launcher/` resolves a launch (the agent first, then that agent's profile, model,
   and flags), plans it, and writes its files; `internal/launcher/terminal/` renders the launch
@@ -761,7 +768,9 @@ changing the package, and keep the section and its summary in step.
   change, which `Restore` brings back, off, into a table that is new, and holds a backup's
   Autopilot section through `NewBackupPart`, apart from the Service. After every change it
   builds again the snapshot of the enabled routines' searches for the account signed in, each
-  key once, which the inbox reads as each refresh starts (`NewSearches`, never bound). It
+  key once, one build at a time so the last to read stores last, which the inbox reads as
+  each refresh starts (`NewSearches`, never bound); a draft's `Test` sends nothing while the
+  GraphQL budget is low and says so (`LowBudget`). It
   reaches the rest only through the interfaces it declares (`Prefs`, `Accounts`, `Names`,
   `Items`, `Costs`), which
   `internal/core/adapters_autopilot.go` adapts, and never imports the inbox, the sheets, the
