@@ -1,0 +1,355 @@
+# The routine spec's format, version 1: each type's JSON keys and the Go type each holds,
+# then every closed set of values. Rewrite with
+# go test ./internal/autopilot/spec -run TestSchemaGolden -update
+
+spec.Spec
+  version: int
+  watch: spec.Watch
+  trigger: spec.Trigger
+  conditions: spec.Conditions
+  steps: []spec.Step
+  limits: spec.Limits
+  notify: *spec.Notices
+  requires: []string
+spec.Watch
+  sources: []spec.Source
+spec.Trigger
+  event: catalog.Event
+  waitForChecks: *bool
+  settleMinutes: *int
+  firstToo: *bool
+  ownPushesToo: *bool
+  count: *int
+  days: *int
+  label: string
+  schedule: *spec.Schedule
+spec.Conditions
+  match: spec.Match
+  of: []spec.Clause
+spec.Step
+  notify: *spec.NotifyStep
+  pin: *spec.Empty
+  snooze: *spec.SnoozeStep
+  dismiss: *spec.Empty
+  restore: *spec.Empty
+  markDone: *spec.Empty
+  github: []spec.GitHubAction
+  agent: *spec.AgentStep
+  waitForChecks: *spec.WaitStep
+  merge: *spec.MergeStep
+  postReview: *spec.ReviewStep
+  tellMe: *spec.TellStep
+  onlyIf: catalog.Outcome
+spec.Limits
+  oncePer: catalog.OncePer
+  triesPerItem: *int
+  runsPerDay: *int
+  waitMinutes: *int
+  activeHours: *spec.ActiveHours
+  budgetPerDay: *spec.Budget
+spec.Notices
+  alert: *bool
+  needsYou: *bool
+  finished: *bool
+  checks: *bool
+  problem: *bool
+spec.Source
+  lists: []catalog.ListSource
+  search: *watch.Search
+spec.Schedule
+  every: catalog.Every
+  at: string
+  on: catalog.Weekday
+spec.Clause
+  field: catalog.FieldID
+  op: catalog.Op
+  value: string
+  values: []string
+  group: *spec.Conditions
+spec.NotifyStep
+  note: string
+  banner: *bool
+spec.Empty
+spec.SnoozeStep
+  days: *int
+spec.GitHubAction
+  rebase: *spec.Empty
+  updateBranch: *spec.Empty
+  reply: *spec.ReplyAction
+  labels: *spec.LabelsAction
+spec.AgentStep
+  agent: string
+  prompt: spec.PromptRef
+  where: catalog.Where
+  profile: string
+  fallbacks: []spec.ProfileRef
+  model: string
+  effort: string
+  planMode: *bool
+  worktree: *bool
+  launchFor: []spec.LaunchRow
+  fence: *spec.Fence
+spec.WaitStep
+  settleMinutes: *int
+  giveUpHours: *int
+spec.MergeStep
+  how: catalog.MergeHow
+  method: catalog.MergeMethod
+spec.ReviewStep
+  as: catalog.ReviewAs
+  allowApprove: bool
+spec.TellStep
+  when: catalog.TellWhen
+spec.ActiveHours
+  days: []catalog.Weekday
+  from: string
+  to: string
+spec.Budget
+  usd: *float64
+  tokens: *int64
+watch.Search
+  kind: item.Kind
+  authors: []string
+  where: []string
+  involving: []watch.Involving
+  labels: []string
+  notLabels: []string
+  base: string
+  headPrefix: string
+  state: []watch.State
+  more: string
+spec.ReplyAction
+  prompt: spec.PromptRef
+spec.LabelsAction
+  add: []string
+  remove: []string
+spec.PromptRef
+  starter: string
+  nickname: string
+  itemDefault: bool
+spec.ProfileRef
+  agent: string
+  profile: string
+spec.LaunchRow
+  target: string
+  agent: string
+  profile: string
+  model: string
+  effort: string
+spec.Fence
+  budget: *spec.Budget
+  timeoutMinutes: *int
+  tools: catalog.Preset
+  allow: []string
+  deny: []string
+
+agent.where
+  background
+  terminal
+
+condition.field (type: choices)
+  item.kind (choice: pr, issue)
+  item.title (text)
+  item.labels (list)
+  item.author (text)
+  item.authorIsBot (bool)
+  item.trust (choice: member, bot, outside)
+  item.association (choice: OWNER, MEMBER, COLLABORATOR, CONTRIBUTOR, FIRST_TIME_CONTRIBUTOR, FIRST_TIMER, MANNEQUIN, NONE)
+  item.age (duration)
+  item.idle (duration)
+  item.comments (number)
+  item.lists (list: reviewRequested, authored, assigned)
+  item.snoozed (bool)
+  item.dismissed (bool)
+  item.pinned (bool)
+  item.mine (bool)
+  repo.owner (text)
+  repo.name (text)
+  repo.fullName (text)
+  repo.visibility (choice: public, private, internal)
+  repo.language (text)
+  repo.fork (bool)
+  repo.permission (choice: admin, maintain, write, triage, read)
+  repo.hasClone (bool)
+  repo.muted (bool)
+  repo.pinned (bool)
+  repo.allowsUpdateBranch (bool)
+  pr.draft (bool)
+  pr.base (text)
+  pr.head (text)
+  pr.fromFork (bool)
+  pr.size (choice: XS, S, M, L, XL)
+  pr.lines (number)
+  pr.files (number)
+  pr.commits (number)
+  pr.conflicts (bool)
+  pr.behind (bool)
+  pr.reviewDecision (choice: approved, changesRequested, reviewRequired, none)
+  pr.approvals (number)
+  pr.changesRequested (number)
+  pr.asksMe (bool)
+  pr.autoMerge (bool)
+  checks.state (choice: success, failure, error, pending, expected, none)
+  checks.failed (number)
+  checks.pending (number)
+  checks.passed (number)
+  checks.failedNames (list)
+  checks.names (list)
+  checks.requiredFailed (bool)
+  checks.awaitingApproval (bool)
+  files.paths (list)
+  files.sensitive (list: agent, workflows, tooling, review, dependencies, custom)
+  dep.tool (choice: dependabot, renovate, none)
+  dep.ecosystem (choice: gomod, npm, github-actions, docker, docker-compose, pip, uv, bundler, cargo, composer, maven, gradle, nuget, terraform, gitsubmodule, mix, elm, pub, swift, devcontainers, bun, helm)
+  dep.package (text)
+  dep.from (text)
+  dep.to (text)
+  dep.updateType (choice: major, minor, patch)
+  dep.grouped (bool)
+  dep.security (bool)
+  history.tries (number)
+  history.lastOutcome (choice: none, done, failed, gaveUp, dismissed, passed, stillFails)
+
+condition.op (type, arity)
+  is (text, one)
+  isNot (text, one)
+  contains (text, one)
+  notContains (text, one)
+  startsWith (text, one)
+  matches (text, one)
+  matchesRegex (text, one)
+  hasAny (list, many)
+  hasAll (list, many)
+  hasNone (list, many)
+  anyContains (list, many)
+  noneContains (list, many)
+  anyMatches (list, many)
+  allMatch (list, many)
+  isEmpty (list, none)
+  notEmpty (list, none)
+  eq (number, one)
+  ne (number, one)
+  lt (number, one)
+  lte (number, one)
+  gt (number, one)
+  gte (number, one)
+  isYes (bool, none)
+  isNo (bool, none)
+  oneOf (choice, many)
+  noneOf (choice, many)
+  moreThan (duration, one)
+  lessThan (duration, one)
+
+conditions.match
+  all
+  any
+
+fence.tools
+  readOnly
+  githubTasks
+  editTest
+  editTestPush
+  profile
+
+github actions
+  rebase
+  updateBranch
+  reply
+  labels
+
+limits.oncePer
+  item
+  headCommit
+  day
+
+merge.how
+  autoMergeIfItWasOn
+  whenMergeable
+
+merge.method
+  merge
+  squash
+  rebase
+
+postReview.as
+  comment
+  verdict
+
+schedule.every
+  day
+  weekday
+  week
+
+schedule.on, activeHours.days
+  mon
+  tue
+  wed
+  thu
+  fri
+  sat
+  sun
+
+search.involving
+  assigned
+  reviewRequested
+  mentioned
+
+search.state
+  ready
+  draft
+  failing
+  passing
+  pending
+  changesRequested
+  approved
+  reviewRequired
+  unreviewed
+
+source.lists
+  reviewRequested
+  authored
+  assigned
+
+step kinds
+  notify (notices)
+  pin (triage)
+  snooze (triage)
+  dismiss (triage)
+  restore (triage)
+  markDone (github)
+  github (github)
+  agent (agent)
+  waitForChecks (verify)
+  merge (merging)
+  postReview (review)
+  tellMe (notices)
+
+step.onlyIf
+  passed (from waitForChecks)
+  stillFails (from waitForChecks)
+  pushed (from agent)
+  notPushed (from agent)
+  approve (from agent)
+  requestChanges (from agent)
+
+tellMe.when
+  reached
+  verdict
+
+trigger.event (its options)
+  appears ()
+  new_commits (firstToo, ownPushesToo)
+  checks_failed (waitForChecks, settleMinutes)
+  checks_passed (settleMinutes)
+  changes_requested ()
+  approved ()
+  merge_conflicts ()
+  falls_behind ()
+  labeled (label)
+  ready_for_review ()
+  review_requested ()
+  assigned ()
+  new_comments (count)
+  goes_quiet (days)
+  schedule (schedule)
+  manual ()

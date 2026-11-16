@@ -1,0 +1,34 @@
+{
+    "version": 1,
+    "watch": {
+        "sources": [
+            {
+                "lists": [
+                    "authored"
+                ]
+            }
+        ]
+    },
+    "trigger": {
+        "event": "checks_failed"
+    },
+    "conditions": {
+        "match": "all",
+        "of": [
+            {
+                "field": "pr.draft",
+                "op": "isNo"
+            }
+        ]
+    },
+    "steps": [
+        {
+            "agent": {
+                "prompt": {
+                    "starter": "fix-checks"
+                }
+            }
+        }
+    ],
+    "limits": {}
+}

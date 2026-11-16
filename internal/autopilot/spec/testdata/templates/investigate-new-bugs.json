@@ -1,0 +1,41 @@
+{
+    "version": 1,
+    "watch": {
+        "sources": [
+            {
+                "lists": [
+                    "assigned"
+                ]
+            }
+        ]
+    },
+    "trigger": {
+        "event": "labeled",
+        "label": "bug"
+    },
+    "conditions": {
+        "match": "all",
+        "of": [
+            {
+                "field": "item.kind",
+                "op": "oneOf",
+                "values": [
+                    "issue"
+                ]
+            }
+        ]
+    },
+    "steps": [
+        {
+            "agent": {
+                "prompt": {
+                    "starter": "work-on-issue"
+                },
+                "fence": {
+                    "tools": "readOnly"
+                }
+            }
+        }
+    ],
+    "limits": {}
+}

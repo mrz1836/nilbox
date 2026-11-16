@@ -1,0 +1,84 @@
+{
+    "version": 1,
+    "watch": {
+        "sources": [
+            {
+                "search": {
+                    "kind": "issue",
+                    "where": [
+                        "repo:acme-org/example-repo"
+                    ],
+                    "labels": [
+                        "help wanted",
+                        "triage"
+                    ],
+                    "notLabels": [
+                        "wontfix"
+                    ],
+                    "more": "language:go"
+                }
+            }
+        ]
+    },
+    "trigger": {
+        "event": "new_comments",
+        "count": 3
+    },
+    "conditions": {
+        "match": "all",
+        "of": [
+            {
+                "field": "item.title",
+                "op": "matchesRegex",
+                "value": "^(bug|crash):"
+            },
+            {
+                "field": "history.tries",
+                "op": "lt",
+                "value": "3"
+            }
+        ]
+    },
+    "steps": [
+        {
+            "agent": {
+                "agent": "codex",
+                "prompt": {
+                    "nickname": "Triage"
+                },
+                "profile": "work",
+                "fallbacks": [
+                    {
+                        "agent": "claude",
+                        "profile": "personal"
+                    }
+                ],
+                "fence": {
+                    "budget": {
+                        "tokens": 200000
+                    },
+                    "timeoutMinutes": 20,
+                    "tools": "readOnly",
+                    "deny": [
+                        "gh issue edit"
+                    ]
+                }
+            }
+        },
+        {
+            "tellMe": {}
+        }
+    ],
+    "limits": {
+        "oncePer": "day",
+        "triesPerItem": 3,
+        "runsPerDay": 5,
+        "waitMinutes": 120,
+        "budgetPerDay": {
+            "usd": 5
+        }
+    },
+    "requires": [
+        "gh"
+    ]
+}

@@ -1,0 +1,30 @@
+{
+    "version": 1,
+    "watch": {
+        "sources": [
+            {
+                "lists": [
+                    "authored"
+                ]
+            }
+        ]
+    },
+    "trigger": {
+        "event": "changes_requested"
+    },
+    "conditions": {
+        "match": "all",
+        "of": []
+    },
+    "steps": [
+        {
+            "agent": {
+                "prompt": {
+                    "starter": "address-review"
+                },
+                "where": "terminal"
+            }
+        }
+    ],
+    "limits": {}
+}

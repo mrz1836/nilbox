@@ -266,6 +266,42 @@ func boundaries() []boundary {
 	}
 }
 
+// leaf holds a package to the internal packages it may import directly, beside the
+// standard library, and to no other module: a stricter rule than a boundary's, for the
+// pure leaves whose whole world is a short list. Paths are relative to the module.
+type leaf struct {
+	pkg     string
+	allowed []string
+	why     string
+}
+
+// leaves are the packages held to what they import.
+func leaves() []leaf {
+	// autopilot are the routines core's pure leaves, which may import one another, as
+	// long as they form no cycle, which Go refuses anyway.
+	autopilot := []string{
+		"internal/autopilot/catalog", "internal/autopilot/watch", "internal/autopilot/spec",
+		"internal/autopilot/facts", "internal/autopilot/eval",
+	}
+	allowed := append([]string{
+		"internal/item", "internal/repo", "internal/trust", "internal/sensitive", "internal/bump", "internal/clock",
+		"internal/textutil",
+	}, autopilot...)
+
+	out := make([]leaf, 0, len(autopilot))
+
+	for _, pkg := range autopilot {
+		out = append(out, leaf{
+			pkg: pkg, allowed: allowed,
+			why: "the autopilot leaves (spec, catalog, facts, eval, watch) are pure: they read nothing, keep no clock " +
+				"of their own, and import only item, repo, trust, sensitive, bump, clock, textutil, one another, and " +
+				"the standard library; the autopilot service declares interfaces and core adapts them",
+		})
+	}
+
+	return out
+}
+
 // buildOSes are the systems whose builds the boundaries hold for: the one the app ships
 // on and the one CI runs on. Files for one system can import what the other's do not.
 func buildOSes() []string {
@@ -276,14 +312,15 @@ func buildOSes() []string {
 type listedPackage struct {
 	ImportPath string   `json:"ImportPath"`
 	Deps       []string `json:"Deps"`
+	Imports    []string `json:"Imports"`
 }
 
-// packageDeps returns every package each of pkgs depends on, directly or not, when built
-// for goos, keyed by import path.
-func packageDeps(t *testing.T, root, goos string, pkgs []string) map[string][]string {
+// listPackages returns how go list describes each of pkgs when built for goos: what it
+// depends on, directly or not, and what it imports itself.
+func listPackages(t *testing.T, root, goos string, pkgs []string) []listedPackage {
 	t.Helper()
 
-	args := append([]string{"list", "-json=ImportPath,Deps"}, pkgs...)
+	args := append([]string{"list", "-json=ImportPath,Deps,Imports"}, pkgs...)
 
 	list := exec.CommandContext(t.Context(), "go", args...) //nolint:gosec // argv only, no shell
 	list.Dir = root
@@ -293,7 +330,8 @@ func packageDeps(t *testing.T, root, goos string, pkgs []string) map[string][]st
 	out, err := list.Output()
 	require.NoError(t, err, "go list %s for %s", strings.Join(pkgs, " "), goos)
 
-	deps := make(map[string][]string, len(pkgs))
+	var listed []listedPackage
+
 	dec := json.NewDecoder(bytes.NewReader(out))
 
 	for {
@@ -306,10 +344,44 @@ func packageDeps(t *testing.T, root, goos string, pkgs []string) map[string][]st
 
 		require.NoError(t, err)
 
+		listed = append(listed, p)
+	}
+
+	return listed
+}
+
+// packageDeps returns every package each of pkgs depends on, directly or not, when built
+// for goos, keyed by import path.
+func packageDeps(t *testing.T, root, goos string, pkgs []string) map[string][]string {
+	t.Helper()
+
+	deps := make(map[string][]string, len(pkgs))
+
+	for _, p := range listPackages(t, root, goos, pkgs) {
 		deps[p.ImportPath] = p.Deps
 	}
 
 	return deps
+}
+
+// strayImports returns "pkg imports dep (why)" for every import of a leaf's package that
+// its rule doesn't allow: an internal package off its list, or another module's.
+func strayImports(module string, l leaf, imports []string) []string {
+	var found []string
+
+	for _, imp := range imports {
+		rel, internal := strings.CutPrefix(imp, module+"/")
+
+		switch {
+		case internal && slices.Contains(l.allowed, rel):
+		case internal:
+			found = append(found, l.pkg+" imports "+rel+" ("+l.why+")")
+		case strings.Contains(strings.SplitN(imp, "/", 2)[0], "."):
+			found = append(found, l.pkg+" imports "+imp+", another module's ("+l.why+")")
+		}
+	}
+
+	return found
 }
 
 // dependsOn returns the packages in deps that are forbidden or under it.
@@ -374,6 +446,58 @@ func TestPackageBoundaries(t *testing.T) {
 
 	assert.Empty(t, found, "keep these package dependencies cut; reach the other package through an interface "+
 		"declared where it is used, and adapt it in internal/core")
+}
+
+func TestLeafImports(t *testing.T) {
+	t.Parallel()
+
+	if _, err := exec.LookPath("go"); err != nil {
+		t.Skip("the go command is not available")
+	}
+
+	root := moduleRoot(t)
+	module := modulePath(t, root)
+	rules := leaves()
+
+	pkgs := make([]string, 0, len(rules))
+	byPath := make(map[string]leaf, len(rules))
+
+	for _, l := range rules {
+		pkgs = append(pkgs, module+"/"+l.pkg)
+		byPath[module+"/"+l.pkg] = l
+	}
+
+	var found []string
+
+	for _, goos := range buildOSes() {
+		listed := listPackages(t, root, goos, pkgs)
+		require.Len(t, listed, len(rules), "a leaf is gone; update this guard")
+
+		for _, p := range listed {
+			for _, s := range strayImports(module, byPath[p.ImportPath], p.Imports) {
+				found = append(found, goos+": "+s)
+			}
+		}
+	}
+
+	assert.Empty(t, found, "keep these leaves to what they import; reach anything else through an interface the "+
+		"service declares, and adapt it in internal/core")
+}
+
+func TestStrayImports(t *testing.T) {
+	t.Parallel()
+
+	l := leaf{pkg: "internal/autopilot/eval", allowed: []string{"internal/item", "internal/autopilot/spec"}, why: "pure"}
+
+	assert.Empty(t, strayImports("example.com/m", l, []string{
+		"strings", "encoding/json", "example.com/m/internal/item", "example.com/m/internal/autopilot/spec",
+	}))
+	assert.Equal(t, []string{
+		"internal/autopilot/eval imports internal/store (pure)",
+		"internal/autopilot/eval imports github.com/stretchr/testify/assert, another module's (pure)",
+	}, strayImports("example.com/m", l, []string{
+		"example.com/m/internal/store", "github.com/stretchr/testify/assert", "time",
+	}))
 }
 
 func TestDependsOn(t *testing.T) {

@@ -1,0 +1,4 @@
+# The query watch.Build writes for this search, after this header. Rewrite with
+# go test ./internal/autopilot/watch -run TestBuildGolden -update
+
+is:pr is:open archived:false org:acme-org -is:private label:"good first issue" language:go sort:updated-desc

@@ -1,0 +1,48 @@
+{
+    "version": 1,
+    "watch": {
+        "sources": [
+            {
+                "lists": [
+                    "reviewRequested"
+                ]
+            }
+        ]
+    },
+    "trigger": {
+        "event": "new_commits",
+        "firstToo": true
+    },
+    "conditions": {
+        "match": "all",
+        "of": [
+            {
+                "field": "pr.draft",
+                "op": "isNo"
+            },
+            {
+                "field": "pr.size",
+                "op": "oneOf",
+                "values": [
+                    "XS",
+                    "S",
+                    "M",
+                    "L"
+                ]
+            }
+        ]
+    },
+    "steps": [
+        {
+            "agent": {
+                "prompt": {
+                    "starter": "quick-look"
+                },
+                "fence": {
+                    "tools": "readOnly"
+                }
+            }
+        }
+    ],
+    "limits": {}
+}

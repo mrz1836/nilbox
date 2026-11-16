@@ -1,0 +1,75 @@
+{
+    "version": 1,
+    "watch": {
+        "sources": [
+            {
+                "lists": [
+                    "reviewRequested"
+                ]
+            }
+        ]
+    },
+    "trigger": {
+        "event": "schedule",
+        "schedule": {
+            "every": "weekday",
+            "at": "08:30"
+        }
+    },
+    "conditions": {
+        "match": "any",
+        "of": [
+            {
+                "field": "item.idle",
+                "op": "moreThan",
+                "value": "3d"
+            },
+            {
+                "group": {
+                    "match": "all",
+                    "of": [
+                        {
+                            "field": "checks.state",
+                            "op": "oneOf",
+                            "values": [
+                                "failure",
+                                "error"
+                            ]
+                        },
+                        {
+                            "field": "repo.muted",
+                            "op": "isNo"
+                        }
+                    ]
+                }
+            }
+        ]
+    },
+    "steps": [
+        {
+            "notify": {
+                "note": "Waiting on you",
+                "banner": false
+            }
+        },
+        {
+            "pin": {}
+        }
+    ],
+    "limits": {
+        "activeHours": {
+            "days": [
+                "mon",
+                "tue",
+                "wed",
+                "thu",
+                "fri"
+            ],
+            "from": "08:00",
+            "to": "20:00"
+        }
+    },
+    "notify": {
+        "alert": false
+    }
+}
