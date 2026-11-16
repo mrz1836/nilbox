@@ -1145,6 +1145,7 @@ View the full documentation for Nilbox:
 | **[Desktop Guide](docs/desktop.md)**                       | Setup, build targets, data location, and how every feature behaves                  |
 | **[Performance](docs/performance.md)**                     | Measured startup, refresh, launch, size, and API budget, and how to reproduce them  |
 | **[CLAUDE.md](CLAUDE.md)**                                 | Nilbox's own rules, the gate every change passes, and the layout                    |
+| **[Architecture](docs/architecture.md)**                   | The full design notes of the packages CLAUDE.md summarizes                          |
 | **[AGENTS.md](.github/AGENTS.md)**                         | The shared engineering rulebook for contributors and AI agents                      |
 | **[Tech Conventions](.github/tech-conventions/README.md)** | Commits, branches, pull requests, testing, releases, and security practices         |
 | **[Support](.github/SUPPORT.md)**                          | Questions, bug reports, and private contact                                         |
