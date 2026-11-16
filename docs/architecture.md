@@ -1277,7 +1277,10 @@ item moved on (`closed`: merged, closed, gone, left the watch, its fire key move
 matches, the routine changed or was switched off, the item's sheet no longer offers the
 action). Everything that only delays a start keeps it open, retried every cycle. A row that
 closed without ever running (no longer matches, left the watch, moved on, the routine changed
-or was switched off, `Reason.reopens`) opens again when the same occurrence matches again.
+or was switched off, `Reason.reopens`) opens again when the same occurrence matches again, but
+only if none of its steps ever started (`reopensRow`: no run, no step moved past, none running,
+done, or failed): a row that started a step, a local one included, is the occurrence's record,
+which only Try again opens again, and `Matching` counts it as recorded.
 `autopilot_runs` holds one row per run a match starts (an agent's, in the background or the
 terminal, or a GitHub action the app sends), with every column the run view, the caps, and the
 stats read, and a partial unique index on `item_id` for the active statuses (starting,
@@ -1286,9 +1289,10 @@ engine's own checks say. `autopilot_tries` keeps when Try again last reset a rou
 on an item, `autopilot_baselines` what a routine first saw of an item (its head, its comment
 count, for New commits' first commit and New comments), and `autopilot_hands_off` the items a
 routine leaves alone. The engine's own state, `autopilot.engine` (a JSON pref only the engine
-writes, `enginestate.go`), holds when Pause began, the last refresh it saw, the last cycle,
-each GitHub routine's first-pass fingerprint, the routines whose current matches become their
-baseline, the problems, and when the retention last ran.
+writes, `enginestate.go`), holds when Pause began, the last refresh it saw, when a catch-up
+under way began, the last cycle, each GitHub routine's first-pass fingerprint, the routines
+whose current matches become their baseline, the problems, and when the retention last ran;
+a deleted or switched-off routine's entries are dropped.
 
 **The engine** (`NewEngine`, never bound; the Service is its face) is a deferred desktop worker
 with one loop of its own (`engine.go`), the only writer of matches and the only thing that
@@ -1319,14 +1323,33 @@ and logged, and the loop holds off cycles for a minute; commands are still answe
   first one, before an account was stored), it asks the inbox for the searches at once
   (`Routines.WatchNow`, a pass outside a whole refresh). Commands don't wait for it.
 - **The lock** (`lock.go`) is a `flock` on `<data>/autopilot.lock` (`appdata.Paths.AutopilotLock`),
-  tried at start and on every tick: only the holder runs cycles and applies commands (another
-  copy refuses them, `ErrElsewhere`, and `Engine().Elsewhere` says so), and on taking it the
-  engine reads its state and checks the runs the ledger records as going (`Runner.Alive`; one
-  that no longer goes ended interrupted). The system lets go of it when the process ends.
+  tried as the engine is built (in `assemble`, so the copy that will hold it sends the searches
+  from its first refresh) and on every tick: only the holder runs cycles and applies commands
+  (another copy refuses them, `ErrElsewhere`, and `Engine().Elsewhere` says so), and only the
+  holder sends the routines' searches at all (`Searches.HoldsWatches`, which the inbox's
+  `WatchHolder` reads before a watch pass), so two copies on one data folder never replace each
+  other's rows; the holder builds its snapshot of the searches again from the database on every
+  tick, which catches a routine changed in the other copy. The system lets go of the lock when
+  the process ends.
+- **The runs going** are checked when the lock is taken and on every tick (`reconcile`), but
+  those a worker of this copy is starting or dispatching: one its runner never confirmed it
+  started (still `starting`, as a start the quit cut off) goes back to the queue, its match with
+  it and counting no try; any other the runner no longer runs ended interrupted; one the runner
+  can't say of (an error from `Runner.Alive`) is asked again on the next tick, and ends
+  interrupted once it has been unknown past the longest time limit a run may have and a grace
+  (`unknownFor`), so no run holds its item's slot, an agent's slot, or a reservation for good.
+  A start the runner refuses as it closes (`ErrClosed`) stays queued, and no agent starts in
+  this run of the engine after it. A stop that fails is tried again on the next cycle.
+- **A catch-up** begins at the first successful refresh after a gap longer than Settings'
+  catch-up hours since the one before (with the app closed or open, the Mac asleep), or at a
+  Resume after a pause as long, and lasts until a cycle has decided on a refresh after it began
+  and on every routine's searches answered after it, with no error: every agent and GitHub
+  step a cycle decides on what was read before the gap, or on those first reads after it, waits
+  for the user (`catch_up`).
 - **A start** goes through, in Go, in this order (`gate`): the user's OK for a routine that asks
-  first, and after a gap longer than Settings' catch-up hours with no refresh, or a pause as
-  long, an Autopilot routine's too (`catch_up`); Pause and the routine's active hours (which
-  hold a local step too); the tries (`skipped: tries`), the routine's runs a day, the agent runs
+  first, and in a catch-up an Autopilot routine's too; no one signed in to GitHub (the last
+  refresh found no token, or GitHub refused it: `signed_out`), Pause, and the routine's active
+  hours, all three of which hold a local step too; the tries (`skipped: tries`), the routine's runs a day, the agent runs
   a day, the GitHub actions a day, and the wait between tries, none of which a manual run counts
   toward; a free slot and the daily cap and the routine's own budget, reserved in their unit,
   for an agent; the outside contributor rule (an agent closes `skipped`, a GitHub action waits);
@@ -1335,7 +1358,10 @@ and logged, and the loop holds off cycles for a minute; commands are still answe
   register are asked; the cycle after that read, which evaluated the item on what it stored
   (a moved head closes the match as moved on), records the run and the reservation in one
   transaction and hands the step to its dispatcher. A local step runs at once, through its
-  dispatcher, held back only by Pause and the active hours.
+  dispatcher, held back only by a sign-out, Pause, and the active hours. A day runs from local
+  midnight to local midnight, as the clock tells local time: a run's cost belongs to the day it
+  started, and every run still working counts what it reserved against today's cap whatever
+  day it started.
 - **The dispatch seam** (`dispatch.go`): a narrow `Dispatcher` per part, keyed by the catalog's
   dispatcher names (`EngineConfig.Dispatchers`: triage, notices, github, verify, merging,
   review), and the agent part's `Runner` (`Dispatch` starts a run, `Stop` and `StopAll` stop at
@@ -1354,19 +1380,25 @@ and logged, and the loop holds off cycles for a minute; commands are still answe
   is closed only by its item being done with; its fire key moves by design.
 - **Settle what moved on:** an open match whose item merged, closed, or is gone closes; one
   whose item left every watch of its routine closes once the item's state was read after it
-  left (`ReadStates`, one request), but a search that failed, was truncated, or read in part
-  keeps its rows, stale, so its items never look as if they left; one whose fire key moved
+  left (`ReadStates`, one request, one at a time per item), and only while every search of the
+  routine last answered in full: a search that failed, was truncated, or was read in part keeps
+  its rows, stale, and even once the inbox drops a truncated tail, its items are stale, not
+  gone; one whose fire key moved
   closes as moved on, one the routine no longer matches as no longer matches (or, after an edit,
   as the routine changed), and the rest take the routine's new steps. A running agent whose item
   merged or closed is stopped through the runner; a verifying match closes.
-- **The first pass** of a routine with a GitHub action, after it is switched on or its spec
-  changes (a fingerprint), waits until its searches were read since, then queues at most
-  `FirstCap` (25) matches; over that, none, and they wait as a `backlog` for Approve.
+- **The first pass** of a routine with a GitHub action, after it is switched on, leaves Dry run,
+  or its spec changes (a fingerprint recorded only for a live, enabled routine, and dropped when
+  it is switched off or goes into Dry run), waits until its searches were read since, then
+  queues at most `FirstCap` (25) matches; over that, none, and they wait as a `backlog` for
+  Approve.
 - **Apply to current matches:** `SetEnabled`, `SetMode`, and `Save` (`Draft.Current`) take what
   to do with what the routine matches now and has no record of (`Matching` counts them, as
   `Test` reads them): `run` them too, or `fromNow`, applied as one command with the change, so
   no cycle runs between; the engine then records those matches as `baseline` once the routine's
-  searches were read since, and nothing runs on them.
+  searches were read since, and nothing runs on them. `fromNow` is refused, with why, in a copy
+  that doesn't run the engine (it hasn't started yet, or another copy holds it), rather than
+  dropped; `run` is made there at once.
 - **Problems** (`upkeep.go`): a search GitHub fails, and an enabled routine that won't load, are
   recorded once each, keyed by routine and problem, with when they began, in the engine's state
   and `Engine().Problems`, and told through a `ProblemSink` once (none is registered yet); one
@@ -1374,8 +1406,10 @@ and logged, and the loop holds off cycles for a minute; commands are still answe
 - **Retention:** once an hour, a closed match closed longer ago than the history's days goes,
   with its runs, but only once its item is known to be done with (gone, merged or closed, or out
   of every list and watch since then): deleting the record of an item still open would let it
-  fire again. Open matches never go. `ClearHistory` does the same at once, and keeps a closed
-  match that still blocks its occurrence without its trace and summaries. What deleted routines
+  fire again. Open matches never go. `ClearHistory` does the same whatever a row's age, but
+  "out of every list and watch" still means for the history's days, since the app reads no more
+  of an item once it left them; it keeps a closed match that may still block its occurrence
+  without its trace and summaries. What deleted routines
   kept of their items goes, and a deleted routine nothing refers to goes for good. The inbox's
   prune keeps every item a match or a run refers to (`KeptItems`, one of core's `itemKeepers`).
 

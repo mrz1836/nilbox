@@ -783,7 +783,8 @@ changing the package, and keep the section and its summary in step.
   `autopilot_tries`, `autopilot_baselines`, `autopilot_hands_off`; its state in
   `autopilot.engine`), woken by the inbox, the settings, the outcomes, a 1-minute tick, and
   the window's commands, doing everything slow on workers; it holds a `flock` on
-  `<data>/autopilot.lock`, waits for a refresh that carried its searches, checks every limit in
+  `<data>/autopilot.lock` (only the holder sends the routines' searches, `inbox.WatchHolder`),
+  waits for a refresh that carried its searches, checks every limit in
   Go before a start, and starts steps only through the dispatchers each part registers (none
   yet, so every routine runs in Dry run). The bound Service's ledger actions (`Approve`, `Skip`,
   `RunNow`, `TryAgain`, `LetActAgain`, `ClearHistory`) are commands it applies; `StopRun` and
