@@ -106,8 +106,10 @@ func (e *ValidationError) Unwrap() error {
 // search to its rules (scoped, quoted, short), and the steps to their order:
 //
 //   - one agent step at most;
-//   - Wait for the checks only after an agent step that may push;
-//   - Merge it only after a Wait for the checks, and only if the checks passed;
+//   - Wait for the checks only after an agent step that may push, and never only if it
+//     didn't push;
+//   - Merge it only after a Wait for the checks that runs only if the agent pushed, so
+//     the pass it follows is on the agent's own commit, and only if the checks passed;
 //   - Post the agent's review only after a read-only agent step;
 //   - Allow approving only when the review is posted as its verdict;
 //   - only a notice after an agent step in the terminal, whose end the app can't see.

@@ -14,8 +14,9 @@ type before struct {
 	// agent is the agent step before, nil for none.
 	agent *AgentStep
 
-	// wait reports a Wait for the checks before.
-	wait bool
+	// wait reports a Wait for the checks before, and waitOnPush that the latest one runs
+	// only if the agent pushed, so the checks it follows are on the agent's own commit.
+	wait, waitOnPush bool
 }
 
 // steps checks each step, and their order.
@@ -41,16 +42,26 @@ func (v *validator) steps(steps []Step, kinds []item.Kind) {
 		v.order(field, kind, st, prior)
 		v.stepSettings(field, kind, st)
 
-		if kind == catalog.StepAgent {
-			if prior.agent != nil {
-				v.add(PartSteps, field, "use one agent step per routine; two agents on one item take two routines")
-			}
-
-			prior.agent = st.Agent
+		if kind == catalog.StepAgent && prior.agent != nil {
+			v.add(PartSteps, field, "use one agent step per routine; two agents on one item take two routines")
 		}
 
-		prior.wait = prior.wait || kind == catalog.StepWaitForChecks
+		prior = prior.then(kind, st)
 	}
+}
+
+// then returns what the steps before the next one hold, once st, of kind, is among them.
+func (b before) then(kind catalog.StepKind, st Step) before {
+	switch kind {
+	case catalog.StepAgent:
+		b.agent = st.Agent
+	case catalog.StepWaitForChecks:
+		b.wait, b.waitOnPush = true, st.OnlyIf == catalog.OutcomePushed
+	case catalog.StepNotify, catalog.StepPin, catalog.StepSnooze, catalog.StepDismiss, catalog.StepRestore,
+		catalog.StepMarkDone, catalog.StepGitHub, catalog.StepMerge, catalog.StepPostReview, catalog.StepTellMe:
+	}
+
+	return b
 }
 
 // stepKind returns the step's one kind, recording a problem for a step that sets none or
@@ -133,8 +144,8 @@ func (v *validator) order(field string, kind catalog.StepKind, st Step, prior be
 	}
 
 	switch {
-	case kind == catalog.StepWaitForChecks && !prior.mayPush():
-		v.add(PartSteps, field, "Wait for the checks follows an agent step in the background that may push")
+	case kind == catalog.StepWaitForChecks:
+		v.waitOrder(field, st, prior)
 	case kind == catalog.StepPostReview && !prior.readOnly():
 		v.add(PartSteps, field, "Post the agent's review follows a read-only agent step in the background")
 	case kind == catalog.StepMerge:
@@ -142,10 +153,28 @@ func (v *validator) order(field string, kind catalog.StepKind, st Step, prior be
 	}
 }
 
-// mergeOrder holds Merge it to after a Wait for the checks, and to when they passed.
+// waitOrder holds Wait for the checks to after an agent step that may push, and to the
+// agent's push: it never runs only if the agent didn't push.
+func (v *validator) waitOrder(field string, st Step, prior before) {
+	switch {
+	case !prior.mayPush():
+		v.add(PartSteps, field, "Wait for the checks follows an agent step in the background that may push")
+	case st.OnlyIf == catalog.OutcomeNotPushed:
+		v.add(PartSteps, field+".onlyIf", "Wait for the checks follows the agent's push, so it can't run only if "+
+			"the agent didn't push")
+	}
+}
+
+// mergeOrder holds Merge it to after a Wait for the checks on the agent's own push, and
+// to when they passed: a pass on a commit the agent never made, such as a flaky check run
+// again, is no reason to merge.
 func (v *validator) mergeOrder(field string, st Step, prior before) {
-	if !prior.wait {
+	switch {
+	case !prior.wait:
 		v.add(PartSteps, field, "Merge it follows a Wait for the checks")
+	case !prior.waitOnPush:
+		v.add(PartSteps, field, `Merge it follows a Wait for the checks on the agent's push: set the latest `+
+			`wait's "onlyIf" to "pushed"`)
 	}
 
 	if st.OnlyIf != catalog.OutcomePassedChecks {

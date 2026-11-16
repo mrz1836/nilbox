@@ -276,6 +276,26 @@ func TestValidateHoldsTheStepsToTheirOrder(t *testing.T) {
 			want: []string{"steps[2].onlyIf"},
 		},
 		{
+			name:  "a merge after a wait for whatever the agent did",
+			steps: []spec.Step{push, {WaitForChecks: &spec.WaitStep{}}, merge},
+			want:  []string{"steps[2]"},
+		},
+		{
+			name:  "a wait only if the agent didn't push",
+			steps: []spec.Step{push, {WaitForChecks: &spec.WaitStep{}, OnlyIf: catalog.OutcomeNotPushed}},
+			want:  []string{"steps[1].onlyIf"},
+		},
+		{
+			name:  "a merge after a wait only if the agent didn't push",
+			steps: []spec.Step{push, {WaitForChecks: &spec.WaitStep{}, OnlyIf: catalog.OutcomeNotPushed}, merge},
+			want:  []string{"steps[1].onlyIf", "steps[2]"},
+		},
+		{
+			name:  "a merge after a later wait that isn't on the push",
+			steps: []spec.Step{push, wait, {WaitForChecks: &spec.WaitStep{}}, merge},
+			want:  []string{"steps[3]"},
+		},
+		{
 			name:  "a merge after the checks still fail",
 			steps: []spec.Step{push, wait, {Merge: &spec.MergeStep{How: catalog.MergeWhenMergeable}, OnlyIf: catalog.OutcomeFailingChecks}},
 			want:  []string{"steps[2].onlyIf"},
