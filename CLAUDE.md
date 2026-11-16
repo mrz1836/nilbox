@@ -854,7 +854,9 @@ changing the package, and keep the section and its summary in step.
   steps with the dispatcher that runs each, not `Offered` until it is built, the presets,
   the limits, and the builder's words; no entry for a close, approving workflow runs, or a
   merge past GitHub's rules, which a guard test holds), `watch` (a search into its query:
-  scoped, its labels quoted, at most 256 characters, the query its own dedup key), `spec`
+  scoped, its labels quoted, no value holding a quote, a backslash, or a control character,
+  refused by its field and again as the query is written, at most 256 characters, the
+  query its own dedup key), `spec`
   (the routine's JSON, format version 1 holding every step kind; strict `Decode`,
   `Normalize`, `Validate` naming the part and the field and holding the steps to their
   order, `Load` broken rather than fatal, and `Sentence`), `facts` (an item's values from

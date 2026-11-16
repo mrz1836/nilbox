@@ -53,7 +53,9 @@ func listsPhrase(lists []catalog.ListSource) string {
 	return "in your " + series(names, "and") + " " + map[bool]string{true: "list", false: "lists"}[len(names) == 1]
 }
 
-// searchPhrase says a search's fields in the order a sentence reads them.
+// searchPhrase says a search's fields in the order a sentence reads them, each value as
+// quote writes it and the hand-typed qualifiers as qualifiers does, so no value can
+// unbalance the sentence's quotes.
 func searchPhrase(s watch.Search) string {
 	parts := make([]string, 0, 8)
 
@@ -70,17 +72,17 @@ func searchPhrase(s watch.Search) string {
 	add("not labeled ", quoted(s.NotLabels), "or")
 
 	if s.Base != "" {
-		parts = append(parts, "into "+s.Base)
+		parts = append(parts, "into "+quote(s.Base))
 	}
 
 	if s.HeadPrefix != "" {
-		parts = append(parts, "from branches starting "+s.HeadPrefix)
+		parts = append(parts, "from branches starting "+quote(s.HeadPrefix))
 	}
 
 	add("", stateWords(s.State), "and")
 
 	if s.More != "" {
-		parts = append(parts, "matching "+s.More)
+		parts = append(parts, "matching "+qualifiers(s.More))
 	}
 
 	return strings.Join(parts, " ")
@@ -101,9 +103,9 @@ func authorNames(authors []string) []string {
 				bot = name
 			}
 
-			out = append(out, bot)
+			out = append(out, quote(bot))
 		default:
-			out = append(out, a)
+			out = append(out, quote(a))
 		}
 	}
 
@@ -122,7 +124,7 @@ func placeNames(where []string) []string {
 		}
 
 		_, name, _ := strings.Cut(w, ":")
-		out = append(out, name)
+		out = append(out, quote(name))
 	}
 
 	return out
@@ -257,7 +259,7 @@ func labelsPhrase(l LabelsAction) string {
 		labels []string
 	}{{"add", l.Add}, {"remove", l.Remove}} {
 		if len(part.labels) > 0 {
-			parts = append(parts, part.verb+" the "+series(part.labels, "and")+" "+
+			parts = append(parts, part.verb+" the "+series(quoted(part.labels), "and")+" "+
 				map[bool]string{true: "label", false: "labels"}[len(part.labels) == 1])
 		}
 	}

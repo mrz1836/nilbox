@@ -1067,14 +1067,12 @@ sort:updated-desc` (without the sort, GitHub orders newest-created first, so "th
 recently updated" would not hold); is scoped, by a `user:`, `org:`, or `repo:` qualifier
 that isn't negated, or one whose value is `@me`; quotes its labels, as one comma list each
 for any of them (`label:"a","b"`) and for none of them (`-label:"a","b"`), refusing a label
-holding a quote, a comma, a backslash (which could read as an escaped quote), or a control
-character, so no value can smuggle in a qualifier; quotes any value holding a space of any
-kind, Unicode's included; passes the head branch's prefix through exactly, quoted, since
-GitHub reads `head:` as a plain prefix, refusing in a branch any space, quote, or
-backslash, since the base goes in unquoted; writes a bot as `author:app/<slug>` (the bare
-slug matches nothing, so
+holding a comma; quotes any value holding a space of any kind, Unicode's included; passes
+the head branch's prefix through exactly, quoted, since GitHub reads `head:` as a plain
+prefix, refusing in a branch any space, since the base goes in unquoted; writes a bot as
+`author:app/<slug>` (the bare slug matches nothing, so
 `Normalize` writes `dependabot`, `renovate`, and `github-actions` as apps and `x[bot]` as
-`app/x`); refuses a hand-typed qualifier it doesn't list, free text, a backslash, and the
+`app/x`); refuses a hand-typed qualifier it doesn't list, free text, and the
 search's own (`is:` but public, private, locked, or unlocked, `sort:`, `archived:`, `in:`);
 and is at
 most 256 characters, refused over that with the hint to split it. GitHub doesn't error on
@@ -1084,6 +1082,23 @@ whichever account is signed in, while `Check`, which `spec.Validate` calls, buil
 longest login GitHub allows, so a search it passes fits any account. The query is written
 in one canonical order from the normalized search, so it is its own dedup key
 (`Query.Key`).
+
+No value can smuggle in a qualifier. GitHub's search has no escape for a quote inside
+quotes, so no value of any field (a label, an author, a place, a branch, a hand-typed
+qualifier's value) may hold what `unsearchable` names: a quote, a backslash (which a
+reader could take for an escape of the closing quote, letting what follows go live), the
+fullwidth quote and backslash (which a reader folding Unicode's compatibility forms reads
+as those two), a control character (a newline and a tab among them), or a line or
+paragraph separator. An apostrophe is fine, since GitHub quotes only with double quotes.
+Each field refuses such a value with its own problem (`labels[1]`, `base`, `more`, ...),
+and so does the build itself: every token carries the field it came from, and `build`
+checks each one again as it writes the query (`token.check`), so a check a field missed
+fails the query rather than sending it. The writer (`token.String`) also takes the quotes
+and backslashes out of every value it writes (`quoteless`), whoever calls it, so not even a
+token that skipped both checks can end its quotes early. `FuzzTokenString` reads what it
+writes as GitHub's documented syntax does, and as a reader that takes a backslash for an
+escape would, and finds one qualifier, the token's own, between the query's neighbors;
+`TestHostileValuesAddNoQualifier` does the same for each field through `Build`.
 
 **`spec`** is a routine's definition, one JSON document with a `version`: the watch's
 sources (inbox lists, or a search), one trigger with its options, the conditions (`all` or
@@ -1121,10 +1136,20 @@ key and every closed set of values.
   unreadable, then decodes, normalizes, and validates. A spec it can't load returns a
   `*BrokenError` (`ReasonNewer`, `ReasonUnreadable`, `ReasonInvalid`), so its routine is
   broken, not fatal; an older version is migrated in `migrate`, which has nothing to bring
-  forward yet.
+  forward yet. A routine stored before a rule tightened (a label holding a fullwidth
+  quote, say, which `watch` refuses) loads this way, broken as invalid, its problem
+  naming the field for the builder to show, its spec never rewritten, and no query built
+  from it.
 - `Sentence` writes the one sentence every place shows, from `Phrase` for each condition,
   with `PromptNames` naming a starter as the library does; `TestSentenceGolden` pins each
-  template's.
+  template's. A value it shows (a label, a condition's value, a search's author, place, or
+  branch) goes in bare when it is one plain word, and otherwise quoted and escaped as Go
+  quotes a string (`strconv.Quote`), so a value's own quote or backslash can never
+  unbalance the sentence's quotes, and a newline or a bidirectional mark shows as its
+  escape. The hand-typed qualifiers go in as typed while their quotes pair up and they
+  hold no backslash and nothing that doesn't print, and otherwise quoted whole.
+  `FuzzSentenceQuotes` holds every quoted stretch to read back, as Go reads a quoted
+  string, as the value it quotes.
 
 **`facts`** holds one item's values for the evaluator, built by the pure `Build` from a
 plain `Row`, which the inbox's query fills: the item, its repository, its triage, and, once

@@ -91,13 +91,14 @@ func parseMore(more string) ([]token, error) {
 			return nil, fmt.Errorf(`%w: %q; type qualifiers such as language:go or label:"help wanted"`, ErrQualifier, w)
 		}
 
-		// A backslash could read as an escaped quote and let what follows go live.
+		// A value is held to what every value of a search is (unsearchable): a backslash,
+		// say, could read as an escaped quote and let what follows go live.
 		value := m[3] + m[4]
-		if strings.ContainsFunc(value, unicode.IsControl) || strings.Contains(value, `\`) {
-			return nil, fmt.Errorf("%w: %q holds a backslash or a control character", ErrInvalidValue, w)
+		if !utf8.ValidString(value) || strings.ContainsFunc(value, unsearchable) {
+			return nil, fmt.Errorf("%w: %q holds a quote, a backslash, or a control character", ErrInvalidValue, w)
 		}
 
-		tokens = append(tokens, token{neg: m[1] == "-", q: m[2], values: []string{value}})
+		tokens = append(tokens, token{neg: m[1] == "-", q: m[2], values: []string{value}, field: "more"})
 	}
 
 	return tokens, nil
@@ -171,29 +172,83 @@ func validAuthor(a string) bool {
 	return repo.ValidOwner(a) && !slices.Contains(knownApps(), strings.ToLower(a))
 }
 
-// checkLabel refuses a label that can't be quoted in a comma list: one holding a quote, a
-// comma, a backslash (which could read as an escaped quote and let what follows go
-// live), or a control character.
+// unsearchable reports a character no value of a search may hold, quoted or not:
+//
+//   - a quote, which would end a quoted value early: GitHub's search has no escape for a
+//     quote inside quotes, so a value holding one can't be written as itself at all;
+//   - a backslash, which a reader could take for an escape of the closing quote, letting
+//     what follows go live;
+//   - the fullwidth quote and backslash, which a reader that folds Unicode's
+//     compatibility forms reads as those two;
+//   - a control character (a newline and a tab among them) and a line or paragraph
+//     separator, which no label, branch, or qualifier holds.
+//
+// An apostrophe is fine: GitHub's search quotes only with double quotes.
+func unsearchable(r rune) bool {
+	switch r {
+	case '"', '\\', '\uff02', '\uff3c', '\u2028', '\u2029':
+		return true
+	default:
+		return unicode.IsControl(r)
+	}
+}
+
+// checkValue refuses a value no search can hold: an empty one, one that isn't UTF-8, and
+// one holding a character unsearchable names.
+func checkValue(v string) error {
+	switch {
+	case v == "":
+		return fmt.Errorf("%w: a value is empty", ErrInvalidValue)
+	case !utf8.ValidString(v) || strings.ContainsFunc(v, unsearchable):
+		return fmt.Errorf("%w: %q holds a quote, a backslash, or a control character", ErrInvalidValue, v)
+	default:
+		return nil
+	}
+}
+
+// quoteless takes out of v every character that could end a quoted value early or escape
+// its closing quote: the quote and the backslash, and their fullwidth forms. Every
+// field's checks refuse a value holding one, and build refuses a token holding one
+// (token.check), so this changes no value a query is written with: it is what keeps
+// String from ever writing one raw, whoever calls it.
+func quoteless(v string) string {
+	v = strings.ReplaceAll(v, `"`, "")
+	v = strings.ReplaceAll(v, "\uff02", "")
+	v = strings.ReplaceAll(v, `\`, "")
+
+	return strings.ReplaceAll(v, "\uff3c", "")
+}
+
+// checkLabel refuses a label that can't be quoted in a comma list: one holding a comma,
+// or a character no search value can hold (unsearchable).
 func checkLabel(l string) error {
 	switch {
 	case strings.TrimSpace(l) == "":
 		return fmt.Errorf("%w: a label is empty", ErrInvalidValue)
 	case utf8.RuneCountInString(l) > MaxLabelRunes:
 		return fmt.Errorf("%w: %q is longer than GitHub's %d characters", ErrInvalidValue, l, MaxLabelRunes)
-	case strings.ContainsAny(l, `",\`) || strings.ContainsFunc(l, unicode.IsControl):
+	case strings.ContainsRune(l, ',') || !utf8.ValidString(l) || strings.ContainsFunc(l, unsearchable):
 		return fmt.Errorf("%w: %q holds a quote, a comma, a backslash, or a control character", ErrInvalidValue, l)
 	default:
 		return nil
 	}
 }
 
-// validBranch reports a branch name, or the start of one, a search can take: no space of
-// any kind, Unicode's included, since the base goes in unquoted, and no quote, backslash,
-// or control character, none of which git allows in a branch's name either.
-func validBranch(b string) bool {
-	bad := func(r rune) bool { return unicode.IsSpace(r) || unicode.IsControl(r) || r == '"' || r == '\\' }
+// checkBranch refuses a branch name, or the start of one, a search can't take: one longer
+// than maxBranchRunes, or holding a space of any kind, Unicode's included, since the base
+// goes in unquoted, or a character no search value can hold (unsearchable). Git allows no
+// space, backslash, or control character in a branch's name either.
+func checkBranch(b string) error {
+	bad := func(r rune) bool { return unicode.IsSpace(r) || unsearchable(r) }
 
-	return b != "" && utf8.RuneCountInString(b) <= maxBranchRunes && utf8.ValidString(b) && !strings.ContainsFunc(b, bad)
+	switch {
+	case utf8.RuneCountInString(b) > maxBranchRunes:
+		return fmt.Errorf("%w: %q is longer than %d characters", ErrInvalidValue, b, maxBranchRunes)
+	case !utf8.ValidString(b) || strings.ContainsFunc(b, bad):
+		return fmt.Errorf("%w: %q holds a space, a quote, a backslash, or a control character", ErrInvalidValue, b)
+	default:
+		return nil
+	}
 }
 
 // Normalize returns s cleaned as the spec stores it: each value trimmed, logins, orgs,
