@@ -70,9 +70,10 @@ func Encode(s Spec) ([]byte, error) {
 	return data, nil
 }
 
-// Decode reads a spec strictly, refusing a field the format doesn't have, a key given
-// twice, a value of the wrong type, anything after the document, and more than MaxBytes,
-// each as ErrUnreadable. It checks no value: Validate does.
+// Decode reads a spec strictly, refusing a field the format doesn't have, a key not
+// spelled exactly as the format spells it (encoding/json alone would take "Trigger" for
+// "trigger"), a key given twice, a value of the wrong type, anything after the document,
+// and more than MaxBytes, each as ErrUnreadable. It checks no value: Validate does.
 func Decode(data []byte) (Spec, error) {
 	if len(data) > MaxBytes {
 		return Spec{}, fmt.Errorf("%w: larger than %d bytes", ErrUnreadable, MaxBytes)
@@ -151,74 +152,4 @@ func peekVersion(data []byte) (int, error) {
 	}
 
 	return version, nil
-}
-
-// errDuplicateKey and errTooDeep are why checkKeys refuses a document.
-var (
-	errDuplicateKey = errors.New("a key is given twice")
-	errTooDeep      = errors.New("it nests too deep")
-)
-
-// checkKeys refuses JSON that gives an object's key twice, which encoding/json would
-// read as the last one silently, or that nests deeper than maxDepth. JSON that isn't
-// well formed is left for the decoder to refuse.
-func checkKeys(data []byte) error {
-	dec := json.NewDecoder(bytes.NewReader(data))
-
-	var stack []map[string]bool
-
-	// expectKey is set inside an object where the next string is a key.
-	expectKey := false
-
-	for {
-		tok, err := dec.Token()
-		if err != nil {
-			return nil //nolint:nilerr // a document that isn't well formed is the decoder's to refuse
-		}
-
-		stack, expectKey, err = step(stack, expectKey, tok)
-		if err != nil {
-			return err
-		}
-	}
-}
-
-// step follows one token of a document for checkKeys.
-func step(stack []map[string]bool, expectKey bool, tok json.Token) ([]map[string]bool, bool, error) {
-	switch t := tok.(type) {
-	case json.Delim:
-		return delim(stack, t)
-	case string:
-		if expectKey {
-			keys := stack[len(stack)-1]
-			if keys[t] {
-				return nil, false, fmt.Errorf("%w: %q", errDuplicateKey, t)
-			}
-
-			keys[t] = true
-
-			return stack, false, nil
-		}
-	}
-
-	return stack, len(stack) > 0 && stack[len(stack)-1] != nil, nil
-}
-
-// delim follows an opening or closing bracket for checkKeys: an object pushes its keys,
-// an array pushes nil, and a closing bracket pops.
-func delim(stack []map[string]bool, d json.Delim) ([]map[string]bool, bool, error) {
-	switch d {
-	case '{':
-		stack = append(stack, map[string]bool{})
-	case '[':
-		stack = append(stack, nil)
-	default:
-		stack = stack[:len(stack)-1]
-	}
-
-	if len(stack) > maxDepth {
-		return nil, false, errTooDeep
-	}
-
-	return stack, len(stack) > 0 && stack[len(stack)-1] != nil, nil
 }

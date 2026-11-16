@@ -3,7 +3,8 @@
 // with a version.
 //
 // A spec is checked strictly on every save and every load: Decode refuses a field the
-// format doesn't have, a key given twice, and anything after the document; Normalize
+// format doesn't have, a key not spelled exactly as the format's, a key given twice, and
+// anything after the document; Normalize
 // trims, sorts, and removes repeats; and Validate holds every value to its range and
 // the steps to their order, naming the part and the field of each problem. Load does all
 // three, and a spec it can't load (from a newer build, unreadable, or no longer valid) is
