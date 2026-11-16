@@ -280,24 +280,7 @@ func (p *pass) readFresh(ctx context.Context, r *routineRun, m *match, sr *stepR
 	p.cycle.Reads++
 
 	p.e.goWork(ctx, func(ctx context.Context) {
-		got := fresh{at: p.e.clock.Now()}
-
-		var err error
-
-		got.hold, got.detail = p.e.promptHold(ctx, sp, job.Step)
-		if got.hold == "" && p.e.holds != nil {
-			got.hold, got.detail, err = p.e.holds.Hold(ctx, job)
-		}
-
-		// Turned off since the cycle, Autopilot asks GitHub nothing: the match stays queued,
-		// as at dispatch (ErrOff).
-		switch {
-		case err != nil || got.hold != "":
-		case !p.e.Enabled():
-			err = ErrOff
-		default:
-			err = p.e.items.ReadItem(ctx, id)
-		}
+		got, err := p.e.freshRead(ctx, sp, job, id)
 
 		p.e.mail.post(func(ctx context.Context) {
 			delete(p.e.inflight, m.ID)
@@ -319,6 +302,31 @@ func (p *pass) readFresh(ctx context.Context, r *routineRun, m *match, sr *stepR
 			p.e.requeue(ctx, m.ID, "", "")
 		})
 	})
+}
+
+// freshRead is readFresh's work, on the worker: the step's prompt, then Holds, and only
+// when neither holds the start back, the item's read. Turned off since the cycle,
+// Autopilot asks GitHub nothing: it returns ErrOff, and the match stays queued, as at
+// dispatch.
+func (e *Engine) freshRead(ctx context.Context, sp spec.Spec, job Job, id int64) (fresh, error) {
+	got := fresh{at: e.clock.Now()}
+
+	var err error
+
+	got.hold, got.detail = e.promptHold(ctx, sp, job.Step)
+	if got.hold == "" && e.holds != nil {
+		got.hold, got.detail, err = e.holds.Hold(ctx, job)
+	}
+
+	switch {
+	case err != nil || got.hold != "":
+	case !e.Enabled():
+		err = ErrOff
+	default:
+		err = e.items.ReadItem(ctx, id)
+	}
+
+	return got, err
 }
 
 // requeue puts a match still waiting on its start back in the queue, waiting on b.
