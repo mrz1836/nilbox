@@ -2495,8 +2495,9 @@ working (none until routines can run them), with an amber dot while something wa
 a red dot while a routine is
 broken or its search fails; hover it for what they mean (*2 agents working · 1 needs you · 1
 routine can’t run*). While you have no routine, the tab explains Autopilot in the two sentences
-above. Otherwise it lists your routines on the left, under **Activity**, with **Autopilot
-settings** at the bottom, and shows Activity or the routine you chose on the right. **Pause
+above, with **Start from scratch**. Otherwise it lists your routines on the left, under
+**Activity**, then **New routine**, with **Autopilot settings** at the bottom, and shows
+Activity, the routine you chose, or the routine you are making on the right. **Pause
 Autopilot** sits in the header: while paused, nothing new starts, a snooze or a pin included,
 and the button reads **Resume Autopilot**.
 
@@ -2525,9 +2526,10 @@ nothing. A change that can't be made says why in its own words, as *Autopilot is
 another copy of Nilbox; make this change there.*
 
 **A routine.** Choosing a routine shows its switch, its mode (**Dry run · Ask first ·
-Autopilot**, which asks the question above when it leaves Dry run while on), the sentence it
-reads as (*When checks pass on pull requests by Dependabot in acme-org, pin it.*), and what is
-wrong with it, if anything. Below them:
+Autopilot**, which asks the question above when it leaves Dry run while on), and the routine
+itself, in the [builder](#building-a-routine), with [Test](#testing-a-routine) below it. A
+routine that belongs to another account, or that a newer Nilbox made, shows only the sentence
+it reads as. Below them:
 
 - **Watching** lists the items its watch finds now, as the last refresh read them, newest
   activity first, as the inbox's own rows: their signals, ⚡ chip, triage buttons, **⋯** menu,
@@ -2567,6 +2569,92 @@ without acting says why, each reason in words of its own (**⚡ Gave up**, **⚡
 with the routines: each match, newest first, with its routine, when, what it said, and each
 change it made with where it stands (*Still there*, *Changed since*, *Undone*, *You took it
 back*), an **Undo** for one still there, and **Show in Activity** for a match Activity lists.
+
+### Building a routine
+
+The builder is the routine itself, laid out top to bottom in the order it runs, each part edited
+in place. **New routine** (or **Start from scratch** on the empty tab) starts one on your
+account's pull requests, telling you when their checks fail, named "New routine", in the mode
+new routines start in (Settings → Autopilot), shown beside its name; it starts off, and you
+switch it on once it is saved.
+
+- **The sentence** at the top says the routine in one sentence, as the list and the menu bar
+  will (*When checks fail on pull requests by Dependabot in your account and acme-org, if a
+  failed check's name contains security or codeql, run "Fix dep security" in the background.
+  Once per head commit, at most 2 tries per pull request.*). It rewrites itself as you edit;
+  while the routine has a problem, the last sentence that read stays.
+- **WATCH** is the inbox lists it watches (**Review requested**, **Authored**, **Assigned**)
+  and its [searches](#routine-searches), up to five, each built from simple fields: **Pull
+  requests**, **Issues**, or both, **by** whom, **in** where, and **More ▸** for who it
+  involves, labels in and out, the branches, the state, and qualifiers typed by hand. Who and
+  where are tokens, such as **[Dependabot ×]** and **[Your account ×]**: the field suggests the
+  authors, bots, and owners your items came from, and takes anything else typed. Enter or a
+  comma adds one, the arrows pick a suggestion, Backspace in an empty field or a token's **×**
+  takes one away. A name you type is an org (`acme-org`), a repository (`acme-org/api`), or as
+  you write it (`user:octo-user`). Under the block, **the cost line** says what the searches add
+  to each refresh, *About 1 point a refresh (0.2% of the budget)*, from the last test.
+- **WHEN** is its one trigger, with the trigger's own options at their defaults until you set
+  them: wait until every check has finished, how long they settle, the first commit too, how
+  many comments, how many quiet days, which label, or a schedule.
+- **IF** is its conditions, **All** or **Any** of them, each a field (grouped by Item,
+  Repository, Pull request, Checks, Files, Dependency update, History), how it compares, and its
+  value or values, with **+ Add a condition** and **+ Add a group** (one level deep). A field's
+  values suggest what your items hold, such as the check names your pull requests have run,
+  so you pick *🔒 Security Scans* rather than guess it; a field of choices takes only its
+  choices.
+- **THEN** is its steps, numbered, in the order they run, each with its own settings, **Only
+  if** on a step before it (*only if it pushed*, *only if the checks passed*), **↑ ↓** to move
+  it, and **🗑**. **+ Add a step** offers only what fits at the end: one agent step at most,
+  **Wait for the checks** only after an agent step that may push, **Merge it** only after a
+  wait on its push, **Post the agent's review** only after a read-only agent step, and only a
+  notice after an agent step in your terminal. A step this version can't run yet says *Dry run
+  for now*: it can be built and saved, and the routine stays in Dry run, the mode control
+  saying why (*Agent steps run in Dry run until this Mac can run agents.*).
+- **The agent step** names its **Prompt** (a library prompt for the items' kind, or the item's
+  own default prompt; **Edit in Prompts** opens the Prompts tab), **Where** it runs (**In the
+  background** or **In my terminal**), and its launch on one line, *As a click would: Claude ·
+  default · its default model · default effort*. **Change ▸** opens the agent, profile, model,
+  and effort, each on **Inherit** until set, saying what it inherits at the app's level (a
+  click takes each repository's and org's own launch defaults first), and the **Fallbacks**,
+  up to three profiles to use when one is out of usage. **+ Per org** sets them for one org or
+  repository at a time. In the background, plan mode is set by Tools and the worktree is
+  always the item's own, and the **Fence** holds the run in: its budget in dollars or tokens
+  (default $3.00), its time limit (default 30 minutes), and its **Tools**. Each value set here
+  has **Reset**. This is saved with the routine; no agent runs from it in this version.
+- **LIMITS** are once per what (the trigger's by default), the tries per item, the runs a day,
+  and the wait between tries, each at its default until set; Settings → Autopilot's limits
+  still hold over every routine together.
+
+**Problems and warnings.** What keeps a routine from being saved shows where it is, in red: a
+search with no scope, a regex that doesn't compile, a prompt your library doesn't have or that
+isn't for the items' kind, a trigger that doesn't fit what it watches, a second agent step. The
+footer counts them (*Fix 2 problems to save.*). Warnings, in amber, never block saving: a search
+that matches more than 100 items checks only the newest 100; most of what it watches isn't in
+your inbox lists, so a snooze or a pin won't change what you see; an owner none of your items
+came from, since GitHub answers a name it doesn't know with nothing; and, on Autopilot, a
+terminal run or the profile's own permissions.
+
+**Saving.** **Save** (or ⌘S) stores the routine once nothing keeps it; **Discard** puts back
+what was saved. Saving a change to what a routine that is on watches, fires on, or checks asks
+the [question](#autopilot) first, *3 pull requests match right now.* **Run on them too** · **Only
+what changes from now on**, and asks nothing when nothing matches. Leaving a routine with
+unsaved changes for another, Activity, or a new one asks first; your draft survives switching
+tabs.
+
+### Testing a routine
+
+**Test**, under the builder, tries the routine as it stands, before you save it: its searches
+are read from GitHub (unless a test read them in the last minute), and each item it watches is
+judged as the routine would judge it now. It runs on its own once the routine has no problem,
+a moment after you stop editing what it watches, fires on, or checks, and again with **↻
+Test**, which says what the last test spent, *Test (3 points)*. Its first line counts, *3 of 7
+open pull requests match now*. Each item it watches has a row, the matches first: ✓ or ✗, the
+item, and where it stands with the routine: *would run* (*would run, in Dry run*), what its
+history already holds (*It already ran on this.*, *Waiting for your OK.*), *waiting for data*
+and what (the check names, say), or *left alone: you took back what it did*. **Why ▸** opens
+each step of its decision, the trigger and every condition it checked, with the value it
+compared (*a failed check's name contains security · 🔒 Security Scans failed*). While the
+GitHub API budget is low, a test reads nothing new and says so.
 
 ### Snooze, dismiss, and pin: by a routine
 
@@ -3003,10 +3091,14 @@ The **Prompts** tab is the prompt library: every prompt a launch can fill in. Ea
 characters (the short label the launch button and menu show, such as "Review"), what it is
 **for** (pull requests, issues, or both), its **text**, and optional **launch settings**.
 
-**Starter prompts.** The app adds four starters, each once: **Review** (review a pull request),
+**Starter prompts.** The app adds five starters, each once: **Review** (review a pull request),
 **Work on it** (work on an issue), **Quick look** (a fast read of a pull request's diff for
-blockers only, set to Sonnet at low effort without a worktree), and **Fix checks** (find and fix
-a pull request's failing checks, then push the fix). Review and Work on it are the app's first
+blockers only, set to Sonnet at low effort without a worktree), **Fix checks** (find and fix
+a pull request's failing checks, then push the fix), and **Fix dep security** (fix the failing
+security checks on a bot's dependency update: move the vulnerable dependency to a version that
+fixes it, never silence a scanner, and push with one exact `git push`, never forced). A
+starter new in a later version is added to your library once, as these were. Review and Work
+on it are the app's first
 defaults for pull requests and issues. From then on every prompt is yours to change, duplicate,
 or delete; a deleted starter is not added back. **Reset to original** restores a changed
 starter's title, text, and settings.
@@ -3036,8 +3128,8 @@ syntax snippet in the cheat sheet inserts it at the caret.
 | Variable | What it holds |
 |---|---|
 | `.Kind`, `.IsPR`, `.Number`, `.Title`, `.URL`, `.Author`, `.IsBot`, `.Labels`, `.IsDraft` | The item: its kind ("pull request" or "issue"), number, title (cut to 200 characters), address, author, whether a bot opened it, label names, and whether a pull request is a draft |
-| `.Repo`, `.Owner`, `.RepoName`, `.DefaultBranch` | The repository |
-| `.Branch`, `.Checks`, `.Review`, `.HasConflicts`, `.Additions`, `.Deletions`, `.ChangedFiles`, `.Commits` | A pull request's head branch, its checks ("passing", "failing", "pending", or empty), its review decision, whether it conflicts with its base, and its size; empty or zero for issues |
+| `.Repo`, `.Owner`, `.RepoName`, `.DefaultBranch`, `.Remote` | The repository, and the clone's remote for it (such as `origin`, or `upstream` in a fork's clone; empty without a clone) |
+| `.Branch`, `.HeadCommit`, `.Checks`, `.FailedChecks`, `.Review`, `.HasConflicts`, `.Additions`, `.Deletions`, `.ChangedFiles`, `.Commits` | A pull request's head branch, its head commit (the one whose files the launch checked), its checks ("passing", "failing", "pending", or empty), its failed checks' names, separated by commas (empty when they aren't known), its review decision, whether it conflicts with its base, and its size; empty or zero for issues |
 | `.SensitiveFiles` | A checked pull request's [sensitive files](#sensitive-files), each with its category, as in ".github/workflows/ci.yml (Workflows)", separated by commas; empty when there are none, and for issues |
 | `.Dependency`, `.FromVersion`, `.ToVersion`, `.UpdateType` | For a bot's dependency update, what its title says: the dependency (as in `golang.org/x/net`), the versions it moves between, and how big the jump is (`patch`, `minor`, `major`); empty when the title doesn't say, for a person's pull request, and for issues |
 | `.InWorktree`, `.WorktreeOnPRHead`, `.Worktree`, `.Profile`, `.Me`, `.OutsideContributor` | The session: whether it starts in a worktree, whether that worktree is at the pull request's head, its name, the profile, your login, and whether the item comes from an outside contributor |
