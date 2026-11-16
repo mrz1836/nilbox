@@ -129,6 +129,37 @@ type Reading struct {
 	Spent    int  `json:"spent"`
 	Requests int  `json:"requests"`
 	Complete bool `json:"complete"`
+
+	// Purposes splits Spent by what the app sent each request for; they add up to Spent.
+	Purposes Purposes `json:"purposes"`
+}
+
+// Purposes is what the app spent from one budget since it last refilled, by what it sent
+// each request for (github.Purpose). Autopilot's share is Watches and Autopilot together.
+type Purposes struct {
+	// Inbox is the whole inbox refreshes: the inbox query, the details, and the file
+	// checks.
+	Inbox int `json:"inbox"`
+
+	// Watches is the routines' searches and their watched items' details.
+	Watches int `json:"watches"`
+
+	// Follower is the checks follower's rounds.
+	Follower int `json:"follower"`
+
+	// Autopilot is Autopilot's own reads, such as check names and a routine's test.
+	Autopilot int `json:"autopilot"`
+
+	// Other is everything else the app sent: an item's own read, a sheet's, an edit.
+	Other int `json:"other"`
+}
+
+// purposesOf converts what a budget held spent by purpose.
+func purposesOf(by map[github.Purpose]int) Purposes {
+	return Purposes{
+		Inbox: by[github.PurposeInbox], Watches: by[github.PurposeWatches], Follower: by[github.PurposeFollower],
+		Autopilot: by[github.PurposeAutopilot], Other: by[github.PurposeOther],
+	}
 }
 
 // Refresh is what one whole inbox refresh cost.
@@ -182,6 +213,7 @@ func (t *Tracker) readingLocked(resource string) Reading {
 		Known: true, Limit: r.Limit, Remaining: max(r.Remaining, 0), Used: max(r.Used, 0),
 		ResetAt: clock.Format(r.ResetAt), TakenAt: clock.Format(h.takenAt),
 		Spent: h.spent, Requests: h.requests, Complete: !h.countedFrom.After(windowStart(r)),
+		Purposes: purposesOf(h.purposes),
 	}
 }
 

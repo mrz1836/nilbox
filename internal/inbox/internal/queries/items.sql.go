@@ -11,6 +11,23 @@ import (
 	"time"
 )
 
+const clearArrivalStamps = `-- name: ClearArrivalStamps :exec
+UPDATE items SET
+    review_requested_at = CASE WHEN reason_review_requested = 0 THEN NULL ELSE review_requested_at END,
+    assigned_at = CASE WHEN reason_assigned = 0 THEN NULL ELSE assigned_at END
+WHERE account_id = ?
+  AND ((reason_review_requested = 0 AND review_requested_at IS NOT NULL)
+    OR (reason_assigned = 0 AND assigned_at IS NOT NULL))
+`
+
+// ClearArrivalStamps forgets when the items of the account with account_id arrived in
+// Review requested and in Assigned, for each that is no longer in that list, after a
+// refresh rewrote the lists.
+func (q *Queries) ClearArrivalStamps(ctx context.Context, accountID int64) error {
+	_, err := q.db.ExecContext(ctx, clearArrivalStamps, accountID)
+	return err
+}
+
 const clearReasons = `-- name: ClearReasons :exec
 UPDATE items
 SET reason_review_requested = 0, reason_authored = 0, reason_assigned = 0
@@ -92,7 +109,7 @@ const getEditItem = `-- name: GetEditItem :one
 SELECT
     i.id, i.account_id, i.kind, i.number, i.node_id, i.item_updated_at, i.reason_review_requested,
     i.reason_authored, i.reason_assigned, r.owner AS repo_owner, r.name AS repo_name, a.login AS account_login,
-    d.head_oid
+    d.head_oid, CAST(EXISTS (SELECT 1 FROM item_watches w WHERE w.item_id = i.id) AS BOOLEAN) AS watched
 FROM items i
 JOIN repos r ON r.id = i.repo_id
 JOIN accounts a ON a.id = i.account_id
@@ -114,12 +131,13 @@ type GetEditItemRow struct {
 	RepoName              string
 	AccountLogin          string
 	HeadOID               *string
+	Watched               bool
 }
 
 // GetEditItem returns what an edit to the item with id on GitHub needs: the item, its
-// node ID, its repository, the account whose inbox lists it, the lists it is in, and its
-// head commit when a refresh has read its details (NULL otherwise). It returns
-// sql.ErrNoRows when no item has id.
+// node ID, its repository, the account whose inbox lists it, the lists it is in, whether a
+// routine's search watches it, and its head commit when a refresh has read its details
+// (NULL otherwise). It returns sql.ErrNoRows when no item has id.
 func (q *Queries) GetEditItem(ctx context.Context, id int64) (GetEditItemRow, error) {
 	row := q.db.QueryRowContext(ctx, getEditItem, id)
 	var i GetEditItemRow
@@ -137,6 +155,7 @@ func (q *Queries) GetEditItem(ctx context.Context, id int64) (GetEditItemRow, er
 		&i.RepoName,
 		&i.AccountLogin,
 		&i.HeadOID,
+		&i.Watched,
 	)
 	return i, err
 }
@@ -184,10 +203,11 @@ type GetIssueItemRow struct {
 
 // GetIssueItem returns what the issue sheet shows of the item with id before asking
 // GitHub: the item, its repository's default branch and the viewer's access to it, the
-// account whose inbox lists it, whether it is in Assigned (the only list an issue is in), and
-// its card's details when a refresh
-// has read them (a column of missing details is NULL). It returns sql.ErrNoRows when no
-// item has id.
+// account whose inbox lists it, whether it is in Assigned (the only list an issue is in),
+// and its card's details when a refresh has read them (a column of missing details is
+// NULL). It reads any stored item, listed or not, so an issue a routine's search watches
+// opens from the routine's Watching list as from the inbox. It returns sql.ErrNoRows when
+// no item has id.
 func (q *Queries) GetIssueItem(ctx context.Context, id int64) (GetIssueItemRow, error) {
 	row := q.db.QueryRowContext(ctx, getIssueItem, id)
 	var i GetIssueItemRow
@@ -298,8 +318,9 @@ type GetReviewItemRow struct {
 // GetReviewItem returns what the review sheet shows of the item with id before asking
 // GitHub: the item, its repository with its merge settings and the viewer's access, the
 // account whose inbox lists it, the lists it is in, and its details when a refresh has
-// read them (a column of missing details is NULL). It returns sql.ErrNoRows when no item
-// has id.
+// read them (a column of missing details is NULL). It reads any stored item, listed or
+// not, so a pull request a routine's search watches opens from the routine's Watching list
+// as from the inbox. It returns sql.ErrNoRows when no item has id.
 func (q *Queries) GetReviewItem(ctx context.Context, id int64) (GetReviewItemRow, error) {
 	row := q.db.QueryRowContext(ctx, getReviewItem, id)
 	var i GetReviewItemRow
@@ -399,7 +420,7 @@ func (q *Queries) GetStoredItem(ctx context.Context, id int64) (GetStoredItemRow
 }
 
 const leaveAnsweredReview = `-- name: LeaveAnsweredReview :exec
-UPDATE items SET reason_review_requested = 0, review_left_at = ?
+UPDATE items SET reason_review_requested = 0, review_left_at = ?, review_requested_at = NULL
 WHERE id = ? AND reason_review_requested = 1
 `
 
@@ -420,7 +441,7 @@ func (q *Queries) LeaveAnsweredReview(ctx context.Context, arg LeaveAnsweredRevi
 }
 
 const leaveAssigned = `-- name: LeaveAssigned :exec
-UPDATE items SET reason_assigned = 0, assign_left_at = ? WHERE id = ?
+UPDATE items SET reason_assigned = 0, assign_left_at = ?, assigned_at = NULL WHERE id = ?
 `
 
 type LeaveAssignedParams struct {
@@ -437,7 +458,7 @@ func (q *Queries) LeaveAssigned(ctx context.Context, arg LeaveAssignedParams) er
 }
 
 const leaveReview = `-- name: LeaveReview :exec
-UPDATE items SET reason_review_requested = 0, review_left_at = ? WHERE id = ?
+UPDATE items SET reason_review_requested = 0, review_left_at = ?, review_requested_at = NULL WHERE id = ?
 `
 
 type LeaveReviewParams struct {
@@ -547,6 +568,185 @@ func (q *Queries) ListItems(ctx context.Context, accountID int64) ([]ListItemsRo
 	items := []ListItemsRow{}
 	for rows.Next() {
 		var i ListItemsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Kind,
+			&i.Number,
+			&i.Title,
+			&i.URL,
+			&i.RepoOwner,
+			&i.RepoName,
+			&i.AuthorLogin,
+			&i.AuthorType,
+			&i.AuthorAssociation,
+			&i.IsCrossRepository,
+			&i.IsDraft,
+			&i.HeadRef,
+			&i.ItemUpdatedAt,
+			&i.ReasonReviewRequested,
+			&i.ReasonAuthored,
+			&i.ReasonAssigned,
+			&i.DetailsItemID,
+			&i.Labels,
+			&i.Projects,
+			&i.Comments,
+			&i.Additions,
+			&i.Deletions,
+			&i.ChangedFiles,
+			&i.Commits,
+			&i.Mergeable,
+			&i.ChecksState,
+			&i.ChecksPassed,
+			&i.ChecksFailed,
+			&i.ChecksPending,
+			&i.ChecksSkipped,
+			&i.ChecksAwaiting,
+			&i.ReviewDecision,
+			&i.Reviewers,
+			&i.Reviewed,
+			&i.Approvals,
+			&i.ChangesRequested,
+			&i.SubIssuesTotal,
+			&i.SubIssuesCompleted,
+			&i.DetailsFetchedAt,
+			&i.HeadOID,
+			&i.ReviewUsers,
+			&i.ReviewTeams,
+			&i.AutoMergeMethod,
+			&i.FilesItemID,
+			&i.FilesHeadOID,
+			&i.FilesTotal,
+			&i.Files,
+			&i.FilesComplete,
+			&i.FilesError,
+			&i.FilesCheckedAt,
+			&i.DismissedAt,
+			&i.SnoozedUntil,
+			&i.WakeReasons,
+			&i.PinnedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listItemsByID = `-- name: ListItemsByID :many
+SELECT
+    i.id, i.kind, i.number, i.title, i.url, r.owner AS repo_owner, r.name AS repo_name,
+    i.author_login, i.author_type, i.author_association, i.is_cross_repository, i.is_draft, i.head_ref,
+    i.item_updated_at, i.reason_review_requested, i.reason_authored, i.reason_assigned,
+    d.item_id AS details_item_id, d.labels, d.projects, d.comments, d.additions, d.deletions,
+    d.changed_files, d.commits, d.mergeable, d.checks_state, d.checks_passed, d.checks_failed,
+    d.checks_pending, d.checks_skipped, d.checks_awaiting, d.review_decision, d.reviewers, d.reviewed, d.approvals,
+    d.changes_requested, d.sub_issues_total, d.sub_issues_completed,
+    d.fetched_at AS details_fetched_at, d.head_oid, d.review_users, d.review_teams, d.auto_merge_method,
+    f.item_id AS files_item_id, f.head_oid AS files_head_oid, f.total AS files_total, f.files,
+    f.complete AS files_complete, f.error AS files_error, f.checked_at AS files_checked_at,
+    ls.dismissed_at, ls.snoozed_until, ls.wake_reasons, ls.pinned_at
+FROM items i
+JOIN repos r ON r.id = i.repo_id
+LEFT JOIN item_details d ON d.item_id = i.id
+LEFT JOIN item_files f ON f.item_id = i.id
+LEFT JOIN item_local_state ls ON ls.item_id = i.id
+WHERE i.account_id = ?1 AND i.id IN (/*SLICE:ids*/?)
+ORDER BY i.item_updated_at DESC, i.id DESC
+`
+
+type ListItemsByIDParams struct {
+	AccountID int64
+	Ids       []int64
+}
+
+type ListItemsByIDRow struct {
+	ID                    int64
+	Kind                  string
+	Number                int64
+	Title                 string
+	URL                   string
+	RepoOwner             string
+	RepoName              string
+	AuthorLogin           string
+	AuthorType            string
+	AuthorAssociation     string
+	IsCrossRepository     bool
+	IsDraft               bool
+	HeadRef               string
+	ItemUpdatedAt         time.Time
+	ReasonReviewRequested bool
+	ReasonAuthored        bool
+	ReasonAssigned        bool
+	DetailsItemID         *int64
+	Labels                *string
+	Projects              *string
+	Comments              *int64
+	Additions             *int64
+	Deletions             *int64
+	ChangedFiles          *int64
+	Commits               *int64
+	Mergeable             *string
+	ChecksState           *string
+	ChecksPassed          *int64
+	ChecksFailed          *int64
+	ChecksPending         *int64
+	ChecksSkipped         *int64
+	ChecksAwaiting        *int64
+	ReviewDecision        *string
+	Reviewers             *int64
+	Reviewed              *int64
+	Approvals             *int64
+	ChangesRequested      *int64
+	SubIssuesTotal        *int64
+	SubIssuesCompleted    *int64
+	DetailsFetchedAt      *time.Time
+	HeadOID               *string
+	ReviewUsers           *string
+	ReviewTeams           *string
+	AutoMergeMethod       *string
+	FilesItemID           *int64
+	FilesHeadOID          *string
+	FilesTotal            *int64
+	Files                 *string
+	FilesComplete         *bool
+	FilesError            *string
+	FilesCheckedAt        *time.Time
+	DismissedAt           *time.Time
+	SnoozedUntil          *time.Time
+	WakeReasons           *string
+	PinnedAt              *time.Time
+}
+
+// ListItemsByID returns the stored items of the account with account_id among ids, listed
+// or not, as ListItems reads each one, newest activity first: the rows a routine's Watching
+// list shows. account_id comes before the list, so its parameter keeps its number however
+// long the list is.
+func (q *Queries) ListItemsByID(ctx context.Context, arg ListItemsByIDParams) ([]ListItemsByIDRow, error) {
+	query := listItemsByID
+	var queryParams []interface{}
+	queryParams = append(queryParams, arg.AccountID)
+	if len(arg.Ids) > 0 {
+		for _, v := range arg.Ids {
+			queryParams = append(queryParams, v)
+		}
+		query = strings.Replace(query, "/*SLICE:ids*/?", strings.Repeat(",?", len(arg.Ids))[1:], 1)
+	} else {
+		query = strings.Replace(query, "/*SLICE:ids*/?", "NULL", 1)
+	}
+	rows, err := q.db.QueryContext(ctx, query, queryParams...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListItemsByIDRow{}
+	for rows.Next() {
+		var i ListItemsByIDRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.Kind,
@@ -847,7 +1047,9 @@ func (q *Queries) ListListedNodeIDs(ctx context.Context, login string) ([]string
 }
 
 const listRunningChecks = `-- name: ListRunningChecks :many
-SELECT i.id, i.account_id, i.node_id, i.number, r.owner AS repo_owner, r.name AS repo_name
+SELECT i.id, i.account_id, i.node_id, i.number, r.owner AS repo_owner, r.name AS repo_name,
+    CAST(i.reason_review_requested = 1 OR i.reason_authored = 1 OR i.reason_assigned = 1 AS BOOLEAN) AS listed,
+    CAST(EXISTS (SELECT 1 FROM item_watches fw WHERE fw.item_id = i.id AND fw.follow = 1) AS BOOLEAN) AS followed
 FROM items i
 JOIN accounts a ON a.id = i.account_id
 JOIN repos r ON r.id = i.repo_id
@@ -856,11 +1058,15 @@ LEFT JOIN item_local_state l ON l.item_id = i.id
 WHERE a.login = ?1
   AND i.kind = 'pr'
   AND i.node_id <> ''
-  AND (i.reason_review_requested = 1 OR i.reason_authored = 1 OR i.reason_assigned = 1)
+  AND i.state NOT IN ('CLOSED', 'MERGED')
   AND d.checks_state IN ('PENDING', 'EXPECTED')
   AND d.fetched_at < ?2
-  AND l.dismissed_at IS NULL
-  AND (l.snoozed_until IS NULL OR l.snoozed_until <= ?3)
+  AND (
+    ((i.reason_review_requested = 1 OR i.reason_authored = 1 OR i.reason_assigned = 1)
+      AND l.dismissed_at IS NULL
+      AND (l.snoozed_until IS NULL OR l.snoozed_until <= ?3))
+    OR EXISTS (SELECT 1 FROM item_watches w WHERE w.item_id = i.id AND w.follow = 1)
+  )
 ORDER BY d.fetched_at, i.id
 `
 
@@ -877,15 +1083,20 @@ type ListRunningChecksRow struct {
 	Number    int64
 	RepoOwner string
 	RepoName  string
+	Listed    bool
+	Followed  bool
 }
 
-// ListRunningChecks returns the listed open pull requests of the account with login whose
-// checks were running (PENDING or EXPECTED) when their details were last read, before
-// read_before, neither dismissed nor snoozed at now, the longest unread first, each with
-// its number and its repository's owner and name: the ones the inbox follows until their
-// checks end. The follow leaves out those of a muted repository or org, which only the
-// prefs name, and takes the first of the rest, so it reads them all; they are listed
-// items, a few hundred at most.
+// ListRunningChecks returns the open pull requests of the account with login whose checks
+// were running (PENDING or EXPECTED) when their details were last read, before
+// read_before, the longest unread first, each with its number, its repository's owner and
+// name, and whether it is listed and whether a routine's search follows it: the listed ones
+// neither dismissed nor snoozed at now, and the ones a routine's search watches and follows
+// (item_watches.follow), whatever their triage, since a routine acts on their checks. They
+// are the ones the inbox follows until their checks end. The follow leaves out the listed
+// ones of a muted repository or org that no search follows, which only the prefs name, and
+// takes the first of the rest, so it reads them all; they are listed and watched items, a
+// few hundred at most.
 func (q *Queries) ListRunningChecks(ctx context.Context, arg ListRunningChecksParams) ([]ListRunningChecksRow, error) {
 	rows, err := q.db.QueryContext(ctx, listRunningChecks, arg.Login, arg.ReadBefore, arg.Now)
 	if err != nil {
@@ -902,6 +1113,8 @@ func (q *Queries) ListRunningChecks(ctx context.Context, arg ListRunningChecksPa
 			&i.Number,
 			&i.RepoOwner,
 			&i.RepoName,
+			&i.Listed,
+			&i.Followed,
 		); err != nil {
 			return nil, err
 		}
@@ -916,40 +1129,153 @@ func (q *Queries) ListRunningChecks(ctx context.Context, arg ListRunningChecksPa
 	return items, nil
 }
 
+const listWatchedItems = `-- name: ListWatchedItems :many
+SELECT i.id
+FROM items i
+JOIN accounts a ON a.id = i.account_id
+WHERE a.login = ?1
+  AND ((CAST(?2 AS BOOLEAN) = 1 AND i.reason_review_requested = 1)
+    OR (CAST(?3 AS BOOLEAN) = 1 AND i.reason_authored = 1)
+    OR (CAST(?4 AS BOOLEAN) = 1 AND i.reason_assigned = 1)
+    OR EXISTS (SELECT 1 FROM item_watches w WHERE w.item_id = i.id AND w.watch_key IN (/*SLICE:keys*/?)))
+ORDER BY i.item_updated_at DESC, i.id DESC
+`
+
+type ListWatchedItemsParams struct {
+	Login           string
+	ReviewRequested bool
+	Authored        bool
+	Assigned        bool
+	Keys            []string
+}
+
+// ListWatchedItems returns the items of the account with login that a routine watches,
+// newest activity first: those in the inbox lists it names (each list asked for with its
+// flag set), and those a search with one of keys returns, its stale rows included, since
+// a search that failed still watches its items. keys always holds the empty key, which no search has,
+// so the list is never empty.
+func (q *Queries) ListWatchedItems(ctx context.Context, arg ListWatchedItemsParams) ([]int64, error) {
+	query := listWatchedItems
+	var queryParams []interface{}
+	queryParams = append(queryParams, arg.Login)
+	queryParams = append(queryParams, arg.ReviewRequested)
+	queryParams = append(queryParams, arg.Authored)
+	queryParams = append(queryParams, arg.Assigned)
+	if len(arg.Keys) > 0 {
+		for _, v := range arg.Keys {
+			queryParams = append(queryParams, v)
+		}
+		query = strings.Replace(query, "/*SLICE:keys*/?", strings.Repeat(",?", len(arg.Keys))[1:], 1)
+	} else {
+		query = strings.Replace(query, "/*SLICE:keys*/?", "NULL", 1)
+	}
+	rows, err := q.db.QueryContext(ctx, query, queryParams...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []int64{}
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const pruneItems = `-- name: PruneItems :execrows
+DELETE FROM items
+WHERE reason_review_requested = 0 AND reason_authored = 0 AND reason_assigned = 0
+  AND fetched_at < ?1
+  AND NOT EXISTS (SELECT 1 FROM item_watches w WHERE w.item_id = items.id)
+  AND NOT EXISTS (SELECT 1 FROM item_local_state l WHERE l.item_id = items.id)
+  AND id NOT IN (/*SLICE:keep*/?)
+`
+
+type PruneItemsParams struct {
+	Cutoff time.Time
+	Keep   []int64
+}
+
+// PruneItems deletes the items in no list, which no routine's search watches, with no
+// triage of the user's, that no read has brought since before cutoff, but those in keep:
+// what else refers to an item. keep always holds 0, which no item has, so the list is
+// never empty. Their details, file checks, and checks go with them.
+func (q *Queries) PruneItems(ctx context.Context, arg PruneItemsParams) (int64, error) {
+	query := pruneItems
+	var queryParams []interface{}
+	queryParams = append(queryParams, arg.Cutoff)
+	if len(arg.Keep) > 0 {
+		for _, v := range arg.Keep {
+			queryParams = append(queryParams, v)
+		}
+		query = strings.Replace(query, "/*SLICE:keep*/?", strings.Repeat(",?", len(arg.Keep))[1:], 1)
+	} else {
+		query = strings.Replace(query, "/*SLICE:keep*/?", "NULL", 1)
+	}
+	result, err := q.db.ExecContext(ctx, query, queryParams...)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
 const unlistItem = `-- name: UnlistItem :exec
-UPDATE items
-SET reason_review_requested = 0, reason_authored = 0, reason_assigned = 0, fetched_at = ?
-WHERE id = ?
+UPDATE items SET
+    reason_review_requested = 0, reason_authored = 0, reason_assigned = 0,
+    review_requested_at = NULL, assigned_at = NULL,
+    state = CASE WHEN CAST(?1 AS TEXT) = '' OR state = 'MERGED' THEN state ELSE CAST(?1 AS TEXT) END,
+    closed_at = CASE WHEN CAST(?1 AS TEXT) = '' OR state = 'MERGED' THEN closed_at ELSE ?2 END,
+    fetched_at = ?3
+WHERE id = ?4
 `
 
 type UnlistItemParams struct {
+	State     string
+	ClosedAt  *time.Time
 	FetchedAt time.Time
 	ID        int64
 }
 
 // UnlistItem takes the item with id out of every list, as a refresh does with an item no
-// search returns, and stamps fetched_at. The row stays, since local state may reference
-// it.
+// search returns, stamps fetched_at, and records its state and when it closed when the
+// read said (a state not empty), but never over a merge. The row stays, since local state
+// may reference it. The times it arrived in Review requested and Assigned go with the lists.
 func (q *Queries) UnlistItem(ctx context.Context, arg UnlistItemParams) error {
-	_, err := q.db.ExecContext(ctx, unlistItem, arg.FetchedAt, arg.ID)
+	_, err := q.db.ExecContext(ctx, unlistItem,
+		arg.State,
+		arg.ClosedAt,
+		arg.FetchedAt,
+		arg.ID,
+	)
 	return err
 }
 
 const updateItem = `-- name: UpdateItem :exec
 UPDATE items SET
-    node_id = ?,
-    title = ?,
-    url = ?,
-    author_login = ?,
-    author_type = ?,
-    author_association = ?,
-    is_cross_repository = ?,
-    is_draft = ?,
-    head_ref = ?,
-    item_created_at = ?,
-    item_updated_at = ?,
-    fetched_at = ?
-WHERE id = ?
+    node_id = ?1,
+    title = ?2,
+    url = ?3,
+    author_login = ?4,
+    author_type = ?5,
+    author_association = ?6,
+    is_cross_repository = ?7,
+    is_draft = ?8,
+    head_ref = ?9,
+    item_created_at = ?10,
+    item_updated_at = ?11,
+    state = CASE WHEN CAST(?12 AS TEXT) = '' OR state = 'MERGED' THEN state ELSE CAST(?12 AS TEXT) END,
+    closed_at = CASE WHEN CAST(?12 AS TEXT) = '' OR state = 'MERGED' THEN closed_at ELSE ?13 END,
+    fetched_at = ?14
+WHERE id = ?15
 `
 
 type UpdateItemParams struct {
@@ -964,13 +1290,16 @@ type UpdateItemParams struct {
 	HeadRef           string
 	ItemCreatedAt     time.Time
 	ItemUpdatedAt     time.Time
+	State             string
+	ClosedAt          *time.Time
 	FetchedAt         time.Time
 	ID                int64
 }
 
-// UpdateItem rewrites what GitHub says about the stored item with id, in place. Its
-// account, repository, kind, number, and lists stay as they are; only LeaveAnsweredReview,
-// run after it, takes a pull request out of the review-requested list.
+// UpdateItem rewrites what GitHub says about the stored item with id, in place, its state
+// when the read said it (a state not empty), but never over a merge, which nothing comes
+// back from. Its account, repository, kind, number, and lists stay as they are; only
+// LeaveAnsweredReview, run after it, takes a pull request out of the review-requested list.
 func (q *Queries) UpdateItem(ctx context.Context, arg UpdateItemParams) error {
 	_, err := q.db.ExecContext(ctx, updateItem,
 		arg.NodeID,
@@ -984,6 +1313,8 @@ func (q *Queries) UpdateItem(ctx context.Context, arg UpdateItemParams) error {
 		arg.HeadRef,
 		arg.ItemCreatedAt,
 		arg.ItemUpdatedAt,
+		arg.State,
+		arg.ClosedAt,
 		arg.FetchedAt,
 		arg.ID,
 	)
@@ -994,8 +1325,8 @@ const upsertItem = `-- name: UpsertItem :one
 INSERT INTO items (
     account_id, repo_id, kind, number, node_id, title, url, author_login, author_type, author_association,
     is_cross_repository, is_draft, head_ref, item_created_at, item_updated_at,
-    reason_review_requested, reason_authored, reason_assigned, fetched_at
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    reason_review_requested, reason_authored, reason_assigned, fetched_at, state, review_requested_at, assigned_at
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT (account_id, repo_id, kind, number) DO UPDATE SET
     node_id = excluded.node_id,
     title = excluded.title,
@@ -1025,6 +1356,18 @@ ON CONFLICT (account_id, repo_id, kind, number) DO UPDATE SET
         WHEN excluded.item_updated_at > items.assign_left_at THEN NULL
         ELSE items.assign_left_at
     END,
+    review_requested_at = CASE
+        WHEN items.review_left_at IS NOT NULL AND excluded.item_updated_at <= items.review_left_at THEN NULL
+        WHEN excluded.reason_review_requested = 1 THEN COALESCE(items.review_requested_at, excluded.fetched_at)
+        ELSE NULL
+    END,
+    assigned_at = CASE
+        WHEN items.assign_left_at IS NOT NULL AND excluded.item_updated_at <= items.assign_left_at THEN NULL
+        WHEN excluded.reason_assigned = 1 THEN COALESCE(items.assigned_at, excluded.fetched_at)
+        ELSE NULL
+    END,
+    state = CASE WHEN excluded.state = '' OR items.state = 'MERGED' THEN items.state ELSE excluded.state END,
+    closed_at = CASE WHEN excluded.state = '' OR items.state = 'MERGED' THEN items.closed_at ELSE NULL END,
     fetched_at = excluded.fetched_at
 RETURNING id, reason_review_requested, reason_assigned
 `
@@ -1049,6 +1392,9 @@ type UpsertItemParams struct {
 	ReasonAuthored        bool
 	ReasonAssigned        bool
 	FetchedAt             time.Time
+	State                 string
+	ReviewRequestedAt     *time.Time
+	AssignedAt            *time.Time
 }
 
 type UpsertItemRow struct {
@@ -1063,7 +1409,10 @@ type UpsertItemRow struct {
 // rewritten, with one exception: a list the user left from the inbox (assign_left_at,
 // review_left_at) stays left while the item has not moved since, since GitHub's search
 // index trails the edit; once the item moves past the stamp, the search is believed and the
-// stamp cleared.
+// stamp cleared. The item's state is rewritten when the search said it (a state not empty),
+// but never over a merge, which nothing comes back from; and review_requested_at and
+// assigned_at keep when the item first arrived in each list while it stays in it, stamped
+// with fetched_at when it arrives; ClearArrivalStamps clears them once it leaves.
 func (q *Queries) UpsertItem(ctx context.Context, arg UpsertItemParams) (UpsertItemRow, error) {
 	row := q.db.QueryRowContext(ctx, upsertItem,
 		arg.AccountID,
@@ -1085,6 +1434,9 @@ func (q *Queries) UpsertItem(ctx context.Context, arg UpsertItemParams) (UpsertI
 		arg.ReasonAuthored,
 		arg.ReasonAssigned,
 		arg.FetchedAt,
+		arg.State,
+		arg.ReviewRequestedAt,
+		arg.AssignedAt,
 	)
 	var i UpsertItemRow
 	err := row.Scan(&i.ID, &i.ReasonReviewRequested, &i.ReasonAssigned)

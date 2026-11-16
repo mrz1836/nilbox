@@ -119,6 +119,29 @@ type fakeClient struct {
 	edited      *github.Edited
 	editErr     error
 	edits       []string
+
+	// watches holds each routine search's canned result by query, and watchErr fails the
+	// whole watch request; watchRate is its budget reading, watchCalls records the searches
+	// of each request, and watchGate, when set, holds the request until it opens. checks
+	// holds each pull request's canned checks by node ID, and checksIDs records each read.
+	watches    map[string]github.WatchResult
+	watchErr   error
+	watchRate  github.QueryRate
+	watchCalls [][]github.WatchSearch
+	watchGate  *gate
+	checks     map[string]github.HeadChecks
+	checksIDs  [][]string
+
+	// watchDetailsGate, when set, holds a details request that reads the repositories, as
+	// only the watch pass asks, until it opens, and watchDetailsErr fails such a request.
+	// watchPanic makes the watch request panic.
+	watchDetailsGate *gate
+	watchDetailsErr  error
+	watchPanic       bool
+
+	// itemsFail fails, as with a network error, a FetchItems request that holds this node
+	// ID; the others are answered.
+	itemsFail string
 }
 
 func (c *fakeClient) FetchInbox(_ context.Context, tok github.Token) (*github.Inbox, error) {
@@ -150,10 +173,10 @@ func (c *fakeClient) FetchRateLimits(_ context.Context, tok github.Token) (*gith
 // FetchDetails answers with the canned details of the IDs asked for, as one request, with
 // their canned projects when opts asks for them.
 func (c *fakeClient) FetchDetails(
-	_ context.Context, tok github.Token, ids []string, opts github.DetailOptions,
+	ctx context.Context, tok github.Token, ids []string, opts github.DetailOptions,
 ) (*github.Details, error) {
-	if c.inboxGate != nil {
-		c.gateOpened.Do(func() { close(c.inboxGate) })
+	if err := c.passDetailsGates(ctx, opts); err != nil {
+		return nil, err
 	}
 
 	c.mu.Lock()
@@ -165,6 +188,10 @@ func (c *fakeClient) FetchDetails(
 
 	if c.detailsErr != nil {
 		return nil, github.Redact(c.detailsErr, tok)
+	}
+
+	if c.watchDetailsErr != nil && opts.Repository {
+		return nil, github.Redact(c.watchDetailsErr, tok)
 	}
 
 	out := &github.Details{
@@ -234,6 +261,10 @@ func (c *fakeClient) FetchItems(
 		return nil, github.Redact(c.itemErr, tok)
 	}
 
+	if c.itemsFail != "" && slices.Contains(ids, c.itemsFail) {
+		return nil, errFakeNetwork
+	}
+
 	out := &github.ItemUpdates{Items: map[string]github.ItemUpdate{}, ProjectsRefused: opts.Projects && c.refuseProjects}
 
 	for _, id := range ids {
@@ -293,6 +324,68 @@ func (c *fakeClient) FetchChangedFiles(
 	return files, nil
 }
 
+// FetchWatches answers each search with its canned result, recording the searches asked.
+// A search with no canned result fails, as one GitHub didn't answer.
+func (c *fakeClient) FetchWatches(
+	ctx context.Context, tok github.Token, searches []github.WatchSearch,
+) (*github.Watches, error) {
+	c.mu.Lock()
+	gate := c.watchGate
+	c.mu.Unlock()
+
+	if gate != nil {
+		if err := gate.pass(ctx); err != nil {
+			return nil, err
+		}
+	}
+
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	c.gotTokens = append(c.gotTokens, tok.Reveal())
+	c.watchCalls = append(c.watchCalls, slices.Clone(searches))
+
+	if c.watchPanic {
+		panic("the watch request broke")
+	}
+
+	if c.watchErr != nil {
+		return nil, github.Redact(c.watchErr, tok)
+	}
+
+	out := &github.Watches{Results: map[string]github.WatchResult{}, RateLimit: c.watchRate, Requests: 1}
+
+	for _, s := range searches {
+		r, ok := c.watches[s.Query]
+		if !ok {
+			r = github.WatchResult{Err: github.ErrSearchFailed, Items: []github.WatchItem{}}
+		}
+
+		out.Results[s.Key] = r
+	}
+
+	return out, nil
+}
+
+// FetchChecks answers with the canned checks of the IDs asked for.
+func (c *fakeClient) FetchChecks(_ context.Context, tok github.Token, ids []string) (*github.ChecksRead, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	c.gotTokens = append(c.gotTokens, tok.Reveal())
+	c.checksIDs = append(c.checksIDs, slices.Clone(ids))
+
+	out := &github.ChecksRead{Items: map[string]github.HeadChecks{}, RateLimit: github.QueryRate{Cost: 1}, Requests: 1}
+
+	for _, id := range ids {
+		if h, ok := c.checks[id]; ok {
+			out.Items[id] = h
+		}
+	}
+
+	return out, nil
+}
+
 func (c *fakeClient) FetchAvatar(_ context.Context, url string) (*github.Avatar, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -300,6 +393,20 @@ func (c *fakeClient) FetchAvatar(_ context.Context, url string) (*github.Avatar,
 	c.avatarURLs = append(c.avatarURLs, url)
 
 	return c.avatar, c.avatarErr
+}
+
+// passDetailsGates opens the inbox query's gate, which waits for a details request, and
+// holds a request that reads the repositories, as only the watch pass's does, at its gate.
+func (c *fakeClient) passDetailsGates(ctx context.Context, opts github.DetailOptions) error {
+	if c.inboxGate != nil {
+		c.gateOpened.Do(func() { close(c.inboxGate) })
+	}
+
+	if c.watchDetailsGate == nil || !opts.Repository {
+		return nil
+	}
+
+	return c.watchDetailsGate.pass(ctx)
 }
 
 // projectsOf returns the canned projects of the item with id when opts asks for them and

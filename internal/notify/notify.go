@@ -162,6 +162,26 @@ func NewStore(db *sql.DB) *Store {
 	return &Store{db: db, q: queries.New(db), keep: Keep}
 }
 
+// KeptItems returns each inbox item a notification is about, once, which the inbox's
+// prune of old items keeps while the log names it (inbox.ItemKeeper), so an entry still
+// opens its item's sheet.
+func (s *Store) KeptItems(ctx context.Context) ([]int64, error) {
+	rows, err := s.q.ListNotifiedItems(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("read the notifications' items: %w", err)
+	}
+
+	ids := make([]int64, 0, len(rows))
+
+	for _, id := range rows {
+		if id != nil {
+			ids = append(ids, *id)
+		}
+	}
+
+	return ids, nil
+}
+
 // Record stores the notifications for arrivals at now, in order, and drops the oldest
 // past Keep, in one transaction. It returns what it stored, with the ids.
 func (s *Store) Record(ctx context.Context, now time.Time, arrivals []inbox.Arrival) ([]Notification, error) {

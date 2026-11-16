@@ -1,0 +1,1711 @@
+{
+    "data": {
+        "p0": {
+            "__typename": "PullRequest",
+            "checkList": {
+                "contexts": {
+                    "nodes": [
+                        {
+                            "__typename": "CheckRun",
+                            "checkSuite": {
+                                "id": "CS_ynXNd0SO7SoUZSCvb-8dI7",
+                                "workflowRun": {
+                                    "workflow": {
+                                        "name": "Frontend"
+                                    }
+                                }
+                            },
+                            "completedAt": "2026-11-15T23:38:52Z",
+                            "conclusion": "FAILURE",
+                            "detailsUrl": "https://github.com/octocat/example-repo-6/actions/runs/77777777777/job/777777777776",
+                            "name": "Frontend gate",
+                            "startedAt": "2026-11-15T23:34:11Z",
+                            "status": "COMPLETED"
+                        },
+                        {
+                            "__typename": "CheckRun",
+                            "checkSuite": {
+                                "id": "CS_WXaAWTG2zaLsozbl0-Tzqr",
+                                "workflowRun": {
+                                    "workflow": {
+                                        "name": "Auto-merge Trigger"
+                                    }
+                                }
+                            },
+                            "completedAt": "2026-11-15T23:34:09Z",
+                            "conclusion": "SKIPPED",
+                            "detailsUrl": "https://github.com/octocat/example-repo-6/actions/runs/77777777775/job/777777777774",
+                            "name": "📨 Queue auto-merge evaluation",
+                            "startedAt": "2026-11-15T23:34:18Z",
+                            "status": "COMPLETED"
+                        },
+                        {
+                            "__typename": "CheckRun",
+                            "checkSuite": {
+                                "id": "CS_cVFlh3fJuuYALb8AVW1iwp",
+                                "workflowRun": {
+                                    "workflow": {
+                                        "name": "Auto-merge Trigger"
+                                    }
+                                }
+                            },
+                            "completedAt": "2026-11-15T23:42:19Z",
+                            "conclusion": "SKIPPED",
+                            "detailsUrl": "https://github.com/octocat/example-repo-6/actions/runs/77777777773/job/777777777772",
+                            "name": "📨 Queue auto-merge evaluation",
+                            "startedAt": "2026-11-15T23:42:19Z",
+                            "status": "COMPLETED"
+                        },
+                        {
+                            "__typename": "CheckRun",
+                            "checkSuite": {
+                                "id": "CS_r0XneIs8dCExOM8Ct__8BK",
+                                "workflowRun": {
+                                    "workflow": {
+                                        "name": "Auto-merge Trigger"
+                                    }
+                                }
+                            },
+                            "completedAt": "2026-11-15T23:42:17Z",
+                            "conclusion": "SKIPPED",
+                            "detailsUrl": "https://github.com/octocat/example-repo-6/actions/runs/77777777771/job/777777777770",
+                            "name": "📨 Queue auto-merge evaluation",
+                            "startedAt": "2026-11-15T23:42:26Z",
+                            "status": "COMPLETED"
+                        },
+                        {
+                            "__typename": "CheckRun",
+                            "checkSuite": {
+                                "id": "CS_AKXmsQ1dCfOfVMKyH-oqUe",
+                                "workflowRun": {
+                                    "workflow": {
+                                        "name": "Auto-merge Trigger"
+                                    }
+                                }
+                            },
+                            "completedAt": "2026-11-15T23:34:16Z",
+                            "conclusion": "SUCCESS",
+                            "detailsUrl": "https://github.com/octocat/example-repo-6/actions/runs/77777777769/job/777777777768",
+                            "name": "📨 Queue auto-merge evaluation",
+                            "startedAt": "2026-11-15T23:34:13Z",
+                            "status": "COMPLETED"
+                        },
+                        {
+                            "__typename": "CheckRun",
+                            "checkSuite": {
+                                "id": "CS_XArnbqH4HCvpbYi3Y-BtrU",
+                                "workflowRun": {
+                                    "workflow": {
+                                        "name": "Auto-merge Trigger"
+                                    }
+                                }
+                            },
+                            "completedAt": "2026-11-15T23:34:17Z",
+                            "conclusion": "SUCCESS",
+                            "detailsUrl": "https://github.com/octocat/example-repo-6/actions/runs/77777777767/job/777777777766",
+                            "name": "📨 Queue auto-merge evaluation",
+                            "startedAt": "2026-11-15T23:34:13Z",
+                            "status": "COMPLETED"
+                        },
+                        {
+                            "__typename": "CheckRun",
+                            "checkSuite": {
+                                "id": "CS_RsGgRYAlseoVNDzTH-ZElC",
+                                "workflowRun": {
+                                    "workflow": {
+                                        "name": "Auto-merge Trigger"
+                                    }
+                                }
+                            },
+                            "completedAt": "2026-11-15T23:34:16Z",
+                            "conclusion": "SUCCESS",
+                            "detailsUrl": "https://github.com/octocat/example-repo-6/actions/runs/77777777765/job/777777777764",
+                            "name": "📨 Queue auto-merge evaluation",
+                            "startedAt": "2026-11-15T23:34:13Z",
+                            "status": "COMPLETED"
+                        },
+                        {
+                            "__typename": "CheckRun",
+                            "checkSuite": {
+                                "id": "CS_NdG9NUHQonmAn7NcF-k2hx",
+                                "workflowRun": {
+                                    "workflow": {
+                                        "name": "CodeQL"
+                                    }
+                                }
+                            },
+                            "completedAt": "2026-11-15T23:35:35Z",
+                            "conclusion": "SUCCESS",
+                            "detailsUrl": "https://github.com/octocat/example-repo-6/actions/runs/77777777763/job/777777777762",
+                            "name": "Analyze (go)",
+                            "startedAt": "2026-11-15T23:34:16Z",
+                            "status": "COMPLETED"
+                        },
+                        {
+                            "__typename": "CheckRun",
+                            "checkSuite": {
+                                "id": "CS_7SAZMYaDLRgWTmoxo-NLRm",
+                                "workflowRun": {
+                                    "workflow": {
+                                        "name": "GoFortress"
+                                    }
+                                }
+                            },
+                            "completedAt": "2026-11-15T23:34:15Z",
+                            "conclusion": "SUCCESS",
+                            "detailsUrl": "https://github.com/octocat/example-repo-6/actions/runs/77777777761/job/777777777760",
+                            "name": "📁 Paths Check",
+                            "startedAt": "2026-11-15T23:34:11Z",
+                            "status": "COMPLETED"
+                        },
+                        {
+                            "__typename": "CheckRun",
+                            "checkSuite": {
+                                "id": "CS_fhtxyDGt353XjMU0F-TBz1",
+                                "workflowRun": {
+                                    "workflow": {
+                                        "name": "PR Management"
+                                    }
+                                }
+                            },
+                            "completedAt": "2026-11-15T23:34:21Z",
+                            "conclusion": "SUCCESS",
+                            "detailsUrl": "https://github.com/octocat/example-repo-6/actions/runs/77777777759/job/777777777758",
+                            "name": "🔧 PR Management (Same Repo)",
+                            "startedAt": "2026-11-15T23:34:11Z",
+                            "status": "COMPLETED"
+                        },
+                        {
+                            "__typename": "CheckRun",
+                            "checkSuite": {
+                                "id": "CS_PbNktD9QExJ8Xll38XGQjv",
+                                "workflowRun": {
+                                    "workflow": {
+                                        "name": "PR Management"
+                                    }
+                                }
+                            },
+                            "completedAt": "2026-11-15T23:42:31Z",
+                            "conclusion": "SUCCESS",
+                            "detailsUrl": "https://github.com/octocat/example-repo-6/actions/runs/77777777757/job/777777777756",
+                            "name": "🔧 PR Management (Same Repo)",
+                            "startedAt": "2026-11-15T23:42:20Z",
+                            "status": "COMPLETED"
+                        },
+                        {
+                            "__typename": "CheckRun",
+                            "checkSuite": {
+                                "id": "CS_MCX2GHC327zTW2Fp2-I1gW",
+                                "workflowRun": {
+                                    "workflow": {
+                                        "name": "sqlc"
+                                    }
+                                }
+                            },
+                            "completedAt": "2026-11-15T23:36:10Z",
+                            "conclusion": "SUCCESS",
+                            "detailsUrl": "https://github.com/octocat/example-repo-6/actions/runs/77777777755/job/777777777754",
+                            "name": "Generated queries",
+                            "startedAt": "2026-11-15T23:34:11Z",
+                            "status": "COMPLETED"
+                        },
+                        {
+                            "__typename": "CheckRun",
+                            "checkSuite": {
+                                "id": "CS_WXaAWTG2zaLsozbl0-Tzqr",
+                                "workflowRun": {
+                                    "workflow": {
+                                        "name": "Auto-merge Trigger"
+                                    }
+                                }
+                            },
+                            "completedAt": "2026-11-15T23:34:09Z",
+                            "conclusion": "SKIPPED",
+                            "detailsUrl": "https://github.com/octocat/example-repo-6/actions/runs/77777777775/job/777777777753",
+                            "name": "📨 Queue Dependabot auto-merge",
+                            "startedAt": "2026-11-15T23:34:10Z",
+                            "status": "COMPLETED"
+                        },
+                        {
+                            "__typename": "CheckRun",
+                            "checkSuite": {
+                                "id": "CS_AKXmsQ1dCfOfVMKyH-oqUe",
+                                "workflowRun": {
+                                    "workflow": {
+                                        "name": "Auto-merge Trigger"
+                                    }
+                                }
+                            },
+                            "completedAt": "2026-11-15T23:34:11Z",
+                            "conclusion": "SKIPPED",
+                            "detailsUrl": "https://github.com/octocat/example-repo-6/actions/runs/77777777769/job/777777777752",
+                            "name": "📨 Queue Dependabot auto-merge",
+                            "startedAt": "2026-11-15T23:34:11Z",
+                            "status": "COMPLETED"
+                        },
+                        {
+                            "__typename": "CheckRun",
+                            "checkSuite": {
+                                "id": "CS_XArnbqH4HCvpbYi3Y-BtrU",
+                                "workflowRun": {
+                                    "workflow": {
+                                        "name": "Auto-merge Trigger"
+                                    }
+                                }
+                            },
+                            "completedAt": "2026-11-15T23:34:11Z",
+                            "conclusion": "SKIPPED",
+                            "detailsUrl": "https://github.com/octocat/example-repo-6/actions/runs/77777777767/job/777777777751",
+                            "name": "📨 Queue Dependabot auto-merge",
+                            "startedAt": "2026-11-15T23:34:11Z",
+                            "status": "COMPLETED"
+                        },
+                        {
+                            "__typename": "CheckRun",
+                            "checkSuite": {
+                                "id": "CS_RsGgRYAlseoVNDzTH-ZElC",
+                                "workflowRun": {
+                                    "workflow": {
+                                        "name": "Auto-merge Trigger"
+                                    }
+                                }
+                            },
+                            "completedAt": "2026-11-15T23:34:11Z",
+                            "conclusion": "SKIPPED",
+                            "detailsUrl": "https://github.com/octocat/example-repo-6/actions/runs/77777777765/job/777777777750",
+                            "name": "📨 Queue Dependabot auto-merge",
+                            "startedAt": "2026-11-15T23:34:12Z",
+                            "status": "COMPLETED"
+                        },
+                        {
+                            "__typename": "CheckRun",
+                            "checkSuite": {
+                                "id": "CS_cVFlh3fJuuYALb8AVW1iwp",
+                                "workflowRun": {
+                                    "workflow": {
+                                        "name": "Auto-merge Trigger"
+                                    }
+                                }
+                            },
+                            "completedAt": "2026-11-15T23:42:19Z",
+                            "conclusion": "SKIPPED",
+                            "detailsUrl": "https://github.com/octocat/example-repo-6/actions/runs/77777777773/job/777777777749",
+                            "name": "📨 Queue Dependabot auto-merge",
+                            "startedAt": "2026-11-15T23:42:25Z",
+                            "status": "COMPLETED"
+                        },
+                        {
+                            "__typename": "CheckRun",
+                            "checkSuite": {
+                                "id": "CS_r0XneIs8dCExOM8Ct__8BK",
+                                "workflowRun": {
+                                    "workflow": {
+                                        "name": "Auto-merge Trigger"
+                                    }
+                                }
+                            },
+                            "completedAt": "2026-11-15T23:42:17Z",
+                            "conclusion": "SKIPPED",
+                            "detailsUrl": "https://github.com/octocat/example-repo-6/actions/runs/77777777771/job/777777777748",
+                            "name": "📨 Queue Dependabot auto-merge",
+                            "startedAt": "2026-11-15T23:42:23Z",
+                            "status": "COMPLETED"
+                        },
+                        {
+                            "__typename": "CheckRun",
+                            "checkSuite": {
+                                "id": "CS_fhtxyDGt353XjMU0F-TBz1",
+                                "workflowRun": {
+                                    "workflow": {
+                                        "name": "PR Management"
+                                    }
+                                }
+                            },
+                            "completedAt": "2026-11-15T23:34:09Z",
+                            "conclusion": "SKIPPED",
+                            "detailsUrl": "https://github.com/octocat/example-repo-6/actions/runs/77777777759/job/777777777747",
+                            "name": "🔍 Find fork PR",
+                            "startedAt": "2026-11-15T23:34:10Z",
+                            "status": "COMPLETED"
+                        },
+                        {
+                            "__typename": "CheckRun",
+                            "checkSuite": {
+                                "id": "CS_PbNktD9QExJ8Xll38XGQjv",
+                                "workflowRun": {
+                                    "workflow": {
+                                        "name": "PR Management"
+                                    }
+                                }
+                            },
+                            "completedAt": "2026-11-15T23:42:19Z",
+                            "conclusion": "SKIPPED",
+                            "detailsUrl": "https://github.com/octocat/example-repo-6/actions/runs/77777777757/job/777777777746",
+                            "name": "🔍 Find fork PR",
+                            "startedAt": "2026-11-15T23:42:19Z",
+                            "status": "COMPLETED"
+                        },
+                        {
+                            "__typename": "CheckRun",
+                            "checkSuite": {
+                                "id": "CS_7SAZMYaDLRgWTmoxo-NLRm",
+                                "workflowRun": {
+                                    "workflow": {
+                                        "name": "GoFortress"
+                                    }
+                                }
+                            },
+                            "completedAt": "2026-11-15T23:34:33Z",
+                            "conclusion": "SUCCESS",
+                            "detailsUrl": "https://github.com/octocat/example-repo-6/actions/runs/77777777761/job/777777777745",
+                            "name": "🔧 Setup Configuration / 🔧 Setup CI Config",
+                            "startedAt": "2026-11-15T23:34:16Z",
+                            "status": "COMPLETED"
+                        },
+                        {
+                            "__typename": "CheckRun",
+                            "checkSuite": {
+                                "id": "CS_WXaAWTG2zaLsozbl0-Tzqr",
+                                "workflowRun": {
+                                    "workflow": {
+                                        "name": "Auto-merge Trigger"
+                                    }
+                                }
+                            },
+                            "completedAt": "2026-11-15T23:34:09Z",
+                            "conclusion": "SKIPPED",
+                            "detailsUrl": "https://github.com/octocat/example-repo-6/actions/runs/77777777775/job/777777777744",
+                            "name": "📨 Queue fork PR management",
+                            "startedAt": "2026-11-15T23:34:10Z",
+                            "status": "COMPLETED"
+                        },
+                        {
+                            "__typename": "CheckRun",
+                            "checkSuite": {
+                                "id": "CS_AKXmsQ1dCfOfVMKyH-oqUe",
+                                "workflowRun": {
+                                    "workflow": {
+                                        "name": "Auto-merge Trigger"
+                                    }
+                                }
+                            },
+                            "completedAt": "2026-11-15T23:34:11Z",
+                            "conclusion": "SKIPPED",
+                            "detailsUrl": "https://github.com/octocat/example-repo-6/actions/runs/77777777769/job/777777777743",
+                            "name": "📨 Queue fork PR management",
+                            "startedAt": "2026-11-15T23:34:11Z",
+                            "status": "COMPLETED"
+                        },
+                        {
+                            "__typename": "CheckRun",
+                            "checkSuite": {
+                                "id": "CS_XArnbqH4HCvpbYi3Y-BtrU",
+                                "workflowRun": {
+                                    "workflow": {
+                                        "name": "Auto-merge Trigger"
+                                    }
+                                }
+                            },
+                            "completedAt": "2026-11-15T23:34:11Z",
+                            "conclusion": "SKIPPED",
+                            "detailsUrl": "https://github.com/octocat/example-repo-6/actions/runs/77777777767/job/777777777742",
+                            "name": "📨 Queue fork PR management",
+                            "startedAt": "2026-11-15T23:34:11Z",
+                            "status": "COMPLETED"
+                        },
+                        {
+                            "__typename": "CheckRun",
+                            "checkSuite": {
+                                "id": "CS_RsGgRYAlseoVNDzTH-ZElC",
+                                "workflowRun": {
+                                    "workflow": {
+                                        "name": "Auto-merge Trigger"
+                                    }
+                                }
+                            },
+                            "completedAt": "2026-11-15T23:34:11Z",
+                            "conclusion": "SKIPPED",
+                            "detailsUrl": "https://github.com/octocat/example-repo-6/actions/runs/77777777765/job/777777777741",
+                            "name": "📨 Queue fork PR management",
+                            "startedAt": "2026-11-15T23:34:12Z",
+                            "status": "COMPLETED"
+                        },
+                        {
+                            "__typename": "CheckRun",
+                            "checkSuite": {
+                                "id": "CS_cVFlh3fJuuYALb8AVW1iwp",
+                                "workflowRun": {
+                                    "workflow": {
+                                        "name": "Auto-merge Trigger"
+                                    }
+                                }
+                            },
+                            "completedAt": "2026-11-15T23:42:19Z",
+                            "conclusion": "SKIPPED",
+                            "detailsUrl": "https://github.com/octocat/example-repo-6/actions/runs/77777777773/job/777777777740",
+                            "name": "📨 Queue fork PR management",
+                            "startedAt": "2026-11-15T23:42:26Z",
+                            "status": "COMPLETED"
+                        },
+                        {
+                            "__typename": "CheckRun",
+                            "checkSuite": {
+                                "id": "CS_r0XneIs8dCExOM8Ct__8BK",
+                                "workflowRun": {
+                                    "workflow": {
+                                        "name": "Auto-merge Trigger"
+                                    }
+                                }
+                            },
+                            "completedAt": "2026-11-15T23:42:17Z",
+                            "conclusion": "SKIPPED",
+                            "detailsUrl": "https://github.com/octocat/example-repo-6/actions/runs/77777777771/job/777777777739",
+                            "name": "📨 Queue fork PR management",
+                            "startedAt": "2026-11-15T23:42:17Z",
+                            "status": "COMPLETED"
+                        },
+                        {
+                            "__typename": "CheckRun",
+                            "checkSuite": {
+                                "id": "CS_fhtxyDGt353XjMU0F-TBz1",
+                                "workflowRun": {
+                                    "workflow": {
+                                        "name": "PR Management"
+                                    }
+                                }
+                            },
+                            "completedAt": "2026-11-15T23:34:09Z",
+                            "conclusion": "SKIPPED",
+                            "detailsUrl": "https://github.com/octocat/example-repo-6/actions/runs/77777777759/job/777777777738",
+                            "name": "🔧 PR Management (Fork)",
+                            "startedAt": "2026-11-15T23:34:10Z",
+                            "status": "COMPLETED"
+                        },
+                        {
+                            "__typename": "CheckRun",
+                            "checkSuite": {
+                                "id": "CS_PbNktD9QExJ8Xll38XGQjv",
+                                "workflowRun": {
+                                    "workflow": {
+                                        "name": "PR Management"
+                                    }
+                                }
+                            },
+                            "completedAt": "2026-11-15T23:42:19Z",
+                            "conclusion": "SKIPPED",
+                            "detailsUrl": "https://github.com/octocat/example-repo-6/actions/runs/77777777757/job/777777777737",
+                            "name": "🔧 PR Management (Fork)",
+                            "startedAt": "2026-11-15T23:42:19Z",
+                            "status": "COMPLETED"
+                        },
+                        {
+                            "__typename": "CheckRun",
+                            "checkSuite": {
+                                "id": "CS_7SAZMYaDLRgWTmoxo-NLRm",
+                                "workflowRun": {
+                                    "workflow": {
+                                        "name": "GoFortress"
+                                    }
+                                }
+                            },
+                            "completedAt": "2026-11-15T23:34:57Z",
+                            "conclusion": "SUCCESS",
+                            "detailsUrl": "https://github.com/octocat/example-repo-6/actions/runs/77777777761/job/777777777736",
+                            "name": "💾 Warm Cache / 💾 Warm Cache (Linux (Primary Go 1.26.x))",
+                            "startedAt": "2026-11-15T23:34:35Z",
+                            "status": "COMPLETED"
+                        },
+                        {
+                            "__typename": "CheckRun",
+                            "checkSuite": {
+                                "id": "CS_7SAZMYaDLRgWTmoxo-NLRm",
+                                "workflowRun": {
+                                    "workflow": {
+                                        "name": "GoFortress"
+                                    }
+                                }
+                            },
+                            "completedAt": "2026-11-15T23:35:42Z",
+                            "conclusion": "SUCCESS",
+                            "detailsUrl": "https://github.com/octocat/example-repo-6/actions/runs/77777777761/job/777777777735",
+                            "name": "🔒 Security Scans / 🔒 Security Scans",
+                            "startedAt": "2026-11-15T23:34:59Z",
+                            "status": "COMPLETED"
+                        },
+                        {
+                            "__typename": "CheckRun",
+                            "checkSuite": {
+                                "id": "CS_7SAZMYaDLRgWTmoxo-NLRm",
+                                "workflowRun": {
+                                    "workflow": {
+                                        "name": "GoFortress"
+                                    }
+                                }
+                            },
+                            "completedAt": "2026-11-15T23:35:30Z",
+                            "conclusion": "SUCCESS",
+                            "detailsUrl": "https://github.com/octocat/example-repo-6/actions/runs/77777777761/job/777777777734",
+                            "name": "🪝 Pre-commit Checks / 🪝 Pre-commit Checks",
+                            "startedAt": "2026-11-15T23:34:59Z",
+                            "status": "COMPLETED"
+                        },
+                        {
+                            "__typename": "CheckRun",
+                            "checkSuite": {
+                                "id": "CS_7SAZMYaDLRgWTmoxo-NLRm",
+                                "workflowRun": {
+                                    "workflow": {
+                                        "name": "GoFortress"
+                                    }
+                                }
+                            },
+                            "completedAt": "2026-11-15T23:36:18Z",
+                            "conclusion": "SUCCESS",
+                            "detailsUrl": "https://github.com/octocat/example-repo-6/actions/runs/77777777761/job/777777777733",
+                            "name": "📊 Code Quality / 📊 Static Checks (Govet + YAML Format)",
+                            "startedAt": "2026-11-15T23:34:59Z",
+                            "status": "COMPLETED"
+                        },
+                        {
+                            "__typename": "CheckRun",
+                            "checkSuite": {
+                                "id": "CS_7SAZMYaDLRgWTmoxo-NLRm",
+                                "workflowRun": {
+                                    "workflow": {
+                                        "name": "GoFortress"
+                                    }
+                                }
+                            },
+                            "completedAt": "2026-11-15T23:36:11Z",
+                            "conclusion": "SUCCESS",
+                            "detailsUrl": "https://github.com/octocat/example-repo-6/actions/runs/77777777761/job/777777777732",
+                            "name": "📊 Code Quality / ✨ Lint Code",
+                            "startedAt": "2026-11-15T23:34:59Z",
+                            "status": "COMPLETED"
+                        },
+                        {
+                            "__typename": "CheckRun",
+                            "checkSuite": {
+                                "id": "CS_7SAZMYaDLRgWTmoxo-NLRm",
+                                "workflowRun": {
+                                    "workflow": {
+                                        "name": "GoFortress"
+                                    }
+                                }
+                            },
+                            "completedAt": "2026-11-15T23:35:01Z",
+                            "conclusion": "SUCCESS",
+                            "detailsUrl": "https://github.com/octocat/example-repo-6/actions/runs/77777777761/job/777777777731",
+                            "name": "🧪 Test Suite / 🧪 Execute Test Matrix / 🧭 Validate test matrix",
+                            "startedAt": "2026-11-15T23:34:59Z",
+                            "status": "COMPLETED"
+                        },
+                        {
+                            "__typename": "CheckRun",
+                            "checkSuite": {
+                                "id": "CS_7SAZMYaDLRgWTmoxo-NLRm",
+                                "workflowRun": {
+                                    "workflow": {
+                                        "name": "GoFortress"
+                                    }
+                                }
+                            },
+                            "completedAt": "2026-11-15T23:39:04Z",
+                            "conclusion": "SUCCESS",
+                            "detailsUrl": "https://github.com/octocat/example-repo-6/actions/runs/77777777761/job/777777777730",
+                            "name": "🧪 Test Suite / 🧪 Execute Test Matrix / 🧪 Test (Linux (Primary Go 1.26.x))",
+                            "startedAt": "2026-11-15T23:35:03Z",
+                            "status": "COMPLETED"
+                        },
+                        {
+                            "__typename": "CheckRun",
+                            "checkSuite": {
+                                "id": "CS_7SAZMYaDLRgWTmoxo-NLRm",
+                                "workflowRun": {
+                                    "workflow": {
+                                        "name": "GoFortress"
+                                    }
+                                }
+                            },
+                            "completedAt": "2026-11-15T23:43:25Z",
+                            "conclusion": "SUCCESS",
+                            "detailsUrl": "https://github.com/octocat/example-repo-6/actions/runs/77777777761/job/777777777729",
+                            "name": "🧪 Test Suite / 🎯 Execute Fuzz Tests / 🧪 Fuzz Tests",
+                            "startedAt": "2026-11-15T23:34:59Z",
+                            "status": "COMPLETED"
+                        },
+                        {
+                            "__typename": "CheckRun",
+                            "checkSuite": {
+                                "id": "CS_7SAZMYaDLRgWTmoxo-NLRm",
+                                "workflowRun": {
+                                    "workflow": {
+                                        "name": "GoFortress"
+                                    }
+                                }
+                            },
+                            "completedAt": "2026-11-15T23:43:37Z",
+                            "conclusion": "SUCCESS",
+                            "detailsUrl": "https://github.com/octocat/example-repo-6/actions/runs/77777777761/job/777777777728",
+                            "name": "🧪 Test Suite / 🔍 Validate Test Results",
+                            "startedAt": "2026-11-15T23:43:27Z",
+                            "status": "COMPLETED"
+                        },
+                        {
+                            "__typename": "CheckRun",
+                            "checkSuite": {
+                                "id": "CS_7SAZMYaDLRgWTmoxo-NLRm",
+                                "workflowRun": {
+                                    "workflow": {
+                                        "name": "GoFortress"
+                                    }
+                                }
+                            },
+                            "completedAt": "2026-11-15T23:43:42Z",
+                            "conclusion": "SUCCESS",
+                            "detailsUrl": "https://github.com/octocat/example-repo-6/actions/runs/77777777761/job/777777777727",
+                            "name": "🧪 Test Suite / 📊 Process Coverage / 🔍 Validate Coverage Provider",
+                            "startedAt": "2026-11-15T23:43:39Z",
+                            "status": "COMPLETED"
+                        },
+                        {
+                            "__typename": "CheckRun",
+                            "checkSuite": {
+                                "id": "CS_7SAZMYaDLRgWTmoxo-NLRm",
+                                "workflowRun": {
+                                    "workflow": {
+                                        "name": "GoFortress"
+                                    }
+                                }
+                            },
+                            "completedAt": "2026-11-15T23:43:42Z",
+                            "conclusion": "SKIPPED",
+                            "detailsUrl": "https://github.com/octocat/example-repo-6/actions/runs/77777777761/job/777777777726",
+                            "name": "🧪 Test Suite / 📊 Process Coverage / 📊 Process Coverage & Deploy (Internal)",
+                            "startedAt": "2026-11-15T23:43:42Z",
+                            "status": "COMPLETED"
+                        },
+                        {
+                            "__typename": "CheckRun",
+                            "checkSuite": {
+                                "id": "CS_7SAZMYaDLRgWTmoxo-NLRm",
+                                "workflowRun": {
+                                    "workflow": {
+                                        "name": "GoFortress"
+                                    }
+                                }
+                            },
+                            "completedAt": "2026-11-15T23:44:05Z",
+                            "conclusion": "SUCCESS",
+                            "detailsUrl": "https://github.com/octocat/example-repo-6/actions/runs/77777777761/job/777777777725",
+                            "name": "🧪 Test Suite / 📊 Process Coverage / 📈 Upload to Codecov",
+                            "startedAt": "2026-11-15T23:43:44Z",
+                            "status": "COMPLETED"
+                        },
+                        {
+                            "__typename": "CheckRun",
+                            "checkSuite": {
+                                "id": "CS_7SAZMYaDLRgWTmoxo-NLRm",
+                                "workflowRun": {
+                                    "workflow": {
+                                        "name": "GoFortress"
+                                    }
+                                }
+                            },
+                            "completedAt": "2026-11-15T23:36:30Z",
+                            "conclusion": "SUCCESS",
+                            "detailsUrl": "https://github.com/octocat/example-repo-6/actions/runs/77777777761/job/777777777724",
+                            "name": "🏃 Benchmarks / 🏃 Benchmark (Linux (Primary Go 1.26.x))",
+                            "startedAt": "2026-11-15T23:34:59Z",
+                            "status": "COMPLETED"
+                        },
+                        {
+                            "__typename": "CheckRun",
+                            "checkSuite": {
+                                "id": "CS_7SAZMYaDLRgWTmoxo-NLRm",
+                                "workflowRun": {
+                                    "workflow": {
+                                        "name": "GoFortress"
+                                    }
+                                }
+                            },
+                            "completedAt": "2026-11-15T23:44:05Z",
+                            "conclusion": "SKIPPED",
+                            "detailsUrl": "https://github.com/octocat/example-repo-6/actions/runs/77777777761/job/777777777723",
+                            "name": "🚀 Release Version",
+                            "startedAt": "2026-11-15T23:44:05Z",
+                            "status": "COMPLETED"
+                        },
+                        {
+                            "__typename": "CheckRun",
+                            "checkSuite": {
+                                "id": "CS_7SAZMYaDLRgWTmoxo-NLRm",
+                                "workflowRun": {
+                                    "workflow": {
+                                        "name": "GoFortress"
+                                    }
+                                }
+                            },
+                            "completedAt": "2026-11-15T23:44:09Z",
+                            "conclusion": "SUCCESS",
+                            "detailsUrl": "https://github.com/octocat/example-repo-6/actions/runs/77777777761/job/777777777722",
+                            "name": "🎯 All Tests Passed",
+                            "startedAt": "2026-11-15T23:44:07Z",
+                            "status": "COMPLETED"
+                        },
+                        {
+                            "__typename": "CheckRun",
+                            "checkSuite": {
+                                "id": "CS_7SAZMYaDLRgWTmoxo-NLRm",
+                                "workflowRun": {
+                                    "workflow": {
+                                        "name": "GoFortress"
+                                    }
+                                }
+                            },
+                            "completedAt": "2026-11-15T23:44:31Z",
+                            "conclusion": "SUCCESS",
+                            "detailsUrl": "https://github.com/octocat/example-repo-6/actions/runs/77777777761/job/777777777721",
+                            "name": "📊 Workflow Completion Report / 📊 Generate Completion Report",
+                            "startedAt": "2026-11-15T23:44:11Z",
+                            "status": "COMPLETED"
+                        },
+                        {
+                            "__typename": "CheckRun",
+                            "checkSuite": {
+                                "id": "CS_xQ4R4idx1w1ThxegM-pwHk",
+                                "workflowRun": null
+                            },
+                            "completedAt": "2026-11-15T23:35:34Z",
+                            "conclusion": "SUCCESS",
+                            "detailsUrl": "https://github.com/octocat/example-repo-6/runs/777777777720",
+                            "name": "CodeQL",
+                            "startedAt": "2026-11-15T23:35:25Z",
+                            "status": "COMPLETED"
+                        },
+                        {
+                            "__typename": "CheckRun",
+                            "checkSuite": {
+                                "id": "CS_xQ4R4idx1w1ThxegM-pwHk",
+                                "workflowRun": null
+                            },
+                            "completedAt": "2026-11-15T23:35:32Z",
+                            "conclusion": "SUCCESS",
+                            "detailsUrl": "https://github.com/octocat/example-repo-6/runs/777777777719",
+                            "name": "osv-scanner",
+                            "startedAt": "2026-11-15T23:35:29Z",
+                            "status": "COMPLETED"
+                        }
+                    ],
+                    "pageInfo": {
+                        "endCursor": "YYY",
+                        "hasNextPage": false
+                    },
+                    "totalCount": 47
+                },
+                "state": "FAILURE"
+            },
+            "headRefOid": "90a6cadf42d3629ed1cbb1e1b993b0630ac47c49",
+            "id": "PR_NTcSg12ylCGP3VhAx6p6hn",
+            "req": {
+                "contexts": {
+                    "nodes": [
+                        {
+                            "isRequired": false
+                        },
+                        {
+                            "isRequired": false
+                        },
+                        {
+                            "isRequired": false
+                        },
+                        {
+                            "isRequired": false
+                        },
+                        {
+                            "isRequired": false
+                        },
+                        {
+                            "isRequired": false
+                        },
+                        {
+                            "isRequired": false
+                        },
+                        {
+                            "isRequired": false
+                        },
+                        {
+                            "isRequired": false
+                        },
+                        {
+                            "isRequired": false
+                        },
+                        {
+                            "isRequired": false
+                        },
+                        {
+                            "isRequired": false
+                        },
+                        {
+                            "isRequired": false
+                        },
+                        {
+                            "isRequired": false
+                        },
+                        {
+                            "isRequired": false
+                        },
+                        {
+                            "isRequired": false
+                        },
+                        {
+                            "isRequired": false
+                        },
+                        {
+                            "isRequired": false
+                        },
+                        {
+                            "isRequired": false
+                        },
+                        {
+                            "isRequired": false
+                        },
+                        {
+                            "isRequired": false
+                        },
+                        {
+                            "isRequired": false
+                        },
+                        {
+                            "isRequired": false
+                        },
+                        {
+                            "isRequired": false
+                        },
+                        {
+                            "isRequired": false
+                        },
+                        {
+                            "isRequired": false
+                        },
+                        {
+                            "isRequired": false
+                        },
+                        {
+                            "isRequired": false
+                        },
+                        {
+                            "isRequired": false
+                        },
+                        {
+                            "isRequired": false
+                        },
+                        {
+                            "isRequired": false
+                        },
+                        {
+                            "isRequired": false
+                        },
+                        {
+                            "isRequired": false
+                        },
+                        {
+                            "isRequired": false
+                        },
+                        {
+                            "isRequired": false
+                        },
+                        {
+                            "isRequired": false
+                        },
+                        {
+                            "isRequired": false
+                        },
+                        {
+                            "isRequired": false
+                        },
+                        {
+                            "isRequired": false
+                        },
+                        {
+                            "isRequired": false
+                        },
+                        {
+                            "isRequired": false
+                        },
+                        {
+                            "isRequired": false
+                        },
+                        {
+                            "isRequired": false
+                        },
+                        {
+                            "isRequired": true
+                        },
+                        {
+                            "isRequired": false
+                        },
+                        {
+                            "isRequired": false
+                        },
+                        {
+                            "isRequired": false
+                        }
+                    ]
+                }
+            }
+        },
+        "p1": {
+            "__typename": "PullRequest",
+            "checkList": {
+                "contexts": {
+                    "nodes": [
+                        {
+                            "__typename": "CheckRun",
+                            "checkSuite": {
+                                "id": "CS_Cw28k6pUHlDetpyM6jodWG",
+                                "workflowRun": {
+                                    "workflow": {
+                                        "name": "Auto-merge Trigger"
+                                    }
+                                }
+                            },
+                            "completedAt": "2026-11-15T03:16:26Z",
+                            "conclusion": "SKIPPED",
+                            "detailsUrl": "https://github.com/octocat/example-repo-7/actions/runs/77777777687/job/777777777686",
+                            "name": "📨 Queue auto-merge evaluation",
+                            "startedAt": "2026-11-15T03:16:26Z",
+                            "status": "COMPLETED"
+                        },
+                        {
+                            "__typename": "CheckRun",
+                            "checkSuite": {
+                                "id": "CS_ztoBcXjPHGpKP8nrFXfDBD",
+                                "workflowRun": {
+                                    "workflow": {
+                                        "name": "Auto-merge Trigger"
+                                    }
+                                }
+                            },
+                            "completedAt": "2026-11-15T03:28:32Z",
+                            "conclusion": "SKIPPED",
+                            "detailsUrl": "https://github.com/octocat/example-repo-7/actions/runs/77777777685/job/777777777684",
+                            "name": "📨 Queue auto-merge evaluation",
+                            "startedAt": "2026-11-15T03:28:32Z",
+                            "status": "COMPLETED"
+                        },
+                        {
+                            "__typename": "CheckRun",
+                            "checkSuite": {
+                                "id": "CS_5BWh8KxFyqkDfGgj59PIPV",
+                                "workflowRun": {
+                                    "workflow": {
+                                        "name": "Auto-merge Trigger"
+                                    }
+                                }
+                            },
+                            "completedAt": "2026-11-15T03:28:31Z",
+                            "conclusion": "SKIPPED",
+                            "detailsUrl": "https://github.com/octocat/example-repo-7/actions/runs/77777777683/job/777777777682",
+                            "name": "📨 Queue auto-merge evaluation",
+                            "startedAt": "2026-11-15T03:28:38Z",
+                            "status": "COMPLETED"
+                        },
+                        {
+                            "__typename": "CheckRun",
+                            "checkSuite": {
+                                "id": "CS_wyTTaZrg0rinETisQZqPGI",
+                                "workflowRun": {
+                                    "workflow": {
+                                        "name": "CodeQL"
+                                    }
+                                }
+                            },
+                            "completedAt": "2026-11-15T03:17:43Z",
+                            "conclusion": "SUCCESS",
+                            "detailsUrl": "https://github.com/octocat/example-repo-7/actions/runs/77777777681/job/777777777680",
+                            "name": "Analyze (go)",
+                            "startedAt": "2026-11-15T03:16:28Z",
+                            "status": "COMPLETED"
+                        },
+                        {
+                            "__typename": "CheckRun",
+                            "checkSuite": {
+                                "id": "CS_TBYFZC2q6FsDo87LDp3unV",
+                                "workflowRun": {
+                                    "workflow": {
+                                        "name": "GoFortress"
+                                    }
+                                }
+                            },
+                            "completedAt": "2026-11-15T03:16:35Z",
+                            "conclusion": "SUCCESS",
+                            "detailsUrl": "https://github.com/octocat/example-repo-7/actions/runs/77777777679/job/777777777678",
+                            "name": "📁 Paths Check",
+                            "startedAt": "2026-11-15T03:16:29Z",
+                            "status": "COMPLETED"
+                        },
+                        {
+                            "__typename": "CheckRun",
+                            "checkSuite": {
+                                "id": "CS_IRkOdwRWEWdR5myEeBHxcl",
+                                "workflowRun": {
+                                    "workflow": {
+                                        "name": "PR Management"
+                                    }
+                                }
+                            },
+                            "completedAt": "2026-11-15T03:16:36Z",
+                            "conclusion": "SUCCESS",
+                            "detailsUrl": "https://github.com/octocat/example-repo-7/actions/runs/77777777677/job/777777777676",
+                            "name": "🔧 PR Management (Same Repo)",
+                            "startedAt": "2026-11-15T03:16:28Z",
+                            "status": "COMPLETED"
+                        },
+                        {
+                            "__typename": "CheckRun",
+                            "checkSuite": {
+                                "id": "CS_JU9mipWWR4CL3v9DWjscdo",
+                                "workflowRun": {
+                                    "workflow": {
+                                        "name": "PR Management"
+                                    }
+                                }
+                            },
+                            "completedAt": "2026-11-15T03:28:44Z",
+                            "conclusion": "SUCCESS",
+                            "detailsUrl": "https://github.com/octocat/example-repo-7/actions/runs/77777777675/job/777777777674",
+                            "name": "🔧 PR Management (Same Repo)",
+                            "startedAt": "2026-11-15T03:28:34Z",
+                            "status": "COMPLETED"
+                        },
+                        {
+                            "__typename": "CheckRun",
+                            "checkSuite": {
+                                "id": "CS_Cw28k6pUHlDetpyM6jodWG",
+                                "workflowRun": {
+                                    "workflow": {
+                                        "name": "Auto-merge Trigger"
+                                    }
+                                }
+                            },
+                            "completedAt": "2026-11-15T03:16:26Z",
+                            "conclusion": "SKIPPED",
+                            "detailsUrl": "https://github.com/octocat/example-repo-7/actions/runs/77777777687/job/777777777673",
+                            "name": "📨 Queue Dependabot auto-merge",
+                            "startedAt": "2026-11-15T03:16:27Z",
+                            "status": "COMPLETED"
+                        },
+                        {
+                            "__typename": "CheckRun",
+                            "checkSuite": {
+                                "id": "CS_ztoBcXjPHGpKP8nrFXfDBD",
+                                "workflowRun": {
+                                    "workflow": {
+                                        "name": "Auto-merge Trigger"
+                                    }
+                                }
+                            },
+                            "completedAt": "2026-11-15T03:28:32Z",
+                            "conclusion": "SKIPPED",
+                            "detailsUrl": "https://github.com/octocat/example-repo-7/actions/runs/77777777685/job/777777777672",
+                            "name": "📨 Queue Dependabot auto-merge",
+                            "startedAt": "2026-11-15T03:28:33Z",
+                            "status": "COMPLETED"
+                        },
+                        {
+                            "__typename": "CheckRun",
+                            "checkSuite": {
+                                "id": "CS_5BWh8KxFyqkDfGgj59PIPV",
+                                "workflowRun": {
+                                    "workflow": {
+                                        "name": "Auto-merge Trigger"
+                                    }
+                                }
+                            },
+                            "completedAt": "2026-11-15T03:28:31Z",
+                            "conclusion": "SKIPPED",
+                            "detailsUrl": "https://github.com/octocat/example-repo-7/actions/runs/77777777683/job/777777777671",
+                            "name": "📨 Queue Dependabot auto-merge",
+                            "startedAt": "2026-11-15T03:28:41Z",
+                            "status": "COMPLETED"
+                        },
+                        {
+                            "__typename": "CheckRun",
+                            "checkSuite": {
+                                "id": "CS_IRkOdwRWEWdR5myEeBHxcl",
+                                "workflowRun": {
+                                    "workflow": {
+                                        "name": "PR Management"
+                                    }
+                                }
+                            },
+                            "completedAt": "2026-11-15T03:16:26Z",
+                            "conclusion": "SKIPPED",
+                            "detailsUrl": "https://github.com/octocat/example-repo-7/actions/runs/77777777677/job/777777777670",
+                            "name": "🔍 Find fork PR",
+                            "startedAt": "2026-11-15T03:16:26Z",
+                            "status": "COMPLETED"
+                        },
+                        {
+                            "__typename": "CheckRun",
+                            "checkSuite": {
+                                "id": "CS_JU9mipWWR4CL3v9DWjscdo",
+                                "workflowRun": {
+                                    "workflow": {
+                                        "name": "PR Management"
+                                    }
+                                }
+                            },
+                            "completedAt": "2026-11-15T03:28:32Z",
+                            "conclusion": "SKIPPED",
+                            "detailsUrl": "https://github.com/octocat/example-repo-7/actions/runs/77777777675/job/777777777669",
+                            "name": "🔍 Find fork PR",
+                            "startedAt": "2026-11-15T03:28:32Z",
+                            "status": "COMPLETED"
+                        },
+                        {
+                            "__typename": "CheckRun",
+                            "checkSuite": {
+                                "id": "CS_TBYFZC2q6FsDo87LDp3unV",
+                                "workflowRun": {
+                                    "workflow": {
+                                        "name": "GoFortress"
+                                    }
+                                }
+                            },
+                            "completedAt": "2026-11-15T03:16:56Z",
+                            "conclusion": "SUCCESS",
+                            "detailsUrl": "https://github.com/octocat/example-repo-7/actions/runs/77777777679/job/777777777668",
+                            "name": "🔧 Setup Configuration / 🔧 Setup CI Config",
+                            "startedAt": "2026-11-15T03:16:37Z",
+                            "status": "COMPLETED"
+                        },
+                        {
+                            "__typename": "CheckRun",
+                            "checkSuite": {
+                                "id": "CS_Cw28k6pUHlDetpyM6jodWG",
+                                "workflowRun": {
+                                    "workflow": {
+                                        "name": "Auto-merge Trigger"
+                                    }
+                                }
+                            },
+                            "completedAt": "2026-11-15T03:16:26Z",
+                            "conclusion": "SKIPPED",
+                            "detailsUrl": "https://github.com/octocat/example-repo-7/actions/runs/77777777687/job/777777777667",
+                            "name": "📨 Queue fork PR management",
+                            "startedAt": "2026-11-15T03:16:32Z",
+                            "status": "COMPLETED"
+                        },
+                        {
+                            "__typename": "CheckRun",
+                            "checkSuite": {
+                                "id": "CS_ztoBcXjPHGpKP8nrFXfDBD",
+                                "workflowRun": {
+                                    "workflow": {
+                                        "name": "Auto-merge Trigger"
+                                    }
+                                }
+                            },
+                            "completedAt": "2026-11-15T03:28:32Z",
+                            "conclusion": "SKIPPED",
+                            "detailsUrl": "https://github.com/octocat/example-repo-7/actions/runs/77777777685/job/777777777666",
+                            "name": "📨 Queue fork PR management",
+                            "startedAt": "2026-11-15T03:28:39Z",
+                            "status": "COMPLETED"
+                        },
+                        {
+                            "__typename": "CheckRun",
+                            "checkSuite": {
+                                "id": "CS_5BWh8KxFyqkDfGgj59PIPV",
+                                "workflowRun": {
+                                    "workflow": {
+                                        "name": "Auto-merge Trigger"
+                                    }
+                                }
+                            },
+                            "completedAt": "2026-11-15T03:28:31Z",
+                            "conclusion": "SKIPPED",
+                            "detailsUrl": "https://github.com/octocat/example-repo-7/actions/runs/77777777683/job/777777777665",
+                            "name": "📨 Queue fork PR management",
+                            "startedAt": "2026-11-15T03:28:31Z",
+                            "status": "COMPLETED"
+                        },
+                        {
+                            "__typename": "CheckRun",
+                            "checkSuite": {
+                                "id": "CS_IRkOdwRWEWdR5myEeBHxcl",
+                                "workflowRun": {
+                                    "workflow": {
+                                        "name": "PR Management"
+                                    }
+                                }
+                            },
+                            "completedAt": "2026-11-15T03:16:26Z",
+                            "conclusion": "SKIPPED",
+                            "detailsUrl": "https://github.com/octocat/example-repo-7/actions/runs/77777777677/job/777777777664",
+                            "name": "🔧 PR Management (Fork)",
+                            "startedAt": "2026-11-15T03:16:27Z",
+                            "status": "COMPLETED"
+                        },
+                        {
+                            "__typename": "CheckRun",
+                            "checkSuite": {
+                                "id": "CS_JU9mipWWR4CL3v9DWjscdo",
+                                "workflowRun": {
+                                    "workflow": {
+                                        "name": "PR Management"
+                                    }
+                                }
+                            },
+                            "completedAt": "2026-11-15T03:28:32Z",
+                            "conclusion": "SKIPPED",
+                            "detailsUrl": "https://github.com/octocat/example-repo-7/actions/runs/77777777675/job/777777777663",
+                            "name": "🔧 PR Management (Fork)",
+                            "startedAt": "2026-11-15T03:28:33Z",
+                            "status": "COMPLETED"
+                        },
+                        {
+                            "__typename": "CheckRun",
+                            "checkSuite": {
+                                "id": "CS_TBYFZC2q6FsDo87LDp3unV",
+                                "workflowRun": {
+                                    "workflow": {
+                                        "name": "GoFortress"
+                                    }
+                                }
+                            },
+                            "completedAt": "2026-11-15T03:17:14Z",
+                            "conclusion": "SUCCESS",
+                            "detailsUrl": "https://github.com/octocat/example-repo-7/actions/runs/77777777679/job/777777777662",
+                            "name": "💾 Warm Cache / 💾 Warm Cache (Linux (Primary Go 1.26.x))",
+                            "startedAt": "2026-11-15T03:16:57Z",
+                            "status": "COMPLETED"
+                        },
+                        {
+                            "__typename": "CheckRun",
+                            "checkSuite": {
+                                "id": "CS_TBYFZC2q6FsDo87LDp3unV",
+                                "workflowRun": {
+                                    "workflow": {
+                                        "name": "GoFortress"
+                                    }
+                                }
+                            },
+                            "completedAt": "2026-11-15T03:18:00Z",
+                            "conclusion": "SUCCESS",
+                            "detailsUrl": "https://github.com/octocat/example-repo-7/actions/runs/77777777679/job/777777777661",
+                            "name": "🔒 Security Scans / 🔒 Security Scans",
+                            "startedAt": "2026-11-15T03:17:15Z",
+                            "status": "COMPLETED"
+                        },
+                        {
+                            "__typename": "CheckRun",
+                            "checkSuite": {
+                                "id": "CS_TBYFZC2q6FsDo87LDp3unV",
+                                "workflowRun": {
+                                    "workflow": {
+                                        "name": "GoFortress"
+                                    }
+                                }
+                            },
+                            "completedAt": "2026-11-15T03:17:38Z",
+                            "conclusion": "SUCCESS",
+                            "detailsUrl": "https://github.com/octocat/example-repo-7/actions/runs/77777777679/job/777777777660",
+                            "name": "🪝 Pre-commit Checks / 🪝 Pre-commit Checks",
+                            "startedAt": "2026-11-15T03:17:15Z",
+                            "status": "COMPLETED"
+                        },
+                        {
+                            "__typename": "CheckRun",
+                            "checkSuite": {
+                                "id": "CS_TBYFZC2q6FsDo87LDp3unV",
+                                "workflowRun": {
+                                    "workflow": {
+                                        "name": "GoFortress"
+                                    }
+                                }
+                            },
+                            "completedAt": "2026-11-15T03:18:31Z",
+                            "conclusion": "SUCCESS",
+                            "detailsUrl": "https://github.com/octocat/example-repo-7/actions/runs/77777777679/job/777777777659",
+                            "name": "📊 Code Quality / 📊 Static Checks (Govet + YAML Format)",
+                            "startedAt": "2026-11-15T03:17:16Z",
+                            "status": "COMPLETED"
+                        },
+                        {
+                            "__typename": "CheckRun",
+                            "checkSuite": {
+                                "id": "CS_TBYFZC2q6FsDo87LDp3unV",
+                                "workflowRun": {
+                                    "workflow": {
+                                        "name": "GoFortress"
+                                    }
+                                }
+                            },
+                            "completedAt": "2026-11-15T03:19:28Z",
+                            "conclusion": "SUCCESS",
+                            "detailsUrl": "https://github.com/octocat/example-repo-7/actions/runs/77777777679/job/777777777658",
+                            "name": "📊 Code Quality / ✨ Lint Code",
+                            "startedAt": "2026-11-15T03:17:15Z",
+                            "status": "COMPLETED"
+                        },
+                        {
+                            "__typename": "CheckRun",
+                            "checkSuite": {
+                                "id": "CS_TBYFZC2q6FsDo87LDp3unV",
+                                "workflowRun": {
+                                    "workflow": {
+                                        "name": "GoFortress"
+                                    }
+                                }
+                            },
+                            "completedAt": "2026-11-15T03:17:20Z",
+                            "conclusion": "SUCCESS",
+                            "detailsUrl": "https://github.com/octocat/example-repo-7/actions/runs/77777777679/job/777777777657",
+                            "name": "🧪 Test Suite / 🧪 Execute Test Matrix / 🧭 Validate test matrix",
+                            "startedAt": "2026-11-15T03:17:16Z",
+                            "status": "COMPLETED"
+                        },
+                        {
+                            "__typename": "CheckRun",
+                            "checkSuite": {
+                                "id": "CS_TBYFZC2q6FsDo87LDp3unV",
+                                "workflowRun": {
+                                    "workflow": {
+                                        "name": "GoFortress"
+                                    }
+                                }
+                            },
+                            "completedAt": "2026-11-15T03:23:29Z",
+                            "conclusion": "SUCCESS",
+                            "detailsUrl": "https://github.com/octocat/example-repo-7/actions/runs/77777777679/job/777777777656",
+                            "name": "🧪 Test Suite / 🧪 Execute Test Matrix / 🧪 Test (Linux (Primary Go 1.26.x))",
+                            "startedAt": "2026-11-15T03:17:22Z",
+                            "status": "COMPLETED"
+                        },
+                        {
+                            "__typename": "CheckRun",
+                            "checkSuite": {
+                                "id": "CS_TBYFZC2q6FsDo87LDp3unV",
+                                "workflowRun": {
+                                    "workflow": {
+                                        "name": "GoFortress"
+                                    }
+                                }
+                            },
+                            "completedAt": "2026-11-15T03:20:35Z",
+                            "conclusion": "SUCCESS",
+                            "detailsUrl": "https://github.com/octocat/example-repo-7/actions/runs/77777777679/job/777777777655",
+                            "name": "🧪 Test Suite / 🎯 Execute Fuzz Tests / 🧪 Fuzz Tests",
+                            "startedAt": "2026-11-15T03:17:16Z",
+                            "status": "COMPLETED"
+                        },
+                        {
+                            "__typename": "CheckRun",
+                            "checkSuite": {
+                                "id": "CS_TBYFZC2q6FsDo87LDp3unV",
+                                "workflowRun": {
+                                    "workflow": {
+                                        "name": "GoFortress"
+                                    }
+                                }
+                            },
+                            "completedAt": "2026-11-15T03:23:44Z",
+                            "conclusion": "SUCCESS",
+                            "detailsUrl": "https://github.com/octocat/example-repo-7/actions/runs/77777777679/job/777777777654",
+                            "name": "🧪 Test Suite / 🔍 Validate Test Results",
+                            "startedAt": "2026-11-15T03:23:31Z",
+                            "status": "COMPLETED"
+                        },
+                        {
+                            "__typename": "CheckRun",
+                            "checkSuite": {
+                                "id": "CS_TBYFZC2q6FsDo87LDp3unV",
+                                "workflowRun": {
+                                    "workflow": {
+                                        "name": "GoFortress"
+                                    }
+                                }
+                            },
+                            "completedAt": "2026-11-15T03:23:48Z",
+                            "conclusion": "SUCCESS",
+                            "detailsUrl": "https://github.com/octocat/example-repo-7/actions/runs/77777777679/job/777777777653",
+                            "name": "🧪 Test Suite / 📊 Process Coverage / 🔍 Validate Coverage Provider",
+                            "startedAt": "2026-11-15T03:23:45Z",
+                            "status": "COMPLETED"
+                        },
+                        {
+                            "__typename": "CheckRun",
+                            "checkSuite": {
+                                "id": "CS_TBYFZC2q6FsDo87LDp3unV",
+                                "workflowRun": {
+                                    "workflow": {
+                                        "name": "GoFortress"
+                                    }
+                                }
+                            },
+                            "completedAt": "2026-11-15T03:24:44Z",
+                            "conclusion": "SUCCESS",
+                            "detailsUrl": "https://github.com/octocat/example-repo-7/actions/runs/77777777679/job/777777777652",
+                            "name": "🧪 Test Suite / 📊 Process Coverage / 📊 Process Coverage & Deploy (Internal)",
+                            "startedAt": "2026-11-15T03:23:50Z",
+                            "status": "COMPLETED"
+                        },
+                        {
+                            "__typename": "CheckRun",
+                            "checkSuite": {
+                                "id": "CS_TBYFZC2q6FsDo87LDp3unV",
+                                "workflowRun": {
+                                    "workflow": {
+                                        "name": "GoFortress"
+                                    }
+                                }
+                            },
+                            "completedAt": "2026-11-15T03:23:49Z",
+                            "conclusion": "SKIPPED",
+                            "detailsUrl": "https://github.com/octocat/example-repo-7/actions/runs/77777777679/job/777777777651",
+                            "name": "🧪 Test Suite / 📊 Process Coverage / 📈 Upload to Codecov",
+                            "startedAt": "2026-11-15T03:23:49Z",
+                            "status": "COMPLETED"
+                        },
+                        {
+                            "__typename": "CheckRun",
+                            "checkSuite": {
+                                "id": "CS_TBYFZC2q6FsDo87LDp3unV",
+                                "workflowRun": {
+                                    "workflow": {
+                                        "name": "GoFortress"
+                                    }
+                                }
+                            },
+                            "completedAt": "2026-11-15T03:19:43Z",
+                            "conclusion": "SUCCESS",
+                            "detailsUrl": "https://github.com/octocat/example-repo-7/actions/runs/77777777679/job/777777777650",
+                            "name": "🏃 Benchmarks / 🏃 Benchmark (Linux (Primary Go 1.26.x))",
+                            "startedAt": "2026-11-15T03:17:16Z",
+                            "status": "COMPLETED"
+                        },
+                        {
+                            "__typename": "CheckRun",
+                            "checkSuite": {
+                                "id": "CS_TBYFZC2q6FsDo87LDp3unV",
+                                "workflowRun": {
+                                    "workflow": {
+                                        "name": "GoFortress"
+                                    }
+                                }
+                            },
+                            "completedAt": "2026-11-15T03:24:45Z",
+                            "conclusion": "SKIPPED",
+                            "detailsUrl": "https://github.com/octocat/example-repo-7/actions/runs/77777777679/job/777777777649",
+                            "name": "🚀 Release Version",
+                            "startedAt": "2026-11-15T03:24:45Z",
+                            "status": "COMPLETED"
+                        },
+                        {
+                            "__typename": "CheckRun",
+                            "checkSuite": {
+                                "id": "CS_TBYFZC2q6FsDo87LDp3unV",
+                                "workflowRun": {
+                                    "workflow": {
+                                        "name": "GoFortress"
+                                    }
+                                }
+                            },
+                            "completedAt": "2026-11-15T03:24:49Z",
+                            "conclusion": "SUCCESS",
+                            "detailsUrl": "https://github.com/octocat/example-repo-7/actions/runs/77777777679/job/777777777648",
+                            "name": "🎯 All Tests Passed",
+                            "startedAt": "2026-11-15T03:24:46Z",
+                            "status": "COMPLETED"
+                        },
+                        {
+                            "__typename": "CheckRun",
+                            "checkSuite": {
+                                "id": "CS_TBYFZC2q6FsDo87LDp3unV",
+                                "workflowRun": {
+                                    "workflow": {
+                                        "name": "GoFortress"
+                                    }
+                                }
+                            },
+                            "completedAt": "2026-11-15T03:25:29Z",
+                            "conclusion": "SUCCESS",
+                            "detailsUrl": "https://github.com/octocat/example-repo-7/actions/runs/77777777679/job/777777777647",
+                            "name": "📊 Workflow Completion Report / 📊 Generate Completion Report",
+                            "startedAt": "2026-11-15T03:24:52Z",
+                            "status": "COMPLETED"
+                        },
+                        {
+                            "__typename": "CheckRun",
+                            "checkSuite": {
+                                "id": "CS_Fm6QYnsj4bKKt7dUb8f9Z6",
+                                "workflowRun": null
+                            },
+                            "completedAt": "2026-11-15T03:17:37Z",
+                            "conclusion": "SUCCESS",
+                            "detailsUrl": "https://github.com/octocat/example-repo-7/runs/777777777646",
+                            "name": "CodeQL",
+                            "startedAt": "2026-11-15T03:17:34Z",
+                            "status": "COMPLETED"
+                        },
+                        {
+                            "__typename": "CheckRun",
+                            "checkSuite": {
+                                "id": "CS_Fm6QYnsj4bKKt7dUb8f9Z6",
+                                "workflowRun": null
+                            },
+                            "completedAt": "2026-11-15T03:17:49Z",
+                            "conclusion": "SUCCESS",
+                            "detailsUrl": "https://github.com/octocat/example-repo-7/runs/777777777645",
+                            "name": "osv-scanner",
+                            "startedAt": "2026-11-15T03:17:45Z",
+                            "status": "COMPLETED"
+                        },
+                        {
+                            "__typename": "StatusContext",
+                            "context": "Go-Coverage/Coverage-PR",
+                            "createdAt": "2026-11-15T03:24:17Z",
+                            "state": "SUCCESS",
+                            "targetUrl": "https://example.com/details"
+                        }
+                    ],
+                    "pageInfo": {
+                        "endCursor": "YYY",
+                        "hasNextPage": false
+                    },
+                    "totalCount": 37
+                },
+                "state": "SUCCESS"
+            },
+            "headRefOid": "74859f9fcc62960ca10ccc4582506c3d9909eb58",
+            "id": "PR_QE1wDWEF0g7mkfxdqy8v-Y",
+            "req": {
+                "contexts": {
+                    "nodes": [
+                        {
+                            "isRequired": false
+                        },
+                        {
+                            "isRequired": false
+                        },
+                        {
+                            "isRequired": false
+                        },
+                        {
+                            "isRequired": false
+                        },
+                        {
+                            "isRequired": false
+                        },
+                        {
+                            "isRequired": false
+                        },
+                        {
+                            "isRequired": false
+                        },
+                        {
+                            "isRequired": false
+                        },
+                        {
+                            "isRequired": false
+                        },
+                        {
+                            "isRequired": false
+                        },
+                        {
+                            "isRequired": false
+                        },
+                        {
+                            "isRequired": false
+                        },
+                        {
+                            "isRequired": false
+                        },
+                        {
+                            "isRequired": false
+                        },
+                        {
+                            "isRequired": false
+                        },
+                        {
+                            "isRequired": false
+                        },
+                        {
+                            "isRequired": false
+                        },
+                        {
+                            "isRequired": false
+                        },
+                        {
+                            "isRequired": false
+                        },
+                        {
+                            "isRequired": false
+                        },
+                        {
+                            "isRequired": false
+                        },
+                        {
+                            "isRequired": false
+                        },
+                        {
+                            "isRequired": false
+                        },
+                        {
+                            "isRequired": false
+                        },
+                        {
+                            "isRequired": false
+                        },
+                        {
+                            "isRequired": false
+                        },
+                        {
+                            "isRequired": false
+                        },
+                        {
+                            "isRequired": false
+                        },
+                        {
+                            "isRequired": false
+                        },
+                        {
+                            "isRequired": false
+                        },
+                        {
+                            "isRequired": false
+                        },
+                        {
+                            "isRequired": false
+                        },
+                        {
+                            "isRequired": true
+                        },
+                        {
+                            "isRequired": false
+                        },
+                        {
+                            "isRequired": false
+                        },
+                        {
+                            "isRequired": false
+                        },
+                        {
+                            "isRequired": false
+                        }
+                    ]
+                }
+            }
+        },
+        "rateLimit": {
+            "cost": 1,
+            "limit": 5000,
+            "remaining": 4930,
+            "resetAt": "2026-11-16T06:43:00Z",
+            "used": 70
+        }
+    }
+}

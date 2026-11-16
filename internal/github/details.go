@@ -2,6 +2,7 @@ package github
 
 import (
 	"context"
+	"errors"
 	"maps"
 	"slices"
 	"strconv"
@@ -18,10 +19,15 @@ import (
 // request would take seconds, while a few concurrent batches return within the inbox
 // query's own time. Each request costs at least one point, so a batch is never smaller
 // than detailsMinBatch, and at most detailsParallel are in flight: a large inbox gets
-// bigger batches rather than more requests, up to detailsMaxBatch (GitHub accepts 100).
+// bigger batches rather than more requests, up to detailsMaxBatch. GitHub accepts 100 IDs,
+// but answers a request that runs past about 10 seconds with a 502: with mergeStateStatus,
+// which GitHub works out per pull request (about 90 ms each, measured in November 2026),
+// 25 pull requests took 4.6 s and 50 came near the limit, so a batch stops at 25. An inbox
+// of up to 100 items is read in batches of 25 or fewer, as before; a larger one takes a
+// request, and a point, per 25 more.
 const (
 	detailsMinBatch = 10
-	detailsMaxBatch = 50
+	detailsMaxBatch = 25
 	detailsParallel = 4
 )
 
@@ -45,17 +51,45 @@ const MaxReviewRequests = 50
 // with). The head commit's SHA tells a snooze when a pull request was pushed, force-pushes
 // included.
 // The fields are a fragment the item query spreads too, so a card refreshed on its own
-// reads exactly what a whole refresh reads.
+// reads exactly what a whole refresh reads. A pull request's base branch and merge state
+// (mergeStateStatus: BEHIND, DIRTY, CLEAN, ...) are scalars, which cost no points, but
+// GitHub works the merge state out for each pull request, which is why the batches stop
+// at detailsMaxBatch.
 const detailsQuery = detailsQueryHead + detailFieldsFragment
 
 // detailsProjectsQuery is detailsQuery that also reads the projects each issue is in
 // (see issueProjectFields).
 const detailsProjectsQuery = detailsQueryHead + detailFieldsProjectsFragment
 
+// detailsRepoQuery and detailsRepoProjectsQuery are detailsQuery and detailsProjectsQuery
+// that also read each item's repository whole (RepoFields), for items whose repository a
+// routine's search read only in part (see DetailOptions.Repository).
+const (
+	detailsRepoQuery         = detailsRepoQueryHead + detailFieldsFragment + detailRepoFragment + repoFieldsFragment
+	detailsRepoProjectsQuery = detailsRepoQueryHead + detailFieldsProjectsFragment + detailRepoFragment + repoFieldsFragment
+)
+
 // detailsQueryHead is the details query without its fragment.
 const detailsQueryHead = `query Details($ids: [ID!]!) {
   nodes(ids: $ids) { ...DetailFields }
   rateLimit { cost remaining resetAt limit used }
+}
+`
+
+// detailsRepoQueryHead is detailsQueryHead that also spreads DetailRepo.
+const detailsRepoQueryHead = `query Details($ids: [ID!]!) {
+  nodes(ids: $ids) { ...DetailFields ...DetailRepo }
+  rateLimit { cost remaining resetAt limit used }
+}
+`
+
+// detailRepoFragment reads an item's repository whole. The repository is a single object,
+// which costs no points, but GitHub takes a little longer for its fields (about 17 ms an
+// item, measured in November 2026), so only a routine's details ask for it.
+const detailRepoFragment = `
+fragment DetailRepo on Node {
+  ... on PullRequest { repository { ...RepoFields } }
+  ... on Issue { repository { ...RepoFields } }
 }
 `
 
@@ -73,6 +107,7 @@ fragment DetailFields on Node {
   __typename
   ... on PullRequest {
     id additions deletions changedFiles totalCommentsCount reviewDecision mergeable headRefOid
+    baseRefName mergeStateStatus
     author { login }
     autoMergeRequest { enabledAt mergeMethod }
     commits { totalCount }
@@ -164,6 +199,23 @@ type DetailOptions struct {
 	// the token's read:project scope. When GitHub refuses them for want of a scope, the
 	// request is sent again without them, and the answer says so.
 	Projects bool
+
+	// Repository reads each item's repository whole (ItemDetails.Repo), as the inbox query
+	// reads it, for an item whose repository a routine's search read only in part. Only
+	// FetchDetails reads it.
+	Repository bool
+
+	// Batch, when set, is how many IDs each of FetchDetails' requests asks about but the
+	// last, at most detailsMaxBatch, so a few IDs cost one request; 0 sizes the batches by
+	// how many IDs there are, for the quickest answer. Items GitHub reads for the first
+	// time, as a routine's newly watched ones, take it longer: four batches of 25 such pull
+	// requests side by side ran past its 10-second limit (measured in November 2026), and of
+	// 15 took 6 seconds.
+	Batch int
+
+	// Partial has FetchDetails return what the batches that succeeded read, with the error
+	// of those that failed, rather than nothing.
+	Partial bool
 }
 
 // Details is what FetchDetails learned.
@@ -201,8 +253,16 @@ type ItemDetails struct {
 	// HeadOID is the SHA of a pull request's head commit; it changes on every push.
 	HeadOID string
 
+	// BaseRef is the branch a pull request merges into.
+	BaseRef string
+
 	// Mergeable is MERGEABLE, CONFLICTING, or UNKNOWN while GitHub is still working it out.
 	Mergeable string
+
+	// MergeState is a pull request's mergeStateStatus, one of the MergeState values: BEHIND
+	// when it is behind its base branch, DIRTY with conflicts, UNKNOWN while GitHub works it
+	// out, and so on.
+	MergeState string
 
 	Checks  Checks
 	Reviews Reviews
@@ -224,6 +284,18 @@ type ItemDetails struct {
 	// SubIssues counts an issue's sub-issues, and those closed as done. It is zero for a
 	// pull request and for an issue without sub-issues.
 	SubIssues SubIssues
+
+	// Repo is the item's repository, read whole, when DetailOptions.Repository asked for it;
+	// nil otherwise.
+	Repo *DetailsRepo
+}
+
+// DetailsRepo is an item's repository as a details read read it: its owner and name, and
+// what the inbox query reads about it.
+type DetailsRepo struct {
+	Owner string
+	Name  string
+	Repo  Repository
 }
 
 // SubIssues counts an issue's sub-issues.
@@ -365,24 +437,42 @@ func detailsBatches(ids []string) [][]string {
 	return slices.Collect(slices.Chunk(ids, size))
 }
 
-// fetchDetails sends the batches side by side and merges the answers in batch order.
+// detailsBatchesOf splits ids into the batches FetchDetails sends with Batch set to size:
+// each of size IDs but the last, so a few IDs cost one request.
+func detailsBatchesOf(ids []string, size int) [][]string {
+	if size <= 0 {
+		return detailsBatches(ids)
+	}
+
+	return slices.Collect(slices.Chunk(ids, size))
+}
+
+// fetchDetails sends the batches side by side and merges the answers in batch order. With
+// opts.Partial, a batch that fails stops none of the others, and the answers of those that
+// didn't are returned with the first error.
 func (c *Client) fetchDetails(ctx context.Context, tok Token, ids []string, opts DetailOptions) (*Details, error) {
-	batches := detailsBatches(ids)
+	batches := detailsBatchesOf(ids, opts.batch())
 	answers := make([]*Details, len(batches))
+	errs := make([]error, len(batches))
 
 	g, gctx := errgroup.WithContext(ctx)
+	if opts.Partial {
+		g = &errgroup.Group{}
+		gctx = ctx
+	}
+
 	g.SetLimit(detailsParallel)
 
 	for i, batch := range batches {
 		g.Go(func() error {
-			answer, err := c.fetchDetailsBatch(gctx, tok, batch, opts)
-			answers[i] = answer
+			answers[i], errs[i] = c.fetchDetailsBatch(gctx, tok, batch, opts)
 
-			return err
+			return errs[i]
 		})
 	}
 
-	if err := g.Wait(); err != nil {
+	err := g.Wait()
+	if err != nil && !opts.Partial {
 		return nil, err
 	}
 
@@ -391,7 +481,17 @@ func (c *Client) fetchDetails(ctx context.Context, tok Token, ids []string, opts
 		out.Add(answer)
 	}
 
-	return out, nil
+	return out, errors.Join(errs...)
+}
+
+// batch is the size of each of o's requests, at most detailsMaxBatch; 0 lets detailsBatches
+// size them by how many there are.
+func (o DetailOptions) batch() int {
+	if o.Batch <= 0 {
+		return 0
+	}
+
+	return min(o.Batch, detailsMaxBatch)
 }
 
 // fetchDetailsBatch sends the details query for one batch of IDs. When GitHub refuses
@@ -423,7 +523,7 @@ func (c *Client) sendDetails(ctx context.Context, tok Token, ids []string, opts 
 		return nil, err
 	}
 
-	answer := resp.Data.details()
+	answer := resp.Data.details(opts.Repository)
 	answer.ProjectsRefused = opts.Projects && scopeRefused(resp.Errors)
 
 	return answer, nil
@@ -431,11 +531,16 @@ func (c *Client) sendDetails(ctx context.Context, tok Token, ids []string, opts 
 
 // detailsQuery returns the details query that reads what o asks for.
 func (o DetailOptions) detailsQuery() string {
-	if o.Projects {
+	switch {
+	case o.Repository && o.Projects:
+		return detailsRepoProjectsQuery
+	case o.Repository:
+		return detailsRepoQuery
+	case o.Projects:
 		return detailsProjectsQuery
+	default:
+		return detailsQuery
 	}
-
-	return detailsQuery
 }
 
 // itemQuery returns the item query that reads what o asks for.
@@ -453,17 +558,34 @@ type detailsData struct {
 	RateLimit graphQLRateLimit `json:"rateLimit"`
 }
 
-// details converts one batch's answer: its items, its budget reading, and one request.
-func (d *detailsData) details() *Details {
+// details converts one batch's answer: its items, each with its repository when repos
+// says the batch read them, its budget reading, and one request.
+func (d *detailsData) details(repos bool) *Details {
 	out := &Details{Items: make(map[string]ItemDetails, len(d.Nodes)), RateLimit: d.RateLimit.queryRate(), Requests: 1}
 
 	for _, n := range d.Nodes {
-		if id, item, ok := n.details(); ok {
-			out.Items[id] = item
+		id, item, ok := n.details()
+		if !ok {
+			continue
 		}
+
+		if repos {
+			item.Repo = n.repo()
+		}
+
+		out.Items[id] = item
 	}
 
 	return out
+}
+
+// repo converts the node's repository, read whole, or returns nil when it has none.
+func (n *detailsNode) repo() *DetailsRepo {
+	if n.Repository == nil || n.Repository.Name == "" || n.Repository.Owner.Login == "" {
+		return nil
+	}
+
+	return &DetailsRepo{Owner: n.Repository.Owner.Login, Name: n.Repository.Name, Repo: n.Repository.repository()}
 }
 
 // queryRate converts the query's rateLimit object.
@@ -474,26 +596,29 @@ func (r graphQLRateLimit) queryRate() QueryRate {
 // detailsNode is one node of the details query: a pull request, an issue, or null.
 // GitHub's nulls decode to zero values.
 type detailsNode struct {
-	TypeName           string            `json:"__typename"`
-	ID                 string            `json:"id"`
-	Additions          int               `json:"additions"`
-	Deletions          int               `json:"deletions"`
-	ChangedFiles       int               `json:"changedFiles"`
-	TotalCommentsCount int               `json:"totalCommentsCount"`
-	ReviewDecision     string            `json:"reviewDecision"`
-	Mergeable          string            `json:"mergeable"`
-	HeadRefOID         string            `json:"headRefOid"`
-	Author             *graphQLActor     `json:"author"`
-	Commits            graphQLCount      `json:"commits"`
-	Comments           graphQLCount      `json:"comments"`
-	Labels             graphQLLabels     `json:"labels"`
-	ReviewRequests     graphQLRequests   `json:"reviewRequests"`
-	LatestReviews      graphQLReviews    `json:"latestReviews"`
-	StatusCheckRollup  *graphQLRollup    `json:"statusCheckRollup"`
-	HeadSuites         graphQLHeadSuites `json:"headSuites"`
-	AutoMergeRequest   *graphQLAutoMerge `json:"autoMergeRequest"`
-	ProjectItems       graphQLProjects   `json:"projectItems"`
-	SubIssuesSummary   graphQLSubIssues  `json:"subIssuesSummary"`
+	TypeName           string             `json:"__typename"`
+	ID                 string             `json:"id"`
+	Additions          int                `json:"additions"`
+	Deletions          int                `json:"deletions"`
+	ChangedFiles       int                `json:"changedFiles"`
+	TotalCommentsCount int                `json:"totalCommentsCount"`
+	ReviewDecision     string             `json:"reviewDecision"`
+	Mergeable          string             `json:"mergeable"`
+	MergeStateStatus   string             `json:"mergeStateStatus"`
+	HeadRefOID         string             `json:"headRefOid"`
+	BaseRefName        string             `json:"baseRefName"`
+	Repository         *graphQLRepository `json:"repository"`
+	Author             *graphQLActor      `json:"author"`
+	Commits            graphQLCount       `json:"commits"`
+	Comments           graphQLCount       `json:"comments"`
+	Labels             graphQLLabels      `json:"labels"`
+	ReviewRequests     graphQLRequests    `json:"reviewRequests"`
+	LatestReviews      graphQLReviews     `json:"latestReviews"`
+	StatusCheckRollup  *graphQLRollup     `json:"statusCheckRollup"`
+	HeadSuites         graphQLHeadSuites  `json:"headSuites"`
+	AutoMergeRequest   *graphQLAutoMerge  `json:"autoMergeRequest"`
+	ProjectItems       graphQLProjects    `json:"projectItems"`
+	SubIssuesSummary   graphQLSubIssues   `json:"subIssuesSummary"`
 }
 
 // graphQLAutoMerge is a pull request's auto-merge request, null when auto-merge is off.
@@ -641,7 +766,9 @@ func (n *detailsNode) details() (id string, item ItemDetails, ok bool) {
 			ChangedFiles:   n.ChangedFiles,
 			Commits:        n.Commits.TotalCount,
 			HeadOID:        n.HeadRefOID,
+			BaseRef:        n.BaseRefName,
 			Mergeable:      n.Mergeable,
+			MergeState:     n.MergeStateStatus,
 			Checks:         n.checks(),
 			Reviews:        n.reviews(author),
 			ReviewRequests: n.ReviewRequests.requests(),

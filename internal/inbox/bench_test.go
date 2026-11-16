@@ -178,3 +178,53 @@ func BenchmarkStoredFiles(b *testing.B) {
 		}
 	}
 }
+
+// benchWatched is how many items the benchmark's routine searches watch: three searches of
+// a full page, as a busy org's Dependabot pull requests and issues hold.
+const benchWatched = 300
+
+// BenchmarkWatchPass is one steady watch pass, its searches answered at once and nothing
+// changed since the last, so it reads no details: what the app itself adds after the
+// inbox's store, comparing every watched item with what is stored and writing their rows.
+func BenchmarkWatchPass(b *testing.B) {
+	svc := benchService(b)
+	svc.client.(*fakeClient).watches = map[string]github.WatchResult{}
+
+	searches := make([]Watch, 0, 3)
+
+	for s := range 3 {
+		query := fmt.Sprintf("is:pr is:open archived:false org:acme-org label:\"bench-%d\" sort:updated-desc", s)
+		searches = append(searches, Watch{Key: query, Query: query, Follow: true})
+
+		items := make([]github.WatchItem, 0, benchWatched/3)
+		for n := range benchWatched / 3 {
+			number := 1000 + s*benchWatched + n
+			head := fmt.Sprintf("%040d", number)
+			items = append(items, watched(dependabot(number), head, "SUCCESS"))
+			svc.client.(*fakeClient).details[nodeID(number)] = watchedPRDetails(head, "SUCCESS")
+		}
+
+		svc.client.(*fakeClient).watches[query] = github.WatchResult{IssueCount: len(items), Items: items}
+	}
+
+	pass := func() WatchPass {
+		job := &watchJob{login: octoUser, searches: searches, stored: make(chan struct{})}
+		job.release()
+
+		report, err := svc.watchPass(b.Context(), job)
+		require.NoError(b, err)
+
+		return report
+	}
+
+	first := pass()
+	require.Equal(b, benchWatched, first.Read, "the first pass reads every new item")
+
+	b.ReportAllocs()
+
+	for b.Loop() {
+		if report := pass(); report.Read != 0 {
+			b.Fatalf("a steady pass read %d items", report.Read)
+		}
+	}
+}

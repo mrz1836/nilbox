@@ -111,6 +111,32 @@ func TestAGraphQLQueryReportsItsCost(t *testing.T) {
 		"the response is read once as it arrives, then spent by the cost its query reports")
 }
 
+func TestAReadingCarriesThePurposeItsRequestWasSentFor(t *testing.T) {
+	t.Parallel()
+
+	client, rates := observingClient(t, func(w http.ResponseWriter, _ *http.Request) {
+		setRateHeaders(w, ResourceGraphQL, 4985, 15)
+		_, _ = io.WriteString(w, plainIssue)
+	})
+
+	for _, p := range []Purpose{PurposeWatches, PurposeOther} {
+		ctx := t.Context()
+		if p != PurposeOther {
+			ctx = WithPurpose(ctx, p)
+		}
+
+		_, err := client.FetchDetails(ctx, NewToken(fakeToken), []string{issueID}, DetailOptions{})
+		require.NoError(t, err)
+	}
+
+	got := rates.all()
+	require.Len(t, got, 4)
+	assert.Equal(t, PurposeWatches, got[1].reading.Purpose)
+	assert.Equal(t, 1, got[1].spent)
+	assert.Equal(t, PurposeOther, got[3].reading.Purpose, "a request no part named")
+	assert.Equal(t, PurposeOther, PurposeOf(t.Context()))
+}
+
 func TestARESTCallSpendsOneAndARefusalStillCounts(t *testing.T) {
 	t.Parallel()
 

@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import { FIXED_NOW } from '../test/clock'
 import { budgetGauge, reading, unreadBudget, writes } from '../test/fixtures'
 import {
+  autopilotShareOf,
   levelFor,
   newestRead,
   paceOf,
@@ -130,6 +131,27 @@ describe('paceOf', () => {
   it('has no pace before a refresh, and no share of an unread budget', () => {
     expect(paceOf(budgetGauge())).toBeNull()
     expect(paceOf(budgetGauge({ refresh: { known: true, at: '', points: 2, items: 3 } }))?.percent).toBe(0)
+  })
+})
+
+describe('autopilotShareOf', () => {
+  it('is what the routines and Autopilot spent of GraphQL since it refilled', () => {
+    const purposes = { inbox: 10, watches: 4, follower: 1, autopilot: 1, other: 4 }
+
+    expect(autopilotShareOf(budgetGauge({ graphql: reading({ spent: 20, purposes }) }), FIXED_NOW)).toEqual({
+      points: 5,
+      percent: 0.1,
+    })
+  })
+
+  it('is nothing when Autopilot spent nothing, the budget is unread, or it refilled since', () => {
+    const purposes = { inbox: 10, watches: 4, follower: 0, autopilot: 0, other: 0 }
+
+    expect(autopilotShareOf(budgetGauge({ graphql: reading() }), FIXED_NOW)).toBeNull()
+    expect(autopilotShareOf(budgetGauge(), FIXED_NOW)).toBeNull()
+    expect(
+      autopilotShareOf(budgetGauge({ graphql: reading({ purposes, resetAt: '2026-06-15T11:00:00Z' }) }), FIXED_NOW),
+    ).toBeNull()
   })
 })
 

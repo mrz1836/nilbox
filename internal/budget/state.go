@@ -67,6 +67,11 @@ type savedBudget struct {
 	Spent       int       `json:"spent"`
 	Requests    int       `json:"requests"`
 	CountedFrom time.Time `json:"countedFrom"`
+
+	// Purposes splits Spent by what each request was sent for, by github.Purpose ("" for
+	// the rest). A state saved before them has none, and its spend counts as the rest; a
+	// build before them ignores them, so the version stays the same.
+	Purposes map[string]int `json:"purposes,omitempty"`
 }
 
 // savedRefresh is the last whole inbox refresh.
@@ -88,6 +93,7 @@ func (t *Tracker) state() (string, error) {
 			out.Budgets = append(out.Budgets, savedBudget{
 				Resource: resource, Limit: r.Limit, Remaining: r.Remaining, Used: r.Used, ResetAt: r.ResetAt,
 				TakenAt: h.takenAt, Spent: h.spent, Requests: h.requests, CountedFrom: h.countedFrom,
+				Purposes: savedPurposes(h.purposes),
 			})
 		}
 	}
@@ -164,7 +170,50 @@ func (t *Tracker) restoreBudgetLocked(b savedBudget) {
 			Resource: b.Resource, Limit: b.Limit, Remaining: b.Remaining, Used: b.Used, ResetAt: b.ResetAt.UTC(),
 		},
 		takenAt: b.TakenAt.UTC(), spent: max(b.Spent, 0), requests: max(b.Requests, 0),
-		countedFrom: b.CountedFrom.UTC(),
+		countedFrom: b.CountedFrom.UTC(), purposes: restoredPurposes(b.Purposes, max(b.Spent, 0)),
+	}
+}
+
+// savedPurposes converts what a budget spent by purpose for keeping.
+func savedPurposes(by map[github.Purpose]int) map[string]int {
+	if len(by) == 0 {
+		return nil
+	}
+
+	out := make(map[string]int, len(by))
+	for p, n := range by {
+		out[string(p)] = n
+	}
+
+	return out
+}
+
+// restoredPurposes converts a kept split of spent by purpose, the known purposes in one
+// order. A purpose this build doesn't know, as one a later build added, counts as the
+// rest, and so does what the split doesn't account for, as all of a state saved before
+// it, so the shares still add up to spent and every share is one the reading shows.
+func restoredPurposes(saved map[string]int, spent int) map[github.Purpose]int {
+	out := make(map[github.Purpose]int, len(saved)+1)
+	counted := 0
+
+	for _, p := range knownPurposes() {
+		if n := saved[string(p)]; n > 0 && counted+n <= spent {
+			out[p] += n
+			counted += n
+		}
+	}
+
+	if rest := spent - counted; rest > 0 {
+		out[github.PurposeOther] += rest
+	}
+
+	return out
+}
+
+// knownPurposes returns the purposes a kept split is restored by, the rest counted as other.
+func knownPurposes() []github.Purpose {
+	return []github.Purpose{
+		github.PurposeInbox, github.PurposeWatches, github.PurposeFollower, github.PurposeAutopilot,
 	}
 }
 

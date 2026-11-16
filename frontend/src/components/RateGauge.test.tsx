@@ -61,6 +61,26 @@ describe('RateGauge', () => {
     expect(screen.getByText(/Shared with gh, your agents/)).toBeInTheDocument()
   })
 
+  it("says Autopilot's share in one line, once it spent something", () => {
+    const refreshed = { known: true, at: '2026-06-15T11:58:00Z', points: 3, items: 19 }
+    const spent = reading({
+      used: 120,
+      remaining: 4880,
+      spent: 30,
+      purposes: { inbox: 18, watches: 8, follower: 2, autopilot: 2, other: 0 },
+    })
+
+    const { unmount } = renderGauge(budgetGauge({ graphql: spent, refresh: refreshed }))
+
+    expect(screen.getByText(/Autopilot: 10 GraphQL points since it last refilled/)).toHaveTextContent(
+      '(<1% of the budget)',
+    )
+    unmount()
+
+    renderGauge(budgetGauge({ graphql: reading({ used: 20, spent: 18 }), refresh: refreshed }))
+    expect(screen.queryByText(/Autopilot/)).not.toBeInTheDocument()
+  })
+
   it('says it is live while the newest reading is fresh', () => {
     renderGauge(budgetGauge({ graphql: reading(), core: reading({ takenAt: FIXED_NOW.toISOString() }) }))
 

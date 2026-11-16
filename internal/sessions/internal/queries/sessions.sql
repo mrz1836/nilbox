@@ -93,3 +93,8 @@ LIMIT sqlc.arg(row_limit);
 -- agent_session_id: the ones carrying on that conversation.
 SELECT count(*) FROM agent_sessions
 WHERE state <> 'ended' AND agent_session_id = sqlc.arg(agent_session_id) AND agent_session_id <> '';
+
+-- name: ListSessionItems :many
+-- ListSessionItems returns each inbox item a session was launched for, once: the items the
+-- inbox keeps while a session names them.
+SELECT DISTINCT item_id FROM agent_sessions WHERE item_id > 0 ORDER BY item_id;

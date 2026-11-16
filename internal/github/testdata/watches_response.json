@@ -1,0 +1,506 @@
+{
+    "data": {
+        "rateLimit": {
+            "cost": 1,
+            "limit": 5000,
+            "remaining": 4758,
+            "resetAt": "2026-11-16T06:13:11Z",
+            "used": 242
+        },
+        "w0": {
+            "issueCount": 1,
+            "nodes": [
+                {
+                    "__typename": "PullRequest",
+                    "author": {
+                        "__typename": "Bot",
+                        "login": "dependabot"
+                    },
+                    "authorAssociation": "NONE",
+                    "baseRefName": "master",
+                    "createdAt": "2026-09-11T01:56:17Z",
+                    "headRefName": "dependabot/npm_and_yarn/example.com/lib-1.0.0",
+                    "headRefOid": "041c7e076d5dfb540ed9f3441ac0408323c0965a",
+                    "id": "PR_HZ7VCOdF_Ls2jVeIXu42bt",
+                    "isCrossRepository": false,
+                    "isDraft": false,
+                    "mergeStateStatus": "DIRTY",
+                    "mergeable": "CONFLICTING",
+                    "number": 188,
+                    "prState": "OPEN",
+                    "repository": {
+                        "allowUpdateBranch": true,
+                        "archivedAt": null,
+                        "autoMergeAllowed": true,
+                        "defaultBranchRef": {
+                            "name": "master"
+                        },
+                        "deleteBranchOnMerge": false,
+                        "description": "Example repository.",
+                        "id": "R_46MmeEpQ_R",
+                        "isArchived": false,
+                        "isDisabled": false,
+                        "isFork": false,
+                        "isLocked": false,
+                        "lockReason": null,
+                        "mergeCommitAllowed": true,
+                        "name": "example-repo",
+                        "owner": {
+                            "login": "octocat"
+                        },
+                        "parent": null,
+                        "primaryLanguage": {
+                            "color": "#3178c6",
+                            "name": "TypeScript"
+                        },
+                        "pushedAt": "2026-11-12T15:14:54Z",
+                        "rebaseMergeAllowed": false,
+                        "squashMergeAllowed": true,
+                        "viewerDefaultMergeMethod": "SQUASH",
+                        "viewerPermission": "ADMIN",
+                        "visibility": "PRIVATE"
+                    },
+                    "reviewDecision": "REVIEW_REQUIRED",
+                    "statusCheckRollup": {
+                        "state": "SUCCESS"
+                    },
+                    "title": "Bump example.com/lib from 1.1.0 to 1.1.1",
+                    "updatedAt": "2026-11-12T04:34:23Z",
+                    "url": "https://github.com/octocat/example-repo/pull/188"
+                }
+            ]
+        },
+        "w1": {
+            "issueCount": 2,
+            "nodes": [
+                {
+                    "__typename": "PullRequest",
+                    "author": {
+                        "__typename": "Bot",
+                        "login": "dependabot"
+                    },
+                    "authorAssociation": "CONTRIBUTOR",
+                    "baseRefName": "master",
+                    "createdAt": "2026-11-06T10:02:50Z",
+                    "headRefName": "dependabot/go_modules/example.com/lib-1.1.0",
+                    "headRefOid": "5fd809bfadbde5de61921a4e9b20d22b3a03c5d2",
+                    "id": "PR_tJ5cmjwB8vChlkHAXcXgDd",
+                    "isCrossRepository": false,
+                    "isDraft": false,
+                    "mergeStateStatus": "UNSTABLE",
+                    "mergeable": "MERGEABLE",
+                    "number": 288,
+                    "prState": "OPEN",
+                    "repository": {
+                        "allowUpdateBranch": false,
+                        "archivedAt": null,
+                        "autoMergeAllowed": false,
+                        "defaultBranchRef": {
+                            "name": "master"
+                        },
+                        "deleteBranchOnMerge": false,
+                        "description": null,
+                        "id": "R_38MDu6ImV1",
+                        "isArchived": false,
+                        "isDisabled": false,
+                        "isFork": false,
+                        "isLocked": false,
+                        "lockReason": null,
+                        "mergeCommitAllowed": true,
+                        "name": "example-repo-2",
+                        "owner": {
+                            "login": "acme-org"
+                        },
+                        "parent": null,
+                        "primaryLanguage": {
+                            "color": "#00ADD8",
+                            "name": "Go"
+                        },
+                        "pushedAt": "2026-11-06T10:02:49Z",
+                        "rebaseMergeAllowed": true,
+                        "squashMergeAllowed": true,
+                        "viewerDefaultMergeMethod": "MERGE",
+                        "viewerPermission": "READ",
+                        "visibility": "PUBLIC"
+                    },
+                    "reviewDecision": null,
+                    "statusCheckRollup": {
+                        "state": "FAILURE"
+                    },
+                    "title": "Bump example.com/lib from 1.2.0 to 1.2.1",
+                    "updatedAt": "2026-11-06T10:04:34Z",
+                    "url": "https://github.com/acme-org/example-repo-2/pull/288"
+                },
+                {
+                    "__typename": "PullRequest",
+                    "author": {
+                        "__typename": "Bot",
+                        "login": "dependabot"
+                    },
+                    "authorAssociation": "CONTRIBUTOR",
+                    "baseRefName": "master",
+                    "createdAt": "2026-10-30T10:03:18Z",
+                    "headRefName": "dependabot/go_modules/example.com/lib-1.2.0",
+                    "headRefOid": "d89b403ca0994df14cc90c6555c39d99d5697cb4",
+                    "id": "PR_4eNvuM4vfrqQeB1DTscGOy",
+                    "isCrossRepository": false,
+                    "isDraft": false,
+                    "mergeStateStatus": "UNSTABLE",
+                    "mergeable": "MERGEABLE",
+                    "number": 287,
+                    "prState": "OPEN",
+                    "repository": {
+                        "allowUpdateBranch": false,
+                        "archivedAt": null,
+                        "autoMergeAllowed": false,
+                        "defaultBranchRef": {
+                            "name": "master"
+                        },
+                        "deleteBranchOnMerge": false,
+                        "description": null,
+                        "id": "R_38MDu6ImV1",
+                        "isArchived": false,
+                        "isDisabled": false,
+                        "isFork": false,
+                        "isLocked": false,
+                        "lockReason": null,
+                        "mergeCommitAllowed": true,
+                        "name": "example-repo-2",
+                        "owner": {
+                            "login": "acme-org"
+                        },
+                        "parent": null,
+                        "primaryLanguage": {
+                            "color": "#00ADD8",
+                            "name": "Go"
+                        },
+                        "pushedAt": "2026-11-06T10:02:49Z",
+                        "rebaseMergeAllowed": true,
+                        "squashMergeAllowed": true,
+                        "viewerDefaultMergeMethod": "MERGE",
+                        "viewerPermission": "READ",
+                        "visibility": "PUBLIC"
+                    },
+                    "reviewDecision": null,
+                    "statusCheckRollup": {
+                        "state": "FAILURE"
+                    },
+                    "title": "Bump example.com/lib from 1.3.0 to 1.3.1",
+                    "updatedAt": "2026-10-30T10:04:24Z",
+                    "url": "https://github.com/acme-org/example-repo-2/pull/287"
+                }
+            ]
+        },
+        "w2": {
+            "issueCount": 6,
+            "nodes": [
+                {
+                    "__typename": "Issue",
+                    "author": {
+                        "__typename": "User",
+                        "login": "octo-helper"
+                    },
+                    "authorAssociation": "COLLABORATOR",
+                    "createdAt": "2025-01-09T09:43:05Z",
+                    "id": "I_cTVjoM_NvkKD8tyu",
+                    "issueState": "OPEN",
+                    "number": 85,
+                    "repository": {
+                        "allowUpdateBranch": false,
+                        "archivedAt": null,
+                        "autoMergeAllowed": false,
+                        "defaultBranchRef": {
+                            "name": "master"
+                        },
+                        "deleteBranchOnMerge": false,
+                        "description": "Example repository.",
+                        "id": "VfFgRqzMoVVJFR4XRkFxpzZ0lAJg8ppd",
+                        "isArchived": false,
+                        "isDisabled": false,
+                        "isFork": false,
+                        "isLocked": false,
+                        "lockReason": null,
+                        "mergeCommitAllowed": true,
+                        "name": "example-repo-3",
+                        "owner": {
+                            "login": "acme-org"
+                        },
+                        "parent": null,
+                        "primaryLanguage": {
+                            "color": "#00ADD8",
+                            "name": "Go"
+                        },
+                        "pushedAt": "2026-09-10T10:03:48Z",
+                        "rebaseMergeAllowed": true,
+                        "squashMergeAllowed": true,
+                        "viewerDefaultMergeMethod": "MERGE",
+                        "viewerPermission": "READ",
+                        "visibility": "PUBLIC"
+                    },
+                    "title": "Example title 4",
+                    "updatedAt": "2025-01-09T09:43:05Z",
+                    "url": "https://github.com/acme-org/example-repo-3/issues/85"
+                },
+                {
+                    "__typename": "Issue",
+                    "author": {
+                        "__typename": "User",
+                        "login": "octo-user"
+                    },
+                    "authorAssociation": "NONE",
+                    "createdAt": "2024-04-05T22:06:48Z",
+                    "id": "I_6ZtoNHb3NGQ1d44v",
+                    "issueState": "OPEN",
+                    "number": 133,
+                    "repository": {
+                        "allowUpdateBranch": false,
+                        "archivedAt": null,
+                        "autoMergeAllowed": false,
+                        "defaultBranchRef": {
+                            "name": "master"
+                        },
+                        "deleteBranchOnMerge": false,
+                        "description": "Example repository.",
+                        "id": "lYdO8H7tXIdeScfwDgVJ5sxiSTRDrcxy",
+                        "isArchived": false,
+                        "isDisabled": false,
+                        "isFork": false,
+                        "isLocked": false,
+                        "lockReason": null,
+                        "mergeCommitAllowed": true,
+                        "name": "example-repo-4",
+                        "owner": {
+                            "login": "octocat"
+                        },
+                        "parent": null,
+                        "primaryLanguage": {
+                            "color": "#00ADD8",
+                            "name": "Go"
+                        },
+                        "pushedAt": "2026-11-11T06:24:54Z",
+                        "rebaseMergeAllowed": true,
+                        "squashMergeAllowed": true,
+                        "viewerDefaultMergeMethod": "REBASE",
+                        "viewerPermission": "ADMIN",
+                        "visibility": "PUBLIC"
+                    },
+                    "title": "Example title 5",
+                    "updatedAt": "2024-04-05T22:50:02Z",
+                    "url": "https://github.com/octocat/example-repo-4/issues/133"
+                },
+                {
+                    "__typename": "Issue",
+                    "author": {
+                        "__typename": "User",
+                        "login": "octo-reviewer"
+                    },
+                    "authorAssociation": "MEMBER",
+                    "createdAt": "2023-09-08T18:50:11Z",
+                    "id": "I_IhzkWx_KOmdNDOy6",
+                    "issueState": "OPEN",
+                    "number": 69,
+                    "repository": {
+                        "allowUpdateBranch": false,
+                        "archivedAt": null,
+                        "autoMergeAllowed": false,
+                        "defaultBranchRef": {
+                            "name": "master"
+                        },
+                        "deleteBranchOnMerge": false,
+                        "description": "Example repository.",
+                        "id": "VfFgRqzMoVVJFR4XRkFxpzZ0lAJg8ppd",
+                        "isArchived": false,
+                        "isDisabled": false,
+                        "isFork": false,
+                        "isLocked": false,
+                        "lockReason": null,
+                        "mergeCommitAllowed": true,
+                        "name": "example-repo-3",
+                        "owner": {
+                            "login": "acme-org"
+                        },
+                        "parent": null,
+                        "primaryLanguage": {
+                            "color": "#00ADD8",
+                            "name": "Go"
+                        },
+                        "pushedAt": "2026-09-10T10:03:48Z",
+                        "rebaseMergeAllowed": true,
+                        "squashMergeAllowed": true,
+                        "viewerDefaultMergeMethod": "MERGE",
+                        "viewerPermission": "READ",
+                        "visibility": "PUBLIC"
+                    },
+                    "title": "Example title 6",
+                    "updatedAt": "2023-09-08T18:50:11Z",
+                    "url": "https://github.com/acme-org/example-repo-3/issues/69"
+                },
+                {
+                    "__typename": "Issue",
+                    "author": {
+                        "__typename": "User",
+                        "login": "octo-maintainer"
+                    },
+                    "authorAssociation": "MEMBER",
+                    "createdAt": "2021-09-28T13:51:51Z",
+                    "id": "I_8sflKKhCOWOWlu98",
+                    "issueState": "OPEN",
+                    "number": 45,
+                    "repository": {
+                        "allowUpdateBranch": false,
+                        "archivedAt": null,
+                        "autoMergeAllowed": false,
+                        "defaultBranchRef": {
+                            "name": "master"
+                        },
+                        "deleteBranchOnMerge": false,
+                        "description": "Example repository.",
+                        "id": "clJ9F9JpP43ulGbbdkaHw5dTZTd9jONE",
+                        "isArchived": false,
+                        "isDisabled": false,
+                        "isFork": false,
+                        "isLocked": false,
+                        "lockReason": null,
+                        "mergeCommitAllowed": true,
+                        "name": "example-repo-5",
+                        "owner": {
+                            "login": "acme-org"
+                        },
+                        "parent": null,
+                        "primaryLanguage": {
+                            "color": "#00ADD8",
+                            "name": "Go"
+                        },
+                        "pushedAt": "2022-11-03T10:19:17Z",
+                        "rebaseMergeAllowed": true,
+                        "squashMergeAllowed": true,
+                        "viewerDefaultMergeMethod": "MERGE",
+                        "viewerPermission": "MAINTAIN",
+                        "visibility": "PUBLIC"
+                    },
+                    "title": "Example title 7",
+                    "updatedAt": "2021-09-30T09:19:58Z",
+                    "url": "https://github.com/acme-org/example-repo-5/issues/45"
+                },
+                {
+                    "__typename": "Issue",
+                    "author": {
+                        "__typename": "User",
+                        "login": "octo-member"
+                    },
+                    "authorAssociation": "MEMBER",
+                    "createdAt": "2021-02-26T11:03:42Z",
+                    "id": "Tka0BFTQBFLmtIJdCAOMn4uK",
+                    "issueState": "OPEN",
+                    "number": 4,
+                    "repository": {
+                        "allowUpdateBranch": false,
+                        "archivedAt": null,
+                        "autoMergeAllowed": false,
+                        "defaultBranchRef": {
+                            "name": "master"
+                        },
+                        "deleteBranchOnMerge": false,
+                        "description": "Example repository.",
+                        "id": "clJ9F9JpP43ulGbbdkaHw5dTZTd9jONE",
+                        "isArchived": false,
+                        "isDisabled": false,
+                        "isFork": false,
+                        "isLocked": false,
+                        "lockReason": null,
+                        "mergeCommitAllowed": true,
+                        "name": "example-repo-5",
+                        "owner": {
+                            "login": "acme-org"
+                        },
+                        "parent": null,
+                        "primaryLanguage": {
+                            "color": "#00ADD8",
+                            "name": "Go"
+                        },
+                        "pushedAt": "2022-11-03T10:19:17Z",
+                        "rebaseMergeAllowed": true,
+                        "squashMergeAllowed": true,
+                        "viewerDefaultMergeMethod": "MERGE",
+                        "viewerPermission": "MAINTAIN",
+                        "visibility": "PUBLIC"
+                    },
+                    "title": "Example title 8",
+                    "updatedAt": "2021-02-26T11:03:42Z",
+                    "url": "https://github.com/acme-org/example-repo-5/issues/4"
+                },
+                {
+                    "__typename": "Issue",
+                    "author": {
+                        "__typename": "User",
+                        "login": "octo-member"
+                    },
+                    "authorAssociation": "MEMBER",
+                    "createdAt": "2021-02-26T11:01:33Z",
+                    "id": "xoctbx40E7COd56d4thoH8wD",
+                    "issueState": "OPEN",
+                    "number": 3,
+                    "repository": {
+                        "allowUpdateBranch": false,
+                        "archivedAt": null,
+                        "autoMergeAllowed": false,
+                        "defaultBranchRef": {
+                            "name": "master"
+                        },
+                        "deleteBranchOnMerge": false,
+                        "description": "Example repository.",
+                        "id": "clJ9F9JpP43ulGbbdkaHw5dTZTd9jONE",
+                        "isArchived": false,
+                        "isDisabled": false,
+                        "isFork": false,
+                        "isLocked": false,
+                        "lockReason": null,
+                        "mergeCommitAllowed": true,
+                        "name": "example-repo-5",
+                        "owner": {
+                            "login": "acme-org"
+                        },
+                        "parent": null,
+                        "primaryLanguage": {
+                            "color": "#00ADD8",
+                            "name": "Go"
+                        },
+                        "pushedAt": "2022-11-03T10:19:17Z",
+                        "rebaseMergeAllowed": true,
+                        "squashMergeAllowed": true,
+                        "viewerDefaultMergeMethod": "MERGE",
+                        "viewerPermission": "MAINTAIN",
+                        "visibility": "PUBLIC"
+                    },
+                    "title": "Example title 9",
+                    "updatedAt": "2021-02-26T11:01:33Z",
+                    "url": "https://github.com/acme-org/example-repo-5/issues/3"
+                }
+            ]
+        },
+        "w3": {
+            "issueCount": 0,
+            "nodes": []
+        },
+        "w4": {
+            "issueCount": 2,
+            "nodes": null
+        }
+    },
+    "errors": [
+        {
+            "locations": [
+                {
+                    "column": 5,
+                    "line": 20
+                }
+            ],
+            "message": "`bm90LWEtY3Vyc29y` does not appear to be a valid cursor.",
+            "path": [
+                "w4",
+                "nodes"
+            ],
+            "type": "INVALID_CURSOR_ARGUMENTS"
+        }
+    ]
+}

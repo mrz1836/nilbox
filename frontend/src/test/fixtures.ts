@@ -1182,6 +1182,11 @@ export function rate(overrides: Partial<Rate> = {}): Rate {
   }
 }
 
+// noPurposes is a budget's spend split by what each request was for, with nothing spent.
+export function noPurposes(): BudgetReading['purposes'] {
+  return { inbox: 0, watches: 0, follower: 0, autopilot: 0, other: 0 }
+}
+
 // unreadBudget is a budget GitHub has not reported yet.
 export const unreadBudget: BudgetReading = {
   known: false,
@@ -1193,6 +1198,7 @@ export const unreadBudget: BudgetReading = {
   spent: 0,
   requests: 0,
   complete: false,
+  purposes: noPurposes(),
 }
 
 // reading is a GraphQL-sized budget reading, taken a minute before the tests' noon and
@@ -1208,6 +1214,7 @@ export function reading(overrides: Partial<BudgetReading> = {}): BudgetReading {
     spent: 0,
     requests: 0,
     complete: true,
+    purposes: noPurposes(),
     ...overrides,
   }
 }

@@ -6,10 +6,19 @@
 import * as catalog$0 from "./catalog/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
+import * as eval$0 from "./eval/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
+import * as facts$0 from "./facts/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
 import * as spec$0 from "./spec/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
 import * as autopilotprefs$0 from "../autopilotprefs/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
+import * as item$0 from "../item/models.js";
 
 /**
  * Draft is a routine as the builder saves it.
@@ -42,6 +51,25 @@ export interface Draft {
      * routine saved before keeps its own.
      */
     "templateKey"?: string;
+}
+
+/**
+ * Estimate is what a routine's searches add to the API budget.
+ */
+export interface Estimate {
+    /**
+     * Requests is how many requests a refresh sends for them, packed as the refresh packs
+     * them, and PointsPerRefresh what those cost, as recorded.
+     */
+    "requests": number;
+    "pointsPerRefresh": number;
+
+    /**
+     * PointsPerHour is what they cost an hour at the refresh's pace, and Percent that
+     * share of the hourly GraphQL budget.
+     */
+    "pointsPerHour": number;
+    "percent": number;
 }
 
 /**
@@ -115,4 +143,117 @@ export interface Routine {
     "lastError": string;
     "createdAt": string;
     "updatedAt": string;
+}
+
+/**
+ * Suggestions is what the stored items hold that the builder suggests, each most common
+ * first: the people and the bots who opened them, the owners of their repositories, their
+ * labels, and their check names.
+ */
+export interface Suggestions {
+    "authors": string[] | null;
+    "bots": string[] | null;
+    "owners": string[] | null;
+    "labels": string[] | null;
+    "checks": string[] | null;
+}
+
+/**
+ * TestItem is one item a draft watches, and what the routine decides about it.
+ */
+export interface TestItem {
+    "id": number;
+    "kind": item$0.Kind;
+    "repo": string;
+    "number": number;
+    "title": string;
+    "url": string;
+
+    /**
+     * Match is yes, no, or unknown; FireKey is the occurrence it fires for while the
+     * trigger holds; Needs is what a read would have to bring for an unknown to decide.
+     */
+    "match": eval$0.Result;
+    "fireKey": string;
+    "needs": facts$0.Need[] | null;
+
+    /**
+     * Trace is each step of the decision: the trigger, then each condition that ran.
+     */
+    "trace": eval$0.Trace[] | null;
+}
+
+/**
+ * TestResult is a draft tried on its items now: what each search found, and what the
+ * routine decides about each item, with what the test spent and what the searches would
+ * cost a refresh.
+ */
+export interface TestResult {
+    /**
+     * Searches are the draft's searches, each with what it found and any warning.
+     */
+    "searches": TestSearch[] | null;
+
+    /**
+     * Items are the items it watches, the matches first, each with the routine's decision;
+     * at most maxTestItems.
+     */
+    "items": TestItem[] | null;
+
+    /**
+     * Matched, Unknown, and Watched count the items the routine matches, can't decide yet,
+     * and watches in all.
+     */
+    "matched": number;
+    "unknown": number;
+    "watched": number;
+
+    /**
+     * Points is what the test spent of the GraphQL budget: its searches, the details of
+     * the items they returned, and the check names it read. Cached says its searches were
+     * read within the last minute, and cost nothing again.
+     */
+    "points": number;
+    "cached": boolean;
+
+    /**
+     * LowBudget says the GraphQL budget was under a quarter of its size, so the test sent
+     * nothing: each search it had no answer for says so, and no check name was read, even
+     * when every search came from the last minute's cache.
+     */
+    "lowBudget": boolean;
+
+    /**
+     * Estimate is what the draft's searches would add to each refresh.
+     */
+    "estimate": Estimate;
+}
+
+/**
+ * TestSearch is one of a draft's searches, as a test read it.
+ */
+export interface TestSearch {
+    /**
+     * Query is what GitHub was sent.
+     */
+    "query": string;
+
+    /**
+     * Count is how many items it matches, Returned how many it returned, and Truncated
+     * reports it returned only the 100 most recently updated.
+     */
+    "count": number;
+    "returned": number;
+    "truncated": boolean;
+
+    /**
+     * Error is why GitHub didn't answer it, in the window's words, "" when it did.
+     */
+    "error": string;
+
+    /**
+     * Warnings are what may make it find less than meant, such as an owner the inbox has
+     * never seen, which GitHub answers with nothing rather than an error.
+     */
+    "warnings": string[] | null;
 }

@@ -243,7 +243,7 @@ func sendGraphQL[T any](
 		return nil, nil, err
 	}
 
-	c.observe(header, cost(raw))
+	c.observe(ctx, header, cost(raw))
 
 	var resp graphQLResponse[T]
 	if err = json.Unmarshal(raw, &resp); err != nil {
@@ -398,9 +398,9 @@ func (c *Client) do(
 
 	// Every answer counts against a budget, a refusal included, and says what is left.
 	notModified := etag != "" && resp.StatusCode == http.StatusNotModified
-	c.observe(resp.Header, answerSpend(path, notModified))
+	c.observe(ctx, resp.Header, answerSpend(path, notModified))
 
-	data, err := c.readAnswer(resp, path)
+	data, err := c.readAnswer(ctx, resp, path)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -418,13 +418,13 @@ func (c *Client) do(
 	return data, resp.Header, nil
 }
 
-// readAnswer reads the body of the answer to a request to path. A query GitHub answered
-// cost at least a point, which an answer too large to read can't report, as sendGraphQL
-// would have read it to, so that point is counted here.
-func (c *Client) readAnswer(resp *http.Response, path string) ([]byte, error) {
+// readAnswer reads the body of the answer to a request to path, sent under ctx. A query
+// GitHub answered cost at least a point, which an answer too large to read can't report,
+// as sendGraphQL would have read it to, so that point is counted here.
+func (c *Client) readAnswer(ctx context.Context, resp *http.Response, path string) ([]byte, error) {
 	data, err := readBody(resp.Body)
 	if err != nil && path == graphQLPath && errors.Is(err, ErrResponseTooLarge) {
-		c.observe(resp.Header, minQueryCost)
+		c.observe(ctx, resp.Header, minQueryCost)
 	}
 
 	return data, err
@@ -599,6 +599,10 @@ type Item struct {
 
 	// State is StateOpen, StateClosed, or StateMerged, and "" when GitHub did not say.
 	State string
+
+	// ClosedAt is when a closed or merged item closed, as a routine's search reads it; zero
+	// while it is open, and for a read that doesn't ask.
+	ClosedAt time.Time
 
 	// IsDraft and HeadRef are set for pull requests only.
 	IsDraft bool
@@ -798,10 +802,23 @@ func scopeRefused(errs []graphQLError) bool {
 }
 
 // graphQLError is one entry of a GraphQL errors array. Type is GitHub's error type,
-// such as NOT_FOUND, when it gives one.
+// such as NOT_FOUND, when it gives one, and Path the field it is about, from the query's
+// top, as in ["w2", "nodes"], when it is about one.
 type graphQLError struct {
 	Message string `json:"message"`
 	Type    string `json:"type"`
+	Path    []any  `json:"path"`
+}
+
+// top returns the top-level field, or alias, the error is about, "" when it names none.
+func (e graphQLError) top() string {
+	if len(e.Path) == 0 {
+		return ""
+	}
+
+	name, _ := e.Path[0].(string)
+
+	return name
 }
 
 // graphQLData is the inbox query's data object.

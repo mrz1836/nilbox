@@ -34,38 +34,42 @@ import (
 // refreshes, and the stored inbox is left as it was.
 //
 // Once it has let go of the item, it tells the outcome sink of a merge or a close the
-// answer it stored shows.
+// answer it stored shows, and the Changed seam that it stored the item.
 func (s *Service) RefreshItem(ctx context.Context, id int64) (Snapshot, error) {
-	snap, told, err := s.refreshItemLocked(ctx, id)
+	snap, told, wrote, err := s.refreshItemLocked(ctx, id)
 	s.settle(ctx, told)
+
+	if wrote {
+		s.tellChanged([]int64{id})
+	}
 
 	return snap, err
 }
 
 // refreshItemLocked is RefreshItem under the item's lock. It returns what to tell once the
-// lock is let go.
-func (s *Service) refreshItemLocked(ctx context.Context, id int64) (Snapshot, []Outcome, error) {
+// lock is let go, and whether it stored the item.
+func (s *Service) refreshItemLocked(ctx context.Context, id int64) (Snapshot, []Outcome, bool, error) {
 	unlock, err := s.items.lock(ctx, id)
 	if err != nil {
-		return Snapshot{}, nil, fmt.Errorf("refresh the item: %w", err)
+		return Snapshot{}, nil, false, fmt.Errorf("refresh the item: %w", err)
 	}
 
 	defer unlock()
 
 	told, wrote, err := s.refreshItem(ctx, id)
 	if err != nil {
-		return Snapshot{}, nil, fmt.Errorf("refresh the item: %w", err)
+		return Snapshot{}, nil, false, fmt.Errorf("refresh the item: %w", err)
 	}
 
 	if !wrote {
 		snap, snapErr := s.Snapshot(ctx)
 
-		return snap, nil, snapErr
+		return snap, nil, false, snapErr
 	}
 
 	snap, err := s.changed(ctx)
 
-	return snap, told, err
+	return snap, told, true, err
 }
 
 // refreshItem reads the stored item, asks GitHub about it, and stores the answer. It
@@ -144,7 +148,7 @@ func (w *writer) rewrite(ctx context.Context, id int64, it github.Item) error {
 		NodeID: it.NodeID, Title: it.Title, URL: it.URL, AuthorLogin: it.AuthorLogin, AuthorType: it.AuthorType,
 		AuthorAssociation: it.AuthorAssociation, IsCrossRepository: it.IsCrossRepository, IsDraft: it.IsDraft,
 		HeadRef: it.HeadRef, ItemCreatedAt: it.CreatedAt.UTC(), ItemUpdatedAt: it.UpdatedAt.UTC(),
-		FetchedAt: w.now, ID: id,
+		State: it.State, ClosedAt: timeOrNil(it.ClosedAt), FetchedAt: w.now, ID: id,
 	})
 	if err != nil {
 		return fmt.Errorf("update the item: %w", err)
@@ -212,17 +216,28 @@ func answeredReview(it github.Item, d github.ItemDetails, login string) bool {
 	}
 }
 
-// unlistActed takes an item the user just merged or closed out of every list.
-func (w *writer) unlistActed(ctx context.Context, id int64) error {
-	if err := w.q.UnlistItem(ctx, queries.UnlistItemParams{FetchedAt: w.now, ID: id}); err != nil {
+// unlistActed takes an item the user just merged or closed out of every list, with the
+// state the action left it in (state, "" when it didn't say), and out of every routine's
+// search, which asks for open items only.
+func (w *writer) unlistActed(ctx context.Context, id int64, state string) error {
+	err := w.q.UnlistItem(ctx, queries.UnlistItemParams{
+		State: state, ClosedAt: stampIf(state != "", w.now), FetchedAt: w.now, ID: id,
+	})
+	if err != nil {
 		return fmt.Errorf("take the merged or closed item out of the lists: %w", err)
+	}
+
+	if err = w.q.DeleteItemWatches(ctx, id); err != nil {
+		return fmt.Errorf("take the merged or closed item out of the routines' searches: %w", err)
 	}
 
 	return nil
 }
 
 // unlist takes an item out of every list. An item in an archived repository records the
-// repository first, so it is known as archived, as a whole refresh does.
+// repository first, so it is known as archived, as a whole refresh does. An item the read
+// found merged, closed, or gone records its state, and leaves every routine's search too,
+// since they ask for open items only.
 func (w *writer) unlist(ctx context.Context, id int64, update *github.ItemUpdate) error {
 	if update.Found && update.Item.Repo.IsArchived {
 		if _, err := w.repoID(ctx, update.Item); err != nil {
@@ -230,8 +245,22 @@ func (w *writer) unlist(ctx context.Context, id int64, update *github.ItemUpdate
 		}
 	}
 
-	if err := w.q.UnlistItem(ctx, queries.UnlistItemParams{FetchedAt: w.now, ID: id}); err != nil {
+	state := ""
+	if update.Found {
+		state = update.Item.State
+	}
+
+	err := w.q.UnlistItem(ctx, queries.UnlistItemParams{
+		State: state, ClosedAt: timeOrNil(update.Item.ClosedAt), FetchedAt: w.now, ID: id,
+	})
+	if err != nil {
 		return fmt.Errorf("take the item out of the lists: %w", err)
+	}
+
+	if !update.Found || update.Item.Closed() {
+		if err = w.q.DeleteItemWatches(ctx, id); err != nil {
+			return fmt.Errorf("take the item out of the routines' searches: %w", err)
+		}
 	}
 
 	return nil

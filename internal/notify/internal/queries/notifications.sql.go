@@ -133,6 +133,35 @@ func (q *Queries) ListNotifications(ctx context.Context, rowLimit int64) ([]Noti
 	return items, nil
 }
 
+const listNotifiedItems = `-- name: ListNotifiedItems :many
+SELECT DISTINCT item_id FROM notifications WHERE item_id IS NOT NULL ORDER BY item_id
+`
+
+// ListNotifiedItems returns each inbox item a notification is about, once: the items the
+// inbox keeps while a notification names them.
+func (q *Queries) ListNotifiedItems(ctx context.Context) ([]*int64, error) {
+	rows, err := q.db.QueryContext(ctx, listNotifiedItems)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []*int64{}
+	for rows.Next() {
+		var item_id *int64
+		if err := rows.Scan(&item_id); err != nil {
+			return nil, err
+		}
+		items = append(items, item_id)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const markAllRead = `-- name: MarkAllRead :exec
 UPDATE notifications SET read_at = ?1 WHERE read_at IS NULL
 `

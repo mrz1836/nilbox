@@ -233,6 +233,35 @@ func (q *Queries) InsertSession(ctx context.Context, arg InsertSessionParams) er
 	return err
 }
 
+const listSessionItems = `-- name: ListSessionItems :many
+SELECT DISTINCT item_id FROM agent_sessions WHERE item_id > 0 ORDER BY item_id
+`
+
+// ListSessionItems returns each inbox item a session was launched for, once: the items the
+// inbox keeps while a session names them.
+func (q *Queries) ListSessionItems(ctx context.Context) ([]int64, error) {
+	rows, err := q.db.QueryContext(ctx, listSessionItems)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []int64{}
+	for rows.Next() {
+		var item_id int64
+		if err := rows.Scan(&item_id); err != nil {
+			return nil, err
+		}
+		items = append(items, item_id)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const liveSessions = `-- name: LiveSessions :many
 SELECT id, agent_session_id, resumed_from, agent, profile, config_dir, prompt, prompt_head, terminal,
     item_id, owner, name, kind, number, title, url, dir, clone_path, worktree, pid,

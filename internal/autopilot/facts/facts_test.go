@@ -230,6 +230,7 @@ func TestBuildChecks(t *testing.T) {
 	tests := []struct {
 		name     string
 		checks   facts.ChecksRow
+		rollup   string
 		failed   facts.Value
 		names    facts.Value
 		required facts.Value
@@ -272,11 +273,33 @@ func TestBuildChecks(t *testing.T) {
 			required: facts.Bool(false), done: facts.StatusUnknown,
 		},
 		{
-			name: "only some checks read",
+			name: "only some checks read, the rest still running",
 			checks: facts.ChecksRow{Head: head, Checks: []facts.CheckRow{
 				{Name: "test", Workflow: "CI", Outcome: facts.CheckFailed, Required: ptr(false), CompletedAt: finished},
 			}},
+			rollup: "PENDING",
 			failed: facts.List([]string{"CI / test"}, true), names: facts.List([]string{"CI / test"}, true),
+			required: facts.Unknown("whether a failed check is required isn't known", facts.NeedNothing),
+			done:     facts.StatusUnknown,
+		},
+		{
+			name: "only some checks read, the rollup saying the rest finished",
+			checks: facts.ChecksRow{Head: head, Checks: []facts.CheckRow{
+				{Name: "test", Workflow: "CI", Outcome: facts.CheckFailed, Required: ptr(false), CompletedAt: finished},
+				{Name: "deploy", Workflow: "CD", Outcome: facts.CheckSkipped},
+			}},
+			rollup: "FAILURE",
+			failed: facts.List([]string{"CI / test"}, true), names: facts.List([]string{"CI / test", "CD / deploy"}, true),
+			required: facts.Unknown("whether a failed check is required isn't known", facts.NeedNothing),
+			done:     facts.StatusKnown,
+		},
+		{
+			name: "only some checks read, with no rollup to say",
+			checks: facts.ChecksRow{Head: head, Checks: []facts.CheckRow{
+				{Name: "test", Workflow: "CI", Outcome: facts.CheckPassed, CompletedAt: finished},
+			}},
+			rollup: "none",
+			failed: facts.List([]string{}, true), names: facts.List([]string{"CI / test"}, true),
 			required: facts.Unknown("whether a failed check is required isn't known", facts.NeedNothing),
 			done:     facts.StatusUnknown,
 		},
@@ -294,6 +317,14 @@ func TestBuildChecks(t *testing.T) {
 
 			row := prRow()
 			row.Checks = &tt.checks
+
+			switch tt.rollup {
+			case "":
+			case "none":
+				row.Details.ChecksState = ""
+			default:
+				row.Details.ChecksState = tt.rollup
+			}
 
 			f := facts.Build(row, env())
 			assert.Equal(t, tt.failed, f.Value(catalog.FieldFailedNames))

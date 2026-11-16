@@ -57,6 +57,11 @@ type RefreshReport struct {
 
 	// Limit is the hourly GraphQL point budget GitHub reported.
 	Limit int
+
+	// Searches is how many routine searches each refresh read beside the inbox's own, and
+	// Passes what each refresh's watch pass did; none without searches.
+	Searches int
+	Passes   []PassTime
 }
 
 // TimeRefreshes runs refresh runs times, one after another, and records each duration and
@@ -122,13 +127,15 @@ func (r RefreshReport) Lines() []string {
 		lines = append(lines, fmt.Sprintf("refresh.run=%d ms=%s", i+1, milliseconds(d)))
 	}
 
-	return append(lines,
+	lines = append(lines,
 		fmt.Sprintf("refresh.median_ms=%s median_s=%s", milliseconds(r.Median()), seconds(r.Median())),
 		fmt.Sprintf("refresh.graphql_cost=%d", r.Cost),
 		fmt.Sprintf("refresh.graphql_limit=%d", r.HourlyBudget()),
 		fmt.Sprintf("refresh.hourly_points=%d (cost x %d refreshes per hour)", r.HourlyPoints(), RefreshesPerHour),
 		fmt.Sprintf("refresh.budget_pct=%.2f", r.BudgetPercent()),
 	)
+
+	return append(lines, r.passLines()...)
 }
 
 // RefreshOptions configure RunRefresh. Home is required.
@@ -141,6 +148,12 @@ type RefreshOptions struct {
 
 	// Runs is how many refreshes to time; zero means RefreshRuns.
 	Runs int
+
+	// Searches is how many routine searches each refresh reads beside the inbox's own, at
+	// most MaxSearches: each is a search over the signed-in account (Dependabot's pull
+	// requests, those ready for review, the issues, and so on), in a routine of its own.
+	// Zero reads none.
+	Searches int
 
 	// TempDir is where the scratch data directory is created; "" uses the system default.
 	TempDir string
@@ -178,5 +191,9 @@ func RunRefresh(ctx context.Context, opts RefreshOptions) (RefreshReport, error)
 
 	defer func() { _ = c.Close() }()
 
-	return TimeRefreshes(ctx, c.Inbox, runs, time.Now)
+	if opts.Searches <= 0 {
+		return TimeRefreshes(ctx, c.Inbox, runs, time.Now)
+	}
+
+	return timeWithSearches(ctx, c, runs, min(opts.Searches, MaxSearches))
 }

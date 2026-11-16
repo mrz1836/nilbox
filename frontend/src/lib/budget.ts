@@ -194,6 +194,33 @@ export function paceOf(gauge: BudgetGauge): Pace | null {
   }
 }
 
+// AutopilotShare is what Autopilot spent of the GraphQL budget since it last refilled: its
+// routines' searches and the details of what they watch, and its own reads.
+export interface AutopilotShare {
+  points: number
+  // percent is points as a share of the GraphQL budget.
+  percent: number
+}
+
+// autopilotShareOf returns Autopilot's share of the GraphQL budget, or null when it spent
+// nothing since the budget last refilled, so a user with no routine never sees a line for
+// it.
+export function autopilotShareOf(gauge: BudgetGauge, now: Date): AutopilotShare | null {
+  const { graphql } = gauge
+
+  if (!graphql.known || hasReset(graphql, now)) {
+    return null
+  }
+
+  const points = graphql.purposes.watches + graphql.purposes.autopilot
+
+  if (points <= 0) {
+    return null
+  }
+
+  return { points, percent: graphql.limit > 0 ? (points / graphql.limit) * 100 : 0 }
+}
+
 // newestRead is when the newest reading was taken, as RFC 3339, or '' before any.
 export function newestRead(gauge: BudgetGauge | null): string {
   if (gauge === null) {

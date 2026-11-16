@@ -179,6 +179,10 @@ func (a *Actor) Act(
 
 	s.settle(ctx, pullOutcomes(done.row, done.acted, s.now()))
 
+	if done.acted.any() {
+		s.tellChanged([]int64{id})
+	}
+
 	return snap, err
 }
 
@@ -203,6 +207,10 @@ func (a *Actor) ActIssue(
 	})
 
 	s.settle(ctx, issueOutcomes(done.row, done.acted.Closed, own, s.now()))
+
+	if done.acted.any() {
+		s.tellChanged([]int64{id})
+	}
 
 	return snap, err
 }
@@ -280,6 +288,10 @@ func (a *Actor) ReadPull(
 ) (Snapshot, error) {
 	snap, told, err := a.s.readPull(ctx, id, read)
 	a.s.settle(ctx, told)
+
+	if err == nil {
+		a.s.tellChanged([]int64{id})
+	}
 
 	return snap, err
 }
@@ -376,6 +388,10 @@ func (a *Actor) ReadIssue(
 ) (Snapshot, error) {
 	snap, told, err := a.s.readIssue(ctx, id, read)
 	a.s.settle(ctx, told)
+
+	if err == nil {
+		a.s.tellChanged([]int64{id})
+	}
 
 	return snap, err
 }
@@ -520,7 +536,7 @@ func (s *Service) targetRow(ctx context.Context, id int64, kind item.Kind, liste
 	switch {
 	case item.Kind(row.Kind) != kind || row.NodeID == "":
 		return editRow{}, fmt.Errorf("%w (id %d)", notKind, id)
-	case listed && !row.ReasonReviewRequested && !row.ReasonAuthored && !row.ReasonAssigned:
+	case listed && !row.ReasonReviewRequested && !row.ReasonAuthored && !row.ReasonAssigned && !row.Watched:
 		return editRow{}, uierr.New(fmt.Sprintf("%s is no longer in your inbox.", refOfRow(row)),
 			fmt.Errorf("%w (id %d)", notKind, id))
 	default:
@@ -581,7 +597,13 @@ func (s *Service) recordActed(ctx context.Context, row editRow, acted Acted) err
 	}
 
 	if acted.Merged || acted.Closed {
-		if _, err := s.storeItemWrite(ctx, itemWrite{id: target.ID, seq: s.startFetch(), unlist: true}); err != nil {
+		state := github.StateClosed
+		if acted.Merged {
+			state = github.StateMerged
+		}
+
+		w := itemWrite{id: target.ID, seq: s.startFetch(), unlist: true, state: state}
+		if _, err := s.storeItemWrite(ctx, w); err != nil {
 			return fmt.Errorf("record the merge or close: %w", err)
 		}
 	}

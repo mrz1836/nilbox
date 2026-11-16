@@ -34,6 +34,38 @@ export interface Gauge {
 }
 
 /**
+ * Purposes is what the app spent from one budget since it last refilled, by what it sent
+ * each request for (github.Purpose). Autopilot's share is Watches and Autopilot together.
+ */
+export interface Purposes {
+    /**
+     * Inbox is the whole inbox refreshes: the inbox query, the details, and the file
+     * checks.
+     */
+    "inbox": number;
+
+    /**
+     * Watches is the routines' searches and their watched items' details.
+     */
+    "watches": number;
+
+    /**
+     * Follower is the checks follower's rounds.
+     */
+    "follower": number;
+
+    /**
+     * Autopilot is Autopilot's own reads, such as check names and a routine's test.
+     */
+    "autopilot": number;
+
+    /**
+     * Other is everything else the app sent: an item's own read, a sheet's, an edit.
+     */
+    "other": number;
+}
+
+/**
  * Reading is one budget as GitHub last reported it, and what the app spent from it since
  * it last refilled.
  */
@@ -60,6 +92,11 @@ export interface Reading {
     "spent": number;
     "requests": number;
     "complete": boolean;
+
+    /**
+     * Purposes splits Spent by what the app sent each request for; they add up to Spent.
+     */
+    "purposes": Purposes;
 }
 
 /**

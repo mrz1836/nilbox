@@ -40,3 +40,8 @@ UPDATE notifications SET read_at = sqlc.arg(read_at) WHERE read_at IS NULL AND i
 -- MarkUnread marks the read notifications among ids unread again, and returns how many it
 -- marked.
 UPDATE notifications SET read_at = NULL WHERE read_at IS NOT NULL AND id IN (sqlc.slice(ids));
+
+-- name: ListNotifiedItems :many
+-- ListNotifiedItems returns each inbox item a notification is about, once: the items the
+-- inbox keeps while a notification names them.
+SELECT DISTINCT item_id FROM notifications WHERE item_id IS NOT NULL ORDER BY item_id;

@@ -117,6 +117,9 @@ const (
 	// NameAutopilotChanged is AutopilotChanged's name.
 	NameAutopilotChanged = "settings:autopilotChanged"
 
+	// NameInboxItemsChanged is InboxItemsChanged's name.
+	NameInboxItemsChanged = "inbox:itemsChanged"
+
 	// NameUpdatesUpdated is UpdatesUpdated's name.
 	NameUpdatesUpdated = "updates:updated"
 
@@ -409,6 +412,18 @@ type AutopilotChanged struct{}
 
 // Name returns NameAutopilotChanged.
 func (AutopilotChanged) Name() string { return NameAutopilotChanged }
+
+// InboxItemsChanged says the inbox stored items outside a whole refresh: what the
+// routines' searches watch, a round of the checks follower, or an item's own read or an
+// action on it. It stays in Go, for what acts on the items to read them again; the window
+// hears the inbox's own changes as InboxUpdated.
+type InboxItemsChanged struct {
+	// IDs are the items stored, each once, in order.
+	IDs []int64
+}
+
+// Name returns NameInboxItemsChanged.
+func (InboxItemsChanged) Name() string { return NameInboxItemsChanged }
 
 // UpdatesUpdated says the app's update changed: a check started or ended, a download got
 // further (a few times a second at most), a version is ready, a restart began or failed,

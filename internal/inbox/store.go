@@ -22,17 +22,31 @@ import (
 // account. The tables (accounts, repos, items, item_details, item_files,
 // item_local_state, and rate_snapshots) belong to this package; no other touches them.
 type Store struct {
+	db    *sql.DB
 	q     *queries.Queries
 	prefs *prefs.Store
 	clock clock.Clock
+
+	// order is the write order NoteStates stores through, which a Service built with this
+	// Store (Config.Store) shares.
+	order *writeOrder
 }
 
-// NewStore returns a Store over the pool db. RememberClone stamps the repository from c;
-// a nil c is the system clock.
+// NewStore returns a Store over the pool db. RememberClone stamps the repository from c,
+// and StartRead times a read by it; a nil c is the system clock.
 func NewStore(db *sql.DB, c clock.Clock) *Store {
 	c = clock.Or(c)
 
-	return &Store{q: queries.New(db), prefs: prefs.New(db, c), clock: c}
+	return &Store{db: db, q: queries.New(db), prefs: prefs.New(db, c), clock: c, order: &writeOrder{}}
+}
+
+// orderOf returns the write order of st, or a new one without a Store.
+func orderOf(st *Store) *writeOrder {
+	if st == nil || st.order == nil {
+		return &writeOrder{}
+	}
+
+	return st.order
 }
 
 // ViewerLogin returns the signed-in account's login as the last refresh recorded it, or ""

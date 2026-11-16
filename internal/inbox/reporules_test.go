@@ -148,7 +148,7 @@ func TestFollowableTakesTheFirstOfThoseNotMuted(t *testing.T) {
 			name = "muted-repo"
 		}
 
-		listed = append(listed, queries.ListRunningChecksRow{ID: int64(i), RepoOwner: acmeOrg, RepoName: name})
+		listed = append(listed, queries.ListRunningChecksRow{ID: int64(i), RepoOwner: acmeOrg, RepoName: name, Listed: true})
 	}
 
 	got := followable(listed, reporules.Rules{Muted: []string{"acme-org/muted-repo"}})
@@ -158,6 +158,27 @@ func TestFollowableTakesTheFirstOfThoseNotMuted(t *testing.T) {
 
 	assert.Len(t, followable(listed, reporules.Rules{}), followMax, "at most followMax a round")
 	assert.Empty(t, followable(nil, reporules.Rules{}))
+}
+
+func TestFollowableKeepsTheMutedPullRequestsARoutineFollows(t *testing.T) {
+	t.Parallel()
+
+	muted := reporules.Rules{Muted: []string{"acme-org/muted-repo"}}
+	rows := []queries.ListRunningChecksRow{
+		{ID: 1, RepoOwner: acmeOrg, RepoName: "muted-repo", Listed: true},
+		{ID: 2, RepoOwner: acmeOrg, RepoName: "muted-repo", Followed: true},
+		{ID: 3, RepoOwner: acmeOrg, RepoName: "muted-repo", Listed: true, Followed: true},
+		{ID: 4, RepoOwner: acmeOrg, RepoName: "example-repo", Followed: true},
+	}
+
+	got := followable(rows, muted)
+
+	ids := make([]int64, 0, len(got))
+	for _, r := range got {
+		ids = append(ids, r.ID)
+	}
+
+	assert.Equal(t, []int64{2, 3, 4}, ids, "a routine watches a muted repository on purpose; a listed one alone stays out")
 }
 
 func TestARefreshChecksNoFilesInAMutedRepository(t *testing.T) {

@@ -27,19 +27,41 @@ const (
 	firstName = "First"
 )
 
-// accounts is a fake account signed in, which a test may change.
+// accounts is a fake account signed in, which a test may change. hold, when set, holds the
+// next read until it is closed, and closes arrived once that read waits.
 type accounts struct {
 	mu    sync.Mutex
 	login string
 	err   error
+
+	hold, arrived chan struct{}
 }
 
-// ViewerLogin returns the account signed in.
+// ViewerLogin returns the account signed in, once any hold set is let go.
 func (a *accounts) ViewerLogin(context.Context) (string, error) {
+	a.mu.Lock()
+	login, err, hold, arrived := a.login, a.err, a.hold, a.arrived
+	a.hold = nil
+	a.mu.Unlock()
+
+	if hold != nil {
+		close(arrived)
+		<-hold
+	}
+
+	return login, err
+}
+
+// holdNext holds the next read of the account until the returned func lets it go, and
+// returns a channel closed once that read waits.
+func (a *accounts) holdNext() (<-chan struct{}, func()) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
-	return a.login, a.err
+	a.hold, a.arrived = make(chan struct{}), make(chan struct{})
+	hold := a.hold
+
+	return a.arrived, func() { close(hold) }
 }
 
 // signIn signs login in.

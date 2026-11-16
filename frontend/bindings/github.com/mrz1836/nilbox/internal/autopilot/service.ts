@@ -102,3 +102,37 @@ export function SetEnabled(id: number, on: boolean): $CancellablePromise<$models
 export function SetMode(id: number, mode: autopilotprefs$0.Mode): $CancellablePromise<$models.Routine> {
     return $Call.ByID(301999566, id, mode);
 }
+
+/**
+ * Suggest returns what the stored items hold that the builder suggests: the authors, bots,
+ * owners, labels, and check names it has seen. It reads the database alone, and no list is
+ * nil.
+ */
+export function Suggest(): $CancellablePromise<$models.Suggestions> {
+    return $Call.ByID(3880079967);
+}
+
+/**
+ * Test tries the draft d on its items now: its searches are read from GitHub, unless a
+ * test read them within the last minute, and the items they and its lists return are
+ * stored as the refresh stores watched items; the routine is evaluated on each, with the
+ * check names of the pull requests that need them read too (one batch); the searches are
+ * checked for an owner the inbox has never seen; and the result says what the test spent
+ * and what the searches would cost each refresh. While the GraphQL budget is low it sends
+ * nothing, and says so (LowBudget). A draft whose spec has problems is refused with them,
+ * as Save refuses it. It changes no routine, and runs nothing.
+ */
+export function Test(d: $models.Draft): $CancellablePromise<$models.TestResult> {
+    return $Call.ByID(99462951, d);
+}
+
+/**
+ * Watching returns the IDs of the stored items the routine id watches, newest activity
+ * first: those in the inbox lists it names and those its searches return, as the last
+ * refresh read them, a search that failed keeping its items. The inbox's ItemsByID turns
+ * them into rows. A routine that is gone or deleted is refused; one that is broken
+ * watches nothing.
+ */
+export function Watching(id: number): $CancellablePromise<number[] | null> {
+    return $Call.ByID(3078357006, id);
+}

@@ -93,6 +93,19 @@ func TestMeasureOnMacOS(t *testing.T) {
 		assert.Equal(t, []string{measure.RefreshFlag}, logLines(t, log))
 	})
 
+	t.Run("refresh reads routine searches when asked", func(t *testing.T) {
+		inTempDir(t)
+
+		log := filepath.Join(t.TempDir(), "app.log")
+		t.Setenv("APP_LOG", log)
+		t.Setenv(mageArgsJSON, `["searches=5"]`)
+		fakeBundle(t, `printf '%s\n' "$*" >> "$APP_LOG"`)
+
+		require.NoError(t, Measure{}.Refresh())
+
+		assert.Equal(t, []string{measure.RefreshFlag + " " + measure.SearchesFlag + "5"}, logLines(t, log))
+	})
+
 	t.Run("every measurement needs a built bundle", func(t *testing.T) {
 		inTempDir(t)
 
