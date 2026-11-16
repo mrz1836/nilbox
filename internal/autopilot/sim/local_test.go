@@ -450,3 +450,45 @@ func TestARestoreStepRunsAtOnceInACatchUp(t *testing.T) {
 		assert.Empty(t, s.InboxItem(1).DismissedAt)
 	})
 }
+
+func TestEachItemsLatestMatchIsWhatItsChipSays(t *testing.T) {
+	t.Parallel()
+
+	synctest.Test(t, func(t *testing.T) {
+		member := sim.Item{Number: 3, Assigned: true, Checks: passing, Passed: 4, Author: "octo-member"}
+		s, r := snoozing(t, autopilotprefs.ModeAuto, botPR(1), member)
+		one, three := s.InboxItem(1).ID, s.InboxItem(3).ID
+
+		got, err := s.Service.LatestMatches(t.Context(), []int64{one, three, 9999})
+		require.NoError(t, err)
+		require.Len(t, got, 1, "only the item a routine touched")
+		assert.Equal(t, one, got[0].Item.ID)
+		assert.Equal(t, r.ID, got[0].RoutineID)
+		require.Len(t, got[0].Effects, 1)
+		assert.Equal(t, catalog.StepSnooze, got[0].Effects[0].Action)
+		assert.True(t, got[0].Effects[0].CanUndo)
+
+		_, err = s.Service.Undo(t.Context(), []int64{got[0].Effects[0].ID})
+		require.NoError(t, err)
+
+		got, err = s.Service.LatestMatches(t.Context(), []int64{one})
+		require.NoError(t, err)
+		require.Len(t, got, 1, "an undone step still touched the item")
+		assert.NotNil(t, got[0].Effects[0].UndoneAt)
+
+		none, err := s.Service.LatestMatches(t.Context(), nil)
+		require.NoError(t, err)
+		assert.NotNil(t, none)
+		assert.Empty(t, none)
+	})
+
+	synctest.Test(t, func(t *testing.T) {
+		s, _ := snoozing(t, autopilotprefs.ModeDryRun, botPR(1))
+
+		got, err := s.Service.LatestMatches(t.Context(), []int64{s.InboxItem(1).ID})
+		require.NoError(t, err)
+		require.Len(t, got, 1)
+		assert.True(t, got[0].DryRun)
+		assert.Equal(t, autopilot.ReasonWouldRun, got[0].Reason)
+	})
+}

@@ -42,6 +42,20 @@ WHERE item_id = sqlc.arg(item_id)
 ORDER BY created_at DESC, id DESC
 LIMIT sqlc.arg(row_limit);
 
+-- name: ListLatestItemMatches :many
+-- ListLatestItemMatches returns, for each item among ids, its newest match that did
+-- something there or waits to: open, or closed as done, skipped, or dismissed, never a
+-- baseline or one that closed because the item or the routine moved on before it acted.
+-- Newest first.
+SELECT m.* FROM autopilot_matches AS m
+WHERE m.id IN (
+    SELECT MAX(l.id) FROM autopilot_matches AS l
+    WHERE l.item_id IN (sqlc.slice(ids))
+        AND l.state IN ('waiting', 'blocked', 'queued', 'running', 'verifying', 'done', 'skipped', 'dismissed')
+    GROUP BY l.item_id
+)
+ORDER BY m.id DESC;
+
 -- name: ListMatchesBefore :many
 -- ListMatchesBefore returns the matches recorded before the match before, newest first: a
 -- page of the Activity.

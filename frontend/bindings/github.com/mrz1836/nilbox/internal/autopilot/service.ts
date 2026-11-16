@@ -114,6 +114,17 @@ export function ItemHistory(id: number): $CancellablePromise<$models.ItemHistory
 }
 
 /**
+ * LatestMatches returns, for each item among ids a routine touched, its newest match that
+ * did something there or waits to (open, or closed as done, skipped, or dismissed; never a
+ * baseline, nor one that closed as the item or the routine moved on before it acted),
+ * newest first: what the ⚡ chip on each of the window's rows says. At most maxLatest ids
+ * are read. It reads the database alone, and the list is never nil.
+ */
+export function LatestMatches(ids: number[] | null): $CancellablePromise<$models.Match[] | null> {
+    return $Call.ByID(2372099981, ids);
+}
+
+/**
  * LetActAgain lets the routine id act on the item again, which it left alone since the
  * user reversed what it did there.
  */

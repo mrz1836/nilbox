@@ -708,6 +708,11 @@ func autopilotBoundCalls(t *testing.T) map[string]boundCall {
 
 			return c.Autopilot.ItemHistory(ctx, ids.item)
 		},
+		"autopilot.Service.LatestMatches": func(ctx context.Context, c *Core, ids seededItems) (any, error) {
+			boundMatch(ctx, t, c, ids.item, "Bound latest")
+
+			return c.Autopilot.LatestMatches(ctx, []int64{ids.item})
+		},
 		"autopilot.Service.Explain": func(ctx context.Context, c *Core, ids seededItems) (any, error) {
 			return c.Autopilot.Explain(ctx, boundRoutine(ctx, t, c, "Bound explain").ID, ids.item)
 		},

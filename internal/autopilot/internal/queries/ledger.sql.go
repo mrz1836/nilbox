@@ -795,6 +795,84 @@ func (q *Queries) ListItemRuns(ctx context.Context, ids []*int64) ([]ListItemRun
 	return items, nil
 }
 
+const listLatestItemMatches = `-- name: ListLatestItemMatches :many
+SELECT m.id, m.routine_id, m.item_id, m.account_login, m.repo_owner, m.repo_name, m.kind, m.number, m.title, m.url, m.fire_key, m.dry_run, m.manual, m.state, m.blocked_by, m.reason, m.detail, m.trace, m.steps, m.step, m.spec_hash, m.head_oid, m.auto_merge_at_match, m.approved, m.attempt, m.created_at, m.updated_at, m.decided_at, m.closed_at FROM autopilot_matches AS m
+WHERE m.id IN (
+    SELECT MAX(l.id) FROM autopilot_matches AS l
+    WHERE l.item_id IN (/*SLICE:ids*/?)
+        AND l.state IN ('waiting', 'blocked', 'queued', 'running', 'verifying', 'done', 'skipped', 'dismissed')
+    GROUP BY l.item_id
+)
+ORDER BY m.id DESC
+`
+
+// ListLatestItemMatches returns, for each item among ids, its newest match that did
+// something there or waits to: open, or closed as done, skipped, or dismissed, never a
+// baseline or one that closed because the item or the routine moved on before it acted.
+// Newest first.
+func (q *Queries) ListLatestItemMatches(ctx context.Context, ids []*int64) ([]AutopilotMatch, error) {
+	query := listLatestItemMatches
+	var queryParams []interface{}
+	if len(ids) > 0 {
+		for _, v := range ids {
+			queryParams = append(queryParams, v)
+		}
+		query = strings.Replace(query, "/*SLICE:ids*/?", strings.Repeat(",?", len(ids))[1:], 1)
+	} else {
+		query = strings.Replace(query, "/*SLICE:ids*/?", "NULL", 1)
+	}
+	rows, err := q.db.QueryContext(ctx, query, queryParams...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []AutopilotMatch{}
+	for rows.Next() {
+		var i AutopilotMatch
+		if err := rows.Scan(
+			&i.ID,
+			&i.RoutineID,
+			&i.ItemID,
+			&i.AccountLogin,
+			&i.RepoOwner,
+			&i.RepoName,
+			&i.Kind,
+			&i.Number,
+			&i.Title,
+			&i.URL,
+			&i.FireKey,
+			&i.DryRun,
+			&i.Manual,
+			&i.State,
+			&i.BlockedBy,
+			&i.Reason,
+			&i.Detail,
+			&i.Trace,
+			&i.Steps,
+			&i.Step,
+			&i.SpecHash,
+			&i.HeadOID,
+			&i.AutoMergeAtMatch,
+			&i.Approved,
+			&i.Attempt,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.DecidedAt,
+			&i.ClosedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listLedgerItems = `-- name: ListLedgerItems :many
 SELECT item_id FROM autopilot_matches WHERE item_id IS NOT NULL
 UNION
