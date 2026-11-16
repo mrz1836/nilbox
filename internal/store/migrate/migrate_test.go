@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"slices"
@@ -525,6 +526,41 @@ func TestEmbeddedMigrations(t *testing.T) {
 	for i, m := range migrations {
 		assert.Equal(t, i+1, m.Version, "embedded migrations are contiguous from 0001")
 		assert.True(t, strings.HasSuffix(m.File, ".sql"))
+	}
+}
+
+// Two branches that each add the next migration pass on their own and clash once both
+// merge, and the app then refuses to start. This reads the embedded files' names directly,
+// apart from Load, so the clash fails here, naming both files.
+func TestEmbeddedMigrationsHaveOneFilePerVersion(t *testing.T) {
+	t.Parallel()
+
+	entries, err := fs.ReadDir(migrate.Embedded(), ".")
+	require.NoError(t, err)
+
+	files := make(map[int][]string, len(entries))
+
+	for _, entry := range entries {
+		name := entry.Name()
+		if entry.IsDir() || !strings.HasSuffix(name, ".sql") {
+			continue
+		}
+
+		prefix, _, found := strings.Cut(name, "_")
+		require.True(t, found, "%s is named NNNN_<name>.sql", name)
+
+		version, convErr := strconv.Atoi(prefix)
+		require.NoError(t, convErr, "%s starts with its version", name)
+
+		files[version] = append(files[version], name)
+	}
+
+	require.NotEmpty(t, files)
+
+	for version, names := range files {
+		assert.Len(t, names, 1,
+			"migrations %s share version %d: keep the one a build may have applied, and renumber the other to the next free version",
+			strings.Join(names, ", "), version)
 	}
 }
 
