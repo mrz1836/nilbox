@@ -223,13 +223,24 @@ const maxPrintfWidth = 999
 var ErrPrintfWidth = errors.New("printf widths and precisions can be at most 999")
 
 // newTemplate returns an empty prompt template: named "prompt", failing on a missing
-// key, and with print, printf, and println bounded (see boundedPrintf).
+// key, with print, printf, and println bounded (see boundedPrintf), and with shellquote.
 func newTemplate() *template.Template {
 	return template.New(templateName).Option("missingkey=error").Funcs(template.FuncMap{
-		"printf":  boundedPrintf,
-		"print":   bounded(fmt.Sprint),
-		"println": bounded(fmt.Sprintln),
+		"printf":     boundedPrintf,
+		"print":      bounded(fmt.Sprint),
+		"println":    bounded(fmt.Sprintln),
+		"shellquote": shellQuote,
 	})
+}
+
+// shellQuote writes a value as one word of a POSIX shell command (textutil.ShellWord): as
+// it is when every shell reads it as itself, else in single quotes, so a value someone
+// else chose, such as a pull request's head branch, can never run as a command of its own.
+// A prompt names a value in a command it tells the agent to run through it, as in
+// `git push origin HEAD:refs/heads/{{shellquote .Branch}}`. Quoting can make text up to
+// four times longer, so its result is capped like printf's.
+func shellQuote(value any) (string, error) {
+	return capped(textutil.ShellWord(fmt.Sprint(value)))
 }
 
 // boundedPrintf is fmt.Sprintf, refusing widths and precisions over 999 and ones read

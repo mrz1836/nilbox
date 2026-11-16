@@ -42,6 +42,9 @@ describe('VariablesPanel', () => {
     const syntax = within(screen.getByRole('region', { name: 'Syntax' }))
     await userEvent.click(syntax.getByRole('button', { name: /Text only when a value is set/ }))
     expect(onInsertText).toHaveBeenCalledWith('{{if .InWorktree}}\n\n{{end}}')
+
+    await userEvent.click(syntax.getByRole('button', { name: /into a command as one word/ }))
+    expect(onInsertText).toHaveBeenCalledWith('{{shellquote .Branch}}')
   })
 
   it('searches names and descriptions', async () => {

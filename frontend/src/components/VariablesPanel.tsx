@@ -38,6 +38,11 @@ const syntax: readonly { code: string; insert: string; meaning: string }[] = [
     insert: '{{with .Labels}}Labels: {{.}}{{end}}',
     meaning: 'Use a value only when it is set.',
   },
+  {
+    code: '`git checkout {{shellquote .Branch}}`',
+    insert: '{{shellquote .Branch}}',
+    meaning: 'Put a value into a command as one word, quoted when it needs it.',
+  },
   { code: '{{/* note */}}', insert: '{{/*  */}}', meaning: 'A note that is never sent.' },
   { code: '{{- .Title -}}', insert: '{{- .Title -}}', meaning: 'Trim the spaces around it.' },
 ]

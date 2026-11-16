@@ -18,11 +18,13 @@ import (
 // allowedFuncs are the template functions a prompt may use, in the order help text
 // lists them. Go's other built-ins (call, index, slice, html, js, urlquery) are refused.
 func allowedFuncs() []string {
-	return []string{"and", "or", "not", "eq", "ne", "lt", "le", "gt", "ge", "len", "printf", "print", "println"}
+	return []string{
+		"and", "or", "not", "eq", "ne", "lt", "le", "gt", "ge", "len", "printf", "print", "println", "shellquote",
+	}
 }
 
 // funcHelp lists the functions a prompt may use, for error messages.
-const funcHelp = "You can use and, or, not, eq, ne, lt, le, gt, ge, len, and printf."
+const funcHelp = "You can use and, or, not, eq, ne, lt, le, gt, ge, len, printf, and shellquote."
 
 // parseErrorPattern matches Go's template parse errors: "template: prompt:3: message".
 var parseErrorPattern = regexp.MustCompile(`^template: ` + templateName + `:(\d+): (.*)$`)
