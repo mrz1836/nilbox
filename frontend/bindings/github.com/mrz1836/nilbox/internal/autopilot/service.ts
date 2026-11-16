@@ -100,6 +100,13 @@ export function Get(id: number): $CancellablePromise<$models.Routine> {
 }
 
 /**
+ * Glance returns Autopilot at a glance. It never returns a nil list.
+ */
+export function Glance(): $CancellablePromise<$models.Glance> {
+    return $Call.ByID(3021368891);
+}
+
+/**
  * ItemHistory returns what the routines did with the item id, newest first.
  */
 export function ItemHistory(id: number): $CancellablePromise<$models.ItemHistory> {

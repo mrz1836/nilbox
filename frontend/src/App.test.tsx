@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { beforeAll, beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest'
 
 import { brand } from './generated/brand'
-import type { Settings, TerminalID, AgentID, RemoveResult, TextSize } from './platform'
+import type { AutopilotTarget, Settings, TerminalID, AgentID, RemoveResult, TextSize } from './platform'
 import {
   afterMerge,
   appInfo,
@@ -36,6 +36,8 @@ import {
   worktreesSnapshot,
   agentSession,
   sessionsSnapshot,
+  autopilotAlert,
+  autopilotTarget,
 } from './test/fixtures'
 import { emit, listening, mocks, platform, renderApp } from './test/platform'
 
@@ -930,7 +932,7 @@ describe('App', () => {
     // bar or on a notification.
     function reveal(itemId: number, url = '') {
       act(() => {
-        emit('inbox:reveal', { itemId, url, runId: 0, runStarted: '', notificationId: 0 })
+        emit('inbox:reveal', { itemId, url, runId: 0, runStarted: '', notificationId: 0, autopilot: autopilotTarget() })
       })
     }
 
@@ -1325,7 +1327,14 @@ describe('App’s filter field', () => {
 
   function reveal(itemId: number) {
     act(() => {
-      emit('inbox:reveal', { itemId, url: '', runId: 0, runStarted: '', notificationId: 0 })
+      emit('inbox:reveal', {
+        itemId,
+        url: '',
+        runId: 0,
+        runStarted: '',
+        notificationId: 0,
+        autopilot: autopilotTarget(),
+      })
     })
   }
 
@@ -1806,7 +1815,14 @@ describe('the Scripts tab', () => {
 
     await views().findByRole('button', { name: 'Scripts' })
     act(() => {
-      emit('inbox:reveal', { itemId: 0, url: '', runId: 7, runStarted: '2026-11-10T16:00:00Z', notificationId: 0 })
+      emit('inbox:reveal', {
+        itemId: 0,
+        url: '',
+        runId: 7,
+        runStarted: '2026-11-10T16:00:00Z',
+        notificationId: 0,
+        autopilot: autopilotTarget(),
+      })
     })
 
     expect(await screen.findByRole('heading', { name: 'Checks · all files', level: 2 })).toBeInTheDocument()
@@ -1862,7 +1878,14 @@ describe('the Scripts tab', () => {
     // The banner's click says so too.
     await userEvent.click(within(await toast()).getByRole('button', { name: 'Close' }))
     act(() => {
-      emit('inbox:reveal', { itemId: 0, url: '', runId: 7, runStarted: '2026-11-10T16:00:00Z', notificationId: 0 })
+      emit('inbox:reveal', {
+        itemId: 0,
+        url: '',
+        runId: 7,
+        runStarted: '2026-11-10T16:00:00Z',
+        notificationId: 0,
+        autopilot: autopilotTarget(),
+      })
     })
 
     expect(within(await toast()).getByText('Turn on an integration in Settings to see your runs.')).toBeInTheDocument()
@@ -2040,9 +2063,15 @@ describe('the Notifications page', () => {
 
   describe('marking read without asking', () => {
     // click is a click on a banner, as the shell sends it.
-    function click(change: { itemId?: number; url?: string; runId?: number; notificationId: number }) {
+    function click(change: {
+      itemId?: number
+      url?: string
+      runId?: number
+      notificationId: number
+      autopilot?: AutopilotTarget
+    }) {
       act(() => {
-        emit('inbox:reveal', { itemId: 0, url: '', runId: 0, runStarted: '', ...change })
+        emit('inbox:reveal', { itemId: 0, url: '', runId: 0, runStarted: '', autopilot: autopilotTarget(), ...change })
       })
     }
 
@@ -2090,6 +2119,59 @@ describe('the Notifications page', () => {
       expect(platform.markNotificationsRead).toHaveBeenCalledExactlyOnceWith([6])
     })
 
+    it('marks an Autopilot banner read, and says the Autopilot tab isn’t in this version', async () => {
+      const alert = autopilotAlert({ id: 7 })
+
+      platform.listNotifications.mockResolvedValue({ items: [alert], unread: 1 })
+      await renderApp()
+      await screen.findByRole('button', { name: '1 unread notifications' })
+
+      act(() => {
+        emit('inbox:reveal', {
+          itemId: 1,
+          url: alert.url,
+          runId: 0,
+          runStarted: '',
+          notificationId: 7,
+          autopilot: alert.autopilot,
+        })
+      })
+
+      expect(platform.markNotificationsRead).toHaveBeenCalledExactlyOnceWith([7])
+      expect(
+        within(await screen.findByRole('group', { name: 'Notification' })).getByText(/Autopilot tab/),
+      ).toBeInTheDocument()
+      expect(platform.openExternal).not.toHaveBeenCalled()
+    })
+
+    it('says the same of the menu bar’s Autopilot rows, which name no notification', async () => {
+      await renderApp()
+      await screen.findByRole('region', { name: 'Review requested' })
+
+      click({ notificationId: 0, autopilot: autopilotTarget({ activity: true }) })
+
+      expect(
+        within(await screen.findByRole('group', { name: 'Notification' })).getByText(/Autopilot tab/),
+      ).toBeInTheDocument()
+      expect(platform.markNotificationsRead).not.toHaveBeenCalled()
+    })
+
+    it('marks an Autopilot entry about an item read when that item’s sheet opens', async () => {
+      platform.listNotifications.mockResolvedValue({
+        items: [autopilotAlert({ id: 8, itemId: 1 }), autopilotAlert({ id: 2, itemId: 2 })],
+        unread: 2,
+      })
+      await renderApp()
+      await screen.findByRole('button', { name: '2 unread notifications' })
+
+      await userEvent.click(await screen.findByRole('button', { name: 'Add the widget cache' }))
+      await screen.findByRole('dialog', { name: 'Add the widget cache' })
+
+      await waitFor(() => {
+        expect(platform.markNotificationsRead).toHaveBeenCalledExactlyOnceWith([8])
+      })
+    })
+
     it('marks an item’s entries read when its sheet opens, once each opening', async () => {
       platform.listNotifications.mockResolvedValue({
         items: [review(), notification({ id: 1, itemId: 1, kind: 'woke' })],
@@ -2111,5 +2193,41 @@ describe('the Notifications page', () => {
 
       expect(platform.markNotificationsRead).toHaveBeenCalledOnce()
     })
+  })
+})
+
+describe('the window’s close, kept running for Autopilot', () => {
+  it('says once, as the window shows again, why the app kept running, and remembers it said so', async () => {
+    await renderApp()
+    await screen.findByRole('region', { name: 'Review requested' })
+
+    act(() => {
+      emit('app:keptRunning')
+    })
+
+    const said = await screen.findByRole('group', { name: 'Notification' })
+
+    expect(within(said).getByText(/kept running, so Autopilot can go on/)).toBeInTheDocument()
+    expect(within(said).getByText(/in the Dock/)).toBeInTheDocument()
+    expect(platform.setKeptRunningTold).toHaveBeenCalledExactlyOnceWith(true)
+
+    act(() => {
+      emit('app:keptRunning')
+    })
+
+    expect(platform.setKeptRunningTold).toHaveBeenCalledOnce()
+  })
+
+  it('says nothing once it has said so before', async () => {
+    platform.getSettings.mockImplementation(() => stored({ keptRunningTold: true }))
+    await renderApp()
+    await screen.findByRole('region', { name: 'Review requested' })
+
+    act(() => {
+      emit('app:keptRunning')
+    })
+
+    expect(screen.queryByRole('group', { name: 'Notification' })).not.toBeInTheDocument()
+    expect(platform.setKeptRunningTold).not.toHaveBeenCalled()
   })
 })

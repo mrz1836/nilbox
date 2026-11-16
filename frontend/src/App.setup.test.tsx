@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 
 import type { Setup } from './platform'
-import { appInfo, item, list, snapshot } from './test/fixtures'
+import { appInfo, autopilotTarget, item, list, snapshot } from './test/fixtures'
 import { emit, platform, renderApp } from './test/platform'
 
 vi.mock('./platform', () => import('./test/platform').then((fake) => fake.platform))
@@ -87,6 +87,7 @@ describe('App with the first-run setup', () => {
         runId: 0,
         runStarted: '',
         notificationId: 0,
+        autopilot: autopilotTarget(),
       })
     })
     expect(platform.openExternal).not.toHaveBeenCalled()

@@ -36,9 +36,12 @@ import {
 } from './lib/notificationFilter'
 import { toggleFilter } from './lib/query'
 import {
+  autopilotNotYetText,
   bannerEntry,
   bannerOpens,
   filterEntries,
+  keptRunningText,
+  opensAutopilot,
   opensRun,
   opensUpdate,
   startLists,
@@ -88,6 +91,7 @@ import {
   setReviewTab,
   setConversationOrder,
   setIntegrationsAnnounced,
+  setKeptRunningTold,
   setScriptsLastPage,
   setScriptsLastRepo,
   setScriptsSectionOpen,
@@ -95,6 +99,7 @@ import {
   type AfterMerge,
   type AgentID,
   type AppNotification,
+  type AutopilotTarget,
   type IntegrationTools,
   type InboxSnapshot,
   type LinkedItem,
@@ -202,12 +207,13 @@ function useWorktreeSweeps() {
 }
 
 // BannerClick is what a clicked banner names: the notification it stands for, which is
-// marked read, and its item, page, or run.
+// marked read, and its item, page, run, or what it opens in the Autopilot tab.
 interface BannerClick {
   notificationId: number
   itemId: number
   url: string
   runId: number
+  autopilot: AutopilotTarget
 }
 
 // useReveal shows an item in the inbox when asked: by the menu bar, a notification, or an
@@ -216,15 +222,17 @@ interface BannerClick {
 // follows; clear drops it once another view opens. A notification about a run, as a
 // failed run's banner is, opens the run with openRun instead, and one about a new version
 // of the app, whose banner names nothing but itself, shows the update's banner with
-// openUpdate. A clicked banner names the notification it stands for, which markBanner
-// marks read first, and opens what that entry opens, by its kind (entryOf looks it up in
-// the log), or by what the banner names when the log doesn't hold it. While held, as the
-// first-run setup holds the window, a request is let go.
+// openUpdate. One of Autopilot's, or a row of the menu bar's Autopilot group, opens what it
+// names in the Autopilot tab with openAutopilot. A clicked banner names the notification it
+// stands for, which markBanner marks read first, and opens what that entry opens, by its
+// kind (entryOf looks it up in the log), or by what the banner names when the log doesn't
+// hold it. While held, as the first-run setup holds the window, a request is let go.
 function useReveal(
   snapshot: InboxSnapshot | null,
   openInbox: () => void,
   openRun: (id: number, started: string) => void,
   openUpdate: () => void,
+  openAutopilot: (target: AutopilotTarget) => void,
   markBanner: (click: BannerClick) => void,
   entryOf: (id: number) => AppNotification | undefined,
   held: boolean,
@@ -266,6 +274,9 @@ function useReveal(
       case 'update':
         openUpdate()
         break
+      case 'autopilot':
+        openAutopilot(click.autopilot)
+        break
       case 'item':
         show(click.itemId, click.url)
         break
@@ -274,8 +285,8 @@ function useReveal(
 
   useEffect(
     () =>
-      on('inbox:reveal', ({ itemId, url, runId, runStarted, notificationId }) => {
-        showOnRequest({ notificationId, itemId, url, runId }, runStarted)
+      on('inbox:reveal', ({ itemId, url, runId, runStarted, notificationId, autopilot }) => {
+        showOnRequest({ notificationId, itemId, url, runId, autopilot }, runStarted)
       }),
     [],
   )
@@ -594,11 +605,23 @@ export function App() {
   // that can't open.
   const changes = useRef(0)
 
-  // runToast says why the run a failed run's notification asked for didn't open.
+  // runToast says why what a notification asked for didn't open: a failed run's run, or
+  // what one of Autopilot's opens in the Autopilot tab.
   const [runToast, setRunToast] = useState<ToastMessage | null>(null)
   const sayOfRun = (text: string) => {
     changes.current -= 1
     setRunToast({ id: changes.current, text, tone: 'warning' })
+  }
+
+  // keptToast says once, as the window shows again after a close that only hid it because
+  // Autopilot had work, the menu bar icon off, that the app kept running, and how to quit.
+  const [keptToast, setKeptToast] = useState<ToastMessage | null>(null)
+
+  // openAutopilot opens the Autopilot tab at what an Autopilot notification, or a row of the
+  // menu bar's Autopilot group, names; until the tab is in this version, a toast says why
+  // nothing opens, whatever it names.
+  const openAutopilot = () => {
+    sayOfRun(autopilotNotYetText)
   }
 
   // openRun opens Scripts → Runs with a run in its panel, as a failed run's notification
@@ -644,7 +667,16 @@ export function App() {
       }
     })
   }
-  const revealer = useReveal(inbox.snapshot, openInbox, openRun, openUpdate, markBanner, entryOf, setup.showing)
+  const revealer = useReveal(
+    inbox.snapshot,
+    openInbox,
+    openRun,
+    openUpdate,
+    openAutopilot,
+    markBanner,
+    entryOf,
+    setup.showing,
+  )
   const { clear: clearReveal, show: showItem } = revealer
 
   const changeView = (next: View) => {
@@ -730,18 +762,24 @@ export function App() {
   const closeRunToast = () => {
     setRunToast(null)
   }
-  // The update's toast says what the window opened on, so it shows first.
-  const shownToast = updated.toast ?? foundToast ?? runToast ?? changeShown
+  const closeKeptToast = () => {
+    setKeptToast(null)
+  }
+  // The update's toast says what the window opened on, so it shows first; why the app kept
+  // running answers the window's coming back, so it shows over what a click asked.
+  const shownToast = updated.toast ?? foundToast ?? keptToast ?? runToast ?? changeShown
   const closeToast =
     updated.toast !== null
       ? updated.close
       : foundToast !== null
         ? found.close
-        : runToast !== null
-          ? closeRunToast
-          : changeToast === null
-            ? closeSweepToast
-            : closeChangeToast
+        : keptToast !== null
+          ? closeKeptToast
+          : runToast !== null
+            ? closeRunToast
+            : changeToast === null
+              ? closeSweepToast
+              : closeChangeToast
   // toastSeconds is how long every toast shows, the inbox's too, as set in Settings.
   const toastSeconds = config.settings?.toastSeconds ?? defaultToastSeconds
 
@@ -780,8 +818,8 @@ export function App() {
     go({ type: 'settings', section: 'status' })
   }
 
-  // openNotification marks a history entry read and shows its item, or opens its page or
-  // its run.
+  // openNotification marks a history entry read and shows its item, or opens its page, its
+  // run, or what it opens in the Autopilot tab.
   const openNotification = (entry: AppNotification) => {
     if (!entry.read) {
       notifications.markRead([entry.id])
@@ -789,6 +827,12 @@ export function App() {
 
     if (opensRun(entry)) {
       openRun(entry.runId, entry.runStarted)
+
+      return
+    }
+
+    if (opensAutopilot(entry)) {
+      openAutopilot()
 
       return
     }
@@ -904,6 +948,26 @@ export function App() {
       storeAnnounced()
     }
   }, [found.announced])
+
+  // The window says why the app kept running once, ever: that it said so is stored, and
+  // before the settings load, it says nothing rather than say it twice.
+  const sayKeptRunning = useEffectEvent(() => {
+    if (config.settings === null || config.settings.keptRunningTold) {
+      return
+    }
+
+    changes.current -= 1
+    setKeptToast({ id: changes.current, text: keptRunningText })
+    remember(setKeptRunningTold(true), 'that the window said why the app kept running')
+  })
+
+  useEffect(
+    () =>
+      on('app:keptRunning', () => {
+        sayKeptRunning()
+      }),
+    [],
+  )
 
   const launch: LaunchOptions | null =
     config.settings === null

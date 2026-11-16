@@ -10,6 +10,8 @@ import type { NotificationsState } from '../../lib/useNotifications'
 import type { AppNotification, GitHubThread, GitHubThreadsSnapshot, NotificationsTab, Settings } from '../../platform'
 import { at } from '../../test/clock'
 import {
+  autopilotAlert,
+  autopilotGlance,
   githubThread,
   githubThreadList,
   githubThreads,
@@ -269,6 +271,33 @@ describe('NotificationsView', () => {
         within(screen.getByRole('radiogroup', { name: 'Show' })).getByRole('radio', { name: 'All' }),
       )
       expect(screen.getByText('Checks failed: lint')).toBeInTheDocument()
+    })
+
+    it('offers the Autopilot type only while a routine exists', async () => {
+      const { unmount } = renderPage({ notifications: history(entries) })
+
+      await waitFor(() => {
+        expect(platform.getAutopilotGlance).toHaveBeenCalled()
+      })
+      expect(within(screen.getByRole('radiogroup', { name: 'Type' })).queryByRole('radio', { name: 'Autopilot' })).toBe(
+        null,
+      )
+      unmount()
+
+      platform.getAutopilotGlance.mockResolvedValue(autopilotGlance({ routines: 1 }))
+      renderPage({ notifications: history([...entries, autopilotAlert({ id: 9, itemId: 0 })]) })
+
+      await userEvent.click(await screen.findByRole('radio', { name: 'Autopilot' }))
+      expect(screen.getByText('Bump golang.org/x/net')).toBeInTheDocument()
+      expect(screen.queryByText('Add the widget cache')).not.toBeInTheDocument()
+    })
+
+    it('heads an Autopilot alert by its routine, and marks it with Autopilot’s bolt', () => {
+      renderPage({ notifications: history([autopilotAlert({ id: 9 })]) })
+
+      expect(screen.getByText('Tell me about security failures')).toBeInTheDocument()
+      expect(screen.queryByText('Autopilot alert')).not.toBeInTheDocument()
+      expect(screen.getByText('Bump golang.org/x/net')).toBeInTheDocument()
     })
 
     it('says when everything is read, and when there is nothing yet', () => {

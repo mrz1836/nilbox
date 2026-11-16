@@ -7,12 +7,14 @@ export {
 } from "./models.js";
 
 export type {
+    AutopilotTarget,
     AutopilotUpdated,
     BudgetUpdated,
     GHThreadsUpdated,
     HooksUpdated,
     InboxUpdated,
     IssueProgress,
+    KeptRunning,
     NotificationsUpdated,
     QuitRequested,
     ReleasesProgress,

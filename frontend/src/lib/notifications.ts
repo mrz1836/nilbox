@@ -1,5 +1,5 @@
 import { brand } from '../generated/brand'
-import type { AppNotification, BannerStatus, NotificationKind } from '../platform'
+import type { AppNotification, AutopilotTarget, BannerStatus, NotificationKind } from '../platform'
 import type { GitHubShow, GitHubTypeID } from './githubThreads'
 
 // The kinds of notification, as the backend names them (internal/notify), with what the
@@ -9,6 +9,9 @@ export interface KindDescription {
   kind: NotificationKind
   // session marks a kind about the agent sessions, which the history never keeps.
   session?: boolean
+  // autopilot marks one of Autopilot's kinds, whose switches Settings lists, and whose
+  // type the Notifications page offers, only while a routine exists.
+  autopilot?: boolean
   // title heads an entry in the history, as it heads its banner.
   title: string
   // label and description are the kind's switch in Settings.
@@ -74,6 +77,43 @@ export const notificationKinds: readonly KindDescription[] = [
     description: `A new version of ${brand.name} is downloaded and ready to restart into, or, with Just tell me, out to download. You hear of each version once.`,
   },
   {
+    kind: 'autopilot_alert',
+    autopilot: true,
+    title: 'Autopilot alert',
+    label: 'Routine alerts',
+    description:
+      'A routine’s Notify me or Tell me step runs. Its banner is headed by the routine’s name, and a routine can turn its own banners on or off.',
+  },
+  {
+    kind: 'autopilot_needs_you',
+    autopilot: true,
+    title: 'Needs your OK',
+    label: 'Needs your OK',
+    description: 'A routine that asks first matched an item, and waits for you to say yes.',
+  },
+  {
+    kind: 'autopilot_finished',
+    autopilot: true,
+    title: 'Agent finished',
+    label: 'Agents finishing',
+    description: 'A coding agent a routine started in the background ends, with what it did.',
+  },
+  {
+    kind: 'autopilot_checks',
+    autopilot: true,
+    title: 'Checks after a fix',
+    label: 'Checks after a fix',
+    description: 'The checks on a routine’s fix finish: they pass, or still fail.',
+  },
+  {
+    kind: 'autopilot_problem',
+    autopilot: true,
+    title: 'Autopilot problem',
+    label: 'Autopilot problems',
+    description:
+      'A routine can’t run: its search fails, or it won’t load. You hear of each problem once, as it starts.',
+  },
+  {
     kind: 'session_needs_you',
     session: true,
     title: 'Session waiting for you',
@@ -89,20 +129,90 @@ export const notificationKinds: readonly KindDescription[] = [
   },
 ]
 
+// everyKind holds every kind of notification the backend has: a record over the generated
+// union, so a kind added in Go fails to compile until it is listed here, and the tests hold
+// every list in the window (notificationKinds, appTypes, bannerOpens, EntryRow's icons) to
+// it.
+const everyKind: Readonly<Record<NotificationKind, true>> = {
+  review_requested: true,
+  assigned: true,
+  woke: true,
+  session_needs_you: true,
+  session_finished: true,
+  release_done: true,
+  release_published: true,
+  release_failed: true,
+  run_failed: true,
+  service_status: true,
+  update_ready: true,
+  autopilot_alert: true,
+  autopilot_needs_you: true,
+  autopilot_finished: true,
+  autopilot_checks: true,
+  autopilot_problem: true,
+}
+
+// allNotificationKinds are every kind of notification, in the backend's order.
+export const allNotificationKinds = Object.keys(everyKind) as readonly NotificationKind[]
+
 // sessionBannerHint explains why the sessions' banners start off.
 export const sessionBannerHint = 'Claude Code and Codex can already notify through your terminal, so these start off.'
 
-// inboxKinds and sessionKinds are the kinds of notification the history keeps (the
-// inbox's, a release's (reaching GitHub, published, or its workflow failing), a run that
-// failed, a service the user watches going down or coming back, and a new version of the
-// app), and those about the agent sessions, which it does not.
-export const inboxKinds = notificationKinds.filter((k) => k.session !== true)
+// inboxKinds, autopilotKinds, and sessionKinds are the kinds of notification the history
+// keeps (the inbox's, a release's (reaching GitHub, published, or its workflow failing), a
+// run that failed, a service the user watches going down or coming back, and a new version
+// of the app), Autopilot's, which it keeps too, and those about the agent sessions, which
+// it does not.
+export const inboxKinds = notificationKinds.filter((k) => k.session !== true && k.autopilot !== true)
+export const autopilotKinds = notificationKinds.filter((k) => k.autopilot === true)
 export const sessionKinds = notificationKinds.filter((k) => k.session === true)
 
 // kindTitle heads an entry of a kind in the history.
 export function kindTitle(kind: NotificationKind): string {
   return notificationKinds.find((k) => k.kind === kind)?.title ?? 'Notification'
 }
+
+// entryHeading heads an entry in the history: its own heading, as an Autopilot alert is
+// headed by its routine's name, or else its kind's title.
+export function entryHeading(entry: AppNotification): string {
+  return entry.heading === '' ? kindTitle(entry.kind) : entry.heading
+}
+
+// isAutopilotKind reports one of Autopilot's kinds.
+export function isAutopilotKind(kind: NotificationKind): boolean {
+  return autopilotKinds.some((k) => k.kind === kind)
+}
+
+// opensAutopilot reports an entry of Autopilot's, which opens the Autopilot tab at its
+// card, its run, or its routine.
+export function opensAutopilot(entry: AppNotification): boolean {
+  return isAutopilotKind(entry.kind)
+}
+
+// targetNamed reports an Autopilot target that names something to open.
+export function targetNamed(target: AutopilotTarget): boolean {
+  return target.routineId > 0 || target.matchId > 0 || target.runId > 0 || target.activity
+}
+
+// sameTarget reports two Autopilot targets that name the same thing, made at the same
+// time: the history hands an id out again once it is cleared.
+function sameTarget(a: AutopilotTarget, b: AutopilotTarget): boolean {
+  return (
+    targetNamed(a) &&
+    a.routineId === b.routineId &&
+    a.matchId === b.matchId &&
+    a.runId === b.runId &&
+    a.createdAt === b.createdAt
+  )
+}
+
+// autopilotNotYetText says why an Autopilot notification, or a row of the menu bar's
+// Autopilot group, opens nothing yet: its tab isn't in this version.
+export const autopilotNotYetText = `This opens in the Autopilot tab, which this version of ${brand.name} doesn’t have yet.`
+
+// keptRunningText says, once, why the app kept running when its window was closed with
+// the menu bar icon off: Autopilot had a routine on or an agent working.
+export const keptRunningText = `${brand.name} kept running, so Autopilot can go on: a routine is on, or an agent is working. Click ${brand.name} in the Dock to come back here, or quit with ⌘Q.`
 
 // entryRef names an entry's item: "example-repo #12", or, for an entry about no item, as
 // a release is, its repository alone: "example-repo", or '' for none, as a run in a
@@ -165,7 +275,7 @@ export const startLists: NotificationLists = {
 
 // AppTypeID is one of the app tab's types, as its Type control offers it and type: names
 // it in the toolbar's field.
-export type AppTypeID = 'all' | 'review' | 'assigned' | 'snooze' | 'release' | 'run' | 'status' | 'update'
+export type AppTypeID = 'all' | 'review' | 'assigned' | 'snooze' | 'release' | 'run' | 'status' | 'update' | 'autopilot'
 
 // AppType is a type's name, the kinds of entry it lists (none for every kind), and what
 // the page says when it lists none.
@@ -175,8 +285,8 @@ export interface AppType {
   none: string
 }
 
-// appTypes are the app tab's types: a release's three kinds together, each other kind
-// alone.
+// appTypes are the app tab's types: a release's three kinds together, Autopilot's five
+// together, each other kind alone.
 export const appTypes: Readonly<Record<AppTypeID, AppType>> = {
   all: { label: 'All', kinds: [], none: 'No notifications yet.' },
   review: { label: 'Reviews', kinds: ['review_requested'], none: 'No review requests.' },
@@ -190,6 +300,11 @@ export const appTypes: Readonly<Record<AppTypeID, AppType>> = {
   run: { label: 'Runs', kinds: ['run_failed'], none: 'No failed runs.' },
   status: { label: 'Status', kinds: ['service_status'], none: 'No service status changes.' },
   update: { label: 'Updates', kinds: ['update_ready'], none: `No new versions of ${brand.name} yet.` },
+  autopilot: {
+    label: 'Autopilot',
+    kinds: autopilotKinds.map((k) => k.kind),
+    none: 'Nothing from Autopilot yet.',
+  },
 }
 
 // appTypeOrder is the order the page offers the types in.
@@ -202,7 +317,14 @@ export const appTypeOrder: readonly AppTypeID[] = [
   'run',
   'status',
   'update',
+  'autopilot',
 ]
+
+// shownTypes are the types the page offers: Autopilot's only while a routine exists, so a
+// user without one never sees it named.
+export function shownTypes(autopilotShown: boolean): readonly AppTypeID[] {
+  return autopilotShown ? appTypeOrder : appTypeOrder.filter((id) => id !== 'autopilot')
+}
 
 // appTypeOf is the type an entry belongs to, or '' for a kind this build doesn't know.
 export function appTypeOf(entry: AppNotification): Exclude<AppTypeID, 'all'> | '' {
@@ -233,46 +355,53 @@ export function unreadOf(items: readonly AppNotification[], itemId: number): num
   return itemId <= 0 ? [] : items.filter((n) => !n.read && n.itemId === itemId).map((n) => n.id)
 }
 
-// BannerRef is what a clicked banner names besides its entry: its item, page, or run, or
-// none of them, as a new version's banner does.
+// BannerRef is what a clicked banner names besides its entry: its item, page, run, or what
+// it opens in the Autopilot tab, or none of them, as a new version's banner does.
 export interface BannerRef {
   itemId: number
   url: string
   runId: number
+  autopilot: AutopilotTarget
 }
 
 // updateBanner reports a clicked banner that names nothing but its entry, as only a new
 // version's banner does.
 export function updateBanner(banner: BannerRef): boolean {
-  return banner.itemId <= 0 && banner.runId <= 0 && banner.url === ''
+  return banner.itemId <= 0 && banner.runId <= 0 && banner.url === '' && !targetNamed(banner.autopilot)
 }
 
 // bannerEntry reports whether the log's entry a clicked banner names is the one it stood
 // for: the log hands an id out again once it is cleared, so a banner left from before
 // stands for the entry with its id only while that entry is about the banner's item, page,
-// or run, or, for a banner about none, while it is about a new version.
+// run, or Autopilot target, or, for a banner about none, while it is about a new version.
 export function bannerEntry(entry: AppNotification, banner: BannerRef): boolean {
   return (
     (banner.itemId > 0 && entry.itemId === banner.itemId) ||
     (banner.runId > 0 && entry.runId === banner.runId) ||
     (banner.url !== '' && entry.url === banner.url) ||
+    sameTarget(banner.autopilot, entry.autopilot) ||
     (updateBanner(banner) && opensUpdate(entry))
   )
 }
 
 // BannerOpen is what a clicked banner opens: its run (Scripts → Runs), the update's banner,
-// or its item or page.
-export type BannerOpen = 'run' | 'update' | 'item'
+// the Autopilot tab, or its item or page.
+export type BannerOpen = 'run' | 'update' | 'autopilot' | 'item'
 
 // bannerOpens works out what a clicked banner opens, as its entry in the log would: by
 // that entry's kind (entry, the log's entry with the banner's notification id), while it
 // is the one the banner stood for (bannerEntry); otherwise, as for an entry the log hasn't
-// loaded, by what the banner names: a run, nothing but its entry (named is whether it
-// names one), as only a new version's banner does, or an item or page.
+// loaded, or a row of the menu bar's Autopilot group, by what the banner names: a run,
+// something in the Autopilot tab, nothing but its entry (named is whether it names one),
+// as only a new version's banner does, or an item or page.
 export function bannerOpens(entry: AppNotification | undefined, banner: BannerRef, named: boolean): BannerOpen {
   if (entry !== undefined && bannerEntry(entry, banner)) {
     if (opensRun(entry)) {
       return 'run'
+    }
+
+    if (opensAutopilot(entry)) {
+      return 'autopilot'
     }
 
     return opensUpdate(entry) ? 'update' : 'item'
@@ -280,6 +409,10 @@ export function bannerOpens(entry: AppNotification | undefined, banner: BannerRe
 
   if (banner.runId > 0) {
     return 'run'
+  }
+
+  if (targetNamed(banner.autopilot)) {
+    return 'autopilot'
   }
 
   return named && updateBanner(banner) ? 'update' : 'item'

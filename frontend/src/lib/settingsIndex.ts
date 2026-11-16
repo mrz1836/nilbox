@@ -152,10 +152,12 @@ const agentNames = ['Claude', 'Claude Code', 'Codex']
 // call it besides.
 const agents: Readonly<Record<string, readonly string[]>> = { Claude: ['Claude Code'], Codex: [] }
 
-// banner is a notification kind's switch, under its label.
+// banner is a notification kind's switch, under its label. Autopilot's are left out: their
+// switches show only while a routine exists, and a search must never name Autopilot to a
+// user without one.
 function banner(session: boolean): SettingEntry[] {
   return notificationKinds
-    .filter((k) => (k.session === true) === session)
+    .filter((k) => (k.session === true) === session && k.autopilot !== true)
     .map((k) => ({ label: k.label, keywords: [k.title, 'banner', 'notify'] }))
 }
 

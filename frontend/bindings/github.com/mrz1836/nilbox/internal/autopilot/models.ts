@@ -400,6 +400,36 @@ export interface Explanation {
 }
 
 /**
+ * Glance is Autopilot at a glance, read from the database alone: what the menu bar's
+ * Autopilot group shows, whether the window names Autopilot at all (only while a routine
+ * exists), and whether closing the window only hides it (KeepsRunning).
+ */
+export interface Glance {
+    /**
+     * Routines counts the routines not deleted, and Enabled those switched on.
+     */
+    "routines": number;
+    "enabled": number;
+
+    /**
+     * Paused reports Pause Autopilot.
+     */
+    "paused": boolean;
+
+    /**
+     * NeedsYou counts the open matches waiting for the user's decision: an OK, a
+     * catch-up's, a backlog's, a warning's, an interrupted run's.
+     */
+    "needsYou": number;
+
+    /**
+     * Working are the agent runs going, in the background or in the user's terminal,
+     * oldest first.
+     */
+    "working": WorkingRun[] | null;
+}
+
+/**
  * ItemHistory is what the routines did with one item, newest first.
  */
 export interface ItemHistory {
@@ -926,4 +956,36 @@ export interface Undone {
      * is."
      */
     "words": string;
+}
+
+/**
+ * WorkingRun is one agent run going.
+ */
+export interface WorkingRun {
+    "runId": number;
+    "matchId": number;
+    "routineId": number;
+    "routine": string;
+
+    /**
+     * Item is the item it works on, as the ledger keeps a copy of it.
+     */
+    "item": ItemRef;
+
+    /**
+     * Agent is the agent's ID, and Where where it runs: background or terminal.
+     */
+    "agent": string;
+    "where": string;
+
+    /**
+     * StartedAt is when it started, or was queued when it hasn't said.
+     */
+    "startedAt": string;
+
+    /**
+     * CreatedAt is when the run was recorded, which tells it from a later run given its
+     * ID, as a notice's target does.
+     */
+    "createdAt": string;
 }

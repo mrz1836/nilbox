@@ -69,6 +69,7 @@ const appEntryOf = weakCache((n: AppNotification): Entry => {
       n.repo,
       n.itemKind === '' ? '' : `#${String(n.number)}`,
       kindTitle(n.kind),
+      n.heading,
       type === '' ? '' : appTypes[type].label,
       n.detail,
     ]),

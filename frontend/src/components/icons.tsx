@@ -616,6 +616,15 @@ export function UpdateIcon(props: IconProps) {
   )
 }
 
+// AutopilotIcon stands for Autopilot and what its routines tell: a lightning bolt.
+export function AutopilotIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M13.25 3.5 5.75 13.25h5.5l-1 7.25 7.5-9.75h-5.5z" />
+    </Icon>
+  )
+}
+
 // FolderIcon stands for a folder shown in Finder.
 export function FolderIcon(props: IconProps) {
   return (

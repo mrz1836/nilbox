@@ -1,27 +1,39 @@
 import { describe, expect, it } from 'vitest'
 
 import type { NotificationKind } from '../platform'
-import { notification } from '../test/fixtures'
+import { autopilotAlert, autopilotTarget, notification } from '../test/fixtures'
 import {
+  allNotificationKinds,
   appTypeOf,
   appTypeOrder,
   appTypes,
+  autopilotKinds,
   bannerEntry,
   bannerOpens,
   bannerStatusText,
+  entryHeading,
   entryRef,
   entryTitle,
   entryWhere,
   filterEntries,
+  inboxKinds,
+  isAutopilotKind,
   kindTitle,
   notificationKinds,
+  opensAutopilot,
   opensRun,
   opensUpdate,
   quickViewMax,
+  sessionKinds,
+  shownTypes,
   startLists,
+  targetNamed,
   unreadOf,
   updateBanner,
 } from './notifications'
+
+// nothing is the Autopilot target of every banner that isn't Autopilot's.
+const nothing = autopilotTarget()
 
 describe('notifications', () => {
   it('lists the kinds in the order Settings shows them', () => {
@@ -35,9 +47,86 @@ describe('notifications', () => {
       'run_failed',
       'service_status',
       'update_ready',
+      'autopilot_alert',
+      'autopilot_needs_you',
+      'autopilot_finished',
+      'autopilot_checks',
+      'autopilot_problem',
       'session_needs_you',
       'session_finished',
     ])
+  })
+
+  it('describes every kind the backend has, once, in exactly one of Settings’ groups', () => {
+    expect([...notificationKinds.map((k) => k.kind)].sort()).toEqual([...allNotificationKinds].sort())
+    expect(new Set(notificationKinds.map((k) => k.kind)).size).toBe(notificationKinds.length)
+    expect([...inboxKinds, ...autopilotKinds, ...sessionKinds].map((k) => k.kind).sort()).toEqual(
+      [...allNotificationKinds].sort(),
+    )
+
+    const unsaid = notificationKinds.filter(
+      (k) => k.title === '' || k.label === '' || k.description === '' || kindTitle(k.kind) === 'Notification',
+    )
+
+    expect(unsaid.map((k) => k.kind)).toEqual([])
+  })
+
+  it('types every kind the history keeps, once, and the sessions’ none', () => {
+    const sessions = sessionKinds.map((k) => k.kind)
+    const untyped = allNotificationKinds.filter((kind) => appTypeOf(notification({ kind })) === '')
+    const typedOften = (kind: NotificationKind) =>
+      appTypeOrder.filter((id) => id !== 'all' && appTypes[id].kinds.includes(kind)).length
+
+    expect(untyped).toEqual(sessions)
+    expect(allNotificationKinds.filter((kind) => typedOften(kind) !== (sessions.includes(kind) ? 0 : 1))).toEqual([])
+  })
+
+  it('opens every kind’s entry as its kind says', () => {
+    const opened = allNotificationKinds.map((kind) => {
+      const entry = notification({
+        kind,
+        itemId: 0,
+        itemKind: '',
+        runId: 5,
+        autopilot: autopilotTarget({ routineId: 3 }),
+      })
+
+      return [kind, bannerOpens(entry, { itemId: 0, url: '', runId: 5, autopilot: entry.autopilot }, true)]
+    })
+
+    expect(opened).toEqual(
+      allNotificationKinds.map((kind) => [
+        kind,
+        kind === 'run_failed'
+          ? 'run'
+          : isAutopilotKind(kind)
+            ? 'autopilot'
+            : opensUpdate(notification({ kind }))
+              ? 'update'
+              : 'item',
+      ]),
+    )
+  })
+
+  it('heads an Autopilot alert by its routine, and every other entry by its kind', () => {
+    expect(entryHeading(autopilotAlert())).toBe('Tell me about security failures')
+    expect(entryHeading(autopilotAlert({ heading: '' }))).toBe('Autopilot alert')
+    expect(entryHeading(notification())).toBe('Review requested')
+    expect(kindTitle('autopilot_needs_you')).toBe('Needs your OK')
+    expect(kindTitle('autopilot_finished')).toBe('Agent finished')
+    expect(kindTitle('autopilot_checks')).toBe('Checks after a fix')
+    expect(kindTitle('autopilot_problem')).toBe('Autopilot problem')
+  })
+
+  it('opens the Autopilot tab from Autopilot’s entries alone', () => {
+    expect(opensAutopilot(autopilotAlert())).toBe(true)
+    expect(opensAutopilot(notification({ kind: 'autopilot_problem', itemId: 0, itemKind: '' }))).toBe(true)
+    expect(opensAutopilot(notification())).toBe(false)
+    expect(opensRun(autopilotAlert({ runId: 4 }))).toBe(false)
+    expect(targetNamed(nothing)).toBe(false)
+    expect(targetNamed(autopilotTarget({ createdAt: '2026-06-15T11:54:00Z' }))).toBe(false)
+    expect(targetNamed(autopilotTarget({ activity: true }))).toBe(true)
+    expect(targetNamed(autopilotTarget({ runId: 2 }))).toBe(true)
   })
 
   it('titles each kind, and an unknown one plainly', () => {
@@ -128,7 +217,17 @@ describe('the history’s lists', () => {
   })
 
   it('offers every type, each with its words', () => {
-    expect(appTypeOrder).toEqual(['all', 'review', 'assigned', 'snooze', 'release', 'run', 'status', 'update'])
+    expect(appTypeOrder).toEqual([
+      'all',
+      'review',
+      'assigned',
+      'snooze',
+      'release',
+      'run',
+      'status',
+      'update',
+      'autopilot',
+    ])
     expect(appTypeOrder.map((id) => appTypes[id].label)).toEqual([
       'All',
       'Reviews',
@@ -138,11 +237,25 @@ describe('the history’s lists', () => {
       'Runs',
       'Status',
       'Updates',
+      'Autopilot',
     ])
 
     for (const id of appTypeOrder) {
       expect(appTypes[id].none).not.toBe('')
     }
+  })
+
+  it('offers Autopilot’s type only while a routine exists', () => {
+    expect(shownTypes(true)).toEqual(appTypeOrder)
+    expect(shownTypes(false)).not.toContain('autopilot')
+    expect(shownTypes(false)).toHaveLength(appTypeOrder.length - 1)
+    expect(appTypes.autopilot.kinds).toEqual([
+      'autopilot_alert',
+      'autopilot_needs_you',
+      'autopilot_finished',
+      'autopilot_checks',
+      'autopilot_problem',
+    ])
   })
 
   it('types each entry, a release’s three kinds together, and an unknown kind as none', () => {
@@ -174,20 +287,20 @@ describe('the history’s lists', () => {
   })
 
   it('tells the entry a banner stood for from one that took its id after the history was cleared', () => {
-    const banner = { itemId: 1, url: 'https://github.com/acme-org/example-repo/pull/7', runId: 0 }
+    const banner = { itemId: 1, url: 'https://github.com/acme-org/example-repo/pull/7', runId: 0, autopilot: nothing }
 
     expect(bannerEntry(notification(), banner)).toBe(true)
     expect(bannerEntry(notification({ itemId: 0 }), banner)).toBe(true)
     expect(bannerEntry(notification({ itemId: 2, url: 'https://github.com/acme-org/other/pull/1' }), banner)).toBe(
       false,
     )
-    expect(bannerEntry(failed, { itemId: 0, url: '', runId: 9 })).toBe(true)
-    expect(bannerEntry(failed, { itemId: 0, url: '', runId: 8 })).toBe(false)
-    expect(bannerEntry(notification({ url: '' }), { itemId: 0, url: '', runId: 0 })).toBe(false)
+    expect(bannerEntry(failed, { itemId: 0, url: '', runId: 9, autopilot: nothing })).toBe(true)
+    expect(bannerEntry(failed, { itemId: 0, url: '', runId: 8, autopilot: nothing })).toBe(false)
+    expect(bannerEntry(notification({ url: '' }), { itemId: 0, url: '', runId: 0, autopilot: nothing })).toBe(false)
   })
 
   it('tells a new version’s banner, which names nothing but its entry, by the entry’s kind', () => {
-    const none = { itemId: 0, url: '', runId: 0 }
+    const none = { itemId: 0, url: '', runId: 0, autopilot: nothing }
     const update = notification({ kind: 'update_ready', itemId: 0, itemKind: '', url: '' })
 
     expect(updateBanner(none)).toBe(true)
@@ -203,7 +316,7 @@ describe('the history’s lists', () => {
   })
 
   it('opens what a clicked banner’s entry opens, by its kind', () => {
-    const none = { itemId: 0, url: '', runId: 0 }
+    const none = { itemId: 0, url: '', runId: 0, autopilot: nothing }
     const update = notification({ kind: 'update_ready', itemId: 0, itemKind: '', url: '' })
     const page = 'https://github.com/acme-org/sdk/releases/tag/v1.2.0'
     // An entry about a page that also names a run, which only a failed run's entry opens.
@@ -216,7 +329,7 @@ describe('the history’s lists', () => {
   })
 
   it('opens what a clicked banner names when the log doesn’t hold its entry, or holds another', () => {
-    const none = { itemId: 0, url: '', runId: 0 }
+    const none = { itemId: 0, url: '', runId: 0, autopilot: nothing }
 
     expect(bannerOpens(undefined, { ...none, runId: 9 }, true)).toBe('run')
     expect(bannerOpens(undefined, none, true)).toBe('update')
@@ -225,5 +338,33 @@ describe('the history’s lists', () => {
     expect(bannerOpens(undefined, none, false)).toBe('item')
     // An entry of another kind that took the id after the history was cleared.
     expect(bannerOpens(notification({ kind: 'woke', itemId: 0, url: '' }), none, true)).toBe('update')
+  })
+
+  it('opens the Autopilot tab from an Autopilot banner, the entry it stood for or not', () => {
+    const alert = autopilotAlert({ itemId: 0, itemKind: '', url: '' })
+    const banner = { itemId: 0, url: '', runId: 0, autopilot: alert.autopilot }
+
+    expect(updateBanner(banner)).toBe(false)
+    expect(bannerEntry(alert, banner)).toBe(true)
+    expect(bannerOpens(alert, banner, true)).toBe('autopilot')
+    // The log hasn’t loaded it.
+    expect(bannerOpens(undefined, banner, true)).toBe('autopilot')
+
+    // An entry that took the id after the history was cleared, or a target made later.
+    expect(bannerEntry(notification({ kind: 'woke', itemId: 0, url: '' }), banner)).toBe(false)
+    expect(
+      bannerEntry(alert, { ...banner, autopilot: { ...alert.autopilot, createdAt: '2026-06-16T08:00:00Z' } }),
+    ).toBe(false)
+
+    // The menu bar's row of what needs your OK names Activity, and no notification.
+    expect(bannerOpens(undefined, { ...banner, autopilot: autopilotTarget({ activity: true }) }, false)).toBe(
+      'autopilot',
+    )
+  })
+
+  it('marks an Autopilot entry about an item read as that item’s sheet opens', () => {
+    const items = [autopilotAlert({ id: 4, itemId: 1 }), autopilotAlert({ id: 3, itemId: 2 }), notification({ id: 2 })]
+
+    expect(unreadOf(items, 1)).toEqual([4, 2])
   })
 })
