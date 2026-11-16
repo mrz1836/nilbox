@@ -176,11 +176,15 @@ func Steps() []Step {
 		},
 		{
 			Kind: StepMarkDone, Label: "Mark the GitHub notification done", Dispatcher: DispatchGitHub, Local: true,
-			Kinds: both(), Help: "Marks this item's GitHub notifications done, as the Notifications page's Done does.",
+			Kinds: both(), Offered: true,
+			Help: "Marks this item's GitHub notifications done, as the Notifications page's Done does. It changes " +
+				"only your own notifications, and one marked done can be moved back on GitHub.",
 		},
 		{
 			Kind: StepGitHub, Label: "GitHub actions", Dispatcher: DispatchGitHub, AsksFirst: true, Kinds: both(),
-			Help: "The app's own writes, pinned to the head the match was decided on.",
+			Offered: true,
+			Help: "The app's own writes, as the review and issue sheets send them, each pinned to the head read " +
+				"right before it goes.",
 		},
 		{
 			Kind: StepAgent, Label: "Run a coding agent", Dispatcher: DispatchAgent, AsksFirst: true, Kinds: both(),
@@ -238,11 +242,31 @@ type GitHubAction struct {
 	Offered bool `json:"offered"`
 }
 
-// GitHubActions returns the GitHub actions the catalog lists. It lists none until the
-// GitHub dispatcher is built, which adds each one as an entry here, so the builder offers
-// only what can be sent.
+// GitHubActions returns the GitHub step's actions, in the builder's order: the four writes
+// the review and issue sheets already send, each with how far it can be taken back.
 func GitHubActions() []GitHubAction {
-	return []GitHubAction{}
+	return []GitHubAction{
+		{
+			Kind: GitHubRebase, Label: "Ask Dependabot to rebase", Dispatcher: DispatchGitHub, Kinds: prOnly(), Offered: true,
+			Help: "Comments @dependabot rebase, as the review sheet does, on a Dependabot pull request behind its base " +
+				"or in conflict. Dependabot force-pushes its branch, which can't be taken back.",
+		},
+		{
+			Kind: GitHubUpdateBranch, Label: "Update branch", Dispatcher: DispatchGitHub, Kinds: prOnly(), Offered: true,
+			Help: "Merges the base branch into the pull request's branch, as the review sheet does. The merge commit " +
+				"stays.",
+		},
+		{
+			Kind: GitHubReply, Label: "Comment one of my replies", Dispatcher: DispatchGitHub, Kinds: both(), Offered: true,
+			Help: "Posts one of your comment replies, filled in for the item, as the sheets post one. It can be " +
+				"deleted, but GitHub has told people by then.",
+		},
+		{
+			Kind: GitHubLabels, Label: "Add or remove labels", Dispatcher: DispatchGitHub, Kinds: both(), Offered: true,
+			Help: "Adds and takes off labels, as the issue sheet does. They can be put back by hand, and a label can " +
+				"start a repository's label-triggered workflows.",
+		},
+	}
 }
 
 // Where is where an agent step runs.

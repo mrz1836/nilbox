@@ -9,6 +9,7 @@ import type {
   AutopilotActivityPage,
   AutopilotEffect,
   AutopilotEngine,
+  AutopilotGitHubActionKind,
   AutopilotGlance,
   AutopilotGroup,
   AutopilotHold,
@@ -305,12 +306,100 @@ export function chipOf(m: AutopilotMatch): Chip {
     return reasonChips.failed
   }
 
+  const sent = githubChip(m)
+  if (sent !== undefined) {
+    return sent
+  }
+
   if (m.steps.some((s) => notices.includes(s.kind))) {
     return { label: 'Told you', tone: 'accent' }
   }
 
   // A match that is done ran, unless it says it closed for another reason.
   return m.reason === '' || m.reason === 'would_run' ? reasonChips.ran : reasonChips[m.reason]
+}
+
+// actionLabels name the GitHub step's actions, every one the catalog has: a record over the
+// generated union, so an action added in Go fails to compile until it is worded here.
+export const actionLabels: Readonly<Record<AutopilotGitHubActionKind, string>> = {
+  rebase: 'Ask Dependabot to rebase',
+  updateBranch: 'Update branch',
+  reply: 'Comment one of my replies',
+  labels: 'Add or remove labels',
+}
+
+// sentChips are what an item's chip says of the GitHub action a routine sent it last.
+const sentChips: Readonly<Record<AutopilotGitHubActionKind, string>> = {
+  rebase: 'Asked rebase',
+  updateBranch: 'Updated branch',
+  reply: 'Commented',
+  labels: 'Labeled',
+}
+
+// githubChip is what a done match says of what it sent GitHub: the last action GitHub took
+// ("Asked rebase", "Commented"), or that it marked the item's notifications done; undefined
+// when it sent nothing.
+function githubChip(m: AutopilotMatch): Chip | undefined {
+  const last = m.runs.filter((r) => r.runner === 'github' && r.outcome === 'done').at(-1)
+  const kind = last?.action as AutopilotGitHubActionKind | undefined
+
+  if (kind !== undefined && kind in sentChips) {
+    return { label: sentChips[kind], tone: 'accent' }
+  }
+
+  if (m.steps.some((s) => s.kind === 'markDone' && s.status === 'done')) {
+    return { label: 'Marked done', tone: 'accent' }
+  }
+
+  return undefined
+}
+
+// githubAhead is the GitHub step a match is at and the actions of it still to send, or
+// undefined when its next step isn't one.
+export function githubAhead(
+  m: Pick<AutopilotMatch, 'steps' | 'step'>,
+): { actions: AutopilotGitHubActionKind[]; sent: number } | undefined {
+  const st = m.steps.at(m.step)
+
+  if (st?.kind !== 'github') {
+    return undefined
+  }
+
+  return { actions: st.actions.slice(st.sent), sent: st.sent }
+}
+
+// githubAheadText says what a match waiting on a GitHub step would send next: "Ask
+// Dependabot to rebase", "Comment one of my replies, then Add or remove labels"; '' when
+// its next step isn't one.
+export function githubAheadText(m: Pick<AutopilotMatch, 'steps' | 'step'>): string {
+  const ahead = githubAhead(m)
+
+  return ahead === undefined ? '' : ahead.actions.map((a) => actionLabels[a]).join(', then ')
+}
+
+// githubGoLabel is what the button that lets a waiting GitHub action go says, by what it
+// waits on: the warnings its sheet showed, a first pass's backlog, an outside contributor's
+// item, an action the quit cut off, or the routine's own OK; '' for a match whose next
+// step isn't a GitHub step, or that waits on nothing the user decides.
+export function githubGoLabel(m: Pick<AutopilotMatch, 'steps' | 'step' | 'state' | 'blockedBy'>): string {
+  if (m.state !== 'waiting' || githubAhead(m) === undefined) {
+    return ''
+  }
+
+  switch (m.blockedBy) {
+    case 'warning':
+      return 'Send anyway'
+    case 'backlog':
+      return 'Run on them'
+    case 'interrupted':
+      return 'Send it again'
+    case 'outside_contributor':
+    case 'ask':
+    case 'catch_up':
+      return 'Send it'
+    default:
+      return ''
+  }
 }
 
 // routineName names a routine by its ID among those listed, or "a routine" for one that
@@ -605,24 +694,59 @@ export function notReadyBanner(count: number): string {
 }
 
 // NeedsYou is what waits in Activity's Needs you, by where it stands: the matches waiting
-// for the user's OK, those that can't start until something on this Mac is fixed, and
-// those that start by themselves once what they wait on frees, each newest first.
+// for the user's OK, a first pass's backlogs (each routine's together, which Run on them
+// answers at once), those that can't start until something on this Mac is fixed, and those
+// that start by themselves once what they wait on frees, each newest first.
 export interface NeedsYou {
   waiting: AutopilotMatch[]
+  backlogs: Backlog[]
   blocked: AutopilotMatch[]
   queued: AutopilotMatch[]
+}
+
+// Backlog is one routine's matches waiting as a backlog over its first pass's cap.
+export interface Backlog {
+  routineId: number
+  routine: string
+  matches: AutopilotMatch[]
 }
 
 // needsYou sorts the open matches that haven't started into Needs you's parts, one
 // routine's alone when routine isn't 0.
 export function needsYou(matches: readonly AutopilotMatch[], routine = 0): NeedsYou {
   const mine = matches.filter((m) => routine === 0 || m.routineId === routine)
+  const backlogs = new Map<number, Backlog>()
+
+  for (const m of mine) {
+    if (m.state !== 'waiting' || m.blockedBy !== 'backlog') {
+      continue
+    }
+
+    const b = backlogs.get(m.routineId)
+
+    if (b === undefined) {
+      backlogs.set(m.routineId, { routineId: m.routineId, routine: m.routine, matches: [m] })
+    } else {
+      b.matches.push(m)
+    }
+  }
 
   return {
-    waiting: mine.filter((m) => m.state === 'waiting'),
+    waiting: mine.filter((m) => m.state === 'waiting' && m.blockedBy !== 'backlog'),
+    backlogs: [...backlogs.values()],
     blocked: mine.filter((m) => m.state === 'blocked'),
     queued: mine.filter((m) => m.state === 'queued'),
   }
+}
+
+// backlogText says what a backlog holds and why it waits: "42 items matched at once, more
+// than Rebase my bumps takes on by itself: Ask Dependabot to rebase, for each".
+export function backlogText(b: Backlog): string {
+  const [first] = b.matches
+  const ahead = first === undefined ? '' : githubAheadText(first)
+  const text = `${counted(b.matches.length, 'item', 'items')} matched at once, more than ${b.routine} takes on by itself`
+
+  return ahead === '' ? `${text}.` : `${text}: ${ahead}, for each.`
 }
 
 // shortHead is a commit as the window names it: its first seven characters.

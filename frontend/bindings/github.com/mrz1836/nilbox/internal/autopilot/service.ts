@@ -55,6 +55,16 @@ export function Approve(ids: number[] | null): $CancellablePromise<$models.Match
 }
 
 /**
+ * ApproveBacklog gives the user's OK to every match of the routine id waiting as a
+ * backlog, over its first pass's cap (Activity's Run on them), which then start once the
+ * limits let them, and returns them as they are now. One that waits for anything else is
+ * left as it is.
+ */
+export function ApproveBacklog(id: number): $CancellablePromise<$models.Match[] | null> {
+    return $Call.ByID(1493175427, id);
+}
+
+/**
  * Catalog returns everything the builder renders: the triggers, the fields and their
  * operators, the steps (each Offered once this build runs it), the presets, the agent
  * step's settings, and the limits.
@@ -195,6 +205,18 @@ export function Matching(d: $models.Draft): $CancellablePromise<$models.Matching
  */
 export function NeedsYou(): $CancellablePromise<$models.Match[] | null> {
     return $Call.ByID(4100535327);
+}
+
+/**
+ * PreviewActions says what the draft d's GitHub actions would send to the item itemID,
+ * built and not sent: each GitHub step's actions in order, with the exact comment or what
+ * it does to the labels, and Mark the GitHub notification done, each marked with why it
+ * can't be built for the item when it can't (a reply the library no longer has, or that
+ * approves). The draft needn't be saved, but must have no problem. It sends nothing to
+ * GitHub, and the list is never nil.
+ */
+export function PreviewActions(d: $models.Draft, itemID: number): $CancellablePromise<$models.ActionPreview[] | null> {
+    return $Call.ByID(593094948, d, itemID);
 }
 
 /**

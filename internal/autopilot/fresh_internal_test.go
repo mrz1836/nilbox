@@ -33,14 +33,14 @@ func TestAStartAutopilotWasTurnedOffBeforeReadsNothingFromGitHub(t *testing.T) {
 	items := &itemReads{}
 	e := NewEngine(svc, EngineConfig{Items: items, Lock: NewLock(filepath.Join(t.TempDir(), "autopilot.lock"))})
 
-	got, err := e.freshRead(t.Context(), spec.Spec{}, Job{}, 7)
+	got, err := e.freshRead(t.Context(), spec.Spec{}, Job{Item: ItemRef{ID: 7}})
 	require.ErrorIs(t, err, ErrOff, "the freshness read before a start asks whether Autopilot is on")
 	assert.Empty(t, got.hold)
 	assert.Zero(t, items.n.Load(), "and spends no read while it is off")
 
 	e.on.Store(true)
 
-	_, err = e.freshRead(t.Context(), spec.Spec{}, Job{}, 7)
+	_, err = e.freshRead(t.Context(), spec.Spec{}, Job{Item: ItemRef{ID: 7}})
 	require.NoError(t, err)
 	assert.Equal(t, int32(1), items.n.Load(), "on, it reads the item")
 }

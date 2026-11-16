@@ -172,10 +172,21 @@ func (idx outsideIndex) Allowed(repo string) (bool, string) {
 }
 
 // Library is the fake prompt library a step's prompt is checked against: the starters
-// fix-checks and fix-dependency-security, for pull requests, until Remove.
+// fix-checks and fix-dependency-security, for pull requests, until Remove, and the
+// replies a scenario puts in (Put).
 type Library struct {
 	mu      sync.Mutex
 	removed map[string]bool
+	put     []autopilot.LibraryPrompt
+}
+
+// Put sets the other prompts the library holds, such as a GitHub step's replies, in place
+// of those put before.
+func (l *Library) Put(prompts ...autopilot.LibraryPrompt) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	l.put = slices.Clone(prompts)
 }
 
 // Remove takes the starter key's prompt out of the library.
@@ -203,7 +214,7 @@ func (l *Library) Prompts(context.Context) ([]autopilot.LibraryPrompt, error) {
 		}
 	}
 
-	return out, nil
+	return append(out, l.put...), nil
 }
 
 // prKinds is pull requests alone.

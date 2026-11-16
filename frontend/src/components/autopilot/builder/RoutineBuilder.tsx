@@ -3,7 +3,16 @@ import { useEffect, useEffectEvent, useId, useState } from 'react'
 import { modeHelp, modeLabels, modeOrder } from '../../../lib/autopilot'
 import { counted } from '../../../lib/format'
 import { isSaveKey } from '../../../lib/keys'
-import { actsOn, canonical, costLine, dryRunWhy, sameDraft, testedKeys, unshown } from '../../../lib/routineBuilder'
+import {
+  actsOn,
+  canonical,
+  costLine,
+  dryRunWhy,
+  sameDraft,
+  sendsToGitHub,
+  testedKeys,
+  unshown,
+} from '../../../lib/routineBuilder'
 import { anyModalOpen } from '../../../lib/useModalDialog'
 import { useMutation } from '../../../lib/useMutation'
 import { useDebouncedQuery } from '../../../lib/useQuery'
@@ -289,6 +298,7 @@ export function RoutineBuilder({
         onTest={() => {
           void test()
         }}
+        preview={ready && sendsToGitHub(spec) ? draft : undefined}
       />
       <footer className="sticky bottom-0 flex items-center justify-end gap-2 border-t border-border bg-background py-3">
         <p

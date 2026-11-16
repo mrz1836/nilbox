@@ -432,6 +432,10 @@ export type AutopilotConditions = NonNullLists<autopilotspec.Conditions>
 export type AutopilotClause = NonNullLists<autopilotspec.Clause>
 export type AutopilotStep = NonNullLists<autopilotspec.Step>
 export type AutopilotAgentStep = NonNullLists<autopilotspec.AgentStep>
+export type AutopilotGitHubAction = NonNullLists<autopilotspec.GitHubAction>
+export type AutopilotGitHubActionKind = autopilotcatalog.GitHubActionKind
+export type AutopilotLabelsAction = NonNullLists<autopilotspec.LabelsAction>
+export type AutopilotActionPreview = NonNullLists<autopilot.ActionPreview>
 export type AutopilotFence = NonNullLists<autopilotspec.Fence>
 export type AutopilotLaunchRow = NonNullLists<autopilotspec.LaunchRow>
 export type AutopilotPromptRef = NonNullLists<autopilotspec.PromptRef>
@@ -1194,6 +1198,18 @@ export const explainRoutine = autopilotService.Explain as (
   id: number,
   itemID: number,
 ) => CancellablePromise<AutopilotExplanation>
+
+// A GitHub step's own OKs. Approve, for a GitHub action offered with warnings, accepts
+// exactly the warnings shown; ApproveBacklog is Run on them, for every match of a routine
+// waiting as a backlog over its first pass's cap. PreviewActions says what a draft's GitHub
+// actions would send to an item, built and not sent: the exact comment, or the labels.
+export const approveAutopilotBacklog = autopilotService.ApproveBacklog as (
+  routineID: number,
+) => CancellablePromise<AutopilotMatch[]>
+export const previewAutopilotActions = autopilotService.PreviewActions as (
+  d: AutopilotDraft,
+  itemID: number,
+) => CancellablePromise<AutopilotActionPreview[]>
 
 // The notification history. MarkAllRead marks every entry read (Mark all done), and
 // MarkRead and MarkUnread the entries with the ids given; opening the history marks

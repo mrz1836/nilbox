@@ -21,6 +21,7 @@ import type { AutopilotMatch, AutopilotState } from '../platform'
 import {
   activityLines,
   autopilotBadge,
+  backlogText,
   checkText,
   chipOf,
   dirtyText,
@@ -170,8 +171,37 @@ describe('needs you', () => {
     const blocked = autopilotMatch({ id: 2, routineId: 4, state: 'blocked', blockedBy: 'not_ready', reason: '' })
     const queued = autopilotMatch({ id: 3, state: 'queued', blockedBy: 'slot', reason: '' })
 
-    expect(needsYou([waiting, blocked, queued])).toEqual({ waiting: [waiting], blocked: [blocked], queued: [queued] })
-    expect(needsYou([waiting, blocked, queued], 4)).toEqual({ waiting: [], blocked: [blocked], queued: [] })
+    expect(needsYou([waiting, blocked, queued])).toEqual({
+      waiting: [waiting],
+      backlogs: [],
+      blocked: [blocked],
+      queued: [queued],
+    })
+    expect(needsYou([waiting, blocked, queued], 4)).toEqual({
+      waiting: [],
+      backlogs: [],
+      blocked: [blocked],
+      queued: [],
+    })
+  })
+
+  it('gathers each routine’s backlog, which Run on them answers at once', () => {
+    const one = autopilotMatch({ id: 1, routineId: 6, routine: 'Rebase', state: 'waiting', blockedBy: 'backlog' })
+    const two = autopilotMatch({ id: 2, routineId: 6, routine: 'Rebase', state: 'waiting', blockedBy: 'backlog' })
+    const other = autopilotMatch({ id: 3, routineId: 7, routine: 'Label', state: 'waiting', blockedBy: 'backlog' })
+    const ask = autopilotMatch({ id: 4, routineId: 6, state: 'waiting', blockedBy: 'ask' })
+
+    const got = needsYou([one, ask, two, other])
+
+    expect(got.waiting).toEqual([ask])
+    expect(got.backlogs).toEqual([
+      { routineId: 6, routine: 'Rebase', matches: [one, two] },
+      { routineId: 7, routine: 'Label', matches: [other] },
+    ])
+    expect(needsYou([one, two, other], 7).backlogs).toEqual([{ routineId: 7, routine: 'Label', matches: [other] }])
+    expect(backlogText({ routineId: 7, routine: 'Label', matches: [other] })).toBe(
+      '1 item matched at once, more than Label takes on by itself.',
+    )
   })
 
   it('words Run by the hold it confirms, and Skip by the occurrence', () => {
@@ -285,6 +315,8 @@ describe('chipOf', () => {
               outcome: 'done',
               note: '',
               runId: 0,
+              actions: [],
+              sent: 0,
               startedAt: null,
               endedAt: null,
             },
@@ -476,6 +508,8 @@ describe('the results', () => {
         outcome: '',
         note: '',
         runId: 0,
+        actions: [],
+        sent: 0,
         startedAt: null,
         endedAt: null,
       },

@@ -2069,7 +2069,7 @@
     {
       "kind": "markDone",
       "label": "Mark the GitHub notification done",
-      "help": "Marks this item's GitHub notifications done, as the Notifications page's Done does.",
+      "help": "Marks this item's GitHub notifications done, as the Notifications page's Done does. It changes only your own notifications, and one marked done can be moved back on GitHub.",
       "dispatcher": "github",
       "local": true,
       "asksFirst": false,
@@ -2078,12 +2078,12 @@
         "pr",
         "issue"
       ],
-      "offered": false
+      "offered": true
     },
     {
       "kind": "github",
       "label": "GitHub actions",
-      "help": "The app's own writes, pinned to the head the match was decided on.",
+      "help": "The app's own writes, as the review and issue sheets send them, each pinned to the head read right before it goes.",
       "dispatcher": "github",
       "local": false,
       "asksFirst": true,
@@ -2092,7 +2092,7 @@
         "pr",
         "issue"
       ],
-      "offered": false
+      "offered": true
     },
     {
       "kind": "agent",
@@ -2162,7 +2162,50 @@
       "offered": true
     }
   ],
-  "githubActions": [],
+  "githubActions": [
+    {
+      "kind": "rebase",
+      "label": "Ask Dependabot to rebase",
+      "help": "Comments @dependabot rebase, as the review sheet does, on a Dependabot pull request behind its base or in conflict. Dependabot force-pushes its branch, which can't be taken back.",
+      "dispatcher": "github",
+      "kinds": [
+        "pr"
+      ],
+      "offered": true
+    },
+    {
+      "kind": "updateBranch",
+      "label": "Update branch",
+      "help": "Merges the base branch into the pull request's branch, as the review sheet does. The merge commit stays.",
+      "dispatcher": "github",
+      "kinds": [
+        "pr"
+      ],
+      "offered": true
+    },
+    {
+      "kind": "reply",
+      "label": "Comment one of my replies",
+      "help": "Posts one of your comment replies, filled in for the item, as the sheets post one. It can be deleted, but GitHub has told people by then.",
+      "dispatcher": "github",
+      "kinds": [
+        "pr",
+        "issue"
+      ],
+      "offered": true
+    },
+    {
+      "kind": "labels",
+      "label": "Add or remove labels",
+      "help": "Adds and takes off labels, as the issue sheet does. They can be put back by hand, and a label can start a repository's label-triggered workflows.",
+      "dispatcher": "github",
+      "kinds": [
+        "pr",
+        "issue"
+      ],
+      "offered": true
+    }
+  ],
   "outcomes": [
     {
       "id": "passed",

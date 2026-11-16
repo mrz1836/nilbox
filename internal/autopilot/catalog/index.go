@@ -10,6 +10,7 @@ type index struct {
 	ops      map[Op]OpInfo
 	triggers map[Event]Trigger
 	steps    map[StepKind]Step
+	actions  map[GitHubActionKind]GitHubAction
 	outcomes map[Outcome]OutcomeInfo
 	presets  map[Preset]PresetInfo
 	lists    map[ListSource]ListSourceInfo
@@ -24,6 +25,7 @@ var byID = sync.OnceValue(func() index {
 		ops:      keyed(Ops(), func(o OpInfo) Op { return o.ID }),
 		triggers: keyed(Triggers(), func(t Trigger) Event { return t.Event }),
 		steps:    keyed(Steps(), func(s Step) StepKind { return s.Kind }),
+		actions:  keyed(GitHubActions(), func(a GitHubAction) GitHubActionKind { return a.Kind }),
 		outcomes: keyed(Outcomes(), func(o OutcomeInfo) Outcome { return o.ID }),
 		presets:  keyed(Presets(), func(p PresetInfo) Preset { return p.ID }),
 		lists:    keyed(ListSources(), func(l ListSourceInfo) ListSource { return l.ID }),
@@ -66,6 +68,13 @@ func StepByKind(kind StepKind) (Step, bool) {
 	s, ok := byID().steps[kind]
 
 	return s, ok
+}
+
+// GitHubActionByKind returns the GitHub action kind names.
+func GitHubActionByKind(kind GitHubActionKind) (GitHubAction, bool) {
+	a, ok := byID().actions[kind]
+
+	return a, ok
 }
 
 // OutcomeByID returns the outcome id names.

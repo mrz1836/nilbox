@@ -761,6 +761,12 @@ func autopilotBoundCalls(t *testing.T) map[string]boundCall {
 		"autopilot.Service.CheckReadiness": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
 			return c.Autopilot.CheckReadiness(ctx)
 		},
+		"autopilot.Service.PreviewActions": func(ctx context.Context, c *Core, ids seededItems) (any, error) {
+			labels := boundSpec()
+			labels.Steps = []spec.Step{{GitHub: []spec.GitHubAction{{Labels: &spec.LabelsAction{Add: []string{"bug"}}}}}}
+
+			return c.Autopilot.PreviewActions(ctx, autopilot.Draft{Name: "Bound preview", Spec: labels}, ids.item)
+		},
 	}
 }
 
@@ -825,6 +831,7 @@ func unreachedBound() map[string]string {
 		"integrations.Service.Reinstall":    "downloads from GitHub; its tools are built as List's",
 		"integrations.Service.Trash":        "moves a copy of a tool through Finder; its result is built as List's",
 		"autopilot.Service.Approve":         "applied by the engine's loop, which runs as deferred work; its matches are built as Activity's",
+		"autopilot.Service.ApproveBacklog":  "applied by the engine's loop, which runs as deferred work; its matches are built as Activity's",
 		"autopilot.Service.TryAgain":        "applied by the engine's loop, which runs as deferred work; its matches are built as Activity's",
 		"autopilot.Service.Skip":            "applied by the engine's loop, which runs as deferred work; its match is built as Activity's",
 		"autopilot.Service.RunNow":          "applied by the engine's loop, which runs as deferred work; its match is built as Activity's",

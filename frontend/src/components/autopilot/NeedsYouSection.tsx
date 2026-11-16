@@ -1,10 +1,21 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 
-import { itemText, needsYou, runLabel, skipLabel } from '../../lib/autopilot'
+import {
+  backlogText,
+  githubAheadText,
+  githubGoLabel,
+  itemText,
+  needsYou,
+  runLabel,
+  skipLabel,
+  type Backlog,
+} from '../../lib/autopilot'
 import { attempt } from '../../lib/call'
+import { counted } from '../../lib/format'
 import { useMutation } from '../../lib/useMutation'
 import type { ReadinessState } from '../../lib/useAutopilot'
 import {
+  approveAutopilotBacklog,
   approveMatches,
   cloneRepo,
   cloneTarget,
@@ -69,6 +80,7 @@ function Card({ match: m, highlighted, agentFor, actions, onOpen, onToast, onCha
   // A worktree with uncommitted changes holds the start whatever the hold's reason says.
   const held = hold === null ? null : m.blockedBy === 'dirty_worktree' ? { ...hold, reason: 'dirty' } : hold
   const name = itemText(m.item)
+  const next = githubAheadText(m)
 
   return (
     <li
@@ -87,6 +99,11 @@ function Card({ match: m, highlighted, agentFor, actions, onOpen, onToast, onCha
         </span>
       </div>
       {m.words !== '' && <p className="text-sm text-text">{m.words}</p>}
+      {next !== '' && (
+        <p className="text-xs text-muted">
+          Next on GitHub: <span className="text-text">{next}</span>
+        </p>
+      )}
       {held !== null && (m.blockedBy === 'hold' || m.blockedBy === 'dirty_worktree') && (
         <div className="flex flex-col gap-1.5 rounded-md border border-warning/40 bg-warning/5 px-3 py-2 text-xs text-muted">
           <p className="font-medium text-text">{holdTitle(held)}</p>
@@ -124,6 +141,91 @@ function Card({ match: m, highlighted, agentFor, actions, onOpen, onToast, onCha
   )
 }
 
+// backlogShown is how many of a backlog's items its card names.
+const backlogShown = 5
+
+interface BacklogCardProps extends Pick<NeedsYouSectionProps, 'onToast' | 'onChanged'> {
+  backlog: Backlog
+  highlighted: boolean
+}
+
+// BacklogCard is one routine's backlog: what matched at once on its first pass, more than it
+// takes on by itself, with the first few items, Run on them, which lets every one go at
+// Autopilot's pace, and Skip them.
+function BacklogCard({ backlog: b, highlighted, onToast, onChanged }: BacklogCardProps) {
+  const act = useMutation((what: () => Promise<string>) => what())
+  const run = (what: () => Promise<string>) => {
+    void act.run(what).then((result) => {
+      if (result.ok) {
+        onChanged()
+        onToast(result.data)
+      } else {
+        onToast(result.error, 'error')
+      }
+    })
+  }
+  const shown = b.matches.slice(0, backlogShown)
+  const more = b.matches.length - shown.length
+
+  return (
+    <li
+      data-match={b.matches.map((m) => String(m.id)).join(' ')}
+      data-highlighted={highlighted || undefined}
+      aria-label={`${b.routine}: ${counted(b.matches.length, 'item', 'items')} matched at once`}
+      className="flex flex-col gap-2 rounded-lg border border-border bg-surface px-3 py-2.5 data-highlighted:border-accent/60 data-highlighted:bg-accent/10"
+    >
+      <p className="truncate text-sm font-medium" title={b.routine}>
+        {b.routine}
+      </p>
+      <p className="text-sm text-text">{backlogText(b)}</p>
+      <ul aria-label={`What ${b.routine} matched`} className="flex flex-col gap-0.5">
+        {shown.map((m) => (
+          <li key={m.id} className="flex min-w-0 items-baseline gap-2 text-xs">
+            <span className="shrink-0 font-mono text-muted">{itemText(m.item)}</span>
+            <span className="min-w-0 truncate text-text" title={m.item.title}>
+              {m.item.title}
+            </span>
+          </li>
+        ))}
+        {more > 0 && <li className="text-xs text-muted">{`and ${counted(more, 'more', 'more')}`}</li>}
+      </ul>
+      <div className="flex flex-wrap items-center gap-1.5">
+        <button
+          type="button"
+          disabled={act.pending}
+          onClick={() => {
+            run(() =>
+              approveAutopilotBacklog(b.routineId).then(
+                (got) => `${b.routine} runs on ${counted(got.length, 'item', 'items')}, at Autopilot’s pace.`,
+              ),
+            )
+          }}
+          className={primaryButtonClass}
+        >
+          Run on them
+        </button>
+        <button
+          type="button"
+          disabled={act.pending}
+          onClick={() => {
+            run(async () => {
+              for (const m of b.matches) {
+                await skipMatch(m.id)
+              }
+
+              return `Skipped them. ${b.routine} waits for the next time each fires.`
+            })
+          }}
+          className={quietButtonClass}
+        >
+          Skip them
+        </button>
+        {act.pending && <Spinner className="size-3.5" />}
+      </div>
+    </li>
+  )
+}
+
 // Cloning is the clone a no-clone card asked to make before its match runs.
 interface Cloning {
   match: AutopilotMatch
@@ -132,7 +234,9 @@ interface Cloning {
 
 // NeedsYouSection is Activity's Needs you, above the history: the matches waiting for the
 // user's OK (Run, which for a hold confirms exactly the hold shown, or Clone and run where
-// the repository has no clone here), those that can't start until something on this Mac
+// the repository has no clone here; for a GitHub action, Send it, Send anyway, which
+// accepts exactly the warnings its sheet showed, or Send it again, for one a quit cut off),
+// each routine's backlog (Run on them), those that can't start until something on this Mac
 // is fixed (Check again), each with Skip and Open, and a short list of those queued, which
 // start by themselves. It shows nothing while nothing waits.
 export function NeedsYouSection({
@@ -153,7 +257,7 @@ export function NeedsYouSection({
     await cloneRepo(c.match.item.id)
     await approveMatches([c.match.id])
   })
-  const shown = [...groups.waiting, ...groups.blocked, ...groups.queued]
+  const shown = [...groups.waiting, ...groups.backlogs.flatMap((b) => b.matches), ...groups.blocked, ...groups.queued]
   const marked = highlight !== null && shown.some((m) => m.id === highlight.matchId) ? highlight : null
 
   useEffect(() => {
@@ -161,8 +265,8 @@ export function NeedsYouSection({
       return
     }
 
-    const card = [...(listRef.current?.querySelectorAll('[data-match]') ?? [])].find(
-      (el) => el.getAttribute('data-match') === String(marked.matchId),
+    const card = [...(listRef.current?.querySelectorAll('[data-match]') ?? [])].find((el) =>
+      (el.getAttribute('data-match') ?? '').split(' ').includes(String(marked.matchId)),
     )
 
     card?.scrollIntoView({ block: 'center' })
@@ -221,7 +325,7 @@ export function NeedsYouSection({
           Couldn’t read what waits for you: {error}
         </p>
       )}
-      {(groups.waiting.length > 0 || groups.blocked.length > 0) && (
+      {(groups.waiting.length > 0 || groups.backlogs.length > 0 || groups.blocked.length > 0) && (
         <section aria-label="Needs you" className="flex flex-col gap-3">
           <h3 className="text-sm font-semibold">Needs you</h3>
           {groups.waiting.length > 0 && (
@@ -246,6 +350,19 @@ export function NeedsYouSection({
                         >
                           Clone and run
                         </button>
+                      ) : githubGoLabel(m) !== '' ? (
+                        <button
+                          type="button"
+                          disabled={pending}
+                          onClick={() => {
+                            run(() =>
+                              approveMatches([m.id]).then(() => `${m.routine} sends it once your limits let it.`),
+                            )
+                          }}
+                          className={primaryButtonClass}
+                        >
+                          {githubGoLabel(m)}
+                        </button>
                       ) : (
                         <button
                           type="button"
@@ -259,6 +376,22 @@ export function NeedsYouSection({
                         </button>
                       )
                     }
+                  />
+                ))}
+              </ul>
+            </div>
+          )}
+          {groups.backlogs.length > 0 && (
+            <div className="flex flex-col gap-1.5">
+              <p className={captionClass}>Matched at once</p>
+              <ul aria-label="Matched at once" className="flex flex-col gap-2">
+                {groups.backlogs.map((b) => (
+                  <BacklogCard
+                    key={b.routineId}
+                    backlog={b}
+                    highlighted={marked !== null && b.matches.some((m) => m.id === marked.matchId)}
+                    onToast={onToast}
+                    onChanged={onChanged}
                   />
                 ))}
               </ul>

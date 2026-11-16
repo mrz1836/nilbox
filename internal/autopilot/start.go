@@ -144,13 +144,16 @@ func (p *pass) readinessProblems() []Problem {
 	return found
 }
 
-// promptHold checks, right before a start, that the prompt job's agent step names is still
-// in the library and fits what the routine acts on, as Save checked it then: a prompt
-// deleted, made a reply, or narrowed to the other kind since keeps the run from starting,
-// and says so. A library that can't be read holds nothing; the launch itself still finds
-// no prompt that isn't there.
+// promptHold checks, right before a start, that the prompt job's agent step names, or each
+// reply its GitHub step comments, is still in the library and fits what the routine acts
+// on, as Save checked it then: a prompt deleted, made a reply, or narrowed to the other
+// kind since keeps the run from starting, and a reply deleted or made an approval's since
+// keeps the action from going, and says so. A library that can't be read holds nothing;
+// the launch itself still finds no prompt that isn't there, and the send refuses a reply
+// that isn't a comment's.
 func (e *Engine) promptHold(ctx context.Context, sp spec.Spec, st spec.Step) (Blocker, string) {
-	if e.svc.library == nil || st.Agent == nil || st.Agent.Prompt.ItemDefault {
+	agent := st.Agent != nil && !st.Agent.Prompt.ItemDefault
+	if e.svc.library == nil || (!agent && !repliesIn(st)) {
 		return "", ""
 	}
 
@@ -161,11 +164,27 @@ func (e *Engine) promptHold(ctx context.Context, sp spec.Spec, st spec.Step) (Bl
 		return "", ""
 	}
 
-	if problems := stepPromptProblems(library, st, actsOn(sp), ""); len(problems) > 0 {
+	problems := stepPromptProblems(library, st, actsOn(sp), "")
+
+	switch {
+	case len(problems) == 0:
+		return "", ""
+	case agent:
 		return BlockNotReady, textutil.Sentence("Its prompt can't run: " + problems[0].Message)
+	default:
+		return BlockNotReady, textutil.Sentence("Its reply can't be sent: " + problems[0].Message)
+	}
+}
+
+// repliesIn reports a GitHub step that comments a reply.
+func repliesIn(st spec.Step) bool {
+	for _, a := range st.GitHub {
+		if a.Reply != nil {
+			return true
+		}
 	}
 
-	return "", ""
+	return false
 }
 
 // noteWait remembers m when its change makes it wait for the user, so the cycle's end

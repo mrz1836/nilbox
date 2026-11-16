@@ -21,6 +21,7 @@ import {
   claudeMissing,
   cloneTarget,
   dryRunMatch,
+  githubStep,
   issue,
   item,
   itemRef,
@@ -1409,6 +1410,61 @@ describe('Needs you', () => {
     await userEvent.click(card.getByRole('button', { name: 'Open example-repo #7' }))
     await waitFor(() => {
       expect(platform.routineWatching).toHaveBeenCalled()
+    })
+  })
+
+  it('says what a GitHub action would send, and Send anyway accepts the warnings it shows', async () => {
+    platform.listRoutines.mockResolvedValue(routines())
+    platform.autopilotNeedsYou.mockResolvedValue([
+      open(27, 'waiting', 'warning', 'Updating a Dependabot branch stops Dependabot from rebasing it.', {
+        steps: [githubStep({ actions: ['reply', 'updateBranch'], sent: 1 })],
+        step: 0,
+      }),
+    ])
+    renderTab()
+
+    const card = within((await needsYouSection()).getByRole('listitem', { name: /example-repo #7/ }))
+
+    expect(card.getByText('Updating a Dependabot branch stops Dependabot from rebasing it.')).toBeInTheDocument()
+    expect(card.getByText('Update branch')).toBeInTheDocument()
+    expect(card.queryByRole('button', { name: 'Run' })).not.toBeInTheDocument()
+
+    await userEvent.click(card.getByRole('button', { name: 'Send anyway' }))
+    expect(platform.approveMatches).toHaveBeenCalledWith([27])
+    expect(await screen.findByText('Snooze passing bot PRs sends it once your limits let it.')).toBeInTheDocument()
+  })
+
+  it('gathers a routine’s backlog in one card, whose Run on them lets every one go', async () => {
+    platform.listRoutines.mockResolvedValue(routines())
+    const rebase = { steps: [githubStep()], step: 0 }
+    const backlog = [21, 22, 23, 24, 25, 26, 27].map((id) =>
+      open(id, 'waiting', 'backlog', '7 matched at once: run on them from Activity.', {
+        ...rebase,
+        item: itemRef({ id, number: id }),
+      }),
+    )
+    platform.autopilotNeedsYou.mockResolvedValue(backlog)
+    platform.approveAutopilotBacklog.mockResolvedValue(backlog)
+    renderTab()
+
+    const card = within(
+      (await needsYouSection()).getByRole('listitem', { name: 'Snooze passing bot PRs: 7 items matched at once' }),
+    )
+
+    expect(
+      card.getByText(
+        '7 items matched at once, more than Snooze passing bot PRs takes on by itself: Ask Dependabot to rebase, for each.',
+      ),
+    ).toBeInTheDocument()
+    expect(card.getByText('and 2 more')).toBeInTheDocument()
+
+    await userEvent.click(card.getByRole('button', { name: 'Run on them' }))
+    expect(platform.approveAutopilotBacklog).toHaveBeenCalledExactlyOnceWith(3)
+    expect(await screen.findByText('Snooze passing bot PRs runs on 7 items, at Autopilot’s pace.')).toBeInTheDocument()
+
+    await userEvent.click(card.getByRole('button', { name: 'Skip them' }))
+    await waitFor(() => {
+      expect(platform.skipMatch).toHaveBeenCalledTimes(7)
     })
   })
 

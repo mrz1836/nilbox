@@ -678,6 +678,25 @@ func TestAskDependabotToRebase(t *testing.T) {
 	require.ErrorIs(t, err, errGateShut)
 }
 
+func TestARetriedTokenAsksDependabotOnce(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	h.inbox.pull.AuthorLogin, h.inbox.pull.AuthorType = "dependabot", "Bot"
+	h.github.review = pullReview(headA, github.MergeStateDirty)
+	h.refreshed(t)
+	h.github.commentOnce = badCredentials()
+
+	res := h.act(t, ActRequest{Action: ActionRebaseBot})
+	assert.Equal(t, OutcomeAskedBot, res.Outcome)
+	assert.Equal(t, 2, h.inbox.tries, "tried again with a fresh token")
+	assert.Equal(t, []string{"@dependabot rebase"}, h.github.comments, "the comment GitHub refused never went: it goes once")
+
+	_, err := h.svc.Act(t.Context(), ActRequest{ItemID: pullID, Action: ActionRebaseBot, Head: headB})
+	require.NoError(t, err)
+	assert.Len(t, h.github.comments, 1, "a pull request pushed to since sends nothing")
+}
+
 // keepUpHarness is a harness whose pull request the sheet has read in merge state status,
 // opened by Dependabot or someone else, which the user may update or not.
 func keepUpHarness(t *testing.T, status string, bot, canUpdate bool) *harness {

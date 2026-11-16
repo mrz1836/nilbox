@@ -711,8 +711,20 @@ func assemble(ctx context.Context, pool *sql.DB, info startup, opts Options, log
 	// A status page turned on or off, or a part ticked, reaches the check at once.
 	followed.statusRules = serviceStatusChecker
 
-	// The review sheet and the issue sheet read and act through the inbox's one Actor.
+	// The review sheet and the issue sheet read and act through the inbox's one Actor, and
+	// so do Autopilot's GitHub steps, through them.
 	actor := inbox.NewActor(inboxSvc)
+	reviewSheet := review.NewService(review.Config{
+		Pool: pool, Inbox: reviewInbox{store: inboxStore, actor: actor}, GitHub: client,
+		Settings: reviewSettings{settings: prefs}, Replies: reviewReplies{replyFiller{store: promptStore, source: previews}},
+		Events: opts.Events, Merges: releaseRefresher, Clock: opts.Clock, Logger: logger,
+	})
+	issueSheet := issues.NewService(issues.Config{
+		Pool: pool, Inbox: issuesInbox{store: inboxStore, actor: actor}, GitHub: client,
+		Replies: issuesReplies{replyFiller{store: promptStore, source: previews}}, Events: opts.Events,
+		Pictures: avatars.NewService(avatars.Config{Pool: pool, Fetcher: client, Clock: opts.Clock, Logger: logger}),
+		Clock:    opts.Clock, Logger: logger,
+	})
 
 	budgetSvc := budget.NewService(budget.Config{
 		Tracker: tracker, Reader: rateReader{tokens: tokens, client: client}, Clock: opts.Clock,
@@ -738,6 +750,10 @@ func assemble(ctx context.Context, pool *sql.DB, info startup, opts Options, log
 		inbox: inboxStore, service: inboxRoutines, prompts: promptStore, file: info.kept.routinesFile,
 		costs: watchCosts{inbox: inboxRoutines, every: refreshEvery(prefs, settings.RefreshInbox, logger), budget: budgetSvc},
 		ready: readiness, agents: agents,
+		github: githubSteps{
+			review: reviewSheet, issues: issueSheet, threads: ghThreads, prompts: promptStore,
+			replies: replyFiller{store: promptStore, source: previews},
+		},
 	}, logger)
 	watchSource.searches = autopilot.NewSearches(routines)
 	watchSource.searches.Rebuild(ctx)
@@ -786,19 +802,10 @@ func assemble(ctx context.Context, pool *sql.DB, info startup, opts Options, log
 				settings: prefs, tools: tools, updates: updateEngine, routines: routines, logger: logger,
 			},
 		}),
-		Budget:   budgetSvc,
-		Sessions: follow.service,
-		Review: review.NewService(review.Config{
-			Pool: pool, Inbox: reviewInbox{store: inboxStore, actor: actor}, GitHub: client,
-			Settings: reviewSettings{settings: prefs}, Replies: reviewReplies{replyFiller{store: promptStore, source: previews}},
-			Events: opts.Events, Merges: releaseRefresher, Clock: opts.Clock, Logger: logger,
-		}),
-		Issues: issues.NewService(issues.Config{
-			Pool: pool, Inbox: issuesInbox{store: inboxStore, actor: actor}, GitHub: client,
-			Replies: issuesReplies{replyFiller{store: promptStore, source: previews}}, Events: opts.Events,
-			Pictures: avatars.NewService(avatars.Config{Pool: pool, Fetcher: client, Clock: opts.Clock, Logger: logger}),
-			Clock:    opts.Clock, Logger: logger,
-		}),
+		Budget:                budgetSvc,
+		Sessions:              follow.service,
+		Review:                reviewSheet,
+		Issues:                issueSheet,
 		Watcher:               follow.watcher,
 		ShellSessions:         ShellSessions{ledger: follow.ledger, service: follow.service},
 		ProfileStore:          profileStore,

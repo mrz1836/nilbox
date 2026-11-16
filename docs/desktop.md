@@ -2481,10 +2481,12 @@ A routine watches some items (your inbox's lists, or a [search](#routine-searche
 waits for something to happen to one of them (checks pass, checks fail, it appears, ...), checks
 its conditions, and then takes its steps. A routine's steps can pin, snooze, dismiss, or
 restore the item ([by a routine](#snooze-dismiss-and-pin-by-a-routine)), tell you about it
-(**Notify me** and **Tell me**), and start a coding agent on it in your terminal
-([agents in your terminal](#agents-in-your-terminal)). A routine with a step that needs a GitHub
-action runs only in Dry run in this version, and says so. Each routine acts once per occurrence
-(once per head commit, say), across refreshes and restarts, and in its mode:
+(**Notify me** and **Tell me**), send the few changes to GitHub the review and issue sheets
+already send ([what Autopilot may change on GitHub](#what-autopilot-may-change-on-github)), and
+start a coding agent on it in your terminal ([agents in your terminal](#agents-in-your-terminal)).
+A routine with a step this version can't take yet (an agent in the background, say) runs only in
+Dry run, and says so. Each routine acts once per occurrence (once per head commit, say), across
+refreshes and restarts, and in its mode:
 
 | Mode | On a match |
 |---|---|
@@ -2597,12 +2599,15 @@ that no one is signed in to GitHub, so nothing starts.
 card and its Watching row alike, saying what the newest of the routines' matches on it did:
 **⚡ Snoozed**, **⚡ Pinned**, **⚡ Dismissed**, **⚡ Restored**, **⚡ Undone**, **⚡ Taken back**,
 **⚡ Would run**, **⚡ Told you**, or **⚡ Queued** while Pause or a routine's active hours hold a
-step; one that waits or works says so (**⚡ Needs you**, **⚡ Working**), and one that ended
+step; what it last sent GitHub (**⚡ Asked rebase**, **⚡ Updated branch**, **⚡ Commented**,
+**⚡ Labeled**, **⚡ Marked done**); one that waits or works says so (**⚡ Needs you**,
+**⚡ Working**), and one that ended
 without acting says why, each reason in words of its own (**⚡ Gave up**, **⚡ You skipped it**,
 **⚡ Skipped: an outside contributor's**, **⚡ Left alone**). Click it for the item's history
 with the routines: each match, newest first, with its routine, when, what it said, and each
 change it made with where it stands (*Still there*, *Changed since*, *Undone*, *You took it
-back*), an **Undo** for one still there, and **Show in Activity** for a match Activity lists.
+back*), an **Undo** for one still there, and **Show in Activity** for a match Activity lists,
+which opens its card in [Needs you](#needs-you) while it waits.
 
 ### Building a routine
 
@@ -2648,6 +2653,12 @@ you have.
   notice after an agent step in your terminal. A step this version can't run yet says *Dry run
   for now*: it can be built and saved, and the routine stays in Dry run, the mode control
   saying why.
+- **The GitHub step** lists its actions in the order they are sent, each with **↑ ↓** and
+  **🗑**, and **+ Add an action** offers what it hasn't and what fits the items: **Ask
+  Dependabot to rebase** and **Update branch** for pull requests, **Comment one of my replies**
+  (one of your library's comment replies that fits the items; never an approval's, such as
+  *LGTM*, or a request for changes', since the step only comments), and **Add or remove
+  labels**, with the labels to add and to take off.
 - **The agent step** names its **Prompt** (a library prompt for the items' kind, or the item's
   own default prompt; **Edit in Prompts** opens the Prompts tab), **Where** it runs (**In my
   terminal**, which a new agent step starts with; **In the background** is a problem this
@@ -2704,7 +2715,10 @@ Activity's words, *Closed: it merged.*), *waiting for data*
 and what (the check names, say), or *left alone: you took back what it did*. **Why ▸** opens
 each step of its decision, the trigger and every condition it checked, with the value it
 compared (*a failed check's name contains security · 🔒 Security Scans failed*). While the
-GitHub API budget is low, a test reads nothing new and says so.
+GitHub API budget is low, a test reads nothing new and says so. For a routine that sends GitHub
+anything, a matching row's **Preview ▸** shows exactly what each action would send that item,
+built and not sent: the comment (*@dependabot rebase*, or your reply filled in for it), or the
+labels it adds and takes off, or why it can't be built for it.
 
 **Preview ▸** on an item of a routine with an agent step shows the exact launch it would make
 there, built and not started: the agent, profile, model, and effort it resolves to and where
@@ -2753,7 +2767,15 @@ Activity's **Needs you**, above the history, holds what a routine can't do witho
   (*Held: it changes agent configuration (.claude/settings.json)*, *pr-88 has 3 uncommitted
   files*, *No local clone of acme-org/sdk*), with **Run**, **Skip this commit**, and **Open**. A
   hold's card shows what the hold dialog does, and its **Run on 4f2a9c1** confirms that commit
-  only: a push since holds it again. A missing clone's offers **Clone and run**.
+  only: a push since holds it again. A missing clone's offers **Clone and run**. A
+  [GitHub action](#what-autopilot-may-change-on-github)'s card says what it would send next
+  (*Next on GitHub: Ask Dependabot to rebase*), and its button says what you let go: **Send
+  it** (Ask first, a catch-up, or an outside contributor's item), **Send anyway** for one its
+  sheet offers with warnings, which the card shows and the button accepts exactly, or **Send
+  it again** for one the app quit while sending.
+- **Matched at once:** a routine's first pass that matched more than it takes on by itself, as
+  one card naming the first few items, with **Run on them**, which lets every one go at
+  Autopilot's pace, and **Skip them**.
 - **Can't start yet:** something this Mac lacks, a tool the repository needs, or a prompt gone
   from your library, naming the fix, with **Check again**. Once fixed, an Autopilot routine's
   runs start by themselves, and an Ask first routine's after your OK, as they would have anyway.
@@ -2790,6 +2812,51 @@ snoozed*), until you choose **Let it act again**. Pause Autopilot and a routine'
 hold local actions too; they run on Resume, or when the hours begin. A Dry run records what
 would run, and changes nothing.
 
+### What Autopilot may change on GitHub
+
+A routine's steps change on GitHub only what the review and issue sheets already change for you,
+and only these five:
+
+| Step or action | What it sends | How far it can be taken back |
+|---|---|---|
+| **Ask Dependabot to rebase** | One `@dependabot rebase` comment on a Dependabot pull request behind its base or in conflict, as the review sheet's | Not at all: Dependabot force-pushes its branch |
+| **Update branch** | Merges the base branch into the pull request's branch, as the review sheet's | Not at all: the merge commit stays |
+| **Comment one of my replies** | One of your comment replies, filled in for the item: on a pull request, as the review sheet's **Comment** (a review that only comments, so on one asking for your review it counts as your review), on an issue, as the issue sheet's | The comment can be deleted, but GitHub has told people by then |
+| **Add or remove labels** | The labels added and taken off, as the issue sheet's edit, for pull requests too; only what changes the labels it has | By hand. A label can start a repository's label-triggered workflows |
+| **Mark the GitHub notification done** | Clears the item's GitHub notifications, as the item's **⋯** menu does, by your [rules](#github-notifications) (done or read) | On GitHub, where a notification marked done can be moved back |
+
+Marking a notification done changes only your own notifications, so it runs at once with the
+local steps, in any mode. The four actions follow the routine's mode: in Ask first, the first
+one waits for your OK (**Send it**), and the rest go once you've said yes. Each one:
+
+- **goes through the sheet's own service:** the item's sheet reads it from GitHub right before
+  the action (one point), the routine is decided again on what that read found, and the sheet
+  must still offer the action. One it no longer offers (*It's up to date with main, so
+  there's nothing to rebase.*) closes the match, with the sheet's reason. One it offers with
+  warnings, such as updating a Dependabot branch, waits for you with the warnings, and **Send
+  anyway** accepts exactly those; a routine never accepts a warning itself.
+- **is pinned to the head that read found:** a push in between sends nothing, counts as no
+  try, and the action is read and decided again first.
+- **is a run of its own,** recorded before it is sent, so a quit never sends one twice: one the
+  app quit while sending waits for you, worded so you check the item on GitHub first (**Send
+  it again**). A step's actions together are one try.
+- **is paced below you:** at most 10 a minute and 60 an hour, a third of what the app sends
+  GitHub, so your own clicks always have room, and at most **GitHub actions a day** (Settings
+  → Autopilot). When GitHub, or the app's own pace, asks to wait, the actions wait until then,
+  as **⚡ Queued**.
+- **waits for your OK on an outside contributor's item,** in every mode, since what it says is
+  visible to them.
+
+The first time a routine with a GitHub action is switched on, leaves Dry run, or changes, it
+queues at most 25 of what it matches; past that it queues none, and they wait for you as a
+backlog (**Matched at once**, in [Needs you](#needs-you)), whose **Run on them** sends them all
+at the pace above. A GitHub action never merges,
+approves, requests changes, closes, or approves workflow runs, and a test fails the build if one
+could reach any of them. A reply that approves (*LGTM*,
+*Update OK*) or requests changes is refused where the routine is built and again right before
+each action; one your library changed since holds the action back (**⚡ Can't start yet**) and
+says why, reading nothing from GitHub.
+
 ### Autopilot's notifications and the menu bar
 
 Autopilot has five kinds of notification, each with a banner switch of its own in **Settings →
@@ -2800,7 +2867,7 @@ Notifications**, all on by default, and the **Autopilot** type on the
 |---|---|---|
 | Autopilot alert | **Routine alerts** | A routine's **Notify me** or **Tell me** step runs; headed by the routine's name |
 | Autopilot problem | **Autopilot problems** | A routine can't run: its search fails, it won't load, or this Mac lacks something it needs. You hear of each problem once, as it starts |
-| Needs your OK | **Needs your OK** | A routine's match waits for you: Ask first, a hold, no clone, a dirty worktree, a catch-up; its banner opens the match's card |
+| Needs your OK | **Needs your OK** | A routine's match waits for you: Ask first, a hold, no clone, a dirty worktree, a catch-up, a GitHub action's warnings, an outside contributor's item, a first pass's backlog; its banner opens the match's card |
 | Agent finished | **Agents finishing** | A coding agent a routine started ends (later versions) |
 | Checks after a fix | **Checks after a fix** | The checks on a routine's fix finish (later versions) |
 
@@ -2838,10 +2905,10 @@ This section, marked **Beta**, shows while Autopilot (beta) is on in **Settings 
 | **Clear history…** | | Removes now, after asking, what the routines did with items that are done with: gone, merged, or closed, or out of every list and search for longer than the history is kept. Your routines and what still waits stay, and it says *Nothing to clear.* when there was nothing |
 | **Last checked** | | When Autopilot last checked the routines, how long it took, and what it found (*Last checked today, 11:59 AM · 34 ms · 7 matches · 1 start*), or that another copy runs it |
 
-The limits hold every routine's coding agents (in your terminal in this version) and, once
-routines can send them, its GitHub actions. A limit delays a match and never loses it: one over
-today's limit starts tomorrow, and a day runs from local midnight. Local steps keep only to
-Pause Autopilot and a routine's own active hours. Backups carry these settings, and the
+The limits hold every routine's coding agents (in your terminal in this version) and its
+[GitHub actions](#what-autopilot-may-change-on-github). A limit delays a match and never loses
+it: one over today's limit starts tomorrow, and a day runs from local midnight. Local steps keep
+only to Pause Autopilot and a routine's own active hours. Backups carry these settings, and the
 **Autopilot routines** category carries the routines (see
 [Backing up your setup](#backing-up-your-setup)).
 
@@ -2869,8 +2936,11 @@ when a routine is saved or switched on, every ten minutes, and on **Check again*
 each start, the item's own agent and profile are checked again.
 
 **What Autopilot never does.** It never changes a routine's mode on its own. A local step never
-replaces what you set aside yourself, and has **Undo**. Dry run changes nothing. Nothing it reads
-or decides leaves your Mac: it reads GitHub through the app's own API calls, as the inbox does.
+replaces what you set aside yourself, and has **Undo**. Dry run changes nothing. It changes on
+GitHub only the [five things](#what-autopilot-may-change-on-github) the sheets already change,
+and never closes anything, approves workflow runs, or merges past GitHub's rules. Nothing it
+reads or decides leaves your Mac: it reads
+and writes GitHub through the app's own API calls, as the inbox and the sheets do.
 
 ### Routine searches
 

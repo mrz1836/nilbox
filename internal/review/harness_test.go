@@ -191,6 +191,8 @@ const (
 	callClose   = "close"
 	callApprove = "approve"
 	callEarlier = "earlier"
+	callLabel   = "label"
+	callUnlabel = "unlabel"
 )
 
 // fakeGitHub answers the sheet's requests and counts them.
@@ -213,13 +215,22 @@ type fakeGitHub struct {
 	autoErr    error
 	updateErr  error
 	commentErr error
-	closeErr   error
-	closeOnce  error
+	// commentOnce fails the next comment once.
+	commentOnce error
+	closeErr    error
+	closeOnce   error
 
 	// approveErrs fails the approval of a run, by its ID, every time, and approveOnce the
 	// next approval of a run once.
 	approveErrs map[int64]error
 	approveOnce map[int64]error
+
+	// labelErr fails the next labels added once, and unlabelErrs the next removal of a
+	// label, by its name, once; labeled names each label edit GitHub made, in order, as
+	// "+a,b" for those added and "-c" for one taken off.
+	labelErr    error
+	unlabelErrs map[string]error
+	labeled     []string
 
 	calls map[string]int
 	// order names every request, in the order they came.
@@ -379,6 +390,13 @@ func (g *fakeGitHub) AddComment(_ context.Context, _ github.Token, _ item.Ref, b
 
 	g.count(callComment)
 
+	if g.commentOnce != nil {
+		err := g.commentOnce
+		g.commentOnce = nil
+
+		return nil, err
+	}
+
 	if g.commentErr != nil {
 		return nil, g.commentErr
 	}
@@ -423,6 +441,41 @@ func (g *fakeGitHub) ApproveWorkflowRun(_ context.Context, _ github.Token, name 
 	g.approved = append(g.approved, name.String()+":"+strconv.FormatInt(runID, 10))
 
 	return nil
+}
+
+func (g *fakeGitHub) AddLabels(_ context.Context, _ github.Token, _ item.Ref, names []string) ([]github.Label, error) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+
+	g.count(callLabel)
+
+	if g.labelErr != nil {
+		err := g.labelErr
+		g.labelErr = nil
+
+		return nil, err
+	}
+
+	g.labeled = append(g.labeled, "+"+strings.Join(names, ","))
+
+	return []github.Label{}, nil
+}
+
+func (g *fakeGitHub) RemoveLabel(_ context.Context, _ github.Token, _ item.Ref, name string) ([]github.Label, error) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+
+	g.count(callUnlabel)
+
+	if err := g.unlabelErrs[name]; err != nil {
+		delete(g.unlabelErrs, name)
+
+		return nil, err
+	}
+
+	g.labeled = append(g.labeled, "-"+name)
+
+	return []github.Label{}, nil
 }
 
 func (g *fakeGitHub) FetchTimeline(

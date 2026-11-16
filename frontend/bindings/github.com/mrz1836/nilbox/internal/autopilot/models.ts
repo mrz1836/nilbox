@@ -24,6 +24,37 @@ import * as item$0 from "../item/models.js";
 import * as sensitive$0 from "../sensitive/models.js";
 
 /**
+ * ActionPreview is what one of a draft's GitHub actions would send to one item, built and
+ * not sent: its step, its action, and the exact comment or labels, or why it can't be
+ * built for the item.
+ */
+export interface ActionPreview {
+    /**
+     * Step is the step's place among the draft's steps, from 0, and Kind its kind: a
+     * GitHub step, or Mark the GitHub notification done.
+     */
+    "step": number;
+    "kind": catalog$0.StepKind;
+
+    /**
+     * Action is the GitHub step's action, "" for Mark the GitHub notification done, and
+     * Label its name.
+     */
+    "action": catalog$0.GitHubActionKind;
+    "label": string;
+
+    /**
+     * Sends is what it would send: the exact comment, or what it does to the labels.
+     */
+    "sends": string;
+
+    /**
+     * Problem says why it can't be built for the item, "" when it can.
+     */
+    "problem": string;
+}
+
+/**
  * ActivityDay is one local day of Activity.
  */
 export interface ActivityDay {
@@ -637,6 +668,13 @@ export interface MatchStep {
     "runId": number;
     "startedAt": string | null;
     "endedAt": string | null;
+
+    /**
+     * Actions are a GitHub step's actions in order, and Sent how many of them went, so
+     * the next to send is Actions[Sent]; none for any other step.
+     */
+    "actions": catalog$0.GitHubActionKind[] | null;
+    "sent": number;
 }
 
 /**

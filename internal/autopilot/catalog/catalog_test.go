@@ -173,9 +173,10 @@ func TestEveryStepNamesItsDispatcher(t *testing.T) {
 }
 
 // builtDispatchers are the parts whose dispatchers this build has: the inbox's triage, the
-// notices (Notify me and Tell me), and the agent's, which runs it in the user's terminal.
+// notices (Notify me and Tell me), the agent's, which runs it in the user's terminal, and
+// the app's own GitHub writes.
 func builtDispatchers() []catalog.Dispatcher {
-	return []catalog.Dispatcher{catalog.DispatchTriage, catalog.DispatchNotices, catalog.DispatchAgent}
+	return []catalog.Dispatcher{catalog.DispatchTriage, catalog.DispatchNotices, catalog.DispatchAgent, catalog.DispatchGitHub}
 }
 
 // TestTheAgentRunsWhereThisBuildCanRunIt holds the places an agent step can run to the
@@ -203,8 +204,33 @@ func TestAStepIsOfferedOnceItsDispatcherIsBuilt(t *testing.T) {
 		built := slices.Contains(builtDispatchers(), s.Dispatcher)
 		assert.Equal(t, built, s.Offered, "%s: offered once its dispatcher, %s, is built", s.Kind, s.Dispatcher)
 	}
+}
 
-	assert.Empty(t, catalog.GitHubActions(), "the GitHub actions are added with their dispatcher")
+// TestTheGitHubActionsAreTheFiveWrites holds the GitHub step to D5's writes, the four its
+// actions are and the notification's Done as a step of its own, each offered: no merge,
+// approval, close, or approval of workflow runs among them.
+func TestTheGitHubActionsAreTheFiveWrites(t *testing.T) {
+	t.Parallel()
+
+	kinds := each(catalog.GitHubActions(), func(a catalog.GitHubAction) string { return string(a.Kind) })
+	assert.Equal(t, []string{"rebase", "updateBranch", "reply", "labels"}, kinds)
+
+	for _, a := range catalog.GitHubActions() {
+		assert.True(t, a.Offered, a.Kind)
+		assert.NotEmpty(t, a.Help, "%s says how far it can be taken back", a.Kind)
+	}
+
+	pr := []item.Kind{item.KindPR}
+
+	for _, a := range catalog.GitHubActions() {
+		if a.Kind == catalog.GitHubRebase || a.Kind == catalog.GitHubUpdateBranch {
+			assert.Equal(t, pr, a.Kinds, "only a pull request has a branch: %s", a.Kind)
+		}
+	}
+
+	done, ok := catalog.StepByKind(catalog.StepMarkDone)
+	require.True(t, ok)
+	assert.True(t, done.Local, "marking a notification done changes only the user's own notifications")
 }
 
 func TestTheLocalStepsAreTheInboxsOwn(t *testing.T) {

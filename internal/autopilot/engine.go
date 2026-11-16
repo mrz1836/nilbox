@@ -76,6 +76,12 @@ const (
 	// pass after it is turned on or changed; over it, it queues none, and they wait for the
 	// user as a backlog.
 	FirstCap = 25
+
+	// ActionsPerMinute and ActionsPerHour are the most GitHub actions Autopilot sends in a
+	// minute and in an hour: a third of the write gate's edit lane, so the user's own
+	// clicks always have room.
+	ActionsPerMinute = 10
+	ActionsPerHour   = 60
 )
 
 var (
@@ -295,6 +301,11 @@ type Engine struct {
 	// whose Needs your OK notices it tells.
 	waits map[int64]bool
 
+	// writesHeld is when GitHub actions may go again after the write gate refused one,
+	// with why: the app's own pace, the budget's reserve, or GitHub asking it to wait.
+	writesHeld      time.Time
+	writesHeldWords string
+
 	// glanced is Autopilot at a glance as this copy last read it on a tick while another
 	// copy held the engine, nil before it did (followElsewhere).
 	glanced *Glance
@@ -390,17 +401,7 @@ func NewEngine(svc *Service, cfg EngineConfig) *Engine {
 		ending: map[int64]int{},
 	}
 
-	if e.dispatchers == nil {
-		e.dispatchers = map[catalog.Dispatcher]Dispatcher{}
-	}
-
-	if cfg.Runner != nil {
-		e.dispatchers[catalog.DispatchAgent] = cfg.Runner
-	}
-
-	if _, own := e.dispatchers[catalog.DispatchTriage]; cfg.Triage != nil && !own {
-		e.dispatchers[catalog.DispatchTriage] = triageDispatcher{e: e}
-	}
+	e.register(cfg)
 
 	svc.engine = e
 	e.onSince = e.since
@@ -536,6 +537,27 @@ func (e *Engine) Run(ctx context.Context) {
 		if !e.await(ctx, tick.C) {
 			return
 		}
+	}
+}
+
+// register sets up the engine's dispatchers: cfg's own, the runner for the agent steps,
+// the engine's triage dispatcher over cfg.Triage, and its GitHub dispatcher over the
+// Service's GitHubActions, each unless cfg names one of its own.
+func (e *Engine) register(cfg EngineConfig) {
+	if e.dispatchers == nil {
+		e.dispatchers = map[catalog.Dispatcher]Dispatcher{}
+	}
+
+	if cfg.Runner != nil {
+		e.dispatchers[catalog.DispatchAgent] = cfg.Runner
+	}
+
+	if _, own := e.dispatchers[catalog.DispatchTriage]; cfg.Triage != nil && !own {
+		e.dispatchers[catalog.DispatchTriage] = triageDispatcher{e: e}
+	}
+
+	if _, own := e.dispatchers[catalog.DispatchGitHub]; e.svc.github != nil && !own {
+		e.dispatchers[catalog.DispatchGitHub] = NewGitHub(e.svc.github)
 	}
 }
 

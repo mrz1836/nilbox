@@ -253,17 +253,17 @@ WHERE id = sqlc.arg(id) AND status = 'ended' AND outcome = 'interrupted';
 
 -- name: ListRunsSince :many
 -- ListRunsSince returns the runs queued since a moment, or still active, for the daily
--- counts and the daily cap.
-SELECT id, routine_id, item_id, runner, status, outcome, manual, budget_reserved, budget_unit, cost, tokens_in,
-       tokens_out, cache_read_tokens, queued_at
+-- counts, the daily cap, and the pace of the GitHub actions.
+SELECT id, match_id, routine_id, item_id, runner, status, outcome, manual, budget_reserved, budget_unit, cost,
+       tokens_in, tokens_out, cache_read_tokens, queued_at, started_at
 FROM autopilot_runs
 WHERE queued_at >= sqlc.arg(since) OR status IN ('starting', 'running', 'stopping');
 
 -- name: ListItemRuns :many
 -- ListItemRuns returns the runs on the items among ids, oldest first, for the routines'
 -- history of them: their tries, their last outcome, and the commits they pushed.
-SELECT id, routine_id, item_id, runner, status, outcome, manual, counted, run_commit, head_after, queued_at,
-       finished_at
+SELECT id, match_id, routine_id, item_id, runner, status, outcome, manual, counted, run_commit, head_after,
+       queued_at, finished_at
 FROM autopilot_runs
 WHERE item_id IN (sqlc.slice(ids))
 ORDER BY id;

@@ -101,9 +101,10 @@ type Sim struct {
 	Runner *Runner
 
 	// Triage is the inbox's own triage, which the triage steps run through, as core
-	// wires it, and GitHub the fake GitHub part.
+	// wires it, and GitHub the fake of the sheets the GitHub step goes through, under the
+	// real GitHub dispatcher.
 	Triage   *Triage
-	GitHub   *Dispatcher
+	GitHub   *GitHub
 	Settings *Settings
 	Lock     string
 
@@ -113,7 +114,8 @@ type Sim struct {
 	TellWaits bool
 
 	// Ready, Holds, Outside, and Library are the fakes of what holds an agent's start back
-	// (agents.go), each left out of the app while nil.
+	// (agents.go), and Library a GitHub step's reply too, each left out of the app while
+	// nil.
 	Ready   *Ready
 	Holds   *Holds
 	Outside *Outside
@@ -147,10 +149,10 @@ func New(t *testing.T) *Sim {
 
 	s := &Sim{
 		t: t, DB: testutil.DB(t), Clock: clk, World: NewWorld(clk), Runner: NewRunner(),
-		GitHub: &Dispatcher{}, Settings: &Settings{cfg: cfg}, Lock: filepath.Join(t.TempDir(), "autopilot.lock"),
+		Settings: &Settings{cfg: cfg}, Lock: filepath.Join(t.TempDir(), "autopilot.lock"),
 		Logs: &testutil.Logs{}, Notices: &Notices{}, Events: &testutil.Events{},
 	}
-	s.Triage = &Triage{sim: s}
+	s.Triage, s.GitHub = &Triage{sim: s}, newGitHub(s)
 
 	// One connection: every use of the database waits its turn on a channel, which the
 	// bubble counts as blocked, rather than in SQLite's busy wait, whose timer can't move
@@ -167,10 +169,10 @@ func New(t *testing.T) *Sim {
 func (s *Sim) Copy() *Sim {
 	other := &Sim{
 		t: s.t, DB: s.DB, Clock: s.Clock, World: s.World, Runner: NewRunner(),
-		GitHub: &Dispatcher{}, Settings: s.Settings, Lock: s.Lock, Logs: s.Logs, Notices: &Notices{},
+		Settings: s.Settings, Lock: s.Lock, Logs: s.Logs, Notices: &Notices{},
 		Events: &testutil.Events{},
 	}
-	other.Triage = &Triage{sim: other}
+	other.Triage, other.GitHub = &Triage{sim: other}, newGitHub(other)
 
 	s.t.Cleanup(other.Stop)
 
@@ -214,15 +216,13 @@ func (s *Sim) Begin() {
 	s.Routines = inbox.NewRoutines(s.Inbox)
 
 	svc := autopilot.Config{
-		Pool: s.DB, Prefs: s.Settings, Accounts: s.Store, Items: items, Offers: Offers(), Clock: s.Clock,
-		Logger: s.Logs.Logger(),
+		Pool: s.DB, Prefs: s.Settings, Accounts: s.Store, Items: items, Offers: Offers(), GitHub: s.GitHub,
+		Clock: s.Clock, Logger: s.Logs.Logger(),
 	}
 	eng := autopilot.EngineConfig{
 		Items: items, Lock: autopilot.NewLock(s.Lock), Runner: s.Runner, Triage: s.Triage,
-		Dispatchers: map[catalog.Dispatcher]autopilot.Dispatcher{
-			catalog.DispatchGitHub: s.GitHub, catalog.DispatchNotices: autopilot.NewNotices(s.Notices),
-		},
-		Problems: autopilot.NewProblemNotices(s.Notices), Events: s.Events,
+		Dispatchers: map[catalog.Dispatcher]autopilot.Dispatcher{catalog.DispatchNotices: autopilot.NewNotices(s.Notices)},
+		Problems:    autopilot.NewProblemNotices(s.Notices), Events: s.Events,
 	}
 	s.config(&svc, &eng)
 

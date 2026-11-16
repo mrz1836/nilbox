@@ -225,15 +225,19 @@ const (
 	stepFailed  = "failed"
 )
 
-// stepRun is one of the steps a match started with, and how it went.
+// stepRun is one of the steps a match started with, and how it went. A GitHub step sends
+// its actions one run at a time: Action counts those that went, so the next run sends the
+// next, and Accepted holds the warnings the user accepted for the one it is on.
 type stepRun struct {
-	Step    spec.Step  `json:"step"`
-	Status  string     `json:"status,omitempty"`
-	Outcome string     `json:"outcome,omitempty"`
-	Note    string     `json:"note,omitempty"`
-	RunID   int64      `json:"runId,omitempty"`
-	Started *time.Time `json:"started,omitempty"`
-	Ended   *time.Time `json:"ended,omitempty"`
+	Step     spec.Step  `json:"step"`
+	Status   string     `json:"status,omitempty"`
+	Outcome  string     `json:"outcome,omitempty"`
+	Note     string     `json:"note,omitempty"`
+	RunID    int64      `json:"runId,omitempty"`
+	Started  *time.Time `json:"started,omitempty"`
+	Ended    *time.Time `json:"ended,omitempty"`
+	Action   int        `json:"action,omitempty"`
+	Accepted string     `json:"accepted,omitempty"`
 
 	// Hold is what held its start back for the user to confirm, while it waits on one,
 	// and Confirmed the Keys of the holds the user confirmed for it, which its next start
@@ -624,6 +628,8 @@ func (l *ledger) itemRuns(ctx context.Context, ids []int64) (map[int64][]itemRun
 // history works out what the ledger knows of a routine and an item, for the evaluator:
 // the routine's tries since the last Try again, its last outcome, the head it first saw,
 // the comments it last counted, and the commits every routine's runs pushed to the item.
+// A try is one match's runs, however many it started: an agent's and the steps after it,
+// or a GitHub step's actions, each a run of its own.
 func history(routineID int64, runs []itemRun, b baseline, seen bool, resetAt time.Time, last string) eval.History {
 	h := eval.History{OwnHeads: []string{}, LastOutcome: last}
 
@@ -631,10 +637,13 @@ func history(routineID int64, runs []itemRun, b baseline, seen bool, resetAt tim
 		h.FirstHead, h.CommentsSeen = b.Head, b.Comments
 	}
 
+	tried := map[int64]bool{}
+
 	for _, r := range runs {
 		h.OwnHeads = addHeads(h.OwnHeads, r.RunCommit, r.HeadAfter)
 
-		if r.RoutineID == routineID && countsTry(r) && r.QueuedAt.After(resetAt) {
+		if r.RoutineID == routineID && countsTry(r) && r.QueuedAt.After(resetAt) && !tried[r.MatchID] {
+			tried[r.MatchID] = true
 			h.Tries++
 		}
 	}

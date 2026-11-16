@@ -132,10 +132,31 @@ func rigAt(t *testing.T, db *sql.DB, path string, mode autopilotprefs.Mode) *rig
 	r.file = autopilot.NewFile(path, "v0.0.0-test", r.clock)
 	r.svc = autopilot.NewService(autopilot.Config{
 		Pool: db, Prefs: prefs{cfg: cfg}, Accounts: r.accounts, Names: names{}, File: r.file, Clock: r.clock,
-		Logger: r.logs.Logger(),
+		Logger: r.logs.Logger(), Offers: rigOffers(),
 	})
 
 	return r
+}
+
+// rigOffers are the rig's build: every step the catalog offers but the GitHub step, so a
+// routine with one (rebaseSpec) stands for a step a build can't run yet, which keeps its
+// routine in Dry run.
+func rigOffers() *autopilot.Offers {
+	out := &autopilot.Offers{}
+
+	for _, st := range catalog.Steps() {
+		if st.Offered && st.Kind != catalog.StepGitHub {
+			out.Steps = append(out.Steps, st.Kind)
+		}
+	}
+
+	for _, p := range catalog.Places() {
+		if p.Offered {
+			out.Places = append(out.Places, p.ID)
+		}
+	}
+
+	return out
 }
 
 // save saves d, which must be saved.
@@ -215,8 +236,17 @@ func backgroundSpec() spec.Spec {
 	return s
 }
 
-// rebaseSpec is a routine with a GitHub step, which this build can't send yet, so it runs
-// in Dry run alone.
+// verifySpec is a routine whose agent pushes, then waits for the checks on its commit,
+// which no build follows yet, so it runs in Dry run alone wherever it is.
+func verifySpec() spec.Spec {
+	s := backgroundSpec()
+	s.Steps = append(s.Steps, spec.Step{WaitForChecks: &spec.WaitStep{}, OnlyIf: catalog.OutcomePushed})
+
+	return s
+}
+
+// rebaseSpec is a routine with a GitHub step, which the rig's build can't send (rigOffers),
+// so it runs in Dry run alone there.
 func rebaseSpec() spec.Spec {
 	s := notifySpec()
 	s.Steps = []spec.Step{{GitHub: []spec.GitHubAction{{Rebase: &spec.Empty{}}}}}

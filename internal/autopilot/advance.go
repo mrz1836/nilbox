@@ -1,6 +1,7 @@
 package autopilot
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -266,11 +267,10 @@ func (p *pass) tryStart(ctx context.Context, r *routineRun, m *match, sr *stepRu
 }
 
 // readFresh asks, on a worker, what holds the start back on this Mac (the step's prompt,
-// then the app's other parts, Holds), and only when nothing does reads m's item again
-// from GitHub, so a start held back here spends nothing; the next cycle evaluates it on
-// what the read stored.
+// or a GitHub step's replies, then the app's other parts, Holds), and only when nothing
+// does reads m's item again from GitHub, so a start held back here spends nothing; the
+// next cycle evaluates it on what the read stored.
 func (p *pass) readFresh(ctx context.Context, r *routineRun, m *match, sr *stepRun) {
-	id := store.Deref(m.ItemID)
 	job := p.job(r, m, sr)
 	sp := r.spec
 
@@ -280,7 +280,7 @@ func (p *pass) readFresh(ctx context.Context, r *routineRun, m *match, sr *stepR
 	p.cycle.Reads++
 
 	p.e.goWork(ctx, func(ctx context.Context) {
-		got, err := p.e.freshRead(ctx, sp, job, id)
+		got, err := p.e.freshRead(ctx, sp, job)
 
 		p.e.mail.post(func(ctx context.Context) {
 			delete(p.e.inflight, m.ID)
@@ -308,7 +308,7 @@ func (p *pass) readFresh(ctx context.Context, r *routineRun, m *match, sr *stepR
 // when neither holds the start back, the item's read. Turned off since the cycle,
 // Autopilot asks GitHub nothing: it returns ErrOff, and the match stays queued, as at
 // dispatch.
-func (e *Engine) freshRead(ctx context.Context, sp spec.Spec, job Job, id int64) (fresh, error) {
+func (e *Engine) freshRead(ctx context.Context, sp spec.Spec, job Job) (fresh, error) {
 	got := fresh{at: e.clock.Now()}
 
 	var err error
@@ -323,10 +323,24 @@ func (e *Engine) freshRead(ctx context.Context, sp spec.Spec, job Job, id int64)
 	case !e.Enabled():
 		err = ErrOff
 	default:
-		err = e.items.ReadItem(ctx, id)
+		err = e.readItem(ctx, job)
 	}
 
 	return got, err
+}
+
+// readItem reads job's item right before its step starts: through the step's own part
+// when it reads the item (itemReader: a GitHub step's sheet, whose read rewrites the
+// inbox's card too, so an action costs one point, not two), else through the inbox's
+// single-item read.
+func (e *Engine) readItem(ctx context.Context, job Job) error {
+	if info, ok := catalog.StepByKind(job.Step.Kind()); ok {
+		if reader, reads := e.dispatchers[info.Dispatcher].(itemReader); reads {
+			return reader.ReadItem(ctx, job)
+		}
+	}
+
+	return e.items.ReadItem(ctx, job.Item.ID)
 }
 
 // requeue puts a match still waiting on its start back in the queue, waiting on b.
@@ -356,7 +370,7 @@ func (p *pass) gate(r *routineRun, m *match, sr *stepRun, info catalog.Step) ver
 		func() verdict { return p.askFirst(r, m) },
 		func() verdict { return p.held(r, m) },
 		func() verdict { return p.limits(r, m, id, agent, github) },
-		func() verdict { return p.room(r, sr, agent) },
+		func() verdict { return p.room(r, sr, agent, github) },
 		func() verdict { return p.itemRules(m, id, sr, agent) },
 		func() verdict {
 			if !agent {
@@ -389,9 +403,13 @@ func (p *pass) held(r *routineRun, m *match) verdict {
 	return verdict{}
 }
 
-// room checks there is room for an agent's run: a free slot, and the daily cap.
-func (p *pass) room(r *routineRun, sr *stepRun, agent bool) verdict {
+// room checks there is room for an agent's run (a free slot, and the daily cap) and for a
+// GitHub action (the pace Autopilot keeps under the write gate, and any hold the gate
+// asked for).
+func (p *pass) room(r *routineRun, sr *stepRun, agent, github bool) verdict {
 	switch {
+	case github:
+		return p.pace()
 	case !agent:
 		return verdict{}
 	case p.e.runnerClosed:
@@ -401,6 +419,27 @@ func (p *pass) room(r *routineRun, sr *stepRun, agent bool) verdict {
 	}
 
 	return p.spend(r, sr.Step.Agent)
+}
+
+// pace holds a GitHub action while Autopilot sent ActionsPerMinute in the last minute, or
+// ActionsPerHour in the last hour, a third of the write gate's edit lane, so the user's
+// own clicks always have room; and while the gate refused the last one, until it said the
+// next may go. A manual run keeps to it too: it is about GitHub's limits, not a cap.
+func (p *pass) pace() verdict {
+	switch {
+	case p.now.Before(p.e.writesHeld):
+		return wait(BlockWritesHeld, p.e.writesHeldWords)
+	case p.counts.paceMinute >= ActionsPerMinute:
+		return wait(BlockWritesHeld, "Autopilot sent "+
+			textutil.Counted(ActionsPerMinute, "GitHub action", "GitHub actions")+
+			" in the last minute: the next goes in a moment, so your own changes always have room.")
+	case p.counts.paceHour >= ActionsPerHour:
+		return wait(BlockWritesHeld, "Autopilot sent "+
+			textutil.Counted(ActionsPerHour, "GitHub action", "GitHub actions")+
+			" in the last hour: the next goes as that eases, so your own changes always have room.")
+	}
+
+	return verdict{}
 }
 
 // askFirst holds a start for the user's OK: a routine that asks first, and an Autopilot
@@ -421,9 +460,39 @@ func (p *pass) askFirst(r *routineRun, m *match) verdict {
 }
 
 // limits checks the routine's tries, the day's counts, and the wait between tries, none of
-// which a manual run counts toward.
+// which a manual run counts toward. A match is one try and one of its routine's runs
+// however many runs it starts (an agent's and the steps after it, or each of a GitHub
+// step's actions), so only its first is held to the tries, the routine's runs a day, and
+// the wait; the agent runs and the GitHub actions a day count each one.
 func (p *pass) limits(r *routineRun, m *match, id int64, agent, github bool) verdict {
 	if m.Manual {
+		return verdict{}
+	}
+
+	first := m.Attempt == 0
+	if v := p.firstTry(r, id, first); !v.through() {
+		return v
+	}
+
+	switch {
+	case agent && p.counts.agentRuns >= p.cfg.RunsPerDay:
+		return wait(BlockCapRuns, "Autopilot ran "+textutil.Counted(p.cfg.RunsPerDay, "agent", "agents")+" today.")
+	case github && p.counts.actions >= p.cfg.ActionsPerDay:
+		return wait(BlockCapActions, "Autopilot sent "+
+			textutil.Counted(p.cfg.ActionsPerDay, "GitHub action", "GitHub actions")+" today.")
+	}
+
+	if last := p.lastTry(r.id(), id); first && !last.IsZero() && p.now.Sub(last) < r.spec.Limits.Wait() {
+		return wait(BlockWait, "It waits "+r.spec.Limits.Wait().String()+" between tries.")
+	}
+
+	return verdict{}
+}
+
+// firstTry checks a match's first run, which is its try (first): the routine's tries on the
+// item, and its runs a day; a later run of the match passes.
+func (p *pass) firstTry(r *routineRun, id int64, first bool) verdict {
+	if !first {
 		return verdict{}
 	}
 
@@ -438,15 +507,6 @@ func (p *pass) limits(r *routineRun, m *match, id int64, agent, github bool) ver
 		}
 	case p.counts.routineRuns[r.id()] >= lim.Runs():
 		return wait(BlockCapRuns, "The routine ran "+textutil.Counted(lim.Runs(), "time", "times")+" today.")
-	case agent && p.counts.agentRuns >= p.cfg.RunsPerDay:
-		return wait(BlockCapRuns, "Autopilot ran "+textutil.Counted(p.cfg.RunsPerDay, "agent", "agents")+" today.")
-	case github && p.counts.actions >= p.cfg.ActionsPerDay:
-		return wait(BlockCapActions, "Autopilot sent "+
-			textutil.Counted(p.cfg.ActionsPerDay, "GitHub action", "GitHub actions")+" today.")
-	}
-
-	if last := p.lastTry(r.id(), id); !last.IsZero() && p.now.Sub(last) < lim.Wait() {
-		return wait(BlockWait, "It waits "+lim.Wait().String()+" between tries.")
 	}
 
 	return verdict{}
@@ -626,7 +686,7 @@ func onDay(days []catalog.Weekday, day catalog.Weekday) bool {
 func (p *pass) job(r *routineRun, m *match, sr *stepRun) Job {
 	j := Job{
 		MatchID: m.ID, RoutineID: r.id(), RoutineName: r.row.Name, Head: m.HeadOID, Step: sr.Step,
-		Index: int(m.Step), Attempt: int(m.Attempt), Manual: m.Manual,
+		Index: int(m.Step), Action: sr.Action, Accept: sr.Accepted, Attempt: int(m.Attempt), Manual: m.Manual,
 		Item: ItemRef{
 			ID: store.Deref(m.ItemID), Kind: item.Kind(m.Kind), Repo: m.RepoOwner + "/" + m.RepoName,
 			Number: int(m.Number), Title: m.Title, URL: m.URL,
@@ -646,6 +706,16 @@ func (p *pass) job(r *routineRun, m *match, sr *stepRun) Job {
 
 // runnerGitHub is the runner of a GitHub action: the app's own write.
 const runnerGitHub = "github"
+
+// headNow returns the head commit of m's item as the cycle read it, which the read right
+// before a start stored, else the head m was decided on: "" for an issue.
+func (p *pass) headNow(m *match) string {
+	if f, ok := p.facts[store.Deref(m.ItemID)]; ok && f.Head.Known() && f.Head.Text != "" {
+		return f.Head.Text
+	}
+
+	return m.HeadOID
+}
 
 // runnerOf names who runs a step: an agent in the background or the terminal, or the
 // app's own GitHub write.
@@ -674,11 +744,18 @@ func (p *pass) start(ctx context.Context, r *routineRun, m *match, sr *stepRun, 
 		params.Agent, params.Preset = sr.Step.Agent.AgentID(), string(sr.Step.Agent.Tools())
 	}
 
-	if len(sr.Step.GitHub) > 0 {
-		params.GithubAction = string(sr.Step.GitHub[0].Kind())
+	if sr.Action < len(sr.Step.GitHub) && len(sr.Step.GitHub) > 0 {
+		// Each action is a run of its own, pinned to the head the read right before it
+		// found, which this cycle decided the match on.
+		params.GithubAction = string(sr.Step.GitHub[sr.Action].Kind())
+		job.Head = p.headNow(m)
+		params.HeadBefore = job.Head
 	}
 
-	sr.Status, sr.Started = stepRunning, new(p.now)
+	sr.Status = stepRunning
+	if sr.Started == nil {
+		sr.Started = new(p.now)
+	}
 
 	m.set(StateRunning, "", "")
 	m.Attempt++
@@ -852,16 +929,8 @@ func (e *Engine) dispatchAnswered(ctx context.Context, q *queries.Queries, m *ma
 	case res.Wait != "" || res.Requeue:
 		err = e.endRunIf(ctx, q, runID, RunEnd{Outcome: RunNotStarted, Summary: res.WaitWords, EndedAt: now}, false)
 		e.heldAt(m, sr, res)
-	case res.NotOffered != "":
-		err = e.endRunIf(ctx, q, runID, RunEnd{Outcome: RunNotSent, Summary: res.NotOffered, EndedAt: now}, false)
-		m.close(StateClosed, ReasonNotOffered, res.NotOffered, now)
-	case res.Warning != "":
-		err = e.endRunIf(ctx, q, runID, RunEnd{Outcome: RunNotSent, Summary: res.Warning, EndedAt: now}, false)
-
-		sr.Status, sr.RunID = stepPending, 0
-		m.Approved = false
-
-		m.wait(BlockWarning, res.Warning)
+	case res.unsent():
+		err = e.unsent(ctx, q, m, sr, runID, res, now)
 	default:
 		outcome := RunDone
 		if runID != 0 && !res.Sent {
@@ -870,13 +939,82 @@ func (e *Engine) dispatchAnswered(ctx context.Context, q *queries.Queries, m *ma
 
 		err = e.endRunIf(ctx, q, runID, RunEnd{Outcome: outcome, Summary: res.Summary, EndedAt: now}, outcome == RunDone)
 
-		sr.Status, sr.Outcome, sr.Note, sr.Ended = stepDone, string(res.Outcome), res.Summary, new(now)
-		m.Step++
-
-		m.set(StateQueued, "", "")
+		stepEnded(m, sr, string(res.Outcome), res.Summary, now)
 	}
 
 	return true, err
+}
+
+// unsent records a GitHub action its sheet or the write gate kept from being sent: one no
+// longer offered closes m; one offered with warnings waits for the user; after a push,
+// nothing was sent and it is no try, so the item is read again and the cycle decides it
+// again before the action starts once more; one the gate held waits until it may go.
+func (e *Engine) unsent(ctx context.Context, q *queries.Queries, m *match, sr *stepRun, runID int64, res Result,
+	now time.Time,
+) error {
+	words := cmp.Or(res.NotOffered, res.Warning, res.Held, res.Summary)
+	err := e.endRunIf(ctx, q, runID, RunEnd{Outcome: RunNotSent, Summary: words, EndedAt: now}, false)
+
+	if res.NotOffered != "" {
+		m.close(StateClosed, ReasonNotOffered, res.NotOffered, now)
+
+		return err
+	}
+
+	notSent(m, sr, runID)
+
+	switch {
+	case res.Warning != "":
+		m.Approved = false
+
+		m.wait(BlockWarning, res.Warning)
+	case res.PushedSince:
+		delete(e.freshReads, m.ID)
+		m.set(StateQueued, "", "")
+	default:
+		e.holdWrites(now.Add(max(res.RetryIn, time.Second)), res.Held)
+		m.wait(BlockWritesHeld, res.Held)
+	}
+
+	return err
+}
+
+// notSent puts back the step of m whose run runID sent nothing, to start again, and takes
+// back the run its start counted, so it counts as no try: m is decided again like a match
+// that started nothing, once nothing else of it went.
+func notSent(m *match, sr *stepRun, runID int64) {
+	sr.Status, sr.RunID = stepPending, 0
+
+	if runID != 0 {
+		m.unstarted()
+	}
+}
+
+// stepEnded records that sr, m's step now, ended with outcome and note, and moves m on: to
+// the step after it, or, for a GitHub step with another action to send, to that action,
+// which starts as its own run once the limits let it.
+func stepEnded(m *match, sr *stepRun, outcome, note string, now time.Time) {
+	if len(sr.Step.GitHub) > 0 && sr.Action+1 < len(sr.Step.GitHub) {
+		sr.Action++
+		sr.Status, sr.RunID, sr.Accepted, sr.Note = stepPending, 0, "", note
+
+		m.set(StateQueued, "", "")
+
+		return
+	}
+
+	sr.Status, sr.Outcome, sr.Note, sr.Ended = stepDone, outcome, note, new(now)
+	m.Step++
+
+	m.set(StateQueued, "", "")
+}
+
+// holdWrites holds the GitHub actions until until, as the write gate asked, with words
+// that say why; a hold already running past then stays as it is.
+func (e *Engine) holdWrites(until time.Time, words string) {
+	if until.After(e.writesHeld) {
+		e.writesHeld, e.writesHeldWords = until, words
+	}
 }
 
 // endRunIf ends the run runID, when there is one, through q.
@@ -1433,11 +1571,11 @@ func (e *Engine) moveByRecord(m *match, run queries.AutopilotRun) {
 	switch {
 	case end.Outcome == RunNotStarted:
 		putBack(m, run)
-	case run.Runner == runnerGitHub && (end.Outcome == RunDone || end.Outcome == RunNotSent):
-		cur := &m.steps[m.Step]
-		cur.Status, cur.Note, cur.Ended = stepDone, end.Summary, new(now)
-		m.Step++
-
+	case run.Runner == runnerGitHub && end.Outcome == RunDone:
+		stepEnded(m, &m.steps[m.Step], "", end.Summary, now)
+	case run.Runner == runnerGitHub && end.Outcome == RunNotSent:
+		// Nothing was sent, so sending it again sends it once.
+		notSent(m, &m.steps[m.Step], run.ID)
 		m.set(StateQueued, "", "")
 	case end.Outcome == RunDone, end.Outcome == RunFailed, end.Outcome == RunInterrupted:
 		e.moveOn(m, m.Step, end, "", now)
@@ -1469,7 +1607,8 @@ func (e *Engine) alive(ctx context.Context, run queries.AutopilotRun) Liveness {
 	return LiveUnknown
 }
 
-// dayCounts are today's counts against the limits, from local midnight.
+// dayCounts are today's counts against the limits, from local midnight, and the pace of
+// the GitHub actions over the last minute and the last hour, which may reach back past it.
 type dayCounts struct {
 	routineRuns  map[int64]int
 	agentRuns    int
@@ -1478,18 +1617,33 @@ type dayCounts struct {
 	activeItems  map[int64]bool
 	spend        map[autopilotprefs.Unit]float64
 	routineSpend map[int64]map[autopilotprefs.Unit]float64
+
+	// paceMinute and paceHour count the GitHub actions started in the last minute and the
+	// last hour, manual ones too, as of now.
+	paceMinute int
+	paceHour   int
+	now        time.Time
+
+	// counted are the matches a routine's runs today were counted for, by routine: a
+	// match is one of its routine's runs however many runs it starts.
+	counted map[int64]map[int64]bool
 }
 
-// dayCounts reads today's counts.
+// dayCounts reads today's counts, and the last hour's GitHub actions.
 func (e *Engine) dayCounts(ctx context.Context, now time.Time) (dayCounts, error) {
 	out := dayCounts{
 		routineRuns: map[int64]int{}, activeItems: map[int64]bool{}, spend: map[autopilotprefs.Unit]float64{},
-		routineSpend: map[int64]map[autopilotprefs.Unit]float64{},
+		routineSpend: map[int64]map[autopilotprefs.Unit]float64{}, counted: map[int64]map[int64]bool{}, now: now,
 	}
 
 	day := dayStart(now)
 
-	rows, err := e.ledger.q.ListRunsSince(ctx, day)
+	since := day
+	if hour := now.Add(-time.Hour); hour.Before(since) {
+		since = hour
+	}
+
+	rows, err := e.ledger.q.ListRunsSince(ctx, since)
 	if err != nil {
 		return out, fmt.Errorf("read today's runs: %w", err)
 	}
@@ -1501,34 +1655,66 @@ func (e *Engine) dayCounts(ctx context.Context, now time.Time) (dayCounts, error
 	return out, nil
 }
 
-// add counts one of the day's runs; one that never started counts toward nothing.
+// add counts one of the runs read: today's toward the day's counts, and the last hour's
+// GitHub actions toward their pace. One that never started, or a GitHub action that sent
+// nothing, counts toward nothing.
 func (d *dayCounts) add(r queries.ListRunsSinceRow, day time.Time) {
-	if RunOutcome(r.Outcome) == RunNotStarted {
+	if RunOutcome(r.Outcome) == RunNotStarted || RunOutcome(r.Outcome) == RunNotSent {
 		return
 	}
 
 	active := r.Status == runStarting || r.Status == runRunning || r.Status == runStopping
 	today := !r.QueuedAt.Before(day)
 
-	if active && r.ItemID != nil {
-		d.activeItems[*r.ItemID] = true
+	if active {
+		d.going(r)
 	}
 
-	if active && r.Runner != runnerGitHub {
-		d.activeAgents++
+	if r.Runner == runnerGitHub && r.StartedAt != nil {
+		d.paced(*r.StartedAt)
 	}
 
 	if today && !r.Manual {
-		d.countRun(r.RoutineID, r.Runner)
+		d.countRun(r.RoutineID, r.MatchID, r.Runner)
 	}
 
 	d.addSpend(r, active, today)
 }
 
-// countRun counts a run toward the day's counts: its routine's, and the agents' or the
-// GitHub actions'.
-func (d *dayCounts) countRun(routineID int64, runner string) {
-	d.routineRuns[routineID]++
+// going counts a run still going: its item busy, and an agent's slot taken.
+func (d *dayCounts) going(r queries.ListRunsSinceRow) {
+	if r.ItemID != nil {
+		d.activeItems[*r.ItemID] = true
+	}
+
+	if r.Runner != runnerGitHub {
+		d.activeAgents++
+	}
+}
+
+// paced counts a GitHub action started at toward the pace, while it is within the last
+// minute or the last hour.
+func (d *dayCounts) paced(at time.Time) {
+	if age := d.now.Sub(at); age < time.Hour {
+		d.paceHour++
+
+		if age < time.Minute {
+			d.paceMinute++
+		}
+	}
+}
+
+// countRun counts a run of the match matchID toward the day's counts: its routine's, once
+// for the match, and the agents' or the GitHub actions', once for each run.
+func (d *dayCounts) countRun(routineID, matchID int64, runner string) {
+	if d.counted[routineID] == nil {
+		d.counted[routineID] = map[int64]bool{}
+	}
+
+	if !d.counted[routineID][matchID] {
+		d.counted[routineID][matchID] = true
+		d.routineRuns[routineID]++
+	}
 
 	if runner == runnerGitHub {
 		d.actions++
@@ -1568,10 +1754,12 @@ func (d *dayCounts) started(routineID, itemID int64, runner string, job Job, man
 
 	if runner != runnerGitHub {
 		d.activeAgents++
+	} else {
+		d.paced(d.now)
 	}
 
 	if !manual {
-		d.countRun(routineID, runner)
+		d.countRun(routineID, job.MatchID, runner)
 	}
 
 	if job.Unit != "" {

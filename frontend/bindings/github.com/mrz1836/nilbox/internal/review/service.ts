@@ -48,6 +48,24 @@ export function Earlier(id: number, before: string): $CancellablePromise<timelin
 }
 
 /**
+ * EditLabels changes the labels of the pull request with req.ItemID as req asks, as the
+ * issue sheet's label edit changes an issue's, at the same GitHub endpoint: one REST
+ * request for the labels added and one for each label taken off, through the inbox's Actor
+ * (the item's lock, the account check, and a token borrowed again once when GitHub refuses
+ * one, which never sends a step twice). It is pinned to the head the request names, as
+ * every action of the sheet is, so a pull request pushed to since sends nothing
+ * (LabelsResult.PushedSince), and it needs the sheet to have read the pull request and the
+ * user's account to have triage access or more. GitHub ignores a change an account can't
+ * make rather than refusing it, so every answer is checked. It stops at the first step
+ * that fails, and those before it stand: once GitHub made any, the result counts them and
+ * says why the next failed, while a failure before any is the error. A name given twice is
+ * sent once, and one both added and taken off not at all.
+ */
+export function EditLabels(req: $models.LabelsRequest): $CancellablePromise<$models.LabelsResult> {
+    return $Call.ByID(2996802995, req);
+}
+
+/**
  * FillReply fills in the reply with replyID for the pull request with itemID, as the
  * text the review starts with.
  */
