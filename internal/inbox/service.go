@@ -262,7 +262,7 @@ func NewService(cfg Config) *Service {
 		db: cfg.Pool, q: queries.New(cfg.Pool), prefs: prefs.New(cfg.Pool, c), tokens: cfg.Tokens,
 		client: cfg.Client, clock: c, events: event.Or(cfg.Events), arrivals: cfg.Arrivals, outcomes: cfg.Outcomes,
 		usage: cfg.Usage, logger: logging.Or(cfg.Logger), watchSource: cfg.Watches, changedSink: cfg.Changed,
-		keep: cfg.Keep, passes: watchPasses{jobs: make(chan *watchJob, 1)},
+		keep: cfg.Keep, passes: watchPasses{jobs: make(chan *watchJob, 1), ended: make(chan struct{})},
 	}
 }
 

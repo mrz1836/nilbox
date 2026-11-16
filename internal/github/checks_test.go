@@ -1,9 +1,12 @@
 package github
 
 import (
+	"fmt"
 	"io"
 	"net/http"
+	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -177,4 +180,59 @@ func TestDetailsReadTheRepositoryWhenAsked(t *testing.T) {
 	assert.Equal(t, "example-repo", d.Repo.Name)
 	assert.Equal(t, "main", d.Repo.Repo.DefaultBranch)
 	assert.True(t, d.Repo.Repo.AllowUpdateBranch)
+}
+
+func TestDetailsCanBeReadInFixedBatchesKeepingWhatSucceeded(t *testing.T) {
+	t.Parallel()
+
+	var (
+		mu    sync.Mutex
+		sizes []int
+	)
+
+	ids := make([]string, 0, 32)
+	for i := range 32 {
+		ids = append(ids, fmt.Sprintf("I_fakeNodeId%d", i))
+	}
+
+	record := func(size int) {
+		mu.Lock()
+		defer mu.Unlock()
+
+		sizes = append(sizes, size)
+	}
+
+	client := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		req := readDetailsRequest(t, r)
+		record(len(req.Variables.IDs))
+
+		if slices.Contains(req.Variables.IDs, "I_fakeNodeId0") {
+			w.WriteHeader(http.StatusBadGateway)
+			_, _ = io.WriteString(w, "<html>502 Bad Gateway</html>")
+
+			return
+		}
+
+		nodes := make([]string, 0, len(req.Variables.IDs))
+		for _, id := range req.Variables.IDs {
+			nodes = append(nodes, fmt.Sprintf(`{"__typename":"Issue","id":%q,"comments":{"totalCount":1},"labels":{"nodes":[]}}`, id))
+		}
+
+		_, _ = fmt.Fprintf(w, `{"data":{"nodes":[%s],"rateLimit":{"cost":1,"limit":5000,"remaining":4990,"used":10,`+
+			`"resetAt":"2026-01-10T13:00:00Z"}}}`, strings.Join(nodes, ","))
+	})
+
+	got, err := client.FetchDetails(t.Context(), NewToken(fakeToken), ids, DetailOptions{Batch: 15, Partial: true})
+	require.ErrorIs(t, err, ErrUnexpectedStatus, "the batch that failed says so")
+	require.NotNil(t, got)
+	assert.Len(t, got.Items, 17, "the batches that succeeded are kept")
+	assert.Equal(t, 2, got.Requests)
+
+	mu.Lock()
+	slices.Sort(sizes)
+	assert.Equal(t, []int{2, 15, 15}, sizes, "fixed batches, so a few IDs cost one request")
+	mu.Unlock()
+
+	_, err = client.FetchDetails(t.Context(), NewToken(fakeToken), ids[:3], DetailOptions{Batch: 15})
+	require.Error(t, err, "without Partial, a batch that fails fails the call")
 }

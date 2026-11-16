@@ -2,6 +2,7 @@ package github
 
 import (
 	"context"
+	"errors"
 	"maps"
 	"slices"
 	"strconv"
@@ -203,6 +204,18 @@ type DetailOptions struct {
 	// reads it, for an item whose repository a routine's search read only in part. Only
 	// FetchDetails reads it.
 	Repository bool
+
+	// Batch, when set, is how many IDs each of FetchDetails' requests asks about but the
+	// last, at most detailsMaxBatch, so a few IDs cost one request; 0 sizes the batches by
+	// how many IDs there are, for the quickest answer. Items GitHub reads for the first
+	// time, as a routine's newly watched ones, take it longer: four batches of 25 such pull
+	// requests side by side ran past its 10-second limit (measured in November 2026), and of
+	// 15 took 6 seconds.
+	Batch int
+
+	// Partial has FetchDetails return what the batches that succeeded read, with the error
+	// of those that failed, rather than nothing.
+	Partial bool
 }
 
 // Details is what FetchDetails learned.
@@ -424,24 +437,42 @@ func detailsBatches(ids []string) [][]string {
 	return slices.Collect(slices.Chunk(ids, size))
 }
 
-// fetchDetails sends the batches side by side and merges the answers in batch order.
+// detailsBatchesOf splits ids into the batches FetchDetails sends with Batch set to size:
+// each of size IDs but the last, so a few IDs cost one request.
+func detailsBatchesOf(ids []string, size int) [][]string {
+	if size <= 0 {
+		return detailsBatches(ids)
+	}
+
+	return slices.Collect(slices.Chunk(ids, size))
+}
+
+// fetchDetails sends the batches side by side and merges the answers in batch order. With
+// opts.Partial, a batch that fails stops none of the others, and the answers of those that
+// didn't are returned with the first error.
 func (c *Client) fetchDetails(ctx context.Context, tok Token, ids []string, opts DetailOptions) (*Details, error) {
-	batches := detailsBatches(ids)
+	batches := detailsBatchesOf(ids, opts.batch())
 	answers := make([]*Details, len(batches))
+	errs := make([]error, len(batches))
 
 	g, gctx := errgroup.WithContext(ctx)
+	if opts.Partial {
+		g = &errgroup.Group{}
+		gctx = ctx
+	}
+
 	g.SetLimit(detailsParallel)
 
 	for i, batch := range batches {
 		g.Go(func() error {
-			answer, err := c.fetchDetailsBatch(gctx, tok, batch, opts)
-			answers[i] = answer
+			answers[i], errs[i] = c.fetchDetailsBatch(gctx, tok, batch, opts)
 
-			return err
+			return errs[i]
 		})
 	}
 
-	if err := g.Wait(); err != nil {
+	err := g.Wait()
+	if err != nil && !opts.Partial {
 		return nil, err
 	}
 
@@ -450,7 +481,17 @@ func (c *Client) fetchDetails(ctx context.Context, tok Token, ids []string, opts
 		out.Add(answer)
 	}
 
-	return out, nil
+	return out, errors.Join(errs...)
+}
+
+// batch is the size of each of o's requests, at most detailsMaxBatch; 0 lets detailsBatches
+// size them by how many there are.
+func (o DetailOptions) batch() int {
+	if o.Batch <= 0 {
+		return 0
+	}
+
+	return min(o.Batch, detailsMaxBatch)
 }
 
 // fetchDetailsBatch sends the details query for one batch of IDs. When GitHub refuses

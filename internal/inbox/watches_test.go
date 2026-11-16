@@ -14,6 +14,7 @@ import (
 
 	"github.com/mrz1836/nilbox/internal/event"
 	"github.com/mrz1836/nilbox/internal/github"
+	"github.com/mrz1836/nilbox/internal/inbox/internal/queries"
 	"github.com/mrz1836/nilbox/internal/testutil"
 )
 
@@ -767,6 +768,51 @@ func TestTheActorActsOnAWatchedItem(t *testing.T) {
 
 	_, err = actor.Act(t.Context(), id, act)
 	require.NoError(t, err, "a watched item's sheet acts as a listed one's")
+}
+
+func TestOldDetailsAreReadOnlyInTheRoomLeft(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, 1, 10, 12, 0, 0, 0, time.UTC)
+
+	plan := func(moving, stale int) *passPlan {
+		p := &passPlan{results: map[string]*passItem{}}
+
+		for i := range moving + stale {
+			id := nodeID(i)
+			read := new(now.Add(-time.Duration(i) * time.Minute))
+			p.results[id] = &passItem{
+				read: i < moving, stale: i >= moving,
+				stored: &queries.ListWatchBaselineRow{DetailsFetchedAt: read},
+			}
+			p.order = append(p.order, id)
+		}
+
+		return p
+	}
+
+	reads := func(p *passPlan) (stale []int) {
+		for i, id := range p.order {
+			if item := p.results[id]; item.read && item.stale {
+				stale = append(stale, i)
+			}
+		}
+
+		return stale
+	}
+
+	alone := plan(0, 40)
+	alone.fillStale()
+	assert.Len(t, reads(alone), watchDetailsBatch, "with nothing else to read, one batch of the oldest")
+	assert.Equal(t, 39, reads(alone)[len(reads(alone))-1], "the oldest first")
+
+	beside := plan(4, 40)
+	beside.fillStale()
+	assert.Len(t, reads(beside), watchDetailsBatch-4, "they fill the room the moved items leave")
+
+	full := plan(watchDetailsBatch, 40)
+	full.fillStale()
+	assert.Empty(t, reads(full), "never a request more")
 }
 
 // inboxUpdates counts the inbox changes events heard.

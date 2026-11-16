@@ -39,8 +39,15 @@ import (
 const (
 	// detailsStaleAfter is how old a watched item's details may be before a pass reads
 	// them again whatever its search says, which catches what the search can't see, such
-	// as its labels, or a base branch that moved on.
+	// as its labels, or a base branch that moved on. Such reads fill the room left in the
+	// pass's last details batch, so they never add more than one request (fillStale).
 	detailsStaleAfter = 30 * time.Minute
+
+	// watchDetailsBatch is how many watched items one details request reads. GitHub reads
+	// an item it hasn't lately more slowly, and four requests of 25 such pull requests side
+	// by side ran past its 10-second limit (measured in November 2026), while four of 15
+	// took 6 seconds.
+	watchDetailsBatch = 15
 
 	// staleTailFor is how long a truncated search's tail is kept, stale, after it last
 	// returned an item: the item may only have dropped past the search's first page.
@@ -144,9 +151,11 @@ type watchPasses struct {
 	// busy is set from a job's hand-off until its pass ends.
 	busy atomic.Bool
 
-	// mu guards last and cleaned.
-	mu   sync.Mutex
-	last *WatchPass
+	// mu guards last, ended, and cleaned. ended is closed, and made again, as each pass
+	// ends, for AwaitPass.
+	mu    sync.Mutex
+	last  *WatchPass
+	ended chan struct{}
 
 	// cleaned is set once a pass with no searches has deleted every search's rows, so
 	// refreshes with no routine's search send no job until one has a search again.
@@ -258,7 +267,29 @@ func (s *Service) runPassJob(ctx context.Context, job *watchJob) {
 	s.passes.mu.Lock()
 	s.passes.last = &report
 	s.passes.cleaned = len(job.searches) == 0 && err == nil
+	close(s.passes.ended)
+	s.passes.ended = make(chan struct{})
 	s.passes.mu.Unlock()
+}
+
+// awaitPass waits for a watch pass whose request went out at since or later to end, or
+// for ctx to end, and returns what it did.
+func (s *Service) awaitPass(ctx context.Context, since time.Time) (WatchPass, error) {
+	for {
+		s.passes.mu.Lock()
+		last, ended := s.passes.last, s.passes.ended
+		s.passes.mu.Unlock()
+
+		if last != nil && !last.At.Before(since) {
+			return *last, nil
+		}
+
+		select {
+		case <-ended:
+		case <-ctx.Done():
+			return WatchPass{}, ctx.Err()
+		}
+	}
 }
 
 // lastWatchPass returns what the last watch pass did, and false before one ran.
@@ -395,6 +426,7 @@ type passItem struct {
 	follow   bool
 	read     bool
 	newer    bool
+	stale    bool
 	changed  bool
 	listed   bool
 	searches []string
@@ -442,7 +474,9 @@ func (s *Service) planPass(ctx context.Context, job *watchJob, got *github.Watch
 	}
 
 	plan.accountID = accountID
-	plan.options = github.DetailOptions{Projects: readOptions(last).Projects, Repository: true}
+	plan.options = github.DetailOptions{
+		Projects: readOptions(last).Projects, Repository: true, Batch: watchDetailsBatch, Partial: true,
+	}
 
 	for _, w := range job.searches {
 		for _, it := range plan.answers[w.Key].Items {
@@ -474,6 +508,8 @@ func (s *Service) compareStored(ctx context.Context, plan *passPlan) error {
 	for _, id := range plan.order {
 		plan.results[id].judge(plan.started, now)
 	}
+
+	plan.fillStale()
 
 	return nil
 }
@@ -514,14 +550,21 @@ func (p *passItem) judge(started, now time.Time) {
 	}
 
 	p.listed = st.ReasonReviewRequested || st.ReasonAuthored || st.ReasonAssigned
-	p.newer = st.FetchedAt.After(started) || (st.DetailsFetchedAt != nil && st.DetailsFetchedAt.After(started))
+	p.newer = st.FetchedAt.After(started) || readAfter(st.DetailsFetchedAt, started)
 
 	if p.listed || p.newer {
 		return
 	}
 
-	p.read = needsDetails(p.item, st, now)
+	p.read = needsDetails(p.item, st)
+	p.stale = !p.read && !readAfter(st.DetailsFetchedAt, now.Add(-detailsStaleAfter))
 	p.changed = p.read || moved(p.item, st)
+}
+
+// readAfter reports whether details read at at were read after since; never when they
+// weren't read.
+func readAfter(at *time.Time, since time.Time) bool {
+	return at != nil && at.After(since)
 }
 
 // moved reports whether the item's card moved since it was stored: new to the watches, or
@@ -530,20 +573,49 @@ func moved(it github.WatchItem, st *queries.ListWatchBaselineRow) bool {
 	return !st.Watched || !st.ItemUpdatedAt.Equal(it.UpdatedAt.UTC()) || st.State != it.State || st.IsDraft != it.IsDraft
 }
 
-// needsDetails reports whether a watched item's details are read again: it is new to the
-// watches or has none; its update time, head commit, base branch, checks' state, or draft
-// flag moved; its checks were still running at the last read, or GitHub hadn't worked out
-// whether it merges; or its details are older than detailsStaleAfter.
-func needsDetails(it github.WatchItem, st *queries.ListWatchBaselineRow, now time.Time) bool {
+// needsDetails reports whether a watched item's details are read again because it moved:
+// it is new to the watches or has none; its update time, head commit, base branch, checks'
+// state, or draft flag moved; or its checks were still running at the last read, or GitHub
+// hadn't worked out whether it merges. Details older than detailsStaleAfter are read too,
+// as room allows (see fillStale).
+func needsDetails(it github.WatchItem, st *queries.ListWatchBaselineRow) bool {
 	switch {
 	case st.DetailsItemID == nil || st.DetailsFetchedAt == nil || moved(it, st):
-		return true
-	case now.Sub(*st.DetailsFetchedAt) >= detailsStaleAfter:
 		return true
 	case !it.IsPR:
 		return false
 	default:
 		return pullMoved(it, st)
+	}
+}
+
+// fillStale picks, of the items whose details are only old, the oldest first, as many as
+// the pass reads without a request more: the room left in its last details batch, or one
+// batch when it reads none else. Each such item is read once in the time its turn takes to
+// come round, which is detailsStaleAfter while the watches hold a few batches' worth.
+func (p *passPlan) fillStale() {
+	moving, stale := 0, make([]*passItem, 0, len(p.order))
+
+	for _, id := range p.order {
+		switch item := p.results[id]; {
+		case item.read:
+			moving++
+		case item.stale:
+			stale = append(stale, item)
+		}
+	}
+
+	room := watchDetailsBatch
+	if moving > 0 {
+		room = (watchDetailsBatch - moving%watchDetailsBatch) % watchDetailsBatch
+	}
+
+	slices.SortStableFunc(stale, func(a, b *passItem) int {
+		return a.stored.DetailsFetchedAt.Compare(*b.stored.DetailsFetchedAt)
+	})
+
+	for _, item := range stale[:min(room, len(stale))] {
+		item.read, item.changed = true, true
 	}
 }
 
@@ -581,12 +653,17 @@ func (s *Service) readPassDetails(ctx context.Context, plan *passPlan) error {
 	details, err := github.WithToken(ctx, s.tokens, func(tok github.Token) (*github.Details, error) {
 		return s.client.FetchDetails(ctx, tok, ids, plan.options)
 	})
+
+	// A batch that failed leaves its items for the next pass, which finds them unread; the
+	// batches that succeeded are kept.
+	if details != nil {
+		plan.details = details.Items
+		plan.detailRequests, plan.detailPoints = details.Requests, details.RateLimit.Cost
+	}
+
 	if err != nil {
 		return fmt.Errorf("read the details: %w", err)
 	}
-
-	plan.details = details.Items
-	plan.detailRequests, plan.detailPoints = details.Requests, details.RateLimit.Cost
 
 	return nil
 }
@@ -992,4 +1069,10 @@ func (r *Routines) ReadChecks(ctx context.Context, ids []int64) error {
 // LastWatchPass returns what the last watch pass did, and false before one ran.
 func (r *Routines) LastWatchPass() (WatchPass, bool) {
 	return r.svc.lastWatchPass()
+}
+
+// AwaitPass waits for a watch pass whose request went out at since or later to end, or for
+// ctx to end, and returns what it did: what the refresh measurement times.
+func (r *Routines) AwaitPass(ctx context.Context, since time.Time) (WatchPass, error) {
+	return r.svc.awaitPass(ctx, since)
 }
