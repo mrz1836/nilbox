@@ -253,7 +253,9 @@ export const reasonChips: Readonly<Record<AutopilotReason, Chip>> = {
 // ("Snoozed", "Pinned"), or that it was undone or taken back; a notice; or why a closed one
 // closed. Each later kind of step brings its own words.
 export function chipOf(m: AutopilotMatch): Chip {
-  if (m.dryRun) {
+  // A Dry run's baseline, as turning one on from now on records, would have run nothing,
+  // and a Dry run's match that closed or was skipped says why, as a real one does.
+  if (m.dryRun && m.state !== 'baseline' && m.state !== 'closed' && m.state !== 'skipped' && m.state !== 'dismissed') {
     return { label: 'Would run', tone: 'muted' }
   }
 

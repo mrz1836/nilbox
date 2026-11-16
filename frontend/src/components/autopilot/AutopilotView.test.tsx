@@ -1,7 +1,7 @@
 import { act, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { useState } from 'react'
-import { describe, expect, it, vi } from 'vitest'
+import { beforeAll, describe, expect, it, vi } from 'vitest'
 
 import { brand } from '../../generated/brand'
 import type { AutopilotRequest } from '../../lib/autopilot'
@@ -34,6 +34,13 @@ import AutopilotView from './AutopilotView'
 import type { RowsKit } from './WatchingList'
 
 vi.mock('../../platform', () => import('../../test/platform').then((fake) => fake.platform))
+
+// The sheets load on their own (lazily, as the inbox's do), and are imported once before
+// the tests, so no test pays a sheet's cold, instrumented import inside the second a
+// findBy waits: on a cold runner the first test to open one otherwise ran out of it.
+beforeAll(async () => {
+  await Promise.all([import('../review/ReviewSheet'), import('../issue/IssueSheet')])
+})
 
 const launch: LaunchOptions = {
   agents: agents(),
@@ -297,28 +304,29 @@ describe('Activity', () => {
   })
 
   it('offers Let it act again on what a routine leaves alone, and Try again on one that gave up', async () => {
+    const page = activityPage({
+      days: [
+        {
+          date: '2026-06-15',
+          matches: [
+            autopilotMatch({
+              id: 30,
+              state: 'skipped',
+              reason: 'tries',
+              words: 'It gave up: 2 tries used.',
+              item: itemRef({ id: 2, number: 9 }),
+              effects: [],
+            }),
+          ],
+          groups: [],
+        },
+      ],
+      leftAlone: [leftAlone()],
+    })
+
     platform.listRoutines.mockResolvedValue(routines())
-    platform.autopilotActivity.mockResolvedValue(
-      activityPage({
-        days: [
-          {
-            date: '2026-06-15',
-            matches: [
-              autopilotMatch({
-                id: 30,
-                state: 'skipped',
-                reason: 'tries',
-                words: 'It gave up: 2 tries used.',
-                item: itemRef({ id: 2, number: 9 }),
-                effects: [],
-              }),
-            ],
-            groups: [],
-          },
-        ],
-        leftAlone: [leftAlone()],
-      }),
-    )
+    platform.autopilotActivity.mockResolvedValue(page)
+    platform.autopilotActivityFrom.mockResolvedValue(page)
     renderTab()
 
     const today = within(await screen.findByRole('list', { name: 'Today' }))
@@ -326,6 +334,11 @@ describe('Activity', () => {
     await userEvent.click(today.getByRole('button', { name: 'Let it act again' }))
     expect(platform.letRoutineActAgain).toHaveBeenCalledExactlyOnceWith(3, 1)
     expect(await screen.findByText('Snooze passing bot PRs can act on it again.')).toBeInTheDocument()
+    // What a line's action changes may be further down than Activity reads again on its own,
+    // so every page loaded is read again.
+    await waitFor(() => {
+      expect(platform.autopilotActivityFrom).toHaveBeenCalledWith(0, 500)
+    })
 
     expect(today.getByText('Gave up').closest('li')).toHaveTextContent('It gave up: 2 tries used.')
     await userEvent.click(today.getByRole('button', { name: 'Try again' }))
@@ -453,6 +466,61 @@ describe('Activity', () => {
 
     expect(again).not.toHaveAttribute('data-highlighted')
     expect(platform.openExternal).not.toHaveBeenCalled()
+  })
+
+  it('lets a Watching ask go once another routine or Activity is chosen, so it never lands later', async () => {
+    platform.listRoutines.mockResolvedValue(routines())
+    platform.autopilotActivity.mockResolvedValue(activityPage())
+    platform.routineWatching.mockImplementation((rid) => Promise.resolve(rid === 3 ? [2] : []))
+    // The list's first read of its items is still on its way when Activity is chosen.
+    platform.itemsByID.mockReturnValueOnce(new Promise(() => undefined))
+    platform.itemsByID.mockResolvedValue([
+      item({ id: 2, kind: 'issue', number: 9, title: 'The widget forgets its size' }),
+    ])
+    renderTab()
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Open example-repo #9' }))
+    expect(await screen.findByRole('region', { name: 'Snooze passing bot PRs' })).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Activity' }))
+    await userEvent.click((await routineList()).getByRole('button', { name: /^Snooze passing bot PRs/ }))
+
+    const row = (await screen.findByRole('button', { name: 'The widget forgets its size' })).closest('li')
+
+    expect(row).not.toHaveAttribute('data-highlighted')
+  })
+
+  it('keeps the sheet of an item no list holds as the item is, after its own triage', async () => {
+    // The line is a deleted routine's: routine 9 is in no list.
+    platform.listRoutines.mockResolvedValue(routines())
+    platform.autopilotActivity.mockResolvedValue(
+      activityPage({
+        days: [{ date: '2026-06-15', matches: [dryRunMatch({ routineId: 9, routine: 'Gone' })], groups: [] }],
+      }),
+    )
+    platform.itemsByID.mockResolvedValue([
+      item({ id: 2, kind: 'issue', number: 9, title: 'The widget forgets its size' }),
+    ])
+    renderTab()
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Open example-repo #9' }))
+
+    const sheet = within(await screen.findByRole('dialog', { name: 'The widget forgets its size' }))
+
+    platform.itemsByID.mockResolvedValue([
+      item({
+        id: 2,
+        kind: 'issue',
+        number: 9,
+        title: 'The widget forgets its size',
+        dismissedAt: '2026-06-15T12:00:00Z',
+      }),
+    ])
+    await userEvent.click(sheet.getByRole('button', { name: 'Dismiss' }))
+
+    expect(platform.dismissItem).toHaveBeenCalledWith(2)
+    expect(await sheet.findByRole('button', { name: 'Restore' })).toBeInTheDocument()
+    expect(sheet.queryByRole('button', { name: 'Dismiss' })).not.toBeInTheDocument()
   })
 
   it('says why Activity has no line for a match a request names', async () => {

@@ -99,12 +99,15 @@ export interface ActivityListProps {
   onOpen: (item: AutopilotItemRef, routineId: number) => void
   // onToast says what an action did, or why it couldn't.
   onToast: (text: string, tone?: 'error') => void
+  // onChanged hears a line's action (Undo, Try again, Let it act again) go through, which
+  // may change a line further down than Activity reads again on its own.
+  onChanged?: () => void
   // empty is what the list says while it shows no line.
   empty: ReactNode
 }
 
 // LineProps is one line, with what the list shares.
-interface LineProps extends Pick<ActivityListProps, 'onOpen' | 'onToast'> {
+interface LineProps extends Pick<ActivityListProps, 'onOpen' | 'onToast' | 'onChanged'> {
   line: ActivityLine
   highlighted: boolean
   routineColumn: boolean
@@ -112,12 +115,14 @@ interface LineProps extends Pick<ActivityListProps, 'onOpen' | 'onToast'> {
 
 // ActivityLineRow is one line of Activity: its mark, what happened (and to which items),
 // the routine, its actions (Undo, Try again, Let it act again, Open), and its time.
-function ActivityLineRow({ line, highlighted, routineColumn, onOpen, onToast }: LineProps) {
+function ActivityLineRow({ line, highlighted, routineColumn, onOpen, onToast, onChanged }: LineProps) {
   const act = useMutation((run: () => Promise<string>) => run())
   const time = clockTime(line.at)
   const run = (what: () => Promise<string>) => {
     void act.run(what).then((result) => {
       if (result.ok) {
+        onChanged?.()
+
         if (result.data !== '') {
           onToast(result.data)
         }
@@ -289,6 +294,7 @@ export function ActivityList({
   highlight = null,
   onOpen,
   onToast,
+  onChanged,
   empty,
 }: ActivityListProps) {
   const listRef = useRef<HTMLDivElement>(null)
@@ -330,6 +336,7 @@ export function ActivityList({
             routineColumn={routineColumn}
             onOpen={onOpen}
             onToast={onToast}
+            {...(onChanged === undefined ? {} : { onChanged })}
           />
         )}
       />

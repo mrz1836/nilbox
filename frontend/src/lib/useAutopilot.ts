@@ -13,6 +13,8 @@ import {
   type AutopilotRoutine,
 } from '../platform'
 import { inChunks } from './autopilot'
+import { all, andThen } from './call'
+import { useNowAs } from './useNow'
 import { useQuery } from './useQuery'
 
 // AutopilotState is Autopilot as the whole window shares it: at a glance (what the tab
@@ -51,10 +53,13 @@ export function useOnAutopilot(reload: () => void) {
 }
 
 // useAutopilot reads Autopilot at a glance, the routines, and the engine as the window
-// opens, and again whenever Autopilot says it changed. Each reads the database alone.
+// opens, and again whenever Autopilot says it changed. Each reads the database alone. The
+// routines are read again as a new local day begins too, so a status line's "today" turns
+// over at midnight even while nothing changes, on the window's own clock.
 export function useAutopilot(): AutopilotState {
+  const day = useNowAs((now) => now.toDateString())
   const glance = useQuery(() => getAutopilotGlance(), [], { log: 'could not read Autopilot at a glance' })
-  const routines = useQuery(() => listRoutines(), [])
+  const routines = useQuery(() => listRoutines(), [day])
   const engine = useQuery(() => getAutopilotEngine(), [], { log: 'could not read Autopilot’s engine' })
   const named = useQuery(() => routineNames(), [], { log: 'could not read the routines’ names' })
 
@@ -95,7 +100,8 @@ const noChips: ReadonlyMap<number, AutopilotMatch> = new Map()
 export function useAutopilotChips(ids: string): ReadonlyMap<number, AutopilotMatch> {
   const latest = useQuery(
     () =>
-      Promise.all(inChunks(ids.split(',').map(Number)).map((chunk) => latestAutopilotMatches(chunk))).then(
+      andThen(
+        all(inChunks(ids.split(',').map(Number)).map((chunk) => latestAutopilotMatches(chunk))),
         (pages) => new Map(pages.flat().map((m) => [m.item.id, m])) as ReadonlyMap<number, AutopilotMatch>,
       ),
     [ids],

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 
-import { all, attempt, cancel, serial, start } from './call'
+import { all, andThen, attempt, cancel, serial, start } from './call'
 
 // cancellable is a call that records its cancellation, as a bound call does.
 function cancellable<T>(value: T) {
@@ -59,6 +59,29 @@ describe('all', () => {
     both.cancel()
 
     expect(first.cancel).toHaveBeenCalledOnce()
+  })
+})
+
+describe('andThen', () => {
+  it('makes what it makes of the answer, and cancels every call all waits on', async () => {
+    const first = cancellable([1, 2])
+    const second = cancellable([3])
+    const flat = andThen(all([first, second]), (got) => got.flat())
+
+    expect(await flat).toEqual([1, 2, 3])
+
+    flat.cancel()
+
+    expect(first.cancel).toHaveBeenCalledOnce()
+    expect(second.cancel).toHaveBeenCalledOnce()
+  })
+
+  it('stops the bound calls behind it', () => {
+    const call = cancellable('a')
+
+    andThen(call, (v) => v.length).cancel()
+
+    expect(call.cancel).toHaveBeenCalledOnce()
   })
 })
 

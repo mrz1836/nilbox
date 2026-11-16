@@ -52,6 +52,17 @@ export function all<const T extends readonly PromiseLike<unknown>[]>(
   })
 }
 
+// andThen makes what f makes of a call's answer, keeping the call's cancel, so a read built
+// on bound calls (all's, say) still stops them when it is cancelled. (A module that
+// exported a function named then would read as a promise wherever it is imported.)
+export function andThen<T, U>(call: PromiseLike<T>, f: (value: T) => U): Promise<U> & { cancel: () => void } {
+  return Object.assign(Promise.resolve(call).then(f), {
+    cancel: () => {
+      cancel(call)
+    },
+  })
+}
+
 // Queue runs tasks one at a time.
 export type Queue = <T>(task: () => PromiseLike<T>) => Promise<T>
 
