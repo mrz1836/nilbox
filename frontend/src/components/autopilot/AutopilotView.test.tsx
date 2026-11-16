@@ -47,6 +47,7 @@ const launch: LaunchOptions = {
 
 const onShowItem = vi.fn<(itemId: number, url: string) => void>()
 const onSettings = vi.fn()
+const onEditPrompts = vi.fn()
 
 interface TabProps {
   stored?: Settings
@@ -94,6 +95,11 @@ function Tab({ stored = settingsOf(), request = null, listed = [] }: TabProps) {
         listed={(id) => listed.includes(id)}
         onShowItem={onShowItem}
         onSettings={onSettings}
+        viewer="octo-user"
+        prompts={launch.prompts}
+        agents={launch.agents}
+        profiles={launch.profiles}
+        onEditPrompts={onEditPrompts}
       />
     </AutopilotRowsContext>
   )
@@ -670,5 +676,204 @@ describe('a routine', () => {
 
     expect(await pane.findByText(/Nothing to watch right now/)).toBeInTheDocument()
     expect(pane.getByText('Snoozed 1')).toBeInTheDocument()
+  })
+})
+
+describe('the builder in the tab', () => {
+  it('starts a routine from scratch on the empty tab, in the mode new routines start in, and makes it off', async () => {
+    const user = userEvent.setup()
+    renderTab()
+
+    await user.click(await screen.findByRole('button', { name: 'Start from scratch' }))
+
+    expect(screen.getByRole('heading', { name: 'New routine' })).toBeInTheDocument()
+    expect(screen.getByRole('textbox', { name: 'Name' })).toHaveValue('New routine')
+    expect(
+      within(screen.getByRole('radiogroup', { name: 'Mode' })).getByRole('radio', { name: 'Ask first' }),
+    ).toBeChecked()
+
+    const create = screen.getByRole('button', { name: 'Create routine' })
+
+    await waitFor(() => {
+      expect(create).toBeEnabled()
+    })
+    await user.click(create)
+
+    await waitFor(() => {
+      expect(platform.saveRoutine).toHaveBeenCalledOnce()
+    })
+    expect(platform.saveRoutine.mock.lastCall?.[0]).toMatchObject({
+      id: 0,
+      name: 'New routine',
+      mode: 'ask',
+      spec: { version: 1 },
+    })
+    expect(await screen.findByText(/Made “New routine”, switched off/)).toBeInTheDocument()
+    expect(await screen.findByRole('region', { name: 'New routine' })).toBeInTheDocument()
+    expect(platform.routineMatching).not.toHaveBeenCalled()
+  })
+
+  it('says why a new routine couldn’t be made, and Cancel leaves it', async () => {
+    const user = userEvent.setup()
+    platform.listRoutines.mockResolvedValue(routines())
+    platform.saveRoutine.mockRejectedValue(new Error('Another routine has that name.'))
+    renderTab()
+
+    await (await routineList()).findByRole('button', { name: /^Snooze passing bot PRs/ })
+    await user.click(screen.getByRole('button', { name: 'New routine' }))
+    expect(screen.getByRole('button', { name: 'New routine' })).toHaveAttribute('aria-current', 'page')
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Create routine' })).toBeEnabled()
+    })
+    await user.click(screen.getByRole('button', { name: 'Create routine' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('Another routine has that name.')
+
+    await user.type(screen.getByRole('textbox', { name: 'Name' }), ' 2')
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Cancel' }))
+    expect(await screen.findByRole('heading', { name: 'Activity' })).toBeInTheDocument()
+  })
+
+  it('asks before leaving unsaved changes, keeps them on Keep editing, and keeps them across a visit elsewhere', async () => {
+    const user = userEvent.setup()
+    platform.listRoutines.mockResolvedValue(routines())
+    renderTab()
+
+    const list = await routineList()
+
+    await user.click(list.getByRole('button', { name: /^Snooze passing bot PRs/ }))
+    await user.type(await screen.findByRole('textbox', { name: 'Name' }), ' now')
+
+    await user.click(screen.getByRole('button', { name: 'Activity' }))
+    const ask = await screen.findByRole('dialog', { name: 'Discard your changes?' })
+
+    expect(ask).toHaveTextContent('“Snooze passing bot PRs” has changes that aren’t saved.')
+    await user.click(within(ask).getByRole('button', { name: 'Keep editing' }))
+    expect(screen.getByRole('textbox', { name: 'Name' })).toHaveValue('Snooze passing bot PRs now')
+
+    // Choosing the same routine again keeps the draft.
+    await user.click(list.getByRole('button', { name: /^Snooze passing bot PRs/ }))
+    expect(screen.getByRole('textbox', { name: 'Name' })).toHaveValue('Snooze passing bot PRs now')
+
+    await user.click(list.getByRole('button', { name: /^Investigate new bugs/ }))
+    await user.click(
+      within(await screen.findByRole('dialog', { name: 'Discard your changes?' })).getByRole('button', {
+        name: 'Discard changes',
+      }),
+    )
+    expect(await screen.findByRole('region', { name: 'Investigate new bugs' })).toBeInTheDocument()
+    expect(screen.getByRole('textbox', { name: 'Name' })).toHaveValue('Investigate new bugs')
+
+    // Another account's routine shows no builder.
+    await user.click(list.getByRole('button', { name: /^Someone else’s/ }))
+    expect(screen.queryByRole('textbox', { name: 'Name' })).not.toBeInTheDocument()
+  })
+
+  it('asks of a new routine with changes too', async () => {
+    const user = userEvent.setup()
+    platform.listRoutines.mockResolvedValue(routines())
+    renderTab()
+
+    await (await routineList()).findByRole('button', { name: /^Snooze passing bot PRs/ })
+    await user.click(screen.getByRole('button', { name: 'New routine' }))
+    await user.clear(screen.getByRole('textbox', { name: 'Name' }))
+    await user.click(screen.getByRole('button', { name: 'Activity' }))
+
+    const ask = await screen.findByRole('dialog', { name: 'Discard your changes?' })
+
+    expect(ask).toHaveTextContent('“The new routine” hasn’t been created yet.')
+    await user.click(within(ask).getByRole('button', { name: 'Discard changes' }))
+    expect(await screen.findByRole('heading', { name: 'Activity' })).toBeInTheDocument()
+  })
+
+  it('saves a change to what an enabled routine watches only after asking about what it matches now', async () => {
+    const user = userEvent.setup()
+    platform.listRoutines.mockResolvedValue(routines())
+    platform.routineMatching.mockResolvedValue({ count: 3, pullRequests: 3, issues: 0, unknown: 1 })
+    renderTab()
+
+    await user.click((await routineList()).getByRole('button', { name: /^Snooze passing bot PRs/ }))
+    await user.selectOptions(await screen.findByRole('combobox', { name: 'Trigger' }), 'appears')
+
+    const save = screen.getByRole('button', { name: 'Save' })
+
+    await waitFor(() => {
+      expect(save).toBeEnabled()
+    })
+    await user.click(save)
+
+    const question = await screen.findByRole('dialog', { name: '3 pull requests match right now.' })
+
+    expect(question).toHaveTextContent('Once the change to “Snooze passing bot PRs” is saved, it can act on them too')
+    expect(question).toHaveTextContent('1 more item can’t be told yet')
+    expect(platform.routineMatching.mock.lastCall?.[0]).toMatchObject({
+      id: 3,
+      spec: { trigger: { event: 'appears' } },
+    })
+    await user.click(within(question).getByRole('button', { name: 'Only what changes from now on' }))
+
+    await waitFor(() => {
+      expect(platform.saveRoutine).toHaveBeenCalledOnce()
+    })
+    expect(platform.saveRoutine.mock.lastCall?.[0]).toMatchObject({
+      id: 3,
+      current: 'fromNow',
+      spec: { trigger: { event: 'appears' } },
+    })
+    expect(await screen.findByText('Saved “Snooze passing bot PRs”.')).toBeInTheDocument()
+  })
+
+  it('saves at once when nothing matches now, or when what it watches didn’t change', async () => {
+    const user = userEvent.setup()
+    platform.listRoutines.mockResolvedValue(routines())
+    renderTab()
+
+    await user.click((await routineList()).getByRole('button', { name: /^Snooze passing bot PRs/ }))
+    await user.selectOptions(await screen.findByRole('combobox', { name: 'Trigger' }), 'appears')
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Save' })).toBeEnabled()
+    })
+    await user.click(screen.getByRole('button', { name: 'Save' }))
+
+    await waitFor(() => {
+      expect(platform.saveRoutine).toHaveBeenCalledWith(expect.objectContaining({ id: 3, current: 'run' }))
+    })
+    expect(platform.routineMatching).toHaveBeenCalledOnce()
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+
+    await user.type(screen.getByRole('spinbutton', { name: 'Runs a day' }), '4')
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Save' })).toBeEnabled()
+    })
+    await user.click(screen.getByRole('button', { name: 'Save' }))
+
+    await waitFor(() => {
+      expect(platform.saveRoutine).toHaveBeenCalledTimes(2)
+    })
+    expect(platform.routineMatching).toHaveBeenCalledOnce()
+  })
+
+  it('discards a routine’s changes, and says why its mode stays in Dry run', async () => {
+    const user = userEvent.setup()
+    platform.listRoutines.mockResolvedValue([
+      routine({
+        mode: 'dryRun',
+        dryRunOnly: ['agent'],
+        spec: { ...routine().spec, steps: [{ agent: { agent: 'inherit', prompt: { itemDefault: true } } }] },
+      }),
+    ])
+    renderTab()
+
+    await user.click((await routineList()).getByRole('button', { name: /^Snooze passing bot PRs/ }))
+    expect(await screen.findByText('Agent steps run in Dry run until this Mac can run agents.')).toBeInTheDocument()
+
+    await user.type(screen.getByRole('textbox', { name: 'Name' }), '!')
+    await user.click(screen.getByRole('button', { name: 'Discard' }))
+    expect(screen.getByRole('textbox', { name: 'Name' })).toHaveValue('Snooze passing bot PRs')
+
+    await user.click(screen.getByRole('button', { name: 'Edit in Prompts' }))
+    expect(onEditPrompts).toHaveBeenCalledOnce()
   })
 })

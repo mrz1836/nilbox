@@ -17,27 +17,39 @@ import {
   type AutopilotRequest,
 } from '../../lib/autopilot'
 import { attempt } from '../../lib/call'
+import { dryRunWhy, NEW_ROUTINE, newRoutineName, routineDraft, sameDraft, scratchDraft } from '../../lib/routineBuilder'
 import type { AutopilotState } from '../../lib/useAutopilot'
 import { useAutopilotActivity } from '../../lib/useAutopilotActivity'
+import { useQuery } from '../../lib/useQuery'
 import { useSettingsSave } from '../../lib/useSettingsSave'
 import {
   deleteRoutine,
   duplicateRoutine,
+  getAutopilotCatalog,
   itemsByID,
   openExternal,
   routineWatching,
+  saveRoutine,
   setAutopilotPaused,
+  suggestForRoutines,
+  type AgentInfo,
+  type AutopilotDraft,
   type AutopilotItemRef,
   type AutopilotRoutine,
+  type AutopilotSuggestions,
   type InboxItem,
+  type Profile,
+  type Prompt,
   type Settings,
 } from '../../platform'
 import { ConfirmDialog } from '../ConfirmDialog'
-import { buttonClass, captionClass, fieldClass, quietButtonClass } from '../controls'
+import { buttonClass, captionClass, fieldClass, primaryButtonClass, quietButtonClass } from '../controls'
 import { ErrorBanner } from '../ErrorBanner'
-import { AutopilotIcon, PauseIcon, PlayIcon, PulseIcon, SlidersIcon } from '../icons'
+import { AutopilotIcon, PauseIcon, PlayIcon, PlusIcon, PulseIcon, RoutineIcon, SlidersIcon } from '../icons'
 import { defaultToastSeconds, Toast, type ToastMessage } from '../Toast'
 import { ActivityList } from './ActivityList'
+import type { AgentKit } from './builder/AgentStepBlock'
+import { RoutineBuilder } from './builder/RoutineBuilder'
 import { RoutineList, type RoutineActions } from './RoutineList'
 import { RoutinePane } from './RoutinePane'
 import { useRoutineChange } from './useRoutineChange'
@@ -62,8 +74,27 @@ export interface AutopilotViewProps {
   onShowItem: (itemId: number, url: string) => void
   // onSettings opens Settings → Autopilot.
   onSettings: () => void
+  // viewer is the account signed in, '' for none: "your account" in a search.
+  viewer: string
+  // prompts, agents, and profiles are the launch configuration the agent step picks from,
+  // and onEditPrompts opens the Prompts page.
+  prompts: readonly Prompt[]
+  agents: readonly AgentInfo[]
+  profiles: readonly Profile[]
+  onEditPrompts: () => void
   toastSeconds?: number
 }
+
+// Editing is the routine the builder holds: its key (a routine's ID, or NEW_ROUTINE), as it
+// was opened or last saved, and as edited.
+interface Editing {
+  key: number
+  baseline: AutopilotDraft
+  draft: AutopilotDraft
+}
+
+// noSuggestions are the pickers' suggestions until they load.
+const noSuggestions: AutopilotSuggestions = { authors: [], bots: [], owners: [], labels: [], checks: [] }
 
 // noFilter shows every line.
 const noFilter: ActivityFilter = { routine: 0, result: 'all' }
@@ -209,11 +240,20 @@ function LoadMore({ more, loading, onMore }: { more: boolean; loading: boolean; 
   )
 }
 
+// editable reports a routine the builder may change: one of the user's whose spec reads,
+// whether or not it still validates.
+function editable(r: AutopilotRoutine): boolean {
+  return !r.otherAccount && r.brokenReason !== 'newer' && r.brokenReason !== 'unreadable'
+}
+
 // AutopilotView is the Autopilot tab: the routines on the left, each with its switch and
-// its status, under Activity; and on the right Activity (what the routines did, by day,
-// newest first, with the banners for what stops everything and its filters) or the routine
-// chosen (its mode, its sentence, what it watches, and its own Activity). Pause Autopilot
-// sits in the header. While there is no routine, the tab explains Autopilot.
+// its status, under Activity and above + New routine; and on the right Activity (what the
+// routines did, by day, newest first, with the banners for what stops everything and its
+// filters), or the routine chosen (its mode, the builder, which is the routine itself edited
+// in place, with Test below it, what it watches, and its own Activity), or a new routine's
+// builder. Pause Autopilot sits in the header. While there is no routine, the tab explains
+// Autopilot and offers Start from scratch. A routine's unsaved changes survive switching
+// tabs, and leaving them for another routine or Activity asks first.
 export default function AutopilotView({
   autopilot,
   settings,
@@ -223,6 +263,11 @@ export default function AutopilotView({
   listed,
   onShowItem,
   onSettings,
+  viewer,
+  prompts,
+  agents,
+  profiles,
+  onEditPrompts,
   toastSeconds = defaultToastSeconds,
 }: AutopilotViewProps) {
   const id = useId()
@@ -250,6 +295,26 @@ export default function AutopilotView({
   })
   const [handled, setHandled] = useState(0)
   const { routines, engine, reload } = autopilot
+  // editing is the routine the builder holds, null on Activity; leaving is where the user
+  // asked to go while it has unsaved changes, which asks first.
+  const [editing, setEditing] = useState<Editing | null>(null)
+  const [leaving, setLeaving] = useState<number | null>(null)
+  const [saving, setSaving] = useState(false)
+  const [saveError, setSaveError] = useState('')
+  // justSaved is the routine a save made, shown until the list read again holds it, and
+  // synced the routine as the builder last took it from the list.
+  const [justSaved, setJustSaved] = useState<AutopilotRoutine | null>(null)
+  const [synced, setSynced] = useState<AutopilotRoutine | null>(null)
+  const catalog = useQuery(() => getAutopilotCatalog(), [], { log: 'could not read Autopilot’s catalog' })
+  const suggestions = useQuery(() => suggestForRoutines(), [], { log: 'could not read what the items suggest' })
+  const agentKit: AgentKit = {
+    prompts,
+    agents,
+    profiles,
+    defaultAgent: settings?.defaultAgent ?? 'claude',
+    defaultProfiles: settings?.defaultProfiles ?? {},
+    onEditPrompts,
+  }
 
   const say = (text: string, tone?: ToastMessage['tone']) => {
     toasts.current += 1
@@ -269,6 +334,34 @@ export default function AutopilotView({
   // request, below every toast the tab raises from a click.
   const noteOf = (seq: number, text: string): ToastMessage => ({ id: -seq, text, tone: 'warning' })
 
+  // dirty reports a draft with changes that aren't saved.
+  const dirty = editing !== null && !sameDraft(editing.draft, editing.baseline)
+
+  // open shows next: Activity (0), a routine, or a new routine's builder, which starts
+  // from scratch in the mode new routines start in. A routine's builder is filled in as it
+  // shows, below.
+  const open = (next: number) => {
+    setSelected(next)
+    setSaveError('')
+
+    if (next === NEW_ROUTINE) {
+      const d = scratchDraft(newRoutineName(routines), settings?.autopilot.defaultMode ?? 'ask')
+
+      setEditing({ key: NEW_ROUTINE, baseline: d, draft: d })
+    } else if (editing !== null && editing.key !== next) {
+      setEditing(null)
+    }
+  }
+
+  // go shows next, asking first when the draft has unsaved changes that next would leave.
+  const go = (next: number) => {
+    if (editing !== null && dirty && editing.key !== next) {
+      setLeaving(next)
+    } else {
+      open(next)
+    }
+  }
+
   // A request from a notification, the menu bar, or a chip shows Activity, at the match
   // it names, or the routine it names, once the routines are read.
   if (request !== null && request.seq !== handled && (request.target.matchId > 0 || autopilot.loaded)) {
@@ -277,20 +370,20 @@ export default function AutopilotView({
     const { target } = request
 
     if (target.matchId > 0) {
-      setSelected(0)
+      go(0)
       setFilter(noFilter)
       setFocus({ matchId: target.matchId, createdAt: target.createdAt, seq: request.seq })
     } else if (target.routineId > 0 && !target.activity) {
       const routine = routines.find((r) => r.id === target.routineId)
 
       if (routine !== undefined && (target.createdAt === '' || sameSecond(routine.createdAt, target.createdAt))) {
-        setSelected(routine.id)
+        go(routine.id)
       } else {
-        setSelected(0)
+        go(0)
         setToast(noteOf(request.seq, 'That routine is no longer here.'))
       }
     } else {
-      setSelected(0)
+      go(0)
     }
   }
 
@@ -329,8 +422,120 @@ export default function AutopilotView({
   const working = (routineId: number) => autopilot.glance?.working.filter((w) => w.routineId === routineId).length ?? 0
   const problem = (routineId: number) => engine?.problems.find((p) => p.routineId === routineId)?.detail ?? ''
   const statusOf = (r: AutopilotRoutine) => routineStatus(r, working(r.id), problem(r.id))
-  const chosen = routines.find((r) => r.id === selected)
+  const chosen = routines.find((r) => r.id === selected) ?? (justSaved?.id === selected ? justSaved : undefined)
   const shownId = chosen === undefined ? 0 : chosen.id
+  // The routine shown fills the builder, and each time the list reads it again, the
+  // builder takes it as saved: its draft too, while it has no unsaved changes.
+  if (chosen !== undefined && editable(chosen) && (chosen !== synced || editing?.key !== chosen.id)) {
+    setSynced(chosen)
+
+    if (editing === null || editing.key !== chosen.id || !dirty) {
+      setEditing({ key: chosen.id, baseline: routineDraft(chosen), draft: routineDraft(chosen) })
+    } else {
+      setEditing({ ...editing, baseline: routineDraft(chosen) })
+    }
+  }
+
+  // saveEditing saves the draft: a new routine, off, in the mode it was given, or the
+  // routine shown, asking first, as its switch does, when it is on and what it watches,
+  // fires on, or checks changed. The builder then holds the routine as saved, and edits
+  // typed while it saved are kept.
+  const saveEditing = () => {
+    if (editing === null || saving || changes.busy !== 0) {
+      return
+    }
+
+    const submitted = editing.draft
+    const draft: AutopilotDraft = { ...submitted, name: submitted.name.trim() }
+    const made = editing.key === NEW_ROUTINE
+    const done = (saved: AutopilotRoutine) => {
+      setJustSaved(saved)
+      setSynced(saved)
+      setSelected(saved.id)
+      setEditing((e) =>
+        e === null
+          ? e
+          : {
+              key: saved.id,
+              baseline: routineDraft(saved),
+              draft: sameDraft(e.draft, submitted) ? routineDraft(saved) : { ...e.draft, id: saved.id },
+            },
+      )
+      say(
+        made ? `Made “${saved.name}”, switched off. Switch it on once you’re happy with it.` : `Saved “${saved.name}”.`,
+      )
+    }
+
+    setSaveError('')
+
+    if (!made) {
+      if (chosen !== undefined) {
+        changes.request(chosen, { kind: 'save', draft }, done)
+      }
+
+      return
+    }
+
+    setSaving(true)
+    void attempt(saveRoutine(draft)).then((result) => {
+      setSaving(false)
+
+      if (result.ok) {
+        reload()
+        done(result.data)
+      } else {
+        setSaveError(result.error)
+      }
+    })
+  }
+
+  // discardEditing puts the draft back as it was saved, or leaves a new one.
+  const discardEditing = () => {
+    if (editing === null) {
+      return
+    }
+
+    if (editing.key === NEW_ROUTINE) {
+      setEditing(null)
+      setSelected(0)
+    } else {
+      setEditing({ ...editing, draft: editing.baseline })
+    }
+
+    setSaveError('')
+  }
+
+  // builderFor is the builder of the routine the draft is of, once the catalog is read.
+  const builderFor = (r: AutopilotRoutine | null) => {
+    const key = r === null ? NEW_ROUTINE : r.id
+
+    if (editing === null || editing.key !== key || catalog.data === undefined) {
+      return undefined
+    }
+
+    return (
+      <RoutineBuilder
+        draft={editing.draft}
+        baseline={editing.baseline}
+        isNew={r === null}
+        sentence={r?.sentence ?? ''}
+        mode={r?.mode ?? editing.draft.mode ?? 'ask'}
+        heldKinds={r?.dryRunOnly ?? []}
+        catalog={catalog.data}
+        suggestions={suggestions.data ?? noSuggestions}
+        viewer={viewer}
+        agentKit={agentKit}
+        saving={r === null ? saving : changes.busy === r.id}
+        saveError={saveError}
+        onChange={(draft) => {
+          setEditing({ ...editing, draft })
+          setSaveError('')
+        }}
+        onSave={saveEditing}
+        onDiscard={discardEditing}
+      />
+    )
+  }
 
   const actions: RoutineActions = {
     onSwitch: (r, on) => {
@@ -343,7 +548,7 @@ export default function AutopilotView({
       void attempt(duplicateRoutine(r.id)).then((result) => {
         if (result.ok) {
           reload()
-          setSelected(result.data.id)
+          go(result.data.id)
           say(`Made “${result.data.name}”, switched off.`)
         } else {
           say(result.error, 'error')
@@ -370,6 +575,11 @@ export default function AutopilotView({
       if (result.ok) {
         if (selected === gone.id) {
           setSelected(0)
+        }
+
+        // Its draft goes with it.
+        if (editing?.key === gone.id) {
+          setEditing(null)
         }
 
         reload()
@@ -401,7 +611,7 @@ export default function AutopilotView({
 
         if (watched.ok && watched.data.includes(item.id)) {
           toasts.current += 1
-          setSelected(rid)
+          go(rid)
           setWatchHighlight({ routineId: rid, id: item.id, seq: toasts.current })
 
           return
@@ -449,7 +659,9 @@ export default function AutopilotView({
     say(text, tone)
   }
 
-  if (empty) {
+  const making = selected === NEW_ROUTINE && editing?.key === NEW_ROUTINE
+
+  if (empty && !making && chosen === undefined) {
     return (
       <div className="flex h-full items-center justify-center p-8">
         <div className="flex max-w-lg flex-col items-center gap-3 text-center">
@@ -460,10 +672,23 @@ export default function AutopilotView({
               {sentence}
             </p>
           ))}
+          <button
+            type="button"
+            onClick={() => {
+              open(NEW_ROUTINE)
+            }}
+            className={`${primaryButtonClass} mt-2`}
+          >
+            <PlusIcon className="size-4" />
+            Start from scratch
+          </button>
         </div>
       </div>
     )
   }
+
+  // shown is what the right side shows: a new routine's builder, a routine, or Activity.
+  const shown = making ? 'new' : chosen === undefined ? 'activity' : 'routine'
 
   return (
     <div className="flex h-full min-h-0">
@@ -474,9 +699,9 @@ export default function AutopilotView({
         <p className={`${captionClass} px-2 pb-1`}>Autopilot</p>
         <button
           type="button"
-          aria-current={selected === 0 || chosen === undefined ? 'page' : undefined}
+          aria-current={shown === 'activity' ? 'page' : undefined}
           onClick={() => {
-            setSelected(0)
+            go(0)
           }}
           className="flex items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm font-medium text-muted transition-colors hover:bg-raised hover:text-text aria-[current=page]:bg-raised aria-[current=page]:text-text"
         >
@@ -490,13 +715,24 @@ export default function AutopilotView({
         ) : (
           <RoutineList
             routines={routines}
-            selected={shownId}
-            onSelect={setSelected}
+            selected={shown === 'routine' ? shownId : 0}
+            onSelect={go}
             status={statusOf}
             busy={changes.busy}
             actions={actions}
           />
         )}
+        <button
+          type="button"
+          aria-current={making ? 'page' : undefined}
+          onClick={() => {
+            go(NEW_ROUTINE)
+          }}
+          className="mt-1 flex items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm text-muted transition-colors hover:bg-raised hover:text-text aria-[current=page]:bg-raised aria-[current=page]:text-text"
+        >
+          <PlusIcon className="size-3.5" />
+          New routine
+        </button>
         <div className="mt-auto border-t border-border pt-2">
           <button type="button" onClick={onSettings} className={`${quietButtonClass} w-full`}>
             <SlidersIcon className="size-3.5" />
@@ -505,15 +741,21 @@ export default function AutopilotView({
         </div>
       </nav>
       <section
-        aria-labelledby={chosen === undefined ? `${id}-title` : undefined}
-        aria-label={chosen === undefined ? undefined : chosen.name}
+        aria-labelledby={shown === 'routine' ? undefined : `${id}-title`}
+        aria-label={shown === 'routine' ? chosen?.name : undefined}
         className="min-w-0 flex-1 overflow-y-auto"
       >
         <div className="mx-auto flex max-w-4xl flex-col gap-4 px-6 py-5">
           <div className="flex flex-wrap items-center gap-3">
-            {chosen === undefined && (
+            {shown === 'activity' && (
               <h2 id={`${id}-title`} className="text-lg font-semibold">
                 Activity
+              </h2>
+            )}
+            {shown === 'new' && (
+              <h2 id={`${id}-title`} className="flex items-center gap-3 text-lg font-semibold">
+                <RoutineIcon className="size-5 shrink-0 text-muted" />
+                New routine
               </h2>
             )}
             <div className="ml-auto flex items-center gap-2">
@@ -522,7 +764,13 @@ export default function AutopilotView({
           </div>
           <Banners autopilot={autopilot} settings={settings} onSettingsSaved={onSettingsSaved} />
           {activity.error !== '' && <ErrorBanner>{activity.error}</ErrorBanner>}
-          {chosen === undefined ? (
+          {shown === 'new' ? (
+            (builderFor(null) ?? (
+              <p role="status" className="text-sm text-muted">
+                Reading what a routine can do…
+              </p>
+            ))
+          ) : chosen === undefined ? (
             <>
               <div className="flex flex-wrap items-center gap-2">
                 <label htmlFor={`${id}-routine`} className="sr-only">
@@ -602,6 +850,8 @@ export default function AutopilotView({
               onMode={(mode) => {
                 changes.request(chosen, { kind: 'mode', mode })
               }}
+              builder={editable(chosen) ? builderFor(chosen) : undefined}
+              heldText={catalog.data === undefined ? undefined : dryRunWhy(catalog.data, chosen.dryRunOnly)}
               watching={
                 <WatchingList
                   key={chosen.id}
@@ -631,6 +881,27 @@ export default function AutopilotView({
       </section>
       {changes.dialog}
       {loneHost.node}
+      {leaving !== null && editing !== null && (
+        <ConfirmDialog
+          title="Discard your changes?"
+          confirmLabel="Discard changes"
+          cancelLabel="Keep editing"
+          onConfirm={() => {
+            const next = leaving
+
+            setLeaving(null)
+            setEditing(null)
+            open(next)
+          }}
+          onCancel={() => {
+            setLeaving(null)
+          }}
+        >
+          {editing.key === NEW_ROUTINE
+            ? `“${editing.draft.name.trim() === '' ? 'The new routine' : editing.draft.name}” hasn’t been created yet.`
+            : `“${editing.baseline.name}” has changes that aren’t saved.`}
+        </ConfirmDialog>
+      )}
       {deleting !== null && (
         <ConfirmDialog
           title={`Delete “${deleting.name}”?`}

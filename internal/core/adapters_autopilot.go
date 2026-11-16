@@ -42,7 +42,8 @@ type autopilotDeps struct {
 func newAutopilot(pool *sql.DB, opts Options, deps autopilotDeps, logger *slog.Logger) *autopilot.Service {
 	return autopilot.NewService(autopilot.Config{
 		Pool: pool, Prefs: autopilotPrefs{prefs: prefsstore.New(pool, opts.Clock)}, Accounts: deps.inbox,
-		Names: starterNames{prompts: deps.prompts}, File: deps.file, Clock: opts.Clock, Logger: logger,
+		Names: starterNames{prompts: deps.prompts}, Library: promptLibrary{prompts: deps.prompts}, File: deps.file,
+		Clock: opts.Clock, Logger: logger,
 		Items: autopilotItems{store: deps.inbox, inbox: deps.service}, Costs: deps.costs,
 	})
 }
@@ -283,6 +284,37 @@ func (n starterNames) StarterNames(ctx context.Context) (map[string]string, erro
 		if p.StarterKey != "" {
 			out[p.StarterKey] = p.Nickname
 		}
+	}
+
+	return out, nil
+}
+
+// promptLibrary lists the prompt library for the builder's checks of the prompts a
+// routine's steps name (autopilot.Library).
+type promptLibrary struct {
+	prompts *prompts.Store
+}
+
+// Prompts returns every prompt of the library, as a routine names it.
+func (l promptLibrary) Prompts(ctx context.Context) ([]autopilot.LibraryPrompt, error) {
+	all, err := l.prompts.All(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	out := make([]autopilot.LibraryPrompt, 0, len(all))
+
+	for _, p := range all {
+		kinds := make([]item.Kind, 0, len(item.Kinds()))
+		for _, k := range item.Kinds() {
+			if p.AppliesTo.Covers(k) {
+				kinds = append(kinds, k)
+			}
+		}
+
+		out = append(out, autopilot.LibraryPrompt{
+			Starter: p.StarterKey, Nickname: p.Nickname, Reply: p.Purpose == prompts.PurposeReply, Kinds: kinds,
+		})
 	}
 
 	return out, nil

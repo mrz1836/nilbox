@@ -75,7 +75,7 @@ Each prompt:
 | `effort` | The effort level it launches with, shared by every agent, or `""` to inherit it. An agent that lacks the level, such as Claude Code for Codex's `ultra`, launches with its own default. |
 | `planMode`, `worktree` | `true` or `false` to turn plan mode or the worktree on or off, or `null` to inherit. |
 | `extraArgs` | Extra arguments for each coding agent, keyed by agent (`claude` or `codex`), one per list item, added after the profile's and the launch defaults'. Each agent only ever gets its own. |
-| `starterKey` | The starter it came from (`review-pr`, `work-on-issue`, `quick-look`, `fix-checks`, and the replies `reply-lgtm`, `reply-update-ok`, `reply-needs-changes`, `reply-question`), or `""` for a prompt someone wrote. |
+| `starterKey` | The starter it came from (`review-pr`, `work-on-issue`, `quick-look`, `fix-checks`, `fix-dependency-security`, and the replies `reply-lgtm`, `reply-update-ok`, `reply-needs-changes`, `reply-question`), or `""` for a prompt someone wrote. |
 | `createdAt`, `updatedAt` | When it was added and last saved, as RFC 3339, or `""`. Informational only. |
 
 <br>

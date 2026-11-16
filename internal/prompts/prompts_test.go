@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"slices"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -164,7 +165,8 @@ func TestSeed(t *testing.T) {
 	ctx := t.Context()
 
 	assert.Equal(t, []string{
-		"Fix checks", "LGTM", "Needs changes", "Question", "Quick look", "Review", "Update OK", "Work on it",
+		"Fix checks", "Fix dep security", "LGTM", "Needs changes", "Question", "Quick look", "Review", "Update OK",
+		"Work on it",
 	}, nicknames(t, s))
 
 	review, work := byNickname(t, s, "Review"), byNickname(t, s, "Work on it")
@@ -191,8 +193,52 @@ func TestSeed(t *testing.T) {
 	require.NoError(t, s.Delete(ctx, quick.ID))
 	require.NoError(t, Seed(ctx, s.store))
 	assert.Equal(t, []string{
-		"Fix checks", "LGTM", "Needs changes", "Question", "Review", "Update OK", "Work on it",
+		"Fix checks", "Fix dep security", "LGTM", "Needs changes", "Question", "Review", "Update OK", "Work on it",
 	}, nicknames(t, s))
+}
+
+// TestSeedAddsALaterStarterOnce checks a library seeded by an earlier build, which never
+// had the dependency security starter: the next Seed adds it, as the last starter, once,
+// and once the user deletes it, it stays deleted.
+func TestSeedAddsALaterStarterOnce(t *testing.T) {
+	t.Parallel()
+
+	s, _ := seeded(t, nil)
+	ctx := t.Context()
+
+	// The earlier build's library: every starter but the new one, and no record of it.
+	added := byNickname(t, s, "Fix dep security")
+	require.Equal(t, StarterFixDependencySecurity, added.StarterKey)
+	require.NoError(t, s.Delete(ctx, added.ID))
+
+	keys, err := s.store.seeded(ctx)
+	require.NoError(t, err)
+	require.NoError(t, s.store.setSeeded(ctx, slices.DeleteFunc(slices.Clone(keys), func(k string) bool {
+		return k == StarterFixDependencySecurity
+	})))
+
+	require.NoError(t, Seed(ctx, s.store))
+	require.NoError(t, Seed(ctx, s.store))
+
+	all, err := s.List(ctx)
+	require.NoError(t, err)
+
+	var found []Prompt
+
+	for _, p := range all {
+		if p.StarterKey == StarterFixDependencySecurity {
+			found = append(found, p)
+		}
+	}
+
+	require.Len(t, found, 1, "the later starter is added once")
+	assert.Equal(t, "Fix dep security", found[0].Nickname)
+	assert.Equal(t, AppliesToPR, found[0].AppliesTo)
+	assert.False(t, found[0].Modified)
+
+	require.NoError(t, s.Delete(ctx, found[0].ID))
+	require.NoError(t, Seed(ctx, s.store))
+	assert.NotContains(t, nicknames(t, s), "Fix dep security", "a deleted starter stays deleted")
 }
 
 func TestSeedFindsAFreeNickname(t *testing.T) {

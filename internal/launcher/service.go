@@ -766,8 +766,9 @@ func (s *Service) trustDir(ctx context.Context, p planned) error {
 	return nil
 }
 
-// fillIn fills in a launch's prompt from the item's data, adding the signed-in account
-// and the planned session.
+// fillIn fills in a launch's prompt from the item's data, adding the signed-in account,
+// the clone's remote, a pull request's head as the launch checked it, and the planned
+// session.
 func (s *Service) fillIn(ctx context.Context, data prompts.Data, nickname string, tmpl *prompts.Template,
 	p planned,
 ) (string, error) {
@@ -776,7 +777,12 @@ func (s *Service) fillIn(ctx context.Context, data prompts.Data, nickname string
 		return "", err
 	}
 
-	data.Me = viewer
+	data.Me, data.Remote = viewer, p.clone.Remote
+
+	if data.IsPR {
+		data.HeadCommit = cmp.Or(p.checkedHead(), data.HeadCommit)
+	}
+
 	data = data.WithSession(p.worktree != nil, p.onPRHead())
 
 	text, err := tmpl.Render(data)

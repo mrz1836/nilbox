@@ -1,6 +1,7 @@
 package launcher
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -324,6 +325,28 @@ func TestLaunchRefusesAPromptThatStartsWithADash(t *testing.T) {
 	require.ErrorIs(t, err, prompts.ErrLeadingDash)
 	assert.Empty(t, h.launchFiles(t), "nothing is written")
 	assert.Empty(t, h.iterm.opened)
+}
+
+func TestLaunchFillsInTheRemoteAndTheHead(t *testing.T) {
+	t.Parallel()
+
+	h := newLaunchHarness(t)
+
+	svc := prompts.NewService(prompts.Config{Store: h.prompts})
+	where, err := svc.Create(t.Context(), prompts.Input{
+		Name: "Where it is", Nickname: "Where", AppliesTo: prompts.AppliesToPR,
+		Body: "Push to {{.Remote}} from {{.HeadCommit}}{{if .FailedChecks}} after {{.FailedChecks}}{{end}}.",
+	})
+	require.NoError(t, err)
+
+	const head = "4F2A9C1E8B7D6A5F4E3D2C1B0A9F8E7D6C5B4A39"
+
+	h.exec(t, "INSERT INTO item_details (item_id, head_oid, fetched_at) VALUES (?, ?, ?)", h.trustedPR, head,
+		time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC))
+
+	res, _ := h.launch(t, LaunchRequest{ItemID: h.trustedPR, PromptID: where.ID})
+	assert.Contains(t, promptFor(t, res.ScriptPath), "Push to origin from "+strings.ToLower(head)+".",
+		"the clone's remote, and the head in lower case; the failed checks aren't known yet")
 }
 
 func TestLaunchRefusesABrokenStoredPrompt(t *testing.T) {

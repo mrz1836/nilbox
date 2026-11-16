@@ -19,6 +19,15 @@ const (
 
 	// maxSensitiveRunes caps the list of sensitive files.
 	maxSensitiveRunes = 1000
+
+	// maxFailedChecksRunes caps the list of failed checks' names.
+	maxFailedChecksRunes = 300
+
+	// maxRefRunes caps a remote's name and a commit, both short in practice.
+	maxRefRunes = 100
+
+	// sampleHeadCommit is the sample pull request's made-up head commit.
+	sampleHeadCommit = "4f2a9c1e8b7d6a5f4e3d2c1b0a9f8e7d6c5b4a39"
 )
 
 // AppliesTo is which kinds of item a prompt can launch.
@@ -90,11 +99,23 @@ type Data struct {
 	// DefaultBranch is the repository's default branch.
 	DefaultBranch string
 
+	// Remote is the clone's git remote for the repository, such as "origin", or
+	// "upstream" in a fork's clone; "" when the launch has no clone.
+	Remote string
+
 	// Branch is a pull request's head branch.
 	Branch string
 
+	// HeadCommit is a pull request's head commit, the one whose files the launch checked
+	// or else the one the last refresh read; "" for an issue, or before a refresh read it.
+	HeadCommit string
+
 	// Checks is "passing", "failing", or "pending", and "" when the head commit has none.
 	Checks string
+
+	// FailedChecks lists the names of the head commit's failed checks, separated by
+	// commas, and is "" when they aren't known.
+	FailedChecks string
 
 	// Review is "approved", "changes requested", or "review required", and "" when the
 	// repository requires no review.
@@ -188,8 +209,20 @@ func Variables() []Variable {
 		{Name: "Owner", Group: groupRepo, Type: typeText, Description: "The repository's owner"},
 		{Name: "RepoName", Group: groupRepo, Type: typeText, Description: "The repository's name"},
 		{Name: "DefaultBranch", Group: groupRepo, Type: typeText, Description: "The repository's default branch"},
+		{
+			Name: "Remote", Group: groupRepo, Type: typeText,
+			Description: `The clone's remote for the repository, such as "origin", or empty without a clone`,
+		},
 		{Name: "Branch", Group: groupPR, Type: typeText, Description: "The head branch", PROnly: true},
+		{
+			Name: "HeadCommit", Group: groupPR, Type: typeText, PROnly: true,
+			Description: "The head commit, or empty before a refresh read it",
+		},
 		{Name: "Checks", Group: groupPR, Type: typeText, Description: `"passing", "failing", "pending", or empty`, PROnly: true},
+		{
+			Name: "FailedChecks", Group: groupPR, Type: typeText, PROnly: true,
+			Description: "The head commit's failed checks, separated by commas, or empty when they aren't known",
+		},
 		{
 			Name: "Review", Group: groupPR, Type: typeText, PROnly: true,
 			Description: `"approved", "changes requested", "review required", or empty`,
@@ -244,6 +277,7 @@ func Sample(kind item.Kind) Data {
 
 	d.Kind, d.IsPR, d.Number, d.Title = item.KindPR.Noun(), true, 7, "Add the widget cache"
 	d.URL, d.Labels, d.Branch = "https://github.com/acme-org/example-repo/pull/7", "enhancement", "widget-cache"
+	d.Remote, d.HeadCommit = "origin", sampleHeadCommit
 	d.Checks, d.Review = "passing", "review required"
 	d.Additions, d.Deletions, d.ChangedFiles, d.Commits = 120, 30, 6, 3
 
@@ -311,8 +345,8 @@ func (d Data) kind() item.Kind {
 // collapse. The title and labels are cut to their limits.
 func (d Data) sanitized() Data {
 	for _, field := range []*string{
-		&d.Kind, &d.URL, &d.Author, &d.Repo, &d.Owner, &d.RepoName, &d.DefaultBranch,
-		&d.Branch, &d.Checks, &d.Review, &d.Worktree, &d.Profile, &d.Me, &d.SensitiveFiles,
+		&d.Kind, &d.URL, &d.Author, &d.Repo, &d.Owner, &d.RepoName, &d.DefaultBranch, &d.Remote,
+		&d.Branch, &d.HeadCommit, &d.Checks, &d.Review, &d.Worktree, &d.Profile, &d.Me, &d.SensitiveFiles,
 		&d.Dependency, &d.FromVersion, &d.ToVersion, &d.UpdateType,
 	} {
 		*field = sanitizeLine(*field)
@@ -320,10 +354,15 @@ func (d Data) sanitized() Data {
 
 	d.Title = textutil.Clip(sanitizeLine(d.Title), maxTitleRunes)
 	d.Labels = textutil.Clip(sanitizeLine(d.Labels), maxLabelsRunes)
+	d.FailedChecks = textutil.Clip(sanitizeLine(d.FailedChecks), maxFailedChecksRunes)
 	d.SensitiveFiles = textutil.Clip(d.SensitiveFiles, maxSensitiveRunes)
 
 	for _, field := range []*string{&d.Dependency, &d.FromVersion, &d.ToVersion} {
 		*field = textutil.Clip(*field, maxTitleRunes)
+	}
+
+	for _, field := range []*string{&d.Remote, &d.HeadCommit} {
+		*field = textutil.Clip(*field, maxRefRunes)
 	}
 
 	return d

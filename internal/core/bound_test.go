@@ -694,6 +694,9 @@ func autopilotBoundCalls(t *testing.T) map[string]boundCall {
 		"autopilot.Service.Watching": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
 			return c.Autopilot.Watching(ctx, boundRoutine(ctx, t, c, "Bound watching").ID)
 		},
+		"autopilot.Service.Describe": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
+			return c.Autopilot.Describe(ctx, autopilot.Draft{Name: "Bound describe", Spec: boundSpec()})
+		},
 		"autopilot.Service.Test": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
 			// Its watch is an inbox list alone, so the test reads nothing from GitHub.
 			return c.Autopilot.Test(ctx, autopilot.Draft{Name: "Bound test", Spec: boundSpec()})

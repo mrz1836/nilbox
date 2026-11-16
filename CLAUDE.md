@@ -778,8 +778,11 @@ changing the package, and keep the section and its summary in step.
 - `internal/autopilot/` is Autopilot, which runs the user's routines. Its root package keeps
   them, in `autopilot_routines`, which it owns: the bound `Service` (`List`, `Get`, `Save`,
   `Delete`, `Duplicate`, `SetEnabled`, `SetMode`, `Reorder`, `Catalog`, and the builder's
-  `Suggest`, `Watching`, and `Test`) checks every spec on
-  save and load, carries one that won't load (a newer build's, say) as broken with why and
+  `Suggest`, `Watching`, `Describe`, and `Test`) checks every spec on
+  save and load (and, on save and in `Describe`, the prompts its steps name against the
+  `Library`: one the library lacks, or that isn't for the kinds it acts on, is a problem;
+  `Describe` reads a draft's sentence, problems, and warnings without saving it or asking
+  GitHub), carries one that won't load (a newer build's, say) as broken with why and
   never rewrites it, stores a routine with a step this build doesn't offer in Dry run alone,
   starts a new one off in the mode Settings says (Ask first to begin with) and of the account
   signed in (`Accounts`, the inbox's viewer; `Routine.OtherAccount` marks another's), keeps
@@ -826,7 +829,7 @@ changing the package, and keep the section and its summary in step.
   support only) is its simulator, which runs the triage steps through the inbox's real triage
   and the notices through the real dispatcher. It
   reaches the rest only through the interfaces it declares (`Prefs`, `Accounts`, `Names`,
-  `Items`, `Costs`, `EngineItems`, `Triage`, the dispatchers, `Holds`, `ProblemSink`,
+  `Library`, `Items`, `Costs`, `EngineItems`, `Triage`, the dispatchers, `Holds`, `ProblemSink`,
   `NoticeSink`), which
   `internal/core/adapters_autopilot.go` adapts, and never imports the inbox, the sheets, the
   launcher, the worktrees, the sessions, the runs, notify, settings, the desktop, or core (the
@@ -1190,7 +1193,8 @@ changing the package, and keep the section and its summary in step.
   since Clear history hands ids out again), or when its item's sheet opens (`InboxView`'s
   `onItemOpened`, once per opening).
   `components/autopilot/` is the Autopilot tab (the routine list, Activity, a routine's
-  Watching list on the inbox's own rows and sheets, and the ⚡ chip), its words in
+  Watching list on the inbox's own rows and sheets, the ⚡ chip, and `builder/`, the routine
+  builder and its Test panel, whose pure half is `lib/routineBuilder.ts`), its words in
   `lib/autopilot.ts`; every row reads the routines' names and its chip through
   `AutopilotRowsContext`, and the inbox's row actions are shared through
   `components/useItemActions.ts`. Full design:
