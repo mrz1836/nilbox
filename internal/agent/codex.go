@@ -166,7 +166,8 @@ func codexAccess(a Access) []string {
 		// Codex has no plan mode: a read-only sandbox that asks before anything else is the
 		// nearest, and it cannot switch to full access later.
 		return []string{codexSandbox, codexReadOnly, codexApproval, codexApproveOnAsk}
-	case AccessDefault:
+	case AccessDefault, AccessFence:
+		// Codex keeps no tools preset yet, so Args refuses AccessFence for it.
 		return nil
 	default:
 		return nil

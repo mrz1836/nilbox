@@ -1,0 +1,152 @@
+# The argv and settings a Claude Code run gets under this tools preset. Rewrite with
+# go test ./internal/agent -run TestFenceGoldens -update
+
+argv:
+  "--restricted"
+  "--tools"
+  "Read,Grep,Glob"
+  "--permission-mode"
+  "dontAsk"
+  "--strict-mcp-config"
+  "--settings"
+  "/Users/example/Library/Application Support/App/agent-runs/00000000-0000-4000-8000-000000000012/settings.json"
+  "--session-id=00000000-0000-4000-8000-000000000012"
+
+settings.json:
+{
+  "permissions": {
+    "allow": [
+      "Read",
+      "Grep",
+      "Glob"
+    ],
+    "deny": [
+      "WebFetch",
+      "WebSearch",
+      "Bash(curl:*)",
+      "Bash(wget:*)",
+      "Bash(nc:*)",
+      "Bash(ncat:*)",
+      "Bash(netcat:*)",
+      "Bash(socat:*)",
+      "Bash(telnet:*)",
+      "Bash(ftp:*)",
+      "Bash(sftp:*)",
+      "Bash(scp:*)",
+      "Bash(rsync:*)",
+      "Bash(ssh:*)",
+      "Bash(http:*)",
+      "Bash(https:*)",
+      "Bash(xh:*)",
+      "Bash(aria2c:*)",
+      "Bash(lynx:*)",
+      "Bash(links:*)",
+      "Bash(w3m:*)",
+      "Bash(sudo:*)",
+      "Bash(doas:*)",
+      "Bash(su:*)",
+      "Bash(pkexec:*)",
+      "Bash(runuser:*)",
+      "Bash(osascript:*)",
+      "Bash(eval:*)",
+      "Bash(sh -c:*)",
+      "Bash(bash -c:*)",
+      "Bash(zsh -c:*)",
+      "Bash(dash -c:*)",
+      "Bash(ksh -c:*)",
+      "Bash(mksh -c:*)",
+      "Bash(fish -c:*)",
+      "Bash(csh -c:*)",
+      "Bash(tcsh -c:*)",
+      "Bash(pwsh -c:*)",
+      "Bash(powershell -c:*)",
+      "Bash(gh pr merge:*)",
+      "Bash(gh pr review:*)",
+      "Bash(gh pr close:*)",
+      "Bash(gh pr reopen:*)",
+      "Bash(gh issue close:*)",
+      "Bash(gh issue delete:*)",
+      "Bash(gh issue transfer:*)",
+      "Bash(gh issue reopen:*)",
+      "Bash(gh api:*)",
+      "Bash(gh release:*)",
+      "Bash(gh auth:*)",
+      "Bash(gh secret:*)",
+      "Bash(gh variable:*)",
+      "Bash(gh ssh-key:*)",
+      "Bash(gh gpg-key:*)",
+      "Bash(gh extension:*)",
+      "Bash(gh alias:*)",
+      "Bash(gh config:*)",
+      "Bash(gh repo delete:*)",
+      "Bash(gh repo edit:*)",
+      "Bash(gh repo rename:*)",
+      "Bash(gh repo archive:*)",
+      "Bash(gh repo unarchive:*)",
+      "Bash(gh repo create:*)",
+      "Bash(gh repo fork:*)",
+      "Bash(gh repo sync:*)",
+      "Bash(gh repo deploy-key:*)",
+      "Bash(gh repo set-default:*)",
+      "Bash(gh workflow run:*)",
+      "Bash(gh workflow enable:*)",
+      "Bash(gh workflow disable:*)",
+      "Bash(gh cache delete:*)",
+      "Bash(gh run cancel:*)",
+      "Bash(gh run delete:*)",
+      "Bash(gh codespace:*)",
+      "Bash(gh gist:*)",
+      "Bash(gh ruleset:*)",
+      "Bash(gh label create:*)",
+      "Bash(gh label edit:*)",
+      "Bash(gh label delete:*)",
+      "Bash(gh label clone:*)",
+      "Bash(gh project:*)",
+      "Bash(gh org:*)",
+      "Bash(gh attestation:*)",
+      "Bash(gh agent-task:*)",
+      "Bash(gh copilot:*)",
+      "Bash(git -C:*)",
+      "Bash(git -c:*)",
+      "Bash(git --git-dir:*)",
+      "Bash(git --work-tree:*)",
+      "Bash(git config --global:*)",
+      "Bash(git remote add:*)",
+      "Bash(git remote set-url:*)",
+      "Bash(git remote remove:*)",
+      "Bash(git remote rename:*)",
+      "Bash(git update-ref:*)",
+      "Bash(git submodule:*)",
+      "Bash(git push:*)",
+      "Edit",
+      "Write",
+      "NotebookEdit"
+    ],
+    "disableBypassPermissionsMode": "disable"
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/Applications/App.app/Contents/MacOS/App",
+            "args": [
+              "--fence-hook-v1=/Users/example/Library/Application Support/App/agent-runs/00000000-0000-4000-8000-000000000012"
+            ],
+            "timeout": 30,
+            "onFailure": "block"
+          }
+        ]
+      }
+    ]
+  },
+  "disableAllHooks": false,
+  "attribution": {
+    "commit": "",
+    "pr": ""
+  },
+  "includeCoAuthoredBy": false,
+  "enableAllProjectMcpServers": false
+}
