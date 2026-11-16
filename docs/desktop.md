@@ -897,7 +897,7 @@ where to save the file (`Nilbox backup <date>.json`):
 | **Prompts & replies** | The whole [prompt library](#prompts), its defaults and the record of deleted starters included |
 | **Launch defaults** | Every org's and repository's [launch defaults](#launch-defaults), naming prompts by nickname |
 | **Your scripts** | Your own [scripts](#repo-scripts), in their order |
-| **Autopilot routines** | Your [Autopilot](#autopilot) routines, in their order, never their history. They arrive switched off |
+| **Autopilot routines** | Your [Autopilot](#autopilot) routines, in their order, never their history. A routine an import adds or saves over arrives switched off; one already the same stays as it is, on or off |
 
 A backup never holds your GitHub sign-in (the app never stores one), caches and mirrors, history,
 per-item triage, agent profiles (found on disk at every start), script trust (each repository
@@ -2501,8 +2501,11 @@ Autopilot** sits in the header: while paused, nothing new starts, a snooze or a 
 and the button reads **Resume Autopilot**.
 
 **The routines.** Each row shows the routine's name, a status line, and its switch. The status
-line says its mode and what it is doing or did: *Autopilot · 6 today*, *Dry run · 3 would run
-today*, *Ask first · ran 2h ago*, *Autopilot · off*; or, instead, why it can't run: its last
+line says its mode and what it is doing or did: *Autopilot · 2 waiting*, *Autopilot · 6 today*,
+*Dry run · 3 would run today*, *Ask first · ran 2h ago*, *Dry run · would have run 2h ago*,
+*Autopilot · off*, counted from the whole history, whatever Activity has loaded; a routine's
+first look, which only notes what already matched, counts in none of them. Or, instead, it
+says why the routine can't run: its last
 error, a search GitHub refuses, or *Made by a newer Nilbox: update to edit it*, which has no
 switch. A routine that belongs to another GitHub account than the one signed in is greyed, says
 *Belongs to @other-login*, has no switch, and doesn't run. Its **⋯** menu holds:
@@ -2546,8 +2549,10 @@ wrong with it, if anything. Below them:
 **Filter** by routine (**Every routine**, or one) and by result (**Snoozes, pins, and
 dismissals**, **Dry runs**, **Notices**, or **Worth knowing**: what was left alone, what gave
 up, and what failed). Earlier days load as you scroll to the end, or with **Show earlier days**.
-**Open** shows the item: its card in the inbox while one of your lists holds it, else its row in
-the routine's Watching list, highlighted, else GitHub. Across the top, a banner says when
+**Open** shows the item, even when its routine is deleted: its card in the inbox while one of
+your lists holds it, else its row in the Watching list of a routine that still watches it (the
+line's own first), marked once, else its review or issue sheet while Nilbox still has it, else
+its page on GitHub. A deleted routine's lines keep its name. Across the top, a banner says when
 something stops everything: *Autopilot is paused. Nothing new starts.* with **Resume**;
 *Autopilot is running in another copy of Nilbox. This one shows them and starts nothing.*; and
 that no one is signed in to GitHub, so nothing starts.
@@ -2556,10 +2561,12 @@ that no one is signed in to GitHub, so nothing starts.
 card and its Watching row alike, saying what the newest of the routines' matches on it did:
 **⚡ Snoozed**, **⚡ Pinned**, **⚡ Dismissed**, **⚡ Restored**, **⚡ Undone**, **⚡ Taken back**,
 **⚡ Would run**, **⚡ Told you**, or **⚡ Queued** while Pause or a routine's active hours hold a
-step. Click it for the item's history with the routines: each match, newest first, with its
-routine, when, what it said, and each change it made with where it stands (*Still there*,
-*Changed since*, *Undone*, *You took it back*), an **Undo** for one still there, and **Show in
-Activity**.
+step; one that waits or works says so (**⚡ Needs you**, **⚡ Working**), and one that ended
+without acting says why, each reason in words of its own (**⚡ Gave up**, **⚡ You skipped it**,
+**⚡ Skipped: an outside contributor's**, **⚡ Left alone**). Click it for the item's history
+with the routines: each match, newest first, with its routine, when, what it said, and each
+change it made with where it stands (*Still there*, *Changed since*, *Undone*, *You took it
+back*), an **Undo** for one still there, and **Show in Activity** for a match Activity lists.
 
 ### Snooze, dismiss, and pin: by a routine
 
@@ -2615,23 +2622,25 @@ back, and the window says so the first time.
 |---|---|---|
 | **Pause Autopilot** | Off | No routine starts anything new; what is under way carries on |
 | **New routines start in** | Ask first | The mode a routine you make starts in; a routine keeps its own once made |
-| **Agents at once** | 2 | How many coding agents your routines may run at the same time, at most 3 |
-| **Agent runs a day** | 20 | How many coding agent runs your routines may start in a day, together |
-| **GitHub actions a day** | 50 | How many actions on GitHub your routines may send in a day, together |
-| **Daily cap** | Off | The most your routines' coding agents may use in a day, in dollars ($1 to $500) or tokens |
-| **Keep the Mac awake while agents work** | Off | The Mac doesn't sleep on its own while a routine's agent works |
-| **Hold agent starts while their provider reports an outage** | On | An agent waits while its provider's status page reports a major outage |
-| **Ask before catching up after** | 24 hours | After Nilbox was closed this long, agent and GitHub steps wait for your OK; local steps never do |
+| **Agents at once** | 2 | The most coding agents your routines will run at the same time, at most 3 |
+| **Agent runs a day** | 20 | The most coding agent runs your routines will start in a day, together |
+| **GitHub actions a day** | 50 | The most actions on GitHub your routines will send in a day, together |
+| **Daily cap** | Off | The most your routines' coding agents will use in a day, in dollars ($1 to $500) or tokens |
+| **Keep the Mac awake while agents work** | Off | Keeps the Mac from going to sleep on its own while a routine's agent works |
+| **Hold agent starts while their provider reports an outage** | On | Holds a routine's agent while its provider's status page reports a major outage |
+| **Ask before catching up after** | 24 hours | After Nilbox was closed this long, a routine's agent and GitHub steps will wait for your OK; local steps never do |
 | **History kept** | 90 days | How long what the routines did is kept; lowering it lowers the run logs with it |
-| **Run logs kept** | 30 days | How long an agent run's log is kept, never longer than the history |
-| **Clear history…** | | Removes, after asking, what the routines did with items that are done with; your routines and what still waits stay |
+| **Run logs kept** | 30 days | How long an agent run's log will be kept, never longer than the history |
+| **Clear history…** | | Removes now, after asking, what the routines did with items that are done with: gone, merged, or closed, or out of every list and search for longer than the history is kept. Your routines and what still waits stay, and it says *Nothing to clear.* when there was nothing |
 | **Last checked** | | When Autopilot last checked the routines, how long it took, and what it found (*Last checked today, 11:59 AM · 34 ms · 7 matches · 1 start*), or that another copy runs it |
 
-The agent and GitHub limits are for the routines' coding agents and GitHub actions, once
-routines can run them. A limit delays a match and never loses it: one over today's limit starts
-tomorrow, and a day runs from local midnight. Local steps keep only to Pause Autopilot and a
-routine's own active hours. Backups carry these settings, and the **Autopilot routines**
-category carries the routines (see [Backing up your setup](#backing-up-your-setup)).
+Both the Limits and the While it runs groups say so: *These apply once routines can start
+coding agents and send GitHub actions.* No routine starts a coding agent or sends a GitHub
+action yet, so nothing reads them until one can. A limit delays a match and never loses it:
+one over today's limit starts tomorrow, and a day runs from local midnight. Local steps keep
+only to Pause Autopilot and a routine's own active hours. Backups carry these settings, and
+the **Autopilot routines** category carries the routines (see
+[Backing up your setup](#backing-up-your-setup)).
 
 **What Autopilot never does.** It never changes a routine's mode on its own. A local step never
 replaces what you set aside yourself, and has **Undo**. Dry run changes nothing. Nothing it reads

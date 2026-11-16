@@ -3,7 +3,8 @@
 A backup file holds your whole setup in a portable form, so you can move it to another Mac, or
 keep it with your own backups and bring it back later: your settings, your repositories, your
 prompts and review replies, your launch defaults, your own scripts, and your Autopilot
-routines, which arrive switched off. The app writes one from
+routines (one an import adds or saves over arrives switched off, and one already the same stays
+as it is, on or off). The app writes one from
 **Settings → Back up and restore → Export…**, and reads one from **Import…** there. How an import
 treats what is already on the Mac is in [Backing up your setup](desktop.md#backing-up-your-setup).
 
