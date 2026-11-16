@@ -39,7 +39,7 @@ const syntax: readonly { code: string; insert: string; meaning: string }[] = [
     meaning: 'Use a value only when it is set.',
   },
   {
-    code: '`git checkout {{shellquote .Branch}}`',
+    code: '`git switch {{shellquote .Branch}}`',
     insert: '{{shellquote .Branch}}',
     meaning: 'Put a value into a command as one word, quoted when it needs it.',
   },

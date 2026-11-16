@@ -46,8 +46,8 @@ describe('tokenize', () => {
   })
 
   it('reads shellquote as a function', () => {
-    expect(kinds('`git checkout {{shellquote .Branch}}`')).toEqual([
-      'text:`git checkout ',
+    expect(kinds('`git switch {{shellquote .Branch}}`')).toEqual([
+      'text:`git switch ',
       'delim:{{',
       'function:shellquote',
       'code: ',
