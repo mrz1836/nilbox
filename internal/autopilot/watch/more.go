@@ -17,10 +17,6 @@ var (
 	// botSlug matches a GitHub App's slug, as "app/<bot>" names it.
 	botSlug = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,38}$`)
 
-	// branchName matches a branch name or the start of one: no space, quote, or control
-	// character, none of which git allows in a branch's name either.
-	branchName = regexp.MustCompile(`^[^\s"\x00-\x1f\x7f]+$`)
-
 	// qualifierToken matches one hand-typed qualifier: an optional "-", the qualifier,
 	// and a value, bare or in quotes.
 	qualifierToken = regexp.MustCompile(`^(-?)([a-z][a-z-]*):(?:"([^"]+)"|([^\s"]+))$`)
@@ -95,9 +91,10 @@ func parseMore(more string) ([]token, error) {
 			return nil, fmt.Errorf(`%w: %q; type qualifiers such as language:go or label:"help wanted"`, ErrQualifier, w)
 		}
 
+		// A backslash could read as an escaped quote and let what follows go live.
 		value := m[3] + m[4]
-		if strings.ContainsFunc(value, unicode.IsControl) {
-			return nil, fmt.Errorf("%w: %q", ErrInvalidValue, w)
+		if strings.ContainsFunc(value, unicode.IsControl) || strings.Contains(value, `\`) {
+			return nil, fmt.Errorf("%w: %q holds a backslash or a control character", ErrInvalidValue, w)
 		}
 
 		tokens = append(tokens, token{neg: m[1] == "-", q: m[2], values: []string{value}})
@@ -174,23 +171,29 @@ func validAuthor(a string) bool {
 	return repo.ValidOwner(a) && !slices.Contains(knownApps(), strings.ToLower(a))
 }
 
-// checkLabel refuses a label that can't be quoted in a comma list.
+// checkLabel refuses a label that can't be quoted in a comma list: one holding a quote, a
+// comma, a backslash (which could read as an escaped quote and let what follows go
+// live), or a control character.
 func checkLabel(l string) error {
 	switch {
 	case strings.TrimSpace(l) == "":
 		return fmt.Errorf("%w: a label is empty", ErrInvalidValue)
 	case utf8.RuneCountInString(l) > MaxLabelRunes:
 		return fmt.Errorf("%w: %q is longer than GitHub's %d characters", ErrInvalidValue, l, MaxLabelRunes)
-	case strings.ContainsAny(l, `",`) || strings.ContainsFunc(l, unicode.IsControl):
-		return fmt.Errorf("%w: %q holds a quote, a comma, or a control character", ErrInvalidValue, l)
+	case strings.ContainsAny(l, `",\`) || strings.ContainsFunc(l, unicode.IsControl):
+		return fmt.Errorf("%w: %q holds a quote, a comma, a backslash, or a control character", ErrInvalidValue, l)
 	default:
 		return nil
 	}
 }
 
-// validBranch reports a branch name, or the start of one, a search can take.
+// validBranch reports a branch name, or the start of one, a search can take: no space of
+// any kind, Unicode's included, since the base goes in unquoted, and no quote, backslash,
+// or control character, none of which git allows in a branch's name either.
 func validBranch(b string) bool {
-	return utf8.RuneCountInString(b) <= maxBranchRunes && branchName.MatchString(b)
+	bad := func(r rune) bool { return unicode.IsSpace(r) || unicode.IsControl(r) || r == '"' || r == '\\' }
+
+	return b != "" && utf8.RuneCountInString(b) <= maxBranchRunes && utf8.ValidString(b) && !strings.ContainsFunc(b, bad)
 }
 
 // Normalize returns s cleaned as the spec stores it: each value trimmed, logins, orgs,

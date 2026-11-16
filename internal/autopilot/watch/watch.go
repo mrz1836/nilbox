@@ -23,6 +23,7 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+	"unicode"
 	"unicode/utf8"
 
 	"github.com/mrz1836/nilbox/internal/item"
@@ -244,12 +245,13 @@ type token struct {
 	quote bool
 }
 
-// String writes the token as GitHub reads it.
+// String writes the token as GitHub reads it: a value holding a space of any kind,
+// Unicode's included, is quoted, so it can never split into a second qualifier.
 func (t token) String() string {
 	values := make([]string, len(t.values))
 
 	for i, v := range t.values {
-		if t.quote || strings.ContainsAny(v, " \t") {
+		if t.quote || strings.ContainsFunc(v, unicode.IsSpace) {
 			v = `"` + v + `"`
 		}
 

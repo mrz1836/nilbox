@@ -176,6 +176,23 @@ func TestBuildRefuses(t *testing.T) {
 			field: "base", err: watch.ErrInvalidValue,
 		},
 		{
+			name:   "a label ending in a backslash, which could escape its quote",
+			search: watch.Search{Where: []string{watch.Me}, Labels: []string{`a\`}, NotLabels: []string{"z author:x"}},
+			field:  "labels[0]", err: watch.ErrInvalidValue,
+		},
+		{
+			name: "a head prefix ending in a backslash", search: watch.Search{Where: []string{watch.Me}, HeadPrefix: `dependabot\`},
+			field: "headPrefix", err: watch.ErrInvalidValue,
+		},
+		{
+			name: "a base holding a non-breaking space", search: watch.Search{Where: []string{watch.Me}, Base: "main\u00a0author:x"},
+			field: "base", err: watch.ErrInvalidValue,
+		},
+		{
+			name: "a backslash typed by hand", search: watch.Search{Where: []string{watch.Me}, More: `label:"a\" author:x`},
+			field: "more", err: watch.ErrInvalidValue,
+		},
+		{
 			name: "free text typed by hand", search: watch.Search{Where: []string{watch.Me}, More: "language:go security"},
 			field: "more", err: watch.ErrQualifier,
 		},
@@ -294,6 +311,23 @@ func TestCheckReportsEveryProblem(t *testing.T) {
 	}
 
 	assert.Equal(t, []string{"authors[0]", "base", "where"}, fields)
+}
+
+// TestAnySpaceStaysQuoted checks that a hand-typed value holding any kind of space, a
+// non-breaking one included, stays quoted, normalized or built, so it can never split
+// into a second qualifier.
+func TestAnySpaceStaysQuoted(t *testing.T) {
+	t.Parallel()
+
+	s := watch.Search{Where: []string{acmeOrg}, More: "label:\"bug\u00a0author:x\""}
+	n := watch.Normalize(s)
+	assert.Equal(t, "label:\"bug\u00a0author:x\"", n.More)
+	assert.Equal(t, n, watch.Normalize(n))
+
+	q, err := watch.Build(n, login)
+	require.NoError(t, err)
+	assert.Contains(t, q.Text, "label:\"bug\u00a0author:x\"")
+	assert.NotContains(t, q.Text, " author:x")
 }
 
 func TestIdenticalSearchesShareAKey(t *testing.T) {
