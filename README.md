@@ -240,8 +240,14 @@ To build Nilbox yourself, you need:
 
 ```bash
 git clone https://github.com/mrz1836/nilbox.git && cd nilbox
-magex app:run      # build bin/Nilbox.app and open it
+magex app:run      # build "bin/Nilbox Dev.app" and open it
 ```
+
+A build from source is **Nilbox Dev**, with a bundle ID of its own (`com.mrz1836.nilbox.dev`), so
+macOS keeps it apart from the release: Spotlight, notifications, privacy prompts, and Open With
+list the two separately. It still shares the release's data: your settings, prompts, launch
+defaults, and triage are the same in both. Don't run the release and Nilbox Dev at the same time,
+since both would sync and write the same database: quit one before you open the other.
 
 A build from source never updates itself: to update it, pull, then run `magex app:run` again.
 `magex app:open` reopens the build as it is. The Wails CLI is never installed: the build runs it
@@ -259,8 +265,8 @@ with `go run` at the version `go.mod` pins.
   it on the Mac that built it.
 - **Firewalls:** a per-app firewall must let the app's binary reach `api.github.com`, or every
   refresh times out: `/Applications/Nilbox.app/Contents/MacOS/nilbox` for a release (under
-  `~/Applications` if you installed it there), and `bin/Nilbox.app/Contents/MacOS/nilbox` for a
-  build from source. Blocking `avatars.githubusercontent.com` only swaps profile pictures (yours,
+  `~/Applications` if you installed it there), and `bin/Nilbox Dev.app/Contents/MacOS/nilbox` for
+  a build from source. Blocking `avatars.githubusercontent.com` only swaps profile pictures (yours,
   and those of the people an issue shows) for initials, and blocking the status pages
   (`www.githubstatus.com`, `status.claude.com`, and `status.openai.com`) only leaves the service
   status check saying it couldn't reach them. Updates need `github.com`, which redirects each
@@ -1217,9 +1223,9 @@ Common commands:
 ```bash
 magex build          # build the headless binary
 magex app:dev        # run the desktop app with a hot-reloading frontend
-magex app:build      # build the macOS app bundle
+magex app:build      # build the macOS app bundle, "bin/Nilbox Dev.app"
 magex app:open       # open the last build as it is, building it first when it's missing
-magex app:run        # build the app, quit the running copy, and open the new build
+magex app:run        # build the app, quit the running Nilbox Dev, and open the new build
 magex test           # run the Go test suite
 magex lint           # run golangci-lint
 magex format:fix     # format the code

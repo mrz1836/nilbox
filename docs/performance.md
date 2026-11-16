@@ -227,8 +227,8 @@ number.
 ### App binary size
 
 `magex measure:size` reads the size of the production executable,
-`bin/Nilbox.app/Contents/MacOS/nilbox`: 22,949,712 bytes, or 22.9 MB in decimal megabytes. The
-whole bundle, the executable with its icon set, `Info.plist`, and code signature, is 24.2 MB
+`bin/Nilbox Dev.app/Contents/MacOS/nilbox`: 22,949,712 bytes, or 22.9 MB in decimal megabytes.
+The whole bundle, the executable with its icon set, `Info.plist`, and code signature, is 24.2 MB
 (24,226,109 bytes).
 The binary is built with `-tags desktop,production -trimpath -ldflags "-s -w"` and embeds the
 built frontend, about 1.31 MB without source maps: the 670 KB script the first paint needs
