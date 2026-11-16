@@ -3,8 +3,6 @@ package prompts
 import (
 	"fmt"
 	"reflect"
-	"strings"
-	"unicode"
 
 	"github.com/mrz1836/nilbox/internal/bump"
 	"github.com/mrz1836/nilbox/internal/item"
@@ -338,18 +336,7 @@ func (a AppliesTo) Covers(kind item.Kind) bool {
 
 // sanitizeLine turns s into a single line of plain text: control characters (including
 // newlines and tabs) become spaces, bidirectional-text controls are removed, and runs of
-// whitespace collapse to one space.
+// whitespace collapse to one space (textutil.OneLine, which Autopilot's facts share).
 func sanitizeLine(s string) string {
-	cleaned := strings.Map(func(r rune) rune {
-		switch {
-		case unicode.Is(unicode.Bidi_Control, r):
-			return -1
-		case unicode.IsControl(r):
-			return ' '
-		default:
-			return r
-		}
-	}, s)
-
-	return strings.Join(strings.Fields(cleaned), " ")
+	return textutil.OneLine(s)
 }

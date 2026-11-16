@@ -206,3 +206,22 @@ func (s *LineSplitter) end(line func(string)) {
 
 	line(text)
 }
+
+// OneLine turns s into a single line of plain text: control characters (including
+// newlines and tabs) become spaces, bidirectional-text controls are removed, and runs of
+// whitespace collapse to one space, trimmed at both ends. It suits text someone else
+// wrote, such as an item's title, shown or matched as one line.
+func OneLine(s string) string {
+	cleaned := strings.Map(func(r rune) rune {
+		switch {
+		case unicode.Is(unicode.Bidi_Control, r):
+			return -1
+		case unicode.IsControl(r):
+			return ' '
+		default:
+			return r
+		}
+	}, s)
+
+	return strings.Join(strings.Fields(cleaned), " ")
+}
