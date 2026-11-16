@@ -172,9 +172,10 @@ func TestEveryStepNamesItsDispatcher(t *testing.T) {
 	}
 }
 
-// builtDispatchers are the parts whose dispatchers this build has: the inbox's triage.
+// builtDispatchers are the parts whose dispatchers this build has: the inbox's triage, and
+// the notices (Notify me and Tell me).
 func builtDispatchers() []catalog.Dispatcher {
-	return []catalog.Dispatcher{catalog.DispatchTriage}
+	return []catalog.Dispatcher{catalog.DispatchTriage, catalog.DispatchNotices}
 }
 
 func TestAStepIsOfferedOnceItsDispatcherIsBuilt(t *testing.T) {

@@ -201,7 +201,7 @@ func TestABugReportCountsTheRoutinesAndNamesNone(t *testing.T) {
 		"Paused: on · new routines: Ask first · agents at once: 2 · runs a day: 20 · actions a day: 50 · "+
 		"daily cap: 2000000 tokens · keep awake: off · hold on outage: on · catch up after: 24 h · history: 90 days, "+
 		"logs: 30\n"+
-		"Routines: 2 (2 dry run, 0 ask first, 0 autopilot) · on: 1 · broken: 0 · another account's: 0\n", report)
+		"Routines: 2 (0 dry run, 2 ask first, 0 autopilot) · on: 1 · broken: 0 · another account's: 0\n", report)
 
 	assert.Empty(t, bugReportState{}.autopilotState(ctx, c), "no Autopilot, no section")
 }

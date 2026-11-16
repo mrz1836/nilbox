@@ -347,6 +347,44 @@ func (d *Dispatcher) Jobs() []autopilot.Job {
 	return slices.Clone(d.jobs)
 }
 
+// Notices is a fake of the notifications the notices tell (autopilot.NoticeSink): it
+// records each notice, and fails while Fail says so, as a database that refuses a write.
+type Notices struct {
+	mu      sync.Mutex
+	told    []autopilot.Notice
+	failing error
+}
+
+// Notice records n, or fails.
+func (n *Notices) Notice(_ context.Context, notice autopilot.Notice) error {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+
+	if n.failing != nil {
+		return n.failing
+	}
+
+	n.told = append(n.told, notice)
+
+	return nil
+}
+
+// Told returns the notices told, in order.
+func (n *Notices) Told() []autopilot.Notice {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+
+	return slices.Clone(n.told)
+}
+
+// Fail has every notice fail with err from now on, or be told again for nil.
+func (n *Notices) Fail(err error) {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+
+	n.failing = err
+}
+
 // attach tells e of the runs' ends from now on.
 func (r *Runner) attach(e *autopilot.Engine) {
 	r.mu.Lock()

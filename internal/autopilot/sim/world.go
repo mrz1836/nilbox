@@ -54,6 +54,10 @@ type Item struct {
 	Passed  int
 	Pending int
 
+	// FailedNames name the failed checks, in order, as GitHub shows a check ("workflow /
+	// job", or an app's run alone); the rest are "ci / test N".
+	FailedNames []string
+
 	Labels   []string
 	Comments int
 
@@ -161,6 +165,13 @@ func (w *World) Push(number int, commit string) {
 // Fail has a pull request's checks fail.
 func (w *World) Fail(number int) {
 	w.Change(number, func(it *Item) { it.Checks, it.Failed, it.Passed, it.Pending = "FAILURE", 1, 3, 0 })
+}
+
+// FailNamed has a pull request's checks fail, the failed ones named names.
+func (w *World) FailNamed(number int, names ...string) {
+	w.Change(number, func(it *Item) {
+		it.Checks, it.Failed, it.Passed, it.Pending, it.FailedNames = "FAILURE", len(names), 3, 0, slices.Clone(names)
+	})
 }
 
 // Pass has a pull request's checks pass.
@@ -489,21 +500,34 @@ func (w *World) FetchChecks(_ context.Context, _ github.Token, ids []string) (*g
 
 		for i, outcome := range append(append(repeat(github.CheckFailed, it.Failed), repeat(github.CheckPassed,
 			it.Passed)...), repeat(github.CheckPending, it.Pending)...) {
-			c := github.HeadCheck{
-				Kind: "run", Name: "test " + strconv.Itoa(i), Workflow: "ci", Outcome: outcome, StartedAt: done.Add(-time.Minute),
-			}
-
-			if outcome != github.CheckPending {
-				c.CompletedAt = done
-			}
-
-			h.Checks = append(h.Checks, c)
+			h.Checks = append(h.Checks, check(it, i, outcome, done))
 		}
 
 		out.Items[id] = h
 	}
 
 	return out, nil
+}
+
+// check is the item's ith check, with outcome, finished at done unless it still runs: a
+// failed one named as FailedNames says, the rest "ci / test i".
+func check(it *Item, i int, outcome string, done time.Time) github.HeadCheck {
+	c := github.HeadCheck{
+		Kind: "run", Name: "test " + strconv.Itoa(i), Workflow: "ci", Outcome: outcome, StartedAt: done.Add(-time.Minute),
+	}
+
+	if i < len(it.FailedNames) && outcome == github.CheckFailed {
+		c.Workflow, c.Name = "", it.FailedNames[i]
+		if workflow, job, ok := strings.Cut(it.FailedNames[i], " / "); ok {
+			c.Workflow, c.Name = workflow, job
+		}
+	}
+
+	if outcome != github.CheckPending {
+		c.CompletedAt = done
+	}
+
+	return c
 }
 
 // repeat returns n copies of s.

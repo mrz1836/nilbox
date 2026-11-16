@@ -177,7 +177,8 @@ func onlyIfHolds(before []stepRun, want catalog.Outcome) bool {
 }
 
 // runLocal runs a local step on a worker: held back only by Pause Autopilot and the
-// routine's active hours.
+// routine's active hours. A notice waits for the cycle's end, which tells them all at once
+// (tellNotices), so a burst is gathered.
 func (p *pass) runLocal(ctx context.Context, r *routineRun, m *match, sr *stepRun, info catalog.Step) {
 	if v := p.held(r, m); !v.through() {
 		m.wait(v.block, v.words)
@@ -190,7 +191,32 @@ func (p *pass) runLocal(ctx context.Context, r *routineRun, m *match, sr *stepRu
 	sr.Status, sr.Started = stepRunning, new(p.now)
 
 	m.wait(BlockStarting, "")
+
+	if info.Dispatcher == catalog.DispatchNotices {
+		// A routine catching up makes the cycle's notices a burst; it is noted now, as the
+		// cycle may end the catch-up before the notices go.
+		job.Burst = p.catchingUp(r)
+		p.e.inflight[m.ID] = true
+		p.notices = append(p.notices, job)
+
+		return
+	}
+
 	p.e.dispatch(ctx, m.ID, 0, info.Dispatcher, job)
+}
+
+// tellNotices hands the cycle's notices to the notices dispatcher, each on a worker, as a
+// burst when there are more than one, or when any comes from a routine catching up: those
+// are gathered, so more than three at once show as one banner.
+func (p *pass) tellNotices(ctx context.Context) {
+	burst := len(p.notices) > 1 || slices.ContainsFunc(p.notices, func(j Job) bool { return j.Burst })
+
+	for _, job := range p.notices {
+		job.Burst = burst
+		p.e.dispatch(ctx, job.MatchID, 0, catalog.DispatchNotices, job)
+	}
+
+	p.notices = nil
 }
 
 // verify follows the checks on the commit the agent pushed, through the verify part
@@ -557,6 +583,8 @@ func (p *pass) job(r *routineRun, m *match, sr *stepRun) Job {
 			ID: store.Deref(m.ItemID), Kind: item.Kind(m.Kind), Repo: m.RepoOwner + "/" + m.RepoName,
 			Number: int(m.Number), Title: m.Title, URL: m.URL,
 		},
+		MatchCreated: m.CreatedAt, Notices: r.spec.Notify, Reason: reasonOf(m.trace),
+		Before: matchView(m, r.row.Name).Steps[:min(int(m.Step), len(m.steps))],
 	}
 
 	if sr.Step.Agent != nil {

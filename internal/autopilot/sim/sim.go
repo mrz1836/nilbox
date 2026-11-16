@@ -108,6 +108,9 @@ type Sim struct {
 	Settings *Settings
 	Lock     string
 
+	// Notices hears what the real notices dispatcher, and the problems, tell the user.
+	Notices *Notices
+
 	// Logs hears what the app logs.
 	Logs *testutil.Logs
 
@@ -133,7 +136,7 @@ func New(t *testing.T) *Sim {
 	s := &Sim{
 		t: t, DB: testutil.DB(t), Clock: clk, World: NewWorld(clk), Runner: NewRunner(), Local: &Dispatcher{},
 		GitHub: &Dispatcher{}, Settings: &Settings{cfg: cfg}, Lock: filepath.Join(t.TempDir(), "autopilot.lock"),
-		Logs: &testutil.Logs{},
+		Logs: &testutil.Logs{}, Notices: &Notices{},
 	}
 	s.Triage = &Triage{sim: s}
 
@@ -152,7 +155,7 @@ func New(t *testing.T) *Sim {
 func (s *Sim) Copy() *Sim {
 	other := &Sim{
 		t: s.t, DB: s.DB, Clock: s.Clock, World: s.World, Runner: NewRunner(), Local: &Dispatcher{},
-		GitHub: &Dispatcher{}, Settings: s.Settings, Lock: s.Lock, Logs: s.Logs,
+		GitHub: &Dispatcher{}, Settings: s.Settings, Lock: s.Lock, Logs: s.Logs, Notices: &Notices{},
 	}
 	other.Triage = &Triage{sim: other}
 
@@ -201,8 +204,9 @@ func (s *Sim) Begin() {
 	s.Engine = autopilot.NewEngine(s.Service, autopilot.EngineConfig{
 		Items: items, Lock: autopilot.NewLock(s.Lock), Runner: s.Runner, Triage: s.Triage,
 		Dispatchers: map[catalog.Dispatcher]autopilot.Dispatcher{
-			catalog.DispatchNotices: s.Local, catalog.DispatchGitHub: s.GitHub,
+			catalog.DispatchGitHub: s.GitHub, catalog.DispatchNotices: autopilot.NewNotices(s.Notices),
 		},
+		Problems: autopilot.NewProblemNotices(s.Notices),
 	})
 	fan.engine.Store(s.Engine)
 	s.Runner.attach(s.Engine)

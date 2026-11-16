@@ -106,6 +106,9 @@ type pass struct {
 	// stateReads the items that left a watch whose state is read before they close.
 	checks     []int64
 	stateReads []int64
+
+	// notices are the notices the cycle's steps tell, handed over together as it ends.
+	notices []Job
 }
 
 // cycle runs one cycle: it reads what the routines watch, evaluates each routine on its
@@ -213,8 +216,11 @@ func (e *Engine) askWatches(ctx context.Context) {
 	}
 }
 
-// run is one cycle's work, once the engine is primed.
+// run is one cycle's work, once the engine is primed. The notices its steps tell go out as
+// it ends, however it ends, so the matches that tell them never wait on a later cycle.
 func (p *pass) run(ctx context.Context) error {
+	defer p.tellNotices(ctx)
+
 	if err := p.loadRoutines(ctx); err != nil {
 		return err
 	}

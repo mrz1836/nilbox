@@ -85,10 +85,20 @@ func problemKey(routineID int64, kind ProblemKind, search string) string {
 	return key
 }
 
-// tellProblems tells the user of each problem not told yet, once.
+// tellProblems tells the user of each problem not told yet, once: with the routine's name
+// and its own banner switch for problems, and gathered when there are more than one, as
+// on a first pass. One that couldn't be told is told on a later cycle.
 func (e *Engine) tellProblems(ctx context.Context, p *pass) {
 	if e.problems == nil {
 		return
+	}
+
+	untold := 0
+
+	for _, pr := range e.state.Problems {
+		if !pr.Told {
+			untold++
+		}
 	}
 
 	for i := range e.state.Problems {
@@ -97,14 +107,7 @@ func (e *Engine) tellProblems(ctx context.Context, p *pass) {
 			continue
 		}
 
-		name := ""
-		if r, ok := p.byID[pr.RoutineID]; ok {
-			name = r.row.Name
-		} else if row, ok := p.others[pr.RoutineID]; ok {
-			name = row.Name
-		}
-
-		if err := e.problems.Problem(ctx, name, *pr); err != nil {
+		if err := e.problems.Problem(ctx, p.problemNotice(*pr, untold > 1 || e.state.CatchingUp[pr.RoutineID])); err != nil {
 			e.logger.InfoContext(ctx, "Autopilot could not tell of a problem", "routine", pr.RoutineID, "error", err)
 
 			continue
@@ -112,6 +115,24 @@ func (e *Engine) tellProblems(ctx context.Context, p *pass) {
 
 		pr.Told = true
 	}
+}
+
+// problemNotice is pr as the user is told of it: with its routine's name and when it was
+// made, and the routine's own banner switch for its problems, when it loads.
+func (p *pass) problemNotice(pr Problem, burst bool) ProblemNotice {
+	notice := ProblemNotice{Problem: pr, Burst: burst}
+
+	if r, ok := p.byID[pr.RoutineID]; ok {
+		notice.Routine, notice.RoutineCreated = r.row.Name, r.row.CreatedAt
+
+		if r.spec.Notify != nil {
+			notice.Banner = r.spec.Notify.Problem
+		}
+	} else if row, ok := p.others[pr.RoutineID]; ok {
+		notice.Routine, notice.RoutineCreated = row.Name, row.CreatedAt
+	}
+
+	return notice
 }
 
 // Cleared is what Clear history removed.

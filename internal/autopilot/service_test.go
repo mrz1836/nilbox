@@ -39,8 +39,8 @@ func TestANewRoutineStartsOffInTheDefaultModeAndBelongsToTheAccountSignedIn(t *t
 	assert.True(t, startedAt().Equal(got.CreatedAt), "stamped from the clock")
 	assert.Equal(t, spec.Normalize(notifySpec()), got.Spec)
 	assert.NotEmpty(t, got.Sentence)
-	assert.Equal(t, []catalog.StepKind{catalog.StepNotify}, got.DryRunOnly, "no step runs in this build yet")
-	assert.Equal(t, autopilotprefs.ModeDryRun, got.Mode)
+	assert.Empty(t, got.DryRunOnly, "Notify me runs in this build")
+	assert.Equal(t, autopilotprefs.ModeDryRun, got.Mode, "the mode new routines start in")
 
 	assert.Equal(t, []autopilot.Routine{got}, r.list(t))
 }
@@ -228,7 +228,7 @@ func TestSetEnabledAndSetMode(t *testing.T) {
 	t.Parallel()
 
 	r := newRig(t, autopilotprefs.ModeAsk)
-	rt := r.save(t, draft("Notify", notifySpec()))
+	rt := r.save(t, draft("Fix", agentSpec()))
 
 	on, err := r.svc.SetEnabled(t.Context(), rt.ID, true, autopilot.CurrentRun)
 	require.NoError(t, err)
@@ -251,8 +251,16 @@ func TestSetEnabledAndSetMode(t *testing.T) {
 	for _, mode := range []autopilotprefs.Mode{autopilotprefs.ModeAsk, autopilotprefs.ModeAuto} {
 		_, err = r.svc.SetMode(t.Context(), rt.ID, mode, autopilot.CurrentRun)
 		require.ErrorIs(t, err, autopilot.ErrDryRunOnly, mode)
-		assert.Equal(t, "This routine runs in Dry run for now: this version of "+brand.Name+" can't yet run “Notify me”.",
-			uierr.Message(err))
+		assert.Equal(t, "This routine runs in Dry run for now: this version of "+brand.Name+
+			" can't yet run “Run a coding agent”.", uierr.Message(err))
+	}
+
+	notify := r.save(t, draft("Notify", notifySpec()))
+
+	for _, mode := range []autopilotprefs.Mode{autopilotprefs.ModeAsk, autopilotprefs.ModeAuto} {
+		got, setErr := r.svc.SetMode(t.Context(), notify.ID, mode, autopilot.CurrentRun)
+		require.NoError(t, setErr, "Notify me runs in this build: %s", mode)
+		assert.Equal(t, mode, got.Mode)
 	}
 
 	_, err = r.svc.SetMode(t.Context(), rt.ID, "", autopilot.CurrentRun)
@@ -385,7 +393,10 @@ func TestASpecThatNoLongerValidatesIsBrokenWithItsProblems(t *testing.T) {
 
 	fixed := r.save(t, autopilot.Draft{ID: id, Name: "Stale", Spec: notifySpec()})
 	assert.Empty(t, fixed.BrokenReason, "saving a valid spec over it mends it")
-	assert.Equal(t, autopilotprefs.ModeDryRun, fixed.Mode)
+	assert.Equal(t, autopilotprefs.ModeAsk, fixed.Mode, "and keeps its mode, as Notify me runs")
+
+	later := r.save(t, autopilot.Draft{ID: id, Name: "Stale", Spec: agentSpec()})
+	assert.Equal(t, autopilotprefs.ModeDryRun, later.Mode, "a step this build can't run keeps it in Dry run")
 }
 
 func TestAnUnreadableSpecIsBroken(t *testing.T) {
