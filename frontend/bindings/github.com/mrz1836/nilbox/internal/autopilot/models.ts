@@ -21,6 +21,157 @@ import * as autopilotprefs$0 from "../autopilotprefs/models.js";
 import * as item$0 from "../item/models.js";
 
 /**
+ * ActivityDay is one local day of Activity.
+ */
+export interface ActivityDay {
+    /**
+     * Date is the day, YYYY-MM-DD.
+     */
+    "date": string;
+    "matches": Match[] | null;
+}
+
+/**
+ * ActivityPage is a page of Activity: the matches recorded before a moment, newest first,
+ * by local day.
+ */
+export interface ActivityPage {
+    "days": ActivityDay[] | null;
+
+    /**
+     * More reports matches before the page, which Next, the last match's ID, asks for.
+     */
+    "more": boolean;
+    "next": number;
+}
+
+/**
+ * Blocker is what an open match waits on.
+ */
+export type Blocker = "ask" | "hold" | "warning" | "no_clone" | "dirty_worktree" | "catch_up" | "interrupted" | "outside_contributor" | "backlog" | "not_ready" | "missing_tool" | "cross_repository" | "slot" | "cap_runs" | "cap_actions" | "cap_spend" | "active_hours" | "paused" | "busy_worktree" | "github_budget" | "writes_held" | "provider_outage" | "settling" | "wait" | "starting";
+
+/**
+ * The values of Blocker, by the names of their Go constants.
+ */
+export const Blocker = {
+    /**
+     * What a waiting match waits for the user about.
+     */
+    BlockAsk: "ask",
+    BlockHold: "hold",
+    BlockWarning: "warning",
+    BlockNoClone: "no_clone",
+    BlockDirty: "dirty_worktree",
+    BlockCatchUp: "catch_up",
+    BlockInterrupted: "interrupted",
+    BlockOutside: "outside_contributor",
+    BlockBacklog: "backlog",
+
+    /**
+     * What a blocked match waits on this Mac for.
+     */
+    BlockNotReady: "not_ready",
+    BlockMissingTool: "missing_tool",
+    BlockCrossRepo: "cross_repository",
+
+    /**
+     * What a queued match waits on before it starts by itself.
+     */
+    BlockSlot: "slot",
+    BlockCapRuns: "cap_runs",
+    BlockCapActions: "cap_actions",
+    BlockCapSpend: "cap_spend",
+    BlockActiveHours: "active_hours",
+    BlockPaused: "paused",
+    BlockBusyWorktree: "busy_worktree",
+    BlockGitHubBudget: "github_budget",
+    BlockWritesHeld: "writes_held",
+    BlockOutage: "provider_outage",
+    BlockSettling: "settling",
+    BlockWait: "wait",
+
+    /**
+     * BlockStarting is a start under way: the item read fresh, then the start itself.
+     */
+    BlockStarting: "starting",
+} as const;
+
+/**
+ * Cleared is what Clear history removed.
+ */
+export interface Cleared {
+    /**
+     * Removed is how many matches it removed, with their runs, and Kept how many it kept,
+     * without their traces and summaries, since they still block their occurrence.
+     */
+    "removed": number;
+    "kept": number;
+}
+
+/**
+ * Current is what to do with the items a routine matches now that it has no record of,
+ * when it is turned on, leaves Dry run, or its Watch, When, or If changes.
+ */
+export type Current = "run" | "fromNow";
+
+/**
+ * The values of Current, by the names of their Go constants.
+ */
+export const Current = {
+    /**
+     * The choices for what matches now.
+     *
+     * CurrentRun runs on them too, as on anything that matches later: the default, and
+     * what a routine with nothing matching now does.
+     */
+    CurrentRun: "run",
+
+    /**
+     * CurrentFromNow records them as already handled (baseline): only what changes from
+     * now on runs.
+     */
+    CurrentFromNow: "fromNow",
+} as const;
+
+/**
+ * Cycle is what one of the engine's cycles did.
+ */
+export interface Cycle {
+    /**
+     * At is when it ran, and TookMS how long it took, in milliseconds.
+     */
+    "at": string;
+    "tookMs": number;
+
+    /**
+     * Waiting says why it evaluated nothing: "refresh" while the first refresh that
+     * carries the routines' searches hasn't come, "" when it evaluated.
+     */
+    "waiting": string;
+
+    /**
+     * Routines is how many routines it evaluated, over Items items.
+     */
+    "routines": number;
+    "items": number;
+
+    /**
+     * Matches is how many matches it recorded, Starts how many runs it began, Closed how
+     * many matches it closed, and Reads how many reads of GitHub it asked for.
+     */
+    "matches": number;
+    "starts": number;
+    "closed": number;
+    "reads": number;
+
+    /**
+     * CatchUp reports a cycle after a long gap, whose agent and GitHub steps wait for the
+     * user.
+     */
+    "catchUp": boolean;
+}
+
+/**
  * Draft is a routine as the builder saves it.
  */
 export interface Draft {
@@ -51,6 +202,52 @@ export interface Draft {
      * routine saved before keeps its own.
      */
     "templateKey"?: string;
+
+    /**
+     * Current is what to do with the items the routine matches now that it has no record
+     * of, when it is on and its Watch, When, or If changed; left out, it runs on them too.
+     */
+    "current"?: Current;
+}
+
+/**
+ * EngineStatus is the engine as Settings → Autopilot shows it.
+ */
+export interface EngineStatus {
+    /**
+     * Running reports the engine runs in this copy; Holds that this copy holds the lock,
+     * and so runs the routines; Elsewhere that another copy of the app does.
+     */
+    "running": boolean;
+    "holds": boolean;
+    "elsewhere": boolean;
+
+    /**
+     * Primed reports the engine saw the refresh it waits for after a start.
+     */
+    "primed": boolean;
+
+    /**
+     * PausedSince is when Pause Autopilot began, nil while it is off.
+     */
+    "pausedSince": string | null;
+
+    /**
+     * LastCycle is what the last cycle did, nil before one ran.
+     */
+    "lastCycle": Cycle | null;
+
+    /**
+     * SearchesPaused says why the last refresh sent none of the routines' searches, as the
+     * inbox says it ("low_budget" while the GraphQL budget is low), "" when it sent them:
+     * why the routines that use them wait.
+     */
+    "searchesPaused": string;
+
+    /**
+     * Problems are the routines' problems, as the last cycle found them.
+     */
+    "problems": Problem[] | null;
 }
 
 /**
@@ -71,6 +268,226 @@ export interface Estimate {
     "pointsPerHour": number;
     "percent": number;
 }
+
+/**
+ * Explanation is why a routine did or didn't act on an item: what it decides now, and what
+ * the ledger says.
+ */
+export interface Explanation {
+    "routineId": number;
+    "itemId": number;
+
+    /**
+     * Match, FireKey, Trace, and Needs are the decision now.
+     */
+    "match": eval$0.Result;
+    "fireKey": string;
+    "trace": eval$0.Trace[] | null;
+    "needs": facts$0.Need[] | null;
+
+    /**
+     * InWatch reports the item is in the routine's watch.
+     */
+    "inWatch": boolean;
+
+    /**
+     * Ledger says, in sentences, what the ledger knows that holds the routine back or
+     * let it act: "It already ran on this commit", "2 of 2 tries used".
+     */
+    "ledger": string[] | null;
+
+    /**
+     * Record is the match for the occurrence now, nil when there is none.
+     */
+    "record": Match | null;
+}
+
+/**
+ * ItemHistory is what the routines did with one item, newest first.
+ */
+export interface ItemHistory {
+    "itemId": number;
+    "matches": Match[] | null;
+
+    /**
+     * Open counts its open matches.
+     */
+    "open": number;
+}
+
+/**
+ * ItemRef names a match's item, as the ledger keeps a copy of it.
+ */
+export interface ItemRef {
+    "id": number;
+    "kind": item$0.Kind;
+    "repo": string;
+    "number": number;
+    "title": string;
+    "url": string;
+}
+
+/**
+ * Match is one of a routine's matches, as Activity and an item's history show it.
+ */
+export interface Match {
+    "id": number;
+
+    /**
+     * RoutineID and Routine name the routine, as it was named last.
+     */
+    "routineId": number;
+    "routine": string;
+
+    /**
+     * Item is the item, as the ledger keeps a copy of it; its ID is 0 once it is gone.
+     */
+    "item": ItemRef;
+
+    /**
+     * FireKey is the occurrence it is for; DryRun reports a Dry run's record, and Manual
+     * a run the user started by hand.
+     */
+    "fireKey": string;
+    "dryRun": boolean;
+    "manual": boolean;
+
+    /**
+     * State is where it is: open (waiting, blocked, queued, running, verifying) or
+     * closed. BlockedBy is what an open one waits on, Reason why a closed one closed, and
+     * Words says either in the window's words.
+     */
+    "state": State;
+    "blockedBy": Blocker;
+    "reason": Reason;
+    "words": string;
+
+    /**
+     * Steps are the steps it started with and how each went, and Step where it is.
+     */
+    "steps": MatchStep[] | null;
+    "step": number;
+
+    /**
+     * Trace is the decision as it was when it matched.
+     */
+    "trace": eval$0.Trace[] | null;
+
+    /**
+     * Approved reports the user's OK, and Attempt how many runs it started.
+     */
+    "approved": boolean;
+    "attempt": number;
+
+    /**
+     * Runs are the runs it started, oldest first.
+     */
+    "runs": Run[] | null;
+    "createdAt": string;
+    "updatedAt": string;
+    "decidedAt": string;
+    "closedAt": string | null;
+}
+
+/**
+ * MatchStep is one of a match's steps, and how it went.
+ */
+export interface MatchStep {
+    "kind": catalog$0.StepKind;
+    "label": string;
+    "status": string;
+    "outcome": string;
+    "note": string;
+    "runId": number;
+    "startedAt": string | null;
+    "endedAt": string | null;
+}
+
+/**
+ * Matching is what the question about current matches says: how many items the routine
+ * matches now that it has no record of, by kind. With none, nothing is asked.
+ */
+export interface Matching {
+    "count": number;
+    "pullRequests": number;
+    "issues": number;
+
+    /**
+     * Unknown counts the items it can't decide yet.
+     */
+    "unknown": number;
+}
+
+/**
+ * Problem is something wrong with a routine that the user is told once, when it starts:
+ * a search GitHub fails, or a routine that won't load.
+ */
+export interface Problem {
+    /**
+     * Key names it: the routine, the kind, and for a search, the search.
+     */
+    "key": string;
+    "routineId": number;
+    "kind": ProblemKind;
+
+    /**
+     * Detail says it in the window's words.
+     */
+    "detail": string;
+
+    /**
+     * Since is when it was first seen, and Told whether the user was told.
+     */
+    "since": string;
+    "told": boolean;
+}
+
+/**
+ * ProblemKind is a kind of problem.
+ */
+export type ProblemKind = "search_failed" | "wont_load";
+
+/**
+ * The values of ProblemKind, by the names of their Go constants.
+ */
+export const ProblemKind = {
+    /**
+     * The kinds of problem.
+     */
+    ProblemSearchFailed: "search_failed",
+    ProblemWontLoad: "wont_load",
+} as const;
+
+/**
+ * Reason is why a match closed.
+ */
+export type Reason = "ran" | "would_run" | "tries" | "outside_contributor" | "you_skipped" | "you_stopped" | "merged" | "item_closed" | "gone" | "left_watch" | "moved_on" | "no_longer_matches" | "routine_changed" | "routine_off" | "not_offered" | "failed" | "from_now";
+
+/**
+ * The values of Reason, by the names of their Go constants.
+ */
+export const Reason = {
+    /**
+     * The reasons a match closes.
+     */
+    ReasonRan: "ran",
+    ReasonWouldRun: "would_run",
+    ReasonTries: "tries",
+    ReasonOutside: "outside_contributor",
+    ReasonYouSkipped: "you_skipped",
+    ReasonYouStopped: "you_stopped",
+    ReasonMerged: "merged",
+    ReasonItemClosed: "item_closed",
+    ReasonGone: "gone",
+    ReasonLeftWatch: "left_watch",
+    ReasonMovedOn: "moved_on",
+    ReasonNoLongerMatches: "no_longer_matches",
+    ReasonRoutineChanged: "routine_changed",
+    ReasonRoutineOff: "routine_off",
+    ReasonNotOffered: "not_offered",
+    ReasonFailed: "failed",
+    ReasonFromNow: "from_now",
+} as const;
 
 /**
  * Routine is one routine as the window shows it.
@@ -144,6 +561,106 @@ export interface Routine {
     "createdAt": string;
     "updatedAt": string;
 }
+
+/**
+ * Run is one run a match started: an agent's, or a GitHub action the app sent.
+ */
+export interface Run {
+    "id": number;
+    "matchId": number;
+    "step": number;
+    "runner": string;
+    "agent": string;
+    "action": string;
+    "status": string;
+    "outcome": string;
+    "verdict": string;
+    "headBefore": string;
+    "commit": string;
+    "headAfter": string;
+
+    /**
+     * Budget is what the start reserved, in Unit; Cost is what it reported, nil for none.
+     */
+    "budget": number;
+    "unit": string;
+    "cost": number | null;
+    "tokensIn": number;
+    "tokensOut": number;
+    "cacheRead": number;
+    "turns": number;
+    "summary": string;
+    "error": string;
+    "manual": boolean;
+    "queuedAt": string;
+    "startedAt": string | null;
+    "finishedAt": string | null;
+}
+
+/**
+ * State is where a match is.
+ */
+export type State = "waiting" | "blocked" | "queued" | "running" | "verifying" | "done" | "skipped" | "dismissed" | "closed" | "baseline";
+
+/**
+ * The values of State, by the names of their Go constants.
+ */
+export const State = {
+    /**
+     * The open states.
+     *
+     * StateWaiting needs a decision only the user can make: an OK, a hold, a warning.
+     */
+    StateWaiting: "waiting",
+
+    /**
+     * StateBlocked can't start until something on this Mac is fixed.
+     */
+    StateBlocked: "blocked",
+
+    /**
+     * StateQueued starts by itself once what it waits on frees.
+     */
+    StateQueued: "queued",
+
+    /**
+     * StateRunning has an agent working, or a GitHub action being sent.
+     */
+    StateRunning: "running",
+
+    /**
+     * StateVerifying has a run that pushed, whose commit's checks haven't finished.
+     */
+    StateVerifying: "verifying",
+
+    /**
+     * The closed states.
+     *
+     * StateDone ran, or was sent; for a Dry run, it would have.
+     */
+    StateDone: "done",
+
+    /**
+     * StateSkipped was closed by the routine's own limit: its tries, or the outside
+     * contributor setting.
+     */
+    StateSkipped: "skipped",
+
+    /**
+     * StateDismissed was skipped by the user.
+     */
+    StateDismissed: "dismissed",
+
+    /**
+     * StateClosed was closed because the item or the routine moved on; Reason says how.
+     */
+    StateClosed: "closed",
+
+    /**
+     * StateBaseline already matched when the user chose "only what changes from now on".
+     */
+    StateBaseline: "baseline",
+} as const;
 
 /**
  * Suggestions is what the stored items hold that the builder suggests, each most common

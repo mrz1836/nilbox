@@ -166,6 +166,11 @@ type EngineStatus struct {
 	// LastCycle is what the last cycle did, nil before one ran.
 	LastCycle *Cycle `json:"lastCycle"`
 
+	// SearchesPaused says why the last refresh sent none of the routines' searches, as the
+	// inbox says it ("low_budget" while the GraphQL budget is low), "" when it sent them:
+	// why the routines that use them wait.
+	SearchesPaused string `json:"searchesPaused"`
+
 	// Problems are the routines' problems, as the last cycle found them.
 	Problems []Problem `json:"problems"`
 }

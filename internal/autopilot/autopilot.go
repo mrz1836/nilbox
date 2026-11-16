@@ -20,8 +20,16 @@
 // The builder reads the inbox through Items: what the stored items suggest (Suggest), the
 // items a routine watches (Watching), and a draft tried on its items now (Test).
 //
+// The Engine runs the routines (engine.go): one loop, the only writer of the ledger
+// (ledger.go: what each routine did with each item it matched, once per occurrence), which
+// evaluates the routines on what the inbox stored, closes what moved on, and starts what the
+// limits let start through the dispatchers the app's parts register (dispatch.go). The
+// window's actions on the ledger are commands the loop applies (commands.go); its reads of
+// it are activity.go's.
+//
 // The package reaches the rest of the app only through the narrow interfaces it declares
-// (Prefs, Accounts, Names, Items, Costs), which core adapts; it never imports the inbox,
+// (Prefs, Accounts, Names, Items, Costs, EngineItems, the dispatchers, Holds, and
+// ProblemSink), which core adapts; it never imports the inbox,
 // the sheets, the launcher, the worktrees, the sessions, the runs, the notifications, the
 // settings, the desktop shell, or core.
 package autopilot

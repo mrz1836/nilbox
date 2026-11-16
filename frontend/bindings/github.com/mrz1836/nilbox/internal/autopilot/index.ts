@@ -6,10 +6,31 @@ export {
     Service
 };
 
+export {
+    Blocker,
+    Current,
+    ProblemKind,
+    Reason,
+    State
+} from "./models.js";
+
 export type {
+    ActivityDay,
+    ActivityPage,
+    Cleared,
+    Cycle,
     Draft,
+    EngineStatus,
     Estimate,
+    Explanation,
+    ItemHistory,
+    ItemRef,
+    Match,
+    MatchStep,
+    Matching,
+    Problem,
     Routine,
+    Run,
     Suggestions,
     TestItem,
     TestResult,

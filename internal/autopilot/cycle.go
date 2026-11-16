@@ -112,6 +112,8 @@ func (e *Engine) cycle(ctx context.Context) {
 		return
 	}
 
+	e.setStatus(func(s *EngineStatus) { s.SearchesPaused = inbox.WatchPaused })
+
 	if !e.prime(ctx, inbox) {
 		c.Waiting = "refresh"
 
