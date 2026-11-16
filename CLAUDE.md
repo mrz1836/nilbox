@@ -721,8 +721,25 @@ changing the package, and keep the section and its summary in step.
   prerelease's numeric identifiers included), for the integrations' tool versions and the
   app's updates alike. It is a leaf.
 - `internal/bump/` reads a dependency update from a bot's pull request title into an `Update`,
-  for the review sheet and the `.Dependency` prompt variables. It is pure and imports no
-  service.
+  for the review sheet and the `.Dependency` prompt variables, and which bot's branch a
+  head branch is and the ecosystem a Dependabot branch names (`ParseBranch`, the
+  `dependabot.yml` words, `Ecosystems`), for Autopilot's conditions. It is pure and imports
+  no service.
+- `internal/autopilot/` will hold Autopilot, which runs the user's routines; today it holds
+  the routines core, five pure leaves that read nothing and keep no clock: `catalog` (the
+  vocabulary every spec name comes from: the triggers, the fields and their operators, the
+  steps with the dispatcher that runs each, not `Offered` until it is built, the presets,
+  the limits, and the builder's words; no entry for a close, approving workflow runs, or a
+  merge past GitHub's rules, which a guard test holds), `watch` (a search into its query:
+  scoped, its labels quoted, at most 256 characters, the query its own dedup key), `spec`
+  (the routine's JSON, format version 1 holding every step kind; strict `Decode`,
+  `Normalize`, `Validate` naming the part and the field and holding the steps to their
+  order, `Load` broken rather than fatal, and `Sentence`), `facts` (an item's values from
+  the plain `Row` the inbox fills, each known, unknown with what to read, or not applying),
+  and `eval` (`Evaluate`: three-valued, cheapest first and order-free, with a fire key per
+  trigger and reasons). They import only `item`, `repo`, `trust`, `sensitive`, `bump`,
+  `clock`, `textutil`, and one another (`TestLeafImports`).
+  Full design: [docs/architecture.md](docs/architecture.md#internalautopilot)
 - `internal/integrations/` finds the tools the app drives, mage-x's magex and go-pre-commit,
   each one a `Definition` (its binary, releases, version parser, quiet environment, minimum
   version, and the release that brought each upstream `Feature`). Detection looks on the login

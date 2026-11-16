@@ -15,6 +15,7 @@ step with the change.
   commands that change a clone
 - [`internal/release`](#internalrelease): the Release page's service
 - [`internal/scripts`](#internalscripts): Repo scripts' service
+- [`internal/autopilot`](#internalautopilot): the routines core, Autopilot's pure leaves
 
 ## internal/review
 
@@ -763,3 +764,134 @@ moved on from the commit `Before` read is pulled. Core registers the `Verifier`
 (`scripts.NewVerifier`) for pulls, so one left going at a quit comes back after a
 restart with Stop held again and that same `Finish`. Run again pulls the same branch, its
 `Before` checking everything afresh.
+
+## internal/autopilot
+
+`internal/autopilot/` will hold Autopilot, which watches the user's items and runs their
+routines; today it holds the routines core, five pure leaves under it. They read nothing,
+start nothing, and keep no clock: the moment a decision is for comes with it. They import
+only `item`, `repo`, `trust`, `sensitive`, `bump`, `clock`, `textutil`, the standard
+library, and one another, in this order: `catalog` and `watch` at the bottom, `spec` over
+both, `facts` over `catalog`, and `eval` over all three. `TestLeafImports` in
+`internal/repoguard/deps_test.go` holds each leaf's direct imports to that list, so a leaf
+can never reach the store, GitHub, a process, or a service.
+
+**`catalog`** is the vocabulary: every name a spec stores is one of its constants, and the
+builder renders what it lists. Its parts:
+
+- the triggers (`Triggers`: each one's event, label, the kinds of item it fires for, what
+  one occurrence is, and its options with their ranges and defaults);
+- the fields (`Fields`: `<group>.<name>` IDs in seven groups, item, repo, pr, checks,
+  files, dep, and history, each with its type, the kinds it applies to, its choices, how
+  a list's patterns match, globs or `.gitignore`'s, its read cost, and its words for the
+  sentence);
+- the operators per type (`Ops`, with arity and negation; a list of choices takes only the
+  set operators, `Takes`);
+- the steps (`Steps`: each with the `Dispatcher` that runs it, triage, notices, github,
+  agent, verify, merging, or review, whether it runs at once (`Local`) or follows the
+  routine's mode (`AsksFirst`), and `Offered`, false until its dispatcher is built);
+- the Only if outcomes, the tools presets (`MayPush`, `ReadOnly`), the agent step's
+  settings, the limits, and their ranges.
+
+`GitHubActions` lists no entry until the GitHub dispatcher is built; the spec's format
+already has the four actions (rebase, updateBranch, reply, labels). The catalog has no entry
+for a close, approving workflow runs, `merge_bypass`, or the sheet's combined approve and
+merge: `TestCatalogHasNoForbiddenAction` checks every ID it lists, and
+`TestNoAutopilotCodeSpellsAForbiddenAction` every string literal the autopilot packages
+spell. Merging and posting an agent's review are steps of their own, held in by their own
+checks. Lookups by ID (`FieldByID`, `OpByID`, `TriggerByEvent`, ...) read one index built
+once, since the evaluator makes them for every condition on every item. Three of the
+catalog's names (Restore, Merge it and the merge method, the rebase action and method) are
+spelled as git verbs; `TestNoGitCommandChangesAClone` lets their declarations in
+`catalog/steps.go` through, and nothing else.
+
+**`watch`** turns a search, as the builder writes it from fields (kind, authors, where,
+involving, labels, notLabels, base, headPrefix, state, and qualifiers typed by hand), into
+the GitHub query a refresh sends. Every query adds `is:open archived:false
+sort:updated-desc` (without the sort, GitHub orders newest-created first, so "the 100 most
+recently updated" would not hold); is scoped, by a `user:`, `org:`, or `repo:` qualifier
+that isn't negated, or one whose value is `@me`; quotes its labels, as one comma list each
+for any of them (`label:"a","b"`) and for none of them (`-label:"a","b"`), refusing a label
+holding a quote, a comma, or a control character, so no value can smuggle in a qualifier;
+passes the head branch's prefix through exactly, quoted, since GitHub reads `head:` as a
+plain prefix; writes a bot as `author:app/<slug>` (the bare slug matches nothing, so
+`Normalize` writes `dependabot`, `renovate`, and `github-actions` as apps and `x[bot]` as
+`app/x`); refuses a hand-typed qualifier it doesn't list, free text, and the search's own
+(`is:` but public, private, locked, or unlocked, `sort:`, `archived:`, `in:`); and is at
+most 256 characters, refused over that with the hint to split it. GitHub doesn't error on
+a longer query, it answers nothing, which is why the cap holds the whole query. "Your
+account" (`@me` in Where) becomes `user:<login>` in `Build`, so a routine follows
+whichever account is signed in, while `Check`, which `spec.Validate` calls, builds with the
+longest login GitHub allows, so a search it passes fits any account. The query is written
+in one canonical order from the normalized search, so it is its own dedup key
+(`Query.Key`).
+
+**`spec`** is a routine's definition, one JSON document with a `version`: the watch's
+sources (inbox lists, or a search), one trigger with its options, the conditions (`all` or
+`any`, with one level of groups), the steps in order, each optionally carrying `onlyIf`,
+the limits, the routine's own banner switches, and the tools it requires. The mode, the
+on or off switch, the name, and the account are its row's, never the spec's. An option or
+a limit left out takes its default (a nil pointer), so the builder can tell a value set
+from one inherited. Format version 1 holds every step kind (notify, pin, snooze, dismiss,
+restore, markDone, github, agent, waitForChecks, merge, postReview, tellMe), so a later
+build adds the code that runs a step, never a format change; `TestSchemaGolden` pins every
+key and every closed set of values.
+
+- `Decode` is strict: it refuses a field the format doesn't have, a key given twice
+  (which encoding/json would read as the last), a value of the wrong type, anything after
+  the document, nesting past 16 levels, and more than 64 KiB.
+- `Normalize` trims every text, sorts and dedupes every list that is a set (text compared
+  ignoring case, the first spelling kept), writes a choice as the catalog spells it, keeps
+  a condition given twice in one list once, and keeps the user's order of the sources,
+  the conditions, the steps, a GitHub step's actions, and the fallbacks.
+- `Validate` returns every problem, each naming its part and field (`Problem.Path`:
+  `watch.sources[0].search.where`), and holds the steps to their order: one agent step at
+  most; Wait for the checks only after an agent step in the background that may push;
+  Merge it only after a Wait for the checks, with `onlyIf: "passed"`; Post the agent's
+  review only after a read-only agent step in the background; Allow approving only with
+  `as: "verdict"`; only a notice after an agent step in the terminal, whose end the app
+  can't see; and an Only if only on an outcome an earlier step ends with (the checks', the
+  latest Wait for the checks'; the push and the verdict, the agent step's).
+- `Load` reads the version first, so a newer build's spec says it is newer rather than
+  unreadable, then decodes, normalizes, and validates. A spec it can't load returns a
+  `*BrokenError` (`ReasonNewer`, `ReasonUnreadable`, `ReasonInvalid`), so its routine is
+  broken, not fatal; an older version is migrated in `migrate`, which has nothing to bring
+  forward yet.
+- `Sentence` writes the one sentence every place shows, from `Phrase` for each condition,
+  with `PromptNames` naming a starter as the library does; `TestSentenceGolden` pins each
+  template's.
+
+**`facts`** holds one item's values for the evaluator, built by the pure `Build` from a
+plain `Row`, which the inbox's query fills: the item, its repository, its triage, and, once
+read, its details, its head commit's check names, and its changed files, each part nil
+until it is. Each value is known, unknown (with why, and the `Need` the engine would read to
+know it: details, checks, or files), or not applying to the item (a pull request's field on
+an issue). A list read only in part is known and `Partial`. Check names and files count only
+when read at the head commit the details name. A check's name is `workflow / job` as GitHub
+shows it (an app's run, such as CodeQL's or OSV-Scanner's, and a status have no workflow),
+each name once though GitHub lists one per event that ran it, failed when any of its runs on
+the head commit failed; the checks are done, and so can settle, only once every one has
+finished, at the newest completion time (a skipped run may say it completed before it
+started, so start times never count). The dependency fields apply only to a pull request
+Dependabot or Renovate opened (by its author's type and login), read from its title by
+`bump.Parse` and its ecosystem from its head branch by `bump.ParseBranch`; a title that
+doesn't read as an update leaves them unknown. Every text is made one line and capped
+(`textutil.OneLine`).
+
+**`eval`** decides. `Evaluate(spec, facts, history, now)` returns a `Decision`: `Match`
+(yes, no, or unknown), the `FireKey` while the trigger holds, the `Trace` (the trigger's
+step, then each condition that ran, with what it compared and the actual value), and the
+`Needs` of an unknown decision. Conditions are three-valued: one on a value not known yet is
+unknown whatever its operator, its negation too; one on a field that doesn't apply is no;
+a partial list's find is sure and its miss unknown. `All` is no at its first no, `Any` yes
+at its first yes, and a list stops there; the order conditions run in is their read cost,
+then what each says, never where it sits, so shuffling them never changes a decision. The
+`History` is the ledger's: the routine's tries and last outcome, the head it first saw, the
+heads routines pushed, the comments it last counted, and a click's token. Fire keys name
+the event and the occurrence (`checks_failed:commit:<oid>`, `labeled:label:<name>`,
+`new_comments:comments:<n>`, `schedule:<date>`, `manual:<click>`, ...), and the routine's
+own once-per (item, head commit, or day) replaces the trigger's. Checks fail and Checks pass
+wait for the checks to settle, the newest completion at least the settle time ago. The
+property tests (`FuzzShuffledConditionsDecideAlike`, `FuzzNegationOfAnUnknownIsUnknown`,
+`FuzzNeverYesOnAnUnknownItNeeds`) run over generated specs and facts; the last checks that
+reading what was missing never turns a yes or a no into anything else.
