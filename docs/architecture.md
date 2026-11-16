@@ -812,12 +812,16 @@ sort:updated-desc` (without the sort, GitHub orders newest-created first, so "th
 recently updated" would not hold); is scoped, by a `user:`, `org:`, or `repo:` qualifier
 that isn't negated, or one whose value is `@me`; quotes its labels, as one comma list each
 for any of them (`label:"a","b"`) and for none of them (`-label:"a","b"`), refusing a label
-holding a quote, a comma, or a control character, so no value can smuggle in a qualifier;
-passes the head branch's prefix through exactly, quoted, since GitHub reads `head:` as a
-plain prefix; writes a bot as `author:app/<slug>` (the bare slug matches nothing, so
+holding a quote, a comma, a backslash (which could read as an escaped quote), or a control
+character, so no value can smuggle in a qualifier; quotes any value holding a space of any
+kind, Unicode's included; passes the head branch's prefix through exactly, quoted, since
+GitHub reads `head:` as a plain prefix, refusing in a branch any space, quote, or
+backslash, since the base goes in unquoted; writes a bot as `author:app/<slug>` (the bare
+slug matches nothing, so
 `Normalize` writes `dependabot`, `renovate`, and `github-actions` as apps and `x[bot]` as
-`app/x`); refuses a hand-typed qualifier it doesn't list, free text, and the search's own
-(`is:` but public, private, locked, or unlocked, `sort:`, `archived:`, `in:`); and is at
+`app/x`); refuses a hand-typed qualifier it doesn't list, free text, a backslash, and the
+search's own (`is:` but public, private, locked, or unlocked, `sort:`, `archived:`, `in:`);
+and is at
 most 256 characters, refused over that with the hint to split it. GitHub doesn't error on
 a longer query, it answers nothing, which is why the cap holds the whole query. "Your
 account" (`@me` in Where) becomes `user:<login>` in `Build`, so a routine follows
@@ -837,17 +841,23 @@ restore, markDone, github, agent, waitForChecks, merge, postReview, tellMe), so 
 build adds the code that runs a step, never a format change; `TestSchemaGolden` pins every
 key and every closed set of values.
 
-- `Decode` is strict: it refuses a field the format doesn't have, a key given twice
-  (which encoding/json would read as the last), a value of the wrong type, anything after
-  the document, nesting past 16 levels, and more than 64 KiB.
+- `Decode` is strict: it walks the document beside the `Spec` type and holds every
+  object's keys, byte for byte, to its struct's JSON names, since encoding/json would
+  match a key ignoring case, Unicode's folding included (`Trigger` beside `trigger`, or
+  `ſteps` for `steps`); and it refuses a key given twice (which encoding/json would read
+  as the last), a value of the wrong type, anything after the document, nesting past 16
+  levels, and more than 64 KiB.
 - `Normalize` trims every text, sorts and dedupes every list that is a set (text compared
   ignoring case, the first spelling kept), writes a choice as the catalog spells it, keeps
-  a condition given twice in one list once, and keeps the user's order of the sources,
-  the conditions, the steps, a GitHub step's actions, and the fallbacks.
+  a condition written the same way twice in one list once (its value compared exactly, so
+  the regexes `\d` and `\D` stay two), and keeps the user's order of the sources, the
+  conditions, the steps, a GitHub step's actions, and the fallbacks.
 - `Validate` returns every problem, each naming its part and field (`Problem.Path`:
   `watch.sources[0].search.where`), and holds the steps to their order: one agent step at
-  most; Wait for the checks only after an agent step in the background that may push;
-  Merge it only after a Wait for the checks, with `onlyIf: "passed"`; Post the agent's
+  most; Wait for the checks only after an agent step in the background that may push, and
+  never only if it didn't push; Merge it only after a Wait for the checks that runs only if
+  the agent pushed, so the pass it follows is on the agent's own commit and never a flaky
+  check run again, with `onlyIf: "passed"`; Post the agent's
   review only after a read-only agent step in the background; Allow approving only with
   `as: "verdict"`; only a notice after an agent step in the terminal, whose end the app
   can't see; and an Only if only on an outcome an earlier step ends with (the checks', the
@@ -875,23 +885,30 @@ finished, at the newest completion time (a skipped run may say it completed befo
 started, so start times never count). The dependency fields apply only to a pull request
 Dependabot or Renovate opened (by its author's type and login), read from its title by
 `bump.Parse` and its ecosystem from its head branch by `bump.ParseBranch`; a title that
-doesn't read as an update leaves them unknown. Every text is made one line and capped
-(`textutil.OneLine`).
+doesn't read as an update leaves them unknown. The author's trust is unknown while their
+association isn't read, since they may be a member, but for a fork's pull request, an
+outside contributor's whoever opened it, and a bot's, which the trusted list decides.
+Every text is made one line and capped (`textutil.OneLine`).
 
 **`eval`** decides. `Evaluate(spec, facts, history, now)` returns a `Decision`: `Match`
 (yes, no, or unknown), the `FireKey` while the trigger holds, the `Trace` (the trigger's
 step, then each condition that ran, with what it compared and the actual value), and the
 `Needs` of an unknown decision. Conditions are three-valued: one on a value not known yet is
 unknown whatever its operator, its negation too; one on a field that doesn't apply is no;
-a partial list's find is sure and its miss unknown. `All` is no at its first no, `Any` yes
+a partial list's find is sure and its miss unknown; an "all" operator over an empty list
+is no, never vacuously yes (a pull request that changes no file doesn't have every changed
+path under docs/). A regex or a path pattern is compiled once, in a cache every evaluation
+shares, not on every item of every cycle. `All` is no at its first no, `Any` yes
 at its first yes, and a list stops there; the order conditions run in is their read cost,
 then what each says, never where it sits, so shuffling them never changes a decision. The
 `History` is the ledger's: the routine's tries and last outcome, the head it first saw, the
 heads routines pushed, the comments it last counted, and a click's token. Fire keys name
 the event and the occurrence (`checks_failed:commit:<oid>`, `labeled:label:<name>`,
 `new_comments:comments:<n>`, `schedule:<date>`, `manual:<click>`, ...), and the routine's
-own once-per (item, head commit, or day) replaces the trigger's. Checks fail and Checks pass
-wait for the checks to settle, the newest completion at least the settle time ago. The
+own once-per (item, head commit, or day) replaces the trigger's. A key holds only what is
+known: Falls behind waits for the base branch to be read, so one occurrence never fires
+twice, without its base and then with it. Checks fail and Checks pass wait for the checks
+to settle, the newest completion at least the settle time ago. The
 property tests (`FuzzShuffledConditionsDecideAlike`, `FuzzNegationOfAnUnknownIsUnknown`,
 `FuzzNeverYesOnAnUnknownItNeeds`) run over generated specs and facts; the last checks that
 reading what was missing never turns a yes or a no into anything else.
