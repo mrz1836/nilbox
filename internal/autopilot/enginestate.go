@@ -24,6 +24,10 @@ type engineState struct {
 	// after a long gap asks before it catches up.
 	LastRefresh time.Time `json:"lastRefresh,omitzero"`
 
+	// CatchUpSince is when the catch-up under way began: the first refresh after a long gap,
+	// or a Resume after a long pause; nil with none.
+	CatchUpSince *time.Time `json:"catchUpSince,omitempty"`
+
 	// LastCycle is what the last cycle did.
 	LastCycle *Cycle `json:"lastCycle,omitempty"`
 

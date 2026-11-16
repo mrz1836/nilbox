@@ -83,8 +83,13 @@ type World struct {
 	// gates hold an item's own read until they are opened.
 	gates map[int]chan struct{}
 
-	// reads counts the item reads, by number.
-	reads map[int]int
+	// reads counts the item reads, by number, and stateReads the reads of states.
+	reads      map[int]int
+	stateReads int
+
+	// signedOut has the GitHub CLI signed out; statesGate holds the reads of states.
+	signedOut  bool
+	statesGate chan struct{}
 }
 
 // NewWorld returns an empty world on clock.
@@ -207,7 +212,49 @@ func (w *World) Reads(number int) int {
 
 // Token lends a placeholder token.
 func (w *World) Token(context.Context) (github.Token, error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	if w.signedOut {
+		return github.Token{}, github.ErrNotLoggedIn
+	}
+
 	return github.NewToken("sim-token-not-real"), nil
+}
+
+// SignOut signs the GitHub CLI out, or back in.
+func (w *World) SignOut(out bool) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	w.signedOut = out
+}
+
+// HoldStates holds the reads of states until ReleaseStates.
+func (w *World) HoldStates() {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	w.statesGate = make(chan struct{})
+}
+
+// ReleaseStates lets the reads of states through.
+func (w *World) ReleaseStates() {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	if w.statesGate != nil {
+		close(w.statesGate)
+		w.statesGate = nil
+	}
+}
+
+// StateReads returns how many times the states of items were read.
+func (w *World) StateReads() int {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	return w.stateReads
 }
 
 // Forget forgets nothing.
@@ -440,10 +487,23 @@ func repeat(s string, n int) []string {
 }
 
 // FetchItemStates answers each item's state.
-func (w *World) FetchItemStates(_ context.Context, _ github.Token, refs []item.Ref,
+func (w *World) FetchItemStates(ctx context.Context, _ github.Token, refs []item.Ref,
 ) (map[string]github.ItemState, error) {
 	if err := w.down(); err != nil {
 		return nil, err
+	}
+
+	w.mu.Lock()
+	w.stateReads++
+	gate := w.statesGate
+	w.mu.Unlock()
+
+	if gate != nil {
+		select {
+		case <-gate:
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
 	}
 
 	w.mu.Lock()

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+	"time"
 
 	"github.com/mrz1836/nilbox/internal/autopilot/eval"
 	"github.com/mrz1836/nilbox/internal/autopilot/internal/queries"
@@ -381,7 +382,9 @@ func (s *Service) ClearHistory(ctx context.Context) (Cleared, error) {
 	var out Cleared
 
 	err = e.do(ctx, func(ctx context.Context) error {
-		cleared, clearErr := e.clear(ctx, e.clock.Now().Add(1), true)
+		now := e.clock.Now()
+		gone := now.Add(-time.Duration(e.svc.settings(ctx).HistoryDays) * 24 * time.Hour)
+		cleared, clearErr := e.clear(ctx, now.Add(1), gone, true)
 		out = cleared
 
 		if clearErr != nil {
@@ -508,7 +511,7 @@ func (s *Service) recorded(ctx context.Context, id int64) (map[matchKey]bool, er
 	}
 
 	for k, row := range got {
-		if !k.dryRun && (State(row.State) != StateClosed || !Reason(row.Reason).reopens()) {
+		if !k.dryRun && !reopensRow(row) {
 			out[matchKey{item: k.item, fire: k.fire}] = true
 		}
 	}

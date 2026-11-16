@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/mrz1836/nilbox/internal/autopilot/eval"
@@ -131,6 +132,9 @@ const (
 	BlockSettling     Blocker = "settling"
 	BlockWait         Blocker = "wait"
 
+	// BlockSignedOut is no one signed in to GitHub: nothing starts, local steps included.
+	BlockSignedOut Blocker = "signed_out"
+
 	// BlockStarting is a start under way: the item read fresh, then the start itself.
 	BlockStarting Blocker = "starting"
 )
@@ -174,13 +178,37 @@ const (
 	ReasonFromNow         Reason = "from_now"
 )
 
-// reopens reports a reason that closes a match that never ran, which reopens on its own
-// when its occurrence matches again: a check that failed, passed when run again, and
-// failed again on the same commit, for one.
+// reopens reports a reason that closes a match before it ran, which reopens on its own
+// when its occurrence matches again, if it truly never ran (reopensRow): a check that
+// failed, passed when run again, and failed again on the same commit, for one.
 func (r Reason) reopens() bool {
 	return slices.Contains([]Reason{
 		ReasonNoLongerMatches, ReasonLeftWatch, ReasonMovedOn, ReasonRoutineChanged, ReasonRoutineOff,
 	}, r)
+}
+
+// reopensRow reports a closed match that reopens on its own when its occurrence matches
+// again: one closed for a reason that reopens, none of whose steps ever started. A match
+// that started a step, a local one included, is a record of the occurrence, which only Try
+// again opens again; so a routine switched off and on never runs on it twice.
+func reopensRow(row queries.ListRoutineMatchKeysRow) bool {
+	return State(row.State) == StateClosed && Reason(row.Reason).reopens() && !startedAny(row.Attempt, row.Step, row.Steps)
+}
+
+// startedAny reports a match that started a step: a run, a step it moved past, or a step
+// its stored steps record as running, done, or failed.
+func startedAny(attempt, step int64, steps string) bool {
+	if attempt > 0 || step > 0 {
+		return true
+	}
+
+	for _, s := range []string{stepRunning, stepDone, stepFailed} {
+		if strings.Contains(steps, `"status":"`+s+`"`) {
+			return true
+		}
+	}
+
+	return false
 }
 
 // Step statuses, as a match's steps record each one.

@@ -2,10 +2,12 @@ package autopilot
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"reflect"
 
 	"github.com/mrz1836/nilbox/internal/autopilotprefs"
+	"github.com/mrz1836/nilbox/internal/brand"
 	"github.com/mrz1836/nilbox/internal/uierr"
 )
 
@@ -14,8 +16,10 @@ import (
 // run on them too, or only on what changes from now on. The change and the answer reach
 // the engine together, as one command, so no cycle runs between them: with "from now on",
 // the routine's current matches are recorded as its baseline once its searches were read
-// after the change, and never run. Without an engine (or in a copy of the app that doesn't
-// hold it), the change is made at once, and the answer is the default.
+// after the change, and never run. Without an engine running in this copy of the app (not
+// started yet, or another copy holds it), a change that runs on them too is made at once,
+// and one asking for only what changes from now on is refused with why, rather than made
+// with the answer dropped.
 
 // ErrInvalidCurrent is returned for an answer that isn't one of the choices.
 var ErrInvalidCurrent = fmt.Errorf("unknown choice for the current matches")
@@ -29,6 +33,20 @@ func checkCurrent(c Current) error {
 	return uierr.New("Choose to run on them too, or only on what changes from now on.",
 		fmt.Errorf("%w %q", ErrInvalidCurrent, c))
 }
+
+// fromNowRefused says why "only what changes from now on" can't be kept now: this copy
+// doesn't run the engine, which alone records the baseline, so the change isn't made.
+func fromNowRefused(e *Engine) error {
+	if e != nil && e.isRunning() {
+		return uierr.New("Autopilot is running in another copy of "+brand.Name+"; make this change there.",
+			fmt.Errorf("%w: %w", ErrFromNow, ErrElsewhere))
+	}
+
+	return uierr.New("Autopilot hasn't started yet; try again in a moment.", fmt.Errorf("%w: %w", ErrFromNow, ErrNotRunning))
+}
+
+// ErrFromNow is returned for "only what changes from now on" in a copy that can't keep it.
+var ErrFromNow = errors.New("only what changes from now on can't be kept here")
 
 // Save stores d, as save says, and with d.Current CurrentFromNow, records what the routine
 // matches now as its baseline, when it is on and its Watch, When, or If changed.
@@ -94,6 +112,10 @@ func (s *Service) applying(ctx context.Context, current Current, change func(ctx
 ) (Routine, error) {
 	e := s.engine
 	if e == nil || !e.isRunning() || !e.lock.Held() {
+		if current == CurrentFromNow {
+			return Routine{}, fromNowRefused(e)
+		}
+
 		return change(ctx)
 	}
 

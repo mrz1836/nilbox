@@ -133,7 +133,7 @@ func (e *Engine) prune(ctx context.Context, now time.Time, cfg autopilotprefs.Co
 
 	cutoff := now.Add(-time.Duration(cfg.HistoryDays) * 24 * time.Hour)
 
-	cleared, err := e.clear(ctx, cutoff, false)
+	cleared, err := e.clear(ctx, cutoff, cutoff, false)
 	if err != nil {
 		e.logger.WarnContext(ctx, "Autopilot could not prune its history", "error", err)
 
@@ -145,14 +145,15 @@ func (e *Engine) prune(ctx context.Context, now time.Time, cfg autopilotprefs.Co
 	}
 }
 
-// clear removes the closed matches closed before cutoff whose item is done with: gone,
-// merged or closed, or out of every list and watch since before cutoff. Deleting the
-// record of an item still open would let it fire again, so a match that still blocks its
-// occurrence stays; with scrub, it stays without its trace and its summaries. It also
-// forgets what deleted routines kept of their items, and removes for good a deleted
-// routine nothing refers to.
-func (e *Engine) clear(ctx context.Context, cutoff time.Time, scrub bool) (Cleared, error) {
-	remove, keep, err := e.prunable(ctx, cutoff)
+// clear removes the closed matches closed before closedBefore whose item is done with:
+// gone, merged or closed, or out of every list and watch since before goneBefore, which
+// is always the history's days ago, since the app reads no more of an item once it left
+// them. Deleting the record of an item still open would let it fire again, so a match
+// that may still block its occurrence stays; with scrub, it stays without its trace and
+// its summaries. It also forgets what deleted routines kept of their items, and removes
+// for good a deleted routine nothing refers to.
+func (e *Engine) clear(ctx context.Context, closedBefore, goneBefore time.Time, scrub bool) (Cleared, error) {
+	remove, keep, err := e.prunable(ctx, closedBefore, goneBefore)
 	if err != nil {
 		return Cleared{}, err
 	}
@@ -182,10 +183,11 @@ func (e *Engine) clear(ctx context.Context, cutoff time.Time, scrub bool) (Clear
 	return out, nil
 }
 
-// prunable returns the closed matches closed before cutoff that may go, their item done
-// with, and those that stay, since they still block their occurrence.
-func (e *Engine) prunable(ctx context.Context, cutoff time.Time) (remove, keep []int64, err error) {
-	rows, err := e.ledger.q.ListPrunableMatches(ctx, new(cutoff))
+// prunable returns the closed matches closed before closedBefore that may go, their item
+// done with (doneWith, by goneBefore), and those that stay, since they may still block
+// their occurrence.
+func (e *Engine) prunable(ctx context.Context, closedBefore, goneBefore time.Time) (remove, keep []int64, err error) {
+	rows, err := e.ledger.q.ListPrunableMatches(ctx, new(closedBefore))
 	if err != nil {
 		return nil, nil, fmt.Errorf("read the closed matches: %w", err)
 	}
@@ -203,7 +205,7 @@ func (e *Engine) prunable(ctx context.Context, cutoff time.Time) (remove, keep [
 	}
 
 	for _, r := range rows {
-		if doneWith(r.ItemID, states, cutoff) {
+		if doneWith(r.ItemID, states, goneBefore) {
 			remove = append(remove, r.ID)
 		} else {
 			keep = append(keep, r.ID)

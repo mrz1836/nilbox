@@ -154,6 +154,9 @@ type InboxStatus struct {
 
 	// Searches is each search's last answer, by key.
 	Searches map[string]SearchState
+
+	// SignedOut reports that the last refresh found no one signed in to GitHub.
+	SignedOut bool
 }
 
 // SearchState is one search's last answer.
@@ -162,6 +165,14 @@ type SearchState struct {
 	At        time.Time
 	Error     string
 	Truncated bool
+	Partial   bool
+}
+
+// complete reports an answer that holds every item the search matches: answered, with no
+// error, and neither truncated nor read in part. Only such an answer proves an item that
+// isn't among its results left it.
+func (s SearchState) complete() bool {
+	return s.Answered && s.Error == "" && !s.Truncated && !s.Partial
 }
 
 // EngineConfig holds an Engine's dependencies beside its Service. Items is required; the
@@ -231,6 +242,13 @@ type Engine struct {
 	checksRead map[int64]time.Time
 	holdOff    time.Time
 
+	// statesAsked are the items whose states a worker reads now; runnerClosed reports a
+	// runner that refused a start as it closed, so no agent starts until the next start;
+	// and checking reports the runs going being checked now.
+	statesAsked  map[int64]bool
+	runnerClosed bool
+	checking     bool
+
 	// mu guards what the window reads of the engine, and the notifications.
 	mu         sync.Mutex
 	status     EngineStatus
@@ -298,7 +316,7 @@ func NewEngine(svc *Service, cfg EngineConfig) *Engine {
 		since: svc.clock.Now().Truncate(time.Second), wake: make(chan struct{}, 1), cmds: make(chan command),
 		mail: mailbox{signal: make(chan struct{}, 1)}, closed: make(chan struct{}),
 		inflight: map[int64]bool{}, freshReads: map[int64]fresh{}, stopping: map[int64]string{},
-		stateReads: map[int64]time.Time{},
+		stateReads: map[int64]time.Time{}, statesAsked: map[int64]bool{},
 		checksRead: map[int64]time.Time{},
 	}
 
@@ -311,6 +329,12 @@ func NewEngine(svc *Service, cfg EngineConfig) *Engine {
 	}
 
 	svc.engine = e
+
+	// The lock is tried at once, so the copy that will run the engine sends the routines'
+	// searches from its very first refresh, which comes before the engine's loop starts.
+	if _, err := lock.TryLock(); err != nil {
+		e.logger.Warn("could not take Autopilot's lock", "error", err)
+	}
 
 	return e
 }
@@ -401,6 +425,7 @@ func (e *Engine) await(ctx context.Context, tick <-chan time.Time) bool {
 	case <-e.wake:
 	case <-tick:
 		e.takeLock(ctx)
+		e.onTick(ctx)
 	case c := <-e.cmds:
 		c.reply <- e.safeCommand(ctx, c.fn)
 	case <-e.mail.signal:
@@ -410,6 +435,26 @@ func (e *Engine) await(ctx context.Context, tick <-chan time.Time) bool {
 	}
 
 	return true
+}
+
+// onTick does what each tick does while this copy holds the engine: it builds the
+// routines' searches again from the database, which catches a routine changed in another
+// copy of the app, and checks the runs the ledger records as going.
+func (e *Engine) onTick(ctx context.Context) {
+	if !e.holding() {
+		return
+	}
+
+	e.svc.rebuildWatches(ctx)
+	e.reconcile(ctx)
+}
+
+// HoldsWatches reports whether this copy of the app reads the routines' searches: only
+// the copy that holds the engine's lock does.
+func (w *Searches) HoldsWatches() bool {
+	e := w.svc.engine
+
+	return e == nil || e.lock.Held()
 }
 
 // holding reports whether this copy holds the engine.
@@ -445,6 +490,7 @@ func (e *Engine) takeLock(ctx context.Context) {
 	e.state = st
 	e.primed = false
 	e.setHolds(true, false)
+	e.svc.rebuildWatches(ctx)
 	e.logger.InfoContext(ctx, "this copy runs Autopilot")
 	e.reconcile(ctx)
 	e.notify()

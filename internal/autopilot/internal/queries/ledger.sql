@@ -29,8 +29,10 @@ ORDER BY id;
 
 -- name: ListRoutineMatchKeys :many
 -- ListRoutineMatchKeys returns the occurrence each of a routine's matches is for, with its
--- state and why it closed: what tells a match that is new from one recorded.
-SELECT id, item_id, fire_key, dry_run, state, reason FROM autopilot_matches
+-- state, why it closed, how many runs it started, where it is in its steps, and its steps:
+-- what tells a match that is new from one recorded, and one that never ran from one that
+-- did.
+SELECT id, item_id, fire_key, dry_run, state, reason, attempt, step, steps FROM autopilot_matches
 WHERE routine_id = sqlc.arg(routine_id) AND item_id IS NOT NULL;
 
 -- name: ListItemMatches :many

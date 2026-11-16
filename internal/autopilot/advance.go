@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -176,13 +177,8 @@ func onlyIfHolds(before []stepRun, want catalog.Outcome) bool {
 // runLocal runs a local step on a worker: held back only by Pause Autopilot and the
 // routine's active hours.
 func (p *pass) runLocal(ctx context.Context, r *routineRun, m *match, sr *stepRun, info catalog.Step) {
-	switch {
-	case p.cfg.Paused:
-		m.wait(BlockPaused, "Autopilot is paused.")
-
-		return
-	case !inActiveHours(r.spec.Limits.ActiveHours, p.now):
-		m.wait(BlockActiveHours, "It waits for the routine's active hours.")
+	if v := p.held(r, m); !v.through() {
+		m.wait(v.block, v.words)
 
 		return
 	}
@@ -317,6 +313,8 @@ func (p *pass) gate(r *routineRun, m *match, sr *stepRun, info catalog.Step) ver
 // routine's active hours, which a manual run keeps to no routine's.
 func (p *pass) held(r *routineRun, m *match) verdict {
 	switch {
+	case p.inbox.SignedOut:
+		return wait(BlockSignedOut, "No one is signed in to GitHub; it starts once you sign in again.")
 	case p.cfg.Paused:
 		return wait(BlockPaused, "Autopilot is paused.")
 	case !m.Manual && !inActiveHours(r.spec.Limits.ActiveHours, p.now):
@@ -331,6 +329,8 @@ func (p *pass) room(r *routineRun, sr *stepRun, agent bool) verdict {
 	switch {
 	case !agent:
 		return verdict{}
+	case p.e.runnerClosed:
+		return wait(BlockSlot, "The runner is closing, as the app quits; it starts on the next start.")
 	case p.counts.activeAgents >= p.cfg.AgentsAtOnce:
 		return wait(BlockSlot, textutil.Counted(p.cfg.AgentsAtOnce, "agent is", "agents are")+" working already.")
 	}
@@ -419,7 +419,9 @@ func (p *pass) spend(r *routineRun, a *spec.AgentStep) verdict {
 }
 
 // itemRules checks what the item itself allows: an outside contributor's item, a fork's
-// branch for a run that pushes, and one run on the item at a time.
+// branch for a run that pushes, and one run on the item at a time. A fork's pull request
+// is an outside contributor's whoever opened it, so the fork's check can't hold anything
+// until an org or a repository can allow agents on those; it is here for then.
 func (p *pass) itemRules(m *match, id int64, sr *stepRun, agent bool) verdict {
 	if f, ok := p.facts[id]; ok {
 		if v := outsideRule(f, agent, m.Approved); !v.through() {
@@ -682,6 +684,7 @@ func (e *Engine) applyDispatch(ctx context.Context, matchID, runID int64, res Re
 // stays queued for the next start, and any other fails its step.
 func (e *Engine) dispatchFailed(ctx context.Context, m *match, sr *stepRun, runID int64, err error, now time.Time) {
 	if runID != 0 && errors.Is(err, ErrClosed) {
+		e.runnerClosed = true
 		e.endRun(ctx, runID, RunEnd{Outcome: RunInterrupted, Error: err.Error(), EndedAt: now}, false)
 
 		sr.Status, sr.RunID = stepPending, 0
@@ -905,7 +908,8 @@ func (p *pass) readStateOnce(id int64) {
 	}
 }
 
-// stopFor stops a run because its item is done with, once.
+// stopFor stops a run because its item is done with, once at a time: a stop that fails
+// is forgotten, the run going again, so the next cycle stops it again.
 func (e *Engine) stopFor(ctx context.Context, runID int64, reason Reason) {
 	if _, asked := e.stopping[runID]; asked || e.runner == nil {
 		return
@@ -915,40 +919,131 @@ func (e *Engine) stopFor(ctx context.Context, runID int64, reason Reason) {
 	e.setRunStatus(ctx, runID, runRunning, runStopping)
 
 	e.goWork(ctx, func(ctx context.Context) {
-		if err := e.runner.Stop(ctx, runID); err != nil && ctx.Err() == nil {
-			e.logger.WarnContext(ctx, "Autopilot could not stop a run", "run", runID, "error", err)
+		err := e.runner.Stop(ctx, runID)
+		if err == nil || ctx.Err() != nil {
+			return
 		}
+
+		e.logger.WarnContext(ctx, "Autopilot could not stop a run; it tries again", "run", runID, "error", err)
+
+		e.mail.post(func(ctx context.Context) {
+			delete(e.stopping, runID)
+			e.setRunStatus(ctx, runID, runStopping, runRunning)
+		})
 	})
 }
 
-// reconcile checks, once this copy holds the engine, the runs the ledger records as
-// going: one its runner no longer runs, as after a crash, ended interrupted.
+// unknownFor is how long a run its runner can't report on may go unknown before it ends
+// interrupted: longer than the longest time limit a run may have, by which its runner has
+// ended it, if it ran at all.
+const unknownFor = time.Duration(catalog.MaxTimeoutMinutes)*time.Minute + 30*time.Minute
+
+// liveness is what a check found of a run the ledger records as going.
+type liveness int
+
+// The answers about a run going.
+const (
+	runAlive liveness = iota
+	runGone
+	runUnknown
+)
+
+// reconcile checks the runs the ledger records as going, once this copy holds the engine
+// and on every tick after, leaving out those a worker of this copy is starting or
+// dispatching now. A run its runner no longer runs ended: one the runner never confirmed it
+// started (still starting, as a start the quit cut off) goes back to the queue, its match
+// with it, and any other ended interrupted. A run the runner can't say of is asked again on
+// the next tick; one still unknown unknownFor after it started ended interrupted, so no run
+// is taken as going for good.
 func (e *Engine) reconcile(ctx context.Context) {
-	runs, err := e.ledger.q.ListActiveRuns(ctx)
-	if err != nil || len(runs) == 0 {
+	if e.checking {
 		return
 	}
 
+	runs, err := e.ledger.q.ListActiveRuns(ctx)
+	if err != nil {
+		e.logger.WarnContext(ctx, "Autopilot could not read the runs going", "error", err)
+
+		return
+	}
+
+	runs = slices.DeleteFunc(runs, func(r queries.AutopilotRun) bool { return e.inflight[r.MatchID] })
+	if len(runs) == 0 {
+		return
+	}
+
+	e.checking = true
+
 	e.goWork(ctx, func(ctx context.Context) {
-		for _, run := range runs {
-			if !e.alive(ctx, run) {
-				e.RunEnded(RunEnd{RunID: run.ID, Outcome: RunInterrupted, Error: "the app stopped while it ran"})
-			}
+		found := make([]liveness, len(runs))
+		for i, run := range runs {
+			found[i] = e.alive(ctx, run)
 		}
+
+		e.mail.post(func(ctx context.Context) {
+			e.checking = false
+
+			for i, run := range runs {
+				e.settleRun(ctx, run, found[i])
+			}
+		})
 	})
 }
 
-// alive reports whether a run the ledger records as going still goes: a GitHub action
-// left from before a restart never does, and a run its runner can't say of is taken as
-// going.
-func (e *Engine) alive(ctx context.Context, run queries.AutopilotRun) bool {
+// settleRun ends a run a check found gone, or unknown for too long, unless this copy
+// started dispatching it since.
+func (e *Engine) settleRun(ctx context.Context, run queries.AutopilotRun, found liveness) {
+	if e.inflight[run.MatchID] {
+		return
+	}
+
+	switch {
+	case found == runAlive:
+	case found == runGone && run.Status == runStarting:
+		e.unstart(ctx, run)
+	case found == runGone:
+		e.applyRunEnd(ctx, RunEnd{RunID: run.ID, Outcome: RunInterrupted, Error: "the app stopped while it ran"})
+	case run.StartedAt != nil && e.clock.Now().Sub(*run.StartedAt) > unknownFor:
+		e.applyRunEnd(ctx, RunEnd{RunID: run.ID, Outcome: RunInterrupted, Error: "its runner couldn't say how it went"})
+	}
+}
+
+// unstart puts a run that never started back in the queue: the run ends, counting as no
+// try, and its match waits to start it again, its OK kept.
+func (e *Engine) unstart(ctx context.Context, run queries.AutopilotRun) {
+	e.endRun(ctx, run.ID, RunEnd{Outcome: RunInterrupted, Error: "it never started"}, false)
+
+	m, err := e.ledger.get(ctx, run.MatchID)
+	if err != nil || m.state() != StateRunning || int(run.Step) >= len(m.steps) {
+		return
+	}
+
+	sr := &m.steps[run.Step]
+	sr.Status, sr.RunID, sr.Started = stepPending, 0, nil
+
+	m.set(StateQueued, "", "")
+	e.save(ctx, m)
+	e.Wake()
+}
+
+// alive reports whether a run the ledger records as going still goes: a GitHub action no
+// worker of this copy sends is gone, as is a run with no runner to ask; a run the runner
+// can't say of is unknown.
+func (e *Engine) alive(ctx context.Context, run queries.AutopilotRun) liveness {
 	if e.runner == nil || run.Runner == "github" {
-		return false
+		return runGone
 	}
 
 	alive, err := e.runner.Alive(ctx, run.ID)
 
-	return alive || err != nil
+	switch {
+	case err != nil:
+		return runUnknown
+	case alive:
+		return runAlive
+	}
+
+	return runGone
 }
 
 // dayCounts are today's counts against the limits, from local midnight.

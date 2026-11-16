@@ -112,7 +112,7 @@ func (e *Engine) cycle(ctx context.Context) {
 		return
 	}
 
-	e.setStatus(func(s *EngineStatus) { s.SearchesPaused = inbox.WatchPaused })
+	e.setStatus(func(s *EngineStatus) { s.SearchesPaused, s.SignedOut = inbox.WatchPaused, inbox.SignedOut })
 
 	if !e.prime(ctx, inbox) {
 		c.Waiting = "refresh"
@@ -228,11 +228,14 @@ func (p *pass) run(ctx context.Context) error {
 	p.askReads(ctx)
 	p.e.updateProblems(ctx, p)
 	p.e.prune(ctx, p.now, p.cfg)
+	p.endCatchUp()
+	p.e.forgetFreshReads(p.now)
 
 	return nil
 }
 
-// watchPause keeps when Pause Autopilot began, for the catch-up on Resume.
+// watchPause keeps when Pause Autopilot began, and after a pause longer than the
+// catch-up setting, starts a catch-up on Resume.
 func (p *pass) watchPause() {
 	st := &p.e.state
 
@@ -240,8 +243,8 @@ func (p *pass) watchPause() {
 	case p.cfg.Paused && st.PausedSince == nil:
 		st.PausedSince = new(p.now.UTC())
 	case !p.cfg.Paused && st.PausedSince != nil:
-		if p.now.Sub(*st.PausedSince) > p.catchUpAfter() {
-			p.catchUp = true
+		if p.now.Sub(*st.PausedSince) > p.catchUpAfter() && st.CatchUpSince == nil {
+			st.CatchUpSince = new(p.now.UTC())
 		}
 
 		st.PausedSince = nil
@@ -253,18 +256,49 @@ func (p *pass) catchUpAfter() time.Duration {
 	return time.Duration(p.cfg.CatchUpHours) * time.Hour
 }
 
-// catchingUp reports a cycle after a gap longer than the setting with no successful
-// refresh, or after a pause as long, and keeps the last refresh seen.
+// catchingUp reports a cycle in a catch-up, and keeps the last refresh seen. A gap longer
+// than the setting between two successful refreshes starts one, from the refresh after the
+// gap; a catch-up lasts until every routine's searches were answered after it began
+// (endCatchUp), so every agent and GitHub step decided on what was read before the gap, or
+// on the first reads after it, waits for the user.
 func (p *pass) catchingUp() bool {
 	st := &p.e.state
 	last := p.inbox.LastRefresh.UTC()
-	gap := !st.LastRefresh.IsZero() && last.Sub(st.LastRefresh) > p.catchUpAfter()
+
+	if !st.LastRefresh.IsZero() && last.Sub(st.LastRefresh) > p.catchUpAfter() && st.CatchUpSince == nil {
+		st.CatchUpSince = new(last)
+	}
 
 	if last.After(st.LastRefresh) {
 		st.LastRefresh = last
 	}
 
-	return p.catchUp || gap
+	return st.CatchUpSince != nil
+}
+
+// endCatchUp ends a catch-up once this cycle, which still asked, decided on what was read
+// after it began: a refresh after it, and every search of every routine answered after
+// it, with no error.
+func (p *pass) endCatchUp() {
+	st := &p.e.state
+	if st.CatchUpSince == nil {
+		return
+	}
+
+	since := st.CatchUpSince.Truncate(time.Second)
+	if p.inbox.LastRefresh.Before(since) {
+		return
+	}
+
+	for _, r := range p.routines {
+		for _, key := range r.keys {
+			if s := p.inbox.Searches[key]; !s.Answered || s.Error != "" || s.At.Before(since) {
+				return
+			}
+		}
+	}
+
+	st.CatchUpSince = nil
 }
 
 // loadRoutines loads the enabled routines of the account signed in, in the user's order;
@@ -303,8 +337,32 @@ func (p *pass) loadRoutines(ctx context.Context) error {
 	}
 
 	p.cycle.Routines = len(p.routines)
+	p.e.state.forget(rows)
 
 	return nil
+}
+
+// forget drops what the state keeps of routines that no longer need it: a deleted
+// routine's first pass and baseline to come, a routine switched off's too, and the first
+// pass of one in Dry run, so turning it on, or taking it out of Dry run, caps its first
+// pass again.
+func (st *engineState) forget(rows []queries.AutopilotRoutine) {
+	live := make(map[int64]queries.AutopilotRoutine, len(rows))
+	for _, row := range rows {
+		live[row.ID] = row
+	}
+
+	for id := range st.FirstPass {
+		if row, ok := live[id]; !ok || !row.Enabled || storedMode(row.Mode) == autopilotprefs.ModeDryRun {
+			delete(st.FirstPass, id)
+		}
+	}
+
+	for id := range st.FromNow {
+		if row, ok := live[id]; !ok || !row.Enabled {
+			delete(st.FromNow, id)
+		}
+	}
 }
 
 // read reads what every routine watches, those items' facts, the states of the open
@@ -434,7 +492,7 @@ func (p *pass) evaluate(ctx context.Context, r *routineRun) error {
 func (p *pass) waitsForSearches(ctx context.Context, r *routineRun) bool {
 	pending, fromNowAsked := p.e.state.FromNow[r.id()]
 	r.fresh = p.searchesRead(r, pending.Since)
-	firstPass := hasGitHubStep(r.spec) && p.e.state.FirstPass[r.id()] != r.hash
+	firstPass := hasGitHubStep(r.spec) && r.mode != autopilotprefs.ModeDryRun && p.e.state.FirstPass[r.id()] != r.hash
 	r.firstPass = firstPass && r.fresh
 
 	if (!fromNowAsked && !firstPass) || r.fresh {
@@ -488,9 +546,9 @@ func (p *pass) evaluateItem(ctx context.Context, r *routineRun, id int64, fromNo
 // searchesRead reports whether each of r's searches was read since r last changed, and
 // since a moment, so what it matches now is what GitHub says now.
 func (p *pass) searchesRead(r *routineRun, after time.Time) bool {
-	since := r.row.UpdatedAt.Truncate(time.Second)
+	since := r.row.UpdatedAt
 	if after.After(since) {
-		since = after.Truncate(time.Second)
+		since = after
 	}
 
 	for _, key := range r.keys {
@@ -609,7 +667,7 @@ func (p *pass) record(ctx context.Context, r *routineRun, f facts.Facts, d eval.
 	key := matchKey{item: f.Item.ID, fire: d.FireKey, dryRun: dry}
 
 	if row, ok := r.matches[key]; ok {
-		if fromNow || State(row.State).Open() || !Reason(row.Reason).reopens() {
+		if fromNow || !reopensRow(row) {
 			return nil, nil //nolint:nilnil // a match there already is no new match
 		}
 
@@ -847,7 +905,7 @@ func (p *pass) closeMoved(ctx context.Context, r *routineRun, m *match) bool {
 	id := store.Deref(m.ItemID)
 
 	if !r.inWatch[id] {
-		return p.leftWatch(ctx, m, id)
+		return p.leftWatch(ctx, m, r, id)
 	}
 
 	d, ok := r.decided[id]
@@ -917,7 +975,11 @@ func (p *pass) itemDone(m *match) (Reason, string, bool) {
 
 // leftWatch closes m, whose item left every watch of its routine, once its state was read
 // after it left: an item that merged or closed closes as such.
-func (p *pass) leftWatch(ctx context.Context, m *match, id int64) bool {
+func (p *pass) leftWatch(ctx context.Context, m *match, r *routineRun, id int64) bool {
+	if !p.searchesComplete(r) {
+		return true
+	}
+
 	at, read := p.e.stateReads[id]
 	if !read || p.now.Sub(at) > stateReadFor {
 		p.stateReads = append(p.stateReads, id)
@@ -927,6 +989,19 @@ func (p *pass) leftWatch(ctx context.Context, m *match, id int64) bool {
 
 	m.close(StateClosed, ReasonLeftWatch, "It left the routine's watch.", p.now)
 	p.save(ctx, m)
+
+	return true
+}
+
+// searchesComplete reports whether each of r's searches last answered in full: an item
+// that isn't among the results of a search that failed, was truncated, or was read in part
+// may only have dropped past what it returned, so it is stale, not gone.
+func (p *pass) searchesComplete(r *routineRun) bool {
+	for _, key := range r.keys {
+		if !p.inbox.Searches[key].complete() {
+			return false
+		}
+	}
 
 	return true
 }
@@ -995,7 +1070,15 @@ func (p *pass) askChecks(ctx context.Context) {
 // askStates asks for the states of the items that left a watch, in one read; the cycle
 // after it closes their matches.
 func (p *pass) askStates(ctx context.Context) {
-	states := union(p.stateReads, nil)
+	var states []int64
+
+	for _, id := range union(p.stateReads, nil) {
+		if !p.e.statesAsked[id] {
+			p.e.statesAsked[id] = true
+			states = append(states, id)
+		}
+	}
+
 	if len(states) == 0 {
 		return
 	}
@@ -1008,16 +1091,30 @@ func (p *pass) askStates(ctx context.Context) {
 			p.e.logger.InfoContext(ctx, "Autopilot could not read the items' states", "error", err)
 		}
 
-		if err == nil {
-			p.e.mail.post(func(context.Context) { p.e.statesRead(states) })
-		}
+		p.e.mail.post(func(context.Context) { p.e.statesRead(states, err == nil) })
 	})
 }
 
-// statesRead records that the states of the items among ids were read now.
-func (e *Engine) statesRead(ids []int64) {
+// statesRead records that the read of the states of the items among ids ended, and when
+// it read them, when it did.
+func (e *Engine) statesRead(ids []int64, read bool) {
 	at := e.clock.Now()
+
 	for _, id := range ids {
-		e.stateReads[id] = at
+		delete(e.statesAsked, id)
+
+		if read {
+			e.stateReads[id] = at
+		}
+	}
+}
+
+// forgetFreshReads forgets the reads right before a start that no start can use any
+// more, its match closed or the read too old.
+func (e *Engine) forgetFreshReads(now time.Time) {
+	for id, got := range e.freshReads {
+		if now.Sub(got.at) > freshFor {
+			delete(e.freshReads, id)
+		}
 	}
 }

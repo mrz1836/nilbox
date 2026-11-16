@@ -55,6 +55,12 @@ type autopilotWatches struct {
 	searches *autopilot.Searches
 }
 
+// HoldsWatches reports whether this copy of the app reads the routines' searches: only
+// the copy that holds Autopilot's engine does (inbox.WatchHolder).
+func (w *autopilotWatches) HoldsWatches() bool {
+	return w.searches == nil || w.searches.HoldsWatches()
+}
+
 // Watches returns the routines' searches for the account login.
 func (w *autopilotWatches) Watches(login string) []inbox.Watch {
 	if w.searches == nil {
@@ -346,13 +352,15 @@ func (a engineItems) InboxStatus(ctx context.Context) (autopilot.InboxStatus, er
 	}
 
 	out := autopilot.InboxStatus{
-		Viewer: st.Viewer, LastRefresh: st.LastRefresh, WatchedAt: st.WatchedAt, WatchPaused: st.Watches.Paused,
-		Searches: make(map[string]autopilot.SearchState, len(st.Watches.Searches)),
+		Viewer: st.Viewer, LastRefresh: st.LastRefresh, WatchedAt: st.WatchedAt, WatchPaused: st.Paused,
+		SignedOut: st.SignedOut,
+		Searches:  make(map[string]autopilot.SearchState, len(st.Searches)),
 	}
 
-	for key, s := range st.Watches.Searches {
-		at, _ := time.Parse(time.RFC3339, s.At)
-		out.Searches[key] = autopilot.SearchState{Answered: s.Answered, At: at, Error: s.Error, Truncated: s.Truncated}
+	for key, s := range st.Searches {
+		out.Searches[key] = autopilot.SearchState{
+			Answered: s.Answered, At: s.At, Error: s.Error, Truncated: s.Truncated, Partial: s.Partial,
+		}
 	}
 
 	return out, nil

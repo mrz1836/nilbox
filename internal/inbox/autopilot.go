@@ -2,6 +2,7 @@ package inbox
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -53,12 +54,57 @@ func (s *Store) ItemStates(ctx context.Context, ids []int64) (map[int64]StoredSt
 }
 
 // ReadStatus is when the inbox last read what the routines watch: the account signed in,
-// the last whole refresh that stored, and the last watch pass's answer to each search.
+// the last whole refresh that stored, the last watch pass's answer to each search, and
+// whether the last refresh found no one signed in.
 type ReadStatus struct {
 	Viewer      string
 	LastRefresh time.Time
-	Watches     WatchStatus
-	WatchedAt   time.Time
+
+	// WatchedAt is when the last watch pass stored, Paused why the last refresh sent no
+	// searches, and Searches each search's last answer, by key, to the nanosecond, so an
+	// answer can be told from a change a moment before it.
+	WatchedAt time.Time
+	Paused    string
+	Searches  map[string]SearchRead
+
+	// SignedOut reports that the last whole refresh failed for want of a sign-in: the
+	// GitHub CLI has no token, isn't there, or GitHub refused the token. The next refresh
+	// that stores clears it.
+	SignedOut bool
+}
+
+// SearchRead is one routine search's last answer, as ReadStatus reads it.
+type SearchRead struct {
+	Answered  bool
+	At        time.Time
+	Error     string
+	Truncated bool
+	Partial   bool
+}
+
+// WatchHolder is a WatchSource that says whether this copy of the app reads the routines'
+// searches at all: only the copy that runs Autopilot's engine does, so two copies on one
+// data folder never replace each other's rows, and the other sends nothing.
+type WatchHolder interface {
+	HoldsWatches() bool
+}
+
+// holdsWatches reports whether this copy reads src's searches: always for a source that
+// says nothing of it.
+func holdsWatches(src WatchSource) bool {
+	h, ok := src.(WatchHolder)
+
+	return !ok || h.HoldsWatches()
+}
+
+// signedOutText is what prefSignedOut holds after a refresh that failed with err: "1" for
+// one that found no one signed in, else "".
+func signedOutText(err error) string {
+	if errors.Is(err, github.ErrNotLoggedIn) || errors.Is(err, github.ErrGHNotFound) || github.IsBadCredentials(err) {
+		return "1"
+	}
+
+	return ""
 }
 
 // ReadStatus returns when the inbox last read what the routines watch. It reads the
@@ -69,19 +115,32 @@ func (s *Store) ReadStatus(ctx context.Context) (ReadStatus, error) {
 		return ReadStatus{}, err
 	}
 
-	watches, err := s.WatchStatus(ctx)
+	watches, err := readWatchState(ctx, s.prefs)
 	if err != nil {
 		return ReadStatus{}, err
 	}
 
-	out := ReadStatus{Viewer: status[prefViewer], Watches: watches}
+	signedOut, _, err := s.prefs.Get(ctx, prefSignedOut)
+	if err != nil {
+		return ReadStatus{}, fmt.Errorf("read whether anyone is signed in: %w", err)
+	}
+
+	out := ReadStatus{
+		Viewer: status[prefViewer], WatchedAt: watches.At, Paused: watches.Paused, SignedOut: signedOut != "",
+		Searches: make(map[string]SearchRead, len(watches.Searches)),
+	}
 
 	if at, parseErr := time.Parse(time.RFC3339, status[prefLastRefreshAt]); parseErr == nil {
 		out.LastRefresh = at
 	}
 
-	if at, parseErr := time.Parse(time.RFC3339, watches.At); parseErr == nil {
-		out.WatchedAt = at
+	for key, st := range watches.Searches {
+		read := SearchRead{Answered: st.Answered, Error: st.Error, Truncated: st.Truncated, Partial: st.Partial}
+		if st.At != nil {
+			read.At = *st.At
+		}
+
+		out.Searches[key] = read
 	}
 
 	return out, nil

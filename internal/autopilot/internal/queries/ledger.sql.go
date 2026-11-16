@@ -1074,7 +1074,7 @@ func (q *Queries) ListPrunableMatches(ctx context.Context, cutoff *time.Time) ([
 }
 
 const listRoutineMatchKeys = `-- name: ListRoutineMatchKeys :many
-SELECT id, item_id, fire_key, dry_run, state, reason FROM autopilot_matches
+SELECT id, item_id, fire_key, dry_run, state, reason, attempt, step, steps FROM autopilot_matches
 WHERE routine_id = ?1 AND item_id IS NOT NULL
 `
 
@@ -1085,10 +1085,15 @@ type ListRoutineMatchKeysRow struct {
 	DryRun  bool
 	State   string
 	Reason  string
+	Attempt int64
+	Step    int64
+	Steps   string
 }
 
 // ListRoutineMatchKeys returns the occurrence each of a routine's matches is for, with its
-// state and why it closed: what tells a match that is new from one recorded.
+// state, why it closed, how many runs it started, where it is in its steps, and its steps:
+// what tells a match that is new from one recorded, and one that never ran from one that
+// did.
 func (q *Queries) ListRoutineMatchKeys(ctx context.Context, routineID int64) ([]ListRoutineMatchKeysRow, error) {
 	rows, err := q.db.QueryContext(ctx, listRoutineMatchKeys, routineID)
 	if err != nil {
@@ -1105,6 +1110,9 @@ func (q *Queries) ListRoutineMatchKeys(ctx context.Context, routineID int64) ([]
 			&i.DryRun,
 			&i.State,
 			&i.Reason,
+			&i.Attempt,
+			&i.Step,
+			&i.Steps,
 		); err != nil {
 			return nil, err
 		}

@@ -2,6 +2,7 @@ package sim
 
 import (
 	"context"
+	"errors"
 	"slices"
 	"sync"
 
@@ -18,6 +19,12 @@ type Runner struct {
 	started []autopilot.Job
 	stopped []int64
 	closed  bool
+
+	// gate holds a start until Release; aliveErr has Alive fail; stopFails is how many
+	// Stops fail before one goes through.
+	gate      chan struct{}
+	aliveErr  error
+	stopFails int
 }
 
 // NewRunner returns a runner with nothing going.
@@ -34,8 +41,71 @@ func (r *Runner) Close() {
 	r.closed = true
 }
 
+// Reopen opens a closed runner again, as the next start's run engine is.
+func (r *Runner) Reopen() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	r.closed = false
+}
+
+// Hold holds every start until Release, as a start that waits on the run engine.
+func (r *Runner) Hold() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	r.gate = make(chan struct{})
+}
+
+// Release lets the starts through.
+func (r *Runner) Release() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	if r.gate != nil {
+		close(r.gate)
+		r.gate = nil
+	}
+}
+
+// FailAlive has Alive fail with err, or answer again for nil.
+func (r *Runner) FailAlive(err error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	r.aliveErr = err
+}
+
+// FailStops has the next n Stops fail.
+func (r *Runner) FailStops(n int) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	r.stopFails = n
+}
+
+// Forget forgets a run, as a run that ended with no one told does.
+func (r *Runner) Forget(runID int64) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	delete(r.going, runID)
+}
+
 // Dispatch starts a run.
-func (r *Runner) Dispatch(_ context.Context, job autopilot.Job) (autopilot.Result, error) {
+func (r *Runner) Dispatch(ctx context.Context, job autopilot.Job) (autopilot.Result, error) {
+	r.mu.Lock()
+	gate := r.gate
+	r.mu.Unlock()
+
+	if gate != nil {
+		select {
+		case <-gate:
+		case <-ctx.Done():
+			return autopilot.Result{}, ctx.Err()
+		}
+	}
+
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -52,6 +122,14 @@ func (r *Runner) Dispatch(_ context.Context, job autopilot.Job) (autopilot.Resul
 // Stop stops a run, and tells the engine.
 func (r *Runner) Stop(_ context.Context, runID int64) error {
 	r.mu.Lock()
+
+	if r.stopFails > 0 {
+		r.stopFails--
+		r.mu.Unlock()
+
+		return errStop
+	}
+
 	_, ok := r.going[runID]
 	delete(r.going, runID)
 	r.stopped = append(r.stopped, runID)
@@ -81,10 +159,17 @@ func (r *Runner) Alive(_ context.Context, runID int64) (bool, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
+	if r.aliveErr != nil {
+		return false, r.aliveErr
+	}
+
 	_, ok := r.going[runID]
 
 	return ok, nil
 }
+
+// errStop is a Stop that failed.
+var errStop = errors.New("the run couldn't be stopped")
 
 // Going returns the runs going, in the order they started.
 func (r *Runner) Going() []int64 {

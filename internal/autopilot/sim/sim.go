@@ -12,6 +12,7 @@ package sim
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -43,6 +44,7 @@ func Start() time.Time { return time.Date(2026, time.November, 16, 9, 0, 0, 0, t
 // over, starting at Start.
 type Clock struct {
 	offset atomic.Int64
+	loc    atomic.Pointer[time.Location]
 }
 
 // newClock returns a clock at Start.
@@ -55,7 +57,19 @@ func newClock() *Clock {
 
 // Now returns the simulated time.
 func (c *Clock) Now() time.Time {
-	return time.Now().Add(time.Duration(c.offset.Load())).UTC()
+	loc := c.loc.Load()
+	if loc == nil {
+		loc = time.UTC
+	}
+
+	return time.Now().Add(time.Duration(c.offset.Load())).In(loc)
+}
+
+// Set sets the clock to at, in at's location, which every time it tells is in from then
+// on, as a Mac's own clock tells local time. Call it before Begin.
+func (c *Clock) Set(at time.Time) {
+	c.offset.Store(int64(time.Until(at)))
+	c.loc.Store(at.Location())
 }
 
 // jump moves the clock on by d, with no tick between.
@@ -227,7 +241,7 @@ func (s *Sim) Refresh() {
 	s.t.Helper()
 
 	_, err := s.Inbox.Refresh(context.Background())
-	if err != nil && !strings.Contains(err.Error(), ErrOffline.Error()) {
+	if err != nil && !strings.Contains(err.Error(), ErrOffline.Error()) && !errors.Is(err, github.ErrNotLoggedIn) {
 		require.NoError(s.t, err)
 	}
 
@@ -480,13 +494,15 @@ func (a *items) InboxStatus(ctx context.Context) (autopilot.InboxStatus, error) 
 	}
 
 	out := autopilot.InboxStatus{
-		Viewer: st.Viewer, LastRefresh: st.LastRefresh, WatchedAt: st.WatchedAt, WatchPaused: st.Watches.Paused,
-		Searches: map[string]autopilot.SearchState{},
+		Viewer: st.Viewer, LastRefresh: st.LastRefresh, WatchedAt: st.WatchedAt, WatchPaused: st.Paused,
+		SignedOut: st.SignedOut,
+		Searches:  map[string]autopilot.SearchState{},
 	}
 
-	for key, ss := range st.Watches.Searches {
-		at, _ := time.Parse(time.RFC3339, ss.At)
-		out.Searches[key] = autopilot.SearchState{Answered: ss.Answered, At: at, Error: ss.Error, Truncated: ss.Truncated}
+	for key, ss := range st.Searches {
+		out.Searches[key] = autopilot.SearchState{
+			Answered: ss.Answered, At: ss.At, Error: ss.Error, Truncated: ss.Truncated, Partial: ss.Partial,
+		}
 	}
 
 	return out, nil
@@ -526,6 +542,10 @@ func (a *items) WatchNow(ctx context.Context) error {
 // watchSource gives the inbox the routines' searches, as core's adapter does.
 type watchSource struct {
 	searches *autopilot.Searches
+}
+
+func (w *watchSource) HoldsWatches() bool {
+	return w.searches.HoldsWatches()
 }
 
 func (w *watchSource) Watches(login string) []inbox.Watch {

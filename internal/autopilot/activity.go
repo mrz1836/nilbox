@@ -171,6 +171,10 @@ type EngineStatus struct {
 	// why the routines that use them wait.
 	SearchesPaused string `json:"searchesPaused"`
 
+	// SignedOut reports that the last refresh found no one signed in to GitHub: nothing
+	// starts, local steps included, until someone is.
+	SignedOut bool `json:"signedOut"`
+
 	// Problems are the routines' problems, as the last cycle found them.
 	Problems []Problem `json:"problems"`
 }
