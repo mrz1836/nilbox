@@ -73,7 +73,7 @@ describe('autopilotBadge', () => {
         },
       ],
     })
-    const broken = routine({ id: 4, broken: 'Made by a newer Nilbox: update to edit it', brokenReason: 'newer' })
+    const broken = routine({ id: 4, broken: `Made by a newer ${brand.name}: update to edit it`, brokenReason: 'newer' })
 
     expect(autopilotBadge(glance, [routine(), broken], autopilotEngine())).toEqual({
       count: 2,
@@ -102,8 +102,10 @@ describe('routineStatus', () => {
     expect(routineStatus(routine({ otherAccount: true, account: 'octo-other' }), quiet, 0, '').text).toBe(
       'Belongs to @octo-other',
     )
-    expect(routineStatus(routine({ broken: 'Made by a newer Nilbox: update to edit it' }), quiet, 0, '')).toEqual({
-      text: 'Made by a newer Nilbox: update to edit it',
+    expect(
+      routineStatus(routine({ broken: `Made by a newer ${brand.name}: update to edit it` }), quiet, 0, ''),
+    ).toEqual({
+      text: `Made by a newer ${brand.name}: update to edit it`,
       tone: 'danger',
     })
     expect(routineStatus(routine(), quiet, 0, 'GitHub refused the search.').tone).toBe('danger')
