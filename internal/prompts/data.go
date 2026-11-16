@@ -3,6 +3,7 @@ package prompts
 import (
 	"fmt"
 	"reflect"
+	"strings"
 
 	"github.com/mrz1836/nilbox/internal/bump"
 	"github.com/mrz1836/nilbox/internal/item"
@@ -103,8 +104,19 @@ type Data struct {
 	// "upstream" in a fork's clone; "" when the launch has no clone.
 	Remote string
 
+	// RemoteIsPlain reports that Remote is a plain name a command can use as it is (see
+	// plainName). It is worked out from Remote whenever the prompt is filled in, so it
+	// can't be set apart from it.
+	RemoteIsPlain bool
+
 	// Branch is a pull request's head branch.
 	Branch string
+
+	// BranchIsPlain reports that Branch, exactly as GitHub reported it, is a plain name a
+	// command can use as it is (see plainName), as every Dependabot and Renovate branch
+	// is. It is worked out from Branch whenever the prompt is filled in, so it can't be
+	// set apart from it.
+	BranchIsPlain bool
 
 	// HeadCommit is a pull request's head commit, the one whose files the launch checked
 	// or else the one the last refresh read; "" for an issue, or before a refresh read it.
@@ -213,7 +225,17 @@ func Variables() []Variable {
 			Name: "Remote", Group: groupRepo, Type: typeText,
 			Description: `The clone's remote for the repository, such as "origin", or empty without a clone`,
 		},
+		{
+			Name: "RemoteIsPlain", Group: groupRepo, Type: typeYesNo,
+			Description: "The remote's name is plain (ASCII letters, digits, and -_./:,+@%=, not starting with -), " +
+				"so a command can name it",
+		},
 		{Name: "Branch", Group: groupPR, Type: typeText, Description: "The head branch", PROnly: true},
+		{
+			Name: "BranchIsPlain", Group: groupPR, Type: typeYesNo, PROnly: true,
+			Description: "The head branch, as GitHub reported it, is plain (ASCII letters, digits, and -_./:,+@%=, " +
+				"not starting with -), so a command can name it",
+		},
 		{
 			Name: "HeadCommit", Group: groupPR, Type: typeText, PROnly: true,
 			Description: "The head commit, or empty before a refresh read it",
@@ -342,8 +364,12 @@ func (d Data) kind() item.Kind {
 
 // sanitized returns d with every text field made a single line of plain text: control
 // characters become spaces, bidirectional controls are removed, and runs of whitespace
-// collapse. The title and labels are cut to their limits.
+// collapse. The title and labels are cut to their limits. BranchIsPlain and RemoteIsPlain
+// are worked out from the values d was given, before any of that, and hold only when it
+// changed nothing.
 func (d Data) sanitized() Data {
+	branch, remote := d.Branch, d.Remote
+
 	for _, field := range []*string{
 		&d.Kind, &d.URL, &d.Author, &d.Repo, &d.Owner, &d.RepoName, &d.DefaultBranch, &d.Remote,
 		&d.Branch, &d.HeadCommit, &d.Checks, &d.Review, &d.Worktree, &d.Profile, &d.Me, &d.SensitiveFiles,
@@ -365,7 +391,19 @@ func (d Data) sanitized() Data {
 		*field = textutil.Clip(*field, maxRefRunes)
 	}
 
+	d.BranchIsPlain = plainName(branch) && d.Branch == branch
+	d.RemoteIsPlain = plainName(remote) && d.Remote == remote
+
 	return d
+}
+
+// plainName reports a name a command can use as it is: one word every POSIX shell reads as
+// itself (textutil.ShellSafe: ASCII letters, digits, and =-_./:,+@%, not starting with =),
+// which git can't read as an option either, since it doesn't start with "-". Such a name
+// holds nothing sanitizing removes, so what a prompt shows of it is what GitHub reported:
+// no bidirectional control or trailing space hides a branch such as main behind another.
+func plainName(s string) bool {
+	return textutil.ShellSafe(s) && !strings.HasPrefix(s, "-")
 }
 
 // Covers reports whether a prompt that applies to a can launch an item of kind.

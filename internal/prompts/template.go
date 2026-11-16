@@ -237,8 +237,10 @@ func newTemplate() *template.Template {
 // it is when every shell reads it as itself, else in single quotes, so a value someone
 // else chose, such as a pull request's head branch, can never run as a command of its own.
 // A prompt names a value in a command it tells the agent to run through it, as in
-// `git push origin HEAD:refs/heads/{{shellquote .Branch}}`. Quoting can make text up to
-// four times longer, so its result is capped like printf's.
+// `git push origin HEAD:refs/heads/{{shellquote .Branch}}`, and names a branch or a remote
+// only under BranchIsPlain or RemoteIsPlain: quoting stops the shell, not git reading a
+// name as an option, nor a name sanitizing changed standing for another. Quoting can make
+// text up to four times longer, so its result is capped like printf's.
 func shellQuote(value any) (string, error) {
 	return capped(textutil.ShellWord(fmt.Sprint(value)))
 }

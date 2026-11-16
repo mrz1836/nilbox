@@ -355,6 +355,17 @@ func TestImportReadsAStartersEarlierTextAsTheStarter(t *testing.T) {
 	assert.Equal(t, StarterFixDependencySecurity, got.StarterKey)
 	assert.Equal(t, fixDependencySecurityBody, got.Body)
 	assert.False(t, got.Modified)
+
+	// A copy with the earlier text and the user's own effort is the user's edit of the
+	// starter: it comes in with this build's text and keeps the effort.
+	tuned := starterAsBundled(t, StarterFixDependencySecurity, func(p *BundlePrompt) {
+		p.Body, p.Effort = fixDependencySecurityBodyV1, "high"
+	})
+
+	entries = preview(t, s, bundleOf(tuned))
+	assert.Equal(t, []string{"replace Fix dep security"}, outcomes(entries))
+	assert.Equal(t, fixDependencySecurityBody, entries[0].Prompt.Body)
+	assert.Equal(t, "high", entries[0].Prompt.Effort)
 }
 
 // promptBody reads a prompt's text straight from the database.

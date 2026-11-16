@@ -242,9 +242,10 @@ func TestSeedAddsALaterStarterOnce(t *testing.T) {
 }
 
 // TestSeedBringsAnUnchangedStarterUpToDate checks a library from a build that shipped the
-// dependency security starter's first text: the next Seed gives the copy the user never
-// changed this build's text, keeping its ID, starter key, and the nickname the user gave
-// it, and leaves a copy the user changed, and a duplicate, as they are.
+// dependency security starter's first text: the next Seed gives the copy whose text the
+// user never changed this build's text, keeping its ID, starter key, and the nickname,
+// title, and settings the user gave it, and leaves a copy whose text the user changed, and
+// a duplicate, as they are.
 func TestSeedBringsAnUnchangedStarterUpToDate(t *testing.T) {
 	t.Parallel()
 
@@ -272,12 +273,28 @@ func TestSeedBringsAnUnchangedStarterUpToDate(t *testing.T) {
 	assert.Equal(t, fixDependencySecurityBodyV1, byNickname(t, s, dup.Nickname).Body,
 		"a duplicate is the user's own, whatever text it holds")
 
-	// A copy the user changed keeps the earlier text: it is theirs now.
-	changed := got
-	changed.Body, changed.Effort = fixDependencySecurityBodyV1, "high"
-	require.NoError(t, s.store.update(ctx, dep.ID, changed))
+	// A copy whose title and settings the user changed, but not its text, takes the text
+	// and keeps the rest: Reset would have taken those away too.
+	tuned := got
+	tuned.Body, tuned.Name, tuned.Effort = fixDependencySecurityBodyV1, "My security fixer", "high"
+	tuned.PlanMode, tuned.Worktree = new(true), new(false)
+	require.NoError(t, s.store.update(ctx, dep.ID, tuned))
 	require.NoError(t, Seed(ctx, s.store))
-	assert.Equal(t, fixDependencySecurityBodyV1, byNickname(t, s, "Dep sec").Body)
+
+	got = byNickname(t, s, "Dep sec")
+	assert.Equal(t, fixDependencySecurityBody, got.Body)
+	assert.Equal(t, "My security fixer", got.Name)
+	assert.Equal(t, "high", got.Effort)
+	assert.Equal(t, new(true), got.PlanMode)
+	assert.Equal(t, new(false), got.Worktree)
+	assert.True(t, got.Modified, "its settings still differ from the starter's")
+
+	// A copy whose text the user changed keeps it: it is theirs now.
+	edited := got
+	edited.Body = fixDependencySecurityBodyV1 + "Be brief.\n"
+	require.NoError(t, s.store.update(ctx, dep.ID, edited))
+	require.NoError(t, Seed(ctx, s.store))
+	assert.Equal(t, edited.Body, byNickname(t, s, "Dep sec").Body)
 }
 
 func TestSeedFindsAFreeNickname(t *testing.T) {

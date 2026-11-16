@@ -13,10 +13,10 @@ import (
 // the review and work-on-issue starters the default prompts, and each starter reply the
 // default reply for its slot, where no default is set yet.
 // A starter that was added once is never added again, so one the user deleted stays
-// deleted. A starter whose nickname is taken gets a free one. It then brings each copy of
-// a starter the user never changed that still holds an earlier text up to date
-// (Starter.Earlier), keeping its nickname. It does all of it or, when a write fails,
-// none.
+// deleted. A starter whose nickname is taken gets a free one. It then gives each copy of a
+// starter whose text is still one of the starter's earlier texts the text this build ships
+// (Starter.Earlier), keeping the copy's title, nickname, and settings. It does all of it
+// or, when a write fails, none.
 func Seed(ctx context.Context, s *Store) error {
 	return s.inTx(ctx, func(st *Store) error {
 		seeded, err := st.seeded(ctx)
@@ -36,10 +36,10 @@ func Seed(ctx context.Context, s *Store) error {
 	})
 }
 
-// refreshStarters gives every stored copy of a starter the user never changed that still
-// holds one of the starter's earlier texts the text this build ships. Only the text
-// changes: the copy matched the starter in everything else, and its nickname, which the
-// user may have changed without changing the starter, stays.
+// refreshStarters gives every stored copy of a starter whose text is still one of the
+// starter's earlier texts the text this build ships. Only the text changes: the copy's
+// title, nickname, and settings, which the user may have changed without touching the
+// text, stay.
 func refreshStarters(ctx context.Context, st *Store) error {
 	all, err := st.All(ctx)
 	if err != nil {

