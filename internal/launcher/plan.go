@@ -141,6 +141,11 @@ type Request struct {
 	// in (agent.Agent.KeyEnv), as the user's setting for the agent says. Off, the plan
 	// unsets those variables, so the agent runs on the profile's own sign-in.
 	UseAPIKey bool
+
+	// Fence is a background run's fence, which resolvePermission chooses its access from,
+	// or nil for a click's launch. A fenced run takes none of the profile's extra
+	// directories, and no extra argument that sets what the fence sets or loosens it.
+	Fence *Fence
 }
 
 // Plan is an OS-independent description of one launch. The prompt is passed first, or
@@ -220,7 +225,7 @@ func BuildPlan(req Request) (Plan, error) {
 		return Plan{}, err
 	}
 
-	perm, err := resolvePermission(a, req.Item.Trusted, req.FullAccessOverride, req.Profile)
+	perm, err := resolvePermission(a, req.Item.Trusted, req.FullAccessOverride, req.Profile, req.Fence)
 	if err != nil {
 		return Plan{}, err
 	}
@@ -228,6 +233,11 @@ func BuildPlan(req Request) (Plan, error) {
 	dirs, err := addDirs(req.Profile.AddDirs)
 	if err != nil {
 		return Plan{}, err
+	}
+
+	if req.Fence != nil {
+		// No extra directories: a fenced run's file tools stay in its worktree.
+		dirs = nil
 	}
 
 	if err = agent.CheckAccess(a.ID, req.Profile.ExtraArgs); err != nil {

@@ -201,7 +201,7 @@ func TestPermissionPrecedence(t *testing.T) {
 			p.PermissionMode = tt.mode
 			p.PlanMode = tt.plan
 
-			got, err := resolvePermission(claude, tt.trusted, tt.override, p)
+			got, err := resolvePermission(claude, tt.trusted, tt.override, p, nil)
 			require.NoError(t, err)
 			assert.Equal(t, tt.want, got.access)
 			assert.Equal(t, tt.summary, got.summary)
@@ -235,7 +235,7 @@ func TestCodexPermissions(t *testing.T) {
 			p := fullProfile()
 			p.Agent, p.PermissionMode, p.PlanMode = agent.Codex, tt.mode, tt.plan
 
-			got, err := resolvePermission(codex, tt.trusted, false, p)
+			got, err := resolvePermission(codex, tt.trusted, false, p, nil)
 			require.NoError(t, err)
 			assert.Equal(t, tt.want, got.access)
 			assert.Equal(t, tt.summary, got.summary)
@@ -245,7 +245,7 @@ func TestCodexPermissions(t *testing.T) {
 	p := fullProfile()
 	p.PermissionMode = "acceptEdits"
 
-	_, err := resolvePermission(codex, true, false, p)
+	_, err := resolvePermission(codex, true, false, p, nil)
 	require.ErrorIs(t, err, ErrInvalidPermissionMode, "Claude's modes are not Codex's")
 	require.ErrorContains(t, err, "for Codex")
 }
@@ -265,7 +265,7 @@ func TestPermissionModesAccepted(t *testing.T) {
 			p := fullProfile()
 			p.PermissionMode = mode
 
-			_, err := resolvePermission(a, true, false, p)
+			_, err := resolvePermission(a, true, false, p, nil)
 			require.NoError(t, err, "%s %s", a.ID, mode)
 		}
 
@@ -273,7 +273,7 @@ func TestPermissionModesAccepted(t *testing.T) {
 			p := fullProfile()
 			p.PermissionMode = "yolo"
 
-			_, err := resolvePermission(a, trusted, false, p)
+			_, err := resolvePermission(a, trusted, false, p, nil)
 			require.ErrorIs(t, err, ErrInvalidPermissionMode)
 		}
 	}
