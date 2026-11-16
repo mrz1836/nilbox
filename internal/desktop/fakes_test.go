@@ -165,17 +165,31 @@ func (t *fakeTray) drawn() []menubar.Summary {
 	return slices.Clone(t.draws)
 }
 
-// fakeApp counts the requests to quit.
+// fakeApp counts the requests to quit. While quitting is set (onQuit), each request runs
+// it too, outside the lock: the desktop runtime's side of the quit.
 type fakeApp struct {
-	mu    sync.Mutex
-	quits int
+	mu       sync.Mutex
+	quits    int
+	quitting func()
 }
 
 func (a *fakeApp) Quit() {
 	a.mu.Lock()
+	a.quits++
+	quitting := a.quitting
+	a.mu.Unlock()
+
+	if quitting != nil {
+		quitting()
+	}
+}
+
+// onQuit has every later request to quit run fn too.
+func (a *fakeApp) onQuit(fn func()) {
+	a.mu.Lock()
 	defer a.mu.Unlock()
 
-	a.quits++
+	a.quitting = fn
 }
 
 func (a *fakeApp) quitCount() int {

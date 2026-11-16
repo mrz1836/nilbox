@@ -290,14 +290,17 @@ func assemble(l launch) (*application.App, *desktop.Shell, error) {
 		// Every quit asks first, while runs are going in the app.
 		ShouldQuit: shell.ShouldQuit,
 		// A timed-out measurement run exits with a failure status. On macOS the app exits
-		// from inside Run, with a success status unless this hook exits first. Once the
-		// shell has stopped and closed the database, the app opens again here: the copy a
-		// move to Applications made or found, or, after a reset the user asked for, this
-		// bundle, so the next start carries the reset out. Either opens once.
+		// from inside Run, with a success status unless this hook exits first, so run never
+		// logs how it ended: the quit is logged here, which tells it from a crash in the log.
+		// Once the shell has stopped and closed the database, the app opens again here: the
+		// copy a move to Applications made or found, or, after a reset the user asked for,
+		// this bundle, so the next start carries the reset out. Either opens once.
 		PostShutdown: func() {
 			if shell.TimedOut() {
 				os.Exit(1)
 			}
+
+			logQuit(logger, shell.Stop())
 
 			argv, ok := shell.RelaunchCommand(executable(), l.sandbox)
 
@@ -327,6 +330,19 @@ func assemble(l launch) (*application.App, *desktop.Shell, error) {
 	})
 
 	return app, shell, nil
+}
+
+// logQuit logs that the app quit the normal way, once the shell has stopped, and whether
+// the database closed in order (stopErr, what the shell's Stop returned, which it returns
+// again on every later call).
+func logQuit(logger *slog.Logger, stopErr error) {
+	if stopErr != nil {
+		logger.Warn("the app quit, but its data didn't close in order", "error", stopErr)
+
+		return
+	}
+
+	logger.Info("the app quit")
 }
 
 // attachInstaller hands the update engine the installer it restarts with, over the

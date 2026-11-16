@@ -297,9 +297,14 @@ changing the package, and keep the section and its summary in step.
   into the one `event.Sink` they are given. `internal/desktop/` is the shell's logic: it hears
   those events, keeps the menu bar current with what `internal/menubar` works out (its
   Autopilot group, while a routine exists, with Pause Autopilot as the tray's one checkbox
-  row, `Shell.AutopilotAction`), hides the window on close while the icon shows or while
-  Autopilot has a routine on or an agent working (`HidesOnClose`, from Autopilot's state as
-  the shell last read it; the window says so once, `event.KeptRunning`), runs the
+  row, `Shell.AutopilotAction`), decides the window's close (`Shell.WindowClosing`, the pure
+  `CloseOf`): it goes through while the shell stops, hides the window while the icon shows
+  or while Autopilot has a routine on or an agent working (`HidesOnClose`, from Autopilot's
+  state as the shell last read it; the window says so once, `event.KeptRunning`), and
+  otherwise keeps the window and quits the normal way, so `ShouldQuit` asks in it while
+  runs go (the last window's close never quits by itself:
+  `ApplicationShouldTerminateAfterLastWindowClosed` stays off, since AppKit asks it as the
+  window hides too), runs the
   scheduler, the checks follower (`inbox.ChecksFollower`: the listed pull requests whose
   checks were running, but a muted repository's, and those a routine's search follows, 50 a
   round at most, the listed first, read 25 to a request side by side through
