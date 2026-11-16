@@ -1389,8 +1389,11 @@ and logged, and the loop holds off cycles for a minute; commands are still answe
   holder sends the routines' searches at all (`Searches.HoldsWatches`, which the inbox's
   `WatchHolder` reads before a watch pass), so two copies on one data folder never replace each
   other's rows; the holder builds its snapshot of the searches again from the database on every
-  tick, which catches a routine changed in the other copy. The system lets go of the lock when
-  the process ends.
+  tick, which catches a routine changed in the other copy. A copy that doesn't hold it reads
+  `Glance` on every tick and sends `autopilot:updated` when it reads otherwise than on the tick
+  before (`followElsewhere`), since it runs no cycle that would: a Pause or a routine switched
+  on in the holder reaches its menu bar and its window's close within a minute. The system
+  lets go of the lock when the process ends.
 - **The runs going** are checked when the lock is taken and on every tick (`reconcile`), but
   those a worker of this copy is starting or dispatching, and those whose `RunEnded` is on its
   way. A GitHub action still recorded as going was cut off by a quit or a crash, maybe after
@@ -1453,8 +1456,12 @@ and logged, and the loop holds off cycles for a minute; commands are still answe
   no dispatcher registered can't run, and the Service keeps a routine with such a step in Dry
   run (`Offers`, the catalog's own by default, which a test hands in with fakes). The triage
   steps are offered: the engine registers its own triage dispatcher over `EngineConfig.Triage`
-  (core's `inboxTriage`, **Local actions**, below) unless `Dispatchers` names one; a routine
-  with any other step still runs in Dry run, and the engine records what it would run.
+  (core's `inboxTriage`, **Local actions**, below) unless `Dispatchers` names one; so are the
+  notices (Notify me and Tell me, **Notices**, below), whose dispatcher core registers; a
+  routine with any other step still runs in Dry run, and the engine records what it would
+  run. For the notices, a job also carries when its match was made, the routine's own banner
+  switches (`Notices`), why it matched (`Reason`, from the trace), and how the steps before
+  it went (`Before`).
 - **A run's end** moves its match on: an interrupted one waits for the user (`interrupted`,
   counting no try), one the user stopped closes `dismissed`, one the engine stopped because its
   item merged or closed closes `closed` (counting no try), and one that ended goes to its next
@@ -1487,8 +1494,10 @@ and logged, and the loop holds off cycles for a minute; commands are still answe
   made); any other change, and `run`, is made there at once.
 - **Problems** (`upkeep.go`): a search GitHub fails, and an enabled routine that won't load, are
   recorded once each, keyed by routine and problem, with when they began, in the engine's state
-  and `Engine().Problems`, and told through a `ProblemSink` once (none is registered yet); one
-  that ends is forgotten, so it is told again when it comes back.
+  and `Engine().Problems`, and told through a `ProblemSink` once (core registers
+  `NewProblemNotices`, below), with the routine's name, when it was made, and its own banner
+  switch for problems; one that couldn't be told stays untold and is told on a later cycle,
+  and one that ends is forgotten, so it is told again when it comes back.
 - **Retention:** once an hour, a closed match closed longer ago than the history's days goes,
   with its runs, but only once its item is known to be done with (gone, merged or closed, or out
   of every list and watch since then): deleting the record of an item still open would let it
@@ -1603,7 +1612,109 @@ user changed some of the items, and hands off and **Let it act again**.
 engine and ledger over a real database, inside a `testing/synctest` bubble: a scripted GitHub
 (`World`: items whose heads, checks, and states a scenario changes) that the inbox's own
 service reads, so every item goes through the inbox's store; a clock with sleep gaps (`Sleep`
-jumps with no tick, `Advance` lets the ticks run); the fake `Runner` and fake dispatchers; and
-crash-and-restart points over the same data (`Crash`, `Begin`, `Restart`), and a second copy
-on the same data folder (`Copy`). Its pool keeps one connection, so a wait for the database is
-one the bubble sees. Each scenario ends with the ledger it expects.
+jumps with no tick, `Advance` lets the ticks run); the fake `Runner` and fake dispatchers, but
+the real notices dispatcher and problem notices over a fake sink (`Notices`, which records each
+notice and can fail); and crash-and-restart points over the same data (`Crash`, `Begin`,
+`Restart`), and a second copy on the same data folder (`Copy`). A scripted pull request's
+failed checks can be named (`FailNamed`), as *Tell me about security failures* needs, whose
+template the simulator loads exactly as the gallery holds it. Its pool keeps one connection,
+so a wait for the database is one the bubble sees. Each scenario ends with the ledger it
+expects.
+
+### Notices, the menu bar, and the window's close
+
+**The notices** (`notices.go`). The notices dispatcher (`NewNotices`, `catalog.DispatchNotices`)
+runs Notify me and Tell me as local steps: each becomes a `Notice` handed to a `NoticeSink`,
+which core adapts over the notifications (`internal/core/adapters_notices.go`,
+`autopilotNotices`), so the engine never imports notify. Notify me tells why the match matched
+(the trigger's words and each condition that held, with what it compared, on one line, at most
+280 characters) and the user's own line; Tell me says it reached the step and how each step
+before it ended, an outcome named as Only if names it (the richer words of what happened come
+with the steps that make outcomes). Either is an alert (`NoticeAlert`) about the match's item,
+headed by the routine's name, that opens the match's card, with when the match was made. Its
+banner is the step's own choice (`NotifyStep.Banner`), else the routine's (`spec.Notices.Alert`),
+else the settings'. A notice that can't be told fails its step, and the match says a step
+failed. Each notice is told once whatever happens to the engine: its `Key` names it (a
+step's by its match, when the match was made, the step, and the try; a problem's by the
+problem and when it began, a start the engine saves before it tells it), and the
+notifications keep one entry per key, so a step that runs again because a quit came before
+the loop heard it was told, or a problem told again after a crash, adds no second entry or
+banner. A cycle hands its notices over together as it ends (`pass.tellNotices`), each on a
+worker: with more than one, or when any comes from a routine catching up, each is a `Burst`,
+which core gathers
+(`notify.Dispatcher.Tell` with gather, `GatherWindow`), so more than three at once show as one
+banner (*4 new from Autopilot*, *4 routines need you*); a lone one shows at once. A Dry run
+tells nothing. Problems go through `NewProblemNotices` over the same sink: a `NoticeProblem`
+about no item, its line the routine's name ("A routine" when it can't be read) and its body the
+problem, opening the routine, with when the routine was made; several untold at once are a
+burst. The other kinds (`NoticeNeedsYou`, `NoticeFinished`, `NoticeChecks`) are declared for
+the parts that make their moments. Core maps each kind to the notifications' own
+(`noticeKinds`; a test holds the map to `notifyprefs.AutopilotKinds`).
+
+**The notifications' side** (`internal/notify`, `internal/notifyprefs`). The five kinds,
+`autopilot_alert`, `autopilot_needs_you`, `autopilot_finished`, `autopilot_checks`, and
+`autopilot_problem`, are all on by default (`notifyprefs.AutopilotKinds`, `Kind.Autopilot`),
+titled *Autopilot alert* (an alert's banner is headed by its routine, `Entry.Heading`), *Needs
+your OK*, *Agent finished*, *Checks after a fix*, and *Autopilot problem*. Migration
+`0009_notification_targets` gives `notifications` a `heading` and the Autopilot target
+(`autopilot_routine`, `autopilot_match`, `autopilot_run`, `autopilot_created`, RFC 3339 of the
+most specific one's creation, since Clear history hands IDs out again), and a `once_key`
+under a partial unique index. An `Entry` now names
+its item too (`ItemID`, `ItemKind`, `Number`; an item no longer stored is recorded without its
+ID, as the log forgets an item that goes), so an Autopilot entry about an item is kept by the
+inbox's prune (`KeptItems`), opens its item, and is marked read when that item's sheet opens,
+as arrivals are. `Entry.Banner` is an entry's own choice of banner over its kind's switch (the
+user's allowing banners holds either way). `Entry.Key` (the `once_key` column, unique while
+set) keeps an entry once while the log holds it: a repeat is refused as told
+(`ErrAlreadyTold` from `RecordEvent`), banner and all, and an entry with no key is never
+refused. `Dispatcher.Tell(ctx, entry, gather)` records and shows (now, or gathered) and
+returns the error recording failed with, nil for a repeat; `Notify` and `Gather` are it,
+logged. The banner (`Banner.Autopilot`) and the click (`desktop.BannerData`,
+`BannerClicked`, `event.RevealItem.Autopilot`, an `event.AutopilotTarget`, whose `Activity`
+asks for Activity rather than one match, as the menu bar's row of what needs the user does)
+carry the target. A summary of Autopilot's alone is titled *N new from Autopilot*.
+
+**At a glance** (`glance.go`). The bound `Glance` reads the database alone: the routines not
+deleted and those the engine runs (on, of the account signed in, and loading; none while no
+one is signed in, or the engine's last cycle found the sign-in gone), Pause Autopilot, the
+open matches waiting for the user (`StateWaiting`), and the agent runs going (starting,
+running, or stopping, in the background or the terminal, never a GitHub action's), oldest
+first. `KeepsRunning` is a routine the engine runs or an agent working, so after a switch to
+another account, whose routines don't run, a close quits again as before.
+The window reads it only to name Autopilot while a routine exists (`useAutopilotShown`, again
+on each `autopilot:updated`): until then Settings → Notifications lists no Autopilot switch,
+the Notifications page offers no Autopilot type, and the settings search finds neither.
+
+**The menu bar** (`internal/menubar/autopilot.go`, pure). `Summarize(snap, waiting, autopilot,
+now)` works out `Summary.Autopilot` from an `AutopilotState` (core's `ShellAutopilot` adapts
+the glance): shown only while a routine exists, the first `PerSection` agent runs
+("example-repo #88 · Claude · 6m", each opening its run) and how many more, the matches
+waiting ("1 needs your OK", opening Activity), and whether Pause Autopilot is ticked;
+`NextChange` is when a run's minutes next change. The count beside the icon stays the
+inbox's. The tray (`cmd/nilbox/tray_desktop.go`) draws it after the lists, under its heading,
+with the app's first checkbox row (`AddCheckbox`), and every click goes through
+`Shell.AutopilotAction`: a run or Activity reveals its target, and Pause flips what the menu
+showed through `desktop.Autopilot.SetPaused`, core's call to the settings' own
+`SetAutopilotPaused`, the one writer of `autopilot.paused`, then reads Autopilot again and
+draws the menu in full, so a write that failed takes back the tick the menu put on the
+click itself.
+
+**The shell** (`internal/desktop/autopilot.go`). The shell reads Autopilot's state at its
+start and on every `autopilot:updated`, in its one redraw loop, whether or not the icon
+shows. Core's relay sends one on each `AutopilotChanged`, so a Pause made in Settings reaches
+the tick of the copy it was made in at once, whether or not that copy holds the engine; a
+Pause made in another copy reaches a copy that doesn't hold the engine on its next engine
+tick (`followElsewhere`, within a minute), and the copy that holds it on its next cycle. It
+keeps what it last read of keeping the app running and of Pause. `HidesOnClose` answers on
+the main thread from that alone: yes while the icon shows, and yes while Autopilot has a
+routine on or an agent working, whatever the icon setting, since the close would otherwise
+quit the app (`ApplicationShouldTerminateAfterLastWindowClosed`) and quietly stop them; the
+Dock icon brings the window back (`ApplicationShouldHandleReopen`). A close hidden for Autopilot
+alone is noted, and the next time the window shows (`showWindow`, every way it comes forward)
+the page hears `event.KeptRunning` (`app:keptRunning`) once, and says why the app kept running,
+once ever (`ui.keptRunningTold`, window memory a backup never holds). Until the Autopilot tab
+exists, a click on an Autopilot notification or banner about an item opens that item, as an
+inbox arrival's does (`bannerOpens` falls back to the item, `opensAutopilot` is an entry about
+no item alone), and a click on one about no item, as a problem is, or on a menu row of the
+group, shows a toast that says the tab isn't in this version; no one can switch a routine on
+from the window yet.

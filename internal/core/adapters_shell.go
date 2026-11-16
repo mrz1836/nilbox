@@ -78,7 +78,9 @@ func (s ShellSettings) TextSize(ctx context.Context) (settings.TextSize, error) 
 // checks one turned on, and tells the window. An event.UpdatesChanged stays in Go too: the
 // update's check follows the new choice at once, and the window hears the update changed.
 // An event.AutopilotChanged stays in Go as well: Autopilot's engine runs a cycle under the
-// new settings. The watcher, the finder, the Release page, the mirror, the status check,
+// new settings, and the shell and the window hear Autopilot changed, so the menu bar's
+// Pause row follows a change made anywhere, in a copy that doesn't hold the engine too. The
+// watcher, the finder, the Release page, the mirror, the status check,
 // the update's check, and the engine are set once, before any setting can change.
 type followSwitch struct {
 	sink        event.Sink
@@ -171,6 +173,10 @@ func (f *followSwitch) followRules(e event.Event) bool {
 		if f.autopilot != nil {
 			f.autopilot.Wake()
 		}
+
+		// The menu bar's Pause row and the window read Autopilot again at once: a copy of
+		// the app that doesn't hold the engine runs no cycle that would tell them.
+		f.sink.Emit(event.AutopilotUpdated{})
 	default:
 		return false
 	}

@@ -152,7 +152,7 @@ func (s Step) Applies(kind item.Kind) bool {
 func Steps() []Step {
 	return []Step{
 		{
-			Kind: StepNotify, Label: "Notify me", Dispatcher: DispatchNotices, Local: true, Kinds: both(),
+			Kind: StepNotify, Label: "Notify me", Dispatcher: DispatchNotices, Local: true, Kinds: both(), Offered: true,
 			Help: "A banner and an entry in the Notifications page, with the reason.",
 		},
 		{
@@ -199,7 +199,7 @@ func Steps() []Step {
 			Kinds: prOnly(), Help: "Posts what a read-only agent step wrote, as a comment or as its verdict.",
 		},
 		{
-			Kind: StepTellMe, Label: "Tell me", Dispatcher: DispatchNotices, Local: true, Kinds: both(),
+			Kind: StepTellMe, Label: "Tell me", Dispatcher: DispatchNotices, Local: true, Kinds: both(), Offered: true,
 			Help: "A notice when the routine reaches this step, with what happened.",
 		},
 	}

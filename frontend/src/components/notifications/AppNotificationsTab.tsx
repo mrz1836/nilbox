@@ -2,7 +2,8 @@ import { useState } from 'react'
 
 import { formatCount } from '../../lib/format'
 import { filterAppNotifications } from '../../lib/notificationFilter'
-import { appTypeOrder, appTypes, filterEntries, type AppTypeID, type NotificationShow } from '../../lib/notifications'
+import { appTypes, filterEntries, shownTypes, type AppTypeID, type NotificationShow } from '../../lib/notifications'
+import { useAutopilotShown } from '../../lib/useAutopilotShown'
 import { useMutation } from '../../lib/useMutation'
 import type { NotificationsState } from '../../lib/useNotifications'
 import type { AppNotification } from '../../platform'
@@ -15,13 +16,15 @@ import { EntryRow } from './EntryRow'
 import { NoMatches, PageNote, Toolbar } from './parts'
 
 // showOptions and typeOptions are the tab's Show and Type, as the segmented controls offer
-// them.
+// them: Autopilot's type only while a routine exists.
 const showOptions: readonly { value: NotificationShow; label: string }[] = [
   { value: 'unread', label: 'Unread' },
   { value: 'all', label: 'All' },
 ]
 
-const typeOptions = appTypeOrder.map((id) => ({ value: id, label: appTypes[id].label }))
+function typeOptions(autopilotShown: boolean) {
+  return shownTypes(autopilotShown).map((id) => ({ value: id, label: appTypes[id].label }))
+}
 
 export interface AppNotificationsTabProps {
   notifications: NotificationsState
@@ -57,6 +60,7 @@ export function AppNotificationsTab({
   onSettings,
 }: AppNotificationsTabProps) {
   const { log, error, markRead, markUnread, markAllRead, markError, clear } = notifications
+  const autopilotShown = useAutopilotShown()
   const [asking, setAsking] = useState(false)
   const clearing = useMutation(clear)
   const listed = filterEntries(log.items, show, type)
@@ -94,7 +98,7 @@ export function AppNotificationsTab({
     <div className="flex min-h-0 flex-1 flex-col">
       <Toolbar>
         <Segmented label="Show" size="sm" value={show} options={showOptions} onChange={onShow} />
-        <Segmented label="Type" size="sm" value={type} options={typeOptions} onChange={onType} />
+        <Segmented label="Type" size="sm" value={type} options={typeOptions(autopilotShown)} onChange={onType} />
         <span className="ml-auto flex items-center gap-1">
           {log.unread > 0 && (
             <button type="button" onClick={markAllRead} className={quietButtonClass}>

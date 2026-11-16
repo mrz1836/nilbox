@@ -79,7 +79,7 @@ func TestABackupHoldsEveryRoutineButTheDeletedOnes(t *testing.T) {
 	require.Len(t, b.Routines, 2)
 	assert.Equal(t, firstName, b.Routines[0].Name)
 	assert.True(t, b.Routines[0].Enabled, "it says the routine was on")
-	assert.Equal(t, autopilotprefs.ModeDryRun, b.Routines[0].Mode)
+	assert.Equal(t, autopilotprefs.ModeAsk, b.Routines[0].Mode)
 	assert.Equal(t, "first", b.Routines[0].Template)
 	assert.Equal(t, "Second", b.Routines[1].Name)
 
@@ -163,7 +163,7 @@ func TestImportLeavesOutWhatItCantUseWithANote(t *testing.T) {
 		{Name: "Twice", Mode: autopilotprefs.ModeAsk, Spec: mustSpec(t, notifySpec())},
 		{Name: "TWICE", Mode: autopilotprefs.ModeAsk, Spec: mustSpec(t, notifySpec())},
 		{Name: "Garbled", Mode: autopilotprefs.ModeAsk, Spec: json.RawMessage(`[1]`)},
-		{Name: "Unknown mode", Mode: "sometimes", Spec: mustSpec(t, notifySpec())},
+		{Name: "Unknown mode", Mode: "sometimes", Spec: mustSpec(t, agentSpec())},
 	}}
 
 	here := newRig(t, autopilotprefs.ModeAuto)

@@ -123,9 +123,226 @@ func TestKindsAreTheInboxArrivals(t *testing.T) {
 	assert.Equal(t, []notifyprefs.Kind{
 		KindReviewRequested, KindAssigned, KindWoke, KindSessionNeedsYou, KindSessionFinished, KindReleaseDone,
 		KindReleasePublished, KindReleaseFailed, KindRunFailed, KindServiceStatus, KindUpdateReady,
+		KindAutopilotAlert, KindAutopilotNeedsYou, KindAutopilotFinished, KindAutopilotChecks, KindAutopilotProblem,
 	}, notifyprefs.Kinds(),
 		"the kinds the settings list are the inbox's kinds of arrival, in order, then the sessions', a release's, "+
-			"a failed run's, a service status change's, and a new version's")
+			"a failed run's, a service status change's, a new version's, and Autopilot's")
+}
+
+func TestEveryKindHasATitleAndASummaryNoun(t *testing.T) {
+	t.Parallel()
+
+	for _, kind := range notifyprefs.Kinds() {
+		if kind == KindSessionNeedsYou || kind == KindSessionFinished {
+			continue // the sessions' banners are SessionBanners', which the log never keeps
+		}
+
+		assert.NotEmpty(t, kindTitles[kind], "%s has a banner title", kind)
+
+		nouns := summaryNouns[kind]
+		assert.NotEmpty(t, nouns[0], "%s has a summary noun", kind)
+		assert.NotEmpty(t, nouns[1], "%s has a plural summary noun", kind)
+	}
+
+	assert.Len(t, kindTitles, len(notifyprefs.Kinds())-2, "no title for a kind that isn't one")
+	assert.Len(t, summaryNouns, len(notifyprefs.Kinds())-2, "no noun for a kind that isn't one")
+}
+
+// alertEntry is a routine's Notify me about the fixture's item id, #1.
+func alertEntry(id int64) Entry {
+	return Entry{
+		Kind: KindAutopilotAlert, Heading: "Tell me about security failures", Title: "Bump golang.org/x/net",
+		Body: "Checks failed: CodeQL / analyze", URL: "https://github.com/acme-org/example-repo/pull/1",
+		RepoOwner: "acme-org", RepoName: "example-repo", ItemID: id, ItemKind: "pr", Number: 1,
+		Autopilot: event.AutopilotTarget{RoutineID: 4, MatchID: 17, CreatedAt: "2026-03-04T11:59:30Z"},
+	}
+}
+
+func TestRecordEventKeepsAnAutopilotEntrysItemAndTarget(t *testing.T) {
+	t.Parallel()
+
+	f := newFixture(t, 1)
+	s := NewStore(f.pool)
+
+	got, err := s.RecordEvent(t.Context(), testNow, alertEntry(f.items[0]))
+	require.NoError(t, err)
+
+	want := Notification{
+		ID: got.ID, Kind: KindAutopilotAlert, CreatedAt: "2026-03-04T12:00:00Z", ItemID: f.items[0], ItemKind: "pr",
+		Repo: "acme-org/example-repo", Number: 1, Title: "Bump golang.org/x/net",
+		URL: "https://github.com/acme-org/example-repo/pull/1", Detail: "Checks failed: CodeQL / analyze",
+		Heading:   "Tell me about security failures",
+		Autopilot: event.AutopilotTarget{RoutineID: 4, MatchID: 17, CreatedAt: "2026-03-04T11:59:30Z"},
+	}
+	assert.Equal(t, want, got, "its item, heading, and target")
+
+	log, err := s.Log(t.Context())
+	require.NoError(t, err)
+	require.Len(t, log.Items, 1)
+	assert.Equal(t, want, log.Items[0], "read back as stored")
+
+	kept, err := s.KeptItems(t.Context())
+	require.NoError(t, err)
+	assert.Equal(t, []int64{f.items[0]}, kept, "the inbox keeps the item while the entry names it")
+
+	gone := alertEntry(f.items[0] + 100)
+
+	got, err = s.RecordEvent(t.Context(), testNow, gone)
+	require.NoError(t, err, "an item no longer stored is recorded without its id")
+	assert.Zero(t, got.ItemID)
+	assert.Equal(t, "pr", string(got.ItemKind), "its kind and number still name it")
+	assert.Equal(t, 1, got.Number)
+
+	problem := Entry{
+		Kind: KindAutopilotProblem, Title: "Tell me about security failures",
+		Body: "GitHub couldn't answer its search: timeout", Autopilot: event.AutopilotTarget{RoutineID: 4},
+	}
+
+	got, err = s.RecordEvent(t.Context(), testNow, problem)
+	require.NoError(t, err)
+	assert.Zero(t, got.ItemID, "a problem may be about no item")
+	assert.Empty(t, got.ItemKind)
+	assert.Equal(t, event.AutopilotTarget{RoutineID: 4}, got.Autopilot)
+
+	bad := alertEntry(0)
+	bad.ItemKind = "discussion"
+
+	_, err = s.RecordEvent(t.Context(), testNow, bad)
+	require.ErrorIs(t, err, ErrUnknownItemKind)
+	assert.Equal(t, 3, countNotifications(t, f.pool), "and nothing is stored")
+}
+
+func TestAnAutopilotBannerIsHeadedByItsRoutineAndCarriesItsTarget(t *testing.T) {
+	t.Parallel()
+
+	f := newFixture(t, 1)
+	d := NewDispatcher(f.config())
+
+	require.NoError(t, d.Tell(t.Context(), alertEntry(f.items[0]), false))
+
+	log, err := NewStore(f.pool).Log(t.Context())
+	require.NoError(t, err)
+	require.Len(t, log.Items, 1)
+
+	assert.Equal(t, []Banner{{
+		ID: brand.Slug + "-" + strconv.FormatInt(log.Items[0].ID, 10), Title: "Tell me about security failures",
+		Subtitle: "acme-org/example-repo #1", Body: "Bump golang.org/x/net\nChecks failed: CodeQL / analyze",
+		Thread: string(KindAutopilotAlert), ItemID: f.items[0], URL: "https://github.com/acme-org/example-repo/pull/1",
+		Autopilot:      event.AutopilotTarget{RoutineID: 4, MatchID: 17, CreatedAt: "2026-03-04T11:59:30Z"},
+		NotificationID: log.Items[0].ID,
+	}}, f.poster.posted(), "the routine heads it, its item is the subtitle, and a click carries the target")
+
+	require.NoError(t, d.Tell(t.Context(), Entry{
+		Kind: KindAutopilotProblem, Title: "Tell me about security failures",
+		Body: "GitHub couldn't answer its search", Autopilot: event.AutopilotTarget{RoutineID: 4},
+	}, false))
+
+	problem := f.poster.posted()[1]
+	assert.Equal(t, "Autopilot problem", problem.Title, "a problem is headed by its kind")
+	assert.Empty(t, problem.Subtitle, "about no item, it has no #number line")
+	assert.Equal(t, event.AutopilotTarget{RoutineID: 4}, problem.Autopilot)
+
+	require.Error(t, d.Tell(t.Context(), Entry{Kind: "mentions"}, false), "Tell returns what recording failed with")
+	assert.Len(t, f.poster.posted(), 2, "and shows nothing")
+}
+
+func TestAnEntryWithAKeyIsToldOnce(t *testing.T) {
+	t.Parallel()
+
+	f := newFixture(t, 1)
+	d := NewDispatcher(f.config())
+	entry := alertEntry(f.items[0])
+	entry.Key = "autopilot:step:17:2026-03-04T11:59:30Z:0:0"
+
+	require.NoError(t, d.Tell(t.Context(), entry, false))
+	require.NoError(t, d.Tell(t.Context(), entry, false), "told already: no error")
+	require.NoError(t, d.Tell(t.Context(), entry, true), "nor when gathered")
+	d.Gather(t.Context(), entry)
+	d.Notify(t.Context(), entry)
+
+	log, err := NewStore(f.pool).Log(t.Context())
+	require.NoError(t, err)
+	assert.Len(t, log.Items, 1, "one entry")
+	assert.Len(t, f.poster.posted(), 1, "and one banner")
+	assert.Equal(t, 1, f.events.Count(), "the window told once")
+
+	_, err = NewStore(f.pool).RecordEvent(t.Context(), testNow, entry)
+	require.ErrorIs(t, err, ErrAlreadyTold)
+
+	other := entry
+	other.Key = "autopilot:step:17:2026-03-04T11:59:30Z:1:0"
+	require.NoError(t, d.Tell(t.Context(), other, false))
+
+	keyless := alertEntry(f.items[0])
+	require.NoError(t, d.Tell(t.Context(), keyless, false))
+	require.NoError(t, d.Tell(t.Context(), keyless, false))
+
+	log, err = NewStore(f.pool).Log(t.Context())
+	require.NoError(t, err)
+	assert.Len(t, log.Items, 4, "another key, and an entry with none, are never refused")
+}
+
+func TestAnEntrysOwnBannerChoiceOutranksItsKindsSwitch(t *testing.T) {
+	t.Parallel()
+
+	f := newFixture(t, 1)
+	require.NoError(t, prefs.New(f.pool, f.clock).Set(t.Context(), notifyprefs.KeyBannersOff, `["autopilot_alert"]`))
+
+	d := NewDispatcher(f.config())
+	entry := alertEntry(f.items[0])
+
+	require.NoError(t, d.Tell(t.Context(), entry, false))
+	assert.Empty(t, f.poster.posted(), "the kind's switch is off, and the entry follows it")
+
+	entry.Banner = new(true)
+	require.NoError(t, d.Tell(t.Context(), entry, false))
+	assert.Len(t, f.poster.posted(), 1, "the routine turned its banner on")
+
+	require.NoError(t, prefs.New(f.pool, f.clock).Set(t.Context(), notifyprefs.KeyBannersOff, `[]`))
+
+	entry.Banner = new(false)
+	require.NoError(t, d.Tell(t.Context(), entry, false))
+	assert.Len(t, f.poster.posted(), 1, "the routine keeps its notice to the history")
+
+	f.poster.status = StatusOff
+	entry.Banner = new(true)
+	require.NoError(t, d.Tell(t.Context(), entry, false))
+	assert.Len(t, f.poster.posted(), 1, "no banner while the user doesn't allow them, whatever the routine says")
+
+	log, err := NewStore(f.pool).Log(t.Context())
+	require.NoError(t, err)
+	assert.Len(t, log.Items, 4, "the history keeps every one")
+}
+
+func TestABurstOfAutopilotNoticesSumsUpAsAutopilots(t *testing.T) {
+	t.Parallel()
+
+	f := newFixture(t, 4)
+	d := gatheringDispatcher(f)
+
+	for i := range 4 {
+		entry := alertEntry(f.items[i])
+		entry.Kind, entry.Heading = KindAutopilotNeedsYou, ""
+		require.NoError(t, d.Tell(t.Context(), entry, true))
+	}
+
+	assert.Empty(t, f.poster.posted(), "held for the others")
+
+	d.held.flush()
+
+	posted := f.poster.posted()
+	require.Len(t, posted, 1, "more than three become one")
+	assert.Equal(t, "4 new from Autopilot", posted[0].Title)
+	assert.Equal(t, "4 routines need you", posted[0].Body)
+	assert.Zero(t, posted[0].NotificationID, "a summary stands for no one entry")
+	assert.True(t, posted[0].Autopilot.IsZero(), "and opens nothing of Autopilot's")
+
+	for i := range 3 {
+		require.NoError(t, d.Tell(t.Context(), alertEntry(f.items[i]), true))
+	}
+
+	d.held.flush()
+	assert.Len(t, f.poster.posted(), 4, "three show one by one")
 }
 
 // releaseEntry is the entry for acme-org/sdk's v1.4.3 reaching GitHub.

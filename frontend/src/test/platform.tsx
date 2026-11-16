@@ -20,6 +20,7 @@ import {
   toolVersions,
   agents,
   appInfo,
+  autopilotGlance,
   backupImported,
   backupPreview,
   branchStatus,
@@ -147,6 +148,7 @@ function answers(subscribe: Loose<Platform['on']>): { [K in keyof Platform]: Loo
     checkBudget: () => Promise.resolve(budgetGauge()),
     getServiceStatus: () => Promise.resolve(serviceStatus()),
     checkServiceStatus: () => Promise.resolve(serviceStatus()),
+    getAutopilotGlance: () => Promise.resolve(autopilotGlance()),
 
     getInboxSnapshot: inbox,
     refreshInbox: inbox,
@@ -277,6 +279,7 @@ function answers(subscribe: Loose<Platform['on']>): { [K in keyof Platform]: Loo
     getCollapsedSections: () => Promise.resolve([]),
     setSectionCollapsed: (section, collapsed) => stored({ collapsedSections: collapsed ? [section] : [] }),
     setProjectsTipDismissed: (projectsTipDismissed) => stored({ projectsTipDismissed }),
+    setKeptRunningTold: (keptRunningTold) => stored({ keptRunningTold }),
     setReviewTab: (reviewTab) => stored({ reviewTab }),
     setNotificationsTab: (notificationsTab) => stored({ notificationsTab }),
     setConversationOrder: (conversationOrder) => stored({ conversationOrder }),

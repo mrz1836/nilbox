@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/mrz1836/nilbox/internal/brand"
+	"github.com/mrz1836/nilbox/internal/event"
 	"github.com/mrz1836/nilbox/internal/notifyprefs"
 	"github.com/mrz1836/nilbox/internal/snooze"
 	"github.com/mrz1836/nilbox/internal/textutil"
@@ -53,6 +54,10 @@ type Banner struct {
 	RunID      int64
 	RunStarted string
 
+	// Autopilot is what a click on an Autopilot notification's banner opens in the
+	// Autopilot tab, or the zero target for none; the window checks its CreatedAt first.
+	Autopilot event.AutopilotTarget
+
 	// NotificationID is the log's entry the banner stands for, which a click on it marks
 	// read, or 0 for a banner that stands for none or many (a summary, a session's, the
 	// test banner). The window marks it only while the entry with that id is about the
@@ -88,29 +93,43 @@ var kindTitles = map[notifyprefs.Kind]string{
 	KindRunFailed:        "Run failed",
 	KindServiceStatus:    "Service status",
 	KindUpdateReady:      "New version",
+
+	// An alert is headed by its routine's name (Notification.Heading); this is its title
+	// for an entry that has none.
+	KindAutopilotAlert:    "Autopilot alert",
+	KindAutopilotNeedsYou: "Needs your OK",
+	KindAutopilotFinished: "Agent finished",
+	KindAutopilotChecks:   "Checks after a fix",
+	KindAutopilotProblem:  "Autopilot problem",
 }
 
 // summaryNouns name each kind in a summary banner, singular and plural.
 //
 //nolint:gochecknoglobals // a fixed table
 var summaryNouns = map[notifyprefs.Kind][2]string{
-	KindReviewRequested:  {"review request", "review requests"},
-	KindAssigned:         {"assignment", "assignments"},
-	KindWoke:             {"back from snooze", "back from snooze"},
-	KindReleaseDone:      {"release", "releases"},
-	KindReleasePublished: {"release published", "releases published"},
-	KindReleaseFailed:    {"release workflow failed", "release workflows failed"},
-	KindRunFailed:        {"failed run", "failed runs"},
-	KindServiceStatus:    {"service status change", "service status changes"},
-	KindUpdateReady:      {"new version", "new versions"},
+	KindReviewRequested:   {"review request", "review requests"},
+	KindAssigned:          {"assignment", "assignments"},
+	KindWoke:              {"back from snooze", "back from snooze"},
+	KindReleaseDone:       {"release", "releases"},
+	KindReleasePublished:  {"release published", "releases published"},
+	KindReleaseFailed:     {"release workflow failed", "release workflows failed"},
+	KindRunFailed:         {"failed run", "failed runs"},
+	KindServiceStatus:     {"service status change", "service status changes"},
+	KindUpdateReady:       {"new version", "new versions"},
+	KindAutopilotAlert:    {"Autopilot alert", "Autopilot alerts"},
+	KindAutopilotNeedsYou: {"routine needs you", "routines need you"},
+	KindAutopilotFinished: {"agent finished", "agents finished"},
+	KindAutopilotChecks:   {"fix checked", "fixes checked"},
+	KindAutopilotProblem:  {"Autopilot problem", "Autopilot problems"},
 }
 
 // maxTitleRunes bounds an item title in a banner body; the system wraps and cuts the rest.
 const maxTitleRunes = 160
 
-// banner is the banner for one recorded notification: its kind as the title, and its item,
-// or for an entry about no item its repository, as the subtitle. A click shows the item,
-// opens the entry's page, or opens the run it is about.
+// banner is the banner for one recorded notification: its heading, or else its kind, as
+// the title, and its item, or for an entry about no item its repository, as the subtitle,
+// so an Autopilot problem about no item has no "#number" line. A click shows the item,
+// opens the entry's page, opens the run it is about, or what it opens in the Autopilot tab.
 func banner(n Notification) Banner {
 	body := textutil.Truncate(n.Title, maxTitleRunes)
 	if n.Detail != "" {
@@ -122,9 +141,14 @@ func banner(n Notification) Banner {
 		subtitle = n.Repo
 	}
 
+	title := kindTitles[n.Kind]
+	if n.Heading != "" {
+		title = textutil.Truncate(n.Heading, maxTitleRunes)
+	}
+
 	return Banner{
 		ID:             brand.Slug + "-" + strconv.FormatInt(n.ID, 10),
-		Title:          kindTitles[n.Kind],
+		Title:          title,
 		Subtitle:       subtitle,
 		Body:           body,
 		Thread:         string(n.Kind),
@@ -132,23 +156,22 @@ func banner(n Notification) Banner {
 		URL:            n.URL,
 		RunID:          n.RunID,
 		RunStarted:     n.RunStarted,
+		Autopilot:      n.Autopilot,
 		NotificationID: n.ID,
 	}
 }
 
 // summary is the one banner that stands for many: "5 new in your inbox", with how many of
-// each kind, or "5 new notifications" when none is about an item, as a burst of failed runs.
+// each kind, "5 new notifications" when none is about an item, as a burst of failed runs,
+// or "5 new from Autopilot" when every one is Autopilot's, as a routine's first pass: "4
+// routines need you, 1 Autopilot problem".
 func summary(rows []Notification) Banner {
 	counts := make(map[notifyprefs.Kind]int)
-	title := " new notifications"
-
 	for _, r := range rows {
 		counts[r.Kind]++
-
-		if r.ItemKind != "" {
-			title = " new in your inbox"
-		}
 	}
+
+	title := summaryTitle(rows)
 
 	var parts []string
 
@@ -171,10 +194,31 @@ func summary(rows []Notification) Banner {
 	}
 }
 
+// summaryTitle is what follows the count in a summary's title: " new from Autopilot" when
+// every row is Autopilot's, " new in your inbox" when one is about an item, else " new
+// notifications".
+func summaryTitle(rows []Notification) string {
+	if !slices.ContainsFunc(rows, func(r Notification) bool { return !r.Kind.Autopilot() }) {
+		return " new from Autopilot"
+	}
+
+	if slices.ContainsFunc(rows, func(r Notification) bool { return r.ItemKind != "" }) {
+		return " new in your inbox"
+	}
+
+	return " new notifications"
+}
+
 // Banners returns what to show for recorded notifications: one banner each, or a single
-// summary when there are more than MaxBanners. It shows none of the kinds in off.
+// summary when there are more than MaxBanners. It shows none of the kinds in off, but for
+// an entry whose own choice (Entry.Banner) says otherwise: an Autopilot routine may show a
+// banner its kind's switch has off, or keep one its switch has on to the history.
 func Banners(rows []Notification, off []notifyprefs.Kind) []Banner {
 	shown := slices.DeleteFunc(slices.Clone(rows), func(r Notification) bool {
+		if r.banner != nil {
+			return !*r.banner
+		}
+
 		return slices.Contains(off, r.Kind)
 	})
 

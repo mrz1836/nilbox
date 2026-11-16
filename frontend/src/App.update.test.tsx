@@ -13,6 +13,7 @@ import {
   updateLocation,
   updateReady,
   updateStatus,
+  autopilotTarget,
 } from './test/fixtures'
 import { emit, platform, renderApp } from './test/platform'
 
@@ -207,7 +208,14 @@ describe('App’s update', () => {
     expect(banner()).toBeEmptyDOMElement()
 
     act(() => {
-      emit('inbox:reveal', { itemId: 0, url: '', runId: 0, runStarted: '', notificationId: 9 })
+      emit('inbox:reveal', {
+        itemId: 0,
+        url: '',
+        runId: 0,
+        runStarted: '',
+        notificationId: 9,
+        autopilot: autopilotTarget(),
+      })
     })
 
     await waitFor(() => {
@@ -224,7 +232,14 @@ describe('App’s update', () => {
     await screen.findByRole('region', { name: 'Review requested' })
 
     act(() => {
-      emit('inbox:reveal', { itemId: 0, url: '', runId: 0, runStarted: '', notificationId: 9 })
+      emit('inbox:reveal', {
+        itemId: 0,
+        url: '',
+        runId: 0,
+        runStarted: '',
+        notificationId: 9,
+        autopilot: autopilotTarget(),
+      })
     })
 
     expect(await screen.findByRole('region', { name: 'About' })).toBeInTheDocument()
@@ -240,7 +255,14 @@ describe('App’s update', () => {
     await screen.findByRole('button', { name: '1 unread notifications' })
 
     act(() => {
-      emit('inbox:reveal', { itemId: 0, url: '', runId: 0, runStarted: '', notificationId: 9 })
+      emit('inbox:reveal', {
+        itemId: 0,
+        url: '',
+        runId: 0,
+        runStarted: '',
+        notificationId: 9,
+        autopilot: autopilotTarget(),
+      })
     })
 
     expect(await screen.findByRole('region', { name: 'About' })).toBeInTheDocument()
@@ -265,7 +287,14 @@ describe('App’s update', () => {
     await screen.findByRole('button', { name: '1 unread notifications' })
 
     act(() => {
-      emit('inbox:reveal', { itemId: 0, url: page, runId: 7, runStarted: '', notificationId: 5 })
+      emit('inbox:reveal', {
+        itemId: 0,
+        url: page,
+        runId: 7,
+        runStarted: '',
+        notificationId: 5,
+        autopilot: autopilotTarget(),
+      })
     })
 
     await waitFor(() => {

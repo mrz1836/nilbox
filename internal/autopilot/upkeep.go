@@ -13,7 +13,9 @@ import (
 
 // updateProblems works out the routines' problems now (a routine that won't load, a search
 // GitHub fails), keeps when each began, forgets the ones that ended, and tells the user of
-// each new one, once.
+// each new one, once. A problem's start is saved before it is told, since its notice is
+// keyed by it: a crash after the telling tells it again with the same key, which the
+// notifications refuse, never with a later start.
 func (e *Engine) updateProblems(ctx context.Context, p *pass) {
 	found := p.problems()
 	kept := make([]Problem, 0, len(found))
@@ -27,6 +29,15 @@ func (e *Engine) updateProblems(ctx context.Context, p *pass) {
 	}
 
 	e.state.Problems = kept
+
+	if e.problems != nil && slices.ContainsFunc(kept, func(p Problem) bool { return !p.Told }) {
+		if err := writeEngineState(ctx, e.prefs, e.state); err != nil {
+			e.logger.WarnContext(ctx, "could not save Autopilot's problems; telling them on a later cycle", "error", err)
+
+			return
+		}
+	}
+
 	e.tellProblems(ctx, p)
 }
 
@@ -85,10 +96,20 @@ func problemKey(routineID int64, kind ProblemKind, search string) string {
 	return key
 }
 
-// tellProblems tells the user of each problem not told yet, once.
+// tellProblems tells the user of each problem not told yet, once: with the routine's name
+// and its own banner switch for problems, and gathered when there are more than one, as
+// on a first pass. One that couldn't be told is told on a later cycle.
 func (e *Engine) tellProblems(ctx context.Context, p *pass) {
 	if e.problems == nil {
 		return
+	}
+
+	untold := 0
+
+	for _, pr := range e.state.Problems {
+		if !pr.Told {
+			untold++
+		}
 	}
 
 	for i := range e.state.Problems {
@@ -97,14 +118,7 @@ func (e *Engine) tellProblems(ctx context.Context, p *pass) {
 			continue
 		}
 
-		name := ""
-		if r, ok := p.byID[pr.RoutineID]; ok {
-			name = r.row.Name
-		} else if row, ok := p.others[pr.RoutineID]; ok {
-			name = row.Name
-		}
-
-		if err := e.problems.Problem(ctx, name, *pr); err != nil {
+		if err := e.problems.Problem(ctx, p.problemNotice(*pr, untold > 1 || e.state.CatchingUp[pr.RoutineID])); err != nil {
 			e.logger.InfoContext(ctx, "Autopilot could not tell of a problem", "routine", pr.RoutineID, "error", err)
 
 			continue
@@ -112,6 +126,24 @@ func (e *Engine) tellProblems(ctx context.Context, p *pass) {
 
 		pr.Told = true
 	}
+}
+
+// problemNotice is pr as the user is told of it: with its routine's name and when it was
+// made, and the routine's own banner switch for its problems, when it loads.
+func (p *pass) problemNotice(pr Problem, burst bool) ProblemNotice {
+	notice := ProblemNotice{Problem: pr, Burst: burst}
+
+	if r, ok := p.byID[pr.RoutineID]; ok {
+		notice.Routine, notice.RoutineCreated = r.row.Name, r.row.CreatedAt
+
+		if r.spec.Notify != nil {
+			notice.Banner = r.spec.Notify.Problem
+		}
+	} else if row, ok := p.others[pr.RoutineID]; ok {
+		notice.Routine, notice.RoutineCreated = row.Name, row.CreatedAt
+	}
+
+	return notice
 }
 
 // Cleared is what Clear history removed.

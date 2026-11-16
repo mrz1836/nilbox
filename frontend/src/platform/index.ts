@@ -10,9 +10,11 @@ import { Browser, Clipboard, Dialogs, Events, Window, type CancellablePromise } 
 import '../../bindings/events'
 import type * as agent from '../../bindings/github.com/mrz1836/nilbox/internal/agent'
 import * as appinfo from '../../bindings/github.com/mrz1836/nilbox/internal/appinfo'
+import * as autopilot from '../../bindings/github.com/mrz1836/nilbox/internal/autopilot'
 import * as backup from '../../bindings/github.com/mrz1836/nilbox/internal/backup'
 import * as branchrules from '../../bindings/github.com/mrz1836/nilbox/internal/branchrules'
 import * as budget from '../../bindings/github.com/mrz1836/nilbox/internal/budget'
+import type * as event from '../../bindings/github.com/mrz1836/nilbox/internal/event'
 import * as ghthreads from '../../bindings/github.com/mrz1836/nilbox/internal/ghthreads'
 import type * as gitread from '../../bindings/github.com/mrz1836/nilbox/internal/gitread'
 import * as hooks from '../../bindings/github.com/mrz1836/nilbox/internal/hooks'
@@ -355,6 +357,12 @@ export type NotificationLog = Omit<NonNullLists<notify.Log>, 'items'> & { items:
 export type BannerStatus = notify.BannerStatus
 export type NotificationKind = notifyprefs.Kind
 
+// AutopilotTarget is what an Autopilot notification, or a row of the menu bar's Autopilot
+// group, opens in the Autopilot tab; AutopilotGlance is Autopilot at a glance, whose
+// routines' count says whether the window names Autopilot at all.
+export type AutopilotTarget = NonNullLists<event.AutopilotTarget>
+export type AutopilotGlance = NonNullLists<autopilot.Glance>
+
 export type Profile = NonNullLists<profiles.Profile>
 
 export type PromptCheckRequest = NonNullLists<prompts.CheckRequest>
@@ -691,6 +699,7 @@ export const {
   CollapsedSections: getCollapsedSections,
   SetSectionCollapsed: setSectionCollapsed,
   SetProjectsTipDismissed: setProjectsTipDismissed,
+  SetKeptRunningTold: setKeptRunningTold,
   SetReviewTab: setReviewTab,
   SetNotificationsTab: setNotificationsTab,
   SetConversationOrder: setConversationOrder,
@@ -939,6 +948,11 @@ export const markGitHubThreadsRead: (threadIDs: number[]) => CancellablePromise<
 const serviceStatus = narrow(svcstatus.Service)
 
 export const { Status: getServiceStatus, CheckNow: checkServiceStatus } = serviceStatus
+
+// Autopilot at a glance, read from the database alone: the routines, what waits for the
+// user, and the agents working. The window reads it only to name Autopilot while a routine
+// exists, and an "autopilot:updated" event follows each change.
+export const { Glance: getAutopilotGlance } = narrow(autopilot.Service)
 
 // The notification history. MarkAllRead marks every entry read (Mark all done), and
 // MarkRead and MarkUnread the entries with the ids given; opening the history marks

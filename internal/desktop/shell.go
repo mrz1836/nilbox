@@ -162,6 +162,11 @@ type Config struct {
 	// that updates. Optional: without it, the menu offers no update.
 	Updates Updates
 
+	// Autopilot is what the menu bar's Autopilot group shows, and whether closing the
+	// window only hides it. Optional: without it, the menu has no such group, and the
+	// window hides on close only while the icon shows.
+	Autopilot Autopilot
+
 	// Browser opens a web page in the user's browser, as the menu bar's Download X Manually…
 	// does. Optional: without it, the page isn't opened, which is logged.
 	Browser URLOpener
@@ -221,25 +226,26 @@ type Config struct {
 // The desktop runtime calls Start once the app starts, Launched once it has launched,
 // and Stop when it shuts down.
 type Shell struct {
-	frontend Frontend
-	window   Window
-	tray     Tray
-	app      App
-	inbox    Inbox
-	settings Settings
-	sessions Sessions
-	updates  Updates
-	browser  URLOpener
-	exit     func(code int)
-	workers  []Worker
-	deferred []Worker
-	data     io.Closer
-	banners  Authorizer
-	guard    QuitGuard
-	clock    clock.Clock
-	stdout   io.Writer
-	logger   *slog.Logger
-	measure  bool
+	frontend  Frontend
+	window    Window
+	tray      Tray
+	app       App
+	inbox     Inbox
+	settings  Settings
+	sessions  Sessions
+	updates   Updates
+	autopilot Autopilot
+	browser   URLOpener
+	exit      func(code int)
+	workers   []Worker
+	deferred  []Worker
+	data      io.Closer
+	banners   Authorizer
+	guard     QuitGuard
+	clock     clock.Clock
+	stdout    io.Writer
+	logger    *slog.Logger
+	measure   bool
 
 	stopTimeout    time.Duration
 	measureTimeout time.Duration
@@ -286,9 +292,22 @@ type Shell struct {
 	// of the sessions waiting for the user and of the update it was drawn with, so a
 	// sessions or update change that leaves them as they were redraws nothing. Only the
 	// redraw loop touches them.
-	drawn        bool
-	drawnWaiting []menubar.Waiting
-	drawnUpdates menubar.Updates
+	drawn          bool
+	drawnWaiting   []menubar.Waiting
+	drawnUpdates   menubar.Updates
+	drawnAutopilot menubar.Autopilot
+
+	// autopilotMenu is Autopilot's state as last read, which the menu bar's group is drawn
+	// from; only the redraw loop touches it. autopilotAsked is set by an ask to read it
+	// again. autopilotKeeps and autopilotPaused are what it last said of keeping the app
+	// running and of Pause Autopilot, which the window's close and the menu's Pause row
+	// read. hidForAutopilot is set when a close only hid the window because of Autopilot,
+	// the icon off, until the window next shows.
+	autopilotMenu   menubar.AutopilotState
+	autopilotAsked  atomic.Bool
+	autopilotKeeps  atomic.Bool
+	autopilotPaused atomic.Bool
+	hidForAutopilot atomic.Bool
 
 	// quitConfirmed is set once the user chose to stop the runs and quit, or asked for a
 	// reset, which lets every later quit through.
@@ -329,7 +348,8 @@ func New(cfg Config) *Shell {
 
 	s := &Shell{
 		frontend: cfg.Frontend, window: cfg.Window, tray: cfg.Tray, app: cfg.App,
-		inbox: cfg.Inbox, settings: cfg.Settings, sessions: cfg.Sessions, updates: cfg.Updates, workers: cfg.Workers,
+		inbox: cfg.Inbox, settings: cfg.Settings, sessions: cfg.Sessions, updates: cfg.Updates, autopilot: cfg.Autopilot,
+		workers:  cfg.Workers,
 		deferred: cfg.Deferred,
 		data:     cfg.Data, banners: cfg.Banners, guard: cfg.QuitGuard,
 		browser: cfg.Browser, exit: cfg.Exit,
@@ -369,6 +389,12 @@ func (s *Shell) Start(ctx context.Context) {
 
 	s.goLocked(s.redrawTray)
 
+	// Autopilot's state is read once at the start, whether or not the icon shows: the
+	// window's close asks it too.
+	if s.autopilot != nil {
+		s.askAutopilot()
+	}
+
 	for _, w := range s.workers {
 		s.goLocked(w.Run)
 	}
@@ -404,9 +430,10 @@ func (s *Shell) Stop() error {
 }
 
 // Emit acts on e, until the shell stops: a window event goes on to the page, an inbox
-// change also redraws the menu bar, and a sessions or update change does when the
-// sessions waiting for the user or the update's rows read otherwise than the menu shows
-// them, a request to reveal an item brings
+// change also redraws the menu bar, and a sessions, update, or Autopilot change does when
+// the sessions waiting for the user, the update's rows, or Autopilot's group read
+// otherwise than the menu shows them (Autopilot's is read again for the window's close
+// too), a request to reveal an item brings
 // the window forward, a theme or menu bar change reaches the window or the icon, the
 // first paint ends a startup measurement or starts the deferred work, the user's choice to
 // stop the runs and quit quits, the end of the first-run setup asks to allow banners if
@@ -418,15 +445,8 @@ func (s *Shell) Emit(e event.Event) {
 	}
 
 	switch e := e.(type) {
-	case event.InboxUpdated:
-		s.frontend.Emit(e)
-		s.askRedraw()
-	case event.SessionsUpdated:
-		s.frontend.Emit(e)
-		s.askChangedRedraw()
-	case event.UpdatesUpdated:
-		s.frontend.Emit(e)
-		s.askChangedRedraw()
+	case event.InboxUpdated, event.SessionsUpdated, event.UpdatesUpdated, event.AutopilotUpdated:
+		s.passOn(e)
 	case event.RevealItem:
 		s.reveal(e)
 	case event.ThemeChanged, event.TextSizeChanged, event.MenuBarChanged:
@@ -485,7 +505,7 @@ func (s *Shell) ShowWindow() {
 		return
 	}
 
-	s.window.Show()
+	s.showWindow()
 }
 
 // RefreshNow refreshes the inbox from GitHub in the background, as the menu bar's Refresh
@@ -537,7 +557,7 @@ func (s *Shell) ShouldQuit() bool {
 
 	if s.heldForMove() {
 		s.goTracked(func(context.Context) {
-			s.window.Show()
+			s.showWindow()
 		})
 
 		return false
@@ -548,20 +568,35 @@ func (s *Shell) ShouldQuit() bool {
 	}
 
 	s.goTracked(func(context.Context) {
-		s.window.Show()
+		s.showWindow()
 		s.frontend.Emit(event.QuitRequested{})
 	})
 
 	return false
 }
 
-// HidesOnClose reports whether closing the window only hides it, keeping the app running
-// in the menu bar: while the icon shows and the app is not quitting.
+// HidesOnClose reports whether closing the window only hides it, keeping the app running,
+// while the app is not quitting: while the menu bar icon shows, and while Autopilot has a
+// routine switched on or an agent run going, whatever the icon setting, since quitting
+// would quietly stop them. The Dock icon brings the window back. A close it hides for
+// Autopilot alone is noted, so the window says why the app kept running, once, when it
+// next shows. It runs on the main thread, so it reads only what the shell last read.
 func (s *Shell) HidesOnClose() bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	return s.trayOn && !s.stopping.Load()
+	switch {
+	case s.stopping.Load():
+		return false
+	case s.trayOn:
+		return true
+	case s.autopilotKeeps.Load():
+		s.hidForAutopilot.Store(true)
+
+		return true
+	default:
+		return false
+	}
 }
 
 // Stopping reports whether Stop has begun. Work the desktop runtime queued before then
@@ -609,6 +644,26 @@ func (s *Shell) appEvent(e event.Event) {
 	case event.ResetRequested:
 		s.relaunch.Store(true)
 		s.quitAnyway()
+	}
+}
+
+// passOn passes a change the menu bar shows on to the page, then asks for the menu bar to
+// be redrawn: in full for the inbox, when its rows read otherwise for the sessions and
+// the update, and from Autopilot's state read again for Autopilot.
+func (s *Shell) passOn(e event.Event) {
+	switch e := e.(type) {
+	case event.InboxUpdated:
+		s.frontend.Emit(e)
+		s.askRedraw()
+	case event.SessionsUpdated:
+		s.frontend.Emit(e)
+		s.askChangedRedraw()
+	case event.UpdatesUpdated:
+		s.frontend.Emit(e)
+		s.askChangedRedraw()
+	case event.AutopilotUpdated:
+		s.frontend.Emit(e)
+		s.askAutopilot()
 	}
 }
 
@@ -692,11 +747,11 @@ func (s *Shell) waitForWork() {
 }
 
 // reveal brings the window forward and, when the request names an item, its URL, a run,
-// or a notification to mark read, asks the page to show it.
+// what Autopilot's tab opens at, or a notification to mark read, asks the page to show it.
 func (s *Shell) reveal(r event.RevealItem) {
-	s.window.Show()
+	s.showWindow()
 
-	if r.ItemID == 0 && r.URL == "" && r.RunID == 0 && r.NotificationID == 0 {
+	if !r.Named() {
 		return
 	}
 

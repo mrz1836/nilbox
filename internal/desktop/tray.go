@@ -64,13 +64,19 @@ func (s *Shell) signalRedraw() {
 
 // redrawTray redraws the menu bar each time it is asked to, one redraw at a time, until
 // ctx ends: in full when any ask since the last redraw was for that, else only when the
-// sessions waiting for the user or the update's rows changed.
+// sessions waiting for the user, Autopilot's group, or the update's rows changed. An ask
+// to read Autopilot again reads it first, whether or not the icon shows, since the
+// window's close asks what it last said.
 func (s *Shell) redrawTray(ctx context.Context) {
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case <-s.redraw:
+			if s.autopilotAsked.Swap(false) {
+				s.readAutopilot(ctx)
+			}
+
 			if s.full.Swap(false) {
 				s.drawTray(ctx)
 			} else {
@@ -81,8 +87,8 @@ func (s *Shell) redrawTray(ctx context.Context) {
 }
 
 // redrawChanged draws the menu bar as drawTray does, but only when the rows of the
-// sessions waiting for the user or of the update differ from the ones it was last drawn
-// with, or it has not been drawn.
+// sessions waiting for the user, of Autopilot's group, or of the update differ from the
+// ones it was last drawn with, or it has not been drawn.
 func (s *Shell) redrawChanged(ctx context.Context) {
 	if !s.showsTray() {
 		return
@@ -91,7 +97,8 @@ func (s *Shell) redrawChanged(ctx context.Context) {
 	now := s.clock.Now()
 	waiting, updates := s.waiting(ctx), s.updateRows(ctx, now)
 
-	if s.drawn && slices.Equal(menubar.WaitingEntries(waiting), s.drawnWaiting) && sameUpdates(updates, s.drawnUpdates) {
+	if s.drawn && slices.Equal(menubar.WaitingEntries(waiting), s.drawnWaiting) && sameUpdates(updates, s.drawnUpdates) &&
+		menubar.SameAutopilot(menubar.AutopilotGroup(s.autopilotMenu, now), s.drawnAutopilot) {
 		return
 	}
 
@@ -126,12 +133,13 @@ func (s *Shell) drawTrayWith(ctx context.Context, now time.Time, waiting []sessi
 		return
 	}
 
-	sum := menubar.Summarize(snap, waiting, now)
+	sum := menubar.Summarize(snap, waiting, s.autopilotMenu, now)
 	sum.Updates = updates
 
 	s.tray.Draw(sum)
 	s.drawn, s.drawnWaiting, s.drawnUpdates = true, menubar.WaitingEntries(waiting), updates
-	s.wakeAt(soonest(sum.NextChange, updates.Until), now)
+	s.drawnAutopilot = sum.Autopilot
+	s.wakeAt(soonest(soonest(sum.NextChange, updates.Until), sum.Autopilot.NextChange), now)
 }
 
 // waiting returns the sessions waiting for the user, or none when they cannot be read,

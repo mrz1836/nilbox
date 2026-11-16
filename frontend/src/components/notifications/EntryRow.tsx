@@ -1,10 +1,11 @@
 import type { ReactNode } from 'react'
 
-import { entryTitle, entryWhere, kindTitle } from '../../lib/notifications'
+import { entryHeading, entryTitle, entryWhere } from '../../lib/notifications'
 import { formatAgo, formatFull } from '../../lib/time'
 import type { AppNotification, NotificationKind } from '../../platform'
 import {
   AssignIcon,
+  AutopilotIcon,
   BellIcon,
   CheckIcon,
   CircleCheckIcon,
@@ -18,9 +19,9 @@ import {
 } from '../icons'
 import { RelativeTime } from '../RelativeTime'
 
-// kindIcons are each kind's icon in the history. A kind this build does not know, as
-// another build may have stored, shows the bell.
-const kindIcons: Readonly<Partial<Record<NotificationKind, (props: { className?: string }) => ReactNode>>> = {
+// kindIcons are each kind's icon in the history, Autopilot's all its bolt. A kind this
+// build does not know, as another build may have stored, shows the bell.
+export const kindIcons: Readonly<Partial<Record<NotificationKind, (props: { className?: string }) => ReactNode>>> = {
   review_requested: EyeIcon,
   assigned: AssignIcon,
   woke: ClockIcon,
@@ -30,13 +31,20 @@ const kindIcons: Readonly<Partial<Record<NotificationKind, (props: { className?:
   run_failed: XIcon,
   service_status: PulseIcon,
   update_ready: UpdateIcon,
+  autopilot_alert: AutopilotIcon,
+  autopilot_needs_you: AutopilotIcon,
+  autopilot_finished: AutopilotIcon,
+  autopilot_checks: AutopilotIcon,
+  autopilot_problem: AutopilotIcon,
 }
 
 // kindTones color the icon of a kind that tells of something gone wrong, as the Runs page
-// marks a failed run; every other kind's icon is muted.
-const kindTones: Readonly<Partial<Record<NotificationKind, string>>> = {
+// marks a failed run, or of one that waits for the user; every other kind's icon is muted.
+export const kindTones: Readonly<Partial<Record<NotificationKind, string>>> = {
   release_failed: 'text-danger',
   run_failed: 'text-danger',
+  autopilot_needs_you: 'text-warning',
+  autopilot_problem: 'text-danger',
 }
 
 // rowActionClass is a row's action button, which takes the time's place while the pointer
@@ -94,7 +102,7 @@ export function EntryRow({ entry, onOpen, onDone, onUnread, compact = false }: E
           <span className="flex items-baseline justify-between gap-3">
             <span className="truncate text-xs font-medium text-muted">
               {unread && <span className="sr-only">Unread: </span>}
-              {kindTitle(entry.kind)}
+              {entryHeading(entry)}
             </span>
             <span title={formatFull(entry.createdAt)} className="shrink-0">
               <RelativeTime

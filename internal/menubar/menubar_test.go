@@ -57,7 +57,7 @@ func TestSummarize(t *testing.T) {
 		LastRefreshedAt: "2026-03-04T11:58:00Z",
 	}
 
-	got := Summarize(snap, nil, now.In(newYork(t)))
+	got := Summarize(snap, nil, AutopilotState{}, now.In(newYork(t)))
 
 	assert.Equal(t, 3, got.Count)
 	assert.Equal(t, "3", got.Label)
@@ -81,7 +81,7 @@ func TestSummarize(t *testing.T) {
 func TestSummarizeAnEmptyInbox(t *testing.T) {
 	t.Parallel()
 
-	got := Summarize(inbox.Snapshot{}, nil, now)
+	got := Summarize(inbox.Snapshot{}, nil, AutopilotState{}, now)
 
 	assert.Zero(t, got.Count)
 	assert.Empty(t, got.Label)
@@ -90,7 +90,7 @@ func TestSummarizeAnEmptyInbox(t *testing.T) {
 	assert.Equal(t, "The inbox has not loaded yet", got.Nothing)
 	assert.True(t, got.NextChange.IsZero())
 
-	refreshed := Summarize(inbox.Snapshot{LastRefreshedAt: "2026-03-04T11:58:00Z"}, nil, now)
+	refreshed := Summarize(inbox.Snapshot{LastRefreshedAt: "2026-03-04T11:58:00Z"}, nil, AutopilotState{}, now)
 	assert.Equal(t, "Nothing needs you", refreshed.Nothing)
 }
 
@@ -102,7 +102,7 @@ func TestALongListShowsHowManyMore(t *testing.T) {
 		items = append(items, it(int64(i+1), i+1, "Item"))
 	}
 
-	got := Summarize(inbox.Snapshot{Authored: inbox.List{Items: items}}, nil, now)
+	got := Summarize(inbox.Snapshot{Authored: inbox.List{Items: items}}, nil, AutopilotState{}, now)
 
 	require.Len(t, got.Sections, 1)
 	assert.Len(t, got.Sections[0].Entries, PerSection)
@@ -114,12 +114,12 @@ func TestALongListShowsHowManyMore(t *testing.T) {
 func TestTheStatus(t *testing.T) {
 	t.Parallel()
 
-	failed := Summarize(inbox.Snapshot{LastRefreshedAt: "2026-03-04T11:00:00Z", LastError: "network down"}, nil, now)
+	failed := Summarize(inbox.Snapshot{LastRefreshedAt: "2026-03-04T11:00:00Z", LastError: "network down"}, nil, AutopilotState{}, now)
 	assert.Equal(t, "Last refresh failed", failed.Status)
 	assert.True(t, failed.Failed)
 	assert.Equal(t, "network down", failed.Error)
 
-	yesterday := Summarize(inbox.Snapshot{LastRefreshedAt: "2026-03-03T22:15:00Z"}, nil, now)
+	yesterday := Summarize(inbox.Snapshot{LastRefreshedAt: "2026-03-03T22:15:00Z"}, nil, AutopilotState{}, now)
 	assert.Equal(t, "Updated Mar 3, 10:15 PM", yesterday.Status)
 }
 
@@ -159,7 +159,7 @@ func TestSummarizeListsTheSessionsWaitingFirst(t *testing.T) {
 		{ID: "s2", Agent: agent.Codex, Repo: "acme-org/other-repo", Number: 3, State: sessions.StateNeedsInput},
 	}
 
-	got := Summarize(inbox.Snapshot{LastRefreshedAt: "2026-03-04T11:58:00Z"}, waiting, now)
+	got := Summarize(inbox.Snapshot{LastRefreshedAt: "2026-03-04T11:58:00Z"}, waiting, AutopilotState{}, now)
 
 	assert.Equal(t, []Waiting{
 		{
@@ -187,7 +187,7 @@ func TestManySessionsWaitingShowHowManyMore(t *testing.T) {
 		})
 	}
 
-	got := Summarize(inbox.Snapshot{}, waiting, now)
+	got := Summarize(inbox.Snapshot{}, waiting, AutopilotState{}, now)
 
 	require.Len(t, got.Waiting, PerSection)
 	assert.Equal(t, "s1", got.Waiting[0].SessionID, "the first ones, in order")
@@ -196,8 +196,8 @@ func TestManySessionsWaitingShowHowManyMore(t *testing.T) {
 	assert.Equal(t, "2 more…", MoreLabel(got.WaitingMore))
 	assert.Len(t, WaitingEntries(waiting), PerSection+2, "the entries before the cut are every one")
 
-	exactly := Summarize(inbox.Snapshot{}, waiting[:PerSection], now)
+	exactly := Summarize(inbox.Snapshot{}, waiting[:PerSection], AutopilotState{}, now)
 	assert.Len(t, exactly.Waiting, PerSection)
 	assert.Zero(t, exactly.WaitingMore)
-	assert.Empty(t, Summarize(inbox.Snapshot{}, nil, now).Waiting)
+	assert.Empty(t, Summarize(inbox.Snapshot{}, nil, AutopilotState{}, now).Waiting)
 }

@@ -57,12 +57,20 @@ func TestOnlyAStepThisBuildCantRunKeepsARoutineInDryRun(t *testing.T) {
 	assert.Empty(t, catalogs.notOffered(none))
 	assert.Equal(t, autopilotprefs.ModeAuto, catalogs.modeFor(autopilotprefs.ModeAuto, none), "a mode stands for what runs")
 
-	notify := spec.Spec{Steps: []spec.Step{
-		{Notify: &spec.NotifyStep{}}, {Pin: &spec.Empty{}}, {Agent: &spec.AgentStep{}}, {Notify: &spec.NotifyStep{}},
+	later := spec.Spec{Steps: []spec.Step{
+		{Notify: &spec.NotifyStep{}},
+		{Pin: &spec.Empty{}},
+		{MarkDone: &spec.Empty{}},
+		{Agent: &spec.AgentStep{}},
+		{MarkDone: &spec.Empty{}},
 	}}
-	assert.Equal(t, []catalog.StepKind{catalog.StepNotify, catalog.StepAgent}, catalogs.notOffered(notify),
-		"each kind once, and the triage steps run")
-	assert.Equal(t, autopilotprefs.ModeDryRun, catalogMode(autopilotprefs.ModeAuto, notify))
+	assert.Equal(t, []catalog.StepKind{catalog.StepMarkDone, catalog.StepAgent}, catalogs.notOffered(later),
+		"each kind once, in the catalog's order, and the notices and the triage steps run")
+	assert.Equal(t, autopilotprefs.ModeDryRun, catalogMode(autopilotprefs.ModeAuto, later))
+
+	notices := spec.Spec{Steps: []spec.Step{{Notify: &spec.NotifyStep{}}, {Pin: &spec.Empty{}}, {TellMe: &spec.TellStep{}}}}
+	assert.Empty(t, catalogs.notOffered(notices), "the notices and the triage steps run in this build")
+	assert.Equal(t, autopilotprefs.ModeAuto, catalogMode(autopilotprefs.ModeAuto, notices))
 
 	pin := spec.Spec{Steps: []spec.Step{{Pin: &spec.Empty{}}, {Snooze: &spec.SnoozeStep{}}, {Restore: &spec.Empty{}}}}
 	assert.Equal(t, autopilotprefs.ModeAuto, catalogMode(autopilotprefs.ModeAuto, pin), "the triage steps take any mode")

@@ -25,6 +25,7 @@ export type {
     EngineStatus,
     Estimate,
     Explanation,
+    Glance,
     ItemHistory,
     ItemRef,
     LeftAlone,
@@ -38,5 +39,6 @@ export type {
     TestItem,
     TestResult,
     TestSearch,
-    Undone
+    Undone,
+    WorkingRun
 } from "./models.js";

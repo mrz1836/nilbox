@@ -12,6 +12,7 @@ import type * as event$0 from "../../../../mrz1836/nilbox/internal/event/models.
 declare module "@wailsio/runtime" {
     namespace Events {
         interface CustomEvents {
+            "app:keptRunning": event$0.KeptRunning;
             "app:quitRequested": event$0.QuitRequested;
             "autopilot:updated": event$0.AutopilotUpdated;
             "budget:updated": event$0.BudgetUpdated;

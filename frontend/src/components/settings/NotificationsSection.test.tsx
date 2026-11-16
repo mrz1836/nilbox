@@ -1,9 +1,10 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 
 import type { Settings } from '../../platform'
-import { settings } from '../../test/fixtures'
-import { platform } from '../../test/platform'
+import { autopilotGlance, settings } from '../../test/fixtures'
+import { emit, platform } from '../../test/platform'
 import { NotificationsSection } from './NotificationsSection'
 
 vi.mock('../../platform', () => import('../../test/platform').then((fake) => fake.platform))
@@ -25,6 +26,65 @@ function drag(slider: HTMLElement, ...lengths: number[]) {
 
   fireEvent.change(slider)
 }
+
+// autopilotSwitches are Autopilot's banner switches, as Settings names them.
+const autopilotSwitches = [
+  'Routine alerts',
+  'Needs your OK',
+  'Agents finishing',
+  'Checks after a fix',
+  'Autopilot problems',
+]
+
+describe('NotificationsSection’s Autopilot switches', () => {
+  it('lists none, and never names Autopilot, while no routine exists', async () => {
+    renderSection()
+
+    await waitFor(() => {
+      expect(platform.getAutopilotGlance).toHaveBeenCalled()
+    })
+
+    for (const name of autopilotSwitches) {
+      expect(screen.queryByRole('switch', { name })).not.toBeInTheDocument()
+    }
+
+    expect(screen.queryByText(/Autopilot/)).not.toBeInTheDocument()
+  })
+
+  it('lists the five, all on, while a routine exists, and stores each as it is set', async () => {
+    platform.getAutopilotGlance.mockResolvedValue(autopilotGlance({ routines: 1 }))
+    const { onSaved } = renderSection()
+
+    for (const name of autopilotSwitches) {
+      expect(await screen.findByRole('switch', { name })).toBeChecked()
+    }
+
+    await userEvent.click(screen.getByRole('switch', { name: 'Autopilot problems' }))
+
+    await waitFor(() => {
+      expect(platform.setNotificationBanner).toHaveBeenCalledExactlyOnceWith('autopilot_problem', false)
+    })
+    expect(onSaved).toHaveBeenCalledWith(
+      expect.objectContaining({ bannersOff: expect.arrayContaining(['autopilot_problem']) as unknown }),
+    )
+  })
+
+  it('shows them once a routine is made, as Autopilot says it changed', async () => {
+    renderSection()
+
+    await waitFor(() => {
+      expect(platform.getAutopilotGlance).toHaveBeenCalledOnce()
+    })
+    expect(screen.queryByRole('switch', { name: 'Routine alerts' })).not.toBeInTheDocument()
+
+    platform.getAutopilotGlance.mockResolvedValue(autopilotGlance({ routines: 1 }))
+    act(() => {
+      emit('autopilot:updated')
+    })
+
+    expect(await screen.findByRole('switch', { name: 'Routine alerts' })).toBeChecked()
+  })
+})
 
 describe('NotificationsSection', () => {
   it('shows how long toasts stay on a slider from 5 to 60 seconds', () => {

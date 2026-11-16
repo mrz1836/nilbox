@@ -9,19 +9,25 @@ import (
 )
 
 type Notification struct {
-	ID         int64
-	Kind       string
-	CreatedAt  time.Time
-	ReadAt     *time.Time
-	ItemID     *int64
-	ItemKind   string
-	RepoOwner  string
-	RepoName   string
-	Number     int64
-	Title      string
-	URL        string
-	Author     string
-	Detail     string
-	RunID      int64
-	RunStarted string
+	ID               int64
+	Kind             string
+	CreatedAt        time.Time
+	ReadAt           *time.Time
+	ItemID           *int64
+	ItemKind         string
+	RepoOwner        string
+	RepoName         string
+	Number           int64
+	Title            string
+	URL              string
+	Author           string
+	Detail           string
+	RunID            int64
+	RunStarted       string
+	Heading          string
+	AutopilotRoutine int64
+	AutopilotMatch   int64
+	AutopilotRun     int64
+	AutopilotCreated string
+	OnceKey          string
 }

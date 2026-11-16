@@ -134,6 +134,9 @@ const (
 
 	// NameUpdateQuitHeld is UpdateQuitHeld's name.
 	NameUpdateQuitHeld = "updates:quitHeld"
+
+	// NameKeptRunning is KeptRunning's name.
+	NameKeptRunning = "app:keptRunning"
 )
 
 // Event is something that happened, or was asked for, that another part of the app
@@ -192,6 +195,7 @@ func WindowEvents() []WindowEvent {
 		UpdatesUpdated{},
 		UpdateRestartRequested{},
 		AutopilotUpdated{},
+		KeptRunning{},
 	}
 }
 
@@ -206,10 +210,11 @@ func (InboxUpdated) window() {}
 
 // RevealItem asks for the window to come forward with an item in view, for a click on
 // the item in the menu bar or on its notification, or with the run a notification is about
-// open in Scripts → Runs. A click on a banner also names the notification it stands for,
-// which the window marks read. A request that names no item, URL, run, or notification,
-// such as a click on a banner that stands for many items, only brings the window forward;
-// the frontend is not told.
+// open in Scripts → Runs, or with what an Autopilot notification is about. A click on a
+// banner also names the notification it stands for, which the window marks read. A
+// request that names no item, URL, run, Autopilot target, or notification, such as a click
+// on a banner that stands for many items, only brings the window forward; the frontend is
+// not told.
 type RevealItem struct {
 	// ItemID is the stored item to show, or 0 for none.
 	ItemID int64 `json:"itemId"`
@@ -227,14 +232,45 @@ type RevealItem struct {
 	// NotificationID is the notification a clicked banner stands for, which the window
 	// marks read, or 0 for none: a summary's, a session's, the menu bar's, or a session's
 	// focus. The window marks it only while the log's entry with that ID is about this
-	// item, URL, or run, since the log hands an ID out again once it is cleared.
+	// item, URL, run, or Autopilot target, since the log hands an ID out again once it is
+	// cleared.
 	NotificationID int64 `json:"notificationId"`
+
+	// Autopilot is what an Autopilot notification opens in the Autopilot tab, or the zero
+	// target for none.
+	Autopilot AutopilotTarget `json:"autopilot"`
 }
 
 // Name returns NameRevealItem.
 func (RevealItem) Name() string { return NameRevealItem }
 
+// Named reports whether the request names anything for the window to show or mark: an
+// item, a URL, a run, a notification, or an Autopilot target.
+func (r RevealItem) Named() bool {
+	return r.ItemID != 0 || r.URL != "" || r.RunID != 0 || r.NotificationID != 0 || !r.Autopilot.IsZero()
+}
+
 func (RevealItem) window() {}
+
+// AutopilotTarget is what an Autopilot notification opens in the Autopilot tab: its
+// routine, and the match (its card in Activity) or the agent run (the run view) when it
+// names one. CreatedAt is when the most specific of them was created, as RFC 3339 (the
+// run's, else the match's, else the routine's), which tells it from a later one given its
+// ID, since Clear history hands IDs out again. Activity asks for the tab's Activity, at
+// the matches waiting for the user, as the menu bar's row of them does; no notification
+// names it. The zero target names nothing.
+type AutopilotTarget struct {
+	RoutineID int64  `json:"routineId"`
+	MatchID   int64  `json:"matchId"`
+	RunID     int64  `json:"runId"`
+	CreatedAt string `json:"createdAt"`
+	Activity  bool   `json:"activity"`
+}
+
+// IsZero reports a target that names nothing.
+func (t AutopilotTarget) IsZero() bool {
+	return t.RoutineID == 0 && t.MatchID == 0 && t.RunID == 0 && !t.Activity
+}
 
 // WorktreesUpdated says an automatic worktree sweep removed a worktree or changed how many
 // need attention: the window reads the latest sweep.
@@ -514,6 +550,16 @@ type QuitRequested struct{}
 func (QuitRequested) Name() string { return NameQuitRequested }
 
 func (QuitRequested) window() {}
+
+// KeptRunning says the window shows again after a close only hid it, the menu bar icon
+// off, because Autopilot has a routine on or an agent working: the window says, once, that
+// the app kept running and how to bring it back or quit.
+type KeptRunning struct{}
+
+// Name returns NameKeptRunning.
+func (KeptRunning) Name() string { return NameKeptRunning }
+
+func (KeptRunning) window() {}
 
 // QuitConfirmed says the user chose to stop the runs and quit. The desktop shell hears it,
 // lets the next quit through, and quits; shutdown stops the runs.

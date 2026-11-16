@@ -3,6 +3,9 @@
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
+import * as event$0 from "../event/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
 import * as item$0 from "../item/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
@@ -55,7 +58,7 @@ export interface Notification {
     /**
      * Kind is KindReviewRequested, KindAssigned, KindWoke, one of a release's kinds
      * (KindReleaseDone, KindReleasePublished, or KindReleaseFailed), KindRunFailed,
-     * KindServiceStatus, or KindUpdateReady.
+     * KindServiceStatus, KindUpdateReady, or one of Autopilot's (notifyprefs.AutopilotKinds).
      */
     "kind": notifyprefs$0.Kind;
 
@@ -107,4 +110,17 @@ export interface Notification {
      */
     "runId": number;
     "runStarted": string;
+
+    /**
+     * Heading heads the entry in place of its kind's title, as an Autopilot alert is headed
+     * by its routine's name, or "" for the kind's own.
+     */
+    "heading": string;
+
+    /**
+     * Autopilot is what an Autopilot notification opens in the Autopilot tab, or the zero
+     * target for every other: the window opens it only while the one with its ID was
+     * created at its CreatedAt.
+     */
+    "autopilot": event$0.AutopilotTarget;
 }

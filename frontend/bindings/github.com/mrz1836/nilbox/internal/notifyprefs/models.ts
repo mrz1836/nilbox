@@ -3,11 +3,11 @@
 
 /**
  * Kind is a kind of notification: one of the inbox's kinds of arrival (see
- * inbox.Arrival), a moment an agent session needs the user, or an event about no item,
- * such as a release that reached GitHub, a run that failed, or a service the user watches
- * going down or coming back.
+ * inbox.Arrival), a moment an agent session needs the user, an event about no item, such
+ * as a release that reached GitHub, a run that failed, or a service the user watches
+ * going down or coming back, or one of Autopilot's notices.
  */
-export type Kind = "review_requested" | "assigned" | "woke" | "session_needs_you" | "session_finished" | "release_done" | "release_published" | "release_failed" | "run_failed" | "service_status" | "update_ready";
+export type Kind = "review_requested" | "assigned" | "woke" | "session_needs_you" | "session_finished" | "release_done" | "release_published" | "release_failed" | "run_failed" | "service_status" | "update_ready" | "autopilot_alert" | "autopilot_needs_you" | "autopilot_finished" | "autopilot_checks" | "autopilot_problem";
 
 /**
  * The values of Kind, by the names of their Go constants.
@@ -71,4 +71,33 @@ export const Kind = {
      * only available with Just tell me (see the update package). It is told once per version.
      */
     KindUpdateReady: "update_ready",
+
+    /**
+     * KindAutopilotAlert is a routine's Notify me, or its Tell me, reaching its step: headed
+     * by the routine's name.
+     */
+    KindAutopilotAlert: "autopilot_alert",
+
+    /**
+     * KindAutopilotNeedsYou is a routine's match waiting for the user's decision.
+     */
+    KindAutopilotNeedsYou: "autopilot_needs_you",
+
+    /**
+     * KindAutopilotFinished is a routine's agent run in the background that ended, with
+     * its result.
+     */
+    KindAutopilotFinished: "autopilot_finished",
+
+    /**
+     * KindAutopilotChecks is the verdict on the checks after a routine's fix: they pass, or
+     * still fail.
+     */
+    KindAutopilotChecks: "autopilot_checks",
+
+    /**
+     * KindAutopilotProblem is something wrong with a routine, told once as it starts: a
+     * search GitHub fails, or a routine that won't load. It may be about no item.
+     */
+    KindAutopilotProblem: "autopilot_problem",
 } as const;

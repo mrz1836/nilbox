@@ -59,6 +59,24 @@ type Job struct {
 	// decided (EngineItems.LocalStates): a triage step is a compare-and-set on it, so a
 	// change of the user's in between wins. "" for a step that isn't local.
 	Local string
+
+	// MatchCreated is when the match was recorded, which tells it from a later match
+	// given its ID once Clear history hands IDs out again.
+	MatchCreated time.Time
+
+	// Notices are the routine's own banner switches, over Settings → Notifications'; nil
+	// follows the settings.
+	Notices *spec.Notices
+
+	// Reason says why the match matched, from its decision's trace, for a notice.
+	Reason string
+
+	// Before are the match's steps before this one and how each ended, for Tell me.
+	Before []MatchStep
+
+	// Burst reports a notice that comes with others at once (more than one in a cycle,
+	// or a catch-up's), which the notices gather into one banner past three.
+	Burst bool
 }
 
 // ItemRef names a match's item, as the ledger keeps a copy of it.
@@ -245,9 +263,10 @@ const (
 	ProblemWontLoad     ProblemKind = "wont_load"
 )
 
-// ProblemSink tells the user of a problem, once, as the notifications do.
+// ProblemSink tells the user of a problem, once, as the notifications do: an error leaves
+// it untold, and it is told on a later cycle. NewProblemNotices is the one core registers.
 type ProblemSink interface {
-	Problem(ctx context.Context, routine string, p Problem) error
+	Problem(ctx context.Context, p ProblemNotice) error
 }
 
 // Outcome is what the inbox saw happen to an item: the user finished it, or it closed or

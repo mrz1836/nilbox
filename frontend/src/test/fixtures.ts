@@ -10,6 +10,8 @@ import type {
   AgentVersion,
   ToolVersion,
   AppNotification,
+  AutopilotGlance,
+  AutopilotTarget,
   BudgetGauge,
   BudgetReading,
   BudgetWrites,
@@ -252,8 +254,34 @@ export function notification(overrides: Partial<AppNotification> = {}): AppNotif
     detail: '',
     runId: 0,
     runStarted: '',
+    heading: '',
+    autopilot: autopilotTarget(),
     ...overrides,
   }
+}
+
+// autopilotTarget is what an Autopilot notification opens: nothing, unless overrides say.
+export function autopilotTarget(overrides: Partial<AutopilotTarget> = {}): AutopilotTarget {
+  return { routineId: 0, matchId: 0, runId: 0, createdAt: '', activity: false, ...overrides }
+}
+
+// autopilotAlert is a routine's Notify me about pull request 7 of example-repo, item 1,
+// headed by the routine's name and opening its match.
+export function autopilotAlert(overrides: Partial<AppNotification> = {}): AppNotification {
+  return notification({
+    kind: 'autopilot_alert',
+    heading: 'Tell me about security failures',
+    title: 'Bump golang.org/x/net',
+    author: '',
+    detail: '1 check failed on a1b2c3d; a failed check’s name contains security (Security / gitleaks).',
+    autopilot: autopilotTarget({ routineId: 3, matchId: 12, createdAt: '2026-06-15T11:54:00Z' }),
+    ...overrides,
+  })
+}
+
+// autopilotGlance is Autopilot at a glance: no routine, so the window names none.
+export function autopilotGlance(overrides: Partial<AutopilotGlance> = {}): AutopilotGlance {
+  return { routines: 0, enabled: 0, paused: false, needsYou: 0, working: [], ...overrides }
 }
 
 // project is an issue's place in the roadmap project, with its status there.
@@ -433,6 +461,7 @@ export function settings(overrides: Partial<Settings> = {}): Settings {
     toastSeconds: 12,
     collapsedSections: [],
     projectsTipDismissed: false,
+    keptRunningTold: false,
     reviewTab: 'files',
     notificationsTab: 'app',
     conversationOrder: 'oldest',

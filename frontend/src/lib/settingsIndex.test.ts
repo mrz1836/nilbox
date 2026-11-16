@@ -96,9 +96,17 @@ describe('matchSettings', () => {
   })
 
   it('finds the notification kinds by their switches’ labels and their titles', () => {
-    for (const kind of notificationKinds) {
+    for (const kind of notificationKinds.filter((k) => k.autopilot !== true)) {
       expect(matchSettings(kind.title)?.isMatch('notifications', kind.label)).toBe(true)
     }
+  })
+
+  it('never names Autopilot’s switches, which show only while a routine exists', () => {
+    for (const kind of notificationKinds.filter((k) => k.autopilot === true)) {
+      expect(matchSettings(kind.title)?.isMatch('notifications', kind.label) ?? false).toBe(false)
+    }
+
+    expect(matchSettings('Autopilot')?.isMatch('notifications', 'Routine alerts') ?? false).toBe(false)
   })
 
   it('finds the product by name in About', () => {

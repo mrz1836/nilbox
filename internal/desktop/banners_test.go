@@ -45,6 +45,33 @@ func TestAFailedRunsBannerClickOpensTheRun(t *testing.T) {
 		"handed back through JSON, with when the run started")
 }
 
+func TestAnAutopilotBannersClickCarriesItsTarget(t *testing.T) {
+	t.Parallel()
+
+	target := event.AutopilotTarget{RoutineID: 4, MatchID: 17, CreatedAt: "2026-11-16T09:00:00Z"}
+	banner := notify.Banner{
+		ID: "alert-5", Title: "Tell me about security failures", ItemID: 7, URL: exampleURL,
+		Autopilot: target, NotificationID: 5,
+	}
+
+	encoded, err := json.Marshal(desktop.BannerData(banner))
+	require.NoError(t, err)
+
+	var decoded map[string]any
+	require.NoError(t, json.Unmarshal(encoded, &decoded))
+
+	assert.Equal(t, event.RevealItem{ItemID: 7, URL: exampleURL, NotificationID: 5, Autopilot: target},
+		desktop.BannerClicked(decoded), "handed back through JSON, with when its match was made")
+
+	problem := notify.Banner{ID: "problem-6", Title: "Autopilot problem", Autopilot: event.AutopilotTarget{RoutineID: 4}}
+	assert.Equal(t, event.RevealItem{Autopilot: event.AutopilotTarget{RoutineID: 4}},
+		desktop.BannerClicked(desktop.BannerData(problem)), "a problem about no item opens its routine")
+
+	assert.Equal(t, event.RevealItem{Autopilot: event.AutopilotTarget{RunID: 3}},
+		desktop.BannerClicked(map[string]any{"autopilotRun": float64(3), "autopilotCreated": 9}),
+		"a start that isn't text reads as none")
+}
+
 func TestABannerClickReadsWhatItCan(t *testing.T) {
 	t.Parallel()
 

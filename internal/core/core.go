@@ -177,6 +177,11 @@ type Core struct {
 	// through Autopilot.
 	AutopilotEngine *autopilot.Engine
 
+	// ShellAutopilot is Autopilot as the desktop shell reads it, for the menu bar's
+	// Autopilot group and the window's close, and Pause Autopilot, which the menu's
+	// checkbox row writes through the settings. It is not bound.
+	ShellAutopilot ShellAutopilot
+
 	// ShellSettings are the settings the desktop shell reads when the app launches. They
 	// are not bound.
 	ShellSettings ShellSettings
@@ -731,7 +736,7 @@ func assemble(ctx context.Context, pool *sql.DB, info startup, opts Options, log
 	// carried the searches built just now.
 	engine.engine = newAutopilotEngine(autopilotEngine{
 		store: inboxStore, inbox: inboxSvc, faces: inboxRoutines, tokens: tokens, client: client,
-		lock: opts.Paths.AutopilotLock, events: opts.Events, logger: logger, service: routines,
+		lock: opts.Paths.AutopilotLock, events: opts.Events, logger: logger, service: routines, notices: dispatcher,
 	})
 
 	c := &Core{
@@ -810,6 +815,7 @@ func assemble(ctx context.Context, pool *sql.DB, info startup, opts Options, log
 		Updates:               update.NewService(updateEngine),
 		Autopilot:             routines,
 		AutopilotEngine:       engine.engine,
+		ShellAutopilot:        ShellAutopilot{routines: routines, settings: prefs},
 		UpdateEngine:          updateEngine,
 		UpdateWorker:          updateWorker,
 		tokens:                tokens,

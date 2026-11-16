@@ -21,9 +21,10 @@ var trayIcon []byte
 
 // tray is the menu bar icon: the mark, with how many items need the user beside it, and a
 // menu that opens the window, lists the agent sessions waiting for the user and then the
-// items by list, offers the app's update in a build that updates, refreshes, and quits. A
-// click on a session brings its terminal forward. The shell decides when it shows and what
-// it says; its clicks go back to the shell.
+// items by list, then Autopilot's group while the user has a routine, offers the app's
+// update in a build that updates, refreshes, and quits. A click on a session brings its
+// terminal forward. The shell decides when it shows and what it says; its clicks go back
+// to the shell.
 //
 // Every change runs on the main thread, in the order it was asked for, so its fields
 // need no lock, and the shell never waits for the main thread, which its shutdown can
@@ -116,6 +117,7 @@ func (t *tray) build(sum menubar.Summary) {
 		m.AddSeparator()
 	}
 
+	addAutopilot(m, sum.Autopilot, shell)
 	addUpdates(m, sum.Updates, shell)
 
 	m.Add("Refresh Now").OnClick(func(*application.Context) { shell.RefreshNow() })
@@ -129,6 +131,41 @@ func (t *tray) build(sum menubar.Summary) {
 	m.Add("Quit " + brand.Name).SetAccelerator("CmdOrCtrl+Q").OnClick(func(*application.Context) { shell.Quit() })
 
 	m.Update()
+}
+
+// addAutopilot adds Autopilot's group, while the user has a routine: its heading, each
+// agent run working, which opens the run, how many more run, which opens the window, the
+// matches waiting for the user, which opens Activity, and Pause Autopilot, the menu's
+// checkbox row, ticked while paused, then a separator. Each click goes through the shell;
+// the checkbox's own tick is drawn again from what was stored at the next redraw.
+func addAutopilot(m *application.Menu, group menubar.Autopilot, shell *desktop.Shell) {
+	if !group.Shown {
+		return
+	}
+
+	addSectionHeader(m, menubar.AutopilotTitle)
+
+	for _, w := range group.Working {
+		m.Add(w.Label).SetTooltip(w.Tooltip).OnClick(func(*application.Context) {
+			shell.AutopilotAction(menubar.AutopilotWatch, w)
+		})
+	}
+
+	if group.WorkingMore > 0 {
+		m.Add(menubar.MoreLabel(group.WorkingMore)).OnClick(func(*application.Context) { shell.ShowWindow() })
+	}
+
+	if group.NeedsYou != "" {
+		m.Add(group.NeedsYou).OnClick(func(*application.Context) {
+			shell.AutopilotAction(menubar.AutopilotActivity, menubar.Working{})
+		})
+	}
+
+	m.AddCheckbox(menubar.PauseLabel, group.Paused).OnClick(func(*application.Context) {
+		shell.AutopilotAction(menubar.AutopilotPause, menubar.Working{})
+	})
+
+	m.AddSeparator()
 }
 
 // addUpdates adds the update's rows, Check for Updates… and the version ready, then a
