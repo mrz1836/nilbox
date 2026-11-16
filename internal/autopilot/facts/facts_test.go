@@ -447,6 +447,24 @@ func TestBuildTrust(t *testing.T) {
 			want: facts.StatusKnown, class: "outside",
 		},
 		{name: "someone who may be a trusted bot", mutate: func(r *facts.Row) { r.AuthorType = "" }, want: facts.StatusUnknown},
+		{
+			name:   "a person whose association isn't read",
+			mutate: func(r *facts.Row) { r.Author, r.AuthorType, r.Association = "octo-user", "User", "" },
+			want:   facts.StatusUnknown,
+		},
+		{
+			name:   "a trusted bot whose association isn't read",
+			mutate: func(r *facts.Row) { r.Association = "" }, want: facts.StatusKnown, class: "bot",
+		},
+		{
+			name:   "an untrusted bot whose association isn't read",
+			mutate: func(r *facts.Row) { r.Author, r.Association = "some-app", "" }, want: facts.StatusKnown, class: "outside",
+		},
+		{
+			name:   "a fork's pull request whose association isn't read",
+			mutate: func(r *facts.Row) { r.CrossRepository, r.AuthorType, r.Association = true, "User", "" },
+			want:   facts.StatusKnown, class: "outside",
+		},
 		{name: "a bot not on the list", mutate: func(r *facts.Row) { r.Author = "some-app" }, want: facts.StatusKnown, class: "outside"},
 	}
 

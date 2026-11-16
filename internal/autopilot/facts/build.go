@@ -161,19 +161,27 @@ func (b *builder) lists() []string {
 	return out
 }
 
-// trust classifies the author. One who isn't trusted by association, and whose type
-// isn't read yet, may still be a trusted bot, so isn't known.
+// trust classifies the author. A fork's pull request is an outside contributor's whoever
+// opened it, and a bot is decided by the trusted list; anyone else whose association
+// isn't read yet may be a member, and one not trusted by association whose type isn't
+// read yet may still be a trusted bot, so neither is known.
 func (b *builder) trust() Value {
 	r := b.row
 	isPR := r.Kind == item.KindPR
+	fork := isPR && r.CrossRepository
 	class := b.env.Trust.Classify(trust.Author{Login: r.Author, Type: r.AuthorType, Association: r.Association},
 		isPR, r.CrossRepository)
 
-	if class == trust.ClassOutside && r.AuthorType == "" && (!isPR || !r.CrossRepository) {
+	switch {
+	case fork || r.AuthorType == trust.TypeBot:
+		return Text(string(class))
+	case strings.TrimSpace(r.Association) == "":
+		return Unknown("the author's association isn't read yet, so whether they're a member isn't known", NeedNothing)
+	case class == trust.ClassOutside && r.AuthorType == "":
 		return Unknown(whyAuthorType+", so whether it's a trusted bot isn't known", NeedNothing)
+	default:
+		return Text(string(class))
 	}
-
-	return Text(string(class))
 }
 
 // labels returns the labels, each one line, without repeats ignoring case.
