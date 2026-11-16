@@ -185,7 +185,7 @@ func TestABugReportCountsTheRoutinesAndNamesNone(t *testing.T) {
 	list, err := routines.List(ctx)
 	require.NoError(t, err)
 
-	_, err = routines.SetEnabled(ctx, list[0].ID, true)
+	_, err = routines.SetEnabled(ctx, list[0].ID, true, autopilot.CurrentRun)
 	require.NoError(t, err)
 
 	c := autopilotprefs.Defaults()

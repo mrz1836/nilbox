@@ -1,0 +1,93 @@
+package autopilot
+
+import (
+	"context"
+	"fmt"
+	"time"
+
+	"github.com/mrz1836/nilbox/internal/prefs"
+	"github.com/mrz1836/nilbox/internal/store"
+)
+
+// KeyEngine is the preference that holds the engine's own state, as JSON: when Pause
+// began, the last cycle and the last successful refresh it saw, the fingerprints its first
+// passes ran under, the routines waiting to take what matches now as their baseline, and
+// the problems it found. Only the engine writes it, and only while it holds the lock.
+const KeyEngine = "autopilot.engine"
+
+// engineState is what KeyEngine holds.
+type engineState struct {
+	// PausedSince is when the engine first saw Pause Autopilot on, nil while it is off.
+	PausedSince *time.Time `json:"pausedSince,omitempty"`
+
+	// LastRefresh is the last successful refresh of the inbox the engine saw, so a start
+	// after a long gap asks before it catches up.
+	LastRefresh time.Time `json:"lastRefresh,omitzero"`
+
+	// LastCycle is what the last cycle did.
+	LastCycle *Cycle `json:"lastCycle,omitempty"`
+
+	// FirstPass holds, by routine, the fingerprint of the spec its first pass ran under:
+	// a routine with a GitHub action whose spec has another queues at most FirstCap on its
+	// next cycle.
+	FirstPass map[int64]string `json:"firstPass,omitempty"`
+
+	// FromNow holds the routines whose current matches become their baseline once their
+	// searches were read after Since: the user chose "only what changes from now on".
+	FromNow map[int64]fromNow `json:"fromNow,omitempty"`
+
+	// Problems are the routines' problems as last found.
+	Problems []Problem `json:"problems,omitempty"`
+
+	// LastPrune is when the retention last ran.
+	LastPrune time.Time `json:"lastPrune,omitzero"`
+}
+
+// fromNow is a routine waiting to record what matches now as its baseline.
+type fromNow struct {
+	Since  time.Time `json:"since"`
+	DryRun bool      `json:"dryRun,omitempty"`
+}
+
+// readEngineState reads the engine's state; one never written, or that can't be read, is
+// empty.
+func readEngineState(ctx context.Context, p *prefs.Store) (engineState, error) {
+	raw, ok, err := p.Get(ctx, KeyEngine)
+	if err != nil {
+		return engineState{}, fmt.Errorf("read the engine's state: %w", err)
+	}
+
+	empty := engineState{FirstPass: map[int64]string{}, FromNow: map[int64]fromNow{}}
+	if !ok || raw == "" {
+		return empty, nil
+	}
+
+	st, err := store.DecodeJSON[engineState](raw)
+	if err != nil {
+		return empty, nil //nolint:nilerr // a state that can't be read is started again
+	}
+
+	if st.FirstPass == nil {
+		st.FirstPass = map[int64]string{}
+	}
+
+	if st.FromNow == nil {
+		st.FromNow = map[int64]fromNow{}
+	}
+
+	return st, nil
+}
+
+// writeEngineState keeps st.
+func writeEngineState(ctx context.Context, p *prefs.Store, st engineState) error {
+	raw, err := store.EncodeJSON(st)
+	if err != nil {
+		return err
+	}
+
+	if err = p.Set(ctx, KeyEngine, raw); err != nil {
+		return fmt.Errorf("save the engine's state: %w", err)
+	}
+
+	return nil
+}

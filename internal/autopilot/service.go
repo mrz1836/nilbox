@@ -44,7 +44,7 @@ func (s *Service) Get(ctx context.Context, id int64) (Routine, error) {
 	return routineOf(row, s.view(ctx)), nil
 }
 
-// Save stores d, a new routine when its ID is 0 and otherwise in place of the routine
+// save stores d, a new routine when its ID is 0 and otherwise in place of the routine
 // with its ID, and returns it as stored. Its name must be one no other routine has,
 // ignoring case, and its spec must load: a spec with problems is refused with each one,
 // for the window to show where it is (ProblemsError, the error's detail). A new routine
@@ -53,7 +53,7 @@ func (s *Service) Get(ctx context.Context, id int64) (Routine, error) {
 // its switch, its place, and its template, and its mode unless d names one. A routine with
 // a step this build can't run yet is stored in Dry run, whatever the mode. A routine a
 // newer build wrote can't be saved over.
-func (s *Service) Save(ctx context.Context, d Draft) (Routine, error) {
+func (s *Service) save(ctx context.Context, d Draft) (Routine, error) {
 	saving, err := checkDraft(d)
 	if err != nil {
 		return Routine{}, err
@@ -143,7 +143,7 @@ func (s *Service) insertNew(ctx context.Context, q *queries.Queries, sv saved) (
 
 	id, err := q.InsertRoutine(ctx, queries.InsertRoutineParams{
 		AccountLogin: sv.viewer, Name: sv.name, NameKey: nameKey(sv.name), Description: sv.desc,
-		Mode: string(modeFor(sv.mode, sv.spec)), Spec: sv.data, SpecVersion: int64(sv.spec.Version), TemplateKey: sv.template, SortOrder: int64(len(rows)),
+		Mode: string(s.offers.modeFor(sv.mode, sv.spec)), Spec: sv.data, SpecVersion: int64(sv.spec.Version), TemplateKey: sv.template, SortOrder: int64(len(rows)),
 		CreatedAt: now, UpdatedAt: now,
 	})
 	if err != nil {
@@ -178,7 +178,7 @@ func (s *Service) update(ctx context.Context, q *queries.Queries, id int64, sv s
 
 	n, err := q.UpdateRoutine(ctx, queries.UpdateRoutineParams{
 		AccountLogin: account, Name: sv.name, NameKey: nameKey(sv.name), Description: sv.desc, Enabled: row.Enabled,
-		Mode: string(modeFor(mode, sv.spec)), Spec: sv.data, SpecVersion: int64(sv.spec.Version),
+		Mode: string(s.offers.modeFor(mode, sv.spec)), Spec: sv.data, SpecVersion: int64(sv.spec.Version),
 		EnabledAt: row.EnabledAt, UpdatedAt: s.clock.Now(), ID: id,
 	})
 
@@ -265,9 +265,9 @@ func (s *Service) Duplicate(ctx context.Context, id int64) (Routine, error) {
 	return s.Get(ctx, made)
 }
 
-// SetEnabled switches the routine id on or off, and returns it. A broken routine can't be
+// setEnabled switches the routine id on or off, and returns it. A broken routine can't be
 // switched on; switching on one that is on keeps when it was.
-func (s *Service) SetEnabled(ctx context.Context, id int64, on bool) (Routine, error) {
+func (s *Service) setEnabled(ctx context.Context, id int64, on bool) (Routine, error) {
 	return s.change(ctx, id, func(q *queries.Queries, row queries.AutopilotRoutine) error {
 		if b := load(row.Spec).broken; on && b != nil {
 			return uierr.New(brokenWords(b)+" It can't be switched on.", fmt.Errorf("%w: %w", ErrBroken, b))
@@ -290,9 +290,9 @@ func (s *Service) SetEnabled(ctx context.Context, id int64, on bool) (Routine, e
 	})
 }
 
-// SetMode sets how the routine id acts on a match, and returns it. A broken routine's mode
+// setMode sets how the routine id acts on a match, and returns it. A broken routine's mode
 // can't be changed, and a routine with a step this build can't run yet stays in Dry run.
-func (s *Service) SetMode(ctx context.Context, id int64, mode autopilotprefs.Mode) (Routine, error) {
+func (s *Service) setMode(ctx context.Context, id int64, mode autopilotprefs.Mode) (Routine, error) {
 	if !mode.Valid() {
 		return Routine{}, checkMode(mode)
 	}
@@ -303,7 +303,7 @@ func (s *Service) SetMode(ctx context.Context, id int64, mode autopilotprefs.Mod
 			return uierr.New(brokenWords(l.broken)+" Its mode can't be changed.", fmt.Errorf("%w: %w", ErrBroken, l.broken))
 		}
 
-		if kinds := notOffered(l.spec); len(kinds) > 0 && mode != autopilotprefs.ModeDryRun {
+		if kinds := s.offers.notOffered(l.spec); len(kinds) > 0 && mode != autopilotprefs.ModeDryRun {
 			return dryRunOnlyError(kinds)
 		}
 
@@ -407,6 +407,11 @@ func (s *Service) reorder(ctx context.Context,
 func (s *Service) changed(ctx context.Context) {
 	s.rebuildWatches(ctx)
 
+	if s.engine != nil {
+		s.engine.Wake()
+		s.engine.notify()
+	}
+
 	if s.file == nil || s.store.db == nil {
 		return
 	}
@@ -419,7 +424,7 @@ func (s *Service) changed(ctx context.Context) {
 // view returns what the routines are shown with: the account signed in and the starter
 // prompts' names. One that can't be read is logged, and left out.
 func (s *Service) view(ctx context.Context) view {
-	v := view{viewer: s.viewer(ctx)}
+	v := view{viewer: s.viewer(ctx), offers: s.offers}
 
 	if s.names == nil {
 		return v

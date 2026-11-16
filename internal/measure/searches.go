@@ -160,7 +160,7 @@ func addRoutines(ctx context.Context, routines *autopilot.Service, n int) error 
 			return fmt.Errorf("add the routine for search %d: %w", i+1, err)
 		}
 
-		if _, err = routines.SetEnabled(ctx, saved.ID, true); err != nil {
+		if _, err = routines.SetEnabled(ctx, saved.ID, true, autopilot.CurrentRun); err != nil {
 			return fmt.Errorf("switch on the routine for search %d: %w", i+1, err)
 		}
 	}

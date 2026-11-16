@@ -64,7 +64,7 @@ func (r *rig) on(t *testing.T, name string, s spec.Spec) autopilot.Routine {
 
 	saved := r.save(t, draft(name, s))
 
-	got, err := r.svc.SetEnabled(t.Context(), saved.ID, true)
+	got, err := r.svc.SetEnabled(t.Context(), saved.ID, true, autopilot.CurrentRun)
 	require.NoError(t, err)
 
 	return got
@@ -94,7 +94,7 @@ func TestTheWatchSetHoldsTheEnabledRoutinesSearchesOnce(t *testing.T) {
 	assert.True(t, org.Follow, "one of its routines reads the checks")
 	assert.Equal(t, []int64{fails.ID, appears.ID}, org.Routines)
 
-	_, err := r.svc.SetEnabled(t.Context(), fails.ID, false)
+	_, err := r.svc.SetEnabled(t.Context(), fails.ID, false, autopilot.CurrentRun)
 	require.NoError(t, err)
 
 	set = autopilot.NewSearches(r.svc).Current()

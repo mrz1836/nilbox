@@ -194,7 +194,7 @@ func keptFrom(name, desc, template string, mode autopilotprefs.Mode, raw json.Ra
 	}
 
 	if sp.loads {
-		k.mode = modeFor(k.mode, sp.spec)
+		k.mode = catalogMode(k.mode, sp.spec)
 	}
 
 	return k, true

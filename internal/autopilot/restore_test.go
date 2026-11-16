@@ -28,7 +28,7 @@ func usedRig(t *testing.T) (*rig, string) {
 	r.save(t, draft("Second", agentSpec()))
 	third := r.save(t, draft("Third", notifySpec()))
 
-	_, err := r.svc.SetEnabled(t.Context(), first.ID, true)
+	_, err := r.svc.SetEnabled(t.Context(), first.ID, true, autopilot.CurrentRun)
 	require.NoError(t, err)
 	require.NoError(t, r.svc.Delete(t.Context(), third.ID))
 

@@ -49,6 +49,7 @@ type Paths struct {
 	Prompts        string // the copy of the prompt library kept beside the database
 	LaunchDefaults string // the copy of the launch defaults kept beside the database
 	Autopilot      string // the copy of the Autopilot routines kept beside the database
+	AutopilotLock  string // the lock that lets one copy of the app run Autopilot's engine on this data
 	Backups        string // the copies of the user's setup an import or a reset saves before it changes anything
 	Launch         string // generated launch scripts and prompt files
 	Logs           string // log files
@@ -64,6 +65,7 @@ func NewPaths(root string) Paths {
 		Prompts:        filepath.Join(root, "prompts.json"),
 		LaunchDefaults: filepath.Join(root, "launch-defaults.json"),
 		Autopilot:      filepath.Join(root, "autopilot.json"),
+		AutopilotLock:  filepath.Join(root, "autopilot.lock"),
 		Backups:        filepath.Join(root, "backups"),
 		Launch:         filepath.Join(root, "launch"),
 		Logs:           filepath.Join(root, "logs"),

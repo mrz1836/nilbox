@@ -136,7 +136,7 @@ func TestSaveOverARoutineKeepsItsSwitchPlaceAndTemplate(t *testing.T) {
 	first := r.save(t, autopilot.Draft{Name: firstName, Spec: notifySpec(), TemplateKey: "first"})
 	r.save(t, draft("Second", notifySpec()))
 
-	on, err := r.svc.SetEnabled(t.Context(), first.ID, true)
+	on, err := r.svc.SetEnabled(t.Context(), first.ID, true, autopilot.CurrentRun)
 	require.NoError(t, err)
 
 	changed := notifySpec()
@@ -166,7 +166,7 @@ func TestDeleteIsSoftAndFreesTheName(t *testing.T) {
 	gone := r.save(t, draft("Old", notifySpec()))
 	kept := r.save(t, draft("Kept", notifySpec()))
 
-	_, err := r.svc.SetEnabled(t.Context(), gone.ID, true)
+	_, err := r.svc.SetEnabled(t.Context(), gone.ID, true, autopilot.CurrentRun)
 	require.NoError(t, err)
 	require.NoError(t, r.svc.Delete(t.Context(), gone.ID))
 
@@ -200,7 +200,7 @@ func TestDuplicateMakesAnOffCopyRightAfterIt(t *testing.T) {
 	first := r.save(t, autopilot.Draft{Name: firstName, Description: "The first.", Spec: notifySpec(), TemplateKey: "first"})
 	last := r.save(t, draft("Last", notifySpec()))
 
-	_, err := r.svc.SetEnabled(t.Context(), first.ID, true)
+	_, err := r.svc.SetEnabled(t.Context(), first.ID, true, autopilot.CurrentRun)
 	require.NoError(t, err)
 
 	r.accounts.signIn("other-user")
@@ -230,35 +230,35 @@ func TestSetEnabledAndSetMode(t *testing.T) {
 	r := newRig(t, autopilotprefs.ModeAsk)
 	rt := r.save(t, draft("Notify", notifySpec()))
 
-	on, err := r.svc.SetEnabled(t.Context(), rt.ID, true)
+	on, err := r.svc.SetEnabled(t.Context(), rt.ID, true, autopilot.CurrentRun)
 	require.NoError(t, err)
 	assert.True(t, on.Enabled)
 	require.NotNil(t, on.EnabledAt)
 
-	still, err := r.svc.SetEnabled(t.Context(), rt.ID, true)
+	still, err := r.svc.SetEnabled(t.Context(), rt.ID, true, autopilot.CurrentRun)
 	require.NoError(t, err)
 	assert.Equal(t, on.EnabledAt, still.EnabledAt, "switching on what is on keeps when it was")
 
-	off, err := r.svc.SetEnabled(t.Context(), rt.ID, false)
+	off, err := r.svc.SetEnabled(t.Context(), rt.ID, false, autopilot.CurrentRun)
 	require.NoError(t, err)
 	assert.False(t, off.Enabled)
 	assert.Nil(t, off.EnabledAt)
 
-	dry, err := r.svc.SetMode(t.Context(), rt.ID, autopilotprefs.ModeDryRun)
+	dry, err := r.svc.SetMode(t.Context(), rt.ID, autopilotprefs.ModeDryRun, autopilot.CurrentRun)
 	require.NoError(t, err)
 	assert.Equal(t, autopilotprefs.ModeDryRun, dry.Mode)
 
 	for _, mode := range []autopilotprefs.Mode{autopilotprefs.ModeAsk, autopilotprefs.ModeAuto} {
-		_, err = r.svc.SetMode(t.Context(), rt.ID, mode)
+		_, err = r.svc.SetMode(t.Context(), rt.ID, mode, autopilot.CurrentRun)
 		require.ErrorIs(t, err, autopilot.ErrDryRunOnly, mode)
 		assert.Equal(t, "This routine runs in Dry run for now: this version of "+brand.Name+" can't yet run “Notify me”.",
 			uierr.Message(err))
 	}
 
-	_, err = r.svc.SetMode(t.Context(), rt.ID, "")
+	_, err = r.svc.SetMode(t.Context(), rt.ID, "", autopilot.CurrentRun)
 	require.ErrorIs(t, err, autopilotprefs.ErrUnknownMode)
 
-	_, err = r.svc.SetEnabled(t.Context(), 999, true)
+	_, err = r.svc.SetEnabled(t.Context(), 999, true, autopilot.CurrentRun)
 	require.ErrorIs(t, err, autopilot.ErrNotFound)
 }
 
@@ -341,16 +341,16 @@ func TestASpecFromANewerBuildLoadsAsBrokenAndIsNeverRewritten(t *testing.T) {
 	assert.NotNil(t, broken.Spec.Conditions.Of)
 	assert.NotNil(t, broken.Spec.Steps)
 
-	_, err := r.svc.SetEnabled(t.Context(), id, true)
+	_, err := r.svc.SetEnabled(t.Context(), id, true, autopilot.CurrentRun)
 	require.ErrorIs(t, err, autopilot.ErrBroken)
 
-	_, err = r.svc.SetMode(t.Context(), id, autopilotprefs.ModeDryRun)
+	_, err = r.svc.SetMode(t.Context(), id, autopilotprefs.ModeDryRun, autopilot.CurrentRun)
 	require.ErrorIs(t, err, autopilot.ErrBroken)
 
 	_, err = r.svc.Save(t.Context(), autopilot.Draft{ID: id, Name: "From the future", Spec: notifySpec()})
 	require.ErrorIs(t, err, autopilot.ErrBroken, "a newer build's routine is never saved over")
 
-	_, err = r.svc.SetEnabled(t.Context(), id, false)
+	_, err = r.svc.SetEnabled(t.Context(), id, false, autopilot.CurrentRun)
 	require.NoError(t, err, "it can always be switched off")
 
 	_, err = r.svc.Reorder(t.Context(), []int64{id, fine.ID})
@@ -416,7 +416,7 @@ func TestEveryChangeRewritesTheCopy(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, []string{"First copy", firstName}, copyNames(t, r.file))
 
-	_, err = r.svc.SetEnabled(t.Context(), rt.ID, true)
+	_, err = r.svc.SetEnabled(t.Context(), rt.ID, true, autopilot.CurrentRun)
 	require.NoError(t, err)
 
 	b, err := r.file.Load()

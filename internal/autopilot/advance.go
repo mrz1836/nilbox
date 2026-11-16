@@ -1,0 +1,1072 @@
+package autopilot
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"strconv"
+	"strings"
+	"time"
+
+	"github.com/mrz1836/nilbox/internal/autopilot/catalog"
+	"github.com/mrz1836/nilbox/internal/autopilot/facts"
+	"github.com/mrz1836/nilbox/internal/autopilot/internal/queries"
+	"github.com/mrz1836/nilbox/internal/autopilot/spec"
+	"github.com/mrz1836/nilbox/internal/autopilotprefs"
+	"github.com/mrz1836/nilbox/internal/item"
+	"github.com/mrz1836/nilbox/internal/store"
+	"github.com/mrz1836/nilbox/internal/textutil"
+	"github.com/mrz1836/nilbox/internal/trust"
+)
+
+// A match moves through the steps it started with, one at a time, each starting when the
+// one before it ends. A local step (a notice, the inbox's triage, a notification marked
+// done) runs at once, held back only by Pause Autopilot and the routine's active hours. An
+// agent or GitHub step follows the routine's mode, and goes through every limit, in Go,
+// right before it starts (gate): the user's OK, Pause, the active hours, the tries, the
+// day's counts, the agents at once, the daily cap, the outside contributor rule, a fork's
+// branch, and one run per item; then the item is read fresh from GitHub, on a worker, and
+// the next cycle, which evaluates it on what that read stored, starts it. A worker only
+// reads and dispatches; the loop alone decides and records.
+
+// freshFor is how long an item's read right before a start stands.
+const freshFor = 2 * time.Minute
+
+// fresh is an item read right before a start, with what holds the start back.
+type fresh struct {
+	at     time.Time
+	hold   Blocker
+	detail string
+}
+
+// verdict is what the limits say of a start: go, wait on a blocker, or close.
+type verdict struct {
+	closeAs State
+	reason  Reason
+	block   Blocker
+	words   string
+}
+
+// wait is a verdict that waits on b.
+func wait(b Blocker, words string) verdict { return verdict{block: b, words: words} }
+
+// pass is a verdict that lets a start through.
+func (v verdict) through() bool { return v.closeAs == "" && v.block == "" }
+
+// advance moves m through its steps as far as it can go now: Only if steps that don't
+// hold are skipped, local steps run, and the first agent or GitHub step starts once the
+// limits let it. A match with every step ended closes as done.
+func (p *pass) advance(ctx context.Context, r *routineRun, m *match) {
+	defer p.save(ctx, m)
+
+	for int(m.Step) < len(m.steps) {
+		sr := &m.steps[m.Step]
+
+		if p.stepUnderWay(m, sr) {
+			return
+		}
+
+		if ended(sr) || p.skipStep(m, sr) {
+			m.Step++
+
+			continue
+		}
+
+		p.runStep(ctx, r, m, sr)
+
+		return
+	}
+
+	reason, words := ReasonRan, "It ran."
+	if failedAny(m.steps) {
+		reason, words = ReasonFailed, "It ran, and a step failed."
+	}
+
+	m.close(StateDone, reason, words, p.now)
+}
+
+// stepUnderWay reports a step running now. A step left running by a restart, with nothing
+// under way for it, runs again.
+func (p *pass) stepUnderWay(m *match, sr *stepRun) bool {
+	if sr.Status != stepRunning {
+		return false
+	}
+
+	if m.state().active() || p.e.inflight[m.ID] {
+		return true
+	}
+
+	sr.Status = stepPending
+
+	return false
+}
+
+// ended reports a step that ended: done, skipped, or failed.
+func ended(sr *stepRun) bool {
+	return sr.Status == stepDone || sr.Status == stepSkipped || sr.Status == stepFailed
+}
+
+// skipStep skips a step whose Only if doesn't hold, and reports whether it did.
+func (p *pass) skipStep(m *match, sr *stepRun) bool {
+	if onlyIfHolds(m.steps[:m.Step], sr.Step.OnlyIf) {
+		return false
+	}
+
+	sr.Status, sr.Note = stepSkipped, "Its Only if didn't hold."
+
+	return true
+}
+
+// runStep runs, or starts, m's step sr: a local step at once, Wait for the checks by
+// verifying, and an agent or GitHub step once the limits let it. A step with no part to
+// run it closes the match.
+func (p *pass) runStep(ctx context.Context, r *routineRun, m *match, sr *stepRun) {
+	info, ok := catalog.StepByKind(sr.Step.Kind())
+	if !ok || p.e.dispatchers[info.Dispatcher] == nil && sr.Step.Kind() != catalog.StepWaitForChecks {
+		m.close(StateClosed, ReasonNotOffered, "This version can't run one of its steps yet.", p.now)
+
+		return
+	}
+
+	switch {
+	case info.Local:
+		p.runLocal(ctx, r, m, sr, info)
+	case sr.Step.Kind() == catalog.StepWaitForChecks:
+		p.verify(ctx, r, m, sr)
+	default:
+		p.tryStart(ctx, r, m, sr, info)
+	}
+}
+
+// failedAny reports a step that failed.
+func failedAny(steps []stepRun) bool {
+	for _, s := range steps {
+		if s.Status == stepFailed {
+			return true
+		}
+	}
+
+	return false
+}
+
+// onlyIfHolds reports whether a step's Only if holds on how the steps before it ended:
+// the latest step of the kind the outcome comes from decides.
+func onlyIfHolds(before []stepRun, want catalog.Outcome) bool {
+	if want == "" {
+		return true
+	}
+
+	var from catalog.StepKind
+
+	for _, o := range catalog.Outcomes() {
+		if o.ID == want {
+			from = o.From
+		}
+	}
+
+	for i := len(before) - 1; i >= 0; i-- {
+		if before[i].Step.Kind() == from {
+			return before[i].Outcome == string(want)
+		}
+	}
+
+	return false
+}
+
+// runLocal runs a local step on a worker: held back only by Pause Autopilot and the
+// routine's active hours.
+func (p *pass) runLocal(ctx context.Context, r *routineRun, m *match, sr *stepRun, info catalog.Step) {
+	switch {
+	case p.cfg.Paused:
+		m.wait(BlockPaused, "Autopilot is paused.")
+
+		return
+	case !inActiveHours(r.spec.Limits.ActiveHours, p.now):
+		m.wait(BlockActiveHours, "It waits for the routine's active hours.")
+
+		return
+	}
+
+	job := p.job(r, m, sr)
+	sr.Status, sr.Started = stepRunning, new(p.now)
+
+	m.wait(BlockStarting, "")
+	p.e.dispatch(ctx, m.ID, 0, info.Dispatcher, job)
+}
+
+// verify follows the checks on the commit the agent pushed, through the verify part
+// once it is there; until then the match stays verifying.
+func (p *pass) verify(ctx context.Context, r *routineRun, m *match, sr *stepRun) {
+	m.set(StateVerifying, "", "The checks on its commit haven't finished.")
+
+	sr.Status, sr.Started = stepRunning, new(p.now)
+
+	if p.e.dispatchers[catalog.DispatchVerify] != nil {
+		p.e.dispatch(ctx, m.ID, 0, catalog.DispatchVerify, p.job(r, m, sr))
+	}
+}
+
+// tryStart starts an agent or GitHub step once the limits let it: first the item is read
+// fresh, on a worker; the cycle after that read, which evaluated the item on it, starts it.
+func (p *pass) tryStart(ctx context.Context, r *routineRun, m *match, sr *stepRun, info catalog.Step) {
+	v := p.gate(r, m, sr, info)
+
+	switch {
+	case v.closeAs != "":
+		m.close(v.closeAs, v.reason, v.words, p.now)
+
+		return
+	case v.block != "":
+		m.wait(v.block, v.words)
+
+		return
+	}
+
+	got, read := p.e.freshReads[m.ID]
+	if !read || p.now.Sub(got.at) > freshFor {
+		p.readFresh(ctx, r, m, sr)
+
+		return
+	}
+
+	delete(p.e.freshReads, m.ID)
+
+	if got.hold != "" {
+		m.wait(got.hold, got.detail)
+
+		return
+	}
+
+	p.start(ctx, r, m, sr, info)
+}
+
+// readFresh reads m's item again from GitHub on a worker, and asks what else holds the
+// start back; the next cycle evaluates it on what the read stored.
+func (p *pass) readFresh(ctx context.Context, r *routineRun, m *match, sr *stepRun) {
+	id := store.Deref(m.ItemID)
+	job := p.job(r, m, sr)
+
+	m.wait(BlockStarting, "Reading it again from GitHub before it starts.")
+
+	p.e.inflight[m.ID] = true
+	p.cycle.Reads++
+
+	p.e.goWork(ctx, func(ctx context.Context) {
+		got := fresh{at: p.e.clock.Now()}
+
+		err := p.e.items.ReadItem(ctx, id)
+		if err == nil && p.e.holds != nil {
+			got.hold, got.detail, err = p.e.holds.Hold(ctx, job)
+		}
+
+		p.e.mail.post(func(ctx context.Context) {
+			delete(p.e.inflight, m.ID)
+
+			if err != nil {
+				p.e.logger.InfoContext(ctx, "Autopilot could not read an item before a start", "match", m.ID, "error", err)
+				p.e.requeue(ctx, m.ID, BlockGitHubBudget, "It couldn't be read from GitHub; it tries again soon.")
+
+				return
+			}
+
+			p.e.freshReads[m.ID] = got
+			p.e.requeue(ctx, m.ID, "", "")
+		})
+	})
+}
+
+// requeue puts a match still waiting on its start back in the queue, waiting on b.
+func (e *Engine) requeue(ctx context.Context, id int64, b Blocker, words string) {
+	m, err := e.ledger.get(ctx, id)
+	if err != nil || m.state() != StateQueued {
+		return
+	}
+
+	if b == "" {
+		m.set(StateQueued, "", "")
+	} else {
+		m.wait(b, words)
+	}
+
+	e.save(ctx, m)
+}
+
+// gate checks every limit on a start, in Go, cheapest first, and says whether it goes,
+// waits, or closes. A manual run counts toward no cap or try, and keeps to the active
+// hours of no routine, but waits for a free slot and the daily cap like any other.
+func (p *pass) gate(r *routineRun, m *match, sr *stepRun, info catalog.Step) verdict {
+	agent, github := info.Kind == catalog.StepAgent, info.Kind == catalog.StepGitHub
+	id := store.Deref(m.ItemID)
+
+	for _, check := range []func() verdict{
+		func() verdict { return p.askFirst(r, m) },
+		func() verdict { return p.held(r, m) },
+		func() verdict { return p.limits(r, m, id, agent, github) },
+		func() verdict { return p.room(r, sr, agent) },
+		func() verdict { return p.itemRules(m, id, sr, agent) },
+	} {
+		if v := check(); !v.through() {
+			return v
+		}
+	}
+
+	return verdict{}
+}
+
+// held holds every start, a local step's too, while Autopilot is paused, and outside the
+// routine's active hours, which a manual run keeps to no routine's.
+func (p *pass) held(r *routineRun, m *match) verdict {
+	switch {
+	case p.cfg.Paused:
+		return wait(BlockPaused, "Autopilot is paused.")
+	case !m.Manual && !inActiveHours(r.spec.Limits.ActiveHours, p.now):
+		return wait(BlockActiveHours, "It waits for the routine's active hours.")
+	}
+
+	return verdict{}
+}
+
+// room checks there is room for an agent's run: a free slot, and the daily cap.
+func (p *pass) room(r *routineRun, sr *stepRun, agent bool) verdict {
+	switch {
+	case !agent:
+		return verdict{}
+	case p.counts.activeAgents >= p.cfg.AgentsAtOnce:
+		return wait(BlockSlot, textutil.Counted(p.cfg.AgentsAtOnce, "agent is", "agents are")+" working already.")
+	}
+
+	return p.spend(r, sr.Step.Agent)
+}
+
+// askFirst holds a start for the user's OK: a routine that asks first, and an Autopilot
+// routine's start after a long gap.
+func (p *pass) askFirst(r *routineRun, m *match) verdict {
+	switch {
+	case m.Manual || m.Approved:
+		return verdict{}
+	case r.mode == autopilotprefs.ModeAsk:
+		return wait(BlockAsk, "Waiting for your OK.")
+	case p.catchUp:
+		return wait(BlockCatchUp, "Nothing was read for a while: it waits for your OK before it catches up.")
+	}
+
+	return verdict{}
+}
+
+// limits checks the routine's tries, the day's counts, and the wait between tries, none of
+// which a manual run counts toward.
+func (p *pass) limits(r *routineRun, m *match, id int64, agent, github bool) verdict {
+	if m.Manual {
+		return verdict{}
+	}
+
+	h := p.historyOf(r, id, "")
+	lim := r.spec.Limits
+
+	switch {
+	case h.Tries >= lim.Tries():
+		return verdict{
+			closeAs: StateSkipped, reason: ReasonTries,
+			words: "It gave up: " + textutil.Counted(lim.Tries(), "try", "tries") + " used.",
+		}
+	case p.counts.routineRuns[r.id()] >= lim.Runs():
+		return wait(BlockCapRuns, "The routine ran "+textutil.Counted(lim.Runs(), "time", "times")+" today.")
+	case agent && p.counts.agentRuns >= p.cfg.RunsPerDay:
+		return wait(BlockCapRuns, "Autopilot ran "+textutil.Counted(p.cfg.RunsPerDay, "agent", "agents")+" today.")
+	case github && p.counts.actions >= p.cfg.ActionsPerDay:
+		return wait(BlockCapActions, "Autopilot sent "+
+			textutil.Counted(p.cfg.ActionsPerDay, "GitHub action", "GitHub actions")+" today.")
+	}
+
+	if last := p.lastTry(r.id(), id); !last.IsZero() && p.now.Sub(last) < lim.Wait() {
+		return wait(BlockWait, "It waits "+lim.Wait().String()+" between tries.")
+	}
+
+	return verdict{}
+}
+
+// lastTry returns when the routine's last counted run on the item ended, zero for none.
+func (p *pass) lastTry(routineID, id int64) time.Time {
+	var last time.Time
+
+	for _, run := range p.runs[id] {
+		if run.RoutineID == routineID && countsTry(run) && run.FinishedAt != nil && run.FinishedAt.After(last) {
+			last = *run.FinishedAt
+		}
+	}
+
+	return last
+}
+
+// spend checks the daily cap, and the routine's own, against the run's budget: today's use,
+// plus the budgets of the runs still working, plus this one's, must fit under each. A
+// budget in another unit than a cap's can't be counted against it.
+func (p *pass) spend(r *routineRun, a *spec.AgentStep) verdict {
+	amount, unit := runBudget(a)
+
+	if c := p.cfg.DailyCap; !c.Off() && c.Unit == unit && p.counts.spend[unit]+amount > float64(c.Amount) {
+		return wait(BlockCapSpend, "It would go over today's cap.")
+	}
+
+	if b := r.spec.Limits.BudgetPerDay; b != nil {
+		limit, limitUnit := budgetOf(b)
+		if limitUnit == unit && p.counts.routineSpend[r.id()][unit]+amount > limit {
+			return wait(BlockCapSpend, "It would go over the routine's budget for today.")
+		}
+	}
+
+	return verdict{}
+}
+
+// itemRules checks what the item itself allows: an outside contributor's item, a fork's
+// branch for a run that pushes, and one run on the item at a time.
+func (p *pass) itemRules(m *match, id int64, sr *stepRun, agent bool) verdict {
+	if f, ok := p.facts[id]; ok {
+		if v := outsideRule(f, agent, m.Approved); !v.through() {
+			return v
+		}
+
+		fork := f.Value(catalog.FieldFromFork)
+		if agent && sr.Step.Agent.MayPush() && fork.Known() && fork.Bool {
+			return wait(BlockCrossRepo, "Its branch is in a fork, which a run can't push to.")
+		}
+	}
+
+	if p.counts.activeItems[id] {
+		return wait(BlockBusyWorktree, "Something else runs on it; it starts once that ends.")
+	}
+
+	return verdict{}
+}
+
+// outsideRule holds an outside contributor's item: an agent never runs on one, which
+// closes its match, and a GitHub action waits for the user's OK.
+func outsideRule(f facts.Facts, agent, approved bool) verdict {
+	t := f.Value(catalog.FieldTrust)
+
+	switch {
+	case !t.Known() || t.Text != string(trust.ClassOutside) || approved && !agent:
+		return verdict{}
+	case agent:
+		return verdict{
+			closeAs: StateSkipped, reason: ReasonOutside,
+			words: "An outside contributor's item: its org or repository doesn't allow agents on these.",
+		}
+	}
+
+	return wait(BlockOutside, "An outside contributor's item: it waits for your OK.")
+}
+
+// runBudget returns an agent step's budget per run and its unit.
+func runBudget(a *spec.AgentStep) (float64, autopilotprefs.Unit) {
+	if a != nil && a.Fence != nil && a.Fence.Budget != nil {
+		return budgetOf(a.Fence.Budget)
+	}
+
+	return float64(catalog.DefaultRunCents) / 100, autopilotprefs.UnitUSD
+}
+
+// budgetOf returns a budget's amount and unit.
+func budgetOf(b *spec.Budget) (float64, autopilotprefs.Unit) {
+	if b.Tokens != nil {
+		return float64(*b.Tokens), autopilotprefs.UnitTokens
+	}
+
+	if b.USD != nil {
+		return *b.USD, autopilotprefs.UnitUSD
+	}
+
+	return 0, autopilotprefs.UnitUSD
+}
+
+// inActiveHours reports whether now is within a routine's active hours: always with none.
+// Hours whose end comes before their start run past midnight, from the start's day.
+func inActiveHours(h *spec.ActiveHours, now time.Time) bool {
+	if h == nil {
+		return true
+	}
+
+	from, okFrom := minutesOf(h.From)
+	to, okTo := minutesOf(h.To)
+
+	if !okFrom || !okTo {
+		return true
+	}
+
+	t := now.Hour()*60 + now.Minute()
+	day := weekdayOf(now)
+
+	switch {
+	case from <= to:
+		return onDay(h.Days, day) && t >= from && t < to
+	case t >= from:
+		return onDay(h.Days, day)
+	case t < to:
+		return onDay(h.Days, weekdayOf(now.AddDate(0, 0, -1)))
+	}
+
+	return false
+}
+
+// minutesOf reads "HH:MM" as minutes past midnight.
+func minutesOf(s string) (int, bool) {
+	hh, mm, ok := strings.Cut(s, ":")
+	if !ok {
+		return 0, false
+	}
+
+	h, errH := strconv.Atoi(hh)
+	m, errM := strconv.Atoi(mm)
+
+	return h*60 + m, errH == nil && errM == nil
+}
+
+// weekdayOf names t's day as the catalog does.
+func weekdayOf(t time.Time) catalog.Weekday {
+	return catalog.Weekdays()[(int(t.Weekday())+6)%7]
+}
+
+// onDay reports whether days holds day; no days is every day.
+func onDay(days []catalog.Weekday, day catalog.Weekday) bool {
+	if len(days) == 0 {
+		return true
+	}
+
+	for _, d := range days {
+		if d == day {
+			return true
+		}
+	}
+
+	return false
+}
+
+// job is what a dispatcher is asked to run for m's step.
+func (p *pass) job(r *routineRun, m *match, sr *stepRun) Job {
+	j := Job{
+		MatchID: m.ID, RoutineID: r.id(), RoutineName: r.row.Name, Head: m.HeadOID, Step: sr.Step,
+		Index: int(m.Step), Attempt: int(m.Attempt), Manual: m.Manual,
+		Item: ItemRef{
+			ID: store.Deref(m.ItemID), Kind: item.Kind(m.Kind), Repo: m.RepoOwner + "/" + m.RepoName,
+			Number: int(m.Number), Title: m.Title, URL: m.URL,
+		},
+	}
+
+	if sr.Step.Agent != nil {
+		amount, unit := runBudget(sr.Step.Agent)
+		j.Budget, j.Unit = amount, string(unit)
+	}
+
+	return j
+}
+
+// runnerOf names who runs a step: an agent in the background or the terminal, or the
+// app's own GitHub write.
+func runnerOf(st spec.Step) string {
+	if st.Agent != nil {
+		return string(st.Agent.Place())
+	}
+
+	return "github"
+}
+
+// start records the run, moves m to running, and hands the step to its dispatcher on a
+// worker. The one-active-run index refuses a second active run on the item, which waits.
+func (p *pass) start(ctx context.Context, r *routineRun, m *match, sr *stepRun, info catalog.Step) {
+	job := p.job(r, m, sr)
+	runner := runnerOf(sr.Step)
+
+	params := queries.InsertRunParams{
+		MatchID: m.ID, RoutineID: r.id(), ItemID: m.ItemID, RepoOwner: m.RepoOwner, RepoName: m.RepoName, Kind: m.Kind,
+		Number: m.Number, Title: m.Title, URL: m.URL, Step: m.Step, Runner: runner, Status: runStarting,
+		HeadBefore: m.HeadOID, BudgetReserved: job.Budget, BudgetUnit: job.Unit, Manual: m.Manual,
+		Counted: !m.Manual, QueuedAt: p.now, StartedAt: new(p.now), UpdatedAt: p.now,
+	}
+
+	if sr.Step.Agent != nil {
+		params.Agent, params.Preset = sr.Step.Agent.AgentID(), string(sr.Step.Agent.Tools())
+	}
+
+	if len(sr.Step.GitHub) > 0 {
+		params.GithubAction = string(sr.Step.GitHub[0].Kind())
+	}
+
+	sr.Status, sr.Started = stepRunning, new(p.now)
+
+	m.set(StateRunning, "", "")
+	m.Attempt++
+
+	err := p.e.ledger.inTx(ctx, func(q *queries.Queries) error {
+		id, insertErr := q.InsertRun(ctx, params)
+		if insertErr != nil {
+			return insertErr
+		}
+
+		job.RunID, sr.RunID = id, id
+
+		return p.e.ledger.update(ctx, q, m)
+	})
+	if err != nil {
+		m.AutopilotMatch, m.steps = m.orig, mustSteps(m.origSteps)
+
+		if store.IsUniqueViolation(err) {
+			m.wait(BlockBusyWorktree, "Something else runs on it; it starts once that ends.")
+		} else {
+			p.e.logger.WarnContext(ctx, "Autopilot could not record a run", "match", m.ID, "error", err)
+		}
+
+		return
+	}
+
+	p.cycle.Starts++
+	p.counts.started(r.id(), store.Deref(m.ItemID), runner, job, m.Manual)
+	p.e.dispatch(ctx, m.ID, job.RunID, info.Dispatcher, job)
+}
+
+// mustSteps decodes stored steps, empty when they can't be.
+func mustSteps(raw string) []stepRun {
+	steps, err := store.DecodeJSON[[]stepRun](raw)
+	if err != nil {
+		return []stepRun{}
+	}
+
+	return nonNil(steps)
+}
+
+// The statuses of a run.
+const (
+	runStarting = "starting"
+	runRunning  = "running"
+	runStopping = "stopping"
+	runEnded    = "ended"
+)
+
+// dispatch hands job to the dispatcher d on a worker, and records how it went on the
+// loop.
+func (e *Engine) dispatch(ctx context.Context, matchID, runID int64, d catalog.Dispatcher, job Job) {
+	disp := e.dispatchers[d]
+	e.inflight[matchID] = true
+
+	e.goWork(ctx, func(ctx context.Context) {
+		res, err := disp.Dispatch(ctx, job)
+
+		e.mail.post(func(ctx context.Context) {
+			delete(e.inflight, matchID)
+			e.applyDispatch(ctx, matchID, runID, res, err)
+			e.Wake()
+		})
+	})
+}
+
+// applyDispatch records how a dispatch went: a local step's end, a run that goes on, or a
+// GitHub action sent, not sent, or held for a warning.
+func (e *Engine) applyDispatch(ctx context.Context, matchID, runID int64, res Result, err error) {
+	m, getErr := e.ledger.get(ctx, matchID)
+	if getErr != nil || !m.state().Open() || int(m.Step) >= len(m.steps) {
+		return
+	}
+
+	sr := &m.steps[m.Step]
+	now := e.clock.Now()
+
+	if err != nil {
+		e.dispatchFailed(ctx, m, sr, runID, err, now)
+	} else if !e.dispatchAnswered(ctx, m, sr, runID, res, now) {
+		return
+	}
+
+	e.save(ctx, m)
+}
+
+// dispatchFailed records a dispatch that failed: one the runner refused as it closed
+// stays queued for the next start, and any other fails its step.
+func (e *Engine) dispatchFailed(ctx context.Context, m *match, sr *stepRun, runID int64, err error, now time.Time) {
+	if runID != 0 && errors.Is(err, ErrClosed) {
+		e.endRun(ctx, runID, RunEnd{Outcome: RunInterrupted, Error: err.Error(), EndedAt: now}, false)
+
+		sr.Status, sr.RunID = stepPending, 0
+
+		m.set(StateQueued, "", "")
+
+		return
+	}
+
+	e.endRunIf(ctx, runID, RunEnd{Outcome: RunFailed, Error: err.Error(), EndedAt: now}, true)
+
+	sr.Status, sr.Note, sr.Ended = stepFailed, textutil.Sentence(err.Error()), new(now)
+	m.Step++
+
+	m.set(StateQueued, "", "")
+}
+
+// dispatchAnswered records a dispatch's answer, and reports whether m changed: a run that
+// goes on changes only the run.
+func (e *Engine) dispatchAnswered(ctx context.Context, m *match, sr *stepRun, runID int64, res Result, now time.Time,
+) bool {
+	switch {
+	case res.Running:
+		e.setRunStatus(ctx, runID, runStarting, runRunning)
+
+		return false
+	case res.NotOffered != "":
+		e.endRunIf(ctx, runID, RunEnd{Outcome: RunNotSent, Summary: res.NotOffered, EndedAt: now}, false)
+		m.close(StateClosed, ReasonNotOffered, res.NotOffered, now)
+	case res.Warning != "":
+		e.endRunIf(ctx, runID, RunEnd{Outcome: RunNotSent, Summary: res.Warning, EndedAt: now}, false)
+
+		sr.Status, sr.RunID = stepPending, 0
+		m.Approved = false
+
+		m.wait(BlockWarning, res.Warning)
+	default:
+		outcome := RunDone
+		if runID != 0 && !res.Sent {
+			outcome = RunNotSent
+		}
+
+		e.endRunIf(ctx, runID, RunEnd{Outcome: outcome, Summary: res.Summary, EndedAt: now}, outcome == RunDone)
+
+		sr.Status, sr.Outcome, sr.Note, sr.Ended = stepDone, string(res.Outcome), res.Summary, new(now)
+		m.Step++
+
+		m.set(StateQueued, "", "")
+	}
+
+	return true
+}
+
+// endRunIf ends the run runID, when there is one.
+func (e *Engine) endRunIf(ctx context.Context, runID int64, end RunEnd, counted bool) {
+	if runID != 0 {
+		e.endRun(ctx, runID, end, counted)
+	}
+}
+
+// endRun records how a run ended, while it hadn't.
+func (e *Engine) endRun(ctx context.Context, runID int64, end RunEnd, counted bool) {
+	if end.EndedAt.IsZero() {
+		end.EndedAt = e.clock.Now()
+	}
+
+	_, err := e.ledger.q.EndRun(ctx, queries.EndRunParams{
+		Outcome: string(end.Outcome), RunCommit: end.Commit, HeadAfter: end.Head, Cost: end.Cost,
+		TokensIn: end.TokensIn, TokensOut: end.TokensOut, CacheReadTokens: end.CacheRead, Turns: end.Turns,
+		Summary: end.Summary, Error: end.Error, Counted: counted, FinishedAt: new(end.EndedAt), ID: runID,
+	})
+	if err != nil {
+		e.logger.WarnContext(ctx, "Autopilot could not record a run's end", "run", runID, "error", err)
+	}
+}
+
+// setRunStatus moves a run from one status to the next.
+func (e *Engine) setRunStatus(ctx context.Context, runID int64, was, status string) {
+	_, err := e.ledger.q.SetRunStatus(ctx, queries.SetRunStatusParams{
+		Status: status, UpdatedAt: e.clock.Now(), ID: runID, Was: was,
+	})
+	if err != nil {
+		e.logger.WarnContext(ctx, "Autopilot could not record a run's status", "run", runID, "error", err)
+	}
+}
+
+// applyRunEnd records how a run its runner told of ended, and moves its match on: an
+// interrupted run waits for the user, one stopped closes its match, and one that ended
+// goes on to the next step, verifying when it pushed and the checks are next.
+func (e *Engine) applyRunEnd(ctx context.Context, end RunEnd) {
+	run, err := e.ledger.q.GetRun(ctx, end.RunID)
+	if err != nil || run.Status == runEnded {
+		return
+	}
+
+	forItem := e.stopping[end.RunID]
+	delete(e.stopping, end.RunID)
+
+	if forItem != "" {
+		end.Outcome, end.StoppedForMe = RunStopped, true
+	}
+
+	counted := !run.Manual && end.Outcome != RunInterrupted && !end.StoppedForMe && end.Outcome != RunNotSent
+	e.endRun(ctx, end.RunID, end, counted)
+
+	m, err := e.ledger.get(ctx, run.MatchID)
+	if err != nil || !m.state().Open() || int(run.Step) >= len(m.steps) {
+		return
+	}
+
+	e.moveOn(m, run.Step, end, Reason(forItem), e.clock.Now())
+	e.save(ctx, m)
+	e.Wake()
+}
+
+// moveOn moves m on from its step at index, whose run ended as end says: an interrupted
+// run waits for the user, one stopped closes m, for its item when forItem says why, and
+// one that ended goes on to the next step, verifying when it pushed and the checks are
+// next.
+func (e *Engine) moveOn(m *match, index int64, end RunEnd, forItem Reason, now time.Time) {
+	sr := &m.steps[index]
+	sr.Ended = new(now)
+
+	switch end.Outcome {
+	case RunInterrupted:
+		sr.Status, sr.RunID, sr.Ended = stepPending, 0, nil
+		m.Approved = false
+
+		m.wait(BlockInterrupted, "It was interrupted: run it again?")
+	case RunStopped:
+		if end.StoppedForMe {
+			m.close(StateClosed, forItem, "Stopped: "+stoppedWords(forItem), now)
+		} else {
+			m.close(StateDismissed, ReasonYouStopped, "You stopped it.", now)
+		}
+	case RunFailed, RunNotSent:
+		sr.Status, sr.Outcome, sr.Note = stepFailed, string(catalog.OutcomeNotPushed), textutil.Sentence(end.Error)
+		m.Step = index + 1
+
+		m.set(StateQueued, "", "")
+	case RunDone:
+		sr.Status, sr.Outcome, sr.Note = stepDone, string(catalog.OutcomeNotPushed), end.Summary
+		if end.Commit != "" {
+			sr.Outcome = string(catalog.OutcomePushed)
+		}
+
+		m.Step = index + 1
+
+		m.set(StateQueued, "", "")
+		e.verifyNext(m, now)
+	}
+}
+
+// verifyNext moves a match whose next step to run follows the checks straight to
+// verifying, so the push its run made, which moves its item's head, never closes it as
+// having moved on.
+func (e *Engine) verifyNext(m *match, now time.Time) {
+	for i := int(m.Step); i < len(m.steps); i++ {
+		sr := &m.steps[i]
+		if !onlyIfHolds(m.steps[:i], sr.Step.OnlyIf) {
+			continue
+		}
+
+		if sr.Step.Kind() == catalog.StepWaitForChecks {
+			for j := int(m.Step); j < i; j++ {
+				m.steps[j].Status, m.steps[j].Note = stepSkipped, "Its Only if didn't hold."
+			}
+
+			m.Step = int64(i)
+			sr.Status, sr.Started = stepRunning, new(now)
+
+			m.set(StateVerifying, "", "The checks on its commit haven't finished.")
+		}
+
+		return
+	}
+}
+
+// stoppedWords says why the engine stopped a run.
+func stoppedWords(r Reason) string {
+	if words, ok := map[Reason]string{ReasonMerged: "it was merged.", ReasonItemClosed: "it was closed."}[r]; ok {
+		return words
+	}
+
+	return "the item is gone."
+}
+
+// watchActive stops a running match's run once its item merged, closed, or is gone, and
+// closes a verifying one. An item that left its routine's watch (watched, nil for a
+// routine that no longer runs, says) has its state read first: a search drops what
+// merged.
+func (p *pass) watchActive(ctx context.Context, m *match, watched map[int64]bool) {
+	reason, words, done := p.itemDone(m)
+	if !done {
+		if id := store.Deref(m.ItemID); watched != nil && !watched[id] && !m.Manual {
+			p.readStateOnce(id)
+		}
+
+		return
+	}
+
+	if m.state() == StateVerifying {
+		m.close(StateClosed, reason, words, p.now)
+		p.save(ctx, m)
+
+		return
+	}
+
+	for _, sr := range m.steps {
+		if sr.Status == stepRunning && sr.RunID != 0 && sr.Step.Agent != nil {
+			p.e.stopFor(ctx, sr.RunID, reason)
+		}
+	}
+}
+
+// readStateOnce asks for the state of an item that left a watch, unless it was read
+// lately.
+func (p *pass) readStateOnce(id int64) {
+	if at, read := p.e.stateReads[id]; !read || p.now.Sub(at) > stateReadFor {
+		p.stateReads = append(p.stateReads, id)
+	}
+}
+
+// stopFor stops a run because its item is done with, once.
+func (e *Engine) stopFor(ctx context.Context, runID int64, reason Reason) {
+	if _, asked := e.stopping[runID]; asked || e.runner == nil {
+		return
+	}
+
+	e.stopping[runID] = string(reason)
+	e.setRunStatus(ctx, runID, runRunning, runStopping)
+
+	e.goWork(ctx, func(ctx context.Context) {
+		if err := e.runner.Stop(ctx, runID); err != nil && ctx.Err() == nil {
+			e.logger.WarnContext(ctx, "Autopilot could not stop a run", "run", runID, "error", err)
+		}
+	})
+}
+
+// reconcile checks, once this copy holds the engine, the runs the ledger records as
+// going: one its runner no longer runs, as after a crash, ended interrupted.
+func (e *Engine) reconcile(ctx context.Context) {
+	runs, err := e.ledger.q.ListActiveRuns(ctx)
+	if err != nil || len(runs) == 0 {
+		return
+	}
+
+	e.goWork(ctx, func(ctx context.Context) {
+		for _, run := range runs {
+			if !e.alive(ctx, run) {
+				e.RunEnded(RunEnd{RunID: run.ID, Outcome: RunInterrupted, Error: "the app stopped while it ran"})
+			}
+		}
+	})
+}
+
+// alive reports whether a run the ledger records as going still goes: a GitHub action
+// left from before a restart never does, and a run its runner can't say of is taken as
+// going.
+func (e *Engine) alive(ctx context.Context, run queries.AutopilotRun) bool {
+	if e.runner == nil || run.Runner == "github" {
+		return false
+	}
+
+	alive, err := e.runner.Alive(ctx, run.ID)
+
+	return alive || err != nil
+}
+
+// dayCounts are today's counts against the limits, from local midnight.
+type dayCounts struct {
+	routineRuns  map[int64]int
+	agentRuns    int
+	actions      int
+	activeAgents int
+	activeItems  map[int64]bool
+	spend        map[autopilotprefs.Unit]float64
+	routineSpend map[int64]map[autopilotprefs.Unit]float64
+}
+
+// dayCounts reads today's counts.
+func (e *Engine) dayCounts(ctx context.Context, now time.Time) (dayCounts, error) {
+	out := dayCounts{
+		routineRuns: map[int64]int{}, activeItems: map[int64]bool{}, spend: map[autopilotprefs.Unit]float64{},
+		routineSpend: map[int64]map[autopilotprefs.Unit]float64{},
+	}
+
+	day := dayStart(now)
+
+	rows, err := e.ledger.q.ListRunsSince(ctx, day)
+	if err != nil {
+		return out, fmt.Errorf("read today's runs: %w", err)
+	}
+
+	for _, r := range rows {
+		out.add(r, day)
+	}
+
+	return out, nil
+}
+
+// add counts one of the day's runs.
+func (d *dayCounts) add(r queries.ListRunsSinceRow, day time.Time) {
+	active := r.Status == runStarting || r.Status == runRunning || r.Status == runStopping
+	today := !r.QueuedAt.Before(day)
+
+	if active && r.ItemID != nil {
+		d.activeItems[*r.ItemID] = true
+	}
+
+	if active && r.Runner != "github" {
+		d.activeAgents++
+	}
+
+	if today && !r.Manual {
+		d.countRun(r.RoutineID, r.Runner)
+	}
+
+	d.addSpend(r, active, today)
+}
+
+// countRun counts a run toward the day's counts: its routine's, and the agents' or the
+// GitHub actions'.
+func (d *dayCounts) countRun(routineID int64, runner string) {
+	d.routineRuns[routineID]++
+
+	if runner == "github" {
+		d.actions++
+	} else {
+		d.agentRuns++
+	}
+}
+
+// addSpend adds a run's use to the day's: a run still working by what it reserved, and
+// one ended today by what it reported.
+func (d *dayCounts) addSpend(r queries.ListRunsSinceRow, active, today bool) {
+	add := func(unit autopilotprefs.Unit, amount float64) {
+		d.spend[unit] += amount
+
+		if d.routineSpend[r.RoutineID] == nil {
+			d.routineSpend[r.RoutineID] = map[autopilotprefs.Unit]float64{}
+		}
+
+		d.routineSpend[r.RoutineID][unit] += amount
+	}
+
+	switch {
+	case active:
+		add(autopilotprefs.Unit(r.BudgetUnit), r.BudgetReserved)
+	case today:
+		if r.Cost != nil {
+			add(autopilotprefs.UnitUSD, *r.Cost)
+		}
+
+		add(autopilotprefs.UnitTokens, float64(r.TokensIn+r.TokensOut))
+	}
+}
+
+// started counts a run the cycle just started.
+func (d *dayCounts) started(routineID, itemID int64, runner string, job Job, manual bool) {
+	d.activeItems[itemID] = true
+
+	if runner != "github" {
+		d.activeAgents++
+	}
+
+	if !manual {
+		d.countRun(routineID, runner)
+	}
+
+	if job.Unit != "" {
+		unit := autopilotprefs.Unit(job.Unit)
+		d.spend[unit] += job.Budget
+
+		if d.routineSpend[routineID] == nil {
+			d.routineSpend[routineID] = map[autopilotprefs.Unit]float64{}
+		}
+
+		d.routineSpend[routineID][unit] += job.Budget
+	}
+}
+
+// dayStart returns local midnight of now's day, in now's location.
+func dayStart(now time.Time) time.Time {
+	y, mo, d := now.Date()
+
+	return time.Date(y, mo, d, 0, 0, 0, 0, now.Location())
+}

@@ -98,7 +98,7 @@ func TestImportUnderMergeAddsAndUpdatesAndArrivesOff(t *testing.T) {
 	kept := here.save(t, draft("Kept here", notifySpec()))
 	first := here.save(t, autopilot.Draft{Name: "first", Spec: agentSpec()})
 
-	_, err := here.svc.SetEnabled(t.Context(), first.ID, true)
+	_, err := here.svc.SetEnabled(t.Context(), first.ID, true, autopilot.CurrentRun)
 	require.NoError(t, err)
 
 	plan, count := importInto(t, here, b, backup.ModeMerge)
@@ -136,7 +136,7 @@ func TestImportUnderReplaceMakesTheRoutinesTheFiles(t *testing.T) {
 	here := newRig(t, autopilotprefs.ModeAsk)
 	gone := here.save(t, draft("Only here", notifySpec()))
 	second := here.save(t, draft("Second", notifySpec()))
-	_, err := here.svc.SetEnabled(t.Context(), second.ID, true)
+	_, err := here.svc.SetEnabled(t.Context(), second.ID, true, autopilot.CurrentRun)
 	require.NoError(t, err)
 
 	plan, count := importInto(t, here, b, backup.ModeReplace)

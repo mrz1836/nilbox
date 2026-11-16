@@ -114,6 +114,10 @@ type Config struct {
 	// estimate. Nil estimates a point a request, twelve refreshes an hour.
 	Costs Costs
 
+	// Offers names the kinds of step this build runs; nil is the catalog's own. A test
+	// hands in its own beside fake dispatchers.
+	Offers *Offers
+
 	// Clock stamps the routines. Nil is the system clock.
 	Clock clock.Clock
 
@@ -138,6 +142,11 @@ type Service struct {
 	// and tests the searches a test read lately (test.go).
 	watches watchSet
 	tests   testCache
+
+	// offers are the kinds of step this build runs, and engine the engine that runs the
+	// routines, which the window's actions on the ledger go to; nil until NewEngine.
+	offers *Offers
+	engine *Engine
 }
 
 // NewService returns a Service over cfg.
@@ -148,6 +157,7 @@ func NewService(cfg Config) *Service {
 		store: newRoutineStore(cfg.Pool, clk), prefs: cfg.Prefs, accounts: cfg.Accounts, names: cfg.Names,
 		file: cfg.File, items: cfg.Items, costs: cfg.Costs, clock: clk, logger: logging.Or(cfg.Logger),
 		watches: watchSet{build: make(chan struct{}, 1)}, tests: testCache{read: map[string]cachedSearch{}},
+		offers: cfg.Offers.orCatalog(),
 	}
 }
 
@@ -156,4 +166,20 @@ func NewService(cfg Config) *Service {
 // step's settings, and the limits.
 func (s *Service) Catalog() catalog.Catalog {
 	return catalog.All()
+}
+
+// settings returns Autopilot's settings, the defaults when they can't be read, logged.
+func (s *Service) settings(ctx context.Context) autopilotprefs.Config {
+	if s.prefs == nil {
+		return autopilotprefs.Defaults()
+	}
+
+	c, err := s.prefs.Autopilot(ctx)
+	if err != nil {
+		s.logger.WarnContext(ctx, "could not read Autopilot's settings; using the defaults", "error", err)
+
+		return autopilotprefs.Defaults()
+	}
+
+	return c
 }
