@@ -118,15 +118,9 @@ func (d *Dispatcher) Arrived(ctx context.Context, arrivals []inbox.Arrival) {
 // banner when its kind is on and the user allows banners. A failure is logged: what it
 // tells of has happened anyway.
 func (d *Dispatcher) Notify(ctx context.Context, entry Entry) {
-	row, err := d.store.RecordEvent(ctx, d.clock.Now(), entry)
-	if err != nil {
+	if err := d.Tell(ctx, entry, false); err != nil {
 		d.logger.WarnContext(ctx, "could not record the notification", "kind", string(entry.Kind), "error", err)
-
-		return
 	}
-
-	d.notify()
-	d.show(ctx, []Notification{row})
 }
 
 // Gather records entry, a notification about no item, and tells the window at once, as
@@ -135,15 +129,30 @@ func (d *Dispatcher) Notify(ctx context.Context, entry Entry) {
 // sums them up, as one refresh's arrivals are. A failure to record is logged, and holds
 // nothing.
 func (d *Dispatcher) Gather(ctx context.Context, entry Entry) {
+	if err := d.Tell(ctx, entry, true); err != nil {
+		d.logger.WarnContext(ctx, "could not record the notification", "kind", string(entry.Kind), "error", err)
+	}
+}
+
+// Tell records entry and tells the window, then shows its banner at once, as Notify does,
+// or, with gather, holds it with those gathered meanwhile, as Gather does. It returns the
+// error recording failed with, unlogged, for a caller that tells again what wasn't told, as
+// Autopilot does with a problem; nothing is held then.
+func (d *Dispatcher) Tell(ctx context.Context, entry Entry, gather bool) error {
 	row, err := d.store.RecordEvent(ctx, d.clock.Now(), entry)
 	if err != nil {
-		d.logger.WarnContext(ctx, "could not record the notification", "kind", string(entry.Kind), "error", err)
-
-		return
+		return err
 	}
 
 	d.notify()
-	d.held.add(row)
+
+	if gather {
+		d.held.add(row)
+	} else {
+		d.show(ctx, []Notification{row})
+	}
+
+	return nil
 }
 
 // Close drops the banners Gather holds, and holds none after: the history keeps their

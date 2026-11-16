@@ -74,6 +74,7 @@ func TestEveryEventHasItsOwnName(t *testing.T) {
 		{event.UpdateRestartFailed{}, event.NameUpdateRestartFailed},
 		{event.UpdateQuitHeld{}, event.NameUpdateQuitHeld},
 		{event.QuitKept{}, event.NameQuitKept},
+		{event.KeptRunning{}, event.NameKeptRunning},
 	}
 
 	seen := make(map[string]bool, len(all))
@@ -100,7 +101,7 @@ func TestTheWindowHearsOnlyTheWindowEvents(t *testing.T) {
 		event.NameToolsUpdated, event.NameScriptRunsUpdated, event.NameScriptRunProgress, event.NameQuitRequested,
 		event.NameReleasesUpdated, event.NameReleasesProgress, event.NameHooksUpdated, event.NameWorktreesProgress,
 		event.NameGHThreadsUpdated, event.NameServiceStatusUpdated, event.NameUpdatesUpdated, event.NameUpdateRestartRequested,
-		event.NameAutopilotUpdated,
+		event.NameAutopilotUpdated, event.NameKeptRunning,
 	}, names)
 
 	for _, e := range []event.Event{
@@ -148,17 +149,45 @@ func TestReleasesProgressIsSentAsTheFrontendReadsIt(t *testing.T) {
 func TestRevealItemIsSentAsTheFrontendReadsIt(t *testing.T) {
 	t.Parallel()
 
+	const none = `"autopilot":{"routineId":0,"matchId":0,"runId":0,"createdAt":"","activity":false}`
+
 	data, err := json.Marshal(event.RevealItem{ItemID: 7, URL: "https://github.com/acme-org/example-repo/pull/12"})
 	require.NoError(t, err)
-	assert.JSONEq(t, `{"itemId":7,"url":"https://github.com/acme-org/example-repo/pull/12","runId":0,"runStarted":"","notificationId":0}`, string(data))
+	assert.JSONEq(t, `{"itemId":7,"url":"https://github.com/acme-org/example-repo/pull/12","runId":0,"runStarted":"","notificationId":0,`+none+`}`, string(data))
 
 	data, err = json.Marshal(event.RevealItem{RunID: 42, RunStarted: "2026-11-10T16:00:00Z"})
 	require.NoError(t, err)
-	assert.JSONEq(t, `{"itemId":0,"url":"","runId":42,"runStarted":"2026-11-10T16:00:00Z","notificationId":0}`, string(data), "a failed run's notification opens the run")
+	assert.JSONEq(t, `{"itemId":0,"url":"","runId":42,"runStarted":"2026-11-10T16:00:00Z","notificationId":0,`+none+`}`, string(data), "a failed run's notification opens the run")
 
 	data, err = json.Marshal(event.RevealItem{ItemID: 7, NotificationID: 3})
 	require.NoError(t, err)
-	assert.JSONEq(t, `{"itemId":7,"url":"","runId":0,"runStarted":"","notificationId":3}`, string(data), "a banner's click marks its notification read")
+	assert.JSONEq(t, `{"itemId":7,"url":"","runId":0,"runStarted":"","notificationId":3,`+none+`}`, string(data), "a banner's click marks its notification read")
+
+	data, err = json.Marshal(event.RevealItem{
+		ItemID: 7, NotificationID: 3,
+		Autopilot: event.AutopilotTarget{RoutineID: 2, MatchID: 9, CreatedAt: "2026-11-16T09:00:00Z"},
+	})
+	require.NoError(t, err)
+	assert.JSONEq(t, `{"itemId":7,"url":"","runId":0,"runStarted":"","notificationId":3,`+
+		`"autopilot":{"routineId":2,"matchId":9,"runId":0,"createdAt":"2026-11-16T09:00:00Z","activity":false}}`, string(data),
+		"an Autopilot notification's click carries its target")
+}
+
+func TestARevealNamesSomethingOnlyWithAPartSet(t *testing.T) {
+	t.Parallel()
+
+	assert.False(t, event.RevealItem{}.Named())
+	assert.False(t, event.RevealItem{RunStarted: "2026-11-10T16:00:00Z"}.Named(), "a start alone names no run")
+	assert.True(t, event.RevealItem{ItemID: 1}.Named())
+	assert.True(t, event.RevealItem{URL: "https://github.com/acme-org"}.Named())
+	assert.True(t, event.RevealItem{RunID: 1}.Named())
+	assert.True(t, event.RevealItem{NotificationID: 1}.Named())
+	assert.True(t, event.RevealItem{Autopilot: event.AutopilotTarget{RoutineID: 1}}.Named())
+	assert.True(t, event.AutopilotTarget{}.IsZero())
+	assert.True(t, event.AutopilotTarget{CreatedAt: "2026-11-10T16:00:00Z"}.IsZero(), "a time alone names nothing")
+	assert.False(t, event.AutopilotTarget{MatchID: 1}.IsZero())
+	assert.False(t, event.AutopilotTarget{RunID: 1}.IsZero())
+	assert.False(t, event.AutopilotTarget{Activity: true}.IsZero(), "Activity is somewhere to open")
 }
 
 func TestOrFallsBackToDiscard(t *testing.T) {

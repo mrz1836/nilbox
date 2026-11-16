@@ -16,6 +16,7 @@ func TestKinds(t *testing.T) {
 	assert.Equal(t, []notifyprefs.Kind{
 		"review_requested", "assigned", "woke", "session_needs_you", "session_finished", "release_done",
 		"release_published", "release_failed", "run_failed", "service_status", "update_ready",
+		"autopilot_alert", "autopilot_needs_you", "autopilot_finished", "autopilot_checks", "autopilot_problem",
 	}, notifyprefs.Kinds())
 
 	for _, kind := range notifyprefs.Kinds() {
@@ -24,6 +25,43 @@ func TestKinds(t *testing.T) {
 
 	assert.False(t, notifyprefs.Kind("mentions").Valid())
 	assert.False(t, notifyprefs.Kind("").Valid())
+}
+
+func TestAutopilotKinds(t *testing.T) {
+	t.Parallel()
+
+	assert.Equal(t, []notifyprefs.Kind{
+		notifyprefs.KindAutopilotAlert, notifyprefs.KindAutopilotNeedsYou, notifyprefs.KindAutopilotFinished,
+		notifyprefs.KindAutopilotChecks, notifyprefs.KindAutopilotProblem,
+	}, notifyprefs.AutopilotKinds())
+
+	for _, kind := range notifyprefs.Kinds() {
+		assert.Equal(t, slices.Contains(notifyprefs.AutopilotKinds(), kind), kind.Autopilot(), kind)
+	}
+
+	for _, kind := range notifyprefs.AutopilotKinds() {
+		assert.True(t, kind.DefaultOn(), "%s: Autopilot's banners start on", kind)
+		assert.NotContains(t, notifyprefs.DecodeBannersOff("", ""), kind, "%s: on with nothing stored", kind)
+	}
+}
+
+func TestAnAutopilotBannerTurnsOffAndOnAlone(t *testing.T) {
+	t.Parallel()
+
+	for _, kind := range notifyprefs.AutopilotKinds() {
+		off, err := notifyprefs.SetBanner(nil, kind, false)
+		require.NoError(t, err)
+		assert.Equal(t, []notifyprefs.Kind{kind}, off)
+
+		storedOff, storedOn := notifyprefs.EncodeBanners(off)
+		assert.JSONEq(t, `["`+string(kind)+`"]`, storedOff, "it starts on, so it is listed off")
+		assert.JSONEq(t, `["session_needs_you","session_finished"]`, storedOn)
+		assert.Equal(t, off, notifyprefs.DecodeBannersOff(storedOff, storedOn))
+
+		on, err := notifyprefs.SetBanner(off, kind, true)
+		require.NoError(t, err)
+		assert.Empty(t, on)
+	}
 }
 
 func TestDecodeBannersOff(t *testing.T) {

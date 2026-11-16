@@ -23,9 +23,9 @@ const KeyBannersOff = "notify.bannersOff"
 const KeyBannersOn = "notify.bannersOn"
 
 // Kind is a kind of notification: one of the inbox's kinds of arrival (see
-// inbox.Arrival), a moment an agent session needs the user, or an event about no item,
-// such as a release that reached GitHub, a run that failed, or a service the user watches
-// going down or coming back.
+// inbox.Arrival), a moment an agent session needs the user, an event about no item, such
+// as a release that reached GitHub, a run that failed, or a service the user watches
+// going down or coming back, or one of Autopilot's notices.
 type Kind string
 
 // Kinds of notification.
@@ -64,6 +64,25 @@ const (
 	// KindUpdateReady is a new version of the app, downloaded and ready to restart into, or
 	// only available with Just tell me (see the update package). It is told once per version.
 	KindUpdateReady Kind = "update_ready"
+
+	// KindAutopilotAlert is a routine's Notify me, or its Tell me, reaching its step: headed
+	// by the routine's name.
+	KindAutopilotAlert Kind = "autopilot_alert"
+
+	// KindAutopilotNeedsYou is a routine's match waiting for the user's decision.
+	KindAutopilotNeedsYou Kind = "autopilot_needs_you"
+
+	// KindAutopilotFinished is a routine's agent run in the background that ended, with
+	// its result.
+	KindAutopilotFinished Kind = "autopilot_finished"
+
+	// KindAutopilotChecks is the verdict on the checks after a routine's fix: they pass, or
+	// still fail.
+	KindAutopilotChecks Kind = "autopilot_checks"
+
+	// KindAutopilotProblem is something wrong with a routine, told once as it starts: a
+	// search GitHub fails, or a routine that won't load. It may be about no item.
+	KindAutopilotProblem Kind = "autopilot_problem"
 )
 
 // ErrUnknownKind is returned for a kind of notification that is not one of Kinds.
@@ -74,7 +93,20 @@ func Kinds() []Kind {
 	return []Kind{
 		KindReviewRequested, KindAssigned, KindWoke, KindSessionNeedsYou, KindSessionFinished, KindReleaseDone,
 		KindReleasePublished, KindReleaseFailed, KindRunFailed, KindServiceStatus, KindUpdateReady,
+		KindAutopilotAlert, KindAutopilotNeedsYou, KindAutopilotFinished, KindAutopilotChecks, KindAutopilotProblem,
 	}
+}
+
+// AutopilotKinds returns Autopilot's kinds of notification, in the order of Kinds.
+func AutopilotKinds() []Kind {
+	return []Kind{
+		KindAutopilotAlert, KindAutopilotNeedsYou, KindAutopilotFinished, KindAutopilotChecks, KindAutopilotProblem,
+	}
+}
+
+// Autopilot reports whether k is one of Autopilot's kinds.
+func (k Kind) Autopilot() bool {
+	return slices.Contains(AutopilotKinds(), k)
 }
 
 // Valid reports whether k is one of Kinds.

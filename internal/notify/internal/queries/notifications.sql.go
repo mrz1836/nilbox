@@ -24,26 +24,32 @@ func (q *Queries) ClearNotifications(ctx context.Context) error {
 const insertNotification = `-- name: InsertNotification :one
 INSERT INTO notifications (
     kind, created_at, item_id, item_kind, repo_owner, repo_name, number, title, url, author, detail, run_id,
-    run_started
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    run_started, heading, autopilot_routine, autopilot_match, autopilot_run, autopilot_created
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 RETURNING id, kind, created_at, read_at, item_id, item_kind, repo_owner, repo_name, number, title, url,
-    author, detail, run_id, run_started
+    author, detail, run_id, run_started, heading, autopilot_routine, autopilot_match, autopilot_run,
+    autopilot_created
 `
 
 type InsertNotificationParams struct {
-	Kind       string
-	CreatedAt  time.Time
-	ItemID     *int64
-	ItemKind   string
-	RepoOwner  string
-	RepoName   string
-	Number     int64
-	Title      string
-	URL        string
-	Author     string
-	Detail     string
-	RunID      int64
-	RunStarted string
+	Kind             string
+	CreatedAt        time.Time
+	ItemID           *int64
+	ItemKind         string
+	RepoOwner        string
+	RepoName         string
+	Number           int64
+	Title            string
+	URL              string
+	Author           string
+	Detail           string
+	RunID            int64
+	RunStarted       string
+	Heading          string
+	AutopilotRoutine int64
+	AutopilotMatch   int64
+	AutopilotRun     int64
+	AutopilotCreated string
 }
 
 // InsertNotification stores one notification and returns it as stored, with its id.
@@ -62,6 +68,11 @@ func (q *Queries) InsertNotification(ctx context.Context, arg InsertNotification
 		arg.Detail,
 		arg.RunID,
 		arg.RunStarted,
+		arg.Heading,
+		arg.AutopilotRoutine,
+		arg.AutopilotMatch,
+		arg.AutopilotRun,
+		arg.AutopilotCreated,
 	)
 	var i Notification
 	err := row.Scan(
@@ -80,13 +91,19 @@ func (q *Queries) InsertNotification(ctx context.Context, arg InsertNotification
 		&i.Detail,
 		&i.RunID,
 		&i.RunStarted,
+		&i.Heading,
+		&i.AutopilotRoutine,
+		&i.AutopilotMatch,
+		&i.AutopilotRun,
+		&i.AutopilotCreated,
 	)
 	return i, err
 }
 
 const listNotifications = `-- name: ListNotifications :many
 SELECT id, kind, created_at, read_at, item_id, item_kind, repo_owner, repo_name, number, title, url,
-    author, detail, run_id, run_started
+    author, detail, run_id, run_started, heading, autopilot_routine, autopilot_match, autopilot_run,
+    autopilot_created
 FROM notifications
 ORDER BY created_at DESC, id DESC
 LIMIT ?1
@@ -119,6 +136,11 @@ func (q *Queries) ListNotifications(ctx context.Context, rowLimit int64) ([]Noti
 			&i.Detail,
 			&i.RunID,
 			&i.RunStarted,
+			&i.Heading,
+			&i.AutopilotRoutine,
+			&i.AutopilotMatch,
+			&i.AutopilotRun,
+			&i.AutopilotCreated,
 		); err != nil {
 			return nil, err
 		}

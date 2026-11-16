@@ -12,7 +12,11 @@
 //
 // Some notifications are about no item: a release whose tag reached GitHub, for one, or a
 // run from the Scripts tab that failed, which names the run a click on it opens. The
-// Dispatcher's Notify records such an Entry and shows its banner the same way.
+// Dispatcher's Notify records such an Entry and shows its banner the same way. Autopilot's
+// notices are Entries too, of its own kinds (notifyprefs.AutopilotKinds): about the item a
+// routine matched, or about none for a problem, headed by the routine's name for an alert,
+// and naming what the Autopilot tab opens at (event.AutopilotTarget), with a banner the
+// routine may turn on or off over the settings' switch (Entry.Banner).
 //
 // Service is what the window binds: the log, marking entries read or unread, clearing it,
 // the state of the banners, and a test banner. Opening the history marks nothing: an entry
@@ -24,10 +28,12 @@ package notify
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"time"
 
 	"github.com/mrz1836/nilbox/internal/clock"
+	"github.com/mrz1836/nilbox/internal/event"
 	"github.com/mrz1836/nilbox/internal/inbox"
 	"github.com/mrz1836/nilbox/internal/item"
 	"github.com/mrz1836/nilbox/internal/notify/internal/queries"
@@ -68,6 +74,22 @@ const (
 	// is about no item, and opens nothing: a click brings the window forward, where the
 	// update's banner shows.
 	KindUpdateReady = notifyprefs.KindUpdateReady
+
+	// KindAutopilotAlert is a routine's Notify me, or its Tell me: headed by the routine's
+	// name, about the item it matched.
+	KindAutopilotAlert = notifyprefs.KindAutopilotAlert
+
+	// KindAutopilotNeedsYou is a routine's match waiting for the user's decision.
+	KindAutopilotNeedsYou = notifyprefs.KindAutopilotNeedsYou
+
+	// KindAutopilotFinished is a routine's agent run in the background that ended.
+	KindAutopilotFinished = notifyprefs.KindAutopilotFinished
+
+	// KindAutopilotChecks is the verdict on the checks after a routine's fix.
+	KindAutopilotChecks = notifyprefs.KindAutopilotChecks
+
+	// KindAutopilotProblem is something wrong with a routine, which may be about no item.
+	KindAutopilotProblem = notifyprefs.KindAutopilotProblem
 )
 
 // Keep is how many notifications the log keeps; recording more drops the oldest.
@@ -80,7 +102,7 @@ type Notification struct {
 
 	// Kind is KindReviewRequested, KindAssigned, KindWoke, one of a release's kinds
 	// (KindReleaseDone, KindReleasePublished, or KindReleaseFailed), KindRunFailed,
-	// KindServiceStatus, or KindUpdateReady.
+	// KindServiceStatus, KindUpdateReady, or one of Autopilot's (notifyprefs.AutopilotKinds).
 	Kind notifyprefs.Kind `json:"kind"`
 
 	// CreatedAt is when it was recorded, as RFC 3339.
@@ -117,16 +139,34 @@ type Notification struct {
 	// since the history hands an id out again once it is cleared.
 	RunID      int64  `json:"runId"`
 	RunStarted string `json:"runStarted"`
+
+	// Heading heads the entry in place of its kind's title, as an Autopilot alert is headed
+	// by its routine's name, or "" for the kind's own.
+	Heading string `json:"heading"`
+
+	// Autopilot is what an Autopilot notification opens in the Autopilot tab, or the zero
+	// target for every other: the window opens it only while the one with its ID was
+	// created at its CreatedAt.
+	Autopilot event.AutopilotTarget `json:"autopilot"`
+
+	// banner is the Entry's own choice of banner, which the stored entry doesn't keep: it is
+	// shown, or not, as it is recorded.
+	banner *bool
 }
 
-// Entry is a notification about no item, as a release whose tag reached GitHub or a run
-// that failed: RecordEvent stores it.
+// Entry is a notification recorded on its own rather than as an inbox arrival: one about
+// no item, as a release whose tag reached GitHub or a run that failed, or one of
+// Autopilot's, which may be about an item. RecordEvent stores it.
 type Entry struct {
 	// Kind is the kind of notification, one of notifyprefs.Kinds.
 	Kind notifyprefs.Kind
 
-	// Title is its sentence ("v1.4.3 is on GitHub"), Body what follows it, which may be "",
-	// and URL the page a click on it opens, which may be "".
+	// Heading heads it and its banner in place of its kind's title, as an Autopilot alert
+	// is headed by its routine's name, or "" for the kind's own.
+	Heading string
+
+	// Title is its sentence ("v1.4.3 is on GitHub"), or its item's title, Body what follows
+	// it, which may be "", and URL the page a click on it opens, which may be "".
 	Title string
 	Body  string
 	URL   string
@@ -135,10 +175,27 @@ type Entry struct {
 	RepoOwner string
 	RepoName  string
 
+	// ItemID is the stored item it is about, which a click shows and opening whose sheet
+	// marks it read, or 0 for none; ItemKind and Number name that item ("" and 0 for
+	// none), so its banner says "example-repo #12".
+	ItemID   int64
+	ItemKind item.Kind
+	Number   int
+
 	// RunID is the run it is about, which a click on it opens, or 0 for none, and RunStarted
 	// when that run started, as RFC 3339, which tells it from a later run given its id.
 	RunID      int64
 	RunStarted string
+
+	// Autopilot is what it opens in the Autopilot tab, for one of Autopilot's kinds; the
+	// zero target for none.
+	Autopilot event.AutopilotTarget
+
+	// Banner is its own choice of banner, over Settings → Notifications': true shows one
+	// whatever its kind's switch says, false shows none, and nil follows the switch, as
+	// every entry but an Autopilot routine's does. The user's allowing banners holds either
+	// way.
+	Banner *bool
 }
 
 // Log is the notification history: the newest first, and how many are unread.
@@ -217,38 +274,38 @@ func (s *Store) Record(ctx context.Context, now time.Time, arrivals []inbox.Arri
 	return out, nil
 }
 
-// RecordEvent stores entry, a notification about no item, at now, and drops the oldest
-// past Keep, in one transaction. It returns what it stored, with its id. A kind that isn't
-// one of notifyprefs.Kinds is refused, and nothing is stored.
+// RecordEvent stores entry, a notification recorded on its own, at now, and drops the
+// oldest past Keep, in one transaction. It returns what it stored, with its id. A kind
+// that isn't one of notifyprefs.Kinds, or an item's kind that isn't one, is refused, and
+// nothing is stored. An item no longer stored is recorded without its id, as the log
+// forgets an item that goes, its kind and number kept for the entry's line.
 func (s *Store) RecordEvent(ctx context.Context, now time.Time, entry Entry) (Notification, error) {
 	if !entry.Kind.Valid() {
 		return Notification{}, fmt.Errorf("record the notification: %w %q", notifyprefs.ErrUnknownKind, entry.Kind)
 	}
 
-	var out Notification
+	if entry.ItemKind != "" && !entry.ItemKind.Valid() {
+		return Notification{}, fmt.Errorf("record the notification: %w %q", ErrUnknownItemKind, entry.ItemKind)
+	}
 
-	err := store.InTx(ctx, s.db, func(tx *sql.Tx) error {
-		q := s.q.WithTx(tx)
+	out, err := s.recordEvent(ctx, now, entry)
+	if err != nil && entry.ItemID != 0 && store.IsForeignKeyViolation(err) {
+		entry.ItemID = 0
+		out, err = s.recordEvent(ctx, now, entry)
+	}
 
-		row, err := q.InsertNotification(ctx, queries.InsertNotificationParams{
-			Kind: string(entry.Kind), CreatedAt: now.UTC(), RepoOwner: entry.RepoOwner, RepoName: entry.RepoName,
-			Title: entry.Title, URL: entry.URL, Detail: entry.Body, RunID: entry.RunID,
-			RunStarted: entry.RunStarted,
-		})
-		if err != nil {
-			return err
-		}
-
-		out = fromRow(row)
-
-		return q.TrimNotifications(ctx, s.keep)
-	})
 	if err != nil {
 		return Notification{}, fmt.Errorf("record the notification: %w", err)
 	}
 
+	out.banner = entry.Banner
+
 	return out, nil
 }
+
+// ErrUnknownItemKind is returned for an entry about an item of a kind that is neither a
+// pull request nor an issue.
+var ErrUnknownItemKind = errors.New("unknown kind of item")
 
 // Log returns the stored notifications, newest first, and how many are unread. A
 // notification of a kind this build does not know, as another build may have written, is
@@ -325,6 +382,38 @@ func (s *Store) Clear(ctx context.Context) error {
 	return nil
 }
 
+// recordEvent stores entry at now and trims the log, in one transaction.
+func (s *Store) recordEvent(ctx context.Context, now time.Time, entry Entry) (Notification, error) {
+	var out Notification
+
+	var itemID *int64
+	if entry.ItemID != 0 {
+		itemID = new(entry.ItemID)
+	}
+
+	err := store.InTx(ctx, s.db, func(tx *sql.Tx) error {
+		q := s.q.WithTx(tx)
+
+		row, err := q.InsertNotification(ctx, queries.InsertNotificationParams{
+			Kind: string(entry.Kind), CreatedAt: now.UTC(), ItemID: itemID, ItemKind: string(entry.ItemKind),
+			RepoOwner: entry.RepoOwner, RepoName: entry.RepoName, Number: int64(max(entry.Number, 0)),
+			Title: entry.Title, URL: entry.URL, Detail: entry.Body, RunID: entry.RunID,
+			RunStarted: entry.RunStarted, Heading: entry.Heading, AutopilotRoutine: entry.Autopilot.RoutineID,
+			AutopilotMatch: entry.Autopilot.MatchID, AutopilotRun: entry.Autopilot.RunID,
+			AutopilotCreated: entry.Autopilot.CreatedAt,
+		})
+		if err != nil {
+			return err
+		}
+
+		out = fromRow(row)
+
+		return q.TrimNotifications(ctx, s.keep)
+	})
+
+	return out, err
+}
+
 // fromRow converts a stored notification to the window's.
 func fromRow(r queries.Notification) Notification {
 	var itemID int64
@@ -336,7 +425,10 @@ func fromRow(r queries.Notification) Notification {
 		ID: r.ID, Kind: notifyprefs.Kind(r.Kind), CreatedAt: clock.Format(r.CreatedAt), Read: r.ReadAt != nil,
 		ItemID: itemID, ItemKind: item.Kind(r.ItemKind), Repo: repoName(r.RepoOwner, r.RepoName), Number: int(r.Number),
 		Title: r.Title, URL: r.URL, Author: r.Author, Detail: r.Detail, RunID: r.RunID,
-		RunStarted: r.RunStarted,
+		RunStarted: r.RunStarted, Heading: r.Heading,
+		Autopilot: event.AutopilotTarget{
+			RoutineID: r.AutopilotRoutine, MatchID: r.AutopilotMatch, RunID: r.AutopilotRun, CreatedAt: r.AutopilotCreated,
+		},
 	}
 }
 
