@@ -29,4 +29,5 @@ type Notification struct {
 	AutopilotMatch   int64
 	AutopilotRun     int64
 	AutopilotCreated string
+	OnceKey          string
 }

@@ -205,6 +205,56 @@ func TestANoticeThatCantBeToldFailsItsStep(t *testing.T) {
 	})
 }
 
+func TestANoticeAQuitCutShortIsToldOnce(t *testing.T) {
+	t.Parallel()
+
+	synctest.Test(t, func(t *testing.T) {
+		s, _ := securityRig(t, 1, autopilotprefs.ModeAuto)
+
+		// The notice is recorded, then the app quits before the engine hears it was told.
+		s.Notices.Hold(true)
+		s.World.FailNamed(1, "Security / gitleaks")
+		s.Refresh()
+		require.Len(t, s.Notices.Calls(), 1)
+
+		s.Crash()
+		s.Notices.Hold(false)
+		s.Begin()
+		s.Refresh()
+
+		calls := s.Notices.Calls()
+		require.Len(t, calls, 2, "the step runs again after the quit")
+		assert.Equal(t, calls[0].Key, calls[1].Key, "with the same key")
+		assert.NotEmpty(t, calls[0].Key)
+		assert.Len(t, s.Notices.Told(), 1, "so the user is told once")
+		assert.Equal(t, []sim.Row{row(1, autopilot.StateDone, "", autopilot.ReasonRan, failedOn(1, 1))}, s.Ledger())
+	})
+}
+
+func TestAProblemACrashCutShortIsToldOnce(t *testing.T) {
+	t.Parallel()
+
+	synctest.Test(t, func(t *testing.T) {
+		s, _ := securityRig(t, 1, autopilotprefs.ModeAuto)
+
+		// The problem is told, then the app crashes before the engine saves that it was.
+		s.Notices.Hold(true)
+		s.World.FailSearches(true)
+		s.Refresh()
+		require.Len(t, s.Notices.Calls(), 1)
+
+		s.Crash()
+		s.Notices.Hold(false)
+		s.Begin()
+		s.Advance(10*time.Minute, true)
+
+		calls := s.Notices.Calls()
+		require.Len(t, calls, 2, "it is told again after the crash")
+		assert.Equal(t, calls[0].Key, calls[1].Key, "with the same key, since its start was saved first")
+		assert.Len(t, s.Notices.Told(), 1, "so the user is told once")
+	})
+}
+
 func TestOneProblemOneNotice(t *testing.T) {
 	t.Parallel()
 

@@ -137,10 +137,15 @@ func (d *Dispatcher) Gather(ctx context.Context, entry Entry) {
 // Tell records entry and tells the window, then shows its banner at once, as Notify does,
 // or, with gather, holds it with those gathered meanwhile, as Gather does. It returns the
 // error recording failed with, unlogged, for a caller that tells again what wasn't told, as
-// Autopilot does with a problem; nothing is held then.
+// Autopilot does with a problem; nothing is held then. An entry whose Key the log holds
+// already was told: Tell does nothing, banner included, and returns nil.
 func (d *Dispatcher) Tell(ctx context.Context, entry Entry, gather bool) error {
 	row, err := d.store.RecordEvent(ctx, d.clock.Now(), entry)
-	if err != nil {
+
+	switch {
+	case errors.Is(err, ErrAlreadyTold):
+		return nil
+	case err != nil:
 		return err
 	}
 

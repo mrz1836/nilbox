@@ -13,7 +13,9 @@ import (
 
 // updateProblems works out the routines' problems now (a routine that won't load, a search
 // GitHub fails), keeps when each began, forgets the ones that ended, and tells the user of
-// each new one, once.
+// each new one, once. A problem's start is saved before it is told, since its notice is
+// keyed by it: a crash after the telling tells it again with the same key, which the
+// notifications refuse, never with a later start.
 func (e *Engine) updateProblems(ctx context.Context, p *pass) {
 	found := p.problems()
 	kept := make([]Problem, 0, len(found))
@@ -27,6 +29,15 @@ func (e *Engine) updateProblems(ctx context.Context, p *pass) {
 	}
 
 	e.state.Problems = kept
+
+	if e.problems != nil && slices.ContainsFunc(kept, func(p Problem) bool { return !p.Told }) {
+		if err := writeEngineState(ctx, e.prefs, e.state); err != nil {
+			e.logger.WarnContext(ctx, "could not save Autopilot's problems; telling them on a later cycle", "error", err)
+
+			return
+		}
+	}
+
 	e.tellProblems(ctx, p)
 }
 

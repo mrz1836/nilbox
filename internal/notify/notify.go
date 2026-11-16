@@ -196,7 +196,17 @@ type Entry struct {
 	// every entry but an Autopilot routine's does. The user's allowing banners holds either
 	// way.
 	Banner *bool
+
+	// Key tells it from every other, so the log keeps it once while it holds it: an entry
+	// whose key the log holds already is refused as told (ErrAlreadyTold), and shows no
+	// banner, as Autopilot's step run again after a quit would otherwise tell twice. "" is
+	// never refused.
+	Key string
 }
+
+// ErrAlreadyTold is returned by RecordEvent for an entry whose Key the log holds already:
+// it was told, and nothing is stored.
+var ErrAlreadyTold = errors.New("the notification was told already")
 
 // Log is the notification history: the newest first, and how many are unread.
 type Log struct {
@@ -278,7 +288,8 @@ func (s *Store) Record(ctx context.Context, now time.Time, arrivals []inbox.Arri
 // oldest past Keep, in one transaction. It returns what it stored, with its id. A kind
 // that isn't one of notifyprefs.Kinds, or an item's kind that isn't one, is refused, and
 // nothing is stored. An item no longer stored is recorded without its id, as the log
-// forgets an item that goes, its kind and number kept for the entry's line.
+// forgets an item that goes, its kind and number kept for the entry's line. An entry whose
+// Key the log holds already is refused with ErrAlreadyTold.
 func (s *Store) RecordEvent(ctx context.Context, now time.Time, entry Entry) (Notification, error) {
 	if !entry.Kind.Valid() {
 		return Notification{}, fmt.Errorf("record the notification: %w %q", notifyprefs.ErrUnknownKind, entry.Kind)
@@ -294,7 +305,10 @@ func (s *Store) RecordEvent(ctx context.Context, now time.Time, entry Entry) (No
 		out, err = s.recordEvent(ctx, now, entry)
 	}
 
-	if err != nil {
+	switch {
+	case err != nil && entry.Key != "" && store.IsUniqueViolation(err):
+		return Notification{}, fmt.Errorf("record the notification: %w", ErrAlreadyTold)
+	case err != nil:
 		return Notification{}, fmt.Errorf("record the notification: %w", err)
 	}
 
@@ -400,7 +414,7 @@ func (s *Store) recordEvent(ctx context.Context, now time.Time, entry Entry) (No
 			Title: entry.Title, URL: entry.URL, Detail: entry.Body, RunID: entry.RunID,
 			RunStarted: entry.RunStarted, Heading: entry.Heading, AutopilotRoutine: entry.Autopilot.RoutineID,
 			AutopilotMatch: entry.Autopilot.MatchID, AutopilotRun: entry.Autopilot.RunID,
-			AutopilotCreated: entry.Autopilot.CreatedAt,
+			AutopilotCreated: entry.Autopilot.CreatedAt, OnceKey: entry.Key,
 		})
 		if err != nil {
 			return err

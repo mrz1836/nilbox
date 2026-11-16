@@ -348,33 +348,69 @@ func (d *Dispatcher) Jobs() []autopilot.Job {
 }
 
 // Notices is a fake of the notifications the notices tell (autopilot.NoticeSink): it
-// records each notice, and fails while Fail says so, as a database that refuses a write.
+// records each notice handed over, keeps one of each key as the notifications do (a key
+// told already is told by no one, and no error), fails while Fail says so, as a database
+// that refuses a write, and, while Hold says so, records a notice and then waits for the
+// app to quit, as a quit that cuts short the step that told it.
 type Notices struct {
 	mu      sync.Mutex
+	calls   []autopilot.Notice
 	told    []autopilot.Notice
 	failing error
+	holding bool
 }
 
 // Notice records n, or fails.
-func (n *Notices) Notice(_ context.Context, notice autopilot.Notice) error {
+func (n *Notices) Notice(ctx context.Context, notice autopilot.Notice) error {
 	n.mu.Lock()
-	defer n.mu.Unlock()
 
 	if n.failing != nil {
+		n.mu.Unlock()
+
 		return n.failing
 	}
 
-	n.told = append(n.told, notice)
+	n.calls = append(n.calls, notice)
+
+	if notice.Key == "" || !slices.ContainsFunc(n.told, func(t autopilot.Notice) bool { return t.Key == notice.Key }) {
+		n.told = append(n.told, notice)
+	}
+
+	holding := n.holding
+	n.mu.Unlock()
+
+	if holding {
+		<-ctx.Done()
+
+		return ctx.Err()
+	}
 
 	return nil
 }
 
-// Told returns the notices told, in order.
+// Told returns the notices told, in order, each key once, as the user sees them.
 func (n *Notices) Told() []autopilot.Notice {
 	n.mu.Lock()
 	defer n.mu.Unlock()
 
 	return slices.Clone(n.told)
+}
+
+// Calls returns every notice handed over, in order, a key told again included.
+func (n *Notices) Calls() []autopilot.Notice {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+
+	return slices.Clone(n.calls)
+}
+
+// Hold has every notice wait, once recorded, for the app to quit, or tells them at once
+// again for false.
+func (n *Notices) Hold(hold bool) {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+
+	n.holding = hold
 }
 
 // Fail has every notice fail with err from now on, or be told again for nil.

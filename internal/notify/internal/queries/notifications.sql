@@ -2,11 +2,11 @@
 -- InsertNotification stores one notification and returns it as stored, with its id.
 INSERT INTO notifications (
     kind, created_at, item_id, item_kind, repo_owner, repo_name, number, title, url, author, detail, run_id,
-    run_started, heading, autopilot_routine, autopilot_match, autopilot_run, autopilot_created
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    run_started, heading, autopilot_routine, autopilot_match, autopilot_run, autopilot_created, once_key
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 RETURNING id, kind, created_at, read_at, item_id, item_kind, repo_owner, repo_name, number, title, url,
     author, detail, run_id, run_started, heading, autopilot_routine, autopilot_match, autopilot_run,
-    autopilot_created;
+    autopilot_created, once_key;
 
 -- name: TrimNotifications :exec
 -- TrimNotifications drops every notification but the newest keep. Notifications at the
@@ -20,7 +20,7 @@ DELETE FROM notifications WHERE id NOT IN (
 -- same time come last recorded first.
 SELECT id, kind, created_at, read_at, item_id, item_kind, repo_owner, repo_name, number, title, url,
     author, detail, run_id, run_started, heading, autopilot_routine, autopilot_match, autopilot_run,
-    autopilot_created
+    autopilot_created, once_key
 FROM notifications
 ORDER BY created_at DESC, id DESC
 LIMIT sqlc.arg(row_limit);

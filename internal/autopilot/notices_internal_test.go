@@ -65,7 +65,33 @@ func TestNotifyMeTellsWhyWithTheUsersLine(t *testing.T) {
 		CreatedAt: job.MatchCreated, Item: &job.Item, Title: "Bump golang.org/x/net",
 		Body: "1 check failed on a1b2c3d; a failed check's name contains security (Security / gitleaks). " +
 			"Have a look before lunch.",
+		Key: "autopilot:step:12:2026-11-16T09:00:00Z:0:0",
 	}, h.got[0])
+}
+
+func TestAStepsNoticeKeyNamesItsMatchStepAndTry(t *testing.T) {
+	t.Parallel()
+
+	job := noticeJob()
+	assert.Equal(t, "autopilot:step:12:2026-11-16T09:00:00Z:0:0", alertOf(job).Key)
+
+	again := job
+	assert.Equal(t, alertOf(job).Key, alertOf(again).Key, "a step run again tells the same key")
+
+	for name, change := range map[string]func(j *Job){
+		"another match":             func(j *Job) { j.MatchID = 13 },
+		"a match given the same id": func(j *Job) { j.MatchCreated = j.MatchCreated.Add(time.Hour) },
+		"another step":              func(j *Job) { j.Index = 2 },
+		"another try":               func(j *Job) { j.Attempt = 1 },
+	} {
+		other := noticeJob()
+		change(&other)
+		assert.NotEqual(t, alertOf(job).Key, alertOf(other).Key, name)
+	}
+
+	local := noticeJob()
+	local.MatchCreated = job.MatchCreated.In(time.FixedZone("EST", -5*3600))
+	assert.Equal(t, alertOf(job).Key, alertOf(local).Key, "the same moment, whatever its zone")
 }
 
 func TestTheBannerChoiceIsTheStepsThenTheRoutines(t *testing.T) {
@@ -157,23 +183,35 @@ func TestAProblemIsANoticeAboutNoItem(t *testing.T) {
 
 	h := &heard{}
 	made := time.Date(2026, 11, 1, 8, 0, 0, 0, time.UTC)
+	since := time.Date(2026, 11, 16, 9, 30, 0, 0, time.UTC)
+
+	search := Problem{
+		Key: "3:search_failed:user:octo-user", RoutineID: 3, Kind: ProblemSearchFailed,
+		Detail: "GitHub couldn't answer its search: timeout", Since: since,
+	}
 
 	require.NoError(t, NewProblemNotices(h).Problem(t.Context(), ProblemNotice{
-		Problem: Problem{RoutineID: 3, Kind: ProblemSearchFailed, Detail: "GitHub couldn't answer its search: timeout"},
-		Routine: "Tell me about security failures", RoutineCreated: made, Banner: new(true), Burst: true,
+		Problem: search, Routine: "Tell me about security failures", RoutineCreated: made, Banner: new(true), Burst: true,
 	}))
 	require.NoError(t, NewProblemNotices(h).Problem(t.Context(), ProblemNotice{
-		Problem: Problem{RoutineID: 4, Kind: ProblemWontLoad, Detail: "Made by a newer version"},
+		Problem: Problem{Key: "4:wont_load", RoutineID: 4, Kind: ProblemWontLoad, Detail: "Made by a newer version", Since: since},
 	}))
 
 	assert.Equal(t, []Notice{
 		{
 			Kind: NoticeProblem, RoutineID: 3, Routine: "Tell me about security failures", CreatedAt: made,
 			Title: "Tell me about security failures", Body: "GitHub couldn't answer its search: timeout.",
-			Banner: new(true), Burst: true,
+			Banner: new(true), Burst: true, Key: "autopilot:problem:3:search_failed:user:octo-user:2026-11-16T09:30:00Z",
 		},
-		{Kind: NoticeProblem, RoutineID: 4, Title: "A routine", Body: "Made by a newer version."},
+		{
+			Kind: NoticeProblem, RoutineID: 4, Title: "A routine", Body: "Made by a newer version.",
+			Key: "autopilot:problem:4:wont_load:2026-11-16T09:30:00Z",
+		},
 	}, h.got, "a routine whose name can't be read is still told of")
+
+	later := search
+	later.Since = since.Add(time.Hour)
+	assert.NotEqual(t, problemNoticeKey(search), problemNoticeKey(later), "one that ends and comes back is told again")
 
 	require.ErrorIs(t, NewProblemNotices(nil).Problem(t.Context(), ProblemNotice{}), errNoSink)
 }

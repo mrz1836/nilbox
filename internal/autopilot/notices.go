@@ -3,6 +3,7 @@ package autopilot
 import (
 	"context"
 	"errors"
+	"strconv"
 	"strings"
 	"time"
 
@@ -75,10 +76,18 @@ type Notice struct {
 
 	// Burst reports a notice that comes with others at once, which is gathered.
 	Burst bool
+
+	// Key tells it from every other notice, so it is told once however often it is handed
+	// over: a step's is its match, when the match was made, the step, and the try, and a
+	// problem's its routine, its kind, and when it began. A step run again after a quit, or
+	// a problem told again after a crash, hands over the same key, which the sink refuses
+	// as told.
+	Key string
 }
 
 // NoticeSink tells the user of a notice: core records it in the notifications, and shows
-// its banner. An error says it wasn't told.
+// its banner. An error says it wasn't told; a notice whose key was told already is told
+// again by no one, and is no error.
 type NoticeSink interface {
 	Notice(ctx context.Context, n Notice) error
 }
@@ -124,7 +133,7 @@ func alertOf(job Job) Notice {
 
 	out := Notice{
 		Kind: NoticeAlert, RoutineID: job.RoutineID, Routine: job.RoutineName, MatchID: job.MatchID,
-		CreatedAt: job.MatchCreated, Item: &item, Title: job.Item.Title, Burst: job.Burst,
+		CreatedAt: job.MatchCreated, Item: &item, Title: job.Item.Title, Burst: job.Burst, Key: stepKey(job),
 	}
 
 	if job.Notices != nil {
@@ -147,6 +156,21 @@ func alertOf(job Job) Notice {
 	}
 
 	return out
+}
+
+// stepKey is the key of job's notice: its match, when the match was made (a match ID is
+// handed out again once Clear history removes it), the step, and the try, each written
+// once in the ledger before the step runs, so a step run again tells the same key.
+func stepKey(job Job) string {
+	return "autopilot:step:" + strconv.FormatInt(job.MatchID, 10) + ":" +
+		job.MatchCreated.UTC().Format(time.RFC3339Nano) + ":" + strconv.Itoa(job.Index) + ":" + strconv.Itoa(job.Attempt)
+}
+
+// problemNoticeKey is the key of p's notice: the problem (its routine, its kind, and its search)
+// and when it began, which the engine keeps before it tells it, so a problem told again
+// tells the same key, and one that ends and comes back a new one.
+func problemNoticeKey(p Problem) string {
+	return "autopilot:problem:" + p.Key + ":" + p.Since.UTC().Format(time.RFC3339Nano)
 }
 
 // tellWords says what a Tell me step tells: that the routine reached it, then how each
@@ -288,5 +312,6 @@ func (n problemNotices) Problem(ctx context.Context, p ProblemNotice) error {
 	return n.sink.Notice(ctx, Notice{
 		Kind: NoticeProblem, RoutineID: p.RoutineID, Routine: p.Routine, CreatedAt: p.RoutineCreated,
 		Title: title, Body: textutil.Sentence(p.Detail), Banner: p.Banner, Burst: p.Burst,
+		Key: problemNoticeKey(p.Problem),
 	})
 }

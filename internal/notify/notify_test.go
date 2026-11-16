@@ -246,6 +246,42 @@ func TestAnAutopilotBannerIsHeadedByItsRoutineAndCarriesItsTarget(t *testing.T) 
 	assert.Len(t, f.poster.posted(), 2, "and shows nothing")
 }
 
+func TestAnEntryWithAKeyIsToldOnce(t *testing.T) {
+	t.Parallel()
+
+	f := newFixture(t, 1)
+	d := NewDispatcher(f.config())
+	entry := alertEntry(f.items[0])
+	entry.Key = "autopilot:step:17:2026-03-04T11:59:30Z:0:0"
+
+	require.NoError(t, d.Tell(t.Context(), entry, false))
+	require.NoError(t, d.Tell(t.Context(), entry, false), "told already: no error")
+	require.NoError(t, d.Tell(t.Context(), entry, true), "nor when gathered")
+	d.Gather(t.Context(), entry)
+	d.Notify(t.Context(), entry)
+
+	log, err := NewStore(f.pool).Log(t.Context())
+	require.NoError(t, err)
+	assert.Len(t, log.Items, 1, "one entry")
+	assert.Len(t, f.poster.posted(), 1, "and one banner")
+	assert.Equal(t, 1, f.events.Count(), "the window told once")
+
+	_, err = NewStore(f.pool).RecordEvent(t.Context(), testNow, entry)
+	require.ErrorIs(t, err, ErrAlreadyTold)
+
+	other := entry
+	other.Key = "autopilot:step:17:2026-03-04T11:59:30Z:1:0"
+	require.NoError(t, d.Tell(t.Context(), other, false))
+
+	keyless := alertEntry(f.items[0])
+	require.NoError(t, d.Tell(t.Context(), keyless, false))
+	require.NoError(t, d.Tell(t.Context(), keyless, false))
+
+	log, err = NewStore(f.pool).Log(t.Context())
+	require.NoError(t, err)
+	assert.Len(t, log.Items, 4, "another key, and an entry with none, are never refused")
+}
+
 func TestAnEntrysOwnBannerChoiceOutranksItsKindsSwitch(t *testing.T) {
 	t.Parallel()
 

@@ -57,7 +57,7 @@ func noticeEntry(n autopilot.Notice) (notify.Entry, error) {
 	}
 
 	entry := notify.Entry{
-		Kind: kind, Title: n.Title, Body: n.Body, Banner: n.Banner,
+		Kind: kind, Title: n.Title, Body: n.Body, Banner: n.Banner, Key: n.Key,
 		Autopilot: event.AutopilotTarget{RoutineID: n.RoutineID, MatchID: n.MatchID, RunID: n.RunID},
 	}
 

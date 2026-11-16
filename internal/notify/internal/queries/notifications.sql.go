@@ -24,11 +24,11 @@ func (q *Queries) ClearNotifications(ctx context.Context) error {
 const insertNotification = `-- name: InsertNotification :one
 INSERT INTO notifications (
     kind, created_at, item_id, item_kind, repo_owner, repo_name, number, title, url, author, detail, run_id,
-    run_started, heading, autopilot_routine, autopilot_match, autopilot_run, autopilot_created
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    run_started, heading, autopilot_routine, autopilot_match, autopilot_run, autopilot_created, once_key
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 RETURNING id, kind, created_at, read_at, item_id, item_kind, repo_owner, repo_name, number, title, url,
     author, detail, run_id, run_started, heading, autopilot_routine, autopilot_match, autopilot_run,
-    autopilot_created
+    autopilot_created, once_key
 `
 
 type InsertNotificationParams struct {
@@ -50,6 +50,7 @@ type InsertNotificationParams struct {
 	AutopilotMatch   int64
 	AutopilotRun     int64
 	AutopilotCreated string
+	OnceKey          string
 }
 
 // InsertNotification stores one notification and returns it as stored, with its id.
@@ -73,6 +74,7 @@ func (q *Queries) InsertNotification(ctx context.Context, arg InsertNotification
 		arg.AutopilotMatch,
 		arg.AutopilotRun,
 		arg.AutopilotCreated,
+		arg.OnceKey,
 	)
 	var i Notification
 	err := row.Scan(
@@ -96,6 +98,7 @@ func (q *Queries) InsertNotification(ctx context.Context, arg InsertNotification
 		&i.AutopilotMatch,
 		&i.AutopilotRun,
 		&i.AutopilotCreated,
+		&i.OnceKey,
 	)
 	return i, err
 }
@@ -103,7 +106,7 @@ func (q *Queries) InsertNotification(ctx context.Context, arg InsertNotification
 const listNotifications = `-- name: ListNotifications :many
 SELECT id, kind, created_at, read_at, item_id, item_kind, repo_owner, repo_name, number, title, url,
     author, detail, run_id, run_started, heading, autopilot_routine, autopilot_match, autopilot_run,
-    autopilot_created
+    autopilot_created, once_key
 FROM notifications
 ORDER BY created_at DESC, id DESC
 LIMIT ?1
@@ -141,6 +144,7 @@ func (q *Queries) ListNotifications(ctx context.Context, rowLimit int64) ([]Noti
 			&i.AutopilotMatch,
 			&i.AutopilotRun,
 			&i.AutopilotCreated,
+			&i.OnceKey,
 		); err != nil {
 			return nil, err
 		}

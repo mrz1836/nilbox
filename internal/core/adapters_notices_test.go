@@ -59,6 +59,13 @@ func TestANoticeIsRecordedWithItsItemHeadingAndTarget(t *testing.T) {
 	require.NoError(t, sink.Notice(t.Context(), autopilot.Notice{
 		Kind: autopilot.NoticeProblem, RoutineID: 3, Routine: "Tell me about security failures",
 		Title: "Tell me about security failures", Body: "GitHub couldn't answer its search: timeout.",
+		Key: "autopilot:problem:3:search_failed:2026-11-16T14:00:00Z",
+	}))
+
+	// The same problem handed over again, as after a crash, is told by no one.
+	require.NoError(t, sink.Notice(t.Context(), autopilot.Notice{
+		Kind: autopilot.NoticeProblem, RoutineID: 3, Title: "Tell me about security failures", Body: "Again.",
+		Key: "autopilot:problem:3:search_failed:2026-11-16T14:00:00Z",
 	}))
 
 	log, err := c.Notifications.List(t.Context())

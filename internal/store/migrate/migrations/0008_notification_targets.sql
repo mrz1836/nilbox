@@ -19,3 +19,12 @@ ALTER TABLE notifications ADD COLUMN autopilot_routine INTEGER NOT NULL DEFAULT 
 ALTER TABLE notifications ADD COLUMN autopilot_match INTEGER NOT NULL DEFAULT 0 CHECK (autopilot_match >= 0);
 ALTER TABLE notifications ADD COLUMN autopilot_run INTEGER NOT NULL DEFAULT 0 CHECK (autopilot_run >= 0);
 ALTER TABLE notifications ADD COLUMN autopilot_created TEXT NOT NULL DEFAULT '';
+
+-- once_key tells a notice from every other, so the log keeps it once while it holds it: an
+-- Autopilot step's notice is keyed by its match, when the match was made, the step, and
+-- the try, and a problem by its routine, its kind, and when it began, so a step run again
+-- after a quit, or a problem told again after a crash, adds no second entry and no second
+-- banner. '' for every other notification, which is never refused.
+ALTER TABLE notifications ADD COLUMN once_key TEXT NOT NULL DEFAULT '';
+
+CREATE UNIQUE INDEX notifications_once_key ON notifications (once_key) WHERE once_key <> '';
