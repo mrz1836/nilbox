@@ -296,7 +296,7 @@ func TestGitHubActionsKeepToTheDailyCountAndTheFirstPassCap(t *testing.T) {
 		assert.Equal(t, []string{"done:ran", "queued:cap_actions"}, tally(s))
 		assert.Len(t, s.GitHub.Jobs(), 1)
 
-		s.Sleep(24 * time.Hour)
+		s.Sleep(16 * time.Hour) // 01:00 the next day, well within the catch-up setting
 		s.Refresh()
 		assert.Equal(t, map[int]string{1: "done:ran", 2: "done:ran"}, states(s), "the next day it sends the other")
 	})

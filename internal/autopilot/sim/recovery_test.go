@@ -290,6 +290,7 @@ func TestAStartTheQuitCutsOffStaysQueuedForTheNextStart(t *testing.T) {
 
 		s.Begin()
 		s.Refresh()
+		s.Advance(2*time.Minute, false)
 
 		m := only(t, s)
 		assert.Equal(t, autopilot.StateRunning, m.State, "never interrupted: it went back to the queue, and started again")
@@ -318,7 +319,10 @@ func TestARunItsRunnerCantReportOnIsAskedAgainAndNeverGoesOnForGood(t *testing.T
 		s.Runner.Forget(run)
 		s.Runner.FailAlive(nil)
 		s.Advance(time.Minute, false)
-		assert.Equal(t, autopilot.BlockInterrupted, only(t, s).BlockedBy, "the next tick finds it gone")
+		assert.Equal(t, autopilot.StateRunning, only(t, s).State, "one check finding it gone isn't enough")
+
+		s.Advance(time.Minute, false)
+		assert.Equal(t, autopilot.BlockInterrupted, only(t, s).BlockedBy, "the next tick confirms it gone")
 	})
 }
 
