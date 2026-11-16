@@ -1691,5 +1691,8 @@ Dock icon brings the window back (`ApplicationShouldHandleReopen`). A close hidd
 alone is noted, and the next time the window shows (`showWindow`, every way it comes forward)
 the page hears `event.KeptRunning` (`app:keptRunning`) once, and says why the app kept running,
 once ever (`ui.keptRunningTold`, window memory a backup never holds). Until the Autopilot tab
-exists, a click on an Autopilot notification, banner, or menu row shows a toast that says the
-tab isn't in this version; no one can switch a routine on from the window yet.
+exists, a click on an Autopilot notification or banner about an item opens that item, as an
+inbox arrival's does (`bannerOpens` falls back to the item, `opensAutopilot` is an entry about
+no item alone), and a click on one about no item, as a problem is, or on a menu row of the
+group, shows a toast that says the tab isn't in this version; no one can switch a routine on
+from the window yet.

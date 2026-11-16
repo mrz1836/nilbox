@@ -183,10 +183,11 @@ export function isAutopilotKind(kind: NotificationKind): boolean {
   return autopilotKinds.some((k) => k.kind === kind)
 }
 
-// opensAutopilot reports an entry of Autopilot's, which opens the Autopilot tab at its
-// card, its run, or its routine.
+// opensAutopilot reports an entry of Autopilot's about no item, as a problem is, which
+// opens the Autopilot tab at its routine. Until the tab exists, one about an item opens
+// that item, as an inbox arrival does.
 export function opensAutopilot(entry: AppNotification): boolean {
-  return isAutopilotKind(entry.kind)
+  return isAutopilotKind(entry.kind) && entry.itemKind === ''
 }
 
 // targetNamed reports an Autopilot target that names something to open.
@@ -392,8 +393,9 @@ export type BannerOpen = 'run' | 'update' | 'autopilot' | 'item'
 // that entry's kind (entry, the log's entry with the banner's notification id), while it
 // is the one the banner stood for (bannerEntry); otherwise, as for an entry the log hasn't
 // loaded, or a row of the menu bar's Autopilot group, by what the banner names: a run,
-// something in the Autopilot tab, nothing but its entry (named is whether it names one),
-// as only a new version's banner does, or an item or page.
+// something in the Autopilot tab when it names no item or page, nothing but its entry
+// (named is whether it names one), as only a new version's banner does, or an item or
+// page, an Autopilot banner's included.
 export function bannerOpens(entry: AppNotification | undefined, banner: BannerRef, named: boolean): BannerOpen {
   if (entry !== undefined && bannerEntry(entry, banner)) {
     if (opensRun(entry)) {
@@ -411,7 +413,7 @@ export function bannerOpens(entry: AppNotification | undefined, banner: BannerRe
     return 'run'
   }
 
-  if (targetNamed(banner.autopilot)) {
+  if (targetNamed(banner.autopilot) && banner.itemId <= 0 && banner.url === '') {
     return 'autopilot'
   }
 

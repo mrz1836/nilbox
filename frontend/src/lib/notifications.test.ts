@@ -118,9 +118,11 @@ describe('notifications', () => {
     expect(kindTitle('autopilot_problem')).toBe('Autopilot problem')
   })
 
-  it('opens the Autopilot tab from Autopilot’s entries alone', () => {
-    expect(opensAutopilot(autopilotAlert())).toBe(true)
+  it('opens the Autopilot tab from Autopilot’s entries about no item alone', () => {
     expect(opensAutopilot(notification({ kind: 'autopilot_problem', itemId: 0, itemKind: '' }))).toBe(true)
+    expect(opensAutopilot(autopilotAlert({ itemId: 0, itemKind: '' }))).toBe(true)
+    // One about an item opens that item, as an arrival does, until the tab exists.
+    expect(opensAutopilot(autopilotAlert())).toBe(false)
     expect(opensAutopilot(notification())).toBe(false)
     expect(opensRun(autopilotAlert({ runId: 4 }))).toBe(false)
     expect(targetNamed(nothing)).toBe(false)
@@ -360,6 +362,17 @@ describe('the history’s lists', () => {
     expect(bannerOpens(undefined, { ...banner, autopilot: autopilotTarget({ activity: true }) }, false)).toBe(
       'autopilot',
     )
+  })
+
+  it('opens the item an Autopilot banner is about, the entry it stood for or not', () => {
+    const alert = autopilotAlert()
+    const banner = { itemId: 1, url: alert.url, runId: 0, autopilot: alert.autopilot }
+
+    expect(bannerOpens(alert, banner, true)).toBe('item')
+    // The log hasn’t loaded it.
+    expect(bannerOpens(undefined, banner, true)).toBe('item')
+    // Its item is no longer stored: its page opens.
+    expect(bannerOpens(undefined, { ...banner, itemId: 0 }, true)).toBe('item')
   })
 
   it('marks an Autopilot entry about an item read as that item’s sheet opens', () => {

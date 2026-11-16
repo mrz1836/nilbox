@@ -2119,7 +2119,7 @@ describe('the Notifications page', () => {
       expect(platform.markNotificationsRead).toHaveBeenCalledExactlyOnceWith([6])
     })
 
-    it('marks an Autopilot banner read, and says the Autopilot tab isn’t in this version', async () => {
+    it('marks an Autopilot banner about an item read, and opens that item', async () => {
       const alert = autopilotAlert({ id: 7 })
 
       platform.listNotifications.mockResolvedValue({ items: [alert], unread: 1 })
@@ -2138,6 +2138,36 @@ describe('the Notifications page', () => {
       })
 
       expect(platform.markNotificationsRead).toHaveBeenCalledExactlyOnceWith([7])
+
+      const review = within(await screen.findByRole('region', { name: 'Review requested' }))
+
+      expect(review.getByRole('button', { name: 'Add the widget cache' }).closest('li')).toHaveAttribute(
+        'data-highlighted',
+        'true',
+      )
+      expect(screen.queryByRole('group', { name: 'Notification' })).not.toBeInTheDocument()
+      expect(platform.openExternal).not.toHaveBeenCalled()
+    })
+
+    it('marks an Autopilot problem’s banner read, and says the Autopilot tab isn’t in this version', async () => {
+      const problem = notification({
+        id: 8,
+        kind: 'autopilot_problem',
+        itemId: 0,
+        itemKind: '',
+        number: 0,
+        url: '',
+        title: 'Tell me about security failures',
+        autopilot: autopilotTarget({ routineId: 3 }),
+      })
+
+      platform.listNotifications.mockResolvedValue({ items: [problem], unread: 1 })
+      await renderApp()
+      await screen.findByRole('button', { name: '1 unread notifications' })
+
+      click({ notificationId: 8, autopilot: problem.autopilot })
+
+      expect(platform.markNotificationsRead).toHaveBeenCalledExactlyOnceWith([8])
       expect(
         within(await screen.findByRole('group', { name: 'Notification' })).getByText(/Autopilot tab/),
       ).toBeInTheDocument()
