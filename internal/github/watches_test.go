@@ -2,12 +2,16 @@ package github
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
+	"maps"
 	"net/http"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/stretchr/testify/assert"
@@ -258,6 +262,199 @@ func TestFetchWatchesSendsPacksSideBySide(t *testing.T) {
 
 	joined := strings.Join(queries, "\n")
 	assert.Contains(t, joined, `search(query: "is:pr label:\"a \\\"quoted\\\" one\""`, "the query can't break out of its argument")
+}
+
+// watchNodeJSON is one pull request result of a routine's search, as WatchFields reads it.
+func watchNodeJSON(number int) string {
+	return fmt.Sprintf(`{"__typename":"PullRequest","id":"PR_%d","number":%d,"title":"Bump %d",`+
+		`"url":"https://github.com/acme-org/example-repo/pull/%d","createdAt":"2026-11-01T00:00:00Z",`+
+		`"updatedAt":"2026-11-02T00:00:00Z","isDraft":false,"headRefName":"bump-%d","prState":"OPEN","closedAt":null,`+
+		`"authorAssociation":"NONE","isCrossRepository":false,"author":{"__typename":"Bot","login":"dependabot"},`+
+		`"headRefOid":"abc","baseRefName":"main","statusCheckRollup":{"state":"SUCCESS"},`+
+		`"repository":{"id":"R_1","name":"example-repo","owner":{"login":"acme-org"},"isArchived":false}}`,
+		number, number, number, number, number)
+}
+
+// watchAnswerJSON is a request's answer: each alias's results, by alias, and errors, the
+// raw JSON of GitHub's errors list ("" for none).
+func watchAnswerJSON(results map[string][]int, errs string) string {
+	var b strings.Builder
+
+	b.WriteString(`{"data":{`)
+
+	for _, alias := range slices.Sorted(maps.Keys(results)) {
+		nodes := make([]string, 0, len(results[alias]))
+		for _, n := range results[alias] {
+			nodes = append(nodes, watchNodeJSON(n))
+		}
+
+		fmt.Fprintf(&b, `%q:{"issueCount":%d,"nodes":[%s]},`, alias, len(nodes), strings.Join(nodes, ","))
+	}
+
+	b.WriteString(`"rateLimit":{"cost":1,"limit":5000,"remaining":4990,"used":10,"resetAt":"2026-11-16T06:43:00Z"}}`)
+
+	if errs != "" {
+		b.WriteString(`,"errors":` + errs)
+	}
+
+	b.WriteString(`}`)
+
+	return b.String()
+}
+
+// twoSearches are two searches that share one request.
+func twoSearches() []WatchSearch {
+	return []WatchSearch{
+		{Key: "deps", Query: "is:pr org:acme-org author:app/dependabot", Last: 3},
+		{Key: "chores", Query: "is:pr org:acme-org label:chore", Last: 1},
+	}
+}
+
+func TestFetchWatchesLeavesOutAResultGitHubFailedAlone(t *testing.T) {
+	t.Parallel()
+
+	client := newTestClient(t, func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = io.WriteString(w, watchAnswerJSON(map[string][]int{"w0": {1, 2, 3}, "w1": {4}},
+			`[{"message":"Something went wrong while executing your query.","path":["w0","nodes",1,"author"]}]`))
+	})
+
+	got, err := client.FetchWatches(t.Context(), NewToken(fakeToken), twoSearches())
+	require.NoError(t, err)
+
+	deps := got.Results["deps"]
+	require.NoError(t, deps.Err, "an error about one result never fails its search")
+	assert.Equal(t, []int{1, 3}, numbersOf(deps.Items), "the result it names is left out")
+	assert.True(t, deps.Partial, "so an item missing from the answer may still match")
+
+	chores := got.Results["chores"]
+	require.NoError(t, chores.Err)
+	assert.Equal(t, []int{4}, numbersOf(chores.Items))
+	assert.False(t, chores.Partial, "the other search is whole")
+}
+
+func TestFetchWatchesFailsASearchWhoseResultsGitHubFailed(t *testing.T) {
+	t.Parallel()
+
+	client := newTestClient(t, func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = io.WriteString(w, watchAnswerJSON(map[string][]int{"w0": {1}, "w1": {4}},
+			`[{"message":"Something went wrong while executing your query.","path":["w0","nodes"]}]`))
+	})
+
+	got, err := client.FetchWatches(t.Context(), NewToken(fakeToken), twoSearches())
+	require.NoError(t, err)
+	require.ErrorIs(t, got.Results["deps"].Err, ErrSearchFailed, "an error about its list of results fails the search")
+	require.NoError(t, got.Results["chores"].Err)
+}
+
+func TestFetchWatchesKeepsTheDataBesideAnErrorThatNamesNoSearch(t *testing.T) {
+	t.Parallel()
+
+	client := newTestClient(t, func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = io.WriteString(w, watchAnswerJSON(map[string][]int{"w0": {1, 2}, "w1": {4}},
+			`[{"message":"Something went wrong while executing your query."}]`))
+	})
+
+	got, err := client.FetchWatches(t.Context(), NewToken(fakeToken), twoSearches())
+	require.NoError(t, err)
+
+	for _, key := range []string{"deps", "chores"} {
+		r := got.Results[key]
+		require.NoError(t, r.Err, "the data GitHub sent is read")
+		assert.NotEmpty(t, r.Items)
+		assert.True(t, r.Partial, "but nothing is taken to have left the search")
+	}
+}
+
+func TestFetchWatchesFailsOnlyASearchThatCantBeSent(t *testing.T) {
+	t.Parallel()
+
+	var queries []string
+
+	client := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		queries = append(queries, watchRequest(t, r))
+
+		_, _ = io.WriteString(w, watchAnswerJSON(map[string][]int{"w0": {4}}, ""))
+	})
+
+	got, err := client.FetchWatches(t.Context(), NewToken(fakeToken), []WatchSearch{
+		{Key: "broken", Query: "is:pr label:\xff", Last: 1},
+		{Key: "chores", Query: "is:pr org:acme-org label:chore", Last: 1},
+	})
+	require.NoError(t, err)
+	require.ErrorIs(t, got.Results["broken"].Err, errNotUTF8, "a query that can't be written fails its search alone")
+	assert.NotNil(t, got.Results["broken"].Items)
+	require.NoError(t, got.Results["chores"].Err, "and the search beside it is sent")
+	assert.Equal(t, []int{4}, numbersOf(got.Results["chores"].Items))
+	require.Len(t, queries, 1)
+	assert.Equal(t, 1, strings.Count(queries[0], "search("), "the broken one never goes out")
+}
+
+func TestFetchWatchesHoldsFourRequestsInFlight(t *testing.T) {
+	t.Parallel()
+
+	synctest.Test(t, func(t *testing.T) {
+		held := &heldTransport{release: make(chan struct{})}
+		client := &Client{BaseURL: "https://github.test", UserAgent: testUserAgent, HTTP: &http.Client{Transport: held}}
+
+		searches := make([]WatchSearch, 0, 8)
+		for i := range 8 {
+			searches = append(searches, WatchSearch{Key: fmt.Sprintf("s%d", i), Query: fmt.Sprintf("is:pr org:org-%d", i), Last: NewSearch})
+		}
+
+		done := make(chan *Watches, 1)
+
+		go func() {
+			got, err := client.FetchWatches(t.Context(), NewToken(fakeToken), searches)
+			assert.NoError(t, err)
+
+			done <- got
+		}()
+
+		synctest.Wait()
+		assert.Equal(t, int32(watchParallel), held.inFlight.Load(), "eight new searches, four requests at a time")
+
+		close(held.release)
+
+		got := <-done
+		assert.Equal(t, 8, got.Requests)
+		assert.Equal(t, int32(watchParallel), held.most.Load())
+	})
+}
+
+// heldTransport answers each request in memory, with an empty search, once release is
+// closed, counting the requests in flight and the most there were at once.
+type heldTransport struct {
+	inFlight, most atomic.Int32
+	release        chan struct{}
+}
+
+func (h *heldTransport) RoundTrip(r *http.Request) (*http.Response, error) {
+	n := h.inFlight.Add(1)
+	defer h.inFlight.Add(-1)
+
+	for old := h.most.Load(); n > old && !h.most.CompareAndSwap(old, n); old = h.most.Load() {
+	}
+
+	select {
+	case <-h.release:
+	case <-r.Context().Done():
+		return nil, r.Context().Err()
+	}
+
+	return &http.Response{
+		StatusCode: http.StatusOK, Header: http.Header{"Content-Type": {"application/json"}}, Request: r,
+		Body: io.NopCloser(strings.NewReader(watchAnswerJSON(map[string][]int{"w0": {}}, ""))),
+	}, nil
+}
+
+// numbersOf returns the items' numbers, in order.
+func numbersOf(items []WatchItem) []int {
+	out := make([]int, 0, len(items))
+	for _, it := range items {
+		out = append(out, it.Number)
+	}
+
+	return out
 }
 
 func TestWatchRequestsCountsThePacks(t *testing.T) {

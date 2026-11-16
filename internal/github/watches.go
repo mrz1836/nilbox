@@ -114,9 +114,14 @@ type WatchResult struct {
 	// Items are the pull requests and issues it returned, most recently updated first.
 	Items []WatchItem
 
-	// Err is why the search has no answer: the request it was in failed, or GitHub failed
-	// it alone. Items is empty then.
+	// Err is why the search has no answer: the request it was in failed, GitHub failed it
+	// alone, or its query can't be sent. Items is empty then.
 	Err error
+
+	// Partial reports an answer GitHub couldn't read in full: a result it failed alone is
+	// left out of Items, or it sent an error that names no search, so an item missing from
+	// Items may still match.
+	Partial bool
 }
 
 // Truncated reports a search that matched more than the page it returned: the items past
@@ -142,10 +147,12 @@ type WatchItem struct {
 
 // FetchWatches sends the routines' searches, packed into requests sent side by side (see
 // watchPackResults), each search under its own alias. A request that fails, as with a
-// 502's HTML answer or GitHub's errors with no data, fails each of its searches, and an
-// error about one alias fails that search alone: each one's error is in its result, and
-// the others carry on. It returns an error only when the token was refused, so the caller
-// can borrow a fresh one, or ctx ended.
+// 502's HTML answer or GitHub's errors with no data, fails each of its searches; an error
+// about one alias, or its list of results, fails that search alone; an error about one
+// result leaves that result out, and its search Partial; and a query that can't be sent
+// fails its search before anything is. Each one's error is in its result, and the others
+// carry on. It returns an error only when the token was refused, so the caller can borrow
+// a fresh one, or ctx ended.
 func (c *Client) FetchWatches(ctx context.Context, tok Token, searches []WatchSearch) (*Watches, error) {
 	watches, err := c.fetchWatches(ctx, tok, searches)
 
@@ -154,8 +161,9 @@ func (c *Client) FetchWatches(ctx context.Context, tok Token, searches []WatchSe
 
 // fetchWatches sends each pack on its own goroutine and gathers their answers.
 func (c *Client) fetchWatches(ctx context.Context, tok Token, searches []WatchSearch) (*Watches, error) {
-	packs := packWatches(searches)
-	answers := make([]*watchAnswer, len(packs))
+	sendable, refused := encodable(searches)
+	packs := packWatches(sendable)
+	answers := make([]*watchAnswer, len(packs), len(packs)+1)
 
 	var g errgroup.Group
 
@@ -177,7 +185,7 @@ func (c *Client) fetchWatches(ctx context.Context, tok Token, searches []WatchSe
 
 	out := &Watches{Results: make(map[string]WatchResult, len(searches))}
 
-	for _, a := range answers {
+	for _, a := range append(answers, refused) {
 		if IsBadCredentials(a.err) {
 			return nil, a.err
 		}
@@ -186,6 +194,25 @@ func (c *Client) fetchWatches(ctx context.Context, tok Token, searches []WatchSe
 	}
 
 	return out, nil
+}
+
+// encodable returns the searches whose query can be written into a request, in order, and
+// an answer that fails each of the others, which is never sent.
+func encodable(searches []WatchSearch) ([]WatchSearch, *watchAnswer) {
+	out := make([]WatchSearch, 0, len(searches))
+	refused := &watchAnswer{results: map[string]WatchResult{}}
+
+	for _, s := range searches {
+		if _, err := graphQLString(s.Query); err != nil {
+			refused.results[s.Key] = WatchResult{Err: fmt.Errorf("encode the search %q: %w", s.Key, err), Items: []WatchItem{}}
+
+			continue
+		}
+
+		out = append(out, s)
+	}
+
+	return out, refused
 }
 
 // add merges one pack's answer: its searches' results, its request, and its cost.
@@ -311,30 +338,80 @@ func (c *Client) sendWatches(ctx context.Context, tok Token, pack []WatchSearch)
 		return a
 	}
 
-	failed := make(map[string]error)
-
-	for _, e := range resp.Errors {
-		if alias := e.top(); alias != "" {
-			failed[alias] = errors.Join(failed[alias], fmt.Errorf("%w: %s", ErrSearchFailed, truncate(e.Message)))
-		}
-	}
-
 	data := *resp.Data
+	faults := watchFaultsOf(resp.Errors)
 	a := &watchAnswer{results: make(map[string]WatchResult, len(pack)), rate: aliasedRate(data), sent: true}
 
 	for i, s := range pack {
 		alias := batchAlias(watchPrefix, i)
-		a.results[s.Key] = readWatch(data[alias], failed[alias])
+		a.results[s.Key] = readWatch(data[alias], faults.of(alias))
 	}
 
 	return a
 }
 
-// readWatch reads one search's answer; failed is GitHub's error about it, if any. An
-// answer that is missing or null, or can't be read, fails the search.
-func readWatch(raw json.RawMessage, failed error) WatchResult {
-	if failed != nil {
-		return WatchResult{Err: failed, Items: []WatchItem{}}
+// watchFaults is what GitHub's errors beside a pack's data say about its searches, by
+// alias: an error about a search itself or its list of results, which fails it, and the
+// results one failed alone, by index, which are left out. An error that names no search
+// makes every search of the pack partial.
+type watchFaults struct {
+	failed  map[string]error
+	dropped map[string]map[int]bool
+	anon    bool
+}
+
+// watchFault is what the errors say about one search.
+type watchFault struct {
+	err     error
+	dropped map[int]bool
+	partial bool
+}
+
+// watchFaultsOf sorts GitHub's errors by the search and result each names: a path that
+// stops at a search's alias or its nodes (two elements at most) fails the search; a longer
+// one names a result, by its index in nodes, which is dropped; one with no path names
+// nothing.
+func watchFaultsOf(errs []graphQLError) watchFaults {
+	f := watchFaults{failed: map[string]error{}, dropped: map[string]map[int]bool{}}
+
+	for _, e := range errs {
+		alias := e.top()
+
+		switch {
+		case alias == "":
+			f.anon = true
+		case len(e.Path) <= 2:
+			f.failed[alias] = errors.Join(f.failed[alias], fmt.Errorf("%w: %s", ErrSearchFailed, truncate(e.Message)))
+		default:
+			index, ok := e.Path[2].(float64)
+			if !ok {
+				f.failed[alias] = errors.Join(f.failed[alias], fmt.Errorf("%w: %s", ErrSearchFailed, truncate(e.Message)))
+
+				continue
+			}
+
+			if f.dropped[alias] == nil {
+				f.dropped[alias] = map[int]bool{}
+			}
+
+			f.dropped[alias][int(index)] = true
+		}
+	}
+
+	return f
+}
+
+// of returns what the errors say about the search under alias.
+func (f watchFaults) of(alias string) watchFault {
+	return watchFault{err: f.failed[alias], dropped: f.dropped[alias], partial: f.anon || len(f.dropped[alias]) > 0}
+}
+
+// readWatch reads one search's answer, with what GitHub's errors say about it. An answer
+// that is missing or null, or can't be read, fails the search; a result an error names is
+// left out, and the answer is partial.
+func readWatch(raw json.RawMessage, fault watchFault) WatchResult {
+	if fault.err != nil {
+		return WatchResult{Err: fault.err, Items: []WatchItem{}}
 	}
 
 	if isNull(raw) {
@@ -355,13 +432,17 @@ func readWatch(raw json.RawMessage, failed error) WatchResult {
 
 	items := make([]WatchItem, 0, len(s.Nodes))
 
-	for _, n := range s.Nodes {
+	for i, n := range s.Nodes {
+		if fault.dropped[i] {
+			continue
+		}
+
 		if it, ok := n.watchItem(); ok {
 			items = append(items, it)
 		}
 	}
 
-	return WatchResult{IssueCount: max(s.IssueCount, len(items)), Items: items}
+	return WatchResult{IssueCount: max(s.IssueCount, len(items)), Items: items, Partial: fault.partial}
 }
 
 // watchNode is one search result as WatchFields reads it: the item's own fields, which
