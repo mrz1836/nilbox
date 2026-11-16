@@ -42,7 +42,7 @@ describe('BackupSection', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Export…' }))
 
     const boxes = within(screen.getByRole('group', { name: /Choose what to include/ })).getAllByRole('checkbox')
-    expect(boxes).toHaveLength(5)
+    expect(boxes).toHaveLength(6)
     expect(boxes.every((b) => (b as HTMLInputElement).checked)).toBe(true)
 
     await userEvent.click(screen.getByRole('checkbox', { name: /^Your scripts/ }))
@@ -56,9 +56,22 @@ describe('BackupSection', () => {
       'repositories',
       'prompts',
       'launchDefaults',
+      'autopilot',
     ])
     expect(await screen.findByRole('status')).toHaveTextContent(
-      'Backed up to “setup.json”: Settings (3), Repositories (3), Prompts and replies (3), Launch defaults (3).',
+      'Backed up to “setup.json”: Settings (3), Repositories (3), Prompts and replies (3), Launch defaults (3), ' +
+        'Autopilot routines (3).',
+    )
+  })
+
+  it('says an import switches off only the routines it adds or saves over', async () => {
+    renderSection()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Export…' }))
+
+    expect(screen.getByRole('checkbox', { name: /^Autopilot routines/ })).toHaveAccessibleName(
+      'Autopilot routinesYour Autopilot routines, in their order, never their history. A routine an import adds ' +
+        'or saves over arrives switched off; one already the same stays as it is, on or off.',
     )
   })
 
@@ -125,7 +138,7 @@ describe('BackupSection', () => {
       { name: `${brand.name} backup`, pattern: '*.json' },
     ])
 
-    await userEvent.click(await screen.findByRole('button', { name: 'Import 5 categories' }))
+    await userEvent.click(await screen.findByRole('button', { name: 'Import 6 categories' }))
 
     const status = await screen.findByRole('status')
     expect(status).toHaveTextContent('Imported Settings (1 changed), Prompts and replies (2 added, 1 deleted).')
@@ -142,7 +155,7 @@ describe('BackupSection', () => {
     const { onSaved, onThemeChange } = renderSection()
 
     await userEvent.click(screen.getByRole('button', { name: 'Import…' }))
-    await userEvent.click(await screen.findByRole('button', { name: 'Import 5 categories' }))
+    await userEvent.click(await screen.findByRole('button', { name: 'Import 6 categories' }))
 
     await screen.findByRole('status')
     expect(onSaved).toHaveBeenCalledWith(settings())

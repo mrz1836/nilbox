@@ -17,8 +17,9 @@ import (
 	"github.com/mrz1836/nilbox/internal/uierr"
 )
 
-// What the window reads of the ledger: Activity, a page of matches by day; an item's
-// history, for its chip; Explain, why a routine did or didn't act on an item; and Engine,
+// What the window reads of the ledger: Activity, a page of matches by day; each item's
+// latest match, for the chip on its row, and an item's history, which the chip opens;
+// Explain, why a routine did or didn't act on an item; and Engine,
 // what the engine last did and whether this copy runs it. Each reads the database alone,
 // and no list is nil.
 
@@ -30,6 +31,10 @@ const (
 
 	// maxItemHistory caps an item's history.
 	maxItemHistory = 200
+
+	// maxLatest caps the items one LatestMatches call reads, as many as the inbox's
+	// ItemsByID reads.
+	maxLatest = 500
 )
 
 // Match is one of a routine's matches, as Activity and an item's history show it.
@@ -323,6 +328,31 @@ func (s *Service) ItemHistory(ctx context.Context, id int64) (ItemHistory, error
 	}
 
 	return out, nil
+}
+
+// LatestMatches returns, for each item among ids a routine touched, its newest match that
+// did something there or waits to (open, or closed as done, skipped, or dismissed; never a
+// baseline, nor one that closed as the item or the routine moved on before it acted),
+// newest first: what the ⚡ chip on each of the window's rows says. At most maxLatest ids
+// are read. It reads the database alone, and the list is never nil.
+func (s *Service) LatestMatches(ctx context.Context, ids []int64) ([]Match, error) {
+	out := []Match{}
+
+	if s.store.q == nil || len(ids) == 0 {
+		return out, nil
+	}
+
+	asked := make([]*int64, 0, min(len(ids), maxLatest))
+	for _, id := range ids[:min(len(ids), maxLatest)] {
+		asked = append(asked, new(id))
+	}
+
+	rows, err := s.ledger().q.ListLatestItemMatches(ctx, asked)
+	if err != nil {
+		return out, uierr.New("Autopilot's history of the items couldn't be read.", err)
+	}
+
+	return s.views(ctx, rows)
 }
 
 // ledger returns the ledger over the Service's database.

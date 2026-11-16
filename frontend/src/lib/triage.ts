@@ -197,10 +197,11 @@ export function itemsByRef(snapshot: InboxSnapshot): ReadonlyMap<string, ListedI
 }
 
 // TriageChange is a triage action as the inbox shows it at once, before the backend's
-// answer: the triage fields it gives an item.
+// answer: the triage fields it gives an item, and the Autopilot routine's mark it clears,
+// as the user's own triage does (setAsideBy, pinnedBy).
 export interface TriageChange {
   id: number
-  set: Partial<Pick<InboxItem, 'dismissedAt' | 'snoozedUntil' | 'wokeBy' | 'pinnedAt'>>
+  set: Partial<Pick<InboxItem, 'dismissedAt' | 'snoozedUntil' | 'wokeBy' | 'pinnedAt' | 'setAsideBy' | 'pinnedBy'>>
 }
 
 // listsNewer reports whether a lists before b among the items not pinned: newest activity

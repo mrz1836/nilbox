@@ -1,10 +1,10 @@
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 
 import type { Settings } from '../../platform'
-import { autopilotGlance, settings } from '../../test/fixtures'
-import { emit, platform } from '../../test/platform'
+import { settings } from '../../test/fixtures'
+import { platform } from '../../test/platform'
 import { NotificationsSection } from './NotificationsSection'
 
 vi.mock('../../platform', () => import('../../test/platform').then((fake) => fake.platform))
@@ -37,26 +37,13 @@ const autopilotSwitches = [
 ]
 
 describe('NotificationsSection’s Autopilot switches', () => {
-  it('lists none, and never names Autopilot, while no routine exists', async () => {
-    renderSection()
-
-    await waitFor(() => {
-      expect(platform.getAutopilotGlance).toHaveBeenCalled()
-    })
-
-    for (const name of autopilotSwitches) {
-      expect(screen.queryByRole('switch', { name })).not.toBeInTheDocument()
-    }
-
-    expect(screen.queryByText(/Autopilot/)).not.toBeInTheDocument()
-  })
-
-  it('lists the five, all on, while a routine exists, and stores each as it is set', async () => {
-    platform.getAutopilotGlance.mockResolvedValue(autopilotGlance({ routines: 1 }))
+  it('lists the five, all on, under Autopilot’s heading, and stores each as it is set', async () => {
     const { onSaved } = renderSection()
 
+    expect(screen.getByRole('heading', { name: 'Autopilot' })).toBeInTheDocument()
+
     for (const name of autopilotSwitches) {
-      expect(await screen.findByRole('switch', { name })).toBeChecked()
+      expect(screen.getByRole('switch', { name })).toBeChecked()
     }
 
     await userEvent.click(screen.getByRole('switch', { name: 'Autopilot problems' }))
@@ -69,20 +56,11 @@ describe('NotificationsSection’s Autopilot switches', () => {
     )
   })
 
-  it('shows them once a routine is made, as Autopilot says it changed', async () => {
-    renderSection()
+  it('shows a switch turned off as off', () => {
+    renderSection(settings({ bannersOff: ['autopilot_alert'] }))
 
-    await waitFor(() => {
-      expect(platform.getAutopilotGlance).toHaveBeenCalledOnce()
-    })
-    expect(screen.queryByRole('switch', { name: 'Routine alerts' })).not.toBeInTheDocument()
-
-    platform.getAutopilotGlance.mockResolvedValue(autopilotGlance({ routines: 1 }))
-    act(() => {
-      emit('autopilot:updated')
-    })
-
-    expect(await screen.findByRole('switch', { name: 'Routine alerts' })).toBeChecked()
+    expect(screen.getByRole('switch', { name: 'Routine alerts' })).not.toBeChecked()
+    expect(screen.getByRole('switch', { name: 'Needs your OK' })).toBeChecked()
   })
 })
 

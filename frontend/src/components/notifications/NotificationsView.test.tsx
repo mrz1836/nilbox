@@ -11,7 +11,6 @@ import type { AppNotification, GitHubThread, GitHubThreadsSnapshot, Notification
 import { at } from '../../test/clock'
 import {
   autopilotAlert,
-  autopilotGlance,
   githubThread,
   githubThreadList,
   githubThreads,
@@ -273,21 +272,10 @@ describe('NotificationsView', () => {
       expect(screen.getByText('Checks failed: lint')).toBeInTheDocument()
     })
 
-    it('offers the Autopilot type only while a routine exists', async () => {
-      const { unmount } = renderPage({ notifications: history(entries) })
-
-      await waitFor(() => {
-        expect(platform.getAutopilotGlance).toHaveBeenCalled()
-      })
-      expect(within(screen.getByRole('radiogroup', { name: 'Type' })).queryByRole('radio', { name: 'Autopilot' })).toBe(
-        null,
-      )
-      unmount()
-
-      platform.getAutopilotGlance.mockResolvedValue(autopilotGlance({ routines: 1 }))
+    it('offers the Autopilot type, which lists Autopilot’s entries alone', async () => {
       renderPage({ notifications: history([...entries, autopilotAlert({ id: 9, itemId: 0 })]) })
 
-      await userEvent.click(await screen.findByRole('radio', { name: 'Autopilot' }))
+      await userEvent.click(screen.getByRole('radio', { name: 'Autopilot' }))
       expect(screen.getByText('Bump golang.org/x/net')).toBeInTheDocument()
       expect(screen.queryByText('Add the widget cache')).not.toBeInTheDocument()
     })

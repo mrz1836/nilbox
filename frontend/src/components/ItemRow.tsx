@@ -19,8 +19,9 @@ import {
   type Settings,
   type Worktree,
 } from '../platform'
+import { AutopilotChip, useRoutineName } from './autopilot/AutopilotChip'
 import { Highlight } from './Highlight'
-import { ArchiveIcon, ClockIcon, ExternalIcon, IssueIcon, PullRequestIcon } from './icons'
+import { ArchiveIcon, AutopilotIcon, ClockIcon, ExternalIcon, IssueIcon, PinIcon, PullRequestIcon } from './icons'
 import { ItemMenu, type EditActions } from './ItemMenu'
 import { ItemSignals } from './ItemSignals'
 import { LaunchControls } from './LaunchControls'
@@ -181,26 +182,85 @@ function AutoMergeTag({ method }: { method: string }) {
   )
 }
 
-// SnoozedTag says when a snoozed item comes back.
-function SnoozedTag({ item, className }: { item: InboxItem; className: string }) {
-  const back = useNowAs((now) => formatWhen(now, new Date(item.snoozedUntil)))
+// ByRoutine names the Autopilot routine that set an item aside or pinned it, after what it
+// did: "by ⚡ Snooze passing bot PRs".
+function ByRoutine({ id }: { id: number }) {
+  const name = useRoutineName(id)
 
   return (
-    <span title={`Snoozed until ${formatFull(item.snoozedUntil)}`} className={className}>
+    <>
+      {' by '}
+      <AutopilotIcon className="inline size-3 align-[-0.125rem]" />
+      <span className="sr-only">the routine </span>
+      <span className="inline-block max-w-48 truncate align-bottom">{name}</span>
+    </>
+  )
+}
+
+// SnoozedTag says when a snoozed item comes back, and which routine snoozed it, when one did.
+function SnoozedTag({ item, className }: { item: InboxItem; className: string }) {
+  const back = useNowAs((now) => formatWhen(now, new Date(item.snoozedUntil)))
+  const name = useRoutineName(item.setAsideBy)
+  const until = formatFull(item.snoozedUntil)
+
+  if (item.setAsideBy > 0) {
+    return (
+      <span title={`Snoozed by the routine ${name} until ${until}`} className={className}>
+        <ClockIcon className="size-3 shrink-0" />
+        <span className="truncate">
+          Snoozed
+          <ByRoutine id={item.setAsideBy} /> · back {back}
+        </span>
+      </span>
+    )
+  }
+
+  return (
+    <span title={`Snoozed until ${until}`} className={className}>
       <ClockIcon className="size-3" />
       Back {back}
     </span>
   )
 }
 
-// DismissedTag says how long ago an item was dismissed.
+// DismissedTag says how long ago an item was dismissed, and by which routine, when one
+// did.
 function DismissedTag({ item, className }: { item: InboxItem; className: string }) {
   const ago = useNowAs((now) => formatAgo(now, item.dismissedAt))
+  const name = useRoutineName(item.setAsideBy)
+  const when = formatFull(item.dismissedAt)
+
+  if (item.setAsideBy > 0) {
+    return (
+      <span title={`Dismissed by the routine ${name}, ${when}`} className={className}>
+        <ArchiveIcon className="size-3 shrink-0" />
+        <span className="truncate">
+          Dismissed
+          <ByRoutine id={item.setAsideBy} /> · {ago}
+        </span>
+      </span>
+    )
+  }
 
   return (
-    <span title={`Dismissed ${formatFull(item.dismissedAt)}`} className={className}>
+    <span title={`Dismissed ${when}`} className={className}>
       <ArchiveIcon className="size-3" />
       Dismissed {ago}
+    </span>
+  )
+}
+
+// PinnedByTag says which routine pinned an item, while it is pinned by one.
+function PinnedByTag({ item, className }: { item: InboxItem; className: string }) {
+  const name = useRoutineName(item.pinnedBy)
+
+  return (
+    <span title={`Pinned by the routine ${name}`} className={className}>
+      <PinIcon filled className="size-3 shrink-0" />
+      <span className="truncate">
+        Pinned
+        <ByRoutine id={item.pinnedBy} />
+      </span>
     </span>
   )
 }
@@ -233,21 +293,38 @@ function BackTag({ item }: { item: InboxItem }) {
 
 // TriageTag says where a snoozed or dismissed item stands, and marks an item just back
 // from a snooze, so it is easy to spot among the rest. A muted item needs no tag: its tab
-// says why it is there. Each tag reads the clock itself, so a tick renders a tag only when
-// its words change.
+// says why it is there. What an Autopilot routine set aside or pinned says so, with the
+// routine's name, until the user changes it. Each tag reads the clock itself, so a tick
+// renders a tag only when its words change.
 function TriageTag({ item, tab }: { item: InboxItem; tab: TriageTab }) {
-  const quiet = `${tagClass} inline-flex items-center gap-1 text-muted`
+  const quiet = `${tagClass} inline-flex min-w-0 items-center gap-1 text-muted`
+  const pinned = item.pinnedBy > 0 && item.pinnedAt !== '' && <PinnedByTag item={item} className={quiet} />
 
   switch (tab) {
     case 'snoozed':
-      return <SnoozedTag item={item} className={quiet} />
+      return (
+        <>
+          {pinned}
+          <SnoozedTag item={item} className={quiet} />
+        </>
+      )
     case 'dismissed':
-      return <DismissedTag item={item} className={quiet} />
+      return (
+        <>
+          {pinned}
+          <DismissedTag item={item} className={quiet} />
+        </>
+      )
     case 'muted':
-      return null
+      return pinned
     default:
       // An item never snoozed has nothing to mark, nor any reason to follow the clock.
-      return item.snoozedUntil === '' ? null : <BackTag item={item} />
+      return (
+        <>
+          {pinned}
+          {item.snoozedUntil !== '' && <BackTag item={item} />}
+        </>
+      )
   }
 }
 
@@ -280,7 +357,8 @@ export function WorktreeTag({ wt, agents }: { wt: Worktree; agents: readonly Age
 
 // ItemRow is one inbox card, three lines high: the title with its draft and conflict
 // tags; where it is, who opened it, when it last moved, and, for a pull request from
-// outside the repository, the sensitive files it changes; and its signals (checks,
+// outside the repository, the sensitive files it changes, then its session pill and, for
+// an item an Autopilot routine touched, its ⚡ chip (AutopilotChip); and its signals (checks,
 // reviews, comments, size, labels). The triage buttons, the menu of everything else (see
 // ItemMenu), and the launch button sit on the right, and a launch's outcome spans the
 // card below. The row does one thing with GitHub at a time, which its buttons and its
@@ -379,6 +457,7 @@ export const ItemRow = memo(function ItemRow({
           {sessions !== undefined && (
             <SessionTag sessions={sessions} agents={launch?.agents ?? []} markWorktree={worktree === undefined} />
           )}
+          <AutopilotChip item={item} />
         </div>
         <ItemSignals item={item} onFilterBy={onFilterBy} />
       </div>

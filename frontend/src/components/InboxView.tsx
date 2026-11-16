@@ -9,18 +9,15 @@ import { itemKey, noWorktrees, worktreeOf } from '../lib/itemWorktrees'
 import { sheetCards, shownOrder } from '../lib/listOrder'
 import { isInboxNil } from '../lib/nil'
 import type { ReviewDrafts } from '../lib/reviewDrafts'
-import { ownRule, ruleFor, withRepoRule } from '../lib/repoRules'
+import { ruleFor, withRepoRule } from '../lib/repoRules'
 import { noSessions, sessionsOf } from '../lib/sessions'
 import { movesOnTo } from '../lib/sheet'
-import { formatAgo, formatWhen } from '../lib/time'
-import { findItem, isDismissed, itemsByRef, tabOf, type TriagedInbox, type TriageTab } from '../lib/triage'
+import { formatAgo } from '../lib/time'
+import { findItem, itemsByRef, tabOf, type TriagedInbox, type TriageTab } from '../lib/triage'
 import type { InboxState } from '../lib/useInbox'
 import type { InboxOrderState } from '../lib/useInboxOrder'
-import { useClock } from '../lib/useNow'
 import {
-  copyText,
   offerReleaseAfterMerge,
-  setRepoRule,
   type AfterMerge,
   type AgentSession,
   type ConversationOrder,
@@ -28,7 +25,6 @@ import {
   type ItemKind,
   type ItemResolution,
   type ListKey,
-  type RepoRule,
   type RepoRules,
   type Review,
   type ReviewResult,
@@ -39,13 +35,13 @@ import {
 import { ErrorBanner } from './ErrorBanner'
 import { InboxNil } from './InboxNil'
 import { LinksContext, type Links } from './ItemLink'
-import { teamsText, type EditActions } from './ItemMenu'
 import type { LaunchOptions } from './ItemRow'
 import { ListSection, type Reveal } from './ListSection'
 import { ProjectsTip } from './ProjectsTip'
 import { RelativeTime } from './RelativeTime'
 import { defaultToastSeconds, Toast, type ToastMessage } from './Toast'
 import { SheetTriage, type TriageActions } from './TriageControls'
+import { useItemActions } from './useItemActions'
 
 export type { LaunchOptions } from './ItemRow'
 export type { Reveal } from './ListSection'
@@ -153,21 +149,6 @@ export interface SheetDrafts {
 // noRepoRules are the rules until the settings have loaded.
 const noRepoRules: RepoRules = { pinned: [], muted: [] }
 
-// ruleChangeWords is what the toast says once a target's rule changed from was to rule,
-// and what that does.
-function ruleChangeWords(target: string, was: RepoRule, rule: RepoRule): { text: string; detail: string } {
-  switch (rule) {
-    case 'pinned':
-      return { text: `Pinned ${target}`, detail: 'Its items stay at the top of every list.' }
-    case 'muted':
-      return { text: `Muted ${target}`, detail: 'Its items wait in each list’s Muted tab.' }
-    default:
-      return was === 'muted'
-        ? { text: `Unmuted ${target}`, detail: 'Its items are back in the lists.' }
-        : { text: `Unpinned ${target}`, detail: 'Its items are back among the rest.' }
-  }
-}
-
 // Viewing is the card a sheet shows, and the list and tab it was opened from, which the
 // sheet steps through: the review sheet for a pull request, the issue sheet for an issue.
 // It keeps the card's kind, so the sheet stays as it was should the card leave the list,
@@ -206,7 +187,7 @@ function focusedArrow(): Viewing['arrow'] {
 // resultTone is how a review's outcome reads in the toast: a review GitHub took, an
 // approval or the comment a merge or a close posted first, and a merge or a close it
 // didn't make is a warning.
-function resultTone(result: ReviewResult): 'warning' | 'success' {
+export function resultTone(result: ReviewResult): 'warning' | 'success' {
   return result.outcome === 'approved_not_merged' ||
     result.outcome === 'commented_not_merged' ||
     result.outcome === 'commented_not_closed'
@@ -295,21 +276,7 @@ export function InboxView({
   onConversationOrder,
   onItemOpened,
 }: InboxViewProps) {
-  const {
-    snapshot,
-    loadError,
-    refreshError,
-    refreshing,
-    refresh,
-    dismiss,
-    snooze,
-    restore,
-    pin,
-    unpin,
-    refreshItem,
-    unassign,
-    removeReviewRequest,
-  } = inbox
+  const { snapshot, loadError, refreshError, refreshing, refresh } = inbox
   const { order, setStatusSort, setStatusOrder, setListKind } = inboxOrder
   // chosenOrder is the conversations' order the user chose here, shared by both sheets at
   // once, until the stored setting they remember it in comes back the same.
@@ -320,7 +287,6 @@ export function InboxView({
     setChosenOrder(next)
     onConversationOrder?.(next)
   }
-  const clock = useClock()
   const lastError = snapshot?.lastError ?? ''
   const error = firstMessage(refreshError, lastError, loadError)
   // closedError is the refresh error the user closed. It stays closed while it is still
@@ -506,201 +472,19 @@ export function InboxView({
     })
   }
 
-  // failed reports a triage action the backend refused; the item is back as it was.
-  const failed = (what: string, item: InboxItem, error: string) => {
-    showToast({ text: `Could not ${what} “${item.title}”`, detail: error, tone: 'error' })
-  }
-
-  // undo puts an item back the way it was before it was snoozed or dismissed.
-  const undo = (item: InboxItem) => () => {
-    closeToast()
-    void restore(item.id).then((result) => {
-      if (!result.ok) {
-        failed('undo the change to', item, result.error)
-      }
-    })
-  }
-
-  // setRule sets the rule of a target and records the settings as stored, or says why it
-  // couldn't. It resolves with whether it did.
-  const setRule = async (target: string, rule: RepoRule): Promise<boolean> => {
-    const result = await attempt(setRepoRule(target, rule))
-
-    if (!result.ok) {
-      showToast({ text: `Could not change the rule for ${target}`, detail: result.error, tone: 'error' })
-
-      return false
-    }
-
-    onSettingsSaved?.(result.data)
-
-    return true
-  }
-
-  // changeRule pins, mutes, or takes the rule off a repository or an org, as a card asked,
-  // and says so in a toast whose Undo puts back the rule the target had. The inbox shows the
-  // change once the backend has rebuilt it under the new rules ("inbox:updated"). It
-  // resolves with whether the rule changed.
-  const changeRule = async (target: string, rule: RepoRule): Promise<boolean> => {
-    const was = ownRule(repoRules, target)
-    const done = await setRule(target, rule)
-
-    if (done) {
-      showToast({
-        ...ruleChangeWords(target, was, rule),
-        undo: () => {
-          closeToast()
-          void setRule(target, was)
-        },
-      })
-    }
-
-    return done
-  }
-
-  // dismissIt, snoozeIt, and restoreIt set an item aside or bring it back, and say so in a
-  // toast, or why the backend refused; each resolves with whether it took the change.
-  const dismissIt = async (item: InboxItem): Promise<boolean> => {
-    const result = await dismiss(item.id)
-
-    if (result.ok) {
-      showToast({ text: 'Dismissed', detail: item.title, undo: undo(item) })
-    } else {
-      failed('dismiss', item, result.error)
-    }
-
-    return result.ok
-  }
-
-  const snoozeIt = async (item: InboxItem, days: number): Promise<boolean> => {
-    const result = await snooze(item.id, days)
-
-    if (!result.ok) {
-      failed('snooze', item, result.error)
-
-      return false
-    }
-
-    const until = findItem(result.data, item.id)?.snoozedUntil ?? ''
-    const text = until === '' ? 'Snoozed' : `Snoozed until ${formatWhen(clock.getSnapshot(), new Date(until))}`
-
-    showToast({ text, detail: item.title, undo: undo(item) })
-
-    return true
-  }
-
-  const restoreIt = async (item: InboxItem): Promise<boolean> => {
-    const result = await restore(item.id)
-
-    if (result.ok) {
-      showToast({ text: isDismissed(item) ? 'Restored' : 'Unsnoozed', detail: item.title })
-    } else {
-      failed('restore', item, result.error)
-    }
-
-    return result.ok
-  }
-
-  // triage is what every row's triage buttons do. It reads no time while rendering (the
-  // toast after a snooze reads the clock when it shows), so the rows keep the same
-  // actions from one tick to the next.
-  const triage: TriageActions = {
+  // What every row's controls and menu do, and the triage a sheet's header makes, each said
+  // in a toast.
+  const { triage, edits, dismissIt, snoozeIt, restoreIt, changeRule, unassignOn } = useItemActions({
+    inbox,
     snoozeDays,
-    onDismiss: (item) => {
-      void dismissIt(item)
-    },
-    onSnooze: (item, days) => {
-      void snoozeIt(item, days)
-    },
-    onRestore: (item) => {
-      void restoreIt(item)
-    },
-    // A pin shows at once, as the item moves to the top, so it needs no toast.
-    onPin: (item) => {
-      void pin(item.id).then((result) => {
-        if (!result.ok) {
-          failed('pin', item, result.error)
-        }
-      })
-    },
-    onUnpin: (item) => {
-      void unpin(item.id).then((result) => {
-        if (!result.ok) {
-          failed('unpin', item, result.error)
-        }
-      })
-    },
-    // A refreshed item that is still open updates in place; one that is not leaves the
-    // inbox, which the toast explains.
-    onRefresh: async (item) => {
-      const result = await refreshItem(item.id)
-
-      if (!result.ok) {
-        failed('refresh', item, result.error)
-      } else if (findItem(result.data, item.id) === undefined) {
-        showToast({ text: 'No longer open on GitHub', detail: item.title })
-      }
-    },
-    onChangeDefault: onSnoozeSettings,
+    onSnoozeSettings,
     repoRules,
-    onRepoRule: (target, rule) => {
-      void changeRule(target, rule)
-    },
-    onRepoRuleSettings: onRepoRuleSettings ?? (() => undefined),
-  }
-
-  // unassignOn takes the user off the item on GitHub, from its card's menu or its sheet, and
-  // says so once GitHub made it; it resolves with why it couldn't, or ''.
-  const unassignOn = async (item: InboxItem): Promise<string> => {
-    const result = await unassign(item.id)
-
-    if (!result.ok) {
-      return result.error
-    }
-
-    showToast({ text: 'Unassigned you on GitHub', detail: item.title })
-
-    return ''
-  }
-
-  // edits is what every row's menu does beyond triage. An edit shows once GitHub has
-  // made it, as the item leaves the list, which the toast confirms; a pull request that
-  // still asks a team for a review stays, and the toast says which.
-  const edits: EditActions = {
-    onCopyLink: (item) => {
-      void attempt(copyText(item.url)).then((result) => {
-        showToast(
-          result.ok
-            ? { text: 'Link copied', detail: item.url }
-            : { text: 'Could not copy the link', detail: result.error, tone: 'error' },
-        )
-      })
-    },
-    onUnassign: async (item) => {
-      const error = await unassignOn(item)
-
-      if (error !== '') {
-        failed('unassign you from', item, error)
-      }
-    },
-    onRemoveReview: async (item) => {
-      const result = await removeReviewRequest(item.id)
-
-      if (!result.ok) {
-        failed('remove you as a reviewer of', item, result.error)
-
-        return
-      }
-
-      const after = findItem(result.data, item.id)
-
-      showToast({
-        text: 'Removed you as a reviewer on GitHub',
-        detail: after?.reviewRequest === 'team' ? `It still asks ${teamsText(after.reviewTeams)}` : item.title,
-      })
-    },
+    onSettingsSaved,
+    onRepoRuleSettings,
+    showToast,
+    closeToast,
     onOpen: sheets ? openFromMenu : undefined,
-  }
+  })
 
   const viewed = viewing === null || snapshot === null ? undefined : findItem(snapshot, viewing.id)
   // A sheet steps through the cards of its list and tab as the list shows them, pull

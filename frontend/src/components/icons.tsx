@@ -625,6 +625,28 @@ export function AutopilotIcon(props: IconProps) {
   )
 }
 
+// PauseIcon stands for Pause Autopilot: two bars.
+export function PauseIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M9 5.5v13M15 5.5v13" />
+    </Icon>
+  )
+}
+
+// RoutineIcon stands for an Autopilot routine, which acts again each time its moment comes:
+// a loop of two arrows.
+export function RoutineIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="m17 2.75 3.25 3.25L17 9.25" />
+      <path d="M3.75 11.25V10a4 4 0 0 1 4-4h12.5" />
+      <path d="M7 21.25 3.75 18 7 14.75" />
+      <path d="M20.25 12.75V14a4 4 0 0 1-4 4H3.75" />
+    </Icon>
+  )
+}
+
 // FolderIcon stands for a folder shown in Finder.
 export function FolderIcon(props: IconProps) {
   return (

@@ -25,7 +25,6 @@ import {
   opensUpdate,
   quickViewMax,
   sessionKinds,
-  shownTypes,
   startLists,
   targetNamed,
   unreadOf,
@@ -247,10 +246,7 @@ describe('the history’s lists', () => {
     }
   })
 
-  it('offers Autopilot’s type only while a routine exists', () => {
-    expect(shownTypes(true)).toEqual(appTypeOrder)
-    expect(shownTypes(false)).not.toContain('autopilot')
-    expect(shownTypes(false)).toHaveLength(appTypeOrder.length - 1)
+  it('offers Autopilot’s five kinds as one type', () => {
     expect(appTypes.autopilot.kinds).toEqual([
       'autopilot_alert',
       'autopilot_needs_you',

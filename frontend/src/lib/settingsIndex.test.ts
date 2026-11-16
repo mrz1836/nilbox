@@ -96,17 +96,19 @@ describe('matchSettings', () => {
   })
 
   it('finds the notification kinds by their switches’ labels and their titles', () => {
-    for (const kind of notificationKinds.filter((k) => k.autopilot !== true)) {
+    for (const kind of notificationKinds) {
       expect(matchSettings(kind.title)?.isMatch('notifications', kind.label)).toBe(true)
     }
   })
 
-  it('never names Autopilot’s switches, which show only while a routine exists', () => {
+  it('finds Autopilot’s switches by Autopilot’s name', () => {
+    const match = matchSettings('Autopilot banner')
+
     for (const kind of notificationKinds.filter((k) => k.autopilot === true)) {
-      expect(matchSettings(kind.title)?.isMatch('notifications', kind.label) ?? false).toBe(false)
+      expect(match?.isMatch('notifications', kind.label)).toBe(true)
     }
 
-    expect(matchSettings('Autopilot')?.isMatch('notifications', 'Routine alerts') ?? false).toBe(false)
+    expect(match?.isMatch('notifications', 'Review requests')).toBe(false)
   })
 
   it('finds the product by name in About', () => {
@@ -138,6 +140,37 @@ describe('matchSettings', () => {
     expect(matchSettings('script trust')?.isMatch('backup', 'What a backup never holds')).toBe(true)
     expect(sectionOrder.indexOf('about')).toBe(sectionOrder.indexOf('backup') + 1)
     expect(sectionInfo.backup.label).toBe('Back up and restore')
+  })
+
+  it('finds Autopilot’s settings by the section’s name, in a group of its own between Inbox and Agents', () => {
+    const match = matchSettings('autopilot')
+
+    expect(match?.sections.get('autopilot')).toBe(settingsIndex.autopilot.length)
+    expect(match?.isMatch('autopilot', 'Pause Autopilot')).toBe(true)
+    expect(match?.isMatch('autopilot', 'Last checked')).toBe(true)
+    expect(sectionInfo.autopilot.label).toBe('Autopilot')
+    expect(sectionGroups.map((group) => group.heading)).toEqual(['', 'Inbox', 'Autopilot', 'Agents', 'Tools', ''])
+    expect(sectionGroups.find((group) => group.heading === 'Autopilot')?.sections).toEqual(['autopilot'])
+    expect(sectionInfo.backup.description).toMatch(/your Autopilot routines/)
+  })
+
+  it.each([
+    ['pause', 'Pause Autopilot'],
+    ['dry run', 'New routines start in'],
+    ['ask first', 'New routines start in'],
+    ['parallel', 'Agents at once'],
+    ['dollars', 'Daily cap'],
+    ['tokens', 'Daily cap'],
+    ['caffeinate', 'Keep the Mac awake while agents work'],
+    ['outage', 'Hold agent starts while their provider reports an outage'],
+    ['catch up', 'Ask before catching up after'],
+    ['retention', 'History kept'],
+    ['logs', 'Run logs kept'],
+    ['clear history', 'Clear history'],
+    ['heartbeat', 'Last checked'],
+    ['engine', 'Last checked'],
+  ] as const)('finds the Autopilot setting %j looks for', (query, label) => {
+    expect(matchSettings(query)?.isMatch('autopilot', label)).toBe(true)
   })
 
   it('finds the GitHub notification settings by the section’s name, right after Notifications', () => {

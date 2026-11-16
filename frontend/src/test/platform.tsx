@@ -19,7 +19,9 @@ import {
   agentVersions,
   toolVersions,
   agents,
+  activityPage,
   appInfo,
+  autopilotEngine,
   autopilotGlance,
   backupImported,
   backupPreview,
@@ -67,6 +69,7 @@ import {
   resolution,
   review,
   reviewResult,
+  routine,
   scriptClones,
   scriptRun,
   scriptRunChunk,
@@ -120,6 +123,11 @@ function sensitiveFiles(change: Partial<real.Settings['sensitiveFiles']>): Parti
   return { sensitiveFiles: { ...settings().sensitiveFiles, ...change } }
 }
 
+// autopilotSettings is the fixture's Autopilot settings with change made.
+function autopilotSettings(change: Partial<real.AutopilotConfig>): Partial<real.Settings> {
+  return { autopilot: { ...settings().autopilot, ...change } }
+}
+
 // threadRules is the fixture's GitHub notification rules with change made.
 function threadRules(change: Partial<real.ThreadRules>): Partial<real.Settings> {
   return { githubNotifications: { ...settings().githubNotifications, ...change } }
@@ -149,6 +157,26 @@ function answers(subscribe: Loose<Platform['on']>): { [K in keyof Platform]: Loo
     getServiceStatus: () => Promise.resolve(serviceStatus()),
     checkServiceStatus: () => Promise.resolve(serviceStatus()),
     getAutopilotGlance: () => Promise.resolve(autopilotGlance()),
+    // No routine, and no history, unless a test asks for them.
+    AutopilotMode: { ModeDryRun: 'dryRun', ModeAsk: 'ask', ModeAuto: 'auto', DefaultMode: 'ask' },
+    listRoutines: () => Promise.resolve([]),
+    routineNames: () => Promise.resolve([]),
+    duplicateRoutine: (id) => Promise.resolve(routine({ id: id + 10, name: 'Snooze passing bot PRs copy' })),
+    deleteRoutine: done,
+    setRoutineEnabled: (id, enabled) =>
+      Promise.resolve(routine({ id, enabled, enabledAt: enabled ? '2026-06-15T12:00:00Z' : null })),
+    setRoutineMode: (id, mode) => Promise.resolve(routine({ id, mode })),
+    routineMatching: () => Promise.resolve({ count: 0, pullRequests: 0, issues: 0, unknown: 0 }),
+    routineWatching: () => Promise.resolve([]),
+    getAutopilotEngine: () => Promise.resolve(autopilotEngine()),
+    autopilotActivity: () => Promise.resolve(activityPage({ days: [] })),
+    autopilotItemHistory: (itemId) => Promise.resolve({ itemId, matches: [], open: 0 }),
+    latestAutopilotMatches: () => Promise.resolve([]),
+    undoAutopilot: (ids) => Promise.resolve({ putBack: ids ?? [], left: [], skipped: [], words: 'Put back 1 item.' }),
+    tryRoutineAgain: () => Promise.resolve([]),
+    letRoutineActAgain: done,
+    clearAutopilotHistory: () => Promise.resolve({ removed: 4, kept: 1 }),
+    itemsByID: () => Promise.resolve([]),
 
     getInboxSnapshot: inbox,
     refreshInbox: inbox,
@@ -429,6 +457,18 @@ function answers(subscribe: Loose<Platform['on']>): { [K in keyof Platform]: Loo
     showInstallLog: done,
     restartToUpdateNow: () => Promise.resolve({ restarted: true, status: updateReady({ state: 'installing' }) }),
     setUpdateMode: (updateMode) => stored({ updateMode }),
+    setAutopilotPaused: (paused) => stored(autopilotSettings({ paused })),
+    setAutopilotDefaultMode: (defaultMode) => stored(autopilotSettings({ defaultMode })),
+    setAutopilotAgentsAtOnce: (agentsAtOnce) => stored(autopilotSettings({ agentsAtOnce })),
+    setAutopilotRunsPerDay: (runsPerDay) => stored(autopilotSettings({ runsPerDay })),
+    setAutopilotActionsPerDay: (actionsPerDay) => stored(autopilotSettings({ actionsPerDay })),
+    setAutopilotDailyCap: (dailyCap) => stored(autopilotSettings({ dailyCap })),
+    setAutopilotKeepAwake: (keepAwake) => stored(autopilotSettings({ keepAwake })),
+    setAutopilotHoldOnOutage: (holdOnOutage) => stored(autopilotSettings({ holdOnOutage })),
+    setAutopilotCatchUpHours: (catchUpHours) => stored(autopilotSettings({ catchUpHours })),
+    setAutopilotHistoryDays: (historyDays) =>
+      stored(autopilotSettings({ historyDays, logDays: Math.min(historyDays, settings().autopilot.logDays) })),
+    setAutopilotLogDays: (logDays) => stored(autopilotSettings({ logDays })),
     // A move goes ahead: the app would quit, and the copy open from Applications.
     moveToApplications: () => Promise.resolve(moveResult()),
     openInApplications: () => Promise.resolve(moveResult({ outcome: 'opening' })),

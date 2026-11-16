@@ -34,6 +34,8 @@ export type {
     Matching,
     Problem,
     Routine,
+    RoutineFigures,
+    RoutineName,
     Run,
     Suggestions,
     TestItem,

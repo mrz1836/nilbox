@@ -21,6 +21,7 @@ export type SettingsSection =
   | 'status'
   | 'snoozing'
   | 'reviewing'
+  | 'autopilot'
   | 'launching'
   | 'worktrees'
   | 'profiles'
@@ -39,13 +40,14 @@ export interface SectionGroup {
 }
 
 // sectionGroups is the sidebar, in the order the app is used: the settings of the whole
-// app, then the inbox's, then the agents' in the order they are set up (where the clones
-// live, the profiles a launch runs with, the launch itself and what it trusts, and the
-// worktrees it leaves behind), then the tools, and last the setup as a whole, kept in a
-// backup, and About.
+// app, then the inbox's, then Autopilot's, which acts on the inbox's items, then the
+// agents' in the order they are set up (where the clones live, the profiles a launch runs
+// with, the launch itself and what it trusts, and the worktrees it leaves behind), then
+// the tools, and last the setup as a whole, kept in a backup, and About.
 export const sectionGroups: readonly SectionGroup[] = [
   { heading: '', sections: ['account', 'appearance', 'notifications', 'github', 'refreshing', 'status'] },
   { heading: 'Inbox', sections: ['snoozing', 'reviewing'] },
+  { heading: 'Autopilot', sections: ['autopilot'] },
   { heading: 'Agents', sections: ['repositories', 'profiles', 'launching', 'trust', 'files', 'worktrees'] },
   { heading: 'Tools', sections: ['integrations'] },
   { heading: '', sections: ['backup', 'about'] },
@@ -88,6 +90,11 @@ export const sectionInfo: Readonly<Record<SettingsSection, { label: string; desc
     label: 'Reviewing',
     description: 'How the review sheet merges a pull request, and where its replies are kept.',
   },
+  autopilot: {
+    label: 'Autopilot',
+    description:
+      'Pause Autopilot, the mode new routines start in, the limits every routine keeps to, and how long its history is kept.',
+  },
   launching: {
     label: 'Launching',
     description: 'How a launch starts a coding agent: the app defaults every launch starts from.',
@@ -122,7 +129,7 @@ export const sectionInfo: Readonly<Record<SettingsSection, { label: string; desc
   backup: {
     label: 'Back up and restore',
     description:
-      'Your whole setup in one file: settings, repositories, prompts and replies, launch defaults, and your scripts, to keep or to bring to another Mac.',
+      'Your whole setup in one file: settings, repositories, prompts and replies, launch defaults, your scripts, and your Autopilot routines, to keep or to bring to another Mac.',
   },
   about: { label: 'About', description: '' },
 }
@@ -152,13 +159,18 @@ const agentNames = ['Claude', 'Claude Code', 'Codex']
 // call it besides.
 const agents: Readonly<Record<string, readonly string[]>> = { Claude: ['Claude Code'], Codex: [] }
 
-// banner is a notification kind's switch, under its label. Autopilot's are left out: their
-// switches show only while a routine exists, and a search must never name Autopilot to a
-// user without one.
-function banner(session: boolean): SettingEntry[] {
+// BannerGroup is one of the groups Settings → Notifications lists the banner switches in.
+type BannerGroup = 'inbox' | 'autopilot' | 'session'
+
+// banner is each switch of a group of notification kinds, under its label; Autopilot's are
+// found by Autopilot's name and its routines too.
+function banner(group: BannerGroup): SettingEntry[] {
   return notificationKinds
-    .filter((k) => (k.session === true) === session && k.autopilot !== true)
-    .map((k) => ({ label: k.label, keywords: [k.title, 'banner', 'notify'] }))
+    .filter((k) => (k.session === true ? 'session' : k.autopilot === true ? 'autopilot' : 'inbox') === group)
+    .map((k) => ({
+      label: k.label,
+      keywords: [k.title, 'banner', 'notify', ...(group === 'autopilot' ? ['Autopilot', 'routine'] : [])],
+    }))
 }
 
 // settingsIndex lists each section's settings in the order the section shows them.
@@ -182,10 +194,12 @@ export const settingsIndex: Readonly<Record<SettingsSection, readonly SettingEnt
       keywords: ['toast', 'message', 'undo', 'how long', 'duration', 'seconds', 'timeout', 'dismiss', 'auto close'],
     },
     { label: 'Banners', keywords: ['notifications', 'alerts'] },
-    ...banner(false),
+    ...banner('inbox'),
     { label: 'Test', keywords: ['test notification', 'send a test', 'sample banner', 'permission'] },
+    { label: 'Autopilot', keywords: ['Autopilot banners', 'routines', 'notices'] },
+    ...banner('autopilot'),
     { label: 'Agent sessions', keywords: ['session banners', ...agentNames] },
-    ...banner(true),
+    ...banner('session'),
   ],
   // The switches of reading and clearing, the moments that clear, what else counts, and
   // what clearing does. Two of the moments name the product.
@@ -230,6 +244,41 @@ export const settingsIndex: Readonly<Record<SettingsSection, readonly SettingEnt
     {
       label: 'Review replies',
       keywords: ['reply', 'LGTM', 'approval', 'request changes', 'comment', 'templates', 'review text'],
+    },
+  ],
+  // The switch and the default mode, the limits, what holds an agent back, the history,
+  // and the engine's heartbeat.
+  autopilot: [
+    { label: 'Pause Autopilot', keywords: ['pause', 'stop', 'resume', 'hold', 'routines', 'nothing new starts'] },
+    {
+      label: 'New routines start in',
+      keywords: ['default mode', 'dry run', 'ask first', 'autopilot mode', 'on its own', 'new routine'],
+    },
+    { label: 'Limits', keywords: ['caps', 'limit', 'quota', 'routines', 'a day', 'midnight'] },
+    { label: 'Agents at once', keywords: ['coding agents', 'parallel', 'concurrent', 'slots', ...agentNames] },
+    { label: 'Agent runs a day', keywords: ['daily runs', 'coding agents', 'cap', 'limit'] },
+    { label: 'GitHub actions a day', keywords: ['rebase', 'update branch', 'labels', 'writes', 'cap', 'limit'] },
+    { label: 'Daily cap', keywords: ['budget', 'spend', 'cost', 'dollars', 'usd', 'tokens', 'money', 'limit'] },
+    { label: 'While it runs', keywords: ['agents', 'sleep', 'outage', 'catch up'] },
+    {
+      label: 'Keep the Mac awake while agents work',
+      keywords: ['sleep', 'awake', 'caffeinate', 'power', 'lid', 'energy'],
+    },
+    {
+      label: 'Hold agent starts while their provider reports an outage',
+      keywords: ['outage', 'incident', 'status page', 'service status', 'down', ...agentNames, 'OpenAI'],
+    },
+    {
+      label: 'Ask before catching up after',
+      keywords: ['catch up', 'catch-up', 'long gap', 'closed', 'asleep', 'away', 'weekend', 'hours'],
+    },
+    { label: 'History', keywords: ['retention', 'activity', 'ledger', 'kept', 'days'] },
+    { label: 'History kept', keywords: ['retention', 'activity', 'ledger', 'days', 'prune'] },
+    { label: 'Run logs kept', keywords: ['logs', 'transcripts', 'retention', 'days', 'prune'] },
+    { label: 'Clear history', keywords: ['clear', 'delete history', 'forget', 'activity', 'ledger', 'wipe'] },
+    {
+      label: 'Last checked',
+      keywords: ['engine', 'heartbeat', 'cycle', 'last run', 'nothing happens', 'another copy', 'status'],
     },
   ],
   launching: [

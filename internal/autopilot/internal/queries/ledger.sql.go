@@ -795,6 +795,84 @@ func (q *Queries) ListItemRuns(ctx context.Context, ids []*int64) ([]ListItemRun
 	return items, nil
 }
 
+const listLatestItemMatches = `-- name: ListLatestItemMatches :many
+SELECT m.id, m.routine_id, m.item_id, m.account_login, m.repo_owner, m.repo_name, m.kind, m.number, m.title, m.url, m.fire_key, m.dry_run, m.manual, m.state, m.blocked_by, m.reason, m.detail, m.trace, m.steps, m.step, m.spec_hash, m.head_oid, m.auto_merge_at_match, m.approved, m.attempt, m.created_at, m.updated_at, m.decided_at, m.closed_at FROM autopilot_matches AS m
+WHERE m.id IN (
+    SELECT MAX(l.id) FROM autopilot_matches AS l
+    WHERE l.item_id IN (/*SLICE:ids*/?)
+        AND l.state IN ('waiting', 'blocked', 'queued', 'running', 'verifying', 'done', 'skipped', 'dismissed')
+    GROUP BY l.item_id
+)
+ORDER BY m.id DESC
+`
+
+// ListLatestItemMatches returns, for each item among ids, its newest match that did
+// something there or waits to: open, or closed as done, skipped, or dismissed, never a
+// baseline or one that closed because the item or the routine moved on before it acted.
+// Newest first.
+func (q *Queries) ListLatestItemMatches(ctx context.Context, ids []*int64) ([]AutopilotMatch, error) {
+	query := listLatestItemMatches
+	var queryParams []interface{}
+	if len(ids) > 0 {
+		for _, v := range ids {
+			queryParams = append(queryParams, v)
+		}
+		query = strings.Replace(query, "/*SLICE:ids*/?", strings.Repeat(",?", len(ids))[1:], 1)
+	} else {
+		query = strings.Replace(query, "/*SLICE:ids*/?", "NULL", 1)
+	}
+	rows, err := q.db.QueryContext(ctx, query, queryParams...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []AutopilotMatch{}
+	for rows.Next() {
+		var i AutopilotMatch
+		if err := rows.Scan(
+			&i.ID,
+			&i.RoutineID,
+			&i.ItemID,
+			&i.AccountLogin,
+			&i.RepoOwner,
+			&i.RepoName,
+			&i.Kind,
+			&i.Number,
+			&i.Title,
+			&i.URL,
+			&i.FireKey,
+			&i.DryRun,
+			&i.Manual,
+			&i.State,
+			&i.BlockedBy,
+			&i.Reason,
+			&i.Detail,
+			&i.Trace,
+			&i.Steps,
+			&i.Step,
+			&i.SpecHash,
+			&i.HeadOID,
+			&i.AutoMergeAtMatch,
+			&i.Approved,
+			&i.Attempt,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.DecidedAt,
+			&i.ClosedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listLedgerItems = `-- name: ListLedgerItems :many
 SELECT item_id FROM autopilot_matches WHERE item_id IS NOT NULL
 UNION
@@ -815,6 +893,51 @@ func (q *Queries) ListLedgerItems(ctx context.Context) ([]*int64, error) {
 			return nil, err
 		}
 		items = append(items, item_id)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listMatchHeads = `-- name: ListMatchHeads :many
+SELECT id, dry_run, created_at FROM autopilot_matches WHERE id IN (/*SLICE:ids*/?)
+`
+
+type ListMatchHeadsRow struct {
+	ID        int64
+	DryRun    bool
+	CreatedAt time.Time
+}
+
+// ListMatchHeads returns when each match among ids was recorded, and whether it is a Dry
+// run's.
+func (q *Queries) ListMatchHeads(ctx context.Context, ids []int64) ([]ListMatchHeadsRow, error) {
+	query := listMatchHeads
+	var queryParams []interface{}
+	if len(ids) > 0 {
+		for _, v := range ids {
+			queryParams = append(queryParams, v)
+		}
+		query = strings.Replace(query, "/*SLICE:ids*/?", strings.Repeat(",?", len(ids))[1:], 1)
+	} else {
+		query = strings.Replace(query, "/*SLICE:ids*/?", "NULL", 1)
+	}
+	rows, err := q.db.QueryContext(ctx, query, queryParams...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListMatchHeadsRow{}
+	for rows.Next() {
+		var i ListMatchHeadsRow
+		if err := rows.Scan(&i.ID, &i.DryRun, &i.CreatedAt); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
 	}
 	if err := rows.Close(); err != nil {
 		return nil, err
@@ -1060,6 +1183,59 @@ func (q *Queries) ListPrunableMatches(ctx context.Context, cutoff *time.Time) ([
 	for rows.Next() {
 		var i ListPrunableMatchesRow
 		if err := rows.Scan(&i.ID, &i.ItemID); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listRoutineFigures = `-- name: ListRoutineFigures :many
+SELECT
+    routine_id,
+    CAST(SUM(CASE WHEN dry_run = 0 AND created_at >= ?1 THEN 1 ELSE 0 END) AS INTEGER) AS today,
+    CAST(SUM(CASE WHEN dry_run = 1 AND created_at >= ?1 THEN 1 ELSE 0 END) AS INTEGER) AS would_run_today,
+    CAST(SUM(CASE WHEN state = 'waiting' THEN 1 ELSE 0 END) AS INTEGER) AS waiting,
+    CAST(MAX(id) AS INTEGER) AS last_id
+FROM autopilot_matches
+WHERE state IN ('waiting', 'blocked', 'queued', 'running', 'verifying', 'done', 'skipped', 'dismissed')
+GROUP BY routine_id
+`
+
+type ListRoutineFiguresRow struct {
+	RoutineID     int64
+	Today         int64
+	WouldRunToday int64
+	Waiting       int64
+	LastID        int64
+}
+
+// ListRoutineFigures returns, for each routine with a match that did something or waits to
+// (as ListLatestItemMatches counts them), how many it recorded since since, real ones and
+// a Dry run's apart, how many wait for the user, and its newest one's ID: each routine's
+// line in the routine list.
+func (q *Queries) ListRoutineFigures(ctx context.Context, since time.Time) ([]ListRoutineFiguresRow, error) {
+	rows, err := q.db.QueryContext(ctx, listRoutineFigures, since)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListRoutineFiguresRow{}
+	for rows.Next() {
+		var i ListRoutineFiguresRow
+		if err := rows.Scan(
+			&i.RoutineID,
+			&i.Today,
+			&i.WouldRunToday,
+			&i.Waiting,
+			&i.LastID,
+		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)

@@ -10,7 +10,16 @@ import type {
   AgentVersion,
   ToolVersion,
   AppNotification,
+  AutopilotActivityPage,
+  AutopilotEffect,
+  AutopilotEngine,
+  AutopilotFigures,
   AutopilotGlance,
+  AutopilotGroup,
+  AutopilotItemRef,
+  AutopilotLeftAlone,
+  AutopilotMatch,
+  AutopilotRoutine,
   AutopilotTarget,
   BudgetGauge,
   BudgetReading,
@@ -279,9 +288,224 @@ export function autopilotAlert(overrides: Partial<AppNotification> = {}): AppNot
   })
 }
 
-// autopilotGlance is Autopilot at a glance: no routine, so the window names none.
+// autopilotGlance is Autopilot at a glance: no routine, nothing waiting, no agent working.
 export function autopilotGlance(overrides: Partial<AutopilotGlance> = {}): AutopilotGlance {
   return { routines: 0, enabled: 0, paused: false, needsYou: 0, working: [], ...overrides }
+}
+
+// routineSpec is a routine's spec: Checks pass on the pull requests in Review requested,
+// snoozed for three days.
+export function routineSpec(): AutopilotRoutine['spec'] {
+  return {
+    version: 1,
+    watch: { sources: [{ lists: ['reviewRequested'] }] },
+    trigger: { event: 'checks_passed' },
+    conditions: { match: 'all', of: [] },
+    steps: [{ snooze: { days: 3 } }],
+    limits: {},
+  }
+}
+
+// routine is Snooze passing bot PRs, routine 3, on in Autopilot since the morning, of the
+// account signed in.
+export function routine(overrides: Partial<AutopilotRoutine> = {}): AutopilotRoutine {
+  return {
+    id: 3,
+    name: 'Snooze passing bot PRs',
+    description: '',
+    enabled: true,
+    enabledAt: '2026-06-15T08:00:00Z',
+    mode: 'auto',
+    spec: routineSpec(),
+    sentence:
+      'When checks pass on pull requests in Review requested, snooze it for 3 days. Once per head commit, at most 2 tries per pull request.',
+    templateKey: 'snooze-passing-bot-prs',
+    account: 'octo-user',
+    otherAccount: false,
+    brokenReason: '',
+    broken: '',
+    problems: [],
+    dryRunOnly: [],
+    lastError: '',
+    figures: routineFigures(),
+    createdAt: '2026-06-14T09:00:00Z',
+    updatedAt: '2026-06-15T08:00:00Z',
+    ...overrides,
+  }
+}
+
+// routineFigures are what a routine's ledger says of it: nothing matched yet, unless
+// overrides say.
+export function routineFigures(overrides: Partial<AutopilotFigures> = {}): AutopilotFigures {
+  return { today: 0, wouldRunToday: 0, waiting: 0, lastAt: null, lastDryRun: false, ...overrides }
+}
+
+// itemRef is the ledger's copy of pull request 7 of example-repo, item 1.
+export function itemRef(overrides: Partial<AutopilotItemRef> = {}): AutopilotItemRef {
+  return {
+    id: 1,
+    kind: 'pr',
+    repo: 'acme-org/example-repo',
+    number: 7,
+    title: 'Add the widget cache',
+    url: 'https://github.com/acme-org/example-repo/pull/7',
+    ...overrides,
+  }
+}
+
+// autopilotEffect is routine 3's snooze of item 1 at 11:30, which Undo can still take back.
+export function autopilotEffect(overrides: Partial<AutopilotEffect> = {}): AutopilotEffect {
+  return {
+    id: 51,
+    matchId: 12,
+    step: 0,
+    action: 'snooze',
+    appliedAt: '2026-06-15T11:30:00Z',
+    undoneAt: null,
+    reversedAt: null,
+    canUndo: true,
+    ...overrides,
+  }
+}
+
+// autopilotMatch is routine 3's match 12 on item 1 at 11:30: it ran, and snoozed it.
+export function autopilotMatch(overrides: Partial<AutopilotMatch> = {}): AutopilotMatch {
+  return {
+    id: 12,
+    routineId: 3,
+    routine: 'Snooze passing bot PRs',
+    item: itemRef(),
+    fireKey: 'checks_passed:commit:a1b2c3d',
+    dryRun: false,
+    manual: false,
+    state: 'done',
+    blockedBy: '',
+    reason: 'ran',
+    words: 'It ran.',
+    steps: [
+      {
+        kind: 'snooze',
+        label: 'Snooze',
+        status: 'done',
+        outcome: 'done',
+        note: 'Snoozed it for 3 days.',
+        runId: 0,
+        startedAt: '2026-06-15T11:30:00Z',
+        endedAt: '2026-06-15T11:30:00Z',
+      },
+    ],
+    step: 1,
+    trace: [],
+    approved: false,
+    attempt: 0,
+    runs: [],
+    effects: [autopilotEffect()],
+    createdAt: '2026-06-15T11:30:00Z',
+    updatedAt: '2026-06-15T11:30:00Z',
+    decidedAt: '2026-06-15T11:30:00Z',
+    closedAt: '2026-06-15T11:30:00Z',
+    ...overrides,
+  }
+}
+
+// dryRunMatch is routine 4's Dry run record on item 2 at 11:40: it would have run.
+export function dryRunMatch(overrides: Partial<AutopilotMatch> = {}): AutopilotMatch {
+  return autopilotMatch({
+    id: 14,
+    routineId: 4,
+    routine: 'Investigate new bugs',
+    item: itemRef({
+      id: 2,
+      kind: 'issue',
+      number: 9,
+      title: 'The widget forgets its size',
+      url: 'https://github.com/acme-org/example-repo/issues/9',
+    }),
+    fireKey: 'appears:item',
+    dryRun: true,
+    reason: 'would_run',
+    words: 'Dry run: it would have run.',
+    steps: [],
+    effects: [],
+    createdAt: '2026-06-15T11:40:00Z',
+    updatedAt: '2026-06-15T11:40:00Z',
+    decidedAt: '2026-06-15T11:40:00Z',
+    closedAt: '2026-06-15T11:40:00Z',
+    ...overrides,
+  })
+}
+
+// activityGroup is today's line for routine 3's snoozes: match 12's, which Undo can take
+// back.
+export function activityGroup(overrides: Partial<AutopilotGroup> = {}): AutopilotGroup {
+  return {
+    key: '2026-06-15|3|snooze',
+    routineId: 3,
+    routine: 'Snooze passing bot PRs',
+    action: 'snooze',
+    words: 'Snoozed 1',
+    count: 1,
+    undone: 0,
+    reversed: 0,
+    undo: [51],
+    matches: [12],
+    items: [itemRef()],
+    latest: '2026-06-15T11:30:00Z',
+    ...overrides,
+  }
+}
+
+// activityPage is Activity's first and only page: today, a snooze and a Dry run's record,
+// and nothing left alone.
+export function activityPage(overrides: Partial<AutopilotActivityPage> = {}): AutopilotActivityPage {
+  return {
+    days: [{ date: '2026-06-15', matches: [dryRunMatch(), autopilotMatch()], groups: [activityGroup()] }],
+    more: false,
+    next: 0,
+    leftAlone: [],
+    ...overrides,
+  }
+}
+
+// leftAlone is item 1, which routine 3 leaves alone since the user brought back what it
+// snoozed.
+export function leftAlone(overrides: Partial<AutopilotLeftAlone> = {}): AutopilotLeftAlone {
+  return {
+    routineId: 3,
+    routine: 'Snooze passing bot PRs',
+    item: itemRef(),
+    why: 'You brought back what it snoozed.',
+    since: '2026-06-15T11:45:00Z',
+    ...overrides,
+  }
+}
+
+// autopilotEngine is the engine as this copy runs it: its last cycle at 11:59, holding the
+// lock, with nothing paused and no problem.
+export function autopilotEngine(overrides: Partial<AutopilotEngine> = {}): AutopilotEngine {
+  return {
+    running: true,
+    holds: true,
+    elsewhere: false,
+    primed: true,
+    pausedSince: null,
+    lastCycle: {
+      at: '2026-06-15T11:59:00Z',
+      tookMs: 34,
+      waiting: '',
+      routines: 2,
+      items: 14,
+      matches: 7,
+      starts: 1,
+      closed: 0,
+      reads: 0,
+      catchUp: false,
+    },
+    searchesPaused: '',
+    signedOut: false,
+    problems: [],
+    ...overrides,
+  }
 }
 
 // project is an issue's place in the roadmap project, with its status there.

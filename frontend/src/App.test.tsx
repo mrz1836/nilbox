@@ -38,6 +38,8 @@ import {
   sessionsSnapshot,
   autopilotAlert,
   autopilotTarget,
+  activityPage,
+  routine,
 } from './test/fixtures'
 import { emit, listening, mocks, platform, renderApp } from './test/platform'
 
@@ -2149,7 +2151,7 @@ describe('the Notifications page', () => {
       expect(platform.openExternal).not.toHaveBeenCalled()
     })
 
-    it('marks an Autopilot problem’s banner read, and says the Autopilot tab isn’t in this version', async () => {
+    it('marks an Autopilot problem’s banner read, and opens its routine in the Autopilot tab', async () => {
       const problem = notification({
         id: 8,
         kind: 'autopilot_problem',
@@ -2157,10 +2159,11 @@ describe('the Notifications page', () => {
         itemKind: '',
         number: 0,
         url: '',
-        title: 'Tell me about security failures',
-        autopilot: autopilotTarget({ routineId: 3 }),
+        title: 'Snooze passing bot PRs',
+        autopilot: autopilotTarget({ routineId: 3, createdAt: '2026-06-14T09:00:00Z' }),
       })
 
+      platform.listRoutines.mockResolvedValue([routine()])
       platform.listNotifications.mockResolvedValue({ items: [problem], unread: 1 })
       await renderApp()
       await screen.findByRole('button', { name: '1 unread notifications' })
@@ -2168,22 +2171,64 @@ describe('the Notifications page', () => {
       click({ notificationId: 8, autopilot: problem.autopilot })
 
       expect(platform.markNotificationsRead).toHaveBeenCalledExactlyOnceWith([8])
-      expect(
-        within(await screen.findByRole('group', { name: 'Notification' })).getByText(/Autopilot tab/),
-      ).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Autopilot' })).toHaveAttribute('aria-pressed', 'true')
+      expect(await screen.findByRole('heading', { name: 'Snooze passing bot PRs', level: 2 })).toBeInTheDocument()
+      expect(platform.routineWatching).toHaveBeenCalledWith(3)
       expect(platform.openExternal).not.toHaveBeenCalled()
     })
 
-    it('says the same of the menu bar’s Autopilot rows, which name no notification', async () => {
+    it('says so when the routine a target names is gone, or another made since', async () => {
+      platform.listRoutines.mockResolvedValue([routine()])
+      await renderApp()
+      await screen.findByRole('region', { name: 'Review requested' })
+
+      click({ notificationId: 0, autopilot: autopilotTarget({ routineId: 3, createdAt: '2026-01-01T00:00:00Z' }) })
+
+      expect(
+        within(await screen.findByRole('group', { name: 'Notification' })).getByText('That routine is no longer here.'),
+      ).toBeInTheDocument()
+      expect(screen.getByRole('heading', { name: 'Activity', level: 2 })).toBeInTheDocument()
+    })
+
+    it('opens Activity for the menu bar’s row of what needs you, which names no notification', async () => {
+      platform.listRoutines.mockResolvedValue([routine()])
+      platform.autopilotActivity.mockResolvedValue(activityPage())
       await renderApp()
       await screen.findByRole('region', { name: 'Review requested' })
 
       click({ notificationId: 0, autopilot: autopilotTarget({ activity: true }) })
 
-      expect(
-        within(await screen.findByRole('group', { name: 'Notification' })).getByText(/Autopilot tab/),
-      ).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Autopilot' })).toHaveAttribute('aria-pressed', 'true')
+      expect(await screen.findByRole('heading', { name: 'Activity', level: 2 })).toBeInTheDocument()
+      expect(await screen.findByText('Snoozed 1')).toBeInTheDocument()
       expect(platform.markNotificationsRead).not.toHaveBeenCalled()
+    })
+
+    it('opens Activity at the match a banner names, once it is read, or says it is gone', async () => {
+      platform.listRoutines.mockResolvedValue([routine()])
+      platform.autopilotActivity.mockResolvedValue(activityPage())
+      await renderApp()
+      await screen.findByRole('region', { name: 'Review requested' })
+
+      click({
+        notificationId: 0,
+        autopilot: autopilotTarget({ routineId: 3, matchId: 12, createdAt: '2026-06-15T11:30:00Z' }),
+      })
+
+      const line = (await screen.findByText('Snoozed 1')).closest('li')
+
+      expect(line).toHaveAttribute('data-highlighted', 'true')
+
+      click({
+        notificationId: 0,
+        autopilot: autopilotTarget({ routineId: 3, matchId: 12, createdAt: '2026-06-01T11:30:00Z' }),
+      })
+
+      expect(
+        within(await screen.findByRole('group', { name: 'Notification' })).getByText(
+          'That is no longer in Autopilot’s history.',
+        ),
+      ).toBeInTheDocument()
     })
 
     it('marks an Autopilot entry about an item read when that item’s sheet opens', async () => {

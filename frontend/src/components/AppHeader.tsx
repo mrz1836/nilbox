@@ -1,6 +1,7 @@
 import type { RefObject } from 'react'
 
 import { brand } from '../generated/brand'
+import type { AutopilotBadge } from '../lib/autopilot'
 import { counted, formatCount } from '../lib/format'
 import { scriptsBadgeTitle, type ScriptsBadge } from '../lib/scriptsTab'
 import type { GitHubThreadsState } from '../lib/useGitHubThreads'
@@ -17,13 +18,14 @@ import { ServiceStatusMenu } from './ServiceStatusMenu'
 
 // View is the page the window shows. Settings is opened from the account menu (or ⌘,)
 // rather than from a tab.
-export type View = 'inbox' | 'notifications' | 'worktrees' | 'prompts' | 'scripts' | 'settings'
+export type View = 'inbox' | 'notifications' | 'autopilot' | 'worktrees' | 'prompts' | 'scripts' | 'settings'
 
-// tabs are the view tabs, in their order: Notifications sits beside the Inbox, so it never
-// moves when Scripts comes and goes at the end.
+// tabs are the view tabs, in their order: Notifications sits beside the Inbox, and
+// Autopilot after it, so neither moves when Scripts comes and goes at the end.
 const tabs: readonly { id: View; label: string }[] = [
   { id: 'inbox', label: 'Inbox' },
   { id: 'notifications', label: 'Notifications' },
+  { id: 'autopilot', label: 'Autopilot' },
   { id: 'worktrees', label: 'Worktrees' },
   { id: 'prompts', label: 'Prompts' },
   { id: 'scripts', label: 'Scripts' },
@@ -54,6 +56,9 @@ export interface AppHeaderProps {
   // scripts is the Scripts tab's badge while the tab shows, or null while it doesn't: no
   // integration is on (D2).
   scripts?: ScriptsBadge | null
+  // autopilot is the Autopilot tab's badge: the agents working, an amber dot while
+  // something waits for the user, and a red dot while a routine is broken or can't run.
+  autopilot?: AutopilotBadge
   onOpenSettings: () => void
   // notifications is the notification history the bell shows; without it there is no bell.
   // onOpenNotification shows an entry's item, and onNotificationSettings opens their
@@ -122,13 +127,23 @@ function notificationsTitle(own: number, github: number): string {
 }
 
 // tabCount is the count a tab shows; Prompts and Settings show none. Notifications counts
-// the unread, the app's own and GitHub's together. Scripts counts the runs going, with a
-// red dot after a run failed until it is opened, and an amber one while a tool that's on
-// can't be used.
+// the unread, the app's own and GitHub's together. Autopilot counts the agents working,
+// with an amber dot while something waits for the user and a red one while a routine is
+// broken or can't run. Scripts counts the runs going, with a red dot after a run failed
+// until it is opened, and an amber one while a tool that's on can't be used.
 function tabCount(id: View, props: AppHeaderProps): TabCount {
-  const { inboxCount = 0, worktreeCount = 0, worktreeAttention = 0, scripts = null } = props
+  const { inboxCount = 0, worktreeCount = 0, worktreeAttention = 0, scripts = null, autopilot } = props
 
   switch (id) {
+    case 'autopilot':
+      return autopilot === undefined
+        ? { count: 0, title: '', attention: false }
+        : {
+            count: autopilot.count,
+            title: autopilot.title,
+            attention: autopilot.attention,
+            failed: autopilot.failed,
+          }
     case 'inbox':
       return {
         count: inboxCount,
@@ -162,8 +177,8 @@ function tabCount(id: View, props: AppHeaderProps): TabCount {
 }
 
 // AppHeader is the window's single toolbar, sitting beside the macOS window controls:
-// the logo, the view tabs (Inbox, Notifications, and Worktrees with their counts, Prompts,
-// and Scripts while an integration is on), and on the
+// the logo, the view tabs (Inbox, Notifications, Autopilot, and Worktrees with their
+// counts, Prompts, and Scripts while an integration is on), and on the
 // right the page's filter field, the notification bell, the GitHub notifications button,
 // a warning while a service the user watches reports a problem, the API budget gauge, and
 // the account menu. The filter gives way first as the window narrows; the logo and the tabs

@@ -42,6 +42,40 @@ WHERE item_id = sqlc.arg(item_id)
 ORDER BY created_at DESC, id DESC
 LIMIT sqlc.arg(row_limit);
 
+-- name: ListLatestItemMatches :many
+-- ListLatestItemMatches returns, for each item among ids, its newest match that did
+-- something there or waits to: open, or closed as done, skipped, or dismissed, never a
+-- baseline or one that closed because the item or the routine moved on before it acted.
+-- Newest first.
+SELECT m.* FROM autopilot_matches AS m
+WHERE m.id IN (
+    SELECT MAX(l.id) FROM autopilot_matches AS l
+    WHERE l.item_id IN (sqlc.slice(ids))
+        AND l.state IN ('waiting', 'blocked', 'queued', 'running', 'verifying', 'done', 'skipped', 'dismissed')
+    GROUP BY l.item_id
+)
+ORDER BY m.id DESC;
+
+-- name: ListRoutineFigures :many
+-- ListRoutineFigures returns, for each routine with a match that did something or waits to
+-- (as ListLatestItemMatches counts them), how many it recorded since since, real ones and
+-- a Dry run's apart, how many wait for the user, and its newest one's ID: each routine's
+-- line in the routine list.
+SELECT
+    routine_id,
+    CAST(SUM(CASE WHEN dry_run = 0 AND created_at >= sqlc.arg(since) THEN 1 ELSE 0 END) AS INTEGER) AS today,
+    CAST(SUM(CASE WHEN dry_run = 1 AND created_at >= sqlc.arg(since) THEN 1 ELSE 0 END) AS INTEGER) AS would_run_today,
+    CAST(SUM(CASE WHEN state = 'waiting' THEN 1 ELSE 0 END) AS INTEGER) AS waiting,
+    CAST(MAX(id) AS INTEGER) AS last_id
+FROM autopilot_matches
+WHERE state IN ('waiting', 'blocked', 'queued', 'running', 'verifying', 'done', 'skipped', 'dismissed')
+GROUP BY routine_id;
+
+-- name: ListMatchHeads :many
+-- ListMatchHeads returns when each match among ids was recorded, and whether it is a Dry
+-- run's.
+SELECT id, dry_run, created_at FROM autopilot_matches WHERE id IN (sqlc.slice(ids));
+
 -- name: ListMatchesBefore :many
 -- ListMatchesBefore returns the matches recorded before the match before, newest first: a
 -- page of the Activity.

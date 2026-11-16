@@ -714,8 +714,38 @@ export interface Routine {
      * LastError is the last error it met, in the window's words, "" for none.
      */
     "lastError": string;
+
+    /**
+     * Figures are what its ledger says of it, for its line in the list: filled in by List
+     * alone, zero elsewhere.
+     */
+    "figures": RoutineFigures;
     "createdAt": string;
     "updatedAt": string;
+}
+
+/**
+ * RoutineFigures are what a routine's matches that did something or wait to (never a
+ * baseline, nor one that closed as its item or the routine moved on) say of it: how many
+ * it recorded today, from local midnight, real ones and a Dry run's apart, how many wait
+ * for the user, and when its newest one was recorded and whether that was a Dry run's.
+ */
+export interface RoutineFigures {
+    "today": number;
+    "wouldRunToday": number;
+    "waiting": number;
+    "lastAt": string | null;
+    "lastDryRun": boolean;
+}
+
+/**
+ * RoutineName is a routine's name by its ID, a deleted one's included, for the window's
+ * marks and history that name it.
+ */
+export interface RoutineName {
+    "id": number;
+    "name": string;
+    "deleted": boolean;
 }
 
 /**

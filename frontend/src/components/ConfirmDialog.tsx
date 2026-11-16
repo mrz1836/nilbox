@@ -11,6 +11,9 @@ export interface ConfirmDialogProps {
   confirmLabel: string
   onConfirm: () => void
   onCancel: () => void
+  // onDismiss is what Escape does, for a question whose cancel button is an answer of its
+  // own, as "Only what changes from now on" is; it defaults to onCancel.
+  onDismiss?: (() => void) | undefined
   // tone colors the confirm button: danger for destructive actions (the default),
   // primary for safe ones.
   tone?: 'danger' | 'primary'
@@ -47,6 +50,7 @@ export function ConfirmDialog({
   confirmLabel,
   onConfirm,
   onCancel,
+  onDismiss = onCancel,
   tone = 'danger',
   cancelLabel = 'Cancel',
   confirmDisabled = false,
@@ -59,7 +63,7 @@ export function ConfirmDialog({
   const confirmRef = useRef<HTMLButtonElement>(null)
   const cancelWhenIdle = () => {
     if (!busy) {
-      onCancel()
+      onDismiss()
     }
   }
   const cancel = useModalDialog(dialogRef, cancelWhenIdle, () => cancelRef.current ?? confirmRef.current)

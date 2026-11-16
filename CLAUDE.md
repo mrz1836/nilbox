@@ -816,9 +816,13 @@ changing the package, and keep the section and its summary in step.
   `Skip`, `RunNow`, `TryAgain`, `LetActAgain`, `Undo`, `ClearHistory`) are commands it
   applies; `StopRun` and `StopAll` go straight to the runner; `Activity` (with each day's
   grouped lines of local steps, "Snoozed 6", and the items left alone), `ItemHistory`,
+  `LatestMatches` (each item's newest match that did something, for its row's chip, at most
+  500 ids a call, which the window sends in chunks), `RoutineNames` (every routine's name,
+  the deleted ones' too, for the history and marks that name them), `List`'s `Figures` (each
+  routine's counts for its status line, from one grouped read of the ledger),
   `Explain`, `Engine`, `Matching`, and `Glance` (the routines, what waits for the user, the
-  agents working: the menu bar's Autopilot group, the window's close, and whether the window
-  names Autopilot at all, only while a routine exists) read. `internal/autopilot/sim` (test
+  agents working: the menu bar's Autopilot group, the window's close, and the Autopilot tab's
+  count and dots) read. `internal/autopilot/sim` (test
   support only) is its simulator, which runs the triage steps through the inbox's real triage
   and the notices through the real dispatcher. It
   reaches the rest only through the interfaces it declares (`Prefs`, `Accounts`, `Names`,
@@ -1107,7 +1111,7 @@ changing the package, and keep the section and its summary in step.
   repositories, prompts (a `prompts.Bundle`, exactly as `prompts.json`), launch defaults (the
   `launch-defaults.json` format), the user's scripts, and the Autopilot routines (the
   `autopilot.json` format, each added or saved over arriving off, one a newer build wrote
-  never touched; the window doesn't list this category yet); and imports one back. It reaches each
+  never touched); and imports one back. It reaches each
   category's owner only through a `Part` (`Export`, `Prepare` outside the transaction, `Apply`
   inside it, `Done` once it commits), which `internal/core/adapters_backup.go` adapts over each
   owner's `BackupPart` (`settings`, `prompts`, `launchdefaults`, `scripts`, `autopilot`), a type of its own
@@ -1185,6 +1189,12 @@ changing the package, and keep the section and its summary in step.
   banner (`event.RevealItem.NotificationID`, checked against the entry's item, page, or run,
   since Clear history hands ids out again), or when its item's sheet opens (`InboxView`'s
   `onItemOpened`, once per opening).
+  `components/autopilot/` is the Autopilot tab (the routine list, Activity, a routine's
+  Watching list on the inbox's own rows and sheets, and the ⚡ chip), its words in
+  `lib/autopilot.ts`; every row reads the routines' names and its chip through
+  `AutopilotRowsContext`, and the inbox's row actions are shared through
+  `components/useItemActions.ts`. Full design:
+  [docs/architecture.md](docs/architecture.md#the-autopilot-tab).
   Theme colors come from the `--color-*` tokens `internal/brandgen` writes to
   `frontend/src/generated/theme.css`. Checkboxes and radio buttons take the `checkbox` and
   `radio` classes (`frontend/src/index.css`), which draw them in the app's own style: macOS
