@@ -24,6 +24,9 @@ import (
 )
 
 const (
+	// goosMacOS is runtime.GOOS on macOS, the one system the macOS-only targets run on.
+	goosMacOS = "darwin"
+
 	// wailsModule is the desktop runtime's Go module; go.mod pins its version, and the
 	// wails3 CLI always runs at that same version.
 	wailsModule = "github.com/wailsapp/wails/v3"
@@ -241,7 +244,7 @@ func devAppArgs(fresh bool) ([]string, error) {
 //
 //	magex app:build
 func (App) Build() error {
-	if runtime.GOOS != "darwin" {
+	if runtime.GOOS != goosMacOS {
 		return errNeedsMacOS
 	}
 

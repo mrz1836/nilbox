@@ -56,50 +56,77 @@ func prepareBuild() error {
 	return (Frontend{}).Build()
 }
 
-// assembleBundle builds the bundle spec describes from a built frontend: it compiles the
-// desktop binary, adds the Info.plist with the build's versions and the app icon, sets
-// every mode as an app's (whatever the umask), signs the bundle, sets the modes again for
-// the seal codesign wrote, and reports the binary's size. A previous bundle at the same
-// path is removed first.
+// assembleBundle builds the bundle spec describes from a built frontend, as
+// buildUnsignedBundle does, signs it with spec's signer, as signBundle does, and reports
+// the binary's size.
 func assembleBundle(spec bundleSpec) error {
-	contents := filepath.Join(spec.bundle, "Contents")
-	exe := filepath.Join(contents, "MacOS", brand.Slug)
-
-	if err := os.RemoveAll(spec.bundle); err != nil {
-		return fmt.Errorf("remove the previous bundle: %w", err)
-	}
-
-	if err := os.MkdirAll(filepath.Dir(exe), 0o755); err != nil { //nolint:gosec // an app bundle is world-readable
-		return fmt.Errorf("create the bundle: %w", err)
-	}
-
-	if err := buildExecutable(exe, spec.meta, spec.arches, filepath.Dir(spec.bundle)); err != nil {
+	exe, err := buildUnsignedBundle(spec)
+	if err != nil {
 		return err
 	}
 
-	if err := writeInfoPlist(filepath.Join(contents, "Info.plist"), spec.meta); err != nil {
-		return err
-	}
-
-	if err := copyIconSet(filepath.Join(contents, "Resources")); err != nil {
-		return err
-	}
-
-	if err := normalizeModes(spec.bundle, exe); err != nil {
-		return err
-	}
-
-	if err := spec.signer.sign(spec.bundle); err != nil {
-		return fmt.Errorf("sign the bundle %s: %w", spec.signer, err)
-	}
-
-	// codesign writes the seal (_CodeSignature) under the umask too; a mode is no part of
-	// the signature, so setting it again leaves the signature valid.
-	if err := normalizeModes(spec.bundle, exe); err != nil {
+	if err = signBundle(spec.bundle, exe, spec.signer); err != nil {
 		return err
 	}
 
 	return reportSize(spec.bundle, exe)
+}
+
+// bundleExecutable is the path of the desktop binary inside bundle.
+func bundleExecutable(bundle string) string {
+	return filepath.Join(bundle, "Contents", "MacOS", brand.Slug)
+}
+
+// buildUnsignedBundle builds the bundle spec describes from a built frontend, unsigned: it
+// compiles the desktop binary, adds the Info.plist with the build's versions and the app
+// icon, and sets every mode as an app's, whatever the umask. A previous bundle at the same
+// path is removed first. It returns the binary's path. spec's signer is not used.
+func buildUnsignedBundle(spec bundleSpec) (string, error) {
+	contents := filepath.Join(spec.bundle, "Contents")
+	exe := bundleExecutable(spec.bundle)
+
+	if err := os.RemoveAll(spec.bundle); err != nil {
+		return "", fmt.Errorf("remove the previous bundle: %w", err)
+	}
+
+	if err := os.MkdirAll(filepath.Dir(exe), 0o755); err != nil { //nolint:gosec // an app bundle is world-readable
+		return "", fmt.Errorf("create the bundle: %w", err)
+	}
+
+	if err := buildExecutable(exe, spec.meta, spec.arches, filepath.Dir(spec.bundle)); err != nil {
+		return "", err
+	}
+
+	if err := writeInfoPlist(filepath.Join(contents, "Info.plist"), spec.meta); err != nil {
+		return "", err
+	}
+
+	if err := copyIconSet(filepath.Join(contents, "Resources")); err != nil {
+		return "", err
+	}
+
+	if err := normalizeModes(spec.bundle, exe); err != nil {
+		return "", err
+	}
+
+	return exe, nil
+}
+
+// signBundle signs bundle, whose binary is exe, with s: it sets every mode as an app's
+// first, since the bundle may come from elsewhere (a build artifact keeps no modes), then
+// signs, then sets the modes again for the seal codesign wrote.
+func signBundle(bundle, exe string, s signer) error {
+	if err := normalizeModes(bundle, exe); err != nil {
+		return err
+	}
+
+	if err := s.sign(bundle); err != nil {
+		return fmt.Errorf("sign the bundle %s: %w", s, err)
+	}
+
+	// codesign writes the seal (_CodeSignature) under the umask too; a mode is no part of
+	// the signature, so setting it again leaves the signature valid.
+	return normalizeModes(bundle, exe)
 }
 
 // buildExecutable compiles the desktop binary into exe: for this Mac's processor when

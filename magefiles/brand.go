@@ -55,7 +55,7 @@ func (Brand) Generate() error {
 //
 //	magex brand:icons
 func (Brand) Icons() error {
-	if runtime.GOOS != "darwin" {
+	if runtime.GOOS != goosMacOS {
 		return errNeedsMacOS
 	}
 

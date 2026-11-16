@@ -90,7 +90,7 @@ var (
 //
 //	CODESIGN_IDENTITY=<identity> magex app:rehearse case=normal
 func (App) Rehearse() error {
-	if runtime.GOOS != "darwin" {
+	if runtime.GOOS != goosMacOS {
 		return errNeedsMacOS
 	}
 
