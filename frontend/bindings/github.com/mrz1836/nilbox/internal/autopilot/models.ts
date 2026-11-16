@@ -48,7 +48,7 @@ export interface ActivityPage {
 /**
  * Blocker is what an open match waits on.
  */
-export type Blocker = "ask" | "hold" | "warning" | "no_clone" | "dirty_worktree" | "catch_up" | "interrupted" | "outside_contributor" | "backlog" | "not_ready" | "missing_tool" | "cross_repository" | "slot" | "cap_runs" | "cap_actions" | "cap_spend" | "active_hours" | "paused" | "busy_worktree" | "github_budget" | "writes_held" | "provider_outage" | "settling" | "wait" | "starting";
+export type Blocker = "ask" | "hold" | "warning" | "no_clone" | "dirty_worktree" | "catch_up" | "interrupted" | "outside_contributor" | "backlog" | "not_ready" | "missing_tool" | "cross_repository" | "slot" | "cap_runs" | "cap_actions" | "cap_spend" | "active_hours" | "paused" | "busy_worktree" | "github_budget" | "writes_held" | "provider_outage" | "settling" | "wait" | "signed_out" | "starting";
 
 /**
  * The values of Blocker, by the names of their Go constants.
@@ -89,6 +89,11 @@ export const Blocker = {
     BlockOutage: "provider_outage",
     BlockSettling: "settling",
     BlockWait: "wait",
+
+    /**
+     * BlockSignedOut is no one signed in to GitHub: nothing starts, local steps included.
+     */
+    BlockSignedOut: "signed_out",
 
     /**
      * BlockStarting is a start under way: the item read fresh, then the start itself.
@@ -243,6 +248,12 @@ export interface EngineStatus {
      * why the routines that use them wait.
      */
     "searchesPaused": string;
+
+    /**
+     * SignedOut reports that the last refresh found no one signed in to GitHub: nothing
+     * starts, local steps included, until someone is.
+     */
+    "signedOut": boolean;
 
     /**
      * Problems are the routines' problems, as the last cycle found them.

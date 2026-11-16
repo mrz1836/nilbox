@@ -181,7 +181,7 @@ func (s *Sim) Begin() {
 	s.Store = inbox.NewStore(s.DB, s.Clock)
 	s.Inbox = inbox.NewService(inbox.Config{
 		Pool: s.DB, Tokens: s.World, Client: s.World, Clock: s.Clock, Watches: watches, Outcomes: fan, Events: fan,
-		Changed: func(ids []int64) { fan.itemsChanged(ids) }, Keep: fan, Logger: s.Logs.Logger(),
+		Changed: func(ids []int64) { fan.itemsChanged(ids) }, Keep: fan, Store: s.Store, Logger: s.Logs.Logger(),
 	})
 	s.Routines = inbox.NewRoutines(s.Inbox)
 	s.Service = autopilot.NewService(autopilot.Config{
@@ -519,14 +519,14 @@ func (a *items) ReadStates(ctx context.Context, ids []int64) error {
 		refs = append(refs, st.Ref)
 	}
 
-	readAt := a.sim.Clock.Now()
+	read := a.sim.Store.StartRead()
 
 	states, err := a.sim.World.FetchItemStates(ctx, github.Token{}, refs)
 	if err != nil {
 		return err
 	}
 
-	return a.sim.Store.NoteStates(ctx, readAt, refs, states)
+	return a.sim.Store.NoteStates(ctx, read, refs, states)
 }
 
 func (a *items) ReadItem(ctx context.Context, id int64) error {

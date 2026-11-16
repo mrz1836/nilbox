@@ -2,6 +2,7 @@ package autopilot
 
 import (
 	"context"
+	"errors"
 	"slices"
 	"strconv"
 	"time"
@@ -1059,7 +1060,9 @@ func (p *pass) askChecks(ctx context.Context) {
 	p.cycle.Reads++
 
 	p.e.goWork(ctx, func(ctx context.Context) {
-		if _, err := p.e.items.ReadChecks(ctx, checks); err != nil && ctx.Err() == nil {
+		// While the GraphQL budget is low the inbox sends nothing, and the names are read
+		// again once they are due.
+		if _, err := p.e.items.ReadChecks(ctx, checks); err != nil && ctx.Err() == nil && !errors.Is(err, ErrLowBudget) {
 			p.e.logger.InfoContext(ctx, "Autopilot could not read check names", "error", err)
 		}
 

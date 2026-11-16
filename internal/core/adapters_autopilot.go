@@ -16,7 +16,6 @@ import (
 	"github.com/mrz1836/nilbox/internal/autopilot/facts"
 	"github.com/mrz1836/nilbox/internal/autopilotprefs"
 	"github.com/mrz1836/nilbox/internal/budget"
-	"github.com/mrz1836/nilbox/internal/clock"
 	"github.com/mrz1836/nilbox/internal/event"
 	"github.com/mrz1836/nilbox/internal/github"
 	"github.com/mrz1836/nilbox/internal/inbox"
@@ -300,7 +299,6 @@ type autopilotEngine struct {
 	client  *github.Client
 	lock    string
 	events  event.Sink
-	clock   clock.Clock
 	logger  *slog.Logger
 	service *autopilot.Service
 }
@@ -312,7 +310,7 @@ func newAutopilotEngine(deps autopilotEngine) *autopilot.Engine {
 	return autopilot.NewEngine(deps.service, autopilot.EngineConfig{
 		Items: engineItems{
 			autopilotItems: autopilotItems{store: deps.store, inbox: deps.faces}, service: deps.inbox,
-			tokens: deps.tokens, client: deps.client, clock: deps.clock, logger: deps.logger,
+			tokens: deps.tokens, client: deps.client, logger: deps.logger,
 		},
 		Lock: autopilot.NewLock(deps.lock), Events: deps.events,
 	})
@@ -325,7 +323,6 @@ type engineItems struct {
 	service *inbox.Service
 	tokens  *github.TokenSource
 	client  *github.Client
-	clock   clock.Clock
 	logger  *slog.Logger
 }
 

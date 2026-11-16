@@ -730,7 +730,7 @@ func assemble(ctx context.Context, pool *sql.DB, info startup, opts Options, log
 	// carried the searches built just now.
 	engine.engine = newAutopilotEngine(autopilotEngine{
 		store: inboxStore, inbox: inboxSvc, faces: inboxRoutines, tokens: tokens, client: client,
-		lock: opts.Paths.AutopilotLock, events: opts.Events, clock: opts.Clock, logger: logger, service: routines,
+		lock: opts.Paths.AutopilotLock, events: opts.Events, logger: logger, service: routines,
 	})
 
 	c := &Core{
