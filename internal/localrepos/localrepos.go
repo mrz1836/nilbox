@@ -62,7 +62,9 @@ type LocalRepo struct {
 }
 
 // RemoteFor returns the name of the remote that points at name, preferring origin and
-// otherwise the alphabetically first. The comparison ignores case.
+// otherwise the alphabetically first. The comparison ignores case. A remote whose name
+// starts with "-" is never chosen: git would read it as an option, so every command that
+// names a remote refuses it, and "-" sorts before every letter and digit.
 func (r LocalRepo) RemoteFor(name repo.Name) (string, bool) {
 	want := name.Key()
 
@@ -72,7 +74,7 @@ func (r LocalRepo) RemoteFor(name repo.Name) (string, bool) {
 
 	names := make([]string, 0, len(r.Remotes))
 	for remote, target := range r.Remotes {
-		if target.Key() == want {
+		if target.Key() == want && !strings.HasPrefix(remote, "-") {
 			names = append(names, remote)
 		}
 	}
