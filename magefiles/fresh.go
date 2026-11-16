@@ -23,13 +23,13 @@ import (
 // make in the temporary folder.
 const freshPrefix = brand.Slug + "-fresh-"
 
-// Reset starts the app over on fresh data, as Settings → About → Reset does: it quits the
-// running app, writes the request to start over beside the app's data, and opens the app
-// again, building the bundle first when it is missing. The app's start carries the reset
-// out: it sets the database aside as <db>.reset-<stamp> for a fresh one and brings back
-// the prompts, the launch defaults, and your own scripts, then opens on the first-run
-// setup. Nothing else is touched: your clones, worktrees, backups, logs, and GitHub stay as
-// they are.
+// Reset starts the build from source over on fresh data, as Settings → About → Reset does:
+// it quits the running build, writes the request to start over beside the app's data, which
+// the release shares, and opens the build again, building the bundle first when it is
+// missing. The app's start carries the reset out: it sets the database aside as
+// <db>.reset-<stamp> for a fresh one and brings back the prompts, the launch defaults, and
+// your own scripts, then opens on the first-run setup. Nothing else is touched: your clones,
+// worktrees, backups, logs, and GitHub stay as they are.
 //
 //	magex app:reset
 func (App) Reset() error {
@@ -76,8 +76,8 @@ func (App) Fresh() error {
 	return openFresh(paths, os.TempDir(), bundle, exe, appQuitTimeout)
 }
 
-// builtBundle returns the macOS app bundle and its executable, building the bundle first
-// when it is missing.
+// builtBundle returns the macOS app bundle built from source and its executable, building
+// the bundle first when it is missing.
 func builtBundle() (bundle, exe string, err error) {
 	bundle, exe, err = appBundle()
 	if errors.Is(err, errNoBundle) {
@@ -108,9 +108,10 @@ func resetApp(paths appdata.Paths, bundle, exe string, quitTimeout time.Duration
 		return fmt.Errorf("the reset is asked for, and the next start carries it out: %w", err)
 	}
 
-	say("Starting " + brand.Name + " over. It keeps your prompts, launch defaults, and your own scripts.")
+	say("Starting " + brand.DevName + " over, on the data it shares with " + brand.Name + ". It keeps your prompts, " +
+		"launch defaults, and your own scripts.")
 	say("Your clones, worktrees, backups, and logs are left as they are.")
-	say("To undo it, quit " + brand.Name + ", then rename the newest " + filepath.Base(paths.DB) +
+	say("To undo it, quit " + brand.DevName + ", then rename the newest " + filepath.Base(paths.DB) +
 		".reset-<stamp> in " + paths.Root + " back to " + filepath.Base(paths.DB) + ".")
 
 	return nil
@@ -134,7 +135,7 @@ func openFresh(paths appdata.Paths, tmp, bundle, exe string, quitTimeout time.Du
 		return err
 	}
 
-	say(brand.Name + " is open on fresh data in " + dir + ".")
+	say(brand.DevName + " is open on fresh data in " + dir + ".")
 	say("Your own data is untouched; `magex app:run` goes back to it.")
 
 	return nil

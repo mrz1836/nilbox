@@ -16,12 +16,12 @@ import (
 	"github.com/mrz1836/nilbox/internal/testutil"
 )
 
-// fakeBundle writes an app bundle under bin/ in the working directory, with an executable
-// running body, and returns the executable's path.
+// fakeBundle writes the bundle built from source under bin/ in the working directory, with
+// an executable running body, and returns the executable's path.
 func fakeBundle(t *testing.T, body string) string {
 	t.Helper()
 
-	exe := filepath.Join("bin", brand.Name+".app", "Contents", "MacOS", brand.Slug)
+	exe := filepath.Join("bin", brand.DevName+".app", "Contents", "MacOS", brand.Slug)
 	testutil.WriteExecutable(t, exe, "#!/bin/sh\n"+body+"\n")
 
 	return exe

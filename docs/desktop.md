@@ -59,11 +59,11 @@ pins.
 | `magex app:lint` | Lints the desktop-tagged Go code (the desktop shell and the frontend embed) |
 | `magex app:test` | Runs the desktop-tagged tests, which run the desktop runtime itself (a bound method's error reaching the window worded); `magex test` builds without the tag |
 | `magex app:dev` | Runs the app against the Vite dev server with hot reload; `magex app:dev fresh=true` runs it on a fresh [sandbox](#a-sandbox-on-fresh-data) data folder, so the [first-run setup](#first-run-setup) shows |
-| `magex app:build` | Builds the production bundle `bin/Nilbox.app` and signs it ad hoc for local use |
-| `magex app:open` | Opens `bin/Nilbox.app` as it is, building it first when it is missing; a running copy is only brought to the front |
-| `magex app:run` | Builds `bin/Nilbox.app`, quits the copy already running, and opens the fresh build: the one command after a change |
-| `magex app:fresh` | Opens `bin/Nilbox.app` on a fresh [sandbox](#a-sandbox-on-fresh-data) data folder, your prompts and launch defaults copied in, leaving your own data as it is; `magex app:run` goes back to it |
-| `magex app:reset` | [Starts the app over](#starting-over) on your own data: quits it, asks for the reset, and opens it again, which carries the reset out |
+| `magex app:build` | Builds the production bundle from source, [Nilbox Dev](#nilbox-dev-a-build-from-source), as `bin/Nilbox Dev.app`, and signs it ad hoc for local use |
+| `magex app:open` | Opens `bin/Nilbox Dev.app` as it is, building it first when it is missing; a running copy is only brought to the front |
+| `magex app:run` | Builds `bin/Nilbox Dev.app`, quits the Nilbox Dev already running, and opens the fresh build: the one command after a change |
+| `magex app:fresh` | Opens `bin/Nilbox Dev.app` on a fresh [sandbox](#a-sandbox-on-fresh-data) data folder, your prompts and launch defaults copied in, leaving your own data as it is; `magex app:run` goes back to it |
+| `magex app:reset` | [Starts Nilbox Dev over](#starting-over) on your own data, which the release shares: quits it, asks for the reset, and opens it again, which carries the reset out |
 | `magex app:check` | Runs `app:bindingsCheck`, `app:lint`, `app:test`, and `app:build` |
 | `magex app:package` | Builds a release into `bin/release/<version>/`: a universal bundle (Apple silicon and Intel) signed with a code-signing identity, its zip, a signed `Nilbox.dmg`, `SHA256SUMS`, and the signed update manifest, checked against the release key the app pins ([Packaging a release](#packaging-a-release)); `app:buildRelease`, then `app:signRelease`, in one target |
 | `magex app:buildRelease` | The first half of `app:package`, which needs no secret: builds the release's universal bundle, unsigned, alone in `bin/unsigned/<version>/` |
@@ -76,7 +76,7 @@ pins.
 | `magex measure:startup` | Startup to the first frame on screen, over six launches |
 | `magex measure:refresh` | Five live, read-only inbox refreshes and the API budget they imply |
 | `magex measure:launch` | One real launch in iTerm2, timed until the agent runs in the clone |
-| `magex measure:size` | The size of the app binary and the bundle |
+| `magex measure:size` | The size of the app binary and the bundle, `bin/Nilbox Dev.app` |
 | `magex measure:all` | Every measurement: size, startup, refresh, and launch, in that order |
 
 A typical first build:
@@ -125,9 +125,33 @@ people an issue you open shows, each downloaded by login, without your token, ke
 database, and downloaded again at most once a week. The [service status](#the-window) check
 reads the status pages of the services you watch, `www.githubstatus.com`, `status.claude.com`,
 and `status.openai.com`, each sent only the request for its summary. A per-app firewall must
-allow `bin/Nilbox.app/Contents/MacOS/nilbox` to reach `api.github.com`, or every refresh times
-out. Blocking the avatar host only means initials show instead of pictures, and blocking a
+allow `bin/Nilbox Dev.app/Contents/MacOS/nilbox` (a release's is
+`/Applications/Nilbox.app/Contents/MacOS/nilbox`) to reach `api.github.com`, or every refresh
+times out. Blocking the avatar host only means initials show instead of pictures, and blocking a
 status page only means the check says it couldn't reach it.
+
+### Nilbox Dev, a build from source
+
+A build from source (`magex app:build`, and the `app:run`, `app:open`, `app:fresh`, and
+`app:reset` that build it) is **Nilbox Dev**: its bundle is `bin/Nilbox Dev.app`, named Nilbox
+Dev, with the bundle ID `com.mrz1836.nilbox.dev`, so macOS never takes it for the release
+(`/Applications/Nilbox.app`, `com.mrz1836.nilbox`). Spotlight, notifications, privacy prompts,
+and Open With tell the two apart, and Nilbox Dev asks for its own permissions (notifications,
+Automation) once. Only the bundle's copy of the `Info.plist` changes: the committed `build/darwin/Info.plist`
+stays the release's, and `app:build` stamps the name, the ID, and the Automation prompt's
+words into its copy (`devStamps` in `magefiles/bundle.go`, from `brand.DevName` and
+`brand.DevBundleID`) before it signs the bundle. The binary inside keeps its name, `nilbox`, and
+a release and a rehearsal stay Nilbox.
+
+Nilbox Dev runs on the release's data, `~/Library/Application Support/Nilbox`: the same
+settings, prompts, launch defaults, triage, and database. So don't run the release and Nilbox
+Dev at the same time: both would refresh, sync your GitHub notifications, and write that one
+database. `magex app:run` quits a running Nilbox Dev, never the release, so quit the release
+first. `magex app:dev` runs a bare binary, with no bundle, on that same data too.
+
+A bundle a build before Nilbox Dev left at `bin/Nilbox.app`, under the release's name and ID,
+is removed by the next `magex app:build` once nothing runs from it, so Spotlight stops offering
+it.
 
 <br>
 
@@ -378,9 +402,9 @@ for Updates** works in every mode.
 
 | Flavor | Made by | Updates | Data |
 |---|---|---|---|
-| `source` | `magex app:build`, `app:run`, `app:dev` | Never: "Updates are off in builds made from source." | Yours, or a sandbox's with `--data-dir` |
-| `release` | `magex app:package` | From GitHub's latest release, trusting only the pinned key. Off while no key is pinned. | Yours, or a sandbox's with `--data-dir` |
-| `rehearsal` | `magex app:rehearse` | From a local folder, trusting the key the build was given, to try an update end to end on one Mac; in an Applications folder or in the folder it was built in, `bin/rehearsal/` | Always its own, `~/Library/Application Support/Nilbox Rehearsal`, beside yours, whatever `--data-dir` says, with the **Test data** chip |
+| `source` | `magex app:build`, `app:run`, `app:dev`, as [Nilbox Dev](#nilbox-dev-a-build-from-source) (`bin/Nilbox Dev.app`, `com.mrz1836.nilbox.dev`) | Never: "Updates are off in builds made from source." | Yours, the same as the release's, or a sandbox's with `--data-dir` |
+| `release` | `magex app:package`, as Nilbox (`Nilbox.app`, `com.mrz1836.nilbox`) | From GitHub's latest release, trusting only the pinned key. Off while no key is pinned. | Yours, or a sandbox's with `--data-dir` |
+| `rehearsal` | `magex app:rehearse`, as Nilbox, with the release's bundle ID | From a local folder, trusting the key the build was given, to try an update end to end on one Mac; in an Applications folder or in the folder it was built in, `bin/rehearsal/` | Always its own, `~/Library/Application Support/Nilbox Rehearsal`, beside yours, whatever `--data-dir` says, with the **Test data** chip |
 
 A rehearsal build keeps its own data because the update opens the new version with no
 arguments: a `--data-dir` would not survive the swap, and the new version would open on your
@@ -827,8 +851,8 @@ refuses it or `gh`'s account changes (`gh auth switch`, `login`, or `logout`).
 
 **Logs.** The app logs to `logs/nilbox.log` in the same directory, one JSON record per line,
 and writes the same records as text to stderr, which you see when you start the binary from a
-terminal (`bin/Nilbox.app/Contents/MacOS/nilbox`). When the file would pass 5 MB it is renamed
-to `nilbox.log.1`, the earlier `nilbox.log.1` becomes `nilbox.log.2`, and the oldest is
+terminal (`"bin/Nilbox Dev.app/Contents/MacOS/nilbox"` for a build from source, quoted for its
+space). When the file would pass 5 MB it is renamed to `nilbox.log.1`, the earlier `nilbox.log.1` becomes `nilbox.log.2`, and the oldest is
 deleted, so at most three files (about 15 MB) are kept. The log keeps Info records and up;
 start the binary with `--debug`, or with `NILBOX_DEBUG=1` in its environment, to keep Debug
 records too. A log file that can't be written never stops the app: it logs to stderr alone and
@@ -913,7 +937,9 @@ to confirm. It saves a backup of your whole setup first, as an import does (to
 waits while runs are going in the app. Then it asks for the reset, quits, and opens again; the
 start carries the reset out before anything opens the database, and opens on the
 [first-run setup](#first-run-setup), whose Welcome says what came back. From a terminal,
-`magex app:reset` does the same: it quits the running app, asks for the reset, and opens it.
+`magex app:reset` does the same for [Nilbox Dev](#nilbox-dev-a-build-from-source): it quits the
+running Nilbox Dev, asks for the reset, and opens it. The release and Nilbox Dev share one data
+folder, so a reset in either starts both over.
 
 | Starts over | Stays |
 |---|---|
@@ -2517,9 +2543,11 @@ entry read; a banner that sums several up marks none.
 The first time the app starts, macOS asks whether to allow its notifications. **Send a test**
 in Settings shows a sample banner, asking first if macOS never has. If notifications are
 turned off for the app, Settings says so; turn them back on in System Settings →
-Notifications → Nilbox, which also sets the banner style, sounds, and Focus.
+Notifications → Nilbox (Nilbox Dev for a build from source), which also sets the banner style,
+sounds, and Focus.
 
-Banners need the app bundle, whose identifier macOS files notifications under. They show in a
+Banners need the app bundle, whose identifier macOS files notifications under, so the release
+and [Nilbox Dev](#nilbox-dev-a-build-from-source) each have their own setting. They show in a
 built app (`magex app:build`, `magex app:run`) but not in `magex app:dev`, which runs a bare
 binary: there the history still fills, and Settings explains why no banner shows. Nothing
 about notifications leaves your Mac: they are made from what the inbox already reads and
@@ -3349,7 +3377,8 @@ wants access to control “iTerm”", followed by the app's reason: Nilbox opens
 launches never ask.
 
 If you chose **Don't Allow**, the launch fails with a message that says so. Change it in
-**System Settings → Privacy & Security → Automation**, under Nilbox.
+**System Settings → Privacy & Security → Automation**, under Nilbox. A build from source asks,
+and is listed there, as Nilbox Dev, apart from the release.
 
 <br>
 

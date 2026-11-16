@@ -18,7 +18,6 @@ import (
 	"github.com/magefile/mage/sh"
 
 	"github.com/mrz1836/nilbox/internal/agent"
-	"github.com/mrz1836/nilbox/internal/brand"
 	"github.com/mrz1836/nilbox/internal/measure"
 )
 
@@ -148,15 +147,15 @@ func (Measure) All() error {
 	return nil
 }
 
-// appBundle returns the built app bundle and its executable, or an error naming the
-// build step when it is missing.
+// appBundle returns the app bundle built from source, devBundle, and its executable, or an
+// error naming the build step when it is missing.
 func appBundle() (bundle, exe string, err error) {
 	if runtime.GOOS != goosMacOS {
 		return "", "", errNeedsMacOS
 	}
 
-	bundle = filepath.Join("bin", brand.Name+".app")
-	exe = filepath.Join(bundle, "Contents", "MacOS", brand.Slug)
+	bundle = devBundle
+	exe = bundleExecutable(bundle)
 
 	if _, err = os.Stat(exe); err != nil {
 		return "", "", fmt.Errorf("%w (%s)", errNoBundle, exe)

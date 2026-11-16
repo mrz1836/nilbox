@@ -156,9 +156,12 @@ func TestInfoPlistHasAutomationUsage(t *testing.T) {
 	assert.Equal(t, PlaceholderVersion, values["CFBundleVersion"])
 
 	usage := values["NSAppleEventsUsageDescription"]
+	assert.Equal(t, AppleEventsUsage(brand.Name), usage)
 	assert.True(t, strings.HasPrefix(usage, brand.Name+" "), "the automation prompt names the app")
 	assert.Contains(t, usage, "iTerm2")
 	assert.Contains(t, usage, "Finder", "the Trash goes through Finder")
+	assert.Equal(t, brand.DevName+strings.TrimPrefix(usage, brand.Name), AppleEventsUsage(brand.DevName),
+		"a build from source's prompt names it, in the same words")
 	assert.Contains(t, plist, "<key>NSHighResolutionCapable</key>\n\t<true/>")
 	assert.Contains(t, plist, "<!-- "+Header+" -->")
 }

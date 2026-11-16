@@ -15,6 +15,13 @@ const (
 	// BundleID is the reverse-DNS application identifier (the macOS bundle ID).
 	BundleID = "com.mrz1836." + Slug
 
+	// DevName is the name of a build from source (magex app:build, app:run), and DevBundleID
+	// its bundle ID, so macOS never takes it for the release: Spotlight, notifications,
+	// privacy prompts, and Open With tell the two apart. It still runs on the user's own data
+	// directory, DataDirName, as the release does.
+	DevName     = Name + " Dev"
+	DevBundleID = BundleID + ".dev"
+
 	// Repository is the project's public GitHub repository, where bug reports go.
 	Repository = "https://github.com/mrz1836/" + Slug
 
