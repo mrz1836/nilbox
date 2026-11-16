@@ -189,14 +189,19 @@ export function useInbox(): InboxState {
     reload: () => {
       void loaded.refetch()
     },
-    dismiss: (id) => triage({ id, set: { dismissedAt: stamp(), snoozedUntil: '' } }, () => dismissItem(id)),
+    // The user's own triage takes over the routine's mark it changes, as the backend's
+    // does: a dismissal, a snooze, or a restore is the user's, and so is a pin, or none.
+    dismiss: (id) =>
+      triage({ id, set: { dismissedAt: stamp(), snoozedUntil: '', setAsideBy: 0 } }, () => dismissItem(id)),
     snooze: (id, days) =>
-      triage({ id, set: { snoozedUntil: snoozeEnd(clock.read(), days).toISOString(), dismissedAt: '' } }, () =>
-        snoozeItem(id, days),
+      triage(
+        { id, set: { snoozedUntil: snoozeEnd(clock.read(), days).toISOString(), dismissedAt: '', setAsideBy: 0 } },
+        () => snoozeItem(id, days),
       ),
-    restore: (id) => triage({ id, set: { dismissedAt: '', snoozedUntil: '', wokeBy: null } }, () => restoreItem(id)),
-    pin: (id) => triage({ id, set: { pinnedAt: stamp() } }, () => pinItem(id)),
-    unpin: (id) => triage({ id, set: { pinnedAt: '' } }, () => unpinItem(id)),
+    restore: (id) =>
+      triage({ id, set: { dismissedAt: '', snoozedUntil: '', wokeBy: null, setAsideBy: 0 } }, () => restoreItem(id)),
+    pin: (id) => triage({ id, set: { pinnedAt: stamp(), pinnedBy: 0 } }, () => pinItem(id)),
+    unpin: (id) => triage({ id, set: { pinnedAt: '', pinnedBy: 0 } }, () => unpinItem(id)),
     refreshItem: (id) => attempt(record(next(), refreshInboxItem(id))),
     // An edit waits on GitHub, so it is not a transition: it would hold back every other
     // update while it runs.

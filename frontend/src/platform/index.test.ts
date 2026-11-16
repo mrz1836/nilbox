@@ -1,13 +1,37 @@
 import { CancellablePromise } from '@wailsio/runtime/cancellable'
 import { describe, expect, it, vi } from 'vitest'
 
+import { routineSpec } from '../test/fixtures'
 import * as platform from './index'
 
 // The bound calls the platform hands out as generated need no test of their own; these
 // cover the calls the platform adds something to.
 const mocks = vi.hoisted(() => ({
-  inbox: { CheckFiles: vi.fn() },
-  settings: { SetWindowSize: vi.fn(), SetUpdateMode: vi.fn() },
+  inbox: { CheckFiles: vi.fn(), ItemsByID: vi.fn() },
+  settings: {
+    SetWindowSize: vi.fn(),
+    SetUpdateMode: vi.fn(),
+    SetAutopilotPaused: vi.fn(),
+    SetAutopilotDailyCap: vi.fn(),
+  },
+  autopilot: {
+    Glance: vi.fn(),
+    List: vi.fn(),
+    Duplicate: vi.fn(),
+    Delete: vi.fn(),
+    SetEnabled: vi.fn(),
+    SetMode: vi.fn(),
+    Matching: vi.fn(),
+    Watching: vi.fn(),
+    Engine: vi.fn(),
+    Activity: vi.fn(),
+    ItemHistory: vi.fn(),
+    LatestMatches: vi.fn(),
+    Undo: vi.fn(),
+    TryAgain: vi.fn(),
+    LetActAgain: vi.fn(),
+    ClearHistory: vi.fn(),
+  },
   scripts: { Run: vi.fn(), Repos: vi.fn(), List: vi.fn() },
   update: {
     Status: vi.fn(),
@@ -40,6 +64,7 @@ vi.mock('@wailsio/runtime', () => ({
   Create: { Events: {} },
 }))
 vi.mock('../../bindings/github.com/mrz1836/nilbox/internal/inbox', () => ({ Service: mocks.inbox }))
+vi.mock('../../bindings/github.com/mrz1836/nilbox/internal/autopilot', () => ({ Service: mocks.autopilot }))
 vi.mock('../../bindings/github.com/mrz1836/nilbox/internal/settings', () => ({ Service: mocks.settings }))
 vi.mock('../../bindings/github.com/mrz1836/nilbox/internal/scripts', () => ({ Service: mocks.scripts }))
 vi.mock('../../bindings/github.com/mrz1836/nilbox/internal/update', () => ({ Service: mocks.update }))
@@ -293,6 +318,50 @@ describe('runScript', () => {
     await platform.runScript(request).cancel()
 
     expect(cancelled).toHaveBeenCalledOnce()
+  })
+})
+
+describe('Autopilot’s calls', () => {
+  it('reach Autopilot’s bindings with their arguments, and the inbox’s rows of a routine’s Watching list', async () => {
+    const calls: [() => PromiseLike<unknown>, ReturnType<typeof vi.fn>, unknown[]][] = [
+      [() => platform.getAutopilotGlance(), mocks.autopilot.Glance, []],
+      [() => platform.listRoutines(), mocks.autopilot.List, []],
+      [() => platform.duplicateRoutine(3), mocks.autopilot.Duplicate, [3]],
+      [() => platform.deleteRoutine(3), mocks.autopilot.Delete, [3]],
+      [() => platform.setRoutineEnabled(3, true, 'fromNow'), mocks.autopilot.SetEnabled, [3, true, 'fromNow']],
+      [() => platform.setRoutineMode(3, 'ask', 'run'), mocks.autopilot.SetMode, [3, 'ask', 'run']],
+      [() => platform.routineWatching(3), mocks.autopilot.Watching, [3]],
+      [() => platform.getAutopilotEngine(), mocks.autopilot.Engine, []],
+      [() => platform.autopilotActivity(12, 100), mocks.autopilot.Activity, [12, 100]],
+      [() => platform.autopilotItemHistory(1), mocks.autopilot.ItemHistory, [1]],
+      [() => platform.latestAutopilotMatches([1, 2]), mocks.autopilot.LatestMatches, [[1, 2]]],
+      [() => platform.undoAutopilot([51]), mocks.autopilot.Undo, [[51]]],
+      [() => platform.tryRoutineAgain(3, 1), mocks.autopilot.TryAgain, [3, 1]],
+      [() => platform.letRoutineActAgain(3, 1), mocks.autopilot.LetActAgain, [3, 1]],
+      [() => platform.clearAutopilotHistory(), mocks.autopilot.ClearHistory, []],
+      [() => platform.itemsByID([1, 2]), mocks.inbox.ItemsByID, [[1, 2]]],
+      [() => platform.setAutopilotPaused(true), mocks.settings.SetAutopilotPaused, [true]],
+      [
+        () => platform.setAutopilotDailyCap({ amount: 5, unit: 'usd' }),
+        mocks.settings.SetAutopilotDailyCap,
+        [{ amount: 5, unit: 'usd' }],
+      ],
+    ]
+
+    for (const [call, binding, args] of calls) {
+      binding.mockResolvedValue('answer')
+
+      await expect(call()).resolves.toBe('answer')
+      expect(binding).toHaveBeenCalledExactlyOnceWith(...args)
+    }
+  })
+
+  it('asks the question about what a routine matches now with the routine as saved', async () => {
+    const draft = { id: 3, name: 'Snooze passing bot PRs', spec: routineSpec() }
+    mocks.autopilot.Matching.mockResolvedValue({ count: 3, pullRequests: 3, issues: 0, unknown: 0 })
+
+    await expect(platform.routineMatching(draft)).resolves.toEqual({ count: 3, pullRequests: 3, issues: 0, unknown: 0 })
+    expect(mocks.autopilot.Matching).toHaveBeenCalledExactlyOnceWith(draft)
   })
 })
 

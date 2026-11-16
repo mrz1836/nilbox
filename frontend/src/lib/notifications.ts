@@ -208,10 +208,6 @@ function sameTarget(a: AutopilotTarget, b: AutopilotTarget): boolean {
   )
 }
 
-// autopilotNotYetText says why an Autopilot notification, or a row of the menu bar's
-// Autopilot group, opens nothing yet: its tab isn't in this version.
-export const autopilotNotYetText = `This opens in the Autopilot tab, which this version of ${brand.name} doesn’t have yet.`
-
 // keptRunningText says, once, why the app kept running when its window was closed with
 // the menu bar icon off: Autopilot had a routine on or an agent working.
 export const keptRunningText = `${brand.name} kept running, so Autopilot can go on: a routine is on, or an agent is working. Click ${brand.name} in the Dock to come back here, or quit with ⌘Q.`

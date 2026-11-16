@@ -345,7 +345,7 @@ describe('AppHeader', () => {
     expect(screen.queryByRole('button', { name: 'Scripts' })).not.toBeInTheDocument()
   })
 
-  it('shows the Scripts tab after Prompts while an integration is on, Notifications staying beside the Inbox', () => {
+  it('shows the Scripts tab after Prompts while an integration is on, Notifications and Autopilot staying beside the Inbox', () => {
     renderHeader({ scripts: { running: 0, failed: false, blocked: false } })
 
     const views = within(screen.getByRole('navigation', { name: 'Views' })).getAllByRole('button')
@@ -354,12 +354,42 @@ describe('AppHeader', () => {
     expect(views.map((b) => b.getAttribute('aria-label'))).toEqual([
       'Inbox',
       'Notifications',
+      'Autopilot',
       'Worktrees',
       'Prompts',
       'Scripts',
     ])
     expect(scripts).toHaveTextContent(/^Scripts$/)
     expect(scripts).not.toHaveAttribute('title')
+  })
+
+  it('shows the Autopilot tab for everyone, with nothing on it while nothing is going', () => {
+    renderHeader({ autopilot: { count: 0, attention: false, failed: false, title: '' } })
+
+    const tab = screen.getByRole('button', { name: 'Autopilot' })
+
+    expect(tab).toHaveTextContent(/^Autopilot$/)
+    expect(tab).not.toHaveAttribute('title')
+    expect(screen.queryByTestId('autopilot-count')).not.toBeInTheDocument()
+  })
+
+  it('counts the agents working on the Autopilot tab, with an amber dot while something needs you and a red one while a routine can’t run', () => {
+    renderHeader({
+      autopilot: { count: 2, attention: true, failed: false, title: '2 agents working · 1 needs you' },
+    })
+
+    expect(screen.getByTestId('autopilot-count')).toHaveTextContent('2')
+    expect(screen.getByTestId('autopilot-attention')).toBeInTheDocument()
+    expect(screen.queryByTestId('autopilot-failed')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Autopilot' })).toHaveAttribute('title', '2 agents working · 1 needs you')
+  })
+
+  it('marks a routine that can’t run with a red dot on the Autopilot tab, without a count', () => {
+    renderHeader({ autopilot: { count: 0, attention: false, failed: true, title: '1 routine can’t run' } })
+
+    expect(screen.getByTestId('autopilot-failed')).toBeInTheDocument()
+    expect(screen.getByTestId('autopilot-count')).not.toHaveTextContent(/\d/)
+    expect(screen.getByRole('button', { name: 'Autopilot' })).toHaveAttribute('title', '1 routine can’t run')
   })
 
   it('badges Scripts with the runs going, a red dot after a failed run, and an amber one for a tool that can’t be used', () => {
