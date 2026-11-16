@@ -1,13 +1,14 @@
 import { useId, useState } from 'react'
 
 import { agentName, anyEffortChoices, effortLabel, isAgentPrompt, modelLabel, promptApplies } from '../../../lib/launch'
-import { omit, placeOf, problemsAt, settingRange, toolsOf } from '../../../lib/routineBuilder'
+import { omit, placeOf, placeWhy, problemsAt, settingRange, toolsOf } from '../../../lib/routineBuilder'
 import type {
   AgentID,
   AgentInfo,
   AutopilotAgentStep,
   AutopilotFence,
   AutopilotLaunchRow,
+  AutopilotPlace,
   AutopilotPreset,
   ItemKind,
   PerAgent,
@@ -68,6 +69,12 @@ function promptRef(value: string): AutopilotAgentStep['prompt'] {
 
   return kind === 'starter' ? { starter: name } : { nickname: name }
 }
+
+// knownPlaces are where an agent step can run, for a catalog that lists none.
+const knownPlaces: readonly AutopilotPlace[] = [
+  { id: 'background', label: 'In the background', help: '', offered: true },
+  { id: 'terminal', label: 'In my terminal', help: '', offered: true },
+]
 
 // agentKey is a real agent's ID, as per-agent settings are keyed.
 type AgentKey = Exclude<AgentID, ''>
@@ -130,6 +137,12 @@ export function AgentStepBlock({ kit, agentKit, path, kinds, step, onChange }: A
     (p) => !changing || (!modelProblems.includes(p) && !effortProblems.includes(p)),
   )
   const timeout = settingRange(kit.catalog.agentSettings, 'timeoutMinutes')
+  // places are where the catalog says an agent step can run; one this build doesn't run
+  // agents in is offered off, its title saying why, and a step set to run there shows the
+  // problem below.
+  const places = kit.catalog.places.length > 0 ? kit.catalog.places : knownPlaces
+  const chosenPlace = places.find((p) => p.id === place)
+  const whereProblems = problemsAt(kit.problems, 'steps', `${field}.where`)
   // pickAgent changes the agent: a model and a profile are one agent's own, and an effort
   // the new one doesn't take goes too.
   const pickAgent = (value: string) => {
@@ -175,24 +188,34 @@ export function AgentStepBlock({ kit, agentKit, path, kinds, step, onChange }: A
           </button>
         </div>
         <span className="text-xs text-muted">Where</span>
-        <Segmented
-          label="Where it runs"
-          size="sm"
-          value={place}
-          options={[
-            { value: 'background', label: 'In the background' },
-            { value: 'terminal', label: 'In my terminal' },
-          ]}
-          onChange={(where) => {
-            // A terminal run has a click's access, and no fence; in the background the
-            // tools decide plan mode, and the worktree is always on.
-            onChange(
-              where === 'terminal'
-                ? { ...omit(step, 'fence'), where }
-                : { ...omit(omit(step, 'planMode'), 'worktree'), where },
-            )
-          }}
-        />
+        <div className="flex flex-wrap items-center gap-2">
+          <Segmented
+            label="Where it runs"
+            size="sm"
+            value={place}
+            options={places.map((p) => ({
+              value: p.id,
+              label: p.label,
+              title: p.offered ? p.help : placeWhy(p),
+              disabled: !p.offered,
+            }))}
+            describedBy={whereProblems.length > 0 ? `${id}-notes` : `${id}-where`}
+            onChange={(where) => {
+              // A terminal run has a click's access, and no fence; in the background the
+              // tools decide plan mode, and the worktree is always on.
+              onChange(
+                where === 'terminal'
+                  ? { ...omit(step, 'fence'), where }
+                  : { ...omit(omit(step, 'planMode'), 'worktree'), where },
+              )
+            }}
+          />
+          {chosenPlace !== undefined && (
+            <span id={`${id}-where`} className="min-w-0 text-xs text-muted">
+              {chosenPlace.offered ? chosenPlace.help : placeWhy(chosenPlace)}
+            </span>
+          )}
+        </div>
         <span className="text-xs text-muted">Launch</span>
         <div className="flex flex-wrap items-center gap-2 text-sm">
           <span>

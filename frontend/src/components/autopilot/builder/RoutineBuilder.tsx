@@ -285,6 +285,7 @@ export function RoutineBuilder({
         ready={ready}
         kinds={kinds}
         mode={shownMode}
+        draft={draft}
         onTest={() => {
           void test()
         }}

@@ -2075,4 +2075,23 @@ The window side lives in `frontend/src/components/autopilot/` (the tab itself,
   what became of it when Activity lists no such match (`notListedText`, as for a baseline),
   or says it is gone when none does or its time differs; one that names a routine alone
   selects it while its creation time matches, else says it is gone; any other shows
-  Activity.
+  Activity. A request that names an open match marks its card in Needs you.
+- **Needs you** (`NeedsYouSection`, above Activity) reads `NeedsYou` on every
+  `autopilot:updated`: a card per match waiting for the user's OK, its hold shown with the
+  launch hold dialog's own parts (`HoldDetails`, shared with `LaunchHoldDialog`), with
+  **Run** (`Approve`, which confirms exactly the hold shown: Run on the head, Run in the
+  worktree anyway, Clone and run behind a confirmation) and **Skip**; a card per match that
+  can't start yet, with **Check again** (`CheckReadiness`), Skip, and Open; the matches
+  queued; and, while this Mac can't run some routines, a banner that opens Settings →
+  Autopilot. The routine list and a routine's header say *Not ready on this Mac* with what
+  is missing, from `Readiness`, and a waiting match's chip reads *Needs you*.
+- **This Mac** (Settings → Autopilot) lists `Readiness`'s checks, each with its mark, what it
+  found, and its fix as a command to copy or as words, and **Check again**.
+- **An item's ⋯ menu** (`RoutineMenu`) holds **Autopilot ▸**: **Run a routine ▸** (`RunNow`;
+  after a refusal it asks `Explain`, and offers **Run anyway** only when the routine doesn't
+  match the item) and **Why didn't a routine run?**, which reads `Explain`. It reads the
+  routines through one source made once, so the rows don't render again when they change.
+- **The builder's agent step** draws Where from `catalog.places` (a place this build can't
+  run in is shown off, with why; a new agent step starts in the terminal), and the Test
+  panel's **Preview** shows `PreviewRun`'s plan with the launch menu's own `PlannedLaunch`
+  and the trace (`Trace`).

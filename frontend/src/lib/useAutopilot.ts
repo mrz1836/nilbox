@@ -1,8 +1,11 @@
 import { useEffect, useEffectEvent } from 'react'
 
 import {
+  autopilotNeedsYou,
+  checkAutopilotReadiness,
   getAutopilotEngine,
   getAutopilotGlance,
+  getAutopilotReadiness,
   latestAutopilotMatches,
   listRoutines,
   on,
@@ -10,10 +13,12 @@ import {
   type AutopilotEngine,
   type AutopilotGlance,
   type AutopilotMatch,
+  type AutopilotReadiness,
   type AutopilotRoutine,
 } from '../platform'
 import { inChunks } from './autopilot'
 import { all, andThen } from './call'
+import { useMutation } from './useMutation'
 import { useNowAs } from './useNow'
 import { useQuery } from './useQuery'
 
@@ -115,4 +120,76 @@ export function useAutopilotChips(ids: string): ReadonlyMap<number, AutopilotMat
   })
 
   return ids === '' ? noChips : (latest.data ?? noChips)
+}
+
+// noMatches are Needs you's matches until they load, shared so they stay the same.
+const noMatches: readonly AutopilotMatch[] = []
+
+// NeedsYouState is what waits for the user, as Activity's Needs you shows it.
+export interface NeedsYouState {
+  // matches are the open matches that haven't started, newest first.
+  matches: readonly AutopilotMatch[]
+  // settled reports a read that answered, or failed, at least once; error is why the last
+  // read failed, or ''.
+  settled: boolean
+  error: string
+  // reload reads them again now, as after the window approved or skipped one.
+  reload: () => void
+}
+
+// useNeedsYou reads what waits for the user (NeedsYou: the matches waiting for an OK, those
+// that can't start until something on this Mac is fixed, and those queued), as it mounts
+// and whenever Autopilot says it changed. It reads the database alone.
+export function useNeedsYou(): NeedsYouState {
+  const read = useQuery(() => autopilotNeedsYou(), [])
+
+  useOnAutopilot(() => {
+    void read.refetch()
+  })
+
+  return {
+    matches: read.data ?? noMatches,
+    settled: read.data !== undefined || read.error !== '',
+    error: read.error,
+    reload: () => {
+      void read.refetch()
+    },
+  }
+}
+
+// ReadinessState is this Mac's readiness to run the routines.
+export interface ReadinessState {
+  // readiness is how the checks last came out, null until it is read.
+  readiness: AutopilotReadiness | null
+  // checking reports checks under way: the window's Check again, or the backend's own.
+  checking: boolean
+  // error is why the last read or check failed, or ''.
+  error: string
+  // check runs every check again now (it asks GitHub, one point), and wakes the engine,
+  // so a routine waiting to be ready starts.
+  check: () => void
+}
+
+// useReadiness reads this Mac's readiness as it mounts and whenever Autopilot says it
+// changed, which a check that ends does; Check again runs every check now.
+export function useReadiness(): ReadinessState {
+  const read = useQuery(() => getAutopilotReadiness(), [], { log: 'could not read this Mac’s readiness' })
+  const checker = useMutation(() => checkAutopilotReadiness())
+
+  useOnAutopilot(() => {
+    void read.refetch()
+  })
+
+  return {
+    readiness: read.data ?? null,
+    checking: checker.pending || read.data?.checking === true,
+    error: checker.error,
+    check: () => {
+      void checker.run().then((result) => {
+        if (result.ok) {
+          read.set(() => result.data)
+        }
+      })
+    },
+  }
 }

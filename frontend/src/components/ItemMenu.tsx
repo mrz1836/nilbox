@@ -1,20 +1,27 @@
+import { use } from 'react'
+
 import { orgOf, ownRule } from '../lib/repoRules'
 import { leaving, workWords, type RowWork, type StartWork } from '../lib/rowWork'
 import { isPinnedItself, type TriageTab } from '../lib/triage'
 import { openExternal, type InboxItem } from '../platform'
+import { AutopilotMenuContext, type AutopilotMenu } from './autopilot/RoutineMenu'
 import {
   ArchiveIcon,
+  AutopilotIcon,
   ClockIcon,
   ExternalIcon,
   EyeIcon,
   EyeOffIcon,
   InboxIcon,
+  InfoIcon,
   LinkIcon,
   MoreIcon,
   MuteIcon,
   PinIcon,
+  PlayIcon,
   RefreshIcon,
   ResetIcon,
+  RoutineIcon,
   SlidersIcon,
   UnassignIcon,
 } from './icons'
@@ -206,6 +213,47 @@ function inboxActions(item: InboxItem, tab: TriageTab, triage: TriageActions, wo
   ]
 }
 
+// autopilotItems are what Autopilot offers for the item: Run a routine, each of the user's
+// routines that are on and act on its kind, which runs it now, and Why didn't a routine
+// run?, which shows what each decides about it.
+function autopilotItems(item: InboxItem, autopilot: AutopilotMenu): MenuItem[] {
+  const routines = autopilot.runnable(item)
+  const asks = autopilot.askable(item)
+
+  return [
+    routines.length === 0
+      ? {
+          label: 'Run a routine',
+          icon: <PlayIcon className={iconClass} />,
+          title:
+            asks.length === 0
+              ? `No routine of yours acts on ${item.kind === 'pr' ? 'pull requests' : 'issues'}`
+              : 'Switch a routine on to run it here',
+          disabled: true,
+        }
+      : {
+          label: 'Run a routine',
+          icon: <PlayIcon className={iconClass} />,
+          items: routines.map((r) => ({
+            label: r.name,
+            icon: <RoutineIcon className={iconClass} />,
+            title: r.sentence === '' ? 'Run it on this item now' : r.sentence,
+            onSelect: () => {
+              autopilot.onRun(r, item)
+            },
+          })),
+        },
+    {
+      label: 'Why didn’t a routine run?',
+      icon: <InfoIcon className={iconClass} />,
+      title: 'See what a routine decides about this item, condition by condition, and what its history says',
+      onSelect: () => {
+        autopilot.onWhy(item)
+      },
+    },
+  ]
+}
+
 // githubEdits are the edits the user can make to the item on GitHub: off its assignees
 // when it is assigned to them, and off its requested reviewers when it asks for their
 // review. A pull request that asks only a team cannot take one member off, so its item
@@ -256,11 +304,13 @@ function githubEdits(item: InboxItem, edits: EditActions, work: RowWork, start: 
 
 // ItemMenu is a row's menu of everything it can do with its item: open it on GitHub or
 // copy its link; the inbox actions of its quiet controls, gathered in a submenu, so each
-// is a click away even without the pointer on the row; and, when they apply, the edits
-// that take the user off the item on GitHub. Its button shows with the row's quiet
+// is a click away even without the pointer on the row; Autopilot's, where the window
+// provides them (AutopilotMenuContext); and, when they apply, the edits that take the
+// user off the item on GitHub. Its button shows with the row's quiet
 // controls, and stays in sight, turning to a spinner, while the row is busy with GitHub.
 // Its items are built only as it opens.
 export function ItemMenu({ item, tab, triage, edits, work, start }: ItemMenuProps) {
+  const autopilot = use(AutopilotMenuContext)
   const onOpen = edits.onOpen
   const review: MenuItem[] =
     onOpen === undefined
@@ -301,6 +351,16 @@ export function ItemMenu({ item, tab, triage, edits, work, start }: ItemMenuProp
       divided: true,
       items: () => inboxActions(item, tab, triage, work, start),
     },
+    ...(autopilot === null
+      ? []
+      : [
+          {
+            label: 'Autopilot',
+            icon: <AutopilotIcon className={iconClass} />,
+            title: 'Run a routine on it now, or see why one didn’t run',
+            items: () => autopilotItems(item, autopilot),
+          },
+        ]),
     ...githubEdits(item, edits, work, start),
   ]
   const editing = leaving(work)

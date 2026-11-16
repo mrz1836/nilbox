@@ -6,7 +6,10 @@ import {
   filters,
   inActivity,
   notListedText,
+  notReadyBanner,
+  notReadyText,
   pausedText,
+  readyOf,
   resultLabels,
   resultOrder,
   routineStatus,
@@ -17,8 +20,9 @@ import {
   type AutopilotRequest,
 } from '../../lib/autopilot'
 import { attempt } from '../../lib/call'
+import { agentName } from '../../lib/launch'
 import { dryRunWhy, NEW_ROUTINE, newRoutineName, routineDraft, sameDraft, scratchDraft } from '../../lib/routineBuilder'
-import type { AutopilotState } from '../../lib/useAutopilot'
+import { useNeedsYou, useReadiness, type AutopilotState } from '../../lib/useAutopilot'
 import { useAutopilotActivity } from '../../lib/useAutopilotActivity'
 import { useQuery } from '../../lib/useQuery'
 import { useSettingsSave } from '../../lib/useSettingsSave'
@@ -36,6 +40,7 @@ import {
   type AgentInfo,
   type AutopilotDraft,
   type AutopilotItemRef,
+  type AutopilotMatch,
   type AutopilotRoutine,
   type AutopilotSuggestions,
   type Profile,
@@ -45,9 +50,10 @@ import {
 import { ConfirmDialog } from '../ConfirmDialog'
 import { buttonClass, captionClass, fieldClass, primaryButtonClass, quietButtonClass } from '../controls'
 import { ErrorBanner } from '../ErrorBanner'
-import { AutopilotIcon, PauseIcon, PlayIcon, PlusIcon, PulseIcon, RoutineIcon, SlidersIcon } from '../icons'
+import { AlertIcon, AutopilotIcon, PauseIcon, PlayIcon, PlusIcon, PulseIcon, RoutineIcon, SlidersIcon } from '../icons'
 import { defaultToastSeconds, Toast, type ToastMessage } from '../Toast'
 import { ActivityList } from './ActivityList'
+import { NeedsYouSection } from './NeedsYouSection'
 import type { AgentKit } from './builder/AgentStepBlock'
 import { RoutineBuilder } from './builder/RoutineBuilder'
 import { RoutineList, type RoutineActions } from './RoutineList'
@@ -199,6 +205,23 @@ function PausedBanner({ settings, onSaved }: { settings: Settings; onSaved: (set
   )
 }
 
+// NotReadyBanner says how many of the user's routines this Mac can't run, with the way to
+// what is missing, in Settings → Autopilot.
+function NotReadyBanner({ count, onSettings }: { count: number; onSettings: () => void }) {
+  return (
+    <div
+      role="status"
+      className="flex items-center gap-3 rounded-md border border-danger/50 bg-danger/10 px-3 py-2 text-sm"
+    >
+      <AlertIcon className="size-4 shrink-0 text-danger" />
+      <span className="min-w-0 flex-1">{notReadyBanner(count)}</span>
+      <button type="button" onClick={onSettings} className={buttonClass}>
+        See what’s missing
+      </button>
+    </div>
+  )
+}
+
 // LoadMore reads Activity's earlier days as the list's end scrolls into view, and offers
 // a button for it, which works wherever the list's end can't be seen coming.
 function LoadMore({ more, loading, onMore }: { more: boolean; loading: boolean; onMore: () => void }) {
@@ -272,6 +295,8 @@ export default function AutopilotView({
 }: AutopilotViewProps) {
   const id = useId()
   const activity = useAutopilotActivity()
+  const needs = useNeedsYou()
+  const ready = useReadiness()
   const [selected, setSelected] = useState(0)
   const [filter, setFilter] = useState<ActivityFilter>(noFilter)
   const [toast, setToast] = useState<ToastMessage | null>(null)
@@ -280,6 +305,9 @@ export default function AutopilotView({
   const [deleteBusy, setDeleteBusy] = useState(false)
   const [focus, setFocus] = useState<Focus | null>(null)
   const [highlight, setHighlight] = useState<{ matchId: number; seq: number } | null>(null)
+  // needsHighlight is the card of Needs you a request asked to show, for a match still
+  // open there.
+  const [needsHighlight, setNeedsHighlight] = useState<{ matchId: number; seq: number } | null>(null)
   // watchHighlight is the row Activity's Open asks a routine's Watching list to show, once:
   // the list hands it back as it shows it, or once it knows it can't, and it goes as soon
   // as another routine or Activity is chosen.
@@ -416,13 +444,28 @@ export default function AutopilotView({
   // now, not as the tab held them before it hid (a match recorded meanwhile isn't in
   // them), then earlier ones until one does; one no longer in the history, or made at
   // another time (Clear history hands an ID out again), says so.
+  //
+  // A match still open, waiting for the user, this Mac, or a limit, shows as its card in
+  // Needs you instead, once that is read.
+  const waitingOne =
+    focus === null
+      ? undefined
+      : needs.matches.find(
+          (m) => m.id === focus.matchId && (focus.createdAt === '' || sameSecond(m.createdAt, focus.createdAt)),
+        )
+
+  if (focus !== null && waitingOne !== undefined) {
+    setFocus(null)
+    setNeedsHighlight({ matchId: waitingOne.id, seq: focus.seq })
+  }
+
   const loadedMatches = activity.days.flatMap((d) => d.matches)
   const focused = focus === null ? undefined : loadedMatches.find((m) => m.id === focus.matchId)
   const oldest = loadedMatches.reduce((low, m) => Math.min(low, m.id), Number.MAX_SAFE_INTEGER)
-  const ready = activity.loaded && activity.current
-  const readOn = focus !== null && ready && focused === undefined && activity.more && oldest > focus.matchId
+  const current = activity.loaded && activity.current && needs.settled
+  const readOn = focus !== null && current && focused === undefined && activity.more && oldest > focus.matchId
 
-  if (focus !== null && ready && !readOn) {
+  if (focus !== null && waitingOne === undefined && current && !readOn) {
     setFocus(null)
 
     if (focused === undefined || (focus.createdAt !== '' && !sameSecond(focused.createdAt, focus.createdAt))) {
@@ -448,7 +491,19 @@ export default function AutopilotView({
 
   const working = (routineId: number) => autopilot.glance?.working.filter((w) => w.routineId === routineId).length ?? 0
   const problem = (routineId: number) => engine?.problems.find((p) => p.routineId === routineId)?.detail ?? ''
-  const statusOf = (r: AutopilotRoutine) => routineStatus(r, working(r.id), problem(r.id))
+  const statusOf = (r: AutopilotRoutine) =>
+    routineStatus(r, working(r.id), problem(r.id), notReadyText(readyOf(ready.readiness, r.id)))
+  // agentFor names the agent a match's routine runs: its agent step's, or the default one.
+  const agentFor = (m: AutopilotMatch) => {
+    const step = routines.find((r) => r.id === m.routineId)?.spec.steps.find((st) => st.agent != null)?.agent
+    const chosen = step?.agent ?? ''
+
+    if (chosen === '' || chosen === 'inherit') {
+      return agentName(agents, settings?.defaultAgent ?? 'claude')
+    }
+
+    return agents.find((a) => a.id === chosen)?.name ?? chosen
+  }
   const chosen = routines.find((r) => r.id === selected) ?? (justSaved?.id === selected ? justSaved : undefined)
   const shownId = chosen === undefined ? 0 : chosen.id
   // The routine shown fills the builder, and each time the list reads it again, the
@@ -803,6 +858,9 @@ export default function AutopilotView({
             </div>
           </div>
           <Banners autopilot={autopilot} settings={settings} onSettingsSaved={onSettingsSaved} />
+          {shown === 'activity' && (ready.readiness?.notReady ?? 0) > 0 && (
+            <NotReadyBanner count={ready.readiness?.notReady ?? 0} onSettings={onSettings} />
+          )}
           {activity.error !== '' && <ErrorBanner>{activity.error}</ErrorBanner>}
           {shown === 'new' ? (
             (builderFor(null) ?? (
@@ -860,6 +918,20 @@ export default function AutopilotView({
                   </button>
                 )}
               </div>
+              <NeedsYouSection
+                matches={needs.matches}
+                routine={filter.routine}
+                error={needs.error}
+                readiness={ready}
+                highlight={needsHighlight}
+                agentFor={agentFor}
+                onOpen={onOpen}
+                onToast={toastText}
+                onChanged={() => {
+                  needs.reload()
+                  reload()
+                }}
+              />
               {!activity.loaded ? (
                 <p role="status" className="text-sm text-muted">
                   Reading Activity…

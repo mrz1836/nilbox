@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { LaunchDefaults } from '../../platform'
-import { agents, defaultPrompts, launchDefaults, profile, prompts, settings } from '../../test/fixtures'
+import { agents, autopilotOff, defaultPrompts, launchDefaults, profile, prompts, settings } from '../../test/fixtures'
 import { platform } from '../../test/platform'
 import { LaunchDefaultsSection } from './LaunchDefaultsSection'
 
@@ -100,6 +100,7 @@ describe('LaunchDefaultsSection', () => {
       planMode: null,
       worktree: false,
       extraFlags: { claude: '--advisor fable' },
+      autopilotOutside: '',
     })
     expect(onChanged).toHaveBeenCalledOnce()
     expect(await screen.findByText('Saved the defaults for acme-org.')).toBeInTheDocument()
@@ -228,6 +229,77 @@ describe('LaunchDefaultsSection', () => {
     )
     expect(form.getByRole('combobox', { name: 'Effort' })).toHaveAccessibleDescription(
       'Effort must be one of the levels.',
+    )
+  })
+
+  it('lets Autopilot onto outside contributors’ items only where it is turned on, saying what Inherit means', async () => {
+    renderSection([launchDefaults({ autopilotOutside: 'on' })])
+
+    const rows = within(screen.getByRole('list', { name: 'Launch defaults' }))
+    expect(rows.getByText('Autopilot on outside contributors’ items, in plan mode')).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Add defaults' }))
+
+    const form = within(screen.getByRole('form', { name: 'New launch defaults' }))
+    const outside = form.getByRole('radiogroup', { name: 'Autopilot on outside contributors’ items' })
+    expect(within(outside).getByRole('radio', { name: 'Inherit' })).toBeChecked()
+    expect(outside).toHaveAccessibleDescription(/always in plan mode/)
+
+    // A repository inherits its org's choice.
+    await userEvent.type(form.getByRole('combobox', { name: 'Defaults for' }), 'acme-org/api')
+    expect(form.getByText('Inherits on (org)')).toBeInTheDocument()
+
+    await userEvent.click(within(outside).getByRole('radio', { name: 'Off' }))
+    await userEvent.click(form.getByRole('button', { name: 'Save defaults' }))
+
+    expect(platform.saveLaunchDefaults).toHaveBeenCalledWith(
+      expect.objectContaining({ owner: 'acme-org', name: 'api', autopilotOutside: 'off' }),
+    )
+  })
+
+  it('shows no Autopilot choice while Autopilot (beta) is off, and keeps the stored one on a save', async () => {
+    render(
+      <LaunchDefaultsSection
+        settings={autopilotOff({ worktreeDefault: true })}
+        agents={agents()}
+        profiles={[profile()]}
+        prompts={prompts()}
+        defaultPrompts={defaultPrompts()}
+        launchDefaults={[launchDefaults({ autopilotOutside: 'on' })]}
+        onChanged={vi.fn(() => Promise.resolve())}
+      />,
+    )
+
+    expect(screen.queryByText(/outside contributors/)).not.toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Edit' }))
+    expect(
+      screen.queryByRole('radiogroup', { name: 'Autopilot on outside contributors’ items' }),
+    ).not.toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Save defaults' }))
+    expect(platform.saveLaunchDefaults).toHaveBeenCalledWith(expect.objectContaining({ autopilotOutside: 'on' }))
+  })
+
+  it('says an org’s Inherit is off, since nothing app-wide lets Autopilot onto outside contributors’ items', async () => {
+    renderSection()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Add defaults' }))
+
+    const form = within(screen.getByRole('form', { name: 'New launch defaults' }))
+    await userEvent.type(form.getByRole('combobox', { name: 'Defaults for' }), 'acme-org')
+
+    expect(form.getByText('Inherits off')).toBeInTheDocument()
+
+    await userEvent.click(
+      within(form.getByRole('radiogroup', { name: 'Autopilot on outside contributors’ items' })).getByRole('radio', {
+        name: 'On (plan mode only)',
+      }),
+    )
+    await userEvent.click(form.getByRole('button', { name: 'Save defaults' }))
+
+    expect(platform.saveLaunchDefaults).toHaveBeenCalledWith(
+      expect.objectContaining({ owner: 'acme-org', name: '', autopilotOutside: 'on' }),
     )
   })
 

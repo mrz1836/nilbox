@@ -1,6 +1,6 @@
 import { useId, useState, type ReactNode, type Ref } from 'react'
 
-import { appliesToLabels, pinSummary, usagePlaces, usageSummary } from '../lib/launch'
+import { appliesToLabels, pinSummary, routinePlaces, routinesUsing, usagePlaces, usageSummary } from '../lib/launch'
 import { replyActionLabels, replyGroups, replyUsageSummary } from '../lib/replies'
 import type {
   AgentInfo,
@@ -238,6 +238,11 @@ export function PromptEditor({
                 >
                   {saved.usage.defaults.length > 0 && <StarIcon className="size-3.5 text-accent" />}
                   {usageSummary(saved.usage)}
+                </p>
+              )}
+              {saved.usage.routines.length > 0 && (
+                <p title={routinePlaces(saved.usage).join('\n')} className="text-[0.8125rem] text-text">
+                  {routinesUsing(saved.usage)}
                 </p>
               )}
             </div>

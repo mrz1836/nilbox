@@ -1,9 +1,10 @@
 import { useEffect, useEffectEvent, useId, useState } from 'react'
 
 import { brand } from '../../generated/brand'
-import { elsewhereText } from '../../lib/autopilot'
+import { elsewhereText, notReadyNames } from '../../lib/autopilot'
 import { counted, formatCount } from '../../lib/format'
 import { dayHeading, formatDateTime, formatFull, formatWhen } from '../../lib/time'
+import { useReadiness } from '../../lib/useAutopilot'
 import { useMutation } from '../../lib/useMutation'
 import { useNowAs } from '../../lib/useNow'
 import { useQuery } from '../../lib/useQuery'
@@ -27,18 +28,29 @@ import {
   type AutopilotConfig,
   type AutopilotDailyCap,
   type AutopilotEngine,
+  type AutopilotReadyCheck,
+  type AutopilotReadyLevel,
   type AutopilotUnit,
   type Settings,
 } from '../../platform'
+import { CommandLine } from '../CommandLine'
 import { ConfirmDialog } from '../ConfirmDialog'
 import { buttonClass, fieldClass, Segmented, type SegmentOption } from '../controls'
+import { AlertIcon, CheckIcon, RefreshIcon, XIcon } from '../icons'
+import { Spinner } from '../Spinner'
 import { rowMatchClass, useSetting } from './match'
 import { ChoiceRow, Group, Note, rowDescribedBy, SectionIntro, SettingRow, SwitchRow } from './rows'
 import type { SectionProps } from './types'
 
-// agentsLater says what the agent and GitHub settings wait for: nothing reads them until
-// routines can start coding agents and send GitHub actions.
-const agentsLater = 'These apply once routines can start coding agents and send GitHub actions.'
+// limitsHold says what the limits hold in this build: the agents, in the user's terminal,
+// and the GitHub actions once routines can send them.
+const limitsHold = 'These hold every routine’s coding agents, and its GitHub actions once routines can send them.'
+
+// whileItRuns says what the settings below hold: every agent start, while keeping the Mac
+// awake waits for agents in the background, since one in the terminal is the user's own
+// session from its start.
+const whileItRuns =
+  'These hold every routine’s coding agent as it starts. Keeping the Mac awake is for agents in the background, which come later: one in your terminal is your own session from its start.'
 
 // limits are the ranges the settings' setters accept, as internal/autopilotprefs declares
 // them (Min… and Max…); a value outside one is refused there.
@@ -356,6 +368,89 @@ function LastChecked() {
   )
 }
 
+// levelMarks mark how a check came out: ✓ fine, ! a warning, ✗ a problem, each named for
+// assistive tech.
+const levelMarks: Readonly<Record<AutopilotReadyLevel, { icon: typeof CheckIcon; tone: string; words: string }>> = {
+  ok: { icon: CheckIcon, tone: 'text-success', words: 'Fine' },
+  warning: { icon: AlertIcon, tone: 'text-warning', words: 'Warning' },
+  problem: { icon: XIcon, tone: 'text-danger', words: 'Problem' },
+}
+
+// CheckRow is one need checked on this Mac: its mark, its label and what was found, and how
+// to fix it, a command to copy and run in a terminal, or where to go.
+function CheckRow({ check }: { check: AutopilotReadyCheck }) {
+  const mark = levelMarks[check.level]
+  const Icon = mark.icon
+
+  return (
+    <li className="flex flex-col gap-1.5 px-4 py-2.5">
+      <p className="flex items-start gap-2 text-sm">
+        <span className={`mt-0.5 inline-flex shrink-0 ${mark.tone}`} title={mark.words}>
+          <Icon className="size-3.5" />
+          <span className="sr-only">{mark.words}:</span>
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="font-medium text-text">{check.label}</span>
+          {check.found !== '' && <span className="text-muted"> · {check.found}</span>}
+        </span>
+      </p>
+      {check.fix !== '' &&
+        (check.command ? (
+          <CommandLine command={check.fix} className="ml-5.5 max-w-lg" />
+        ) : (
+          <p className="ml-5.5 text-xs text-muted">{check.fix}</p>
+        ))}
+    </li>
+  )
+}
+
+// ThisMac is what the routines need on this Mac and how each need checked out: the GitHub
+// sign-in, each tool, agent, and profile, and the terminal, the basics first, each with
+// how to fix it; Check again, which runs every check now; and the routines this Mac can't
+// run. It is read as the section shows and whenever Autopilot changes.
+function ThisMac() {
+  const { readiness, checking, error, check } = useReadiness()
+  const names = notReadyNames(readiness)
+
+  return (
+    <div className="flex flex-col gap-3">
+      <SectionIntro
+        title="This Mac"
+        action={
+          <button type="button" disabled={checking} onClick={check} className={`${buttonClass} shrink-0`}>
+            {checking ? <Spinner className="size-3.5" /> : <RefreshIcon className="size-3.5 text-muted" />}
+            {checking ? 'Checking…' : 'Check again'}
+          </button>
+        }
+      >
+        What your routines need here, and how each checked out. Check again runs every check now, and asks GitHub, which
+        costs a point.
+      </SectionIntro>
+      {error !== '' && (
+        <p role="alert" className="text-xs text-danger">
+          {error}
+        </p>
+      )}
+      {readiness === null ? (
+        <p className="text-xs text-muted">Checking this Mac…</p>
+      ) : readiness.checks.length === 0 ? (
+        <p className="text-xs text-muted">No routine that is on needs anything here yet.</p>
+      ) : (
+        <ul aria-label="This Mac" className="divide-y divide-border rounded-lg border border-border bg-surface">
+          {readiness.checks.map((c) => (
+            <CheckRow key={c.id} check={c} />
+          ))}
+        </ul>
+      )}
+      {names.length > 0 && (
+        <p role="status" className="text-xs text-danger">
+          Not ready here: {names.join(', ')}
+        </p>
+      )}
+    </div>
+  )
+}
+
 // ClearHistory clears the history now, rather than after the days it is kept, asking
 // first, and says what it removed.
 function ClearHistory({ controlId }: { controlId: string }) {
@@ -423,7 +518,8 @@ function ClearHistory({ controlId }: { controlId: string }) {
 // AutopilotSection holds Autopilot's settings, each saved as soon as it is set: Pause
 // Autopilot and the mode new routines start in; the limits every routine keeps to, across
 // them all; what holds a coding agent back; how long the history and the run logs are
-// kept, and Clear history; and when the engine last checked the routines.
+// kept, and Clear history; what the routines need on this Mac; and when the engine last
+// checked the routines.
 export function AutopilotSection({ settings: stored, onSaved }: SectionProps) {
   const id = useId()
   const { settings, save, error } = useSettingsSave(stored, onSaved)
@@ -483,8 +579,8 @@ export function AutopilotSection({ settings: stored, onSaved }: SectionProps) {
       </Group>
       <div className="flex flex-col gap-3">
         <SectionIntro title="Limits">
-          {agentsLater} Across every routine, a limit will delay a match and never lose it: one over today’s limit
-          starts tomorrow, a day running from local midnight. Local steps, such as a snooze, keep to none of these.
+          {limitsHold} Across every routine, a limit will delay a match and never lose it: one over today’s limit starts
+          tomorrow, a day running from local midnight. Local steps, such as a snooze, keep to none of these.
         </SectionIntro>
         <Group>
           <NumberRow
@@ -540,7 +636,7 @@ export function AutopilotSection({ settings: stored, onSaved }: SectionProps) {
         </Group>
       </div>
       <div className="flex flex-col gap-3">
-        <SectionIntro title="While it runs">{agentsLater}</SectionIntro>
+        <SectionIntro title="While it runs">{whileItRuns}</SectionIntro>
         <Group>
           <SwitchRow
             label="Keep the Mac awake while agents work"
@@ -601,7 +697,7 @@ export function AutopilotSection({ settings: stored, onSaved }: SectionProps) {
           <NumberRow
             label="Run logs kept"
             controlId={`${id}-logs`}
-            description="How long a coding agent run’s log will be kept, once routines start coding agents: never longer than the history."
+            description="How long a coding agent run’s log will be kept, once routines run agents in the background: never longer than the history."
             value={config.logDays}
             choices={logChoices}
             range={limits.logDays}
@@ -616,6 +712,7 @@ export function AutopilotSection({ settings: stored, onSaved }: SectionProps) {
           <ClearHistory controlId={`${id}-clear`} />
         </Group>
       </div>
+      <ThisMac />
       <Group>
         <LastChecked />
       </Group>

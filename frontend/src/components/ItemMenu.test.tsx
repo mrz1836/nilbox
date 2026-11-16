@@ -1,12 +1,14 @@
-import { act, render, screen, within } from '@testing-library/react'
+import { act, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import type { ReactNode } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 
 import type { TriageTab } from '../lib/triage'
-import type { InboxItem, RepoRules } from '../platform'
+import type { AutopilotRoutine, InboxItem, RepoRules } from '../platform'
 import { at } from '../test/clock'
-import { item } from '../test/fixtures'
+import { explanation, item, routine, routineSpec } from '../test/fixtures'
 import { platform } from '../test/platform'
+import { AutopilotMenuContext, useRoutineMenu } from './autopilot/RoutineMenu'
 import { teamsText, type EditActions } from './ItemMenu'
 import { ItemRow } from './ItemRow'
 import type { TriageActions } from './TriageControls'
@@ -468,5 +470,166 @@ describe('ItemMenu open', () => {
 
     const menu = await openMenu()
     expect(menu.queryByRole('menuitem', { name: 'Review…' })).not.toBeInTheDocument()
+    expect(menu.queryByRole('menuitem', { name: 'Autopilot' })).not.toBeInTheDocument()
+  })
+})
+
+// menuRoutines are the routines the window lists: one on for pull requests, one off,
+// one on for issues alone, and another account's.
+function menuRoutines(): AutopilotRoutine[] {
+  return [
+    routine(),
+    routine({ id: 4, name: 'Investigate slow reviews', enabled: false, enabledAt: null }),
+    routine({
+      id: 7,
+      name: 'Triage new issues',
+      spec: { ...routineSpec(), watch: { sources: [{ search: { kind: 'issue', where: ['@me'] } }] } },
+    }),
+    routine({ id: 8, name: 'Someone else’s', otherAccount: true, account: 'octo-other' }),
+  ]
+}
+
+// WithRoutines provides the item menus' Autopilot as the window does, over routines.
+function WithRoutines({ routines, children }: { routines: readonly AutopilotRoutine[]; children: ReactNode }) {
+  const { menu, node } = useRoutineMenu(routines)
+
+  return (
+    <AutopilotMenuContext value={menu}>
+      {children}
+      {node}
+    </AutopilotMenuContext>
+  )
+}
+
+// renderWithRoutines renders one row whose menu offers Autopilot, once the catalog that
+// says what each routine acts on is read.
+async function renderWithRoutines(it: InboxItem = item(), routines = menuRoutines()) {
+  render(
+    <WithRoutines routines={routines}>
+      <ul>
+        <ItemRow item={it} launch={null} triage={triageActions()} edits={editActions()} />
+      </ul>
+    </WithRoutines>,
+    { wrapper: at() },
+  )
+
+  await waitFor(() => {
+    expect(platform.getAutopilotCatalog).toHaveBeenCalledOnce()
+  })
+  await act(async () => {
+    await Promise.resolve()
+  })
+}
+
+// openRoutines opens the row's Autopilot ▸ Run a routine ▸, and returns its menu.
+async function openRoutines() {
+  await openMenu()
+  await openSubmenu('Autopilot')
+
+  return openSubmenu('Run a routine')
+}
+
+describe('ItemMenu Autopilot', () => {
+  it('runs a routine that is on and acts on the item’s kind, saying what became of it', async () => {
+    await renderWithRoutines()
+
+    await openMenu()
+    expect(names(screen.getByRole('menu', { name: 'More actions' }))).toContain('Autopilot')
+    await openSubmenu('Autopilot')
+    expect(names(screen.getByRole('menu', { name: 'Autopilot' }))).toEqual([
+      'Run a routine',
+      'Why didn’t a routine run?',
+    ])
+
+    const run = await openSubmenu('Run a routine')
+
+    expect(names(screen.getByRole('menu', { name: 'Run a routine' }))).toEqual(['Snooze passing bot PRs'])
+
+    await userEvent.click(run.getByRole('menuitem', { name: 'Snooze passing bot PRs' }))
+
+    expect(platform.runRoutineNow).toHaveBeenCalledWith(3, 1, false)
+    expect(await screen.findByText('It starts as soon as a slot frees.')).toBeInTheDocument()
+    expect(platform.explainRoutine).not.toHaveBeenCalled()
+  })
+
+  it('offers Run anyway on an item a routine doesn’t match, showing why, and runs it on asking', async () => {
+    platform.runRoutineNow.mockRejectedValueOnce(new Error('It doesn’t match it: checks pass.'))
+    await renderWithRoutines()
+
+    await userEvent.click((await openRoutines()).getByRole('menuitem', { name: 'Snooze passing bot PRs' }))
+
+    const dialog = within(await screen.findByRole('dialog', { name: 'Run “Snooze passing bot PRs” anyway?' }))
+
+    expect(platform.explainRoutine).toHaveBeenCalledWith(3, 1)
+    expect(dialog.getByText('It doesn’t match it: checks pass.')).toBeInTheDocument()
+    expect(dialog.getByRole('list', { name: 'Why, for example-repo #7' })).toHaveTextContent(
+      'checks pass· test (go 1.26) failed',
+    )
+
+    await userEvent.click(dialog.getByRole('button', { name: 'Run anyway' }))
+
+    expect(platform.runRoutineNow).toHaveBeenLastCalledWith(3, 1, true)
+    expect(await screen.findByText('It starts as soon as a slot frees.')).toBeInTheDocument()
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  })
+
+  it('tells any other refusal as it is, and offers nothing more', async () => {
+    platform.runRoutineNow.mockRejectedValueOnce(new Error('The item isn’t stored on this Mac.'))
+    platform.explainRoutine.mockRejectedValueOnce(new Error('The item isn’t stored on this Mac.'))
+    await renderWithRoutines()
+
+    await userEvent.click((await openRoutines()).getByRole('menuitem', { name: 'Snooze passing bot PRs' }))
+
+    expect(await screen.findByText('Couldn’t run “Snooze passing bot PRs”')).toBeInTheDocument()
+    expect(screen.getByText('· The item isn’t stored on this Mac.')).toBeInTheDocument()
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  })
+
+  it('offers no routine to run on an item no routine that is on acts on', async () => {
+    await renderWithRoutines(item({ kind: 'issue' }), [menuRoutines()[1] ?? routine()])
+
+    await openMenu()
+    await openSubmenu('Autopilot')
+
+    expect(screen.getByRole('menuitem', { name: 'Run a routine' })).toBeDisabled()
+  })
+
+  it('says why a routine didn’t run, condition by condition, with what its history says', async () => {
+    await renderWithRoutines()
+
+    await openMenu()
+    await openSubmenu('Autopilot')
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Why didn’t a routine run?' }))
+
+    const dialog = within(await screen.findByRole('dialog', { name: 'Why didn’t a routine run?' }))
+    const pick = dialog.getByRole('combobox', { name: 'Routine' })
+
+    expect(
+      within(pick)
+        .getAllByRole('option')
+        .map((o) => o.textContent),
+    ).toEqual(['Snooze passing bot PRs', 'Investigate slow reviews (off)'])
+    expect(await dialog.findByText('It doesn’t match now.')).toBeInTheDocument()
+    expect(platform.explainRoutine).toHaveBeenCalledWith(3, 1)
+
+    const trace = dialog.getByRole('list', { name: 'Why, for example-repo #7' })
+
+    expect(
+      within(trace)
+        .getAllByRole('listitem')
+        .map((li) => li.textContent),
+    ).toEqual(['Doesn’t match:checks pass· test (go 1.26) failed', 'Matches:it is a bot’s· dependabot'])
+    expect(dialog.getByRole('list', { name: 'What its history says' })).toHaveTextContent(
+      'It hasn’t acted on this item yet.',
+    )
+
+    platform.explainRoutine.mockResolvedValueOnce(explanation({ routineId: 4, match: 'yes', trace: [], ledger: [] }))
+    await userEvent.selectOptions(pick, '4')
+
+    expect(platform.explainRoutine).toHaveBeenLastCalledWith(4, 1)
+    expect(await dialog.findByText('It matches now.')).toBeInTheDocument()
+
+    await userEvent.click(dialog.getByRole('button', { name: 'Done' }))
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   })
 })

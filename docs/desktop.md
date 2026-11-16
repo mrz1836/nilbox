@@ -2502,9 +2502,10 @@ Nilbox shows none of it and runs none of it:
 
 - the window has no Autopilot tab (a window on it goes to the inbox), no Autopilot section in
   Settings, no Autopilot banner switches in Settings → Notifications, no Autopilot type among
-  the Notifications page's filters, and no ⚡ chip or *by ⚡ routine* mark on a row; a
-  notification that would open the Autopilot tab says *Autopilot is off. Turn it on in
-  Settings → Labs to see this.* instead;
+  the Notifications page's filters, no ⚡ chip or *by ⚡ routine* mark on a row, no
+  **Autopilot ▸** in an item's ⋯ menu, and no Autopilot choice in the launch defaults (a
+  stored one is kept); a notification that would open the Autopilot tab says *Autopilot is off.
+  Turn it on in Settings → Labs to see this.* instead;
 - the menu bar has no Autopilot group, and closing the window counts no routine: it quits as
   it would without Autopilot (with the menu bar icon showing, it hides, as before);
 - the engine runs nothing: it takes no lock in the data folder, sends GitHub none of the

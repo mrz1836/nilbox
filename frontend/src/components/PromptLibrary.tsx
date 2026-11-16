@@ -1,6 +1,6 @@
 import { useId, useState, type Ref } from 'react'
 
-import { usagePlaces } from '../lib/launch'
+import { routinePlaces, routinesUsing, usagePlaces } from '../lib/launch'
 import { replyGroups, replySlotBadges } from '../lib/replies'
 import type { Prompt, PromptAppliesTo, PromptPurpose } from '../platform'
 import { quietButtonClass, Segmented, type SegmentOption } from './controls'
@@ -171,6 +171,10 @@ export function PromptLibrary({
                   const current = selection?.kind === 'prompt' && selection.id === p.id
                   const places = p.usage.orgs.length + p.usage.repos.length
                   const badges = p.usage.replies.map((slot) => replySlotBadges[slot])
+                  const used = [
+                    places > 0 ? `Default in ${String(places)} ${places === 1 ? 'place' : 'places'}` : '',
+                    routinesUsing(p.usage),
+                  ].filter((part) => part !== '')
 
                   return (
                     <li key={p.id}>
@@ -182,7 +186,9 @@ export function PromptLibrary({
                             onAsk({ kind: 'prompt', id: p.id })
                           }
                         }}
-                        title={[p.nickname, p.name, ...usagePlaces(p.usage), ...badges].join('\n')}
+                        title={[p.nickname, p.name, ...usagePlaces(p.usage), ...routinePlaces(p.usage), ...badges].join(
+                          '\n',
+                        )}
                         className="flex w-full min-w-0 flex-col overflow-hidden rounded-md px-2.5 py-1.5 text-left transition-colors hover:bg-raised aria-[current=true]:bg-raised"
                       >
                         {/* Each line is held to the row's width, so a long nickname or name ends
@@ -199,9 +205,9 @@ export function PromptLibrary({
                           )}
                         </span>
                         <span className="block w-full max-w-full truncate text-xs text-muted">{p.name}</span>
-                        {places > 0 && (
-                          <span className="text-[0.6875rem] text-muted">
-                            Default in {places} {places === 1 ? 'place' : 'places'}
+                        {used.length > 0 && (
+                          <span className="block w-full max-w-full truncate text-[0.6875rem] text-muted">
+                            {used.join(' · ')}
                           </span>
                         )}
                         {/* A reply is for pull requests unless it says otherwise, as a comment

@@ -5,6 +5,12 @@ import catalogJSON from './autopilotCatalog.json'
 import type {
   AutopilotCatalog,
   AutopilotDescribed,
+  AutopilotExplanation,
+  AutopilotHold,
+  AutopilotReadiness,
+  AutopilotReadyCheck,
+  AutopilotRoutineReady,
+  AutopilotRunPreview,
   AutopilotSuggestions,
   AutopilotTestItem,
   AutopilotTestResult,
@@ -410,6 +416,119 @@ export function routineTest(overrides: Partial<AutopilotTestResult> = {}): Autop
   }
 }
 
+// readyCheck is the GitHub sign-in, checked at noon and fine.
+export function readyCheck(overrides: Partial<AutopilotReadyCheck> = {}): AutopilotReadyCheck {
+  return {
+    need: { kind: 'github', agent: '', profile: '', tool: '', place: '' },
+    id: 'github',
+    label: 'GitHub',
+    level: 'ok',
+    found: 'signed in as octo-user',
+    fix: '',
+    command: false,
+    checkedAt: '2026-06-15T12:00:00Z',
+    ...overrides,
+  }
+}
+
+// claudeMissing is Claude Code not found on this Mac, with the command that installs it.
+export function claudeMissing(overrides: Partial<AutopilotReadyCheck> = {}): AutopilotReadyCheck {
+  return readyCheck({
+    need: { kind: 'agent', agent: 'claude', profile: '', tool: '', place: '' },
+    id: 'agent:claude',
+    label: 'Claude',
+    level: 'problem',
+    found: 'isn’t installed',
+    fix: 'npm install -g @anthropic-ai/claude-code',
+    command: true,
+    ...overrides,
+  })
+}
+
+// routineReady is routine 3, ready on this Mac.
+export function routineReady(overrides: Partial<AutopilotRoutineReady> = {}): AutopilotRoutineReady {
+  return { routineId: 3, name: 'Snooze passing bot PRs', ready: true, problems: [], warnings: [], ...overrides }
+}
+
+// readiness is this Mac checked at noon: GitHub signed in, and every routine ready.
+export function readiness(overrides: Partial<AutopilotReadiness> = {}): AutopilotReadiness {
+  return {
+    checkedAt: '2026-06-15T12:00:00Z',
+    checking: false,
+    checks: [readyCheck()],
+    routines: [routineReady()],
+    notReady: 0,
+    ...overrides,
+  }
+}
+
+// autopilotHold is a routine's start held for pull request 7's agent files at its head.
+export function autopilotHold(overrides: Partial<AutopilotHold> = {}): AutopilotHold {
+  return {
+    key: 'agentFiles:a1b2c3d4e5f60718293a4b5c6d7e8f9012345678',
+    reason: 'agentFiles',
+    head: 'a1b2c3d4e5f60718293a4b5c6d7e8f9012345678',
+    files: agentGroup().files,
+    checked: 6,
+    total: 6,
+    error: '',
+    atHead: true,
+    dir: '~/projects/example-repo',
+    worktree: 'pr-7',
+    dirty: 0,
+    ...overrides,
+  }
+}
+
+// runPreview is a routine's agent step planned on pull request 7: Claude Code in a new
+// worktree, opening in iTerm2.
+export function runPreview(overrides: Partial<AutopilotRunPreview> = {}): AutopilotRunPreview {
+  return {
+    agent: 'claude',
+    profile: 'default',
+    model: 'opus',
+    effort: 'high',
+    promptName: 'Fix checks',
+    sources: { agent: 'routine', profile: 'app', model: 'routine', effort: 'prompt', prompt: 'routine' },
+    dir: `~/projects/.${brand.slug}/worktrees/example-repo/pr-7`,
+    worktree: {
+      name: 'pr-7',
+      path: `~/projects/.${brand.slug}/worktrees/example-repo/pr-7`,
+      branch: 'worktree-pr-7',
+      action: 'create',
+      base: 'the pull request’s head',
+      dirty: 0,
+    },
+    command: "claude <prompt> --model opus '--name=Fix checks · example-repo#7'",
+    env: ['unset ANTHROPIC_API_KEY'],
+    permission: 'full access',
+    prompt: 'Fix the failing checks of pull request #7 in acme-org/example-repo.\n',
+    terminal: 'iterm2',
+    warnings: [],
+    ...overrides,
+  }
+}
+
+// explanation is why routine 3 didn't act on item 1: its checks haven't passed.
+export function explanation(overrides: Partial<AutopilotExplanation> = {}): AutopilotExplanation {
+  return {
+    routineId: 3,
+    itemId: 1,
+    match: 'no',
+    fireKey: '',
+    trace: [
+      { path: 'trigger', condition: 'checks pass', result: 'no', actual: 'test (go 1.26) failed' },
+      { path: 'conditions.of[0]', condition: 'it is a bot’s', result: 'yes', actual: 'dependabot' },
+    ],
+    needs: [],
+    inWatch: true,
+    leftAlone: false,
+    ledger: ['It hasn’t acted on this item yet.'],
+    record: null,
+    ...overrides,
+  }
+}
+
 // routine is Snooze passing bot PRs, routine 3, on in Autopilot since the morning, of the
 // account signed in.
 export function routine(overrides: Partial<AutopilotRoutine> = {}): AutopilotRoutine {
@@ -502,6 +621,7 @@ export function autopilotMatch(overrides: Partial<AutopilotMatch> = {}): Autopil
     trace: [],
     approved: false,
     attempt: 0,
+    hold: null,
     runs: [],
     effects: [autopilotEffect()],
     createdAt: '2026-06-15T11:30:00Z',
@@ -686,6 +806,11 @@ export function claudeAgent(overrides: Partial<Agent> = {}): Agent {
     authFile: '',
     authEnv: [],
     modelsCache: '',
+    versionArgs: ['--version'],
+    signInArgs: ['auth', 'status', '--json'],
+    keyEnv: ['ANTHROPIC_API_KEY'],
+    loginArgs: ['auth', 'login'],
+    statusPart: 'claude.code',
     ...overrides,
   }
 }
@@ -728,6 +853,11 @@ export function codexAgent(overrides: Partial<Agent> = {}): Agent {
     authFile: 'auth.json',
     authEnv: ['OPENAI_API_KEY', 'CODEX_API_KEY'],
     modelsCache: 'models_cache.json',
+    versionArgs: ['--version'],
+    signInArgs: ['login', 'status'],
+    keyEnv: ['OPENAI_API_KEY', 'CODEX_API_KEY'],
+    loginArgs: ['login'],
+    statusPart: 'openai.codex-cli',
     ...overrides,
   }
 }
@@ -776,6 +906,8 @@ export function settings(overrides: Partial<Settings> = {}): Settings {
     followSessions: true,
     codexEffort: false,
     codexFast: false,
+    claudeApiKey: false,
+    codexApiKey: false,
     cloneRoot: '~/projects',
     cloneLocations: [],
     trustedBots: ['dependabot', 'github-actions', 'renovate'],
@@ -1120,6 +1252,7 @@ export function launchHold(overrides: Partial<LaunchHold> = {}): LaunchHold {
     dir: '~/projects/example-repo',
     worktree: 'pr-7',
     running: [],
+    dirty: 0,
     ...overrides,
   }
 }
@@ -1191,7 +1324,7 @@ export function prompt(overrides: Partial<Prompt> = {}): Prompt {
     extraFlags: {},
     starterKey: 'review-pr',
     modified: false,
-    usage: { defaults: ['pr'], orgs: [], repos: [], kinds: ['pr'], replies: [] },
+    usage: { defaults: ['pr'], orgs: [], repos: [], kinds: ['pr'], replies: [], routines: [] },
     createdAt: '2026-06-01T09:00:00Z',
     updatedAt: '2026-06-15T09:00:00Z',
     ...overrides,
@@ -1328,7 +1461,7 @@ export function prompts(): Prompt[] {
       name: 'Fix a pull request’s failing checks',
       nickname: 'Fix checks',
       starterKey: 'fix-checks',
-      usage: { defaults: [], orgs: [], repos: [], kinds: [], replies: [] },
+      usage: { defaults: [], orgs: [], repos: [], kinds: [], replies: [], routines: [] },
     }),
     prompt({
       id: 2,
@@ -1338,7 +1471,7 @@ export function prompts(): Prompt[] {
       effort: 'low',
       worktree: false,
       starterKey: 'quick-look',
-      usage: { defaults: [], orgs: ['acme-org'], repos: ['acme-org/api'], kinds: ['pr'], replies: [] },
+      usage: { defaults: [], orgs: ['acme-org'], repos: ['acme-org/api'], kinds: ['pr'], replies: [], routines: [] },
     }),
     prompt(),
     prompt({
@@ -1348,7 +1481,7 @@ export function prompts(): Prompt[] {
       appliesTo: 'issue',
       body: 'Work on issue #{{.Number}}\n',
       starterKey: 'work-on-issue',
-      usage: { defaults: ['issue'], orgs: [], repos: [], kinds: ['issue'], replies: [] },
+      usage: { defaults: ['issue'], orgs: [], repos: [], kinds: ['issue'], replies: [], routines: [] },
     }),
     prompt({
       id: 5,
@@ -1357,7 +1490,7 @@ export function prompts(): Prompt[] {
       appliesTo: 'any',
       body: 'Explain {{.URL}}\n',
       starterKey: '',
-      usage: { defaults: [], orgs: [], repos: [], kinds: [], replies: [] },
+      usage: { defaults: [], orgs: [], repos: [], kinds: [], replies: [], routines: [] },
     }),
   ]
 }
@@ -1448,6 +1581,7 @@ export function launchDefaults(overrides: Partial<LaunchDefaults> = {}): LaunchD
     worktree: null,
     extraArgs: {},
     extraFlags: {},
+    autopilotOutside: '',
     updatedAt: '2026-06-15T09:00:00Z',
     ...overrides,
   }
@@ -2574,7 +2708,7 @@ export function replyPrompt(overrides: Partial<Prompt> = {}): Prompt {
     purpose: 'reply',
     replyAction: 'approve',
     starterKey: 'lgtm',
-    usage: { defaults: [], orgs: [], repos: [], kinds: [], replies: ['approve'] },
+    usage: { defaults: [], orgs: [], repos: [], kinds: [], replies: ['approve'], routines: [] },
     ...overrides,
   })
 }
@@ -2591,7 +2725,7 @@ export function replyPrompts(): Prompt[] {
       nickname: 'Update OK',
       body: 'Update looks fine.\n',
       starterKey: 'update-ok',
-      usage: { defaults: [], orgs: [], repos: [], kinds: [], replies: ['approve_bots'] },
+      usage: { defaults: [], orgs: [], repos: [], kinds: [], replies: ['approve_bots'], routines: [] },
     }),
     replyPrompt({
       id: 23,
@@ -2600,7 +2734,7 @@ export function replyPrompts(): Prompt[] {
       body: 'Thanks, @{{.Author}}. A few things to change first:\n\n- \n',
       replyAction: 'request_changes',
       starterKey: 'needs-changes',
-      usage: { defaults: [], orgs: [], repos: [], kinds: [], replies: [] },
+      usage: { defaults: [], orgs: [], repos: [], kinds: [], replies: [], routines: [] },
     }),
     replyPrompt({
       id: 24,
@@ -2609,7 +2743,7 @@ export function replyPrompts(): Prompt[] {
       body: 'A question before I approve, @{{.Author}}:\n\n',
       replyAction: 'comment',
       starterKey: '',
-      usage: { defaults: [], orgs: [], repos: [], kinds: [], replies: [] },
+      usage: { defaults: [], orgs: [], repos: [], kinds: [], replies: [], routines: [] },
     }),
   ]
 }

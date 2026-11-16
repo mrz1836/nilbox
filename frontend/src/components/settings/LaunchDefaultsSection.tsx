@@ -20,6 +20,7 @@ import {
   saveLaunchDefaults,
   type AgentID,
   type AgentInfo,
+  type AutopilotOutside,
   type DefaultPrompts,
   type LaunchDefaults,
   type LaunchDefaultsInput,
@@ -29,7 +30,16 @@ import {
   type Settings,
 } from '../../platform'
 import { ConfirmDialog } from '../ConfirmDialog'
-import { buttonClass, chipClass, describedBy, Field, fieldClass, primaryButtonClass } from '../controls'
+import {
+  buttonClass,
+  chipClass,
+  describedBy,
+  Field,
+  fieldClass,
+  primaryButtonClass,
+  Segmented,
+  type SegmentOption,
+} from '../controls'
 import { PlusIcon } from '../icons'
 import { LaunchOverrideFields, type LaunchOverrides } from '../LaunchOverrideFields'
 import { ErrorText, SectionIntro } from './rows'
@@ -65,8 +75,29 @@ function parseTarget(text: string): { owner: string; name: string } {
   return { owner: owner.trim(), name: rest.join('/').trim() }
 }
 
-// summary lists what a set of defaults sets, as short chips.
-function summary(d: LaunchDefaults, prompts: readonly Prompt[], agents: readonly AgentInfo[]): string[] {
+// outsideOptions are the choices for Autopilot on outside contributors' items: On still
+// means plan mode, since an automatic run never lifts the outside contributor restriction.
+const outsideOptions: readonly SegmentOption<AutopilotOutside>[] = [
+  { value: '', label: 'Inherit' },
+  { value: 'off', label: 'Off' },
+  { value: 'on', label: 'On (plan mode only)' },
+]
+
+// outsideInherited says what Inherit means for Autopilot on outside contributors' items:
+// a repository's is its org's choice, else off; an org's is off, since there is no
+// app-wide switch.
+function outsideInherited(org: Pick<LaunchDefaults, 'autopilotOutside'> | undefined): string {
+  return org === undefined || org.autopilotOutside === '' ? 'off' : `${org.autopilotOutside} (org)`
+}
+
+// summary lists what a set of defaults sets, as short chips; Autopilot's choice only while
+// Autopilot (beta) is on, which shows none of it otherwise.
+function summary(
+  d: LaunchDefaults,
+  prompts: readonly Prompt[],
+  agents: readonly AgentInfo[],
+  autopilotOn: boolean,
+): string[] {
   const out: string[] = []
   const nickname = (id: number | null) => prompts.find((p) => p.id === id)?.nickname ?? 'a deleted prompt'
 
@@ -86,7 +117,15 @@ function summary(d: LaunchDefaults, prompts: readonly Prompt[], agents: readonly
     out.push(`${nickname(d.issuePromptId)} for issues`)
   }
 
-  return [...out, ...pinSummary(d, agents)]
+  const pins = pinSummary(d, agents)
+
+  if (autopilotOn && d.autopilotOutside === 'on') {
+    pins.push('Autopilot on outside contributors’ items, in plan mode')
+  } else if (autopilotOn && d.autopilotOutside === 'off') {
+    pins.push('no Autopilot on outside contributors’ items')
+  }
+
+  return [...out, ...pins]
 }
 
 // LaunchDefaultsSection lists the launch defaults saved for orgs and repositories, and
@@ -204,7 +243,7 @@ export function LaunchDefaultsSection({
                           </span>
                         </p>
                         <ul className="mt-1 flex flex-wrap gap-1.5">
-                          {summary(d, prompts, agents).map((chip) => (
+                          {summary(d, prompts, agents, settings.autopilot.enabled).map((chip) => (
                             <li key={chip} className={chipClass}>
                               {chip}
                             </li>
@@ -553,6 +592,26 @@ function DefaultsEditor({
               : 'Added after the profile’s and the org’s flags.'
           }
         />
+        {settings.autopilot.enabled && (
+          <div className="col-span-2 flex flex-col gap-1">
+            <span className="text-xs font-medium text-muted">Autopilot on outside contributors’ items</span>
+            <Segmented
+              label="Autopilot on outside contributors’ items"
+              size="sm"
+              value={input.autopilotOutside}
+              options={outsideOptions}
+              describedBy={`${id}-outside-hint`}
+              onChange={(autopilotOutside) => {
+                set({ autopilotOutside })
+              }}
+            />
+            <span className="text-xs text-muted">Inherits {outsideInherited(org)}</span>
+            <span id={`${id}-outside-hint`} className="text-xs text-muted">
+              On lets a routine run its agent on pull requests and issues from people outside the repository, always in
+              plan mode.
+            </span>
+          </div>
+        )}
       </div>
 
       <div className="flex items-center justify-end gap-2">

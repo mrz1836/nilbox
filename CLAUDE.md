@@ -1243,10 +1243,12 @@ changing the package, and keep the section and its summary in step.
   banner (`event.RevealItem.NotificationID`, checked against the entry's item, page, or run,
   since Clear history hands ids out again), or when its item's sheet opens (`InboxView`'s
   `onItemOpened`, once per opening).
-  `components/autopilot/` is the Autopilot tab (the routine list, Activity, a routine's
-  Watching list on the inbox's own rows and sheets, the ⚡ chip, and `builder/`, the routine
-  builder and its Test panel, whose pure half is `lib/routineBuilder.ts`), its words in
-  `lib/autopilot.ts`; every row reads the routines' names and its chip through
+  `components/autopilot/` is the Autopilot tab (the routine list, Needs you's cards,
+  Activity, a routine's Watching list on the inbox's own rows and sheets, the ⚡ chip, an
+  item menu's Autopilot ▸, `RoutineMenu`, and `builder/`, the routine builder and its Test
+  panel with Preview, whose pure half is `lib/routineBuilder.ts`), its words in
+  `lib/autopilot.ts`; a hold's details are the launch hold dialog's own (`HoldDetails`), and
+  a planned launch the launch menu's; every row reads the routines' names and its chip through
   `AutopilotRowsContext`, and the inbox's row actions are shared through
   `components/useItemActions.ts`. The window shows any of Autopilot only while Autopilot
   (beta) is on (Settings → Labs, `LabsSection`): off, there is no tab, no Autopilot settings

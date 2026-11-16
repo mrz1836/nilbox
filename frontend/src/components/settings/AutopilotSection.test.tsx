@@ -6,7 +6,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { brand } from '../../generated/brand'
 import type { AutopilotConfig, Settings } from '../../platform'
 import { at } from '../../test/clock'
-import { autopilotEngine, settings } from '../../test/fixtures'
+import { autopilotEngine, claudeMissing, readiness, readyCheck, routineReady, settings } from '../../test/fixtures'
 import { emit, platform } from '../../test/platform'
 import { AutopilotSection, clearedText, lastCheckedText } from './AutopilotSection'
 
@@ -195,15 +195,23 @@ describe('AutopilotSection', () => {
     )
   })
 
-  it('says the agent and GitHub settings wait for routines that can start them', () => {
+  it('says the limits hold the agents now and the GitHub actions once routines send them', () => {
     renderSection()
 
     expect(
-      screen.getAllByText('These apply once routines can start coding agents and send GitHub actions.', {
-        exact: false,
-      }),
-    ).toHaveLength(2)
-    expect(screen.getByText(/once routines start coding agents: never longer than the history/)).toBeInTheDocument()
+      screen.getByText(
+        'These hold every routine’s coding agents, and its GitHub actions once routines can send them.',
+        {
+          exact: false,
+        },
+      ),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByText(/Keeping the Mac awake is for agents in the background, which come later/),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByText(/once routines run agents in the background: never longer than the history/),
+    ).toBeInTheDocument()
   })
 
   it('doesn’t announce Last checked each time the engine checks', async () => {
@@ -267,6 +275,90 @@ describe('AutopilotSection', () => {
         `Autopilot is running in another copy of ${brand.name}. This one shows them and starts nothing.`,
       ),
     ).toBeInTheDocument()
+  })
+})
+
+describe('This Mac', () => {
+  // mac is this Mac with GitHub signed in, Claude missing, and banners off, and the one
+  // routine that needs Claude not ready.
+  function mac() {
+    return readiness({
+      checks: [
+        readyCheck(),
+        claudeMissing(),
+        readyCheck({
+          need: { kind: 'banners', agent: '', profile: '', tool: '', place: '' },
+          id: 'banners',
+          label: 'Banners',
+          level: 'warning',
+          found: 'turned off',
+          fix: 'System Settings → Notifications',
+          command: false,
+        }),
+      ],
+      routines: [
+        routineReady({ ready: false, problems: [claudeMissing()] }),
+        routineReady({ routineId: 4, name: 'Fix checks' }),
+      ],
+      notReady: 1,
+    })
+  }
+
+  it('lists what the routines need here, how each checked out, and how to fix it', async () => {
+    platform.getAutopilotReadiness.mockResolvedValue(mac())
+    renderSection()
+
+    const list = within(await screen.findByRole('list', { name: 'This Mac' }))
+    const [github, claude, banners] = list.getAllByRole('listitem')
+
+    expect(github).toHaveTextContent('Fine:GitHub · signed in as octo-user')
+    expect(claude).toHaveTextContent('Problem:Claude · isn’t installed')
+    expect(within(claude ?? document.body).getByText('npm install -g @anthropic-ai/claude-code')).toBeInTheDocument()
+    expect(banners).toHaveTextContent('Warning:Banners · turned off')
+    expect(within(banners ?? document.body).getByText('System Settings → Notifications')).toBeInTheDocument()
+    expect(within(banners ?? document.body).queryByRole('button', { name: 'Copy the command' })).not.toBeInTheDocument()
+    expect(screen.getByText('Not ready here: Snooze passing bot PRs')).toBeInTheDocument()
+
+    await userEvent.click(within(claude ?? document.body).getByRole('button', { name: 'Copy the command' }))
+    expect(platform.copyText).toHaveBeenCalledWith('npm install -g @anthropic-ai/claude-code')
+  })
+
+  it('checks again on asking, held off while it checks, and shows what the checks found', async () => {
+    let finish: (r: ReturnType<typeof readiness>) => void = () => undefined
+    platform.getAutopilotReadiness.mockResolvedValue(mac())
+    platform.checkAutopilotReadiness.mockReturnValue(
+      new Promise((resolve) => {
+        finish = resolve
+      }),
+    )
+    renderSection()
+
+    await screen.findByText('Not ready here: Snooze passing bot PRs')
+    await userEvent.click(screen.getByRole('button', { name: 'Check again' }))
+
+    expect(platform.checkAutopilotReadiness).toHaveBeenCalledOnce()
+    expect(screen.getByRole('button', { name: 'Checking…' })).toBeDisabled()
+
+    await act(async () => {
+      finish(readiness())
+      await Promise.resolve()
+    })
+
+    expect(await screen.findByRole('button', { name: 'Check again' })).toBeEnabled()
+    expect(screen.queryByText(/Not ready here/)).not.toBeInTheDocument()
+    expect(within(screen.getByRole('list', { name: 'This Mac' })).getAllByRole('listitem')).toHaveLength(1)
+  })
+
+  it('reads this Mac again whenever Autopilot changes', async () => {
+    renderSection()
+
+    await screen.findByRole('list', { name: 'This Mac' })
+    platform.getAutopilotReadiness.mockResolvedValue(mac())
+    act(() => {
+      emit('autopilot:updated')
+    })
+
+    expect(await screen.findByText('Not ready here: Snooze passing bot PRs')).toBeInTheDocument()
   })
 })
 

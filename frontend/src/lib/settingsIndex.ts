@@ -308,6 +308,22 @@ export const settingsIndex: Readonly<Record<SettingsSection, readonly SettingEnt
     { label: 'Run logs kept', keywords: ['logs', 'transcripts', 'retention', 'days', 'prune'] },
     { label: 'Clear history', keywords: ['clear', 'delete history', 'forget', 'activity', 'ledger', 'wipe'] },
     {
+      label: 'This Mac',
+      keywords: [
+        'readiness',
+        'ready',
+        'not ready',
+        'check again',
+        'sign in',
+        'installed',
+        'PATH',
+        'profiles',
+        'terminal',
+        'what is missing',
+        ...agentNames,
+      ],
+    },
+    {
       label: 'Last checked',
       keywords: ['engine', 'heartbeat', 'cycle', 'last run', 'nothing happens', 'another copy', 'status'],
     },
@@ -326,6 +342,14 @@ export const settingsIndex: Readonly<Record<SettingsSection, readonly SettingEnt
     { label: 'Follow agent sessions', keywords: ['session status', 'transcript', 'working', 'waiting'] },
     { label: 'Set Codex’s effort at launch', keywords: ['reasoning effort', 'config override'] },
     { label: 'Start Codex in Fast mode', keywords: ['fast', 'speed'] },
+    {
+      label: 'Use an API key for Claude Code when one is set',
+      keywords: ['API key', 'ANTHROPIC_API_KEY', 'billing', 'sign in', 'subscription', 'Claude'],
+    },
+    {
+      label: 'Use an API key for Codex when one is set',
+      keywords: ['API key', 'OPENAI_API_KEY', 'billing', 'sign in', 'subscription', 'OpenAI'],
+    },
   ],
   refreshing: [
     { label: 'How often', keywords: ['interval', 'refresh', 'poll', 'API budget', 'rate limit'] },

@@ -102,6 +102,7 @@ export function defaultsInput(d: LaunchDefaults): LaunchDefaultsInput {
     planMode: d.planMode,
     worktree: d.worktree,
     extraFlags: { ...d.extraFlags },
+    autopilotOutside: d.autopilotOutside,
   }
 }
 
@@ -120,6 +121,7 @@ export function emptyDefaults(owner: string, name: string): LaunchDefaultsInput 
     planMode: null,
     worktree: null,
     extraFlags: {},
+    autopilotOutside: '',
   }
 }
 
