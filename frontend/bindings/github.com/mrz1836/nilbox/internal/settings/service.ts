@@ -21,6 +21,9 @@ import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wails
 import * as agent$0 from "../agent/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
+import * as autopilotprefs$0 from "../autopilotprefs/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
 import * as branchrules$0 from "../branchrules/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
@@ -178,6 +181,98 @@ export function RemoveCloneLocation(dir: string): $CancellablePromise<$models.Se
  */
 export function ResetTrustedBots(): $CancellablePromise<$models.Settings> {
     return $Call.ByID(3791295291);
+}
+
+/**
+ * SetAutopilotActionsPerDay stores how many GitHub actions Autopilot sends a day, across
+ * every routine, autopilotprefs.MinActionsPerDay to MaxActionsPerDay, and returns the
+ * settings with it.
+ */
+export function SetAutopilotActionsPerDay(n: number): $CancellablePromise<$models.Settings> {
+    return $Call.ByID(3140550920, n);
+}
+
+/**
+ * SetAutopilotAgentsAtOnce stores how many agents Autopilot runs at once,
+ * autopilotprefs.MinAgentsAtOnce to MaxAgentsAtOnce, and returns the settings with it.
+ */
+export function SetAutopilotAgentsAtOnce(n: number): $CancellablePromise<$models.Settings> {
+    return $Call.ByID(572525174, n);
+}
+
+/**
+ * SetAutopilotCatchUpHours stores how long a gap makes Autopilot ask before it catches up,
+ * autopilotprefs.MinCatchUpHours to MaxCatchUpHours, and returns the settings with it.
+ */
+export function SetAutopilotCatchUpHours(hours: number): $CancellablePromise<$models.Settings> {
+    return $Call.ByID(3497631177, hours);
+}
+
+/**
+ * SetAutopilotDailyCap stores the most Autopilot's agents may spend a day, and returns the
+ * settings with it: an amount of 0 for no cap, or whole dollars (autopilotprefs.MinCapUSD
+ * to MaxCapUSD) or tokens (MinCapTokens to MaxCapTokens), as its unit says.
+ */
+export function SetAutopilotDailyCap(dailyCap: autopilotprefs$0.DailyCap): $CancellablePromise<$models.Settings> {
+    return $Call.ByID(2796054927, dailyCap);
+}
+
+/**
+ * SetAutopilotDefaultMode stores the mode new routines start in (Dry run, Ask first, or
+ * Autopilot), and returns the settings with it. A routine already made keeps its own.
+ */
+export function SetAutopilotDefaultMode(mode: autopilotprefs$0.Mode): $CancellablePromise<$models.Settings> {
+    return $Call.ByID(408881514, mode);
+}
+
+/**
+ * SetAutopilotHistoryDays stores how many days of Autopilot's history are kept,
+ * autopilotprefs.MinHistoryDays to MaxHistoryDays, and returns the settings with it. Run
+ * logs kept longer than the new history are kept as long as it instead.
+ */
+export function SetAutopilotHistoryDays(days: number): $CancellablePromise<$models.Settings> {
+    return $Call.ByID(3179699459, days);
+}
+
+/**
+ * SetAutopilotHoldOnOutage stores whether agent starts wait while the agent's provider
+ * reports an outage, and returns the settings with it.
+ */
+export function SetAutopilotHoldOnOutage(on: boolean): $CancellablePromise<$models.Settings> {
+    return $Call.ByID(4019545119, on);
+}
+
+/**
+ * SetAutopilotKeepAwake stores whether the Mac is kept awake while agents work, and
+ * returns the settings with it.
+ */
+export function SetAutopilotKeepAwake(on: boolean): $CancellablePromise<$models.Settings> {
+    return $Call.ByID(1550974432, on);
+}
+
+/**
+ * SetAutopilotLogDays stores how many days the agent runs' logs are kept,
+ * autopilotprefs.MinLogDays to MaxLogDays and never more than the history, and returns the
+ * settings with it.
+ */
+export function SetAutopilotLogDays(days: number): $CancellablePromise<$models.Settings> {
+    return $Call.ByID(968723065, days);
+}
+
+/**
+ * SetAutopilotPaused turns Pause Autopilot on or off, and returns the settings with it.
+ * Paused, no routine starts anything new; agents already running carry on.
+ */
+export function SetAutopilotPaused(on: boolean): $CancellablePromise<$models.Settings> {
+    return $Call.ByID(1283057826, on);
+}
+
+/**
+ * SetAutopilotRunsPerDay stores how many agent runs Autopilot starts a day, across every
+ * routine, autopilotprefs.MinRunsPerDay to MaxRunsPerDay, and returns the settings with it.
+ */
+export function SetAutopilotRunsPerDay(n: number): $CancellablePromise<$models.Settings> {
+    return $Call.ByID(452729449, n);
 }
 
 /**

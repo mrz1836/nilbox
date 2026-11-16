@@ -20,6 +20,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/agent"
 	"github.com/mrz1836/nilbox/internal/appdata"
 	"github.com/mrz1836/nilbox/internal/appinfo"
+	"github.com/mrz1836/nilbox/internal/autopilot"
 	"github.com/mrz1836/nilbox/internal/avatars"
 	"github.com/mrz1836/nilbox/internal/backup"
 	"github.com/mrz1836/nilbox/internal/brand"
@@ -168,6 +169,7 @@ type Core struct {
 	ServiceStatus  *svcstatus.Service
 	Setup          *setup.Service
 	Updates        *update.Service
+	Autopilot      *autopilot.Service
 
 	// ShellSettings are the settings the desktop shell reads when the app launches. They
 	// are not bound.
@@ -294,7 +296,8 @@ type Core struct {
 // any pending migrations, setting it aside for a fresh one when it cannot be used, or when
 // the user asked to start over), syncs the agent profiles found under the home directory,
 // brings back the prompt library and the launch defaults when the database holds a new
-// library (from the database set aside, or else from the copies kept beside it), and the
+// library (from the database set aside, or else from the copies kept beside it), the
+// Autopilot routines, switched off, when it holds none (from the same places), and the
 // user's own scripts from a database set aside, adds any starter prompt not added before,
 // decides once whether the first-run setup shows, and builds every service. It contacts no
 // network; the scheduler does that once started.
@@ -337,7 +340,7 @@ func Bootstrap(ctx context.Context, opts Options) (*Core, error) {
 		return nil, fmt.Errorf("add the starter prompts: %w", err)
 	}
 
-	keeper.keep(ctx, restored.prompts.From != "")
+	keeper.keep(ctx, restored)
 	adoptSetup(ctx, pool, opts.Clock, logger)
 
 	info := startup{reset: reset, restored: restored.info(opts.Home, opened.Reset), kept: keeper}
@@ -353,7 +356,7 @@ func (c *Core) Services() []any {
 	return []any{
 		c.Settings, c.Profiles, c.Prompts, c.LaunchDefaults, c.Inbox, c.Launcher, c.Worktrees, c.Notifications,
 		c.AppInfo, c.Budget, c.Sessions, c.Review, c.Issues, c.Integrations, c.ScriptRuns, c.Release, c.Hooks,
-		c.Scripts, c.GHThreads, c.Backup, c.ServiceStatus, c.Setup, c.Updates,
+		c.Scripts, c.GHThreads, c.Backup, c.ServiceStatus, c.Setup, c.Updates, c.Autopilot,
 	}
 }
 
@@ -671,6 +674,13 @@ func assemble(pool *sql.DB, info startup, opts Options, logger *slog.Logger) *Co
 	// The review sheet and the issue sheet read and act through the inbox's one Actor.
 	actor := inbox.NewActor(inboxSvc)
 
+	// The routines belong to the account the inbox last signed in as, start in the mode
+	// Settings says, name the starter prompts as the library does, and are copied beside
+	// the database after every change.
+	routines := newAutopilot(pool, opts, autopilotDeps{
+		inbox: inboxStore, prompts: promptStore, file: info.kept.routinesFile,
+	}, logger)
+
 	c := &Core{
 		DB:       pool,
 		Settings: prefs,
@@ -700,7 +710,9 @@ func assemble(pool *sql.DB, info startup, opts Options, logger *slog.Logger) *Co
 			Finder:    search,
 			Runner:    versionRunner,
 			Home:      opts.Home,
-			State:     bugReportState{settings: prefs, tools: tools, updates: updateEngine, logger: logger},
+			State: bugReportState{
+				settings: prefs, tools: tools, updates: updateEngine, routines: routines, logger: logger,
+			},
 		}),
 		Budget: budget.NewService(budget.Config{
 			Tracker: tracker, Reader: rateReader{tokens: tokens, client: client}, Clock: opts.Clock,
@@ -744,6 +756,7 @@ func assemble(pool *sql.DB, info startup, opts Options, logger *slog.Logger) *Co
 		HooksScans:            hooks.NewScans(hookPage),
 		Scripts:               repoScripts,
 		Updates:               update.NewService(updateEngine),
+		Autopilot:             routines,
 		UpdateEngine:          updateEngine,
 		UpdateWorker:          updateWorker,
 		tokens:                tokens,

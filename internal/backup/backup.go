@@ -1,7 +1,8 @@
 // Package backup exports the user's whole setup to one file and imports it back: their
-// settings, their repositories, the prompt library, the launch defaults, and their own
-// scripts, each a category the user ticks on export and again on import (see File for the
-// format). It owns no table: each category is an owner's, which core adapts to a Part.
+// settings, their repositories, the prompt library, the launch defaults, their own
+// scripts, and their Autopilot routines, each a category the user ticks on export and
+// again on import (see File for the format). It owns no table: each category is an
+// owner's, which core adapts to a Part.
 //
 // An import shows first what it would do (Preview), under either mode: Merge, which adds
 // and changes but deletes nothing, and Replace, which makes each category exactly the

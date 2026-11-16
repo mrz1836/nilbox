@@ -840,7 +840,9 @@ database, a copy of it is saved next to it, and the three newest copies are kept
 three newest of those too. Beside it,
 `prompts.json` and `launch-defaults.json` hold copies of your prompt library and your launch
 defaults in plain JSON, each rewritten after every change (see
-[Keeping your prompts](#keeping-your-prompts)). Agent profiles need no copy: they are found in
+[Keeping your prompts](#keeping-your-prompts)), and `autopilot.json` the same kind of copy for
+Autopilot routines, which holds none yet ([its format](backup-files.md#autopilot)). Agent
+profiles need no copy: they are found in
 your home directory on every start. `backups/` holds the copies of your setup an import of a
 [backup](#backing-up-your-setup) saves before it changes anything, the five newest, and the
 copies a reset saves first (`nilbox before reset <UTC time>.json`), the five newest of those.

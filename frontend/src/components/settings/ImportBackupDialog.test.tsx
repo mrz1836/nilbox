@@ -169,6 +169,46 @@ describe('ImportBackupDialog', () => {
     expect(screen.queryByRole('list', { name: 'To delete' })).not.toBeInTheDocument()
   })
 
+  it('leaves out a category the backup holds that the window does not list', async () => {
+    // A backup holds an Autopilot section, which the window offers once it has routines to
+    // show; until then the section is neither shown, imported, nor counted among the
+    // deletions.
+    const gone = { label: 'A routine here', change: 'remove' as const, detail: '' }
+    platform.previewBackup.mockResolvedValue(
+      backupPreview({
+        sections: [
+          backupSectionPreview('settings'),
+          backupSectionPreview('repositories', { present: false }),
+          backupSectionPreview('prompts', { present: false }),
+          backupSectionPreview('launchDefaults', { present: false }),
+          backupSectionPreview('scripts', { present: false }),
+          backupSectionPreview('autopilot', {
+            merge: backupPlan({ count: { add: 1, update: 0, same: 0, remove: 0 } }),
+            replace: backupPlan({ count: { add: 1, update: 0, same: 0, remove: 1 }, items: [gone] }),
+          }),
+        ],
+      }),
+    )
+    renderDialog()
+
+    expect(await categories()).toHaveLength(backupSections.length)
+    expect(screen.queryByText(/autopilot/i)).not.toBeInTheDocument()
+
+    await userEvent.click(await screen.findByRole('radio', { name: 'Replace what’s here' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Import 1 category' }))
+
+    expect(screen.getByText(/Nothing here is deleted, but what the backup holds takes the place/)).toBeInTheDocument()
+    expect(screen.queryByText('A routine here')).not.toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Replace' }))
+    expect(platform.importBackup).toHaveBeenCalledWith({
+      path,
+      hash: 'c0ffee',
+      sections: ['settings'],
+      mode: platform.BackupMode.ModeReplace,
+    })
+  })
+
   it('says why a backup could not be read', async () => {
     platform.previewBackup.mockRejectedValue(new Error('The file isn’t a backup.'))
     renderDialog()

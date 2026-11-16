@@ -10,6 +10,8 @@ import (
 	"os"
 
 	"github.com/mrz1836/nilbox/internal/appinfo"
+	"github.com/mrz1836/nilbox/internal/autopilot"
+	"github.com/mrz1836/nilbox/internal/clock"
 	"github.com/mrz1836/nilbox/internal/launchdefaults"
 	"github.com/mrz1836/nilbox/internal/paths"
 	"github.com/mrz1836/nilbox/internal/prompts"
@@ -18,25 +20,31 @@ import (
 )
 
 // kept is what the app keeps for the user outside its database, so it outlives a
-// database that is set aside, damaged, or deleted: the prompt library and the launch
-// defaults, each beside the plain-file copy the app keeps of it. Agent profiles are not
-// among them: discovery finds them in the home directory on every start, and nothing in
-// the app changes one.
+// database that is set aside, damaged, or deleted: the prompt library, the launch
+// defaults, and the Autopilot routines, each beside the plain-file copy the app keeps of
+// it. Agent profiles are not among them: discovery finds them in the home directory on
+// every start, and nothing in the app changes one.
 type kept struct {
+	pool         *sql.DB
+	clock        clock.Clock
 	prompts      *prompts.Store
 	promptFile   *prompts.LibraryFile
 	defaults     *launchdefaults.Store
 	defaultsFile *launchdefaults.File
+	routinesFile *autopilot.File
 	logger       *slog.Logger
 }
 
 // newKept returns the kept stores over pool, with their copies at the paths opts gives.
 func newKept(pool *sql.DB, opts Options, logger *slog.Logger) *kept {
 	return &kept{
+		pool:         pool,
+		clock:        opts.Clock,
 		prompts:      prompts.NewStore(pool, opts.Clock),
 		promptFile:   prompts.NewLibraryFile(opts.Paths.Prompts, opts.Version, opts.Clock),
 		defaults:     launchdefaults.NewStore(pool, opts.Clock),
 		defaultsFile: launchdefaults.NewFile(opts.Paths.LaunchDefaults, opts.Version, opts.Clock),
+		routinesFile: autopilot.NewFile(opts.Paths.Autopilot, opts.Version, opts.Clock),
 		logger:       logger,
 	}
 }
@@ -45,16 +53,22 @@ func newKept(pool *sql.DB, opts Options, logger *slog.Logger) *kept {
 type restored struct {
 	prompts  prompts.Restored
 	defaults int
+	routines autopilot.Restored
 	scripts  int
 }
 
 // info returns what the window tells the user about what was brought back, or nil when
-// nothing was. The prompts and launch defaults name where they came from; scripts that
-// came back on their own came from the database set aside, which reset names.
+// nothing was. The prompts and launch defaults name where they came from, else the
+// routines; scripts that came back on their own came from the database set aside, which
+// reset names.
 func (r restored) info(home string, reset *store.Reset) *appinfo.Restored {
 	from := r.prompts.From
 	if r.prompts.Count+r.defaults == 0 {
 		from = ""
+	}
+
+	if from == "" && r.routines.Count > 0 {
+		from = r.routines.From
 	}
 
 	if from == "" && r.scripts > 0 && reset != nil {
@@ -66,7 +80,8 @@ func (r restored) info(home string, reset *store.Reset) *appinfo.Restored {
 	}
 
 	return &appinfo.Restored{
-		Prompts: r.prompts.Count, LaunchDefaults: r.defaults, Scripts: r.scripts, From: paths.Tilde(from, home),
+		Prompts: r.prompts.Count, LaunchDefaults: r.defaults, Scripts: r.scripts, Routines: r.routines.Count,
+		From: paths.Tilde(from, home),
 	}
 }
 
@@ -95,7 +110,8 @@ func restoreScripts(ctx context.Context, pool *sql.DB, opts Options, reset *stor
 // restore brings back the prompt library when the database holds a new one, as after it
 // was set aside, damaged, or deleted, and then the launch defaults from the same place,
 // matched to the restored prompts: from the database set aside, when reset says one was,
-// or else from the copies kept beside the database. What cannot be brought back is
+// or else from the copies kept beside the database. Then, when the database holds no
+// routine, it brings back the Autopilot routines likewise. What cannot be brought back is
 // logged, never fatal: the app starts with the starters, and the user can still restore
 // the prompts from a backup by hand.
 func (k *kept) restore(ctx context.Context, reset *store.Reset) restored {
@@ -111,18 +127,38 @@ func (k *kept) restore(ctx context.Context, reset *store.Reset) restored {
 		k.logger.WarnContext(ctx, "could not bring back all of the prompt library", "error", err)
 	}
 
-	if out.prompts.From == "" {
-		return out
+	if out.prompts.From != "" {
+		if out.defaults, err = k.restoreDefaults(ctx, out.prompts); err != nil {
+			k.logger.WarnContext(ctx, "could not bring back the launch defaults", "error", err)
+		}
+
+		k.logger.InfoContext(ctx, "brought back the prompt library and launch defaults",
+			"prompts", out.prompts.Count, "launch_defaults", out.defaults, "from", out.prompts.From)
 	}
 
-	if out.defaults, err = k.restoreDefaults(ctx, out.prompts); err != nil {
-		k.logger.WarnContext(ctx, "could not bring back the launch defaults", "error", err)
-	}
-
-	k.logger.InfoContext(ctx, "brought back the prompt library and launch defaults",
-		"prompts", out.prompts.Count, "launch_defaults", out.defaults, "from", out.prompts.From)
+	out.routines = k.restoreRoutines(ctx, setAside)
 
 	return out
+}
+
+// restoreRoutines brings back the Autopilot routines when the database holds none at all,
+// as after it was set aside, damaged, or deleted: from the database set aside (setAside,
+// "" for none), or else from their copy, each switched off. It runs after the prompts and
+// the launch defaults, so the prompts a routine names are back first; a routine names
+// them by nickname, which the restored library keeps, so nothing needs matching. What
+// cannot be brought back is logged, never fatal.
+func (k *kept) restoreRoutines(ctx context.Context, setAside string) autopilot.Restored {
+	got, err := autopilot.Restore(ctx, k.pool, k.clock, setAside, k.routinesFile)
+	if err != nil {
+		k.logger.WarnContext(ctx, "could not bring back all of the Autopilot routines", "error", err)
+	}
+
+	if got.Count > 0 {
+		k.logger.InfoContext(ctx, "brought back the Autopilot routines, switched off", "routines", got.Count,
+			"from", got.From)
+	}
+
+	return got
 }
 
 // restoreDefaults brings back the launch defaults from where the prompts came from, each
@@ -169,15 +205,21 @@ func (k *kept) readDefaults(ctx context.Context, from prompts.Restored) ([]launc
 }
 
 // keep writes each copy that is missing, as on the first start of a build that keeps
-// it, or every copy when the data was just restored. A copy is otherwise left as the last
-// change wrote it, so a database that came back without the user's data never overwrites
-// the copy that still holds it.
-func (k *kept) keep(ctx context.Context, restored bool) {
-	k.keepFile(ctx, k.promptFile.Path(), restored, "prompt library", func() error {
+// it, or each copy whose data was just restored: the prompt library's and the launch
+// defaults' when the prompts came back, and the routines' when they did. A copy is
+// otherwise left as the last change wrote it, so a database that came back without the
+// user's data never overwrites the copy that still holds it.
+func (k *kept) keep(ctx context.Context, r restored) {
+	promptsBack := r.prompts.From != ""
+
+	k.keepFile(ctx, k.promptFile.Path(), promptsBack, "prompt library", func() error {
 		return k.promptFile.Save(ctx, k.prompts)
 	})
-	k.keepFile(ctx, k.defaultsFile.Path(), restored, "launch defaults", func() error {
+	k.keepFile(ctx, k.defaultsFile.Path(), promptsBack, "launch defaults", func() error {
 		return k.defaultsFile.Save(ctx, k.defaults, k.prompts)
+	})
+	k.keepFile(ctx, k.routinesFile.Path(), r.routines.Count > 0, "Autopilot routines", func() error {
+		return k.routinesFile.Save(ctx, k.pool)
 	})
 }
 

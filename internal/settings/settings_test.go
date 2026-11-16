@@ -16,6 +16,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/mrz1836/nilbox/internal/agent"
+	"github.com/mrz1836/nilbox/internal/autopilotprefs"
 	"github.com/mrz1836/nilbox/internal/branchrules"
 	"github.com/mrz1836/nilbox/internal/event"
 	"github.com/mrz1836/nilbox/internal/integrationprefs"
@@ -122,6 +123,7 @@ func TestPrefDefaults(t *testing.T) {
 		ServiceStatus:   statusprefs.Defaults(),
 		StatusProviders: statusprefs.Catalog(),
 		UpdateMode:      updateprefs.ModeDownload,
+		Autopilot:       autopilotprefs.Defaults(),
 
 		DefaultProtectedBranches: []string{"main", "master"},
 	}, got)
@@ -257,6 +259,7 @@ func TestSettersPersist(t *testing.T) {
 	require.NoError(t, testutil.ErrOf(svc.SetGitHubNotificationTrigger(t.Context(), threadrules.TriggerDismissed, false)))
 	require.NoError(t, testutil.ErrOf(svc.SetGitHubNotificationAction(t.Context(), threadrules.ActionRead)))
 	require.NoError(t, testutil.ErrOf(svc.SetUpdateMode(t.Context(), updateprefs.ModeOff)))
+	require.NoError(t, testutil.ErrOf(svc.SetAutopilotAgentsAtOnce(t.Context(), 1)))
 
 	got, err := svc.Get(t.Context())
 	require.NoError(t, err)
@@ -309,6 +312,7 @@ func TestSettersPersist(t *testing.T) {
 		ServiceStatus:   statusprefs.Defaults(),
 		StatusProviders: statusprefs.Catalog(),
 		UpdateMode:      updateprefs.ModeOff,
+		Autopilot:       autopilotOf(func(c *autopilotprefs.Config) { c.AgentsAtOnce = 1 }),
 
 		DefaultProtectedBranches: branchrules.DefaultProtected(),
 		RepoRules:                reporules.Rules{Pinned: []string{}, Muted: []string{"acme-org"}},

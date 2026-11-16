@@ -2,7 +2,8 @@
 
 A backup file holds your whole setup in a portable form, so you can move it to another Mac, or
 keep it with your own backups and bring it back later: your settings, your repositories, your
-prompts and review replies, your launch defaults, and your own scripts. The app writes one from
+prompts and review replies, your launch defaults, your own scripts, and, in the copies the
+app saves before an import or a reset, your Autopilot routines. The app writes one from
 **Settings → Back up and restore → Export…**, and reads one from **Import…** there. How an import
 treats what is already on the Mac is in [Backing up your setup](desktop.md#backing-up-your-setup).
 
@@ -46,6 +47,26 @@ export is a section of the file; one you leave unticked is absent.
         "confirm": false
       }
     ]
+  },
+  "autopilot": {
+    "format": "nilbox-autopilot/1",
+    "exportedAt": "2026-11-14T17:00:00Z",
+    "app": "v0.4.0",
+    "routines": [
+      {
+        "name": "Tell me about failing checks",
+        "mode": "ask",
+        "enabled": true,
+        "spec": {
+          "version": 1,
+          "watch": {"sources": [{"lists": ["authored"]}]},
+          "trigger": {"event": "checks_failed"},
+          "conditions": {"match": "all", "of": []},
+          "steps": [{"notify": {}}],
+          "limits": {}
+        }
+      }
+    ]
   }
 }
 ```
@@ -68,10 +89,11 @@ as it was. The example leaves most out, as a file edited by hand may.
 | `prompts` | Your prompt library, exactly as `prompts.json` holds it: a [prompt file](prompt-files.md) with its own `format` and `version`, its defaults and `startersAdded` included. |
 | `launchDefaults` | Your org and repository [launch defaults](desktop.md#launch-defaults), exactly as `launch-defaults.json` holds them: `{"format": "nilbox.launch-defaults", "version": 2, "defaults": [...]}`, each default prompt named by nickname. |
 | `scripts` | Your own [scripts](desktop.md#repo-scripts), in their order ([below](#scripts)). |
+| `autopilot` | Your Autopilot routines, exactly as `autopilot.json` holds them ([below](#autopilot)). |
 
-Every section is an object, or absent. The prompts and launch defaults sections keep their own
-formats and versions, so a newer prompt file inside an older backup is refused by the same rule
-that refuses it on its own.
+Every section is an object, or absent. The prompts, launch defaults, and Autopilot sections
+keep their own formats and versions, so a newer prompt file inside an older backup is refused
+by the same rule that refuses it on its own.
 
 ### Settings
 
@@ -95,6 +117,7 @@ is each entry left out.
 | `inboxOrder` | Which inbox lists sort by project status, the order of the statuses, and which show one kind of item. |
 | `integrations` | Each integration's switch (`switches`), the copy of each tool you chose (`paths`, absolute, `""` for the one your shell finds), `runsIn`, `offerAfterMerge`, `magexTargets`, `repoFiles`, and `showRuns`. |
 | `updateMode` | What the app does when a new version is out: `download` (download it and tell me), `notify` (just tell me), or `off` (don't check). |
+| `autopilot` | Autopilot's settings: `paused`, `defaultMode` (`dryRun`, `ask`, or `auto`), `agentsAtOnce` (1 to 3), `runsPerDay` and `actionsPerDay` (1 to 200), `dailyCap` (`{"amount", "unit"}`: `0` for none, else 1 to 500 in `usd` or 100,000 to 50,000,000 in `tokens`), `keepAwake`, `holdOnOutage`, `catchUpHours` (1 to 168), `historyDays` (7 to 365), and `logDays` (1 to 90, never more than the history). The history and the logs are checked together, against this Mac's when the file holds only one. |
 
 ### Repositories
 
@@ -111,6 +134,38 @@ is each entry left out.
 `go`, or `repos`), `repos` (`owner/name`, for `repos` alone), `runsIn` (`app`, `terminal`, or
 `""` for the setting), and `confirm` (*Ask before running*). A script has no ID in a file.
 
+### Autopilot
+
+The Autopilot section is the routines' own format, the one `autopilot.json` beside the
+database holds, so a routine moves between Macs whole. **Export…** doesn't offer it yet, nor
+**Import…**: the copies the app saves before an import or a reset hold it, and importing a
+file that holds it brings in the categories the dialog lists and leaves the routines as they
+are.
+
+| Field | Meaning |
+|---|---|
+| `format` | `nilbox-autopilot/<version>`, `nilbox-autopilot/1` today. Another value is refused, and a newer version asks you to update the app. |
+| `exportedAt`, `app` | When it was written, as RFC 3339 in UTC, and the version of the app that wrote it. Informational only. |
+| `routines` | The routines, in their order. |
+
+Each routine has its `name` (unique, ignoring case), `description` (left out when empty),
+`mode` (`dryRun`, `ask`, or `auto`), `enabled` (whether it was on where it was exported),
+`template` (the template it was made from, left out for none), and `spec`, its definition: one
+JSON object with its own `version`, naming prompts by nickname or by starter and profiles by
+agent and name, never by ID, so it works on another Mac. A routine has no ID and no account in
+a file, and never its history: what it matched, ran, or was told.
+
+An import matches routines by name, ignoring case in any alphabet. A routine the same as the
+file's (its `spec`, `description`, and `mode`) is left as it is, on or off, under either mode;
+any other match is saved over and switched off, and a routine this Mac lacks is added,
+switched off. Replace also deletes the routines the file doesn't name. A routine here that a
+newer version of the app wrote is never saved over or deleted: it is left as it is, with a
+note. One of the file's whose `spec` this version can't read (as one a newer version wrote,
+or one that no longer passes its checks) is left out with a note, as is a second routine of
+one name; a `mode` this version doesn't know takes the mode new routines start in, and a
+routine with a step this version can't run yet arrives in Dry run. A `spec` that loads is
+stored as the app writes one, its lists sorted and its texts trimmed.
+
 <br>
 
 ## What a backup never holds
@@ -118,7 +173,8 @@ is each entry left out.
 - **Your GitHub sign-in.** The app never stores a token: it borrows one from `gh` each time.
 - **Caches and mirrors.** The inbox, the review sheet's diffs, the issue sheet's views, profile
   pictures, and the mirror of your GitHub notifications are read from GitHub again.
-- **History.** Runs, agent sessions, notifications, and worktree records.
+- **History.** Runs, agent sessions, notifications, worktree records, and Autopilot's history:
+  what each routine matched, ran, and did.
 - **Per-item triage.** Snoozes, dismissals, and pins hang off the inbox's cached items.
 - **Agent profiles.** They are found in your home directory on every start.
 - **Script trust.** A file from elsewhere could otherwise pre-approve a repository's command,
@@ -135,7 +191,8 @@ is each entry left out.
 
 - **Nothing in a file is trusted more than what you type.** Each setting is checked the way its
   setter in Settings checks it, each prompt the way the editor checks one, each launch default
-  the way a restore checks one, and each script the way the script editor does. A value the app
+  the way a restore checks one, each script the way the script editor does, and each routine
+  the way the routine builder's save does. A value the app
   would refuse is left out, and the import dialog names it before you import: a setting this
   version doesn't know, a profile that isn't on this Mac, a copy of a tool that isn't a program
   here, a repository location that doesn't exist here, or a prompt a launch default names that

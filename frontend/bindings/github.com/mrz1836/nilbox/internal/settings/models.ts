@@ -6,6 +6,9 @@
 import * as agent$0 from "../agent/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
+import * as autopilotprefs$0 from "../autopilotprefs/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
 import * as branchrules$0 from "../branchrules/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
@@ -504,6 +507,13 @@ export interface Settings {
      * user, just tell them, or make no timed checks (see the updateprefs package).
      */
     "updateMode": updateprefs$0.Mode;
+
+    /**
+     * Autopilot is Autopilot's settings: Pause Autopilot, the mode new routines start in,
+     * the limits and the daily cap, and how long its history is kept (see the
+     * autopilotprefs package).
+     */
+    "autopilot": autopilotprefs$0.Config;
 }
 
 /**

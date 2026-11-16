@@ -99,7 +99,23 @@
       "repoFiles": true,
       "showRuns": false
     },
-    "updateMode": "download"
+    "updateMode": "download",
+    "autopilot": {
+      "paused": false,
+      "defaultMode": "ask",
+      "agentsAtOnce": 2,
+      "runsPerDay": 20,
+      "actionsPerDay": 50,
+      "dailyCap": {
+        "amount": 0,
+        "unit": "usd"
+      },
+      "keepAwake": false,
+      "holdOnOutage": true,
+      "catchUpHours": 24,
+      "historyDays": 90,
+      "logDays": 30
+    }
   },
   "repositories": {
     "cloneRoot": "~/projects",
@@ -274,5 +290,11 @@
   },
   "scripts": {
     "scripts": []
+  },
+  "autopilot": {
+    "format": "nilbox-autopilot/1",
+    "exportedAt": "2026-11-14T17:00:00Z",
+    "app": "v1.2.3",
+    "routines": []
   }
 }

@@ -11,6 +11,7 @@ import (
 	"strconv"
 
 	"github.com/mrz1836/nilbox/internal/agent"
+	"github.com/mrz1836/nilbox/internal/autopilotprefs"
 	"github.com/mrz1836/nilbox/internal/backup"
 	"github.com/mrz1836/nilbox/internal/branchrules"
 	"github.com/mrz1836/nilbox/internal/event"
@@ -72,6 +73,24 @@ type Portable struct {
 	InboxOrder          *InboxOrder          `json:"inboxOrder,omitempty"`
 	Integrations        *PortableIntegration `json:"integrations,omitempty"`
 	UpdateMode          *updateprefs.Mode    `json:"updateMode,omitempty"`
+	Autopilot           *PortableAutopilot   `json:"autopilot,omitempty"`
+}
+
+// PortableAutopilot is Autopilot's settings in portable form, each left as it is when a
+// backup lacks it. The routines are a backup section of their own, and the engine's own
+// state is no setting.
+type PortableAutopilot struct {
+	Paused        *bool                    `json:"paused,omitempty"`
+	DefaultMode   *autopilotprefs.Mode     `json:"defaultMode,omitempty"`
+	AgentsAtOnce  *int                     `json:"agentsAtOnce,omitempty"`
+	RunsPerDay    *int                     `json:"runsPerDay,omitempty"`
+	ActionsPerDay *int                     `json:"actionsPerDay,omitempty"`
+	DailyCap      *autopilotprefs.DailyCap `json:"dailyCap,omitempty"`
+	KeepAwake     *bool                    `json:"keepAwake,omitempty"`
+	HoldOnOutage  *bool                    `json:"holdOnOutage,omitempty"`
+	CatchUpHours  *int                     `json:"catchUpHours,omitempty"`
+	HistoryDays   *int                     `json:"historyDays,omitempty"`
+	LogDays       *int                     `json:"logDays,omitempty"`
 }
 
 // legacyRefreshGitHubStatus is the refresh kind the service status check had while it read
@@ -178,6 +197,16 @@ func portableOf(set Settings) Portable {
 			RepoFiles: &ig.ScriptSources.RepoFiles, ShowRuns: &ig.ShowRuns,
 		},
 		UpdateMode: &set.UpdateMode,
+		Autopilot:  portableAutopilot(set.Autopilot),
+	}
+}
+
+// portableAutopilot returns Autopilot's settings in portable form, every field set.
+func portableAutopilot(c autopilotprefs.Config) *PortableAutopilot {
+	return &PortableAutopilot{
+		Paused: &c.Paused, DefaultMode: &c.DefaultMode, AgentsAtOnce: &c.AgentsAtOnce, RunsPerDay: &c.RunsPerDay,
+		ActionsPerDay: &c.ActionsPerDay, DailyCap: &c.DailyCap, KeepAwake: &c.KeepAwake, HoldOnOutage: &c.HoldOnOutage,
+		CatchUpHours: &c.CatchUpHours, HistoryDays: &c.HistoryDays, LogDays: &c.LogDays,
 	}
 }
 
@@ -199,6 +228,7 @@ const (
 	tellsRepoRules
 	tellsStatusRules
 	tellsUpdates
+	tellsAutopilot
 )
 
 // PortablePlan is what importing a backup's settings, or its repositories, does: the plan
@@ -305,7 +335,7 @@ func (bp *BackupPart) ApplyPortable(ctx context.Context, tx *sql.Tx, plan Portab
 // they would had the user changed each one: the theme, the text size, the menu bar, the
 // sessions followed, the integrations, the GitHub notification rules, the refresh
 // intervals, the pinned and muted repositories, what the service status check watches,
-// and what the app does when a new version is out.
+// what the app does when a new version is out, and Autopilot's settings.
 func (bp *BackupPart) Announce(ctx context.Context, plan PortablePlan) {
 	s := bp.s
 
@@ -328,6 +358,7 @@ func (bp *BackupPart) Announce(ctx context.Context, plan PortablePlan) {
 		tellsRepoRules:    event.RepoRulesChanged{},
 		tellsStatusRules:  event.StatusRulesChanged{},
 		tellsUpdates:      event.UpdatesChanged{},
+		tellsAutopilot:    event.AutopilotChanged{},
 	}
 
 	// A chosen copy wakes the tools' finder, which tells the window too.
@@ -447,7 +478,7 @@ func (s *Service) portableFields() []portableField {
 			func(m updateprefs.Mode) string { return string(m) }),
 	)
 
-	return append(fields, s.integrationFields()...)
+	return append(append(fields, s.integrationFields()...), s.autopilotFields()...)
 }
 
 // threadFields are the GitHub notification rules a backup can hold.

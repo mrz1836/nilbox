@@ -1,13 +1,18 @@
 package core
 
 import (
+	"context"
+	"log/slog"
 	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/mrz1836/nilbox/internal/agent"
 	"github.com/mrz1836/nilbox/internal/appinfo"
+	"github.com/mrz1836/nilbox/internal/autopilot"
+	"github.com/mrz1836/nilbox/internal/autopilotprefs"
 	"github.com/mrz1836/nilbox/internal/branchrules"
 	"github.com/mrz1836/nilbox/internal/integrationprefs"
 	"github.com/mrz1836/nilbox/internal/integrations"
@@ -17,6 +22,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/sensitive"
 	"github.com/mrz1836/nilbox/internal/settings"
 	"github.com/mrz1836/nilbox/internal/snooze"
+	"github.com/mrz1836/nilbox/internal/testutil"
 )
 
 // privateWords are the names and paths a user's settings may hold that a bug report must
@@ -163,4 +169,72 @@ func TestABugReportSaysWhatIsLeftAtItsDefault(t *testing.T) {
 	} {
 		assert.Contains(t, report, want)
 	}
+}
+
+func TestABugReportCountsTheRoutinesAndNamesNone(t *testing.T) {
+	t.Parallel()
+
+	ctx := t.Context()
+	routines := autopilot.NewService(autopilot.Config{Pool: testutil.DB(t), Accounts: viewerLogin("private-user")})
+
+	for _, name := range []string{"private-repo checks", "Release private-bot"} {
+		_, err := routines.Save(ctx, autopilot.Draft{Name: name, Description: "For " + boundOwner, Spec: boundSpec()})
+		require.NoError(t, err)
+	}
+
+	list, err := routines.List(ctx)
+	require.NoError(t, err)
+
+	_, err = routines.SetEnabled(ctx, list[0].ID, true)
+	require.NoError(t, err)
+
+	c := autopilotprefs.Defaults()
+	c.Paused, c.DailyCap = true, autopilotprefs.DailyCap{Amount: 2_000_000, Unit: autopilotprefs.UnitTokens}
+
+	report := joined(bugReportState{routines: routines, logger: slog.New(slog.DiscardHandler)}.autopilotState(ctx, c))
+
+	for _, word := range privateWords() {
+		assert.NotContains(t, report, word, "a bug report never names a routine, its account, or what it watches")
+	}
+
+	assert.Equal(t, "Autopilot\n"+
+		"Paused: on · new routines: Ask first · agents at once: 2 · runs a day: 20 · actions a day: 50 · "+
+		"daily cap: 2000000 tokens · keep awake: off · hold on outage: on · catch up after: 24 h · history: 90 days, "+
+		"logs: 30\n"+
+		"Routines: 2 (2 dry run, 0 ask first, 0 autopilot) · on: 1 · broken: 0 · another account's: 0\n", report)
+
+	assert.Empty(t, bugReportState{}.autopilotState(ctx, c), "no Autopilot, no section")
+}
+
+func TestABugReportSaysNothingOfAutopilotWithoutARoutine(t *testing.T) {
+	t.Parallel()
+
+	ctx := t.Context()
+	logger := slog.New(slog.DiscardHandler)
+	routines := autopilot.NewService(autopilot.Config{Pool: testutil.DB(t)})
+
+	c := autopilotprefs.Defaults()
+	c.Paused = true
+
+	assert.Empty(t, bugReportState{routines: routines, logger: logger}.autopilotState(ctx, c),
+		"no routine, no section, whatever the settings")
+
+	made, err := routines.Save(ctx, autopilot.Draft{Name: "Gone", Spec: boundSpec()})
+	require.NoError(t, err)
+	require.NoError(t, routines.Delete(ctx, made.ID))
+
+	assert.Empty(t, bugReportState{routines: routines, logger: logger}.autopilotState(ctx, c),
+		"a deleted routine counts as none")
+
+	unreadable := autopilot.NewService(autopilot.Config{Pool: testutil.ClosedDB(t)})
+	assert.Empty(t, bugReportState{routines: unreadable, logger: logger}.autopilotState(ctx, c),
+		"routines that can't be read leave the section out")
+}
+
+// viewerLogin is an account signed in as login.
+type viewerLogin string
+
+// ViewerLogin returns the login.
+func (v viewerLogin) ViewerLogin(context.Context) (string, error) {
+	return string(v), nil
 }

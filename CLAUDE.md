@@ -241,7 +241,8 @@ changing the package, and keep the section and its summary in step.
   profiles, prompts, launch defaults, inbox, review, issues, launcher, worktrees,
   notifications, app info, the API budget, sessions, integrations, script runs, release, hooks,
   repository scripts, the mirror of the user's GitHub notifications, the backup of the
-  user's setup, the service status check, the first-run setup, and the app's updates.
+  user's setup, the service status check, the first-run setup, the app's updates, and
+  Autopilot's routines.
   Every `internal/*` package is plain Go, built and tested on Linux without CGO.
 - Services share their building blocks rather than keep copies: `internal/repo` and
   `internal/item` name repositories, pull requests and issues, and their worktrees;
@@ -725,8 +726,24 @@ changing the package, and keep the section and its summary in step.
   head branch is and the ecosystem a Dependabot branch names (`ParseBranch`, the
   `dependabot.yml` words, `Ecosystems`), for Autopilot's conditions. It is pure and imports
   no service.
-- `internal/autopilot/` will hold Autopilot, which runs the user's routines; today it holds
-  the routines core, five pure leaves that read nothing and keep no clock: `catalog` (the
+- `internal/autopilot/` is Autopilot, which runs the user's routines. Its root package keeps
+  them, in `autopilot_routines`, which it owns: the bound `Service` (`List`, `Get`, `Save`,
+  `Delete`, `Duplicate`, `SetEnabled`, `SetMode`, `Reorder`, `Catalog`) checks every spec on
+  save and load, carries one that won't load (a newer build's, say) as broken with why and
+  never rewrites it, stores a routine with a step this build doesn't offer in Dry run alone,
+  starts a new one off in the mode Settings says (Ask first to begin with) and of the account
+  signed in (`Accounts`, the inbox's viewer; `Routine.OtherAccount` marks another's), keeps
+  names unique ignoring case in any alphabet (`nameKey`, Unicode's simple folding, stored as
+  `name_key` under the unique index, since NOCASE folds ASCII alone), and deletes softly;
+  mode, switch, and account are columns, never spec. It writes its copy,
+  `autopilot.json` (`File`, the export format `Bundle`, `"<slug>-autopilot/1"`), after every
+  change, which `Restore` brings back, off, into a table that is new, and holds a backup's
+  Autopilot section through `NewBackupPart`, apart from the Service. It reaches the rest only
+  through the interfaces it declares (`Prefs`, `Accounts`, `Names`), which
+  `internal/core/adapters_autopilot.go` adapts, and never imports the inbox, the sheets, the
+  launcher, the worktrees, the sessions, the runs, notify, settings, the desktop, or core (the
+  repoguard boundary test). Beneath it, the routines core, five pure leaves that read nothing
+  and keep no clock: `catalog` (the
   vocabulary every spec name comes from: the triggers, the fields and their operators, the
   steps with the dispatcher that runs each, not `Offered` until it is built, the presets,
   the limits, and the builder's words; no entry for a close, approving workflow runs, or a
@@ -740,6 +757,15 @@ changing the package, and keep the section and its summary in step.
   trigger and reasons). They import only `item`, `repo`, `trust`, `sensitive`, `bump`,
   `clock`, `textutil`, and one another (`TestLeafImports`).
   Full design: [docs/architecture.md](docs/architecture.md#internalautopilot)
+- `internal/autopilotprefs/` declares the `autopilot.*` settings (Pause Autopilot, the mode
+  new routines start in, agents at once, runs and GitHub actions a day, the daily cap in
+  dollars or tokens, keeping the Mac awake, holding starts during an outage, catching up, and
+  how long the history and the run logs are kept), with their ranges, and a routine's `Mode`
+  (`dryRun`, `ask`, `auto`); never `autopilot.engine`, the engine's own state, which the
+  engine alone writes. Settings alone writes them (`SetAutopilot…`, each emitting
+  the Go-only `event.AutopilotChanged`, writing only the keys that change), backups carry
+  them (`Portable.Autopilot`), and Autopilot reads them. It is a leaf that imports only
+  `prefval`.
 - `internal/integrations/` finds the tools the app drives, mage-x's magex and go-pre-commit,
   each one a `Definition` (its binary, releases, version parser, quiet environment, minimum
   version, and the release that brought each upstream `Feature`). Detection looks on the login
@@ -995,10 +1021,12 @@ changing the package, and keep the section and its summary in step.
   exports the user's setup to one `<slug>.backup` file (`File`, version 1, at most 16 MB,
   written user-only through `appdata.WriteFile`), one section per category ticked: settings,
   repositories, prompts (a `prompts.Bundle`, exactly as `prompts.json`), launch defaults (the
-  `launch-defaults.json` format), and the user's scripts; and imports one back. It reaches each
+  `launch-defaults.json` format), the user's scripts, and the Autopilot routines (the
+  `autopilot.json` format, each added or saved over arriving off, one a newer build wrote
+  never touched; the window doesn't list this category yet); and imports one back. It reaches each
   category's owner only through a `Part` (`Export`, `Prepare` outside the transaction, `Apply`
   inside it, `Done` once it commits), which `internal/core/adapters_backup.go` adapts over each
-  owner's `BackupPart` (`settings`, `prompts`, `launchdefaults`, `scripts`), a type of its own
+  owner's `BackupPart` (`settings`, `prompts`, `launchdefaults`, `scripts`, `autopilot`), a type of its own
   built with `NewBackupPart`, never a method of the bound Service, so the window can't reach a
   method that takes a `*sql.Tx`; the owners import only backup's words (`Mode`, `Plan`, `Item`,
   `Count`), and the boundary test forbids the reverse. `Preview` works every section out under
@@ -1142,9 +1170,11 @@ package imports the driver, and nothing imports an ORM (`internal/repoguard` enf
 - **Prefs.** `internal/prefs` owns the `prefs` table. Any package reads any key, but each key has
   exactly one writer: settings writes the user's settings, including the rule keys that the trust,
   snooze, sensitive, notifyprefs, branchrules, reporules, integrationprefs, threadrules,
-  statusprefs, and updateprefs packages declare (`update.mode` among them); inbox
+  statusprefs, updateprefs, and autopilotprefs packages declare (`update.mode` and the
+  `autopilot.*` settings among them); inbox
   writes `inbox.*`; prompts writes `prompts.*`; setup writes `setup.*`; update writes its state,
-  the other `update.*` keys (the package doc has the full list). Settings and
+  the other `update.*` keys (the package doc has the full list); Autopilot's engine writes its
+  own state, `autopilot.engine`, never a setting. Settings and
   those leaves write a switch and a list of strings one way, through the leaf
   `internal/prefs/prefval` (`Bool` and `EncodeBool`, `List` and `EncodeList`, which stores a nil
   list as `[]`).
@@ -1188,7 +1218,13 @@ package imports the driver, and nothing imports an ORM (`internal/repoguard` enf
   back before `Seed` runs, from the database set aside or else from `prompts.json`, and core
   (`internal/core/kept.go`) restores the launch defaults from the same place, matched to the
   restored prompts. Core writes each copy at startup only when it is missing or the data was
-  just restored, so a loss in the database never overwrites a copy. The user's own scripts
+  just restored, so a loss in the database never overwrites a copy. The Autopilot routines
+  keep a copy too: `autopilot.File` rewrites `autopilot.json` (the export format) after every
+  change to a routine, and when `autopilot_routines` holds no row at all, deleted ones
+  included, `autopilot.Restore` brings them back after the prompts and the launch defaults,
+  from the database set aside or else from the copy, each switched off, its spec stored as it
+  was (a newer build's stays broken, never rewritten); a routine names its prompts by
+  nickname, which the restored library keeps. The user's own scripts
   have no copy, but come back from a database set aside, whatever the reason (`scripts.Restore`,
   beside the restore of the prompts, only into an empty list, each checked as `Save` checks
   it), so a reset keeps them. Agent profiles need no
@@ -1201,10 +1237,11 @@ package imports the driver, and nothing imports an ORM (`internal/repoguard` enf
   `BundleVersion` only for a change an older build would misread. An import offers the file's
   defaults (`ImportPreview.Defaults`, each a `DefaultOffer` where its prompt fits the slot and it
   would change something) and applies the chosen ones in the transaction of the prompts,
-  through the nickname links `importInto` returns. The user's whole setup, these two
+  through the nickname links `importInto` returns. The user's whole setup, these three
   included, also leaves the app as a backup (`internal/backup`, its format in
-  [`docs/backup-files.md`](docs/backup-files.md)), whose prompts and launch defaults sections
-  are exactly these two copies' formats; keep the backup's in step with both.
+  [`docs/backup-files.md`](docs/backup-files.md)), whose prompts, launch defaults, and
+  Autopilot sections are exactly these three copies' formats; keep the backup's in step with
+  them.
 - **Tests** open a fresh, migrated database with `testutil.DB(t)`, a given file with
   `testutil.DBAt(t, path)`, and a closed one with `testutil.ClosedDB(t)`. To make a write fail,
   add a trigger that calls `RAISE(ABORT, ...)`, or drop the table.

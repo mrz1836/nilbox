@@ -19,7 +19,7 @@ const reset: DataReset = { path: '~/data/app.db.broken-20260102T030405Z', reason
 
 const message = `${brand.name} couldn’t read its data, so it set it aside at ${reset.path} and started fresh.`
 
-const restored: Restored = { prompts: 3, launchDefaults: 2, scripts: 0, from: reset.path }
+const restored: Restored = { prompts: 3, launchDefaults: 2, scripts: 0, routines: 0, from: reset.path }
 
 describe('DataResetNotice', () => {
   it('says the prompts and launch defaults came back with the data set aside', async () => {
@@ -33,12 +33,14 @@ describe('DataResetNotice', () => {
   })
 
   it.each([
-    [{ prompts: 4, launchDefaults: 0, scripts: 0 }, 'your 4 prompts'],
-    [{ prompts: 0, launchDefaults: 1, scripts: 0 }, 'your launch default'],
-    [{ prompts: 0, launchDefaults: 0, scripts: 1 }, 'your script'],
-    [{ prompts: 1, launchDefaults: 1, scripts: 0 }, 'your 1 prompt and 1 launch default'],
-    [{ prompts: 4, launchDefaults: 2, scripts: 1 }, 'your 4 prompts, 2 launch defaults, and 1 script'],
-    [{ prompts: 0, launchDefaults: 2, scripts: 3 }, 'your 2 launch defaults and 3 scripts'],
+    [{ prompts: 4, launchDefaults: 0, scripts: 0, routines: 0 }, 'your 4 prompts'],
+    [{ prompts: 0, launchDefaults: 1, scripts: 0, routines: 0 }, 'your launch default'],
+    [{ prompts: 0, launchDefaults: 0, scripts: 1, routines: 0 }, 'your script'],
+    [{ prompts: 0, launchDefaults: 0, scripts: 0, routines: 1 }, 'your Autopilot routine'],
+    [{ prompts: 1, launchDefaults: 1, scripts: 0, routines: 0 }, 'your 1 prompt and 1 launch default'],
+    [{ prompts: 4, launchDefaults: 2, scripts: 1, routines: 0 }, 'your 4 prompts, 2 launch defaults, and 1 script'],
+    [{ prompts: 0, launchDefaults: 2, scripts: 3, routines: 0 }, 'your 2 launch defaults and 3 scripts'],
+    [{ prompts: 2, launchDefaults: 0, scripts: 1, routines: 3 }, 'your 2 prompts, 1 script, and 3 Autopilot routines'],
   ])('names what came back: %o', async (counts, words) => {
     platform.getAppInfo.mockResolvedValue(appInfo({ dataReset: reset, restored: { ...counts, from: reset.path } }))
     render(<DataResetNotice />)
@@ -57,7 +59,9 @@ describe('DataResetNotice', () => {
 
   it('says the prompts came back from the saved copy when the database was gone', async () => {
     const from = '~/data/prompts.json'
-    platform.getAppInfo.mockResolvedValue(appInfo({ restored: { prompts: 1, launchDefaults: 0, scripts: 0, from } }))
+    platform.getAppInfo.mockResolvedValue(
+      appInfo({ restored: { prompts: 1, launchDefaults: 0, scripts: 0, routines: 0, from } }),
+    )
     render(<DataResetNotice />)
 
     expect(await screen.findByText(from)).toBeInTheDocument()
