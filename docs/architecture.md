@@ -1653,7 +1653,7 @@ the parts that make their moments. Core maps each kind to the notifications' own
 `autopilot_problem`, are all on by default (`notifyprefs.AutopilotKinds`, `Kind.Autopilot`),
 titled *Autopilot alert* (an alert's banner is headed by its routine, `Entry.Heading`), *Needs
 your OK*, *Agent finished*, *Checks after a fix*, and *Autopilot problem*. Migration
-`0008_notification_targets` gives `notifications` a `heading` and the Autopilot target
+`0009_notification_targets` gives `notifications` a `heading` and the Autopilot target
 (`autopilot_routine`, `autopilot_match`, `autopilot_run`, `autopilot_created`, RFC 3339 of the
 most specific one's creation, since Clear history hands IDs out again), and a `once_key`
 under a partial unique index. An `Entry` now names

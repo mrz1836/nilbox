@@ -1,4 +1,4 @@
--- 0008_notification_targets: what an Autopilot notification is headed by and opens.
+-- 0009_notification_targets: what an Autopilot notification is headed by and opens.
 --
 -- The conventions are 0001_init's: DATETIME stamps the application writes in UTC. The
 -- notify package owns every column here.
