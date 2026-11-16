@@ -776,9 +776,21 @@ changing the package, and keep the section and its summary in step.
   builds again the snapshot of the enabled routines' searches for the account signed in, each
   key once, one build at a time so the last to read stores last, which the inbox reads as
   each refresh starts (`NewSearches`, never bound); a draft's `Test` sends nothing while the
-  GraphQL budget is low and says so (`LowBudget`). It
+  GraphQL budget is low and says so (`LowBudget`). The engine (`NewEngine`, a deferred desktop
+  worker, never bound) runs them: one loop, the only writer of the ledger it owns
+  (`autopilot_matches`, one row per routine, item, fire key, and Dry run, open or closed,
+  every change a compare-and-set; `autopilot_runs`, with the one-active-run index;
+  `autopilot_tries`, `autopilot_baselines`, `autopilot_hands_off`; its state in
+  `autopilot.engine`), woken by the inbox, the settings, the outcomes, a 1-minute tick, and
+  the window's commands, doing everything slow on workers; it holds a `flock` on
+  `<data>/autopilot.lock`, waits for a refresh that carried its searches, checks every limit in
+  Go before a start, and starts steps only through the dispatchers each part registers (none
+  yet, so every routine runs in Dry run). The bound Service's ledger actions (`Approve`, `Skip`,
+  `RunNow`, `TryAgain`, `LetActAgain`, `ClearHistory`) are commands it applies; `StopRun` and
+  `StopAll` go straight to the runner; `Activity`, `ItemHistory`, `Explain`, `Engine`, and
+  `Matching` read. `internal/autopilot/sim` (test support only) is its simulator. It
   reaches the rest only through the interfaces it declares (`Prefs`, `Accounts`, `Names`,
-  `Items`, `Costs`), which
+  `Items`, `Costs`, `EngineItems`, the dispatchers, `Holds`, `ProblemSink`), which
   `internal/core/adapters_autopilot.go` adapts, and never imports the inbox, the sheets, the
   launcher, the worktrees, the sessions, the runs, notify, settings, the desktop, or core (the
   repoguard boundary test). Beneath it, the routines core, five pure leaves that read nothing
