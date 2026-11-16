@@ -840,7 +840,9 @@ database, a copy of it is saved next to it, and the three newest copies are kept
 three newest of those too. Beside it,
 `prompts.json` and `launch-defaults.json` hold copies of your prompt library and your launch
 defaults in plain JSON, each rewritten after every change (see
-[Keeping your prompts](#keeping-your-prompts)). Agent profiles need no copy: they are found in
+[Keeping your prompts](#keeping-your-prompts)), and `autopilot.json` a copy of your Autopilot
+routines, in the [Autopilot section's format](backup-files.md#autopilot), rewritten after every
+change to a routine. Agent profiles need no copy: they are found in
 your home directory on every start. `backups/` holds the copies of your setup an import of a
 [backup](#backing-up-your-setup) saves before it changes anything, the five newest, and the
 copies a reset saves first (`nilbox before reset <UTC time>.json`), the five newest of those.
@@ -864,7 +866,9 @@ wasn't set up by this app's migrations, the app renames it (with its `-wal` and 
 to `nilbox.db.broken-<UTC time>`, starts with an empty database, and says so in the window.
 Your prompts and launch defaults come back on their own: they are read out of the database
 set aside, or from `prompts.json` and `launch-defaults.json` when that fails, before the
-starters are added. The set-aside file is kept
+starters are added. Your Autopilot routines come back after them the same way, from the
+database set aside or else from `autopilot.json`, each switched off, so nothing runs until you
+turn it on again; a routine you deleted stays deleted. The set-aside file is kept
 until you delete it, and **Restore from a backup** on the Prompts page can read it again. A
 database saved by a newer version of the app is left as it is: a dialog asks you to update,
 and the app quits. A database another process has open, such as an older copy of the app
@@ -889,15 +893,17 @@ where to save the file (`Nilbox backup <date>.json`):
 
 | Category | Holds |
 |---|---|
-| **Settings** | Every setting but the window's memory: the agent and profile defaults, launching, worktrees and branch rules, trusted bots, snoozing, sensitive files, notifications and banners, the GitHub notification rules, refreshing, reviewing, appearance, the inbox's sorting, and the integrations' switches, options, and chosen copies |
+| **Settings** | Every setting but the window's memory: the agent and profile defaults, launching, worktrees and branch rules, trusted bots, snoozing, sensitive files, notifications and banners, the GitHub notification rules, refreshing, reviewing, appearance, the inbox's sorting, the integrations' switches, options, and chosen copies, and Autopilot's settings (Pause Autopilot, the mode new routines start in, the limits and the daily cap, and how long its history is kept) |
 | **Repositories** | The clone folder, the other repository locations, and the pinned and muted repositories and orgs |
 | **Prompts & replies** | The whole [prompt library](#prompts), its defaults and the record of deleted starters included |
 | **Launch defaults** | Every org's and repository's [launch defaults](#launch-defaults), naming prompts by nickname |
 | **Your scripts** | Your own [scripts](#repo-scripts), in their order |
+| **Autopilot routines** | Your Autopilot routines, in their order: each one's definition, name, description, and mode, naming prompts by nickname and profiles by agent and name |
 
-A backup never holds your GitHub sign-in (the app never stores one), caches and mirrors, history,
-per-item triage, agent profiles (found on disk at every start), script trust (each repository
-command asks again before its first run), the window's memory, or the tools' detection.
+A backup never holds your GitHub sign-in (the app never stores one), caches and mirrors, history
+(Autopilot's included), per-item triage, agent profiles (found on disk at every start), script
+trust (each repository command asks again before its first run), the window's memory, or the
+tools' detection.
 
 **Restore from a backup → Import…** opens a file and shows, for each category it holds, what
 importing it would do: what it adds, changes, leaves as it is, and, under Replace, deletes, each
@@ -911,9 +917,11 @@ Then choose how to treat what's on this Mac:
 | **Prompts & replies** | As **Import from a file…**: what you have is left out, a taken nickname is renamed, an unchanged starter is saved over; the file's defaults are set where they fit | Prompts are matched by nickname: each match is saved over, the rest added, and every other prompt deleted, but one a launch default you keep still names, which is kept with a note; the defaults become the file's |
 | **Launch defaults** | The file's row for an org or repository replaces this Mac's; the others stay | Exactly the file's rows |
 | **Your scripts** | A script identical to one here is skipped; the others are added at the end, in order | Exactly the file's scripts, in its order |
+| **Autopilot routines** | Routines are matched by name: one the same as the file's is left as it is, another is saved over and switched off, and the rest are added at the end, off | Matched by name likewise; every other routine is deleted, and the routines are put in the file's order |
 
 Replace asks again before it imports, naming what it will delete in each category. Merge never
-deletes anything.
+deletes anything. A routine always arrives switched off, so nothing runs until you turn it on;
+one made by a newer version of the app, which this one can't read, is left out with a note.
 
 Every value is checked as Settings, the prompt editor, and the script editor check one, and
 anything this Mac can't take is left out with a note: a setting this version refuses, a profile
@@ -943,7 +951,7 @@ folder, so a reset in either starts both over.
 
 | Starts over | Stays |
 |---|---|
-| Settings and repository locations, pinned and muted repositories and orgs, triage, the cached inbox, the notification history, the mirror of your GitHub notifications, worktree records, session history, run history, script trust, tool records, and the cached diffs, conversations, and profile pictures | Your prompts, launch defaults, and your own scripts, which come back from the database set aside; `backups/` and `logs/`; your clones and worktrees on disk (the next listing records them again); your agents' own config; and GitHub itself |
+| Settings and repository locations, pinned and muted repositories and orgs, triage, the cached inbox, the notification history, the mirror of your GitHub notifications, worktree records, session history, run history, script trust, tool records, and the cached diffs, conversations, and profile pictures | Your prompts, launch defaults, your own scripts, and your Autopilot routines (switched off), which come back from the database set aside; `backups/` and `logs/`; your clones and worktrees on disk (the next listing records them again); your agents' own config; and GitHub itself |
 
 The database is set aside, with its `-wal` and `-shm` files, as `nilbox.db.reset-<UTC time>`,
 and the newest three such copies are kept. To undo a reset, quit the app and rename the newest
