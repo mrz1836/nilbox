@@ -273,3 +273,80 @@ func TestFixChecksStarter(t *testing.T) {
 	require.NoError(t, err)
 	assert.Contains(t, out, "First run `gh pr checkout 7 --repo acme-org/example-repo` to check out")
 }
+
+// dependencyData is prompt data for Dependabot's update pull request 212, whose security
+// checks failed on its head commit, in a fork's clone whose remote is upstream.
+func dependencyData() Data {
+	return Data{
+		Kind: "pull request", IsPR: true, Number: 212, Title: "Bump golang.org/x/net from 0.30.0 to 0.33.0",
+		URL: "https://github.com/acme-org/example-repo/pull/212", Author: "dependabot[bot]", IsBot: true,
+		Repo: "acme-org/example-repo", Owner: "acme-org", RepoName: "example-repo", Remote: "upstream",
+		Branch: "dependabot/go_modules/golang.org/x/net-0.33.0", HeadCommit: "4f2a9c1e8b7d6a5f4e3d2c1b0a9f8e7d6c5b4a39",
+		Checks: "failing", FailedChecks: "🔒 Security Scans / govulncheck, CodeQL / Analyze",
+	}
+}
+
+// TestFixDependencySecurityGoldens pins the dependency security starter's text in a
+// worktree at the pull request's head and in one left at an older commit. Rewrite them
+// with go test ./internal/prompts -run TestFixDependencySecurityGoldens -update.
+func TestFixDependencySecurityGoldens(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		data Data
+	}{
+		{name: "fix dependency security at the head", data: dependencyData().WithSession(true, true)},
+		{name: "fix dependency security at an older commit", data: dependencyData().WithSession(true, false)},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			got, err := starterTemplate(t, StarterFixDependencySecurity).Render(tt.data)
+			require.NoError(t, err)
+
+			path := goldenPath(tt.name)
+			if *update {
+				writeGolden(t, path, got)
+			}
+
+			want, err := os.ReadFile(path) //nolint:gosec // a fixed case name under testdata
+			require.NoError(t, err)
+			assert.Equal(t, string(want), got)
+		})
+	}
+}
+
+// TestFixDependencySecurityWithoutValues checks the starter still gives commands that run
+// when the remote, the head commit, and the failed checks aren't known.
+func TestFixDependencySecurityWithoutValues(t *testing.T) {
+	t.Parallel()
+
+	tmpl := starterTemplate(t, StarterFixDependencySecurity)
+
+	bare := dependencyData()
+	bare.Remote, bare.HeadCommit, bare.FailedChecks = "", "", ""
+
+	out, err := tmpl.Execute(bare.WithSession(true, false))
+	require.NoError(t, err)
+	assert.Contains(t, out, "dependabot[bot] opened it, and its security checks failed.\n")
+	assert.Contains(t, out, "`git fetch origin dependabot/go_modules/golang.org/x/net-0.33.0`")
+	assert.Contains(t, out, "`git checkout --detach FETCH_HEAD`")
+	assert.Contains(t, out, "`git push origin HEAD:dependabot/go_modules/golang.org/x/net-0.33.0`")
+	assert.NotContains(t, out, "on commit")
+
+	out, err = tmpl.Execute(bare.WithSession(false, false))
+	require.NoError(t, err)
+	assert.Contains(t, out, "First run `gh pr checkout 212 --repo acme-org/example-repo` to check out")
+	assert.NotContains(t, out, "This worktree")
+
+	out, err = tmpl.Execute(dependencyData().WithSession(true, true))
+	require.NoError(t, err)
+	assert.Contains(t, out, "these checks failed on commit 4f2a9c1e8b7d6a5f4e3d2c1b0a9f8e7d6c5b4a39: "+
+		"🔒 Security Scans / govulncheck, CodeQL / Analyze.\n")
+	assert.Contains(t, out, "This worktree is clean and at that commit.")
+	assert.Contains(t, out, "`git push upstream HEAD:dependabot/go_modules/golang.org/x/net-0.33.0`. Never force-push.")
+	assert.NotContains(t, out, "--force")
+}

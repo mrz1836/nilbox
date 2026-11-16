@@ -201,7 +201,7 @@ func TestExportWritesTheWholeLibrary(t *testing.T) {
 
 	n, err := s.Export(t.Context(), path, nil)
 	require.NoError(t, err)
-	assert.Equal(t, ExportResult{Prompts: 4, Replies: 4}, n, "the starters are four agent prompts and four replies")
+	assert.Equal(t, ExportResult{Prompts: 5, Replies: 4}, n, "the starters are five agent prompts and four replies")
 
 	got, err := readBundleFile(path)
 	require.NoError(t, err)
@@ -213,6 +213,7 @@ func TestExportWritesTheWholeLibrary(t *testing.T) {
 	assert.ElementsMatch(t, []string{
 		StarterReviewPR, StarterWorkOnIssue, StarterQuickLook, StarterFixChecks,
 		StarterReplyLGTM, StarterReplyUpdateOK, StarterReplyNeedsChanges, StarterReplyQuestion,
+		StarterFixDependencySecurity,
 	}, got.StartersAdded)
 	assert.Len(t, got.Prompts, len(Starters()))
 
@@ -681,7 +682,8 @@ func TestRestoreBringsBackTheLibraryFromTheDatabaseSetAside(t *testing.T) {
 
 	require.NoError(t, Seed(t.Context(), s.store))
 	assert.ElementsMatch(t, []string{
-		"LGTM", "Needs changes", "Question", "Quick look", "Review", "Security", "Update OK", "Work on it",
+		"Fix dep security", "LGTM", "Needs changes", "Question", "Quick look", "Review", "Security", "Update OK",
+		"Work on it",
 	}, nicknames(t, s), "the deleted starter stays deleted")
 	assert.Equal(t, byNickname(t, s, "Security").ID, restored.IDs["Security"], "each nickname finds its restored prompt")
 

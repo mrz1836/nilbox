@@ -62,7 +62,7 @@ func TestSeedRecordsWhatItAddedAndTheDefaults(t *testing.T) {
 
 	assert.Equal(t, map[string]string{
 		"prompts.seeded": `["review-pr","work-on-issue","quick-look","fix-checks","reply-lgtm","reply-update-ok",` +
-			`"reply-needs-changes","reply-question"]`,
+			`"reply-needs-changes","reply-question","fix-dependency-security"]`,
 		"prompts.default.pr":                    strconv.FormatInt(review.ID, 10),
 		"prompts.default.issue":                 strconv.FormatInt(work.ID, 10),
 		"prompts.default.reply.approve":         id("LGTM"),

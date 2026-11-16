@@ -61,7 +61,7 @@ func TestExportHoldsEveryKindOfPromptAndEveryDefault(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "all.json")
 	n, err := s.Export(ctx, path, nil)
 	require.NoError(t, err)
-	assert.Equal(t, ExportResult{Prompts: 4, Replies: 5}, n)
+	assert.Equal(t, ExportResult{Prompts: 5, Replies: 5}, n)
 
 	b, err := readBundleFile(path)
 	require.NoError(t, err)
@@ -74,7 +74,7 @@ func TestExportHoldsEveryKindOfPromptAndEveryDefault(t *testing.T) {
 	assert.Equal(t, map[string]string{
 		reviewNick: "agent  pr", "Work on it": "agent  issue", "Quick look": "agent  pr", "Fix checks": "agent  pr",
 		lgtmNick: "reply approve pr", "Update OK": "reply approve pr", "Needs changes": "reply request_changes pr",
-		"Question": "reply comment pr", "Looking": "reply comment issue",
+		"Question": "reply comment pr", "Looking": "reply comment issue", "Fix dep security": "agent  pr",
 	}, kinds, "every purpose, review, and kind of item is written, a comment reply for issues too")
 
 	for _, slot := range DefaultSlots() {

@@ -162,6 +162,7 @@ func (r launchItemRow) promptData(policy trust.Policy, profile, viewer string, c
 
 	if isPR {
 		d.IsDraft, d.Branch, d.HasConflicts = r.IsDraft, r.HeadRef, r.Mergeable == "CONFLICTING"
+		d.HeadCommit = strings.ToLower(r.HeadOID)
 		d.Checks, d.Review = checksWord(r.ChecksState), reviewWord(r.ReviewDecision)
 		d.Additions, d.Deletions, d.ChangedFiles, d.Commits = r.Additions, r.Deletions, r.ChangedFiles, r.Commits
 
