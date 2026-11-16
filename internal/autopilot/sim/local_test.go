@@ -515,6 +515,85 @@ func TestEachRoutineIsListedWithItsOwnFigures(t *testing.T) {
 	})
 }
 
+func TestARoutinesLastRunIsItsNewestMatchThatRan(t *testing.T) {
+	t.Parallel()
+
+	synctest.Test(t, func(t *testing.T) {
+		s, r := snoozing(t, autopilotprefs.ModeAuto, botPR(1))
+
+		ran := figuresOf(t, s, r.ID).LastAt
+		require.NotNil(t, ran)
+
+		// An hour on, Pause holds its next match: the newest, which hasn't run.
+		s.Sleep(time.Hour)
+		s.Change(func(c *autopilotprefs.Config) { c.Paused = true })
+		s.World.Add(botPR(2))
+		s.Refresh()
+
+		states := map[int]autopilot.State{}
+		for _, m := range s.Matches() {
+			states[m.Item.Number] = m.State
+		}
+
+		require.Equal(t, map[int]autopilot.State{1: autopilot.StateDone, 2: autopilot.StateQueued}, states)
+
+		got := figuresOf(t, s, r.ID)
+		require.NotNil(t, got.LastAt)
+		assert.True(t, got.LastAt.Equal(*ran), "it last ran on #1, not when #2 was queued: got %v, want %v", got.LastAt, ran)
+		assert.Equal(t, 2, got.Today, "both count as today's")
+	})
+}
+
+func TestActivityFromReadsAgainWhatThePagesHoldUpToTheNewest(t *testing.T) {
+	t.Parallel()
+
+	synctest.Test(t, func(t *testing.T) {
+		s, _ := snoozing(t, autopilotprefs.ModeAuto, botPR(1), botPR(2), botPR(3), botPR(4))
+		ctx := t.Context()
+
+		ids := func(p autopilot.ActivityPage) []int64 {
+			var out []int64
+
+			for _, d := range p.Days {
+				for _, m := range d.Matches {
+					out = append(out, m.ID)
+				}
+			}
+
+			return out
+		}
+
+		first, err := s.Service.Activity(ctx, 0, 2)
+		require.NoError(t, err)
+		require.True(t, first.More)
+
+		older, err := s.Service.Activity(ctx, first.Next, 2)
+		require.NoError(t, err)
+
+		// A newer match arrives: read again from the first page's last match on, the first
+		// page grows by it and meets the next page with nothing between.
+		s.World.Add(botPR(5))
+		s.Refresh()
+
+		again, err := s.Service.ActivityFrom(ctx, first.Next, 0)
+		require.NoError(t, err)
+		assert.False(t, again.More)
+		assert.NotNil(t, again.LeftAlone)
+
+		all, err := s.Service.Activity(ctx, 0, 500)
+		require.NoError(t, err)
+		assert.Equal(t, ids(all), append(ids(again), ids(older)...))
+		assert.Len(t, ids(again), 3)
+
+		// Past its limit it says so, and where the rest starts.
+		capped, err := s.Service.ActivityFrom(ctx, 0, 2)
+		require.NoError(t, err)
+		assert.True(t, capped.More)
+		assert.Equal(t, ids(all)[1], capped.Next)
+		assert.Equal(t, ids(all)[:2], ids(capped))
+	})
+}
+
 func TestTheNamesOfDeletedRoutinesStayForWhatTheyDid(t *testing.T) {
 	t.Parallel()
 

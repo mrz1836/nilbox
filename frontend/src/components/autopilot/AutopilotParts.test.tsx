@@ -1,7 +1,7 @@
 import { act, render, renderHook, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { ReactNode } from 'react'
-import { describe, expect, it, vi } from 'vitest'
+import { beforeAll, describe, expect, it, vi } from 'vitest'
 
 import { maxIDs, type ActivityLine } from '../../lib/autopilot'
 import { useIssueDrafts } from '../../lib/issueDrafts'
@@ -9,7 +9,7 @@ import { useReviewDrafts } from '../../lib/reviewDrafts'
 import { useAutopilot, useAutopilotChips } from '../../lib/useAutopilot'
 import { useAutopilotActivity } from '../../lib/useAutopilotActivity'
 import { useInbox } from '../../lib/useInbox'
-import { at } from '../../test/clock'
+import { at, clockAt, FIXED_NOW, withClock } from '../../test/clock'
 import {
   activityGroup,
   activityPage,
@@ -31,6 +31,12 @@ import { RoutinePane } from './RoutinePane'
 import { WatchingList, type RowsKit } from './WatchingList'
 
 vi.mock('../../platform', () => import('../../test/platform').then((fake) => fake.platform))
+
+// The sheets load on their own, and are imported once before the tests, so no test pays a
+// sheet's cold, instrumented import inside the second a findBy waits.
+beforeAll(async () => {
+  await Promise.all([import('../review/ReviewSheet'), import('../issue/IssueSheet')])
+})
 
 const launch: LaunchOptions = {
   agents: agents(),
@@ -145,29 +151,65 @@ describe('ActivityList', () => {
   })
 })
 
+// Answer is a page the backend gives as a bound call does: one that can be cancelled.
+type Answer = Promise<ReturnType<typeof activityPage>> & { cancel: ReturnType<typeof vi.fn> }
+
+// answer is a page, given at once.
+function answer(page: ReturnType<typeof activityPage>): Answer {
+  return Object.assign(Promise.resolve(page), { cancel: vi.fn() })
+}
+
+// heldAnswer is a page the test gives when it lets go.
+function heldAnswer() {
+  let give: (page: ReturnType<typeof activityPage>) => void = () => undefined
+  const call = Object.assign(
+    new Promise<ReturnType<typeof activityPage>>((done) => {
+      give = done
+    }),
+    { cancel: vi.fn() },
+  )
+
+  return {
+    call,
+    give: (page: ReturnType<typeof activityPage>) => {
+      give(page)
+    },
+  }
+}
+
 // fakeLedger is a ledger of count matches, IDs count down to 1, which Activity reads as the
-// backend does: those before a match (all for 0), newest first, at most limit, with more
-// and the last one's ID when there are. grow records n newer matches.
+// backend does: those before a match (all for 0), or from a match on, newest first, at
+// most limit, with more and the last one's ID when there are. grow records n newer
+// matches.
 function fakeLedger(count: number) {
   let top = count
 
-  const read = (before: number, limit: number) => {
-    const ids = Array.from({ length: top }, (_, i) => top - i).filter((id) => before === 0 || id < before)
+  const pageOf = (ids: number[], limit: number) => {
     const page = ids.slice(0, limit)
     const more = ids.length > limit
 
-    return Promise.resolve(
-      activityPage({
-        days: [{ date: '2026-06-15', matches: page.map((id) => autopilotMatch({ id, effects: [] })), groups: [] }],
-        more,
-        next: more ? (page.at(-1) ?? 0) : 0,
-        leftAlone: [],
-      }),
-    )
+    return activityPage({
+      days: [{ date: '2026-06-15', matches: page.map((id) => autopilotMatch({ id, effects: [] })), groups: [] }],
+      more,
+      next: more ? (page.at(-1) ?? 0) : 0,
+      leftAlone: [],
+    })
   }
+  const all = () => Array.from({ length: top }, (_, i) => top - i)
+
+  const page = (before: number, limit: number) =>
+    pageOf(before === 0 ? all() : all().filter((id) => id < before), limit)
+  const pageFrom = (first: number, limit: number) =>
+    pageOf(
+      all().filter((id) => id >= first),
+      limit,
+    )
 
   return {
-    read,
+    page,
+    pageFrom,
+    read: (before: number, limit: number) => answer(page(before, limit)),
+    from: (first: number, limit: number) => answer(pageFrom(first, limit)),
     grow: (n: number) => {
       top += n
     },
@@ -179,28 +221,41 @@ function loadedIds(days: readonly { matches: readonly { id: number }[] }[]): num
   return days.flatMap((d) => d.matches.map((m) => m.id))
 }
 
-describe('useAutopilotActivity', () => {
-  it('reads a page more on asking, and every match down to the oldest loaded again, so nothing drops out', async () => {
-    const ledger = fakeLedger(700)
-    platform.autopilotActivity.mockImplementation(ledger.read)
+// countdown is from down to to, both included.
+function countdown(from: number, to: number): number[] {
+  return Array.from({ length: from - to + 1 }, (_, i) => from - i)
+}
 
-    const { result } = renderHook(() => useAutopilotActivity(), { wrapper: at() })
+// scrolled renders the hook over ledger and loads pages more past the first.
+async function scrolled(ledger: ReturnType<typeof fakeLedger>, pages: number) {
+  platform.autopilotActivity.mockImplementation(ledger.read)
+  platform.autopilotActivityFrom.mockImplementation(ledger.from)
 
-    await waitFor(() => {
-      expect(result.current.loaded).toBe(true)
+  const view = renderHook(() => useAutopilotActivity(), { wrapper: at() })
+
+  await waitFor(() => {
+    expect(view.result.current.loaded).toBe(true)
+  })
+
+  for (let i = 0; i < pages; i++) {
+    await act(async () => {
+      await view.result.current.loadMore()
     })
-    expect(platform.autopilotActivity).toHaveBeenLastCalledWith(0, 100)
+  }
 
-    for (let i = 0; i < 5; i++) {
-      await act(async () => {
-        await result.current.loadMore()
-      })
-    }
+  return view
+}
 
-    expect(loadedIds(result.current.days)).toEqual(Array.from({ length: 600 }, (_, i) => 700 - i))
+describe('useAutopilotActivity', () => {
+  it('reads the newest again as Autopilot changes, keeping every page past them in its place', async () => {
+    const ledger = fakeLedger(700)
+    const { result } = await scrolled(ledger, 5)
 
-    // 150 newer matches push the old first page's tail on: a read again still holds every
-    // match from the newest down to the oldest loaded.
+    expect(platform.autopilotActivity).toHaveBeenNthCalledWith(1, 0, 100)
+    expect(loadedIds(result.current.days)).toEqual(countdown(700, 101))
+
+    // 150 newer matches: only the first page is read again, from where it ended, so it
+    // meets the pages past it with nothing between.
     ledger.grow(150)
     act(() => {
       emit('autopilot:updated')
@@ -210,21 +265,131 @@ describe('useAutopilotActivity', () => {
       expect(loadedIds(result.current.days)[0]).toBe(850)
     })
 
-    const ids = loadedIds(result.current.days)
+    expect(platform.autopilotActivityFrom).toHaveBeenCalledExactlyOnceWith(601, 500)
+    expect(loadedIds(result.current.days)).toEqual(countdown(850, 101))
+    expect(result.current.more).toBe(true)
+    expect(platform.autopilotActivity).toHaveBeenCalledTimes(6)
+  })
 
-    expect(ids.slice(0, 750)).toEqual(Array.from({ length: 750 }, (_, i) => 850 - i))
-    expect(result.current.more).toBe(false)
+  it('runs one read at a time, with one more waiting, however often Autopilot changes', async () => {
+    const ledger = fakeLedger(300)
+    const { result } = await scrolled(ledger, 1)
+    const held = heldAnswer()
+
+    platform.autopilotActivityFrom.mockReturnValueOnce(held.call)
+
+    act(() => {
+      for (let i = 0; i < 6; i++) {
+        emit('autopilot:updated')
+      }
+    })
+
+    expect(platform.autopilotActivityFrom).toHaveBeenCalledOnce()
+
+    await act(async () => {
+      held.give(ledger.pageFrom(201, 500))
+      await held.call
+    })
+
+    await waitFor(() => {
+      expect(platform.autopilotActivityFrom).toHaveBeenCalledTimes(2)
+    })
+    expect(loadedIds(result.current.days)).toEqual(countdown(300, 101))
+  })
+
+  it('drops a read of the newest under way for a read of every page, and stops every read as it hides', async () => {
+    const ledger = fakeLedger(300)
+    const { result, unmount } = await scrolled(ledger, 1)
+    const held = heldAnswer()
+
+    platform.autopilotActivityFrom.mockReturnValueOnce(held.call)
+    act(() => {
+      emit('autopilot:updated')
+    })
+
+    act(() => {
+      result.current.reload()
+    })
+
+    expect(held.call.cancel).toHaveBeenCalledOnce()
+    expect(platform.autopilotActivityFrom).toHaveBeenLastCalledWith(101, 500)
+
+    // Asked again while it reads, it waits its turn, and hiding stops it.
+    const last = heldAnswer()
+
+    platform.autopilotActivityFrom.mockReturnValueOnce(last.call)
+    act(() => {
+      result.current.reload()
+    })
+    await waitFor(() => {
+      expect(platform.autopilotActivityFrom).toHaveBeenCalledTimes(3)
+    })
+
+    unmount()
+
+    expect(last.call.cancel).toHaveBeenCalledOnce()
+  })
+
+  it('never loses a page read while the newest are read again', async () => {
+    const ledger = fakeLedger(300)
+    const { result } = await scrolled(ledger, 0)
+    const held = heldAnswer()
+
+    // With nothing past the first page, a read again is the first page's own, a page long.
+    platform.autopilotActivity.mockReturnValueOnce(held.call)
+    act(() => {
+      emit('autopilot:updated')
+    })
+
+    expect(platform.autopilotActivity).toHaveBeenLastCalledWith(0, 100)
+
+    platform.autopilotActivity.mockImplementation(ledger.read)
+    await act(async () => {
+      await result.current.loadMore()
+    })
+
+    expect(loadedIds(result.current.days)).toEqual(countdown(300, 101))
+
+    // The first page's read again lands after: the page read meanwhile stays, and the
+    // newest are read again from where they end, which meets it.
+    ledger.grow(10)
+    await act(async () => {
+      held.give(ledger.page(0, 100))
+      await held.call
+    })
+
+    await waitFor(() => {
+      expect(loadedIds(result.current.days)).toEqual(countdown(310, 101))
+    })
+    expect(platform.autopilotActivityFrom).toHaveBeenCalledExactlyOnceWith(201, 500)
+  })
+
+  it('starts again from the newest once more was recorded than one read holds', async () => {
+    const ledger = fakeLedger(300)
+    const { result } = await scrolled(ledger, 2)
+
+    ledger.grow(600)
+    act(() => {
+      emit('autopilot:updated')
+    })
+
+    await waitFor(() => {
+      expect(loadedIds(result.current.days)).toEqual(countdown(900, 401))
+    })
+    expect(result.current.more).toBe(true)
+
+    await act(async () => {
+      await result.current.loadMore()
+    })
+
+    expect(platform.autopilotActivity).toHaveBeenLastCalledWith(401, 100)
   })
 
   it('says why an earlier page, or a read again, couldn’t be read', async () => {
     const ledger = fakeLedger(150)
-    platform.autopilotActivity.mockImplementation(ledger.read)
+    const { result } = await scrolled(ledger, 0)
 
-    const { result } = renderHook(() => useAutopilotActivity(), { wrapper: at() })
-
-    await waitFor(() => {
-      expect(result.current.more).toBe(true)
-    })
+    expect(result.current.more).toBe(true)
 
     platform.autopilotActivity.mockRejectedValue(new Error('Autopilot’s history couldn’t be read.'))
     await act(async () => {
@@ -233,11 +398,12 @@ describe('useAutopilotActivity', () => {
 
     expect(result.current.error).toBe('Autopilot’s history couldn’t be read.')
 
+    platform.autopilotActivityFrom.mockRejectedValue(new Error('The database is locked.'))
     act(() => {
       result.current.reload()
     })
     await waitFor(() => {
-      expect(result.current.error).toBe('Autopilot’s history couldn’t be read.')
+      expect(result.current.error).toBe('The database is locked.')
     })
   })
 })
@@ -257,6 +423,36 @@ describe('useAutopilot', () => {
     })
     expect(result.current.names.get(3)).toBe('Snooze passing bot PRs')
     expect(result.current.routines).toHaveLength(1)
+  })
+
+  it('reads the routines again as a new day begins, so today’s counts turn over though nothing changed', async () => {
+    let now = FIXED_NOW
+    const clock = clockAt(() => now)
+
+    platform.listRoutines.mockResolvedValue([routine()])
+
+    const { result } = renderHook(() => useAutopilot(), { wrapper: withClock(clock) })
+
+    await waitFor(() => {
+      expect(result.current.loaded).toBe(true)
+    })
+    expect(platform.listRoutines).toHaveBeenCalledOnce()
+
+    // A minute on, the same day, reads nothing.
+    now = new Date(FIXED_NOW.getTime() + 60_000)
+    act(() => {
+      clock.read()
+    })
+    expect(platform.listRoutines).toHaveBeenCalledOnce()
+
+    now = new Date(FIXED_NOW.getTime() + 24 * 60 * 60_000)
+    act(() => {
+      clock.read()
+    })
+
+    await waitFor(() => {
+      expect(platform.listRoutines).toHaveBeenCalledTimes(2)
+    })
   })
 })
 
@@ -390,14 +586,25 @@ describe('WatchingList', () => {
     platform.itemsByID.mockResolvedValue([
       item({ id: 2, kind: 'issue', number: 9, title: 'The widget forgets its size' }),
     ])
-    platform.openIssue.mockResolvedValue(issue({ id: 2, title: 'The widget forgets its size' }))
+    // Both the sheet's reads, its opening and its refresh, say what the card says, so the
+    // sheet's name never changes under the test.
+    const read = issue({ id: 2, number: 9, title: 'The widget forgets its size' })
+
+    platform.openIssue.mockResolvedValue(read)
+    platform.refreshIssue.mockResolvedValue(read)
     render(<Watching />, { wrapper: rows })
 
     await userEvent.click(await screen.findByRole('button', { name: 'The widget forgets its size' }))
 
     expect(await screen.findByRole('dialog', { name: 'The widget forgets its size' })).toBeInTheDocument()
-    expect(platform.openIssue).toHaveBeenCalledWith(2)
-    expect(onItemOpened).toHaveBeenCalledWith(2)
+    // The sheet reads the issue, and the host hears it opened, in effects after the sheet
+    // shows, which a busy runner may not have run when the sheet is first found.
+    await waitFor(() => {
+      expect(platform.openIssue).toHaveBeenCalledWith(2)
+    })
+    await waitFor(() => {
+      expect(onItemOpened).toHaveBeenCalledWith(2)
+    })
   })
 
   it('dismisses a watched row through the inbox’s own triage, and reads the rows again as the inbox changes', async () => {
@@ -430,6 +637,8 @@ describe('WatchingList', () => {
     })
     expect(row).toHaveAttribute('data-highlighted', 'true')
 
+    // An ask for an item it doesn't hold, once it has read what it watches, is handed back
+    // at once, marking nothing, so it can't land later unasked.
     rerender(<Watching />)
     act(() => {
       emit('autopilot:updated')
@@ -437,10 +646,21 @@ describe('WatchingList', () => {
     rerender(<Watching highlight={{ id: 9, seq: 2 }} />)
 
     await waitFor(() => {
-      expect(platform.routineWatching.mock.calls.length).toBeGreaterThan(1)
+      expect(onHighlighted).toHaveBeenCalledTimes(2)
     })
-    expect(onHighlighted).toHaveBeenCalledOnce()
+    expect(platform.routineWatching.mock.calls.length).toBeGreaterThan(1)
     expect(platform.openExternal).not.toHaveBeenCalled()
+  })
+
+  it('hands back an ask when what it watches couldn’t be read', async () => {
+    platform.routineWatching.mockResolvedValue([1])
+    platform.itemsByID.mockRejectedValue(new Error('database is locked'))
+    render(<Watching highlight={{ id: 1, seq: 1 }} />, { wrapper: rows })
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('database is locked')
+    await waitFor(() => {
+      expect(onHighlighted).toHaveBeenCalledOnce()
+    })
   })
 
   it('reads every item it watches, past what one read takes', async () => {

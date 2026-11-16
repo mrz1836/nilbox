@@ -1,4 +1,4 @@
-import { useEffect, useRef, type ReactNode, type RefObject } from 'react'
+import { useLayoutEffect, useRef, type ReactNode, type RefObject } from 'react'
 
 import { counted } from '../../lib/format'
 import { earlierCount, entryAnchor, newSince, rowKey, timelineRows, type TimelineRow } from '../../lib/timeline'
@@ -78,9 +78,11 @@ export function Timeline({
   // The first new row, where shown lists it: in the newest first, the divider goes after it.
   const at = fresh < 0 ? -1 : newest ? rows.length - 1 - fresh : fresh
 
-  // A conversation in a hidden Activity runs no effect, so this runs, and scrolls, the first
+  // The scroll runs as a layout effect, in the commit that shows the divider and before the
+  // window paints, so the conversation is never seen at its top first and then jumps. A
+  // conversation in a hidden Activity runs no effect, so this runs, and scrolls, the first
   // time the conversation shows.
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (fresh >= 0 && !scrolled.current) {
       scrolled.current = true
       divider.current?.scrollIntoView({ block: 'center' })

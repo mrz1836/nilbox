@@ -239,6 +239,19 @@ describe('chipOf over every state and reason', () => {
     expect(chipOf(bare('done', 'failed')).label).toBe('A step failed')
   })
 
+  it('says a Dry run would run only of what it would have run', () => {
+    const dry = (state: AutopilotState, reason: AutopilotMatch['reason']) => ({ ...bare(state, reason), dryRun: true })
+
+    // Turning a Dry run on from now on records what already matched as its baseline.
+    expect(chipOf(dry('baseline', 'from_now')).label).toBe('Already matched when you turned it on')
+    expect(notListedText(dry('baseline', 'from_now'))).toBe(
+      'Activity has no line for that one. Already matched when you turned it on.',
+    )
+    expect(chipOf(dry('closed', 'no_longer_matches')).label).toBe('Closed: no longer matches')
+    expect(chipOf(dry('done', 'would_run')).label).toBe('Would run')
+    expect(chipOf(dry('queued', '')).label).toBe('Would run')
+  })
+
   it('lists in Activity only what did something, and says why another has no line', () => {
     expect(inActivity(bare('done', 'ran'))).toBe(true)
     expect(inActivity(bare('skipped', 'tries'))).toBe(true)

@@ -27,6 +27,7 @@ import {
   duplicateRoutine,
   getAutopilotCatalog,
   itemsByID,
+  on,
   openExternal,
   routineWatching,
   saveRoutine,
@@ -37,7 +38,6 @@ import {
   type AutopilotItemRef,
   type AutopilotRoutine,
   type AutopilotSuggestions,
-  type InboxItem,
   type Profile,
   type Prompt,
   type Settings,
@@ -281,18 +281,42 @@ export default function AutopilotView({
   const [focus, setFocus] = useState<Focus | null>(null)
   const [highlight, setHighlight] = useState<{ matchId: number; seq: number } | null>(null)
   // watchHighlight is the row Activity's Open asks a routine's Watching list to show, once:
-  // the list hands it back as it shows it.
+  // the list hands it back as it shows it, or once it knows it can't, and it goes as soon
+  // as another routine or Activity is chosen.
   const [watchHighlight, setWatchHighlight] = useState<{ routineId: number; id: number; seq: number } | null>(null)
-  // lone is an item Open shows in its sheet when no list here holds it.
-  const [lone, setLone] = useState<InboxItem | null>(null)
+  // loneId is the item Open shows in its sheet when no list here holds it, read again
+  // whenever the inbox changes, as its own triage in the sheet does, so the sheet offers
+  // what fits the item as it is now.
+  const [loneId, setLoneId] = useState(0)
+  const loneRead = useQuery(() => itemsByID([loneId]), [loneId], { enabled: loneId > 0 })
+  const lone = loneId > 0 ? loneRead.data?.find((i) => i.id === loneId) : undefined
   const loneHost = useSheetHost({
     kit,
-    items: lone === null ? [] : [lone],
+    items: lone === undefined ? [] : [lone],
     listTitle: 'Autopilot',
     onClose: () => {
-      setLone(null)
+      setLoneId(0)
     },
   })
+  const readLone = useEffectEvent(() => {
+    if (loneId > 0) {
+      void loneRead.refetch()
+    }
+  })
+  const inboxNow = kit.inbox.snapshot
+
+  useEffect(
+    () =>
+      on('inbox:updated', () => {
+        readLone()
+      }),
+    [],
+  )
+
+  // The sheet's own triage changes the inbox the window holds.
+  useEffect(() => {
+    readLone()
+  }, [inboxNow])
   const [handled, setHandled] = useState(0)
   const { routines, engine, reload } = autopilot
   // editing is the routine the builder holds, null on Activity; leaving is where the user
@@ -537,6 +561,11 @@ export default function AutopilotView({
     )
   }
 
+  // An ask for a Watching row is for the routine Open chose; choosing another lets it go.
+  if (watchHighlight !== null && watchHighlight.routineId !== shownId) {
+    setWatchHighlight(null)
+  }
+
   const actions: RoutineActions = {
     onSwitch: (r, on) => {
       changes.request(r, { kind: 'enable', on })
@@ -622,7 +651,8 @@ export default function AutopilotView({
       const found = stored.ok ? stored.data[0] : undefined
 
       if (found !== undefined) {
-        setLone(found)
+        setLoneId(found.id)
+        loneRead.set(() => [found])
         loneHost.open(found)
 
         return
@@ -830,6 +860,7 @@ export default function AutopilotView({
                   highlight={highlight}
                   onOpen={onOpen}
                   onToast={toastText}
+                  onChanged={activity.reload}
                   empty={
                     <p className="text-sm text-muted">
                       {!filters(filter)
@@ -870,6 +901,7 @@ export default function AutopilotView({
                     routineColumn={false}
                     onOpen={onOpen}
                     onToast={toastText}
+                    onChanged={activity.reload}
                     empty={<p className="text-sm text-muted">Nothing yet.</p>}
                   />
                   {loadMore}

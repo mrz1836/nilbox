@@ -1221,13 +1221,14 @@ index would refuse. Its queries are in
   dispatcher is built and its steps offered, the same routines take any mode.
 - `List` marks a routine of another account than the one signed in (`OtherAccount`; logins
   compare ignoring case, and with no one signed in none is another's). It doesn't run.
-  `List` also gives each routine its `Figures`, for its status line, from one grouped read of
-  the ledger (`ListRoutineFigures`, then `ListMatchHeads` for each routine's newest match):
-  how many matches it recorded today (since local midnight in the clock's zone), real ones
-  and a Dry run's apart, how many wait for the user, and when its newest match was made and
-  whether that was a Dry run's. Each counts the matches `ListLatestItemMatches` counts: open,
-  or closed as done, skipped, or dismissed; a baseline, and a match that closed before it
-  acted, count in none of them.
+  `List` also gives each routine its `Figures`, for its status line, from two reads of the
+  ledger (the grouped `ListRoutineFigures`, then `ListMatchHeads` for each routine's newest
+  match that ran): how many matches it recorded today (since local midnight in the clock's
+  zone), real ones and a Dry run's apart, how many wait for the user, and when its newest
+  match that ran (done; in Dry run, would have) was made and whether that was a Dry run's, so
+  a newer one that waits or was skipped never reads as *ran*. The counts take the matches
+  `ListLatestItemMatches` counts: open, or closed as done, skipped, or dismissed; a baseline,
+  and a match that closed before it acted, count in none of them.
 - `RoutineNames` gives every routine's name by its ID, the deleted ones included
   (`RoutineName.Deleted`), so the window still names a routine the history, a mark, or a chip
   names after it is gone.
@@ -1563,7 +1564,11 @@ another copy holds the engine
 loop, so they work before the first refresh, offline, or signed out. The reads (`activity.go`)
 read the database alone: `Activity` (a page of matches before an ID, by local day, with their
 runs and effects, each day's grouped lines of local steps, and, on the first page, the items
-the routines leave alone), `ItemHistory`, `LatestMatches` (for each item among the ids it is
+the routines leave alone), `ActivityFrom` (the same, of the matches from an ID on, at most
+500, `ListMatchesFrom`: the pages the window has loaded read again in one call, ending
+exactly where the next page it read begins, so their grouped lines join by `Key` and nothing
+falls between them; `More` says more than that were recorded since), `ItemHistory`,
+`LatestMatches` (for each item among the ids it is
 given, at most 500, its newest match that did something there or waits to, in one query,
 `ListLatestItemMatches`: open, or closed as done, skipped, or dismissed, never a baseline or
 one that closed as the item or the routine moved on before it acted, with its runs and
@@ -1762,10 +1767,11 @@ The window side lives in `frontend/src/components/autopilot/` (the tab itself,
   one for the user's routines that are broken or have an engine problem, none for another
   account's), each routine's status line (`routineStatus`, from the routine's own `Figures`:
   what waits, what it did today, what it would have done today in Dry run, else when it last
-  ran or would have run), the chip (`chipOf`, from the newest match: a Dry run's *Would run*,
-  an open state's words, a baseline's, a closed or skipped match's reason, each in words of
-  its own, `reasonChips`, then a local step's verb or *Undone* and *Taken back*, a notice's
-  *Told you*, else *Ran*), which matches Activity lists (`inActivity`: done, skipped, or
+  ran or would have run), the chip (`chipOf`, from the newest match: a Dry run's *Would run*
+  while it is open or done, an open state's words, a baseline's (a Dry run's too), a closed
+  or skipped match's reason (a Dry run's too), each in words of its own, `reasonChips`, then
+  a local step's verb or *Undone* and *Taken back*, a notice's *Told you*, else *Ran*),
+  which matches Activity lists (`inActivity`: done, skipped, or
   dismissed; `notListedText` says what became of one it doesn't), the question
   (`matchingWords`), and Activity's lines (`activityLines`: each day's grouped lines of local
   steps in place of the matches they stand for, the matches that did something by
@@ -1777,12 +1783,22 @@ The window side lives in `frontend/src/components/autopilot/` (the tab itself,
   every read by id the window sends.
 - **`lib/useAutopilot.ts`** reads the glance, the routines, the engine, and every routine's
   name (`RoutineNames`, the deleted ones' too, so a mark or a line still names its routine)
-  as the window opens and on every `autopilot:updated`, for App to share;
-  `useAutopilotChips` reads `LatestMatches` for the ids a list shows, a chunk at a time.
-  **`lib/useAutopilotActivity.ts`** reads Activity's newest page (100 matches) as the tab
-  opens and a page more by `next` as the user asks for more, keeping the oldest match loaded
-  as its floor; on every change it reads again from the newest match down to that floor, 500
-  at a time, so the matches a change pushed past a page's end never leave a gap.
+  as the window opens and on every `autopilot:updated`, for App to share, and the routines
+  again as the window's clock enters a new local day, so *today* turns over at midnight
+  while nothing changes; `useAutopilotChips` reads `LatestMatches` for the ids a list
+  shows, a chunk at a time (`all` and `andThen` in `lib/call.ts`, which keep the bound
+  calls' cancel). **`lib/useAutopilotActivity.ts`** holds one pager per tab, outside React
+  (`useSyncExternalStore`): Activity's newest page (100 matches) as the tab first shows, a
+  page more by `next` as the user asks for more, each kept as it was read, and the newest
+  read again, never the pages past them: on `autopilot:updated` it reads the first page
+  again while nothing past it is loaded or on its way, else `ActivityFrom` the first page's
+  last match, which ends where the next page begins. Every page loaded is read again
+  (`ActivityFrom` the oldest loaded) once a line's own action (Undo, Try again, Let it act
+  again) goes through and each time the tab shows again, since its effects stop while it is
+  hidden. One read runs at a time with one more waiting, a read of every page drops a read
+  of the newest under way, hiding cancels every read, a read that lands after a page more
+  keeps that page, and one that finds more than 500 recorded since starts again from it,
+  dropping the pages past it, so nothing ever falls between two pages.
 - **`AutopilotRowsContext`** (`AutopilotChip.tsx`) carries the routines' names and the chips
   to every row, App's around the inbox and the tab, and the Watching list's own chips around
   its rows, so a memo'd `ItemRow` renders again only in its chip and its marks
@@ -1795,11 +1811,16 @@ The window side lives in `frontend/src/components/autopilot/` (the tab itself,
   edits, which are the inbox's, through `components/useItemActions.ts`, which `InboxView`
   shares). It is keyed by routine, and marks and scrolls to the row Activity's **Open** asks
   for once (`highlight`, a number per ask, handed back with `onHighlighted`), never opening
-  anything itself.
+  anything itself. An ask it can't show is handed back as soon as it knows: once it has
+  read what it watches without the item, or couldn't read it. The tab drops an ask as soon
+  as another routine or Activity is chosen, so none lands later unasked.
 - **Open** on an Activity line goes to the item whatever became of its routine: its card in
   the inbox while a list there holds it; else its row in a routine that still watches it
   (`Watching`, the line's own routine first, local reads alone); else its sheet, through the
-  tab's own `useSheetHost`, while the inbox stores it (`ItemsByID`); else its page on GitHub.
+  tab's own `useSheetHost`, while the inbox stores it (`ItemsByID`, read again on
+  `inbox:updated` and whenever the inbox the window holds changes, as the sheet's own
+  triage changes it, so the sheet offers what fits the item as it is); else its page on
+  GitHub.
 - **`useRoutineChange`** switches a routine, changes its mode, and saves the builder's draft
   over it: switching one on, taking one that is on out of Dry run, or saving a change to what
   one that is on watches, fires on, or checks (`watchChanged`) first asks `Matching` (with the

@@ -1,6 +1,7 @@
 import { use, useEffect, useEffectEvent, useRef, useState } from 'react'
 
 import { inChunks } from '../../lib/autopilot'
+import { all, andThen } from '../../lib/call'
 import { worktreeOf } from '../../lib/itemWorktrees'
 import { sessionsOf } from '../../lib/sessions'
 import { useAutopilotChips, useOnAutopilot } from '../../lib/useAutopilot'
@@ -14,10 +15,11 @@ export type { RowsKit } from './useSheetHost'
 
 // readItems reads the stored items among ids, as many at a time as the backend reads
 // (inChunks), so a routine that watches more never loses the rest, newest activity first.
-export async function readItems(ids: readonly number[]): Promise<InboxItem[]> {
-  const pages = await Promise.all(inChunks(ids).map((chunk) => itemsByID(chunk)))
-
-  return pages.flat().sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt))
+// Cancelling it cancels every read.
+export function readItems(ids: readonly number[]): Promise<InboxItem[]> & { cancel: () => void } {
+  return andThen(all(inChunks(ids).map((chunk) => itemsByID(chunk))), (pages) =>
+    pages.flat().sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt)),
+  )
 }
 
 export interface WatchingListProps {
@@ -70,7 +72,14 @@ export function WatchingList({ routineId, kit, highlight, onHighlighted }: Watch
   )
 
   const listed = items.data !== undefined
-  const asked = highlight !== null && listed && list.some((i) => i.id === highlight.id) ? highlight.id : 0
+  const failed = ids.error !== '' || items.error !== ''
+  // settled is the list read for what it watches now, or that it couldn't be: an ask it
+  // doesn't hold by then (the item left the watch, or isn't stored) never shows.
+  const settled = failed || (listed && !ids.pending && !items.pending)
+  const holds = highlight !== null && listed && list.some((i) => i.id === highlight.id)
+  const asked = holds ? highlight.id : 0
+  // answered is the ask the list is done with: shown, or never to be.
+  const answered = highlight !== null && (holds || settled) ? highlight.seq : 0
   const handBack = useEffectEvent(() => {
     onHighlighted()
   })
@@ -79,21 +88,25 @@ export function WatchingList({ routineId, kit, highlight, onHighlighted }: Watch
     setMarked(asked)
   }
 
-  // Activity's Open marks its row and scrolls to it once, then lets the ask go.
+  // Activity's Open marks its row and scrolls to it once, then lets the ask go; an ask
+  // the list can't show is let go as soon as it knows, so it never lands later unasked.
   useEffect(() => {
-    if (asked === 0) {
+    if (answered === 0) {
       return
     }
 
-    const row = [...(listRef.current?.querySelectorAll('[data-item-id]') ?? [])].find(
-      (el) => el.getAttribute('data-item-id') === String(asked),
-    )
+    if (asked !== 0) {
+      const row = [...(listRef.current?.querySelectorAll('[data-item-id]') ?? [])].find(
+        (el) => el.getAttribute('data-item-id') === String(asked),
+      )
 
-    row?.scrollIntoView({ block: 'center' })
+      row?.scrollIntoView({ block: 'center' })
+    }
+
     handBack()
-  }, [asked])
+  }, [answered, asked])
 
-  if (ids.error !== '' || items.error !== '') {
+  if (failed) {
     return (
       <p role="alert" className="px-4 py-3 text-sm text-danger">
         {ids.error !== '' ? ids.error : items.error}

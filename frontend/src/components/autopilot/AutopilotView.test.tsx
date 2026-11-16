@@ -1,7 +1,7 @@
 import { act, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { useState } from 'react'
-import { describe, expect, it, vi } from 'vitest'
+import { beforeAll, describe, expect, it, vi } from 'vitest'
 
 import { brand } from '../../generated/brand'
 import type { AutopilotRequest } from '../../lib/autopilot'
@@ -18,6 +18,7 @@ import {
   autopilotEngine,
   autopilotMatch,
   dryRunMatch,
+  issue,
   item,
   itemRef,
   leftAlone,
@@ -34,6 +35,13 @@ import AutopilotView from './AutopilotView'
 import type { RowsKit } from './WatchingList'
 
 vi.mock('../../platform', () => import('../../test/platform').then((fake) => fake.platform))
+
+// The sheets load on their own (lazily, as the inbox's do), and are imported once before
+// the tests, so no test pays a sheet's cold, instrumented import inside the second a
+// findBy waits: on a cold runner the first test to open one otherwise ran out of it.
+beforeAll(async () => {
+  await Promise.all([import('../review/ReviewSheet'), import('../issue/IssueSheet')])
+})
 
 const launch: LaunchOptions = {
   agents: agents(),
@@ -125,6 +133,12 @@ function routines() {
       sentence: '',
     }),
   ]
+}
+
+// sheetReads makes the issue sheet's reads, its opening and its refresh, both answer read.
+function sheetReads(read: ReturnType<typeof issue>) {
+  platform.openIssue.mockResolvedValue(read)
+  platform.refreshIssue.mockResolvedValue(read)
 }
 
 // routineList returns the queries scoped to the list of routines, once it shows.
@@ -297,28 +311,29 @@ describe('Activity', () => {
   })
 
   it('offers Let it act again on what a routine leaves alone, and Try again on one that gave up', async () => {
+    const page = activityPage({
+      days: [
+        {
+          date: '2026-06-15',
+          matches: [
+            autopilotMatch({
+              id: 30,
+              state: 'skipped',
+              reason: 'tries',
+              words: 'It gave up: 2 tries used.',
+              item: itemRef({ id: 2, number: 9 }),
+              effects: [],
+            }),
+          ],
+          groups: [],
+        },
+      ],
+      leftAlone: [leftAlone()],
+    })
+
     platform.listRoutines.mockResolvedValue(routines())
-    platform.autopilotActivity.mockResolvedValue(
-      activityPage({
-        days: [
-          {
-            date: '2026-06-15',
-            matches: [
-              autopilotMatch({
-                id: 30,
-                state: 'skipped',
-                reason: 'tries',
-                words: 'It gave up: 2 tries used.',
-                item: itemRef({ id: 2, number: 9 }),
-                effects: [],
-              }),
-            ],
-            groups: [],
-          },
-        ],
-        leftAlone: [leftAlone()],
-      }),
-    )
+    platform.autopilotActivity.mockResolvedValue(page)
+    platform.autopilotActivityFrom.mockResolvedValue(page)
     renderTab()
 
     const today = within(await screen.findByRole('list', { name: 'Today' }))
@@ -326,6 +341,11 @@ describe('Activity', () => {
     await userEvent.click(today.getByRole('button', { name: 'Let it act again' }))
     expect(platform.letRoutineActAgain).toHaveBeenCalledExactlyOnceWith(3, 1)
     expect(await screen.findByText('Snooze passing bot PRs can act on it again.')).toBeInTheDocument()
+    // What a line's action changes may be further down than Activity reads again on its own,
+    // so every page loaded is read again.
+    await waitFor(() => {
+      expect(platform.autopilotActivityFrom).toHaveBeenCalledWith(0, 500)
+    })
 
     expect(today.getByText('Gave up').closest('li')).toHaveTextContent('It gave up: 2 tries used.')
     await userEvent.click(today.getByRole('button', { name: 'Try again' }))
@@ -405,12 +425,19 @@ describe('Activity', () => {
           : [],
       ),
     )
+    // The sheet takes its name from its own reads of the issue, once they are in: both say
+    // what the card says, so the name never changes under the test.
+    sheetReads(issue({ id: 2, number: 9, title: 'The widget forgets its size' }))
     renderTab()
 
     await userEvent.click(await screen.findByRole('button', { name: 'Open example-repo #9' }))
 
     expect(await screen.findByRole('dialog', { name: 'The widget forgets its size' })).toBeInTheDocument()
-    expect(platform.openIssue).toHaveBeenCalledWith(2)
+    // The sheet reads the issue in an effect after it shows, which a busy runner may not
+    // have run when the sheet is first found.
+    await waitFor(() => {
+      expect(platform.openIssue).toHaveBeenCalledWith(2)
+    })
     expect(platform.openExternal).not.toHaveBeenCalled()
 
     // Gone from the store too, it opens on GitHub, once, for the click.
@@ -453,6 +480,64 @@ describe('Activity', () => {
 
     expect(again).not.toHaveAttribute('data-highlighted')
     expect(platform.openExternal).not.toHaveBeenCalled()
+  })
+
+  it('lets a Watching ask go once another routine or Activity is chosen, so it never lands later', async () => {
+    platform.listRoutines.mockResolvedValue(routines())
+    platform.autopilotActivity.mockResolvedValue(activityPage())
+    platform.routineWatching.mockImplementation((rid) => Promise.resolve(rid === 3 ? [2] : []))
+    // The list's first read of its items is still on its way when Activity is chosen.
+    platform.itemsByID.mockReturnValueOnce(new Promise(() => undefined))
+    platform.itemsByID.mockResolvedValue([
+      item({ id: 2, kind: 'issue', number: 9, title: 'The widget forgets its size' }),
+    ])
+    renderTab()
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Open example-repo #9' }))
+    expect(await screen.findByRole('region', { name: 'Snooze passing bot PRs' })).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Activity' }))
+    await userEvent.click((await routineList()).getByRole('button', { name: /^Snooze passing bot PRs/ }))
+
+    const row = (await screen.findByRole('button', { name: 'The widget forgets its size' })).closest('li')
+
+    expect(row).not.toHaveAttribute('data-highlighted')
+  })
+
+  it('keeps the sheet of an item no list holds as the item is, after its own triage', async () => {
+    // The line is a deleted routine's: routine 9 is in no list.
+    platform.listRoutines.mockResolvedValue(routines())
+    platform.autopilotActivity.mockResolvedValue(
+      activityPage({
+        days: [{ date: '2026-06-15', matches: [dryRunMatch({ routineId: 9, routine: 'Gone' })], groups: [] }],
+      }),
+    )
+    platform.itemsByID.mockResolvedValue([
+      item({ id: 2, kind: 'issue', number: 9, title: 'The widget forgets its size' }),
+    ])
+    // The sheet takes its name from its own reads of the issue, once they are in: both say
+    // what the card says, so the name never changes under the test.
+    sheetReads(issue({ id: 2, number: 9, title: 'The widget forgets its size' }))
+    renderTab()
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Open example-repo #9' }))
+
+    const sheet = within(await screen.findByRole('dialog', { name: 'The widget forgets its size' }))
+
+    platform.itemsByID.mockResolvedValue([
+      item({
+        id: 2,
+        kind: 'issue',
+        number: 9,
+        title: 'The widget forgets its size',
+        dismissedAt: '2026-06-15T12:00:00Z',
+      }),
+    ])
+    await userEvent.click(sheet.getByRole('button', { name: 'Dismiss' }))
+
+    expect(platform.dismissItem).toHaveBeenCalledWith(2)
+    expect(await sheet.findByRole('button', { name: 'Restore' })).toBeInTheDocument()
+    expect(sheet.queryByRole('button', { name: 'Dismiss' })).not.toBeInTheDocument()
   })
 
   it('says why Activity has no line for a match a request names', async () => {
@@ -643,7 +728,10 @@ describe('a routine', () => {
     await userEvent.click(watching.getByRole('button', { name: 'Add the widget cache' }))
 
     expect(await screen.findByRole('dialog', { name: 'Add the widget cache' })).toBeInTheDocument()
-    expect(platform.openReview).toHaveBeenCalledWith(1)
+    // The sheet reads the pull request in an effect after it shows, as the issue sheet does.
+    await waitFor(() => {
+      expect(platform.openReview).toHaveBeenCalledWith(1)
+    })
   })
 
   it('takes a routine that is on out of Dry run by its mode, after asking', async () => {

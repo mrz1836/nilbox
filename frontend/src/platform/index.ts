@@ -1055,9 +1055,10 @@ export const { Status: getServiceStatus, CheckNow: checkServiceStatus } = servic
 
 // Autopilot, the Autopilot tab's. Glance is Autopilot at a glance, which the tab counts;
 // List the routines, each marked when it belongs to another account or is broken, with
-// its figures; Names every routine's name, a deleted one's too, for the marks; Engine
+// its figures; RoutineNames every routine's name, a deleted one's too, for the marks; Engine
 // what the engine last did, and whether this copy runs it. Activity is a page of what the
-// routines did before a match (0 for the newest), by day; ItemHistory one item's, which its
+// routines did before a match (0 for the newest), by day, and ActivityFrom what they did
+// from a match on, the pages loaded read again; ItemHistory one item's, which its
 // ⚡ chip opens; LatestMatches each item's newest match, which the chip says. Watching lists
 // the items a routine watches, which the inbox's ItemsByID turns into rows. Matching counts
 // what a routine matches now that it has no record of, the question SetEnabled and SetMode
@@ -1106,6 +1107,10 @@ export const setRoutineMode = autopilotService.SetMode as (
 ) => CancellablePromise<AutopilotRoutine>
 export const autopilotActivity = autopilotService.Activity as (
   before: number,
+  limit: number,
+) => CancellablePromise<AutopilotActivityPage>
+export const autopilotActivityFrom = autopilotService.ActivityFrom as (
+  from: number,
   limit: number,
 ) => CancellablePromise<AutopilotActivityPage>
 export const autopilotItemHistory = autopilotService.ItemHistory as (id: number) => CancellablePromise<AutopilotHistory>

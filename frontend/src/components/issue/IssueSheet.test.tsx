@@ -576,7 +576,11 @@ describe('IssueSheet', () => {
 
     const divider = await screen.findByRole('separator', { name: 'New since your last visit' })
     expect(divider.nextElementSibling).toHaveTextContent('Can repro on 1.4.')
+    // The scroll runs in the commit that shows the divider, so it has happened by the time
+    // the divider can be found, however busy the runner: a scroll left to a later effect
+    // would let the window paint the conversation at its top first.
     expect(scrolled).toHaveBeenCalledOnce()
+    expect(scrolled.mock.contexts[0]).toBe(divider)
   })
 
   it('says the issue changed since it was read, as its card says, and reads it again', async () => {
