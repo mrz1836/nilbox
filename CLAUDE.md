@@ -295,7 +295,11 @@ changing the package, and keep the section and its summary in step.
   files.
 - `internal/event/` holds the app's events, one Go type each with its name; services emit them
   into the one `event.Sink` they are given. `internal/desktop/` is the shell's logic: it hears
-  those events, keeps the menu bar current with what `internal/menubar` works out, runs the
+  those events, keeps the menu bar current with what `internal/menubar` works out (its
+  Autopilot group, while a routine exists, with Pause Autopilot as the tray's one checkbox
+  row, `Shell.AutopilotAction`), hides the window on close while the icon shows or while
+  Autopilot has a routine on or an agent working (`HidesOnClose`, from Autopilot's state as
+  the shell last read it; the window says so once, `event.KeptRunning`), runs the
   scheduler, the checks follower (`inbox.ChecksFollower`: the listed pull requests whose
   checks were running, but a muted repository's, and those a routine's search follows, 50 a
   round at most, the listed first, read 25 to a request side by side through
@@ -802,16 +806,24 @@ changing the package, and keep the section and its summary in step.
   triage steps (Pin, Snooze, Dismiss, Restore) through the inbox's own triage (`Triage`, core's
   `inboxTriage`), each recorded as an effect in the triage's own transaction, held back only
   by a sign-out, Pause, and the active hours, and acting on outside contributors' items too;
-  a routine with any other step still runs in Dry run. The user's own reversal of what a
+  and the notices, Notify me and Tell me, through `NewNotices`, each cycle's handed over as it
+  ends and gathered when several come at once, each told once through its key; it tells each
+  problem once (`NewProblemNotices`). Both hand a `Notice` to a `NoticeSink`, which core
+  adapts over the notifications (`adapters_notices.go`). A routine with any other step still
+  runs in Dry run. The user's own reversal of what a
   routine did (told through the outcomes, `Outcome.Reversed`), and an Undo, leave the routine
   hands off the item until Let it act again. The bound Service's ledger actions (`Approve`,
   `Skip`, `RunNow`, `TryAgain`, `LetActAgain`, `Undo`, `ClearHistory`) are commands it
   applies; `StopRun` and `StopAll` go straight to the runner; `Activity` (with each day's
   grouped lines of local steps, "Snoozed 6", and the items left alone), `ItemHistory`,
-  `Explain`, `Engine`, and `Matching` read. `internal/autopilot/sim` (test support only) is
-  its simulator, which runs the triage steps through the inbox's real triage. It
+  `Explain`, `Engine`, `Matching`, and `Glance` (the routines, what waits for the user, the
+  agents working: the menu bar's Autopilot group, the window's close, and whether the window
+  names Autopilot at all, only while a routine exists) read. `internal/autopilot/sim` (test
+  support only) is its simulator, which runs the triage steps through the inbox's real triage
+  and the notices through the real dispatcher. It
   reaches the rest only through the interfaces it declares (`Prefs`, `Accounts`, `Names`,
-  `Items`, `Costs`, `EngineItems`, `Triage`, the dispatchers, `Holds`, `ProblemSink`), which
+  `Items`, `Costs`, `EngineItems`, `Triage`, the dispatchers, `Holds`, `ProblemSink`,
+  `NoticeSink`), which
   `internal/core/adapters_autopilot.go` adapts, and never imports the inbox, the sheets, the
   launcher, the worktrees, the sessions, the runs, notify, settings, the desktop, or core (the
   repoguard boundary test). Beneath it, the routines core, five pure leaves that read nothing
