@@ -41,8 +41,7 @@ export function CheckFiles(itemID: number): $CancellablePromise<sensitive$0.Chec
 /**
  * Dismiss hides an item from every list until it is restored, and returns the new
  * snapshot. It replaces a snooze. Nothing is written to GitHub. Once the dismissal of an
- * item that wasn't dismissed is stored, it tells the outcome sink of it, and that it took
- * back a routine's Restore of it, when it did.
+ * item that wasn't dismissed is stored, it tells the outcome sink of it.
  */
 export function Dismiss(id: number): $CancellablePromise<$models.Snapshot> {
     return $Call.ByID(2737462950, id);
@@ -164,8 +163,8 @@ export function Snapshot(): $CancellablePromise<$models.Snapshot> {
  *
  * The item's activity as the last refresh read it is recorded with the snooze, so a
  * later refresh can end it early when new activity passes the user's wake rules. Nothing
- * is written to GitHub. A snooze over what a routine set aside or brought back takes that
- * back, which it tells the outcome sink of (OutcomeSnoozed).
+ * is written to GitHub. A snooze over a routine's dismissal or snooze takes that back,
+ * which it tells the outcome sink of (OutcomeSnoozed).
  */
 export function Snooze(id: number, days: number): $CancellablePromise<$models.Snapshot> {
     return $Call.ByID(3352799032, id, days);
