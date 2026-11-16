@@ -18,6 +18,7 @@ import {
   autopilotEngine,
   autopilotMatch,
   dryRunMatch,
+  issue,
   item,
   itemRef,
   leftAlone,
@@ -132,6 +133,12 @@ function routines() {
       sentence: '',
     }),
   ]
+}
+
+// sheetReads makes the issue sheet's reads, its opening and its refresh, both answer read.
+function sheetReads(read: ReturnType<typeof issue>) {
+  platform.openIssue.mockResolvedValue(read)
+  platform.refreshIssue.mockResolvedValue(read)
 }
 
 // routineList returns the queries scoped to the list of routines, once it shows.
@@ -418,12 +425,19 @@ describe('Activity', () => {
           : [],
       ),
     )
+    // The sheet takes its name from its own reads of the issue, once they are in: both say
+    // what the card says, so the name never changes under the test.
+    sheetReads(issue({ id: 2, number: 9, title: 'The widget forgets its size' }))
     renderTab()
 
     await userEvent.click(await screen.findByRole('button', { name: 'Open example-repo #9' }))
 
     expect(await screen.findByRole('dialog', { name: 'The widget forgets its size' })).toBeInTheDocument()
-    expect(platform.openIssue).toHaveBeenCalledWith(2)
+    // The sheet reads the issue in an effect after it shows, which a busy runner may not
+    // have run when the sheet is first found.
+    await waitFor(() => {
+      expect(platform.openIssue).toHaveBeenCalledWith(2)
+    })
     expect(platform.openExternal).not.toHaveBeenCalled()
 
     // Gone from the store too, it opens on GitHub, once, for the click.
@@ -501,6 +515,9 @@ describe('Activity', () => {
     platform.itemsByID.mockResolvedValue([
       item({ id: 2, kind: 'issue', number: 9, title: 'The widget forgets its size' }),
     ])
+    // The sheet takes its name from its own reads of the issue, once they are in: both say
+    // what the card says, so the name never changes under the test.
+    sheetReads(issue({ id: 2, number: 9, title: 'The widget forgets its size' }))
     renderTab()
 
     await userEvent.click(await screen.findByRole('button', { name: 'Open example-repo #9' }))
@@ -711,7 +728,10 @@ describe('a routine', () => {
     await userEvent.click(watching.getByRole('button', { name: 'Add the widget cache' }))
 
     expect(await screen.findByRole('dialog', { name: 'Add the widget cache' })).toBeInTheDocument()
-    expect(platform.openReview).toHaveBeenCalledWith(1)
+    // The sheet reads the pull request in an effect after it shows, as the issue sheet does.
+    await waitFor(() => {
+      expect(platform.openReview).toHaveBeenCalledWith(1)
+    })
   })
 
   it('takes a routine that is on out of Dry run by its mode, after asking', async () => {

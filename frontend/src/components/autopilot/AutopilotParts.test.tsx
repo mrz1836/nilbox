@@ -586,14 +586,25 @@ describe('WatchingList', () => {
     platform.itemsByID.mockResolvedValue([
       item({ id: 2, kind: 'issue', number: 9, title: 'The widget forgets its size' }),
     ])
-    platform.openIssue.mockResolvedValue(issue({ id: 2, title: 'The widget forgets its size' }))
+    // Both the sheet's reads, its opening and its refresh, say what the card says, so the
+    // sheet's name never changes under the test.
+    const read = issue({ id: 2, number: 9, title: 'The widget forgets its size' })
+
+    platform.openIssue.mockResolvedValue(read)
+    platform.refreshIssue.mockResolvedValue(read)
     render(<Watching />, { wrapper: rows })
 
     await userEvent.click(await screen.findByRole('button', { name: 'The widget forgets its size' }))
 
     expect(await screen.findByRole('dialog', { name: 'The widget forgets its size' })).toBeInTheDocument()
-    expect(platform.openIssue).toHaveBeenCalledWith(2)
-    expect(onItemOpened).toHaveBeenCalledWith(2)
+    // The sheet reads the issue, and the host hears it opened, in effects after the sheet
+    // shows, which a busy runner may not have run when the sheet is first found.
+    await waitFor(() => {
+      expect(platform.openIssue).toHaveBeenCalledWith(2)
+    })
+    await waitFor(() => {
+      expect(onItemOpened).toHaveBeenCalledWith(2)
+    })
   })
 
   it('dismisses a watched row through the inbox’s own triage, and reads the rows again as the inbox changes', async () => {
