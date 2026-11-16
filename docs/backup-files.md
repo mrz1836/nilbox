@@ -2,8 +2,8 @@
 
 A backup file holds your whole setup in a portable form, so you can move it to another Mac, or
 keep it with your own backups and bring it back later: your settings, your repositories, your
-prompts and review replies, your launch defaults, your own scripts, and your Autopilot
-routines. The app writes one from
+prompts and review replies, your launch defaults, your own scripts, and, in the copies the
+app saves before an import or a reset, your Autopilot routines. The app writes one from
 **Settings → Back up and restore → Export…**, and reads one from **Import…** there. How an import
 treats what is already on the Mac is in [Backing up your setup](desktop.md#backing-up-your-setup).
 
@@ -137,7 +137,10 @@ is each entry left out.
 ### Autopilot
 
 The Autopilot section is the routines' own format, the one `autopilot.json` beside the
-database holds, so a routine moves between Macs whole:
+database holds, so a routine moves between Macs whole. **Export…** doesn't offer it yet, nor
+**Import…**: the copies the app saves before an import or a reset hold it, and importing a
+file that holds it brings in the categories the dialog lists and leaves the routines as they
+are.
 
 | Field | Meaning |
 |---|---|
@@ -152,10 +155,16 @@ JSON object with its own `version`, naming prompts by nickname or by starter and
 agent and name, never by ID, so it works on another Mac. A routine has no ID and no account in
 a file, and never its history: what it matched, ran, or was told.
 
-On import a routine always arrives switched off. One whose `spec` this version can't read (as
-one a newer version wrote, or one that no longer passes its checks) is left out with a note,
-as is a second routine of one name; a `mode` this version doesn't know takes the mode new
-routines start in, and a routine with a step this version can't run yet arrives in Dry run.
+An import matches routines by name, ignoring case in any alphabet. A routine the same as the
+file's (its `spec`, `description`, and `mode`) is left as it is, on or off, under either mode;
+any other match is saved over and switched off, and a routine this Mac lacks is added,
+switched off. Replace also deletes the routines the file doesn't name. A routine here that a
+newer version of the app wrote is never saved over or deleted: it is left as it is, with a
+note. One of the file's whose `spec` this version can't read (as one a newer version wrote,
+or one that no longer passes its checks) is left out with a note, as is a second routine of
+one name; a `mode` this version doesn't know takes the mode new routines start in, and a
+routine with a step this version can't run yet arrives in Dry run. A `spec` that loads is
+stored as the app writes one, its lists sorted and its texts trimmed.
 
 <br>
 

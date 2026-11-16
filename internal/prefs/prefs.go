@@ -12,8 +12,11 @@
 //     Repo scripts' sources, and scripts.lastPage and scripts.lastRepo, where the Scripts
 //     tab and Repo scripts reopen, threadrules.*: whether the user's GitHub notifications
 //     are read, and whether, how, and when they are cleared, status.*: which status
-//     pages the service status check reads, and which of each one's parts it watches, and
-//     update.mode, which updateprefs declares: what the app does when a new version is out).
+//     pages the service status check reads, and which of each one's parts it watches,
+//     update.mode, which updateprefs declares: what the app does when a new version is out,
+//     and the autopilot.* settings, which autopilotprefs declares: Pause Autopilot, the mode
+//     new routines start in, the limits, the daily cap, and how long the history is kept;
+//     never autopilot.engine, the Autopilot engine's own state, which the engine writes).
 //   - inbox writes inbox.*: the account and status of the last refresh, and the cached
 //     avatar.
 //   - prompts writes prompts.*: the default prompts and the starters already added.

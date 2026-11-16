@@ -732,8 +732,10 @@ changing the package, and keep the section and its summary in step.
   save and load, carries one that won't load (a newer build's, say) as broken with why and
   never rewrites it, stores a routine with a step this build doesn't offer in Dry run alone,
   starts a new one off in the mode Settings says (Ask first to begin with) and of the account
-  signed in (`Accounts`, the inbox's viewer; `Routine.OtherAccount` marks another's), and
-  deletes softly; mode, switch, and account are columns, never spec. It writes its copy,
+  signed in (`Accounts`, the inbox's viewer; `Routine.OtherAccount` marks another's), keeps
+  names unique ignoring case in any alphabet (`nameKey`, Unicode's simple folding, stored as
+  `name_key` under the unique index, since NOCASE folds ASCII alone), and deletes softly;
+  mode, switch, and account are columns, never spec. It writes its copy,
   `autopilot.json` (`File`, the export format `Bundle`, `"<slug>-autopilot/1"`), after every
   change, which `Restore` brings back, off, into a table that is new, and holds a backup's
   Autopilot section through `NewBackupPart`, apart from the Service. It reaches the rest only
@@ -755,11 +757,12 @@ changing the package, and keep the section and its summary in step.
   trigger and reasons). They import only `item`, `repo`, `trust`, `sensitive`, `bump`,
   `clock`, `textutil`, and one another (`TestLeafImports`).
   Full design: [docs/architecture.md](docs/architecture.md#internalautopilot)
-- `internal/autopilotprefs/` declares Autopilot's settings, `autopilot.*` (Pause Autopilot,
-  the mode new routines start in, agents at once, runs and GitHub actions a day, the daily cap
-  in dollars or tokens, keeping the Mac awake, holding starts during an outage, catching up,
-  and how long the history and the run logs are kept), with their ranges, and a routine's
-  `Mode` (`dryRun`, `ask`, `auto`). Settings alone writes them (`SetAutopilot…`, each emitting
+- `internal/autopilotprefs/` declares the `autopilot.*` settings (Pause Autopilot, the mode
+  new routines start in, agents at once, runs and GitHub actions a day, the daily cap in
+  dollars or tokens, keeping the Mac awake, holding starts during an outage, catching up, and
+  how long the history and the run logs are kept), with their ranges, and a routine's `Mode`
+  (`dryRun`, `ask`, `auto`); never `autopilot.engine`, the engine's own state, which the
+  engine alone writes. Settings alone writes them (`SetAutopilot…`, each emitting
   the Go-only `event.AutopilotChanged`, writing only the keys that change), backups carry
   them (`Portable.Autopilot`), and Autopilot reads them. It is a leaf that imports only
   `prefval`.
@@ -1019,7 +1022,8 @@ changing the package, and keep the section and its summary in step.
   written user-only through `appdata.WriteFile`), one section per category ticked: settings,
   repositories, prompts (a `prompts.Bundle`, exactly as `prompts.json`), launch defaults (the
   `launch-defaults.json` format), the user's scripts, and the Autopilot routines (the
-  `autopilot.json` format, arriving off); and imports one back. It reaches each
+  `autopilot.json` format, each added or saved over arriving off, one a newer build wrote
+  never touched; the window doesn't list this category yet); and imports one back. It reaches each
   category's owner only through a `Part` (`Export`, `Prepare` outside the transaction, `Apply`
   inside it, `Done` once it commits), which `internal/core/adapters_backup.go` adapts over each
   owner's `BackupPart` (`settings`, `prompts`, `launchdefaults`, `scripts`, `autopilot`), a type of its own
@@ -1166,10 +1170,11 @@ package imports the driver, and nothing imports an ORM (`internal/repoguard` enf
 - **Prefs.** `internal/prefs` owns the `prefs` table. Any package reads any key, but each key has
   exactly one writer: settings writes the user's settings, including the rule keys that the trust,
   snooze, sensitive, notifyprefs, branchrules, reporules, integrationprefs, threadrules,
-  statusprefs, updateprefs, and autopilotprefs packages declare (`update.mode` and
-  `autopilot.*` among them); inbox
+  statusprefs, updateprefs, and autopilotprefs packages declare (`update.mode` and the
+  `autopilot.*` settings among them); inbox
   writes `inbox.*`; prompts writes `prompts.*`; setup writes `setup.*`; update writes its state,
-  the other `update.*` keys (the package doc has the full list). Settings and
+  the other `update.*` keys (the package doc has the full list); Autopilot's engine writes its
+  own state, `autopilot.engine`, never a setting. Settings and
   those leaves write a switch and a list of strings one way, through the leaf
   `internal/prefs/prefval` (`Bool` and `EncodeBool`, `List` and `EncodeList`, which stores a nil
   list as `[]`).
