@@ -22,6 +22,7 @@ import (
 // account. The tables (accounts, repos, items, item_details, item_files,
 // item_local_state, and rate_snapshots) belong to this package; no other touches them.
 type Store struct {
+	db    *sql.DB
 	q     *queries.Queries
 	prefs *prefs.Store
 	clock clock.Clock
@@ -32,7 +33,7 @@ type Store struct {
 func NewStore(db *sql.DB, c clock.Clock) *Store {
 	c = clock.Or(c)
 
-	return &Store{q: queries.New(db), prefs: prefs.New(db, c), clock: c}
+	return &Store{db: db, q: queries.New(db), prefs: prefs.New(db, c), clock: c}
 }
 
 // ViewerLogin returns the signed-in account's login as the last refresh recorded it, or ""

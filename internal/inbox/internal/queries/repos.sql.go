@@ -32,7 +32,8 @@ const listRepoCounts = `-- name: ListRepoCounts :many
 SELECT r.owner, r.name, COUNT(i.id) AS items
 FROM repos r
 LEFT JOIN items i ON i.repo_id = r.id
-  AND (i.reason_review_requested = 1 OR i.reason_authored = 1 OR i.reason_assigned = 1)
+  AND (i.reason_review_requested = 1 OR i.reason_authored = 1 OR i.reason_assigned = 1
+    OR EXISTS (SELECT 1 FROM item_watches w WHERE w.item_id = i.id))
 WHERE r.is_archived = 0
 GROUP BY r.id
 ORDER BY r.owner COLLATE NOCASE, r.name COLLATE NOCASE
@@ -45,8 +46,9 @@ type ListRepoCountsRow struct {
 }
 
 // ListRepoCounts returns every repository that is not archived, by owner and then name
-// ignoring case, each with how many of its items are listed now: in at least one of the
-// three lists.
+// ignoring case, each with how many of its items are listed now, in at least one of the
+// three lists, or watched by a routine's search, so a repository the user only watches can
+// have launch defaults too.
 func (q *Queries) ListRepoCounts(ctx context.Context) ([]ListRepoCountsRow, error) {
 	rows, err := q.db.QueryContext(ctx, listRepoCounts)
 	if err != nil {

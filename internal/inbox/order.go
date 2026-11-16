@@ -94,8 +94,10 @@ type itemWrite struct {
 	// files is a file check's outcome.
 	files *filesRow
 
-	// unlist takes the item out of every list, after a merge or a close.
+	// unlist takes the item out of every list, after a merge or a close, and state is the
+	// state that left it in (StateMerged or StateClosed), "" when it didn't say.
 	unlist bool
+	state  string
 }
 
 // itemUpdate is what an item's own refresh read: the account the item is stored for, by
@@ -185,7 +187,7 @@ func (s *Service) storeItemWrite(ctx context.Context, w itemWrite) (bool, error)
 func (s *Service) applyItemWrite(ctx context.Context, tx *sql.Tx, w itemWrite, first bool) (bool, error) {
 	switch {
 	case w.unlist:
-		return true, s.newWriter(tx).unlistActed(ctx, w.id)
+		return true, s.newWriter(tx).unlistActed(ctx, w.id, w.state)
 	case w.files != nil:
 		return false, upsertFiles(ctx, s.q.WithTx(tx), *w.files)
 	}

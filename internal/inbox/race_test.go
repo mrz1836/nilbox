@@ -146,6 +146,14 @@ func (c *raceClient) FetchAvatar(context.Context, string) (*github.Avatar, error
 	return nil, errNotAsked
 }
 
+func (c *raceClient) FetchWatches(context.Context, github.Token, []github.WatchSearch) (*github.Watches, error) {
+	return nil, errNotAsked
+}
+
+func (c *raceClient) FetchChecks(context.Context, github.Token, []string) (*github.ChecksRead, error) {
+	return nil, errNotAsked
+}
+
 func (c *raceClient) FetchViewer(context.Context, github.Token) (string, error) {
 	return "", errNotAsked
 }

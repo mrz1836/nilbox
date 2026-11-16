@@ -96,6 +96,10 @@ func (w *writer) saveItems(ctx context.Context, inbox *github.Inbox) error {
 		}
 	}
 
+	if err := w.q.ClearArrivalStamps(ctx, w.accountID); err != nil {
+		return fmt.Errorf("forget when items left their lists arrived: %w", err)
+	}
+
 	if err := w.pruneFiles(ctx); err != nil {
 		return err
 	}
@@ -145,6 +149,15 @@ func (w *writer) repoID(ctx context.Context, it github.Item) (int64, error) {
 	return id, nil
 }
 
+// stampIf returns now when on is set, and nil otherwise.
+func stampIf(on bool, now time.Time) *time.Time {
+	if !on {
+		return nil
+	}
+
+	return new(now)
+}
+
 // timeOrNil stores a zero time as NULL.
 func timeOrNil(t time.Time) *time.Time {
 	if t.IsZero() {
@@ -165,7 +178,8 @@ func (w *writer) saveItem(ctx context.Context, repoID int64, e *entry) error {
 		AuthorAssociation: it.AuthorAssociation, IsCrossRepository: it.IsCrossRepository, IsDraft: it.IsDraft,
 		HeadRef: it.HeadRef, ItemCreatedAt: it.CreatedAt.UTC(), ItemUpdatedAt: it.UpdatedAt.UTC(),
 		ReasonReviewRequested: e.reviewRequested, ReasonAuthored: e.authored, ReasonAssigned: e.assigned,
-		FetchedAt: w.now,
+		FetchedAt: w.now, State: it.State,
+		ReviewRequestedAt: stampIf(e.reviewRequested, w.now), AssignedAt: stampIf(e.assigned, w.now),
 	})
 	if err != nil {
 		return fmt.Errorf("save the item %s: %w", it.Ref(), err)
@@ -286,7 +300,9 @@ func detailsRow(itemID int64, d github.ItemDetails, now time.Time) (queries.Upse
 		ChangedFiles:       int64(d.ChangedFiles),
 		Commits:            int64(d.Commits),
 		HeadOID:            d.HeadOID,
+		BaseRef:            d.BaseRef,
 		Mergeable:          d.Mergeable,
+		MergeState:         d.MergeState,
 		ChecksState:        d.Checks.State,
 		ChecksPassed:       int64(d.Checks.Passed),
 		ChecksFailed:       int64(d.Checks.Failed),

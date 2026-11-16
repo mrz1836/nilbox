@@ -53,11 +53,12 @@ const pruneFiles = `-- name: PruneFiles :exec
 DELETE FROM item_files WHERE item_id IN (
     SELECT id FROM items
     WHERE account_id = ? AND reason_review_requested = 0 AND reason_authored = 0 AND reason_assigned = 0
+      AND NOT EXISTS (SELECT 1 FROM item_watches w WHERE w.item_id = items.id)
 )
 `
 
 // PruneFiles removes the file checks of the items of the account with account_id that
-// left every list.
+// left every list, but those a routine's search watches, which keep theirs.
 func (q *Queries) PruneFiles(ctx context.Context, accountID int64) error {
 	_, err := q.db.ExecContext(ctx, pruneFiles, accountID)
 	return err

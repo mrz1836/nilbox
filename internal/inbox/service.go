@@ -148,6 +148,11 @@ type Client interface {
 	FetchRateLimits(ctx context.Context, tok github.Token) (*github.RateLimits, error)
 	FetchAvatar(ctx context.Context, url string) (*github.Avatar, error)
 
+	// FetchWatches and FetchChecks serve the routines: their searches (watches.go) and the
+	// check names of the pull requests they act on (checks.go).
+	FetchWatches(ctx context.Context, tok github.Token, searches []github.WatchSearch) (*github.Watches, error)
+	FetchChecks(ctx context.Context, tok github.Token, ids []string) (*github.ChecksRead, error)
+
 	// FetchViewer, RemoveAssignee, and RemoveReviewRequest serve the edits (edits.go).
 	FetchViewer(ctx context.Context, tok github.Token) (string, error)
 	RemoveAssignee(ctx context.Context, tok github.Token, ref item.Ref, login string) (*github.Edited, error)
@@ -185,6 +190,19 @@ type Config struct {
 	// Usage is told what each refresh it stores cost, and how many items it tracked.
 	Usage RefreshUsage
 
+	// Watches gives the routines' searches, which each whole refresh reads beside the
+	// inbox's own lists (see watches.go), while RunWatchPasses runs. Nil reads none.
+	Watches WatchSource
+
+	// Changed is told which items the inbox stored outside a whole refresh: the watch pass,
+	// a round of the checks follower, and an item's own read, its file check, or an action
+	// on it. It is told outside every lock and must return promptly. Nil tells no one.
+	Changed func(ids []int64)
+
+	// Keep names the stored items something outside the inbox refers to, which the prune
+	// of old items keeps (see pruneOld). Nil keeps none beyond the inbox's own.
+	Keep ItemKeeper
+
 	// Logger receives what a call cannot report as its error, at Debug: an avatar that
 	// could not be downloaded, and a snapshot that could not be read after a write.
 	// Without it they are not logged.
@@ -205,6 +223,15 @@ type Service struct {
 	outcomes OutcomeSink
 	usage    RefreshUsage
 	logger   *slog.Logger
+
+	// watchSource gives the routines' searches, changedSink hears the items stored outside
+	// a whole refresh, and keep names the items something else refers to.
+	watchSource WatchSource
+	changedSink func(ids []int64)
+	keep        ItemKeeper
+
+	// passes holds the watch pass worker's state (see watches.go).
+	passes watchPasses
 
 	// refreshes runs one whole refresh at a time; a refresh asked for while one runs
 	// joins it.
@@ -234,7 +261,8 @@ func NewService(cfg Config) *Service {
 	return &Service{
 		db: cfg.Pool, q: queries.New(cfg.Pool), prefs: prefs.New(cfg.Pool, c), tokens: cfg.Tokens,
 		client: cfg.Client, clock: c, events: event.Or(cfg.Events), arrivals: cfg.Arrivals, outcomes: cfg.Outcomes,
-		usage: cfg.Usage, logger: logging.Or(cfg.Logger),
+		usage: cfg.Usage, logger: logging.Or(cfg.Logger), watchSource: cfg.Watches, changedSink: cfg.Changed,
+		keep: cfg.Keep, passes: watchPasses{jobs: make(chan *watchJob, 1)},
 	}
 }
 
@@ -260,8 +288,15 @@ func (s *Service) Refresh(ctx context.Context) (Snapshot, error) {
 	return snap, err
 }
 
-// runRefresh is one whole refresh, run once for every caller that asked meanwhile.
+// runRefresh is one whole refresh, run once for every caller that asked meanwhile. The
+// routines' searches go out beside it, on the watch pass's own goroutine, which stores
+// what they watch once this has stored the inbox and told the window (see watches.go).
 func (s *Service) runRefresh(ctx context.Context) (Snapshot, error) {
+	ctx = github.WithPurpose(ctx, github.PurposeInbox)
+
+	pass := s.startWatchPass(ctx)
+	defer pass.release()
+
 	told, err := s.refresh(ctx)
 	if err != nil {
 		err = fmt.Errorf("refresh the inbox: %w", err)
@@ -337,6 +372,12 @@ func (s *Service) refresh(ctx context.Context) (refreshTold, error) {
 		return s.fetchAll(ctx, tok, listed, last)
 	})
 	if err != nil {
+		return refreshTold{}, err
+	}
+
+	// What else refers to an item is read before the store's transaction, which a read of
+	// the pool would wait on.
+	if got.kept, err = s.keptItems(ctx); err != nil {
 		return refreshTold{}, err
 	}
 
@@ -455,6 +496,9 @@ type refreshed struct {
 	// avatar is the viewer's avatar when it was downloaded, or nil when the one cached is
 	// current or the download failed.
 	avatar *downloadedAvatar
+
+	// kept are the items something outside the inbox refers to, which the prune keeps.
+	kept []int64
 }
 
 // downloadedAvatar is the viewer's avatar as a data URL, and where it came from.
@@ -645,11 +689,7 @@ func (w *writer) saveRefresh(ctx context.Context, got refreshed) (refreshTold, e
 		return refreshTold{}, err
 	}
 
-	if err = w.saveRepos(ctx, got.archived); err != nil {
-		return refreshTold{}, err
-	}
-
-	if err = w.saveItems(ctx, inbox); err != nil {
+	if err = w.saveLists(ctx, got); err != nil {
 		return refreshTold{}, err
 	}
 

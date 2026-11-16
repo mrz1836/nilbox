@@ -40,26 +40,32 @@ const (
 
 // refreshRunning reads again, in one request, the listed pull requests whose checks were
 // still running when the inbox last read them, neither dismissed nor snoozed, nor of a
-// repository or org the user muted, and stores each as RefreshItem would, so a card shows
-// its checks end about as soon as GitHub's own page does, and one GitHub no longer asks the
-// user to review leaves Review requested, telling no outcome. A pull request whose checks end,
-// pass or fail, is left alone from then on. It asks GitHub nothing while none runs, and
-// leaves alone one read in the last little while. A pull request GitHub doesn't answer for
-// is left as it was, for the next whole refresh. Once it has let go of every pull request,
-// it tells the outcome sink of each merge or close an answer it stored shows.
+// repository or org the user muted, and the ones a routine's search follows, muted or not,
+// and stores each as RefreshItem would, so a card shows its checks end about as soon as
+// GitHub's own page does, a routine sees them settle within about a round, and one GitHub
+// no longer asks the user to review leaves Review requested, telling no outcome. A pull
+// request whose checks end, pass or fail, is left alone from then on. It asks GitHub
+// nothing while none runs, and leaves alone one read in the last little while. A pull
+// request GitHub doesn't answer for is left as it was, for the next whole refresh. Once it
+// has let go of every pull request, it tells the outcome sink of each merge or close an
+// answer it stored shows, and the Changed seam the items it stored.
 func (s *Service) refreshRunning(ctx context.Context) error {
-	told, err := s.followRound(ctx)
+	ctx = github.WithPurpose(ctx, github.PurposeFollower)
+
+	told, stored, err := s.followRound(ctx)
 	s.settle(ctx, told)
+	s.tellChanged(stored)
 
 	return err
 }
 
 // followRound is refreshRunning under the pull requests' locks. It returns what to tell
-// once they are let go, the stores made before a failure included.
-func (s *Service) followRound(ctx context.Context) ([]Outcome, error) {
+// once they are let go, and the items it stored, the stores made before a failure
+// included.
+func (s *Service) followRound(ctx context.Context) ([]Outcome, []int64, error) {
 	stored, err := s.prefs.GetMany(ctx, append([]string{prefViewer}, reporules.Keys()...)...)
 	if err != nil {
-		return nil, fmt.Errorf("read the pull requests whose checks run: %w", err)
+		return nil, nil, fmt.Errorf("read the pull requests whose checks run: %w", err)
 	}
 
 	now := s.clock.Now().UTC()
@@ -69,13 +75,13 @@ func (s *Service) followRound(ctx context.Context) ([]Outcome, error) {
 		Login: login, ReadBefore: now.Add(-followFresh), Now: &now,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("read the pull requests whose checks run: %w", err)
+		return nil, nil, fmt.Errorf("read the pull requests whose checks run: %w", err)
 	}
 
 	running := followable(listed, reporules.Decode(stored))
 
 	if len(running) == 0 {
-		return nil, nil
+		return nil, nil, nil
 	}
 
 	// Each pull request waits for other work on it, as RefreshItem does, in one order, so
@@ -84,30 +90,32 @@ func (s *Service) followRound(ctx context.Context) ([]Outcome, error) {
 
 	unlock, err := s.lockAll(ctx, running)
 	if err != nil {
-		return nil, fmt.Errorf("follow the running checks: %w", err)
+		return nil, nil, fmt.Errorf("follow the running checks: %w", err)
 	}
 
 	defer unlock()
 
 	told, wrote, err := s.followRunning(ctx, login, running)
 	if err != nil {
-		return told, fmt.Errorf("follow the running checks: %w", err)
+		return told, wrote, fmt.Errorf("follow the running checks: %w", err)
 	}
 
-	if wrote {
+	if len(wrote) > 0 {
 		_, err = s.changed(ctx)
 	}
 
-	return told, err
+	return told, wrote, err
 }
 
-// followable returns the first followMax of listed, in its order, leaving out the pull
-// requests of the repositories and orgs rules mutes.
+// followable returns the first followMax of listed, in its order, leaving out the listed
+// pull requests of the repositories and orgs rules mutes. A pull request a routine's
+// search follows is kept muted or not, since a routine watches a muted repository on
+// purpose.
 func followable(listed []queries.ListRunningChecksRow, rules reporules.Rules) []queries.ListRunningChecksRow {
 	running := make([]queries.ListRunningChecksRow, 0, min(len(listed), followMax))
 
 	for _, r := range listed {
-		if rules.IsMuted(repo.Name{Owner: r.RepoOwner, Repo: r.RepoName}) {
+		if r.Listed && !r.Followed && rules.IsMuted(repo.Name{Owner: r.RepoOwner, Repo: r.RepoName}) {
 			continue
 		}
 
@@ -150,14 +158,14 @@ type followed struct {
 }
 
 // followRunning asks GitHub about running, the pull requests of the account login, and
-// stores each pull request it answered for. It reports whether it stored any, and what the
+// stores each pull request it answered for. It returns the ones it stored, and what the
 // answers it stored tell (see seenClosed), those stored before a failure included.
 func (s *Service) followRunning(
 	ctx context.Context, login string, running []queries.ListRunningChecksRow,
-) ([]Outcome, bool, error) {
+) ([]Outcome, []int64, error) {
 	last, err := s.projectAccess(ctx)
 	if err != nil {
-		return nil, false, err
+		return nil, nil, err
 	}
 
 	ids := make([]string, 0, len(running))
@@ -173,7 +181,7 @@ func (s *Service) followRunning(
 		return s.fetchRunning(ctx, tok, running, ids, readOptions(last))
 	})
 	if err != nil {
-		return nil, false, err
+		return nil, nil, err
 	}
 
 	return s.storeFollowed(ctx, login, running, got, seq)
@@ -183,10 +191,11 @@ func (s *Service) followRunning(
 // GitHub answered for, as followRunning says.
 func (s *Service) storeFollowed(
 	ctx context.Context, login string, running []queries.ListRunningChecksRow, got followed, seq uint64,
-) ([]Outcome, bool, error) {
-	var told []Outcome
-
-	wrote := false
+) ([]Outcome, []int64, error) {
+	var (
+		told  []Outcome
+		wrote []int64
+	)
 
 	for _, r := range running {
 		update, ok := got.updates.Items[r.NodeID]
@@ -206,7 +215,7 @@ func (s *Service) storeFollowed(
 		if stored {
 			ref := refOf(r.RepoOwner, r.RepoName, r.Number, item.KindPR)
 			told = append(told, seenClosed(w, login, ref, s.now())...)
-			wrote = true
+			wrote = append(wrote, r.ID)
 		}
 	}
 
