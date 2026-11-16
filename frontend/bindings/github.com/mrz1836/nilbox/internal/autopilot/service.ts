@@ -33,14 +33,15 @@ export function Activity(before: number, limit: number): $CancellablePromise<$mo
 
 /**
  * ActivityFrom returns Activity's matches recorded from the match from on (every one for
- * 0), newest first, by local day, with the items the routines leave alone: the pages the
- * window has loaded down to from, read again in one call, so the pages it read past them
- * keep their place and nothing falls between. It holds at most limit (100 when 0, never
- * more than 500); when more than that were recorded from from on, More reports the rest,
- * which Next asks for as Activity's does, and the window starts again from this page.
+ * 0) and before the match before (up to the newest for 0), newest first, by local day: a
+ * stretch of the pages the window has loaded, read again in one call, so the pages it read
+ * past them keep their place and nothing falls between. It holds at most limit (100 when 0,
+ * never more than 500); when more than that were recorded in the stretch, More reports the
+ * rest, which Next asks for as Activity's does, as the stretch's own before. Only a stretch
+ * up to the newest says which items the routines leave alone, as Activity's first page does.
  */
-export function ActivityFrom($from: number, limit: number): $CancellablePromise<$models.ActivityPage> {
-    return $Call.ByID(1188462222, $from, limit);
+export function ActivityFrom($from: number, before: number, limit: number): $CancellablePromise<$models.ActivityPage> {
+    return $Call.ByID(1188462222, $from, before, limit);
 }
 
 /**
@@ -158,8 +159,8 @@ export function LetActAgain(id: number, itemID: number): $CancellablePromise<voi
 /**
  * List returns every routine not deleted, in the user's order, each marked when it
  * belongs to another account than the one signed in, or when it is broken, and with its
- * figures (what it did today, what waits, when it last ran), from two reads of the ledger.
- * A broken routine is listed with why, beside the others, and never rewritten.
+ * figures (what it did today, what waits, when it last ran), from three reads of the
+ * ledger. A broken routine is listed with why, beside the others, and never rewritten.
  */
 export function List(): $CancellablePromise<$models.Routine[] | null> {
     return $Call.ByID(970115387);

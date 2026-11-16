@@ -819,11 +819,12 @@ changing the package, and keep the section and its summary in step.
   `Skip`, `RunNow`, `TryAgain`, `LetActAgain`, `Undo`, `ClearHistory`) are commands it
   applies; `StopRun` and `StopAll` go straight to the runner; `Activity` (with each day's
   grouped lines of local steps, "Snoozed 6", and the items left alone), `ActivityFrom`
-  (the pages the window has loaded, read again from a match on, in one call), `ItemHistory`,
+  (a stretch of the pages the window has loaded, read again by its bounds), `ItemHistory`,
   `LatestMatches` (each item's newest match that did something, for its row's chip, at most
   500 ids a call, which the window sends in chunks), `RoutineNames` (every routine's name,
   the deleted ones' too, for the history and marks that name them), `List`'s `Figures` (each
-  routine's counts for its status line and when it last ran, from two reads of the ledger),
+  routine's counts for its status line and when it last ran, by its match that closed last,
+  from three reads of the ledger),
   `Explain`, `Engine`, `Matching`, and `Glance` (the routines, what waits for the user, the
   agents working: the menu bar's Autopilot group, the window's close, and the Autopilot tab's
   count and dots) read. `internal/autopilot/sim` (test

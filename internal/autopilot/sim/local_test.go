@@ -575,7 +575,7 @@ func TestActivityFromReadsAgainWhatThePagesHoldUpToTheNewest(t *testing.T) {
 		s.World.Add(botPR(5))
 		s.Refresh()
 
-		again, err := s.Service.ActivityFrom(ctx, first.Next, 0)
+		again, err := s.Service.ActivityFrom(ctx, first.Next, 0, 0)
 		require.NoError(t, err)
 		assert.False(t, again.More)
 		assert.NotNil(t, again.LeftAlone)
@@ -586,11 +586,57 @@ func TestActivityFromReadsAgainWhatThePagesHoldUpToTheNewest(t *testing.T) {
 		assert.Len(t, ids(again), 3)
 
 		// Past its limit it says so, and where the rest starts.
-		capped, err := s.Service.ActivityFrom(ctx, 0, 2)
+		capped, err := s.Service.ActivityFrom(ctx, 0, 0, 2)
 		require.NoError(t, err)
 		assert.True(t, capped.More)
 		assert.Equal(t, ids(all)[1], capped.Next)
 		assert.Equal(t, ids(all)[:2], ids(capped))
+
+		// Bounded above, it reads the stretch alone, the older page again here, and the rest
+		// of a stretch past its limit by its own before, so slices meet with nothing between.
+		stretch, err := s.Service.ActivityFrom(ctx, 0, first.Next, 0)
+		require.NoError(t, err)
+		assert.Equal(t, ids(older), ids(stretch))
+		assert.False(t, stretch.More)
+		assert.Empty(t, stretch.LeftAlone, "only a stretch up to the newest says what the routines leave alone")
+
+		rest, err := s.Service.ActivityFrom(ctx, 0, capped.Next, 2)
+		require.NoError(t, err)
+		assert.Equal(t, ids(all)[2:4], ids(rest))
+	})
+}
+
+func TestARoutinesLastRunIsWhenItRanNotWhenItWasRecorded(t *testing.T) {
+	t.Parallel()
+
+	synctest.Test(t, func(t *testing.T) {
+		s, r := snoozing(t, autopilotprefs.ModeAuto)
+
+		// Under Pause, a match is recorded and queued; it runs five hours on, once Pause ends.
+		s.Change(func(c *autopilotprefs.Config) { c.Paused = true })
+		s.World.Add(botPR(1))
+		s.Refresh()
+
+		queued := s.Matches()
+		require.Len(t, queued, 1)
+		require.Equal(t, autopilot.StateQueued, queued[0].State)
+		assert.Nil(t, figuresOf(t, s, r.ID).LastAt, "nothing ran yet")
+
+		s.Sleep(5 * time.Hour)
+		s.Change(func(c *autopilotprefs.Config) { c.Paused = false })
+		s.Refresh()
+
+		ran := s.Matches()
+		require.Len(t, ran, 1)
+		require.Equal(t, autopilot.StateDone, ran[0].State)
+		require.NotNil(t, ran[0].ClosedAt)
+		require.GreaterOrEqual(t, ran[0].ClosedAt.Sub(ran[0].CreatedAt), 5*time.Hour)
+
+		got := figuresOf(t, s, r.ID)
+		require.NotNil(t, got.LastAt)
+		assert.True(t, got.LastAt.Equal(*ran[0].ClosedAt), "it ran when it closed, %v, not when it was recorded, %v: got %v",
+			ran[0].ClosedAt, ran[0].CreatedAt, got.LastAt)
+		assert.False(t, got.LastDryRun)
 	})
 }
 

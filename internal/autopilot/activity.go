@@ -269,16 +269,22 @@ func (s *Service) Activity(ctx context.Context, before int64, limit int) (Activi
 }
 
 // ActivityFrom returns Activity's matches recorded from the match from on (every one for
-// 0), newest first, by local day, with the items the routines leave alone: the pages the
-// window has loaded down to from, read again in one call, so the pages it read past them
-// keep their place and nothing falls between. It holds at most limit (100 when 0, never
-// more than 500); when more than that were recorded from from on, More reports the rest,
-// which Next asks for as Activity's does, and the window starts again from this page.
-func (s *Service) ActivityFrom(ctx context.Context, from int64, limit int) (ActivityPage, error) {
+// 0) and before the match before (up to the newest for 0), newest first, by local day: a
+// stretch of the pages the window has loaded, read again in one call, so the pages it read
+// past them keep their place and nothing falls between. It holds at most limit (100 when 0,
+// never more than 500); when more than that were recorded in the stretch, More reports the
+// rest, which Next asks for as Activity's does, as the stretch's own before. Only a stretch
+// up to the newest says which items the routines leave alone, as Activity's first page does.
+func (s *Service) ActivityFrom(ctx context.Context, from, before int64, limit int) (ActivityPage, error) {
 	out := ActivityPage{Days: []ActivityDay{}, LeftAlone: []LeftAlone{}}
 
 	if s.store.q == nil {
 		return out, nil
+	}
+
+	newest := before <= 0
+	if newest {
+		before = math.MaxInt64
 	}
 
 	if limit <= 0 {
@@ -287,12 +293,14 @@ func (s *Service) ActivityFrom(ctx context.Context, from int64, limit int) (Acti
 
 	limit = min(limit, maxActivity)
 
-	rows, err := s.ledger().q.ListMatchesFrom(ctx, queries.ListMatchesFromParams{FirstID: max(from, 0), RowLimit: int64(limit + 1)})
+	rows, err := s.ledger().q.ListMatchesFrom(ctx, queries.ListMatchesFromParams{
+		FirstID: max(from, 0), BeforeID: before, RowLimit: int64(limit + 1),
+	})
 	if err != nil {
 		return out, uierr.New("Autopilot's history couldn't be read.", err)
 	}
 
-	return s.activityPage(ctx, rows, limit, true)
+	return s.activityPage(ctx, rows, limit, newest)
 }
 
 // activityPage makes a page of Activity of rows, newest first, read one past limit to

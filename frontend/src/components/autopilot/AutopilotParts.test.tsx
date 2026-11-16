@@ -178,18 +178,28 @@ function heldAnswer() {
 }
 
 // fakeLedger is a ledger of count matches, IDs count down to 1, which Activity reads as the
-// backend does: those before a match (all for 0), or from a match on, newest first, at
-// most limit, with more and the last one's ID when there are. grow records n newer
-// matches.
+// backend does: those before a match (all for 0), or from a match on and before another
+// (up to the newest for 0), newest first, at most limit, with more and the last one's ID
+// when there are. grow records n newer matches; clear clears the history, and records n
+// matches after, whose IDs start again from 1, as SQLite hands them out again, at a later
+// time.
 function fakeLedger(count: number) {
   let top = count
+  let cleared = false
 
   const pageOf = (ids: number[], limit: number) => {
     const page = ids.slice(0, limit)
     const more = ids.length > limit
+    const createdAt = cleared ? '2026-06-15T11:59:00Z' : '2026-06-15T11:00:00Z'
 
     return activityPage({
-      days: [{ date: '2026-06-15', matches: page.map((id) => autopilotMatch({ id, effects: [] })), groups: [] }],
+      days: [
+        {
+          date: '2026-06-15',
+          matches: page.map((id) => autopilotMatch({ id, createdAt, effects: [] })),
+          groups: [],
+        },
+      ],
       more,
       next: more ? (page.at(-1) ?? 0) : 0,
       leftAlone: [],
@@ -199,9 +209,9 @@ function fakeLedger(count: number) {
 
   const page = (before: number, limit: number) =>
     pageOf(before === 0 ? all() : all().filter((id) => id < before), limit)
-  const pageFrom = (first: number, limit: number) =>
+  const pageFrom = (first: number, before: number, limit: number) =>
     pageOf(
-      all().filter((id) => id >= first),
+      all().filter((id) => id >= first && (before === 0 || id < before)),
       limit,
     )
 
@@ -209,9 +219,13 @@ function fakeLedger(count: number) {
     page,
     pageFrom,
     read: (before: number, limit: number) => answer(page(before, limit)),
-    from: (first: number, limit: number) => answer(pageFrom(first, limit)),
+    from: (first: number, before: number, limit: number) => answer(pageFrom(first, before, limit)),
     grow: (n: number) => {
       top += n
+    },
+    clear: (n: number) => {
+      cleared = true
+      top = n
     },
   }
 }
@@ -246,6 +260,13 @@ async function scrolled(ledger: ReturnType<typeof fakeLedger>, pages: number) {
   return view
 }
 
+// settled waits for the reads under way to land, the calls asked for so far answered.
+async function settled() {
+  await act(async () => {
+    await Promise.resolve()
+  })
+}
+
 describe('useAutopilotActivity', () => {
   it('reads the newest again as Autopilot changes, keeping every page past them in its place', async () => {
     const ledger = fakeLedger(700)
@@ -254,7 +275,7 @@ describe('useAutopilotActivity', () => {
     expect(platform.autopilotActivity).toHaveBeenNthCalledWith(1, 0, 100)
     expect(loadedIds(result.current.days)).toEqual(countdown(700, 101))
 
-    // 150 newer matches: only the first page is read again, from where it ended, so it
+    // 150 newer matches: only the first page is read again, from where it began, so it
     // meets the pages past it with nothing between.
     ledger.grow(150)
     act(() => {
@@ -265,10 +286,140 @@ describe('useAutopilotActivity', () => {
       expect(loadedIds(result.current.days)[0]).toBe(850)
     })
 
-    expect(platform.autopilotActivityFrom).toHaveBeenCalledExactlyOnceWith(601, 500)
+    expect(platform.autopilotActivityFrom).toHaveBeenCalledExactlyOnceWith(601, 0, 500)
     expect(loadedIds(result.current.days)).toEqual(countdown(850, 101))
     expect(result.current.more).toBe(true)
     expect(platform.autopilotActivity).toHaveBeenCalledTimes(6)
+  })
+
+  it('keeps every page after a read of every page, as Autopilot changes again', async () => {
+    const ledger = fakeLedger(300)
+    const { result } = await scrolled(ledger, 1)
+
+    // A line's own action reads every page again, each by its own bounds.
+    act(() => {
+      result.current.reload()
+    })
+    await waitFor(() => {
+      expect(platform.autopilotActivityFrom).toHaveBeenCalledTimes(2)
+    })
+    expect(platform.autopilotActivityFrom).toHaveBeenNthCalledWith(1, 201, 0, 500)
+    expect(platform.autopilotActivityFrom).toHaveBeenNthCalledWith(2, 101, 201, 500)
+
+    // The engine's next cycle reads the first page again, by its bounds, never as a fresh
+    // first page, which would drop the page past it.
+    ledger.grow(5)
+    act(() => {
+      emit('autopilot:updated')
+    })
+
+    await waitFor(() => {
+      expect(loadedIds(result.current.days)).toEqual(countdown(305, 101))
+    })
+    expect(platform.autopilotActivityFrom).toHaveBeenLastCalledWith(201, 0, 500)
+    expect(platform.autopilotActivity).toHaveBeenCalledTimes(2)
+    expect(result.current.more).toBe(true)
+  })
+
+  it('reads every page again however many are loaded, past one read’s limit', async () => {
+    const ledger = fakeLedger(700)
+    const { result } = await scrolled(ledger, 5)
+
+    act(() => {
+      result.current.reload()
+    })
+
+    await waitFor(() => {
+      expect(platform.autopilotActivityFrom).toHaveBeenCalledTimes(6)
+    })
+    await settled()
+
+    expect(platform.autopilotActivityFrom.mock.calls).toEqual([
+      [601, 0, 500],
+      [501, 601, 500],
+      [401, 501, 500],
+      [301, 401, 500],
+      [201, 301, 500],
+      [101, 201, 500],
+    ])
+    expect(loadedIds(result.current.days)).toEqual(countdown(700, 101))
+    expect(result.current.more).toBe(true)
+  })
+
+  it('reads the newest again in slices once more was recorded than one read holds, keeping every page', async () => {
+    const ledger = fakeLedger(300)
+    const { result } = await scrolled(ledger, 2)
+
+    expect(result.current.more).toBe(false)
+
+    // 600 newer: the newest page becomes the first again, and the rest is read in slices
+    // down to where the first page began, so nothing loaded goes.
+    ledger.grow(600)
+    act(() => {
+      emit('autopilot:updated')
+    })
+
+    await waitFor(() => {
+      expect(loadedIds(result.current.days)).toEqual(countdown(900, 1))
+    })
+    expect(platform.autopilotActivityFrom.mock.calls).toEqual([
+      [201, 0, 500],
+      [801, 0, 500],
+      [201, 801, 500],
+      [201, 301, 500],
+    ])
+    expect(result.current.more).toBe(false)
+
+    // The next change reads that page alone again, a page and what came since.
+    ledger.grow(1)
+    act(() => {
+      emit('autopilot:updated')
+    })
+
+    await waitFor(() => {
+      expect(loadedIds(result.current.days)).toEqual(countdown(901, 1))
+    })
+    expect(platform.autopilotActivityFrom).toHaveBeenCalledTimes(5)
+    expect(platform.autopilotActivityFrom).toHaveBeenLastCalledWith(801, 0, 500)
+  })
+
+  it('starts from scratch once the history was cleared, as a change finds the first page’s first match gone', async () => {
+    const ledger = fakeLedger(300)
+    const { result } = await scrolled(ledger, 1)
+
+    // Cleared, the history starts again from ID 1, below every page loaded.
+    ledger.clear(20)
+    act(() => {
+      emit('autopilot:updated')
+    })
+
+    await waitFor(() => {
+      expect(loadedIds(result.current.days)).toEqual(countdown(20, 1))
+    })
+    expect(platform.autopilotActivityFrom).toHaveBeenCalledExactlyOnceWith(201, 0, 500)
+    expect(platform.autopilotActivity).toHaveBeenLastCalledWith(0, 100)
+    expect(result.current.more).toBe(false)
+  })
+
+  it('starts from scratch once the match the first page begins at was recorded again since, as the tab shows', async () => {
+    const ledger = fakeLedger(300)
+    const { result, rerender } = await scrolled(ledger, 1)
+
+    // Cleared while the tab was away, the history holds a match with that ID again, made
+    // later: what is loaded is no longer what the IDs hold.
+    ledger.clear(260)
+    act(() => {
+      result.current.reload()
+    })
+
+    await waitFor(() => {
+      expect(loadedIds(result.current.days)).toEqual(countdown(260, 161))
+    })
+    rerender()
+    expect(platform.autopilotActivityFrom).toHaveBeenCalledExactlyOnceWith(201, 0, 500)
+    expect(platform.autopilotActivity).toHaveBeenLastCalledWith(0, 100)
+    expect(result.current.more).toBe(true)
+    expect(result.current.current).toBe(true)
   })
 
   it('runs one read at a time, with one more waiting, however often Autopilot changes', async () => {
@@ -287,7 +438,7 @@ describe('useAutopilotActivity', () => {
     expect(platform.autopilotActivityFrom).toHaveBeenCalledOnce()
 
     await act(async () => {
-      held.give(ledger.pageFrom(201, 500))
+      held.give(ledger.pageFrom(201, 0, 500))
       await held.call
     })
 
@@ -297,13 +448,14 @@ describe('useAutopilotActivity', () => {
     expect(loadedIds(result.current.days)).toEqual(countdown(300, 101))
   })
 
-  it('drops a read of the newest under way for a read of every page, and stops every read as it hides', async () => {
+  it('drops a read of the newest under way, and one waiting, for a read of every page, and stops every read as it hides', async () => {
     const ledger = fakeLedger(300)
     const { result, unmount } = await scrolled(ledger, 1)
     const held = heldAnswer()
 
     platform.autopilotActivityFrom.mockReturnValueOnce(held.call)
     act(() => {
+      emit('autopilot:updated')
       emit('autopilot:updated')
     })
 
@@ -312,22 +464,30 @@ describe('useAutopilotActivity', () => {
     })
 
     expect(held.call.cancel).toHaveBeenCalledOnce()
-    expect(platform.autopilotActivityFrom).toHaveBeenLastCalledWith(101, 500)
+
+    // The read of every page reads both pages, and the read of the newest that waited
+    // doesn't follow it.
+    await waitFor(() => {
+      expect(platform.autopilotActivityFrom).toHaveBeenLastCalledWith(101, 201, 500)
+    })
+    await settled()
+    await settled()
+    expect(platform.autopilotActivityFrom).toHaveBeenCalledTimes(3)
 
     // Asked again while it reads, it waits its turn, and hiding stops it.
-    const last = heldAnswer()
+    const first = heldAnswer()
 
-    platform.autopilotActivityFrom.mockReturnValueOnce(last.call)
+    platform.autopilotActivityFrom.mockReturnValueOnce(first.call)
     act(() => {
       result.current.reload()
+      result.current.reload()
     })
-    await waitFor(() => {
-      expect(platform.autopilotActivityFrom).toHaveBeenCalledTimes(3)
-    })
+    expect(platform.autopilotActivityFrom).toHaveBeenCalledTimes(4)
 
     unmount()
 
-    expect(last.call.cancel).toHaveBeenCalledOnce()
+    expect(first.call.cancel).toHaveBeenCalledOnce()
+    expect(platform.autopilotActivityFrom).toHaveBeenCalledTimes(4)
   })
 
   it('never loses a page read while the newest are read again', async () => {
@@ -351,7 +511,7 @@ describe('useAutopilotActivity', () => {
     expect(loadedIds(result.current.days)).toEqual(countdown(300, 101))
 
     // The first page's read again lands after: the page read meanwhile stays, and the
-    // newest are read again from where they end, which meets it.
+    // newest are read again from where they begin, which meets it.
     ledger.grow(10)
     await act(async () => {
       held.give(ledger.page(0, 100))
@@ -361,42 +521,47 @@ describe('useAutopilotActivity', () => {
     await waitFor(() => {
       expect(loadedIds(result.current.days)).toEqual(countdown(310, 101))
     })
-    expect(platform.autopilotActivityFrom).toHaveBeenCalledExactlyOnceWith(201, 500)
+    expect(platform.autopilotActivityFrom).toHaveBeenCalledExactlyOnceWith(201, 0, 500)
   })
 
-  it('starts again from the newest once more was recorded than one read holds', async () => {
-    const ledger = fakeLedger(300)
-    const { result } = await scrolled(ledger, 2)
+  it('says the days are current only once the read as the tab shows has landed', async () => {
+    const ledger = fakeLedger(150)
+    const held = heldAnswer()
 
-    ledger.grow(600)
-    act(() => {
-      emit('autopilot:updated')
-    })
+    platform.autopilotActivity.mockReturnValueOnce(held.call)
+    platform.autopilotActivityFrom.mockImplementation(ledger.from)
 
-    await waitFor(() => {
-      expect(loadedIds(result.current.days)).toEqual(countdown(900, 401))
-    })
-    expect(result.current.more).toBe(true)
+    const { result } = renderHook(() => useAutopilotActivity(), { wrapper: at() })
+
+    expect(result.current.current).toBe(false)
 
     await act(async () => {
-      await result.current.loadMore()
+      held.give(ledger.page(0, 100))
+      await held.call
     })
 
-    expect(platform.autopilotActivity).toHaveBeenLastCalledWith(401, 100)
+    expect(result.current.loaded).toBe(true)
+    expect(result.current.current).toBe(true)
   })
 
   it('says why an earlier page, or a read again, couldn’t be read', async () => {
-    const ledger = fakeLedger(150)
+    const ledger = fakeLedger(250)
     const { result } = await scrolled(ledger, 0)
 
     expect(result.current.more).toBe(true)
 
-    platform.autopilotActivity.mockRejectedValue(new Error('Autopilot’s history couldn’t be read.'))
+    platform.autopilotActivity.mockRejectedValueOnce(new Error('Autopilot’s history couldn’t be read.'))
     await act(async () => {
       await result.current.loadMore()
     })
 
     expect(result.current.error).toBe('Autopilot’s history couldn’t be read.')
+
+    await act(async () => {
+      await result.current.loadMore()
+    })
+
+    expect(result.current.error).toBe('')
 
     platform.autopilotActivityFrom.mockRejectedValue(new Error('The database is locked.'))
     act(() => {

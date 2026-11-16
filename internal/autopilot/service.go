@@ -15,8 +15,8 @@ import (
 
 // List returns every routine not deleted, in the user's order, each marked when it
 // belongs to another account than the one signed in, or when it is broken, and with its
-// figures (what it did today, what waits, when it last ran), from two reads of the ledger.
-// A broken routine is listed with why, beside the others, and never rewritten.
+// figures (what it did today, what waits, when it last ran), from three reads of the
+// ledger. A broken routine is listed with why, beside the others, and never rewritten.
 func (s *Service) List(ctx context.Context) ([]Routine, error) {
 	rows, err := s.store.all(ctx)
 	if err != nil {
@@ -42,7 +42,8 @@ func (s *Service) List(ctx context.Context) ([]Routine, error) {
 
 // figures reads every routine's figures from the ledger, by routine: the counts in one
 // grouped read (today's from local midnight, in the clock's own zone), then when each
-// routine's newest match that ran was recorded.
+// routine last ran: its match that ran (or would have, in Dry run) that closed last, as it
+// ran, however long it waited before.
 func (s *Service) figures(ctx context.Context) (map[int64]RoutineFigures, error) {
 	out := map[int64]RoutineFigures{}
 
@@ -59,48 +60,56 @@ func (s *Service) figures(ctx context.Context) (map[int64]RoutineFigures, error)
 		return nil, uierr.New("Autopilot's history couldn't be read.", err)
 	}
 
-	heads, err := matchHeads(ctx, l, rows)
+	for _, r := range rows {
+		out[r.RoutineID] = RoutineFigures{Today: int(r.Today), WouldRunToday: int(r.WouldRunToday), Waiting: int(r.Waiting)}
+	}
+
+	last, err := lastRuns(ctx, l)
 	if err != nil {
 		return nil, err
 	}
 
-	for _, r := range rows {
-		f := RoutineFigures{Today: int(r.Today), WouldRunToday: int(r.WouldRunToday), Waiting: int(r.Waiting)}
-
-		if h, ok := heads[r.LastID]; ok {
-			at := h.CreatedAt
-			f.LastAt, f.LastDryRun = &at, h.DryRun
-		}
-
-		out[r.RoutineID] = f
+	for routineID, h := range last {
+		f := out[routineID]
+		at := *h.ClosedAt
+		f.LastAt, f.LastDryRun = &at, h.DryRun
+		out[routineID] = f
 	}
 
 	return out, nil
 }
 
-// matchHeads reads when each routine's newest match that ran among rows was recorded, by
-// match; a routine none of whose matches ran has none.
-func matchHeads(ctx context.Context, l *ledger, rows []queries.ListRoutineFiguresRow) (map[int64]queries.ListMatchHeadsRow, error) {
+// lastRuns reads, by routine, the match that ran last of each routine with one that ran
+// (or would have, in Dry run): the one that closed last, with when that was.
+func lastRuns(ctx context.Context, l *ledger) (map[int64]queries.ListMatchHeadsRow, error) {
 	out := map[int64]queries.ListMatchHeadsRow{}
 
-	last := make([]int64, 0, len(rows))
-	for _, r := range rows {
-		if r.LastID > 0 {
-			last = append(last, r.LastID)
-		}
+	runs, err := l.q.ListRoutineLastRuns(ctx)
+	if err != nil {
+		return nil, uierr.New("Autopilot's history couldn't be read.", err)
 	}
 
-	if len(last) == 0 {
+	if len(runs) == 0 {
 		return out, nil
 	}
 
-	got, err := l.q.ListMatchHeads(ctx, last)
+	routineOf := make(map[int64]int64, len(runs))
+	ids := make([]int64, 0, len(runs))
+
+	for _, r := range runs {
+		routineOf[r.ID] = r.RoutineID
+		ids = append(ids, r.ID)
+	}
+
+	got, err := l.q.ListMatchHeads(ctx, ids)
 	if err != nil {
 		return nil, uierr.New("Autopilot's history couldn't be read.", err)
 	}
 
 	for _, h := range got {
-		out[h.ID] = h
+		if h.ClosedAt != nil {
+			out[routineOf[h.ID]] = h
+		}
 	}
 
 	return out, nil
