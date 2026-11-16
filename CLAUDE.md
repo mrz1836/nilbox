@@ -848,8 +848,8 @@ app:lint` reads.
   accepted), the keys (`ParseKey`: raw base64 or a PKIX PEM block, never a private key and
   never an Ed25519 point of small order, under which a signature could be forged, which
   `Verify` refuses too; `ParsePrivateKey` and `EncodePrivateKey`, PKCS#8), the release's asset
-  names (`AssetNames`, from `brand.Name`), and `ReleaseKey`, the public key the app pins, empty
-  until the release key is made. Stdlib crypto only, no service, no HTTP (the repoguard
+  names (`AssetNames`, from `brand.Name`), and `ReleaseKey`, the public key the app pins (a
+  new one strands every copy that pins the old). Stdlib crypto only, no service, no HTTP (the repoguard
   boundary test). `magefiles/release.go` builds and checks releases with it (`magex
   app:package`, `app:verify`), and `magefiles/keygen.go` makes the release key (`magex
   app:keygen`), so the packaging and the app agree on what a valid release is; while

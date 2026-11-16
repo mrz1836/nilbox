@@ -16,8 +16,8 @@ import (
 
 // pinnedTrustRoot is the SHA-256 of ReleaseKey as pinned, the trust root of every
 // installed copy's updates. Changing the key takes changing this too: two deliberate
-// edits, never one. It is the hash of "" while no key is pinned.
-const pinnedTrustRoot = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+// edits, never one.
+const pinnedTrustRoot = "97f117b1b57ad8b1b7809e24e9cd06df27a8fec8cfcf070cd6fa3d918d5396b9"
 
 func TestTheReleaseKeyIsPinned(t *testing.T) {
 	t.Parallel()
