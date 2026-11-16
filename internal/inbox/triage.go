@@ -15,9 +15,16 @@ import (
 	"github.com/mrz1836/nilbox/internal/trust"
 )
 
+// The user's own triage. Each path clears the routine's mark on what it changes
+// (item_local_state.set_aside_by for a dismissal, a snooze, or a restore, and pinned_by
+// for a pin), so the window never says a routine did what the user did last; one that
+// takes back what a routine did tells the outcome sink so (Outcome.Reversed), which leaves
+// that routine hands off the item (see triage_routine.go).
+
 // Dismiss hides an item from every list until it is restored, and returns the new
 // snapshot. It replaces a snooze. Nothing is written to GitHub. Once the dismissal of an
-// item that wasn't dismissed is stored, it tells the outcome sink of it.
+// item that wasn't dismissed is stored, it tells the outcome sink of it, and that it took
+// back a routine's Restore of it, when it did.
 func (s *Service) Dismiss(ctx context.Context, id int64) (Snapshot, error) {
 	now := s.now()
 
@@ -42,7 +49,7 @@ func (s *Service) Dismiss(ctx context.Context, id int64) (Snapshot, error) {
 		}
 
 		if found && was.DismissedAt == nil {
-			told = triageOutcome(OutcomeDismissed, was, now)
+			told = reversing(triageOutcome(OutcomeDismissed, was, now), restoreReversal(was, id))
 		}
 
 		return nil
@@ -68,26 +75,76 @@ func (s *Service) Dismiss(ctx context.Context, id int64) (Snapshot, error) {
 //
 // The item's activity as the last refresh read it is recorded with the snooze, so a
 // later refresh can end it early when new activity passes the user's wake rules. Nothing
-// is written to GitHub.
+// is written to GitHub. A snooze over what a routine set aside or brought back takes that
+// back, which it tells the outcome sink of (OutcomeSnoozed).
 func (s *Service) Snooze(ctx context.Context, id int64, days int) (Snapshot, error) {
 	if !snooze.ValidDays(days) {
 		return Snapshot{}, fmt.Errorf("%w: %d days; choose %d to %d", snooze.ErrInvalidDays, days, snooze.MinDays,
 			snooze.MaxDays)
 	}
 
+	now := s.now()
 	until := s.clock.Now().AddDate(0, 0, days).UTC().Truncate(time.Second)
 
-	baseline, err := activityBaseline(ctx, s.q, id)
-	if err != nil {
+	var (
+		told   []Outcome
+		stored int64
+	)
+
+	err := store.InTx(ctx, s.db, func(tx *sql.Tx) error {
+		var snoozeErr error
+
+		stored, told, snoozeErr = s.snoozeIn(ctx, s.q.WithTx(tx), id, until, now)
+
+		return snoozeErr
+	})
+
+	switch {
+	case err != nil:
 		return Snapshot{}, fmt.Errorf("snooze the item: %w", err)
+	case stored == 0:
+		return Snapshot{}, fmt.Errorf("%w (id %d)", item.ErrNotFound, id)
 	}
 
-	return s.setTriage(ctx, "snooze", id, nil, &until, baseline)
+	snap, err := s.changed(ctx)
+	s.settle(ctx, told)
+
+	return snap, err
+}
+
+// snoozeIn is Snooze's transaction, through q: it snoozes the item with id until until, at
+// now, with its activity as the baseline, and returns how many rows it changed and what it
+// tells the outcome sink: a snooze over what a routine set aside or brought back.
+func (s *Service) snoozeIn(ctx context.Context, q *queries.Queries, id int64, until, now time.Time,
+) (int64, []Outcome, error) {
+	baseline, err := activityBaseline(ctx, q, id)
+	if err != nil {
+		return 0, nil, err
+	}
+
+	was, found, err := s.triageBefore(ctx, q, id)
+	if err != nil {
+		return 0, nil, err
+	}
+
+	stored, err := q.SetTriage(ctx, queries.SetTriageParams{
+		SnoozedUntil: &until, SnoozeBaseline: baseline, UpdatedAt: now, ID: id,
+	})
+	if err != nil {
+		return 0, nil, err
+	}
+
+	if rev := snoozeReversal(was, id, now); found && rev.Routine != 0 {
+		return stored, reversing(triageOutcome(OutcomeSnoozed, was, now), rev), nil
+	}
+
+	return stored, nil, nil
 }
 
 // Restore brings a dismissed or snoozed item back to its lists, and returns the new
 // snapshot. A pinned item stays pinned. Restoring an item that is neither does nothing.
-// Once an item that was dismissed or snoozed is restored, it tells the outcome sink of it.
+// Once an item that was dismissed or snoozed is restored, it tells the outcome sink of it,
+// and that it took back a routine's dismissal or snooze of it, when it did.
 func (s *Service) Restore(ctx context.Context, id int64) (Snapshot, error) {
 	now := s.now()
 
@@ -100,7 +157,7 @@ func (s *Service) Restore(ctx context.Context, id int64) (Snapshot, error) {
 		}
 
 		if found && setAside(was, now) {
-			told = triageOutcome(OutcomeRestored, was, now)
+			told = reversing(triageOutcome(OutcomeRestored, was, now), setAsideReversal(was, id, now))
 		}
 
 		return q.Restore(ctx, queries.RestoreParams{UpdatedAt: now, ItemID: id})
@@ -117,8 +174,8 @@ func (s *Service) Restore(ctx context.Context, id int64) (Snapshot, error) {
 
 // Pin keeps an item at the top of every list it is in, above the items not pinned, the
 // most recently pinned first, and returns the new snapshot. A snoozed or dismissed item
-// stays set aside and comes back pinned. Pinning a pinned item does nothing. Nothing is
-// written to GitHub.
+// stays set aside and comes back pinned. Pinning a pinned item keeps its place, and makes
+// a routine's pin the user's. Nothing is written to GitHub.
 func (s *Service) Pin(ctx context.Context, id int64) (Snapshot, error) {
 	now := s.now()
 
@@ -129,28 +186,38 @@ func (s *Service) Pin(ctx context.Context, id int64) (Snapshot, error) {
 
 // Unpin puts a pinned item back in its place among the rest, by its last activity, and
 // returns the new snapshot. It leaves a snooze or a dismissal as it is. Unpinning an item
-// that is not pinned does nothing.
+// that is not pinned does nothing. Unpinning what a routine pinned takes it back, which it
+// tells the outcome sink of (OutcomeUnpinned).
 func (s *Service) Unpin(ctx context.Context, id int64) (Snapshot, error) {
-	return s.clearState(ctx, "unpin the item", id, func(ctx context.Context, q *queries.Queries) error {
-		return q.Unpin(ctx, queries.UnpinParams{UpdatedAt: s.now(), ItemID: id})
-	})
-}
+	now := s.now()
 
-// clearState runs unset, which clears some of the local state of the item with id, and
-// deletes the row once nothing is left in it, both in one transaction; then it says the
-// inbox changed and returns the new snapshot. what names the action in an error.
-func (s *Service) clearState(
-	ctx context.Context, what string, id int64, unset func(context.Context, *queries.Queries) error,
-) (Snapshot, error) {
-	if err := s.storeCleared(ctx, what, id, unset); err != nil {
+	var told []Outcome
+
+	err := s.storeCleared(ctx, "unpin the item", id, func(ctx context.Context, q *queries.Queries) error {
+		was, found, err := s.triageBefore(ctx, q, id)
+		if err != nil {
+			return err
+		}
+
+		if found && was.PinnedAt != nil && was.PinnedBy != nil {
+			told = reversing(triageOutcome(OutcomeUnpinned, was, now), Reversal{Routine: *was.PinnedBy, Item: id, Did: TriagePin})
+		}
+
+		return q.Unpin(ctx, queries.UnpinParams{UpdatedAt: now, ItemID: id})
+	})
+	if err != nil {
 		return Snapshot{}, err
 	}
 
-	return s.changed(ctx)
+	snap, err := s.changed(ctx)
+	s.settle(ctx, told)
+
+	return snap, err
 }
 
-// storeCleared is clearState's transaction: unset, then the row's deletion once nothing is
-// left in it.
+// storeCleared runs unset, which clears some of the local state of the item with id, then
+// deletes the row once nothing is left in it, both in one transaction. what names the
+// action in an error.
 func (s *Service) storeCleared(
 	ctx context.Context, what string, id int64, unset func(context.Context, *queries.Queries) error,
 ) error {
@@ -167,18 +234,6 @@ func (s *Service) storeCleared(
 	}
 
 	return nil
-}
-
-// setTriage stores an item's triage state, says the inbox changed, and returns the new
-// snapshot. verb names the action in an error.
-func (s *Service) setTriage(
-	ctx context.Context, verb string, id int64, dismissedAt, snoozedUntil *time.Time, baseline *string,
-) (Snapshot, error) {
-	return s.setState(ctx, verb, id, func(ctx context.Context) (int64, error) {
-		return s.q.SetTriage(ctx, queries.SetTriageParams{
-			DismissedAt: dismissedAt, SnoozedUntil: snoozedUntil, SnoozeBaseline: baseline, UpdatedAt: s.now(), ID: id,
-		})
-	})
 }
 
 // setState runs set, which records some of the local state of the item with id and

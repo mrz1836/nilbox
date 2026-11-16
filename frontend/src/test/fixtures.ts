@@ -225,6 +225,8 @@ export function item(overrides: Partial<InboxItem> = {}): InboxItem {
     snoozedUntil: '',
     wokeBy: null,
     pinnedAt: '',
+    setAsideBy: 0,
+    pinnedBy: 0,
     repoRule: '',
     assigned: false,
     reviewRequest: 'none',

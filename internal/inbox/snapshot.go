@@ -137,6 +137,13 @@ type Item struct {
 	// snooze or a dismissal.
 	PinnedAt string `json:"pinnedAt"`
 
+	// SetAsideBy is the Autopilot routine that set the item's dismissal or snooze, or last
+	// brought it back from one, and PinnedBy the routine that pinned it; 0 when the user
+	// did, or nothing did. The window says a routine did it only while the item is set
+	// aside, or pinned.
+	SetAsideBy int64 `json:"setAsideBy"`
+	PinnedBy   int64 `json:"pinnedBy"`
+
 	// RepoRule is the rule the user set for the item's repository or its org, the
 	// repository's own winning (see the reporules package): "pinned" counts the item as
 	// pinned, after the items pinned themselves, and "muted" sets it apart in its lists'
@@ -527,6 +534,8 @@ type itemRow struct {
 	SnoozedUntil *time.Time
 	WakeReasons  *string
 	PinnedAt     *time.Time
+	SetAsideBy   *int64
+	PinnedBy     *int64
 }
 
 // itemRowOf converts a ListItems row, decoding its labels, its projects, and its file
@@ -586,6 +595,7 @@ func itemRowOf(r queries.ListItemsRow) (itemRow, error) {
 		Stored: stored,
 
 		DismissedAt: r.DismissedAt, SnoozedUntil: r.SnoozedUntil, WakeReasons: r.WakeReasons, PinnedAt: r.PinnedAt,
+		SetAsideBy: r.SetAsideBy, PinnedBy: r.PinnedBy,
 	}, nil
 }
 
@@ -618,6 +628,8 @@ func (r *itemRow) item(scope fileScope, viewer string) Item {
 		SnoozedUntil:      formatOptionalTime(r.SnoozedUntil),
 		WokeBy:            decodeReasons(r.WakeReasons),
 		PinnedAt:          formatOptionalTime(r.PinnedAt),
+		SetAsideBy:        store.Deref(r.SetAsideBy),
+		PinnedBy:          store.Deref(r.PinnedBy),
 		Assigned:          r.ReasonAssigned,
 		ReviewRequest:     r.reviewRequest(viewer),
 		ReviewTeams:       textutil.NonNil(r.ReviewTeams),

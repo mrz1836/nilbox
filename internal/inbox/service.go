@@ -33,7 +33,9 @@
 // its state, and the UI sets them apart; a snooze that runs its course ends without
 // anything having to be written. Pin keeps an item at the top of its lists, the most
 // recently pinned first, until Unpin; it is stored in the same row, apart from a snooze or
-// a dismissal, so it outlasts both and Restore leaves it as it is.
+// a dismissal, so it outlasts both and Restore leaves it as it is. An Autopilot routine's
+// local steps run the same triage, marked with the routine, through Routines, never this
+// Service (see triage_routine.go).
 //
 // The inbox edits GitHub only when the user asks, one item at a time, and only to take the
 // user off it: Unassign and RemoveReviewRequest (see edits.go). Each is one REST request the

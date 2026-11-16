@@ -200,6 +200,15 @@ export interface Item {
     "pinnedAt": string;
 
     /**
+     * SetAsideBy is the Autopilot routine that set the item's dismissal or snooze, or last
+     * brought it back from one, and PinnedBy the routine that pinned it; 0 when the user
+     * did, or nothing did. The window says a routine did it only while the item is set
+     * aside, or pinned.
+     */
+    "setAsideBy": number;
+    "pinnedBy": number;
+
+    /**
      * RepoRule is the rule the user set for the item's repository or its org, the
      * repository's own winning (see the reporules package): "pinned" counts the item as
      * pinned, after the items pinned themselves, and "muted" sets it apart in its lists'

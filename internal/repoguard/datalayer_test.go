@@ -90,6 +90,7 @@ func tableOwners() map[string]string {
 		"autopilot_tries":     "autopilot",
 		"autopilot_baselines": "autopilot",
 		"autopilot_runs":      "autopilot",
+		"autopilot_effects":   "autopilot",
 	}
 }
 

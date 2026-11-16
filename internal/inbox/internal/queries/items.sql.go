@@ -486,7 +486,7 @@ SELECT
     d.fetched_at AS details_fetched_at, d.head_oid, d.review_users, d.review_teams, d.auto_merge_method,
     f.item_id AS files_item_id, f.head_oid AS files_head_oid, f.total AS files_total, f.files,
     f.complete AS files_complete, f.error AS files_error, f.checked_at AS files_checked_at,
-    ls.dismissed_at, ls.snoozed_until, ls.wake_reasons, ls.pinned_at
+    ls.dismissed_at, ls.snoozed_until, ls.wake_reasons, ls.pinned_at, ls.set_aside_by, ls.pinned_by
 FROM items i
 JOIN repos r ON r.id = i.repo_id
 LEFT JOIN item_details d ON d.item_id = i.id
@@ -553,12 +553,15 @@ type ListItemsRow struct {
 	SnoozedUntil          *time.Time
 	WakeReasons           *string
 	PinnedAt              *time.Time
+	SetAsideBy            *int64
+	PinnedBy              *int64
 }
 
 // ListItems returns every listed item of the account with account_id, with its
 // repository, its details when a refresh has read them, its last file check, and its
-// triage state: the pinned items first, the most recently pinned first, then the rest by
-// newest activity. A column of a missing details, file check, or triage row is NULL.
+// triage state with the routines that set it: the pinned items first, the most recently
+// pinned first, then the rest by newest activity. A column of a missing details, file
+// check, or triage row is NULL.
 func (q *Queries) ListItems(ctx context.Context, accountID int64) ([]ListItemsRow, error) {
 	rows, err := q.db.QueryContext(ctx, listItems, accountID)
 	if err != nil {
@@ -624,6 +627,8 @@ func (q *Queries) ListItems(ctx context.Context, accountID int64) ([]ListItemsRo
 			&i.SnoozedUntil,
 			&i.WakeReasons,
 			&i.PinnedAt,
+			&i.SetAsideBy,
+			&i.PinnedBy,
 		); err != nil {
 			return nil, err
 		}
@@ -650,7 +655,7 @@ SELECT
     d.fetched_at AS details_fetched_at, d.head_oid, d.review_users, d.review_teams, d.auto_merge_method,
     f.item_id AS files_item_id, f.head_oid AS files_head_oid, f.total AS files_total, f.files,
     f.complete AS files_complete, f.error AS files_error, f.checked_at AS files_checked_at,
-    ls.dismissed_at, ls.snoozed_until, ls.wake_reasons, ls.pinned_at
+    ls.dismissed_at, ls.snoozed_until, ls.wake_reasons, ls.pinned_at, ls.set_aside_by, ls.pinned_by
 FROM items i
 JOIN repos r ON r.id = i.repo_id
 LEFT JOIN item_details d ON d.item_id = i.id
@@ -721,6 +726,8 @@ type ListItemsByIDRow struct {
 	SnoozedUntil          *time.Time
 	WakeReasons           *string
 	PinnedAt              *time.Time
+	SetAsideBy            *int64
+	PinnedBy              *int64
 }
 
 // ListItemsByID returns the stored items of the account with account_id among ids, listed
@@ -803,6 +810,8 @@ func (q *Queries) ListItemsByID(ctx context.Context, arg ListItemsByIDParams) ([
 			&i.SnoozedUntil,
 			&i.WakeReasons,
 			&i.PinnedAt,
+			&i.SetAsideBy,
+			&i.PinnedBy,
 		); err != nil {
 			return nil, err
 		}
