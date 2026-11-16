@@ -1,7 +1,13 @@
 // Fake data for component tests: fake orgs, users, and repositories only.
 
 import { brand } from '../generated/brand'
+import catalogJSON from './autopilotCatalog.json'
 import type {
+  AutopilotCatalog,
+  AutopilotDescribed,
+  AutopilotSuggestions,
+  AutopilotTestItem,
+  AutopilotTestResult,
   Account,
   AfterMerge,
   Agent,
@@ -303,6 +309,103 @@ export function routineSpec(): AutopilotRoutine['spec'] {
     conditions: { match: 'all', of: [] },
     steps: [{ snooze: { days: 3 } }],
     limits: {},
+  }
+}
+
+// autopilotCatalog is the catalog the bound Catalog returns, as a Go test writes it from
+// the catalog itself (autopilotCatalog.json), so the builder's tests render what the app
+// does: the agent step, among others, listed but not offered yet.
+export function autopilotCatalog(): AutopilotCatalog {
+  return structuredClone(catalogJSON) as unknown as AutopilotCatalog
+}
+
+// routineSuggestions are what the stored items suggest the builder's pickers.
+export function routineSuggestions(overrides: Partial<AutopilotSuggestions> = {}): AutopilotSuggestions {
+  return {
+    authors: ['octo-reviewer'],
+    bots: ['dependabot', 'renovate'],
+    owners: ['acme-org', 'octo-user'],
+    labels: ['dependencies', 'security'],
+    checks: ['🔒 Security Scans', 'CodeQL / Analyze', 'test (go 1.26)'],
+    ...overrides,
+  }
+}
+
+// described is a draft that reads, with no problem and no warning.
+export function described(overrides: Partial<AutopilotDescribed> = {}): AutopilotDescribed {
+  return {
+    sentence:
+      'When checks pass on pull requests in Review requested, snooze it for 3 days. Once per head commit, at most 2 tries per pull request.',
+    problems: [],
+    warnings: [],
+    dryRunOnly: [],
+    ...overrides,
+  }
+}
+
+// testItem is pull request 7 of example-repo, matching, with the trace of its decision.
+export function testItem(overrides: Partial<AutopilotTestItem> = {}): AutopilotTestItem {
+  return {
+    id: 1,
+    kind: 'pr',
+    repo: 'acme-org/example-repo',
+    number: 7,
+    title: 'Bump x/net from 0.30 to 0.33',
+    url: 'https://github.com/acme-org/example-repo/pull/7',
+    match: 'yes',
+    fireKey: 'checks_passed:aaaaaaa',
+    needs: [],
+    trace: [
+      { path: 'trigger', condition: 'checks pass', result: 'yes', actual: 'every check passed, settled' },
+      {
+        path: 'conditions.of[0]',
+        condition: 'it is by Dependabot',
+        result: 'yes',
+        actual: 'dependabot',
+      },
+    ],
+    leftAlone: false,
+    record: '',
+    listed: true,
+    ...overrides,
+  }
+}
+
+// routineTest is a draft tried on its items now: one search, one match of two, three
+// points spent.
+export function routineTest(overrides: Partial<AutopilotTestResult> = {}): AutopilotTestResult {
+  return {
+    searches: [
+      {
+        query: 'is:open archived:false sort:updated-desc is:pr author:app/dependabot org:acme-org',
+        count: 2,
+        returned: 2,
+        truncated: false,
+        error: '',
+        warnings: [],
+      },
+    ],
+    items: [
+      testItem(),
+      testItem({
+        id: 2,
+        number: 46,
+        title: 'Bump zod from 3 to 4',
+        url: 'https://github.com/acme-org/example-repo/pull/46',
+        match: 'no',
+        fireKey: '',
+        trace: [{ path: 'trigger', condition: 'checks pass', result: 'no', actual: 'test (go 1.26) failed' }],
+      }),
+    ],
+    matched: 1,
+    unknown: 0,
+    watched: 2,
+    points: 3,
+    cached: false,
+    lowBudget: false,
+    estimate: { requests: 1, pointsPerRefresh: 1, pointsPerHour: 12, percent: 0.24 },
+    warnings: [],
+    ...overrides,
   }
 }
 

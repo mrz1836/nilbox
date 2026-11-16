@@ -17,12 +17,27 @@ export interface RoutinePaneProps {
   // watching is its Watching list, and activity its own lines of Activity.
   watching: ReactNode
   activity: ReactNode
+  // builder is the routine itself, edited in place, in place of its sentence; heldText
+  // says why it stays in Dry run, when it does.
+  builder?: ReactNode
+  heldText?: string | undefined
 }
 
-// RoutinePane shows one routine: its name, switch, mode, and ⋯ menu; the sentence it reads
-// as, its status line, and what is wrong with it; then what it watches now, as the inbox's
-// rows, and what it did, its own Activity.
-export function RoutinePane({ routine: r, status, busy, actions, onMode, watching, activity }: RoutinePaneProps) {
+// RoutinePane shows one routine: its name, switch, mode, and ⋯ menu; its status line; the
+// builder, the routine itself edited in place (or, without one, the sentence it reads as
+// and what is wrong with it); then what it watches now, as the inbox's rows, and what it
+// did, its own Activity.
+export function RoutinePane({
+  routine: r,
+  status,
+  busy,
+  actions,
+  onMode,
+  watching,
+  activity,
+  builder,
+  heldText = 'It has steps this version can only try in Dry run, so it stays there.',
+}: RoutinePaneProps) {
   const id = useId()
   const switchable = canSwitch(r)
   const held = r.dryRunOnly.length > 0
@@ -75,11 +90,13 @@ export function RoutinePane({ routine: r, status, busy, actions, onMode, watchin
               onChange={onMode}
             />
             <p id={`${id}-mode`} className="text-xs text-muted">
-              {held ? 'It has steps this version can only try in Dry run, so it stays there.' : modeHelp[r.mode]}
+              {held ? heldText : modeHelp[r.mode]}
             </p>
           </div>
         )}
-        {r.sentence !== '' && <p className="text-sm leading-relaxed text-text">{r.sentence}</p>}
+        {builder === undefined && r.sentence !== '' && (
+          <p className="text-sm leading-relaxed text-text">{r.sentence}</p>
+        )}
         {r.description !== '' && <p className="text-sm text-muted">{r.description}</p>}
         {r.problems.length > 0 && (
           <ul aria-label="What is wrong with it" className="flex flex-col gap-1 rounded-md border border-danger/40 p-3">
@@ -91,6 +108,7 @@ export function RoutinePane({ routine: r, status, busy, actions, onMode, watchin
           </ul>
         )}
       </header>
+      {builder}
       <section aria-labelledby={`${id}-watching`} className="flex flex-col gap-2">
         <h3 id={`${id}-watching`} className={captionClass}>
           Watching

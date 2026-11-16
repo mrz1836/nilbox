@@ -12,7 +12,9 @@ import type * as agent from '../../bindings/github.com/mrz1836/nilbox/internal/a
 import * as appinfo from '../../bindings/github.com/mrz1836/nilbox/internal/appinfo'
 import * as autopilot from '../../bindings/github.com/mrz1836/nilbox/internal/autopilot'
 import type * as autopilotcatalog from '../../bindings/github.com/mrz1836/nilbox/internal/autopilot/catalog'
+import type * as autopiloteval from '../../bindings/github.com/mrz1836/nilbox/internal/autopilot/eval'
 import type * as autopilotspec from '../../bindings/github.com/mrz1836/nilbox/internal/autopilot/spec'
+import type * as autopilotwatch from '../../bindings/github.com/mrz1836/nilbox/internal/autopilot/watch'
 import * as autopilotprefs from '../../bindings/github.com/mrz1836/nilbox/internal/autopilotprefs'
 import * as backup from '../../bindings/github.com/mrz1836/nilbox/internal/backup'
 import * as branchrules from '../../bindings/github.com/mrz1836/nilbox/internal/branchrules'
@@ -410,6 +412,46 @@ export type AutopilotCycle = NonNullLists<autopilot.Cycle>
 export type AutopilotConfig = NonNullLists<autopilotprefs.Config>
 export type AutopilotDailyCap = NonNullLists<autopilotprefs.DailyCap>
 export type AutopilotUnit = autopilotprefs.Unit
+
+// A routine as the builder edits it, part by part, in the spec's own words; the catalog
+// it renders from (the triggers, fields, operators, steps, presets, and limits); what the
+// stored items suggest for its pickers; a draft read as it is edited (its sentence, its
+// problems, and its warnings, each where it is); and a draft tried on its items now, each
+// with the trace of its decision.
+export type AutopilotSpec = NonNullLists<autopilotspec.Spec>
+export type AutopilotSource = NonNullLists<autopilotspec.Source>
+export type AutopilotSearch = NonNullLists<autopilotwatch.Search>
+export type AutopilotSearchState = autopilotwatch.State
+export type AutopilotInvolving = autopilotwatch.Involving
+export type AutopilotTrigger = NonNullLists<autopilotspec.Trigger>
+export type AutopilotConditions = NonNullLists<autopilotspec.Conditions>
+export type AutopilotClause = NonNullLists<autopilotspec.Clause>
+export type AutopilotStep = NonNullLists<autopilotspec.Step>
+export type AutopilotAgentStep = NonNullLists<autopilotspec.AgentStep>
+export type AutopilotFence = NonNullLists<autopilotspec.Fence>
+export type AutopilotLaunchRow = NonNullLists<autopilotspec.LaunchRow>
+export type AutopilotPromptRef = NonNullLists<autopilotspec.PromptRef>
+export type AutopilotLimits = NonNullLists<autopilotspec.Limits>
+export type AutopilotProblem = NonNullLists<autopilotspec.Problem>
+export type AutopilotPart = autopilotspec.Part
+export type AutopilotCatalog = NonNullLists<autopilotcatalog.Catalog>
+export type AutopilotField = NonNullLists<autopilotcatalog.Field>
+export type AutopilotOp = NonNullLists<autopilotcatalog.OpInfo>
+export type AutopilotOpID = autopilotcatalog.Op
+export type AutopilotFieldID = autopilotcatalog.FieldID
+export type AutopilotEvent = autopilotcatalog.Event
+export type AutopilotOutcome = autopilotcatalog.Outcome
+export type AutopilotPreset = autopilotcatalog.Preset
+export type AutopilotOncePer = autopilotcatalog.OncePer
+export type AutopilotListSource = autopilotcatalog.ListSource
+export type AutopilotSuggestions = NonNullLists<autopilot.Suggestions>
+export type AutopilotDescribed = NonNullLists<autopilot.Described>
+export type AutopilotTestResult = NonNullLists<autopilot.TestResult>
+export type AutopilotTestItem = NonNullLists<autopilot.TestItem>
+export type AutopilotTestSearch = NonNullLists<autopilot.TestSearch>
+export type AutopilotEstimate = NonNullLists<autopilot.Estimate>
+export type AutopilotTrace = NonNullLists<autopiloteval.Trace>
+export type AutopilotResult = autopiloteval.Result
 
 export type Profile = NonNullLists<profiles.Profile>
 
@@ -1022,6 +1064,12 @@ export const { Status: getServiceStatus, CheckNow: checkServiceStatus } = servic
 // take the answer to (current). Undo, TryAgain, LetActAgain, and ClearHistory are commands
 // the engine applies. Every read is of the database alone, and an "autopilot:updated" event
 // follows each change, at most four times a second.
+//
+// The builder's: Catalog is everything it renders; Suggest what the stored items offer its
+// pickers; Describe a draft read as it is edited, asking GitHub nothing (its sentence, its
+// problems, its warnings); Test a draft tried on its items now, which reads its searches
+// unless a test read them within the minute; and Save stores a draft, taking the answer to
+// the question about current matches as its current.
 const autopilotService = narrow(autopilot.Service)
 
 export const {
@@ -1034,7 +1082,13 @@ export const {
   Undo: undoAutopilot,
   LetActAgain: letRoutineActAgain,
   ClearHistory: clearAutopilotHistory,
+  Catalog: getAutopilotCatalog,
+  Suggest: suggestForRoutines,
+  Describe: describeRoutine,
+  Test: testRoutine,
 } = autopilotService
+
+export const saveRoutine = autopilotService.Save as (d: AutopilotDraft) => CancellablePromise<AutopilotRoutine>
 
 // The calls whose results hold routines or matches, typed with the values the generated
 // unions leave out (AutopilotRoutine, AutopilotMatch).

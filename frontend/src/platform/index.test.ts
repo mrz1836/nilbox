@@ -32,6 +32,11 @@ const mocks = vi.hoisted(() => ({
     TryAgain: vi.fn(),
     LetActAgain: vi.fn(),
     ClearHistory: vi.fn(),
+    Catalog: vi.fn(),
+    Suggest: vi.fn(),
+    Describe: vi.fn(),
+    Test: vi.fn(),
+    Save: vi.fn(),
   },
   scripts: { Run: vi.fn(), Repos: vi.fn(), List: vi.fn() },
   update: {
@@ -364,6 +369,24 @@ describe('Autopilot’s calls', () => {
 
     await expect(platform.routineMatching(draft)).resolves.toEqual({ count: 3, pullRequests: 3, issues: 0, unknown: 0 })
     expect(mocks.autopilot.Matching).toHaveBeenCalledExactlyOnceWith(draft)
+  })
+
+  it('reach the builder’s bindings with the draft as it stands', async () => {
+    const draft = { id: 0, name: 'Tell me about security failures', spec: routineSpec() }
+    const calls: [() => PromiseLike<unknown>, ReturnType<typeof vi.fn>, unknown[]][] = [
+      [() => platform.getAutopilotCatalog(), mocks.autopilot.Catalog, []],
+      [() => platform.suggestForRoutines(), mocks.autopilot.Suggest, []],
+      [() => platform.describeRoutine(draft), mocks.autopilot.Describe, [draft]],
+      [() => platform.testRoutine(draft), mocks.autopilot.Test, [draft]],
+      [() => platform.saveRoutine(draft), mocks.autopilot.Save, [draft]],
+    ]
+
+    for (const [call, binding, args] of calls) {
+      binding.mockResolvedValue('answer')
+
+      await expect(call()).resolves.toBe('answer')
+      expect(binding).toHaveBeenCalledExactlyOnceWith(...args)
+    }
   })
 })
 

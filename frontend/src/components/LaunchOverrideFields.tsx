@@ -53,6 +53,13 @@ export interface LaunchOverrideFieldsProps {
   // modelHint is help under the model field, if any; flagsHint is help under the flags.
   modelHint?: ReactNode
   flagsHint: ReactNode
+  // only, when given, shows the fields of these agents alone, as a routine's agent step,
+  // whose model is its one agent's, does; withFlags false leaves the extra flags out.
+  only?: readonly AgentID[]
+  withFlags?: boolean
+  // background shows plan mode and the worktree as a background run has them, set by its
+  // tools and always on, in place of their choices.
+  background?: boolean
 }
 
 const triOptions: readonly SegmentOption<TriState>[] = [
@@ -110,10 +117,18 @@ export function LaunchOverrideFields({
   inherited,
   modelHint,
   flagsHint,
+  only,
+  withFlags = true,
+  background = false,
 }: LaunchOverrideFieldsProps) {
   // tabbed are the agents with a tab each; the form shows one agent's fields at a time.
-  const tabbed = agents.filter((a): a is AgentInfo & { id: AgentKey } => a.id !== '')
-  const [tab, setTab] = useState<AgentKey>(tabbed[0]?.id ?? 'claude')
+  const tabbed = agents.filter(
+    (a): a is AgentInfo & { id: AgentKey } => a.id !== '' && (only === undefined || only.includes(a.id)),
+  )
+  const [picked, setTab] = useState<AgentKey>(tabbed[0]?.id ?? 'claude')
+  // tab is the agent picked while it has a tab, else the first that has one, as when the
+  // agents shown change.
+  const tab = tabbed.some((a) => a.id === picked) ? picked : (tabbed[0]?.id ?? picked)
   const name = agentName(agents, tab)
   const modelError = agentError(errors, 'models', tab)
   const flagsError = agentError(errors, 'extraFlags', tab)
@@ -158,20 +173,22 @@ export function LaunchOverrideFields({
             ))}
           </datalist>
         </Field>
-        <Field label={`${name} extra flags`} controlId={`${id}-flags`} error={flagsError} hint={flagsHint}>
-          <input
-            id={`${id}-flags`}
-            value={values.extraFlags[tab] ?? ''}
-            placeholder="None"
-            spellCheck={false}
-            aria-invalid={flagsError !== undefined}
-            aria-describedby={describedBy(`${id}-flags`, flagsError, true)}
-            onChange={(e) => {
-              onChange({ extraFlags: { ...values.extraFlags, [tab]: e.target.value } })
-            }}
-            className={`${fieldClass} w-full font-mono text-[0.8125rem]`}
-          />
-        </Field>
+        {withFlags && (
+          <Field label={`${name} extra flags`} controlId={`${id}-flags`} error={flagsError} hint={flagsHint}>
+            <input
+              id={`${id}-flags`}
+              value={values.extraFlags[tab] ?? ''}
+              placeholder="None"
+              spellCheck={false}
+              aria-invalid={flagsError !== undefined}
+              aria-describedby={describedBy(`${id}-flags`, flagsError, true)}
+              onChange={(e) => {
+                onChange({ extraFlags: { ...values.extraFlags, [tab]: e.target.value } })
+              }}
+              className={`${fieldClass} w-full font-mono text-[0.8125rem]`}
+            />
+          </Field>
+        )}
       </div>
       <Field
         label="Effort"
@@ -197,22 +214,37 @@ export function LaunchOverrideFields({
         </select>
       </Field>
       <div />
-      <TriField
-        label="Plan mode"
-        value={values.planMode}
-        onChange={(planMode) => {
-          onChange({ planMode })
-        }}
-        inherited={inherited?.planMode}
-      />
-      <TriField
-        label="Start in a worktree"
-        value={values.worktree}
-        onChange={(worktree) => {
-          onChange({ worktree })
-        }}
-        inherited={inherited?.worktree}
-      />
+      {background ? (
+        <>
+          <p className="flex flex-col gap-1 text-xs text-muted">
+            <span className="font-medium">Plan mode</span>
+            <span className="text-text">Set by Tools</span>
+          </p>
+          <p className="flex flex-col gap-1 text-xs text-muted">
+            <span className="font-medium">Start in a worktree</span>
+            <span className="text-text">Always, in the item’s own</span>
+          </p>
+        </>
+      ) : (
+        <>
+          <TriField
+            label="Plan mode"
+            value={values.planMode}
+            onChange={(planMode) => {
+              onChange({ planMode })
+            }}
+            inherited={inherited?.planMode}
+          />
+          <TriField
+            label="Start in a worktree"
+            value={values.worktree}
+            onChange={(worktree) => {
+              onChange({ worktree })
+            }}
+            inherited={inherited?.worktree}
+          />
+        </>
+      )}
     </>
   )
 }

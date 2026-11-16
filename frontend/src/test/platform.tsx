@@ -21,6 +21,7 @@ import {
   agents,
   activityPage,
   appInfo,
+  autopilotCatalog,
   autopilotEngine,
   autopilotGlance,
   backupImported,
@@ -30,6 +31,7 @@ import {
   checkResult,
   cloneTarget,
   defaultPrompts,
+  described,
   fileCheck,
   githubSignIn,
   githubThreadList,
@@ -70,6 +72,8 @@ import {
   review,
   reviewResult,
   routine,
+  routineSuggestions,
+  routineTest,
   scriptClones,
   scriptRun,
   scriptRunChunk,
@@ -176,6 +180,13 @@ function answers(subscribe: Loose<Platform['on']>): { [K in keyof Platform]: Loo
     tryRoutineAgain: () => Promise.resolve([]),
     letRoutineActAgain: done,
     clearAutopilotHistory: () => Promise.resolve({ removed: 4, kept: 1 }),
+    // The builder renders from the real catalog, and a draft reads with no problem.
+    getAutopilotCatalog: () => Promise.resolve(autopilotCatalog()),
+    suggestForRoutines: () => Promise.resolve(routineSuggestions()),
+    describeRoutine: () => Promise.resolve(described()),
+    testRoutine: () => Promise.resolve(routineTest()),
+    saveRoutine: (d) =>
+      Promise.resolve(routine({ id: d.id === undefined || d.id === 0 ? 11 : d.id, name: d.name, spec: d.spec })),
     itemsByID: () => Promise.resolve([]),
 
     getInboxSnapshot: inbox,

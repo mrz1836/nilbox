@@ -1287,6 +1287,11 @@ export function App() {
                       onSettings={() => {
                         openSettingsAt('autopilot')
                       }}
+                      viewer={viewer}
+                      prompts={config.prompts}
+                      agents={config.agents}
+                      profiles={config.profiles}
+                      onEditPrompts={openPrompts}
                       toastSeconds={toastSeconds}
                     />
                   </div>
