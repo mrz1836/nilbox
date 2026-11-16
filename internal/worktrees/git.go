@@ -71,6 +71,16 @@ func branchUnpushedArgs(oid string) []string {
 	return []string{"rev-list", "--count", oid, "--not", "--remotes"}
 }
 
+// unpushedPastArgs counts the commits on tip (HEAD, or a commit) that neither a
+// remote-tracking branch nor fetched has: fetched is the commit the worktree was made at,
+// fetched from GitHub (worklog.Record.FetchedHead), whose commits are all on GitHub
+// though no remote-tracking branch may have them, as a pull request's head fetched onto
+// the item's own branch. A fetched commit the clone no longer has is left out
+// (--ignore-missing), so the count is then the plain one.
+func unpushedPastArgs(tip, fetched string) []string {
+	return []string{"rev-list", "--count", "--ignore-missing", tip, "--not", "--remotes", fetched}
+}
+
 // ancestorArgs succeeds when oid is of or one of its ancestors.
 func ancestorArgs(oid, of string) []string { return []string{"merge-base", "--is-ancestor", oid, of} }
 
@@ -101,8 +111,11 @@ func commitTimesCmd() []string {
 // commitTimesArgs reads the commit times of oids in one run.
 func commitTimesArgs(oids []string) []string { return append(commitTimesCmd(), oids...) }
 
+// headRef names the commit a worktree has checked out.
+const headRef = "HEAD"
+
 // unpushedArgs counts the commits on HEAD that no remote-tracking branch has.
-func unpushedArgs() []string { return []string{"rev-list", "--count", "HEAD", "--not", "--remotes"} }
+func unpushedArgs() []string { return []string{"rev-list", "--count", headRef, "--not", "--remotes"} }
 
 // revParseArgs checks that ref names a commit, printing it.
 func revParseArgs(ref string) []string { return []string{"rev-parse", "--verify", "--quiet", ref} }
@@ -546,14 +559,25 @@ func (g git) remoteHeads(ctx context.Context, dir string) []string {
 	return out
 }
 
-// unpushedOf returns how many commits on oid no remote-tracking branch has, read in the
+// unpushedOf returns how many commits on oid no remote-tracking branch has, nor fetched,
+// a commit fetched from GitHub, when it is one (see unpushedPastArgs), read in the
 // repository at dir.
-func (g git) unpushedOf(ctx context.Context, dir, oid string) (int, error) {
-	stdout, _, err := g.do(ctx, dir, branchUnpushedArgs(oid)...)
+func (g git) unpushedOf(ctx context.Context, dir, oid, fetched string) (int, error) {
+	args := branchUnpushedArgs(oid)
+	if gitread.IsCommitID(fetched) {
+		args = unpushedPastArgs(oid, fetched)
+	}
+
+	stdout, _, err := g.do(ctx, dir, args...)
 	if err != nil {
 		return 0, err
 	}
 
+	return parseCount(stdout)
+}
+
+// parseCount reads the count `git rev-list --count` prints.
+func parseCount(stdout []byte) (int, error) {
 	count, err := strconv.Atoi(strings.TrimSpace(string(stdout)))
 	if err != nil || count < 0 {
 		return 0, fmt.Errorf("%w %q", errParseCount, stdout)
@@ -580,19 +604,22 @@ func (g git) deleteBranch(ctx context.Context, dir, branch, oid string) ([]byte,
 }
 
 // unpushed returns how many commits on HEAD in the worktree at dir no remote-tracking
-// branch has.
-func (g git) unpushed(ctx context.Context, dir string) (int, []byte, error) {
-	stdout, stderr, err := g.do(ctx, dir, unpushedArgs()...)
+// branch has, nor fetched, the commit the worktree was made at from GitHub, when it is one
+// (see unpushedPastArgs).
+func (g git) unpushed(ctx context.Context, dir, fetched string) (int, []byte, error) {
+	args := unpushedArgs()
+	if gitread.IsCommitID(fetched) {
+		args = unpushedPastArgs(headRef, fetched)
+	}
+
+	stdout, stderr, err := g.do(ctx, dir, args...)
 	if err != nil {
 		return 0, stderr, err
 	}
 
-	count, err := strconv.Atoi(strings.TrimSpace(string(stdout)))
-	if err != nil || count < 0 {
-		return 0, nil, fmt.Errorf("%w %q", errParseCount, stdout)
-	}
+	count, err := parseCount(stdout)
 
-	return count, nil, nil
+	return count, nil, err
 }
 
 // prune clears the entries of worktrees whose directories are gone.
@@ -756,15 +783,30 @@ func isPathArg(arg string) bool {
 	return arg != "" && !strings.HasPrefix(arg, "-")
 }
 
-// allowedBranchLookup reports a read-only question about a commit a branch points at: how
-// many of its commits no remote-tracking branch has, and whether it is an ancestor of
-// another commit.
+// allowedBranchLookup reports a read-only question about a commit a branch points at, or a
+// worktree's HEAD: how many of its commits no remote-tracking branch has, nor the commit
+// the worktree was made at, and whether it is an ancestor of another commit.
 func allowedBranchLookup(args []string) bool {
 	switch {
-	case len(args) == 5 && args[0] == "rev-list":
-		return gitread.IsCommitID(args[2]) && joinArgs(args) == joinArgs(branchUnpushedArgs(args[2]))
+	case len(args) > 0 && args[0] == "rev-list":
+		return allowedUnpushedCount(args)
 	case len(args) == 4 && args[0] == "merge-base":
 		return gitread.IsCommitID(args[2]) && gitread.IsCommitID(args[3]) && joinArgs(args) == joinArgs(ancestorArgs(args[2], args[3]))
+	default:
+		return false
+	}
+}
+
+// allowedUnpushedCount reports a count of the commits on a branch's commit that no
+// remote-tracking branch has, or on a commit or HEAD that neither those nor the commit the
+// worktree was made at has.
+func allowedUnpushedCount(args []string) bool {
+	switch len(args) {
+	case len(branchUnpushedArgs("")):
+		return gitread.IsCommitID(args[2]) && joinArgs(args) == joinArgs(branchUnpushedArgs(args[2]))
+	case len(unpushedPastArgs("", "")):
+		return (args[3] == headRef || gitread.IsCommitID(args[3])) && gitread.IsCommitID(args[6]) &&
+			joinArgs(args) == joinArgs(unpushedPastArgs(args[3], args[6]))
 	default:
 		return false
 	}

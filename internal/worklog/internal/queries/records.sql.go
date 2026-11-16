@@ -27,7 +27,8 @@ func (q *Queries) DeleteWorktree(ctx context.Context, arg DeleteWorktreeParams) 
 }
 
 const listWorktrees = `-- name: ListWorktrees :many
-SELECT clone_path, worktree, path, branch, owner, name, kind, number, agent, created_at, last_agent_at, launches
+SELECT clone_path, worktree, path, branch, owner, name, kind, number, agent, created_at, last_agent_at, launches,
+    fetched_head
 FROM worktree_records
 ORDER BY created_at, id
 `
@@ -45,6 +46,7 @@ type ListWorktreesRow struct {
 	CreatedAt   time.Time
 	LastAgentAt *time.Time
 	Launches    int64
+	FetchedHead string
 }
 
 // ListWorktrees returns every recorded worktree, oldest first; worktrees recorded at the
@@ -71,6 +73,7 @@ func (q *Queries) ListWorktrees(ctx context.Context) ([]ListWorktreesRow, error)
 			&i.CreatedAt,
 			&i.LastAgentAt,
 			&i.Launches,
+			&i.FetchedHead,
 		); err != nil {
 			return nil, err
 		}
@@ -87,31 +90,37 @@ func (q *Queries) ListWorktrees(ctx context.Context) ([]ListWorktreesRow, error)
 
 const recordWorktree = `-- name: RecordWorktree :exec
 INSERT INTO worktree_records (
-    clone_path, worktree, path, branch, owner, name, kind, number, agent, created_at, launches
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, '', ?, 0)
+    clone_path, worktree, path, branch, owner, name, kind, number, agent, created_at, launches, fetched_head
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, '', ?, 0, ?)
 ON CONFLICT (clone_path, worktree) DO UPDATE SET
     path = excluded.path,
     branch = excluded.branch,
     owner = excluded.owner,
     name = excluded.name,
     kind = excluded.kind,
-    number = excluded.number
+    number = excluded.number,
+    fetched_head = CASE
+        WHEN excluded.fetched_head <> '' THEN excluded.fetched_head
+        ELSE worktree_records.fetched_head
+    END
 `
 
 type RecordWorktreeParams struct {
-	ClonePath string
-	Worktree  string
-	Path      string
-	Branch    string
-	Owner     string
-	Name      string
-	Kind      string
-	Number    int64
-	CreatedAt time.Time
+	ClonePath   string
+	Worktree    string
+	Path        string
+	Branch      string
+	Owner       string
+	Name        string
+	Kind        string
+	Number      int64
+	CreatedAt   time.Time
+	FetchedHead string
 }
 
 // RecordWorktree stores where a clone's worktree for an item is, and which item it is for.
-// A worktree recorded already keeps when it was made and its sessions.
+// A worktree recorded already keeps when it was made and its sessions, and the commit it
+// was made at, fetched from GitHub, unless this record names one.
 func (q *Queries) RecordWorktree(ctx context.Context, arg RecordWorktreeParams) error {
 	_, err := q.db.ExecContext(ctx, recordWorktree,
 		arg.ClonePath,
@@ -123,6 +132,7 @@ func (q *Queries) RecordWorktree(ctx context.Context, arg RecordWorktreeParams) 
 		arg.Kind,
 		arg.Number,
 		arg.CreatedAt,
+		arg.FetchedHead,
 	)
 	return err
 }

@@ -109,8 +109,26 @@ func TestGitArgvUsesDashC(t *testing.T) {
 		{
 			name:   "unpushed count runs in the worktree",
 			stdout: "0\n",
-			call:   func(g git) error { _, _, err := g.unpushed(ctx, treePath); return err },
+			call:   func(g git) error { _, _, err := g.unpushed(ctx, treePath, ""); return err },
 			want:   gitArgv(treePath, "rev-list --count HEAD --not --remotes"),
+		},
+		{
+			name:   "unpushed count past the commit fetched from GitHub",
+			stdout: "0\n",
+			call:   func(g git) error { _, _, err := g.unpushed(ctx, treePath, otherSHA); return err },
+			want:   append(gitArgv(treePath, "rev-list --count --ignore-missing HEAD --not --remotes"), otherSHA),
+		},
+		{
+			name:   "unpushed count ignores a fetched head that is no commit",
+			stdout: "0\n",
+			call:   func(g git) error { _, _, err := g.unpushed(ctx, treePath, "main"); return err },
+			want:   gitArgv(treePath, "rev-list --count HEAD --not --remotes"),
+		},
+		{
+			name:   "a branch's unpushed count past the commit fetched from GitHub",
+			stdout: "0\n",
+			call:   func(g git) error { _, err := g.unpushedOf(ctx, repoDir, headSHA, otherSHA); return err },
+			want:   append(gitArgv(repoDir, "rev-list --count --ignore-missing", headSHA, "--not --remotes"), otherSHA),
 		},
 		{
 			name: "unlock",
@@ -170,6 +188,12 @@ func TestGitRejectsCommandsOutsideAllowlist(t *testing.T) {
 		argv("rev-list --count HEAD"),
 		argv("rev-list --count main --not --remotes"),
 		argv("rev-list --count", headSHA, "--not --all"),
+		argv("rev-list --count --ignore-missing main --not --remotes", headSHA),
+		argv("rev-list --count --ignore-missing HEAD --not --remotes main"),
+		argv("rev-list --count --ignore-missing HEAD --not --all", headSHA),
+		argv("rev-list --count --ignore-missing HEAD --remotes --not", headSHA),
+		argv("rev-list --count --ignore-missing HEAD --not --remotes", headSHA, otherSHA),
+		argv("rev-list --count --all HEAD --not --remotes", headSHA),
 		argv("merge-base --is-ancestor main", headSHA),
 		argv("merge-base --is-ancestor", headSHA),
 		argv("merge-base", headSHA, headSHA),
@@ -213,6 +237,7 @@ func TestGitAllowsDeletingAnyWellFormedBranchAtACommit(t *testing.T) {
 
 	for _, args := range [][]string{
 		branchListArgs(), remoteHeadsArgs(), branchUnpushedArgs(headSHA), ancestorArgs(headSHA, otherSHA),
+		unpushedPastArgs(headRef, otherSHA), unpushedPastArgs(headSHA, otherSHA),
 	} {
 		_, _, err := git{run: &testutil.Runner{}, bin: gitBin}.do(t.Context(), repoDir, args...)
 		require.NoError(t, err, args)
@@ -239,11 +264,11 @@ func TestGitBranchOutputParsing(t *testing.T) {
 	assert.Equal(t, []string{"main", "develop"}, heads)
 	assert.Empty(t, git{run: &testutil.Runner{Err: errFakeStart}, bin: gitBin}.remoteHeads(t.Context(), repoDir))
 
-	n, err := git{run: &testutil.Runner{Stdout: "3\n"}, bin: gitBin}.unpushedOf(t.Context(), repoDir, headSHA)
+	n, err := git{run: &testutil.Runner{Stdout: "3\n"}, bin: gitBin}.unpushedOf(t.Context(), repoDir, headSHA, "")
 	require.NoError(t, err)
 	assert.Equal(t, 3, n)
 
-	_, err = git{run: &testutil.Runner{Stdout: "lots\n"}, bin: gitBin}.unpushedOf(t.Context(), repoDir, headSHA)
+	_, err = git{run: &testutil.Runner{Stdout: "lots\n"}, bin: gitBin}.unpushedOf(t.Context(), repoDir, headSHA, "")
 	require.ErrorIs(t, err, errParseCount)
 
 	assert.True(t, git{run: &testutil.Runner{}, bin: gitBin}.isAncestor(t.Context(), repoDir, headSHA, otherSHA))
@@ -347,7 +372,7 @@ func TestGitOutputParsing(t *testing.T) {
 		t.Parallel()
 
 		run := &testutil.Runner{Stdout: "3\n"}
-		count, _, err := git{run: run, bin: gitBin}.unpushed(ctx, treePath)
+		count, _, err := git{run: run, bin: gitBin}.unpushed(ctx, treePath, "")
 		require.NoError(t, err)
 		assert.Equal(t, 3, count)
 	})
@@ -357,7 +382,7 @@ func TestGitOutputParsing(t *testing.T) {
 
 		for _, out := range []string{"many\n", "-1\n"} {
 			run := &testutil.Runner{Stdout: out}
-			_, _, err := git{run: run, bin: gitBin}.unpushed(ctx, treePath)
+			_, _, err := git{run: run, bin: gitBin}.unpushed(ctx, treePath, "")
 			require.ErrorIs(t, err, errParseCount, out)
 		}
 	})
@@ -366,7 +391,7 @@ func TestGitOutputParsing(t *testing.T) {
 		t.Parallel()
 
 		run := &testutil.Runner{Stderr: "fatal: bad revision 'HEAD'", Err: exitError{code: 128}}
-		_, stderr, err := git{run: run, bin: gitBin}.unpushed(ctx, treePath)
+		_, stderr, err := git{run: run, bin: gitBin}.unpushed(ctx, treePath, "")
 		require.Error(t, err)
 		assert.Equal(t, "fatal: bad revision 'HEAD'", string(stderr))
 	})

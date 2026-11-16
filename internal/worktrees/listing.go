@@ -212,7 +212,7 @@ func (s *Service) assessClones(ctx context.Context, g git, roots localrepos.Root
 		return Snapshot{}, err
 	}
 
-	if err := s.readRows(ctx, g, listings, tracker); err != nil {
+	if err := s.readRows(ctx, g, listings, fetchedHeads(records), tracker); err != nil {
 		return Snapshot{}, err
 	}
 
@@ -359,8 +359,26 @@ func (s *Service) commitTimes(ctx context.Context, g git, dir string, entries []
 	}
 }
 
+// fetchedHeads maps each recorded worktree's resolved directory to the commit it was made
+// at from GitHub (worklog.Record.FetchedHead), for those that have one.
+func fetchedHeads(records []worklog.Record) map[string]string {
+	out := map[string]string{}
+
+	for _, r := range records {
+		if gitread.IsCommitID(r.FetchedHead) {
+			out[paths.Resolved(r.Dir())] = r.FetchedHead
+		}
+	}
+
+	return out
+}
+
 // readRows builds the row of every listed worktree, a few at a time across all clones.
-func (s *Service) readRows(ctx context.Context, g git, listings []cloneListing, tracker *listProgress) error {
+// fetched holds the commit each recorded worktree was made at from GitHub, keyed by its
+// resolved directory (see fetchedHeads).
+func (s *Service) readRows(ctx context.Context, g git, listings []cloneListing, fetched map[string]string,
+	tracker *listProgress,
+) error {
 	eg, ectx := errgroup.WithContext(ctx)
 	eg.SetLimit(listConcurrency)
 
@@ -379,7 +397,7 @@ func (s *Service) readRows(ctx context.Context, g git, listings []cloneListing, 
 			eg.Go(func() error {
 				var rowErr error
 
-				l.rows[j], rowErr = s.row(ectx, g, e, l.managedDir, l.legacyDir, l.times)
+				l.rows[j], rowErr = s.row(ectx, g, e, l.managedDir, l.legacyDir, l.times, fetched[paths.Resolved(e.Path)])
 
 				tracker.Add(1)
 
@@ -392,9 +410,12 @@ func (s *Service) readRows(ctx context.Context, g git, listings []cloneListing, 
 }
 
 // row builds a worktree's view row, reading its status, unless its directory is gone.
-// managedDir and legacyDir are where its clone's worktrees are made, and times holds its
-// clone's commit times (see cloneListing).
-func (s *Service) row(ctx context.Context, g git, e Entry, managedDir, legacyDir string, times map[string]int64) (Worktree, error) {
+// managedDir and legacyDir are where its clone's worktrees are made, times holds its
+// clone's commit times (see cloneListing), and fetched is the commit its record says it
+// was made at from GitHub, or "".
+func (s *Service) row(ctx context.Context, g git, e Entry, managedDir, legacyDir string, times map[string]int64,
+	fetched string,
+) (Worktree, error) {
 	path := paths.Resolved(e.Path)
 
 	wt := Worktree{
@@ -412,6 +433,7 @@ func (s *Service) row(ctx context.Context, g git, e Entry, managedDir, legacyDir
 		Unpushed:       -1,
 		InUse:          []Session{},
 		Branches:       []Branch{},
+		fetched:        fetched,
 	}
 
 	wt.Managed = wt.Legacy || within(managedDir, path)
@@ -440,8 +462,9 @@ func (s *Service) judgeLock(wt *Worktree) {
 }
 
 // readState fills in a worktree's uncommitted-file count, last commit time, and unpushed
-// commits. A git refusal leaves the field unknown (and records why, for the status);
-// failing to run git at all is an error.
+// commits, those past the commit it was made at from GitHub too (Worktree.fetched). A git
+// refusal leaves the field unknown (and records why, for the status); failing to run git at
+// all is an error.
 func (s *Service) readState(ctx context.Context, g git, wt *Worktree, times map[string]int64) error {
 	count, stderr, err := g.dirtyCount(ctx, wt.Path)
 
@@ -469,7 +492,7 @@ func (s *Service) readState(ctx context.Context, g git, wt *Worktree, times map[
 		return nil
 	}
 
-	unpushed, _, err := g.unpushed(ctx, wt.Path)
+	unpushed, _, err := g.unpushed(ctx, wt.Path, wt.fetched)
 
 	switch {
 	case err == nil:

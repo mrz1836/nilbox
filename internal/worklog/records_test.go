@@ -84,6 +84,47 @@ func TestRecordListAndForgetWorktrees(t *testing.T) {
 	assert.Equal(t, []worklog.Record{record(1)}, got)
 }
 
+func TestRecordKeepsTheCommitAWorktreeWasMadeAt(t *testing.T) {
+	t.Parallel()
+
+	s, _ := openStore(t)
+	ctx := t.Context()
+
+	const (
+		fetched = "0123456789abcdef0123456789abcdef01234567"
+		later   = "89abcdef0123456789abcdef0123456789abcdef"
+	)
+
+	made := record(1)
+	made.FetchedHead = fetched
+	require.NoError(t, s.Record(ctx, made))
+
+	got, err := s.Worktrees(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, []worklog.Record{made}, got)
+
+	// A later record that knows no such commit, as a resume or a move, keeps it.
+	moved := record(30)
+	moved.Path = "/srv/elsewhere/pr-184"
+	require.NoError(t, s.Record(ctx, moved))
+
+	got, err = s.Worktrees(ctx)
+	require.NoError(t, err)
+	require.Len(t, got, 1)
+	assert.Equal(t, "/srv/elsewhere/pr-184", got[0].Path)
+	assert.Equal(t, fetched, got[0].FetchedHead, "kept")
+
+	// One that names a commit replaces it.
+	again := record(31)
+	again.FetchedHead = later
+	require.NoError(t, s.Record(ctx, again))
+
+	got, err = s.Worktrees(ctx)
+	require.NoError(t, err)
+	require.Len(t, got, 1)
+	assert.Equal(t, later, got[0].FetchedHead)
+}
+
 func TestTouchRecordsEachSession(t *testing.T) {
 	t.Parallel()
 

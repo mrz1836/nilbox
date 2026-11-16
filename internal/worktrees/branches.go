@@ -87,7 +87,7 @@ func (s *Service) branchesOf(ctx context.Context, g git, repoPath string, wt *Wo
 			defaults, rules))
 	default:
 		if lb, ok := findBranch(locals, own); ok {
-			unpushed, onGitHub := s.branchOnGitHub(ctx, g, repoPath, lb.head, wt.Item)
+			unpushed, onGitHub := s.branchOnGitHub(ctx, g, repoPath, lb.head, wt.fetched, wt.Item)
 			out = append(out, s.judge(Branch{Name: own, Head: lb.head, Kind: BranchOwn}, unpushed, onGitHub,
 				s.checkedOut(repoPath, lb.worktree), defaults, rules))
 		}
@@ -126,15 +126,16 @@ func findBranch(locals []localBranch, name string) (localBranch, bool) {
 	return localBranch{}, false
 }
 
-// branchOnGitHub reports how many commits on head no remote-tracking branch has, and
-// whether every commit on it is on GitHub: none is missing from those, or head is the head
-// of the pull request linked, which GitHub keeps.
-func (s *Service) branchOnGitHub(ctx context.Context, g git, repoPath, head string, it *LinkedItem) (int, bool) {
+// branchOnGitHub reports how many commits on head no remote-tracking branch has, nor
+// fetched, the commit the worktree was made at from GitHub, when it is one, and whether
+// every commit on it is on GitHub: none is missing from those, or head is the head of the
+// pull request linked, which GitHub keeps.
+func (s *Service) branchOnGitHub(ctx context.Context, g git, repoPath, head, fetched string, it *LinkedItem) (int, bool) {
 	if it != nil && it.HeadOID != "" && it.HeadOID == head {
 		return 0, true
 	}
 
-	n, err := g.unpushedOf(ctx, repoPath, head)
+	n, err := g.unpushedOf(ctx, repoPath, head, fetched)
 	if err != nil {
 		return -1, false
 	}
@@ -491,7 +492,7 @@ func (s *Service) mergedBranch(ctx context.Context, g git, scan cloneBranches, l
 	case slices.ContainsFunc(prs, func(pr MergedPR) bool { return s.inMerged(ctx, g, scan.clone.Path, lb.head, pr) }):
 		out.Branch.Deletable = true
 	default:
-		n, err := g.unpushedOf(ctx, scan.clone.Path, lb.head)
+		n, err := g.unpushedOf(ctx, scan.clone.Path, lb.head, "")
 		if err != nil {
 			n = -1
 		}

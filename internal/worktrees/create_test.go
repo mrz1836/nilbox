@@ -121,8 +121,8 @@ func TestEnsureCreatesAPullRequestsWorktreeAtItsHead(t *testing.T) {
 	r := records.all()[0]
 	assert.Equal(t, worklog.Record{
 		ClonePath: f.clone, Worktree: "pr-7", Path: got.Path, Branch: pr7Branch, Owner: "acme-org",
-		Name: "example-repo", Kind: item.KindPR, Number: 7, CreatedAt: listedAt(),
-	}, r)
+		Name: "example-repo", Kind: item.KindPR, Number: 7, CreatedAt: listedAt(), FetchedHead: f.prHead,
+	}, r, "with the head it fetched from GitHub")
 
 	again, err := m.Ensure(t.Context(), f.request(item.KindPR, 7))
 	require.NoError(t, err)
@@ -143,7 +143,8 @@ func TestEnsureStartsAnIssuesWorktreeFromTheDefaultBranch(t *testing.T) {
 
 	e := newEnv(t)
 	f := newRemoteFixture(t, e)
-	m, _ := e.maker(&fakeLaunches{})
+	records := &fakeLaunches{}
+	m, _ := e.maker(records)
 
 	got, err := m.Ensure(t.Context(), f.request(item.KindIssue, 12))
 	require.NoError(t, err)
@@ -152,6 +153,8 @@ func TestEnsureStartsAnIssuesWorktreeFromTheDefaultBranch(t *testing.T) {
 	assert.Equal(t, f.main, got.Head)
 	assert.Equal(t, resolvedPath(ManagedPath(f.clone, "issue-12")), resolvedPath(got.Path))
 	assert.Empty(t, got.Notice)
+	require.Len(t, records.all(), 1)
+	assert.Equal(t, f.main, records.all()[0].FetchedHead, "recorded with the commit it started from")
 
 	upstream := testutil.RunGit(t, got.Path, "for-each-ref", "--format=%(upstream)", "refs/heads/worktree-issue-12")
 	assert.Empty(t, strings.TrimSpace(upstream), "the new branch tracks nothing, so a push never lands on main")
@@ -207,6 +210,7 @@ func TestEnsureAdoptsALegacyClaudeWorktree(t *testing.T) {
 
 	require.Len(t, records.all(), 1)
 	assert.Equal(t, got.Path, records.all()[0].Path, "recorded where it is")
+	assert.Empty(t, records.all()[0].FetchedHead, "its commits may be anyone's, so none counts as fetched")
 
 	again, err := m.Ensure(t.Context(), f.request(item.KindPR, 7))
 	require.NoError(t, err)
@@ -218,7 +222,8 @@ func TestEnsureAttachesALeftBehindBranch(t *testing.T) {
 
 	e := newEnv(t)
 	f := newRemoteFixture(t, e)
-	m, _ := e.maker(&fakeLaunches{})
+	records := &fakeLaunches{}
+	m, _ := e.maker(records)
 
 	first, err := m.Ensure(t.Context(), f.request(item.KindPR, 7))
 	require.NoError(t, err)
@@ -236,6 +241,9 @@ func TestEnsureAttachesALeftBehindBranch(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, ActionAttach, got.Action)
 	assert.Equal(t, work, got.Head, "the commits on the branch are kept, never reset to the pull request's head")
+	require.Len(t, records.all(), 1)
+	assert.Equal(t, f.prHead, records.all()[0].FetchedHead,
+		"the head it was made at stays, never the branch's tip, which holds work of the user's own")
 }
 
 func TestEnsureRecoversFromADirectoryDeletedOutOfBand(t *testing.T) {
@@ -724,7 +732,62 @@ func TestForceRemoveAndRemoveAllCleanTakeThePickedBranches(t *testing.T) {
 	assert.NotEmpty(t, results[0].Reason)
 }
 
-func TestRemoveKeepsThePullRequestsBranchWithoutGitHub(t *testing.T) {
+func TestAPullRequestThatMovesOnLeavesItsWorktreesCommitsOnGitHub(t *testing.T) {
+	t.Parallel()
+
+	e := newEnv(t)
+	f := newRemoteFixture(t, e)
+	gh := &fakeGitHub{}
+	gh.set("example-repo", 7, ItemState{PullRequest: true, Title: "Add the widget", State: ItemOpen, HeadOID: f.prHead})
+	svc := e.linked(linkDeps{gh: gh, launches: &fakeLaunches{}})
+
+	pr, err := NewMaker(svc).Ensure(t.Context(), f.request(item.KindPR, 7))
+	require.NoError(t, err)
+
+	// Someone pushes to the pull request after the launch: its head moves past the
+	// worktree's, and no remote-tracking branch has the commits the worktree was made at.
+	src := filepath.Join(e.home, "src")
+	testutil.RunGit(t, src, "switch", "-q", "contributor-fix")
+	moved := testutil.Commit(t, src, "docs.md", "docs\n")
+	testutil.RunGit(t, f.bare, "fetch", "-q", src, "+contributor-fix:refs/pull/7/head")
+	gh.set("example-repo", 7, ItemState{
+		PullRequest: true, Title: "Add the widget", State: ItemOpen, HeadOID: moved, HeadRef: "contributor-fix",
+	})
+
+	snap, err := svc.List(t.Context())
+	require.NoError(t, err)
+
+	row := mustRow(t, snap, pr.Path)
+	assert.Equal(t, 0, row.Unpushed, "the commits it was made at came from GitHub")
+	assert.True(t, row.OnGitHub)
+	assert.Equal(t, []Branch{{Name: pr7Branch, Head: f.prHead, Kind: BranchOwn, Deletable: true}}, row.Branches)
+
+	// A session checks out the pull request's own branch, leaving the worktree's beside it.
+	testutil.RunGit(t, pr.Path, "switch", "-q", "-c", "contributor-fix")
+
+	snap, err = svc.List(t.Context())
+	require.NoError(t, err)
+	assert.Equal(t, []Branch{
+		{Name: pr7Branch, Head: f.prHead, Kind: BranchOwn, Deletable: true},
+		{Name: "contributor-fix", Head: f.prHead, Kind: BranchPullRequest, Deletable: true},
+	}, mustRow(t, snap, pr.Path).Branches, "both at the head it was made at")
+
+	// A commit made in the worktree is the user's own.
+	work := testutil.Commit(t, pr.Path, "fix.go", "package fix\n")
+
+	snap, err = svc.List(t.Context())
+	require.NoError(t, err)
+
+	row = mustRow(t, snap, pr.Path)
+	assert.Equal(t, 1, row.Unpushed)
+	assert.False(t, row.OnGitHub)
+	assert.Equal(t, []Branch{
+		{Name: pr7Branch, Head: f.prHead, Kind: BranchOwn, Deletable: true},
+		{Name: "contributor-fix", Head: work, Kind: BranchPullRequest, Reason: "1 commit on it isn't on GitHub"},
+	}, row.Branches)
+}
+
+func TestRemoveTakesThePullRequestsBranchAtTheHeadItFetchedWithoutGitHub(t *testing.T) {
 	t.Parallel()
 
 	e := newEnv(t)
@@ -734,7 +797,30 @@ func TestRemoveKeepsThePullRequestsBranchWithoutGitHub(t *testing.T) {
 	pr, err := NewMaker(svc).Ensure(t.Context(), f.request(item.KindPR, 7))
 	require.NoError(t, err)
 
-	// Its head is on GitHub only as the pull request's, which only GitHub can say.
+	// No remote-tracking branch has its head, but the record says it came from GitHub.
+	res, err := svc.Remove(t.Context(), f.clone, pr.Path, []string{pr7Branch})
+	require.NoError(t, err)
+	assert.True(t, res.Removed)
+	assert.Equal(t, []string{pr7Branch}, res.DeletedBranches)
+	assert.Empty(t, res.Reason)
+	assert.NotContains(t, branches(t, f.clone), pr7Branch)
+}
+
+func TestRemoveKeepsThePullRequestsBranchWithoutGitHub(t *testing.T) {
+	t.Parallel()
+
+	e := newEnv(t)
+	f := newRemoteFixture(t, e)
+	records := &fakeLaunches{}
+	svc := e.linked(linkDeps{gh: &fakeGitHub{err: errFakeGitHub}, launches: records})
+
+	pr, err := NewMaker(svc).Ensure(t.Context(), f.request(item.KindPR, 7))
+	require.NoError(t, err)
+
+	records.forgetFetched()
+
+	// Recorded before the app kept the head it fetched, its head is on GitHub only as the
+	// pull request's, which only GitHub can say.
 	res, err := svc.Remove(t.Context(), f.clone, pr.Path, []string{pr7Branch})
 	require.NoError(t, err)
 	assert.True(t, res.Removed)
