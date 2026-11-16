@@ -8,6 +8,20 @@ import (
 	"time"
 )
 
+type AutopilotEffect struct {
+	ID          int64
+	MatchID     int64
+	Step        int64
+	RoutineID   int64
+	ItemID      *int64
+	Action      string
+	StateBefore string
+	StateAfter  string
+	AppliedAt   time.Time
+	UndoneAt    *time.Time
+	ReversedAt  *time.Time
+}
+
 type AutopilotMatch struct {
 	ID               int64
 	RoutineID        int64

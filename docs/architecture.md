@@ -929,6 +929,64 @@ test only looks, and its card is stored all the same; nothing is sent while the 
 under a quarter, `ErrLowBudget`) and `ReadChecks` (`github.FetchChecks` into `item_checks`,
 returning what it cost, which a test adds to its points, and `ErrLowBudget` too).
 
+**A routine's triage** (`triage_routine.go`, migration `0008_autopilot_effects`). Autopilot's
+local steps run the inbox's own triage through `inbox.Routines`, never the bound Service:
+`Triage` runs a Pin, a Snooze (for the routine's length, recording the item's activity as
+the user's Snooze does, so the user's wake rules end it early), a Dismiss, or a Restore on
+one item, marked with the routine (`item_local_state.set_aside_by` for a dismissal, a
+snooze, or a routine's Restore, and `pinned_by` for a pin: two columns, since a pin is
+independent of a snooze or a dismissal on the same row, each `REFERENCES
+autopilot_routines ON DELETE SET NULL`). In one transaction it reads the item's local state
+(`LocalState`), works out the change, hands it to the request's `Record` before writing
+it, so Autopilot's effect and the change are stored together or not at all, then writes it.
+Each step is a compare-and-set: `RoutineTriage.Expect` is the state the routine decided on
+(`Routines.LocalStates`, which the engine reads before an item's facts), and a step whose
+part of the triage (the pin, or the dismissal and the snooze) differs now changes nothing
+(`KeptChanged`), nor does one whose routine's own mark, on either part, was there when it
+decided and is gone now (`lostMark`: the user unpinned what the routine pinned before its
+next step landed), so the user's own change in between always wins. A routine's Snooze and
+Dismiss never replace what the user set aside: they leave an item the user dismissed or
+snoozed (still set aside, with no routine's mark) as the user left it (`KeptYours`); its
+Pin leaves a pinned item (`KeptPinned`), and its Dismiss a dismissed one (`KeptDismissed`).
+Its Restore is for bringing an item back to the user's attention when the routine's
+conditions hold, the user's own snooze or dismissal included, and has nothing to do on an
+item not set aside (`KeptNotSetAside`); each that changes nothing records nothing. A
+routine's Restore keeps its mark on the row with nothing set aside, which `PruneState` then
+keeps, so its Undo can tell the item is still as it left it, until the user's own triage of
+the item clears it, or a whole refresh drops it once it is older than Autopilot's history
+(`PruneRestoreMarks`, `autopilot.historyDays`, read through `autopilotprefs`), unless
+Autopilot still offers that Restore's Undo (`Config.Marks`, a `MarkKeeper`: core's
+`engineWaker`, answered by `Engine.KeptMarks` from the effects neither undone nor taken
+back, read before the refresh's transaction; one that can't be read drops no mark); it tells the
+outcome sink of the restore, as the user's does, so the mirror of the GitHub notifications
+takes a dismissal's clears back, and no other routine step tells anything. `UndoTriage`
+puts back, in one transaction and newest first, each change's state before, only where the
+item is still as the change left it (`asLeftBy`: the pin and who pinned it, or the
+dismissal, the snooze's end, and who set them, so the user's own triage, a snooze the wake
+rules ended, or a later step leaves it as it is), and hands its `record` which it put back;
+a routine named in a state put back that is gone for good is dropped from it. Undoing a
+routine's Restore of the user's own dismissal tells the outcome sink of that dismissal again,
+at its own time, so the mirror records it as the user's and clears by the user's own rules,
+as before the Restore; no other Undo tells anything. Two edges of that, accepted: a clear the
+mirror marked kept while the routine's Restore stood stays kept after the Undo, so it sends
+less, never more; and a dismissal whose routine was since deleted for good reads as the
+user's (its mark is gone), so undoing a later Restore of it lets the user's own rules clear
+that thread, only ever after the user's own Undo. `AsLeft` asks the same without writing,
+for Activity's Undo. The snapshot carries the marks (`Item.SetAsideBy`, `Item.PinnedBy`).
+Every triage path of the user's own clears the mark it changes (`SetTriage`, `Pin`, `Unpin`,
+and `Restore` all write it), so "Snoozed by a routine" never outlives the user's own
+re-snooze, takes its time once its transaction holds the write lock, so a reversal's time
+comes after every routine's step that committed before it, and tells the outcome sink before
+the window and the engine hear the inbox changed; one that takes back what a routine did
+tells the outcome sink with
+`Outcome.Reversed` (the routine, the item, and what it did): a Restore of what a routine
+dismissed or snoozed, still in effect; a Snooze over that (`OutcomeSnoozed`, told only then);
+and an Unpin of what a routine pinned (`OutcomeUnpinned`, only then). Setting aside again
+what a routine's Restore brought back is the user handling the item, never a reversal, and
+going further than a routine (a dismissal over its snooze, the user's pin over its pin)
+takes nothing back either, nor does snoozing again what a routine snoozed once that snooze
+has ended.
+
 **Check names.** `github.FetchChecks` reads each pull request's checks on its head commit, a
 fragment of its own (`CheckFields`) modeled on the review sheet's `checkList` selection, with
 each run's `startedAt` and `completedAt` and each status's `createdAt`, under one alias per
@@ -1287,12 +1345,14 @@ stats read, and a partial unique index on `item_id` for the active statuses (sta
 running, stopping), so a second active run on an item fails in the database whatever the
 engine's own checks say. `autopilot_tries` keeps when Try again last reset a routine's count
 on an item, `autopilot_baselines` what a routine first saw of an item (its head, its comment
-count, for New commits' first commit and New comments), and `autopilot_hands_off` the items a
-routine leaves alone. The engine's own state, `autopilot.engine` (a JSON pref only the engine
-writes, `enginestate.go`), holds when Pause began, the last refresh it saw, when the last
-catch-up began and the routines still in it, the last cycle, each GitHub routine's first-pass
-fingerprint, the routines whose current matches become their baseline, the problems, and when
-the retention last ran; a deleted or switched-off routine's entries are dropped.
+count, for New commits' first commit and New comments), `autopilot_hands_off` the items a
+routine leaves alone, and `autopilot_effects` (migration `0008_autopilot_effects`) what its
+local steps did to their items' triage (**Local actions**, below). The engine's own state,
+`autopilot.engine` (a JSON pref only the engine writes, `enginestate.go`), holds when Pause
+began, the last refresh it saw, when the last catch-up began and the routines still in it, the
+last cycle, each GitHub routine's first-pass fingerprint, the routines whose current matches
+become their baseline, the problems, and when the retention last ran; a deleted or
+switched-off routine's entries are dropped.
 
 **The engine** (`NewEngine`, never bound; the Service is its face) is a deferred desktop worker
 with one loop of its own (`engine.go`), the only writer of matches and the only thing that
@@ -1391,8 +1451,10 @@ and logged, and the loop holds off cycles for a minute; commands are still answe
   a `Result` says it runs on, how it ended (an Only if outcome), whether GitHub took a write,
   and when the item's sheet no longer offers the action or offers it with warnings. A step with
   no dispatcher registered can't run, and the Service keeps a routine with such a step in Dry
-  run (`Offers`, the catalog's own by default, which a test hands in with fakes); no step is
-  offered yet, so every routine runs in Dry run, and the engine records what would run.
+  run (`Offers`, the catalog's own by default, which a test hands in with fakes). The triage
+  steps are offered: the engine registers its own triage dispatcher over `EngineConfig.Triage`
+  (core's `inboxTriage`, **Local actions**, below) unless `Dispatchers` names one; a routine
+  with any other step still runs in Dry run, and the engine records what it would run.
 - **A run's end** moves its match on: an interrupted one waits for the user (`interrupted`,
   counting no try), one the user stopped closes `dismissed`, one the engine stopped because its
   item merged or closed closes `closed` (counting no try), and one that ended goes to its next
@@ -1442,13 +1504,100 @@ double click, a banner's click racing a cycle, or an Approve during a refresh ch
 once: `Approve` (an Ask first match's OK, a catch-up's, a backlog's, an interrupted run's),
 `Skip` (refused for a running one), `RunNow` (once per click, on an item its conditions match,
 counting toward no cap or try), `TryAgain` (resets the tries and opens again what gave up on
-the occurrence that still holds), `LetActAgain`, and `ClearHistory`. A command before the loop
-runs is refused (`ErrNotRunning`), and one while another copy holds the engine
+the occurrence that still holds), `LetActAgain`, `Undo` (**Local actions**, below), and
+`ClearHistory`. A command before the loop runs is refused (`ErrNotRunning`), and one while
+another copy holds the engine
 (`ErrElsewhere`). `StopRun` and `StopAll` go straight to the runner, never queued behind the
 loop, so they work before the first refresh, offline, or signed out. The reads (`activity.go`)
 read the database alone: `Activity` (a page of matches before an ID, by local day, with their
-runs), `ItemHistory`, `Explain` (the decision now, and what the ledger knows: the record for the
-occurrence, the tries used, not in the watch), and `Engine`. No result holds a nil list.
+runs and effects, each day's grouped lines of local steps, and, on the first page, the items
+the routines leave alone), `ItemHistory`, `Explain` (the decision now, and what the ledger
+knows: the record for the occurrence, the tries used, not in the watch, left alone), and
+`Engine`. No result holds a nil list.
+
+### Local actions: by a routine, Undo, and hands off
+
+**What the user sees** (the words `docs/desktop.md` takes once the Autopilot tab is there):
+*Snooze, dismiss, and pin: by a routine.* A routine can pin, snooze, dismiss, or restore an
+item, as you do from its menu. Each runs at once wherever it sits in the routine, in Ask first
+too, needing no OK, and acts on any item, an outside contributor's too, since it changes only
+what this Mac shows. A routine's snooze lasts as long as the routine says, and wakes by your
+own rules, as yours does. The inbox says which routine did it ("Snoozed by Snooze passing bot
+PRs"), until you change it yourself. A routine's Snooze and Dismiss never replace what you set
+aside yourself: an item you snoozed or dismissed stays as you left it. Its Restore is there to
+bring an item back to your attention when the routine's conditions hold, your own snooze or
+dismissal included; setting the item aside again afterwards is you handling it, and the
+routine goes on as before. Whatever you change while a routine's step is on its way wins.
+Activity groups a day's local actions by routine ("Snoozed 6 · Undo"); Undo puts each item
+back as it was before, but leaves one you changed since as you left it. Taking back what a
+routine did, by restoring what it snoozed or dismissed, snoozing it again yourself, unpinning
+what it pinned, or Undo, leaves the routine hands off that item from then on ("Left alone:
+you brought back what it snoozed"), until you choose **Let it act again**. Pause Autopilot
+and a routine's active hours hold local actions too; they run on Resume, or when the hours
+begin. Dry run records what would run, and changes nothing.
+
+**The effects** (`effects.go`). The triage dispatcher (`triageDispatcher`) runs a match's Pin,
+Snooze (its `days`, else three), Dismiss, or Restore through `Triage.Apply`, the inbox's own
+triage for the routine (`inbox.Routines.Triage`, see `internal/inbox`'s **A routine's
+triage**), whose record writes the `autopilot_effects` row in the triage's own transaction,
+before its write: the match and step (unique), the routine, the item, the action, and the
+item's local state before and after, as the inbox writes them (JSON, opaque here), with
+`applied_at`. A step is a compare-and-set on the item's local state as its cycle read it,
+before the item's facts (`EngineItems.LocalStates`, passed as `Job.Local`), and its record
+checks, in the same transaction, that the routine isn't hands off the item, so the user's
+own change, or reversal, while the step was on its way wins: `KeptChanged` ("Not done: the
+item changed since this matched.", which also follows a snooze the wake rules ended or
+another routine's step that landed first), or the routine left alone ("Left alone: you took
+back what it did here.", the words that go with Let it act again). A step that changes
+nothing records nothing, and its step's note says why ("You set it aside yourself, so it's
+left as you left it."). A step a crash cut off after its change
+committed runs again on the next start (`stepUnderWay`), finds its effect, and is done, so
+nothing changes twice. Its limits are the local steps' (`runLocal`): a sign-out, Pause, and the
+routine's active hours hold it, the match staying queued (`signed_out`, `paused`,
+`active_hours`); the caps, the tries, the agents at once, the daily cap, readiness, the
+outside contributor rule, and a catch-up never do; its own limit is the routine's Once per.
+`Match.Effects` lists each match's, with `CanUndo` (neither undone nor taken back, and the
+item still as it left it, `Triage.AsLeft`; false in a copy without the engine).
+
+**Undo** (`Undo(ctx, ids []int64) (Undone, error)`, by effect: a match's `Effects`, or a
+grouped line's `ActivityGroup.Undo`) is a command the loop applies. It reads the effects newest
+first, skips those undone, taken back, or of an item gone (`Skipped`), and hands the rest to
+`Triage.Undo` in one transaction, whose record marks each effect it put back `undone_at` and
+leaves its routine hands off the item (`autopilot_hands_off`, "You undid what it did."). An
+item that changed since stays as it is (`Left`). `Words` says it for a toast ("Put back 5 items.
+1 changed since, so it's left as it is."). A GitHub action has no Undo.
+
+**Hands off.** The user's own triage that takes back what a routine did reaches the engine
+through the outcomes fan-out (`Outcome.Reversed`: the routine, the item, and what it did,
+which core's `toEngineOutcomes` passes on), which tells the engine before the mirror of the
+GitHub notifications, whose record can wait on a clear on its way to GitHub;
+`Engine.Outcomes` records it at once, in whichever copy of the app the user did it, in one
+transaction: that part's effects of the routine on the item (the pin, or the dismissal and
+the snooze) applied by the outcome's time are `reversed_at`, so a step that landed after it
+keeps its Undo, and the routine leaves the item alone (`InsertHandsOff`, with the words: "You
+brought back what it snoozed.", "You snoozed it again yourself.", "You unpinned what it
+pinned.", ...). Setting aside again what a routine's Restore brought back is no reversal:
+only an Undo leaves such a routine hands off the item. A routine evaluates no item
+it leaves alone, so it records no match there; an open match of it on the item that hasn't
+started a run closes as `hands_off` ("Left alone: you took back what it did here."), which
+opens again, if it never started a step, once the user lets it act again (`LetActAgain`).
+`Explain` says so (`LeftAlone`), `Test` marks such items (`TestItem.LeftAlone`), and `Matching`
+counts none of them.
+
+**Activity's lines.** Each `ActivityDay` holds, beside its matches, a line per routine and
+kind of local step among the page's matches, on the local day each step ran
+(`ActivityGroup`: `Words` "Snoozed 6", the count, how many were undone and taken back, the
+effects Undo would still put back, the matches it stands for, their items, and when the last
+ran; `Key` names it across pages, whose matches may split a day). The first page also says
+which items the routines leave alone (`ActivityPage.LeftAlone`, newest first, each with the
+routine, the item's copy from its latest match, why, and since), for **Let it act again**.
+
+**The simulator** runs the triage steps through the inbox's real triage (`sim.Triage`, the
+adapter core's `inboxTriage` is, over the app the scenario built), and its scenarios include
+the *Snooze passing bot PRs* template as `spec/testdata/templates` writes it (the inbox lists,
+Checks pass, a trusted bot's patch or minor update: snooze three days, once per head commit,
+waking by the user's rules, at once in Ask first, a record alone in Dry run), Undo after the
+user changed some of the items, and hands off and **Let it act again**.
 
 **The simulator** (`internal/autopilot/sim`, test support only tests import) runs the real
 engine and ledger over a real database, inside a `testing/synctest` bubble: a scripted GitHub

@@ -541,6 +541,7 @@ func assemble(ctx context.Context, pool *sql.DB, info startup, opts Options, log
 			engine.ItemsChanged(ids)
 		},
 		Keep:   itemKeepers(pool, engine),
+		Marks:  engine,
 		Store:  inboxStore,
 		Logger: logger,
 	})

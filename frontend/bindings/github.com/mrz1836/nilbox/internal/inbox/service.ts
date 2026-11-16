@@ -61,8 +61,8 @@ export function ItemsByID(ids: number[] | null): $CancellablePromise<$models.Ite
 /**
  * Pin keeps an item at the top of every list it is in, above the items not pinned, the
  * most recently pinned first, and returns the new snapshot. A snoozed or dismissed item
- * stays set aside and comes back pinned. Pinning a pinned item does nothing. Nothing is
- * written to GitHub.
+ * stays set aside and comes back pinned. Pinning a pinned item keeps its place, and makes
+ * a routine's pin the user's. Nothing is written to GitHub.
  */
 export function Pin(id: number): $CancellablePromise<$models.Snapshot> {
     return $Call.ByID(998741849, id);
@@ -135,7 +135,8 @@ export function RemoveReviewRequest(id: number): $CancellablePromise<$models.Sna
 /**
  * Restore brings a dismissed or snoozed item back to its lists, and returns the new
  * snapshot. A pinned item stays pinned. Restoring an item that is neither does nothing.
- * Once an item that was dismissed or snoozed is restored, it tells the outcome sink of it.
+ * Once an item that was dismissed or snoozed is restored, it tells the outcome sink of it,
+ * and that it took back a routine's dismissal or snooze of it, when it did.
  */
 export function Restore(id: number): $CancellablePromise<$models.Snapshot> {
     return $Call.ByID(2819403784, id);
@@ -162,7 +163,8 @@ export function Snapshot(): $CancellablePromise<$models.Snapshot> {
  *
  * The item's activity as the last refresh read it is recorded with the snooze, so a
  * later refresh can end it early when new activity passes the user's wake rules. Nothing
- * is written to GitHub.
+ * is written to GitHub. A snooze over a routine's dismissal or snooze takes that back,
+ * which it tells the outcome sink of (OutcomeSnoozed).
  */
 export function Snooze(id: number, days: number): $CancellablePromise<$models.Snapshot> {
     return $Call.ByID(3352799032, id, days);
@@ -191,7 +193,8 @@ export function Unassign(id: number): $CancellablePromise<$models.Snapshot> {
 /**
  * Unpin puts a pinned item back in its place among the rest, by its last activity, and
  * returns the new snapshot. It leaves a snooze or a dismissal as it is. Unpinning an item
- * that is not pinned does nothing.
+ * that is not pinned does nothing. Unpinning what a routine pinned takes it back, which it
+ * tells the outcome sink of (OutcomeUnpinned).
  */
 export function Unpin(id: number): $CancellablePromise<$models.Snapshot> {
     return $Call.ByID(2952742416, id);

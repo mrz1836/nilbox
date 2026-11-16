@@ -71,6 +71,10 @@ type Match struct {
 	// Runs are the runs it started, oldest first.
 	Runs []Run `json:"runs"`
 
+	// Effects are what its local steps did to its item's triage, oldest first, each with
+	// whether Undo can still take it back.
+	Effects []Effect `json:"effects"`
+
 	CreatedAt time.Time  `json:"createdAt"`
 	UpdatedAt time.Time  `json:"updatedAt"`
 	DecidedAt time.Time  `json:"decidedAt"`
@@ -131,6 +135,10 @@ type ActivityPage struct {
 	// More reports matches before the page, which Next, the last match's ID, asks for.
 	More bool  `json:"more"`
 	Next int64 `json:"next"`
+
+	// LeftAlone are the items the routines leave alone, since the user took back what they
+	// did there, newest first: on the first page alone, each with Let it act again.
+	LeftAlone []LeftAlone `json:"leftAlone"`
 }
 
 // ActivityDay is one local day of Activity.
@@ -138,6 +146,10 @@ type ActivityDay struct {
 	// Date is the day, YYYY-MM-DD.
 	Date    string  `json:"date"`
 	Matches []Match `json:"matches"`
+
+	// Groups are the day's local steps of the page's matches, a line for each routine and
+	// kind of step ("Snoozed 6 · Undo"), each naming the matches it stands for.
+	Groups []ActivityGroup `json:"groups"`
 }
 
 // ItemHistory is what the routines did with one item, newest first.
@@ -194,6 +206,10 @@ type Explanation struct {
 	// InWatch reports the item is in the routine's watch.
 	InWatch bool `json:"inWatch"`
 
+	// LeftAlone reports the routine leaves the item alone, since the user took back what it
+	// did there, until Let it act again.
+	LeftAlone bool `json:"leftAlone"`
+
 	// Ledger says, in sentences, what the ledger knows that holds the routine back or
 	// let it act: "It already ran on this commit", "2 of 2 tries used".
 	Ledger []string `json:"ledger"`
@@ -218,15 +234,18 @@ func (s *Service) Engine(context.Context) (EngineStatus, error) {
 }
 
 // Activity returns a page of the matches recorded before the match before (every one for 0),
-// newest first, by local day: at most limit, 100 when 0.
+// newest first, by local day: at most limit, 100 when 0. Each day groups the local steps of
+// its matches by routine and kind of step, and the first page says which items the
+// routines leave alone.
 func (s *Service) Activity(ctx context.Context, before int64, limit int) (ActivityPage, error) {
-	out := ActivityPage{Days: []ActivityDay{}}
+	out := ActivityPage{Days: []ActivityDay{}, LeftAlone: []LeftAlone{}}
 
 	if s.store.q == nil {
 		return out, nil
 	}
 
-	if before <= 0 {
+	first := before <= 0
+	if first {
 		before = math.MaxInt64
 	}
 
@@ -251,7 +270,14 @@ func (s *Service) Activity(ctx context.Context, before int64, limit int) (Activi
 		return out, err
 	}
 
-	out.Days = byDay(views, s.clock.Now().Location())
+	loc := s.clock.Now().Location()
+	out.Days = groupLocal(byDay(views, loc), views, loc)
+
+	if first {
+		if out.LeftAlone, err = s.leftAlone(ctx, s.ledger()); err != nil {
+			return out, err
+		}
+	}
 
 	return out, nil
 }
@@ -266,7 +292,7 @@ func byDay(views []Match, loc *time.Location) []ActivityDay {
 		if n := len(out); n > 0 && out[n-1].Date == date {
 			out[n-1].Matches = append(out[n-1].Matches, v)
 		} else {
-			out = append(out, ActivityDay{Date: date, Matches: []Match{v}})
+			out = append(out, ActivityDay{Date: date, Matches: []Match{v}, Groups: []ActivityGroup{}})
 		}
 	}
 
@@ -318,14 +344,9 @@ func (s *Service) views(ctx context.Context, rows []queries.AutopilotMatch) ([]M
 
 	l := s.ledger()
 
-	names, err := l.q.ListRoutineNames(ctx)
+	named, err := routineNames(ctx, l)
 	if err != nil {
-		return nil, uierr.New("The routines' names couldn't be read.", err)
-	}
-
-	named := make(map[int64]string, len(names))
-	for _, n := range names {
-		named[n.ID] = n.Name
+		return nil, err
 	}
 
 	ids := make([]int64, 0, len(rows))
@@ -343,6 +364,11 @@ func (s *Service) views(ctx context.Context, rows []queries.AutopilotMatch) ([]M
 		byMatch[r.MatchID] = append(byMatch[r.MatchID], runView(r))
 	}
 
+	effects, err := s.effectsOf(ctx, l, ids)
+	if err != nil {
+		return nil, err
+	}
+
 	for _, row := range rows {
 		m, readErr := readMatch(row)
 		if readErr != nil {
@@ -350,11 +376,26 @@ func (s *Service) views(ctx context.Context, rows []queries.AutopilotMatch) ([]M
 		}
 
 		v := matchView(m, named[row.RoutineID])
-		v.Runs = nonNil(byMatch[row.ID])
+		v.Runs, v.Effects = nonNil(byMatch[row.ID]), nonNil(effects[row.ID])
 		out = append(out, v)
 	}
 
 	return out, nil
+}
+
+// routineNames returns every routine's name by its ID, the deleted ones included.
+func routineNames(ctx context.Context, l *ledger) (map[int64]string, error) {
+	names, err := l.q.ListRoutineNames(ctx)
+	if err != nil {
+		return nil, uierr.New("The routines' names couldn't be read.", err)
+	}
+
+	named := make(map[int64]string, len(names))
+	for _, n := range names {
+		named[n.ID] = n.Name
+	}
+
+	return named, nil
 }
 
 // matchView builds the window's match from a ledger row.
@@ -363,8 +404,8 @@ func matchView(m *match, routine string) Match {
 		ID: m.ID, RoutineID: m.RoutineID, Routine: routine, FireKey: m.FireKey, DryRun: m.DryRun, Manual: m.Manual,
 		State: m.state(), BlockedBy: Blocker(m.BlockedBy), Reason: Reason(m.Reason), Words: m.Detail,
 		Steps: make([]MatchStep, 0, len(m.steps)), Step: int(m.Step), Trace: nonNil(m.trace), Approved: m.Approved,
-		Attempt: int(m.Attempt), Runs: []Run{}, CreatedAt: m.CreatedAt, UpdatedAt: m.UpdatedAt, DecidedAt: m.DecidedAt,
-		ClosedAt: m.ClosedAt,
+		Attempt: int(m.Attempt), Runs: []Run{}, Effects: []Effect{}, CreatedAt: m.CreatedAt, UpdatedAt: m.UpdatedAt,
+		DecidedAt: m.DecidedAt, ClosedAt: m.ClosedAt,
 		Item: ItemRef{
 			ID: store.Deref(m.ItemID), Kind: item.Kind(m.Kind), Repo: m.RepoOwner + "/" + m.RepoName,
 			Number: int(m.Number), Title: m.Title, URL: m.URL,
@@ -485,6 +526,15 @@ func (s *Service) explainLedger(ctx context.Context, r Routine, out Explanation)
 
 	d := eval.Evaluate(r.Spec, all[0], h, now)
 	out.Match, out.FireKey, out.Trace, out.Needs = d.Match, d.FireKey, nonNil(d.Trace), nonNil(d.Needs)
+
+	handsOff, err := l.handsOff(ctx, r.ID)
+	if err != nil {
+		return out, uierr.New("The items the routine leaves alone couldn't be read.", err)
+	}
+
+	if out.LeftAlone = handsOff[out.ItemID]; out.LeftAlone {
+		out.Ledger = append(out.Ledger, leftAloneWords+" Let it act again to change that.")
+	}
 
 	if h.Tries > 0 {
 		out.Ledger = append(out.Ledger, fmt.Sprintf("%d of %d tries used.", h.Tries, r.Spec.Limits.Tries()))

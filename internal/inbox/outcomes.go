@@ -60,6 +60,12 @@ const (
 	// with no sign of why. A list GitHub cut short tells none, since its items past the
 	// page may still be in it, and an item whose repository was archived tells none.
 	OutcomeUnlisted OutcomeKind = "unlisted"
+
+	// OutcomeSnoozed is an item the user snoozed over a routine's dismissal or snooze of
+	// it, and OutcomeUnpinned one the user unpinned that a routine pinned: each told only
+	// then, with its Reversed, since only what follows the routines hears them.
+	OutcomeSnoozed  OutcomeKind = "snoozed"
+	OutcomeUnpinned OutcomeKind = "unpinned"
 )
 
 // Outcome is what happened to one item.
@@ -74,6 +80,32 @@ type Outcome struct {
 
 	// At is when it happened: when the inbox learned of it, or the review's own time.
 	At time.Time
+
+	// Reversed names what a routine did to the item that the user's own triage took back
+	// (a restore of what it dismissed or snoozed, a snooze over that, an unpin of what it
+	// pinned); the zero Reversal otherwise.
+	Reversed Reversal
+}
+
+// Reversal is a routine's triage of an item that the user's own took back: the routine, the
+// item, and what the routine had done to it.
+type Reversal struct {
+	Routine int64
+	Item    int64
+	Did     TriageAction
+}
+
+// reversing returns outcomes, each naming rev, when rev names a routine.
+func reversing(outcomes []Outcome, rev Reversal) []Outcome {
+	if rev.Routine == 0 {
+		return outcomes
+	}
+
+	for i := range outcomes {
+		outcomes[i].Reversed = rev
+	}
+
+	return outcomes
 }
 
 // OutcomeSink is told about outcomes, synchronously, once the inbox has let go of every
@@ -211,7 +243,27 @@ func (s *Service) triageBefore(ctx context.Context, q *queries.Queries, id int64
 
 // setAside reports whether the item t was dismissed, or snoozed past now.
 func setAside(t triageItem, now time.Time) bool {
-	return t.DismissedAt != nil || (t.SnoozedUntil != nil && t.SnoozedUntil.After(now))
+	return localOf(t).setAside(now)
+}
+
+// localOf returns the triage t holds.
+func localOf(t triageItem) LocalState {
+	return LocalState{
+		DismissedAt: t.DismissedAt, SnoozedUntil: t.SnoozedUntil, PinnedAt: t.PinnedAt, SetAsideBy: t.SetAsideBy,
+		PinnedBy: t.PinnedBy,
+	}
+}
+
+// setAsideReversal is the routine's dismissal or snooze of the item with id, in effect at
+// now as t holds it, that bringing the item back, or snoozing it over that, takes back, or
+// none. A routine's Restore is never taken back by setting the item aside again: it
+// brought the item to the user's attention, and the user handled it.
+func setAsideReversal(t triageItem, id int64, now time.Time) Reversal {
+	if r, did := localOf(t).setAsideBy(now); r != 0 {
+		return Reversal{Routine: r, Item: id, Did: did}
+	}
+
+	return Reversal{}
 }
 
 // triageOutcome is what a change to the item t's triage tells, as kind, at.

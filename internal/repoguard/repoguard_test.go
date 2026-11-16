@@ -424,15 +424,30 @@ func autopilotName() *regexp.Regexp {
 		`(StepKind|GitHubActionKind|MergeMethod)\s+=\s+"(re` + `store|mer` + `ge|re` + `base)"$`)
 }
 
+// triageNamesFile declares the inbox's names for a routine's triage steps, the catalog's
+// own words, of which Restore (the inbox's own triage, bringing an item back from a snooze
+// or a dismissal) is spelled as a verb TestNoGitCommandChangesAClone looks for. It names no
+// git command: the inbox runs no git, and only this typed declaration, in this one file,
+// is let through.
+const triageNamesFile = "internal/inbox/triage_routine.go"
+
+// triageName matches triageNamesFile's declaration of that name, as a hit writes it. Built
+// from parts so this file does not match itself.
+func triageName() *regexp.Regexp {
+	return regexp.MustCompile(`^` + regexp.QuoteMeta(triageNamesFile) + `:\d+: \w+\s+TriageAction\s+=\s+"re` +
+		`store"$`)
+}
+
 // TestNoGitCommandChangesAClone keeps every git command the app runs from changing a
 // clone's checkout, with two exceptions, each held to one file: worktree creation
 // (worktreeMakerFile) fetches and adds worktrees, and Repo scripts' pull (clonePullerFile)
 // fast-forwards the branch a clone is on to origin's, on the user's click. Other work
 // that changes one belongs to the integration's own tool, run on the user's click: a
 // release's magex switches, pulls, tags, and pushes, and the app only starts it and reads,
-// afterwards, where the tag and the clone are. Two declarations spelled as such a verb
-// run nothing and are let through: the reset's confirmation word (resetWordFile) and
-// Autopilot's names for GitHub's own actions (autopilotNamesFile).
+// afterwards, where the tag and the clone are. Declarations spelled as such a verb that
+// run nothing are let through: the reset's confirmation word (resetWordFile), Autopilot's
+// names for its steps and GitHub's own actions (autopilotNamesFile), and the inbox's name
+// for a routine's Restore (triageNamesFile).
 func TestNoGitCommandChangesAClone(t *testing.T) {
 	t.Parallel()
 
@@ -459,10 +474,10 @@ func TestNoGitCommandChangesAClone(t *testing.T) {
 	// the app, which no git command sees. Only its declaration, in its own file, is let
 	// through.
 	confirm := "const ResetWord = " + `"re` + `set"`
-	names := autopilotName()
+	names, triage := autopilotName(), triageName()
 	found := slices.DeleteFunc(productionGoHits(t, verbs, worktreeMakerFile, clonePullerFile), func(hit string) bool {
 		return (strings.HasPrefix(hit, resetWordFile+":") && strings.HasSuffix(hit, ": "+confirm)) ||
-			names.MatchString(hit)
+			names.MatchString(hit) || triage.MatchString(hit)
 	})
 	found = append(found, productionGoHits(t, worktreeAdd, worktreeMakerFile)...)
 

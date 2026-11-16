@@ -140,14 +140,14 @@ func TestPauseHoldsLocalStepsTooAndResumeRunsThem(t *testing.T) {
 		s.Refresh()
 
 		assert.Equal(t, []sim.Row{row(1, autopilot.StateQueued, autopilot.BlockPaused, "", "appears:item")}, s.Ledger())
-		assert.Empty(t, s.Local.Jobs(), "Pause holds a local step too")
+		assert.Empty(t, s.Triage.Calls(), "Pause holds a local step too")
 
 		s.Advance(time.Hour, true)
 		s.Change(func(c *autopilotprefs.Config) { c.Paused = false })
 
 		assert.Equal(t, []sim.Row{row(1, autopilot.StateDone, "", autopilot.ReasonRan, "appears:item")}, s.Ledger(),
 			"a short pause runs what waited on Resume")
-		assert.Len(t, s.Local.Jobs(), 1)
+		assert.Len(t, s.Triage.Calls(), 1)
 	})
 }
 

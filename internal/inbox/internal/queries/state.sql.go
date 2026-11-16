@@ -11,9 +11,48 @@ import (
 	"time"
 )
 
+const getLocalState = `-- name: GetLocalState :one
+SELECT i.id, ls.item_id AS state_item_id, ls.dismissed_at, ls.snoozed_until, ls.snooze_baseline, ls.wake_reasons,
+    ls.pinned_at, ls.set_aside_by, ls.pinned_by
+FROM items i
+LEFT JOIN item_local_state ls ON ls.item_id = i.id
+WHERE i.id = ?
+`
+
+type GetLocalStateRow struct {
+	ID             int64
+	StateItemID    *int64
+	DismissedAt    *time.Time
+	SnoozedUntil   *time.Time
+	SnoozeBaseline *string
+	WakeReasons    *string
+	PinnedAt       *time.Time
+	SetAsideBy     *int64
+	PinnedBy       *int64
+}
+
+// GetLocalState returns the local state of the item with id, each column NULL when it has
+// none (state_item_id NULL with no row at all), or sql.ErrNoRows when no item has id.
+func (q *Queries) GetLocalState(ctx context.Context, id int64) (GetLocalStateRow, error) {
+	row := q.db.QueryRowContext(ctx, getLocalState, id)
+	var i GetLocalStateRow
+	err := row.Scan(
+		&i.ID,
+		&i.StateItemID,
+		&i.DismissedAt,
+		&i.SnoozedUntil,
+		&i.SnoozeBaseline,
+		&i.WakeReasons,
+		&i.PinnedAt,
+		&i.SetAsideBy,
+		&i.PinnedBy,
+	)
+	return i, err
+}
+
 const getTriageItem = `-- name: GetTriageItem :one
 SELECT a.login AS account_login, r.owner AS repo_owner, r.name AS repo_name, i.number, i.kind,
-    ls.dismissed_at, ls.snoozed_until
+    ls.dismissed_at, ls.snoozed_until, ls.pinned_at, ls.set_aside_by, ls.pinned_by
 FROM items i
 JOIN accounts a ON a.id = i.account_id
 JOIN repos r ON r.id = i.repo_id
@@ -29,11 +68,15 @@ type GetTriageItemRow struct {
 	Kind         string
 	DismissedAt  *time.Time
 	SnoozedUntil *time.Time
+	PinnedAt     *time.Time
+	SetAsideBy   *int64
+	PinnedBy     *int64
 }
 
 // GetTriageItem returns the item with id as an outcome names it (the account whose inbox
-// lists it, its repository, number, and kind) with its dismissal and snooze, each NULL
-// when it has none, or sql.ErrNoRows when no item has id.
+// lists it, its repository, number, and kind) with its dismissal, snooze, and pin, and the
+// routines that set them, each NULL when it has none, or sql.ErrNoRows when no item has
+// id.
 func (q *Queries) GetTriageItem(ctx context.Context, id int64) (GetTriageItemRow, error) {
 	row := q.db.QueryRowContext(ctx, getTriageItem, id)
 	var i GetTriageItemRow
@@ -45,8 +88,77 @@ func (q *Queries) GetTriageItem(ctx context.Context, id int64) (GetTriageItemRow
 		&i.Kind,
 		&i.DismissedAt,
 		&i.SnoozedUntil,
+		&i.PinnedAt,
+		&i.SetAsideBy,
+		&i.PinnedBy,
 	)
 	return i, err
+}
+
+const listLocalStates = `-- name: ListLocalStates :many
+SELECT i.id, ls.item_id AS state_item_id, ls.dismissed_at, ls.snoozed_until, ls.snooze_baseline, ls.wake_reasons,
+    ls.pinned_at, ls.set_aside_by, ls.pinned_by
+FROM items i
+LEFT JOIN item_local_state ls ON ls.item_id = i.id
+WHERE i.id IN (/*SLICE:ids*/?)
+ORDER BY i.id
+`
+
+type ListLocalStatesRow struct {
+	ID             int64
+	StateItemID    *int64
+	DismissedAt    *time.Time
+	SnoozedUntil   *time.Time
+	SnoozeBaseline *string
+	WakeReasons    *string
+	PinnedAt       *time.Time
+	SetAsideBy     *int64
+	PinnedBy       *int64
+}
+
+// ListLocalStates returns the local state of each stored item among ids, by id, each
+// column NULL when it has none.
+func (q *Queries) ListLocalStates(ctx context.Context, ids []int64) ([]ListLocalStatesRow, error) {
+	query := listLocalStates
+	var queryParams []interface{}
+	if len(ids) > 0 {
+		for _, v := range ids {
+			queryParams = append(queryParams, v)
+		}
+		query = strings.Replace(query, "/*SLICE:ids*/?", strings.Repeat(",?", len(ids))[1:], 1)
+	} else {
+		query = strings.Replace(query, "/*SLICE:ids*/?", "NULL", 1)
+	}
+	rows, err := q.db.QueryContext(ctx, query, queryParams...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListLocalStatesRow{}
+	for rows.Next() {
+		var i ListLocalStatesRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.StateItemID,
+			&i.DismissedAt,
+			&i.SnoozedUntil,
+			&i.SnoozeBaseline,
+			&i.WakeReasons,
+			&i.PinnedAt,
+			&i.SetAsideBy,
+			&i.PinnedBy,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const listRunningSnoozes = `-- name: ListRunningSnoozes :many
@@ -165,6 +277,7 @@ INSERT INTO item_local_state (item_id, pinned_at, updated_at)
 SELECT id, ?, ? FROM items WHERE id = ?
 ON CONFLICT (item_id) DO UPDATE SET
     pinned_at = COALESCE(item_local_state.pinned_at, excluded.pinned_at),
+    pinned_by = NULL,
     updated_at = excluded.updated_at
 `
 
@@ -174,9 +287,9 @@ type PinParams struct {
 	ID        int64
 }
 
-// Pin pins the item with item_id to the top of its lists, keeping its triage state and
-// the time of an earlier pin, so pinning a pinned item does not move it. No row changes
-// when no item has item_id.
+// Pin pins the item with item_id to the top of its lists for the user, keeping its
+// triage state and the time of an earlier pin, so pinning a pinned item does not move it;
+// a routine's pin becomes the user's. No row changes when no item has item_id.
 func (q *Queries) Pin(ctx context.Context, arg PinParams) (int64, error) {
 	result, err := q.db.ExecContext(ctx, pin, arg.PinnedAt, arg.UpdatedAt, arg.ID)
 	if err != nil {
@@ -185,34 +298,144 @@ func (q *Queries) Pin(ctx context.Context, arg PinParams) (int64, error) {
 	return result.RowsAffected()
 }
 
+const pruneRestoreMarks = `-- name: PruneRestoreMarks :exec
+DELETE FROM item_local_state
+WHERE pinned_at IS NULL AND dismissed_at IS NULL AND snoozed_until IS NULL AND set_aside_by IS NOT NULL
+  AND updated_at < ?1 AND item_id NOT IN (/*SLICE:keep*/?)
+`
+
+type PruneRestoreMarksParams struct {
+	Cutoff time.Time
+	Keep   []int64
+}
+
+// PruneRestoreMarks deletes the rows whose only content is the mark a routine's Restore
+// left (set_aside_by, with nothing pinned, dismissed, or snoozed), written before cutoff,
+// but those of the items in keep: the mark serves only that routine's Undo, which keep
+// names while Autopilot still offers it, however old. keep always holds 0, which no item
+// has, so the list is never empty.
+func (q *Queries) PruneRestoreMarks(ctx context.Context, arg PruneRestoreMarksParams) error {
+	query := pruneRestoreMarks
+	var queryParams []interface{}
+	queryParams = append(queryParams, arg.Cutoff)
+	if len(arg.Keep) > 0 {
+		for _, v := range arg.Keep {
+			queryParams = append(queryParams, v)
+		}
+		query = strings.Replace(query, "/*SLICE:keep*/?", strings.Repeat(",?", len(arg.Keep))[1:], 1)
+	} else {
+		query = strings.Replace(query, "/*SLICE:keep*/?", "NULL", 1)
+	}
+	_, err := q.db.ExecContext(ctx, query, queryParams...)
+	return err
+}
+
 const pruneState = `-- name: PruneState :exec
 DELETE FROM item_local_state
 WHERE item_id = ? AND pinned_at IS NULL AND dismissed_at IS NULL AND snoozed_until IS NULL
+  AND set_aside_by IS NULL
 `
 
 // PruneState deletes the local state of the item with item_id once nothing is left in
-// it: not pinned, dismissed, or snoozed, nor back from a snooze.
+// it: not pinned, dismissed, or snoozed, nor back from a snooze, nor brought back by a
+// routine, which an Undo reads.
 func (q *Queries) PruneState(ctx context.Context, itemID int64) error {
 	_, err := q.db.ExecContext(ctx, pruneState, itemID)
 	return err
 }
 
+const putSetAside = `-- name: PutSetAside :execrows
+INSERT INTO item_local_state (item_id, dismissed_at, snoozed_until, snooze_baseline, wake_reasons, set_aside_by, updated_at)
+SELECT id, ?, ?, ?, ?, ?, ? FROM items WHERE id = ?
+ON CONFLICT (item_id) DO UPDATE SET
+    dismissed_at = excluded.dismissed_at,
+    snoozed_until = excluded.snoozed_until,
+    snooze_baseline = excluded.snooze_baseline,
+    wake_reasons = excluded.wake_reasons,
+    set_aside_by = excluded.set_aside_by,
+    updated_at = excluded.updated_at
+`
+
+type PutSetAsideParams struct {
+	DismissedAt    *time.Time
+	SnoozedUntil   *time.Time
+	SnoozeBaseline *string
+	WakeReasons    *string
+	SetAsideBy     *int64
+	UpdatedAt      time.Time
+	ID             int64
+}
+
+// PutSetAside writes the dismissal, the snooze, what it compares with and what woke it,
+// and the routine that set them, of the item with item_id, as an Undo puts them back,
+// leaving a pin as it is. No row changes when no item has item_id.
+func (q *Queries) PutSetAside(ctx context.Context, arg PutSetAsideParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, putSetAside,
+		arg.DismissedAt,
+		arg.SnoozedUntil,
+		arg.SnoozeBaseline,
+		arg.WakeReasons,
+		arg.SetAsideBy,
+		arg.UpdatedAt,
+		arg.ID,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
 const restore = `-- name: Restore :exec
 UPDATE item_local_state
-SET dismissed_at = NULL, snoozed_until = NULL, snooze_baseline = NULL, wake_reasons = NULL, updated_at = ?
+SET dismissed_at = NULL, snoozed_until = NULL, snooze_baseline = NULL, wake_reasons = NULL, set_aside_by = ?,
+    updated_at = ?
 WHERE item_id = ?
 `
 
 type RestoreParams struct {
-	UpdatedAt time.Time
-	ItemID    int64
+	SetAsideBy *int64
+	UpdatedAt  time.Time
+	ItemID     int64
 }
 
 // Restore ends the dismissal or snooze of the item with item_id, and forgets what woke
-// the snooze, leaving a pin as it is.
+// the snooze, leaving a pin as it is. set_aside_by names the routine that brought it
+// back, NULL for the user.
 func (q *Queries) Restore(ctx context.Context, arg RestoreParams) error {
-	_, err := q.db.ExecContext(ctx, restore, arg.UpdatedAt, arg.ItemID)
+	_, err := q.db.ExecContext(ctx, restore, arg.SetAsideBy, arg.UpdatedAt, arg.ItemID)
 	return err
+}
+
+const setPin = `-- name: SetPin :execrows
+INSERT INTO item_local_state (item_id, pinned_at, pinned_by, updated_at)
+SELECT id, ?, ?, ? FROM items WHERE id = ?
+ON CONFLICT (item_id) DO UPDATE SET
+    pinned_at = excluded.pinned_at,
+    pinned_by = excluded.pinned_by,
+    updated_at = excluded.updated_at
+`
+
+type SetPinParams struct {
+	PinnedAt  *time.Time
+	PinnedBy  *int64
+	UpdatedAt time.Time
+	ID        int64
+}
+
+// SetPin records the pin of the item with item_id as given (NULL for none) and the
+// routine that pinned it (NULL for the user), keeping its triage state: a routine's pin,
+// and Undo putting one back. No row changes when no item has item_id.
+func (q *Queries) SetPin(ctx context.Context, arg SetPinParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, setPin,
+		arg.PinnedAt,
+		arg.PinnedBy,
+		arg.UpdatedAt,
+		arg.ID,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
 }
 
 const setSnoozeBaseline = `-- name: SetSnoozeBaseline :exec
@@ -232,13 +455,14 @@ func (q *Queries) SetSnoozeBaseline(ctx context.Context, arg SetSnoozeBaselinePa
 }
 
 const setTriage = `-- name: SetTriage :execrows
-INSERT INTO item_local_state (item_id, dismissed_at, snoozed_until, snooze_baseline, wake_reasons, updated_at)
-SELECT id, ?, ?, ?, NULL, ? FROM items WHERE id = ?
+INSERT INTO item_local_state (item_id, dismissed_at, snoozed_until, snooze_baseline, wake_reasons, set_aside_by, updated_at)
+SELECT id, ?, ?, ?, NULL, ?, ? FROM items WHERE id = ?
 ON CONFLICT (item_id) DO UPDATE SET
     dismissed_at = excluded.dismissed_at,
     snoozed_until = excluded.snoozed_until,
     snooze_baseline = excluded.snooze_baseline,
     wake_reasons = NULL,
+    set_aside_by = excluded.set_aside_by,
     updated_at = excluded.updated_at
 `
 
@@ -246,18 +470,21 @@ type SetTriageParams struct {
 	DismissedAt    *time.Time
 	SnoozedUntil   *time.Time
 	SnoozeBaseline *string
+	SetAsideBy     *int64
 	UpdatedAt      time.Time
 	ID             int64
 }
 
 // SetTriage records the triage state of the item with item_id, replacing any earlier
-// one, and clears the reasons an earlier snooze woke for. A pin stays as it is. No row
-// changes when no item has item_id.
+// one, with the routine that set it (set_aside_by, NULL for the user), and clears the
+// reasons an earlier snooze woke for. A pin stays as it is. No row changes when no item
+// has item_id.
 func (q *Queries) SetTriage(ctx context.Context, arg SetTriageParams) (int64, error) {
 	result, err := q.db.ExecContext(ctx, setTriage,
 		arg.DismissedAt,
 		arg.SnoozedUntil,
 		arg.SnoozeBaseline,
+		arg.SetAsideBy,
 		arg.UpdatedAt,
 		arg.ID,
 	)
@@ -268,7 +495,7 @@ func (q *Queries) SetTriage(ctx context.Context, arg SetTriageParams) (int64, er
 }
 
 const unpin = `-- name: Unpin :exec
-UPDATE item_local_state SET pinned_at = NULL, updated_at = ? WHERE item_id = ?
+UPDATE item_local_state SET pinned_at = NULL, pinned_by = NULL, updated_at = ? WHERE item_id = ?
 `
 
 type UnpinParams struct {

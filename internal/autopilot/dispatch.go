@@ -54,6 +54,11 @@ type Job struct {
 	// Budget is what the start reserved of the daily cap, in Unit; 0 when nothing.
 	Budget float64
 	Unit   string
+
+	// Local is the item's local state as the cycle that ran the step read it, before it
+	// decided (EngineItems.LocalStates): a triage step is a compare-and-set on it, so a
+	// change of the user's in between wins. "" for a step that isn't local.
+	Local string
 }
 
 // ItemRef names a match's item, as the ledger keeps a copy of it.
@@ -251,4 +256,10 @@ type Outcome struct {
 	Kind string
 	Ref  item.Ref
 	At   time.Time
+
+	// Reversed names what a routine did to the item that the user's own triage took back
+	// (a restore of what it snoozed or dismissed, a snooze over it, a dismissal of what it
+	// brought back, an unpin of what it pinned), which leaves that routine hands off the
+	// item; the zero Reversal otherwise.
+	Reversed Reversal
 }

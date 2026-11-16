@@ -33,7 +33,9 @@
 // its state, and the UI sets them apart; a snooze that runs its course ends without
 // anything having to be written. Pin keeps an item at the top of its lists, the most
 // recently pinned first, until Unpin; it is stored in the same row, apart from a snooze or
-// a dismissal, so it outlasts both and Restore leaves it as it is.
+// a dismissal, so it outlasts both and Restore leaves it as it is. An Autopilot routine's
+// local steps run the same triage, marked with the routine, through Routines, never this
+// Service (see triage_routine.go).
 //
 // The inbox edits GitHub only when the user asks, one item at a time, and only to take the
 // user off it: Unassign and RemoveReviewRequest (see edits.go). Each is one REST request the
@@ -205,6 +207,10 @@ type Config struct {
 	// inbox's own.
 	Keep ItemKeeper
 
+	// Marks names the items whose routine's Restore mark is still read, which the prune of
+	// old marks keeps (see pruneRestoreMarks). Nil keeps none.
+	Marks MarkKeeper
+
 	// Store, when set, is the Store whose NoteStates stores through this Service's write
 	// order (see order.go), so a state another service read and the inbox's own reads are
 	// stored in the order they went out. Nil gives the Service an order of its own.
@@ -236,6 +242,7 @@ type Service struct {
 	watchSource WatchSource
 	changedSink func(ids []int64)
 	keep        ItemKeeper
+	marks       MarkKeeper
 
 	// passes holds the watch pass worker's state (see watches.go).
 	passes watchPasses
@@ -270,7 +277,7 @@ func NewService(cfg Config) *Service {
 		db: cfg.Pool, q: queries.New(cfg.Pool), prefs: prefs.New(cfg.Pool, c), tokens: cfg.Tokens,
 		client: cfg.Client, clock: c, events: event.Or(cfg.Events), arrivals: cfg.Arrivals, outcomes: cfg.Outcomes,
 		usage: cfg.Usage, logger: logging.Or(cfg.Logger), watchSource: cfg.Watches, changedSink: cfg.Changed,
-		keep: cfg.Keep, passes: watchPasses{jobs: make(chan *watchJob, 1), ended: make(chan struct{})},
+		keep: cfg.Keep, marks: cfg.Marks, passes: watchPasses{jobs: make(chan *watchJob, 1), ended: make(chan struct{})},
 		order: orderOf(cfg.Store),
 	}
 }
@@ -387,6 +394,7 @@ func (s *Service) refresh(ctx context.Context) (refreshTold, error) {
 	// What else refers to an item is read before the store's transaction, which a read of
 	// the pool would wait on; a read that fails only skips the prune.
 	got.kept, got.keptRead = s.keptItems(ctx)
+	got.marked, got.markedRead = s.keptMarks(ctx)
 
 	told, err := s.save(ctx, seq, got)
 	if err == nil && s.usage != nil {
@@ -508,6 +516,11 @@ type refreshed struct {
 	// keptRead is false when they couldn't be read, so the refresh prunes nothing.
 	kept     []int64
 	keptRead bool
+
+	// marked are the items whose Restore marks the prune of old marks keeps, and
+	// markedRead is false when they couldn't be read, so the refresh drops no mark.
+	marked     []int64
+	markedRead bool
 }
 
 // downloadedAvatar is the viewer's avatar as a data URL, and where it came from.

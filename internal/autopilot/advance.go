@@ -186,6 +186,7 @@ func (p *pass) runLocal(ctx context.Context, r *routineRun, m *match, sr *stepRu
 	}
 
 	job := p.job(r, m, sr)
+	job.Local = p.local[store.Deref(m.ItemID)]
 	sr.Status, sr.Started = stepRunning, new(p.now)
 
 	m.wait(BlockStarting, "")

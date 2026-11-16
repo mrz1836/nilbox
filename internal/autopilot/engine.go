@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"maps"
 	"sync"
 	"time"
 
@@ -113,6 +114,10 @@ type EngineItems interface {
 	// ReadStates reads and stores the states of the items among ids, one request.
 	ReadStates(ctx context.Context, ids []int64) error
 
+	// LocalStates returns the local state of each stored item among ids (its triage on
+	// this Mac, as the inbox encodes it), by id: what a triage step decides on.
+	LocalStates(ctx context.Context, ids []int64) (map[int64]string, error)
+
 	// ReadItem reads one item again from GitHub and stores it: the read right before a
 	// start.
 	ReadItem(ctx context.Context, id int64) error
@@ -189,6 +194,11 @@ type EngineConfig struct {
 	Runner      Runner
 	Dispatchers map[catalog.Dispatcher]Dispatcher
 
+	// Triage is the inbox's own triage, which runs the triage steps (Pin, Snooze,
+	// Dismiss, Restore), each recorded as an effect, unless Dispatchers names a dispatcher
+	// of its own for them, and through which Undo puts an item back; nil runs none.
+	Triage Triage
+
 	// Holds says what else holds a start back; nil holds nothing.
 	Holds Holds
 
@@ -212,6 +222,7 @@ type Engine struct {
 	lock        *Lock
 	runner      Runner
 	dispatchers map[catalog.Dispatcher]Dispatcher
+	triage      Triage
 	holds       Holds
 	problems    ProblemSink
 	events      event.Sink
@@ -322,8 +333,9 @@ func NewEngine(svc *Service, cfg EngineConfig) *Engine {
 
 	e := &Engine{
 		svc: svc, items: cfg.Items, ledger: newLedger(svc.store.db, svc.clock), prefs: prefs.New(svc.store.db, svc.clock),
-		lock: lock, runner: cfg.Runner, dispatchers: cfg.Dispatchers, holds: cfg.Holds, problems: cfg.Problems,
-		events: event.Or(cfg.Events), clock: svc.clock, logger: logging.Or(svc.logger), tick: tick,
+		lock: lock, runner: cfg.Runner, dispatchers: maps.Clone(cfg.Dispatchers), triage: cfg.Triage, holds: cfg.Holds,
+		problems: cfg.Problems,
+		events:   event.Or(cfg.Events), clock: svc.clock, logger: logging.Or(svc.logger), tick: tick,
 		since: svc.clock.Now().Truncate(time.Second), wake: make(chan struct{}, 1), cmds: make(chan command),
 		mail: mailbox{signal: make(chan struct{}, 1)}, closed: make(chan struct{}),
 		inflight: map[int64]bool{}, freshReads: map[int64]fresh{}, stopping: map[int64]stopAsk{},
@@ -338,6 +350,10 @@ func NewEngine(svc *Service, cfg EngineConfig) *Engine {
 
 	if cfg.Runner != nil {
 		e.dispatchers[catalog.DispatchAgent] = cfg.Runner
+	}
+
+	if _, own := e.dispatchers[catalog.DispatchTriage]; cfg.Triage != nil && !own {
+		e.dispatchers[catalog.DispatchTriage] = triageDispatcher{e: e}
 	}
 
 	svc.engine = e
@@ -365,9 +381,23 @@ func (e *Engine) ItemsChanged([]int64) {
 	e.Wake()
 }
 
-// Outcomes hears what the inbox saw happen to items, without waiting, and runs a cycle
-// soon, which reads their states again.
-func (e *Engine) Outcomes([]Outcome) {
+// Outcomes hears what the inbox saw happen to items, and runs a cycle soon, which reads
+// their states again. What the user's own triage took back of a routine's (an outcome's
+// Reversed) leaves that routine hands off the item at once, in whichever copy of the app
+// the user did it: the routine leaves the item alone from then on, until Let it act again.
+// A record that fails is logged.
+func (e *Engine) Outcomes(ctx context.Context, outcomes []Outcome) {
+	for _, o := range outcomes {
+		if o.Reversed.RoutineID == 0 || o.Reversed.ItemID == 0 {
+			continue
+		}
+
+		if err := e.ledger.handOff(ctx, o.Reversed, o.Kind, o.At, e.clock.Now()); err != nil {
+			e.logger.WarnContext(ctx, "Autopilot could not record what the user took back of a routine's",
+				"routine", o.Reversed.RoutineID, "item", o.Reversed.ItemID, "error", err)
+		}
+	}
+
 	e.Wake()
 }
 

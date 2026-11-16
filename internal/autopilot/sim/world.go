@@ -57,9 +57,12 @@ type Item struct {
 	Labels   []string
 	Comments int
 
-	// Watched puts it in the routines' search, and Listed in the user's Authored list.
-	Watched bool
-	Listed  bool
+	// Watched puts it in the routines' search, Listed in the user's Authored list, and
+	// ReviewRequested and Assigned in those lists.
+	Watched         bool
+	Listed          bool
+	ReviewRequested bool
+	Assigned        bool
 
 	Created time.Time
 	Updated time.Time
@@ -277,7 +280,7 @@ func rate() github.QueryRate {
 	return github.QueryRate{Cost: 1, Limit: 5000, Remaining: 4900, Used: 100}
 }
 
-// FetchInbox answers with the user's Authored list.
+// FetchInbox answers with the user's lists: Review requested, Authored, and Assigned.
 func (w *World) FetchInbox(context.Context, github.Token) (*github.Inbox, error) {
 	if err := w.down(); err != nil {
 		return nil, err
@@ -286,18 +289,33 @@ func (w *World) FetchInbox(context.Context, github.Token) (*github.Inbox, error)
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
-	var authored []github.Item
+	var requested, authored, assigned []github.Item
 
 	for _, n := range w.numbers() {
-		if it := w.items[n]; it.Listed && it.State == github.StateOpen {
+		it := w.items[n]
+		if it.State != github.StateOpen {
+			continue
+		}
+
+		if it.ReviewRequested {
+			requested = append(requested, w.item(it))
+		}
+
+		if it.Listed {
 			authored = append(authored, w.item(it))
+		}
+
+		if it.Assigned {
+			assigned = append(assigned, w.item(it))
 		}
 	}
 
 	return &github.Inbox{
-		Viewer:    github.Viewer{Login: Viewer},
-		Authored:  github.SearchResult{IssueCount: len(authored), Items: authored},
-		RateLimit: rate(), OAuthScopes: "repo, read:org",
+		Viewer:          github.Viewer{Login: Viewer},
+		ReviewRequested: github.SearchResult{IssueCount: len(requested), Items: requested},
+		Authored:        github.SearchResult{IssueCount: len(authored), Items: authored},
+		Assigned:        github.SearchResult{IssueCount: len(assigned), Items: assigned},
+		RateLimit:       rate(), OAuthScopes: "repo, read:org",
 	}, nil
 }
 

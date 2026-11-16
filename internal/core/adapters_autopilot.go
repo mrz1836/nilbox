@@ -303,17 +303,70 @@ type autopilotEngine struct {
 	service *autopilot.Service
 }
 
-// newAutopilotEngine builds the engine that runs the routines. No step's dispatcher is
-// registered yet: each part registers its own as it is built, and until then the Service
-// keeps every routine in Dry run, so the engine records what would run.
+// newAutopilotEngine builds the engine that runs the routines. Each part registers its own
+// dispatcher as it is built: the inbox's triage runs the triage steps (Triage, which the
+// engine registers as the triage dispatcher), and until a part's is, the Service keeps a
+// routine with one of its steps in Dry run, so the engine records what would run.
 func newAutopilotEngine(deps autopilotEngine) *autopilot.Engine {
 	return autopilot.NewEngine(deps.service, autopilot.EngineConfig{
 		Items: engineItems{
 			autopilotItems: autopilotItems{store: deps.store, inbox: deps.faces}, service: deps.inbox,
 			tokens: deps.tokens, client: deps.client, logger: deps.logger,
 		},
-		Lock: autopilot.NewLock(deps.lock), Events: deps.events,
+		Triage: inboxTriage{faces: deps.faces},
+		Lock:   autopilot.NewLock(deps.lock), Events: deps.events,
 	})
+}
+
+// inboxTriage runs a routine's triage steps, and their Undo, through the inbox's own triage
+// (autopilot.Triage): Pin, Snooze, Dismiss, and Restore, marked with the routine's ID, each
+// recorded as Autopilot's effect in the triage's own transaction.
+type inboxTriage struct {
+	faces *inbox.Routines
+}
+
+// Apply runs req.
+func (t inboxTriage) Apply(ctx context.Context, req autopilot.TriageRequest,
+	record func(ctx context.Context, tx *sql.Tx, change autopilot.TriageChange) error,
+) (autopilot.TriageChange, error) {
+	got, err := t.faces.Triage(ctx, inbox.RoutineTriage{
+		Routine: req.RoutineID, Item: req.ItemID, Action: inbox.TriageAction(req.Action), Days: req.Days,
+		Expect: req.Expect,
+		Record: func(ctx context.Context, tx *sql.Tx, c inbox.TriageChange) error {
+			return record(ctx, tx, triageChangeOf(c))
+		},
+	})
+
+	return triageChangeOf(got), err
+}
+
+// Undo puts back what undos changed, where their items are still as they left them.
+func (t inboxTriage) Undo(ctx context.Context, undos []autopilot.TriageUndo,
+	record func(ctx context.Context, tx *sql.Tx, put []bool) error,
+) ([]bool, error) {
+	return t.faces.UndoTriage(ctx, inboxUndos(undos), record)
+}
+
+// AsLeft reports which of undos' items are still as they left them.
+func (t inboxTriage) AsLeft(ctx context.Context, undos []autopilot.TriageUndo) ([]bool, error) {
+	return t.faces.AsLeft(ctx, inboxUndos(undos))
+}
+
+// triageChangeOf is the inbox's change in Autopilot's words, the same on both sides.
+func triageChangeOf(c inbox.TriageChange) autopilot.TriageChange {
+	return autopilot.TriageChange{Before: c.Before, After: c.After, Kept: autopilot.TriageKept(c.Kept)}
+}
+
+// inboxUndos is undos in the inbox's words.
+func inboxUndos(undos []autopilot.TriageUndo) []inbox.TriageUndo {
+	out := make([]inbox.TriageUndo, 0, len(undos))
+	for _, u := range undos {
+		out = append(out, inbox.TriageUndo{
+			Routine: u.RoutineID, Item: u.ItemID, Action: inbox.TriageAction(u.Action), Before: u.Before, After: u.After,
+		})
+	}
+
+	return out
 }
 
 // engineItems reads the inbox for Autopilot's engine (autopilot.EngineItems).
@@ -386,6 +439,11 @@ func (a engineItems) ReadStates(ctx context.Context, ids []int64) error {
 	return err
 }
 
+// LocalStates returns the stored items' triage on this Mac, as the inbox encodes it.
+func (a engineItems) LocalStates(ctx context.Context, ids []int64) (map[int64]string, error) {
+	return a.inbox.LocalStates(ctx, ids)
+}
+
 // ReadItem reads one item again from GitHub, as its own refresh does.
 func (a engineItems) ReadItem(ctx context.Context, id int64) error {
 	_, err := a.service.RefreshItem(github.WithPurpose(ctx, github.PurposeAutopilot), id)
@@ -420,6 +478,16 @@ func (w *engineWaker) KeptItems(ctx context.Context) ([]int64, error) {
 	return w.engine.KeptItems(ctx)
 }
 
+// KeptMarks returns the items whose routine's Restore the engine still offers to Undo,
+// whose marks the inbox's prune keeps (inbox.MarkKeeper); none before there is an engine.
+func (w *engineWaker) KeptMarks(ctx context.Context) ([]int64, error) {
+	if w.engine == nil {
+		return nil, nil
+	}
+
+	return w.engine.KeptMarks(ctx)
+}
+
 // Wake wakes the engine, once there is one, as a change of Autopilot's settings does.
 func (w *engineWaker) Wake() {
 	if w.engine != nil {
@@ -428,27 +496,53 @@ func (w *engineWaker) Wake() {
 }
 
 // outcomesFanOut tells what the user finished from the inbox, and the items the inbox saw
-// close or leave its lists, both to the mirror of the user's GitHub notifications and to
-// Autopilot's engine, each without waiting on the other (inbox.OutcomeSink).
+// close or leave its lists, both to Autopilot's engine and to the mirror of the user's
+// GitHub notifications (inbox.OutcomeSink). The engine hears too what the user's own
+// triage took back of a routine's, which leaves the routine hands off the item, so it is
+// told first: it records that at once, never waiting on the mirror, whose record can wait
+// on a clear on its way to GitHub.
 type outcomesFanOut struct {
-	threads ghThreadOutcomes
-	engine  *engineWaker
+	threads inbox.OutcomeSink
+	engine  engineOutcomes
 }
 
-// Settle tells both.
+// engineOutcomes is how the fan-out tells Autopilot's engine; *engineWaker is it.
+type engineOutcomes interface {
+	Outcomes(ctx context.Context, outcomes []autopilot.Outcome)
+}
+
+// Settle tells the engine, then the mirror.
 func (o outcomesFanOut) Settle(ctx context.Context, outcomes []inbox.Outcome) {
-	o.threads.Settle(ctx, outcomes)
-
-	if o.engine == nil || o.engine.engine == nil {
-		return
+	if o.engine != nil {
+		o.engine.Outcomes(ctx, toEngineOutcomes(outcomes))
 	}
 
+	if o.threads != nil {
+		o.threads.Settle(ctx, outcomes)
+	}
+}
+
+// Outcomes tells the engine, once there is one, what the inbox saw.
+func (w *engineWaker) Outcomes(ctx context.Context, outcomes []autopilot.Outcome) {
+	if w.engine != nil {
+		w.engine.Outcomes(ctx, outcomes)
+	}
+}
+
+// toEngineOutcomes is outcomes in the engine's words, the same on both sides.
+func toEngineOutcomes(outcomes []inbox.Outcome) []autopilot.Outcome {
 	told := make([]autopilot.Outcome, 0, len(outcomes))
+
 	for _, out := range outcomes {
-		told = append(told, autopilot.Outcome{Kind: string(out.Kind), Ref: out.Ref, At: out.At})
+		told = append(told, autopilot.Outcome{
+			Kind: string(out.Kind), Ref: out.Ref, At: out.At,
+			Reversed: autopilot.Reversal{
+				RoutineID: out.Reversed.Routine, ItemID: out.Reversed.Item, Action: catalog.StepKind(out.Reversed.Did),
+			},
+		})
 	}
 
-	o.engine.engine.Outcomes(told)
+	return told
 }
 
 // engineOnInbox passes the inbox's events on, and wakes Autopilot's engine when the inbox

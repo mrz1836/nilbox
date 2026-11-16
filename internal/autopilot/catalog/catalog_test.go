@@ -172,11 +172,17 @@ func TestEveryStepNamesItsDispatcher(t *testing.T) {
 	}
 }
 
-func TestNothingIsOfferedBeforeItsDispatcher(t *testing.T) {
+// builtDispatchers are the parts whose dispatchers this build has: the inbox's triage.
+func builtDispatchers() []catalog.Dispatcher {
+	return []catalog.Dispatcher{catalog.DispatchTriage}
+}
+
+func TestAStepIsOfferedOnceItsDispatcherIsBuilt(t *testing.T) {
 	t.Parallel()
 
 	for _, s := range catalog.Steps() {
-		assert.False(t, s.Offered, "%s: no dispatcher is built yet", s.Kind)
+		built := slices.Contains(builtDispatchers(), s.Dispatcher)
+		assert.Equal(t, built, s.Offered, "%s: offered once its dispatcher, %s, is built", s.Kind, s.Dispatcher)
 	}
 
 	assert.Empty(t, catalog.GitHubActions(), "the GitHub actions are added with their dispatcher")

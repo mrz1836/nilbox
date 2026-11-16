@@ -1355,9 +1355,10 @@ func (p *WatchPasses) Run(ctx context.Context) {
 	p.svc.runWatchPasses(ctx)
 }
 
-// Routines is the inbox's face for Autopilot's own reads, which the window never reaches
-// (the Service is bound, so these are not its methods): a draft's searches read now, the
-// check names of the pull requests a routine acts on, and what the last watch pass did.
+// Routines is the inbox's face for Autopilot's own reads, and its local steps, which the
+// window never reaches (the Service is bound, so these are not its methods): a draft's
+// searches read now, the check names of the pull requests a routine acts on, what the last
+// watch pass did, and a routine's triage and its Undo (triage_routine.go).
 type Routines struct {
 	svc *Service
 }

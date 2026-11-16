@@ -266,6 +266,11 @@ type TestItem struct {
 
 	// Trace is each step of the decision: the trigger, then each condition that ran.
 	Trace []eval.Trace `json:"trace"`
+
+	// LeftAlone reports an item the routine leaves alone, since the user took back what it
+	// did there: it doesn't act on it, matching or not, until Let it act again. A new
+	// routine leaves none alone.
+	LeftAlone bool `json:"leftAlone"`
 }
 
 // testCache keeps the searches tests read, by query, for testFor.
@@ -324,10 +329,32 @@ func (s *Service) Test(ctx context.Context, d Draft) (TestResult, error) {
 		return out, err
 	}
 
+	if err = s.markLeftAlone(ctx, d.ID, out.Items); err != nil {
+		return out, err
+	}
+
 	out.Matched, out.Unknown = counts(out.Items)
 	out.Estimate = s.estimate(ctx, out.Searches)
 
 	return out, nil
+}
+
+// markLeftAlone marks the items the routine id leaves alone, none for a new routine (0).
+func (s *Service) markLeftAlone(ctx context.Context, id int64, items []TestItem) error {
+	if id == 0 || s.store.db == nil {
+		return nil
+	}
+
+	handsOff, err := s.ledger().handsOff(ctx, id)
+	if err != nil {
+		return uierr.New("The items the routine leaves alone couldn't be read.", err)
+	}
+
+	for i := range items {
+		items[i].LeftAlone = handsOff[items[i].ID]
+	}
+
+	return nil
 }
 
 // counts counts the items the routine matches, and those it can't decide yet.

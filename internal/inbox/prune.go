@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/mrz1836/nilbox/internal/autopilotprefs"
 	"github.com/mrz1836/nilbox/internal/github"
 	"github.com/mrz1836/nilbox/internal/inbox/internal/queries"
 	"github.com/mrz1836/nilbox/internal/item"
@@ -54,11 +55,66 @@ func (w *writer) saveLists(ctx context.Context, got refreshed) error {
 		return err
 	}
 
+	if got.markedRead {
+		if err := w.pruneRestoreMarks(ctx, got.marked); err != nil {
+			return err
+		}
+	}
+
 	if !got.keptRead {
 		return nil
 	}
 
 	return w.pruneOld(ctx, got.kept)
+}
+
+// MarkKeeper names the items whose routine's Restore mark (item_local_state.set_aside_by
+// on a row with nothing else in it) something outside the inbox still reads, which the
+// prune of the marks keeps however old: Autopilot names the items whose Restore it still
+// offers to Undo.
+type MarkKeeper interface {
+	KeptMarks(ctx context.Context) ([]int64, error)
+}
+
+// keptMarks returns the items whose Restore marks the prune keeps, read before a whole
+// refresh's transaction; none without a Marks seam. ok is false when they couldn't be read,
+// which is logged: the refresh then drops no mark.
+func (s *Service) keptMarks(ctx context.Context) (ids []int64, ok bool) {
+	if s.marks == nil {
+		return nil, true
+	}
+
+	ids, err := s.marks.KeptMarks(ctx)
+	if err != nil {
+		s.logger.WarnContext(ctx, "could not read the restore marks kept, so this refresh drops none", "error", err)
+
+		return nil, false
+	}
+
+	return ids, true
+}
+
+// pruneRestoreMarks drops the marks routines' Restores left on items they brought back,
+// once they are older than Autopilot keeps its history (autopilot.historyDays, which
+// settings writes), but those of the items kept, whose Restore Autopilot still offers to
+// Undo: only that Undo reads a mark, and an item with nothing else in its local state is
+// then pruned as any other. The user's own triage of the item clears its mark sooner.
+func (w *writer) pruneRestoreMarks(ctx context.Context, kept []int64) error {
+	stored, err := w.prefs.GetMany(ctx, autopilotprefs.KeyHistoryDays)
+	if err != nil {
+		return fmt.Errorf("read how long Autopilot keeps its history: %w", err)
+	}
+
+	days := autopilotprefs.Decode(stored).HistoryDays
+
+	err = w.q.PruneRestoreMarks(ctx, queries.PruneRestoreMarksParams{
+		Cutoff: w.now.AddDate(0, 0, -days), Keep: append([]int64{0}, kept...),
+	})
+	if err != nil {
+		return fmt.Errorf("prune the routines' old restore marks: %w", err)
+	}
+
+	return nil
 }
 
 // pruneOld deletes the items nothing refers to that no read has brought for pruneAfter,

@@ -374,7 +374,19 @@ changing the package, and keep the section and its summary in step.
   a guard test decides every query that reads the reason flags
   (`TestEveryReasonFlagQueryIsDecided`). Autopilot's own reads (`SearchNow`, `ReadChecks`) go
   through `inbox.Routines`, never the bound Service, whose `ItemsByID` serves a routine's
-  Watching list.
+  Watching list. So does a routine's triage (`Routines.Triage`, `UndoTriage`, `AsLeft`):
+  Pin, Snooze (the routine's length, the user's wake rules), Dismiss, and Restore run the
+  inbox's own triage marked with the routine (`item_local_state.set_aside_by` and
+  `pinned_by`), each a compare-and-set on the state the routine decided on (`Expect`,
+  `LocalStates`), its `Record` writing Autopilot's effect in the same transaction before the
+  write; a routine's Snooze and Dismiss never replace what the user set aside themselves,
+  and its Restore brings an item back to the user's attention, the user's own set-aside
+  included. Undo puts back an item's state before, only where it is still as the step left
+  it, and a refresh drops a Restore's mark once it is older than Autopilot's history. Every
+  triage path of the user's own clears the mark it changes, and one that takes back a
+  routine's (a restore of its snooze or dismissal, a snooze over that, an unpin of its pin)
+  tells the outcome sink with `Outcome.Reversed` (`OutcomeSnoozed` and `OutcomeUnpinned`
+  only then).
   Full design: [docs/architecture.md](docs/architecture.md#internalinbox)
 - `internal/launcher/` resolves a launch (the agent first, then that agent's profile, model,
   and flags), plans it, and writes its files; `internal/launcher/terminal/` renders the launch
@@ -780,19 +792,26 @@ changing the package, and keep the section and its summary in step.
   worker, never bound) runs them: one loop, the only writer of the ledger it owns
   (`autopilot_matches`, one row per routine, item, fire key, and Dry run, open or closed,
   every change a compare-and-set; `autopilot_runs`, with the one-active-run index;
-  `autopilot_tries`, `autopilot_baselines`, `autopilot_hands_off`; its state in
-  `autopilot.engine`), woken by the inbox, the settings, the outcomes, a 1-minute tick, and
-  the window's commands, doing everything slow on workers; it holds a `flock` on
+  `autopilot_tries`, `autopilot_baselines`, `autopilot_hands_off`, `autopilot_effects`; its
+  state in `autopilot.engine`), woken by the inbox, the settings, the outcomes, a 1-minute
+  tick, and the window's commands, doing everything slow on workers; it holds a `flock` on
   `<data>/autopilot.lock` (only the holder sends the routines' searches, `inbox.WatchHolder`),
   waits for a refresh that carried its searches, checks every limit in
   Go before a start, never sends a GitHub action again on its own once a quit cut it off,
-  and starts steps only through the dispatchers each part registers (none
-  yet, so every routine runs in Dry run). The bound Service's ledger actions (`Approve`, `Skip`,
-  `RunNow`, `TryAgain`, `LetActAgain`, `ClearHistory`) are commands it applies; `StopRun` and
-  `StopAll` go straight to the runner; `Activity`, `ItemHistory`, `Explain`, `Engine`, and
-  `Matching` read. `internal/autopilot/sim` (test support only) is its simulator. It
+  and starts steps only through the dispatchers each part registers: the
+  triage steps (Pin, Snooze, Dismiss, Restore) through the inbox's own triage (`Triage`, core's
+  `inboxTriage`), each recorded as an effect in the triage's own transaction, held back only
+  by a sign-out, Pause, and the active hours, and acting on outside contributors' items too;
+  a routine with any other step still runs in Dry run. The user's own reversal of what a
+  routine did (told through the outcomes, `Outcome.Reversed`), and an Undo, leave the routine
+  hands off the item until Let it act again. The bound Service's ledger actions (`Approve`,
+  `Skip`, `RunNow`, `TryAgain`, `LetActAgain`, `Undo`, `ClearHistory`) are commands it
+  applies; `StopRun` and `StopAll` go straight to the runner; `Activity` (with each day's
+  grouped lines of local steps, "Snoozed 6", and the items left alone), `ItemHistory`,
+  `Explain`, `Engine`, and `Matching` read. `internal/autopilot/sim` (test support only) is
+  its simulator, which runs the triage steps through the inbox's real triage. It
   reaches the rest only through the interfaces it declares (`Prefs`, `Accounts`, `Names`,
-  `Items`, `Costs`, `EngineItems`, the dispatchers, `Holds`, `ProblemSink`), which
+  `Items`, `Costs`, `EngineItems`, `Triage`, the dispatchers, `Holds`, `ProblemSink`), which
   `internal/core/adapters_autopilot.go` adapts, and never imports the inbox, the sheets, the
   launcher, the worktrees, the sessions, the runs, notify, settings, the desktop, or core (the
   repoguard boundary test). Beneath it, the routines core, five pure leaves that read nothing
