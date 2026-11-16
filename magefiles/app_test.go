@@ -824,10 +824,15 @@ func TestAppBundleOnMacOS(t *testing.T) {
 
 	testutil.WriteFile(t, filepath.Join(dir, "bin", brand.Name+".app", "Contents", "MacOS", brand.Slug), "")
 
+	_, _, err = appBundle()
+	require.ErrorIs(t, err, errNoBundle, "a bundle under the release's name is an earlier build's, never this one")
+
+	testutil.WriteFile(t, filepath.Join(dir, "bin", brand.DevName+".app", "Contents", "MacOS", brand.Slug), "")
+
 	bundle, exe, err := appBundle()
 
 	require.NoError(t, err)
-	assert.Equal(t, filepath.Join("bin", brand.Name+".app"), bundle)
+	assert.Equal(t, filepath.Join("bin", brand.DevName+".app"), bundle)
 	assert.True(t, filepath.IsAbs(exe), "the executable path is absolute, so pgrep can match it")
 	assert.True(t, strings.HasSuffix(exe, filepath.Join(bundle, "Contents", "MacOS", brand.Slug)))
 }
@@ -899,7 +904,7 @@ func TestAppProcessesFindsARealProcess(t *testing.T) {
 	self, err := os.Executable()
 	require.NoError(t, err)
 
-	exe := filepath.Join(t.TempDir(), brand.Name+".app", "Contents", "MacOS", brand.Slug)
+	exe := filepath.Join(t.TempDir(), brand.DevName+".app", "Contents", "MacOS", brand.Slug) // a space, as the build from source's path holds
 
 	// The app's path links to this test binary, which runs TestHelperSleep under the app's
 	// path as its command name. A system tool would not do: a multi-call build of sleep
@@ -961,7 +966,7 @@ echo "$FAKE_PID"`)
 
 		require.NoError(t, err)
 		assert.True(t, quit)
-		assert.Equal(t, "Quitting the running "+brand.Name+"...\n", out)
+		assert.Equal(t, "Quitting the running "+brand.DevName+"...\n", out)
 	})
 
 	t.Run("gives up when it does not quit", func(t *testing.T) {
@@ -1284,7 +1289,7 @@ func TestQuietLinkerFlags(t *testing.T) {
 func TestWriteInfoPlist(t *testing.T) {
 	meta := buildMeta{bundleVersion: "1.2.3", bundleBuild: "42"}
 
-	t.Run("copies the plist and stamps the versions", func(t *testing.T) {
+	t.Run("copies the plist and stamps the versions, keeping the release's name", func(t *testing.T) {
 		dir := inTempDir(t)
 		testutil.WriteFile(t, filepath.FromSlash(brandgen.InfoPlistPath), "<plist/>")
 
@@ -1292,7 +1297,7 @@ func TestWriteInfoPlist(t *testing.T) {
 
 		dst := filepath.Join(dir, "Info.plist")
 
-		require.NoError(t, writeInfoPlist(dst, meta))
+		require.NoError(t, writeInfoPlist(dst, meta, false))
 
 		assert.Equal(t, "<plist/>", readFile(t, dst), "the committed plist keeps its placeholder version")
 		assert.Equal(t, []string{
@@ -1301,10 +1306,31 @@ func TestWriteInfoPlist(t *testing.T) {
 		}, logLines(t, log))
 	})
 
+	t.Run("names a build from source apart from the release", func(t *testing.T) {
+		dir := inTempDir(t)
+		testutil.WriteFile(t, filepath.FromSlash(brandgen.InfoPlistPath), "<plist/>")
+
+		log := fakeLoggedTool(t, isolatedPath(t), "plutil", "")
+
+		dst := filepath.Join(dir, "Info.plist")
+
+		require.NoError(t, writeInfoPlist(dst, meta, true))
+
+		assert.Equal(t, "<plist/>", readFile(t, dst), "the committed plist keeps the release's name")
+		assert.Equal(t, []string{
+			"-replace CFBundleShortVersionString -string 1.2.3 " + dst,
+			"-replace CFBundleVersion -string 42 " + dst,
+			"-replace CFBundleName -string " + brand.DevName + " " + dst,
+			"-replace CFBundleDisplayName -string " + brand.DevName + " " + dst,
+			"-replace CFBundleIdentifier -string " + brand.DevBundleID + " " + dst,
+			"-replace NSAppleEventsUsageDescription -string " + brandgen.AppleEventsUsage(brand.DevName) + " " + dst,
+		}, logLines(t, log))
+	})
+
 	t.Run("plist missing", func(t *testing.T) {
 		dir := inTempDir(t)
 
-		err := writeInfoPlist(filepath.Join(dir, "Info.plist"), meta)
+		err := writeInfoPlist(filepath.Join(dir, "Info.plist"), meta, false)
 
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "read the Info.plist")
@@ -1314,7 +1340,7 @@ func TestWriteInfoPlist(t *testing.T) {
 		dir := inTempDir(t)
 		testutil.WriteFile(t, filepath.FromSlash(brandgen.InfoPlistPath), "<plist/>")
 
-		err := writeInfoPlist(filepath.Join(dir, "missing", "Info.plist"), meta)
+		err := writeInfoPlist(filepath.Join(dir, "missing", "Info.plist"), meta, false)
 
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "write the bundle Info.plist")
@@ -1325,11 +1351,55 @@ func TestWriteInfoPlist(t *testing.T) {
 		testutil.WriteFile(t, filepath.FromSlash(brandgen.InfoPlistPath), "<plist/>")
 		fakeTool(t, isolatedPath(t), "plutil", "exit 1")
 
-		err := writeInfoPlist(filepath.Join(dir, "Info.plist"), meta)
+		err := writeInfoPlist(filepath.Join(dir, "Info.plist"), meta, true)
 
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "stamp CFBundleShortVersionString")
 	})
+}
+
+//nolint:paralleltest // changes the process's working directory
+func TestWriteInfoPlistWithPlutil(t *testing.T) {
+	onlyOnMacOS(t)
+
+	plutil := requireTool(t, "plutil")
+
+	inRepoRoot(t)
+
+	read := func(t *testing.T, plist, key string) string {
+		t.Helper()
+
+		out, err := exec.CommandContext(t.Context(), plutil, "-extract", key, "raw", "-o", "-", plist).Output() //nolint:gosec // the test's own plist, fixed arguments
+		require.NoError(t, err, key)
+
+		return strings.TrimSpace(string(out))
+	}
+
+	tests := []struct {
+		name     string
+		dev      bool
+		wantName string
+		wantID   string
+	}{
+		{name: "a release or a rehearsal keeps the release's name", dev: false, wantName: brand.Name, wantID: brand.BundleID},
+		{name: "a build from source is named apart", dev: true, wantName: brand.DevName, wantID: brand.DevBundleID},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			plist := filepath.Join(t.TempDir(), "Info.plist")
+
+			require.NoError(t, writeInfoPlist(plist, buildMeta{bundleVersion: "1.2.3", bundleBuild: "42"}, tt.dev))
+
+			assert.Equal(t, tt.wantName, read(t, plist, "CFBundleName"))
+			assert.Equal(t, tt.wantName, read(t, plist, "CFBundleDisplayName"))
+			assert.Equal(t, tt.wantID, read(t, plist, "CFBundleIdentifier"))
+			assert.Equal(t, brandgen.AppleEventsUsage(tt.wantName), read(t, plist, "NSAppleEventsUsageDescription"))
+			assert.Equal(t, brand.Slug, read(t, plist, "CFBundleExecutable"), "the executable keeps its name")
+			assert.Equal(t, "1.2.3", read(t, plist, "CFBundleShortVersionString"))
+			assert.Equal(t, "42", read(t, plist, "CFBundleVersion"))
+		})
+	}
 }
 
 //nolint:paralleltest // changes the process's working directory
@@ -1464,10 +1534,10 @@ func TestNormalizeModes(t *testing.T) {
 
 //nolint:paralleltest // changes the process's working directory, PATH, and standard output
 func TestBuildBundle(t *testing.T) {
-	bundle := filepath.Join("bin", "Example.app")
+	bundle := filepath.Join("bin", brand.DevName+".app") // a space in its name, as a build from source's
 	exe := filepath.Join(bundle, "Contents", "MacOS", brand.Slug)
 
-	t.Run("assembles, stamps, and signs the bundle", func(t *testing.T) {
+	t.Run("assembles, stamps, and signs the bundle, named apart from the release", func(t *testing.T) {
 		dir := inTempDir(t)
 		checkout(t, dir)
 		_, log := appTools(t)
@@ -1485,17 +1555,22 @@ func TestBuildBundle(t *testing.T) {
 		assert.Contains(t, out, "✅ Built "+bundle+" (binary 6 bytes")
 
 		lines := logLines(t, log)
-		require.Len(t, lines, 6)
+		require.Len(t, lines, 10)
 		assert.Equal(t, []string{"pnpm install --frozen-lockfile", "pnpm build"}, lines[:2])
 		assert.True(t, strings.HasPrefix(lines[2], "go build -tags desktop,production -trimpath -buildvcs=false -ldflags -s -w -X main.version="), lines[2])
 		assert.True(t, strings.HasSuffix(lines[2], " -o "+exe+" ./cmd/"+brand.Slug), lines[2])
+		assert.NotContains(t, lines[2], "main.flavor", "a build from source stamps no flavor")
 
 		plist := filepath.Join(bundle, "Contents", "Info.plist")
 		assert.Equal(t, []string{
 			"plutil -replace CFBundleShortVersionString -string " + brandgen.PlaceholderVersion + " " + plist,
 			"plutil -replace CFBundleVersion -string " + brandgen.PlaceholderVersion + " " + plist,
+			"plutil -replace CFBundleName -string " + brand.DevName + " " + plist,
+			"plutil -replace CFBundleDisplayName -string " + brand.DevName + " " + plist,
+			"plutil -replace CFBundleIdentifier -string " + brand.DevBundleID + " " + plist,
+			"plutil -replace NSAppleEventsUsageDescription -string " + brandgen.AppleEventsUsage(brand.DevName) + " " + plist,
 			"codesign --force --sign - " + bundle,
-		}, lines[3:])
+		}, lines[3:], "named before it is signed, so the signature seals the name")
 	})
 
 	t.Run("stale brand files stop the build before any tool runs", func(t *testing.T) {
@@ -1543,12 +1618,99 @@ func TestBuildBundle(t *testing.T) {
 	})
 }
 
+//nolint:paralleltest // changes the process's PATH and standard output
+func TestRemoveLegacyBundle(t *testing.T) {
+	earlier := func(t *testing.T) string {
+		t.Helper()
+
+		legacy := filepath.Join(t.TempDir(), "bin", brand.Name+".app")
+		testutil.WriteFile(t, bundleExecutable(legacy), "binary")
+
+		return legacy
+	}
+
+	t.Run("removes an earlier build from source once nothing runs from it", func(t *testing.T) {
+		legacy := earlier(t)
+		log := fakeLoggedTool(t, isolatedPath(t), "pgrep", "exit 1")
+
+		var err error
+
+		out := captureStdout(t, func() { err = removeLegacyBundle(legacy) })
+
+		require.NoError(t, err)
+		assert.NoDirExists(t, legacy)
+		assert.DirExists(t, filepath.Dir(legacy), "only the bundle goes")
+		assert.Equal(t, []string{"-f ^" + regexp.QuoteMeta(bundleExecutable(legacy)) + "( |$)"}, logLines(t, log),
+			"it looks for a copy running from it first")
+		assert.Equal(t, "Removed "+legacy+", an earlier build from source under "+brand.Name+"'s own name and bundle ID.\n", out)
+	})
+
+	t.Run("leaves one that still runs, and says so", func(t *testing.T) {
+		legacy := earlier(t)
+		fakeTool(t, isolatedPath(t), "pgrep", "echo 4242")
+
+		var err error
+
+		out := captureStdout(t, func() { err = removeLegacyBundle(legacy) })
+
+		require.NoError(t, err)
+		assert.FileExists(t, bundleExecutable(legacy))
+		assert.Contains(t, out, legacy+", an earlier build from source under "+brand.Name+"'s own name, still runs")
+	})
+
+	t.Run("fails, removing nothing, when it can't tell whether one runs", func(t *testing.T) {
+		legacy := earlier(t)
+		fakeTool(t, isolatedPath(t), "pgrep", "exit 2")
+
+		require.ErrorContains(t, removeLegacyBundle(legacy), "find the running app")
+		assert.FileExists(t, bundleExecutable(legacy))
+	})
+
+	t.Run("nothing there, or a link, is nothing to remove", func(t *testing.T) {
+		log := fakeLoggedTool(t, isolatedPath(t), "pgrep", "exit 1")
+
+		require.NoError(t, removeLegacyBundle(filepath.Join(t.TempDir(), brand.Name+".app")))
+
+		target := earlier(t)
+		link := filepath.Join(t.TempDir(), brand.Name+".app")
+		require.NoError(t, os.Symlink(target, link))
+
+		require.NoError(t, removeLegacyBundle(link))
+
+		_, err := os.Lstat(link)
+		require.NoError(t, err, "the link stays")
+		assert.FileExists(t, bundleExecutable(target), "and what it links to")
+		assert.NoFileExists(t, log, "no bundle, so nothing to look for running")
+	})
+}
+
 //nolint:paralleltest // changes the process's working directory, PATH, and standard output
 func TestAppTargetsOnMacOS(t *testing.T) {
 	onlyOnMacOS(t)
 
-	bundle := filepath.Join("bin", brand.Name+".app")
+	bundle := filepath.Join("bin", brand.DevName+".app")
 	exe := filepath.Join(bundle, "Contents", "MacOS", brand.Slug)
+
+	t.Run("build makes the bundle from source and removes the earlier one, named as the release", func(t *testing.T) {
+		dir := inTempDir(t)
+		checkout(t, dir)
+		_, log := appTools(t)
+
+		legacy := filepath.Join("bin", brand.Name+".app")
+		testutil.WriteFile(t, filepath.Join(legacy, "Contents", "MacOS", brand.Slug), "an earlier build")
+
+		out := captureStdout(t, func() { require.NoError(t, App{}.Build()) })
+
+		assert.Equal(t, "binary", readFile(t, exe))
+		assert.NoDirExists(t, legacy)
+		assert.Contains(t, out, "Removed "+legacy)
+
+		lines := logLines(t, log)
+		assert.Contains(t, lines, "plutil -replace CFBundleIdentifier -string "+brand.DevBundleID+" "+
+			filepath.Join(bundle, "Contents", "Info.plist"))
+		assert.True(t, strings.HasPrefix(lines[len(lines)-1], "pgrep -f ^"), "it looks for a copy running from the earlier one")
+		assert.Equal(t, "codesign --force --sign - "+bundle, lines[len(lines)-2], "once this build is made")
+	})
 
 	t.Run("open builds a missing bundle, then opens it", func(t *testing.T) {
 		dir := inTempDir(t)

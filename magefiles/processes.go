@@ -16,16 +16,16 @@ import (
 	"github.com/mrz1836/nilbox/internal/brand"
 )
 
-// quitRunningApp asks every process running exe to quit, with SIGTERM, which the app
-// handles as a normal quit, and waits up to timeout until they have exited. It reports
-// whether any was running.
+// quitRunningApp asks every process running exe, the build from source's, to quit, with
+// SIGTERM, which the app handles as a normal quit, and waits up to timeout until they have
+// exited. It reports whether any was running.
 func quitRunningApp(exe string, timeout time.Duration) (bool, error) {
 	pids, err := appProcesses(exe)
 	if err != nil || len(pids) == 0 {
 		return false, err
 	}
 
-	fmt.Printf("Quitting the running %s...\n", brand.Name) //nolint:forbidigo // mage target output
+	fmt.Printf("Quitting the running %s...\n", brand.DevName) //nolint:forbidigo // mage target output
 
 	for _, pid := range pids {
 		if err = syscall.Kill(pid, syscall.SIGTERM); err != nil && !errors.Is(err, syscall.ESRCH) {

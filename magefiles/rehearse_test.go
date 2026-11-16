@@ -103,6 +103,9 @@ func TestRehearse(t *testing.T) {
 		plist := func(bundle string) string { return filepath.Join(bundle, "Contents", "Info.plist") }
 		exe := func(bundle string) string { return filepath.Join(bundle, "Contents", "MacOS", brand.Slug) }
 
+		// Each bundle's Info.plist gets the versions alone: a rehearsal keeps the release's
+		// name and bundle ID, as the update it rehearses does, never a build from source's
+		// (devStamps).
 		return []string{
 			q("pnpm install --frozen-lockfile"),
 			q("pnpm build"),

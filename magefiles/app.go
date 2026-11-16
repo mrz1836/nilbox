@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -71,6 +72,15 @@ const (
 
 	// appReopenPoll is how long Run waits between those tries.
 	appReopenPoll = 250 * time.Millisecond
+
+	// devBundle is the bundle a build from source goes into (app:build, app:run, app:open,
+	// app:fresh, app:reset, measure:*), named for brand.DevName, so it is never taken for the
+	// release in an Applications folder. It runs on the user's own data, as the release does.
+	devBundle = "bin/" + brand.DevName + ".app"
+
+	// legacyBundle is where a build from source went before it was named brand.DevName: under
+	// the release's name and bundle ID, which Spotlight and macOS took for the release.
+	legacyBundle = "bin/" + brand.Name + ".app"
 )
 
 var (
@@ -236,11 +246,13 @@ func devAppArgs(fresh bool) ([]string, error) {
 	return []string{appdata.DataDirFlag + "=" + dir}, nil
 }
 
-// Build builds the production macOS app bundle, bin/<Name>.app: it checks the generated
-// brand files and app icons, builds the frontend, compiles the desktop binary, adds the
-// Info.plist with this build's version and the app icon, and signs the bundle ad hoc for
-// local use. Distribution signing
-// and notarization are not part of this target.
+// Build builds the production macOS app bundle from source, bin/<DevName>.app: it checks
+// the generated brand files and app icons, builds the frontend, compiles the desktop binary,
+// adds the Info.plist with this build's version, the build from source's name and bundle ID,
+// and the app icon, and signs the bundle ad hoc for local use. Then it removes
+// bin/<Name>.app, where builds from source went before they were named apart from the
+// release, unless a copy still runs from it. Distribution signing and notarization are not
+// part of this target.
 //
 //	magex app:build
 func (App) Build() error {
@@ -248,10 +260,56 @@ func (App) Build() error {
 		return errNeedsMacOS
 	}
 
-	return buildBundle(filepath.Join("bin", brand.Name+".app"))
+	if err := buildBundle(devBundle); err != nil {
+		return err
+	}
+
+	return removeLegacyBundle(legacyBundle)
 }
 
-// Open opens the macOS app bundle, bin/<Name>.app, building it first when it is missing.
+// removeLegacyBundle removes legacy, the folder an earlier build from source went into
+// under the release's name and bundle ID, so Spotlight and Open With stop offering it for
+// the release. A copy still running from it is left alone, and named, for the next build
+// to remove; nothing there, or a link, is nothing to remove.
+func removeLegacyBundle(legacy string) error {
+	info, err := os.Lstat(legacy)
+
+	switch {
+	case errors.Is(err, fs.ErrNotExist):
+		return nil
+	case err != nil:
+		return fmt.Errorf("look for the earlier build %s: %w", legacy, err)
+	case !info.IsDir():
+		return nil
+	}
+
+	exe, err := filepath.Abs(bundleExecutable(legacy))
+	if err != nil {
+		return fmt.Errorf("resolve %s: %w", legacy, err)
+	}
+
+	pids, err := appProcesses(exe)
+	if err != nil {
+		return err
+	}
+
+	if len(pids) > 0 {
+		say(legacy + ", an earlier build from source under " + brand.Name + "'s own name, still runs: quit it, " +
+			"and the next build removes it.")
+
+		return nil
+	}
+
+	if err = os.RemoveAll(legacy); err != nil {
+		return fmt.Errorf("remove the earlier build %s: %w", legacy, err)
+	}
+
+	say("Removed " + legacy + ", an earlier build from source under " + brand.Name + "'s own name and bundle ID.")
+
+	return nil
+}
+
+// Open opens the macOS app bundle, bin/<DevName>.app, building it first when it is missing.
 // It opens the bundle as it is, so use `magex app:run` to pick up a change; when the app
 // is already running, macOS brings its window to the front instead.
 //
@@ -265,9 +323,9 @@ func (App) Open() error {
 	return sh.RunV("open", bundle)
 }
 
-// Run builds the macOS app bundle and opens it. It quits a copy of the app that is
+// Run builds the macOS app bundle from source and opens it. It quits a copy of that build
 // already running first, so the fresh build is the one that opens; otherwise macOS would
-// bring the old copy to the front.
+// bring the old copy to the front. The release is another app to macOS, and is left alone.
 //
 //	magex app:run
 func (App) Run() error {

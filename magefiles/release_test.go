@@ -280,6 +280,8 @@ func releaseBuildLines() []string {
 		goBuild("amd64"),
 		q("lipo -create -output "+exe+" ") + `\S+` + q("/"+brand.Slug+"-arm64 ") + `\S+` + q("/"+brand.Slug+"-amd64"),
 		q("lipo -archs " + exe),
+		// The versions alone: a release keeps the generated Info.plist's name and bundle ID,
+		// brand.Name and brand.BundleID, never a build from source's (devStamps).
 		q("plutil -replace CFBundleShortVersionString -string 1.2.3 " + plist),
 		q("plutil -replace CFBundleVersion -string " + brandgen.PlaceholderVersion + " " + plist),
 	}

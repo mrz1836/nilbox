@@ -34,16 +34,22 @@ type bundleSpec struct {
 	meta   buildMeta // the version metadata stamped into it
 	arches []string  // the GOARCH values to build and combine with lipo, or none for this Mac's own
 	signer signer    // what signs it
+
+	// dev marks a build from source, whose Info.plist names it brand.DevName, with
+	// brand.DevBundleID (devStamps); a release and a rehearsal keep the release's name and
+	// bundle ID, as the generated Info.plist holds them.
+	dev bool
 }
 
 // buildBundle builds the production app bundle at bundle, the steps App.Build runs once
-// it knows it is on macOS: a build from source, for this Mac's processor, signed ad hoc.
+// it knows it is on macOS: a build from source, named apart from the release, for this
+// Mac's processor, signed ad hoc.
 func buildBundle(bundle string) error {
 	if err := prepareBuild(); err != nil {
 		return err
 	}
 
-	return assembleBundle(bundleSpec{bundle: bundle, meta: readBuildMeta(), signer: signer{identity: adHoc}})
+	return assembleBundle(bundleSpec{bundle: bundle, meta: readBuildMeta(), signer: signer{identity: adHoc}, dev: true})
 }
 
 // prepareBuild checks the generated brand files and app icons, then builds the frontend
@@ -97,7 +103,7 @@ func buildUnsignedBundle(spec bundleSpec) (string, error) {
 		return "", err
 	}
 
-	if err := writeInfoPlist(filepath.Join(contents, "Info.plist"), spec.meta); err != nil {
+	if err := writeInfoPlist(filepath.Join(contents, "Info.plist"), spec.meta, spec.dev); err != nil {
 		return "", err
 	}
 
@@ -428,10 +434,26 @@ func buildDesktopBinary(exe string, meta buildMeta, goarch string) error {
 	return nil
 }
 
+// plistStamp is one string value writeInfoPlist stamps into a bundle's Info.plist.
+type plistStamp struct{ key, value string }
+
+// devStamps are what a build from source's Info.plist holds in place of the release's: its
+// name, brand.DevName, its bundle ID, brand.DevBundleID, so macOS never takes it for the
+// release (Spotlight, notifications, privacy prompts, and Open With tell the two apart), and
+// the Automation prompt's words, which name it. Its executable keeps the release's name.
+func devStamps() []plistStamp {
+	return []plistStamp{
+		{"CFBundleName", brand.DevName},
+		{"CFBundleDisplayName", brand.DevName},
+		{"CFBundleIdentifier", brand.DevBundleID},
+		{"NSAppleEventsUsageDescription", brandgen.AppleEventsUsage(brand.DevName)},
+	}
+}
+
 // writeInfoPlist copies the generated Info.plist into the bundle and stamps the build's
-// release version and build number into the copy; the committed file keeps its
-// placeholder version.
-func writeInfoPlist(dst string, meta buildMeta) error {
+// release version and build number into the copy, and, for a build from source (dev),
+// devStamps; the committed file keeps its placeholder version and the release's name.
+func writeInfoPlist(dst string, meta buildMeta, dev bool) error {
 	body, err := os.ReadFile(filepath.Join("build", "darwin", "Info.plist"))
 	if err != nil {
 		return fmt.Errorf("read the Info.plist: %w", err)
@@ -441,9 +463,13 @@ func writeInfoPlist(dst string, meta buildMeta) error {
 		return fmt.Errorf("write the bundle Info.plist: %w", err)
 	}
 
-	stamps := []struct{ key, value string }{
+	stamps := []plistStamp{
 		{"CFBundleShortVersionString", meta.bundleVersion},
 		{"CFBundleVersion", meta.bundleBuild},
+	}
+
+	if dev {
+		stamps = append(stamps, devStamps()...)
 	}
 
 	for _, s := range stamps {
