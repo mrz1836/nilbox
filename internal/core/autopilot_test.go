@@ -44,7 +44,7 @@ func routinesCore(t *testing.T, opts Options) string {
 	first, err := c.Autopilot.Save(ctx, autopilot.Draft{Name: "Triage failing checks", Spec: triageSpec(mine.Nickname)})
 	require.NoError(t, err)
 
-	_, err = c.Autopilot.SetEnabled(ctx, first.ID, true)
+	_, err = c.Autopilot.SetEnabled(ctx, first.ID, true, autopilot.CurrentRun)
 	require.NoError(t, err)
 
 	_, err = c.Autopilot.Save(ctx, autopilot.Draft{Name: "Tell me", Spec: boundSpec()})
@@ -165,7 +165,7 @@ func TestABackupBringsTheRoutinesBackOff(t *testing.T) {
 	r, err := c.Autopilot.Save(ctx, autopilot.Draft{Name: "Tell me", Spec: boundSpec()})
 	require.NoError(t, err)
 
-	_, err = c.Autopilot.SetEnabled(ctx, r.ID, true)
+	_, err = c.Autopilot.SetEnabled(ctx, r.ID, true, autopilot.CurrentRun)
 	require.NoError(t, err)
 
 	path := filepath.Join(t.TempDir(), "backup.json")
@@ -224,7 +224,7 @@ func TestTheInboxReadsTheRoutinesSearchesForTheAccountSignedIn(t *testing.T) {
 	saved, err := c.Autopilot.Save(ctx, autopilot.Draft{Name: "Dependabot", Spec: routine})
 	require.NoError(t, err)
 
-	_, err = c.Autopilot.SetEnabled(ctx, saved.ID, true)
+	_, err = c.Autopilot.SetEnabled(ctx, saved.ID, true, autopilot.CurrentRun)
 	require.NoError(t, err)
 
 	source := &autopilotWatches{searches: autopilot.NewSearches(c.Autopilot)}

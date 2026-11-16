@@ -51,16 +51,20 @@ func TestTheModeANewRoutineStartsIn(t *testing.T) {
 func TestOnlyAStepThisBuildCantRunKeepsARoutineInDryRun(t *testing.T) {
 	t.Parallel()
 
+	var catalogs *Offers
+
 	none := spec.Spec{Version: spec.Version}
-	assert.Empty(t, notOffered(none))
-	assert.Equal(t, autopilotprefs.ModeAuto, modeFor(autopilotprefs.ModeAuto, none), "a mode stands for what runs")
+	assert.Empty(t, catalogs.notOffered(none))
+	assert.Equal(t, autopilotprefs.ModeAuto, catalogs.modeFor(autopilotprefs.ModeAuto, none), "a mode stands for what runs")
 
 	notify := spec.Spec{Steps: []spec.Step{{Notify: &spec.NotifyStep{}}, {Pin: &spec.Empty{}}, {Notify: &spec.NotifyStep{}}}}
-	assert.Equal(t, []catalog.StepKind{catalog.StepNotify, catalog.StepPin}, notOffered(notify), "each kind once")
-	assert.Equal(t, autopilotprefs.ModeDryRun, modeFor(autopilotprefs.ModeAuto, notify))
+	assert.Equal(t, []catalog.StepKind{catalog.StepNotify, catalog.StepPin}, catalogs.notOffered(notify), "each kind once")
+	assert.Equal(t, autopilotprefs.ModeDryRun, catalogMode(autopilotprefs.ModeAuto, notify))
 
-	offered := catalog.Step{Kind: catalog.StepGitHub, Offered: true}
+	offered := &Offers{Steps: []catalog.StepKind{catalog.StepGitHub, catalog.StepPin}}
 	github := spec.Step{GitHub: []spec.GitHubAction{{Rebase: &spec.Empty{}}}}
-	assert.False(t, runnable(offered, github), "a GitHub step runs only once each of its actions is offered")
-	assert.True(t, runnable(catalog.Step{Kind: catalog.StepPin, Offered: true}, spec.Step{Pin: &spec.Empty{}}))
+	assert.False(t, offered.runs(github), "a GitHub step runs only once each of its actions is offered")
+	assert.True(t, offered.runs(spec.Step{Pin: &spec.Empty{}}))
+	assert.Equal(t, autopilotprefs.ModeAuto, offered.modeFor(autopilotprefs.ModeAuto, spec.Spec{Steps: []spec.Step{{Pin: &spec.Empty{}}}}),
+		"a test's offers run what they name")
 }

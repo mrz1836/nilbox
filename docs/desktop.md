@@ -846,7 +846,8 @@ profiles need no copy: they are found in
 your home directory on every start. `backups/` holds the copies of your setup an import of a
 [backup](#backing-up-your-setup) saves before it changes anything, the five newest, and the
 copies a reset saves first (`nilbox before reset <UTC time>.json`), the five newest of those.
-A reset asked for and not yet carried out waits in `reset-request.json`. GitHub tokens are never
+A reset asked for and not yet carried out waits in `reset-request.json`, and `autopilot.lock`,
+which holds nothing, lets one copy of the app on this data folder run Autopilot. GitHub tokens are never
 stored there, nor anywhere else: the app borrows the token from `gh auth token` and keeps it in
 memory only. It reuses the token for up to ten minutes, and asks `gh` again sooner when GitHub
 refuses it or `gh`'s account changes (`gh auth switch`, `login`, or `logout`).

@@ -120,6 +120,9 @@ const (
 	// NameInboxItemsChanged is InboxItemsChanged's name.
 	NameInboxItemsChanged = "inbox:itemsChanged"
 
+	// NameAutopilotUpdated is AutopilotUpdated's name.
+	NameAutopilotUpdated = "autopilot:updated"
+
 	// NameUpdatesUpdated is UpdatesUpdated's name.
 	NameUpdatesUpdated = "updates:updated"
 
@@ -188,6 +191,7 @@ func WindowEvents() []WindowEvent {
 		ServiceStatusUpdated{},
 		UpdatesUpdated{},
 		UpdateRestartRequested{},
+		AutopilotUpdated{},
 	}
 }
 
@@ -424,6 +428,16 @@ type InboxItemsChanged struct {
 
 // Name returns NameInboxItemsChanged.
 func (InboxItemsChanged) Name() string { return NameInboxItemsChanged }
+
+// AutopilotUpdated says Autopilot changed: its routines, what they matched and ran, or
+// its engine (a cycle ended, or this copy took or lost the engine). It comes at most four
+// times a second; the window reads what it shows again.
+type AutopilotUpdated struct{}
+
+// Name returns NameAutopilotUpdated.
+func (AutopilotUpdated) Name() string { return NameAutopilotUpdated }
+
+func (AutopilotUpdated) window() {}
 
 // UpdatesUpdated says the app's update changed: a check started or ended, a download got
 // further (a few times a second at most), a version is ready, a restart began or failed,

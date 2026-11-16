@@ -261,6 +261,7 @@ func assemble(l launch) (*application.App, *desktop.Shell, error) {
 		Workers:  workers,
 		Deferred: []desktop.Worker{
 			c.Deferred, c.ToolFinder, c.Runs, c.ReleaseFollower, c.ServiceStatusChecker, c.UpdateWorker,
+			c.AutopilotEngine,
 		},
 		Updates:        c.Updates,
 		Browser:        ui,
@@ -427,6 +428,7 @@ func registerEvents() {
 	application.RegisterEvent[event.GHThreadsUpdated](event.NameGHThreadsUpdated)
 	application.RegisterEvent[event.ServiceStatusUpdated](event.NameServiceStatusUpdated)
 	application.RegisterEvent[event.UpdatesUpdated](event.NameUpdatesUpdated)
+	application.RegisterEvent[event.AutopilotUpdated](event.NameAutopilotUpdated)
 	application.RegisterEvent[event.UpdateRestartRequested](event.NameUpdateRestartRequested)
 }
 

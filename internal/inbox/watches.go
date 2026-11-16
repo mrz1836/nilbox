@@ -204,7 +204,7 @@ type watchPasses struct {
 // there is nothing to send: no source, no account, a pass still running, or no search and
 // no rows to drop.
 func (s *Service) startWatchPass(ctx context.Context) *watchJob {
-	if s.watchSource == nil {
+	if s.watchSource == nil || !holdsWatches(s.watchSource) {
 		return nil
 	}
 
@@ -1187,7 +1187,7 @@ func (w *writer) storeSearch(ctx context.Context, plan *passPlan, key string, st
 
 	return searchState{
 		Answered: true, Count: answer.IssueCount, Returned: len(answer.Items), Truncated: answer.Truncated(),
-		At: new(w.now),
+		Partial: answer.Partial, At: new(w.now),
 	}, nil
 }
 
@@ -1222,6 +1222,7 @@ type searchState struct {
 	Count     int        `json:"count"`
 	Returned  int        `json:"returned"`
 	Truncated bool       `json:"truncated,omitempty"`
+	Partial   bool       `json:"partial,omitempty"`
 	At        *time.Time `json:"at,omitempty"`
 	Error     string     `json:"error,omitempty"`
 	FailedAt  *time.Time `json:"failedAt,omitempty"`
@@ -1303,6 +1304,10 @@ type SearchStatus struct {
 	Returned  int  `json:"returned"`
 	Truncated bool `json:"truncated"`
 
+	// Partial reports an answer GitHub couldn't give in full, one of its results dropped;
+	// its rows past what it returned are kept, stale, as a truncated one's are.
+	Partial bool `json:"partial"`
+
 	// Error is why the last pass couldn't read it, in the window's words, "" when it
 	// could; its rows are kept, stale, until it can.
 	Error string `json:"error"`
@@ -1326,8 +1331,8 @@ func (s *Store) WatchStatus(ctx context.Context) (WatchStatus, error) {
 
 	for key, ss := range st.Searches {
 		out.Searches[key] = SearchStatus{
-			Answered: ss.Answered, Count: ss.Count, Returned: ss.Returned, Truncated: ss.Truncated, Error: ss.Error,
-			At: formatOptionalTime(ss.At), FailedAt: formatOptionalTime(ss.FailedAt),
+			Answered: ss.Answered, Count: ss.Count, Returned: ss.Returned, Truncated: ss.Truncated, Partial: ss.Partial,
+			Error: ss.Error, At: formatOptionalTime(ss.At), FailedAt: formatOptionalTime(ss.FailedAt),
 		}
 	}
 

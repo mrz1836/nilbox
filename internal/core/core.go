@@ -171,6 +171,12 @@ type Core struct {
 	Updates        *update.Service
 	Autopilot      *autopilot.Service
 
+	// AutopilotEngine runs the routines: it records what each matched, and starts what may
+	// start, in the copy of the app that holds the lock in the data folder. The desktop
+	// shell runs it as deferred work. It is not bound; the window's actions reach it
+	// through Autopilot.
+	AutopilotEngine *autopilot.Engine
+
 	// ShellSettings are the settings the desktop shell reads when the app launches. They
 	// are not bound.
 	ShellSettings ShellSettings
@@ -515,21 +521,28 @@ func assemble(ctx context.Context, pool *sql.DB, info startup, opts Options, log
 	// the inbox stores of them, outside a whole refresh, is told as a Go-only event.
 	watchSource := &autopilotWatches{}
 	events := event.Or(opts.Events)
+	// Autopilot's engine hears what the inbox stores and sees, and keeps the items its
+	// ledger refers to; it is built once its service is, below.
+	engine := &engineWaker{}
+	followed.autopilot = engine
 
 	inboxSvc := inbox.NewService(inbox.Config{
 		Pool:     pool,
 		Tokens:   tokens,
 		Client:   client,
 		Clock:    opts.Clock,
-		Events:   opts.Events,
+		Events:   engineOnInbox{sink: opts.Events, engine: engine},
 		Arrivals: dispatcher,
-		Outcomes: ghThreadOutcomes{settler: ghthreads.NewSettler(ghThreads)},
+		Outcomes: outcomesFanOut{threads: ghThreadOutcomes{settler: ghthreads.NewSettler(ghThreads)}, engine: engine},
 		Usage:    tracker,
 		Watches:  watchSource,
-		Changed:  func(ids []int64) { events.Emit(event.InboxItemsChanged{IDs: ids}) },
-		Keep:     itemKeepers(pool),
-		Store:    inboxStore,
-		Logger:   logger,
+		Changed: func(ids []int64) {
+			events.Emit(event.InboxItemsChanged{IDs: ids})
+			engine.ItemsChanged(ids)
+		},
+		Keep:   itemKeepers(pool, engine),
+		Store:  inboxStore,
+		Logger: logger,
 	})
 
 	recorder := timing.NewRecorder(timing.Config{Logger: logger, LogsDir: opts.Paths.Logs})
@@ -712,6 +725,13 @@ func assemble(ctx context.Context, pool *sql.DB, info startup, opts Options, log
 	}, logger)
 	watchSource.searches = autopilot.NewSearches(routines)
 	watchSource.searches.Rebuild(ctx)
+	// The engine runs the routines, in the one copy of the app that holds the lock in the
+	// data folder; it runs as deferred work, and its first cycle waits for a refresh that
+	// carried the searches built just now.
+	engine.engine = newAutopilotEngine(autopilotEngine{
+		store: inboxStore, inbox: inboxSvc, faces: inboxRoutines, tokens: tokens, client: client,
+		lock: opts.Paths.AutopilotLock, events: opts.Events, logger: logger, service: routines,
+	})
 
 	c := &Core{
 		DB:       pool,
@@ -788,6 +808,7 @@ func assemble(ctx context.Context, pool *sql.DB, info startup, opts Options, log
 		Scripts:               repoScripts,
 		Updates:               update.NewService(updateEngine),
 		Autopilot:             routines,
+		AutopilotEngine:       engine.engine,
 		UpdateEngine:          updateEngine,
 		UpdateWorker:          updateWorker,
 		tokens:                tokens,

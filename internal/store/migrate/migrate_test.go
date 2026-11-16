@@ -156,7 +156,8 @@ func TestMigrateFreshDatabase(t *testing.T) {
 
 	assert.Equal(t, migrate.Result{From: 0, To: len(files), Applied: applied}, res)
 	assert.Equal(t, []string{
-		"accounts", "agent_profiles", "agent_sessions", "autopilot_routines", "avatars", "gh_thread_clears",
+		"accounts", "agent_profiles", "agent_sessions", "autopilot_baselines", "autopilot_hands_off",
+		"autopilot_matches", "autopilot_routines", "autopilot_runs", "autopilot_tries", "avatars", "gh_thread_clears",
 		"gh_thread_moments", "gh_threads",
 		"issue_views", "item_checks", "item_details", "item_files", "item_local_state", "item_watches", "items",
 		"launch_defaults", "notifications",

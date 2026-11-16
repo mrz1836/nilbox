@@ -13,6 +13,7 @@ declare module "@wailsio/runtime" {
     namespace Events {
         interface CustomEvents {
             "app:quitRequested": event$0.QuitRequested;
+            "autopilot:updated": event$0.AutopilotUpdated;
             "budget:updated": event$0.BudgetUpdated;
             "ghthreads:updated": event$0.GHThreadsUpdated;
             "hooks:updated": event$0.HooksUpdated;

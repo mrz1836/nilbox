@@ -14,6 +14,11 @@ import "../github.com/wailsapp/wails/v3/internal/eventcreate.js";
 export const AppQuitRequested = "app:quitRequested";
 
 /**
+ * Name of the custom event "autopilot:updated".
+ */
+export const AutopilotUpdated = "autopilot:updated";
+
+/**
  * Name of the custom event "budget:updated".
  */
 export const BudgetUpdated = "budget:updated";

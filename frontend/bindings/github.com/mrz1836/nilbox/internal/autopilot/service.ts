@@ -22,12 +22,40 @@ import * as autopilotprefs$0 from "../autopilotprefs/models.js";
 import * as $models from "./models.js";
 
 /**
+ * Activity returns a page of the matches recorded before the match before (every one for 0),
+ * newest first, by local day: at most limit, 100 when 0.
+ */
+export function Activity(before: number, limit: number): $CancellablePromise<$models.ActivityPage> {
+    return $Call.ByID(2134159466, before, limit);
+}
+
+/**
+ * Approve gives the user's OK to the matches ids that wait for it (an Ask first routine's,
+ * a catch-up's, a backlog's, an interrupted run's, a warning's), which then start once
+ * the limits let them, and returns them as they are now. A match that waits for nothing,
+ * or is closed, is left as it is, so a second Approve starts nothing more.
+ */
+export function Approve(ids: number[] | null): $CancellablePromise<$models.Match[] | null> {
+    return $Call.ByID(1521213656, ids);
+}
+
+/**
  * Catalog returns everything the builder renders: the triggers, the fields and their
  * operators, the steps (each Offered once this build runs it), the presets, the agent
  * step's settings, and the limits.
  */
 export function Catalog(): $CancellablePromise<catalog$0.Catalog> {
     return $Call.ByID(557508094);
+}
+
+/**
+ * ClearHistory removes, at once rather than after the history's days, every closed match
+ * whose item is done with (gone, merged or closed, or out of every list and watch), with
+ * its runs; a closed match that still blocks its occurrence stays, without its trace and
+ * summaries, so nothing fires again. Open matches and the routines stay.
+ */
+export function ClearHistory(): $CancellablePromise<$models.Cleared> {
+    return $Call.ByID(139479948);
 }
 
 /**
@@ -48,10 +76,40 @@ export function Duplicate(id: number): $CancellablePromise<$models.Routine> {
 }
 
 /**
+ * Engine returns what the engine last did, and whether this copy runs it.
+ */
+export function Engine(): $CancellablePromise<$models.EngineStatus> {
+    return $Call.ByID(658482573);
+}
+
+/**
+ * Explain says why the routine id did or didn't act on the item: what it decides now, from
+ * what is stored, and what the ledger knows of the two.
+ */
+export function Explain(id: number, itemID: number): $CancellablePromise<$models.Explanation> {
+    return $Call.ByID(3439582778, id, itemID);
+}
+
+/**
  * Get returns the routine id, refusing one that is gone or deleted.
  */
 export function Get(id: number): $CancellablePromise<$models.Routine> {
     return $Call.ByID(663687229, id);
+}
+
+/**
+ * ItemHistory returns what the routines did with the item id, newest first.
+ */
+export function ItemHistory(id: number): $CancellablePromise<$models.ItemHistory> {
+    return $Call.ByID(426244628, id);
+}
+
+/**
+ * LetActAgain lets the routine id act on the item again, which it left alone since the
+ * user reversed what it did there.
+ */
+export function LetActAgain(id: number, itemID: number): $CancellablePromise<void> {
+    return $Call.ByID(1881754476, id, itemID);
 }
 
 /**
@@ -64,6 +122,16 @@ export function List(): $CancellablePromise<$models.Routine[] | null> {
 }
 
 /**
+ * Matching counts the items the draft d matches now that its routine (d.ID, 0 for a new
+ * one) has no record of, reading its searches now unless a test read them within a minute,
+ * for the question asked when it is turned on, leaves Dry run, or its Watch, When, or If
+ * changes: "3 pull requests match right now". It changes nothing.
+ */
+export function Matching(d: $models.Draft): $CancellablePromise<$models.Matching> {
+    return $Call.ByID(4103963572, d);
+}
+
+/**
  * Reorder puts the routines ids names first, in that order, and the others after them as
  * they were, and returns the list. An id named twice counts once; one that is gone or
  * deleted is refused, and nothing moves.
@@ -73,15 +141,18 @@ export function Reorder(ids: number[] | null): $CancellablePromise<$models.Routi
 }
 
 /**
- * Save stores d, a new routine when its ID is 0 and otherwise in place of the routine
- * with its ID, and returns it as stored. Its name must be one no other routine has,
- * ignoring case, and its spec must load: a spec with problems is refused with each one,
- * for the window to show where it is (ProblemsError, the error's detail). A new routine
- * starts off, at the end of the list, in the mode d names or else the one Settings says
- * new routines start in, and belongs to the account signed in; one saved before keeps
- * its switch, its place, and its template, and its mode unless d names one. A routine with
- * a step this build can't run yet is stored in Dry run, whatever the mode. A routine a
- * newer build wrote can't be saved over.
+ * RunNow runs the routine id on the item now, as the user asked from the item's menu, and
+ * returns its match: once per click, whatever its trigger says, but only on an item its
+ * conditions match. It counts toward no daily cap or try, needs no OK, and keeps to the
+ * routine's mode, so a Dry run records what it would have done.
+ */
+export function RunNow(id: number, itemID: number): $CancellablePromise<$models.Match> {
+    return $Call.ByID(1162826700, id, itemID);
+}
+
+/**
+ * Save stores d, as save says, and with d.Current CurrentFromNow, records what the routine
+ * matches now as its baseline, when it is on and its Watch, When, or If changed.
  */
 export function Save(d: $models.Draft): $CancellablePromise<$models.Routine> {
     return $Call.ByID(2395905870, d);
@@ -89,18 +160,46 @@ export function Save(d: $models.Draft): $CancellablePromise<$models.Routine> {
 
 /**
  * SetEnabled switches the routine id on or off, and returns it. A broken routine can't be
- * switched on; switching on one that is on keeps when it was.
+ * switched on; switching on one that is on keeps when it was. Switching it on with
+ * current CurrentFromNow records what it matches now as its baseline.
  */
-export function SetEnabled(id: number, on: boolean): $CancellablePromise<$models.Routine> {
-    return $Call.ByID(781793914, id, on);
+export function SetEnabled(id: number, on: boolean, current: $models.Current): $CancellablePromise<$models.Routine> {
+    return $Call.ByID(781793914, id, on, current);
 }
 
 /**
  * SetMode sets how the routine id acts on a match, and returns it. A broken routine's mode
  * can't be changed, and a routine with a step this build can't run yet stays in Dry run.
+ * Leaving Dry run with current CurrentFromNow records what it matches now as its
+ * baseline.
  */
-export function SetMode(id: number, mode: autopilotprefs$0.Mode): $CancellablePromise<$models.Routine> {
-    return $Call.ByID(301999566, id, mode);
+export function SetMode(id: number, mode: autopilotprefs$0.Mode, current: $models.Current): $CancellablePromise<$models.Routine> {
+    return $Call.ByID(301999566, id, mode, current);
+}
+
+/**
+ * Skip closes the open match id as skipped by the user, and returns it. A match whose
+ * run is under way is refused: stop the run instead.
+ */
+export function Skip(id: number): $CancellablePromise<$models.Match> {
+    return $Call.ByID(3091450344, id);
+}
+
+/**
+ * StopAll stops every agent run at once, through the runner, and leaves it open for later
+ * starts.
+ */
+export function StopAll(): $CancellablePromise<void> {
+    return $Call.ByID(2226077470);
+}
+
+/**
+ * StopRun stops the run id at once, through the runner: never queued behind the engine,
+ * so it works before the first refresh, offline, or signed out. The engine hears of the
+ * end from the runner.
+ */
+export function StopRun(id: number): $CancellablePromise<void> {
+    return $Call.ByID(1718464284, id);
 }
 
 /**
@@ -124,6 +223,15 @@ export function Suggest(): $CancellablePromise<$models.Suggestions> {
  */
 export function Test(d: $models.Draft): $CancellablePromise<$models.TestResult> {
     return $Call.ByID(99462951, d);
+}
+
+/**
+ * TryAgain resets the routine id's tries on the item, and opens again its match that gave
+ * up, when the occurrence it was for still holds, with the user's OK; it returns the
+ * matches it opened.
+ */
+export function TryAgain(id: number, itemID: number): $CancellablePromise<$models.Match[] | null> {
+    return $Call.ByID(108381848, id, itemID);
 }
 
 /**

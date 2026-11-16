@@ -46,6 +46,7 @@ func reasonFlagDecisions() map[string]string {
 		"PruneItems":        "prunes only an item in no list, watched by no search, with no triage",
 		"ListWatchBaseline": "tells a listed item, whose details the refresh read, from a watched one",
 		"ListFactsRows":     "the lists an item is in, for the routines' facts",
+		"ListItemStates":    "whether an item is listed, for the ledger's retention",
 		"GetReviewItem":     "none: it reads any stored item, so a watched one's sheet opens",
 		"GetIssueItem":      "none: it reads any stored item, so a watched one's sheet opens",
 	}

@@ -20,8 +20,16 @@
 // The builder reads the inbox through Items: what the stored items suggest (Suggest), the
 // items a routine watches (Watching), and a draft tried on its items now (Test).
 //
+// The Engine runs the routines (engine.go): one loop, the only writer of the ledger
+// (ledger.go: what each routine did with each item it matched, once per occurrence), which
+// evaluates the routines on what the inbox stored, closes what moved on, and starts what the
+// limits let start through the dispatchers the app's parts register (dispatch.go). The
+// window's actions on the ledger are commands the loop applies (commands.go); its reads of
+// it are activity.go's.
+//
 // The package reaches the rest of the app only through the narrow interfaces it declares
-// (Prefs, Accounts, Names, Items, Costs), which core adapts; it never imports the inbox,
+// (Prefs, Accounts, Names, Items, Costs, EngineItems, the dispatchers, Holds, and
+// ProblemSink), which core adapts; it never imports the inbox,
 // the sheets, the launcher, the worktrees, the sessions, the runs, the notifications, the
 // settings, the desktop shell, or core.
 package autopilot
@@ -114,6 +122,10 @@ type Config struct {
 	// estimate. Nil estimates a point a request, twelve refreshes an hour.
 	Costs Costs
 
+	// Offers names the kinds of step this build runs; nil is the catalog's own. A test
+	// hands in its own beside fake dispatchers.
+	Offers *Offers
+
 	// Clock stamps the routines. Nil is the system clock.
 	Clock clock.Clock
 
@@ -138,6 +150,11 @@ type Service struct {
 	// and tests the searches a test read lately (test.go).
 	watches watchSet
 	tests   testCache
+
+	// offers are the kinds of step this build runs, and engine the engine that runs the
+	// routines, which the window's actions on the ledger go to; nil until NewEngine.
+	offers *Offers
+	engine *Engine
 }
 
 // NewService returns a Service over cfg.
@@ -148,6 +165,7 @@ func NewService(cfg Config) *Service {
 		store: newRoutineStore(cfg.Pool, clk), prefs: cfg.Prefs, accounts: cfg.Accounts, names: cfg.Names,
 		file: cfg.File, items: cfg.Items, costs: cfg.Costs, clock: clk, logger: logging.Or(cfg.Logger),
 		watches: watchSet{build: make(chan struct{}, 1)}, tests: testCache{read: map[string]cachedSearch{}},
+		offers: cfg.Offers.orCatalog(),
 	}
 }
 
@@ -156,4 +174,20 @@ func NewService(cfg Config) *Service {
 // step's settings, and the limits.
 func (s *Service) Catalog() catalog.Catalog {
 	return catalog.All()
+}
+
+// settings returns Autopilot's settings, the defaults when they can't be read, logged.
+func (s *Service) settings(ctx context.Context) autopilotprefs.Config {
+	if s.prefs == nil {
+		return autopilotprefs.Defaults()
+	}
+
+	c, err := s.prefs.Autopilot(ctx)
+	if err != nil {
+		s.logger.WarnContext(ctx, "could not read Autopilot's settings; using the defaults", "error", err)
+
+		return autopilotprefs.Defaults()
+	}
+
+	return c
 }

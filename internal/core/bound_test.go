@@ -677,10 +677,10 @@ func autopilotBoundCalls(t *testing.T) map[string]boundCall {
 			return c.Autopilot.Duplicate(ctx, boundRoutine(ctx, t, c, "Bound duplicate").ID)
 		},
 		"autopilot.Service.SetEnabled": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
-			return c.Autopilot.SetEnabled(ctx, boundRoutine(ctx, t, c, "Bound switch").ID, true)
+			return c.Autopilot.SetEnabled(ctx, boundRoutine(ctx, t, c, "Bound switch").ID, true, autopilot.CurrentRun)
 		},
 		"autopilot.Service.SetMode": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
-			return c.Autopilot.SetMode(ctx, boundRoutine(ctx, t, c, "Bound mode").ID, autopilotprefs.ModeDryRun)
+			return c.Autopilot.SetMode(ctx, boundRoutine(ctx, t, c, "Bound mode").ID, autopilotprefs.ModeDryRun, autopilot.CurrentRun)
 		},
 		"autopilot.Service.Reorder": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
 			return c.Autopilot.Reorder(ctx, []int64{boundRoutine(ctx, t, c, "Bound order").ID})
@@ -695,7 +695,43 @@ func autopilotBoundCalls(t *testing.T) map[string]boundCall {
 			// Its watch is an inbox list alone, so the test reads nothing from GitHub.
 			return c.Autopilot.Test(ctx, autopilot.Draft{Name: "Bound test", Spec: boundSpec()})
 		},
+		"autopilot.Service.Activity": func(ctx context.Context, c *Core, ids seededItems) (any, error) {
+			boundMatch(ctx, t, c, ids.item, "Bound activity")
+
+			return c.Autopilot.Activity(ctx, 0, 0)
+		},
+		"autopilot.Service.ItemHistory": func(ctx context.Context, c *Core, ids seededItems) (any, error) {
+			boundMatch(ctx, t, c, ids.item, "Bound history")
+
+			return c.Autopilot.ItemHistory(ctx, ids.item)
+		},
+		"autopilot.Service.Explain": func(ctx context.Context, c *Core, ids seededItems) (any, error) {
+			return c.Autopilot.Explain(ctx, boundRoutine(ctx, t, c, "Bound explain").ID, ids.item)
+		},
+		"autopilot.Service.Engine": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
+			return c.Autopilot.Engine(ctx)
+		},
 	}
+}
+
+// boundMatch records a match of a routine named name on the item, with a run.
+func boundMatch(ctx context.Context, t *testing.T, c *Core, itemID int64, name string) {
+	t.Helper()
+
+	r := boundRoutine(ctx, t, c, name)
+	now := time.Now().UTC()
+
+	res, err := c.DB.ExecContext(ctx, `INSERT INTO autopilot_matches (routine_id, item_id, repo_owner, repo_name, kind,
+		number, fire_key, state, created_at, updated_at, decided_at) VALUES (?, ?, 'acme-org', 'example-repo', 'pr', 1,
+		'appears:item', 'running', ?, ?, ?)`, r.ID, itemID, now, now, now)
+	require.NoError(t, err)
+
+	match, err := res.LastInsertId()
+	require.NoError(t, err)
+
+	_, err = c.DB.ExecContext(ctx, `INSERT INTO autopilot_runs (match_id, routine_id, item_id, runner, status,
+		queued_at, updated_at) VALUES (?, ?, ?, 'background', 'ended', ?, ?)`, match, r.ID, itemID, now, now)
+	require.NoError(t, err)
 }
 
 // boundSpec is a routine that tells the user when one of their pull requests' checks
@@ -729,6 +765,10 @@ func unreachedBound() map[string]string {
 		"integrations.Service.Update":       "runs a tool's own updater or downloads from GitHub; its tools are built as List's",
 		"integrations.Service.Reinstall":    "downloads from GitHub; its tools are built as List's",
 		"integrations.Service.Trash":        "moves a copy of a tool through Finder; its result is built as List's",
+		"autopilot.Service.Approve":         "applied by the engine's loop, which runs as deferred work; its matches are built as Activity's",
+		"autopilot.Service.TryAgain":        "applied by the engine's loop, which runs as deferred work; its matches are built as Activity's",
+		"autopilot.Service.Skip":            "applied by the engine's loop, which runs as deferred work; its match is built as Activity's",
+		"autopilot.Service.RunNow":          "applied by the engine's loop, which runs as deferred work; its match is built as Activity's",
 		"inbox.Service.Refresh":             "reads GitHub; its snapshot is built as Snapshot's",
 		"inbox.Service.RefreshItem":         "reads GitHub; its snapshot is built as Snapshot's",
 		"inbox.Service.Unassign":            "edits GitHub; its snapshot is built as Snapshot's",

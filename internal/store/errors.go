@@ -39,6 +39,23 @@ func IsForeignKeyViolation(err error) bool {
 	}
 }
 
+// IsUniqueViolation reports whether err, from a statement, is SQLite refusing it because
+// it would break a unique index: a second row an index allows once, such as a second
+// active run on one item.
+func IsUniqueViolation(err error) bool {
+	driverErr, ok := errors.AsType[*sqlite.Error](err)
+	if !ok {
+		return false
+	}
+
+	switch driverErr.Code() {
+	case sqlite3.SQLITE_CONSTRAINT_UNIQUE, sqlite3.SQLITE_CONSTRAINT_PRIMARYKEY:
+		return true
+	default:
+		return false
+	}
+}
+
 // IsBusy reports whether err is SQLite finding the database locked by another connection
 // or process, such as another copy of the app, past the wait every connection allows.
 func IsBusy(err error) bool {

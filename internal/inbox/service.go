@@ -119,6 +119,7 @@ const (
 	prefBeyondAssigned        = "inbox.beyond.assigned"
 	prefLastRefreshAt         = "inbox.last_refresh_at"
 	prefLastError             = "inbox.last_error"
+	prefSignedOut             = "inbox.signed_out"
 	prefScopeWarning          = "inbox.scope_warning"
 	prefProjects              = "inbox.projects"
 )
@@ -720,6 +721,7 @@ func (w *writer) saveRefresh(ctx context.Context, got refreshed) (refreshTold, e
 		prefBeyondAssigned:        strconv.Itoa(beyond(inbox.Assigned)),
 		prefLastRefreshAt:         clock.Format(w.now),
 		prefLastError:             "",
+		prefSignedOut:             "",
 		prefScopeWarning:          string(got.warning),
 		prefProjects:              string(got.projects),
 	}
@@ -799,7 +801,9 @@ func (s *Service) downloadAvatar(ctx context.Context, avatarURL string) *downloa
 
 // recordFailure stores what the user is told about a failed refresh as the last error.
 func (s *Service) recordFailure(ctx context.Context, err error) error {
-	if recErr := s.prefs.Set(ctx, prefLastError, uierr.Message(err)); recErr != nil {
+	if recErr := s.prefs.SetMany(ctx, map[string]string{
+		prefLastError: uierr.Message(err), prefSignedOut: signedOutText(err),
+	}); recErr != nil {
 		return fmt.Errorf("record the refresh error: %w", recErr)
 	}
 

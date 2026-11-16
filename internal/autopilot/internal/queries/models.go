@@ -8,6 +8,38 @@ import (
 	"time"
 )
 
+type AutopilotMatch struct {
+	ID               int64
+	RoutineID        int64
+	ItemID           *int64
+	AccountLogin     string
+	RepoOwner        string
+	RepoName         string
+	Kind             string
+	Number           int64
+	Title            string
+	URL              string
+	FireKey          string
+	DryRun           bool
+	Manual           bool
+	State            string
+	BlockedBy        string
+	Reason           string
+	Detail           string
+	Trace            string
+	Steps            string
+	Step             int64
+	SpecHash         string
+	HeadOID          string
+	AutoMergeAtMatch *bool
+	Approved         bool
+	Attempt          int64
+	CreatedAt        time.Time
+	UpdatedAt        time.Time
+	DecidedAt        time.Time
+	ClosedAt         *time.Time
+}
+
 type AutopilotRoutine struct {
 	ID           int64
 	AccountLogin string
@@ -26,4 +58,54 @@ type AutopilotRoutine struct {
 	CreatedAt    time.Time
 	UpdatedAt    time.Time
 	DeletedAt    *time.Time
+}
+
+type AutopilotRun struct {
+	ID              int64
+	MatchID         int64
+	RoutineID       int64
+	ItemID          *int64
+	RepoOwner       string
+	RepoName        string
+	Kind            string
+	Number          int64
+	Title           string
+	URL             string
+	Step            int64
+	Runner          string
+	Agent           string
+	GithubAction    string
+	ScriptRunID     int64
+	SessionID       string
+	AgentSessionID  string
+	Status          string
+	Outcome         string
+	Verdict         string
+	Profile         string
+	Model           string
+	Effort          string
+	Preset          string
+	ClonePath       string
+	Worktree        string
+	HeadBefore      string
+	RunCommit       string
+	HeadAfter       string
+	DisplayCommand  string
+	BudgetReserved  float64
+	BudgetUnit      string
+	Cost            *float64
+	TokensIn        int64
+	TokensOut       int64
+	CacheReadTokens int64
+	Turns           int64
+	Summary         string
+	Error           string
+	Manual          bool
+	Counted         bool
+	LogCleared      bool
+	QueuedAt        time.Time
+	StartedAt       *time.Time
+	FinishedAt      *time.Time
+	VerifiedAt      *time.Time
+	UpdatedAt       time.Time
 }

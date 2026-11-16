@@ -105,6 +105,10 @@ type Draft struct {
 	// TemplateKey names the template a new routine is made from, left out for none; a
 	// routine saved before keeps its own.
 	TemplateKey string `json:"templateKey,omitempty"`
+
+	// Current is what to do with the items the routine matches now that it has no record
+	// of, when it is on and its Watch, When, or If changed; left out, it runs on them too.
+	Current Current `json:"current,omitempty"`
 }
 
 // loaded is a stored spec as a load read it.
@@ -128,11 +132,19 @@ func load(data string) loaded {
 	return out
 }
 
+// loadedSpec returns a stored spec, and whether it loads.
+func loadedSpec(data string) (spec.Spec, bool) {
+	l := load(data)
+
+	return l.spec, l.broken == nil
+}
+
 // view is what a Routine is built with beside its row: the account signed in, and the
 // starter prompts' names.
 type view struct {
 	viewer string
 	names  spec.PromptNames
+	offers *Offers
 }
 
 // routineOf builds the window's Routine from a stored row.
@@ -158,7 +170,7 @@ func routineOf(row queries.AutopilotRoutine, v view) Routine {
 	}
 
 	out.Sentence = spec.Sentence(l.spec, v.names)
-	out.DryRunOnly = notOffered(l.spec)
+	out.DryRunOnly = v.offers.notOffered(l.spec)
 
 	return out
 }
@@ -194,15 +206,52 @@ func brokenWords(b *spec.BrokenError) string {
 	}
 }
 
+// Offers names the kinds of step, and the GitHub actions, a build runs: by default the
+// catalog's own (Step.Offered, GitHubAction.Offered), which each part's phase turns on
+// once its dispatcher is built. A test hands in its own, with fakes for the dispatchers,
+// never by changing the catalog.
+type Offers struct {
+	Steps   []catalog.StepKind
+	Actions []catalog.GitHubActionKind
+}
+
+// catalogOffers returns the catalog's own offers.
+func catalogOffers() *Offers {
+	out := &Offers{}
+
+	for _, info := range catalog.Steps() {
+		if info.Offered {
+			out.Steps = append(out.Steps, info.Kind)
+		}
+	}
+
+	for _, a := range catalog.GitHubActions() {
+		if a.Offered {
+			out.Actions = append(out.Actions, a.Kind)
+		}
+	}
+
+	return out
+}
+
+// orCatalog returns o, or the catalog's offers for nil.
+func (o *Offers) orCatalog() *Offers {
+	if o == nil {
+		return catalogOffers()
+	}
+
+	return o
+}
+
 // notOffered returns the kinds of step s has that this build can't run yet, in the
-// catalog's order: a step whose kind isn't Offered, and a GitHub step with an action the
-// catalog doesn't offer.
-func notOffered(s spec.Spec) []catalog.StepKind {
+// catalog's order: a step whose kind isn't offered, and a GitHub step with an action
+// that isn't.
+func (o *Offers) notOffered(s spec.Spec) []catalog.StepKind {
 	out := []catalog.StepKind{}
 
 	for _, info := range catalog.Steps() {
 		for _, st := range s.Steps {
-			if st.Kind() == info.Kind && !runnable(info, st) {
+			if st.Kind() == info.Kind && !o.runs(st) {
 				out = append(out, info.Kind)
 
 				break
@@ -213,16 +262,16 @@ func notOffered(s spec.Spec) []catalog.StepKind {
 	return out
 }
 
-// runnable reports whether this build runs st, a step of info's kind.
-func runnable(info catalog.Step, st spec.Step) bool {
-	if !info.Offered {
+// runs reports whether this build runs st.
+func (o *Offers) runs(st spec.Step) bool {
+	off := o.orCatalog()
+
+	if !slices.Contains(off.Steps, st.Kind()) {
 		return false
 	}
 
 	for _, a := range st.GitHub {
-		if !slices.ContainsFunc(catalog.GitHubActions(), func(g catalog.GitHubAction) bool {
-			return g.Kind == a.Kind() && g.Offered
-		}) {
+		if !slices.Contains(off.Actions, a.Kind()) {
 			return false
 		}
 	}
@@ -231,8 +280,8 @@ func runnable(info catalog.Step, st spec.Step) bool {
 }
 
 // modeFor returns mode, or Dry run for a spec with a step this build can't run yet.
-func modeFor(mode autopilotprefs.Mode, s spec.Spec) autopilotprefs.Mode {
-	if len(notOffered(s)) > 0 {
+func (o *Offers) modeFor(mode autopilotprefs.Mode, s spec.Spec) autopilotprefs.Mode {
+	if len(o.notOffered(s)) > 0 {
 		return autopilotprefs.ModeDryRun
 	}
 
@@ -441,4 +490,12 @@ func peekVersion(data []byte) int64 {
 	}
 
 	return v
+}
+
+// catalogMode returns mode, or Dry run for a spec with a step the catalog doesn't offer
+// yet: what a restore or an import stores.
+func catalogMode(mode autopilotprefs.Mode, s spec.Spec) autopilotprefs.Mode {
+	var catalogs *Offers
+
+	return catalogs.modeFor(mode, s)
 }
