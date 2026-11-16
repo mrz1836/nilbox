@@ -41,6 +41,11 @@ type TriageRequest struct {
 	// Days how long a snooze lasts.
 	Action catalog.StepKind
 	Days   int
+
+	// Expect is the item's local state the routine decided on (Job.Local): the step is a
+	// compare-and-set on it, and changes nothing (KeptChanged) when the part it changes
+	// differs now.
+	Expect string
 }
 
 // TriageKept says why a routine's triage changed nothing, in the inbox's words.
@@ -61,6 +66,10 @@ const (
 	// KeptNotSetAside is an item neither dismissed nor snoozed, which a Restore had nothing
 	// to bring back from.
 	KeptNotSetAside TriageKept = "not_set_aside"
+
+	// KeptChanged is an item whose triage changed since the routine decided on it, as by
+	// the user's own triage in between, which wins.
+	KeptChanged TriageKept = "changed"
 )
 
 // TriageChange is what the inbox's triage did to an item for a routine: its local state
@@ -111,11 +120,18 @@ type triageDispatcher struct {
 	e *Engine
 }
 
-// Dispatch runs job's triage step. A step whose effect is recorded already, as one a crash
-// cut off after its change was stored, is done.
+// errLeftAlone is a triage step whose routine was left hands off its item while the step
+// was on its way: it changes nothing.
+var errLeftAlone = errors.New("the routine leaves the item alone")
+
+// Dispatch runs job's triage step, a compare-and-set on the item's local state the routine
+// decided on (job.Local). A step whose effect is recorded already, as one a crash cut off
+// after its change was stored, is done. One whose routine the user left hands off the item
+// meanwhile, as their own reversal recorded after the step was decided, changes nothing:
+// the check is in the triage's own transaction, so the user's change always wins.
 func (d triageDispatcher) Dispatch(ctx context.Context, job Job) (Result, error) {
 	e := d.e
-	req := TriageRequest{RoutineID: job.RoutineID, ItemID: job.Item.ID, Action: job.Step.Kind()}
+	req := TriageRequest{RoutineID: job.RoutineID, ItemID: job.Item.ID, Action: job.Step.Kind(), Expect: job.Local}
 
 	if job.Step.Snooze != nil {
 		req.Days = job.Step.Snooze.SnoozeDays()
@@ -131,23 +147,46 @@ func (d triageDispatcher) Dispatch(ctx context.Context, job Job) (Result, error)
 	}
 
 	change, err := e.triage.Apply(ctx, req, func(ctx context.Context, tx *sql.Tx, change TriageChange) error {
-		_, insertErr := e.ledger.q.WithTx(tx).InsertEffect(ctx, queries.InsertEffectParams{
-			MatchID: job.MatchID, Step: int64(job.Index), RoutineID: job.RoutineID, ItemID: new(job.Item.ID),
-			Action: string(req.Action), StateBefore: change.Before, StateAfter: change.After, AppliedAt: e.clock.Now(),
-		})
-
-		return insertErr
+		return recordEffect(ctx, e.ledger.q.WithTx(tx), job, req, change, e.clock.Now())
 	})
-	if err != nil {
-		return Result{}, err
-	}
 
-	if !change.Changed() {
+	switch {
+	case errors.Is(err, errLeftAlone):
+		return Result{Summary: leftAloneWords}, nil
+	case err != nil:
+		return Result{}, err
+	case !change.Changed():
 		return Result{Summary: keptWords(change.Kept)}, nil
 	}
 
 	return Result{Summary: effectWords(req.Action, req.Days)}, nil
 }
+
+// recordEffect records, through q, in the triage's own transaction, what job's step does to
+// its item, at now; it refuses (errLeftAlone) while the routine leaves the item alone, which
+// rolls the change back.
+func recordEffect(ctx context.Context, q *queries.Queries, job Job, req TriageRequest, change TriageChange,
+	now time.Time,
+) error {
+	n, err := q.CountHandsOff(ctx, queries.CountHandsOffParams{RoutineID: job.RoutineID, ItemID: job.Item.ID})
+	if err != nil {
+		return fmt.Errorf("read whether the routine leaves the item alone: %w", err)
+	}
+
+	if n > 0 {
+		return errLeftAlone
+	}
+
+	_, err = q.InsertEffect(ctx, queries.InsertEffectParams{
+		MatchID: job.MatchID, Step: int64(job.Index), RoutineID: job.RoutineID, ItemID: new(job.Item.ID),
+		Action: string(req.Action), StateBefore: change.Before, StateAfter: change.After, AppliedAt: now,
+	})
+
+	return err
+}
+
+// leftAloneWords says a step changed nothing since its routine leaves the item alone.
+const leftAloneWords = "Left alone: you took back what it did here."
 
 // effectWords says what a triage step did.
 func effectWords(action catalog.StepKind, days int) string {
@@ -171,6 +210,8 @@ func keptWords(k TriageKept) string {
 		return "You set it aside yourself, so it's left as you left it."
 	case KeptNotSetAside:
 		return "It wasn't snoozed or dismissed."
+	case KeptChanged:
+		return "Left alone: it changed since the routine decided, so it's left as it is."
 	default:
 		return "Nothing changed."
 	}
@@ -398,18 +439,25 @@ func reversalWords(kind string, action catalog.StepKind) string {
 	return "You " + kind + " what it " + did + "."
 }
 
-// handOff records that the user's triage, an outcome of kind, took back what a routine did
-// to an item: its effects of that part of the triage (the pin, or the dismissal and the
-// snooze) are reversed, and it leaves the item alone, in one transaction.
-func (l *ledger) handOff(ctx context.Context, rev Reversal, kind string, now time.Time) error {
-	actions := []string{string(catalog.StepSnooze), string(catalog.StepDismiss), string(catalog.StepRestore)}
+// handOff records that the user's triage, an outcome of kind at at, took back what a
+// routine did to an item: its effects of that part of the triage (the pin, or the
+// dismissal and the snooze) applied by then are reversed, and it leaves the item alone,
+// in one transaction, at now. A step of the routine's applied after the user's triage is
+// no part of what the user took back, and keeps its Undo.
+func (l *ledger) handOff(ctx context.Context, rev Reversal, kind string, at, now time.Time) error {
+	actions := []string{string(catalog.StepSnooze), string(catalog.StepDismiss)}
 	if rev.Action == catalog.StepPin {
 		actions = []string{string(catalog.StepPin)}
 	}
 
+	if at.IsZero() {
+		at = now
+	}
+
 	return l.inTx(ctx, func(q *queries.Queries) error {
 		_, err := q.SetEffectsReversed(ctx, queries.SetEffectsReversedParams{
-			ReversedAt: new(now), RoutineID: rev.RoutineID, ItemID: new(rev.ItemID), Actions: actions,
+			ReversedAt: new(now), RoutineID: rev.RoutineID, ItemID: new(rev.ItemID), AppliedBefore: at,
+			Actions: actions,
 		})
 		if err != nil {
 			return fmt.Errorf("record what the user took back: %w", err)

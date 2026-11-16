@@ -20,18 +20,50 @@ type Triage struct {
 
 	mu    sync.Mutex
 	calls []autopilot.TriageRequest
+
+	// gate holds a step until Release, as a step on its way while the user acts.
+	gate chan struct{}
 }
 
-// Apply runs req through the inbox's triage.
+// Hold holds every step until Release, before it reaches the inbox.
+func (t *Triage) Hold() {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	t.gate = make(chan struct{})
+}
+
+// Release lets the steps held through.
+func (t *Triage) Release() {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	if t.gate != nil {
+		close(t.gate)
+		t.gate = nil
+	}
+}
+
+// Apply runs req through the inbox's triage, once a hold lets it.
 func (t *Triage) Apply(ctx context.Context, req autopilot.TriageRequest,
 	record func(ctx context.Context, tx *sql.Tx, change autopilot.TriageChange) error,
 ) (autopilot.TriageChange, error) {
 	t.mu.Lock()
 	t.calls = append(t.calls, req)
+	gate := t.gate
 	t.mu.Unlock()
+
+	if gate != nil {
+		select {
+		case <-gate:
+		case <-ctx.Done():
+			return autopilot.TriageChange{}, ctx.Err()
+		}
+	}
 
 	got, err := t.sim.Routines.Triage(ctx, inbox.RoutineTriage{
 		Routine: req.RoutineID, Item: req.ItemID, Action: inbox.TriageAction(req.Action), Days: req.Days,
+		Expect: req.Expect,
 		Record: func(ctx context.Context, tx *sql.Tx, c inbox.TriageChange) error {
 			return record(ctx, tx, changeOf(c))
 		},
@@ -101,20 +133,61 @@ func (s *Sim) ItemID(number int) int64 {
 		}
 	}
 
+	if id, ok := s.listedID(number); ok {
+		return id
+	}
+
+	if id, ok := s.watchedID(number); ok {
+		return id
+	}
+
+	require.FailNow(s.t, "no stored item", "#%d", number)
+
+	return 0
+}
+
+// listedID returns the stored ID of the item number in an inbox list.
+func (s *Sim) listedID(number int) (int64, bool) {
+	s.t.Helper()
+
 	snap, err := s.Inbox.Snapshot(context.Background())
 	require.NoError(s.t, err)
 
 	for _, l := range []inbox.List{snap.ReviewRequested, snap.Authored, snap.Assigned} {
 		for _, it := range l.Items {
 			if it.Number == number {
-				return it.ID
+				return it.ID, true
 			}
 		}
 	}
 
-	require.FailNow(s.t, "no stored item", "#%d", number)
+	return 0, false
+}
 
-	return 0
+// watchedID returns the stored ID of the item number a routine watches.
+func (s *Sim) watchedID(number int) (int64, bool) {
+	s.t.Helper()
+
+	ctx := context.Background()
+
+	routines, err := s.Service.List(ctx)
+	require.NoError(s.t, err)
+
+	for _, r := range routines {
+		ids, watchErr := s.Service.Watching(ctx, r.ID)
+		require.NoError(s.t, watchErr)
+
+		got, itemsErr := s.Inbox.ItemsByID(ctx, ids)
+		require.NoError(s.t, itemsErr)
+
+		for _, it := range got {
+			if it.Number == number {
+				return it.ID, true
+			}
+		}
+	}
+
+	return 0, false
 }
 
 // Effects returns what every match's local steps did, oldest first.

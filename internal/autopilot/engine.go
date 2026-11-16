@@ -114,6 +114,10 @@ type EngineItems interface {
 	// ReadStates reads and stores the states of the items among ids, one request.
 	ReadStates(ctx context.Context, ids []int64) error
 
+	// LocalStates returns the local state of each stored item among ids (its triage on
+	// this Mac, as the inbox encodes it), by id: what a triage step decides on.
+	LocalStates(ctx context.Context, ids []int64) (map[int64]string, error)
+
 	// ReadItem reads one item again from GitHub and stores it: the read right before a
 	// start.
 	ReadItem(ctx context.Context, id int64) error
@@ -388,7 +392,7 @@ func (e *Engine) Outcomes(ctx context.Context, outcomes []Outcome) {
 			continue
 		}
 
-		if err := e.ledger.handOff(ctx, o.Reversed, o.Kind, e.clock.Now()); err != nil {
+		if err := e.ledger.handOff(ctx, o.Reversed, o.Kind, o.At, e.clock.Now()); err != nil {
 			e.logger.WarnContext(ctx, "Autopilot could not record what the user took back of a routine's",
 				"routine", o.Reversed.RoutineID, "item", o.Reversed.ItemID, "error", err)
 		}

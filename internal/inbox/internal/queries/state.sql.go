@@ -298,6 +298,21 @@ func (q *Queries) Pin(ctx context.Context, arg PinParams) (int64, error) {
 	return result.RowsAffected()
 }
 
+const pruneRestoreMarks = `-- name: PruneRestoreMarks :exec
+DELETE FROM item_local_state
+WHERE pinned_at IS NULL AND dismissed_at IS NULL AND snoozed_until IS NULL AND set_aside_by IS NOT NULL
+  AND updated_at < ?
+`
+
+// PruneRestoreMarks deletes the rows whose only content is the mark a routine's Restore
+// left (set_aside_by, with nothing pinned, dismissed, or snoozed), written before cutoff:
+// the mark serves only that routine's Undo, which Autopilot offers as long as it keeps its
+// history.
+func (q *Queries) PruneRestoreMarks(ctx context.Context, updatedAt time.Time) error {
+	_, err := q.db.ExecContext(ctx, pruneRestoreMarks, updatedAt)
+	return err
+}
+
 const pruneState = `-- name: PruneState :exec
 DELETE FROM item_local_state
 WHERE item_id = ? AND pinned_at IS NULL AND dismissed_at IS NULL AND snoozed_until IS NULL

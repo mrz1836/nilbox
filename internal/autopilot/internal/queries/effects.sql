@@ -29,11 +29,18 @@ UPDATE autopilot_effects SET undone_at = sqlc.arg(undone_at)
 WHERE id = sqlc.arg(id) AND undone_at IS NULL AND reversed_at IS NULL;
 
 -- name: SetEffectsReversed :execrows
--- SetEffectsReversed records that the user's own triage took back what a routine did to
--- an item, for the effects among actions neither undone nor reversed yet.
+-- SetEffectsReversed records that the user's own triage, at applied_before, took back what
+-- a routine did to an item, for the effects among actions neither undone nor reversed yet
+-- that it applied by then: a step applied after the user's triage is no part of what the
+-- user took back.
 UPDATE autopilot_effects SET reversed_at = sqlc.arg(reversed_at)
 WHERE routine_id = sqlc.arg(routine_id) AND item_id = sqlc.arg(item_id) AND undone_at IS NULL
-  AND reversed_at IS NULL AND action IN (sqlc.slice(actions));
+  AND reversed_at IS NULL AND applied_at <= sqlc.arg(applied_before) AND action IN (sqlc.slice(actions));
+
+-- name: CountHandsOff :one
+-- CountHandsOff returns 1 while a routine leaves an item alone, else 0: what a triage
+-- step checks in its own transaction before it records its effect.
+SELECT COUNT(*) FROM autopilot_hands_off WHERE routine_id = sqlc.arg(routine_id) AND item_id = sqlc.arg(item_id);
 
 -- name: ListLeftAlone :many
 -- ListLeftAlone returns the items the routines leave alone, newest first, each with the

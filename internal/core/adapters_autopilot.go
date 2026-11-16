@@ -331,6 +331,7 @@ func (t inboxTriage) Apply(ctx context.Context, req autopilot.TriageRequest,
 ) (autopilot.TriageChange, error) {
 	got, err := t.faces.Triage(ctx, inbox.RoutineTriage{
 		Routine: req.RoutineID, Item: req.ItemID, Action: inbox.TriageAction(req.Action), Days: req.Days,
+		Expect: req.Expect,
 		Record: func(ctx context.Context, tx *sql.Tx, c inbox.TriageChange) error {
 			return record(ctx, tx, triageChangeOf(c))
 		},
@@ -438,6 +439,11 @@ func (a engineItems) ReadStates(ctx context.Context, ids []int64) error {
 	return err
 }
 
+// LocalStates returns the stored items' triage on this Mac, as the inbox encodes it.
+func (a engineItems) LocalStates(ctx context.Context, ids []int64) (map[int64]string, error) {
+	return a.inbox.LocalStates(ctx, ids)
+}
+
 // ReadItem reads one item again from GitHub, as its own refresh does.
 func (a engineItems) ReadItem(ctx context.Context, id int64) error {
 	_, err := a.service.RefreshItem(github.WithPurpose(ctx, github.PurposeAutopilot), id)
@@ -480,28 +486,41 @@ func (w *engineWaker) Wake() {
 }
 
 // outcomesFanOut tells what the user finished from the inbox, and the items the inbox saw
-// close or leave its lists, both to the mirror of the user's GitHub notifications and to
-// Autopilot's engine, each without waiting on the other (inbox.OutcomeSink). The engine
-// hears too what the user's own triage took back of a routine's, which leaves the routine
-// hands off the item.
+// close or leave its lists, both to Autopilot's engine and to the mirror of the user's
+// GitHub notifications (inbox.OutcomeSink). The engine hears too what the user's own
+// triage took back of a routine's, which leaves the routine hands off the item, so it is
+// told first: it records that at once, never waiting on the mirror, whose record can wait
+// on a clear on its way to GitHub.
 type outcomesFanOut struct {
-	threads ghThreadOutcomes
-	engine  *engineWaker
+	threads inbox.OutcomeSink
+	engine  engineOutcomes
 }
 
-// Settle tells both.
-func (o outcomesFanOut) Settle(ctx context.Context, outcomes []inbox.Outcome) {
-	o.threads.Settle(ctx, outcomes)
+// engineOutcomes is how the fan-out tells Autopilot's engine; *engineWaker is it.
+type engineOutcomes interface {
+	Outcomes(ctx context.Context, outcomes []autopilot.Outcome)
+}
 
-	if o.engine == nil || o.engine.engine == nil {
-		return
+// Settle tells the engine, then the mirror.
+func (o outcomesFanOut) Settle(ctx context.Context, outcomes []inbox.Outcome) {
+	if o.engine != nil {
+		o.engine.Outcomes(ctx, toEngineOutcomes(outcomes))
 	}
 
-	o.engine.engine.Outcomes(ctx, engineOutcomes(outcomes))
+	if o.threads != nil {
+		o.threads.Settle(ctx, outcomes)
+	}
 }
 
-// engineOutcomes is outcomes in the engine's words, the same on both sides.
-func engineOutcomes(outcomes []inbox.Outcome) []autopilot.Outcome {
+// Outcomes tells the engine, once there is one, what the inbox saw.
+func (w *engineWaker) Outcomes(ctx context.Context, outcomes []autopilot.Outcome) {
+	if w.engine != nil {
+		w.engine.Outcomes(ctx, outcomes)
+	}
+}
+
+// toEngineOutcomes is outcomes in the engine's words, the same on both sides.
+func toEngineOutcomes(outcomes []inbox.Outcome) []autopilot.Outcome {
 	told := make([]autopilot.Outcome, 0, len(outcomes))
 
 	for _, out := range outcomes {

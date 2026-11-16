@@ -533,7 +533,7 @@ func (s *Service) explainLedger(ctx context.Context, r Routine, out Explanation)
 	}
 
 	if out.LeftAlone = handsOff[out.ItemID]; out.LeftAlone {
-		out.Ledger = append(out.Ledger, "Left alone: you took back what it did here. Let it act again to change that.")
+		out.Ledger = append(out.Ledger, leftAloneWords+" Let it act again to change that.")
 	}
 
 	if h.Tries > 0 {

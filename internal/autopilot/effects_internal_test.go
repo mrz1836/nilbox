@@ -126,6 +126,76 @@ func TestATriageStepIsRecordedAsAnEffectOnce(t *testing.T) {
 	assert.Equal(t, 1, r.effects(t))
 }
 
+func TestATriageStepPassesOnTheStateItsRoutineDecidedOn(t *testing.T) {
+	t.Parallel()
+
+	r := newTriageRig(t, TriageChange{Kept: KeptChanged})
+	r.job.Local = `{"dismissedAt":"2026-11-16T09:00:00Z"}`
+
+	res, err := r.engine.dispatchers[catalog.DispatchTriage].Dispatch(t.Context(), r.job)
+	require.NoError(t, err)
+	assert.Equal(t, r.job.Local, r.triage.asks()[0].Expect, "the step is a compare-and-set on it")
+	assert.Equal(t, "Left alone: it changed since the routine decided, so it's left as it is.", res.Summary)
+	assert.Zero(t, r.effects(t))
+}
+
+func TestATriageStepOnItsWayChangesNothingOnceItsRoutineIsLeftAlone(t *testing.T) {
+	t.Parallel()
+
+	r := newTriageRig(t, TriageChange{Before: `{}`, After: `{"dismissedAt":"2026-11-16T09:00:00Z"}`})
+
+	// The user took back what the routine did after the cycle decided on the step, so the
+	// hands off is there by the time the triage's own transaction runs.
+	testutil.Exec(t, r.db, `INSERT INTO autopilot_hands_off (routine_id, item_id, since, why) VALUES (1, 5, ?, 'x')`,
+		time.Date(2026, 11, 16, 9, 0, 0, 0, time.UTC))
+
+	res, err := r.engine.dispatchers[catalog.DispatchTriage].Dispatch(t.Context(), r.job)
+	require.NoError(t, err)
+	assert.Equal(t, "Left alone: you took back what it did here.", res.Summary)
+	assert.Zero(t, r.effects(t), "the change rolls back with its record")
+}
+
+func TestHandsOffTakesBackOnlyWhatTheRoutineDidBeforeTheUsersTriage(t *testing.T) {
+	t.Parallel()
+
+	r := newTriageRig(t, TriageChange{})
+	at := time.Date(2026, 11, 16, 9, 0, 0, 0, time.UTC)
+
+	testutil.Exec(t, r.db, `INSERT INTO autopilot_matches (id, routine_id, item_id, fire_key, state, created_at,
+    updated_at, decided_at) VALUES (2, 1, 5, 'appears:again', 'done', ?, ?, ?)`, at, at, at)
+
+	for _, e := range []struct {
+		match int
+		at    time.Time
+	}{{1, at}, {2, at.Add(2 * time.Minute)}} {
+		testutil.Exec(t, r.db, `INSERT INTO autopilot_effects (match_id, routine_id, item_id, action, applied_at)
+VALUES (?, 1, 5, 'dismiss', ?)`, e.match, e.at)
+	}
+
+	// The user restored it a minute after the first dismissal; the second, on its way then,
+	// landed after.
+	r.engine.Outcomes(t.Context(), []Outcome{{
+		Kind: "restored", At: at.Add(time.Minute),
+		Reversed: Reversal{RoutineID: 1, ItemID: 5, Action: catalog.StepDismiss},
+	}})
+
+	var reversed []int
+
+	rows, err := r.db.QueryContext(t.Context(), `SELECT match_id FROM autopilot_effects WHERE reversed_at IS NOT NULL`)
+	require.NoError(t, err)
+
+	defer func() { require.NoError(t, rows.Close()) }()
+
+	for rows.Next() {
+		var id int
+		require.NoError(t, rows.Scan(&id))
+		reversed = append(reversed, id)
+	}
+
+	require.NoError(t, rows.Err())
+	assert.Equal(t, []int{1}, reversed, "the step applied after the user's restore keeps its Undo")
+}
+
 func TestATriageStepThatChangesNothingRecordsNothing(t *testing.T) {
 	t.Parallel()
 

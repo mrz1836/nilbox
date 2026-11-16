@@ -19,15 +19,19 @@ import (
 // (item_local_state.set_aside_by for a snooze, a dismissal, or a restore, and pinned_by for
 // a pin), and an Undo puts an item back as it was before one, only where the item is still
 // as the step left it. A routine's Snooze snoozes as the user's does, under the user's wake
-// rules, for the routine's length. A routine never replaces what the user set aside
-// themselves: its Snooze and Dismiss leave an item the user dismissed or snoozed as the
-// user left it, and its Pin leaves a pinned item as it is. Autopilot reaches these through
-// Routines, the inbox's face the window never reaches; core adapts it.
+// rules, for the routine's length. A routine's Snooze and Dismiss never replace what the
+// user set aside themselves, leaving an item the user dismissed or snoozed as the user left
+// it, and its Pin leaves a pinned item as it is; its Restore is for bringing an item back
+// to the user's attention when the routine's conditions hold, the user's own snooze or
+// dismissal included. Each step is a compare-and-set on the state the routine decided on
+// (RoutineTriage.Expect), so the user's own change in between wins. Autopilot reaches these
+// through Routines, the inbox's face the window never reaches; core adapts it.
 //
 // Every triage path of the user's own clears the attribution it changes (triage.go), so the
 // window never says a routine did what the user did last, and one that takes back what a
-// routine did (a restore of what it set aside, a snooze over it, a dismissal of what it
-// brought back, an unpin of what it pinned) tells the outcome sink so (Outcome.Reversed).
+// routine did (a restore of what it dismissed or snoozed, a snooze over that, an unpin of
+// what it pinned) tells the outcome sink so (Outcome.Reversed). Setting aside again what a
+// routine's Restore brought back is no reversal: the user handled it.
 
 // TriageAction is one of a routine's triage steps.
 type TriageAction string
@@ -71,6 +75,10 @@ const (
 	// KeptNotSetAside is an item neither dismissed nor snoozed, which a Restore has nothing
 	// to bring back from.
 	KeptNotSetAside TriageKept = "not_set_aside"
+
+	// KeptChanged is an item whose triage changed since the routine decided on it (the
+	// step's Expect), as by the user's own triage in between: what changed it wins.
+	KeptChanged TriageKept = "changed"
 )
 
 // LocalState is an item's triage on this Mac, as item_local_state holds it, and as a
@@ -96,16 +104,6 @@ func (l LocalState) yours(now time.Time) bool {
 	return l.setAside(now) && l.SetAsideBy == nil
 }
 
-// restoredBy returns the routine that brought the item back from a dismissal or a snooze,
-// while nothing set it aside since, or 0.
-func (l LocalState) restoredBy() int64 {
-	if l.DismissedAt != nil || l.SnoozedUntil != nil {
-		return 0
-	}
-
-	return store.Deref(l.SetAsideBy)
-}
-
 // setAsideBy returns the routine whose dismissal or snooze of the item is in effect at
 // now, and what it did, or 0.
 func (l LocalState) setAsideBy(now time.Time) (int64, TriageAction) {
@@ -129,6 +127,12 @@ type RoutineTriage struct {
 	// Action is the step, and Days how long a snooze lasts (snooze.MinDays to MaxDays).
 	Action TriageAction
 	Days   int
+
+	// Expect, when set, is the item's local state the routine decided on (as LocalStates
+	// encodes it): the step is a compare-and-set on it, and changes nothing (KeptChanged)
+	// when the part of the triage it changes (the pin, or the dismissal and the snooze)
+	// differs now, as after the user's own triage in between.
+	Expect string
 
 	// Record, when set, runs in the change's own transaction, before the change is
 	// written, with what it does: Autopilot records its effect there, so the change and its
@@ -184,6 +188,29 @@ func (r *Routines) AsLeft(ctx context.Context, undos []TriageUndo) ([]bool, erro
 	return r.svc.asLeft(ctx, undos)
 }
 
+// LocalStates returns the local state of each stored item among ids, by id, as a routine's
+// step passes it back as its Expect: what the routine decided on. It reads the database
+// alone.
+func (r *Routines) LocalStates(ctx context.Context, ids []int64) (map[int64]string, error) {
+	states, err := r.svc.localStates(ctx, ids)
+	if err != nil {
+		return nil, err
+	}
+
+	out := make(map[int64]string, len(states))
+
+	for id, st := range states {
+		encoded, encodeErr := store.EncodeJSON(st)
+		if encodeErr != nil {
+			return nil, encodeErr
+		}
+
+		out[id] = encoded
+	}
+
+	return out, nil
+}
+
 // routineTriage runs t: it reads the item's local state, works out the change, records it
 // through t.Record, writes it, and tells the window. A Restore that brought the item back
 // tells the outcome sink, as the user's does.
@@ -228,17 +255,10 @@ func (s *Service) applyTriage(ctx context.Context, tx *sql.Tx, t RoutineTriage, 
 ) (TriageChange, []Outcome, error) {
 	q := s.q.WithTx(tx)
 
-	before, err := localStateOf(ctx, q, t.Item)
+	before, after, kept, err := decideIn(ctx, q, t, now, until)
 	if err != nil {
 		return TriageChange{}, nil, err
 	}
-
-	baseline, err := snoozeBaseline(ctx, q, t)
-	if err != nil {
-		return TriageChange{}, nil, err
-	}
-
-	after, kept := decideTriage(t, before, now, until, baseline)
 
 	change, err := triageChange(before, after, kept)
 	if err != nil || !change.Changed() {
@@ -261,6 +281,50 @@ func (s *Service) applyTriage(ctx context.Context, tx *sql.Tx, t RoutineTriage, 
 	}
 
 	return change, told, q.PruneState(ctx, t.Item)
+}
+
+// decideIn reads, through q, the local state of t's item, and works out the state after t at
+// now, a snooze lasting until until, or why t changes nothing: KeptChanged when its part of
+// the triage changed since the routine decided on it.
+func decideIn(ctx context.Context, q *queries.Queries, t RoutineTriage, now, until time.Time,
+) (LocalState, LocalState, TriageKept, error) {
+	before, err := localStateOf(ctx, q, t.Item)
+	if err != nil {
+		return LocalState{}, LocalState{}, "", err
+	}
+
+	changed, err := changedSince(t, before)
+
+	switch {
+	case err != nil:
+		return LocalState{}, LocalState{}, "", err
+	case changed:
+		return before, before, KeptChanged, nil
+	}
+
+	baseline, err := snoozeBaseline(ctx, q, t)
+	if err != nil {
+		return LocalState{}, LocalState{}, "", err
+	}
+
+	after, kept := decideTriage(t, before, now, until, baseline)
+
+	return before, after, kept, nil
+}
+
+// changedSince reports whether the part of the item's triage t changes differs, in cur,
+// from the state the routine decided on (t.Expect); never without one.
+func changedSince(t RoutineTriage, cur LocalState) (bool, error) {
+	if t.Expect == "" {
+		return false, nil
+	}
+
+	expect, err := store.DecodeJSON[LocalState](t.Expect)
+	if err != nil {
+		return false, fmt.Errorf("read the triage the routine decided on: %w", err)
+	}
+
+	return !asLeftBy(t.Action, cur, expect), nil
 }
 
 // snoozeBaseline is the activity a routine's snooze of t's item compares with (see
@@ -398,19 +462,16 @@ func writeTriage(ctx context.Context, q *queries.Queries, t RoutineTriage, after
 func (s *Service) undoTriage(
 	ctx context.Context, undos []TriageUndo, record func(ctx context.Context, tx *sql.Tx, put []bool) error,
 ) ([]bool, error) {
-	put := make([]bool, len(undos))
-	now := s.now()
+	var (
+		put  []bool
+		told []Outcome
+	)
 
 	err := store.InTx(ctx, s.db, func(tx *sql.Tx) error {
-		q := s.q.WithTx(tx)
+		var undoErr error
 
-		for i, u := range undos {
-			done, err := undoOne(ctx, q, u, now)
-			if err != nil {
-				return err
-			}
-
-			put[i] = done
+		if put, told, undoErr = s.undoAll(ctx, s.q.WithTx(tx), undos); undoErr != nil {
+			return undoErr
 		}
 
 		if record != nil {
@@ -428,7 +489,63 @@ func (s *Service) undoTriage(
 		s.notify()
 	}
 
+	s.settle(ctx, told)
+
 	return put, nil
+}
+
+// undoAll puts back, through q, what each of undos changed where its item is still as it
+// left it, and returns which it put back, and what that tells the outcome sink.
+func (s *Service) undoAll(ctx context.Context, q *queries.Queries, undos []TriageUndo) ([]bool, []Outcome, error) {
+	put := make([]bool, len(undos))
+	now := s.now()
+
+	var told []Outcome
+
+	for i, u := range undos {
+		done, err := undoOne(ctx, q, u, now)
+
+		switch {
+		case err != nil:
+			return nil, nil, err
+		case !done:
+			continue
+		}
+
+		put[i] = true
+
+		back, err := s.undoTold(ctx, q, u)
+		if err != nil {
+			return nil, nil, err
+		}
+
+		told = append(told, back...)
+	}
+
+	return put, told, nil
+}
+
+// undoTold is what putting back what u changed tells the outcome sink: the user's own
+// dismissal that a routine's Restore brought the item back from is a dismissal again, at
+// its own time, so the mirror of the GitHub notifications records it as the user's again,
+// under the user's own rules for clearing; nothing else is told, since a routine's
+// dismissal or snooze told nothing. It reads nothing while no sink listens.
+func (s *Service) undoTold(ctx context.Context, q *queries.Queries, u TriageUndo) ([]Outcome, error) {
+	if u.Action != TriageRestore {
+		return nil, nil
+	}
+
+	before, _, err := decodeChange(u)
+	if err != nil || before.DismissedAt == nil || before.SetAsideBy != nil {
+		return nil, err
+	}
+
+	was, found, err := s.triageBefore(ctx, q, u.Item)
+	if err != nil || !found {
+		return nil, err
+	}
+
+	return triageOutcome(OutcomeDismissed, was, before.DismissedAt.UTC()), nil
 }
 
 // undoOne puts back what u changed, when its item is still as u left it, and reports
@@ -506,17 +623,9 @@ func (s *Service) asLeft(ctx context.Context, undos []TriageUndo) ([]bool, error
 		ids = append(ids, u.Item)
 	}
 
-	rows, err := s.q.ListLocalStates(ctx, ids)
+	byID, err := s.localStates(ctx, ids)
 	if err != nil {
-		return nil, fmt.Errorf("read the items' triage: %w", err)
-	}
-
-	byID := make(map[int64]LocalState, len(rows))
-	for _, r := range rows {
-		byID[r.ID] = LocalState{
-			DismissedAt: r.DismissedAt, SnoozedUntil: r.SnoozedUntil, SnoozeBaseline: r.SnoozeBaseline,
-			WakeReasons: r.WakeReasons, PinnedAt: r.PinnedAt, SetAsideBy: r.SetAsideBy, PinnedBy: r.PinnedBy,
-		}
+		return nil, err
 	}
 
 	for i, u := range undos {
@@ -527,6 +636,29 @@ func (s *Service) asLeft(ctx context.Context, undos []TriageUndo) ([]bool, error
 
 		_, after, decodeErr := decodeChange(u)
 		out[i] = decodeErr == nil && asLeftBy(u.Action, cur, after)
+	}
+
+	return out, nil
+}
+
+// localStates reads the local state of each stored item among ids, by id, the zero
+// LocalState for one with none.
+func (s *Service) localStates(ctx context.Context, ids []int64) (map[int64]LocalState, error) {
+	out := map[int64]LocalState{}
+	if len(ids) == 0 {
+		return out, nil
+	}
+
+	rows, err := s.q.ListLocalStates(ctx, ids)
+	if err != nil {
+		return nil, fmt.Errorf("read the items' triage: %w", err)
+	}
+
+	for _, r := range rows {
+		out[r.ID] = LocalState{
+			DismissedAt: r.DismissedAt, SnoozedUntil: r.SnoozedUntil, SnoozeBaseline: r.SnoozeBaseline,
+			WakeReasons: r.WakeReasons, PinnedAt: r.PinnedAt, SetAsideBy: r.SetAsideBy, PinnedBy: r.PinnedBy,
+		}
 	}
 
 	return out, nil

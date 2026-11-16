@@ -61,8 +61,8 @@ const (
 	// page may still be in it, and an item whose repository was archived tells none.
 	OutcomeUnlisted OutcomeKind = "unlisted"
 
-	// OutcomeSnoozed is an item the user snoozed over what a routine set aside or brought
-	// back, and OutcomeUnpinned one the user unpinned that a routine pinned: each told only
+	// OutcomeSnoozed is an item the user snoozed over a routine's dismissal or snooze of
+	// it, and OutcomeUnpinned one the user unpinned that a routine pinned: each told only
 	// then, with its Reversed, since only what follows the routines hears them.
 	OutcomeSnoozed  OutcomeKind = "snoozed"
 	OutcomeUnpinned OutcomeKind = "unpinned"
@@ -82,9 +82,8 @@ type Outcome struct {
 	At time.Time
 
 	// Reversed names what a routine did to the item that the user's own triage took back
-	// (a restore of what it dismissed or snoozed, a snooze over what it set aside or
-	// brought back, a dismissal of what it brought back, an unpin of what it pinned); the
-	// zero Reversal otherwise.
+	// (a restore of what it dismissed or snoozed, a snooze over that, an unpin of what it
+	// pinned); the zero Reversal otherwise.
 	Reversed Reversal
 }
 
@@ -255,34 +254,16 @@ func localOf(t triageItem) LocalState {
 	}
 }
 
-// restoreReversal is the routine's Restore of the item with id, as t holds it, that
-// setting the item aside again takes back, or none.
-func restoreReversal(t triageItem, id int64) Reversal {
-	if r := localOf(t).restoredBy(); r != 0 {
-		return Reversal{Routine: r, Item: id, Did: TriageRestore}
-	}
-
-	return Reversal{}
-}
-
 // setAsideReversal is the routine's dismissal or snooze of the item with id, in effect at
-// now as t holds it, that bringing the item back takes back, or none.
+// now as t holds it, that bringing the item back, or snoozing it over that, takes back, or
+// none. A routine's Restore is never taken back by setting the item aside again: it
+// brought the item to the user's attention, and the user handled it.
 func setAsideReversal(t triageItem, id int64, now time.Time) Reversal {
 	if r, did := localOf(t).setAsideBy(now); r != 0 {
 		return Reversal{Routine: r, Item: id, Did: did}
 	}
 
 	return Reversal{}
-}
-
-// snoozeReversal is what a routine did to the item with id, as t holds it at now, that the
-// user's snooze over it takes back: its dismissal or snooze in effect, or its Restore.
-func snoozeReversal(t triageItem, id int64, now time.Time) Reversal {
-	if rev := setAsideReversal(t, id, now); rev.Routine != 0 {
-		return rev
-	}
-
-	return restoreReversal(t, id)
 }
 
 // triageOutcome is what a change to the item t's triage tells, as kind, at.

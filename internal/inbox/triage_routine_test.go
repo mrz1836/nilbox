@@ -298,13 +298,16 @@ func TestTakingBackARoutinesTriageTellsWhichRoutine(t *testing.T) {
 	_, err = h.svc.Unpin(ctx, other)
 	require.NoError(t, err)
 
-	// The user dismisses; a routine brings it back, which tells a restore; the user
-	// dismisses it again, which takes the routine's Restore back.
+	// The user dismisses; a routine brings it back, which tells a restore; the user snoozes
+	// it, then dismisses it, handling what the routine brought to their attention: neither
+	// takes the routine's Restore back, and the snooze tells nothing.
 	_, err = h.svc.Restore(ctx, id)
 	require.NoError(t, err)
 	_, err = h.svc.Dismiss(ctx, other)
 	require.NoError(t, err)
 	step(other, TriageRestore)
+	_, err = h.svc.Snooze(ctx, other, 1)
+	require.NoError(t, err)
 	_, err = h.svc.Dismiss(ctx, other)
 	require.NoError(t, err)
 
@@ -331,9 +334,114 @@ func TestTakingBackARoutinesTriageTellsWhichRoutine(t *testing.T) {
 		{told(OutcomeRestored, prRef(1), at)},
 		{told(OutcomeDismissed, prRef(2), at)},
 		{told(OutcomeRestored, prRef(2), at)},
-		{back(OutcomeDismissed, 2, other, TriageRestore)},
+		{told(OutcomeDismissed, prRef(2), at)},
 		{told(OutcomeDismissed, prRef(1), at)},
 	}, sink.told())
+}
+
+func TestARoutinesStepIsACompareAndSetOnWhatItDecidedOn(t *testing.T) {
+	t.Parallel()
+
+	h, id, _ := triageHarness(t)
+	r := h.routine(t, "Tidy")
+	routines := NewRoutines(h.svc)
+	ctx := t.Context()
+
+	_, err := h.svc.Snooze(ctx, id, 3)
+	require.NoError(t, err)
+
+	decided, err := routines.LocalStates(ctx, []int64{id, 999})
+	require.NoError(t, err)
+	require.Contains(t, decided, id)
+	assert.NotContains(t, decided, int64(999), "an item not stored has no state")
+
+	// The routine decided on the user's snooze; the user brings the item back while its
+	// Dismiss is on its way.
+	_, err = h.svc.Restore(ctx, id)
+	require.NoError(t, err)
+
+	rec := &recorded{}
+	got, err := routines.Triage(ctx, RoutineTriage{
+		Routine: r, Item: id, Action: TriageDismiss, Expect: decided[id], Record: rec.record,
+	})
+	require.NoError(t, err)
+	assert.Equal(t, KeptChanged, got.Kept, "the user's own change in between wins")
+	assert.Empty(t, rec.changes, "nothing is recorded")
+	assert.Equal(t, LocalState{}, h.local(t, id), "as the user left it")
+
+	// A change to the other part of its triage changes nothing of what a step decided on.
+	got, err = routines.Triage(ctx, RoutineTriage{Routine: r, Item: id, Action: TriagePin, Expect: decided[id]})
+	require.NoError(t, err)
+	assert.True(t, got.Changed())
+
+	_, err = routines.Triage(ctx, RoutineTriage{Routine: r, Item: id, Action: TriagePin, Expect: "{"})
+	require.Error(t, err, "a state it can't read changes nothing")
+}
+
+func TestUndoOfARoutinesRestoreTellsTheUsersDismissalAgain(t *testing.T) {
+	t.Parallel()
+
+	h, id, _ := triageHarness(t)
+	sink := h.telling(t)
+	r := h.routine(t, "Bring back")
+	dismissedAt := h.clock.Now().UTC()
+
+	_, err := h.svc.Dismiss(t.Context(), id)
+	require.NoError(t, err)
+
+	h.clock.Advance(time.Hour)
+	restored, _ := h.triage(t, r, id, TriageRestore, 0)
+
+	h.clock.Advance(time.Hour)
+	put, _ := h.undo(t, undoOf(r, id, TriageRestore, restored))
+	require.Equal(t, []bool{true}, put)
+
+	assert.Equal(t, [][]Outcome{
+		{told(OutcomeDismissed, prRef(1), dismissedAt)},
+		{told(OutcomeRestored, prRef(1), dismissedAt.Add(time.Hour))},
+		{told(OutcomeDismissed, prRef(1), dismissedAt)},
+	}, sink.told(), "the user's dismissal is told again, at its own time, so its clears come back")
+
+	_, err = h.svc.Restore(t.Context(), id)
+	require.NoError(t, err)
+	require.Len(t, sink.told(), 4)
+
+	dismissed, _ := h.triage(t, r, id, TriageDismiss, 0)
+	require.True(t, dismissed.Changed())
+
+	put, _ = h.undo(t, undoOf(r, id, TriageDismiss, dismissed))
+	require.Equal(t, []bool{true}, put)
+	assert.Len(t, sink.told(), 4, "a routine's own dismissal told nothing, so its Undo tells nothing either")
+}
+
+func TestTheRefreshDropsARestoreMarkOnceAutopilotForgetsIt(t *testing.T) {
+	t.Parallel()
+
+	h, id, other := triageHarness(t)
+	r := h.routine(t, "Bring back")
+	ctx := t.Context()
+
+	for _, target := range []int64{id, other} {
+		_, err := h.svc.Snooze(ctx, target, 1)
+		require.NoError(t, err)
+		h.triage(t, r, target, TriageRestore, 0)
+	}
+
+	assert.Equal(t, int64(2), h.count(t, "item_local_state"), "each keeps its routine's mark, for an Undo")
+
+	h.setPrefs(t, map[string]string{"autopilot.historyDays": "7"})
+	h.clock.Advance(6 * 24 * time.Hour)
+	h.refresh(t)
+	assert.Equal(t, int64(2), h.count(t, "item_local_state"), "within the history, the marks stay")
+
+	_, err := h.svc.Pin(ctx, other)
+	require.NoError(t, err)
+
+	h.clock.Advance(2 * 24 * time.Hour)
+	h.refresh(t)
+	assert.Equal(t, int64(1), h.count(t, "item_local_state"), "past it, a row of nothing but a mark goes")
+	assert.Nil(t, h.local(t, id).SetAsideBy)
+	assert.NotNil(t, h.local(t, other).PinnedAt, "a row with anything else in it stays")
 }
 
 func TestAnExpiredSnoozeOfARoutinesIsNoReversal(t *testing.T) {

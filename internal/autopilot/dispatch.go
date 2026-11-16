@@ -54,6 +54,11 @@ type Job struct {
 	// Budget is what the start reserved of the daily cap, in Unit; 0 when nothing.
 	Budget float64
 	Unit   string
+
+	// Local is the item's local state as the cycle that ran the step read it, before it
+	// decided (EngineItems.LocalStates): a triage step is a compare-and-set on it, so a
+	// change of the user's in between wins. "" for a step that isn't local.
+	Local string
 }
 
 // ItemRef names a match's item, as the ledger keeps a copy of it.

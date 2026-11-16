@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/mrz1836/nilbox/internal/autopilotprefs"
 	"github.com/mrz1836/nilbox/internal/github"
 	"github.com/mrz1836/nilbox/internal/inbox/internal/queries"
 	"github.com/mrz1836/nilbox/internal/item"
@@ -54,11 +55,35 @@ func (w *writer) saveLists(ctx context.Context, got refreshed) error {
 		return err
 	}
 
+	if err := w.pruneRestoreMarks(ctx); err != nil {
+		return err
+	}
+
 	if !got.keptRead {
 		return nil
 	}
 
 	return w.pruneOld(ctx, got.kept)
+}
+
+// pruneRestoreMarks drops the marks routines' Restores left on items they brought back,
+// once they are older than Autopilot keeps its history (autopilot.historyDays, which
+// settings writes): only an Undo of that Restore reads one, and an item with nothing else
+// in its local state is then pruned as any other. The user's own triage of the item clears
+// its mark sooner.
+func (w *writer) pruneRestoreMarks(ctx context.Context) error {
+	stored, err := w.prefs.GetMany(ctx, autopilotprefs.KeyHistoryDays)
+	if err != nil {
+		return fmt.Errorf("read how long Autopilot keeps its history: %w", err)
+	}
+
+	days := autopilotprefs.Decode(stored).HistoryDays
+
+	if err = w.q.PruneRestoreMarks(ctx, w.now.AddDate(0, 0, -days)); err != nil {
+		return fmt.Errorf("prune the routines' old restore marks: %w", err)
+	}
+
+	return nil
 }
 
 // pruneOld deletes the items nothing refers to that no read has brought for pruneAfter,

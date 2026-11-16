@@ -1,8 +1,10 @@
 package core
 
 import (
+	"context"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 
@@ -264,7 +266,7 @@ func TestTheEngineHearsWhichRoutinesTriageTheUserTookBack(t *testing.T) {
 	ref := item.Ref{Repo: repo.Name{Owner: boundOwner, Repo: boundRepo}, Number: 7, Kind: item.KindPR}
 	at := time.Date(2026, 11, 16, 9, 0, 0, 0, time.UTC)
 
-	got := engineOutcomes([]inbox.Outcome{
+	got := toEngineOutcomes([]inbox.Outcome{
 		{Kind: inbox.OutcomeUnpinned, Ref: ref, At: at, Reversed: inbox.Reversal{Routine: 3, Item: 9, Did: inbox.TriagePin}},
 		{Kind: inbox.OutcomeMerged, Ref: ref, At: at},
 	})
@@ -278,6 +280,43 @@ func TestTheEngineHearsWhichRoutinesTriageTheUserTookBack(t *testing.T) {
 		_, mirrored := outcomeKinds()[kind]
 		assert.False(t, mirrored, "%s finishes nothing, so the GitHub notifications' mirror never hears it", kind)
 	}
+}
+
+// toldInOrder records which of the fan-out's sinks heard outcomes, in order.
+type toldInOrder struct {
+	mu    sync.Mutex
+	heard []string
+}
+
+func (o *toldInOrder) add(who string) {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+
+	o.heard = append(o.heard, who)
+}
+
+// mirrorSink is the mirror of the GitHub notifications, as the fan-out tells it.
+type mirrorSink struct{ order *toldInOrder }
+
+func (m mirrorSink) Settle(context.Context, []inbox.Outcome) { m.order.add("mirror") }
+
+// engineSink is Autopilot's engine, as the fan-out tells it.
+type engineSink struct{ order *toldInOrder }
+
+func (e engineSink) Outcomes(context.Context, []autopilot.Outcome) { e.order.add("engine") }
+
+func TestTheEngineHearsWhatTheUserTookBackBeforeTheMirror(t *testing.T) {
+	t.Parallel()
+
+	order := &toldInOrder{}
+	fan := outcomesFanOut{threads: mirrorSink{order: order}, engine: engineSink{order: order}}
+
+	fan.Settle(t.Context(), []inbox.Outcome{{Kind: inbox.OutcomeRestored}})
+	assert.Equal(t, []string{"engine", "mirror"}, order.heard,
+		"the engine records hands off at once, never behind a clear the mirror sends to GitHub")
+
+	(&engineWaker{}).Outcomes(t.Context(), []autopilot.Outcome{{Kind: "restored"}})
+	outcomesFanOut{}.Settle(t.Context(), []inbox.Outcome{{Kind: inbox.OutcomeRestored}})
 }
 
 func TestTheTriageStepsAreTheInboxsOwnWords(t *testing.T) {

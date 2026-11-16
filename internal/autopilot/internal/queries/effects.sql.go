@@ -11,6 +11,24 @@ import (
 	"time"
 )
 
+const countHandsOff = `-- name: CountHandsOff :one
+SELECT COUNT(*) FROM autopilot_hands_off WHERE routine_id = ?1 AND item_id = ?2
+`
+
+type CountHandsOffParams struct {
+	RoutineID int64
+	ItemID    int64
+}
+
+// CountHandsOff returns 1 while a routine leaves an item alone, else 0: what a triage
+// step checks in its own transaction before it records its effect.
+func (q *Queries) CountHandsOff(ctx context.Context, arg CountHandsOffParams) (int64, error) {
+	row := q.db.QueryRowContext(ctx, countHandsOff, arg.RoutineID, arg.ItemID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const getStepEffect = `-- name: GetStepEffect :one
 SELECT id, match_id, step, routine_id, item_id, "action", state_before, state_after, applied_at, undone_at, reversed_at FROM autopilot_effects WHERE match_id = ?1 AND step = ?2
 `
@@ -263,24 +281,28 @@ func (q *Queries) SetEffectUndone(ctx context.Context, arg SetEffectUndoneParams
 const setEffectsReversed = `-- name: SetEffectsReversed :execrows
 UPDATE autopilot_effects SET reversed_at = ?1
 WHERE routine_id = ?2 AND item_id = ?3 AND undone_at IS NULL
-  AND reversed_at IS NULL AND action IN (/*SLICE:actions*/?)
+  AND reversed_at IS NULL AND applied_at <= ?4 AND action IN (/*SLICE:actions*/?)
 `
 
 type SetEffectsReversedParams struct {
-	ReversedAt *time.Time
-	RoutineID  int64
-	ItemID     *int64
-	Actions    []string
+	ReversedAt    *time.Time
+	RoutineID     int64
+	ItemID        *int64
+	AppliedBefore time.Time
+	Actions       []string
 }
 
-// SetEffectsReversed records that the user's own triage took back what a routine did to
-// an item, for the effects among actions neither undone nor reversed yet.
+// SetEffectsReversed records that the user's own triage, at applied_before, took back what
+// a routine did to an item, for the effects among actions neither undone nor reversed yet
+// that it applied by then: a step applied after the user's triage is no part of what the
+// user took back.
 func (q *Queries) SetEffectsReversed(ctx context.Context, arg SetEffectsReversedParams) (int64, error) {
 	query := setEffectsReversed
 	var queryParams []interface{}
 	queryParams = append(queryParams, arg.ReversedAt)
 	queryParams = append(queryParams, arg.RoutineID)
 	queryParams = append(queryParams, arg.ItemID)
+	queryParams = append(queryParams, arg.AppliedBefore)
 	if len(arg.Actions) > 0 {
 		for _, v := range arg.Actions {
 			queryParams = append(queryParams, v)

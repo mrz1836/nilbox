@@ -97,6 +97,7 @@ type pass struct {
 	others   map[int64]queries.AutopilotRoutine
 	facts    map[int64]facts.Facts
 	states   map[int64]ItemState
+	local    map[int64]string
 	runs     map[int64][]itemRun
 	counts   dayCounts
 	cycle    *Cycle
@@ -428,16 +429,6 @@ func (p *pass) read(ctx context.Context, open []*match) error {
 		return err
 	}
 
-	list, err := p.e.items.Facts(ctx, all, p.now.UTC())
-	if err != nil {
-		return err
-	}
-
-	p.facts = make(map[int64]facts.Facts, len(list))
-	for _, f := range list {
-		p.facts[f.Item.ID] = f
-	}
-
 	every := slices.Clone(all)
 
 	for _, m := range open {
@@ -447,6 +438,22 @@ func (p *pass) read(ctx context.Context, open []*match) error {
 	}
 
 	every = union(every, nil)
+
+	// The items' triage is read before their facts, so a triage step's compare-and-set is
+	// on a state no newer than what the routine decided on.
+	if p.local, err = p.e.items.LocalStates(ctx, every); err != nil {
+		return err
+	}
+
+	list, err := p.e.items.Facts(ctx, all, p.now.UTC())
+	if err != nil {
+		return err
+	}
+
+	p.facts = make(map[int64]facts.Facts, len(list))
+	for _, f := range list {
+		p.facts[f.Item.ID] = f
+	}
 
 	if p.states, err = p.e.items.ItemStates(ctx, every); err != nil {
 		return err
@@ -960,7 +967,7 @@ func (p *pass) closeMoved(ctx context.Context, r *routineRun, m *match) bool {
 	id := store.Deref(m.ItemID)
 
 	if r.handsOff[id] {
-		m.close(StateClosed, ReasonHandsOff, "Left alone: you took back what it did here.", p.now)
+		m.close(StateClosed, ReasonHandsOff, leftAloneWords, p.now)
 		p.save(ctx, m)
 
 		return true

@@ -171,7 +171,8 @@ func Steps() []Step {
 		},
 		{
 			Kind: StepRestore, Label: "Restore", Dispatcher: DispatchTriage, Local: true, Undo: true, Kinds: both(),
-			Offered: true, Help: "Brings it back from a snooze or a dismissal.",
+			Offered: true,
+			Help:    "Brings it back from a snooze or a dismissal, yours too, to your attention when the routine's conditions hold.",
 		},
 		{
 			Kind: StepMarkDone, Label: "Mark the GitHub notification done", Dispatcher: DispatchGitHub, Local: true,

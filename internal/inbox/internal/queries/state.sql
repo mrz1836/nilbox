@@ -70,6 +70,15 @@ DELETE FROM item_local_state
 WHERE item_id = ? AND pinned_at IS NULL AND dismissed_at IS NULL AND snoozed_until IS NULL
   AND set_aside_by IS NULL;
 
+-- name: PruneRestoreMarks :exec
+-- PruneRestoreMarks deletes the rows whose only content is the mark a routine's Restore
+-- left (set_aside_by, with nothing pinned, dismissed, or snoozed), written before cutoff:
+-- the mark serves only that routine's Undo, which Autopilot offers as long as it keeps its
+-- history.
+DELETE FROM item_local_state
+WHERE pinned_at IS NULL AND dismissed_at IS NULL AND snoozed_until IS NULL AND set_aside_by IS NOT NULL
+  AND updated_at < ?;
+
 -- name: GetLocalState :one
 -- GetLocalState returns the local state of the item with id, each column NULL when it has
 -- none (state_item_id NULL with no row at all), or sql.ErrNoRows when no item has id.

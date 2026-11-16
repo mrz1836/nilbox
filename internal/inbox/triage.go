@@ -18,13 +18,14 @@ import (
 // The user's own triage. Each path clears the routine's mark on what it changes
 // (item_local_state.set_aside_by for a dismissal, a snooze, or a restore, and pinned_by
 // for a pin), so the window never says a routine did what the user did last; one that
-// takes back what a routine did tells the outcome sink so (Outcome.Reversed), which leaves
-// that routine hands off the item (see triage_routine.go).
+// takes back what a routine did (a restore of what it dismissed or snoozed, a snooze over
+// that, an unpin of what it pinned) tells the outcome sink so (Outcome.Reversed), which
+// leaves that routine hands off the item (see triage_routine.go). Setting aside again what
+// a routine's Restore brought back is the user handling the item, never a reversal.
 
 // Dismiss hides an item from every list until it is restored, and returns the new
 // snapshot. It replaces a snooze. Nothing is written to GitHub. Once the dismissal of an
-// item that wasn't dismissed is stored, it tells the outcome sink of it, and that it took
-// back a routine's Restore of it, when it did.
+// item that wasn't dismissed is stored, it tells the outcome sink of it.
 func (s *Service) Dismiss(ctx context.Context, id int64) (Snapshot, error) {
 	now := s.now()
 
@@ -49,7 +50,7 @@ func (s *Service) Dismiss(ctx context.Context, id int64) (Snapshot, error) {
 		}
 
 		if found && was.DismissedAt == nil {
-			told = reversing(triageOutcome(OutcomeDismissed, was, now), restoreReversal(was, id))
+			told = triageOutcome(OutcomeDismissed, was, now)
 		}
 
 		return nil
@@ -75,8 +76,8 @@ func (s *Service) Dismiss(ctx context.Context, id int64) (Snapshot, error) {
 //
 // The item's activity as the last refresh read it is recorded with the snooze, so a
 // later refresh can end it early when new activity passes the user's wake rules. Nothing
-// is written to GitHub. A snooze over what a routine set aside or brought back takes that
-// back, which it tells the outcome sink of (OutcomeSnoozed).
+// is written to GitHub. A snooze over a routine's dismissal or snooze takes that back,
+// which it tells the outcome sink of (OutcomeSnoozed).
 func (s *Service) Snooze(ctx context.Context, id int64, days int) (Snapshot, error) {
 	if !snooze.ValidDays(days) {
 		return Snapshot{}, fmt.Errorf("%w: %d days; choose %d to %d", snooze.ErrInvalidDays, days, snooze.MinDays,
@@ -114,7 +115,7 @@ func (s *Service) Snooze(ctx context.Context, id int64, days int) (Snapshot, err
 
 // snoozeIn is Snooze's transaction, through q: it snoozes the item with id until until, at
 // now, with its activity as the baseline, and returns how many rows it changed and what it
-// tells the outcome sink: a snooze over what a routine set aside or brought back.
+// tells the outcome sink: a snooze over a routine's dismissal or snooze.
 func (s *Service) snoozeIn(ctx context.Context, q *queries.Queries, id int64, until, now time.Time,
 ) (int64, []Outcome, error) {
 	baseline, err := activityBaseline(ctx, q, id)
@@ -134,7 +135,7 @@ func (s *Service) snoozeIn(ctx context.Context, q *queries.Queries, id int64, un
 		return 0, nil, err
 	}
 
-	if rev := snoozeReversal(was, id, now); found && rev.Routine != 0 {
+	if rev := setAsideReversal(was, id, now); found && rev.Routine != 0 {
 		return stored, reversing(triageOutcome(OutcomeSnoozed, was, now), rev), nil
 	}
 

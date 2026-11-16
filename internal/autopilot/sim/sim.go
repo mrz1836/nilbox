@@ -535,6 +535,10 @@ func (a *items) ReadStates(ctx context.Context, ids []int64) error {
 	return a.sim.Store.NoteStates(ctx, read, refs, states)
 }
 
+func (a *items) LocalStates(ctx context.Context, ids []int64) (map[int64]string, error) {
+	return a.sim.Routines.LocalStates(ctx, ids)
+}
+
 func (a *items) ReadItem(ctx context.Context, id int64) error {
 	_, err := a.sim.Inbox.RefreshItem(ctx, id)
 

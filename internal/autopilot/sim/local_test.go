@@ -347,3 +347,106 @@ func TestUnpinningWhatARoutinePinnedLeavesItHandsOff(t *testing.T) {
 		assert.Empty(t, page.LeftAlone)
 	})
 }
+
+// onSearch is a routine over the scenarios' search that runs step when trigger fires;
+// Checks fail fires with no wait for the checks to settle.
+func onSearch(trigger catalog.Event, step spec.Step) spec.Spec {
+	sp := spec.Spec{
+		Version: spec.Version,
+		Watch:   spec.Watch{Sources: []spec.Source{sim.Search()}},
+		Trigger: spec.Trigger{Event: trigger},
+		Steps:   []spec.Step{step},
+	}
+
+	if trigger == catalog.EventChecksFailed {
+		sp.Trigger.WaitForChecks = new(false)
+	}
+
+	return sp
+}
+
+func TestAStepOnItsWayLosesToTheUsersOwnReversal(t *testing.T) {
+	t.Parallel()
+
+	synctest.Test(t, func(t *testing.T) {
+		s, _ := started(t, onSearch(catalog.EventChecksPassed, spec.Step{Dismiss: &spec.Empty{}}), autopilotprefs.ModeAuto)
+		ctx := t.Context()
+		one := s.ItemID(1)
+
+		require.NotEmpty(t, s.InboxItem(1).DismissedAt, "the routine dismissed #1's first commit")
+
+		// Dependabot rebases it, and the routine decides to dismiss the new commit; while
+		// that step is on its way, the user brings #1 back.
+		s.Triage.Hold()
+		s.World.Push(1, sim.Commit(1, 2))
+		s.World.Pass(1)
+		s.Advance(5*time.Minute, true)
+		require.Len(t, s.Triage.Calls(), 2, "the second dismissal is on its way")
+
+		_, err := s.Inbox.Restore(ctx, one)
+		require.NoError(t, err)
+		s.Triage.Release()
+		s.Settle()
+
+		assert.Empty(t, s.InboxItem(1).DismissedAt, "the user's restore wins over the step on its way")
+
+		got := s.Matches()
+		require.Len(t, got, 2)
+		require.Len(t, got[1].Steps, 1)
+		assert.Equal(t, "Left alone: it changed since the routine decided, so it's left as it is.", got[1].Steps[0].Note,
+			"the step was a compare-and-set on the dismissal it decided on")
+		assert.Empty(t, got[1].Effects, "the step changed nothing, so it records nothing")
+		require.Len(t, got[0].Effects, 1)
+		assert.NotNil(t, got[0].Effects[0].ReversedAt, "the first dismissal is what the user took back")
+	})
+}
+
+func TestARestoreStepWaitsForItsActiveHours(t *testing.T) {
+	t.Parallel()
+
+	synctest.Test(t, func(t *testing.T) {
+		sp := onSearch(catalog.EventChecksFailed, spec.Step{Restore: &spec.Empty{}})
+		sp.Limits.ActiveHours = &spec.ActiveHours{Days: catalog.Weekdays(), From: "10:00", To: "11:00"}
+
+		s, _ := started(t, sp, autopilotprefs.ModeAuto)
+		_, err := s.Inbox.Dismiss(t.Context(), s.ItemID(1))
+		require.NoError(t, err)
+
+		s.World.Fail(1)
+		s.Refresh()
+
+		assert.Equal(t, autopilot.BlockActiveHours, only(t, s).BlockedBy, "at 09:00, outside its hours")
+		assert.NotEmpty(t, s.InboxItem(1).DismissedAt)
+		assert.Empty(t, s.Triage.Calls())
+
+		s.Advance(time.Hour, true)
+
+		assert.Equal(t, autopilot.StateDone, only(t, s).State, "it runs once the hours begin")
+		assert.Empty(t, s.InboxItem(1).DismissedAt, "and brings back what the user dismissed")
+	})
+}
+
+func TestARestoreStepRunsAtOnceInACatchUp(t *testing.T) {
+	t.Parallel()
+
+	synctest.Test(t, func(t *testing.T) {
+		s, _ := started(t, onSearch(catalog.EventChecksFailed, spec.Step{Restore: &spec.Empty{}}), autopilotprefs.ModeAuto)
+		_, err := s.Inbox.Dismiss(t.Context(), s.ItemID(1))
+		require.NoError(t, err)
+
+		// The app is closed for three days; the pull request fails meanwhile.
+		s.Crash()
+		s.Sleep(3 * 24 * time.Hour)
+		s.World.Fail(1)
+		s.Begin()
+		s.Refresh()
+		s.Refresh()
+
+		engine, err := s.Service.Engine(t.Context())
+		require.NoError(t, err)
+		require.NotNil(t, engine.LastCycle)
+
+		assert.Equal(t, autopilot.StateDone, only(t, s).State, "a local step never waits for a catch-up's question")
+		assert.Empty(t, s.InboxItem(1).DismissedAt)
+	})
+}
