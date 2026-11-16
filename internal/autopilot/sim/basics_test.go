@@ -63,7 +63,7 @@ func TestALocalRoutineRunsOncePerFireKeyAcrossRestarts(t *testing.T) {
 
 		want := []sim.Row{row(1, autopilot.StateDone, "", autopilot.ReasonRan, "appears:item")}
 		assert.Equal(t, want, s.Ledger(), "the match ran once")
-		require.Len(t, s.Local.Jobs(), 1, "the pin went to the triage")
+		require.Len(t, s.Triage.Calls(), 1, "the pin went to the triage")
 
 		s.Refresh()
 		s.Restart()
@@ -71,7 +71,7 @@ func TestALocalRoutineRunsOncePerFireKeyAcrossRestarts(t *testing.T) {
 		s.Advance(10*time.Minute, true)
 
 		assert.Equal(t, want, s.Ledger(), "a refresh, a restart, and time never fire it again")
-		assert.Len(t, s.Local.Jobs(), 1)
+		assert.Len(t, s.Triage.Calls(), 1)
 	})
 }
 
@@ -131,7 +131,7 @@ func TestTurningOnRunsOnTheCurrentMatchesOrRecordsThemAsHandled(t *testing.T) {
 				s.Enable(r.ID, c.current)
 				s.Refresh()
 				assert.Equal(t, c.want, s.Ledger())
-				assert.Len(t, s.Local.Jobs(), c.pins)
+				assert.Len(t, s.Triage.Calls(), c.pins)
 
 				s.World.Add(sim.Item{Number: 2, Watched: true})
 				s.Refresh()

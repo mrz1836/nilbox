@@ -25,10 +25,12 @@
 // evaluates the routines on what the inbox stored, closes what moved on, and starts what the
 // limits let start through the dispatchers the app's parts register (dispatch.go). The
 // window's actions on the ledger are commands the loop applies (commands.go); its reads of
-// it are activity.go's.
+// it are activity.go's. The local steps that change an item's triage run the inbox's own,
+// each recorded as an effect, which Undo takes back, and what the user takes back of them
+// leaves the routine hands off the item (effects.go).
 //
 // The package reaches the rest of the app only through the narrow interfaces it declares
-// (Prefs, Accounts, Names, Items, Costs, EngineItems, the dispatchers, Holds, and
+// (Prefs, Accounts, Names, Items, Costs, EngineItems, Triage, the dispatchers, Holds, and
 // ProblemSink), which core adapts; it never imports the inbox,
 // the sheets, the launcher, the worktrees, the sessions, the runs, the notifications, the
 // settings, the desktop shell, or core.

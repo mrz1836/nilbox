@@ -57,9 +57,15 @@ func TestOnlyAStepThisBuildCantRunKeepsARoutineInDryRun(t *testing.T) {
 	assert.Empty(t, catalogs.notOffered(none))
 	assert.Equal(t, autopilotprefs.ModeAuto, catalogs.modeFor(autopilotprefs.ModeAuto, none), "a mode stands for what runs")
 
-	notify := spec.Spec{Steps: []spec.Step{{Notify: &spec.NotifyStep{}}, {Pin: &spec.Empty{}}, {Notify: &spec.NotifyStep{}}}}
-	assert.Equal(t, []catalog.StepKind{catalog.StepNotify, catalog.StepPin}, catalogs.notOffered(notify), "each kind once")
+	notify := spec.Spec{Steps: []spec.Step{
+		{Notify: &spec.NotifyStep{}}, {Pin: &spec.Empty{}}, {Agent: &spec.AgentStep{}}, {Notify: &spec.NotifyStep{}},
+	}}
+	assert.Equal(t, []catalog.StepKind{catalog.StepNotify, catalog.StepAgent}, catalogs.notOffered(notify),
+		"each kind once, and the triage steps run")
 	assert.Equal(t, autopilotprefs.ModeDryRun, catalogMode(autopilotprefs.ModeAuto, notify))
+
+	pin := spec.Spec{Steps: []spec.Step{{Pin: &spec.Empty{}}, {Snooze: &spec.SnoozeStep{}}, {Restore: &spec.Empty{}}}}
+	assert.Equal(t, autopilotprefs.ModeAuto, catalogMode(autopilotprefs.ModeAuto, pin), "the triage steps take any mode")
 
 	offered := &Offers{Steps: []catalog.StepKind{catalog.StepGitHub, catalog.StepPin}}
 	github := spec.Step{GitHub: []spec.GitHubAction{{Rebase: &spec.Empty{}}}}

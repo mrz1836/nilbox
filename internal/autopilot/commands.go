@@ -476,8 +476,12 @@ func (s *Service) Matching(ctx context.Context, d Draft) (Matching, error) {
 	return out, nil
 }
 
-// add counts it, unless the routine has a record of its occurrence.
+// add counts it, unless the routine has a record of its occurrence, or leaves it alone.
 func (m *Matching) add(it TestItem, recorded map[matchKey]bool) {
+	if it.LeftAlone {
+		return
+	}
+
 	switch it.Match {
 	case eval.Yes:
 		if recorded[matchKey{item: it.ID, fire: it.FireKey}] {

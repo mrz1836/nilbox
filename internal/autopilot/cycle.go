@@ -953,11 +953,18 @@ func (p *pass) closeDone(ctx context.Context, r *routineRun, m *match) bool {
 	return false
 }
 
-// closeMoved closes m when its item left the routine's watch, its fire key moved, or the
-// routine no longer matches it, and reports whether it did; otherwise m takes the
-// routine's new settings.
+// closeMoved closes m when the routine leaves its item alone, its item left the routine's
+// watch, its fire key moved, or the routine no longer matches it, and reports whether it
+// did; otherwise m takes the routine's new settings.
 func (p *pass) closeMoved(ctx context.Context, r *routineRun, m *match) bool {
 	id := store.Deref(m.ItemID)
+
+	if r.handsOff[id] {
+		m.close(StateClosed, ReasonHandsOff, "Left alone: you took back what it did here.", p.now)
+		p.save(ctx, m)
+
+		return true
+	}
 
 	if !r.inWatch[id] {
 		return p.leftWatch(ctx, m, r, id)

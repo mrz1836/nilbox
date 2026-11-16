@@ -16,15 +16,18 @@ export {
 
 export type {
     ActivityDay,
+    ActivityGroup,
     ActivityPage,
     Cleared,
     Cycle,
     Draft,
+    Effect,
     EngineStatus,
     Estimate,
     Explanation,
     ItemHistory,
     ItemRef,
+    LeftAlone,
     Match,
     MatchStep,
     Matching,
@@ -34,5 +37,6 @@ export type {
     Suggestions,
     TestItem,
     TestResult,
-    TestSearch
+    TestSearch,
+    Undone
 } from "./models.js";

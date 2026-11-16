@@ -714,7 +714,8 @@ func autopilotBoundCalls(t *testing.T) map[string]boundCall {
 	}
 }
 
-// boundMatch records a match of a routine named name on the item, with a run.
+// boundMatch records a match of a routine named name on the item, with a run, a local
+// step's effect, and the item left alone.
 func boundMatch(ctx context.Context, t *testing.T, c *Core, itemID int64, name string) {
 	t.Helper()
 
@@ -731,6 +732,14 @@ func boundMatch(ctx context.Context, t *testing.T, c *Core, itemID int64, name s
 
 	_, err = c.DB.ExecContext(ctx, `INSERT INTO autopilot_runs (match_id, routine_id, item_id, runner, status,
 		queued_at, updated_at) VALUES (?, ?, ?, 'background', 'ended', ?, ?)`, match, r.ID, itemID, now, now)
+	require.NoError(t, err)
+
+	_, err = c.DB.ExecContext(ctx, `INSERT INTO autopilot_effects (match_id, routine_id, item_id, action, applied_at)
+		VALUES (?, ?, ?, 'pin', ?)`, match, r.ID, itemID, now)
+	require.NoError(t, err)
+
+	_, err = c.DB.ExecContext(ctx, `INSERT INTO autopilot_hands_off (routine_id, item_id, since, why)
+		VALUES (?, ?, ?, 'You unpinned what it pinned.')`, r.ID, itemID, now)
 	require.NoError(t, err)
 }
 
@@ -769,6 +778,7 @@ func unreachedBound() map[string]string {
 		"autopilot.Service.TryAgain":        "applied by the engine's loop, which runs as deferred work; its matches are built as Activity's",
 		"autopilot.Service.Skip":            "applied by the engine's loop, which runs as deferred work; its match is built as Activity's",
 		"autopilot.Service.RunNow":          "applied by the engine's loop, which runs as deferred work; its match is built as Activity's",
+		"autopilot.Service.Undo":            "applied by the engine's loop, which runs as deferred work; its result starts its lists empty",
 		"inbox.Service.Refresh":             "reads GitHub; its snapshot is built as Snapshot's",
 		"inbox.Service.RefreshItem":         "reads GitHub; its snapshot is built as Snapshot's",
 		"inbox.Service.Unassign":            "edits GitHub; its snapshot is built as Snapshot's",

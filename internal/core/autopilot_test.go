@@ -4,18 +4,23 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/mrz1836/nilbox/internal/appdata"
 	"github.com/mrz1836/nilbox/internal/autopilot"
+	"github.com/mrz1836/nilbox/internal/autopilot/catalog"
 	"github.com/mrz1836/nilbox/internal/autopilot/spec"
 	"github.com/mrz1836/nilbox/internal/autopilot/watch"
+	"github.com/mrz1836/nilbox/internal/autopilotprefs"
 	"github.com/mrz1836/nilbox/internal/backup"
+	"github.com/mrz1836/nilbox/internal/inbox"
 	"github.com/mrz1836/nilbox/internal/item"
 	prefsstore "github.com/mrz1836/nilbox/internal/prefs"
 	"github.com/mrz1836/nilbox/internal/prompts"
+	"github.com/mrz1836/nilbox/internal/repo"
 	"github.com/mrz1836/nilbox/internal/testutil"
 )
 
@@ -237,4 +242,61 @@ func TestTheInboxReadsTheRoutinesSearchesForTheAccountSignedIn(t *testing.T) {
 	assert.Contains(t, got[0].Query, "user:octo-user")
 	assert.True(t, got[0].Follow, "Checks fail reads the checks")
 	assert.NotNil(t, c.WatchPasses, "the desktop shell runs the watch passes")
+}
+
+func TestARoutineOfTriageStepsTakesAnyMode(t *testing.T) {
+	t.Parallel()
+
+	c := bootstrap(t, testOptions(t, ".claude"))
+
+	routine := boundSpec()
+	routine.Steps = []spec.Step{{Pin: &spec.Empty{}}, {Snooze: &spec.SnoozeStep{}}, {Dismiss: &spec.Empty{}}, {Restore: &spec.Empty{}}}
+
+	saved, err := c.Autopilot.Save(t.Context(), autopilot.Draft{Name: "Tidy", Spec: routine, Mode: autopilotprefs.ModeAuto})
+	require.NoError(t, err)
+	assert.Equal(t, autopilotprefs.ModeAuto, saved.Mode, "the inbox's triage runs them")
+	assert.Empty(t, saved.DryRunOnly)
+}
+
+func TestTheEngineHearsWhichRoutinesTriageTheUserTookBack(t *testing.T) {
+	t.Parallel()
+
+	ref := item.Ref{Repo: repo.Name{Owner: boundOwner, Repo: boundRepo}, Number: 7, Kind: item.KindPR}
+	at := time.Date(2026, 11, 16, 9, 0, 0, 0, time.UTC)
+
+	got := engineOutcomes([]inbox.Outcome{
+		{Kind: inbox.OutcomeUnpinned, Ref: ref, At: at, Reversed: inbox.Reversal{Routine: 3, Item: 9, Did: inbox.TriagePin}},
+		{Kind: inbox.OutcomeMerged, Ref: ref, At: at},
+	})
+
+	assert.Equal(t, []autopilot.Outcome{
+		{Kind: "unpinned", Ref: ref, At: at, Reversed: autopilot.Reversal{RoutineID: 3, ItemID: 9, Action: catalog.StepPin}},
+		{Kind: "merged", Ref: ref, At: at},
+	}, got)
+
+	for _, kind := range []inbox.OutcomeKind{inbox.OutcomeSnoozed, inbox.OutcomeUnpinned} {
+		_, mirrored := outcomeKinds()[kind]
+		assert.False(t, mirrored, "%s finishes nothing, so the GitHub notifications' mirror never hears it", kind)
+	}
+}
+
+func TestTheTriageStepsAreTheInboxsOwnWords(t *testing.T) {
+	t.Parallel()
+
+	for _, k := range []catalog.StepKind{catalog.StepPin, catalog.StepSnooze, catalog.StepDismiss, catalog.StepRestore} {
+		assert.True(t, inbox.TriageAction(k).Valid(), "%s is one of the inbox's triage steps", k)
+	}
+
+	assert.False(t, inbox.TriageAction(catalog.StepMarkDone).Valid(), "marking a notification done isn't triage")
+
+	for _, k := range []inbox.TriageKept{inbox.KeptPinned, inbox.KeptDismissed, inbox.KeptYours, inbox.KeptNotSetAside} {
+		assert.Equal(t, string(k), string(triageChangeOf(inbox.TriageChange{Kept: k}).Kept))
+	}
+
+	assert.Equal(t, []autopilot.TriageKept{
+		autopilot.KeptPinned, autopilot.KeptDismissed, autopilot.KeptYours, autopilot.KeptNotSetAside,
+	}, []autopilot.TriageKept{
+		autopilot.TriageKept(inbox.KeptPinned), autopilot.TriageKept(inbox.KeptDismissed),
+		autopilot.TriageKept(inbox.KeptYours), autopilot.TriageKept(inbox.KeptNotSetAside),
+	}, "the same words on both sides")
 }

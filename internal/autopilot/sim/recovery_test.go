@@ -158,7 +158,7 @@ func TestClearHistoryKeepsTheRecordOfAnOpenItemOutOfTheWatch(t *testing.T) {
 
 	synctest.Test(t, func(t *testing.T) {
 		s, _ := started(t, sim.Pins(), autopilotprefs.ModeAuto)
-		require.Len(t, s.Local.Jobs(), 1)
+		require.Len(t, s.Triage.Calls(), 1)
 
 		s.World.Change(1, func(it *sim.Item) { it.Watched = false })
 		s.Refresh()
@@ -172,7 +172,7 @@ func TestClearHistoryKeepsTheRecordOfAnOpenItemOutOfTheWatch(t *testing.T) {
 		s.Refresh()
 		s.Refresh()
 
-		assert.Len(t, s.Local.Jobs(), 1, "back in the watch, it isn't pinned again")
+		assert.Len(t, s.Triage.Calls(), 1, "back in the watch, it isn't pinned again")
 		assert.Len(t, s.Ledger(), 1)
 	})
 }
@@ -361,7 +361,7 @@ func TestNothingStartsWhileSignedOut(t *testing.T) {
 		s.Change(func(c *autopilotprefs.Config) { c.Paused = false })
 
 		assert.Equal(t, autopilot.BlockSignedOut, only(t, s).BlockedBy, "a local step waits too")
-		assert.Empty(t, s.Local.Jobs())
+		assert.Empty(t, s.Triage.Calls())
 
 		status, err := s.Service.Engine(t.Context())
 		require.NoError(t, err)
@@ -370,7 +370,7 @@ func TestNothingStartsWhileSignedOut(t *testing.T) {
 		s.World.SignOut(false)
 		s.Refresh()
 		assert.Equal(t, autopilot.StateDone, only(t, s).State)
-		assert.Len(t, s.Local.Jobs(), 1)
+		assert.Len(t, s.Triage.Calls(), 1)
 	})
 }
 

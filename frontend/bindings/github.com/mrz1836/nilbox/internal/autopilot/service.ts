@@ -23,7 +23,9 @@ import * as $models from "./models.js";
 
 /**
  * Activity returns a page of the matches recorded before the match before (every one for 0),
- * newest first, by local day: at most limit, 100 when 0.
+ * newest first, by local day: at most limit, 100 when 0. Each day groups the local steps of
+ * its matches by routine and kind of step, and the first page says which items the
+ * routines leave alone.
  */
 export function Activity(before: number, limit: number): $CancellablePromise<$models.ActivityPage> {
     return $Call.ByID(2134159466, before, limit);
@@ -232,6 +234,18 @@ export function Test(d: $models.Draft): $CancellablePromise<$models.TestResult> 
  */
 export function TryAgain(id: number, itemID: number): $CancellablePromise<$models.Match[] | null> {
     return $Call.ByID(108381848, id, itemID);
+}
+
+/**
+ * Undo takes back the local steps' effects ids: one, a match's (Match.Effects), or a
+ * grouped line's (ActivityGroup.Undo). Each item is put back as it was before its effect,
+ * but only where it is still as the effect left it; an item the user changed since stays
+ * as the user left it. Each routine it put an item back for leaves that item alone from
+ * then on, until Let it act again. A command the engine applies; no list in its result is
+ * nil.
+ */
+export function Undo(ids: number[] | null): $CancellablePromise<$models.Undone> {
+    return $Call.ByID(4032398701, ids);
 }
 
 /**

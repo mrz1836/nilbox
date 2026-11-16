@@ -156,20 +156,22 @@ func Steps() []Step {
 			Help: "A banner and an entry in the Notifications page, with the reason.",
 		},
 		{
-			Kind: StepPin, Label: "Pin", Dispatcher: DispatchTriage, Local: true, Undo: true, Kinds: both(),
+			Kind: StepPin, Label: "Pin", Dispatcher: DispatchTriage, Local: true, Undo: true, Kinds: both(), Offered: true,
 			Help: "Pins it in the inbox, marked with the routine that did it.",
 		},
 		{
 			Kind: StepSnooze, Label: "Snooze", Dispatcher: DispatchTriage, Local: true, Undo: true, Kinds: both(),
-			Help: "Snoozes it for a number of days, under your wake rules.",
+			Offered: true,
+			Help:    "Snoozes it for a number of days, under your wake rules. What you set aside yourself stays as you left it.",
 		},
 		{
 			Kind: StepDismiss, Label: "Dismiss", Dispatcher: DispatchTriage, Local: true, Undo: true, Kinds: both(),
-			Help: "Dismisses it from the inbox until it's restored.",
+			Offered: true,
+			Help:    "Dismisses it from the inbox until it's restored. What you set aside yourself stays as you left it.",
 		},
 		{
 			Kind: StepRestore, Label: "Restore", Dispatcher: DispatchTriage, Local: true, Undo: true, Kinds: both(),
-			Help: "Brings it back from a snooze or a dismissal.",
+			Offered: true, Help: "Brings it back from a snooze or a dismissal.",
 		},
 		{
 			Kind: StepMarkDone, Label: "Mark the GitHub notification done", Dispatcher: DispatchGitHub, Local: true,

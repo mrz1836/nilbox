@@ -95,10 +95,14 @@ func (s *Settings) Autopilot(context.Context) (autopilotprefs.Config, error) {
 type Sim struct {
 	t *testing.T
 
-	DB       *sql.DB
-	World    *World
-	Clock    *Clock
-	Runner   *Runner
+	DB     *sql.DB
+	World  *World
+	Clock  *Clock
+	Runner *Runner
+
+	// Triage is the inbox's own triage, which the triage steps run through, as core
+	// wires it; Local is the fake notices part, and GitHub the fake GitHub part.
+	Triage   *Triage
 	Local    *Dispatcher
 	GitHub   *Dispatcher
 	Settings *Settings
@@ -131,6 +135,7 @@ func New(t *testing.T) *Sim {
 		GitHub: &Dispatcher{}, Settings: &Settings{cfg: cfg}, Lock: filepath.Join(t.TempDir(), "autopilot.lock"),
 		Logs: &testutil.Logs{},
 	}
+	s.Triage = &Triage{sim: s}
 
 	// One connection: every use of the database waits its turn on a channel, which the
 	// bubble counts as blocked, rather than in SQLite's busy wait, whose timer can't move
@@ -149,6 +154,7 @@ func (s *Sim) Copy() *Sim {
 		t: s.t, DB: s.DB, Clock: s.Clock, World: s.World, Runner: NewRunner(), Local: &Dispatcher{},
 		GitHub: &Dispatcher{}, Settings: s.Settings, Lock: s.Lock, Logs: s.Logs,
 	}
+	other.Triage = &Triage{sim: other}
 
 	s.t.Cleanup(other.Stop)
 
@@ -192,9 +198,9 @@ func (s *Sim) Begin() {
 	watches.searches.Rebuild(context.Background())
 
 	s.Engine = autopilot.NewEngine(s.Service, autopilot.EngineConfig{
-		Items: items, Lock: autopilot.NewLock(s.Lock), Runner: s.Runner,
+		Items: items, Lock: autopilot.NewLock(s.Lock), Runner: s.Runner, Triage: s.Triage,
 		Dispatchers: map[catalog.Dispatcher]autopilot.Dispatcher{
-			catalog.DispatchTriage: s.Local, catalog.DispatchNotices: s.Local, catalog.DispatchGitHub: s.GitHub,
+			catalog.DispatchNotices: s.Local, catalog.DispatchGitHub: s.GitHub,
 		},
 	})
 	fan.engine.Store(s.Engine)
@@ -577,7 +583,7 @@ func (f *fanOut) Emit(e event.Event) {
 	}
 }
 
-func (f *fanOut) Settle(_ context.Context, outcomes []inbox.Outcome) {
+func (f *fanOut) Settle(ctx context.Context, outcomes []inbox.Outcome) {
 	e := f.engine.Load()
 	if e == nil {
 		return
@@ -585,10 +591,15 @@ func (f *fanOut) Settle(_ context.Context, outcomes []inbox.Outcome) {
 
 	told := make([]autopilot.Outcome, 0, len(outcomes))
 	for _, o := range outcomes {
-		told = append(told, autopilot.Outcome{Kind: string(o.Kind), Ref: o.Ref, At: o.At})
+		told = append(told, autopilot.Outcome{
+			Kind: string(o.Kind), Ref: o.Ref, At: o.At,
+			Reversed: autopilot.Reversal{
+				RoutineID: o.Reversed.Routine, ItemID: o.Reversed.Item, Action: catalog.StepKind(o.Reversed.Did),
+			},
+		})
 	}
 
-	e.Outcomes(told)
+	e.Outcomes(ctx, told)
 }
 
 func (f *fanOut) KeptItems(ctx context.Context) ([]int64, error) {

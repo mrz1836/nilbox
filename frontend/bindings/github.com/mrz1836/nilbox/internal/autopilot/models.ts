@@ -29,6 +29,56 @@ export interface ActivityDay {
      */
     "date": string;
     "matches": Match[] | null;
+
+    /**
+     * Groups are the day's local steps of the page's matches, a line for each routine and
+     * kind of step ("Snoozed 6 · Undo"), each naming the matches it stands for.
+     */
+    "groups": ActivityGroup[] | null;
+}
+
+/**
+ * ActivityGroup is one line of Activity for a routine's local steps of one kind on one
+ * local day ("Snoozed 6 · Undo"), which stands for the matches it covers.
+ */
+export interface ActivityGroup {
+    /**
+     * Key names the line across pages, whose matches may fall on two: the day, the
+     * routine, and the step.
+     */
+    "key": string;
+    "routineId": number;
+    "routine": string;
+    "action": catalog$0.StepKind;
+
+    /**
+     * Words says it: "Snoozed 6".
+     */
+    "words": string;
+
+    /**
+     * Count is how many changes it holds; Undone how many Undo put back, and Reversed how
+     * many the user took back themselves.
+     */
+    "count": number;
+    "undone": number;
+    "reversed": number;
+
+    /**
+     * Undo holds the effects Undo would still put back now: what its Undo sends.
+     */
+    "undo": number[] | null;
+
+    /**
+     * Matches are the matches it covers, and Items their items, newest first.
+     */
+    "matches": number[] | null;
+    "items": ItemRef[] | null;
+
+    /**
+     * Latest is when the newest of its steps ran.
+     */
+    "latest": string;
 }
 
 /**
@@ -43,6 +93,12 @@ export interface ActivityPage {
      */
     "more": boolean;
     "next": number;
+
+    /**
+     * LeftAlone are the items the routines leave alone, since the user took back what they
+     * did there, newest first: on the first page alone, each with Let it act again.
+     */
+    "leftAlone": LeftAlone[] | null;
 }
 
 /**
@@ -216,6 +272,30 @@ export interface Draft {
 }
 
 /**
+ * Effect is what one of a match's local steps did to its item's triage.
+ */
+export interface Effect {
+    "id": number;
+    "matchId": number;
+    "step": number;
+    "action": catalog$0.StepKind;
+
+    /**
+     * AppliedAt is when it ran; UndoneAt when Undo put the item back, and ReversedAt when
+     * the user's own triage took it back, each nil until then.
+     */
+    "appliedAt": string;
+    "undoneAt": string | null;
+    "reversedAt": string | null;
+
+    /**
+     * CanUndo reports that Undo would put the item back now: it is still as the step left
+     * it, and this copy runs the engine.
+     */
+    "canUndo": boolean;
+}
+
+/**
  * EngineStatus is the engine as Settings → Autopilot shows it.
  */
 export interface EngineStatus {
@@ -302,6 +382,12 @@ export interface Explanation {
     "inWatch": boolean;
 
     /**
+     * LeftAlone reports the routine leaves the item alone, since the user took back what it
+     * did there, until Let it act again.
+     */
+    "leftAlone": boolean;
+
+    /**
      * Ledger says, in sentences, what the ledger knows that holds the routine back or
      * let it act: "It already ran on this commit", "2 of 2 tries used".
      */
@@ -336,6 +422,22 @@ export interface ItemRef {
     "number": number;
     "title": string;
     "url": string;
+}
+
+/**
+ * LeftAlone is an item a routine leaves alone, since the user took back what it did there:
+ * Activity's "Left alone" line, with Let it act again.
+ */
+export interface LeftAlone {
+    "routineId": number;
+    "routine": string;
+    "item": ItemRef;
+
+    /**
+     * Why says what the user did: "You brought back what it snoozed."
+     */
+    "why": string;
+    "since": string;
 }
 
 /**
@@ -394,6 +496,12 @@ export interface Match {
      * Runs are the runs it started, oldest first.
      */
     "runs": Run[] | null;
+
+    /**
+     * Effects are what its local steps did to its item's triage, oldest first, each with
+     * whether Undo can still take it back.
+     */
+    "effects": Effect[] | null;
     "createdAt": string;
     "updatedAt": string;
     "decidedAt": string;
@@ -472,7 +580,7 @@ export const ProblemKind = {
 /**
  * Reason is why a match closed.
  */
-export type Reason = "ran" | "would_run" | "tries" | "outside_contributor" | "you_skipped" | "you_stopped" | "merged" | "item_closed" | "gone" | "left_watch" | "moved_on" | "no_longer_matches" | "routine_changed" | "routine_off" | "not_offered" | "failed" | "from_now";
+export type Reason = "ran" | "would_run" | "tries" | "outside_contributor" | "you_skipped" | "you_stopped" | "merged" | "item_closed" | "gone" | "left_watch" | "moved_on" | "no_longer_matches" | "routine_changed" | "routine_off" | "not_offered" | "failed" | "from_now" | "hands_off";
 
 /**
  * The values of Reason, by the names of their Go constants.
@@ -498,6 +606,12 @@ export const Reason = {
     ReasonNotOffered: "not_offered",
     ReasonFailed: "failed",
     ReasonFromNow: "from_now",
+
+    /**
+     * ReasonHandsOff closes a match that hadn't started on an item its routine leaves
+     * alone, since the user took back what it did there.
+     */
+    ReasonHandsOff: "hands_off",
 } as const;
 
 /**
@@ -709,6 +823,13 @@ export interface TestItem {
      * Trace is each step of the decision: the trigger, then each condition that ran.
      */
     "trace": eval$0.Trace[] | null;
+
+    /**
+     * LeftAlone reports an item the routine leaves alone, since the user took back what it
+     * did there: it doesn't act on it, matching or not, until Let it act again. A new
+     * routine leaves none alone.
+     */
+    "leftAlone": boolean;
 }
 
 /**
@@ -784,4 +905,25 @@ export interface TestSearch {
      * never seen, which GitHub answers with nothing rather than an error.
      */
     "warnings": string[] | null;
+}
+
+/**
+ * Undone is what an Undo did with the effects it was given.
+ */
+export interface Undone {
+    /**
+     * PutBack are the effects whose items it put back as they were before; Left those
+     * whose items changed since (the user's own triage, a snooze the wake rules ended, a
+     * later step), which it left as they are; and Skipped those undone or taken back
+     * already, whose item is gone, or that aren't recorded.
+     */
+    "putBack": number[] | null;
+    "left": number[] | null;
+    "skipped": number[] | null;
+
+    /**
+     * Words says it, for a toast: "Put back 5 items. 1 changed since, so it's left as it
+     * is."
+     */
+    "words": string;
 }

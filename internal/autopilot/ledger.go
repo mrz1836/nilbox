@@ -176,14 +176,19 @@ const (
 	ReasonNotOffered      Reason = "not_offered"
 	ReasonFailed          Reason = "failed"
 	ReasonFromNow         Reason = "from_now"
+
+	// ReasonHandsOff closes a match that hadn't started on an item its routine leaves
+	// alone, since the user took back what it did there.
+	ReasonHandsOff Reason = "hands_off"
 )
 
 // reopens reports a reason that closes a match before it ran, which reopens on its own
 // when its occurrence matches again, if it truly never ran (reopensRow): a check that
-// failed, passed when run again, and failed again on the same commit, for one.
+// failed, passed when run again, and failed again on the same commit, for one; or a match
+// a routine let act on its item again goes on with.
 func (r Reason) reopens() bool {
 	return slices.Contains([]Reason{
-		ReasonNoLongerMatches, ReasonLeftWatch, ReasonMovedOn, ReasonRoutineChanged, ReasonRoutineOff,
+		ReasonNoLongerMatches, ReasonLeftWatch, ReasonMovedOn, ReasonRoutineChanged, ReasonRoutineOff, ReasonHandsOff,
 	}, r)
 }
 

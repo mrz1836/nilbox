@@ -261,14 +261,14 @@ func TestRetentionOnALongLivedItemNeverFiresItAgain(t *testing.T) {
 
 		assert.Equal(t, []sim.Row{row(1, autopilot.StateDone, "", autopilot.ReasonRan, "appears:item")}, s.Ledger(),
 			"the merged item's record goes, the open one's stays")
-		assert.Len(t, s.Local.Jobs(), 2, "nothing fired again")
+		assert.Len(t, s.Triage.Calls(), 2, "nothing fired again")
 
 		cleared, err := s.Service.ClearHistory(t.Context())
 		require.NoError(t, err)
 		assert.Equal(t, autopilot.Cleared{Kept: 1}, cleared)
 		s.Refresh()
 		assert.Len(t, s.Ledger(), 1, "Clear history keeps what blocks a fire key")
-		assert.Len(t, s.Local.Jobs(), 2)
+		assert.Len(t, s.Triage.Calls(), 2)
 	})
 }
 

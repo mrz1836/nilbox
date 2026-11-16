@@ -251,4 +251,10 @@ type Outcome struct {
 	Kind string
 	Ref  item.Ref
 	At   time.Time
+
+	// Reversed names what a routine did to the item that the user's own triage took back
+	// (a restore of what it snoozed or dismissed, a snooze over it, a dismissal of what it
+	// brought back, an unpin of what it pinned), which leaves that routine hands off the
+	// item; the zero Reversal otherwise.
+	Reversed Reversal
 }
