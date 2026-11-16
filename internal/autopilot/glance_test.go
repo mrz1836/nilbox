@@ -127,6 +127,47 @@ func TestGlanceCountsTheRoutinesWhatWaitsAndWhatWorks(t *testing.T) {
 	assert.True(t, got.KeepsRunning(), "an agent working keeps the app running, every routine off")
 }
 
+func TestGlanceCountsOnlyTheRoutinesTheEngineRuns(t *testing.T) {
+	t.Parallel()
+
+	r := newRig(t, autopilotprefs.ModeAsk)
+	mine := r.save(t, draft("Mine", notifySpec()))
+
+	_, err := r.svc.SetEnabled(t.Context(), mine.ID, true, autopilot.CurrentRun)
+	require.NoError(t, err)
+
+	// Another account's routine, and one that won't load, both switched on.
+	others := r.insertRaw(t, "Theirs", "ask", string(mustSpec(t, notifySpec())))
+	broken := r.insertRaw(t, "Broken", "ask", `{"version":1,"watch":`)
+	_, err = r.db.ExecContext(t.Context(),
+		`UPDATE autopilot_routines SET enabled = 1, enabled_at = ?, account_login = CASE id WHEN ? THEN 'someone-else' ELSE account_login END
+		 WHERE id IN (?, ?)`, startedAt(), others, others, broken)
+	require.NoError(t, err)
+
+	got, err := r.svc.Glance(t.Context())
+	require.NoError(t, err)
+	assert.Equal(t, 3, got.Routines, "the group shows for every routine")
+	assert.Equal(t, 1, got.Enabled, "but only the account signed in's, that loads, runs")
+	assert.True(t, got.KeepsRunning())
+
+	_, err = r.svc.SetEnabled(t.Context(), mine.ID, false, autopilot.CurrentRun)
+	require.NoError(t, err)
+
+	got, err = r.svc.Glance(t.Context())
+	require.NoError(t, err)
+	assert.Zero(t, got.Enabled)
+	assert.False(t, got.KeepsRunning(), "another account's routine, on, keeps nothing running")
+
+	_, err = r.svc.SetEnabled(t.Context(), mine.ID, true, autopilot.CurrentRun)
+	require.NoError(t, err)
+	r.accounts.signIn("")
+
+	got, err = r.svc.Glance(t.Context())
+	require.NoError(t, err)
+	assert.Zero(t, got.Enabled, "no one signed in: nothing runs")
+	assert.False(t, got.KeepsRunning())
+}
+
 func TestGlanceSaysWhetherAutopilotIsPaused(t *testing.T) {
 	t.Parallel()
 

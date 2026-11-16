@@ -14,7 +14,8 @@ import (
 // Autopilot group shows, whether the window names Autopilot at all (only while a routine
 // exists), and whether closing the window only hides it (KeepsRunning).
 type Glance struct {
-	// Routines counts the routines not deleted, and Enabled those switched on.
+	// Routines counts the routines not deleted, and Enabled those the engine runs: switched
+	// on, of the account signed in, and loading; none while no one is signed in.
 	Routines int `json:"routines"`
 	Enabled  int `json:"enabled"`
 
@@ -53,8 +54,8 @@ type WorkingRun struct {
 }
 
 // KeepsRunning reports whether Autopilot has work while the window is closed: a routine
-// switched on, or an agent run going. Closing the window then only hides it, so the app
-// keeps running them.
+// the engine runs, or an agent run going. Closing the window then only hides it, so the app
+// keeps running them; another account's routines keep nothing running.
 func (g Glance) KeepsRunning() bool {
 	return g.Enabled > 0 || len(g.Working) > 0
 }
@@ -73,12 +74,13 @@ func (s *Service) Glance(ctx context.Context) (Glance, error) {
 	}
 
 	names := make(map[int64]string, len(routines))
+	ranFor := s.runsAny(ctx)
 
 	for _, r := range routines {
 		out.Routines++
 		names[r.ID] = r.Name
 
-		if r.Enabled {
+		if r.Enabled && ranFor(r.AccountLogin) && load(r.Spec).broken == nil {
 			out.Enabled++
 		}
 	}
@@ -103,6 +105,24 @@ func (s *Service) Glance(ctx context.Context) (Glance, error) {
 	out.Paused = s.settings(ctx).Paused
 
 	return out, nil
+}
+
+// runsAny returns whether the engine would run a routine of an account: the account signed
+// in's (a routine of no account is the editor's), and none while no one is signed in, or the
+// engine's last cycle found the sign-in gone.
+func (s *Service) runsAny(ctx context.Context) func(account string) bool {
+	viewer := s.viewer(ctx)
+	signedOut := viewer == ""
+
+	if e := s.engine; e != nil {
+		e.mu.Lock()
+		signedOut = signedOut || e.status.SignedOut
+		e.mu.Unlock()
+	}
+
+	return func(account string) bool {
+		return !signedOut && !otherAccount(account, viewer)
+	}
 }
 
 // needsYou counts the open matches waiting for the user's decision.
