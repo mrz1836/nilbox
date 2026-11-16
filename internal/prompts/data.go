@@ -227,14 +227,14 @@ func Variables() []Variable {
 		},
 		{
 			Name: "RemoteIsPlain", Group: groupRepo, Type: typeYesNo,
-			Description: "The remote's name is plain (ASCII letters, digits, and -_./:,+@%=, not starting with -), " +
-				"so a command can name it",
+			Description: "The remote's name is plain (ASCII letters, digits, and -_./:,+@%=, not starting with - " +
+				"or =), so a command can name it",
 		},
 		{Name: "Branch", Group: groupPR, Type: typeText, Description: "The head branch", PROnly: true},
 		{
 			Name: "BranchIsPlain", Group: groupPR, Type: typeYesNo, PROnly: true,
 			Description: "The head branch, as GitHub reported it, is plain (ASCII letters, digits, and -_./:,+@%=, " +
-				"not starting with -), so a command can name it",
+				"not starting with - or =), so a command can name it",
 		},
 		{
 			Name: "HeadCommit", Group: groupPR, Type: typeText, PROnly: true,

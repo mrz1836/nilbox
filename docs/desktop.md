@@ -3178,7 +3178,8 @@ reads a remote named `--upload-pack=…` as an option, and a branch named `ma<LR
 hidden left-to-right mark that every value loses on its way into a prompt, shows as `main`. So
 name a branch or a remote in a command only under `{{if .BranchIsPlain}}` or
 `{{if .RemoteIsPlain}}`, which hold when the name, exactly as given, is ASCII letters, digits,
-and `-_./:,+@%=` alone and doesn't start with `-`, as every Dependabot and Renovate branch is.
+and `-_./:,+@%=` alone and starts with neither `-` nor `=`, as every Dependabot and Renovate
+branch does.
 A number needs no quoting, nor do `.Repo`, `.Owner`, and `.RepoName`, which GitHub keeps to
 letters, digits, and `-_.`, nor `.HeadCommit`, which is hex.
 
