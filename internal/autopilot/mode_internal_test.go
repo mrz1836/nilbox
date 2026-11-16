@@ -58,7 +58,10 @@ func TestOnlyAStepThisBuildCantRunKeepsARoutineInDryRun(t *testing.T) {
 	assert.Equal(t, autopilotprefs.ModeAuto, catalogs.modeFor(autopilotprefs.ModeAuto, none), "a mode stands for what runs")
 
 	later := spec.Spec{Steps: []spec.Step{
-		{Notify: &spec.NotifyStep{}}, {Pin: &spec.Empty{}}, {MarkDone: &spec.Empty{}}, {Agent: &spec.AgentStep{}},
+		{Notify: &spec.NotifyStep{}},
+		{Pin: &spec.Empty{}},
+		{MarkDone: &spec.Empty{}},
+		{Agent: &spec.AgentStep{}},
 		{MarkDone: &spec.Empty{}},
 	}}
 	assert.Equal(t, []catalog.StepKind{catalog.StepMarkDone, catalog.StepAgent}, catalogs.notOffered(later),
