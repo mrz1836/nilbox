@@ -6,6 +6,11 @@
  */
 export interface Config {
     /**
+     * Enabled is Autopilot (beta): off, Autopilot is hidden and its engine doesn't run.
+     */
+    "enabled": boolean;
+
+    /**
      * Paused is Pause Autopilot: no routine starts anything new; running agents carry on.
      */
     "paused": boolean;

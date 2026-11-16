@@ -775,7 +775,8 @@ The inbox's own refresh, triage, edits, and the review sheet's Actor are describ
 package's doc comments.
 
 **The searches, after the refresh's store.** `Config.Watches` (`WatchSource`) gives the
-searches of the enabled routines of the account signed in, each key once, from the snapshot
+searches of the enabled routines of the account signed in, each key once (none while Autopilot
+(beta) is off, when no copy holds the watches either: `WatchHolder`), from the snapshot
 Autopilot's service keeps (core's `autopilotWatches`, which builds it again first when the
 account changed). `runRefresh` hands the watch pass's worker (`WatchPasses`, a desktop worker
 the shell starts before the scheduler) a job as the refresh starts, and the pass waits, on the
@@ -874,7 +875,9 @@ the lists, the snapshot, and the arrivals read listed items alone, so a watched 
 list, no count, and not the menu bar's; `PruneFiles` keeps a watched item's file check;
 `ListRepoCounts` counts watched items, so a repository the user only watches can have launch
 defaults; `ListRunningChecks` adds the watched pull requests a search follows
-(`item_watches.follow`, set for routines whose trigger reads checks), and `followable` leaves
+(`item_watches.follow`, set for routines whose trigger reads checks), but only while this copy
+reads the routines' searches (`watched`, `holdsWatches`: so in none while Autopilot (beta) is
+off, when what the searches stored is stale), and `followable` leaves
 out a muted repository's only for a listed one no search follows, since a routine watches a
 muted repository on purpose, and takes the listed ones before those only a search follows
 when a round holds more than `followMax` (50); a round reads them `followBatch` (25) to a
@@ -1286,6 +1289,7 @@ loads is stored normalized, as on a restore. `BackupDone` writes the copy again.
 lists the category as **Autopilot routines**, beside the others.
 
 **The settings** are `internal/autopilotprefs`'s, a leaf that imports only `prefval`:
+`autopilot.enabled` (Autopilot (beta), off: see **Autopilot (beta)**, below),
 `autopilot.paused` (off), `autopilot.defaultMode` (`ask`), `autopilot.agentsAtOnce` (2, 1 to
 3, so one of the run engine's four slots stays free for the user's scripts),
 `autopilot.runsPerDay` (20, 1 to 200), `autopilot.actionsPerDay` (50, 1 to 200),
@@ -1299,10 +1303,45 @@ each `SetAutopilot…` setter reads them and writes the change in the transactio
 the settings back, refuses what `Config.Check` refuses with a worded sentence, writes only
 the keys that change (`Writes`: a setting never touched keeps following its default), and
 emits the Go-only `event.AutopilotChanged`; a shorter history shortens the logs with it, and
-logs past the history are refused. Backups carry them as `Portable.Autopilot`, the history
-and the logs checked together against this Mac's. While the user has a routine (not
-deleted), the bug report states them, with the routines counted by mode, by switch, broken,
-and another account's, none named; with none, it says nothing of Autopilot.
+logs past the history are refused. Backups carry them as `Portable.Autopilot`, the switch
+(`enabled`) among them, the history and the logs checked together against this Mac's. While
+the user has a routine (not deleted), the bug report states them, the switch first (*Beta:
+off*), with the routines counted by mode, by switch, broken, and another account's, none
+named; with none, it says nothing of Autopilot.
+
+**Autopilot (beta).** `autopilot.enabled` (`SetAutopilotEnabled`, Settings → Labs) is off on
+every install until the user turns it on, an install from before it included, since a key
+never stored reads as its default; Prefs that can't be read count as off. Off, Autopilot is
+inert and invisible, its routines, ledger, and copy left as they are:
+
+- the snapshot of the searches is empty (`rebuildWatches` leaves every routine out), and
+  `Searches.HoldsWatches` is false (`Engine.Enabled` and the lock), so the inbox's watch pass
+  sends nothing and the checks follower follows none of the routines' items (its
+  `ListRunningChecks` takes `watched`, `holdsWatches`, so the rows a search stored before stay,
+  stale, and unfollowed);
+- the engine (**The engine and the ledger**, below) takes no lock, runs no cycle, applies no
+  command (`ErrOff`, *Autopilot is off. Turn it on in Settings → Labs.*), and makes no GitHub
+  request; `Test`, and `Matching` through it, are refused the same way before they read
+  anything;
+- `Glance.On` is false and `Glance.Enabled` 0, so `KeepsRunning` counts only an agent run
+  still going, and core's `ShellAutopilot` hands the menu bar no Autopilot group;
+- the window (**The Autopilot tab**, below) shows none of it.
+
+The engine reads the switch on every wake (`follow`, on the loop; core's relay wakes it on
+`event.AutopilotChanged`), and a command reads it again before it is applied. Turned on, it
+starts as a start does (`turnOn`: `takeLock`, which reads its state and checks the runs
+going); its first cycle waits for a watch pass from then on (`onSince`), since what the
+searches stored before is stale, and asks the inbox for one at once (`WatchNow`); and the
+state's last refresh is the one it saw before it was off, so being off longer than the
+catch-up setting begins a catch-up (`watchGaps`), as a quit that long would. Turned off
+(`turnOff`), it starts nothing new from then on and stops nothing: it drains (`drain`), still
+applying what its workers bring and settling the runs going on its ticks, and lets go of the
+lock once no worker's result, no check of the runs, no run's end left to write, and no run
+the ledger records as going (one whose end is on its way still is) remains. `Engine.Enabled` is the one check every start
+goes through: `dispatch` asks it on the worker right before a step is handed to its
+dispatcher (the agent `Runner` included), and a step that comes just after Autopilot was
+turned off isn't handed over, and waits as one that never started (`ErrOff` in
+`dispatchFailed`: a run ends `not_started`, counting as no try, and the match is queued).
 
 ### The searches, and the builder's reads of the inbox
 
@@ -1316,7 +1355,8 @@ never waiting on anything; `Searches` (`NewSearches`) is the inbox's face of it,
 Builds run one at a time (`watchSet.build`, a one-slot channel held from the read of the
 routines to the store), so the last to read stores last: two side by side, a change's and a
 new account's, could otherwise store the older read over the newer. A routine that is off,
-broken, another account's, or whose search won't build is left out.
+broken, another account's, or whose search won't build is left out, and every routine while
+Autopilot (beta) is off; the engine builds the snapshot again as it is turned on or off.
 
 **`Suggest`** returns what the stored items hold for the builder (`Items.Suggestions`): the
 people and the bots who opened them, the owners of their repositories, their labels, and
@@ -1437,13 +1477,16 @@ window as `autopilot:updated`, at most four times a second. A cycle that panics 
 and logged, and the loop holds off cycles for a minute; commands are still answered.
 
 - **The first cycle after a start** waits for a refresh that stored after the engine was built
-  and, when the routines have searches, for a watch pass after it, so the engine never acts on
-  what the database held when the app was last open; when a refresh came but no pass (the very
-  first one, before an account was stored), it asks the inbox for the searches at once
-  (`Routines.WatchNow`, a pass outside a whole refresh). Commands don't wait for it.
+  and, when the routines have searches, for a watch pass after it (after Autopilot (beta) was
+  last turned on, `onSince`), so the engine never acts on what the database held when the app
+  was last open, or while it was off; when a refresh came but no pass (the very first one,
+  before an account was stored, or Autopilot just turned on), it asks the inbox for the
+  searches at once (`Routines.WatchNow`, a pass outside a whole refresh). Commands don't wait
+  for it.
 - **The lock** (`lock.go`) is a `flock` on `<data>/autopilot.lock` (`appdata.Paths.AutopilotLock`),
   tried as the engine is built (in `assemble`, so the copy that will hold it sends the searches
-  from its first refresh) and on every tick: only the holder runs cycles and applies commands
+  from its first refresh) and on every tick, both only while Autopilot (beta) is on (**Autopilot
+  (beta)**, above): only the holder runs cycles and applies commands
   (another copy refuses them, `ErrElsewhere`, and `Engine().Elsewhere` says so), and only the
   holder sends the routines' searches at all (`Searches.HoldsWatches`, which the inbox's
   `WatchHolder` reads before a watch pass), so two copies on one data folder never replace each
@@ -1520,7 +1563,9 @@ and logged, and the loop holds off cycles for a minute; commands are still answe
   routine with any other step still runs in Dry run, and the engine records what it would
   run. For the notices, a job also carries when its match was made, the routine's own banner
   switches (`Notices`), why it matched (`Reason`, from the trace), and how the steps before
-  it went (`Before`).
+  it went (`Before`). `dispatch` hands a job over only while `Engine.Enabled` says Autopilot
+  (beta) is on, asked on the worker right before `Dispatch`, so no part (the agent runner's
+  starts included) is handed a step after it was turned off.
 - **A run's end** moves its match on: an interrupted one waits for the user (`interrupted`,
   counting no try), one the user stopped closes `dismissed`, one the engine stopped because its
   item merged or closed closes `closed` (counting no try), and one that ended goes to its next
@@ -1730,21 +1775,25 @@ logged. The banner (`Banner.Autopilot`) and the click (`desktop.BannerData`,
 asks for Activity rather than one match, as the menu bar's row of what needs the user does)
 carry the target. A summary of Autopilot's alone is titled *N new from Autopilot*.
 
-**At a glance** (`glance.go`). The bound `Glance` reads the database alone: the routines not
-deleted and those the engine runs (on, of the account signed in, and loading; none while no
-one is signed in, or the engine's last cycle found the sign-in gone), Pause Autopilot, the
+**At a glance** (`glance.go`). The bound `Glance` reads the database alone: whether Autopilot
+(beta) is on (`On`), the routines not deleted and those the engine runs (on, of the account
+signed in, and loading; none while no one is signed in, the engine's last cycle found the
+sign-in gone, or Autopilot is off), Pause Autopilot, the
 open matches waiting for the user (`StateWaiting`), and the agent runs going (starting,
 running, or stopping, in the background or the terminal, never a GitHub action's), oldest
 first. `KeepsRunning` is a routine the engine runs or an agent working, so after a switch to
-another account, whose routines don't run, a close quits again as before.
+another account, whose routines don't run, or with Autopilot off, a close quits again as
+before, but while an agent it started before still works.
 The window reads it as it opens and again on each `autopilot:updated` (`useAutopilot`): the
-Autopilot tab counts its agents working and marks its matches waiting with an amber dot. The
-window names Autopilot whether or not a routine exists: Settings → Notifications always lists
-the five switches, and the Notifications page always offers the Autopilot type.
+Autopilot tab counts its agents working and marks its matches waiting with an amber dot. While
+Autopilot (beta) is on, the window names Autopilot whether or not a routine exists: Settings →
+Notifications lists the five switches, and the Notifications page offers the Autopilot type;
+off, neither does.
 
 **The menu bar** (`internal/menubar/autopilot.go`, pure). `Summarize(snap, waiting, autopilot,
 now)` works out `Summary.Autopilot` from an `AutopilotState` (core's `ShellAutopilot` adapts
-the glance): shown only while a routine exists, the first `PerSection` agent runs
+the glance, and hands an empty one while Autopilot (beta) is off, `shellAutopilotState`):
+shown only while a routine exists, the first `PerSection` agent runs
 ("example-repo #88 · Claude · 6m", each opening its run) and how many more, the matches
 waiting ("1 needs your OK", opening Activity), and whether Pause Autopilot is ticked;
 `NextChange` is when a run's minutes next change. The count beside the icon stays the
@@ -1764,7 +1813,8 @@ Pause made in another copy reaches a copy that doesn't hold the engine on its ne
 tick (`followElsewhere`, within a minute), and the copy that holds it on its next cycle. It
 keeps what it last read of keeping the app running and of Pause. `HidesOnClose` answers at
 once from that alone: yes while the icon shows, and yes while Autopilot has a routine on or an
-agent working, whatever the icon setting, since the close would otherwise quit the app and
+agent working (no routine counts while Autopilot (beta) is off, `Glance.KeepsRunning`),
+whatever the icon setting, since the close would otherwise quit the app and
 quietly stop them; the Dock icon brings the window back (`ApplicationShouldHandleReopen`).
 The window's close hook asks `Shell.WindowClosing`, whose pure rule is `CloseOf`
 (`internal/desktop/close.go`): the close goes through while the shell is stopping (the
@@ -1788,6 +1838,21 @@ what its target names (**The Autopilot tab**, below).
 The window side lives in `frontend/src/components/autopilot/` (the tab itself,
 `AutopilotView`, loaded on its first visit and kept mounted in an `Activity`) and
 `frontend/src/lib/`; it reaches Go only through the platform module.
+
+- **Autopilot (beta).** App reads the switch from the settings (`autopilotOn`, off until they
+  load). Off, the window shows none of Autopilot: `AppHeader` gets `autopilot={null}` and
+  draws no tab (a window on it shows the inbox, as one on a Scripts tab gone does), the rows
+  get no `AutopilotRowsContext`, so no chip and no *by ⚡* mark (`useMarkedBy`), and no
+  `LatestMatches` is read; the settings page leaves out Autopilot's section and group, and
+  Settings → Notifications its banner switches (`hiddenOf`, `shownSection`, and the index's
+  entries marked `autopilot`, which **Find a setting** leaves out too, `matchSettings(query,
+  hidden)`), opening **Labs** where Autopilot's section was asked for; the Notifications page's
+  Type offers no Autopilot (`AppNotificationsTab`'s `autopilot`), and a choice of it reads as
+  every type; and `openAutopilot` says *Autopilot is off. Turn it on in Settings → Labs to see
+  this.* rather than show the tab. **Labs** (`LabsSection`) holds the switch, **Autopilot
+  (beta)**. On, everything is as below, and the tab's label and the section's heading carry a
+  `BetaBadge` (rem text, the accent's tokens), beside the name, never in it, so the tab and
+  the region keep their names.
 
 - **`lib/autopilot.ts`** holds the words, all pure: the modes, the tab's badge
   (`autopilotBadge`: the glance's agents working, an amber dot for its matches waiting, a red

@@ -274,7 +274,8 @@ export function Suggest(): $CancellablePromise<$models.Suggestions> {
  * checked for an owner the inbox has never seen; and the result says what the test spent
  * and what the searches would cost each refresh. While the GraphQL budget is low it sends
  * nothing, and says so (LowBudget). A draft whose spec has problems is refused with them,
- * as Save refuses it. It changes no routine, and runs nothing.
+ * as Save refuses it. It changes no routine, and runs nothing. While Autopilot is off, or
+ * its settings can't be read, it asks GitHub nothing and is refused (ErrOff).
  */
 export function Test(d: $models.Draft): $CancellablePromise<$models.TestResult> {
     return $Call.ByID(99462951, d);

@@ -52,7 +52,8 @@ const (
 // refreshRunning reads again, in requests of followBatch sent side by side, the listed pull
 // requests whose checks were still running when the inbox last read them, neither
 // dismissed nor snoozed, nor of a repository or org the user muted, and the ones a
-// routine's search follows, muted or not, and stores each as RefreshItem would, so a card
+// routine's search follows, muted or not, in the copy that reads the routines' searches
+// alone (so in none while Autopilot is off), and stores each as RefreshItem would, so a card
 // shows its checks end about as soon as GitHub's own page does, a routine sees them settle
 // within about a round, and one GitHub no longer asks the user to review leaves Review
 // requested, telling no outcome. A pull request whose checks end, pass or fail, is left
@@ -83,8 +84,11 @@ func (s *Service) followRound(ctx context.Context) ([]Outcome, []int64, error) {
 	now := s.clock.Now().UTC()
 	login := stored[prefViewer]
 
+	// The pull requests a routine's search follows only while this copy reads the
+	// routines' searches: none does while Autopilot is off, and what is stored of them then
+	// is stale.
 	listed, err := s.q.ListRunningChecks(ctx, queries.ListRunningChecksParams{
-		Login: login, ReadBefore: now.Add(-followFresh), Now: &now,
+		Watched: holdsWatches(s.watchSource), Login: login, ReadBefore: now.Add(-followFresh), Now: &now,
 	})
 	if err != nil {
 		return nil, nil, fmt.Errorf("read the pull requests whose checks run: %w", err)

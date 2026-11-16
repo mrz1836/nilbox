@@ -80,6 +80,7 @@ type Portable struct {
 // backup lacks it. The routines are a backup section of their own, and the engine's own
 // state is no setting.
 type PortableAutopilot struct {
+	Enabled       *bool                    `json:"enabled,omitempty"`
 	Paused        *bool                    `json:"paused,omitempty"`
 	DefaultMode   *autopilotprefs.Mode     `json:"defaultMode,omitempty"`
 	AgentsAtOnce  *int                     `json:"agentsAtOnce,omitempty"`
@@ -204,7 +205,7 @@ func portableOf(set Settings) Portable {
 // portableAutopilot returns Autopilot's settings in portable form, every field set.
 func portableAutopilot(c autopilotprefs.Config) *PortableAutopilot {
 	return &PortableAutopilot{
-		Paused: &c.Paused, DefaultMode: &c.DefaultMode, AgentsAtOnce: &c.AgentsAtOnce, RunsPerDay: &c.RunsPerDay,
+		Enabled: &c.Enabled, Paused: &c.Paused, DefaultMode: &c.DefaultMode, AgentsAtOnce: &c.AgentsAtOnce, RunsPerDay: &c.RunsPerDay,
 		ActionsPerDay: &c.ActionsPerDay, DailyCap: &c.DailyCap, KeepAwake: &c.KeepAwake, HoldOnOutage: &c.HoldOnOutage,
 		CatchUpHours: &c.CatchUpHours, HistoryDays: &c.HistoryDays, LogDays: &c.LogDays,
 	}

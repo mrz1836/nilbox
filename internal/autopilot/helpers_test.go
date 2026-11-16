@@ -72,6 +72,15 @@ func (a *accounts) signIn(login string) {
 	a.login = login
 }
 
+// onSettings are Autopilot's defaults with Autopilot (beta) on, as a test that runs it
+// needs: a fresh database has it off.
+func onSettings() autopilotprefs.Config {
+	c := autopilotprefs.Defaults()
+	c.Enabled = true
+
+	return c
+}
+
 // prefs is fake Autopilot settings.
 type prefs struct {
 	cfg autopilotprefs.Config
@@ -109,12 +118,12 @@ func newRig(t *testing.T, mode autopilotprefs.Mode) *rig {
 	return rigAt(t, testutil.DB(t), filepath.Join(t.TempDir(), "autopilot.json"), mode)
 }
 
-// rigAt returns a rig over db, with its copy at path.
+// rigAt returns a rig over db, with its copy at path, and Autopilot on.
 func rigAt(t *testing.T, db *sql.DB, path string, mode autopilotprefs.Mode) *rig {
 	t.Helper()
 
 	cfg := autopilotprefs.Defaults()
-	cfg.DefaultMode = mode
+	cfg.Enabled, cfg.DefaultMode = true, mode
 
 	r := &rig{
 		db: db, accounts: &accounts{login: viewer}, clock: testutil.NewSteppingClock(startedAt(), time.Second),

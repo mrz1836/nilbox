@@ -5,7 +5,14 @@ import type { GitHubThreadsState } from '../lib/useGitHubThreads'
 import type { UpdateControl } from '../lib/useUpdate'
 import { counted, formatCount } from '../lib/format'
 import { isTyping } from '../lib/keys'
-import { matchSettings, sectionGroups, sectionInfo, type SettingsSection } from '../lib/settingsIndex'
+import {
+  hiddenOf,
+  matchSettings,
+  sectionGroups,
+  sectionInfo,
+  shownSection,
+  type SettingsSection,
+} from '../lib/settingsIndex'
 import type { Theme } from '../lib/theme'
 import type {
   Account,
@@ -17,6 +24,7 @@ import type {
   Prompt,
   Settings,
 } from '../platform'
+import { BetaBadge } from './BetaBadge'
 import { ChevronLeftIcon } from './icons'
 import { AboutSection } from './settings/AboutSection'
 import { AccountSection } from './settings/AccountSection'
@@ -25,6 +33,7 @@ import { AutopilotSection } from './settings/AutopilotSection'
 import { BackupSection } from './settings/BackupSection'
 import { GitHubNotificationsSection } from './settings/GitHubNotificationsSection'
 import { IntegrationsSection } from './settings/IntegrationsSection'
+import { LabsSection } from './settings/LabsSection'
 import { LaunchingSection } from './settings/LaunchingSection'
 import { SettingMatch } from './settings/match'
 import { NotificationsSection } from './settings/NotificationsSection'
@@ -116,15 +125,19 @@ export function SettingsView({
   update,
 }: SettingsViewProps) {
   const headingId = useId()
-  const [section, setSection] = useState<SectionId>(initialSection)
+  const [chosen, setSection] = useState<SectionId>(initialSection)
   // openedAt is the opening the page last turned to its section for.
   const [openedAt, setOpenedAt] = useState(opened)
-  const match = matchSettings(query)
+  // hidden is what the settings leave out now: Autopilot's section while Autopilot (beta)
+  // is off, whose place Labs takes, where it is turned on.
+  const hidden = hiddenOf(settings)
+  const section = shownSection(chosen, hidden) ? chosen : 'labs'
+  const match = matchSettings(query, hidden)
   // groups are the sidebar's groups with the sections listed, a group with none left out.
   const groups = sectionGroups
     .map((group) => ({
       ...group,
-      sections: match === null ? group.sections : group.sections.filter((id) => match.sections.has(id)),
+      sections: group.sections.filter((id) => shownSection(id, hidden) && (match === null || match.sections.has(id))),
     }))
     .filter((group) => group.sections.length > 0)
   const firstMatch = groups[0]?.sections[0]
@@ -239,9 +252,12 @@ export function SettingsView({
             section scrolled past its own end. */}
         <section key={section} aria-labelledby={headingId} className="min-w-0 flex-1 overflow-y-auto">
           <div className="mx-auto max-w-2xl px-8 py-7">
-            <h2 id={headingId} className="text-lg font-semibold">
-              {current.label}
-            </h2>
+            <div className="flex items-center gap-2">
+              <h2 id={headingId} className="text-lg font-semibold">
+                {current.label}
+              </h2>
+              {section === 'autopilot' && <BetaBadge />}
+            </div>
             {current.description !== '' && <p className="mt-1 text-sm text-muted">{current.description}</p>}
             <div ref={contentRef} className="mt-6">
               {section === 'account' && <AccountSection account={account} projectAccess={projectAccess} />}
@@ -303,6 +319,8 @@ export function SettingsView({
               {section === 'files' &&
                 (settings === null ? loading : <SensitiveFilesSection settings={settings} onSaved={onSaved} />)}
               {section === 'integrations' && <IntegrationsSection settings={settings} onSaved={onSaved} />}
+              {section === 'labs' &&
+                (settings === null ? loading : <LabsSection settings={settings} onSaved={onSaved} />)}
               {section === 'backup' && (
                 <BackupSection
                   onSaved={onSaved}

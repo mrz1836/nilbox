@@ -11,6 +11,7 @@ const mocks = vi.hoisted(() => ({
   settings: {
     SetWindowSize: vi.fn(),
     SetUpdateMode: vi.fn(),
+    SetAutopilotEnabled: vi.fn(),
     SetAutopilotPaused: vi.fn(),
     SetAutopilotDailyCap: vi.fn(),
   },
@@ -349,6 +350,7 @@ describe('Autopilot’s calls', () => {
       [() => platform.letRoutineActAgain(3, 1), mocks.autopilot.LetActAgain, [3, 1]],
       [() => platform.clearAutopilotHistory(), mocks.autopilot.ClearHistory, []],
       [() => platform.itemsByID([1, 2]), mocks.inbox.ItemsByID, [[1, 2]]],
+      [() => platform.setAutopilotEnabled(true), mocks.settings.SetAutopilotEnabled, [true]],
       [() => platform.setAutopilotPaused(true), mocks.settings.SetAutopilotPaused, [true]],
       [
         () => platform.setAutopilotDailyCap({ amount: 5, unit: 'usd' }),

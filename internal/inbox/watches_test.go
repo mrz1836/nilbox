@@ -5,6 +5,7 @@ import (
 	"errors"
 	"slices"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"testing/synctest"
 	"time"
@@ -27,10 +28,12 @@ const (
 
 var errWatchDown = errors.New("watch request failed")
 
-// fakeWatches is a WatchSource that serves the searches set last.
+// fakeWatches is a WatchSource that serves the searches set last, and says this copy reads
+// them unless off is set, as with Autopilot off.
 type fakeWatches struct {
 	mu      sync.Mutex
 	watches []Watch
+	off     atomic.Bool
 }
 
 func (f *fakeWatches) Watches(string) []Watch {
@@ -38,6 +41,10 @@ func (f *fakeWatches) Watches(string) []Watch {
 	defer f.mu.Unlock()
 
 	return slices.Clone(f.watches)
+}
+
+func (f *fakeWatches) HoldsWatches() bool {
+	return !f.off.Load()
 }
 
 // set serves watches from now on.
@@ -1519,6 +1526,43 @@ func TestTheFollowerReadsInBatchesTheListedFirst(t *testing.T) {
 		for node := range nodes {
 			assert.True(t, read[node], "every listed pull request is read before a watched one: %s", node)
 		}
+	})
+}
+
+func TestTheFollowerLeavesTheWatchedPullRequestsWhileThisCopyReadsNoSearch(t *testing.T) {
+	t.Parallel()
+
+	synctest.Test(t, func(t *testing.T) {
+		h := newWatchHarness(t)
+		defer h.stop()
+
+		nodes := h.runningChecks(t, 2, 3)
+
+		// read returns the pull requests a round read.
+		read := func() map[string]bool {
+			out := map[string]bool{}
+
+			for _, ids := range h.client.itemsIDs {
+				for _, id := range ids {
+					out[id] = true
+				}
+			}
+
+			h.client.itemsIDs = nil
+
+			return out
+		}
+
+		// Autopilot off: no copy reads the routines' searches, and what is stored of them
+		// is stale, so the follower follows the inbox's own cards alone.
+		h.source.off.Store(true)
+		require.NoError(t, h.svc.refreshRunning(t.Context()))
+		assert.Equal(t, nodes, read(), "only the listed pull requests are read")
+
+		// The searches the copy reads again, their pull requests are followed again.
+		h.source.off.Store(false)
+		require.NoError(t, h.svc.refreshRunning(t.Context()))
+		assert.Equal(t, map[string]bool{nodeID(101): true, nodeID(102): true, nodeID(103): true}, read())
 	})
 }
 

@@ -32,6 +32,12 @@
 // each recorded as an effect, which Undo takes back, and what the user takes back of them
 // leaves the routine hands off the item (effects.go).
 //
+// All of it runs only while Autopilot is on (Autopilot (beta) in Settings, off on every
+// install until the user turns it on): off, the engine runs nothing and takes no lock, the
+// searches the inbox reads are none, Test sends nothing, and Glance counts no routine the
+// engine runs. The routines and their history stay as they are, and come back as they were
+// once it is on again.
+//
 // The package reaches the rest of the app only through the narrow interfaces it declares
 // (Prefs, Accounts, Names, Library, Items, Costs, EngineItems, Triage, the dispatchers,
 // Holds, and ProblemSink), which core adapts; it never imports the inbox,
@@ -44,6 +50,7 @@ import (
 	"database/sql"
 	"errors"
 	"log/slog"
+	"sync/atomic"
 
 	"github.com/mrz1836/nilbox/internal/autopilot/catalog"
 	"github.com/mrz1836/nilbox/internal/autopilotprefs"
@@ -104,7 +111,8 @@ type Config struct {
 	// Pool is the database the routines are kept in.
 	Pool *sql.DB
 
-	// Prefs gives the mode new routines start in; nil starts them in the default mode.
+	// Prefs gives Autopilot's settings: whether it is on at all, and the mode new routines
+	// start in among them; nil reads each as its default, so Autopilot is off.
 	Prefs Prefs
 
 	// Accounts gives the account signed in; nil is none.
@@ -165,6 +173,10 @@ type Service struct {
 	// routines, which the window's actions on the ledger go to; nil until NewEngine.
 	offers *Offers
 	engine *Engine
+
+	// seenOn is Autopilot (beta) as the Service last read it, which an engine built after
+	// starts from.
+	seenOn atomic.Bool
 }
 
 // NewService returns a Service over cfg.
@@ -184,6 +196,40 @@ func NewService(cfg Config) *Service {
 // step's settings, and the limits.
 func (s *Service) Catalog() catalog.Catalog {
 	return catalog.All()
+}
+
+// enabled reads whether Autopilot is on (Autopilot (beta) in Settings), off with no
+// settings to read, as on a fresh database, and keeps what it read (seenOn).
+func (s *Service) enabled(ctx context.Context) (bool, error) {
+	on := autopilotprefs.Defaults().Enabled
+
+	if s.prefs != nil {
+		c, err := s.prefs.Autopilot(ctx)
+		if err != nil {
+			return false, err
+		}
+
+		on = c.Enabled
+	}
+
+	s.seenOn.Store(on)
+
+	return on, nil
+}
+
+// refuseOff refuses what Autopilot won't do while it is off, as when its settings can't be
+// read, with where to turn it on (ErrOff).
+func (s *Service) refuseOff(ctx context.Context) error {
+	on, err := s.enabled(ctx)
+	if err != nil {
+		s.logger.WarnContext(ctx, "could not read whether Autopilot is on", "error", err)
+	}
+
+	if !on {
+		return offError()
+	}
+
+	return nil
 }
 
 // settings returns Autopilot's settings, the defaults when they can't be read, logged.

@@ -435,8 +435,15 @@ export interface Explanation {
  */
 export interface Glance {
     /**
+     * On reports Autopilot (beta) on in Settings: off, the engine runs nothing, and the
+     * window and the menu bar show none of Autopilot.
+     */
+    "on": boolean;
+
+    /**
      * Routines counts the routines not deleted, and Enabled those the engine runs: switched
-     * on, of the account signed in, and loading; none while no one is signed in.
+     * on, of the account signed in, and loading; none while no one is signed in, or while
+     * Autopilot is off.
      */
     "routines": number;
     "enabled": number;

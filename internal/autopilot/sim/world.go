@@ -93,9 +93,11 @@ type World struct {
 	// gates hold an item's own read until they are opened.
 	gates map[int]chan struct{}
 
-	// reads counts the item reads, by number, and stateReads the reads of states.
+	// reads counts the item reads, by number, stateReads the reads of states, and searches
+	// the routines' searches sent.
 	reads      map[int]int
 	stateReads int
+	searches   int
 
 	// signedOut has the GitHub CLI signed out; statesGate holds the reads of states.
 	signedOut  bool
@@ -283,6 +285,14 @@ func (w *World) StateReads() int {
 	return w.stateReads
 }
 
+// Searches counts the routines' searches GitHub was sent, each search of a request apart.
+func (w *World) Searches() int {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	return w.searches
+}
+
 // Forget forgets nothing.
 func (w *World) Forget(github.Token) {}
 
@@ -443,6 +453,7 @@ func (w *World) FetchWatches(_ context.Context, _ github.Token, searches []githu
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
+	w.searches += len(searches)
 	out := &github.Watches{Results: map[string]github.WatchResult{}, RateLimit: rate(), Requests: 1}
 
 	var found []*Item

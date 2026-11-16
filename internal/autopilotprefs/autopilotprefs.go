@@ -1,5 +1,6 @@
-// Package autopilotprefs declares Autopilot's settings: Pause Autopilot, the mode new
-// routines start in, how many agents run at once, the daily limits and the daily cap,
+// Package autopilotprefs declares Autopilot's settings: Autopilot (beta), the switch that
+// turns all of it on, off on every install until the user turns it on; Pause Autopilot,
+// the mode new routines start in, how many agents run at once, the daily limits and the daily cap,
 // keeping the Mac awake, holding agent starts during an outage, when to ask before
 // catching up, and how long the history and the run logs are kept. The settings package
 // writes them, under the keys declared here, and Autopilot reads them. It also declares a
@@ -21,6 +22,10 @@ import (
 
 // The preferences the settings are stored under. Settings writes them.
 const (
+	// KeyEnabled is Autopilot (beta): off, the default, the window shows none of Autopilot
+	// and its engine doesn't run, so no routine sends a search or starts anything.
+	KeyEnabled = "autopilot.enabled"
+
 	// KeyPaused is Pause Autopilot: on, no routine starts anything new.
 	KeyPaused = "autopilot.paused"
 
@@ -218,6 +223,9 @@ func (c DailyCap) Check() error {
 
 // Config is Autopilot's settings, as Settings shows them.
 type Config struct {
+	// Enabled is Autopilot (beta): off, Autopilot is hidden and its engine doesn't run.
+	Enabled bool `json:"enabled"`
+
 	// Paused is Pause Autopilot: no routine starts anything new; running agents carry on.
 	Paused bool `json:"paused"`
 
@@ -268,7 +276,7 @@ func Defaults() Config {
 // Keys returns every key the settings are stored under.
 func Keys() []string {
 	return []string{
-		KeyPaused, KeyDefaultMode, KeyAgentsAtOnce, KeyRunsPerDay, KeyActionsPerDay, KeyDailyCap, KeyDailyCapUnit,
+		KeyEnabled, KeyPaused, KeyDefaultMode, KeyAgentsAtOnce, KeyRunsPerDay, KeyActionsPerDay, KeyDailyCap, KeyDailyCapUnit,
 		KeyKeepAwake, KeyHoldOnOutage, KeyCatchUpHours, KeyHistoryDays, KeyLogDays,
 	}
 }
@@ -280,6 +288,7 @@ func Decode(stored map[string]string) Config {
 	d := Defaults()
 
 	out := Config{
+		Enabled:       prefval.Bool(stored[KeyEnabled], false),
 		Paused:        prefval.Bool(stored[KeyPaused], false),
 		DefaultMode:   d.DefaultMode,
 		AgentsAtOnce:  number(stored[KeyAgentsAtOnce], bounds{MinAgentsAtOnce, MaxAgentsAtOnce}, d.AgentsAtOnce),
@@ -364,6 +373,7 @@ func (c Config) Check() error {
 // Encode returns every setting's stored text, by its key.
 func (c Config) Encode() map[string]string {
 	return map[string]string{
+		KeyEnabled:       prefval.EncodeBool(c.Enabled),
 		KeyPaused:        prefval.EncodeBool(c.Paused),
 		KeyDefaultMode:   string(c.DefaultMode),
 		KeyAgentsAtOnce:  strconv.Itoa(c.AgentsAtOnce),

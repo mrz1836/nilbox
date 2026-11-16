@@ -19,7 +19,7 @@ import {
   type Settings,
   type Worktree,
 } from '../platform'
-import { AutopilotChip, useRoutineName } from './autopilot/AutopilotChip'
+import { AutopilotChip, useMarkedBy, useRoutineName } from './autopilot/AutopilotChip'
 import { Highlight } from './Highlight'
 import { ArchiveIcon, AutopilotIcon, ClockIcon, ExternalIcon, IssueIcon, PinIcon, PullRequestIcon } from './icons'
 import { ItemMenu, type EditActions } from './ItemMenu'
@@ -200,16 +200,17 @@ function ByRoutine({ id }: { id: number }) {
 // SnoozedTag says when a snoozed item comes back, and which routine snoozed it, when one did.
 function SnoozedTag({ item, className }: { item: InboxItem; className: string }) {
   const back = useNowAs((now) => formatWhen(now, new Date(item.snoozedUntil)))
-  const name = useRoutineName(item.setAsideBy)
+  const by = useMarkedBy(item.setAsideBy)
+  const name = useRoutineName(by)
   const until = formatFull(item.snoozedUntil)
 
-  if (item.setAsideBy > 0) {
+  if (by > 0) {
     return (
       <span title={`Snoozed by the routine ${name} until ${until}`} className={className}>
         <ClockIcon className="size-3 shrink-0" />
         <span className="truncate">
           Snoozed
-          <ByRoutine id={item.setAsideBy} /> · back {back}
+          <ByRoutine id={by} /> · back {back}
         </span>
       </span>
     )
@@ -227,16 +228,17 @@ function SnoozedTag({ item, className }: { item: InboxItem; className: string })
 // did.
 function DismissedTag({ item, className }: { item: InboxItem; className: string }) {
   const ago = useNowAs((now) => formatAgo(now, item.dismissedAt))
-  const name = useRoutineName(item.setAsideBy)
+  const by = useMarkedBy(item.setAsideBy)
+  const name = useRoutineName(by)
   const when = formatFull(item.dismissedAt)
 
-  if (item.setAsideBy > 0) {
+  if (by > 0) {
     return (
       <span title={`Dismissed by the routine ${name}, ${when}`} className={className}>
         <ArchiveIcon className="size-3 shrink-0" />
         <span className="truncate">
           Dismissed
-          <ByRoutine id={item.setAsideBy} /> · {ago}
+          <ByRoutine id={by} /> · {ago}
         </span>
       </span>
     )
@@ -295,10 +297,12 @@ function BackTag({ item }: { item: InboxItem }) {
 // from a snooze, so it is easy to spot among the rest. A muted item needs no tag: its tab
 // says why it is there. What an Autopilot routine set aside or pinned says so, with the
 // routine's name, until the user changes it. Each tag reads the clock itself, so a tick
-// renders a tag only when its words change.
+// renders a tag only when its words change. While Autopilot (beta) is off, no tag names a
+// routine (useMarkedBy).
 function TriageTag({ item, tab }: { item: InboxItem; tab: TriageTab }) {
   const quiet = `${tagClass} inline-flex min-w-0 items-center gap-1 text-muted`
-  const pinned = item.pinnedBy > 0 && item.pinnedAt !== '' && <PinnedByTag item={item} className={quiet} />
+  const pinnedBy = useMarkedBy(item.pinnedBy)
+  const pinned = pinnedBy > 0 && item.pinnedAt !== '' && <PinnedByTag item={item} className={quiet} />
 
   switch (tab) {
     case 'snoozed':

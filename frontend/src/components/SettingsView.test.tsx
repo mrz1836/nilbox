@@ -19,6 +19,7 @@ import {
   account,
   agents,
   appInfo,
+  autopilotOff,
   defaultPrompts,
   launchDefaults,
   profile,
@@ -180,6 +181,7 @@ describe('SettingsView', () => {
       'Sensitive files',
       'Worktrees',
       'Integrations',
+      'Labs',
       'Back up and restore',
       'About',
     ])
@@ -1260,13 +1262,14 @@ describe('SettingsView escape and trust', () => {
     expect(nav.getAllByRole('group')).toHaveLength(4)
   })
 
-  it('has an Integrations section after Worktrees, for the tools it runs, and Back up and restore before About', async () => {
+  it('has an Integrations section after Worktrees, for the tools it runs, then Labs, and Back up and restore before About', async () => {
     renderSettings()
 
     const nav = within(screen.getByRole('navigation', { name: 'Settings sections' }))
     const names = nav.getAllByRole('button').map((b) => b.textContent)
     expect(names.indexOf('Integrations')).toBe(names.indexOf('Worktrees') + 1)
-    expect(names.indexOf('Back up and restore')).toBe(names.indexOf('Integrations') + 1)
+    expect(names.indexOf('Labs')).toBe(names.indexOf('Integrations') + 1)
+    expect(names.indexOf('Back up and restore')).toBe(names.indexOf('Labs') + 1)
     expect(names.indexOf('About')).toBe(names.indexOf('Back up and restore') + 1)
 
     await openSection('Integrations')
@@ -1295,6 +1298,73 @@ describe('SettingsView escape and trust', () => {
     renderSettings({ section: 'files' })
 
     expect(screen.getByRole('button', { name: 'Sensitive files' })).toHaveAttribute('aria-current', 'page')
+  })
+})
+
+describe('SettingsView Labs and Autopilot (beta)', () => {
+  // sections names the sidebar's sections.
+  function sections() {
+    const nav = within(screen.getByRole('navigation', { name: 'Settings sections' }))
+
+    return nav
+      .getAllByRole('button')
+      .map((b) => b.textContent)
+      .slice(1)
+  }
+
+  it('hides Autopilot’s section, its group, and its banner switches while Autopilot is off', async () => {
+    renderSettings({ section: 'notifications', current: autopilotOff() })
+
+    expect(sections()).not.toContain('Autopilot')
+    expect(sections()).toContain('Labs')
+    expect(screen.queryByRole('group', { name: 'Autopilot' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'Autopilot' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('switch', { name: 'Routine alerts' })).not.toBeInTheDocument()
+    expect(screen.getByRole('switch', { name: 'Review requests' })).toBeInTheDocument()
+
+    await openSection('Labs')
+
+    const labs = screen.getByRole('region', { name: 'Labs' })
+    const beta = within(labs).getByRole('switch', { name: 'Autopilot (beta)' })
+
+    expect(beta).not.toBeChecked()
+    expect(beta).toHaveAccessibleDescription('Routines that triage and fix pull requests for you. Still being built.')
+  })
+
+  it('turns Autopilot on from Labs, which brings back its section marked Beta', async () => {
+    const { onSaved } = renderSettings({ section: 'labs', current: autopilotOff() })
+
+    await userEvent.click(screen.getByRole('switch', { name: 'Autopilot (beta)' }))
+
+    expect(platform.setAutopilotEnabled).toHaveBeenCalledExactlyOnceWith(true)
+    await waitFor(() => {
+      expect(onSaved).toHaveBeenCalledWith(
+        expect.objectContaining({ autopilot: expect.objectContaining({ enabled: true }) as unknown }),
+      )
+    })
+    expect(screen.getByRole('switch', { name: 'Autopilot (beta)' })).toBeChecked()
+    expect(sections()).toContain('Autopilot')
+
+    await openSection('Autopilot')
+
+    const region = screen.getByRole('region', { name: 'Autopilot' })
+    expect(within(region).getByRole('heading', { level: 2, name: 'Autopilot' }).parentElement).toHaveTextContent(
+      'AutopilotBeta',
+    )
+  })
+
+  it('opens Labs, where Autopilot is turned on, when asked for Autopilot’s section while it is off', () => {
+    renderSettings({ section: 'autopilot', current: autopilotOff() })
+
+    expect(screen.getByRole('region', { name: 'Labs' })).toBeInTheDocument()
+    expect(screen.queryByText('Beta')).not.toBeInTheDocument()
+  })
+
+  it('marks no other section’s heading Beta', () => {
+    renderSettings({ section: 'labs' })
+
+    expect(screen.getByRole('switch', { name: 'Autopilot (beta)' })).toBeChecked()
+    expect(screen.queryByText('Beta')).not.toBeInTheDocument()
   })
 })
 
@@ -1553,7 +1623,7 @@ describe('SettingsView search', () => {
 
     rerender(<SettingsView {...searchProps('')} />)
 
-    expect(sidebar()).toHaveLength(18)
+    expect(sidebar()).toHaveLength(19)
     expect(sidebar()).toContain('Account')
     expect(screen.getByRole('region', { name: 'Notifications' })).toBeInTheDocument()
     expect(matched()).toEqual([])

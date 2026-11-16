@@ -245,7 +245,7 @@ func itemsRig(t *testing.T, items *fakeItems) *rig {
 
 	r := newRig(t, autopilotprefs.ModeDryRun)
 	r.svc = autopilot.NewService(autopilot.Config{
-		Pool: r.db, Prefs: prefs{cfg: autopilotprefs.Defaults()}, Accounts: r.accounts, Names: names{},
+		Pool: r.db, Prefs: prefs{cfg: onSettings()}, Accounts: r.accounts, Names: names{},
 		File: autopilot.NewFile(filepath.Join(t.TempDir(), "autopilot.json"), "v0.0.0-test", r.clock), Clock: r.clock,
 		Logger: r.logs.Logger(), Items: items, Costs: fakeCosts{},
 	})
@@ -594,7 +594,7 @@ func TestTheEstimatePacksBySearchesMatchCounts(t *testing.T) {
 	}
 	r := itemsRig(t, items)
 	r.svc = autopilot.NewService(autopilot.Config{
-		Pool: r.db, Prefs: prefs{cfg: autopilotprefs.Defaults()}, Accounts: r.accounts, Names: names{},
+		Pool: r.db, Prefs: prefs{cfg: onSettings()}, Accounts: r.accounts, Names: names{},
 		File: autopilot.NewFile(filepath.Join(t.TempDir(), "autopilot.json"), "v0.0.0-test", r.clock), Clock: r.clock,
 		Logger: r.logs.Logger(), Items: items, Costs: costs,
 	})

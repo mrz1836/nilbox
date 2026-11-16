@@ -127,13 +127,14 @@ type Sim struct {
 	stop func()
 }
 
-// New returns a simulation over a fresh database, not started. Call it inside a synctest
-// bubble.
+// New returns a simulation over a fresh database, not started, with Autopilot on, which a
+// scenario turns off with Change. Call it inside a synctest bubble.
 func New(t *testing.T) *Sim {
 	t.Helper()
 
 	clk := newClock()
 	cfg := autopilotprefs.Defaults()
+	cfg.Enabled = true
 
 	s := &Sim{
 		t: t, DB: testutil.DB(t), Clock: clk, World: NewWorld(clk), Runner: NewRunner(),

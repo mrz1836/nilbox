@@ -30,6 +30,7 @@ func TestAutopilotStartsWithItsDefaults(t *testing.T) {
 	got, err := svc.Get(t.Context())
 	require.NoError(t, err)
 	assert.Equal(t, autopilotprefs.Defaults(), got.Autopilot)
+	assert.False(t, got.Autopilot.Enabled, "Autopilot (beta) is off")
 	assert.False(t, got.Autopilot.Paused)
 	assert.Equal(t, autopilotprefs.ModeAsk, got.Autopilot.DefaultMode, "new routines ask first")
 	assert.True(t, got.Autopilot.DailyCap.Off(), "the daily cap is off")
@@ -48,6 +49,10 @@ func TestAutopilotSettersStoreEachSettingAndTellOnce(t *testing.T) {
 		set  func() (Settings, error)
 		want func(*autopilotprefs.Config)
 	}{
+		{
+			"enabled", func() (Settings, error) { return svc.SetAutopilotEnabled(ctx, true) },
+			func(c *autopilotprefs.Config) { c.Enabled = true },
+		},
 		{
 			"paused", func() (Settings, error) { return svc.SetAutopilotPaused(ctx, true) },
 			func(c *autopilotprefs.Config) { c.Paused = true },
@@ -108,7 +113,7 @@ func TestAutopilotSettersStoreEachSettingAndTellOnce(t *testing.T) {
 		assert.Equal(t, want, again.Autopilot, "%s: it is stored", c.name)
 	}
 
-	assert.Len(t, events.All(), 11, "each setter tells once")
+	assert.Len(t, events.All(), 12, "each setter tells once")
 
 	for _, e := range events.All() {
 		assert.Equal(t, event.AutopilotChanged{}, e)
@@ -231,6 +236,7 @@ func TestPortableAutopilotRoundTrip(t *testing.T) {
 	ctx := t.Context()
 
 	for _, set := range []func(context.Context) (Settings, error){
+		func(ctx context.Context) (Settings, error) { return src.SetAutopilotEnabled(ctx, true) },
 		func(ctx context.Context) (Settings, error) { return src.SetAutopilotPaused(ctx, true) },
 		func(ctx context.Context) (Settings, error) {
 			return src.SetAutopilotDefaultMode(ctx, autopilotprefs.ModeDryRun)
@@ -259,6 +265,11 @@ func TestPortableAutopilotRoundTrip(t *testing.T) {
 	plan, err := part.PlanPortable(ctx, Portable{Autopilot: p.Autopilot})
 	require.NoError(t, err)
 	assert.Empty(t, plan.Notes)
+	require.NotNil(t, p.Autopilot.Enabled)
+	assert.True(t, *p.Autopilot.Enabled, "the backup holds Autopilot (beta) on")
+	assert.Contains(t, plan.Items, backup.Item{
+		Label: "Autopilot (beta)", Change: backup.ChangeUpdate, Detail: "on (now off)",
+	})
 	assert.Contains(t, plan.Items, backup.Item{
 		Label: "Autopilot's daily cap", Change: backup.ChangeUpdate, Detail: "$25 (now off)",
 	})

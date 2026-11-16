@@ -292,15 +292,17 @@ WHERE id = ? AND reason_review_requested = 1;
 -- were running (PENDING or EXPECTED) when their details were last read, before
 -- read_before, the longest unread first, each with its number, its repository's owner and
 -- name, and whether it is listed and whether a routine's search follows it: the listed ones
--- neither dismissed nor snoozed at now, and the ones a routine's search watches and follows
--- (item_watches.follow), whatever their triage, since a routine acts on their checks. They
--- are the ones the inbox follows until their checks end. The follow leaves out the listed
--- ones of a muted repository or org that no search follows, which only the prefs name, and
--- takes the first of the rest, so it reads them all; they are listed and watched items, a
--- few hundred at most.
+-- neither dismissed nor snoozed at now, and, while watched says this copy reads the
+-- routines' searches (none does while Autopilot is off), the ones a routine's search
+-- watches and follows (item_watches.follow), whatever their triage, since a routine acts on
+-- their checks. They are the ones the inbox follows until their checks end. The follow
+-- leaves out the listed ones of a muted repository or org that no search follows, which only
+-- the prefs name, and takes the first of the rest, so it reads them all; they are listed and
+-- watched items, a few hundred at most.
 SELECT i.id, i.account_id, i.node_id, i.number, r.owner AS repo_owner, r.name AS repo_name,
     CAST(i.reason_review_requested = 1 OR i.reason_authored = 1 OR i.reason_assigned = 1 AS BOOLEAN) AS listed,
-    CAST(EXISTS (SELECT 1 FROM item_watches fw WHERE fw.item_id = i.id AND fw.follow = 1) AS BOOLEAN) AS followed
+    CAST(CAST(sqlc.arg(watched) AS BOOLEAN) = 1
+      AND EXISTS (SELECT 1 FROM item_watches fw WHERE fw.item_id = i.id AND fw.follow = 1) AS BOOLEAN) AS followed
 FROM items i
 JOIN accounts a ON a.id = i.account_id
 JOIN repos r ON r.id = i.repo_id
@@ -316,7 +318,8 @@ WHERE a.login = sqlc.arg(login)
     ((i.reason_review_requested = 1 OR i.reason_authored = 1 OR i.reason_assigned = 1)
       AND l.dismissed_at IS NULL
       AND (l.snoozed_until IS NULL OR l.snoozed_until <= sqlc.arg(now)))
-    OR EXISTS (SELECT 1 FROM item_watches w WHERE w.item_id = i.id AND w.follow = 1)
+    OR (CAST(sqlc.arg(watched) AS BOOLEAN) = 1
+      AND EXISTS (SELECT 1 FROM item_watches w WHERE w.item_id = i.id AND w.follow = 1))
   )
 ORDER BY d.fetched_at, i.id;
 

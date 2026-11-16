@@ -101,7 +101,8 @@ function ToastSecondsRow({ controlId, seconds, onChange, describedBy }: ToastSec
 // NotificationsSection holds the menu bar icon, how long a toast stays, and which kinds of
 // notification show a banner, each saved as soon as it is set, with a test banner and a
 // note when banners cannot show. Autopilot's kinds stand apart, under their own heading,
-// and so do the agent sessions', since they start off.
+// shown only while Autopilot (beta) is on, and so do the agent sessions', since they start
+// off.
 export function NotificationsSection({ settings: stored, onSaved }: SectionProps) {
   const id = useId()
   const { settings, save, error } = useSettingsSave(stored, onSaved)
@@ -212,28 +213,30 @@ export function NotificationsSection({ settings: stored, onSaved }: SectionProps
           </ChoiceRow>
         </Group>
       </div>
-      <div className="flex flex-col gap-3">
-        <SectionIntro title="Autopilot">
-          Your routines tell you here what they did and what waits for you. A routine can turn its own banners on or
-          off, whatever these say. More than three at once arrive as one banner that sums them up. Clicking one opens
-          its item, or the Autopilot tab.
-        </SectionIntro>
-        <Group>
-          {autopilotKinds.map(({ kind, label, description }) => (
-            <SwitchRow
-              key={kind}
-              label={label}
-              controlId={`${id}-${kind}`}
-              description={description}
-              checked={!off.includes(kind)}
-              describedBy={errorId}
-              onChange={(on) => {
-                switchBanner(kind, on)
-              }}
-            />
-          ))}
-        </Group>
-      </div>
+      {settings.autopilot.enabled && (
+        <div className="flex flex-col gap-3">
+          <SectionIntro title="Autopilot">
+            Your routines tell you here what they did and what waits for you. A routine can turn its own banners on or
+            off, whatever these say. More than three at once arrive as one banner that sums them up. Clicking one opens
+            its item, or the Autopilot tab.
+          </SectionIntro>
+          <Group>
+            {autopilotKinds.map(({ kind, label, description }) => (
+              <SwitchRow
+                key={kind}
+                label={label}
+                controlId={`${id}-${kind}`}
+                description={description}
+                checked={!off.includes(kind)}
+                describedBy={errorId}
+                onChange={(on) => {
+                  switchBanner(kind, on)
+                }}
+              />
+            ))}
+          </Group>
+        </div>
+      )}
       <div className="flex flex-col gap-3">
         <SectionIntro title="Agent sessions">
           {brand.name} can also show a banner when a coding agent session you started from an item needs you. Clicking

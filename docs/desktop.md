@@ -1662,7 +1662,9 @@ default, and following agent sessions), trust (the [trusted bots](#outside-contr
 [sensitive files](#sensitive-files), and worktrees (whether to [clean up worktrees after
 merging](#the-worktrees-view), which branches go with them, and protected branches); under
 **Tools**, [integrations](#tools-the-app-finds-and-installs) (mage-x, go-pre-commit, and
-Scripts); and the app's version. Each change is saved as you make it, except the clone root, which its **Save**
+Scripts); **Labs**, the parts still being built, each off until you turn it on
+([Autopilot (beta)](#autopilot), whose own section, under **Autopilot**, shows only while it
+is on); and the app's version. Each change is saved as you make it, except the clone root, which its **Save**
 button saves (or **Choose…**, as soon as it picks a folder), and launch defaults, which are saved
 with theirs. Escape or the back arrow returns to the view you came from.
 
@@ -2492,7 +2494,32 @@ action runs only in Dry run in this version, and says so. Each routine acts once
 Nothing changes a routine's mode but you. One copy of Nilbox on a data folder runs Autopilot at
 a time; another copy shows what it does and starts nothing.
 
-**The tab.** **Autopilot** sits after **Notifications**, for everyone. Its count is the agents
+**Autopilot (beta).** Autopilot is still being built, so it is off on every install, an
+existing one included, until you turn it on in **Settings → Labs**: **Autopilot (beta)**,
+*Routines that triage and fix pull requests for you. Still being built.* While it is off,
+Nilbox shows none of it and runs none of it:
+
+- the window has no Autopilot tab (a window on it goes to the inbox), no Autopilot section in
+  Settings, no Autopilot banner switches in Settings → Notifications, no Autopilot type among
+  the Notifications page's filters, and no ⚡ chip or *by ⚡ routine* mark on a row; a
+  notification that would open the Autopilot tab says *Autopilot is off. Turn it on in
+  Settings → Labs to see this.* instead;
+- the menu bar has no Autopilot group, and closing the window counts no routine: it quits as
+  it would without Autopilot (with the menu bar icon showing, it hides, as before);
+- the engine runs nothing: it takes no lock in the data folder, sends GitHub none of the
+  routines' searches, has the checks follower follow none of their items, and refuses every
+  action on its history, as a routine's **Test** does.
+
+Your routines and their history stay as they are, each routine's own switch included. Turning
+Autopilot on brings everything back as it was, marks its tab and its Settings heading
+**Beta**, and starts it as a start of the app does: it reads the routines' searches at once,
+and acts only on what they say then, asking first, as after a long gap, when it was off longer
+than **Ask before catching up after** says. Turning it off starts nothing new from then on and
+stops nothing: a step already handed over finishes, and the lock is let go once nothing it
+started is still going. A backup carries the switch with the other settings.
+
+**The tab.** **Autopilot** sits after **Notifications**, while Autopilot (beta) is on, marked
+**Beta**. Its count is the agents
 working (none until routines can run them), with an amber dot while something waits for you and
 a red dot while a routine is
 broken or its search fails; hover it for what they mean (*2 agents working · 1 needs you · 1
@@ -2702,7 +2729,7 @@ would run, and changes nothing.
 
 Autopilot has five kinds of notification, each with a banner switch of its own in **Settings →
 Notifications**, all on by default, and the **Autopilot** type on the
-[Notifications page](#the-notifications-page):
+[Notifications page](#the-notifications-page), both shown while Autopilot (beta) is on:
 
 | Kind | Switch | When |
 |---|---|---|
@@ -2718,17 +2745,20 @@ opens the item, as an inbox arrival does, and the entry is marked read when the 
 opens; clicking one about no item, as a problem is, opens the Autopilot tab at its routine. When
 what it names is gone, as after **Clear history**, a toast says so.
 
-While a routine exists, the [menu bar](#menu-bar-and-notifications) menu has an **Autopilot**
-group after your lists: each agent working, *N needs your OK*, which opens Activity, and **Pause
-Autopilot** as a checkbox row, the same setting as the tab's button and Settings'. The number by
-the icon stays the inbox's. While a routine is on or an agent works, closing the window only
-hides it, even with the menu bar icon off, so Autopilot carries on; the Dock icon brings it
-back, and the window says so the first time.
+While Autopilot (beta) is on and a routine exists, the [menu bar](#menu-bar-and-notifications)
+menu has an **Autopilot** group after your lists: each agent working, *N needs your OK*, which
+opens Activity, and **Pause Autopilot** as a checkbox row, the same setting as the tab's button
+and Settings'. The number by the icon stays the inbox's. While a routine is on (and Autopilot
+is) or an agent works, closing the window only hides it, even with the menu bar icon off, so
+Autopilot carries on; the Dock icon brings it back, and the window says so the first time.
 
 ### Settings → Autopilot
 
+This section, marked **Beta**, shows while Autopilot (beta) is on in **Settings → Labs**.
+
 | Setting | Default | What it does |
 |---|---|---|
+| **Autopilot (beta)**, in **Labs** | Off | Shows and runs Autopilot; off, it is hidden and runs nothing, and the routines stay as they are |
 | **Pause Autopilot** | Off | No routine starts anything new; what is under way carries on |
 | **New routines start in** | Ask first | The mode a routine you make starts in; a routine keeps its own once made |
 | **Agents at once** | 2 | The most coding agents your routines will run at the same time, at most 3 |
@@ -2759,7 +2789,8 @@ or decides leaves your Mac: it reads GitHub through the app's own API calls, as 
 
 An Autopilot routine watches either the inbox's own lists, which every refresh reads already,
 or a GitHub search of its own, such as Dependabot's pull requests in your account. While a
-routine with a search is switched on, each inbox refresh reads that search too, once it has
+routine with a search is switched on, and Autopilot (beta) is, each inbox refresh reads that
+search too, once it has
 read the inbox's three, and stores what it finds apart from your lists: a watched item is never
 in Review requested, Authored, or Assigned, never in their counts, and never in the menu bar's
 count. It shows in the routine's **Watching** list, and the searches keep it current for the
@@ -2850,9 +2881,9 @@ update's rows change, so the count is right without waiting for a refresh.
 **Closing the window.** While the icon is in the menu bar, closing the window only hides it:
 the app keeps refreshing, keeps the count current, and can still show notifications. The icon,
 its **Open Nilbox**, or the Dock icon brings the window back; quit from the icon's menu or with
-⌘Q. While an [Autopilot](#autopilot) routine is on or an agent works, closing the window only
-hides it even with the icon off. Otherwise (the icon off in Settings → Notifications, and no
-routine on) closing the window quits the app, as ⌘Q does: while a run goes in the app, the
+⌘Q. While an [Autopilot](#autopilot) routine is on (and Autopilot (beta) is) or an agent
+works, closing the window only hides it even with the icon off. Otherwise (the icon off in
+Settings → Notifications, and no routine on) closing the window quits the app, as ⌘Q does: while a run goes in the app, the
 window stays and asks first ([Runs](#runs)). The log says *the app quit* as it does, so a quit
 can be told from a crash there.
 
@@ -2896,7 +2927,7 @@ entry's number may belong to another by then.
 
 **Banners.** Each kind can also show a native macOS banner. All eight are on by default, and
 each has its own switch in Settings → Notifications. Autopilot's five kinds have switches of
-their own there, under **Autopilot**, all on by default too (see
+their own there, under **Autopilot**, while Autopilot (beta) is on, all on by default too (see
 [Autopilot's notifications](#autopilots-notifications-and-the-menu-bar)). Two more switches there show a banner when
 an [agent session](#following-a-session) waits for you or finishes its turn; those start off,
 and the history doesn't keep them. A banner gives the kind, the repository
@@ -2944,7 +2975,7 @@ list too. Long lists stay quick: only the rows near the screen are drawn.
 **Nilbox.** The whole history, up to the latest 1,000, in the local database (the
 `notifications` table), whether or not a banner was shown. **Type** is **Reviews**,
 **Assigned**, **Snoozes**, **Releases**, **Runs**, **Status**, **Updates**, or **Autopilot**
-(its five kinds together). Click an entry to open it as the bell
+(its five kinds together, offered while Autopilot (beta) is on). Click an entry to open it as the bell
 does, which marks it read. Point at one: an unread entry offers **✓ Done**, and a read one
 **Mark unread**, which puts it back on the bell. **Mark all done** marks them all read, and
 **Clear history** forgets every notification, after asking; banners and settings stay.

@@ -62,7 +62,7 @@ func TestGlanceWithNoRoutine(t *testing.T) {
 
 	got, err := r.svc.Glance(t.Context())
 	require.NoError(t, err)
-	assert.Equal(t, autopilot.Glance{Working: []autopilot.WorkingRun{}}, got, "no list is nil")
+	assert.Equal(t, autopilot.Glance{On: true, Working: []autopilot.WorkingRun{}}, got, "no list is nil")
 	assert.False(t, got.KeepsRunning())
 
 	none, err := autopilot.NewService(autopilot.Config{}).Glance(t.Context())
@@ -166,6 +166,37 @@ func TestGlanceCountsOnlyTheRoutinesTheEngineRuns(t *testing.T) {
 	require.NoError(t, err)
 	assert.Zero(t, got.Enabled, "no one signed in: nothing runs")
 	assert.False(t, got.KeepsRunning())
+}
+
+func TestGlanceWhileAutopilotIsOff(t *testing.T) {
+	t.Parallel()
+
+	r := newRig(t, autopilotprefs.ModeAsk)
+	mine := r.save(t, draft("Mine", notifySpec()))
+
+	_, err := r.svc.SetEnabled(t.Context(), mine.ID, true, autopilot.CurrentRun)
+	require.NoError(t, err)
+
+	// The same data, with Autopilot (beta) off, as a fresh install has it.
+	off := autopilot.NewService(autopilot.Config{
+		Pool: r.db, Prefs: prefs{cfg: autopilotprefs.Defaults()}, Accounts: r.accounts, Clock: r.clock,
+	})
+
+	got, err := off.Glance(t.Context())
+	require.NoError(t, err)
+	assert.False(t, got.On)
+	assert.Equal(t, 1, got.Routines, "the routine stays as it is")
+	assert.Zero(t, got.Enabled, "but none runs")
+	assert.False(t, got.KeepsRunning(), "a routine on keeps nothing running while Autopilot is off")
+	assert.True(t, r.list(t)[0].Enabled, "and its own switch is left on")
+
+	// An agent it started before it was turned off still keeps the app running.
+	match := r.insertMatch(t, mine.ID, 5, autopilot.StateRunning, "")
+	r.insertRun(t, mine.ID, match, 5, "background", "running", startedAt(), startedAt())
+
+	got, err = off.Glance(t.Context())
+	require.NoError(t, err)
+	assert.True(t, got.KeepsRunning(), "until it ends")
 }
 
 func TestGlanceSaysWhetherAutopilotIsPaused(t *testing.T) {

@@ -305,9 +305,14 @@ type cachedSearch struct {
 // checked for an owner the inbox has never seen; and the result says what the test spent
 // and what the searches would cost each refresh. While the GraphQL budget is low it sends
 // nothing, and says so (LowBudget). A draft whose spec has problems is refused with them,
-// as Save refuses it. It changes no routine, and runs nothing.
+// as Save refuses it. It changes no routine, and runs nothing. While Autopilot is off, or
+// its settings can't be read, it asks GitHub nothing and is refused (ErrOff).
 func (s *Service) Test(ctx context.Context, d Draft) (TestResult, error) {
 	out := TestResult{Searches: []TestSearch{}, Items: []TestItem{}, Warnings: []spec.Problem{}}
+
+	if err := s.refuseOff(ctx); err != nil {
+		return out, err
+	}
 
 	_, sp, err := checkSpec(d.Spec)
 	if err != nil {

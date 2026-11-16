@@ -363,14 +363,30 @@ describe('AppHeader', () => {
     expect(scripts).not.toHaveAttribute('title')
   })
 
-  it('shows the Autopilot tab for everyone, with nothing on it while nothing is going', () => {
+  it('shows the Autopilot tab while Autopilot is on, marked Beta, with nothing else on it while nothing is going', () => {
     renderHeader({ autopilot: { count: 0, attention: false, failed: false, title: '' } })
 
     const tab = screen.getByRole('button', { name: 'Autopilot' })
 
-    expect(tab).toHaveTextContent(/^Autopilot$/)
+    expect(tab).toHaveTextContent(/^AutopilotBeta$/)
+    expect(within(tab).getByText('Beta')).toHaveAttribute('title', 'Beta: still being built')
     expect(tab).not.toHaveAttribute('title')
     expect(screen.queryByTestId('autopilot-count')).not.toBeInTheDocument()
+  })
+
+  it('hides the Autopilot tab while Autopilot (beta) is off', () => {
+    renderHeader({ autopilot: null, scripts: { running: 0, failed: false, blocked: false } })
+
+    const views = within(screen.getByRole('navigation', { name: 'Views' })).getAllByRole('button')
+
+    expect(views.map((b) => b.getAttribute('aria-label'))).toEqual([
+      'Inbox',
+      'Notifications',
+      'Worktrees',
+      'Prompts',
+      'Scripts',
+    ])
+    expect(screen.queryByText('Beta')).not.toBeInTheDocument()
   })
 
   it('counts the agents working on the Autopilot tab, with an amber dot while something needs you and a red one while a routine can’t run', () => {

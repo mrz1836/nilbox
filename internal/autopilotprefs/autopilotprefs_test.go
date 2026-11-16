@@ -20,8 +20,29 @@ func TestDefaults(t *testing.T) {
 		HistoryDays: 90, LogDays: 30,
 	}, d)
 	require.NoError(t, d.Check())
+	assert.False(t, d.Enabled, "Autopilot (beta) is off on a fresh database")
 	assert.True(t, d.DailyCap.Off(), "the daily cap is off on a fresh database")
 	assert.Equal(t, d, autopilotprefs.Decode(nil), "nothing stored reads as the defaults")
+}
+
+func TestAutopilotIsOffUntilTurnedOn(t *testing.T) {
+	t.Parallel()
+
+	// An install from before the switch stored other settings, never it: Autopilot reads as
+	// off there too.
+	existing := map[string]string{autopilotprefs.KeyPaused: "true", autopilotprefs.KeyAgentsAtOnce: "3"}
+	assert.False(t, autopilotprefs.Decode(existing).Enabled)
+
+	for stored, want := range map[string]bool{"true": true, "false": false, "": false, "yes": false} {
+		got := autopilotprefs.Decode(map[string]string{autopilotprefs.KeyEnabled: stored})
+		assert.Equal(t, want, got.Enabled, "%q", stored)
+	}
+
+	on := autopilotprefs.Defaults()
+	on.Enabled = true
+	assert.Equal(t, map[string]string{autopilotprefs.KeyEnabled: "true"}, autopilotprefs.Writes(nil, on),
+		"turning it on writes its key alone")
+	assert.NotEqual(t, autopilotprefs.KeyPaused, autopilotprefs.KeyEnabled)
 }
 
 func TestModes(t *testing.T) {
@@ -42,7 +63,7 @@ func TestEncodeReadsBackAsItself(t *testing.T) {
 	t.Parallel()
 
 	c := autopilotprefs.Config{
-		Paused: true, DefaultMode: autopilotprefs.ModeDryRun, AgentsAtOnce: 3, RunsPerDay: 200, ActionsPerDay: 1,
+		Enabled: true, Paused: true, DefaultMode: autopilotprefs.ModeDryRun, AgentsAtOnce: 3, RunsPerDay: 200, ActionsPerDay: 1,
 		DailyCap: autopilotprefs.DailyCap{Amount: 2_000_000, Unit: autopilotprefs.UnitTokens}, KeepAwake: true,
 		CatchUpHours: 168, HistoryDays: 7, LogDays: 7,
 	}

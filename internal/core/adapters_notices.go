@@ -101,14 +101,22 @@ func (a ShellAutopilot) State(ctx context.Context) (desktop.AutopilotState, erro
 	return shellAutopilotState(g), nil
 }
 
-// shellAutopilotState is Autopilot's glance as the shell reads it.
+// shellAutopilotState is Autopilot's glance as the shell reads it. While Autopilot is off,
+// the menu bar shows none of it, and the window's close counts no routine (the glance's
+// KeepsRunning), only an agent it started before, until that ends.
 func shellAutopilotState(g autopilot.Glance) desktop.AutopilotState {
 	out := desktop.AutopilotState{
-		Menu: menubar.AutopilotState{
-			Routines: g.Routines, Paused: g.Paused, NeedsYou: g.NeedsYou,
-			Working: make([]menubar.AgentRun, 0, len(g.Working)),
-		},
+		Menu:         menubar.AutopilotState{Working: []menubar.AgentRun{}},
 		KeepsRunning: g.KeepsRunning(),
+	}
+
+	if !g.On {
+		return out
+	}
+
+	out.Menu = menubar.AutopilotState{
+		Routines: g.Routines, Paused: g.Paused, NeedsYou: g.NeedsYou,
+		Working: make([]menubar.AgentRun, 0, len(g.Working)),
 	}
 
 	for _, w := range g.Working {

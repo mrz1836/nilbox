@@ -110,6 +110,7 @@ export default function NotificationsView({
             onClearQuery={onClearQuery}
             onOpen={onOpen}
             onSettings={onNotificationSettings}
+            autopilot={settings?.autopilot.enabled === true}
           />
         ) : (
           <GitHubNotificationsTab

@@ -224,11 +224,10 @@ func TestTheInboxReadsTheRoutinesSearchesForTheAccountSignedIn(t *testing.T) {
 	c := bootstrap(t, testOptions(t, ".claude"))
 	ctx := t.Context()
 
-	search := watch.Search{Kind: item.KindPR, Authors: []string{"app/dependabot"}, Where: []string{watch.Me}}
-	routine := boundSpec()
-	routine.Watch.Sources = []spec.Source{{Search: &search}}
+	_, err := c.Settings.SetAutopilotEnabled(ctx, true)
+	require.NoError(t, err)
 
-	saved, err := c.Autopilot.Save(ctx, autopilot.Draft{Name: "Dependabot", Spec: routine})
+	saved, err := c.Autopilot.Save(ctx, autopilot.Draft{Name: "Dependabot", Spec: myDependabotSpec()})
 	require.NoError(t, err)
 
 	_, err = c.Autopilot.SetEnabled(ctx, saved.ID, true, autopilot.CurrentRun)
@@ -244,6 +243,87 @@ func TestTheInboxReadsTheRoutinesSearchesForTheAccountSignedIn(t *testing.T) {
 	assert.Contains(t, got[0].Query, "user:octo-user")
 	assert.True(t, got[0].Follow, "Checks fail reads the checks")
 	assert.NotNil(t, c.WatchPasses, "the desktop shell runs the watch passes")
+}
+
+// myDependabotSpec is a routine that tells the user when a pull request Dependabot opened
+// on one of their repositories fails its checks: a search of the account signed in.
+func myDependabotSpec() spec.Spec {
+	search := watch.Search{Kind: item.KindPR, Authors: []string{"app/dependabot"}, Where: []string{watch.Me}}
+	routine := boundSpec()
+	routine.Watch.Sources = []spec.Source{{Search: &search}}
+
+	return routine
+}
+
+// lockFree reports whether another copy of the app could take Autopilot's lock at path.
+func lockFree(t *testing.T, path string) bool {
+	t.Helper()
+
+	other := autopilot.NewLock(path)
+
+	held, err := other.TryLock()
+	require.NoError(t, err)
+	other.Unlock()
+
+	return held
+}
+
+func TestAutopilotIsOffAndInertOnAFreshInstall(t *testing.T) {
+	t.Parallel()
+
+	opts := testOptions(t, ".claude")
+	c := bootstrap(t, opts)
+	ctx := t.Context()
+
+	set, err := c.Settings.Get(ctx)
+	require.NoError(t, err)
+	assert.False(t, set.Autopilot.Enabled, "Autopilot (beta) starts off")
+
+	// A routine switched on, for the account signed in, is stored and does nothing.
+	require.NoError(t, prefsstore.New(c.DB, nil).Set(ctx, "inbox.viewer", "octo-user"))
+
+	saved, err := c.Autopilot.Save(ctx, autopilot.Draft{Name: "Dependabot", Spec: myDependabotSpec()})
+	require.NoError(t, err)
+
+	_, err = c.Autopilot.SetEnabled(ctx, saved.ID, true, autopilot.CurrentRun)
+	require.NoError(t, err)
+
+	source := &autopilotWatches{searches: autopilot.NewSearches(c.Autopilot)}
+	assert.False(t, c.AutopilotEngine.Enabled(), "the engine doesn't run")
+	assert.True(t, lockFree(t, opts.Paths.AutopilotLock), "and holds no lock")
+	assert.False(t, source.HoldsWatches(), "so the inbox sends no routine search")
+	assert.Empty(t, source.Watches("octo-user"), "and is handed none")
+
+	// The menu bar shows no Autopilot group, and the window's close quits as before.
+	shell, err := c.ShellAutopilot.State(ctx)
+	require.NoError(t, err)
+	assert.Zero(t, shell.Menu.Routines, "no Autopilot group")
+	assert.False(t, shell.KeepsRunning, "a routine on keeps nothing running")
+
+	// Turned on, the routine shows and keeps the app running, and its search is built.
+	_, err = c.Settings.SetAutopilotEnabled(ctx, true)
+	require.NoError(t, err)
+
+	shell, err = c.ShellAutopilot.State(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, 1, shell.Menu.Routines)
+	assert.True(t, shell.KeepsRunning)
+	assert.Len(t, source.searches.Rebuild(ctx).Searches, 1)
+
+	// Off again: the routine is as it was, and hidden.
+	_, err = c.Settings.SetAutopilotEnabled(ctx, false)
+	require.NoError(t, err)
+
+	shell, err = c.ShellAutopilot.State(ctx)
+	require.NoError(t, err)
+	assert.Zero(t, shell.Menu.Routines)
+	assert.False(t, shell.KeepsRunning)
+	assert.Empty(t, source.searches.Rebuild(ctx).Searches)
+
+	routines, err := c.Autopilot.List(ctx)
+	require.NoError(t, err)
+	require.Len(t, routines, 1)
+	assert.True(t, routines[0].Enabled, "the routine's own switch is left as it was")
 }
 
 func TestARoutineOfTriageStepsTakesAnyMode(t *testing.T) {

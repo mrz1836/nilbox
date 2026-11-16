@@ -52,7 +52,7 @@ import {
 import type { ReleaseRequest } from './lib/release'
 import type { RunRequest } from './lib/scriptRuns'
 import { foundToolsText, scriptsBadge, showsScripts } from './lib/scriptsTab'
-import { matchSettings } from './lib/settingsIndex'
+import { hiddenOf, matchSettings } from './lib/settingsIndex'
 import { itemWorktrees } from './lib/itemWorktrees'
 import { runningSession, sessionsOf } from './lib/sessions'
 import { useGitHubThreads } from './lib/useGitHubThreads'
@@ -556,11 +556,16 @@ export function App() {
   // opens and again whenever one changes.
   const agentSessions = useSessions()
   const notifications = useNotifications()
+  // autopilotOn is Autopilot (beta), as the settings say: off, as on a fresh install, and
+  // until the settings load, the window shows none of Autopilot (no tab, no settings, no
+  // chip or mark on a row, no banner switch, no type of notification).
+  const autopilotOn = config.settings?.autopilot.enabled === true
   // autopilot is Autopilot as the whole window shares it: what its tab counts, the
   // routines (whose names the rows give a routine's marks), and the engine; chips are the
-  // newest match a routine has on each inbox item, for its ⚡ chip.
+  // newest match a routine has on each inbox item, for its ⚡ chip, read only while
+  // Autopilot is on.
   const autopilot = useAutopilot()
-  const chips = useAutopilotChips(config.items.map((i) => i.id).join(','))
+  const chips = useAutopilotChips(autopilotOn ? config.items.map((i) => i.id).join(',') : '')
   const [nav, go] = useReducer(navigate, startNav)
   // notificationsTab is the Notifications page's tab: the one chosen this run, or else the
   // one the settings remember.
@@ -588,8 +593,16 @@ export function App() {
     integrations.tools !== null && config.settings !== null,
     config.settings?.integrations.announced ?? false,
   )
-  // A Scripts tab gone, as when every integration was turned off, shows the inbox.
-  const view = nav.view === 'scripts' && !scriptsShown ? 'inbox' : nav.view
+  // A Scripts tab gone, as when every integration was turned off, shows the inbox, and so
+  // does an Autopilot tab gone, as Autopilot (beta) is turned off.
+  const view =
+    (nav.view === 'scripts' && !scriptsShown) || (nav.view === 'autopilot' && !autopilotOn) ? 'inbox' : nav.view
+  // notificationLists are the Notifications page's Show and Type, Autopilot's type read as
+  // every type while Autopilot is off, since the page doesn't offer it then.
+  const notificationLists =
+    autopilotOn || nav.notificationLists.app.type !== 'autopilot'
+      ? nav.notificationLists
+      : { ...nav.notificationLists, app: { ...nav.notificationLists.app, type: 'all' as const } }
   const inboxQuery = useQueryOf(nav.queries.inbox)
   const worktreesQuery = useQueryOf(nav.queries.worktrees)
   const notificationsQuery = useQueryOf(nav.queries.notifications)
@@ -637,8 +650,15 @@ export function App() {
   const [autopilotRequest, setAutopilotRequest] = useState<AutopilotRequest | null>(null)
 
   // openAutopilot opens the Autopilot tab at what a target names: Activity, at its match
-  // when it names one, or its routine. The tab says why when that is no longer there.
+  // when it names one, or its routine. The tab says why when that is no longer there; while
+  // Autopilot (beta) is off, there is no tab, and a toast says where to turn it on.
   const openAutopilot = (target: AutopilotTarget) => {
+    if (!autopilotOn) {
+      sayOfRun('Autopilot is off. Turn it on in Settings → Labs to see this.')
+
+      return
+    }
+
     requests.current += 1
     setAutopilotRequest({ seq: requests.current, target })
     go({ type: 'show', view: 'autopilot' })
@@ -1104,7 +1124,7 @@ export function App() {
         }
       case 'notifications': {
         if (notificationsTab === 'app') {
-          const { show, type } = nav.notificationLists.app
+          const { show, type } = notificationLists.app
           const entries = filterEntries(notifications.log.items, show, type)
 
           return {
@@ -1115,7 +1135,7 @@ export function App() {
           }
         }
 
-        const { show, type } = nav.notificationLists.github
+        const { show, type } = notificationLists.github
         const threads = filterThreads(githubThreads.list?.threads ?? [], show, type)
 
         return {
@@ -1129,7 +1149,7 @@ export function App() {
         }
       }
       case 'settings':
-        return { ...base, matches: matchSettings(settingsQuery)?.matches ?? null }
+        return { ...base, matches: matchSettings(settingsQuery, hiddenOf(config.settings))?.matches ?? null }
     }
   }
 
@@ -1173,7 +1193,7 @@ export function App() {
           worktreeCount={sweeps.count}
           worktreeAttention={sweeps.attention}
           scripts={scriptsShown ? scriptsBadge(scriptRuns.runs, integrations.tools) : null}
-          autopilot={autopilotBadge(autopilot.glance, autopilot.routines, autopilot.engine)}
+          autopilot={autopilotOn ? autopilotBadge(autopilot.glance, autopilot.routines, autopilot.engine) : null}
           onOpenSettings={openSettings}
           notifications={notifications}
           onOpenNotification={openNotification}
@@ -1198,7 +1218,7 @@ export function App() {
           <ErrorBanner className="mx-4 mt-4">Could not load the launch settings: {config.error}</ErrorBanner>
         )}
         <main className="min-h-0 flex-1 overflow-y-auto">
-          <AutopilotRowsContext value={rows}>
+          <AutopilotRowsContext value={autopilotOn ? rows : null}>
             <Activity mode={mode('inbox')}>
               <InboxView
                 inbox={inbox}
@@ -1249,7 +1269,7 @@ export function App() {
                       go({ type: 'notifications', tab })
                       remember(setNotificationsTab(tab), 'the Notifications page’s tab')
                     }}
-                    lists={nav.notificationLists}
+                    lists={notificationLists}
                     onLists={(lists) => {
                       go({ type: 'notificationLists', lists })
                     }}

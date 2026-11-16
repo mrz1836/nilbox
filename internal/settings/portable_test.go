@@ -115,6 +115,7 @@ func customize(t *testing.T, svc *Service, db *sql.DB, home string) string {
 		func() (Settings, error) { return svc.SetScriptSources(ctx, false, true) },
 		func() (Settings, error) { return svc.SetShowRuns(ctx, true) },
 		func() (Settings, error) { return svc.SetUpdateMode(ctx, updateprefs.ModeNotify) },
+		func() (Settings, error) { return svc.SetAutopilotEnabled(ctx, true) },
 		func() (Settings, error) { return svc.SetAutopilotPaused(ctx, true) },
 		func() (Settings, error) { return svc.SetAutopilotDefaultMode(ctx, autopilotprefs.ModeDryRun) },
 		func() (Settings, error) { return svc.SetAutopilotRunsPerDay(ctx, 5) },

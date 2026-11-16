@@ -29,6 +29,7 @@ export type SettingsSection =
   | 'trust'
   | 'files'
   | 'integrations'
+  | 'labs'
   | 'backup'
   | 'about'
 
@@ -43,15 +44,36 @@ export interface SectionGroup {
 // app, then the inbox's, then Autopilot's, which acts on the inbox's items, then the
 // agents' in the order they are set up (where the clones live, the profiles a launch runs
 // with, the launch itself and what it trusts, and the worktrees it leaves behind), then
-// the tools, and last the setup as a whole, kept in a backup, and About.
+// the tools, then what is still being built (Labs), and last the setup as a whole, kept in
+// a backup, and About. Autopilot's group shows only while Autopilot (beta) is on (Hidden).
 export const sectionGroups: readonly SectionGroup[] = [
   { heading: '', sections: ['account', 'appearance', 'notifications', 'github', 'refreshing', 'status'] },
   { heading: 'Inbox', sections: ['snoozing', 'reviewing'] },
   { heading: 'Autopilot', sections: ['autopilot'] },
   { heading: 'Agents', sections: ['repositories', 'profiles', 'launching', 'trust', 'files', 'worktrees'] },
   { heading: 'Tools', sections: ['integrations'] },
-  { heading: '', sections: ['backup', 'about'] },
+  { heading: '', sections: ['labs', 'backup', 'about'] },
 ]
+
+// Hidden says which settings that come and go the window leaves out now: Autopilot's
+// section, and its banner switches in Notifications, while Autopilot (beta) is off.
+export interface Hidden {
+  autopilot: boolean
+}
+
+// hiddenOf is what the settings hide: Autopilot's settings while it is off, and while the
+// settings load, since a fresh install has it off.
+export function hiddenOf(settings: { autopilot: { enabled: boolean } } | null): Hidden {
+  return { autopilot: settings?.autopilot.enabled !== true }
+}
+
+// nothingHidden hides no setting.
+const nothingHidden: Hidden = { autopilot: false }
+
+// shownSection reports whether the settings page shows section, as hidden says.
+export function shownSection(section: SettingsSection, hidden: Hidden = nothingHidden): boolean {
+  return !(hidden.autopilot && section === 'autopilot')
+}
 
 // sectionOrder is the sidebar's order, its headings aside.
 export const sectionOrder: readonly SettingsSection[] = sectionGroups.flatMap((group) => group.sections)
@@ -126,6 +148,10 @@ export const sectionInfo: Readonly<Record<SettingsSection, { label: string; desc
     label: 'Integrations',
     description: `Tools ${brand.name} runs for you: mage-x releases, go-pre-commit hooks, and scripts.`,
   },
+  labs: {
+    label: 'Labs',
+    description: `Parts of ${brand.name} still being built, to try before they are done. Each is off until you turn it on.`,
+  },
   backup: {
     label: 'Back up and restore',
     description:
@@ -149,6 +175,9 @@ export interface SettingEntry {
   // keywords are other words it is looked for by.
   keywords: readonly string[]
   template?: Template
+  // autopilot marks one of Autopilot's settings outside its own section, which shows, as
+  // that section does, only while Autopilot (beta) is on.
+  autopilot?: boolean
 }
 
 // agentNames are the coding agents' names, as their rows' labels hold them, and as people
@@ -163,17 +192,19 @@ const agents: Readonly<Record<string, readonly string[]>> = { Claude: ['Claude C
 type BannerGroup = 'inbox' | 'autopilot' | 'session'
 
 // banner is each switch of a group of notification kinds, under its label; Autopilot's are
-// found by Autopilot's name and its routines too.
+// found by Autopilot's name and its routines too, and only while Autopilot is on.
 function banner(group: BannerGroup): SettingEntry[] {
   return notificationKinds
     .filter((k) => (k.session === true ? 'session' : k.autopilot === true ? 'autopilot' : 'inbox') === group)
-    .map((k) => ({
-      label: k.label,
-      keywords: [k.title, 'banner', 'notify', ...(group === 'autopilot' ? ['Autopilot', 'routine'] : [])],
-    }))
+    .map((k) =>
+      group === 'autopilot'
+        ? { label: k.label, keywords: [k.title, 'banner', 'notify', 'Autopilot', 'routine'], autopilot: true }
+        : { label: k.label, keywords: [k.title, 'banner', 'notify'] },
+    )
 }
 
-// settingsIndex lists each section's settings in the order the section shows them.
+// settingsIndex lists each section's settings in the order the section shows them, with
+// Autopilot (beta) on: off, Autopilot's section and the entries marked autopilot don't show.
 export const settingsIndex: Readonly<Record<SettingsSection, readonly SettingEntry[]>> = {
   account: [
     {
@@ -196,7 +227,7 @@ export const settingsIndex: Readonly<Record<SettingsSection, readonly SettingEnt
     { label: 'Banners', keywords: ['notifications', 'alerts'] },
     ...banner('inbox'),
     { label: 'Test', keywords: ['test notification', 'send a test', 'sample banner', 'permission'] },
-    { label: 'Autopilot', keywords: ['Autopilot banners', 'routines', 'notices'] },
+    { label: 'Autopilot', keywords: ['Autopilot banners', 'routines', 'notices'], autopilot: true },
     ...banner('autopilot'),
     { label: 'Agent sessions', keywords: ['session banners', ...agentNames] },
     ...banner('session'),
@@ -425,6 +456,12 @@ export const settingsIndex: Readonly<Record<SettingsSection, readonly SettingEnt
       keywords: ['release', 'merge', 'after merge', 'toast', 'magex', 'tag', 'version'],
     },
   ],
+  labs: [
+    {
+      label: 'Autopilot (beta)',
+      keywords: ['Autopilot', 'beta', 'experimental', 'preview', 'early access', 'routines', 'turn on', 'automation'],
+    },
+  ],
   backup: [
     {
       label: 'Back up your setup',
@@ -561,16 +598,22 @@ function rowMatches(terms: readonly Term[], found: readonly Indexed[], section: 
   })
 }
 
-// matchSettings finds the settings a query names, or null when the query filters
-// nothing. Settings take words only: a key:value is looked for as written.
-export function matchSettings(query: string): SettingsMatch | null {
+// shownEntry reports whether the settings page shows an entry of section, as hidden says.
+function shownEntry({ section, entry }: Indexed, hidden: Hidden): boolean {
+  return shownSection(section, hidden) && !(hidden.autopilot && entry.autopilot === true)
+}
+
+// matchSettings finds the settings a query names, among those hidden leaves shown (all of
+// them by default), or null when the query filters nothing. Settings take words only: a
+// key:value is looked for as written.
+export function matchSettings(query: string, hidden: Hidden = nothingHidden): SettingsMatch | null {
   const { terms } = parseQuery(query, { keys: [] })
 
   if (terms.length === 0) {
     return null
   }
 
-  const found = indexed.filter(({ hay }) => matchesTerms(terms, hay))
+  const found = indexed.filter((i) => shownEntry(i, hidden) && matchesTerms(terms, i.hay))
   const sections = new Map<SettingsSection, number>()
 
   for (const { section } of found) {
