@@ -236,10 +236,18 @@ func brandJSON() []byte {
 		"}\n")
 }
 
+// AppleEventsUsage is the Info.plist's NSAppleEventsUsageDescription for the app named
+// name, which macOS shows when the app first asks to control another: the release's,
+// brand.Name, in the generated file, and a build from source's, brand.DevName, which
+// magex app:build stamps over it.
+func AppleEventsUsage(name string) string {
+	return name + " opens your terminal app (such as iTerm2) to start coding sessions in your local clones, " +
+		"and asks Finder to move a copy of a tool to the Trash when you choose to."
+}
+
 // infoPlist renders the macOS bundle metadata. Keys are sorted, as plutil writes them.
 func infoPlist() []byte {
-	automation := brand.Name + " opens your terminal app (such as iTerm2) to start coding sessions in your local clones, " +
-		"and asks Finder to move a copy of a tool to the Trash when you choose to."
+	automation := AppleEventsUsage(brand.Name)
 
 	entries := []struct {
 		key   string
