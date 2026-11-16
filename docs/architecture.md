@@ -1210,10 +1210,11 @@ index would refuse. Its queries are in
   compare ignoring case, and with no one signed in none is another's). It doesn't run.
   `List` also gives each routine its `Figures`, for its status line, from one grouped read of
   the ledger (`ListRoutineFigures`, then `ListMatchHeads` for each routine's newest match):
-  what it did today (real matches that acted since local midnight in the clock's zone), what
-  it would have done today in Dry run, what waits for the user, and when its newest match
-  that did something was made and whether that was a Dry run's. A baseline, and a match that
-  closed before it acted, count in none of them.
+  how many matches it recorded today (since local midnight in the clock's zone), real ones
+  and a Dry run's apart, how many wait for the user, and when its newest match was made and
+  whether that was a Dry run's. Each counts the matches `ListLatestItemMatches` counts: open,
+  or closed as done, skipped, or dismissed; a baseline, and a match that closed before it
+  acted, count in none of them.
 - `RoutineNames` gives every routine's name by its ID, the deleted ones included
   (`RoutineName.Deleted`), so the window still names a routine the history, a mark, or a chip
   names after it is gone.
