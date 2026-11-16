@@ -1,0 +1,52 @@
+{
+    "data": {
+        "rateLimit": {
+            "cost": 1,
+            "limit": 5000,
+            "remaining": 4932,
+            "resetAt": "2026-11-16T06:43:00Z",
+            "used": 68
+        },
+        "w0": {
+            "issueCount": 2,
+            "nodes": [
+                {
+                    "__typename": "PullRequest",
+                    "headRefOid": "5fd809bfadbde5de61921a4e9b20d22b3a03c5d2",
+                    "id": "PR_tJ5cmjwB8vChlkHAXcXgDd",
+                    "isDraft": false,
+                    "number": 288,
+                    "prState": "OPEN",
+                    "repository": {
+                        "id": "R_38MDu6ImV1",
+                        "isArchived": false
+                    },
+                    "statusCheckRollup": {
+                        "state": "FAILURE"
+                    },
+                    "updatedAt": "2026-11-06T10:04:34Z"
+                },
+                {
+                    "__typename": "PullRequest",
+                    "headRefOid": "d89b403ca0994df14cc90c6555c39d99d5697cb4",
+                    "id": "PR_4eNvuM4vfrqQeB1DTscGOy",
+                    "isDraft": false,
+                    "number": 287,
+                    "prState": "OPEN",
+                    "repository": {
+                        "id": "R_38MDu6ImV1",
+                        "isArchived": false
+                    },
+                    "statusCheckRollup": {
+                        "state": "FAILURE"
+                    },
+                    "updatedAt": "2026-10-30T10:04:24Z"
+                }
+            ]
+        },
+        "w1": {
+            "issueCount": 0,
+            "nodes": []
+        }
+    }
+}

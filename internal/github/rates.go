@@ -1,6 +1,7 @@
 package github
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"strconv"
@@ -40,6 +41,53 @@ type RateReading struct {
 
 	// ResetAt is when the budget refills in full.
 	ResetAt time.Time
+
+	// Purpose is what the app sent the request this reading came with for, as its context
+	// named it (WithPurpose), so the API budget can tell what each part of the app spent;
+	// PurposeOther for a request no part named.
+	Purpose Purpose
+}
+
+// Purpose names what the app sent a request for, among the parts that spend the GraphQL
+// budget on their own: the inbox's refresh, the routines' searches, the checks follower,
+// and Autopilot's own reads.
+type Purpose string
+
+// The purposes a request can be sent for.
+const (
+	// PurposeOther is a request no part named: an item's own read, a sheet's, an edit, or
+	// anything else the user's click sends.
+	PurposeOther Purpose = ""
+
+	// PurposeInbox is a whole inbox refresh: the inbox query, the details, and the file
+	// checks it runs.
+	PurposeInbox Purpose = "inbox"
+
+	// PurposeWatches is the routines' searches and the details of the items they watch.
+	PurposeWatches Purpose = "watches"
+
+	// PurposeFollower is the checks follower's rounds.
+	PurposeFollower Purpose = "follower"
+
+	// PurposeAutopilot is Autopilot's own reads: check names, a routine's test, and the
+	// reads before it acts.
+	PurposeAutopilot Purpose = "autopilot"
+)
+
+// purposeKey is the context key WithPurpose stores a Purpose under.
+type purposeKey struct{}
+
+// WithPurpose returns ctx with the requests sent under it counted for p.
+func WithPurpose(ctx context.Context, p Purpose) context.Context {
+	return context.WithValue(ctx, purposeKey{}, p)
+}
+
+// PurposeOf returns what the requests sent under ctx are counted for: the Purpose
+// WithPurpose gave it, or PurposeOther.
+func PurposeOf(ctx context.Context) Purpose {
+	p, _ := ctx.Value(purposeKey{}).(Purpose)
+
+	return p
 }
 
 // RateObserver hears every budget reading the client's responses carry, with what the
@@ -69,13 +117,14 @@ func readingFrom(h http.Header) (RateReading, bool) {
 }
 
 // observe tells the client's observer, if any, about a response's reading and what the
-// request spent.
-func (c *Client) observe(h http.Header, spent int) {
+// request, sent under ctx, spent, for the purpose ctx names.
+func (c *Client) observe(ctx context.Context, h http.Header, spent int) {
 	if c.Rates == nil {
 		return
 	}
 
 	if reading, ok := readingFrom(h); ok {
+		reading.Purpose = PurposeOf(ctx)
 		c.Rates.ObserveRate(reading, spent)
 	}
 }

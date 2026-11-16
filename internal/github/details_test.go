@@ -129,7 +129,7 @@ func TestFetchDetailsBatchesTheIDsSideBySide(t *testing.T) {
 		sizes    []int
 	)
 
-	ids := make([]string, 120)
+	ids := make([]string, 100)
 	for i := range ids {
 		ids[i] = fmt.Sprintf("I_fakeNodeId%d", i)
 	}
@@ -156,9 +156,9 @@ func TestFetchDetailsBatchesTheIDsSideBySide(t *testing.T) {
 	details, err := client.FetchDetails(t.Context(), NewToken(fakeToken), ids, DetailOptions{})
 	require.NoError(t, err)
 
-	assert.Equal(t, []int{30, 30, 30, 30}, sizes, "a large inbox gets bigger batches, not more requests")
+	assert.Equal(t, []int{25, 25, 25, 25}, sizes, "a large inbox gets bigger batches, not more requests")
 	assert.Equal(t, 4, details.Requests)
-	assert.Len(t, details.Items, 120)
+	assert.Len(t, details.Items, 100)
 	assert.Equal(t, 1+2+3+4, details.RateLimit.Cost, "the cost adds up across requests")
 	assert.Equal(t, 4960, details.RateLimit.Remaining, "the budget is the lowest reading, the latest")
 }
@@ -193,7 +193,8 @@ func TestDetailsBatches(t *testing.T) {
 		{items: 10, want: []int{10}},
 		{items: 20, want: []int{10, 10}},
 		{items: 41, want: []int{11, 11, 11, 8}},
-		{items: 300, want: []int{50, 50, 50, 50, 50, 50}},
+		{items: 100, want: []int{25, 25, 25, 25}},
+		{items: 130, want: []int{25, 25, 25, 25, 25, 5}},
 	}
 
 	for _, tt := range tests {

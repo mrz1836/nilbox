@@ -47,9 +47,46 @@ func TestATrackerHoldsTheNewestReadingAndCountsWhatTheAppSpent(t *testing.T) {
 	assert.Equal(t, Reading{
 		Known: true, Limit: 5000, Remaining: 4870, Used: 130,
 		ResetAt: "2026-01-10T13:00:00Z", TakenAt: "2026-01-10T12:20:01Z",
-		Spent: 7, Requests: 3, Complete: false,
+		Spent: 7, Requests: 3, Complete: false, Purposes: Purposes{Other: 7},
 	}, got, "the app opened 20 minutes into the window, so it may have missed what it spent before")
 	assert.Equal(t, 4, events.Count(), "the window hears each change")
+}
+
+func TestTheSpendIsSplitByPurposeAndTheSharesAddUp(t *testing.T) {
+	t.Parallel()
+
+	tr, _, _ := newTestTracker()
+
+	tagged := func(used int, p github.Purpose) github.RateReading {
+		r := graphql(used, reset)
+		r.Purpose = p
+
+		return r
+	}
+
+	tr.ObserveRate(tagged(100, github.PurposeInbox), 3)
+	tr.ObserveRate(tagged(102, github.PurposeWatches), 2)
+	tr.ObserveRate(tagged(103, github.PurposeWatches), 1)
+	tr.ObserveRate(tagged(104, github.PurposeFollower), 1)
+	tr.ObserveRate(tagged(106, github.PurposeAutopilot), 2)
+	tr.ObserveRate(tagged(107, github.PurposeOther), 1)
+	tr.ObserveRate(tagged(107, github.PurposeWatches), 0) // a reading that spent nothing
+
+	got := tr.gauge(12).GraphQL
+	assert.Equal(t, Purposes{Inbox: 3, Watches: 3, Follower: 1, Autopilot: 2, Other: 1}, got.Purposes)
+	assert.Equal(t, 10, got.Spent, "the reading sums every request")
+	assert.Equal(t, 6, got.Requests)
+
+	p := got.Purposes
+	assert.Equal(t, got.Spent, p.Inbox+p.Watches+p.Follower+p.Autopilot+p.Other, "the shares add up")
+	assert.Equal(t, 107, got.Used, "what a request was for is no part of the reading")
+
+	state, err := tr.state()
+	require.NoError(t, err)
+
+	restored, _, _ := newTestTracker()
+	require.NoError(t, restored.Restore(state))
+	assert.Equal(t, p, restored.gauge(12).GraphQL.Purposes, "the split outlives the app")
 }
 
 func TestANewWindowStartsCountingAgain(t *testing.T) {

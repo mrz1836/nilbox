@@ -58,6 +58,26 @@ type held struct {
 	spent       int
 	requests    int
 	countedFrom time.Time
+
+	// purposes splits spent by what each request was sent for (github.Purpose), so the
+	// shares add up to spent.
+	purposes map[github.Purpose]int
+}
+
+// spend counts what one request, sent for purpose, spent from the budget.
+func (h *held) spend(spent int, purpose github.Purpose) {
+	if spent <= 0 {
+		return
+	}
+
+	h.spent += spent
+	h.requests++
+
+	if h.purposes == nil {
+		h.purposes = make(map[github.Purpose]int)
+	}
+
+	h.purposes[purpose] += spent
 }
 
 // windowStart is when the window a reading belongs to began.
@@ -136,15 +156,6 @@ func (t *Tracker) ObserveRate(reading github.RateReading, spent int) {
 	}
 }
 
-// counted is how many requests a spend stands for: one, unless it spent nothing.
-func counted(spent int) int {
-	if spent > 0 {
-		return 1
-	}
-
-	return 0
-}
-
 // Seed starts the Tracker from readings kept from an earlier run, for each budget it has
 // no reading of yet, so the window shows them until the first response. A seeded budget
 // counts nothing the app spent: that was spent in another run.
@@ -189,6 +200,10 @@ func (t *Tracker) changed() {
 // observeLocked records a reading and its spend, and reports whether anything changed.
 // The caller holds mu.
 func (t *Tracker) observeLocked(reading github.RateReading, spent int, now time.Time) bool {
+	// What the request was for counts its spend, and is no part of the budget's reading.
+	purpose := reading.Purpose
+	reading.Purpose = github.PurposeOther
+
 	h := t.budgets[reading.Resource]
 
 	switch {
@@ -196,10 +211,9 @@ func (t *Tracker) observeLocked(reading github.RateReading, spent int, now time.
 		(reading.ResetAt.Before(h.reading.ResetAt) && reading.ResetAt.After(now)):
 		// The first reading, the first of a new window, or another account's: counting
 		// starts again.
-		t.budgets[reading.Resource] = &held{
-			reading: reading, takenAt: now, spent: max(spent, 0), requests: counted(spent),
-			countedFrom: later(t.started, windowStart(reading)),
-		}
+		h = &held{reading: reading, takenAt: now, countedFrom: later(t.started, windowStart(reading))}
+		h.spend(spent, purpose)
+		t.budgets[reading.Resource] = h
 
 		return true
 	case reading.ResetAt.Before(h.reading.ResetAt):
@@ -208,8 +222,7 @@ func (t *Tracker) observeLocked(reading github.RateReading, spent int, now time.
 	}
 
 	changed := spent > 0
-	h.spent += max(spent, 0)
-	h.requests += counted(spent)
+	h.spend(spent, purpose)
 
 	// A reading as new as the one held is the budget as of now, even when nothing moved.
 	if reading.Used >= h.reading.Used {
