@@ -115,7 +115,7 @@ func TestOverTheDailyCapLateAtNightTheRunStartsAfterMidnightOnce(t *testing.T) {
 
 		s.Advance(30*time.Minute, true)
 
-		assert.Equal(t, map[int]string{1: "done:ran", 2: "running:"}, states(s), "after midnight it starts")
+		assert.Equal(t, map[int]string{1: "done:ran", 2: running}, states(s), "after midnight it starts")
 		assert.Len(t, s.Runner.Started(), 2, "once")
 	})
 }
@@ -228,7 +228,7 @@ func TestTheItemMergedWhileItsMatchWaitsAndWhileItRuns(t *testing.T) {
 		s.World.Fail(2)
 		s.Refresh()
 		s.Refresh()
-		require.Equal(t, []string{"queued:slot", "running:"}, tally(s))
+		require.Equal(t, []string{"queued:slot", running}, tally(s))
 
 		s.World.Merge(1)
 		s.World.Merge(2)

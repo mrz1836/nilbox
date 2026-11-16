@@ -84,25 +84,25 @@ func TestEveryLimitDelaysAStartAndOnlyItsOwnLimitsCloseOne(t *testing.T) {
 	}{
 		{
 			name: "agents at once", settings: func(c *autopilotprefs.Config) { c.AgentsAtOnce = 1 },
-			want: []string{"queued:slot", "running:"},
+			want: []string{"queued:slot", running},
 		},
 		{
 			name: "agent runs a day", settings: func(c *autopilotprefs.Config) { c.RunsPerDay = 1 },
-			want: []string{"queued:cap_runs", "running:"},
+			want: []string{"queued:cap_runs", running},
 		},
 		{
 			name: "the routine's runs a day", edit: func(sp *spec.Spec) { sp.Limits.RunsPerDay = new(1) },
-			want: []string{"queued:cap_runs", "running:"},
+			want: []string{"queued:cap_runs", running},
 		},
 		{
 			name: "the daily cap", settings: func(c *autopilotprefs.Config) {
 				c.DailyCap = autopilotprefs.DailyCap{Amount: 5, Unit: autopilotprefs.UnitUSD}
 			},
-			want: []string{"queued:cap_spend", "running:"},
+			want: []string{"queued:cap_spend", running},
 		},
 		{
 			name: "the routine's own budget", edit: func(sp *spec.Spec) { sp.Limits.BudgetPerDay = &spec.Budget{USD: new(4.0)} },
-			want: []string{"queued:cap_spend", "running:"},
+			want: []string{"queued:cap_spend", running},
 		},
 		{
 			name: "active hours", edit: func(sp *spec.Spec) {
