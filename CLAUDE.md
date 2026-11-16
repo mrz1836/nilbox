@@ -342,7 +342,27 @@ changing the package, and keep the section and its summary in step.
   measured in November 2026, github.com answered `If-Modified-Since` with a charged 200 and
   `If-None-Match` with a free 304), and a 304 spends nothing, but says only that page 1 is as it
   was; `internal/repoguard/githubnotifications_test.go` holds the client to `GET /notifications`
-  and `DELETE` and `PATCH` on `/notifications/threads/{id}`.
+  and `DELETE` and `PATCH` on `/notifications/threads/{id}`. Every request carries what it was
+  sent for (`github.WithPurpose`: the inbox's refresh, the routines' searches, the checks
+  follower, or Autopilot's own reads), and the `Tracker` splits each budget's spend by it
+  (`Reading.Purposes`, which add up to `Spent`); the budget menu says Autopilot's share in one
+  line, only once it spent something.
+- `internal/inbox/` also reads the routines' searches beside its own lists. A refresh hands its
+  watch pass (`WatchPasses`, a desktop worker run before the scheduler) the searches
+  `Config.Watches` gives, whose requests (`github.FetchWatches`, packed a few searches to a
+  request) go out beside the inbox query, outside its errgroup, so the refresh stores and
+  returns on the inbox's own; once the inbox is stored and told, the pass reads the details of
+  the watched items that are new or changed with no lock held, then stores them, their
+  `item_watches` rows, and each search's state (`inbox.watches`) through the order, and tells
+  `Config.Changed` (core's Go-only `event.InboxItemsChanged`). A watched item is in no list or
+  count; a failed search, and a truncated one's tail, keep their rows, stale; no pass goes out
+  under a quarter of the GraphQL budget; the follower takes the watched pull requests a routine
+  follows, muted or not; `items.state` is written by every read that carries it; items nothing
+  refers to are pruned after 30 days (`Config.Keep` adds what else refers); and a guard test
+  decides every query that reads the reason flags (`TestEveryReasonFlagQueryIsDecided`).
+  Autopilot's own reads (`SearchNow`, `ReadChecks`) go through `inbox.Routines`, never the bound
+  Service, whose `ItemsByID` serves a routine's Watching list.
+  Full design: [docs/architecture.md](docs/architecture.md#internalinbox)
 - `internal/launcher/` resolves a launch (the agent first, then that agent's profile, model,
   and flags), plans it, and writes its files; `internal/launcher/terminal/` renders the launch
   script, which only changes into the folder and runs the agent, and opens it in the user's
@@ -728,7 +748,8 @@ changing the package, and keep the section and its summary in step.
   no service.
 - `internal/autopilot/` is Autopilot, which runs the user's routines. Its root package keeps
   them, in `autopilot_routines`, which it owns: the bound `Service` (`List`, `Get`, `Save`,
-  `Delete`, `Duplicate`, `SetEnabled`, `SetMode`, `Reorder`, `Catalog`) checks every spec on
+  `Delete`, `Duplicate`, `SetEnabled`, `SetMode`, `Reorder`, `Catalog`, and the builder's
+  `Suggest`, `Watching`, and `Test`) checks every spec on
   save and load, carries one that won't load (a newer build's, say) as broken with why and
   never rewrites it, stores a routine with a step this build doesn't offer in Dry run alone,
   starts a new one off in the mode Settings says (Ask first to begin with) and of the account
@@ -738,8 +759,11 @@ changing the package, and keep the section and its summary in step.
   mode, switch, and account are columns, never spec. It writes its copy,
   `autopilot.json` (`File`, the export format `Bundle`, `"<slug>-autopilot/1"`), after every
   change, which `Restore` brings back, off, into a table that is new, and holds a backup's
-  Autopilot section through `NewBackupPart`, apart from the Service. It reaches the rest only
-  through the interfaces it declares (`Prefs`, `Accounts`, `Names`), which
+  Autopilot section through `NewBackupPart`, apart from the Service. After every change it
+  builds again the snapshot of the enabled routines' searches for the account signed in, each
+  key once, which the inbox reads as each refresh starts (`NewSearches`, never bound). It
+  reaches the rest only through the interfaces it declares (`Prefs`, `Accounts`, `Names`,
+  `Items`, `Costs`), which
   `internal/core/adapters_autopilot.go` adapts, and never imports the inbox, the sheets, the
   launcher, the worktrees, the sessions, the runs, notify, settings, the desktop, or core (the
   repoguard boundary test). Beneath it, the routines core, five pure leaves that read nothing

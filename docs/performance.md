@@ -16,7 +16,10 @@ numbers with the `magex measure:*` targets.
 | Launch to prompt loaded | < 3 s | 1.15 s | Met, one run, for a launch whose files check out; 3.13 s with the placeholder repository's held-back first request, which a real hold spends waiting for your click anyway (see below) |
 | App binary size | < 30 MB | 22.9 MB | Met (21.7 MB before the issue sheet, the GitHub notifications, and the features that came with them; 17.0 MB before the integrations: Release, Hooks, Repo scripts, and the tool installer) |
 | Release binary, per architecture | < 30 MB a slice | 23.9 MB arm64, 25.9 MB x86_64 | Met by v0.3.1's universal build; the download itself, 16.9 MB as the disk image and 20.8 MB as the update's zip, is reported, not held to a target (see [Release footprint](#release-footprint)) |
-| API budget at 5-minute cadence | < 2% | 1.20% | Met: 5 points a refresh |
+| API budget at 5-minute cadence | < 2% | 1.20% | Met: 5 points a refresh; 0.72% (3 points) with the 20-item inbox measured again in November 2026 |
+| API budget with five routine searches | < 2% in all | 1.20–1.68% | Met: 4 to 7 points a refresh, by how many items the searches watch (see [Routine searches](#routine-searches)) |
+| The searches' cost to the inbox's store | No regression beyond the noise | 2.93 s → 2.81 s, 2.79 s → 3.11 s | Met within GitHub's spread for five searches over one account; a busy org's five added 0.3 s to the median, inside the run-to-run spread (see below) |
+| The watch pass, after the inbox's store | < 1 s, steady | 26 ms, or one details request | Met while nothing changed: 26 ms of the app's own work for 300 watched items; a pass with changed or half-hour-old items adds one request, 0.8–3.9 s of GitHub's time, which nothing waits on |
 
 Measured on an Apple Silicon Mac (M1 Max, 32 GB memory) running macOS 15.8, over its regular
 network connection. The first numbers were taken on the build host, a second Mac (M4 Pro,
@@ -314,8 +317,10 @@ hourly GraphQL budget GitHub reported: 1.20%. With 20 items, a refresh cost 3 po
 hour (0.72%). The REST `/rate_limit` request does not count against GitHub's rate limits.
 
 The details cost grows with the inbox: one request per 10 items up to 40 items, then four
-larger requests up to 200 items, then requests of 50 items; each costs a point, or two once it
-carries more than about 25 items. Asking for
+larger requests up to 100 items, then requests of 25 items; each costs a point. Since the
+details read each pull request's merge state too (`mergeStateStatus`, which GitHub works out
+per pull request, about 90 ms each, measured in November 2026), a request stops at 25 items,
+where it took 4.6 s; at 50 it came near GitHub's 10-second limit. Asking for
 the same details inside the inbox query's three searches would cost 12 points a refresh
 (2.9% of the budget), because GitHub prices nested lists by the result slots asked for, not
 the items returned; that dry-run cost is why the details are a separate query. Before the
@@ -376,6 +381,66 @@ after 16 checks. A follow
 resumed after a restart keeps the count and the 45 minutes it started with. Every request goes
 through the shared client, so the API budget gauge counts it.
 
+### Routine searches
+
+**What is measured.** A refresh with five [routine searches](desktop.md#routine-searches)
+beside the inbox's own: the time to the inbox's store (the inbox query and the listed items'
+details, side by side, as without searches), the searches' requests, sent beside them, and the
+watch pass after the store, which reads the details of the watched items that are new or
+changed and writes what the searches watch. Two sets of five were measured: five searches over
+the signed-in account alone (Dependabot's pull requests, those ready for review, the issues,
+those whose checks fail, and those whose checks run), which watch 3 items beyond the inbox's
+20; and five over the account and its busiest org (Dependabot's pull requests in each, the
+issues of both, the account's pull requests, and the org's pull requests ready for review),
+which match 1,233 items and watch 297, each search its 100 most recently updated at most.
+
+**How.** `magex measure:refresh searches=5` is the way: it adds a routine for each of the
+account's five searches to the scratch database, then times each refresh to the inbox's store
+and waits for its watch pass. On the M1 Max (2026-11-16) the app binary could not reach
+`api.github.com` (each run timed out connecting, as a per-app firewall holding a new binary
+does), so the numbers below were taken by sending the app's own query texts (`inboxQuery`,
+`detailsQuery`, `watchesQuery` over `packWatches`, and `detailsRepoQuery`) through `gh api
+graphql`, side by side as the app sends them, alternating rounds without and with the searches.
+Each `gh` call adds its own startup, about 0.3–0.4 s, to every time below, alike with and
+without the searches. The app's own work in a steady pass comes from `BenchmarkWatchPass` in
+`internal/inbox`.
+
+**The inbox's store.** Without searches, the 20-item inbox took 2.94, 2.78, and 2.93 s (median
+2.93 s), 3 points each; with the account's five searches beside it, 3.03, 2.67, and 2.81 s
+(median 2.81 s), still 3 points. With the busy org's five, eleven rounds each: without, a median
+of 2.79 s (2.44 to 4.90 s); with, 3.11 s (2.26 to 5.42 s), the searches' requests running 3.8 to
+5.3 s beside it. The account's five change nothing; the org's add about 0.3 s to the median,
+which is inside GitHub's run-to-run spread but held across the rounds, so it is GitHub serving
+the heavier searches beside the inbox query rather than anything the app waits for. The app's
+own work in a whole refresh is 23.3 ms (`BenchmarkRefreshCycle`, 20.4 ms before the searches,
+the arrival stamps, and the prune).
+
+**The searches.** A new search is packed as a full page, so the first refresh after the org's
+five were added sent them in 5 requests (5 points, 4.7–4.9 s); from the second, packed by what
+each returned, they took 3 requests (3 points). The account's five, which return a handful of
+items, took one request (1 point, 2.4–2.5 s) once their counts were known.
+
+**The watch pass.** Its first pass over the org's 297 new items read every one's details with
+its repository: in batches of 25, four side by side, five of the twelve requests ran past
+GitHub's 10-second limit and failed, which is why the pass reads watched items 15 to a request
+(`watchDetailsBatch`): 20 requests, 20 points, 22 s, none failed, once. A steady pass with
+nothing changed reads no details and takes the app 26 ms for 300 watched items
+(`BenchmarkWatchPass`). A pass with changed items, or with details half an hour old, reads them
+in one request of up to 15 (1 point, 0.8–3.9 s of GitHub's time after the store, which nothing
+waits on: the inbox is already shown); details that are only old fill the room the changed
+ones leave, or one request when none changed, so they never add more.
+
+**The budget.** At a refresh every five minutes, with 12 refreshes an hour and 5,000 points:
+
+| Searches | Points a refresh | An hour | Share of the hourly budget |
+|---|---|---|---|
+| None (20 listed items) | 3 | 36 | 0.72% |
+| The account's five (3 watched items) | 4, or 5 with a details read | 48–60 | 0.96–1.20% |
+| The org's five (297 watched items) | 7: 3 for the searches, 1 for the details | 84 | 1.68% |
+| The first refresh after adding the org's five | 3 + 5 + 20, once | | |
+
+Both stay under the 2% target for all of the app's GraphQL spend.
+
 <br>
 
 ## Reproducing
@@ -390,7 +455,11 @@ magex measure:all
 
 `magex measure:all` runs `measure:size`, `measure:startup`, `measure:refresh`, and
 `measure:launch` in that order, and each prints `key=value` lines. `measure:launch` takes an
-optional `agent=` (`claude`, the default, or `codex`). Run `measure:launch` from
+optional `agent=` (`claude`, the default, or `codex`), and `measure:refresh` an optional
+`searches=` (1 to 5), which adds that many routine searches over your account to each refresh
+and a `watch.*` line for each pass, the steady passes' median time after the inbox's store,
+and the refresh's total cost and budget share. A firewall that asks about each new binary has
+to allow the bundle's to reach `api.github.com` first. Run `measure:launch` from
 iTerm2, or allow the terminal you run it from to control iTerm2 under System Settings → Privacy
 & Security → Automation. Until macOS allows it, the target reports `NEEDS AUTOMATION
 PERMISSION`.

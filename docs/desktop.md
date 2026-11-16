@@ -74,7 +74,7 @@ pins.
 | `magex db:generate` | Regenerates each table owner's typed queries from its `queries/*.sql` and the migrations, with the sqlc version `.github/env/90-project.env` pins |
 | `magex db:check` | Fails when the generated queries are stale or a query does not prepare against the schema the migrations build |
 | `magex measure:startup` | Startup to the first frame on screen, over six launches |
-| `magex measure:refresh` | Five live, read-only inbox refreshes and the API budget they imply |
+| `magex measure:refresh [searches=5]` | Five live, read-only inbox refreshes and the API budget they imply; with `searches`, each also reads that many routine searches over your account, and the report adds the watch passes |
 | `magex measure:launch` | One real launch in iTerm2, timed until the agent runs in the clone |
 | `magex measure:size` | The size of the app binary and the bundle, `bin/Nilbox Dev.app` |
 | `magex measure:all` | Every measurement: size, startup, refresh, and launch, in that order |
@@ -1558,7 +1558,10 @@ color follows the share left:
 | Red | 10% or less |
 
 Click it for each budget's remaining points, when it resets, and who used it, and for what the
-inbox's own refreshes cost.
+inbox's own refreshes cost. Once Autopilot's [routine searches](#routine-searches) or its own
+reads spent something since the GraphQL budget last refilled, one line under the refreshes says
+how much, such as **Autopilot: 12 GraphQL points since it last refilled (<1% of the budget)**;
+there is no such line while it spent nothing.
 
 **How the readings stay current.** GitHub says what is left of a budget on every response it
 sends, so the gauge follows every request the app makes, without making one of its own: an inbox
@@ -2452,6 +2455,60 @@ so its **Snoozed** and **Dismissed** tabs are a click away, and an **Undo** that
 back ends it. With
 **Reduce motion** on (System Settings → Accessibility → Display), everything holds still and no
 confetti flies.
+
+<br>
+
+## Routine searches
+
+An Autopilot routine watches either the inbox's own lists, which every refresh reads already,
+or a GitHub search of its own, such as Dependabot's pull requests in your account. While a
+routine with a search is switched on, each inbox refresh reads that search too, beside the
+inbox's three, and stores what it finds apart from your lists: a watched item is never in
+Review requested, Authored, or Assigned, never in their counts, and never in the menu bar's
+count. Nothing here acts on what it finds yet; it keeps the items current for the routines.
+
+**What a search reads.** Identical searches across routines are read once. Each search
+returns the 100 most recently updated open items it matches, in a request of its own beside
+the inbox query, so the inbox never waits for it: the refresh stores your lists and shows them
+as fast as it does without searches, and the searches' items are stored a moment later. A
+search reads only what tells whether an item changed (its head commit, base branch, the
+checks' overall state, its update time, draft state, and state); the rest of an item, its
+mergeability, merge state, review decision, labels, and counts, comes from a read of the
+items that are new to the searches or changed since, or whose last such read is half an hour
+old, or whose checks were still running. A watched pull request whose routine acts on its
+checks is followed like a listed one while its checks run (see [the inbox
+cards](#inbox-cards)), whatever repository it is in, a muted one included.
+
+**When a search fails.** A search GitHub doesn't answer, or a request that times out, never
+fails the refresh: its items are kept, marked as not read this time, so they don't look as if
+they left it, until it answers again. A search that matched more than 100 items keeps the
+items past its first page the same way, for up to a week. While the GraphQL budget is down to
+its last quarter, no search is read at all, and your lists carry on. GitHub answers a search
+for a user, an org, or a repository it doesn't know with nothing, and no error, so a routine's
+test warns about an owner none of your items has come from.
+
+**What it costs.** Searches are sent a few to a request, by how many items each returned last
+time, up to about 120 items a request and four requests side by side, since GitHub gives up on
+a request that runs past about 10 seconds. Each request costs one GraphQL point. The first
+refresh after a search is added reads the details of everything it watches, 15 items to a
+request, once: 300 newly watched items cost 20 points and take that refresh's searches about
+20 seconds, which your lists never wait for.
+
+| What | When | Cost |
+|---|---|---|
+| The searches | Each refresh, while a routine with one is on | 1 point a request; five typical searches take 2 or 3 |
+| The details of watched items | Those new or changed; half-hour-old ones only in the room left, or one batch when none changed | 1 point a batch of up to 15; usually one small batch, once the searches are known |
+| Following their checks | While a followed pull request's checks run, beside the listed ones | Nothing extra up to 50 a round |
+| Check names | When a routine's test needs them | 1 point a batch of 25 |
+
+The API budget's panel says what Autopilot spent in one line, once it spent something (see
+[the window](#the-window)), and [performance.md](performance.md#routine-searches) records the
+measured numbers.
+
+**Old items.** An item that is in no list, that no routine's search returns, and that you
+haven't pinned, snoozed, or dismissed is removed 30 days after the last read that brought it,
+whether a routine's search found it or it left your lists; its details and file check go with
+it.
 
 <br>
 
