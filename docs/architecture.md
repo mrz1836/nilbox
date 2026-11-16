@@ -1336,22 +1336,29 @@ and logged, and the loop holds off cycles for a minute; commands are still answe
   way. A GitHub action still recorded as going was cut off by a quit or a crash, maybe after
   GitHub took it, so it is never sent again on its own: it ends interrupted, and its match waits
   for the user, worded so they check the item on GitHub first. An agent's run is asked of its
-  runner (`Runner.Alive`, a `Liveness`): one the runner positively never started
-  (`LiveNever`, still `starting`, as a start the quit cut off before it reached the runner) goes
-  back to the queue, its match with it, counting no try and no run (`Attempt` is taken back, so
-  the match is decided again like any queued one); one that ended unseen (`LiveGone`, or
-  `LiveNever` once it was running) ends interrupted; either only once two checks a tick apart
-  found it so, as a runner may let go of a run a moment before its end is delivered (the
-  `Runner` contract keeps a run `LiveAlive` until then). A runner's end that comes after the
-  engine recorded the run interrupted is kept over that record (`ReviseRunEnd`), its cost and
-  commit with it, and moves the match on while it still waits on that interruption. One the
-  runner can't say of (`LiveUnknown`, or an error) is asked again on the next tick, and ends
-  interrupted once it has been unknown past the longest time limit a run may have and a grace
-  (`unknownFor`), so no run holds its item's slot, an agent's slot, or a reservation for good.
-  A start the runner refuses as it closes (`ErrClosed`) stays queued, as no try and no run, and
-  no agent starts in this run of the engine after it. A stop that fails is tried again a tick
-  later, never at once, and its reason is kept: a run that ends stopped anyway closes its match
-  for what the stop was for (merged, closed, gone).
+  runner (`Runner.Alive`, a `Liveness`), and taken as gone or never started only once two checks
+  a tick apart found it so, as a runner may let go of a run a moment before its end is delivered
+  (the `Runner` contract keeps a run `LiveAlive` until then). One both checks found the runner
+  positively never started (`LiveNever`, still `starting`, as a start the quit cut off before it
+  reached the runner) goes back to the queue, its match with it; any other found gone ends
+  interrupted. `LiveNever` must hold across restarts and never come from a history that forgets
+  runs (a runner that prunes its records answers `LiveGone` or `LiveUnknown` for a run it no
+  longer knows), so a run that started and crashed is never run again on its own. A runner's
+  end that comes after the engine recorded the run interrupted is kept over that record
+  (`ReviseRunEnd`), its cost and commit with it, and moves the match on while it still waits on
+  that interruption. One the runner can't say of (`LiveUnknown`, or an error) is asked again on
+  the next tick, and ends interrupted once it has been unknown past the longest time limit a run
+  may have and a grace (`unknownFor`), so no run holds its item's slot, an agent's slot, or a
+  reservation for good. A start the runner refuses as it closes (`ErrClosed`) stays queued, and
+  no agent starts in this run of the engine after it. A start that never happened, either way,
+  ends `not_started`: it counts as no try and no run (`Attempt` is taken back, so the match is
+  decided again like any queued one), and toward none of the day's counts or the daily cap.
+  A run's end and its match's move are written in one transaction, a dispatch's answer too; an
+  end that can't be written is tried again on the next tick, and each tick also moves on any
+  match still `running` on a run the ledger records as ended (`unstrand`), by the end it keeps,
+  or as interrupted when that end can't say (a stop, whoever asked for it). A stop that fails is
+  tried again a tick later, never at once, and its reason is kept: a run that ends stopped
+  anyway closes its match for what the stop was for (merged, closed, gone).
 - **A catch-up** begins after a gap longer than Settings' catch-up hours (with the app closed or
   open, the Mac asleep): at once, on a cycle that finds the last successful refresh that long
   ago, before any refresh came; at the first successful refresh that long after the one before;
