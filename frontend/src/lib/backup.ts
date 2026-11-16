@@ -38,7 +38,9 @@ export const backupSections: readonly { section: BackupSection; label: string; a
   {
     section: 'autopilot',
     label: 'Autopilot routines',
-    about: 'Your Autopilot routines, in their order, never their history. They arrive switched off.',
+    about:
+      'Your Autopilot routines, in their order, never their history. A routine an import adds or saves over arrives ' +
+      'switched off; one already the same stays as it is, on or off.',
   },
 ]
 

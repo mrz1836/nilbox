@@ -1,6 +1,7 @@
 import { useEffect, useEffectEvent, useId, useState } from 'react'
 
 import { brand } from '../../generated/brand'
+import { elsewhereText } from '../../lib/autopilot'
 import { counted, formatCount } from '../../lib/format'
 import { dayHeading, formatDateTime, formatFull, formatWhen } from '../../lib/time'
 import { useMutation } from '../../lib/useMutation'
@@ -34,6 +35,10 @@ import { buttonClass, fieldClass, Segmented, type SegmentOption } from '../contr
 import { rowMatchClass, useSetting } from './match'
 import { ChoiceRow, Group, Note, rowDescribedBy, SectionIntro, SettingRow, SwitchRow } from './rows'
 import type { SectionProps } from './types'
+
+// agentsLater says what the agent and GitHub settings wait for: nothing reads them until
+// routines can start coding agents and send GitHub actions.
+const agentsLater = 'These apply once routines can start coding agents and send GitHub actions.'
 
 // limits are the ranges the settings' setters accept, as internal/autopilotprefs declares
 // them (Min… and Max…); a value outside one is refused there.
@@ -114,13 +119,15 @@ function marked(words: string, value: number, fallback: number): string {
   return value === fallback ? `${words} (default)` : words
 }
 
-// clearedText says what Clear history did.
-function clearedText(removed: number, kept: number): string {
+// clearedText says what Clear history did: what it removed, or that there was nothing to,
+// and what it kept without its details.
+export function clearedText(removed: number, kept: number): string {
   if (removed === 0 && kept === 0) {
-    return 'There was nothing to clear.'
+    return 'Nothing to clear.'
   }
 
-  const gone = `Removed ${counted(removed, 'match', 'matches')} from the history.`
+  const gone =
+    removed === 0 ? 'Nothing to remove.' : `Removed ${counted(removed, 'match', 'matches')} from the history.`
 
   if (kept === 0) {
     return gone
@@ -146,7 +153,7 @@ export function lastCheckedText(now: Date, engine: AutopilotEngine | undefined):
   }
 
   if (engine.elsewhere) {
-    return `Autopilot is running in another copy of ${brand.name}. This one shows them and starts nothing.`
+    return elsewhereText
   }
 
   const cycle = engine.lastCycle
@@ -215,7 +222,7 @@ function CapRow({ controlId, cap, error, onChange }: CapRowProps) {
       controlId={controlId}
       description={
         <>
-          The most your routines’ coding agents may use in a day, together. Dollars count what an agent reports a run
+          The most your routines’ coding agents will use in a day, together. Dollars count what an agent reports a run
           cost; tokens count any agent that reports its usage.
         </>
       }
@@ -341,11 +348,8 @@ function LastChecked() {
   return (
     <div {...marks} className={`px-4 py-3.5 ${rowMatchClass}`}>
       <p className="text-sm font-medium">Last checked</p>
-      <p
-        role="status"
-        title={at === '' ? undefined : formatFull(at)}
-        className="mt-0.5 text-xs text-muted tabular-nums"
-      >
+      {/* Not a live region: it changes every cycle, which no one should hear each minute. */}
+      <p title={at === '' ? undefined : formatFull(at)} className="mt-0.5 text-xs text-muted tabular-nums">
         {text}
       </p>
     </div>
@@ -377,7 +381,7 @@ function ClearHistory({ controlId }: { controlId: string }) {
       description={
         <span id={`${controlId}-help`} role={done === '' ? undefined : 'status'}>
           {done === ''
-            ? 'Removes what the routines did with items that are done with now, rather than after the days it is kept.'
+            ? 'Removes now, rather than after the days it is kept, what the routines did with items that are done with.'
             : done}
         </span>
       }
@@ -407,9 +411,9 @@ function ClearHistory({ controlId }: { controlId: string }) {
             setAsking(false)
           }}
         >
-          This removes what the routines did with items that are done with: merged, closed, or out of every list and
-          search. Your routines and what still waits stay, and a record that still keeps a routine from acting twice on
-          the same thing stays without its details.
+          This removes what the routines did with items that are done with: gone, merged, or closed, or out of every
+          list and search for longer than the history is kept. Your routines and what still waits stay, and a record
+          that still keeps a routine from acting twice on the same thing stays without its details.
         </ConfirmDialog>
       )}
     </ChoiceRow>
@@ -479,14 +483,14 @@ export function AutopilotSection({ settings: stored, onSaved }: SectionProps) {
       </Group>
       <div className="flex flex-col gap-3">
         <SectionIntro title="Limits">
-          Across every routine. A limit delays a match and never loses it: one over today’s limit starts tomorrow. A day
-          runs from local midnight. Local steps, such as a snooze, keep to none of these.
+          {agentsLater} Across every routine, a limit will delay a match and never lose it: one over today’s limit
+          starts tomorrow, a day running from local midnight. Local steps, such as a snooze, keep to none of these.
         </SectionIntro>
         <Group>
           <NumberRow
             label="Agents at once"
             controlId={`${id}-agents`}
-            description="How many coding agents your routines may run at the same time. At most three, so a script of yours always has room."
+            description="The most coding agents your routines will run at the same time: at most three, so a script of yours always has room."
             value={config.agentsAtOnce}
             choices={agentChoices}
             range={limits.agentsAtOnce}
@@ -500,7 +504,7 @@ export function AutopilotSection({ settings: stored, onSaved }: SectionProps) {
           <NumberRow
             label="Agent runs a day"
             controlId={`${id}-runs`}
-            description="How many coding agent runs your routines may start in a day, together."
+            description="The most coding agent runs your routines will start in a day, together."
             value={config.runsPerDay}
             choices={runChoices}
             range={limits.runsPerDay}
@@ -514,7 +518,7 @@ export function AutopilotSection({ settings: stored, onSaved }: SectionProps) {
           <NumberRow
             label="GitHub actions a day"
             controlId={`${id}-actions`}
-            description="How many actions on GitHub your routines may send in a day, together, such as asking Dependabot to rebase."
+            description="The most actions on GitHub your routines will send in a day, together, such as asking Dependabot to rebase."
             value={config.actionsPerDay}
             choices={actionChoices}
             range={limits.actionsPerDay}
@@ -536,12 +540,12 @@ export function AutopilotSection({ settings: stored, onSaved }: SectionProps) {
         </Group>
       </div>
       <div className="flex flex-col gap-3">
-        <SectionIntro title="While it runs" />
+        <SectionIntro title="While it runs">{agentsLater}</SectionIntro>
         <Group>
           <SwitchRow
             label="Keep the Mac awake while agents work"
             controlId={`${id}-awake`}
-            description="While one of your routines’ coding agents works, the Mac doesn’t go to sleep on its own. The display still can."
+            description="Keeps the Mac from going to sleep on its own while one of your routines’ coding agents works. The display still can."
             checked={config.keepAwake}
             error={errorFor('keepAwake')}
             onChange={(on) => {
@@ -551,7 +555,7 @@ export function AutopilotSection({ settings: stored, onSaved }: SectionProps) {
           <SwitchRow
             label="Hold agent starts while their provider reports an outage"
             controlId={`${id}-outage`}
-            description="A routine’s coding agent waits to start while its provider’s status page reports a major outage, and starts once it’s back."
+            description="Holds a routine’s coding agent while its provider’s status page reports a major outage, until it’s back."
             checked={config.holdOnOutage}
             error={errorFor('holdOnOutage')}
             onChange={(on) => {
@@ -561,7 +565,7 @@ export function AutopilotSection({ settings: stored, onSaved }: SectionProps) {
           <NumberRow
             label="Ask before catching up after"
             controlId={`${id}-catch-up`}
-            description={`When ${brand.name} was closed or asleep this long, a routine’s coding agent and GitHub steps wait for your OK before they catch up on what changed. Local steps never wait.`}
+            description={`After ${brand.name} was closed or asleep this long, a routine’s coding agent and GitHub steps will wait for your OK before they catch up on what changed. Local steps never wait.`}
             value={config.catchUpHours}
             choices={catchUpChoices}
             range={limits.catchUpHours}
@@ -597,7 +601,7 @@ export function AutopilotSection({ settings: stored, onSaved }: SectionProps) {
           <NumberRow
             label="Run logs kept"
             controlId={`${id}-logs`}
-            description="How long a coding agent run’s log is kept, never longer than the history."
+            description="How long a coding agent run’s log will be kept, once routines start coding agents: never longer than the history."
             value={config.logDays}
             choices={logChoices}
             range={limits.logDays}

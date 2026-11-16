@@ -8,7 +8,7 @@ import type { AutopilotConfig, Settings } from '../../platform'
 import { at } from '../../test/clock'
 import { autopilotEngine, settings } from '../../test/fixtures'
 import { emit, platform } from '../../test/platform'
-import { AutopilotSection, lastCheckedText } from './AutopilotSection'
+import { AutopilotSection, clearedText, lastCheckedText } from './AutopilotSection'
 
 vi.mock('../../platform', () => import('../../test/platform').then((fake) => fake.platform))
 
@@ -195,11 +195,32 @@ describe('AutopilotSection', () => {
     )
   })
 
+  it('says the agent and GitHub settings wait for routines that can start them', () => {
+    renderSection()
+
+    expect(
+      screen.getAllByText('These apply once routines can start coding agents and send GitHub actions.', {
+        exact: false,
+      }),
+    ).toHaveLength(2)
+    expect(screen.getByText(/once routines start coding agents: never longer than the history/)).toBeInTheDocument()
+  })
+
+  it('doesn’t announce Last checked each time the engine checks', async () => {
+    renderSection()
+
+    const line = await screen.findByText(/^Last checked today, 11:59 AM/)
+
+    expect(line.closest('[role="status"], [aria-live]')).toBeNull()
+  })
+
   it('asks before it clears the history, and Cancel clears nothing', async () => {
     renderSection()
 
     await userEvent.click(screen.getByRole('button', { name: 'Clear history…' }))
-    expect(screen.getByRole('dialog', { name: 'Clear Autopilot’s history?' })).toBeInTheDocument()
+    expect(screen.getByRole('dialog', { name: 'Clear Autopilot’s history?' })).toHaveTextContent(
+      'out of every list and search for longer than the history is kept',
+    )
 
     await userEvent.click(screen.getByRole('button', { name: 'Cancel' }))
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
@@ -246,6 +267,16 @@ describe('AutopilotSection', () => {
         `Autopilot is running in another copy of ${brand.name}. This one shows them and starts nothing.`,
       ),
     ).toBeInTheDocument()
+  })
+})
+
+describe('clearedText', () => {
+  it('says what Clear history removed, and that there was nothing to', () => {
+    expect(clearedText(0, 0)).toBe('Nothing to clear.')
+    expect(clearedText(0, 2)).toBe(
+      'Nothing to remove. Kept 2 matches without their details, since they still keep a routine from acting twice.',
+    )
+    expect(clearedText(3, 0)).toBe('Removed 3 matches from the history.')
   })
 })
 

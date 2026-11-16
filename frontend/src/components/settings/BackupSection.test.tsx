@@ -64,6 +64,17 @@ describe('BackupSection', () => {
     )
   })
 
+  it('says an import switches off only the routines it adds or saves over', async () => {
+    renderSection()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Export…' }))
+
+    expect(screen.getByRole('checkbox', { name: /^Autopilot routines/ })).toHaveAccessibleName(
+      'Autopilot routinesYour Autopilot routines, in their order, never their history. A routine an import adds ' +
+        'or saves over arrives switched off; one already the same stays as it is, on or off.',
+    )
+  })
+
   it('exports nothing until a category is ticked, or when the save dialog is cancelled', async () => {
     renderSection()
 
