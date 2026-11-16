@@ -14,6 +14,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/autopilot/spec"
 	"github.com/mrz1836/nilbox/internal/autopilot/watch"
 	"github.com/mrz1836/nilbox/internal/autopilotprefs"
+	"github.com/mrz1836/nilbox/internal/brand"
 	"github.com/mrz1836/nilbox/internal/item"
 	"github.com/mrz1836/nilbox/internal/testutil"
 )
@@ -63,7 +64,18 @@ func TestDescribeWritesTheSentenceOfADraftThatLoads(t *testing.T) {
 	require.NoError(t, err)
 	assert.Empty(t, agent.Problems)
 	assert.Contains(t, agent.Sentence, "Fix checks", "the starter is named as the library names it")
-	assert.Equal(t, []catalog.StepKind{catalog.StepAgent}, agent.DryRunOnly, "agents can't run yet")
+	assert.Empty(t, agent.DryRunOnly, "an agent in the terminal runs in any mode")
+
+	background, err := r.svc.Describe(t.Context(), draft("Fix", backgroundSpec()))
+	require.NoError(t, err)
+	require.Len(t, background.Problems, 1, "an agent in the background is a problem this build says plainly")
+	assert.Equal(t, "steps[0].agent.where", background.Problems[0].Path())
+	assert.Equal(t, "this version of "+brand.Name+" can't run an agent in the background yet: choose In my terminal",
+		background.Problems[0].Message)
+	assert.Empty(t, background.DryRunOnly, "it isn't held in Dry run: it can't be saved")
+
+	_, err = r.svc.Save(t.Context(), draft("Fix", backgroundSpec()))
+	require.ErrorIs(t, err, spec.ErrInvalid, "Save refuses it as Describe says")
 
 	assert.Empty(t, r.list(t), "describing saves nothing")
 }
@@ -193,20 +205,24 @@ func TestDescribeWarnsOfWhatMayDoLessThanMeant(t *testing.T) {
 	assert.NotEmpty(t, got.Sentence, "a warning keeps nothing from being saved")
 
 	terminal := agentSpec()
-	terminal.Steps[0].Agent.Where = catalog.WhereTerminal
 
-	held, err := r.svc.Describe(t.Context(), autopilot.Draft{Name: "Held", Mode: autopilotprefs.ModeAuto, Spec: terminal})
+	// A build that ran no agent would hold the routine in Dry run.
+	held := libraryRig(t, library{}, &autopilot.Offers{Steps: []catalog.StepKind{catalog.StepPin}}).svc
+
+	dry, err := held.Describe(t.Context(), autopilot.Draft{Name: "Held", Mode: autopilotprefs.ModeAuto, Spec: terminal})
 	require.NoError(t, err)
-	assert.Empty(t, held.Warnings, "a routine held in Dry run starts nothing on its own")
+	assert.Empty(t, dry.Warnings, "a routine held in Dry run starts nothing on its own")
 
-	offered := libraryRig(t, library{}, &autopilot.Offers{Steps: []catalog.StepKind{catalog.StepAgent}})
-
-	open, err := offered.svc.Describe(t.Context(), autopilot.Draft{Name: "Open", Mode: autopilotprefs.ModeAuto, Spec: terminal})
+	open, err := r.svc.Describe(t.Context(), autopilot.Draft{Name: "Open", Mode: autopilotprefs.ModeAuto, Spec: terminal})
 	require.NoError(t, err)
 	require.Len(t, open.Warnings, 1)
 	assert.Equal(t, "steps[0].agent.where", open.Warnings[0].Path())
 
-	fenced := agentSpec()
+	offered := libraryRig(t, library{}, &autopilot.Offers{
+		Steps: []catalog.StepKind{catalog.StepAgent}, Places: []catalog.Where{catalog.WhereBackground},
+	})
+
+	fenced := backgroundSpec()
 	fenced.Steps[0].Agent.Fence = &spec.Fence{Tools: catalog.PresetProfile}
 
 	own, err := offered.svc.Describe(t.Context(), autopilot.Draft{Name: "Own", Mode: autopilotprefs.ModeAuto, Spec: fenced})

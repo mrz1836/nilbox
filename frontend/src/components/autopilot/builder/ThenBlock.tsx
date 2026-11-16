@@ -41,7 +41,7 @@ export function ThenBlock({ kit, agentKit, spec, kinds, onChange }: ThenBlockPro
     hint: c.offered ? undefined : 'Dry run for now',
     title: c.help,
     onSelect: () => {
-      onChange([...steps, newStep(c.kind, steps)])
+      onChange([...steps, newStep(c.kind, steps, kit.catalog.places)])
     },
   }))
 

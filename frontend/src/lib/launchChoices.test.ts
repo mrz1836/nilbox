@@ -121,7 +121,15 @@ describe('launch defaults', () => {
       planMode: null,
       worktree: null,
       extraFlags: {},
+      autopilotOutside: '',
     })
+  })
+
+  it('keeps the stored choice for Autopilot on outside contributors’ items when the menu saves over it', () => {
+    const base = defaultsInput(launchDefaults({ autopilotOutside: 'on' }))
+
+    expect(base.autopilotOutside).toBe('on')
+    expect(withChoices(base, { ...noChoices, effort: 'low' }, 'pr', 'claude').autopilotOutside).toBe('on')
   })
 })
 

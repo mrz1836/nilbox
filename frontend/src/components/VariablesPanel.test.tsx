@@ -31,6 +31,41 @@ describe('VariablesPanel', () => {
     expect(screen.getByText(/Values are for #7/)).toBeInTheDocument()
   })
 
+  it('lists Autopilot’s variables in a group of their own, after the session’s', () => {
+    render(
+      <VariablesPanel
+        {...props({
+          variables: [
+            ...variables(),
+            {
+              name: 'Routine',
+              group: 'Autopilot',
+              type: 'text',
+              description: 'The routine that started the run, or empty for a click',
+              prOnly: false,
+            },
+            {
+              name: 'Unattended',
+              group: 'Autopilot',
+              type: 'yes/no',
+              description: 'Autopilot started the run, with no one watching',
+              prOnly: false,
+            },
+          ],
+        })}
+      />,
+    )
+
+    const regions = screen.getAllByRole('region').map((r) => r.getAttribute('aria-label'))
+    expect(regions).toEqual(['Item', 'Repository', 'Pull request', 'Session', 'Autopilot', 'Syntax'])
+
+    const autopilot = within(screen.getByRole('region', { name: 'Autopilot' }))
+    expect(autopilot.getByRole('button', { name: /\{\{\.Routine\}\}/ })).toBeInTheDocument()
+    expect(autopilot.getByRole('button', { name: /\{\{\.Unattended\}\}/ })).toHaveTextContent(
+      'Autopilot started the run, with no one watching',
+    )
+  })
+
   it('inserts a variable or a snippet on click', async () => {
     const onInsertVariable = vi.fn()
     const onInsertText = vi.fn()

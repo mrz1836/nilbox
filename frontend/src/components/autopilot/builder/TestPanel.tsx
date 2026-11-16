@@ -1,10 +1,20 @@
-import { useState } from 'react'
+import { useId, useState } from 'react'
 
-import { testedLabel, testHeadline } from '../../../lib/routineBuilder'
-import type { AutopilotMode, AutopilotTestItem, AutopilotTestResult, ItemKind } from '../../../platform'
+import { canonical, testedLabel, testHeadline } from '../../../lib/routineBuilder'
+import { useQuery } from '../../../lib/useQuery'
+import {
+  previewRoutineRun,
+  type AutopilotDraft,
+  type AutopilotMode,
+  type AutopilotTestItem,
+  type AutopilotTestResult,
+  type ItemKind,
+} from '../../../platform'
+import { PlannedLaunch } from '../../LaunchPreviewSection'
 import { buttonClass, captionClass, quietButtonClass } from '../../controls'
-import { CheckIcon, ChevronDownIcon, ChevronRightIcon, RefreshIcon, XIcon } from '../../icons'
+import { ChevronDownIcon, ChevronRightIcon, RefreshIcon } from '../../icons'
 import { Spinner } from '../../Spinner'
+import { ResultMark, TraceList } from '../Trace'
 
 export interface TestPanelProps {
   // result is the last test of the draft, undefined before one answered; stale reports one
@@ -20,7 +30,79 @@ export interface TestPanelProps {
   kinds: readonly ItemKind[]
   // mode is the routine's mode: in Dry run, a match is what it would do.
   mode: AutopilotMode
+  // draft is the routine as edited, whose agent step Preview plans on an item it tried.
+  draft: AutopilotDraft
   onTest: () => void
+}
+
+// previewed is the item a test tried that Preview plans the agent step on: the first that
+// matches, else the first.
+function previewed(result: AutopilotTestResult | undefined): AutopilotTestItem | undefined {
+  return result?.items.find((it) => it.match === 'yes') ?? result?.items[0]
+}
+
+interface RunPreviewProps {
+  draft: AutopilotDraft
+  item: AutopilotTestItem
+}
+
+// RunPreview is Preview <repo> #<n> ▸: on request, exactly the launch the draft's agent
+// step would make on the item, built and not started (what it resolves to, the prompt, the
+// worktree and folder, the command, its environment and permissions, and the terminal),
+// read again as the draft changes while it is open.
+function RunPreview({ draft, item }: RunPreviewProps) {
+  const id = useId()
+  const [open, setOpen] = useState(false)
+  const key = canonical(draft)
+  const plan = useQuery(() => previewRoutineRun(draft, item.id), [key, item.id], { enabled: open })
+  const name = `${item.repo} #${String(item.number)}`
+  const p = plan.data
+
+  return (
+    <div className="flex flex-col gap-2">
+      <button
+        type="button"
+        aria-expanded={open}
+        aria-controls={`${id}-plan`}
+        onClick={() => {
+          setOpen(!open)
+        }}
+        className={`${quietButtonClass} self-start`}
+      >
+        {open ? <ChevronDownIcon className="size-3" /> : <ChevronRightIcon className="size-3" />}
+        Preview {name}
+      </button>
+      {open && (
+        <div id={`${id}-plan`} className="flex flex-col gap-2 rounded-md border border-border p-2.5">
+          {plan.error !== '' ? (
+            <p role="alert" className="text-xs text-danger">
+              {plan.error}
+            </p>
+          ) : p === undefined || plan.pending ? (
+            <p className="text-xs text-muted">Planning the run…</p>
+          ) : (
+            <>
+              <p className="text-xs text-text">
+                {[p.agent, p.profile, p.model === '' ? 'its default model' : p.model, p.effort, p.promptName]
+                  .filter((part) => part !== '')
+                  .join(' · ')}
+              </p>
+              <PlannedLaunch plan={p} />
+              {p.warnings.length > 0 && (
+                <ul aria-label="What it skipped" className="flex flex-col gap-0.5">
+                  {p.warnings.map((w) => (
+                    <li key={w} className="text-xs text-warning">
+                      {w}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  )
 }
 
 // needWords say what a read would have to bring for an unknown to decide.
@@ -54,7 +136,9 @@ function rowState(it: AutopilotTestItem, mode: AutopilotMode): string {
 // requests match now", each item with whether it matches, where it stands with the routine,
 // and Why ▸, every step of its decision with the value it compared; and ↻ Test, which runs
 // it only when asked, since its searches cost points, and says what the last test spent.
-export function TestPanel({ result, stale, testing, error, ready, kinds, mode, onTest }: TestPanelProps) {
+export function TestPanel({ result, stale, testing, error, ready, kinds, mode, draft, onTest }: TestPanelProps) {
+  const agent = draft.spec.steps.some((st) => st.agent != null)
+  const sample = previewed(result)
   const headline = (() => {
     if (testing) {
       return 'Trying it on your items…'
@@ -115,6 +199,7 @@ export function TestPanel({ result, stale, testing, error, ready, kinds, mode, o
           ))}
         </ul>
       )}
+      {agent && ready && sample !== undefined && <RunPreview key={sample.id} draft={draft} item={sample} />}
     </section>
   )
 }
@@ -150,50 +235,7 @@ function TestRow({ item: it, mode }: { item: AutopilotTestItem; mode: AutopilotM
           Why
         </button>
       </div>
-      {open && (
-        <ul aria-label={`Why, for ${name}`} className="ml-6 flex flex-col gap-0.5 py-1">
-          {it.trace.map((t) => (
-            <li key={t.path} className="flex items-start gap-1.5 text-xs">
-              <ResultMark result={t.result} small />
-              <span className="text-text">{t.condition}</span>
-              {t.actual !== '' && <span className="text-muted">{`· ${t.actual}`}</span>}
-            </li>
-          ))}
-          {it.trace.length === 0 && <li className="text-xs text-muted">Nothing was checked.</li>}
-        </ul>
-      )}
+      {open && <TraceList label={`Why, for ${name}`} trace={it.trace} className="ml-6 py-1" />}
     </li>
-  )
-}
-
-// ResultMark marks a decision: ✓ yes, ✗ no, ? not known yet, each named for assistive tech.
-function ResultMark({ result, small = false }: { result: string; small?: boolean }) {
-  const size = small ? 'size-3' : 'size-3.5'
-
-  if (result === 'yes') {
-    return (
-      <span className="inline-flex shrink-0 text-success" title="Matches">
-        <CheckIcon className={size} />
-        <span className="sr-only">Matches:</span>
-      </span>
-    )
-  }
-
-  if (result === 'no') {
-    return (
-      <span className="inline-flex shrink-0 text-danger" title="Doesn’t match">
-        <XIcon className={size} />
-        <span className="sr-only">Doesn’t match:</span>
-      </span>
-    )
-  }
-
-  return (
-    <span className="inline-flex shrink-0 text-warning" title="Not known yet">
-      <span aria-hidden="true" className="text-xs leading-none font-semibold">
-        ?
-      </span>
-      <span className="sr-only">Not known yet:</span>
-    </span>
   )
 }

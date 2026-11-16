@@ -313,6 +313,7 @@ func sampleVariants(kind item.Kind) []Data {
 	flipped := Sample(kind)
 	flipped.IsDraft, flipped.HasConflicts, flipped.OutsideContributor = flipped.IsPR, flipped.IsPR, true
 	flipped.IsBot, flipped.Author = true, "dependabot"
+	flipped.Routine, flipped.Trigger, flipped.Attempt, flipped.Unattended = "Fix checks", "Checks fail", 2, true
 
 	if flipped.IsPR {
 		flipped.Dependency, flipped.FromVersion, flipped.ToVersion, flipped.UpdateType = "golang.org/x/net", "0.30.0",

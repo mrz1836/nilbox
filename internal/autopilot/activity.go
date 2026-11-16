@@ -73,6 +73,11 @@ type Match struct {
 	Approved bool `json:"approved"`
 	Attempt  int  `json:"attempt"`
 
+	// Hold is what holds its start back for the user's OK, while it waits on a hold
+	// (BlockHold, BlockDirty): the launcher's own hold, which the card shows as the hold
+	// dialog does, and whose Run confirms exactly it. Nil otherwise.
+	Hold *Hold `json:"hold"`
+
 	// Runs are the runs it started, oldest first.
 	Runs []Run `json:"runs"`
 
@@ -399,6 +404,39 @@ func (s *Service) LatestMatches(ctx context.Context, ids []int64) ([]Match, erro
 	return s.views(ctx, rows)
 }
 
+// maxNeedsYou caps the open matches NeedsYou returns.
+const maxNeedsYou = 500
+
+// NeedsYou returns the open matches that haven't started, real ones alone, newest first,
+// for Activity's Needs you and Queued: those waiting for the user's decision (waiting),
+// those that can't start until something on this Mac is fixed (blocked), and those that
+// start by themselves (queued), each with what it waits on and, for a hold, the hold
+// itself. At most maxNeedsYou. It reads the database alone, and the list is never nil.
+func (s *Service) NeedsYou(ctx context.Context) ([]Match, error) {
+	if s.store.q == nil {
+		return []Match{}, nil
+	}
+
+	rows, err := s.ledger().q.ListOpenMatches(ctx)
+	if err != nil {
+		return []Match{}, uierr.New("What needs you couldn't be read.", err)
+	}
+
+	open := make([]queries.AutopilotMatch, 0, len(rows))
+
+	for _, r := range slices.Backward(rows) {
+		if r.DryRun || State(r.State).active() || len(open) >= maxNeedsYou {
+			continue
+		}
+
+		open = append(open, r)
+	}
+
+	slices.SortStableFunc(open, func(a, b queries.AutopilotMatch) int { return b.UpdatedAt.Compare(a.UpdatedAt) })
+
+	return s.views(ctx, open)
+}
+
 // ledger returns the ledger over the Service's database.
 func (s *Service) ledger() *ledger {
 	if s.engine != nil {
@@ -497,6 +535,14 @@ func matchView(m *match, routine string) Match {
 			Kind: kind, Label: info.Label, Status: sr.Status, Outcome: sr.Outcome, Note: sr.Note, RunID: sr.RunID,
 			StartedAt: sr.Started, EndedAt: sr.Ended,
 		})
+	}
+
+	if b := Blocker(m.BlockedBy); (b == BlockHold || b == BlockDirty) && int(m.Step) < len(m.steps) {
+		if h := m.steps[m.Step].Hold; h != nil {
+			shown := *h
+			shown.Files = nonNil(h.Files)
+			v.Hold = &shown
+		}
 	}
 
 	return v

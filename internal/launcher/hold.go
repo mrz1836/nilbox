@@ -2,6 +2,7 @@ package launcher
 
 import (
 	"context"
+	"fmt"
 	"strings"
 
 	"github.com/mrz1836/nilbox/internal/sensitive"
@@ -26,16 +27,27 @@ const (
 	// start in. Two agents working in one folder can undo each other's changes, so a second
 	// starts only once the user says so; LaunchRequest.Alongside carries that.
 	HoldRunning HoldReason = "running"
+
+	// HoldDirty is a routine's launch into a worktree with uncommitted changes, which may
+	// be the user's own work in progress: it waits for the user to confirm, which
+	// RoutineLaunch.Confirmed carries. A click's launch is never held for it.
+	HoldDirty HoldReason = "dirty"
 )
 
-// FileChecker checks the files of the pull requests the inbox checks. *inbox.Service
-// implements it. Both methods return sensitive.ErrNotChecked for an item whose files are
-// not checked: an issue, or a pull request from the repository's own people, a trusted
-// bot, or the signed-in user.
+// FileChecker checks the files of the pull requests the inbox checks; the app adapts the
+// inbox to it. Each method returns sensitive.ErrNotChecked for an item whose files are not
+// checked: an issue, or for CheckFiles and StoredFiles a pull request from the repository's
+// own people, a trusted bot, or the signed-in user, and for CheckFilesUnattended one the
+// signed-in user opened.
 type FileChecker interface {
 	// CheckFiles checks the item's files against GitHub as of now and stores the
 	// outcome. A check that cannot finish comes back with sensitive.StatusFailed.
 	CheckFiles(ctx context.Context, itemID int64) (*sensitive.Check, error)
+
+	// CheckFilesUnattended checks the item's files as CheckFiles does, for a routine's
+	// launch: under the unattended scope, every pull request the signed-in user didn't
+	// open, trusted bots' and members' included.
+	CheckFilesUnattended(ctx context.Context, itemID int64) (*sensitive.Check, error)
 
 	// StoredFiles returns the last check, without asking GitHub.
 	StoredFiles(ctx context.Context, itemID int64) (*sensitive.Check, error)
@@ -79,6 +91,24 @@ type Hold struct {
 	// or "".
 	Dir      string `json:"dir"`
 	Worktree string `json:"worktree"`
+
+	// Dirty counts the files with uncommitted changes in the worktree, for HoldDirty; 0
+	// otherwise.
+	Dirty int `json:"dirty"`
+}
+
+// holdDirty is the hold for a routine's launch into a worktree with dirty files, named by
+// the worktree and the head it is at, or nil for a worktree that is clean, or not made yet.
+func holdDirty(wt *Worktree, dir, name string) *Hold {
+	if wt == nil || wt.Dirty <= 0 {
+		return nil
+	}
+
+	return &Hold{
+		Key:    fmt.Sprintf("%s:%s:%s:%d", HoldDirty, name, strings.ToLower(wt.Head), wt.Dirty),
+		Reason: HoldDirty, Head: wt.Head, Dir: dir, Worktree: name, Dirty: wt.Dirty, AtHead: false,
+		Files: []sensitive.Finding{}, Running: []RunningSession{},
+	}
 }
 
 // holdFor decides whether a launch on a checked pull request waits for the user to

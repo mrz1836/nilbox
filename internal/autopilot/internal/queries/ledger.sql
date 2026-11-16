@@ -196,6 +196,22 @@ WHERE id = sqlc.arg(id) AND status = sqlc.arg(was);
 UPDATE autopilot_runs SET status = sqlc.arg(status), updated_at = sqlc.arg(updated_at)
 WHERE id = sqlc.arg(id) AND status = sqlc.arg(was);
 
+-- name: RecordRunLaunch :exec
+-- RecordRunLaunch records what an agent's launch started for a run not ended yet: the
+-- session the sessions ledger records, the agent, the profile, the model, and the effort
+-- it resolved to, the clone and the worktree, and the command line shown.
+UPDATE autopilot_runs SET
+    session_id = sqlc.arg(session_id),
+    agent = sqlc.arg(agent),
+    profile = sqlc.arg(profile),
+    model = sqlc.arg(model),
+    effort = sqlc.arg(effort),
+    clone_path = sqlc.arg(clone_path),
+    worktree = sqlc.arg(worktree),
+    display_command = sqlc.arg(display_command),
+    updated_at = sqlc.arg(updated_at)
+WHERE id = sqlc.arg(id) AND status <> 'ended';
+
 -- name: EndRun :execrows
 -- EndRun records how a run ended, while it is not ended yet.
 UPDATE autopilot_runs SET

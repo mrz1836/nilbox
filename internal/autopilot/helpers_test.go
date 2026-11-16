@@ -198,10 +198,28 @@ func notifySpec() spec.Spec {
 }
 
 // agentSpec is a routine that runs the Fix checks starter on the user's failing pull
-// requests.
+// requests, in the user's terminal.
 func agentSpec() spec.Spec {
 	s := notifySpec()
-	s.Steps = []spec.Step{{Agent: &spec.AgentStep{Prompt: spec.PromptRef{Starter: "fix-checks"}}}}
+	s.Steps = []spec.Step{{Agent: &spec.AgentStep{Prompt: spec.PromptRef{Starter: "fix-checks"}, Where: catalog.WhereTerminal}}}
+
+	return s
+}
+
+// backgroundSpec is agentSpec with its agent in the background, which this build can't
+// run yet.
+func backgroundSpec() spec.Spec {
+	s := agentSpec()
+	s.Steps[0].Agent.Where = catalog.WhereBackground
+
+	return s
+}
+
+// rebaseSpec is a routine with a GitHub step, which this build can't send yet, so it runs
+// in Dry run alone.
+func rebaseSpec() spec.Spec {
+	s := notifySpec()
+	s.Steps = []spec.Step{{GitHub: []spec.GitHubAction{{Rebase: &spec.Empty{}}}}}
 
 	return s
 }

@@ -7,6 +7,8 @@ import { useSettingsSave } from '../../lib/useSettingsSave'
 import {
   setDefaultAgent,
   setDefaultProfile,
+  setClaudeAPIKey,
+  setCodexAPIKey,
   setCodexEffort,
   setCodexFast,
   setDefaultPrompt,
@@ -245,6 +247,26 @@ export function LaunchingSection({
         checked={settings.codexFast}
         onChange={(codexFast) => {
           void store('codexFast', { codexFast }, () => setCodexFast(codexFast))
+        }}
+      />
+      <SwitchRow
+        label="Use an API key for Claude Code when one is set"
+        controlId={`${id}-claude-api-key`}
+        description="Off: Claude Code uses the profile’s own sign-in. On: an API key from your shell is used, and billed to that key."
+        error={errorOf('claudeApiKey')}
+        checked={settings.claudeApiKey}
+        onChange={(claudeApiKey) => {
+          void store('claudeApiKey', { claudeApiKey }, () => setClaudeAPIKey(claudeApiKey))
+        }}
+      />
+      <SwitchRow
+        label="Use an API key for Codex when one is set"
+        controlId={`${id}-codex-api-key`}
+        description="Off: Codex uses the profile’s own sign-in. On: an API key from your shell is used, and billed to that key."
+        error={errorOf('codexApiKey')}
+        checked={settings.codexApiKey}
+        onChange={(codexApiKey) => {
+          void store('codexApiKey', { codexApiKey }, () => setCodexAPIKey(codexApiKey))
         }}
       />
     </Group>

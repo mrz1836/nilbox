@@ -456,6 +456,48 @@ describe('PromptsView', () => {
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   })
 
+  it('says which routines use a prompt, and why one they run cannot be deleted', async () => {
+    const used = prompts().map((p) =>
+      p.id === 3
+        ? { ...p, usage: { ...p.usage, routines: ['Fix failing checks'] } }
+        : p.id === 5
+          ? { ...p, usage: { ...p.usage, routines: ['Explain changes', 'Triage bugs'] } }
+          : p,
+    )
+    render(<Harness initial={used} />)
+
+    expect(library().getByRole('button', { name: /Fix checks/ })).toHaveTextContent('Used by “Fix failing checks”')
+    expect(library().getByRole('button', { name: /Explain/ })).toHaveTextContent('Used by 2 routines')
+
+    await userEvent.click(screen.getByRole('button', { name: 'More actions for Fix checks' }))
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Delete…' }))
+
+    const dialog = within(screen.getByRole('dialog', { name: '“Fix checks” is still in use' }))
+    expect(dialog.getByText('The routine “Fix failing checks”')).toBeInTheDocument()
+    expect(dialog.getByText(/Choose other prompts in their steps first/)).toBeInTheDocument()
+    expect(dialog.queryByText(/nothing uses it as a default/)).not.toBeInTheDocument()
+
+    await userEvent.click(dialog.getByRole('button', { name: 'Got it' }))
+    expect(platform.deletePrompt).not.toHaveBeenCalled()
+  })
+
+  it('shows why the backend refused a delete, in its words', async () => {
+    platform.deletePrompt.mockRejectedValueOnce(
+      new Error(
+        '“Fix checks” can’t be deleted while it’s used by the routine “Fix failing checks”; choose other prompts there first',
+      ),
+    )
+    render(<Harness />)
+
+    await userEvent.click(screen.getByRole('button', { name: 'More actions for Fix checks' }))
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Delete…' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Delete prompt' }))
+
+    expect(
+      await screen.findByText(/used by the routine “Fix failing checks”; choose other prompts there first/),
+    ).toBeInTheDocument()
+  })
+
   it('resets a changed starter, makes a prompt a default, and duplicates one', async () => {
     const changed = prompts().map((p) => (p.id === 3 ? { ...p, modified: true } : p))
     render(<Harness initial={changed} />)
@@ -893,9 +935,12 @@ describe('PromptsView review replies', () => {
           replyPrompt({ ...updateOk }),
           replyPrompt({
             ...needsChanges,
-            usage: { defaults: [], orgs: [], repos: [], kinds: [], replies: ['request_changes'] },
+            usage: { defaults: [], orgs: [], repos: [], kinds: [], replies: ['request_changes'], routines: [] },
           }),
-          replyPrompt({ ...question, usage: { defaults: [], orgs: [], repos: [], kinds: [], replies: ['comment'] } }),
+          replyPrompt({
+            ...question,
+            usage: { defaults: [], orgs: [], repos: [], kinds: [], replies: ['comment'], routines: [] },
+          }),
         ]}
       />,
     )

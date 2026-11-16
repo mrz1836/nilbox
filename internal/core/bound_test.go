@@ -138,6 +138,12 @@ func boundCalls(t *testing.T) map[string]boundCall {
 		"settings.Service.SetCodexFast": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
 			return c.Settings.SetCodexFast(ctx, true)
 		},
+		"settings.Service.SetClaudeAPIKey": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
+			return c.Settings.SetClaudeAPIKey(ctx, true)
+		},
+		"settings.Service.SetCodexAPIKey": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
+			return c.Settings.SetCodexAPIKey(ctx, true)
+		},
 		"sessions.Service.List": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
 			return c.Sessions.List(ctx)
 		},
@@ -742,6 +748,19 @@ func autopilotBoundCalls(t *testing.T) map[string]boundCall {
 		"autopilot.Service.Glance": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
 			return c.Autopilot.Glance(ctx)
 		},
+		"autopilot.Service.NeedsYou": func(ctx context.Context, c *Core, ids seededItems) (any, error) {
+			boundMatch(ctx, t, c, ids.item, "Bound needs you")
+
+			return c.Autopilot.NeedsYou(ctx)
+		},
+		"autopilot.Service.Readiness": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
+			boundRoutine(ctx, t, c, "Bound readiness")
+
+			return c.Autopilot.Readiness(ctx)
+		},
+		"autopilot.Service.CheckReadiness": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
+			return c.Autopilot.CheckReadiness(ctx)
+		},
 	}
 }
 
@@ -810,6 +829,7 @@ func unreachedBound() map[string]string {
 		"autopilot.Service.Skip":            "applied by the engine's loop, which runs as deferred work; its match is built as Activity's",
 		"autopilot.Service.RunNow":          "applied by the engine's loop, which runs as deferred work; its match is built as Activity's",
 		"autopilot.Service.Undo":            "applied by the engine's loop, which runs as deferred work; its result starts its lists empty",
+		"autopilot.Service.PreviewRun":      "plans a launch in a stored item's clone, which the tests do not have; nonNilPreview fills its lists",
 		"inbox.Service.Refresh":             "reads GitHub; its snapshot is built as Snapshot's",
 		"inbox.Service.RefreshItem":         "reads GitHub; its snapshot is built as Snapshot's",
 		"inbox.Service.Unassign":            "edits GitHub; its snapshot is built as Snapshot's",

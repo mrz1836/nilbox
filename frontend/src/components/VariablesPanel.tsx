@@ -47,7 +47,7 @@ const syntax: readonly { code: string; insert: string; meaning: string }[] = [
   { code: '{{- .Title -}}', insert: '{{- .Title -}}', meaning: 'Trim the spaces around it.' },
 ]
 
-const groupOrder = ['Item', 'Repository', 'Pull request', 'Session']
+const groupOrder = ['Item', 'Repository', 'Pull request', 'Session', 'Autopilot']
 
 // VariablesPanel is the prompt editor's cheat sheet: every variable by group, with its
 // type, what it holds, and its value for the item being previewed, then the template

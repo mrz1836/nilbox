@@ -231,12 +231,16 @@ type Usage struct {
 	// Replies lists the default replies a reply is. Unlike the defaults above, being one
 	// never keeps a reply from being deleted.
 	Replies []ReplySlot `json:"replies"`
+
+	// Routines names the Autopilot routines whose steps run or comment it, sorted, each
+	// once.
+	Routines []string `json:"routines"`
 }
 
-// InUse reports whether the prompt is a default for a launch anywhere, which keeps it from
-// being deleted.
+// InUse reports whether the prompt is a default for a launch anywhere, or a routine runs
+// it, which keeps it from being deleted.
 func (u Usage) InUse() bool {
-	return len(u.Defaults)+len(u.Orgs)+len(u.Repos) > 0
+	return len(u.Defaults)+len(u.Orgs)+len(u.Repos)+len(u.Routines) > 0
 }
 
 // Input is a prompt as the editor saves it. A reply's AppliesTo and launch settings are
@@ -272,6 +276,11 @@ type InUseError struct {
 
 // Error says where the prompt is in use.
 func (e *InUseError) Error() string {
+	if len(e.Usage.Routines) > 0 {
+		return fmt.Sprintf("%q can't be deleted while it's %s; choose other prompts there first",
+			e.Nickname, describeUsage(e.Usage))
+	}
+
 	return fmt.Sprintf("%q can't be deleted while it's %s; choose other defaults there first",
 		e.Nickname, describeUsage(e.Usage))
 }
@@ -412,12 +421,36 @@ type Config struct {
 	// written. What names prompts by nickname outside the database, such as the launch
 	// defaults' copy, rewrites itself there, so a renamed prompt is never lost. Optional.
 	Changed func(context.Context)
+
+	// Routines lists where Autopilot's routines name prompts, so a prompt's usage names
+	// them and a prompt one runs can't be deleted. Optional.
+	Routines RoutineSource
+
+	// Renamed is told of a prompt whose nickname changed, from and to, once the change is
+	// stored and before Changed: what names prompts by nickname in the database, as a
+	// routine's steps do, follows the new nickname, so the rename never breaks it.
+	// Optional.
+	Renamed func(ctx context.Context, from, to string)
+}
+
+// RoutineUse is one place an Autopilot routine names a prompt: by the key of the starter
+// it came from (the user's copy of it, whatever they renamed it), else by its nickname.
+type RoutineUse struct {
+	Routine  string
+	Starter  string
+	Nickname string
+}
+
+// RoutineSource lists every place an Autopilot routine not deleted names a prompt.
+type RoutineSource interface {
+	RoutineUses(ctx context.Context) ([]RoutineUse, error)
 }
 
 // Service manages the prompt library.
 type Service struct {
 	store    *Store
 	usage    UsageSource
+	routines RoutineSource
 	source   PreviewSource
 	file     *LibraryFile
 	database string
@@ -425,13 +458,15 @@ type Service struct {
 	clock    clock.Clock
 	logger   *slog.Logger
 	changed  func(context.Context)
+	renamed  func(ctx context.Context, from, to string)
 }
 
 // NewService returns a Service over cfg.
 func NewService(cfg Config) *Service {
 	return &Service{
-		store: cfg.Store, usage: cfg.Usage, source: cfg.Source, file: cfg.File, database: cfg.Database, app: cfg.App,
-		clock: clock.Or(cfg.Clock), logger: logging.Or(cfg.Logger), changed: cfg.Changed,
+		store: cfg.Store, usage: cfg.Usage, routines: cfg.Routines, source: cfg.Source, file: cfg.File,
+		database: cfg.Database, app: cfg.App, clock: clock.Or(cfg.Clock), logger: logging.Or(cfg.Logger),
+		changed: cfg.Changed, renamed: cfg.Renamed,
 	}
 }
 
@@ -515,14 +550,22 @@ func (s *Service) Update(ctx context.Context, id int64, in Input) (Prompt, error
 		return Prompt{}, err
 	}
 
+	if s.renamed != nil && in.Nickname != stored.Nickname {
+		s.renamed(context.WithoutCancel(ctx), stored.Nickname, in.Nickname)
+	}
+
 	s.saved(ctx)
 
 	return s.get(ctx, id)
 }
 
-// Delete removes a prompt. A prompt that is a default anywhere is refused with an
-// InUseError that says where.
+// Delete removes a prompt. A prompt that is a default anywhere, or that a routine runs, is
+// refused with an InUseError that says where.
 func (s *Service) Delete(ctx context.Context, id int64) error {
+	if err := s.refuseRoutineUse(ctx, id); err != nil {
+		return err
+	}
+
 	err := s.store.remove(ctx, id)
 	if err == nil {
 		s.saved(ctx)
@@ -536,9 +579,12 @@ func (s *Service) Delete(ctx context.Context, id int64) error {
 	}
 
 	// The store refused it, so the prompt is a default somewhere; say where.
-	if inUse.Usage, err = s.usageOf(ctx, id); err != nil {
+	usage, err := s.usageOf(ctx, id)
+	if err != nil {
 		return err
 	}
+
+	inUse.Usage = normalizeUsage(usage)
 
 	return inUse
 }

@@ -163,7 +163,7 @@ func TestImportLeavesOutWhatItCantUseWithANote(t *testing.T) {
 		{Name: "Twice", Mode: autopilotprefs.ModeAsk, Spec: mustSpec(t, notifySpec())},
 		{Name: "TWICE", Mode: autopilotprefs.ModeAsk, Spec: mustSpec(t, notifySpec())},
 		{Name: "Garbled", Mode: autopilotprefs.ModeAsk, Spec: json.RawMessage(`[1]`)},
-		{Name: "Unknown mode", Mode: "sometimes", Spec: mustSpec(t, agentSpec())},
+		{Name: "Unknown mode", Mode: "sometimes", Spec: mustSpec(t, rebaseSpec())},
 	}}
 
 	here := newRig(t, autopilotprefs.ModeAuto)

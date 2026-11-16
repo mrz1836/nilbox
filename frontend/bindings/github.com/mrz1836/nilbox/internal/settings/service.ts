@@ -294,12 +294,30 @@ export function SetBranchRules(rules: branchrules$0.Rules): $CancellablePromise<
 }
 
 /**
+ * SetClaudeAPIKey stores whether an API key in the environment may sign Claude Code in,
+ * and returns the settings with it. Off, launches remove the key, so Claude Code runs on
+ * the profile's own sign-in.
+ */
+export function SetClaudeAPIKey(on: boolean): $CancellablePromise<$models.Settings> {
+    return $Call.ByID(2083657648, on);
+}
+
+/**
  * SetCloneRoot stores the clone root, and returns the settings with it. It must be an
  * absolute or ~-relative path to an existing directory; it is stored as entered (trimmed
  * and cleaned), so "~/projects" stays portable across machines.
  */
 export function SetCloneRoot(root: string): $CancellablePromise<$models.Settings> {
     return $Call.ByID(1113594570, root);
+}
+
+/**
+ * SetCodexAPIKey stores whether an API key in the environment may sign Codex in, and
+ * returns the settings with it. Off, launches remove the key, so Codex runs on the
+ * profile's own sign-in.
+ */
+export function SetCodexAPIKey(on: boolean): $CancellablePromise<$models.Settings> {
+    return $Call.ByID(631731719, on);
 }
 
 /**

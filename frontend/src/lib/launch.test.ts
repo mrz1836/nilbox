@@ -12,13 +12,15 @@ import {
   planToggleLabel,
   isAgentPrompt,
   promptApplies,
+  routinePlaces,
+  routinesUsing,
   sourceLabel,
   usageCount,
   usagePlaces,
   usageSummary,
 } from './launch'
 
-const noUsage: PromptUsage = { defaults: [], orgs: [], repos: [], kinds: [], replies: [] }
+const noUsage: PromptUsage = { defaults: [], orgs: [], repos: [], kinds: [], replies: [], routines: [] }
 
 describe('labels', () => {
   it('names where a setting came from', () => {
@@ -71,6 +73,15 @@ describe('usage', () => {
 
     expect(usageCount(usage)).toBe(3)
     expect(usagePlaces(usage)).toEqual(['App default for issues', 'acme-org (all repositories)', 'acme-org/api'])
+  })
+
+  it('says which routines run a prompt, by name for one', () => {
+    expect(routinesUsing(noUsage)).toBe('')
+    expect(routinesUsing({ ...noUsage, routines: ['Triage bugs'] })).toBe('Used by “Triage bugs”')
+    expect(routinesUsing({ ...noUsage, routines: ['Fix checks', 'Triage bugs'] })).toBe('Used by 2 routines')
+    expect(routinePlaces({ ...noUsage, routines: ['Fix checks'] })).toEqual(['The routine “Fix checks”'])
+    // A routine is no default, so it counts in no place.
+    expect(usageCount({ ...noUsage, routines: ['Fix checks'] })).toBe(0)
   })
 })
 

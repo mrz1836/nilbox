@@ -611,7 +611,7 @@ func assemble(ctx context.Context, pool *sql.DB, info startup, opts Options, log
 		Sessions:  workLog,
 		Ledger:    sessionLedger{ledger: follow.ledger},
 		Trust:     trusters(opts.Home, logger),
-		Files:     inboxSvc,
+		Files:     launchFiles{Service: inboxSvc, routines: inbox.NewRoutines(inboxSvc)},
 		Reader:    locations,
 		Logger:    logger,
 	})
@@ -725,9 +725,19 @@ func assemble(ctx context.Context, pool *sql.DB, info startup, opts Options, log
 	// snapshot is built once now, before the scheduler starts, so the first refresh already
 	// carries them.
 	inboxRoutines := inbox.NewRoutines(inboxSvc)
+	// A routine's agent step is launched through the launcher, exactly as a click is, once
+	// this Mac has what it needs: its agents, profiles, tools, and terminal, checked through
+	// the agents' own commands on the login shell's PATH.
+	agents := agentDeps{
+		launch: launch, prompts: promptStore, profiles: profileStore, settings: prefs, defaults: defaultsStore,
+		inbox: inboxStore, status: serviceStatus, shell: shellEnv, search: search, registry: registry,
+		banners: opts.Banners, home: opts.Home, logger: logger, runners: agentRunners, environ: shellEnv.Env,
+	}
+	readiness := newReadyChecks(agents)
 	routines := newAutopilot(pool, opts, autopilotDeps{
 		inbox: inboxStore, service: inboxRoutines, prompts: promptStore, file: info.kept.routinesFile,
 		costs: watchCosts{inbox: inboxRoutines, every: refreshEvery(prefs, settings.RefreshInbox, logger), budget: budgetSvc},
+		ready: readiness, agents: agents,
 	}, logger)
 	watchSource.searches = autopilot.NewSearches(routines)
 	watchSource.searches.Rebuild(ctx)
@@ -738,7 +748,10 @@ func assemble(ctx context.Context, pool *sql.DB, info startup, opts Options, log
 	engine.engine = newAutopilotEngine(autopilotEngine{
 		store: inboxStore, inbox: inboxSvc, faces: inboxRoutines, tokens: tokens, client: client,
 		lock: opts.Paths.AutopilotLock, events: opts.Events, logger: logger, service: routines, notices: dispatcher,
+		agents: agents, ready: readiness, defaults: defaultsStore,
+		prefs: autopilotPrefs{prefs: prefsstore.New(pool, opts.Clock)},
 	})
+	routinePromptUses := routinePrompts{follower: autopilot.NewPromptFollower(routines), logger: logger}
 
 	c := &Core{
 		DB:       pool,
@@ -747,7 +760,7 @@ func assemble(ctx context.Context, pool *sql.DB, info startup, opts Options, log
 		Prompts: prompts.NewService(prompts.Config{
 			Store: promptStore, Usage: defaultsStore, Source: previews,
 			File: info.kept.promptFile, Database: opts.Paths.DB, App: opts.Version, Clock: opts.Clock, Logger: logger,
-			Changed: info.kept.saveDefaults,
+			Changed: info.kept.saveDefaults, Routines: routinePromptUses, Renamed: routinePromptUses.Renamed,
 		}),
 		LaunchDefaults: launchdefaults.NewService(launchdefaults.Config{
 			Store: defaultsStore, Profiles: profileStore, Prompts: promptStore, Repos: inboxRepos{store: inboxStore},
@@ -835,6 +848,8 @@ func assemble(ctx context.Context, pool *sql.DB, info startup, opts Options, log
 		tokens: tokens, client: client, info: c.AppInfo, registry: registry, settings: prefs, locations: locations,
 		runs: runs, backup: c.Backup,
 	}, logger)
+	// Check again asks GitHub how the sign-in stands as the setup's own check does.
+	readiness.deps.github = c.Setup.GitHub
 	c.ShellSettings = newShellSettings(prefs, c.Setup, pool, opts.Clock)
 
 	return c

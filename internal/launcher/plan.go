@@ -136,6 +136,11 @@ type Request struct {
 
 	// Fast starts the session in the agent's Fast mode. An agent without one ignores it.
 	Fast bool
+
+	// UseAPIKey lets an API key in the environment the session starts in sign the agent
+	// in (agent.Agent.KeyEnv), as the user's setting for the agent says. Off, the plan
+	// unsets those variables, so the agent runs on the profile's own sign-in.
+	UseAPIKey bool
 }
 
 // Plan is an OS-independent description of one launch. The prompt is passed first, or
@@ -234,7 +239,7 @@ func BuildPlan(req Request) (Plan, error) {
 		return Plan{}, err
 	}
 
-	env, unset, err := planEnv(a, req.Profile)
+	env, unset, err := AgentEnv(a, req.Profile, req.UseAPIKey)
 	if err != nil {
 		return Plan{}, err
 	}
@@ -332,11 +337,20 @@ func addDirs(dirs []string) ([]string, error) {
 	return slices.Clone(dirs), nil
 }
 
-// planEnv returns the variables to set and to unset. A profile with a config directory
-// sets the agent's config variable (CLAUDE_CONFIG_DIR, CODEX_HOME) to it, overriding any
-// value in the profile's env; the default profile unsets it so the agent's own default
-// login is used.
-func planEnv(a agent.Agent, p profiles.Profile) (map[string]string, []string, error) {
+// AgentEnv returns the environment variables a session of agent a on profile p sets, and
+// those it unsets, over the environment it starts in. It is the one rule for every way the
+// app starts an agent: a launch in the terminal, a resume, and a run in the background.
+//
+//   - A profile with a config directory sets the agent's config variable
+//     (CLAUDE_CONFIG_DIR, CODEX_HOME) to it, overriding any value in the profile's env; the
+//     default profile unsets it, so the agent's own default sign-in is used.
+//   - Unless useKey, the variables that would sign the agent in with an API key in place of
+//     the profile's own sign-in (agent.Agent.KeyEnv: Claude Code's ANTHROPIC_API_KEY and
+//     ANTHROPIC_AUTH_TOKEN, Codex's OPENAI_API_KEY, CODEX_API_KEY, and
+//     CODEX_ACCESS_TOKEN) are unset, and left out of the profile's env, so the profile's
+//     sign-in is the one used. With useKey, a key in the environment passes through, as
+//     the user's setting asked.
+func AgentEnv(a agent.Agent, p profiles.Profile, useKey bool) (map[string]string, []string, error) {
 	env := make(map[string]string, len(p.Env)+1)
 	for key, value := range p.Env {
 		if !terminal.ValidEnvName(key) {
@@ -346,10 +360,19 @@ func planEnv(a agent.Agent, p profiles.Profile) (map[string]string, []string, er
 		env[key] = value
 	}
 
+	var unset []string
+
+	if !useKey {
+		for _, key := range a.KeyEnv {
+			delete(env, key)
+			unset = append(unset, key)
+		}
+	}
+
 	if p.ConfigDir == "" {
 		delete(env, a.ConfigEnv)
 
-		return env, []string{a.ConfigEnv}, nil
+		return env, append([]string{a.ConfigEnv}, unset...), nil
 	}
 
 	if !filepath.IsAbs(p.ConfigDir) {
@@ -358,7 +381,7 @@ func planEnv(a agent.Agent, p profiles.Profile) (map[string]string, []string, er
 
 	env[a.ConfigEnv] = p.ConfigDir
 
-	return env, nil, nil
+	return env, unset, nil
 }
 
 // checkNUL rejects a plan whose directory, binary, arguments, or environment holds a

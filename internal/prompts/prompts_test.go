@@ -457,7 +457,7 @@ func TestDeleteRefusesAPromptInUse(t *testing.T) {
 	fix = byNickname(t, s, "Fix checks")
 	assert.Equal(t, Usage{
 		Defaults: []item.Kind{}, Orgs: []string{"acme-org"}, Repos: []string{"acme-org/api", "other-org/web"},
-		Kinds: []item.Kind{item.KindPR}, Replies: []ReplySlot{},
+		Kinds: []item.Kind{item.KindPR}, Replies: []ReplySlot{}, Routines: []string{},
 	}, fix.Usage)
 
 	var inUse *InUseError

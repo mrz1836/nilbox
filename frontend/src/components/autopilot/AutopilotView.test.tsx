@@ -9,14 +9,17 @@ import { useIssueDrafts } from '../../lib/issueDrafts'
 import { useReviewDrafts } from '../../lib/reviewDrafts'
 import { useAutopilot } from '../../lib/useAutopilot'
 import { useInbox } from '../../lib/useInbox'
-import type { Settings } from '../../platform'
+import type { AutopilotMatch, Settings } from '../../platform'
 import { at } from '../../test/clock'
 import {
   activityGroup,
   activityPage,
   agents,
   autopilotEngine,
+  autopilotHold,
   autopilotMatch,
+  claudeMissing,
+  cloneTarget,
   dryRunMatch,
   issue,
   item,
@@ -24,8 +27,11 @@ import {
   leftAlone,
   profile,
   prompts,
+  readiness,
+  readyCheck,
   routine,
   routineFigures,
+  routineReady,
   settings as settingsOf,
 } from '../../test/fixtures'
 import { emit, platform } from '../../test/platform'
@@ -1231,5 +1237,230 @@ describe('the builder in the tab', () => {
 
     expect(await screen.findByRole('dialog', { name: '2 pull requests match right now.' })).toBeInTheDocument()
     expect(platform.saveRoutine).not.toHaveBeenCalled()
+  })
+})
+
+// open is routine 3's match id on item 1, still open in state, waiting on blockedBy.
+function open(
+  id: number,
+  state: 'waiting' | 'blocked' | 'queued',
+  blockedBy: AutopilotMatch['blockedBy'],
+  words: string,
+  more: Partial<AutopilotMatch> = {},
+): AutopilotMatch {
+  return autopilotMatch({
+    id,
+    state,
+    blockedBy,
+    reason: '',
+    words,
+    steps: [],
+    effects: [],
+    closedAt: null,
+    createdAt: '2026-06-15T11:50:00Z',
+    ...more,
+  })
+}
+
+// needsYouSection returns the queries scoped to Activity's Needs you, once it shows.
+async function needsYouSection() {
+  return within(await screen.findByRole('region', { name: 'Needs you' }))
+}
+
+describe('Needs you', () => {
+  it('asks for the OK of what waits, runs or skips it, and lists what is queued', async () => {
+    platform.listRoutines.mockResolvedValue(routines())
+    platform.autopilotNeedsYou.mockResolvedValue([
+      open(21, 'waiting', 'ask', 'Waits for your OK, as Ask first does.'),
+      open(22, 'queued', 'slot', 'Starts as soon as an agent slot frees.', { item: itemRef({ id: 2, number: 9 }) }),
+    ])
+    renderTab()
+
+    const needs = await needsYouSection()
+    const card = within(needs.getByRole('listitem', { name: 'Snooze passing bot PRs on example-repo #7' }))
+
+    expect(card.getByText('Waits for your OK, as Ask first does.')).toBeInTheDocument()
+    expect(
+      within(screen.getByRole('region', { name: 'Queued' })).getByText(/Starts as soon as an agent slot frees/),
+    ).toBeInTheDocument()
+
+    await userEvent.click(card.getByRole('button', { name: 'Run' }))
+    expect(platform.approveMatches).toHaveBeenCalledWith([21])
+    expect(await screen.findByText('Snooze passing bot PRs runs once it can.')).toBeInTheDocument()
+
+    await userEvent.click(card.getByRole('button', { name: 'Skip this commit' }))
+    expect(platform.skipMatch).toHaveBeenCalledWith(21)
+    await waitFor(() => {
+      expect(platform.autopilotNeedsYou).toHaveBeenCalledTimes(3)
+    })
+  })
+
+  it('shows a held start’s files as the hold dialog does, and Run confirms them at their commit', async () => {
+    platform.listRoutines.mockResolvedValue(routines())
+    platform.autopilotNeedsYou.mockResolvedValue([
+      open(23, 'waiting', 'hold', 'Waits for you: the pull request changes agent configuration.', {
+        hold: autopilotHold(),
+      }),
+    ])
+    renderTab()
+
+    const card = within((await needsYouSection()).getByRole('listitem', { name: /example-repo #7/ }))
+
+    expect(card.getByText('This pull request changes agent configuration')).toBeInTheDocument()
+    expect(card.getByRole('list', { name: 'Agent configuration it changes' })).toBeInTheDocument()
+    expect(card.getByText(/Claude loads these files the moment it starts/)).toBeInTheDocument()
+
+    await userEvent.click(card.getByRole('button', { name: 'Run on a1b2c3d' }))
+    expect(platform.approveMatches).toHaveBeenCalledWith([23])
+  })
+
+  it('says how many files a worktree has uncommitted, and runs there anyway on asking', async () => {
+    platform.listRoutines.mockResolvedValue(routines())
+    platform.autopilotNeedsYou.mockResolvedValue([
+      open(24, 'waiting', 'dirty_worktree', 'Waits for you: its worktree has uncommitted changes.', {
+        hold: autopilotHold({ reason: 'dirty', files: [], worktree: 'pr-88', dirty: 3 }),
+      }),
+    ])
+    renderTab()
+
+    const card = within((await needsYouSection()).getByRole('listitem', { name: /example-repo #7/ }))
+
+    expect(card.getByText(/pr-88 has 3 uncommitted files/)).toBeInTheDocument()
+
+    await userEvent.click(card.getByRole('button', { name: 'Run in pr-88 anyway' }))
+    expect(platform.approveMatches).toHaveBeenCalledWith([24])
+  })
+
+  it('clones a repository a match found no clone of, after asking, then runs it', async () => {
+    platform.listRoutines.mockResolvedValue(routines())
+    platform.autopilotNeedsYou.mockResolvedValue([
+      open(25, 'waiting', 'no_clone', 'Waits for a clone of acme-org/example-repo on this Mac.'),
+    ])
+    platform.cloneTarget.mockResolvedValue(cloneTarget({ cloned: false }))
+    renderTab()
+
+    const card = within((await needsYouSection()).getByRole('listitem', { name: /example-repo #7/ }))
+
+    expect(card.queryByRole('button', { name: 'Run' })).not.toBeInTheDocument()
+    await userEvent.click(card.getByRole('button', { name: 'Clone and run' }))
+
+    const dialog = within(await screen.findByRole('dialog', { name: 'Clone acme-org/example-repo?' }))
+
+    expect(dialog.getByText(/acme-org\/example-repo ~\/projects\/example-repo/)).toBeInTheDocument()
+    expect(platform.cloneRepo).not.toHaveBeenCalled()
+
+    await userEvent.click(dialog.getByRole('button', { name: 'Clone and run' }))
+
+    expect(platform.cloneRepo).toHaveBeenCalledWith(1)
+    await waitFor(() => {
+      expect(platform.approveMatches).toHaveBeenCalledWith([25])
+    })
+    expect(
+      await screen.findByText('Cloned acme-org/example-repo. Snooze passing bot PRs runs once it can.'),
+    ).toBeInTheDocument()
+  })
+
+  it('runs at once where the repository was cloned since, and says why it can’t clone onto something there', async () => {
+    platform.listRoutines.mockResolvedValue(routines())
+    platform.autopilotNeedsYou.mockResolvedValue([
+      open(25, 'waiting', 'no_clone', 'Waits for a clone of acme-org/example-repo on this Mac.'),
+    ])
+    platform.cloneTarget
+      .mockResolvedValueOnce(cloneTarget())
+      .mockResolvedValueOnce(cloneTarget({ cloned: false, taken: true }))
+    renderTab()
+
+    const card = within((await needsYouSection()).getByRole('listitem', { name: /example-repo #7/ }))
+
+    await userEvent.click(card.getByRole('button', { name: 'Clone and run' }))
+    await waitFor(() => {
+      expect(platform.approveMatches).toHaveBeenCalledWith([25])
+    })
+    expect(platform.cloneRepo).not.toHaveBeenCalled()
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+
+    await userEvent.click(card.getByRole('button', { name: 'Clone and run' }))
+    expect(
+      await screen.findByText(
+        'Something is already at ~/projects/example-repo, so acme-org/example-repo can’t be cloned there.',
+      ),
+    ).toBeInTheDocument()
+    expect(platform.cloneRepo).not.toHaveBeenCalled()
+  })
+
+  it('checks this Mac again for what can’t start yet, and skips or opens it', async () => {
+    platform.listRoutines.mockResolvedValue(routines())
+    platform.autopilotNeedsYou.mockResolvedValue([
+      open(26, 'blocked', 'not_ready', 'Can’t start: Claude isn’t installed on this Mac.'),
+    ])
+    renderTab()
+
+    const needs = await needsYouSection()
+    const card = within(within(needs.getByRole('list', { name: 'Can’t start yet' })).getByRole('listitem'))
+
+    expect(card.getByText('Can’t start: Claude isn’t installed on this Mac.')).toBeInTheDocument()
+
+    await userEvent.click(card.getByRole('button', { name: 'Check again' }))
+    expect(platform.checkAutopilotReadiness).toHaveBeenCalledOnce()
+
+    await userEvent.click(card.getByRole('button', { name: 'Skip this commit' }))
+    expect(platform.skipMatch).toHaveBeenCalledWith(26)
+
+    await userEvent.click(card.getByRole('button', { name: 'Open example-repo #7' }))
+    await waitFor(() => {
+      expect(platform.routineWatching).toHaveBeenCalled()
+    })
+  })
+
+  it('says across the top how many routines this Mac can’t run, and what one lacks in the list', async () => {
+    platform.listRoutines.mockResolvedValue(routines())
+    platform.getAutopilotReadiness.mockResolvedValue(
+      readiness({
+        checks: [readyCheck(), claudeMissing()],
+        routines: [routineReady({ ready: false, problems: [claudeMissing()] })],
+        notReady: 1,
+      }),
+    )
+    renderTab()
+
+    expect(await screen.findByText('This Mac can’t run 1 of your routines.')).toBeInTheDocument()
+    expect((await routineList()).getByText('Not ready on this Mac: Claude · isn’t installed')).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: 'See what’s missing' }))
+    expect(onSettings).toHaveBeenCalledOnce()
+  })
+
+  it('marks the card of an open match a request names, not a line of the history', async () => {
+    platform.listRoutines.mockResolvedValue(routines())
+    platform.autopilotNeedsYou.mockResolvedValue([open(21, 'waiting', 'ask', 'Waits for your OK.')])
+    renderTab({
+      request: {
+        seq: 1,
+        target: { routineId: 3, matchId: 21, runId: 0, createdAt: '2026-06-15T11:50:00Z', activity: false },
+      },
+    })
+
+    const card = (await needsYouSection()).getByRole('listitem', { name: /example-repo #7/ })
+
+    await waitFor(() => {
+      expect(card).toHaveAttribute('data-highlighted', 'true')
+    })
+    expect(screen.queryByText(/Activity has no line for that one/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/no longer in Autopilot’s history/)).not.toBeInTheDocument()
+  })
+
+  it('reads what waits again whenever Autopilot changes', async () => {
+    platform.listRoutines.mockResolvedValue(routines())
+    renderTab()
+
+    await routineList()
+    expect(screen.queryByRole('region', { name: 'Needs you' })).not.toBeInTheDocument()
+
+    platform.autopilotNeedsYou.mockResolvedValue([open(21, 'waiting', 'ask', 'Waits for your OK.')])
+    act(() => {
+      emit('autopilot:updated')
+    })
+
+    expect(await screen.findByRole('region', { name: 'Needs you' })).toBeInTheDocument()
   })
 })

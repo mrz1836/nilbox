@@ -246,8 +246,10 @@ describe('matchSettings', () => {
   it('finds a template’s rows by the agent each names', () => {
     const codex = matchSettings('codex')
 
-    expect(codex?.sections.get('launching')).toBe(4)
+    expect(codex?.sections.get('launching')).toBe(5)
     expect(codex?.isMatch('launching', 'Codex profile')).toBe(true)
+    expect(codex?.isMatch('launching', 'Use an API key for Codex when one is set')).toBe(true)
+    expect(codex?.isMatch('launching', 'Use an API key for Claude Code when one is set')).toBe(false)
     expect(codex?.isMatch('launching', 'Claude profile')).toBe(false)
     expect(codex?.isMatch('launching', 'Set Codex’s effort at launch')).toBe(true)
     expect(codex?.isMatch('profiles', 'Codex profiles')).toBe(true)

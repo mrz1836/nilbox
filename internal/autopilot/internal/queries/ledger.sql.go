@@ -1541,6 +1541,52 @@ func (q *Queries) ListTries(ctx context.Context, routineID int64) ([]ListTriesRo
 	return items, nil
 }
 
+const recordRunLaunch = `-- name: RecordRunLaunch :exec
+UPDATE autopilot_runs SET
+    session_id = ?1,
+    agent = ?2,
+    profile = ?3,
+    model = ?4,
+    effort = ?5,
+    clone_path = ?6,
+    worktree = ?7,
+    display_command = ?8,
+    updated_at = ?9
+WHERE id = ?10 AND status <> 'ended'
+`
+
+type RecordRunLaunchParams struct {
+	SessionID      string
+	Agent          string
+	Profile        string
+	Model          string
+	Effort         string
+	ClonePath      string
+	Worktree       string
+	DisplayCommand string
+	UpdatedAt      time.Time
+	ID             int64
+}
+
+// RecordRunLaunch records what an agent's launch started for a run not ended yet: the
+// session the sessions ledger records, the agent, the profile, the model, and the effort
+// it resolved to, the clone and the worktree, and the command line shown.
+func (q *Queries) RecordRunLaunch(ctx context.Context, arg RecordRunLaunchParams) error {
+	_, err := q.db.ExecContext(ctx, recordRunLaunch,
+		arg.SessionID,
+		arg.Agent,
+		arg.Profile,
+		arg.Model,
+		arg.Effort,
+		arg.ClonePath,
+		arg.Worktree,
+		arg.DisplayCommand,
+		arg.UpdatedAt,
+		arg.ID,
+	)
+	return err
+}
+
 const reviseRunEnd = `-- name: ReviseRunEnd :execrows
 UPDATE autopilot_runs SET
     status = 'ended',

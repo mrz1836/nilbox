@@ -11,13 +11,17 @@ import type {
   AutopilotEngine,
   AutopilotGlance,
   AutopilotGroup,
+  AutopilotHold,
   AutopilotItemRef,
   AutopilotLeftAlone,
   AutopilotMatch,
   AutopilotMatching,
   AutopilotMode,
+  AutopilotReadiness,
+  AutopilotReadyCheck,
   AutopilotReason,
   AutopilotRoutine,
+  AutopilotRoutineReady,
   AutopilotStepKind,
   AutopilotTarget,
 } from '../platform'
@@ -110,10 +114,10 @@ export interface StatusLine {
 }
 
 // routineStatus is a routine's status line: whose it is when it is another account's, why
-// it is broken or can't run, its last error, then what it is doing (working, waiting), what
-// it did today, or when it last ran (or, a Dry run's, would have), from its own figures; a
-// routine that is off says only its mode.
-export function routineStatus(r: AutopilotRoutine, working: number, problem: string): StatusLine {
+// it is broken, what this Mac lacks for it (notReady), why it can't run, its last error,
+// then what it is doing (working, waiting), what it did today, or when it last ran (or, a
+// Dry run's, would have), from its own figures; a routine that is off says only its mode.
+export function routineStatus(r: AutopilotRoutine, working: number, problem: string, notReady = ''): StatusLine {
   const figures = r.figures
   const mode = modeLabel(r.mode)
 
@@ -123,6 +127,10 @@ export function routineStatus(r: AutopilotRoutine, working: number, problem: str
 
   if (r.broken !== '') {
     return { text: r.broken, tone: 'danger' }
+  }
+
+  if (notReady !== '' && r.enabled) {
+    return { text: notReady, tone: 'danger' }
   }
 
   if (problem !== '') {
@@ -210,7 +218,7 @@ const notices: readonly AutopilotStepKind[] = ['notify', 'tellMe']
 // for this Mac, for a limit, or works.
 const openChips: Readonly<Record<'waiting' | 'blocked' | 'queued' | 'running' | 'verifying', Chip>> = {
   waiting: { label: 'Needs you', tone: 'warning' },
-  blocked: { label: 'Can’t start yet', tone: 'warning' },
+  blocked: { label: 'Needs you', tone: 'warning' },
   queued: { label: 'Queued', tone: 'muted' },
   running: { label: 'Working', tone: 'accent' },
   verifying: { label: 'Checking', tone: 'accent' },
@@ -560,6 +568,96 @@ export function inChunks(ids: readonly number[]): number[][] {
   }
 
   return out
+}
+
+// checkText says how one readiness check came out: its label and what was found, as in
+// "Claude · isn’t installed".
+export function checkText(c: Pick<AutopilotReadyCheck, 'label' | 'found'>): string {
+  return c.found === '' ? c.label : `${c.label} · ${c.found}`
+}
+
+// readyOf is a routine's readiness on this Mac, or undefined while it isn't known, as for a
+// routine that is off, which nothing checks.
+export function readyOf(readiness: AutopilotReadiness | null, routineId: number): AutopilotRoutineReady | undefined {
+  return readiness?.routines.find((r) => r.routineId === routineId)
+}
+
+// notReadyText says what this Mac lacks for a routine, by its first problem: "Not ready on
+// this Mac: Claude · isn’t installed", or '' for a routine that is ready or not known.
+export function notReadyText(r: AutopilotRoutineReady | undefined): string {
+  if (r === undefined || r.ready) {
+    return ''
+  }
+
+  const [first] = r.problems
+
+  return first === undefined ? 'Not ready on this Mac' : `Not ready on this Mac: ${checkText(first)}`
+}
+
+// notReadyNames are the routines this Mac can't run, in the list's order.
+export function notReadyNames(readiness: AutopilotReadiness | null): string[] {
+  return (readiness?.routines ?? []).filter((r) => !r.ready).map((r) => r.name)
+}
+
+// notReadyBanner says how many of the user's routines this Mac can't run.
+export function notReadyBanner(count: number): string {
+  return `This Mac can’t run ${formatCount(count)} of your routines.`
+}
+
+// NeedsYou is what waits in Activity's Needs you, by where it stands: the matches waiting
+// for the user's OK, those that can't start until something on this Mac is fixed, and
+// those that start by themselves once what they wait on frees, each newest first.
+export interface NeedsYou {
+  waiting: AutopilotMatch[]
+  blocked: AutopilotMatch[]
+  queued: AutopilotMatch[]
+}
+
+// needsYou sorts the open matches that haven't started into Needs you's parts, one
+// routine's alone when routine isn't 0.
+export function needsYou(matches: readonly AutopilotMatch[], routine = 0): NeedsYou {
+  const mine = matches.filter((m) => routine === 0 || m.routineId === routine)
+
+  return {
+    waiting: mine.filter((m) => m.state === 'waiting'),
+    blocked: mine.filter((m) => m.state === 'blocked'),
+    queued: mine.filter((m) => m.state === 'queued'),
+  }
+}
+
+// shortHead is a commit as the window names it: its first seven characters.
+export function shortHead(sha: string): string {
+  return sha.slice(0, 7)
+}
+
+// dirtyText says what holds a start in a worktree back: "pr-88 has 3 uncommitted files".
+export function dirtyText(hold: Pick<AutopilotHold, 'worktree' | 'dir' | 'dirty'>): string {
+  const where = hold.worktree === '' ? hold.dir : hold.worktree
+
+  return `${where} has ${counted(hold.dirty, 'uncommitted file', 'uncommitted files')}`
+}
+
+// runLabel is what a waiting match's Run says: for a hold of a pull request's files, the
+// commit it confirms them at ("Run on a1b2c3d"); for a worktree with uncommitted changes,
+// that it runs there anyway ("Run in pr-88 anyway"); else Run.
+export function runLabel(m: Pick<AutopilotMatch, 'blockedBy' | 'hold'>): string {
+  const hold = m.hold
+
+  if (hold === null) {
+    return 'Run'
+  }
+
+  if (m.blockedBy === 'dirty_worktree') {
+    return `Run in ${hold.worktree === '' ? hold.dir : hold.worktree} anyway`
+  }
+
+  return m.blockedBy === 'hold' && hold.head !== '' ? `Run on ${shortHead(hold.head)}` : 'Run'
+}
+
+// skipLabel is what Skip says: a pull request's occurrence is its commit, so skipping it
+// waits for the next push; any other waits for the next time the routine fires.
+export function skipLabel(m: Pick<AutopilotMatch, 'item' | 'fireKey'>): string {
+  return m.item.kind === 'pr' && m.fireKey.includes(':commit:') ? 'Skip this commit' : 'Skip this time'
 }
 
 // AutopilotRequest is what the window asks the Autopilot tab to show, numbered so the same

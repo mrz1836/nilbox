@@ -268,6 +268,35 @@ func (q *Queries) SetRoutineOrder(ctx context.Context, arg SetRoutineOrderParams
 	return err
 }
 
+const setRoutineSpec = `-- name: SetRoutineSpec :execrows
+UPDATE autopilot_routines SET
+    spec = ?1,
+    updated_at = ?2
+WHERE id = ?3 AND spec = ?4 AND deleted_at IS NULL
+`
+
+type SetRoutineSpecParams struct {
+	Spec      string
+	UpdatedAt time.Time
+	ID        int64
+	Was       string
+}
+
+// SetRoutineSpec replaces a routine's spec alone, as when a prompt it names by nickname is
+// renamed, while its spec is still the one read (was).
+func (q *Queries) SetRoutineSpec(ctx context.Context, arg SetRoutineSpecParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, setRoutineSpec,
+		arg.Spec,
+		arg.UpdatedAt,
+		arg.ID,
+		arg.Was,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
 const updateRoutine = `-- name: UpdateRoutine :execrows
 UPDATE autopilot_routines SET
     account_login = ?1,

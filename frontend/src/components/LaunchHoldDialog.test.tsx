@@ -36,4 +36,34 @@ describe('LaunchHoldDialog', () => {
       'https://github.com/acme-org/example-repo/pull/7/files#diff-aaaa',
     )
   })
+
+  it('explains a pull request whose files couldn’t all be checked', () => {
+    render(
+      <LaunchHoldDialog
+        hold={launchHold({ reason: 'unchecked', files: [], checked: 3, total: 6 })}
+        agentName="Claude"
+        onConfirm={vi.fn()}
+        onCancel={vi.fn()}
+      />,
+    )
+
+    const dialog = within(screen.getByRole('dialog', { name: 'Its files couldn’t all be checked' }))
+    expect(dialog.getByText(/GitHub listed only 3 of its 6 changed files/)).toBeInTheDocument()
+    expect(dialog.getByText(/open the session only if they’re safe/)).toBeInTheDocument()
+  })
+
+  it('explains a worktree with uncommitted changes', () => {
+    render(
+      <LaunchHoldDialog
+        hold={launchHold({ reason: 'dirty', files: [], worktree: 'pr-88', dirty: 3 })}
+        agentName="Codex"
+        onConfirm={vi.fn()}
+        onCancel={vi.fn()}
+      />,
+    )
+
+    const dialog = within(screen.getByRole('dialog', { name: 'Its worktree has uncommitted changes' }))
+    expect(dialog.getByText(/pr-88 has 3 uncommitted files/)).toBeInTheDocument()
+    expect(dialog.getByText(/Codex would work on top of them/)).toBeInTheDocument()
+  })
 })

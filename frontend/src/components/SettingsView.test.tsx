@@ -637,6 +637,33 @@ describe('SettingsView', () => {
     expect(platform.setCodexFast).toHaveBeenCalledWith(true)
   })
 
+  it('runs each agent on its profile’s own sign-in unless an API key is let in', async () => {
+    const { onSaved } = renderSettings()
+    await openSection('Launching')
+
+    const claude = screen.getByRole('switch', { name: 'Use an API key for Claude Code when one is set' })
+    const codex = screen.getByRole('switch', { name: 'Use an API key for Codex when one is set' })
+    expect(claude).not.toBeChecked()
+    expect(codex).not.toBeChecked()
+    expect(claude).toHaveAccessibleDescription(
+      'Off: Claude Code uses the profile’s own sign-in. On: an API key from your shell is used, and billed to that key.',
+    )
+    expect(codex).toHaveAccessibleDescription(/Off: Codex uses the profile’s own sign-in/)
+
+    await userEvent.click(claude)
+    expect(platform.setClaudeAPIKey).toHaveBeenCalledWith(true)
+    await waitFor(() => {
+      expect(onSaved).toHaveBeenCalledWith(settings({ claudeApiKey: true }))
+    })
+    expect(claude).toBeChecked()
+
+    await userEvent.click(codex)
+    expect(platform.setCodexAPIKey).toHaveBeenCalledWith(true)
+    await waitFor(() => {
+      expect(onSaved).toHaveBeenCalledWith(settings({ codexApiKey: true }))
+    })
+  })
+
   it('turns following the agent sessions off and on', async () => {
     const { onSaved } = renderSettings()
     await openSection('Launching')
@@ -1604,6 +1631,7 @@ describe('SettingsView search', () => {
       'Codex profile',
       'Set Codex’s effort at launch',
       'Start Codex in Fast mode',
+      'Use an API key for Codex when one is set',
     ])
   })
 

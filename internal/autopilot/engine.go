@@ -221,9 +221,17 @@ type EngineConfig struct {
 	// Holds says what else holds a start back; nil holds nothing.
 	Holds Holds
 
+	// Outside says where agents may run on outside contributors' items; nil allows them
+	// nowhere.
+	Outside OutsideRules
+
 	// Problems tells the user of each problem once; nil tells no one, and they stay
 	// recorded.
 	Problems ProblemSink
+
+	// NeedsYou tells the user, once, of each match that comes to wait for them (Needs
+	// your OK); nil tells no one, and the matches still wait.
+	NeedsYou NoticeSink
 
 	// Events hears event.AutopilotUpdated.
 	Events event.Sink
@@ -243,7 +251,9 @@ type Engine struct {
 	dispatchers map[catalog.Dispatcher]Dispatcher
 	triage      Triage
 	holds       Holds
+	outside     OutsideRules
 	problems    ProblemSink
+	needsYou    NoticeSink
 	events      event.Sink
 	clock       clock.Clock
 	logger      *slog.Logger
@@ -280,6 +290,10 @@ type Engine struct {
 	stateReads map[int64]time.Time
 	checksRead map[int64]time.Time
 	holdOff    time.Time
+
+	// waits are the matches that came to wait for the user since the last cycle ended,
+	// whose Needs your OK notices it tells.
+	waits map[int64]bool
 
 	// glanced is Autopilot at a glance as this copy last read it on a tick while another
 	// copy held the engine, nil before it did (followElsewhere).
@@ -366,8 +380,8 @@ func NewEngine(svc *Service, cfg EngineConfig) *Engine {
 	e := &Engine{
 		svc: svc, items: cfg.Items, ledger: newLedger(svc.store.db, svc.clock), prefs: prefs.New(svc.store.db, svc.clock),
 		lock: lock, runner: cfg.Runner, dispatchers: maps.Clone(cfg.Dispatchers), triage: cfg.Triage, holds: cfg.Holds,
-		problems: cfg.Problems,
-		events:   event.Or(cfg.Events), clock: svc.clock, logger: logging.Or(svc.logger), tick: tick,
+		outside: cfg.Outside, problems: cfg.Problems, needsYou: cfg.NeedsYou, waits: map[int64]bool{},
+		events: event.Or(cfg.Events), clock: svc.clock, logger: logging.Or(svc.logger), tick: tick,
 		since: svc.clock.Now().Truncate(time.Second), wake: make(chan struct{}, 1), cmds: make(chan command),
 		mail: mailbox{signal: make(chan struct{}, 1)}, closed: make(chan struct{}),
 		inflight: map[int64]bool{}, freshReads: map[int64]fresh{}, stopping: map[int64]stopAsk{},

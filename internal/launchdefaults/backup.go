@@ -247,7 +247,21 @@ func cleanKept(k Kept) (Kept, []string, bool) {
 	k.Profiles, k.Models, k.ExtraArgs = profiles, checked.Models, agent.CloneArgs(checked.Args)
 	k.PRPrompt, k.IssuePrompt = strings.TrimSpace(k.PRPrompt), strings.TrimSpace(k.IssuePrompt)
 
+	k.AutopilotOutside, notes = cleanOutside(where, k.AutopilotOutside, notes)
+
 	return k, notes, true
+}
+
+// cleanOutside returns a kept choice of Autopilot on outside contributors' items as this
+// build stores it, and notes with a note added when it left one out it doesn't know.
+func cleanOutside(where string, o Outside, notes []string) (Outside, []string) {
+	if o = Outside(strings.TrimSpace(string(o))); o.Valid() {
+		return o, notes
+	}
+
+	return OutsideInherit, append(notes, fmt.Sprintf(
+		"%s: whether Autopilot acts on outside contributors' items, %q, was left out.", where, o,
+	))
 }
 
 // dropped notes each of an agent's settings what that was in given and left out of kept.

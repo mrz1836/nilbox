@@ -167,7 +167,8 @@ func (s *Service) save(ctx context.Context, d Draft) (Routine, error) {
 		return Routine{}, err
 	}
 
-	if problems := s.promptProblems(ctx, saving.spec); len(problems) > 0 {
+	problems := append(s.offers.placeProblems(saving.spec), s.promptProblems(ctx, saving.spec)...)
+	if len(problems) > 0 {
 		v := &spec.ValidationError{Problems: problems}
 
 		return Routine{}, uierr.New(textutil.Sentence("The routine isn't valid yet: "+problems[0].Message),
@@ -521,6 +522,9 @@ func (s *Service) reorder(ctx context.Context,
 // after the next change.
 func (s *Service) changed(ctx context.Context) {
 	s.rebuildWatches(ctx)
+
+	// A routine saved or switched on may need what this Mac wasn't checked for yet.
+	s.ready.markDue()
 
 	if s.engine != nil {
 		s.engine.Wake()

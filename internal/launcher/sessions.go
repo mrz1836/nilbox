@@ -224,7 +224,7 @@ func (s *Service) Resume(ctx context.Context, req ResumeRequest) (LaunchResult, 
 			paths.Tilde(prev.Dir, s.home)), ErrSessionMoved)
 	}
 
-	if hold := s.heldBack(p, req.Confirmed); hold != nil {
+	if hold := s.heldBack(p, req.Confirmed, nil); hold != nil {
 		return LaunchResult{Hold: hold}, nil
 	}
 

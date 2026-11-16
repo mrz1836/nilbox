@@ -4,7 +4,7 @@ import { flushSync } from 'react-dom'
 import { brand } from '../generated/brand'
 import { counted, errorMessage, fileDate, fileName } from '../lib/format'
 import { isFindKey, isPreviewKey } from '../lib/keys'
-import { kindPlural, promptApplies, usageCount, usagePlaces } from '../lib/launch'
+import { kindPlural, promptApplies, routinePlaces, usageCount, usagePlaces } from '../lib/launch'
 import { replyDefaultsText, replySlotPlaces, replySlots } from '../lib/replies'
 import { useMutation } from '../lib/useMutation'
 import { useDebouncedQuery } from '../lib/useQuery'
@@ -638,7 +638,11 @@ export function PromptsView({ agents, prompts, replies, defaults, variables, ite
       icon: <TrashIcon className="size-4" />,
       danger: true,
       onSelect: () => {
-        setPending(usageCount(p.usage) > 0 ? { kind: 'in-use', prompt: p } : { kind: 'delete', prompt: p })
+        setPending(
+          usageCount(p.usage) > 0 || p.usage.routines.length > 0
+            ? { kind: 'in-use', prompt: p }
+            : { kind: 'delete', prompt: p },
+        )
       },
     })
 
@@ -692,15 +696,31 @@ export function PromptsView({ agents, prompts, replies, defaults, variables, ite
           cancelLabel: null,
           children: (
             <>
-              <p>A prompt can be deleted once nothing uses it as a default. Choose another default here first:</p>
-              <ul className="mt-2 list-disc pl-5 text-text">
-                {usagePlaces(asked.prompt.usage).map((place) => (
-                  <li key={place}>{place}</li>
-                ))}
-              </ul>
-              <p className="mt-2">
-                App defaults are in Settings → Launching; org and repo defaults in Settings → Repositories.
-              </p>
+              {usageCount(asked.prompt.usage) > 0 && (
+                <>
+                  <p>A prompt can be deleted once nothing uses it as a default. Choose another default here first:</p>
+                  <ul className="mt-2 list-disc pl-5 text-text">
+                    {usagePlaces(asked.prompt.usage).map((place) => (
+                      <li key={place}>{place}</li>
+                    ))}
+                  </ul>
+                  <p className="mt-2">
+                    App defaults are in Settings → Launching; org and repo defaults in Settings → Repositories.
+                  </p>
+                </>
+              )}
+              {asked.prompt.usage.routines.length > 0 && (
+                <>
+                  <p className={usageCount(asked.prompt.usage) > 0 ? 'mt-3' : ''}>
+                    Autopilot routines run it too. Choose other prompts in their steps first, on the Autopilot tab:
+                  </p>
+                  <ul className="mt-2 list-disc pl-5 text-text">
+                    {routinePlaces(asked.prompt.usage).map((place) => (
+                      <li key={place}>{place}</li>
+                    ))}
+                  </ul>
+                </>
+              )}
             </>
           ),
           onConfirm: () => {

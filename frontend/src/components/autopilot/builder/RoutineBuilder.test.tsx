@@ -19,6 +19,7 @@ import {
   prompts,
   routineSuggestions,
   routineTest,
+  runPreview,
   testItem,
 } from '../../../test/fixtures'
 import { platform } from '../../../test/platform'
@@ -183,7 +184,7 @@ describe('the routine builder', () => {
     const then = block('Then')
 
     expect(then.getByText('Run a coding agent')).toBeInTheDocument()
-    expect(then.getAllByText('· Dry run for now').length).toBe(2)
+    expect(then.getAllByText('· Dry run for now').length).toBe(1)
     expect(then.getByRole('combobox', { name: 'Step 2 runs' })).toHaveValue('pushed')
     expect(then.getByRole('combobox', { name: 'Prompt' })).toHaveValue('starter:fix-checks')
     expect(block('Limits').getByRole('combobox', { name: 'Once per' })).toHaveValue('headCommit')
@@ -515,17 +516,35 @@ describe('the routine builder', () => {
     expect(block('If').getByRole('combobox', { name: 'Condition 1: field' })).toHaveValue('item.gone')
   })
 
-  it('adds steps that fit where they sit, orders them, runs each only if, and takes one away', async () => {
+  it('adds an agent step where this build runs agents, in the terminal, after which only a notice fits', async () => {
     const user = userEvent.setup()
     renderBuilder({ spec: { ...flagship(), steps: [{ notify: {} }] } })
 
     const then = block('Then')
 
     await user.click(then.getByRole('button', { name: 'Add a step' }))
-    expect(screen.getByRole('menuitem', { name: /Run a coding agent/ })).toHaveTextContent('Dry run for now')
+    expect(screen.getByRole('menuitem', { name: /Run a coding agent/ })).not.toHaveTextContent('Dry run for now')
     expect(screen.queryByRole('menuitem', { name: /Wait for the checks/ })).not.toBeInTheDocument()
     await user.click(screen.getByRole('menuitem', { name: /Run a coding agent/ }))
-    expect(spec().steps[1]).toEqual({ agent: { agent: 'inherit', prompt: { itemDefault: true } } })
+    expect(spec().steps[1]).toEqual({ agent: { agent: 'inherit', prompt: { itemDefault: true }, where: 'terminal' } })
+    expect(then.getByRole('radio', { name: 'In my terminal' })).toBeChecked()
+
+    await user.click(then.getByRole('button', { name: 'Add a step' }))
+    expect(screen.getAllByRole('menuitem').map((m) => m.textContent)).toEqual([
+      expect.stringMatching(/^Notify me/),
+      expect.stringMatching(/^Tell me/),
+    ])
+  })
+
+  it('adds steps that fit where they sit, orders them, runs each only if, and takes one away', async () => {
+    const user = userEvent.setup()
+    // A background agent step, as a routine from before can hold, lets the checks' steps
+    // follow it.
+    renderBuilder({
+      spec: { ...flagship(), steps: [{ notify: {} }, { agent: { agent: 'inherit', prompt: { itemDefault: true } } }] },
+    })
+
+    const then = block('Then')
 
     await user.click(then.getByRole('button', { name: 'Add a step' }))
     expect(screen.queryByRole('menuitem', { name: /Run a coding agent/ })).not.toBeInTheDocument()
@@ -681,10 +700,46 @@ describe('the agent step', () => {
     expect(block('Then').getByRole('combobox', { name: 'Prompt' })).toHaveDisplayValue('Gone')
   })
 
+  it('offers only the places this build runs agents in, saying why another is off, and shows its problem there', async () => {
+    platform.describeRoutine.mockResolvedValue(
+      described({
+        problems: [
+          {
+            part: 'steps',
+            field: '[0].agent.where',
+            message: `this version of ${brand.name} can’t run an agent in the background yet: choose In my terminal`,
+          },
+        ],
+      }),
+    )
+    renderBuilder({ spec: agentOnly({ agent: 'inherit', prompt: { itemDefault: true }, where: 'background' }) })
+
+    const then = block('Then')
+    const background = then.getByRole('radio', { name: 'In the background' })
+
+    expect(background).toBeDisabled()
+    expect(background).toBeChecked()
+    expect(background.closest('label')).toHaveAttribute(
+      'title',
+      `This version of ${brand.name} can’t run an agent in the background yet.`,
+    )
+    expect(then.getByRole('radio', { name: 'In my terminal' })).toBeEnabled()
+    expect(then.getByRole('radio', { name: 'In my terminal' }).closest('label')).toHaveAttribute(
+      'title',
+      "Exactly a click's launch: the same holds, worktree, terminal, and session.",
+    )
+    expect(await then.findByText(/can’t run an agent in the background yet: choose In my terminal/)).toBeInTheDocument()
+    expect(then.getByRole('radiogroup', { name: 'Where it runs' })).toHaveAccessibleDescription(/choose In my terminal/)
+  })
+
   it('runs in the background or in the terminal, with the fence only in the background', async () => {
     const user = userEvent.setup()
+    // A later build runs agents in the background too.
+    const both = autopilotCatalog()
+
     renderBuilder({
       spec: agentOnly({ agent: 'inherit', prompt: { itemDefault: true }, fence: { timeoutMinutes: 45 } }),
+      catalog: { ...both, places: both.places.map((p) => ({ ...p, offered: true })) },
     })
 
     const then = block('Then')
@@ -873,6 +928,49 @@ describe('the limits', () => {
 })
 
 describe('the Test panel', () => {
+  it('previews the agent step’s run on an item it tried, exactly as it would start, and starts nothing', async () => {
+    const user = userEvent.setup()
+    platform.previewRoutineRun.mockResolvedValue(runPreview({ warnings: ['The org’s profile “gone” is gone.'] }))
+    renderBuilder()
+
+    expect(screen.queryByRole('button', { name: /^Preview/ })).not.toBeInTheDocument()
+    await testNow(user)
+
+    const preview = await screen.findByRole('button', { name: 'Preview acme-org/example-repo #7' })
+
+    expect(platform.previewRoutineRun).not.toHaveBeenCalled()
+    await user.click(preview)
+
+    expect(platform.previewRoutineRun).toHaveBeenCalledWith(expect.objectContaining({ id: 9, spec: flagship() }), 1)
+    expect(await screen.findByText(/Fix the failing checks of pull request #7/)).toBeInTheDocument()
+    expect(screen.getByText('claude · default · opus · high · Fix checks')).toBeInTheDocument()
+    expect(
+      screen.getByText(`Creates ~/projects/.${brand.slug}/worktrees/example-repo/pr-7 from the pull request’s head`),
+    ).toBeInTheDocument()
+    expect(screen.getByText(/full access · opens in iTerm2/)).toBeInTheDocument()
+    expect(screen.getByText('unset ANTHROPIC_API_KEY')).toBeInTheDocument()
+    expect(screen.getByText(/^claude <prompt> --model opus/)).toBeInTheDocument()
+    expect(screen.getByRole('list', { name: 'What it skipped' })).toHaveTextContent('The org’s profile “gone” is gone.')
+    expect(platform.launch).not.toHaveBeenCalled()
+
+    platform.previewRoutineRun.mockRejectedValueOnce(
+      new Error('There’s no clone of acme-org/example-repo on this Mac.'),
+    )
+    await user.click(preview)
+    await user.click(preview)
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('There’s no clone of acme-org/example-repo on this Mac.')
+  })
+
+  it('offers no Preview for a routine with no agent step', async () => {
+    const user = userEvent.setup()
+    renderBuilder({ spec: { ...flagship(), steps: [{ tellMe: { when: 'reached' } }] } })
+
+    await testNow(user)
+    expect(await screen.findByRole('list', { name: 'Items it watches' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^Preview/ })).not.toBeInTheDocument()
+  })
+
   it('lists every item it watches, matches first, each with where it stands and why', async () => {
     const user = userEvent.setup()
     platform.testRoutine.mockResolvedValue(

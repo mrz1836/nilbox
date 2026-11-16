@@ -54,6 +54,9 @@ export interface SegmentOption<T extends string> {
   title?: string
   // icon sits before the label, if any; it is decorative, since the label names the option.
   icon?: ReactNode
+  // disabled turns the option off alone, such as one this build can't do yet, whose title
+  // then says why.
+  disabled?: boolean
 }
 
 export interface SegmentedProps<T extends string> {
@@ -95,14 +98,14 @@ export function Segmented<T extends string>({
         <label
           key={o.value}
           title={o.title}
-          className={`relative flex items-center gap-1.5 rounded-[5px] ${pad} font-medium whitespace-nowrap text-muted transition-colors select-none hover:text-text has-checked:bg-raised has-checked:text-text has-checked:shadow-sm has-focus-visible:outline-2 has-focus-visible:outline-accent ${disabled ? 'opacity-60' : 'cursor-pointer'}`}
+          className={`relative flex items-center gap-1.5 rounded-[5px] ${pad} font-medium whitespace-nowrap text-muted transition-colors select-none hover:text-text has-checked:bg-raised has-checked:text-text has-checked:shadow-sm has-focus-visible:outline-2 has-focus-visible:outline-accent ${disabled || o.disabled === true ? 'opacity-60' : 'cursor-pointer'}`}
         >
           <input
             type="radio"
             name={name}
             value={o.value}
             checked={value === o.value}
-            disabled={disabled}
+            disabled={disabled || o.disabled === true}
             onChange={() => {
               onChange(o.value)
             }}

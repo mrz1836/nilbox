@@ -53,6 +53,8 @@ type Portable struct {
 	FollowSessions      *bool                `json:"followSessions,omitempty"`
 	CodexEffort         *bool                `json:"codexEffort,omitempty"`
 	CodexFast           *bool                `json:"codexFast,omitempty"`
+	ClaudeAPIKey        *bool                `json:"claudeApiKey,omitempty"`
+	CodexAPIKey         *bool                `json:"codexApiKey,omitempty"`
 	WorktreeAutoCleanup *bool                `json:"worktreeAutoCleanup,omitempty"`
 	Branches            *branchrules.Rules   `json:"branches,omitempty"`
 	TrustedBots         *[]string            `json:"trustedBots,omitempty"`
@@ -176,7 +178,8 @@ func portableOf(set Settings) Portable {
 	return Portable{
 		DefaultAgent: &set.DefaultAgent, DefaultProfiles: maps.Clone(set.DefaultProfiles), Terminal: &set.Terminal,
 		WorktreeDefault: &set.WorktreeDefault, FollowSessions: &set.FollowSessions, CodexEffort: &set.CodexEffort,
-		CodexFast: &set.CodexFast, WorktreeAutoCleanup: &set.WorktreeAutoCleanup, Branches: &set.Branches,
+		CodexFast: &set.CodexFast, ClaudeAPIKey: &set.ClaudeAPIKey, CodexAPIKey: &set.CodexAPIKey,
+		WorktreeAutoCleanup: &set.WorktreeAutoCleanup, Branches: &set.Branches,
 		TrustedBots: &set.TrustedBots, SnoozeDays: &set.SnoozeDays, SnoozeWake: &set.SnoozeWake,
 		SensitiveScope: &set.SensitiveFiles.Scope, SensitiveOff: &set.SensitiveFiles.Off,
 		SensitivePatterns: &set.SensitiveFiles.Patterns, MenuBar: &set.MenuBar, BannersOff: &set.BannersOff,
@@ -417,6 +420,8 @@ func (s *Service) portableFields() []portableField {
 		boolField("Follow agent sessions", tellsSessions, KeyFollowSessions, func(p Portable) *bool { return p.FollowSessions }),
 		boolField("Pass Codex its effort", tellsNothing, KeyCodexEffort, func(p Portable) *bool { return p.CodexEffort }),
 		boolField("Codex Fast mode", tellsNothing, KeyCodexFast, func(p Portable) *bool { return p.CodexFast }),
+		boolField("Claude Code's API key", tellsNothing, KeyClaudeAPIKey, func(p Portable) *bool { return p.ClaudeAPIKey }),
+		boolField("Codex's API key", tellsNothing, KeyCodexAPIKey, func(p Portable) *bool { return p.CodexAPIKey }),
 		boolField("Clean up finished worktrees", tellsNothing, KeyWorktreeAutoCleanup,
 			func(p Portable) *bool { return p.WorktreeAutoCleanup }),
 		pointerField("Branch rules", tellsNothing, func(p Portable) *branchrules.Rules { return p.Branches },

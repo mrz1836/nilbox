@@ -325,6 +325,10 @@ export type ItemKind = item.Kind
 export type LaunchDefaults = NonNullLists<launchdefaults.Defaults>
 export type LaunchDefaultsInput = NonNullLists<launchdefaults.Input>
 export type LaunchTarget = NonNullLists<launchdefaults.Target>
+// AutopilotOutside is whether Autopilot may run agents, in plan mode, on outside
+// contributors' items in an org or a repository: '' inherits (a repository's from its
+// org's, an org's off, since there is no app-wide switch), else off or on.
+export type AutopilotOutside = launchdefaults.Outside
 
 export type CloneTarget = NonNullLists<launcher.CloneTarget>
 export type LinkedClone = NonNullLists<launcher.LinkedClone>
@@ -453,6 +457,42 @@ export type AutopilotTestSearch = NonNullLists<autopilot.TestSearch>
 export type AutopilotEstimate = NonNullLists<autopilot.Estimate>
 export type AutopilotTrace = NonNullLists<autopiloteval.Trace>
 export type AutopilotResult = autopiloteval.Result
+// Where an agent step can run, as the catalog offers it: in the background, or in the
+// user's terminal, each with whether this build runs an agent there.
+export type AutopilotPlace = NonNullLists<autopilotcatalog.PlaceInfo>
+export type AutopilotWhere = autopilotcatalog.Where
+
+// This Mac's readiness to run the routines: each need checked (the GitHub sign-in, each
+// tool, agent, profile, and the terminal), how it came out, and how to fix it, and each
+// routine's own needs, which hold its starts while one is a problem. A need that names no
+// place has '' for it, which the generated type, a place, leaves out.
+export type AutopilotNeed = Omit<NonNullLists<autopilot.Need>, 'place'> & { place: autopilotcatalog.Where | '' }
+export type AutopilotNeedKind = autopilot.NeedKind
+export type AutopilotReadyLevel = autopilot.ReadyLevel
+export type AutopilotReadyCheck = Omit<NonNullLists<autopilot.ReadyCheck>, 'need'> & { need: AutopilotNeed }
+export type AutopilotRoutineReady = Omit<NonNullLists<autopilot.RoutineReady>, 'problems' | 'warnings'> & {
+  problems: AutopilotReadyCheck[]
+  warnings: AutopilotReadyCheck[]
+}
+export type AutopilotReadiness = Omit<NonNullLists<autopilot.Readiness>, 'checks' | 'routines'> & {
+  checks: AutopilotReadyCheck[]
+  routines: AutopilotRoutineReady[]
+}
+
+// What an open match waits on, and the launcher's own hold a start waits on the user's OK
+// for: a pull request's files at a head commit, or a worktree with uncommitted changes.
+export type AutopilotBlocker = autopilot.Blocker
+export type AutopilotHold = NonNullLists<autopilot.Hold>
+
+// A routine's agent step planned on one item and not started, as the builder previews it.
+export type AutopilotRunPreview = NonNullLists<autopilot.RunPreview>
+export type AutopilotRunWorktree = NonNullLists<autopilot.RunWorktree>
+
+// Why a routine did or didn't act on an item: its decision now, each condition with its
+// value, and what the ledger knows, with the match for the occurrence now, if any.
+export type AutopilotExplanation = Omit<NonNullLists<autopilot.Explanation>, 'record'> & {
+  record: AutopilotMatch | null
+}
 
 export type Profile = NonNullLists<profiles.Profile>
 
@@ -776,6 +816,8 @@ export const {
   SetFollowSessions: setFollowSessions,
   SetCodexEffort: setCodexEffort,
   SetCodexFast: setCodexFast,
+  SetClaudeAPIKey: setClaudeAPIKey,
+  SetCodexAPIKey: setCodexAPIKey,
   SetMenuBar: setMenuBar,
   SetNotificationBanner: setNotificationBanner,
   SetSnoozeDays: setSnoozeDays,
@@ -1079,6 +1121,7 @@ const autopilotService = narrow(autopilot.Service)
 export const {
   Glance: getAutopilotGlance,
   RoutineNames: routineNames,
+  PreviewRun: previewRoutineRun,
   Delete: deleteRoutine,
   Matching: routineMatching,
   Watching: routineWatching,
@@ -1125,6 +1168,32 @@ export const tryRoutineAgain = autopilotService.TryAgain as (
   id: number,
   itemID: number,
 ) => CancellablePromise<AutopilotMatch[]>
+
+// What waits for the user, and what a routine needs on this Mac. NeedsYou lists the open
+// matches that haven't started, real ones alone, newest first: those waiting for the
+// user's OK (a hold's with the hold itself), those that can't start until something on
+// this Mac is fixed, and those that start by themselves. Approve gives the OK, which for a
+// hold confirms exactly the hold shown; Skip closes one as the user skipped it. Readiness
+// is this Mac's readiness as the checks last found it, and CheckReadiness runs every check
+// again now (asking GitHub, one point) and wakes the engine. RunNow runs a routine on an
+// item now, from its menu: only on an item its conditions match, unless anyway, which the
+// user chose knowing why it doesn't. Explain says why a routine did or didn't act on an
+// item. PreviewRun plans a draft's agent step on an item, as it would start, and starts
+// nothing.
+export const autopilotNeedsYou = autopilotService.NeedsYou as () => CancellablePromise<AutopilotMatch[]>
+export const approveMatches = autopilotService.Approve as (ids: number[] | null) => CancellablePromise<AutopilotMatch[]>
+export const skipMatch = autopilotService.Skip as (id: number) => CancellablePromise<AutopilotMatch>
+export const getAutopilotReadiness = autopilotService.Readiness as () => CancellablePromise<AutopilotReadiness>
+export const checkAutopilotReadiness = autopilotService.CheckReadiness as () => CancellablePromise<AutopilotReadiness>
+export const runRoutineNow = autopilotService.RunNow as (
+  id: number,
+  itemID: number,
+  anyway: boolean,
+) => CancellablePromise<AutopilotMatch>
+export const explainRoutine = autopilotService.Explain as (
+  id: number,
+  itemID: number,
+) => CancellablePromise<AutopilotExplanation>
 
 // The notification history. MarkAllRead marks every entry read (Mark all done), and
 // MarkRead and MarkUnread the entries with the ids given; opening the history marks

@@ -158,7 +158,7 @@ describe('the steps', () => {
 
     const offered = addable(catalog, withSteps()).find((c) => c.kind === 'agent')
 
-    expect(offered).toMatchObject({ label: 'Run a coding agent', offered: false })
+    expect(offered).toMatchObject({ label: 'Run a coding agent', offered: true })
   })
 
   it('offers a GitHub step once the catalog lists an action to send', () => {
@@ -182,6 +182,9 @@ describe('the steps', () => {
   it('adds each kind of step at its defaults', () => {
     expect(newStep('snooze', [])).toEqual({ snooze: {} })
     expect(newStep('agent', [])).toEqual({ agent: { agent: 'inherit', prompt: { itemDefault: true } } })
+    expect(newStep('agent', [], catalog.places)).toEqual({
+      agent: { agent: 'inherit', prompt: { itemDefault: true }, where: 'terminal' },
+    })
     expect(newStep('waitForChecks', [])).toEqual({ waitForChecks: {}, onlyIf: 'pushed' })
     expect(newStep('merge', [])).toEqual({ merge: { how: 'autoMergeIfItWasOn' }, onlyIf: 'passed' })
     expect(newStep('postReview', [])).toEqual({ postReview: { as: 'comment' } })

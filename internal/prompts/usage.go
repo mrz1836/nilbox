@@ -41,6 +41,21 @@ func (s *Service) loadUsage(ctx context.Context) (map[int64]Usage, error) {
 		}
 	}
 
+	usage := defaultUsage(defaults)
+
+	for _, use := range uses {
+		addPlace(usage, use)
+	}
+
+	if err = s.addRoutineUses(ctx, usage); err != nil {
+		return nil, err
+	}
+
+	return usage, nil
+}
+
+// defaultUsage is where the app's default prompts and default replies use each prompt.
+func defaultUsage(defaults DefaultPrompts) map[int64]Usage {
 	usage := map[int64]Usage{}
 
 	addDefault := func(id int64, kind item.Kind) {
@@ -63,11 +78,80 @@ func (s *Service) loadUsage(ctx context.Context) (map[int64]Usage, error) {
 		}
 	}
 
-	for _, use := range uses {
-		addPlace(usage, use)
+	return usage
+}
+
+// addRoutineUses records in usage which routines name each prompt: by its starter's key,
+// or its nickname, ignoring case.
+func (s *Service) addRoutineUses(ctx context.Context, usage map[int64]Usage) error {
+	if s.routines == nil {
+		return nil
 	}
 
-	return usage, nil
+	uses, err := s.routines.RoutineUses(ctx)
+	if err != nil {
+		return fmt.Errorf("read where the routines use the prompts: %w", err)
+	}
+
+	if len(uses) == 0 {
+		return nil
+	}
+
+	all, err := s.store.All(ctx)
+	if err != nil {
+		return err
+	}
+
+	for _, use := range uses {
+		addRoutineUse(usage, all, use)
+	}
+
+	return nil
+}
+
+// addRoutineUse records in usage that use's routine names the prompt of all it names.
+func addRoutineUse(usage map[int64]Usage, all []Prompt, use RoutineUse) {
+	for _, p := range all {
+		if names(p, use) {
+			u := usage[p.ID]
+			u.Routines = appendUnique(u.Routines, use.Routine)
+			usage[p.ID] = u
+		}
+	}
+}
+
+// names reports whether a routine's use names p: a starter's key names the user's copy of
+// that starter, and a nickname the prompt that has it, ignoring case.
+func names(p Prompt, use RoutineUse) bool {
+	if use.Starter != "" {
+		return p.StarterKey == use.Starter
+	}
+
+	return use.Nickname != "" && strings.EqualFold(p.Nickname, use.Nickname)
+}
+
+// refuseRoutineUse returns an InUseError for the prompt id when a routine runs it, saying
+// which, and nil when none does or it can't be read: the store's own check still holds.
+func (s *Service) refuseRoutineUse(ctx context.Context, id int64) error {
+	if s.routines == nil {
+		return nil
+	}
+
+	usage, err := s.usageOf(ctx, id)
+	if err != nil {
+		return err
+	}
+
+	if len(usage.Routines) == 0 {
+		return nil
+	}
+
+	p, err := s.store.Lookup(ctx, id)
+	if err != nil {
+		return err
+	}
+
+	return &InUseError{Nickname: p.Nickname, Usage: normalizeUsage(usage)}
 }
 
 // usageOf returns one prompt's usage, its lists in the order they were found.
@@ -108,6 +192,7 @@ func normalizeUsage(u Usage) Usage {
 	u.Defaults, u.Kinds = sortedList(u.Defaults), sortedList(u.Kinds)
 	u.Orgs, u.Repos = sortedList(u.Orgs), sortedList(u.Repos)
 	u.Replies = textutil.NonNil(u.Replies)
+	u.Routines = sortedList(u.Routines)
 
 	return u
 }
@@ -141,6 +226,14 @@ func describeUsage(u Usage) string {
 
 	if len(places) > 0 {
 		parts = append(parts, "a default for "+strings.Join(places, " and "))
+	}
+
+	switch len(u.Routines) {
+	case 0:
+	case 1:
+		parts = append(parts, "used by the routine “"+u.Routines[0]+"”")
+	default:
+		parts = append(parts, fmt.Sprintf("used by %d routines", len(u.Routines)))
 	}
 
 	if len(parts) == 0 {

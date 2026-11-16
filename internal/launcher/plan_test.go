@@ -536,7 +536,15 @@ func TestBuildPlanForCodex(t *testing.T) {
 	assert.True(t, got.PromptLast)
 	assert.Equal(t, agent.Codex, got.Agent)
 	assert.Equal(t, map[string]string{codexConfigEnv: absPath("home", ".codex_work")}, got.Env)
-	assert.Empty(t, got.Unset)
+	assert.Equal(t, []string{"OPENAI_API_KEY", "CODEX_API_KEY", "CODEX_ACCESS_TOKEN"}, got.Unset,
+		"an API key in the environment never signs Codex in while the setting is off")
+
+	req.UseAPIKey = true
+	got, err = BuildPlan(req)
+	require.NoError(t, err)
+	assert.Empty(t, got.Unset, "with the setting on, a key passes through")
+
+	req.UseAPIKey = false
 
 	argv := got.Argv("Review pull request #7")
 	assert.Equal(t, req.BinaryPath, argv[0])
@@ -547,7 +555,8 @@ func TestBuildPlanForCodex(t *testing.T) {
 
 	got, err = BuildPlan(req)
 	require.NoError(t, err)
-	assert.Equal(t, []string{codexConfigEnv}, got.Unset, "the default profile runs without CODEX_HOME")
+	assert.Equal(t, []string{codexConfigEnv, "OPENAI_API_KEY", "CODEX_API_KEY", "CODEX_ACCESS_TOKEN"}, got.Unset,
+		"the default profile runs without CODEX_HOME")
 
 	req.Profile.ExtraArgs = []string{"-c", "sandbox_mode=danger-full-access"}
 	_, err = BuildPlan(req)
@@ -634,30 +643,47 @@ func TestEnvHandling(t *testing.T) {
 
 	workDir := absPath("home", ".claude_work")
 
+	keys := []string{"ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN"}
+
 	tests := []struct {
 		name      string
 		configDir string
 		env       map[string]string
+		useKey    bool
 		wantEnv   map[string]string
 		wantUnset []string
 	}{
 		{
-			name: "default profile unsets the config dir", env: map[string]string{},
-			wantEnv: map[string]string{}, wantUnset: []string{claudeConfigEnv},
+			name: "default profile unsets the config dir and the keys", env: map[string]string{},
+			wantEnv: map[string]string{}, wantUnset: append([]string{claudeConfigEnv}, keys...),
 		},
 		{
 			name:    "default profile drops a config dir from its env",
 			env:     map[string]string{claudeConfigEnv: absPath("elsewhere"), "EDITOR": "vi"},
-			wantEnv: map[string]string{"EDITOR": "vi"}, wantUnset: []string{claudeConfigEnv},
+			wantEnv: map[string]string{"EDITOR": "vi"}, wantUnset: append([]string{claudeConfigEnv}, keys...),
 		},
 		{
 			name: "named profile sets the config dir", configDir: workDir, env: nil,
-			wantEnv: map[string]string{claudeConfigEnv: workDir},
+			wantEnv: map[string]string{claudeConfigEnv: workDir}, wantUnset: keys,
 		},
 		{
 			name: "the config dir wins over the profile env", configDir: workDir,
 			env:     map[string]string{claudeConfigEnv: absPath("elsewhere"), "_PRIVATE_1": "a b 'c'"},
-			wantEnv: map[string]string{claudeConfigEnv: workDir, "_PRIVATE_1": "a b 'c'"},
+			wantEnv: map[string]string{claudeConfigEnv: workDir, "_PRIVATE_1": "a b 'c'"}, wantUnset: keys,
+		},
+		{
+			name: "a key in the profile's env never reaches the agent with the setting off", configDir: workDir,
+			env:     map[string]string{"ANTHROPIC_API_KEY": "sk-test"},
+			wantEnv: map[string]string{claudeConfigEnv: workDir}, wantUnset: keys,
+		},
+		{
+			name: "with the setting on, a key passes through", configDir: workDir, useKey: true,
+			env:     map[string]string{"ANTHROPIC_API_KEY": "sk-test"},
+			wantEnv: map[string]string{claudeConfigEnv: workDir, "ANTHROPIC_API_KEY": "sk-test"},
+		},
+		{
+			name: "with the setting on, the default profile unsets only the config dir", useKey: true,
+			wantEnv: map[string]string{}, wantUnset: []string{claudeConfigEnv},
 		},
 	}
 
@@ -668,6 +694,7 @@ func TestEnvHandling(t *testing.T) {
 			req := baseRequest()
 			req.Profile.ConfigDir = tt.configDir
 			req.Profile.Env = tt.env
+			req.UseAPIKey = tt.useKey
 
 			got, err := BuildPlan(req)
 			require.NoError(t, err)

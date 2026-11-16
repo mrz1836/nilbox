@@ -6,18 +6,24 @@ import {
   autopilotEffect,
   autopilotEngine,
   autopilotGlance,
+  autopilotHold,
   autopilotMatch,
+  claudeMissing,
   dryRunMatch,
   itemRef,
   leftAlone,
+  readiness,
   routine,
   routineFigures,
+  routineReady,
 } from '../test/fixtures'
 import type { AutopilotMatch, AutopilotState } from '../platform'
 import {
   activityLines,
   autopilotBadge,
+  checkText,
   chipOf,
+  dirtyText,
   effectState,
   effectVerb,
   elsewhereText,
@@ -30,10 +36,18 @@ import {
   maxIDs,
   mergeDays,
   modeLabel,
+  needsYou,
   notListedText,
+  notReadyBanner,
+  notReadyNames,
+  notReadyText,
+  readyOf,
   reasonChips,
   routineStatus,
+  runLabel,
   sameSecond,
+  shortHead,
+  skipLabel,
   troubled,
 } from './autopilot'
 
@@ -97,6 +111,101 @@ describe('autopilotBadge', () => {
 
     expect(troubled([routine()], engine)).toBe(1)
     expect(troubled([routine({ otherAccount: true, broken: 'x' })], null)).toBe(0)
+  })
+
+  it('shows the red dot for a routine this Mac isn’t ready for', () => {
+    const engine = autopilotEngine({
+      problems: [
+        {
+          key: 'not_ready:3:agent:claude',
+          routineId: 3,
+          kind: 'not_ready',
+          detail: 'Claude isn’t installed.',
+          since: '',
+          told: true,
+        },
+      ],
+    })
+
+    expect(autopilotBadge(autopilotGlance(), [routine()], engine)).toMatchObject({
+      failed: true,
+      title: '1 routine can’t run',
+    })
+  })
+})
+
+describe('readiness', () => {
+  const missing = routineReady({ ready: false, problems: [claudeMissing()] })
+  const checked = readiness({ routines: [missing, routineReady({ routineId: 4, name: 'Fix checks' })], notReady: 1 })
+
+  it('says what this Mac lacks for a routine, by its first problem', () => {
+    expect(checkText(claudeMissing())).toBe('Claude · isn’t installed')
+    expect(checkText({ label: 'Terminal', found: '' })).toBe('Terminal')
+    expect(readyOf(checked, 3)).toBe(missing)
+    expect(readyOf(null, 3)).toBeUndefined()
+    expect(notReadyText(missing)).toBe('Not ready on this Mac: Claude · isn’t installed')
+    expect(notReadyText(routineReady({ ready: false }))).toBe('Not ready on this Mac')
+    expect(notReadyText(routineReady())).toBe('')
+    expect(notReadyText(undefined)).toBe('')
+  })
+
+  it('names the routines that can’t run here, and counts them', () => {
+    expect(notReadyNames(checked)).toEqual(['Snooze passing bot PRs'])
+    expect(notReadyNames(null)).toEqual([])
+    expect(notReadyBanner(2)).toBe('This Mac can’t run 2 of your routines.')
+  })
+
+  it('puts what this Mac lacks in a routine’s status line, while it is on', () => {
+    const text = notReadyText(missing)
+
+    expect(routineStatus(routine(), 0, '', text)).toEqual({ text, tone: 'danger' })
+    expect(routineStatus(routine({ enabled: false }), 0, '', text).text).toBe('Autopilot · off')
+    expect(routineStatus(routine({ broken: 'It won’t load.' }), 0, '', text).text).toBe('It won’t load.')
+  })
+})
+
+describe('needs you', () => {
+  it('sorts the open matches by where they stand, one routine’s alone when asked', () => {
+    const waiting = autopilotMatch({ id: 1, state: 'waiting', blockedBy: 'ask', reason: '' })
+    const blocked = autopilotMatch({ id: 2, routineId: 4, state: 'blocked', blockedBy: 'not_ready', reason: '' })
+    const queued = autopilotMatch({ id: 3, state: 'queued', blockedBy: 'slot', reason: '' })
+
+    expect(needsYou([waiting, blocked, queued])).toEqual({ waiting: [waiting], blocked: [blocked], queued: [queued] })
+    expect(needsYou([waiting, blocked, queued], 4)).toEqual({ waiting: [], blocked: [blocked], queued: [] })
+  })
+
+  it('words Run by the hold it confirms, and Skip by the occurrence', () => {
+    const files = autopilotMatch({ state: 'waiting', blockedBy: 'hold', hold: autopilotHold() })
+    const dirty = autopilotMatch({
+      state: 'waiting',
+      blockedBy: 'dirty_worktree',
+      hold: autopilotHold({ reason: 'dirty', worktree: 'pr-88', dirty: 3 }),
+    })
+
+    expect(shortHead('a1b2c3d4e5f6')).toBe('a1b2c3d')
+    expect(runLabel(files)).toBe('Run on a1b2c3d')
+    expect(runLabel(dirty)).toBe('Run in pr-88 anyway')
+    expect(runLabel(autopilotMatch({ state: 'waiting', blockedBy: 'ask' }))).toBe('Run')
+    expect(dirtyText(autopilotHold({ worktree: 'pr-88', dirty: 3 }))).toBe('pr-88 has 3 uncommitted files')
+    expect(dirtyText(autopilotHold({ worktree: '', dir: '~/projects/example-repo', dirty: 1 }))).toBe(
+      '~/projects/example-repo has 1 uncommitted file',
+    )
+    expect(skipLabel(autopilotMatch())).toBe('Skip this commit')
+    expect(skipLabel(autopilotMatch({ item: itemRef({ kind: 'issue' }), fireKey: 'labeled:bug' }))).toBe(
+      'Skip this time',
+    )
+  })
+
+  it('says a match that waits for the user, or for this Mac, needs you, and one queued is queued', () => {
+    expect(chipOf(autopilotMatch({ state: 'waiting', blockedBy: 'ask', reason: '', effects: [] }))).toEqual({
+      label: 'Needs you',
+      tone: 'warning',
+    })
+    expect(chipOf(autopilotMatch({ state: 'blocked', blockedBy: 'not_ready', reason: '', effects: [] }))).toEqual({
+      label: 'Needs you',
+      tone: 'warning',
+    })
+    expect(chipOf(autopilotMatch({ state: 'queued', blockedBy: 'slot', reason: '', effects: [] })).label).toBe('Queued')
   })
 })
 

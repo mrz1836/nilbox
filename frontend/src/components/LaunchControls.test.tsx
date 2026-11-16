@@ -800,6 +800,7 @@ describe('LaunchControls', () => {
       planMode: null,
       worktree: null,
       extraFlags: {},
+      autopilotOutside: '',
     })
     expect(await menu.findByText('Saved as the default for acme-org/example-repo.')).toBeInTheDocument()
     expect(onDefaultsSaved).toHaveBeenCalledOnce()

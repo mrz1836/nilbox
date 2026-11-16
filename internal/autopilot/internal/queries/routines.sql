@@ -54,6 +54,14 @@ UPDATE autopilot_routines SET
     updated_at = sqlc.arg(updated_at)
 WHERE id = sqlc.arg(id) AND deleted_at IS NULL;
 
+-- name: SetRoutineSpec :execrows
+-- SetRoutineSpec replaces a routine's spec alone, as when a prompt it names by nickname is
+-- renamed, while its spec is still the one read (was).
+UPDATE autopilot_routines SET
+    spec = sqlc.arg(spec),
+    updated_at = sqlc.arg(updated_at)
+WHERE id = sqlc.arg(id) AND spec = sqlc.arg(was) AND deleted_at IS NULL;
+
 -- name: SetRoutineEnabled :execrows
 -- SetRoutineEnabled switches a routine on, with when, or off, with no time.
 UPDATE autopilot_routines SET

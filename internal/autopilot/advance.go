@@ -265,11 +265,14 @@ func (p *pass) tryStart(ctx context.Context, r *routineRun, m *match, sr *stepRu
 	p.start(ctx, r, m, sr, info)
 }
 
-// readFresh reads m's item again from GitHub on a worker, and asks what else holds the
-// start back; the next cycle evaluates it on what the read stored.
+// readFresh asks, on a worker, what holds the start back on this Mac (the step's prompt,
+// then the app's other parts, Holds), and only when nothing does reads m's item again
+// from GitHub, so a start held back here spends nothing; the next cycle evaluates it on
+// what the read stored.
 func (p *pass) readFresh(ctx context.Context, r *routineRun, m *match, sr *stepRun) {
 	id := store.Deref(m.ItemID)
 	job := p.job(r, m, sr)
+	sp := r.spec
 
 	m.wait(BlockStarting, "Reading it again from GitHub before it starts.")
 
@@ -277,15 +280,16 @@ func (p *pass) readFresh(ctx context.Context, r *routineRun, m *match, sr *stepR
 	p.cycle.Reads++
 
 	p.e.goWork(ctx, func(ctx context.Context) {
-		got := fresh{at: p.e.clock.Now()}
-
-		err := p.e.items.ReadItem(ctx, id)
-		if err == nil && p.e.holds != nil {
-			got.hold, got.detail, err = p.e.holds.Hold(ctx, job)
-		}
+		got, err := p.e.freshRead(ctx, sp, job, id)
 
 		p.e.mail.post(func(ctx context.Context) {
 			delete(p.e.inflight, m.ID)
+
+			if errors.Is(err, ErrOff) {
+				p.e.requeue(ctx, m.ID, "", "")
+
+				return
+			}
 
 			if err != nil {
 				p.e.logger.InfoContext(ctx, "Autopilot could not read an item before a start", "match", m.ID, "error", err)
@@ -298,6 +302,31 @@ func (p *pass) readFresh(ctx context.Context, r *routineRun, m *match, sr *stepR
 			p.e.requeue(ctx, m.ID, "", "")
 		})
 	})
+}
+
+// freshRead is readFresh's work, on the worker: the step's prompt, then Holds, and only
+// when neither holds the start back, the item's read. Turned off since the cycle,
+// Autopilot asks GitHub nothing: it returns ErrOff, and the match stays queued, as at
+// dispatch.
+func (e *Engine) freshRead(ctx context.Context, sp spec.Spec, job Job, id int64) (fresh, error) {
+	got := fresh{at: e.clock.Now()}
+
+	var err error
+
+	got.hold, got.detail = e.promptHold(ctx, sp, job.Step)
+	if got.hold == "" && e.holds != nil {
+		got.hold, got.detail, err = e.holds.Hold(ctx, job)
+	}
+
+	switch {
+	case err != nil || got.hold != "":
+	case !e.Enabled():
+		err = ErrOff
+	default:
+		err = e.items.ReadItem(ctx, id)
+	}
+
+	return got, err
 }
 
 // requeue puts a match still waiting on its start back in the queue, waiting on b.
@@ -329,6 +358,13 @@ func (p *pass) gate(r *routineRun, m *match, sr *stepRun, info catalog.Step) ver
 		func() verdict { return p.limits(r, m, id, agent, github) },
 		func() verdict { return p.room(r, sr, agent) },
 		func() verdict { return p.itemRules(m, id, sr, agent) },
+		func() verdict {
+			if !agent {
+				return verdict{}
+			}
+
+			return p.readyFor(r)
+		},
 	} {
 		if v := check(); !v.through() {
 			return v
@@ -451,11 +487,12 @@ func (p *pass) spend(r *routineRun, a *spec.AgentStep) verdict {
 
 // itemRules checks what the item itself allows: an outside contributor's item, a fork's
 // branch for a run that pushes, and one run on the item at a time. A fork's pull request
-// is an outside contributor's whoever opened it, so the fork's check can't hold anything
-// until an org or a repository can allow agents on those; it is here for then.
+// is an outside contributor's whoever opened it, so it reaches the fork's check only where
+// its org or repository lets agents run on such items.
 func (p *pass) itemRules(m *match, id int64, sr *stepRun, agent bool) verdict {
 	if f, ok := p.facts[id]; ok {
-		if v := outsideRule(f, agent, m.Approved); !v.through() {
+		allowed, _ := p.outsideAllowed(m)
+		if v := outsideRule(f, agent, m.Approved, allowed, m.RepoOwner+"/"+m.RepoName); !v.through() {
 			return v
 		}
 
@@ -472,22 +509,33 @@ func (p *pass) itemRules(m *match, id int64, sr *stepRun, agent bool) verdict {
 	return verdict{}
 }
 
-// outsideRule holds an outside contributor's item: an agent never runs on one, which
-// closes its match, and a GitHub action waits for the user's OK.
-func outsideRule(f facts.Facts, agent, approved bool) verdict {
+// outsideRule holds an outside contributor's item: an agent runs on one only where its org
+// or repository allows it (allowed), in plan mode even then, since no routine ever lifts
+// the restriction; elsewhere it closes its match, saying where to allow it. A GitHub
+// action waits for the user's OK.
+func outsideRule(f facts.Facts, agent, approved, allowed bool, repo string) verdict {
 	t := f.Value(catalog.FieldTrust)
 
 	switch {
 	case !t.Known() || t.Text != string(trust.ClassOutside) || approved && !agent:
 		return verdict{}
+	case agent && allowed:
+		return verdict{}
 	case agent:
-		return verdict{
-			closeAs: StateSkipped, reason: ReasonOutside,
-			words: "An outside contributor's item: its org or repository doesn't allow agents on these.",
-		}
+		return verdict{closeAs: StateSkipped, reason: ReasonOutside, words: outsideWords(repo)}
 	}
 
 	return wait(BlockOutside, "An outside contributor's item: it waits for your OK.")
+}
+
+// outsideAllowed reports whether the user lets agents run on outside contributors' items
+// in m's repository, and where that was chosen.
+func (p *pass) outsideAllowed(m *match) (bool, string) {
+	if p.outside == nil {
+		return false, ""
+	}
+
+	return p.outside.Allowed(m.RepoOwner + "/" + m.RepoName)
 }
 
 // runBudget returns an agent step's budget per run and its unit.
@@ -584,7 +632,8 @@ func (p *pass) job(r *routineRun, m *match, sr *stepRun) Job {
 			Number: int(m.Number), Title: m.Title, URL: m.URL,
 		},
 		MatchCreated: m.CreatedAt, Notices: r.spec.Notify, Reason: reasonOf(m.trace),
-		Before: matchView(m, r.row.Name).Steps[:min(int(m.Step), len(m.steps))],
+		Before: matchView(m, r.row.Name).Steps[:min(int(m.Step), len(m.steps))], Trigger: r.spec.Trigger.Event,
+		Confirmed: append([]string{}, sr.Confirmed...),
 	}
 
 	if sr.Step.Agent != nil {
@@ -791,11 +840,18 @@ func (e *Engine) dispatchAnswered(ctx context.Context, q *queries.Queries, m *ma
 ) (bool, error) {
 	var err error
 
+	if err = e.recordLaunch(ctx, q, runID, res.Launched, now); err != nil {
+		return false, err
+	}
+
 	switch {
 	case res.Running:
 		_, err = q.SetRunStatus(ctx, queries.SetRunStatusParams{Status: runRunning, UpdatedAt: now, ID: runID, Was: runStarting})
 
 		return false, err
+	case res.Wait != "" || res.Requeue:
+		err = e.endRunIf(ctx, q, runID, RunEnd{Outcome: RunNotStarted, Summary: res.WaitWords, EndedAt: now}, false)
+		e.heldAt(m, sr, res)
 	case res.NotOffered != "":
 		err = e.endRunIf(ctx, q, runID, RunEnd{Outcome: RunNotSent, Summary: res.NotOffered, EndedAt: now}, false)
 		m.close(StateClosed, ReasonNotOffered, res.NotOffered, now)

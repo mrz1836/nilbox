@@ -9,18 +9,19 @@ import (
 )
 
 type LaunchDefault struct {
-	ID            int64
-	Owner         string
-	Name          string
-	Agent         string
-	PRPromptID    *int64
-	IssuePromptID *int64
-	Effort        string
-	PlanMode      *bool
-	Worktree      *bool
-	CreatedAt     time.Time
-	UpdatedAt     time.Time
-	Profiles      string
-	Models        string
-	AgentArgs     string
+	ID               int64
+	Owner            string
+	Name             string
+	Agent            string
+	PRPromptID       *int64
+	IssuePromptID    *int64
+	Effort           string
+	PlanMode         *bool
+	Worktree         *bool
+	CreatedAt        time.Time
+	UpdatedAt        time.Time
+	Profiles         string
+	Models           string
+	AgentArgs        string
+	AutopilotOutside *string
 }

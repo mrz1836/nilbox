@@ -64,6 +64,15 @@ export function Catalog(): $CancellablePromise<catalog$0.Catalog> {
 }
 
 /**
+ * CheckReadiness runs every readiness check again now, the slow ones too and GitHub's
+ * sign-in (one point), and returns what they found. The engine then decides on what it
+ * found, so a routine that was waiting to be ready starts.
+ */
+export function CheckReadiness(): $CancellablePromise<$models.Readiness> {
+    return $Call.ByID(2807480367);
+}
+
+/**
  * ClearHistory removes, at once rather than after the history's days, every closed match
  * whose item is done with (gone, merged or closed, or out of every list and watch), with
  * its runs; a closed match that still blocks its occurrence stays, without its trace and
@@ -178,6 +187,36 @@ export function Matching(d: $models.Draft): $CancellablePromise<$models.Matching
 }
 
 /**
+ * NeedsYou returns the open matches that haven't started, real ones alone, newest first,
+ * for Activity's Needs you and Queued: those waiting for the user's decision (waiting),
+ * those that can't start until something on this Mac is fixed (blocked), and those that
+ * start by themselves (queued), each with what it waits on and, for a hold, the hold
+ * itself. At most maxNeedsYou. It reads the database alone, and the list is never nil.
+ */
+export function NeedsYou(): $CancellablePromise<$models.Match[] | null> {
+    return $Call.ByID(4100535327);
+}
+
+/**
+ * PreviewRun plans the draft d's agent step on the item itemID, as it would start: the
+ * launcher's own plan of exactly the launch a click with the same choices makes, built and
+ * not started, with nothing written or opened. The draft needn't be saved, but must have
+ * no problem.
+ */
+export function PreviewRun(d: $models.Draft, itemID: number): $CancellablePromise<$models.RunPreview> {
+    return $Call.ByID(1330716810, d, itemID);
+}
+
+/**
+ * Readiness returns this Mac's readiness as the checks last found it: checked now when
+ * they never ran, else as kept, while the engine checks again on its own as they go
+ * stale.
+ */
+export function Readiness(): $CancellablePromise<$models.Readiness> {
+    return $Call.ByID(771228737);
+}
+
+/**
  * Reorder puts the routines ids names first, in that order, and the others after them as
  * they were, and returns the list. An id named twice counts once; one that is gone or
  * deleted is refused, and nothing moves.
@@ -197,12 +236,15 @@ export function RoutineNames(): $CancellablePromise<$models.RoutineName[] | null
 
 /**
  * RunNow runs the routine id on the item now, as the user asked from the item's menu, and
- * returns its match: once per click, whatever its trigger says, but only on an item its
- * conditions match. It counts toward no daily cap or try, needs no OK, and keeps to the
- * routine's mode, so a Dry run records what it would have done.
+ * returns its match: once per click, whatever its trigger says, on an item its conditions
+ * match, or, with anyway (the menu's Run anyway, which the user chose knowing why it
+ * doesn't match), on any item of a kind it acts on. It counts toward no daily cap or try,
+ * needs no OK, and keeps to the routine's mode, so a Dry run records what it would have
+ * done. Every limit that keeps a start from happening still holds it, as for any match:
+ * the outside contributor rule, this Mac's readiness, the item read fresh, the holds.
  */
-export function RunNow(id: number, itemID: number): $CancellablePromise<$models.Match> {
-    return $Call.ByID(1162826700, id, itemID);
+export function RunNow(id: number, itemID: number, anyway: boolean): $CancellablePromise<$models.Match> {
+    return $Call.ByID(1162826700, id, itemID, anyway);
 }
 
 /**

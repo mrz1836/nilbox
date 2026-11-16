@@ -29,10 +29,25 @@ type fakeFiles struct {
 	err    error
 	fresh  []int64
 	stored []int64
+
+	// unattended are the checks under the unattended scope, by item, and wide the items
+	// they were asked of; an item with none answers as checks does.
+	unattended map[int64]*sensitive.Check
+	wide       []int64
 }
 
 func (f *fakeFiles) CheckFiles(_ context.Context, id int64) (*sensitive.Check, error) {
 	f.fresh = append(f.fresh, id)
+
+	return f.answer(id)
+}
+
+func (f *fakeFiles) CheckFilesUnattended(_ context.Context, id int64) (*sensitive.Check, error) {
+	f.wide = append(f.wide, id)
+
+	if check, ok := f.unattended[id]; ok && f.err == nil {
+		return check, nil
+	}
 
 	return f.answer(id)
 }

@@ -727,6 +727,12 @@ export interface Usage {
      * never keeps a reply from being deleted.
      */
     "replies": ReplySlot[] | null;
+
+    /**
+     * Routines names the Autopilot routines whose steps run or comment it, sorted, each
+     * once.
+     */
+    "routines": string[] | null;
 }
 
 /**

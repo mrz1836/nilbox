@@ -175,6 +175,23 @@ export function usageSummary(usage: PromptUsage): string {
   return parts.length === 0 ? 'Not a default anywhere' : parts.join(' · ')
 }
 
+// routinesUsing says which Autopilot routines run or comment a prompt, as in "Used by
+// “Triage bugs”" or "Used by 3 routines", or '' when none does.
+export function routinesUsing(usage: PromptUsage): string {
+  const [only] = usage.routines
+
+  if (only === undefined) {
+    return ''
+  }
+
+  return usage.routines.length === 1 ? `Used by “${only}”` : `Used by ${String(usage.routines.length)} routines`
+}
+
+// routinePlaces lists the routines that run or comment a prompt, for a tooltip or a dialog.
+export function routinePlaces(usage: PromptUsage): string[] {
+  return usage.routines.map((name) => `The routine “${name}”`)
+}
+
 // usagePlaces lists every place a prompt is a default, for a tooltip or a dialog.
 export function usagePlaces(usage: PromptUsage): string[] {
   return [

@@ -117,12 +117,18 @@ export interface Hold {
      */
     "dir": string;
     "worktree": string;
+
+    /**
+     * Dirty counts the files with uncommitted changes in the worktree, for HoldDirty; 0
+     * otherwise.
+     */
+    "dirty": number;
 }
 
 /**
  * HoldReason is why a launch is held back.
  */
-export type HoldReason = "agentFiles" | "unchecked" | "running";
+export type HoldReason = "agentFiles" | "unchecked" | "running" | "dirty";
 
 /**
  * The values of HoldReason, by the names of their Go constants.
@@ -150,6 +156,13 @@ export const HoldReason = {
      * starts only once the user says so; LaunchRequest.Alongside carries that.
      */
     HoldRunning: "running",
+
+    /**
+     * HoldDirty is a routine's launch into a worktree with uncommitted changes, which may
+     * be the user's own work in progress: it waits for the user to confirm, which
+     * RoutineLaunch.Confirmed carries. A click's launch is never held for it.
+     */
+    HoldDirty: "dirty",
 } as const;
 
 /**

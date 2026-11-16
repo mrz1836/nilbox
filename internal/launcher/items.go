@@ -68,6 +68,11 @@ type StoredItem struct {
 
 	// HeadOID is a pull request's head commit as the last refresh read it, or "".
 	HeadOID string
+
+	// FailedChecks names a pull request's failed checks at HeadOID, "workflow / job" each
+	// once, from the last read of its checks; empty when none failed or they weren't read
+	// at that commit.
+	FailedChecks []string
 }
 
 // launchItemRow is a stored item as a launch reads it.
@@ -165,6 +170,7 @@ func (r launchItemRow) promptData(policy trust.Policy, profile, viewer string, c
 		d.HeadCommit = strings.ToLower(r.HeadOID)
 		d.Checks, d.Review = checksWord(r.ChecksState), reviewWord(r.ReviewDecision)
 		d.Additions, d.Deletions, d.ChangedFiles, d.Commits = r.Additions, r.Deletions, r.ChangedFiles, r.Commits
+		d.FailedChecks = strings.Join(r.FailedChecks, ", ")
 
 		if check != nil {
 			d.SensitiveFiles = check.Summary()
@@ -240,10 +246,23 @@ func (p promptSource) PreviewData(ctx context.Context, itemID int64) (prompts.Da
 		return prompts.Data{}, err
 	}
 
-	check, err := p.s.fileCheck(ctx, row.ID, false)
+	check, err := p.s.fileCheck(ctx, row.ID, checkStored)
 	if err != nil && !errors.Is(err, sensitive.ErrNotChecked) {
 		return prompts.Data{}, err
 	}
 
 	return row.promptData(w.policy, profile, viewer, check), nil
+}
+
+// withRoutine fills in what a routine's launch tells its prompt: the routine, what made
+// it run, and which try this is. A click's launch, with no routine, leaves them empty. A
+// launch in the terminal is attended, so .Unattended stays false.
+func withRoutine(d prompts.Data, r *RoutineLaunch) prompts.Data {
+	if r == nil {
+		return d
+	}
+
+	d.Routine, d.Trigger, d.Attempt = r.Name, r.Trigger, r.Attempt
+
+	return d
 }

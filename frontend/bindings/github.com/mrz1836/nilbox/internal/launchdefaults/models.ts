@@ -56,6 +56,12 @@ export interface Defaults {
     "extraFlags": { [_ in agent$0.ID]?: string } | null;
 
     /**
+     * AutopilotOutside says whether Autopilot may run agents, in plan mode, on outside
+     * contributors' items here; "" inherits.
+     */
+    "autopilotOutside": Outside;
+
+    /**
      * UpdatedAt is when the defaults were last saved, as RFC 3339.
      */
     "updatedAt": string;
@@ -80,7 +86,33 @@ export interface Input {
      * ExtraFlags is each agent's extra arguments typed on one line, quoted as in a shell.
      */
     "extraFlags": { [_ in agent$0.ID]?: string } | null;
+
+    /**
+     * AutopilotOutside says whether Autopilot may run agents, in plan mode, on outside
+     * contributors' items here; "" inherits.
+     */
+    "autopilotOutside": Outside;
 }
+
+/**
+ * Outside says whether Autopilot may run agents on outside contributors' items in an org
+ * or a repository: "" inherits (a repository's from its org, an org's off, since there is
+ * no app-wide switch), else off or on. On still means plan mode: an automatic run never
+ * lifts the outside contributor restriction.
+ */
+export type Outside = "" | "off" | "on";
+
+/**
+ * The values of Outside, by the names of their Go constants.
+ */
+export const Outside = {
+    /**
+     * The choices.
+     */
+    OutsideInherit: "",
+    OutsideOff: "off",
+    OutsideOn: "on",
+} as const;
 
 /**
  * Target is an org or repository the inbox has seen or a clone's origin names, offered

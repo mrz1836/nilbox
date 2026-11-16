@@ -214,6 +214,7 @@ type Catalog struct {
 	GitHubActions []GitHubAction   `json:"githubActions"`
 	Outcomes      []OutcomeInfo    `json:"outcomes"`
 	Presets       []PresetInfo     `json:"presets"`
+	Places        []PlaceInfo      `json:"places"`
 	AgentSettings []Setting        `json:"agentSettings"`
 	Limits        []Setting        `json:"limits"`
 	StepSettings  []Setting        `json:"stepSettings"`
@@ -224,8 +225,8 @@ type Catalog struct {
 func All() Catalog {
 	c := Catalog{
 		Triggers: Triggers(), Groups: Groups(), Fields: Fields(), Ops: Ops(), Lists: ListSources(), Steps: Steps(),
-		GitHubActions: GitHubActions(), Outcomes: Outcomes(), Presets: Presets(), AgentSettings: AgentSettings(),
-		Limits: Limits(), StepSettings: StepSettings(),
+		GitHubActions: GitHubActions(), Outcomes: Outcomes(), Presets: Presets(), Places: Places(),
+		AgentSettings: AgentSettings(), Limits: Limits(), StepSettings: StepSettings(),
 	}
 
 	for i := range c.Triggers {

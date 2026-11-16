@@ -107,8 +107,17 @@ type Sim struct {
 	Settings *Settings
 	Lock     string
 
-	// Notices hears what the real notices dispatcher, and the problems, tell the user.
-	Notices *Notices
+	// Notices hears what the real notices dispatcher, and the problems, tell the user, and
+	// with TellWaits the matches that come to wait for the user too.
+	Notices   *Notices
+	TellWaits bool
+
+	// Ready, Holds, Outside, and Library are the fakes of what holds an agent's start back
+	// (agents.go), each left out of the app while nil.
+	Ready   *Ready
+	Holds   *Holds
+	Outside *Outside
+	Library *Library
 
 	// Events hears what this copy's engine tells the window (autopilot:updated).
 	Events *testutil.Events
@@ -168,7 +177,8 @@ func (s *Sim) Copy() *Sim {
 	return other
 }
 
-// Offers runs every kind of step and GitHub action, with the fake dispatchers.
+// Offers runs every kind of step and GitHub action, and an agent in every place, with the
+// fake dispatchers and runner.
 func Offers() *autopilot.Offers {
 	out := &autopilot.Offers{
 		Actions: []catalog.GitHubActionKind{
@@ -178,6 +188,10 @@ func Offers() *autopilot.Offers {
 
 	for _, st := range catalog.Steps() {
 		out.Steps = append(out.Steps, st.Kind)
+	}
+
+	for _, p := range catalog.Places() {
+		out.Places = append(out.Places, p.ID)
 	}
 
 	return out
@@ -198,20 +212,25 @@ func (s *Sim) Begin() {
 		Logger: s.Logs.Logger(),
 	})
 	s.Routines = inbox.NewRoutines(s.Inbox)
-	s.Service = autopilot.NewService(autopilot.Config{
+
+	svc := autopilot.Config{
 		Pool: s.DB, Prefs: s.Settings, Accounts: s.Store, Items: items, Offers: Offers(), Clock: s.Clock,
 		Logger: s.Logs.Logger(),
-	})
-	watches.searches = autopilot.NewSearches(s.Service)
-	watches.searches.Rebuild(context.Background())
-
-	s.Engine = autopilot.NewEngine(s.Service, autopilot.EngineConfig{
+	}
+	eng := autopilot.EngineConfig{
 		Items: items, Lock: autopilot.NewLock(s.Lock), Runner: s.Runner, Triage: s.Triage,
 		Dispatchers: map[catalog.Dispatcher]autopilot.Dispatcher{
 			catalog.DispatchGitHub: s.GitHub, catalog.DispatchNotices: autopilot.NewNotices(s.Notices),
 		},
 		Problems: autopilot.NewProblemNotices(s.Notices), Events: s.Events,
-	})
+	}
+	s.config(&svc, &eng)
+
+	s.Service = autopilot.NewService(svc)
+	watches.searches = autopilot.NewSearches(s.Service)
+	watches.searches.Rebuild(context.Background())
+
+	s.Engine = autopilot.NewEngine(s.Service, eng)
 	fan.engine.Store(s.Engine)
 	s.Runner.attach(s.Engine)
 

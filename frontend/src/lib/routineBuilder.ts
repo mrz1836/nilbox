@@ -17,6 +17,7 @@ import type {
   AutopilotOp,
   AutopilotOutcome,
   AutopilotPart,
+  AutopilotPlace,
   AutopilotProblem,
   AutopilotRoutine,
   AutopilotSearch,
@@ -26,6 +27,7 @@ import type {
   AutopilotStepKind,
   AutopilotTestResult,
   AutopilotTrigger,
+  AutopilotWhere,
   ItemKind,
 } from '../platform'
 import { counted } from './format'
@@ -294,6 +296,26 @@ export function actsOn(catalog: AutopilotCatalog, spec: AutopilotSpec): ItemKind
   return watchKinds(catalog, spec).filter((k) => trigger === undefined || trigger.kinds.includes(k))
 }
 
+// askable are the routines an item's menu can ask about: the user's own that load and act
+// on its kind, on or off, in the list's order.
+export function askable(
+  catalog: AutopilotCatalog,
+  routines: readonly AutopilotRoutine[],
+  kind: ItemKind,
+): AutopilotRoutine[] {
+  return routines.filter((r) => !r.otherAccount && r.broken === '' && actsOn(catalog, r.spec).includes(kind))
+}
+
+// runnable are the routines an item's menu can run on it now: those it can ask about that
+// are on.
+export function runnable(
+  catalog: AutopilotCatalog,
+  routines: readonly AutopilotRoutine[],
+  kind: ItemKind,
+): AutopilotRoutine[] {
+  return askable(catalog, routines, kind).filter((r) => r.enabled)
+}
+
 // fits reports kinds holding one that applies takes, or none at all.
 function fits(kinds: readonly ItemKind[], applies: readonly ItemKind[]): boolean {
   return kinds.length === 0 || kinds.some((k) => applies.includes(k))
@@ -349,15 +371,34 @@ export function addable(catalog: AutopilotCatalog, spec: AutopilotSpec): AddChoi
     .map((info) => ({ kind: info.kind, label: info.label, help: info.help, offered: info.offered }))
 }
 
+// firstPlace is where a new agent step runs: the first place this build runs agents in, or
+// undefined when the catalog offers none, which leaves the spec's own default.
+export function firstPlace(places: readonly Pick<AutopilotPlace, 'id' | 'offered'>[]): AutopilotWhere | undefined {
+  return places.find((p) => p.offered)?.id
+}
+
+// placeWhy says why an agent step can't run in a place this build doesn't run agents in.
+export function placeWhy(place: Pick<AutopilotPlace, 'label'>): string {
+  return `This version of ${brand.name} can’t run an agent ${place.label.toLowerCase()} yet.`
+}
+
 // newStep is a step of kind as + Add a step adds it, at the end of steps: each setting left
-// to its default, Wait for the checks only if the agent pushed, Merge it only if they
-// passed, and Tell me saying how the steps before it ended once there are some to say.
-export function newStep(kind: AutopilotStepKind, steps: readonly AutopilotStep[]): AutopilotStep {
+// to its default, an agent step where this build runs agents (places, the catalog's), Wait
+// for the checks only if the agent pushed, Merge it only if they passed, and Tell me saying
+// how the steps before it ended once there are some to say.
+export function newStep(
+  kind: AutopilotStepKind,
+  steps: readonly AutopilotStep[],
+  places: readonly Pick<AutopilotPlace, 'id' | 'offered'>[] = [],
+): AutopilotStep {
   switch (kind) {
     case 'snooze':
       return { snooze: {} }
-    case 'agent':
-      return { agent: { agent: 'inherit', prompt: { itemDefault: true } } }
+    case 'agent': {
+      const where = firstPlace(places)
+
+      return { agent: { agent: 'inherit', prompt: { itemDefault: true }, ...(where === undefined ? {} : { where }) } }
+    }
     case 'waitForChecks':
       return { waitForChecks: {}, onlyIf: 'pushed' }
     case 'merge':

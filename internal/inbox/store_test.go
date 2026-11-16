@@ -97,6 +97,7 @@ func TestLaunchItems(t *testing.T) {
 		IsDraft: true, RepoID: repoID, Owner: "acme-org", Name: "example-repo", DefaultBranch: "main",
 		Labels: []string{"enhancement", "size/L"}, Additions: 120, Deletions: 30, ChangedFiles: 6, Commits: 3,
 		Mergeable: "CONFLICTING", ChecksState: "SUCCESS", ReviewDecision: details.Reviews.Decision,
+		FailedChecks: []string{},
 	}, got[0], "by id")
 
 	assert.Equal(t, second, got[1].ID)

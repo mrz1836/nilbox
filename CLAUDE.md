@@ -248,7 +248,10 @@ changing the package, and keep the section and its summary in step.
   `internal/item` name repositories, pull requests and issues, and their worktrees;
   `internal/agent` is the backend registry of the coding agents, one spec each (Claude Code,
   Codex) with its command, config variable and markers, effort levels, models, permission
-  modes, reserved flags, and how a launch's options become its flags, so adding an agent adds
+  modes, reserved flags, and how a launch's options become its flags, its version, sign-in, and
+  login commands with their parsers (`ParseVersion`, `ParseSignIn`, which keep no email), the
+  API key variables a launch unsets unless the user's setting lets a key through (`KeyEnv`),
+  and the status page part it depends on (`StatusPart`), so adding an agent adds
   a spec and the launcher, profiles, and editors read the rest from it; `internal/procs` lists
   the running processes' working directories (`lsof` on macOS, `/proc` on Linux), which tell
   a worktree some session is in, reads a process's start time (`StartedAt`), which tells a
@@ -383,8 +386,9 @@ changing the package, and keep the section and its summary in step.
   refers to are pruned after 30 days (`Config.Keep`, `inbox.Keepers` over the agent sessions'
   and the notifications' items in core, a refresh that can't read them pruning nothing); and
   a guard test decides every query that reads the reason flags
-  (`TestEveryReasonFlagQueryIsDecided`). Autopilot's own reads (`SearchNow`, `ReadChecks`) go
-  through `inbox.Routines`, never the bound Service, whose `ItemsByID` serves a routine's
+  (`TestEveryReasonFlagQueryIsDecided`). Autopilot's own reads (`SearchNow`, `ReadChecks`, and
+  `CheckFilesUnattended`, a routine's launch's file check of every pull request the user didn't
+  open) go through `inbox.Routines`, never the bound Service, whose `ItemsByID` serves a routine's
   Watching list. So does a routine's triage (`Routines.Triage`, `UndoTriage`, `AsLeft`):
   Pin, Snooze (the routine's length, the user's wake rules), Dismiss, and Restore run the
   inbox's own triage marked with the routine (`item_local_state.set_aside_by` and
@@ -407,9 +411,17 @@ changing the package, and keep the section and its summary in step.
   `pr-`, `issue-`, or `run-<number>`, pruned after seven days by those prefixes alone); a
   followed run's script runs its command under `script(1)`, recording its output, its shell's
   PID, and its exit status in the run's files. `launcher.CommandOpener`, which core hands the
-  runs and never binds, opens only such a script, in the terminal chosen in Settings. `internal/workspacetrust` marks the launch
-  folder trusted in each agent's own config (Claude's `.claude.json`, Codex's `config.toml`,
-  appended to and never rewritten).
+  runs and never binds, opens only such a script, in the terminal chosen in Settings.
+  `launcher.AgentEnv` is the one rule for every agent start's environment: the profile's config
+  variable set (or unset for the default profile), and, unless the user's per-agent setting
+  (`settings.Settings.ClaudeAPIKey`, `CodexAPIKey`, off by default) lets a key through, the
+  agent's `KeyEnv` unset, so the profile's own sign-in is used. An Autopilot routine's launch is
+  a click's launch with `LaunchRequest.Routine` set (Go-only, `json:"-"`), which only holds it
+  back more: its files are checked under the unattended scope, only `RoutineLaunch.Confirmed`
+  confirms a hold, a running session always holds it, a dirty worktree holds it (`HoldDirty`),
+  `FullAccessOverride` is ignored, and its prompt names the routine. `internal/workspacetrust`
+  marks the launch folder trusted in each agent's own config (Claude's `.claude.json`, Codex's
+  `config.toml`, appended to and never rewritten).
 - `internal/localrepos` finds the user's clones, in the clone root (`clones.root`, the primary,
   which new clones go in) and the other repository locations (`clones.locations`, which
   settings alone writes: each a folder looked into one level deep as the clone root is, or a
@@ -785,11 +797,12 @@ changing the package, and keep the section and its summary in step.
 - `internal/autopilot/` is Autopilot, which runs the user's routines. Its root package keeps
   them, in `autopilot_routines`, which it owns: the bound `Service` (`List`, `Get`, `Save`,
   `Delete`, `Duplicate`, `SetEnabled`, `SetMode`, `Reorder`, `Catalog`, and the builder's
-  `Suggest`, `Watching`, `Describe`, and `Test`) checks every spec on
+  `Suggest`, `Watching`, `Describe`, `Test`, and `PreviewRun`) checks every spec on
   save and load (and, on save and in `Describe`, the prompts its steps name against the
-  `Library`: one the library lacks, or that isn't for the kinds it acts on, is a problem;
-  `Describe` reads a draft's sentence, problems, and warnings without saving it or asking
-  GitHub), carries one that won't load (a newer build's, say) as broken with why and
+  `Library`: one the library lacks, or that isn't for the kinds it acts on, is a problem, as
+  is an agent step set to run where this build can't, the background in this one,
+  `placeProblems`; `Describe` reads a draft's sentence, problems, and warnings without saving
+  it or asking GitHub), carries one that won't load (a newer build's, say) as broken with why and
   never rewrites it, stores a routine with a step this build doesn't offer in Dry run alone,
   starts a new one off in the mode Settings says (Ask first to begin with) and of the account
   signed in (`Accounts`, the inbox's viewer; `Routine.OtherAccount` marks another's), keeps
@@ -824,13 +837,30 @@ changing the package, and keep the section and its summary in step.
   by a sign-out, Pause, and the active hours, and acting on outside contributors' items too;
   and the notices, Notify me and Tell me, through `NewNotices`, each cycle's handed over as it
   ends and gathered when several come at once, each told once through its key; it tells each
-  problem once (`NewProblemNotices`). Both hand a `Notice` to a `NoticeSink`, which core
-  adapts over the notifications (`adapters_notices.go`). A routine with any other step still
-  runs in Dry run. The user's own reversal of what a
-  routine did (told through the outcomes, `Outcome.Reversed`), and an Undo, leave the routine
+  problem once (`NewProblemNotices`), and each match that comes to wait for the user once, as
+  Needs your OK (`EngineConfig.NeedsYou`). Both hand a `Notice` to a `NoticeSink`, which core
+  adapts over the notifications (`adapters_notices.go`). The agent step runs through the
+  `Runner` core registers (`adapters_agents.go`, `agentRuns`): in the user's terminal, the
+  launcher's own `Launch` of the request a click would make with the routine's choices
+  (`routineRequest`, which `PreviewRun` previews too), ending as the terminal opens; its start
+  passes the gate (an outside contributor's item only where its org or repository allows it,
+  `EngineConfig.Outside`, planning only; this Mac's readiness, `ready.go`: `Needs(spec)`, a
+  `ReadinessChecker` core adapts over each agent's version and sign-in commands, the profiles,
+  the finder over the shell's PATH, the terminal, and setup's GitHub check, kept ten minutes,
+  the bound `Readiness` and `CheckReadiness`, and one problem per need not met), then on a
+  worker the step's prompt checked again (`promptHold`) and `Holds` (core's `agentHolds`: the
+  item's own agent and profile, the provider's outage while Settings holds for one, the clone,
+  the repository's tools), and only then the fresh read; a hold the launch reports waits for
+  the user (`Result.Wait`, `Hold`), and only `Approve` of exactly that hold confirms it. A
+  routine with any other step still runs in Dry run. Its `PromptFollower`, never bound, tells
+  the prompt library which routines name each prompt and follows a renamed one. The user's
+  own reversal of what a routine did (told through the outcomes, `Outcome.Reversed`), and an Undo, leave the routine
   hands off the item until Let it act again. The bound Service's ledger actions (`Approve`,
-  `Skip`, `RunNow`, `TryAgain`, `LetActAgain`, `Undo`, `ClearHistory`) are commands it
-  applies; `StopRun` and `StopAll` go straight to the runner; `Activity` (with each day's
+  `Skip`, `RunNow`, with Run anyway for an item it doesn't match, `TryAgain`, `LetActAgain`,
+  `Undo`, `ClearHistory`) are commands it
+  applies; `StopRun` and `StopAll` go straight to the runner; `NeedsYou` (the open matches not
+  started, each with what it waits on and a hold's `Hold`, for Activity's Needs you),
+  `Activity` (with each day's
   grouped lines of local steps, "Snoozed 6", and the items left alone), `ActivityFrom`
   (a stretch of the pages the window has loaded, read again by its bounds), `ItemHistory`,
   `LatestMatches` (each item's newest match that did something, for its row's chip, at most
@@ -842,12 +872,13 @@ changing the package, and keep the section and its summary in step.
   agents working: the menu bar's Autopilot group, the window's close, and the Autopilot tab's
   count and dots) read. `internal/autopilot/sim` (test
   support only) is its simulator, which runs the triage steps through the inbox's real triage
-  and the notices through the real dispatcher. It
+  and the notices through the real dispatcher, with fakes for readiness, the holds, the
+  outside contributor rule, and the prompt library. It
   reaches the rest only through the interfaces it declares (`Prefs`, `Accounts`, `Names`,
-  `Library`, `Items`, `Costs`, `EngineItems`, `Triage`, the dispatchers, `Holds`, `ProblemSink`,
-  `NoticeSink`), which
-  `internal/core/adapters_autopilot.go` adapts, and never imports the inbox, the sheets, the
-  launcher, the worktrees, the sessions, the runs, notify, settings, the desktop, or core (the
+  `Library`, `Items`, `Costs`, `EngineItems`, `Triage`, the dispatchers, `Runner`, `Holds`,
+  `OutsideRules`, `ReadinessChecker`, `Previewer`, `ProblemSink`, `NoticeSink`), which
+  `internal/core/adapters_autopilot.go` and `adapters_agents.go` adapt, and never imports the
+  inbox, the sheets, the launcher, the worktrees, the sessions, the runs, notify, settings, the desktop, or core (the
   repoguard boundary test). Beneath it, the routines core, five pure leaves that read nothing
   and keep no clock: `catalog` (the
   vocabulary every spec name comes from: the triggers, the fields and their operators, the
@@ -1214,10 +1245,12 @@ changing the package, and keep the section and its summary in step.
   banner (`event.RevealItem.NotificationID`, checked against the entry's item, page, or run,
   since Clear history hands ids out again), or when its item's sheet opens (`InboxView`'s
   `onItemOpened`, once per opening).
-  `components/autopilot/` is the Autopilot tab (the routine list, Activity, a routine's
-  Watching list on the inbox's own rows and sheets, the ⚡ chip, and `builder/`, the routine
-  builder and its Test panel, whose pure half is `lib/routineBuilder.ts`), its words in
-  `lib/autopilot.ts`; every row reads the routines' names and its chip through
+  `components/autopilot/` is the Autopilot tab (the routine list, Needs you's cards,
+  Activity, a routine's Watching list on the inbox's own rows and sheets, the ⚡ chip, an
+  item menu's Autopilot ▸, `RoutineMenu`, and `builder/`, the routine builder and its Test
+  panel with Preview, whose pure half is `lib/routineBuilder.ts`), its words in
+  `lib/autopilot.ts`; a hold's details are the launch hold dialog's own (`HoldDetails`), and
+  a planned launch the launch menu's; every row reads the routines' names and its chip through
   `AutopilotRowsContext`, and the inbox's row actions are shared through
   `components/useItemActions.ts`. The window shows any of Autopilot only while Autopilot
   (beta) is on (Settings → Labs, `LabsSection`): off, there is no tab, no Autopilot settings

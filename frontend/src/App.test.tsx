@@ -2330,6 +2330,16 @@ describe('Autopilot (beta)', () => {
     expect(within(tab).getByText('Beta')).toBeInTheDocument()
     expect(await screen.findByRole('button', { name: /^Autopilot: / })).toBeInTheDocument()
     expect(screen.getByTitle('Pinned by the routine Snooze passing bot PRs')).toBeInTheDocument()
+
+    // An item's menu offers Autopilot ▸.
+    const [more] = screen.getAllByRole('button', { name: 'More actions' })
+    if (more === undefined) {
+      throw new Error('no row menu')
+    }
+    await userEvent.click(more)
+    expect(
+      await within(screen.getByRole('menu', { name: 'More actions' })).findByRole('menuitem', { name: 'Autopilot' }),
+    ).toBeInTheDocument()
   })
 
   it('shows none of Autopilot while it is off: no tab, chip, mark, or type of notification', async () => {
@@ -2347,6 +2357,17 @@ describe('Autopilot (beta)', () => {
     expect(screen.queryByRole('button', { name: /^Autopilot: / })).not.toBeInTheDocument()
     expect(screen.queryByTitle(/by the routine/)).not.toBeInTheDocument()
     expect(platform.latestAutopilotMatches).not.toHaveBeenCalled()
+
+    // An item's menu offers no Autopilot ▸ either.
+    const [more] = screen.getAllByRole('button', { name: 'More actions' })
+    if (more === undefined) {
+      throw new Error('no row menu')
+    }
+    await userEvent.click(more)
+    const menu = within(screen.getByRole('menu', { name: 'More actions' }))
+    expect(menu.getByRole('menuitem', { name: 'Open on GitHub' })).toBeInTheDocument()
+    expect(menu.queryByRole('menuitem', { name: 'Autopilot' })).not.toBeInTheDocument()
+    await userEvent.keyboard('{Escape}')
 
     await userEvent.click(views().getByRole('button', { name: 'Notifications' }))
 

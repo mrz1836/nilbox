@@ -105,6 +105,32 @@ type Agent struct {
 	// ModelsCache is the file in a config directory where the agent keeps the models it
 	// offers, or "" when it keeps none the app reads.
 	ModelsCache string `json:"modelsCache"`
+
+	// VersionArgs are the arguments after Command that print the agent's version, such
+	// as --version; ParseVersion reads what they print.
+	VersionArgs []string `json:"versionArgs"`
+
+	// SignInArgs are the arguments after Command that say whether a profile is signed in,
+	// run with ConfigEnv set to the profile's config directory (unset for the default
+	// profile); ParseSignIn reads what they print. They only read the sign-in, never
+	// change it.
+	SignInArgs []string `json:"signInArgs"`
+
+	// KeyEnv lists the environment variables that would sign the agent in with an API key
+	// in place of the profile's own sign-in. A sign-in check runs without them, so it says
+	// whether the profile itself is signed in (as on a subscription, through the browser),
+	// never whether a key in the login shell's environment would do.
+	KeyEnv []string `json:"keyEnv"`
+
+	// LoginArgs are the arguments after Command that sign a profile in, which the user
+	// runs in a terminal under the profile's ConfigEnv: the app never signs in for them,
+	// since signing in needs a browser and the user.
+	LoginArgs []string `json:"loginArgs"`
+
+	// StatusPart is the part of the agent's provider's status page the agent depends on,
+	// as the service status catalog names it, such as "claude.code": while it reports a
+	// major outage, Autopilot holds new starts of the agent, if the user asks it to.
+	StatusPart string `json:"statusPart"`
 }
 
 // spec is one backend: what it is, and how a launch's options become its flags.

@@ -143,6 +143,14 @@ type Config struct {
 	// hands in its own beside fake dispatchers.
 	Offers *Offers
 
+	// Readiness checks what the routines need on this Mac (ready.go); nil checks nothing,
+	// and every routine is ready.
+	Readiness ReadinessChecker
+
+	// Previews plans a routine's agent step on one item without starting it, for the
+	// builder's Preview (PreviewRun); nil previews nothing.
+	Previews Previewer
+
 	// Clock stamps the routines. Nil is the system clock.
 	Clock clock.Clock
 
@@ -177,17 +185,23 @@ type Service struct {
 	// seenOn is Autopilot (beta) as the Service last read it, which an engine built after
 	// starts from.
 	seenOn atomic.Bool
+
+	// ready keeps the readiness checks' last results, which the engine shares, and
+	// previews plans an agent step for Preview.
+	ready    *readiness
+	previews Previewer
 }
 
 // NewService returns a Service over cfg.
 func NewService(cfg Config) *Service {
 	clk := clock.Or(cfg.Clock)
+	offers := cfg.Offers.orCatalog()
 
 	return &Service{
 		store: newRoutineStore(cfg.Pool, clk), prefs: cfg.Prefs, accounts: cfg.Accounts, names: cfg.Names,
 		library: cfg.Library, file: cfg.File, items: cfg.Items, costs: cfg.Costs, clock: clk, logger: logging.Or(cfg.Logger),
 		watches: watchSet{build: make(chan struct{}, 1)}, tests: testCache{read: map[string]cachedSearch{}},
-		offers: cfg.Offers.orCatalog(),
+		offers: offers, ready: newReadiness(cfg.Readiness, offers), previews: cfg.Previews,
 	}
 }
 
