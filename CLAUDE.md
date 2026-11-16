@@ -296,11 +296,12 @@ changing the package, and keep the section and its summary in step.
 - `internal/event/` holds the app's events, one Go type each with its name; services emit them
   into the one `event.Sink` they are given. `internal/desktop/` is the shell's logic: it hears
   those events, keeps the menu bar current with what `internal/menubar` works out (its
-  Autopilot group, while a routine exists, with Pause Autopilot as the tray's one checkbox
-  row, `Shell.AutopilotAction`), decides the window's close (`Shell.WindowClosing`, the pure
-  `CloseOf`): it goes through while the shell stops, hides the window while the icon shows
-  or while Autopilot has a routine on or an agent working (`HidesOnClose`, from Autopilot's
-  state as the shell last read it; the window says so once, `event.KeptRunning`), and
+  Autopilot group, while Autopilot (beta) is on and a routine exists, with Pause Autopilot as
+  the tray's one checkbox row, `Shell.AutopilotAction`), decides the window's close
+  (`Shell.WindowClosing`, the pure `CloseOf`): it goes through while the shell stops, hides
+  the window while the icon shows or while Autopilot has a routine on (none counts while
+  Autopilot (beta) is off) or an agent working (`HidesOnClose`, from Autopilot's state as the
+  shell last read it; the window says so once, `event.KeptRunning`), and
   otherwise keeps the window and quits the normal way, so `ShouldQuit` asks in it while
   runs go (the last window's close never quits by itself:
   `ApplicationShouldTerminateAfterLastWindowClosed` stays off, since AppKit asks it as the
@@ -375,7 +376,8 @@ changing the package, and keep the section and its summary in step.
   their rows, stale; an item whose details didn't come back keeps its card, to be read again;
   no pass, and no routine's test or its check names, goes out under a quarter of the GraphQL
   budget; the follower takes the watched pull requests a routine follows, muted or not, after
-  the listed ones; `items.state` is written by every read that carries it, another service's
+  the listed ones, in the copy that holds the watches alone (`WatchHolder`, so in none while
+  Autopilot (beta) is off); `items.state` is written by every read that carries it, another service's
   through `Store.NoteStates` in the order its read went out (`Store.StartRead`, the Store
   core hands the Service as `Config.Store`, so they share one write order); items nothing
   refers to are pruned after 30 days (`Config.Keep`, `inbox.Keepers` over the agent sessions'
@@ -806,11 +808,17 @@ changing the package, and keep the section and its summary in step.
   every change a compare-and-set; `autopilot_runs`, with the one-active-run index;
   `autopilot_tries`, `autopilot_baselines`, `autopilot_hands_off`, `autopilot_effects`; its
   state in `autopilot.engine`), woken by the inbox, the settings, the outcomes, a 1-minute
-  tick, and the window's commands, doing everything slow on workers; it holds a `flock` on
+  tick, and the window's commands, doing everything slow on workers; it runs only while
+  Autopilot (beta) is on (`Engine.Enabled`, which the loop follows on every wake: off, it takes
+  no lock, runs no cycle, refuses every command with `ErrOff`, and the snapshot of the
+  searches is empty, as `Test` is refused; turned on, it starts as a start does; turned off,
+  it starts nothing new, kills nothing, and lets go of the lock once nothing it started is
+  still going); it holds a `flock` on
   `<data>/autopilot.lock` (only the holder sends the routines' searches, `inbox.WatchHolder`),
   waits for a refresh that carried its searches, checks every limit in
   Go before a start, never sends a GitHub action again on its own once a quit cut it off,
-  and starts steps only through the dispatchers each part registers: the
+  and starts steps only through the dispatchers each part registers, each handed over only
+  while `Enabled` says so (`dispatch`, the one check a part that starts an agent relies on): the
   triage steps (Pin, Snooze, Dismiss, Restore) through the inbox's own triage (`Triage`, core's
   `inboxTriage`), each recorded as an effect in the triage's own transaction, held back only
   by a sign-out, Pause, and the active hours, and acting on outside contributors' items too;
@@ -855,15 +863,20 @@ changing the package, and keep the section and its summary in step.
   trigger and reasons). They import only `item`, `repo`, `trust`, `sensitive`, `bump`,
   `clock`, `textutil`, and one another (`TestLeafImports`).
   Full design: [docs/architecture.md](docs/architecture.md#internalautopilot)
-- `internal/autopilotprefs/` declares the `autopilot.*` settings (Pause Autopilot, the mode
-  new routines start in, agents at once, runs and GitHub actions a day, the daily cap in
+- `internal/autopilotprefs/` declares the `autopilot.*` settings (Autopilot (beta),
+  `autopilot.enabled`, off on every install, an existing one included, until the user turns
+  it on in Settings → Labs; Pause Autopilot, the mode new routines start in, agents at once, runs and GitHub actions a day, the daily cap in
   dollars or tokens, keeping the Mac awake, holding starts during an outage, catching up, and
   how long the history and the run logs are kept), with their ranges, and a routine's `Mode`
   (`dryRun`, `ask`, `auto`); never `autopilot.engine`, the engine's own state, which the
   engine alone writes. Settings alone writes them (`SetAutopilot…`, each emitting
   the Go-only `event.AutopilotChanged`, writing only the keys that change), backups carry
-  them (`Portable.Autopilot`), and Autopilot reads them. It is a leaf that imports only
-  `prefval`.
+  them (`Portable.Autopilot`, the switch included), and Autopilot reads them. It is a leaf
+  that imports only `prefval`. While Autopilot (beta) is off, the window, the menu bar, and the
+  window's close show and count none of Autopilot, and its engine takes no lock, sends no
+  routine search, and starts nothing (`Engine.Enabled`, which every start's `dispatch` asks);
+  the routines and their history stay as they are.
+  Full design: [docs/architecture.md](docs/architecture.md#internalautopilot)
 - `internal/integrations/` finds the tools the app drives, mage-x's magex and go-pre-commit,
   each one a `Definition` (its binary, releases, version parser, quiet environment, minimum
   version, and the release that brought each upstream `Feature`). Detection looks on the login
@@ -1204,7 +1217,11 @@ changing the package, and keep the section and its summary in step.
   builder and its Test panel, whose pure half is `lib/routineBuilder.ts`), its words in
   `lib/autopilot.ts`; every row reads the routines' names and its chip through
   `AutopilotRowsContext`, and the inbox's row actions are shared through
-  `components/useItemActions.ts`. Full design:
+  `components/useItemActions.ts`. The window shows any of Autopilot only while Autopilot
+  (beta) is on (Settings → Labs, `LabsSection`): off, there is no tab, no Autopilot settings
+  section or banner switch (`hiddenOf` in `lib/settingsIndex.ts`), no Autopilot type among
+  the Notifications page's filters, and no `AutopilotRowsContext`, so no chip or mark; on, the
+  tab's label and the section's heading carry a `BetaBadge`. Full design:
   [docs/architecture.md](docs/architecture.md#the-autopilot-tab).
   Theme colors come from the `--color-*` tokens `internal/brandgen` writes to
   `frontend/src/generated/theme.css`. Checkboxes and radio buttons take the `checkbox` and
