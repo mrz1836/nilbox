@@ -2,6 +2,7 @@ import type { ReactNode } from 'react'
 
 import { brand } from '../generated/brand'
 import {
+  autopilotShareOf,
   budgets,
   levelFill,
   levelLabels,
@@ -12,6 +13,7 @@ import {
   shareOf,
   summarize,
   writesHeld,
+  type AutopilotShare,
   type Budget,
   type Pace,
 } from '../lib/budget'
@@ -37,6 +39,7 @@ const unread: BudgetReading = {
   spent: 0,
   requests: 0,
   complete: false,
+  purposes: { inbox: 0, watches: 0, follower: 0, autopilot: 0, other: 0 },
 }
 
 // amountText reads a budget as "4,980 of 5,000 left", or says it is unknown.
@@ -151,8 +154,17 @@ function BudgetRow({ label, rate, now }: BudgetRowProps) {
 }
 
 // PaceRow says what the inbox's own refreshes spend: what the last cost for the items it
-// tracks, and what that comes to in an hour of refreshes.
-function PaceRow({ pace, perHour }: { pace: Pace | null; perHour: number }) {
+// tracks, and what that comes to in an hour of refreshes. Once Autopilot spent something
+// since the GraphQL budget refilled, one line says how much.
+function PaceRow({
+  pace,
+  perHour,
+  autopilot,
+}: {
+  pace: Pace | null
+  perHour: number
+  autopilot: AutopilotShare | null
+}) {
   return (
     <div className="border-t border-border px-4 py-3">
       <div className="flex items-baseline justify-between gap-4 text-sm">
@@ -169,6 +181,15 @@ function PaceRow({ pace, perHour }: { pace: Pace | null; perHour: number }) {
           ? 'Its cost shows after the first refresh.'
           : `${String(perHour)} refreshes an hour: about ${formatCount(pace.perHour)} GraphQL points (${percentText(pace.percent)} of the budget). More items cost more.`}
       </p>
+      {autopilot !== null && (
+        <p
+          className="mt-1 text-xs text-muted tabular-nums"
+          title="Its routines' searches, what they watch, and its own reads"
+        >
+          Autopilot: {counted(autopilot.points, 'GraphQL point', 'GraphQL points')} since it last refilled (
+          {percentText(autopilot.percent)} of the budget)
+        </p>
+      )}
     </div>
   )
 }
@@ -280,7 +301,9 @@ export function RateGauge({ gauge, now, titleId }: RateGaugeProps) {
           <BudgetRow key={key} label={label} rate={gauge?.[key] ?? unread} now={now} />
         ))}
       </ul>
-      {gauge !== null && <PaceRow pace={paceOf(gauge)} perHour={gauge.refreshesPerHour} />}
+      {gauge !== null && (
+        <PaceRow pace={paceOf(gauge)} perHour={gauge.refreshesPerHour} autopilot={autopilotShareOf(gauge, now)} />
+      )}
       {gauge !== null && <WritesRow writes={gauge.writes} now={now} />}
       {gauge !== null && <ChoresRow chores={gauge.chores} now={now} />}
       <p className="border-t border-border px-4 py-2.5 text-xs text-muted">
