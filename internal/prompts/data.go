@@ -27,6 +27,13 @@ const (
 	// maxRefRunes caps a remote's name and a commit, both short in practice.
 	maxRefRunes = 100
 
+	// maxRoutineRunes caps a routine's name, as the routine list does, and its trigger's
+	// words.
+	maxRoutineRunes = 80
+
+	// maxAttempt caps the try a routine's run is on, which its own limits keep to 10.
+	maxAttempt = 100
+
 	// sampleHeadCommit is the sample pull request's made-up head commit.
 	sampleHeadCommit = "4f2a9c1e8b7d6a5f4e3d2c1b0a9f8e7d6c5b4a39"
 )
@@ -50,10 +57,11 @@ const (
 
 // Variable groups, in the order the cheat sheet shows them.
 const (
-	groupItem    = "Item"
-	groupRepo    = "Repository"
-	groupPR      = "Pull request"
-	groupSession = "Session"
+	groupItem      = "Item"
+	groupRepo      = "Repository"
+	groupPR        = "Pull request"
+	groupSession   = "Session"
+	groupAutopilot = "Autopilot"
 )
 
 // Data is what a prompt's variables are filled from: {{.Title}} reads Title. It holds
@@ -185,6 +193,23 @@ type Data struct {
 	// OutsideContributor reports whether the item comes from outside the repository's
 	// members and collaborators.
 	OutsideContributor bool
+
+	// Routine is the name of the Autopilot routine that started the session, cut to 80
+	// characters; "" for a launch of the user's own.
+	Routine string
+
+	// Trigger says what made the routine run, as the builder names its trigger, such as
+	// "Checks fail"; "" for a launch of the user's own.
+	Trigger string
+
+	// Attempt is which try of the routine's this session is on the item, 1 for its first;
+	// 0 for a launch of the user's own.
+	Attempt int
+
+	// Unattended reports a session nobody is there to answer: a routine's run in the
+	// background. A launch of the user's own, and a routine's in the user's terminal,
+	// are attended.
+	Unattended bool
 }
 
 // Variable describes one of Data's fields for the cheat sheet.
@@ -279,6 +304,22 @@ func Variables() []Variable {
 		{
 			Name: "OutsideContributor", Group: groupSession, Type: typeYesNo,
 			Description: "It comes from outside the repository's members and collaborators",
+		},
+		{
+			Name: "Routine", Group: groupAutopilot, Type: typeText,
+			Description: "The Autopilot routine that started it, or empty for your own launch",
+		},
+		{
+			Name: "Trigger", Group: groupAutopilot, Type: typeText,
+			Description: `What made the routine run, such as "Checks fail", or empty for your own launch`,
+		},
+		{
+			Name: "Attempt", Group: groupAutopilot, Type: typeNumber,
+			Description: "Which of the routine's tries on the item this is, 1 for the first, or 0 for your own launch",
+		},
+		{
+			Name: "Unattended", Group: groupAutopilot, Type: typeYesNo,
+			Description: "Nobody is there to answer: a routine's run in the background",
 		},
 	}
 }
@@ -390,6 +431,10 @@ func (d Data) sanitized() Data {
 	for _, field := range []*string{&d.Remote, &d.HeadCommit} {
 		*field = textutil.Clip(*field, maxRefRunes)
 	}
+
+	d.Routine = textutil.Clip(sanitizeLine(d.Routine), maxRoutineRunes)
+	d.Trigger = textutil.Clip(sanitizeLine(d.Trigger), maxRoutineRunes)
+	d.Attempt = min(max(d.Attempt, 0), maxAttempt)
 
 	d.BranchIsPlain = plainName(branch) && d.Branch == branch
 	d.RemoteIsPlain = plainName(remote) && d.Remote == remote

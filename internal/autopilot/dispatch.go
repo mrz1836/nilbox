@@ -9,6 +9,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/autopilot/spec"
 	"github.com/mrz1836/nilbox/internal/item"
 	"github.com/mrz1836/nilbox/internal/repo"
+	"github.com/mrz1836/nilbox/internal/sensitive"
 )
 
 // The engine runs a match's steps through dispatchers, one per part of the app a step
@@ -77,6 +78,28 @@ type Job struct {
 	// Burst reports a notice that comes with others at once (more than one in a cycle,
 	// or a catch-up's), which the notices gather into one banner past three.
 	Burst bool
+
+	// Trigger is the routine's trigger, which an agent's prompt names (.Trigger).
+	Trigger catalog.Event
+
+	// Confirmed are the Keys of the holds the user confirmed for this step (a file hold
+	// on a commit, a dirty worktree), which an agent's launch goes ahead past; a hold with
+	// any other key holds it again.
+	Confirmed []string
+}
+
+// RunRequest is the agent step of a job, as its runner launches it, and Preview plans it.
+func (j Job) RunRequest() RunRequest {
+	out := RunRequest{
+		ItemID: j.Item.ID, RoutineID: j.RoutineID, Routine: j.RoutineName, Trigger: j.Trigger, Attempt: j.Attempt + 1,
+		Confirmed: append([]string{}, j.Confirmed...),
+	}
+
+	if j.Step.Agent != nil {
+		out.Step = *j.Step.Agent
+	}
+
+	return out
 }
 
 // ItemRef names a match's item, as the ledger keeps a copy of it.
@@ -118,6 +141,65 @@ type Result struct {
 
 	// Summary is a line of what happened, for the run's record.
 	Summary string
+
+	// Wait says the step didn't start and the match waits on it: a hold only the user
+	// confirms (BlockHold, BlockDirty, with Hold), no clone (BlockNoClone), or something
+	// working where it would start (BlockBusyWorktree). WaitWords says it in the window's
+	// words. The run counts as never started.
+	Wait      Blocker
+	WaitWords string
+	Hold      *Hold
+
+	// Requeue says the step didn't start and the match goes back to the queue, to be
+	// decided again on a fresh read, as when the pull request's head moved as its worktree
+	// was made. The run counts as never started.
+	Requeue bool
+
+	// Launched is what an agent's launch started, for the run's record.
+	Launched *Launched
+}
+
+// Hold is a start held back for the user to confirm, as the launcher holds a click's
+// launch back: for the pull request's files (agent files changed, or files not all
+// checked) at a head commit, or a worktree with uncommitted changes. Only the user's
+// Run confirms it, and only for exactly what they were shown (Key). It is the launcher's
+// own hold, as the window's hold dialog shows it.
+type Hold struct {
+	Key    string `json:"key"`
+	Reason string `json:"reason"`
+
+	// Head is the head commit the files were checked at, or the worktree is at.
+	Head string `json:"head"`
+
+	// Files are the agent files the pull request changes; Checked of Total files were
+	// checked, and Error says why the check failed.
+	Files   []sensitive.Finding `json:"files"`
+	Checked int                 `json:"checked"`
+	Total   int                 `json:"total"`
+	Error   string              `json:"error"`
+
+	// AtHead reports a session that would start in the pull request's worktree, which
+	// loads its files at once.
+	AtHead bool `json:"atHead"`
+
+	// Dir is where the session would start, with ~ for home, Worktree its worktree's name,
+	// and Dirty how many of its files have uncommitted changes.
+	Dir      string `json:"dir"`
+	Worktree string `json:"worktree"`
+	Dirty    int    `json:"dirty"`
+}
+
+// Launched is what an agent's launch started: its session, as the sessions ledger records
+// it, and what it runs with.
+type Launched struct {
+	SessionID string
+	Agent     string
+	Profile   string
+	Model     string
+	Effort    string
+	ClonePath string
+	Worktree  string
+	Command   string
 }
 
 // Dispatcher runs one part's steps. Dispatch is called on a worker, never on the
@@ -261,6 +343,9 @@ type ProblemKind string
 const (
 	ProblemSearchFailed ProblemKind = "search_failed"
 	ProblemWontLoad     ProblemKind = "wont_load"
+
+	// ProblemNotReady is something a routine needs that this Mac doesn't have (ready.go).
+	ProblemNotReady ProblemKind = "not_ready"
 )
 
 // ProblemSink tells the user of a problem, once, as the notifications do: an error leaves

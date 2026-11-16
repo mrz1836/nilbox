@@ -54,6 +54,7 @@ func TestSettingsViewsReadTheSettingsAsTheyAreNow(t *testing.T) {
 	assert.Equal(t, launcher.LaunchSettings{
 		DefaultAgent: agent.Claude, DefaultProfiles: all.DefaultProfiles, WorktreeDefault: true, Terminal: terminal.ITerm2,
 		CloneRoot: settings.DefaultCloneRoot, CloneLocations: []localrepos.Location{}, TrustedBots: all.TrustedBots,
+		APIKeys: map[agent.ID]bool{agent.Claude: false, agent.Codex: false},
 	}, got)
 
 	swept, err := sweep.Get(ctx)
@@ -76,12 +77,14 @@ func TestSettingsViewsReadTheSettingsAsTheyAreNow(t *testing.T) {
 	require.NoError(t, testutil.ErrOf(c.Settings.SetCloneRoot(ctx, root)))
 	require.NoError(t, testutil.ErrOf(c.Settings.SetTrustedBots(ctx, []string{"renovate"})))
 	require.NoError(t, testutil.ErrOf(c.Settings.SetBranchRules(ctx, branchrules.Rules{Own: true, Protected: []string{"develop"}})))
+	require.NoError(t, testutil.ErrOf(c.Settings.SetCodexAPIKey(ctx, true)))
 
 	got, err = launch.Get(ctx)
 	require.NoError(t, err)
 	assert.Equal(t, launcher.LaunchSettings{
 		DefaultAgent: agent.Claude, DefaultProfiles: all.DefaultProfiles, Terminal: terminal.TerminalApp, CloneRoot: root,
 		CloneLocations: locations, TrustedBots: []string{"renovate"},
+		APIKeys: map[agent.ID]bool{agent.Claude: false, agent.Codex: true},
 	}, got)
 
 	swept, err = sweep.Get(ctx)

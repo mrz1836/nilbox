@@ -48,6 +48,11 @@ func (codex) info() Agent {
 		AuthFile:        "auth.json",
 		AuthEnv:         []string{"OPENAI_API_KEY", "CODEX_API_KEY"},
 		ModelsCache:     "models_cache.json",
+		VersionArgs:     []string{"--version"},
+		SignInArgs:      []string{"login", "status"},
+		KeyEnv:          []string{"OPENAI_API_KEY", "CODEX_API_KEY"},
+		LoginArgs:       []string{"login"},
+		StatusPart:      "openai.codex-cli",
 	}
 }
 

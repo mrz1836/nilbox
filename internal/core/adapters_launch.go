@@ -8,6 +8,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/agent"
 	"github.com/mrz1836/nilbox/internal/inbox"
 	"github.com/mrz1836/nilbox/internal/launcher"
+	"github.com/mrz1836/nilbox/internal/sensitive"
 	"github.com/mrz1836/nilbox/internal/settings"
 	"github.com/mrz1836/nilbox/internal/workspacetrust"
 	"github.com/mrz1836/nilbox/internal/worktrees"
@@ -25,7 +26,22 @@ func launchSettings(s settings.Settings) launcher.LaunchSettings {
 		TrustedBots:     s.TrustedBots,
 		EffortOverrides: s.CodexEffort,
 		FastMode:        s.CodexFast,
+		APIKeys:         s.APIKeys(),
 	}
+}
+
+// launchFiles checks the files of the pull requests a launch is for (launcher.FileChecker):
+// the inbox's own checks, and the unattended one on its Autopilot face, which the window
+// never reaches.
+type launchFiles struct {
+	*inbox.Service
+
+	routines *inbox.Routines
+}
+
+// CheckFilesUnattended checks an item's files under the unattended scope.
+func (f launchFiles) CheckFilesUnattended(ctx context.Context, itemID int64) (*sensitive.Check, error) {
+	return f.routines.CheckFilesUnattended(ctx, itemID)
 }
 
 // worktreeMaker hands the launcher the worktrees package's Maker. It implements

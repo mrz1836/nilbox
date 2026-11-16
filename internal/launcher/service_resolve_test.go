@@ -178,7 +178,8 @@ func TestPreviewMatchesLaunch(t *testing.T) {
 	}, preview.Worktree, "a preview says the worktree would be made, and from what")
 	assert.Equal(t, "claude <prompt> --model opus --permission-mode acceptEdits '--name=Review · example-repo#7'",
 		preview.Command)
-	assert.Equal(t, []string{"CLAUDE_CONFIG_DIR=~/.claude_work"}, preview.Env)
+	assert.Equal(t, []string{"unset ANTHROPIC_API_KEY", "unset ANTHROPIC_AUTH_TOKEN", "CLAUDE_CONFIG_DIR=~/.claude_work"},
+		preview.Env, "an API key never signs the agent in while its setting is off")
 	assert.Equal(t, "permission mode acceptEdits", preview.Permission)
 	assert.Equal(t, settings.TerminalITerm2, preview.Terminal)
 	assert.Equal(t, SourceLaunch, preview.Resolution.Model.Source)
@@ -189,7 +190,8 @@ func TestPreviewMatchesLaunch(t *testing.T) {
 
 	preview, err = h.service().Preview(t.Context(), LaunchRequest{ItemID: h.issue, Worktree: new(false)})
 	require.NoError(t, err)
-	assert.Equal(t, []string{"unset CLAUDE_CONFIG_DIR"}, preview.Env)
+	assert.Equal(t, []string{"unset CLAUDE_CONFIG_DIR", "unset ANTHROPIC_API_KEY", "unset ANTHROPIC_AUTH_TOKEN"},
+		preview.Env)
 	assert.Nil(t, preview.Worktree)
 	assert.Equal(t, "~/projects/example-repo", preview.Dir)
 	assert.Contains(t, preview.Prompt, "Work on issue #3")
@@ -197,7 +199,7 @@ func TestPreviewMatchesLaunch(t *testing.T) {
 	codex, err := h.service().Preview(t.Context(), LaunchRequest{ItemID: h.issue, Agent: agent.Codex, Profile: "work"})
 	require.NoError(t, err)
 	assert.Equal(t, "codex --sandbox workspace-write -- <prompt>", codex.Command, "Codex's prompt comes last")
-	assert.Equal(t, []string{"CODEX_HOME=~/.codex_work"}, codex.Env)
+	assert.Equal(t, []string{"unset OPENAI_API_KEY", "unset CODEX_API_KEY", "CODEX_HOME=~/.codex_work"}, codex.Env)
 	assert.Equal(t, "origin/main", codex.Worktree.Base)
 }
 

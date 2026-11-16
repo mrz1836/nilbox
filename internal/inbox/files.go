@@ -388,6 +388,14 @@ func (r checkItemRow) checked(scope fileScope) bool {
 	return scope.checks(r.Kind == item.KindPR, author, r.IsCrossRepository)
 }
 
+// checkedUnattended reports whether the row's files are checked before an unattended
+// start: a pull request the signed-in user didn't open.
+func (r checkItemRow) checkedUnattended(scope fileScope) bool {
+	mine := scope.viewer != "" && strings.EqualFold(r.AuthorLogin, scope.viewer)
+
+	return r.Kind == item.KindPR && sensitive.CheckedUnattended(mine)
+}
+
 // StoredFiles returns the last check of an item's changed files, without asking GitHub,
 // with the user's categories applied: StatusPending when the item was pushed since. It
 // returns sensitive.ErrNotChecked for an item whose files are not checked: an issue, or
@@ -421,6 +429,21 @@ func (s *Service) StoredFiles(ctx context.Context, itemID int64) (*sensitive.Che
 // A check that cannot finish is returned with StatusFailed and its reason, never as an
 // error, so the caller can hold back on it; an error means the item could not be read.
 func (s *Service) CheckFiles(ctx context.Context, itemID int64) (*sensitive.Check, error) {
+	return s.checkFilesFor(ctx, itemID, false)
+}
+
+// CheckFilesUnattended checks an item's changed files as CheckFiles does, for a start a
+// routine makes rather than the user's click: under a wider scope, every pull request the
+// signed-in user didn't open, trusted bots' and members' included (see
+// sensitive.CheckedUnattended), whatever the user's scope says. It returns
+// sensitive.ErrNotChecked for an issue, and for a pull request the user opened. It is
+// Autopilot's, so the window never reaches it.
+func (r *Routines) CheckFilesUnattended(ctx context.Context, itemID int64) (*sensitive.Check, error) {
+	return r.svc.checkFilesFor(ctx, itemID, true)
+}
+
+// checkFilesFor is CheckFiles, under the unattended scope when unattended.
+func (s *Service) checkFilesFor(ctx context.Context, itemID int64, unattended bool) (*sensitive.Check, error) {
 	unlock, err := s.items.lock(ctx, itemID)
 	if err != nil {
 		return nil, err
@@ -433,7 +456,7 @@ func (s *Service) CheckFiles(ctx context.Context, itemID int64) (*sensitive.Chec
 		return nil, err
 	}
 
-	if !row.checked(scope) {
+	if !row.checked(scope) && (!unattended || !row.checkedUnattended(scope)) {
 		return nil, sensitive.ErrNotChecked
 	}
 

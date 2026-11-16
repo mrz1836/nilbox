@@ -78,6 +78,19 @@ func (s *checkSummary) add(c CheckRow) {
 	}
 }
 
+// FailedNames returns the names of the checks among checks that failed, each once, in the
+// order they come, as a condition on failed check names reads them: "workflow / job" for
+// a workflow's run, the name alone for an app's run or a status. A launch's prompt names
+// the same ones (prompts.Data.FailedChecks).
+func FailedNames(checks []CheckRow) []string {
+	s := &checkSummary{names: []string{}, failed: []string{}}
+	for _, c := range checks {
+		s.add(c)
+	}
+
+	return s.failed
+}
+
 // addOnce appends s to list unless it is "" or already there.
 func addOnce(list []string, s string) []string {
 	if s == "" || slices.Contains(list, s) {

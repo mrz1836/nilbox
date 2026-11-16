@@ -172,10 +172,28 @@ func TestEveryStepNamesItsDispatcher(t *testing.T) {
 	}
 }
 
-// builtDispatchers are the parts whose dispatchers this build has: the inbox's triage, and
-// the notices (Notify me and Tell me).
+// builtDispatchers are the parts whose dispatchers this build has: the inbox's triage, the
+// notices (Notify me and Tell me), and the agent's, which runs it in the user's terminal.
 func builtDispatchers() []catalog.Dispatcher {
-	return []catalog.Dispatcher{catalog.DispatchTriage, catalog.DispatchNotices}
+	return []catalog.Dispatcher{catalog.DispatchTriage, catalog.DispatchNotices, catalog.DispatchAgent}
+}
+
+// TestTheAgentRunsWhereThisBuildCanRunIt holds the places an agent step can run to the
+// runners this build has: the user's terminal, and not yet the background.
+func TestTheAgentRunsWhereThisBuildCanRunIt(t *testing.T) {
+	t.Parallel()
+
+	offered := map[catalog.Where]bool{}
+	for _, p := range catalog.Places() {
+		offered[p.ID] = p.Offered
+		assert.NotEmpty(t, p.Label, p.ID)
+		assert.NotEmpty(t, p.Help, p.ID)
+	}
+
+	assert.Equal(t, map[catalog.Where]bool{catalog.WhereTerminal: true, catalog.WhereBackground: false}, offered)
+
+	_, ok := catalog.PlaceByID("elsewhere")
+	assert.False(t, ok)
 }
 
 func TestAStepIsOfferedOnceItsDispatcherIsBuilt(t *testing.T) {

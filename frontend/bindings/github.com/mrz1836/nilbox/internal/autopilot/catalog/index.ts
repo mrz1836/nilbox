@@ -37,6 +37,7 @@ export type {
     OpInfo,
     OptionInfo,
     OutcomeInfo,
+    PlaceInfo,
     PresetInfo,
     Range,
     Setting,

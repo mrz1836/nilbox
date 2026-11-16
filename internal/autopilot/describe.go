@@ -105,16 +105,16 @@ func (s *Service) loadDraft(ctx context.Context, sp spec.Spec) (spec.Spec, []spe
 		return normal, nil, uierr.New("The routine can't be read: "+textutil.Sentence(err.Error()), err)
 	}
 
-	return loaded, s.promptProblems(ctx, loaded), nil
+	return loaded, append(s.offers.placeProblems(loaded), s.promptProblems(ctx, loaded)...), nil
 }
 
 // promptProblems returns the problems of the prompts sp's steps name: one the library
 // doesn't have, a reply named where an agent's prompt goes or the other way about, and
 // one that doesn't apply to every kind of item the routine acts on. Without a library,
-// or one that can't be read (logged), it finds none, and nothing checks them later: not
-// the engine before a start, nor SetEnabled, Duplicate, a restore, or an import. That
-// holds while the steps that name a prompt (an agent's, a GitHub reply's) run only in Dry
-// run; the check before a start comes with the build that runs them.
+// or one that can't be read (logged), it finds none here; the engine checks a step's
+// prompt again right before each start (promptHold), so a prompt deleted, changed, or
+// renamed beyond what the routine follows after the save, as after SetEnabled, Duplicate,
+// a restore, or an import, keeps the run from starting and says why.
 func (s *Service) promptProblems(ctx context.Context, sp spec.Spec) []spec.Problem {
 	if s.library == nil {
 		return nil
@@ -127,9 +127,13 @@ func (s *Service) promptProblems(ctx context.Context, sp spec.Spec) []spec.Probl
 		return nil
 	}
 
-	kinds := actsOn(sp)
+	return libraryProblems(library, sp)
+}
 
-	var out []spec.Problem
+// libraryProblems returns the problems of the prompts sp's steps name, against library.
+func libraryProblems(library []LibraryPrompt, sp spec.Spec) []spec.Problem {
+	kinds := actsOn(sp)
+	out := make([]spec.Problem, 0, len(sp.Steps))
 
 	for i, st := range sp.Steps {
 		out = append(out, stepPromptProblems(library, st, kinds, fmt.Sprintf("[%d]", i))...)

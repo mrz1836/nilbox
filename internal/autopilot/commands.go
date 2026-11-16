@@ -101,6 +101,7 @@ func (e *Engine) approve(ctx context.Context, id int64) error {
 
 	switch {
 	case m.state() == StateWaiting:
+		confirmHold(m)
 		m.set(StateQueued, "", "")
 	case m.Approved || m.state() != StateQueued && m.state() != StateBlocked:
 		return nil
@@ -110,6 +111,24 @@ func (e *Engine) approve(ctx context.Context, id int64) error {
 	e.save(ctx, m)
 
 	return nil
+}
+
+// confirmHold records the user's OK of the hold m's step waits on, exactly as it was shown
+// (its Key: the head commit for a file hold, the worktree and its files for a dirty one),
+// so the next start goes ahead past it, and past nothing else.
+func confirmHold(m *match) {
+	if int(m.Step) >= len(m.steps) {
+		return
+	}
+
+	sr := &m.steps[m.Step]
+	if sr.Hold == nil || sr.Hold.Key == "" || slices.Contains(sr.Confirmed, sr.Hold.Key) {
+		return
+	}
+
+	if b := Blocker(m.BlockedBy); b == BlockHold || b == BlockDirty {
+		sr.Confirmed = append(sr.Confirmed, sr.Hold.Key)
+	}
 }
 
 // matchesByID returns the matches ids, those still recorded.
@@ -174,10 +193,13 @@ func (s *Service) matchByID(ctx context.Context, id int64) (Match, error) {
 }
 
 // RunNow runs the routine id on the item now, as the user asked from the item's menu, and
-// returns its match: once per click, whatever its trigger says, but only on an item its
-// conditions match. It counts toward no daily cap or try, needs no OK, and keeps to the
-// routine's mode, so a Dry run records what it would have done.
-func (s *Service) RunNow(ctx context.Context, id, itemID int64) (Match, error) {
+// returns its match: once per click, whatever its trigger says, on an item its conditions
+// match, or, with anyway (the menu's Run anyway, which the user chose knowing why it
+// doesn't match), on any item of a kind it acts on. It counts toward no daily cap or try,
+// needs no OK, and keeps to the routine's mode, so a Dry run records what it would have
+// done. Every limit that keeps a start from happening still holds it, as for any match:
+// the outside contributor rule, this Mac's readiness, the item read fresh, the holds.
+func (s *Service) RunNow(ctx context.Context, id, itemID int64, anyway bool) (Match, error) {
 	e, err := s.engineOrErr()
 	if err != nil {
 		return Match{}, err
@@ -186,7 +208,7 @@ func (s *Service) RunNow(ctx context.Context, id, itemID int64) (Match, error) {
 	var made int64
 
 	err = e.do(ctx, func(ctx context.Context) error {
-		made, err = e.runNow(ctx, id, itemID)
+		made, err = e.runNow(ctx, id, itemID, anyway)
 
 		return err
 	})
@@ -197,8 +219,9 @@ func (s *Service) RunNow(ctx context.Context, id, itemID int64) (Match, error) {
 	return s.matchByID(ctx, made)
 }
 
-// runNow records a manual match of the routine id on the item.
-func (e *Engine) runNow(ctx context.Context, id, itemID int64) (int64, error) {
+// runNow records a manual match of the routine id on the item, on one its conditions don't
+// match too when anyway.
+func (e *Engine) runNow(ctx context.Context, id, itemID int64, anyway bool) (int64, error) {
 	row, err := e.svc.store.get(ctx, e.svc.store.q, id)
 	if err != nil {
 		return 0, err
@@ -223,8 +246,14 @@ func (e *Engine) runNow(ctx context.Context, id, itemID int64) (int64, error) {
 	token := strconv.FormatInt(now.UnixNano(), 36)
 	d := eval.Evaluate(l.spec, all[0], eval.History{Manual: token, OwnHeads: []string{}}, now)
 
-	if d.Match != eval.Yes {
+	switch {
+	case d.Match == eval.Yes:
+	case !anyway:
 		return 0, uierr.New(textutil.Sentence("It doesn't match it: "+firstNo(d)), ErrNoMatch)
+	case !slices.Contains(actsOn(l.spec), all[0].Item.Kind):
+		return 0, uierr.New(fmt.Sprintf("It acts only on %s.", kindsWords(actsOn(l.spec))), ErrNoMatch)
+	default:
+		d.FireKey = "manual:" + token
 	}
 
 	r := &routineRun{row: row, spec: l.spec, mode: storedMode(row.Mode), hash: specHash(row.Spec)}

@@ -76,6 +76,10 @@ type LaunchSettings struct {
 	// FastMode starts each session in Fast mode, where the agent has one, unless the
 	// launch says otherwise.
 	FastMode bool
+
+	// APIKeys says, per agent, whether an API key in the environment may sign it in; an
+	// agent with no entry, or false, runs on the profile's own sign-in (see AgentEnv).
+	APIKeys map[agent.ID]bool
 }
 
 // SettingsReader reads the launch settings as they are now, so every launch sees the
@@ -223,6 +227,41 @@ type LaunchRequest struct {
 	// beside exactly those sessions, and is held back again for any other. It is kept
 	// apart from Confirmed, so a launch held back for both reasons is confirmed for each.
 	Alongside string `json:"alongside"`
+
+	// Routine is the Autopilot routine a launch is made for, nil for the user's own
+	// click. Only Go sets it: the window's requests never carry it.
+	Routine *RoutineLaunch `json:"-"`
+}
+
+// RoutineLaunch is what an Autopilot routine's launch adds to a click's: the same plan,
+// files, terminal, and session record, with these differences, which only ever hold it
+// back more:
+//
+//   - its pull request's files are checked under the unattended scope (every pull request
+//     the user didn't open, FileChecker.CheckFilesUnattended), and a file hold waits for
+//     the user's confirmation of exactly it, carried in Confirmed, never in the request's
+//     own Confirmed;
+//   - a session running where it would start always holds it: nothing confirms that, so
+//     it never starts beside one;
+//   - a worktree with uncommitted changes holds it (HoldDirty) until the user confirms;
+//   - FullAccessOverride is never set: an outside contributor's item runs planning only;
+//   - its prompt names the routine (.Routine, .Trigger, .Attempt).
+type RoutineLaunch struct {
+	// Name is the routine's name, and Trigger what made it run, in the builder's words.
+	Name    string
+	Trigger string
+
+	// Attempt is which of the routine's tries on the item this is, 1 for the first.
+	Attempt int
+
+	// Confirmed are the Keys of the holds the user confirmed for this launch: a file
+	// hold's, naming the head commit they saw, and a dirty worktree's.
+	Confirmed []string
+}
+
+// confirms reports whether the routine's user confirmed the hold with key.
+func (r *RoutineLaunch) confirms(key string) bool {
+	return r != nil && slices.Contains(r.Confirmed, key)
 }
 
 // LaunchResult describes a started launch, or one held back. Every field is a plain
@@ -468,7 +507,7 @@ func (s *Service) Launch(ctx context.Context, req LaunchRequest) (LaunchResult, 
 		return LaunchResult{}, err
 	}
 
-	if hold := s.heldBack(p, req.Confirmed); hold != nil {
+	if hold := s.heldBack(p, req.Confirmed, req.Routine); hold != nil {
 		return LaunchResult{Hold: hold}, nil
 	}
 
@@ -481,17 +520,38 @@ func (s *Service) Launch(ctx context.Context, req LaunchRequest) (LaunchResult, 
 
 // heldBack returns what holds a planned launch or resume back: the sessions running where
 // it would start, then the pull request's files unless confirmed names that hold, or nil.
-func (s *Service) heldBack(p planned, confirmed string) *Hold {
+// A routine's launch (routine) takes only its user's confirmations, and is held for a
+// dirty worktree too.
+func (s *Service) heldBack(p planned, confirmed string, routine *RoutineLaunch) *Hold {
 	if p.running != nil {
 		return p.running
 	}
 
-	hold := holdFor(p.check, p.atHead(), paths.Tilde(p.plan.Dir, s.home), p.worktreeName())
-	if hold != nil && hold.Key != confirmed {
+	dir := paths.Tilde(p.plan.Dir, s.home)
+
+	if hold := holdFor(p.check, p.atHead(), dir, p.worktreeName()); hold != nil && !confirmedHold(hold, confirmed, routine) {
 		return hold
 	}
 
+	if routine == nil {
+		return nil
+	}
+
+	if dirty := holdDirty(p.worktree, dir, p.worktreeName()); dirty != nil && !routine.confirms(dirty.Key) {
+		return dirty
+	}
+
 	return nil
+}
+
+// confirmedHold reports whether the user confirmed hold: for a click, its request's
+// Confirmed; for a routine's launch, only one of its user's confirmations.
+func confirmedHold(hold *Hold, confirmed string, routine *RoutineLaunch) bool {
+	if routine != nil {
+		return routine.confirms(hold.Key)
+	}
+
+	return hold.Key == confirmed
 }
 
 // planned is a launch worked out but not started.
@@ -605,10 +665,12 @@ func (s *Service) plan(ctx context.Context, req LaunchRequest, mode planMode, re
 		return planned{}, err
 	}
 
+	override, alongside := personsChoices(req)
+
 	p, err := s.place(ctx, w, row, res, Request{
 		Item: row.item(w.policy), Agent: res.Agent.ID, Profile: effectiveProfile(profile, res),
-		FullAccessOverride: req.FullAccessOverride, SessionName: sessionName(prompt.Nickname, row),
-		SessionID: ref.id, ResumeID: ref.resume, Fast: res.Fast.Value,
+		FullAccessOverride: override, SessionName: sessionName(prompt.Nickname, row),
+		SessionID: ref.id, ResumeID: ref.resume, Fast: res.Fast.Value, UseAPIKey: w.settings.APIKeys[res.Agent.ID],
 	})
 	if err != nil {
 		return planned{}, err
@@ -616,12 +678,11 @@ func (s *Service) plan(ctx context.Context, req LaunchRequest, mode planMode, re
 
 	// A launch held back for a running session asks GitHub nothing: confirmed, it plans
 	// again and checks the files then. A preview is never held.
-	if p.running = s.runningHold(ctx, p, req.Alongside, mode != planPreview); p.running != nil {
+	if p.running = s.runningHold(ctx, p, alongside, mode != planPreview); p.running != nil {
 		return p, nil
 	}
 
-	fresh := mode == planLaunch
-	if p.check, err = s.fileCheck(ctx, row.ID, fresh); err != nil && !errors.Is(err, sensitive.ErrNotChecked) {
+	if p.check, err = s.fileCheck(ctx, row.ID, checkFor(mode, req)); err != nil && !errors.Is(err, sensitive.ErrNotChecked) {
 		return planned{}, err
 	}
 
@@ -629,7 +690,8 @@ func (s *Service) plan(ctx context.Context, req LaunchRequest, mode planMode, re
 		return p, nil
 	}
 
-	p.prompt, err = s.fillIn(ctx, row.promptData(w.policy, profile.Name, "", p.check), prompt.Nickname, tmpl, p)
+	data := withRoutine(row.promptData(w.policy, profile.Name, "", p.check), req.Routine)
+	p.prompt, err = s.fillIn(ctx, data, prompt.Nickname, tmpl, p)
 
 	return p, err
 }
@@ -700,10 +762,45 @@ func (s *Service) ensureWorktree(ctx context.Context, p *planned) error {
 	return nil
 }
 
-// fileCheck returns an item's file check: as of now when fresh is set, else the last
-// one. It returns sensitive.ErrNotChecked for an item whose files are not checked, and
-// for every item when the service has no FileChecker.
-func (s *Service) fileCheck(ctx context.Context, itemID int64, fresh bool) (*sensitive.Check, error) {
+// fileCheckKind is which file check a plan reads.
+type fileCheckKind int
+
+// The file checks: the last one stored, one as of now, and one as of now under the
+// unattended scope, for a routine's launch.
+const (
+	checkStored fileCheckKind = iota
+	checkNow
+	checkUnattended
+)
+
+// personsChoices are what only a person may choose for a launch: lifting the outside
+// contributor restriction, and starting beside a session. A routine's launch takes
+// neither, whatever its request says.
+func personsChoices(req LaunchRequest) (override bool, alongside string) {
+	if req.Routine != nil {
+		return false, ""
+	}
+
+	return req.FullAccessOverride, req.Alongside
+}
+
+// checkFor is the file check a plan for mode reads: as of now for a launch, under the
+// unattended scope for a routine's, and the last one stored for a preview or a resume.
+func checkFor(mode planMode, req LaunchRequest) fileCheckKind {
+	switch {
+	case mode != planLaunch:
+		return checkStored
+	case req.Routine != nil:
+		return checkUnattended
+	default:
+		return checkNow
+	}
+}
+
+// fileCheck returns an item's file check, as kind says. It returns sensitive.ErrNotChecked
+// for an item whose files are not checked, and for every item when the service has no
+// FileChecker.
+func (s *Service) fileCheck(ctx context.Context, itemID int64, kind fileCheckKind) (*sensitive.Check, error) {
 	if s.files == nil {
 		return nil, sensitive.ErrNotChecked
 	}
@@ -713,9 +810,12 @@ func (s *Service) fileCheck(ctx context.Context, itemID int64, fresh bool) (*sen
 		err   error
 	)
 
-	if fresh {
+	switch kind {
+	case checkNow:
 		check, err = s.files.CheckFiles(ctx, itemID)
-	} else {
+	case checkUnattended:
+		check, err = s.files.CheckFilesUnattended(ctx, itemID)
+	case checkStored:
 		check, err = s.files.StoredFiles(ctx, itemID)
 	}
 

@@ -5,8 +5,10 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
+	"github.com/mrz1836/nilbox/internal/autopilot/facts"
 	"github.com/mrz1836/nilbox/internal/clock"
 	"github.com/mrz1836/nilbox/internal/github"
 	"github.com/mrz1836/nilbox/internal/inbox/internal/queries"
@@ -118,6 +120,11 @@ type LaunchItem struct {
 
 	// HeadOID is a pull request's head commit as the last refresh read it, or "".
 	HeadOID string
+
+	// FailedChecks names a pull request's failed checks at that head commit, as Autopilot's
+	// conditions name them ("workflow / job", each once), from the last read of its checks:
+	// empty when none failed, and when they weren't read at that commit.
+	FailedChecks []string
 }
 
 // LaunchItems returns the stored items among ids, by id. An id with no stored item is
@@ -155,6 +162,11 @@ func launchItemOf(r queries.ListLaunchItemsRow) (LaunchItem, error) {
 		}
 	}
 
+	failed, err := failedCheckNames(store.Deref(r.HeadOID), store.Deref(r.ChecksHeadOID), r.Checks)
+	if err != nil {
+		return LaunchItem{}, fmt.Errorf("the checks of item %d: %w", r.ID, err)
+	}
+
 	return LaunchItem{
 		ID: r.ID, Kind: item.Kind(r.Kind), Number: int(r.Number), URL: r.URL, Title: r.Title, HeadRef: r.HeadRef,
 		AuthorLogin: r.AuthorLogin, AuthorType: r.AuthorType, AuthorAssociation: r.AuthorAssociation,
@@ -163,8 +175,29 @@ func launchItemOf(r queries.ListLaunchItemsRow) (LaunchItem, error) {
 		Labels: labels, Additions: int(store.Deref(r.Additions)), Deletions: int(store.Deref(r.Deletions)),
 		ChangedFiles: int(store.Deref(r.ChangedFiles)), Commits: int(store.Deref(r.Commits)),
 		Mergeable: store.Deref(r.Mergeable), ChecksState: store.Deref(r.ChecksState),
-		ReviewDecision: store.Deref(r.ReviewDecision), HeadOID: store.Deref(r.HeadOID),
+		ReviewDecision: store.Deref(r.ReviewDecision), HeadOID: store.Deref(r.HeadOID), FailedChecks: failed,
 	}, nil
+}
+
+// failedCheckNames returns the names of the checks that failed among those raw holds, as
+// Autopilot's conditions name them (facts.FailedNames), when they were read at the head
+// commit, and none otherwise: a read of an older commit says nothing of this one.
+func failedCheckNames(head, readAt string, raw *string) ([]string, error) {
+	if raw == nil || head == "" || !strings.EqualFold(head, readAt) {
+		return []string{}, nil
+	}
+
+	stored, err := store.DecodeJSON[[]storedCheck](*raw)
+	if err != nil {
+		return nil, err
+	}
+
+	rows := make([]facts.CheckRow, 0, len(stored))
+	for _, c := range stored {
+		rows = append(rows, facts.CheckRow{Name: c.Name, Workflow: c.Workflow, Outcome: facts.CheckOutcome(c.Outcome)})
+	}
+
+	return facts.FailedNames(rows), nil
 }
 
 // ReviewItem is a stored pull request as the review sheet shows it before asking GitHub:

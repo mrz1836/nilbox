@@ -19,6 +19,9 @@ import * as autopilotprefs$0 from "../autopilotprefs/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
 import * as item$0 from "../item/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
+import * as sensitive$0 from "../sensitive/models.js";
 
 /**
  * ActivityDay is one local day of Activity.
@@ -467,6 +470,46 @@ export interface Glance {
 }
 
 /**
+ * Hold is a start held back for the user to confirm, as the launcher holds a click's
+ * launch back: for the pull request's files (agent files changed, or files not all
+ * checked) at a head commit, or a worktree with uncommitted changes. Only the user's
+ * Run confirms it, and only for exactly what they were shown (Key). It is the launcher's
+ * own hold, as the window's hold dialog shows it.
+ */
+export interface Hold {
+    "key": string;
+    "reason": string;
+
+    /**
+     * Head is the head commit the files were checked at, or the worktree is at.
+     */
+    "head": string;
+
+    /**
+     * Files are the agent files the pull request changes; Checked of Total files were
+     * checked, and Error says why the check failed.
+     */
+    "files": sensitive$0.Finding[] | null;
+    "checked": number;
+    "total": number;
+    "error": string;
+
+    /**
+     * AtHead reports a session that would start in the pull request's worktree, which
+     * loads its files at once.
+     */
+    "atHead": boolean;
+
+    /**
+     * Dir is where the session would start, with ~ for home, Worktree its worktree's name,
+     * and Dirty how many of its files have uncommitted changes.
+     */
+    "dir": string;
+    "worktree": string;
+    "dirty": number;
+}
+
+/**
  * ItemHistory is what the routines did with one item, newest first.
  */
 export interface ItemHistory {
@@ -560,6 +603,13 @@ export interface Match {
     "attempt": number;
 
     /**
+     * Hold is what holds its start back for the user's OK, while it waits on a hold
+     * (BlockHold, BlockDirty): the launcher's own hold, which the card shows as the hold
+     * dialog does, and whose Run confirms exactly it. Nil otherwise.
+     */
+    "hold": Hold | null;
+
+    /**
      * Runs are the runs it started, oldest first.
      */
     "runs": Run[] | null;
@@ -614,6 +664,78 @@ export interface Matching {
 }
 
 /**
+ * Need is one thing a routine needs on this Mac.
+ */
+export interface Need {
+    "kind": NeedKind;
+
+    /**
+     * Agent and Profile name an agent's profile (NeedProfile), or Agent an agent
+     * (NeedAgent).
+     */
+    "agent": string;
+    "profile": string;
+
+    /**
+     * Tool is a program's name (NeedTool).
+     */
+    "tool": string;
+
+    /**
+     * Place is where an agent step runs (NeedPlace).
+     */
+    "place": catalog$0.Where;
+}
+
+/**
+ * NeedKind is a kind of thing a routine needs on this Mac.
+ */
+export type NeedKind = "github" | "tool" | "agent" | "profile" | "terminal" | "banners" | "place";
+
+/**
+ * The values of NeedKind, by the names of their Go constants.
+ */
+export const NeedKind = {
+    /**
+     * The kinds of need.
+     *
+     * NeedGitHub is the GitHub sign-in, with the scopes the watches read with.
+     */
+    NeedGitHub: "github",
+
+    /**
+     * NeedTool is a program on the login shell's PATH, the one an agent runs with.
+     */
+    NeedTool: "tool",
+
+    /**
+     * NeedAgent is a coding agent's program.
+     */
+    NeedAgent: "agent",
+
+    /**
+     * NeedProfile is one of an agent's profiles, present and signed in.
+     */
+    NeedProfile: "profile",
+
+    /**
+     * NeedTerminal is the terminal launches open in, for an agent in the terminal.
+     */
+    NeedTerminal: "terminal",
+
+    /**
+     * NeedBanners is the app's permission to show banners, for a notice: without it the
+     * history still fills, so it's only ever a warning.
+     */
+    NeedBanners: "banners",
+
+    /**
+     * NeedPlace is where an agent step runs, which this build must run agents in.
+     */
+    NeedPlace: "place",
+} as const;
+
+/**
  * Problem is something wrong with a routine that the user is told once, when it starts:
  * a search GitHub fails, or a routine that won't load.
  */
@@ -640,7 +762,7 @@ export interface Problem {
 /**
  * ProblemKind is a kind of problem.
  */
-export type ProblemKind = "search_failed" | "wont_load";
+export type ProblemKind = "search_failed" | "wont_load" | "not_ready";
 
 /**
  * The values of ProblemKind, by the names of their Go constants.
@@ -651,6 +773,92 @@ export const ProblemKind = {
      */
     ProblemSearchFailed: "search_failed",
     ProblemWontLoad: "wont_load",
+
+    /**
+     * ProblemNotReady is something a routine needs that this Mac doesn't have (ready.go).
+     */
+    ProblemNotReady: "not_ready",
+} as const;
+
+/**
+ * Readiness is this Mac's readiness, as Settings → Autopilot's This Mac and the routines'
+ * badges show it.
+ */
+export interface Readiness {
+    /**
+     * CheckedAt is when the checks last ran, nil before they did; Checking reports
+     * checks under way.
+     */
+    "checkedAt": string | null;
+    "checking": boolean;
+
+    /**
+     * Checks are every check the routines need, the basics first.
+     */
+    "checks": ReadyCheck[] | null;
+
+    /**
+     * Routines are each enabled routine's readiness, in the list's order; NotReady counts
+     * those that aren't ready.
+     */
+    "routines": RoutineReady[] | null;
+    "notReady": number;
+}
+
+/**
+ * ReadyCheck is how one need checked out on this Mac.
+ */
+export interface ReadyCheck {
+    /**
+     * Need is what was checked, and ID its name.
+     */
+    "need": Need;
+    "id": string;
+
+    /**
+     * Label names it in the window: "GitHub", "gh", "Claude", "Profile work".
+     */
+    "label": string;
+
+    /**
+     * Level is how it came out.
+     */
+    "level": ReadyLevel;
+
+    /**
+     * Found says what was found: "2.1.325", "signed in · max", "isn't installed".
+     */
+    "found": string;
+
+    /**
+     * Fix says how to fix a problem or a warning: a command to run in a terminal, when
+     * Command, else where to go ("System Settings → Notifications"), "" for none.
+     * The app never signs in for the user, since signing in needs a browser and the user.
+     */
+    "fix": string;
+    "command": boolean;
+
+    /**
+     * CheckedAt is when it was checked.
+     */
+    "checkedAt": string;
+}
+
+/**
+ * ReadyLevel is how a readiness check came out.
+ */
+export type ReadyLevel = "ok" | "warning" | "problem";
+
+/**
+ * The values of ReadyLevel, by the names of their Go constants.
+ */
+export const ReadyLevel = {
+    /**
+     * The levels.
+     */
+    ReadyOK: "ok",
+    ReadyWarning: "warning",
+    ReadyProblem: "problem",
 } as const;
 
 /**
@@ -795,6 +1003,22 @@ export interface RoutineName {
 }
 
 /**
+ * RoutineReady is one routine's readiness.
+ */
+export interface RoutineReady {
+    "routineId": number;
+    "name": string;
+
+    /**
+     * Ready reports a routine whose needs are each ok or only a warning; Problems are the
+     * needs that aren't, and Warnings those only warned of.
+     */
+    "ready": boolean;
+    "problems": ReadyCheck[] | null;
+    "warnings": ReadyCheck[] | null;
+}
+
+/**
  * Run is one run a match started: an agent's, or a GitHub action the app sent.
  */
 export interface Run {
@@ -827,6 +1051,65 @@ export interface Run {
     "queuedAt": string;
     "startedAt": string | null;
     "finishedAt": string | null;
+}
+
+/**
+ * RunPreview is a routine's agent step planned on one item and not started: what it
+ * resolves to (each launch choice where it came from, as the launch menu names it), where
+ * it runs, the command, and the prompt it passes, which are the launcher's own Preview's.
+ */
+export interface RunPreview {
+    /**
+     * Agent, Profile, Model, Effort, and PromptName are what the launch resolves to, each
+     * with where it came from in Sources ("repo", "routine", ...), by the same names.
+     */
+    "agent": string;
+    "profile": string;
+    "model": string;
+    "effort": string;
+    "promptName": string;
+    "sources": { [_ in string]?: string } | null;
+
+    /**
+     * Dir is where it starts, with ~ for home, and Worktree its worktree, nil when it
+     * starts in the clone.
+     */
+    "dir": string;
+    "worktree": RunWorktree | null;
+
+    /**
+     * Command is the agent's command line, the prompt shown as <prompt>, and Env the
+     * changes to its environment ("unset ANTHROPIC_API_KEY").
+     */
+    "command": string;
+    "env": string[] | null;
+
+    /**
+     * Permission summarizes its permissions, Prompt is the filled-in prompt, and Terminal
+     * the terminal it opens in.
+     */
+    "permission": string;
+    "prompt": string;
+    "terminal": string;
+
+    /**
+     * Warnings are what the resolution skipped, such as a launch default naming a
+     * profile that is gone.
+     */
+    "warnings": string[] | null;
+}
+
+/**
+ * RunWorktree is the worktree a previewed run starts in, as the launch menu's Preview
+ * shows it.
+ */
+export interface RunWorktree {
+    "name": string;
+    "path": string;
+    "branch": string;
+    "action": string;
+    "base": string;
+    "dirty": number;
 }
 
 /**

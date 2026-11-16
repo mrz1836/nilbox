@@ -2106,7 +2106,7 @@
         "pr",
         "issue"
       ],
-      "offered": false
+      "offered": true
     },
     {
       "kind": "waitForChecks",
@@ -2230,6 +2230,20 @@
       "help": "Exactly what a click passes, within the fence's hard lines.",
       "mayPush": true,
       "readOnly": false
+    }
+  ],
+  "places": [
+    {
+      "id": "background",
+      "label": "In the background",
+      "help": "Headless, always in the item's worktree, held in by the fence.",
+      "offered": false
+    },
+    {
+      "id": "terminal",
+      "label": "In my terminal",
+      "help": "Exactly a click's launch: the same holds, worktree, terminal, and session.",
+      "offered": true
     }
   ],
   "agentSettings": [

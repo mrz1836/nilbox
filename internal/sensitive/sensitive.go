@@ -394,6 +394,15 @@ func Checked(scope Scope, class trust.Class, association string, mine bool) bool
 		strings.EqualFold(strings.TrimSpace(association), trust.AssociationCollaborator)
 }
 
+// CheckedUnattended reports whether a pull request's files are checked before an
+// unattended start, one a routine makes rather than the user's own click: every pull
+// request the signed-in user didn't open (mine), trusted bots' and members' included,
+// whatever the scope, since a trusted bot's pull request can still carry agent
+// configuration, a sync from another repository for one.
+func CheckedUnattended(mine bool) bool {
+	return !mine
+}
+
 // builtIn returns the built-in category with id.
 func builtIn(id string) (Category, bool) {
 	for _, c := range Categories() {

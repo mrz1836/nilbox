@@ -14,6 +14,8 @@
     "followSessions": true,
     "codexEffort": false,
     "codexFast": false,
+    "claudeApiKey": false,
+    "codexApiKey": false,
     "worktreeAutoCleanup": true,
     "branches": {
       "own": true,

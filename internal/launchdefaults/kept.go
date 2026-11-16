@@ -63,6 +63,11 @@ type Kept struct {
 	PlanMode  *bool                 `json:"planMode"`
 	Worktree  *bool                 `json:"worktree"`
 	ExtraArgs map[agent.ID][]string `json:"extraArgs"`
+
+	// AutopilotOutside is whether Autopilot may run agents on outside contributors' items
+	// here: "off" or "on", left out to inherit. A copy without it, as an older build's,
+	// inherits.
+	AutopilotOutside Outside `json:"autopilotOutside,omitempty"`
 }
 
 // keptV1 is the part of a version 1 copy that version 2 keeps per agent: one profile,
@@ -287,7 +292,7 @@ func keep(ctx context.Context, d Defaults, library PromptLookup) (Kept, error) {
 	return Kept{
 		Owner: d.Owner, Name: d.Name, Agent: d.Agent, Profiles: agent.CloneModels(d.Profiles), PRPrompt: pr,
 		IssuePrompt: issue, Models: agent.CloneModels(d.Models), Effort: d.Effort, PlanMode: d.PlanMode,
-		Worktree: d.Worktree, ExtraArgs: agent.CloneArgs(d.ExtraArgs),
+		Worktree: d.Worktree, ExtraArgs: agent.CloneArgs(d.ExtraArgs), AutopilotOutside: d.AutopilotOutside,
 	}, nil
 }
 
@@ -316,7 +321,7 @@ func nickname(ctx context.Context, library PromptLookup, id *int64) (string, err
 func defaultsColumns() []string {
 	return []string{
 		"owner", "name", "agent", "profile", "profiles", "pr_prompt_id", "issue_prompt_id", "model", "models",
-		"effort", "plan_mode", "worktree", "extra_args", "agent_args",
+		"effort", "plan_mode", "worktree", "extra_args", "agent_args", "autopilot_outside",
 	}
 }
 
@@ -353,7 +358,8 @@ func ReadSnapshot(ctx context.Context, path string, promptNickname func(id int64
 			PRPrompt: named(row, "pr_prompt_id"), IssuePrompt: named(row, "issue_prompt_id"),
 			Models: prompts.SnapshotModels(row, "models", "model"), Effort: row.Text("effort"),
 			PlanMode: row.Bool("plan_mode"), Worktree: row.Bool("worktree"),
-			ExtraArgs: prompts.SnapshotArgs(row, "agent_args", "extra_args"),
+			ExtraArgs:        prompts.SnapshotArgs(row, "agent_args", "extra_args"),
+			AutopilotOutside: outsideOf(new(row.Text("autopilot_outside"))),
 		})
 	}
 
@@ -430,7 +436,7 @@ func restorableWith(k Kept, pr, issue *int64) (restoring, bool) {
 	in := Input{
 		Owner: strings.TrimSpace(k.Owner), Name: strings.TrimSpace(k.Name),
 		Agent: agent.ID(strings.TrimSpace(string(k.Agent))), Effort: strings.TrimSpace(k.Effort),
-		PlanMode: k.PlanMode, Worktree: k.Worktree,
+		PlanMode: k.PlanMode, Worktree: k.Worktree, AutopilotOutside: outsideOf(new(string(k.AutopilotOutside))),
 	}
 
 	if !repo.ValidOwner(in.Owner) || (in.Name != "" && !repo.ValidRepo(in.Name)) {

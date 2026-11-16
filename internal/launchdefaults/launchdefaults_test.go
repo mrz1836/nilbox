@@ -333,7 +333,7 @@ func TestDefaultPromptsCannotBeDeletedWhileUsed(t *testing.T) {
 
 	fix.Usage = prompts.Usage{
 		Defaults: []item.Kind{}, Orgs: []string{acme}, Repos: []string{"acme-org/example-repo"},
-		Kinds: []item.Kind{item.KindPR}, Replies: []prompts.ReplySlot{},
+		Kinds: []item.Kind{item.KindPR}, Replies: []prompts.ReplySlot{}, Routines: []string{},
 	}
 	require.Contains(t, all, fix, "the prompt is still there, with where it is used")
 

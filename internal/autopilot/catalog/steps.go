@@ -184,7 +184,7 @@ func Steps() []Step {
 		},
 		{
 			Kind: StepAgent, Label: "Run a coding agent", Dispatcher: DispatchAgent, AsksFirst: true, Kinds: both(),
-			Help: "Starts the routine's agent on the item with a library prompt.",
+			Offered: true, Help: "Starts the routine's agent on the item with a library prompt.",
 		},
 		{
 			Kind: StepWaitForChecks, Label: "Wait for the checks", Dispatcher: DispatchVerify, Kinds: prOnly(),
@@ -256,6 +256,43 @@ const (
 	// WhereTerminal runs in the user's terminal, exactly as a click's launch does.
 	WhereTerminal Where = "terminal"
 )
+
+// PlaceInfo describes where an agent step can run, for the builder.
+type PlaceInfo struct {
+	ID    Where  `json:"id"`
+	Label string `json:"label"`
+	Help  string `json:"help"`
+
+	// Offered reports a place this build runs an agent in. An agent step set to run where
+	// this build can't is a problem the builder shows, so it is never saved to wait for a
+	// later build.
+	Offered bool `json:"offered"`
+}
+
+// Places returns where an agent step can run, the default first.
+func Places() []PlaceInfo {
+	return []PlaceInfo{
+		{
+			ID: WhereBackground, Label: "In the background",
+			Help: "Headless, always in the item's worktree, held in by the fence.",
+		},
+		{
+			ID: WhereTerminal, Label: "In my terminal", Offered: true,
+			Help: "Exactly a click's launch: the same holds, worktree, terminal, and session.",
+		},
+	}
+}
+
+// PlaceByID returns the place with id.
+func PlaceByID(id Where) (PlaceInfo, bool) {
+	for _, p := range Places() {
+		if p.ID == id {
+			return p, true
+		}
+	}
+
+	return PlaceInfo{}, false
+}
 
 // Preset is a tools preset: what a background agent may do, whatever its profile allows.
 type Preset string

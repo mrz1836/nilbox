@@ -29,7 +29,7 @@ import (
 // triageSpec is a routine whose agent step runs the user's own prompt, by its nickname.
 func triageSpec(nickname string) spec.Spec {
 	s := boundSpec()
-	s.Steps = []spec.Step{{Agent: &spec.AgentStep{Prompt: spec.PromptRef{Nickname: nickname}}}}
+	s.Steps = []spec.Step{{Agent: &spec.AgentStep{Prompt: spec.PromptRef{Nickname: nickname}, Where: catalog.WhereTerminal}}}
 
 	return s
 }

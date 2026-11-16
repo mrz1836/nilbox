@@ -45,6 +45,7 @@ export interface Catalog {
     "githubActions": GitHubAction[] | null;
     "outcomes": OutcomeInfo[] | null;
     "presets": PresetInfo[] | null;
+    "places": PlaceInfo[] | null;
     "agentSettings": Setting[] | null;
     "limits": Setting[] | null;
     "stepSettings": Setting[] | null;
@@ -758,6 +759,22 @@ export const Patterns = {
      */
     PatternsGitignore: "gitignore",
 } as const;
+
+/**
+ * PlaceInfo describes where an agent step can run, for the builder.
+ */
+export interface PlaceInfo {
+    "id": Where;
+    "label": string;
+    "help": string;
+
+    /**
+     * Offered reports a place this build runs an agent in. An agent step set to run where
+     * this build can't is a problem the builder shows, so it is never saved to wait for a
+     * later build.
+     */
+    "offered": boolean;
+}
 
 /**
  * Preset is a tools preset: what a background agent may do, whatever its profile allows.

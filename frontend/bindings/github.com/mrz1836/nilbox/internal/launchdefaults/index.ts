@@ -6,6 +6,10 @@ export {
     Service
 };
 
+export {
+    Outside
+} from "./models.js";
+
 export type {
     Defaults,
     Input,

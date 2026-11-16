@@ -49,6 +49,11 @@ func (claude) info() Agent {
 		SessionNames: true,
 		SessionIDs:   true,
 		AuthEnv:      []string{},
+		VersionArgs:  []string{"--version"},
+		SignInArgs:   []string{"auth", "status"},
+		KeyEnv:       []string{"ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN"},
+		LoginArgs:    []string{"auth", "login"},
+		StatusPart:   "claude.code",
 	}
 }
 

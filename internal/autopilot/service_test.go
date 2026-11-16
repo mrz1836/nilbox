@@ -52,11 +52,11 @@ func TestARoutineWithAStepThisBuildCantRunYetIsSavedInDryRun(t *testing.T) {
 
 	// Every kind of step is listed before it runs, so a routine with one can only
 	// dry-run; once the step runs, the mode stands as asked (TestTheModeANewRoutineStartsIn).
-	got := r.save(t, draft("Fix failing checks", agentSpec()))
+	got := r.save(t, draft("Rebase it", rebaseSpec()))
 	assert.Equal(t, autopilotprefs.ModeDryRun, got.Mode, "a step this build can't run keeps it in Dry run")
-	assert.Equal(t, []catalog.StepKind{catalog.StepAgent}, got.DryRunOnly)
+	assert.Equal(t, []catalog.StepKind{catalog.StepGitHub}, got.DryRunOnly)
 
-	d := draft("Fix them all", agentSpec())
+	d := draft("Rebase them all", rebaseSpec())
 	d.Mode = autopilotprefs.ModeAuto
 	assert.Equal(t, autopilotprefs.ModeDryRun, r.save(t, d).Mode, "whatever the draft asks")
 }
@@ -228,7 +228,7 @@ func TestSetEnabledAndSetMode(t *testing.T) {
 	t.Parallel()
 
 	r := newRig(t, autopilotprefs.ModeAsk)
-	rt := r.save(t, draft("Fix", agentSpec()))
+	rt := r.save(t, draft("Fix", rebaseSpec()))
 
 	on, err := r.svc.SetEnabled(t.Context(), rt.ID, true, autopilot.CurrentRun)
 	require.NoError(t, err)
@@ -252,7 +252,7 @@ func TestSetEnabledAndSetMode(t *testing.T) {
 		_, err = r.svc.SetMode(t.Context(), rt.ID, mode, autopilot.CurrentRun)
 		require.ErrorIs(t, err, autopilot.ErrDryRunOnly, mode)
 		assert.Equal(t, "This routine runs in Dry run for now: this version of "+brand.Name+
-			" can't yet run “Run a coding agent”.", uierr.Message(err))
+			" can't yet run “GitHub actions”.", uierr.Message(err))
 	}
 
 	notify := r.save(t, draft("Notify", notifySpec()))
@@ -395,7 +395,7 @@ func TestASpecThatNoLongerValidatesIsBrokenWithItsProblems(t *testing.T) {
 	assert.Empty(t, fixed.BrokenReason, "saving a valid spec over it mends it")
 	assert.Equal(t, autopilotprefs.ModeAsk, fixed.Mode, "and keeps its mode, as Notify me runs")
 
-	later := r.save(t, autopilot.Draft{ID: id, Name: "Stale", Spec: agentSpec()})
+	later := r.save(t, autopilot.Draft{ID: id, Name: "Stale", Spec: rebaseSpec()})
 	assert.Equal(t, autopilotprefs.ModeDryRun, later.Mode, "a step this build can't run keeps it in Dry run")
 }
 

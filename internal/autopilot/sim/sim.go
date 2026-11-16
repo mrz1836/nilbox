@@ -168,7 +168,8 @@ func (s *Sim) Copy() *Sim {
 	return other
 }
 
-// Offers runs every kind of step and GitHub action, with the fake dispatchers.
+// Offers runs every kind of step and GitHub action, and an agent in every place, with the
+// fake dispatchers and runner.
 func Offers() *autopilot.Offers {
 	out := &autopilot.Offers{
 		Actions: []catalog.GitHubActionKind{
@@ -178,6 +179,10 @@ func Offers() *autopilot.Offers {
 
 	for _, st := range catalog.Steps() {
 		out.Steps = append(out.Steps, st.Kind)
+	}
+
+	for _, p := range catalog.Places() {
+		out.Places = append(out.Places, p.ID)
 	}
 
 	return out

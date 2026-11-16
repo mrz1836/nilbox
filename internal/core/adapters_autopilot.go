@@ -20,6 +20,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/github"
 	"github.com/mrz1836/nilbox/internal/inbox"
 	"github.com/mrz1836/nilbox/internal/item"
+	"github.com/mrz1836/nilbox/internal/launchdefaults"
 	"github.com/mrz1836/nilbox/internal/notify"
 	"github.com/mrz1836/nilbox/internal/periodic"
 	prefsstore "github.com/mrz1836/nilbox/internal/prefs"
@@ -36,16 +37,31 @@ type autopilotDeps struct {
 	prompts *prompts.Store
 	file    *autopilot.File
 	costs   autopilot.Costs
+
+	// ready checks what the routines need on this Mac, and agents previews their agent
+	// steps through the launcher.
+	ready  *readyChecks
+	agents agentDeps
 }
 
 // newAutopilot builds Autopilot's service over pool and deps.
 func newAutopilot(pool *sql.DB, opts Options, deps autopilotDeps, logger *slog.Logger) *autopilot.Service {
-	return autopilot.NewService(autopilot.Config{
+	cfg := autopilot.Config{
 		Pool: pool, Prefs: autopilotPrefs{prefs: prefsstore.New(pool, opts.Clock)}, Accounts: deps.inbox,
 		Names: starterNames{prompts: deps.prompts}, Library: promptLibrary{prompts: deps.prompts}, File: deps.file,
 		Clock: opts.Clock, Logger: logger,
 		Items: autopilotItems{store: deps.inbox, inbox: deps.service}, Costs: deps.costs,
-	})
+	}
+
+	if deps.ready != nil {
+		cfg.Readiness = deps.ready
+	}
+
+	if deps.agents.launch != nil {
+		cfg.Previews = runPreviews{deps: deps.agents}
+	}
+
+	return autopilot.NewService(cfg)
 }
 
 // autopilotWatches gives the inbox the routines' searches (inbox.WatchSource): the
@@ -335,14 +351,23 @@ type autopilotEngine struct {
 	logger  *slog.Logger
 	service *autopilot.Service
 	notices *notify.Dispatcher
+
+	// agents launches the agent steps, ready checks what they need on this Mac, and
+	// defaults says where agents may run on outside contributors' items.
+	agents   agentDeps
+	ready    *readyChecks
+	defaults *launchdefaults.Store
+	prefs    autopilot.Prefs
 }
 
 // newAutopilotEngine builds the engine that runs the routines. Each part registers its own
 // dispatcher as it is built: the inbox's triage runs the triage steps (Triage, which the
-// engine registers as the triage dispatcher), and the notices run Notify me and Tell me
-// through the notifications, which also tell each problem once; until a part's is, the
-// Service keeps a routine with one of its steps in Dry run, so the engine records what
-// would run.
+// engine registers as the triage dispatcher), the notices run Notify me and Tell me
+// through the notifications, which also tell each problem once and each match that comes
+// to wait for the user, and the agent runner launches an agent step in the user's
+// terminal through the launcher, exactly as a click, once the holds on this Mac let it;
+// until a part's is, the Service keeps a routine with one of its steps in Dry run, so the
+// engine records what would run.
 func newAutopilotEngine(deps autopilotEngine) *autopilot.Engine {
 	cfg := autopilot.EngineConfig{
 		Items: engineItems{
@@ -357,6 +382,16 @@ func newAutopilotEngine(deps autopilotEngine) *autopilot.Engine {
 		sink := autopilotNotices{dispatcher: deps.notices}
 		cfg.Dispatchers = map[catalog.Dispatcher]autopilot.Dispatcher{catalog.DispatchNotices: autopilot.NewNotices(sink)}
 		cfg.Problems = autopilot.NewProblemNotices(sink)
+		cfg.NeedsYou = sink
+	}
+
+	if deps.agents.launch != nil {
+		cfg.Runner = agentRuns{deps: deps.agents}
+		cfg.Holds = agentHolds{deps: deps.agents, checks: deps.ready, prefs: deps.prefs}
+	}
+
+	if deps.defaults != nil {
+		cfg.Outside = outsideRules{defaults: deps.defaults}
 	}
 
 	return autopilot.NewEngine(deps.service, cfg)

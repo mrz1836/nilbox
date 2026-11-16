@@ -193,16 +193,18 @@ WHERE i.id = ?;
 
 -- name: ListLaunchItems :many
 -- ListLaunchItems returns the stored items among ids, by id, each with its repository,
--- the repository's local clone, and its details when a refresh has read them. A column of
--- missing details is NULL.
+-- the repository's local clone, its details when a refresh has read them, and the last
+-- read of its checks' names with the commit they were read at. A column of missing
+-- details or checks is NULL.
 SELECT
     i.id, i.kind, i.number, i.url, i.title, i.head_ref, i.author_login, i.author_type, i.author_association,
     i.is_cross_repository, i.is_draft, r.id AS repo_id, r.owner, r.name, r.local_path, r.default_branch,
     d.labels, d.additions, d.deletions, d.changed_files, d.commits, d.mergeable, d.checks_state,
-    d.review_decision, d.head_oid
+    d.review_decision, d.head_oid, c.head_oid AS checks_head_oid, c.checks
 FROM items i
 JOIN repos r ON r.id = i.repo_id
 LEFT JOIN item_details d ON d.item_id = i.id
+LEFT JOIN item_checks c ON c.item_id = i.id
 WHERE i.id IN (sqlc.slice(ids))
 ORDER BY i.id;
 

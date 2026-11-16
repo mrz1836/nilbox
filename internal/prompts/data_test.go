@@ -21,7 +21,7 @@ func TestVariablesMatchData(t *testing.T) {
 	require.Len(t, vars, typ.NumField())
 
 	wantType := map[reflect.Kind]string{reflect.String: typeText, reflect.Int: typeNumber, reflect.Bool: typeYesNo}
-	groups := map[string]bool{groupItem: true, groupRepo: true, groupPR: true, groupSession: true}
+	groups := map[string]bool{groupItem: true, groupRepo: true, groupPR: true, groupSession: true, groupAutopilot: true}
 
 	for i, v := range vars {
 		field := typ.Field(i)
@@ -129,4 +129,29 @@ func TestSanitizedCleansTheDependencyFields(t *testing.T) {
 	assert.Equal(t, "2", clean.ToVersion)
 	assert.Equal(t, "major", clean.UpdateType)
 	assert.LessOrEqual(t, len([]rune(clean.FromVersion)), maxTitleRunes+1)
+}
+
+// TestAutopilotVariablesAreSanitizedAndCapped holds a routine's name and trigger to one
+// line of plain text at most 80 characters long, and its try to a sane number.
+func TestAutopilotVariablesAreSanitizedAndCapped(t *testing.T) {
+	t.Parallel()
+
+	d := Sample(item.KindPR)
+	d.Routine = "Fix\nchecks\u202e " + strings.Repeat("x", 200)
+	d.Trigger = "Checks\tfail\r\nnow"
+	d.Attempt = 5000
+
+	got := d.sanitized()
+	assert.NotContains(t, got.Routine, "\n")
+	assert.NotContains(t, got.Routine, "\u202e")
+	assert.LessOrEqual(t, len([]rune(got.Routine)), maxRoutineRunes)
+	assert.Equal(t, "Checks fail now", got.Trigger)
+	assert.Equal(t, maxAttempt, got.Attempt)
+
+	d.Attempt = -3
+	assert.Zero(t, d.sanitized().Attempt)
+
+	values := d.Values()
+	assert.Equal(t, "Checks fail now", values["Trigger"])
+	assert.Equal(t, "false", values["Unattended"])
 }

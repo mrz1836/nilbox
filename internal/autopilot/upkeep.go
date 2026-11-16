@@ -42,9 +42,10 @@ func (e *Engine) updateProblems(ctx context.Context, p *pass) {
 }
 
 // problems returns the routines' problems now: each enabled routine of the account that
-// won't load, and each search of a routine that GitHub fails.
+// won't load, each search of a routine that GitHub fails, and each need of a routine this
+// Mac doesn't meet.
 func (p *pass) problems() []Problem {
-	return append(p.brokenProblems(), p.searchProblems()...)
+	return append(append(p.brokenProblems(), p.searchProblems()...), p.readinessProblems()...)
 }
 
 // brokenProblems returns a problem for each enabled routine of the account that won't

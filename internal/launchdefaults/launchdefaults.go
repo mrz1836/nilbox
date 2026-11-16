@@ -25,6 +25,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/profiles"
 	"github.com/mrz1836/nilbox/internal/prompts"
 	"github.com/mrz1836/nilbox/internal/repo"
+	"github.com/mrz1836/nilbox/internal/store"
 	"github.com/mrz1836/nilbox/internal/textutil"
 )
 
@@ -40,7 +41,44 @@ const (
 	FieldModels        = agent.FieldModels
 	FieldEffort        = agent.FieldEffort
 	FieldExtraFlags    = agent.FieldExtraFlags
+	FieldOutside       = "autopilotOutside"
 )
+
+// Outside says whether Autopilot may run agents on outside contributors' items in an org
+// or a repository: "" inherits (a repository's from its org, an org's off, since there is
+// no app-wide switch), else off or on. On still means plan mode: an automatic run never
+// lifts the outside contributor restriction.
+type Outside string
+
+// The choices.
+const (
+	OutsideInherit Outside = ""
+	OutsideOff     Outside = "off"
+	OutsideOn      Outside = "on"
+)
+
+// Valid reports one of the choices, inherit among them.
+func (o Outside) Valid() bool {
+	return o == OutsideInherit || o == OutsideOff || o == OutsideOn
+}
+
+// stored is the choice as its column stores it: NULL to inherit.
+func (o Outside) stored() *string {
+	if o == OutsideInherit {
+		return nil
+	}
+
+	return new(string(o))
+}
+
+// outsideOf reads a stored choice; a value this build doesn't know inherits.
+func outsideOf(stored *string) Outside {
+	if o := Outside(store.Deref(stored)); o.Valid() {
+		return o
+	}
+
+	return OutsideInherit
+}
 
 var (
 	// ErrInvalidDefaults is returned when launch defaults cannot be saved (see
@@ -83,6 +121,10 @@ type Defaults struct {
 	ExtraArgs  map[agent.ID][]string `json:"extraArgs"`
 	ExtraFlags map[agent.ID]string   `json:"extraFlags"`
 
+	// AutopilotOutside says whether Autopilot may run agents, in plan mode, on outside
+	// contributors' items here; "" inherits.
+	AutopilotOutside Outside `json:"autopilotOutside"`
+
 	// UpdatedAt is when the defaults were last saved, as RFC 3339.
 	UpdatedAt string `json:"updatedAt"`
 }
@@ -108,12 +150,17 @@ type Input struct {
 
 	// ExtraFlags is each agent's extra arguments typed on one line, quoted as in a shell.
 	ExtraFlags map[agent.ID]string `json:"extraFlags"`
+
+	// AutopilotOutside says whether Autopilot may run agents, in plan mode, on outside
+	// contributors' items here; "" inherits.
+	AutopilotOutside Outside `json:"autopilotOutside"`
 }
 
 // Empty reports whether every setting inherits.
 func (in Input) Empty() bool {
 	return in.Agent == agent.Inherit && !anySet(in.Profiles) && in.PRPromptID == nil && in.IssuePromptID == nil &&
-		!anySet(in.Models) && in.Effort == "" && in.PlanMode == nil && in.Worktree == nil && !anySet(in.ExtraFlags)
+		!anySet(in.Models) && in.Effort == "" && in.PlanMode == nil && in.Worktree == nil && !anySet(in.ExtraFlags) &&
+		in.AutopilotOutside == OutsideInherit
 }
 
 // anySet reports whether any agent has a value that is not blank.
@@ -422,6 +469,23 @@ func (idx Index) For(name repo.Name) (org, own *Defaults) {
 	return org, own
 }
 
+// OutsideAllowed says whether Autopilot may run agents, in plan mode, on outside
+// contributors' items in the repository name, and where that was chosen: the
+// repository's own choice wins over its org's, and with neither it is off, as there is no
+// app-wide switch. from is "repo" or "org" for a choice, "" for none.
+func (idx Index) OutsideAllowed(name repo.Name) (allowed bool, from string) {
+	org, own := idx.For(name)
+
+	switch {
+	case own != nil && own.AutopilotOutside != OutsideInherit:
+		return own.AutopilotOutside == OutsideOn, "repo"
+	case org != nil && org.AutopilotOutside != OutsideInherit:
+		return org.AutopilotOutside == OutsideOn, "org"
+	default:
+		return false, ""
+	}
+}
+
 // emptyDefaults returns the defaults of a target that sets nothing.
 func emptyDefaults(owner, name string) Defaults {
 	return Defaults{
@@ -438,6 +502,7 @@ func (in Input) normalized() Input {
 	in.Profiles = trimmed(in.Profiles)
 	in.Models = trimmed(in.Models)
 	in.ExtraFlags = trimmed(in.ExtraFlags)
+	in.AutopilotOutside = Outside(strings.TrimSpace(string(in.AutopilotOutside)))
 
 	return in
 }
@@ -470,6 +535,10 @@ func validate(ctx context.Context, known ProfileLookup, library PromptLookup, in
 	add(FieldOwner, checkOwner(in.Owner))
 	add(FieldName, checkName(in.Name))
 	add(FieldAgent, checkAgent(in.Agent))
+
+	if !in.AutopilotOutside.Valid() {
+		add(FieldOutside, "Choose Inherit, Off, or On (plan mode only).")
+	}
 
 	profileFields, err := checkProfiles(ctx, known, in.Profiles)
 	if err != nil {

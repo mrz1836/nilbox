@@ -109,6 +109,11 @@ type pass struct {
 
 	// notices are the notices the cycle's steps tell, handed over together as it ends.
 	notices []Job
+
+	// ready is this Mac's readiness as the last checks found it, and outside where agents
+	// may run on outside contributors' items.
+	ready   readySnapshot
+	outside OutsideIndex
 }
 
 // cycle runs one cycle: it reads what the routines watch, evaluates each routine on its
@@ -139,7 +144,8 @@ func (e *Engine) cycle(ctx context.Context) {
 
 	p := &pass{
 		e: e, now: e.clock.Now(), cfg: e.svc.settings(ctx), inbox: inbox, byID: map[int64]*routineRun{},
-		others: map[int64]queries.AutopilotRoutine{}, cycle: c,
+		others: map[int64]queries.AutopilotRoutine{}, cycle: c, ready: e.svc.ready.snapshot(),
+		outside: e.outsideIndex(ctx),
 	}
 
 	if err = p.run(ctx); err != nil && ctx.Err() == nil {
@@ -152,6 +158,7 @@ func (e *Engine) cycle(ctx context.Context) {
 func (e *Engine) finishCycle(ctx context.Context, c *Cycle) {
 	e.state.LastCycle = c
 	e.saveState(ctx)
+	e.tellWaits(ctx)
 
 	e.setStatus(func(s *EngineStatus) {
 		s.Primed, s.LastCycle = e.primed, new(*c)
@@ -247,6 +254,7 @@ func (p *pass) run(ctx context.Context) error {
 
 	p.settleOpen(ctx, open)
 	p.askReads(ctx)
+	p.e.checkReady(ctx, p)
 	p.e.updateProblems(ctx, p)
 	p.e.prune(ctx, p.now, p.cfg)
 	p.endCatchUp()
@@ -1111,6 +1119,8 @@ func (e *Engine) saveIn(ctx context.Context, q *queries.Queries, m *match) error
 	if !m.state().Open() && m.ClosedAt == nil {
 		m.ClosedAt = new(e.clock.Now())
 	}
+
+	e.noteWait(m)
 
 	return e.ledger.update(ctx, q, m)
 }

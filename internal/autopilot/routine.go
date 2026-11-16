@@ -239,6 +239,12 @@ func brokenWords(b *spec.BrokenError) string {
 type Offers struct {
 	Steps   []catalog.StepKind
 	Actions []catalog.GitHubActionKind
+
+	// Places are where this build runs an agent step (catalog.PlaceInfo.Offered). A step
+	// set to run anywhere else is a problem the builder shows (placeProblems), so it is
+	// never saved; and one a routine holds from before keeps its runs from starting, as
+	// this Mac isn't ready for it (readiness).
+	Places []catalog.Where
 }
 
 // catalogOffers returns the catalog's own offers.
@@ -257,7 +263,53 @@ func catalogOffers() *Offers {
 		}
 	}
 
+	for _, p := range catalog.Places() {
+		if p.Offered {
+			out.Places = append(out.Places, p.ID)
+		}
+	}
+
 	return out
+}
+
+// runsAt reports whether this build runs an agent step where place says.
+func (o *Offers) runsAt(place catalog.Where) bool {
+	return slices.Contains(o.orCatalog().Places, place)
+}
+
+// placeProblems returns a problem for each agent step of s set to run where this build
+// can't run an agent, at its where field: plain words in the builder, which keep the
+// routine from being saved as it is.
+func (o *Offers) placeProblems(s spec.Spec) []spec.Problem {
+	var out []spec.Problem
+
+	for i, st := range s.Steps {
+		if st.Agent == nil || o.runsAt(st.Agent.Place()) {
+			continue
+		}
+
+		info, _ := catalog.PlaceByID(st.Agent.Place())
+		out = append(out, spec.Problem{
+			Part: spec.PartSteps, Field: fmt.Sprintf("[%d].agent.where", i),
+			Message: fmt.Sprintf("this version of %s can't run an agent %s yet: choose %s", brand.Name,
+				strings.ToLower(info.Label), o.placeWords()),
+		})
+	}
+
+	return out
+}
+
+// placeWords names the places this build runs an agent in: "In my terminal".
+func (o *Offers) placeWords() string {
+	var words []string
+
+	for _, p := range catalog.Places() {
+		if o.runsAt(p.ID) {
+			words = append(words, p.Label)
+		}
+	}
+
+	return series(words)
 }
 
 // orCatalog returns o, or the catalog's offers for nil.

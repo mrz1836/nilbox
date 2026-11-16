@@ -61,10 +61,10 @@ func TestOnlyAStepThisBuildCantRunKeepsARoutineInDryRun(t *testing.T) {
 		{Notify: &spec.NotifyStep{}},
 		{Pin: &spec.Empty{}},
 		{MarkDone: &spec.Empty{}},
-		{Agent: &spec.AgentStep{}},
+		{GitHub: []spec.GitHubAction{{Rebase: &spec.Empty{}}}},
 		{MarkDone: &spec.Empty{}},
 	}}
-	assert.Equal(t, []catalog.StepKind{catalog.StepMarkDone, catalog.StepAgent}, catalogs.notOffered(later),
+	assert.Equal(t, []catalog.StepKind{catalog.StepMarkDone, catalog.StepGitHub}, catalogs.notOffered(later),
 		"each kind once, in the catalog's order, and the notices and the triage steps run")
 	assert.Equal(t, autopilotprefs.ModeDryRun, catalogMode(autopilotprefs.ModeAuto, later))
 

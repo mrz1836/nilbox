@@ -104,6 +104,7 @@ func (s *Store) save(ctx context.Context, in Input, checked agent.Checked) (Defa
 	params := queries.SaveLaunchDefaultsParams{
 		Owner: in.Owner, Name: in.Name, Agent: string(in.Agent), PRPromptID: in.PRPromptID,
 		IssuePromptID: in.IssuePromptID, Effort: in.Effort, PlanMode: in.PlanMode, Worktree: in.Worktree,
+		AutopilotOutside: in.AutopilotOutside.stored(),
 	}
 
 	var err error
@@ -177,6 +178,7 @@ func fromRow(row queries.LaunchDefault) (Defaults, error) {
 		Owner: row.Owner, Name: row.Name, Agent: agent.ID(row.Agent), Profiles: textutil.NonNilMap(names),
 		PRPromptID: row.PRPromptID, IssuePromptID: row.IssuePromptID, Models: textutil.NonNilMap(models),
 		Effort: row.Effort, PlanMode: row.PlanMode, Worktree: row.Worktree, ExtraArgs: agent.CloneArgs(args),
-		ExtraFlags: agent.JoinArgs(args), UpdatedAt: clock.Format(row.UpdatedAt),
+		ExtraFlags: agent.JoinArgs(args), AutopilotOutside: outsideOf(row.AutopilotOutside),
+		UpdatedAt: clock.Format(row.UpdatedAt),
 	}, nil
 }

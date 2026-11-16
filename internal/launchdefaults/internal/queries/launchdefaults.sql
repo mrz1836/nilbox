@@ -3,7 +3,7 @@
 -- then name ignoring case, so each owner's own defaults (name '') come before its
 -- repositories'.
 SELECT id, owner, name, agent, pr_prompt_id, issue_prompt_id, effort, plan_mode, worktree, created_at, updated_at,
-    profiles, models, agent_args
+    profiles, models, agent_args, autopilot_outside
 FROM launch_defaults
 ORDER BY owner COLLATE NOCASE, name COLLATE NOCASE;
 
@@ -22,8 +22,8 @@ ORDER BY owner COLLATE NOCASE, name COLLATE NOCASE;
 -- updated_at stamped; their owner, name, and created_at stay as first saved.
 INSERT INTO launch_defaults (
     owner, name, agent, profiles, pr_prompt_id, issue_prompt_id, models, effort, plan_mode, worktree, agent_args,
-    created_at, updated_at
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    autopilot_outside, created_at, updated_at
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT (owner, name) DO UPDATE SET
     agent = excluded.agent,
     profiles = excluded.profiles,
@@ -34,9 +34,10 @@ ON CONFLICT (owner, name) DO UPDATE SET
     plan_mode = excluded.plan_mode,
     worktree = excluded.worktree,
     agent_args = excluded.agent_args,
+    autopilot_outside = excluded.autopilot_outside,
     updated_at = excluded.updated_at
 RETURNING id, owner, name, agent, pr_prompt_id, issue_prompt_id, effort, plan_mode, worktree, created_at, updated_at,
-    profiles, models, agent_args;
+    profiles, models, agent_args, autopilot_outside;
 
 -- name: DeleteLaunchDefaults :execrows
 -- DeleteLaunchDefaults removes an org's (name '') or a repository's launch defaults,

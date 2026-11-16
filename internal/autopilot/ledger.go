@@ -234,6 +234,12 @@ type stepRun struct {
 	RunID   int64      `json:"runId,omitempty"`
 	Started *time.Time `json:"started,omitempty"`
 	Ended   *time.Time `json:"ended,omitempty"`
+
+	// Hold is what held its start back for the user to confirm, while it waits on one,
+	// and Confirmed the Keys of the holds the user confirmed for it, which its next start
+	// goes ahead past.
+	Hold      *Hold    `json:"hold,omitempty"`
+	Confirmed []string `json:"confirmed,omitempty"`
 }
 
 // match is a ledger row, with its steps and trace read, and the row as stored, so a

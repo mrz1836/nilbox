@@ -74,6 +74,12 @@ const (
 	// KeyCodexFast is whether Codex launches start in Fast mode unless unticked.
 	KeyCodexFast = "agent.codex.fast"
 
+	// KeyClaudeAPIKey and KeyCodexAPIKey are whether an API key in the environment a
+	// session starts in may sign the agent in (agent.Agent.KeyEnv). Off, the default, a
+	// launch removes those variables, so the agent runs on the profile's own sign-in.
+	KeyClaudeAPIKey = "agent.claude.apiKey"
+	KeyCodexAPIKey  = "agent.codex.apiKey" //nolint:gosec // a setting's name, which holds no credential
+
 	// KeyCloneRoot is the directory whose children are the user's local clones, and the
 	// one new clones go in. The other locations are under KeyCloneLocations.
 	KeyCloneRoot = "clones.root"
@@ -150,6 +156,13 @@ type Settings struct {
 	// can't see that it waits for the user, so both start off.
 	CodexEffort bool `json:"codexEffort"`
 	CodexFast   bool `json:"codexFast"`
+
+	// ClaudeAPIKey and CodexAPIKey let an API key from the shell's environment sign the
+	// agent in (Claude Code's ANTHROPIC_API_KEY, Codex's OPENAI_API_KEY), billed to that
+	// key. Off, the default, every launch removes those variables, so the agent runs on the
+	// profile's own sign-in, as on a subscription.
+	ClaudeAPIKey bool `json:"claudeApiKey"`
+	CodexAPIKey  bool `json:"codexApiKey"`
 
 	// CloneRoot is the clone root as entered, e.g. "~/projects": the folder new clones go
 	// in, and the first place clones are looked for.
@@ -432,6 +445,25 @@ func (s *Service) SetCodexEffort(ctx context.Context, on bool) (Settings, error)
 // returns the settings with it.
 func (s *Service) SetCodexFast(ctx context.Context, on bool) (Settings, error) {
 	return s.save(ctx, setting(KeyCodexFast, prefval.EncodeBool(on)))
+}
+
+// SetClaudeAPIKey stores whether an API key in the environment may sign Claude Code in,
+// and returns the settings with it. Off, launches remove the key, so Claude Code runs on
+// the profile's own sign-in.
+func (s *Service) SetClaudeAPIKey(ctx context.Context, on bool) (Settings, error) {
+	return s.save(ctx, setting(KeyClaudeAPIKey, prefval.EncodeBool(on)))
+}
+
+// SetCodexAPIKey stores whether an API key in the environment may sign Codex in, and
+// returns the settings with it. Off, launches remove the key, so Codex runs on the
+// profile's own sign-in.
+func (s *Service) SetCodexAPIKey(ctx context.Context, on bool) (Settings, error) {
+	return s.save(ctx, setting(KeyCodexAPIKey, prefval.EncodeBool(on)))
+}
+
+// APIKeys says, for each agent, whether an API key in the environment may sign it in.
+func (s Settings) APIKeys() map[agent.ID]bool {
+	return map[agent.ID]bool{agent.Claude: s.ClaudeAPIKey, agent.Codex: s.CodexAPIKey}
 }
 
 // SetDefaultAgent stores the coding agent launches use when no launch default names one,
@@ -733,6 +765,8 @@ func fromStored(stored map[string]string) Settings {
 		FollowSessions:      prefval.Bool(stored[KeyFollowSessions], DefaultFollowSessions),
 		CodexEffort:         prefval.Bool(stored[KeyCodexEffort], false),
 		CodexFast:           prefval.Bool(stored[KeyCodexFast], false),
+		ClaudeAPIKey:        prefval.Bool(stored[KeyClaudeAPIKey], false),
+		CodexAPIKey:         prefval.Bool(stored[KeyCodexAPIKey], false),
 		CloneRoot:           storedCloneRoot(stored),
 		CloneLocations:      decodeCloneLocations(stored[KeyCloneLocations]),
 		TrustedBots:         trust.DecodeBots(rawBots, hasBots),
@@ -883,7 +917,7 @@ func settingKeys() []string {
 
 	return append(append(keys,
 		KeyWorktreeDefault, KeyWorktreeAutoCleanup, KeyTerminal, KeyFollowSessions, KeyCodexEffort, KeyCodexFast,
-		KeyCloneRoot, KeyCloneLocations, KeyTrustedBots,
+		KeyClaudeAPIKey, KeyCodexAPIKey, KeyCloneRoot, KeyCloneLocations, KeyTrustedBots,
 		KeySnoozeDays, KeyWindowSize,
 		snooze.PrefWakeCommits, snooze.PrefWakeReviews, snooze.PrefWakeComments,
 		sensitive.PrefScope, sensitive.PrefOff, sensitive.PrefPatterns, KeyMenuBar, notifyprefs.KeyBannersOff, notifyprefs.KeyBannersOn, KeyTheme,

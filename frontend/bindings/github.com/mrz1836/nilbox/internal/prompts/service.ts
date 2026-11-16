@@ -53,8 +53,8 @@ export function Defaults(): $CancellablePromise<$models.DefaultPrompts> {
 }
 
 /**
- * Delete removes a prompt. A prompt that is a default anywhere is refused with an
- * InUseError that says where.
+ * Delete removes a prompt. A prompt that is a default anywhere, or that a routine runs, is
+ * refused with an InUseError that says where.
  */
 export function Delete(id: number): $CancellablePromise<void> {
     return $Call.ByID(1990497512, id);

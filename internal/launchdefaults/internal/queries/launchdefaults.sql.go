@@ -42,7 +42,7 @@ func (q *Queries) DeleteLaunchDefaults(ctx context.Context, arg DeleteLaunchDefa
 
 const listLaunchDefaults = `-- name: ListLaunchDefaults :many
 SELECT id, owner, name, agent, pr_prompt_id, issue_prompt_id, effort, plan_mode, worktree, created_at, updated_at,
-    profiles, models, agent_args
+    profiles, models, agent_args, autopilot_outside
 FROM launch_defaults
 ORDER BY owner COLLATE NOCASE, name COLLATE NOCASE
 `
@@ -74,6 +74,7 @@ func (q *Queries) ListLaunchDefaults(ctx context.Context) ([]LaunchDefault, erro
 			&i.Profiles,
 			&i.Models,
 			&i.AgentArgs,
+			&i.AutopilotOutside,
 		); err != nil {
 			return nil, err
 		}
@@ -135,8 +136,8 @@ func (q *Queries) ListPromptUses(ctx context.Context) ([]ListPromptUsesRow, erro
 const saveLaunchDefaults = `-- name: SaveLaunchDefaults :one
 INSERT INTO launch_defaults (
     owner, name, agent, profiles, pr_prompt_id, issue_prompt_id, models, effort, plan_mode, worktree, agent_args,
-    created_at, updated_at
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    autopilot_outside, created_at, updated_at
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT (owner, name) DO UPDATE SET
     agent = excluded.agent,
     profiles = excluded.profiles,
@@ -147,25 +148,27 @@ ON CONFLICT (owner, name) DO UPDATE SET
     plan_mode = excluded.plan_mode,
     worktree = excluded.worktree,
     agent_args = excluded.agent_args,
+    autopilot_outside = excluded.autopilot_outside,
     updated_at = excluded.updated_at
 RETURNING id, owner, name, agent, pr_prompt_id, issue_prompt_id, effort, plan_mode, worktree, created_at, updated_at,
-    profiles, models, agent_args
+    profiles, models, agent_args, autopilot_outside
 `
 
 type SaveLaunchDefaultsParams struct {
-	Owner         string
-	Name          string
-	Agent         string
-	Profiles      string
-	PRPromptID    *int64
-	IssuePromptID *int64
-	Models        string
-	Effort        string
-	PlanMode      *bool
-	Worktree      *bool
-	AgentArgs     string
-	CreatedAt     time.Time
-	UpdatedAt     time.Time
+	Owner            string
+	Name             string
+	Agent            string
+	Profiles         string
+	PRPromptID       *int64
+	IssuePromptID    *int64
+	Models           string
+	Effort           string
+	PlanMode         *bool
+	Worktree         *bool
+	AgentArgs        string
+	AutopilotOutside *string
+	CreatedAt        time.Time
+	UpdatedAt        time.Time
 }
 
 // SaveLaunchDefaults stores an org's or a repository's launch defaults and returns the
@@ -185,6 +188,7 @@ func (q *Queries) SaveLaunchDefaults(ctx context.Context, arg SaveLaunchDefaults
 		arg.PlanMode,
 		arg.Worktree,
 		arg.AgentArgs,
+		arg.AutopilotOutside,
 		arg.CreatedAt,
 		arg.UpdatedAt,
 	)
@@ -204,6 +208,7 @@ func (q *Queries) SaveLaunchDefaults(ctx context.Context, arg SaveLaunchDefaults
 		&i.Profiles,
 		&i.Models,
 		&i.AgentArgs,
+		&i.AutopilotOutside,
 	)
 	return i, err
 }

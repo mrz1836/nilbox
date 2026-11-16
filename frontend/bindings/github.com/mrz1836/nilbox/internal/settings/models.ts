@@ -324,6 +324,15 @@ export interface Settings {
     "codexFast": boolean;
 
     /**
+     * ClaudeAPIKey and CodexAPIKey let an API key from the shell's environment sign the
+     * agent in (Claude Code's ANTHROPIC_API_KEY, Codex's OPENAI_API_KEY), billed to that
+     * key. Off, the default, every launch removes those variables, so the agent runs on the
+     * profile's own sign-in, as on a subscription.
+     */
+    "claudeApiKey": boolean;
+    "codexApiKey": boolean;
+
+    /**
      * CloneRoot is the clone root as entered, e.g. "~/projects": the folder new clones go
      * in, and the first place clones are looked for.
      */
