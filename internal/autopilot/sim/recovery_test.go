@@ -267,7 +267,7 @@ func TestAStartTheRunnerRefusesAsItClosesStaysQueued(t *testing.T) {
 		m := only(t, s)
 		assert.Equal(t, autopilot.StateQueued, m.State, m.Words)
 		require.NotEmpty(t, m.Runs)
-		assert.Equal(t, string(autopilot.RunInterrupted), m.Runs[0].Outcome)
+		assert.Equal(t, string(autopilot.RunNotStarted), m.Runs[0].Outcome)
 
 		s.Runner.Reopen()
 		s.Restart()
@@ -295,7 +295,7 @@ func TestAStartTheQuitCutsOffStaysQueuedForTheNextStart(t *testing.T) {
 		m := only(t, s)
 		assert.Equal(t, autopilot.StateRunning, m.State, "never interrupted: it went back to the queue, and started again")
 		require.Len(t, m.Runs, 2)
-		assert.Equal(t, string(autopilot.RunInterrupted), m.Runs[0].Outcome)
+		assert.Equal(t, string(autopilot.RunNotStarted), m.Runs[0].Outcome)
 		assert.Len(t, s.Runner.Going(), 1)
 	})
 }

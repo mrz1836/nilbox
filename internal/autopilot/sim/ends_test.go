@@ -10,6 +10,7 @@ import (
 
 	"github.com/mrz1836/nilbox/internal/autopilot"
 	"github.com/mrz1836/nilbox/internal/autopilot/sim"
+	"github.com/mrz1836/nilbox/internal/autopilot/spec"
 	"github.com/mrz1836/nilbox/internal/autopilotprefs"
 )
 
@@ -181,5 +182,140 @@ func TestARunThatEndsStoppedAfterAFailedStopClosesForWhatTheStopWasFor(t *testin
 		m := only(t, s)
 		assert.Equal(t, autopilot.StateClosed, m.State, m.Words)
 		assert.Equal(t, autopilot.ReasonMerged, m.Reason, "closed for the merge, not as the user's stop")
+	})
+}
+
+func TestAStartThatNeverHappenedUsesUpNoRunOfTheDay(t *testing.T) {
+	t.Parallel()
+
+	oneADay := func() spec.Spec {
+		sp := sim.FixFailing()
+		sp.Limits.RunsPerDay = new(1)
+
+		return sp
+	}
+
+	t.Run("the quit cut it off", func(t *testing.T) {
+		t.Parallel()
+
+		synctest.Test(t, func(t *testing.T) {
+			s, _ := started(t, oneADay(), autopilotprefs.ModeAuto)
+			s.Runner.Hold()
+			s.World.Fail(1)
+			s.Refresh()
+			s.Crash()
+			s.Runner.Release()
+
+			s.Begin()
+			s.Refresh()
+			s.Advance(3*time.Minute, false)
+
+			assert.Len(t, s.Runner.Started(), 1, "the routine's one run today is still to come")
+			assert.Equal(t, autopilot.StateRunning, only(t, s).State, only(t, s).Words)
+		})
+	})
+
+	t.Run("the runner refused it as it closed", func(t *testing.T) {
+		t.Parallel()
+
+		synctest.Test(t, func(t *testing.T) {
+			s, _ := started(t, oneADay(), autopilotprefs.ModeAuto)
+			s.Runner.Close()
+			s.World.Fail(1)
+			s.Refresh()
+			s.Refresh()
+			require.Empty(t, s.Runner.Started())
+
+			s.Runner.Reopen()
+			s.Restart()
+			s.Refresh()
+			s.Advance(time.Minute, false)
+
+			assert.Len(t, s.Runner.Started(), 1, "the routine's one run today is still to come")
+			assert.Equal(t, autopilot.StateRunning, only(t, s).State, only(t, s).Words)
+		})
+	})
+}
+
+func TestARunsEndAndItsMatchsMoveAreWrittenTogether(t *testing.T) {
+	t.Parallel()
+
+	synctest.Test(t, func(t *testing.T) {
+		s, _ := started(t, sim.FixFailing(), autopilotprefs.ModeAuto)
+		s.World.Fail(1)
+		s.Refresh()
+
+		run := only(t, s).Runs[0].ID
+		ctx := t.Context()
+
+		// The match's move can't be written as the run's end comes.
+		_, err := s.DB.ExecContext(ctx, "CREATE TRIGGER refused_move BEFORE UPDATE ON autopilot_matches "+
+			"BEGIN SELECT RAISE(ABORT, 'refused by the test'); END")
+		require.NoError(t, err)
+
+		s.Runner.Finish(run, autopilot.RunEnd{Cost: new(1.0)})
+		s.Settle()
+
+		_, err = s.DB.ExecContext(ctx, "DROP TRIGGER refused_move")
+		require.NoError(t, err)
+
+		s.Advance(2*time.Minute, false)
+
+		m := only(t, s)
+		assert.Equal(t, autopilot.StateDone, m.State, "the end is written again, with the move: %s", m.Words)
+		assert.Equal(t, string(autopilot.RunDone), m.Runs[0].Outcome)
+		require.NotNil(t, m.Runs[0].Cost)
+		assert.InDelta(t, 1.0, *m.Runs[0].Cost, 0.001)
+	})
+}
+
+func TestAMatchLeftRunningOnAnEndedRunMovesOn(t *testing.T) {
+	t.Parallel()
+
+	synctest.Test(t, func(t *testing.T) {
+		s, _ := started(t, sim.FixFailing(), autopilotprefs.ModeAuto)
+		s.World.Fail(1)
+		s.Refresh()
+
+		run := only(t, s).Runs[0].ID
+
+		// The run's end was written and the match's move was lost, as two writes, one
+		// after the other, could leave them.
+		_, err := s.DB.ExecContext(t.Context(),
+			"UPDATE autopilot_runs SET status = 'ended', outcome = 'done', run_commit = ? WHERE id = ?",
+			sim.Commit(1, 2), run)
+		require.NoError(t, err)
+		s.Runner.Forget(run)
+
+		s.Advance(2*time.Minute, false)
+
+		m := only(t, s)
+		assert.Equal(t, autopilot.StateVerifying, m.State, "it moves on by the end the ledger keeps: %s", m.Words)
+	})
+}
+
+func TestAStartTheRunnerForgotIsNeverStartedAgainOnItsOwn(t *testing.T) {
+	t.Parallel()
+
+	synctest.Test(t, func(t *testing.T) {
+		s, _ := started(t, sim.FixFailing(), autopilotprefs.ModeAuto)
+		s.Runner.HoldAnswers()
+		s.World.Fail(1)
+		s.Refresh()
+
+		run := s.Runner.Started()[0].RunID
+
+		// The runner took it, and it ended while the app was closed: the first check finds
+		// it gone. Then the runner's history drops it, and it says it never started it.
+		s.Crash()
+		s.Runner.Release()
+		s.Runner.Forget(run)
+		s.Begin()
+
+		s.Runner.Lose(run)
+		s.Advance(3*time.Minute, false)
+
+		assert.Empty(t, s.Runner.Started(), "one check said it ran: it is never started again on its own")
+		assert.Equal(t, autopilot.BlockInterrupted, only(t, s).BlockedBy)
 	})
 }
