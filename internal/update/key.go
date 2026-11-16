@@ -10,10 +10,13 @@ import (
 )
 
 // ReleaseKey is the Ed25519 public key, base64, that every release's manifest must
-// verify with: the trust root of the app's updates. It stays empty until the release key
-// is made and its public half pinned here, and magex app:package refuses to package a
-// release while it is, so no release ever ships a manifest the app couldn't verify.
-const ReleaseKey = ""
+// verify with: the trust root of the app's updates, made with magex app:keygen. Its
+// private half signs each release's manifest in the release workflow, and nowhere else.
+// Changing it takes changing pinnedTrustRoot in releasekey_test.go too, and strands every
+// copy that pins the old key: none of them could verify an update again. Were it empty,
+// a release build would be off and magex app:package would refuse to package a release.
+// It is public, meant to be read by anyone, so the secret scan is told to pass over it.
+const ReleaseKey = "71FuGzlTtYY5qW/EF5YgEqCObp6akq7xIy6VpIFRhrc=" // gitleaks:allow
 
 // PEM block types of the key forms this package reads and writes.
 const (

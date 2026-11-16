@@ -199,7 +199,8 @@ base64, to pin as `update.ReleaseKey`. It refuses a folder inside the repository
 folders as files, so another case of the repository's name, a link, or a firmlink doesn't get
 past it, and never overwrites a key, and `.gitignore` keeps `*.key`, `release.key`, and
 `*.p12` out all the same. Keep the private key backed up: without it, no install can verify an
-update again.
+update again. Setting releases up from the start, and replacing the key or the certificate,
+are in [Publishing a release](#publishing-a-release).
 
 `magex app:verify dir=<folder>` checks a release's folder as the app will: its
 `manifest-darwin.json` (at most 16 KiB, no field the format lacks, every field in form, for
@@ -545,13 +546,49 @@ test (`TestGoFortressReadsEnableRelease`) fails while that line is set but GoFor
 GoFortress would publish a tag's release before its files exist, and an immutable release
 could never get them.
 
-**Before the first tag.**
+**Before the first tag** (and to set it all up again). Keep the keys in a folder outside the
+repository that only you can read, such as `~/release-keys`.
 
-1. Create the `release` environment (Settings → Environments → New environment). Under
+1. **The release key** signs each release's update manifest. Every installed copy trusts the
+   public half its build pins, and nothing else.
+
+   ```bash
+   mkdir -m 700 ~/release-keys
+   magex app:keygen out=$HOME/release-keys
+   ```
+
+   It writes the private half to `release.key` and prints the public half. Pin that line as
+   `update.ReleaseKey` in `internal/update/key.go`, keeping the `// gitleaks:allow` at the end
+   of its line (the secret scan would take the public key for a secret), and its SHA-256 as
+   `pinnedTrustRoot` in `internal/update/releasekey_test.go`, two deliberate edits a test holds
+   together, in a pull request:
+
+   ```bash
+   printf %s '<the public key line>' | shasum -a 256
+   ```
+
+   While no key is pinned, a release build's updates are off and the release targets refuse.
+2. **The code-signing certificate**, self-signed and valid for ten years, gives every release
+   the same identity, so macOS keeps the permissions a user granted across updates. Use macOS's
+   own `/usr/bin/openssl`; OpenSSL 3 or newer needs `-legacy` on the second command, or
+   `security import` refuses the file.
+
+   ```bash
+   cd ~/release-keys
+   /usr/bin/openssl req -x509 -newkey rsa:2048 -sha256 -days 3650 -nodes \
+     -keyout sign.key -out sign.crt -subj "/CN=Nilbox Release Signing" \
+     -addext "basicConstraints=critical,CA:false" -addext "keyUsage=critical,digitalSignature" \
+     -addext "extendedKeyUsage=critical,codeSigning"
+   /usr/bin/openssl pkcs12 -export -inkey sign.key -in sign.crt -name "Nilbox Release Signing" -out sign.p12
+   ```
+
+   The second command asks for the `.p12` file's password. To sign local builds with the same
+   identity, import `sign.p12` into your login keychain too.
+3. Create the `release` environment (Settings → Environments → New environment). Under
    **Deployment branches and tags**, choose **Selected branches and tags** and add one **Tag**
    rule, `v*`, and nothing else. Create it before any tag is pushed: when a workflow names an
    environment that doesn't exist, GitHub creates it with no rule at all.
-2. Add its secrets and its variable:
+4. Add its secrets and its variable:
 
    | Name | Kind | What it is |
    |---|---|---|
@@ -560,10 +597,22 @@ could never get them.
    | `CODESIGN_P12_PASSWORD` | Secret | The `.p12` file's password |
    | `CODESIGN_IDENTITY` | Variable | The code-signing identity's name (or SHA-1), passed to `app:signRelease` |
 
-3. Recommended: a tag ruleset on `refs/tags/v*` (Settings → Rules → Rulesets) that limits who
+   ```bash
+   gh secret set UPDATE_SIGNING_KEY --env release --repo mrz1836/nilbox < ~/release-keys/release.key
+   base64 -i ~/release-keys/sign.p12 | gh secret set CODESIGN_P12 --env release --repo mrz1836/nilbox
+   gh secret set CODESIGN_P12_PASSWORD --env release --repo mrz1836/nilbox
+   gh variable set CODESIGN_IDENTITY --env release --repo mrz1836/nilbox --body "Nilbox Release Signing"
+   ```
+
+   The third command asks for the `.p12` file's password. `gh secret list --env release` and
+   `gh variable list --env release` (with `--repo`) show what is set, never the values.
+5. **Back up** `release.key`, `sign.p12`, and its password, in a password manager. Without
+   `release.key`, no installed copy can verify an update again (see *Replacing the release key
+   or the certificate*, below); a certificate is easier to replace.
+6. Recommended: a tag ruleset on `refs/tags/v*` (Settings → Rules → Rulesets) that limits who
    may create, update, or delete release tags. Anyone who can push a `v*` tag runs this
    workflow, as the tagged commit holds it, with the environment's secrets.
-4. Recommended: under Settings → Actions → General, require actions to be pinned to a
+7. Recommended: under Settings → Actions → General, require actions to be pinned to a
    full-length commit SHA, as every workflow here pins them.
 
 **How to release.**
@@ -655,11 +704,32 @@ again.
   copies from taking it meanwhile, mark the release before it as the latest again (`gh release
   edit <earlier tag> --latest`), so `releases/latest/download/manifest-darwin.json` serves that
   release's older version, which offers no update.
-- **The release key leaked or was lost:** make a new one with `magex app:keygen`, and ship a
-  release whose app pins it, signed with the new key. Copies on older versions can't verify it,
-  so they need one reinstall by hand; say so in the release notes and the README.
-- **The certificate expired or was replaced:** the next build's identity changes, which costs
-  everyone one Automation prompt. A ten-year certificate makes this rare.
+- **The release key leaked or was lost, or the certificate expired:** see below.
+
+**Replacing the release key or the certificate.**
+
+- **The release key** (lost, leaked, or only suspected): installed copies trust only the key
+  their build pins, and a release's manifest must verify with the key of the build being
+  released, so there is no handing over from one key to the next. Every copy on an older
+  version needs one reinstall by hand. A leaked key is worse than a lost one, since whoever
+  holds it can sign a manifest every installed copy trusts, so replace it at once.
+  1. Make a new key in a new folder, as in *Before the first tag*: `magex app:keygen
+     out=<new folder>`.
+  2. Pin its public half, and that line's SHA-256, in `internal/update/key.go` and
+     `internal/update/releasekey_test.go`, in a pull request, and merge it.
+  3. Replace the secret, before the next tag: `gh secret set UPDATE_SIGNING_KEY --env release
+     --repo mrz1836/nilbox < <new folder>/release.key`. A publish job that still signs with the
+     old key fails its own check against the newly pinned one, and publishes nothing.
+  4. Tag a release, and say in its notes, and in the README, that a copy on an older version
+     must download and install it by hand once.
+  5. Back up the new key, and destroy the old one.
+- **The certificate** (expired after ten years, lost, or replaced): updates still install,
+  since their trust is the release key, not the certificate. But the app's identity changes, so
+  macOS asks each user once more for what they had allowed it (Automation, to open launches in
+  their terminal). Make a new one as in *Before the first tag*, then replace `CODESIGN_P12` and
+  `CODESIGN_P12_PASSWORD`, and `CODESIGN_IDENTITY` too if its name changed. The move dialog's
+  **Open it** checks a copy already in Applications against the running app's signature, so it
+  won't open an older copy signed with the old certificate; move the new one there instead.
 
 <br>
 
