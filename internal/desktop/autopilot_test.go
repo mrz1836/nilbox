@@ -22,11 +22,12 @@ var errFakeAutopilot = errors.New("fake: Autopilot cannot be read")
 // fakeAutopilot serves a state the test sets, and records each change of Pause Autopilot,
 // storing it, as the settings' setter does.
 type fakeAutopilot struct {
-	mu     sync.Mutex
-	st     desktop.AutopilotState
-	err    error
-	reads  int
-	paused []bool
+	mu       sync.Mutex
+	st       desktop.AutopilotState
+	err      error
+	pauseErr error
+	reads    int
+	paused   []bool
 }
 
 func (a *fakeAutopilot) State(context.Context) (desktop.AutopilotState, error) {
@@ -43,6 +44,11 @@ func (a *fakeAutopilot) SetPaused(_ context.Context, paused bool) error {
 	defer a.mu.Unlock()
 
 	a.paused = append(a.paused, paused)
+
+	if a.pauseErr != nil {
+		return a.pauseErr
+	}
+
 	a.st.Menu.Paused = paused
 
 	return nil
@@ -269,6 +275,63 @@ func TestThePauseRowFlipsPauseAutopilot(t *testing.T) {
 
 		s.AutopilotAction(menubar.AutopilotPause, menubar.Working{})
 		assert.Len(t, ap.pauses(), 2, "a stopping shell changes nothing")
+	})
+}
+
+func TestAPauseThatFailsPutsTheTickBack(t *testing.T) {
+	t.Parallel()
+
+	synctest.Test(t, func(t *testing.T) {
+		r := newRig()
+		ap := &fakeAutopilot{st: oneRoutine(), pauseErr: errFakeAutopilot}
+		s := r.shell(withAutopilot(ap))
+
+		s.Start(t.Context())
+		s.Launched()
+		synctest.Wait()
+
+		draws := len(r.tray.drawn())
+
+		// The menu ticks the row itself on the click; the write then fails.
+		s.AutopilotAction(menubar.AutopilotPause, menubar.Working{})
+		synctest.Wait()
+
+		assert.Equal(t, []bool{true}, ap.pauses())
+		assert.Contains(t, r.logs.String(), "could not change Pause Autopilot from the menu bar")
+		require.Greater(t, len(r.tray.drawn()), draws, "the menu is drawn again, though the group reads as before")
+		assert.False(t, lastGroup(t, r).Paused, "so the tick the click put there is taken back")
+
+		require.NoError(t, s.Stop())
+	})
+}
+
+func TestAPauseChangedElsewhereRedrawsTheTick(t *testing.T) {
+	t.Parallel()
+
+	synctest.Test(t, func(t *testing.T) {
+		r := newRig()
+		ap := &fakeAutopilot{st: oneRoutine()}
+		s := r.shell(withAutopilot(ap))
+
+		s.Start(t.Context())
+		s.Launched()
+		synctest.Wait()
+		require.False(t, lastGroup(t, r).Paused)
+
+		// Settings paused it; core's relay tells the shell Autopilot changed.
+		st := oneRoutine()
+		st.Menu.Paused = true
+		ap.set(st, nil)
+		s.Emit(event.AutopilotUpdated{})
+		synctest.Wait()
+
+		assert.True(t, lastGroup(t, r).Paused)
+
+		s.AutopilotAction(menubar.AutopilotPause, menubar.Working{})
+		synctest.Wait()
+		assert.Equal(t, []bool{false}, ap.pauses(), "a click flips what the menu shows now")
+
+		require.NoError(t, s.Stop())
 	})
 }
 

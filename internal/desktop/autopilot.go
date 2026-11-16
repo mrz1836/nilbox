@@ -83,7 +83,10 @@ func (s *Shell) AutopilotAction(action menubar.AutopilotAction, row menubar.Work
 }
 
 // flipPause turns Pause Autopilot the other way from what the menu last showed, then has
-// the menu read Autopilot again, so its tick follows what was stored.
+// the menu read Autopilot again and drawn in full, so its tick follows what was stored: the
+// menu flips a checkbox's tick itself on the click, so after a write that failed the menu
+// reads as it did before the click, and a redraw only of what changed would leave the tick
+// lying.
 func (s *Shell) flipPause() {
 	if s.autopilot == nil {
 		return
@@ -96,7 +99,8 @@ func (s *Shell) flipPause() {
 			s.logger.WarnContext(ctx, "could not change Pause Autopilot from the menu bar", "paused", paused, "error", err)
 		}
 
-		s.askAutopilot()
+		s.autopilotAsked.Store(true)
+		s.askRedraw()
 	})
 }
 

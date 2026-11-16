@@ -240,7 +240,7 @@ func TestAProblemACrashCutShortIsToldOnce(t *testing.T) {
 		// The problem is told, then the app crashes before the engine saves that it was.
 		s.Notices.Hold(true)
 		s.World.FailSearches(true)
-		s.Refresh()
+		s.Advance(10*time.Minute, true)
 		require.Len(t, s.Notices.Calls(), 1)
 
 		s.Crash()

@@ -274,3 +274,18 @@ func TestABuiltCoreKeepsASourceBuildsUpdatesOff(t *testing.T) {
 	assert.Empty(t, going)
 	assert.NotNil(t, going)
 }
+
+func TestAutopilotChangedWakesTheEngineAndTellsTheShell(t *testing.T) {
+	t.Parallel()
+
+	events := &testutil.Events{}
+	engine := &countWakes{}
+
+	(&followSwitch{sink: events, autopilot: engine}).Emit(event.AutopilotChanged{})
+	assert.Equal(t, int32(1), engine.n.Load(), "the engine runs a cycle under the new settings")
+	assert.Equal(t, []event.Event{event.AutopilotUpdated{}}, events.All(),
+		"the menu bar's Pause row and the window read Autopilot again, the engine's cycle or not")
+
+	(&followSwitch{sink: events}).Emit(event.AutopilotChanged{})
+	assert.Len(t, events.All(), 2, "with no engine to wake, as in a copy that doesn't hold it, they still hear it")
+}
