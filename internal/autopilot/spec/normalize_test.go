@@ -103,6 +103,22 @@ func TestNormalizeKeepsTheUsersOrder(t *testing.T) {
 	assert.Equal(t, catalog.StepPin, s.Steps[1].Kind())
 }
 
+// TestNormalizeKeepsRegexesApartByCase checks that two regexes that differ only in case
+// stay two conditions: \d and \D say opposite things.
+func TestNormalizeKeepsRegexesApartByCase(t *testing.T) {
+	t.Parallel()
+
+	digit := spec.Clause{Field: catalog.FieldTitle, Op: catalog.OpMatchesRegex, Value: `\d`}
+	other := spec.Clause{Field: catalog.FieldTitle, Op: catalog.OpMatchesRegex, Value: `\D`}
+
+	got := spec.Normalize(spec.Spec{Conditions: spec.Conditions{Match: spec.MatchAny, Of: []spec.Clause{digit, other}}})
+	assert.Equal(t, []spec.Clause{digit, other}, got.Conditions.Of)
+
+	same := spec.Clause{Field: catalog.FieldTitle, Op: catalog.OpMatchesRegex, Value: `\d`}
+	got = spec.Normalize(spec.Spec{Conditions: spec.Conditions{Match: spec.MatchAny, Of: []spec.Clause{digit, same}}})
+	assert.Equal(t, []spec.Clause{digit}, got.Conditions.Of, "the same regex twice is kept once")
+}
+
 func TestNormalizeGivesEmptyConditionsAMatch(t *testing.T) {
 	t.Parallel()
 

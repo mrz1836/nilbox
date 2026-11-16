@@ -128,13 +128,15 @@ func choiceSet(field catalog.Field, values []string) []string {
 	return slices.Compact(values)
 }
 
-// sameClause reports two conditions that say the same.
+// sameClause reports two conditions that say the same. Their values compare exactly: a
+// regex's case is part of what it says (\d and \D are opposites), so only a condition
+// written the same way twice is a repeat.
 func sameClause(a, b Clause) bool {
 	if a.Group != nil || b.Group != nil {
 		return false
 	}
 
-	return a.Field == b.Field && a.Op == b.Op && strings.EqualFold(a.Value, b.Value) && slices.Equal(a.Values, b.Values)
+	return a.Field == b.Field && a.Op == b.Op && a.Value == b.Value && slices.Equal(a.Values, b.Values)
 }
 
 // normalizeStep cleans one step.
