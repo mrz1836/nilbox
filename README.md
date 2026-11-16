@@ -161,53 +161,132 @@ hooks and scripts too. Your triage state stays on your machine and never touches
 
 ## 🚀 Installation
 
-Nilbox is a native macOS app, built from source with one command.
+Nilbox is a native app for macOS 13 or newer, on Apple silicon and Intel. Linux and Windows are on
+the [roadmap](#support--roadmap).
 
-> **Platform:** macOS 13 or newer. Linux and Windows are on the [roadmap](#support--roadmap).
+### Install
 
-**Requirements**
+Paste this into Terminal:
+
+```bash
+(cd "$(mktemp -d)" &&
+  curl -fsSLO https://github.com/mrz1836/nilbox/releases/latest/download/Nilbox.dmg &&
+  hdiutil attach -nobrowse -quiet -mountpoint "$PWD/mnt" Nilbox.dmg &&
+  rm -rf /Applications/Nilbox.app &&
+  ditto mnt/Nilbox.app /Applications/Nilbox.app &&
+  hdiutil detach -quiet mnt &&
+  open /Applications/Nilbox.app)
+```
+
+It downloads the latest release, puts Nilbox in Applications, and opens it, with no security
+prompt to click through.
+
+- **Quit Nilbox first** if it's already open: the command replaces the copy in Applications.
+- **On an account that can't write to `/Applications`** (a standard user), install it in
+  `~/Applications` instead:
+
+  ```bash
+  mkdir -p ~/Applications
+  (cd "$(mktemp -d)" &&
+    curl -fsSLO https://github.com/mrz1836/nilbox/releases/latest/download/Nilbox.dmg &&
+    hdiutil attach -nobrowse -quiet -mountpoint "$PWD/mnt" Nilbox.dmg &&
+    rm -rf ~/Applications/Nilbox.app &&
+    ditto mnt/Nilbox.app ~/Applications/Nilbox.app &&
+    hdiutil detach -quiet mnt &&
+    open ~/Applications/Nilbox.app)
+  ```
+
+Nilbox borrows the [GitHub CLI](https://cli.github.com)'s sign-in (the `repo` and `read:org`
+scopes, plus the optional `read:project` to see the projects your issues are in), and launches the
+Claude Code CLI (`claude`), the Codex CLI (`codex`), or both, in iTerm2 or Terminal.app. Its
+first-run setup checks each one and gives the command for anything missing.
+
+<br>
+
+### Or download the disk image
+
+Download [Nilbox.dmg](https://github.com/mrz1836/nilbox/releases/latest/download/Nilbox.dmg). A
+release is signed but not notarized by Apple, so macOS asks you to approve it once:
+
+1. Open `Nilbox.dmg`. If macOS says it can't verify it, click **Done**, then go to **System
+   Settings → Privacy & Security**, click **Open Anyway**, and confirm.
+2. Drag **Nilbox** into **Applications**.
+3. Open Nilbox from Applications. If macOS asks again, this time about the app, approve it with
+   **Open Anyway** the same way.
+
+This happens once, at install: updates never ask. Since macOS 15, Control-click → **Open** no
+longer gets past the warning, so these steps go through System Settings.
+
+<br>
+
+### Updates
+
+A release updates itself. About a minute after it opens, then every 6 hours, it checks GitHub for a
+newer release, downloads it quietly, and, when you click **Restart to update**, backs up your data
+and restarts into it. **Settings → About → When a new version is out** chooses *Download it and
+tell me* (the default), *Just tell me*, or *Don't check*, and the menu bar's **Check for
+Updates…** checks at once ([how updates work](docs/desktop.md#updates)).
+
+<br>
+
+### Build from source
+
+To build Nilbox yourself, you need:
 
 - **macOS 13+** with the Xcode Command Line Tools (`xcode-select --install`)
 - **[Go](https://go.dev/dl/) 1.26+**, **Node 26**, and **pnpm** at the pinned version (`npm install -g pnpm@12.16.1`)
 - **[MAGE-X](https://github.com/mrz1836/mage-x)**: `go install github.com/mrz1836/mage-x/cmd/magex@latest`
-- **[GitHub CLI](https://cli.github.com)**, signed in with the `repo` and `read:org` scopes (add the
-  optional `read:project` scope to see the projects your issues are in)
-- To launch sessions: the **Claude Code CLI** (`claude`), the **Codex CLI** (`codex`), or both, and
-  **iTerm2** or Terminal.app
+- The **GitHub CLI** and a coding agent, as above
 
 ```bash
 git clone https://github.com/mrz1836/nilbox.git && cd nilbox
 magex app:run      # build bin/Nilbox.app and open it
 ```
 
-After that, `magex app:open` reopens the build, and `magex app:run` rebuilds after you pull. The
-Wails CLI is never installed: the build runs it with `go run` at the version `go.mod` pins.
+A build from source never updates itself: to update it, pull, then run `magex app:run` again.
+`magex app:open` reopens the build as it is. The Wails CLI is never installed: the build runs it
+with `go run` at the version `go.mod` pins.
 
 <details>
 <summary><strong>Signing, firewalls, and where your data lives</strong></summary>
 <br/>
 
-- **Signing:** `magex app:build` signs the bundle ad hoc, which is enough to run it on the Mac that
-  built it.
-- **Firewalls:** a per-app firewall must let `bin/Nilbox.app/Contents/MacOS/nilbox` reach
-  `api.github.com`, or every refresh times out. Blocking `avatars.githubusercontent.com` only
-  swaps profile pictures (yours, and those of the people an issue shows) for initials, and
-  blocking the status pages (`www.githubstatus.com`, `status.claude.com`, and
-  `status.openai.com`) only leaves the service status check saying it couldn't reach them.
+- **Signing:** a release is signed with a self-signed certificate, the same identity for every
+  release, so macOS keeps the permissions you grant Nilbox (such as Automation, to open launches
+  in your terminal) across updates. It isn't notarized, which is why the disk image asks for
+  **Open Anyway** once; a file `curl` downloads carries no quarantine mark, so the Terminal install
+  asks nothing. A build from source is signed ad hoc by `magex app:build`, which is enough to run
+  it on the Mac that built it.
+- **Firewalls:** a per-app firewall must let the app's binary reach `api.github.com`, or every
+  refresh times out: `/Applications/Nilbox.app/Contents/MacOS/nilbox` for a release (under
+  `~/Applications` if you installed it there), and `bin/Nilbox.app/Contents/MacOS/nilbox` for a
+  build from source. Blocking `avatars.githubusercontent.com` only swaps profile pictures (yours,
+  and those of the people an issue shows) for initials, and blocking the status pages
+  (`www.githubstatus.com`, `status.claude.com`, and `status.openai.com`) only leaves the service
+  status check saying it couldn't reach them. Updates need `github.com`, which redirects each
+  download to `release-assets.githubusercontent.com` (and, for some releases,
+  `objects.githubusercontent.com`); blocking them only means a check or a download fails.
+- **Updates:** a check is one GET of the latest release's `manifest-darwin.json` from
+  `github.com`, and a newer version's zip is one more. Neither sends a token, a cookie, or
+  anything of yours, or spends API budget. The zip is checked against the key built into the app,
+  and waits in `updates/<version>/` in the data folder until you restart. Before installing it,
+  the app backs up the database beside it as `nilbox.db.backup-<stamp>-v<schema>`.
 - **Data:** everything lives in `~/Library/Application Support/Nilbox`, readable only by you. The
   database is `nilbox.db` (SQLite, WAL mode), and a copy is saved before each schema migration
-  (the three newest are kept). Your prompts and launch defaults are also kept in `prompts.json`
-  and `launch-defaults.json` beside it, rewritten after every change, so they survive an update
-  or a damaged database. The review sheet keeps the diffs of pull requests you open in it there
-  too, capped at 64 MB, and the issue sheet the conversations of issues you open in it, capped at
-  32 MB, each dropped after 14 days unused. GitHub tokens are never stored there or anywhere
-  else.
+  and each update (the three newest are kept). Your prompts and launch defaults are also kept in
+  `prompts.json` and `launch-defaults.json` beside it, rewritten after every change, so they
+  survive an update or a damaged database. The review sheet keeps the diffs of pull requests you
+  open in it there too, capped at 64 MB, and the issue sheet the conversations of issues you open
+  in it, capped at 32 MB, each dropped after 14 days unused. GitHub tokens are never stored there
+  or anywhere else.
 - **A damaged database** is renamed to `nilbox.db.broken-<UTC time>`, never deleted, and the app
   starts with a fresh one, your prompts and launch defaults brought back on their own.
 - **Logs:** `logs/nilbox.log` in the same folder, at most three files of 5 MB each. Start the
-  binary with `--debug` to keep debug records too. No log holds your GitHub token.
+  binary with `--debug` to keep debug records too. No log holds your GitHub token. An update that
+  didn't install keeps its helper's log as `logs/update-<version>.log`.
 
-Full setup and every build target: [docs/desktop.md](docs/desktop.md#build-targets).
+Full setup and every build target: [docs/desktop.md](docs/desktop.md#build-targets). How updates
+work: [docs/desktop.md](docs/desktop.md#updates).
 
 </details>
 
@@ -1033,9 +1112,13 @@ More in [The window](docs/desktop.md#the-window).
 
 > **Your data stays on your Mac.** Nilbox's own requests go only to GitHub: `api.github.com`,
 > `avatars.githubusercontent.com` for profile pictures (yours, and, by login, those of the people an
-> issue you open shows, each kept and downloaded again at most weekly), and, when you install or update a
-> tool, `github.com` and GitHub's release download hosts for that tool's public release, with no
-> token and nothing of yours. It reads from GitHub, and changes something there only when you ask:
+> issue you open shows, each kept and downloaded again at most weekly), and `github.com` and
+> GitHub's release download hosts for public releases: a tool's, when you install or update it,
+> and, in a release of Nilbox, its own update check, which reads the latest release's manifest and
+> downloads a newer version's zip. Those downloads carry no token and nothing of yours. The one
+> exception is the service status check, which reads the status pages of the services you watch
+> (`www.githubstatus.com`, `status.claude.com`, and `status.openai.com`), each sent only the
+> request for its summary. Nilbox reads from GitHub, and changes something there only when you ask:
 > taking you off an item, a review, comment, merge, auto-merge, branch update, Dependabot rebase
 > request, approval of held workflow runs, or close you send from the review sheet, or a comment or
 > close you send from the issue

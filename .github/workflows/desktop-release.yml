@@ -705,8 +705,8 @@ jobs:
             *)
               # The install note comes first; GitHub adds the notes it generates after it.
               note="$RUNNER_TEMP/install-note.md"
-              printf '**Install:** download `%s`, drag %s to Applications, then System Settings → Privacy & Security → Open Anyway. Already installed? %s updates itself.\n' \
-                "$DMG" "$APP" "$APP" > "$note"
+              printf '**Install:** paste the Terminal command in the [README](%s/%s#install), which asks nothing. Or download `%s`, drag %s to Applications, then System Settings → Privacy & Security → Open Anyway. Already installed? %s updates itself.\n' \
+                "$GITHUB_SERVER_URL" "$GITHUB_REPOSITORY" "$DMG" "$APP" "$APP" > "$note"
               gh release create "$TAG" --draft --verify-tag --title "Release $TAG" \
                 --notes-file "$note" --generate-notes --prerelease="$PRERELEASE"
               ;;

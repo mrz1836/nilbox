@@ -15,6 +15,7 @@ numbers with the `magex measure:*` targets.
 | Inbox refresh | < 3 s | 2.44 s | Met once the inbox's items are known; the first refresh into an empty database takes 5–10 s |
 | Launch to prompt loaded | < 3 s | 1.15 s | Met, one run, for a launch whose files check out; 3.13 s with the placeholder repository's held-back first request, which a real hold spends waiting for your click anyway (see below) |
 | App binary size | < 30 MB | 22.9 MB | Met (21.7 MB before the issue sheet, the GitHub notifications, and the features that came with them; 17.0 MB before the integrations: Release, Hooks, Repo scripts, and the tool installer) |
+| Release binary, per architecture | < 30 MB a slice | 23.9 MB arm64, 25.9 MB x86_64 | Met by v0.3.1's universal build; the download itself, 16.9 MB as the disk image and 20.8 MB as the update's zip, is reported, not held to a target (see [Release footprint](#release-footprint)) |
 | API budget at 5-minute cadence | < 2% | 1.20% | Met: 5 points a refresh |
 
 Measured on an Apple Silicon Mac (M1 Max, 32 GB memory) running macOS 15.8, over its regular
@@ -22,9 +23,10 @@ network connection. The first numbers were taken on the build host, a second Mac
 24 GB memory, macOS 15, with one 1920×1080 display at 60 Hz), which starts the app more slowly;
 its runs are kept below for comparison. The refresh and API budget numbers are set by GitHub's
 response times and by how many items the inbox holds, not by the machine. Each number comes
-from the production bundle that `magex app:build` produces. The cold start and the refresh come
-from the build of 2026-11-11, once the integrations were done; the launch and the size were
-measured again on 2026-11-14, after the issue sheet and the GitHub notifications.
+from the production bundle that `magex app:build` produces, apart from the release binary's
+sizes, which are v0.3.1's as it was published. The cold start and the refresh come from the build of
+2026-11-11, once the integrations were done; the launch and the size were measured again on
+2026-11-14, after the issue sheet and the GitHub notifications.
 
 <br>
 
@@ -247,6 +249,43 @@ bytes (17.8 MB), with a 19.1 MB bundle and a frontend of about 510 KB in one scr
 desktop build, before the card details, the prompt library, snoozing, the app icon, worktree
 cleanup, the sensitive-file check, and the menu bar, measured 16,446,784 bytes (16.4 MB), with
 a 16.4 MB bundle and a frontend of about 280 KB.
+
+### Release footprint
+
+A release is one universal bundle, for Apple silicon and Intel, so its binary holds two slices,
+one per architecture. The 30 MB target applies to each slice. The universal download is about
+twice the size of a single-architecture build; its size is reported here, not held to the target.
+
+v0.3.1, as `desktop-release.yml` built, signed, and published it, measured from its zip (each
+slice with `lipo -detailed_info`, the bundle as the sum of its files, as `measure:size` counts it)
+and from the release's assets:
+
+| v0.3.1 | Bytes | Note |
+|---|---|---|
+| Binary, universal | 49,903,760 | |
+| arm64 slice | 23,935,120 | 6.1 MB under the target |
+| x86_64 slice | 25,938,144 | 4.1 MB under the target |
+| Bundle | 51,180,157 | |
+| `Nilbox_0.3.1_darwin_universal.zip` | 20,806,441 | What an update downloads |
+| `Nilbox.dmg` | 16,874,348 | What a first install downloads, compressed as ULMO (LZMA) |
+
+The spike that settled the universal build (2026-11-15, from `master` at `1904d39`, with
+`buildDesktopBinary`'s flags for each architecture, then `lipo -create`) measured, signed:
+
+| Bytes | arm64 only | Universal |
+|---|---|---|
+| Binary | 23,892,128 | 49,713,312 |
+| arm64 slice | 23,892,128 | 23,892,128 |
+| x86_64 slice | — | 25,792,656 |
+| Bundle | 25,168,525 | 50,989,709 |
+| Zip (`ditto -c -k --norsrc --keepParent`) | 10,750,438 | 21,012,777 |
+| Disk image, UDZO | 11,881,412 | 24,131,337 |
+| Disk image, ULMO (LZMA) | 8,294,545 | 16,910,661 |
+
+ULMO makes the universal disk image 30% smaller than UDZO, so a release's disk image uses it; it
+needs macOS 10.15, which the app's minimum, macOS 13, covers. The spike also ran the Intel slice
+under Rosetta (`--measure-startup`): its first paint took 1,646 ms on the first launch, while
+Rosetta translated it, and 726 ms after, against 580 ms and then 506 ms for the arm64 slice.
 
 ### Scripts tab, first open
 
