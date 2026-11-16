@@ -127,6 +127,11 @@ func TestTriggers(t *testing.T) {
 			key: "falls_behind:commit:" + head + ":base:main",
 		},
 		{name: "falls behind, up to date", trigger: spec.Trigger{Event: catalog.EventFallsBehind}, want: eval.No},
+		{
+			name: "falls behind, the base not read", trigger: spec.Trigger{Event: catalog.EventFallsBehind},
+			mutate: func(r *facts.Row) { r.Details.MergeState, r.Details.BaseRef = "BEHIND", "" },
+			want:   eval.Unknown, need: facts.NeedDetails,
+		},
 
 		{
 			name: "labeled", trigger: spec.Trigger{Event: catalog.EventLabeled, Label: "Dependencies"},

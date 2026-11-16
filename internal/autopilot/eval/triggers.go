@@ -264,9 +264,12 @@ func mergeConflicts(_ spec.Trigger, f facts.Facts, _ History, _ time.Time) fired
 	return yes(commitKey(catalog.EventMergeConflicts, f.Head.Text), "it conflicts with its base branch")
 }
 
+// fallsBehind holds while the pull request is behind its base, once per head commit and
+// base branch. It waits for the base to be read, so the one occurrence never fires twice,
+// once without its base and once with it.
 func fallsBehind(_ spec.Trigger, f facts.Facts, _ History, _ time.Time) fired {
-	behind := f.Value(catalog.FieldBehind)
-	if out, missing := known(f.Head, behind); missing {
+	behind, base := f.Value(catalog.FieldBehind), f.Value(catalog.FieldBase)
+	if out, missing := known(f.Head, behind, base); missing {
 		return out
 	}
 
@@ -274,9 +277,7 @@ func fallsBehind(_ spec.Trigger, f facts.Facts, _ History, _ time.Time) fired {
 		return no("it isn't behind its base branch")
 	}
 
-	base := f.Value(catalog.FieldBase).Text
-
-	return yes(commitKey(catalog.EventFallsBehind, f.Head.Text)+":base:"+base, "it's behind "+base)
+	return yes(commitKey(catalog.EventFallsBehind, f.Head.Text)+":base:"+base.Text, "it's behind "+base.Text)
 }
 
 func labeled(t spec.Trigger, f facts.Facts, _ History, _ time.Time) fired {
