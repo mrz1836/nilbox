@@ -62,12 +62,12 @@ func (s *Service) ItemsByID(ctx context.Context, ids []int64) ([]Item, error) {
 	return out, nil
 }
 
-// ReadChecks reads the checks of the stored pull requests among ids on their head commits,
+// readChecks reads the checks of the stored pull requests among ids on their head commits,
 // with whether each is required, and stores them in item_checks, replacing what was
 // stored: Autopilot asks for the pull requests whose conditions need check names. An id
 // that isn't a stored pull request is left out. It costs one GraphQL point per batch of 25,
 // counted for Autopilot, and tells the Changed seam the items it stored.
-func (s *Service) ReadChecks(ctx context.Context, ids []int64) error {
+func (s *Service) readChecks(ctx context.Context, ids []int64) error {
 	nodes, err := s.pullNodes(ctx, ids)
 	if err != nil || len(nodes) == 0 {
 		return err
@@ -193,13 +193,13 @@ type SearchOutcome struct {
 	Err error
 }
 
-// SearchNow reads searches from GitHub now, for a routine's test, and stores what they
+// searchNow reads searches from GitHub now, for a routine's test, and stores what they
 // return as the watch pass does, without any search's rows, so nothing watches the items
 // on the test's account: the prune of old items takes them in time unless a routine comes
 // to watch them. The details of the items that are new or changed are read too. It
 // returns each search's outcome, by query, and what it cost in GraphQL points, counted for
 // Autopilot.
-func (s *Service) SearchNow(ctx context.Context, texts []string) (map[string]SearchOutcome, int, error) {
+func (s *Service) searchNow(ctx context.Context, texts []string) (map[string]SearchOutcome, int, error) {
 	ctx = github.WithPurpose(ctx, github.PurposeAutopilot)
 
 	login, _, err := s.prefs.Get(ctx, prefViewer)

@@ -15,10 +15,15 @@
 // backup of the user's setup holds them through BackupPart, a type of its own, so the
 // window, which binds the Service, never reaches it.
 //
+// The routines' searches reach the inbox as a snapshot the Service builds again after
+// every change to a routine (Searches, watches.go), which each refresh reads as it starts.
+// The builder reads the inbox through Items: what the stored items suggest (Suggest), the
+// items a routine watches (Watching), and a draft tried on its items now (Test).
+//
 // The package reaches the rest of the app only through the narrow interfaces it declares
-// (Prefs, Accounts, Names), which core adapts; it never imports the inbox, the sheets,
-// the launcher, the worktrees, the sessions, the runs, the notifications, the settings,
-// the desktop shell, or core.
+// (Prefs, Accounts, Names, Items, Costs), which core adapts; it never imports the inbox,
+// the sheets, the launcher, the worktrees, the sessions, the runs, the notifications, the
+// settings, the desktop shell, or core.
 package autopilot
 
 import (
@@ -100,6 +105,15 @@ type Config struct {
 	// every change; nil keeps none.
 	File *File
 
+	// Items reads the inbox for the builder: its suggestions, a routine's watched items,
+	// their facts, and a draft's searches read now. Nil reads none, so Suggest suggests
+	// nothing, and Watching and Test find no items.
+	Items Items
+
+	// Costs gives what the routines' searches cost a refresh, as recorded, for Test's
+	// estimate. Nil estimates a point a request, twelve refreshes an hour.
+	Costs Costs
+
 	// Clock stamps the routines. Nil is the system clock.
 	Clock clock.Clock
 
@@ -115,8 +129,15 @@ type Service struct {
 	accounts Accounts
 	names    Names
 	file     *File
+	items    Items
+	costs    Costs
 	clock    clock.Clock
 	logger   *slog.Logger
+
+	// watches holds the snapshot of the routines' searches the inbox reads (watches.go),
+	// and tests the searches a test read lately (test.go).
+	watches watchSet
+	tests   testCache
 }
 
 // NewService returns a Service over cfg.
@@ -125,7 +146,8 @@ func NewService(cfg Config) *Service {
 
 	return &Service{
 		store: newRoutineStore(cfg.Pool, clk), prefs: cfg.Prefs, accounts: cfg.Accounts, names: cfg.Names,
-		file: cfg.File, clock: clk, logger: logging.Or(cfg.Logger),
+		file: cfg.File, items: cfg.Items, costs: cfg.Costs, clock: clk, logger: logging.Or(cfg.Logger),
+		tests: testCache{read: map[string]cachedSearch{}},
 	}
 }
 

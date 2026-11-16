@@ -401,9 +401,12 @@ func (s *Service) reorder(ctx context.Context,
 	})
 }
 
-// changed writes the copy of the routines again, after a change to one. A failure is
-// logged: the copy is written again after the next change.
+// changed builds the snapshot of the routines' searches again, and writes the copy of the
+// routines again, after a change to one. A failure is logged: the copy is written again
+// after the next change.
 func (s *Service) changed(ctx context.Context) {
+	s.rebuildWatches(ctx)
+
 	if s.file == nil || s.store.db == nil {
 		return
 	}

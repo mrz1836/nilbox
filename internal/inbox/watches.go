@@ -216,11 +216,11 @@ func (s *Service) budgetPause(ctx context.Context, login string) string {
 	return ""
 }
 
-// RunWatchPasses runs the watch passes the refreshes hand it, one at a time, until ctx
+// runWatchPasses runs the watch passes the refreshes hand it, one at a time, until ctx
 // ends, and returns once the pass in flight has. A pass that fails is logged and one that
 // panics recovered, so the next still runs. Without it running, no refresh reads the
 // routines' searches.
-func (s *Service) RunWatchPasses(ctx context.Context) {
+func (s *Service) runWatchPasses(ctx context.Context) {
 	for {
 		select {
 		case <-ctx.Done():
@@ -261,8 +261,8 @@ func (s *Service) runPassJob(ctx context.Context, job *watchJob) {
 	s.passes.mu.Unlock()
 }
 
-// LastWatchPass returns what the last watch pass did, and false before one ran.
-func (s *Service) LastWatchPass() (WatchPass, bool) {
+// lastWatchPass returns what the last watch pass did, and false before one ran.
+func (s *Service) lastWatchPass() (WatchPass, bool) {
 	s.passes.mu.Lock()
 	defer s.passes.mu.Unlock()
 
@@ -950,7 +950,7 @@ func (s *Store) WatchStatus(ctx context.Context) (WatchStatus, error) {
 	return out, nil
 }
 
-// WatchPasses runs a Service's watch passes as a desktop worker (Service.RunWatchPasses).
+// WatchPasses runs a Service's watch passes as a desktop worker.
 type WatchPasses struct {
 	svc    *Service
 	logger *slog.Logger
@@ -963,5 +963,33 @@ func NewWatchPasses(s *Service, logger *slog.Logger) *WatchPasses {
 
 // Run runs the passes until ctx ends.
 func (p *WatchPasses) Run(ctx context.Context) {
-	p.svc.RunWatchPasses(ctx)
+	p.svc.runWatchPasses(ctx)
+}
+
+// Routines is the inbox's face for Autopilot's own reads, which the window never reaches
+// (the Service is bound, so these are not its methods): a draft's searches read now, the
+// check names of the pull requests a routine acts on, and what the last watch pass did.
+type Routines struct {
+	svc *Service
+}
+
+// NewRoutines returns the inbox's face for Autopilot over s.
+func NewRoutines(s *Service) *Routines {
+	return &Routines{svc: s}
+}
+
+// SearchNow reads searches from GitHub now, for a routine's test (see searchNow).
+func (r *Routines) SearchNow(ctx context.Context, texts []string) (map[string]SearchOutcome, int, error) {
+	return r.svc.searchNow(ctx, texts)
+}
+
+// ReadChecks reads and stores the checks of the stored pull requests among ids (see
+// readChecks).
+func (r *Routines) ReadChecks(ctx context.Context, ids []int64) error {
+	return r.svc.readChecks(ctx, ids)
+}
+
+// LastWatchPass returns what the last watch pass did, and false before one ran.
+func (r *Routines) LastWatchPass() (WatchPass, bool) {
+	return r.svc.lastWatchPass()
 }

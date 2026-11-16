@@ -8,6 +8,7 @@ export {
 
 export type {
     Gauge,
+    Purposes,
     Reading,
     Refresh,
     Writes

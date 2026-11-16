@@ -207,6 +207,17 @@ func (w *Watches) add(a *watchAnswer) {
 	w.Requests++
 }
 
+// WatchRequests returns how many requests FetchWatches sends for searches that returned
+// lasts results each last time (NewSearch for a new one), packed as it packs them.
+func WatchRequests(lasts []int) int {
+	searches := make([]WatchSearch, 0, len(lasts))
+	for i, last := range lasts {
+		searches = append(searches, WatchSearch{Key: batchAlias(watchPrefix, i), Last: last})
+	}
+
+	return len(packWatches(searches))
+}
+
 // packWatches packs the searches, each key once, in their order, into the requests
 // FetchWatches sends: a new request once the next search would take one past
 // watchPackResults or watchPackSearches.

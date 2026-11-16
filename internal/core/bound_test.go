@@ -326,6 +326,10 @@ func boundCalls(t *testing.T) map[string]boundCall {
 		"inbox.Service.Snapshot": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
 			return c.Inbox.Snapshot(ctx)
 		},
+		"inbox.Service.ItemsByID": func(ctx context.Context, c *Core, ids seededItems) (any, error) {
+			// No refresh has signed an account in, so none of the seeded items is shown.
+			return c.Inbox.ItemsByID(ctx, []int64{ids.item, ids.stuck})
+		},
 		"inbox.Service.Pin": func(ctx context.Context, c *Core, ids seededItems) (any, error) {
 			return c.Inbox.Pin(ctx, ids.item)
 		},
@@ -680,6 +684,16 @@ func autopilotBoundCalls(t *testing.T) map[string]boundCall {
 		},
 		"autopilot.Service.Reorder": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
 			return c.Autopilot.Reorder(ctx, []int64{boundRoutine(ctx, t, c, "Bound order").ID})
+		},
+		"autopilot.Service.Suggest": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
+			return c.Autopilot.Suggest(ctx)
+		},
+		"autopilot.Service.Watching": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
+			return c.Autopilot.Watching(ctx, boundRoutine(ctx, t, c, "Bound watching").ID)
+		},
+		"autopilot.Service.Test": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
+			// Its watch is an inbox list alone, so the test reads nothing from GitHub.
+			return c.Autopilot.Test(ctx, autopilot.Draft{Name: "Bound test", Spec: boundSpec()})
 		},
 	}
 }

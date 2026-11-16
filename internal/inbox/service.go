@@ -191,7 +191,7 @@ type Config struct {
 	Usage RefreshUsage
 
 	// Watches gives the routines' searches, which each whole refresh reads beside the
-	// inbox's own lists (see watches.go), while RunWatchPasses runs. Nil reads none.
+	// inbox's own lists (see watches.go), while its WatchPasses run. Nil reads none.
 	Watches WatchSource
 
 	// Changed is told which items the inbox stored outside a whole refresh: the watch pass,

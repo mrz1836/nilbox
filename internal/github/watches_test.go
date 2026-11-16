@@ -259,3 +259,12 @@ func TestFetchWatchesSendsPacksSideBySide(t *testing.T) {
 	joined := strings.Join(queries, "\n")
 	assert.Contains(t, joined, `search(query: "is:pr label:\"a \\\"quoted\\\" one\""`, "the query can't break out of its argument")
 }
+
+func TestWatchRequestsCountsThePacks(t *testing.T) {
+	t.Parallel()
+
+	assert.Zero(t, WatchRequests(nil))
+	assert.Equal(t, 1, WatchRequests([]int{40, 50, 20}))
+	assert.Equal(t, 2, WatchRequests([]int{40, 50, 20, 100}))
+	assert.Equal(t, 3, WatchRequests([]int{NewSearch, NewSearch, NewSearch}), "a new search is a full page")
+}

@@ -48,6 +48,17 @@ export function Dismiss(id: number): $CancellablePromise<$models.Snapshot> {
 }
 
 /**
+ * ItemsByID returns the stored items of the signed-in account among ids, listed or not,
+ * each as a snapshot's list shows it, newest activity first: the rows of a routine's
+ * Watching list, which Autopilot's Watching names. An id with no stored item, or one of
+ * another account, is left out; at most maxItemsByID are read. It reads the database
+ * alone, and the list is never nil.
+ */
+export function ItemsByID(ids: number[] | null): $CancellablePromise<$models.Item[] | null> {
+    return $Call.ByID(2097224026, ids);
+}
+
+/**
  * Pin keeps an item at the top of every list it is in, above the items not pinned, the
  * most recently pinned first, and returns the new snapshot. A snoozed or dismissed item
  * stays set aside and comes back pinned. Pinning a pinned item does nothing. Nothing is
@@ -102,7 +113,7 @@ export function Refresh(): $CancellablePromise<$models.Snapshot> {
  * refreshes, and the stored inbox is left as it was.
  *
  * Once it has let go of the item, it tells the outcome sink of a merge or a close the
- * answer it stored shows.
+ * answer it stored shows, and the Changed seam that it stored the item.
  */
 export function RefreshItem(id: number): $CancellablePromise<$models.Snapshot> {
     return $Call.ByID(2803834770, id);

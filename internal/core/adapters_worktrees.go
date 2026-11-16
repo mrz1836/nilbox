@@ -2,11 +2,14 @@ package core
 
 import (
 	"context"
+	"log/slog"
 	"os"
 
 	"github.com/mrz1836/nilbox/internal/execpath"
 	"github.com/mrz1836/nilbox/internal/github"
+	"github.com/mrz1836/nilbox/internal/inbox"
 	"github.com/mrz1836/nilbox/internal/item"
+	"github.com/mrz1836/nilbox/internal/logging"
 	"github.com/mrz1836/nilbox/internal/settings"
 	"github.com/mrz1836/nilbox/internal/shellenv"
 	"github.com/mrz1836/nilbox/internal/worktrees"
@@ -31,6 +34,11 @@ func sweepSettings(s settings.Settings) worktrees.SweepSettings {
 type itemStates struct {
 	tokens github.Tokens
 	client *github.Client
+
+	// inbox, when set, records each state read, as the inbox's own reads do; logger hears
+	// a record that failed.
+	inbox  *inbox.Store
+	logger *slog.Logger
 }
 
 // ItemStates asks GitHub about refs. A token GitHub refuses is borrowed again once.
@@ -41,6 +49,8 @@ func (s itemStates) ItemStates(ctx context.Context, refs []item.Ref) (map[string
 	if err != nil {
 		return nil, err
 	}
+
+	noteStates(ctx, s.inbox, refs, states, logging.Or(s.logger))
 
 	out := make(map[string]worktrees.ItemState, len(states))
 	for key, state := range states {

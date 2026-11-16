@@ -185,6 +185,12 @@ type Core struct {
 	Scheduler *inbox.Scheduler
 	Sweeper   worktrees.Sweeper
 
+	// WatchPasses stores what the routines' searches watch, which each refresh reads beside
+	// the inbox's own lists, once the refresh has stored the inbox; the desktop shell runs
+	// it with the scheduler, before it. Without it running no refresh reads the searches.
+	// It is not bound.
+	WatchPasses *inbox.WatchPasses
+
 	// ChecksFollower reads again, as often as Settings → Refreshing says (45 seconds by
 	// default, or never), the pull requests whose checks were still running, in one
 	// request, and nothing while none runs; the desktop shell runs it with the scheduler.
@@ -345,7 +351,7 @@ func Bootstrap(ctx context.Context, opts Options) (*Core, error) {
 
 	info := startup{reset: reset, restored: restored.info(opts.Home, opened.Reset), kept: keeper}
 
-	c := assemble(pool, info, opts, logger)
+	c := assemble(ctx, pool, info, opts, logger)
 	c.restoreBudget(ctx, logger)
 
 	return c, nil
@@ -435,7 +441,7 @@ func dataReset(ctx context.Context, reset *store.Reset, home string, logger *slo
 // assemble builds every service over the open database's connection pool. info says
 // what happened at startup, which the window is told, and holds the stores whose data is
 // kept outside the database, with their copies.
-func assemble(pool *sql.DB, info startup, opts Options, logger *slog.Logger) *Core {
+func assemble(ctx context.Context, pool *sql.DB, info startup, opts Options, logger *slog.Logger) *Core {
 	shellEnv := shellenv.New(shellenv.Config{Start: opts.ShellStarter, Home: opts.Home, Logger: logger})
 	search := execpath.Search{Home: opts.Home}
 
@@ -493,11 +499,18 @@ func assemble(pool *sql.DB, info startup, opts Options, logger *slog.Logger) *Co
 	// read through the same lane. What the user finishes from the inbox reaches the
 	// mirror as the inbox's outcomes, and a change to the rules through the settings' events.
 	ghThreads := ghthreads.NewService(ghthreads.Config{
-		Pool: pool, Tokens: tokens, Client: client, Rules: ghThreadRules{prefs: prefsstore.New(pool, opts.Clock)},
+		Pool: pool, Tokens: tokens, Client: stateNoter{Client: client, store: inboxStore, logger: logger},
+		Rules: ghThreadRules{prefs: prefsstore.New(pool, opts.Clock)},
 		Holds: ghThreadHolds{settings: prefs}, Clock: opts.Clock, Events: opts.Events, Logger: logger,
 	})
 	ghThreadsSyncer := ghthreads.NewSyncer(ghThreads, refreshEvery(prefs, settings.RefreshNotifications, logger), logger)
 	followed.threadRules = ghThreadsSyncer
+
+	// The routines' searches are read beside the inbox's own lists, from the snapshot
+	// Autopilot's service keeps, which is filled in once the service is built, below; what
+	// the inbox stores of them, outside a whole refresh, is told as a Go-only event.
+	watchSource := &autopilotWatches{}
+	events := event.Or(opts.Events)
 
 	inboxSvc := inbox.NewService(inbox.Config{
 		Pool:     pool,
@@ -508,6 +521,8 @@ func assemble(pool *sql.DB, info startup, opts Options, logger *slog.Logger) *Co
 		Arrivals: dispatcher,
 		Outcomes: ghThreadOutcomes{settler: ghthreads.NewSettler(ghThreads)},
 		Usage:    tracker,
+		Watches:  watchSource,
+		Changed:  func(ids []int64) { events.Emit(event.InboxItemsChanged{IDs: ids}) },
 		Logger:   logger,
 	})
 
@@ -544,7 +559,7 @@ func assemble(pool *sql.DB, info startup, opts Options, logger *slog.Logger) *Co
 		Home:     opts.Home,
 		Reader:   locations,
 		Clock:    opts.Clock,
-		GitHub:   itemStates{tokens: tokens, client: client},
+		GitHub:   itemStates{tokens: tokens, client: client, inbox: inboxStore, logger: logger},
 		Records:  workLog,
 		Procs:    procs.System{Run: runner},
 		History:  workLog,
@@ -674,12 +689,23 @@ func assemble(pool *sql.DB, info startup, opts Options, logger *slog.Logger) *Co
 	// The review sheet and the issue sheet read and act through the inbox's one Actor.
 	actor := inbox.NewActor(inboxSvc)
 
+	budgetSvc := budget.NewService(budget.Config{
+		Tracker: tracker, Reader: rateReader{tokens: tokens, client: client}, Clock: opts.Clock,
+		RefreshEvery: refreshEvery(prefs, settings.RefreshInbox, logger),
+	})
+
 	// The routines belong to the account the inbox last signed in as, start in the mode
-	// Settings says, name the starter prompts as the library does, and are copied beside
-	// the database after every change.
+	// Settings says, name the starter prompts as the library does, are copied beside the
+	// database after every change, and read the inbox for the builder. Their searches'
+	// snapshot is built once now, before the scheduler starts, so the first refresh already
+	// carries them.
+	inboxRoutines := inbox.NewRoutines(inboxSvc)
 	routines := newAutopilot(pool, opts, autopilotDeps{
-		inbox: inboxStore, prompts: promptStore, file: info.kept.routinesFile,
+		inbox: inboxStore, service: inboxRoutines, prompts: promptStore, file: info.kept.routinesFile,
+		costs: watchCosts{inbox: inboxRoutines, every: refreshEvery(prefs, settings.RefreshInbox, logger), budget: budgetSvc},
 	}, logger)
+	watchSource.searches = autopilot.NewSearches(routines)
+	watchSource.searches.Rebuild(ctx)
 
 	c := &Core{
 		DB:       pool,
@@ -714,10 +740,7 @@ func assemble(pool *sql.DB, info startup, opts Options, logger *slog.Logger) *Co
 				settings: prefs, tools: tools, updates: updateEngine, routines: routines, logger: logger,
 			},
 		}),
-		Budget: budget.NewService(budget.Config{
-			Tracker: tracker, Reader: rateReader{tokens: tokens, client: client}, Clock: opts.Clock,
-			RefreshEvery: refreshEvery(prefs, settings.RefreshInbox, logger),
-		}),
+		Budget:   budgetSvc,
 		Sessions: follow.service,
 		Review: review.NewService(review.Config{
 			Pool: pool, Inbox: reviewInbox{store: inboxStore, actor: actor}, GitHub: client,
@@ -734,6 +757,7 @@ func assemble(pool *sql.DB, info startup, opts Options, logger *slog.Logger) *Co
 		ShellSessions:         ShellSessions{ledger: follow.ledger, service: follow.service},
 		ProfileStore:          profileStore,
 		Scheduler:             scheduler,
+		WatchPasses:           inbox.NewWatchPasses(inboxSvc, logger),
 		GHThreads:             ghThreads,
 		GHThreadsSyncer:       ghThreadsSyncer,
 		ChecksFollower:        checksFollower,

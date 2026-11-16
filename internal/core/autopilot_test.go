@@ -11,7 +11,10 @@ import (
 	"github.com/mrz1836/nilbox/internal/appdata"
 	"github.com/mrz1836/nilbox/internal/autopilot"
 	"github.com/mrz1836/nilbox/internal/autopilot/spec"
+	"github.com/mrz1836/nilbox/internal/autopilot/watch"
 	"github.com/mrz1836/nilbox/internal/backup"
+	"github.com/mrz1836/nilbox/internal/item"
+	prefsstore "github.com/mrz1836/nilbox/internal/prefs"
 	"github.com/mrz1836/nilbox/internal/prompts"
 	"github.com/mrz1836/nilbox/internal/testutil"
 )
@@ -206,4 +209,32 @@ func TestABackupBringsTheRoutinesBackOff(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, copied.Routines, 1, "the import writes the copy again")
 	assert.Equal(t, "Tell me", copied.Routines[0].Name)
+}
+
+func TestTheInboxReadsTheRoutinesSearchesForTheAccountSignedIn(t *testing.T) {
+	t.Parallel()
+
+	c := bootstrap(t, testOptions(t, ".claude"))
+	ctx := t.Context()
+
+	search := watch.Search{Kind: item.KindPR, Authors: []string{"app/dependabot"}, Where: []string{watch.Me}}
+	routine := boundSpec()
+	routine.Watch.Sources = []spec.Source{{Search: &search}}
+
+	saved, err := c.Autopilot.Save(ctx, autopilot.Draft{Name: "Dependabot", Spec: routine})
+	require.NoError(t, err)
+
+	_, err = c.Autopilot.SetEnabled(ctx, saved.ID, true)
+	require.NoError(t, err)
+
+	source := &autopilotWatches{searches: autopilot.NewSearches(c.Autopilot)}
+	assert.Empty(t, source.Watches(""), "no one is signed in, so your account names no one")
+
+	require.NoError(t, prefsstore.New(c.DB, nil).Set(ctx, "inbox.viewer", "octo-user"))
+
+	got := source.Watches("octo-user")
+	require.Len(t, got, 1, "the account signed in changed, so the searches are built again")
+	assert.Contains(t, got[0].Query, "user:octo-user")
+	assert.True(t, got[0].Follow, "Checks fail reads the checks")
+	assert.NotNil(t, c.WatchPasses, "the desktop shell runs the watch passes")
 }

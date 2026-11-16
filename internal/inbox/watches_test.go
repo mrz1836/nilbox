@@ -98,7 +98,7 @@ func newWatchHarness(t *testing.T) *watchHarness {
 	go func() {
 		defer close(done)
 
-		h.svc.RunWatchPasses(ctx)
+		h.svc.runWatchPasses(ctx)
 	}()
 
 	h.stop = func() {
@@ -255,7 +255,7 @@ func TestAWatchPassStoresWatchedItemsOutOfTheLists(t *testing.T) {
 		assert.Empty(t, again.Assigned.Items)
 		assert.Equal(t, 1, again.ReviewRequested.Total, "a watched item is in no list's count")
 
-		last, ok := h.svc.LastWatchPass()
+		last, ok := h.svc.lastWatchPass()
 		require.True(t, ok)
 		assert.Equal(t, 1, last.Searches)
 		assert.Equal(t, 2, last.Items)
@@ -365,7 +365,7 @@ func TestAFailingWatchRequestNeverCancelsTheInboxQuery(t *testing.T) {
 		go func() {
 			defer close(done)
 
-			h.svc.RunWatchPasses(ctx)
+			h.svc.runWatchPasses(ctx)
 		}()
 
 		h.stop = func() { cancel(); <-done }
@@ -474,7 +474,7 @@ func TestAFailedSearchKeepsItsRowsStale(t *testing.T) {
 		assert.NotEmpty(t, status.Searches[depQuery].FailedAt)
 		assert.Equal(t, 2, status.Searches[depQuery].Count, "the last count is kept, for packing")
 
-		last, _ := h.svc.LastWatchPass()
+		last, _ := h.svc.lastWatchPass()
 		assert.Equal(t, 1, last.Failed)
 	})
 }

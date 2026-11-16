@@ -247,7 +247,7 @@ func assemble(l launch) (*application.App, *desktop.Shell, error) {
 
 	ui := &desktopUI{}
 	workers := []desktop.Worker{
-		c.Scheduler, c.GHThreadsSyncer, c.ChecksFollower, c.Sweeper, c.BudgetSaver, c.Watcher, c.Rereads,
+		c.WatchPasses, c.Scheduler, c.GHThreadsSyncer, c.ChecksFollower, c.Sweeper, c.BudgetSaver, c.Watcher, c.Rereads,
 		c.ReleaseRefresher, c.ReleaseChecksFollower, c.HooksScans,
 	}
 	shell := desktop.New(desktop.Config{
