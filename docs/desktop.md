@@ -1100,8 +1100,10 @@ all go through one runner, which keeps a record of each run and its whole output
   release the app hasn't finished checking on GitHub by then stays recorded as going, and the
   next start checks it. Runs in your terminal are left running. While the app moves itself to
   Applications, a quit waits for the move instead, then goes ahead
-  ([Moving to Applications](#moving-to-applications)). Closing the window never asks: the app
-  keeps running in the menu bar. A logout, a restart, or a shutdown asks the app to quit too,
+  ([Moving to Applications](#moving-to-applications)). Closing the window quits the same way,
+  and asks the same question in the window, which stays open for it, unless the app keeps
+  running on a close ([Closing the window](#menu-bar-and-notifications)): then the window only
+  hides, and nothing is asked. A logout, a restart, or a shutdown asks the app to quit too,
   so while a run goes in the app, macOS cancels it and names the app, as Terminal does for a
   running command; answer the question, then try again.
 - **After a crash or a restart.** Once the window paints, the app checks every run still recorded
@@ -2832,7 +2834,11 @@ update's rows change, so the count is right without waiting for a refresh.
 **Closing the window.** While the icon is in the menu bar, closing the window only hides it:
 the app keeps refreshing, keeps the count current, and can still show notifications. The icon,
 its **Open Nilbox**, or the Dock icon brings the window back; quit from the icon's menu or with
-⌘Q. Turn the icon off in Settings → Notifications, and closing the window quits the app.
+⌘Q. While an [Autopilot](#autopilot) routine is on or an agent works, closing the window only
+hides it even with the icon off. Otherwise (the icon off in Settings → Notifications, and no
+routine on) closing the window quits the app, as ⌘Q does: while a run goes in the app, the
+window stays and asks first ([Runs](#runs)). The log says *the app quit* as it does, so a quit
+can be told from a crash there.
 
 **What is notified.** After each refresh, the app compares the lists with the last refresh's
 and records what newly needs you; a release or a run is recorded as it ends, and a change of

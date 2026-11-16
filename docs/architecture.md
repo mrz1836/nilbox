@@ -1747,11 +1747,19 @@ shows. Core's relay sends one on each `AutopilotChanged`, so a Pause made in Set
 the tick of the copy it was made in at once, whether or not that copy holds the engine; a
 Pause made in another copy reaches a copy that doesn't hold the engine on its next engine
 tick (`followElsewhere`, within a minute), and the copy that holds it on its next cycle. It
-keeps what it last read of keeping the app running and of Pause. `HidesOnClose` answers on
-the main thread from that alone: yes while the icon shows, and yes while Autopilot has a
-routine on or an agent working, whatever the icon setting, since the close would otherwise
-quit the app (`ApplicationShouldTerminateAfterLastWindowClosed`) and quietly stop them; the
-Dock icon brings the window back (`ApplicationShouldHandleReopen`). A close hidden for Autopilot
+keeps what it last read of keeping the app running and of Pause. `HidesOnClose` answers at
+once from that alone: yes while the icon shows, and yes while Autopilot has a routine on or an
+agent working, whatever the icon setting, since the close would otherwise quit the app and
+quietly stop them; the Dock icon brings the window back (`ApplicationShouldHandleReopen`).
+The window's close hook asks `Shell.WindowClosing`, whose pure rule is `CloseOf`
+(`internal/desktop/close.go`): the close goes through while the shell is stopping (the
+runtime's own shutdown closes the window once the services have stopped, so a quit's own close
+never quits again), the window only hides while `HidesOnClose` says so, and otherwise the
+window stays and the shell quits the normal way (`Quit`), so `ShouldQuit` asks about runs going,
+or holds the quit for a move, in a window that still exists. The app never quits on the last
+window's close by itself: `ApplicationShouldTerminateAfterLastWindowClosed` stays off
+(`macAppOptions`), since AppKit asks it as the last visible window hides too, and with it on a
+close that only hid the window ended the app a moment later. A close hidden for Autopilot
 alone is noted, and the next time the window shows (`showWindow`, every way it comes forward)
 the page hears `event.KeptRunning` (`app:keptRunning`) once, and says why the app kept running,
 once ever (`ui.keptRunningTold`, window memory a backup never holds). A click on an Autopilot
