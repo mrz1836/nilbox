@@ -1163,8 +1163,8 @@ func (q *Queries) ListRoutineNames(ctx context.Context) ([]ListRoutineNamesRow, 
 }
 
 const listRunsSince = `-- name: ListRunsSince :many
-SELECT id, routine_id, item_id, runner, status, manual, budget_reserved, budget_unit, cost, tokens_in, tokens_out,
-       cache_read_tokens, queued_at
+SELECT id, routine_id, item_id, runner, status, outcome, manual, budget_reserved, budget_unit, cost, tokens_in,
+       tokens_out, cache_read_tokens, queued_at
 FROM autopilot_runs
 WHERE queued_at >= ?1 OR status IN ('starting', 'running', 'stopping')
 `
@@ -1175,6 +1175,7 @@ type ListRunsSinceRow struct {
 	ItemID          *int64
 	Runner          string
 	Status          string
+	Outcome         string
 	Manual          bool
 	BudgetReserved  float64
 	BudgetUnit      string
@@ -1202,6 +1203,7 @@ func (q *Queries) ListRunsSince(ctx context.Context, since time.Time) ([]ListRun
 			&i.ItemID,
 			&i.Runner,
 			&i.Status,
+			&i.Outcome,
 			&i.Manual,
 			&i.BudgetReserved,
 			&i.BudgetUnit,

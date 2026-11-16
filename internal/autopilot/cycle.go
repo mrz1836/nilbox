@@ -1075,17 +1075,22 @@ func (p *pass) save(ctx context.Context, m *match) {
 // save writes m when it changed, logging a change that failed: the next cycle reads it
 // again.
 func (e *Engine) save(ctx context.Context, m *match) {
+	if err := e.saveIn(ctx, e.ledger.q, m); err != nil {
+		e.logger.WarnContext(ctx, "Autopilot could not save a match", "match", m.ID, "error", err)
+	}
+}
+
+// saveIn writes m through q when it changed, stamping when it closed.
+func (e *Engine) saveIn(ctx context.Context, q *queries.Queries, m *match) error {
 	if !m.dirty() {
-		return
+		return nil
 	}
 
 	if !m.state().Open() && m.ClosedAt == nil {
 		m.ClosedAt = new(e.clock.Now())
 	}
 
-	if err := e.ledger.update(ctx, e.ledger.q, m); err != nil {
-		e.logger.WarnContext(ctx, "Autopilot could not save a match", "match", m.ID, "error", err)
-	}
+	return e.ledger.update(ctx, q, m)
 }
 
 // askReads asks, on workers, for the check names of the pull requests whose decision

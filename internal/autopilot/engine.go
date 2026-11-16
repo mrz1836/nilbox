@@ -250,9 +250,11 @@ type Engine struct {
 	checking     bool
 
 	// checks counts the checks of the runs going, and gone holds, by run, the check that
-	// first found it gone or never started, which a later one must confirm.
-	checks int
-	gone   map[int64]int
+	// first found it gone or never started, which a later one must confirm; unsaved holds
+	// the runs' ends that couldn't be written, tried again on the next tick.
+	checks  int
+	gone    map[int64]sighting
+	unsaved map[int64]RunEnd
 
 	// endsMu guards ending, the runs whose RunEnded is posted but not yet applied.
 	endsMu sync.Mutex
@@ -326,7 +328,8 @@ func NewEngine(svc *Service, cfg EngineConfig) *Engine {
 		mail: mailbox{signal: make(chan struct{}, 1)}, closed: make(chan struct{}),
 		inflight: map[int64]bool{}, freshReads: map[int64]fresh{}, stopping: map[int64]stopAsk{},
 		stateReads: map[int64]time.Time{}, statesAsked: map[int64]bool{},
-		checksRead: map[int64]time.Time{}, gone: map[int64]int{}, ending: map[int64]int{},
+		checksRead: map[int64]time.Time{}, gone: map[int64]sighting{}, unsaved: map[int64]RunEnd{},
+		ending: map[int64]int{},
 	}
 
 	if e.dispatchers == nil {
@@ -478,6 +481,8 @@ func (e *Engine) onTick(ctx context.Context) {
 	}
 
 	e.svc.rebuildWatches(ctx)
+	e.retryEnds(ctx)
+	e.unstrand(ctx)
 	e.reconcile(ctx)
 }
 

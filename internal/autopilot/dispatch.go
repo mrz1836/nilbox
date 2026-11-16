@@ -124,8 +124,12 @@ type Runner interface {
 	// Alive says what the runner knows of the run with the ledger's ID. A run stays
 	// LiveAlive until its RunEnded has been delivered (the call returned), so the engine
 	// never takes a run that is ending for one that ended unseen. LiveNever is a positive
-	// answer: the runner has no record of the run ever starting, as for a start the
-	// quit cut off before it reached the runner. An error is LiveUnknown.
+	// answer, and puts the start back in the queue to run again: the runner has no record
+	// of the run ever starting, as for a start the quit cut off before it reached the
+	// runner. It must hold across restarts, and never come from a history that forgets
+	// runs: a runner that prunes its records answers LiveGone, or LiveUnknown, for a run
+	// it no longer knows, so a run that started and crashed is never run again on its own.
+	// An error is LiveUnknown.
 	Alive(ctx context.Context, runID int64) (Liveness, error)
 }
 
@@ -193,6 +197,12 @@ const (
 
 	// RunNotSent is a GitHub action that sent nothing.
 	RunNotSent RunOutcome = "not_sent"
+
+	// RunNotStarted is one that never reached its runner, as a start the quit cut off, or
+	// one the runner refused as it closed: it counts as no run and no try, against no
+	// limit, and its match goes back to the queue. Only the engine records it; a runner
+	// that tells it of a run it was handed is taken as telling RunInterrupted.
+	RunNotStarted RunOutcome = "not_started"
 )
 
 // Holds is what a later part of the app says holds a start back, beyond the engine's own

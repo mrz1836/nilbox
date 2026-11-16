@@ -668,62 +668,95 @@ func (e *Engine) dispatch(ctx context.Context, matchID, runID int64, d catalog.D
 }
 
 // applyDispatch records how a dispatch went: a local step's end, a run that goes on, or a
-// GitHub action sent, not sent, or held for a warning.
+// GitHub action sent, not sent, or held for a warning. The run's end and the match's move
+// are written in one transaction, so neither is ever recorded without the other.
 func (e *Engine) applyDispatch(ctx context.Context, matchID, runID int64, res Result, err error) {
-	m, getErr := e.ledger.get(ctx, matchID)
-	if getErr != nil || !m.state().Open() || int(m.Step) >= len(m.steps) {
-		return
-	}
-
-	sr := &m.steps[m.Step]
 	now := e.clock.Now()
 
-	if err != nil {
-		e.dispatchFailed(ctx, m, sr, runID, err, now)
-	} else if !e.dispatchAnswered(ctx, m, sr, runID, res, now) {
-		return
-	}
+	txErr := e.ledger.inTx(ctx, func(q *queries.Queries) error {
+		m, getErr := e.ledger.getIn(ctx, q, matchID)
 
-	e.save(ctx, m)
+		switch {
+		case errors.Is(getErr, ErrNoMatch):
+			return nil
+		case getErr != nil:
+			return getErr
+		case !m.state().Open() || int(m.Step) >= len(m.steps):
+			return nil
+		}
+
+		sr := &m.steps[m.Step]
+		moved := true
+
+		var writeErr error
+
+		if err != nil {
+			writeErr = e.dispatchFailed(ctx, q, m, sr, runID, err, now)
+		} else {
+			moved, writeErr = e.dispatchAnswered(ctx, q, m, sr, runID, res, now)
+		}
+
+		if writeErr != nil || !moved {
+			return writeErr
+		}
+
+		return e.saveIn(ctx, q, m)
+	})
+	if txErr != nil {
+		e.logger.WarnContext(ctx, "Autopilot could not record how a step went", "match", matchID, "error", txErr)
+	}
 }
 
 // dispatchFailed records a dispatch that failed: one the runner refused as it closed
-// stays queued for the next start, as no try, and any other fails its step.
-func (e *Engine) dispatchFailed(ctx context.Context, m *match, sr *stepRun, runID int64, err error, now time.Time) {
+// never started, and stays queued for the next start, as no run and no try; any other
+// fails its step.
+func (e *Engine) dispatchFailed(ctx context.Context, q *queries.Queries, m *match, sr *stepRun, runID int64, err error,
+	now time.Time,
+) error {
 	if runID != 0 && errors.Is(err, ErrClosed) {
 		e.runnerClosed = true
-		e.endRun(ctx, runID, RunEnd{Outcome: RunInterrupted, Error: err.Error(), EndedAt: now}, false)
+
+		if _, endErr := e.endRunIn(ctx, q, runID, RunEnd{Outcome: RunNotStarted, Error: err.Error(), EndedAt: now}, false, false); endErr != nil {
+			return endErr
+		}
 
 		sr.Status, sr.RunID, sr.Started = stepPending, 0, nil
 
 		m.unstarted()
 		m.set(StateQueued, "", "")
 
-		return
+		return nil
 	}
 
-	e.endRunIf(ctx, runID, RunEnd{Outcome: RunFailed, Error: err.Error(), EndedAt: now}, true)
+	if endErr := e.endRunIf(ctx, q, runID, RunEnd{Outcome: RunFailed, Error: err.Error(), EndedAt: now}, true); endErr != nil {
+		return endErr
+	}
 
 	sr.Status, sr.Note, sr.Ended = stepFailed, textutil.Sentence(err.Error()), new(now)
 	m.Step++
 
 	m.set(StateQueued, "", "")
+
+	return nil
 }
 
 // dispatchAnswered records a dispatch's answer, and reports whether m changed: a run that
 // goes on changes only the run.
-func (e *Engine) dispatchAnswered(ctx context.Context, m *match, sr *stepRun, runID int64, res Result, now time.Time,
-) bool {
+func (e *Engine) dispatchAnswered(ctx context.Context, q *queries.Queries, m *match, sr *stepRun, runID int64, res Result,
+	now time.Time,
+) (bool, error) {
+	var err error
+
 	switch {
 	case res.Running:
-		e.setRunStatus(ctx, runID, runStarting, runRunning)
+		_, err = q.SetRunStatus(ctx, queries.SetRunStatusParams{Status: runRunning, UpdatedAt: now, ID: runID, Was: runStarting})
 
-		return false
+		return false, err
 	case res.NotOffered != "":
-		e.endRunIf(ctx, runID, RunEnd{Outcome: RunNotSent, Summary: res.NotOffered, EndedAt: now}, false)
+		err = e.endRunIf(ctx, q, runID, RunEnd{Outcome: RunNotSent, Summary: res.NotOffered, EndedAt: now}, false)
 		m.close(StateClosed, ReasonNotOffered, res.NotOffered, now)
 	case res.Warning != "":
-		e.endRunIf(ctx, runID, RunEnd{Outcome: RunNotSent, Summary: res.Warning, EndedAt: now}, false)
+		err = e.endRunIf(ctx, q, runID, RunEnd{Outcome: RunNotSent, Summary: res.Warning, EndedAt: now}, false)
 
 		sr.Status, sr.RunID = stepPending, 0
 		m.Approved = false
@@ -735,7 +768,7 @@ func (e *Engine) dispatchAnswered(ctx context.Context, m *match, sr *stepRun, ru
 			outcome = RunNotSent
 		}
 
-		e.endRunIf(ctx, runID, RunEnd{Outcome: outcome, Summary: res.Summary, EndedAt: now}, outcome == RunDone)
+		err = e.endRunIf(ctx, q, runID, RunEnd{Outcome: outcome, Summary: res.Summary, EndedAt: now}, outcome == RunDone)
 
 		sr.Status, sr.Outcome, sr.Note, sr.Ended = stepDone, string(res.Outcome), res.Summary, new(now)
 		m.Step++
@@ -743,24 +776,24 @@ func (e *Engine) dispatchAnswered(ctx context.Context, m *match, sr *stepRun, ru
 		m.set(StateQueued, "", "")
 	}
 
-	return true
+	return true, err
 }
 
-// endRunIf ends the run runID, when there is one.
-func (e *Engine) endRunIf(ctx context.Context, runID int64, end RunEnd, counted bool) {
-	if runID != 0 {
-		e.endRun(ctx, runID, end, counted)
+// endRunIf ends the run runID, when there is one, through q.
+func (e *Engine) endRunIf(ctx context.Context, q *queries.Queries, runID int64, end RunEnd, counted bool) error {
+	if runID == 0 {
+		return nil
 	}
+
+	_, err := e.endRunIn(ctx, q, runID, end, counted, false)
+
+	return err
 }
 
-// endRun records how a run ended, while it hadn't, and reports whether it did.
-func (e *Engine) endRun(ctx context.Context, runID int64, end RunEnd, counted bool) bool {
-	return e.recordEnd(ctx, runID, end, counted, false)
-}
-
-// recordEnd records how a run ended, and reports whether it did: while it hadn't ended,
-// or with late, over the interrupted end the engine recorded for it.
-func (e *Engine) recordEnd(ctx context.Context, runID int64, end RunEnd, counted, late bool) bool {
+// endRunIn records through q how a run ended, and reports whether it did: while it hadn't
+// ended, or with late, over the interrupted end the engine recorded for it.
+func (e *Engine) endRunIn(ctx context.Context, q *queries.Queries, runID int64, end RunEnd, counted, late bool,
+) (bool, error) {
 	if end.EndedAt.IsZero() {
 		end.EndedAt = e.clock.Now()
 	}
@@ -777,16 +810,45 @@ func (e *Engine) recordEnd(ctx context.Context, runID int64, end RunEnd, counted
 	)
 
 	if late {
-		n, err = e.ledger.q.ReviseRunEnd(ctx, queries.ReviseRunEndParams(params))
+		n, err = q.ReviseRunEnd(ctx, queries.ReviseRunEndParams(params))
 	} else {
-		n, err = e.ledger.q.EndRun(ctx, params)
+		n, err = q.EndRun(ctx, params)
 	}
 
 	if err != nil {
-		e.logger.WarnContext(ctx, "Autopilot could not record a run's end", "run", runID, "error", err)
+		return false, fmt.Errorf("record the end of run %d: %w", runID, err)
 	}
 
-	return err == nil && n > 0
+	return n > 0, nil
+}
+
+// endAndMove records how run ended and, in the same transaction, moves its match as move
+// says, while the match is open with the run's step, so a run's end and its match's move
+// are written together or not at all.
+func (e *Engine) endAndMove(ctx context.Context, run queries.AutopilotRun, end RunEnd, counted, late bool,
+	move func(m *match),
+) error {
+	return e.ledger.inTx(ctx, func(q *queries.Queries) error {
+		ended, err := e.endRunIn(ctx, q, run.ID, end, counted, late)
+		if err != nil || !ended {
+			return err
+		}
+
+		m, err := e.ledger.getIn(ctx, q, run.MatchID)
+
+		switch {
+		case errors.Is(err, ErrNoMatch):
+			return nil
+		case err != nil:
+			return err
+		case !m.state().Open() || int(run.Step) >= len(m.steps):
+			return nil
+		}
+
+		move(m)
+
+		return e.saveIn(ctx, q, m)
+	})
 }
 
 // setRunStatus moves a run from one status to the next.
@@ -799,49 +861,65 @@ func (e *Engine) setRunStatus(ctx context.Context, runID int64, was, status stri
 	}
 }
 
-// applyRunEnd records how a run its runner told of ended, and moves its match on: an
-// interrupted run waits for the user, one stopped closes its match, and one that ended
-// goes on to the next step, verifying when it pushed and the checks are next. A stop the
-// engine asked for the run's item names why it was stopped, even when that stop failed
-// and the run ended stopped anyway. A runner's word that comes once the engine recorded
-// the run interrupted, having found it gone, is kept over that record, its cost and its
-// commit with it, and moves the match on while it still waits on that interruption.
+// applyRunEnd records how a run its runner told of ended, and moves its match on, in one
+// transaction: an interrupted run waits for the user, one stopped closes its match, and one
+// that ended goes on to the next step, verifying when it pushed and the checks are next. A
+// stop the engine asked for the run's item names why it was stopped, even when that stop
+// failed and the run ended stopped anyway. A runner's word that comes once the engine
+// recorded the run interrupted, having found it gone, is kept over that record, its cost
+// and its commit with it, and moves the match on while it still waits on that
+// interruption. An end that couldn't be written is tried again on the next tick.
 func (e *Engine) applyRunEnd(ctx context.Context, end RunEnd) {
 	run, late, ok := e.endable(ctx, end)
 	if !ok {
 		return
 	}
 
-	forItem := e.stoppedFor(&end)
-	delete(e.gone, end.RunID)
-
-	if !e.recordEnd(ctx, end.RunID, end, endCounts(run, end), late) {
-		return
+	// Only the engine knows a start never happened; a runner that says so of a run it was
+	// handed is taken as having been interrupted.
+	if end.Outcome == RunNotStarted {
+		end.Outcome = RunInterrupted
 	}
 
-	m, err := e.ledger.get(ctx, run.MatchID)
-	if err != nil || !m.state().Open() || int(run.Step) >= len(m.steps) {
-		return
-	}
+	told, forItem := e.stoppedFor(end)
 
-	if late {
-		if !waitsOn(m, run) {
-			return
+	err := e.endAndMove(ctx, run, told, endCounts(run, told), late, func(m *match) {
+		if late {
+			if !waitsOn(m, run) {
+				return
+			}
+
+			m.steps[run.Step].RunID = run.ID
 		}
 
-		m.steps[run.Step].RunID = run.ID
+		e.moveOn(m, run.Step, told, forItem, e.clock.Now())
+	})
+	if err != nil {
+		e.logger.WarnContext(ctx, "Autopilot could not record a run's end; it tries again", "run", end.RunID, "error", err)
+		e.unsaved[end.RunID] = end
+
+		return
 	}
 
-	e.moveOn(m, run.Step, end, forItem, e.clock.Now())
-	e.save(ctx, m)
+	delete(e.stopping, end.RunID)
+	delete(e.gone, end.RunID)
 	e.Wake()
+}
+
+// retryEnds applies again the runs' ends that couldn't be written.
+func (e *Engine) retryEnds(ctx context.Context) {
+	for id, end := range e.unsaved {
+		delete(e.unsaved, id)
+		e.applyRunEnd(ctx, end)
+	}
 }
 
 // endCounts reports whether a run that ended as end says counts as a try: not a manual
 // run, an interrupted one, one the engine stopped for its item, or a GitHub action that sent
 // nothing.
 func endCounts(run queries.AutopilotRun, end RunEnd) bool {
-	return !run.Manual && end.Outcome != RunInterrupted && !end.StoppedForMe && end.Outcome != RunNotSent
+	return !run.Manual && end.Outcome != RunInterrupted && end.Outcome != RunNotStarted && !end.StoppedForMe &&
+		end.Outcome != RunNotSent
 }
 
 // endable reads the run end is for, and reports whether end applies to it, and late when
@@ -860,20 +938,18 @@ func (e *Engine) endable(ctx context.Context, end RunEnd) (queries.AutopilotRun,
 	return run, true, run.Outcome == string(RunInterrupted) && end.Outcome != RunInterrupted
 }
 
-// stoppedFor returns why the engine stopped the run that ended as end says, "" when it
-// didn't, and forgets the stop: a run the engine asked to stop ended stopped for its item,
-// as did one that ended stopped after a stop that failed.
-func (e *Engine) stoppedFor(end *RunEnd) Reason {
+// stoppedFor returns end as the engine records it, and why the engine stopped the run, ""
+// when it didn't: a run the engine asked to stop ended stopped for its item, as did one
+// that ended stopped after a stop that failed.
+func (e *Engine) stoppedFor(end RunEnd) (RunEnd, Reason) {
 	ask, asked := e.stopping[end.RunID]
-	delete(e.stopping, end.RunID)
-
 	if !asked || !ask.failedAt.IsZero() && end.Outcome != RunStopped {
-		return ""
+		return end, ""
 	}
 
 	end.Outcome, end.StoppedForMe = RunStopped, true
 
-	return ask.reason
+	return end, ask.reason
 }
 
 // waitsOn reports a match that still waits on run's interruption: at the run's step, with
@@ -894,7 +970,7 @@ func (e *Engine) moveOn(m *match, index int64, end RunEnd, forItem Reason, now t
 	sr.Ended = new(now)
 
 	switch end.Outcome {
-	case RunInterrupted:
+	case RunInterrupted, RunNotStarted:
 		sr.Status, sr.RunID, sr.Ended = stepPending, 0, nil
 		m.Approved = false
 
@@ -1099,7 +1175,7 @@ func (e *Engine) forgetGone(runs []queries.AutopilotRun) {
 		going[r.ID] = true
 	}
 
-	maps.DeleteFunc(e.gone, func(id int64, _ int) bool { return !going[id] })
+	maps.DeleteFunc(e.gone, func(id int64, _ sighting) bool { return !going[id] })
 }
 
 // settleRun settles a run the ledger records as going that no worker of this copy is
@@ -1115,7 +1191,7 @@ func (e *Engine) forgetGone(runs []queries.AutopilotRun) {
 // one still unknown unknownFor after it started ends interrupted, so no run is taken as
 // going for good.
 func (e *Engine) settleRun(ctx context.Context, run queries.AutopilotRun, found Liveness) {
-	if e.inflight[run.MatchID] || e.endPending(run.ID) {
+	if _, unsaved := e.unsaved[run.ID]; unsaved || e.inflight[run.MatchID] || e.endPending(run.ID) {
 		return
 	}
 
@@ -1134,11 +1210,12 @@ func (e *Engine) settleAgentRun(ctx context.Context, run queries.AutopilotRun, f
 	case LiveAlive:
 		delete(e.gone, run.ID)
 	case LiveNever, LiveGone:
-		if !e.confirmGone(run.ID) {
+		confirmed, never := e.confirmGone(run.ID, found)
+		if !confirmed {
 			return
 		}
 
-		if found == LiveNever && run.Status == runStarting {
+		if never && run.Status == runStarting {
 			e.unstart(ctx, run)
 		} else {
 			e.applyRunEnd(ctx, RunEnd{RunID: run.ID, Outcome: RunInterrupted, Error: "the app stopped while it ran"})
@@ -1150,40 +1227,53 @@ func (e *Engine) settleAgentRun(ctx context.Context, run queries.AutopilotRun, f
 	}
 }
 
-// confirmGone reports whether an earlier check found the run gone too, or never started;
-// the first check to find it so is only noted.
-func (e *Engine) confirmGone(runID int64) bool {
+// sighting is the first check that found a run gone or never started, and whether it
+// said never.
+type sighting struct {
+	check int
+	never bool
+}
+
+// confirmGone reports whether an earlier check found the run gone too, or never started,
+// and never when both said the runner never started it; the first check to find it so is
+// only noted.
+func (e *Engine) confirmGone(runID int64, found Liveness) (bool, bool) {
 	first, seen := e.gone[runID]
 	if !seen {
-		e.gone[runID] = e.checks
+		e.gone[runID] = sighting{check: e.checks, never: found == LiveNever}
 
-		return false
+		return false, false
 	}
 
-	if first >= e.checks {
-		return false
+	if first.check >= e.checks {
+		return false, false
 	}
 
 	delete(e.gone, runID)
 
-	return true
+	return true, first.never && found == LiveNever
 }
 
-// unstart puts a run that never started back in the queue: the run ends, counting as no
-// try, and its match, still at that run, waits to start it again, its OK kept, and is
-// decided again like any queued match.
+// unstart puts a run that never started back in the queue, in one transaction: the run
+// ends as not started, counting as no run and no try, and its match, still at that run,
+// waits to start it again, its OK kept, and is decided again like any queued match.
 func (e *Engine) unstart(ctx context.Context, run queries.AutopilotRun) {
-	if !e.endRun(ctx, run.ID, RunEnd{Outcome: RunInterrupted, Error: "it never started"}, false) {
+	err := e.endAndMove(ctx, run, RunEnd{Outcome: RunNotStarted, Error: "it never started"}, false, false,
+		func(m *match) { putBack(m, run) })
+	if err != nil {
+		e.logger.WarnContext(ctx, "Autopilot could not put a start back in the queue", "run", run.ID, "error", err)
+
 		return
 	}
 
-	m, err := e.ledger.get(ctx, run.MatchID)
-	if err != nil || m.state() != StateRunning || m.Step != run.Step || int(run.Step) >= len(m.steps) {
-		return
-	}
+	e.Wake()
+}
 
+// putBack puts m, while it is still at run, back in the queue to start run's step again,
+// taking back the run its start counted.
+func putBack(m *match, run queries.AutopilotRun) {
 	sr := &m.steps[run.Step]
-	if sr.RunID != run.ID {
+	if m.state() != StateRunning || m.Step != run.Step || sr.RunID != run.ID {
 		return
 	}
 
@@ -1191,8 +1281,69 @@ func (e *Engine) unstart(ctx context.Context, run queries.AutopilotRun) {
 
 	m.unstarted()
 	m.set(StateQueued, "", "")
-	e.save(ctx, m)
-	e.Wake()
+}
+
+// unstrand finds the running matches whose run at their step has ended, as when a match's
+// move was lost once its run's end was written, and moves each on by that end, so no match
+// is left running for good: a start that never happened goes back to the queue, an end the
+// ledger keeps moves it on as it would have, and one it can't tell (a stop, whoever asked
+// for it) waits for the user as interrupted.
+func (e *Engine) unstrand(ctx context.Context) {
+	open, err := e.ledger.open(ctx)
+	if err != nil {
+		e.logger.WarnContext(ctx, "Autopilot could not read the open matches", "error", err)
+
+		return
+	}
+
+	for _, m := range open {
+		if run, stranded := e.stranded(ctx, m); stranded {
+			e.moveByRecord(m, run)
+			e.save(ctx, m)
+		}
+	}
+}
+
+// stranded returns the run m is running at its step, and reports whether the ledger
+// records it as ended with no end of it on its way.
+func (e *Engine) stranded(ctx context.Context, m *match) (queries.AutopilotRun, bool) {
+	if m.state() != StateRunning || e.inflight[m.ID] || int(m.Step) >= len(m.steps) {
+		return queries.AutopilotRun{}, false
+	}
+
+	sr := m.steps[m.Step]
+	if sr.Status != stepRunning || sr.RunID == 0 {
+		return queries.AutopilotRun{}, false
+	}
+
+	run, err := e.ledger.q.GetRun(ctx, sr.RunID)
+	_, unsaved := e.unsaved[run.ID]
+
+	return run, err == nil && run.Status == runEnded && !unsaved && !e.endPending(run.ID)
+}
+
+// moveByRecord moves m on by how the ledger recorded run ended.
+func (e *Engine) moveByRecord(m *match, run queries.AutopilotRun) {
+	end := RunEnd{
+		RunID: run.ID, Outcome: RunOutcome(run.Outcome), Commit: run.RunCommit, Head: run.HeadAfter,
+		Summary: run.Summary, Error: run.Error,
+	}
+	now := e.clock.Now()
+
+	switch {
+	case end.Outcome == RunNotStarted:
+		putBack(m, run)
+	case run.Runner == runnerGitHub && (end.Outcome == RunDone || end.Outcome == RunNotSent):
+		cur := &m.steps[m.Step]
+		cur.Status, cur.Note, cur.Ended = stepDone, end.Summary, new(now)
+		m.Step++
+
+		m.set(StateQueued, "", "")
+	case end.Outcome == RunDone, end.Outcome == RunFailed, end.Outcome == RunInterrupted:
+		e.moveOn(m, m.Step, end, "", now)
+	default:
+		e.moveOn(m, m.Step, RunEnd{RunID: run.ID, Outcome: RunInterrupted}, "", now)
+	}
 }
 
 // alive says what is known of a run the ledger records as going: a GitHub action is
@@ -1250,8 +1401,12 @@ func (e *Engine) dayCounts(ctx context.Context, now time.Time) (dayCounts, error
 	return out, nil
 }
 
-// add counts one of the day's runs.
+// add counts one of the day's runs; one that never started counts toward nothing.
 func (d *dayCounts) add(r queries.ListRunsSinceRow, day time.Time) {
+	if RunOutcome(r.Outcome) == RunNotStarted {
+		return
+	}
+
 	active := r.Status == runStarting || r.Status == runRunning || r.Status == runStopping
 	today := !r.QueuedAt.Before(day)
 

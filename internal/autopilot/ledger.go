@@ -342,7 +342,12 @@ func (l *ledger) open(ctx context.Context) ([]*match, error) {
 
 // get returns one match.
 func (l *ledger) get(ctx context.Context, id int64) (*match, error) {
-	row, err := l.q.GetMatch(ctx, id)
+	return l.getIn(ctx, l.q, id)
+}
+
+// getIn returns one match, read through q.
+func (l *ledger) getIn(ctx context.Context, q *queries.Queries, id int64) (*match, error) {
+	row, err := q.GetMatch(ctx, id)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNoMatch
 	}

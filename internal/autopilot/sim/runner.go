@@ -104,6 +104,16 @@ func (r *Runner) Forget(runID int64) {
 	delete(r.going, runID)
 }
 
+// Lose forgets a run altogether, as a runner whose history drops old runs does, breaking
+// the contract: it then says it never started it.
+func (r *Runner) Lose(runID int64) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	delete(r.going, runID)
+	r.started = slices.DeleteFunc(r.started, func(j autopilot.Job) bool { return j.RunID == runID })
+}
+
 // Dispatch starts a run.
 func (r *Runner) Dispatch(ctx context.Context, job autopilot.Job) (autopilot.Result, error) {
 	r.mu.Lock()
