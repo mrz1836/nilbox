@@ -93,7 +93,7 @@ func (s *Service) applying(ctx context.Context, current Current, change func(ctx
 	asks func(after Routine) bool,
 ) (Routine, error) {
 	e := s.engine
-	if e == nil || !e.lock.Held() {
+	if e == nil || !e.isRunning() || !e.lock.Held() {
 		return change(ctx)
 	}
 

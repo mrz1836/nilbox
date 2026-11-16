@@ -469,6 +469,14 @@ func (e *Engine) setHolds(holds, elsewhere bool) bool {
 	return was
 }
 
+// isRunning reports whether the loop runs.
+func (e *Engine) isRunning() bool {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+
+	return e.status.Running
+}
+
 // setStatus changes the status under its lock.
 func (e *Engine) setStatus(fn func(s *EngineStatus)) {
 	e.mu.Lock()
@@ -482,11 +490,7 @@ func (e *Engine) setStatus(fn func(s *EngineStatus)) {
 func (e *Engine) do(ctx context.Context, fn func(ctx context.Context) error) error {
 	c := command{fn: fn, reply: make(chan error, 1)}
 
-	e.mu.Lock()
-	running := e.status.Running
-	e.mu.Unlock()
-
-	if !running {
+	if !e.isRunning() {
 		return uierr.New("Autopilot is starting; try again in a moment.", ErrNotRunning)
 	}
 
