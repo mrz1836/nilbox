@@ -1058,7 +1058,8 @@ export const { Status: getServiceStatus, CheckNow: checkServiceStatus } = servic
 // its figures; RoutineNames every routine's name, a deleted one's too, for the marks; Engine
 // what the engine last did, and whether this copy runs it. Activity is a page of what the
 // routines did before a match (0 for the newest), by day, and ActivityFrom what they did
-// from a match on, the pages loaded read again; ItemHistory one item's, which its
+// from a match on and before another (0 for the newest), a stretch of the pages loaded read
+// again; ItemHistory one item's, which its
 // ⚡ chip opens; LatestMatches each item's newest match, which the chip says. Watching lists
 // the items a routine watches, which the inbox's ItemsByID turns into rows. Matching counts
 // what a routine matches now that it has no record of, the question SetEnabled and SetMode
@@ -1111,6 +1112,7 @@ export const autopilotActivity = autopilotService.Activity as (
 ) => CancellablePromise<AutopilotActivityPage>
 export const autopilotActivityFrom = autopilotService.ActivityFrom as (
   from: number,
+  before: number,
   limit: number,
 ) => CancellablePromise<AutopilotActivityPage>
 export const autopilotItemHistory = autopilotService.ItemHistory as (id: number) => CancellablePromise<AutopilotHistory>

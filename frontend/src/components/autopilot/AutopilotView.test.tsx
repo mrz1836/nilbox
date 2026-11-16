@@ -1,6 +1,6 @@
 import { act, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { useState } from 'react'
+import { Activity, useState } from 'react'
 import { beforeAll, describe, expect, it, vi } from 'vitest'
 
 import { brand } from '../../generated/brand'
@@ -342,10 +342,11 @@ describe('Activity', () => {
     expect(platform.letRoutineActAgain).toHaveBeenCalledExactlyOnceWith(3, 1)
     expect(await screen.findByText('Snooze passing bot PRs can act on it again.')).toBeInTheDocument()
     // What a line's action changes may be further down than Activity reads again on its own,
-    // so every page loaded is read again.
+    // so every page loaded is read again: here the first, all there is, read as it was.
     await waitFor(() => {
-      expect(platform.autopilotActivityFrom).toHaveBeenCalledWith(0, 500)
+      expect(platform.autopilotActivity).toHaveBeenCalledTimes(2)
     })
+    expect(platform.autopilotActivity).toHaveBeenLastCalledWith(0, 100)
 
     expect(today.getByText('Gave up').closest('li')).toHaveTextContent('It gave up: 2 tries used.')
     await userEvent.click(today.getByRole('button', { name: 'Try again' }))
@@ -533,11 +534,89 @@ describe('Activity', () => {
         dismissedAt: '2026-06-15T12:00:00Z',
       }),
     ])
+    // The item is read again once the backend says the stored inbox changed, never on the
+    // window's own showing of the change, before it is stored or as it is.
+    const reads = platform.itemsByID.mock.calls.length
+
     await userEvent.click(sheet.getByRole('button', { name: 'Dismiss' }))
 
     expect(platform.dismissItem).toHaveBeenCalledWith(2)
+    expect(platform.itemsByID).toHaveBeenCalledTimes(reads)
+
+    act(() => {
+      emit('inbox:updated')
+    })
+
     expect(await sheet.findByRole('button', { name: 'Restore' })).toBeInTheDocument()
     expect(sheet.queryByRole('button', { name: 'Dismiss' })).not.toBeInTheDocument()
+    expect(platform.itemsByID).toHaveBeenCalledTimes(reads + 1)
+  })
+
+  it('keeps a Watching ask while the question about unsaved changes is open, and shows it on Discard', async () => {
+    const user = userEvent.setup()
+    platform.listRoutines.mockResolvedValue(routines())
+    platform.autopilotActivity.mockResolvedValue(activityPage())
+    platform.routineWatching.mockImplementation((rid) => Promise.resolve(rid === 3 ? [2] : []))
+    platform.itemsByID.mockResolvedValue([
+      item({ id: 2, kind: 'issue', number: 9, title: 'The widget forgets its size' }),
+    ])
+    renderTab()
+
+    // The Dry run line is in Investigate new bugs' own Activity, whose draft has changes;
+    // Snooze passing bot PRs watches its item.
+    await user.click((await routineList()).getByRole('button', { name: /^Investigate new bugs/ }))
+    await user.type(await screen.findByRole('textbox', { name: 'Name' }), ' now')
+
+    const pane = within(screen.getByRole('region', { name: 'Investigate new bugs' }))
+
+    await user.click(await pane.findByRole('button', { name: 'Open example-repo #9' }))
+    await user.click(
+      within(await screen.findByRole('dialog', { name: 'Discard your changes?' })).getByRole('button', {
+        name: 'Discard changes',
+      }),
+    )
+
+    const watching = within(await screen.findByRole('region', { name: 'Snooze passing bot PRs' }))
+    const row = (await watching.findByRole('button', { name: 'The widget forgets its size' })).closest('li')
+
+    await waitFor(() => {
+      expect(row).toHaveAttribute('data-highlighted', 'true')
+    })
+  })
+
+  it('lets a Watching ask go once the question about unsaved changes is answered Keep editing', async () => {
+    const user = userEvent.setup()
+    platform.listRoutines.mockResolvedValue(routines())
+    platform.autopilotActivity.mockResolvedValue(activityPage())
+    platform.routineWatching.mockImplementation((rid) => Promise.resolve(rid === 3 ? [2] : []))
+    platform.itemsByID.mockResolvedValue([
+      item({ id: 2, kind: 'issue', number: 9, title: 'The widget forgets its size' }),
+    ])
+    renderTab()
+
+    await user.click((await routineList()).getByRole('button', { name: /^Investigate new bugs/ }))
+    await user.type(await screen.findByRole('textbox', { name: 'Name' }), ' now')
+
+    const pane = within(screen.getByRole('region', { name: 'Investigate new bugs' }))
+
+    await user.click(await pane.findByRole('button', { name: 'Open example-repo #9' }))
+    await user.click(
+      within(await screen.findByRole('dialog', { name: 'Discard your changes?' })).getByRole('button', {
+        name: 'Keep editing',
+      }),
+    )
+
+    // Choosing the routine later, by hand, marks nothing.
+    await user.click((await routineList()).getByRole('button', { name: /^Snooze passing bot PRs/ }))
+    await user.click(
+      within(await screen.findByRole('dialog', { name: 'Discard your changes?' })).getByRole('button', {
+        name: 'Discard changes',
+      }),
+    )
+
+    const row = (await screen.findByRole('button', { name: 'The widget forgets its size' })).closest('li')
+
+    expect(row).not.toHaveAttribute('data-highlighted')
   })
 
   it('says why Activity has no line for a match a request names', async () => {
@@ -649,6 +728,66 @@ describe('Activity', () => {
       expect(line).toHaveAttribute('data-highlighted', 'true')
     })
     expect(platform.autopilotActivity).toHaveBeenCalledWith(14, 100)
+  })
+
+  it('looks for the match a request names in Activity as it is now, once the tab shows again', async () => {
+    platform.listRoutines.mockResolvedValue(routines())
+    platform.autopilotActivity.mockResolvedValue(activityPage())
+
+    // Shown is the tab as App holds it: kept, hidden, while another tab shows.
+    function Shown({ visible, request }: { visible: boolean; request: AutopilotRequest | null }) {
+      return (
+        <Activity mode={visible ? 'visible' : 'hidden'}>
+          <Tab request={request} />
+        </Activity>
+      )
+    }
+
+    const { rerender } = render(<Shown visible request={null} />, { wrapper: at() })
+
+    await screen.findByText('Snoozed 1')
+    rerender(<Shown visible={false} request={null} />)
+
+    // While the tab is away, the routine matches again, and its notification asks for that.
+    const recorded = autopilotMatch({ id: 20, effects: [], createdAt: '2026-06-15T11:58:00Z' })
+    let give: (page: ReturnType<typeof activityPage>) => void = () => undefined
+    const held = new Promise<ReturnType<typeof activityPage>>((done) => {
+      give = done
+    })
+
+    platform.autopilotActivity.mockReturnValueOnce(Object.assign(held, { cancel: vi.fn() }))
+    rerender(
+      <Shown
+        visible
+        request={{
+          seq: 1,
+          target: { routineId: 3, matchId: 20, runId: 0, createdAt: '2026-06-15T11:58:00Z', activity: false },
+        }}
+      />,
+    )
+
+    // The days held from before it hid don't have it, and the tab says nothing yet.
+    expect(screen.queryByText('That is no longer in Autopilot’s history.')).not.toBeInTheDocument()
+
+    await act(async () => {
+      give(
+        activityPage({
+          days: [
+            {
+              date: '2026-06-15',
+              matches: [recorded, dryRunMatch(), autopilotMatch()],
+              groups: [activityGroup()],
+            },
+          ],
+        }),
+      )
+      await held
+    })
+
+    await waitFor(() => {
+      expect(document.querySelector('[data-line="match:20"]')).toHaveAttribute('data-highlighted', 'true')
+    })
+    expect(screen.queryByText('That is no longer in Autopilot’s history.')).not.toBeInTheDocument()
   })
 
   it('reads earlier days on asking, and goes back to Activity from a routine', async () => {

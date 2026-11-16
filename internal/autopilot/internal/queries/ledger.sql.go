@@ -904,17 +904,16 @@ func (q *Queries) ListLedgerItems(ctx context.Context) ([]*int64, error) {
 }
 
 const listMatchHeads = `-- name: ListMatchHeads :many
-SELECT id, dry_run, created_at FROM autopilot_matches WHERE id IN (/*SLICE:ids*/?)
+SELECT id, dry_run, closed_at FROM autopilot_matches WHERE id IN (/*SLICE:ids*/?)
 `
 
 type ListMatchHeadsRow struct {
-	ID        int64
-	DryRun    bool
-	CreatedAt time.Time
+	ID       int64
+	DryRun   bool
+	ClosedAt *time.Time
 }
 
-// ListMatchHeads returns when each match among ids was recorded, and whether it is a Dry
-// run's.
+// ListMatchHeads returns when each match among ids closed, and whether it is a Dry run's.
 func (q *Queries) ListMatchHeads(ctx context.Context, ids []int64) ([]ListMatchHeadsRow, error) {
 	query := listMatchHeads
 	var queryParams []interface{}
@@ -934,7 +933,7 @@ func (q *Queries) ListMatchHeads(ctx context.Context, ids []int64) ([]ListMatchH
 	items := []ListMatchHeadsRow{}
 	for rows.Next() {
 		var i ListMatchHeadsRow
-		if err := rows.Scan(&i.ID, &i.DryRun, &i.CreatedAt); err != nil {
+		if err := rows.Scan(&i.ID, &i.DryRun, &i.ClosedAt); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -1103,20 +1102,22 @@ func (q *Queries) ListMatchesBefore(ctx context.Context, arg ListMatchesBeforePa
 
 const listMatchesFrom = `-- name: ListMatchesFrom :many
 SELECT id, routine_id, item_id, account_login, repo_owner, repo_name, kind, number, title, url, fire_key, dry_run, manual, state, blocked_by, reason, detail, trace, steps, step, spec_hash, head_oid, auto_merge_at_match, approved, attempt, created_at, updated_at, decided_at, closed_at FROM autopilot_matches
-WHERE id >= ?1
+WHERE id >= ?1 AND id < ?2
 ORDER BY id DESC
-LIMIT ?2
+LIMIT ?3
 `
 
 type ListMatchesFromParams struct {
 	FirstID  int64
+	BeforeID int64
 	RowLimit int64
 }
 
-// ListMatchesFrom returns the matches recorded from the match first_id on, newest first:
-// the pages of the Activity the window has loaded, read again.
+// ListMatchesFrom returns the matches recorded from the match first_id on and before the
+// match before_id, newest first: a stretch of the Activity the window has loaded, read
+// again.
 func (q *Queries) ListMatchesFrom(ctx context.Context, arg ListMatchesFromParams) ([]AutopilotMatch, error) {
-	rows, err := q.db.QueryContext(ctx, listMatchesFrom, arg.FirstID, arg.RowLimit)
+	rows, err := q.db.QueryContext(ctx, listMatchesFrom, arg.FirstID, arg.BeforeID, arg.RowLimit)
 	if err != nil {
 		return nil, err
 	}
@@ -1268,8 +1269,7 @@ SELECT
     routine_id,
     CAST(SUM(CASE WHEN dry_run = 0 AND created_at >= ?1 THEN 1 ELSE 0 END) AS INTEGER) AS today,
     CAST(SUM(CASE WHEN dry_run = 1 AND created_at >= ?1 THEN 1 ELSE 0 END) AS INTEGER) AS would_run_today,
-    CAST(SUM(CASE WHEN state = 'waiting' THEN 1 ELSE 0 END) AS INTEGER) AS waiting,
-    CAST(MAX(CASE WHEN state = 'done' THEN id ELSE 0 END) AS INTEGER) AS last_id
+    CAST(SUM(CASE WHEN state = 'waiting' THEN 1 ELSE 0 END) AS INTEGER) AS waiting
 FROM autopilot_matches
 WHERE state IN ('waiting', 'blocked', 'queued', 'running', 'verifying', 'done', 'skipped', 'dismissed')
 GROUP BY routine_id
@@ -1280,13 +1280,12 @@ type ListRoutineFiguresRow struct {
 	Today         int64
 	WouldRunToday int64
 	Waiting       int64
-	LastID        int64
 }
 
 // ListRoutineFigures returns, for each routine with a match that did something or waits to
 // (as ListLatestItemMatches counts them), how many it recorded since since, real ones and
-// a Dry run's apart, how many wait for the user, and the ID of its newest one that ran (or
-// would have, in Dry run), 0 for none: each routine's line in the routine list.
+// a Dry run's apart, and how many wait for the user: each routine's line in the routine
+// list.
 func (q *Queries) ListRoutineFigures(ctx context.Context, since time.Time) ([]ListRoutineFiguresRow, error) {
 	rows, err := q.db.QueryContext(ctx, listRoutineFigures, since)
 	if err != nil {
@@ -1301,8 +1300,48 @@ func (q *Queries) ListRoutineFigures(ctx context.Context, since time.Time) ([]Li
 			&i.Today,
 			&i.WouldRunToday,
 			&i.Waiting,
-			&i.LastID,
 		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listRoutineLastRuns = `-- name: ListRoutineLastRuns :many
+SELECT routine_id, id, MAX(closed_at) AS closed_last
+FROM autopilot_matches
+WHERE state = 'done' AND closed_at IS NOT NULL
+GROUP BY routine_id
+`
+
+type ListRoutineLastRunsRow struct {
+	RoutineID  int64
+	ID         int64
+	ClosedLast interface{}
+}
+
+// ListRoutineLastRuns returns, for each routine with a match that ran (done; in Dry run,
+// would have), the ID of the one that ran last: the one that closed last, since a match
+// runs as it closes, which can be long after it was recorded (one that waited for the
+// user, or under Pause). SQLite takes a bare column of a query with one max() from the
+// row that holds the max, which closed_last only selects.
+func (q *Queries) ListRoutineLastRuns(ctx context.Context) ([]ListRoutineLastRunsRow, error) {
+	rows, err := q.db.QueryContext(ctx, listRoutineLastRuns)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListRoutineLastRunsRow{}
+	for rows.Next() {
+		var i ListRoutineLastRunsRow
+		if err := rows.Scan(&i.RoutineID, &i.ID, &i.ClosedLast); err != nil {
 			return nil, err
 		}
 		items = append(items, i)

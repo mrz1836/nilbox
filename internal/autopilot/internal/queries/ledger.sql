@@ -59,28 +59,38 @@ ORDER BY m.id DESC;
 -- name: ListRoutineFigures :many
 -- ListRoutineFigures returns, for each routine with a match that did something or waits to
 -- (as ListLatestItemMatches counts them), how many it recorded since since, real ones and
--- a Dry run's apart, how many wait for the user, and the ID of its newest one that ran (or
--- would have, in Dry run), 0 for none: each routine's line in the routine list.
+-- a Dry run's apart, and how many wait for the user: each routine's line in the routine
+-- list.
 SELECT
     routine_id,
     CAST(SUM(CASE WHEN dry_run = 0 AND created_at >= sqlc.arg(since) THEN 1 ELSE 0 END) AS INTEGER) AS today,
     CAST(SUM(CASE WHEN dry_run = 1 AND created_at >= sqlc.arg(since) THEN 1 ELSE 0 END) AS INTEGER) AS would_run_today,
-    CAST(SUM(CASE WHEN state = 'waiting' THEN 1 ELSE 0 END) AS INTEGER) AS waiting,
-    CAST(MAX(CASE WHEN state = 'done' THEN id ELSE 0 END) AS INTEGER) AS last_id
+    CAST(SUM(CASE WHEN state = 'waiting' THEN 1 ELSE 0 END) AS INTEGER) AS waiting
 FROM autopilot_matches
 WHERE state IN ('waiting', 'blocked', 'queued', 'running', 'verifying', 'done', 'skipped', 'dismissed')
 GROUP BY routine_id;
 
+-- name: ListRoutineLastRuns :many
+-- ListRoutineLastRuns returns, for each routine with a match that ran (done; in Dry run,
+-- would have), the ID of the one that ran last: the one that closed last, since a match
+-- runs as it closes, which can be long after it was recorded (one that waited for the
+-- user, or under Pause). SQLite takes a bare column of a query with one max() from the
+-- row that holds the max, which closed_last only selects.
+SELECT routine_id, id, MAX(closed_at) AS closed_last
+FROM autopilot_matches
+WHERE state = 'done' AND closed_at IS NOT NULL
+GROUP BY routine_id;
+
 -- name: ListMatchHeads :many
--- ListMatchHeads returns when each match among ids was recorded, and whether it is a Dry
--- run's.
-SELECT id, dry_run, created_at FROM autopilot_matches WHERE id IN (sqlc.slice(ids));
+-- ListMatchHeads returns when each match among ids closed, and whether it is a Dry run's.
+SELECT id, dry_run, closed_at FROM autopilot_matches WHERE id IN (sqlc.slice(ids));
 
 -- name: ListMatchesFrom :many
--- ListMatchesFrom returns the matches recorded from the match first_id on, newest first:
--- the pages of the Activity the window has loaded, read again.
+-- ListMatchesFrom returns the matches recorded from the match first_id on and before the
+-- match before_id, newest first: a stretch of the Activity the window has loaded, read
+-- again.
 SELECT * FROM autopilot_matches
-WHERE id >= sqlc.arg(first_id)
+WHERE id >= sqlc.arg(first_id) AND id < sqlc.arg(before_id)
 ORDER BY id DESC
 LIMIT sqlc.arg(row_limit);
 

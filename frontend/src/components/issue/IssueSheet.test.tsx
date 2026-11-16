@@ -571,6 +571,7 @@ describe('IssueSheet', () => {
 
   it('marks what is new since the last visit, and scrolls to it once', async () => {
     const scrolled = vi.spyOn(Element.prototype, 'scrollIntoView')
+    const scrolledTop = vi.spyOn(Element.prototype, 'scrollTop', 'set').mockImplementation(() => undefined)
     platform.openIssue.mockResolvedValue(issue({ lastSeenAt: '2026-06-15T10:45:00Z' }))
     render(<Harness />)
 
@@ -581,6 +582,17 @@ describe('IssueSheet', () => {
     // would let the window paint the conversation at its top first.
     expect(scrolled).toHaveBeenCalledOnce()
     expect(scrolled.mock.contexts[0]).toBe(divider)
+
+    // Nothing scrolls the conversation back after, once the refresh has answered too.
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Read it from GitHub again' })).toHaveAttribute(
+        'aria-disabled',
+        'false',
+      )
+    })
+    expect(platform.refreshIssue).toHaveBeenCalled()
+    expect(scrolledTop).not.toHaveBeenCalled()
+    expect(scrolled).toHaveBeenCalledOnce()
   })
 
   it('says the issue changed since it was read, as its card says, and reads it again', async () => {

@@ -285,8 +285,8 @@ export default function AutopilotView({
   // as another routine or Activity is chosen.
   const [watchHighlight, setWatchHighlight] = useState<{ routineId: number; id: number; seq: number } | null>(null)
   // loneId is the item Open shows in its sheet when no list here holds it, read again
-  // whenever the inbox changes, as its own triage in the sheet does, so the sheet offers
-  // what fits the item as it is now.
+  // whenever the stored inbox changes, as its own triage in the sheet does, so the sheet
+  // offers what fits the item as it is now.
   const [loneId, setLoneId] = useState(0)
   const loneRead = useQuery(() => itemsByID([loneId]), [loneId], { enabled: loneId > 0 })
   const lone = loneId > 0 ? loneRead.data?.find((i) => i.id === loneId) : undefined
@@ -298,12 +298,13 @@ export default function AutopilotView({
       setLoneId(0)
     },
   })
+  // The stored inbox changed, the sheet's own triage included, which the backend says
+  // once it is stored: the item is read again once, as it is now.
   const readLone = useEffectEvent(() => {
     if (loneId > 0) {
       void loneRead.refetch()
     }
   })
-  const inboxNow = kit.inbox.snapshot
 
   useEffect(
     () =>
@@ -312,11 +313,6 @@ export default function AutopilotView({
       }),
     [],
   )
-
-  // The sheet's own triage changes the inbox the window holds.
-  useEffect(() => {
-    readLone()
-  }, [inboxNow])
   const [handled, setHandled] = useState(0)
   const { routines, engine, reload } = autopilot
   // editing is the routine the builder holds, null on Activity; leaving is where the user
@@ -411,15 +407,17 @@ export default function AutopilotView({
     }
   }
 
-  // A match asked for shows once the pages that hold it are read: earlier ones are read
-  // until one does, and one no longer in the history, or made at another time (Clear
-  // history hands an ID out again), says so.
+  // A match asked for shows once the pages that hold it are read: the pages as they are
+  // now, not as the tab held them before it hid (a match recorded meanwhile isn't in
+  // them), then earlier ones until one does; one no longer in the history, or made at
+  // another time (Clear history hands an ID out again), says so.
   const loadedMatches = activity.days.flatMap((d) => d.matches)
   const focused = focus === null ? undefined : loadedMatches.find((m) => m.id === focus.matchId)
   const oldest = loadedMatches.reduce((low, m) => Math.min(low, m.id), Number.MAX_SAFE_INTEGER)
-  const readOn = focus !== null && activity.loaded && focused === undefined && activity.more && oldest > focus.matchId
+  const ready = activity.loaded && activity.current
+  const readOn = focus !== null && ready && focused === undefined && activity.more && oldest > focus.matchId
 
-  if (focus !== null && activity.loaded && !readOn) {
+  if (focus !== null && ready && !readOn) {
     setFocus(null)
 
     if (focused === undefined || (focus.createdAt !== '' && !sameSecond(focused.createdAt, focus.createdAt))) {
@@ -561,8 +559,10 @@ export default function AutopilotView({
     )
   }
 
-  // An ask for a Watching row is for the routine Open chose; choosing another lets it go.
-  if (watchHighlight !== null && watchHighlight.routineId !== shownId) {
+  // An ask for a Watching row is for the routine Open chose; choosing another lets it go,
+  // and so does staying where the tab was, once the question about unsaved changes that
+  // going there asked is answered Keep editing. While that question is open, it waits.
+  if (watchHighlight !== null && watchHighlight.routineId !== shownId && leaving !== watchHighlight.routineId) {
     setWatchHighlight(null)
   }
 

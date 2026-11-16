@@ -80,6 +80,26 @@ function Harness({ onDone = vi.fn(), onClose = vi.fn(), ...props }: HarnessProps
   )
 }
 
+// scrollLog records the scrolls the sheet makes, in order: each scrollIntoView, by the
+// role (or tag) of what it shows, and each scrollTop set, by its value.
+function scrollLog(): string[] {
+  const log: string[] = []
+  const tops = new WeakMap<Element, number>()
+
+  vi.spyOn(Element.prototype, 'scrollIntoView').mockImplementation(function (this: Element) {
+    log.push(`intoView:${this.getAttribute('role') ?? this.tagName.toLowerCase()}`)
+  })
+  vi.spyOn(Element.prototype, 'scrollTop', 'get').mockImplementation(function (this: Element) {
+    return tops.get(this) ?? 0
+  })
+  vi.spyOn(Element.prototype, 'scrollTop', 'set').mockImplementation(function (this: Element, value: number) {
+    log.push(`scrollTop=${String(value)}`)
+    tops.set(this, value)
+  })
+
+  return log
+}
+
 // sheet is the review sheet's dialog.
 function sheet() {
   return screen.getByRole('dialog', { name: 'Add the widget cache' })
@@ -1798,6 +1818,44 @@ describe('ReviewSheet tabs', () => {
     const divider = screen.getByRole('separator', { name: 'New since your last visit' })
     expect(divider.nextElementSibling).toHaveTextContent('Two things before this merges.')
     expect(scrolled.mock.contexts).toContain(divider)
+  })
+
+  it('leaves the conversation where its scroll to what is new put it, the first time it shows', async () => {
+    const scrolls = scrollLog()
+    platform.openReview.mockResolvedValue(withConversation({ lastSeenAt: '2026-06-15T10:30:00Z' }))
+    platform.refreshReview.mockResolvedValue(withConversation({ lastSeenAt: '2026-06-15T10:30:00Z' }))
+    render(<Harness />)
+
+    await screen.findByRole('separator', { name: 'New since your last visit', hidden: true })
+    await userEvent.click(tabOf('Comments'))
+
+    // The tab has no place of its own yet, so nothing scrolls it back to the top after.
+    expect(scrolls.at(-1)).toBe('intoView:separator')
+    expect(scrolls).not.toContain('scrollTop=0')
+  })
+
+  it('puts a tab back where it was left, and starts the next pull request’s tabs afresh', async () => {
+    const scrolls = scrollLog()
+    platform.refreshReview.mockResolvedValue(withConversation())
+    render(<Harness />)
+
+    const files = await screen.findByRole('main')
+
+    files.scrollTop = 120
+    await userEvent.click(tabOf('Comments'))
+    await userEvent.click(tabOf('Files'))
+
+    expect(scrolls.at(-1)).toBe('scrollTop=120')
+
+    // On the next pull request, the conversation left on the last one has no place.
+    await userEvent.click(tabOf('Comments'))
+    await userEvent.click(tabOf('Files'))
+    await userEvent.click(screen.getByRole('button', { name: 'Next' }))
+    await screen.findByText('2 of 3 in Assigned')
+    scrolls.length = 0
+    await userEvent.click(tabOf('Comments'))
+
+    expect(scrolls).toEqual([])
   })
 
   it('reads the entries before the ones shown', async () => {

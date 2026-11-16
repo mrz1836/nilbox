@@ -1221,12 +1221,14 @@ index would refuse. Its queries are in
   dispatcher is built and its steps offered, the same routines take any mode.
 - `List` marks a routine of another account than the one signed in (`OtherAccount`; logins
   compare ignoring case, and with no one signed in none is another's). It doesn't run.
-  `List` also gives each routine its `Figures`, for its status line, from two reads of the
-  ledger (the grouped `ListRoutineFigures`, then `ListMatchHeads` for each routine's newest
-  match that ran): how many matches it recorded today (since local midnight in the clock's
-  zone), real ones and a Dry run's apart, how many wait for the user, and when its newest
-  match that ran (done; in Dry run, would have) was made and whether that was a Dry run's, so
-  a newer one that waits or was skipped never reads as *ran*. The counts take the matches
+  `List` also gives each routine its `Figures`, for its status line, from three reads of the
+  ledger (the grouped `ListRoutineFigures`, then `ListRoutineLastRuns` and `ListMatchHeads`
+  for the match each routine ran last): how many matches it recorded today (since local
+  midnight in the clock's zone), real ones and a Dry run's apart, how many wait for the user,
+  and when it last ran: when its match that ran (done; in Dry run, would have) that closed
+  last closed, which is when it ran, however long it waited (for the user, or under Pause)
+  after it was recorded, and whether that was a Dry run's, so a newer one that waits or was
+  skipped never reads as *ran*. The counts take the matches
   `ListLatestItemMatches` counts: open, or closed as done, skipped, or dismissed; a baseline,
   and a match that closed before it acted, count in none of them.
 - `RoutineNames` gives every routine's name by its ID, the deleted ones included
@@ -1564,10 +1566,12 @@ another copy holds the engine
 loop, so they work before the first refresh, offline, or signed out. The reads (`activity.go`)
 read the database alone: `Activity` (a page of matches before an ID, by local day, with their
 runs and effects, each day's grouped lines of local steps, and, on the first page, the items
-the routines leave alone), `ActivityFrom` (the same, of the matches from an ID on, at most
-500, `ListMatchesFrom`: the pages the window has loaded read again in one call, ending
-exactly where the next page it read begins, so their grouped lines join by `Key` and nothing
-falls between them; `More` says more than that were recorded since), `ItemHistory`,
+the routines leave alone), `ActivityFrom` (the same, of the matches from an ID on and before
+another, 0 for up to the newest, at most 500, `ListMatchesFrom`: a stretch of the pages the
+window has loaded read again in one call, by its own bounds, so their grouped lines join by
+`Key` and nothing falls between them; `More` and `Next` say where the rest of the stretch
+begins, and only a stretch up to the newest says what the routines leave alone),
+`ItemHistory`,
 `LatestMatches` (for each item among the ids it is
 given, at most 500, its newest match that did something there or waits to, in one query,
 `ListLatestItemMatches`: open, or closed as done, skipped, or dismissed, never a baseline or
@@ -1788,17 +1792,24 @@ The window side lives in `frontend/src/components/autopilot/` (the tab itself,
   while nothing changes; `useAutopilotChips` reads `LatestMatches` for the ids a list
   shows, a chunk at a time (`all` and `andThen` in `lib/call.ts`, which keep the bound
   calls' cancel). **`lib/useAutopilotActivity.ts`** holds one pager per tab, outside React
-  (`useSyncExternalStore`): Activity's newest page (100 matches) as the tab first shows, a
-  page more by `next` as the user asks for more, each kept as it was read, and the newest
-  read again, never the pages past them: on `autopilot:updated` it reads the first page
-  again while nothing past it is loaded or on its way, else `ActivityFrom` the first page's
-  last match, which ends where the next page begins. Every page loaded is read again
-  (`ActivityFrom` the oldest loaded) once a line's own action (Undo, Try again, Let it act
-  again) goes through and each time the tab shows again, since its effects stop while it is
-  hidden. One read runs at a time with one more waiting, a read of every page drops a read
-  of the newest under way, hiding cancels every read, a read that lands after a page more
-  keeps that page, and one that finds more than 500 recorded since starts again from it,
-  dropping the pages past it, so nothing ever falls between two pages.
+  (`useSyncExternalStore`), which keeps Activity as stretches, newest first, each ending
+  where the next begins: Activity's newest page (100 matches) as the tab first shows, and a
+  page more by `next` as the user asks for more, each a stretch of its own, never merged.
+  On `autopilot:updated` it reads the newest stretch alone again: the first page itself
+  (`Activity(0, 100)`, 100 rows) while nothing past it is loaded or on its way, else
+  `ActivityFrom` its own first match on (`ActivityFrom(lower, 0, 500)`: the first page and
+  what was recorded since, one call); past 500, that page's newest 100 become the newest
+  stretch and the rest is read again in slices of 500, so nothing loaded goes and the
+  newest stretch starts a page long again. Every stretch is read again, each by its own
+  bounds (`ActivityFrom(lower, upper, 500)`, one call a page loaded, in slices past 500),
+  once a line's own action (Undo, Try again, Let it act again) goes through and each time
+  the tab shows again, since its effects stop while it is hidden; until that read lands,
+  `current` is false, and a request for a match waits for it. One read runs at a time with
+  one more waiting, a read of every stretch drops a read of the newest under way and one
+  waiting, hiding cancels every read, and a read that lands after a page more keeps that
+  page. A read again that no longer finds the match the newest stretch begins at, as it was
+  recorded, finds the history cleared (Clear history lets SQLite hand the IDs out again from
+  1), and starts again from the newest page.
 - **`AutopilotRowsContext`** (`AutopilotChip.tsx`) carries the routines' names and the chips
   to every row, App's around the inbox and the tab, and the Watching list's own chips around
   its rows, so a memo'd `ItemRow` renders again only in its chip and its marks
@@ -1813,14 +1824,15 @@ The window side lives in `frontend/src/components/autopilot/` (the tab itself,
   for once (`highlight`, a number per ask, handed back with `onHighlighted`), never opening
   anything itself. An ask it can't show is handed back as soon as it knows: once it has
   read what it watches without the item, or couldn't read it. The tab drops an ask as soon
-  as another routine or Activity is chosen, so none lands later unasked.
+  as another routine or Activity is chosen, or the question about unsaved changes that
+  going to its routine asked is answered Keep editing, so none lands later unasked; while
+  that question is open, the ask waits.
 - **Open** on an Activity line goes to the item whatever became of its routine: its card in
   the inbox while a list there holds it; else its row in a routine that still watches it
   (`Watching`, the line's own routine first, local reads alone); else its sheet, through the
-  tab's own `useSheetHost`, while the inbox stores it (`ItemsByID`, read again on
-  `inbox:updated` and whenever the inbox the window holds changes, as the sheet's own
-  triage changes it, so the sheet offers what fits the item as it is); else its page on
-  GitHub.
+  tab's own `useSheetHost`, while the inbox stores it (`ItemsByID`, read again once on
+  `inbox:updated`, which follows every change to the stored inbox, the sheet's own triage
+  included, so the sheet offers what fits the item as it is); else its page on GitHub.
 - **`useRoutineChange`** switches a routine, changes its mode, and saves the builder's draft
   over it: switching one on, taking one that is on out of Dry run, or saving a change to what
   one that is on watches, fires on, or checks (`watchChanged`) first asks `Matching` (with the
