@@ -74,15 +74,10 @@ func (s *Service) Glance(ctx context.Context) (Glance, error) {
 	}
 
 	names := make(map[int64]string, len(routines))
-	ranFor := s.runsAny(ctx)
+	out.Routines, out.Enabled = len(routines), s.running(ctx, routines)
 
 	for _, r := range routines {
-		out.Routines++
 		names[r.ID] = r.Name
-
-		if r.Enabled && ranFor(r.AccountLogin) && load(r.Spec).broken == nil {
-			out.Enabled++
-		}
 	}
 
 	l := s.ledger()
@@ -107,10 +102,10 @@ func (s *Service) Glance(ctx context.Context) (Glance, error) {
 	return out, nil
 }
 
-// runsAny returns whether the engine would run a routine of an account: the account signed
-// in's (a routine of no account is the editor's), and none while no one is signed in, or the
-// engine's last cycle found the sign-in gone.
-func (s *Service) runsAny(ctx context.Context) func(account string) bool {
+// running counts the routines the engine runs: switched on, of the account signed in (a
+// routine of no account is the editor's), and loading; none while no one is signed in, or
+// the engine's last cycle found the sign-in gone.
+func (s *Service) running(ctx context.Context, routines []queries.AutopilotRoutine) int {
 	viewer := s.viewer(ctx)
 	signedOut := viewer == ""
 
@@ -120,9 +115,19 @@ func (s *Service) runsAny(ctx context.Context) func(account string) bool {
 		e.mu.Unlock()
 	}
 
-	return func(account string) bool {
-		return !signedOut && !otherAccount(account, viewer)
+	if signedOut {
+		return 0
 	}
+
+	n := 0
+
+	for _, r := range routines {
+		if r.Enabled && !otherAccount(r.AccountLogin, viewer) && load(r.Spec).broken == nil {
+			n++
+		}
+	}
+
+	return n
 }
 
 // needsYou counts the open matches waiting for the user's decision.

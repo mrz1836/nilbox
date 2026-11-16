@@ -305,16 +305,22 @@ func (s *Store) RecordEvent(ctx context.Context, now time.Time, entry Entry) (No
 		out, err = s.recordEvent(ctx, now, entry)
 	}
 
-	switch {
-	case err != nil && entry.Key != "" && store.IsUniqueViolation(err):
-		return Notification{}, fmt.Errorf("record the notification: %w", ErrAlreadyTold)
-	case err != nil:
-		return Notification{}, fmt.Errorf("record the notification: %w", err)
+	if err != nil {
+		return Notification{}, recordError(entry, err)
 	}
 
 	out.banner = entry.Banner
 
 	return out, nil
+}
+
+// recordError words why entry wasn't recorded: ErrAlreadyTold for a key the log holds.
+func recordError(entry Entry, err error) error {
+	if entry.Key != "" && store.IsUniqueViolation(err) {
+		err = ErrAlreadyTold
+	}
+
+	return fmt.Errorf("record the notification: %w", err)
 }
 
 // ErrUnknownItemKind is returned for an entry about an item of a kind that is neither a

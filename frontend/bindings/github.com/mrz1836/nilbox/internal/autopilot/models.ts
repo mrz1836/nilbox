@@ -406,7 +406,8 @@ export interface Explanation {
  */
 export interface Glance {
     /**
-     * Routines counts the routines not deleted, and Enabled those switched on.
+     * Routines counts the routines not deleted, and Enabled those the engine runs: switched
+     * on, of the account signed in, and loading; none while no one is signed in.
      */
     "routines": number;
     "enabled": number;
