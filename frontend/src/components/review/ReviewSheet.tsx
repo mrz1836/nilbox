@@ -113,9 +113,10 @@ interface Notice {
 }
 
 // Scrollers are the scrolling boxes of the two tabs, whose places the sheet keeps across a
-// switch, and Places those places.
+// switch, and Places those places: null for a tab the user hasn't left yet, which has no
+// place to go back to.
 type Scrollers = Record<ReviewTab, HTMLElement | null>
-type Places = Record<ReviewTab, number>
+type Places = Record<ReviewTab, number | null>
 
 // ConversationSkeleton is the conversation's placeholder while the first read comes.
 function ConversationSkeleton() {
@@ -174,7 +175,7 @@ export function ReviewSheet({
   // tab shows at once on a click, and the window remembers it (onTab) behind it.
   const [tab, setTab] = useState<ReviewTab>(openOn)
   const scrollers = useRef<Scrollers>({ files: null, comments: null })
-  const places = useRef<Places>({ files: 0, comments: 0 })
+  const places = useRef<Places>({ files: null, comments: null })
   // goingTo is where a jump scrolls once the tab it is in shows: a file's block or an
   // entry's row, by ID.
   const goingTo = useRef('')
@@ -345,18 +346,26 @@ export function ReviewSheet({
     chooseTab(at)
   }
 
+  // Each pull request's tabs start with no place: one left on another isn't this one's.
+  useLayoutEffect(() => {
+    places.current = { files: null, comments: null }
+  }, [id])
+
   // The tab shown goes back to its place, or to where a jump to it goes, once its Activity
-  // has shown it.
+  // has shown it. A tab shown for the first time has no place, and is left where its
+  // contents put it: the conversation scrolls to what is new as it first shows, in its own
+  // layout effect, which runs before this one.
   useLayoutEffect(() => {
     const anchor = goingTo.current
 
     goingTo.current = ''
 
     const scroller = scrollers.current[tab]
+    const place = places.current[tab]
 
     if (anchor === '') {
-      if (scroller !== null) {
-        scroller.scrollTop = places.current[tab]
+      if (scroller !== null && place !== null) {
+        scroller.scrollTop = place
       }
     } else {
       document.getElementById(anchor)?.scrollIntoView({ block: 'start' })
