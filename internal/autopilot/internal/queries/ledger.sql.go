@@ -1101,6 +1101,73 @@ func (q *Queries) ListMatchesBefore(ctx context.Context, arg ListMatchesBeforePa
 	return items, nil
 }
 
+const listMatchesFrom = `-- name: ListMatchesFrom :many
+SELECT id, routine_id, item_id, account_login, repo_owner, repo_name, kind, number, title, url, fire_key, dry_run, manual, state, blocked_by, reason, detail, trace, steps, step, spec_hash, head_oid, auto_merge_at_match, approved, attempt, created_at, updated_at, decided_at, closed_at FROM autopilot_matches
+WHERE id >= ?1
+ORDER BY id DESC
+LIMIT ?2
+`
+
+type ListMatchesFromParams struct {
+	FirstID  int64
+	RowLimit int64
+}
+
+// ListMatchesFrom returns the matches recorded from the match first_id on, newest first:
+// the pages of the Activity the window has loaded, read again.
+func (q *Queries) ListMatchesFrom(ctx context.Context, arg ListMatchesFromParams) ([]AutopilotMatch, error) {
+	rows, err := q.db.QueryContext(ctx, listMatchesFrom, arg.FirstID, arg.RowLimit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []AutopilotMatch{}
+	for rows.Next() {
+		var i AutopilotMatch
+		if err := rows.Scan(
+			&i.ID,
+			&i.RoutineID,
+			&i.ItemID,
+			&i.AccountLogin,
+			&i.RepoOwner,
+			&i.RepoName,
+			&i.Kind,
+			&i.Number,
+			&i.Title,
+			&i.URL,
+			&i.FireKey,
+			&i.DryRun,
+			&i.Manual,
+			&i.State,
+			&i.BlockedBy,
+			&i.Reason,
+			&i.Detail,
+			&i.Trace,
+			&i.Steps,
+			&i.Step,
+			&i.SpecHash,
+			&i.HeadOID,
+			&i.AutoMergeAtMatch,
+			&i.Approved,
+			&i.Attempt,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.DecidedAt,
+			&i.ClosedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listOpenMatches = `-- name: ListOpenMatches :many
 SELECT id, routine_id, item_id, account_login, repo_owner, repo_name, kind, number, title, url, fire_key, dry_run, manual, state, blocked_by, reason, detail, trace, steps, step, spec_hash, head_oid, auto_merge_at_match, approved, attempt, created_at, updated_at, decided_at, closed_at FROM autopilot_matches
 WHERE state IN ('waiting', 'blocked', 'queued', 'running', 'verifying')
@@ -1202,7 +1269,7 @@ SELECT
     CAST(SUM(CASE WHEN dry_run = 0 AND created_at >= ?1 THEN 1 ELSE 0 END) AS INTEGER) AS today,
     CAST(SUM(CASE WHEN dry_run = 1 AND created_at >= ?1 THEN 1 ELSE 0 END) AS INTEGER) AS would_run_today,
     CAST(SUM(CASE WHEN state = 'waiting' THEN 1 ELSE 0 END) AS INTEGER) AS waiting,
-    CAST(MAX(id) AS INTEGER) AS last_id
+    CAST(MAX(CASE WHEN state = 'done' THEN id ELSE 0 END) AS INTEGER) AS last_id
 FROM autopilot_matches
 WHERE state IN ('waiting', 'blocked', 'queued', 'running', 'verifying', 'done', 'skipped', 'dismissed')
 GROUP BY routine_id
@@ -1218,8 +1285,8 @@ type ListRoutineFiguresRow struct {
 
 // ListRoutineFigures returns, for each routine with a match that did something or waits to
 // (as ListLatestItemMatches counts them), how many it recorded since since, real ones and
-// a Dry run's apart, how many wait for the user, and its newest one's ID: each routine's
-// line in the routine list.
+// a Dry run's apart, how many wait for the user, and the ID of its newest one that ran (or
+// would have, in Dry run), 0 for none: each routine's line in the routine list.
 func (q *Queries) ListRoutineFigures(ctx context.Context, since time.Time) ([]ListRoutineFiguresRow, error) {
 	rows, err := q.db.QueryContext(ctx, listRoutineFigures, since)
 	if err != nil {

@@ -32,6 +32,18 @@ export function Activity(before: number, limit: number): $CancellablePromise<$mo
 }
 
 /**
+ * ActivityFrom returns Activity's matches recorded from the match from on (every one for
+ * 0), newest first, by local day, with the items the routines leave alone: the pages the
+ * window has loaded down to from, read again in one call, so the pages it read past them
+ * keep their place and nothing falls between. It holds at most limit (100 when 0, never
+ * more than 500); when more than that were recorded from from on, More reports the rest,
+ * which Next asks for as Activity's does, and the window starts again from this page.
+ */
+export function ActivityFrom($from: number, limit: number): $CancellablePromise<$models.ActivityPage> {
+    return $Call.ByID(1188462222, $from, limit);
+}
+
+/**
  * Approve gives the user's OK to the matches ids that wait for it (an Ask first routine's,
  * a catch-up's, a backlog's, an interrupted run's, a warning's), which then start once
  * the limits let them, and returns them as they are now. A match that waits for nothing,
@@ -146,8 +158,8 @@ export function LetActAgain(id: number, itemID: number): $CancellablePromise<voi
 /**
  * List returns every routine not deleted, in the user's order, each marked when it
  * belongs to another account than the one signed in, or when it is broken, and with its
- * figures (what it did today, what waits, when it last matched). A broken routine is
- * listed with why, beside the others, and never rewritten.
+ * figures (what it did today, what waits, when it last ran), from two reads of the ledger.
+ * A broken routine is listed with why, beside the others, and never rewritten.
  */
 export function List(): $CancellablePromise<$models.Routine[] | null> {
     return $Call.ByID(970115387);

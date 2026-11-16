@@ -265,6 +265,42 @@ func (s *Service) Activity(ctx context.Context, before int64, limit int) (Activi
 		return out, uierr.New("Autopilot's history couldn't be read.", err)
 	}
 
+	return s.activityPage(ctx, rows, limit, first)
+}
+
+// ActivityFrom returns Activity's matches recorded from the match from on (every one for
+// 0), newest first, by local day, with the items the routines leave alone: the pages the
+// window has loaded down to from, read again in one call, so the pages it read past them
+// keep their place and nothing falls between. It holds at most limit (100 when 0, never
+// more than 500); when more than that were recorded from from on, More reports the rest,
+// which Next asks for as Activity's does, and the window starts again from this page.
+func (s *Service) ActivityFrom(ctx context.Context, from int64, limit int) (ActivityPage, error) {
+	out := ActivityPage{Days: []ActivityDay{}, LeftAlone: []LeftAlone{}}
+
+	if s.store.q == nil {
+		return out, nil
+	}
+
+	if limit <= 0 {
+		limit = defaultActivity
+	}
+
+	limit = min(limit, maxActivity)
+
+	rows, err := s.ledger().q.ListMatchesFrom(ctx, queries.ListMatchesFromParams{FirstID: max(from, 0), RowLimit: int64(limit + 1)})
+	if err != nil {
+		return out, uierr.New("Autopilot's history couldn't be read.", err)
+	}
+
+	return s.activityPage(ctx, rows, limit, true)
+}
+
+// activityPage makes a page of Activity of rows, newest first, read one past limit to
+// tell whether there are more; withLeftAlone adds the items the routines leave alone,
+// which the page that starts at the newest match says.
+func (s *Service) activityPage(ctx context.Context, rows []queries.AutopilotMatch, limit int, withLeftAlone bool) (ActivityPage, error) {
+	out := ActivityPage{Days: []ActivityDay{}, LeftAlone: []LeftAlone{}}
+
 	if len(rows) > limit {
 		out.More, rows = true, rows[:limit]
 		out.Next = rows[len(rows)-1].ID
@@ -278,7 +314,7 @@ func (s *Service) Activity(ctx context.Context, before int64, limit int) (Activi
 	loc := s.clock.Now().Location()
 	out.Days = groupLocal(byDay(views, loc), views, loc)
 
-	if first {
+	if withLeftAlone {
 		if out.LeftAlone, err = s.leftAlone(ctx, s.ledger()); err != nil {
 			return out, err
 		}

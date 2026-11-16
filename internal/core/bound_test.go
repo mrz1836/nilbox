@@ -706,6 +706,11 @@ func autopilotBoundCalls(t *testing.T) map[string]boundCall {
 
 			return c.Autopilot.Activity(ctx, 0, 0)
 		},
+		"autopilot.Service.ActivityFrom": func(ctx context.Context, c *Core, ids seededItems) (any, error) {
+			boundMatch(ctx, t, c, ids.item, "Bound activity from")
+
+			return c.Autopilot.ActivityFrom(ctx, 0, 0)
+		},
 		"autopilot.Service.ItemHistory": func(ctx context.Context, c *Core, ids seededItems) (any, error) {
 			boundMatch(ctx, t, c, ids.item, "Bound history")
 

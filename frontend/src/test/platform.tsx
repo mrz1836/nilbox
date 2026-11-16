@@ -174,6 +174,7 @@ function answers(subscribe: Loose<Platform['on']>): { [K in keyof Platform]: Loo
     routineWatching: () => Promise.resolve([]),
     getAutopilotEngine: () => Promise.resolve(autopilotEngine()),
     autopilotActivity: () => Promise.resolve(activityPage({ days: [] })),
+    autopilotActivityFrom: () => Promise.resolve(activityPage({ days: [] })),
     autopilotItemHistory: (itemId) => Promise.resolve({ itemId, matches: [], open: 0 }),
     latestAutopilotMatches: () => Promise.resolve([]),
     undoAutopilot: (ids) => Promise.resolve({ putBack: ids ?? [], left: [], skipped: [], words: 'Put back 1 item.' }),

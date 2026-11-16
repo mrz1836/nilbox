@@ -15,8 +15,8 @@ import (
 
 // List returns every routine not deleted, in the user's order, each marked when it
 // belongs to another account than the one signed in, or when it is broken, and with its
-// figures (what it did today, what waits, when it last matched). A broken routine is
-// listed with why, beside the others, and never rewritten.
+// figures (what it did today, what waits, when it last ran), from two reads of the ledger.
+// A broken routine is listed with why, beside the others, and never rewritten.
 func (s *Service) List(ctx context.Context) ([]Routine, error) {
 	rows, err := s.store.all(ctx)
 	if err != nil {
@@ -40,8 +40,9 @@ func (s *Service) List(ctx context.Context) ([]Routine, error) {
 	return out, nil
 }
 
-// figures reads every routine's figures from the ledger, by routine: today's counts from
-// local midnight, in the clock's own zone.
+// figures reads every routine's figures from the ledger, by routine: the counts in one
+// grouped read (today's from local midnight, in the clock's own zone), then when each
+// routine's newest match that ran was recorded.
 func (s *Service) figures(ctx context.Context) (map[int64]RoutineFigures, error) {
 	out := map[int64]RoutineFigures{}
 
@@ -77,16 +78,20 @@ func (s *Service) figures(ctx context.Context) (map[int64]RoutineFigures, error)
 	return out, nil
 }
 
-// matchHeads reads when each routine's newest match among rows was recorded, by match.
+// matchHeads reads when each routine's newest match that ran among rows was recorded, by
+// match; a routine none of whose matches ran has none.
 func matchHeads(ctx context.Context, l *ledger, rows []queries.ListRoutineFiguresRow) (map[int64]queries.ListMatchHeadsRow, error) {
 	out := map[int64]queries.ListMatchHeadsRow{}
-	if len(rows) == 0 {
-		return out, nil
-	}
 
 	last := make([]int64, 0, len(rows))
 	for _, r := range rows {
-		last = append(last, r.LastID)
+		if r.LastID > 0 {
+			last = append(last, r.LastID)
+		}
+	}
+
+	if len(last) == 0 {
+		return out, nil
 	}
 
 	got, err := l.q.ListMatchHeads(ctx, last)

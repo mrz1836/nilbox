@@ -93,7 +93,8 @@ type Routine struct {
 // RoutineFigures are what a routine's matches that did something or wait to (never a
 // baseline, nor one that closed as its item or the routine moved on) say of it: how many
 // it recorded today, from local midnight, real ones and a Dry run's apart, how many wait
-// for the user, and when its newest one was recorded and whether that was a Dry run's.
+// for the user, and when the newest that ran (or would have, in Dry run) was recorded and
+// whether that was a Dry run's, nil while none has.
 type RoutineFigures struct {
 	Today         int        `json:"today"`
 	WouldRunToday int        `json:"wouldRunToday"`
