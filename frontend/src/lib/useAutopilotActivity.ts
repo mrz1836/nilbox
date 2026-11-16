@@ -1,21 +1,46 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 
 import { autopilotActivity, type AutopilotActivityDay, type AutopilotLeftAlone } from '../platform'
-import { mergeDays, matchCount } from './autopilot'
+import { mergeDays } from './autopilot'
 import { attempt } from './call'
 import { useOnAutopilot } from './useAutopilot'
 import { useQuery } from './useQuery'
 
-// pageSize is how many matches a page of Activity holds, and maxReload the most one read
-// of the pages loaded may ask for (the backend's own cap).
+// pageSize is how many matches a page of Activity the user asks for holds, and readSize
+// how many a read of the pages already loaded takes at a time (the backend's own cap).
 const pageSize = 100
-const maxReload = 500
+const readSize = 500
 
-// Earlier is the days loaded past the first read, and where the next page starts.
-interface Earlier {
+// Loaded is Activity as read: the days, newest first, the items the routines leave alone
+// (the first page's), whether there is more, and where it starts.
+interface Loaded {
   days: AutopilotActivityDay[]
-  next: number
+  leftAlone: AutopilotLeftAlone[]
   more: boolean
+  next: number
+}
+
+// readDown reads Activity from its newest match down to the match floor, every match
+// between included, a page at a time, so nothing loaded before drops out of the middle; with
+// no floor, it reads the first page alone.
+async function readDown(floor: number): Promise<Loaded> {
+  const first = await autopilotActivity(0, floor === 0 ? pageSize : readSize)
+  const out: Loaded = { days: first.days, leftAlone: first.leftAlone, more: first.more, next: first.next }
+
+  while (floor > 0 && out.more && out.next > floor) {
+    const page = await autopilotActivity(out.next, readSize)
+
+    out.days = mergeDays(out.days, page.days)
+    out.more = page.more
+    out.next = page.next
+  }
+
+  return out
+}
+
+// oldestOf is the oldest match a page holds, 0 for none.
+function oldestOf(days: readonly AutopilotActivityDay[]): number {
+  return days.reduce((low, day) => day.matches.reduce((min, m) => (min === 0 || m.id < min ? m.id : min), low), 0)
 }
 
 // ActivityPages is Activity as the tab shows it: the days loaded, newest first, the items
@@ -36,42 +61,31 @@ export interface ActivityPages {
 const noDays: readonly AutopilotActivityDay[] = []
 const noneLeftAlone: readonly AutopilotLeftAlone[] = []
 
-// useAutopilotActivity reads Activity's newest page as the tab opens, earlier pages as the
-// user scrolls (loadMore), and the pages loaded again whenever Autopilot says it changed:
-// the newest matches in one read of as many as are loaded, up to the backend's cap, and
-// the pages past it as they were.
+// useAutopilotActivity reads Activity's newest page as the tab opens, a page more each time
+// the user scrolls to the end (loadMore), and, whenever Autopilot says it changed, every
+// match from the newest down to the oldest loaded, so a read again never leaves a gap
+// where matches it pushed past a page's end would have been.
 export function useAutopilotActivity(): ActivityPages {
-  const [limit, setLimit] = useState(pageSize)
-  const [earlier, setEarlier] = useState<Earlier | null>(null)
+  // floor is the oldest match loaded past the first page, 0 while only it is.
+  const floor = useRef(0)
   const [loadingMore, setLoadingMore] = useState(false)
   const [moreError, setMoreError] = useState('')
-  const first = useQuery(() => autopilotActivity(0, limit), [limit])
+  const pages = useQuery(() => readDown(floor.current), [])
 
   useOnAutopilot(() => {
-    void first.refetch()
+    void pages.refetch()
   })
 
-  const page = first.data
-  const days = page === undefined ? noDays : earlier === null ? page.days : mergeDays(page.days, earlier.days)
-  const more = earlier === null ? (page?.more ?? false) : earlier.more
+  const loaded = pages.data
 
   const loadMore = async () => {
-    if (page === undefined || !more || loadingMore) {
+    if (loaded === undefined || !loaded.more || loadingMore) {
       return
     }
-
-    // While the first read can hold more, it grows; past its cap, pages are read on.
-    if (earlier === null && limit < maxReload) {
-      setLimit(Math.min(maxReload, limit + pageSize))
-
-      return
-    }
-
-    const from = earlier?.next ?? page.next
 
     setLoadingMore(true)
 
-    const result = await attempt(autopilotActivity(from, pageSize))
+    const result = await attempt(autopilotActivity(loaded.next, pageSize))
 
     setLoadingMore(false)
 
@@ -81,25 +95,25 @@ export function useAutopilotActivity(): ActivityPages {
       return
     }
 
+    const page = result.data
+
     setMoreError('')
-    setEarlier((was) => ({
-      days: mergeDays(was?.days ?? [], result.data.days),
-      next: result.data.next,
-      more: result.data.more,
-    }))
+    floor.current = oldestOf(page.days) || floor.current
+    pages.set((was) =>
+      was === undefined ? was : { ...was, days: mergeDays(was.days, page.days), more: page.more, next: page.next },
+    )
   }
 
   return {
-    days,
-    leftAlone: page?.leftAlone ?? noneLeftAlone,
-    loaded: page !== undefined,
-    error: first.error !== '' ? first.error : moreError,
-    more,
-    // A first read growing to hold more is loading more too.
-    loadingMore: loadingMore || (first.pending && page !== undefined && matchCount(page) < limit),
+    days: loaded?.days ?? noDays,
+    leftAlone: loaded?.leftAlone ?? noneLeftAlone,
+    loaded: loaded !== undefined,
+    error: pages.error !== '' ? pages.error : moreError,
+    more: loaded?.more ?? false,
+    loadingMore,
     loadMore,
     reload: () => {
-      void first.refetch()
+      void pages.refetch()
     },
   }
 }

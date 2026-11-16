@@ -11,7 +11,9 @@ import {
   itemRef,
   leftAlone,
   routine,
+  routineFigures,
 } from '../test/fixtures'
+import type { AutopilotMatch, AutopilotState } from '../platform'
 import {
   activityLines,
   autopilotBadge,
@@ -19,18 +21,21 @@ import {
   effectState,
   effectVerb,
   elsewhereText,
+  filters,
+  inActivity,
+  inChunks,
   itemText,
   lineOf,
   matchingWords,
+  maxIDs,
   mergeDays,
   modeLabel,
-  routineActivity,
+  notListedText,
+  reasonChips,
   routineStatus,
   sameSecond,
   troubled,
 } from './autopilot'
-
-const noon = new Date('2026-06-15T12:00:00Z')
 
 describe('autopilotBadge', () => {
   it('counts nothing while nothing works, waits, or is broken', () => {
@@ -96,44 +101,44 @@ describe('autopilotBadge', () => {
 })
 
 describe('routineStatus', () => {
-  const quiet = { today: 0, wouldRun: 0, waiting: 0, last: '' }
-
   it('says whose another account’s routine is, and why a broken one won’t run, before anything else', () => {
-    expect(routineStatus(routine({ otherAccount: true, account: 'octo-other' }), quiet, 0, '').text).toBe(
+    expect(routineStatus(routine({ otherAccount: true, account: 'octo-other' }), 0, '').text).toBe(
       'Belongs to @octo-other',
     )
-    expect(
-      routineStatus(routine({ broken: `Made by a newer ${brand.name}: update to edit it` }), quiet, 0, ''),
-    ).toEqual({
+    expect(routineStatus(routine({ broken: `Made by a newer ${brand.name}: update to edit it` }), 0, '')).toEqual({
       text: `Made by a newer ${brand.name}: update to edit it`,
       tone: 'danger',
     })
-    expect(routineStatus(routine(), quiet, 0, 'GitHub refused the search.').tone).toBe('danger')
-    expect(routineStatus(routine({ lastError: 'It failed.' }), quiet, 0, '').text).toBe('It failed.')
+    expect(routineStatus(routine(), 0, 'GitHub refused the search.').tone).toBe('danger')
+    expect(routineStatus(routine({ lastError: 'It failed.' }), 0, '').text).toBe('It failed.')
   })
 
-  it('says its mode, and what it is doing or did today', () => {
-    expect(routineStatus(routine({ enabled: false }), quiet, 0, '').text).toBe('Autopilot · off')
-    expect(routineStatus(routine(), quiet, 2, '').text).toBe('Autopilot · 2 working')
-    expect(routineStatus(routine({ mode: 'ask' }), { ...quiet, waiting: 1 }, 0, '').text).toBe('Ask first · 1 waiting')
-    expect(routineStatus(routine({ mode: 'dryRun' }), { ...quiet, wouldRun: 3 }, 0, '').text).toBe(
+  it('says its mode, and what it is doing or did, from the routine’s own figures', () => {
+    const at = '2026-06-14T09:00:00Z'
+
+    expect(routineStatus(routine({ enabled: false }), 0, '').text).toBe('Autopilot · off')
+    expect(routineStatus(routine(), 2, '').text).toBe('Autopilot · 2 working')
+    expect(routineStatus(routine({ mode: 'ask', figures: routineFigures({ waiting: 1 }) }), 0, '').text).toBe(
+      'Ask first · 1 waiting',
+    )
+    expect(routineStatus(routine({ mode: 'dryRun', figures: routineFigures({ wouldRunToday: 3 }) }), 0, '').text).toBe(
       'Dry run · 3 would run today',
     )
-    expect(routineStatus(routine(), { ...quiet, today: 6 }, 0, '').text).toBe('Autopilot · 6 today')
-    expect(routineStatus(routine(), { ...quiet, last: '2026-06-14T09:00:00Z' }, 0, '')).toEqual({
+    expect(routineStatus(routine({ figures: routineFigures({ today: 6 }) }), 0, '').text).toBe('Autopilot · 6 today')
+    expect(routineStatus(routine({ figures: routineFigures({ lastAt: at }) }), 0, '')).toEqual({
       text: 'Autopilot · ran',
       tone: 'muted',
-      since: '2026-06-14T09:00:00Z',
+      since: at,
     })
-    expect(routineStatus(routine(), undefined, 0, '').text).toBe('Autopilot · nothing matched yet')
+    expect(routineStatus(routine(), 0, '').text).toBe('Autopilot · nothing matched yet')
   })
 
-  it('counts each routine’s matches today from the pages loaded', () => {
-    const days = activityPage().days
-    const sums = routineActivity(days, noon)
+  it('says a Dry run’s newest match would have run, never that it ran', () => {
+    const at = '2026-06-14T09:00:00Z'
 
-    expect(sums.get(3)).toEqual({ today: 1, wouldRun: 0, waiting: 0, last: '2026-06-15T11:30:00Z' })
-    expect(sums.get(4)).toEqual({ today: 0, wouldRun: 1, waiting: 0, last: '2026-06-15T11:40:00Z' })
+    expect(
+      routineStatus(routine({ mode: 'dryRun', figures: routineFigures({ lastAt: at, lastDryRun: true }) }), 0, ''),
+    ).toEqual({ text: 'Dry run · would have run', tone: 'muted', since: at })
   })
 })
 
@@ -185,6 +190,80 @@ describe('chipOf', () => {
       label: 'Gave up',
       tone: 'danger',
     })
+  })
+})
+
+// everyState is every state the ledger has: a record over the generated union, so a state
+// added in Go fails to compile here until the test covers it.
+const everyState: Readonly<Record<AutopilotState, true>> = {
+  waiting: true,
+  blocked: true,
+  queued: true,
+  running: true,
+  verifying: true,
+  done: true,
+  skipped: true,
+  dismissed: true,
+  closed: true,
+  baseline: true,
+}
+
+// bare is a match in state, closed for reason, that ran no step and changed nothing.
+function bare(state: AutopilotState, reason: AutopilotMatch['reason']): AutopilotMatch {
+  return autopilotMatch({ state, reason, blockedBy: '', steps: [], effects: [] })
+}
+
+describe('chipOf over every state and reason', () => {
+  it('never says a match ran that didn’t', () => {
+    const said = (Object.keys(everyState) as AutopilotState[]).flatMap((state) =>
+      (Object.keys(reasonChips) as (keyof typeof reasonChips)[]).map((reason) => ({
+        at: `${state}/${reason}`,
+        label: chipOf(bare(state, reason)).label,
+      })),
+    )
+
+    expect(said.filter((s) => s.label === '')).toEqual([])
+    expect(said.filter((s) => s.label === 'Ran').map((s) => s.at)).toEqual(['done/ran', 'done/would_run'])
+  })
+
+  it('words a baseline and each reason a match closed for', () => {
+    expect(chipOf(bare('baseline', 'from_now')).label).toBe('Already matched when you turned it on')
+    expect(chipOf(bare('baseline', '')).label).toBe('Already matched when you turned it on')
+    expect(chipOf(bare('closed', 'no_longer_matches')).label).toBe('Closed: no longer matches')
+    expect(chipOf(bare('closed', 'merged')).label).toBe('Closed: it merged')
+    expect(chipOf(bare('closed', 'hands_off')).label).toBe('Left alone')
+    expect(chipOf(bare('closed', '')).label).toBe('Closed')
+    expect(chipOf(bare('dismissed', 'you_skipped')).label).toBe('You skipped it')
+    expect(chipOf(bare('skipped', 'outside_contributor')).label).toBe('Skipped: an outside contributor’s')
+    expect(chipOf(bare('done', 'ran')).label).toBe('Ran')
+    expect(chipOf(bare('done', 'failed')).label).toBe('A step failed')
+  })
+
+  it('lists in Activity only what did something, and says why another has no line', () => {
+    expect(inActivity(bare('done', 'ran'))).toBe(true)
+    expect(inActivity(bare('skipped', 'tries'))).toBe(true)
+    expect(inActivity(bare('baseline', 'from_now'))).toBe(false)
+    expect(inActivity(bare('queued', ''))).toBe(false)
+    expect(notListedText(bare('baseline', 'from_now'))).toBe(
+      'Activity has no line for that one. Already matched when you turned it on.',
+    )
+  })
+})
+
+describe('filters and chunks', () => {
+  it('tells a filter that leaves lines out by its value', () => {
+    expect(filters({ routine: 0, result: 'all' })).toBe(false)
+    expect(filters({ routine: 3, result: 'all' })).toBe(true)
+    expect(filters({ routine: 0, result: 'notices' })).toBe(true)
+  })
+
+  it('splits ids into runs the backend reads whole', () => {
+    const ids = Array.from({ length: maxIDs * 2 + 1 }, (_, i) => i + 1)
+    const chunks = inChunks(ids)
+
+    expect(chunks.map((c) => c.length)).toEqual([maxIDs, maxIDs, 1])
+    expect(chunks.flat()).toEqual(ids)
+    expect(inChunks([])).toEqual([])
   })
 })
 

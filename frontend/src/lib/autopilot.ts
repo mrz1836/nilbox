@@ -16,6 +16,7 @@ import type {
   AutopilotMatch,
   AutopilotMatching,
   AutopilotMode,
+  AutopilotReason,
   AutopilotRoutine,
   AutopilotStepKind,
   AutopilotTarget,
@@ -94,52 +95,10 @@ export function autopilotBadge(
   return { count: working, attention: waiting > 0, failed: broken > 0, title }
 }
 
-// RoutineActivity is what Activity's pages say of one routine today: its matches and how
-// many would have run, and when its newest match was made, '' for none.
-export interface RoutineActivity {
-  today: number
-  wouldRun: number
-  waiting: number
-  last: string
-}
-
 // touched reports a match that did something with its item, or waits to: every match but
 // a baseline and one that closed as the item or the routine moved on.
 export function touched(m: AutopilotMatch): boolean {
   return m.state !== 'baseline' && m.state !== 'closed'
-}
-
-// sameDay reports whether two times fall on the same local day.
-function sameDay(a: Date, b: Date): boolean {
-  return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate()
-}
-
-// routineActivity sums the matches of the pages loaded up by routine, against now.
-export function routineActivity(
-  days: readonly AutopilotActivityDay[],
-  now: Date,
-): ReadonlyMap<number, RoutineActivity> {
-  const out = new Map<number, RoutineActivity>()
-
-  for (const day of days) {
-    for (const m of day.matches) {
-      if (!touched(m)) {
-        continue
-      }
-
-      const was = out.get(m.routineId) ?? { today: 0, wouldRun: 0, waiting: 0, last: '' }
-      const today = sameDay(new Date(m.createdAt), now)
-
-      out.set(m.routineId, {
-        today: was.today + (today && !m.dryRun ? 1 : 0),
-        wouldRun: was.wouldRun + (today && m.dryRun ? 1 : 0),
-        waiting: was.waiting + (m.state === 'waiting' ? 1 : 0),
-        last: was.last === '' || m.createdAt > was.last ? m.createdAt : was.last,
-      })
-    }
-  }
-
-  return out
 }
 
 // StatusLine is a routine's line under its name: what it says, its tone, and, for "ran 12
@@ -152,13 +111,10 @@ export interface StatusLine {
 
 // routineStatus is a routine's status line: whose it is when it is another account's, why
 // it is broken or can't run, its last error, then what it is doing (working, waiting), what
-// it did today, or when it last ran; a routine that is off says only its mode.
-export function routineStatus(
-  r: AutopilotRoutine,
-  activity: RoutineActivity | undefined,
-  working: number,
-  problem: string,
-): StatusLine {
+// it did today, or when it last ran (or, a Dry run's, would have), from its own figures; a
+// routine that is off says only its mode.
+export function routineStatus(r: AutopilotRoutine, working: number, problem: string): StatusLine {
+  const figures = r.figures
   const mode = modeLabel(r.mode)
 
   if (r.otherAccount) {
@@ -185,20 +141,24 @@ export function routineStatus(
     return { text: `${mode} · ${formatCount(working)} working`, tone: 'muted' }
   }
 
-  if ((activity?.waiting ?? 0) > 0) {
-    return { text: `${mode} · ${formatCount(activity?.waiting ?? 0)} waiting`, tone: 'warning' }
+  if (figures.waiting > 0) {
+    return { text: `${mode} · ${formatCount(figures.waiting)} waiting`, tone: 'warning' }
   }
 
-  if (r.mode === 'dryRun' && (activity?.wouldRun ?? 0) > 0) {
-    return { text: `${mode} · ${formatCount(activity?.wouldRun ?? 0)} would run today`, tone: 'muted' }
+  if (figures.today > 0) {
+    return { text: `${mode} · ${formatCount(figures.today)} today`, tone: 'muted' }
   }
 
-  if ((activity?.today ?? 0) > 0) {
-    return { text: `${mode} · ${formatCount(activity?.today ?? 0)} today`, tone: 'muted' }
+  if (figures.wouldRunToday > 0) {
+    return { text: `${mode} · ${formatCount(figures.wouldRunToday)} would run today`, tone: 'muted' }
   }
 
-  if ((activity?.last ?? '') !== '') {
-    return { text: `${mode} · ran`, tone: 'muted', since: activity?.last ?? '' }
+  if (figures.lastAt !== null) {
+    return {
+      text: `${mode} · ${figures.lastDryRun ? 'would have run' : 'ran'}`,
+      tone: 'muted',
+      since: figures.lastAt,
+    }
   }
 
   return { text: `${mode} · nothing matched yet`, tone: 'muted' }
@@ -246,10 +206,52 @@ export interface Chip {
 // notices are the steps that tell the user something.
 const notices: readonly AutopilotStepKind[] = ['notify', 'tellMe']
 
-// chipOf is what the ⚡ chip of an item says, from the newest match a routine has on it
-// (LatestMatches): a Dry run's "Would run"; what a local step did ("Snoozed", "Pinned"),
-// or that it was undone or taken back; a notice; or where an open match is. Each later kind
-// of step brings its own words.
+// openChips are what a match that is still open says, by its state: it waits for the user,
+// for this Mac, for a limit, or works.
+const openChips: Readonly<Record<'waiting' | 'blocked' | 'queued' | 'running' | 'verifying', Chip>> = {
+  waiting: { label: 'Needs you', tone: 'warning' },
+  blocked: { label: 'Can’t start yet', tone: 'warning' },
+  queued: { label: 'Queued', tone: 'muted' },
+  running: { label: 'Working', tone: 'accent' },
+  verifying: { label: 'Checking', tone: 'accent' },
+}
+
+// closedChips are what a closed match says by its state, when its reason says no more.
+const closedChips: Readonly<Record<'closed' | 'skipped' | 'dismissed', Chip>> = {
+  closed: { label: 'Closed', tone: 'muted' },
+  skipped: { label: 'Skipped', tone: 'muted' },
+  dismissed: { label: 'You skipped it', tone: 'muted' },
+}
+
+// reasonChips are what a closed match says by why it closed, every reason the ledger has:
+// a record over the generated union, so a reason added in Go fails to compile until it is
+// worded here. A match that ran says so through its steps instead (chipOf).
+export const reasonChips: Readonly<Record<AutopilotReason, Chip>> = {
+  ran: { label: 'Ran', tone: 'accent' },
+  would_run: { label: 'Would run', tone: 'muted' },
+  tries: { label: 'Gave up', tone: 'danger' },
+  outside_contributor: { label: 'Skipped: an outside contributor’s', tone: 'muted' },
+  you_skipped: { label: 'You skipped it', tone: 'muted' },
+  you_stopped: { label: 'Stopped by you', tone: 'muted' },
+  merged: { label: 'Closed: it merged', tone: 'muted' },
+  item_closed: { label: 'Closed: the item closed', tone: 'muted' },
+  gone: { label: 'Closed: the item is gone', tone: 'muted' },
+  left_watch: { label: 'Closed: it left the watch', tone: 'muted' },
+  moved_on: { label: 'Closed: it moved on', tone: 'muted' },
+  no_longer_matches: { label: 'Closed: no longer matches', tone: 'muted' },
+  routine_changed: { label: 'Closed: the routine changed', tone: 'muted' },
+  routine_off: { label: 'Closed: the routine was off', tone: 'muted' },
+  not_offered: { label: 'Closed: its step isn’t offered', tone: 'muted' },
+  failed: { label: 'A step failed', tone: 'danger' },
+  from_now: { label: 'Already matched when you turned it on', tone: 'muted' },
+  hands_off: { label: 'Left alone', tone: 'muted' },
+}
+
+// chipOf is what a match says, on an item's ⚡ chip (the newest a routine has on it,
+// LatestMatches) and in the item's history: a Dry run's "Would run"; where an open match
+// is; a baseline's "Already matched when you turned it on"; what a local step did
+// ("Snoozed", "Pinned"), or that it was undone or taken back; a notice; or why a closed one
+// closed. Each later kind of step brings its own words.
 export function chipOf(m: AutopilotMatch): Chip {
   if (m.dryRun) {
     return { label: 'Would run', tone: 'muted' }
@@ -257,20 +259,21 @@ export function chipOf(m: AutopilotMatch): Chip {
 
   switch (m.state) {
     case 'waiting':
-      return { label: 'Needs you', tone: 'warning' }
     case 'blocked':
-      return { label: 'Can’t start yet', tone: 'warning' }
     case 'queued':
-      return { label: 'Queued', tone: 'muted' }
     case 'running':
-      return { label: 'Working', tone: 'accent' }
     case 'verifying':
-      return { label: 'Checking', tone: 'accent' }
+      return openChips[m.state]
+    case 'baseline':
+      return reasonChips.from_now
+    case 'closed':
     case 'skipped':
-      return m.reason === 'tries' ? { label: 'Gave up', tone: 'danger' } : { label: 'Skipped', tone: 'muted' }
     case 'dismissed':
-      return { label: 'Skipped', tone: 'muted' }
-    default:
+      // A closed match never ran; one that says so anyway reads by its state alone.
+      return m.reason === '' || m.reason === 'ran' || m.reason === 'would_run'
+        ? closedChips[m.state]
+        : reasonChips[m.reason]
+    case 'done':
       break
   }
 
@@ -289,14 +292,15 @@ export function chipOf(m: AutopilotMatch): Chip {
   }
 
   if (m.reason === 'failed') {
-    return { label: 'A step failed', tone: 'danger' }
+    return reasonChips.failed
   }
 
   if (m.steps.some((s) => notices.includes(s.kind))) {
     return { label: 'Told you', tone: 'accent' }
   }
 
-  return { label: 'Ran', tone: 'accent' }
+  // A match that is done ran, unless it says it closed for another reason.
+  return m.reason === '' || m.reason === 'would_run' ? reasonChips.ran : reasonChips[m.reason]
 }
 
 // routineName names a routine by its ID among those listed, or "a routine" for one that
@@ -374,16 +378,24 @@ export function lineRoutine(line: ActivityLine): number {
   }
 }
 
-// listed reports a match that takes a line of its own: one a grouped line doesn't stand
-// for, that did something or waits for the user. An open match waiting on a limit waits
-// in Queued, and one being started in Working, which later builds show; a match that
-// closed before it acted is left out.
-function listed(m: AutopilotMatch, grouped: ReadonlySet<number>): boolean {
-  if (grouped.has(m.id) || !touched(m)) {
-    return false
-  }
-
+// inActivity reports a match Activity lists, on a line of its own or a grouped one: one
+// that ran, gave up, or the user skipped. An open match waiting on a limit waits in
+// Queued, and one being started in Working, which later builds show; a baseline and a
+// match that closed before it acted are left out.
+export function inActivity(m: AutopilotMatch): boolean {
   return m.state === 'done' || m.state === 'skipped' || m.state === 'dismissed'
+}
+
+// notListedText says why Activity shows no line for a match a notification or a chip asked
+// for: what it is instead.
+export function notListedText(m: AutopilotMatch): string {
+  return `Activity has no line for that one. ${chipOf(m).label}.`
+}
+
+// listed reports a match that takes a line of its own: one Activity lists that a grouped
+// line doesn't stand for.
+function listed(m: AutopilotMatch, grouped: ReadonlySet<number>): boolean {
+  return !grouped.has(m.id) && inActivity(m)
 }
 
 // ActivityFilter is what Activity shows: one routine's lines (0 for every routine's), and
@@ -391,6 +403,11 @@ function listed(m: AutopilotMatch, grouped: ReadonlySet<number>): boolean {
 export interface ActivityFilter {
   routine: number
   result: ActivityResult
+}
+
+// filters reports a filter that leaves any line out: one routine, or one result.
+export function filters(f: ActivityFilter): boolean {
+  return f.routine !== 0 || f.result !== 'all'
 }
 
 // activityLines are the lines of the pages loaded, newest first, narrowed by the filter:
@@ -517,6 +534,21 @@ export function sameSecond(a: string, b: string): boolean {
   const y = Date.parse(b)
 
   return !Number.isNaN(x) && !Number.isNaN(y) && Math.floor(x / 1000) === Math.floor(y / 1000)
+}
+
+// maxIDs is how many items one read by IDs takes (LatestMatches, ItemsByID), as the
+// backend caps them; the window reads more in as many calls.
+export const maxIDs = 500
+
+// inChunks splits ids into runs of at most maxIDs, in order.
+export function inChunks(ids: readonly number[]): number[][] {
+  const out: number[][] = []
+
+  for (let at = 0; at < ids.length; at += maxIDs) {
+    out.push(ids.slice(at, at + maxIDs))
+  }
+
+  return out
 }
 
 // AutopilotRequest is what the window asks the Autopilot tab to show, numbered so the same

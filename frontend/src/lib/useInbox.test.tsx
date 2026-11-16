@@ -69,4 +69,27 @@ describe('useInbox’s triage', () => {
       })
     },
   )
+
+  it('puts the routine’s mark back when the backend refuses the user’s triage', async () => {
+    platform.getInboxSnapshot.mockResolvedValue(marked())
+    platform.restoreItem.mockRejectedValue(new Error('database is locked'))
+
+    const { result } = renderHook(() => useInbox(), { wrapper: at() })
+
+    await waitFor(() => {
+      expect(result.current.snapshot).not.toBeNull()
+    })
+
+    let outcome: Awaited<ReturnType<ReturnType<typeof useInbox>['restore']>> | undefined
+
+    await act(async () => {
+      outcome = await result.current.restore(1)
+    })
+
+    expect(outcome).toEqual({ ok: false, error: 'database is locked' })
+
+    const shown = result.current.snapshot === null ? undefined : findItem(result.current.snapshot, 1)
+
+    expect(shown).toMatchObject({ setAsideBy: 3, pinnedBy: 3, snoozedUntil: '2026-06-18T12:00:00Z' })
+  })
 })

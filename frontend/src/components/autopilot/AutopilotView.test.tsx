@@ -24,6 +24,7 @@ import {
   profile,
   prompts,
   routine,
+  routineFigures,
   settings as settingsOf,
 } from '../../test/fixtures'
 import { emit, platform } from '../../test/platform'
@@ -383,6 +384,127 @@ describe('Activity', () => {
     expect(row).toHaveAttribute('data-highlighted', 'true')
   })
 
+  it('opens an item no routine watches in its sheet, a deleted routine’s too, and GitHub only on a click', async () => {
+    // The line is a deleted routine's: routine 9 is in no list.
+    platform.listRoutines.mockResolvedValue(routines())
+    platform.autopilotActivity.mockResolvedValue(
+      activityPage({
+        days: [{ date: '2026-06-15', matches: [dryRunMatch({ routineId: 9, routine: 'Gone' })], groups: [] }],
+      }),
+    )
+    platform.itemsByID.mockImplementation((ids) =>
+      Promise.resolve(
+        (ids ?? []).includes(2)
+          ? [item({ id: 2, kind: 'issue', number: 9, title: 'The widget forgets its size' })]
+          : [],
+      ),
+    )
+    renderTab()
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Open example-repo #9' }))
+
+    expect(await screen.findByRole('dialog', { name: 'The widget forgets its size' })).toBeInTheDocument()
+    expect(platform.openIssue).toHaveBeenCalledWith(2)
+    expect(platform.openExternal).not.toHaveBeenCalled()
+
+    // Gone from the store too, it opens on GitHub, once, for the click.
+    await userEvent.keyboard('{Escape}')
+    platform.itemsByID.mockResolvedValue([])
+    await userEvent.click(screen.getByRole('button', { name: 'Open example-repo #9' }))
+    await waitFor(() => {
+      expect(platform.openExternal).toHaveBeenCalledExactlyOnceWith('https://github.com/acme-org/example-repo/issues/9')
+    })
+
+    // Visiting routines afterwards opens nothing.
+    await userEvent.click((await routineList()).getByRole('button', { name: /^Snooze passing bot PRs/ }))
+    await screen.findByText(/Nothing to watch right now/)
+    await userEvent.click((await routineList()).getByRole('button', { name: /^Investigate new bugs/ }))
+    await screen.findByText(/Nothing to watch right now/)
+    expect(platform.openExternal).toHaveBeenCalledOnce()
+  })
+
+  it('marks a watched row once, in the routine that watches it, and not when the routine is visited again', async () => {
+    platform.listRoutines.mockResolvedValue(routines())
+    platform.autopilotActivity.mockResolvedValue(activityPage())
+    platform.routineWatching.mockImplementation((rid) => Promise.resolve(rid === 3 ? [2] : []))
+    platform.itemsByID.mockResolvedValue([
+      item({ id: 2, kind: 'issue', number: 9, title: 'The widget forgets its size' }),
+    ])
+    renderTab()
+
+    // The Dry run line is routine 4's, which no longer watches the item; routine 3 does.
+    await userEvent.click(await screen.findByRole('button', { name: 'Open example-repo #9' }))
+
+    const pane = within(await screen.findByRole('region', { name: 'Snooze passing bot PRs' }))
+    const row = (await pane.findByRole('button', { name: 'The widget forgets its size' })).closest('li')
+
+    expect(row).toHaveAttribute('data-highlighted', 'true')
+
+    await userEvent.click(screen.getByRole('button', { name: 'Activity' }))
+    await userEvent.click((await routineList()).getByRole('button', { name: /^Snooze passing bot PRs/ }))
+
+    const again = (await screen.findByRole('button', { name: 'The widget forgets its size' })).closest('li')
+
+    expect(again).not.toHaveAttribute('data-highlighted')
+    expect(platform.openExternal).not.toHaveBeenCalled()
+  })
+
+  it('says why Activity has no line for a match a request names', async () => {
+    platform.listRoutines.mockResolvedValue(routines())
+    platform.autopilotActivity.mockResolvedValue(
+      activityPage({
+        days: [
+          {
+            date: '2026-06-15',
+            matches: [autopilotMatch({ state: 'baseline', reason: 'from_now', effects: [], steps: [] })],
+            groups: [],
+          },
+        ],
+      }),
+    )
+    renderTab({
+      request: {
+        seq: 1,
+        target: { routineId: 3, matchId: 12, runId: 0, createdAt: '2026-06-15T11:30:00Z', activity: false },
+      },
+    })
+
+    expect(
+      await screen.findByText('Activity has no line for that one. Already matched when you turned it on.'),
+    ).toBeInTheDocument()
+  })
+
+  it('shows every line again once the filter is back to every routine', async () => {
+    platform.listRoutines.mockResolvedValue(routines())
+    platform.autopilotActivity.mockResolvedValue(activityPage())
+    renderTab()
+
+    await screen.findByText('Snoozed 1')
+    await userEvent.selectOptions(screen.getByRole('combobox', { name: 'Routine' }), 'Investigate new bugs')
+    await userEvent.selectOptions(screen.getByRole('combobox', { name: 'Routine' }), 'Every routine')
+
+    expect(screen.getByText('Snoozed 1')).toBeInTheDocument()
+    expect(screen.queryByText('Nothing here matches the filter.')).not.toBeInTheDocument()
+  })
+
+  it('reads each routine’s line from its own figures, whatever Activity has loaded', async () => {
+    platform.listRoutines.mockResolvedValue([
+      routine({ figures: routineFigures({ today: 6 }) }),
+      routine({
+        id: 4,
+        name: 'Investigate new bugs',
+        mode: 'dryRun',
+        figures: routineFigures({ lastAt: '2026-06-15T10:00:00Z', lastDryRun: true }),
+      }),
+    ])
+    renderTab()
+
+    const list = await routineList()
+
+    expect(list.getByText('Autopilot · 6 today')).toBeInTheDocument()
+    expect(list.getByText(/^Dry run · would have run/)).toHaveTextContent('Dry run · would have run 2h ago')
+  })
+
   it('says, across the top, that Autopilot is paused, with Resume, and that another copy runs it', async () => {
     platform.listRoutines.mockResolvedValue(routines())
     platform.getAutopilotEngine.mockResolvedValue(autopilotEngine({ elsewhere: true, holds: false }))
@@ -435,7 +557,7 @@ describe('Activity', () => {
     await waitFor(() => {
       expect(line).toHaveAttribute('data-highlighted', 'true')
     })
-    expect(platform.autopilotActivity).toHaveBeenCalledWith(0, 200)
+    expect(platform.autopilotActivity).toHaveBeenCalledWith(14, 100)
   })
 
   it('reads earlier days on asking, and goes back to Activity from a routine', async () => {
@@ -445,7 +567,7 @@ describe('Activity', () => {
 
     await userEvent.click(await screen.findByRole('button', { name: 'Show earlier days' }))
     await waitFor(() => {
-      expect(platform.autopilotActivity).toHaveBeenCalledWith(0, 200)
+      expect(platform.autopilotActivity).toHaveBeenCalledWith(12, 100)
     })
 
     await userEvent.click((await routineList()).getByRole('button', { name: /^Snooze passing bot PRs/ }))

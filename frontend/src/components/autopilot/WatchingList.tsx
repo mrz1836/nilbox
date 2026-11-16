@@ -1,129 +1,55 @@
-import { lazy, Suspense, use, useEffect, useEffectEvent, useRef, useState } from 'react'
+import { use, useEffect, useEffectEvent, useRef, useState } from 'react'
 
-import { issueTone } from '../../lib/issues'
+import { inChunks } from '../../lib/autopilot'
 import { worktreeOf } from '../../lib/itemWorktrees'
 import { sessionsOf } from '../../lib/sessions'
-import { isDismissed, isMuted, isSnoozed, type TriageTab } from '../../lib/triage'
 import { useAutopilotChips, useOnAutopilot } from '../../lib/useAutopilot'
-import type { InboxState } from '../../lib/useInbox'
-import { useNowAs } from '../../lib/useNow'
 import { useQuery } from '../../lib/useQuery'
-import {
-  itemsByID,
-  on,
-  openExternal,
-  resolveLaunches,
-  routineWatching,
-  type AgentSession,
-  type ConversationOrder,
-  type InboxItem,
-  type ItemKind,
-  type ItemResolution,
-  type RepoRules,
-  type ReviewTab,
-  type Settings,
-  type Worktree,
-} from '../../platform'
-import { resultTone, type SheetDrafts } from '../InboxView'
-import { ItemRow, type LaunchOptions } from '../ItemRow'
-import { defaultToastSeconds, Toast, type ToastMessage } from '../Toast'
-import { SheetTriage } from '../TriageControls'
-import { useItemActions } from '../useItemActions'
+import { itemsByID, on, routineWatching, type InboxItem } from '../../platform'
+import { ItemRow } from '../ItemRow'
 import { AutopilotRowsContext } from './AutopilotChip'
+import { useSheetHost, type RowsKit } from './useSheetHost'
 
-// The sheets are the inbox's own, loaded from the same chunks.
-const ReviewSheet = lazy(() => import('../review/ReviewSheet').then((m) => ({ default: m.ReviewSheet })))
-const IssueSheet = lazy(() => import('../issue/IssueSheet').then((m) => ({ default: m.IssueSheet })))
+export type { RowsKit } from './useSheetHost'
 
-// RowsKit is what a routine's Watching list shares with the inbox's lists, so its rows are
-// the inbox's own: the inbox (whose triage they make), the launch options, the sessions and
-// worktrees, the sheets' drafts and choices, and the settings the rows open.
-export interface RowsKit {
-  inbox: InboxState
-  launch: LaunchOptions | null
-  sessions: ReadonlyMap<string, readonly AgentSession[]>
-  worktrees: ReadonlyMap<string, Worktree>
-  snoozeDays: number
-  toastSeconds?: number
-  repoRules: RepoRules | undefined
-  drafts: SheetDrafts
-  reviewTab: ReviewTab | undefined
-  onReviewTab: (tab: ReviewTab) => void
-  conversationOrder: ConversationOrder | undefined
-  onConversationOrder: (order: ConversationOrder) => void
-  onSnoozeSettings: () => void
-  onFilesSettings: () => void
-  onRepoRuleSettings: () => void
-  onManageReplies: () => void
-  onSettingsSaved: (settings: Settings) => void
-  // onItemOpened hears each item opened in its sheet, as the inbox's do.
-  onItemOpened: (itemId: number) => void
-}
+// readItems reads the stored items among ids, as many at a time as the backend reads
+// (inChunks), so a routine that watches more never loses the rest, newest activity first.
+export async function readItems(ids: readonly number[]): Promise<InboxItem[]> {
+  const pages = await Promise.all(inChunks(ids).map((chunk) => itemsByID(chunk)))
 
-// noRules are the rules until the settings load.
-const noRules: RepoRules = { pinned: [], muted: [] }
-
-// tabFor is the tab of the inbox an item would be in: its triage decides its controls.
-function tabFor(item: InboxItem, now: Date): TriageTab {
-  if (isDismissed(item)) {
-    return 'dismissed'
-  }
-
-  if (isSnoozed(item, now)) {
-    return 'snoozed'
-  }
-
-  return isMuted(item) ? 'muted' : 'inbox'
-}
-
-// Viewing is the item a sheet shows, and its kind, which keeps the sheet as it is should
-// the item leave the list.
-interface Viewing {
-  id: number
-  kind: ItemKind
+  return pages.flat().sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt))
 }
 
 export interface WatchingListProps {
   routineId: number
   kit: RowsKit
-  // highlight is the item Activity's Open asked to show, which the list marks and scrolls
-  // into view; one the list doesn't hold opens on GitHub. seq numbers the asks.
-  highlight: { id: number; url: string; seq: number } | null
+  // highlight is the item Activity's Open asked to show here, which the list marks and
+  // scrolls into view once, then hands back (onHighlighted) so it never shows again on its
+  // own; seq numbers the asks.
+  highlight: { id: number; seq: number } | null
+  onHighlighted: () => void
 }
 
 // WatchingList is a routine's Watching list: the items its watch finds now (those in the
 // inbox lists it names and those its searches return, as the last refresh read them),
 // newest activity first, as the inbox's own rows, with their signals, launch button, ⚡
 // chip, and ⋯ menu. A row's sheet opens on a click and steps through the list. This is
-// where an item that is in no inbox list shows up.
-export function WatchingList({ routineId, kit, highlight }: WatchingListProps) {
+// where an item that is in no inbox list shows up. The tab keys it by routine, so a list
+// shows only its own routine's rows.
+export function WatchingList({ routineId, kit, highlight, onHighlighted }: WatchingListProps) {
   const rows = use(AutopilotRowsContext)
   const ids = useQuery(() => routineWatching(routineId), [routineId])
   const key = (ids.data ?? []).join(',')
-  const numbers = key === '' ? [] : key.split(',').map(Number)
-  const items = useQuery(() => itemsByID(numbers), [key], { enabled: ids.data !== undefined })
-  const resolutions = useQuery(
-    () =>
-      resolveLaunches(numbers).then(
-        (list) => new Map(list.map((r) => [r.itemId, r])) as ReadonlyMap<number, ItemResolution>,
-      ),
-    [key, kit.launch],
-    { enabled: key !== '' && kit.launch !== null, log: 'could not resolve the watched items’ launches' },
-  )
+  const items = useQuery(() => readItems(key === '' ? [] : key.split(',').map(Number)), [key], {
+    enabled: ids.data !== undefined,
+  })
   const chips = useAutopilotChips(key)
   const list = items.data ?? []
-  // tabs are the rows' tabs, by the clock, so a snooze that ends moves its row's controls;
-  // joined, so a tick renders the list again only when one changes.
-  const tabs = useNowAs((now) => list.map((i) => tabFor(i, now)).join(','))
-  const tabOf = (item: InboxItem): TriageTab => {
-    const at = list.findIndex((i) => i.id === item.id)
-
-    return (tabs.split(',')[at] as TriageTab | undefined) ?? 'inbox'
-  }
-  const [viewing, setViewing] = useState<Viewing | null>(null)
-  const [toast, setToast] = useState<ToastMessage | null>(null)
-  const toasts = useRef(0)
+  const host = useSheetHost({ kit, items: list, listTitle: 'Watching' })
   const listRef = useRef<HTMLUListElement>(null)
+  // marked is the row Activity's Open last showed here, marked for as long as the list
+  // stays, as the inbox marks a row a notification showed.
+  const [marked, setMarked] = useState(0)
 
   useOnAutopilot(() => {
     void ids.refetch()
@@ -131,91 +57,41 @@ export function WatchingList({ routineId, kit, highlight }: WatchingListProps) {
   })
 
   // The rows' triage changes the stored items, which the inbox says it changed.
-  const readItems = useEffectEvent(() => {
+  const readAgain = useEffectEvent(() => {
     void items.refetch()
   })
 
   useEffect(
     () =>
       on('inbox:updated', () => {
-        readItems()
+        readAgain()
       }),
     [],
   )
 
-  const showToast = (message: Omit<ToastMessage, 'id'>) => {
-    toasts.current += 1
-    setToast({ ...message, id: toasts.current })
-  }
-
-  const closeToast = () => {
-    setToast(null)
-  }
-
-  const { triage, edits } = useItemActions({
-    inbox: kit.inbox,
-    snoozeDays: kit.snoozeDays,
-    onSnoozeSettings: kit.onSnoozeSettings,
-    repoRules: kit.repoRules ?? noRules,
-    onSettingsSaved: kit.onSettingsSaved,
-    onRepoRuleSettings: kit.onRepoRuleSettings,
-    showToast,
-    closeToast,
-    onOpen: (item) => {
-      setViewing({ id: item.id, kind: item.kind })
-    },
-    listed: false,
+  const listed = items.data !== undefined
+  const asked = highlight !== null && listed && list.some((i) => i.id === highlight.id) ? highlight.id : 0
+  const handBack = useEffectEvent(() => {
+    onHighlighted()
   })
 
-  const viewed = viewing === null ? undefined : list.find((i) => i.id === viewing.id)
-  const shownId = highlight !== null && list.some((i) => i.id === highlight.id) ? highlight.id : 0
-  const listed = items.data !== undefined
+  if (asked !== 0 && asked !== marked) {
+    setMarked(asked)
+  }
 
-  // Activity's Open scrolls to the row it asked for, or opens the item on GitHub when the
-  // routine no longer watches it.
+  // Activity's Open marks its row and scrolls to it once, then lets the ask go.
   useEffect(() => {
-    if (highlight === null || !listed) {
-      return
-    }
-
-    if (shownId === 0) {
-      if (highlight.url !== '') {
-        openExternal(highlight.url)
-      }
-
+    if (asked === 0) {
       return
     }
 
     const row = [...(listRef.current?.querySelectorAll('[data-item-id]') ?? [])].find(
-      (el) => el.getAttribute('data-item-id') === String(shownId),
+      (el) => el.getAttribute('data-item-id') === String(asked),
     )
 
     row?.scrollIntoView({ block: 'center' })
-  }, [highlight, shownId, listed])
-
-  // An item opened in its sheet is heard once per opening, as the inbox's are.
-  const opened = useRef(0)
-  const itemOpened = useEffectEvent((id: number) => {
-    kit.onItemOpened(id)
-  })
-  const viewingId = viewing?.id ?? 0
-
-  useEffect(() => {
-    if (viewingId !== opened.current) {
-      opened.current = viewingId
-
-      if (viewingId > 0) {
-        itemOpened(viewingId)
-      }
-    }
-  }, [viewingId])
-
-  const sheetToast = <Toast toast={toast} seconds={kit.toastSeconds ?? defaultToastSeconds} onClose={closeToast} />
-  const sheetTriage = viewed === undefined ? null : <SheetTriage item={viewed} tab={tabOf(viewed)} actions={triage} />
-  const done = (message: string, title: string, tone: 'success' | 'warning') => {
-    setViewing(null)
-    showToast({ text: message, detail: title, tone })
-  }
+    handBack()
+  }, [asked])
 
   if (ids.error !== '' || items.error !== '') {
     return (
@@ -247,86 +123,21 @@ export function WatchingList({ routineId, kit, highlight }: WatchingListProps) {
                 key={item.id}
                 item={item}
                 launch={kit.launch}
-                resolution={resolutions.data?.get(item.id) ?? null}
+                resolution={host.resolutionOf(item.id)}
                 worktree={worktreeOf(kit.worktrees, item)}
                 sessions={sessionsOf(kit.sessions, item)}
-                tab={tabOf(item)}
-                triage={triage}
-                edits={edits}
+                tab={host.tabOf(item)}
+                triage={host.triage}
+                edits={host.edits}
                 onFilesSettings={kit.onFilesSettings}
-                highlighted={item.id === shownId}
-                onOpen={(it) => {
-                  setViewing({ id: it.id, kind: it.kind })
-                }}
+                highlighted={item.id === marked}
+                onOpen={host.open}
               />
             ))}
           </ul>
         </AutopilotRowsContext>
       )}
-      <Suspense fallback={null}>
-        {viewing !== null && viewing.kind === 'pr' && (
-          <ReviewSheet
-            id={viewing.id}
-            item={viewed}
-            siblings={list}
-            listTitle="Watching"
-            drafts={kit.drafts.review}
-            tab={kit.reviewTab ?? 'files'}
-            onTab={kit.onReviewTab}
-            order={kit.conversationOrder ?? 'oldest'}
-            onOrder={kit.onConversationOrder}
-            launch={kit.launch}
-            resolution={resolutions.data?.get(viewing.id) ?? null}
-            sessions={viewed === undefined ? undefined : sessionsOf(kit.sessions, viewed)}
-            worktree={viewed === undefined ? undefined : worktreeOf(kit.worktrees, viewed)}
-            onNavigate={(id) => {
-              setViewing({ id, kind: list.find((i) => i.id === id)?.kind ?? viewing.kind })
-            }}
-            onClose={() => {
-              setViewing(null)
-            }}
-            onDone={(result, r) => {
-              done(result.message, r.title, resultTone(result))
-            }}
-            onFilesSettings={kit.onFilesSettings}
-            onManageReplies={kit.onManageReplies}
-            triage={sheetTriage}
-            toast={sheetToast}
-          />
-        )}
-        {viewing !== null && viewing.kind === 'issue' && (
-          <IssueSheet
-            id={viewing.id}
-            item={viewed}
-            siblings={list}
-            listTitle="Watching"
-            drafts={kit.drafts.issue}
-            order={kit.conversationOrder ?? 'oldest'}
-            onOrder={kit.onConversationOrder}
-            launch={kit.launch}
-            resolution={resolutions.data?.get(viewing.id) ?? null}
-            sessions={viewed === undefined ? undefined : sessionsOf(kit.sessions, viewed)}
-            worktree={viewed === undefined ? undefined : worktreeOf(kit.worktrees, viewed)}
-            onNavigate={(id) => {
-              setViewing({ id, kind: list.find((i) => i.id === id)?.kind ?? viewing.kind })
-            }}
-            onClose={() => {
-              setViewing(null)
-            }}
-            onDone={(result, issue) => {
-              done(result.message, issue.title, issueTone(result))
-            }}
-            onManageReplies={kit.onManageReplies}
-            triage={sheetTriage}
-            toast={sheetToast}
-          />
-        )}
-      </Suspense>
-      <Toast
-        toast={viewing === null ? toast : null}
-        seconds={kit.toastSeconds ?? defaultToastSeconds}
-        onClose={closeToast}
-      />
+      {host.node}
     </>
   )
 }

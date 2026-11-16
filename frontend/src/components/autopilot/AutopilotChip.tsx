@@ -1,6 +1,6 @@
 import { createContext, use, useId, useState } from 'react'
 
-import { chipOf, effectState, effectVerb, routineName, targetOf, type Chip } from '../../lib/autopilot'
+import { chipOf, effectState, effectVerb, inActivity, routineName, targetOf, type Chip } from '../../lib/autopilot'
 import { formatAgo, formatFull } from '../../lib/time'
 import { useMutation } from '../../lib/useMutation'
 import { usePopover } from '../../lib/usePopover'
@@ -101,7 +101,7 @@ function HistoryEntry({ match, onShow, onUndone }: HistoryEntryProps) {
           {undo.error}
         </p>
       )}
-      {onShow !== undefined && (
+      {onShow !== undefined && inActivity(match) && (
         <button
           type="button"
           onClick={() => {

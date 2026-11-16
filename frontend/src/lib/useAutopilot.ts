@@ -6,11 +6,13 @@ import {
   latestAutopilotMatches,
   listRoutines,
   on,
+  routineNames,
   type AutopilotEngine,
   type AutopilotGlance,
   type AutopilotMatch,
   type AutopilotRoutine,
 } from '../platform'
+import { inChunks } from './autopilot'
 import { useQuery } from './useQuery'
 
 // AutopilotState is Autopilot as the whole window shares it: at a glance (what the tab
@@ -54,11 +56,13 @@ export function useAutopilot(): AutopilotState {
   const glance = useQuery(() => getAutopilotGlance(), [], { log: 'could not read Autopilot at a glance' })
   const routines = useQuery(() => listRoutines(), [])
   const engine = useQuery(() => getAutopilotEngine(), [], { log: 'could not read Autopilot’s engine' })
+  const named = useQuery(() => routineNames(), [], { log: 'could not read the routines’ names' })
 
   const reload = () => {
     void glance.refetch()
     void routines.refetch()
     void engine.refetch()
+    void named.refetch()
   }
 
   useOnAutopilot(reload)
@@ -69,7 +73,12 @@ export function useAutopilot(): AutopilotState {
     glance: glance.data ?? null,
     routines: list,
     loaded: routines.data !== undefined,
-    names: new Map(list.map((r) => [r.id, r.name])),
+    // Every routine's name, a deleted one's too, so a mark it left still names it; a
+    // routine listed names itself while the names load.
+    names: new Map([
+      ...(named.data ?? []).map((n) => [n.id, n.name] as const),
+      ...list.map((r) => [r.id, r.name] as const),
+    ]),
     engine: engine.data ?? null,
     error: routines.error,
     reload,
@@ -80,13 +89,14 @@ export function useAutopilot(): AutopilotState {
 const noChips: ReadonlyMap<number, AutopilotMatch> = new Map()
 
 // useAutopilotChips reads the newest match a routine has on each item among ids, by item,
-// for the ⚡ chips of their rows: as ids change, and whenever Autopilot says it changed.
-// ids is a list joined with commas, so it compares as a value.
+// for the ⚡ chips of their rows: as ids change, and whenever Autopilot says it changed,
+// as many at a time as the backend reads (inChunks), so no item loses its chip. ids is a
+// list joined with commas, so it compares as a value.
 export function useAutopilotChips(ids: string): ReadonlyMap<number, AutopilotMatch> {
   const latest = useQuery(
     () =>
-      latestAutopilotMatches(ids.split(',').map(Number)).then(
-        (matches) => new Map(matches.map((m) => [m.item.id, m])) as ReadonlyMap<number, AutopilotMatch>,
+      Promise.all(inChunks(ids.split(',').map(Number)).map((chunk) => latestAutopilotMatches(chunk))).then(
+        (pages) => new Map(pages.flat().map((m) => [m.item.id, m])) as ReadonlyMap<number, AutopilotMatch>,
       ),
     [ids],
     { enabled: ids !== '', log: 'could not read what the routines did with the items' },

@@ -3,10 +3,10 @@ import userEvent from '@testing-library/user-event'
 import type { ReactNode } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 
-import type { ActivityLine } from '../../lib/autopilot'
+import { maxIDs, type ActivityLine } from '../../lib/autopilot'
 import { useIssueDrafts } from '../../lib/issueDrafts'
 import { useReviewDrafts } from '../../lib/reviewDrafts'
-import { useAutopilotChips } from '../../lib/useAutopilot'
+import { useAutopilot, useAutopilotChips } from '../../lib/useAutopilot'
 import { useAutopilotActivity } from '../../lib/useAutopilotActivity'
 import { useInbox } from '../../lib/useInbox'
 import { at } from '../../test/clock'
@@ -145,78 +145,86 @@ describe('ActivityList', () => {
   })
 })
 
-describe('useAutopilotActivity', () => {
-  it('reads past the first read’s cap a page at a time, and joins what two pages split', async () => {
-    platform.autopilotActivity.mockImplementation((before) =>
-      Promise.resolve(
-        before === 0
-          ? activityPage({
-              more: true,
-              next: 12,
-              days: [{ date: '2026-06-15', matches: [autopilotMatch()], groups: [activityGroup()] }],
-            })
-          : activityPage({
-              more: false,
-              next: 0,
-              days: [
-                {
-                  date: '2026-06-15',
-                  matches: [autopilotMatch({ id: 11 })],
-                  groups: [activityGroup({ undo: [50], matches: [11] })],
-                },
-              ],
-            }),
-      ),
+// fakeLedger is a ledger of count matches, IDs count down to 1, which Activity reads as the
+// backend does: those before a match (all for 0), newest first, at most limit, with more
+// and the last one's ID when there are. grow records n newer matches.
+function fakeLedger(count: number) {
+  let top = count
+
+  const read = (before: number, limit: number) => {
+    const ids = Array.from({ length: top }, (_, i) => top - i).filter((id) => before === 0 || id < before)
+    const page = ids.slice(0, limit)
+    const more = ids.length > limit
+
+    return Promise.resolve(
+      activityPage({
+        days: [{ date: '2026-06-15', matches: page.map((id) => autopilotMatch({ id, effects: [] })), groups: [] }],
+        more,
+        next: more ? (page.at(-1) ?? 0) : 0,
+        leftAlone: [],
+      }),
     )
+  }
+
+  return {
+    read,
+    grow: (n: number) => {
+      top += n
+    },
+  }
+}
+
+// loadedIds are the matches the days hold, newest first.
+function loadedIds(days: readonly { matches: readonly { id: number }[] }[]): number[] {
+  return days.flatMap((d) => d.matches.map((m) => m.id))
+}
+
+describe('useAutopilotActivity', () => {
+  it('reads a page more on asking, and every match down to the oldest loaded again, so nothing drops out', async () => {
+    const ledger = fakeLedger(700)
+    platform.autopilotActivity.mockImplementation(ledger.read)
 
     const { result } = renderHook(() => useAutopilotActivity(), { wrapper: at() })
 
     await waitFor(() => {
       expect(result.current.loaded).toBe(true)
     })
+    expect(platform.autopilotActivity).toHaveBeenLastCalledWith(0, 100)
 
-    // The first read grows to the backend's cap before pages are read on.
-    for (const limit of [200, 300, 400, 500]) {
+    for (let i = 0; i < 5; i++) {
       await act(async () => {
         await result.current.loadMore()
       })
-      await waitFor(() => {
-        expect(platform.autopilotActivity).toHaveBeenCalledWith(0, limit)
-      })
     }
 
-    await act(async () => {
-      await result.current.loadMore()
-    })
+    expect(loadedIds(result.current.days)).toEqual(Array.from({ length: 600 }, (_, i) => 700 - i))
 
-    expect(platform.autopilotActivity).toHaveBeenLastCalledWith(12, 100)
-    expect(result.current.more).toBe(false)
-    expect(result.current.days[0]?.groups[0]).toMatchObject({ words: 'Snoozed 2', undo: [51, 50] })
-
-    platform.autopilotActivity.mockRejectedValue(new Error('Autopilot’s history couldn’t be read.'))
+    // 150 newer matches push the old first page's tail on: a read again still holds every
+    // match from the newest down to the oldest loaded.
+    ledger.grow(150)
     act(() => {
-      result.current.reload()
+      emit('autopilot:updated')
     })
 
     await waitFor(() => {
-      expect(result.current.error).toBe('Autopilot’s history couldn’t be read.')
+      expect(loadedIds(result.current.days)[0]).toBe(850)
     })
+
+    const ids = loadedIds(result.current.days)
+
+    expect(ids.slice(0, 750)).toEqual(Array.from({ length: 750 }, (_, i) => 850 - i))
+    expect(result.current.more).toBe(false)
   })
 
-  it('says why an earlier page couldn’t be read', async () => {
-    platform.autopilotActivity.mockResolvedValue(activityPage({ more: true, next: 12 }))
+  it('says why an earlier page, or a read again, couldn’t be read', async () => {
+    const ledger = fakeLedger(150)
+    platform.autopilotActivity.mockImplementation(ledger.read)
 
     const { result } = renderHook(() => useAutopilotActivity(), { wrapper: at() })
 
     await waitFor(() => {
-      expect(result.current.loaded).toBe(true)
+      expect(result.current.more).toBe(true)
     })
-
-    for (let i = 0; i < 4; i++) {
-      await act(async () => {
-        await result.current.loadMore()
-      })
-    }
 
     platform.autopilotActivity.mockRejectedValue(new Error('Autopilot’s history couldn’t be read.'))
     await act(async () => {
@@ -224,6 +232,31 @@ describe('useAutopilotActivity', () => {
     })
 
     expect(result.current.error).toBe('Autopilot’s history couldn’t be read.')
+
+    act(() => {
+      result.current.reload()
+    })
+    await waitFor(() => {
+      expect(result.current.error).toBe('Autopilot’s history couldn’t be read.')
+    })
+  })
+})
+
+describe('useAutopilot', () => {
+  it('names a deleted routine, so the marks it left still say whose they are', async () => {
+    platform.listRoutines.mockResolvedValue([routine()])
+    platform.routineNames.mockResolvedValue([
+      { id: 3, name: 'Snooze passing bot PRs', deleted: false },
+      { id: 9, name: 'An old routine', deleted: true },
+    ])
+
+    const { result } = renderHook(() => useAutopilot(), { wrapper: at() })
+
+    await waitFor(() => {
+      expect(result.current.names.get(9)).toBe('An old routine')
+    })
+    expect(result.current.names.get(3)).toBe('Snooze passing bot PRs')
+    expect(result.current.routines).toHaveLength(1)
   })
 })
 
@@ -333,8 +366,10 @@ function useKit(): RowsKit {
 
 const onItemOpened = vi.fn<(itemId: number) => void>()
 
-function Watching({ highlight = null }: { highlight?: { id: number; url: string; seq: number } | null }) {
-  return <WatchingList routineId={3} kit={useKit()} highlight={highlight} />
+const onHighlighted = vi.fn()
+
+function Watching({ highlight = null }: { highlight?: { id: number; seq: number } | null }) {
+  return <WatchingList routineId={3} kit={useKit()} highlight={highlight} onHighlighted={onHighlighted} />
 }
 
 function rows({ children }: { children: ReactNode }) {
@@ -383,16 +418,45 @@ describe('WatchingList', () => {
     expect(await screen.findByRole('button', { name: 'Restore' })).toBeInTheDocument()
   })
 
-  it('opens on GitHub an item Activity asked for that it no longer watches', async () => {
+  it('marks the row Activity asked for once, hands the ask back, and never opens GitHub itself', async () => {
     platform.routineWatching.mockResolvedValue([1])
     platform.itemsByID.mockResolvedValue([item()])
-    render(<Watching highlight={{ id: 9, url: 'https://github.com/acme-org/example-repo/issues/9', seq: 1 }} />, {
-      wrapper: rows,
-    })
+    const { rerender } = render(<Watching highlight={{ id: 1, seq: 1 }} />, { wrapper: rows })
+
+    const row = (await screen.findByRole('button', { name: 'Add the widget cache' })).closest('li')
 
     await waitFor(() => {
-      expect(platform.openExternal).toHaveBeenCalledWith('https://github.com/acme-org/example-repo/issues/9')
+      expect(onHighlighted).toHaveBeenCalledOnce()
     })
+    expect(row).toHaveAttribute('data-highlighted', 'true')
+
+    rerender(<Watching />)
+    act(() => {
+      emit('autopilot:updated')
+    })
+    rerender(<Watching highlight={{ id: 9, seq: 2 }} />)
+
+    await waitFor(() => {
+      expect(platform.routineWatching.mock.calls.length).toBeGreaterThan(1)
+    })
+    expect(onHighlighted).toHaveBeenCalledOnce()
+    expect(platform.openExternal).not.toHaveBeenCalled()
+  })
+
+  it('reads every item it watches, past what one read takes', async () => {
+    const ids = Array.from({ length: maxIDs + 2 }, (_, i) => i + 1)
+    platform.routineWatching.mockResolvedValue(ids)
+    // Each read stores only its chunk's last item, so the list stays small enough to render
+    // quickly while still showing the second chunk was read.
+    platform.itemsByID.mockImplementation((asked) =>
+      Promise.resolve((asked ?? []).slice(-1).map((id) => item({ id, number: id, title: `Item ${String(id)}` }))),
+    )
+    render(<Watching />, { wrapper: rows })
+
+    expect(await screen.findByRole('button', { name: `Item ${String(maxIDs + 2)}` })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: `Item ${String(maxIDs)}` })).toBeInTheDocument()
+    expect(platform.itemsByID.mock.calls.map(([asked]) => asked?.length)).toEqual([maxIDs, 2])
+    expect(platform.latestAutopilotMatches.mock.calls.map(([asked]) => asked?.length)).toEqual([maxIDs, 2])
   })
 
   it('says why what it watches couldn’t be read', async () => {

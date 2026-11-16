@@ -3,10 +3,12 @@ import { useEffect, useEffectEvent, useId, useRef, useState } from 'react'
 import {
   activityLines,
   elsewhereText,
+  filters,
+  inActivity,
+  notListedText,
   pausedText,
   resultLabels,
   resultOrder,
-  routineActivity,
   routineStatus,
   sameSecond,
   signedOutText,
@@ -17,14 +19,17 @@ import {
 import { attempt } from '../../lib/call'
 import type { AutopilotState } from '../../lib/useAutopilot'
 import { useAutopilotActivity } from '../../lib/useAutopilotActivity'
-import { useNowAs } from '../../lib/useNow'
 import { useSettingsSave } from '../../lib/useSettingsSave'
 import {
   deleteRoutine,
   duplicateRoutine,
+  itemsByID,
+  openExternal,
+  routineWatching,
   setAutopilotPaused,
   type AutopilotItemRef,
   type AutopilotRoutine,
+  type InboxItem,
   type Settings,
 } from '../../platform'
 import { ConfirmDialog } from '../ConfirmDialog'
@@ -36,7 +41,8 @@ import { ActivityList } from './ActivityList'
 import { RoutineList, type RoutineActions } from './RoutineList'
 import { RoutinePane } from './RoutinePane'
 import { useRoutineChange } from './useRoutineChange'
-import { WatchingList, type RowsKit } from './WatchingList'
+import { useSheetHost, type RowsKit } from './useSheetHost'
+import { WatchingList } from './WatchingList'
 
 export interface AutopilotViewProps {
   // autopilot is Autopilot as the window shares it: at a glance, the routines, the engine.
@@ -220,9 +226,6 @@ export default function AutopilotView({
   toastSeconds = defaultToastSeconds,
 }: AutopilotViewProps) {
   const id = useId()
-  // today is the clock's day, as its midnight, which the routines' lines count today's
-  // matches by; a tick within the day changes nothing.
-  const today = useNowAs((now) => new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime())
   const activity = useAutopilotActivity()
   const [selected, setSelected] = useState(0)
   const [filter, setFilter] = useState<ActivityFilter>(noFilter)
@@ -232,7 +235,19 @@ export default function AutopilotView({
   const [deleteBusy, setDeleteBusy] = useState(false)
   const [focus, setFocus] = useState<Focus | null>(null)
   const [highlight, setHighlight] = useState<{ matchId: number; seq: number } | null>(null)
-  const [watchHighlight, setWatchHighlight] = useState<{ id: number; url: string; seq: number } | null>(null)
+  // watchHighlight is the row Activity's Open asks a routine's Watching list to show, once:
+  // the list hands it back as it shows it.
+  const [watchHighlight, setWatchHighlight] = useState<{ routineId: number; id: number; seq: number } | null>(null)
+  // lone is an item Open shows in its sheet when no list here holds it.
+  const [lone, setLone] = useState<InboxItem | null>(null)
+  const loneHost = useSheetHost({
+    kit,
+    items: lone === null ? [] : [lone],
+    listTitle: 'Autopilot',
+    onClose: () => {
+      setLone(null)
+    },
+  })
   const [handled, setHandled] = useState(0)
   const { routines, engine, reload } = autopilot
 
@@ -290,10 +305,12 @@ export default function AutopilotView({
   if (focus !== null && activity.loaded && !readOn) {
     setFocus(null)
 
-    if (focused !== undefined && (focus.createdAt === '' || sameSecond(focused.createdAt, focus.createdAt))) {
+    if (focused === undefined || (focus.createdAt !== '' && !sameSecond(focused.createdAt, focus.createdAt))) {
+      setToast(noteOf(focus.seq, 'That is no longer in Autopilot’s history.'))
+    } else if (inActivity(focused)) {
       setHighlight({ matchId: focused.id, seq: focus.seq })
     } else {
-      setToast(noteOf(focus.seq, 'That is no longer in Autopilot’s history.'))
+      setToast(noteOf(focus.seq, notListedText(focused)))
     }
   }
 
@@ -309,10 +326,9 @@ export default function AutopilotView({
     }
   }, [readOn, loadedMatches.length])
 
-  const perRoutine = routineActivity(activity.days, new Date(today))
   const working = (routineId: number) => autopilot.glance?.working.filter((w) => w.routineId === routineId).length ?? 0
   const problem = (routineId: number) => engine?.problems.find((p) => p.routineId === routineId)?.detail ?? ''
-  const statusOf = (r: AutopilotRoutine) => routineStatus(r, perRoutine.get(r.id), working(r.id), problem(r.id))
+  const statusOf = (r: AutopilotRoutine) => routineStatus(r, working(r.id), problem(r.id))
   const chosen = routines.find((r) => r.id === selected)
   const shownId = chosen === undefined ? 0 : chosen.id
 
@@ -364,18 +380,51 @@ export default function AutopilotView({
     })
   }
 
-  // openItem shows a line's item: its card in the inbox while it is listed there, else its
-  // row in the routine's Watching list.
-  const openItem = (item: AutopilotItemRef, routineId: number) => {
+  // openItem shows a line's item, whatever became of its routine: its card in the inbox
+  // while it is listed there; else its row in a routine that still watches it, the line's
+  // own first; else its sheet, while the item is stored; else its page on GitHub. Each
+  // follows the click alone.
+  const openItem = async (item: AutopilotItemRef, routineId: number) => {
     if (item.id > 0 && listed(item.id)) {
       onShowItem(item.id, item.url)
 
       return
     }
 
-    toasts.current += 1
-    setSelected(routineId)
-    setWatchHighlight({ id: item.id, url: item.url, seq: toasts.current })
+    if (item.id > 0) {
+      const order = [routineId, ...routines.map((r) => r.id).filter((rid) => rid !== routineId)].filter((rid) =>
+        routines.some((r) => r.id === rid),
+      )
+
+      for (const rid of order) {
+        const watched = await attempt(routineWatching(rid))
+
+        if (watched.ok && watched.data.includes(item.id)) {
+          toasts.current += 1
+          setSelected(rid)
+          setWatchHighlight({ routineId: rid, id: item.id, seq: toasts.current })
+
+          return
+        }
+      }
+
+      const stored = await attempt(itemsByID([item.id]))
+      const found = stored.ok ? stored.data[0] : undefined
+
+      if (found !== undefined) {
+        setLone(found)
+        loneHost.open(found)
+
+        return
+      }
+    }
+
+    if (item.url !== '') {
+      openExternal(item.url)
+    }
+  }
+  const onOpen = (item: AutopilotItemRef, routineId: number) => {
+    void openItem(item, routineId)
   }
 
   const lines = activityLines(activity.days, activity.leftAlone, filter)
@@ -511,7 +560,7 @@ export default function AutopilotView({
                     </option>
                   ))}
                 </select>
-                {(filter.routine !== 0 || filter.result !== 'all') && (
+                {filters(filter) && (
                   <button
                     type="button"
                     onClick={() => {
@@ -531,11 +580,11 @@ export default function AutopilotView({
                 <ActivityList
                   lines={lines}
                   highlight={highlight}
-                  onOpen={openItem}
+                  onOpen={onOpen}
                   onToast={toastText}
                   empty={
                     <p className="text-sm text-muted">
-                      {filter === noFilter
+                      {!filters(filter)
                         ? 'Nothing yet. What your routines do shows here, newest first.'
                         : 'Nothing here matches the filter.'}
                     </p>
@@ -553,13 +602,23 @@ export default function AutopilotView({
               onMode={(mode) => {
                 changes.request(chosen, { kind: 'mode', mode })
               }}
-              watching={<WatchingList routineId={chosen.id} kit={kit} highlight={watchHighlight} />}
+              watching={
+                <WatchingList
+                  key={chosen.id}
+                  routineId={chosen.id}
+                  kit={kit}
+                  highlight={watchHighlight?.routineId === chosen.id ? watchHighlight : null}
+                  onHighlighted={() => {
+                    setWatchHighlight(null)
+                  }}
+                />
+              }
               activity={
                 <>
                   <ActivityList
                     lines={routineLines}
                     routineColumn={false}
-                    onOpen={openItem}
+                    onOpen={onOpen}
                     onToast={toastText}
                     empty={<p className="text-sm text-muted">Nothing yet.</p>}
                   />
@@ -571,6 +630,7 @@ export default function AutopilotView({
         </div>
       </section>
       {changes.dialog}
+      {loneHost.node}
       {deleting !== null && (
         <ConfirmDialog
           title={`Delete “${deleting.name}”?`}
