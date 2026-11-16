@@ -79,6 +79,12 @@ type Record struct {
 
 	// Launches counts the sessions started there.
 	Launches int
+
+	// FetchedHead is the commit the app made the worktree at, just fetched from GitHub: a
+	// pull request's head, or the default branch an issue's worktree starts from; "" for
+	// a worktree it found, or added on a branch left from an earlier one. Every commit it
+	// reaches came from GitHub. Record keeps the one stored when this is "".
+	FetchedHead string
 }
 
 // Dir returns the worktree's directory: Path, or for a record kept before the app made
@@ -114,7 +120,7 @@ func New(db *sql.DB) *Store {
 
 // Record stores where a clone's worktree for an item is, and the item it is for,
 // replacing the place an earlier record of the same worktree named. A worktree recorded
-// already keeps when it was made and its sessions.
+// already keeps when it was made and its sessions, and its FetchedHead unless r names one.
 func (s *Store) Record(ctx context.Context, r Record) error {
 	if !r.valid() {
 		return fmt.Errorf("%w: %+v", ErrInvalidRecord, r)
@@ -122,7 +128,7 @@ func (s *Store) Record(ctx context.Context, r Record) error {
 
 	err := s.q.RecordWorktree(ctx, queries.RecordWorktreeParams{
 		ClonePath: r.ClonePath, Worktree: r.Worktree, Path: r.Path, Branch: r.Branch, Owner: r.Owner, Name: r.Name,
-		Kind: string(r.Kind), Number: int64(r.Number), CreatedAt: r.CreatedAt.UTC(),
+		Kind: string(r.Kind), Number: int64(r.Number), CreatedAt: r.CreatedAt.UTC(), FetchedHead: r.FetchedHead,
 	})
 	if err != nil {
 		return fmt.Errorf("record the worktree: %w", err)
@@ -162,7 +168,7 @@ func (s *Store) Worktrees(ctx context.Context) ([]Record, error) {
 		rec := Record{
 			ClonePath: r.ClonePath, Worktree: r.Worktree, Path: r.Path, Branch: r.Branch, Owner: r.Owner, Name: r.Name,
 			Kind: item.Kind(r.Kind), Number: int(r.Number), Agent: agent.ID(r.Agent), CreatedAt: r.CreatedAt.UTC(),
-			Launches: int(r.Launches),
+			Launches: int(r.Launches), FetchedHead: r.FetchedHead,
 		}
 
 		if r.LastAgentAt != nil {

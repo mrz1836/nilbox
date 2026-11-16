@@ -230,11 +230,23 @@ func (m *Maker) ensure(ctx context.Context, req EnsureRequest) (Ensured, error) 
 		}
 	}
 
-	if err = m.s.recordWorktree(ctx, req, f.path, f.branch); err != nil {
+	if err = m.s.recordWorktree(ctx, req, f.path, f.branch, f.fetched()); err != nil {
 		return Ensured{}, err
 	}
 
 	return f.ensured(), nil
+}
+
+// fetched is the commit a worktree Ensure just made starts at, which it fetched from
+// GitHub: the pull request's head, or the default branch an issue's worktree starts from.
+// It is "" for a worktree found, or added on a branch left from an earlier worktree, whose
+// commits may be the user's own.
+func (f found) fetched() string {
+	if f.action != ActionCreate || !gitread.IsCommitID(f.head) {
+		return ""
+	}
+
+	return f.head
 }
 
 // check reports an EnsureRequest that cannot name a worktree.
@@ -681,16 +693,17 @@ func refCommit(ctx context.Context, g git, clone, ref string) (string, error) {
 	}
 }
 
-// recordWorktree records the item's worktree. A worktree no record names still resumes,
-// found by its branch, so this fails only when the database does.
-func (s *Service) recordWorktree(ctx context.Context, req EnsureRequest, path, branch string) error {
+// recordWorktree records the item's worktree, and fetched, the commit it was just made at
+// from GitHub, or "" (see found.fetched). A worktree no record names still resumes, found
+// by its branch, so this fails only when the database does.
+func (s *Service) recordWorktree(ctx context.Context, req EnsureRequest, path, branch, fetched string) error {
 	if s.launches == nil {
 		return nil
 	}
 
 	return s.launches.Record(ctx, worklog.Record{
 		ClonePath: req.Clone, Worktree: req.name(), Path: path, Branch: branch, Owner: req.Owner, Name: req.Name,
-		Kind: req.Kind, Number: req.Number, CreatedAt: s.clock.Now(),
+		Kind: req.Kind, Number: req.Number, CreatedAt: s.clock.Now(), FetchedHead: fetched,
 	})
 }
 

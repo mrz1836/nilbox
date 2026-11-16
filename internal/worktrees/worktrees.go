@@ -254,13 +254,14 @@ type Worktree struct {
 	// Head is the commit the worktree has checked out.
 	Head string `json:"head"`
 
-	// Unpushed is how many commits on HEAD no remote-tracking branch has, or -1 when it
-	// could not be counted (or was not, for the main worktree).
+	// Unpushed is how many commits on HEAD no remote-tracking branch has, nor the commit
+	// the app made the worktree at, fetched from GitHub (worklog.Record.FetchedHead), or -1
+	// when it could not be counted (or was not, for the main worktree).
 	Unpushed int `json:"unpushed"`
 
 	// OnGitHub reports that every commit the worktree has is on GitHub: none is missing
-	// from the remote-tracking branches, or HEAD is its pull request's head commit, which
-	// GitHub keeps.
+	// from the remote-tracking branches and the commit it was made at, or HEAD is its pull
+	// request's head commit, which GitHub keeps.
 	OnGitHub bool `json:"onGitHub"`
 
 	// Item is the pull request or issue the worktree was made for, or nil.
@@ -310,6 +311,11 @@ type Worktree struct {
 
 	// Error explains why the worktree's status could not be read, or is "".
 	Error string `json:"error"`
+
+	// fetched is the commit its record says the app made it at, fetched from GitHub
+	// (worklog.Record.FetchedHead), or "": the commits it reaches count as on GitHub, its
+	// own branch's too. The window never sees it.
+	fetched string
 }
 
 // BranchKind is why the app offers to delete a branch.

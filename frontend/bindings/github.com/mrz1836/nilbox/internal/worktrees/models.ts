@@ -609,15 +609,16 @@ export interface Worktree {
     "head": string;
 
     /**
-     * Unpushed is how many commits on HEAD no remote-tracking branch has, or -1 when it
-     * could not be counted (or was not, for the main worktree).
+     * Unpushed is how many commits on HEAD no remote-tracking branch has, nor the commit
+     * the app made the worktree at, fetched from GitHub (worklog.Record.FetchedHead), or -1
+     * when it could not be counted (or was not, for the main worktree).
      */
     "unpushed": number;
 
     /**
      * OnGitHub reports that every commit the worktree has is on GitHub: none is missing
-     * from the remote-tracking branches, or HEAD is its pull request's head commit, which
-     * GitHub keeps.
+     * from the remote-tracking branches and the commit it was made at, or HEAD is its pull
+     * request's head commit, which GitHub keeps.
      */
     "onGitHub": boolean;
 

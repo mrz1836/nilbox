@@ -3634,8 +3634,10 @@ worktree gets a stage:
 - **in use**: a session is running in it.
 - **ready to clean up**: its pull request merged or its issue closed, and removing it loses
   nothing. It has no uncommitted changes, every commit it has is on GitHub (on a
-  remote-tracking branch, or as the pull request's head, which GitHub keeps after the branch
-  is deleted), and no session runs in it.
+  remote-tracking branch, as the pull request's head, which GitHub keeps after the branch is
+  deleted, or in the commit the app made the worktree at, which it had just fetched from
+  GitHub, so a pull request that moves on after the launch still counts), and no session
+  runs in it.
 - **needs a look**: its item is done, but it holds uncommitted changes or commits that are not
   on GitHub.
 - An item still open gets no marker; the row just says it is open.
@@ -3722,9 +3724,9 @@ any you add, as a name or a pattern such as `release/*` (`*` matches any run of 
 checked out in a worktree are always kept too.
 
 A branch is deleted only when nothing is lost: every commit on it is on GitHub (on a
-remote-tracking branch, or as the pull request's head, which GitHub keeps after the branch is
-deleted), or, for a merged branch, it points at the merged pull request's head or a commit
-before it. A branch that can't go is shown unticked and held, with why, such as "2 commits on it
+remote-tracking branch, as the pull request's head, which GitHub keeps after the branch is
+deleted, or in the commit the app made its worktree at, fetched from GitHub), or, for a merged
+branch, it points at the merged pull request's head or a commit before it. A branch that can't go is shown unticked and held, with why, such as "2 commits on it
 aren't on GitHub". Each is checked again as it is deleted, and deleted with `git update-ref -d`
 only while it still points at the commit the dialog showed, so a branch that moved in between is
 kept. The outcome lists why each branch kept stayed and, folded away, each deleted branch with

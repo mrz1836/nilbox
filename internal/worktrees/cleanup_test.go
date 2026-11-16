@@ -121,6 +121,10 @@ func (f *fakeLaunches) Record(_ context.Context, r worklog.Record) error {
 	for i, old := range f.records {
 		if old.ClonePath == r.ClonePath && old.Worktree == r.Worktree {
 			r.CreatedAt, r.Agent, r.LastAgentAt, r.Launches = old.CreatedAt, old.Agent, old.LastAgentAt, old.Launches
+			if r.FetchedHead == "" {
+				r.FetchedHead = old.FetchedHead
+			}
+
 			f.records[i] = r
 
 			return nil
@@ -160,6 +164,17 @@ func (f *fakeLaunches) all() []worklog.Record {
 	defer f.mu.Unlock()
 
 	return append([]worklog.Record(nil), f.records...)
+}
+
+// forgetFetched clears the commit every record says its worktree was made at, as in a
+// record kept before the app recorded it.
+func (f *fakeLaunches) forgetFetched() {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	for i := range f.records {
+		f.records[i].FetchedHead = ""
+	}
 }
 
 // linkDeps are the optional dependencies of a linking Service.
