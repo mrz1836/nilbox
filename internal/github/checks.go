@@ -65,18 +65,26 @@ type HeadChecks struct {
 	// once for each event that ran it, each with its own outcome.
 	Checks []HeadCheck
 
-	// Complete reports that Checks holds every check of the commit.
+	// Complete reports that Checks holds every check of the commit: a commit with more
+	// than checksPage is read in part, its names partial.
 	Complete bool
+
+	// Rollup is the commit's overall check state, over every check, read or not (SUCCESS,
+	// FAILURE, ERROR, PENDING, or EXPECTED), "" with no checks.
+	Rollup string
 }
 
 // Settled returns the newest completion time of the checks once every one has finished,
-// and false while one runs or there are none. A skipped run can say it completed before it
-// started, so start times never count.
+// and false while one runs or there are none. A check runs while it is pending, or has no
+// completion time and wasn't skipped: a skipped run may never say it completed, and can
+// say it completed before it started, so start times never count. A commit read in part
+// has settled once every check read has finished and its Rollup says the rest have too,
+// at the newest time read, since the rest's times aren't.
 func (h HeadChecks) Settled() (time.Time, bool) {
 	var newest time.Time
 
 	for _, c := range h.Checks {
-		if c.Outcome == CheckPending || c.CompletedAt.IsZero() {
+		if c.Running() {
 			return time.Time{}, false
 		}
 
@@ -85,7 +93,25 @@ func (h HeadChecks) Settled() (time.Time, bool) {
 		}
 	}
 
-	return newest, h.Complete && len(h.Checks) > 0
+	switch {
+	case len(h.Checks) == 0:
+		return time.Time{}, false
+	case h.Complete:
+		return newest, true
+	default:
+		return newest, RollupFinished(h.Rollup)
+	}
+}
+
+// RollupFinished reports whether a commit's overall check state says every check has
+// finished: SUCCESS, FAILURE, or ERROR.
+func RollupFinished(state string) bool {
+	switch state {
+	case "SUCCESS", "FAILURE", "ERROR":
+		return true
+	default:
+		return false
+	}
 }
 
 // HeadCheck is one check run or commit status of a head commit, with its times.
@@ -118,6 +144,12 @@ type HeadCheck struct {
 	// creation time for both; CompletedAt is zero while a run goes.
 	StartedAt   time.Time
 	CompletedAt time.Time
+}
+
+// Running reports a check not finished: pending, or with no completion time and not
+// skipped, as the routines' facts count it.
+func (c HeadCheck) Running() bool {
+	return c.Outcome == CheckPending || (c.CompletedAt.IsZero() && c.Outcome != CheckSkipped)
 }
 
 // ChecksRead is what FetchChecks read.
@@ -295,6 +327,7 @@ type checksNode struct {
 	ID         string `json:"id"`
 	HeadRefOID string `json:"headRefOid"`
 	CheckList  *struct {
+		State    string `json:"state"`
 		Contexts struct {
 			TotalCount int `json:"totalCount"`
 			PageInfo   struct {
@@ -349,6 +382,7 @@ func (n *checksNode) headChecks() (string, HeadChecks, bool) {
 		return n.ID, out, true
 	}
 
+	out.Rollup = n.CheckList.State
 	required := n.required()
 
 	ctxs := n.CheckList.Contexts

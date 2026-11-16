@@ -31,7 +31,7 @@ func (b *builder) checks() {
 	case !strings.EqualFold(c.Head, d.HeadOID):
 		missing = Unknown("the check names were read at another commit", NeedChecks)
 	default:
-		b.readChecks(*c)
+		b.readChecks(*c, d.ChecksState)
 
 		return
 	}
@@ -98,8 +98,12 @@ func checkName(c CheckRow) string {
 	return name
 }
 
-// readChecks fills the check fields from the checks read at the head commit.
-func (b *builder) readChecks(c ChecksRow) {
+// readChecks fills the check fields from the checks read at the head commit, whose overall
+// state the details read as rollup. A commit read in part has its names partial, so a
+// condition that needs one missing is unknown, and its checks done only once every check
+// read has finished and rollup says the rest have too, at the newest time read, as the
+// inbox's settled time counts it (github.HeadChecks.Settled).
+func (b *builder) readChecks(c ChecksRow, rollup string) {
 	s := &checkSummary{names: []string{}, failed: []string{}}
 
 	for _, check := range c.Checks {
@@ -120,16 +124,33 @@ func (b *builder) readChecks(c ChecksRow) {
 		b.set(catalog.FieldRequiredFailed, Bool(false))
 	}
 
+	b.done = checksDone(len(c.Checks), s, partial, rollup)
+}
+
+// checksDone is when a head commit's checks finished, from n checks read (s, partial when
+// they aren't all of them) and the overall state the details read (rollup).
+func checksDone(n int, s *checkSummary, partial bool, rollup string) Value {
 	switch {
-	case len(c.Checks) == 0:
-		b.done = Unknown("it has no checks", NeedNothing)
-	case partial:
-		b.done = Unknown("not every check could be read", NeedNothing)
-	case s.running:
-		b.done = Unknown("a check is still running", NeedChecks)
+	case n == 0:
+		return Unknown("it has no checks", NeedNothing)
+	case s.running, partial && rollupRunning(rollup):
+		return Unknown("a check is still running", NeedChecks)
+	case partial && !rollupFinished(rollup):
+		return Unknown("not every check could be read", NeedNothing)
 	default:
-		b.done = Since(s.last)
+		return Since(s.last)
 	}
+}
+
+// rollupFinished reports whether a commit's overall check state says every check has
+// finished.
+func rollupFinished(state string) bool {
+	return state == "SUCCESS" || state == "FAILURE" || state == "ERROR"
+}
+
+// rollupRunning reports whether a commit's overall check state says a check still runs.
+func rollupRunning(state string) bool {
+	return state == "PENDING" || state == "EXPECTED"
 }
 
 // fileFields are the fields read from the changed files.

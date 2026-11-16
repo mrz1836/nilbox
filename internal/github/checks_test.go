@@ -98,6 +98,60 @@ func TestFetchChecksSettlesOnlyOnceEveryCheckFinished(t *testing.T) {
 
 	_, ok = HeadChecks{Complete: true, Checks: []HeadCheck{}}.Settled()
 	assert.False(t, ok, "no checks never settle")
+
+	neverRan := HeadChecks{Complete: true, Checks: []HeadCheck{
+		{Name: "lint", Outcome: CheckPassed, CompletedAt: done},
+		{Name: "deploy", Outcome: CheckSkipped},
+	}}
+
+	at, ok = neverRan.Settled()
+	assert.True(t, ok, "a skipped run that never says it completed isn't running, as the routines' facts count it")
+	assert.Equal(t, done, at)
+
+	stillQueued := HeadChecks{Complete: true, Checks: []HeadCheck{{Name: "lint", Outcome: CheckPassed}}}
+	_, ok = stillQueued.Settled()
+	assert.False(t, ok, "any other check with no completion time still runs")
+}
+
+func TestAHeadWithMoreChecksThanAPageSettlesByItsRollup(t *testing.T) {
+	t.Parallel()
+
+	done := time.Date(2026, 11, 15, 12, 0, 0, 0, time.UTC)
+	page := []HeadCheck{{Name: "lint", Outcome: CheckPassed, CompletedAt: done}}
+
+	at, ok := HeadChecks{Checks: page, Rollup: "SUCCESS"}.Settled()
+	assert.True(t, ok, "the rollup says the checks past the page finished too")
+	assert.Equal(t, done, at, "at the newest time read")
+
+	_, ok = HeadChecks{Checks: page, Rollup: "PENDING"}.Settled()
+	assert.False(t, ok, "while the rollup says one still runs")
+
+	_, ok = HeadChecks{Checks: page}.Settled()
+	assert.False(t, ok, "or says nothing")
+}
+
+func TestFetchChecksReadsTheRollupAndMarksAPartialRead(t *testing.T) {
+	t.Parallel()
+
+	client := newTestClient(t, func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = io.WriteString(w, `{"data":{"p0":{"__typename":"PullRequest","id":"PR_big","headRefOid":"abc",`+
+			`"checkList":{"state":"FAILURE","contexts":{"totalCount":140,"pageInfo":{"hasNextPage":true},"nodes":[`+
+			`{"__typename":"CheckRun","name":"lint","conclusion":"FAILURE","status":"COMPLETED",`+
+			`"startedAt":"2026-11-15T11:00:00Z","completedAt":"2026-11-15T12:00:00Z"}]}},`+
+			`"req":{"contexts":{"nodes":[{"isRequired":true}]}}},`+
+			`"rateLimit":{"cost":1,"limit":5000,"remaining":4990,"used":10,"resetAt":"2026-11-16T06:43:00Z"}}}`)
+	})
+
+	got, err := client.FetchChecks(t.Context(), NewToken(fakeToken), []string{"PR_big"})
+	require.NoError(t, err)
+
+	big := got.Items["PR_big"]
+	assert.False(t, big.Complete, "a head with more checks than a page is read in part")
+	assert.Equal(t, "FAILURE", big.Rollup)
+
+	at, ok := big.Settled()
+	assert.True(t, ok, "and settles once its rollup says every check finished")
+	assert.Equal(t, time.Date(2026, 11, 15, 12, 0, 0, 0, time.UTC), at)
 }
 
 func TestFetchChecksReadsStatusesAndAppRuns(t *testing.T) {
