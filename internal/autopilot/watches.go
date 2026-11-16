@@ -16,8 +16,8 @@ import (
 // builds again from the stored routines after every change to one, one build at a time,
 // and keeps in an atomic value: each inbox refresh reads it as it starts, and waits on
 // nothing of Autopilot's but, when the account signed in changed, a build of its own.
-// Only the enabled routines of the account signed in, that load, are in it; a search two
-// routines share is in it once, under its key.
+// Only the enabled routines of the account signed in, that load, are in it, and none while
+// Autopilot is off; a search two routines share is in it once, under its key.
 
 // WatchSearch is one routine search the inbox reads beside its own lists.
 type WatchSearch struct {
@@ -93,16 +93,23 @@ func (s *Service) currentWatches() WatchSet {
 
 // rebuildWatches builds the snapshot of the routines' searches again from the stored
 // routines and the account signed in, keeps it, and returns it. A routine that is off,
-// broken, of another account, or whose search won't build for the account is left out. It
-// reads the database, a few milliseconds' work, one rebuild at a time (watchSet.build); a
-// read that fails, or a ctx that ends while another rebuild runs, keeps the snapshot as it
-// was, logged.
+// broken, of another account, or whose search won't build for the account is left out,
+// and every routine while Autopilot is off. It reads the database, a few milliseconds'
+// work, one rebuild at a time (watchSet.build); a read that fails, or a ctx that ends while
+// another rebuild runs, keeps the snapshot as it was, logged.
 func (s *Service) rebuildWatches(ctx context.Context) WatchSet {
 	select {
 	case s.watches.build <- struct{}{}:
 		defer func() { <-s.watches.build }()
 	case <-ctx.Done():
 		s.logger.WarnContext(ctx, "gave up building the routines' searches", "error", ctx.Err())
+
+		return s.currentWatches()
+	}
+
+	on, err := s.enabled(ctx)
+	if err != nil {
+		s.logger.WarnContext(ctx, "could not read whether Autopilot is on for the routines' searches", "error", err)
 
 		return s.currentWatches()
 	}
@@ -119,7 +126,7 @@ func (s *Service) rebuildWatches(ctx context.Context) WatchSet {
 	byKey := map[string]int{}
 
 	for _, row := range rows {
-		if !row.Enabled || otherAccount(row.AccountLogin, login) {
+		if !on || !row.Enabled || otherAccount(row.AccountLogin, login) {
 			continue
 		}
 

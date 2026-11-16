@@ -732,8 +732,9 @@ func assemble(ctx context.Context, pool *sql.DB, info startup, opts Options, log
 	watchSource.searches = autopilot.NewSearches(routines)
 	watchSource.searches.Rebuild(ctx)
 	// The engine runs the routines, in the one copy of the app that holds the lock in the
-	// data folder; it runs as deferred work, and its first cycle waits for a refresh that
-	// carried the searches built just now.
+	// data folder, while Autopilot (beta) is on, as the build just now read it; it runs as
+	// deferred work, and its first cycle waits for a refresh that carried the searches built
+	// just now.
 	engine.engine = newAutopilotEngine(autopilotEngine{
 		store: inboxStore, inbox: inboxSvc, faces: inboxRoutines, tokens: tokens, client: client,
 		lock: opts.Paths.AutopilotLock, events: opts.Events, logger: logger, service: routines, notices: dispatcher,

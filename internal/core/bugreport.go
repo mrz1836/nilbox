@@ -94,17 +94,18 @@ func (b bugReportState) autopilotState(ctx context.Context, c autopilotprefs.Con
 	}}
 }
 
-// autopilotSettingsLine words Autopilot's settings: whether it is paused, the mode new
-// routines start in, and the limits.
+// autopilotSettingsLine words Autopilot's settings: whether it is on and paused, the mode
+// new routines start in, and the limits.
 func autopilotSettingsLine(c autopilotprefs.Config) string {
 	daily := "off"
 	if !c.DailyCap.Off() {
 		daily = fmt.Sprintf("%d %s", c.DailyCap.Amount, c.DailyCap.Unit)
 	}
 
-	return fmt.Sprintf("Paused: %s · new routines: %s · agents at once: %d · runs a day: %d · actions a day: %d · "+
-		"daily cap: %s · keep awake: %s · hold on outage: %s · catch up after: %d h · history: %d days, logs: %d",
-		onOff(c.Paused), c.DefaultMode.Label(), c.AgentsAtOnce, c.RunsPerDay, c.ActionsPerDay, daily, onOff(c.KeepAwake),
+	return fmt.Sprintf("Beta: %s · paused: %s · new routines: %s · agents at once: %d · runs a day: %d · "+
+		"actions a day: %d · daily cap: %s · keep awake: %s · hold on outage: %s · catch up after: %d h · "+
+		"history: %d days, logs: %d",
+		onOff(c.Enabled), onOff(c.Paused), c.DefaultMode.Label(), c.AgentsAtOnce, c.RunsPerDay, c.ActionsPerDay, daily, onOff(c.KeepAwake),
 		onOff(c.HoldOnOutage), c.CatchUpHours, c.HistoryDays, c.LogDays)
 }
 

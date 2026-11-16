@@ -96,14 +96,13 @@ func TestTheShellReadsAutopilotsGlance(t *testing.T) {
 
 	started := time.Date(2026, 11, 16, 9, 0, 0, 0, time.UTC)
 
-	got := shellAutopilotState(autopilot.Glance{
-		Routines: 2, Enabled: 0, Paused: true, NeedsYou: 3,
-		Working: []autopilot.WorkingRun{{
-			RunID: 7, MatchID: 5, RoutineID: 2, Agent: "claude", Where: "background", StartedAt: started,
-			CreatedAt: started.Add(-time.Second),
-			Item:      autopilot.ItemRef{Repo: "acme-org/example-repo", Number: 88, Title: "Bump"},
-		}},
-	})
+	working := []autopilot.WorkingRun{{
+		RunID: 7, MatchID: 5, RoutineID: 2, Agent: "claude", Where: "background", StartedAt: started,
+		CreatedAt: started.Add(-time.Second),
+		Item:      autopilot.ItemRef{Repo: "acme-org/example-repo", Number: 88, Title: "Bump"},
+	}}
+
+	got := shellAutopilotState(autopilot.Glance{On: true, Routines: 2, Enabled: 0, Paused: true, NeedsYou: 3, Working: working})
 
 	assert.Equal(t, menubar.AutopilotState{
 		Routines: 2, Paused: true, NeedsYou: 3,
@@ -114,9 +113,18 @@ func TestTheShellReadsAutopilotsGlance(t *testing.T) {
 	}, got.Menu)
 	assert.True(t, got.KeepsRunning, "an agent working keeps the app running, every routine off")
 
-	idle := shellAutopilotState(autopilot.Glance{Routines: 4})
+	idle := shellAutopilotState(autopilot.Glance{On: true, Routines: 4})
 	assert.False(t, idle.KeepsRunning, "routines that are all off keep nothing running")
-	assert.True(t, shellAutopilotState(autopilot.Glance{Routines: 1, Enabled: 1}).KeepsRunning, "a routine on does")
+	assert.True(t, shellAutopilotState(autopilot.Glance{On: true, Routines: 1, Enabled: 1}).KeepsRunning,
+		"a routine on does")
+
+	// Autopilot (beta) off: the menu bar shows none of it, whatever the glance holds, and
+	// only an agent it started before still keeps the app running.
+	off := shellAutopilotState(autopilot.Glance{Routines: 2, Paused: true, NeedsYou: 3, Working: working})
+	assert.Equal(t, menubar.AutopilotState{Working: []menubar.AgentRun{}}, off.Menu, "no Autopilot group")
+	assert.False(t, menubar.AutopilotGroup(off.Menu, started).Shown, "the menu draws no Autopilot row")
+	assert.True(t, off.KeepsRunning, "the agent still working")
+	assert.False(t, shellAutopilotState(autopilot.Glance{Routines: 1}).KeepsRunning, "no routine keeps it running")
 }
 
 func TestTheShellPausesAutopilotThroughTheSettings(t *testing.T) {
@@ -127,6 +135,9 @@ func TestTheShellPausesAutopilotThroughTheSettings(t *testing.T) {
 	opts.Events = events
 	c := bootstrap(t, opts)
 
+	// The menu bar's group, and its Pause row, show only while Autopilot is on.
+	_, err := c.Settings.SetAutopilotEnabled(t.Context(), true)
+	require.NoError(t, err)
 	require.NoError(t, c.ShellAutopilot.SetPaused(t.Context(), true))
 
 	got, err := c.Settings.Get(t.Context())

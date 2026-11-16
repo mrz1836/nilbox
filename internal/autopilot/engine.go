@@ -7,6 +7,7 @@ import (
 	"maps"
 	"slices"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/mrz1836/nilbox/internal/autopilot/catalog"
@@ -40,6 +41,13 @@ import (
 //   - The first cycle after a start waits for a refresh that carried the routines'
 //     searches, so the engine never acts on what the database held when the app was last
 //     open; commands don't wait for it.
+//   - Autopilot (beta) in Settings, off on every install until the user turns it on,
+//     says whether the engine runs at all (Enabled, which the loop follows on every wake,
+//     follow). Off, it takes no lock, sends no routine search, runs no cycle, and refuses
+//     every command; turned off, it starts nothing new from then on, kills nothing, and
+//     lets go of the lock once nothing it started is still going; turned on, it starts as
+//     a start does. Every start goes through dispatch, which asks Enabled once more right
+//     before it hands the step over.
 
 // Defaults of the engine's timing.
 const (
@@ -83,11 +91,21 @@ var (
 
 	// ErrNotRunning is returned for a command before the engine's loop started.
 	ErrNotRunning = errors.New("the engine isn't running yet")
+
+	// ErrOff is returned for what Autopilot won't do while it is off (Autopilot (beta) in
+	// Settings): a command, a test of a routine, and a start that was on its way as it
+	// was turned off.
+	ErrOff = errors.New("autopilot is off")
 )
 
 // elsewhereError says another copy of the app holds the engine.
 func elsewhereError() error {
 	return uierr.New("Autopilot is running in another copy of "+brand.Name+".", ErrElsewhere)
+}
+
+// offError says Autopilot is off, and where to turn it on.
+func offError() error {
+	return uierr.New("Autopilot is off. Turn it on in Settings → Labs.", ErrOff)
 }
 
 // EngineItems is what the engine reads of the inbox, and asks it to read. Core adapts the
@@ -235,6 +253,15 @@ type Engine struct {
 	// stored after it.
 	since time.Time
 
+	// on is Autopilot (beta) as the loop last read it (Enabled); onSince is when it was
+	// last turned on, since when built on, whose first cycle waits for a watch pass after
+	// it, as what was stored of the searches while it was off is stale; and draining
+	// reports it turned off while this copy held the engine, which lets go of the lock once
+	// nothing it started is still going.
+	on       atomic.Bool
+	onSince  time.Time
+	draining bool
+
 	wake chan struct{}
 	cmds chan command
 	mail mailbox
@@ -362,14 +389,31 @@ func NewEngine(svc *Service, cfg EngineConfig) *Engine {
 	}
 
 	svc.engine = e
+	e.onSince = e.since
+
+	// Autopilot runs only while it is on: the engine starts from the switch as the Service
+	// last read it, as core's first build of the searches' snapshot does before the engine
+	// is built (off before any read), and its loop reads it again as it starts.
+	e.on.Store(svc.seenOn.Load())
 
 	// The lock is tried at once, so the copy that will run the engine sends the routines'
 	// searches from its very first refresh, which comes before the engine's loop starts.
-	if _, err := lock.TryLock(); err != nil {
-		e.logger.Warn("could not take Autopilot's lock", "error", err)
+	if e.Enabled() {
+		if _, err := lock.TryLock(); err != nil {
+			e.logger.Warn("could not take Autopilot's lock", "error", err)
+		}
 	}
 
 	return e
+}
+
+// Enabled reports whether Autopilot is on (Autopilot (beta) in Settings), as the engine
+// last read it: off, it runs no cycle, applies no command, sends no routine search, and
+// starts nothing. It is safe on any goroutine, and is the one check every start goes
+// through (dispatch asks it right before a step is handed to its dispatcher, a run's
+// included), so a part that starts anything of its own asks it too.
+func (e *Engine) Enabled() bool {
+	return e.on.Load()
 }
 
 // Wake has the engine run a cycle soon: a setting or a routine changed.
@@ -464,10 +508,14 @@ func (e *Engine) Run(ctx context.Context) {
 	tick := time.NewTicker(e.tick)
 	defer tick.Stop()
 
-	e.takeLock(ctx)
+	if e.Enabled() {
+		e.takeLock(ctx)
+	}
 
 	for {
-		if e.holding() && !time.Now().Before(e.holdOff) {
+		e.follow(ctx)
+
+		if e.Enabled() && e.holding() && !time.Now().Before(e.holdOff) {
 			e.safeCycle(ctx)
 		}
 
@@ -475,6 +523,101 @@ func (e *Engine) Run(ctx context.Context) {
 			return
 		}
 	}
+}
+
+// follow reads whether Autopilot is on and turns the engine on or off to match, on the
+// loop, as each wake brings it: Autopilot (beta) turned off, it starts nothing new from
+// then on and sends no routine search, and lets go of the lock once nothing it started is
+// still going (drain); turned on, it starts as a start does. Settings that can't be read
+// leave it as it was, logged.
+func (e *Engine) follow(ctx context.Context) {
+	on, err := e.svc.enabled(ctx)
+	if err != nil {
+		if ctx.Err() == nil {
+			e.logger.WarnContext(ctx, "could not read whether Autopilot is on", "error", err)
+		}
+
+		return
+	}
+
+	switch was := e.on.Swap(on); {
+	case on && !was:
+		e.turnOn(ctx)
+	case !on && was:
+		e.turnOff(ctx)
+	}
+
+	if !on {
+		e.drain(ctx)
+	}
+}
+
+// turnOn starts the engine as a start does, once Autopilot is turned on: it takes the
+// lock, reading the engine's state and checking the runs going (takeLock), unless it
+// still holds it from before it was turned off, and its first cycle waits for a watch pass
+// from now on, since what was stored of the routines' searches while it was off is stale.
+// The state's last refresh is the one the engine saw before it was off, so a gap longer
+// than the catch-up setting begins a catch-up, as after a quit.
+func (e *Engine) turnOn(ctx context.Context) {
+	e.logger.InfoContext(ctx, "Autopilot was turned on")
+
+	e.onSince, e.asked, e.primed = e.clock.Now().Truncate(time.Second), time.Time{}, false
+
+	if e.draining {
+		e.draining = false
+		e.svc.rebuildWatches(ctx)
+		e.notify()
+
+		return
+	}
+
+	e.takeLock(ctx)
+}
+
+// turnOff stops the engine's starts once Autopilot is turned off: from then on it runs no
+// cycle and applies no command, and the routines' searches are none, so the inbox sends
+// them no more. It kills nothing; while this copy holds the engine, it drains.
+func (e *Engine) turnOff(ctx context.Context) {
+	e.logger.InfoContext(ctx, "Autopilot was turned off; it starts nothing new")
+
+	e.draining = e.statusHolds() || e.lock.Held()
+	if !e.draining {
+		e.setHolds(false, false)
+	}
+
+	e.glanced = nil
+	e.svc.rebuildWatches(ctx)
+	e.notify()
+}
+
+// drain lets go of the lock while Autopilot is off, once nothing this copy started is
+// still under way: no worker's result to come, no check of the runs going, no run's end
+// left to write, and no run the ledger records as going (one whose end is on its way still
+// is, until that end is applied), so what was under way as it was turned off is recorded as
+// it ends, its runs too; the ticks settle those that ended unseen meanwhile.
+func (e *Engine) drain(ctx context.Context) {
+	if !e.draining || len(e.inflight) > 0 || e.checking || len(e.unsaved) > 0 {
+		return
+	}
+
+	runs, err := e.ledger.q.ListActiveRuns(ctx)
+	if err != nil {
+		if ctx.Err() == nil {
+			e.logger.WarnContext(ctx, "Autopilot could not read the runs going", "error", err)
+		}
+
+		return
+	}
+
+	if len(runs) > 0 {
+		return
+	}
+
+	e.draining = false
+	e.lock.Unlock()
+	e.setHolds(false, false)
+	e.logger.InfoContext(ctx, "Autopilot is off; this copy let go of its lock")
+	e.notify()
 }
 
 // endPending reports a run whose RunEnded hasn't been applied yet.
@@ -494,8 +637,15 @@ func (e *Engine) await(ctx context.Context, tick <-chan time.Time) bool {
 		return false
 	case <-e.wake:
 	case <-tick:
-		e.takeLock(ctx)
-		e.onTick(ctx)
+		// Off, the engine takes no lock, and its ticks only settle what it started before,
+		// while it drains.
+		if e.Enabled() {
+			e.takeLock(ctx)
+		}
+
+		if e.Enabled() || e.draining {
+			e.onTick(ctx)
+		}
 	case c := <-e.cmds:
 		c.reply <- e.safeCommand(ctx, c.fn)
 	case <-e.mail.signal:
@@ -551,18 +701,19 @@ func (e *Engine) followElsewhere(ctx context.Context) {
 
 // sameGlance reports whether two glances read alike.
 func sameGlance(a, b Glance) bool {
-	return a.Routines == b.Routines && a.Enabled == b.Enabled && a.Paused == b.Paused && a.NeedsYou == b.NeedsYou &&
+	return a.On == b.On && a.Routines == b.Routines && a.Enabled == b.Enabled && a.Paused == b.Paused &&
+		a.NeedsYou == b.NeedsYou &&
 		slices.EqualFunc(a.Working, b.Working, func(x, y WorkingRun) bool {
 			return x.RunID == y.RunID && x.CreatedAt.Equal(y.CreatedAt) && x.StartedAt.Equal(y.StartedAt)
 		})
 }
 
 // HoldsWatches reports whether this copy of the app reads the routines' searches: only
-// the copy that holds the engine's lock does.
+// the copy that holds the engine's lock does, and none while Autopilot is off.
 func (w *Searches) HoldsWatches() bool {
 	e := w.svc.engine
 
-	return e == nil || e.lock.Held()
+	return e == nil || (e.Enabled() && e.lock.Held())
 }
 
 // holding reports whether this copy holds the engine.
@@ -664,8 +815,8 @@ func (e *Engine) do(ctx context.Context, fn func(ctx context.Context) error) err
 	}
 }
 
-// safeCommand applies a command, refusing it while another copy holds the engine, and
-// recovers a panic as an error.
+// safeCommand applies a command, refusing it while Autopilot is off, as it reads now, and
+// while another copy holds the engine, and recovers a panic as an error.
 func (e *Engine) safeCommand(ctx context.Context, fn func(ctx context.Context) error) (err error) {
 	defer func() {
 		if r := recover(); r != nil {
@@ -674,6 +825,12 @@ func (e *Engine) safeCommand(ctx context.Context, fn func(ctx context.Context) e
 			err = uierr.New("Autopilot couldn't do that.", errPanic)
 		}
 	}()
+
+	e.follow(ctx)
+
+	if !e.Enabled() {
+		return offError()
+	}
 
 	if !e.holding() {
 		return elsewhereError()

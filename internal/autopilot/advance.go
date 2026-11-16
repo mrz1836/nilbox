@@ -680,13 +680,22 @@ const (
 )
 
 // dispatch hands job to the dispatcher d on a worker, and records how it went on the
-// loop.
+// loop. Every start goes through it, and it asks Enabled right before the step is handed
+// over: a step whose cycle came just before Autopilot was turned off isn't, and waits,
+// as one that never started (ErrOff), for Autopilot to be on again.
 func (e *Engine) dispatch(ctx context.Context, matchID, runID int64, d catalog.Dispatcher, job Job) {
 	disp := e.dispatchers[d]
 	e.inflight[matchID] = true
 
 	e.goWork(ctx, func(ctx context.Context) {
-		res, err := disp.Dispatch(ctx, job)
+		var (
+			res Result
+			err = ErrOff
+		)
+
+		if e.Enabled() {
+			res, err = disp.Dispatch(ctx, job)
+		}
 
 		e.mail.post(func(ctx context.Context) {
 			delete(e.inflight, matchID)
@@ -737,21 +746,27 @@ func (e *Engine) applyDispatch(ctx context.Context, matchID, runID int64, res Re
 }
 
 // dispatchFailed records a dispatch that failed: one the runner refused as it closed
-// never started, and stays queued for the next start, as no run and no try; any other
-// fails its step.
+// never started, and stays queued for the next start, as no run and no try, and so does
+// one Autopilot was turned off before (ErrOff), a local step's too; any other fails its
+// step.
 func (e *Engine) dispatchFailed(ctx context.Context, q *queries.Queries, m *match, sr *stepRun, runID int64, err error,
 	now time.Time,
 ) error {
-	if runID != 0 && errors.Is(err, ErrClosed) {
-		e.runnerClosed = true
+	off := errors.Is(err, ErrOff)
 
-		if _, endErr := e.endRunIn(ctx, q, runID, RunEnd{Outcome: RunNotStarted, Error: err.Error(), EndedAt: now}, false, false); endErr != nil {
-			return endErr
+	if off || (runID != 0 && errors.Is(err, ErrClosed)) {
+		e.runnerClosed = e.runnerClosed || !off
+
+		if runID != 0 {
+			if _, endErr := e.endRunIn(ctx, q, runID, RunEnd{Outcome: RunNotStarted, Error: err.Error(), EndedAt: now}, false, false); endErr != nil {
+				return endErr
+			}
+
+			m.unstarted()
 		}
 
 		sr.Status, sr.RunID, sr.Started = stepPending, 0, nil
 
-		m.unstarted()
 		m.set(StateQueued, "", "")
 
 		return nil

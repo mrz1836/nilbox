@@ -226,6 +226,15 @@ export function SetAutopilotDefaultMode(mode: autopilotprefs$0.Mode): $Cancellab
 }
 
 /**
+ * SetAutopilotEnabled turns Autopilot (beta) on or off, and returns the settings with it.
+ * Off, the window shows none of Autopilot and its engine doesn't run; the routines and
+ * their history stay as they are, and come back as they were once it is on again.
+ */
+export function SetAutopilotEnabled(on: boolean): $CancellablePromise<$models.Settings> {
+    return $Call.ByID(2978832801, on);
+}
+
+/**
  * SetAutopilotHistoryDays stores how many days of Autopilot's history are kept,
  * autopilotprefs.MinHistoryDays to MaxHistoryDays, and returns the settings with it. Run
  * logs kept longer than the new history are kept as long as it instead.

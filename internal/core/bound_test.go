@@ -629,6 +629,9 @@ func autopilotBoundCalls(t *testing.T) map[string]boundCall {
 	}
 
 	return map[string]boundCall{
+		"settings.Service.SetAutopilotEnabled": setting(func(ctx context.Context, s *settings.Service) (settings.Settings, error) {
+			return s.SetAutopilotEnabled(ctx, true)
+		}),
 		"settings.Service.SetAutopilotPaused": setting(func(ctx context.Context, s *settings.Service) (settings.Settings, error) {
 			return s.SetAutopilotPaused(ctx, true)
 		}),
@@ -698,7 +701,11 @@ func autopilotBoundCalls(t *testing.T) map[string]boundCall {
 			return c.Autopilot.Describe(ctx, autopilot.Draft{Name: "Bound describe", Spec: boundSpec()})
 		},
 		"autopilot.Service.Test": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
-			// Its watch is an inbox list alone, so the test reads nothing from GitHub.
+			// A test runs only while Autopilot is on. Its watch is an inbox list alone, so the
+			// test reads nothing from GitHub.
+			_, err := c.Settings.SetAutopilotEnabled(ctx, true)
+			require.NoError(t, err)
+
 			return c.Autopilot.Test(ctx, autopilot.Draft{Name: "Bound test", Spec: boundSpec()})
 		},
 		"autopilot.Service.Activity": func(ctx context.Context, c *Core, ids seededItems) (any, error) {

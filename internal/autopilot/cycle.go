@@ -174,8 +174,10 @@ func (e *Engine) finishCycle(ctx context.Context, c *Cycle) {
 }
 
 // prime reports whether the engine has seen a refresh that carried its searches since it
-// was built. Until it has, it asks the inbox for the searches once a refresh stored the
-// account: the very first refresh stores the account before any search can be built.
+// was built, and a watch pass since Autopilot was last turned on, as the inbox kept
+// refreshing while it was off but sent no search. Until it has, it asks the inbox for the
+// searches once a refresh stored the account: the very first refresh stores the account
+// before any search can be built.
 func (e *Engine) prime(ctx context.Context, inbox InboxStatus) bool {
 	if e.primed {
 		return true
@@ -190,7 +192,7 @@ func (e *Engine) prime(ctx context.Context, inbox InboxStatus) bool {
 		set = e.svc.rebuildWatches(ctx)
 	}
 
-	if len(set.Searches) == 0 || !inbox.WatchedAt.Before(e.since) {
+	if len(set.Searches) == 0 || !inbox.WatchedAt.Before(e.onSince) {
 		e.primed = true
 		e.logger.InfoContext(ctx, "Autopilot saw its first refresh")
 

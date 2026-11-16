@@ -101,6 +101,7 @@
     },
     "updateMode": "download",
     "autopilot": {
+      "enabled": false,
       "paused": false,
       "defaultMode": "ask",
       "agentsAtOnce": 2,

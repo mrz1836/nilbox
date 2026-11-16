@@ -39,7 +39,7 @@ func libraryRig(t *testing.T, lib autopilot.Library, offers *autopilot.Offers) *
 
 	r := newRig(t, autopilotprefs.ModeAsk)
 	r.svc = autopilot.NewService(autopilot.Config{
-		Pool: r.db, Prefs: prefs{cfg: autopilotprefs.Defaults()}, Accounts: r.accounts, Names: names{}, Library: lib,
+		Pool: r.db, Prefs: prefs{cfg: onSettings()}, Accounts: r.accounts, Names: names{}, Library: lib,
 		File: autopilot.NewFile(filepath.Join(t.TempDir(), "autopilot.json"), "v0.0.0-test", r.clock), Clock: r.clock,
 		Logger: r.logs.Logger(), Offers: offers,
 	})

@@ -123,7 +123,7 @@ func TestACycleThatPanicsIsRecoveredAndHoldsOffTheNext(t *testing.T) {
 
 	synctest.Test(t, func(t *testing.T) {
 		logs := &testutil.Logs{}
-		svc := NewService(Config{Pool: testutil.DB(t), Logger: logs.Logger()})
+		svc := NewService(Config{Pool: testutil.DB(t), Prefs: switchedOn(true), Logger: logs.Logger()})
 		items := &panicky{}
 		e := NewEngine(svc, EngineConfig{Items: items})
 

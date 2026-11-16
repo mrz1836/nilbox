@@ -14,8 +14,13 @@ import (
 // Autopilot group shows, whether the window names Autopilot at all (only while a routine
 // exists), and whether closing the window only hides it (KeepsRunning).
 type Glance struct {
+	// On reports Autopilot (beta) on in Settings: off, the engine runs nothing, and the
+	// window and the menu bar show none of Autopilot.
+	On bool `json:"on"`
+
 	// Routines counts the routines not deleted, and Enabled those the engine runs: switched
-	// on, of the account signed in, and loading; none while no one is signed in.
+	// on, of the account signed in, and loading; none while no one is signed in, or while
+	// Autopilot is off.
 	Routines int `json:"routines"`
 	Enabled  int `json:"enabled"`
 
@@ -55,7 +60,9 @@ type WorkingRun struct {
 
 // KeepsRunning reports whether Autopilot has work while the window is closed: a routine
 // the engine runs, or an agent run going. Closing the window then only hides it, so the app
-// keeps running them; another account's routines keep nothing running.
+// keeps running them; another account's routines keep nothing running, and while Autopilot
+// is off no routine does, though an agent it started before still keeps the app running
+// until it ends.
 func (g Glance) KeepsRunning() bool {
 	return g.Enabled > 0 || len(g.Working) > 0
 }
@@ -73,8 +80,14 @@ func (s *Service) Glance(ctx context.Context) (Glance, error) {
 		return out, uierr.New("Autopilot's routines couldn't be read.", err)
 	}
 
+	cfg := s.settings(ctx)
+	out.On, out.Paused, out.Routines = cfg.Enabled, cfg.Paused, len(routines)
+
+	if out.On {
+		out.Enabled = s.running(ctx, routines)
+	}
+
 	names := make(map[int64]string, len(routines))
-	out.Routines, out.Enabled = len(routines), s.running(ctx, routines)
 
 	for _, r := range routines {
 		names[r.ID] = r.Name
@@ -96,8 +109,6 @@ func (s *Service) Glance(ctx context.Context) (Glance, error) {
 			out.Working = append(out.Working, workingRun(r, names[r.RoutineID]))
 		}
 	}
-
-	out.Paused = s.settings(ctx).Paused
 
 	return out, nil
 }

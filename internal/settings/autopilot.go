@@ -18,6 +18,13 @@ import (
 // nothing and emits nothing. Only the keys that change are written, so a setting the user
 // never touched keeps following its default.
 
+// SetAutopilotEnabled turns Autopilot (beta) on or off, and returns the settings with it.
+// Off, the window shows none of Autopilot and its engine doesn't run; the routines and
+// their history stay as they are, and come back as they were once it is on again.
+func (s *Service) SetAutopilotEnabled(ctx context.Context, on bool) (Settings, error) {
+	return s.saveAutopilot(ctx, func(c *autopilotprefs.Config) { c.Enabled = on })
+}
+
 // SetAutopilotPaused turns Pause Autopilot on or off, and returns the settings with it.
 // Paused, no routine starts anything new; agents already running carry on.
 func (s *Service) SetAutopilotPaused(ctx context.Context, on bool) (Settings, error) {
@@ -209,6 +216,8 @@ func (s *Service) autopilotFields() []portableField {
 	field, number, toggle := s.autopilotField, s.autopilotNumber, s.autopilotToggle
 
 	return []portableField{
+		toggle("Autopilot (beta)", func(a PortableAutopilot) *bool { return a.Enabled },
+			func(c *autopilotprefs.Config, on bool) { c.Enabled = on }),
 		toggle("Pause Autopilot", func(a PortableAutopilot) *bool { return a.Paused },
 			func(c *autopilotprefs.Config, on bool) { c.Paused = on }),
 		field("New routines start in", func(a PortableAutopilot) bool { return a.DefaultMode != nil },
