@@ -326,6 +326,37 @@ func TestImportAddsAStarterEditOverAnEditedStarterAsTheUsersOwn(t *testing.T) {
 	assert.Equal(t, "My review of {{.URL}}", promptBody(t, db, review.ID))
 }
 
+// TestImportReadsAStartersEarlierTextAsTheStarter checks a file an earlier build wrote,
+// holding a starter's earlier text unchanged: the library's copy holds it already, so it
+// is never saved over that copy, and into a library without one it comes with this
+// build's text, as the starter.
+func TestImportReadsAStartersEarlierTextAsTheStarter(t *testing.T) {
+	t.Parallel()
+
+	s, _, _ := keeping(t)
+	ctx := t.Context()
+
+	earlier := starterAsBundled(t, StarterFixDependencySecurity, func(p *BundlePrompt) {
+		p.Body = fixDependencySecurityBodyV1
+	})
+
+	assert.Equal(t, []string{"skip Fix dep security"}, outcomes(preview(t, s, bundleOf(earlier))))
+
+	require.NoError(t, s.Delete(ctx, byNickname(t, s, "Fix dep security").ID))
+
+	entries := preview(t, s, bundleOf(earlier))
+	assert.Equal(t, []string{"add Fix dep security"}, outcomes(entries))
+	assert.Equal(t, fixDependencySecurityBody, entries[0].Prompt.Body)
+
+	_, err := s.Import(ctx, []BundlePrompt{earlier}, BundleDefaults{})
+	require.NoError(t, err)
+
+	got := byNickname(t, s, "Fix dep security")
+	assert.Equal(t, StarterFixDependencySecurity, got.StarterKey)
+	assert.Equal(t, fixDependencySecurityBody, got.Body)
+	assert.False(t, got.Modified)
+}
+
 // promptBody reads a prompt's text straight from the database.
 func promptBody(t *testing.T, db *sql.DB, id int64) string {
 	t.Helper()

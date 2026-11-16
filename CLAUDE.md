@@ -1330,7 +1330,13 @@ package imports the driver, and nothing imports an ORM (`internal/repoguard` enf
   schema, read-only and tolerant of missing columns, for the restore and for **Restore from a
   backup**. Import and restore go through one planner (`internal/prompts/importer.go`), which
   never changes a prompt the user wrote or edited, and checks every imported setting the way
-  the editor does. The file format is `prompts.Bundle`, specified in
+  the editor does. A starter's copy the user never changed gets a later build's text: a
+  change to a starter's text keeps the text it replaces, byte for byte, in the starter's
+  `Earlier` (pinned by SHA-256 in `TestEarlierStarterTextsAreAsShipped`), and `Seed` brings
+  every copy still holding one up to date, keeping its nickname, as an import does a file's;
+  a copy the user changed, or a duplicate, is never touched. A starter's command names no
+  value a repository, a clone's config, or an author chose but through the `shellquote`
+  template function (`TestStarterCommandsAreInert`). The file format is `prompts.Bundle`, specified in
   [`docs/prompt-files.md`](docs/prompt-files.md); keep the two in step, and raise
   `BundleVersion` only for a change an older build would misread. An import offers the file's
   defaults (`ImportPreview.Defaults`, each a `DefaultOffer` where its prompt fits the slot and it

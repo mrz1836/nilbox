@@ -88,6 +88,10 @@ Each prompt:
   file a newer version of the app wrote in the same version of the format still imports.
 - **A newer version of the format is refused** with a message asking you to update the app. The
   version goes up only for a change an older app would misread, not when a field is added.
+- **A starter an older version shipped, never changed, comes in with this version's text.** A
+  prompt whose `starterKey`, title, settings, and text are exactly a starter's as an earlier
+  version of the app shipped it is that starter, so a file never brings back a text a later
+  version fixed. One whose text or settings were changed is imported as it is.
 - **Nothing in a file is trusted more than what you type.** Each prompt is checked the way the
   editor checks one before saving. A title or nickname that is too long is shortened, a missing
   one is filled in from the other, and a prompt with no `appliesTo` applies to both kinds. A

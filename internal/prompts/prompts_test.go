@@ -241,6 +241,45 @@ func TestSeedAddsALaterStarterOnce(t *testing.T) {
 	assert.NotContains(t, nicknames(t, s), "Fix dep security", "a deleted starter stays deleted")
 }
 
+// TestSeedBringsAnUnchangedStarterUpToDate checks a library from a build that shipped the
+// dependency security starter's first text: the next Seed gives the copy the user never
+// changed this build's text, keeping its ID, starter key, and the nickname the user gave
+// it, and leaves a copy the user changed, and a duplicate, as they are.
+func TestSeedBringsAnUnchangedStarterUpToDate(t *testing.T) {
+	t.Parallel()
+
+	s, _ := seeded(t, nil)
+	ctx := t.Context()
+
+	// The earlier build's copy, renamed, which changes nothing of the starter.
+	dep := byNickname(t, s, "Fix dep security")
+	earlier := dep
+	earlier.Body, earlier.Nickname = fixDependencySecurityBodyV1, "Dep sec"
+	require.NoError(t, s.store.update(ctx, dep.ID, earlier))
+	require.True(t, byNickname(t, s, "Dep sec").Modified, "an earlier text differs from the starter's")
+
+	dup, err := s.Duplicate(ctx, dep.ID)
+	require.NoError(t, err)
+	require.Equal(t, fixDependencySecurityBodyV1, dup.Body)
+
+	require.NoError(t, Seed(ctx, s.store))
+
+	got := byNickname(t, s, "Dep sec")
+	assert.Equal(t, dep.ID, got.ID)
+	assert.Equal(t, StarterFixDependencySecurity, got.StarterKey)
+	assert.Equal(t, fixDependencySecurityBody, got.Body)
+	assert.False(t, got.Modified)
+	assert.Equal(t, fixDependencySecurityBodyV1, byNickname(t, s, dup.Nickname).Body,
+		"a duplicate is the user's own, whatever text it holds")
+
+	// A copy the user changed keeps the earlier text: it is theirs now.
+	changed := got
+	changed.Body, changed.Effort = fixDependencySecurityBodyV1, "high"
+	require.NoError(t, s.store.update(ctx, dep.ID, changed))
+	require.NoError(t, Seed(ctx, s.store))
+	assert.Equal(t, fixDependencySecurityBodyV1, byNickname(t, s, "Dep sec").Body)
+}
+
 func TestSeedFindsAFreeNickname(t *testing.T) {
 	t.Parallel()
 

