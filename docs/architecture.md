@@ -1250,9 +1250,7 @@ softly, every routine the file doesn't name). A routine here that a newer build 
 never saved over or deleted by an import, under either mode: it is left as it is, with a note
 (*made by a newer Nilbox: left as it is*), as `Save` refuses to save over it. A spec that
 loads is stored normalized, as on a restore. `BackupDone` writes the copy again. The window
-doesn't list this category yet: the copies the backup saves before an import or a reset hold
-it, and an import of a file that holds it imports the categories the dialog lists, leaving
-the routines as they are.
+lists the category as **Autopilot routines**, beside the others.
 
 **The settings** are `internal/autopilotprefs`'s, a leaf that imports only `prefval`:
 `autopilot.paused` (off), `autopilot.defaultMode` (`ask`), `autopilot.agentsAtOnce` (2, 1 to
@@ -1520,30 +1518,18 @@ another copy holds the engine
 loop, so they work before the first refresh, offline, or signed out. The reads (`activity.go`)
 read the database alone: `Activity` (a page of matches before an ID, by local day, with their
 runs and effects, each day's grouped lines of local steps, and, on the first page, the items
-the routines leave alone), `ItemHistory`, `Explain` (the decision now, and what the ledger
-knows: the record for the occurrence, the tries used, not in the watch, left alone), and
-`Engine`. No result holds a nil list.
+the routines leave alone), `ItemHistory`, `LatestMatches` (for each item among the ids it is
+given, at most 500, its newest match that did something there or waits to, in one query,
+`ListLatestItemMatches`: open, or closed as done, skipped, or dismissed, never a baseline or
+one that closed as the item or the routine moved on before it acted, with its runs and
+effects, for the chip on every row), `Explain` (the decision now, and what the ledger knows:
+the record for the occurrence, the tries used, not in the watch, left alone), and `Engine`. No
+result holds a nil list.
 
 ### Local actions: by a routine, Undo, and hands off
 
-**What the user sees** (the words `docs/desktop.md` takes once the Autopilot tab is there):
-*Snooze, dismiss, and pin: by a routine.* A routine can pin, snooze, dismiss, or restore an
-item, as you do from its menu. Each runs at once wherever it sits in the routine, in Ask first
-too, needing no OK, and acts on any item, an outside contributor's too, since it changes only
-what this Mac shows. A routine's snooze lasts as long as the routine says, and wakes by your
-own rules, as yours does. The inbox says which routine did it ("Snoozed by Snooze passing bot
-PRs"), until you change it yourself. A routine's Snooze and Dismiss never replace what you set
-aside yourself: an item you snoozed or dismissed stays as you left it. Its Restore is there to
-bring an item back to your attention when the routine's conditions hold, your own snooze or
-dismissal included; setting the item aside again afterwards is you handling it, and the
-routine goes on as before. Whatever you change while a routine's step is on its way wins.
-Activity groups a day's local actions by routine ("Snoozed 6 · Undo"); Undo puts each item
-back as it was before, but leaves one you changed since as you left it. Taking back what a
-routine did, by restoring what it snoozed or dismissed, snoozing it again yourself, unpinning
-what it pinned, or Undo, leaves the routine hands off that item from then on ("Left alone:
-you brought back what it snoozed"), until you choose **Let it act again**. Pause Autopilot
-and a routine's active hours hold local actions too; they run on Resume, or when the hours
-begin. Dry run records what would run, and changes nothing.
+What the user sees is in `docs/desktop.md`'s
+[Snooze, dismiss, and pin: by a routine](desktop.md#snooze-dismiss-and-pin-by-a-routine).
 
 **The effects** (`effects.go`). The triage dispatcher (`triageDispatcher`) runs a match's Pin,
 Snooze (its `days`, else three), Dismiss, or Restore through `Triage.Apply`, the inbox's own
@@ -1681,9 +1667,10 @@ open matches waiting for the user (`StateWaiting`), and the agent runs going (st
 running, or stopping, in the background or the terminal, never a GitHub action's), oldest
 first. `KeepsRunning` is a routine the engine runs or an agent working, so after a switch to
 another account, whose routines don't run, a close quits again as before.
-The window reads it only to name Autopilot while a routine exists (`useAutopilotShown`, again
-on each `autopilot:updated`): until then Settings → Notifications lists no Autopilot switch,
-the Notifications page offers no Autopilot type, and the settings search finds neither.
+The window reads it as it opens and again on each `autopilot:updated` (`useAutopilot`): the
+Autopilot tab counts its agents working and marks its matches waiting with an amber dot. The
+window names Autopilot whether or not a routine exists: Settings → Notifications always lists
+the five switches, and the Notifications page always offers the Autopilot type.
 
 **The menu bar** (`internal/menubar/autopilot.go`, pure). `Summarize(snap, waiting, autopilot,
 now)` works out `Summary.Autopilot` from an `AutopilotState` (core's `ShellAutopilot` adapts
@@ -1712,9 +1699,51 @@ quit the app (`ApplicationShouldTerminateAfterLastWindowClosed`) and quietly sto
 Dock icon brings the window back (`ApplicationShouldHandleReopen`). A close hidden for Autopilot
 alone is noted, and the next time the window shows (`showWindow`, every way it comes forward)
 the page hears `event.KeptRunning` (`app:keptRunning`) once, and says why the app kept running,
-once ever (`ui.keptRunningTold`, window memory a backup never holds). Until the Autopilot tab
-exists, a click on an Autopilot notification or banner about an item opens that item, as an
-inbox arrival's does (`bannerOpens` falls back to the item, `opensAutopilot` is an entry about
-no item alone), and a click on one about no item, as a problem is, or on a menu row of the
-group, shows a toast that says the tab isn't in this version; no one can switch a routine on
-from the window yet.
+once ever (`ui.keptRunningTold`, window memory a backup never holds). A click on an Autopilot
+notification or banner about an item opens that item, as an inbox arrival's does
+(`bannerOpens` falls back to the item, `opensAutopilot` is an entry about no item alone), and
+one about no item, as a problem is, or on a menu row of the group, opens the Autopilot tab at
+what its target names (**The Autopilot tab**, below).
+
+### The Autopilot tab
+
+The window side lives in `frontend/src/components/autopilot/` (the tab itself,
+`AutopilotView`, loaded on its first visit and kept mounted in an `Activity`) and
+`frontend/src/lib/`; it reaches Go only through the platform module.
+
+- **`lib/autopilot.ts`** holds the words, all pure: the modes, the tab's badge
+  (`autopilotBadge`: the glance's agents working, an amber dot for its matches waiting, a red
+  one for the user's routines that are broken or have an engine problem, none for another
+  account's), each routine's status line (`routineStatus`, from what the pages of Activity
+  loaded say of it today), the chip (`chipOf`, from the newest match: a Dry run's *Would run*,
+  a local step's verb or *Undone* and *Taken back*, a notice's *Told you*, an open state's
+  words), the question (`matchingWords`), and Activity's lines (`activityLines`: each day's
+  grouped lines of local steps in place of the matches they stand for, the matches that did
+  something by themselves, and the items left alone, newest first, filtered by routine and by
+  result; open matches wait for the sections that show them). `mergeDays` joins a day, and a
+  grouped line, two pages split, by the group's `Key`; `sameSecond` compares a target's time
+  to a match's, since a target is written to the second.
+- **`lib/useAutopilot.ts`** reads the glance, the routines, and the engine as the window opens
+  and on every `autopilot:updated`, for App to share; `useAutopilotChips` reads
+  `LatestMatches` for the ids a list shows. **`lib/useAutopilotActivity.ts`** reads Activity's
+  newest page, grows that one read toward the backend's cap of 500 as the user asks for more,
+  and then reads on by `next`, reading the first again on every change.
+- **`AutopilotRowsContext`** (`AutopilotChip.tsx`) carries the routines' names and the chips
+  to every row, App's around the inbox and the tab, and the Watching list's own chips around
+  its rows, so a memo'd `ItemRow` renders again only in its chip and its marks
+  (`TriageTag`'s *Snoozed by ⚡ ...*) when Autopilot changes. The chip reads `ItemHistory`
+  only as its panel opens.
+- **`useRoutineChange`** switches a routine and changes its mode: switching one on, or taking
+  one that is on out of Dry run, first asks `Matching`, and with any match asks the question
+  in a `ConfirmDialog` whose two buttons are the answers (`SetEnabled` or `SetMode` with
+  `current`, `run` or `fromNow`) and whose `onDismiss` makes Escape neither.
+- **`WatchingList`** reads `Watching`, then the inbox's `ItemsByID` (again on
+  `inbox:updated`), resolves their launches with `ResolveItems`, and renders the inbox's own
+  `ItemRow`s and review and issue sheets over the list. The rows' triage and edits are the
+  inbox's, through `components/useItemActions.ts`, which `InboxView` shares.
+- **Requests.** App's `openAutopilot(target)` numbers an `AutopilotRequest` and shows the tab,
+  for a notification, a menu bar row, or a chip's **Show in Activity**. A target that names a
+  match shows Activity unfiltered and reads earlier pages until one holds the match, then
+  marks its line, or says it is gone when none does or its time differs; one that names a
+  routine alone selects it while its creation time matches, else says it is gone; any other
+  shows Activity.

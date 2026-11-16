@@ -840,8 +840,8 @@ database, a copy of it is saved next to it, and the three newest copies are kept
 three newest of those too. Beside it,
 `prompts.json` and `launch-defaults.json` hold copies of your prompt library and your launch
 defaults in plain JSON, each rewritten after every change (see
-[Keeping your prompts](#keeping-your-prompts)), and `autopilot.json` the same kind of copy for
-Autopilot routines, which holds none yet ([its format](backup-files.md#autopilot)). Agent
+[Keeping your prompts](#keeping-your-prompts)), and `autopilot.json` the same kind of copy of
+your [Autopilot](#autopilot) routines ([its format](backup-files.md#autopilot)). Agent
 profiles need no copy: they are found in
 your home directory on every start. `backups/` holds the copies of your setup an import of a
 [backup](#backing-up-your-setup) saves before it changes anything, the five newest, and the
@@ -897,6 +897,7 @@ where to save the file (`Nilbox backup <date>.json`):
 | **Prompts & replies** | The whole [prompt library](#prompts), its defaults and the record of deleted starters included |
 | **Launch defaults** | Every org's and repository's [launch defaults](#launch-defaults), naming prompts by nickname |
 | **Your scripts** | Your own [scripts](#repo-scripts), in their order |
+| **Autopilot routines** | Your [Autopilot](#autopilot) routines, in their order, never their history. They arrive switched off |
 
 A backup never holds your GitHub sign-in (the app never stores one), caches and mirrors, history,
 per-item triage, agent profiles (found on disk at every start), script trust (each repository
@@ -914,6 +915,7 @@ Then choose how to treat what's on this Mac:
 | **Prompts & replies** | As **Import from a file…**: what you have is left out, a taken nickname is renamed, an unchanged starter is saved over; the file's defaults are set where they fit | Prompts are matched by nickname: each match is saved over, the rest added, and every other prompt deleted, but one a launch default you keep still names, which is kept with a note; the defaults become the file's |
 | **Launch defaults** | The file's row for an org or repository replaces this Mac's; the others stay | Exactly the file's rows |
 | **Your scripts** | A script identical to one here is skipped; the others are added at the end, in order | Exactly the file's scripts, in its order |
+| **Autopilot routines** | Routines are matched by name: one the file holds as it is here is left alone, on or off; any other is saved over and switched off, and one this Mac lacks is added at the end, off | The same, in the file's order, and every other routine is deleted; a routine a newer Nilbox made is never saved over or deleted, under either mode |
 
 Replace asks again before it imports, naming what it will delete in each category. Merge never
 deletes anything.
@@ -946,7 +948,7 @@ folder, so a reset in either starts both over.
 
 | Starts over | Stays |
 |---|---|
-| Settings and repository locations, pinned and muted repositories and orgs, triage, the cached inbox, the notification history, the mirror of your GitHub notifications, worktree records, session history, run history, script trust, tool records, and the cached diffs, conversations, and profile pictures | Your prompts, launch defaults, and your own scripts, which come back from the database set aside; `backups/` and `logs/`; your clones and worktrees on disk (the next listing records them again); your agents' own config; and GitHub itself |
+| Settings and repository locations, pinned and muted repositories and orgs, triage, the cached inbox, the notification history, the mirror of your GitHub notifications, worktree records, session history, run history, Autopilot's history, script trust, tool records, and the cached diffs, conversations, and profile pictures | Your prompts, launch defaults, and your own scripts, which come back from the database set aside; your Autopilot routines, switched off; `backups/` and `logs/`; your clones and worktrees on disk (the next listing records them again); your agents' own config; and GitHub itself |
 
 The database is set aside, with its `-wal` and `-shm` files, as `nilbox.db.reset-<UTC time>`,
 and the newest three such copies are kept. To undo a reset, quit the app and rename the newest
@@ -1493,7 +1495,8 @@ origin, with one `git ls-remote` whose answer is kept five minutes.
 ## The window
 
 A single toolbar runs beside the macOS window controls. It holds the **Inbox**,
-[**Notifications**](#the-notifications-page), **Worktrees**, and **Prompts** tabs, and
+[**Notifications**](#the-notifications-page), [**Autopilot**](#autopilot), **Worktrees**, and
+**Prompts** tabs, and
 [**Scripts**](#the-scripts-tab) while mage-x or go-pre-commit is on, or you turned Scripts on,
 and, on the right, the page's [filter](#filtering), the
 [notification](#menu-bar-and-notifications) bell, the [GitHub notifications](#github-notifications)
@@ -1504,7 +1507,9 @@ the filter gives way first.
 dismissed. An item in two lists, such as a pull request you opened and are assigned, counts
 once. **Notifications** counts what is unread: the app's own notifications, the bell's, and,
 while Nilbox reads them, your [GitHub notifications](#github-notifications); hover it for each,
-as **3 unread in Nilbox · 12 unread on GitHub**. **Worktrees** counts the linked worktrees on
+as **3 unread in Nilbox · 12 unread on GitHub**. **Autopilot** counts the agents its routines
+have working, with an amber dot while something waits for you and a red dot while a routine is
+broken or its search fails. **Worktrees** counts the linked worktrees on
 disk across every clone in the repository
 locations, main worktrees aside, with an amber dot while some are done on GitHub but still on
 disk.
@@ -2462,14 +2467,185 @@ confetti flies.
 
 <br>
 
-## Routine searches
+## Autopilot
+
+Autopilot watches your pull requests and issues and acts when something happens: a check
+fails, a reviewer asks for changes, a bug comes in. Its routines can tell you, tidy your inbox,
+or start a coding agent, always within limits you set.
+
+A routine watches some items (your inbox's lists, or a [search](#routine-searches) of its own),
+waits for something to happen to one of them (checks pass, checks fail, it appears, ...), checks
+its conditions, and then takes its steps. Today a routine's steps can pin, snooze, dismiss, or
+restore the item ([by a routine](#snooze-dismiss-and-pin-by-a-routine)), and tell you about it
+(**Notify me** and **Tell me**). A routine with a step that needs a coding agent or a GitHub
+action runs only in Dry run in this version, and says so. Each routine acts once per occurrence
+(once per head commit, say), across refreshes and restarts, and in its mode:
+
+| Mode | On a match |
+|---|---|
+| **Dry run** | Records what it would have done, and does nothing else |
+| **Ask first** (where new routines start, unless you change it in [Settings](#settings--autopilot)) | Runs its local steps (pins, snoozes, notices) at once, and waits for your OK before anything else |
+| **Autopilot** | Runs every step at once, within your limits |
+
+Nothing changes a routine's mode but you. One copy of Nilbox on a data folder runs Autopilot at
+a time; another copy shows what it does and starts nothing.
+
+**The tab.** **Autopilot** sits after **Notifications**, for everyone. Its count is the agents
+working (none until routines can run them), with an amber dot while something waits for you and
+a red dot while a routine is
+broken or its search fails; hover it for what they mean (*2 agents working · 1 needs you · 1
+routine can’t run*). While you have no routine, the tab explains Autopilot in the two sentences
+above. Otherwise it lists your routines on the left, under **Activity**, with **Autopilot
+settings** at the bottom, and shows Activity or the routine you chose on the right. **Pause
+Autopilot** sits in the header: while paused, nothing new starts, a snooze or a pin included,
+and the button reads **Resume Autopilot**.
+
+**The routines.** Each row shows the routine's name, a status line, and its switch. The status
+line says its mode and what it is doing or did: *Autopilot · 6 today*, *Dry run · 3 would run
+today*, *Ask first · ran 2h ago*, *Autopilot · off*; or, instead, why it can't run: its last
+error, a search GitHub refuses, or *Made by a newer Nilbox: update to edit it*, which has no
+switch. A routine that belongs to another GitHub account than the one signed in is greyed, says
+*Belongs to @other-login*, has no switch, and doesn't run. Its **⋯** menu holds:
+
+- **Duplicate**, a copy right after it, switched off, named "<name> copy";
+- **Dry run**, or **Leave Dry run**, which puts it back in Ask first (a routine with steps this
+  version can only try in Dry run stays there);
+- **Delete…**, which asks first. The routine stops and leaves the list; what it did stays in
+  Activity, under its name, and the snoozes, pins, and dismissals it made stay as they are.
+
+**Turning one on.** Switching a routine on, or taking one that is on out of Dry run, first counts
+the items it matches right now that it has no record of, reading any search of its own from
+GitHub unless it was read in the last minute. When there are some, it asks: *3 pull requests match
+right now.* **Run on them too**, or **Only what changes from now on**, which records them as
+already handled. When there are none, it asks nothing. Escape asks nothing more and changes
+nothing. A change that can't be made says why in its own words, as *Autopilot is running in
+another copy of Nilbox; make this change there.*
+
+**A routine.** Choosing a routine shows its switch, its mode (**Dry run · Ask first ·
+Autopilot**, which asks the question above when it leaves Dry run while on), the sentence it
+reads as (*When checks pass on pull requests by Dependabot in acme-org, pin it.*), and what is
+wrong with it, if anything. Below them:
+
+- **Watching** lists the items its watch finds now, as the last refresh read them, newest
+  activity first, as the inbox's own rows: their signals, ⚡ chip, triage buttons, **⋯** menu,
+  and launch button. Click a title to open its review or issue sheet, which steps through the
+  list. This is where an item that is in no inbox list shows up, such as a Dependabot pull
+  request a routine's search finds.
+- **Activity** is that routine's own lines, as below.
+
+**Activity** lists what the routines did, under a heading for each day, newest first:
+
+| Line | Says | Can |
+|---|---|---|
+| A routine's local steps on a day, grouped | *Snoozed 6*, the items, the routine | **Undo**, which puts back each item that is still as the routine left it; one you changed since stays as you left it (*Put back 5 items. 1 changed since, so it's left as it is.*). Once all are taken back it says so |
+| A Dry run's record | *Would run*, the item | **Open** |
+| A notice | *Told you*, the item | **Open** |
+| A routine that gave up | *Gave up*, *It gave up: 2 tries used.* | **Try again**, which resets its tries on the item |
+| An item a routine leaves alone | *Left alone*, why (*You brought back what it snoozed.*) | **Let it act again** |
+
+**Filter** by routine (**Every routine**, or one) and by result (**Snoozes, pins, and
+dismissals**, **Dry runs**, **Notices**, or **Worth knowing**: what was left alone, what gave
+up, and what failed). Earlier days load as you scroll to the end, or with **Show earlier days**.
+**Open** shows the item: its card in the inbox while one of your lists holds it, else its row in
+the routine's Watching list, highlighted, else GitHub. Across the top, a banner says when
+something stops everything: *Autopilot is paused. Nothing new starts.* with **Resume**;
+*Autopilot is running in another copy of Nilbox. This one shows them and starts nothing.*; and
+that no one is signed in to GitHub, so nothing starts.
+
+**The ⚡ chip.** An item a routine touched carries a chip after its session pill, on its inbox
+card and its Watching row alike, saying what the newest of the routines' matches on it did:
+**⚡ Snoozed**, **⚡ Pinned**, **⚡ Dismissed**, **⚡ Restored**, **⚡ Undone**, **⚡ Taken back**,
+**⚡ Would run**, **⚡ Told you**, or **⚡ Queued** while Pause or a routine's active hours hold a
+step. Click it for the item's history with the routines: each match, newest first, with its
+routine, when, what it said, and each change it made with where it stands (*Still there*,
+*Changed since*, *Undone*, *You took it back*), an **Undo** for one still there, and **Show in
+Activity**.
+
+### Snooze, dismiss, and pin: by a routine
+
+A routine can pin, snooze, dismiss, or restore an item, as you do from its menu. Each runs at
+once wherever it sits in the routine, in Ask first too, needing no OK, and acts on any item, an
+outside contributor's too, since it changes only what this Mac shows. A routine's snooze lasts as
+long as the routine says, and wakes by your own [rules](#waking-a-snooze-early), as yours does.
+The row says which routine did it, *Snoozed by ⚡ Snooze passing bot PRs · back Thu, 9:00 AM*,
+*Dismissed by ⚡ ... · 2h ago*, or *Pinned by ⚡ ...*, until you change it yourself: your own
+snooze, dismissal, restore, pin, or unpin takes the mark over at once.
+
+A routine's Snooze and Dismiss never replace what you set aside yourself: an item you snoozed or
+dismissed stays as you left it. Its Restore is there to bring an item back to your attention
+when the routine's conditions hold, your own snooze or dismissal included; setting the item
+aside again afterwards is you handling it, and the routine goes on as before. Whatever you
+change while a routine's step is on its way wins. Taking back what a routine did, by restoring
+what it snoozed or dismissed, snoozing it again yourself, unpinning what it pinned, or **Undo**,
+leaves the routine hands off that item from then on (*Left alone: you brought back what it
+snoozed*), until you choose **Let it act again**. Pause Autopilot and a routine's active hours
+hold local actions too; they run on Resume, or when the hours begin. A Dry run records what
+would run, and changes nothing.
+
+### Autopilot's notifications and the menu bar
+
+Autopilot has five kinds of notification, each with a banner switch of its own in **Settings →
+Notifications**, all on by default, and the **Autopilot** type on the
+[Notifications page](#the-notifications-page):
+
+| Kind | Switch | When |
+|---|---|---|
+| Autopilot alert | **Routine alerts** | A routine's **Notify me** or **Tell me** step runs; headed by the routine's name |
+| Autopilot problem | **Autopilot problems** | A routine can't run: its search fails, or it won't load. You hear of each problem once, as it starts |
+| Needs your OK | **Needs your OK** | A routine that asks first waits for you (for the steps later versions run) |
+| Agent finished | **Agents finishing** | A coding agent a routine started ends (later versions) |
+| Checks after a fix | **Checks after a fix** | The checks on a routine's fix finish (later versions) |
+
+A routine can turn its own banners on or off, whatever the switches say. More than three at once
+arrive as one banner that sums them up (*4 new from Autopilot*). Clicking an alert about an item
+opens the item, as an inbox arrival does, and the entry is marked read when the item's sheet
+opens; clicking one about no item, as a problem is, opens the Autopilot tab at its routine. When
+what it names is gone, as after **Clear history**, a toast says so.
+
+While a routine exists, the [menu bar](#menu-bar-and-notifications) menu has an **Autopilot**
+group after your lists: each agent working, *N needs your OK*, which opens Activity, and **Pause
+Autopilot** as a checkbox row, the same setting as the tab's button and Settings'. The number by
+the icon stays the inbox's. While a routine is on or an agent works, closing the window only
+hides it, even with the menu bar icon off, so Autopilot carries on; the Dock icon brings it
+back, and the window says so the first time.
+
+### Settings → Autopilot
+
+| Setting | Default | What it does |
+|---|---|---|
+| **Pause Autopilot** | Off | No routine starts anything new; what is under way carries on |
+| **New routines start in** | Ask first | The mode a routine you make starts in; a routine keeps its own once made |
+| **Agents at once** | 2 | How many coding agents your routines may run at the same time, at most 3 |
+| **Agent runs a day** | 20 | How many coding agent runs your routines may start in a day, together |
+| **GitHub actions a day** | 50 | How many actions on GitHub your routines may send in a day, together |
+| **Daily cap** | Off | The most your routines' coding agents may use in a day, in dollars ($1 to $500) or tokens |
+| **Keep the Mac awake while agents work** | Off | The Mac doesn't sleep on its own while a routine's agent works |
+| **Hold agent starts while their provider reports an outage** | On | An agent waits while its provider's status page reports a major outage |
+| **Ask before catching up after** | 24 hours | After Nilbox was closed this long, agent and GitHub steps wait for your OK; local steps never do |
+| **History kept** | 90 days | How long what the routines did is kept; lowering it lowers the run logs with it |
+| **Run logs kept** | 30 days | How long an agent run's log is kept, never longer than the history |
+| **Clear history…** | | Removes, after asking, what the routines did with items that are done with; your routines and what still waits stay |
+| **Last checked** | | When Autopilot last checked the routines, how long it took, and what it found (*Last checked today, 11:59 AM · 34 ms · 7 matches · 1 start*), or that another copy runs it |
+
+The agent and GitHub limits are for the routines' coding agents and GitHub actions, once
+routines can run them. A limit delays a match and never loses it: one over today's limit starts
+tomorrow, and a day runs from local midnight. Local steps keep only to Pause Autopilot and a
+routine's own active hours. Backups carry these settings, and the **Autopilot routines**
+category carries the routines (see [Backing up your setup](#backing-up-your-setup)).
+
+**What Autopilot never does.** It never changes a routine's mode on its own. A local step never
+replaces what you set aside yourself, and has **Undo**. Dry run changes nothing. Nothing it reads
+or decides leaves your Mac: it reads GitHub through the app's own API calls, as the inbox does.
+
+### Routine searches
 
 An Autopilot routine watches either the inbox's own lists, which every refresh reads already,
 or a GitHub search of its own, such as Dependabot's pull requests in your account. While a
 routine with a search is switched on, each inbox refresh reads that search too, once it has
 read the inbox's three, and stores what it finds apart from your lists: a watched item is never
 in Review requested, Authored, or Assigned, never in their counts, and never in the menu bar's
-count. Nothing here acts on what it finds yet; it keeps the items current for the routines.
+count. It shows in the routine's **Watching** list, and the searches keep it current for the
+routines.
 
 **What a search reads.** Identical searches across routines are read once. Each search
 returns the 100 most recently updated open items it matches, in a request of its own sent once
@@ -2597,7 +2773,9 @@ unread on the page. A banner left from before the history was cleared marks noth
 entry's number may belong to another by then.
 
 **Banners.** Each kind can also show a native macOS banner. All eight are on by default, and
-each has its own switch in Settings → Notifications. Two more switches there show a banner when
+each has its own switch in Settings → Notifications. Autopilot's five kinds have switches of
+their own there, under **Autopilot**, all on by default too (see
+[Autopilot's notifications](#autopilots-notifications-and-the-menu-bar)). Two more switches there show a banner when
 an [agent session](#following-a-session) waits for you or finishes its turn; those start off,
 and the history doesn't keep them. A banner gives the kind, the repository
 and number, and the title; a snooze that ended early adds what was new. When one refresh finds
@@ -2643,7 +2821,8 @@ list too. Long lists stay quick: only the rows near the screen are drawn.
 
 **Nilbox.** The whole history, up to the latest 1,000, in the local database (the
 `notifications` table), whether or not a banner was shown. **Type** is **Reviews**,
-**Assigned**, **Snoozes**, **Releases**, or **Runs**. Click an entry to open it as the bell
+**Assigned**, **Snoozes**, **Releases**, **Runs**, **Status**, **Updates**, or **Autopilot**
+(its five kinds together). Click an entry to open it as the bell
 does, which marks it read. Point at one: an unread entry offers **✓ Done**, and a read one
 **Mark unread**, which puts it back on the bell. **Mark all done** marks them all read, and
 **Clear history** forgets every notification, after asking; banners and settings stay.
