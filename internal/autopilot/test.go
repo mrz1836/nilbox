@@ -417,7 +417,8 @@ func (s *Service) warnOwners(ctx context.Context, sp spec.Spec, out *TestResult)
 			if !known[strings.ToLower(owner)] {
 				out.Searches[i].Warnings = append(out.Searches[i].Warnings, fmt.Sprintf(
 					"No item of %s's has been in your inbox, so GitHub may not know the name: it answers a name it "+
-						"doesn't know with nothing.", owner))
+						"doesn't know with nothing.", owner,
+				))
 			}
 		}
 	}

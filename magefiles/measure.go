@@ -62,13 +62,21 @@ func (Measure) Startup() error {
 
 // Refresh times five live inbox refreshes through the app binary, against a scratch
 // database, and reports the median and the API budget used at a five-minute cadence.
-// Every request is a read made with your GitHub CLI login.
+// With searches=N (1 to 5), each refresh also reads N routine searches over your account
+// beside the inbox's own, as routines would, and the report adds each watch pass's time
+// after the inbox's store and its cost. Every request is a read made with your GitHub CLI
+// login.
 //
 //	magex measure:refresh
+//	magex measure:refresh searches=5
 func (Measure) Refresh() error {
 	_, exe, err := appBundle()
 	if err != nil {
 		return err
+	}
+
+	if searches := mageArg("searches"); searches != "" {
+		return sh.RunV(exe, measure.RefreshFlag, measure.SearchesFlag+searches)
 	}
 
 	return sh.RunV(exe, measure.RefreshFlag)

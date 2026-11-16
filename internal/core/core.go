@@ -191,6 +191,10 @@ type Core struct {
 	// It is not bound.
 	WatchPasses *inbox.WatchPasses
 
+	// InboxRoutines is the inbox's face for Autopilot's own reads, which the refresh
+	// measurement also waits on the watch passes through. It is not bound.
+	InboxRoutines *inbox.Routines
+
 	// ChecksFollower reads again, as often as Settings → Refreshing says (45 seconds by
 	// default, or never), the pull requests whose checks were still running, in one
 	// request, and nothing while none runs; the desktop shell runs it with the scheduler.
@@ -758,6 +762,7 @@ func assemble(ctx context.Context, pool *sql.DB, info startup, opts Options, log
 		ProfileStore:          profileStore,
 		Scheduler:             scheduler,
 		WatchPasses:           inbox.NewWatchPasses(inboxSvc, logger),
+		InboxRoutines:         inboxRoutines,
 		GHThreads:             ghThreads,
 		GHThreadsSyncer:       ghThreadsSyncer,
 		ChecksFollower:        checksFollower,

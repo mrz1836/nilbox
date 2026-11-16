@@ -180,7 +180,7 @@ func start(args []string, stdout io.Writer, paths appdata.Paths, logger *slog.Lo
 	}
 
 	if slices.Contains(args, measure.RefreshFlag) {
-		return measureRefresh(stdout, home, logger)
+		return measureRefresh(stdout, home, measure.SearchesArg(args), logger)
 	}
 
 	app, shell, err := assemble(launch{
@@ -633,13 +633,16 @@ func showFailure(app *application.App, failure desktop.Failure, putBack func()) 
 	dialog.Show()
 }
 
-// measureRefresh times live inbox refreshes the way the app makes them, against a scratch
-// database that is deleted afterwards, and prints the report. It opens no window.
-func measureRefresh(stdout io.Writer, home string, logger *slog.Logger) error {
+// measureRefresh times live inbox refreshes the way the app makes them, each with searches
+// routine searches beside it (none at 0), against a scratch database that is deleted
+// afterwards, and prints the report. It opens no window.
+func measureRefresh(stdout io.Writer, home string, searches int, logger *slog.Logger) error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	report, err := measure.RunRefresh(ctx, measure.RefreshOptions{Home: home, Version: version, Logger: logger})
+	report, err := measure.RunRefresh(ctx, measure.RefreshOptions{
+		Home: home, Version: version, Searches: searches, Logger: logger,
+	})
 	if err != nil {
 		return fmt.Errorf("measure the inbox refresh: %w", err)
 	}
