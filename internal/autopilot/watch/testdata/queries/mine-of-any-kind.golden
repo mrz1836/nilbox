@@ -1,0 +1,4 @@
+# The query watch.Build writes for this search, after this header. Rewrite with
+# go test ./internal/autopilot/watch -run TestBuildGolden -update
+
+is:open archived:false author:@me sort:updated-desc
