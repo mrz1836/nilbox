@@ -822,6 +822,7 @@ export const {
   SetGitHubNotificationAction: setGitHubNotificationAction,
   SetGitHubCleanupCardDismissed: setGitHubCleanupCardDismissed,
   SetUpdateMode: setUpdateMode,
+  SetAutopilotEnabled: setAutopilotEnabled,
   SetAutopilotPaused: setAutopilotPaused,
   SetAutopilotDefaultMode: setAutopilotDefaultMode,
   SetAutopilotAgentsAtOnce: setAutopilotAgentsAtOnce,

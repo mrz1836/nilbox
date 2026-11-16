@@ -9,6 +9,7 @@ import type { NotificationsState } from '../lib/useNotifications'
 import type { ServiceStatusState } from '../lib/useServiceStatus'
 import type { Account, AppNotification, BudgetGauge, NotificationsTab, Settings } from '../platform'
 import { AccountMenu } from './AccountMenu'
+import { BetaBadge } from './BetaBadge'
 import { BudgetMenu } from './BudgetMenu'
 import { GitHubThreadsMenu } from './GitHubThreadsMenu'
 import { Logo } from './Logo'
@@ -57,8 +58,10 @@ export interface AppHeaderProps {
   // integration is on (D2).
   scripts?: ScriptsBadge | null
   // autopilot is the Autopilot tab's badge: the agents working, an amber dot while
-  // something waits for the user, and a red dot while a routine is broken or can't run.
-  autopilot?: AutopilotBadge
+  // something waits for the user, and a red dot while a routine is broken or can't run;
+  // or null while the tab doesn't show: Autopilot (beta) is off. The tab, while it shows,
+  // is marked Beta.
+  autopilot?: AutopilotBadge | null
   onOpenSettings: () => void
   // notifications is the notification history the bell shows; without it there is no bell.
   // onOpenNotification shows an entry's item, and onNotificationSettings opens their
@@ -132,11 +135,11 @@ function notificationsTitle(own: number, github: number): string {
 // broken or can't run. Scripts counts the runs going, with a red dot after a run failed
 // until it is opened, and an amber one while a tool that's on can't be used.
 function tabCount(id: View, props: AppHeaderProps): TabCount {
-  const { inboxCount = 0, worktreeCount = 0, worktreeAttention = 0, scripts = null, autopilot } = props
+  const { inboxCount = 0, worktreeCount = 0, worktreeAttention = 0, scripts = null, autopilot = null } = props
 
   switch (id) {
     case 'autopilot':
-      return autopilot === undefined
+      return autopilot === null
         ? { count: 0, title: '', attention: false }
         : {
             count: autopilot.count,
@@ -177,8 +180,9 @@ function tabCount(id: View, props: AppHeaderProps): TabCount {
 }
 
 // AppHeader is the window's single toolbar, sitting beside the macOS window controls:
-// the logo, the view tabs (Inbox, Notifications, Autopilot, and Worktrees with their
-// counts, Prompts, and Scripts while an integration is on), and on the
+// the logo, the view tabs (Inbox, Notifications, Autopilot while Autopilot (beta) is on,
+// marked Beta, and Worktrees with their counts, Prompts, and Scripts while an integration
+// is on), and on the
 // right the page's filter field, the notification bell, the GitHub notifications button,
 // a warning while a service the user watches reports a problem, the API budget gauge, and
 // the account menu. The filter gives way first as the window narrows; the logo and the tabs
@@ -225,7 +229,10 @@ export function AppHeader(props: AppHeaderProps) {
       )}
       <nav aria-label="Views" className="flex shrink-0 items-center gap-0.5 [--wails-draggable:no-drag]">
         {tabs.map(({ id, label }) => {
-          if (id === 'scripts' && (props.scripts ?? null) === null) {
+          if (
+            (id === 'scripts' && (props.scripts ?? null) === null) ||
+            (id === 'autopilot' && props.autopilot === null)
+          ) {
             return null
           }
 
@@ -245,6 +252,7 @@ export function AppHeader(props: AppHeaderProps) {
               className="group flex items-center gap-1.5 rounded-md px-2.5 py-1 text-sm font-medium text-muted transition-colors hover:bg-raised hover:text-text aria-pressed:bg-raised aria-pressed:text-text"
             >
               {label}
+              {id === 'autopilot' && <BetaBadge />}
               {/* The pill sits one step above the tab: raised on the bar, border on a
                   hovered or active tab. */}
               {badged && (

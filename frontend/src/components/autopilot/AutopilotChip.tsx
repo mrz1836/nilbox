@@ -27,9 +27,15 @@ export interface AutopilotRows {
   onShow?: ((target: AutopilotTarget) => void) | undefined
 }
 
-// AutopilotRowsContext holds the rows' Autopilot; without it a row says nothing of
-// Autopilot.
+// AutopilotRowsContext holds the rows' Autopilot; without it, as while Autopilot (beta) is
+// off, a row says nothing of Autopilot: no chip, and no routine's mark.
 export const AutopilotRowsContext = createContext<AutopilotRows | null>(null)
+
+// useMarkedBy is the routine with id that set an item aside or pinned it, as a row marks
+// it ("Snoozed by ⚡ ..."): 0, so the row marks none, without the rows' Autopilot.
+export function useMarkedBy(id: number): number {
+  return use(AutopilotRowsContext) === null ? 0 : id
+}
 
 // useRoutineName names the routine with id among those the window lists, "a routine" for
 // one it doesn't.

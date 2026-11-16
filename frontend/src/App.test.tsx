@@ -37,6 +37,8 @@ import {
   agentSession,
   sessionsSnapshot,
   autopilotAlert,
+  autopilotMatch,
+  autopilotOff,
   autopilotTarget,
   activityPage,
   routine,
@@ -2304,5 +2306,103 @@ describe('the window’s close, kept running for Autopilot', () => {
 
     expect(screen.queryByRole('group', { name: 'Notification' })).not.toBeInTheDocument()
     expect(platform.setKeptRunningTold).not.toHaveBeenCalled()
+  })
+})
+
+describe('Autopilot (beta)', () => {
+  const views = () => within(screen.getByRole('navigation', { name: 'Views' }))
+
+  // pinnedByARoutine lists a card a routine pinned, whose latest match did it.
+  const pinnedByARoutine = () => {
+    platform.getInboxSnapshot.mockResolvedValue(
+      snapshot({ reviewRequested: list([item({ pinnedAt: '2026-06-15T11:30:00Z', pinnedBy: 3 })]) }),
+    )
+    platform.listRoutines.mockResolvedValue([routine()])
+    platform.latestAutopilotMatches.mockResolvedValue([autopilotMatch()])
+  }
+
+  it('shows the Autopilot tab marked Beta, and the routines’ chips and marks on the rows, while it is on', async () => {
+    pinnedByARoutine()
+    await renderApp()
+
+    const tab = await views().findByRole('button', { name: 'Autopilot' })
+
+    expect(within(tab).getByText('Beta')).toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: /^Autopilot: / })).toBeInTheDocument()
+    expect(screen.getByTitle('Pinned by the routine Snooze passing bot PRs')).toBeInTheDocument()
+  })
+
+  it('shows none of Autopilot while it is off: no tab, chip, mark, or type of notification', async () => {
+    pinnedByARoutine()
+    platform.getSettings.mockResolvedValue(autopilotOff())
+    await renderApp()
+
+    await screen.findByRole('region', { name: 'Review requested' })
+    await act(async () => {
+      await Promise.resolve()
+    })
+
+    expect(views().queryByRole('button', { name: 'Autopilot' })).not.toBeInTheDocument()
+    expect(screen.queryByText('Beta')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^Autopilot: / })).not.toBeInTheDocument()
+    expect(screen.queryByTitle(/by the routine/)).not.toBeInTheDocument()
+    expect(platform.latestAutopilotMatches).not.toHaveBeenCalled()
+
+    await userEvent.click(views().getByRole('button', { name: 'Notifications' }))
+
+    const type = await screen.findByRole('radiogroup', { name: 'Type' })
+
+    expect(within(type).getByRole('radio', { name: 'Reviews' })).toBeInTheDocument()
+    expect(within(type).queryByRole('radio', { name: 'Autopilot' })).not.toBeInTheDocument()
+  })
+
+  it('says where to turn it on when a notification would open the Autopilot tab while it is off', async () => {
+    platform.getSettings.mockResolvedValue(autopilotOff())
+    await renderApp()
+    await screen.findByRole('region', { name: 'Review requested' })
+
+    act(() => {
+      emit('inbox:reveal', {
+        itemId: 0,
+        url: '',
+        runId: 0,
+        runStarted: '',
+        notificationId: 0,
+        autopilot: autopilotTarget({ activity: true }),
+      })
+    })
+
+    const said = await screen.findByRole('group', { name: 'Notification' })
+
+    expect(within(said).getByText('Autopilot is off. Turn it on in Settings → Labs to see this.')).toBeInTheDocument()
+    expect(views().getByRole('button', { name: 'Inbox' })).toHaveAttribute('aria-pressed', 'true')
+  })
+
+  it('goes back to the inbox once Autopilot is turned off from its tab, and brings the tab back once it is on', async () => {
+    await renderApp()
+
+    await userEvent.click(await views().findByRole('button', { name: 'Autopilot' }))
+    expect(views().getByRole('button', { name: 'Autopilot' })).toHaveAttribute('aria-pressed', 'true')
+
+    await openSettingsFromMenu()
+    await userEvent.click(screen.getByRole('button', { name: 'Labs' }))
+    await userEvent.click(screen.getByRole('switch', { name: 'Autopilot (beta)' }))
+
+    expect(platform.setAutopilotEnabled).toHaveBeenCalledExactlyOnceWith(false)
+    await waitFor(() => {
+      expect(views().queryByRole('button', { name: 'Autopilot' })).not.toBeInTheDocument()
+    })
+
+    await userEvent.click(screen.getByRole('button', { name: 'Close settings' }))
+
+    expect(views().getByRole('button', { name: 'Inbox' })).toHaveAttribute('aria-pressed', 'true')
+    expect(await screen.findByRole('region', { name: 'Review requested' })).toBeInTheDocument()
+
+    await openSettingsFromMenu()
+    await userEvent.click(screen.getByRole('button', { name: 'Labs' }))
+    await userEvent.click(screen.getByRole('switch', { name: 'Autopilot (beta)' }))
+
+    expect(platform.setAutopilotEnabled).toHaveBeenLastCalledWith(true)
+    expect(within(await views().findByRole('button', { name: 'Autopilot' })).getByText('Beta')).toBeInTheDocument()
   })
 })

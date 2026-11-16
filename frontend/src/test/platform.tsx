@@ -469,6 +469,7 @@ function answers(subscribe: Loose<Platform['on']>): { [K in keyof Platform]: Loo
     showInstallLog: done,
     restartToUpdateNow: () => Promise.resolve({ restarted: true, status: updateReady({ state: 'installing' }) }),
     setUpdateMode: (updateMode) => stored({ updateMode }),
+    setAutopilotEnabled: (enabled) => stored(autopilotSettings({ enabled })),
     setAutopilotPaused: (paused) => stored(autopilotSettings({ paused })),
     setAutopilotDefaultMode: (defaultMode) => stored(autopilotSettings({ defaultMode })),
     setAutopilotAgentsAtOnce: (agentsAtOnce) => stored(autopilotSettings({ agentsAtOnce })),

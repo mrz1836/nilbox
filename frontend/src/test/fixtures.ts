@@ -294,9 +294,10 @@ export function autopilotAlert(overrides: Partial<AppNotification> = {}): AppNot
   })
 }
 
-// autopilotGlance is Autopilot at a glance: no routine, nothing waiting, no agent working.
+// autopilotGlance is Autopilot at a glance, on: no routine, nothing waiting, no agent
+// working.
 export function autopilotGlance(overrides: Partial<AutopilotGlance> = {}): AutopilotGlance {
-  return { routines: 0, enabled: 0, paused: false, needsYou: 0, working: [], ...overrides }
+  return { on: true, routines: 0, enabled: 0, paused: false, needsYou: 0, working: [], ...overrides }
 }
 
 // routineSpec is a routine's spec: Checks pass on the pull requests in Review requested,
@@ -758,6 +759,13 @@ export function profile(overrides: Partial<Profile> = {}): Profile {
   }
 }
 
+// autopilotOff is the settings with Autopilot (beta) off, as a fresh install has them.
+export function autopilotOff(overrides: Partial<Settings> = {}): Settings {
+  const base = settings(overrides)
+
+  return { ...base, autopilot: { ...base.autopilot, enabled: false } }
+}
+
 export function settings(overrides: Partial<Settings> = {}): Settings {
   return {
     defaultAgent: 'claude',
@@ -816,7 +824,10 @@ export function settings(overrides: Partial<Settings> = {}): Settings {
     serviceStatus: statusWatch(),
     statusProviders: statusProviders(),
     updateMode: 'download',
+    // Autopilot (beta) is on, so the tests see every part of the window it adds; a fresh
+    // database has it off, which the tests of that state set (autopilotOff).
     autopilot: {
+      enabled: true,
       paused: false,
       defaultMode: 'ask',
       agentsAtOnce: 2,

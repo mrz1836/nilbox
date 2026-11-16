@@ -2,7 +2,16 @@ import { act, render, screen } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 
 import { sectionInfo, sectionOrder, settingsIndex, type SettingsSection } from '../../lib/settingsIndex'
-import { account, agents, defaultPrompts, profile, prompts, settings, updateStatus } from '../../test/fixtures'
+import {
+  account,
+  agents,
+  autopilotOff,
+  defaultPrompts,
+  profile,
+  prompts,
+  settings,
+  updateStatus,
+} from '../../test/fixtures'
 import { updateOf } from '../../test/query'
 import { SettingsView } from '../SettingsView'
 import { SettingMatch } from './match'
@@ -15,13 +24,14 @@ vi.mock('../../platform', () => import('../../test/platform').then((fake) => fak
 // and the templates' rows render once per fixture agent.
 const exemptions: Readonly<Partial<Record<SettingsSection, Readonly<Record<string, string>>>>> = {}
 
-// shownLabels renders a section of the settings page with the shared fixtures and
-// lists the labels of the rows it marks for "Find a setting".
-async function shownLabels(section: SettingsSection): Promise<string[]> {
+// shownLabels renders a section of the settings page with the shared fixtures, Autopilot
+// (beta) on unless stored says otherwise, and lists the labels of the rows it marks for
+// "Find a setting".
+async function shownLabels(section: SettingsSection, stored = settings()): Promise<string[]> {
   const view = render(
     <SettingsView
       initialSection={section}
-      settings={settings()}
+      settings={stored}
       agents={agents()}
       profiles={[profile(), profile({ agent: 'codex', name: 'default', folder: '~/.codex' })]}
       prompts={prompts()}
@@ -81,6 +91,13 @@ describe('the settings index', () => {
 
       expect(rendered, `${section}: “${entry.label}” is indexed but not shown`).toBe(true)
     }
+  })
+
+  it('marks exactly the entries Autopilot (beta) off leaves out', async () => {
+    const shown = await shownLabels('notifications', autopilotOff())
+
+    expect(shown).toEqual(settingsIndex.notifications.filter((e) => e.autopilot !== true).map((e) => e.label))
+    expect(settingsIndex.notifications.some((e) => e.autopilot === true)).toBe(true)
   })
 })
 

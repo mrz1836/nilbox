@@ -1,13 +1,16 @@
 import { describe, expect, it } from 'vitest'
 
 import { brand } from '../generated/brand'
+import { autopilotOff, settings } from '../test/fixtures'
 import { notificationKinds } from './notifications'
 import {
+  hiddenOf,
   matchSettings,
   sectionGroups,
   sectionInfo,
   sectionOrder,
   settingsIndex,
+  shownSection,
   type SettingsSection,
 } from './settingsIndex'
 
@@ -115,7 +118,7 @@ describe('matchSettings', () => {
     expect(matchSettings(brand.name)?.isMatch('about', 'Version')).toBe(true)
   })
 
-  it('finds every tool the app runs, the scripts, and where runs go, by the section’s name, after Worktrees and before About', () => {
+  it('finds every tool the app runs, the scripts, and where runs go, by the section’s name, after Worktrees and before Labs', () => {
     const match = matchSettings('integrations')
 
     expect(found('integrations')).toEqual([['integrations', 5]])
@@ -126,7 +129,8 @@ describe('matchSettings', () => {
     expect(match?.isMatch('integrations', 'Runs in')).toBe(true)
     expect(match?.isMatch('integrations', 'Offer a release after you merge a pull request')).toBe(true)
     expect(sectionOrder.indexOf('integrations')).toBe(sectionOrder.indexOf('worktrees') + 1)
-    expect(sectionOrder.indexOf('backup')).toBe(sectionOrder.indexOf('integrations') + 1)
+    expect(sectionOrder.indexOf('labs')).toBe(sectionOrder.indexOf('integrations') + 1)
+    expect(sectionOrder.indexOf('backup')).toBe(sectionOrder.indexOf('labs') + 1)
     expect(sectionInfo.integrations.description).toBe(
       `Tools ${brand.name} runs for you: mage-x releases, go-pre-commit hooks, and scripts.`,
     )
@@ -140,6 +144,31 @@ describe('matchSettings', () => {
     expect(matchSettings('script trust')?.isMatch('backup', 'What a backup never holds')).toBe(true)
     expect(sectionOrder.indexOf('about')).toBe(sectionOrder.indexOf('backup') + 1)
     expect(sectionInfo.backup.label).toBe('Back up and restore')
+  })
+
+  it('finds Autopilot (beta) in Labs, which says what it is for', () => {
+    expect(found('beta')).toEqual([['labs', 1]])
+    expect(matchSettings('experimental')?.isMatch('labs', 'Autopilot (beta)')).toBe(true)
+    expect(sectionInfo.labs.label).toBe('Labs')
+    expect(sectionInfo.labs.description).toContain(brand.name)
+  })
+
+  it('finds none of Autopilot’s settings but its switch in Labs while Autopilot is off', () => {
+    const off = hiddenOf(autopilotOff())
+
+    expect(off).toEqual({ autopilot: true })
+    expect(hiddenOf(null), 'while the settings load').toEqual({ autopilot: true })
+    expect(hiddenOf(settings())).toEqual({ autopilot: false })
+    expect(shownSection('autopilot', off)).toBe(false)
+    expect(shownSection('labs', off)).toBe(true)
+
+    const match = matchSettings('autopilot', off)
+
+    expect(match?.sections.has('autopilot')).toBe(false)
+    expect(match?.sections.has('notifications'), 'nor its banner switches').toBe(false)
+    expect(match?.sections.get('labs')).toBe(1)
+    expect(matchSettings('routine alerts', off)?.matches).toBe(0)
+    expect(matchSettings('routine alerts')?.isMatch('notifications', 'Routine alerts'), 'on, they are found').toBe(true)
   })
 
   it('finds Autopilot’s settings by the section’s name, in a group of its own between Inbox and Agents', () => {
