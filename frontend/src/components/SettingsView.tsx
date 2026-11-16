@@ -21,6 +21,7 @@ import { ChevronLeftIcon } from './icons'
 import { AboutSection } from './settings/AboutSection'
 import { AccountSection } from './settings/AccountSection'
 import { AppearanceSection } from './settings/AppearanceSection'
+import { AutopilotSection } from './settings/AutopilotSection'
 import { BackupSection } from './settings/BackupSection'
 import { GitHubNotificationsSection } from './settings/GitHubNotificationsSection'
 import { IntegrationsSection } from './settings/IntegrationsSection'
@@ -263,6 +264,8 @@ export function SettingsView({
                 (settings === null ? loading : <SnoozingSection settings={settings} onSaved={onSaved} />)}
               {section === 'reviewing' &&
                 (settings === null ? loading : <ReviewingSection settings={settings} onSaved={onSaved} />)}
+              {section === 'autopilot' &&
+                (settings === null ? loading : <AutopilotSection settings={settings} onSaved={onSaved} />)}
               {section === 'launching' &&
                 (settings === null ? (
                   loading

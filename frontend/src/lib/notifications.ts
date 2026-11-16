@@ -9,8 +9,8 @@ export interface KindDescription {
   kind: NotificationKind
   // session marks a kind about the agent sessions, which the history never keeps.
   session?: boolean
-  // autopilot marks one of Autopilot's kinds, whose switches Settings lists, and whose
-  // type the Notifications page offers, only while a routine exists.
+  // autopilot marks one of Autopilot's kinds, whose switches Settings lists under a
+  // heading of their own, and whose type the Notifications page offers together.
   autopilot?: boolean
   // title heads an entry in the history, as it heads its banner.
   title: string
@@ -184,8 +184,9 @@ export function isAutopilotKind(kind: NotificationKind): boolean {
 }
 
 // opensAutopilot reports an entry of Autopilot's about no item, as a problem is, which
-// opens the Autopilot tab at its routine. Until the tab exists, one about an item opens
-// that item, as an inbox arrival does.
+// opens the Autopilot tab at what it names (its routine, or its match in Activity). One
+// about an item opens that item, as an inbox arrival does, and is marked read when the
+// item's sheet opens.
 export function opensAutopilot(entry: AppNotification): boolean {
   return isAutopilotKind(entry.kind) && entry.itemKind === ''
 }
@@ -320,12 +321,6 @@ export const appTypeOrder: readonly AppTypeID[] = [
   'update',
   'autopilot',
 ]
-
-// shownTypes are the types the page offers: Autopilot's only while a routine exists, so a
-// user without one never sees it named.
-export function shownTypes(autopilotShown: boolean): readonly AppTypeID[] {
-  return autopilotShown ? appTypeOrder : appTypeOrder.filter((id) => id !== 'autopilot')
-}
 
 // appTypeOf is the type an entry belongs to, or '' for a kind this build doesn't know.
 export function appTypeOf(entry: AppNotification): Exclude<AppTypeID, 'all'> | '' {

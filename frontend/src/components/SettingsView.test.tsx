@@ -172,6 +172,7 @@ describe('SettingsView', () => {
       'Service status',
       'Snoozing',
       'Reviewing',
+      'Autopilot',
       'Repositories',
       'Profiles',
       'Launching',
@@ -1243,7 +1244,7 @@ describe('SettingsView escape and trust', () => {
     expect(screen.getByRole('radiogroup', { name: 'Merge method' })).toBeInTheDocument()
   })
 
-  it('groups the inbox’s, the agents’, and the tools’ sections under their headings', () => {
+  it('groups the inbox’s, Autopilot’s, the agents’, and the tools’ sections under their headings', () => {
     renderSettings()
 
     const nav = within(screen.getByRole('navigation', { name: 'Settings sections' }))
@@ -1253,9 +1254,10 @@ describe('SettingsView escape and trust', () => {
         .map((b) => b.textContent)
 
     expect(names('Inbox')).toEqual(['Snoozing', 'Reviewing'])
+    expect(names('Autopilot')).toEqual(['Autopilot'])
     expect(names('Agents')).toEqual(['Repositories', 'Profiles', 'Launching', 'Trust', 'Sensitive files', 'Worktrees'])
     expect(names('Tools')).toEqual(['Integrations'])
-    expect(nav.getAllByRole('group')).toHaveLength(3)
+    expect(nav.getAllByRole('group')).toHaveLength(4)
   })
 
   it('has an Integrations section after Worktrees, for the tools it runs, and Back up and restore before About', async () => {
@@ -1491,7 +1493,8 @@ describe('SettingsView search', () => {
   it('lists only the sections with a matching setting, each with how many, and turns to the first', () => {
     render(<SettingsView {...searchProps('wake')} />)
 
-    expect(sidebar()).toEqual(['Snoozing'])
+    // Autopilot's "Keep the Mac awake" holds the word too.
+    expect(sidebar()).toEqual(['Snoozing', 'Autopilot'])
     expect(screen.getByRole('group', { name: 'Inbox' })).toBeInTheDocument()
     expect(screen.queryByRole('group', { name: 'Agents' })).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Snoozing (4 matches)' })).toHaveAttribute('aria-current', 'page')
@@ -1550,7 +1553,7 @@ describe('SettingsView search', () => {
 
     rerender(<SettingsView {...searchProps('')} />)
 
-    expect(sidebar()).toHaveLength(17)
+    expect(sidebar()).toHaveLength(18)
     expect(sidebar()).toContain('Account')
     expect(screen.getByRole('region', { name: 'Notifications' })).toBeInTheDocument()
     expect(matched()).toEqual([])

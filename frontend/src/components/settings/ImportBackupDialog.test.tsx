@@ -54,6 +54,7 @@ describe('ImportBackupDialog', () => {
       expect.stringContaining('Prompts and replies1 to add · 8 already here'),
       expect.stringContaining('Launch defaultsNothing to import'),
       expect.stringContaining('Your scriptsNothing to import'),
+      expect.stringContaining('Autopilot routinesNothing to import'),
     ])
 
     const settings = await row('Settings')
@@ -65,7 +66,7 @@ describe('ImportBackupDialog', () => {
 
     expect(platform.previewBackup).toHaveBeenCalledWith(path)
     expect(platform.importBackup).not.toHaveBeenCalled()
-    expect(screen.getByRole('button', { name: 'Import 5 categories' })).toBeEnabled()
+    expect(screen.getByRole('button', { name: 'Import 6 categories' })).toBeEnabled()
   })
 
   it('imports the categories left chosen', async () => {
@@ -74,19 +75,19 @@ describe('ImportBackupDialog', () => {
     await userEvent.click((await row('Repositories')).getByRole('checkbox'))
     await userEvent.click((await row('Your scripts')).getByRole('checkbox'))
     await userEvent.click((await row('Settings')).getByRole('checkbox'))
-    expect(screen.getByRole('button', { name: 'Import 2 categories' })).toBeEnabled()
+    expect(screen.getByRole('button', { name: 'Import 3 categories' })).toBeEnabled()
 
     // A category left out can be put back.
     await userEvent.click((await row('Settings')).getByRole('checkbox'))
-    await userEvent.click(screen.getByRole('button', { name: 'Import 3 categories' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Import 4 categories' }))
 
     expect(platform.importBackup).toHaveBeenCalledWith({
       path,
       hash: 'c0ffee',
-      sections: ['settings', 'prompts', 'launchDefaults'],
+      sections: ['settings', 'prompts', 'launchDefaults', 'autopilot'],
       mode: platform.BackupMode.ModeMerge,
     })
-    expect(onImported).toHaveBeenCalledWith(backupImported(['settings', 'prompts', 'launchDefaults']))
+    expect(onImported).toHaveBeenCalledWith(backupImported(['settings', 'prompts', 'launchDefaults', 'autopilot']))
   })
 
   it('offers only the categories the backup holds and can read, with their notes', async () => {
@@ -133,7 +134,7 @@ describe('ImportBackupDialog', () => {
     ).toBeInTheDocument()
     expect((await row('Prompts and replies')).getByText('1 to add, 1 to delete · 8 already here')).toBeInTheDocument()
 
-    await userEvent.click(screen.getByRole('button', { name: 'Import 5 categories' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Import 6 categories' }))
 
     expect(platform.importBackup).not.toHaveBeenCalled()
     expect(screen.getByRole('heading', { name: 'Replace what’s here?' })).toBeInTheDocument()
@@ -146,13 +147,13 @@ describe('ImportBackupDialog', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Cancel' }))
     expect(screen.getByRole('radio', { name: 'Replace what’s here' })).toBeChecked()
 
-    await userEvent.click(screen.getByRole('button', { name: 'Import 5 categories' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Import 6 categories' }))
     await userEvent.click(screen.getByRole('button', { name: 'Replace' }))
 
     expect(platform.importBackup).toHaveBeenCalledWith({
       path,
       hash: 'c0ffee',
-      sections: ['settings', 'repositories', 'prompts', 'launchDefaults', 'scripts'],
+      sections: ['settings', 'repositories', 'prompts', 'launchDefaults', 'scripts', 'autopilot'],
       mode: platform.BackupMode.ModeReplace,
     })
     expect(onImported).toHaveBeenCalled()
@@ -163,50 +164,10 @@ describe('ImportBackupDialog', () => {
 
     await userEvent.click(await screen.findByRole('radio', { name: 'Replace what’s here' }))
     await userEvent.click((await row('Prompts and replies')).getByRole('checkbox'))
-    await userEvent.click(screen.getByRole('button', { name: 'Import 4 categories' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Import 5 categories' }))
 
     expect(screen.getByText(/Nothing here is deleted, but what the backup holds takes the place/)).toBeInTheDocument()
     expect(screen.queryByRole('list', { name: 'To delete' })).not.toBeInTheDocument()
-  })
-
-  it('leaves out a category the backup holds that the window does not list', async () => {
-    // A backup holds an Autopilot section, which the window offers once it has routines to
-    // show; until then the section is neither shown, imported, nor counted among the
-    // deletions.
-    const gone = { label: 'A routine here', change: 'remove' as const, detail: '' }
-    platform.previewBackup.mockResolvedValue(
-      backupPreview({
-        sections: [
-          backupSectionPreview('settings'),
-          backupSectionPreview('repositories', { present: false }),
-          backupSectionPreview('prompts', { present: false }),
-          backupSectionPreview('launchDefaults', { present: false }),
-          backupSectionPreview('scripts', { present: false }),
-          backupSectionPreview('autopilot', {
-            merge: backupPlan({ count: { add: 1, update: 0, same: 0, remove: 0 } }),
-            replace: backupPlan({ count: { add: 1, update: 0, same: 0, remove: 1 }, items: [gone] }),
-          }),
-        ],
-      }),
-    )
-    renderDialog()
-
-    expect(await categories()).toHaveLength(backupSections.length)
-    expect(screen.queryByText(/autopilot/i)).not.toBeInTheDocument()
-
-    await userEvent.click(await screen.findByRole('radio', { name: 'Replace what’s here' }))
-    await userEvent.click(screen.getByRole('button', { name: 'Import 1 category' }))
-
-    expect(screen.getByText(/Nothing here is deleted, but what the backup holds takes the place/)).toBeInTheDocument()
-    expect(screen.queryByText('A routine here')).not.toBeInTheDocument()
-
-    await userEvent.click(screen.getByRole('button', { name: 'Replace' }))
-    expect(platform.importBackup).toHaveBeenCalledWith({
-      path,
-      hash: 'c0ffee',
-      sections: ['settings'],
-      mode: platform.BackupMode.ModeReplace,
-    })
   })
 
   it('says why a backup could not be read', async () => {
@@ -221,7 +182,7 @@ describe('ImportBackupDialog', () => {
     platform.importBackup.mockRejectedValue(new Error('The file changed since you opened it.'))
     const { onImported, onCancel } = renderDialog()
 
-    await userEvent.click(await screen.findByRole('button', { name: 'Import 5 categories' }))
+    await userEvent.click(await screen.findByRole('button', { name: 'Import 6 categories' }))
 
     expect(await screen.findByRole('alert')).toHaveTextContent('The file changed since you opened it.')
     expect(onImported).not.toHaveBeenCalled()

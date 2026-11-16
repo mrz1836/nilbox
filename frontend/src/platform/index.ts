@@ -11,6 +11,9 @@ import '../../bindings/events'
 import type * as agent from '../../bindings/github.com/mrz1836/nilbox/internal/agent'
 import * as appinfo from '../../bindings/github.com/mrz1836/nilbox/internal/appinfo'
 import * as autopilot from '../../bindings/github.com/mrz1836/nilbox/internal/autopilot'
+import type * as autopilotcatalog from '../../bindings/github.com/mrz1836/nilbox/internal/autopilot/catalog'
+import type * as autopilotspec from '../../bindings/github.com/mrz1836/nilbox/internal/autopilot/spec'
+import * as autopilotprefs from '../../bindings/github.com/mrz1836/nilbox/internal/autopilotprefs'
 import * as backup from '../../bindings/github.com/mrz1836/nilbox/internal/backup'
 import * as branchrules from '../../bindings/github.com/mrz1836/nilbox/internal/branchrules'
 import * as budget from '../../bindings/github.com/mrz1836/nilbox/internal/budget'
@@ -358,10 +361,53 @@ export type BannerStatus = notify.BannerStatus
 export type NotificationKind = notifyprefs.Kind
 
 // AutopilotTarget is what an Autopilot notification, or a row of the menu bar's Autopilot
-// group, opens in the Autopilot tab; AutopilotGlance is Autopilot at a glance, whose
-// routines' count says whether the window names Autopilot at all.
+// group, opens in the Autopilot tab; AutopilotGlance is Autopilot at a glance: the
+// routines, what waits for the user, and the agents working, which the tab counts.
 export type AutopilotTarget = NonNullLists<event.AutopilotTarget>
 export type AutopilotGlance = NonNullLists<autopilot.Glance>
+
+// Autopilot's routines and their history, as the Autopilot tab shows them: each routine
+// (its mode, whether it is on, why it is broken), the question asked as one is turned on
+// (how many items it matches now), what the routines did, a page of Activity at a time by
+// day with its grouped lines of local steps, an item's own history, which its ⚡ chip
+// opens, what an Undo did, and the engine as Settings → Autopilot shows it. The settings
+// (Pause Autopilot, the default mode, the limits) are Settings' own (AutopilotConfig). A
+// routine that loads has '' for why it is broken, an open match '' for why it closed, and
+// a closed one '' for what it waits on, which the generated types, unions of the values
+// alone, leave out.
+export type AutopilotRoutine = Omit<NonNullLists<autopilot.Routine>, 'brokenReason'> & {
+  brokenReason: autopilotspec.Reason | ''
+}
+export type AutopilotDraft = NonNullLists<autopilot.Draft>
+export type AutopilotMode = autopilotprefs.Mode
+export const AutopilotMode = autopilotprefs.Mode
+export type AutopilotCurrent = autopilot.Current
+export type AutopilotMatching = NonNullLists<autopilot.Matching>
+export type AutopilotMatch = Omit<NonNullLists<autopilot.Match>, 'blockedBy' | 'reason'> & {
+  blockedBy: autopilot.Blocker | ''
+  reason: autopilot.Reason | ''
+}
+export type AutopilotEffect = NonNullLists<autopilot.Effect>
+export type AutopilotStepKind = autopilotcatalog.StepKind
+export type AutopilotState = autopilot.State
+export type AutopilotReason = autopilot.Reason
+export type AutopilotItemRef = NonNullLists<autopilot.ItemRef>
+export type AutopilotActivityDay = Omit<NonNullLists<autopilot.ActivityDay>, 'matches'> & {
+  matches: AutopilotMatch[]
+}
+export type AutopilotActivityPage = Omit<NonNullLists<autopilot.ActivityPage>, 'days'> & {
+  days: AutopilotActivityDay[]
+}
+export type AutopilotGroup = NonNullLists<autopilot.ActivityGroup>
+export type AutopilotLeftAlone = NonNullLists<autopilot.LeftAlone>
+export type AutopilotHistory = Omit<NonNullLists<autopilot.ItemHistory>, 'matches'> & { matches: AutopilotMatch[] }
+export type AutopilotUndone = NonNullLists<autopilot.Undone>
+export type AutopilotCleared = NonNullLists<autopilot.Cleared>
+export type AutopilotEngine = NonNullLists<autopilot.EngineStatus>
+export type AutopilotCycle = NonNullLists<autopilot.Cycle>
+export type AutopilotConfig = NonNullLists<autopilotprefs.Config>
+export type AutopilotDailyCap = NonNullLists<autopilotprefs.DailyCap>
+export type AutopilotUnit = autopilotprefs.Unit
 
 export type Profile = NonNullLists<profiles.Profile>
 
@@ -569,6 +615,9 @@ export const {
   Unpin: unpinItem,
   Unassign: unassignItem,
   RemoveReviewRequest: removeReviewRequest,
+  // ItemsByID returns the stored items among ids, listed or not, each as a list shows it,
+  // newest activity first: the rows of a routine's Watching list.
+  ItemsByID: itemsByID,
 } = narrow(inbox.Service)
 
 export const { List: listProfiles, Agents: listAgents, Rediscover: rediscoverProfiles } = narrow(profiles.Service)
@@ -728,6 +777,17 @@ export const {
   SetGitHubNotificationAction: setGitHubNotificationAction,
   SetGitHubCleanupCardDismissed: setGitHubCleanupCardDismissed,
   SetUpdateMode: setUpdateMode,
+  SetAutopilotPaused: setAutopilotPaused,
+  SetAutopilotDefaultMode: setAutopilotDefaultMode,
+  SetAutopilotAgentsAtOnce: setAutopilotAgentsAtOnce,
+  SetAutopilotRunsPerDay: setAutopilotRunsPerDay,
+  SetAutopilotActionsPerDay: setAutopilotActionsPerDay,
+  SetAutopilotDailyCap: setAutopilotDailyCap,
+  SetAutopilotKeepAwake: setAutopilotKeepAwake,
+  SetAutopilotHoldOnOutage: setAutopilotHoldOnOutage,
+  SetAutopilotCatchUpHours: setAutopilotCatchUpHours,
+  SetAutopilotHistoryDays: setAutopilotHistoryDays,
+  SetAutopilotLogDays: setAutopilotLogDays,
 } = narrow(settings.Service)
 
 // The tools the app finds, installs, and runs for the user. List never waits for a
@@ -949,10 +1009,55 @@ const serviceStatus = narrow(svcstatus.Service)
 
 export const { Status: getServiceStatus, CheckNow: checkServiceStatus } = serviceStatus
 
-// Autopilot at a glance, read from the database alone: the routines, what waits for the
-// user, and the agents working. The window reads it only to name Autopilot while a routine
-// exists, and an "autopilot:updated" event follows each change.
-export const { Glance: getAutopilotGlance } = narrow(autopilot.Service)
+// Autopilot, the Autopilot tab's. Glance is Autopilot at a glance, which the tab counts;
+// List the routines, each marked when it belongs to another account or is broken; Engine
+// what the engine last did, and whether this copy runs it. Activity is a page of what the
+// routines did before a match (0 for the newest), by day; ItemHistory one item's, which its
+// ⚡ chip opens; LatestMatches each item's newest match, which the chip says. Watching lists
+// the items a routine watches, which the inbox's ItemsByID turns into rows. Matching counts
+// what a routine matches now that it has no record of, the question SetEnabled and SetMode
+// take the answer to (current). Undo, TryAgain, LetActAgain, and ClearHistory are commands
+// the engine applies. Every read is of the database alone, and an "autopilot:updated" event
+// follows each change, at most four times a second.
+const autopilotService = narrow(autopilot.Service)
+
+export const {
+  Glance: getAutopilotGlance,
+  Delete: deleteRoutine,
+  Matching: routineMatching,
+  Watching: routineWatching,
+  Engine: getAutopilotEngine,
+  Undo: undoAutopilot,
+  LetActAgain: letRoutineActAgain,
+  ClearHistory: clearAutopilotHistory,
+} = autopilotService
+
+// The calls whose results hold routines or matches, typed with the values the generated
+// unions leave out (AutopilotRoutine, AutopilotMatch).
+export const listRoutines = autopilotService.List as () => CancellablePromise<AutopilotRoutine[]>
+export const duplicateRoutine = autopilotService.Duplicate as (id: number) => CancellablePromise<AutopilotRoutine>
+export const setRoutineEnabled = autopilotService.SetEnabled as (
+  id: number,
+  on: boolean,
+  current: AutopilotCurrent,
+) => CancellablePromise<AutopilotRoutine>
+export const setRoutineMode = autopilotService.SetMode as (
+  id: number,
+  mode: AutopilotMode,
+  current: AutopilotCurrent,
+) => CancellablePromise<AutopilotRoutine>
+export const autopilotActivity = autopilotService.Activity as (
+  before: number,
+  limit: number,
+) => CancellablePromise<AutopilotActivityPage>
+export const autopilotItemHistory = autopilotService.ItemHistory as (id: number) => CancellablePromise<AutopilotHistory>
+export const latestAutopilotMatches = autopilotService.LatestMatches as (
+  ids: number[] | null,
+) => CancellablePromise<AutopilotMatch[]>
+export const tryRoutineAgain = autopilotService.TryAgain as (
+  id: number,
+  itemID: number,
+) => CancellablePromise<AutopilotMatch[]>
 
 // The notification history. MarkAllRead marks every entry read (Mark all done), and
 // MarkRead and MarkUnread the entries with the ids given; opening the history marks
