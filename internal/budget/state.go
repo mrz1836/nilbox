@@ -188,16 +188,17 @@ func savedPurposes(by map[github.Purpose]int) map[string]int {
 	return out
 }
 
-// restoredPurposes converts a kept split of spent by purpose. What it doesn't account
-// for, as all of a state saved before the split, counts as the rest, so the shares still
-// add up to spent.
+// restoredPurposes converts a kept split of spent by purpose, the known purposes in one
+// order. A purpose this build doesn't know, as one a later build added, counts as the
+// rest, and so does what the split doesn't account for, as all of a state saved before
+// it, so the shares still add up to spent and every share is one the reading shows.
 func restoredPurposes(saved map[string]int, spent int) map[github.Purpose]int {
 	out := make(map[github.Purpose]int, len(saved)+1)
 	counted := 0
 
-	for p, n := range saved {
-		if n > 0 && counted+n <= spent {
-			out[github.Purpose(p)] += n
+	for _, p := range knownPurposes() {
+		if n := saved[string(p)]; n > 0 && counted+n <= spent {
+			out[p] += n
 			counted += n
 		}
 	}
@@ -207,6 +208,13 @@ func restoredPurposes(saved map[string]int, spent int) map[github.Purpose]int {
 	}
 
 	return out
+}
+
+// knownPurposes returns the purposes a kept split is restored by, the rest counted as other.
+func knownPurposes() []github.Purpose {
+	return []github.Purpose{
+		github.PurposeInbox, github.PurposeWatches, github.PurposeFollower, github.PurposeAutopilot,
+	}
 }
 
 // SaveDelay is how long the Saver waits after a change before it saves, so the changes a

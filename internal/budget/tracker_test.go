@@ -89,6 +89,20 @@ func TestTheSpendIsSplitByPurposeAndTheSharesAddUp(t *testing.T) {
 	assert.Equal(t, p, restored.gauge(12).GraphQL.Purposes, "the split outlives the app")
 }
 
+func TestAKeptPurposeThisBuildDoesntKnowCountsAsOther(t *testing.T) {
+	t.Parallel()
+
+	for range 20 { // map order varies, and must never matter
+		got := purposesOf(restoredPurposes(map[string]int{"inbox": 2, "later-purpose": 3, "watches": 1}, 6))
+
+		assert.Equal(t, Purposes{Inbox: 2, Watches: 1, Other: 3}, got, "a purpose a later build added is shown as other")
+		assert.Equal(t, 6, got.Inbox+got.Watches+got.Follower+got.Autopilot+got.Other, "so the shares still add up")
+	}
+
+	over := purposesOf(restoredPurposes(map[string]int{"inbox": 4, "watches": 4}, 6))
+	assert.Equal(t, Purposes{Inbox: 4, Other: 2}, over, "a split past what was spent keeps the known purposes in order")
+}
+
 func TestANewWindowStartsCountingAgain(t *testing.T) {
 	t.Parallel()
 
