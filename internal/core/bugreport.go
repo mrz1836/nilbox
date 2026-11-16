@@ -10,6 +10,8 @@ import (
 
 	"github.com/mrz1836/nilbox/internal/agent"
 	"github.com/mrz1836/nilbox/internal/appinfo"
+	"github.com/mrz1836/nilbox/internal/autopilot"
+	"github.com/mrz1836/nilbox/internal/autopilotprefs"
 	"github.com/mrz1836/nilbox/internal/integrationprefs"
 	"github.com/mrz1836/nilbox/internal/integrations"
 	"github.com/mrz1836/nilbox/internal/profiles"
@@ -28,11 +30,12 @@ type bugReportState struct {
 	settings *settings.Service
 	tools    *integrations.Service
 	updates  *update.Engine
+	routines *autopilot.Service
 	logger   *slog.Logger
 }
 
-// BugReportState returns the settings, the app's updates, and the integrations, as the
-// report words them.
+// BugReportState returns the settings, Autopilot, the app's updates, and the
+// integrations, as the report words them.
 func (b bugReportState) BugReportState(ctx context.Context) []appinfo.StateSection {
 	var (
 		out   []appinfo.StateSection
@@ -45,6 +48,7 @@ func (b bugReportState) BugReportState(ctx context.Context) []appinfo.StateSecti
 			b.logger.WarnContext(ctx, "a bug report leaves out the settings", "error", err)
 		} else {
 			out = append(out, settingsSection(s))
+			out = append(out, b.autopilotState(ctx, s.Autopilot)...)
 			prefs = s.Integrations
 		}
 	}
@@ -63,6 +67,70 @@ func (b bugReportState) BugReportState(ctx context.Context) []appinfo.StateSecti
 	}
 
 	return out
+}
+
+// autopilotState is Autopilot as the report words it: its settings, and its routines
+// counted by mode, by switch, and by whether they are broken or another account's, never
+// named; or nothing when there is no Autopilot. Routines that can't be read are left out.
+func (b bugReportState) autopilotState(ctx context.Context, c autopilotprefs.Config) []appinfo.StateSection {
+	if b.routines == nil {
+		return nil
+	}
+
+	section := appinfo.StateSection{Title: "Autopilot", Lines: []string{autopilotSettingsLine(c)}}
+
+	list, err := b.routines.List(ctx)
+	if err != nil {
+		b.logger.WarnContext(ctx, "a bug report leaves out the routines", "error", err)
+	} else {
+		section.Lines = append(section.Lines, routinesLine(list))
+	}
+
+	return []appinfo.StateSection{section}
+}
+
+// autopilotSettingsLine words Autopilot's settings: whether it is paused, the mode new
+// routines start in, and the limits.
+func autopilotSettingsLine(c autopilotprefs.Config) string {
+	daily := "off"
+	if !c.DailyCap.Off() {
+		daily = fmt.Sprintf("%d %s", c.DailyCap.Amount, c.DailyCap.Unit)
+	}
+
+	return fmt.Sprintf("Paused: %s · new routines: %s · agents at once: %d · runs a day: %d · actions a day: %d · "+
+		"daily cap: %s · keep awake: %s · hold on outage: %s · catch up after: %d h · history: %d days, logs: %d",
+		onOff(c.Paused), c.DefaultMode.Label(), c.AgentsAtOnce, c.RunsPerDay, c.ActionsPerDay, daily, onOff(c.KeepAwake),
+		onOff(c.HoldOnOutage), c.CatchUpHours, c.HistoryDays, c.LogDays)
+}
+
+// routinesLine counts the routines by mode, and those on, broken, or another account's.
+func routinesLine(list []autopilot.Routine) string {
+	modes := map[autopilotprefs.Mode]int{}
+	on, broken, other := 0, 0, 0
+
+	for _, r := range list {
+		modes[r.Mode]++
+
+		if r.Enabled {
+			on++
+		}
+
+		if r.BrokenReason != "" {
+			broken++
+		}
+
+		if r.OtherAccount {
+			other++
+		}
+	}
+
+	byMode := make([]string, 0, len(autopilotprefs.Modes()))
+	for _, m := range autopilotprefs.Modes() {
+		byMode = append(byMode, fmt.Sprintf("%d %s", modes[m], strings.ToLower(m.Label())))
+	}
+
+	return fmt.Sprintf("Routines: %d (%s) · on: %d · broken: %d · another account's: %d", len(list),
+		strings.Join(byMode, ", "), on, broken, other)
 }
 
 // updatesState is the app's updates as the report words them, or nothing when they can't

@@ -28,11 +28,17 @@ const (
 
 	// SectionScripts is the user's own scripts, in their order.
 	SectionScripts Section = "scripts"
+
+	// SectionAutopilot is the user's Autopilot routines, in their order, which arrive
+	// switched off; never their history.
+	SectionAutopilot Section = "autopilot"
 )
 
 // Sections returns every category, in the order a backup lists and applies them.
 func Sections() []Section {
-	return []Section{SectionSettings, SectionRepositories, SectionPrompts, SectionLaunchDefaults, SectionScripts}
+	return []Section{
+		SectionSettings, SectionRepositories, SectionPrompts, SectionLaunchDefaults, SectionScripts, SectionAutopilot,
+	}
 }
 
 // Valid reports whether s is one of Sections.

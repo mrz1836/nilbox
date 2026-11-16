@@ -114,6 +114,9 @@ const (
 	// NameUpdatesChanged is UpdatesChanged's name.
 	NameUpdatesChanged = "settings:updatesChanged"
 
+	// NameAutopilotChanged is AutopilotChanged's name.
+	NameAutopilotChanged = "settings:autopilotChanged"
+
 	// NameUpdatesUpdated is UpdatesUpdated's name.
 	NameUpdatesUpdated = "updates:updated"
 
@@ -397,6 +400,15 @@ type UpdatesChanged struct{}
 
 // Name returns NameUpdatesChanged.
 func (UpdatesChanged) Name() string { return NameUpdatesChanged }
+
+// AutopilotChanged says the user changed one of Autopilot's settings (Pause Autopilot,
+// the mode new routines start in, a limit, the daily cap, or how long the history is
+// kept), and it was stored. It stays in Go, for what follows the settings to read them
+// again; the window has the settings from the setter.
+type AutopilotChanged struct{}
+
+// Name returns NameAutopilotChanged.
+func (AutopilotChanged) Name() string { return NameAutopilotChanged }
 
 // UpdatesUpdated says the app's update changed: a check started or ended, a download got
 // further (a few times a second at most), a version is ready, a restart began or failed,

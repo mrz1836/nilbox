@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"strings"
 
+	"github.com/mrz1836/nilbox/internal/autopilot"
 	"github.com/mrz1836/nilbox/internal/backup"
 	"github.com/mrz1836/nilbox/internal/clock"
 	"github.com/mrz1836/nilbox/internal/item"
@@ -19,7 +20,8 @@ import (
 
 // newBackup builds the service that backs the user's setup up and brings it back, over
 // the owners of each category: the settings (and, apart, the repositories they hold), the
-// prompt library, the launch defaults, and the user's own scripts.
+// prompt library, the launch defaults, the user's own scripts, and the Autopilot
+// routines.
 func newBackup(pool *sql.DB, c *Core, promptStore *prompts.Store, opts Options, logger *slog.Logger) *backup.Service {
 	prefs := settings.NewBackupPart(c.Settings)
 
@@ -34,6 +36,9 @@ func newBackup(pool *sql.DB, c *Core, promptStore *prompts.Store, opts Options, 
 				clock: clock.Or(opts.Clock),
 			},
 			backup.SectionScripts: backupScripts{scripts: scripts.NewBackupPart(c.Scripts)},
+			backup.SectionAutopilot: backupRoutines{
+				routines: autopilot.NewBackupPart(c.Autopilot), app: opts.Version, clock: clock.Or(opts.Clock),
+			},
 		},
 		Dir: opts.Paths.Backups, App: opts.Version, Home: opts.Home, Clock: opts.Clock, Logger: logger,
 	})
@@ -303,6 +308,51 @@ func (b backupScripts) Apply(ctx context.Context, tx *sql.Tx, p backup.Prepared,
 // Done implements backup.Part. Repo scripts reads the scripts as it lists a clone's, so
 // nothing needs telling.
 func (backupScripts) Done(context.Context, backup.Prepared) {}
+
+// backupRoutines adapts the Autopilot routines to a backup's Autopilot section, which is
+// their copy's format, naming prompts by nickname.
+type backupRoutines struct {
+	routines *autopilot.BackupPart
+	app      string
+	clock    clock.Clock
+}
+
+// Export implements backup.Part.
+func (b backupRoutines) Export(ctx context.Context) (json.RawMessage, int, error) {
+	bundle, err := b.routines.Bundle(ctx, b.app, b.clock.Now())
+	if err != nil {
+		return nil, 0, err
+	}
+
+	data, err := autopilot.EncodeBundle(bundle)
+
+	return data, len(bundle.Routines), err
+}
+
+// Prepare implements backup.Part.
+func (b backupRoutines) Prepare(ctx context.Context, raw json.RawMessage, how backup.How) (backup.Prepared, error) {
+	bundle, err := autopilot.DecodeBundle(raw)
+	if err != nil {
+		return backup.Prepared{}, err
+	}
+
+	plan, err := b.routines.PlanBackup(ctx, bundle, how.Mode)
+	if err != nil {
+		return backup.Prepared{}, err
+	}
+
+	return backup.Prepared{Plan: plan.Plan, State: plan}, nil
+}
+
+// Apply implements backup.Part.
+func (b backupRoutines) Apply(ctx context.Context, tx *sql.Tx, p backup.Prepared, _ backup.Links) (backup.Count, error) {
+	return b.routines.ApplyBackup(ctx, tx, stateOf[autopilot.BackupPlan](p))
+}
+
+// Done implements backup.Part: the copy of the routines is written again.
+func (b backupRoutines) Done(ctx context.Context, _ backup.Prepared) {
+	b.routines.BackupDone(ctx)
+}
 
 // decodeSection reads a backup's section into v, worded as the section what.
 func decodeSection(raw json.RawMessage, v any, what string) error {

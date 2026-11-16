@@ -5,8 +5,8 @@
 // complete set of settings. Setters validate their value before storing it and reject
 // anything unknown with a sentinel error. Settings writes every key it declares, and the
 // keys the trust, snooze, sensitive, notifyprefs, branchrules, reporules,
-// integrationprefs, threadrules, statusprefs, and updateprefs packages declare and decode;
-// see the prefs package for which package writes the others.
+// integrationprefs, threadrules, statusprefs, updateprefs, and autopilotprefs packages
+// declare and decode; see the prefs package for which package writes the others.
 package settings
 
 import (
@@ -21,6 +21,7 @@ import (
 	"strings"
 
 	"github.com/mrz1836/nilbox/internal/agent"
+	"github.com/mrz1836/nilbox/internal/autopilotprefs"
 	"github.com/mrz1836/nilbox/internal/branchrules"
 	"github.com/mrz1836/nilbox/internal/clock"
 	"github.com/mrz1836/nilbox/internal/event"
@@ -272,6 +273,11 @@ type Settings struct {
 	// UpdateMode is what the app does when a new version is out: download it and tell the
 	// user, just tell them, or make no timed checks (see the updateprefs package).
 	UpdateMode updateprefs.Mode `json:"updateMode"`
+
+	// Autopilot is Autopilot's settings: Pause Autopilot, the mode new routines start in,
+	// the limits and the daily cap, and how long its history is kept (see the
+	// autopilotprefs package).
+	Autopilot autopilotprefs.Config `json:"autopilot"`
 }
 
 // ProfileLookup finds an agent's stored profile by name, or returns
@@ -758,6 +764,7 @@ func fromStored(stored map[string]string) Settings {
 		ServiceStatus:        statusprefs.Decode(stored),
 		StatusProviders:      statusprefs.Catalog(),
 		UpdateMode:           updateprefs.Decode(stored[updateprefs.KeyMode]),
+		Autopilot:            autopilotprefs.Decode(stored),
 	}
 
 	if v := agent.ID(stored[KeyDefaultAgent]); agent.Known(v) {
@@ -878,5 +885,6 @@ func settingKeys() []string {
 		KeyTextSize, KeyToastSeconds, KeyProjectsTipDismissed, KeyReviewTab, KeyNotificationsTab, KeyConversationOrder, KeyMergeMethod, KeyRefreshInbox, KeyRefreshChecks, KeyRefreshWorktrees,
 		KeyRefreshNotifications, KeyRefreshReleaseChecks, KeyRefreshServiceStatus, updateprefs.KeyMode,
 	), append(append(append(append(collapsedKeys(), orderKeys()...), branchrules.Keys()...), reporules.Keys()...),
-		append(append(integrationprefs.Keys(), threadrules.Keys()...), statusprefs.Keys()...)...)...)
+		append(append(append(integrationprefs.Keys(), threadrules.Keys()...), statusprefs.Keys()...),
+			autopilotprefs.Keys()...)...)...)
 }

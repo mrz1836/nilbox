@@ -173,7 +173,7 @@ export interface Request {
 /**
  * Section is one category of the user's setup a backup holds.
  */
-export type Section = "settings" | "repositories" | "prompts" | "launchDefaults" | "scripts";
+export type Section = "settings" | "repositories" | "prompts" | "launchDefaults" | "scripts" | "autopilot";
 
 /**
  * The values of Section, by the names of their Go constants.
@@ -208,6 +208,12 @@ export const Section = {
      * SectionScripts is the user's own scripts, in their order.
      */
     SectionScripts: "scripts",
+
+    /**
+     * SectionAutopilot is the user's Autopilot routines, in their order, which arrive
+     * switched off; never their history.
+     */
+    SectionAutopilot: "autopilot",
 } as const;
 
 /**

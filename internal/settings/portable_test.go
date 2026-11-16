@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/mrz1836/nilbox/internal/agent"
+	"github.com/mrz1836/nilbox/internal/autopilotprefs"
 	"github.com/mrz1836/nilbox/internal/backup"
 	"github.com/mrz1836/nilbox/internal/branchrules"
 	"github.com/mrz1836/nilbox/internal/event"
@@ -114,6 +115,15 @@ func customize(t *testing.T, svc *Service, db *sql.DB, home string) string {
 		func() (Settings, error) { return svc.SetScriptSources(ctx, false, true) },
 		func() (Settings, error) { return svc.SetShowRuns(ctx, true) },
 		func() (Settings, error) { return svc.SetUpdateMode(ctx, updateprefs.ModeNotify) },
+		func() (Settings, error) { return svc.SetAutopilotPaused(ctx, true) },
+		func() (Settings, error) { return svc.SetAutopilotDefaultMode(ctx, autopilotprefs.ModeDryRun) },
+		func() (Settings, error) { return svc.SetAutopilotRunsPerDay(ctx, 5) },
+		func() (Settings, error) {
+			return svc.SetAutopilotDailyCap(ctx, autopilotprefs.DailyCap{Amount: 2_000_000, Unit: autopilotprefs.UnitTokens})
+		},
+		func() (Settings, error) { return svc.SetAutopilotHoldOnOutage(ctx, false) },
+		func() (Settings, error) { return svc.SetAutopilotHistoryDays(ctx, 30) },
+		func() (Settings, error) { return svc.SetAutopilotLogDays(ctx, 14) },
 		// The window's memory, which a backup never holds.
 		func() (Settings, error) { return svc.SetWindowSize(ctx, WindowSize{Width: 1000, Height: 700}) },
 		func() (Settings, error) { return svc.SetSectionCollapsed(ctx, ListAssigned, true) },
@@ -266,11 +276,13 @@ func TestAnnounceTellsEachChangeOnce(t *testing.T) {
 	testutil.WriteExecutable(t, magex, "")
 
 	dark, size, off, on, notify := ThemeDark, TextSizeLarge, false, true, updateprefs.ModeNotify
+	agents, history := 3, 60
 	p := Portable{
 		Theme: &dark, TextSize: &size, MenuBar: &off, FollowSessions: &off, WorktreeDefault: &off,
 		GitHubNotifications: &PortableThreadRules{Auto: &on, Watching: &off},
 		Refresh:             map[RefreshKind]int{RefreshInbox: 600, RefreshChecks: 30},
 		UpdateMode:          &notify,
+		Autopilot:           &PortableAutopilot{Paused: &on, AgentsAtOnce: &agents, HistoryDays: &history},
 		Integrations: &PortableIntegration{
 			Switches: map[integrationprefs.ID]integrationprefs.Switch{integrationprefs.MageX: integrationprefs.SwitchOn},
 			Paths:    map[integrationprefs.ID]string{integrationprefs.MageX: magex},
@@ -295,6 +307,7 @@ func TestAnnounceTellsEachChangeOnce(t *testing.T) {
 		event.ThreadRulesChanged{},
 		event.IntervalsChanged{},
 		event.UpdatesChanged{},
+		event.AutopilotChanged{},
 	}, events.All(), "each setter's event, once")
 
 	quiet := &testutil.Events{}

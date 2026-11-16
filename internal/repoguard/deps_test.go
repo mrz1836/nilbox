@@ -249,10 +249,29 @@ func boundaries() []boundary {
 			why:       "the issue sheet reaches the inbox through its own Inbox interface, and knows nothing of the review sheet",
 		},
 		{
-			pkg:       "internal/backup",
-			forbidden: append([]string{"internal/prompts", "internal/launchdefaults", "internal/scripts"}, services...),
+			pkg: "internal/backup",
+			forbidden: append([]string{
+				"internal/prompts", "internal/launchdefaults", "internal/scripts", "internal/autopilot",
+			}, services...),
 			why: "the backup reaches each category's owner only through its Part, which core adapts; the owners " +
 				"import its plan's words, never the reverse",
+		},
+		{
+			pkg: "internal/autopilot",
+			forbidden: []string{
+				inbox, "internal/review", "internal/issues", "internal/ghthreads", "internal/launcher",
+				"internal/worktrees", "internal/sessions", "internal/scriptrun", "internal/notify", settings,
+				"internal/desktop", "internal/core",
+			},
+			why: "Autopilot reaches the inbox, the sheets, the launcher, the worktrees, the sessions, the runs, the " +
+				"notifications, and the settings through the narrow interfaces it declares, which core adapts " +
+				"(adapters_autopilot.go); it reads its settings through autopilotprefs",
+		},
+		{
+			pkg:       "internal/autopilotprefs",
+			forbidden: append(slices.Clone(noService), "internal/autopilot", "internal/event"),
+			why: "autopilotprefs declares Autopilot's settings keys and a routine's modes, which settings writes " +
+				"and Autopilot reads; it knows no store, service, or Autopilot itself",
 		},
 		{
 			pkg: "internal/setup",
@@ -288,7 +307,7 @@ func leaves() []leaf {
 		"internal/textutil",
 	}, autopilot...)
 
-	out := make([]leaf, 0, len(autopilot))
+	out := make([]leaf, 0, len(autopilot)+1)
 
 	for _, pkg := range autopilot {
 		out = append(out, leaf{
@@ -299,7 +318,11 @@ func leaves() []leaf {
 		})
 	}
 
-	return out
+	return append(out, leaf{
+		pkg: "internal/autopilotprefs", allowed: []string{"internal/prefs/prefval"},
+		why: "autopilotprefs declares Autopilot's settings for settings to write and Autopilot to read, so it " +
+			"imports only prefval and the standard library",
+	})
 }
 
 // buildOSes are the systems whose builds the boundaries hold for: the one the app ships

@@ -155,17 +155,20 @@ export const ResetReason = {
  */
 export interface Restored {
     /**
-     * Prompts, LaunchDefaults, and Scripts count the prompts, the org and repository
-     * launch defaults, and the user's own scripts that came back.
+     * Prompts, LaunchDefaults, Scripts, and Routines count the prompts, the org and
+     * repository launch defaults, the user's own scripts, and the Autopilot routines that
+     * came back.
      */
     "prompts": number;
     "launchDefaults": number;
     "scripts": number;
+    "routines": number;
 
     /**
      * From is the file the prompts and launch defaults came from, with ~ for the home
      * directory: the database set aside, or the copy of the prompt library kept beside the
-     * database. The scripts come back from the database set aside alone.
+     * database; when none came back, the one the routines came from. The scripts come back
+     * from the database set aside alone.
      */
     "from": string;
 }

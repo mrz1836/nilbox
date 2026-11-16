@@ -15,6 +15,10 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/mrz1836/nilbox/internal/agent"
+	"github.com/mrz1836/nilbox/internal/autopilot"
+	"github.com/mrz1836/nilbox/internal/autopilot/catalog"
+	"github.com/mrz1836/nilbox/internal/autopilot/spec"
+	"github.com/mrz1836/nilbox/internal/autopilotprefs"
 	"github.com/mrz1836/nilbox/internal/backup"
 	"github.com/mrz1836/nilbox/internal/branchrules"
 	"github.com/mrz1836/nilbox/internal/clock"
@@ -73,7 +77,7 @@ func boundCalls(t *testing.T) map[string]boundCall {
 	draft := prompts.Input{Name: "Triage", Nickname: "Triage", AppliesTo: prompts.AppliesToAny, Body: "Look at {{.URL}}"}
 	defaults := launchdefaults.Input{Owner: boundOwner}
 
-	return map[string]boundCall{
+	calls := map[string]boundCall{
 		"appinfo.Service.AgentVersions": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
 			return c.AppInfo.AgentVersions(ctx), nil
 		},
@@ -602,6 +606,103 @@ func boundCalls(t *testing.T) map[string]boundCall {
 			return got, err
 		},
 	}
+
+	maps.Copy(calls, autopilotBoundCalls(t))
+
+	return calls
+}
+
+// autopilotBoundCalls are the bound calls of Autopilot's service and settings, each over a
+// routine of its own.
+func autopilotBoundCalls(t *testing.T) map[string]boundCall {
+	t.Helper()
+
+	setting := func(set func(ctx context.Context, s *settings.Service) (settings.Settings, error)) boundCall {
+		return func(ctx context.Context, c *Core, _ seededItems) (any, error) { return set(ctx, c.Settings) }
+	}
+
+	return map[string]boundCall{
+		"settings.Service.SetAutopilotPaused": setting(func(ctx context.Context, s *settings.Service) (settings.Settings, error) {
+			return s.SetAutopilotPaused(ctx, true)
+		}),
+		"settings.Service.SetAutopilotDefaultMode": setting(func(ctx context.Context, s *settings.Service) (settings.Settings, error) {
+			return s.SetAutopilotDefaultMode(ctx, autopilotprefs.ModeDryRun)
+		}),
+		"settings.Service.SetAutopilotAgentsAtOnce": setting(func(ctx context.Context, s *settings.Service) (settings.Settings, error) {
+			return s.SetAutopilotAgentsAtOnce(ctx, 1)
+		}),
+		"settings.Service.SetAutopilotRunsPerDay": setting(func(ctx context.Context, s *settings.Service) (settings.Settings, error) {
+			return s.SetAutopilotRunsPerDay(ctx, 10)
+		}),
+		"settings.Service.SetAutopilotActionsPerDay": setting(func(ctx context.Context, s *settings.Service) (settings.Settings, error) {
+			return s.SetAutopilotActionsPerDay(ctx, 10)
+		}),
+		"settings.Service.SetAutopilotDailyCap": setting(func(ctx context.Context, s *settings.Service) (settings.Settings, error) {
+			return s.SetAutopilotDailyCap(ctx, autopilotprefs.DailyCap{Amount: 25, Unit: autopilotprefs.UnitUSD})
+		}),
+		"settings.Service.SetAutopilotKeepAwake": setting(func(ctx context.Context, s *settings.Service) (settings.Settings, error) {
+			return s.SetAutopilotKeepAwake(ctx, true)
+		}),
+		"settings.Service.SetAutopilotHoldOnOutage": setting(func(ctx context.Context, s *settings.Service) (settings.Settings, error) {
+			return s.SetAutopilotHoldOnOutage(ctx, false)
+		}),
+		"settings.Service.SetAutopilotCatchUpHours": setting(func(ctx context.Context, s *settings.Service) (settings.Settings, error) {
+			return s.SetAutopilotCatchUpHours(ctx, 12)
+		}),
+		"settings.Service.SetAutopilotHistoryDays": setting(func(ctx context.Context, s *settings.Service) (settings.Settings, error) {
+			return s.SetAutopilotHistoryDays(ctx, 60)
+		}),
+		"settings.Service.SetAutopilotLogDays": setting(func(ctx context.Context, s *settings.Service) (settings.Settings, error) {
+			return s.SetAutopilotLogDays(ctx, 14)
+		}),
+		"autopilot.Service.Catalog": func(context.Context, *Core, seededItems) (any, error) {
+			return (&autopilot.Service{}).Catalog(), nil
+		},
+		"autopilot.Service.List": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
+			boundRoutine(ctx, t, c, "Bound list")
+
+			return c.Autopilot.List(ctx)
+		},
+		"autopilot.Service.Get": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
+			return c.Autopilot.Get(ctx, boundRoutine(ctx, t, c, "Bound get").ID)
+		},
+		"autopilot.Service.Save": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
+			return c.Autopilot.Save(ctx, autopilot.Draft{Name: "Bound save", Spec: boundSpec()})
+		},
+		"autopilot.Service.Duplicate": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
+			return c.Autopilot.Duplicate(ctx, boundRoutine(ctx, t, c, "Bound duplicate").ID)
+		},
+		"autopilot.Service.SetEnabled": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
+			return c.Autopilot.SetEnabled(ctx, boundRoutine(ctx, t, c, "Bound switch").ID, true)
+		},
+		"autopilot.Service.SetMode": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
+			return c.Autopilot.SetMode(ctx, boundRoutine(ctx, t, c, "Bound mode").ID, autopilotprefs.ModeDryRun)
+		},
+		"autopilot.Service.Reorder": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
+			return c.Autopilot.Reorder(ctx, []int64{boundRoutine(ctx, t, c, "Bound order").ID})
+		},
+	}
+}
+
+// boundSpec is a routine that tells the user when one of their pull requests' checks
+// fail.
+func boundSpec() spec.Spec {
+	return spec.Spec{
+		Version: spec.Version,
+		Watch:   spec.Watch{Sources: []spec.Source{{Lists: []catalog.ListSource{catalog.SourceAuthored}}}},
+		Trigger: spec.Trigger{Event: catalog.EventChecksFailed},
+		Steps:   []spec.Step{{Notify: &spec.NotifyStep{Note: "Have a look"}}},
+	}
+}
+
+// boundRoutine saves a routine named name over boundSpec, and returns it.
+func boundRoutine(ctx context.Context, t *testing.T, c *Core, name string) autopilot.Routine {
+	t.Helper()
+
+	got, err := c.Autopilot.Save(ctx, autopilot.Draft{Name: name, Spec: boundSpec()})
+	require.NoError(t, err)
+
+	return got
 }
 
 // unreachedBound are the bound methods with a list or a map in their result that
@@ -944,16 +1045,30 @@ func nullLists(v reflect.Value, path string) []string {
 	}
 }
 
-// fieldNulls returns nullLists for each field of the struct v the JSON encoding writes.
+// fieldNulls returns nullLists for each field of the struct v the JSON encoding writes. A
+// nil list or map in a field tagged omitempty is no null: the encoding leaves it out, and
+// the bindings type it as optional.
 func fieldNulls(v reflect.Value, path string) []string {
 	fields := encodedFields(v.Type())
 
 	out := make([]string, 0, len(fields))
 	for _, f := range fields {
-		out = append(out, nullLists(v.FieldByIndex(f.Index), path+"."+f.Name)...)
+		value := v.FieldByIndex(f.Index)
+		if omitsEmpty(f) && (value.Kind() == reflect.Slice || value.Kind() == reflect.Map) && value.IsNil() {
+			continue
+		}
+
+		out = append(out, nullLists(value, path+"."+f.Name)...)
 	}
 
 	return out
+}
+
+// omitsEmpty reports whether the JSON encoding leaves f out when it is empty.
+func omitsEmpty(f reflect.StructField) bool {
+	_, opts, _ := strings.Cut(f.Tag.Get("json"), ",")
+
+	return slices.Contains(strings.Split(opts, ","), "omitempty")
 }
 
 // elemNulls returns nullLists for each element of the slice v.

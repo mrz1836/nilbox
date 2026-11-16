@@ -319,7 +319,7 @@ func TestPreviewShowsEveryCategoryUnderBothModes(t *testing.T) {
 
 	assert.Equal(t, map[Section]bool{
 		SectionSettings: true, SectionRepositories: false, SectionPrompts: true, SectionLaunchDefaults: true,
-		SectionScripts: false,
+		SectionScripts: false, SectionAutopilot: false,
 	}, present)
 
 	settings := got.Sections[0]

@@ -39,10 +39,11 @@ var (
 )
 
 // File is a backup: the user's setup in portable form, one section per category the user
-// ticked, each absent when it wasn't. The prompts and the launch defaults sections are
-// the app's own portable formats, each with its own format and version, exactly as the
-// copies it keeps beside its database (prompts.json and launch-defaults.json); both name
-// prompts by nickname. docs/backup-files.md specifies the format:
+// ticked, each absent when it wasn't. The prompts, the launch defaults, and the Autopilot
+// sections are the app's own portable formats, each with its own format and version,
+// exactly as the copies it keeps beside its database (prompts.json, launch-defaults.json,
+// and autopilot.json); all three name prompts by nickname. docs/backup-files.md specifies
+// the format:
 //
 //	{
 //	  "format": "<slug>.backup",
@@ -53,7 +54,8 @@ var (
 //	  "repositories": {...},
 //	  "prompts": {"format": "<slug>.prompts", ...},
 //	  "launchDefaults": {"format": "<slug>.launch-defaults", ...},
-//	  "scripts": {"scripts": [...]}
+//	  "scripts": {"scripts": [...]},
+//	  "autopilot": {"format": "<slug>-autopilot/1", ...}
 //	}
 type File struct {
 	// Format is Format.
@@ -73,6 +75,7 @@ type File struct {
 	Prompts        json.RawMessage `json:"prompts,omitempty"`
 	LaunchDefaults json.RawMessage `json:"launchDefaults,omitempty"`
 	Scripts        json.RawMessage `json:"scripts,omitempty"`
+	Autopilot      json.RawMessage `json:"autopilot,omitempty"`
 }
 
 // Section returns the section s of the file, or nil when the file doesn't hold it.
@@ -88,6 +91,8 @@ func (f File) Section(s Section) json.RawMessage {
 		return present(f.LaunchDefaults)
 	case SectionScripts:
 		return present(f.Scripts)
+	case SectionAutopilot:
+		return present(f.Autopilot)
 	default:
 		return nil
 	}
@@ -106,6 +111,8 @@ func (f File) withSection(s Section, raw json.RawMessage) File {
 		f.LaunchDefaults = raw
 	case SectionScripts:
 		f.Scripts = raw
+	case SectionAutopilot:
+		f.Autopilot = raw
 	}
 
 	return f

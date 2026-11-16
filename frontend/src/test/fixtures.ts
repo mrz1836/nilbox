@@ -141,13 +141,14 @@ export function appInfo(overrides: Partial<Info> = {}): Info {
   }
 }
 
-// restored is what a start brought back of the user's own: prompts, launch defaults, and
-// scripts, from a database set aside.
+// restored is what a start brought back of the user's own: prompts, launch defaults,
+// scripts, and no Autopilot routine, from a database set aside.
 export function restored(overrides: Partial<Restored> = {}): Restored {
   return {
     prompts: 12,
     launchDefaults: 3,
     scripts: 2,
+    routines: 0,
     from: '~/Library/Application Support/Example/example.db.reset-20261115T090000Z',
     ...overrides,
   }
@@ -457,6 +458,19 @@ export function settings(overrides: Partial<Settings> = {}): Settings {
     serviceStatus: statusWatch(),
     statusProviders: statusProviders(),
     updateMode: 'download',
+    autopilot: {
+      paused: false,
+      defaultMode: 'ask',
+      agentsAtOnce: 2,
+      runsPerDay: 20,
+      actionsPerDay: 50,
+      dailyCap: { amount: 0, unit: 'usd' },
+      keepAwake: false,
+      holdOnOutage: true,
+      catchUpHours: 24,
+      historyDays: 90,
+      logDays: 30,
+    },
     ...overrides,
   }
 }
@@ -898,6 +912,7 @@ export function backupPreview(overrides: Partial<BackupPreview> = {}): BackupPre
       }),
       backupSectionPreview('launchDefaults'),
       backupSectionPreview('scripts'),
+      backupSectionPreview('autopilot'),
     ],
     ...overrides,
   }
