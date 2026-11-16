@@ -1389,7 +1389,7 @@ on an item, `autopilot_baselines` what a routine first saw of an item (its head,
 count, for New commits' first commit and New comments), `autopilot_hands_off` the items a
 routine leaves alone, and `autopilot_effects` (migration `0008_autopilot_effects`) what its
 local steps did to their items' triage (**Local actions**, below). Migration
-`0010_autopilot_matches_item` indexes `autopilot_matches` by `item_id`, which every read by
+`0011_autopilot_matches_item` indexes `autopilot_matches` by `item_id`, which every read by
 item (`LatestMatches` and `ItemHistory`) searches. The engine's own state,
 `autopilot.engine` (a JSON pref only the engine writes, `enginestate.go`), holds when Pause
 began, the last refresh it saw, when the last catch-up began and the routines still in it, the
