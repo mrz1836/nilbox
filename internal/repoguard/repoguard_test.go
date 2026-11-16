@@ -373,7 +373,7 @@ func TestOnlyTheLauncherCreatesClones(t *testing.T) {
 	// is, stored with the user's settings. Only its declaration, in its own file, is let
 	// through.
 	kind := "KindClone Kind = " + `"clo` + `ne"`
-	found := slices.DeleteFunc(productionGoHits(t, clone, cloneWriterFile), func(hit string) bool {
+	found := slices.DeleteFunc(productionGoHits(t, clone, append(fenceVocabularyFiles(), cloneWriterFile)...), func(hit string) bool {
 		return strings.HasPrefix(hit, locationKindFile+":") && strings.HasSuffix(hit, ": "+kind)
 	})
 
@@ -398,6 +398,41 @@ func cloneChangingVerbs() []string {
 // into the item's own refs and adds the item's worktree. Nothing changes a clone's own
 // checkout.
 const worktreeMakerFile = "internal/worktrees/create.go"
+
+// fenceVocabularyFiles name, as data, the commands the fence decides for an agent's run:
+// the git verbs it lets an edit preset run in its worktree or refuses, gh's clone among the
+// commands it refuses, and sudo among the programs no preset runs. They run none of them,
+// and the fence starts no process at all (TestTheFenceRunsNothing).
+func fenceVocabularyFiles() []string {
+	return []string{"internal/fence/rules.go", "internal/fence/decide.go", "internal/fence/decide_git.go"}
+}
+
+// TestTheFenceRunsNothing holds the fence to deciding: no file of its package imports a
+// way to start a process, so the commands its vocabulary names are only ever words.
+func TestTheFenceRunsNothing(t *testing.T) {
+	t.Parallel()
+
+	starters := regexp.MustCompile(`"os/` + `exec"|internal/exec` + `path"`)
+
+	var found []string
+
+	for _, rel := range goFiles(t) {
+		if !strings.HasPrefix(rel, "internal/fence/") || strings.HasSuffix(rel, "_test.go") {
+			continue
+		}
+
+		if text, ok := readText(t, rel); ok && starters.MatchString(text) {
+			found = append(found, rel)
+		}
+	}
+
+	for _, rel := range fenceVocabularyFiles() {
+		_, ok := readText(t, rel)
+		assert.True(t, ok, "%s is gone; update this guard", rel)
+	}
+
+	assert.Empty(t, found, "the fence decides an agent's tool calls and runs nothing")
+}
 
 // resetWordFile declares the word the user types to confirm a reset of the app, which is
 // spelled as one of the verbs TestNoGitCommandChangesAClone looks for.
@@ -475,7 +510,9 @@ func TestNoGitCommandChangesAClone(t *testing.T) {
 	// through.
 	confirm := "const ResetWord = " + `"re` + `set"`
 	names, triage := autopilotName(), triageName()
-	found := slices.DeleteFunc(productionGoHits(t, verbs, worktreeMakerFile, clonePullerFile), func(hit string) bool {
+
+	exempt := append(fenceVocabularyFiles(), worktreeMakerFile, clonePullerFile)
+	found := slices.DeleteFunc(productionGoHits(t, verbs, exempt...), func(hit string) bool {
 		return (strings.HasPrefix(hit, resetWordFile+":") && strings.HasSuffix(hit, ": "+confirm)) ||
 			names.MatchString(hit) || triage.MatchString(hit)
 	})
