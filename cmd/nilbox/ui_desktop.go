@@ -184,22 +184,32 @@ func (u *desktopUI) paintBackground() {
 	u.window.SetBackgroundColour(backgroundColour(settings.IsDark(u.theme, app.Env.IsDarkMode())))
 }
 
-// closing keeps the app running when its window is closed while the menu bar icon is
-// shown, or while Autopilot has a routine on or an agent working (the shell's
-// HidesOnClose): the window hides, and the icon or the Dock brings it back. Otherwise, and
-// when the app is quitting, the window closes, which quits the app.
+// closing does what the shell decides about a click on the window's close button
+// (desktop.Shell.WindowClosing). While the menu bar icon shows, or while Autopilot has a
+// routine on or an agent working, the window hides and the app keeps running: the icon or
+// the Dock brings it back. Otherwise the window stays while the shell quits the app the
+// normal way, which asks first while runs go, in this window. While the app quits, the
+// runtime's own close of the window goes through.
+//
+// Closing the window never quits the app by itself: the app's options leave
+// applicationShouldTerminateAfterLastWindowClosed off (macAppOptions), since AppKit asks
+// it as the last window hides too, and it would end the app the hide kept running.
 func (u *desktopUI) closing(e *application.WindowEvent) {
-	if !u.shell.HidesOnClose() {
-		return
-	}
+	switch u.shell.WindowClosing() {
+	case desktop.CloseHide:
+		u.appearance.Lock()
+		window := u.window
+		u.appearance.Unlock()
 
-	u.appearance.Lock()
-	window := u.window
-	u.appearance.Unlock()
+		if window != nil {
+			window.Hide()
+		}
 
-	if window != nil {
-		window.Hide()
 		e.Cancel()
+	case desktop.CloseQuit:
+		e.Cancel()
+	case desktop.CloseThrough:
+		// The app is quitting: the runtime's shutdown closes the window.
 	}
 }
 

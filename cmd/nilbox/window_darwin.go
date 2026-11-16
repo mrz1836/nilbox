@@ -8,9 +8,13 @@ import (
 	"github.com/mrz1836/nilbox/internal/settings"
 )
 
-// macAppOptions quits the app when its last window closes.
+// macAppOptions are the app's macOS options. Closing the last window never quits the app
+// by itself (ApplicationShouldTerminateAfterLastWindowClosed off): AppKit asks that as the
+// last visible window hides too, so a close that only hid the window, to keep the app
+// running in the menu bar or for Autopilot, would end the app a moment later. A close that
+// should quit asks the shell to quit instead (desktopUI.closing).
 func macAppOptions() application.MacOptions {
-	return application.MacOptions{ApplicationShouldTerminateAfterLastWindowClosed: true}
+	return application.MacOptions{ApplicationShouldTerminateAfterLastWindowClosed: false}
 }
 
 // windowOptions returns the macOS window for the window spec, with an inset, hidden title

@@ -537,19 +537,21 @@ func (s *Shell) FocusSession(id string, itemID int64, url string) {
 	})
 }
 
-// Quit quits the app.
+// Quit quits the app the normal way, which asks first while runs go in the app
+// (ShouldQuit), as the menu bar's Quit does.
 func (s *Shell) Quit() {
 	s.app.Quit()
 }
 
 // ShouldQuit answers the desktop runtime's question whether the app may quit now, which
-// every quit asks: the menu's, the menu bar's, the system's at a logout, and a restart to
-// update's. A restart to update, and a shell already stopping, always go through. Otherwise,
-// while a move to Applications runs (HoldQuit), it says no and brings the window forward,
-// where the move shows, and the quit goes ahead once the move ends. Else it says yes unless
-// the quit guard reports runs going in the app and the user hasn't chosen to stop them;
-// then it brings the window forward, asks the page to ask the user, and says no. It runs on
-// the main thread, so it answers at once and does the rest in the background.
+// every quit asks: the menu's, the menu bar's, the window's close (WindowClosing), the
+// system's at a logout, and a restart to update's. A restart to update, and a shell already
+// stopping, always go through. Otherwise, while a move to Applications runs (HoldQuit), it
+// says no and brings the window forward, where the move shows, and the quit goes ahead once
+// the move ends. Else it says yes unless the quit guard reports runs going in the app and
+// the user hasn't chosen to stop them; then it brings the window forward, asks the page to
+// ask the user, and says no. It runs on the main thread, so it answers at once and does the
+// rest in the background.
 func (s *Shell) ShouldQuit() bool {
 	if s.restarting.Load() || s.stopping.Load() {
 		return true
@@ -580,7 +582,8 @@ func (s *Shell) ShouldQuit() bool {
 // routine switched on or an agent run going, whatever the icon setting, since quitting
 // would quietly stop them. The Dock icon brings the window back. A close it hides for
 // Autopilot alone is noted, so the window says why the app kept running, once, when it
-// next shows. It runs on the main thread, so it reads only what the shell last read.
+// next shows. The window's close asks it (WindowClosing), which answers at once, so it
+// reads only what the shell last read.
 func (s *Shell) HidesOnClose() bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
