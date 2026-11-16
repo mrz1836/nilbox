@@ -159,30 +159,88 @@ func TestARunnersEndAfterTheRunWasTakenForInterruptedIsKept(t *testing.T) {
 func TestARunThatEndsStoppedAfterAFailedStopClosesForWhatTheStopWasFor(t *testing.T) {
 	t.Parallel()
 
-	synctest.Test(t, func(t *testing.T) {
-		s, _ := started(t, sim.FixFailing(), autopilotprefs.ModeAuto)
-		s.World.Fail(1)
-		s.Refresh()
+	t.Run("its end comes after the stop's failure", func(t *testing.T) {
+		t.Parallel()
 
-		run := only(t, s).Runs[0].ID
+		synctest.Test(t, func(t *testing.T) {
+			s, run := stoppedForTheMerge(t, false)
 
-		// It merges, and the stop for it fails.
-		s.Runner.FailStops(1)
-		s.World.Merge(1)
-		s.Refresh()
-		s.Settle()
+			assert.Empty(t, s.Runner.Stopped(), "a failed stop is tried again a tick later, never at once")
 
-		assert.Empty(t, s.Runner.Stopped(), "a failed stop is tried again a tick later, never at once")
-		assert.Equal(t, []int64{run}, s.Runner.Going())
+			// Before that, the run ends stopped anyway.
+			s.Runner.Finish(run, autopilot.RunEnd{Outcome: autopilot.RunStopped})
+			s.Settle()
 
-		// Before that, the run ends stopped anyway.
-		s.Runner.Finish(run, autopilot.RunEnd{Outcome: autopilot.RunStopped})
-		s.Settle()
-
-		m := only(t, s)
-		assert.Equal(t, autopilot.StateClosed, m.State, m.Words)
-		assert.Equal(t, autopilot.ReasonMerged, m.Reason, "closed for the merge, not as the user's stop")
+			closedForTheMerge(t, s)
+		})
 	})
+
+	t.Run("its end comes before the stop's failure", func(t *testing.T) {
+		t.Parallel()
+
+		synctest.Test(t, func(t *testing.T) {
+			s, run := stoppedForTheMerge(t, true)
+
+			// The run ends stopped while the stop is under way, and only then does the stop
+			// fail.
+			s.Runner.Finish(run, autopilot.RunEnd{Outcome: autopilot.RunStopped})
+			s.Settle()
+
+			closedForTheMerge(t, s)
+
+			s.Runner.ReleaseStops()
+			s.Settle()
+			s.Advance(2*time.Minute, false)
+
+			closedForTheMerge(t, s)
+			assert.Equal(t, []int64{run}, s.Runner.StopsAsked(), "a run that ended is never stopped again")
+		})
+	})
+}
+
+// stoppedForTheMerge starts the agent on #1, merges it, and returns once the engine has
+// asked the runner, whose next Stop fails, to stop the run for the merge: the stop has
+// failed, or with hold is still under way. The run goes on.
+func stoppedForTheMerge(t *testing.T, hold bool) (*sim.Sim, int64) {
+	t.Helper()
+
+	s, _ := started(t, sim.FixFailing(), autopilotprefs.ModeAuto)
+	s.World.Fail(1)
+	s.Refresh()
+
+	run := only(t, s).Runs[0].ID
+
+	s.Runner.FailStops(1)
+
+	if hold {
+		s.Runner.HoldStops()
+	}
+
+	// The search drops #1 as it merges. The watch pass stores that after the inbox and
+	// tells the engine nothing of an item that left, so the cycle the refresh woke may have
+	// read #1 still watched; the next cycle, which the engine's tick would run, reads it
+	// gone, reads its state, and stops the run.
+	s.World.Merge(1)
+	s.Refresh()
+	s.Engine.Wake()
+	s.Settle()
+
+	require.Equal(t, []int64{run}, s.Runner.StopsAsked(), "the engine asked once to stop the run for the merge")
+	require.Equal(t, []int64{run}, s.Runner.Going())
+
+	return s, run
+}
+
+// closedForTheMerge checks that the one match closed for its item's merge, its run
+// stopped.
+func closedForTheMerge(t *testing.T, s *sim.Sim) {
+	t.Helper()
+
+	m := only(t, s)
+	assert.Equal(t, autopilot.StateClosed, m.State, m.Words)
+	assert.Equal(t, autopilot.ReasonMerged, m.Reason, "closed for the merge, not as the user's stop")
+	require.Len(t, m.Runs, 1)
+	assert.Equal(t, string(autopilot.RunStopped), m.Runs[0].Outcome)
 }
 
 func TestAStartThatNeverHappenedUsesUpNoRunOfTheDay(t *testing.T) {
