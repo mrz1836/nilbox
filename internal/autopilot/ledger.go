@@ -272,6 +272,14 @@ func (m *match) wait(b Blocker, detail string) {
 	m.set(stateOf(b), b, detail)
 }
 
+// unstarted takes back the run its start counted, for a start that never reached its
+// runner: it counts as no run, so the match is decided again like any queued one.
+func (m *match) unstarted() {
+	if m.Attempt > 0 {
+		m.Attempt--
+	}
+}
+
 // close closes the row.
 func (m *match) close(s State, r Reason, detail string, now time.Time) {
 	m.State, m.BlockedBy, m.Reason, m.Detail = string(s), "", string(r), detail

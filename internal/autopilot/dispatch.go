@@ -108,8 +108,9 @@ type Dispatcher interface {
 // Runner is the agent part's dispatcher: Dispatch starts a run and returns with Running,
 // and the run's end comes later through Engine.RunEnded, however it ends. Stop and
 // StopAll stop runs at once, never queued behind the engine, so a Stop works before the
-// first refresh, offline, or signed out; Alive says whether a run the ledger records as
-// going still goes, so the engine records one a crash ended as interrupted.
+// first refresh, offline, or signed out; Alive says what the runner knows of a run the
+// ledger records as going, so the engine records one a crash ended as interrupted, and
+// puts back in the queue one the runner never started.
 type Runner interface {
 	Dispatcher
 
@@ -120,9 +121,32 @@ type Runner interface {
 	// StopAll stops every agent run, and leaves the runner open for later starts.
 	StopAll(ctx context.Context) error
 
-	// Alive reports whether the run with the ledger's ID still goes.
-	Alive(ctx context.Context, runID int64) (bool, error)
+	// Alive says what the runner knows of the run with the ledger's ID. A run stays
+	// LiveAlive until its RunEnded has been delivered (the call returned), so the engine
+	// never takes a run that is ending for one that ended unseen. LiveNever is a positive
+	// answer: the runner has no record of the run ever starting, as for a start the
+	// quit cut off before it reached the runner. An error is LiveUnknown.
+	Alive(ctx context.Context, runID int64) (Liveness, error)
 }
+
+// Liveness is what a runner knows of a run the ledger records as going.
+type Liveness string
+
+// The answers about a run.
+const (
+	// LiveUnknown is a runner that can't say now.
+	LiveUnknown Liveness = "unknown"
+
+	// LiveAlive is a run that goes, or whose end hasn't been delivered yet.
+	LiveAlive Liveness = "alive"
+
+	// LiveGone is a run that started and ended, with no RunEnded delivered, as one that
+	// ended while the app was closed.
+	LiveGone Liveness = "gone"
+
+	// LiveNever is a run the runner has no record of ever starting.
+	LiveNever Liveness = "never"
+)
 
 // RunEnd is how a run ended, as its runner tells the engine.
 type RunEnd struct {

@@ -24,16 +24,21 @@ type engineState struct {
 	// after a long gap asks before it catches up.
 	LastRefresh time.Time `json:"lastRefresh,omitzero"`
 
-	// CatchUpSince is when the catch-up under way began: the first refresh after a long gap,
-	// or a Resume after a long pause; nil with none.
+	// CatchUpSince is when the last catch-up began: the first refresh after a long gap, the
+	// first cycle that found the last refresh long ago, or a Resume after a long pause; nil
+	// with none yet. It is kept once the catch-up ends, so one gap begins one catch-up.
 	CatchUpSince *time.Time `json:"catchUpSince,omitempty"`
+
+	// CatchingUp holds the routines still in that catch-up: each waits for the user's OK
+	// before its agent and GitHub steps until what it watches was read after it began.
+	CatchingUp map[int64]bool `json:"catchingUp,omitempty"`
 
 	// LastCycle is what the last cycle did.
 	LastCycle *Cycle `json:"lastCycle,omitempty"`
 
-	// FirstPass holds, by routine, the fingerprint of the spec its first pass ran under:
-	// a routine with a GitHub action whose spec has another queues at most FirstCap on its
-	// next cycle.
+	// FirstPass holds, by routine, the fingerprint its first pass ran under (its spec,
+	// when it was switched on, and its mode): a routine with a GitHub action that has
+	// another queues at most FirstCap on its next cycle.
 	FirstPass map[int64]string `json:"firstPass,omitempty"`
 
 	// FromNow holds the routines whose current matches become their baseline once their
@@ -61,7 +66,7 @@ func readEngineState(ctx context.Context, p *prefs.Store) (engineState, error) {
 		return engineState{}, fmt.Errorf("read the engine's state: %w", err)
 	}
 
-	empty := engineState{FirstPass: map[int64]string{}, FromNow: map[int64]fromNow{}}
+	empty := engineState{FirstPass: map[int64]string{}, FromNow: map[int64]fromNow{}, CatchingUp: map[int64]bool{}}
 	if !ok || raw == "" {
 		return empty, nil
 	}
@@ -77,6 +82,10 @@ func readEngineState(ctx context.Context, p *prefs.Store) (engineState, error) {
 
 	if st.FromNow == nil {
 		st.FromNow = map[int64]fromNow{}
+	}
+
+	if st.CatchingUp == nil {
+		st.CatchingUp = map[int64]bool{}
 	}
 
 	return st, nil

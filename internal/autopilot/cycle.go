@@ -3,6 +3,7 @@ package autopilot
 import (
 	"context"
 	"errors"
+	"maps"
 	"slices"
 	"strconv"
 	"time"
@@ -38,8 +39,8 @@ type Cycle struct {
 	Closed  int `json:"closed"`
 	Reads   int `json:"reads"`
 
-	// CatchUp reports a cycle after a long gap, whose agent and GitHub steps wait for the
-	// user.
+	// CatchUp reports a cycle after a long gap, in which some routine's agent and GitHub
+	// steps wait for the user.
 	CatchUp bool `json:"catchUp"`
 }
 
@@ -73,13 +74,24 @@ type routineRun struct {
 // id returns the routine's ID.
 func (r *routineRun) id() int64 { return r.row.ID }
 
+// passKey is the fingerprint of what a first pass ran under: the spec, when the routine
+// was last switched on, and its mode, so switching it off and on, or changing its mode,
+// is a first pass again, even in another copy of the app between two cycles of this one.
+func (r *routineRun) passKey() string {
+	var on string
+	if r.row.EnabledAt != nil {
+		on = r.row.EnabledAt.UTC().Format(time.RFC3339Nano)
+	}
+
+	return r.hash + "|" + on + "|" + string(r.mode)
+}
+
 // pass is one cycle's reads, shared by its steps.
 type pass struct {
 	e        *Engine
 	now      time.Time
 	cfg      autopilotprefs.Config
 	inbox    InboxStatus
-	catchUp  bool
 	routines []*routineRun
 	byID     map[int64]*routineRun
 	others   map[int64]queries.AutopilotRoutine
@@ -202,13 +214,12 @@ func (e *Engine) askWatches(ctx context.Context) {
 
 // run is one cycle's work, once the engine is primed.
 func (p *pass) run(ctx context.Context) error {
-	p.watchPause()
-	p.catchUp = p.catchingUp()
-	p.cycle.CatchUp = p.catchUp
-
 	if err := p.loadRoutines(ctx); err != nil {
 		return err
 	}
+
+	p.watchGaps()
+	p.cycle.CatchUp = len(p.e.state.CatchingUp) > 0
 
 	open, err := p.e.ledger.open(ctx)
 	if err != nil {
@@ -235,20 +246,37 @@ func (p *pass) run(ctx context.Context) error {
 	return nil
 }
 
-// watchPause keeps when Pause Autopilot began, and after a pause longer than the
-// catch-up setting, starts a catch-up on Resume.
-func (p *pass) watchPause() {
+// watchGaps keeps when Pause Autopilot began and the last refresh seen, and begins a
+// catch-up after a long gap (longer than the catch-up setting): on Resume after a long
+// pause, on the first refresh after a long time without one, and, at once, on a cycle that
+// finds the last refresh long ago, as on waking from a long sleep before any refresh came,
+// so no step is decided on what was read before the gap without the user.
+func (p *pass) watchGaps() {
 	st := &p.e.state
+	gap := p.catchUpAfter()
+	last := p.inbox.LastRefresh.UTC()
 
 	switch {
 	case p.cfg.Paused && st.PausedSince == nil:
 		st.PausedSince = new(p.now.UTC())
 	case !p.cfg.Paused && st.PausedSince != nil:
-		if p.now.Sub(*st.PausedSince) > p.catchUpAfter() && st.CatchUpSince == nil {
-			st.CatchUpSince = new(p.now.UTC())
+		if p.now.Sub(*st.PausedSince) > gap {
+			p.beginCatchUp(p.now)
 		}
 
 		st.PausedSince = nil
+	}
+
+	if !st.LastRefresh.IsZero() && last.Sub(st.LastRefresh) > gap {
+		p.beginCatchUpAfter(st.LastRefresh, last)
+	}
+
+	if p.now.Sub(last) > gap {
+		p.beginCatchUpAfter(last, p.now)
+	}
+
+	if last.After(st.LastRefresh) {
+		st.LastRefresh = last
 	}
 }
 
@@ -257,49 +285,76 @@ func (p *pass) catchUpAfter() time.Duration {
 	return time.Duration(p.cfg.CatchUpHours) * time.Hour
 }
 
-// catchingUp reports a cycle in a catch-up, and keeps the last refresh seen. A gap longer
-// than the setting between two successful refreshes starts one, from the refresh after the
-// gap; a catch-up lasts until every routine's searches were answered after it began
-// (endCatchUp), so every agent and GitHub step decided on what was read before the gap, or
-// on the first reads after it, waits for the user.
-func (p *pass) catchingUp() bool {
-	st := &p.e.state
-	last := p.inbox.LastRefresh.UTC()
-
-	if !st.LastRefresh.IsZero() && last.Sub(st.LastRefresh) > p.catchUpAfter() && st.CatchUpSince == nil {
-		st.CatchUpSince = new(last)
-	}
-
-	if last.After(st.LastRefresh) {
-		st.LastRefresh = last
-	}
-
-	return st.CatchUpSince != nil
-}
-
-// endCatchUp ends a catch-up once this cycle, which still asked, decided on what was read
-// after it began: a refresh after it, and every search of every routine answered after
-// it, with no error.
-func (p *pass) endCatchUp() {
-	st := &p.e.state
-	if st.CatchUpSince == nil {
+// beginCatchUpAfter begins a catch-up at, after a gap that began at gapStart, unless one
+// began within that gap already.
+func (p *pass) beginCatchUpAfter(gapStart, at time.Time) {
+	if since := p.e.state.CatchUpSince; since != nil && since.After(gapStart) {
 		return
 	}
 
-	since := st.CatchUpSince.Truncate(time.Second)
-	if p.inbox.LastRefresh.Before(since) {
+	p.beginCatchUp(at)
+}
+
+// beginCatchUp begins a catch-up at: every routine on now is in it, until what it watches
+// was read after then (endCatchUp).
+func (p *pass) beginCatchUp(at time.Time) {
+	st := &p.e.state
+	st.CatchUpSince = new(at.UTC())
+	st.CatchingUp = make(map[int64]bool, len(p.routines))
+
+	for _, r := range p.routines {
+		st.CatchingUp[r.id()] = true
+	}
+}
+
+// catchingUp reports a routine in the catch-up under way, whose agent and GitHub steps
+// wait for the user's OK.
+func (p *pass) catchingUp(r *routineRun) bool {
+	return p.e.state.CatchingUp[r.id()]
+}
+
+// endCatchUp ends the catch-up of each routine that this cycle, which still asked, decided
+// on what was read after it began (readSince). A routine whose own search keeps failing
+// stays in it, and the others go on.
+func (p *pass) endCatchUp() {
+	st := &p.e.state
+	if st.CatchUpSince == nil || len(st.CatchingUp) == 0 {
 		return
 	}
 
 	for _, r := range p.routines {
-		for _, key := range r.keys {
-			if s := p.inbox.Searches[key]; !s.Answered || s.Error != "" || s.At.Before(since) {
-				return
-			}
+		if st.CatchingUp[r.id()] && p.readSince(r, *st.CatchUpSince) {
+			delete(st.CatchingUp, r.id())
+		}
+	}
+}
+
+// readSince reports whether what r watches was read after since: each of its searches
+// answered, with no error, and the inbox refreshed, when it watches the inbox's lists or
+// has no search.
+func (p *pass) readSince(r *routineRun, since time.Time) bool {
+	if (len(r.keys) == 0 || len(r.lists) > 0) && p.inbox.LastRefresh.Before(since.Truncate(time.Second)) {
+		return false
+	}
+
+	for _, key := range r.keys {
+		if s := p.inbox.Searches[key]; !s.Answered || s.Error != "" || s.At.Before(since) {
+			return false
 		}
 	}
 
-	st.CatchUpSince = nil
+	return true
+}
+
+// searchFailing reports a routine whose last read of one of its searches failed.
+func (p *pass) searchFailing(r *routineRun) bool {
+	for _, key := range r.keys {
+		if p.inbox.Searches[key].Error != "" {
+			return true
+		}
+	}
+
+	return false
 }
 
 // loadRoutines loads the enabled routines of the account signed in, in the user's order;
@@ -344,26 +399,25 @@ func (p *pass) loadRoutines(ctx context.Context) error {
 }
 
 // forget drops what the state keeps of routines that no longer need it: a deleted
-// routine's first pass and baseline to come, a routine switched off's too, and the first
-// pass of one in Dry run, so turning it on, or taking it out of Dry run, caps its first
-// pass again.
+// routine's first pass, baseline to come, and catch-up, a routine switched off's too, and
+// the first pass of one in Dry run.
 func (st *engineState) forget(rows []queries.AutopilotRoutine) {
 	live := make(map[int64]queries.AutopilotRoutine, len(rows))
 	for _, row := range rows {
 		live[row.ID] = row
 	}
 
-	for id := range st.FirstPass {
-		if row, ok := live[id]; !ok || !row.Enabled || storedMode(row.Mode) == autopilotprefs.ModeDryRun {
-			delete(st.FirstPass, id)
-		}
+	off := func(id int64) bool {
+		row, ok := live[id]
+
+		return !ok || !row.Enabled
 	}
 
-	for id := range st.FromNow {
-		if row, ok := live[id]; !ok || !row.Enabled {
-			delete(st.FromNow, id)
-		}
-	}
+	maps.DeleteFunc(st.FirstPass, func(id int64, _ string) bool {
+		return off(id) || storedMode(live[id].Mode) == autopilotprefs.ModeDryRun
+	})
+	maps.DeleteFunc(st.FromNow, func(id int64, _ fromNow) bool { return off(id) })
+	maps.DeleteFunc(st.CatchingUp, func(id int64, _ bool) bool { return off(id) })
 }
 
 // read reads what every routine watches, those items' facts, the states of the open
@@ -493,7 +547,7 @@ func (p *pass) evaluate(ctx context.Context, r *routineRun) error {
 func (p *pass) waitsForSearches(ctx context.Context, r *routineRun) bool {
 	pending, fromNowAsked := p.e.state.FromNow[r.id()]
 	r.fresh = p.searchesRead(r, pending.Since)
-	firstPass := hasGitHubStep(r.spec) && r.mode != autopilotprefs.ModeDryRun && p.e.state.FirstPass[r.id()] != r.hash
+	firstPass := hasGitHubStep(r.spec) && r.mode != autopilotprefs.ModeDryRun && p.e.state.FirstPass[r.id()] != r.passKey()
 	r.firstPass = firstPass && r.fresh
 
 	if (!fromNowAsked && !firstPass) || r.fresh {
@@ -783,7 +837,7 @@ func (p *pass) queue(ctx context.Context, r *routineRun, made []*match) error {
 	backlog := r.firstPass && len(made) > FirstCap
 
 	if r.firstPass {
-		p.e.state.FirstPass[r.id()] = r.hash
+		p.e.state.FirstPass[r.id()] = r.passKey()
 	}
 
 	for _, m := range made {
@@ -975,16 +1029,18 @@ func (p *pass) itemDone(m *match) (Reason, string, bool) {
 }
 
 // leftWatch closes m, whose item left every watch of its routine, once its state was read
-// after it left: an item that merged or closed closes as such.
+// after it left: an item that merged or closed closes as such. While one of the routine's
+// searches answered only in part, the item may only have dropped past what it returned, so
+// its state is still read, every stateReadFor, but it isn't closed for leaving.
 func (p *pass) leftWatch(ctx context.Context, m *match, r *routineRun, id int64) bool {
-	if !p.searchesComplete(r) {
-		return true
-	}
-
 	at, read := p.e.stateReads[id]
 	if !read || p.now.Sub(at) > stateReadFor {
 		p.stateReads = append(p.stateReads, id)
 
+		return true
+	}
+
+	if !p.searchesComplete(r) {
 		return true
 	}
 

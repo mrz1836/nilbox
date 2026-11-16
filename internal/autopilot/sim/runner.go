@@ -11,7 +11,9 @@ import (
 
 // Runner is the fake agent runner: a run it starts goes on until the scenario ends it
 // (Finish), stops it (Stop), or the runner closes. It outlives an engine, as a run may
-// outlive the app's quit, and tells the engine it is attached to how each run ended.
+// outlive the app's quit, and tells the engine it is attached to how each run ended. It
+// keeps the Runner's contract: a run stays alive until its end has been delivered, and a
+// run it never started is one it has no record of (but FinishLate, which breaks it).
 type Runner struct {
 	mu      sync.Mutex
 	engine  *autopilot.Engine
@@ -20,11 +22,12 @@ type Runner struct {
 	stopped []int64
 	closed  bool
 
-	// gate holds a start until Release; aliveErr has Alive fail; stopFails is how many
-	// Stops fail before one goes through.
-	gate      chan struct{}
-	aliveErr  error
-	stopFails int
+	// gate holds a start until Release, or with startFirst its answer once it started;
+	// aliveErr has Alive fail; stopFails is how many Stops fail before one goes through.
+	gate       chan struct{}
+	startFirst bool
+	aliveErr   error
+	stopFails  int
 }
 
 // NewRunner returns a runner with nothing going.
@@ -54,7 +57,16 @@ func (r *Runner) Hold() {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	r.gate = make(chan struct{})
+	r.gate, r.startFirst = make(chan struct{}), false
+}
+
+// HoldAnswers starts each run at once, but holds its answer until Release, as a start the
+// run engine took whose answer hasn't come back.
+func (r *Runner) HoldAnswers() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	r.gate, r.startFirst = make(chan struct{}), true
 }
 
 // Release lets the starts through.
@@ -95,7 +107,12 @@ func (r *Runner) Forget(runID int64) {
 // Dispatch starts a run.
 func (r *Runner) Dispatch(ctx context.Context, job autopilot.Job) (autopilot.Result, error) {
 	r.mu.Lock()
-	gate := r.gate
+	gate, first := r.gate, r.startFirst
+
+	if first {
+		r.going[job.RunID] = job
+		r.started = append(r.started, job)
+	}
 	r.mu.Unlock()
 
 	if gate != nil {
@@ -104,6 +121,10 @@ func (r *Runner) Dispatch(ctx context.Context, job autopilot.Job) (autopilot.Res
 		case <-ctx.Done():
 			return autopilot.Result{}, ctx.Err()
 		}
+	}
+
+	if first {
+		return autopilot.Result{Running: true}, nil
 	}
 
 	r.mu.Lock()
@@ -131,13 +152,11 @@ func (r *Runner) Stop(_ context.Context, runID int64) error {
 	}
 
 	_, ok := r.going[runID]
-	delete(r.going, runID)
 	r.stopped = append(r.stopped, runID)
-	e := r.engine
 	r.mu.Unlock()
 
-	if ok && e != nil {
-		e.RunEnded(autopilot.RunEnd{RunID: runID, Outcome: autopilot.RunStopped})
+	if ok {
+		r.end(runID, autopilot.RunEnd{RunID: runID, Outcome: autopilot.RunStopped})
 	}
 
 	return nil
@@ -154,18 +173,24 @@ func (r *Runner) StopAll(ctx context.Context) error {
 	return nil
 }
 
-// Alive reports whether a run goes.
-func (r *Runner) Alive(_ context.Context, runID int64) (bool, error) {
+// Alive says whether a run goes, ended, or never started here.
+func (r *Runner) Alive(_ context.Context, runID int64) (autopilot.Liveness, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
 	if r.aliveErr != nil {
-		return false, r.aliveErr
+		return autopilot.LiveUnknown, r.aliveErr
 	}
 
-	_, ok := r.going[runID]
+	if _, ok := r.going[runID]; ok {
+		return autopilot.LiveAlive, nil
+	}
 
-	return ok, nil
+	if slices.ContainsFunc(r.started, func(j autopilot.Job) bool { return j.RunID == runID }) {
+		return autopilot.LiveGone, nil
+	}
+
+	return autopilot.LiveNever, nil
 }
 
 // errStop is a Stop that failed.
@@ -202,39 +227,100 @@ func (r *Runner) Stopped() []int64 {
 	return slices.Clone(r.stopped)
 }
 
-// Finish ends a run as end says (its RunID is filled in), and tells the engine.
+// Finish ends a run as end says (its RunID is filled in, and its outcome done unless it
+// says), and tells the engine.
 func (r *Runner) Finish(runID int64, end autopilot.RunEnd) {
+	r.end(runID, ended(runID, end))
+}
+
+// FinishLate ends a run as Finish does, but as a runner that breaks the contract: it lets
+// go of the run at once, and tells the engine only when deliver is called.
+func (r *Runner) FinishLate(runID int64, end autopilot.RunEnd) (deliver func()) {
 	r.mu.Lock()
 	delete(r.going, runID)
 	e := r.engine
 	r.mu.Unlock()
 
+	end = ended(runID, end)
+
+	return func() {
+		if e != nil {
+			e.RunEnded(end)
+		}
+	}
+}
+
+// end tells the engine of a run's end, then lets go of the run: until its end is
+// delivered, it stays alive.
+func (r *Runner) end(runID int64, end autopilot.RunEnd) {
+	r.mu.Lock()
+	e := r.engine
+	r.mu.Unlock()
+
+	if e != nil {
+		e.RunEnded(end)
+	}
+
+	r.mu.Lock()
+	delete(r.going, runID)
+	r.mu.Unlock()
+}
+
+// ended fills in a run's ID, and its outcome, done unless end says.
+func ended(runID int64, end autopilot.RunEnd) autopilot.RunEnd {
 	end.RunID = runID
 	if end.Outcome == "" {
 		end.Outcome = autopilot.RunDone
 	}
 
-	if e != nil {
-		e.RunEnded(end)
-	}
+	return end
 }
 
-// Dispatcher is a fake part's dispatcher: it records each job and answers it at once, as
-// Answer says (done, with nothing said, by default).
+// Dispatcher is a fake part's dispatcher: it records each job, which for a GitHub
+// action is the write sent, and answers it at once, as Answer says (done, with nothing
+// said, by default), or once Release lets the answers through.
 type Dispatcher struct {
 	mu   sync.Mutex
 	jobs []autopilot.Job
+	gate chan struct{}
 
 	// Answer, when set, says how a job went.
 	Answer func(job autopilot.Job) (autopilot.Result, error)
 }
 
+// Hold holds every answer until Release: the job is done, its answer not yet back.
+func (d *Dispatcher) Hold() {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	d.gate = make(chan struct{})
+}
+
+// Release lets the answers through.
+func (d *Dispatcher) Release() {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	if d.gate != nil {
+		close(d.gate)
+		d.gate = nil
+	}
+}
+
 // Dispatch records job and answers it.
-func (d *Dispatcher) Dispatch(_ context.Context, job autopilot.Job) (autopilot.Result, error) {
+func (d *Dispatcher) Dispatch(ctx context.Context, job autopilot.Job) (autopilot.Result, error) {
 	d.mu.Lock()
 	d.jobs = append(d.jobs, job)
-	answer := d.Answer
+	answer, gate := d.Answer, d.gate
 	d.mu.Unlock()
+
+	if gate != nil {
+		select {
+		case <-gate:
+		case <-ctx.Done():
+			return autopilot.Result{}, ctx.Err()
+		}
+	}
 
 	if answer != nil {
 		return answer(job)

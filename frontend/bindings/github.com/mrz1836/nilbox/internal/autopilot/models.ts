@@ -170,8 +170,8 @@ export interface Cycle {
     "reads": number;
 
     /**
-     * CatchUp reports a cycle after a long gap, whose agent and GitHub steps wait for the
-     * user.
+     * CatchUp reports a cycle after a long gap, in which some routine's agent and GitHub
+     * steps wait for the user.
      */
     "catchUp": boolean;
 }

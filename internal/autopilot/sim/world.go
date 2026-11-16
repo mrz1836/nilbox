@@ -77,6 +77,9 @@ type World struct {
 	offline bool
 	failing bool
 
+	// failWith fails each search whose query holds it, "" for none.
+	failWith string
+
 	// Page is the most one search returns; past it, the search is truncated.
 	Page int
 
@@ -181,6 +184,15 @@ func (w *World) FailSearches(fail bool) {
 	defer w.mu.Unlock()
 
 	w.failing = fail
+}
+
+// FailSearchesWith has GitHub fail each search whose query holds text, or, with "",
+// answer them again.
+func (w *World) FailSearchesWith(text string) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	w.failWith = text
 }
 
 // Hold holds the item number's own reads until Release.
@@ -415,7 +427,7 @@ func (w *World) FetchWatches(_ context.Context, _ github.Token, searches []githu
 	slices.SortStableFunc(found, func(a, b *Item) int { return b.Updated.Compare(a.Updated) })
 
 	for _, s := range searches {
-		if w.failing {
+		if w.fails(s) {
 			out.Results[s.Key] = github.WatchResult{Err: github.ErrSearchFailed, Items: []github.WatchItem{}}
 
 			continue
@@ -533,6 +545,11 @@ func (w *World) RemoveAssignee(context.Context, github.Token, item.Ref, string) 
 // RemoveReviewRequest is never asked.
 func (w *World) RemoveReviewRequest(context.Context, github.Token, item.Ref, string) (*github.Edited, error) {
 	return nil, errNotAsked
+}
+
+// fails reports a search the world fails.
+func (w *World) fails(s github.WatchSearch) bool {
+	return w.failing || w.failWith != "" && strings.Contains(s.Query, w.failWith)
 }
 
 // down returns ErrOffline while the world is offline.

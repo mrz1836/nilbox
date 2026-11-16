@@ -163,6 +163,26 @@ UPDATE autopilot_runs SET
     updated_at = sqlc.arg(finished_at)
 WHERE id = sqlc.arg(id) AND status <> 'ended';
 
+-- name: ReviseRunEnd :execrows
+-- ReviseRunEnd records how a run ended, as its runner told, over the interrupted end the
+-- engine recorded for it once it found the run gone before that word came.
+UPDATE autopilot_runs SET
+    status = 'ended',
+    outcome = sqlc.arg(outcome),
+    run_commit = sqlc.arg(run_commit),
+    head_after = sqlc.arg(head_after),
+    cost = sqlc.narg(cost),
+    tokens_in = sqlc.arg(tokens_in),
+    tokens_out = sqlc.arg(tokens_out),
+    cache_read_tokens = sqlc.arg(cache_read_tokens),
+    turns = sqlc.arg(turns),
+    summary = sqlc.arg(summary),
+    error = sqlc.arg(error),
+    counted = sqlc.arg(counted),
+    finished_at = sqlc.arg(finished_at),
+    updated_at = sqlc.arg(finished_at)
+WHERE id = sqlc.arg(id) AND status = 'ended' AND outcome = 'interrupted';
+
 -- name: ListRunsSince :many
 -- ListRunsSince returns the runs queued since a moment, or still active, for the daily
 -- counts and the daily cap.

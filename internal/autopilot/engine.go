@@ -237,7 +237,7 @@ type Engine struct {
 	asked      time.Time
 	inflight   map[int64]bool
 	freshReads map[int64]fresh
-	stopping   map[int64]string
+	stopping   map[int64]stopAsk
 	stateReads map[int64]time.Time
 	checksRead map[int64]time.Time
 	holdOff    time.Time
@@ -248,6 +248,15 @@ type Engine struct {
 	statesAsked  map[int64]bool
 	runnerClosed bool
 	checking     bool
+
+	// checks counts the checks of the runs going, and gone holds, by run, the check that
+	// first found it gone or never started, which a later one must confirm.
+	checks int
+	gone   map[int64]int
+
+	// endsMu guards ending, the runs whose RunEnded is posted but not yet applied.
+	endsMu sync.Mutex
+	ending map[int64]int
 
 	// mu guards what the window reads of the engine, and the notifications.
 	mu         sync.Mutex
@@ -315,9 +324,9 @@ func NewEngine(svc *Service, cfg EngineConfig) *Engine {
 		events: event.Or(cfg.Events), clock: svc.clock, logger: logging.Or(svc.logger), tick: tick,
 		since: svc.clock.Now().Truncate(time.Second), wake: make(chan struct{}, 1), cmds: make(chan command),
 		mail: mailbox{signal: make(chan struct{}, 1)}, closed: make(chan struct{}),
-		inflight: map[int64]bool{}, freshReads: map[int64]fresh{}, stopping: map[int64]string{},
+		inflight: map[int64]bool{}, freshReads: map[int64]fresh{}, stopping: map[int64]stopAsk{},
 		stateReads: map[int64]time.Time{}, statesAsked: map[int64]bool{},
-		checksRead: map[int64]time.Time{},
+		checksRead: map[int64]time.Time{}, gone: map[int64]int{}, ending: map[int64]int{},
 	}
 
 	if e.dispatchers == nil {
@@ -360,8 +369,23 @@ func (e *Engine) Outcomes([]Outcome) {
 }
 
 // RunEnded hears how a run ended, from its runner, on any goroutine, without waiting.
+// From the moment it is called, the run counts as ending, so no check of the runs going
+// takes it for one that ended unseen.
 func (e *Engine) RunEnded(end RunEnd) {
-	e.mail.post(func(ctx context.Context) { e.applyRunEnd(ctx, end) })
+	e.endsMu.Lock()
+	e.ending[end.RunID]++
+	e.endsMu.Unlock()
+
+	e.mail.post(func(ctx context.Context) {
+		e.applyRunEnd(ctx, end)
+
+		e.endsMu.Lock()
+		defer e.endsMu.Unlock()
+
+		if e.ending[end.RunID]--; e.ending[end.RunID] <= 0 {
+			delete(e.ending, end.RunID)
+		}
+	})
 }
 
 // KeptItems returns every item a match or a run refers to, which the inbox's prune keeps.
@@ -413,6 +437,14 @@ func (e *Engine) Run(ctx context.Context) {
 			return
 		}
 	}
+}
+
+// endPending reports a run whose RunEnded hasn't been applied yet.
+func (e *Engine) endPending(runID int64) bool {
+	e.endsMu.Lock()
+	defer e.endsMu.Unlock()
+
+	return e.ending[runID] > 0
 }
 
 // await waits for what wakes the loop, applies a command or the workers' results, and

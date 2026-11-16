@@ -63,7 +63,9 @@ func (s *Service) Save(ctx context.Context, d Draft) (Routine, error) {
 		}
 	}
 
-	return s.applying(ctx, d.Current, func(ctx context.Context) (Routine, error) {
+	return s.applying(ctx, d.Current, func(context.Context) bool {
+		return before != nil && before.Enabled && watchChanged(*before, Routine{Spec: d.Spec})
+	}, func(ctx context.Context) (Routine, error) {
 		return s.save(ctx, d)
 	}, func(after Routine) bool {
 		return before != nil && after.Enabled && watchChanged(*before, after)
@@ -85,7 +87,7 @@ func (s *Service) SetEnabled(ctx context.Context, id int64, on bool, current Cur
 		return Routine{}, err
 	}
 
-	return s.applying(ctx, current, func(ctx context.Context) (Routine, error) {
+	return s.applying(ctx, current, func(context.Context) bool { return on }, func(ctx context.Context) (Routine, error) {
 		return s.setEnabled(ctx, id, on)
 	}, func(after Routine) bool { return on && after.Enabled })
 }
@@ -99,20 +101,26 @@ func (s *Service) SetMode(ctx context.Context, id int64, mode autopilotprefs.Mod
 		return Routine{}, err
 	}
 
-	return s.applying(ctx, current, func(ctx context.Context) (Routine, error) {
+	return s.applying(ctx, current, func(ctx context.Context) bool {
+		r, err := s.Get(ctx, id)
+
+		return mode != autopilotprefs.ModeDryRun && (err != nil || r.Enabled)
+	}, func(ctx context.Context) (Routine, error) {
 		return s.setMode(ctx, id, mode)
 	}, func(after Routine) bool { return mode != autopilotprefs.ModeDryRun && after.Enabled })
 }
 
 // applying makes change, through the engine when this copy runs it, and records what the
 // routine matches now as its baseline when current says so and asks says the change is one
-// the question is asked about.
-func (s *Service) applying(ctx context.Context, current Current, change func(ctx context.Context) (Routine, error),
-	asks func(after Routine) bool,
+// the question is asked about. Where the baseline can't be recorded, "only what changes
+// from now on" refuses the change only when wouldAsk, which tells before the change is
+// made, says the question applies to it, never taking it for one it doesn't apply to.
+func (s *Service) applying(ctx context.Context, current Current, wouldAsk func(ctx context.Context) bool,
+	change func(ctx context.Context) (Routine, error), asks func(after Routine) bool,
 ) (Routine, error) {
 	e := s.engine
 	if e == nil || !e.isRunning() || !e.lock.Held() {
-		if current == CurrentFromNow {
+		if current == CurrentFromNow && wouldAsk(ctx) {
 			return Routine{}, fromNowRefused(e)
 		}
 

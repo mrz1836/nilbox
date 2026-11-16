@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"slices"
 	"strconv"
 	"strings"
@@ -14,6 +15,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/autopilot/internal/queries"
 	"github.com/mrz1836/nilbox/internal/autopilot/spec"
 	"github.com/mrz1836/nilbox/internal/autopilotprefs"
+	"github.com/mrz1836/nilbox/internal/brand"
 	"github.com/mrz1836/nilbox/internal/item"
 	"github.com/mrz1836/nilbox/internal/store"
 	"github.com/mrz1836/nilbox/internal/textutil"
@@ -346,7 +348,9 @@ func (p *pass) askFirst(r *routineRun, m *match) verdict {
 		return verdict{}
 	case r.mode == autopilotprefs.ModeAsk:
 		return wait(BlockAsk, "Waiting for your OK.")
-	case p.catchUp:
+	case p.catchingUp(r) && p.searchFailing(r):
+		return wait(BlockCatchUp, "Its search is failing, so what it matches may be out of date: it waits for your OK.")
+	case p.catchingUp(r):
 		return wait(BlockCatchUp, "Nothing was read for a while: it waits for your OK before it catches up.")
 	}
 
@@ -562,6 +566,9 @@ func (p *pass) job(r *routineRun, m *match, sr *stepRun) Job {
 	return j
 }
 
+// runnerGitHub is the runner of a GitHub action: the app's own write.
+const runnerGitHub = "github"
+
 // runnerOf names who runs a step: an agent in the background or the terminal, or the
 // app's own GitHub write.
 func runnerOf(st spec.Step) string {
@@ -569,7 +576,7 @@ func runnerOf(st spec.Step) string {
 		return string(st.Agent.Place())
 	}
 
-	return "github"
+	return runnerGitHub
 }
 
 // start records the run, moves m to running, and hands the step to its dispatcher on a
@@ -681,14 +688,15 @@ func (e *Engine) applyDispatch(ctx context.Context, matchID, runID int64, res Re
 }
 
 // dispatchFailed records a dispatch that failed: one the runner refused as it closed
-// stays queued for the next start, and any other fails its step.
+// stays queued for the next start, as no try, and any other fails its step.
 func (e *Engine) dispatchFailed(ctx context.Context, m *match, sr *stepRun, runID int64, err error, now time.Time) {
 	if runID != 0 && errors.Is(err, ErrClosed) {
 		e.runnerClosed = true
 		e.endRun(ctx, runID, RunEnd{Outcome: RunInterrupted, Error: err.Error(), EndedAt: now}, false)
 
-		sr.Status, sr.RunID = stepPending, 0
+		sr.Status, sr.RunID, sr.Started = stepPending, 0, nil
 
+		m.unstarted()
 		m.set(StateQueued, "", "")
 
 		return
@@ -745,20 +753,40 @@ func (e *Engine) endRunIf(ctx context.Context, runID int64, end RunEnd, counted 
 	}
 }
 
-// endRun records how a run ended, while it hadn't.
-func (e *Engine) endRun(ctx context.Context, runID int64, end RunEnd, counted bool) {
+// endRun records how a run ended, while it hadn't, and reports whether it did.
+func (e *Engine) endRun(ctx context.Context, runID int64, end RunEnd, counted bool) bool {
+	return e.recordEnd(ctx, runID, end, counted, false)
+}
+
+// recordEnd records how a run ended, and reports whether it did: while it hadn't ended,
+// or with late, over the interrupted end the engine recorded for it.
+func (e *Engine) recordEnd(ctx context.Context, runID int64, end RunEnd, counted, late bool) bool {
 	if end.EndedAt.IsZero() {
 		end.EndedAt = e.clock.Now()
 	}
 
-	_, err := e.ledger.q.EndRun(ctx, queries.EndRunParams{
+	params := queries.EndRunParams{
 		Outcome: string(end.Outcome), RunCommit: end.Commit, HeadAfter: end.Head, Cost: end.Cost,
 		TokensIn: end.TokensIn, TokensOut: end.TokensOut, CacheReadTokens: end.CacheRead, Turns: end.Turns,
 		Summary: end.Summary, Error: end.Error, Counted: counted, FinishedAt: new(end.EndedAt), ID: runID,
-	})
+	}
+
+	var (
+		n   int64
+		err error
+	)
+
+	if late {
+		n, err = e.ledger.q.ReviseRunEnd(ctx, queries.ReviseRunEndParams(params))
+	} else {
+		n, err = e.ledger.q.EndRun(ctx, params)
+	}
+
 	if err != nil {
 		e.logger.WarnContext(ctx, "Autopilot could not record a run's end", "run", runID, "error", err)
 	}
+
+	return err == nil && n > 0
 }
 
 // setRunStatus moves a run from one status to the next.
@@ -773,31 +801,88 @@ func (e *Engine) setRunStatus(ctx context.Context, runID int64, was, status stri
 
 // applyRunEnd records how a run its runner told of ended, and moves its match on: an
 // interrupted run waits for the user, one stopped closes its match, and one that ended
-// goes on to the next step, verifying when it pushed and the checks are next.
+// goes on to the next step, verifying when it pushed and the checks are next. A stop the
+// engine asked for the run's item names why it was stopped, even when that stop failed
+// and the run ended stopped anyway. A runner's word that comes once the engine recorded
+// the run interrupted, having found it gone, is kept over that record, its cost and its
+// commit with it, and moves the match on while it still waits on that interruption.
 func (e *Engine) applyRunEnd(ctx context.Context, end RunEnd) {
-	run, err := e.ledger.q.GetRun(ctx, end.RunID)
-	if err != nil || run.Status == runEnded {
+	run, late, ok := e.endable(ctx, end)
+	if !ok {
 		return
 	}
 
-	forItem := e.stopping[end.RunID]
-	delete(e.stopping, end.RunID)
+	forItem := e.stoppedFor(&end)
+	delete(e.gone, end.RunID)
 
-	if forItem != "" {
-		end.Outcome, end.StoppedForMe = RunStopped, true
+	if !e.recordEnd(ctx, end.RunID, end, endCounts(run, end), late) {
+		return
 	}
-
-	counted := !run.Manual && end.Outcome != RunInterrupted && !end.StoppedForMe && end.Outcome != RunNotSent
-	e.endRun(ctx, end.RunID, end, counted)
 
 	m, err := e.ledger.get(ctx, run.MatchID)
 	if err != nil || !m.state().Open() || int(run.Step) >= len(m.steps) {
 		return
 	}
 
-	e.moveOn(m, run.Step, end, Reason(forItem), e.clock.Now())
+	if late {
+		if !waitsOn(m, run) {
+			return
+		}
+
+		m.steps[run.Step].RunID = run.ID
+	}
+
+	e.moveOn(m, run.Step, end, forItem, e.clock.Now())
 	e.save(ctx, m)
 	e.Wake()
+}
+
+// endCounts reports whether a run that ended as end says counts as a try: not a manual
+// run, an interrupted one, one the engine stopped for its item, or a GitHub action that sent
+// nothing.
+func endCounts(run queries.AutopilotRun, end RunEnd) bool {
+	return !run.Manual && end.Outcome != RunInterrupted && !end.StoppedForMe && end.Outcome != RunNotSent
+}
+
+// endable reads the run end is for, and reports whether end applies to it, and late when
+// it does over the interrupted end the engine recorded: a runner's end applies to a run not
+// ended yet, or to one so recorded, which it tells more of.
+func (e *Engine) endable(ctx context.Context, end RunEnd) (queries.AutopilotRun, bool, bool) {
+	run, err := e.ledger.q.GetRun(ctx, end.RunID)
+	if err != nil {
+		return run, false, false
+	}
+
+	if run.Status != runEnded {
+		return run, false, true
+	}
+
+	return run, true, run.Outcome == string(RunInterrupted) && end.Outcome != RunInterrupted
+}
+
+// stoppedFor returns why the engine stopped the run that ended as end says, "" when it
+// didn't, and forgets the stop: a run the engine asked to stop ended stopped for its item,
+// as did one that ended stopped after a stop that failed.
+func (e *Engine) stoppedFor(end *RunEnd) Reason {
+	ask, asked := e.stopping[end.RunID]
+	delete(e.stopping, end.RunID)
+
+	if !asked || !ask.failedAt.IsZero() && end.Outcome != RunStopped {
+		return ""
+	}
+
+	end.Outcome, end.StoppedForMe = RunStopped, true
+
+	return ask.reason
+}
+
+// waitsOn reports a match that still waits on run's interruption: at the run's step, with
+// nothing started since.
+func waitsOn(m *match, run queries.AutopilotRun) bool {
+	sr := m.steps[run.Step]
+
+	return m.state() == StateWaiting && Blocker(m.BlockedBy) == BlockInterrupted && m.Step == run.Step &&
+		sr.Status == stepPending && sr.RunID == 0
 }
 
 // moveOn moves m on from its step at index, whose run ended as end says: an interrupted
@@ -813,7 +898,7 @@ func (e *Engine) moveOn(m *match, index int64, end RunEnd, forItem Reason, now t
 		sr.Status, sr.RunID, sr.Ended = stepPending, 0, nil
 		m.Approved = false
 
-		m.wait(BlockInterrupted, "It was interrupted: run it again?")
+		m.wait(BlockInterrupted, interruptedWords(m, sr))
 	case RunStopped:
 		if end.StoppedForMe {
 			m.close(StateClosed, forItem, "Stopped: "+stoppedWords(forItem), now)
@@ -863,6 +948,17 @@ func (e *Engine) verifyNext(m *match, now time.Time) {
 	}
 }
 
+// interruptedWords says what an interrupted step's match waits for: a GitHub action the
+// quit cut off may have been sent, so the user looks at the item before sending it again.
+func interruptedWords(m *match, sr *stepRun) string {
+	if len(sr.Step.GitHub) > 0 {
+		return brand.Name + " quit while it sent this: check the " + item.Kind(m.Kind).Noun() +
+			" on GitHub before you send it again."
+	}
+
+	return "It was interrupted: run it again?"
+}
+
 // stoppedWords says why the engine stopped a run.
 func stoppedWords(r Reason) string {
 	if words, ok := map[Reason]string{ReasonMerged: "it was merged.", ReasonItemClosed: "it was closed."}[r]; ok {
@@ -908,14 +1004,27 @@ func (p *pass) readStateOnce(id int64) {
 	}
 }
 
+// stopAsk is a stop the engine asked of a run for its item: the reason it was for, kept
+// until the run ends, and when the last try failed, zero while one is under way or went
+// through.
+type stopAsk struct {
+	reason   Reason
+	failedAt time.Time
+}
+
 // stopFor stops a run because its item is done with, once at a time: a stop that fails
-// is forgotten, the run going again, so the next cycle stops it again.
+// leaves the run going, and a cycle a tick later or more stops it again. Its reason is
+// kept, so a run that ends stopped anyway closes its match for it.
 func (e *Engine) stopFor(ctx context.Context, runID int64, reason Reason) {
-	if _, asked := e.stopping[runID]; asked || e.runner == nil {
+	if e.runner == nil {
 		return
 	}
 
-	e.stopping[runID] = string(reason)
+	if ask, asked := e.stopping[runID]; asked && (ask.failedAt.IsZero() || time.Since(ask.failedAt) < e.tick) {
+		return
+	}
+
+	e.stopping[runID] = stopAsk{reason: reason}
 	e.setRunStatus(ctx, runID, runRunning, runStopping)
 
 	e.goWork(ctx, func(ctx context.Context) {
@@ -927,7 +1036,11 @@ func (e *Engine) stopFor(ctx context.Context, runID int64, reason Reason) {
 		e.logger.WarnContext(ctx, "Autopilot could not stop a run; it tries again", "run", runID, "error", err)
 
 		e.mail.post(func(ctx context.Context) {
-			delete(e.stopping, runID)
+			if ask, asked := e.stopping[runID]; asked {
+				ask.failedAt = time.Now()
+				e.stopping[runID] = ask
+			}
+
 			e.setRunStatus(ctx, runID, runStopping, runRunning)
 		})
 	})
@@ -938,23 +1051,9 @@ func (e *Engine) stopFor(ctx context.Context, runID int64, reason Reason) {
 // ended it, if it ran at all.
 const unknownFor = time.Duration(catalog.MaxTimeoutMinutes)*time.Minute + 30*time.Minute
 
-// liveness is what a check found of a run the ledger records as going.
-type liveness int
-
-// The answers about a run going.
-const (
-	runAlive liveness = iota
-	runGone
-	runUnknown
-)
-
 // reconcile checks the runs the ledger records as going, once this copy holds the engine
 // and on every tick after, leaving out those a worker of this copy is starting or
-// dispatching now. A run its runner no longer runs ended: one the runner never confirmed it
-// started (still starting, as a start the quit cut off) goes back to the queue, its match
-// with it, and any other ended interrupted. A run the runner can't say of is asked again on
-// the next tick; one still unknown unknownFor after it started ended interrupted, so no run
-// is taken as going for good.
+// dispatching now, and those whose end is on its way (settleRun).
 func (e *Engine) reconcile(ctx context.Context) {
 	if e.checking {
 		return
@@ -967,6 +1066,8 @@ func (e *Engine) reconcile(ctx context.Context) {
 		return
 	}
 
+	e.forgetGone(runs)
+
 	runs = slices.DeleteFunc(runs, func(r queries.AutopilotRun) bool { return e.inflight[r.MatchID] })
 	if len(runs) == 0 {
 		return
@@ -975,13 +1076,14 @@ func (e *Engine) reconcile(ctx context.Context) {
 	e.checking = true
 
 	e.goWork(ctx, func(ctx context.Context) {
-		found := make([]liveness, len(runs))
+		found := make([]Liveness, len(runs))
 		for i, run := range runs {
 			found[i] = e.alive(ctx, run)
 		}
 
 		e.mail.post(func(ctx context.Context) {
 			e.checking = false
+			e.checks++
 
 			for i, run := range runs {
 				e.settleRun(ctx, run, found[i])
@@ -990,60 +1092,130 @@ func (e *Engine) reconcile(ctx context.Context) {
 	})
 }
 
-// settleRun ends a run a check found gone, or unknown for too long, unless this copy
-// started dispatching it since.
-func (e *Engine) settleRun(ctx context.Context, run queries.AutopilotRun, found liveness) {
-	if e.inflight[run.MatchID] {
+// forgetGone forgets what the checks found of runs no longer going.
+func (e *Engine) forgetGone(runs []queries.AutopilotRun) {
+	going := make(map[int64]bool, len(runs))
+	for _, r := range runs {
+		going[r.ID] = true
+	}
+
+	maps.DeleteFunc(e.gone, func(id int64, _ int) bool { return !going[id] })
+}
+
+// settleRun settles a run the ledger records as going that no worker of this copy is
+// starting, and whose RunEnded isn't on its way.
+//
+// A GitHub action is never sent again on its own: one still recorded as going was cut
+// off by a quit or a crash, maybe after GitHub took it, so its match waits for the user,
+// who checks the item first. An agent's run its runner never started (still starting, as
+// a start the quit cut off before it reached the runner) goes back to the queue, its match
+// with it, as no try; one that ended unseen ends interrupted. Either is taken as so only
+// once two checks a tick apart found it so, as a runner may let go of a run a moment before
+// its end is delivered. A run the runner can't say of is asked again on the next tick, and
+// one still unknown unknownFor after it started ends interrupted, so no run is taken as
+// going for good.
+func (e *Engine) settleRun(ctx context.Context, run queries.AutopilotRun, found Liveness) {
+	if e.inflight[run.MatchID] || e.endPending(run.ID) {
 		return
 	}
 
-	switch {
-	case found == runAlive:
-	case found == runGone && run.Status == runStarting:
-		e.unstart(ctx, run)
-	case found == runGone:
-		e.applyRunEnd(ctx, RunEnd{RunID: run.ID, Outcome: RunInterrupted, Error: "the app stopped while it ran"})
-	case run.StartedAt != nil && e.clock.Now().Sub(*run.StartedAt) > unknownFor:
-		e.applyRunEnd(ctx, RunEnd{RunID: run.ID, Outcome: RunInterrupted, Error: "its runner couldn't say how it went"})
+	if run.Runner == runnerGitHub {
+		e.applyRunEnd(ctx, RunEnd{RunID: run.ID, Outcome: RunInterrupted, Error: "the app quit while it sent this"})
+
+		return
+	}
+
+	e.settleAgentRun(ctx, run, found)
+}
+
+// settleAgentRun settles an agent's run by what its runner said of it (settleRun).
+func (e *Engine) settleAgentRun(ctx context.Context, run queries.AutopilotRun, found Liveness) {
+	switch found {
+	case LiveAlive:
+		delete(e.gone, run.ID)
+	case LiveNever, LiveGone:
+		if !e.confirmGone(run.ID) {
+			return
+		}
+
+		if found == LiveNever && run.Status == runStarting {
+			e.unstart(ctx, run)
+		} else {
+			e.applyRunEnd(ctx, RunEnd{RunID: run.ID, Outcome: RunInterrupted, Error: "the app stopped while it ran"})
+		}
+	case LiveUnknown:
+		if run.StartedAt != nil && e.clock.Now().Sub(*run.StartedAt) > unknownFor {
+			e.applyRunEnd(ctx, RunEnd{RunID: run.ID, Outcome: RunInterrupted, Error: "its runner couldn't say how it went"})
+		}
 	}
 }
 
+// confirmGone reports whether an earlier check found the run gone too, or never started;
+// the first check to find it so is only noted.
+func (e *Engine) confirmGone(runID int64) bool {
+	first, seen := e.gone[runID]
+	if !seen {
+		e.gone[runID] = e.checks
+
+		return false
+	}
+
+	if first >= e.checks {
+		return false
+	}
+
+	delete(e.gone, runID)
+
+	return true
+}
+
 // unstart puts a run that never started back in the queue: the run ends, counting as no
-// try, and its match waits to start it again, its OK kept.
+// try, and its match, still at that run, waits to start it again, its OK kept, and is
+// decided again like any queued match.
 func (e *Engine) unstart(ctx context.Context, run queries.AutopilotRun) {
-	e.endRun(ctx, run.ID, RunEnd{Outcome: RunInterrupted, Error: "it never started"}, false)
+	if !e.endRun(ctx, run.ID, RunEnd{Outcome: RunInterrupted, Error: "it never started"}, false) {
+		return
+	}
 
 	m, err := e.ledger.get(ctx, run.MatchID)
-	if err != nil || m.state() != StateRunning || int(run.Step) >= len(m.steps) {
+	if err != nil || m.state() != StateRunning || m.Step != run.Step || int(run.Step) >= len(m.steps) {
 		return
 	}
 
 	sr := &m.steps[run.Step]
+	if sr.RunID != run.ID {
+		return
+	}
+
 	sr.Status, sr.RunID, sr.Started = stepPending, 0, nil
 
+	m.unstarted()
 	m.set(StateQueued, "", "")
 	e.save(ctx, m)
 	e.Wake()
 }
 
-// alive reports whether a run the ledger records as going still goes: a GitHub action no
-// worker of this copy sends is gone, as is a run with no runner to ask; a run the runner
-// can't say of is unknown.
-func (e *Engine) alive(ctx context.Context, run queries.AutopilotRun) liveness {
-	if e.runner == nil || run.Runner == "github" {
-		return runGone
+// alive says what is known of a run the ledger records as going: a GitHub action is
+// asked of no one (settleRun), a run with no runner to ask is gone, and a runner that
+// can't say, or answers what the engine doesn't know, is unknown.
+func (e *Engine) alive(ctx context.Context, run queries.AutopilotRun) Liveness {
+	switch {
+	case run.Runner == runnerGitHub:
+		return LiveUnknown
+	case e.runner == nil:
+		return LiveGone
 	}
 
-	alive, err := e.runner.Alive(ctx, run.ID)
+	live, err := e.runner.Alive(ctx, run.ID)
 
 	switch {
 	case err != nil:
-		return runUnknown
-	case alive:
-		return runAlive
+		return LiveUnknown
+	case live == LiveAlive, live == LiveGone, live == LiveNever:
+		return live
 	}
 
-	return runGone
+	return LiveUnknown
 }
 
 // dayCounts are today's counts against the limits, from local midnight.
@@ -1087,7 +1259,7 @@ func (d *dayCounts) add(r queries.ListRunsSinceRow, day time.Time) {
 		d.activeItems[*r.ItemID] = true
 	}
 
-	if active && r.Runner != "github" {
+	if active && r.Runner != runnerGitHub {
 		d.activeAgents++
 	}
 
@@ -1103,7 +1275,7 @@ func (d *dayCounts) add(r queries.ListRunsSinceRow, day time.Time) {
 func (d *dayCounts) countRun(routineID int64, runner string) {
 	d.routineRuns[routineID]++
 
-	if runner == "github" {
+	if runner == runnerGitHub {
 		d.actions++
 	} else {
 		d.agentRuns++
@@ -1139,7 +1311,7 @@ func (d *dayCounts) addSpend(r queries.ListRunsSinceRow, active, today bool) {
 func (d *dayCounts) started(routineID, itemID int64, runner string, job Job, manual bool) {
 	d.activeItems[itemID] = true
 
-	if runner != "github" {
+	if runner != runnerGitHub {
 		d.activeAgents++
 	}
 

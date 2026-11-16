@@ -1257,6 +1257,65 @@ func (q *Queries) ListTries(ctx context.Context, routineID int64) ([]ListTriesRo
 	return items, nil
 }
 
+const reviseRunEnd = `-- name: ReviseRunEnd :execrows
+UPDATE autopilot_runs SET
+    status = 'ended',
+    outcome = ?1,
+    run_commit = ?2,
+    head_after = ?3,
+    cost = ?4,
+    tokens_in = ?5,
+    tokens_out = ?6,
+    cache_read_tokens = ?7,
+    turns = ?8,
+    summary = ?9,
+    error = ?10,
+    counted = ?11,
+    finished_at = ?12,
+    updated_at = ?12
+WHERE id = ?13 AND status = 'ended' AND outcome = 'interrupted'
+`
+
+type ReviseRunEndParams struct {
+	Outcome         string
+	RunCommit       string
+	HeadAfter       string
+	Cost            *float64
+	TokensIn        int64
+	TokensOut       int64
+	CacheReadTokens int64
+	Turns           int64
+	Summary         string
+	Error           string
+	Counted         bool
+	FinishedAt      *time.Time
+	ID              int64
+}
+
+// ReviseRunEnd records how a run ended, as its runner told, over the interrupted end the
+// engine recorded for it once it found the run gone before that word came.
+func (q *Queries) ReviseRunEnd(ctx context.Context, arg ReviseRunEndParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, reviseRunEnd,
+		arg.Outcome,
+		arg.RunCommit,
+		arg.HeadAfter,
+		arg.Cost,
+		arg.TokensIn,
+		arg.TokensOut,
+		arg.CacheReadTokens,
+		arg.Turns,
+		arg.Summary,
+		arg.Error,
+		arg.Counted,
+		arg.FinishedAt,
+		arg.ID,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
 const setRunStarted = `-- name: SetRunStarted :execrows
 UPDATE autopilot_runs SET
     status = ?1,
