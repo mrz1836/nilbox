@@ -377,12 +377,16 @@ changing the package, and keep the section and its summary in step.
   Watching list. So does a routine's triage (`Routines.Triage`, `UndoTriage`, `AsLeft`):
   Pin, Snooze (the routine's length, the user's wake rules), Dismiss, and Restore run the
   inbox's own triage marked with the routine (`item_local_state.set_aside_by` and
-  `pinned_by`), its `Record` writing Autopilot's effect in the same transaction before the
-  write, and never replace what the user set aside themselves; Undo puts back an item's state
-  before, only where it is still as the step left it. Every triage path of the user's own
-  clears the mark it changes, and one that takes back a routine's (a restore, an unpin, a
-  snooze over it, a dismissal of what it brought back) tells the outcome sink with
-  `Outcome.Reversed` (`OutcomeSnoozed` and `OutcomeUnpinned` only then).
+  `pinned_by`), each a compare-and-set on the state the routine decided on (`Expect`,
+  `LocalStates`), its `Record` writing Autopilot's effect in the same transaction before the
+  write; a routine's Snooze and Dismiss never replace what the user set aside themselves,
+  and its Restore brings an item back to the user's attention, the user's own set-aside
+  included. Undo puts back an item's state before, only where it is still as the step left
+  it, and a refresh drops a Restore's mark once it is older than Autopilot's history. Every
+  triage path of the user's own clears the mark it changes, and one that takes back a
+  routine's (a restore of its snooze or dismissal, a snooze over that, an unpin of its pin)
+  tells the outcome sink with `Outcome.Reversed` (`OutcomeSnoozed` and `OutcomeUnpinned`
+  only then).
   Full design: [docs/architecture.md](docs/architecture.md#internalinbox)
 - `internal/launcher/` resolves a launch (the agent first, then that agent's profile, model,
   and flags), plans it, and writes its files; `internal/launcher/terminal/` renders the launch

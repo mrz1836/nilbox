@@ -939,29 +939,40 @@ independent of a snooze or a dismissal on the same row, each `REFERENCES
 autopilot_routines ON DELETE SET NULL`). In one transaction it reads the item's local state
 (`LocalState`), works out the change, hands it to the request's `Record` before writing
 it, so Autopilot's effect and the change are stored together or not at all, then writes it.
-A routine never replaces what the user set aside: its Snooze and Dismiss leave an item the
-user dismissed or snoozed (still set aside, with no routine's mark) as the user left it
-(`KeptYours`), its Pin leaves a pinned item (`KeptPinned`), its Dismiss a dismissed one
-(`KeptDismissed`), and its Restore has nothing to do on an item not set aside
-(`KeptNotSetAside`); each records nothing. A routine's Restore keeps its mark on the row with
-nothing set aside, which `PruneState` then keeps, so its Undo can tell the item is still as
-it left it; it tells the outcome sink of the restore, as the user's does, so the mirror of
-the GitHub notifications takes a dismissal's clears back, and no other routine step tells
-anything. `UndoTriage` puts back, in one transaction and newest first, each change's state
-before, only where the item is still as the change left it (`asLeftBy`: the pin and who
-pinned it, or the dismissal, the snooze's end, and who set them, so the user's own triage, a
-snooze the wake rules ended, or a later step leaves it as it is), and hands its `record`
-which it put back; a routine named in a state put back that is gone for good is dropped from
-it. `AsLeft` asks the same without writing, for Activity's Undo. The snapshot carries the
-marks (`Item.SetAsideBy`, `Item.PinnedBy`). Every triage path of the user's own clears the
-mark it changes (`SetTriage`, `Pin`, `Unpin`, and `Restore` all write it), so "Snoozed by a
-routine" never outlives the user's own re-snooze; one that takes back what a routine did
-tells the outcome sink with `Outcome.Reversed` (the routine, the item, and what it did): a
-Restore of what a routine dismissed or snoozed, still in effect; a Snooze over what a
-routine set aside or brought back (`OutcomeSnoozed`, told only then); a Dismiss of what a
-routine brought back; and an Unpin of what a routine pinned (`OutcomeUnpinned`, only then).
-Going further than a routine (a dismissal over its snooze, the user's pin over its pin)
-takes nothing back, and neither does snoozing again what a routine snoozed once that snooze
+Each step is a compare-and-set: `RoutineTriage.Expect` is the state the routine decided on
+(`Routines.LocalStates`, which the engine reads before an item's facts), and a step whose
+part of the triage (the pin, or the dismissal and the snooze) differs now changes nothing
+(`KeptChanged`), so the user's own change in between always wins. A routine's Snooze and
+Dismiss never replace what the user set aside: they leave an item the user dismissed or
+snoozed (still set aside, with no routine's mark) as the user left it (`KeptYours`); its
+Pin leaves a pinned item (`KeptPinned`), and its Dismiss a dismissed one (`KeptDismissed`).
+Its Restore is for bringing an item back to the user's attention when the routine's
+conditions hold, the user's own snooze or dismissal included, and has nothing to do on an
+item not set aside (`KeptNotSetAside`); each that changes nothing records nothing. A
+routine's Restore keeps its mark on the row with nothing set aside, which `PruneState` then
+keeps, so its Undo can tell the item is still as it left it, until the user's own triage of
+the item clears it, or a whole refresh drops it once it is older than Autopilot's history
+(`PruneRestoreMarks`, `autopilot.historyDays`, read through `autopilotprefs`); it tells the
+outcome sink of the restore, as the user's does, so the mirror of the GitHub notifications
+takes a dismissal's clears back, and no other routine step tells anything. `UndoTriage`
+puts back, in one transaction and newest first, each change's state before, only where the
+item is still as the change left it (`asLeftBy`: the pin and who pinned it, or the
+dismissal, the snooze's end, and who set them, so the user's own triage, a snooze the wake
+rules ended, or a later step leaves it as it is), and hands its `record` which it put back;
+a routine named in a state put back that is gone for good is dropped from it. Undoing a
+routine's Restore of the user's own dismissal tells the outcome sink of that dismissal again,
+at its own time, so the mirror records it as the user's and clears by the user's own rules,
+as before the Restore; no other Undo tells anything. `AsLeft` asks the same without writing,
+for Activity's Undo. The snapshot carries the marks (`Item.SetAsideBy`, `Item.PinnedBy`).
+Every triage path of the user's own clears the mark it changes (`SetTriage`, `Pin`, `Unpin`,
+and `Restore` all write it), so "Snoozed by a routine" never outlives the user's own
+re-snooze; one that takes back what a routine did tells the outcome sink with
+`Outcome.Reversed` (the routine, the item, and what it did): a Restore of what a routine
+dismissed or snoozed, still in effect; a Snooze over that (`OutcomeSnoozed`, told only then);
+and an Unpin of what a routine pinned (`OutcomeUnpinned`, only then). Setting aside again
+what a routine's Restore brought back is the user handling the item, never a reversal, and
+going further than a routine (a dismissal over its snooze, the user's pin over its pin)
+takes nothing back either, nor does snoozing again what a routine snoozed once that snooze
 has ended.
 
 **Check names.** `github.FetchChecks` reads each pull request's checks on its head commit, a
@@ -1500,15 +1511,18 @@ item, as you do from its menu. Each runs at once wherever it sits in the routine
 too, needing no OK, and acts on any item, an outside contributor's too, since it changes only
 what this Mac shows. A routine's snooze lasts as long as the routine says, and wakes by your
 own rules, as yours does. The inbox says which routine did it ("Snoozed by Snooze passing bot
-PRs"), until you change it yourself. A routine never replaces what you set aside yourself: an
-item you snoozed or dismissed stays as you left it. Activity groups a day's local actions by
-routine ("Snoozed 6 · Undo"); Undo puts each item back as it was before, but leaves one you
-changed since as you left it. Taking back what a routine did, by restoring what it snoozed or
-dismissed, unpinning what it pinned, snoozing it again yourself, or Undo, leaves the routine
-hands off that item from then on ("Left alone: you brought back what it snoozed"), until you
-choose **Let it act again**. Pause Autopilot and a routine's active hours hold local actions
-too; they run on Resume, or when the hours begin. Dry run records what would run, and changes
-nothing.
+PRs"), until you change it yourself. A routine's Snooze and Dismiss never replace what you set
+aside yourself: an item you snoozed or dismissed stays as you left it. Its Restore is there to
+bring an item back to your attention when the routine's conditions hold, your own snooze or
+dismissal included; setting the item aside again afterwards is you handling it, and the
+routine goes on as before. Whatever you change while a routine's step is on its way wins.
+Activity groups a day's local actions by routine ("Snoozed 6 · Undo"); Undo puts each item
+back as it was before, but leaves one you changed since as you left it. Taking back what a
+routine did, by restoring what it snoozed or dismissed, snoozing it again yourself, unpinning
+what it pinned, or Undo, leaves the routine hands off that item from then on ("Left alone:
+you brought back what it snoozed"), until you choose **Let it act again**. Pause Autopilot
+and a routine's active hours hold local actions too; they run on Resume, or when the hours
+begin. Dry run records what would run, and changes nothing.
 
 **The effects** (`effects.go`). The triage dispatcher (`triageDispatcher`) runs a match's Pin,
 Snooze (its `days`, else three), Dismiss, or Restore through `Triage.Apply`, the inbox's own
@@ -1516,7 +1530,11 @@ triage for the routine (`inbox.Routines.Triage`, see `internal/inbox`'s **A rout
 triage**), whose record writes the `autopilot_effects` row in the triage's own transaction,
 before its write: the match and step (unique), the routine, the item, the action, and the
 item's local state before and after, as the inbox writes them (JSON, opaque here), with
-`applied_at`. A step that changes nothing records nothing, and its step's note says why ("You
+`applied_at`. A step is a compare-and-set on the item's local state as its cycle read it,
+before the item's facts (`EngineItems.LocalStates`, passed as `Job.Local`), and its record
+checks, in the same transaction, that the routine isn't hands off the item, so the user's
+own change, or reversal, while the step was on its way wins (`KeptChanged`, or the routine
+left alone). A step that changes nothing records nothing, and its step's note says why ("You
 set it aside yourself, so it's left as you left it."). A step a crash cut off after its change
 committed runs again on the next start (`stepUnderWay`), finds its effect, and is done, so
 nothing changes twice. Its limits are the local steps' (`runLocal`): a sign-out, Pause, and the
@@ -1536,11 +1554,15 @@ item that changed since stays as it is (`Left`). `Words` says it for a toast ("P
 
 **Hands off.** The user's own triage that takes back what a routine did reaches the engine
 through the outcomes fan-out (`Outcome.Reversed`: the routine, the item, and what it did,
-which core's `engineOutcomes` passes on); `Engine.Outcomes` records it at once, in whichever
-copy of the app the user did it, in one transaction: that part's effects of the routine on the
-item (the pin, or the dismissal and the snooze) are `reversed_at`, and the routine leaves the
-item alone (`InsertHandsOff`, with the words: "You brought back what it snoozed.", "You
-snoozed it again yourself.", "You unpinned what it pinned.", ...). A routine evaluates no item
+which core's `toEngineOutcomes` passes on), which tells the engine before the mirror of the
+GitHub notifications, whose record can wait on a clear on its way to GitHub;
+`Engine.Outcomes` records it at once, in whichever copy of the app the user did it, in one
+transaction: that part's effects of the routine on the item (the pin, or the dismissal and
+the snooze) applied by the outcome's time are `reversed_at`, so a step that landed after it
+keeps its Undo, and the routine leaves the item alone (`InsertHandsOff`, with the words: "You
+brought back what it snoozed.", "You snoozed it again yourself.", "You unpinned what it
+pinned.", ...). Setting aside again what a routine's Restore brought back is no reversal:
+only an Undo leaves such a routine hands off the item. A routine evaluates no item
 it leaves alone, so it records no match there; an open match of it on the item that hasn't
 started a run closes as `hands_off` ("Left alone: you took back what it did here."), which
 opens again, if it never started a step, once the user lets it act again (`LetActAgain`).
