@@ -48,7 +48,9 @@ const (
 
 // The list operators. A field whose list holds one of its choices, such as the inbox
 // lists, takes only the first three and the emptiness tests; one whose list holds paths
-// matches them as .gitignore does.
+// matches them as .gitignore does. An "all" operator over an empty list is no, never
+// vacuously yes: a pull request that changes no file doesn't have every changed path
+// under docs/, and holds none of the labels asked for.
 const (
 	OpHasAny       Op = "hasAny"
 	OpHasAll       Op = "hasAll"
@@ -114,6 +116,9 @@ type OpInfo struct {
 	// Label is what the builder's menu shows: "contains any of".
 	Label string `json:"label"`
 
+	// Help says what the label leaves out, "" for an operator its label says in full.
+	Help string `json:"help"`
+
 	// Arity is how many values it takes.
 	Arity Arity `json:"arity"`
 
@@ -131,16 +136,29 @@ func Ops() []OpInfo {
 		{ID: OpContains, Type: TypeText, Label: "contains", Arity: ArityOne, Negation: OpNotContains},
 		{ID: OpNotContains, Type: TypeText, Label: "doesn't contain", Arity: ArityOne, Negation: OpContains},
 		{ID: OpStartsWith, Type: TypeText, Label: "starts with", Arity: ArityOne},
-		{ID: OpMatches, Type: TypeText, Label: "matches the pattern", Arity: ArityOne},
-		{ID: OpMatchesRegex, Type: TypeText, Label: "matches the regex", Arity: ArityOne},
+		{
+			ID: OpMatches, Type: TypeText, Label: "matches the pattern", Arity: ArityOne,
+			Help: "* matches any run of characters and ? one, ignoring case.",
+		},
+		{
+			ID: OpMatchesRegex, Type: TypeText, Label: "matches the regex", Arity: ArityOne,
+			Help: "A Go (RE2) regular expression, ignoring case.",
+		},
 
 		{ID: OpHasAny, Type: TypeList, Label: "has any of", Arity: ArityMany, Negation: OpHasNone},
-		{ID: OpHasAll, Type: TypeList, Label: "has all of", Arity: ArityMany},
+		{
+			ID: OpHasAll, Type: TypeList, Label: "has all of", Arity: ArityMany,
+			Help: "Holds every one of them; an empty list holds none, so it doesn't match.",
+		},
 		{ID: OpHasNone, Type: TypeList, Label: "has none of", Arity: ArityMany, Negation: OpHasAny},
 		{ID: OpAnyContains, Type: TypeList, Label: "contains any of", Arity: ArityMany, Negation: OpNoneContains},
 		{ID: OpNoneContains, Type: TypeList, Label: "contains none of", Arity: ArityMany, Negation: OpAnyContains},
 		{ID: OpAnyMatches, Type: TypeList, Label: "any matches", Arity: ArityMany},
-		{ID: OpAllMatch, Type: TypeList, Label: "all match", Arity: ArityMany},
+		{
+			ID: OpAllMatch, Type: TypeList, Label: "all match", Arity: ArityMany,
+			Help: "Every one matches one of the patterns; an empty list doesn't match, so a pull request " +
+				"that changes no file never has all its paths under docs/.",
+		},
 		{ID: OpIsEmpty, Type: TypeList, Label: "is empty", Arity: ArityNone, Negation: OpNotEmpty},
 		{ID: OpNotEmpty, Type: TypeList, Label: "isn't empty", Arity: ArityNone, Negation: OpIsEmpty},
 

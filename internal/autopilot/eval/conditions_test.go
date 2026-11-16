@@ -249,6 +249,54 @@ func TestPartialLists(t *testing.T) {
 	}
 }
 
+// TestAllOfNothingIsNo checks that an "all" operator over an empty list is no, never
+// vacuously yes: a pull request that changes no file doesn't match "every changed path
+// matches docs/", and one whose files aren't all read yet is unknown.
+func TestAllOfNothingIsNo(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		c    spec.Clause
+		v    facts.Value
+		want eval.Result
+	}{
+		{
+			name: "every path matches, of none",
+			c:    spec.Clause{Field: catalog.FieldPaths, Op: catalog.OpAllMatch, Values: []string{"docs/"}},
+			v:    facts.List([]string{}, false), want: eval.No,
+		},
+		{
+			name: "every path matches, of none read yet",
+			c:    spec.Clause{Field: catalog.FieldPaths, Op: catalog.OpAllMatch, Values: []string{"docs/"}},
+			v:    facts.List([]string{}, true), want: eval.Unknown,
+		},
+		{
+			name: "every name matches, of none",
+			c:    spec.Clause{Field: catalog.FieldCheckNames, Op: catalog.OpAllMatch, Values: []string{"*"}},
+			v:    facts.List([]string{}, false), want: eval.No,
+		},
+		{
+			name: "all of the labels, of none",
+			c:    spec.Clause{Field: catalog.FieldLabels, Op: catalog.OpHasAll, Values: []string{"bug"}},
+			v:    facts.List([]string{}, false), want: eval.No,
+		},
+		{
+			name: "every path matches, of one",
+			c:    spec.Clause{Field: catalog.FieldPaths, Op: catalog.OpAllMatch, Values: []string{"docs/"}},
+			v:    facts.List([]string{"docs/readme.md"}, false), want: eval.Yes,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			assert.Equal(t, tt.want, decide(tt.c, itemFacts(item.KindPR, tt.c.Field, tt.v), eval.History{}))
+		})
+	}
+}
+
 func TestPathsMatchAsGitignoreDoes(t *testing.T) {
 	t.Parallel()
 

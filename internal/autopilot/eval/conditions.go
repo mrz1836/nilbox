@@ -2,7 +2,6 @@ package eval
 
 import (
 	"fmt"
-	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -11,7 +10,6 @@ import (
 	"github.com/mrz1836/nilbox/internal/autopilot/catalog"
 	"github.com/mrz1836/nilbox/internal/autopilot/facts"
 	"github.com/mrz1836/nilbox/internal/autopilot/spec"
-	"github.com/mrz1836/nilbox/internal/sensitive"
 )
 
 // listResult is what a list of conditions came to.
@@ -228,8 +226,8 @@ var textTests = map[catalog.Op]func(actual, want string) bool{
 // textOp compares a text ignoring case.
 func textOp(op catalog.Op, actual, want string) (Result, bool) {
 	if op == catalog.OpMatchesRegex {
-		re, err := regexp.Compile("(?i)" + want)
-		if err != nil {
+		re, ok := regexes.get(want)
+		if !ok {
 			return Unknown, true
 		}
 
@@ -272,17 +270,23 @@ var listTests = map[catalog.Op]listTest{
 // listOp compares a list. A find in a partial list is as sure as in a whole one, but a
 // miss isn't, since what wasn't read may hold it: finding is yes, and missing is no in a
 // whole list and unknown in a partial one. A negation negates that, so it is unknown
-// wherever the operator it negates is.
+// wherever the operator it negates is. "All match" over an empty list is no, never
+// vacuously yes: a pull request that changes no file doesn't have every changed path
+// under docs/; while the list may hold more it is unknown.
 func listOp(field catalog.Field, op catalog.Op, v facts.Value, values []string) (Result, bool) {
 	test, ok := listTests[op]
 	if !ok {
 		return Unknown, false
 	}
 
+	if op == catalog.OpAllMatch && len(v.List) == 0 {
+		return allOfNothing(v.Partial), true
+	}
+
 	r := Yes
 
 	switch {
-	case test.finds(v.List, values, elementMatcher(field, op, values)):
+	case test.finds(v.List, values, elementMatcher(field, op)):
 	case v.Partial:
 		r = Unknown
 	default:
@@ -296,10 +300,20 @@ func listOp(field catalog.Field, op catalog.Op, v facts.Value, values []string) 
 	return r, true
 }
 
+// allOfNothing is what "all match" says of an empty list: no, or unknown while the list
+// may hold more than was read.
+func allOfNothing(partial bool) Result {
+	if partial {
+		return Unknown
+	}
+
+	return No
+}
+
 // elementMatcher returns how a list field's elements match an operator's patterns: as
 // .gitignore does for paths, else with * and ?, ignoring case either way; nil for an
 // operator that matches no pattern.
-func elementMatcher(field catalog.Field, op catalog.Op, patterns []string) matcher {
+func elementMatcher(field catalog.Field, op catalog.Op) matcher {
 	if op != catalog.OpAnyMatches && op != catalog.OpAllMatch {
 		return nil
 	}
@@ -308,16 +322,8 @@ func elementMatcher(field catalog.Field, op catalog.Op, patterns []string) match
 		return func(elem, pattern string) bool { return globMatch(strings.ToLower(pattern), strings.ToLower(elem)) }
 	}
 
-	compiled := make(map[string]sensitive.Pattern, len(patterns))
-
-	for _, raw := range patterns {
-		if p, err := sensitive.CompilePattern(raw); err == nil {
-			compiled[raw] = p
-		}
-	}
-
 	return func(elem, pattern string) bool {
-		p, ok := compiled[pattern]
+		p, ok := pathPatterns.get(pattern)
 
 		return ok && p.Match(elem)
 	}

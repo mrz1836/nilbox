@@ -300,6 +300,16 @@ func TestOps(t *testing.T) {
 	assert.True(t, seen[catalog.OpAnyContains], "the flagship's operator")
 }
 
+func TestAllOperatorsSayAnEmptyListDoesntMatch(t *testing.T) {
+	t.Parallel()
+
+	for _, id := range []catalog.Op{catalog.OpAllMatch, catalog.OpHasAll} {
+		o, ok := catalog.OpByID(id)
+		require.True(t, ok)
+		assert.Contains(t, o.Help, "empty list", "%s says what it does with an empty list", id)
+	}
+}
+
 func TestChoiceListsTakeOnlySetOperators(t *testing.T) {
 	t.Parallel()
 
