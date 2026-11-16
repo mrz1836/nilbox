@@ -3,6 +3,7 @@ package spec
 import (
 	"strconv"
 	"strings"
+	"unicode"
 
 	"github.com/mrz1836/nilbox/internal/autopilot/catalog"
 	"github.com/mrz1836/nilbox/internal/item"
@@ -238,7 +239,12 @@ func series(phrases []string, conj string) string {
 func Phrase(c Clause) string {
 	f, ok := catalog.FieldByID(c.Field)
 	if !ok {
-		return string(c.Field) + " " + string(c.Op) + " " + c.Value
+		phrase := string(c.Field) + " " + string(c.Op)
+		if c.Value != "" {
+			phrase += " " + quote(c.Value)
+		}
+
+		return phrase
 	}
 
 	switch f.Type {
@@ -320,7 +326,7 @@ func numberPhrase(f catalog.Field, c Clause) string {
 		catalog.OpGt: be + " over", catalog.OpGte: be + " at least",
 	}[c.Op]
 
-	return f.Words.Noun + " " + verb + " " + c.Value
+	return f.Words.Noun + " " + verb + " " + quote(c.Value)
 }
 
 func durationPhrase(f catalog.Field, c Clause) string {
@@ -332,15 +338,16 @@ func durationPhrase(f catalog.Field, c Clause) string {
 	return f.Words.Noun + than + lengthWords(c.Value)
 }
 
-// lengthWords says a length such as "14d" in words: "14 days".
+// lengthWords says a length such as "14d" in words: "14 days". A length it can't read is
+// written as quote writes it.
 func lengthWords(s string) string {
 	if len(s) < 2 {
-		return s
+		return quote(s)
 	}
 
 	n, err := strconv.Atoi(s[:len(s)-1])
 	if err != nil {
-		return s
+		return quote(s)
 	}
 
 	switch s[len(s)-1] {
@@ -351,16 +358,17 @@ func lengthWords(s string) string {
 	case 'd':
 		return textutil.Counted(n, "day", "days")
 	default:
-		return s
+		return quote(s)
 	}
 }
 
-// choiceLabels writes each value as its choice's label, when the field has choices.
+// choiceLabels writes each value as its choice's label, when the field has choices, and one
+// that is none of them as quote writes it.
 func choiceLabels(f catalog.Field, values []string) []string {
 	out := make([]string, len(values))
 
 	for i, v := range values {
-		out[i] = v
+		out[i] = quote(v)
 
 		if c, ok := f.Choice(v); ok {
 			out[i] = c.Label
@@ -370,14 +378,37 @@ func choiceLabels(f catalog.Field, values []string) []string {
 	return out
 }
 
-// quote writes a value as the sentence shows it: in quotes when it holds a space, so
-// "help wanted" reads as one value.
+// quote writes a value as the sentence shows it: as it is when it reads as one plain word,
+// and otherwise quoted and escaped as Go quotes a string (strconv.Quote), so "help wanted"
+// reads as one value, a value's own quote or backslash is escaped and can never unbalance
+// the sentence's quotes, and a character that doesn't print, a newline or a bidirectional
+// mark, shows as its escape rather than hiding in the sentence or turning it around.
 func quote(s string) string {
-	if strings.ContainsAny(s, " \t") {
-		return `"` + s + `"`
+	if s != "" && !strings.ContainsFunc(s, needsQuotes) {
+		return s
 	}
 
-	return s
+	return strconv.Quote(s)
+}
+
+// needsQuotes reports a character a value can't show bare in the sentence: a space of any
+// kind, a quote, a backslash, or one that doesn't print.
+func needsQuotes(r rune) bool {
+	return r == '"' || r == '\\' || unicode.IsSpace(r) || !strconv.IsPrint(r)
+}
+
+// qualifiers writes the search's hand-typed qualifiers as the sentence shows them: as
+// typed while their quotes pair up and they hold no backslash and nothing that doesn't
+// print, and otherwise quoted whole, as quote does, so not even qualifiers no search
+// takes can unbalance the sentence's quotes.
+func qualifiers(more string) string {
+	escaped := func(r rune) bool { return r == '\\' || !strconv.IsPrint(r) }
+
+	if strings.Count(more, `"`)%2 == 0 && !strings.ContainsFunc(more, escaped) {
+		return more
+	}
+
+	return strconv.Quote(more)
 }
 
 // quoted writes each value as quote does.

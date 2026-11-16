@@ -8,7 +8,10 @@
 //   - it is scoped: it names a user, an org, or a repository, or asks for something of
 //     the signed-in user's (an @me qualifier), so a routine can never scan all of GitHub;
 //   - each value is checked, and a label is quoted, so no value can smuggle in another
-//     qualifier ("bug author:x" stays one label);
+//     qualifier ("bug author:x" stays one label): GitHub's search has no escape for a
+//     quote inside quotes, so no value may hold a quote, a backslash, or a control
+//     character, build refuses a query that would carry one whatever its field, and the
+//     writer itself never writes a quote or a backslash in a value;
 //   - it is at most 256 characters, GitHub's cap; a longer one is refused, with the hint
 //     to split it in two;
 //   - "your account" (@me in Where) becomes user:<login> when the query is built, so a
@@ -243,14 +246,22 @@ type token struct {
 
 	// quote writes every value in quotes, as a label is.
 	quote bool
+
+	// field is the search's field the values came from, as a problem names it:
+	// "labels", "where[0]", "more"; "" for the search's own qualifiers.
+	field string
 }
 
 // String writes the token as GitHub reads it: a value holding a space of any kind,
-// Unicode's included, is quoted, so it can never split into a second qualifier.
+// Unicode's included, is quoted, so it can never split into a second qualifier. A value
+// is written without its quotes and backslashes (quoteless), so none can end its quotes
+// early, whoever calls String; build refuses a token holding one (check) before the
+// query is written, so no query is ever sent with a value changed this way.
 func (t token) String() string {
 	values := make([]string, len(t.values))
 
 	for i, v := range t.values {
+		v = quoteless(v)
 		if t.quote || strings.ContainsFunc(v, unicode.IsSpace) {
 			v = `"` + v + `"`
 		}
@@ -264,6 +275,20 @@ func (t token) String() string {
 	}
 
 	return prefix + t.q + ":" + strings.Join(values, ",")
+}
+
+// check returns why one of the token's values can't be written as itself, or nil. Every
+// field's own checks refuse such a value before its token is added; build checks each
+// token again before it writes the query, so a check a field missed still never lets one
+// through.
+func (t token) check() error {
+	for _, v := range t.values {
+		if err := checkValue(v); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 // builder collects a query's tokens and its problems.
@@ -282,10 +307,16 @@ func (b *builder) fail(field string, err error) {
 	b.problems = append(b.problems, &FieldError{Field: field, Err: err})
 }
 
-// text writes the query.
+// text writes the query, recording a problem for each token holding a value no search can
+// hold (token.check), so build never returns a query that carries one.
 func (b *builder) text() string {
 	parts := make([]string, len(b.tokens))
+
 	for i, t := range b.tokens {
+		if err := t.check(); err != nil {
+			b.fail(t.field, err)
+		}
+
 		parts[i] = t.String()
 	}
 
@@ -325,13 +356,16 @@ func (b *builder) where(where []string, login string) {
 	}
 
 	for i, w := range where {
+		field := fmt.Sprintf("where[%d]", i)
+
 		t, err := whereToken(w, login)
 		if err != nil {
-			b.fail(fmt.Sprintf("where[%d]", i), err)
+			b.fail(field, err)
 
 			continue
 		}
 
+		t.field = field
 		b.add(t)
 	}
 }
@@ -370,14 +404,15 @@ func (b *builder) authors(authors []string) {
 	}
 
 	for i, a := range authors {
+		field := fmt.Sprintf("authors[%d]", i)
+
 		if !validAuthor(a) {
-			b.fail(fmt.Sprintf("authors[%d]", i), fmt.Errorf(`%w: %q; write "@me", a login, or "app/<bot>"`,
-				ErrInvalidValue, a))
+			b.fail(field, fmt.Errorf(`%w: %q; write "@me", a login, or "app/<bot>"`, ErrInvalidValue, a))
 
 			continue
 		}
 
-		b.add(token{q: "author", values: []string{a}})
+		b.add(token{q: "author", values: []string{a}, field: field})
 	}
 }
 
@@ -410,11 +445,11 @@ func (b *builder) involving(involving []Involving, kind item.Kind) {
 // -label:"a","b" as neither, while label:a label:b would ask for both.
 func (b *builder) labels(labels, notLabels []string) {
 	if fits(b, "labels", labels) && b.checkLabels("labels", labels) && len(labels) > 0 {
-		b.add(token{q: "label", values: labels, quote: true})
+		b.add(token{q: "label", values: labels, quote: true, field: "labels"})
 	}
 
 	if fits(b, "notLabels", notLabels) && b.checkLabels("notLabels", notLabels) && len(notLabels) > 0 {
-		b.add(token{neg: true, q: "label", values: notLabels, quote: true})
+		b.add(token{neg: true, q: "label", values: notLabels, quote: true, field: "notLabels"})
 	}
 }
 
@@ -444,15 +479,23 @@ func (b *builder) branches(base, headPrefix string, kind item.Kind) {
 	}{
 		{field: "base", q: "base", value: base}, {field: "headPrefix", q: "head", value: headPrefix, quote: true},
 	} {
-		switch {
-		case br.value == "":
-		case kind == item.KindIssue:
-			b.fail(br.field, ErrPullRequestsOnly)
-		case !validBranch(br.value):
-			b.fail(br.field, fmt.Errorf("%w: %q isn't a branch name", ErrInvalidValue, br.value))
-		default:
-			b.add(token{q: br.q, values: []string{br.value}, quote: br.quote})
+		if br.value == "" {
+			continue
 		}
+
+		if kind == item.KindIssue {
+			b.fail(br.field, ErrPullRequestsOnly)
+
+			continue
+		}
+
+		if err := checkBranch(br.value); err != nil {
+			b.fail(br.field, err)
+
+			continue
+		}
+
+		b.add(token{q: br.q, values: []string{br.value}, quote: br.quote, field: br.field})
 	}
 }
 

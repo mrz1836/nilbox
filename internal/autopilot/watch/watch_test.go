@@ -376,6 +376,9 @@ func FuzzBuild(f *testing.F) {
 	f.Add("pr", "app/dependabot", watch.Me, "bug", "wontfix", "main", "dependabot/", "language:go", login)
 	f.Add("issue", watch.Me, "repo:acme-org/api", `a"b`, "", "", "", `label:"x`, "")
 	f.Add("", "", "", "", "", "a b", "", "is:closed", login)
+	f.Add("pr", `x" repo:other/repo "`, `org:acme-org" repo:other/repo "`, `x" repo:other/repo "`, `a\`, `main"`,
+		"deps\uff02", `label:"x\" repo:other/repo`, login)
+	f.Add("pr", "", acmeOrg, "bug\u00a0author:x", "a\u2028b", "main\u3000x", "deps/\n", "label:\"a\u00a0b\"", login)
 
 	f.Fuzz(func(t *testing.T, kind, author, where, label, notLabel, base, head, more, account string) {
 		s := watch.Search{
