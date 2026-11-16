@@ -120,6 +120,11 @@ func TestLinkCloneRefuses(t *testing.T) {
 	h.git.setRemotes(filepath.Join(h.home, "no-remote"), "")
 	makeRepoDir(t, filepath.Join(h.home, "fork"))
 	h.git.setRemotes(filepath.Join(h.home, "fork"), "remote.mine.url https://github.com/octo-user/missing-repo.git\n")
+	makeRepoDir(t, filepath.Join(h.home, "dashed"))
+	h.git.setRemotes(filepath.Join(h.home, "dashed"), "remote.-x.url https://github.com/acme-org/missing-repo.git\n")
+	makeRepoDir(t, filepath.Join(h.home, "dashed-fork"))
+	h.git.setRemotes(filepath.Join(h.home, "dashed-fork"), "remote.-a.url https://github.com/octo-user/other.git\n"+
+		"remote.mine.url https://github.com/octo-user/missing-repo.git\n")
 	require.NoError(t, os.MkdirAll(filepath.Join(h.home, "plain"), 0o700))
 	require.NoError(t, os.MkdirAll(filepath.Join(h.home, ".hidden"), 0o700))
 
@@ -132,6 +137,15 @@ func TestLinkCloneRefuses(t *testing.T) {
 		{
 			dir:  "~/fork",
 			want: "~/fork isn't a clone of acme-org/missing-repo; its remote mine is octo-user/missing-repo.",
+		},
+		{
+			dir: "~/dashed",
+			want: "~/dashed isn't a clone of acme-org/missing-repo; its remote for it is named \"-x\", which git would " +
+				"read as an option: rename the remote.",
+		},
+		{
+			dir:  "~/dashed-fork",
+			want: "~/dashed-fork isn't a clone of acme-org/missing-repo; its remote mine is octo-user/missing-repo.",
 		},
 		{dir: "~/.hidden", want: "~/.hidden is hidden, and the app never looks in hidden folders."},
 		{dir: "relative", want: "Choose the clone's folder."},

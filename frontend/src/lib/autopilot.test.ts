@@ -282,10 +282,26 @@ describe('filters and chunks', () => {
 
 describe('matchingWords', () => {
   it('asks the question about what matches now', () => {
-    expect(matchingWords({ count: 3, pullRequests: 3, issues: 0, unknown: 0 })).toBe('3 pull requests match right now.')
-    expect(matchingWords({ count: 1, pullRequests: 0, issues: 1, unknown: 0 })).toBe('1 issue matches right now.')
-    expect(matchingWords({ count: 3, pullRequests: 2, issues: 1, unknown: 1 })).toBe(
+    expect(matchingWords({ count: 3, pullRequests: 3, issues: 0, unknown: 0, incomplete: false })).toBe(
+      '3 pull requests match right now.',
+    )
+    expect(matchingWords({ count: 1, pullRequests: 0, issues: 1, unknown: 0, incomplete: false })).toBe(
+      '1 issue matches right now.',
+    )
+    expect(matchingWords({ count: 3, pullRequests: 2, issues: 1, unknown: 1, incomplete: false })).toBe(
       '2 pull requests and 1 issue match right now.',
+    )
+  })
+
+  it('asks too when none can be told yet, or not everything could be read', () => {
+    expect(matchingWords({ count: 0, pullRequests: 0, issues: 0, unknown: 2, incomplete: false })).toBe(
+      '2 items may match right now.',
+    )
+    expect(matchingWords({ count: 0, pullRequests: 0, issues: 0, unknown: 0, incomplete: true })).toBe(
+      'Not everything it watches could be read right now.',
+    )
+    expect(matchingWords({ count: 1, pullRequests: 1, issues: 0, unknown: 0, incomplete: true })).toBe(
+      '1 pull request matches right now.',
     )
   })
 })

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strings"
 
 	"github.com/mrz1836/nilbox/internal/localrepos"
 	"github.com/mrz1836/nilbox/internal/paths"
@@ -94,16 +95,19 @@ func (s *Service) checkLinked(ctx context.Context, dir string, name repo.Name) (
 	}
 
 	if _, ok := local.RemoteFor(name); !ok {
-		return "", uierr.New(fmt.Sprintf("%s isn't a clone of %s; %s", shown, name, remotesWords(local)),
+		return "", uierr.New(fmt.Sprintf("%s isn't a clone of %s; %s", shown, name, remotesWords(local, name)),
 			fmt.Errorf("%w: %s", ErrNotTheClone, expanded))
 	}
 
 	return expanded, nil
 }
 
-// remotesWords says what a clone that isn't the repository's points at, ending a sentence:
-// "its origin is acme-org/other.", or "it has no remote on GitHub."
-func remotesWords(local localrepos.LocalRepo) string {
+// remotesWords says what a clone that isn't name's points at, ending a sentence: "its
+// origin is acme-org/other.", "its remote mine is octo-user/other.", or "it has no remote
+// on GitHub." A remote whose name starts with "-" is one RemoteFor never takes, since git
+// would read the name as an option: one that points at name says so, and any other is
+// left out.
+func remotesWords(local localrepos.LocalRepo, name repo.Name) string {
 	if origin, ok := local.Remotes["origin"]; ok {
 		return "its origin is " + origin.String() + "."
 	}
@@ -113,11 +117,20 @@ func remotesWords(local localrepos.LocalRepo) string {
 		names = append(names, remote)
 	}
 
+	slices.Sort(names)
+
+	for _, remote := range names {
+		if strings.HasPrefix(remote, "-") && local.Remotes[remote].Key() == name.Key() {
+			return fmt.Sprintf("its remote for it is named %q, which git would read as an option: rename the remote.",
+				remote)
+		}
+	}
+
+	names = slices.DeleteFunc(names, func(remote string) bool { return strings.HasPrefix(remote, "-") })
+
 	if len(names) == 0 {
 		return "it has no remote on GitHub."
 	}
-
-	slices.Sort(names)
 
 	return "its remote " + names[0] + " is " + local.Remotes[names[0]].String() + "."
 }

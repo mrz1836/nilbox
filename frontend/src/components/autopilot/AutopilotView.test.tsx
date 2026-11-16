@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor, within } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { Activity, useState } from 'react'
 import { beforeAll, describe, expect, it, vi } from 'vitest'
@@ -173,7 +173,7 @@ describe('the Autopilot tab', () => {
 
   it('switches a routine off at once, and on only after asking about what it matches now', async () => {
     platform.listRoutines.mockResolvedValue(routines())
-    platform.routineMatching.mockResolvedValue({ count: 3, pullRequests: 3, issues: 0, unknown: 0 })
+    platform.routineMatching.mockResolvedValue({ count: 3, pullRequests: 3, issues: 0, unknown: 0, incomplete: false })
     renderTab()
 
     const list = await routineList()
@@ -202,7 +202,7 @@ describe('the Autopilot tab', () => {
 
   it('runs on what matches now when asked to, asks nothing when nothing does, and Escape changes nothing', async () => {
     platform.listRoutines.mockResolvedValue(routines())
-    platform.routineMatching.mockResolvedValue({ count: 1, pullRequests: 0, issues: 1, unknown: 0 })
+    platform.routineMatching.mockResolvedValue({ count: 1, pullRequests: 0, issues: 1, unknown: 0, incomplete: false })
     renderTab()
 
     const list = await routineList()
@@ -220,7 +220,7 @@ describe('the Autopilot tab', () => {
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
     expect(platform.setRoutineEnabled).not.toHaveBeenCalled()
 
-    platform.routineMatching.mockResolvedValue({ count: 0, pullRequests: 0, issues: 0, unknown: 0 })
+    platform.routineMatching.mockResolvedValue({ count: 0, pullRequests: 0, issues: 0, unknown: 0, incomplete: false })
     await userEvent.click(list.getByRole('switch', { name: 'Investigate new bugs' }))
     await waitFor(() => {
       expect(platform.setRoutineEnabled).toHaveBeenLastCalledWith(4, true, 'run')
@@ -228,9 +228,38 @@ describe('the Autopilot tab', () => {
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   })
 
+  it('asks, too, when what matches can’t be told yet or not everything could be read', async () => {
+    platform.listRoutines.mockResolvedValue(routines())
+    platform.routineMatching.mockResolvedValue({ count: 0, pullRequests: 0, issues: 0, unknown: 2, incomplete: false })
+    renderTab()
+
+    const list = await routineList()
+
+    await userEvent.click(list.getByRole('switch', { name: 'Investigate new bugs' }))
+
+    const unknown = await screen.findByRole('dialog', { name: '2 items may match right now.' })
+
+    expect(unknown).toHaveTextContent('2 items can’t be told yet')
+    expect(platform.setRoutineEnabled).not.toHaveBeenCalled()
+    await userEvent.keyboard('{Escape}')
+
+    platform.routineMatching.mockResolvedValue({ count: 0, pullRequests: 0, issues: 0, unknown: 0, incomplete: true })
+    await userEvent.click(list.getByRole('switch', { name: 'Investigate new bugs' }))
+
+    const unread = await screen.findByRole('dialog', { name: 'Not everything it watches could be read right now.' })
+
+    expect(unread).toHaveTextContent('it records what it would do, in Dry run: for whatever matches now too')
+    expect(unread).toHaveTextContent('more may match than this says')
+    expect(platform.setRoutineEnabled).not.toHaveBeenCalled()
+    await userEvent.click(within(unread).getByRole('button', { name: 'Only what changes from now on' }))
+    await waitFor(() => {
+      expect(platform.setRoutineEnabled).toHaveBeenLastCalledWith(4, true, 'fromNow')
+    })
+  })
+
   it('shows a refusal in its own words', async () => {
     platform.listRoutines.mockResolvedValue(routines())
-    platform.routineMatching.mockResolvedValue({ count: 2, pullRequests: 2, issues: 0, unknown: 0 })
+    platform.routineMatching.mockResolvedValue({ count: 2, pullRequests: 2, issues: 0, unknown: 0, incomplete: false })
     platform.setRoutineEnabled.mockRejectedValue(
       new Error(`Autopilot is running in another copy of ${brand.name}; make this change there.`),
     )
@@ -274,7 +303,7 @@ describe('the Autopilot tab', () => {
 
   it('asks before an enabled routine leaves Dry run, and keeps another account’s mode where it is', async () => {
     platform.listRoutines.mockResolvedValue([routine({ mode: 'dryRun' }), routines()[2] ?? routine()])
-    platform.routineMatching.mockResolvedValue({ count: 2, pullRequests: 2, issues: 0, unknown: 0 })
+    platform.routineMatching.mockResolvedValue({ count: 2, pullRequests: 2, issues: 0, unknown: 0, incomplete: false })
     renderTab()
 
     const list = await routineList()
@@ -875,7 +904,7 @@ describe('a routine', () => {
 
   it('takes a routine that is on out of Dry run by its mode, after asking', async () => {
     platform.listRoutines.mockResolvedValue([routine({ mode: 'dryRun' })])
-    platform.routineMatching.mockResolvedValue({ count: 4, pullRequests: 4, issues: 0, unknown: 0 })
+    platform.routineMatching.mockResolvedValue({ count: 4, pullRequests: 4, issues: 0, unknown: 0, incomplete: false })
     renderTab()
 
     await userEvent.click((await routineList()).getByRole('button', { name: /^Snooze passing bot PRs/ }))
@@ -1018,7 +1047,7 @@ describe('the builder in the tab', () => {
   it('saves a change to what an enabled routine watches only after asking about what it matches now', async () => {
     const user = userEvent.setup()
     platform.listRoutines.mockResolvedValue(routines())
-    platform.routineMatching.mockResolvedValue({ count: 3, pullRequests: 3, issues: 0, unknown: 1 })
+    platform.routineMatching.mockResolvedValue({ count: 3, pullRequests: 3, issues: 0, unknown: 1, incomplete: false })
     renderTab()
 
     await user.click((await routineList()).getByRole('button', { name: /^Snooze passing bot PRs/ }))
@@ -1094,7 +1123,9 @@ describe('the builder in the tab', () => {
     renderTab()
 
     await user.click((await routineList()).getByRole('button', { name: /^Snooze passing bot PRs/ }))
-    expect(await screen.findByText('Agent steps run in Dry run until this Mac can run agents.')).toBeInTheDocument()
+    expect(
+      await screen.findByText(`Agent steps run in Dry run until this version of ${brand.name} can run agents.`),
+    ).toBeInTheDocument()
 
     await user.type(screen.getByRole('textbox', { name: 'Name' }), '!')
     await user.click(screen.getByRole('button', { name: 'Discard' }))
@@ -1102,5 +1133,103 @@ describe('the builder in the tab', () => {
 
     await user.click(screen.getByRole('button', { name: 'Edit in Prompts' }))
     expect(onEditPrompts).toHaveBeenCalledOnce()
+  })
+
+  it('keeps a new routine’s draft when New routine is clicked again', async () => {
+    const user = userEvent.setup()
+    platform.listRoutines.mockResolvedValue(routines())
+    renderTab()
+
+    await (await routineList()).findByRole('button', { name: /^Snooze passing bot PRs/ })
+    await user.click(screen.getByRole('button', { name: 'New routine' }))
+    await user.type(screen.getByRole('textbox', { name: 'Name' }), ' for bugs')
+    await user.click(screen.getByRole('button', { name: 'New routine' }))
+
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    expect(screen.getByRole('textbox', { name: 'Name' })).toHaveValue('New routine for bugs')
+  })
+
+  it('shows each routine’s own test, never another’s', async () => {
+    const user = userEvent.setup()
+    platform.listRoutines.mockResolvedValue(routines())
+    renderTab()
+
+    const list = await routineList()
+
+    await user.click(list.getByRole('button', { name: /^Snooze passing bot PRs/ }))
+
+    const test = await screen.findByRole('button', { name: /^Test/ })
+
+    await waitFor(() => {
+      expect(test).toBeEnabled()
+    })
+    await user.click(test)
+    expect(await screen.findByText(/matches now$/)).toBeInTheDocument()
+
+    await user.click(list.getByRole('button', { name: /^Investigate new bugs/ }))
+    expect(await screen.findByRole('region', { name: 'Investigate new bugs' })).toBeInTheDocument()
+    expect(await screen.findByText(/^Not tried yet/)).toBeInTheDocument()
+    expect(screen.queryByText(/matches now$/)).not.toBeInTheDocument()
+  })
+
+  it('says why a saved routine’s change wasn’t saved in its builder, as a new one’s, not in a toast', async () => {
+    const user = userEvent.setup()
+    platform.listRoutines.mockResolvedValue(routines())
+    platform.saveRoutine.mockRejectedValue(new Error('Another routine has that name.'))
+    renderTab()
+
+    await user.click((await routineList()).getByRole('button', { name: /^Snooze passing bot PRs/ }))
+    await user.type(await screen.findByRole('textbox', { name: 'Name' }), ' now')
+
+    const save = screen.getByRole('button', { name: 'Save' })
+
+    await waitFor(() => {
+      expect(save).toBeEnabled()
+    })
+    await user.click(save)
+
+    const pane = screen.getByRole('region', { name: 'Snooze passing bot PRs' })
+
+    expect(await within(pane).findByRole('alert')).toHaveTextContent('Another routine has that name.')
+    expect(screen.getAllByText('Another routine has that name.')).toHaveLength(1)
+
+    await user.type(screen.getByRole('textbox', { name: 'Name' }), '!')
+    expect(within(pane).queryByRole('alert')).not.toBeInTheDocument()
+  })
+
+  it('saves nothing more with ⌘S while the question a save asked is open', async () => {
+    const user = userEvent.setup()
+    platform.listRoutines.mockResolvedValue(routines())
+    platform.routineMatching.mockResolvedValue({ count: 3, pullRequests: 3, issues: 0, unknown: 0, incomplete: false })
+    renderTab()
+
+    await user.click((await routineList()).getByRole('button', { name: /^Snooze passing bot PRs/ }))
+    await user.selectOptions(await screen.findByRole('combobox', { name: 'Trigger' }), 'appears')
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Save' })).toBeEnabled()
+    })
+    await user.click(screen.getByRole('button', { name: 'Save' }))
+    await screen.findByRole('dialog', { name: '3 pull requests match right now.' })
+
+    fireEvent.keyDown(document.body, { key: 's', metaKey: true })
+    expect(platform.routineMatching).toHaveBeenCalledOnce()
+    expect(platform.saveRoutine).not.toHaveBeenCalled()
+  })
+
+  it('asks before a save that changes what the routine fires once per', async () => {
+    const user = userEvent.setup()
+    platform.listRoutines.mockResolvedValue(routines())
+    platform.routineMatching.mockResolvedValue({ count: 2, pullRequests: 2, issues: 0, unknown: 0, incomplete: false })
+    renderTab()
+
+    await user.click((await routineList()).getByRole('button', { name: /^Snooze passing bot PRs/ }))
+    await user.selectOptions(await screen.findByRole('combobox', { name: 'Once per' }), 'day')
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Save' })).toBeEnabled()
+    })
+    await user.click(screen.getByRole('button', { name: 'Save' }))
+
+    expect(await screen.findByRole('dialog', { name: '2 pull requests match right now.' })).toBeInTheDocument()
+    expect(platform.saveRoutine).not.toHaveBeenCalled()
   })
 })

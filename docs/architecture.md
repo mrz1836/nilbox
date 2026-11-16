@@ -1040,7 +1040,10 @@ builder renders what it lists. Its parts:
   agent, verify, merging, or review, whether it runs at once (`Local`) or follows the
   routine's mode (`AsksFirst`), and `Offered`, false until its dispatcher is built);
 - the Only if outcomes, the tools presets (`MayPush`, `ReadOnly`), the agent step's
-  settings, the limits, and their ranges.
+  settings (a budget in tokens among them, `budgetTokens`), the other steps' whole-number
+  settings (`StepSettings`: `snooze.days`, `waitForChecks.settleMinutes`, and
+  `waitForChecks.giveUpHours`), the limits, and their ranges, which the builder reads its
+  bounds and defaults from rather than keeping its own.
 
 `GitHubActions` lists no entry until the GitHub dispatcher is built; the spec's format
 already has the four actions (rebase, updateBranch, reply, labels). The catalog has no entry
@@ -1205,8 +1208,11 @@ index would refuse. Its queries are in
   case), a review reply where an agent's prompt goes or the other way about, or a prompt that
   doesn't apply to every kind of item the routine acts on (its watch's kinds that its trigger
   fires for), each at the step's prompt field (`Library`, core's `promptLibrary` over the
-  prompt library); with no library, or one that can't be read (logged), it refuses none, since
-  the engine checks again before a start.
+  prompt library); with no library, or one that can't be read (logged), it refuses none.
+  Nothing checks the prompts again later: not the engine before a start, nor `SetEnabled`,
+  `Duplicate`, a restore, or an import, so a prompt deleted or changed after the save goes
+  unnoticed. That holds while the steps that name a prompt (an agent's, a GitHub reply's) run
+  only in Dry run; the check before a start comes with the build that runs them.
 - `Describe(draft)` reads a draft as the builder edits it, saving nothing and asking GitHub
   nothing: the spec normalized, encoded, and loaded as `Save` does, its problems (the spec's,
   then the prompts'), each with its part and field, the steps this build runs only in Dry run,
@@ -1341,20 +1347,27 @@ cache, `ReadChecks`): the result says so (`LowBudget`), each search it had no an
 why, no check name is read, and the lists' items are still decided. A search that matched
 more than a page warns that only the newest 100 are checked; each item says whether an inbox
 list holds it (`Listed`), and when most don't, each triage step gets a warning (`Warnings`, at
-the step), since triage changes only what the inbox shows. For a saved routine (`d.ID`), each
-item says what the ledger holds of the occurrence it fires for now (`Record`, in the window's
-words: *It already ran on this.*, *Waiting for your OK.*, or that a Dry run recorded it), read
-from `ListRoutineMatchKeys`; a match with no record is one it would run on.
+the step), since triage changes only what the inbox shows; a watch of searches alone gets none,
+since `Describe` warns each such step of it already. For a saved routine (`d.ID`), each item
+says what the ledger holds of the occurrence it fires for now (`Record`, in the window's words:
+*It already ran on this.*, *Waiting for your OK.*, that a Dry run recorded it, or why it closed
+in Activity's own words, *Closed: it merged.*, from `reasonWords`, which a test holds to the
+window's `reasonChips`), read from `ListRoutineMatchKeys`; a match with no record is one it
+would run on.
 
 **The window's builder** (`frontend/src/components/autopilot/builder`) renders from
 `Catalog`, its pickers fed by `Suggest`, and holds the draft in the Autopilot tab, which stays
 mounted while another tab shows, so a draft survives switching tabs. It calls `Describe` once
 editing rests (300 ms), and `Test` only on the user's click, once the draft has no problem,
 never as a routine opens or as it is edited, since a test's searches cost points; a test of an
-earlier watch, trigger, or conditions stays shown, marked as such. `Test`'s minute-long cache
-keeps a second test of the same searches from costing points again.
+earlier watch, trigger, conditions, or Once per stays shown, marked as such, its warnings
+shown only while the steps are as tested (they are by step), and its cost line, once the
+searches changed, said to be the last test's. `Test`'s minute-long cache keeps a second test
+of the same searches from costing points again.
 Saving a routine that is on goes through the same question as its switch (`useRoutineChange`'s
-`save`): `Matching` with the draft, nothing asked at zero, and `Save` with the answer as its
+`save`): `Matching` with the draft, nothing asked only when nothing matches, nothing waits to
+be told, and everything was read (`Matching.Incomplete`: a search with no answer or past a
+page, a budget too low, or more items than a test tries), and `Save` with the answer as its
 `Current`. The window's catalog fixture (`frontend/src/test/autopilotCatalog.json`) is the
 catalog itself, written and checked by `TestTheWindowsCatalogFixtureIsTheCatalog` (`-update`
 rewrites it).
@@ -1531,13 +1544,15 @@ and logged, and the loop holds off cycles for a minute; commands are still answe
   Approve.
 - **Apply to current matches:** `SetEnabled`, `SetMode`, and `Save` (`Draft.Current`) take what
   to do with what the routine matches now and has no record of (`Matching` counts them, as
-  `Test` reads them): `run` them too, or `fromNow`, applied as one command with the change, so
-  no cycle runs between; the engine then records those matches as `baseline` once the routine's
-  searches were read since, and nothing runs on them. `fromNow` is refused, with why, in a copy
-  that doesn't run the engine (it hasn't started yet, or another copy holds it), rather than
-  dropped, but only for a change the question applies to (switching on, leaving Dry run, a save
-  that changes the Watch, When, or If of a routine that is on, each told before the change is
-  made); any other change, and `run`, is made there at once.
+  `Test` reads them, and says when the count may be short, `Incomplete`): `run` them too, or
+  `fromNow`, applied as one command with the change, so no cycle runs between; the engine then
+  records those matches as `baseline` once the routine's searches were read since, and nothing
+  runs on them. `fromNow` is refused, with why, in a copy that doesn't run the engine (it hasn't
+  started yet, or another copy holds it), rather than dropped, but only for a change the
+  question applies to (switching on, leaving Dry run, a save that changes the Watch, When, If,
+  or Once per of a routine that is on, `watchChanged`, since Once per decides each match's
+  fire key, each told before the change is made); any other change, and `run`, is made there at
+  once.
 - **Problems** (`upkeep.go`): a search GitHub fails, and an enabled routine that won't load, are
   recorded once each, keyed by routine and problem, with when they began, in the engine's state
   and `Engine().Problems`, and told through a `ProblemSink` once (core registers
@@ -1835,26 +1850,39 @@ The window side lives in `frontend/src/components/autopilot/` (the tab itself,
   included, so the sheet offers what fits the item as it is); else its page on GitHub.
 - **`useRoutineChange`** switches a routine, changes its mode, and saves the builder's draft
   over it: switching one on, taking one that is on out of Dry run, or saving a change to what
-  one that is on watches, fires on, or checks (`watchChanged`) first asks `Matching` (with the
-  draft, for a save), and with any match asks the question in a `ConfirmDialog` whose two
+  one that is on watches, fires on, checks, or fires once per (`watchChanged`) first asks
+  `Matching` (with the draft, for a save), and with any match, any it can't tell yet, or a
+  count that may be short (`incomplete`) asks the question in a `ConfirmDialog` whose two
   buttons are the answers (`SetEnabled`, `SetMode`, or `Save` with `current`, `run` or
-  `fromNow`) and whose `onDismiss` makes Escape neither.
+  `fromNow`) and whose `onDismiss` makes Escape neither. A request may name where its failure
+  goes (the builder's footer, for a save), else it is a toast; `asking` says the question is
+  open.
 - **The builder** (`builder/`) is the routine itself: `RoutineBuilder` lays out the name, a new
   routine's mode, the sentence (`Describe`'s, the last one that read kept while the draft has
-  problems), the blocks (`WatchBlock`, `WhenBlock`, `IfBlock`, `ThenBlock` with
-  `AgentStepBlock`, `LimitsBlock`), `TestPanel`, and the footer with Save (⌘S, listening only
-  while the tab shows) and Discard. Each block renders from the catalog and shows the
-  problems and warnings at its own part and field (`problemsAt`); `TokenField` is the
-  keyboard-operable token list with suggestions, a combobox over a listbox, as `SearchField`
-  is. `lib/routineBuilder.ts` holds its pure half: a draft and its comparison (`canonical`,
-  which leaves out what the spec leaves out when stored), what fits where (`addable`,
-  `onlyIfChoices`, from the catalog's ordering rules, as `Validate` holds them), the fields
-  and operators a condition can take, and the words (`dryRunWhy`, `costLine`,
-  `testHeadline`). `AgentStepBlock` reuses `LaunchOverrideFields` for the model and the effort,
-  showing one agent's fields alone, no extra flags, and, in the background, plan mode and the
-  worktree as a background run has them. `AutopilotView` holds the one draft (`Editing`, keyed
-  by the routine or `NEW_ROUTINE`), asks before leaving unsaved changes, and shows a routine a
-  save just made until the list read again holds it.
+  problems; the last reading's problems and warnings, and Save, stand until the next one
+  arrives), the blocks (`WatchBlock`, `WhenBlock`, `IfBlock`, `ThenBlock` with
+  `AgentStepBlock`, `LimitsBlock`), `TestPanel`, and the footer with Save (⌘S, `isSaveKey`,
+  listening only while the tab shows, and never while a dialog or a sheet is open,
+  `anyModalOpen`) and Discard. Each block renders from the catalog, its numbers' bounds and
+  defaults too (`settingRange` over `agentSettings`, `stepSettings`, and `limits`), and shows
+  the problems and warnings at its own part and field (`problemsAt`), invalid controls
+  described by them; any no block draws, as an imported spec can hold, show at the top
+  (`unshown`). A test's findings are keyed by what decides them (`testedKeys`): its matches by
+  the watch, trigger, conditions, and Once per; its searches' notes and cost by the watch; and
+  its warnings, which are by step, by the steps too. `TokenField` is the keyboard-operable
+  token list with suggestions, a combobox over a listbox, as `SearchField` is, leaving an input
+  method's Enter and comma to it. `lib/routineBuilder.ts` holds its pure half: a draft and its
+  comparison (`canonical`, which leaves out what the spec leaves out when stored), what fits
+  where (`addable`, `onlyIfChoices`, from the catalog's ordering rules, as `Validate` holds
+  them; `withKind`, which drops what only a pull request has from a search of issues;
+  `newTrigger`, which stores the schedule On a schedule shows), the fields and operators a
+  condition can take, and the words (`dryRunWhy`, `costLine`, `testHeadline`).
+  `AgentStepBlock` reuses `LaunchOverrideFields` for the model and the effort, showing one
+  agent's fields alone, no extra flags, and, in the background, plan mode and the worktree as
+  a background run has them. `AutopilotView` holds the one draft (`Editing`, keyed by the
+  routine or `NEW_ROUTINE`; **New routine** again keeps it), keys each routine's builder and
+  pane by the routine so no state crosses over, asks before leaving unsaved changes, and shows
+  a routine a save just made until the list read again holds it.
 - **Requests.** App's `openAutopilot(target)` numbers an `AutopilotRequest` and shows the tab,
   for a notification, a menu bar row, or a chip's **Show in Activity** (offered only for a
   match Activity lists, `inActivity`). A target that names a match shows Activity

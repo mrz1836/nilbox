@@ -3,11 +3,12 @@ import { useId, useState } from 'react'
 import {
   authorLabel,
   authorValue,
-  omit,
+  involvingFor,
   placeLabel,
   placeValue,
   problemsAt,
   problemsExactly,
+  withKind,
 } from '../../../lib/routineBuilder'
 import type {
   AutopilotInvolving,
@@ -222,7 +223,12 @@ function SearchSource({
 }: SourceProps<AutopilotSearch> & { search: AutopilotSearch }) {
   const id = useId()
   const at = `sources[${String(index)}].search`
-  const problems = problemsAt(kit.problems, 'watch', at)
+  // The search's problems, and the source's own, as one that is a search and lists at once
+  // (only an imported spec holds one) has.
+  const problems = [
+    ...problemsExactly(kit.problems, 'watch', `sources[${String(index)}]`),
+    ...problemsAt(kit.problems, 'watch', at),
+  ]
   // More ▸ starts open on a search that sets something under it.
   const more =
     (search.involving?.length ?? 0) > 0 ||
@@ -265,7 +271,7 @@ function SearchSource({
           onChange={(e) => {
             const kind = e.target.value
 
-            onChange(kind === 'pr' || kind === 'issue' ? { ...search, kind } : omit(search, 'kind'))
+            onChange(withKind(search, kind === 'pr' || kind === 'issue' ? kind : ''))
           }}
           className={`${fieldClass} col-span-2 justify-self-start py-1`}
         >
@@ -301,6 +307,7 @@ function SearchSource({
           suggestions={places}
           toValue={(t) => placeValue(t, kit.viewer)}
           invalid={whereProblems.length > 0}
+          describedBy={whereProblems.length > 0 ? `${id}-notes` : undefined}
         />
       </div>
       <div className="flex items-center gap-2">
@@ -322,22 +329,25 @@ function SearchSource({
           <span className="text-xs text-muted">Involving you</span>
           <fieldset className="flex flex-wrap gap-x-3 gap-y-1">
             <legend className="sr-only">Involving you</legend>
-            {(Object.keys(involvingLabels) as AutopilotInvolving[]).map((v) => (
-              <label key={v} htmlFor={`${id}-inv-${v}`} className="inline-flex items-center gap-1.5 text-sm">
-                <input
-                  id={`${id}-inv-${v}`}
-                  type="checkbox"
-                  className="checkbox"
-                  checked={search.involving?.includes(v) ?? false}
-                  onChange={(e) => {
-                    const was = search.involving ?? []
+            {(Object.keys(involvingLabels) as AutopilotInvolving[])
+              // An issue can't ask for your review; one held anyway shows, with its problem.
+              .filter((v) => involvingFor(search.kind).includes(v) || search.involving?.includes(v) === true)
+              .map((v) => (
+                <label key={v} htmlFor={`${id}-inv-${v}`} className="inline-flex items-center gap-1.5 text-sm">
+                  <input
+                    id={`${id}-inv-${v}`}
+                    type="checkbox"
+                    className="checkbox"
+                    checked={search.involving?.includes(v) ?? false}
+                    onChange={(e) => {
+                      const was = search.involving ?? []
 
-                    patch({ involving: e.target.checked ? [...was, v] : was.filter((x) => x !== v) })
-                  }}
-                />
-                {involvingLabels[v]}
-              </label>
-            ))}
+                      patch({ involving: e.target.checked ? [...was, v] : was.filter((x) => x !== v) })
+                    }}
+                  />
+                  {involvingLabels[v]}
+                </label>
+              ))}
           </fieldset>
           <span className="text-xs text-muted">Labeled</span>
           <TokenField
@@ -426,7 +436,7 @@ function SearchSource({
           />
         </div>
       )}
-      <Notes problems={problems} />
+      <Notes id={`${id}-notes`} problems={problems} />
     </div>
   )
 }

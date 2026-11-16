@@ -777,8 +777,12 @@ func TestEarlierStarterTextsAreAsShipped(t *testing.T) {
 	t.Parallel()
 
 	shipped := map[string][]string{
-		// The first text, from the build that added the starter.
-		StarterFixDependencySecurity: {"dedd6bd89c91000fe065776b76e828d1acc2587eb9d55c624435b1a4fc9b700d"},
+		// The first text, from the build that added the starter, and the second, which
+		// quoted the branch and said a plain name doesn't start with -, leaving = out.
+		StarterFixDependencySecurity: {
+			"dedd6bd89c91000fe065776b76e828d1acc2587eb9d55c624435b1a4fc9b700d",
+			"8dbdd2caec8ad756463ed0c89fa1c9097fda47285eb80970825b632c412ee1fe",
+		},
 	}
 
 	got := map[string][]string{}

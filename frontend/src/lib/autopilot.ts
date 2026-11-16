@@ -312,8 +312,17 @@ export function routineName(names: ReadonlyMap<number, string>, id: number): str
 }
 
 // matchingWords asks the question as a routine is turned on or leaves Dry run: "3 pull
-// requests match right now."
+// requests match right now."; with none it can tell, "2 items may match right now.", and
+// with nothing at all it could count, that not everything was read.
 export function matchingWords(m: AutopilotMatching): string {
+  if (m.count === 0 && m.unknown > 0) {
+    return `${counted(m.unknown, 'item', 'items')} may match right now.`
+  }
+
+  if (m.count === 0 && m.incomplete) {
+    return 'Not everything it watches could be read right now.'
+  }
+
   const parts = [
     m.pullRequests > 0 ? counted(m.pullRequests, 'pull request', 'pull requests') : '',
     m.issues > 0 ? counted(m.issues, 'issue', 'issues') : '',

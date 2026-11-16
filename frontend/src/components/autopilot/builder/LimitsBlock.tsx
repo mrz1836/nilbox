@@ -1,6 +1,6 @@
 import { useId } from 'react'
 
-import { omit, problemsAt } from '../../../lib/routineBuilder'
+import { omit, problemsAt, settingRange } from '../../../lib/routineBuilder'
 import type { AutopilotLimits } from '../../../platform'
 import { fieldClass } from '../../controls'
 import { Block, Notes, NumberField, Reset, type BuilderKit } from './parts'
@@ -14,19 +14,14 @@ export interface LimitsBlockProps {
   onChange: (limits: AutopilotLimits) => void
 }
 
-// rangeOf is a limit's bounds and default, from the catalog.
-function rangeOf(kit: BuilderKit, id: string, fallback: { min: number; max: number; default: number }) {
-  return kit.catalog.limits.find((l) => l.id === id)?.range ?? fallback
-}
-
 // LimitsBlock is a routine's own Limits: once per what, how many tries on one item, how
 // many runs a day, and the wait between tries; each takes its default until set, and
 // Settings → Autopilot's caps still hold over every routine together.
 export function LimitsBlock({ kit, limits, oncePer, onChange }: LimitsBlockProps) {
   const id = useId()
-  const tries = rangeOf(kit, 'triesPerItem', { min: 1, max: 10, default: 2 })
-  const runs = rangeOf(kit, 'runsPerDay', { min: 1, max: 100, default: 10 })
-  const wait = rangeOf(kit, 'waitMinutes', { min: 0, max: 1440, default: 30 })
+  const tries = settingRange(kit.catalog.limits, 'triesPerItem')
+  const runs = settingRange(kit.catalog.limits, 'runsPerDay')
+  const wait = settingRange(kit.catalog.limits, 'waitMinutes')
   const choices = kit.catalog.limits.find((l) => l.id === 'oncePer')?.choices ?? []
   const number = (key: 'triesPerItem' | 'runsPerDay' | 'waitMinutes') => (n: number | null) => {
     onChange(n === null ? omit(limits, key) : { ...limits, [key]: n })

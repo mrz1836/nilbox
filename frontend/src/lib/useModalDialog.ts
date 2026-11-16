@@ -59,6 +59,12 @@ export function isTopmost(dialog: HTMLDialogElement): boolean {
   return top === dialog
 }
 
+// anyModalOpen reports a modal open over the page, a confirmation or a sheet, whose page
+// a shortcut such as ⌘S must then leave alone.
+export function anyModalOpen(): boolean {
+  return document.querySelector('dialog[open]') !== null
+}
+
 // innerOf is the last of open to have opened inside outer, or undefined for none.
 function innerOf(outer: HTMLDialogElement, open: readonly HTMLDialogElement[]): HTMLDialogElement | undefined {
   return open.findLast((d) => d !== outer && outer.contains(d))

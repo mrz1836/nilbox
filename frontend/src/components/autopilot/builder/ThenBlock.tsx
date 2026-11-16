@@ -9,6 +9,7 @@ import {
   outcomeLabel,
   problemsAt,
   problemsExactly,
+  settingRange,
   stepKindOf,
 } from '../../../lib/routineBuilder'
 import type { AutopilotOutcome, AutopilotProblem, AutopilotSpec, AutopilotStep, ItemKind } from '../../../platform'
@@ -121,7 +122,9 @@ function StepRow({ kit, agentKit, steps, index, kinds, step, onChange, onMove, o
         <span className="w-4 text-right text-xs font-semibold text-muted tabular-nums">{n}</span>
         <span className="text-sm font-medium">{label}</span>
         {info !== undefined && !info.offered && <span className="text-xs text-muted">· Dry run for now</span>}
-        {index > 0 && (shownOnly.length > 0 || onlyIf !== '') && (
+        {/* The first step has nothing before it to run only if, but one that says so anyway,
+            as an imported or reordered one can, shows it, so its problem shows where it is. */}
+        {((index > 0 && shownOnly.length > 0) || onlyIf !== '') && (
           <>
             <label htmlFor={`${id}-only`} className="sr-only">
               {`Step ${n} runs`}
@@ -235,8 +238,11 @@ function StepSettings({ kit, step, onChange, id, n }: StepSettingsProps) {
     )
   }
 
+  const range = (setting: string) => settingRange(kit.catalog.stepSettings, setting)
+
   if (step.snooze !== undefined && step.snooze !== null) {
     const snooze = step.snooze
+    const days = range('snooze.days')
 
     return (
       <span className="inline-flex items-center gap-1.5 text-xs text-muted">
@@ -245,9 +251,9 @@ function StepSettings({ kit, step, onChange, id, n }: StepSettingsProps) {
           id={`${id}-days`}
           label={`Step ${n}: days to snooze`}
           value={snooze.days}
-          fallback={3}
-          min={1}
-          max={365}
+          fallback={days.default}
+          min={days.min}
+          max={days.max}
           unit="days"
           onChange={(days) => {
             onChange({ ...step, snooze: days === null ? omit(snooze, 'days') : { ...snooze, days } })
@@ -259,6 +265,8 @@ function StepSettings({ kit, step, onChange, id, n }: StepSettingsProps) {
 
   if (step.waitForChecks !== undefined && step.waitForChecks !== null) {
     const wait = step.waitForChecks
+    const settle = range('waitForChecks.settleMinutes')
+    const giveUp = range('waitForChecks.giveUpHours')
 
     return (
       <span className="inline-flex flex-wrap items-center gap-1.5 text-xs text-muted">
@@ -267,9 +275,9 @@ function StepSettings({ kit, step, onChange, id, n }: StepSettingsProps) {
           id={`${id}-settle`}
           label={`Step ${n}: minutes to settle`}
           value={wait.settleMinutes}
-          fallback={2}
-          min={0}
-          max={60}
+          fallback={settle.default}
+          min={settle.min}
+          max={settle.max}
           unit="min"
           onChange={(v) => {
             onChange({
@@ -283,9 +291,9 @@ function StepSettings({ kit, step, onChange, id, n }: StepSettingsProps) {
           id={`${id}-giveup`}
           label={`Step ${n}: hours before giving up`}
           value={wait.giveUpHours}
-          fallback={2}
-          min={1}
-          max={24}
+          fallback={giveUp.default}
+          min={giveUp.min}
+          max={giveUp.max}
           unit="h"
           onChange={(v) => {
             onChange({ ...step, waitForChecks: v === null ? omit(wait, 'giveUpHours') : { ...wait, giveUpHours: v } })

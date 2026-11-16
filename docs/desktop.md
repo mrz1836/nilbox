@@ -2522,7 +2522,10 @@ switch. A routine that belongs to another GitHub account than the one signed in 
 the items it matches right now that it has no record of, reading any search of its own from
 GitHub unless it was read in the last minute. When there are some, it asks: *3 pull requests match
 right now.* **Run on them too**, or **Only what changes from now on**, which records them as
-already handled. When there are none, it asks nothing. Escape asks nothing more and changes
+already handled. It asks too when some can't be told yet (*2 items may match right now.*), or
+when not everything it watches could be read (the API budget low, a search GitHub didn't answer
+or that matched more than a page), saying more may match than it counts. Only when there are
+none, and it read everything, does it ask nothing. Escape asks nothing more and changes
 nothing. A change that can't be made says why in its own words, as *Autopilot is running in
 another copy of Nilbox; make this change there.*
 
@@ -2577,7 +2580,8 @@ The builder is the routine itself, laid out top to bottom in the order it runs, 
 in place. **New routine** (or **Start from scratch** on the empty tab) starts one on your
 account's pull requests, telling you when their checks fail, named "New routine", in the mode
 new routines start in (Settings → Autopilot), shown beside its name; it starts off, and you
-switch it on once it is saved.
+switch it on once it is saved. Clicking **New routine** again while you make one keeps what
+you have.
 
 - **The sentence** at the top says the routine in one sentence, as the list and the menu bar
   will (*When checks fail on pull requests by Dependabot in your account and acme-org, if a
@@ -2590,10 +2594,13 @@ switch it on once it is saved.
   involves, labels in and out, the branches, the state, and qualifiers typed by hand. Who and
   where are tokens, such as **[Dependabot ×]** and **[Your account ×]**: the field suggests the
   authors, bots, and owners your items came from, and takes anything else typed. Enter or a
-  comma adds one, the arrows pick a suggestion, Backspace in an empty field or a token's **×**
-  takes one away. A name you type is an org (`acme-org`), a repository (`acme-org/api`), or as
-  you write it (`user:octo-user`). Under the block, **the cost line** says what the searches add
-  to each refresh, *About 1 point a refresh (0.2% of the budget)*, from the last test.
+  comma adds one (never while an input method is composing), the arrows pick a suggestion,
+  Backspace in an empty field or a token's **×** takes one away. A name you type is an org
+  (`acme-org`), a repository (`acme-org/api`), or as you write it (`user:octo-user`). A search
+  of **Issues** offers only what an issue has, and switching one to Issues drops the branches,
+  the state, and *Asking for your review*. Under the block, **the cost line** says what the
+  searches add to each refresh, *About 1 point a refresh (0.2% of the budget)*, from the last
+  test, and says so once the searches changed since.
 - **WHEN** is its one trigger, with the trigger's own options at their defaults until you set
   them: wait until every check has finished, how long they settle, the first commit too, how
   many comments, how many quiet days, which label, or a schedule.
@@ -2610,7 +2617,7 @@ switch it on once it is saved.
   wait on its push, **Post the agent's review** only after a read-only agent step, and only a
   notice after an agent step in your terminal. A step this version can't run yet says *Dry run
   for now*: it can be built and saved, and the routine stays in Dry run, the mode control
-  saying why (*Agent steps run in Dry run until this Mac can run agents.*).
+  saying why (*Agent steps run in Dry run until this version of Nilbox can run agents.*).
 - **The agent step** names its **Prompt** (a library prompt for the items' kind, or the item's
   own default prompt; **Edit in Prompts** opens the Prompts tab), **Where** it runs (**In the
   background** or **In my terminal**), and its launch on one line, *As a click would: Claude ·
@@ -2618,10 +2625,12 @@ switch it on once it is saved.
   and effort, each on **Inherit** until set, saying what it inherits at the app's level (a
   click takes each repository's and org's own launch defaults first), and the **Fallbacks**,
   up to three profiles to use when one is out of usage. **+ Per org** sets them for one org or
-  repository at a time. In the background, plan mode is set by Tools and the worktree is
-  always the item's own, and the **Fence** holds the run in: its budget in dollars or tokens
-  (default $3.00), its time limit (default 30 minutes), and its **Tools**. Each value set here
-  has **Reset**. This is saved with the routine; no agent runs from it in this version.
+  repository at a time. Changing the agent drops a model and a profile, which are one agent's
+  own, and an effort the new agent doesn't take. In the background, plan mode is set by Tools
+  and the worktree is always the item's own, and the **Fence** holds the run in: its budget in
+  dollars or tokens (default $3.00), its time limit (default 30 minutes), and its **Tools**.
+  Each value set here has **Reset**. This is saved with the routine; no agent runs from it in
+  this version.
 - **LIMITS** are once per what (the trigger's by default), the tries per item, the runs a day,
   and the wait between tries, each at its default until set; Settings → Autopilot's limits
   still hold over every routine together.
@@ -2633,14 +2642,19 @@ footer counts them (*Fix 2 problems to save.*). Warnings, in amber, never block 
 that matches more than 100 items checks only the newest 100; most of what it watches isn't in
 your inbox lists, so a snooze or a pin won't change what you see; an owner none of your items
 came from, since GitHub answers a name it doesn't know with nothing; and, on Autopilot, a
-terminal run or the profile's own permissions.
+terminal run or the profile's own permissions. As you edit, the last reading stays until the
+next arrives, so nothing blinks out. A problem at a place no part shows, as an imported
+routine can hold, is listed at the top.
 
-**Saving.** **Save** (or ⌘S) stores the routine once nothing keeps it; **Discard** puts back
-what was saved. Saving a change to what a routine that is on watches, fires on, or checks asks
-the [question](#autopilot) first, *3 pull requests match right now.* **Run on them too** · **Only
-what changes from now on**, and asks nothing when nothing matches. Leaving a routine with
-unsaved changes for another, Activity, or a new one asks first; your draft survives switching
-tabs.
+**Saving.** **Save** (or ⌘S, with Caps Lock on too, and never while a dialog or a sheet is open)
+stores the routine once nothing keeps it; **Discard** puts back what was saved, and why a save
+failed shows in the footer. Saving a change to what a routine that is on watches, fires on,
+checks, or fires once per asks the [question](#autopilot) first, *3 pull requests match right
+now.* **Run on them too** · **Only what changes from now on**, and asks nothing only when nothing
+matches, nothing waits to be told, and everything it watches was read; otherwise it asks all
+the same (*2 items may match right now.*, *Not everything it watches could be read right
+now.*). Leaving a routine with unsaved changes for another, Activity, or a new one asks first;
+your draft survives switching tabs.
 
 ### Testing a routine
 
@@ -2648,12 +2662,14 @@ tabs.
 are read from GitHub (unless a test read them in the last minute), and each item it watches is
 judged as the routine would judge it now. Since its searches cost points, it runs only when
 you click **↻ Test**, once the routine has no problem, never on its own; the button says what
-the last test spent, *Test (3 points)*. Once you change what the routine watches, fires on, or
-checks, the last test's rows stay, said to be of an earlier draft, until you test again; the
-cost line under Watch is the last test's. Its first line counts, *3 of 7
-open pull requests match now*. Each item it watches has a row, the matches first: ✓ or ✗, the
-item, and where it stands with the routine: *would run* (*would run, in Dry run*), what its
-history already holds (*It already ran on this.*, *Waiting for your OK.*), *waiting for data*
+the last test spent, *Test (3 points)*. Once you change what the routine watches, fires on,
+checks, or fires once per, the last test's rows stay, said to be of an earlier draft, until you
+test again; its warnings about a step show only while the steps are as tested, and the cost
+line under Watch is the last test's. Each routine's test is its own. Its first line counts, *3
+of 7 open pull requests match now*. Each item it watches has a row, the matches first: ✓ or ✗,
+the item, and where it stands with the routine: *would run* (*would run, in Dry run*), what its
+history already holds (*It already ran on this.*, *Waiting for your OK.*, or why it closed, in
+Activity's words, *Closed: it merged.*), *waiting for data*
 and what (the check names, say), or *left alone: you took back what it did*. **Why ▸** opens
 each step of its decision, the trigger and every condition it checked, with the value it
 compared (*a failed check's name contains security · 🔒 Security Scans failed*). While the
@@ -3162,7 +3178,8 @@ reads a remote named `--upload-pack=…` as an option, and a branch named `ma<LR
 hidden left-to-right mark that every value loses on its way into a prompt, shows as `main`. So
 name a branch or a remote in a command only under `{{if .BranchIsPlain}}` or
 `{{if .RemoteIsPlain}}`, which hold when the name, exactly as given, is ASCII letters, digits,
-and `-_./:,+@%=` alone and doesn't start with `-`, as every Dependabot and Renovate branch is.
+and `-_./:,+@%=` alone and starts with neither `-` nor `=`, as every Dependabot and Renovate
+branch does.
 A number needs no quoting, nor do `.Repo`, `.Owner`, and `.RepoName`, which GitHub keeps to
 letters, digits, and `-_.`, nor `.HeadCommit`, which is hex.
 

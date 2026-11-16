@@ -12,7 +12,8 @@ import (
 )
 
 // Turning a routine on, taking it out of Dry run, or saving a change to its Watch, When,
-// or If asks the user about the items it matches now and has no record of (Matching):
+// If, or Once per asks the user about the items it matches now and has no record of
+// (Matching):
 // run on them too, or only on what changes from now on. The change and the answer reach
 // the engine together, as one command, so no cycle runs between them: with "from now on",
 // the routine's current matches are recorded as its baseline once its searches were read
@@ -49,7 +50,7 @@ func fromNowRefused(e *Engine) error {
 var ErrFromNow = errors.New("only what changes from now on can't be kept here")
 
 // Save stores d, as save says, and with d.Current CurrentFromNow, records what the routine
-// matches now as its baseline, when it is on and its Watch, When, or If changed.
+// matches now as its baseline, when it is on and its Watch, When, If, or Once per changed.
 func (s *Service) Save(ctx context.Context, d Draft) (Routine, error) {
 	if err := checkCurrent(d.Current); err != nil {
 		return Routine{}, err
@@ -72,11 +73,14 @@ func (s *Service) Save(ctx context.Context, d Draft) (Routine, error) {
 	})
 }
 
-// watchChanged reports a routine whose Watch, When, or If changed.
+// watchChanged reports a routine whose Watch, When, If, or Once per changed: Once per
+// decides the occurrence each match is for (its fire key), so a change of it makes every
+// current match one the routine has no record of.
 func watchChanged(before, after Routine) bool {
 	return !reflect.DeepEqual(before.Spec.Watch, after.Spec.Watch) ||
 		!reflect.DeepEqual(before.Spec.Trigger, after.Spec.Trigger) ||
-		!reflect.DeepEqual(before.Spec.Conditions, after.Spec.Conditions)
+		!reflect.DeepEqual(before.Spec.Conditions, after.Spec.Conditions) ||
+		before.Spec.Limits.OncePer != after.Spec.Limits.OncePer
 }
 
 // SetEnabled switches the routine id on or off, and returns it. A broken routine can't be

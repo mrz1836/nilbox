@@ -476,6 +476,79 @@ func TestTestSendsNothingWhileTheBudgetIsLow(t *testing.T) {
 	assert.Equal(t, eval.Unknown, got.Items[0].Match)
 }
 
+func TestMatchingSaysWhenItsCountMayBeShort(t *testing.T) {
+	t.Parallel()
+
+	q := query(t, orgSearch)
+	s := searchSpec(catalog.EventChecksFailed, orgSearch)
+	s.Trigger.WaitForChecks = new(false)
+
+	many := make([]int64, 0, 201)
+	manyRows := map[int64]facts.Row{}
+
+	for id := int64(1); id <= 201; id++ {
+		many = append(many, id)
+		manyRows[id] = failingPR(id, int(id))
+	}
+
+	tests := []struct {
+		name      string
+		result    autopilot.SearchResult
+		rows      map[int64]facts.Row
+		searchErr error
+		want      autopilot.Matching
+	}{
+		{
+			name:   "everything read",
+			result: autopilot.SearchResult{IDs: []int64{7}, Count: 1},
+			want:   autopilot.Matching{Count: 1, PullRequests: 1},
+		},
+		{
+			name:   "a search GitHub didn't answer",
+			result: autopilot.SearchResult{IDs: []int64{}, Err: errLocked},
+			want:   autopilot.Matching{Incomplete: true},
+		},
+		{
+			name:   "a search past a page",
+			result: autopilot.SearchResult{IDs: []int64{7}, Count: 340, Truncated: true},
+			want:   autopilot.Matching{Count: 1, PullRequests: 1, Incomplete: true},
+		},
+		{
+			name:      "a budget too low to read the search",
+			searchErr: autopilot.ErrLowBudget,
+			want:      autopilot.Matching{Incomplete: true},
+		},
+		{
+			name:   "more items than a test tries",
+			result: autopilot.SearchResult{IDs: many, Count: len(many)},
+			rows:   manyRows,
+			want:   autopilot.Matching{Count: 200, PullRequests: 200, Incomplete: true},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			rows := tt.rows
+			if rows == nil {
+				rows = map[int64]facts.Row{7: failingPR(7, 70)}
+			}
+
+			r := itemsRig(t, &fakeItems{
+				searches:  map[string]autopilot.SearchResult{q.Text: tt.result},
+				rows:      rows,
+				owners:    map[string]bool{"acme-org": true},
+				searchErr: tt.searchErr,
+			})
+
+			got, err := r.svc.Matching(t.Context(), draft("Failing", s))
+			require.NoError(t, err)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
 func TestATestFromTheCacheReadsNoCheckNameWhileTheBudgetIsLow(t *testing.T) {
 	t.Parallel()
 

@@ -367,9 +367,15 @@ describe('Autopilot’s calls', () => {
 
   it('asks the question about what a routine matches now with the routine as saved', async () => {
     const draft = { id: 3, name: 'Snooze passing bot PRs', spec: routineSpec() }
-    mocks.autopilot.Matching.mockResolvedValue({ count: 3, pullRequests: 3, issues: 0, unknown: 0 })
+    mocks.autopilot.Matching.mockResolvedValue({ count: 3, pullRequests: 3, issues: 0, unknown: 0, incomplete: false })
 
-    await expect(platform.routineMatching(draft)).resolves.toEqual({ count: 3, pullRequests: 3, issues: 0, unknown: 0 })
+    await expect(platform.routineMatching(draft)).resolves.toEqual({
+      count: 3,
+      pullRequests: 3,
+      issues: 0,
+      unknown: 0,
+      incomplete: false,
+    })
     expect(mocks.autopilot.Matching).toHaveBeenCalledExactlyOnceWith(draft)
   })
 

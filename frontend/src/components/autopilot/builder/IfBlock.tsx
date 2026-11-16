@@ -70,10 +70,13 @@ interface ConditionListProps extends IfBlockProps {
 }
 
 // ConditionList is one list of conditions, the top one or a group: All ▾ or Any ▾ of
-// these, each condition, and + Add a condition (and, at the top, + Add a group).
+// these, each condition, and + Add a condition (and, at the top, + Add a group), with what
+// is wrong with the list itself: its match, and for a group, that it is empty, or isn't one
+// a group can be (of[2] and of[2].group, which only an imported spec holds).
 function ConditionList({ kit, kinds, conditions, onChange, path, top, onRemove }: ConditionListProps) {
   const id = useId()
   const at = (s: string) => (path === '' ? s : `${path}.${s}`)
+  const own = top ? [at('match')] : [path.slice(0, -'.group'.length), path, at('match'), at('of')]
   const set = (i: number, cl: AutopilotClause) => {
     onChange({ ...conditions, of: conditions.of.map((c, j) => (j === i ? cl : c)) })
   }
@@ -152,7 +155,7 @@ function ConditionList({ kit, kinds, conditions, onChange, path, top, onRemove }
           />
         )
       })}
-      <Notes problems={problemsExactly(kit.problems, 'conditions', at('match'))} />
+      <Notes problems={own.flatMap((p) => problemsExactly(kit.problems, 'conditions', p))} />
       <div className="flex gap-2">
         <button
           type="button"
@@ -222,8 +225,12 @@ function Condition({ kit, kinds, clause, path, index, onChange, onRemove }: Cond
   const op = kit.catalog.ops.find((o) => o.id === clause.op)
   const problems = problemsAt(kit.problems, 'conditions', path)
   const invalid = problems.length > 0
+  const describedBy = invalid ? `${id}-notes` : undefined
   const groups = kit.catalog.groups.filter((g) => fields.some((f) => f.group === g.id))
   const name = `Condition ${String(index + 1)}`
+  // A field the routine can't read on what it acts on, or one this version doesn't know, is
+  // kept as an option, so the menu shows the field the condition holds, with its problem.
+  const listed = fields.some((f) => f.id === clause.field)
 
   // A new field starts at its first operator, with no value: a value of another field's
   // means nothing to it.
@@ -249,12 +256,13 @@ function Condition({ kit, kinds, clause, path, index, onChange, onRemove }: Cond
           id={`${id}-field`}
           value={clause.field ?? ''}
           aria-invalid={invalid}
+          aria-describedby={describedBy}
           onChange={(e) => {
             pickField(e.target.value as AutopilotFieldID)
           }}
           className={`${fieldClass} py-1`}
         >
-          {field === undefined && <option value={clause.field ?? ''}>{clause.field ?? 'Pick a field'}</option>}
+          {!listed && <option value={clause.field ?? ''}>{field?.label ?? clause.field ?? 'Pick a field'}</option>}
           {groups.map((g) => (
             <optgroup key={g.id} label={g.label}>
               {fields
@@ -299,6 +307,7 @@ function Condition({ kit, kinds, clause, path, index, onChange, onRemove }: Cond
               suggestions={valueSuggestions(kit, field)}
               choicesOnly={field.choices.length > 0}
               invalid={invalid}
+              describedBy={describedBy}
             />
           </div>
         )}
@@ -310,6 +319,7 @@ function Condition({ kit, kinds, clause, path, index, onChange, onRemove }: Cond
             clause={clause}
             onChange={onChange}
             invalid={invalid}
+            describedBy={describedBy}
             kit={kit}
           />
         )}
@@ -324,7 +334,7 @@ function Condition({ kit, kinds, clause, path, index, onChange, onRemove }: Cond
         </button>
       </div>
       {op?.help !== undefined && op.help !== '' && <p className="text-xs text-muted">{op.help}</p>}
-      <Notes problems={problems} />
+      <Notes id={`${id}-notes`} problems={problems} />
     </div>
   )
 }
@@ -336,12 +346,14 @@ interface OneValueProps {
   clause: AutopilotClause
   onChange: (clause: AutopilotClause) => void
   invalid: boolean
+  // describedBy names what says why it is invalid.
+  describedBy: string | undefined
   kit: BuilderKit
 }
 
 // OneValue is an operator's one value: a number, a length in minutes, hours, or days, or a
 // piece of text, offering what the stored items hold of it.
-function OneValue({ id, name, field, clause, onChange, invalid, kit }: OneValueProps) {
+function OneValue({ id, name, field, clause, onChange, invalid, describedBy, kit }: OneValueProps) {
   const value = clause.value ?? ''
 
   if (field.type === 'duration') {
@@ -360,6 +372,7 @@ function OneValue({ id, name, field, clause, onChange, invalid, kit }: OneValueP
           value={value === '' ? '' : n}
           placeholder="1"
           aria-invalid={invalid}
+          aria-describedby={describedBy}
           onChange={(e) => {
             onChange({ ...clause, value: e.target.value === '' ? '' : `${e.target.value}${unit}` })
           }}
@@ -399,6 +412,7 @@ function OneValue({ id, name, field, clause, onChange, invalid, kit }: OneValueP
         value={value}
         spellCheck={false}
         aria-invalid={invalid}
+        aria-describedby={describedBy}
         onChange={(e) => {
           onChange({ ...clause, value: e.target.value })
         }}

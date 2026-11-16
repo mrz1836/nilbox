@@ -358,10 +358,15 @@ export default function AutopilotView({
   const dirty = editing !== null && !sameDraft(editing.draft, editing.baseline)
 
   // open shows next: Activity (0), a routine, or a new routine's builder, which starts
-  // from scratch in the mode new routines start in. A routine's builder is filled in as it
-  // shows, below.
+  // from scratch in the mode new routines start in, or keeps the new routine being made.
+  // A routine's builder is filled in as it shows, below.
   const open = (next: number) => {
     setSelected(next)
+
+    if (next === NEW_ROUTINE && editing?.key === NEW_ROUTINE) {
+      return
+    }
+
     setSaveError('')
 
     if (next === NEW_ROUTINE) {
@@ -460,10 +465,12 @@ export default function AutopilotView({
 
   // saveEditing saves the draft: a new routine, off, in the mode it was given, or the
   // routine shown, asking first, as its switch does, when it is on and what it watches,
-  // fires on, or checks changed. The builder then holds the routine as saved, and edits
-  // typed while it saved are kept.
+  // fires on, checks, or fires once per changed. The builder then holds the routine as
+  // saved, and edits typed while it saved are kept. Either one's failure shows in the
+  // builder's footer. Nothing is saved again while a save, a change, or the question it
+  // asked is under way.
   const saveEditing = () => {
-    if (editing === null || saving || changes.busy !== 0) {
+    if (editing === null || saving || changes.busy !== 0 || changes.asking) {
       return
     }
 
@@ -492,7 +499,7 @@ export default function AutopilotView({
 
     if (!made) {
       if (chosen !== undefined) {
-        changes.request(chosen, { kind: 'save', draft }, done)
+        changes.request(chosen, { kind: 'save', draft }, done, setSaveError)
       }
 
       return
@@ -537,6 +544,9 @@ export default function AutopilotView({
 
     return (
       <RoutineBuilder
+        // Each routine's builder is its own: one's test, sentence, and errors never show
+        // under another.
+        key={key}
         draft={editing.draft}
         baseline={editing.baseline}
         isNew={r === null}
@@ -874,6 +884,7 @@ export default function AutopilotView({
             </>
           ) : (
             <RoutinePane
+              key={chosen.id}
               routine={chosen}
               status={statusOf(chosen)}
               busy={changes.busy === chosen.id}

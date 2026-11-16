@@ -2341,6 +2341,19 @@
       "choices": []
     },
     {
+      "id": "budgetTokens",
+      "label": "Budget per run in tokens",
+      "help": "The budget set in tokens, starting at its default once switched to tokens.",
+      "default": "None",
+      "range": {
+        "min": 10000,
+        "max": 50000000,
+        "default": 200000,
+        "unit": "tokens"
+      },
+      "choices": []
+    },
+    {
       "id": "timeoutMinutes",
       "label": "Time limit",
       "help": "",
@@ -2478,6 +2491,47 @@
         "max": 50000,
         "default": 0,
         "unit": "cents"
+      },
+      "choices": []
+    }
+  ],
+  "stepSettings": [
+    {
+      "id": "snooze.days",
+      "label": "Days to snooze",
+      "help": "",
+      "default": "3 days",
+      "range": {
+        "min": 1,
+        "max": 365,
+        "default": 3,
+        "unit": "days"
+      },
+      "choices": []
+    },
+    {
+      "id": "waitForChecks.settleMinutes",
+      "label": "Minutes to settle",
+      "help": "",
+      "default": "2 min",
+      "range": {
+        "min": 0,
+        "max": 60,
+        "default": 2,
+        "unit": "minutes"
+      },
+      "choices": []
+    },
+    {
+      "id": "waitForChecks.giveUpHours",
+      "label": "Hours before giving up",
+      "help": "",
+      "default": "2 h",
+      "range": {
+        "min": 1,
+        "max": 24,
+        "default": 2,
+        "unit": "hours"
       },
       "choices": []
     }

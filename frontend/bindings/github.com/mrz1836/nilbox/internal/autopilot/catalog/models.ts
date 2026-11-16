@@ -47,6 +47,7 @@ export interface Catalog {
     "presets": PresetInfo[] | null;
     "agentSettings": Setting[] | null;
     "limits": Setting[] | null;
+    "stepSettings": Setting[] | null;
 }
 
 /**

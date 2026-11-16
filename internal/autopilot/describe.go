@@ -111,8 +111,10 @@ func (s *Service) loadDraft(ctx context.Context, sp spec.Spec) (spec.Spec, []spe
 // promptProblems returns the problems of the prompts sp's steps name: one the library
 // doesn't have, a reply named where an agent's prompt goes or the other way about, and
 // one that doesn't apply to every kind of item the routine acts on. Without a library,
-// or one that can't be read (logged), it finds none: the engine checks again before a
-// start.
+// or one that can't be read (logged), it finds none, and nothing checks them later: not
+// the engine before a start, nor SetEnabled, Duplicate, a restore, or an import. That
+// holds while the steps that name a prompt (an agent's, a GitHub reply's) run only in Dry
+// run; the check before a start comes with the build that runs them.
 func (s *Service) promptProblems(ctx context.Context, sp spec.Spec) []spec.Problem {
 	if s.library == nil {
 		return nil
@@ -174,14 +176,29 @@ func promptProblem(library []LibraryPrompt, ref spec.PromptRef, reply bool, kind
 		return at(fmt.Sprintf("%q is a prompt for an agent: a GitHub step comments a reply", p.Nickname))
 	}
 
-	for _, k := range kinds {
-		if !slices.Contains(p.Kinds, k) {
-			return at(fmt.Sprintf("%q is written for %s, and this routine acts on %s too: pick a prompt for both, "+
-				"or watch only %s", p.Nickname, kindsWords(p.Kinds), k.Plural(), kindsWords(p.Kinds)))
-		}
+	if msg := kindsProblem(p, kinds); msg != "" {
+		return at(msg)
 	}
 
 	return nil
+}
+
+// kindsProblem says what is wrong with p for a routine that acts on kinds, or "": a prompt
+// for pull requests on a routine of issues alone, or one for one kind on a routine of both.
+func kindsProblem(p LibraryPrompt, kinds []item.Kind) string {
+	for _, k := range kinds {
+		switch {
+		case slices.Contains(p.Kinds, k):
+		case len(kinds) == 1:
+			return fmt.Sprintf("%q is written for %s, and this routine acts only on %s: pick a prompt for %s",
+				p.Nickname, kindsWords(p.Kinds), k.Plural(), k.Plural())
+		default:
+			return fmt.Sprintf("%q is written for %s, and this routine acts on %s too: pick a prompt for both, "+
+				"or watch only %s", p.Nickname, kindsWords(p.Kinds), k.Plural(), kindsWords(p.Kinds))
+		}
+	}
+
+	return ""
 }
 
 // findPrompt returns the library's prompt ref names: the user's copy of a starter, or the
