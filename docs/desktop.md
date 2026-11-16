@@ -2645,9 +2645,11 @@ tabs.
 
 **Test**, under the builder, tries the routine as it stands, before you save it: its searches
 are read from GitHub (unless a test read them in the last minute), and each item it watches is
-judged as the routine would judge it now. It runs on its own once the routine has no problem,
-a moment after you stop editing what it watches, fires on, or checks, and again with **↻
-Test**, which says what the last test spent, *Test (3 points)*. Its first line counts, *3 of 7
+judged as the routine would judge it now. Since its searches cost points, it runs only when
+you click **↻ Test**, once the routine has no problem, never on its own; the button says what
+the last test spent, *Test (3 points)*. Once you change what the routine watches, fires on, or
+checks, the last test's rows stay, said to be of an earlier draft, until you test again; the
+cost line under Watch is the last test's. Its first line counts, *3 of 7
 open pull requests match now*. Each item it watches has a row, the matches first: ✓ or ✗, the
 item, and where it stands with the routine: *would run* (*would run, in Dry run*), what its
 history already holds (*It already ran on this.*, *Waiting for your OK.*), *waiting for data*

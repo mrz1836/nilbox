@@ -97,9 +97,19 @@ function Harness({
       }}
       onSave={onSave}
       onDiscard={onDiscard}
-      delays={{ describe: 0, test: 0 }}
+      describeDelay={0}
     />
   )
+}
+
+// testNow clicks Test once the draft reads with no problem, as a test runs only on asking.
+async function testNow(user: ReturnType<typeof userEvent.setup>) {
+  const button = screen.getByRole('button', { name: /^Test/ })
+
+  await waitFor(() => {
+    expect(button).toBeEnabled()
+  })
+  await user.click(button)
 }
 
 // spec is the draft's spec as last edited.
@@ -130,11 +140,15 @@ describe('the routine builder', () => {
         dryRunOnly: ['agent'],
       }),
     )
+    const user = userEvent.setup()
     renderBuilder()
 
     expect(
       await screen.findByText('When checks fail on pull requests by Dependabot, run Fix checks.'),
     ).toBeInTheDocument()
+    expect(screen.getByText(/^Not tried yet: Test reads its searches from GitHub/)).toBeInTheDocument()
+    expect(platform.testRoutine).not.toHaveBeenCalled()
+    await testNow(user)
     expect(screen.getAllByRole('heading', { level: 3 }).map((h) => h.textContent)).toEqual([
       'Watch',
       'When',
@@ -324,7 +338,9 @@ describe('the routine builder', () => {
         estimate: { requests: 0, pointsPerRefresh: 0, pointsPerHour: 0, percent: 0 },
       }),
     )
+    const user = userEvent.setup()
     renderBuilder()
+    await testNow(user)
 
     const watch = block('Watch')
 
@@ -333,6 +349,14 @@ describe('the routine builder', () => {
     ).toBeInTheDocument()
     expect(watch.getByText('Search 2: GitHub refused it.')).toBeInTheDocument()
     expect(watch.getByText('Nothing more a refresh: the inbox reads its lists already.')).toBeInTheDocument()
+
+    // A change to what it watches leaves the test's words behind, said to be of an earlier
+    // draft, until it is tried again; the cost line stays the last test's.
+    await user.selectOptions(watch.getByRole('combobox', { name: 'Look for' }), 'issue')
+    expect(watch.queryByText('Search 2: GitHub refused it.')).not.toBeInTheDocument()
+    expect(screen.getByText(/changed since this test: Test again/)).toBeInTheDocument()
+    expect(watch.getByText('Nothing more a refresh: the inbox reads its lists already.')).toBeInTheDocument()
+    expect(platform.testRoutine).toHaveBeenCalledOnce()
   })
 
   it('changes the trigger and its options, each at its default until set', async () => {
@@ -867,6 +891,7 @@ describe('the Test panel', () => {
       }),
     )
     renderBuilder()
+    await testNow(user)
 
     const rows = within(await screen.findByRole('list', { name: 'Items it watches' }))
 
@@ -904,6 +929,7 @@ describe('the Test panel', () => {
       .mockResolvedValueOnce(routineTest({ points: 0, cached: true, lowBudget: true, items: [] }))
     renderBuilder()
 
+    await testNow(user)
     await user.click(await screen.findByRole('button', { name: 'Test (3 points)' }))
     expect(await screen.findByRole('button', { name: 'Test (cached)' })).toHaveAttribute(
       'title',
@@ -925,7 +951,9 @@ describe('the Test panel', () => {
       }),
     )
     platform.describeRoutine.mockResolvedValue(described({ dryRunOnly: ['agent'] }))
+    const user = userEvent.setup()
     renderBuilder({ heldKinds: ['agent'] })
+    await testNow(user)
 
     expect(await screen.findByText('Trying it on your items…')).toBeInTheDocument()
     answer(routineTest())
@@ -945,7 +973,9 @@ describe('saving', () => {
     const user = userEvent.setup()
     renderBuilder()
 
-    await screen.findByText('1 of 2 open pull requests matches now')
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Test' })).toBeEnabled()
+    })
     await user.keyboard('{Meta>}s{/Meta}')
     expect(onSave).not.toHaveBeenCalled()
 

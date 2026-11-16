@@ -3,6 +3,7 @@ import { useEffect, useEffectEvent, useId, useState } from 'react'
 import { modeHelp, modeLabels, modeOrder } from '../../../lib/autopilot'
 import { counted } from '../../../lib/format'
 import { actsOn, canonical, costLine, dryRunWhy, sameDraft, unplaced } from '../../../lib/routineBuilder'
+import { useMutation } from '../../../lib/useMutation'
 import { useDebouncedQuery } from '../../../lib/useQuery'
 import {
   describeRoutine,
@@ -12,6 +13,7 @@ import {
   type AutopilotMode,
   type AutopilotStepKind,
   type AutopilotSuggestions,
+  type AutopilotTestResult,
 } from '../../../platform'
 import { buttonClass, fieldClass, primaryButtonClass, Segmented } from '../../controls'
 import type { AgentKit } from './AgentStepBlock'
@@ -45,20 +47,17 @@ export interface RoutineBuilderProps {
   onChange: (draft: AutopilotDraft) => void
   onSave: () => void
   onDiscard: () => void
-  // delays are how long the draft rests, in milliseconds, before it is read again, and
-  // before it is tried on its items: Describe asks GitHub nothing, and Test, whose
-  // searches cost points, waits longer and keeps what it read for a minute.
-  delays?: { describe: number; test: number }
+  // describeDelay is how long the draft rests, in milliseconds, before Describe, which asks
+  // GitHub nothing, reads it again.
+  describeDelay?: number
 }
-
-// restDelays are the delays a draft rests for as the user edits it.
-const restDelays = { describe: 300, test: 1000 }
 
 // RoutineBuilder is the routine itself, laid out top to bottom in the order it runs: its
 // name and, for a new one, its mode; the sentence it reads as, which rewrites itself as it
 // is edited; WATCH, WHEN, IF, THEN, and LIMITS, each edited in place, with what is wrong
-// where it is; and Test below, the draft tried on its items now. Save (⌘S) stores it once
-// nothing is wrong; warnings never keep it from being saved.
+// where it is; and Test below, which tries the draft on its items now, only when asked,
+// since its searches cost points. Save (⌘S) stores it once nothing is wrong; warnings never
+// keep it from being saved.
 export function RoutineBuilder({
   draft,
   baseline,
@@ -75,7 +74,7 @@ export function RoutineBuilder({
   onChange,
   onSave,
   onDiscard,
-  delays = restDelays,
+  describeDelay = 300,
 }: RoutineBuilderProps) {
   const id = useId()
   const spec = draft.spec
@@ -83,7 +82,7 @@ export function RoutineBuilder({
   const described = useDebouncedQuery(
     () => describeRoutine({ ...draft, mode: draft.mode ?? mode }).then((d) => ({ key, d })),
     [key],
-    delays.describe,
+    describeDelay,
   )
   const current = described.data?.key === key ? described.data.d : undefined
   const problems = current?.problems ?? []
@@ -102,14 +101,26 @@ export function RoutineBuilder({
     conditions: spec.conditions,
   })
   const ready = current !== undefined && problems.length === 0
-  const tested = useDebouncedQuery(() => testRoutine(draft), [testKey], delays.test, { enabled: ready })
+  // A test runs only on asking, since its searches cost points; what it found stays, said to
+  // be of an earlier draft once what it watches, fires on, or checks changed since.
+  const tester = useMutation((d: AutopilotDraft) => testRoutine(d))
+  const [tested, setTested] = useState<{ key: string; result: AutopilotTestResult } | null>(null)
+  const test = async () => {
+    const asked = testKey
+    const result = await tester.run(draft)
+
+    if (result.ok) {
+      setTested({ key: asked, result: result.data })
+    }
+  }
+  const lastTest = tested?.result
   const kinds = actsOn(catalog, spec)
   const kit: BuilderKit = {
     catalog,
     suggestions,
     viewer,
     problems,
-    warnings: [...warnings, ...(tested.data?.warnings ?? [])],
+    warnings: [...warnings, ...(tested?.key === testKey ? (lastTest?.warnings ?? []) : [])],
   }
   const dirty = !sameDraft(draft, baseline)
   const named = draft.name.trim() !== ''
@@ -225,8 +236,8 @@ export function RoutineBuilder({
         onChange={(sources) => {
           set({ watch: { sources } })
         }}
-        cost={tested.data === undefined ? '' : costLine(tested.data.estimate)}
-        tested={tested.data?.searches ?? []}
+        cost={lastTest === undefined ? '' : costLine(lastTest.estimate)}
+        tested={tested?.key === testKey ? (lastTest?.searches ?? []) : []}
       />
       <WhenBlock
         kit={kit}
@@ -261,14 +272,15 @@ export function RoutineBuilder({
         }}
       />
       <TestPanel
-        result={tested.data}
-        testing={tested.pending && !tested.waiting}
-        error={tested.error}
+        result={lastTest}
+        stale={tested !== null && tested.key !== testKey}
+        testing={tester.pending}
+        error={tester.error}
         ready={ready}
         kinds={kinds}
         mode={shownMode}
         onTest={() => {
-          void tested.refetch()
+          void test()
         }}
       />
       <footer className="sticky bottom-0 flex items-center justify-end gap-2 border-t border-border bg-background py-3">

@@ -7,8 +7,10 @@ import { CheckIcon, ChevronDownIcon, ChevronRightIcon, RefreshIcon, XIcon } from
 import { Spinner } from '../../Spinner'
 
 export interface TestPanelProps {
-  // result is the last test of the draft, undefined before one answered.
+  // result is the last test of the draft, undefined before one answered; stale reports one
+  // of an earlier draft, whose watch, trigger, or conditions changed since.
   result: AutopilotTestResult | undefined
+  stale: boolean
   // testing reports a test under way, and error why the last one failed.
   testing: boolean
   error: string
@@ -50,21 +52,29 @@ function rowState(it: AutopilotTestItem, mode: AutopilotMode): string {
 
 // TestPanel is the draft tried on its items now, before it is saved: "3 of 7 open pull
 // requests match now", each item with whether it matches, where it stands with the routine,
-// and Why ▸, every step of its decision with the value it compared; and ↻ Test, which says
-// what the last test spent.
-export function TestPanel({ result, testing, error, ready, kinds, mode, onTest }: TestPanelProps) {
+// and Why ▸, every step of its decision with the value it compared; and ↻ Test, which runs
+// it only when asked, since its searches cost points, and says what the last test spent.
+export function TestPanel({ result, stale, testing, error, ready, kinds, mode, onTest }: TestPanelProps) {
+  const headline = (() => {
+    if (testing) {
+      return 'Trying it on your items…'
+    }
+
+    if (result !== undefined) {
+      return testHeadline(result, kinds)
+    }
+
+    return ready
+      ? 'Not tried yet: Test reads its searches from GitHub, which costs a point or a few.'
+      : 'Fix the problems above to try it on your items.'
+  })()
+
   return (
     <section aria-label="Test" className="flex flex-col gap-2 border-t border-border py-3">
       <div className="flex flex-wrap items-center gap-3">
         <h3 className={captionClass}>Test</h3>
         <p role="status" className="min-w-0 flex-1 text-sm">
-          {!ready
-            ? 'Fix the problems above to try it on your items.'
-            : result === undefined
-              ? testing
-                ? 'Trying it on your items…'
-                : 'Not tried yet.'
-              : testHeadline(result, kinds)}
+          {headline}
         </p>
         {testing && <Spinner />}
         <button
@@ -85,6 +95,11 @@ export function TestPanel({ result, testing, error, ready, kinds, mode, onTest }
       {error !== '' && (
         <p role="alert" className="text-xs text-danger">
           {error}
+        </p>
+      )}
+      {stale && !testing && (
+        <p className="text-xs text-muted">
+          What it watches, fires on, or checks changed since this test: Test again to see what it matches now.
         </p>
       )}
       {result?.lowBudget === true && (

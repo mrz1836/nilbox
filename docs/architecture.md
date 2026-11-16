@@ -1346,8 +1346,10 @@ from `ListRoutineMatchKeys`; a match with no record is one it would run on.
 **The window's builder** (`frontend/src/components/autopilot/builder`) renders from
 `Catalog`, its pickers fed by `Suggest`, and holds the draft in the Autopilot tab, which stays
 mounted while another tab shows, so a draft survives switching tabs. It calls `Describe` once
-editing rests (300 ms) and `Test` once the draft has no problem and what it watches, fires on,
-or checks rests (1 s); `Test`'s minute-long cache keeps a test from costing points again.
+editing rests (300 ms), and `Test` only on the user's click, once the draft has no problem,
+never as a routine opens or as it is edited, since a test's searches cost points; a test of an
+earlier watch, trigger, or conditions stays shown, marked as such. `Test`'s minute-long cache
+keeps a second test of the same searches from costing points again.
 Saving a routine that is on goes through the same question as its switch (`useRoutineChange`'s
 `save`): `Matching` with the draft, nothing asked at zero, and `Save` with the answer as its
 `Current`. The window's catalog fixture (`frontend/src/test/autopilotCatalog.json`) is the
