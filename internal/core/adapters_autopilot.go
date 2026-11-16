@@ -478,6 +478,16 @@ func (w *engineWaker) KeptItems(ctx context.Context) ([]int64, error) {
 	return w.engine.KeptItems(ctx)
 }
 
+// KeptMarks returns the items whose routine's Restore the engine still offers to Undo,
+// whose marks the inbox's prune keeps (inbox.MarkKeeper); none before there is an engine.
+func (w *engineWaker) KeptMarks(ctx context.Context) ([]int64, error) {
+	if w.engine == nil {
+		return nil, nil
+	}
+
+	return w.engine.KeptMarks(ctx)
+}
+
 // Wake wakes the engine, once there is one, as a change of Autopilot's settings does.
 func (w *engineWaker) Wake() {
 	if w.engine != nil {

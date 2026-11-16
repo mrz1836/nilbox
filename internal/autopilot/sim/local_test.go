@@ -393,7 +393,7 @@ func TestAStepOnItsWayLosesToTheUsersOwnReversal(t *testing.T) {
 		got := s.Matches()
 		require.Len(t, got, 2)
 		require.Len(t, got[1].Steps, 1)
-		assert.Equal(t, "Left alone: it changed since the routine decided, so it's left as it is.", got[1].Steps[0].Note,
+		assert.Equal(t, "Not done: the item changed since this matched.", got[1].Steps[0].Note,
 			"the step was a compare-and-set on the dismissal it decided on")
 		assert.Empty(t, got[1].Effects, "the step changed nothing, so it records nothing")
 		require.Len(t, got[0].Effects, 1)

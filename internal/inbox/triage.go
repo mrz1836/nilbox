@@ -27,8 +27,6 @@ import (
 // snapshot. It replaces a snooze. Nothing is written to GitHub. Once the dismissal of an
 // item that wasn't dismissed is stored, it tells the outcome sink of it.
 func (s *Service) Dismiss(ctx context.Context, id int64) (Snapshot, error) {
-	now := s.now()
-
 	var (
 		told   []Outcome
 		stored int64
@@ -38,6 +36,7 @@ func (s *Service) Dismiss(ctx context.Context, id int64) (Snapshot, error) {
 	// tells nothing.
 	err := store.InTx(ctx, s.db, func(tx *sql.Tx) error {
 		q := s.q.WithTx(tx)
+		now := s.now() // once the transaction holds the write lock, as every user path's
 
 		was, found, err := s.triageBefore(ctx, q, id)
 		if err != nil {
@@ -63,10 +62,11 @@ func (s *Service) Dismiss(ctx context.Context, id int64) (Snapshot, error) {
 		return Snapshot{}, fmt.Errorf("%w (id %d)", item.ErrNotFound, id)
 	}
 
-	snap, err := s.changed(ctx)
+	// The sink hears first, before the window and the engine are told the inbox changed, so
+	// what takes back a routine's step is recorded before anything wakes the engine.
 	s.settle(ctx, told)
 
-	return snap, err
+	return s.changed(ctx)
 }
 
 // Snooze hides an item from every list for a number of days (snooze.MinDays to
@@ -84,9 +84,6 @@ func (s *Service) Snooze(ctx context.Context, id int64, days int) (Snapshot, err
 			snooze.MaxDays)
 	}
 
-	now := s.now()
-	until := s.clock.Now().AddDate(0, 0, days).UTC().Truncate(time.Second)
-
 	var (
 		told   []Outcome
 		stored int64
@@ -94,6 +91,11 @@ func (s *Service) Snooze(ctx context.Context, id int64, days int) (Snapshot, err
 
 	err := store.InTx(ctx, s.db, func(tx *sql.Tx) error {
 		var snoozeErr error
+
+		// The times are taken once the transaction holds the write lock, so a reversal's
+		// time comes after every routine's step committed before it.
+		now := s.now()
+		until := s.clock.Now().AddDate(0, 0, days).UTC().Truncate(time.Second)
 
 		stored, told, snoozeErr = s.snoozeIn(ctx, s.q.WithTx(tx), id, until, now)
 
@@ -107,10 +109,11 @@ func (s *Service) Snooze(ctx context.Context, id int64, days int) (Snapshot, err
 		return Snapshot{}, fmt.Errorf("%w (id %d)", item.ErrNotFound, id)
 	}
 
-	snap, err := s.changed(ctx)
+	// The sink hears first, before the window and the engine are told the inbox changed, so
+	// what takes back a routine's step is recorded before anything wakes the engine.
 	s.settle(ctx, told)
 
-	return snap, err
+	return s.changed(ctx)
 }
 
 // snoozeIn is Snooze's transaction, through q: it snoozes the item with id until until, at
@@ -147,11 +150,11 @@ func (s *Service) snoozeIn(ctx context.Context, q *queries.Queries, id int64, un
 // Once an item that was dismissed or snoozed is restored, it tells the outcome sink of it,
 // and that it took back a routine's dismissal or snooze of it, when it did.
 func (s *Service) Restore(ctx context.Context, id int64) (Snapshot, error) {
-	now := s.now()
-
 	var told []Outcome
 
 	err := s.storeCleared(ctx, "restore the item", id, func(ctx context.Context, q *queries.Queries) error {
+		now := s.now() // once the transaction holds the write lock, as Snooze's
+
 		was, found, err := s.triageBefore(ctx, q, id)
 		if err != nil {
 			return err
@@ -167,10 +170,11 @@ func (s *Service) Restore(ctx context.Context, id int64) (Snapshot, error) {
 		return Snapshot{}, err
 	}
 
-	snap, err := s.changed(ctx)
+	// The sink hears first, before the window and the engine are told the inbox changed, so
+	// what takes back a routine's step is recorded before anything wakes the engine.
 	s.settle(ctx, told)
 
-	return snap, err
+	return s.changed(ctx)
 }
 
 // Pin keeps an item at the top of every list it is in, above the items not pinned, the
@@ -190,11 +194,11 @@ func (s *Service) Pin(ctx context.Context, id int64) (Snapshot, error) {
 // that is not pinned does nothing. Unpinning what a routine pinned takes it back, which it
 // tells the outcome sink of (OutcomeUnpinned).
 func (s *Service) Unpin(ctx context.Context, id int64) (Snapshot, error) {
-	now := s.now()
-
 	var told []Outcome
 
 	err := s.storeCleared(ctx, "unpin the item", id, func(ctx context.Context, q *queries.Queries) error {
+		now := s.now() // once the transaction holds the write lock, as Snooze's
+
 		was, found, err := s.triageBefore(ctx, q, id)
 		if err != nil {
 			return err
@@ -210,10 +214,11 @@ func (s *Service) Unpin(ctx context.Context, id int64) (Snapshot, error) {
 		return Snapshot{}, err
 	}
 
-	snap, err := s.changed(ctx)
+	// The sink hears first, before the window and the engine are told the inbox changed, so
+	// what takes back a routine's step is recorded before anything wakes the engine.
 	s.settle(ctx, told)
 
-	return snap, err
+	return s.changed(ctx)
 }
 
 // storeCleared runs unset, which clears some of the local state of the item with id, then

@@ -324,7 +324,17 @@ func changedSince(t RoutineTriage, cur LocalState) (bool, error) {
 		return false, fmt.Errorf("read the triage the routine decided on: %w", err)
 	}
 
-	return !asLeftBy(t.Action, cur, expect), nil
+	return !asLeftBy(t.Action, cur, expect) || lostMark(t.Routine, expect, cur), nil
+}
+
+// lostMark reports whether routine's mark, on either part of the triage (the pin, or the
+// dismissal and the snooze), was on expect and is gone from cur: the user's own triage
+// took it off in between, as by an unpin of what the routine pinned, which the routine's
+// later steps on the item yield to, whichever part they change.
+func lostMark(routine int64, expect, cur LocalState) bool {
+	mine := func(by *int64) bool { return by != nil && *by == routine }
+
+	return mine(expect.PinnedBy) && !mine(cur.PinnedBy) || mine(expect.SetAsideBy) && !mine(cur.SetAsideBy)
 }
 
 // snoozeBaseline is the activity a routine's snooze of t's item compares with (see

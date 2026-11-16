@@ -301,15 +301,32 @@ func (q *Queries) Pin(ctx context.Context, arg PinParams) (int64, error) {
 const pruneRestoreMarks = `-- name: PruneRestoreMarks :exec
 DELETE FROM item_local_state
 WHERE pinned_at IS NULL AND dismissed_at IS NULL AND snoozed_until IS NULL AND set_aside_by IS NOT NULL
-  AND updated_at < ?
+  AND updated_at < ?1 AND item_id NOT IN (/*SLICE:keep*/?)
 `
 
+type PruneRestoreMarksParams struct {
+	Cutoff time.Time
+	Keep   []int64
+}
+
 // PruneRestoreMarks deletes the rows whose only content is the mark a routine's Restore
-// left (set_aside_by, with nothing pinned, dismissed, or snoozed), written before cutoff:
-// the mark serves only that routine's Undo, which Autopilot offers as long as it keeps its
-// history.
-func (q *Queries) PruneRestoreMarks(ctx context.Context, updatedAt time.Time) error {
-	_, err := q.db.ExecContext(ctx, pruneRestoreMarks, updatedAt)
+// left (set_aside_by, with nothing pinned, dismissed, or snoozed), written before cutoff,
+// but those of the items in keep: the mark serves only that routine's Undo, which keep
+// names while Autopilot still offers it, however old. keep always holds 0, which no item
+// has, so the list is never empty.
+func (q *Queries) PruneRestoreMarks(ctx context.Context, arg PruneRestoreMarksParams) error {
+	query := pruneRestoreMarks
+	var queryParams []interface{}
+	queryParams = append(queryParams, arg.Cutoff)
+	if len(arg.Keep) > 0 {
+		for _, v := range arg.Keep {
+			queryParams = append(queryParams, v)
+		}
+		query = strings.Replace(query, "/*SLICE:keep*/?", strings.Repeat(",?", len(arg.Keep))[1:], 1)
+	} else {
+		query = strings.Replace(query, "/*SLICE:keep*/?", "NULL", 1)
+	}
+	_, err := q.db.ExecContext(ctx, query, queryParams...)
 	return err
 }
 

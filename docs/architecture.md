@@ -942,7 +942,9 @@ it, so Autopilot's effect and the change are stored together or not at all, then
 Each step is a compare-and-set: `RoutineTriage.Expect` is the state the routine decided on
 (`Routines.LocalStates`, which the engine reads before an item's facts), and a step whose
 part of the triage (the pin, or the dismissal and the snooze) differs now changes nothing
-(`KeptChanged`), so the user's own change in between always wins. A routine's Snooze and
+(`KeptChanged`), nor does one whose routine's own mark, on either part, was there when it
+decided and is gone now (`lostMark`: the user unpinned what the routine pinned before its
+next step landed), so the user's own change in between always wins. A routine's Snooze and
 Dismiss never replace what the user set aside: they leave an item the user dismissed or
 snoozed (still set aside, with no routine's mark) as the user left it (`KeptYours`); its
 Pin leaves a pinned item (`KeptPinned`), and its Dismiss a dismissed one (`KeptDismissed`).
@@ -952,7 +954,10 @@ item not set aside (`KeptNotSetAside`); each that changes nothing records nothin
 routine's Restore keeps its mark on the row with nothing set aside, which `PruneState` then
 keeps, so its Undo can tell the item is still as it left it, until the user's own triage of
 the item clears it, or a whole refresh drops it once it is older than Autopilot's history
-(`PruneRestoreMarks`, `autopilot.historyDays`, read through `autopilotprefs`); it tells the
+(`PruneRestoreMarks`, `autopilot.historyDays`, read through `autopilotprefs`), unless
+Autopilot still offers that Restore's Undo (`Config.Marks`, a `MarkKeeper`: core's
+`engineWaker`, answered by `Engine.KeptMarks` from the effects neither undone nor taken
+back, read before the refresh's transaction; one that can't be read drops no mark); it tells the
 outcome sink of the restore, as the user's does, so the mirror of the GitHub notifications
 takes a dismissal's clears back, and no other routine step tells anything. `UndoTriage`
 puts back, in one transaction and newest first, each change's state before, only where the
@@ -962,11 +967,18 @@ rules ended, or a later step leaves it as it is), and hands its `record` which i
 a routine named in a state put back that is gone for good is dropped from it. Undoing a
 routine's Restore of the user's own dismissal tells the outcome sink of that dismissal again,
 at its own time, so the mirror records it as the user's and clears by the user's own rules,
-as before the Restore; no other Undo tells anything. `AsLeft` asks the same without writing,
+as before the Restore; no other Undo tells anything. Two edges of that, accepted: a clear the
+mirror marked kept while the routine's Restore stood stays kept after the Undo, so it sends
+less, never more; and a dismissal whose routine was since deleted for good reads as the
+user's (its mark is gone), so undoing a later Restore of it lets the user's own rules clear
+that thread, only ever after the user's own Undo. `AsLeft` asks the same without writing,
 for Activity's Undo. The snapshot carries the marks (`Item.SetAsideBy`, `Item.PinnedBy`).
 Every triage path of the user's own clears the mark it changes (`SetTriage`, `Pin`, `Unpin`,
 and `Restore` all write it), so "Snoozed by a routine" never outlives the user's own
-re-snooze; one that takes back what a routine did tells the outcome sink with
+re-snooze, takes its time once its transaction holds the write lock, so a reversal's time
+comes after every routine's step that committed before it, and tells the outcome sink before
+the window and the engine hear the inbox changed; one that takes back what a routine did
+tells the outcome sink with
 `Outcome.Reversed` (the routine, the item, and what it did): a Restore of what a routine
 dismissed or snoozed, still in effect; a Snooze over that (`OutcomeSnoozed`, told only then);
 and an Unpin of what a routine pinned (`OutcomeUnpinned`, only then). Setting aside again
@@ -1533,9 +1545,12 @@ item's local state before and after, as the inbox writes them (JSON, opaque here
 `applied_at`. A step is a compare-and-set on the item's local state as its cycle read it,
 before the item's facts (`EngineItems.LocalStates`, passed as `Job.Local`), and its record
 checks, in the same transaction, that the routine isn't hands off the item, so the user's
-own change, or reversal, while the step was on its way wins (`KeptChanged`, or the routine
-left alone). A step that changes nothing records nothing, and its step's note says why ("You
-set it aside yourself, so it's left as you left it."). A step a crash cut off after its change
+own change, or reversal, while the step was on its way wins: `KeptChanged` ("Not done: the
+item changed since this matched.", which also follows a snooze the wake rules ended or
+another routine's step that landed first), or the routine left alone ("Left alone: you took
+back what it did here.", the words that go with Let it act again). A step that changes
+nothing records nothing, and its step's note says why ("You set it aside yourself, so it's
+left as you left it."). A step a crash cut off after its change
 committed runs again on the next start (`stepUnderWay`), finds its effect, and is done, so
 nothing changes twice. Its limits are the local steps' (`runLocal`): a sign-out, Pause, and the
 routine's active hours hold it, the match staying queued (`signed_out`, `paused`,

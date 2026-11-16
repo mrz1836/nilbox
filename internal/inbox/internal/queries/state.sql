@@ -72,12 +72,13 @@ WHERE item_id = ? AND pinned_at IS NULL AND dismissed_at IS NULL AND snoozed_unt
 
 -- name: PruneRestoreMarks :exec
 -- PruneRestoreMarks deletes the rows whose only content is the mark a routine's Restore
--- left (set_aside_by, with nothing pinned, dismissed, or snoozed), written before cutoff:
--- the mark serves only that routine's Undo, which Autopilot offers as long as it keeps its
--- history.
+-- left (set_aside_by, with nothing pinned, dismissed, or snoozed), written before cutoff,
+-- but those of the items in keep: the mark serves only that routine's Undo, which keep
+-- names while Autopilot still offers it, however old. keep always holds 0, which no item
+-- has, so the list is never empty.
 DELETE FROM item_local_state
 WHERE pinned_at IS NULL AND dismissed_at IS NULL AND snoozed_until IS NULL AND set_aside_by IS NOT NULL
-  AND updated_at < ?;
+  AND updated_at < sqlc.arg(cutoff) AND item_id NOT IN (sqlc.slice(keep));
 
 -- name: GetLocalState :one
 -- GetLocalState returns the local state of the item with id, each column NULL when it has

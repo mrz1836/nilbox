@@ -187,7 +187,8 @@ func (s *Sim) Begin() {
 	s.Store = inbox.NewStore(s.DB, s.Clock)
 	s.Inbox = inbox.NewService(inbox.Config{
 		Pool: s.DB, Tokens: s.World, Client: s.World, Clock: s.Clock, Watches: watches, Outcomes: fan, Events: fan,
-		Changed: func(ids []int64) { fan.itemsChanged(ids) }, Keep: fan, Store: s.Store, Logger: s.Logs.Logger(),
+		Changed: func(ids []int64) { fan.itemsChanged(ids) }, Keep: fan, Marks: fan, Store: s.Store,
+		Logger: s.Logs.Logger(),
 	})
 	s.Routines = inbox.NewRoutines(s.Inbox)
 	s.Service = autopilot.NewService(autopilot.Config{
@@ -609,6 +610,14 @@ func (f *fanOut) Settle(ctx context.Context, outcomes []inbox.Outcome) {
 func (f *fanOut) KeptItems(ctx context.Context) ([]int64, error) {
 	if e := f.engine.Load(); e != nil {
 		return e.KeptItems(ctx)
+	}
+
+	return nil, nil
+}
+
+func (f *fanOut) KeptMarks(ctx context.Context) ([]int64, error) {
+	if e := f.engine.Load(); e != nil {
+		return e.KeptMarks(ctx)
 	}
 
 	return nil, nil

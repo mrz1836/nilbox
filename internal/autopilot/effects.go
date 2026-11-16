@@ -211,7 +211,7 @@ func keptWords(k TriageKept) string {
 	case KeptNotSetAside:
 		return "It wasn't snoozed or dismissed."
 	case KeptChanged:
-		return "Left alone: it changed since the routine decided, so it's left as it is."
+		return "Not done: the item changed since this matched."
 	default:
 		return "Nothing changed."
 	}
@@ -376,6 +376,25 @@ func recordUndone(ctx context.Context, q *queries.Queries, picked []queries.Auto
 	}
 
 	return nil
+}
+
+// KeptMarks returns every item whose routine's Restore Undo can still take back (neither
+// undone nor reversed): the items whose Restore mark the inbox keeps however old, so an
+// Undo Activity still offers can tell the item is as the Restore left it.
+func (e *Engine) KeptMarks(ctx context.Context) ([]int64, error) {
+	refs, err := e.ledger.q.ListUndoableItems(ctx, string(catalog.StepRestore))
+	if err != nil {
+		return nil, fmt.Errorf("read the routines' restores Undo can take back: %w", err)
+	}
+
+	out := make([]int64, 0, len(refs))
+	for _, r := range refs {
+		if r != nil {
+			out = append(out, *r)
+		}
+	}
+
+	return out, nil
 }
 
 // whyUndone is why a routine leaves an item alone once Undo put it back.

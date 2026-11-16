@@ -258,6 +258,36 @@ func (q *Queries) ListMatchEffects(ctx context.Context, ids []int64) ([]Autopilo
 	return items, nil
 }
 
+const listUndoableItems = `-- name: ListUndoableItems :many
+SELECT DISTINCT item_id FROM autopilot_effects
+WHERE action = ?1 AND undone_at IS NULL AND reversed_at IS NULL AND item_id IS NOT NULL
+`
+
+// ListUndoableItems returns each item with an effect of action that Undo can still take
+// back (neither undone nor reversed): for a Restore, the items whose mark the inbox keeps.
+func (q *Queries) ListUndoableItems(ctx context.Context, action string) ([]*int64, error) {
+	rows, err := q.db.QueryContext(ctx, listUndoableItems, action)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []*int64{}
+	for rows.Next() {
+		var item_id *int64
+		if err := rows.Scan(&item_id); err != nil {
+			return nil, err
+		}
+		items = append(items, item_id)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const setEffectUndone = `-- name: SetEffectUndone :execrows
 UPDATE autopilot_effects SET undone_at = ?1
 WHERE id = ?2 AND undone_at IS NULL AND reversed_at IS NULL

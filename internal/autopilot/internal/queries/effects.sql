@@ -53,3 +53,9 @@ LEFT JOIN autopilot_matches m ON m.id = (
 )
 ORDER BY h.since DESC, h.routine_id, h.item_id
 LIMIT sqlc.arg(row_limit);
+
+-- name: ListUndoableItems :many
+-- ListUndoableItems returns each item with an effect of action that Undo can still take
+-- back (neither undone nor reversed): for a Restore, the items whose mark the inbox keeps.
+SELECT DISTINCT item_id FROM autopilot_effects
+WHERE action = sqlc.arg(action) AND undone_at IS NULL AND reversed_at IS NULL AND item_id IS NOT NULL;

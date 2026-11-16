@@ -135,7 +135,8 @@ func TestATriageStepPassesOnTheStateItsRoutineDecidedOn(t *testing.T) {
 	res, err := r.engine.dispatchers[catalog.DispatchTriage].Dispatch(t.Context(), r.job)
 	require.NoError(t, err)
 	assert.Equal(t, r.job.Local, r.triage.asks()[0].Expect, "the step is a compare-and-set on it")
-	assert.Equal(t, "Left alone: it changed since the routine decided, so it's left as it is.", res.Summary)
+	assert.Equal(t, "Not done: the item changed since this matched.", res.Summary,
+		"worded apart from Left alone, which a hands off and Let it act again go with")
 	assert.Zero(t, r.effects(t))
 }
 
@@ -194,6 +195,27 @@ VALUES (?, 1, 5, 'dismiss', ?)`, e.match, e.at)
 
 	require.NoError(t, rows.Err())
 	assert.Equal(t, []int{1}, reversed, "the step applied after the user's restore keeps its Undo")
+}
+
+func TestTheInboxKeepsTheMarkOfARestoreUndoCanStillTakeBack(t *testing.T) {
+	t.Parallel()
+
+	r := newTriageRig(t, TriageChange{})
+	at := time.Date(2026, 11, 16, 9, 0, 0, 0, time.UTC)
+
+	testutil.Exec(t, r.db, `INSERT INTO autopilot_effects (match_id, step, routine_id, item_id, action, applied_at)
+VALUES (1, 0, 1, 5, 'pin', ?), (1, 1, 1, 5, 'restore', ?)`, at, at)
+
+	kept, err := r.engine.KeptMarks(t.Context())
+	require.NoError(t, err)
+	assert.Equal(t, []int64{5}, kept, "an Undo Activity still offers reads the mark, however old")
+
+	testutil.Exec(t, r.db, `UPDATE autopilot_effects SET undone_at = ? WHERE action = 'restore'`, at)
+
+	kept, err = r.engine.KeptMarks(t.Context())
+	require.NoError(t, err)
+	assert.Empty(t, kept, "once undone, nothing reads it")
+	assert.NotNil(t, kept)
 }
 
 func TestATriageStepThatChangesNothingRecordsNothing(t *testing.T) {
