@@ -2758,6 +2758,53 @@ nothing. The launch itself then holds back what a click's would, and a little mo
 - A worktree with uncommitted changes waits for your OK: Nilbox never starts in your work in
   progress, nor cleans it for you.
 
+### Agents in the background
+
+A routine's **Run a coding agent** step, **In the background**, runs the agent headless in the
+item's own worktree, with no terminal opened, held in by the step's fence: its tools preset
+([Fences](#fences-what-a-background-agent-may-do)), its budget, and its time limit. An agent
+that can't keep the preset (Codex, in this version) leaves the routine not ready.
+
+- **Planned as a click's launch.** The same agent, profile, model, effort, and prompt as a
+  terminal run, and the same checks right before the start ([above](#agents-in-your-terminal)),
+  with the same holds: agent files in a pull request you didn't open wait for your OK, a
+  session in the worktree queues the start, and uncommitted changes wait for your OK. The
+  worktree is always the item's, made at the head the routine decided on, and one at another
+  head waits for you. The prompt's **.Unattended** is true. An outside contributor's item runs
+  read only whatever the fence says.
+- **What it runs with.** Your login shell's environment, with the profile's own (the default
+  profile's config folder is never named, and no API key signs the agent in unless **Use an API
+  key when one is set** is on), without the variables an agent session sets for itself; no permission
+  prompts, which no one would answer; the fence's flags and settings, worked out for the
+  worktree as the run starts and kept in the run's own folder, and its line in the note the
+  agent is given (what it may do, and for a sandboxed preset, the check to run first); the budget in dollars,
+  which the agent keeps to itself, or in tokens, which Nilbox stops it at; and the time limit,
+  30 minutes unless the step says. Claude Code 2.1.319 or later is needed; an older one leaves
+  the routine not ready, saying so.
+- **How it ended** is the agent's own last word, never its exit status: *Finished:* with its
+  notes, *Out of budget ($3.00).*, *Stopped after 30 minutes.*, *Out of usage: its plan's
+  five-hour limit is reached. It resets Mon 15:04.*, or its error. What it cost is what the
+  agent reports: on your plan rather than an API key, an estimate of what the API would have
+  charged, which **Agent finished** says (*About $0.12, estimated.*). It tells you once when a
+  run ends, done or failed, never for one you stopped. A run whose sandbox check shows its
+  sandbox didn't hold is failed, whatever the agent says, and the files its commits changed are
+  noted on the item, so a launch there waits for your OK when it wrote agent files.
+- **Working**, at the top of Activity, lists each agent at work: its item, its routine, how
+  long, its tokens so far, and its latest step, with **Stop**, and **Stop all** for every one
+  (Settings → Autopilot has it too), which leaves the scripts' runs alone. The starts queued
+  are under [Needs you](#needs-you), each saying what it waits on.
+- **Where it shows.** The item's session pill and panel follow the run. The Worktrees view
+  marks its worktree *made by ⚡ <routine>* and *in use · Claude in the background*, so the
+  cleanup never removes it; a click's launch there is held back, never started beside it.
+- **Quitting** stops every run (the agent's own Control-C first, so it reports its end); a run
+  a quit or a crash cut off is *interrupted*, and its match comes back under Needs you. A
+  process the agent left working in the worktree is ended with it. While **Keep the Mac awake
+  while agents work** is on, the Mac stays awake for each run.
+- **Its log** is kept in `script-runs/` and its prompt and settings in `agent-runs/` in the
+  data folder, readable only by you, for **Run logs kept** (30 days), 200 runs and 1 GB at
+  most; **Clear history…** removes those of the runs that ended. These runs aren't listed in
+  Scripts → Runs.
+
 ### Needs you
 
 Activity's **Needs you**, above the history, holds what a routine can't do without you:
@@ -2934,7 +2981,7 @@ Notifications**, all on by default, and the **Autopilot** type on the
 | Autopilot alert | **Routine alerts** | A routine's **Notify me** or **Tell me** step runs; headed by the routine's name |
 | Autopilot problem | **Autopilot problems** | A routine can't run: its search fails, it won't load, or this Mac lacks something it needs. You hear of each problem once, as it starts |
 | Needs your OK | **Needs your OK** | A routine's match waits for you: Ask first, a hold, no clone, a dirty worktree, a catch-up, a GitHub action's warnings, an outside contributor's item, a first pass's backlog; its banner opens the match's card |
-| Agent finished | **Agents finishing** | A coding agent a routine started ends (later versions) |
+| Agent finished | **Agents finishing** | A routine's coding agent in the background ends, done or failed, with what it cost; never one you stopped |
 | Checks after a fix | **Checks after a fix** | The checks on a routine's fix finish (later versions) |
 
 A routine can turn its own banners on or off, whatever the switches say. More than three at once
@@ -2969,9 +3016,10 @@ This section, marked **Beta**, shows while Autopilot (beta) is on in **Settings 
 | **History kept** | 90 days | How long what the routines did is kept; lowering it lowers the run logs with it |
 | **Run logs kept** | 30 days | How long an agent run's log will be kept, never longer than the history |
 | **Clear history…** | | Removes now, after asking, what the routines did with items that are done with: gone, merged, or closed, or out of every list and search for longer than the history is kept. Your routines and what still waits stay, and it says *Nothing to clear.* when there was nothing |
+| **Stop all** | | Stops every routine's coding agent working in the background at once, and leaves the scripts' runs alone |
 | **Last checked** | | When Autopilot last checked the routines, how long it took, and what it found (*Last checked today, 11:59 AM · 34 ms · 7 matches · 1 start*), or that another copy runs it |
 
-The limits hold every routine's coding agents (in your terminal in this version) and its
+The limits hold every routine's coding agents, in the background and in your terminal, and its
 [GitHub actions](#what-autopilot-may-change-on-github). A limit delays a match and never loses
 it: one over today's limit starts tomorrow, and a day runs from local midnight. Local steps keep
 only to Pause Autopilot and a routine's own active hours. Backups carry these settings, and the

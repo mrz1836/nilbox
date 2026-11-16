@@ -27,6 +27,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/profiles"
 	"github.com/mrz1836/nilbox/internal/prompts"
 	"github.com/mrz1836/nilbox/internal/repo"
+	"github.com/mrz1836/nilbox/internal/semver"
 	"github.com/mrz1836/nilbox/internal/settings"
 	"github.com/mrz1836/nilbox/internal/setup"
 	"github.com/mrz1836/nilbox/internal/shellenv"
@@ -309,16 +310,22 @@ func (agentRuns) Alive(context.Context, int64) (autopilot.Liveness, error) {
 }
 
 // runPreviews plans a routine's agent step on one item (autopilot.Previewer): the
-// launcher's own Preview of the request a start would launch.
+// launcher's own Preview of the request a start would launch, or for a step in the
+// background, its background Preview (backgroundAgents).
 type runPreviews struct {
-	deps agentDeps
+	deps       agentDeps
+	background *backgroundAgents
 }
 
 // PreviewRun plans req.
 func (p runPreviews) PreviewRun(ctx context.Context, req autopilot.RunRequest) (autopilot.RunPreview, error) {
-	if req.Step.Place() != catalog.WhereTerminal {
-		return autopilot.RunPreview{}, uierr.New("This version can't run an agent in the background yet.",
-			autopilot.ErrNoAgentStep)
+	if req.Step.Place() == catalog.WhereBackground {
+		if p.background == nil {
+			return autopilot.RunPreview{}, uierr.New("This copy can't run an agent in the background.",
+				autopilot.ErrNoAgentStep)
+		}
+
+		return p.background.PreviewRun(ctx, req)
 	}
 
 	launch, err := routineRequest(ctx, p.deps, req)
@@ -331,6 +338,11 @@ func (p runPreviews) PreviewRun(ctx context.Context, req autopilot.RunRequest) (
 		return autopilot.RunPreview{}, err
 	}
 
+	return previewOf(got), nil
+}
+
+// previewOf is the launcher's Preview in Autopilot's words.
+func previewOf(got launcher.Preview) autopilot.RunPreview {
 	res := got.Resolution
 	out := autopilot.RunPreview{
 		Agent: res.Agent.Name, Profile: res.Profile.Value, Model: res.Model.Value, Effort: res.Effort.Value,
@@ -349,7 +361,7 @@ func (p runPreviews) PreviewRun(ctx context.Context, req autopilot.RunRequest) (
 		}
 	}
 
-	return out, nil
+	return out
 }
 
 // routineSource names where a resolved setting came from, the routine's own choice for
@@ -403,10 +415,8 @@ func (h agentHolds) Hold(ctx context.Context, job autopilot.Job) (autopilot.Bloc
 		return "", "", err
 	}
 
-	for _, c := range checks {
-		if c.Level == autopilot.ReadyProblem {
-			return autopilot.BlockNotReady, "Not ready on this Mac: " + c.Words(), nil
-		}
+	if words := unmet(res.Agent, checks, job.Step.Agent.Place()); words != "" {
+		return autopilot.BlockNotReady, "Not ready on this Mac: " + words, nil
 	}
 
 	if b, words := h.outage(ctx, res.Agent); b != "" {
@@ -414,6 +424,43 @@ func (h agentHolds) Hold(ctx context.Context, job autopilot.Job) (autopilot.Bloc
 	}
 
 	return h.cloneHolds(ctx, job)
+}
+
+// unmet says what of checks keeps the agent a from starting where place says: a
+// problem, or a program too old for the background; "" for none.
+func unmet(a agent.Agent, checks []autopilot.ReadyCheck, place catalog.Where) string {
+	for _, c := range checks {
+		if c.Level == autopilot.ReadyProblem {
+			return c.Words()
+		}
+
+		if words := tooOld(a, c, place); words != "" {
+			return words
+		}
+	}
+
+	return ""
+}
+
+// tooOld says an agent's program is older than the version whose flags every run of it
+// in the background uses (agent.Headless.MinVersion), from its check c of the program; ""
+// for a run in the terminal, a check of something else, or a version that can't be read.
+func tooOld(a agent.Agent, c autopilot.ReadyCheck, place catalog.Where) string {
+	if place != catalog.WhereBackground || c.Need.Kind != autopilot.NeedAgent || c.Level != autopilot.ReadyOK {
+		return ""
+	}
+
+	h, err := agent.HeadlessOf(a.ID)
+	if err != nil || h.MinVersion == "" {
+		return ""
+	}
+
+	if older, ok := semver.Compare(c.Found, h.MinVersion); ok && older < 0 {
+		return fmt.Sprintf("%s %s is older than %s, which runs agents in the background. Update it, then Check again.",
+			a.Name, c.Found, h.MinVersion)
+	}
+
+	return ""
 }
 
 // outage holds an agent's start while its provider reports a major or critical outage on

@@ -2280,7 +2280,7 @@
       "id": "background",
       "label": "In the background",
       "help": "Headless, always in the item's worktree, held in by the fence.",
-      "offered": false
+      "offered": true
     },
     {
       "id": "terminal",

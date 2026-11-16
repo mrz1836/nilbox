@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -62,6 +63,21 @@ type FakeRun struct {
 	// ReportEnv writes "NAME=value" to stdout for each variable it names, in order, a line
 	// each: the variable as the fake reads it from its environment, or empty when unset.
 	ReportEnv []string `json:"reportEnv,omitempty"`
+
+	// StdinTo, when set, names a file it copies its whole stdin into before it writes, as
+	// an agent that reads its prompt there does.
+	StdinTo string `json:"stdinTo,omitempty"`
+
+	// OnInterrupt, when set, is what it does on SIGINT or SIGTERM: write its Stdout and
+	// exit with its Exit, as an agent that reports how it ended does when it is stopped.
+	// Only SIGKILL then ends it otherwise.
+	OnInterrupt *FakeInterrupt `json:"onInterrupt,omitempty"`
+}
+
+// FakeInterrupt is what a fake tool does when SIGINT or SIGTERM comes.
+type FakeInterrupt struct {
+	Stdout string `json:"stdout"`
+	Exit   int    `json:"exit"`
 }
 
 // FakeFile is one change a fake tool makes to the file at Path, absolute or relative to the
@@ -181,20 +197,10 @@ func fakeToolEnv(name string) string {
 
 // play does what run says and returns the exit status.
 func play(run FakeRun) int {
-	if run.IgnoreSignals {
-		signal.Ignore(syscall.SIGINT, syscall.SIGTERM, syscall.SIGHUP)
-	}
+	if err := prepare(run); err != nil {
+		_, _ = fmt.Fprintln(os.Stderr, "fake tool:", err)
 
-	if run.Grandchild != nil {
-		if err := startGrandchild(*run.Grandchild); err != nil {
-			_, _ = fmt.Fprintln(os.Stderr, "fake tool:", err)
-
-			return 1
-		}
-	}
-
-	if run.ReportStdin {
-		reportStdin()
+		return 1
 	}
 
 	if run.ReportFDs {
@@ -304,6 +310,58 @@ func playGrandchild(script string) int {
 	time.Sleep(g.Sleep)
 
 	return 0
+}
+
+// prepare does what run does first: ignore or answer signals, start its grandchild, and
+// read its stdin.
+func prepare(run FakeRun) error {
+	if run.IgnoreSignals {
+		signal.Ignore(syscall.SIGINT, syscall.SIGTERM, syscall.SIGHUP)
+	}
+
+	if run.OnInterrupt != nil {
+		onInterrupt(*run.OnInterrupt)
+	}
+
+	if run.Grandchild != nil {
+		if err := startGrandchild(*run.Grandchild); err != nil {
+			return err
+		}
+	}
+
+	if run.ReportStdin {
+		reportStdin()
+	}
+
+	if run.StdinTo != "" {
+		return copyStdin(run.StdinTo)
+	}
+
+	return nil
+}
+
+// onInterrupt has the fake write in's Stdout and exit with its Exit on SIGINT or SIGTERM.
+func onInterrupt(in FakeInterrupt) {
+	ch := make(chan os.Signal, 1)
+	signal.Notify(ch, syscall.SIGINT, syscall.SIGTERM)
+
+	go func() {
+		<-ch
+
+		_, _ = os.Stdout.WriteString(in.Stdout)
+
+		os.Exit(in.Exit)
+	}()
+}
+
+// copyStdin copies stdin to its end into the file at path.
+func copyStdin(path string) error {
+	body, err := io.ReadAll(os.Stdin)
+	if err != nil {
+		return err
+	}
+
+	return os.WriteFile(path, body, 0o600)
 }
 
 // reportStdin reads stdin to its end and says how much it read and whether it is

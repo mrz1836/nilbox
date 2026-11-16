@@ -153,6 +153,10 @@ type RunningSession struct {
 
 	// CanFocus reports a session whose terminal tab can be brought forward.
 	CanFocus bool `json:"canFocus"`
+
+	// Background reports an agent's run in the background, which the app started itself: a
+	// launch there is always held back, never started beside it.
+	Background bool `json:"background"`
 }
 
 // SessionLedger records the sessions launches start, so the app can follow each from its
@@ -233,22 +237,51 @@ func (s *Service) Resume(ctx context.Context, req ResumeRequest) (LaunchResult, 
 
 // runningHold holds a planned launch back while a session runs in the folder it would
 // start in, the item's worktree or its clone, whichever item that session was started
-// on, unless alongside confirms exactly those sessions. Only a launch or a resume is held
-// back, which holds reports; a preview never is. A ledger that cannot be read holds
-// nothing back, with a warning: following sessions never stops a launch.
+// on, unless alongside confirms exactly those sessions; and always while one of the app's
+// own runs works there, which the ledger leaves out while sessions aren't followed. Only a
+// launch or a resume is held back, which holds reports; a preview never is. A ledger that
+// cannot be read holds nothing back for its sessions, with a warning: following sessions
+// never stops a launch.
 func (s *Service) runningHold(ctx context.Context, p planned, alongside string, holds bool) *Hold {
-	if s.ledger == nil || !holds {
+	if !holds {
 		return nil
 	}
 
-	running, err := s.ledger.Running(ctx, p.plan.Dir)
-	if err != nil {
-		s.logger.WarnContext(ctx, "could not read the sessions running in the folder", "error", err)
+	var running []RunningSession
 
-		return nil
+	if s.ledger != nil {
+		got, err := s.ledger.Running(ctx, p.plan.Dir)
+		if err != nil {
+			s.logger.WarnContext(ctx, "could not read the sessions running in the folder", "error", err)
+		}
+
+		running = got
+	}
+
+	if s.runs != nil {
+		running = joinRunning(running, s.runs.RunsIn(ctx, p.plan.Dir))
 	}
 
 	return holdRunning(running, p.worktreeName(), alongside)
+}
+
+// joinRunning returns the sessions of ledger with those of runs it doesn't hold, each
+// session once: a background run's session the ledger follows is the run's.
+func joinRunning(ledger, runs []RunningSession) []RunningSession {
+	out := slices.Clone(ledger)
+
+	for _, r := range runs {
+		i := slices.IndexFunc(out, func(s RunningSession) bool { return s.SessionID != "" && s.SessionID == r.SessionID })
+		if i >= 0 {
+			out[i].Background = true
+
+			continue
+		}
+
+		out = append(out, r)
+	}
+
+	return out
 }
 
 // holdRunning is the hold for running, the sessions running in the folder a launch would
@@ -267,7 +300,7 @@ func holdRunning(running []RunningSession, worktree, alongside string) *Hold {
 	slices.Sort(ids)
 
 	key := string(HoldRunning) + ":" + strings.Join(ids, ",")
-	if key == alongside {
+	if key == alongside && !slices.ContainsFunc(running, func(r RunningSession) bool { return r.Background }) {
 		return nil
 	}
 

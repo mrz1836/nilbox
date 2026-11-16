@@ -41,6 +41,10 @@ const (
 	// KindOrphan is a run from before the app restarted, still running, which the app
 	// follows under a placeholder lock.
 	KindOrphan Kind = "orphan"
+
+	// KindAgent is a coding agent's run in the background, which holds the item's
+	// worktree it works in, never the clone, so two items of one clone run side by side.
+	KindAgent Kind = "agent"
 )
 
 // ErrBusy is matched by every *BusyError.
@@ -70,27 +74,19 @@ func (h Holder) Sentence() string {
 
 // doer names the holder's job as a sentence's subject.
 func (h Holder) doer() string {
-	switch h.Kind {
-	case KindRelease:
-		return "A release"
-	case KindHooks:
-		return "A hooks install"
-	case KindChecks:
-		return "A checks run"
-	case KindScript:
-		return "A script"
-	case KindWorktree:
-		return "A worktree change"
-	case KindPull:
-		return "A pull"
-	case KindUpdate:
-		return "A tool update"
-	case KindInstall:
-		return "A tool install"
-	case KindOrphan:
-		return "A run from before " + brand.Name + " restarted"
-	default:
-		return "Another job"
+	if doer, ok := doers()[h.Kind]; ok {
+		return doer
+	}
+
+	return "Another job"
+}
+
+// doers names each kind of job as a sentence's subject.
+func doers() map[Kind]string {
+	return map[Kind]string{
+		KindRelease: "A release", KindHooks: "A hooks install", KindChecks: "A checks run", KindScript: "A script",
+		KindWorktree: "A worktree change", KindPull: "A pull", KindUpdate: "A tool update", KindInstall: "A tool install",
+		KindOrphan: "A run from before " + brand.Name + " restarted", KindAgent: "An agent in the background",
 	}
 }
 

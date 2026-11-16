@@ -14,7 +14,7 @@ describe('useScriptRuns', () => {
     await waitFor(() => {
       expect(result.current.runs?.map((r) => r.id)).toEqual([1])
     })
-    expect(platform.listScriptRuns).toHaveBeenLastCalledWith({ kinds: [], repo: '' })
+    expect(platform.listScriptRuns).toHaveBeenLastCalledWith({ kinds: [], repo: '', withAgents: false })
 
     platform.listScriptRuns.mockResolvedValue([scriptRun({ id: 2 }), scriptRun()])
     act(() => {

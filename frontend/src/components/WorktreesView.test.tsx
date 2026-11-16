@@ -1185,8 +1185,8 @@ describe('WorktreesView sessions and origin', () => {
                 lastLaunchedAt: '2026-06-15T09:00:00Z',
                 launches: 2,
                 inUse: [
-                  { pid: 4242, command: '2.1.319', agent: 'claude' },
-                  { pid: 4300, command: 'zsh', agent: '' },
+                  { pid: 4242, command: '2.1.319', agent: 'claude', by: '' },
+                  { pid: 4300, command: 'zsh', agent: '', by: '' },
                 ],
                 stage: 'in-use',
                 canRemove: false,
@@ -1206,6 +1206,43 @@ describe('WorktreesView sessions and origin', () => {
     expect(managed.queryByText('in use')).not.toBeInTheDocument()
     expect(managed.getByText(/Codex/)).toHaveTextContent('Codex 3h ago')
     expect(managed.getByText('3h ago', { selector: 'time' })).toHaveAttribute('dateTime', '2026-06-15T09:00:00Z')
+  })
+
+  it('names the routine whose agent works in a worktree in the background', async () => {
+    platform.listWorktrees.mockResolvedValue(
+      worktreesSnapshot({
+        repos: [
+          worktreeRepo({
+            worktrees: [
+              mainWorktree(),
+              worktree({
+                path: managedPath,
+                displayPath: managedDisplay,
+                legacy: false,
+                inUse: [{ pid: 4242, command: 'claude', agent: 'claude', by: '⚡ Review bot PRs' }],
+                stage: 'in-use',
+                canRemove: false,
+              }),
+              worktree({
+                path: `${managedPath}-starting`,
+                displayPath: `${managedDisplay}-starting`,
+                legacy: false,
+                inUse: [{ pid: 0, command: 'claude', agent: 'claude', by: '⚡ Review bot PRs' }],
+                stage: 'in-use',
+                canRemove: false,
+              }),
+            ],
+          }),
+        ],
+      }),
+    )
+    render(<WorktreesView clock={fixedNow} agentName={() => 'Claude'} />)
+    await repo('example-repo')
+
+    const going = row(managedDisplay)
+    expect(going.getByText('made by ⚡ Review bot PRs')).toBeInTheDocument()
+    expect(going.getByText('in use · Claude in the background (pid 4242)')).toBeInTheDocument()
+    expect(row(`${managedDisplay}-starting`).getByText('in use · Claude in the background')).toBeInTheDocument()
   })
 
   it('copies a worktree’s path', async () => {

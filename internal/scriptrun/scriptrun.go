@@ -60,11 +60,18 @@ const (
 	// KindPull fast-forwards a clone's branch to origin's, on the user's click on Repo
 	// scripts: git's fast-forward-only pull, and nothing else.
 	KindPull Kind = "gitPull"
+
+	// KindAgent is a coding agent's run in the background, which Autopilot starts in an
+	// item's worktree: it holds the worktree, never the clone, so two items of one clone
+	// run side by side. Its history is kept apart from the others' (KeepAgentRuns), it
+	// tells Config.Failed nothing (Autopilot tells how it ended), and the Runs page leaves
+	// it out (Filter.WithAgents): the Autopilot tab is its home.
+	KindAgent Kind = "agent"
 )
 
 // Kinds returns every kind.
 func Kinds() []Kind {
-	return []Kind{KindRelease, KindHooks, KindChecks, KindScript, KindUpdate, KindPull}
+	return []Kind{KindRelease, KindHooks, KindChecks, KindScript, KindUpdate, KindPull, KindAgent}
 }
 
 // Valid reports whether k is one of Kinds.
@@ -76,14 +83,15 @@ func (k Kind) Valid() bool {
 // limit: five minutes for a release, one for a hooks action, thirty for checks, ten for a
 // tool updating itself (its download and swap, which the tools bound at six), thirty for
 // a pull (its fetch, then its checkout, Git LFS's downloads included, which nothing
-// should cut off), and none for a script, which the user stops.
+// should cut off), thirty for an agent, whose fence names its own, and none for a script,
+// which the user stops.
 func (k Kind) Timeout() time.Duration {
 	switch k {
 	case KindRelease:
 		return 5 * time.Minute
 	case KindHooks:
 		return time.Minute
-	case KindChecks, KindPull:
+	case KindChecks, KindPull, KindAgent:
 		return 30 * time.Minute
 	case KindUpdate:
 		return 10 * time.Minute
@@ -109,6 +117,8 @@ func (k Kind) lockKind() clonelock.Kind {
 		return clonelock.KindPull
 	case KindScript:
 		return clonelock.KindScript
+	case KindAgent:
+		return clonelock.KindAgent
 	default:
 		return clonelock.KindScript
 	}
@@ -290,6 +300,23 @@ type Spec struct {
 	// what its command runs with, as a pull works out git's guards there, hands it over
 	// this way. nil keeps Env.
 	BeforeEnv func() []string
+
+	// Stdin, when set, is the absolute path of a file the program reads on its standard
+	// input, opened as the run starts, once Before has run: an agent's prompt, which so
+	// never appears on a command line. "" reads /dev/null. A run in the terminal has none.
+	Stdin string
+
+	// Folder, when set, is a folder of the run's own, which goes with its log: removed when
+	// the history forgets the run. It must be directly inside Config.Folders, and is
+	// recorded in its result, so the run's files are found after a restart too. An agent's
+	// run keeps its prompt and settings there.
+	Folder string
+
+	// OutlivesQuit reports a run that may go on once the app has quit, as an agent that
+	// keeps to a budget of its own does: when the user lets such runs finish
+	// (Engine.LetFinish), StopAll lets it go, still recorded as going, and the next start
+	// follows it again.
+	OutlivesQuit bool
 }
 
 // Callbacks are what a run's kind hears of the run and tells of it, as it goes and as it
@@ -330,6 +357,13 @@ type Callbacks struct {
 	// left going as the app quit. It runs on the goroutine that recorded the run, must return
 	// promptly, and must never call back into the engine. nil tells nothing.
 	Released func(id int64)
+
+	// Over reports that the run's output says it is done, though its program may still
+	// run: an agent's result line, after which the agent may wait on a shell it started in
+	// the background. The engine asks it after each read of the log, and once it reports
+	// true, stops the run's group as Stop does, without counting the run as stopped. It
+	// has Progress's rules. nil leaves the program to end by itself.
+	Over func() bool
 }
 
 // Progress is how far a run going now has got, as its kind reads its output, and whether
@@ -361,6 +395,10 @@ type Ending struct {
 	Stopped  bool
 	TimedOut bool
 	Quit     bool
+
+	// Killed reports that the run's group was sent SIGKILL, which leaves alive whatever of
+	// it left the group, as an agent's background shell does.
+	Killed bool
 
 	// Interrupted, when set, says why its end couldn't be seen: "The terminal closed while
 	// this was running."
@@ -428,6 +466,8 @@ func (k Kind) failureNoun() string {
 		return "A tool's update"
 	case KindPull:
 		return "A pull"
+	case KindAgent:
+		return "An agent's run"
 	default:
 		return "A run"
 	}
@@ -464,6 +504,9 @@ type Result struct {
 
 	// Outcome is the kind's own result, or nil.
 	Outcome any `json:"outcome"`
+
+	// Folder is the run's own folder (Spec.Folder), or "".
+	Folder string `json:"folder,omitempty"`
 }
 
 // Record is one run as the history holds it.
@@ -552,4 +595,11 @@ type Verifier interface {
 // Callbacks a Spec gives a run it starts. Any may be nil, as in a Spec.
 type Verification struct {
 	Callbacks
+
+	// Timeout is the run's time limit, from its start, which still holds while it is
+	// followed again: one found past it is stopped at once. 0 sets none.
+	Timeout time.Duration
+
+	// OutlivesQuit is the Spec's: the run may be let go again as the app quits.
+	OutlivesQuit bool
 }

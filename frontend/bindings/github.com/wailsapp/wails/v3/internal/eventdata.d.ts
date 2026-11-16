@@ -14,6 +14,7 @@ declare module "@wailsio/runtime" {
         interface CustomEvents {
             "app:keptRunning": event$0.KeptRunning;
             "app:quitRequested": event$0.QuitRequested;
+            "autopilot:run": event$0.AutopilotRun;
             "autopilot:updated": event$0.AutopilotUpdated;
             "budget:updated": event$0.BudgetUpdated;
             "ghthreads:updated": event$0.GHThreadsUpdated;

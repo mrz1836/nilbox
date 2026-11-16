@@ -224,6 +224,10 @@ type Launched struct {
 	ClonePath string
 	Worktree  string
 	Command   string
+
+	// ScriptRunID is the run in the run engine's history, for a run in the background;
+	// 0 for one in the terminal, which the run engine never runs.
+	ScriptRunID int64
 }
 
 // Dispatcher runs one part's steps. Dispatch is called on a worker, never on the
@@ -293,17 +297,19 @@ type RunEnd struct {
 	Commit string
 	Head   string
 
-	// Cost is what it reported spending, in dollars, nil when it reported none; the
-	// tokens are counted apart.
-	Cost         *float64
-	TokensIn     int64
-	TokensOut    int64
-	CacheRead    int64
-	Turns        int64
-	Summary      string
-	Error        string
-	EndedAt      time.Time
-	StoppedForMe bool
+	// Cost is what it reported spending, in dollars, nil when it reported none, and
+	// CostEstimated says it is the agent's estimate of what the API would have charged, as
+	// for a run on the user's plan; the tokens are counted apart.
+	Cost          *float64
+	CostEstimated bool
+	TokensIn      int64
+	TokensOut     int64
+	CacheRead     int64
+	Turns         int64
+	Summary       string
+	Error         string
+	EndedAt       time.Time
+	StoppedForMe  bool
 }
 
 // RunOutcome is how a run ended.

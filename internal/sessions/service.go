@@ -80,6 +80,10 @@ type Config struct {
 	// with none falls back to the start the ledger keeps.
 	Words map[agent.ID]WordsReader
 
+	// Rereader hears the item of a background run's session that stops working, as the
+	// Watcher's does of a session in the terminal. Optional.
+	Rereader Rereader
+
 	Clock  clock.Clock
 	Logger *slog.Logger
 }
@@ -233,19 +237,49 @@ func TTY(ctx context.Context, run execpath.Runner, pid int) (string, error) {
 	return "/dev/" + strings.TrimPrefix(name, "/dev/"), nil
 }
 
-// Ledger records the sessions launches start, and reads them for the launcher and the
-// menu bar. It is not bound to the window.
+// Ledger records the sessions launches start, and the background runs' sessions, and
+// reads them for the launcher and the menu bar. It is not bound to the window.
 type Ledger struct {
 	store   *Store
 	watcher *Watcher
 	toggle  Switch
 	events  event.Sink
+	reread  Rereader
+	clock   clock.Clock
 	home    string
 }
 
 // NewLedger returns the Ledger over cfg.
 func NewLedger(cfg Config) *Ledger {
-	return &Ledger{store: cfg.Store, watcher: cfg.Watcher, toggle: cfg.Switch, events: event.Or(cfg.Events), home: cfg.Home}
+	return &Ledger{
+		store: cfg.Store, watcher: cfg.Watcher, toggle: cfg.Switch, events: event.Or(cfg.Events), reread: cfg.Rereader,
+		clock: clock.Or(cfg.Clock), home: cfg.Home,
+	}
+}
+
+// RunState records what a background run's own stream says of its session id: working,
+// then idle, ended, or failed. The Watcher never asks an observer of it. It tells the
+// window when the session changed, and hands the Rereader the session's item once it stops
+// working, as the Watcher does for a session in the terminal. A session that isn't a run's,
+// or has ended, is left as it is.
+func (l *Ledger) RunState(ctx context.Context, id string, u RunUpdate) error {
+	c, changed, err := l.store.SetRunState(ctx, id, u, l.clock.Now())
+	if err != nil || !changed {
+		return err
+	}
+
+	l.events.Emit(event.SessionsUpdated{})
+
+	if c.StateChanged() && c.Before.State == StateWorking && l.reread != nil && c.After.ItemID > 0 {
+		l.reread.Reread(c.After.ItemID)
+	}
+
+	return nil
+}
+
+// ByRun returns the session of the background run runID, or ErrNotFound.
+func (l *Ledger) ByRun(ctx context.Context, runID int64) (Record, error) {
+	return l.store.ByRun(ctx, runID)
 }
 
 // Start records a session a launch just started, tells the window, and wakes the
@@ -283,7 +317,7 @@ func (l *Ledger) AgentProcesses(ctx context.Context) (map[int]agent.ID, error) {
 	}
 
 	for _, r := range live {
-		if r.PID > 0 {
+		if r.PID > 0 && r.RunID == 0 {
 			out[r.PID] = r.Agent
 		}
 	}

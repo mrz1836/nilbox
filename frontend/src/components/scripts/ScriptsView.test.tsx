@@ -237,7 +237,7 @@ describe('ScriptsView', () => {
     renderView()
 
     await screen.findByRole('list', { name: 'Runs' })
-    expect(platform.listScriptRuns).toHaveBeenCalledExactlyOnceWith({ kinds: [], repo: '' })
+    expect(platform.listScriptRuns).toHaveBeenCalledExactlyOnceWith({ kinds: [], repo: '', withAgents: false })
 
     platform.listScriptRuns.mockResolvedValue([scriptRun({ id: 2, status: 'running' }), scriptRun()])
     act(() => {

@@ -97,20 +97,35 @@ function ItemLink({ item, now }: { item: LinkedItem; now: Date }) {
   )
 }
 
-// origin says who made a worktree: the app, or Claude Code before the app made them.
+// origin says who made a worktree: an Autopilot routine whose agent works in it, the app,
+// or Claude Code before the app made them.
 function origin(worktree: Worktree): string {
   if (worktree.legacy) {
     return 'made by Claude (legacy)'
+  }
+
+  const run = worktree.inUse.find((s) => s.by !== '')
+  if (run !== undefined) {
+    return `made by ${run.by}`
   }
 
   return worktree.managed ? `made by ${brand.name}` : ''
 }
 
 // sessionsText names the processes working in a worktree, as in "Claude (pid 4242)": the
-// agent of a session the app follows, or else the program's name.
+// agent of a session the app follows, or else the program's name; an agent the app runs in
+// the background says so, its process once it has one.
 function sessionsText(worktree: Worktree, agentName: (id: AgentID) => string): string {
   return worktree.inUse
-    .map((s) => `${s.agent === '' ? s.command : agentName(s.agent)} (pid ${String(s.pid)})`)
+    .map((s) => {
+      const name = s.agent === '' ? s.command : agentName(s.agent)
+
+      if (s.by !== '') {
+        return s.pid > 0 ? `${name} in the background (pid ${String(s.pid)})` : `${name} in the background`
+      }
+
+      return `${name} (pid ${String(s.pid)})`
+    })
     .join(', ')
 }
 

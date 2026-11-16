@@ -41,6 +41,13 @@ const (
 	peelSuffix   = "^{}"
 	commitSuffix = "^{commit}"
 
+	// headCommit is the commit checked out in a worktree, as rev-parse reads it.
+	headCommit = "HEAD" + commitSuffix
+
+	// diffCmd lists the files two commits differ in, and nothing of their contents, so no
+	// textconv or external diff the clone names runs.
+	diffCmd = "diff"
+
 	// branchKeyPrefix starts a branch's own config keys, and remoteKeySuffix and
 	// upstreamKeySuffix end the two that name its upstream.
 	branchKeyPrefix   = "branch."
@@ -194,6 +201,12 @@ func allowlist() []command {
 		{name: "unpushed commits", words: append(fixed("rev-list", "--count"), value(slotUnpushedRange), word{text: "--"})},
 		{name: "the commits between two", words: append(fixed("rev-list", "--count"), value(slotCommitRange), word{text: "--"})},
 		{name: "an ancestor", words: append(fixed("merge-base", "--is-ancestor"), value(slotCommitID), value(slotCommitID))},
+		{name: "the checked out commit", words: fixed(revParse, verifyFlag, headCommit)},
+		{
+			name: "the files the commits between two changed",
+			words: append(fixed(diffCmd, "--name-only", "--no-renames", "--no-ext-diff", "--no-textconv", "-z"),
+				value(slotCommitRange), word{text: "--"}),
+		},
 		{name: "the local version tags", words: append(fixed("tag", "--list"), value(slotVersionPattern))},
 		{name: "origin's branches and tags", words: fixed(lsRemote, uploadPackFlag, "--heads", tagsFlag, remoteName)},
 		{
@@ -474,6 +487,12 @@ func commitsBetweenArgs(from, to string) []string {
 }
 
 func ancestorArgs(oid, of string) []string { return []string{"merge-base", "--is-ancestor", oid, of} }
+
+func headArgs() []string { return []string{revParse, verifyFlag, headCommit} }
+
+func changedFilesArgs(from, to string) []string {
+	return []string{diffCmd, "--name-only", "--no-renames", "--no-ext-diff", "--no-textconv", "-z", from + ".." + to, "--"}
+}
 
 func localTagsArgs() []string { return []string{"tag", "--list", versionTagsPattern} }
 

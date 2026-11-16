@@ -41,9 +41,10 @@ type autopilotDeps struct {
 	github  autopilot.GitHubActions
 
 	// ready checks what the routines need on this Mac, and agents previews their agent
-	// steps through the launcher.
-	ready  *readyChecks
-	agents agentDeps
+	// steps through the launcher, background previews those in the background.
+	ready      *readyChecks
+	agents     agentDeps
+	background *backgroundAgents
 }
 
 // newAutopilot builds Autopilot's service over pool and deps.
@@ -60,7 +61,7 @@ func newAutopilot(pool *sql.DB, opts Options, deps autopilotDeps, logger *slog.L
 	}
 
 	if deps.agents.launch != nil {
-		cfg.Previews = runPreviews{deps: deps.agents}
+		cfg.Previews = runPreviews{deps: deps.agents, background: deps.background}
 	}
 
 	return autopilot.NewService(cfg)
@@ -361,6 +362,11 @@ type autopilotEngine struct {
 	ready    *readyChecks
 	defaults *launchdefaults.Store
 	prefs    autopilot.Prefs
+
+	// background runs the agent steps in the background, and hands those in the
+	// terminal to the terminal's runner; it also keeps what the window reads of the runs,
+	// and clears their logs.
+	background *backgroundAgents
 }
 
 // newAutopilotEngine builds the engine that runs the routines. Each part registers its own
@@ -386,12 +392,20 @@ func newAutopilotEngine(deps autopilotEngine) *autopilot.Engine {
 		sink := autopilotNotices{dispatcher: deps.notices}
 		cfg.Dispatchers = map[catalog.Dispatcher]autopilot.Dispatcher{catalog.DispatchNotices: autopilot.NewNotices(sink)}
 		cfg.Problems = autopilot.NewProblemNotices(sink)
-		cfg.NeedsYou = sink
+		cfg.NeedsYou, cfg.Finished = sink, sink
 	}
 
 	if deps.agents.launch != nil {
 		cfg.Runner = agentRuns{deps: deps.agents}
 		cfg.Holds = agentHolds{deps: deps.agents, checks: deps.ready, prefs: deps.prefs}
+	}
+
+	if b := deps.background; b != nil {
+		if deps.agents.launch != nil {
+			b.terminal = agentRuns{deps: deps.agents}
+		}
+
+		cfg.Runner, cfg.Views, cfg.RunLogs = b, b, b
 	}
 
 	if deps.defaults != nil {

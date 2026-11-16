@@ -122,4 +122,5 @@ type AutopilotRun struct {
 	FinishedAt      *time.Time
 	VerifiedAt      *time.Time
 	UpdatedAt       time.Time
+	CostEstimated   bool
 }

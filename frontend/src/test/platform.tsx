@@ -192,6 +192,18 @@ function answers(subscribe: Loose<Platform['on']>): { [K in keyof Platform]: Loo
     suggestForRoutines: () => Promise.resolve(routineSuggestions()),
     describeRoutine: () => Promise.resolve(described()),
     testRoutine: () => Promise.resolve(routineTest()),
+    // No agent works, and none waits, unless a test says so.
+    autopilotWorking: () => Promise.resolve({ working: [] }),
+    autopilotRunEvents: () =>
+      Promise.resolve({
+        events: [],
+        first: 0,
+        done: true,
+        progress: { step: '', todos: [], tokensIn: 0, tokensOut: 0, cacheRead: 0, events: 0, unknown: 0 },
+      }),
+    autopilotRunsToday: () => Promise.resolve({ background: 0, terminal: 0, actions: 0 }),
+    stopAutopilotRun: done,
+    stopAllAutopilotRuns: done,
     saveRoutine: (d) =>
       Promise.resolve(routine({ id: d.id === undefined || d.id === 0 ? 11 : d.id, name: d.name, spec: d.spec })),
     previewRoutineRun: () => Promise.resolve(runPreview()),

@@ -339,6 +339,43 @@ func (g *Git) IsAncestor(ctx context.Context, dir, oid, of string) (bool, error)
 	return yes, err
 }
 
+// Head returns the commit checked out in the worktree at dir, or "" when it has none yet,
+// as a worktree made with no commits: what a run left there as it ended.
+func (g *Git) Head(ctx context.Context, dir string) (string, error) {
+	out, yes, err := g.ask(ctx, dir, headArgs())
+	if err != nil || !yes {
+		return "", err
+	}
+
+	oid := firstLine(out)
+	if !objectIDPattern.MatchString(oid) {
+		return "", fmt.Errorf("%w: an object ID as %q", errOutput, out)
+	}
+
+	return oid, nil
+}
+
+// ChangedFiles returns the files the commits from from to to changed, as paths from the
+// worktree's top, each once, in git's order: the files a run's commits touched. It reads
+// the two commits' trees alone, never a file's contents. It fails when the clone lacks
+// either commit (see HasCommit).
+func (g *Git) ChangedFiles(ctx context.Context, dir, from, to string) ([]string, error) {
+	out, err := g.read(ctx, dir, changedFilesArgs(from, to))
+	if err != nil {
+		return nil, err
+	}
+
+	files := []string{}
+
+	for name := range strings.SplitSeq(string(out), "\x00") {
+		if name != "" {
+			files = append(files, name)
+		}
+	}
+
+	return files, nil
+}
+
 // LocalVersionTags returns the clone's version tags (v*), in git's order.
 func (g *Git) LocalVersionTags(ctx context.Context, dir string) ([]string, error) {
 	out, err := g.read(ctx, dir, localTagsArgs())

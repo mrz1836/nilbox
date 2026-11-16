@@ -79,10 +79,19 @@ type live struct {
 	// unstarted marks a run that couldn't start, whose failure the start's error tells.
 	unstarted bool
 
-	// stopped, timedOut, and quit say what ended it, when the engine did.
-	stopped  atomic.Bool
-	timedOut atomic.Bool
-	quit     atomic.Bool
+	// stopped, timedOut, and quit say what ended it, when the engine did; killed that its
+	// group was sent SIGKILL, and finishing that its output said it is done (Over), so the
+	// engine stops what is left of it.
+	stopped   atomic.Bool
+	timedOut  atomic.Bool
+	quit      atomic.Bool
+	killed    atomic.Bool
+	finishing atomic.Bool
+
+	// folder is its own folder (Spec.Folder), or "", and outlives reports a run that may
+	// go on once the app has quit (Spec.OutlivesQuit).
+	folder   string
+	outlives bool
 
 	// done is closed once its end is recorded, or the engine let it go; abandon is
 	// closed when the engine gives up following it, as the app quits.
@@ -176,15 +185,37 @@ func (e *Engine) followApp(ctx context.Context, l *live) {
 			return
 		case <-ticker.C:
 			e.tail(l)
+			e.finishIfOver(l)
 		}
 	}
+}
+
+// finishIfOver stops what is left of a run whose output says it is done (Over), once: its
+// group climbs the stop ladder, as for Stop, but the run doesn't count as stopped.
+func (e *Engine) finishIfOver(l *live) {
+	if l.Over == nil || l.finishing.Load() || !l.Over() {
+		return
+	}
+
+	l.finishing.Store(true)
+
+	if l.proc != nil {
+		l.proc.Stop(e.ladder)
+
+		return
+	}
+
+	e.climbOnce(l)
 }
 
 // appEnding returns how a run's program ended.
 func (e *Engine) appEnding(l *live) Ending {
 	code, _ := l.proc.Wait() // the code says it all; the error only wraps it
 
-	end := Ending{Stopped: l.stopped.Load(), TimedOut: l.timedOut.Load(), Quit: l.quit.Load()}
+	end := Ending{
+		Stopped: l.stopped.Load(), TimedOut: l.timedOut.Load(), Quit: l.quit.Load(),
+		Killed: l.proc.Killed() || l.killed.Load(),
+	}
 	if code >= 0 {
 		end.ExitCode = &code
 	}
@@ -315,22 +346,69 @@ func (e *Engine) followOrphan(ctx context.Context, l *live) {
 	ticker := time.NewTicker(e.tailEvery)
 	defer ticker.Stop()
 
+	limit, stopLimit := e.orphanLimit(l)
+	defer stopLimit()
+
 	for {
 		select {
 		case <-l.abandon:
 			e.drop(l)
 
 			return
+		case <-limit:
+			limit = nil
+
+			l.timedOut.Store(true)
+			e.climbOnce(l)
 		case <-ticker.C:
 			e.tail(l)
+			e.finishIfOver(l)
 
 			if !e.groupLive(l) {
-				e.end(ctx, l, Ending{Stopped: l.stopped.Load(), Quit: l.quit.Load(), Interrupted: orphanEnded})
+				e.end(ctx, l, Ending{
+					Stopped: l.stopped.Load(), Quit: l.quit.Load(), TimedOut: l.timedOut.Load(),
+					Killed: l.killed.Load(), Interrupted: orphanInterruption(l),
+				})
 
 				return
 			}
 		}
 	}
+}
+
+// climbOnce starts a run from before the app restarted up the stop ladder, once.
+func (e *Engine) climbOnce(l *live) {
+	l.stopOnce.Do(func() {
+		e.mu.Lock()
+		defer e.mu.Unlock()
+
+		if !e.closed {
+			e.wg.Go(func() { e.climb(l, e.ladder) })
+		}
+	})
+}
+
+// orphanLimit returns what fires once a run from before the app restarted is past the time
+// limit its kind's Verifier gave it, counted from its start, at once for one already past
+// it, and what stops it; nil fires never, for a run with no limit.
+func (e *Engine) orphanLimit(l *live) (<-chan time.Time, func()) {
+	if l.timeout <= 0 {
+		return nil, func() {}
+	}
+
+	timer := time.NewTimer(max(l.started.Add(l.timeout).Sub(e.clock.Now()), 0))
+
+	return timer.C, func() { timer.Stop() }
+}
+
+// orphanInterruption says why the end of a run from before the app restarted couldn't be
+// seen, unless the engine ended it at its time limit, which says so itself.
+func orphanInterruption(l *live) string {
+	if l.timedOut.Load() {
+		return ""
+	}
+
+	return orphanEnded
 }
 
 // tail feeds the run's output reader what its log holds past what it has read, and then
@@ -435,7 +513,7 @@ func (e *Engine) record(ctx context.Context, l *live, exitCode *int, out Outcome
 
 	result := withLists(Result{
 		Tool: l.tool, Intent: l.intent, Warnings: out.Warnings, Unrecognized: unrecognized,
-		UnrecognizedCount: max(out.UnrecognizedCount, len(out.Unrecognized)), Outcome: out.Detail,
+		UnrecognizedCount: max(out.UnrecognizedCount, len(out.Unrecognized)), Outcome: out.Detail, Folder: l.folder,
 	})
 
 	e.markEnded(l, true)
@@ -484,6 +562,8 @@ func (e *Engine) tellFailure(ctx context.Context, l *live, exitCode *int, out Ou
 	switch {
 	case e.failed == nil, out.Status != StatusFailed, l.unstarted, l.stopped.Load(), l.quit.Load():
 		return
+	case l.kind == KindAgent:
+		return // Autopilot tells how an agent's run ended, as Agent finished
 	case exitCode != nil && stoppedBySignal(*exitCode) && !l.timedOut.Load():
 		return // the user stopped it; the engine's own stop at the time limit ends a run so too
 	}

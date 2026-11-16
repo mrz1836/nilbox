@@ -142,7 +142,7 @@ func (u updateRuns) Active() bool {
 
 // Going lists the runs going in the app, the newest first.
 func (u updateRuns) Going(ctx context.Context) ([]update.Run, error) {
-	runs, err := u.history.Runs(ctx, scriptrun.Filter{})
+	runs, err := u.history.Runs(ctx, scriptrun.Filter{WithAgents: true})
 	if err != nil {
 		return nil, fmt.Errorf("list the runs going: %w", err)
 	}

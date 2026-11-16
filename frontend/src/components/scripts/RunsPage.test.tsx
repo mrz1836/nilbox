@@ -70,7 +70,7 @@ describe('RunsPage', () => {
       'RunningRelease v1.4.32m agoacme-org/sdk · In iTerm2',
       `Donemagex lint1h agoacme-org/example-repo · In ${brand.name} · 38 sFinished.`,
     ])
-    expect(platform.listScriptRuns).toHaveBeenCalledExactlyOnceWith({ kinds: [], repo: '' })
+    expect(platform.listScriptRuns).toHaveBeenCalledExactlyOnceWith({ kinds: [], repo: '', withAgents: false })
   })
 
   it('names the terminal as the user’s until the settings say which', async () => {
@@ -124,7 +124,7 @@ describe('RunsPage', () => {
     expect(await rows()).toHaveLength(3)
 
     // Filtering asks nothing more.
-    expect(platform.listScriptRuns).toHaveBeenCalledExactlyOnceWith({ kinds: [], repo: '' })
+    expect(platform.listScriptRuns).toHaveBeenCalledExactlyOnceWith({ kinds: [], repo: '', withAgents: false })
   })
 
   it('says when a filter lists nothing, leaving the history to clear', async () => {

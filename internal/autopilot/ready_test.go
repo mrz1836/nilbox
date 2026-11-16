@@ -181,7 +181,10 @@ func TestPreviewRunPlansTheDraftsAgentStepAsItWouldStart(t *testing.T) {
 	_, err = r.svc.PreviewRun(t.Context(), draft("Tell", notifySpec()), 42)
 	require.ErrorIs(t, err, autopilot.ErrNoAgentStep)
 
-	_, err = r.svc.PreviewRun(t.Context(), draft("Fix", backgroundSpec()), 42)
+	older := autopilot.NewService(autopilot.Config{
+		Pool: r.db, Accounts: r.accounts, Clock: r.clock, Previews: previews, Offers: terminalOnly(),
+	})
+	_, err = older.PreviewRun(t.Context(), draft("Fix", backgroundSpec()), 42)
 	require.ErrorIs(t, err, spec.ErrInvalid, "a draft with a problem previews nothing")
 }
 

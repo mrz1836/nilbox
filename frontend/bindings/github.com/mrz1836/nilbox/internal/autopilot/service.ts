@@ -12,6 +12,9 @@ import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wails
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
+import * as runevent$0 from "../agentrun/runevent/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
 import * as catalog$0 from "./catalog/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
@@ -257,6 +260,14 @@ export function RoutineNames(): $CancellablePromise<$models.RoutineName[] | null
 }
 
 /**
+ * RunEvents returns the events of the ledger's run runID after the one numbered after:
+ * what the run view shows. The window asks again after each autopilot:run.
+ */
+export function RunEvents(runID: number, after: number): $CancellablePromise<runevent$0.Page> {
+    return $Call.ByID(3446540685, runID, after);
+}
+
+/**
  * RunNow runs the routine id on the item now, as the user asked from the item's menu, and
  * returns its match: once per click, whatever its trigger says, on an item its conditions
  * match, or, with anyway (the menu's Run anyway, which the user chose knowing why it
@@ -267,6 +278,13 @@ export function RoutineNames(): $CancellablePromise<$models.RoutineName[] | null
  */
 export function RunNow(id: number, itemID: number, anyway: boolean): $CancellablePromise<$models.Match> {
     return $Call.ByID(1162826700, id, itemID, anyway);
+}
+
+/**
+ * RunsToday counts today's runs, those that never started left out.
+ */
+export function RunsToday(): $CancellablePromise<$models.RunsToday> {
+    return $Call.ByID(2493309342);
 }
 
 /**
@@ -375,4 +393,12 @@ export function Undo(ids: number[] | null): $CancellablePromise<$models.Undone> 
  */
 export function Watching(id: number): $CancellablePromise<number[] | null> {
     return $Call.ByID(3078357006, id);
+}
+
+/**
+ * Working returns the agents' runs going, oldest first. It reads the database, and the
+ * runner's memory of the runs it follows; the list is never nil.
+ */
+export function Working(): $CancellablePromise<$models.WorkingList> {
+    return $Call.ByID(4186598498);
 }

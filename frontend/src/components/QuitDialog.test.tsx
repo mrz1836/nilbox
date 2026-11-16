@@ -43,7 +43,7 @@ async function askToQuit(runs: ScriptRun[]) {
   })
 
   await waitFor(() => {
-    expect(platform.listScriptRuns).toHaveBeenCalledExactlyOnceWith({ kinds: [], repo: '' })
+    expect(platform.listScriptRuns).toHaveBeenCalledExactlyOnceWith({ kinds: [], repo: '', withAgents: true })
   })
 }
 

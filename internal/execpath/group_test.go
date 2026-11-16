@@ -120,6 +120,7 @@ func TestGroupStopEndsGrandchildren(t *testing.T) {
 	code, err := proc.Wait()
 	require.Error(t, err)
 	assert.Equal(t, 128+int(syscall.SIGINT), code, "SIGINT ended the program")
+	assert.False(t, proc.Killed(), "SIGINT ended it before SIGKILL")
 	assert.Eventually(t, func() bool { return !alive(pid) }, processWait, 10*time.Millisecond, "the grandchild ended with its group")
 }
 
@@ -143,6 +144,7 @@ func TestGroupEscalatesWhenSignalsAreIgnored(t *testing.T) {
 	code, err := proc.Wait()
 	require.Error(t, err)
 	assert.Equal(t, 128+int(syscall.SIGKILL), code, "only SIGKILL ended a program that ignores SIGINT and SIGTERM")
+	assert.True(t, proc.Killed(), "the ladder reached SIGKILL")
 }
 
 func TestGroupTimeoutKillsTheGroup(t *testing.T) {
@@ -173,6 +175,33 @@ func TestStdinIsDevNull(t *testing.T) {
 	out, err := os.ReadFile(logPath) //nolint:gosec // the test's own temp file
 	require.NoError(t, err)
 	assert.Equal(t, "stdin: 0 bytes, devnull: true\n", string(out))
+}
+
+func TestStdinReadsTheGivenFile(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	in := filepath.Join(dir, "prompt.md")
+	require.NoError(t, os.WriteFile(in, []byte("the prompt\n"), 0o600))
+
+	got := filepath.Join(dir, "got")
+	path, env := testutil.FakeTool(t, "tool", testutil.FakeRun{StdinTo: got})
+
+	stdin, err := os.Open(in) //nolint:gosec // the test's own temp file
+	require.NoError(t, err)
+
+	t.Cleanup(func() { _ = stdin.Close() })
+
+	proc, err := execpath.Start(t.Context(), execpath.Cmd{Path: path, Env: append(os.Environ(), env), Stdin: stdin})
+	require.NoError(t, err)
+
+	code, err := proc.Wait()
+	require.NoError(t, err)
+	assert.Zero(t, code)
+
+	body, err := os.ReadFile(got) //nolint:gosec // the test's own temp file
+	require.NoError(t, err)
+	assert.Equal(t, "the prompt\n", string(body))
 }
 
 func TestChildSeesOnlyStdio(t *testing.T) {

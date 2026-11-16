@@ -307,6 +307,7 @@ export const settingsIndex: Readonly<Record<SettingsSection, readonly SettingEnt
     { label: 'History kept', keywords: ['retention', 'activity', 'ledger', 'days', 'prune'] },
     { label: 'Run logs kept', keywords: ['logs', 'transcripts', 'retention', 'days', 'prune'] },
     { label: 'Clear history', keywords: ['clear', 'delete history', 'forget', 'activity', 'ledger', 'wipe'] },
+    { label: 'Stop all', keywords: ['stop', 'agents', 'kill', 'background', 'runs', 'halt'] },
     {
       label: 'This Mac',
       keywords: [

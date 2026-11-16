@@ -222,7 +222,7 @@ func (s *Sim) Begin() {
 	eng := autopilot.EngineConfig{
 		Items: items, Lock: autopilot.NewLock(s.Lock), Runner: s.Runner, Triage: s.Triage,
 		Dispatchers: map[catalog.Dispatcher]autopilot.Dispatcher{catalog.DispatchNotices: autopilot.NewNotices(s.Notices)},
-		Problems:    autopilot.NewProblemNotices(s.Notices), Events: s.Events,
+		Problems:    autopilot.NewProblemNotices(s.Notices), Finished: s.Notices, Events: s.Events,
 	}
 	s.config(&svc, &eng)
 
@@ -423,6 +423,19 @@ func FixFailing() spec.Spec {
 			{Agent: &spec.AgentStep{Prompt: spec.PromptRef{Starter: "fix-checks"}}},
 			{WaitForChecks: &spec.WaitStep{}, OnlyIf: catalog.OutcomePushed},
 		},
+	}
+}
+
+// Reviews is a routine with a Read only agent in the background: review each watched pull
+// request as it appears.
+func Reviews() spec.Spec {
+	return spec.Spec{
+		Version: spec.Version,
+		Watch:   spec.Watch{Sources: []spec.Source{Search()}},
+		Trigger: spec.Trigger{Event: catalog.EventAppears},
+		Steps: []spec.Step{{Agent: &spec.AgentStep{
+			Prompt: spec.PromptRef{Starter: "review"}, Fence: &spec.Fence{Tools: catalog.PresetReadOnly},
+		}}},
 	}
 }
 

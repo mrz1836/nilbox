@@ -513,7 +513,7 @@ describe('ItemRow worktree tag', () => {
 
   it('says a session is running in it, rather than when one was launched', () => {
     renderWith(item(), {
-      inUse: [{ pid: 4242, command: 'claude', agent: '' }],
+      inUse: [{ pid: 4242, command: 'claude', agent: '', by: '' }],
       agent: 'claude',
       lastLaunchedAt: '2026-06-15T09:00:00Z',
     })

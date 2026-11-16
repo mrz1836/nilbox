@@ -315,6 +315,11 @@ export function chipOf(m: AutopilotMatch): Chip {
     return { label: 'Told you', tone: 'accent' }
   }
 
+  // A Read only agent in the background leaves notes: its final message.
+  if (m.runs.some((r) => r.runner === 'background' && r.preset === 'readOnly' && r.outcome === 'done')) {
+    return { label: 'Notes ready', tone: 'accent' }
+  }
+
   // A match that is done ran, unless it says it closed for another reason.
   return m.reason === '' || m.reason === 'would_run' ? reasonChips.ran : reasonChips[m.reason]
 }

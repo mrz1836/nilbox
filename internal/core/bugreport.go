@@ -89,9 +89,16 @@ func (b bugReportState) autopilotState(ctx context.Context, c autopilotprefs.Con
 		return nil
 	}
 
-	return []appinfo.StateSection{{
-		Title: "Autopilot", Lines: []string{autopilotSettingsLine(c), routinesLine(list)},
-	}}
+	lines := []string{autopilotSettingsLine(c), routinesLine(list)}
+
+	if today, todayErr := b.routines.RunsToday(ctx); todayErr == nil {
+		lines = append(lines, fmt.Sprintf("Runs today: %d in the background · %d in the terminal · %d GitHub actions",
+			today.Background, today.Terminal, today.Actions))
+	} else {
+		b.logger.WarnContext(ctx, "a bug report leaves out today's runs", "error", todayErr)
+	}
+
+	return []appinfo.StateSection{{Title: "Autopilot", Lines: lines}}
 }
 
 // autopilotSettingsLine words Autopilot's settings: whether it is on and paused, the mode

@@ -951,6 +951,8 @@ func TestEveryAllowlistEntryIsUsed(t *testing.T) {
 	_, _ = g.Unpushed(ctx, repoDir, mainBranch)
 	_, _ = g.CommitsBetween(ctx, repoDir, headSHA, otherSHA)
 	_, _ = g.IsAncestor(ctx, repoDir, headSHA, otherSHA)
+	_, _ = g.Head(ctx, repoDir)
+	_, _ = g.ChangedFiles(ctx, repoDir, headSHA, otherSHA)
 	_, _ = g.LocalVersionTags(ctx, repoDir)
 	_, _ = g.RemoteRefs(ctx, repoDir)
 	_, _ = g.RemoteBranch(ctx, repoDir, mainBranch)

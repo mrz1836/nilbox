@@ -767,6 +767,17 @@ func autopilotBoundCalls(t *testing.T) map[string]boundCall {
 
 			return c.Autopilot.PreviewActions(ctx, autopilot.Draft{Name: "Bound preview", Spec: labels}, ids.item)
 		},
+		"autopilot.Service.Working": func(ctx context.Context, c *Core, ids seededItems) (any, error) {
+			boundMatch(ctx, t, c, ids.item, "Bound working")
+
+			return c.Autopilot.Working(ctx)
+		},
+		"autopilot.Service.RunEvents": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
+			page, err := c.Autopilot.RunEvents(ctx, 999, 0)
+			require.Error(t, err, "a run the history doesn't hold has no events")
+
+			return page, nil
+		},
 	}
 }
 

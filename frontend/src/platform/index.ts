@@ -16,6 +16,7 @@ import type * as autopiloteval from '../../bindings/github.com/mrz1836/nilbox/in
 import type * as autopilotspec from '../../bindings/github.com/mrz1836/nilbox/internal/autopilot/spec'
 import type * as autopilotwatch from '../../bindings/github.com/mrz1836/nilbox/internal/autopilot/watch'
 import * as autopilotprefs from '../../bindings/github.com/mrz1836/nilbox/internal/autopilotprefs'
+import type * as runevent from '../../bindings/github.com/mrz1836/nilbox/internal/agentrun/runevent'
 import * as backup from '../../bindings/github.com/mrz1836/nilbox/internal/backup'
 import * as branchrules from '../../bindings/github.com/mrz1836/nilbox/internal/branchrules'
 import * as budget from '../../bindings/github.com/mrz1836/nilbox/internal/budget'
@@ -396,6 +397,14 @@ export type AutopilotMatch = Omit<NonNullLists<autopilot.Match>, 'blockedBy' | '
   reason: autopilot.Reason | ''
 }
 export type AutopilotEffect = NonNullLists<autopilot.Effect>
+// The agents' runs going, as Activity's Working lists them; a run's events, as the run view reads them; and today's runs, as a bug report
+// counts them.
+export type AutopilotWorkingList = NonNullLists<autopilot.WorkingList>
+export type AutopilotWorking = NonNullLists<autopilot.Working>
+export type AutopilotRunProgress = NonNullLists<runevent.Progress>
+export type AutopilotRunEvents = NonNullLists<runevent.Page>
+export type AutopilotRunEvent = NonNullLists<runevent.Event>
+export type AutopilotRunsToday = NonNullLists<autopilot.RunsToday>
 export type AutopilotStepKind = autopilotcatalog.StepKind
 export type AutopilotState = autopilot.State
 export type AutopilotReason = autopilot.Reason
@@ -1137,7 +1146,18 @@ export const {
   Suggest: suggestForRoutines,
   Describe: describeRoutine,
   Test: testRoutine,
+  RunEvents: autopilotRunEvents,
+  RunsToday: autopilotRunsToday,
+  StopRun: stopAutopilotRun,
+  StopAll: stopAllAutopilotRuns,
 } = autopilotService
+
+// The agents' runs: Working lists those going, each with how far it has got (the starts
+// queued are Needs you's); an "autopilot:run" event follows a run's new events, a few times
+// a second at most, and "autopilot:updated" each change of the ledger. StopRun stops one at
+// once, never queued behind the engine, and StopAll every agent's run, leaving the scripts'
+// runs alone.
+export const autopilotWorking = autopilotService.Working
 
 export const saveRoutine = autopilotService.Save as (d: AutopilotDraft) => CancellablePromise<AutopilotRoutine>
 

@@ -1256,8 +1256,8 @@ index would refuse. Its queries are in
   (`PromptFollower.Renamed`, told by `prompts.Config.Renamed`, in one transaction, each spec
   compared-and-set on the one read); a starter's key follows its prompt on its own.
 - A step's **Where** must be a place this build runs an agent in (`catalog.Places`,
-  `Offers.Places`): one it can't (the background, in this build) is a problem at
-  `steps[i].agent.where` (`placeProblems`), in `Describe` and `Save` alike, never a Dry run
+  `Offers.Places`, the background and the terminal in this build): one it can't is a problem
+  at `steps[i].agent.where` (`placeProblems`), in `Describe` and `Save` alike, never a Dry run
   hold, so a routine is never saved to wait for a later build; a routine stored before with
   such a step isn't ready on this Mac (its `place:` need, **Readiness**, below).
 - `Describe(draft)` reads a draft as the builder edits it, saving nothing and asking GitHub
@@ -1744,8 +1744,14 @@ launch that opened ends the run done at once, recording its session, agent, prof
 and worktree (`Launched`): the session is the user's from there, which the sessions ledger
 follows as any, and a later start finds it in the folder (the launcher's running hold).
 `Alive` answers gone for a terminal run still recorded as going, so one a crash cut off
-mid-launch is never launched again on its own. The background is P11's runner; until then a
-background step can't be saved (`placeProblems`), and one stored before isn't ready.
+mid-launch is never launched again on its own (the engine's `alive` takes a terminal run its
+runner never started as gone). A step in the background goes to the background runner
+(**Agents in the background**, below).
+
+**A start held back on a session.** A start its runner held back on something working where it
+would start (a queued wait, `busy_worktree`) isn't tried again until a tick has passed
+(`holdBack`, `backOff`): each try reads the item from GitHub first, so a session in the worktree
+would otherwise cost a point every cycle until it ends. The user's OK tries it again at once.
 
 **The user's OK of a hold.** A held step keeps its `Hold` in the match's steps (`stepRun.Hold`),
 which `Match.Hold` shows the window while the match waits on it; `Approve` adds exactly that
@@ -1789,6 +1795,104 @@ on, under a manual fire key. Every limit of a start still holds it.
 **Preview** (`PreviewRun(draft, itemID)`) is `Previewer` (core's `runPreviews`): the launcher's
 own `Preview` of the same `routineRequest` a start would launch, with where each setting came
 from (`routine` for the routine's own), so what it shows is what runs.
+
+### Agents in the background
+
+What the user sees is in `docs/desktop.md`'s
+[Agents in the background](desktop.md#agents-in-the-background).
+
+A step `In the background` goes through the start path above exactly as one in the terminal
+does, to the same `Runner`: core's `backgroundAgents` (`internal/core/adapters_agentrun.go`)
+takes a step in the background itself and hands one in the terminal to `agentRuns`. Its
+`Dispatch` is a launch's, with three differences:
+
+1. **The plan.** `launcher.Backgrounds.Plan` (`launcher.NewBackgrounds`, a type of its own, so
+   the bound launcher never plans one) plans the same `routineRequest` a terminal run would
+   launch, with no terminal: the item's worktree, always, made at the head the match was
+   decided on; the fence's access in place of the profile's (`Request.Fence`, the step's tools
+   preset and the run's folder, which `resolvePermission` turns into `agent.AccessFence`: an
+   outside contributor's item Read only whatever the fence says, a preset its agent can't
+   keep `ErrFenceNotKept`, a start that waits `blocked: not_ready`); the profile's extra
+   directories left out; and the agent's headless flags around the fence's own
+   (`agent.HeadlessArgs`: `-p --output-format stream-json --verbose --permission-prompts none
+   --session-id=<id>`, the model and effort, the fence's access flags, `--max-budget-usd`,
+   `--json-schema` for the report, `--append-system-prompt` with the unattended note, and
+   `--system-prompt-snapshot off`), a profile's extra arguments refused where they set what
+   the fence sets or would loosen it (`agent.CheckFenced`). Its holds are a launch's own (`heldBack`): a
+   session or a run in the worktree, the pull request's files under the unattended scope, and
+   a dirty worktree, each confirmed only by the routine's user; after `EnsureWorktree`,
+   `Backgrounds.Made` holds the worktree made as `heldBack` held the one planned, and a
+   worktree off the head the plan checked waits (`waiting: dirty_worktree`). Then
+   `Backgrounds.Fenced` works the run's fence out for the worktree made (`agent.PrepareFence`
+   over `fence.Spec`: the preset, the worktree and its tools, `fence.RepoTools`, the item, its
+   head branch and the clone's remote for a push, the step's own `Allow` and `Deny`, the run's
+   folder, home, the data folder, and the profile's config folder, whose hook is the app's own
+   executable in its hook mode), rebuilds the argv with the fence's line added to the
+   unattended note (`FencedRun.Note`), and core writes its files into the run's folder
+   (`FencedRun.Write`: the policy, the agent's settings, and a sandboxed preset's check
+   folder); a push preset on a fork's pull request waits `blocked: cross_repository`. The
+   prompt is filled in with `.Unattended` true and passed on stdin from the same folder
+   (`<data>/agent-runs/<session>/prompt.md`).
+2. **The environment** is the login shell's (or the app's with the finder's folders while it
+   can't be read), with the plan's changes on top (`launcher.AgentEnv`: the profile's config
+   folder or, for the default profile, none; no API key unless the user's setting lets one
+   through), the config folder never named as the agent's default one, and the variables an
+   agent session sets for itself dropped (`agent.HeadlessEnv`: `CLAUDECODE`, `CLAUDE_CODE_*`,
+   `CLAUDE_EFFORT`, `CLAUDE_PID`, `CLAUDE_TMPDIR`).
+3. **The run** is `internal/agentrun`'s. The `Runner` starts it as a `scriptrun.KindAgent` run
+   (its own retention, `KeepAgentRuns` and `KeepAgentLogBytes`, and the age Settings' **Run
+   logs kept** gives, apart from the scripts' runs, never listed on the Runs page: `Filter`
+   leaves the kind out unless `WithAgents`), holding the worktree's lock (`clonelock.KindAgent`,
+   keyed by the worktree, so two items of one clone run side by side), whose `Before` checks
+   under that lock that the worktree holds no more changes than the user confirmed and that no
+   session the app follows works there. It records the run as a session in the sessions
+   ledger (`agent_sessions.run_id`, which the `Watcher` leaves to the run: `Ledger.RunState`
+   moves its state from the stream, and hands the item to `Rereads` once it stops working), so
+   the item's pill and panel follow it; the worktrees listing and the launcher's running hold
+   read its folder (`RunFolders`), since the process list leaves out the app's own children.
+   `Dispatch` returns `Running` with what it started (`Launched`, `ScriptRunID` included), and
+   the run's tokens reach the ledger every 30 seconds (`Engine.RunUsage`).
+
+**The stream** (`agentrun/stream.go`, `claude.go`) splits the log into lines itself (one is
+read up to 64 MB, a longer one counted and skipped), keeps the last 2,000 events (each text cut
+to 8 KB, `runevent.MaxText`) and the progress (the latest step, the todo list, tokens counted
+once per message), and counts a message it doesn't know (`Progress.Unknown`). `runevent` is the
+leaf both sides share; the window asks for a run's events after the last it has
+(`Service.RunEvents`) on each `event.AutopilotRun` (`autopilot:run`, at most four a second a run).
+
+**The end.** A run is judged by the agent's `result` line, never its exit status (a Control-C
+ends with `error_during_execution` and exit 0; `judge`, `outcome.go`): its time limit, the
+quit (interrupted, so its match comes back under Needs you), the user's Stop, and a token
+budget reached say so first; then `error_max_budget_usd` is out of budget, a result in error
+after a `rate_limit_event` `rejected` is out of usage (with the limit's type and its reset),
+any other error is the agent's own words, and success is *Finished:* with the report's summary
+(`structured_output`, `ReportSchema`) or the agent's last message. The cost and the models are
+the result's (`total_cost_usd`, `modelUsage`); a run on the user's plan (`apiKeySource: none`)
+has an estimate (`Result.Estimated`, `autopilot_runs.cost_estimated`). The run's sandbox check
+is read from its folder (`fence.Sandboxed` over its policy, `Outcome.Sandbox`): a sandbox that
+leaked fails a run that ended on its own, whatever its result. A result line ends the
+run whatever its program does next: the runner stops the group (`Callbacks.Over`), and after a
+SIGKILL ends the processes still working in the worktree (`ProcSweeper`). At the end it reads
+the worktree's commit and the files its commits changed (`gitread.Head`, `ChangedFiles`,
+`git diff --name-only --no-renames`), which core notes on the item at the head the run started
+from and its own last commit (`inbox.Store.NoteAgentChanges`), so a launch at either head holds
+for an agent file it wrote. The
+record holds the outcome; the runner tells `Engine.RunEnded` only once it does, and again from
+the record after a restart (`Verify`, the kind's `Verifier`), so an end is never lost or told
+twice. Each end done or failed is told once as **Agent finished** (`NoticeFinished`, through
+`EngineConfig.Finished`), with its cost.
+
+**Stopping and the quit.** `Stop` and `StopAll` reach the run engine at once
+(`scriptrun.Engine.StopKind`, the stop ladder). The quit stops every run in the app; the seam
+for *Let them finish* (its question and setting are the next phase's) is
+`scriptrun.Engine.LetFinish`: a run the quit lets go keeps its record as going, and the next
+start follows it again as an orphan, stopping it at once when its time limit is past. With
+**Keep the Mac awake while agents work** on, `caffeinate -i -w <pid>` holds the Mac awake for
+each run's program.
+
+**Seams.** The fallback to another profile when one is out of usage is the next phase's:
+the outcome keeps the limit's type and reset (`Outcome.Limit`). The run view, Watch, and Take
+over read the events and the session this records.
 
 ### Local actions: by a routine, Undo, and hands off
 
@@ -2211,7 +2315,8 @@ The window side lives in `frontend/src/components/autopilot/` (the tab itself,
   match the item) and **Why didn't a routine run?**, which reads `Explain`. It reads the
   routines through one source made once, so the rows don't render again when they change.
 - **The builder's agent step** draws Where from `catalog.places` (a place this build can't
-  run in is shown off, with why; a new agent step starts in the terminal), and the Test
+  run in is shown off, with why; a new agent step starts in the first place this build runs
+  one, the background), and the Test
   panel's **Preview** shows `PreviewRun`'s plan with the launch menu's own `PlannedLaunch`
   and the trace (`Trace`).
 

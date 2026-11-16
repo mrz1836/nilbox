@@ -178,6 +178,10 @@ type Config struct {
 	// read directly.
 	Reader *localrepos.Reader
 
+	// RunFolders names the app's own runs working in a folder, which hold a launch there
+	// back whether or not sessions are followed. Optional.
+	RunFolders RunFolders
+
 	// Logger receives what a launch cannot report as its error: a session record or a
 	// clone path that could not be stored, and old launch files that could not be
 	// pruned. Without it they are not logged.
@@ -360,6 +364,7 @@ type Service struct {
 	trust     map[agent.ID]Truster
 	files     FileChecker
 	reader    *localrepos.Reader
+	runs      RunFolders
 	logger    *slog.Logger
 
 	// cloneMu runs one Clone at a time.
@@ -392,6 +397,7 @@ func NewService(cfg Config) *Service {
 		trust:     cfg.Trust,
 		files:     cfg.Files,
 		reader:    cfg.Reader,
+		runs:      cfg.RunFolders,
 		logger:    logging.Or(cfg.Logger),
 	}
 }
@@ -921,7 +927,10 @@ func (p planned) preview(home string) Preview {
 		Env:        env,
 		Permission: p.plan.Permission,
 		Prompt:     p.prompt,
-		Terminal:   p.driver.ID(),
+	}
+
+	if p.driver != nil {
+		preview.Terminal = p.driver.ID()
 	}
 
 	if wt := p.worktree; wt != nil {

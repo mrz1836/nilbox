@@ -25,6 +25,7 @@ import {
   setAutopilotLogDays,
   setAutopilotPaused,
   setAutopilotRunsPerDay,
+  stopAllAutopilotRuns,
   type AutopilotConfig,
   type AutopilotDailyCap,
   type AutopilotEngine,
@@ -514,6 +515,43 @@ function ClearHistory({ controlId }: { controlId: string }) {
   )
 }
 
+// StopAll stops every agent's run in the background at once, as the Autopilot tab's Stop
+// all does, and leaves the scripts' runs alone; the routines carry on.
+function StopAll({ controlId }: { controlId: string }) {
+  const stopping = useMutation(() => stopAllAutopilotRuns())
+  const [done, setDone] = useState('')
+
+  return (
+    <ChoiceRow
+      label="Stop all"
+      description={
+        <span id={`${controlId}-help`} role={done === '' ? undefined : 'status'}>
+          {done === '' ? 'Stops every agent working in the background now. Your scripts’ runs carry on.' : done}
+        </span>
+      }
+      error={stopping.error}
+      errorId={`${controlId}-error`}
+    >
+      <button
+        type="button"
+        aria-describedby={rowDescribedBy(controlId, stopping.error)}
+        disabled={stopping.pending}
+        onClick={() => {
+          setDone('')
+          void stopping.run().then((result) => {
+            if (result.ok) {
+              setDone('Stopping every agent’s run.')
+            }
+          })
+        }}
+        className={`${buttonClass} shrink-0`}
+      >
+        Stop all
+      </button>
+    </ChoiceRow>
+  )
+}
+
 // AutopilotSection holds Autopilot's settings, each saved as soon as it is set: Pause
 // Autopilot and the mode new routines start in; the limits every routine keeps to, across
 // them all; what holds a coding agent back; how long the history and the run logs are
@@ -709,6 +747,7 @@ export function AutopilotSection({ settings: stored, onSaved }: SectionProps) {
             }}
           />
           <ClearHistory controlId={`${id}-clear`} />
+          <StopAll controlId={`${id}-stop-all`} />
         </Group>
       </div>
       <ThisMac />

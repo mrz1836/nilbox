@@ -44,17 +44,81 @@ func agentCommands() []string {
 }
 
 // sessionsIn returns the sessions working in dir, naming the agent of each the app
-// follows, and whether the processes could be listed. The followed sessions are read
-// only when some process works in dir.
+// follows, and the app's own runs there, and whether the processes could be listed. The
+// followed sessions are read only when some process works in dir.
 func (s *Service) sessionsIn(ctx context.Context, dir string) ([]Session, bool) {
 	running, known := s.processes(ctx)
+	runs := s.runSessions(ctx)
 
 	within := procs.Within(running, dir)
 	if len(within) == 0 {
-		return []Session{}, known
+		return append([]Session{}, runs.within(dir)...), known
 	}
 
-	return sessionsOf(within, s.agentProcesses(ctx)), known
+	return append(sessionsOf(within, s.agentProcesses(ctx)), runs.within(dir)...), known
+}
+
+// RunFolder is a folder one of the app's own runs works in now.
+type RunFolder struct {
+	// Dir is the folder, and PID the run's program, or 0 while it starts.
+	Dir string
+	PID int
+
+	// Agent is the agent it runs, and By names it: "⚡ Fix checks".
+	Agent agent.ID
+	By    string
+}
+
+// RunFolders names the folders the app's own runs work in now: an agent's background run,
+// one from before the app restarted included, which the process list leaves out (the
+// app's own children, and an orphan whose parent is the process manager). Core adapts
+// the runs.
+type RunFolders interface {
+	RunFolders(ctx context.Context) []RunFolder
+}
+
+// runSessions are the app's own runs, as sessions, located once.
+type runSessions struct {
+	located *procs.Located
+	runs    []RunFolder
+}
+
+// runSessions returns the app's own runs working now.
+func (s *Service) runSessions(ctx context.Context) runSessions {
+	if s.runs == nil {
+		return runSessions{}
+	}
+
+	runs := s.runs.RunFolders(ctx)
+	list := make([]procs.Process, 0, len(runs))
+
+	for i, r := range runs {
+		list = append(list, procs.Process{PID: i + 1, Dir: r.Dir})
+	}
+
+	return runSessions{located: procs.Locate(list), runs: runs}
+}
+
+// within returns the runs working in dir or inside it, as sessions.
+func (r runSessions) within(dir string) []Session {
+	if r.located == nil {
+		return nil
+	}
+
+	var out []Session
+
+	for _, p := range r.located.Within(dir) {
+		run := r.runs[p.PID-1]
+		command := ""
+
+		if a, err := agent.Lookup(run.Agent); err == nil {
+			command = a.Command
+		}
+
+		out = append(out, Session{PID: run.PID, Command: command, Agent: run.Agent, By: run.By})
+	}
+
+	return out
 }
 
 // AgentProcesses names the processes of the agent sessions the app follows. The app
@@ -99,13 +163,18 @@ func (s *Service) checkSessions(ctx context.Context, dir string, strict bool) er
 }
 
 // markSessions fills in the sessions working in each linked worktree, naming the agent of
-// each the app follows. Each process's directory is resolved once for the whole listing.
-func markSessions(repos []Repo, running []procs.Process, agents map[int]agent.ID) {
+// each the app follows, and the app's own runs there. Each process's directory is resolved
+// once for the whole listing.
+func markSessions(repos []Repo, running []procs.Process, agents map[int]agent.ID, runs ...runSessions) {
 	located := procs.Locate(running)
 
 	for _, wt := range rows(repos) {
 		if !wt.Main && !wt.Prunable {
 			wt.InUse = sessionsOf(located.Within(wt.Path), agents)
+
+			for _, r := range runs {
+				wt.InUse = append(wt.InUse, r.within(wt.Path)...)
+			}
 		}
 	}
 }

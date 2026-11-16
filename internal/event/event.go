@@ -123,6 +123,9 @@ const (
 	// NameAutopilotUpdated is AutopilotUpdated's name.
 	NameAutopilotUpdated = "autopilot:updated"
 
+	// NameAutopilotRun is AutopilotRun's name.
+	NameAutopilotRun = "autopilot:run"
+
 	// NameUpdatesUpdated is UpdatesUpdated's name.
 	NameUpdatesUpdated = "updates:updated"
 
@@ -195,6 +198,7 @@ func WindowEvents() []WindowEvent {
 		UpdatesUpdated{},
 		UpdateRestartRequested{},
 		AutopilotUpdated{},
+		AutopilotRun{},
 		KeptRunning{},
 	}
 }
@@ -474,6 +478,19 @@ type AutopilotUpdated struct{}
 func (AutopilotUpdated) Name() string { return NameAutopilotUpdated }
 
 func (AutopilotUpdated) window() {}
+
+// AutopilotRun says an agent's background run has new events, as its stream grows: the
+// window asks for its events after the last it has (autopilot.Service.RunEvents), so the
+// event never carries a log. It comes at most four times a second for a run.
+type AutopilotRun struct {
+	// RunID is the ledger's run.
+	RunID int64 `json:"runId"`
+}
+
+// Name returns NameAutopilotRun.
+func (AutopilotRun) Name() string { return NameAutopilotRun }
+
+func (AutopilotRun) window() {}
 
 // UpdatesUpdated says the app's update changed: a check started or ended, a download got
 // further (a few times a second at most), a version is ready, a restart began or failed,

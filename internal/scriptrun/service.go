@@ -29,17 +29,25 @@ func NewService(e *Engine) *Service {
 
 // Filter picks the runs Runs lists.
 type Filter struct {
-	// Kinds are the kinds listed; none lists every kind.
+	// Kinds are the kinds listed; none lists every kind but an agent's (WithAgents).
 	Kinds []Kind `json:"kinds"`
 
 	// Repo is part of a repository's "owner/name" to look for, in any case; "" lists
 	// every run.
 	Repo string `json:"repo"`
+
+	// WithAgents lists the agents' runs too, with no Kinds: the Runs page and the Scripts
+	// tab's count leave them out, as the Autopilot tab is their home, while the quit and an
+	// update's restart, which would stop them, name them.
+	WithAgents bool `json:"withAgents"`
 }
 
 // matches reports whether f lists rec.
 func (f Filter) matches(rec Record) bool {
-	if len(f.Kinds) > 0 && !slices.Contains(f.Kinds, rec.Kind) {
+	switch {
+	case len(f.Kinds) > 0 && !slices.Contains(f.Kinds, rec.Kind):
+		return false
+	case len(f.Kinds) == 0 && rec.Kind == KindAgent && !f.WithAgents:
 		return false
 	}
 
@@ -236,7 +244,8 @@ func (s *Service) MarkSeen(ctx context.Context, id int64) error {
 	return nil
 }
 
-// ClearHistory forgets every run that has ended, with its log. Runs going are kept.
+// ClearHistory forgets every run that has ended, with its log, but the agents' runs, which
+// the Runs page doesn't list: Autopilot's Clear history forgets those. Runs going are kept.
 func (s *Service) ClearHistory(ctx context.Context) error {
 	return s.e.clearHistory(ctx)
 }

@@ -109,6 +109,8 @@ func (e *Engine) approve(ctx context.Context, id int64) error {
 	}
 
 	m.Approved = true
+
+	delete(e.heldBack, id) // the user's OK tries the start again at once
 	e.save(ctx, m)
 
 	return nil
@@ -429,6 +431,18 @@ func (s *Service) ClearHistory(ctx context.Context) (Cleared, error) {
 
 		if clearErr != nil {
 			return uierr.New("The history couldn't be cleared.", clearErr)
+		}
+
+		if e.runLogs == nil {
+			return nil
+		}
+
+		if clearErr = e.runLogs.ClearAgentHistory(ctx); clearErr != nil {
+			return uierr.New("The agents' run logs couldn't be cleared.", clearErr)
+		}
+
+		if clearErr = e.ledger.q.MarkRunLogsCleared(ctx); clearErr != nil {
+			return uierr.New("The agents' run logs couldn't be cleared.", clearErr)
 		}
 
 		return nil

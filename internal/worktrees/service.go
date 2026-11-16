@@ -306,6 +306,11 @@ type Config struct {
 	// "Claude" rather than the name of Claude Code's program. Optional.
 	Agents AgentProcesses
 
+	// Runs names the folders the app's own runs work in, which count as in use: nothing
+	// removes a worktree an agent's run works in, an orphan after a quit included.
+	// Optional.
+	Runs RunFolders
+
 	// Events hears an event.WorktreesUpdated when a sweep removed a worktree or changed
 	// how many need the user's attention, and an event.WorktreesProgress as the window's
 	// listing goes.
@@ -348,6 +353,7 @@ type Service struct {
 	lister   procs.Lister
 	history  History
 	agents   AgentProcesses
+	runs     RunFolders
 	events   event.Sink
 	logger   *slog.Logger
 	procs    processTable
@@ -401,6 +407,7 @@ func NewService(cfg Config) *Service {
 		lister:   cfg.Procs,
 		history:  cfg.History,
 		agents:   cfg.Agents,
+		runs:     cfg.Runs,
 		events:   event.Or(cfg.Events),
 		logger:   logging.Or(cfg.Logger),
 		clones:   clones,
