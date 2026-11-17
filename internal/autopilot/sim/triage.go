@@ -153,7 +153,7 @@ func (s *Sim) listedID(number int) (int64, bool) {
 	snap, err := s.Inbox.Snapshot(context.Background())
 	require.NoError(s.t, err)
 
-	for _, l := range []inbox.List{snap.ReviewRequested, snap.Authored, snap.Assigned} {
+	for _, l := range snap.Lists() {
 		for _, it := range l.Items {
 			if it.Number == number {
 				return it.ID, true

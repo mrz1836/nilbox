@@ -8,9 +8,9 @@ import (
 	"github.com/mrz1836/nilbox/internal/inbox/internal/queries"
 )
 
-// BotCounts are the pull requests bots opened in the inbox lists lately, which suggest
-// Autopilot's templates: those Dependabot opened, and those any bot opened in the Review
-// requested and Assigned lists.
+// BotCounts are the pull requests bots opened in the inbox lately, which suggest
+// Autopilot's templates: those Dependabot opened, and those any bot opened that ask for the
+// user's review or are assigned to them.
 type BotCounts struct {
 	Dependabot int
 	Bots       int

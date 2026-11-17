@@ -47,7 +47,7 @@ UPDATE repos SET local_path = ?, updated_at = ? WHERE id = ?;
 -- name: ListRepoCounts :many
 -- ListRepoCounts returns every repository that is not archived, by owner and then name
 -- ignoring case, each with how many of its items are listed now, in at least one of the
--- three lists, or watched by a routine's search, so a repository the user only watches can
+-- three searches, or watched by a routine's search, so a repository the user only watches can
 -- have launch defaults too.
 SELECT r.owner, r.name, COUNT(i.id) AS items
 FROM repos r

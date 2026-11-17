@@ -258,6 +258,12 @@ type Settings struct {
 	// statuses.
 	InboxOrder InboxOrder `json:"inboxOrder"`
 
+	// HiddenLabels are the patterns of the labels the inbox's cards leave out (see
+	// KeyHiddenLabels), never nil, and DefaultHiddenLabels what Restore the defaults goes
+	// back to.
+	HiddenLabels        []string `json:"hiddenLabels"`
+	DefaultHiddenLabels []string `json:"defaultHiddenLabels"`
+
 	// MergeMethod is how the review sheet merges a pull request.
 	MergeMethod MergeMethod `json:"mergeMethod"`
 
@@ -790,6 +796,8 @@ func fromStored(stored map[string]string) Settings {
 		NotificationsTab:     notificationsTabs().decode(stored[KeyNotificationsTab]),
 		ConversationOrder:    conversationOrders().decode(stored[KeyConversationOrder]),
 		InboxOrder:           decodeInboxOrder(stored),
+		HiddenLabels:         decodeHiddenLabels(stored),
+		DefaultHiddenLabels:  DefaultHiddenLabels(),
 		MergeMethod:          mergeMethods().decode(stored[KeyMergeMethod]),
 		Integrations:         integrationprefs.Decode(stored),
 		GitHubNotifications:  threadrules.Decode(stored),
@@ -918,6 +926,7 @@ func settingKeys() []string {
 		sensitive.PrefScope, sensitive.PrefOff, sensitive.PrefPatterns, KeyMenuBar, notifyprefs.KeyBannersOff, notifyprefs.KeyBannersOn, KeyTheme,
 		KeyTextSize, KeyToastSeconds, KeyProjectsTipDismissed, KeyReviewTab, KeyNotificationsTab, KeyConversationOrder, KeyMergeMethod, KeyRefreshInbox, KeyRefreshChecks, KeyRefreshWorktrees,
 		KeyRefreshNotifications, KeyRefreshReleaseChecks, KeyRefreshServiceStatus, updateprefs.KeyMode,
+		KeyHiddenLabels,
 	), append(append(append(append(collapsedKeys(), orderKeys()...), branchrules.Keys()...), reporules.Keys()...),
 		append(append(append(integrationprefs.Keys(), threadrules.Keys()...), statusprefs.Keys()...),
 			autopilotprefs.Keys()...)...)...)

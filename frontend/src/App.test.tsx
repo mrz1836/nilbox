@@ -193,19 +193,19 @@ describe('App', () => {
   })
 
   it('keeps the inbox lists collapsed the way they were left, across views', async () => {
-    // Assigned holds an item too, so it shows: a list with nothing in it hides.
+    // Yours holds an item too, so it shows: a list with nothing in it hides.
     platform.getInboxSnapshot.mockResolvedValue(
       snapshot({
         reviewRequested: list([item()]),
-        assigned: list([item({ id: 2, kind: 'issue', number: 31, title: 'Crash on start' })]),
+        yours: list([item({ id: 2, kind: 'issue', number: 31, title: 'Crash on start' })]),
       }),
     )
-    platform.getCollapsedSections.mockResolvedValue(['assigned'])
+    platform.getCollapsedSections.mockResolvedValue(['yours'])
     await renderApp()
 
     const review = within(await screen.findByRole('region', { name: 'Review requested' }))
-    const assigned = within(screen.getByRole('region', { name: 'Assigned' }))
-    expect(assigned.getByRole('button', { name: 'Expand Assigned' })).toHaveAttribute('aria-expanded', 'false')
+    const yours = within(screen.getByRole('region', { name: 'Yours' }))
+    expect(yours.getByRole('button', { name: 'Expand Yours' })).toHaveAttribute('aria-expanded', 'false')
 
     await userEvent.click(review.getByRole('button', { name: 'Collapse Review requested' }))
     expect(platform.setSectionCollapsed).toHaveBeenCalledWith('reviewRequested', true)
@@ -216,7 +216,7 @@ describe('App', () => {
     const back = within(await screen.findByRole('region', { name: 'Review requested' }))
     expect(back.getByRole('button', { name: 'Expand Review requested' })).toBeInTheDocument()
     expect(
-      within(screen.getByRole('region', { name: 'Assigned' })).getByRole('button', { name: 'Expand Assigned' }),
+      within(screen.getByRole('region', { name: 'Yours' })).getByRole('button', { name: 'Expand Yours' }),
     ).toBeInTheDocument()
     expect(platform.getCollapsedSections).toHaveBeenCalledOnce()
   })
@@ -733,11 +733,9 @@ describe('App', () => {
     expect(tab).not.toHaveAttribute('title')
   })
 
-  it('counts the items in the inbox on the Inbox tab, each once, as the inbox changes', async () => {
-    const mine = item({ id: 2, number: 8, title: 'Tidy the cache keys' })
-    platform.getInboxSnapshot.mockResolvedValue(
-      snapshot({ reviewRequested: list([item()]), authored: list([mine]), assigned: list([mine]) }),
-    )
+  it('counts the items in the inbox on the Inbox tab, as the inbox changes', async () => {
+    const mine = item({ id: 2, number: 8, title: 'Tidy the cache keys', authored: true, assigned: true })
+    platform.getInboxSnapshot.mockResolvedValue(snapshot({ reviewRequested: list([item()]), yours: list([mine]) }))
 
     await renderApp()
     const tab = screen.getByRole('button', { name: 'Inbox' })
@@ -748,9 +746,7 @@ describe('App', () => {
     expect(tab).toHaveAccessibleDescription('2 items in the inbox')
 
     const dismissed = { ...mine, dismissedAt: '2026-06-15T12:00:00Z' }
-    platform.getInboxSnapshot.mockResolvedValue(
-      snapshot({ reviewRequested: list([item()]), authored: list([dismissed]), assigned: list([dismissed]) }),
-    )
+    platform.getInboxSnapshot.mockResolvedValue(snapshot({ reviewRequested: list([item()]), yours: list([dismissed]) }))
     await act(async () => {
       emit('inbox:updated')
       await Promise.resolve()
@@ -1283,7 +1279,7 @@ describe('App’s GitHub notifications', () => {
 describe('App’s projects tip', () => {
   const needsScope = () =>
     snapshot({
-      assigned: list([item({ id: 2, kind: 'issue', title: 'Fix the login page' })]),
+      yours: list([item({ id: 2, kind: 'issue', title: 'Fix the login page' })]),
       projectAccess: 'needs_scope',
     })
 
@@ -1720,7 +1716,7 @@ describe('the Scripts tab', () => {
   })
 
   it('opens the release a merge offers, from the toast that says it merged', async () => {
-    platform.getInboxSnapshot.mockResolvedValue(snapshot({ assigned: list([item()]) }))
+    platform.getInboxSnapshot.mockResolvedValue(snapshot({ yours: list([item()]) }))
     platform.actOnReview.mockResolvedValue(
       reviewResult({ outcome: 'merged', message: 'Merged acme-org/example-repo#7' }),
     )

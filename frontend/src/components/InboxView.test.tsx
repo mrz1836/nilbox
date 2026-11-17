@@ -148,14 +148,21 @@ afterEach(() => {
 })
 
 describe('InboxView', () => {
-  it('renders the three lists from the snapshot', async () => {
+  it('renders the two lists from the snapshot', async () => {
     platform.getInboxSnapshot.mockResolvedValue(
       snapshot({
-        reviewRequested: list([item({ id: 1, title: 'Add the widget cache', updatedAt: '2026-06-15T09:00:00Z' })]),
-        authored: list([
-          item({ id: 2, number: 12, title: 'Fix the parser', repo: 'acme-org/other-repo', isDraft: true }),
+        reviewRequested: list([
+          item({ id: 1, title: 'Add the widget cache', updatedAt: '2026-06-15T09:00:00Z', assigned: true }),
         ]),
-        assigned: list([
+        yours: list([
+          item({
+            id: 2,
+            number: 12,
+            title: 'Fix the parser',
+            repo: 'acme-org/other-repo',
+            isDraft: true,
+            authored: true,
+          }),
           item({
             id: 3,
             kind: 'issue',
@@ -163,6 +170,7 @@ describe('InboxView', () => {
             title: 'Crash on start',
             author: 'dependabot[bot]',
             trusted: false,
+            assigned: true,
           }),
         ]),
         lastRefreshedAt: '2026-06-15T11:55:00Z',
@@ -176,16 +184,23 @@ describe('InboxView', () => {
     expect(review.getByRole('listitem')).toHaveTextContent(/acme-org\/example-repo #7 · octo-user ·/)
     expect(review.getByText('3h')).toHaveAttribute('dateTime', '2026-06-15T09:00:00Z')
     expect(review.getByRole('img', { name: 'Pull request' })).toBeInTheDocument()
+    // A pull request asking for a review is in Review requested alone; its chip says it is
+    // assigned too.
+    expect(review.getByText('Assigned')).toHaveAttribute('title', 'Assigned to you on GitHub')
 
-    const authored = await section('Authored')
-    expect(authored.getByRole('button', { name: 'Fix the parser' })).toBeInTheDocument()
-    expect(authored.getByRole('listitem')).toHaveTextContent(/acme-org\/other-repo #12/)
-    expect(authored.getByText('Draft')).toBeInTheDocument()
+    const yours = await section('Yours')
+    const mine = within(yours.getByRole('button', { name: 'Fix the parser' }).closest('li') ?? document.body)
+    expect(mine.getByText(/acme-org\/other-repo/).closest('span')).toHaveTextContent(/acme-org\/other-repo #12 · you ·/)
+    // The card says "you" for the user's own login, and still filters by the login.
+    expect(mine.getByRole('button', { name: 'Filter by author octo-user (you)' })).toHaveTextContent(/^you$/)
+    expect(mine.getByText('Draft')).toBeInTheDocument()
+    expect(mine.queryByText('Assigned'), 'opened, not assigned').not.toBeInTheDocument()
 
-    const assigned = await section('Assigned')
-    expect(assigned.getByRole('img', { name: 'Issue' })).toBeInTheDocument()
-    expect(assigned.getByText(/dependabot\[bot\]/)).toBeInTheDocument()
-    expect(assigned.getByText('outside contributor')).toBeInTheDocument()
+    const crash = within(yours.getByRole('button', { name: 'Crash on start' }).closest('li') ?? document.body)
+    expect(crash.getByRole('img', { name: 'Issue' })).toBeInTheDocument()
+    expect(crash.getByText(/dependabot\[bot\]/)).toBeInTheDocument()
+    expect(crash.getByText('outside contributor')).toBeInTheDocument()
+    expect(crash.getByText('Assigned')).toBeInTheDocument()
 
     expect(screen.getByText('5m ago')).toBeInTheDocument()
     // The account and the API budget live in the toolbar now, not beside the lists.
@@ -195,18 +210,14 @@ describe('InboxView', () => {
 
   it('shows N of M', async () => {
     platform.getInboxSnapshot.mockResolvedValue(
-      snapshot({
-        reviewRequested: list([item({ id: 1 }), item({ id: 2, number: 8 })], 250),
-        authored: list([item({ id: 3, number: 9 })]),
-      }),
+      snapshot({ reviewRequested: list([item({ id: 1 }), item({ id: 2, number: 8 })], 250) }),
     )
 
     render(<Harness launch={launchOptions} clock={fixedNow} />)
 
     expect((await section('Review requested')).getByText('2 of 250')).toBeInTheDocument()
-    expect((await section('Authored')).getByText('1')).toBeInTheDocument()
     // A list with nothing in it hides.
-    expect(screen.queryByRole('region', { name: 'Assigned' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('region', { name: 'Yours' })).not.toBeInTheDocument()
   })
 
   it('says when the inbox has not been refreshed yet', async () => {
@@ -257,7 +268,7 @@ describe('InboxView', () => {
     await act(async () => {
       finish(
         snapshot({
-          authored: list([item({ title: 'Fresh from GitHub' })]),
+          yours: list([item({ title: 'Fresh from GitHub' })]),
           lastRefreshedAt: FIXED_NOW.toISOString(),
         }),
       )
@@ -368,7 +379,7 @@ describe('InboxView', () => {
   it('reloads when the inbox updates and stops listening on unmount', async () => {
     platform.getInboxSnapshot
       .mockResolvedValueOnce(snapshot())
-      .mockResolvedValueOnce(snapshot({ assigned: list([item({ title: 'Updated in the background' })]) }))
+      .mockResolvedValueOnce(snapshot({ yours: list([item({ title: 'Updated in the background' })]) }))
 
     const { unmount } = render(<Harness launch={launchOptions} clock={fixedNow} />)
 
@@ -376,7 +387,8 @@ describe('InboxView', () => {
       expect(screen.queryByText('Loading the inbox…')).not.toBeInTheDocument()
     })
     expect(screen.queryByRole('region')).not.toBeInTheDocument()
-    expect(platform.on).toHaveBeenCalledExactlyOnceWith('inbox:updated', expect.any(Function))
+    expect(listening('inbox:updated')).toBe(1)
+    expect(listening('inbox:progress')).toBe(1)
 
     act(() => {
       emit('inbox:updated')
@@ -388,6 +400,7 @@ describe('InboxView', () => {
     expect(listening('inbox:updated')).toBe(1)
     unmount()
     expect(listening('inbox:updated')).toBe(0)
+    expect(listening('inbox:progress')).toBe(0)
   })
 
   it('brings the ages up to date every minute', async () => {
@@ -418,57 +431,55 @@ describe('InboxView', () => {
 })
 
 describe('InboxView collapsing', () => {
-  // Every list holds an item, so every list shows; Authored's are the ones the tests fold.
+  // Both lists hold an item, so both show; Yours's are the ones the tests fold.
   const authored = snapshot({
     reviewRequested: list([item({ id: 3, number: 20, title: 'Add the widget cache' })]),
-    authored: list([
+    yours: list([
       item({ id: 1, title: 'Fix the parser' }),
       item({ id: 2, number: 8, title: 'Bump the parser', snoozedUntil: '2026-06-18T12:00:00Z' }),
+      item({ id: 4, kind: 'issue', number: 31, title: 'Crash on start' }),
     ]),
-    assigned: list([item({ id: 4, kind: 'issue', number: 31, title: 'Crash on start' })]),
   })
 
   it('collapses a list from its header to just its tabs, and opens it again', async () => {
     platform.getInboxSnapshot.mockResolvedValue(authored)
     render(<Harness launch={launchOptions} clock={fixedNow} />)
 
-    const list = await section('Authored')
+    const list = await section('Yours')
     expect(list.getByRole('button', { name: 'Fix the parser' })).toBeInTheDocument()
 
-    await userEvent.click(list.getByRole('button', { name: 'Collapse Authored' }))
+    await userEvent.click(list.getByRole('button', { name: 'Collapse Yours' }))
 
-    const toggle = list.getByRole('button', { name: 'Expand Authored' })
+    const toggle = list.getByRole('button', { name: 'Expand Yours' })
     expect(toggle).toHaveAttribute('aria-expanded', 'false')
     expect(list.queryByRole('tabpanel')).not.toBeInTheDocument()
     expect(list.queryByRole('button', { name: 'Fix the parser' })).not.toBeInTheDocument()
     // The tabs and their counts stay.
-    expect(list.getByRole('tab', { name: 'Authored 1' })).toBeInTheDocument()
+    expect(list.getByRole('tab', { name: 'Yours 2' })).toBeInTheDocument()
     expect(list.getByRole('tab', { name: 'Snoozed 1' })).toBeInTheDocument()
-    // The other lists stay open.
-    expect((await section('Assigned')).getByRole('button', { name: 'Collapse Assigned' })).toHaveAttribute(
-      'aria-expanded',
-      'true',
-    )
+    // The other list stays open.
+    expect(
+      (await section('Review requested')).getByRole('button', { name: 'Collapse Review requested' }),
+    ).toHaveAttribute('aria-expanded', 'true')
 
     await userEvent.click(toggle)
 
-    expect(list.getByRole('button', { name: 'Collapse Authored' })).toHaveAttribute('aria-expanded', 'true')
+    expect(list.getByRole('button', { name: 'Collapse Yours' })).toHaveAttribute('aria-expanded', 'true')
     expect(list.getByRole('button', { name: 'Fix the parser' })).toBeInTheDocument()
     expect(platform.setSectionCollapsed.mock.calls).toEqual([
-      ['authored', true],
-      ['authored', false],
+      ['yours', true],
+      ['yours', false],
     ])
   })
 
   it('opens with the lists collapsed the way they were left', async () => {
     platform.getInboxSnapshot.mockResolvedValue(authored)
-    platform.getCollapsedSections.mockResolvedValue(['authored', 'assigned'])
+    platform.getCollapsedSections.mockResolvedValue(['yours'])
     render(<Harness launch={launchOptions} clock={fixedNow} />)
 
-    const list = await section('Authored')
-    expect(list.getByRole('button', { name: 'Expand Authored' })).toHaveAttribute('aria-expanded', 'false')
+    const list = await section('Yours')
+    expect(list.getByRole('button', { name: 'Expand Yours' })).toHaveAttribute('aria-expanded', 'false')
     expect(list.queryByRole('button', { name: 'Fix the parser' })).not.toBeInTheDocument()
-    expect((await section('Assigned')).getByRole('button', { name: 'Expand Assigned' })).toBeInTheDocument()
     expect((await section('Review requested')).getByRole('tabpanel')).toBeVisible()
     expect(platform.setSectionCollapsed).not.toHaveBeenCalled()
   })
@@ -487,32 +498,32 @@ describe('InboxView collapsing', () => {
       expect(platform.getInboxSnapshot).toHaveBeenCalled()
     })
     expect(screen.getByText('Loading the inbox…')).toBeInTheDocument()
-    expect(screen.queryByRole('region', { name: 'Authored' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('region', { name: 'Yours' })).not.toBeInTheDocument()
 
     act(() => {
-      resolve(['authored'])
+      resolve(['yours'])
     })
 
-    const list = await section('Authored')
+    const list = await section('Yours')
     expect(list.queryByRole('button', { name: 'Fix the parser' })).not.toBeInTheDocument()
   })
 
   it('opens a collapsed list when one of its tabs is chosen', async () => {
     platform.getInboxSnapshot.mockResolvedValue(authored)
-    platform.getCollapsedSections.mockResolvedValue(['authored'])
+    platform.getCollapsedSections.mockResolvedValue(['yours'])
     render(<Harness launch={launchOptions} clock={fixedNow} />)
 
-    const list = await section('Authored')
+    const list = await section('Yours')
     await userEvent.click(list.getByRole('tab', { name: 'Snoozed 1' }))
 
-    expect(list.getByRole('button', { name: 'Collapse Authored' })).toHaveAttribute('aria-expanded', 'true')
+    expect(list.getByRole('button', { name: 'Collapse Yours' })).toHaveAttribute('aria-expanded', 'true')
     expect(list.getByRole('tabpanel')).toHaveAccessibleName('Snoozed 1')
     expect(list.getByRole('button', { name: 'Bump the parser' })).toBeInTheDocument()
-    expect(platform.setSectionCollapsed).toHaveBeenCalledExactlyOnceWith('authored', false)
+    expect(platform.setSectionCollapsed).toHaveBeenCalledExactlyOnceWith('yours', false)
 
     // Choosing a tab of an open list leaves it as it is.
-    await userEvent.click(list.getByRole('tab', { name: 'Authored 1' }))
-    expect(platform.setSectionCollapsed).toHaveBeenCalledExactlyOnceWith('authored', false)
+    await userEvent.click(list.getByRole('tab', { name: 'Yours 2' }))
+    expect(platform.setSectionCollapsed).toHaveBeenCalledExactlyOnceWith('yours', false)
   })
 })
 
@@ -612,7 +623,10 @@ describe('InboxView triage', () => {
 
   it('shows each list as tabs, with what was set aside counted apart', async () => {
     platform.getInboxSnapshot.mockResolvedValue(
-      snapshot({ reviewRequested: list([fresh, snoozed, dismissed], 40), assigned: list([fresh]) }),
+      snapshot({
+        reviewRequested: list([fresh, snoozed, dismissed], 40),
+        yours: list([item({ id: 9, number: 90, title: 'Tidy the docs' })]),
+      }),
     )
     render(<Harness launch={launchOptions} clock={fixedNow} />)
 
@@ -625,9 +639,9 @@ describe('InboxView triage', () => {
     expect(review.queryByRole('button', { name: 'Rename the flag' })).not.toBeInTheDocument()
 
     // Tabs with nothing in them show no count.
-    const assigned = await section('Assigned')
-    expect(assigned.getByRole('tab', { name: 'Snoozed' })).toBeInTheDocument()
-    expect(assigned.getByRole('tab', { name: 'Dismissed' })).toBeInTheDocument()
+    const yours = await section('Yours')
+    expect(yours.getByRole('tab', { name: 'Snoozed' })).toBeInTheDocument()
+    expect(yours.getByRole('tab', { name: 'Dismissed' })).toBeInTheDocument()
 
     await userEvent.click(review.getByRole('tab', { name: 'Snoozed 1' }))
     expect(review.getByRole('tabpanel')).toHaveAccessibleName('Snoozed 1')
@@ -1163,20 +1177,19 @@ describe('InboxView at nil', () => {
     // Opening the page at nil sprinkles; the achievement is for emptying it.
     expect(screen.queryByText('Achievement unlocked')).not.toBeInTheDocument()
     // With nothing set aside, no list shows.
-    for (const title of ['Review requested', 'Authored', 'Assigned']) {
+    for (const title of ['Review requested', 'Yours']) {
       expect(screen.queryByRole('region', { name: title })).not.toBeInTheDocument()
     }
   })
 
   it('keeps a list that holds what was snoozed beside the party', async () => {
     const snoozed = { ...last, snoozedUntil: '2026-06-18T12:00:00Z' }
-    platform.getInboxSnapshot.mockResolvedValue(snapshot({ lastRefreshedAt: refreshed, authored: list([snoozed]) }))
+    platform.getInboxSnapshot.mockResolvedValue(snapshot({ lastRefreshedAt: refreshed, yours: list([snoozed]) }))
     render(<Harness launch={launchOptions} clock={fixedNow} />)
 
     expect(await screen.findByRole('region', { name: 'inbox == nil' })).toBeInTheDocument()
-    expect((await section('Authored')).getByRole('tab', { name: 'Snoozed 1' })).toBeInTheDocument()
+    expect((await section('Yours')).getByRole('tab', { name: 'Snoozed 1' })).toBeInTheDocument()
     expect(screen.queryByRole('region', { name: 'Review requested' })).not.toBeInTheDocument()
-    expect(screen.queryByRole('region', { name: 'Assigned' })).not.toBeInTheDocument()
   })
 
   it('throws no party before the first refresh, after an error, or while anything is left', async () => {
@@ -1195,7 +1208,7 @@ describe('InboxView at nil', () => {
     expect(party()).not.toBeInTheDocument()
     view.unmount()
 
-    platform.getInboxSnapshot.mockResolvedValueOnce(snapshot({ lastRefreshedAt: refreshed, assigned: list([last]) }))
+    platform.getInboxSnapshot.mockResolvedValueOnce(snapshot({ lastRefreshedAt: refreshed, yours: list([last]) }))
     render(<Harness launch={launchOptions} clock={fixedNow} />)
     expect(await screen.findByRole('button', { name: 'Add the widget cache' })).toBeInTheDocument()
     expect(party()).not.toBeInTheDocument()
@@ -1240,15 +1253,15 @@ describe('InboxView empty lists', () => {
     platform.getInboxSnapshot.mockResolvedValue(
       snapshot({
         lastRefreshedAt: refreshed,
-        reviewRequested: list([muted]),
-        assigned: list([item({ id: 5, kind: 'issue', number: 31, title: 'Crash on start' })]),
+        yours: list([muted, item({ id: 5, kind: 'issue', number: 31, title: 'Crash on start' })]),
       }),
     )
     render(<Harness launch={launchOptions} clock={fixedNow} />)
 
-    expect((await section('Review requested')).getByRole('tab', { name: 'Muted 1' })).toBeInTheDocument()
-    expect((await section('Assigned')).getByRole('button', { name: 'Crash on start' })).toBeInTheDocument()
-    expect(screen.queryByRole('region', { name: 'Authored' })).not.toBeInTheDocument()
+    const yours = await section('Yours')
+    expect(yours.getByRole('tab', { name: 'Muted 1' })).toBeInTheDocument()
+    expect(yours.getByRole('button', { name: 'Crash on start' })).toBeInTheDocument()
+    expect(screen.queryByRole('region', { name: 'Review requested' })).not.toBeInTheDocument()
   })
 
   it('shows a list that holds only what was snoozed, dismissed, or muted', async () => {
@@ -1256,25 +1269,25 @@ describe('InboxView empty lists', () => {
       snapshot({
         lastRefreshedAt: refreshed,
         reviewRequested: list([snoozed]),
-        authored: list([dismissed]),
-        assigned: list([muted]),
+        yours: list([dismissed, muted]),
       }),
     )
     render(<Harness launch={launchOptions} clock={fixedNow} />)
 
     expect((await section('Review requested')).getByRole('tab', { name: 'Snoozed 1' })).toBeInTheDocument()
-    expect((await section('Authored')).getByRole('tab', { name: 'Dismissed 1' })).toBeInTheDocument()
-    expect((await section('Assigned')).getByRole('tab', { name: 'Muted 1' })).toBeInTheDocument()
+    const yours = await section('Yours')
+    expect(yours.getByRole('tab', { name: 'Dismissed 1' })).toBeInTheDocument()
+    expect(yours.getByRole('tab', { name: 'Muted 1' })).toBeInTheDocument()
   })
 
   it('hides a list emptied on another tab, which comes back on its own tab once an item arrives', async () => {
     platform.getInboxSnapshot
-      .mockResolvedValueOnce(snapshot({ lastRefreshedAt: refreshed, authored: list([dismissed]) }))
+      .mockResolvedValueOnce(snapshot({ lastRefreshedAt: refreshed, yours: list([dismissed]) }))
       .mockResolvedValueOnce(snapshot({ lastRefreshedAt: refreshed }))
-      .mockResolvedValueOnce(snapshot({ lastRefreshedAt: refreshed, authored: list([fresh]) }))
+      .mockResolvedValueOnce(snapshot({ lastRefreshedAt: refreshed, yours: list([fresh]) }))
     render(<Harness launch={launchOptions} clock={fixedNow} />)
 
-    const authored = await section('Authored')
+    const authored = await section('Yours')
     await userEvent.click(authored.getByRole('tab', { name: 'Dismissed 1' }))
     expect(authored.getByRole('button', { name: 'Rename the flag' })).toBeInTheDocument()
 
@@ -1283,15 +1296,15 @@ describe('InboxView empty lists', () => {
     })
 
     await waitFor(() => {
-      expect(screen.queryByRole('region', { name: 'Authored' })).not.toBeInTheDocument()
+      expect(screen.queryByRole('region', { name: 'Yours' })).not.toBeInTheDocument()
     })
 
     act(() => {
       emit('inbox:updated')
     })
 
-    const back = await section('Authored')
-    expect(back.getByRole('tab', { name: 'Authored 1' })).toHaveAttribute('aria-selected', 'true')
+    const back = await section('Yours')
+    expect(back.getByRole('tab', { name: 'Yours 1' })).toHaveAttribute('aria-selected', 'true')
     expect(back.getByRole('button', { name: 'Add the widget cache' })).toBeInTheDocument()
     expect(back.queryByText(/Nothing dismissed/)).not.toBeInTheDocument()
   })
@@ -1305,12 +1318,12 @@ describe('InboxView empty lists', () => {
     expect(
       (await section('Review requested')).getByRole('button', { name: 'Add the widget cache' }),
     ).toBeInTheDocument()
-    expect(screen.queryByRole('region', { name: 'Authored' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('region', { name: 'Yours' })).not.toBeInTheDocument()
 
     view.rerender(<Harness launch={launchOptions} clock={fixedNow} />)
 
     expect(await section('Review requested')).toBeTruthy()
-    expect(screen.queryByRole('region', { name: 'Authored' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('region', { name: 'Yours' })).not.toBeInTheDocument()
   })
 })
 
@@ -1368,28 +1381,26 @@ describe('InboxView reveal', () => {
     expect(row).not.toHaveAttribute('data-highlighted')
   })
 
-  it('shows an item in the first list that holds it, and leaves a list collapsed afterwards alone', async () => {
-    platform.getInboxSnapshot.mockResolvedValue(
-      snapshot({ reviewRequested: list([fresh]), assigned: list([assigned, fresh]) }),
-    )
+  it('shows an item in the list that holds it, and leaves a list collapsed afterwards alone', async () => {
+    platform.getInboxSnapshot.mockResolvedValue(snapshot({ reviewRequested: list([fresh]), yours: list([assigned]) }))
 
-    const { rerender } = render(<Harness launch={launchOptions} clock={fixedNow} reveal={{ id: 1, seq: 1 }} />)
+    const { rerender } = render(<Harness launch={launchOptions} clock={fixedNow} reveal={{ id: 5, seq: 1 }} />)
 
-    const review = await section('Review requested')
+    const yours = await section('Yours')
     await waitFor(() => {
-      expect(rowOf(review, 'Add the widget cache')).toHaveAttribute('data-highlighted', 'true')
+      expect(rowOf(yours, 'Crash on start')).toHaveAttribute('data-highlighted', 'true')
     })
-    expect(rowOf(await section('Assigned'), 'Add the widget cache')).not.toHaveAttribute('data-highlighted')
+    expect(rowOf(await section('Review requested'), 'Add the widget cache')).not.toHaveAttribute('data-highlighted')
 
     // Collapsing the list after the reveal keeps it collapsed.
-    await userEvent.click(review.getByRole('button', { name: 'Collapse Review requested' }))
-    rerender(<Harness launch={launchOptions} clock={fixedNow} reveal={{ id: 1, seq: 1 }} />)
-    expect(review.getByRole('button', { name: 'Expand Review requested' })).toBeInTheDocument()
+    await userEvent.click(yours.getByRole('button', { name: 'Collapse Yours' }))
+    rerender(<Harness launch={launchOptions} clock={fixedNow} reveal={{ id: 5, seq: 1 }} />)
+    expect(yours.getByRole('button', { name: 'Expand Yours' })).toBeInTheDocument()
 
     // Asking again opens it again.
-    rerender(<Harness launch={launchOptions} clock={fixedNow} reveal={{ id: 1, seq: 2 }} />)
+    rerender(<Harness launch={launchOptions} clock={fixedNow} reveal={{ id: 5, seq: 2 }} />)
     await waitFor(() => {
-      expect(review.getByRole('button', { name: 'Collapse Review requested' })).toBeInTheDocument()
+      expect(yours.getByRole('button', { name: 'Collapse Yours' })).toBeInTheDocument()
     })
   })
 
@@ -1408,7 +1419,7 @@ describe('InboxView’s projects tip', () => {
   // needsScope is an inbox with an issue whose token can't read projects.
   const needsScope = () =>
     snapshot({
-      assigned: list([item({ id: 2, kind: 'issue', title: 'Fix the login page', details: details() })]),
+      yours: list([item({ id: 2, kind: 'issue', title: 'Fix the login page', details: details() })]),
       projectAccess: 'needs_scope',
     })
 
@@ -1426,7 +1437,7 @@ describe('InboxView’s projects tip', () => {
     platform.getInboxSnapshot.mockResolvedValue({ ...needsScope(), projectAccess: 'on' })
     render(<Harness launch={launchOptions} clock={fixedNow} />)
 
-    await section('Assigned')
+    await section('Yours')
     expect(screen.queryByRole('region', { name: /projects/ })).not.toBeInTheDocument()
   })
 
@@ -1434,7 +1445,7 @@ describe('InboxView’s projects tip', () => {
     platform.getInboxSnapshot.mockResolvedValue(needsScope())
     platform.refreshInbox.mockResolvedValue(
       snapshot({
-        assigned: list([
+        yours: list([
           item({ id: 2, kind: 'issue', title: 'Fix the login page', details: details({ projects: [project()] }) }),
         ]),
         projectAccess: 'on',
@@ -1447,7 +1458,7 @@ describe('InboxView’s projects tip', () => {
     expect(platform.refreshInbox).toHaveBeenCalled()
     expect(await screen.findByRole('region', { name: 'Projects are on.' })).toBeInTheDocument()
     expect(
-      (await section('Assigned')).getByRole('button', { name: 'Project Roadmap: In progress. Open it on GitHub' }),
+      (await section('Yours')).getByRole('button', { name: 'Project Roadmap: In progress. Open it on GitHub' }),
     ).toBeInTheDocument()
 
     await userEvent.click(screen.getByRole('button', { name: 'Close' }))
@@ -1470,7 +1481,7 @@ describe('InboxView’s status sort', () => {
   // assigned is an inbox whose Assigned list holds issues in a project, newest first.
   const assigned = () =>
     snapshot({
-      assigned: list([
+      yours: list([
         item({
           id: 1,
           kind: 'issue',
@@ -1498,13 +1509,13 @@ describe('InboxView’s status sort', () => {
     platform.getInboxSnapshot.mockResolvedValue(assigned())
     render(<Harness launch={launchOptions} clock={fixedNow} />)
 
-    const shown = await section('Assigned')
+    const shown = await section('Yours')
     expect(titles(shown)).toEqual(['Deferred work', 'Work with no project', 'Ready work', 'Work under way'])
 
     await userEvent.click(shown.getByRole('radio', { name: 'Status' }))
 
     expect(titles(shown)).toEqual(['Work under way', 'Ready work', 'Deferred work', 'Work with no project'])
-    expect(platform.setStatusSort).toHaveBeenCalledWith('assigned', true)
+    expect(platform.setStatusSort).toHaveBeenCalledWith('yours', true)
 
     await userEvent.click(shown.getByRole('radio', { name: 'Recent' }))
     expect(titles(shown)).toEqual(['Deferred work', 'Work with no project', 'Ready work', 'Work under way'])
@@ -1513,25 +1524,25 @@ describe('InboxView’s status sort', () => {
   it('opens sorted by status as it was left, in the user’s order', async () => {
     platform.getInboxSnapshot.mockResolvedValue(assigned())
     platform.getInboxOrder.mockResolvedValue({
-      statusSorted: ['assigned'],
+      statusSorted: ['yours'],
       statusOrder: ['Deferred', 'In progress', 'Ready'],
       kinds: {},
     })
     render(<Harness launch={launchOptions} clock={fixedNow} />)
 
-    const shown = await section('Assigned')
+    const shown = await section('Yours')
     expect(shown.getByRole('radio', { name: 'Status' })).toBeChecked()
     expect(titles(shown)).toEqual(['Deferred work', 'Work under way', 'Ready work', 'Work with no project'])
   })
 
   it('offers no sort for a list without project statuses', async () => {
     platform.getInboxSnapshot.mockResolvedValue(
-      snapshot({ assigned: list([item({ id: 2, kind: 'issue', details: details() })]) }),
+      snapshot({ yours: list([item({ id: 2, kind: 'issue', details: details() })]) }),
     )
     render(<Harness launch={launchOptions} clock={fixedNow} />)
 
-    const shown = await section('Assigned')
-    expect(shown.queryByRole('radiogroup', { name: 'Sort Assigned by' })).not.toBeInTheDocument()
+    const shown = await section('Yours')
+    expect(shown.queryByRole('radiogroup', { name: 'Sort Yours by' })).not.toBeInTheDocument()
   })
 })
 
@@ -1539,7 +1550,7 @@ describe('InboxView’s kind switch', () => {
   // mixed is an inbox whose Assigned list holds a pull request between two issues.
   const mixed = () =>
     snapshot({
-      assigned: list([
+      yours: list([
         item({ id: 1, kind: 'issue', title: 'An issue', details: details() }),
         item({ id: 2, kind: 'pr', title: 'A pull request', details: details() }),
         item({ id: 3, kind: 'issue', title: 'Another issue', details: details() }),
@@ -1556,50 +1567,50 @@ describe('InboxView’s kind switch', () => {
     platform.getInboxSnapshot.mockResolvedValue(mixed())
     render(<Harness launch={launchOptions} clock={fixedNow} />)
 
-    const shown = await section('Assigned')
+    const shown = await section('Yours')
     expect(shown.getByRole('radio', { name: 'All' })).toBeChecked()
 
     await userEvent.click(shown.getByRole('radio', { name: 'Issues' }))
     expect(titles(shown)).toEqual(['An issue', 'Another issue'])
-    expect(shown.getByRole('tab', { name: /Assigned/ })).toHaveTextContent('2 of 3')
-    expect(platform.setListKind).toHaveBeenCalledWith('assigned', 'issue')
+    expect(shown.getByRole('tab', { name: /Yours/ })).toHaveTextContent('2 of 3')
+    expect(platform.setListKind).toHaveBeenCalledWith('yours', 'issue')
 
     await userEvent.click(shown.getByRole('radio', { name: 'PRs' }))
     expect(titles(shown)).toEqual(['A pull request'])
 
     await userEvent.click(shown.getByRole('radio', { name: 'All' }))
     expect(titles(shown)).toEqual(['An issue', 'A pull request', 'Another issue'])
-    expect(shown.getByRole('tab', { name: /Assigned/ })).toHaveTextContent('3')
+    expect(shown.getByRole('tab', { name: /Yours/ })).toHaveTextContent('3')
   })
 
   it('opens showing the kind it was left on, and says when that kind has none', async () => {
     platform.getInboxSnapshot.mockResolvedValue(
-      snapshot({ assigned: list([item({ id: 1, kind: 'issue', title: 'An issue', details: details() })]) }),
+      snapshot({ yours: list([item({ id: 1, kind: 'issue', title: 'An issue', details: details() })]) }),
     )
-    platform.getInboxOrder.mockResolvedValue({ statusSorted: [], statusOrder: [], kinds: { assigned: 'pr' } })
+    platform.getInboxOrder.mockResolvedValue({ statusSorted: [], statusOrder: [], kinds: { yours: 'pr' } })
     render(<Harness launch={launchOptions} clock={fixedNow} />)
 
-    const shown = await section('Assigned')
+    const shown = await section('Yours')
     expect(shown.getByRole('radio', { name: 'PRs' }), 'still offered, to turn it back').toBeChecked()
     expect(shown.getByText('No pull requests here.')).toBeInTheDocument()
 
     await userEvent.click(shown.getByRole('button', { name: 'Show all' }))
     expect(titles(shown)).toEqual(['An issue'])
-    expect(platform.setListKind).toHaveBeenCalledWith('assigned', 'all')
-    expect(shown.queryByRole('radiogroup', { name: 'Show in Assigned' }), 'one kind only').not.toBeInTheDocument()
+    expect(platform.setListKind).toHaveBeenCalledWith('yours', 'all')
+    expect(shown.queryByRole('radiogroup', { name: 'Show in Yours' }), 'one kind only').not.toBeInTheDocument()
   })
 
   it('shows every item again to reveal a card of the kind the list leaves out', async () => {
     platform.getInboxSnapshot.mockResolvedValue(mixed())
-    platform.getInboxOrder.mockResolvedValue({ statusSorted: [], statusOrder: [], kinds: { assigned: 'issue' } })
+    platform.getInboxOrder.mockResolvedValue({ statusSorted: [], statusOrder: [], kinds: { yours: 'issue' } })
     render(<Harness launch={launchOptions} clock={fixedNow} reveal={{ id: 2, seq: 1 }} />)
 
-    const shown = await section('Assigned')
+    const shown = await section('Yours')
     await waitFor(() => {
       expect(titles(shown)).toContain('A pull request')
     })
     expect(shown.getByRole('radio', { name: 'All' })).toBeChecked()
-    expect(platform.setListKind).toHaveBeenCalledWith('assigned', 'all')
+    expect(platform.setListKind).toHaveBeenCalledWith('yours', 'all')
   })
 })
 
@@ -1614,11 +1625,11 @@ describe('InboxView edits on GitHub', () => {
   }
 
   it('unassigns the user on GitHub, and confirms once the item has left the list', async () => {
-    platform.getInboxSnapshot.mockResolvedValue(snapshot({ assigned: list([assignedIssue]) }))
+    platform.getInboxSnapshot.mockResolvedValue(snapshot({ yours: list([assignedIssue]) }))
     platform.unassignItem.mockResolvedValue(snapshot())
     render(<Harness launch={launchOptions} clock={fixedNow} />)
 
-    const assigned = await section('Assigned')
+    const assigned = await section('Yours')
     await choose(assigned, 'Unassign me')
 
     expect(platform.unassignItem).toHaveBeenCalledWith(5)
@@ -1628,11 +1639,11 @@ describe('InboxView edits on GitHub', () => {
   })
 
   it('says why an edit failed, and leaves the item where it was', async () => {
-    platform.getInboxSnapshot.mockResolvedValue(snapshot({ assigned: list([assignedIssue]) }))
+    platform.getInboxSnapshot.mockResolvedValue(snapshot({ yours: list([assignedIssue]) }))
     platform.unassignItem.mockRejectedValue(new Error('GitHub kept you assigned to acme-org/example-repo#9.'))
     render(<Harness launch={launchOptions} clock={fixedNow} />)
 
-    const assigned = await section('Assigned')
+    const assigned = await section('Yours')
     await choose(assigned, 'Unassign me')
 
     expect(await screen.findByRole('status')).toHaveTextContent(
@@ -1703,8 +1714,8 @@ describe('InboxView filtering', () => {
         entry({ id: 2, number: 12, title: 'Fix the parser' }),
         entry({ id: 3, number: 13, title: 'Snoozed widget', snoozedUntil: later }),
       ]),
-      authored: list([entry({ id: 4, number: 14, title: 'Write the docs' })]),
-      assigned: list([
+      yours: list([
+        entry({ id: 4, number: 14, title: 'Write the docs' }),
         entry({ id: 5, kind: 'issue', number: 31, title: 'Crash on start' }),
         entry({ id: 6, kind: 'issue', number: 32, title: 'Crash later', snoozedUntil: later }),
       ]),
@@ -1732,40 +1743,40 @@ describe('InboxView filtering', () => {
 
   it('hides a list with no match, which comes back as it was left', async () => {
     const view = render(<Harness launch={launchOptions} clock={fixedNow} />)
-    const assigned = await section('Assigned')
+    const yours = await section('Yours')
 
-    await userEvent.click(assigned.getByRole('tab', { name: 'Snoozed 1' }))
+    await userEvent.click(yours.getByRole('tab', { name: 'Snoozed 1' }))
     view.rerender(<Harness launch={launchOptions} clock={fixedNow} query="widget" />)
 
-    expect(screen.queryByRole('region', { name: 'Assigned' })).not.toBeInTheDocument()
-    expect(screen.queryByRole('region', { name: 'Authored' })).not.toBeInTheDocument()
+    expect(await section('Review requested')).toBeTruthy()
+    expect(screen.queryByRole('region', { name: 'Yours' })).not.toBeInTheDocument()
 
     view.rerender(<Harness launch={launchOptions} clock={fixedNow} />)
 
-    expect((await section('Assigned')).getByRole('tab', { name: 'Snoozed 1' })).toHaveAttribute('aria-selected', 'true')
+    expect((await section('Yours')).getByRole('tab', { name: 'Snoozed 1' })).toHaveAttribute('aria-selected', 'true')
   })
 
   it('shows a collapsed list open while filtering, leaving it collapsed', async () => {
     const view = render(<Harness launch={launchOptions} clock={fixedNow} />)
 
-    await userEvent.click(await screen.findByRole('button', { name: 'Collapse Authored' }))
+    await userEvent.click(await screen.findByRole('button', { name: 'Collapse Yours' }))
     view.rerender(<Harness launch={launchOptions} clock={fixedNow} query="docs" />)
 
-    const authored = await section('Authored')
+    const authored = await section('Yours')
 
     expect(authored.getByRole('button', { name: 'Write the docs' })).toBeInTheDocument()
     expect(authored.queryByRole('button', { name: /Expand|Collapse/ })).not.toBeInTheDocument()
 
     view.rerender(<Harness launch={launchOptions} clock={fixedNow} />)
 
-    expect(await screen.findByRole('button', { name: 'Expand Authored' })).toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: 'Expand Yours' })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Write the docs' })).not.toBeInTheDocument()
   })
 
   it('points a tab with no match to the tab that has one', async () => {
     render(<Harness launch={launchOptions} clock={fixedNow} query="later" />)
 
-    const assigned = await section('Assigned')
+    const assigned = await section('Yours')
 
     expect(assigned.getByText(/No matches here/)).toBeInTheDocument()
     expect(assigned.queryByText(/Nothing here/)).not.toBeInTheDocument()
@@ -1780,7 +1791,7 @@ describe('InboxView filtering', () => {
   it('points a set-aside tab with no match back to the list', async () => {
     render(<Harness launch={launchOptions} clock={fixedNow} query="start" />)
 
-    const assigned = await section('Assigned')
+    const assigned = await section('Yours')
 
     await userEvent.click(assigned.getByRole('tab', { name: 'Snoozed' }))
     await userEvent.click(assigned.getByRole('button', { name: '1 in the list' }))
@@ -1829,7 +1840,7 @@ describe('InboxView review sheet', () => {
   it('opens a pull request from its title, and reports what the action came to', async () => {
     const pr = item({ id: 1, title: 'Add the widget cache' })
     platform.getInboxSnapshot.mockResolvedValue(
-      snapshot({ assigned: list([pr, item({ id: 2, number: 8, title: 'Second' })]) }),
+      snapshot({ yours: list([pr, item({ id: 2, number: 8, title: 'Second' })]) }),
     )
     platform.actOnReview.mockResolvedValue(
       reviewResult({ outcome: 'approved_not_merged', message: 'Approved, but GitHub won’t merge yet' }),
@@ -1839,7 +1850,7 @@ describe('InboxView review sheet', () => {
     await userEvent.click(await screen.findByRole('button', { name: 'Add the widget cache' }))
 
     const sheet = await screen.findByRole('dialog', { name: 'Add the widget cache' })
-    expect(within(sheet).getByText('1 of 2 in Assigned')).toBeInTheDocument()
+    expect(within(sheet).getByText('1 of 2 in Yours')).toBeInTheDocument()
 
     await userEvent.click(await within(sheet).findByRole('button', { name: 'More review actions' }))
     await userEvent.click(screen.getByRole('menuitem', { name: 'Approve' }))
@@ -1852,7 +1863,7 @@ describe('InboxView review sheet', () => {
   })
 
   it('says a merge’s comment was posted when GitHub didn’t merge, as a warning', async () => {
-    platform.getInboxSnapshot.mockResolvedValue(snapshot({ assigned: list([item()]) }))
+    platform.getInboxSnapshot.mockResolvedValue(snapshot({ yours: list([item()]) }))
     platform.actOnReview.mockResolvedValue(
       reviewResult({
         outcome: 'commented_not_merged',
@@ -1887,7 +1898,7 @@ describe('InboxView review sheet', () => {
     // close closes the inbox's pull request from the review sheet, with result, and returns
     // the toast that reports it.
     async function close(result: ReviewResult) {
-      platform.getInboxSnapshot.mockResolvedValue(snapshot({ assigned: list([item()]) }))
+      platform.getInboxSnapshot.mockResolvedValue(snapshot({ yours: list([item()]) }))
       platform.actOnReview.mockResolvedValue(result)
       render(<Harness launch={launchOptions} clock={fixedNow} reviews />)
 
@@ -1946,7 +1957,7 @@ describe('InboxView review sheet', () => {
     // merge merges the inbox's pull request from the review sheet, as Approve does when
     // GitHub merges it too, and returns the toast that says so.
     async function merge(releases = true) {
-      platform.getInboxSnapshot.mockResolvedValue(snapshot({ assigned: list([item()]) }))
+      platform.getInboxSnapshot.mockResolvedValue(snapshot({ yours: list([item()]) }))
       platform.actOnReview.mockResolvedValue(
         reviewResult({ outcome: 'merged', message: 'Merged acme-org/example-repo#7' }),
       )
@@ -2080,7 +2091,7 @@ describe('InboxView review sheet', () => {
   })
 
   it('opens GitHub when the sheet is off', async () => {
-    platform.getInboxSnapshot.mockResolvedValue(snapshot({ assigned: list([item()]) }))
+    platform.getInboxSnapshot.mockResolvedValue(snapshot({ yours: list([item()]) }))
     render(<Harness launch={launchOptions} clock={fixedNow} />)
 
     await userEvent.click(await screen.findByRole('button', { name: 'Add the widget cache' }))
@@ -2101,7 +2112,7 @@ describe('InboxView issue sheet', () => {
   })
 
   it('opens an issue from its title, and reports what the action came to', async () => {
-    platform.getInboxSnapshot.mockResolvedValue(snapshot({ assigned: list([crash]) }))
+    platform.getInboxSnapshot.mockResolvedValue(snapshot({ yours: list([crash]) }))
     platform.openIssue.mockResolvedValue(issue({ id: 2 }))
     platform.refreshIssue.mockResolvedValue(issue({ id: 2 }))
     platform.actOnIssue.mockResolvedValue(
@@ -2128,7 +2139,7 @@ describe('InboxView issue sheet', () => {
 
   it('steps from a pull request to an issue and back, switching sheets', async () => {
     const third = item({ id: 3, number: 9, title: 'Third' })
-    platform.getInboxSnapshot.mockResolvedValue(snapshot({ assigned: list([item({ id: 1 }), crash, third]) }))
+    platform.getInboxSnapshot.mockResolvedValue(snapshot({ yours: list([item({ id: 1 }), crash, third]) }))
     platform.openIssue.mockResolvedValue(issue({ id: 2 }))
     platform.refreshIssue.mockResolvedValue(issue({ id: 2 }))
     platform.openReview.mockImplementation((id) =>
@@ -2145,7 +2156,7 @@ describe('InboxView issue sheet', () => {
 
     await userEvent.keyboard('{ArrowRight}')
     const sheet = await screen.findByRole('dialog', { name: 'Parser drops the trailing newline' })
-    expect(within(sheet).getByText('2 of 3 in Assigned')).toBeInTheDocument()
+    expect(within(sheet).getByText('2 of 3 in Yours')).toBeInTheDocument()
     expect(screen.queryByRole('dialog', { name: 'Add the widget cache' })).not.toBeInTheDocument()
 
     // A step taken with the header's arrow keeps focus on that arrow in the other sheet.
@@ -2168,7 +2179,7 @@ describe('InboxView issue sheet', () => {
   })
 
   it('lists both sheets’ conversations in the order chosen in either, and remembers it', async () => {
-    platform.getInboxSnapshot.mockResolvedValue(snapshot({ assigned: list([crash, item({ id: 1 })]) }))
+    platform.getInboxSnapshot.mockResolvedValue(snapshot({ yours: list([crash, item({ id: 1 })]) }))
     platform.openIssue.mockResolvedValue(issue({ id: 2 }))
     platform.refreshIssue.mockResolvedValue(issue({ id: 2 }))
     platform.openReview.mockResolvedValue(review({ id: 1, timeline: reviewTimeline() }))
@@ -2191,7 +2202,7 @@ describe('InboxView issue sheet', () => {
   })
 
   it('opens an issue from its menu', async () => {
-    platform.getInboxSnapshot.mockResolvedValue(snapshot({ assigned: list([crash]) }))
+    platform.getInboxSnapshot.mockResolvedValue(snapshot({ yours: list([crash]) }))
     platform.openIssue.mockResolvedValue(issue({ id: 2 }))
     platform.refreshIssue.mockResolvedValue(issue({ id: 2 }))
     render(<Harness launch={launchOptions} clock={fixedNow} reviews />)
@@ -2206,7 +2217,7 @@ describe('InboxView issue sheet', () => {
   })
 
   it('takes the user off the issue from its sheet, which closes, and says why it couldn’t', async () => {
-    platform.getInboxSnapshot.mockResolvedValue(snapshot({ assigned: list([crash]) }))
+    platform.getInboxSnapshot.mockResolvedValue(snapshot({ yours: list([crash]) }))
     platform.openIssue.mockResolvedValue(issue({ id: 2 }))
     platform.refreshIssue.mockResolvedValue(issue({ id: 2 }))
     platform.unassignItem.mockRejectedValueOnce(new Error('GitHub refused it.'))
@@ -2230,7 +2241,7 @@ describe('InboxView issue sheet', () => {
 
   it('follows a link between the sheets, and steps back', async () => {
     const pull = item({ id: 1, number: 14, title: 'Keep the trailing newline' })
-    platform.getInboxSnapshot.mockResolvedValue(snapshot({ reviewRequested: list([pull]), assigned: list([crash]) }))
+    platform.getInboxSnapshot.mockResolvedValue(snapshot({ reviewRequested: list([pull]), yours: list([crash]) }))
     platform.openIssue.mockResolvedValue(issue({ id: 2 }))
     platform.refreshIssue.mockResolvedValue(issue({ id: 2 }))
     platform.openReview.mockResolvedValue(review({ id: 1, title: 'Keep the trailing newline', number: 14 }))
@@ -2292,7 +2303,7 @@ describe('InboxView issue sheet', () => {
     )
 
   it('keeps focus in the sheet as a link shows another issue in its place, and as it steps back', async () => {
-    platform.getInboxSnapshot.mockResolvedValue(snapshot({ assigned: list([crash, parent]) }))
+    platform.getInboxSnapshot.mockResolvedValue(snapshot({ yours: list([crash, parent]) }))
     platform.openIssue.mockImplementation(readIssue)
     platform.refreshIssue.mockImplementation(readIssue)
     render(<Harness launch={launchOptions} clock={fixedNow} reviews />)
@@ -2312,22 +2323,22 @@ describe('InboxView issue sheet', () => {
   })
 
   it('offers no step back to a sheet whose card has left the inbox', async () => {
-    platform.getInboxSnapshot.mockResolvedValue(snapshot({ assigned: list([crash, parent]) }))
+    platform.getInboxSnapshot.mockResolvedValue(snapshot({ yours: list([crash, parent]) }))
     platform.openIssue.mockImplementation(readIssue)
     platform.refreshIssue.mockImplementation(readIssue)
     render(<Harness launch={launchOptions} clock={fixedNow} reviews />)
 
     await userEvent.click(await screen.findByRole('button', { name: 'Parser drops the trailing newline' }))
     const sheet = await screen.findByRole('dialog', { name: 'Parser drops the trailing newline' })
-    expect(within(sheet).getByText('1 of 2 in Assigned')).toBeInTheDocument()
+    expect(within(sheet).getByText('1 of 2 in Yours')).toBeInTheDocument()
 
     // Its card leaves the inbox while the sheet stays open, as when someone closes it.
-    platform.getInboxSnapshot.mockResolvedValue(snapshot({ assigned: list([parent]) }))
+    platform.getInboxSnapshot.mockResolvedValue(snapshot({ yours: list([parent]) }))
     act(() => {
       emit('inbox:updated')
     })
     await waitFor(() => {
-      expect(within(sheet).queryByText('1 of 2 in Assigned')).not.toBeInTheDocument()
+      expect(within(sheet).queryByText('1 of 2 in Yours')).not.toBeInTheDocument()
     })
 
     await userEvent.click(within(sheet).getByRole('button', { name: '#3 Parser bug' }))
@@ -2370,17 +2381,17 @@ describe('InboxView triage in the sheets', () => {
   }
 
   it('snoozes the card from its sheet, moves on to the next, and keeps Undo in reach', async () => {
-    platform.getInboxSnapshot.mockResolvedValue(snapshot({ assigned: list([parser, crash]) }))
+    platform.getInboxSnapshot.mockResolvedValue(snapshot({ yours: list([parser, crash]) }))
     platform.snoozeItem.mockResolvedValue(
-      snapshot({ assigned: list([{ ...parser, snoozedUntil: '2026-06-18T12:00:00Z' }, crash]) }),
+      snapshot({ yours: list([{ ...parser, snoozedUntil: '2026-06-18T12:00:00Z' }, crash]) }),
     )
-    platform.restoreItem.mockResolvedValue(snapshot({ assigned: list([parser, crash]) }))
+    platform.restoreItem.mockResolvedValue(snapshot({ yours: list([parser, crash]) }))
     readsOf([parser, crash])
     render(<Harness launch={launchOptions} clock={fixedNow} reviews />)
 
     await userEvent.click(await screen.findByRole('button', { name: 'Parser drops the trailing newline' }))
     const sheet = await screen.findByRole('dialog', { name: 'Parser drops the trailing newline' })
-    expect(within(sheet).getByText('1 of 2 in Assigned')).toBeInTheDocument()
+    expect(within(sheet).getByText('1 of 2 in Yours')).toBeInTheDocument()
 
     await userEvent.click(within(sheet).getByRole('button', { name: 'Snooze for 3 days' }))
 
@@ -2388,7 +2399,7 @@ describe('InboxView triage in the sheets', () => {
     expect(await screen.findByRole('dialog', { name: 'Crash on start' }), 'the next card, in the same sheet').toBe(
       sheet,
     )
-    expect(await within(sheet).findByText('1 of 1 in Assigned')).toBeInTheDocument()
+    expect(await within(sheet).findByText('1 of 1 in Yours')).toBeInTheDocument()
 
     // The page behind the sheet is out of reach, so the toast shows in the sheet.
     const toast = await within(sheet).findByRole('group', { name: 'Notification' })
@@ -2400,9 +2411,9 @@ describe('InboxView triage in the sheets', () => {
   })
 
   it('dismisses a pull request from the review sheet, which gives way to the issue after it', async () => {
-    platform.getInboxSnapshot.mockResolvedValue(snapshot({ assigned: list([pull, crash]) }))
+    platform.getInboxSnapshot.mockResolvedValue(snapshot({ yours: list([pull, crash]) }))
     platform.dismissItem.mockResolvedValue(
-      snapshot({ assigned: list([{ ...pull, dismissedAt: FIXED_NOW.toISOString() }, crash]) }),
+      snapshot({ yours: list([{ ...pull, dismissedAt: FIXED_NOW.toISOString() }, crash]) }),
     )
     readsOf([pull, crash])
     render(<Harness launch={launchOptions} clock={fixedNow} reviews />)
@@ -2419,33 +2430,33 @@ describe('InboxView triage in the sheets', () => {
   })
 
   it('pins the card from its sheet, which stays on it', async () => {
-    platform.getInboxSnapshot.mockResolvedValue(snapshot({ assigned: list([parser, crash]) }))
+    platform.getInboxSnapshot.mockResolvedValue(snapshot({ yours: list([parser, crash]) }))
     platform.pinItem.mockResolvedValue(
-      snapshot({ assigned: list([{ ...crash, pinnedAt: FIXED_NOW.toISOString() }, parser]) }),
+      snapshot({ yours: list([{ ...crash, pinnedAt: FIXED_NOW.toISOString() }, parser]) }),
     )
     readsOf([parser, crash])
     render(<Harness launch={launchOptions} clock={fixedNow} reviews />)
 
     await userEvent.click(await screen.findByRole('button', { name: 'Crash on start' }))
     const sheet = await screen.findByRole('dialog', { name: 'Crash on start' })
-    expect(within(sheet).getByText('2 of 2 in Assigned')).toBeInTheDocument()
+    expect(within(sheet).getByText('2 of 2 in Yours')).toBeInTheDocument()
 
     await userEvent.click(within(sheet).getByRole('button', { name: 'Pin to top' }))
 
     expect(platform.pinItem).toHaveBeenCalledWith(2)
-    expect(await within(sheet).findByText('1 of 2 in Assigned'), 'pinned to the top of the list').toBeInTheDocument()
+    expect(await within(sheet).findByText('1 of 2 in Yours'), 'pinned to the top of the list').toBeInTheDocument()
     expect(screen.getByRole('dialog', { name: 'Crash on start' })).toBe(sheet)
     expect(within(sheet).getByRole('button', { name: 'Unpin' })).toBeInTheDocument()
   })
 
   it('restores a dismissed card from its sheet, which closes once the tab holds no other', async () => {
     const dismissed = { ...parser, dismissedAt: '2026-06-15T09:00:00Z' }
-    platform.getInboxSnapshot.mockResolvedValue(snapshot({ assigned: list([dismissed, crash]) }))
-    platform.restoreItem.mockResolvedValue(snapshot({ assigned: list([parser, crash]) }))
+    platform.getInboxSnapshot.mockResolvedValue(snapshot({ yours: list([dismissed, crash]) }))
+    platform.restoreItem.mockResolvedValue(snapshot({ yours: list([parser, crash]) }))
     readsOf([parser, crash])
     render(<Harness launch={launchOptions} clock={fixedNow} reviews />)
 
-    const assigned = await section('Assigned')
+    const assigned = await section('Yours')
     await userEvent.click(assigned.getByRole('tab', { name: 'Dismissed 1' }))
     await userEvent.click(assigned.getByRole('button', { name: 'Parser drops the trailing newline' }))
     const sheet = await screen.findByRole('dialog', { name: 'Parser drops the trailing newline' })
@@ -2465,7 +2476,7 @@ describe('InboxView triage in the sheets', () => {
     const log = item({ id: 6, kind: 'issue', number: 2, title: 'Log the retries', repo: 'acme-org/api' })
     const footer = item({ id: 7, kind: 'issue', number: 3, title: 'Fix the footer', repo: 'acme-org/web' })
     const muted = [retry, log, footer].map((c) => ({ ...c, assigned: true, repoRule: 'muted' as const }))
-    platform.getInboxSnapshot.mockResolvedValue(snapshot({ assigned: list(muted) }))
+    platform.getInboxSnapshot.mockResolvedValue(snapshot({ yours: list(muted) }))
     platform.setRepoRule.mockResolvedValue(settings({ repoRules: { pinned: [], muted: ['acme-org/web'] } }))
     readsOf(muted)
     render(
@@ -2477,7 +2488,7 @@ describe('InboxView triage in the sheets', () => {
       />,
     )
 
-    const assigned = await section('Assigned')
+    const assigned = await section('Yours')
     await userEvent.click(assigned.getByRole('tab', { name: 'Muted 3' }))
     await userEvent.click(assigned.getByRole('button', { name: 'Retry the upload' }))
     const sheet = await screen.findByRole('dialog', { name: 'Retry the upload' })
@@ -2489,7 +2500,7 @@ describe('InboxView triage in the sheets', () => {
   })
 
   it('goes back to the card when the backend refuses what the sheet asked', async () => {
-    platform.getInboxSnapshot.mockResolvedValue(snapshot({ assigned: list([parser, crash]) }))
+    platform.getInboxSnapshot.mockResolvedValue(snapshot({ yours: list([parser, crash]) }))
     platform.dismissItem.mockRejectedValue(new Error('database is locked'))
     readsOf([parser, crash])
     render(<Harness launch={launchOptions} clock={fixedNow} reviews />)
@@ -2504,25 +2515,25 @@ describe('InboxView triage in the sheets', () => {
     expect(screen.getByRole('dialog', { name: 'Parser drops the trailing newline' })).toBe(sheet)
     // The inbox drops the dismissal it showed at once only as the refused triage's
     // transition ends, a moment after the toast, and the card is back in its place then.
-    expect(await within(sheet).findByText('1 of 2 in Assigned')).toBeInTheDocument()
+    expect(await within(sheet).findByText('1 of 2 in Yours')).toBeInTheDocument()
   })
 
   it('stays on a card that left the tab by itself, which a snooze from the sheet brings back', async () => {
     const snoozed = { ...parser, snoozedUntil: '2026-06-18T12:00:00Z' }
     const other = { ...crash, snoozedUntil: '2026-06-19T12:00:00Z' }
-    platform.getInboxSnapshot.mockResolvedValue(snapshot({ assigned: list([snoozed, other]) }))
-    platform.snoozeItem.mockResolvedValue(snapshot({ assigned: list([snoozed, other]) }))
+    platform.getInboxSnapshot.mockResolvedValue(snapshot({ yours: list([snoozed, other]) }))
+    platform.snoozeItem.mockResolvedValue(snapshot({ yours: list([snoozed, other]) }))
     readsOf([parser, crash])
     render(<Harness launch={launchOptions} clock={fixedNow} reviews />)
 
-    const assigned = await section('Assigned')
+    const assigned = await section('Yours')
     await userEvent.click(assigned.getByRole('tab', { name: 'Snoozed 2' }))
     await userEvent.click(assigned.getByRole('button', { name: 'Parser drops the trailing newline' }))
     const sheet = await screen.findByRole('dialog', { name: 'Parser drops the trailing newline' })
     expect(within(sheet).getByRole('button', { name: 'Unsnooze' })).toBeInTheDocument()
 
     // Its snooze ends while the sheet is open, so it is back in the list, and the sheet keeps it.
-    platform.getInboxSnapshot.mockResolvedValue(snapshot({ assigned: list([parser, other]) }))
+    platform.getInboxSnapshot.mockResolvedValue(snapshot({ yours: list([parser, other]) }))
     act(() => {
       emit('inbox:updated')
     })
@@ -2539,7 +2550,7 @@ describe('InboxView triage in the sheets', () => {
     const retry = item({ id: 5, kind: 'issue', number: 1, title: 'Retry the upload', repo: 'acme-org/api' })
     const footer = item({ id: 7, kind: 'issue', number: 3, title: 'Fix the footer', repo: 'acme-org/web' })
     const muted = [retry, footer].map((c) => ({ ...c, assigned: true, repoRule: 'muted' as const }))
-    platform.getInboxSnapshot.mockResolvedValue(snapshot({ assigned: list(muted) }))
+    platform.getInboxSnapshot.mockResolvedValue(snapshot({ yours: list(muted) }))
     platform.setRepoRule.mockResolvedValue(settings({ repoRules: { pinned: [], muted: ['acme-org'] } }))
     readsOf(muted)
     render(
@@ -2551,7 +2562,7 @@ describe('InboxView triage in the sheets', () => {
       />,
     )
 
-    const assigned = await section('Assigned')
+    const assigned = await section('Yours')
     await userEvent.click(assigned.getByRole('tab', { name: 'Muted 2' }))
     await userEvent.click(assigned.getByRole('button', { name: 'Retry the upload' }))
     const sheet = await screen.findByRole('dialog', { name: 'Retry the upload' })
@@ -2561,5 +2572,142 @@ describe('InboxView triage in the sheets', () => {
     expect(platform.setRepoRule).toHaveBeenCalledExactlyOnceWith('acme-org/api', '')
     expect(await within(sheet).findByRole('group', { name: 'Notification' })).toBeInTheDocument()
     expect(screen.getByRole('dialog', { name: 'Retry the upload' }), 'the org still mutes it').toBe(sheet)
+  })
+})
+
+describe('InboxView while a refresh runs', () => {
+  const refreshed = '2026-06-15T11:55:00Z'
+
+  it('shows a refresh it didn’t start, with how far it has got', async () => {
+    platform.getInboxSnapshot.mockResolvedValue(
+      snapshot({ lastRefreshedAt: refreshed, reviewRequested: list([item()]) }),
+    )
+    render(<Harness launch={launchOptions} clock={fixedNow} />)
+
+    expect(await screen.findByText('5m ago')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Refresh' })).toBeEnabled()
+    expect(screen.queryByTestId('inbox-loading-bar')).not.toBeInTheDocument()
+
+    // The timer's refresh starts: its progress says so, and a read says it runs.
+    platform.getInboxSnapshot.mockResolvedValue(
+      snapshot({ lastRefreshedAt: refreshed, reviewRequested: list([item()]), refreshing: true }),
+    )
+    act(() => {
+      emit('inbox:progress', { phase: 'search', done: 0, total: 0 })
+    })
+
+    const button = screen.getByRole('button', { name: 'Refreshing…' })
+    expect(button).toBeDisabled()
+    expect(button.querySelector('svg')).toHaveClass('motion-safe:animate-spin')
+    expect(screen.getByText('Asking GitHub…')).toBeInTheDocument()
+    expect(screen.queryByText('5m ago'), 'the status takes the time’s place').not.toBeInTheDocument()
+    expect(screen.getByTestId('inbox-loading-bar')).toHaveClass('loading-bar')
+    // The lists stay as they were while it runs.
+    expect(screen.getByRole('button', { name: 'Add the widget cache' })).toBeInTheDocument()
+
+    act(() => {
+      emit('inbox:progress', { phase: 'details', done: 3, total: 8 })
+    })
+
+    const status = screen.getByText('Reading 3 of 8 new items…').closest('[role="status"]')
+    expect(status?.querySelector('[style]')).toHaveStyle({ width: '38%' })
+
+    act(() => {
+      emit('inbox:progress', { phase: 'files', done: 2, total: 5 })
+    })
+    expect(screen.getByText('Checking files: 2 of 5…')).toBeInTheDocument()
+
+    // It ends: the update brings a snapshot that says so.
+    platform.getInboxSnapshot.mockResolvedValue(
+      snapshot({ lastRefreshedAt: FIXED_NOW.toISOString(), reviewRequested: list([item()]) }),
+    )
+    act(() => {
+      emit('inbox:updated')
+    })
+
+    expect(await screen.findByRole('button', { name: 'Refresh' })).toBeEnabled()
+    expect(screen.getByText('just now')).toBeInTheDocument()
+    expect(screen.queryByTestId('inbox-loading-bar')).not.toBeInTheDocument()
+  })
+
+  it('shows a refresh the window opened on, before it says how far it has got', async () => {
+    platform.getInboxSnapshot.mockResolvedValue(
+      snapshot({ lastRefreshedAt: refreshed, reviewRequested: list([item()]), refreshing: true }),
+    )
+    render(<Harness launch={launchOptions} clock={fixedNow} />)
+
+    expect(await screen.findByText('Refreshing from GitHub…')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Refreshing…' })).toBeDisabled()
+  })
+
+  it('fills the inbox the first time with a banner and the lists’ shells', async () => {
+    platform.getInboxSnapshot.mockResolvedValue(snapshot({ refreshing: true }))
+    render(<Harness launch={launchOptions} clock={fixedNow} />)
+
+    const banner = await screen.findByRole('region', { name: 'Reading from GitHub' })
+    expect(banner).toHaveTextContent('Filling your inbox from GitHub…')
+    expect(within(banner).getByRole('list', { name: 'Coming from GitHub' })).toHaveTextContent(
+      /Review requests.*Your pull requests.*Assignments.*Checks and reviews/,
+    )
+
+    const shells = screen.getByTestId('inbox-skeleton')
+    expect(shells).toHaveTextContent(/Review requested.*Yours/)
+    expect(shells.querySelectorAll('.skeleton').length).toBeGreaterThan(0)
+    expect(screen.queryByText('Not refreshed yet')).not.toBeInTheDocument()
+    expect(screen.queryByText('Loading the inbox…')).not.toBeInTheDocument()
+
+    // The first refresh lands, and the real lists replace the shells.
+    platform.getInboxSnapshot.mockResolvedValue(
+      snapshot({ lastRefreshedAt: FIXED_NOW.toISOString(), yours: list([item({ title: 'Fresh from GitHub' })]) }),
+    )
+    act(() => {
+      emit('inbox:updated')
+    })
+
+    expect(await screen.findByRole('button', { name: 'Fresh from GitHub' })).toBeInTheDocument()
+    expect(screen.queryByTestId('inbox-skeleton')).not.toBeInTheDocument()
+    expect(screen.queryByRole('region', { name: 'Reading from GitHub' })).not.toBeInTheDocument()
+  })
+
+  it('falls back to the error and “Not refreshed yet” when the first refresh fails', async () => {
+    platform.getInboxSnapshot.mockResolvedValue(snapshot({ refreshing: true }))
+    render(<Harness launch={launchOptions} clock={fixedNow} />)
+
+    expect(await screen.findByTestId('inbox-skeleton')).toBeInTheDocument()
+
+    platform.getInboxSnapshot.mockResolvedValue(snapshot({ lastError: 'the network is down' }))
+    act(() => {
+      emit('inbox:updated')
+    })
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('the network is down')
+    expect(screen.getByText('Not refreshed yet')).toBeInTheDocument()
+    expect(screen.queryByTestId('inbox-skeleton')).not.toBeInTheDocument()
+  })
+
+  it('throws no party for a stored empty inbox until the refresh it opened on ends', async () => {
+    const party = () => screen.queryByRole('region', { name: 'inbox == nil' })
+
+    platform.getInboxSnapshot.mockResolvedValue(snapshot({ lastRefreshedAt: refreshed, refreshing: true }))
+    render(<Harness launch={launchOptions} clock={fixedNow} />)
+
+    expect(await screen.findByText('Refreshing from GitHub…')).toBeInTheDocument()
+    await waitFor(() => {
+      expect(screen.queryByText('Loading the inbox…')).not.toBeInTheDocument()
+    })
+    expect(party()).not.toBeInTheDocument()
+
+    platform.getInboxSnapshot.mockResolvedValue(snapshot({ lastRefreshedAt: FIXED_NOW.toISOString() }))
+    act(() => {
+      emit('inbox:updated')
+    })
+
+    expect(await screen.findByRole('region', { name: 'inbox == nil' })).toBeInTheDocument()
+
+    // A later refresh leaves the party where it is.
+    act(() => {
+      emit('inbox:progress', { phase: 'search', done: 0, total: 0 })
+    })
+    expect(party()).toBeInTheDocument()
   })
 })

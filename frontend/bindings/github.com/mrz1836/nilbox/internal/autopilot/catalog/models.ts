@@ -429,7 +429,9 @@ export interface GroupInfo {
 }
 
 /**
- * ListSource is an inbox list a routine can watch.
+ * ListSource is a reason an item is in the inbox, which a routine can watch: GitHub asks
+ * for the user's review, the user opened it, or it is assigned to them. An item can have
+ * more than one. The IDs are the inbox's three searches, which a stored spec keeps.
  */
 export type ListSource = "reviewRequested" | "authored" | "assigned";
 
@@ -438,7 +440,7 @@ export type ListSource = "reviewRequested" | "authored" | "assigned";
  */
 export const ListSource = {
     /**
-     * The inbox lists.
+     * The inbox reasons.
      */
     SourceReviewRequested: "reviewRequested",
     SourceAuthored: "authored",
@@ -446,11 +448,14 @@ export const ListSource = {
 } as const;
 
 /**
- * ListSourceInfo describes an inbox list.
+ * ListSourceInfo describes an inbox reason: Label names it on its own, as the builder's
+ * Watch does, and Phrase says it of an item, after "it's", as a sentence does ("asking for
+ * your review").
  */
 export interface ListSourceInfo {
     "id": ListSource;
     "label": string;
+    "phrase": string;
     "kinds": item$0.Kind[] | null;
 }
 

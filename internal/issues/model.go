@@ -112,7 +112,7 @@ type Issue struct {
 	OpenedAt  string `json:"openedAt"`
 	UpdatedAt string `json:"updatedAt"`
 
-	// Assigned reports that it is in the user's Assigned list.
+	// Assigned reports that it is assigned to the user.
 	Assigned bool `json:"assigned"`
 
 	// Locked reports a locked conversation, and LockReason why, as GitHub says it.

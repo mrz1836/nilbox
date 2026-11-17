@@ -217,8 +217,14 @@ export interface Item {
     "repoRule": reporules$0.Rule;
 
     /**
-     * Assigned reports that the item is in the Assigned list: it is assigned to the
-     * signed-in user, who can take themselves off it (Unassign).
+     * Authored reports that the signed-in user opened the item, a pull request the authored
+     * search found or any item whose author is the user, an issue included.
+     */
+    "authored": boolean;
+
+    /**
+     * Assigned reports that the item is assigned to the signed-in user, who can take
+     * themselves off it (Unassign).
      */
     "assigned": boolean;
 
@@ -423,9 +429,14 @@ export interface Snapshot {
      * Account is the signed-in account (all "" before the first refresh).
      */
     "account": Account;
+
+    /**
+     * ReviewRequested holds the items that ask for the signed-in user's review, and Yours
+     * every other item the user opened or is assigned: each item is in exactly one of
+     * them, so the two lists' items add up to the inbox (see addItems).
+     */
     "reviewRequested": List;
-    "authored": List;
-    "assigned": List;
+    "yours": List;
     "rate": RateGauge;
 
     /**
@@ -448,6 +459,14 @@ export interface Snapshot {
      * in, which needs the token's optional read:project scope.
      */
     "projectAccess": ProjectAccess;
+
+    /**
+     * Refreshing reports that a whole refresh is under way as the snapshot is read,
+     * whoever started it: the window shows it until a snapshot says it ended. It is the
+     * Service's own state, never kept with a snapshot; the InboxUpdated that ends a refresh
+     * always brings one with it false.
+     */
+    "refreshing": boolean;
 }
 
 /**

@@ -799,9 +799,31 @@ routine's week**, under `internal/autopilot`).
 ## internal/inbox
 
 These notes cover what the inbox does for Autopilot: the routines' searches, which each
-refresh reads after the inbox's own three lists, and the reads Autopilot makes through it.
+refresh reads after the inbox's own three searches, and the reads Autopilot makes through it.
 The inbox's own refresh, triage, edits, and the review sheet's Actor are described in the
 package's doc comments.
+
+**Two lists from three searches.** The refresh reads three searches (review requested,
+authored, assigned) and stores each one's flag on the item (`reason_review_requested`,
+`reason_authored`, `reason_assigned`), and `inbox.beyond.*` keeps what each matched past its
+page. The snapshot alone partitions them (`addItems`): an item that asks for the user's review
+is in `ReviewRequested`, whatever else it is, and one the user opened or is assigned is
+otherwise in `Yours`, with `Item.Authored` and `Item.Assigned` saying which, so no item is in
+both and the lists' counts add up to `NeedsYou`. `Yours.Total` adds both searches' counts
+past their pages, an upper bound once either was cut. The window keys its sections by the
+list (`settings.ListKey`); `settings.AdoptSections` carried the former Authored and Assigned
+lists' window keys over to Yours once, and an older backup's inbox order is read the same way
+(`adoptFormerOrder`). Autopilot's sources and conditions keep the three reasons
+(`catalog.ListSource`), worded as reasons rather than lists.
+
+**A refresh the window can watch.** `runRefresh` sets `Service.refreshing`, which every
+snapshot read reports (`Snapshot.Refreshing`, set on the copy returned, never on the one kept),
+and tells its phases as `event.InboxProgress` through a `progress.Tracker` (the search; the
+details of the items new since the last refresh, counted per answered batch through
+`github.DetailOptions.Progress`; the file checks, counted per pull request), whoever started
+it. It tells no `InboxUpdated` as it starts, so the engine's wake on that stays as it was, and
+it ends the tracker and clears the flag before the `changed()` that ends it, on success and
+failure, so the update's snapshot says it ended and no progress follows it.
 
 **The searches, after the refresh's store.** `Config.Watches` (`WatchSource`) gives the
 searches of the enabled routines of the account signed in, each key once (none while Autopilot
@@ -930,8 +952,8 @@ two share one order), and `NoteStates` stores by it as a pass does: an item stor
 the read went out keeps that newer read (`SetRefStateBefore`), an item's own read that went
 out before it stores nothing over it (`stated`), and a whole refresh still fetching that went
 out before it applies the state again on top of its own. `review_requested_at` and `assigned_at`
-keep when the inbox first saw an item in Review requested and in Assigned while it stays
-there, cleared once it leaves (`ClearArrivalStamps`, and every query that takes it out), for
+keep when the inbox first saw an item ask for the user's review and assigned to them while it
+stays so, cleared once it leaves (`ClearArrivalStamps`, and every query that takes it out), for
 the routines' fire keys. Each whole refresh prunes, in its own transaction, the items in no
 list, watched by no search, with no triage, that no read brought for 30 days (`PruneItems`);
 what else refers to an item comes from `Config.Keep` (`ItemKeeper`), read before the
@@ -1133,7 +1155,8 @@ escape would, and finds one qualifier, the token's own, between the query's neig
 `TestHostileValuesAddNoQualifier` does the same for each field through `Build`.
 
 **`spec`** is a routine's definition, one JSON document with a `version`: the watch's
-sources (inbox lists, or a search), one trigger with its options, the conditions (`all` or
+sources (the inbox, by the reasons items are in it, or a search), one trigger with its options,
+the conditions (`all` or
 `any`, with one level of groups), the steps in order, each optionally carrying `onlyIf`,
 the limits, the routine's own banner switches, and the tools it requires. The mode, the
 on or off switch, the name, and the account are its row's, never the spec's. An option or
@@ -1435,7 +1458,7 @@ people and the bots who opened them, the owners of their repositories, their lab
 their check names, each most common first, no list nil.
 
 **`Watching(id)`** returns the IDs of the items the routine watches, newest activity first:
-those in the inbox lists it names, and those its searches' rows hold, stale ones included, so a
+those in the inbox with the reasons it names, and those its searches' rows hold, stale ones included, so a
 search that failed still shows its items (`Items.WatchedItems`); the inbox's bound `ItemsByID`
 turns them into rows.
 
@@ -2226,7 +2249,7 @@ routine, the item's copy from its latest match, why, and since), for **Let it ac
 
 **The simulator** runs the triage steps through the inbox's real triage (`sim.Triage`, the
 adapter core's `inboxTriage` is, over the app the scenario built), and its scenarios include
-the *Snooze passing bot PRs* template as `spec/testdata/templates` writes it (the inbox lists,
+the *Snooze passing bot PRs* template as `spec/testdata/templates` writes it (the inbox reasons,
 Checks pass, a trusted bot's patch or minor update: snooze three days, once per head commit,
 waking by the user's rules, at once in Ask first, a record alone in Dry run), Undo after the
 user changed some of the items, and hands off and **Let it act again**.
@@ -2456,7 +2479,8 @@ none, in this build, which runs every template),
 the starters it runs with whether the library holds each (`TemplatePrompt.InLibrary`, which the
 prompts' `AddStarter` puts back), and why it is suggested (`suggestedWhy` over
 `TemplateSignals`: the clones whose CI is go-fortress's, from setup's `Signals`; Dependabot's
-pull requests in the inbox lists this week and bots' in Review requested and Assigned, from the
+pull requests in the inbox this week and bots' that ask for the user's review or are assigned
+to them, from the
 inbox's `BotPullRequests`, `CountBotPullRequests`; core's `templateSignals`), the suggested
 first. Since the needs are worked out from the offers on every read, a template is never
 locked: one with a step a later catalog adds before its dispatcher would say what it needs,

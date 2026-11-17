@@ -215,6 +215,47 @@ func checkStatusOrder(order []string) (map[string]string, error) {
 	return map[string]string{KeyStatusOrder: encoded}, nil
 }
 
+// adoptFormerOrder reads an inbox order an older backup holds, which names the former
+// Authored and Assigned lists, as AdoptSections reads their stored keys: Yours takes the
+// Assigned list's status sort and kind, unless the order gives Yours a kind of its own, and
+// the Authored list's are dropped. An order that names neither comes back as it is.
+func adoptFormerOrder(order InboxOrder) InboxOrder {
+	out := InboxOrder{
+		StatusSorted: make([]ListKey, 0, len(order.StatusSorted)), StatusOrder: order.StatusOrder,
+		Kinds: make(map[ListKey]ListKind, len(order.Kinds)),
+	}
+
+	for _, list := range order.StatusSorted {
+		if now, ok := currentList(list); ok && !slices.Contains(out.StatusSorted, now) {
+			out.StatusSorted = append(out.StatusSorted, now)
+		}
+	}
+
+	_, ownKind := order.Kinds[ListYours]
+
+	for list, kind := range order.Kinds {
+		if now, ok := currentList(list); ok && (list != formerAssigned || !ownKind) {
+			out.Kinds[now] = kind
+		}
+	}
+
+	return out
+}
+
+// currentList is the list an older backup's list stands for now, and false for the former
+// Authored list, which none does.
+func currentList(list ListKey) (ListKey, bool) {
+	if list == formerAuthored {
+		return "", false
+	}
+
+	if list == formerAssigned {
+		return ListYours, true
+	}
+
+	return list, true
+}
+
 // checkInboxOrder refuses an inbox order that names a list that isn't one, a kind a list
 // can't show, or a status order SetStatusOrder would refuse, and returns the writes of
 // the whole order: every list's sort and kind, and the status order.

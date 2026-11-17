@@ -315,7 +315,7 @@ func triageWarnings(sp spec.Spec) []spec.Problem {
 			out = append(out, spec.Problem{
 				Part: spec.PartSteps, Field: fmt.Sprintf("[%d]", i),
 				Message: info.Label + " changes how an item shows in your inbox, and this routine watches only " +
-					"searches: items that aren't in your inbox lists won't look any different.",
+					"searches: items that aren't in your inbox won't look any different.",
 			})
 		}
 	}

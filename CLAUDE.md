@@ -282,7 +282,8 @@ changing the package, and keep the section and its summary in step.
   `internal/progress`, and `internal/textutil` hold the clock (and `clock.Sleep`, the shared
   wait that ends with its context), the interval runner, one call per key at a time, `~`
   paths, a long read's progress told to the window a few times a second (the Release page's
-  list and the window's worktrees listing, `event.WorktreesProgress`), and text helpers,
+  list, the window's worktrees listing, `event.WorktreesProgress`, and every whole refresh of
+  the inbox, `event.InboxProgress`, beside `inbox.Snapshot.Refreshing`), and text helpers,
   among them the app's one POSIX shell quoting: `textutil.ShellQuote`, which always quotes,
   for every word of a script the app writes, of the ssh command it hands git, and for the
   program of Repo scripts' chain line unless it is a path from `/`, and
@@ -374,7 +375,12 @@ changing the package, and keep the section and its summary in step.
   follower, or Autopilot's own reads), and the `Tracker` splits each budget's spend by it
   (`Reading.Purposes`, which add up to `Spent`); the budget menu says Autopilot's share in one
   line, only once it spent something.
-- `internal/inbox/` also reads the routines' searches beside its own lists. A refresh hands its
+- `internal/inbox/` reads three searches (review requested, authored, assigned) into two lists,
+  which the snapshot alone partitions (`addItems`): `ReviewRequested` holds what asks for the
+  user's review, whatever else it is, and `Yours` the rest the user opened or is assigned
+  (`Item.Authored`, `Item.Assigned`), so no item is in both; the stored reason flags and
+  `inbox.beyond.*` stay per search, and `settings.AdoptSections` carried the former lists' window
+  keys over to Yours once. It also reads the routines' searches beside its own lists. A refresh hands its
   watch pass (`WatchPasses`, a desktop worker run before the scheduler) the searches
   `Config.Watches` gives, whose requests (`github.FetchWatches`, packed a few searches to a
   request) go out only once the refresh has stored and told the inbox, outside its errgroup,

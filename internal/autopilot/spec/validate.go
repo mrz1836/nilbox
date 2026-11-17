@@ -154,7 +154,7 @@ func (v *validator) add(part Part, field, format string, args ...any) {
 func (v *validator) watch(w Watch, event catalog.Event) []item.Kind {
 	switch {
 	case len(w.Sources) == 0 && event != catalog.EventManual:
-		v.add(PartWatch, "sources", "watch an inbox list or a search, so the routine has items to look at")
+		v.add(PartWatch, "sources", "watch your inbox or a search, so the routine has items to look at")
 	case len(w.Sources) > MaxSources:
 		v.add(PartWatch, "sources", "watch at most %d sources", MaxSources)
 	}
@@ -166,7 +166,7 @@ func (v *validator) watch(w Watch, event catalog.Event) []item.Kind {
 
 		switch {
 		case src.Search != nil && src.Lists != nil:
-			v.add(PartWatch, field, "a source is inbox lists or a search, not both")
+			v.add(PartWatch, field, "a source is your inbox or a search, not both")
 		case src.Search != nil:
 			searches++
 
@@ -183,15 +183,15 @@ func (v *validator) watch(w Watch, event catalog.Event) []item.Kind {
 	return w.Kinds()
 }
 
-// lists checks a source's inbox lists.
+// lists checks a source's inbox reasons.
 func (v *validator) lists(field string, lists []catalog.ListSource) {
 	if len(lists) == 0 {
-		v.add(PartWatch, field, "pick at least one inbox list")
+		v.add(PartWatch, field, "pick at least one reason an item is in your inbox")
 	}
 
 	for i, l := range lists {
 		if _, ok := catalog.ListSourceByID(l); !ok {
-			v.add(PartWatch, fmt.Sprintf("%s[%d]", field, i), "%q isn't an inbox list", l)
+			v.add(PartWatch, fmt.Sprintf("%s[%d]", field, i), "%q isn't a reason an item is in your inbox", l)
 		}
 	}
 }

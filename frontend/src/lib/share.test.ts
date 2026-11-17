@@ -37,7 +37,7 @@ describe('shareSnapshot', () => {
   const three = item({ id: 3, number: 9 })
   const was = snapshot({
     reviewRequested: list([one, two]),
-    authored: list([three]),
+    yours: list([three]),
     rate: { graphql: rate(), core: rate(), search: rate() },
   })
 
@@ -61,31 +61,31 @@ describe('shareSnapshot', () => {
     expect(shared.reviewRequested).not.toBe(was.reviewRequested)
     expect(shared.reviewRequested.items[0]).toBe(one)
     expect(shared.reviewRequested.items[1]).toEqual({ ...two, title: 'Renamed' })
-    expect(shared.authored).toBe(was.authored)
-    expect(shared.assigned).toBe(was.assigned)
+    expect(shared.yours).toBe(was.yours)
     expect(shared.account).toBe(was.account)
     expect(shared.rate).toBe(was.rate)
   })
 
   it('keeps an item that moved to another list, and a list whose count changed is new', () => {
-    const next = decoded(snapshot({ ...was, reviewRequested: list([one]), assigned: list([two], 4) }))
+    const next = decoded(snapshot({ ...was, reviewRequested: list([one]), yours: list([two, three], 4) }))
 
     const shared = shareSnapshot(was, next)
 
-    expect(shared.assigned.items[0]).toBe(two)
-    expect(shared.assigned.total).toBe(4)
+    expect(shared.yours.items[0]).toBe(two)
+    expect(shared.yours.items[1]).toBe(three)
+    expect(shared.yours.total).toBe(4)
     expect(shared.reviewRequested.items).toEqual([one])
     expect(shared.reviewRequested).not.toBe(was.reviewRequested)
   })
 
   it('takes a list whose total changed though its items did not', () => {
     const next = decoded(was)
-    next.authored.total = 40
+    next.yours.total = 40
 
     const shared = shareSnapshot(was, next)
 
-    expect(shared.authored).not.toBe(was.authored)
-    expect(shared.authored.items[0]).toBe(three)
+    expect(shared.yours).not.toBe(was.yours)
+    expect(shared.yours.items[0]).toBe(three)
   })
 })
 

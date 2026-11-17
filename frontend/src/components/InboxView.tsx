@@ -3,6 +3,7 @@ import { lazy, Suspense, useEffect, useEffectEvent, useLayoutEffect, useRef, use
 import { attempt } from '../lib/call'
 import { refText } from '../lib/format'
 import type { InboxFilter } from '../lib/inboxFilter'
+import { progressStep } from '../lib/inboxProgress'
 import type { IssueDrafts } from '../lib/issueDrafts'
 import { issueTone } from '../lib/issues'
 import { itemKey, noWorktrees, worktreeOf } from '../lib/itemWorktrees'
@@ -13,7 +14,16 @@ import { ruleFor, withRepoRule } from '../lib/repoRules'
 import { noSessions, sessionsOf } from '../lib/sessions'
 import { movesOnTo } from '../lib/sheet'
 import { formatAgo } from '../lib/time'
-import { findItem, itemsByRef, tabOf, type TriagedInbox, type TriageTab } from '../lib/triage'
+import {
+  byList,
+  findItem,
+  inboxLists,
+  itemsByRef,
+  listTitles,
+  tabOf,
+  type TriagedInbox,
+  type TriageTab,
+} from '../lib/triage'
 import type { InboxState } from '../lib/useInbox'
 import type { InboxOrderState } from '../lib/useInboxOrder'
 import {
@@ -33,10 +43,13 @@ import {
   type Worktree,
 } from '../platform'
 import { ErrorBanner } from './ErrorBanner'
+import { RefreshIcon } from './icons'
+import { InboxFilling } from './InboxFilling'
 import { InboxNil } from './InboxNil'
 import { LinksContext, type Links } from './ItemLink'
 import type { LaunchOptions } from './ItemRow'
 import { ListSection, type Reveal } from './ListSection'
+import { ProgressStatus } from './ProgressStatus'
 import { ProjectsTip } from './ProjectsTip'
 import { RelativeTime } from './RelativeTime'
 import { defaultToastSeconds, Toast, type ToastMessage } from './Toast'
@@ -195,11 +208,8 @@ export function resultTone(result: ReviewResult): 'warning' | 'success' {
     : 'success'
 }
 
-const sections: readonly { key: ListKey; title: string }[] = [
-  { key: 'reviewRequested', title: 'Review requested' },
-  { key: 'authored', title: 'Authored' },
-  { key: 'assigned', title: 'Assigned' },
-]
+// sections are the inbox's lists as its sections show them, in order.
+const sections: readonly { key: ListKey; title: string }[] = inboxLists.map((key) => ({ key, title: listTitles[key] }))
 
 // NoMatches says that nothing in the inbox matches the query, what the filter looks at,
 // and offers to clear it. It sits at the top, where the eye already is.
@@ -276,7 +286,7 @@ export function InboxView({
   onConversationOrder,
   onItemOpened,
 }: InboxViewProps) {
-  const { snapshot, loadError, refreshError, refreshing, refresh } = inbox
+  const { snapshot, loadError, refreshError, refreshing, progress, caughtUp, refresh } = inbox
   const { order, setStatusSort, setStatusOrder, setListKind } = inboxOrder
   // chosenOrder is the conversations' order the user chose here, shared by both sheets at
   // once, until the stored setting they remember it in comes back the same.
@@ -313,8 +323,17 @@ export function InboxView({
 
   const [toast, setToast] = useState<ToastMessage | null>(null)
   const count = triaged?.count ?? 0
+  // filling is the inbox's first refresh under way, which nothing stored stands in for yet.
+  const filling = refreshing && snapshot !== null && snapshot.lastRefreshedAt === ''
+  // An empty inbox throws no party until the window has seen no refresh under way, so a
+  // stored empty inbox doesn't celebrate while the app's start is still reading GitHub.
   const nil =
-    snapshot !== null && triaged !== null && collapsed !== null && error === '' && isInboxNil(snapshot, triaged)
+    caughtUp &&
+    snapshot !== null &&
+    triaged !== null &&
+    collapsed !== null &&
+    error === '' &&
+    isInboxNil(snapshot, triaged)
   // busy records that the inbox has held something while the page was showing, so emptying
   // it from here throws the full party, while coming to the page at nil only sprinkles.
   // The page stays mounted while another shows, so hiding it forgets busy, and each visit
@@ -407,7 +426,7 @@ export function InboxView({
       setViewing({ id: item.id, kind: item.kind, list, tab, arrow: '', back: null, refocus: 0 })
     }
 
-    return { reviewRequested: open('reviewRequested'), authored: open('authored'), assigned: open('assigned') }
+    return byList(open)
   })
   const [openFromMenu] = useState(() => (item: InboxItem, tab: TriageTab) => {
     const list = sections.find(({ key }) => shown.current?.[key].items.some((i) => i.id === item.id))?.key
@@ -637,24 +656,36 @@ export function InboxView({
 
   return (
     <div className="flex flex-col gap-4 p-4">
-      <div className="flex items-center gap-3 text-sm">
+      <div className="relative flex items-center gap-3 text-sm">
         <button
           type="button"
           disabled={refreshing}
           onClick={refresh}
-          className="rounded-md border border-border bg-surface px-3 py-1 font-medium hover:bg-raised disabled:opacity-60"
+          className="flex items-center gap-1.5 rounded-md border border-border bg-surface px-3 py-1 font-medium hover:bg-raised disabled:opacity-60"
         >
+          <RefreshIcon className={`size-3.5 ${refreshing ? 'motion-safe:animate-spin' : ''}`} />
           {refreshing ? 'Refreshing…' : 'Refresh'}
         </button>
-        <span className="text-muted">
-          {snapshot === null || snapshot.lastRefreshedAt === '' ? (
-            'Not refreshed yet'
-          ) : (
-            <>
-              Last refreshed <RelativeTime iso={snapshot.lastRefreshedAt} show={formatAgo} />
-            </>
-          )}
-        </span>
+        {refreshing ? (
+          <ProgressStatus step={progressStep(progress)} />
+        ) : (
+          <span className="text-muted">
+            {snapshot === null || snapshot.lastRefreshedAt === '' ? (
+              'Not refreshed yet'
+            ) : (
+              <>
+                Last refreshed <RelativeTime iso={snapshot.lastRefreshedAt} show={formatAgo} />
+              </>
+            )}
+          </span>
+        )}
+        {refreshing && (
+          <div
+            aria-hidden="true"
+            data-testid="inbox-loading-bar"
+            className="loading-bar absolute inset-x-0 -bottom-2.25"
+          />
+        )}
       </div>
       {refreshFailure !== '' ? (
         <ErrorBanner
@@ -686,41 +717,45 @@ export function InboxView({
       )}
       {filter !== null && filter.matches === 0 && <NoMatches query={filter.query} onClear={onClearFilter} />}
       {nil && filter === null && <InboxNil key={visit.n} stats={triaged} earned={busy} />}
-      {triaged === null || collapsed === null || order === null
-        ? loadError === '' && <p className="text-sm text-muted">Loading the inbox…</p>
-        : sections.map(({ key, title }) => (
-            <ListSection
-              key={key}
-              title={title}
-              triaged={triaged.lists[key]}
-              launch={launch}
-              resolutions={resolutions}
-              worktrees={worktrees}
-              sessions={sessions}
-              triage={triage}
-              edits={edits}
-              collapsed={filter === null && collapsed.has(key)}
-              onCollapse={(on) => {
-                onCollapse(key, on)
-              }}
-              onFilesSettings={onFilesSettings}
-              reveal={key === revealIn ? reveal : null}
-              order={{
-                ...shownOrder(order, key),
-                onSortChange: (on) => {
-                  setStatusSort(key, on)
-                },
-                onOrderChange: setStatusOrder,
-                onKindChange: (kind) => {
-                  setListKind(key, kind)
-                },
-              }}
-              matched={filter?.lists[key]}
-              marks={filter?.marks ?? ''}
-              onFilterBy={onFilterBy}
-              onOpen={sheets ? openIn[key] : undefined}
-            />
-          ))}
+      {filling ? (
+        <InboxFilling />
+      ) : triaged === null || collapsed === null || order === null ? (
+        loadError === '' && <p className="text-sm text-muted">Loading the inbox…</p>
+      ) : (
+        sections.map(({ key, title }) => (
+          <ListSection
+            key={key}
+            title={title}
+            triaged={triaged.lists[key]}
+            launch={launch}
+            resolutions={resolutions}
+            worktrees={worktrees}
+            sessions={sessions}
+            triage={triage}
+            edits={edits}
+            collapsed={filter === null && collapsed.has(key)}
+            onCollapse={(on) => {
+              onCollapse(key, on)
+            }}
+            onFilesSettings={onFilesSettings}
+            reveal={key === revealIn ? reveal : null}
+            order={{
+              ...shownOrder(order, key),
+              onSortChange: (on) => {
+                setStatusSort(key, on)
+              },
+              onOrderChange: setStatusOrder,
+              onKindChange: (kind) => {
+                setListKind(key, kind)
+              },
+            }}
+            matched={filter?.lists[key]}
+            marks={filter?.marks ?? ''}
+            onFilterBy={onFilterBy}
+            onOpen={sheets ? openIn[key] : undefined}
+          />
+        ))
+      )}
       <LinksContext value={links}>
         <Suspense fallback={null}>
           {viewing !== null && sheets && viewing.kind === 'pr' && (

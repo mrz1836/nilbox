@@ -93,7 +93,7 @@ export interface InboxOrder {
  * ListKey names an inbox list, as the inbox snapshot names it: each list is a section of
  * the inbox the user can collapse.
  */
-export type ListKey = "reviewRequested" | "authored" | "assigned";
+export type ListKey = "reviewRequested" | "yours";
 
 /**
  * The values of ListKey, by the names of their Go constants.
@@ -103,8 +103,7 @@ export const ListKey = {
      * The inbox lists, in the order the inbox shows them.
      */
     ListReviewRequested: "reviewRequested",
-    ListAuthored: "authored",
-    ListAssigned: "assigned",
+    ListYours: "yours",
 } as const;
 
 /**
@@ -473,6 +472,14 @@ export interface Settings {
      * statuses.
      */
     "inboxOrder": InboxOrder;
+
+    /**
+     * HiddenLabels are the patterns of the labels the inbox's cards leave out (see
+     * KeyHiddenLabels), never nil, and DefaultHiddenLabels what Restore the defaults goes
+     * back to.
+     */
+    "hiddenLabels": string[] | null;
+    "defaultHiddenLabels": string[] | null;
 
     /**
      * MergeMethod is how the review sheet merges a pull request.

@@ -92,27 +92,44 @@ interface FilterTextProps {
   value: string
   name: string
   onFilterBy: ((key: string, value: string) => void) | undefined
+  // shown is what the card says in value's place, such as "you" for the user's own login,
+  // and full what it stands for, in its tooltip; both default to value.
+  shown?: string
+  full?: string
 }
 
 // FilterText is a card's repository or author: plain text, or a quiet inline button that
 // filters the inbox by it.
-function FilterText({ filterKey, value, name, onFilterBy }: FilterTextProps) {
+function FilterText({ filterKey, value, name, onFilterBy, shown = value, full = value }: FilterTextProps) {
   if (onFilterBy === undefined) {
-    return value
+    return shown === value ? value : <span title={full}>{shown}</span>
   }
 
   return (
     <button
       type="button"
-      aria-label={`Filter by ${name} ${value}`}
-      title={`Filter by ${name} ${value}`}
+      aria-label={`Filter by ${name} ${full}`}
+      title={`Filter by ${name} ${full}`}
       onClick={() => {
         onFilterBy(filterKey, value)
       }}
       className="rounded-sm hover:text-text hover:underline"
     >
-      {value}
+      {shown}
     </button>
+  )
+}
+
+// AssignedChip marks an item assigned to the user, in either list, since Review requested
+// holds a pull request that is assigned too.
+function AssignedChip() {
+  return (
+    <span
+      title="Assigned to you on GitHub"
+      className="shrink-0 rounded-full border border-border px-1.5 text-[0.6875rem] leading-4 text-muted"
+    >
+      Assigned
+    </span>
   )
 }
 
@@ -450,10 +467,18 @@ export const ItemRow = memo(function ItemRow({
           <span className="truncate">
             <FilterText filterKey="repo" value={item.repo} name="repository" onFilterBy={onFilterBy} /> #{item.number}
             {' · '}
-            <FilterText filterKey="author" value={item.author} name="author" onFilterBy={onFilterBy} />
+            <FilterText
+              filterKey="author"
+              value={item.author}
+              name="author"
+              onFilterBy={onFilterBy}
+              shown={item.authored ? 'you' : item.author}
+              full={item.authored ? `${item.author} (you)` : item.author}
+            />
             {' · '}
             <RelativeTime iso={item.updatedAt} show={formatAge} />
           </span>
+          {item.assigned && <AssignedChip />}
           <TrustTag item={item} />
           {item.files !== null && <SensitiveFiles itemId={item.id} check={item.files} onSettings={onFilesSettings} />}
           <TriageTag item={item} tab={tab} />

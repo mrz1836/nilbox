@@ -1,4 +1,5 @@
 import type { InboxItem, InboxList, InboxSnapshot, ItemResolution } from '../platform'
+import { byList, inboxLists } from './triage'
 
 // Every answer from the backend arrives as freshly decoded JSON: a new object for every
 // item, changed or not. Sharing keeps the objects of the answer before wherever the data
@@ -62,8 +63,8 @@ export function shareSnapshot(was: InboxSnapshot | null, next: InboxSnapshot): I
 
   const known = new Map<number, InboxItem>()
 
-  for (const list of [was.reviewRequested, was.authored, was.assigned]) {
-    for (const item of list.items) {
+  for (const list of inboxLists) {
+    for (const item of was[list].items) {
       known.set(item.id, item)
     }
   }
@@ -72,9 +73,7 @@ export function shareSnapshot(was: InboxSnapshot | null, next: InboxSnapshot): I
     ...next,
     account: keep(was.account, next.account),
     rate: keep(was.rate, next.rate),
-    reviewRequested: shareList(was.reviewRequested, next.reviewRequested, known),
-    authored: shareList(was.authored, next.authored, known),
-    assigned: shareList(was.assigned, next.assigned, known),
+    ...byList((list) => shareList(was[list], next[list], known)),
   }
 
   return same(was, shared) ? was : shared

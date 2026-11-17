@@ -417,8 +417,8 @@ export function goDuration(ms: number): string {
   return minutes > 0 ? `${String(minutes)}m${String(seconds)}s` : `${String(seconds)}s`
 }
 
-// inboxPreview says what the inbox holds: "5 review requests · 4 authored · 3 assigned",
-// or '' before its first refresh.
+// inboxPreview says what the inbox holds: "5 review requests · 7 of yours", or '' before
+// its first refresh.
 export function inboxPreview(snapshot: InboxSnapshot | null): string {
   if (snapshot === null || snapshot.lastRefreshedAt === '') {
     return ''
@@ -426,7 +426,6 @@ export function inboxPreview(snapshot: InboxSnapshot | null): string {
 
   return [
     counted(snapshot.reviewRequested.total, 'review request', 'review requests'),
-    `${formatCount(snapshot.authored.total)} authored`,
-    `${formatCount(snapshot.assigned.total)} assigned`,
+    `${formatCount(snapshot.yours.total)} of yours`,
   ].join(' · ')
 }

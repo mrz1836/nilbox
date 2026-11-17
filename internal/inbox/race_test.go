@@ -335,7 +335,7 @@ func TestRefreshTriageAndSettingsWritesShareOnePool(t *testing.T) {
 
 	// The last refresh is an odd one, which does not ask for #4's review.
 	assert.Equal(t, []int{1, 2}, listNumbers(snap.ReviewRequested), "the last refresh's list, the pinned item first")
-	assert.Equal(t, []int{3}, listNumbers(snap.Assigned))
+	assert.Equal(t, []int{3}, listNumbers(snap.Yours))
 	assert.Equal(t, "Item 1", numbered(t, snap, 1).Title)
 
 	now := clk.Now()

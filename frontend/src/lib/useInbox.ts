@@ -12,6 +12,7 @@ import {
   snoozeItem,
   unassignItem,
   unpinItem,
+  type InboxProgress,
   type InboxSnapshot,
 } from '../platform'
 import { attempt, type Result } from './call'
@@ -29,7 +30,16 @@ export interface InboxState {
   snapshot: InboxSnapshot | null
   loadError: string
   refreshError: string
+  // refreshing is set while a whole refresh runs, whoever started it: a click, the timer,
+  // the menu bar, or the app's start. The window knows from the snapshot (its refreshing),
+  // from its own click, and from the refresh's progress, which tells it one started.
   refreshing: boolean
+  // progress is how far the refresh under way has got, or null while none runs, or before
+  // it first says.
+  progress: InboxProgress | null
+  // caughtUp is set once the window has seen no refresh under way: until then, as when it
+  // opens on one, what is stored may be about to change.
+  caughtUp: boolean
   // refresh fetches the inbox from GitHub now.
   refresh: () => void
   // reload reads the stored inbox again, without asking GitHub, such as after a setting
@@ -145,10 +155,34 @@ export function useInbox(): InboxState {
     [],
   )
 
+  // heard is the latest progress a refresh told, with the number of the last request
+  // started when it came: an answer to a request started after it that says no refresh
+  // runs means that refresh ended, while one started before it may not know of it yet.
+  const [heard, setHeard] = useState<{ progress: InboxProgress; at: number } | null>(null)
+
+  useEffect(
+    () =>
+      on('inbox:progress', (progress) => {
+        setHeard({ progress, at: started.current })
+      }),
+    [],
+  )
+
   const shown = newer(loaded.data, answered)
   const [snapshot, showChange] = useOptimistic(shown?.snapshot ?? null, showTriage)
   const refresher = useMutation((n: number) => record(n, refreshInbox()))
   const lastLoad = loaded.data?.n ?? 0
+
+  if (heard !== null && shown !== null && shown.n > heard.at && !shown.snapshot.refreshing) {
+    setHeard(null)
+  }
+
+  const refreshing = (shown?.snapshot.refreshing ?? false) || refresher.pending || heard !== null
+  const [caughtUp, setCaughtUp] = useState(false)
+
+  if (!caughtUp && shown !== null && !refreshing) {
+    setCaughtUp(true)
+  }
 
   const refresh = () => {
     const n = next()
@@ -184,7 +218,9 @@ export function useInbox(): InboxState {
     snapshot,
     loadError: loaded.error,
     refreshError: lastLoad > refreshFrom ? '' : refresher.error,
-    refreshing: refresher.pending,
+    refreshing,
+    progress: refreshing ? (heard?.progress ?? null) : null,
+    caughtUp,
     refresh,
     reload: () => {
       void loaded.refetch()

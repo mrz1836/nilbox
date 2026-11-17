@@ -548,7 +548,7 @@ func TestWhyAnItemIsntInTheWatch(t *testing.T) {
 
 	authored := dependabot()
 	authored.InAuthored = true
-	assert.Equal(t, []string{"It isn't in your Review requested and Assigned lists: it's in your Authored list."},
+	assert.Equal(t, []string{"It isn't asking for your review or assigned to you: it's in your inbox, opened by you."},
 		watchMisses(snooze.Spec, facts.Build(authored, fixtureEnv()), galleryViewer))
 
 	review, ok := TemplateByKey("review-members")

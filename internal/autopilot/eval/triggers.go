@@ -73,10 +73,10 @@ var triggerTests = map[catalog.Event]triggerTest{
 	catalog.EventLabeled:          labeled,
 	catalog.EventReadyForReview:   readyForReview,
 	catalog.EventReviewRequested: func(_ spec.Trigger, f facts.Facts, _ History, _ time.Time) fired {
-		return listed(catalog.EventReviewRequested, catalog.ListReviewRequested, f.ReviewAsked, f)
+		return listed(catalog.EventReviewRequested, catalog.SourceReviewRequested, f.ReviewAsked, f)
 	},
 	catalog.EventAssigned: func(_ spec.Trigger, f facts.Facts, _ History, _ time.Time) fired {
-		return listed(catalog.EventAssigned, catalog.ListAssigned, f.Assigned, f)
+		return listed(catalog.EventAssigned, catalog.SourceAssigned, f.Assigned, f)
 	},
 	catalog.EventNewComments: newComments,
 	catalog.EventGoesQuiet:   goesQuiet,
@@ -309,23 +309,28 @@ func readyForReview(_ spec.Trigger, f facts.Facts, _ History, _ time.Time) fired
 	return yes(itemKey(catalog.EventReadyForReview), "it isn't a draft")
 }
 
-// listed holds while the item is in an inbox list, once per arrival in it: per the
-// moment the inbox saw it arrive, or, when the inbox doesn't say, once while it stays.
-func listed(e catalog.Event, list string, arrived facts.Value, f facts.Facts) fired {
+// listed holds while the item has the inbox reason list, once per arrival with it: per
+// the moment the inbox saw it arrive, or, when the inbox doesn't say, once while it stays.
+func listed(e catalog.Event, list catalog.ListSource, arrived facts.Value, f facts.Facts) fired {
 	lists := f.Value(catalog.FieldLists)
 	if out, missing := known(lists); missing {
 		return out
 	}
 
-	if !containsAny(lists.List, list) {
-		return no("it isn't in your " + list + " list")
+	phrase := string(list)
+	if info, ok := catalog.ListSourceByID(list); ok {
+		phrase = info.Phrase
+	}
+
+	if !containsAny(lists.List, string(list)) {
+		return no("it isn't " + phrase)
 	}
 
 	if arrived.Known() {
 		return yes(string(e)+":at:"+stamp(arrived.Since), "it arrived "+arrived.Since.UTC().Format(time.RFC3339))
 	}
 
-	return yes(string(e)+":listed", "it's in your "+list+" list")
+	return yes(string(e)+":listed", "it's "+phrase)
 }
 
 func newComments(t spec.Trigger, f facts.Facts, h History, _ time.Time) fired {

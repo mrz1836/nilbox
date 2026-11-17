@@ -88,7 +88,7 @@ func editHarness(t *testing.T) (*harness, map[int]int64) {
 	return h, map[int]int64{
 		1: itemByNumber(t, snap.ReviewRequested, 1).ID,
 		2: itemByNumber(t, snap.ReviewRequested, 2).ID,
-		3: itemByNumber(t, snap.Assigned, 3).ID,
+		3: itemByNumber(t, snap.Yours, 3).ID,
 	}
 }
 
@@ -109,7 +109,7 @@ func TestSnapshotSaysHowAnItemAsksTheUser(t *testing.T) {
 	assert.Equal(t, ReviewRequestTeam, team.ReviewRequest)
 	assert.False(t, team.Assigned)
 
-	assigned := itemByNumber(t, snap.Assigned, 3)
+	assigned := itemByNumber(t, snap.Yours, 3)
 	assert.Equal(t, ReviewRequestNone, assigned.ReviewRequest)
 	assert.True(t, assigned.Assigned)
 	assert.Equal(t, []string{}, assigned.ReviewTeams, "never nil")
@@ -140,15 +140,16 @@ func TestUnassignTakesTheItemOutOfTheAssignedList(t *testing.T) {
 
 	assert.Equal(t, []string{"unassign acme-org/example-repo#3 octo-user"}, h.client.edits)
 	assert.Equal(t, 0, h.client.viewerReads, "the refresh's token is known to be the user's")
-	assert.Equal(t, []int{1}, numbers(snap.Assigned))
+	assert.Equal(t, []int{1}, assignedNumbers(snap))
+	assert.Empty(t, snap.Yours.Items, "nothing else kept it in the inbox")
 	assert.Equal(t, [3]bool{false, false, false}, h.reasons(t, 3))
 	assert.Greater(t, h.events.Count(), calls, "the window hears of it")
 
 	snap, err = h.svc.Unassign(t.Context(), ids[1])
 	require.NoError(t, err)
 
-	assert.Empty(t, snap.Assigned.Items)
-	assert.Equal(t, []int{2, 1}, numbers(snap.ReviewRequested), "an item in another list stays there")
+	assert.Empty(t, assignedNumbers(snap))
+	assert.Equal(t, []int{2, 1}, numbers(snap.ReviewRequested), "an item that asks for a review stays there")
 	assert.False(t, itemByNumber(t, snap.ReviewRequested, 1).Assigned)
 }
 
@@ -165,8 +166,8 @@ func TestRemoveReviewRequestTakesTheItemOutOfTheReviewList(t *testing.T) {
 
 	assert.Equal(t, []string{"unreview acme-org/example-repo#1 octo-user"}, h.client.edits)
 	assert.Equal(t, []int{2}, numbers(snap.ReviewRequested))
-	assert.Equal(t, []int{3, 1}, numbers(snap.Assigned), "the assignment stays")
-	assert.Equal(t, ReviewRequestNone, itemByNumber(t, snap.Assigned, 1).ReviewRequest)
+	assert.Equal(t, []int{3, 1}, numbers(snap.Yours), "the assignment stays")
+	assert.Equal(t, ReviewRequestNone, itemByNumber(t, snap.Yours, 1).ReviewRequest)
 	assert.Equal(t, []string{`["someone"]`}, h.column(t, "SELECT review_users FROM item_details WHERE item_id = ?", ids[1]),
 		"who it still asks is GitHub's answer")
 }
@@ -311,7 +312,7 @@ func TestARefreshKeepsALeftListLeftUntilTheItemMoves(t *testing.T) {
 	snap := h.refresh(t)
 
 	assert.Equal(t, []int{2}, numbers(snap.ReviewRequested), "the search lags behind the edit")
-	assert.Equal(t, []int{3}, numbers(snap.Assigned))
+	assert.Equal(t, []int{3}, numbers(snap.Yours))
 	assert.Empty(t, sink.calls, "nothing arrives from a lagging search")
 
 	// Someone assigns the user again, which moves the item.
@@ -321,7 +322,7 @@ func TestARefreshKeepsALeftListLeftUntilTheItemMoves(t *testing.T) {
 
 	snap = h.refresh(t)
 
-	assert.Equal(t, []int{1}, numbers(snap.Assigned), "an item that moved is believed")
+	assert.Equal(t, []int{1}, numbers(snap.Yours), "an item that moved is believed")
 	assert.Equal(t, []string{"assigned #1"}, kindsAndNumbers(sink.last()), "and arrives")
 	assert.Equal(t, []string{"1 1"}, h.column(t,
 		"SELECT (assign_left_at IS NULL) || ' ' || (review_left_at IS NULL) FROM items WHERE id = ?", ids[1]),

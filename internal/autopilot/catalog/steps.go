@@ -455,29 +455,34 @@ const (
 	OncePerDay        OncePer = "day"
 )
 
-// ListSource is an inbox list a routine can watch.
+// ListSource is a reason an item is in the inbox, which a routine can watch: GitHub asks
+// for the user's review, the user opened it, or it is assigned to them. An item can have
+// more than one. The IDs are the inbox's three searches, which a stored spec keeps.
 type ListSource string
 
-// The inbox lists.
+// The inbox reasons.
 const (
 	SourceReviewRequested ListSource = ListReviewRequested
 	SourceAuthored        ListSource = ListAuthored
 	SourceAssigned        ListSource = ListAssigned
 )
 
-// ListSourceInfo describes an inbox list.
+// ListSourceInfo describes an inbox reason: Label names it on its own, as the builder's
+// Watch does, and Phrase says it of an item, after "it's", as a sentence does ("asking for
+// your review").
 type ListSourceInfo struct {
-	ID    ListSource  `json:"id"`
-	Label string      `json:"label"`
-	Kinds []item.Kind `json:"kinds"`
+	ID     ListSource  `json:"id"`
+	Label  string      `json:"label"`
+	Phrase string      `json:"phrase"`
+	Kinds  []item.Kind `json:"kinds"`
 }
 
-// ListSources returns the inbox lists a routine can watch, with the kinds each holds:
-// Review requested holds only pull requests.
+// ListSources returns the inbox reasons a routine can watch, with the kinds each holds: a
+// review is asked only of a pull request.
 func ListSources() []ListSourceInfo {
 	return []ListSourceInfo{
-		{ID: SourceReviewRequested, Label: "Review requested", Kinds: prOnly()},
-		{ID: SourceAuthored, Label: "Authored", Kinds: both()},
-		{ID: SourceAssigned, Label: "Assigned", Kinds: both()},
+		{ID: SourceReviewRequested, Label: "Review requested", Phrase: "asking for your review", Kinds: prOnly()},
+		{ID: SourceAuthored, Label: "Opened by you", Phrase: "opened by you", Kinds: both()},
+		{ID: SourceAssigned, Label: "Assigned to you", Phrase: "assigned to you", Kinds: both()},
 	}
 }

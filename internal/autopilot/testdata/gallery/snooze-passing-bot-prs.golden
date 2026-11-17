@@ -1,1 +1,1 @@
-When checks pass on pull requests in your Review requested and Assigned lists, if the author is a trusted bot and the update type is minor or patch, snooze it for 3 days.
+When checks pass on pull requests asking for your review or assigned to you, if the author is a trusted bot and the update type is minor or patch, snooze it for 3 days.

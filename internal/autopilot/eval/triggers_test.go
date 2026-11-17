@@ -263,6 +263,29 @@ func checkTrigger(t *testing.T, tt triggerCase) {
 	assert.NotEmpty(t, d.Trace[0].Actual)
 }
 
+func TestTheInboxReasonTriggersSayTheReasonInWords(t *testing.T) {
+	t.Parallel()
+
+	for _, tt := range []struct {
+		event  catalog.Event
+		mutate func(*facts.Row)
+		want   string
+	}{
+		{catalog.EventReviewRequested, nil, "it's asking for your review"},
+		{catalog.EventReviewRequested, func(r *facts.Row) { r.InReviewRequested = false }, "it isn't asking for your review"},
+		{catalog.EventAssigned, func(r *facts.Row) { r.InAssigned = true }, "it's assigned to you"},
+		{catalog.EventAssigned, nil, "it isn't assigned to you"},
+	} {
+		row := prRow()
+		if tt.mutate != nil {
+			tt.mutate(&row)
+		}
+
+		d := eval.Evaluate(routine(spec.Trigger{Event: tt.event}, spec.Conditions{}), build(row), eval.History{}, now)
+		assert.Equal(t, tt.want, d.Trace[0].Actual, "never a list's key, such as reviewRequested")
+	}
+}
+
 // passing makes the pull request's checks all pass and settle.
 func passing(r *facts.Row) {
 	r.Details.ChecksFailed, r.Details.ChecksState = 0, "SUCCESS"

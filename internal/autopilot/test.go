@@ -410,7 +410,7 @@ func testWarnings(sp spec.Spec, items []TestItem) []spec.Problem {
 			info, _ := catalog.StepByKind(st.Kind())
 			out = append(out, spec.Problem{
 				Part: spec.PartSteps, Field: fmt.Sprintf("[%d]", i),
-				Message: fmt.Sprintf("%d of the %d items it watches now aren't in your inbox lists, so %s won't "+
+				Message: fmt.Sprintf("%d of the %d items it watches now aren't in your inbox, so %s won't "+
 					"change what you see of them.", outside, len(items), info.Label),
 			})
 		}

@@ -67,9 +67,11 @@ type Watch struct {
 	Sources []Source `json:"sources"`
 }
 
-// Source is one of a watch's sources: inbox lists, or a search. Exactly one is set.
+// Source is one of a watch's sources: the inbox, by the reasons items are in it, or a
+// search. Exactly one is set.
 type Source struct {
-	// Lists are inbox lists, which the inbox reads on every refresh already.
+	// Lists are the reasons an item is in the inbox the source matches, any of them: the
+	// inbox's own searches, which it reads on every refresh already.
 	Lists []catalog.ListSource `json:"lists,omitempty"`
 
 	// Search is a GitHub search the builder writes from simple fields.

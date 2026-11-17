@@ -104,9 +104,10 @@ func customize(t *testing.T, svc *Service, db *sql.DB, home string) string {
 		func() (Settings, error) { return svc.SetTheme(ctx, ThemeDark) },
 		func() (Settings, error) { return svc.SetTextSize(ctx, TextSizeLarge) },
 		func() (Settings, error) { return svc.SetToastSeconds(ctx, 20) },
-		func() (Settings, error) { return svc.SetStatusSort(ctx, ListAssigned, true) },
-		func() (Settings, error) { return svc.SetListKind(ctx, ListAuthored, ListKindIssues) },
+		func() (Settings, error) { return svc.SetStatusSort(ctx, ListYours, true) },
+		func() (Settings, error) { return svc.SetListKind(ctx, ListReviewRequested, ListKindIssues) },
 		func() (Settings, error) { return svc.SetStatusOrder(ctx, []string{"In progress", "Blocked"}) },
+		func() (Settings, error) { return svc.SetHiddenLabels(ctx, []string{"size/*", "wontfix"}) },
 		func() (Settings, error) {
 			return svc.SetIntegrationEnabled(ctx, integrationprefs.Scripts, integrationprefs.SwitchOff)
 		},
@@ -127,7 +128,7 @@ func customize(t *testing.T, svc *Service, db *sql.DB, home string) string {
 		func() (Settings, error) { return svc.SetAutopilotLogDays(ctx, 14) },
 		// The window's memory, which a backup never holds.
 		func() (Settings, error) { return svc.SetWindowSize(ctx, WindowSize{Width: 1000, Height: 700}) },
-		func() (Settings, error) { return svc.SetSectionCollapsed(ctx, ListAssigned, true) },
+		func() (Settings, error) { return svc.SetSectionCollapsed(ctx, ListYours, true) },
 		func() (Settings, error) { return svc.SetProjectsTipDismissed(ctx, true) },
 		func() (Settings, error) { return svc.SetReviewTab(ctx, ReviewTabComments) },
 		func() (Settings, error) { return svc.SetNotificationsTab(ctx, NotificationsTabGitHub) },
@@ -242,6 +243,34 @@ func TestPlanPortableLeavesOutWhatItRefusesWithANote(t *testing.T) {
 	assert.Equal(t, DefaultTheme, got.Theme)
 	assert.Equal(t, DefaultRefreshIntervals(), got.Refresh)
 	assert.Equal(t, "default", got.DefaultProfiles[agent.Claude])
+}
+
+func TestAnOlderBackupsInboxSortingComesBackOnYours(t *testing.T) {
+	t.Parallel()
+
+	svc, db, _ := newTestService(t)
+	part := NewBackupPart(svc)
+
+	// A backup from before Yours names the Authored and Assigned lists.
+	var p Portable
+	require.NoError(t, json.Unmarshal([]byte(`{"inboxOrder": {
+		"statusSorted": ["reviewRequested", "assigned", "authored"], "statusOrder": ["Ready"],
+		"kinds": {"assigned": "pr", "authored": "issue"}
+	}}`), &p))
+
+	plan, err := part.PlanPortable(t.Context(), p)
+	require.NoError(t, err)
+	assert.Empty(t, plan.Notes, "it isn't skipped")
+	assert.Equal(t, []string{"Inbox sorting"}, changed(plan.Plan))
+
+	applyPlan(t, part, db, plan)
+
+	got, err := svc.Get(t.Context())
+	require.NoError(t, err)
+	assert.Equal(t, InboxOrder{
+		StatusSorted: []ListKey{ListReviewRequested, ListYours}, StatusOrder: []string{"Ready"},
+		Kinds: map[ListKey]ListKind{ListYours: ListKindPRs},
+	}, got.InboxOrder, "Yours takes Assigned's, and Authored's are dropped")
 }
 
 func TestPlanPortableLeavesWhatTheFileLacks(t *testing.T) {

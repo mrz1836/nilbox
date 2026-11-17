@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"slices"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/mrz1836/nilbox/internal/clock"
@@ -32,9 +33,11 @@ type Snapshot struct {
 	// Account is the signed-in account (all "" before the first refresh).
 	Account Account `json:"account"`
 
+	// ReviewRequested holds the items that ask for the signed-in user's review, and Yours
+	// every other item the user opened or is assigned: each item is in exactly one of
+	// them, so the two lists' items add up to the inbox (see addItems).
 	ReviewRequested List `json:"reviewRequested"`
-	Authored        List `json:"authored"`
-	Assigned        List `json:"assigned"`
+	Yours           List `json:"yours"`
 
 	Rate RateGauge `json:"rate"`
 
@@ -50,6 +53,12 @@ type Snapshot struct {
 	// ProjectAccess says whether the last refresh could read the projects each issue is
 	// in, which needs the token's optional read:project scope.
 	ProjectAccess ProjectAccess `json:"projectAccess"`
+
+	// Refreshing reports that a whole refresh is under way as the snapshot is read,
+	// whoever started it: the window shows it until a snapshot says it ended. It is the
+	// Service's own state, never kept with a snapshot; the InboxUpdated that ends a refresh
+	// always brings one with it false.
+	Refreshing bool `json:"refreshing"`
 }
 
 // Account is the signed-in GitHub account.
@@ -150,8 +159,12 @@ type Item struct {
 	// Muted tab, where it needs no one; "" is neither.
 	RepoRule reporules.Rule `json:"repoRule"`
 
-	// Assigned reports that the item is in the Assigned list: it is assigned to the
-	// signed-in user, who can take themselves off it (Unassign).
+	// Authored reports that the signed-in user opened the item, a pull request the authored
+	// search found or any item whose author is the user, an issue included.
+	Authored bool `json:"authored"`
+
+	// Assigned reports that the item is assigned to the signed-in user, who can take
+	// themselves off it (Unassign).
 	Assigned bool `json:"assigned"`
 
 	// ReviewRequest says how a pull request in the Review requested list asks for the
@@ -319,7 +332,7 @@ type Rate struct {
 	TakenAt string `json:"takenAt"`
 }
 
-// Snapshot returns the stored inbox: the three lists, the latest rate readings, and the
+// Snapshot returns the stored inbox: the two lists, the latest rate readings, and the
 // refresh status.
 //
 // The snapshot is kept until the next write, and only built again when something changed
@@ -336,18 +349,26 @@ func (s *Service) Snapshot(ctx context.Context) (Snapshot, error) {
 		}
 
 		if keyOf(stored) == seen.settings {
-			return *seen.snap, nil
+			return s.withRefreshing(*seen.snap), nil
 		}
 	}
 
 	snap, settings, err := s.buildSnapshot(ctx)
 	if err != nil {
-		return snap, err
+		return s.withRefreshing(snap), err
 	}
 
 	s.snapshots.keep(seen, snap, settings)
 
-	return snap, nil
+	return s.withRefreshing(snap), nil
+}
+
+// withRefreshing returns snap, a copy, saying whether a whole refresh runs now. The
+// snapshot kept is never changed, so a refresh's start or end needs no new one.
+func (s *Service) withRefreshing(snap Snapshot) Snapshot {
+	snap.Refreshing = s.refreshing.Load()
+
+	return snap
 }
 
 // buildSnapshot reads the stored inbox, and returns it with the settings it was built
@@ -386,8 +407,7 @@ func newSnapshot(prefs map[string]string) Snapshot {
 	return Snapshot{
 		Account:         accountFromPrefs(prefs),
 		ReviewRequested: List{Items: []Item{}},
-		Authored:        List{Items: []Item{}},
-		Assigned:        List{Items: []Item{}},
+		Yours:           List{Items: []Item{}},
 		LastRefreshedAt: prefs[prefLastRefreshAt],
 		LastError:       prefs[prefLastError],
 		ScopeWarning:    prefs[prefScopeWarning],
@@ -416,30 +436,27 @@ func accountFromPrefs(prefs map[string]string) Account {
 	return account
 }
 
-// addItems sorts rows into the lists whose flags they carry, deciding each item's trust,
-// and whether its files are checked, with scope, how it asks viewer, the signed-in
-// account, to review it, and which of rules applies to its repository. Each list then
-// holds the items pinned themselves first, as rows has them, then those pinned with their
-// repository or org, then the rest, each in rows' order.
+// addItems places each row in the one list it belongs to, deciding each item's trust, and
+// whether its files are checked, with scope, how it asks viewer, the signed-in account, to
+// review it, and which of rules applies to its repository. The lists partition the rows:
+// one that asks for the user's review is in ReviewRequested, whatever else it is, and one
+// the user opened or is assigned is otherwise in Yours, so no item is in both. Each list
+// then holds the items pinned themselves first, as rows has them, then those pinned with
+// their repository or org, then the rest, each in rows' order.
 func (s *Snapshot) addItems(rows []itemRow, scope fileScope, viewer string, rules reporules.Rules) {
 	for _, r := range rows {
 		item := r.item(scope, viewer)
 		item.RepoRule, _ = rules.For(repo.Name{Owner: r.RepoOwner, Repo: r.RepoName})
 
-		if r.ReasonReviewRequested {
+		switch {
+		case r.ReasonReviewRequested:
 			s.ReviewRequested.Items = append(s.ReviewRequested.Items, item)
-		}
-
-		if r.ReasonAuthored {
-			s.Authored.Items = append(s.Authored.Items, item)
-		}
-
-		if r.ReasonAssigned {
-			s.Assigned.Items = append(s.Assigned.Items, item)
+		case r.ReasonAuthored || r.ReasonAssigned:
+			s.Yours.Items = append(s.Yours.Items, item)
 		}
 	}
 
-	for _, l := range []*List{&s.ReviewRequested, &s.Authored, &s.Assigned} {
+	for _, l := range []*List{&s.ReviewRequested, &s.Yours} {
 		slices.SortStableFunc(l.Items, func(a, b Item) int { return cmp.Compare(a.pinRank(), b.pinRank()) })
 	}
 }
@@ -458,20 +475,26 @@ func (it Item) pinRank() int {
 }
 
 // applyTotals sets each list's Shown and Total: the items it shows, and those and the ones
-// its last whole refresh's search matched past the page GitHub returned (beyond). An item
-// that left the list since is counted out of both. A missing or bad count adds none.
+// the last whole refresh's searches behind it matched past the page GitHub returned
+// (beyond). Review requested is one search's. Yours is the authored and the assigned
+// searches', so its Total is an upper bound once either was cut to a page: an item past
+// one search's page may be in the other's too, or ask for the user's review. An item that
+// left the list since is counted out of both. A missing or bad count adds none.
 func (s *Snapshot) applyTotals(prefs map[string]string) {
 	for _, l := range []struct {
 		list *List
-		key  string
+		keys []string
 	}{
-		{&s.ReviewRequested, prefBeyondReviewRequested},
-		{&s.Authored, prefBeyondAuthored},
-		{&s.Assigned, prefBeyondAssigned},
+		{&s.ReviewRequested, []string{prefBeyondReviewRequested}},
+		{&s.Yours, []string{prefBeyondAuthored, prefBeyondAssigned}},
 	} {
 		l.list.Shown = len(l.list.Items)
-		past, _ := strconv.Atoi(prefs[l.key]) // a missing or bad count adds none
-		l.list.Total = l.list.Shown + max(past, 0)
+		l.list.Total = l.list.Shown
+
+		for _, key := range l.keys {
+			past, _ := strconv.Atoi(prefs[key]) // a missing or bad count adds none
+			l.list.Total += max(past, 0)
+		}
 	}
 }
 
@@ -630,10 +653,17 @@ func (r *itemRow) item(scope fileScope, viewer string) Item {
 		PinnedAt:          formatOptionalTime(r.PinnedAt),
 		SetAsideBy:        store.Deref(r.SetAsideBy),
 		PinnedBy:          store.Deref(r.PinnedBy),
+		Authored:          r.opened(viewer),
 		Assigned:          r.ReasonAssigned,
 		ReviewRequest:     r.reviewRequest(viewer),
 		ReviewTeams:       textutil.NonNil(r.ReviewTeams),
 	}
+}
+
+// opened reports that viewer opened the row: the authored search found it, or, for what
+// that search leaves out (an issue, or a pull request past its page), the author is viewer.
+func (r *itemRow) opened(viewer string) bool {
+	return r.ReasonAuthored || (viewer != "" && strings.EqualFold(r.AuthorLogin, viewer))
 }
 
 // reviewRequest says how the row asks viewer to review it: by name, or only through

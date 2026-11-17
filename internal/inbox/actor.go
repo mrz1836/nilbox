@@ -120,8 +120,8 @@ type IssueTarget struct {
 	// UpdatedAt is the issue's last activity, as the inbox stored it.
 	UpdatedAt time.Time
 
-	// Assigned reports that the issue is in the Assigned list, the only list an issue is
-	// in.
+	// Assigned reports that the issue is assigned to the user, the only reason an issue is
+	// in the inbox.
 	Assigned bool
 
 	// Projects says to read the issue's projects, as the last whole refresh could: a read
@@ -186,7 +186,7 @@ func (a *Actor) Act(
 	return snap, err
 }
 
-// ActIssue runs act on the issue with id, an issue in the Assigned list, as Act runs an
+// ActIssue runs act on the issue with id, an issue assigned to the user, as Act runs an
 // action on a pull request: under the item's lock, with a token of the account whose inbox
 // is shown, which a token GitHub refuses is borrowed again for, once, so act must not
 // repeat a step it made. A close act reports is recorded even when act also returns an

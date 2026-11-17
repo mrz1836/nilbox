@@ -17,7 +17,6 @@ import (
 	"github.com/mrz1836/nilbox/internal/github"
 	"github.com/mrz1836/nilbox/internal/inbox/internal/queries"
 	"github.com/mrz1836/nilbox/internal/item"
-	"github.com/mrz1836/nilbox/internal/testutil"
 )
 
 // The routine searches the watch tests send.
@@ -292,8 +291,7 @@ func TestAWatchPassStoresWatchedItemsOutOfTheLists(t *testing.T) {
 		again, err := h.svc.Snapshot(t.Context())
 		require.NoError(t, err)
 		assert.Equal(t, []int{1}, numbers(again.ReviewRequested))
-		assert.Empty(t, again.Authored.Items)
-		assert.Empty(t, again.Assigned.Items)
+		assert.Empty(t, again.Yours.Items)
 		assert.Equal(t, 1, again.ReviewRequested.Total, "a watched item is in no list's count")
 
 		last, ok := h.svc.lastWatchPass()
@@ -1665,7 +1663,7 @@ func (failingKeep) KeptItems(context.Context) ([]int64, error) {
 }
 
 // inboxUpdates counts the inbox changes events heard.
-func inboxUpdates(events *testutil.Events) int {
+func inboxUpdates(events *inboxEvents) int {
 	n := 0
 
 	for _, e := range events.All() {

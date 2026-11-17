@@ -62,15 +62,13 @@ func TestRefreshItemRewritesAnOpenItem(t *testing.T) {
 	assert.Equal(t, []string{nodeID(1)}, h.client.itemIDs)
 	assert.Nil(t, h.client.detailsIDs, "nothing else was asked about")
 
-	for _, list := range []List{snap.ReviewRequested, snap.Assigned} {
-		it := itemByNumber(t, list, 1)
-		assert.Equal(t, "Item 1, retitled", it.Title)
-		assert.True(t, it.IsDraft)
-		assert.Equal(t, "2026-01-10T12:10:00Z", it.UpdatedAt)
-		require.NotNil(t, it.Details)
-		assert.Equal(t, Checks{State: "FAILURE", Passed: 10, Failed: 2}, it.Details.Checks)
-		assert.Equal(t, "2026-01-10T12:10:00Z", it.Details.FetchedAt)
-	}
+	it := itemByNumber(t, snap.ReviewRequested, 1)
+	assert.Equal(t, "Item 1, retitled", it.Title)
+	assert.True(t, it.IsDraft)
+	assert.Equal(t, "2026-01-10T12:10:00Z", it.UpdatedAt)
+	require.NotNil(t, it.Details)
+	assert.Equal(t, Checks{State: "FAILURE", Passed: 10, Failed: 2}, it.Details.Checks)
+	assert.Equal(t, "2026-01-10T12:10:00Z", it.Details.FetchedAt)
 
 	assert.Equal(t, [3]bool{true, false, true}, h.reasons(t, 1), "it stays in the lists it was in")
 	assert.Equal(t, "Item 2", itemByNumber(t, snap.ReviewRequested, 2).Title)
@@ -117,10 +115,10 @@ func TestRefreshItemTakesAnItemThatIsNoLongerOpenOutOfTheLists(t *testing.T) {
 			require.NoError(t, err)
 
 			assert.Equal(t, []int{2}, numbers(snap.ReviewRequested))
-			assert.Empty(t, snap.Assigned.Items)
+			assert.Empty(t, snap.Yours.Items)
 			assert.Equal(t, [3]bool{false, false, false}, h.reasons(t, 1))
 			assert.Equal(t, 1, snap.ReviewRequested.Total, "counted out of each list it left, so the list reads 1, not 1 of 2")
-			assert.Equal(t, 0, snap.Assigned.Total)
+			assert.Equal(t, 0, snap.Yours.Total)
 			assert.Equal(t, 4970, snap.Rate.GraphQL.Remaining)
 		})
 	}
@@ -158,9 +156,9 @@ func TestARefreshDoesNotBringBackAnItemMergedSinceIndexed(t *testing.T) {
 	snap := h.seed(t, []github.Item{merged, pr(2, "OWNER", false)}, nil, []github.Item{merged})
 
 	assert.Equal(t, []int{2}, numbers(snap.ReviewRequested))
-	assert.Empty(t, snap.Assigned.Items)
+	assert.Empty(t, snap.Yours.Items)
 	assert.Equal(t, 1, snap.ReviewRequested.Total, "the merged item is counted out of GitHub's count, so the list reads 1, not 1 of 2")
-	assert.Equal(t, 0, snap.Assigned.Total)
+	assert.Equal(t, 0, snap.Yours.Total)
 	assert.Equal(t, [][]string{{nodeID(2)}}, h.client.detailsIDs, "nothing is asked about the merged item")
 }
 
@@ -396,8 +394,8 @@ func TestRefreshItemTakesAReviewGitHubNoLongerAsksOutOfReviewRequested(t *testin
 	require.NoError(t, err)
 
 	assert.Equal(t, []int{2}, numbers(snap.ReviewRequested), "it leaves Review requested")
-	assert.Equal(t, []int{1}, numbers(snap.Assigned), "and stays in the lists GitHub still has it in")
-	assert.Equal(t, ReviewRequestNone, itemByNumber(t, snap.Assigned, 1).ReviewRequest)
+	assert.Equal(t, []int{1}, numbers(snap.Yours), "and stays in the lists GitHub still has it in")
+	assert.Equal(t, ReviewRequestNone, itemByNumber(t, snap.Yours, 1).ReviewRequest)
 	assert.Equal(t, [3]bool{false, false, true}, h.reasons(t, 1))
 	assert.Equal(t, "2026-01-10 12:10:00+00:00", h.reviewLeftAt(t, id), "stamped with GitHub's time as read")
 	assert.Equal(t, calls+1, h.events.Count(), "the window hears of it")
@@ -409,7 +407,7 @@ func TestRefreshItemTakesAReviewGitHubNoLongerAsksOutOfReviewRequested(t *testin
 	snap = h.refresh(t)
 
 	assert.Equal(t, []int{2}, numbers(snap.ReviewRequested), "a lagging search keeps it out")
-	assert.Equal(t, []int{1}, numbers(snap.Assigned))
+	assert.Equal(t, []int{1}, numbers(snap.Yours))
 	assert.Empty(t, sink.calls, "and nothing arrives")
 
 	// The author asks the user again, which moves it.

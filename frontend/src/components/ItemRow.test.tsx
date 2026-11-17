@@ -4,6 +4,7 @@ import type { ReactElement } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 
 import { itemWorktrees, worktreeOf } from '../lib/itemWorktrees'
+import { HiddenLabelsContext, labelMatcher } from '../lib/labels'
 import type { InboxItem, Worktree } from '../platform'
 import { at } from '../test/clock'
 import {
@@ -133,6 +134,43 @@ describe('ItemRow', () => {
     expect(signals().queryByText('four')).not.toBeInTheDocument()
     expect(signals().getByTitle('four, five')).toHaveTextContent('+2')
     expect(signals().getByText('more: four, five')).toHaveClass('sr-only')
+  })
+
+  it('leaves out the labels the user hid before taking the first three', () => {
+    const labels = ['size/XL', 'one', 'Size/S', 'two', 'three', 'wontfix', 'four'].map((name) => ({
+      name,
+      color: '#d73a4a',
+    }))
+
+    render(
+      <HiddenLabelsContext value={labelMatcher(['size/*', 'wontfix'])}>
+        <ul>
+          <ItemRow item={item({ details: details({ labels }) })} launch={launch} resolution={itemResolution()} />
+        </ul>
+      </HiddenLabelsContext>,
+    )
+
+    expect(signals().queryByText('size/XL')).not.toBeInTheDocument()
+    expect(signals().queryByText('wontfix')).not.toBeInTheDocument()
+    expect(signals().getByText('three'), 'a hidden label takes no place').toBeInTheDocument()
+    expect(signals().getByTitle('four')).toHaveTextContent('+1')
+    expect(signals().getByText('more: four'), 'nor counts in the rest').toHaveClass('sr-only')
+  })
+
+  it('shows no labels at all when every one is hidden', () => {
+    render(
+      <HiddenLabelsContext value={labelMatcher(['size/*'])}>
+        <ul>
+          <ItemRow
+            item={item({ details: details({ labels: [{ name: 'size/M', color: '#d73a4a' }] }) })}
+            launch={launch}
+            resolution={itemResolution()}
+          />
+        </ul>
+      </HiddenLabelsContext>,
+    )
+
+    expect(signals().queryByText('Labels:')).not.toBeInTheDocument()
   })
 
   it('marks failing checks, requested changes, and conflicts in red', () => {

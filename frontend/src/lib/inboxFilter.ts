@@ -19,7 +19,7 @@ import {
 } from './query'
 import { checksSignal, reviewsSignal } from './signals'
 import { statusKey } from './statusOrder'
-import { isPinned, type TriagedInbox, type TriageTab } from './triage'
+import { byList, isPinned, type TriagedInbox, type TriageTab } from './triage'
 
 // inboxSpec is what the inbox's filter understands. An item is a pull request or an issue,
 // in one repository by one author, with one state of its checks and its reviews; it can
@@ -271,11 +271,7 @@ export function filterInbox(triaged: TriagedInbox, src: string, viewer: string):
       muted: keep(list.muted),
     }
   }
-  const lists = {
-    reviewRequested: narrow('reviewRequested'),
-    authored: narrow('authored'),
-    assigned: narrow('assigned'),
-  }
+  const lists = byList(narrow)
 
   return { query: src, lists, matches: matched.size, marks: markTerms(query) }
 }

@@ -25,8 +25,7 @@ async function reloaded(reload: () => Promise<void>) {
 
 describe('useLaunchConfig', () => {
   it('loads the configuration and resolves each listed item once', async () => {
-    const shared = item()
-    const inbox = snapshot({ reviewRequested: list([shared]), assigned: list([shared, item({ id: 2 })]) })
+    const inbox = snapshot({ reviewRequested: list([item()]), yours: list([item({ id: 2 })]) })
     const { result } = renderHook(() => useLaunchConfig(inbox))
 
     await waitFor(() => {

@@ -13,6 +13,7 @@ import {
   type NilStats,
 } from '../lib/nil'
 import { formatWhen } from '../lib/time'
+import { inboxLists, listTitles } from '../lib/triage'
 import { useNowAs } from '../lib/useNow'
 import { Confetti, useConfetti, type Point } from './Confetti'
 import { PlayIcon, TrophyIcon } from './icons'
@@ -36,7 +37,7 @@ const terminalTokens = {
 } as CSSProperties
 
 // lists are what the terminal checks off, by the names the inbox gives them.
-const lists = ['review requested', 'authored', 'assigned'] as const
+const lists = inboxLists.map((list) => listTitles[list].toLowerCase())
 
 // command is what the terminal runs.
 const command = `${brand.slug} status`

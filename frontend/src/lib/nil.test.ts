@@ -14,7 +14,7 @@ import {
   replayLabel,
   replayLabels,
 } from './nil'
-import { triageInbox } from './triage'
+import { inboxLists, triageInbox } from './triage'
 
 const refreshed = '2026-06-15T11:55:00Z'
 
@@ -34,7 +34,7 @@ describe('isInboxNil', () => {
   })
 
   it('is not nil while any list holds an item', () => {
-    for (const key of ['reviewRequested', 'authored', 'assigned'] as const) {
+    for (const key of inboxLists) {
       expect(nil(snapshot({ lastRefreshedAt: refreshed, [key]: list([item()]) }))).toBe(false)
     }
   })
@@ -42,7 +42,7 @@ describe('isInboxNil', () => {
   it('is nil with everything snoozed or dismissed', () => {
     const lists = {
       reviewRequested: list([item({ id: 1, dismissedAt: '2026-06-14T09:00:00Z' })]),
-      authored: list([item({ id: 2, snoozedUntil: '2026-06-16T09:00:00Z' })]),
+      yours: list([item({ id: 2, snoozedUntil: '2026-06-16T09:00:00Z' })]),
     }
 
     expect(nil(snapshot({ lastRefreshedAt: refreshed, ...lists }))).toBe(true)
@@ -51,13 +51,13 @@ describe('isInboxNil', () => {
   it('is not nil once a snooze has run out', () => {
     const back = list([item({ snoozedUntil: '2026-06-15T11:00:00Z' })])
 
-    expect(nil(snapshot({ lastRefreshedAt: refreshed, authored: back }))).toBe(false)
+    expect(nil(snapshot({ lastRefreshedAt: refreshed, yours: back }))).toBe(false)
   })
 
   it('is not nil while GitHub matched more than it returned', () => {
     const partial = list([item({ dismissedAt: '2026-06-14T09:00:00Z' })], 250)
 
-    expect(nil(snapshot({ lastRefreshedAt: refreshed, assigned: partial }))).toBe(false)
+    expect(nil(snapshot({ lastRefreshedAt: refreshed, yours: partial }))).toBe(false)
   })
 })
 

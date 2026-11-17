@@ -589,12 +589,12 @@ function percentText(percent: number): string {
 }
 
 // costLine says what a draft's searches add to each refresh: "About 1 point a refresh
-// (0.2% of the budget)", or that watching the inbox lists alone costs nothing more; and,
+// (0.2% of the budget)", or that watching the inbox alone costs nothing more; and,
 // of a test of earlier searches (stale), that it is the last test's.
 export function costLine(estimate: AutopilotEstimate, stale = false): string {
   const line =
     estimate.requests === 0
-      ? 'Nothing more a refresh: the inbox reads its lists already.'
+      ? 'Nothing more a refresh: the inbox reads these already.'
       : `About ${counted(estimate.pointsPerRefresh, 'point', 'points')} a refresh (${percentText(estimate.percent)} of the budget)`
 
   return stale ? `${line.replace(/\.$/, '')} · as last tested, before the searches changed` : line

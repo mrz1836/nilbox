@@ -75,6 +75,7 @@ import (
 	"log/slog"
 	"slices"
 	"strconv"
+	"sync/atomic"
 	"time"
 
 	"golang.org/x/sync/errgroup"
@@ -87,6 +88,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/item"
 	"github.com/mrz1836/nilbox/internal/logging"
 	"github.com/mrz1836/nilbox/internal/prefs"
+	"github.com/mrz1836/nilbox/internal/progress"
 	"github.com/mrz1836/nilbox/internal/store"
 	"github.com/mrz1836/nilbox/internal/uierr"
 )
@@ -251,6 +253,12 @@ type Service struct {
 	// joins it.
 	refreshes flight.Group[Snapshot]
 
+	// refreshing is set while a whole refresh runs, which every snapshot read says
+	// (Snapshot.Refreshing), and progressEvery is how often, at most, the refresh tells the
+	// window how far it has got (event.InboxProgress).
+	refreshing    atomic.Bool
+	progressEvery time.Duration
+
 	// pending holds what whole refreshes found until a caller of Refresh tells it,
 	// outside the refresh's flight.
 	pending heldOutcomes
@@ -278,7 +286,7 @@ func NewService(cfg Config) *Service {
 		client: cfg.Client, clock: c, events: event.Or(cfg.Events), arrivals: cfg.Arrivals, outcomes: cfg.Outcomes,
 		usage: cfg.Usage, logger: logging.Or(cfg.Logger), watchSource: cfg.Watches, changedSink: cfg.Changed,
 		keep: cfg.Keep, marks: cfg.Marks, passes: watchPasses{jobs: make(chan *watchJob, 1), ended: make(chan struct{})},
-		order: orderOf(cfg.Store),
+		order: orderOf(cfg.Store), progressEvery: progress.Every,
 	}
 }
 
@@ -307,16 +315,41 @@ func (s *Service) Refresh(ctx context.Context) (Snapshot, error) {
 // runRefresh is one whole refresh, run once for every caller that asked meanwhile. The
 // routines' searches go out once it has stored the inbox and told the window, on the watch
 // pass's own goroutine, which stores what they watch (see watches.go).
+//
+// While it runs, every snapshot says it is refreshing, and it tells the window how far it
+// has got (event.InboxProgress), whoever started it. It tells no InboxUpdated as it starts,
+// so what wakes on one, as Autopilot's engine does, doesn't wake for it. It stops telling,
+// and stops saying it is refreshing, before the InboxUpdated that ends it, on success and
+// on failure alike, so the snapshot that update brings says it ended and no progress comes
+// after it. A refresh cut short by its ctx records no failure, but still tells the window it
+// ended, which its progress told that it started.
 func (s *Service) runRefresh(ctx context.Context) (Snapshot, error) {
 	ctx = github.WithPurpose(ctx, github.PurposeInbox)
+
+	tracker := s.newRefreshProgress()
+
+	s.refreshing.Store(true)
+
+	// It ends once the refresh has, and again, doing nothing more, should the refresh panic.
+	ended := func() {
+		tracker.End()
+		s.refreshing.Store(false)
+	}
+	defer ended()
 
 	pass := s.startWatchPass(ctx)
 	defer pass.release()
 
-	told, err := s.refresh(ctx)
+	told, err := s.refresh(ctx, tracker)
+
+	ended()
+
 	if err != nil {
 		err = fmt.Errorf("refresh the inbox: %w", err)
+
 		if ctx.Err() != nil {
+			s.notify()
+
 			return Snapshot{}, err
 		}
 
@@ -363,9 +396,21 @@ func (s *Service) changed(ctx context.Context) (Snapshot, error) {
 	return snap, err
 }
 
-// refresh does one fetch-and-store cycle. It fetches without holding a lock, and holds
-// the store lock only to write (see order.go).
-func (s *Service) refresh(ctx context.Context) (refreshTold, error) {
+// refreshProgress tells the window how far one whole refresh has got, as
+// event.InboxProgress: the phase under way and its counts (see progress.Tracker).
+type refreshProgress = progress.Tracker[event.InboxPhase]
+
+// newRefreshProgress returns the progress of a whole refresh, told at most once per
+// progressEvery.
+func (s *Service) newRefreshProgress() *refreshProgress {
+	return progress.New(s.events, s.progressEvery, func(phase event.InboxPhase, done, total int) event.Event {
+		return event.InboxProgress{Phase: phase, Done: done, Total: total}
+	})
+}
+
+// refresh does one fetch-and-store cycle, telling tracker how far it has got. It fetches
+// without holding a lock, and holds the store lock only to write (see order.go).
+func (s *Service) refresh(ctx context.Context, tracker *refreshProgress) (refreshTold, error) {
 	listed, err := s.listedNodeIDs(ctx)
 	if err != nil {
 		return refreshTold{}, err
@@ -385,7 +430,7 @@ func (s *Service) refresh(ctx context.Context) (refreshTold, error) {
 		// it started, not by when the refused try did.
 		seq = s.startRefresh()
 
-		return s.fetchAll(ctx, tok, listed, last)
+		return s.fetchAll(ctx, tok, listed, last, tracker)
 	})
 	if err != nil {
 		return refreshTold{}, err
@@ -408,9 +453,14 @@ func (s *Service) refresh(ctx context.Context) (refreshTold, error) {
 // already listed are read alongside the inbox query, which takes as long, with the
 // projects the last refresh could read (last); only items new since the last refresh wait
 // for a second details request after it (see readMoreDetails). The file checks and the
-// avatar download then run side by side.
-func (s *Service) fetchAll(ctx context.Context, tok github.Token, listed []string, last ProjectAccess) (refreshed, error) {
+// avatar download then run side by side. It tells tracker each phase: the search, which a
+// retry with a fresh token starts again, the new items' details, and the file checks.
+func (s *Service) fetchAll(
+	ctx context.Context, tok github.Token, listed []string, last ProjectAccess, tracker *refreshProgress,
+) (refreshed, error) {
 	asked := readOptions(last)
+
+	tracker.Start(event.InboxSearching, 0)
 
 	got, err := s.fetch(ctx, tok, listed, asked)
 	if err != nil {
@@ -421,7 +471,7 @@ func (s *Service) fetchAll(ctx context.Context, tok github.Token, listed []strin
 		return refreshed{}, err
 	}
 
-	if err = s.readMoreDetails(ctx, tok, &got, listed, asked, last); err != nil {
+	if err = s.readMoreDetails(ctx, tok, &got, listed, asked, last, tracker); err != nil {
 		return refreshed{}, err
 	}
 
@@ -434,7 +484,7 @@ func (s *Service) fetchAll(ctx context.Context, tok github.Token, listed []strin
 	g.Go(func() error {
 		var checkErr error
 
-		files, checkErr = s.checkFiles(ctx, tok, got)
+		files, checkErr = s.checkFiles(ctx, tok, got, tracker)
 
 		return checkErr
 	})
@@ -458,9 +508,11 @@ func (s *Service) fetchAll(ctx context.Context, tok github.Token, listed []strin
 // request left out: those of the items new to the lists. When this refresh reads projects
 // and the listed items' details were read without them, or the other way round, as when
 // the read:project scope was just granted, it reads every item's details again, so all of
-// them agree. It records in got whether the projects were read.
+// them agree. It records in got whether the projects were read, and counts the items read
+// off on tracker, as a phase of its own.
 func (s *Service) readMoreDetails(
 	ctx context.Context, tok github.Token, got *refreshed, listed []string, asked github.DetailOptions, last ProjectAccess,
+	tracker *refreshProgress,
 ) error {
 	listedRead := asked.Projects && !got.details.ProjectsRefused
 	read := github.DetailOptions{
@@ -475,6 +527,10 @@ func (s *Service) readMoreDetails(
 	}
 
 	if len(pending) > 0 {
+		tracker.Start(event.InboxReadingDetails, len(pending))
+
+		read.Progress = tracker.Add
+
 		more, err := s.client.FetchDetails(ctx, tok, pending, read)
 		if err != nil {
 			return fmt.Errorf("read the item details: %w", err)

@@ -1,6 +1,7 @@
-import type { ReactNode } from 'react'
+import { use, type ReactNode } from 'react'
 
 import { counted, formatCount } from '../lib/format'
+import { HiddenLabelsContext } from '../lib/labels'
 import { featuredFields, projectText, projectTooltip, subIssuesText } from '../lib/projects'
 import {
   checksSignal,
@@ -145,7 +146,12 @@ export function LabelChip({ label, onFilterBy }: { label: Label; onFilterBy?: Fi
 
 // Labels shows the first few labels as chips with their GitHub color, and the count of
 // the rest, named in its tooltip.
-function Labels({ labels, onFilterBy }: { labels: Label[]; onFilterBy: FilterBy | undefined }) {
+function Labels({ labels: all, onFilterBy }: { labels: Label[]; onFilterBy: FilterBy | undefined }) {
+  // The labels the user hid (Settings → Cards) are left out before the first few are taken,
+  // so a hidden one never takes a visible one's place or counts in the +N.
+  const hidden = use(HiddenLabelsContext)
+  const labels = all.filter((label) => !hidden(label.name))
+
   if (labels.length === 0) {
     return null
   }

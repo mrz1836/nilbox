@@ -191,6 +191,10 @@ export type RateGauge = NonNullLists<inbox.RateGauge>
 export type Reviews = NonNullLists<inbox.Reviews>
 export type ReviewRequest = inbox.ReviewRequest
 export type InboxSnapshot = NonNullLists<inbox.Snapshot>
+// InboxProgress is how far a whole refresh of the inbox has got, as the "inbox:progress"
+// event says, whoever started the refresh.
+export type InboxProgress = Events.CustomEvents['inbox:progress']
+export type InboxPhase = InboxProgress['phase']
 
 export type IntegrationID = integrationprefs.ID
 export type IntegrationSwitch = integrationprefs.Switch
@@ -903,6 +907,7 @@ export const {
   SetStatusSort: setStatusSort,
   SetListKind: setListKind,
   SetStatusOrder: setStatusOrder,
+  SetHiddenLabels: setHiddenLabels,
   SetBranchRules: setBranchRules,
   SetRepoRule: setRepoRule,
   SetMergeMethod: setMergeMethod,

@@ -36,21 +36,23 @@ func watchPhrase(w Watch) string {
 	return strings.Join(phrases, ", or ")
 }
 
-// listsPhrase says a source's inbox lists: "in your Review requested and Assigned lists".
+// listsPhrase says a source's inbox reasons, joined with or, as the source matches an item
+// with any of them, to follow the items it names as a search's phrase does: "pull requests
+// asking for your review or assigned to you".
 func listsPhrase(lists []catalog.ListSource) string {
-	names := make([]string, 0, len(lists))
+	phrases := make([]string, 0, len(lists))
 
 	for _, l := range lists {
 		if info, ok := catalog.ListSourceByID(l); ok {
-			names = append(names, info.Label)
+			phrases = append(phrases, info.Phrase)
 		}
 	}
 
-	if len(names) == 0 {
+	if len(phrases) == 0 {
 		return ""
 	}
 
-	return "in your " + series(names, "and") + " " + map[bool]string{true: "list", false: "lists"}[len(names) == 1]
+	return series(phrases, "or")
 }
 
 // searchPhrase says a search's fields in the order a sentence reads them, each value as

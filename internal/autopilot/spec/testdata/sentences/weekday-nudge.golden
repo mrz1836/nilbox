@@ -1,4 +1,4 @@
 # The sentence spec.Sentence writes for testdata/templates/weekday-nudge.json. Rewrite with
 # go test ./internal/autopilot/spec -run TestSentenceGolden -update
 
-Every weekday at 08:30, for pull requests in your Review requested list, if it's been quiet for more than 3 days or (the checks' state is failing or erroring and the repository isn't muted), notify me, then pin it. On weekdays from 08:00 to 20:00.
+Every weekday at 08:30, for pull requests asking for your review, if it's been quiet for more than 3 days or (the checks' state is failing or erroring and the repository isn't muted), notify me, then pin it. On weekdays from 08:00 to 20:00.

@@ -7,6 +7,7 @@ import { filterWorktrees } from '../lib/worktreeFilter'
 import { progressStep } from '../lib/worktreeProgress'
 import type { AgentID, BranchRules, LinkedItem, WorktreesProgress } from '../platform'
 import { ErrorBanner } from './ErrorBanner'
+import { ProgressStatus } from './ProgressStatus'
 import { RelativeTime } from './RelativeTime'
 import { Spinner } from './Spinner'
 import { BranchResults } from './worktrees/BranchResults'
@@ -39,22 +40,7 @@ export type WorktreesViewProps = WorktreesOptions & {
 // Checking says a listing is under way, whichever started it, and how far it has got:
 // the phase in words, with a thin bar for a phase that counts its clones or worktrees.
 function Checking({ progress, where }: { progress: WorktreesProgress | null; where: string }) {
-  const step = progressStep(progress, where)
-
-  return (
-    <span role="status" className="flex min-w-0 items-center gap-2 text-muted">
-      <Spinner className="size-3.5" />
-      <span className="truncate">{step.text}</span>
-      {step.share !== null && (
-        <span aria-hidden="true" className="h-1 w-20 shrink-0 overflow-hidden rounded-full bg-border">
-          <span
-            className="block h-full rounded-full bg-accent transition-[width] duration-200"
-            style={{ width: `${String(Math.round(step.share * 100))}%` }}
-          />
-        </span>
-      )}
-    </span>
-  )
+  return <ProgressStatus step={progressStep(progress, where)} />
 }
 
 // Working says, while a change runs, what it is doing, as in "Removing example-repo/pr-7…".

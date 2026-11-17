@@ -241,10 +241,9 @@ describe('the inbox preview', () => {
         snapshot({
           lastRefreshedAt: '2026-06-15T12:00:00Z',
           reviewRequested: list([item()], 5),
-          authored: list([], 4),
-          assigned: list([], 1),
+          yours: list([], 5),
         }),
       ),
-    ).toBe('5 review requests · 4 authored · 1 assigned')
+    ).toBe('5 review requests · 5 of yours')
   })
 })

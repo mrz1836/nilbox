@@ -150,7 +150,7 @@ func TestTheGalleryPutsWhatThisMacSuggestsFirst(t *testing.T) {
 		suggested)
 	assert.Equal(t, []string{got[0].Key, got[1].Key, got[2].Key}, suggested, "the suggested ones come first")
 	assert.Equal(t, "2 of your clones run go-fortress’s security checks.", got[0].Suggested)
-	assert.Equal(t, "Bots opened 4 pull requests in your Review requested and Assigned lists this week.", got[1].Suggested)
+	assert.Equal(t, "Bots opened 4 pull requests this week that ask for your review or are assigned to you.", got[1].Suggested)
 
 	byKey := map[string]autopilot.Template{}
 	for _, tmpl := range got {

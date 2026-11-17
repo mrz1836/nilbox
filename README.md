@@ -325,8 +325,8 @@ Account** shows whether projects are on.
 
 ### Work the inbox
 
-The **Inbox** tab shows three lists, **Review requested**, **Authored**, and **Assigned**, drawn
-from every repository your account can see and refreshed every five minutes (**Settings →
+The **Inbox** tab shows two lists, **Review requested** and **Yours**, each item in one of them,
+drawn from every repository your account can see and refreshed every five minutes (**Settings →
 Refreshing** sets how often). **Snooze** an item (3 days by default), **dismiss** it, or **pin**
 it to the top, and **pin** or **mute** a whole repository or org. Each card's **⋯** menu gathers
 those, opens or copies the item's link, and, when you're assigned or asked to review, takes you
@@ -409,17 +409,20 @@ links to its full write-up in the [Desktop Guide](docs/desktop.md).
 <summary><strong>One inbox, every repository</strong>: your reviews, pull requests, and assignments</summary>
 <br/>
 
-- **Three lists**, each a GitHub search across every repository your account can see:
-  **Review requested** (open pull requests that ask for your review), **Authored** (your open
-  pull requests), and **Assigned** (open issues and pull requests assigned to you). Each shows up
-  to 100 items, with **N of M** when GitHub matched more, and a list with nothing in it, set
-  aside included, hides. Archived repositories, and items merged or closed since GitHub indexed
-  them, never show.
+- **Two lists**, read by three GitHub searches across every repository your account can see:
+  **Review requested** (open pull requests that ask for your review) and **Yours** (your open
+  pull requests, and the open issues and pull requests assigned to you). Each item shows once,
+  in Review requested while it asks for your review, whatever else it is, so the two lists add up
+  to the Inbox tab's count; the card says **you** for your own and carries an **Assigned** chip
+  when it is assigned to you. Each search reads up to 100 items, with **N of M** when GitHub
+  matched more, and a list with nothing in it, set aside included, hides. Archived repositories,
+  and items merged or closed since GitHub indexed them, never show.
 - **Cards that answer "is it ready?"** in three lines: the title with **Draft**, **Conflicts**,
   and **Auto-merge · squash** tags; the repository, author, age, and a **bot**, **untrusted
   bot**, or **outside contributor** tag; then the checks passed out of those that ran, reviews,
   comments, a size grade (XS to XL) with lines, files, and commits, and the first labels in
-  their GitHub colors. The details line up from card to card; hover any of them for the whole
+  their GitHub colors, leaving out those you hide in **Settings → Cards** (`size/*`, which the
+  size grade repeats, to start with). The details line up from card to card; hover any of them for the whole
   sentence.
 - **Live signals:** checks still running pulse in yellow (**12/18**), and a card names the item's
   worktree (**worktree · 2 changes · Codex 3h ago**) and what its agent session is doing
@@ -427,11 +430,12 @@ links to its full write-up in the [Desktop Guide](docs/desktop.md).
 - **Click a title** to review a pull request, or read an issue, in the app; **⌘-click** it, or
   click the **↗** beside it, to open it on GitHub.
 - **Always current:** a refresh on start and every five minutes, **Refresh** whenever you like,
-  and a card's own circular arrow to read that one item for one API point. Pull requests whose
-  checks are running are read again every 45 seconds, all in one request, until their checks end.
-  **Settings → Refreshing** sets both intervals.
-- **Counts you can trust:** the Inbox tab counts each item that needs you once, even when it is in
-  two lists, and a list you collapse stays collapsed across launches.
+  and a card's own circular arrow to read that one item for one API point. Every refresh shows
+  as it runs, whoever started it, with what it is doing (**Reading 3 of 8 new items…**). Pull
+  requests whose checks are running are read again every 45 seconds, all in one request, until
+  their checks end. **Settings → Refreshing** sets both intervals.
+- **Counts you can trust:** each item is in one list, so the lists' counts add up to the Inbox
+  tab's, and a list you collapse stays collapsed across launches.
 
 More in [Inbox cards](docs/desktop.md#inbox-cards).
 
@@ -472,7 +476,7 @@ More in [Filtering](docs/desktop.md#filtering).
   dates, iteration), and click it to open the board; an issue in more projects shows **+N**.
 - **Sub-issues:** an issue with sub-issues shows how many are done, as `6/8` with a small bar.
   This needs no extra scope.
-- **Sort by status:** flip **Assigned** from **Recent** to **Status** to see work in progress
+- **Sort by status:** flip **Yours** from **Recent** to **Status** to see work in progress
   above work that's ready, new, or set aside. Every project names its own statuses, so **Status
   order** is yours to arrange; statuses you haven't placed are placed by their names. The sort and
   the order are kept across launches. Beside it, **All | PRs | Issues** shows only one kind of
@@ -809,10 +813,10 @@ Off until you turn it on in **Settings → Labs**.
 <summary><strong>Routines</strong>: watch your items, and act when something happens</summary>
 <br/>
 
-- **A routine** watches your inbox lists or a GitHub search of its own (Dependabot's pull
-  requests across your orgs, say), waits for something to happen (checks fail, a reviewer asks
-  for changes, a bug goes quiet), checks its conditions, and takes its steps, once per
-  occurrence, across refreshes and restarts.
+- **A routine** watches your inbox, by why each item is there, or a GitHub search of its own
+  (Dependabot's pull requests across your orgs, say), waits for something to happen (checks
+  fail, a reviewer asks for changes, a bug goes quiet), checks its conditions, and takes its
+  steps, once per occurrence, across refreshes and restarts.
 - **Its steps:** pin, snooze, dismiss, or restore the item; tell you; send one of five changes
   the sheets already send (ask Dependabot to rebase, update the branch, comment one of your
   replies, labels, mark the GitHub notification done); run one of your own scripts; start a

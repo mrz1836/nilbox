@@ -1,5 +1,6 @@
 -- name: ClearReasons :exec
--- ClearReasons takes every item of the account with account_id out of the three lists.
+-- ClearReasons takes every item of the account with account_id out of the inbox, clearing
+-- the three searches' flags.
 -- The rows stay, since local state may reference them.
 UPDATE items
 SET reason_review_requested = 0, reason_authored = 0, reason_assigned = 0
@@ -268,7 +269,7 @@ LEFT JOIN item_details d ON d.item_id = i.id
 WHERE i.id = ?;
 
 -- name: LeaveAssigned :exec
--- LeaveAssigned takes the item with id out of the assigned list after the user took
+-- LeaveAssigned clears the assigned flag of the item with id after the user took
 -- themselves off its assignees, stamped with the item's updated_at on GitHub after the
 -- edit (see UpsertItem).
 UPDATE items SET reason_assigned = 0, assign_left_at = ?, assigned_at = NULL WHERE id = ?;

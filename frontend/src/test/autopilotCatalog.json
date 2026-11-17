@@ -530,13 +530,13 @@
       "id": "item.lists",
       "group": "item",
       "type": "list",
-      "label": "Inbox lists",
+      "label": "Why it's in your inbox",
       "words": {
-        "noun": "its inbox lists",
+        "noun": "the reasons it's in your inbox",
         "plural": true,
-        "one": "an inbox list",
-        "yes": "it's in no inbox list",
-        "no": "it's in an inbox list"
+        "one": "a reason it's in your inbox",
+        "yes": "it isn't in your inbox",
+        "no": "it's in your inbox"
       },
       "kinds": [
         "pr",
@@ -545,15 +545,15 @@
       "choices": [
         {
           "value": "reviewRequested",
-          "label": "Review requested"
+          "label": "review requested"
         },
         {
           "value": "authored",
-          "label": "Authored"
+          "label": "opened by you"
         },
         {
           "value": "assigned",
-          "label": "Assigned"
+          "label": "assigned to you"
         }
       ],
       "cost": 0
@@ -1974,13 +1974,15 @@
     {
       "id": "reviewRequested",
       "label": "Review requested",
+      "phrase": "asking for your review",
       "kinds": [
         "pr"
       ]
     },
     {
       "id": "authored",
-      "label": "Authored",
+      "label": "Opened by you",
+      "phrase": "opened by you",
       "kinds": [
         "pr",
         "issue"
@@ -1988,7 +1990,8 @@
     },
     {
       "id": "assigned",
-      "label": "Assigned",
+      "label": "Assigned to you",
+      "phrase": "assigned to you",
       "kinds": [
         "pr",
         "issue"

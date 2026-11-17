@@ -261,6 +261,7 @@ export function item(overrides: Partial<InboxItem> = {}): InboxItem {
     setAsideBy: 0,
     pinnedBy: 0,
     repoRule: '',
+    authored: false,
     assigned: false,
     reviewRequest: 'none',
     reviewTeams: [],
@@ -1219,6 +1220,8 @@ export function settings(overrides: Partial<Settings> = {}): Settings {
     notificationsTab: 'app',
     conversationOrder: 'oldest',
     inboxOrder: { statusSorted: [], statusOrder: [], kinds: {} },
+    hiddenLabels: ['size/*'],
+    defaultHiddenLabels: ['size/*'],
     mergeMethod: 'repo',
     integrations: integrationsConfig(),
     githubNotifications: {
@@ -2302,13 +2305,13 @@ export function snapshot(overrides: Partial<InboxSnapshot> = {}): InboxSnapshot 
   return {
     account: account(),
     reviewRequested: list([]),
-    authored: list([]),
-    assigned: list([]),
+    yours: list([]),
     rate: { graphql: unknownRate, core: unknownRate, search: unknownRate },
     lastRefreshedAt: '',
     lastError: '',
     scopeWarning: '',
     projectAccess: 'on',
+    refreshing: false,
     ...overrides,
   }
 }

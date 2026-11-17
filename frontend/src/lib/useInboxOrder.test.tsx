@@ -20,13 +20,13 @@ async function loaded() {
 
 describe('useInboxOrder', () => {
   it('is null until the stored order loads, then holds it', async () => {
-    platform.getInboxOrder.mockResolvedValue({ statusSorted: ['assigned'], statusOrder: ['In progress'], kinds: {} })
+    platform.getInboxOrder.mockResolvedValue({ statusSorted: ['yours'], statusOrder: ['In progress'], kinds: {} })
     const { result } = renderHook(() => useInboxOrder())
 
     expect(result.current.order).toBeNull()
 
     await waitFor(() => {
-      expect(result.current.order).toEqual({ statusSorted: ['assigned'], statusOrder: ['In progress'], kinds: {} })
+      expect(result.current.order).toEqual({ statusSorted: ['yours'], statusOrder: ['In progress'], kinds: {} })
     })
   })
 
@@ -34,19 +34,19 @@ describe('useInboxOrder', () => {
     const { result } = await loaded()
 
     act(() => {
-      result.current.setStatusSort('assigned', true)
+      result.current.setStatusSort('yours', true)
     })
-    expect(result.current.order?.statusSorted).toEqual(['assigned'])
+    expect(result.current.order?.statusSorted).toEqual(['yours'])
 
     act(() => {
-      result.current.setStatusSort('assigned', false)
+      result.current.setStatusSort('yours', false)
     })
     expect(result.current.order?.statusSorted).toEqual([])
 
     await waitFor(() => {
       expect(platform.setStatusSort.mock.calls).toEqual([
-        ['assigned', true],
-        ['assigned', false],
+        ['yours', true],
+        ['yours', false],
       ])
     })
   })
@@ -55,35 +55,35 @@ describe('useInboxOrder', () => {
     const { result } = await loaded()
 
     act(() => {
-      result.current.setListKind('assigned', 'issue')
-      result.current.setListKind('authored', 'pr')
+      result.current.setListKind('yours', 'issue')
+      result.current.setListKind('reviewRequested', 'pr')
     })
-    expect(result.current.order?.kinds).toEqual({ assigned: 'issue', authored: 'pr' })
+    expect(result.current.order?.kinds).toEqual({ yours: 'issue', reviewRequested: 'pr' })
 
     act(() => {
-      result.current.setListKind('assigned', 'all')
+      result.current.setListKind('yours', 'all')
     })
-    expect(result.current.order?.kinds).toEqual({ authored: 'pr' })
+    expect(result.current.order?.kinds).toEqual({ reviewRequested: 'pr' })
 
     await waitFor(() => {
       expect(platform.setListKind.mock.calls).toEqual([
-        ['assigned', 'issue'],
-        ['authored', 'pr'],
-        ['assigned', 'all'],
+        ['yours', 'issue'],
+        ['reviewRequested', 'pr'],
+        ['yours', 'all'],
       ])
     })
   })
 
   it('sorts a second list by status alongside the first', async () => {
-    platform.getInboxOrder.mockResolvedValue({ statusSorted: ['assigned'], statusOrder: [], kinds: {} })
+    platform.getInboxOrder.mockResolvedValue({ statusSorted: ['yours'], statusOrder: [], kinds: {} })
     const { result } = await loaded()
 
     act(() => {
       result.current.setStatusSort('reviewRequested', true)
-      result.current.setStatusSort('assigned', true)
+      result.current.setStatusSort('yours', true)
     })
 
-    expect(result.current.order?.statusSorted).toEqual(['reviewRequested', 'assigned'])
+    expect(result.current.order?.statusSorted).toEqual(['reviewRequested', 'yours'])
   })
 
   it('shows a new status order at once and stores it', async () => {
@@ -105,12 +105,12 @@ describe('useInboxOrder', () => {
     const { result } = await loaded()
 
     act(() => {
-      result.current.setStatusSort('assigned', true)
+      result.current.setStatusSort('yours', true)
     })
 
-    expect(result.current.order?.statusSorted).toEqual(['assigned'])
+    expect(result.current.order?.statusSorted).toEqual(['yours'])
     await waitFor(() => {
-      expect(logged).toHaveBeenCalledWith('could not store how the assigned list is sorted', expect.any(Error))
+      expect(logged).toHaveBeenCalledWith('could not store how the yours list is sorted', expect.any(Error))
     })
   })
 

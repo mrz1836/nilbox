@@ -25,7 +25,7 @@ func refuse(t *testing.T, h *harness, event, when string) {
 
 // listed returns the numbers of a snapshot's three lists.
 func listed(snap Snapshot) [3][]int {
-	return [3][]int{numbers(snap.ReviewRequested), numbers(snap.Authored), numbers(snap.Assigned)}
+	return [3][]int{numbers(snap.ReviewRequested), numbers(snap.Yours), numbers(snap.Yours)}
 }
 
 func TestRefreshThatCannotBeSavedKeepsTheStoredInbox(t *testing.T) {
