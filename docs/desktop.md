@@ -54,8 +54,8 @@ pins.
 | `magex frontend:gate` | The frontend gate: frozen-lockfile install, format check, lint, typecheck, tests with coverage, and the render profile through the React Compiler, stopping at the first failure (`magefiles/frontend.go`; CI runs this same target) |
 | `magex brand:generate` | Regenerates the theme tokens, frontend brand constants, `build/darwin/Info.plist`, and the icon artwork (the app icon `build/appicon.svg` and the menu bar icon `build/trayicon.svg`) from `internal/brand` |
 | `magex brand:icons` | Renders `build/appicon.svg` into the bundle's icon set `build/darwin/icons.icns` and the development Dock icon `cmd/nilbox/appicon.png`, and `build/trayicon.svg` into the menu bar icon `cmd/nilbox/trayicon.png` (needs `rsvg-convert`: `brew install librsvg`); run it after changing the mark or the artwork |
-| `magex app:bindings` | Regenerates the committed TypeScript bindings in `frontend/bindings`, writing each Go string type with constants as a union of its values |
-| `magex app:bindingsCheck` | Regenerates the bindings into a temporary directory and fails on any drift |
+| `magex app:bindings` | Regenerates the committed TypeScript bindings in `frontend/bindings`, writing each Go string type with constants as a union of its values; fails, naming it, on a bound type whose constants are declared in more than one file, since the generator orders those differently from run to run |
+| `magex app:bindingsCheck` | Regenerates the bindings into a temporary directory and fails on any drift, or on such a type |
 | `magex app:lint` | Lints the desktop-tagged Go code (the desktop shell and the frontend embed) |
 | `magex app:test` | Runs the desktop-tagged tests, which run the desktop runtime itself (a bound method's error reaching the window worded); `magex test` builds without the tag |
 | `magex app:dev` | Runs the app against the Vite dev server with hot reload; `magex app:dev fresh=true` runs it on a fresh [sandbox](#a-sandbox-on-fresh-data) data folder, so the [first-run setup](#first-run-setup) shows |

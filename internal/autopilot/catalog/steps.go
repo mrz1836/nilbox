@@ -279,6 +279,9 @@ const (
 
 	// WhereTerminal runs in the user's terminal, exactly as a click's launch does.
 	WhereTerminal Where = "terminal"
+
+	// DefaultWhere is the agent step's place when its spec names none.
+	DefaultWhere = WhereBackground
 )
 
 // PlaceInfo describes where an agent step can run, for the builder.
@@ -328,6 +331,9 @@ const (
 	PresetEditTest     Preset = "editTest"
 	PresetEditTestPush Preset = "editTestPush"
 	PresetProfile      Preset = "profile"
+
+	// DefaultPreset is the agent step's tools preset when its spec names none.
+	DefaultPreset = PresetEditTestPush
 )
 
 // PresetInfo describes a tools preset for the builder.

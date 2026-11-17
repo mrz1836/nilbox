@@ -779,20 +779,12 @@ export interface PlaceInfo {
 /**
  * Preset is a tools preset: what a background agent may do, whatever its profile allows.
  */
-export type Preset = "editTestPush" | "readOnly" | "githubTasks" | "editTest" | "profile";
+export type Preset = "readOnly" | "githubTasks" | "editTest" | "editTestPush" | "profile";
 
 /**
  * The values of Preset, by the names of their Go constants.
  */
 export const Preset = {
-    /**
-     * The agent step's ranges. A dollar budget is held in cents, so the builder's whole
-     * numbers meet the spec's dollars exactly.
-     *
-     * DefaultPreset and DefaultWhere are the agent step's tools and place.
-     */
-    DefaultPreset: "editTestPush",
-
     /**
      * The tools presets.
      */
@@ -801,6 +793,11 @@ export const Preset = {
     PresetEditTest: "editTest",
     PresetEditTestPush: "editTestPush",
     PresetProfile: "profile",
+
+    /**
+     * DefaultPreset is the agent step's tools preset when its spec names none.
+     */
+    DefaultPreset: "editTestPush",
 } as const;
 
 /**
@@ -1087,12 +1084,6 @@ export type Where = "background" | "terminal";
  */
 export const Where = {
     /**
-     * The agent step's ranges. A dollar budget is held in cents, so the builder's whole
-     * numbers meet the spec's dollars exactly.
-     */
-    DefaultWhere: "background",
-
-    /**
      * The places.
      *
      * WhereBackground runs headless, always in the item's worktree, fenced.
@@ -1103,6 +1094,11 @@ export const Where = {
      * WhereTerminal runs in the user's terminal, exactly as a click's launch does.
      */
     WhereTerminal: "terminal",
+
+    /**
+     * DefaultWhere is the agent step's place when its spec names none.
+     */
+    DefaultWhere: "background",
 } as const;
 
 /**

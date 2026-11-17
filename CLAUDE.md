@@ -1344,7 +1344,10 @@ changing the package, and keep the section and its summary in step.
 - The bound API's shapes: a closed set of string values is a named Go string type with
   constants (`item.Kind`, `settings.Theme`, `sensitive.Scope`, ...), which `magex
   app:bindings` writes as a TypeScript union of its values plus a const object of the same
-  name, so a plain `'pr'` still type-checks. A bound result never holds a nil slice or map,
+  name, so a plain `'pr'` still type-checks. Declare all of such a type's constants in one
+  file: the generator orders constants from several files differently from run to run, so
+  `magex app:bindings` refuses them (`checkEnumFiles` in `magefiles/bindings.go`). A bound
+  result never holds a nil slice or map,
   so the window gets `[]`, never `null` (`internal/core/bound_test.go` checks every bound
   method). Each settings setter writes and reads the settings back in one transaction and
   returns them, so a setter that fails has stored nothing.
