@@ -1,6 +1,7 @@
 package settings
 
 import (
+	"encoding/json"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -29,28 +30,21 @@ func TestTheProjectsTipShowsUntilDismissed(t *testing.T) {
 	assert.False(t, got.ProjectsTipDismissed)
 }
 
-func TestTheWindowSaysOnceWhyTheAppKeptRunning(t *testing.T) {
+// An earlier build remembered that the window said why the app kept running after a close
+// (ui.keptRunningTold). Nothing reads that key now: a value left stored is ignored.
+func TestAStoredKeptRunningNoteIsIgnored(t *testing.T) {
 	t.Parallel()
 
 	svc, db, _ := newTestService(t)
+	setPref(t, db, "ui.keptRunningTold", "true")
 
 	got, err := svc.Get(t.Context())
 	require.NoError(t, err)
-	assert.False(t, got.KeptRunningTold, "a fresh database hasn't said it")
 
-	got, err = svc.SetKeptRunningTold(t.Context(), true)
+	data, err := json.Marshal(got)
 	require.NoError(t, err)
-	assert.True(t, got.KeptRunningTold)
-
-	got, err = svc.Get(t.Context())
-	require.NoError(t, err)
-	assert.True(t, got.KeptRunningTold, "it is stored, so it's said once")
-
-	setPref(t, db, KeyKeptRunningTold, "sometimes")
-
-	got, err = svc.Get(t.Context())
-	require.NoError(t, err)
-	assert.False(t, got.KeptRunningTold, "a value that can't be read says it again")
+	assert.NotContains(t, string(data), "keptRunning", "the window gets nothing of it")
+	assert.NotContains(t, settingKeys(), "ui.keptRunningTold")
 }
 
 func TestAnUnreadableProjectsTipSettingShowsTheTip(t *testing.T) {

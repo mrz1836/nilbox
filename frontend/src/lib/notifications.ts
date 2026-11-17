@@ -208,10 +208,6 @@ function sameTarget(a: AutopilotTarget, b: AutopilotTarget): boolean {
   )
 }
 
-// keptRunningText says, once, why the app kept running when its window was closed with
-// the menu bar icon off: Autopilot had a routine on or an agent working.
-export const keptRunningText = `${brand.name} kept running, so Autopilot can go on: a routine is on, or an agent is working. Click ${brand.name} in the Dock to come back here, or quit with ⌘Q.`
-
 // entryRef names an entry's item: "example-repo #12", or, for an entry about no item, as
 // a release is, its repository alone: "example-repo", or '' for none, as a run in a
 // folder that isn't a repository has.

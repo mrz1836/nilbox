@@ -103,14 +103,3 @@ func (s *Shell) flipPause() {
 		s.askRedraw()
 	})
 }
-
-// showWindow brings the window forward and, after a close that only hid it because of
-// Autopilot, the menu bar icon off, tells the page once, so it can say why the app kept
-// running.
-func (s *Shell) showWindow() {
-	s.window.Show()
-
-	if s.hidForAutopilot.CompareAndSwap(true, false) {
-		s.frontend.Emit(event.KeptRunning{})
-	}
-}

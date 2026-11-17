@@ -452,12 +452,6 @@ export interface Settings {
     "projectsTipDismissed": boolean;
 
     /**
-     * KeptRunningTold is set once the window said that closing it only hid it, because
-     * Autopilot has a routine on or an agent working, the menu bar icon off.
-     */
-    "keptRunningTold": boolean;
-
-    /**
      * ReviewTab is the review sheet's tab the user last chose, which it opens on.
      */
     "reviewTab": ReviewTab;

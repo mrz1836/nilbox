@@ -415,7 +415,6 @@ function answers(subscribe: Loose<Platform['on']>): { [K in keyof Platform]: Loo
     getCollapsedSections: () => Promise.resolve([]),
     setSectionCollapsed: (section, collapsed) => stored({ collapsedSections: collapsed ? [section] : [] }),
     setProjectsTipDismissed: (projectsTipDismissed) => stored({ projectsTipDismissed }),
-    setKeptRunningTold: (keptRunningTold) => stored({ keptRunningTold }),
     setReviewTab: (reviewTab) => stored({ reviewTab }),
     setNotificationsTab: (notificationsTab) => stored({ notificationsTab }),
     setConversationOrder: (conversationOrder) => stored({ conversationOrder }),

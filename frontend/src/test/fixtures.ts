@@ -1177,7 +1177,6 @@ export function settings(overrides: Partial<Settings> = {}): Settings {
     toastSeconds: 12,
     collapsedSections: [],
     projectsTipDismissed: false,
-    keptRunningTold: false,
     reviewTab: 'files',
     notificationsTab: 'app',
     conversationOrder: 'oldest',

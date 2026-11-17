@@ -896,7 +896,6 @@ export const {
   CollapsedSections: getCollapsedSections,
   SetSectionCollapsed: setSectionCollapsed,
   SetProjectsTipDismissed: setProjectsTipDismissed,
-  SetKeptRunningTold: setKeptRunningTold,
   SetReviewTab: setReviewTab,
   SetNotificationsTab: setNotificationsTab,
   SetConversationOrder: setConversationOrder,

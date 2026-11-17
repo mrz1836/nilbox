@@ -190,7 +190,7 @@ func TestAutopilotIsReadWhileTheIconIsOffForTheClose(t *testing.T) {
 	})
 }
 
-func TestAHideForAutopilotIsSaidOnceTheWindowShowsAgain(t *testing.T) {
+func TestTheWindowComesBackFromAHideForAutopilotWithNothingSaid(t *testing.T) {
 	t.Parallel()
 
 	synctest.Test(t, func(t *testing.T) {
@@ -203,43 +203,16 @@ func TestAHideForAutopilotIsSaidOnceTheWindowShowsAgain(t *testing.T) {
 		s.Launched()
 		synctest.Wait()
 
+		require.True(t, s.HidesOnClose(), "a routine on, the icon off")
 		s.ShowWindow()
-		assert.Empty(t, r.page.events(), "no close hid it yet")
-
-		require.True(t, s.HidesOnClose())
-		s.ShowWindow()
-		s.ShowWindow()
-
-		assert.Equal(t, []event.WindowEvent{event.KeptRunning{}}, r.page.events(),
-			"the window says why the app kept running once, as it next shows")
+		assert.Empty(t, r.page.events(), "the Dock brings the window back, and the page hears nothing of it")
 
 		require.True(t, s.HidesOnClose())
 		s.Emit(event.RevealItem{ItemID: 7})
 
-		assert.Equal(t, []event.WindowEvent{event.KeptRunning{}, event.KeptRunning{}, event.RevealItem{ItemID: 7}},
-			r.page.events(), "any way the window comes back says so")
-
-		require.NoError(t, s.Stop())
-	})
-}
-
-func TestAHideForTheIconSaysNothing(t *testing.T) {
-	t.Parallel()
-
-	synctest.Test(t, func(t *testing.T) {
-		r := newRig()
-		ap := &fakeAutopilot{st: oneRoutine()}
-		s := r.shell(withAutopilot(ap))
-
-		s.Start(t.Context())
-		s.Launched()
-		synctest.Wait()
-
-		require.True(t, s.HidesOnClose(), "the icon on")
-		s.ShowWindow()
-
-		assert.NotContains(t, r.page.events(), event.WindowEvent(event.KeptRunning{}),
-			"the menu bar icon shows where the app went")
+		assert.Equal(t, []event.WindowEvent{event.RevealItem{ItemID: 7}}, r.page.events(),
+			"a reveal tells the page only what to show")
+		assert.Equal(t, 2, r.window.shown())
 
 		require.NoError(t, s.Stop())
 	})

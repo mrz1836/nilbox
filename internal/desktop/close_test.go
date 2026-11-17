@@ -108,15 +108,14 @@ func TestTheWindowsCloseHidesWhileTheIconShows(t *testing.T) {
 		assert.Zero(t, r.app.quitCount(), "the app keeps running")
 
 		s.ShowWindow()
-		assert.NotContains(t, r.page.events(), event.WindowEvent(event.KeptRunning{}),
-			"the icon shows where the app went")
+		assert.Equal(t, 1, r.window.shown(), "the icon or the Dock brings the window back")
 
 		require.NoError(t, s.Stop())
 	})
 }
 
 // With a routine on, the close only hides the window even with the icon off, and the
-// window says why as it next shows.
+// Dock brings it back with nothing said.
 func TestTheWindowsCloseHidesWhileAutopilotKeepsTheAppRunning(t *testing.T) {
 	t.Parallel()
 
@@ -134,7 +133,8 @@ func TestTheWindowsCloseHidesWhileAutopilotKeepsTheAppRunning(t *testing.T) {
 		assert.Zero(t, r.app.quitCount(), "the app keeps running for Autopilot")
 
 		s.ShowWindow()
-		assert.Equal(t, []event.WindowEvent{event.KeptRunning{}}, r.page.events())
+		assert.Equal(t, 1, r.window.shown(), "the Dock brings the window back")
+		assert.Empty(t, r.page.events(), "the window says nothing of the hide")
 
 		require.NoError(t, s.Stop())
 	})
