@@ -690,9 +690,9 @@ func TestSettersReturnTheStoredSettings(t *testing.T) {
 			func(s Settings) any { return s.CodexFast }, true,
 		},
 		{
-			"collapsed section", func() (Settings, error) { return svc.SetSectionCollapsed(ctx, ListAuthored, true) },
+			"collapsed section", func() (Settings, error) { return svc.SetSectionCollapsed(ctx, ListYours, true) },
 			func(s Settings) any { return s.CollapsedSections },
-			[]ListKey{ListAuthored},
+			[]ListKey{ListYours},
 		},
 		{
 			"theme", func() (Settings, error) { return svc.SetTheme(ctx, ThemeDark) },

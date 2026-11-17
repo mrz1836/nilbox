@@ -36,12 +36,10 @@ func TestDismissUntilRestored(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, notified+1, h.events.Count())
 
-	// The item stays in both its lists, marked; the UI sets it apart.
-	for _, l := range []List{snap.ReviewRequested, snap.Assigned} {
-		it := itemByNumber(t, l, 1)
-		assert.Equal(t, "2026-01-10T12:00:00Z", it.DismissedAt)
-		assert.Empty(t, it.SnoozedUntil)
-	}
+	// The item stays in its list, marked; the UI sets it apart.
+	it := itemByNumber(t, snap.ReviewRequested, 1)
+	assert.Equal(t, "2026-01-10T12:00:00Z", it.DismissedAt)
+	assert.Empty(t, it.SnoozedUntil)
 
 	assert.Empty(t, itemByNumber(t, snap.ReviewRequested, 2).DismissedAt, "other items are untouched")
 
@@ -69,20 +67,20 @@ func TestSnoozeForDays(t *testing.T) {
 	snap, err := h.svc.Snooze(t.Context(), id, 3)
 	require.NoError(t, err)
 
-	it := itemByNumber(t, snap.Assigned, 1)
+	it := itemByNumber(t, snap.ReviewRequested, 1)
 	assert.Equal(t, "2026-01-13T12:00:00Z", it.SnoozedUntil)
 	assert.Empty(t, it.DismissedAt)
 
 	// A dismissal replaces the snooze, and a snooze replaces a dismissal.
 	snap, err = h.svc.Dismiss(t.Context(), id)
 	require.NoError(t, err)
-	it = itemByNumber(t, snap.Assigned, 1)
+	it = itemByNumber(t, snap.ReviewRequested, 1)
 	assert.Empty(t, it.SnoozedUntil)
 	assert.NotEmpty(t, it.DismissedAt)
 
 	snap, err = h.svc.Snooze(t.Context(), id, 1)
 	require.NoError(t, err)
-	it = itemByNumber(t, snap.Assigned, 1)
+	it = itemByNumber(t, snap.ReviewRequested, 1)
 	assert.Equal(t, "2026-01-11T12:00:00Z", it.SnoozedUntil)
 	assert.Empty(t, it.DismissedAt)
 
@@ -90,7 +88,7 @@ func TestSnoozeForDays(t *testing.T) {
 	// it as back.
 	h.clock.Advance(48 * time.Hour)
 	snap = h.refresh(t)
-	assert.Equal(t, "2026-01-11T12:00:00Z", itemByNumber(t, snap.Assigned, 1).SnoozedUntil)
+	assert.Equal(t, "2026-01-11T12:00:00Z", itemByNumber(t, snap.ReviewRequested, 1).SnoozedUntil)
 	assert.Equal(t, int64(1), h.count(t, "item_local_state"))
 }
 
@@ -149,7 +147,7 @@ func TestPinKeepsAnItemOnTop(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, notified+1, h.events.Count())
 	assert.Equal(t, []int{1, 2}, numbers(snap.ReviewRequested))
-	assert.Equal(t, "2026-01-10T12:00:00Z", itemByNumber(t, snap.Assigned, 1).PinnedAt, "pinned in every list")
+	assert.Equal(t, "2026-01-10T12:00:00Z", itemByNumber(t, snap.ReviewRequested, 1).PinnedAt)
 	assert.Empty(t, itemByNumber(t, snap.ReviewRequested, 2).PinnedAt)
 
 	// The most recently pinned comes first, even within the same second.

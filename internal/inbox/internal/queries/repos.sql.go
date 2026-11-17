@@ -47,7 +47,7 @@ type ListRepoCountsRow struct {
 
 // ListRepoCounts returns every repository that is not archived, by owner and then name
 // ignoring case, each with how many of its items are listed now, in at least one of the
-// three lists, or watched by a routine's search, so a repository the user only watches can
+// three searches, or watched by a routine's search, so a repository the user only watches can
 // have launch defaults too.
 func (q *Queries) ListRepoCounts(ctx context.Context) ([]ListRepoCountsRow, error) {
 	rows, err := q.db.QueryContext(ctx, listRepoCounts)

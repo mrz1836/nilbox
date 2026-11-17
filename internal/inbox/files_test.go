@@ -142,7 +142,7 @@ func TestRefreshOnlyChecksPullRequestsFromOutside(t *testing.T) {
 		assert.Nil(t, itemByNumber(t, snap.ReviewRequested, n).Files, n)
 	}
 
-	assert.Nil(t, itemByNumber(t, snap.Assigned, 6).Files, "issues have no files")
+	assert.Nil(t, itemByNumber(t, snap.Yours, 6).Files, "issues have no files")
 	assert.NotNil(t, itemByNumber(t, snap.ReviewRequested, 5).Files)
 
 	// Narrowed to outside contributors, a collaborator's pull request is no longer shown

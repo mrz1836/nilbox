@@ -171,9 +171,9 @@ func TestSetAsideItemsDoNotArrive(t *testing.T) {
 	one, two := byOther(pr(1, "MEMBER", false)), byOther(pr(2, "MEMBER", false))
 	snap := h.seed(t, nil, nil, []github.Item{one, two})
 
-	_, err := h.svc.Dismiss(t.Context(), itemByNumber(t, snap.Assigned, 1).ID)
+	_, err := h.svc.Dismiss(t.Context(), itemByNumber(t, snap.Yours, 1).ID)
 	require.NoError(t, err)
-	_, err = h.svc.Snooze(t.Context(), itemByNumber(t, snap.Assigned, 2).ID, 3)
+	_, err = h.svc.Snooze(t.Context(), itemByNumber(t, snap.Yours, 2).ID, 3)
 	require.NoError(t, err)
 
 	// All three newly ask for a review; 1 is dismissed and 2 still snoozed.
@@ -191,9 +191,9 @@ func TestAnItemBackFromASnoozeArrives(t *testing.T) {
 		byOther(pr(3, "MEMBER", false))
 	snap := h.seed(t, nil, nil, []github.Item{one, two, three})
 
-	_, err := h.svc.Dismiss(t.Context(), itemByNumber(t, snap.Assigned, 1).ID)
+	_, err := h.svc.Dismiss(t.Context(), itemByNumber(t, snap.Yours, 1).ID)
 	require.NoError(t, err)
-	_, err = h.svc.Snooze(t.Context(), itemByNumber(t, snap.Assigned, 3).ID, 1)
+	_, err = h.svc.Snooze(t.Context(), itemByNumber(t, snap.Yours, 3).ID, 1)
 	require.NoError(t, err)
 
 	// Two days on, 3's snooze has run its course; all three newly ask for a review, and

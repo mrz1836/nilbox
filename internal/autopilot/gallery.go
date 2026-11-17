@@ -78,8 +78,8 @@ const (
 	// SignalDependabot is pull requests Dependabot opened in the inbox this week.
 	SignalDependabot SignalKind = "dependabot"
 
-	// SignalBots is pull requests bots opened in the Review requested and Assigned lists
-	// this week.
+	// SignalBots is pull requests bots opened in the inbox this week that ask for the
+	// user's review or are assigned to them.
 	SignalBots SignalKind = "bots"
 )
 
@@ -146,7 +146,7 @@ func galleryInfo() []GalleryTemplate {
 		},
 		{
 			Key: "snooze-passing-bot-prs", Name: "Snooze passing bot PRs", Icon: "⏾",
-			Summary:  "A trusted bot's patch or minor update whose checks pass leaves your lists for three days.",
+			Summary:  "A trusted bot's patch or minor update whose checks pass leaves your inbox for three days.",
 			Suggests: autopilotprefs.ModeAuto, Signals: []SignalKind{SignalBots},
 		},
 		{
@@ -290,7 +290,8 @@ type TemplateSignals struct {
 	Fortress int
 
 	// Dependabot counts the pull requests Dependabot opened in the inbox since the time
-	// asked, and Bots those bots opened in the Review requested and Assigned lists.
+	// asked, and Bots those bots opened that ask for the user's review or are assigned to
+	// them.
 	Dependabot int
 	Bots       int
 }
@@ -501,7 +502,7 @@ func suggestedWhy(kinds []SignalKind, got TemplateSignals) string {
 		case k == SignalDependabot && got.Dependabot > 0:
 			return fmt.Sprintf("Dependabot opened %s in your inbox this week.", prsWords(got.Dependabot))
 		case k == SignalBots && got.Bots > 0:
-			return fmt.Sprintf("Bots opened %s in your Review requested and Assigned lists this week.",
+			return fmt.Sprintf("Bots opened %s this week that ask for your review or are assigned to you.",
 				prsWords(got.Bots))
 		}
 	}

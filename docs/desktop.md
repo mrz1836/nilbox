@@ -1514,8 +1514,7 @@ button, the API budget gauge, and your profile picture. Drag the bar to move the
 the filter gives way first.
 
 **Tab counts.** **Inbox** counts the items in your lists, leaving out what is snoozed or
-dismissed. An item in two lists, such as a pull request you opened and are assigned, counts
-once. **Notifications** counts what is unread: the app's own notifications, the bell's, and,
+dismissed. Each item is in one list, so the two lists' counts add up to it. **Notifications** counts what is unread: the app's own notifications, the bell's, and,
 while Nilbox reads them, your [GitHub notifications](#github-notifications); hover it for each,
 as **3 unread in Nilbox · 12 unread on GitHub**. **Autopilot** counts the agents its routines
 have working, with an amber dot while something waits for you and a red dot while a routine is
@@ -1774,7 +1773,10 @@ Each pull request or issue in the inbox is a card three lines high:
    short; hover it for all of it. Clicking a pull request's title opens it in the [review
    sheet](#reviewing-a-pull-request), and an issue's in the [issue sheet](#reading-an-issue);
    **⌘-click** it, or click the small **↗** beside it, to open it on GitHub instead.
-2. The repository and number, the author, how long ago it last changed, and a tag when the
+2. The repository and number, the author (**you** for your own; hover it for your login, and
+   it still filters by the login), how long ago it last changed, an **Assigned** chip when the
+   item is assigned to you (in either list, since a pull request asking for your review stays in
+   **Review requested** when it is assigned to you too), and a tag when the
    [trust rule](#outside-contributors) says so: **bot** for a trusted bot, **untrusted bot**,
    or **outside contributor**. A pull request whose files are checked then shows its
    [sensitive files](#sensitive-files) chip. An item with a worktree, as the
@@ -1900,7 +1902,7 @@ statuses. A closed project, and an item archived from its project, are left out,
 first five projects an issue is in are read. A project whose Status field was renamed or
 deleted shows its name alone. Pull requests show no projects.
 
-**Sorting by status.** A list whose issues are in projects, **Assigned** in practice, has a
+**Sorting by status.** A list whose issues are in projects, **Yours** in practice, has a
 **Recent | Status** toggle at the right of its header. **Recent** is the usual order: pinned
 items first, then newest activity. **Status** keeps the pinned items first, then lists the
 issues by their project status, an issue in several projects by its best one; issues of one
@@ -1914,7 +1916,7 @@ goes after the last status you placed at the same point or an earlier one. **Res
 every status back where its name places it. The toggle and the order are kept across
 launches; statuses you placed that are not in the list now keep their places.
 
-**Showing one kind.** A list that holds both pull requests and issues, **Assigned** in
+**Showing one kind.** A list that holds both pull requests and issues, **Yours** in
 practice, has an **All | PRs | Issues** switch to the left of that toggle. **PRs** or
 **Issues** shows only that kind on the list's own tab, in the same order, and its count then
 reads *N of M*, so nothing is hidden without saying so; the sheets step through the same
@@ -1962,7 +1964,7 @@ it. Refreshing one card reads its projects when the last whole refresh could.
 
 Each list has four tabs: the list itself with its count (**Review requested 14**), then
 **Snoozed**, **Dismissed**, and **Muted**, each counted once it holds anything. Snoozing or
-dismissing an item moves it out of every list it is in, so the lists only show what still needs
+dismissing an item moves it out of its list's own tab, so the lists only show what still needs
 you. A list with nothing in any of its four tabs hides until something arrives, and comes back
 on its own tab.
 
@@ -1974,10 +1976,10 @@ on its own tab.
   says **Back from snooze**. New activity can bring it back sooner; see below.
 - **Dismiss** (the archive box) sets an item aside until you bring it back. It waits in the
   **Dismissed** tab, most recently dismissed first, however much it changes on GitHub.
-- **Unsnooze** and **Restore**, on the cards in those tabs, put an item back in its lists
-  right away.
-- **Pin** (the pushpin, at the right end of the card's buttons) keeps an item at the top of
-  every list it is in, above everything not pinned. With more than one pinned, the most
+- **Unsnooze** and **Restore**, on the cards in those tabs, put an item back in its list right
+  away.
+- **Pin** (the pushpin, at the right end of the card's buttons) keeps an item at the top of its
+  list, above everything not pinned. With more than one pinned, the most
   recently pinned comes first; the rest keep their order by last activity. A pinned card
   shows its pin filled, in the accent color, without hovering; click it to unpin, and the item
   goes back to its place. A pin outlasts a snooze or a dismissal: the item waits in its tab,
@@ -2112,9 +2114,12 @@ the item stays in comes back as it was.
   names the team it still asks.
 
 GitHub's search can trail an edit by a minute or so, so the next refresh may still find the item
-where you left it. Nilbox keeps it out of that list until the item changes on GitHub again: if
-someone assigns you again, or asks for your review again, it comes back, with its notification,
-as usual.
+where you left it. Nilbox counts it as no longer assigned to you, or no longer asking for your
+review, until the item changes on GitHub again: if someone assigns you again, or asks for your
+review again, it comes back, with its notification, as usual. An item that no longer asks for
+your review moves to **Yours** when you opened it or are assigned to it, and an item you are
+no longer assigned to stays there while you opened it, without its **Assigned** chip; with
+nothing else keeping it, it leaves the inbox.
 
 **Whose account.** An edit goes out only with the token of the account whose inbox you see. If
 you switched accounts with `gh auth switch` since the last refresh, Nilbox asks you to refresh
@@ -2140,7 +2145,7 @@ Every card gets it, in any list.
 **What it shows.**
 
 - **The header:** the title, `owner/repo#n`, who opened it with the same trust tag the card has,
-  which branch merges into which, and where it sits in its list, as in **3 of 8 in Assigned**.
+  which branch merges into which, and where it sits in its list, as in **3 of 8 in Yours**.
   **←** and **→** (or the arrow keys, while you aren't typing) step to the previous or next card
   in the same list and tab, in the order the list shows them: only the cards the
   [filter](#filtering) matches, sorted by project status when the list is. Pull requests and
@@ -2336,8 +2341,8 @@ never lost.
 **After acting** the sheet closes and the inbox's toast reports what happened, as in **Merged
 acme-org/api#212 (squash)**, **Commented and merged acme-org/api#212 (squash)**, or **Approved
 acme-org/api#212 · auto-merge is on**. A review takes the
-pull request out of **Review requested**, and a merge or a close out of every list, at once, with
-no extra request.
+pull request out of **Review requested** (into **Yours**, when you opened it or are assigned to
+it), and a merge or a close out of the inbox, at once, with no extra request.
 
 **Line comments.** Click a line number in the diff to comment on that line; shift-click another
 in the same part of the diff for a range. **Suggest a change** (on the new version only) starts
@@ -2366,7 +2371,8 @@ request's own dropped once it merges. Nothing leaves your Mac but the requests t
 
 Clicking an issue's title opens the **issue sheet**, the review sheet's twin for issues, so you
 can read an issue, discuss it, hand it to an agent, and close it without leaving Nilbox. Issues
-reach the inbox through **Assigned**, so these are your own work items.
+reach the inbox only when they are assigned to you, in **Yours**, so these are your own work
+items.
 
 **What it shows.**
 
@@ -2684,8 +2690,9 @@ you have.
   failed check's name contains security or codeql, run "Fix dep security" in the background.
   Once per head commit, at most 2 tries per pull request.*). It rewrites itself as you edit;
   while the routine has a problem, the last sentence that read stays.
-- **WATCH** is the inbox lists it watches (**Review requested**, **Authored**, **Assigned**)
-  and its [searches](#routine-searches), up to five, each built from simple fields: **Pull
+- **WATCH** is what of your inbox it watches, by why each item is there (**Review requested**,
+  **Opened by you**, **Assigned to you**, any of them ticked), and its
+  [searches](#routine-searches), up to five, each built from simple fields: **Pull
   requests**, **Issues**, or both, **by** whom, **in** where, and **More ▸** for who it
   involves, labels in and out, the branches, the state, and qualifiers typed by hand. Who and
   where are tokens, such as **[Dependabot ×]** and **[Your account ×]**: the field suggests the
@@ -2767,7 +2774,7 @@ search with no scope, a regex that doesn't compile, a prompt your library doesn'
 isn't for the items' kind, a trigger that doesn't fit what it watches, a second agent step. The
 footer counts them (*Fix 2 problems to save.*). Warnings, in amber, never block saving: a search
 that matches more than 100 items checks only the newest 100; most of what it watches isn't in
-your inbox lists, so a snooze or a pin won't change what you see; an owner none of your items
+your inbox, so a snooze or a pin won't change what you see; an owner none of your items
 came from, since GitHub answers a name it doesn't know with nothing; and, on Autopilot, a
 terminal run or the profile's own permissions. As you edit, the last reading stays until the
 next arrives, so nothing blinks out. A problem at a place no part shows, as an imported
@@ -2828,8 +2835,8 @@ opens in the full builder whenever you want more. **Templates** lists routines m
 start from, each with its icon, one line on what it does, and the mode it suggests. Those that
 fit what Nilbox already knows come first, under **Suggested for you**, each with why: *3 of your
 clones run go-fortress’s security checks.* (from the clones the first-run setup looks at),
-*Dependabot opened 9 pull requests in your inbox this week.*, *Bots opened 4 pull requests in
-your Review requested and Assigned lists this week.* (from the stored items). Nothing is read
+*Dependabot opened 9 pull requests in your inbox this week.*, *Bots opened 4 pull requests this
+week that ask for your review or are assigned to you.* (from the stored items). Nothing is read
 for them that isn't on this Mac already.
 
 | Template | What it does | Suggests |
@@ -2837,7 +2844,7 @@ for them that isn't on this Mac already.
 | 🛡️ **Fix Dependabot security failures** | When a Dependabot update fails a security scan (a failed check's name holds security, codeql, govulncheck, gitleaks, nancy, or osv), runs **Fix dep security** in the background, pushes once to the pull request's branch, waits for the checks, and tells you how it went | Ask first |
 | 🩹 **Heal Dependabot PRs, then merge them** | When a patch or minor Dependabot update fails its checks, runs **Heal Dependabot PR**, waits for the checks, merges inside GitHub's rules if they pass, and tells you if they still fail | Ask first |
 | 👥 **Review members' PRs** | When a member opens a pull request under 400 lines with no sensitive file, runs **Review** read only, and posts its verdict | Ask first |
-| ⏾ **Snooze passing bot PRs** | A trusted bot's patch or minor update whose checks pass, in Review requested or Assigned, is snoozed for 3 days | Autopilot |
+| ⏾ **Snooze passing bot PRs** | A trusted bot's patch or minor update whose checks pass, asking for your review or assigned to you, is snoozed for 3 days | Autopilot |
 | 🔔 **Tell me about security failures** | A notification when a Dependabot update fails a security scan | Autopilot |
 | 💬 **Address requested changes** | When a reviewer asks for changes on your pull request, runs **Address review** in your terminal | Ask first |
 | 🔀 **Resolve merge conflicts on my PRs** | When your pull request conflicts with its base, runs **Resolve conflicts**, which merges the base in (never a rebase) | Ask first |
@@ -3177,8 +3184,8 @@ the item now, from what is stored, asking GitHub nothing:
 
 - what of the routine itself holds it back: *It's switched off*, *Autopilot is paused*, *It's in
   Dry run*, *It belongs to @other-login*, and what this Mac lacks for it, as This Mac says it;
-- when the item isn't in what it watches, why, a line for each source: *It isn't in your Review
-  requested list: it's in your Authored list.*, *Not in its search: its author is octo-other,
+- when the item isn't in what it watches, why, a line for each source: *It isn't asking for your
+  review: it's in your inbox, opened by you.*, *Not in its search: its author is octo-other,
   not Dependabot.*, *it's in acme-labs/web, not acme-org*, or, for an item its search should
   find, that the next refresh brings it;
 - each condition with the value it compared, and what its history says (*It already ran on this
@@ -3469,8 +3476,7 @@ or a GitHub search of its own, such as Dependabot's pull requests in your accoun
 routine with a search is switched on, and Autopilot (beta) is, each inbox refresh reads that
 search too, once it has
 read the inbox's three, and stores what it finds apart from your lists: a watched item is never
-in Review requested, Authored, or Assigned, never in their counts, and never in the menu bar's
-count. It shows in the routine's **Watching** list, and the searches keep it current for the
+in Review requested or Yours, never in their counts, and never in the menu bar's count. It shows in the routine's **Watching** list, and the searches keep it current for the
 routines.
 
 **What a search reads.** Identical searches across routines are read once. Each search
@@ -3567,9 +3573,8 @@ dark menu bar. Click it for its menu:
 - Agent sessions waiting for your approval or input, under **Waiting for you**, such as
   **example-repo #12 · Claude needs approval**. Click one to bring its terminal tab forward
   (see [Following a session](#following-a-session)).
-- Up to five items from each list that need you, under the list's name (a native section
-  heading on macOS 14 and later), each item once even when it is in two lists, and **N more…**
-  for the rest. Hover an item for its full title. Click it to bring the window forward with the
+- Up to five items from each list that need you, under the list's name, **Review requested**
+  or **Yours** (a native section heading on macOS 14 and later), and **N more…** for the rest. Hover an item for its full title. Click it to bring the window forward with the
   item in view: its list opens at the tab that holds it, and its row scrolls into view,
   highlighted for a moment.
 - In a build that updates itself (see [Updates](#updates)): **Check for Updates…** (**Checking

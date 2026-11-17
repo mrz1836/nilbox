@@ -83,7 +83,7 @@ func TestLaunchItems(t *testing.T) {
 	h.client.details = map[string]github.ItemDetails{nodeID(1): details}
 	snap := h.refresh(t)
 
-	first, second := itemByNumber(t, snap.ReviewRequested, 1).ID, itemByNumber(t, snap.Assigned, 2).ID
+	first, second := itemByNumber(t, snap.ReviewRequested, 1).ID, itemByNumber(t, snap.Yours, 2).ID
 
 	got, err := h.store().LaunchItems(t.Context(), []int64{second, 999, first})
 	require.NoError(t, err)
@@ -170,7 +170,7 @@ func TestStoreFixture(t *testing.T) {
 	snap, err := NewService(Config{Pool: db, Clock: testutil.NewClock(at)}).Snapshot(t.Context())
 	require.NoError(t, err)
 	assert.Equal(t, []int{1}, numbers(snap.ReviewRequested))
-	assert.Equal(t, []int{2}, numbers(snap.Assigned))
+	assert.Equal(t, []int{2}, numbers(snap.Yours))
 	assert.Equal(t, "2026-06-01T00:00:00Z", itemByNumber(t, snap.ReviewRequested, 1).Details.FetchedAt,
 		"stamped at the fixture's time")
 }

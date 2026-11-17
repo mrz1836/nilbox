@@ -20,13 +20,14 @@ import (
 // requested reviewers (RemoveReviewRequest). Each edit is one REST request, which the
 // GitHub client's WriteGate paces and the API budget counts, made with the token of the
 // account whose inbox the user sees (see checkViewer). Once GitHub has made it, the item
-// leaves that list at once, with no refresh, and stays out of it while GitHub's search
-// index catches up (see UpsertItem's left stamps).
+// loses that reason at once, with no refresh, and stays without it while GitHub's search
+// index catches up (see UpsertItem's left stamps): it moves to Yours, or leaves the inbox
+// when nothing else keeps it there.
 
 var (
 	// ErrNotAssigned is returned for an edit that takes the user off the assignees of an
-	// item not in the Assigned list.
-	ErrNotAssigned = errors.New("the item is not in the assigned list")
+	// item not assigned to them.
+	ErrNotAssigned = errors.New("the item isn't assigned to you")
 
 	// ErrNotRequested is returned for an edit that takes the user off the reviewers of an
 	// item not in the Review requested list.
@@ -37,26 +38,28 @@ var (
 	ErrOtherAccount = errors.New("the GitHub CLI is signed in to another account")
 )
 
-// Unassign takes the signed-in user off the assignees of an item in the Assigned list,
-// on GitHub, and returns the new snapshot, in which the item has left that list. It is
-// one REST request, paced and counted against the API budget, and it waits for nothing
-// but other work on the same item.
+// Unassign takes the signed-in user off the assignees of an item assigned to them, on
+// GitHub, and returns the new snapshot, in which the item is no longer assigned to them:
+// it stays in its list while the user opened it or it asks for their review, and leaves
+// the inbox otherwise. It is one REST request, paced and counted against the API budget,
+// and it waits for nothing but other work on the same item.
 func (s *Service) Unassign(ctx context.Context, id int64) (Snapshot, error) {
 	return s.edit(ctx, id, editUnassign)
 }
 
 // RemoveReviewRequest takes the signed-in user off the reviewers a pull request in the
 // Review requested list asks, on GitHub, and returns the new snapshot. The pull request
-// leaves that list, unless it still asks a team for a review: GitHub's search counts a
-// team the user is in, which only the next refresh can tell. A request made only through
-// a team is left as it is, since GitHub takes a team's request off for every member or
-// none. It is one REST request, paced and counted against the API budget, and it waits
-// for nothing but other work on the same item.
+// leaves that list (for Yours, when the user opened it or is assigned to it), unless it
+// still asks a team for a review: GitHub's search counts a team the user is in, which
+// only the next refresh can tell. A request made only through a team is left as it is,
+// since GitHub takes a team's request off for every member or none. It is one REST
+// request, paced and counted against the API budget, and it waits for nothing but other
+// work on the same item.
 func (s *Service) RemoveReviewRequest(ctx context.Context, id int64) (Snapshot, error) {
 	return s.edit(ctx, id, editReview)
 }
 
-// editKind is which list an edit takes the user off.
+// editKind is which of the item's reasons an edit takes the user off.
 type editKind int
 
 const (
@@ -151,8 +154,8 @@ type editTarget struct {
 	updatedAt time.Time
 }
 
-// editTarget reads the item with id, and checks that the signed-in user is in the list
-// the edit takes them off.
+// editTarget reads the item with id, and checks that the item still has the reason the
+// edit takes the signed-in user off.
 func (s *Service) editTarget(ctx context.Context, id int64, kind editKind) (editTarget, error) {
 	row, err := s.shownItem(ctx, id)
 	if err != nil {
@@ -168,8 +171,8 @@ func (s *Service) editTarget(ctx context.Context, id int64, kind editKind) (edit
 	return editTarget{id: id, ref: ref, login: row.AccountLogin, updatedAt: row.ItemUpdatedAt}, nil
 }
 
-// check makes sure the item ref, stored as row, is in the list the edit takes the user
-// off.
+// check makes sure the item ref, stored as row, still has the reason the edit takes the
+// user off.
 func (k editKind) check(ref item.Ref, row queries.GetEditItemRow) error {
 	switch {
 	case k == editUnassign && !row.ReasonAssigned:
@@ -182,8 +185,8 @@ func (k editKind) check(ref item.Ref, row queries.GetEditItemRow) error {
 }
 
 // storeEdit stores what GitHub answered an edit, in one transaction. Unassigned, the item
-// leaves the Assigned list. Off its reviewers, a pull request keeps who it still asks to
-// review, and leaves the Review requested list unless it still asks a team.
+// is no longer assigned to the user. Off its reviewers, a pull request keeps who it still
+// asks to review, and leaves the Review requested list unless it still asks a team.
 func (s *Service) storeEdit(ctx context.Context, target editTarget, kind editKind, edited *github.Edited) error {
 	// The stamp is GitHub's time for the item after the edit; without one, the later of
 	// the item's last activity and now.

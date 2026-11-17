@@ -34,7 +34,8 @@ SET reason_review_requested = 0, reason_authored = 0, reason_assigned = 0
 WHERE account_id = ?
 `
 
-// ClearReasons takes every item of the account with account_id out of the three lists.
+// ClearReasons takes every item of the account with account_id out of the inbox, clearing
+// the three searches' flags.
 // The rows stay, since local state may reference them.
 func (q *Queries) ClearReasons(ctx context.Context, accountID int64) error {
 	_, err := q.db.ExecContext(ctx, clearReasons, accountID)
@@ -449,7 +450,7 @@ type LeaveAssignedParams struct {
 	ID           int64
 }
 
-// LeaveAssigned takes the item with id out of the assigned list after the user took
+// LeaveAssigned clears the assigned flag of the item with id after the user took
 // themselves off its assignees, stamped with the item's updated_at on GitHub after the
 // edit (see UpsertItem).
 func (q *Queries) LeaveAssigned(ctx context.Context, arg LeaveAssignedParams) error {

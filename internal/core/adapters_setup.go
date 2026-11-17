@@ -64,6 +64,15 @@ func adoptSetup(ctx context.Context, pool *sql.DB, c clock.Clock, logger *slog.L
 	}
 }
 
+// adoptSections carries the window's memory of the inbox's former Authored and Assigned
+// lists over to Yours (settings.AdoptSections), once per database. A failure is logged,
+// and the window then shows Yours as it would on a fresh database.
+func adoptSections(ctx context.Context, pool *sql.DB, c clock.Clock, logger *slog.Logger) {
+	if err := settings.AdoptSections(ctx, pool, c); err != nil {
+		logger.WarnContext(ctx, "could not carry the inbox sections over; Yours starts as new", "error", err)
+	}
+}
+
 // setupAccount reads the GitHub CLI's sign-in for the setup: the token the app borrows,
 // with the shared client's one-point viewer query, tried once more with a fresh token
 // when GitHub refuses the one held, as every other read is.

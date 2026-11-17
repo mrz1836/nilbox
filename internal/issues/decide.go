@@ -37,7 +37,7 @@ type Facts struct {
 	RepliedLast bool
 	RepliedAt   string
 
-	// Assigned reports that it is in the user's Assigned list; OpenedAt when it opened.
+	// Assigned reports that it is assigned to the user; OpenedAt when it opened.
 	Assigned bool
 	OpenedAt string
 }

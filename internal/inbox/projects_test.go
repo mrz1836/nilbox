@@ -43,7 +43,7 @@ func projectsHarness(t *testing.T, scopes string) *harness {
 func issueProjects(t *testing.T, snap Snapshot) []Project {
 	t.Helper()
 
-	details := itemByNumber(t, snap.Assigned, 2).Details
+	details := itemByNumber(t, snap.Yours, 2).Details
 	require.NotNil(t, details)
 
 	return details.Projects
@@ -200,11 +200,11 @@ func TestRefreshItemReadsTheProjectsTheLastRefreshCould(t *testing.T) {
 				nodeID(2): {Found: true, Item: moved, Details: github.ItemDetails{Comments: 2}},
 			}
 
-			snap, err := h.svc.RefreshItem(t.Context(), itemByNumber(t, snap.Assigned, 2).ID)
+			snap, err := h.svc.RefreshItem(t.Context(), itemByNumber(t, snap.Yours, 2).ID)
 			require.NoError(t, err)
 
 			assert.Equal(t, []github.DetailOptions{tt.want}, h.client.itemOpts)
-			assert.Equal(t, "Item 2, retitled", itemByNumber(t, snap.Assigned, 2).Title)
+			assert.Equal(t, "Item 2, retitled", itemByNumber(t, snap.Yours, 2).Title)
 
 			if tt.want.Projects {
 				assert.Equal(t, wantRoadmap(), issueProjects(t, snap))
@@ -222,7 +222,7 @@ func TestRefreshStoresAnIssuesSubIssues(t *testing.T) {
 	h.client.details[nodeID(2)] = github.ItemDetails{Comments: 1, SubIssues: github.SubIssues{Total: 8, Completed: 6}}
 
 	snap := h.refresh(t)
-	assert.Equal(t, SubIssues{Total: 8, Completed: 6}, itemByNumber(t, snap.Assigned, 2).Details.SubIssues,
+	assert.Equal(t, SubIssues{Total: 8, Completed: 6}, itemByNumber(t, snap.Yours, 2).Details.SubIssues,
 		"sub-issues need no projects scope")
 	assert.Equal(t, SubIssues{}, itemByNumber(t, snap.ReviewRequested, 1).Details.SubIssues)
 }

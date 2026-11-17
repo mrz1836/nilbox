@@ -44,16 +44,16 @@ func labels(s Section) []string {
 func TestSummarize(t *testing.T) {
 	t.Parallel()
 
-	shared := it(1, 101, "Fix the login redirect")
 	snoozed := it(3, 103, "Snoozed")
 	snoozed.SnoozedUntil = "2026-03-05T09:00:00Z"
 	dismissed := it(4, 104, "Dismissed")
 	dismissed.DismissedAt = "2026-03-01T00:00:00Z"
 
 	snap := inbox.Snapshot{
-		ReviewRequested: inbox.List{Items: []inbox.Item{shared, it(2, 102, "Bump the deps"), snoozed}},
-		Authored:        inbox.List{Items: []inbox.Item{dismissed}},
-		Assigned:        inbox.List{Items: []inbox.Item{shared, it(5, 7, "Crash on start")}},
+		ReviewRequested: inbox.List{Items: []inbox.Item{
+			it(1, 101, "Fix the login redirect"), it(2, 102, "Bump the deps"), snoozed,
+		}},
+		Yours:           inbox.List{Items: []inbox.Item{dismissed, it(5, 7, "Crash on start")}},
 		LastRefreshedAt: "2026-03-04T11:58:00Z",
 	}
 
@@ -65,13 +65,13 @@ func TestSummarize(t *testing.T) {
 	assert.False(t, got.Failed)
 	assert.Equal(t, time.Date(2026, 3, 5, 9, 0, 0, 0, time.UTC), got.NextChange)
 
-	require.Len(t, got.Sections, 2, "Authored has nothing that needs you")
+	require.Len(t, got.Sections, 2)
 	assert.Equal(t, "Review requested", got.Sections[0].Title)
 	assert.Equal(t, []string{"example-repo #101 · Fix the login redirect", "example-repo #102 · Bump the deps"},
 		labels(got.Sections[0]))
-	assert.Equal(t, "Assigned", got.Sections[1].Title)
+	assert.Equal(t, "Yours", got.Sections[1].Title)
 	assert.Equal(t, []string{"example-repo #7 · Crash on start"}, labels(got.Sections[1]),
-		"an item already listed is not listed again")
+		"only what needs you")
 
 	e := got.Sections[0].Entries[0]
 	assert.Equal(t, int64(1), e.ItemID)
@@ -102,9 +102,10 @@ func TestALongListShowsHowManyMore(t *testing.T) {
 		items = append(items, it(int64(i+1), i+1, "Item"))
 	}
 
-	got := Summarize(inbox.Snapshot{Authored: inbox.List{Items: items}}, nil, AutopilotState{}, now)
+	got := Summarize(inbox.Snapshot{Yours: inbox.List{Items: items}}, nil, AutopilotState{}, now)
 
 	require.Len(t, got.Sections, 1)
+	assert.Equal(t, "Yours", got.Sections[0].Title)
 	assert.Len(t, got.Sections[0].Entries, PerSection)
 	assert.Equal(t, 3, got.Sections[0].More)
 	assert.Equal(t, "3 more…", MoreLabel(got.Sections[0].More))

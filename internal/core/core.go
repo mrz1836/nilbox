@@ -363,6 +363,7 @@ func Bootstrap(ctx context.Context, opts Options) (*Core, error) {
 
 	keeper.keep(ctx, restored)
 	adoptSetup(ctx, pool, opts.Clock, logger)
+	adoptSections(ctx, pool, opts.Clock, logger)
 
 	info := startup{reset: reset, restored: restored.info(opts.Home, opened.Reset), kept: keeper}
 

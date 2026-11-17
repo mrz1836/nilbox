@@ -23,6 +23,7 @@ import {
 import { all } from './call'
 import { isAgentPrompt } from './launch'
 import { shareResolutions } from './share'
+import { inboxLists } from './triage'
 import { useQuery } from './useQuery'
 
 // LaunchConfig is everything launching reads: the settings, the coding agents and their
@@ -121,25 +122,10 @@ function launchKey(settings: Settings | undefined): string {
       ])
 }
 
-// uniqueItems returns the snapshot's items, each once, in list order.
+// uniqueItems returns the snapshot's items in list order. The lists partition the inbox,
+// so each item is in it once.
 function uniqueItems(snapshot: InboxSnapshot | null): InboxItem[] {
-  if (snapshot === null) {
-    return []
-  }
-
-  const seen = new Set<number>()
-  const out: InboxItem[] = []
-
-  for (const list of [snapshot.reviewRequested, snapshot.authored, snapshot.assigned]) {
-    for (const item of list.items) {
-      if (!seen.has(item.id)) {
-        seen.add(item.id)
-        out.push(item)
-      }
-    }
-  }
-
-  return out
+  return snapshot === null ? [] : inboxLists.flatMap((list) => snapshot[list].items)
 }
 
 // useLaunchConfig loads the launch configuration once, and resolves the launch settings

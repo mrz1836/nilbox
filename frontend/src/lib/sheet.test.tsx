@@ -13,18 +13,18 @@ describe('placeIn', () => {
   const siblings = [item({ id: 1 }), item({ id: 2 }), item({ id: 3 })]
 
   it('finds the cards around one, and its place in the list', () => {
-    expect(placeIn(siblings, 2, 'Assigned')).toEqual({
+    expect(placeIn(siblings, 2, 'Yours')).toEqual({
       prev: siblings[0],
       next: siblings[2],
-      position: '2 of 3 in Assigned',
+      position: '2 of 3 in Yours',
     })
-    expect(placeIn(siblings, 1, 'Assigned')).toMatchObject({ prev: undefined, next: siblings[1] })
-    expect(placeIn(siblings, 3, 'Assigned')).toMatchObject({ prev: siblings[1], next: undefined })
+    expect(placeIn(siblings, 1, 'Yours')).toMatchObject({ prev: undefined, next: siblings[1] })
+    expect(placeIn(siblings, 3, 'Yours')).toMatchObject({ prev: siblings[1], next: undefined })
   })
 
   it('has no place for a card the list doesn’t show', () => {
-    expect(placeIn(siblings, 9, 'Assigned')).toEqual({ prev: undefined, next: undefined, position: '' })
-    expect(placeIn([], 1, 'Assigned')).toEqual({ prev: undefined, next: undefined, position: '' })
+    expect(placeIn(siblings, 9, 'Yours')).toEqual({ prev: undefined, next: undefined, position: '' })
+    expect(placeIn([], 1, 'Yours')).toEqual({ prev: undefined, next: undefined, position: '' })
   })
 })
 

@@ -261,6 +261,7 @@ export function item(overrides: Partial<InboxItem> = {}): InboxItem {
     setAsideBy: 0,
     pinnedBy: 0,
     repoRule: '',
+    authored: false,
     assigned: false,
     reviewRequest: 'none',
     reviewTeams: [],
@@ -2302,8 +2303,7 @@ export function snapshot(overrides: Partial<InboxSnapshot> = {}): InboxSnapshot 
   return {
     account: account(),
     reviewRequested: list([]),
-    authored: list([]),
-    assigned: list([]),
+    yours: list([]),
     rate: { graphql: unknownRate, core: unknownRate, search: unknownRate },
     lastRefreshedAt: '',
     lastError: '',

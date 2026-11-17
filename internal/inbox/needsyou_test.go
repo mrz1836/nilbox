@@ -46,14 +46,14 @@ func TestItemTriageAtATime(t *testing.T) {
 func TestNeedsYouCountsEachItemOnce(t *testing.T) {
 	t.Parallel()
 
-	shared := Item{ID: 1}
 	snap := Snapshot{
-		ReviewRequested: List{Items: []Item{shared, {ID: 2}, {ID: 3, DismissedAt: "2026-03-01T00:00:00Z"}}},
-		Authored:        List{Items: []Item{{ID: 4, SnoozedUntil: "2026-03-05T00:00:00Z"}, {ID: 5}}},
-		Assigned:        List{Items: []Item{shared, {ID: 6, SnoozedUntil: "2026-03-01T00:00:00Z"}}},
+		ReviewRequested: List{Items: []Item{{ID: 1}, {ID: 2}, {ID: 3, DismissedAt: "2026-03-01T00:00:00Z"}}},
+		Yours: List{Items: []Item{
+			{ID: 4, SnoozedUntil: "2026-03-05T00:00:00Z"}, {ID: 5}, {ID: 6, SnoozedUntil: "2026-03-01T00:00:00Z"},
+		}},
 	}
 
-	assert.Equal(t, 4, snap.NeedsYou(needsYouNow), "1, 2, 5, and 6; 1 is in two lists")
+	assert.Equal(t, 4, snap.NeedsYou(needsYouNow), "1, 2, 5, and 6")
 	assert.Equal(t, 5, snap.NeedsYou(time.Date(2026, 3, 6, 0, 0, 0, 0, time.UTC)), "4's snooze has ended")
 	assert.Zero(t, new(Snapshot).NeedsYou(needsYouNow))
 }
@@ -79,7 +79,7 @@ func TestNextSnoozeEnd(t *testing.T) {
 
 	snap := Snapshot{
 		ReviewRequested: List{Items: []Item{{ID: 1, SnoozedUntil: "2026-03-07T00:00:00Z"}}},
-		Authored: List{Items: []Item{
+		Yours: List{Items: []Item{
 			{ID: 2, SnoozedUntil: "2026-03-05T09:30:00Z"},
 			{ID: 3, SnoozedUntil: "2026-03-01T00:00:00Z"},
 			{ID: 4, SnoozedUntil: "2026-03-04T13:00:00Z", DismissedAt: "2026-03-01T00:00:00Z"},

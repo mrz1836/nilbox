@@ -1,1 +1,1 @@
-When a pull request in your Authored list has merge conflicts, if it isn't a draft, run "Resolve conflicts" in the background. Once per commit, at most 2 tries per pull request.
+When a pull request opened by you has merge conflicts, if it isn't a draft, run "Resolve conflicts" in the background. Once per commit, at most 2 tries per pull request.

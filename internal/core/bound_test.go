@@ -106,10 +106,10 @@ func boundCalls(t *testing.T) map[string]boundCall {
 			return c.Settings.InboxOrder(ctx)
 		},
 		"settings.Service.SetStatusSort": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
-			return c.Settings.SetStatusSort(ctx, settings.ListAssigned, true)
+			return c.Settings.SetStatusSort(ctx, settings.ListYours, true)
 		},
 		"settings.Service.SetListKind": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
-			return c.Settings.SetListKind(ctx, settings.ListAssigned, settings.ListKindIssues)
+			return c.Settings.SetListKind(ctx, settings.ListYours, settings.ListKindIssues)
 		},
 		"settings.Service.SetStatusOrder": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
 			return c.Settings.SetStatusOrder(ctx, nil)
@@ -235,7 +235,7 @@ func boundCalls(t *testing.T) map[string]boundCall {
 			return c.Settings.SetGitHubCleanupCardDismissed(ctx, true)
 		},
 		"settings.Service.SetSectionCollapsed": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
-			return c.Settings.SetSectionCollapsed(ctx, settings.ListAuthored, false)
+			return c.Settings.SetSectionCollapsed(ctx, settings.ListYours, false)
 		},
 		"settings.Service.SetTheme": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
 			return c.Settings.SetTheme(ctx, settings.ThemeDark)

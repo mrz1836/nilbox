@@ -45,8 +45,7 @@ function showFinish(change: Partial<FinishStepProps> = {}) {
       snapshot: snapshot({
         lastRefreshedAt: '2026-06-15T12:00:00Z',
         reviewRequested: list([], 5),
-        authored: list([], 4),
-        assigned: list([], 3),
+        yours: list([], 7),
       }),
       refreshing: false,
       refresh: vi.fn(),
@@ -81,7 +80,7 @@ describe('FinishStep', () => {
     expect(log().queryByText(/tools/)).not.toBeInTheDocument()
     expect(log().getByText(/\/setup\s+1m42s/)).toBeInTheDocument()
     expect(log().queryByRole('button', { name: /Fix/ })).not.toBeInTheDocument()
-    expect(screen.getByRole('status')).toHaveTextContent('5 review requests · 4 authored · 3 assigned')
+    expect(screen.getByRole('status')).toHaveTextContent('5 review requests · 7 of yours')
     expect(screen.getByText(/Open in Claude starts a session/)).toBeInTheDocument()
 
     await userEvent.click(screen.getByRole('button', { name: 'Open my inbox' }))

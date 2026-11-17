@@ -46,7 +46,7 @@ func TestActIssueRecordsAClose(t *testing.T) {
 	assert.True(t, got.Assigned)
 	assert.False(t, got.Projects, "an action reads no projects")
 
-	assert.Equal(t, []int{1}, numbers(snap.Assigned), "a close takes it out of every list at once")
+	assert.Equal(t, []int{1}, assignedNumbers(snap), "a close takes it out of every list at once")
 	assert.Equal(t, [3]bool{false, false, false}, h.reasons(t, 3))
 }
 
@@ -60,7 +60,7 @@ func TestActIssueThatClosesNothingStoresNothing(t *testing.T) {
 		return IssueActed{}, nil
 	})
 	require.NoError(t, err)
-	assert.ElementsMatch(t, []int{1, 3}, numbers(snap.Assigned))
+	assert.ElementsMatch(t, []int{1, 3}, assignedNumbers(snap))
 	assert.Len(t, h.events.All(), before, "nothing changed")
 }
 
@@ -119,7 +119,7 @@ func TestActIssueRetriesARefusedTokenWithoutRepeatingAStep(t *testing.T) {
 	})
 	require.NoError(t, err)
 	assert.Equal(t, 2, tries, "tried once more with a fresh token")
-	assert.Equal(t, []int{1}, numbers(snap.Assigned))
+	assert.Equal(t, []int{1}, assignedNumbers(snap))
 }
 
 func TestReadIssueRewritesTheCard(t *testing.T) {
@@ -143,7 +143,7 @@ func TestReadIssueRewritesTheCard(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.Equal(t, ids[3], target.ID)
-	it := itemByNumber(t, snap.Assigned, 3)
+	it := itemByNumber(t, snap.Yours, 3)
 	assert.Equal(t, "Item 3, retitled", it.Title)
 	require.NotNil(t, it.Details)
 	assert.Equal(t, 6, it.Details.Comments)
@@ -179,7 +179,7 @@ func TestReadIssueOfAClosedIssueUnlistsIt(t *testing.T) {
 		return IssueRead{Update: &github.ItemUpdate{Found: true, Item: closed, RateLimit: itemRate()}}, nil
 	})
 	require.NoError(t, err)
-	assert.Equal(t, []int{1}, numbers(snap.Assigned))
+	assert.Equal(t, []int{1}, assignedNumbers(snap))
 
 	// It reads an issue in no list too: its card is still the sheet's to read.
 	_, err = NewActor(h.svc).ReadIssue(t.Context(), ids[3], func(context.Context, github.Token, IssueTarget) (IssueRead, error) {
@@ -280,7 +280,7 @@ func TestStoreReadsAnIssueItem(t *testing.T) {
 		SubIssues: github.SubIssues{Total: 3, Completed: 1},
 	}}
 	snap := h.refresh(t)
-	id := itemByNumber(t, snap.Assigned, 3).ID
+	id := itemByNumber(t, snap.Yours, 3).ID
 	h.exec(t, `UPDATE repos SET viewer_permission = 'TRIAGE', default_branch = 'main'`)
 	h.exec(t, `UPDATE item_details SET projects = '[{"title":"Roadmap","url":"https://github.com/orgs/acme-org/projects/1",
 		"status":"In progress","statusColor":"#bf8700","fields":[{"name":"Size","value":"M","color":""}]}]'`)

@@ -5,7 +5,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 
 import type { ItemRowProps } from './components/ItemRow'
 import { triageList } from './lib/triage'
-import type { InboxItem, InboxSnapshot } from './platform'
+import type { InboxItem, InboxSnapshot, ListKey } from './platform'
 import { FIXED_NOW, fromNow } from './test/clock'
 import { details, fileCheck, githubThreads, item, list, notification, rate, snapshot } from './test/fixtures'
 import { emit, platform, renderApp } from './test/platform'
@@ -89,21 +89,21 @@ function row(id: number): InboxItem {
   })
 }
 
-// inbox is 300 items, 100 in each list, with change made to each.
+// inbox is 300 items, 100 review requests and 200 of the user's own, with change made to
+// each.
 function inbox(change: (item: InboxItem) => InboxItem = (i) => i): InboxSnapshot {
-  const ids = (from: number) => Array.from({ length: 100 }, (_, i) => change(row(from + i)))
+  const ids = (from: number, length: number) => Array.from({ length }, (_, i) => change(row(from + i)))
 
   return snapshot({
-    reviewRequested: list(ids(1)),
-    authored: list(ids(101)),
-    assigned: list(ids(201)),
+    reviewRequested: list(ids(1, 100)),
+    yours: list(ids(101, 200)),
     rate: { graphql: rate(), core: rate(), search: rate() },
     lastRefreshedAt: ago(5),
   })
 }
 
 // shown counts the rows a list shows in its own tab.
-function shown(key: 'reviewRequested' | 'authored' | 'assigned'): number {
+function shown(key: ListKey): number {
   return triageList(inbox()[key], FIXED_NOW).inbox.length
 }
 
@@ -187,7 +187,7 @@ describe('App rendering', () => {
   it('renders a large inbox again only where it changed', { timeout: 60_000 }, async () => {
     const answer = setUp()
     answerThreads(3)
-    const rows = shown('reviewRequested') + shown('authored') + shown('assigned')
+    const rows = shown('reviewRequested') + shown('yours')
 
     const mounted = await measure(async () => {
       await renderApp({ now: () => new Date(), wrapper: Profiled })
@@ -250,10 +250,10 @@ describe('App rendering', () => {
 
     // Collapsing a list takes its rows out of the document.
     const collapse = await measure(async () => {
-      await userEvent.click(screen.getByLabelText('Collapse Authored'))
+      await userEvent.click(screen.getByLabelText('Collapse Yours'))
     })
 
-    expect(mountedRows()).toBe(rows - shown('authored'))
+    expect(mountedRows()).toBe(rows - shown('yours'))
     expect(collapse.mounts).toBe(0)
 
     // Leaving the inbox keeps it, hidden, so coming back mounts nothing.
@@ -266,16 +266,16 @@ describe('App rendering', () => {
       await userEvent.click(views.getByLabelText('Inbox'))
     })
 
-    expect(mountedRows()).toBe(rows - shown('authored'))
+    expect(mountedRows()).toBe(rows - shown('yours'))
     expect(back.mounts).toBe(0)
 
     // Filtering by a phrase only Review requested's items have renders their rows again,
     // to mark their titles, and mounts none: the lists it hides drop their rows, and the
-    // collapsed Authored, open while filtering, has no match to show. It is pasted in one
+    // collapsed Yours, open while filtering, has no match to show. It is pasted in one
     // event, as the field's own steps are measured in its tests.
     const unfiltered = mountedRows()
     const matches = inbox()
-      .reviewRequested.items.concat(inbox().authored.items, inbox().assigned.items)
+      .reviewRequested.items.concat(inbox().yours.items)
       .filter((i) => /item 5/i.test(i.title)).length
     const filter = await measure(async () => {
       await userEvent.click(screen.getByLabelText('Filter inbox'))

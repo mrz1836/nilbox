@@ -310,7 +310,7 @@ func TestARefreshDoesNotBringBackAnItemMergedWhileItFetched(t *testing.T) {
 	got := await(t, refresh)
 	require.NoError(t, got.err)
 	assert.Equal(t, []int{2}, numbers(got.snap.ReviewRequested), "the merged item stays out of the lists")
-	assert.Empty(t, got.snap.Assigned.Items)
+	assert.Empty(t, got.snap.Yours.Items)
 	assert.Equal(t, [3]bool{false, false, false}, h.reasons(t, 1))
 	assert.Equal(t, "2026-01-10T12:10:00Z", got.snap.LastRefreshedAt, "the refresh stored the rest")
 }
@@ -412,7 +412,7 @@ func TestARefreshDoesNotAnnounceAnItemMergedWhileItFetched(t *testing.T) {
 
 	h, sink := arrivalHarness(t)
 	snap := h.seed(t, []github.Item{byOther(pr(2, "OWNER", false))}, nil, []github.Item{byOther(pr(1, "OWNER", false))})
-	id := itemByNumber(t, snap.Assigned, 1).ID
+	id := itemByNumber(t, snap.Yours, 1).ID
 
 	c := h.gatedTelling(sink)
 
@@ -750,8 +750,8 @@ func TestAnAnsweredReviewStaysOutThroughARefreshThatStartedEarlier(t *testing.T)
 	got := await(t, refresh)
 	require.NoError(t, got.err)
 	assert.Equal(t, []int{2}, numbers(got.snap.ReviewRequested), "the refresh doesn't put the card back")
-	assert.Equal(t, []int{1}, numbers(got.snap.Assigned))
-	assert.Equal(t, "2026-01-10T12:10:00Z", itemByNumber(t, got.snap.Assigned, 1).UpdatedAt,
+	assert.Equal(t, []int{1}, numbers(got.snap.Yours))
+	assert.Equal(t, "2026-01-10T12:10:00Z", itemByNumber(t, got.snap.Yours, 1).UpdatedAt,
 		"the item's own read is newer than the refresh's, so it stands")
 	assert.Equal(t, "2026-01-10 12:10:00+00:00", h.reviewLeftAt(t, id))
 	assert.Empty(t, sink.calls, "and nothing arrives")

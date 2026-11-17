@@ -55,16 +55,16 @@ func TestSnapshotMarksEachItemsRepoRuleAndPinsItsRepositorysItems(t *testing.T) 
 		inRepo(acmeOrg, "pinned-repo", 4, true),
 		inRepo("beta-org", "beta-repo", 5, false),
 	})
-	assert.Equal(t, []string{"#5 ", "#4 ", "#3 ", "#2 ", "#1 "}, rulesOf(snap.Assigned), "newest first, no rules")
+	assert.Equal(t, []string{"#5 ", "#4 ", "#3 ", "#2 ", "#1 "}, rulesOf(snap.Yours), "newest first, no rules")
 
-	_, err := h.svc.Pin(t.Context(), itemByNumber(t, snap.Assigned, 2).ID)
+	_, err := h.svc.Pin(t.Context(), itemByNumber(t, snap.Yours, 2).ID)
 	require.NoError(t, err)
 
 	setRules(t, h, []string{"acme-org/pinned-repo", "Beta-Org/beta-repo"}, []string{acmeOrg})
 
 	snap, err = h.svc.Snapshot(t.Context())
 	require.NoError(t, err, "a rule stored past the service is read: the kept snapshot was built under others")
-	assert.Equal(t, []string{"#2 muted", "#5 pinned", "#4 pinned", "#3 pinned", "#1 muted"}, rulesOf(snap.Assigned),
+	assert.Equal(t, []string{"#2 muted", "#5 pinned", "#4 pinned", "#3 pinned", "#1 muted"}, rulesOf(snap.Yours),
 		"the item pinned itself first, then those pinned with their repository, each newest first, then the rest; "+
 			"a repository's own pin wins over its org's mute")
 
@@ -72,7 +72,7 @@ func TestSnapshotMarksEachItemsRepoRuleAndPinsItsRepositorysItems(t *testing.T) 
 
 	snap, err = h.svc.Snapshot(t.Context())
 	require.NoError(t, err)
-	assert.Equal(t, []string{"#2 ", "#5 ", "#4 ", "#3 ", "#1 "}, rulesOf(snap.Assigned), "taking the rules off")
+	assert.Equal(t, []string{"#2 ", "#5 ", "#4 ", "#3 ", "#1 "}, rulesOf(snap.Yours), "taking the rules off")
 }
 
 func TestAMutedItemNeedsNoOne(t *testing.T) {
@@ -91,8 +91,7 @@ func TestAMutedItemNeedsNoOne(t *testing.T) {
 
 	snap := Snapshot{
 		ReviewRequested: List{Items: []Item{muted, pinned}},
-		Authored:        List{Items: []Item{snoozedMuted, snoozed}},
-		Assigned:        List{Items: []Item{muted}},
+		Yours:           List{Items: []Item{snoozedMuted, snoozed}},
 	}
 
 	assert.Equal(t, 1, snap.NeedsYou(needsYouNow), "only the pinned repository's item")

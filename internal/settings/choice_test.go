@@ -131,10 +131,10 @@ func choiceSettings() []choiceSetting {
 			told: func(value string) event.Event { return event.MenuBarChanged{On: value == "true"} },
 		},
 		{
-			name: "collapsed section", key: collapsedKey(ListAuthored), fallback: "",
-			values:   []string{"authored", "", "authored"},
-			refused:  []string{"", "Authored", "snoozed", "ui.collapsed.authored", " authored", "mentions"},
-			sentinel: ErrUnknownSection, message: `"mentions": choose one of reviewRequested, authored, assigned`,
+			name: "collapsed section", key: collapsedKey(ListYours), fallback: "",
+			values:   []string{"yours", "", "yours"},
+			refused:  []string{"", "Yours", "authored", "assigned", "ui.collapsed.yours", " yours", "mentions"},
+			sentinel: ErrUnknownSection, message: `"mentions": choose one of reviewRequested, yours`,
 			unreadable: []string{"", "yes please", "on"},
 			readErr:    "read the collapsed inbox sections", readOnErr: "",
 			get: func(ctx context.Context, svc *Service) (string, error) {
@@ -144,7 +144,7 @@ func choiceSettings() []choiceSetting {
 			},
 			field: func(s Settings) string { return textutil.Join(s.CollapsedSections, ",") },
 			set: func(ctx context.Context, svc *Service, value string) (Settings, error) {
-				return svc.SetSectionCollapsed(ctx, ListAuthored, value != "")
+				return svc.SetSectionCollapsed(ctx, ListYours, value != "")
 			},
 			refuse: func(ctx context.Context, svc *Service, value string) (Settings, error) {
 				return svc.SetSectionCollapsed(ctx, ListKey(value), true)

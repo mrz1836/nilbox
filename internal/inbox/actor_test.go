@@ -54,13 +54,13 @@ func TestActRecordsAReviewAndAMerge(t *testing.T) {
 	assert.True(t, got.Assigned)
 
 	assert.Equal(t, []int{2}, numbers(snap.ReviewRequested), "a review fulfills the request")
-	assert.Equal(t, []int{1}, numbers(snap.Assigned), "and leaves the other lists")
+	assert.Equal(t, []int{1}, numbers(snap.Yours), "and the assigned pull request moves to Yours")
 
 	snap, err = actor.Act(t.Context(), id, func(context.Context, github.Token, PullTarget) (Acted, error) {
 		return Acted{Merged: true}, nil
 	})
 	require.NoError(t, err)
-	assert.Empty(t, snap.Assigned.Items, "a merge takes it out of every list at once")
+	assert.Empty(t, snap.Yours.Items, "a merge takes it out of the inbox at once")
 	assert.Equal(t, [3]bool{false, false, false}, h.reasons(t, 1))
 }
 
@@ -74,7 +74,7 @@ func TestActRecordsAClose(t *testing.T) {
 	})
 	require.NoError(t, err)
 	assert.Equal(t, []int{2}, numbers(snap.ReviewRequested), "a close takes it out of every list at once")
-	assert.Empty(t, snap.Assigned.Items)
+	assert.Empty(t, snap.Yours.Items)
 	assert.Equal(t, [3]bool{false, false, false}, h.reasons(t, 1))
 }
 
@@ -156,7 +156,7 @@ func TestActRetriesARefusedTokenWithoutRepeatingAStep(t *testing.T) {
 	})
 	require.NoError(t, err)
 	assert.Equal(t, 2, tries, "tried once more with a fresh token")
-	assert.Empty(t, snap.Assigned.Items, "both tries' steps are recorded")
+	assert.Empty(t, snap.Yours.Items, "both tries' steps are recorded")
 }
 
 func TestActThatChangesNothingStoresNothing(t *testing.T) {
@@ -193,7 +193,7 @@ func TestAMergeStaysUnlistedThroughARefreshThatStartedEarlier(t *testing.T) {
 	got := await(t, refresh)
 	require.NoError(t, got.err)
 	assert.Equal(t, []int{2}, numbers(got.snap.ReviewRequested), "the merged item stays out of the lists")
-	assert.Empty(t, got.snap.Assigned.Items)
+	assert.Empty(t, got.snap.Yours.Items)
 }
 
 func TestReadPullRewritesTheCardAndServesTheFileCheck(t *testing.T) {
@@ -428,6 +428,6 @@ func TestReadPullTakesAReviewGitHubNoLongerAsksOutOfReviewRequested(t *testing.T
 	require.NoError(t, err)
 
 	assert.Equal(t, []int{2}, numbers(snap.ReviewRequested))
-	assert.Equal(t, []int{1}, numbers(snap.Assigned), "the assignment stays")
+	assert.Equal(t, []int{1}, numbers(snap.Yours), "the assignment stays")
 	assert.Equal(t, "2026-01-10 12:10:00+00:00", h.reviewLeftAt(t, id))
 }

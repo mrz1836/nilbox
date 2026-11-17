@@ -478,7 +478,9 @@ func (s *Service) portableFields() []portableField {
 		pointerField("How long messages stay", tellsNothing, func(p Portable) *int { return p.ToastSeconds },
 			func(_ context.Context, n int) (map[string]string, error) { return checkToastSeconds(n) }, seconds),
 		pointerField("Inbox sorting", tellsNothing, func(p Portable) *InboxOrder { return p.InboxOrder },
-			func(_ context.Context, order InboxOrder) (map[string]string, error) { return checkInboxOrder(order) }, nil),
+			func(_ context.Context, order InboxOrder) (map[string]string, error) {
+				return checkInboxOrder(adoptFormerOrder(order))
+			}, nil),
 		pointerField("When a new version is out", tellsUpdates, func(p Portable) *updateprefs.Mode { return p.UpdateMode },
 			func(_ context.Context, m updateprefs.Mode) (map[string]string, error) { return checkUpdateMode(m) },
 			func(m updateprefs.Mode) string { return string(m) }),

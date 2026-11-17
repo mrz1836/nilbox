@@ -142,7 +142,7 @@ export interface Issue {
     "updatedAt": string;
 
     /**
-     * Assigned reports that it is in the user's Assigned list.
+     * Assigned reports that it is assigned to the user.
      */
     "assigned": boolean;
 

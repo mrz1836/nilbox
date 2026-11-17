@@ -730,6 +730,39 @@ func numbers(l List) []int {
 	return out
 }
 
+// assignedNumbers is the numbers of the items assigned to the user, in either list, the
+// Review requested list's first.
+func assignedNumbers(s Snapshot) []int {
+	out := []int{}
+
+	for _, l := range s.Lists() {
+		for _, it := range l.Items {
+			if it.Assigned {
+				out = append(out, it.Number)
+			}
+		}
+	}
+
+	return out
+}
+
+// anyItem finds an item in either list.
+func anyItem(t *testing.T, s Snapshot, number int) Item {
+	t.Helper()
+
+	for _, l := range s.Lists() {
+		for _, it := range l.Items {
+			if it.Number == number {
+				return it
+			}
+		}
+	}
+
+	require.Failf(t, "missing item", "#%d", number)
+
+	return Item{}
+}
+
 func TestRefreshUpsertsItemsWithReasonFlags(t *testing.T) {
 	t.Parallel()
 
@@ -737,14 +770,18 @@ func TestRefreshUpsertsItemsWithReasonFlags(t *testing.T) {
 
 	a := pr(1, "OWNER", false)
 	b := pr(2, "OWNER", false)
-	c := issue("other-repo", 3, "MEMBER")
+	c := byOther(issue("other-repo", 3, "MEMBER"))
 
 	// A is both review-requested and assigned.
 	snap := h.seed(t, []github.Item{a}, []github.Item{b}, []github.Item{a, c})
 
-	assert.Equal(t, []int{1}, numbers(snap.ReviewRequested))
-	assert.Equal(t, []int{2}, numbers(snap.Authored))
-	assert.Equal(t, []int{3, 1}, numbers(snap.Assigned), "newest activity first")
+	assert.Equal(t, []int{1}, numbers(snap.ReviewRequested), "review requested, whatever else it is")
+	assert.Equal(t, []int{3, 2}, numbers(snap.Yours), "the rest, newest activity first")
+	assert.True(t, itemByNumber(t, snap.ReviewRequested, 1).Assigned, "its card says it is assigned too")
+	assert.True(t, itemByNumber(t, snap.Yours, 2).Authored)
+	assert.False(t, itemByNumber(t, snap.Yours, 2).Assigned)
+	assert.True(t, itemByNumber(t, snap.Yours, 3).Assigned)
+	assert.False(t, itemByNumber(t, snap.Yours, 3).Authored)
 	assert.Equal(t, [3]bool{true, false, true}, h.reasons(t, 1))
 	assert.Equal(t, [3]bool{false, true, false}, h.reasons(t, 2))
 	assert.Equal(t, [3]bool{false, false, true}, h.reasons(t, 3))
@@ -761,9 +798,7 @@ func TestRefreshUpsertsItemsWithReasonFlags(t *testing.T) {
 	snap = h.seed(t, []github.Item{a}, nil, []github.Item{c})
 
 	assert.Equal(t, []int{1}, numbers(snap.ReviewRequested))
-	assert.Empty(t, snap.Authored.Items)
-	assert.NotNil(t, snap.Authored.Items, "an empty list is [] for the UI, not null")
-	assert.Equal(t, []int{3}, numbers(snap.Assigned))
+	assert.Equal(t, []int{3}, numbers(snap.Yours))
 	assert.Equal(t, "Item 1, retitled", snap.ReviewRequested.Items[0].Title)
 
 	assert.Equal(t, [3]bool{true, false, false}, h.reasons(t, 1))
@@ -771,6 +806,77 @@ func TestRefreshUpsertsItemsWithReasonFlags(t *testing.T) {
 	assert.Equal(t, [3]bool{false, false, true}, h.reasons(t, 3))
 	assert.Equal(t, int64(3), h.count(t, "items"), "items that drop out keep their row")
 	assert.Equal(t, int64(1), h.count(t, "item_local_state"))
+}
+
+func TestTheListsPartitionTheInbox(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+
+	// Every mix of the three reasons: 1 all three, 2 review requested and authored, 3
+	// review requested and assigned, 4 authored and assigned, 5 to 7 one each.
+	one, two, three, four := pr(1, "OWNER", false), pr(2, "OWNER", false), pr(3, "OWNER", false), pr(4, "OWNER", false)
+	five, six, seven := pr(5, "OWNER", false), pr(6, "OWNER", false), issue("other-repo", 7, "MEMBER")
+
+	snap := h.seed(t, []github.Item{one, two, three, five}, []github.Item{one, two, four, six},
+		[]github.Item{one, three, four, seven})
+
+	assert.ElementsMatch(t, []int{1, 2, 3, 5}, numbers(snap.ReviewRequested))
+	assert.ElementsMatch(t, []int{4, 6, 7}, numbers(snap.Yours))
+
+	inReview := map[int64]bool{}
+	for _, it := range snap.ReviewRequested.Items {
+		inReview[it.ID] = true
+	}
+
+	for _, it := range snap.Yours.Items {
+		assert.False(t, inReview[it.ID], "#%d is in both lists", it.Number)
+	}
+
+	assert.Equal(t, len(snap.ReviewRequested.Items)+len(snap.Yours.Items), snap.NeedsYou(h.clock.Now()),
+		"the lists' counts add up to the inbox's")
+
+	mine := anyItem(t, snap, 4)
+	assert.True(t, mine.Authored)
+	assert.True(t, mine.Assigned)
+	assert.Equal(t, ReviewRequestNone, mine.ReviewRequest)
+
+	assert.Equal(t, 4, snap.ReviewRequested.Total)
+	assert.Equal(t, 3, snap.Yours.Total)
+}
+
+func TestAnItemTheUserOpenedSaysSoWhicheverSearchFoundIt(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+
+	// The authored search reads pull requests alone: an issue the user opened reaches the
+	// inbox only once it is assigned to them, and so does their own pull request past the
+	// authored search's page.
+	mine, theirs := issue("example-repo", 1, "OWNER"), byOther(issue("example-repo", 2, "MEMBER"))
+	mine.AuthorLogin = "Octo-User"
+	snap := h.seed(t, nil, nil, []github.Item{mine, theirs, pr(3, "OWNER", false)})
+
+	assert.True(t, itemByNumber(t, snap.Yours, 1).Authored, "the author is the user, in any case")
+	assert.False(t, itemByNumber(t, snap.Yours, 2).Authored)
+	assert.True(t, itemByNumber(t, snap.Yours, 3).Authored)
+	assert.Equal(t, [3]bool{false, false, true}, h.reasons(t, 1), "the stored flags are the searches' alone")
+}
+
+func TestYoursTotalCountsBothSearchesBeyondTheirPage(t *testing.T) {
+	t.Parallel()
+
+	snap := Snapshot{ReviewRequested: List{Items: []Item{{ID: 1}}}, Yours: List{Items: []Item{{ID: 2}, {ID: 3}}}}
+	snap.applyTotals(map[string]string{
+		prefBeyondReviewRequested: "4", prefBeyondAuthored: "10", prefBeyondAssigned: "2",
+	})
+
+	assert.Equal(t, List{Items: snap.ReviewRequested.Items, Shown: 1, Total: 5}, snap.ReviewRequested)
+	assert.Equal(t, List{Items: snap.Yours.Items, Shown: 2, Total: 14}, snap.Yours,
+		"an upper bound: the authored and the assigned searches' counts past their pages")
+
+	snap.applyTotals(map[string]string{prefBeyondAuthored: "bad", prefBeyondAssigned: "-3"})
+	assert.Equal(t, 2, snap.Yours.Total, "a missing or bad count adds none")
 }
 
 func TestRefreshStoresTrustFields(t *testing.T) {
@@ -816,7 +922,7 @@ func TestRefreshStoresTrustFields(t *testing.T) {
 	trusted := make(map[int]bool)
 	bots := make(map[int]bool)
 
-	for _, l := range []List{snap.ReviewRequested, snap.Authored, snap.Assigned} {
+	for _, l := range []List{snap.ReviewRequested, snap.Yours, snap.Yours} {
 		for _, it := range l.Items {
 			classes[it.Number], trusted[it.Number], bots[it.Number] = it.Trust, it.Trusted, it.AuthorIsBot
 		}
@@ -837,7 +943,7 @@ func TestRefreshStoresTrustFields(t *testing.T) {
 		URL:  "https://github.com/acme-org/example-repo/pull/12",
 		Repo: "acme-org/example-repo", Author: octoUser, UpdatedAt: "2026-01-01T12:00:00Z",
 		Trust: trust.ClassOutside, Trusted: false, IsCrossRepository: true, AuthorAssociation: "CONTRIBUTOR",
-		Branch: "branch-12", ReviewRequest: ReviewRequestYou, ReviewTeams: []string{},
+		Branch: "branch-12", Authored: true, ReviewRequest: ReviewRequestYou, ReviewTeams: []string{},
 	}, fromFork)
 
 	// The trusted list is the user's: with it emptied, Dependabot is an outside contributor.
@@ -973,9 +1079,8 @@ func TestSnapshotReportsNofM(t *testing.T) {
 	snap := h.refresh(t)
 	assert.Equal(t, 2, snap.ReviewRequested.Shown)
 	assert.Equal(t, 7, snap.ReviewRequested.Total)
-	assert.Equal(t, 1, snap.Authored.Shown)
-	assert.Equal(t, 1, snap.Authored.Total)
-	assert.Equal(t, 0, snap.Assigned.Total)
+	assert.Equal(t, 1, snap.Yours.Shown)
+	assert.Equal(t, 1, snap.Yours.Total)
 
 	// The totals and refresh status survive a restart.
 	again, err := h.service().Snapshot(t.Context())
@@ -1002,7 +1107,7 @@ func TestAnItemThatLeavesAListLeavesItsTotal(t *testing.T) {
 
 	assert.Equal(t, []int{2}, numbers(snap.ReviewRequested), "a review takes #1 out of Review requested")
 	assert.Equal(t, 1, snap.ReviewRequested.Total, "and out of its total, which reads 1, not 1 of 2")
-	assert.Equal(t, 1, snap.Assigned.Total, "the lists it stays in keep theirs")
+	assert.Equal(t, 1, snap.Yours.Total, "the lists it stays in keep theirs")
 }
 
 func TestALongListKeepsWhatItsSearchMatchedPastOnePage(t *testing.T) {
@@ -1035,7 +1140,7 @@ func TestARefreshForgetsTheWholeCountsAnOlderBuildKept(t *testing.T) {
 
 	snap := h.seed(t, nil, []github.Item{pr(1, "OWNER", false)}, nil)
 
-	assert.Equal(t, 1, snap.Authored.Total, "an old whole count is never read as a count past the page")
+	assert.Equal(t, 1, snap.Yours.Total, "an old whole count is never read as a count past the page")
 
 	_, found, err := h.svc.prefs.Get(t.Context(), "inbox.total.authored")
 	require.NoError(t, err)
@@ -1169,8 +1274,7 @@ func TestSnapshotBeforeFirstRefresh(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, Snapshot{
 		ReviewRequested: List{Items: []Item{}},
-		Authored:        List{Items: []Item{}},
-		Assigned:        List{Items: []Item{}},
+		Yours:           List{Items: []Item{}},
 	}, snap)
 }
 
@@ -1187,7 +1291,7 @@ func TestSnapshotSwitchesWithTheViewer(t *testing.T) {
 
 	assert.Equal(t, "octo-other", snap.Account.Login)
 	assert.Empty(t, snap.ReviewRequested.Items)
-	assert.Equal(t, []int{2}, numbers(snap.Authored))
+	assert.Equal(t, []int{2}, numbers(snap.Yours))
 	assert.Equal(t, int64(2), h.count(t, "accounts"))
 }
 
@@ -1391,16 +1495,15 @@ func TestRefreshStoresEachItemsDetails(t *testing.T) {
 		Reviews:      Reviews{Decision: "APPROVED", Reviewers: 2, Reviewed: 1, Approvals: 1},
 		FetchedAt:    "2026-01-10T12:00:00Z",
 	}, itemByNumber(t, snap.ReviewRequested, 1).Details)
-	assert.Equal(t, itemByNumber(t, snap.ReviewRequested, 1).Details, itemByNumber(t, snap.Assigned, 1).Details)
 
 	assert.Equal(t, &Details{
 		Labels:    []Label{{Name: "bug", Color: "#d73a4a"}},
 		Projects:  []Project{},
 		Comments:  7,
 		FetchedAt: "2026-01-10T12:00:00Z",
-	}, itemByNumber(t, snap.Assigned, 3).Details)
+	}, itemByNumber(t, snap.Yours, 3).Details)
 
-	assert.Nil(t, itemByNumber(t, snap.Authored, 2).Details, "GitHub sent nothing for it")
+	assert.Nil(t, itemByNumber(t, snap.Yours, 2).Details, "GitHub sent nothing for it")
 }
 
 func TestRefreshReplacesTheDetails(t *testing.T) {
@@ -1732,7 +1835,7 @@ func TestRefreshLeavesArchivedRepositoriesOut(t *testing.T) {
 	old := issue("old-repo", 2, "MEMBER")
 
 	snap := h.seed(t, []github.Item{live}, nil, []github.Item{old})
-	assert.Equal(t, []int{2}, numbers(snap.Assigned))
+	assert.Equal(t, []int{2}, numbers(snap.Yours))
 
 	// old-repo is archived; GitHub's index has not caught up, so the search still returns
 	// its issue, and in two lists.
@@ -1744,7 +1847,7 @@ func TestRefreshLeavesArchivedRepositoriesOut(t *testing.T) {
 	snap = h.refresh(t)
 
 	assert.Equal(t, []int{1}, numbers(snap.ReviewRequested))
-	assert.Empty(t, snap.Assigned.Items, "the archived repository's issue is no longer listed")
+	assert.Empty(t, snap.Yours.Items, "the archived repository's issue is no longer listed")
 	assert.Equal(t, [][]string{{nodeID(2), nodeID(1)}}, h.client.detailsIDs,
 		"it was listed before, so it was asked about alongside the inbox (newest first), and nothing new after")
 	assert.Equal(t, [3]bool{false, false, false}, h.reasons(t, 2))

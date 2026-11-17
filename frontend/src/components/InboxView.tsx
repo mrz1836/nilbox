@@ -13,7 +13,16 @@ import { ruleFor, withRepoRule } from '../lib/repoRules'
 import { noSessions, sessionsOf } from '../lib/sessions'
 import { movesOnTo } from '../lib/sheet'
 import { formatAgo } from '../lib/time'
-import { findItem, itemsByRef, tabOf, type TriagedInbox, type TriageTab } from '../lib/triage'
+import {
+  byList,
+  findItem,
+  inboxLists,
+  itemsByRef,
+  listTitles,
+  tabOf,
+  type TriagedInbox,
+  type TriageTab,
+} from '../lib/triage'
 import type { InboxState } from '../lib/useInbox'
 import type { InboxOrderState } from '../lib/useInboxOrder'
 import {
@@ -195,11 +204,8 @@ export function resultTone(result: ReviewResult): 'warning' | 'success' {
     : 'success'
 }
 
-const sections: readonly { key: ListKey; title: string }[] = [
-  { key: 'reviewRequested', title: 'Review requested' },
-  { key: 'authored', title: 'Authored' },
-  { key: 'assigned', title: 'Assigned' },
-]
+// sections are the inbox's lists as its sections show them, in order.
+const sections: readonly { key: ListKey; title: string }[] = inboxLists.map((key) => ({ key, title: listTitles[key] }))
 
 // NoMatches says that nothing in the inbox matches the query, what the filter looks at,
 // and offers to clear it. It sits at the top, where the eye already is.
@@ -407,7 +413,7 @@ export function InboxView({
       setViewing({ id: item.id, kind: item.kind, list, tab, arrow: '', back: null, refocus: 0 })
     }
 
-    return { reviewRequested: open('reviewRequested'), authored: open('authored'), assigned: open('assigned') }
+    return byList(open)
   })
   const [openFromMenu] = useState(() => (item: InboxItem, tab: TriageTab) => {
     const list = sections.find(({ key }) => shown.current?.[key].items.some((i) => i.id === item.id))?.key

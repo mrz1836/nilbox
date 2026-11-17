@@ -144,7 +144,7 @@ func TestPhraseSaysEveryType(t *testing.T) {
 		},
 		{
 			spec.Clause{Field: catalog.FieldLists, Op: catalog.OpHasAny, Values: []string{"reviewRequested", "assigned"}},
-			"its inbox lists include Review requested or Assigned",
+			"the reasons it's in your inbox include review requested or assigned to you",
 		},
 		{spec.Clause{Field: catalog.FieldSensitive, Op: catalog.OpNotEmpty}, "a sensitive file changed"},
 		{spec.Clause{Field: catalog.FieldApprovals, Op: catalog.OpGte, Value: "2"}, "the approvals are at least 2"},

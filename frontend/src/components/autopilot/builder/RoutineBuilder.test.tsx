@@ -304,7 +304,7 @@ describe('the routine builder', () => {
     expect(watch.queryByRole('textbox', { name: 'More qualifiers' })).not.toBeInTheDocument()
   })
 
-  it('watches inbox lists and several searches, and takes a source away', async () => {
+  it('watches the inbox and several searches, and takes a source away', async () => {
     const user = userEvent.setup()
     renderBuilder()
 
@@ -312,11 +312,11 @@ describe('the routine builder', () => {
 
     expect(watch.queryByRole('button', { name: 'Remove source 1' })).not.toBeInTheDocument()
 
-    await user.click(watch.getByRole('button', { name: 'Watch inbox lists' }))
+    await user.click(watch.getByRole('button', { name: 'Watch your inbox' }))
     expect(spec().watch.sources[1]).toEqual({ lists: ['reviewRequested'] })
-    expect(watch.queryByRole('button', { name: 'Watch inbox lists' })).not.toBeInTheDocument()
+    expect(watch.queryByRole('button', { name: 'Watch your inbox' })).not.toBeInTheDocument()
 
-    await user.click(watch.getByRole('checkbox', { name: 'Authored' }))
+    await user.click(watch.getByRole('checkbox', { name: 'Opened by you' }))
     await user.click(watch.getByRole('checkbox', { name: 'Review requested' }))
     expect(spec().watch.sources[1]).toEqual({ lists: ['authored'] })
 
@@ -366,14 +366,14 @@ describe('the routine builder', () => {
       await watch.findByText('Search 1: This search matches 340 items; only the newest 100 are checked.'),
     ).toBeInTheDocument()
     expect(watch.getByText('Search 2: GitHub refused it.')).toBeInTheDocument()
-    expect(watch.getByText('Nothing more a refresh: the inbox reads its lists already.')).toBeInTheDocument()
+    expect(watch.getByText('Nothing more a refresh: the inbox reads these already.')).toBeInTheDocument()
 
     // A change to what it fires on leaves the searches as tested: their words and their
     // cost stand.
     await user.selectOptions(block('When').getByRole('combobox', { name: 'Trigger' }), 'appears')
     expect(screen.getByText(/changed since this test: Test again/)).toBeInTheDocument()
     expect(watch.getByText('Search 2: GitHub refused it.')).toBeInTheDocument()
-    expect(watch.getByText('Nothing more a refresh: the inbox reads its lists already.')).toBeInTheDocument()
+    expect(watch.getByText('Nothing more a refresh: the inbox reads these already.')).toBeInTheDocument()
 
     // A change to what it watches leaves the test's words behind, said to be of an earlier
     // draft, until it is tried again; the cost line says it is the last test's.
@@ -382,7 +382,7 @@ describe('the routine builder', () => {
     expect(screen.getByText(/changed since this test: Test again/)).toBeInTheDocument()
     expect(
       watch.getByText(
-        'Nothing more a refresh: the inbox reads its lists already · as last tested, before the searches changed',
+        'Nothing more a refresh: the inbox reads these already · as last tested, before the searches changed',
       ),
     ).toBeInTheDocument()
     expect(platform.testRoutine).toHaveBeenCalledOnce()

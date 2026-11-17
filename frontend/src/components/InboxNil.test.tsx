@@ -49,10 +49,10 @@ describe('InboxNil', () => {
 
     const terminal = within(screen.getByRole('figure', { name: 'Terminal' }))
     expect(terminal.getByText(`${brand.slug} status`)).toBeInTheDocument()
-    for (const label of ['review requested', 'authored', 'assigned']) {
+    for (const label of ['review requested', 'yours']) {
       expect(terminal.getByText(label)).toBeInTheDocument()
     }
-    expect(terminal.getAllByText('✓ clear')).toHaveLength(3)
+    expect(terminal.getAllByText('✓ clear')).toHaveLength(2)
     expect(terminal.getByText('panic: runtime error: nothing left to do')).toBeInTheDocument()
     expect(terminal.getByText('exit status 0')).toBeInTheDocument()
     // Nothing was set aside, so the terminal does not mention it.
@@ -63,7 +63,7 @@ describe('InboxNil', () => {
   it('counts what was set aside and when the first snooze comes back', () => {
     const setAside = snapshot({
       lastRefreshedAt: '2026-06-15T11:55:00Z',
-      authored: list([
+      yours: list([
         item({ id: 1, snoozedUntil: '2026-06-16T09:00:00Z' }),
         item({ id: 2, snoozedUntil: '2026-06-18T09:00:00Z' }),
         item({ id: 3, dismissedAt: '2026-06-14T09:00:00Z' }),

@@ -93,7 +93,7 @@ export interface InboxOrder {
  * ListKey names an inbox list, as the inbox snapshot names it: each list is a section of
  * the inbox the user can collapse.
  */
-export type ListKey = "reviewRequested" | "authored" | "assigned";
+export type ListKey = "reviewRequested" | "yours";
 
 /**
  * The values of ListKey, by the names of their Go constants.
@@ -103,8 +103,7 @@ export const ListKey = {
      * The inbox lists, in the order the inbox shows them.
      */
     ListReviewRequested: "reviewRequested",
-    ListAuthored: "authored",
-    ListAssigned: "assigned",
+    ListYours: "yours",
 } as const;
 
 /**

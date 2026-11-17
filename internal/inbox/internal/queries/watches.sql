@@ -216,9 +216,9 @@ SELECT checks FROM item_checks WHERE checks <> '[]';
 UPDATE item_watches SET stale = 1 WHERE watch_key = ?;
 
 -- name: CountBotPullRequests :one
--- CountBotPullRequests counts the pull requests in the inbox lists of the account with
--- login that were opened since since: those Dependabot opened, and those any bot opened in
--- the Review requested and Assigned lists. They suggest Autopilot's templates.
+-- CountBotPullRequests counts the pull requests in the inbox of the account with login that
+-- were opened since since: those Dependabot opened, and those any bot opened that ask for
+-- the user's review or are assigned to them. They suggest Autopilot's templates.
 SELECT
     CAST(COALESCE(SUM(CASE WHEN lower(i.author_login) IN ('dependabot', 'dependabot[bot]') THEN 1 ELSE 0 END), 0)
         AS INTEGER) AS dependabot,

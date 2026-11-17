@@ -277,7 +277,7 @@ func TestDescribeWarnsOfWhatMayDoLessThanMeant(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, got.Warnings, 1)
 	assert.Equal(t, "steps[0]", got.Warnings[0].Path())
-	assert.Contains(t, got.Warnings[0].Message, "inbox lists")
+	assert.Contains(t, got.Warnings[0].Message, "aren't in your inbox")
 	assert.NotEmpty(t, got.Sentence, "a warning keeps nothing from being saved")
 
 	terminal := agentSpec()

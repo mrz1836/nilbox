@@ -70,11 +70,11 @@ describe('shownItems', () => {
 
 describe('shownOrder', () => {
   it('reads how the inbox sorts a list, and newest activity first while the order loads', () => {
-    const order = { statusSorted: ['assigned' as const], statusOrder: ['Done'], kinds: { authored: 'issue' as const } }
+    const order = { statusSorted: ['yours' as const], statusOrder: ['Done'], kinds: { reviewRequested: 'pr' as const } }
 
-    expect(shownOrder(order, 'assigned')).toEqual({ byStatus: true, stored: ['Done'], kind: 'all' })
-    expect(shownOrder(order, 'authored')).toEqual({ byStatus: false, stored: ['Done'], kind: 'issue' })
-    expect(shownOrder(null, 'assigned')).toEqual({ byStatus: false, stored: [], kind: 'all' })
+    expect(shownOrder(order, 'yours')).toEqual({ byStatus: true, stored: ['Done'], kind: 'all' })
+    expect(shownOrder(order, 'reviewRequested')).toEqual({ byStatus: false, stored: ['Done'], kind: 'pr' })
+    expect(shownOrder(null, 'yours')).toEqual({ byStatus: false, stored: [], kind: 'all' })
   })
 })
 

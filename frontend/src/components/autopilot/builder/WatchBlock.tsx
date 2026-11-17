@@ -141,7 +141,7 @@ export function WatchBlock({ kit, sources, onChange, cost, tested }: WatchBlockP
             className={quietButtonClass}
           >
             <PlusIcon className="size-3.5" />
-            Watch inbox lists
+            Watch your inbox
           </button>
         )}
         {cost !== '' && <span className="ml-auto text-xs text-muted">{cost}</span>}
@@ -176,7 +176,8 @@ function RemoveSource({ index, onRemove }: { index: number; onRemove: (() => voi
   )
 }
 
-// ListsSource is a source of inbox lists, which the inbox reads on every refresh already.
+// ListsSource is a source of inbox reasons, the inbox's own searches, which it reads on
+// every refresh already: it watches every item in the inbox with any of the reasons ticked.
 function ListsSource({
   index,
   kit,
@@ -190,7 +191,7 @@ function ListsSource({
   return (
     <div className="flex flex-col gap-1 rounded-md border border-border p-2">
       <fieldset className="flex flex-wrap items-center gap-x-4 gap-y-1">
-        <legend className="mb-1 text-xs font-medium text-muted">Inbox lists</legend>
+        <legend className="mb-1 text-xs font-medium text-muted">In your inbox</legend>
         {kit.catalog.lists.map((l) => (
           <label key={l.id} htmlFor={`${id}-${l.id}`} className="inline-flex items-center gap-1.5 text-sm">
             <input

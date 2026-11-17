@@ -95,43 +95,34 @@ func watchMisses(sp spec.Spec, f facts.Facts, viewer string) []string {
 	return out
 }
 
-// listMiss says which of lists the item isn't in.
+// listMiss says which of the inbox reasons lists the item doesn't have, and why it is in
+// the inbox instead: "It isn't asking for your review: it's in your inbox, opened by you."
 func listMiss(lists []catalog.ListSource, f facts.Facts) string {
-	label := func(l catalog.ListSource) string {
+	phrase := func(l catalog.ListSource) string {
 		if info, ok := catalog.ListSourceByID(l); ok {
-			return info.Label
+			return info.Phrase
 		}
 
 		return string(l)
 	}
 
-	labels := make([]string, 0, len(lists))
+	missed := make([]string, 0, len(lists))
 	for _, l := range lists {
-		labels = append(labels, label(l))
+		missed = append(missed, phrase(l))
 	}
 
 	listed := f.Value(catalog.FieldLists).List
-	in := make([]string, 0, len(listed))
+	reasons := make([]string, 0, len(listed))
 
 	for _, l := range listed {
-		in = append(in, label(catalog.ListSource(l)))
+		reasons = append(reasons, phrase(catalog.ListSource(l)))
 	}
 
-	if len(in) == 0 {
-		return fmt.Sprintf("It isn't in your %s %s.", series(labels), plural(len(labels), "list", "lists"))
+	if len(reasons) == 0 {
+		return "It isn't in your inbox."
 	}
 
-	return fmt.Sprintf("It isn't in your %s %s: it's in your %s %s.", series(labels), plural(len(labels), "list", "lists"),
-		series(in), plural(len(in), "list", "lists"))
-}
-
-// plural picks one or many by n.
-func plural(n int, one, many string) string {
-	if n == 1 {
-		return one
-	}
-
-	return many
+	return fmt.Sprintf("It isn't %s: it's in your inbox, %s.", orSeries(missed), series(reasons))
 }
 
 // searchMiss says the first field of s the item f doesn't fit, as far as its facts tell,

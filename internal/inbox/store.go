@@ -369,7 +369,8 @@ type IssueItem struct {
 	CreatedAt time.Time
 	UpdatedAt time.Time
 
-	// Assigned reports that the issue is in the Assigned list, the only list an issue is in.
+	// Assigned reports that the issue is assigned to the user, the only reason an issue is
+	// in the inbox.
 	Assigned bool
 
 	// Owner and Name are the repository, and DefaultBranch its default branch.

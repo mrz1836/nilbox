@@ -1,4 +1,4 @@
 # The sentence spec.Sentence writes for testdata/templates/investigate-new-bugs.json. Rewrite with
 # go test ./internal/autopilot/spec -run TestSentenceGolden -update
 
-When an item in your Assigned list is labeled bug, if it's an issue, run "Work on it" in the background, read only. At most 2 tries per item.
+When an item assigned to you is labeled bug, if it's an issue, run "Work on it" in the background, read only. At most 2 tries per item.

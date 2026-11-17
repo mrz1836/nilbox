@@ -51,15 +51,14 @@ func (l List) Waiting(now time.Time) []Item {
 	return out
 }
 
-// Lists returns the three lists in the order the inbox shows them.
+// Lists returns the two lists in the order the inbox shows them. No item is in both.
 func (s *Snapshot) Lists() []List {
-	return []List{s.ReviewRequested, s.Authored, s.Assigned}
+	return []List{s.ReviewRequested, s.Yours}
 }
 
-// NeedsYou counts the items that need the user at now: those in any list, not muted,
-// dismissed, or snoozed, each once however many lists it is in. It is the count the Inbox
-// tab shows (inboxCount in the frontend's lib/triage.ts), so the menu bar and the window
-// always agree.
+// NeedsYou counts the items that need the user at now: those in either list, not muted,
+// dismissed, or snoozed, each once. It is the count the Inbox tab shows (inboxCount in the
+// frontend's lib/triage.ts), so the menu bar and the window always agree.
 func (s *Snapshot) NeedsYou(now time.Time) int {
 	seen := make(map[int64]struct{})
 

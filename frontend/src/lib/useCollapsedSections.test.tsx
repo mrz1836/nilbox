@@ -21,13 +21,13 @@ async function loaded() {
 
 describe('useCollapsedSections', () => {
   it('is null until the stored state loads, then holds it', async () => {
-    platform.getCollapsedSections.mockResolvedValue(['authored', 'assigned'])
+    platform.getCollapsedSections.mockResolvedValue(['reviewRequested', 'yours'])
     const { result } = renderHook(() => useCollapsedSections())
 
     expect(result.current.collapsed).toBeNull()
 
     await waitFor(() => {
-      expect(result.current.collapsed).toEqual(new Set(['authored', 'assigned']))
+      expect(result.current.collapsed).toEqual(new Set(['reviewRequested', 'yours']))
     })
 
     expect(platform.getCollapsedSections).toHaveBeenCalledOnce()
@@ -37,14 +37,14 @@ describe('useCollapsedSections', () => {
     const { result } = await loaded()
 
     act(() => {
-      result.current.setCollapsed('authored', true)
+      result.current.setCollapsed('yours', true)
     })
 
-    expect(result.current.collapsed).toEqual(new Set(['authored']))
+    expect(result.current.collapsed).toEqual(new Set(['yours']))
 
     act(() => {
       result.current.setCollapsed('reviewRequested', true)
-      result.current.setCollapsed('authored', false)
+      result.current.setCollapsed('yours', false)
     })
 
     expect(result.current.collapsed).toEqual(new Set(['reviewRequested']))
@@ -54,9 +54,9 @@ describe('useCollapsedSections', () => {
     })
 
     expect(platform.setSectionCollapsed.mock.calls).toEqual([
-      ['authored', true],
+      ['yours', true],
       ['reviewRequested', true],
-      ['authored', false],
+      ['yours', false],
     ])
   })
 
@@ -76,20 +76,20 @@ describe('useCollapsedSections', () => {
     })
 
     act(() => {
-      result.current.setCollapsed('assigned', true)
-      result.current.setCollapsed('assigned', false)
+      result.current.setCollapsed('yours', true)
+      result.current.setCollapsed('yours', false)
     })
 
     await waitFor(() => {
-      expect(started).toEqual([['assigned', true]])
+      expect(started).toEqual([['yours', true]])
     })
 
     finish[0]?.()
 
     await waitFor(() => {
       expect(started).toEqual([
-        ['assigned', true],
-        ['assigned', false],
+        ['yours', true],
+        ['yours', false],
       ])
     })
   })
@@ -101,18 +101,18 @@ describe('useCollapsedSections', () => {
     platform.setSectionCollapsed.mockRejectedValueOnce(new Error('database is locked'))
 
     act(() => {
-      result.current.setCollapsed('authored', true)
-      result.current.setCollapsed('assigned', true)
+      result.current.setCollapsed('reviewRequested', true)
+      result.current.setCollapsed('yours', true)
     })
 
-    expect(result.current.collapsed).toEqual(new Set(['authored', 'assigned']))
+    expect(result.current.collapsed).toEqual(new Set(['reviewRequested', 'yours']))
 
     await waitFor(() => {
-      expect(platform.setSectionCollapsed).toHaveBeenCalledWith('assigned', true)
+      expect(platform.setSectionCollapsed).toHaveBeenCalledWith('yours', true)
     })
 
     expect(logged).toHaveBeenCalledWith(
-      'could not store whether the authored section is collapsed',
+      'could not store whether the reviewRequested section is collapsed',
       new Error('database is locked'),
     )
   })
@@ -139,7 +139,7 @@ describe('useCollapsedSections', () => {
     unmount()
 
     await act(async () => {
-      resolve(['authored'])
+      resolve(['reviewRequested'])
       await Promise.resolve()
     })
 

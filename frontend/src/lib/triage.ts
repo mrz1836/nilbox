@@ -7,6 +7,23 @@ import { itemKey } from './itemWorktrees'
 // the window's clock: a snooze ends as the clock passes it, without the inbox being read
 // again.
 
+// inboxLists are the inbox's lists in the order it shows them, the one place every walk of
+// them reads. They partition the inbox: an item that asks for the user's review is in
+// Review requested, whatever else it is, and one the user opened or is assigned is
+// otherwise in Yours, so no item is in both.
+export const inboxLists: readonly ListKey[] = ['reviewRequested', 'yours']
+
+// listTitles are the lists' names, as the inbox's sections and the menu bar show them.
+export const listTitles: Readonly<Record<ListKey, string>> = {
+  reviewRequested: 'Review requested',
+  yours: 'Yours',
+}
+
+// byList builds a record with an entry for each of the inbox's lists, made by make.
+export function byList<T>(make: (list: ListKey) => T): Record<ListKey, T> {
+  return { reviewRequested: make('reviewRequested'), yours: make('yours') }
+}
+
 // snoozeChoices are the snooze lengths offered, in days: the Snooze menu's choices and
 // the default's options in Settings.
 export const snoozeChoices: readonly number[] = [1, 2, 3, 7, 14, 30]
@@ -161,8 +178,8 @@ export function triageList(list: InboxList, now: Date): TriagedList {
 
 // findItem looks an item up in a snapshot's lists.
 export function findItem(snapshot: InboxSnapshot, id: number): InboxItem | undefined {
-  for (const list of [snapshot.reviewRequested, snapshot.authored, snapshot.assigned]) {
-    const found = list.items.find((item) => item.id === id)
+  for (const list of inboxLists) {
+    const found = snapshot[list].items.find((item) => item.id === id)
 
     if (found !== undefined) {
       return found
@@ -172,18 +189,18 @@ export function findItem(snapshot: InboxSnapshot, id: number): InboxItem | undef
   return undefined
 }
 
-// ListedItem is an item of the inbox and the first of its lists that holds it.
+// ListedItem is an item of the inbox and the list that holds it.
 export interface ListedItem {
   item: InboxItem
   list: ListKey
 }
 
 // itemsByRef maps the inbox's items by itemKey, their repository in any case and their
-// number, each to the first list that holds it in the inbox's order.
+// number, each to the list that holds it.
 export function itemsByRef(snapshot: InboxSnapshot): ReadonlyMap<string, ListedItem> {
   const out = new Map<string, ListedItem>()
 
-  for (const list of ['reviewRequested', 'authored', 'assigned'] as const) {
+  for (const list of inboxLists) {
     for (const item of snapshot[list].items) {
       const key = itemKey(item.repo, item.number)
 
@@ -244,8 +261,8 @@ function placeItem(rest: readonly InboxItem[], next: InboxItem, was: InboxItem, 
   return [...rest.slice(0, at), next, ...rest.slice(at)]
 }
 
-// applyTriage returns the snapshot with a triage change made to the item in every list
-// that holds it, ordered as the backend will order it.
+// applyTriage returns the snapshot with a triage change made to the item in the list that
+// holds it, ordered as the backend will order it.
 export function applyTriage(snapshot: InboxSnapshot, change: TriageChange): InboxSnapshot {
   const apply = (list: InboxList): InboxList => {
     const index = list.items.findIndex((item) => item.id === change.id)
@@ -260,12 +277,7 @@ export function applyTriage(snapshot: InboxSnapshot, change: TriageChange): Inbo
     return { ...list, items: placeItem(rest, { ...was, ...change.set }, was, index) }
   }
 
-  return {
-    ...snapshot,
-    reviewRequested: apply(snapshot.reviewRequested),
-    authored: apply(snapshot.authored),
-    assigned: apply(snapshot.assigned),
-  }
+  return { ...snapshot, ...byList((list) => apply(snapshot[list])) }
 }
 
 // tabOf is the tab of a sorted list that holds an item, or null when none does.
@@ -284,12 +296,10 @@ export function isEmptyList(list: TriagedList): boolean {
 // this one sorting.
 export interface TriagedInbox {
   lists: Readonly<Record<ListKey, TriagedList>>
-  // count is how many items are in the inbox: in any list's own tab, not muted, snoozed,
-  // or dismissed. An item in more than one list, such as a pull request you wrote and are
-  // assigned, counts once.
+  // count is how many items are in the inbox: in either list's own tab, not muted,
+  // snoozed, or dismissed, each once.
   count: number
-  // snoozed, dismissed, and muted count the items set aside, each once however many lists
-  // it is in.
+  // snoozed, dismissed, and muted count the items set aside, each once.
   snoozed: number
   dismissed: number
   muted: number
@@ -299,11 +309,7 @@ export interface TriagedInbox {
 
 // triageInbox sorts every list of a snapshot into its tabs at now, and counts the inbox.
 export function triageInbox(snapshot: InboxSnapshot, now: Date): TriagedInbox {
-  const lists = {
-    reviewRequested: triageList(snapshot.reviewRequested, now),
-    authored: triageList(snapshot.authored, now),
-    assigned: triageList(snapshot.assigned, now),
-  }
+  const lists = byList((list) => triageList(snapshot[list], now))
   const inbox = new Set<number>()
   const snoozed = new Map<number, number>()
   const dismissed = new Set<number>()
@@ -345,8 +351,8 @@ export function triageTime(snapshot: InboxSnapshot, now: Date): number {
   const at = now.getTime()
   let passed = 0
 
-  for (const list of [snapshot.reviewRequested, snapshot.authored, snapshot.assigned]) {
-    for (const item of list.items) {
+  for (const list of inboxLists) {
+    for (const item of snapshot[list].items) {
       const end = timeOf(item.snoozedUntil)
 
       if (end <= at && end > passed) {

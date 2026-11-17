@@ -1,5 +1,5 @@
 import type { InboxSnapshot } from '../platform'
-import type { TriagedInbox } from './triage'
+import { inboxLists, type TriagedInbox } from './triage'
 
 // Inbox nil: the moment every list is empty, and the party the inbox throws for it.
 
@@ -12,7 +12,7 @@ export function isInboxNil(snapshot: InboxSnapshot, triaged: TriagedInbox): bool
     return false
   }
 
-  return Object.values(triaged.lists).every((list) => list.total === 0)
+  return inboxLists.every((list) => triaged.lists[list].total === 0)
 }
 
 // NilStats is what the party reports was set aside to get there.

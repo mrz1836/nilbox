@@ -119,11 +119,11 @@ type Waiting struct {
 // sectionTitles are the lists' names, as the inbox shows them.
 //
 //nolint:gochecknoglobals // a fixed table
-var sectionTitles = [...]string{"Review requested", "Authored", "Assigned"}
+var sectionTitles = [...]string{"Review requested", "Yours"}
 
 // Summarize works out what the menu bar shows for snap, the sessions waiting for the user,
-// and Autopilot at now, with times shown in now's location. An item in more than one list
-// is listed once, under the first, as the count counts it. Autopilot's group shows only
+// and Autopilot at now, with times shown in now's location. The lists partition the
+// inbox, so each item is listed once, as the count counts it. Autopilot's group shows only
 // while the user has a routine, and adds nothing to the count.
 func Summarize(snap inbox.Snapshot, waiting []sessions.Session, autopilot AutopilotState, now time.Time) Summary {
 	out := Summary{
@@ -190,21 +190,16 @@ func agentName(id agent.ID) string {
 	return string(id)
 }
 
-// sections are the lists with items that need the user at now, each item under the first
-// list that holds it.
+// sections are the lists with items that need the user at now. No item is in two lists,
+// so each is listed once.
 func sections(snap *inbox.Snapshot, now time.Time) []Section {
 	var out []Section
-
-	listed := make(map[int64]bool)
 
 	for i, list := range snap.Lists() {
 		section := Section{Title: sectionTitles[i]}
 
 		for _, it := range list.Waiting(now) {
-			if !listed[it.ID] {
-				listed[it.ID] = true
-				section.add(it)
-			}
+			section.add(it)
 		}
 
 		if len(section.Entries) > 0 {

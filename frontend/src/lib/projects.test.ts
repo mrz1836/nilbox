@@ -12,7 +12,7 @@ import {
 } from './projects'
 
 const withIssue = (overrides: Parameters<typeof snapshot>[0] = {}) =>
-  snapshot({ assigned: list([item({ id: 2, kind: 'issue' })]), ...overrides })
+  snapshot({ yours: list([item({ id: 2, kind: 'issue' })]), ...overrides })
 
 describe('grantProjectsCommand', () => {
   it('adds the read-only projects scope to the GitHub CLI’s token', () => {
@@ -82,7 +82,7 @@ describe('hasIssues', () => {
   })
 
   it('finds none among pull requests alone', () => {
-    expect(hasIssues(snapshot({ authored: list([item()]) }))).toBe(false)
+    expect(hasIssues(snapshot({ yours: list([item()]) }))).toBe(false)
     expect(hasIssues(snapshot())).toBe(false)
   })
 })
@@ -104,7 +104,7 @@ describe('offersProjects', () => {
   })
 
   it('offers nothing without an issue to show projects on', () => {
-    expect(offersProjects(snapshot({ projectAccess: 'needs_scope', authored: list([item()]) }), settings())).toBe(false)
+    expect(offersProjects(snapshot({ projectAccess: 'needs_scope', yours: list([item()]) }), settings())).toBe(false)
   })
 
   it('waits for the inbox and the settings', () => {

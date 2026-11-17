@@ -305,8 +305,9 @@ func itemFields() []Field {
 			Kinds: both(), Cost: CostDetails,
 		},
 		{
-			ID: FieldLists, Group: GroupItem, Type: TypeList, Label: "Inbox lists", Kinds: both(),
-			Words:   list("its inbox lists", "an inbox list", "it's in no inbox list", "it's in an inbox list"),
+			ID: FieldLists, Group: GroupItem, Type: TypeList, Label: "Why it's in your inbox", Kinds: both(),
+			Words: list("the reasons it's in your inbox", "a reason it's in your inbox", "it isn't in your inbox",
+				"it's in your inbox"),
 			Choices: listChoices(),
 		},
 		{
@@ -603,18 +604,22 @@ func outcomeChoices() []Choice {
 	}
 }
 
-// The inbox lists, as item.lists holds them.
+// The reasons an item is in the inbox, as item.lists holds them: the inbox's three
+// searches.
 const (
 	ListReviewRequested = "reviewRequested"
 	ListAuthored        = "authored"
 	ListAssigned        = "assigned"
 )
 
+// listChoices are the inbox reasons as a condition offers them, worded as the other
+// choices are, to read in a sentence ("the reasons it's in your inbox include review
+// requested or assigned to you").
 func listChoices() []Choice {
 	return []Choice{
-		{Value: ListReviewRequested, Label: "Review requested"},
-		{Value: ListAuthored, Label: "Authored"},
-		{Value: ListAssigned, Label: "Assigned"},
+		{Value: ListReviewRequested, Label: "review requested"},
+		{Value: ListAuthored, Label: "opened by you"},
+		{Value: ListAssigned, Label: "assigned to you"},
 	}
 }
 

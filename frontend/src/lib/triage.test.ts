@@ -5,7 +5,9 @@ import { FIXED_NOW, fromNow } from '../test/clock'
 import { item, list, snapshot } from '../test/fixtures'
 import {
   applyTriage,
+  byList,
   findItem,
+  inboxLists,
   isBackFromSnooze,
   isDismissed,
   isEmptyList,
@@ -14,6 +16,7 @@ import {
   isPinnedItself,
   isSnoozed,
   itemsByRef,
+  listTitles,
   snoozeChoices,
   snoozeEnd,
   snoozeLength,
@@ -104,8 +107,16 @@ describe('triageList', () => {
   })
 })
 
+describe('inboxLists', () => {
+  it('names the two lists in the order the inbox shows them, with their titles', () => {
+    expect(inboxLists).toEqual(['reviewRequested', 'yours'])
+    expect(inboxLists.map((list) => listTitles[list])).toEqual(['Review requested', 'Yours'])
+    expect(byList((list) => list.length)).toEqual({ reviewRequested: 15, yours: 5 })
+  })
+})
+
 describe('triageInbox', () => {
-  it('sorts every list, and counts what is in the inbox once each, leaving out what is set aside', () => {
+  it('sorts both lists, and counts what is in the inbox, leaving out what is set aside', () => {
     const mine = item({ id: 1 })
     const review = item({ id: 2 })
     const back = item({ id: 3, snoozedUntil: at(-2) })
@@ -113,17 +124,15 @@ describe('triageInbox', () => {
     const gone = item({ id: 5, dismissedAt: at(-1) })
     const inbox = snapshot({
       reviewRequested: list([review, later]),
-      authored: list([mine, back, gone], 40),
-      assigned: list([mine, later]),
+      yours: list([mine, back, gone], 40),
     })
 
     const triaged = triageInbox(inbox, FIXED_NOW)
 
     expect(triaged.lists.reviewRequested).toEqual(triageList(inbox.reviewRequested, FIXED_NOW))
-    expect(triaged.lists.authored).toEqual(triageList(inbox.authored, FIXED_NOW))
-    expect(triaged.lists.assigned.inbox).toEqual([mine])
+    expect(triaged.lists.yours).toEqual(triageList(inbox.yours, FIXED_NOW))
+    expect(triaged.lists.yours.inbox).toEqual([mine, back])
     expect(triaged.count).toBe(3)
-    // An item set aside in two lists counts once.
     expect(triaged.snoozed).toBe(1)
     expect(triaged.dismissed).toBe(1)
     expect(triaged.nextBack).toEqual(new Date(at(5)))
@@ -133,7 +142,7 @@ describe('triageInbox', () => {
     const triaged = triageInbox(
       snapshot({
         reviewRequested: list([item({ id: 1, repoRule: 'muted' }), item({ id: 2 })]),
-        authored: list([item({ id: 1, repoRule: 'muted' }), item({ id: 3, repoRule: 'muted', snoozedUntil: at(1) })]),
+        yours: list([item({ id: 3, repoRule: 'muted', snoozedUntil: at(1) })]),
       }),
       FIXED_NOW,
     )
@@ -148,7 +157,7 @@ describe('triageInbox', () => {
     const triaged = triageInbox(
       snapshot({
         reviewRequested: list([item({ id: 1, snoozedUntil: at(48) })]),
-        authored: list([item({ id: 2, snoozedUntil: at(3) })]),
+        yours: list([item({ id: 2, snoozedUntil: at(3) })]),
       }),
       FIXED_NOW,
     )
@@ -171,7 +180,7 @@ describe('triageInbox', () => {
 describe('triageTime', () => {
   const inbox = snapshot({
     reviewRequested: list([item({ id: 1, snoozedUntil: at(-3) }), item({ id: 2, snoozedUntil: at(-1) })]),
-    authored: list([item({ id: 3, snoozedUntil: at(2) }), item({ id: 4 })]),
+    yours: list([item({ id: 3, snoozedUntil: at(2) }), item({ id: 4 })]),
   })
 
   it('is the latest snooze end already passed, which sorts the inbox as now does', () => {
@@ -240,15 +249,14 @@ describe('applyTriage', () => {
   const oldest = item({ id: 4, title: 'Oldest', updatedAt: '2026-06-15T09:00:00Z' })
   const ids = (list: { items: { id: number }[] }) => list.items.map((i) => i.id)
 
-  it('changes the item in every list that holds it, keeping its place', () => {
-    const inbox = snapshot({ reviewRequested: list([newest, older]), assigned: list([older]) })
+  it('changes the item in the list that holds it, keeping its place', () => {
+    const inbox = snapshot({ reviewRequested: list([newest, older]), yours: list([oldest]) })
 
     const next = applyTriage(inbox, { id: 3, set: { dismissedAt: FIXED_NOW.toISOString() } })
 
     expect(ids(next.reviewRequested)).toEqual([2, 3])
     expect(findItem(next, 3)?.dismissedAt).toBe(FIXED_NOW.toISOString())
-    expect(next.assigned.items[0]?.dismissedAt).toBe(FIXED_NOW.toISOString())
-    expect(next.authored).toBe(inbox.authored)
+    expect(next.yours).toBe(inbox.yours)
   })
 
   it('moves a newly pinned item to the top, as the most recently pinned', () => {
@@ -293,7 +301,7 @@ describe('findItem and tabOf', () => {
   const dismissed = item({ id: 3, dismissedAt: '2026-06-15T09:00:00Z' })
 
   it('finds an item in any list', () => {
-    const snap = snapshot({ authored: list([fresh]), assigned: list([snoozed]) })
+    const snap = snapshot({ reviewRequested: list([fresh]), yours: list([snoozed]) })
 
     expect(findItem(snap, 2)).toBe(snoozed)
     expect(findItem(snap, 1)).toBe(fresh)
@@ -347,18 +355,13 @@ describe('isPinned and isMuted', () => {
 })
 
 describe('itemsByRef', () => {
-  it('finds an item by its repository, in any case, and number, in the first list that holds it', () => {
+  it('finds an item by its repository, in any case, and number, with the list that holds it', () => {
     const issue = item({ id: 4, kind: 'issue', number: 12, repo: 'ACME-org/Example-Repo' })
     const pull = item({ id: 3, number: 12, repo: 'acme-org/api' })
-    const refs = itemsByRef(
-      snapshot({
-        authored: list([pull]),
-        assigned: list([issue, pull]),
-      }),
-    )
+    const refs = itemsByRef(snapshot({ reviewRequested: list([pull]), yours: list([issue]) }))
 
-    expect(refs.get('acme-org/example-repo#12')).toEqual({ item: issue, list: 'assigned' })
-    expect(refs.get('acme-org/api#12')).toEqual({ item: pull, list: 'authored' })
+    expect(refs.get('acme-org/example-repo#12')).toEqual({ item: issue, list: 'yours' })
+    expect(refs.get('acme-org/api#12')).toEqual({ item: pull, list: 'reviewRequested' })
     expect(refs.has('acme-org/example-repo#13')).toBe(false)
   })
 })

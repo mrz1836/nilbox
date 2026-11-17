@@ -103,8 +103,7 @@ function triaged(): TriagedInbox {
   return triageInbox(
     snapshot({
       reviewRequested: list([cache, required, snoozed]),
-      authored: list([draft, cache, dismissed]),
-      assigned: list([issue, bare, waiting]),
+      yours: list([draft, dismissed, issue, bare, waiting]),
     }),
     FIXED_NOW,
   )
@@ -212,9 +211,7 @@ describe('filterInbox', () => {
     expect(filter).toMatchObject({ query: 'cache', matches: 3, marks: 'cache' })
     expect(filter?.lists.reviewRequested.inbox.map((i) => i.id)).toEqual([1])
     expect(filter?.lists.reviewRequested.snoozed.map((i) => i.id)).toEqual([7])
-    expect(filter?.lists.authored.inbox.map((i) => i.id)).toEqual([1])
-    expect(filter?.lists.authored.dismissed.map((i) => i.id)).toEqual([8])
-    expect(filter?.lists.assigned).toEqual({ inbox: [], snoozed: [], dismissed: [], muted: [] })
+    expect(filter?.lists.yours).toEqual({ inbox: [], snoozed: [], dismissed: [dismissed], muted: [] })
   })
 
   it('reads @me as no one before the account is known', () => {

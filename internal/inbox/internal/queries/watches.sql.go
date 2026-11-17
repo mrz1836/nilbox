@@ -33,9 +33,9 @@ type CountBotPullRequestsRow struct {
 	Bots       int64
 }
 
-// CountBotPullRequests counts the pull requests in the inbox lists of the account with
-// login that were opened since since: those Dependabot opened, and those any bot opened in
-// the Review requested and Assigned lists. They suggest Autopilot's templates.
+// CountBotPullRequests counts the pull requests in the inbox of the account with login that
+// were opened since since: those Dependabot opened, and those any bot opened that ask for
+// the user's review or are assigned to them. They suggest Autopilot's templates.
 func (q *Queries) CountBotPullRequests(ctx context.Context, arg CountBotPullRequestsParams) (CountBotPullRequestsRow, error) {
 	row := q.db.QueryRowContext(ctx, countBotPullRequests, arg.Login, arg.Since)
 	var i CountBotPullRequestsRow

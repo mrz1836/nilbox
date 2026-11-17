@@ -374,7 +374,12 @@ changing the package, and keep the section and its summary in step.
   follower, or Autopilot's own reads), and the `Tracker` splits each budget's spend by it
   (`Reading.Purposes`, which add up to `Spent`); the budget menu says Autopilot's share in one
   line, only once it spent something.
-- `internal/inbox/` also reads the routines' searches beside its own lists. A refresh hands its
+- `internal/inbox/` reads three searches (review requested, authored, assigned) into two lists,
+  which the snapshot alone partitions (`addItems`): `ReviewRequested` holds what asks for the
+  user's review, whatever else it is, and `Yours` the rest the user opened or is assigned
+  (`Item.Authored`, `Item.Assigned`), so no item is in both; the stored reason flags and
+  `inbox.beyond.*` stay per search, and `settings.AdoptSections` carried the former lists' window
+  keys over to Yours once. It also reads the routines' searches beside its own lists. A refresh hands its
   watch pass (`WatchPasses`, a desktop worker run before the scheduler) the searches
   `Config.Watches` gives, whose requests (`github.FetchWatches`, packed a few searches to a
   request) go out only once the refresh has stored and told the inbox, outside its errgroup,

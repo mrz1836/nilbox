@@ -3,6 +3,7 @@
 // grant by default.
 
 import type { InboxSnapshot, Project, ProjectField, Settings, SubIssues } from '../platform'
+import { inboxLists } from './triage'
 
 // grantProjectsCommand gives the GitHub CLI's token read-only access to projects. gh adds
 // the scope to the ones the token has, and the app's next refresh picks the token up.
@@ -42,11 +43,9 @@ export function subIssuesText({ total, completed }: SubIssues): string {
   return `${String(completed)} of ${String(total)} ${noun} done (${String(Math.round((completed / total) * 100))}%)`
 }
 
-// hasIssues reports whether any inbox list holds an issue.
+// hasIssues reports whether either inbox list holds an issue.
 export function hasIssues(snapshot: InboxSnapshot): boolean {
-  return [snapshot.reviewRequested, snapshot.authored, snapshot.assigned].some((list) =>
-    list.items.some((item) => item.kind === 'issue'),
-  )
+  return inboxLists.some((list) => snapshot[list].items.some((item) => item.kind === 'issue'))
 }
 
 // offersProjects reports whether the inbox offers to show issue projects: the last

@@ -597,7 +597,7 @@ func TestOutcomesNilSinkIsNoOp(t *testing.T) {
 	h.tick()
 	snap = h.seed(t, []github.Item{closedAs(byOther(pr(2, "MEMBER", false)), github.StateClosed)}, nil, nil)
 	assert.Empty(t, snap.ReviewRequested.Items)
-	assert.Empty(t, snap.Assigned.Items)
+	assert.Empty(t, snap.Yours.Items)
 	assert.Empty(t, h.svc.pending.take(), "a refresh works out nothing to tell")
 
 	// Nothing is read for a sink that isn't there.

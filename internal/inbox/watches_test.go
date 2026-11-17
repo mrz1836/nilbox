@@ -292,8 +292,7 @@ func TestAWatchPassStoresWatchedItemsOutOfTheLists(t *testing.T) {
 		again, err := h.svc.Snapshot(t.Context())
 		require.NoError(t, err)
 		assert.Equal(t, []int{1}, numbers(again.ReviewRequested))
-		assert.Empty(t, again.Authored.Items)
-		assert.Empty(t, again.Assigned.Items)
+		assert.Empty(t, again.Yours.Items)
 		assert.Equal(t, 1, again.ReviewRequested.Total, "a watched item is in no list's count")
 
 		last, ok := h.svc.lastWatchPass()
