@@ -10,13 +10,14 @@ import (
 const KeyReviewTab = "ui.reviewTab"
 
 // ReviewTab is a tab of the review sheet's larger column: the files a pull request changes,
-// beneath its description, or its conversation.
+// beneath its description, its conversation, or its commits.
 type ReviewTab string
 
 // The review sheet's tabs.
 const (
 	ReviewTabFiles    ReviewTab = "files"
 	ReviewTabComments ReviewTab = "comments"
+	ReviewTabCommits  ReviewTab = "commits"
 )
 
 // DefaultReviewTab is the tab a fresh database opens the review sheet on.
@@ -26,17 +27,17 @@ const DefaultReviewTab = ReviewTabFiles
 var ErrInvalidReviewTab = errors.New("unknown review sheet tab")
 
 // reviewTabs is the review sheet's tab choice, falling back to DefaultReviewTab for a stored
-// tab that is unset or no longer a choice.
+// tab that is unset or no longer a choice, as an older build reads ReviewTabCommits.
 func reviewTabs() choice[ReviewTab] {
 	return choice[ReviewTab]{
-		values:   []ReviewTab{ReviewTabFiles, ReviewTabComments},
+		values:   []ReviewTab{ReviewTabFiles, ReviewTabComments, ReviewTabCommits},
 		fallback: DefaultReviewTab, invalid: ErrInvalidReviewTab,
 	}
 }
 
-// SetReviewTab stores the review sheet's tab the user chose, ReviewTabFiles or
-// ReviewTabComments, which the sheet opens on from then on, and returns the settings with
-// it.
+// SetReviewTab stores the review sheet's tab the user chose, ReviewTabFiles,
+// ReviewTabComments, or ReviewTabCommits, which the sheet opens on from then on, and returns
+// the settings with it.
 func (s *Service) SetReviewTab(ctx context.Context, tab ReviewTab) (Settings, error) {
 	if err := reviewTabs().check(tab); err != nil {
 		return Settings{}, err

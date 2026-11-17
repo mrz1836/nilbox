@@ -255,9 +255,9 @@ export const RefreshKind = {
 
 /**
  * ReviewTab is a tab of the review sheet's larger column: the files a pull request changes,
- * beneath its description, or its conversation.
+ * beneath its description, its conversation, or its commits.
  */
-export type ReviewTab = "files" | "comments";
+export type ReviewTab = "files" | "comments" | "commits";
 
 /**
  * The values of ReviewTab, by the names of their Go constants.
@@ -268,6 +268,7 @@ export const ReviewTab = {
      */
     ReviewTabFiles: "files",
     ReviewTabComments: "comments",
+    ReviewTabCommits: "commits",
 
     /**
      * DefaultReviewTab is the tab a fresh database opens the review sheet on.

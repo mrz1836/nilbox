@@ -26,7 +26,9 @@ import (
 //
 // GitHub prices the whole read at one point, the conversation's newest hundred items and
 // each review's first twenty line comments included (measured in November 2026 on a pull
-// request with reviews, line comments, force pushes, and review requests).
+// request with reviews, line comments, force pushes, and review requests), and still at one
+// with the newest hundred commits and the reviewers' verdicts (measured in November 2026 on
+// a pull request of 515 commits and 2,752 timeline items).
 const pullReviewQuery = `query PullReview($id: ID!, $last: Int!) {
   node(id: $id) { ...ItemFields ...DetailFields ...ReviewFields }
   rateLimit { cost remaining resetAt limit used }
@@ -40,6 +42,11 @@ fragment ReviewFields on PullRequest {
   body lastEditedAt baseRefName mergeStateStatus isMergeQueueEnabled
   viewerDidAuthor viewerCanUpdateBranch viewerCanEnableAutoMerge viewerCanMergeAsAdmin viewerCanClose
   viewerLatestReview { state commit { oid } }
+  ` + opinionsField + `
+  commitList: commits(last: ` + pullCommitsMaxText + `) {
+    totalCount
+    nodes { commit { oid messageHeadline committedDate author { name user { login } } } }
+  }
   pendingReviews: reviews(states: [PENDING]) { totalCount }
   autoMergeRequest { mergeMethod enabledAt enabledBy { login } }
   reviewBodies: latestReviews(first: 50) {
@@ -71,6 +78,14 @@ fragment ReviewFields on PullRequest {
   timeline: timelineItems(last: $last, itemTypes: ` + pullTimelineItemTypes + `) { ...PullTimelineFields }
 }
 `
+
+// PullCommitsMax is how many of a pull request's newest commits the review sheet reads, a
+// single connection with each commit's one author, never its authors' list, which costs
+// points. A pull request with more lists the rest on GitHub.
+const PullCommitsMax = 100
+
+// pullCommitsMaxText is PullCommitsMax in the query's text.
+const pullCommitsMaxText = "100"
 
 // mergeStateQuery reads, by node ID, what a merge must check first, as of now: the merge
 // state, the head commit, whether the pull request is open, a draft, or merges through a
@@ -186,6 +201,31 @@ type PullReview struct {
 
 	// Timeline is the newest page of its conversation.
 	Timeline TimelinePage
+
+	// Verdict is the viewer's own standing review, the latest that approved the pull
+	// request or requested changes, nil when there is none (see opinionsField).
+	Verdict *Verdict
+
+	// Commits are its newest commits, at most PullCommitsMax, oldest first, never nil, and
+	// CommitTotal how many it has.
+	Commits     []PullCommit
+	CommitTotal int
+}
+
+// PullCommit is one of a pull request's commits.
+type PullCommit struct {
+	// OID is its SHA, and Headline its message's first line.
+	OID      string
+	Headline string
+
+	// CommittedAt is when it was committed, which a rebase moves but a commit's author
+	// date doesn't.
+	CommittedAt time.Time
+
+	// Author is the GitHub login its author's email matches, "" when none does, and
+	// AuthorName the name the commit gives.
+	Author     string
+	AuthorName string
 }
 
 // ReviewMark is a review's state and the commit it was left on.
@@ -439,6 +479,21 @@ type reviewNode struct {
 	} `json:"closes"`
 	ReactionGroups []*graphQLReactionGroup `json:"reactionGroups"`
 	Timeline       graphQLTimeline         `json:"timeline"`
+	Opinions       graphQLOpinions         `json:"opinions"`
+	CommitList     struct {
+		TotalCount int `json:"totalCount"`
+		Nodes      []*struct {
+			Commit *struct {
+				OID             string    `json:"oid"`
+				MessageHeadline string    `json:"messageHeadline"`
+				CommittedDate   time.Time `json:"committedDate"`
+				Author          *struct {
+					Name string        `json:"name"`
+					User *graphQLActor `json:"user"`
+				} `json:"author"`
+			} `json:"commit"`
+		} `json:"nodes"`
+	} `json:"commitList"`
 }
 
 // graphQLCommit is a commit asked only for its SHA.
@@ -591,6 +646,37 @@ func (n *reviewNode) fill(r *PullReview, self ItemRef, head string) {
 	if v := n.ViewerLatestReview; v != nil {
 		r.ViewerReview = ReviewMark{State: v.State, Commit: v.Commit.oid()}
 	}
+
+	r.Verdict = n.Opinions.verdict()
+	r.Commits = n.commits()
+	r.CommitTotal = max(n.CommitList.TotalCount, len(r.Commits))
+}
+
+// commits converts the newest commits, oldest first as GitHub lists them, skipping nulls
+// and commits without a SHA.
+func (n *reviewNode) commits() []PullCommit {
+	out := make([]PullCommit, 0, len(n.CommitList.Nodes))
+
+	for _, node := range n.CommitList.Nodes {
+		if node == nil || node.Commit == nil || node.Commit.OID == "" {
+			continue
+		}
+
+		c := node.Commit
+		commit := PullCommit{OID: c.OID, Headline: c.MessageHeadline, CommittedAt: c.CommittedDate.UTC()}
+
+		if a := c.Author; a != nil {
+			commit.AuthorName = a.Name
+
+			if a.User != nil {
+				commit.Author = a.User.Login
+			}
+		}
+
+		out = append(out, commit)
+	}
+
+	return out
 }
 
 // reviews converts each reviewer's latest review, skipping nulls and reviews without an

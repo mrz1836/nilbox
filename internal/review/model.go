@@ -301,6 +301,17 @@ type Review struct {
 	// the user last opened the pull request, "" before then: what is newer is new to them.
 	LastSeenAt string `json:"lastSeenAt"`
 
+	// CommitList is its newest commits, oldest first, at most github.PullCommitsMax, and
+	// EarlierCommits how many came before them, which GitHub lists; none before the sheet
+	// read them. Commits counts them all.
+	CommitList     []Commit `json:"commitList"`
+	EarlierCommits int      `json:"earlierCommits"`
+
+	// YourReview is the signed-in user's own standing review, the latest that approved it or
+	// requested changes, and what happened to the branch since; nil with none, or before the
+	// sheet read it.
+	YourReview *YourReview `json:"yourReview"`
+
 	// Unrun are the head commit's workflow runs that ended without a check and without
 	// passing (Unrun), which the checks list names beneath it.
 	Unrun []Unrun `json:"unrun"`

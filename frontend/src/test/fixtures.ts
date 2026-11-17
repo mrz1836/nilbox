@@ -50,11 +50,13 @@ import type {
   BundlePrompt,
   DefaultPrompts,
   Review,
+  ReviewCommit,
   ReviewFile,
   ReviewOffer,
   ReviewReplyList,
   ReviewResult,
   ReviewUnrun,
+  YourReview,
   CloneTarget,
   LinkedClone,
   LocationPreview,
@@ -2649,6 +2651,9 @@ export function review(overrides: Partial<Review> = {}): Review {
     reviews: [],
     timeline: { items: [], total: 0, before: '' },
     lastSeenAt: '',
+    commitList: [],
+    earlierCommits: 0,
+    yourReview: null,
     closes: [],
     moreCloses: 0,
     readiness: { state: 'ready', sentence: 'Ready to merge', needs: [] },
@@ -2667,6 +2672,35 @@ export function review(overrides: Partial<Review> = {}): Review {
     head: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
     fetchedAt: '2026-06-15T11:59:00Z',
     stale: false,
+    ...overrides,
+  }
+}
+
+// reviewCommit is one of the widget cache's commits, by its author.
+export function reviewCommit(overrides: Partial<ReviewCommit> = {}): ReviewCommit {
+  const oid = overrides.oid ?? 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+
+  return {
+    oid,
+    short: oid.slice(0, 7),
+    headline: 'Add the widget cache',
+    author: 'octo-other',
+    committedAt: '2026-06-15T10:00:00Z',
+    url: `https://github.com/acme-org/example-repo/pull/7/commits/${oid}`,
+    ...overrides,
+  }
+}
+
+// yourReview is the user's request for changes on the widget cache's first commit, with one
+// commit pushed since.
+export function yourReview(overrides: Partial<YourReview> = {}): YourReview {
+  return {
+    state: 'CHANGES_REQUESTED',
+    commit: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+    at: '2026-06-15T10:30:00Z',
+    url: 'https://github.com/acme-org/example-repo/pull/7#pullrequestreview-1',
+    since: 'pushed',
+    count: 1,
     ...overrides,
   }
 }

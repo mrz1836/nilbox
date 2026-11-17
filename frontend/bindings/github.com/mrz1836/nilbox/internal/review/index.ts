@@ -16,7 +16,8 @@ export {
     PatchState,
     ReadyState,
     ReplyAction,
-    Side
+    Side,
+    Since
 } from "./models.js";
 
 export type {
@@ -24,6 +25,7 @@ export type {
     Change,
     Check,
     Closing,
+    Commit,
     File,
     FilePatch,
     LabelsRequest,
@@ -36,5 +38,6 @@ export type {
     Result,
     Review,
     ReviewEntry,
-    Unrun
+    Unrun,
+    YourReview
 } from "./models.js";

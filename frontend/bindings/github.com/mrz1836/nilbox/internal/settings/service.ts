@@ -532,9 +532,9 @@ export function SetRepoRule(target: string, rule: reporules$0.Rule): $Cancellabl
 }
 
 /**
- * SetReviewTab stores the review sheet's tab the user chose, ReviewTabFiles or
- * ReviewTabComments, which the sheet opens on from then on, and returns the settings with
- * it.
+ * SetReviewTab stores the review sheet's tab the user chose, ReviewTabFiles,
+ * ReviewTabComments, or ReviewTabCommits, which the sheet opens on from then on, and returns
+ * the settings with it.
  */
 export function SetReviewTab(tab: $models.ReviewTab): $CancellablePromise<$models.Settings> {
     return $Call.ByID(576705020, tab);

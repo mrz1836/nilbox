@@ -615,8 +615,11 @@ changing the package, and keep the section and its summary in step.
   fails after it is `commented_not_merged` or `commented_not_closed` (`failedAfterComment`). It
   owns `review_diffs` and `review_diff_files`, a bounded cache pruned in the transaction that
   writes; one `FetchPullReview` (one point) brings the conversation too, cut to fit
-  (`fitContext`); only `Open` moves `review_diffs.seen_at`; `Earlier` (`PeekPull`) stores
-  nothing. Each step is an `event.ReviewProgress`; a merge or a close takes the pull request out
+  (`fitContext`), and the newest hundred commits and the user's own verdict
+  (`latestOpinionatedReviews`, `github.Verdict`), never in the card's details, where it costs
+  a point a batch; `yourReview` says what happened since that verdict by where its commit is
+  among the commits, never by date (`Since`: pushed, beyond the hundred, or rewritten); only
+  `Open` moves `review_diffs.seen_at`; `Earlier` (`PeekPull`) stores nothing. Each step is an `event.ReviewProgress`; a merge or a close takes the pull request out
   of every list (`Acted.Merged`, `Acted.Closed`), and a merge tells its `Merges` (the Release
   `Refresher`). `EditLabels` changes a pull request's labels as the issue sheet's edit changes
   an issue's, at the same issues endpoint, pinned to the head, through the `Actor`, each step
@@ -1278,8 +1281,10 @@ changing the package, and keep the section and its summary in step.
   `components/conversation/` (`Description`, `Timeline`, and `TimelineEntry`, which shows a
   review with its line comments), `lib/timeline.ts` (its rows, what is new, a quote, and the
   counts), and `lib/useTimeline.ts` (a visit's start and the earlier pages, joined). The review
-  sheet shows it in its Comments tab, beside Files (the description and the diff), each kept
-  mounted in an `Activity` while the other shows; the tab is the window's memory
+  sheet shows it in its Comments tab, beside Files (the description and the diff) and Commits
+  (`review/CommitList`, the commits since the user's review marked with the shared `Divider`
+  the conversation's New uses, and `review/SinceYourReview` above the tabs, `lib/commits.ts`),
+  each kept mounted in an `Activity` while another shows; the tab is the window's memory
   (`ui.reviewTab`, which a backup never holds), and so is the order both sheets list a
   conversation in (`ui.conversationOrder`, oldest or newest first, under the description),
   which the inbox shares between them.

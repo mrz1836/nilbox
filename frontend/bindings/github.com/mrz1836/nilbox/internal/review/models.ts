@@ -197,6 +197,33 @@ export interface Closing {
 }
 
 /**
+ * Commit is one of a pull request's commits, as the sheet shows it.
+ */
+export interface Commit {
+    /**
+     * OID is its SHA, and Short the first seven characters of it.
+     */
+    "oid": string;
+    "short": string;
+
+    /**
+     * Headline is its message's first line.
+     */
+    "headline": string;
+
+    /**
+     * Author is its author's GitHub login, or else the name the commit gives.
+     */
+    "author": string;
+
+    /**
+     * CommittedAt is when it was committed, as RFC 3339, and URL its page in the pull request.
+     */
+    "committedAt": string;
+    "url": string;
+}
+
+/**
  * File is one file a pull request changes.
  */
 export interface File {
@@ -731,6 +758,21 @@ export interface Review {
     "lastSeenAt": string;
 
     /**
+     * CommitList is its newest commits, oldest first, at most github.PullCommitsMax, and
+     * EarlierCommits how many came before them, which GitHub lists; none before the sheet
+     * read them. Commits counts them all.
+     */
+    "commitList": Commit[] | null;
+    "earlierCommits": number;
+
+    /**
+     * YourReview is the signed-in user's own standing review, the latest that approved it or
+     * requested changes, and what happened to the branch since; nil with none, or before the
+     * sheet read it.
+     */
+    "yourReview": YourReview | null;
+
+    /**
      * Unrun are the head commit's workflow runs that ended without a check and without
      * passing (Unrun), which the checks list names beneath it.
      */
@@ -836,6 +878,42 @@ export const Side = {
 } as const;
 
 /**
+ * Since is what happened to a pull request's branch since the signed-in user's own
+ * standing review of it.
+ */
+export type Since = "" | "pushed" | "beyond" | "rewritten";
+
+/**
+ * The values of Since, by the names of their Go constants.
+ */
+export const Since = {
+    /**
+     * What happened since the user's review.
+     *
+     * SinceNone is nothing the sheet can tell: the review is at the head, or the sheet hasn't
+     * read the commits.
+     */
+    SinceNone: "",
+
+    /**
+     * SincePushed is YourReview.Count commits on top of the commit the review was left on.
+     */
+    SincePushed: "pushed",
+
+    /**
+     * SinceBeyond is more commits on top of it than the sheet reads: the reviewed commit is
+     * among the earlier ones GitHub lists.
+     */
+    SinceBeyond: "beyond",
+
+    /**
+     * SinceRewritten is a branch that no longer holds the reviewed commit: a force push, as
+     * a rebase is.
+     */
+    SinceRewritten: "rewritten",
+} as const;
+
+/**
  * Unrun is a workflow run on the head commit that ended without any check and without
  * passing, which GitHub counts in the merge state though no check shows it: its workflow
  * (or app), and whether it waits for a maintainer's approval, as a fork's runs do, rather
@@ -852,4 +930,29 @@ export interface Unrun {
      */
     "runId": number;
     "url": string;
+}
+
+/**
+ * YourReview is the signed-in user's own standing review of a pull request, the latest that
+ * approved it or requested changes, and what happened to the branch since.
+ */
+export interface YourReview {
+    /**
+     * State is APPROVED or CHANGES_REQUESTED, and Commit the head commit it was left on.
+     */
+    "state": timeline$0.ReviewState;
+    "commit": string;
+
+    /**
+     * At is when it was submitted, as RFC 3339, or "", and URL its page.
+     */
+    "at": string;
+    "url": string;
+
+    /**
+     * Since is what happened to the branch since, and Count the commits on top of the
+     * reviewed one, under SincePushed.
+     */
+    "since": Since;
+    "count": number;
 }

@@ -1,5 +1,6 @@
 import { Activity, useId, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 
+import { commitsSinceAnchor } from '../../lib/commits'
 import { refText } from '../../lib/format'
 import { PicturesContext, reviewPictureLogins, usePictures } from '../../lib/pictures'
 import type { ReviewDrafts } from '../../lib/reviewDrafts'
@@ -26,13 +27,14 @@ import { Description } from '../conversation/Description'
 import { Timeline } from '../conversation/Timeline'
 import { buttonClass } from '../controls'
 import { ErrorBanner } from '../ErrorBanner'
-import { CommentIcon, DocumentIcon } from '../icons'
+import { CommentIcon, CommitIcon, DocumentIcon } from '../icons'
 import type { LaunchOptions } from '../ItemRow'
 import { Sheet } from '../Sheet'
 import { TabPanel, Tabs } from '../Tabs'
 import { WorkLine } from '../WorkLine'
 import { ActionProgress } from './ActionProgress'
 import { AgentVerdict } from './AgentVerdict'
+import { CommitList } from './CommitList'
 import { DiffView, fileAnchor, type Reveal } from './DiffView'
 import { FileList } from './FileList'
 import { HeldRuns } from './HeldRuns'
@@ -43,6 +45,7 @@ import { commentFirst, heldBack, ReviewComposer, sendsText, sentText, useReplyBo
 import { ReviewHeader } from './ReviewHeader'
 import { DescriptionSkeleton, DiffSkeleton, FileListSkeleton, ReadingBanner, SummarySkeleton } from './ReviewLoading'
 import { Readiness, ReviewSummary } from './ReviewSummary'
+import { SinceYourReview } from './SinceYourReview'
 
 export interface ReviewSheetProps {
   // id is the pull request the sheet shows, and item its inbox card.
@@ -174,8 +177,8 @@ export function ReviewSheet({
   const draft = drafts.get(id)
   // tab shows at once on a click, and the window remembers it (onTab) behind it.
   const [tab, setTab] = useState<ReviewTab>(openOn)
-  const scrollers = useRef<Scrollers>({ files: null, comments: null })
-  const places = useRef<Places>({ files: null, comments: null })
+  const scrollers = useRef<Scrollers>({ files: null, comments: null, commits: null })
+  const places = useRef<Places>({ files: null, comments: null, commits: null })
   // goingTo is where a jump scrolls once the tab it is in shows: a file's block or an
   // entry's row, by ID.
   const goingTo = useRef('')
@@ -348,7 +351,7 @@ export function ReviewSheet({
 
   // Each pull request's tabs start with no place: one left on another isn't this one's.
   useLayoutEffect(() => {
-    places.current = { files: null, comments: null }
+    places.current = { files: null, comments: null, commits: null }
   }, [id])
 
   // The tab shown goes back to its place, or to where a jump to it goes, once its Activity
@@ -467,6 +470,14 @@ export function ReviewSheet({
             </div>
           )}
           {review !== null && (
+            <SinceYourReview
+              review={review}
+              onShow={() => {
+                jumpTo('commits', commitsSinceAnchor)
+              }}
+            />
+          )}
+          {review !== null && (
             <HeldRuns
               review={review}
               notice={approvedHere}
@@ -509,6 +520,12 @@ export function ReviewSheet({
                         review === null || review.fetchedAt === ''
                           ? ''
                           : commentCount(review.timeline.items, review.timeline.before),
+                    },
+                    {
+                      value: 'commits',
+                      label: 'Commits',
+                      icon: <CommitIcon className="size-3.5" />,
+                      count: review === null ? '' : String(review.commits),
                     },
                   ]}
                   className="flex shrink-0 gap-1 border-b border-border px-4 pt-3"
@@ -603,6 +620,26 @@ export function ReviewSheet({
                               {review.fetchedAt === '' ? 'Not read from GitHub yet.' : 'No comments yet.'}
                             </p>
                           }
+                        />
+                      )}
+                    </div>
+                  </Activity>
+                  <Activity mode={tab === 'commits' ? 'visible' : 'hidden'}>
+                    <div
+                      ref={(el) => {
+                        scrollers.current.commits = el
+                      }}
+                      className="min-h-0 flex-1 overflow-y-auto p-4"
+                    >
+                      {review === null || reading ? (
+                        <ConversationSkeleton />
+                      ) : (
+                        <CommitList
+                          key={`commits-${String(id)}`}
+                          review={review}
+                          onShowPush={(entryId) => {
+                            jumpTo('comments', entryAnchor(entryId))
+                          }}
                         />
                       )}
                     </div>

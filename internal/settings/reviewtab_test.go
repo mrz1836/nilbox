@@ -42,3 +42,17 @@ func TestAnUnreadableReviewTabOpensOnTheFiles(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, ReviewTabFiles, got.ReviewTab)
 }
+
+func TestTheReviewSheetCanOpenOnTheCommits(t *testing.T) {
+	t.Parallel()
+
+	svc, _, _ := newTestService(t)
+
+	got, err := svc.SetReviewTab(t.Context(), ReviewTabCommits)
+	require.NoError(t, err)
+	assert.Equal(t, ReviewTabCommits, got.ReviewTab)
+
+	got, err = svc.Get(t.Context())
+	require.NoError(t, err)
+	assert.Equal(t, ReviewTabCommits, got.ReviewTab, "the choice is stored")
+}

@@ -2192,6 +2192,21 @@ Every card gets it, in any list.
 - **The diff:** unified, with added and removed lines tinted. Lock and generated files (such as
   `go.sum`, lockfiles, `vendor/`, `dist/`, and `*.min.js`) and files with more than 400 changed
   lines start folded. A binary file, or one GitHub won't show, says so and offers ↗.
+- **Three tabs** hold the larger column: **Files** (the description and the diff), **Comments**
+  (the conversation), and **Commits**, each with its count. The sheet opens on the tab you last
+  chose, and each tab keeps its place while another shows.
+- **The commits,** in **Commits**: the newest 100, oldest first, each with its short SHA, its
+  headline, its author, and how long ago it was committed; click one to open it on GitHub. A
+  pull request with more says **N earlier commits on GitHub ↗** above them. The commit your own
+  standing review was left on is tagged **You requested changes** or **You approved**, and a
+  **Since your review** divider marks the commits pushed after it, which the tab scrolls to.
+- **Since your review:** while the pull request is open and its author pushed after you
+  approved or requested changes, a line above the tabs says so, as in **3 commits since you
+  requested changes**, with **Show commits**. When the branch was rewritten since, as by a
+  rebase, it says **The branch was rewritten since you requested changes**, in amber, and the
+  Commits tab links to the force push in the conversation. It goes by where your reviewed
+  commit is in the branch, never by dates, which a rebase keeps; commits from **Update
+  branch** count as pushed since.
 - **The summary** on the right: a one-line readiness sentence (**Ready to merge**, **An approval
   · checks running · auto-merge available**, **Behind main**, **Conflicts with main**), which
   stays in view at the top of the column while the rest scrolls, with the pull request's

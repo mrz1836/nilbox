@@ -23,10 +23,12 @@ import {
   prompts,
   replyList,
   review,
+  reviewCommit,
   reviewFile,
   reviewResult,
   reviewTimeline,
   worktree,
+  yourReview,
 } from '../../test/fixtures'
 import { emit, platform } from '../../test/platform'
 import type { LaunchOptions } from '../ItemRow'
@@ -1881,6 +1883,90 @@ describe('ReviewSheet tabs', () => {
 
     expect(await screen.findByText('No comments yet.')).toBeVisible()
     expect(screen.getByRole('tab', { name: 'Comments 0' })).toBeInTheDocument()
+  })
+})
+
+describe('ReviewSheet commits', () => {
+  const a = 'a'.repeat(40)
+  const b = 'b'.repeat(40)
+  const c = 'c'.repeat(40)
+
+  // withCommits is pull request 7 with three commits, the user's request for changes on
+  // the first.
+  function withCommits(overrides: Parameters<typeof review>[0] = {}) {
+    return review({
+      commits: 3,
+      commitList: [
+        reviewCommit({ oid: a, headline: 'Add the cache' }),
+        reviewCommit({ oid: b, headline: 'Address the review' }),
+        reviewCommit({ oid: c, headline: 'Fix the tests' }),
+      ],
+      yourReview: yourReview({ commit: a, count: 2 }),
+      ...overrides,
+    })
+  }
+
+  it('lists the commits in a third tab, which the window remembers', async () => {
+    const onTab = vi.fn()
+    platform.refreshReview.mockResolvedValue(withCommits())
+    render(<Harness onTab={onTab} />)
+
+    const tabs = await screen.findAllByRole('tab')
+    expect(tabs.map((t) => t.textContent)).toEqual(['Files1', 'Comments0', 'Commits3'])
+
+    await userEvent.click(screen.getByRole('tab', { name: 'Commits 3' }))
+
+    expect(onTab).toHaveBeenLastCalledWith('commits')
+    const list = screen.getByRole('list', { name: 'Commits' })
+    expect(list).toBeVisible()
+    expect(within(list).getByRole('separator', { name: 'Since your review' })).toBeInTheDocument()
+    expect(within(list).getByText('You requested changes')).toBeInTheDocument()
+  })
+
+  it('opens on the commits when they were the tab last chosen', async () => {
+    platform.refreshReview.mockResolvedValue(withCommits())
+    render(<Harness tab="commits" />)
+
+    expect(await screen.findByRole('tab', { name: 'Commits 3' })).toHaveAttribute('aria-selected', 'true')
+    expect(await screen.findByRole('list', { name: 'Commits' })).toBeVisible()
+  })
+
+  it('says how many commits came since your review, and shows them', async () => {
+    const onTab = vi.fn()
+    platform.refreshReview.mockResolvedValue(withCommits())
+    render(<Harness onTab={onTab} />)
+
+    expect(await screen.findByText('2 commits since you requested changes')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Show commits' }))
+
+    expect(screen.getByRole('tab', { name: 'Commits 3' })).toHaveAttribute('aria-selected', 'true')
+    expect(onTab).toHaveBeenLastCalledWith('commits')
+  })
+
+  it('says the branch was rewritten', async () => {
+    platform.refreshReview.mockResolvedValue(
+      withCommits({ yourReview: yourReview({ commit: 'e'.repeat(40), since: 'rewritten', count: 0 }) }),
+    )
+    render(<Harness />)
+
+    expect(await screen.findByText('The branch was rewritten since you requested changes')).toBeInTheDocument()
+  })
+
+  it('says nothing of a review at the head, or once the pull request is closed', async () => {
+    platform.refreshReview.mockResolvedValue(
+      withCommits({ yourReview: yourReview({ commit: c, since: '', count: 0 }) }),
+    )
+    const { unmount } = render(<Harness />)
+
+    expect(await screen.findByRole('tab', { name: 'Commits 3' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Show commits' })).not.toBeInTheDocument()
+    unmount()
+
+    platform.refreshReview.mockResolvedValue(withCommits({ state: 'MERGED' }))
+    render(<Harness />)
+
+    expect(await screen.findByRole('tab', { name: 'Commits 3' })).toBeInTheDocument()
+    expect(screen.queryByText('2 commits since you requested changes')).not.toBeInTheDocument()
   })
 })
 

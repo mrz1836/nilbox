@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -71,8 +72,26 @@ func TestFetchPullReviewReadsTheSheet(t *testing.T) {
 	assert.Equal(t, ReviewMark{State: "COMMENTED", Commit: sha1s("2")}, review.ViewerReview)
 	assert.Equal(t, 1, review.PendingReviews)
 	assert.True(t, review.AutoMerge.On())
-	assert.NotContains(t, pullReviewQuery, "message", "nothing reads a commit's message, so none is asked for")
-	assert.Equal(t, 2, strings.Count(pullReviewQuery, "commits("), "the head's suites, once in each fragment")
+	assert.Equal(t, 1, strings.Count(pullReviewQuery, "message"), "a commit's headline alone, never its message")
+	assert.Equal(t, 3, strings.Count(pullReviewQuery, "commits("), "the head's suites, once in each fragment, and the list")
+	assert.Contains(t, pullReviewQuery, "commitList: commits(last: 100)")
+	assert.NotContains(t, pullReviewQuery, "authors(", "a commit's one author, never the list, which costs points")
+	assert.Equal(t, &Verdict{
+		State: reviewChangesRequested, Commit: sha1s("2"), SubmittedAt: time.Date(2026, 11, 9, 16, 58, 0, 0, time.UTC),
+		URL: "https://github.com/acme-org/example-repo/pull/94#pullrequestreview-0",
+	}, review.Verdict, "the viewer's own verdict, which their later comment-only review doesn't hide")
+	assert.Equal(t, []PullCommit{
+		{
+			OID: sha1s("2"), Headline: "Bump github/codeql-action from 4.39.1 to 4.39.2",
+			CommittedAt: time.Date(2026, 11, 9, 16, 52, 0, 0, time.UTC), AuthorName: "dependabot[bot]",
+		},
+		{
+			OID: sha1s("1"), Headline: "Bump github/codeql-action from 4.39.2 to 4.39.3",
+			CommittedAt: time.Date(2026, 11, 9, 17, 1, 0, 0, time.UTC), Author: "octo-contributor",
+			AuthorName: "Octo Contributor",
+		},
+	}, review.Commits, "oldest first, a null skipped, an author GitHub matched to no account by name alone")
+	assert.Equal(t, 3, review.CommitTotal)
 	assert.Equal(t, 2, strings.Count(pullReviewQuery, "headSuites: commits(last: 1)"),
 		"both fragments read the head's suites under one alias and arguments, which GraphQL merges into one field")
 	assert.Equal(t, []ItemRef{{
@@ -524,4 +543,58 @@ func TestAReviewThatOnlyCommentsIsShownWithLineComments(t *testing.T) {
 
 	assert.Empty(t, (*graphQLReviewer)(nil).name())
 	assert.Empty(t, (*graphQLShortCommit)(nil).short())
+}
+
+func TestPullCommitsMaxIsTheQuerysPage(t *testing.T) {
+	t.Parallel()
+
+	assert.Equal(t, pullCommitsMaxText, strconv.Itoa(PullCommitsMax))
+}
+
+func TestVerdictIsTheViewersOwnDecision(t *testing.T) {
+	t.Parallel()
+
+	commit := &graphQLCommit{OID: sha1s("3")}
+	at := time.Date(2026, 11, 9, 17, 0, 0, 0, time.FixedZone("EST", -5*60*60))
+
+	type node = struct {
+		State           string         `json:"state"`
+		URL             string         `json:"url"`
+		SubmittedAt     time.Time      `json:"submittedAt"`
+		ViewerDidAuthor bool           `json:"viewerDidAuthor"`
+		Commit          *graphQLCommit `json:"commit"`
+	}
+
+	tests := []struct {
+		name  string
+		nodes []*node
+		want  *Verdict
+	}{
+		{name: "none", nodes: nil, want: nil},
+		{name: "another reviewer's", nodes: []*node{{State: reviewChangesRequested, Commit: commit}}, want: nil},
+		{
+			name:  "a dismissed one is no verdict",
+			nodes: []*node{{State: "DISMISSED", ViewerDidAuthor: true, Commit: commit}},
+		},
+		{
+			name:  "approved",
+			nodes: []*node{nil, {State: reviewApproved, ViewerDidAuthor: true, Commit: commit, SubmittedAt: at, URL: "u"}},
+			want:  &Verdict{State: reviewApproved, Commit: sha1s("3"), SubmittedAt: at.UTC(), URL: "u"},
+		},
+		{
+			name:  "a null commit",
+			nodes: []*node{{State: reviewChangesRequested, ViewerDidAuthor: true}},
+			want:  &Verdict{State: reviewChangesRequested},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			got := graphQLOpinions{Nodes: tt.nodes}.verdict()
+			assert.Equal(t, tt.want, got)
+			assert.Equal(t, tt.want != nil && tt.want.State == reviewChangesRequested, got.ChangesRequested())
+		})
+	}
 }
