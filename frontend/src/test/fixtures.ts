@@ -1018,6 +1018,7 @@ export function details(overrides: Partial<ItemDetails> = {}): ItemDetails {
     autoMerge: '',
     fetchedAt: '2026-06-15T11:59:00Z',
     pushedSinceReview: false,
+    reviewRequestedAgain: false,
     ...overrides,
   }
 }

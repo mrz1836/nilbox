@@ -231,6 +231,18 @@ describe('ItemRow', () => {
     expect(tag).toHaveAttribute('title', 'The author pushed since you requested changes')
   })
 
+  it('says the review was requested again once GitHub asks you again after the push', () => {
+    renderRow(item({ reviewRequest: 'you', details: details({ pushedSinceReview: true, reviewRequestedAgain: true }) }))
+
+    const tag = screen.getByText('Review re-requested')
+    expect(tag).toHaveClass('text-accent')
+    expect(tag).toHaveAttribute(
+      'title',
+      'The author pushed since you requested changes, and GitHub asks for your review again',
+    )
+    expect(screen.queryByText('Pushed since your review')).not.toBeInTheDocument()
+  })
+
   it('tags nothing when nothing was pushed since your review', () => {
     renderRow(item({ details: details() }))
 

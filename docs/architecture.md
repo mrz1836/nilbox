@@ -883,9 +883,12 @@ alone, asks GitHub for the user's review again through the `Actor`, which record
 request asks now (`setReviewRequests`), and `RejoinReview`, which sets
 `reason_review_requested`, clears `review_left_at`, and stamps `review_requested_at` with the
 later of GitHub's time of the edit and the item's, leaving `reason_pushed`, so the card reads
-as an ordinary request still tagged (`ReviewRequestYou`). It was listed already, so the next
-refresh tells no arrival, and a refresh whose search trails it lists it as pushed to again
-until the next; it tells the outcome sink nothing (`pullOutcomes`), since it is no review,
+as an ordinary request (`ReviewRequestYou`). A pull request pushed to since that asks the user
+by name again, as the details last read it (`review_users`), whoever asked, is
+`Details.ReviewRequestedAgain`, and its card says **Review re-requested** in place of
+**Pushed since your review**: at once after the user's own re-request, and through a refresh
+whose search trails it, which lists it as pushed to again until the next. It was listed
+already, so the next refresh tells no arrival; it tells the outcome sink nothing (`pullOutcomes`), since it is no review,
 merge, or close. Autopilot's facts and searches keep GitHub's own three lists. The
 snapshot alone partitions them (`addItems`): an item that asks for the user's review, or was
 pushed to since the user requested changes, is in `ReviewRequested`, whatever else it is,

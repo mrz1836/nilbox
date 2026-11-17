@@ -1527,7 +1527,9 @@ and it never dismisses a review. **Remove me as reviewer** isn't offered, since 
 request to take yourself off; reviewing it again from the
 [review sheet](#reviewing-a-pull-request) takes it out at once. The author asking you again,
 or you asking GitHub for your own review again with **Re-request my review**, makes it an
-ordinary request, still tagged; the re-request does so at once, with no extra read. Any move of
+ordinary request, whose tag then reads **Review re-requested**; the re-request does so at once,
+with no extra read. The tag goes by who the pull request asks to review, as its details last
+read it, so a refresh whose search hasn't caught up with the request keeps it. Any move of
 the head counts: a push, a rebase, or **Update branch**. Its
 [review sheet's](#reviewing-a-pull-request) **Commits** tab shows the commits since. **Notifications** counts what is unread: the app's own notifications, the bell's, and,
 while Nilbox reads them, your [GitHub notifications](#github-notifications); hover it for each,
@@ -1796,7 +1798,8 @@ Each pull request or issue in the inbox is a card three lines high:
 
 1. Its title, with a **Draft** tag on a draft pull request, a **Conflicts** tag when it has
    merge conflicts with its base branch, a **Pushed since your review** tag when its author
-   pushed after you requested changes, and an **Auto-merge · squash** tag (or merge commit, or
+   pushed after you requested changes (**Review re-requested** once GitHub asks for your review
+   again), and an **Auto-merge · squash** tag (or merge commit, or
    rebase) when GitHub will merge it on its own once its requirements are met. A long title is cut
    short; hover it for all of it. Clicking a pull request's title opens it in the [review
    sheet](#reviewing-a-pull-request), and an issue's in the [issue sheet](#reading-an-issue);
@@ -2436,7 +2439,8 @@ or requesting changes again, clears its **Pushed since your review** tag too.
 strip under the sheet's header that says how many commits came since offers **Re-request my
 review** beside **Show commits**, and so does the action menu, at its foot. It asks GitHub to
 request your review again, once, as GitHub's own re-request does, and puts the pull request back
-in **Review requested** at once, as an ordinary request still tagged **Pushed since your review**.
+in **Review requested** at once, as an ordinary request, its card tagged **Review re-requested**
+in place of **Pushed since your review**.
 It dismisses nothing: your request for changes stands until your next review replaces it. It is
 never the button and sends none of your text, so the draft stays for that review. It isn't
 offered after an approval, with nothing pushed since, or on your own pull request; it can't run

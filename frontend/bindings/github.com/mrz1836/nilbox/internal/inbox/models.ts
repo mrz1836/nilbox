@@ -119,6 +119,15 @@ export interface Details {
      * is in, its card says so.
      */
     "pushedSinceReview": boolean;
+
+    /**
+     * ReviewRequestedAgain reports such a pull request that asks the user by name to review
+     * it again, as the details last read it: the author asked again, or the user did (the
+     * review sheet's Re-request my review, recorded at once). Its card says Review
+     * re-requested in place of Pushed since your review. It goes by the requests the details
+     * read, never by the Review requested search, which can trail a request for a while.
+     */
+    "reviewRequestedAgain": boolean;
 }
 
 /**

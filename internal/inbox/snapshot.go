@@ -241,6 +241,13 @@ type Details struct {
 	// and the user hasn't reviewed it from the inbox since it last moved. Whichever list it
 	// is in, its card says so.
 	PushedSinceReview bool `json:"pushedSinceReview"`
+
+	// ReviewRequestedAgain reports such a pull request that asks the user by name to review
+	// it again, as the details last read it: the author asked again, or the user did (the
+	// review sheet's Re-request my review, recorded at once). Its card says Review
+	// re-requested in place of Pushed since your review. It goes by the requests the details
+	// read, never by the Review requested search, which can trail a request for a while.
+	ReviewRequestedAgain bool `json:"reviewRequestedAgain"`
 }
 
 // Label is one label on an item.
@@ -668,7 +675,7 @@ func (r *itemRow) item(scope fileScope, viewer string) Item {
 		AuthorAssociation: r.AuthorAssociation,
 		Branch:            r.HeadRef,
 		IsDraft:           r.IsDraft,
-		Details:           r.details(),
+		Details:           r.details(viewer),
 		Files:             r.checkedFiles(scope, isPR, author),
 		DismissedAt:       formatOptionalTime(r.DismissedAt),
 		SnoozedUntil:      formatOptionalTime(r.SnoozedUntil),
@@ -766,8 +773,9 @@ func decodeReasons(raw *string) *snooze.Reasons {
 	return &reasons
 }
 
-// details converts the row's details, or nil when no refresh has read them.
-func (r *itemRow) details() *Details {
+// details converts the row's details, or nil when no refresh has read them, telling whether
+// the pull request asks viewer to review it again after a push.
+func (r *itemRow) details(viewer string) *Details {
 	if !r.HasDetails {
 		return nil
 	}
@@ -781,6 +789,8 @@ func (r *itemRow) details() *Details {
 	for _, p := range r.Projects {
 		projects = append(projects, p.project())
 	}
+
+	pushed := r.pushedSinceReview()
 
 	return &Details{
 		Labels:       labels,
@@ -803,7 +813,8 @@ func (r *itemRow) details() *Details {
 		AutoMerge: r.AutoMerge,
 		FetchedAt: formatOptionalTime(r.DetailsFetchedAt),
 
-		PushedSinceReview: r.pushedSinceReview(),
+		PushedSinceReview:    pushed,
+		ReviewRequestedAgain: pushed && github.ReviewRequests{Users: r.ReviewUsers}.Asks(viewer),
 	}
 }
 

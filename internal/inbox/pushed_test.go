@@ -106,17 +106,38 @@ func TestAPushedPullRequestYouAreAssignedIsInReviewRequested(t *testing.T) {
 	assert.Empty(t, snap.Yours.Items)
 }
 
+// askingAgain is a pull request's details at headNow, asking the user by name to review it.
+func askingAgain() map[string]github.ItemDetails {
+	d := atHead()
+	d.ReviewRequests = github.ReviewRequests{Users: []string{"octo-reviewer", octoUser}}
+
+	return map[string]github.ItemDetails{nodeID(5): d}
+}
+
 func TestARequestAgainAfterAPushIsAnOrdinaryRequestWithTheTag(t *testing.T) {
 	t.Parallel()
 
 	h := newHarness(t)
-	h.client.details = detailsOf(5)
+	h.client.details = askingAgain()
 	h.client.inbox = withReviewed(fetched([]github.Item{byOther(pr(5, "MEMBER", false))}, nil, nil), pushed(5))
 
 	snap := h.refresh(t)
 
 	require.Equal(t, []int{5}, numbers(snap.ReviewRequested))
-	assert.Equal(t, ReviewRequestYou, snap.ReviewRequested.Items[0].ReviewRequest, "you can take yourself off it")
+	it := snap.ReviewRequested.Items[0]
+	assert.Equal(t, ReviewRequestYou, it.ReviewRequest, "you can take yourself off it")
+	assert.True(t, it.Details.PushedSinceReview)
+	assert.True(t, it.Details.ReviewRequestedAgain, "the card says the review was requested again")
+
+	// Asked only through a team, the user isn't asked again by name.
+	d := atHead()
+	d.ReviewRequests = github.ReviewRequests{Teams: []string{"backend"}}
+	h.client.details = map[string]github.ItemDetails{nodeID(5): d}
+	h.clock.Advance(time.Minute)
+
+	snap = h.refresh(t)
+	require.Equal(t, []int{5}, numbers(snap.ReviewRequested))
+	assert.False(t, snap.ReviewRequested.Items[0].Details.ReviewRequestedAgain)
 	assert.True(t, snap.ReviewRequested.Items[0].Details.PushedSinceReview)
 }
 
@@ -327,6 +348,7 @@ func TestReRequestingYourReviewPutsItBackInReviewRequestedAtOnce(t *testing.T) {
 
 	it := itemByNumber(t, h.refresh(t).ReviewRequested, 5)
 	require.Equal(t, ReviewRequestPushed, it.ReviewRequest)
+	require.False(t, it.Details.ReviewRequestedAgain, "nobody asked again yet")
 
 	// A stamp of the user's leaving the list, as a review from the inbox leaves, which the
 	// search's next answer would otherwise be held to.
@@ -342,7 +364,8 @@ func TestReRequestingYourReviewPutsItBackInReviewRequestedAtOnce(t *testing.T) {
 	require.Equal(t, []int{5}, numbers(snap.ReviewRequested))
 	again := snap.ReviewRequested.Items[0]
 	assert.Equal(t, ReviewRequestYou, again.ReviewRequest, "GitHub asks the user by name again, at once")
-	assert.True(t, again.Details.PushedSinceReview, "still tagged as pushed to since the user's review")
+	assert.True(t, again.Details.PushedSinceReview, "still pushed to since the user's review")
+	assert.True(t, again.Details.ReviewRequestedAgain, "the card says so at once, with no refresh")
 	assert.Empty(t, snap.Yours.Items)
 	assert.Empty(t, h.client.itemIDs, "with no request")
 	assert.Empty(t, h.client.itemsIDs)
@@ -355,12 +378,15 @@ func TestReRequestingYourReviewPutsItBackInReviewRequestedAtOnce(t *testing.T) {
 	calls := len(sink.calls)
 
 	// A refresh whose search hasn't caught up lists it as pushed to since, as before, and one
-	// that has lists it as asked; it was listed all along, so neither tells an arrival.
+	// that has lists it as asked; it was listed all along, so neither tells an arrival. The
+	// details GitHub answers ask the user again either way, so the card says so throughout.
+	h.client.details = askingAgain()
 	h.clock.Advance(time.Minute)
 
 	snap = h.refresh(t)
 	require.Equal(t, []int{5}, numbers(snap.ReviewRequested), "it never leaves the list")
 	assert.Equal(t, ReviewRequestPushed, snap.ReviewRequested.Items[0].ReviewRequest)
+	assert.True(t, snap.ReviewRequested.Items[0].Details.ReviewRequestedAgain, "a search that trails changes no card")
 
 	asked := byOther(pr(5, "MEMBER", false))
 	asked.HeadOID, asked.UpdatedAt = headNow, h.clock.Now()
@@ -370,6 +396,7 @@ func TestReRequestingYourReviewPutsItBackInReviewRequestedAtOnce(t *testing.T) {
 	snap = h.refresh(t)
 	require.Equal(t, []int{5}, numbers(snap.ReviewRequested))
 	assert.Equal(t, ReviewRequestYou, snap.ReviewRequested.Items[0].ReviewRequest)
+	assert.True(t, snap.ReviewRequested.Items[0].Details.ReviewRequestedAgain)
 	assert.Len(t, sink.calls, calls, "nothing arrives: it was in Review requested all along")
 }
 

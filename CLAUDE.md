@@ -389,7 +389,9 @@ changing the package, and keep the section and its summary in step.
   item is in both; a review from the inbox takes a pushed one out (`LeaveReview`,
   `NoteViewerReview`), and only a whole refresh sets it; the review sheet's Re-request my
   review, on the user's click through the `Actor`, puts one back in Review requested at once
-  (`Acted.Rerequested`, `RejoinReview`), as an ordinary request still tagged; the stored reason flags and
+  (`Acted.Rerequested`, `RejoinReview`), as an ordinary request whose card says Review
+  re-requested (`Details.ReviewRequestedAgain`, from `review_users`, not the trailing search);
+  the stored reason flags and
   `inbox.beyond.*` stay per search, and `settings.AdoptSections` carried the former lists' window
   keys over to Yours once. It also reads the routines' searches beside its own lists. A refresh hands its
   watch pass (`WatchPasses`, a desktop worker run before the scheduler) the searches
