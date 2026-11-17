@@ -24,10 +24,6 @@ const (
 	// usage.
 	MaxFallbacks = 3
 
-	// DefaultPreset and DefaultWhere are the agent step's tools and place.
-	DefaultPreset = PresetEditTestPush
-	DefaultWhere  = WhereBackground
-
 	// Inherit is the agent step's agent when it takes the one a click would.
 	Inherit = "inherit"
 )

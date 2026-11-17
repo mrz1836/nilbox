@@ -6,8 +6,14 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"go/ast"
+	"go/build"
+	"go/parser"
+	"go/token"
 	"io/fs"
+	"maps"
 	"os"
+	"path"
 	"path/filepath"
 	"regexp"
 	"slices"
@@ -16,6 +22,35 @@ import (
 	"github.com/magefile/mage/sh"
 
 	"github.com/mrz1836/nilbox/internal/brand"
+)
+
+const (
+	// goModFile declares the module whose packages the bindings render.
+	goModFile = "go.mod"
+
+	// modelsFile is the generated file that holds a package's models, its enums among
+	// them.
+	modelsFile = "models.ts"
+
+	// enumEnd closes the const object unionEnum writes for an enum.
+	enumEnd = "} as const;"
+)
+
+var (
+	// errSplitEnum is returned when an enum the bindings render has its Go constants in
+	// more than one file (see checkEnumFiles).
+	errSplitEnum = errors.New("the binding generator orders the members of an enum whose constants " +
+		"are in more than one file differently from run to run; declare each one's constants in one file")
+
+	// errNoModule is returned when go.mod declares no module path.
+	errNoModule = errors.New("go.mod declares no module")
+
+	// enumObject matches the first line of the const object unionEnum writes for an enum,
+	// capturing the enum's name.
+	enumObject = regexp.MustCompile(`^export const ([\w$]+) = \{$`)
+
+	// enumKey matches one member of that object, capturing the name of its Go constant.
+	enumKey = regexp.MustCompile(`^\s+([\w$]+): .+,$`)
 )
 
 // generateBindings writes the TypeScript bindings for the desktop command into out,
@@ -36,7 +71,210 @@ func generateBindings(out string) error {
 		return fmt.Errorf("generate bindings: %w", err)
 	}
 
-	return tidyBindings(out)
+	if err = tidyBindings(out); err != nil {
+		return err
+	}
+
+	return checkEnumFiles(out)
+}
+
+// checkEnumFiles fails, naming each one, when an enum the bindings under root render has
+// its Go constants declared in more than one file of its package.
+//
+// The generator orders an enum's members by the source positions of their declarations,
+// comparing them across files too, and those positions are not stable across files:
+// go/packages parses a package's files concurrently, and each file's positions start
+// wherever the shared token.FileSet stood when its parse began. So an enum whose constants
+// sit in two files comes out in either order from one run to the next, and the drift
+// check fails on a tree that regenerating doesn't change. Within one file the order is the
+// source order every time, so holding each enum to one file makes the bindings the same
+// on every run. Only this module's packages are checked: they are the ones it can change.
+func checkEnumFiles(root string) error {
+	files, err := treeFiles(root)
+	if err != nil {
+		return err
+	}
+
+	enums := boundEnums(files)
+	if len(enums) == 0 {
+		return nil
+	}
+
+	module, err := modulePath(goModFile)
+	if err != nil {
+		return err
+	}
+
+	var split []string
+
+	for _, pkg := range slices.Sorted(maps.Keys(enums)) {
+		dir, ours := moduleDir(module, pkg)
+		if !ours {
+			continue
+		}
+
+		consts, err := constFiles(dir)
+		if err != nil {
+			return err
+		}
+
+		split = append(split, splitEnums(pkg, enums[pkg], consts)...)
+	}
+
+	if len(split) > 0 {
+		return fmt.Errorf("%w:\n  %s", errSplitEnum, strings.Join(split, "\n  "))
+	}
+
+	return nil
+}
+
+// splitEnums returns a line, in name order, for each enum of the package with import path
+// pkg whose constants consts places in more than one file, naming the files.
+func splitEnums(pkg string, enums map[string][]string, consts map[string]string) []string {
+	var split []string
+
+	for _, name := range slices.Sorted(maps.Keys(enums)) {
+		var in []string
+
+		for _, member := range enums[name] {
+			if file, ok := consts[member]; ok && !slices.Contains(in, file) {
+				in = append(in, file)
+			}
+		}
+
+		if len(in) > 1 {
+			slices.Sort(in)
+			split = append(split, pkg+"."+name+": "+strings.Join(in, ", "))
+		}
+	}
+
+	return split
+}
+
+// boundEnums returns the enums the tidy bindings in files render, by the import path of
+// their package and then by name, each with the names of its Go constants.
+func boundEnums(files map[string][]byte) map[string]map[string][]string {
+	enums := map[string]map[string][]string{}
+
+	for rel, body := range files {
+		if path.Base(rel) != modelsFile {
+			continue
+		}
+
+		if found := fileEnums(body); len(found) > 0 {
+			enums[path.Dir(rel)] = found
+		}
+	}
+
+	return enums
+}
+
+// fileEnums returns the enums in one tidy models file, by name, each with the names of
+// its Go constants.
+func fileEnums(body []byte) map[string][]string {
+	enums := map[string][]string{}
+	name := ""
+
+	for line := range strings.SplitSeq(string(body), "\n") {
+		switch {
+		case name == "":
+			if start := enumObject.FindStringSubmatch(line); start != nil {
+				name = start[1]
+			}
+		case line == enumEnd:
+			name = ""
+		default:
+			if member := enumKey.FindStringSubmatch(line); member != nil {
+				enums[name] = append(enums[name], member[1])
+			}
+		}
+	}
+
+	return enums
+}
+
+// modulePath returns the module path the go.mod file at file declares.
+func modulePath(file string) (string, error) {
+	body, err := os.ReadFile(file) //nolint:gosec // this repository's own go.mod
+	if err != nil {
+		return "", fmt.Errorf("read %s: %w", file, err)
+	}
+
+	for line := range strings.SplitSeq(string(body), "\n") {
+		if fields := strings.Fields(line); len(fields) >= 2 && fields[0] == "module" {
+			return strings.Trim(fields[1], "\"`"), nil
+		}
+	}
+
+	return "", errNoModule
+}
+
+// moduleDir returns the directory, relative to the module's root, of the package with
+// import path pkg, and false when pkg is not in module.
+func moduleDir(module, pkg string) (string, bool) {
+	if pkg == module {
+		return ".", true
+	}
+
+	rel, ok := strings.CutPrefix(pkg, module+"/")
+
+	return filepath.FromSlash(rel), ok
+}
+
+// constFiles returns, by name, the file that declares each package-level constant of the
+// package in dir, reading the files the desktop build compiles, as the generator does.
+func constFiles(dir string) (map[string]string, error) {
+	ctxt := build.Default
+	ctxt.BuildTags = append(slices.Clone(ctxt.BuildTags), desktopTag)
+
+	pkg, err := ctxt.ImportDir(dir, 0)
+	if err != nil {
+		return nil, fmt.Errorf("read the package in %s: %w", dir, err)
+	}
+
+	fset := token.NewFileSet()
+	consts := map[string]string{}
+
+	for _, name := range slices.Concat(pkg.GoFiles, pkg.CgoFiles) {
+		file, err := parser.ParseFile(fset, filepath.Join(dir, name), nil, parser.SkipObjectResolution)
+		if err != nil {
+			return nil, fmt.Errorf("read the constants in %s: %w", dir, err)
+		}
+
+		for _, constant := range packageConsts(file) {
+			consts[constant] = name
+		}
+	}
+
+	return consts, nil
+}
+
+// packageConsts returns the names of the package-level constants file declares.
+func packageConsts(file *ast.File) []string {
+	var names []string
+
+	for _, decl := range file.Decls {
+		if gen, ok := decl.(*ast.GenDecl); ok && gen.Tok == token.CONST {
+			names = append(names, specNames(gen.Specs)...)
+		}
+	}
+
+	return names
+}
+
+// specNames returns the names the value specs among specs declare.
+func specNames(specs []ast.Spec) []string {
+	var names []string
+
+	for _, spec := range specs {
+		if value, ok := spec.(*ast.ValueSpec); ok {
+			for _, id := range value.Names {
+				names = append(names, id.Name)
+			}
+		}
+	}
+
+	return names
 }
 
 // tidyBindings rewrites each generated file under root the way the repository keeps it
