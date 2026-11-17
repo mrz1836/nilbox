@@ -387,7 +387,9 @@ changing the package, and keep the section and its summary in step.
   holds what asks for the user's review or was pushed to since, whatever else it is, and
   `Yours` the rest the user opened or is assigned (`Item.Authored`, `Item.Assigned`), so no
   item is in both; a review from the inbox takes a pushed one out (`LeaveReview`,
-  `NoteViewerReview`), and only a whole refresh sets it; the stored reason flags and
+  `NoteViewerReview`), and only a whole refresh sets it; the review sheet's Re-request my
+  review, on the user's click through the `Actor`, puts one back in Review requested at once
+  (`Acted.Rerequested`, `RejoinReview`), as an ordinary request still tagged; the stored reason flags and
   `inbox.beyond.*` stay per search, and `settings.AdoptSections` carried the former lists' window
   keys over to Yours once. It also reads the routines' searches beside its own lists. A refresh hands its
   watch pass (`WatchPasses`, a desktop worker run before the scheduler) the searches
@@ -631,8 +633,14 @@ changing the package, and keep the section and its summary in step.
   (`fitContext`), and the newest hundred commits and the user's own verdict
   (`latestOpinionatedReviews`, `github.Verdict`), never in the card's details, where it costs
   a point a batch; `yourReview` says what happened since that verdict by where its commit is
-  among the commits, never by date (`Since`: pushed, beyond the hundred, or rewritten); only
-  `Open` moves `review_diffs.seen_at`; `Earlier` (`PeekPull`) stores nothing. Each step is an `event.ReviewProgress`; a merge or a close takes the pull request out
+  among the commits, never by date (`Since`: pushed, beyond the hundred, or rewritten), and
+  the same read says how far the branch is behind its base (`baseRef.compare` with
+  `github.PullHeadRef`, no extra point), for the sheet's Behind its base strip; only
+  `Open` moves `review_diffs.seen_at`; `Earlier` (`PeekPull`) stores nothing. Re-request my
+  review (`rerequest_review`), offered only once the author pushed since the user requested
+  changes, asks GitHub for the user's own review once (`RequestReview`, REST, through the
+  `Actor` and `edit`), only on the user's click (never the button, never Autopilot's),
+  dismisses nothing, and puts the pull request back in Review requested. Each step is an `event.ReviewProgress`; a merge or a close takes the pull request out
   of every list (`Acted.Merged`, `Acted.Closed`), and a merge tells its `Merges` (the Release
   `Refresher`). `EditLabels` changes a pull request's labels as the issue sheet's edit changes
   an issue's, at the same issues endpoint, pinned to the head, through the `Actor`, each step

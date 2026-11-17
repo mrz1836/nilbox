@@ -32,6 +32,19 @@ func TestFetchPullReviewReadsTheSheet(t *testing.T) {
 
 		var req itemRequest
 		assert.NoError(t, json.Unmarshal(raw, &req))
+
+		var vars struct {
+			Variables struct {
+				CompareHead string `json:"compareHead"`
+				Compare     bool   `json:"compare"`
+			} `json:"variables"`
+		}
+
+		assert.NoError(t, json.Unmarshal(raw, &vars))
+		assert.Equal(t, "refs/pull/94/head", vars.Variables.CompareHead)
+		assert.True(t, vars.Variables.Compare, "a head to compare asks for the compare")
+		assert.Contains(t, req.Query,
+			"baseCompare: baseRef @include(if: $compare) { compare(headRef: $compareHead) { behindBy } }")
 		assert.Contains(t, req.Query, "node(id: $id) { ...ItemFields ...DetailFields ...ReviewFields }")
 		assert.Contains(t, req.Query, "fragment ReviewFields on PullRequest")
 		assert.Contains(t, req.Query, "viewerCanClose")
@@ -47,11 +60,12 @@ func TestFetchPullReviewReadsTheSheet(t *testing.T) {
 	rates := &recordRates{}
 	client.Rates = rates
 
-	review, err := client.FetchPullReview(t.Context(), NewToken(fakeToken), "PR_fakeNodeId94")
+	review, err := client.FetchPullReview(t.Context(), NewToken(fakeToken), "PR_fakeNodeId94", PullHeadRef(94))
 	require.NoError(t, err)
 
 	require.True(t, review.Update.Found)
 	assert.Equal(t, 94, review.Update.Item.Number)
+	assert.Equal(t, 12, review.BehindBy, "the commits on the base branch its head doesn't have")
 	assert.Equal(t, "Bump github/codeql-action from 4.39.1 to 4.39.3 in the github-actions group", review.Update.Item.Title)
 	assert.Equal(t, "Bot", review.Update.Item.AuthorType)
 	assert.Equal(t, sha1s("1"), review.Update.Details.HeadOID)
@@ -166,7 +180,7 @@ func TestFetchPullReviewReadsHeldRunsWithoutARollup(t *testing.T) {
 
 	client := newTestClient(t, serveItem(string(body)))
 
-	review, err := client.FetchPullReview(t.Context(), NewToken(fakeToken), "PR_fakeNodeId94")
+	review, err := client.FetchPullReview(t.Context(), NewToken(fakeToken), "PR_fakeNodeId94", "")
 	require.NoError(t, err)
 
 	assert.Empty(t, review.Checks)
@@ -185,13 +199,83 @@ func TestFetchPullReviewReadsHeldRunsWithoutARollup(t *testing.T) {
 	assert.Equal(t, Checks{Awaiting: 1}, review.Update.Details.Checks, "the card has no rollup, and the held run")
 }
 
+func TestFetchPullReviewWithoutACompare(t *testing.T) {
+	t.Parallel()
+
+	// GitHub answers a compare it can't resolve, as of a base branch deleted since, null
+	// beside a not-found error, which leaves the rest of the answer; with no head to compare,
+	// the read doesn't ask, and the answer holds none.
+	var answer map[string]any
+	require.NoError(t, json.Unmarshal(fixture(t, "pull_review_response.json"), &answer))
+
+	node, ok := answer["data"].(map[string]any)["node"].(map[string]any)
+	require.True(t, ok)
+
+	node["baseCompare"] = map[string]any{"compare": nil}
+	answer["errors"] = []any{map[string]any{
+		"type": "NOT_FOUND", "path": []any{"node", "baseCompare", "compare"}, "message": "Could not resolve head ref.",
+	}}
+
+	withError, err := json.Marshal(answer)
+	require.NoError(t, err)
+
+	delete(node, "baseCompare")
+	delete(answer, "errors")
+
+	asked, err := json.Marshal(answer)
+	require.NoError(t, err)
+
+	tests := []struct {
+		name, body, head string
+	}{
+		{name: "a compare GitHub couldn't resolve", body: string(withError), head: PullHeadRef(94)},
+		{name: "no compare asked for", body: string(asked), head: ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			client := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+				raw, readErr := io.ReadAll(r.Body)
+				assert.NoError(t, readErr)
+
+				var req struct {
+					Variables struct {
+						CompareHead string `json:"compareHead"`
+						Compare     bool   `json:"compare"`
+					} `json:"variables"`
+				}
+
+				assert.NoError(t, json.Unmarshal(raw, &req))
+				assert.Equal(t, tt.head, req.Variables.CompareHead)
+				assert.Equal(t, tt.head != "", req.Variables.Compare, "the compare is asked for only with a head")
+
+				_, _ = io.WriteString(w, tt.body)
+			})
+
+			review, readErr := client.FetchPullReview(t.Context(), NewToken(fakeToken), "PR_fakeNodeId94", tt.head)
+			require.NoError(t, readErr)
+			assert.True(t, review.Update.Found)
+			assert.Equal(t, MergeStateBlocked, review.MergeState, "the rest of the answer stands")
+			assert.Zero(t, review.BehindBy)
+		})
+	}
+}
+
+func TestPullHeadRef(t *testing.T) {
+	t.Parallel()
+
+	assert.Equal(t, "refs/pull/94/head", PullHeadRef(94))
+}
+
 func TestFetchPullReviewOfAPullRequestThatIsGone(t *testing.T) {
 	t.Parallel()
 
 	client := newTestClient(t, serveItem(`{"data":{"node":null,"rateLimit":{"cost":1}},`+
 		`"errors":[{"type":"NOT_FOUND","message":"Could not resolve to a node"}]}`))
 
-	review, err := client.FetchPullReview(t.Context(), NewToken(fakeToken), "PR_gone")
+	review, err := client.FetchPullReview(t.Context(), NewToken(fakeToken), "PR_gone", "")
 	require.NoError(t, err)
 	assert.False(t, review.Update.Found)
 	assert.Empty(t, review.Checks)
@@ -221,7 +305,7 @@ func TestFetchPullReviewRefusesWhatIsNotAPullRequest(t *testing.T) {
 
 			client := newTestClient(t, serveItem(tt.body))
 
-			_, err := client.FetchPullReview(t.Context(), NewToken(fakeToken), tt.id)
+			_, err := client.FetchPullReview(t.Context(), NewToken(fakeToken), tt.id, "")
 			require.ErrorIs(t, err, tt.want)
 		})
 	}
@@ -233,7 +317,7 @@ func TestFetchPullReviewFailsOnABadReviewField(t *testing.T) {
 	body := strings.Replace(string(fixture(t, "pull_review_response.json")), `"pendingReviews": {`, `"pendingReviews": "x", "unused": {`, 1)
 	client := newTestClient(t, serveItem(body))
 
-	_, err := client.FetchPullReview(t.Context(), NewToken(fakeToken), "PR_fakeNodeId94")
+	_, err := client.FetchPullReview(t.Context(), NewToken(fakeToken), "PR_fakeNodeId94", "")
 	require.ErrorIs(t, err, ErrMalformedResponse)
 }
 
@@ -350,7 +434,7 @@ func TestFetchPullReviewReadsTheConversation(t *testing.T) {
 
 	client := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
 		req := readIssueRequest(t, r)
-		assert.Contains(t, req.Query, "query PullReview($id: ID!, $last: Int!)")
+		assert.Contains(t, req.Query, "query PullReview($id: ID!, $last: Int!, $compareHead: String!, $compare: Boolean!)")
 		assert.Contains(t, req.Query, "timeline: timelineItems(last: $last, itemTypes: "+pullTimelineItemTypes+")")
 		assert.Contains(t, req.Query, "fragment PullTimelineFields on PullRequestTimelineItemsConnection")
 		assert.Contains(t, req.Query, "totalCount filteredCount")
@@ -362,7 +446,7 @@ func TestFetchPullReviewReadsTheConversation(t *testing.T) {
 		_, _ = w.Write(body)
 	})
 
-	review, err := client.FetchPullReview(t.Context(), NewToken(fakeToken), "PR_fakeNodeId94")
+	review, err := client.FetchPullReview(t.Context(), NewToken(fakeToken), "PR_fakeNodeId94", "")
 	require.NoError(t, err)
 
 	assert.Equal(t, time.Date(2026, 11, 9, 16, 53, 30, 0, time.UTC), review.LastEditedAt)
@@ -453,7 +537,7 @@ func TestFetchPullReviewAsksForASmallerPageWhenTheAnswerIsTooLarge(t *testing.T)
 		_, _ = w.Write(body)
 	})
 
-	review, err := client.FetchPullReview(t.Context(), NewToken(fakeToken), "PR_fakeNodeId94")
+	review, err := client.FetchPullReview(t.Context(), NewToken(fakeToken), "PR_fakeNodeId94", "")
 	require.NoError(t, err)
 	assert.Len(t, review.Timeline.Items, 11)
 	assert.Equal(t, []int{timelinePage, timelineSmallPage}, pages.all())

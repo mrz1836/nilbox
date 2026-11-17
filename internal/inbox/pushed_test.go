@@ -317,3 +317,75 @@ func TestAMergeFollowReadsAPushedPullRequestOnItsBase(t *testing.T) {
 	assert.Equal(t, [][]string{{nodeID(5)}}, h.client.itemsIDs,
 		"a pull request pushed to since you requested changes is listed, so a merge into its base reads it again")
 }
+
+func TestReRequestingYourReviewPutsItBackInReviewRequestedAtOnce(t *testing.T) {
+	t.Parallel()
+
+	h, sink := arrivalHarness(t)
+	h.client.details = detailsOf(5)
+	h.client.inbox = withReviewed(fetched(nil, nil, nil), pushed(5))
+
+	it := itemByNumber(t, h.refresh(t).ReviewRequested, 5)
+	require.Equal(t, ReviewRequestPushed, it.ReviewRequest)
+
+	// A stamp of the user's leaving the list, as a review from the inbox leaves, which the
+	// search's next answer would otherwise be held to.
+	h.exec(t, `UPDATE items SET review_left_at = '2026-01-10 12:00:00+00:00' WHERE id = ?`, it.ID)
+
+	at := h.clock.Now().Add(time.Second)
+	snap, err := NewActor(h.svc).Act(t.Context(), it.ID, acting(Acted{
+		Rerequested: true, RerequestedAt: at,
+		ReviewRequests: github.ReviewRequests{Users: []string{"octo-reviewer", octoUser}, Teams: []string{}},
+	}))
+	require.NoError(t, err)
+
+	require.Equal(t, []int{5}, numbers(snap.ReviewRequested))
+	again := snap.ReviewRequested.Items[0]
+	assert.Equal(t, ReviewRequestYou, again.ReviewRequest, "GitHub asks the user by name again, at once")
+	assert.True(t, again.Details.PushedSinceReview, "still tagged as pushed to since the user's review")
+	assert.Empty(t, snap.Yours.Items)
+	assert.Empty(t, h.client.itemIDs, "with no request")
+	assert.Empty(t, h.client.itemsIDs)
+
+	assert.Equal(t, [3]bool{true, false, false}, h.reasons(t, 5))
+	assert.Empty(t, h.reviewLeftAt(t, it.ID), "the stamp of leaving it is cleared")
+	assert.Equal(t, []string{`["octo-reviewer","octo-user"]`},
+		h.column(t, "SELECT review_users FROM item_details WHERE item_id = ?", it.ID), "who GitHub asks now")
+
+	calls := len(sink.calls)
+
+	// A refresh whose search hasn't caught up lists it as pushed to since, as before, and one
+	// that has lists it as asked; it was listed all along, so neither tells an arrival.
+	h.clock.Advance(time.Minute)
+
+	snap = h.refresh(t)
+	require.Equal(t, []int{5}, numbers(snap.ReviewRequested), "it never leaves the list")
+	assert.Equal(t, ReviewRequestPushed, snap.ReviewRequested.Items[0].ReviewRequest)
+
+	asked := byOther(pr(5, "MEMBER", false))
+	asked.HeadOID, asked.UpdatedAt = headNow, h.clock.Now()
+	h.client.inbox = withReviewed(fetched([]github.Item{asked}, nil, nil), pushed(5))
+	h.clock.Advance(time.Minute)
+
+	snap = h.refresh(t)
+	require.Equal(t, []int{5}, numbers(snap.ReviewRequested))
+	assert.Equal(t, ReviewRequestYou, snap.ReviewRequested.Items[0].ReviewRequest)
+	assert.Len(t, sink.calls, calls, "nothing arrives: it was in Review requested all along")
+}
+
+func TestAReRequestIsRecordedWithItsTryAndRetry(t *testing.T) {
+	t.Parallel()
+
+	first := Acted{
+		Rerequested: true, RerequestedAt: time.Date(2026, 1, 10, 12, 0, 0, 0, time.UTC),
+		ReviewRequests: github.ReviewRequests{Users: []string{octoUser}, Teams: []string{}},
+	}
+
+	got := first.with(Acted{})
+	assert.Equal(t, first, got, "a later try that sent nothing keeps what the first made happen")
+	assert.True(t, got.any(), "a re-request is something the inbox records")
+
+	got = Acted{}.with(first)
+	assert.Equal(t, first, got)
+	assert.False(t, Acted{}.any())
+}

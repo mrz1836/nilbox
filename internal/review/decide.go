@@ -25,6 +25,8 @@ import (
 //   - A pending review on GitHub blocks every review.
 //   - Nothing closes a pull request but the user's confirmed choice: a close is never the
 //     sheet's button.
+//   - Nothing asks for the user's review again but their click, and only after they
+//     requested changes and the author pushed since: it is never the sheet's button.
 
 // Facts are what Decide knows about a pull request.
 type Facts struct {
@@ -60,6 +62,10 @@ type Facts struct {
 	// AutoMergeOn reports auto-merge already on.
 	AutoMergeOn bool
 
+	// BehindBy is how many commits the base branch has that the head doesn't, as the sheet
+	// last read it; 0 when it couldn't tell, or before it read it.
+	BehindBy int
+
 	// Dependabot reports a pull request Dependabot opened, which it keeps up to date
 	// itself when asked.
 	Dependabot bool
@@ -71,6 +77,13 @@ type Facts struct {
 	// ChangesRequested a request for changes standing.
 	ReviewRequired   bool
 	ChangesRequested bool
+
+	// ChangesRequestedSince reports that the user's own standing review requested changes
+	// and the branch moved since (Since: commits pushed on top of the reviewed one, or the
+	// branch rewritten), as the inbox's Pushed since your review does; and AskedAgain that
+	// the pull request asks the user by name to review it now.
+	ChangesRequestedSince bool
+	AskedAgain            bool
 
 	// Checks count the head commit's checks: those required and failing or pending, and
 	// any failing or pending.
@@ -168,13 +181,7 @@ func (d decider) offers() []Offer {
 		out = append(out, d.rebaseBot())
 	}
 
-	// GitHub says when the user can bring the branch up to date, however the merge state reads
-	// (a branch behind its base reads BLOCKED or CLEAN when the rules don't want it up to
-	// date). A branch the rules hold back for being behind is offered anyway, with why the
-	// user can't, unless it is Dependabot's, which the rebase above keeps up to date.
-	if f.CanUpdateBranch || (f.MergeState == github.MergeStateBehind && !f.Dependabot) {
-		out = append(out, d.updateBranch())
-	}
+	out = append(out, d.updateBranch())
 
 	// GitHub holds a fork's workflow runs until a maintainer approves them, and an
 	// approval is what starts its checks, whatever else the pull request waits on.
@@ -182,7 +189,7 @@ func (d decider) offers() []Offer {
 		out = append(out, d.approveRuns())
 	}
 
-	out = append(out, d.closePull())
+	out = append(out, d.rerequest(), d.closePull())
 	out = slices.DeleteFunc(out, func(o Offer) bool { return o.Action == ActionNone })
 
 	for i := range out {
@@ -207,8 +214,33 @@ func (d decider) rebaseBot() Offer {
 		o.Reason = "Wait for it to load from GitHub."
 	case !f.CanWrite:
 		o.Reason = "Dependabot only takes commands from people with push access to the repository."
-	case f.MergeState != github.MergeStateBehind && f.MergeState != github.MergeStateDirty && !f.CanUpdateBranch:
+	case f.MergeState != github.MergeStateBehind && f.MergeState != github.MergeStateDirty && !f.CanUpdateBranch &&
+		f.BehindBy == 0:
 		o.Reason = fmt.Sprintf("It's up to date with %s, so there's nothing to rebase.", base(f))
+	default:
+		o.Enabled = true
+	}
+
+	return o
+}
+
+// rerequest offers to ask GitHub to request the user's own review again, as GitHub's own
+// re-request does: on someone else's pull request whose author pushed since the user
+// requested changes, for a user with write access (GitHub asks only collaborators to
+// review), while GitHub doesn't ask them already. It dismisses nothing, sends no text, runs
+// on click, and is never the sheet's button.
+func (d decider) rerequest() Offer {
+	if d.f.Mine || !d.f.ChangesRequestedSince {
+		return Offer{}
+	}
+
+	o := Offer{Action: ActionRerequestReview, Label: "Re-request my review", Warnings: []string{}}
+
+	switch {
+	case d.f.AskedAgain:
+		o.Reason = "GitHub already asks you to review it again."
+	case !d.f.CanWrite:
+		o.Reason = "Only people with write access to the repository can be asked to review it."
 	default:
 		o.Enabled = true
 	}
@@ -525,9 +557,19 @@ func (d decider) autoMergeBlock() string {
 const dependabotUpdateWarning = "Dependabot stops rebasing a pull request once someone else changes its branch. " +
 	"Ask Dependabot to rebase instead to keep it managed."
 
-// updateBranch offers to merge the base branch in. On Dependabot's pull request it warns
-// first, so it asks first: Dependabot stops rebasing a branch someone else changed.
+// updateBranch offers to merge the base branch in whenever GitHub says the user can bring
+// the branch up to date, however the merge state reads (a branch behind its base reads
+// BLOCKED or CLEAN when the rules don't want it up to date). A branch behind, whether the
+// rules hold it back for it or the compare counted commits it lacks, is offered anyway,
+// with why the user can't, unless it is Dependabot's, which the rebase keeps up to date. On
+// Dependabot's pull request it warns first, so it asks first: Dependabot stops rebasing a
+// branch someone else changed.
 func (d decider) updateBranch() Offer {
+	behind := d.f.MergeState == github.MergeStateBehind || d.f.BehindBy > 0
+	if !d.f.CanUpdateBranch && (!behind || d.f.Dependabot) {
+		return Offer{}
+	}
+
 	o := Offer{Action: ActionUpdateBranch, Label: "Update branch", Warnings: []string{}}
 
 	if d.f.Dependabot {
@@ -589,9 +631,9 @@ func notNowReason(f Facts) string {
 // primary picks the offer the sheet's button runs: one enabled offer, or none. Asking
 // Dependabot to rebase comes first while its pull request is behind or has conflicts, and
 // Update branch while the rules hold a pull request back for being behind; otherwise both
-// wait in the menu, and are never the button, since each writes to the branch. A close
-// waits in the menu always. With no primary and offers enabled, the sheet's button only
-// opens the menu.
+// wait in the menu, and are never the button, since each writes to the branch. A close and
+// Re-request my review wait in the menu always. With no primary and offers enabled, the
+// sheet's button only opens the menu.
 func primary(f Facts, offers []Offer) Action {
 	enabled := func(a Action) bool {
 		return slices.ContainsFunc(offers, func(o Offer) bool { return o.Action == a && o.Enabled })

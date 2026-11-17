@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -29,7 +30,15 @@ import (
 // request with reviews, line comments, force pushes, and review requests), and still at one
 // with the newest hundred commits and the reviewers' verdicts (measured in November 2026 on
 // a pull request of 515 commits and 2,752 timeline items).
-const pullReviewQuery = `query PullReview($id: ID!, $last: Int!) {
+//
+// With $compare set, it also compares the base branch with $compareHead, the pull request's
+// head as refs/pull/<number>/head (PullHeadRef), for how many commits the branch is behind
+// its base. GitHub resolves that ref for a fork's pull request as for one from the same
+// repository (its branch name, it doesn't), and a compare it can't resolve comes back null
+// beside a not-found error, which leaves the rest of the answer. The compare costs nothing
+// more: the whole read was still one point with it (measured in November 2026 on a pull
+// request from the same repository, 371 commits behind, and on a fork's, 388 behind).
+const pullReviewQuery = `query PullReview($id: ID!, $last: Int!, $compareHead: String!, $compare: Boolean!) {
   node(id: $id) { ...ItemFields ...DetailFields ...ReviewFields }
   rateLimit { cost remaining resetAt limit used }
 }
@@ -76,6 +85,7 @@ fragment ReviewFields on PullRequest {
     }
   }
   timeline: timelineItems(last: $last, itemTypes: ` + pullTimelineItemTypes + `) { ...PullTimelineFields }
+  baseCompare: baseRef @include(if: $compare) { compare(headRef: $compareHead) { behindBy } }
 }
 `
 
@@ -210,6 +220,18 @@ type PullReview struct {
 	// CommitTotal how many it has.
 	Commits     []PullCommit
 	CommitTotal int
+
+	// BehindBy is how many commits its base branch has that its head doesn't, as GitHub
+	// compares them; 0 when the read asked for no compare, and when GitHub couldn't compare
+	// them, as for a base branch deleted since.
+	BehindBy int
+}
+
+// PullHeadRef is the ref GitHub keeps a pull request's head under in its base repository,
+// refs/pull/<number>/head, which compares the head with the base branch for a fork's pull
+// request as for one from the same repository.
+func PullHeadRef(number int) string {
+	return "refs/pull/" + strconv.Itoa(number) + "/head"
 }
 
 // PullCommit is one of a pull request's commits.
@@ -328,9 +350,11 @@ type MergeState struct {
 
 // FetchPullReview reads what the review sheet shows about the pull request with node ID
 // id, as of now, with one GraphQL request, and again with a smaller page of its
-// conversation when the answer is larger than the client reads.
-func (c *Client) FetchPullReview(ctx context.Context, tok Token, id string) (*PullReview, error) {
-	review, err := c.fetchPullReview(ctx, tok, id)
+// conversation when the answer is larger than the client reads. With compareHead, its
+// head as PullHeadRef names it, the same request says how far the branch is behind its
+// base (PullReview.BehindBy); with "", it doesn't ask.
+func (c *Client) FetchPullReview(ctx context.Context, tok Token, id, compareHead string) (*PullReview, error) {
+	review, err := c.fetchPullReview(ctx, tok, id, compareHead)
 
 	return review, Redact(err, tok)
 }
@@ -346,20 +370,23 @@ func (c *Client) FetchMergeState(ctx context.Context, tok Token, id string) (*Me
 
 // fetchPullReview sends the pull review query, with a smaller page of the conversation
 // should the answer be too large (paged).
-func (c *Client) fetchPullReview(ctx context.Context, tok Token, id string) (*PullReview, error) {
+func (c *Client) fetchPullReview(ctx context.Context, tok Token, id, compareHead string) (*PullReview, error) {
 	if id == "" {
 		return nil, fmt.Errorf("%w: no node ID", ErrInvalidItemRef)
 	}
 
 	return paged(func(last int) (*PullReview, error) {
-		return c.sendPullReview(ctx, tok, id, last)
+		return c.sendPullReview(ctx, tok, id, compareHead, last)
 	})
 }
 
 // sendPullReview sends the pull review query for the newest last items of the
-// conversation, and decodes the answer.
-func (c *Client) sendPullReview(ctx context.Context, tok Token, id string, last int) (*PullReview, error) {
-	req := graphQLRequest{Query: pullReviewQuery, Variables: map[string]any{"id": id, "last": last}}
+// conversation, comparing the base branch with compareHead unless it is "", and decodes
+// the answer.
+func (c *Client) sendPullReview(ctx context.Context, tok Token, id, compareHead string, last int) (*PullReview, error) {
+	req := graphQLRequest{Query: pullReviewQuery, Variables: map[string]any{
+		"id": id, "last": last, "compareHead": compareHead, "compare": compareHead != "",
+	}}
 
 	resp, _, err := postGraphQL[itemData](ctx, c, tok, "pull review", req, unlessData)
 	if err != nil {
@@ -480,7 +507,12 @@ type reviewNode struct {
 	ReactionGroups []*graphQLReactionGroup `json:"reactionGroups"`
 	Timeline       graphQLTimeline         `json:"timeline"`
 	Opinions       graphQLOpinions         `json:"opinions"`
-	CommitList     struct {
+	BaseCompare    *struct {
+		Compare *struct {
+			BehindBy int `json:"behindBy"`
+		} `json:"compare"`
+	} `json:"baseCompare"`
+	CommitList struct {
 		TotalCount int `json:"totalCount"`
 		Nodes      []*struct {
 			Commit *struct {
@@ -650,6 +682,17 @@ func (n *reviewNode) fill(r *PullReview, self ItemRef, head string) {
 	r.Verdict = n.Opinions.verdict()
 	r.Commits = n.commits()
 	r.CommitTotal = max(n.CommitList.TotalCount, len(r.Commits))
+	r.BehindBy = n.behindBy()
+}
+
+// behindBy is how many commits the base branch is ahead of the head, 0 when the read asked
+// for no compare or GitHub answered none.
+func (n *reviewNode) behindBy() int {
+	if n.BaseCompare == nil || n.BaseCompare.Compare == nil {
+		return 0
+	}
+
+	return max(n.BaseCompare.Compare.BehindBy, 0)
 }
 
 // commits converts the newest commits, oldest first as GitHub lists them, skipping nulls

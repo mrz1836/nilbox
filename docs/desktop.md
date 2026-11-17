@@ -1522,12 +1522,14 @@ would leave your inbox. A fourth search finds the open pull requests you reviewe
 your own standing verdict and its head commit, at no extra cost: when your verdict requested
 changes at a commit other than the head, the pull request is in **Review requested**, tagged
 **Pushed since your review**, and arrives with a banner once, when the push is new. Nilbox
-writes nothing to GitHub for it: it never dismisses or requests a review. **Remove me as
-reviewer** isn't offered, since there is no request to take yourself off; reviewing it again
-from the [review sheet](#reviewing-a-pull-request) takes it out at once, and so does the
-author asking you again (it then reads as an ordinary request, still tagged). Any move of the
-head counts: a push, a rebase, or **Update branch**. Its [review sheet's](#reviewing-a-pull-request)
-**Commits** tab shows the commits since. **Notifications** counts what is unread: the app's own notifications, the bell's, and,
+writes nothing to GitHub for it unless you click **Re-request my review** in its review sheet,
+and it never dismisses a review. **Remove me as reviewer** isn't offered, since there is no
+request to take yourself off; reviewing it again from the
+[review sheet](#reviewing-a-pull-request) takes it out at once. The author asking you again,
+or you asking GitHub for your own review again with **Re-request my review**, makes it an
+ordinary request, still tagged; the re-request does so at once, with no extra read. Any move of
+the head counts: a push, a rebase, or **Update branch**. Its
+[review sheet's](#reviewing-a-pull-request) **Commits** tab shows the commits since. **Notifications** counts what is unread: the app's own notifications, the bell's, and,
 while Nilbox reads them, your [GitHub notifications](#github-notifications); hover it for each,
 as **3 unread in Nilbox · 12 unread on GitHub**. **Autopilot** counts the agents its routines
 have working, with an amber dot while something waits for you and a red dot while a routine is
@@ -2137,6 +2139,7 @@ clearing on: it marks a notification done, or read, when the work behind it is f
 |---|---|---|
 | Unassign me | The card's menu, or the issue sheet's | 1 REST point |
 | Remove me as reviewer | The card's menu | 1 REST point |
+| Re-request my review | The review sheet, once its author pushed since you requested changes | 1 REST point |
 | Approve (with line comments) | The review sheet | 1 GraphQL point to check nothing was pushed, then 1 REST point |
 | Request changes, Comment (with line comments) | The review sheet | 1 REST point |
 | Merge | The review sheet, after you confirm | 1–3 GraphQL points to read the merge state, then 1 REST point |
@@ -2293,20 +2296,34 @@ account with push access (Dependabot takes commands from no one else), while the
 behind its base or has conflicts with it; otherwise the menu says why not, as in **It's up to
 date with main, so there's nothing to rebase.** The menu offers **Update branch** whenever GitHub
 says you can update the branch (it is behind its base and you may push to it), even when the
-rules don't need it up to date and the pull request reads as blocked or ready. Both write to the
-branch, so outside the rows above neither is ever the button: it keeps its own action, and when
-nothing else can run it reads **Choose an action** and only opens the menu, and **⌘↩** does
-nothing until you pick one. **Nothing to do here now.** shows only when no action can run.
+rules don't need it up to date and the pull request reads as blocked or ready, and, with why
+not (**Your account can't update this branch.**), whenever the branch is behind and you can't,
+but on Dependabot's.
+Both write to the branch, so outside the rows above neither is ever the button: it keeps its own
+action, and when nothing else can run it reads **Choose an action** and only opens the menu, and
+**⌘↩** does nothing until you pick one. **Nothing to do here now.** shows only when no action can
+run.
+
+**Behind its base.** While an open pull request's branch is behind its base, a strip under the
+sheet's header says so, as in **12 commits behind main**, or **Behind main** when GitHub couldn't
+count them, beside **Update branch** (on Dependabot's, **Ask Dependabot to rebase**), or why you
+can't. The count comes with the sheet's own read, at no extra cost: GitHub compares the base
+branch with the pull request's head, a fork's included. The strip is amber while the rules hold
+the merge back until the branch is up to date; otherwise it only says so, since GitHub merges a
+branch behind its base all the same there. **Update branch** merges the base into the branch, as
+GitHub's own button does; it never rebases it. Clicking the strip's button runs the action as
+picking it from the menu does: one that asks first, as on a Dependabot branch, opens its
+confirmation.
 
 **Every merge asks first.** Merge, Merge when ready (auto-merge), Approve & merge, and Approve &
 auto-merge open a confirmation with the merge methods the repository allows, the commit it
 merges, and any warnings to accept first: optional checks failing, or sensitive files
 of the danger level. **Cancel** is where the focus starts. Approve, Comment, Request changes,
-Update branch, and Ask Dependabot to rebase are one click, but any action with a warning asks
-first, in a confirmation of its own with no merge methods. **Update branch** on a Dependabot
-pull request does: its confirmation warns that Dependabot stops rebasing a pull request once
-someone else changes its branch, and that asking Dependabot to rebase keeps it managed, and it
-updates only once you tick **I've looked, update anyway**.
+Update branch, Ask Dependabot to rebase, and Re-request my review are one click, but any action
+with a warning asks first, in a confirmation of its own with no merge methods. **Update branch**
+on a Dependabot pull request does: its confirmation warns that Dependabot stops rebasing a pull
+request once someone else changes its branch, and that asking Dependabot to rebase keeps it
+managed, and it updates only once you tick **I've looked, update anyway**.
 
 **When nothing listed is failing.** GitHub calls a pull request it would merge, but whose head
 commit has something not passing, *unstable*. That something isn't always a check: a workflow
@@ -2415,6 +2432,17 @@ it), and a merge or a close out of the inbox, at once, with no extra request. Th
 pull request there only because its author pushed since you requested changes: approving it,
 or requesting changes again, clears its **Pushed since your review** tag too.
 
+**Re-request my review.** Once a pull request's author pushed since you requested changes, the
+strip under the sheet's header that says how many commits came since offers **Re-request my
+review** beside **Show commits**, and so does the action menu, at its foot. It asks GitHub to
+request your review again, once, as GitHub's own re-request does, and puts the pull request back
+in **Review requested** at once, as an ordinary request still tagged **Pushed since your review**.
+It dismisses nothing: your request for changes stands until your next review replaces it. It is
+never the button and sends none of your text, so the draft stays for that review. It isn't
+offered after an approval, with nothing pushed since, or on your own pull request; it can't run
+while GitHub already asks you (**GitHub already asks you to review it again.**), or for an
+account without write access, since GitHub asks only collaborators to review.
+
 **Line comments.** Click a line number in the diff to comment on that line; shift-click another
 in the same part of the diff for a range. **Suggest a change** (on the new version only) starts
 a ` ```suggestion ` block with the lines as they are. A comment waits in your draft, shown under
@@ -2423,8 +2451,8 @@ against the diff before GitHub sees it, so GitHub never refuses one for a line i
 
 **Drafts** are kept per pull request for the session: closing the sheet, or stepping to another
 pull request and back, keeps your text, chosen reply, line comments, and viewed files. A draft
-is cleared once its action succeeds, except **Update branch** and **Ask Dependabot to rebase**,
-which leave it for the review to come.
+is cleared once its action succeeds, except **Update branch**, **Ask Dependabot to rebase**, and
+**Re-request my review**, which leave it for the review to come.
 
 **What it costs.** Opening costs nothing; a refresh with nothing pushed, 1 GraphQL point; the first
 open of a pull request with up to 100 files, 1 GraphQL point and 1 REST point; each write, what

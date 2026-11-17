@@ -49,7 +49,7 @@ export interface ActRequest {
 /**
  * Action is something the review sheet can do with a pull request.
  */
-export type Action = "" | "approve" | "approve_merge" | "approve_auto_merge" | "merge_now" | "auto_merge" | "merge_bypass" | "request_changes" | "comment" | "update_branch" | "rebase_bot" | "close" | "approve_runs";
+export type Action = "" | "approve" | "approve_merge" | "approve_auto_merge" | "merge_now" | "auto_merge" | "merge_bypass" | "request_changes" | "comment" | "update_branch" | "rebase_bot" | "close" | "approve_runs" | "rerequest_review";
 
 /**
  * The values of Action, by the names of their Go constants.
@@ -126,6 +126,13 @@ export const Action = {
      * button.
      */
     ActionApproveRuns: "approve_runs",
+
+    /**
+     * ActionRerequestReview asks GitHub to request the user's own review again, once the
+     * author pushed since the user requested changes. It dismisses nothing (the user's next
+     * review replaces the standing one), sends no text, and is never the sheet's button.
+     */
+    ActionRerequestReview: "rerequest_review",
 } as const;
 
 /**
@@ -424,7 +431,7 @@ export interface Offer {
 /**
  * Outcome is what an action came to.
  */
-export type Outcome = "reviewed" | "merged" | "auto_merge" | "approved_not_merged" | "commented_not_merged" | "closed" | "commented_not_closed" | "branch_updating" | "asked_bot" | "runs_approved" | "pushed_since";
+export type Outcome = "reviewed" | "merged" | "auto_merge" | "approved_not_merged" | "commented_not_merged" | "closed" | "commented_not_closed" | "branch_updating" | "asked_bot" | "runs_approved" | "pushed_since" | "review_rerequested";
 
 /**
  * The values of Outcome, by the names of their Go constants.
@@ -492,6 +499,12 @@ export const Outcome = {
      * pushed to since the sheet read it.
      */
     OutcomePushedSince: "pushed_since",
+
+    /**
+     * OutcomeReviewRerequested is the user's review requested again: the pull request asks
+     * them by name, and is back in the Review requested list.
+     */
+    OutcomeReviewRerequested: "review_rerequested",
 } as const;
 
 /**
@@ -777,6 +790,15 @@ export interface Review {
      * passing (Unrun), which the checks list names beneath it.
      */
     "unrun": Unrun[] | null;
+
+    /**
+     * Behind reports an open pull request whose branch is behind its base, as the sheet last
+     * read it: GitHub lets the user update the branch (which it does only for one behind),
+     * the rules hold it back for being behind, or the compare counted commits it lacks; and
+     * BehindBy is how many commits, 0 when the read couldn't tell.
+     */
+    "behind": boolean;
+    "behindBy": number;
 
     /**
      * Closes are the issues it closes once it merges, the first ten, and MoreCloses how many

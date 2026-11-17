@@ -49,7 +49,9 @@ var (
 // make yet is a result, not an error, and once a merge's or a close's comment is posted
 // nothing that fails after it is an error either. Approving held workflow runs approves
 // the ones the sheet read at the head the user saw, one request each, and once GitHub
-// approved any, a refusal of the rest is the result's reason, not an error.
+// approved any, a refusal of the rest is the result's reason, not an error. Re-requesting
+// the user's review asks GitHub once, for the account the inbox checked the token
+// against, and the inbox puts the pull request back in Review requested.
 func (s *Service) Act(ctx context.Context, req ActRequest) (Result, error) {
 	pull, c, err := s.loadAct(ctx, req)
 	if err != nil {
@@ -85,7 +87,10 @@ func (s *Service) Act(ctx context.Context, req ActRequest) (Result, error) {
 	run.itemID = req.ItemID
 	run.step(s, "Checking your account")
 
-	err = s.inbox.Act(ctx, req.ItemID, func(ctx context.Context, tok github.Token, _ Target) (Acted, error) {
+	err = s.inbox.Act(ctx, req.ItemID, func(ctx context.Context, tok github.Token, t Target) (Acted, error) {
+		// The inbox checked tok belongs to the account t names, whose review a re-request asks.
+		run.login = t.Login
+
 		return run.do(ctx, s, tok)
 	})
 
@@ -334,6 +339,10 @@ type action struct {
 	nodeID string
 	itemID int64
 
+	// login is the account whose inbox lists the pull request, which the inbox checked the
+	// token against: the one a re-request asks to review.
+	login string
+
 	// bypassing reports a merge going past the branch's rules, as the user chose.
 	bypassing bool
 
@@ -459,6 +468,8 @@ func (a *action) follow(ctx context.Context, s *Service, tok github.Token) error
 		return a.closePull(ctx, s, tok)
 	case ActionApproveRuns:
 		return a.approveRuns(ctx, s, tok)
+	case ActionRerequestReview:
+		return a.rerequest(ctx, s, tok)
 	case ActionNone:
 		return fmt.Errorf("%w: no action", ErrNotOffered)
 	default:
@@ -621,6 +632,28 @@ func (a *action) approveRuns(ctx context.Context, s *Service, tok github.Token) 
 		a.outcome = OutcomeRunsApproved
 		a.steps = append(a.steps, "Approved "+name)
 	}
+
+	return nil
+}
+
+// rerequest asks GitHub to request the user's own review again, once: the inbox's retry
+// with a fresh token never sends it twice. GitHub's answer says who the pull request asks
+// now, which the inbox records, putting it back in Review requested.
+func (a *action) rerequest(ctx context.Context, s *Service, tok github.Token) error {
+	if a.acted.Rerequested {
+		return nil
+	}
+
+	a.step(s, "Asking for your review again")
+
+	edited, err := s.github.RequestReview(ctx, tok, a.ref, a.login)
+	if err != nil {
+		return err
+	}
+
+	a.acted.Rerequested, a.acted.ReviewRequests, a.acted.RerequestedAt = true, edited.ReviewRequests, edited.UpdatedAt
+	a.outcome = OutcomeReviewRerequested
+	a.steps = append(a.steps, "Asked for your review again")
 
 	return nil
 }

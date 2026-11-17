@@ -71,6 +71,14 @@ type Acted struct {
 	// Merged reports a merge GitHub made, and Closed a close without one.
 	Merged bool
 	Closed bool
+
+	// Rerequested reports the user's own review requested again, at the user's click, with
+	// who the pull request asks now as GitHub answered (ReviewRequests), at GitHub's time of
+	// the edit (RerequestedAt, zero when it did not say): the pull request asks the user
+	// again, so it is back in Review requested.
+	Rerequested    bool
+	ReviewRequests github.ReviewRequests
+	RerequestedAt  time.Time
 }
 
 // with returns what a and b made happen together, as two tries of one action do.
@@ -80,6 +88,13 @@ func (a Acted) with(b Acted) Acted {
 	a.ReviewEvent = strongerEvent(a.ReviewEvent, b.ReviewEvent)
 	a.Merged = a.Merged || b.Merged
 	a.Closed = a.Closed || b.Closed
+
+	if b.Rerequested {
+		a.ReviewRequests = b.ReviewRequests
+	}
+
+	a.Rerequested = a.Rerequested || b.Rerequested
+	a.RerequestedAt = later(a.RerequestedAt, b.RerequestedAt)
 
 	return a
 }
@@ -96,7 +111,7 @@ func strongerEvent(a, b string) string {
 
 // any reports whether the action changed anything the inbox records.
 func (a Acted) any() bool {
-	return a.Reviewed || a.Merged || a.Closed
+	return a.Reviewed || a.Merged || a.Closed || a.Rerequested
 }
 
 // PullRead is what a caller's read of a pull request found: the item as GitHub answered,
@@ -588,10 +603,11 @@ func pullTargetOfRow(row editRow) PullTarget {
 // recordActed records what an action made happen on the item row is: a review takes it
 // out of the Review requested list, stamped as an edit is (see UpsertItem), whether it
 // asked or was pushed to since the user requested changes, and one that approves or
-// requests changes is the user's verdict at the head they saw (see recordReview); a merge or
-// a close takes it out of every list, as an item write numbered now, after GitHub's answer,
-// so a refresh that was fetching applies it again. A merge has the repository's other
-// open pull requests on its base read again (see noteMerged).
+// requests changes is the user's verdict at the head they saw (see recordReview); the
+// user's review requested again puts it back in Review requested (see recordRerequest); a
+// merge or a close takes it out of every list, as an item write numbered now, after
+// GitHub's answer, so a refresh that was fetching applies it again. A merge has the
+// repository's other open pull requests on its base read again (see noteMerged).
 func (s *Service) recordActed(ctx context.Context, row editRow, acted Acted) error {
 	target := pullTargetOfRow(row)
 
@@ -601,7 +617,34 @@ func (s *Service) recordActed(ctx context.Context, row editRow, acted Acted) err
 		}
 	}
 
+	if acted.Rerequested {
+		if err := s.recordRerequest(ctx, target, acted); err != nil {
+			return fmt.Errorf("record the review request: %w", err)
+		}
+	}
+
 	return s.recordEnded(ctx, row, acted)
+}
+
+// recordRerequest records the user's review requested again on target, in one
+// transaction: who the pull request asks now, as GitHub answered, and the pull request back
+// in Review requested, as a request that arrived at GitHub's time of the edit, its left
+// stamp cleared (RejoinReview), at once, before the next whole refresh's search catches up.
+// Its pushed-since flag stays, so it still reads as pushed since the user's review, and,
+// listed before, it tells no arrival. A refresh whose search hasn't caught up yet only
+// lists it as pushed to since again, until the next one.
+func (s *Service) recordRerequest(ctx context.Context, target PullTarget, acted Acted) error {
+	stamp := later(acted.RerequestedAt.UTC(), target.UpdatedAt)
+
+	return store.InTx(ctx, s.db, func(tx *sql.Tx) error {
+		q := s.q.WithTx(tx)
+
+		if err := setReviewRequests(ctx, q, target.ID, acted.ReviewRequests); err != nil {
+			return err
+		}
+
+		return q.RejoinReview(ctx, queries.RejoinReviewParams{ReviewRequestedAt: &stamp, ID: target.ID})
+	})
 }
 
 // recordEnded takes the item row is out of every list when acted merged or closed it, as

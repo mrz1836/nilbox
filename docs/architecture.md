@@ -31,9 +31,32 @@ methods and any other action with none. Asking Dependabot to rebase is offered o
 Dependabot pull request, enabled once the sheet read it, for a user with push access, while
 the branch is behind or has conflicts; Update branch whenever GitHub's `viewerCanUpdateBranch`
 lets the user (with a warning on Dependabot's), and, disabled with why, on any other pull
-request GitHub reports as behind. Each is the primary only while the pull
-request is behind (the rebase also with conflicts), never as a fallback: with no primary and
-offers enabled, the sheet's button only opens the menu. Every write goes through the inbox's
+request GitHub reports as behind or the compare counts behind (`Facts.BehindBy`). Each is the
+primary only while the pull request is behind (the rebase also with conflicts), never as a
+fallback: with no primary and offers enabled, the sheet's button only opens the menu. How far
+behind comes with the one read: `baseCompare: baseRef @include(if: $compare) { compare(headRef:
+$compareHead) { behindBy } }`, with `$compareHead` the pull request's `refs/pull/<n>/head`
+(`github.PullHeadRef`), which GitHub resolves for a fork's pull request too, where the branch's
+name doesn't; the read still costs one point (measured in November 2026 on a same-repository
+pull request and a fork's), and a compare GitHub can't resolve comes back null beside a
+not-found error that leaves the rest of the answer, so `PullReview.BehindBy` is 0. The cache
+keeps it (`pullContext.BehindBy`, 0 in an older build's), and `Review.Behind` (open, and
+`viewerCanUpdateBranch`, `BEHIND`, or a count) with `Review.BehindBy` feed the sheet's strip
+(`BehindBase`), which offers the rebase on Dependabot's, else Update branch, or why not, in
+amber only while the readiness is `behind`. Update branch merges the base in (REST `PUT
+.../update-branch`, pinned with `expected_head_sha`); it never rebases. Once the author pushed
+since the user requested changes (`Facts.ChangesRequestedSince`: `YourReview` is
+CHANGES_REQUESTED with a `Since`), `rerequest_review` ("Re-request my review") is offered on
+someone else's pull request, disabled while the card's `review_users` name the user already
+(`Facts.AskedAgain`) or without write access, never the button and run only from the menu or
+the strip of what came since (`menuOnly`). `Act` asks once (`(*github.Client).RequestReview`,
+REST `POST .../requested_reviewers` naming the account the inbox checked the token against,
+`Target.Login`, through `edit`; GitHub's answer must name the user, else `ErrEditIgnored`),
+never again across the token retry, and hands the inbox who GitHub asks now
+(`Acted.Rerequested`, `ReviewRequests`, `RerequestedAt`), which puts the pull request back in
+Review requested at once (`review_rerequested`). It dismisses nothing, sends no text, and
+Autopilot's GitHub step can't reach it (`reviewActionOf` allows only the rebase, Update branch,
+and a comment). Every write goes through the inbox's
 `Actor` (the item lock, the account check, and the token retry, never bound, since its
 methods take funcs), is pinned to the head the user saw (an approval reads the head first,
 since GitHub takes a review of an older commit), and a merge first reads `mergeStateStatus`
@@ -854,7 +877,16 @@ request moves. A single read reads no verdict, so it leaves `reason_pushed` to t
 refresh. A pull request newly pushed to arrives as `ArrivalReviewRequested` with
 `Arrival.Pushed` only when it moved since the last refresh, so the first refresh after an
 upgrade tells no burst. `RemoveReviewRequest` still refuses one with no request
-(`ReviewRequestPushed`). Autopilot's facts and searches keep GitHub's own three lists. The
+(`ReviewRequestPushed`). The review sheet's **Re-request my review**, on the user's click
+alone, asks GitHub for the user's review again through the `Actor`, which records it at once
+(`Acted.Rerequested`, `recordRerequest`, one transaction): who GitHub answered the pull
+request asks now (`setReviewRequests`), and `RejoinReview`, which sets
+`reason_review_requested`, clears `review_left_at`, and stamps `review_requested_at` with the
+later of GitHub's time of the edit and the item's, leaving `reason_pushed`, so the card reads
+as an ordinary request still tagged (`ReviewRequestYou`). It was listed already, so the next
+refresh tells no arrival, and a refresh whose search trails it lists it as pushed to again
+until the next; it tells the outcome sink nothing (`pullOutcomes`), since it is no review,
+merge, or close. Autopilot's facts and searches keep GitHub's own three lists. The
 snapshot alone partitions them (`addItems`): an item that asks for the user's review, or was
 pushed to since the user requested changes, is in `ReviewRequested`, whatever else it is,
 and one the user opened or is assigned is otherwise in `Yours`, with `Item.Authored` and

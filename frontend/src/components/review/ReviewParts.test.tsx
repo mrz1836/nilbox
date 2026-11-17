@@ -16,6 +16,7 @@ import {
   offer,
   profile,
   prompts,
+  rerequestOffer,
   review,
 } from '../../test/fixtures'
 import { platform } from '../../test/platform'
@@ -600,6 +601,28 @@ describe('ActionButton', () => {
       'title',
       'You have a review started on GitHub.',
     )
+  })
+
+  it('runs Re-request my review when it is picked, and never makes it the button or the choice', async () => {
+    const onSelect = vi.fn()
+    const onRun = vi.fn()
+    render(
+      <ActionButton
+        offers={[offer(), rerequestOffer()]}
+        selected="rerequest_review"
+        onSelect={onSelect}
+        onRun={onRun}
+        busy={false}
+        blocked={() => ''}
+        menuOnly={menuOnly}
+      />,
+    )
+
+    expect(screen.queryByRole('button', { name: /^Re-request my review/ })).not.toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Choose an action' }))
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Re-request my review' }))
+    expect(onRun).toHaveBeenCalledWith('rerequest_review')
+    expect(onSelect).not.toHaveBeenCalled()
   })
 
   it('counts a close as nothing to do, keeping it in a menu beside the words', async () => {

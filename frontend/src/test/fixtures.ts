@@ -2603,6 +2603,18 @@ export function closeOffer(overrides: Partial<ReviewOffer> = {}): ReviewOffer {
   })
 }
 
+// rerequestOffer asks GitHub for the user's review again, which sends no text and runs on
+// the click, as the backend marks it.
+export function rerequestOffer(overrides: Partial<ReviewOffer> = {}): ReviewOffer {
+  return offer({ action: 'rerequest_review', label: 'Re-request my review', reviews: false, ...overrides })
+}
+
+// updateBranchOffer merges the base branch into the pull request's branch, which sends no
+// text and runs on the click, as the backend marks it.
+export function updateBranchOffer(overrides: Partial<ReviewOffer> = {}): ReviewOffer {
+  return offer({ action: 'update_branch', label: 'Update branch', reviews: false, ...overrides })
+}
+
 // approveRunsOffer approves the workflow runs GitHub holds for approval, which sends no
 // text and runs on the click, as the backend marks it.
 export function approveRunsOffer(overrides: Partial<ReviewOffer> = {}): ReviewOffer {
@@ -2655,6 +2667,8 @@ export function review(overrides: Partial<Review> = {}): Review {
     commitList: [],
     earlierCommits: 0,
     yourReview: null,
+    behind: false,
+    behindBy: 0,
     closes: [],
     moreCloses: 0,
     readiness: { state: 'ready', sentence: 'Ready to merge', needs: [] },

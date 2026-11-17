@@ -33,7 +33,9 @@ import * as $models from "./models.js";
  * make yet is a result, not an error, and once a merge's or a close's comment is posted
  * nothing that fails after it is an error either. Approving held workflow runs approves
  * the ones the sheet read at the head the user saw, one request each, and once GitHub
- * approved any, a refusal of the rest is the result's reason, not an error.
+ * approved any, a refusal of the rest is the result's reason, not an error. Re-requesting
+ * the user's review asks GitHub once, for the account the inbox checked the token
+ * against, and the inbox puts the pull request back in Review requested.
  */
 export function Act(req: $models.ActRequest): $CancellablePromise<$models.Result> {
     return $Call.ByID(1916819644, req);

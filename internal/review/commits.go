@@ -67,6 +67,12 @@ type YourReview struct {
 	Count int   `json:"count"`
 }
 
+// changesRequestedSince reports a standing request for changes the branch moved since: the
+// commits after it, or the branch rewritten. It is false for nil.
+func (y *YourReview) changesRequestedSince() bool {
+	return y != nil && y.State == timeline.ReviewChangesRequested && y.Since != SinceNone
+}
+
 // commitsOf converts the cached commits for the pull request whose page is pullURL.
 func commitsOf(cached []contextCommit, pullURL string) []Commit {
 	out := make([]Commit, 0, len(cached))

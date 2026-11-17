@@ -1423,6 +1423,25 @@ func (q *Queries) PruneItems(ctx context.Context, arg PruneItemsParams) (int64, 
 	return result.RowsAffected()
 }
 
+const rejoinReview = `-- name: RejoinReview :exec
+UPDATE items SET reason_review_requested = 1, review_left_at = NULL, review_requested_at = ?
+WHERE id = ?
+`
+
+type RejoinReviewParams struct {
+	ReviewRequestedAt *time.Time
+	ID                int64
+}
+
+// RejoinReview puts the item with id back in the review-requested list after the user asked
+// GitHub for their own review again, as a request that arrived at review_requested_at, and
+// clears the stamp of their leaving it, so the next search is believed. reason_pushed stays
+// as it is: a request made after a push still reads as pushed since the user's review.
+func (q *Queries) RejoinReview(ctx context.Context, arg RejoinReviewParams) error {
+	_, err := q.db.ExecContext(ctx, rejoinReview, arg.ReviewRequestedAt, arg.ID)
+	return err
+}
+
 const unlistItem = `-- name: UnlistItem :exec
 UPDATE items SET
     reason_review_requested = 0, reason_authored = 0, reason_assigned = 0, reason_reviewed = 0, reason_pushed = 0,
