@@ -330,12 +330,15 @@ func TestTestTriesTheDraftOnItsItemsNow(t *testing.T) {
 
 	q := query(t, orgSearch)
 	items := &fakeItems{
-		searches: map[string]autopilot.SearchResult{q.Text: {IDs: []int64{7, 8}, Count: 2}},
-		rows:     map[int64]facts.Row{7: failingPR(7, 70), 8: failingPR(8, 80)},
+		searches: map[string]autopilot.SearchResult{q.Text: {IDs: []int64{7, 8, 9}, Count: 3}},
+		rows:     map[int64]facts.Row{7: failingPR(7, 70), 8: failingPR(8, 80), 9: failingPR(9, 90)},
 		owners:   map[string]bool{"acme-org": true},
 		checks: map[int64]*facts.ChecksRow{
 			7: {Head: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", Complete: true, Checks: []facts.CheckRow{
 				{Name: "security", Outcome: facts.CheckFailed, CompletedAt: startedAt().Add(-time.Hour)},
+			}},
+			9: {Head: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", Complete: true, Checks: []facts.CheckRow{
+				{Name: "lint", Workflow: "ci", Outcome: facts.CheckFailed, CompletedAt: startedAt().Add(-time.Hour)},
 			}},
 		},
 	}
@@ -351,19 +354,57 @@ func TestTestTriesTheDraftOnItsItemsNow(t *testing.T) {
 
 	require.Len(t, got.Searches, 1)
 	assert.Equal(t, q.Text, got.Searches[0].Query)
-	assert.Equal(t, 2, got.Searches[0].Count)
+	assert.Equal(t, 3, got.Searches[0].Count)
 	assert.Empty(t, got.Searches[0].Warnings, "the inbox has seen acme-org")
 	assert.Equal(t, 3, got.Points, "the searches' two points and the check names' one")
 	assert.False(t, got.Cached)
-	assert.Equal(t, 2, got.Watched)
-	assert.Equal(t, [][]int64{{7, 8}}, items.read, "the check names its decision needs are read, once")
+	assert.Equal(t, 3, got.Watched)
+	assert.Equal(t, [][]int64{{7, 8, 9}}, items.read, "the check names its decision needs are read, once")
 
-	require.Len(t, got.Items, 2)
+	require.Len(t, got.Items, 3)
 	assert.Equal(t, int64(7), got.Items[0].ID, "the match first")
 	assert.Equal(t, eval.Yes, got.Items[0].Match)
 	assert.NotEmpty(t, got.Items[0].FireKey)
 	assert.Equal(t, 1, got.Matched)
 	assert.Equal(t, autopilot.Estimate{Requests: 1, PointsPerRefresh: 1, PointsPerHour: 12, Percent: 0.24}, got.Estimate)
+
+	// Every row says why: the match and the miss alike carry each step of the decision,
+	// the condition with the value it compared.
+	condition := func(it autopilot.TestItem) eval.Trace {
+		t.Helper()
+
+		for _, tr := range it.Trace {
+			if tr.Path == "conditions.of[0]" {
+				return tr
+			}
+		}
+
+		require.FailNow(t, "no trace of the condition", "#%d: %+v", it.Number, it.Trace)
+
+		return eval.Trace{}
+	}
+
+	assert.Equal(t, "trigger", got.Items[0].Trace[0].Path, "the trigger's step first")
+	matched := condition(got.Items[0])
+	assert.Equal(t, eval.Yes, matched.Result)
+	assert.Contains(t, matched.Actual, "security")
+
+	rows := map[int64]autopilot.TestItem{}
+	for _, it := range got.Items {
+		rows[it.ID] = it
+	}
+
+	assert.Equal(t, eval.No, rows[9].Match, "the miss")
+	missed := condition(rows[9])
+	assert.Equal(t, eval.No, missed.Result, "the condition that failed")
+	assert.Contains(t, missed.Condition, "security", "names what it checked")
+	assert.Contains(t, missed.Actual, "lint", "and the value it compared")
+
+	assert.Equal(t, eval.Unknown, rows[8].Match, "#8's check names never came")
+	unknown := condition(rows[8])
+	assert.Equal(t, eval.Unknown, unknown.Result)
+	assert.NotEmpty(t, unknown.Actual, "says why it can't tell")
+	assert.Equal(t, []facts.Need{facts.NeedChecks}, rows[8].Needs, "and what it waits for")
 
 	again, err := r.svc.Test(t.Context(), d)
 	require.NoError(t, err)

@@ -101,6 +101,40 @@ func TestAnAgentRunsOncePerHeadCommitAcrossRestarts(t *testing.T) {
 	})
 }
 
+func TestACheckRunAgainOnACommitAnAgentRanOnStartsNoSecondRun(t *testing.T) {
+	t.Parallel()
+
+	synctest.Test(t, func(t *testing.T) {
+		s, _ := started(t, sim.FixFailing(), autopilotprefs.ModeAuto)
+
+		s.World.Fail(1)
+		s.Refresh()
+
+		m := only(t, s)
+		require.Equal(t, autopilot.StateRunning, m.State, m.Words)
+		s.Runner.Finish(m.Runs[0].ID, autopilot.RunEnd{})
+		s.Settle()
+
+		want := []sim.Row{row(1, autopilot.StateDone, "", autopilot.ReasonRan, failedKey(1))}
+		require.Equal(t, want, s.Ledger())
+
+		// Someone runs the failed check again on the same head: it passes, then fails
+		// again, the same commit's checks failing a second time, across a restart too.
+		s.World.Pass(1)
+		s.Refresh()
+		s.World.Fail(1)
+		s.Refresh()
+		s.Restart()
+		s.World.Pass(1)
+		s.Refresh()
+		s.World.Fail(1)
+		s.Advance(10*time.Minute, true)
+
+		assert.Equal(t, want, s.Ledger(), "the same commit's checks failing again is the same occurrence")
+		assert.Len(t, s.Runner.Started(), 1, "a check run again on a commit an agent ran on starts no second run")
+	})
+}
+
 func TestTurningOnRunsOnTheCurrentMatchesOrRecordsThemAsHandled(t *testing.T) {
 	t.Parallel()
 

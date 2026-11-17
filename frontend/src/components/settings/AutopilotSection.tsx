@@ -515,8 +515,9 @@ function ClearHistory({ controlId }: { controlId: string }) {
   )
 }
 
-// StopAll stops every agent's run in the background at once, as the Autopilot tab's Stop
-// all does, and leaves the scripts' runs alone; the routines carry on.
+// StopAll stops every agent's run in the background, and every routine's script run, at
+// once, as the Autopilot tab's Stop all does, and leaves the user's own runs alone; the
+// routines carry on.
 function StopAll({ controlId }: { controlId: string }) {
   const stopping = useMutation(() => stopAllAutopilotRuns())
   const [done, setDone] = useState('')
@@ -526,7 +527,9 @@ function StopAll({ controlId }: { controlId: string }) {
       label="Stop all"
       description={
         <span id={`${controlId}-help`} role={done === '' ? undefined : 'status'}>
-          {done === '' ? 'Stops every agent working in the background now. Your scripts’ runs carry on.' : done}
+          {done === ''
+            ? 'Stops every agent working in the background now, and the scripts your routines run. Runs you started yourself carry on.'
+            : done}
         </span>
       }
       error={stopping.error}

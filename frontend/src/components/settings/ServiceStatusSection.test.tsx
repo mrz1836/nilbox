@@ -116,7 +116,10 @@ describe('ServiceStatusSection', () => {
       expect(onSaved).toHaveBeenCalledOnce()
     })
     expect(card('Claude').getByRole('checkbox', { name: 'claude.ai' })).toBeChecked()
-    expect(platform.getServiceStatus).toHaveBeenCalledTimes(2)
+    // The status is read again once the save is in, which can land a render after onSaved.
+    await waitFor(() => {
+      expect(platform.getServiceStatus).toHaveBeenCalledTimes(2)
+    })
   })
 
   it('turns a page off, which greys its parts', async () => {
@@ -202,7 +205,11 @@ describe('ServiceStatusSection', () => {
     await userEvent.click(card('GitHub').getByRole('checkbox', { name: 'Webhooks' }))
 
     expect(await card('GitHub').findByRole('alert')).toHaveTextContent('database is locked')
-    expect(card('GitHub').getByRole('checkbox', { name: 'Webhooks' })).not.toBeChecked()
+    // The box shows the tick at once and takes it back once the refusal is in, which can land
+    // a render after the alert.
+    await waitFor(() => {
+      expect(card('GitHub').getByRole('checkbox', { name: 'Webhooks' })).not.toBeChecked()
+    })
     expect(card('Claude').queryByRole('alert')).not.toBeInTheDocument()
   })
 })

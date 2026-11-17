@@ -276,6 +276,15 @@ func TestARoutineLeavesAloneWhatYouTookBackUntilYouLetItActAgain(t *testing.T) {
 		assert.True(t, explained.LeftAlone)
 		assert.Contains(t, explained.Ledger, "Left alone: you took back what it did here. Let it act again to change that.")
 
+		// Activity says so too: the routine leaves #1 alone, since the user brought back
+		// what it snoozed, and #2, which the user didn't touch, isn't listed.
+		page, err := s.Service.Activity(ctx, 0, 0)
+		require.NoError(t, err)
+		require.Len(t, page.LeftAlone, 1)
+		assert.Equal(t, r.ID, page.LeftAlone[0].RoutineID)
+		assert.Equal(t, 1, page.LeftAlone[0].Item.Number)
+		assert.Equal(t, "You brought back what it snoozed.", page.LeftAlone[0].Why)
+
 		tested, err := s.Service.Test(ctx, autopilot.Draft{ID: r.ID, Name: r.Name, Spec: r.Spec})
 		require.NoError(t, err)
 
