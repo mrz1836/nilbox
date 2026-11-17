@@ -110,7 +110,7 @@ func (g *Git) Run(ctx context.Context, dir string, args ...string) (stdout, stde
 		return nil, nil, fmt.Errorf("%w: the folder %q", ErrGitCommandNotAllowed, dir)
 	case !allowed(args):
 		return nil, nil, fmt.Errorf("%w: git %q", ErrGitCommandNotAllowed, args)
-	case args[0] == statusCmd:
+	case readsFiles(args):
 		return g.status(ctx, dir, args)
 	case args[0] != lsRemote:
 		return g.exec(ctx, dir, g.environment(), nil, args)
@@ -154,8 +154,9 @@ func (g *Git) exec(ctx context.Context, dir string, env, extra, args []string) (
 	return g.runner(env).Run(ctx, gitBin, argv...)
 }
 
-// status runs a status with every filter driver the clone's own config defines turned
-// off, Git LFS's too. A status reads a file whose stat data changed, as in a copied clone,
+// status runs a status, or a diff against the worktree, with every filter driver the
+// clone's own config defines turned off, Git LFS's too. A status reads a file whose stat
+// data changed, as in a copied clone, and a diff reads every changed one,
 // and reading it runs the clean filter or the process its .gitattributes names: a clone's
 // config could make that any program, run with no click when the Release page reads its
 // clones, and even Git LFS's own writes into the clone. The user's own drivers, in their

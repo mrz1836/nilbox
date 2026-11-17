@@ -126,6 +126,87 @@ func TestALetFinishQuitLetsAnOutlivingRunGoAndTheNextStartFollowsIt(t *testing.T
 	assert.True(t, next.Live(KindAgent)[0].Orphaned)
 }
 
+// TestTheQuitsThreeAnswers holds the quit dialog's three answers to their backend: Keep
+// running quits nothing and lets nothing go, Stop and quit stops every run, and Let them
+// finish quits and lets the runs that can outlive the quit go, still recorded as going,
+// while one that can't is stopped all the same. The window offers the third while every
+// agent's run going says it can outlive the quit (Run.OutlivesQuit).
+func TestTheQuitsThreeAnswers(t *testing.T) {
+	t.Parallel()
+
+	sleep := testutil.FakeRun{Stdout: readyLine, Sleep: time.Minute}
+
+	// answer starts an outliving agent's run and one that can't outlive the quit, answers
+	// the quit with answer, quits, and returns both runs as recorded and how many quits the
+	// answer asked for.
+	answer := func(t *testing.T, answer func(*Service)) (kept, stopped Record, quits int) {
+		t.Helper()
+
+		h := newHarness(t, func(c *Config) { c.Quit = func() { quits++ } })
+		outliving := h.agentSpec(sleep)
+		outliving.OutlivesQuit = true
+		keptID := h.start(outliving)
+		stoppedID := h.start(h.agentSpec(sleep))
+
+		h.waitReady(keptID)
+		h.waitReady(stoppedID)
+
+		rec := h.record(keptID)
+
+		t.Cleanup(func() { _ = syscall.Kill(-rec.PGID, syscall.SIGKILL) })
+
+		views, err := h.s.Runs(t.Context(), Filter{WithAgents: true})
+		require.NoError(t, err)
+
+		outlives := map[int64]bool{}
+		for _, v := range views {
+			outlives[v.ID] = v.OutlivesQuit
+		}
+
+		assert.Equal(t, map[int64]bool{keptID: true, stoppedID: false}, outlives,
+			"the window reads which runs can outlive the quit")
+
+		answer(h.s)
+		h.e.StopAll()
+
+		return h.record(keptID), h.record(stoppedID), quits
+	}
+
+	t.Run("keep running", func(t *testing.T) {
+		t.Parallel()
+
+		h := newHarness(t)
+		h.e.LetFinish(true)
+		h.s.KeepRunning(t.Context())
+
+		assert.False(t, h.e.letFinish.Load(), "Keep running forgets an earlier Let them finish")
+	})
+
+	t.Run("stop and quit", func(t *testing.T) {
+		t.Parallel()
+
+		kept, stopped, quits := answer(t, func(s *Service) {
+			s.e.LetFinish(true) // an earlier answer that didn't quit
+			s.QuitAnyway(t.Context())
+		})
+
+		assert.Equal(t, 1, quits)
+		assert.Equal(t, StatusStopped, kept.Status, "Stop and quit stops a run that could outlive the quit too")
+		assert.Equal(t, StatusStopped, stopped.Status)
+	})
+
+	t.Run("let them finish", func(t *testing.T) {
+		t.Parallel()
+
+		kept, stopped, quits := answer(t, func(s *Service) { s.LetThemFinish(t.Context()) })
+
+		assert.Equal(t, 1, quits)
+		assert.Equal(t, StatusRunning, kept.Status, "the run the user lets finish stays recorded as going")
+		require.NoError(t, syscall.Kill(kept.PID, 0), "its program still runs")
+		assert.Equal(t, StatusStopped, stopped.Status, "a run that can't outlive the quit stops with it")
+	})
+}
+
 func TestAnOrphanPastItsTimeLimitIsStoppedAtOnce(t *testing.T) {
 	t.Parallel()
 

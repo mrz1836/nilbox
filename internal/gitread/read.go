@@ -1,6 +1,7 @@
 package gitread
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -374,6 +375,64 @@ func (g *Git) ChangedFiles(ctx context.Context, dir, from, to string) ([]string,
 	}
 
 	return files, nil
+}
+
+// MaxDiff is the most of a worktree's diff WorktreeDiff returns, in bytes.
+const MaxDiff = 1 << 20
+
+// WorktreeDiff is a worktree's changes since a commit: what its commits since then
+// changed, and what isn't committed yet, as one patch, and the files git doesn't track.
+type WorktreeDiff struct {
+	// Patch is git's unified diff from the commit to the worktree's files, at most MaxDiff
+	// bytes, cut at a line's end; Cut reports a patch cut short.
+	Patch string
+	Cut   bool
+
+	// Untracked are the files git doesn't track, which no patch shows, from the
+	// worktree's top.
+	Untracked []string
+}
+
+// WorktreeDiff returns the worktree at dir's changes since the commit from, committed or
+// not, read-only: a diff from the commit to the worktree's files, run with no external diff,
+// no textconv, and the clone's own filter drivers off, so it runs no program the clone
+// names; and the files git doesn't track. It fails when the clone lacks the commit.
+func (g *Git) WorktreeDiff(ctx context.Context, dir, from string) (WorktreeDiff, error) {
+	out, err := g.read(ctx, dir, worktreeDiffArgs(from))
+	if err != nil {
+		return WorktreeDiff{}, err
+	}
+
+	entries, err := g.Entries(ctx, dir)
+	if err != nil {
+		return WorktreeDiff{}, err
+	}
+
+	diff := WorktreeDiff{Untracked: []string{}}
+	diff.Patch, diff.Cut = cutPatch(out, MaxDiff)
+
+	for _, e := range entries {
+		if e.Code == "??" {
+			diff.Untracked = append(diff.Untracked, e.Path)
+		}
+	}
+
+	return diff, nil
+}
+
+// cutPatch returns out as text, cut to at most limit bytes at the end of a line, and
+// whether it was cut.
+func cutPatch(out []byte, limit int) (string, bool) {
+	if len(out) <= limit {
+		return string(out), false
+	}
+
+	head := out[:limit]
+	if i := bytes.LastIndexByte(head, '\n'); i >= 0 {
+		head = head[:i+1]
+	}
+
+	return strings.ToValidUTF8(string(head), ""), true
 }
 
 // LocalVersionTags returns the clone's version tags (v*), in git's order.

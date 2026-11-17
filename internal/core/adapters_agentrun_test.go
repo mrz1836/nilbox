@@ -512,6 +512,7 @@ func (f *fakePlanner) plan(t *testing.T, run testutil.FakeRun) launcher.Backgrou
 	return launcher.BackgroundPlan{
 		Plan:   launcher.Plan{Agent: agent.Claude, Binary: path, Env: map[string]string{name: value}},
 		Prompt: "Review it.", SessionID: sid, Folder: filepath.Join(f.folders, sid), ReadOnly: true,
+		Preset:   fence.ReadOnly,
 		Command:  "claude -p < prompt.md",
 		Worktree: launcher.WorktreeRequest{Kind: item.KindPR, Number: 12},
 	}
@@ -574,17 +575,35 @@ func (m *fakeAgentMaker) asked() []launcher.WorktreeRequest {
 
 // fakeRunEngine records what the runner told Autopilot's engine.
 type fakeRunEngine struct {
-	mu   sync.Mutex
-	ends map[int64]autopilot.RunEnd
+	mu    sync.Mutex
+	ends  map[int64]autopilot.RunEnd
+	taken []int64
 }
 
 func (f *fakeRunEngine) RunUsage(int64, autopilot.RunUsage) {}
+
+func (f *fakeRunEngine) TakeOver(_ context.Context, runID int64) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	f.taken = append(f.taken, runID)
+
+	return nil
+}
 
 func (f *fakeRunEngine) RunEnded(end autopilot.RunEnd) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
 	f.ends[end.RunID] = end
+}
+
+// takenOver returns the runs Take over told the engine of, in order.
+func (f *fakeRunEngine) takenOver() []int64 {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	return append([]int64{}, f.taken...)
 }
 
 // end waits for the run's end to be told.

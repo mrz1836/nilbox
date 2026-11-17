@@ -34,6 +34,16 @@ export function KeepRunning(): $CancellablePromise<void> {
 }
 
 /**
+ * LetThemFinish is the user's third answer to quitting while runs go in the app, offered
+ * while every agent's run going can outlive the quit (Run.OutlivesQuit): quit, and let
+ * those runs finish on their own. Shutdown then lets them go, still recorded as going, and
+ * the next start follows each again; it stops every other run, as Stop and quit does.
+ */
+export function LetThemFinish(): $CancellablePromise<void> {
+    return $Call.ByID(525375254);
+}
+
+/**
  * MarkSeen records that the user has seen a run.
  */
 export function MarkSeen(id: number): $CancellablePromise<void> {

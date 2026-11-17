@@ -593,6 +593,7 @@ describe('useRestartToUpdate', () => {
               repo: 'acme-org/sdk',
               dir: '~/projects/example-repo',
               stopRefused: '',
+              outlives: false,
             },
           ],
           sheets: 2,

@@ -16,6 +16,7 @@ import {
   type AutopilotWorkingList,
 } from '../../platform'
 import { quietButtonClass } from '../controls'
+import { EyeIcon } from '../icons'
 
 // tokensText says a run's tokens so far: "12.3k tokens", "640 tokens".
 export function tokensText(n: number): string {
@@ -54,14 +55,18 @@ export function useWorking(): { list: AutopilotWorkingList | undefined; reload: 
 export interface WorkingListProps {
   // onOpen shows an item, as Activity's Open does.
   onOpen: (item: AutopilotItemRef, routineId: number) => void
+  // onWatch opens a run's view beside Activity, and watching is the run it shows, 0 for
+  // none.
+  onWatch: (runId: number) => void
+  watching: number
   // onToast says what Stop did, or why it couldn't.
   onToast: (text: string, tone?: 'error') => void
 }
 
 // WorkingList is Activity's Working: each agent's run going with its latest step, how long
-// it has run, its tokens so far, and Stop; and Stop all for every one of them. The starts
-// queued are Needs you's.
-export function WorkingList({ onOpen, onToast }: WorkingListProps) {
+// it has run, its tokens so far, Watch, which opens its run view, and Stop; and Stop all
+// for every one of them. The starts queued are Needs you's.
+export function WorkingList({ onOpen, onWatch, watching, onToast }: WorkingListProps) {
   const { list, reload } = useWorking()
   const stopAll = useMutation(() => stopAllAutopilotRuns())
 
@@ -95,7 +100,15 @@ export function WorkingList({ onOpen, onToast }: WorkingListProps) {
       </div>
       <ul className="flex flex-col gap-1">
         {list.working.map((w) => (
-          <WorkingRow key={w.runId} run={w} onOpen={onOpen} onToast={onToast} onStopped={reload} />
+          <WorkingRow
+            key={w.runId}
+            run={w}
+            onOpen={onOpen}
+            onWatch={onWatch}
+            watched={w.runId === watching}
+            onToast={onToast}
+            onStopped={reload}
+          />
         ))}
       </ul>
     </section>
@@ -106,11 +119,15 @@ export function WorkingList({ onOpen, onToast }: WorkingListProps) {
 function WorkingRow({
   run,
   onOpen,
+  onWatch,
+  watched,
   onToast,
   onStopped,
 }: {
   run: AutopilotWorking
   onOpen: WorkingListProps['onOpen']
+  onWatch: WorkingListProps['onWatch']
+  watched: boolean
   onToast: WorkingListProps['onToast']
   onStopped: () => void
 }) {
@@ -137,6 +154,19 @@ function WorkingRow({
           {itemText(run.item)}
         </button>
         <span className="truncate text-xs text-muted">{details.join(' · ')}</span>
+        {run.where === 'background' && (
+          <button
+            type="button"
+            aria-pressed={watched}
+            onClick={() => {
+              onWatch(run.runId)
+            }}
+            className={`${quietButtonClass} ml-auto aria-pressed:bg-raised`}
+          >
+            <EyeIcon className="size-3.5" />
+            Watch
+          </button>
+        )}
         <button
           type="button"
           disabled={stopping}
@@ -149,7 +179,7 @@ function WorkingRow({
               }
             })
           }}
-          className={`${quietButtonClass} ml-auto`}
+          className={`${quietButtonClass} ${run.where === 'background' ? '' : 'ml-auto'}`}
         >
           {stopping ? 'Stopping…' : 'Stop'}
         </button>

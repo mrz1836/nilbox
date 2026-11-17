@@ -44,8 +44,10 @@ const (
 	// headCommit is the commit checked out in a worktree, as rev-parse reads it.
 	headCommit = "HEAD" + commitSuffix
 
-	// diffCmd lists the files two commits differ in, and nothing of their contents, so no
-	// textconv or external diff the clone names runs.
+	// diffCmd lists the files two commits differ in, or shows a worktree's changes since a
+	// commit, always with --no-ext-diff and --no-textconv, so no textconv or external diff
+	// the clone names runs; the second reads the worktree's files, so it runs with the
+	// clone's filter drivers off, as a status does.
 	diffCmd = "diff"
 
 	// branchKeyPrefix starts a branch's own config keys, and remoteKeySuffix and
@@ -206,6 +208,11 @@ func allowlist() []command {
 			name: "the files the commits between two changed",
 			words: append(fixed(diffCmd, "--name-only", "--no-renames", "--no-ext-diff", "--no-textconv", "-z"),
 				value(slotCommitRange), word{text: "--"}),
+		},
+		{
+			name: "the changes in the worktree since a commit, committed or not",
+			words: append(fixed(diffCmd, "--no-ext-diff", "--no-textconv", "--no-color", "--no-renames",
+				ignoreSubmodulesDirty), value(slotCommitID), word{text: "--"}),
 		},
 		{name: "the local version tags", words: append(fixed("tag", "--list"), value(slotVersionPattern))},
 		{name: "origin's branches and tags", words: fixed(lsRemote, uploadPackFlag, "--heads", tagsFlag, remoteName)},
@@ -492,6 +499,16 @@ func headArgs() []string { return []string{revParse, verifyFlag, headCommit} }
 
 func changedFilesArgs(from, to string) []string {
 	return []string{diffCmd, "--name-only", "--no-renames", "--no-ext-diff", "--no-textconv", "-z", from + ".." + to, "--"}
+}
+
+func worktreeDiffArgs(from string) []string {
+	return []string{diffCmd, "--no-ext-diff", "--no-textconv", "--no-color", "--no-renames", ignoreSubmodulesDirty, from, "--"}
+}
+
+// readsFiles reports a command, allowlisted, that reads the worktree's files, which a
+// filter driver the clone names would run on: a status, and a diff against the worktree.
+func readsFiles(args []string) bool {
+	return args[0] == statusCmd || (args[0] == diffCmd && !slices.Contains(args, "--name-only"))
 }
 
 func localTagsArgs() []string { return []string{"tag", "--list", versionTagsPattern} }

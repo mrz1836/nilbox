@@ -86,23 +86,56 @@ func (e *RunsGoingError) Detail() any {
 	return RunsGoingDetail{RunsGoing: e.Runs}
 }
 
-// runsWords says what restarting would stop: one run by its title and where it runs,
-// several by their titles, or the runs as a whole when none could be listed.
+// runsWords says what restarting would stop, and what carries on through it: the runs that
+// can outlive it (Run.Outlives), which the new version follows. Either part names one run
+// by its title and where it runs, several by their titles; with no run listed at all, it
+// speaks of the runs as a whole.
 func runsWords(runs []Run) string {
-	switch len(runs) {
-	case 0:
+	if len(runs) == 0 {
 		return "Restarting stops the runs going in " + brand.Name + "."
-	case 1:
-		return "Restarting stops " + runs[0].Title + where(runs[0]) + "."
-	default:
-		titles := make([]string, 0, len(runs))
-		for _, r := range runs {
-			titles = append(titles, r.Title)
-		}
-
-		return "Restarting stops the " + strconv.Itoa(len(runs)) + " runs going in " + brand.Name + ": " +
-			strings.Join(titles, ", ") + "."
 	}
+
+	var stops, carries []Run
+
+	for _, r := range runs {
+		if r.Outlives {
+			carries = append(carries, r)
+		} else {
+			stops = append(stops, r)
+		}
+	}
+
+	var parts []string
+
+	switch len(stops) {
+	case 0:
+	case 1:
+		parts = append(parts, "Restarting stops "+stops[0].Title+where(stops[0])+".")
+	default:
+		parts = append(parts, "Restarting stops the "+strconv.Itoa(len(stops))+" runs going in "+brand.Name+": "+
+			titles(stops)+".")
+	}
+
+	switch len(carries) {
+	case 0:
+	case 1:
+		parts = append(parts, carries[0].Title+where(carries[0])+" carries on, and "+brand.Name+
+			" picks it up when it opens again.")
+	default:
+		parts = append(parts, titles(carries)+" carry on, and "+brand.Name+" picks them up when it opens again.")
+	}
+
+	return strings.Join(parts, " ")
+}
+
+// titles joins the runs' titles.
+func titles(runs []Run) string {
+	out := make([]string, 0, len(runs))
+	for _, r := range runs {
+		out = append(out, r.Title)
+	}
+
+	return strings.Join(out, ", ")
 }
 
 // where says where a run runs, as " in owner/name" or " in ~/folder", or "".
@@ -183,6 +216,10 @@ func (e *Engine) restart(ctx context.Context, confirmed bool) error {
 	}
 
 	e.logger.InfoContext(ctx, "restarting into the update", "from", e.current, "to", version)
+
+	// The runs that can outlive the quit carry on through the restart, and the new version
+	// follows them; every other run stops with the app.
+	e.letFinish(true)
 
 	// The quit must never be held: Restart quits the app once the runtime's helper stands
 	// by, and a quit held back would leave the helper to reopen this copy beside the new.
@@ -380,6 +417,14 @@ func (e *Engine) recordPending(ctx context.Context, m Manifest) error {
 	return nil
 }
 
+// letFinish lets the runs that can outlive the quit go as the app quits, or stops them with
+// it again (Runs.LetFinish).
+func (e *Engine) letFinish(on bool) {
+	if e.runs != nil {
+		e.runs.LetFinish(on)
+	}
+}
+
 // rollBack undoes a restart that failed before the app quit (undo), with err, worded, as
 // LastError, and logs err whole. It returns err.
 func (e *Engine) rollBack(ctx context.Context, version string, quitLet bool, err error) error {
@@ -396,6 +441,9 @@ func (e *Engine) rollBack(ctx context.Context, version string, quitLet bool, err
 // shell is told to hold again.
 func (e *Engine) undo(ctx context.Context, quitLet bool) {
 	if quitLet {
+		// The app runs on, so a later quit asks about the runs again, and stops them unless
+		// the user lets them finish.
+		e.letFinish(false)
 		e.events.Emit(event.UpdateRestartFailed{})
 	}
 

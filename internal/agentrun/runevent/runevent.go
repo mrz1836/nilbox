@@ -65,9 +65,20 @@ const MaxText = 8 << 10
 
 // Event is one event of a run.
 type Event struct {
-	// Seq numbers the run's events from 1, in order; the window asks for those after the
-	// last it has.
+	// Seq numbers the run's events from 1, in order, while the runner follows the run; the
+	// window asks for those after the last it has. An event read from the log a page at a
+	// time (Page.Before) has none: 0.
 	Seq int64 `json:"seq"`
+
+	// Offset is where in the run's log the line it came from starts, and Part which of
+	// that line's events it is, from 0: together they name the event, and an earlier page
+	// is asked for before the first event's Offset.
+	Offset int64 `json:"offset"`
+	Part   int   `json:"part"`
+
+	// At is when the agent wrote it, as RFC 3339, from the latest line that said so, or ""
+	// before any did.
+	At string `json:"at"`
 
 	Kind Kind `json:"kind"`
 
@@ -113,7 +124,7 @@ type Progress struct {
 	Unknown int64 `json:"unknown"`
 }
 
-// Page is a run's events after a sequence number.
+// Page is a run's events after a sequence number, or a page of them read from its log.
 type Page struct {
 	// Events are the events after the one asked for, oldest first.
 	Events []Event `json:"events"`
@@ -122,9 +133,68 @@ type Page struct {
 	// events, and one asked for earlier ones gets these.
 	First int64 `json:"first"`
 
+	// Earlier reports events before the page's, which its log holds, and Before is the
+	// offset to read them before: the page's first line's. A long log is read back a page
+	// at a time, never whole.
+	Earlier bool  `json:"earlier"`
+	Before  int64 `json:"before"`
+
 	// Done reports a run that has ended: no more will come.
 	Done bool `json:"done"`
 
 	// Progress is how far it has got.
 	Progress Progress `json:"progress"`
+
+	// Ending is how a run that has ended came out, as its record holds it, or nil while it
+	// goes.
+	Ending *Ending `json:"ending"`
+}
+
+// Ending is how a run came out, as the run view shows it once it has ended: the agent's own
+// words, never the app's verdict, which comes from GitHub.
+type Ending struct {
+	// Summary is the app's sentence for it: "Finished: fixed.", "Out of budget ($0.50).".
+	Summary string `json:"summary"`
+
+	// Message is the agent's final message, at most 50 KB: a read-only run's notes.
+	Message string `json:"message"`
+
+	// Reported reports a structured report, with its outcome, summary, push, and whether
+	// it needs a person and why; NoReport says, when it gave none, why, with the last of its
+	// narration.
+	Reported     bool   `json:"reported"`
+	Outcome      string `json:"outcome"`
+	Report       string `json:"report"`
+	Pushed       bool   `json:"pushed"`
+	PushedCommit string `json:"pushedCommit"`
+	NeedsPerson  bool   `json:"needsPerson"`
+	Reason       string `json:"reason"`
+	NoReport     string `json:"noReport"`
+
+	// Turns are its turns, DurationMS how long the agent says it ran, and Models the models
+	// it actually used.
+	Turns      int64    `json:"turns"`
+	DurationMS int64    `json:"durationMs"`
+	Models     []string `json:"models"`
+
+	// Commit is the worktree's commit as it ended, and Changed the files its commits
+	// changed.
+	Commit  string   `json:"commit"`
+	Changed []string `json:"changed"`
+
+	// Todos are its todo list as it last wrote it.
+	Todos []Todo `json:"todos"`
+}
+
+// Diff is a run's worktree's changes since the head it started on, committed or not, as
+// the run view shows them, read-only.
+type Diff struct {
+	// From is the commit it compares with: the head the run started on.
+	From string `json:"from"`
+
+	// Patch is the unified diff, Cut whether it was cut short, and Untracked the files git
+	// doesn't track, which no patch shows.
+	Patch     string   `json:"patch"`
+	Cut       bool     `json:"cut"`
+	Untracked []string `json:"untracked"`
 }

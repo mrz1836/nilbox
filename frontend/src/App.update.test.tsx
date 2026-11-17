@@ -154,7 +154,17 @@ describe('App’s update', () => {
     platform.restartToUpdateNow.mockResolvedValueOnce({
       restarted: false,
       message: '',
-      runsGoing: [{ id: 7, kind: 'release', title: 'Release v1.2.0', repo: 'acme-org/sdk', dir: '', stopRefused: '' }],
+      runsGoing: [
+        {
+          id: 7,
+          kind: 'release',
+          title: 'Release v1.2.0',
+          repo: 'acme-org/sdk',
+          dir: '',
+          stopRefused: '',
+          outlives: false,
+        },
+      ],
     })
     await renderApp()
     await screen.findByRole('region', { name: 'Review requested' })

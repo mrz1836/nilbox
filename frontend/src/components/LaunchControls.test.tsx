@@ -35,6 +35,7 @@ import {
   settings,
 } from '../test/fixtures'
 import { platform } from '../test/platform'
+import { AutopilotRowsContext } from './autopilot/AutopilotChip'
 import { LaunchControls, type LaunchControlsProps } from './LaunchControls'
 
 vi.mock('../platform', () => import('../test/platform').then((fake) => fake.platform))
@@ -1058,6 +1059,63 @@ describe('LaunchControls', () => {
     await userEvent.click(show)
 
     expect(await screen.findByRole('alert')).toHaveTextContent('Couldn’t find the session’s tab.')
+  })
+
+  it('watches an agent working in the background, and takes it over from the hold, never starting another', async () => {
+    const onWatch = vi.fn()
+    const Clock = at()
+    const base = runningHold()
+    const background = base.running.map((r) => ({ ...r, background: true, canFocus: false }))
+    const hold = { ...base, running: background }
+
+    platform.launch.mockResolvedValue(launchResult({ hold }))
+    render(
+      <Clock>
+        <AutopilotRowsContext value={{ names: new Map(), chips: new Map(), onWatch, terminal: 'iterm2' }}>
+          <LaunchControls {...props({ running: agentSession({ state: 'working', runId: 44, canFocus: false }) })} />
+        </AutopilotRowsContext>
+      </Clock>,
+    )
+
+    const watch = screen.getByRole('button', { name: 'Watch' })
+    expect(watch).toHaveAttribute('title', expect.stringContaining('in the background, for Autopilot'))
+
+    await userEvent.click(watch)
+    expect(onWatch).toHaveBeenCalledExactlyOnceWith('0f8c1e2a-5b4d-4c3e-9a1f-2b3c4d5e6f70')
+
+    // held opens the launch menu, launches, and returns the hold dialog it meets.
+    const held = async () => {
+      await userEvent.click((await openMenu()).getByRole('button', { name: 'Open in Claude' }))
+
+      return within(await screen.findByRole('dialog', { name: 'Autopilot’s agent is working here' }))
+    }
+
+    const first = await held()
+    expect(first.queryByRole('button', { name: 'Start another' })).not.toBeInTheDocument()
+
+    await userEvent.click(first.getByRole('button', { name: 'Watch it' }))
+    expect(onWatch).toHaveBeenCalledTimes(2)
+    expect(screen.queryByRole('dialog', { name: 'Autopilot’s agent is working here' })).toBeNull()
+
+    await userEvent.click((await held()).getByRole('button', { name: 'Take over' }))
+    await userEvent.click(
+      within(screen.getByRole('dialog', { name: 'Take over this run?' })).getByRole('button', { name: 'Cancel' }),
+    )
+    expect(platform.takeOverRun).not.toHaveBeenCalled()
+
+    await userEvent.click((await held()).getByRole('button', { name: 'Take over' }))
+
+    const asked = within(screen.getByRole('dialog', { name: 'Take over this run?' }))
+    expect(asked.getByText(/stops the agent and opens its conversation in iTerm2, in pr-7/)).toBeInTheDocument()
+    await userEvent.click(asked.getByRole('button', { name: 'Take over' }))
+
+    expect(platform.takeOverRun).toHaveBeenCalledExactlyOnceWith({
+      sessionId: hold.running[0]?.sessionId,
+      profile: false,
+      alongside: '',
+      confirmed: '',
+    })
+    expect(platform.launch).toHaveBeenCalledTimes(3)
   })
 
   it('waits for a starting session’s terminal before it can show it', () => {

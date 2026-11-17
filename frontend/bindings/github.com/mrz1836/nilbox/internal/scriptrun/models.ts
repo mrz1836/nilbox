@@ -239,6 +239,13 @@ export interface Run {
      */
     "canStop": boolean;
     "canRunAgain": boolean;
+
+    /**
+     * OutlivesQuit reports a run going in the app that may go on once the app has quit, as
+     * an agent that keeps to a budget of its own does (Spec.OutlivesQuit): the quit's Let
+     * them finish lets it go, and the next start follows it again.
+     */
+    "outlivesQuit": boolean;
 }
 
 /**

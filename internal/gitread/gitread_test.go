@@ -953,6 +953,7 @@ func TestEveryAllowlistEntryIsUsed(t *testing.T) {
 	_, _ = g.IsAncestor(ctx, repoDir, headSHA, otherSHA)
 	_, _ = g.Head(ctx, repoDir)
 	_, _ = g.ChangedFiles(ctx, repoDir, headSHA, otherSHA)
+	_, _ = g.WorktreeDiff(ctx, repoDir, headSHA)
 	_, _ = g.LocalVersionTags(ctx, repoDir)
 	_, _ = g.RemoteRefs(ctx, repoDir)
 	_, _ = g.RemoteBranch(ctx, repoDir, mainBranch)

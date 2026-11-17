@@ -624,7 +624,7 @@ export function ReviewSheet({
                     summary scrolls. */}
                   <div className="shrink-0 space-y-1.5 border-b border-border px-4 py-3">
                     <Readiness review={review} />
-                    <WorkLine worktree={worktree} sessions={sessions} agents={launch?.agents ?? []} />
+                    <WorkLine worktree={worktree} sessions={sessions} agents={launch?.agents ?? []} itemId={id} />
                   </div>
                   <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4">
                     {reading ? (

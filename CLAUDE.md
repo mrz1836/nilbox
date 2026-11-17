@@ -429,7 +429,14 @@ changing the package, and keep the section and its summary in step.
   followed run's script runs its command under `script(1)`, recording its output, its shell's
   PID, and its exit status in the run's files. `launcher.CommandOpener`, which core hands the
   runs and never binds, opens only such a script, in the terminal chosen in Settings.
-  `launcher.AgentEnv` is the one rule for every agent start's environment: the profile's config
+  `Resume` takes `ResumeRequest.Access`: a background run's session resumes under its run's
+  fence (`ResumableSession.Fence`, the preset and the run's folder), taken over
+  (`Fence.TakenOver`, `agent.Access.TakenOver`: the same tools, rules, hook, and sandbox, a fixed
+  preset in `manual` rather than `dontAsk`, so the user is asked about the rest), unless the
+  user ticks the profile's own (`profile`), under the trust rule; a fence whose settings are
+  gone is `ErrNoFence`. The bound `TakeOver` stops a background run first through its
+  `TakeOvers` (core's `backgroundAgents`), then resumes it so, in its worktree, held back as a
+  launch is. `launcher.AgentEnv` is the one rule for every agent start's environment: the profile's config
   variable set (or unset for the default profile), and, unless the user's per-agent setting
   (`settings.Settings.ClaudeAPIKey`, `CodexAPIKey`, off by default) lets a key through, the
   agent's `KeyEnv` unset, so the profile's own sign-in is used. An Autopilot routine's launch is
@@ -795,7 +802,8 @@ changing the package, and keep the section and its summary in step.
   is in the target (`MoveExists`, `ErrTargetTaken`) or touches the bundle that runs (`isSelf`),
   and holds the quit while it moves (`Mover.HoldQuit`). `Restart(confirmed)` refuses while runs
   go (`RunsGoingError`), backs the database up first (`store.Backup`) and stops when that fails,
-  records `update.pendingInstall` only once the update is staged, and emits
+  records `update.pendingInstall` only once the update is staged, lets the runs that may
+  outlive it carry on (`Runs.LetFinish`, `Run.Outlives`, which its question names), and emits
   `event.QuitConfirmed{Restarting: true}` before `Installer.Restart`; the `Worker` settles the
   outcome at the next start (`JustUpdated`, `InstallFailed`, `update.uninstallable`). Bound too:
   `Status`, `CheckNow`, `Download`, `OpenInApplications`, `ShowAppInFinder`, `HideBanner`,
@@ -976,10 +984,18 @@ changing the package, and keep the section and its summary in step.
   (`inbox.Store.NoteAgentChanges`). A result ends the run (`Callbacks.Over`), a SIGKILL's
   leftovers in the worktree are ended (`ProcSweeper`), and `Engine.RunEnded` hears each end
   once its record holds it, again from the record after a restart. The stream's parser keeps
-  the last 2,000 events and the progress, which `runevent` (a leaf) and the bound
-  `Working`, `RunEvents`, and `StopRun`/`StopAll` carry to the window. The seams for Let
-  them finish (`scriptrun.Engine.LetFinish`) and the profile fallback (`Outcome.Limit`) are
-  the next phases'. It never imports
+  the last 2,000 events and the progress, each event at its line's log offset and the time the
+  agent wrote it, which `runevent` (a leaf) and the bound `Working`, `RunView`, `RunEvents`,
+  `RunEventsBefore`, `RunDiff`, `RunBySession`, and `StopRun`/`StopAll` carry to the run view:
+  a working run from memory, an ended one, or one before memory's first event, read back from
+  its log a page at a time (`view.go`'s `readBack`, never the whole log), with how it came out
+  (`runevent.Ending`), and its worktree's changes since its head (`gitread.WorktreeDiff`). Take
+  over is the launcher's (`launcher.Service.TakeOver`, below), through core's `TakeOvers`
+  (`adapters_takeover.go`: `Engine.TakeOver`, which closes the match as `taken_over` with no
+  notice, then `Runner.Stop` and `Runner.Wait`). The quit's Let them finish
+  (`scriptrun.Service.LetThemFinish`) lets a run that keeps to its own budget outlive the quit,
+  as a confirmed restart to update does (`update.Runs.LetFinish`); the profile fallback
+  (`Outcome.Limit`) is a later phase's. It never imports
   Autopilot, the launcher, the desktop, the sessions, the worktrees, or notify (the repoguard
   boundary test).
   Full design: [docs/architecture.md](docs/architecture.md#agents-in-the-background)
@@ -1133,7 +1149,10 @@ changing the package, and keep the section and its summary in step.
   cut off), which leaves it recorded as going for the next start. `Active` is the desktop
   shell's quit guard (`desktop.QuitGuard`): while a run goes in
   the app, `Shell.ShouldQuit` holds a quit and the window asks (`event.QuitRequested`), until the
-  bound `Service.QuitAnyway` emits the Go-only `event.QuitConfirmed`. The Service's
+  bound `Service.QuitAnyway` emits the Go-only `event.QuitConfirmed`, or `LetThemFinish`, offered
+  while every agent's run going may outlive the quit (`Run.OutlivesQuit`), emits it with
+  `Engine.LetFinish` set, so `StopAll` lets those runs go, still recorded as going for the next
+  start; `QuitAnyway` and `KeepRunning` clear it. The Service's
   `OpenInTerminal` opens the user's terminal in a run's folder and runs nothing there, and
   `ShowLog` shows a run's log in Finder, both by the run's ID alone. `InUse` tells an install a
   tool is running, never counting a `KindUpdate` run, which is the tool updating itself (it
@@ -1149,8 +1168,9 @@ changing the package, and keep the section and its summary in step.
   `ErrGitCommandNotAllowed` before git runs, and typed helpers over it (`OriginHead`,
   `HookPaths`, `IndexLocked`, ...). Every command runs with no fsmonitor, no submodule
   recursion, no optional lock, no prompt, no lazy fetch, and no transport, never with
-  `GIT_CONFIG` and never touching `core.hooksPath`; a `status` turns off every filter driver the
-  clone defines, Git LFS's too. An `ls-remote` (15 s, `RemoteTimeout`) refuses a remote helper
+  `GIT_CONFIG` and never touching `core.hooksPath`; a `status`, and a diff against the
+  worktree (`WorktreeDiff`, the run view's Diff, with `--no-ext-diff` and `--no-textconv` as
+  every diff), turn off every filter driver the clone defines, Git LFS's too. An `ls-remote` (15 s, `RemoteTimeout`) refuses a remote helper
   (`ErrRemoteHelper`) or an http or https origin the clone reroutes (`ErrCloneRoutes`), runs only
   the transports the user allows, sets the clone's own ssh command, password program, and
   credential helpers aside for the user's (`SetAsideError`), saves no cookie, and asks for git's
@@ -1356,8 +1376,11 @@ changing the package, and keep the section and its summary in step.
   `onItemOpened`, once per opening).
   `components/autopilot/` is the Autopilot tab (the routine list, Needs you's cards,
   Activity, a routine's Watching list on the inbox's own rows and sheets, the ⚡ chip, an
-  item menu's Autopilot ▸, `RoutineMenu`, and `builder/`, the routine builder and its Test
-  panel with Preview, whose pure half is `lib/routineBuilder.ts`), its words in
+  item menu's Autopilot ▸, `RoutineMenu`, `RunView`, an agent's run beside Activity, with its
+  timeline a page at a time (`lib/useRunTimeline.ts`, `lib/runView.ts`), `TakeOverDialog`,
+  which the run view, the session panel, and the launch hold dialog share, and `builder/`, the
+  routine builder and its Test panel with Preview, whose pure half is
+  `lib/routineBuilder.ts`), its words in
   `lib/autopilot.ts`; a hold's details are the launch hold dialog's own (`HoldDetails`), and
   a planned launch the launch menu's; every row reads the routines' names and its chip through
   `AutopilotRowsContext`, and the inbox's row actions are shared through

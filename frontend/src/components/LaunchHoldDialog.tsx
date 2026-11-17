@@ -4,7 +4,7 @@ import type { AgentInfo, LaunchHold } from '../platform'
 import { quietButtonClass } from './controls'
 import { ConfirmDialog } from './ConfirmDialog'
 import { HoldDetails, holdTitle } from './HoldDetails'
-import { TerminalIcon } from './icons'
+import { EyeIcon, TerminalIcon } from './icons'
 import { RelativeTime } from './RelativeTime'
 
 export interface LaunchHoldDialogProps {
@@ -22,6 +22,64 @@ export interface LaunchHoldDialogProps {
   // onShow brings a running session's terminal tab forward, by its ID, instead of
   // starting another; without it the dialog offers no such button.
   onShow?: ((sessionId: string) => void) | undefined
+  // onWatch opens an agent's background run's view, and onTakeOver takes it over, by its
+  // session: a hold for such a run offers them, and never Start another.
+  onWatch?: ((sessionId: string) => void) | undefined
+  onTakeOver?: ((sessionId: string) => void) | undefined
+}
+
+// BackgroundBody says an agent of Autopilot's works in the folder, in the background, with
+// Watch it and Take over in place of starting another session beside it.
+function BackgroundBody({
+  hold,
+  run,
+  agents,
+  onWatch,
+  onTakeOver,
+}: {
+  hold: LaunchHold
+  run: LaunchHold['running'][number]
+  agents: readonly AgentInfo[]
+  onWatch?: ((sessionId: string) => void) | undefined
+  onTakeOver?: ((sessionId: string) => void) | undefined
+}) {
+  const where = hold.worktree === '' ? hold.dir : hold.worktree
+
+  return (
+    <div className="flex flex-col gap-3">
+      <p>
+        {agentLabel(agents, run.agent)} is working in {where} in the background, for Autopilot. Two agents working in
+        one worktree undo each other’s changes, so another session doesn’t start beside it. Watch it, or take it over to
+        carry its conversation on in your terminal.
+      </p>
+      <div className="flex flex-wrap gap-1">
+        {onWatch !== undefined && (
+          <button
+            type="button"
+            onClick={() => {
+              onWatch(run.sessionId)
+            }}
+            className={quietButtonClass}
+          >
+            <EyeIcon className="size-3.5" />
+            Watch it
+          </button>
+        )}
+        {onTakeOver !== undefined && (
+          <button
+            type="button"
+            onClick={() => {
+              onTakeOver(run.sessionId)
+            }}
+            className={quietButtonClass}
+          >
+            <TerminalIcon className="size-3.5" />
+            Take over
+          </button>
+        )}
+      </div>
+    </div>
+  )
 }
 
 // RunningBody lists the sessions already running where the launch would start, with a
@@ -86,7 +144,9 @@ function RunningBody({
 // checked, into a worktree with uncommitted changes, or where a session is already running
 // in the folder the launch would start in.
 // Cancel is the default; Open anyway (or Start another) confirms exactly what was shown,
-// so a push, or another session, in the meantime asks again.
+// so a push, or another session, in the meantime asks again. Where one of Autopilot's
+// agents works in the background, nothing starts beside it: the dialog offers Watch it and
+// Take over instead, and closes.
 export function LaunchHoldDialog({
   hold,
   agentName,
@@ -95,7 +155,26 @@ export function LaunchHoldDialog({
   onConfirm,
   onCancel,
   onShow,
+  onWatch,
+  onTakeOver,
 }: LaunchHoldDialogProps) {
+  const background = hold.reason === 'running' ? hold.running.find((r) => r.background) : undefined
+
+  if (background !== undefined) {
+    return (
+      <ConfirmDialog
+        title="Autopilot’s agent is working here"
+        confirmLabel="Close"
+        cancelLabel={null}
+        tone="primary"
+        onConfirm={onCancel}
+        onCancel={onCancel}
+      >
+        <BackgroundBody hold={hold} run={background} agents={agents} onWatch={onWatch} onTakeOver={onTakeOver} />
+      </ConfirmDialog>
+    )
+  }
+
   if (hold.reason === 'running') {
     return (
       <ConfirmDialog

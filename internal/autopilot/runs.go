@@ -29,10 +29,13 @@ type RunUsage struct {
 }
 
 // RunViews reads what a runner keeps of the agents' runs, by the ledger's run: how far one
-// going has got, and its events (core adapts the background runner).
+// going has got, its events, a page of them read back from its log before an offset, and
+// its worktree's changes since it started (core adapts the background runner).
 type RunViews interface {
 	Progress(runID int64) (runevent.Progress, bool)
 	Events(ctx context.Context, runID, after int64) (runevent.Page, error)
+	EventsBefore(ctx context.Context, runID, before int64) (runevent.Page, error)
+	Diff(ctx context.Context, runID int64) (runevent.Diff, error)
 }
 
 // RunLogs clears the agents' runs' logs and folders, as Clear history does.
@@ -281,25 +284,19 @@ func (s *Service) RunsToday(ctx context.Context) (RunsToday, error) {
 // RunEvents returns the events of the ledger's run runID after the one numbered after:
 // what the run view shows. The window asks again after each autopilot:run.
 func (s *Service) RunEvents(ctx context.Context, runID, after int64) (runevent.Page, error) {
-	empty := runevent.Page{Events: []runevent.Event{}, Progress: runevent.Progress{Todos: []runevent.Todo{}}}
+	if page, elsewhere := s.followedElsewhere(ctx, runID); elsewhere {
+		return page, nil
+	}
 
 	e := s.engine
 	if e == nil || e.views == nil {
-		return empty, uierr.New("This run's events aren't kept here.", ErrNoViews)
+		return emptyPage(), uierr.New("This run's events aren't kept here.", ErrNoViews)
 	}
 
 	page, err := e.views.Events(ctx, runID, after)
 	if err != nil {
-		return empty, uierr.New("This run's events couldn't be read.", err)
+		return emptyPage(), uierr.New("This run's events couldn't be read.", err)
 	}
 
-	if page.Events == nil {
-		page.Events = []runevent.Event{}
-	}
-
-	if page.Progress.Todos == nil {
-		page.Progress.Todos = []runevent.Todo{}
-	}
-
-	return page, nil
+	return nonNilPage(page), nil
 }

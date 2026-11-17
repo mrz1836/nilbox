@@ -182,6 +182,11 @@ type Config struct {
 	// back whether or not sessions are followed. Optional.
 	RunFolders RunFolders
 
+	// TakeOvers stops a background run the user takes over, and tells Autopilot so, before
+	// its conversation resumes in the terminal. Without it, TakeOver refuses a run still
+	// working.
+	TakeOvers TakeOvers
+
 	// Logger receives what a launch cannot report as its error: a session record or a
 	// clone path that could not be stored, and old launch files that could not be
 	// pruned. Without it they are not logged.
@@ -365,6 +370,7 @@ type Service struct {
 	files     FileChecker
 	reader    *localrepos.Reader
 	runs      RunFolders
+	takeOvers TakeOvers
 	logger    *slog.Logger
 
 	// cloneMu runs one Clone at a time.
@@ -398,6 +404,7 @@ func NewService(cfg Config) *Service {
 		files:     cfg.Files,
 		reader:    cfg.Reader,
 		runs:      cfg.RunFolders,
+		takeOvers: cfg.TakeOvers,
 		logger:    logging.Or(cfg.Logger),
 	}
 }
@@ -677,6 +684,7 @@ func (s *Service) plan(ctx context.Context, req LaunchRequest, mode planMode, re
 		Item: row.item(w.policy), Agent: res.Agent.ID, Profile: effectiveProfile(profile, res),
 		FullAccessOverride: override, SessionName: sessionName(prompt.Nickname, row),
 		SessionID: ref.id, ResumeID: ref.resume, Fast: res.Fast.Value, UseAPIKey: w.settings.APIKeys[res.Agent.ID],
+		Fence: ref.fence,
 	})
 	if err != nil {
 		return planned{}, err

@@ -41,6 +41,27 @@ type Fence struct {
 	// Settings is the absolute path of the settings file FenceFiles writes, in the run's
 	// own folder, which the runner sets once it has one (Access.InRun).
 	Settings string
+
+	// TakenOver reports the run's conversation resumed in the user's terminal (Take over):
+	// someone answers now, so each fixed preset asks about whatever its rules don't allow
+	// rather than refusing it, and its rules, its hook, and its sandbox still hold. The
+	// profile's own preset starts from the click's access either way.
+	TakenOver bool
+}
+
+// TakenOver returns the access of a fenced run's conversation resumed in the user's
+// terminal: the same fence, asking rather than refusing (Fence.TakenOver). Any other access
+// is returned as it is.
+func (a Access) TakenOver() Access {
+	if a.Kind != AccessFence || a.Fence == nil {
+		return a
+	}
+
+	f := *a.Fence
+	f.TakenOver = true
+	a.Fence = &f
+
+	return a
 }
 
 // FenceAccess returns the access of a background run under a preset; base is the click's

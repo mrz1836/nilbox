@@ -1,6 +1,7 @@
 import { createContext, use, useId, useState } from 'react'
 
 import { chipOf, effectState, effectVerb, inActivity, routineName, targetOf, type Chip } from '../../lib/autopilot'
+import { terminalNames } from '../../lib/terminals'
 import { formatAgo, formatFull } from '../../lib/time'
 import { useMutation } from '../../lib/useMutation'
 import { usePopover } from '../../lib/usePopover'
@@ -11,6 +12,7 @@ import {
   type AutopilotMatch,
   type AutopilotTarget,
   type InboxItem,
+  type TerminalID,
 } from '../../platform'
 import { quietButtonClass } from '../controls'
 import { AutopilotIcon } from '../icons'
@@ -20,11 +22,31 @@ import { RelativeTime } from '../RelativeTime'
 // AutopilotRows is what the rows need of Autopilot, which the window provides around the
 // inbox, and the Autopilot tab around a routine's Watching list: each routine's name by ID,
 // for the marks "Snoozed by ⚡ ...", the newest match a routine has on each item, by item,
-// for its ⚡ chip, and onShow, which opens the Autopilot tab at a match in Activity.
+// for its ⚡ chip, onShow, which opens the Autopilot tab at a match in Activity or at a
+// run's view, and onWatch, which opens the run view of an agent's background run by its
+// session, as the session panel's and the launch button's Watch do.
 export interface AutopilotRows {
   names: ReadonlyMap<number, string>
   chips: ReadonlyMap<number, AutopilotMatch>
   onShow?: ((target: AutopilotTarget) => void) | undefined
+  onWatch?: ((sessionId: string) => void) | undefined
+  // terminal is the terminal chosen for launches, which Take over opens a run's
+  // conversation in, or null until the settings load.
+  terminal?: TerminalID | null | undefined
+}
+
+// useWatch is what opens a background run's view by its session, or undefined without the
+// rows' Autopilot, as while Autopilot (beta) is off.
+export function useWatch(): ((sessionId: string) => void) | undefined {
+  return use(AutopilotRowsContext)?.onWatch
+}
+
+// useTakeOverTerminal names the terminal Take over opens a run's conversation in: the one
+// chosen for launches, or "your terminal" while it isn't known.
+export function useTakeOverTerminal(): string {
+  const terminal = use(AutopilotRowsContext)?.terminal
+
+  return terminal === undefined || terminal === null ? 'your terminal' : terminalNames[terminal]
 }
 
 // AutopilotRowsContext holds the rows' Autopilot; without it, as while Autopilot (beta) is

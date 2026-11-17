@@ -46,8 +46,10 @@ import {
   type Resolution,
   type Settings,
 } from '../platform'
+import { useTakeOverTerminal, useWatch } from './autopilot/AutopilotChip'
+import { TakeOverDialog } from './autopilot/TakeOverDialog'
 import { ConfirmDialog } from './ConfirmDialog'
-import { AlertIcon, ChevronDownIcon, TerminalIcon } from './icons'
+import { AlertIcon, AutopilotIcon, ChevronDownIcon, TerminalIcon } from './icons'
 import { LaunchDialog } from './LaunchDialog'
 import { LaunchHoldDialog } from './LaunchHoldDialog'
 import { LaunchMenu } from './LaunchMenu'
@@ -155,6 +157,13 @@ export function LaunchControls({
   const [open, setOpen] = useState(false)
   const [choices, setChoices] = useState<Choices>(start)
   const [state, setState] = useState<LaunchState>({ kind: 'idle' })
+  // watch opens an agent's background run's view, by its session: the button's Watch while
+  // one works in the item's worktree, and the hold dialog's Watch it.
+  const watch = useWatch()
+  const takeOverIn = useTakeOverTerminal()
+  // takingOver is the background run the hold dialog's Take over asks about, by its
+  // session, with the worktree it works in.
+  const [takingOver, setTakingOver] = useState<{ sessionId: string; where: string } | null>(null)
   const [confirmingClone, setConfirmingClone] = useState(false)
   const [status, setStatus] = useState<SaveStatus | null>(null)
   // saved is the last save, while Undo can still take it back.
@@ -421,6 +430,19 @@ export function LaunchControls({
                   ? 'Cloning…'
                   : openLabel}
             </button>
+          ) : running.runId !== 0 ? (
+            <button
+              type="button"
+              disabled={busy || watch === undefined}
+              onClick={() => {
+                watch?.(running.id)
+              }}
+              title={`${agentLabel(agents, running.agent)} ${stateLabel(running.state)} in the background, for Autopilot: watch it, stop it, or take it over from its run.`}
+              className="inline-flex items-center gap-1.5 rounded-l-md px-2.5 py-1 font-medium text-text transition-colors hover:bg-raised disabled:opacity-60 disabled:hover:bg-transparent"
+            >
+              <AutopilotIcon className="size-3.5 text-accent" />
+              {state.kind === 'launching' ? 'Opening…' : 'Watch'}
+            </button>
           ) : (
             <button
               type="button"
@@ -429,20 +451,14 @@ export function LaunchControls({
                 void showTerminal(running.id)
               }}
               title={
-                running.runId !== 0
-                  ? `${agentLabel(agents, running.agent)} ${stateLabel(running.state)} in the background, for Autopilot: watch or stop it from the Autopilot tab.`
-                  : running.canFocus
-                    ? `${agentLabel(agents, running.agent)} ${stateLabel(running.state)}: show its terminal tab. To start another session, use the launch options.`
-                    : `${agentLabel(agents, running.agent)} is starting; its terminal tab can be shown once it has started.`
+                running.canFocus
+                  ? `${agentLabel(agents, running.agent)} ${stateLabel(running.state)}: show its terminal tab. To start another session, use the launch options.`
+                  : `${agentLabel(agents, running.agent)} is starting; its terminal tab can be shown once it has started.`
               }
               className="inline-flex items-center gap-1.5 rounded-l-md px-2.5 py-1 font-medium text-text transition-colors hover:bg-raised disabled:opacity-60 disabled:hover:bg-transparent"
             >
               <TerminalIcon className="size-3.5 text-accent" />
-              {state.kind === 'launching'
-                ? 'Opening…'
-                : running.runId !== 0
-                  ? `${agentLabel(agents, running.agent)} · ${stateLabel(running.state)} ⚡`
-                  : 'Show in terminal'}
+              {state.kind === 'launching' ? 'Opening…' : 'Show in terminal'}
             </button>
           )}
           <button
@@ -620,6 +636,34 @@ export function LaunchControls({
           }}
           onShow={(sessionId) => {
             void showTerminal(sessionId)
+          }}
+          onWatch={
+            watch === undefined
+              ? undefined
+              : (sessionId) => {
+                  setState({ kind: 'idle' })
+                  watch(sessionId)
+                }
+          }
+          onTakeOver={(sessionId) => {
+            setTakingOver({ sessionId, where: state.hold.worktree })
+            setState({ kind: 'idle' })
+          }}
+        />
+      )}
+      {takingOver !== null && (
+        <TakeOverDialog
+          sessionId={takingOver.sessionId}
+          live
+          terminal={takeOverIn}
+          where={takingOver.where}
+          agentName={agentName}
+          onCancel={() => {
+            setTakingOver(null)
+          }}
+          onTaken={(result) => {
+            setTakingOver(null)
+            setState({ kind: 'launched', result })
           }}
         />
       )}

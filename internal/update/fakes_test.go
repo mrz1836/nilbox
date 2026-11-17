@@ -290,16 +290,34 @@ func (f *fakeInstaller) calls() ([]install, int) {
 	return append([]install(nil), f.installs...), f.restarts
 }
 
-// fakeRuns says runs go in the app, or not.
+// fakeRuns says runs go in the app, or not, and records each LetFinish.
 type fakeRuns struct {
 	active  atomic.Bool
 	going   []update.Run
 	listErr error
+
+	mu      sync.Mutex
+	letting []bool
 }
 
 func (f *fakeRuns) Active() bool { return f.active.Load() }
 
 func (f *fakeRuns) Going(context.Context) ([]update.Run, error) { return f.going, f.listErr }
+
+func (f *fakeRuns) LetFinish(on bool) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	f.letting = append(f.letting, on)
+}
+
+// lets returns every LetFinish so far, in order.
+func (f *fakeRuns) lets() []bool {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	return append([]bool{}, f.letting...)
+}
 
 // fakeBackup backs up the database, or fails.
 type fakeBackup struct {

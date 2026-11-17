@@ -447,6 +447,7 @@ describe('restartToUpdateNow', () => {
     repo: 'acme-org/sdk',
     dir: '~/projects/sdk',
     stopRefused: '',
+    outlives: false,
   }
 
   // refused is a restart refused as the desktop runtime delivers it: the full text, and

@@ -504,6 +504,7 @@ func reasonWords() map[Reason]string {
 		ReasonFailed:          "A step failed",
 		ReasonFromNow:         "Already matched when you turned it on",
 		ReasonHandsOff:        "Left alone",
+		ReasonTakenOver:       "Taken over",
 	}
 }
 

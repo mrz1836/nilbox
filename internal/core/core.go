@@ -624,11 +624,12 @@ func assemble(ctx context.Context, pool *sql.DB, info startup, opts Options, log
 		Clock:      opts.Clock,
 		Worktrees:  worktreeMaker{maker: worktrees.NewMaker(sweeps)},
 		Sessions:   workLog,
-		Ledger:     sessionLedger{ledger: follow.ledger},
+		Ledger:     sessionLedger{ledger: follow.ledger, runs: background},
 		Trust:      trusters(opts.Home, logger),
 		Files:      launchChecks,
 		Reader:     locations,
 		RunFolders: background,
+		TakeOvers:  background,
 		Logger:     logger,
 	})
 	background.launch, background.maker = launcher.NewBackgrounds(launch), worktreeMaker{maker: worktrees.NewMaker(sweeps)}

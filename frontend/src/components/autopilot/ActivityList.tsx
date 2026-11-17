@@ -2,6 +2,7 @@ import { useEffect, useRef, type ReactNode } from 'react'
 
 import { counted } from '../../lib/format'
 import { itemText, type ActivityLine } from '../../lib/autopilot'
+import { agentRunOf } from '../../lib/runView'
 import { formatFull } from '../../lib/time'
 import { useMutation } from '../../lib/useMutation'
 import {
@@ -97,6 +98,9 @@ export interface ActivityListProps {
   // onOpen shows an item: its card in the inbox when it is listed, else its row in the
   // routine's Watching list.
   onOpen: (item: AutopilotItemRef, routineId: number) => void
+  // onShowRun opens a match's agent's run in the background in its run view; without it, a
+  // line offers none.
+  onShowRun?: ((runId: number) => void) | undefined
   // onToast says what an action did, or why it couldn't.
   onToast: (text: string, tone?: 'error') => void
   // onChanged hears a line's action (Undo, Try again, Let it act again) go through, which
@@ -107,15 +111,16 @@ export interface ActivityListProps {
 }
 
 // LineProps is one line, with what the list shares.
-interface LineProps extends Pick<ActivityListProps, 'onOpen' | 'onToast' | 'onChanged'> {
+interface LineProps extends Pick<ActivityListProps, 'onOpen' | 'onShowRun' | 'onToast' | 'onChanged'> {
   line: ActivityLine
   highlighted: boolean
   routineColumn: boolean
 }
 
 // ActivityLineRow is one line of Activity: its mark, what happened (and to which items),
-// the routine, its actions (Undo, Try again, Let it act again, Open), and its time.
-function ActivityLineRow({ line, highlighted, routineColumn, onOpen, onToast, onChanged }: LineProps) {
+// the routine, its actions (Undo, Try again, Let it act again, Show the run, Open), and its
+// time.
+function ActivityLineRow({ line, highlighted, routineColumn, onOpen, onShowRun, onToast, onChanged }: LineProps) {
   const act = useMutation((run: () => Promise<string>) => run())
   const time = clockTime(line.at)
   const run = (what: () => Promise<string>) => {
@@ -221,6 +226,7 @@ function ActivityLineRow({ line, highlighted, routineColumn, onOpen, onToast, on
               Try again
             </button>
           )}
+          <ShowRunButton match={m} onShowRun={onShowRun} />
           <OpenButton item={m.item} routineId={m.routineId} onOpen={onOpen} />
         </>
       )
@@ -253,6 +259,28 @@ function ActivityLineRow({ line, highlighted, routineColumn, onOpen, onToast, on
         {time}
       </time>
     </li>
+  )
+}
+
+// ShowRunButton opens a match's newest agent's run in the background in its run view, when
+// it has one.
+function ShowRunButton({ match, onShowRun }: { match: AutopilotMatch; onShowRun: ActivityListProps['onShowRun'] }) {
+  const run = agentRunOf(match)
+
+  if (run === undefined || onShowRun === undefined) {
+    return null
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={() => {
+        onShowRun(run.id)
+      }}
+      className={quietButtonClass}
+    >
+      Show the run
+    </button>
   )
 }
 
@@ -293,6 +321,7 @@ export function ActivityList({
   routineColumn = true,
   highlight = null,
   onOpen,
+  onShowRun,
   onToast,
   onChanged,
   empty,
@@ -335,6 +364,7 @@ export function ActivityList({
             highlighted={line.key === shownKey}
             routineColumn={routineColumn}
             onOpen={onOpen}
+            onShowRun={onShowRun}
             onToast={onToast}
             {...(onChanged === undefined ? {} : { onChanged })}
           />

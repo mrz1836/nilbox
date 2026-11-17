@@ -105,7 +105,7 @@ func TestRestartRefusesWhileRunsGoUnlessConfirmed(t *testing.T) {
 	detail, jsonErr := json.Marshal(goingErr.Detail())
 	require.NoError(t, jsonErr)
 	assert.JSONEq(t, `{"runsGoing":[{"id":7,"kind":"release","title":"Release v1.2.0",`+
-		`"repo":"acme-org/example-repo","dir":"","stopRefused":""}]}`, string(detail))
+		`"repo":"acme-org/example-repo","dir":"","stopRefused":"","outlives":false}]}`, string(detail))
 
 	installs, restarts := r.installer.calls()
 	assert.Empty(t, installs, "nothing is installed")
@@ -118,6 +118,19 @@ func TestRestartRefusesWhileRunsGoUnlessConfirmed(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, exited, "confirmed, it restarts, stopping the runs")
 	assert.Equal(t, []event.Event{event.QuitConfirmed{Restarting: true}}, r.quitEvents())
+	assert.Equal(t, []bool{true}, r.runs.lets(), "the runs that can outlive the restart carry on through it")
+}
+
+func TestARestartThatFailsAfterTheQuitStopsLettingRunsGo(t *testing.T) {
+	t.Parallel()
+
+	r, _ := ready(t)
+	r.installer.restartErr = errFakeRename
+
+	_, err := r.service.Restart(t.Context(), true)
+	require.Error(t, err)
+	assert.Equal(t, []bool{true, false}, r.runs.lets(),
+		"the app runs on, so a later quit stops its runs unless the user lets them finish")
 }
 
 func TestARunThatStartsDuringTheRestartRefusesIt(t *testing.T) {
@@ -159,6 +172,12 @@ func TestRunsGoingWordsTheRuns(t *testing.T) {
 		"Restarting stops Checks in ~/projects/tool.":            {{Title: "Checks", Dir: "~/projects/tool"}},
 		"Restarting stops the 2 runs going in " + brand.Name + ": Release v1.2.0, Pull main.": {
 			{Title: "Release v1.2.0"}, {Title: "Pull main"},
+		},
+		"Fix checks · acme-org/api #12 in acme-org/api carries on, and " + brand.Name +
+			" picks it up when it opens again.": {{Title: "Fix checks · acme-org/api #12", Repo: "acme-org/api", Outlives: true}},
+		"Restarting stops Checks in ~/projects/tool. Fix checks, Review carry on, and " + brand.Name +
+			" picks them up when it opens again.": {
+			{Title: "Fix checks", Outlives: true}, {Title: "Checks", Dir: "~/projects/tool"}, {Title: "Review", Outlives: true},
 		},
 	} {
 		r.runs.going = going

@@ -82,6 +82,7 @@ import { TemplateGallery } from './TemplateGallery'
 import { useRoutineChange } from './useRoutineChange'
 import { useSheetHost, type RowsKit } from './useSheetHost'
 import { WatchingList } from './WatchingList'
+import { RunView } from './RunView'
 import { WorkingList } from './WorkingList'
 
 export interface AutopilotViewProps {
@@ -337,6 +338,8 @@ export default function AutopilotView({
   const [deleteBusy, setDeleteBusy] = useState(false)
   const [focus, setFocus] = useState<Focus | null>(null)
   const [highlight, setHighlight] = useState<{ matchId: number; seq: number } | null>(null)
+  // runShown is the agent's run open in the run view beside Activity, 0 for none.
+  const [runShown, setRunShown] = useState(0)
   // needsHighlight is the card of Needs you a request asked to show, for a match still
   // open there.
   const [needsHighlight, setNeedsHighlight] = useState<{ matchId: number; seq: number } | null>(null)
@@ -531,19 +534,26 @@ export default function AutopilotView({
   }
 
   // A request from a notification, the menu bar, or a chip shows Activity, at the match
-  // it names, or the routine it names, once the routines are read.
+  // it names, or the routine it names, once the routines are read; one that names an
+  // agent's run opens its run view beside Activity.
   if (
     request !== null &&
     request.seq !== handled &&
     request.template === undefined &&
     (request.fromItem ?? 0) === 0 &&
-    (request.target.matchId > 0 || autopilot.loaded)
+    (request.target.matchId > 0 || request.target.runId > 0 || autopilot.loaded)
   ) {
     setHandled(request.seq)
 
     const { target } = request
 
-    if (target.matchId > 0) {
+    if (target.runId > 0) {
+      // An agent's run, as Agent finished, a session's Watch, or the menu bar's agent
+      // names: its run view opens beside Activity.
+      go(0)
+      setFilter(noFilter)
+      setRunShown(target.runId)
+    } else if (target.matchId > 0) {
       go(0)
       setFilter(noFilter)
       setFocus({ matchId: target.matchId, createdAt: target.createdAt, seq: request.seq })
@@ -1026,8 +1036,10 @@ export default function AutopilotView({
     )
   }
 
-  // shown is what the right side shows: a new routine's builder, a routine, or Activity.
+  // shown is what the right side shows: a new routine's builder, a routine, or Activity;
+  // watching reports the run view open beside Activity.
   const shown = making ? 'new' : selected === TEMPLATES ? 'templates' : chosen === undefined ? 'activity' : 'routine'
+  const watching = runShown > 0 && shown === 'activity'
 
   return (
     <div className="flex h-full min-h-0">
@@ -1108,7 +1120,7 @@ export default function AutopilotView({
       <section
         aria-labelledby={shown === 'routine' ? undefined : `${id}-title`}
         aria-label={shown === 'routine' ? chosen?.name : undefined}
-        className="min-w-0 flex-1 overflow-y-auto"
+        className={`min-w-0 overflow-y-auto ${watching ? 'w-[30rem] shrink-0 border-r border-border' : 'flex-1'}`}
       >
         <div className="mx-auto flex max-w-4xl flex-col gap-4 px-6 py-5">
           <div className="flex flex-wrap items-center gap-3">
@@ -1175,7 +1187,7 @@ export default function AutopilotView({
             )
           ) : chosen === undefined ? (
             <>
-              <WorkingList onOpen={onOpen} onToast={toastText} />
+              <WorkingList onOpen={onOpen} onWatch={setRunShown} watching={runShown} onToast={toastText} />
               <div className="flex flex-wrap items-center gap-2">
                 <label htmlFor={`${id}-routine`} className="sr-only">
                   Routine
@@ -1247,6 +1259,7 @@ export default function AutopilotView({
                   lines={lines}
                   highlight={highlight}
                   onOpen={onOpen}
+                  onShowRun={setRunShown}
                   onToast={toastText}
                   onChanged={activity.reload}
                   empty={
@@ -1306,6 +1319,21 @@ export default function AutopilotView({
           )}
         </div>
       </section>
+      {watching && (
+        <div className="min-w-0 flex-1">
+          <RunView
+            key={runShown}
+            runId={runShown}
+            terminal={settings?.terminal ?? null}
+            agents={agents}
+            onOpenItem={onOpen}
+            onToast={toastText}
+            onClose={() => {
+              setRunShown(0)
+            }}
+          />
+        </div>
+      )}
       {changes.dialog}
       {transfer.node}
       {loneHost.node}

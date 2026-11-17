@@ -297,3 +297,60 @@ func settingsOf(t *testing.T, lines string) []scopedSetting {
 
 	return settings
 }
+
+// TestWorktreeDiffShowsTheRunsChangesAndRunsNoProgramTheCloneNames reads a worktree's
+// changes since a commit, committed and not, and the files git doesn't track, from a clone
+// whose own config names a filter driver, an external diff, and a textconv: none of them
+// runs.
+func TestWorktreeDiffShowsTheRunsChangesAndRunsNoProgramTheCloneNames(t *testing.T) {
+	t.Parallel()
+
+	env := testutil.Git(t)
+	dir := filepath.Join(t.TempDir(), "clone")
+	marker := filepath.Join(t.TempDir(), "ran")
+	program := "touch '" + marker + "'; cat"
+
+	testutil.InitRepo(t, dir)
+	testutil.Commit(t, dir, ".gitattributes", "* filter=x diff=x\n")
+	start := testutil.Commit(t, dir, "a.txt", "one\n")
+	testutil.Commit(t, dir, "b.txt", "committed by the run\n")
+
+	testutil.RunGit(t, dir, "config", "filter.x.clean", program)
+	testutil.RunGit(t, dir, "config", "diff.x.textconv", program)
+	testutil.RunGit(t, dir, "config", "diff.external", "touch '"+marker+"'; true")
+
+	testutil.WriteFile(t, filepath.Join(dir, "a.txt"), "one\nnot committed yet\n")
+	testutil.WriteFile(t, filepath.Join(dir, "new.txt"), "untracked\n")
+
+	g := New(Config{Env: func() []string { return env }})
+
+	diff, err := g.WorktreeDiff(t.Context(), dir, start)
+	require.NoError(t, err)
+
+	assert.Contains(t, diff.Patch, "+not committed yet", "what isn't committed")
+	assert.Contains(t, diff.Patch, "+committed by the run", "and what the commits since changed")
+	assert.False(t, diff.Cut)
+	assert.Equal(t, []string{"new.txt"}, diff.Untracked)
+	assert.NoFileExists(t, marker, "no filter, external diff, or textconv of the clone's ran")
+
+	_, err = g.WorktreeDiff(t.Context(), dir, strings.Repeat("a", 40))
+	require.Error(t, err, "a commit the clone lacks can't be compared")
+
+	_, err = g.WorktreeDiff(t.Context(), dir, "HEAD")
+	require.ErrorIs(t, err, ErrGitCommandNotAllowed, "only a commit's full ID")
+
+	testutil.RunGit(t, dir, "diff", start, "--")
+	assert.FileExists(t, marker, "the clone is set up so that a plain diff runs one")
+}
+
+func TestCutPatchCutsAtALinesEnd(t *testing.T) {
+	t.Parallel()
+
+	got, cut := cutPatch([]byte("one\ntwo\nthree\n"), 10)
+	assert.True(t, cut)
+	assert.Equal(t, "one\ntwo\n", got)
+
+	got, cut = cutPatch([]byte("one\n"), 10)
+	assert.False(t, cut)
+	assert.Equal(t, "one\n", got)
+}

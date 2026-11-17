@@ -329,11 +329,37 @@ export function RoutineNames(): $CancellablePromise<$models.RoutineName[] | null
 }
 
 /**
+ * RunBySession returns the ledger's run recorded as the session sessionID, as a session's
+ * Watch opens its run view, or 0 for a session that is no run of Autopilot's.
+ */
+export function RunBySession(sessionID: string): $CancellablePromise<number> {
+    return $Call.ByID(1185970691, sessionID);
+}
+
+/**
+ * RunDiff returns the ledger's run runID's worktree's changes since the head it started
+ * on, committed or not, and the files git doesn't track there: the run view's Diff,
+ * read-only.
+ */
+export function RunDiff(runID: number): $CancellablePromise<runevent$0.Diff> {
+    return $Call.ByID(1098763091, runID);
+}
+
+/**
  * RunEvents returns the events of the ledger's run runID after the one numbered after:
  * what the run view shows. The window asks again after each autopilot:run.
  */
 export function RunEvents(runID: number, after: number): $CancellablePromise<runevent$0.Page> {
     return $Call.ByID(3446540685, runID, after);
+}
+
+/**
+ * RunEventsBefore returns the page of the ledger's run runID's events read back from its
+ * log before the offset before, as a long timeline pages back: its first line's offset is
+ * the Before of the page the window shows first.
+ */
+export function RunEventsBefore(runID: number, before: number): $CancellablePromise<runevent$0.Page> {
+    return $Call.ByID(3379049238, runID, before);
 }
 
 /**
@@ -357,6 +383,13 @@ export function RunNow(id: number, itemID: number, anyway: boolean): $Cancellabl
  */
 export function RunOnMatches(id: number, items: number[] | null): $CancellablePromise<$models.RanOn> {
     return $Call.ByID(3729041046, id, items);
+}
+
+/**
+ * RunView returns the ledger's run runID, an agent's, as the run view shows it.
+ */
+export function RunView(runID: number): $CancellablePromise<$models.RunView> {
+    return $Call.ByID(859752045, runID);
 }
 
 /**

@@ -151,6 +151,12 @@ type Run struct {
 	Command     string `json:"command"`
 	LogCleared  bool   `json:"logCleared"`
 
+	// Model and Effort are what it ran with, "" for the agent's own; Worktree is the item's
+	// worktree it works in, as in "pr-88".
+	Model    string `json:"model"`
+	Effort   string `json:"effort"`
+	Worktree string `json:"worktree"`
+
 	QueuedAt   time.Time  `json:"queuedAt"`
 	StartedAt  *time.Time `json:"startedAt"`
 	FinishedAt *time.Time `json:"finishedAt"`
@@ -630,6 +636,7 @@ func runView(r queries.AutopilotRun) Run {
 		Manual: r.Manual, QueuedAt: r.QueuedAt, StartedAt: r.StartedAt, FinishedAt: r.FinishedAt,
 		ScriptRunID: r.ScriptRunID, SessionID: r.SessionID, Preset: r.Preset, Profile: r.Profile,
 		Command: r.DisplayCommand, LogCleared: r.LogCleared, CostEstimated: r.CostEstimated,
+		Model: r.Model, Effort: r.Effort, Worktree: r.Worktree,
 	}
 }
 

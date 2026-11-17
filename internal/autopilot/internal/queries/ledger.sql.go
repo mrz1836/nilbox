@@ -331,6 +331,69 @@ func (q *Queries) GetRun(ctx context.Context, id int64) (AutopilotRun, error) {
 	return i, err
 }
 
+const getRunBySession = `-- name: GetRunBySession :one
+SELECT id, match_id, routine_id, item_id, repo_owner, repo_name, kind, number, title, url, step, runner, agent, github_action, script_run_id, session_id, agent_session_id, status, outcome, verdict, profile, model, effort, preset, clone_path, worktree, head_before, run_commit, head_after, display_command, budget_reserved, budget_unit, cost, cost_estimated, tokens_in, tokens_out, cache_read_tokens, turns, summary, error, manual, counted, log_cleared, queued_at, started_at, finished_at, verified_at, updated_at FROM autopilot_runs WHERE session_id = ?1 AND session_id != ''
+ORDER BY id DESC LIMIT 1
+`
+
+// GetRunBySession returns the newest run recorded as the session session_id, or
+// sql.ErrNoRows: the run view of a session's Watch.
+func (q *Queries) GetRunBySession(ctx context.Context, sessionID string) (AutopilotRun, error) {
+	row := q.db.QueryRowContext(ctx, getRunBySession, sessionID)
+	var i AutopilotRun
+	err := row.Scan(
+		&i.ID,
+		&i.MatchID,
+		&i.RoutineID,
+		&i.ItemID,
+		&i.RepoOwner,
+		&i.RepoName,
+		&i.Kind,
+		&i.Number,
+		&i.Title,
+		&i.URL,
+		&i.Step,
+		&i.Runner,
+		&i.Agent,
+		&i.GithubAction,
+		&i.ScriptRunID,
+		&i.SessionID,
+		&i.AgentSessionID,
+		&i.Status,
+		&i.Outcome,
+		&i.Verdict,
+		&i.Profile,
+		&i.Model,
+		&i.Effort,
+		&i.Preset,
+		&i.ClonePath,
+		&i.Worktree,
+		&i.HeadBefore,
+		&i.RunCommit,
+		&i.HeadAfter,
+		&i.DisplayCommand,
+		&i.BudgetReserved,
+		&i.BudgetUnit,
+		&i.Cost,
+		&i.CostEstimated,
+		&i.TokensIn,
+		&i.TokensOut,
+		&i.CacheReadTokens,
+		&i.Turns,
+		&i.Summary,
+		&i.Error,
+		&i.Manual,
+		&i.Counted,
+		&i.LogCleared,
+		&i.QueuedAt,
+		&i.StartedAt,
+		&i.FinishedAt,
+		&i.VerifiedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const getRunScript = `-- name: GetRunScript :one
 SELECT id, script_run_id, status, outcome FROM autopilot_runs WHERE id = ?1
 `

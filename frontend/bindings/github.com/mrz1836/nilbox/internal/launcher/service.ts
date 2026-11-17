@@ -113,13 +113,29 @@ export function ResolveItems(ids: number[] | null): $CancellablePromise<$models.
 /**
  * Resume reopens an ended session in the terminal chosen in settings: the agent picks
  * the conversation up where it stopped, in the same folder, with the item's launch
- * settings as they now resolve for the agent and profile the session ran with. The
- * session resumed is recorded as a new session that names the first, and nothing is
- * fetched: the item's worktree must still be there. It is held back as a launch is, for
- * a session running in the folder and for the pull request's files as last checked, until
- * req confirms each. It returns ErrSessionRunning for a session whose conversation still
- * runs, and ErrNotLinked for one the agent never named.
+ * settings as they now resolve for the agent and profile the session ran with. A
+ * background run's session resumes under its run's fence, asking about the rest, unless
+ * req asks for the profile's permissions (ResumeAccess). The session resumed is recorded
+ * as a new session that names the first, and nothing is fetched: the item's worktree must
+ * still be there. It is held back as a launch is, for a session running in the folder and
+ * for the pull request's files as last checked, until req confirms each. It returns
+ * ErrSessionRunning for a session whose conversation still runs, ErrNotLinked for one the
+ * agent never named, and ErrNoFence for a run's whose fence is no longer kept.
  */
 export function Resume(req: $models.ResumeRequest): $CancellablePromise<$models.LaunchResult> {
     return $Call.ByID(2717730259, req);
+}
+
+/**
+ * TakeOver takes a background run over, as the run view's and the session panel's Take
+ * over do: it stops the run while it still works, through TakeOvers, which tells
+ * Autopilot the run is taken over and waits for its end, then resumes its conversation as
+ * Resume does, in the same worktree, with the same profile, in the terminal chosen in
+ * settings. The resumed session keeps the run's fence, asking about whatever it doesn't
+ * allow, unless req widens it to the profile's permissions. A hold comes back as Resume's
+ * does, for the window to confirm and take over again. It returns ErrNotBackground for a
+ * session in the terminal.
+ */
+export function TakeOver(req: $models.TakeOverRequest): $CancellablePromise<$models.LaunchResult> {
+    return $Call.ByID(2567404465, req);
 }

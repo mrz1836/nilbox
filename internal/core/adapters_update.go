@@ -156,10 +156,17 @@ func (u updateRuns) Going(ctx context.Context) ([]update.Run, error) {
 
 		out = append(out, update.Run{
 			ID: r.ID, Kind: string(r.Kind), Title: r.Title, Repo: r.Repo, Dir: r.Dir, StopRefused: r.Progress.StopRefused,
+			Outlives: r.OutlivesQuit,
 		})
 	}
 
 	return out, nil
+}
+
+// LetFinish lets the runs that can outlive the quit go as the app quits to restart, or
+// stops them with it again.
+func (u updateRuns) LetFinish(on bool) {
+	u.engine.LetFinish(on)
 }
 
 // updateNotices tells the user once that a new version is ready, or available, with a

@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/mrz1836/nilbox/internal/agentrun/runevent"
 	"github.com/mrz1836/nilbox/internal/fence"
 	"github.com/mrz1836/nilbox/internal/scriptrun"
 	"github.com/mrz1836/nilbox/internal/textutil"
@@ -150,6 +151,10 @@ type Outcome struct {
 
 	// Unknown counts the messages the parser didn't know.
 	Unknown int64 `json:"unknown"`
+
+	// Todos are its todo list as it last wrote it, which the run view keeps showing once
+	// the run has ended.
+	Todos []runevent.Todo `json:"todos"`
 
 	// Sandbox is what a sandboxed run's sandbox check left in its folder (fence.Sandboxed):
 	// held, leaked, or unchecked, none for a run with no sandbox, and "" for one whose

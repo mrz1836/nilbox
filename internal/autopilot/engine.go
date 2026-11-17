@@ -351,6 +351,10 @@ type Engine struct {
 	gone    map[int64]sighting
 	unsaved map[int64]RunEnd
 
+	// takenOver holds the runs the user takes over while they work (TakeOver): each one's
+	// end closes its match as taken over, counts as no try, and tells nothing.
+	takenOver map[int64]bool
+
 	// endsMu guards ending, the runs whose RunEnded is posted but not yet applied.
 	endsMu sync.Mutex
 	ending map[int64]int
@@ -426,8 +430,8 @@ func NewEngine(svc *Service, cfg EngineConfig) *Engine {
 		inflight: map[int64]bool{}, freshReads: map[int64]fresh{}, stopping: map[int64]stopAsk{},
 		stateReads: map[int64]time.Time{}, statesAsked: map[int64]bool{},
 		checksRead: map[int64]time.Time{}, gone: map[int64]sighting{}, unsaved: map[int64]RunEnd{},
-		heldBack: map[int64]heldBack{},
-		ending:   map[int64]int{},
+		heldBack: map[int64]heldBack{}, takenOver: map[int64]bool{},
+		ending: map[int64]int{},
 	}
 
 	e.register(cfg)

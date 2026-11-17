@@ -40,9 +40,11 @@ func (r agentRunner) Run(ctx context.Context, name string, args ...string) (stdo
 }
 
 // sessionLedger hands the launcher the sessions ledger, which records each session a
-// launch starts. It implements launcher.SessionLedger.
+// launch starts, and the background runs' fences, which a run's session resumes under
+// when it is taken over. It implements launcher.SessionLedger.
 type sessionLedger struct {
 	ledger *sessions.Ledger
+	runs   *backgroundAgents
 }
 
 // Started records a session a launch just started.
@@ -72,7 +74,7 @@ func (l sessionLedger) Resumable(ctx context.Context, id string) (launcher.Resum
 
 	return launcher.ResumableSession{
 		ID: r.ID, AgentSessionID: r.AgentSessionID, Agent: r.Agent, Profile: r.Profile, ItemID: r.ItemID, Dir: r.Dir,
-		Worktree: r.Worktree, Live: r.State.Live(), Carried: carried,
+		Worktree: r.Worktree, Live: r.State.Live(), Carried: carried, RunID: r.RunID, Fence: l.runs.fenceOf(ctx, r.RunID),
 	}, nil
 }
 

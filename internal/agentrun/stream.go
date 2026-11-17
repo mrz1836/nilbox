@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"strconv"
 	"sync"
+	"time"
 	"unicode/utf8"
 
 	"github.com/mrz1836/nilbox/internal/agentrun/runevent"
@@ -45,6 +46,17 @@ type stream struct {
 	pending  []byte
 	skipping bool
 
+	// pos is how far into the log the parser has read, lineStart where the line being
+	// read starts, line where the line whose events are emitted starts, and part how many
+	// events that line gave so far.
+	pos       int64
+	lineStart int64
+	line      int64
+	part      int
+
+	// at is the latest time a line said it was written, as RFC 3339, or "".
+	at string
+
 	// events are the last keepEvents events, and seq the last one's number.
 	events []runevent.Event
 	seq    int64
@@ -85,24 +97,23 @@ func (s *stream) Write(p []byte) (int, error) {
 		i := bytes.IndexByte(p, '\n')
 		if i < 0 {
 			s.hold(p)
+			s.pos += int64(len(p))
 
 			break
 		}
 
 		s.hold(p[:i])
+		s.pos += int64(i) + 1
 		p = p[i+1:]
 
-		if !s.skipping && len(bytes.TrimSpace(s.pending)) > 0 {
-			s.read(s, s.pending)
-		}
-
-		s.pending, s.skipping = s.pending[:0], false
+		s.readPending()
 	}
 
 	return n, nil
 }
 
-// Page returns the events after the one numbered after, and how far the run has got.
+// Page returns the events after the one numbered after, and how far the run has got. The
+// events it no longer keeps in memory are the log's, before the first one's line.
 func (s *stream) Page(after int64) runevent.Page {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -110,7 +121,8 @@ func (s *stream) Page(after int64) runevent.Page {
 	page := runevent.Page{Events: []runevent.Event{}, Progress: s.progressLocked()}
 
 	if len(s.events) > 0 {
-		page.First = s.events[0].Seq
+		first := s.events[0]
+		page.First, page.Before, page.Earlier = first.Seq, first.Offset, first.Seq > 1 && first.Offset > 0
 	}
 
 	for _, e := range s.events {
@@ -165,6 +177,43 @@ func (s *stream) Over() bool {
 	return s.result != nil
 }
 
+// from starts the parser at offset in the log, a line's start, as for a page read from its
+// middle: its events' offsets count from there.
+func (s *stream) from(offset int64) *stream {
+	s.pos, s.lineStart = offset, offset
+
+	return s
+}
+
+// flush reads a last line the log never ended, as a run's that has ended may be: the log
+// won't grow, so the line is whole.
+func (s *stream) flush() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	s.readPending()
+}
+
+// all returns every event the parser keeps, oldest first.
+func (s *stream) all() []runevent.Event {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	return append([]runevent.Event{}, s.events...)
+}
+
+// readPending reads the line held, whole now, unless it ran past maxLine, and starts the
+// next one where the parser has read to. The caller holds mu.
+func (s *stream) readPending() {
+	if !s.skipping && len(bytes.TrimSpace(s.pending)) > 0 {
+		s.line, s.part = s.lineStart, 0
+		s.read(s, s.pending)
+	}
+
+	s.pending, s.skipping = s.pending[:0], false
+	s.lineStart = s.pos
+}
+
 // hold keeps part of a line not ended yet, dropping one past maxLine.
 func (s *stream) hold(part []byte) {
 	if s.skipping {
@@ -181,9 +230,12 @@ func (s *stream) hold(part []byte) {
 	s.pending = append(s.pending, part...)
 }
 
-// emit records an event, cutting its text to runevent.MaxText.
+// emit records an event, cutting its text to runevent.MaxText, at its line's offset and
+// the latest time a line gave.
 func (s *stream) emit(e runevent.Event) {
 	e.Text, e.Cut = cut(e.Text, runevent.MaxText)
+	e.Offset, e.Part, e.At = s.line, s.part, s.at
+	s.part++
 
 	s.seq++
 	e.Seq = s.seq
@@ -198,6 +250,18 @@ func (s *stream) emit(e runevent.Event) {
 // unknown counts a message the parser didn't know.
 func (s *stream) unknown() {
 	s.progress.Unknown++
+}
+
+// stamp notes when a line says it was written, an RFC 3339 time; anything else is left
+// alone, so a line with none keeps the latest time before it.
+func (s *stream) stamp(at string) {
+	if at == "" {
+		return
+	}
+
+	if t, err := time.Parse(time.RFC3339Nano, at); err == nil {
+		s.at = t.UTC().Format(time.RFC3339Nano)
+	}
 }
 
 // step sets the run's latest step.

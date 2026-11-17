@@ -6,19 +6,23 @@ import { formatAgo, formatFull } from '../lib/time'
 import { useMutation } from '../lib/useMutation'
 import { useQuery } from '../lib/useQuery'
 import {
+  autopilotRunBySession,
   copyText,
   focusSession,
   forgetSession,
   resumeSession,
   sessionUsage,
   showSessionFolder,
+  stopAutopilotRun,
   type AgentInfo,
   type AgentSession,
   type LaunchHold,
   type ResumeRequest,
 } from '../platform'
+import { useTakeOverTerminal, useWatch } from './autopilot/AutopilotChip'
+import { TakeOverDialog } from './autopilot/TakeOverDialog'
 import { quietButtonClass } from './controls'
-import { AlertIcon, CheckIcon, CopyIcon, FolderIcon, PlayIcon, TerminalIcon, XIcon } from './icons'
+import { AlertIcon, CheckIcon, CopyIcon, EyeIcon, FolderIcon, PlayIcon, StopIcon, TerminalIcon, XIcon } from './icons'
 import { LaunchHoldDialog } from './LaunchHoldDialog'
 import { RelativeTime } from './RelativeTime'
 import { SessionDot } from './SessionDot'
@@ -57,7 +61,19 @@ function StateLine({ session }: { session: AgentSession }) {
 }
 
 // Action is one of a session's buttons.
-type Action = 'focus' | 'resume' | 'folder' | 'copy' | 'forget'
+type Action = 'focus' | 'resume' | 'folder' | 'copy' | 'forget' | 'stop'
+
+// stopRun stops the agent's background run a session is, by its session: the run Stop
+// of the Autopilot tab stops.
+async function stopRun(sessionId: string): Promise<void> {
+  const run = await autopilotRunBySession(sessionId)
+
+  if (run === 0) {
+    throw new Error('That run is no longer in Autopilot’s history.')
+  }
+
+  await stopAutopilotRun(run)
+}
 
 // Held is a resume held back for the user to confirm, with the request to send again,
 // once confirmed.
@@ -81,8 +97,16 @@ function SessionEntry({ session, agents }: { session: AgentSession; agents: read
   const folder = useMutation((id: string) => showSessionFolder(id))
   const copy = useMutation(() => copyText(session.agentSessionId))
   const forget = useMutation((id: string) => forgetSession(id))
-  const actions = { focus, resume, folder, copy, forget }
+  const stop = useMutation((id: string) => stopRun(id))
+  const actions = { focus, resume, folder, copy, forget, stop }
   const terminal = terminalName(session)
+  const watch = useWatch()
+  const takeOverIn = useTakeOverTerminal()
+  // background reports an agent's run in the background, which Watch opens, Stop stops,
+  // and Take over carries on in the terminal, in place of Resume.
+  const background = session.runId !== 0
+  const live = isLive(session.state)
+  const [takingOver, setTakingOver] = useState(false)
   const setup = setupWords(session)
   // usage is how many tokens it used, as the agent's own files report them, or a run in
   // the background's record, read again each time it changes state; a session in the
@@ -213,12 +237,53 @@ function SessionEntry({ session, agents }: { session: AgentSession; agents: read
             Show in terminal
           </button>
         )}
-        {session.canResume && (
+        {background && watch !== undefined && (
+          <button
+            type="button"
+            onClick={() => {
+              watch(session.id)
+            }}
+            title="Open its run in the Autopilot tab"
+            className={quietButtonClass}
+          >
+            <EyeIcon className="size-3.5" />
+            Watch
+          </button>
+        )}
+        {background && live && (
+          <button
+            type="button"
+            disabled={stop.pending}
+            onClick={() => {
+              press('stop')
+              void stop.run(session.id)
+            }}
+            className={quietButtonClass}
+          >
+            <StopIcon className="size-3.5 text-danger" />
+            {stop.pending ? 'Stopping…' : 'Stop'}
+          </button>
+        )}
+        {background && session.agentSessionId !== '' && (
+          <button
+            type="button"
+            onClick={() => {
+              press('resume')
+              setTakingOver(true)
+            }}
+            title={`Carry its conversation on in ${takeOverIn}`}
+            className={quietButtonClass}
+          >
+            <TerminalIcon className="size-3.5" />
+            Take over
+          </button>
+        )}
+        {!background && session.canResume && (
           <button
             type="button"
             disabled={resume.pending}
             onClick={() => {
-              void resumeNow({ sessionId: session.id, alongside: '', confirmed: '' })
+              void resumeNow({ sessionId: session.id, access: '', alongside: '', confirmed: '' })
             }}
             className={quietButtonClass}
           >
@@ -259,6 +324,22 @@ function SessionEntry({ session, agents }: { session: AgentSession; agents: read
         <p role="alert" className="text-xs text-danger">
           {error}
         </p>
+      )}
+      {takingOver && (
+        <TakeOverDialog
+          sessionId={session.id}
+          live={live}
+          terminal={takeOverIn}
+          where={session.worktree}
+          agentName={agentName(agents, session.agent)}
+          onCancel={() => {
+            setTakingOver(false)
+          }}
+          onTaken={(result) => {
+            setTakingOver(false)
+            setNotice(result.notice === '' ? `Its conversation carries on in ${takeOverIn}.` : result.notice)
+          }}
+        />
       )}
       {held !== null && (
         <LaunchHoldDialog

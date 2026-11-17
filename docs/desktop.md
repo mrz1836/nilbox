@@ -295,7 +295,9 @@ notifications](#menu-bar-and-notifications)).
   Just tell me it downloads first, with the download's progress in the banner (**Later** hides
   it while the download goes on). It asks first, in one question, when restarting would lose
   something: a run going in the app, named, or text you haven't sent in a review or issue
-  sheet. It stops only runs it named: confirming asks the app again first, which refuses
+  sheet. An agent's background run that keeps to a budget of its own isn't stopped: the
+  question says it carries on through the restart, and the new version picks it up. It stops
+  only runs it named: confirming asks the app again first, which refuses
   before backing anything up while runs go, and a run it didn't name (one it couldn't list,
   one going when it asked about your text alone, or one that started while it asked) is
   asked about again. If the restart waited for a check that found a newer version, it
@@ -1098,7 +1100,13 @@ all go through one runner, which keeps a record of each run and its whole output
   finish, unsignaled, and the next start follows it. The question says so for such a release:
   stopping waits up to a few seconds, and the release may finish after the app closes. A
   release the app hasn't finished checking on GitHub by then stays recorded as going, and the
-  next start checks it. Runs in your terminal are left running. While the app moves itself to
+  next start checks it. Runs in your terminal are left running. Autopilot's agents working in
+  the background are listed beside the runs (*2 agents are still working.*), and while every one
+  of them keeps to a budget of its own (Claude Code's), a quiet **Let them finish** in the
+  question quits and leaves them working: they stay recorded as going, the next start follows
+  each again, and one found past its time limit then is stopped at once. Any other run stops as
+  with **Stop and quit**, and an agent that keeps to no budget of its own (Codex) stops with the
+  app, which the question says. While the app moves itself to
   Applications, a quit waits for the move instead, then goes ahead
   ([Moving to Applications](#moving-to-applications)). Closing the window quits the same way,
   and asks the same question in the window, which stays open for it, unless the app keeps
@@ -2921,16 +2929,51 @@ that can't keep the preset (Codex, in this version) leaves the routine not ready
   sandbox didn't hold is failed, whatever the agent says, and the files its commits changed are
   noted on the item, so a launch there waits for your OK when it wrote agent files.
 - **Working**, at the top of Activity, lists each agent at work: its item, its routine, how
-  long, its tokens so far, and its latest step, with **Stop**, and **Stop all** for every one
-  (Settings → Autopilot has it too), which leaves the scripts' runs alone. The starts queued
-  are under [Needs you](#needs-you), each saying what it waits on.
-- **Where it shows.** The item's session pill and panel follow the run. The Worktrees view
-  marks its worktree *made by ⚡ <routine>* and *in use · Claude in the background*, so the
-  cleanup never removes it; a click's launch there is held back, never started beside it.
-- **Quitting** stops every run (the agent's own Control-C first, so it reports its end); a run
-  a quit or a crash cut off is *interrupted*, and its match comes back under Needs you. A
-  process the agent left working in the worktree is ended with it. While **Keep the Mac awake
-  while agents work** is on, the Mac stays awake for each run.
+  long, its tokens so far, and its latest step, with **Watch**, which opens its run view, and
+  **Stop**, and **Stop all** for every one (Settings → Autopilot has it too), which stops the
+  routines' script runs too. The starts queued are under [Needs you](#needs-you), each saying
+  what it waits on.
+- **The run view** opens beside Activity, from Working's **Watch**, an Activity line's **Show
+  the run**, an **Agent finished** banner or notification, the menu bar's agent, the item's
+  session panel, its launch button,
+  or the line a review or issue sheet shows under its work line (*⚡ Fix failing checks
+  pushed 4f2a9c1 · checks pass*). Its header says where the run stands, how long it took, its
+  cost against its budget (≈ for an estimate on your plan; the budget alone until the agent
+  reports), the agent, model, effort, worktree, and preset, its tokens in and out with its
+  cache's apart, and the routine's steps with the one it is at marked. **Take over in
+  iTerm2**, **Stop**, **Diff** (the worktree's changes since the run started, committed or not,
+  read-only, with the files git doesn't track), **Show the worktree**, **View on GitHub**, and
+  **Show the log file**. The agent's todo list is a live checklist on the left; on the right,
+  the timeline: each command with ✓ or ✗ once it answers, the files it edited, its reads and
+  searches collapsed, what it said, what the fence refused, and its end, each at the time the
+  agent wrote it. A run that works shows from memory, as it goes; one that ended, or one from
+  before a restart, reads its timeline from its log a page at a time, and **Show earlier
+  events** reads the page before, so a long log never loads whole. Messages the app didn't know
+  are counted, never shown. Once it ends, the view says how it came out: Nilbox's verdict from
+  GitHub, the agent's own report or its last words, whether it needs a person, its turns, its
+  time, its commit, and how many files it changed.
+- **Take over** stops the agent while it works, waits for its end, and opens its conversation
+  in the terminal chosen in Settings, in its worktree, with its profile (`claude --resume
+  <session>`), as a launch does, held back as one is. It keeps the run's fence, but someone
+  answers now: anything the fence doesn't allow asks you instead of being refused (its rules,
+  its hook, and its sandbox still hold). **Use the profile's permissions for this session**,
+  unticked, gives that one session the profile's own, under the trust rule as always, so an
+  outside contributor's item still only plans. Background runs pass
+  `--system-prompt-snapshot off`, so the unattended note isn't replayed on resume, and the
+  resumed session is yours: no *in the background* mark, followed as any session is, and it
+  holds a click on the item, and the routine's next start there, while it runs. The run's match
+  closes as **Taken over**, counting as no try, and nothing says it stopped. A run whose fence is
+  no longer kept (its history cleared) is taken over only with the profile's permissions.
+- **Where it shows.** The item's session pill and panel follow the run, with **Watch**,
+  **Stop**, and **Take over** in place of Show in terminal and Resume, and its launch button
+  says **Watch**. The Worktrees view marks its worktree *made by ⚡ <routine>* and *in use ·
+  Claude in the background*, so the cleanup never removes it; a click's launch there is held
+  back, never started beside it: the dialog offers **Watch it** and **Take over** instead.
+- **Quitting** stops every run (the agent's own Control-C first, so it reports its end), unless
+  you let them finish ([Runs](#runs)); a run a quit or a crash cut off is *interrupted*, and its
+  match comes back under Needs you, with **Take over** in its session's panel. A process the
+  agent left working in the worktree is ended with it. While **Keep the Mac awake while agents
+  work** is on, the Mac stays awake for each run.
 - **Its log** is kept in `script-runs/` and its prompt and settings in `agent-runs/` in the
   data folder, readable only by you, for **Run logs kept** (30 days), 200 runs and 1 GB at
   most; **Clear history…** removes those of the runs that ended. These runs aren't listed in

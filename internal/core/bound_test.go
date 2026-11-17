@@ -802,6 +802,26 @@ func autopilotBoundCalls(t *testing.T) map[string]boundCall {
 		"autopilot.Service.MyScripts": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
 			return c.Autopilot.MyScripts(ctx)
 		},
+		"autopilot.Service.RunEventsBefore": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
+			page, err := c.Autopilot.RunEventsBefore(ctx, 999, 100)
+			require.Error(t, err, "a run the history doesn't hold has no earlier events")
+
+			return page, nil
+		},
+		"autopilot.Service.RunDiff": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
+			diff, err := c.Autopilot.RunDiff(ctx, 999)
+			require.Error(t, err, "a run the history doesn't hold has no changes")
+
+			return diff, nil
+		},
+		"autopilot.Service.RunView": func(ctx context.Context, c *Core, ids seededItems) (any, error) {
+			boundMatch(ctx, t, c, ids.item, "Bound run view")
+
+			var runID int64
+			require.NoError(t, c.DB.QueryRowContext(ctx, `SELECT MAX(id) FROM autopilot_runs`).Scan(&runID))
+
+			return c.Autopilot.RunView(ctx, runID)
+		},
 	}
 }
 
@@ -896,6 +916,7 @@ func unreachedBound() map[string]string {
 		"launcher.Service.LinkClone":        "needs a clone's remotes; its location is built as settings' PreviewCloneLocation's",
 		"launcher.Service.Launch":           "opens a terminal",
 		"launcher.Service.Resume":           "opens a terminal",
+		"launcher.Service.TakeOver":         "stops a background run and opens a terminal; its result is Resume's",
 		"worktrees.Service.Remove":          "needs a worktree to remove; its result starts its lists empty, as RemoveAllClean's",
 		"worktrees.Service.ForceRemove":     "needs a dirty worktree; its result is built as Remove's",
 		"worktrees.Service.CleanUp":         "reads GitHub; its result is built as CleanUpFinished's",
