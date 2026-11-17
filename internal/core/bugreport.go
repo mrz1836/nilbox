@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/mrz1836/nilbox/internal/agent"
@@ -237,6 +238,12 @@ func settingsSection(s settings.Settings) appinfo.StateSection {
 		sensitiveOff = strings.Join(s.SensitiveFiles.Off, ", ")
 	}
 
+	// The hidden labels are counted, never named: a label can be a private word.
+	hiddenLabels := "default"
+	if !sameSet(s.HiddenLabels, s.DefaultHiddenLabels) {
+		hiddenLabels = strconv.Itoa(len(s.HiddenLabels))
+	}
+
 	return appinfo.StateSection{Title: "Settings", Lines: []string{
 		fmt.Sprintf("Theme: %s · text size: %s · toasts: %d s · window: %d×%d", s.Theme, s.TextSize,
 			s.ToastSeconds, s.WindowSize.Width, s.WindowSize.Height),
@@ -258,7 +265,8 @@ func settingsSection(s settings.Settings) appinfo.StateSection {
 			len(s.TrustedBots)),
 		fmt.Sprintf("Merge method: %s · lists sorted by status: %d · lists showing one kind: %d · collapsed lists: %d",
 			s.MergeMethod, len(s.InboxOrder.StatusSorted), len(s.InboxOrder.Kinds), len(s.CollapsedSections)),
-		fmt.Sprintf("Repositories and orgs: %d pinned, %d muted", len(s.RepoRules.Pinned), len(s.RepoRules.Muted)),
+		fmt.Sprintf("Repositories and orgs: %d pinned, %d muted · hidden labels: %s", len(s.RepoRules.Pinned),
+			len(s.RepoRules.Muted), hiddenLabels),
 	}}
 }
 

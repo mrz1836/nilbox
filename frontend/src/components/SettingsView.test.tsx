@@ -172,6 +172,7 @@ describe('SettingsView', () => {
       'Refreshing',
       'Service status',
       'Snoozing',
+      'Cards',
       'Reviewing',
       'Autopilot',
       'Repositories',
@@ -1260,12 +1261,13 @@ describe('SettingsView escape and trust', () => {
     expect(screen.getByRole('list', { name: 'Categories' })).toBeInTheDocument()
   })
 
-  it('has a Reviewing section after Snoozing, for the merge method', async () => {
+  it('has a Cards section after Snoozing, then Reviewing, for the merge method', async () => {
     renderSettings()
 
     const nav = within(screen.getByRole('navigation', { name: 'Settings sections' }))
     const names = nav.getAllByRole('button').map((b) => b.textContent)
-    expect(names.indexOf('Reviewing')).toBe(names.indexOf('Snoozing') + 1)
+    expect(names.indexOf('Cards')).toBe(names.indexOf('Snoozing') + 1)
+    expect(names.indexOf('Reviewing')).toBe(names.indexOf('Cards') + 1)
 
     await openSection('Reviewing')
 
@@ -1282,7 +1284,7 @@ describe('SettingsView escape and trust', () => {
         .getAllByRole('button')
         .map((b) => b.textContent)
 
-    expect(names('Inbox')).toEqual(['Snoozing', 'Reviewing'])
+    expect(names('Inbox')).toEqual(['Snoozing', 'Cards', 'Reviewing'])
     expect(names('Autopilot')).toEqual(['Autopilot'])
     expect(names('Agents')).toEqual(['Repositories', 'Profiles', 'Launching', 'Trust', 'Sensitive files', 'Worktrees'])
     expect(names('Tools')).toEqual(['Integrations'])
@@ -1651,7 +1653,7 @@ describe('SettingsView search', () => {
 
     rerender(<SettingsView {...searchProps('')} />)
 
-    expect(sidebar()).toHaveLength(19)
+    expect(sidebar()).toHaveLength(20)
     expect(sidebar()).toContain('Account')
     expect(screen.getByRole('region', { name: 'Notifications' })).toBeInTheDocument()
     expect(matched()).toEqual([])

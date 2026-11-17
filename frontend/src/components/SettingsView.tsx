@@ -31,6 +31,7 @@ import { AccountSection } from './settings/AccountSection'
 import { AppearanceSection } from './settings/AppearanceSection'
 import { AutopilotSection } from './settings/AutopilotSection'
 import { BackupSection } from './settings/BackupSection'
+import { CardsSection } from './settings/CardsSection'
 import { GitHubNotificationsSection } from './settings/GitHubNotificationsSection'
 import { IntegrationsSection } from './settings/IntegrationsSection'
 import { LabsSection } from './settings/LabsSection'
@@ -278,6 +279,8 @@ export function SettingsView({
                 (settings === null ? loading : <ServiceStatusSection settings={settings} onSaved={onSaved} />)}
               {section === 'snoozing' &&
                 (settings === null ? loading : <SnoozingSection settings={settings} onSaved={onSaved} />)}
+              {section === 'cards' &&
+                (settings === null ? loading : <CardsSection settings={settings} onSaved={onSaved} />)}
               {section === 'reviewing' &&
                 (settings === null ? loading : <ReviewingSection settings={settings} onSaved={onSaved} />)}
               {section === 'autopilot' &&

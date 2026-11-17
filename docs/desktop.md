@@ -1659,8 +1659,9 @@ your account, appearance (the theme, the text size, and the size the window open
 [GitHub notifications](#github-notifications) (whether the app reads them, and when they are
 cleared), and refreshing (how often the inbox, the running checks, and the worktrees are read again); then,
 under **Inbox**, snoozing (how long the [Snooze](#snooze-dismiss-and-pin) button sets an item
-aside, and what [wakes a snooze early](#waking-a-snooze-early)) and reviewing (the merge method
-and your [review replies](#review-replies)); under **Agents**, in the order you set them up,
+aside, and what [wakes a snooze early](#waking-a-snooze-early)), cards (the labels the
+[cards](#inbox-cards) leave out), and reviewing (the merge method and your
+[review replies](#review-replies)); under **Agents**, in the order you set them up,
 repositories (the clone root, the other [repository locations](#repository-locations), and the
 [launch defaults](#launch-defaults) for orgs and repositories), [coding agents and
 profiles](#coding-agents-and-profiles), launching (the terminal, the default coding agent, each
@@ -1800,10 +1801,18 @@ Each pull request or issue in the inbox is a card three lines high:
 | Size | XS (10 or fewer changed lines), S (50 or fewer), M (200 or fewer), L (500 or fewer), or XL (more than 500), the same scale as the `size/*` labels; then the lines added and removed, the files, and the commits | Added lines green, removed lines red |
 | Sub-issues | On an issue with sub-issues, how many are done out of all of them, with a small bar | Green once all are done |
 | Projects | On an issue, the first GitHub project it is in, its status there, and its priority and size, then how many more projects. Click it to open the project. See [Issue projects](#issue-projects). | The status and fields in their project colors |
-| Labels | The first three labels with their GitHub colors, then how many more | None |
+| Labels | The first three labels with their GitHub colors, then how many more, leaving out the labels you hid (the size labels, to start with, since the size grade already shows them); see **Settings → Cards** | None |
 
 An issue shows its comments, its sub-issues, its projects, and its labels. Sub-issue progress
 needs no extra scope, so it shows for every issue that has sub-issues.
+
+**Hidden labels.** **Settings → Cards** lists the labels the cards leave out, in every
+repository: `size/*` to start with, since each card already shows its own size grade, so
+`size/XL` would only repeat it. Add a label, or a pattern: `*` matches anything, `/` included,
+as in `size/*`, `?` any one character, and case doesn't matter. **Restore the defaults** puts
+the list back. A hidden label is only left off the cards, before the first three are taken, so
+it never takes a visible label's place or counts in the **+N**; the [filter](#filtering)
+(`label:size/XL`), the issue sheet's labels, Autopilot, and the prompts' variables still see it.
 
 **Archived repositories are left out.** Each of the inbox's three searches asks GitHub for
 `archived:false`, so an archived repository's pull requests and issues never appear, never

@@ -30,7 +30,7 @@ import (
 func privateWords() []string {
 	return []string{
 		"employer-profile", "private-user", "private-bot", "secret-dir", "release-private", "Private status",
-		"private-repo", boundOwner, boundRepo,
+		"private-repo", "private-label", boundOwner, boundRepo,
 	}
 }
 
@@ -63,13 +63,15 @@ func privateSettings() settings.Settings {
 		RepoRules: reporules.Rules{
 			Pinned: []string{boundOwner + "/" + boundRepo}, Muted: []string{"private-user", "private-repo/x"},
 		},
-		MenuBar:      true,
-		BannersOff:   []notifyprefs.Kind{"session_waiting"},
-		Theme:        "dark",
-		TextSize:     "default",
-		ToastSeconds: 20,
-		InboxOrder:   settings.InboxOrder{StatusOrder: []string{"Private status"}},
-		MergeMethod:  "squash",
+		MenuBar:             true,
+		BannersOff:          []notifyprefs.Kind{"session_waiting"},
+		Theme:               "dark",
+		TextSize:            "default",
+		ToastSeconds:        20,
+		InboxOrder:          settings.InboxOrder{StatusOrder: []string{"Private status"}},
+		HiddenLabels:        []string{"size/*", "private-label/*", "wontfix"},
+		DefaultHiddenLabels: settings.DefaultHiddenLabels(),
+		MergeMethod:         "squash",
 		Integrations: integrationprefs.Config{
 			Switches:      map[integrationprefs.ID]integrationprefs.Switch{integrationprefs.Scripts: "on"},
 			Paths:         map[integrationprefs.ID]string{integrationprefs.MageX: "/srv/private-user/bin/magex"},
@@ -133,7 +135,7 @@ func TestABugReportStatesTheSettingsAndIntegrationsWithNothingPersonal(t *testin
 		"Branch rules: own on, pull request on, merged off · protected branches: the user's own (2)",
 		"Trusted bots: the user's own (2)",
 		"Merge method: squash · lists sorted by status: 0 · lists showing one kind: 0 · collapsed lists: 0",
-		"Repositories and orgs: 1 pinned, 2 muted",
+		"Repositories and orgs: 1 pinned, 2 muted · hidden labels: 3",
 		"magex: on (auto), update · 1.30.0 from Homebrew, a link · a copy the user chose · latest 1.30.1 · " +
 			"1 other copies",
 		"go-pre-commit: off (off), missing",
@@ -153,6 +155,7 @@ func TestABugReportSaysWhatIsLeftAtItsDefault(t *testing.T) {
 	s.TrustedBots = []string{"dependabot[bot]"}
 	s.Branches.Protected = []string{"master", "main"}
 	s.DefaultProfiles = map[agent.ID]string{}
+	s.HiddenLabels = settings.DefaultHiddenLabels()
 
 	report := joined([]appinfo.StateSection{
 		settingsSection(s), integrationsSection(integrations.Tools{}, integrationprefs.Config{}),
@@ -163,6 +166,7 @@ func TestABugReportSaysWhatIsLeftAtItsDefault(t *testing.T) {
 		"Trusted bots: the default (1)",
 		"protected branches: the default (2)",
 		"profiles: the agents' defaults",
+		"hidden labels: default",
 		"Scripts: auto · magex targets: off · repository files: off",
 		"Runs in: app",
 		"Login shell's environment: not read yet",

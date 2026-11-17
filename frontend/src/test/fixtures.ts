@@ -1220,6 +1220,8 @@ export function settings(overrides: Partial<Settings> = {}): Settings {
     notificationsTab: 'app',
     conversationOrder: 'oldest',
     inboxOrder: { statusSorted: [], statusOrder: [], kinds: {} },
+    hiddenLabels: ['size/*'],
+    defaultHiddenLabels: ['size/*'],
     mergeMethod: 'repo',
     integrations: integrationsConfig(),
     githubNotifications: {

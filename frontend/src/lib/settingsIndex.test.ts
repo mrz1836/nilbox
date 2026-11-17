@@ -72,7 +72,10 @@ describe('matchSettings', () => {
     expect(found('thème')).toEqual([['appearance', 1]])
     expect(found('size text')).toEqual([['appearance', 1]])
     expect(found('text size zoom')).toEqual([['appearance', 1]])
-    expect(found('size -text')).toEqual([['appearance', 1]])
+    expect(found('size -text')).toEqual([
+      ['appearance', 1],
+      ['cards', 1],
+    ])
     expect(matchSettings('size -text')?.isMatch('appearance', 'Window size')).toBe(true)
   })
 

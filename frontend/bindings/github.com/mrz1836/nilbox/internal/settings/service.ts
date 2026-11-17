@@ -409,6 +409,15 @@ export function SetGitHubNotificationTrigger(trigger: threadrules$0.Trigger, on:
 }
 
 /**
+ * SetHiddenLabels stores the patterns of the labels the inbox's cards leave out, in order,
+ * and returns the settings with them. Each is trimmed, and blank ones and repeats (ignoring
+ * case) are left out; an empty list hides no label.
+ */
+export function SetHiddenLabels(patterns: string[] | null): $CancellablePromise<$models.Settings> {
+    return $Call.ByID(3755179890, patterns);
+}
+
+/**
  * SetIntegrationEnabled stores how the user set an integration's switch, automatic, on,
  * or off, and returns the settings with it. Once it is stored, an
  * event.IntegrationsChanged is emitted, so the window hears that the tools' list changed.

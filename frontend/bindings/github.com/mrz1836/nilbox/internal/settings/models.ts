@@ -474,6 +474,14 @@ export interface Settings {
     "inboxOrder": InboxOrder;
 
     /**
+     * HiddenLabels are the patterns of the labels the inbox's cards leave out (see
+     * KeyHiddenLabels), never nil, and DefaultHiddenLabels what Restore the defaults goes
+     * back to.
+     */
+    "hiddenLabels": string[] | null;
+    "defaultHiddenLabels": string[] | null;
+
+    /**
      * MergeMethod is how the review sheet merges a pull request.
      */
     "mergeMethod": MergeMethod;

@@ -20,6 +20,7 @@ export type SettingsSection =
   | 'refreshing'
   | 'status'
   | 'snoozing'
+  | 'cards'
   | 'reviewing'
   | 'autopilot'
   | 'launching'
@@ -48,7 +49,7 @@ export interface SectionGroup {
 // a backup, and About. Autopilot's group shows only while Autopilot (beta) is on (Hidden).
 export const sectionGroups: readonly SectionGroup[] = [
   { heading: '', sections: ['account', 'appearance', 'notifications', 'github', 'refreshing', 'status'] },
-  { heading: 'Inbox', sections: ['snoozing', 'reviewing'] },
+  { heading: 'Inbox', sections: ['snoozing', 'cards', 'reviewing'] },
   { heading: 'Autopilot', sections: ['autopilot'] },
   { heading: 'Agents', sections: ['repositories', 'profiles', 'launching', 'trust', 'files', 'worktrees'] },
   { heading: 'Tools', sections: ['integrations'] },
@@ -107,6 +108,10 @@ export const sectionInfo: Readonly<Record<SettingsSection, { label: string; desc
   snoozing: {
     label: 'Snoozing',
     description: 'How long a snooze lasts, and what new activity brings an item back early.',
+  },
+  cards: {
+    label: 'Cards',
+    description: 'What the inbox’s cards leave out, such as the labels their own size already shows.',
   },
   reviewing: {
     label: 'Reviewing',
@@ -266,6 +271,12 @@ export const settingsIndex: Readonly<Record<SettingsSection, readonly SettingEnt
     { label: 'New commits', keywords: ['wake', 'push', 'force-push'] },
     { label: 'Reviews', keywords: ['wake', 'approval', 'changes requested'] },
     { label: 'New comments', keywords: ['wake', 'bots'] },
+  ],
+  cards: [
+    {
+      label: 'Hidden labels',
+      keywords: ['labels', 'size/*', 'size labels', 'hide', 'chips', 'card labels', 'patterns', 'restore the defaults'],
+    },
   ],
   reviewing: [
     {

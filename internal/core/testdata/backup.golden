@@ -85,6 +85,9 @@
       "statusOrder": [],
       "kinds": {}
     },
+    "hiddenLabels": [
+      "size/*"
+    ],
     "integrations": {
       "switches": {
         "go-pre-commit": "auto",

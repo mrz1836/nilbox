@@ -907,6 +907,7 @@ export const {
   SetStatusSort: setStatusSort,
   SetListKind: setListKind,
   SetStatusOrder: setStatusOrder,
+  SetHiddenLabels: setHiddenLabels,
   SetBranchRules: setBranchRules,
   SetRepoRule: setRepoRule,
   SetMergeMethod: setMergeMethod,

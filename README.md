@@ -421,7 +421,8 @@ links to its full write-up in the [Desktop Guide](docs/desktop.md).
   and **Auto-merge · squash** tags; the repository, author, age, and a **bot**, **untrusted
   bot**, or **outside contributor** tag; then the checks passed out of those that ran, reviews,
   comments, a size grade (XS to XL) with lines, files, and commits, and the first labels in
-  their GitHub colors. The details line up from card to card; hover any of them for the whole
+  their GitHub colors, leaving out those you hide in **Settings → Cards** (`size/*`, which the
+  size grade repeats, to start with). The details line up from card to card; hover any of them for the whole
   sentence.
 - **Live signals:** checks still running pulse in yellow (**12/18**), and a card names the item's
   worktree (**worktree · 2 changes · Codex 3h ago**) and what its agent session is doing
