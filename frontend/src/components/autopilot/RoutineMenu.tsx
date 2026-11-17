@@ -3,6 +3,7 @@ import { createContext, useEffect, useId, useState, type ReactNode } from 'react
 import { itemText } from '../../lib/autopilot'
 import { attempt } from '../../lib/call'
 import { askable, runnable } from '../../lib/routineBuilder'
+import { formatAgo } from '../../lib/time'
 import { useQuery } from '../../lib/useQuery'
 import {
   explainRoutine,
@@ -15,7 +16,8 @@ import {
 } from '../../platform'
 import { ConfirmDialog } from '../ConfirmDialog'
 import { fieldClass } from '../controls'
-import { defaultToastSeconds, Toast, type ToastMessage } from '../Toast'
+import { RelativeTime } from '../RelativeTime'
+import { Toast, type ToastMessage } from '../Toast'
 import { TraceList } from './Trace'
 
 // AutopilotMenu is what an item's ⋯ menu offers of Autopilot: the routines it can run on
@@ -29,6 +31,8 @@ export interface AutopilotMenu {
   askable: (item: InboxItem) => readonly AutopilotRoutine[]
   onRun: (routine: AutopilotRoutine, item: InboxItem) => void
   onWhy: (item: InboxItem) => void
+  // onMake opens the builder filled in from the item: Make a routine from this…
+  onMake: (item: InboxItem) => void
 }
 
 // AutopilotMenuContext holds the item menus' Autopilot; without it a menu offers none.
@@ -38,6 +42,8 @@ export const AutopilotMenuContext = createContext<AutopilotMenu | null>(null)
 interface Held {
   routines: readonly AutopilotRoutine[]
   catalog: AutopilotCatalog | undefined
+  // make is the window's Make a routine from this…, as last rendered.
+  make: (item: InboxItem) => void
 }
 
 // Anyway is a routine the item didn't match, which the user may run on it anyway: why it
@@ -72,7 +78,7 @@ function startedWords(routine: AutopilotRoutine, words: string): Omit<ToastMessa
 // opens, what the routines and the catalog last read hold, and ends each choice in one of
 // the window's setters or a call to the backend, so it never changes while they do.
 class MenuSource implements AutopilotMenu {
-  private held: Held = { routines: [], catalog: undefined }
+  private held: Held = { routines: [], catalog: undefined, make: () => undefined }
   private toasts = 0
   private readonly shows: Shows
 
@@ -127,6 +133,11 @@ class MenuSource implements AutopilotMenu {
   onWhy = (item: InboxItem) => {
     this.shows.why({ item, routineId: this.askable(item)[0]?.id ?? 0 })
   }
+
+  // onMake opens the Autopilot tab's builder filled in from the item.
+  onMake = (item: InboxItem) => {
+    this.held.make(item)
+  }
 }
 
 // resultWords say what a routine decides about an item now.
@@ -136,14 +147,35 @@ const resultWords: Readonly<Record<string, string>> = {
   unknown: 'It can’t tell yet: it waits to read more.',
 }
 
-// ExplanationView is what a routine decides about an item now: whether it matches, whether
-// the item is in what it watches, each condition with what it came to and its value, and
-// what its history says.
+// ExplanationView is what a routine decides about an item now: what of the routine itself
+// holds it back (switched off, Pause, Dry run, this Mac), whether the item is in what it
+// watches and why not, each condition with what it came to and its value, what its history
+// says, and every record the ledger keeps of the two, newest first.
 function ExplanationView({ explanation: e, name }: { explanation: AutopilotExplanation; name: string }) {
   return (
     <div className="flex flex-col gap-2">
       <p className="text-sm text-text">{resultWords[e.match] ?? e.match}</p>
-      {!e.inWatch && <p className="text-xs text-warning">The item isn’t in what it watches.</p>}
+      {e.routine.length > 0 && (
+        <ul aria-label="What holds the routine back" className="flex flex-col gap-0.5">
+          {e.routine.map((line) => (
+            <li key={line} className="text-xs text-warning">
+              {line}
+            </li>
+          ))}
+        </ul>
+      )}
+      {!e.inWatch &&
+        (e.watch.length === 0 ? (
+          <p className="text-xs text-warning">The item isn’t in what it watches.</p>
+        ) : (
+          <ul aria-label="Why it isn’t in what it watches" className="flex flex-col gap-0.5">
+            {e.watch.map((line) => (
+              <li key={line} className="text-xs text-warning">
+                {line}
+              </li>
+            ))}
+          </ul>
+        ))}
       {e.leftAlone && (
         <p className="text-xs text-warning">
           It leaves the item alone, since you took back what it did: Let it act again in Activity.
@@ -158,6 +190,23 @@ function ExplanationView({ explanation: e, name }: { explanation: AutopilotExpla
             </li>
           ))}
         </ul>
+      )}
+      {e.records.length > 0 && (
+        <details className="border-t border-border pt-2">
+          <summary className="cursor-pointer text-xs font-medium text-muted">
+            {`Its ledger for this item: ${String(e.records.length)} ${e.records.length === 1 ? 'record' : 'records'}`}
+          </summary>
+          <ul aria-label="Its ledger for this item" className="mt-1 flex flex-col gap-0.5">
+            {e.records.map((m) => (
+              <li key={m.id} className="flex gap-2 text-xs text-muted">
+                <span className="shrink-0 font-mono">
+                  <RelativeTime iso={m.createdAt} show={formatAgo} />
+                </span>
+                <span className="min-w-0 flex-1">{`${m.dryRun ? 'Dry run · ' : ''}${m.words}`}</span>
+              </li>
+            ))}
+          </ul>
+        </details>
       )}
     </div>
   )
@@ -241,7 +290,8 @@ function WhyDialog({ why, routines, onPick, onClose }: WhyDialogProps) {
 // opens, so it stays the same while they change.
 export function useRoutineMenu(
   routines: readonly AutopilotRoutine[],
-  toastSeconds = defaultToastSeconds,
+  toastSeconds: number,
+  onMake: (item: InboxItem) => void,
 ): { menu: AutopilotMenu; node: ReactNode } {
   const catalog = useQuery(() => getAutopilotCatalog(), [], {
     enabled: routines.length > 0,
@@ -254,8 +304,8 @@ export function useRoutineMenu(
   const [menu] = useState(() => new MenuSource({ toast: setToast, anyway: setAnyway, why: setWhy }))
 
   useEffect(() => {
-    menu.hold({ routines, catalog: catalog.data })
-  }, [menu, routines, catalog.data])
+    menu.hold({ routines, catalog: catalog.data, make: onMake })
+  }, [menu, routines, catalog.data, onMake])
 
   // runAnyway runs the routine the user chose to run on an item it doesn't match.
   const runAnyway = async (a: Anyway) => {

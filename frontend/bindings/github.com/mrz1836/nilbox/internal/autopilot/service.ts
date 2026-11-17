@@ -96,6 +96,14 @@ export function ClearHistory(): $CancellablePromise<$models.Cleared> {
 }
 
 /**
+ * DeclineGraduate answers Not now to putting the routine id on Autopilot: it offers again
+ * only once that many more approved runs in a row finish cleanly. Its mode stays as it is.
+ */
+export function DeclineGraduate(id: number): $CancellablePromise<$models.Routine> {
+    return $Call.ByID(905489386, id);
+}
+
+/**
  * Delete deletes the routine id: it is switched off and leaves the list, and its record
  * stays, so the history that names it keeps its name.
  */
@@ -112,6 +120,16 @@ export function Delete(id: number): $CancellablePromise<void> {
  */
 export function Describe(d: $models.Draft): $CancellablePromise<$models.Described> {
     return $Call.ByID(2101860014, d);
+}
+
+/**
+ * DraftReadiness checks what the draft d needs on this Mac before it is saved, as quick
+ * setup shows it beside its test: each need answered from what the checks last found
+ * within readyFor, and checked again cheaply where it wasn't, never asking GitHub. It keeps
+ * nothing, and its lists are never nil.
+ */
+export function DraftReadiness(d: $models.Draft): $CancellablePromise<$models.RoutineReady> {
+    return $Call.ByID(1158042434, d);
 }
 
 /**
@@ -139,6 +157,28 @@ export function Explain(id: number, itemID: number): $CancellablePromise<$models
 }
 
 /**
+ * Export writes the routines with ids, or every routine when ids is empty, in the export
+ * format to the file at path, replacing any file there, with the text of the prompts they
+ * name by nickname when withPrompts. A starter prompt travels by its key, as every Mac
+ * has it already.
+ */
+export function Export(path: string, ids: number[] | null, withPrompts: boolean): $CancellablePromise<$models.Exported> {
+    return $Call.ByID(445618569, path, ids, withPrompts);
+}
+
+/**
+ * FromItem returns a new routine filled in from the stored item itemID: its kind; its
+ * author, or its bot; its repository's owner; when its checks fail, when it conflicts,
+ * when changes are requested, else when it appears, as the item stands now; the failed
+ * checks' names as one condition, when its checks fail; and the prompt a click would
+ * launch on it, run where this build runs agents, the background first. Its labels and its
+ * dependency update's type come as suggestions, unticked. It saves nothing.
+ */
+export function FromItem(itemID: number): $CancellablePromise<$models.ItemDraft> {
+    return $Call.ByID(3799540616, itemID);
+}
+
+/**
  * Get returns the routine id, refusing one that is gone or deleted.
  */
 export function Get(id: number): $CancellablePromise<$models.Routine> {
@@ -150,6 +190,18 @@ export function Get(id: number): $CancellablePromise<$models.Routine> {
  */
 export function Glance(): $CancellablePromise<$models.Glance> {
     return $Call.ByID(3021368891);
+}
+
+/**
+ * Import brings in the bundle at req.Path, as its preview read it: first the prompts it
+ * brings that no prompt here has the nickname of, then every routine, switched off, at the
+ * end of the list, each its own name or another when a routine here has it, the
+ * account signed in's, and with each missing reference mapped as req says. A routine a
+ * newer build wrote arrives as it was, broken. A file that changed since its preview is
+ * refused (ErrChanged).
+ */
+export function Import(req: $models.ImportRequest): $CancellablePromise<$models.Imported> {
+    return $Call.ByID(882733418, req);
 }
 
 /**
@@ -220,6 +272,15 @@ export function NeedsYou(): $CancellablePromise<$models.Match[] | null> {
  */
 export function PreviewActions(d: $models.Draft, itemID: number): $CancellablePromise<$models.ActionPreview[] | null> {
     return $Call.ByID(593094948, d, itemID);
+}
+
+/**
+ * PreviewImport reads the bundle at path and says what importing it would do, changing
+ * nothing: each routine's sentence and the name it arrives under, the prompts it brings,
+ * and what its routines name that this Mac lacks.
+ */
+export function PreviewImport(path: string): $CancellablePromise<$models.ImportPreview> {
+    return $Call.ByID(2535246996, path);
 }
 
 /**
@@ -346,6 +407,17 @@ export function StopRun(id: number): $CancellablePromise<void> {
  */
 export function Suggest(): $CancellablePromise<$models.Suggestions> {
     return $Call.ByID(3880079967);
+}
+
+/**
+ * Templates returns the gallery as this Mac sees it: each template with its sentence,
+ * what this build can't run of it yet, the starter prompts it runs and whether the library
+ * holds them, and why it is suggested; the suggested ones first, each list in the
+ * gallery's order. It reads the prompt library, the stored items, and the clones' marker
+ * files, and asks GitHub nothing.
+ */
+export function Templates(): $CancellablePromise<$models.Template[] | null> {
+    return $Call.ByID(348395350);
 }
 
 /**

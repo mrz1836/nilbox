@@ -81,3 +81,51 @@ describe('TestPanel’s Preview', () => {
     expect(screen.queryByRole('button', { name: /^Preview, for / })).not.toBeInTheDocument()
   })
 })
+
+describe('TestPanel’s pinned item', () => {
+  // pinned is pull request 46, which a routine was made from, matched from what is stored.
+  const pinned = {
+    item: {
+      id: 2,
+      kind: 'pr' as const,
+      repo: 'acme-org/example-repo',
+      number: 46,
+      title: 'Bump zod from 3 to 4',
+      url: 'https://github.com/acme-org/example-repo/pull/46',
+    },
+    match: 'yes' as const,
+    trace: [{ path: 'trigger', condition: 'checks fail', result: 'yes' as const, actual: 'CodeQL failed' }],
+  }
+
+  it('shows the item a routine was made from at the top before a test, and first in one', async () => {
+    const user = userEvent.setup()
+    const panel = (result: ReturnType<typeof routineTest> | undefined) => (
+      <TestPanel
+        result={result}
+        stale={false}
+        testing={false}
+        error=""
+        ready
+        kinds={['pr']}
+        mode="ask"
+        draft={rebase}
+        onTest={vi.fn()}
+        pinned={pinned}
+      />
+    )
+    const { rerender } = render(panel(undefined))
+
+    const made = within(screen.getByRole('list', { name: 'The item it was made from' }))
+
+    expect(made.getByText('matches now, from what is stored')).toBeInTheDocument()
+    await user.click(made.getByRole('button', { name: 'Why, for acme-org/example-repo #46' }))
+    expect(made.getByRole('list', { name: 'Why, for acme-org/example-repo #46' })).toHaveTextContent('CodeQL failed')
+
+    rerender(panel(routineTest()))
+
+    const rows = within(screen.getByRole('list', { name: 'Items it watches' })).getAllByRole('listitem')
+
+    expect(rows[0]).toHaveTextContent('acme-org/example-repo #46')
+    expect(screen.queryByRole('list', { name: 'The item it was made from' })).not.toBeInTheDocument()
+  })
+})

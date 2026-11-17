@@ -1,8 +1,6 @@
 package sim_test
 
 import (
-	"os"
-	"path/filepath"
 	"testing"
 	"testing/synctest"
 	"time"
@@ -22,17 +20,15 @@ import (
 // The local steps, through the inbox's own triage: what each did, marked with its routine;
 // Undo; and the routine leaving alone what the user took back.
 
-// snoozeBots is the Snooze passing bot PRs template, as the templates write it.
+// snoozeBots is the Snooze passing bot PRs template, exactly as the template gallery holds it.
 func snoozeBots(t *testing.T) spec.Spec {
 	t.Helper()
 
-	raw, err := os.ReadFile(filepath.Join("..", "spec", "testdata", "templates", "snooze-passing-bot-prs.json"))
-	require.NoError(t, err)
+	tmpl, ok := autopilot.TemplateByKey("snooze-passing-bot-prs")
+	require.True(t, ok)
+	require.NoError(t, spec.Validate(tmpl.Spec))
 
-	sp, err := spec.Load(raw)
-	require.NoError(t, err)
-
-	return sp
+	return tmpl.Spec
 }
 
 // passedKey is Checks pass's fire key on commit n of the pull request number.

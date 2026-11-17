@@ -1,0 +1,38 @@
+{
+    "version": 1,
+    "watch": {
+        "sources": [
+            {
+                "lists": [
+                    "authored"
+                ]
+            }
+        ]
+    },
+    "trigger": {
+        "event": "falls_behind"
+    },
+    "conditions": {
+        "match": "all",
+        "of": [
+            {
+                "field": "pr.draft",
+                "op": "isNo"
+            },
+            {
+                "field": "repo.allowsUpdateBranch",
+                "op": "isYes"
+            }
+        ]
+    },
+    "steps": [
+        {
+            "github": [
+                {
+                    "updateBranch": {}
+                }
+            ]
+        }
+    ],
+    "limits": {}
+}

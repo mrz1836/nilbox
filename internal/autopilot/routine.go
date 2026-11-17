@@ -101,6 +101,10 @@ type RoutineFigures struct {
 	Waiting       int        `json:"waiting"`
 	LastAt        *time.Time `json:"lastAt"`
 	LastDryRun    bool       `json:"lastDryRun"`
+
+	// Graduate reports a routine in Ask first whose last GraduateAfter approved runs all
+	// finished cleanly, which offers to go on Autopilot: a suggestion, never a change.
+	Graduate bool `json:"graduate"`
 }
 
 // RoutineName is a routine's name by its ID, a deleted one's included, for the window's

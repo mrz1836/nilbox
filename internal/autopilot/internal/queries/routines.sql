@@ -1,7 +1,7 @@
 -- name: ListRoutines :many
 -- ListRoutines returns every routine not deleted, in the user's order.
 SELECT id, account_login, name, name_key, description, enabled, mode, spec, spec_version, template_key, sort_order,
-       enabled_at, last_error, broken_reason, created_at, updated_at, deleted_at
+       enabled_at, last_error, broken_reason, created_at, updated_at, deleted_at, graduate_declined_at
 FROM autopilot_routines
 WHERE deleted_at IS NULL
 ORDER BY sort_order, id;
@@ -9,7 +9,7 @@ ORDER BY sort_order, id;
 -- name: GetRoutine :one
 -- GetRoutine returns one routine, or sql.ErrNoRows when it is gone or deleted.
 SELECT id, account_login, name, name_key, description, enabled, mode, spec, spec_version, template_key, sort_order,
-       enabled_at, last_error, broken_reason, created_at, updated_at, deleted_at
+       enabled_at, last_error, broken_reason, created_at, updated_at, deleted_at, graduate_declined_at
 FROM autopilot_routines
 WHERE id = sqlc.arg(id) AND deleted_at IS NULL;
 
@@ -89,4 +89,12 @@ UPDATE autopilot_routines SET
     enabled_at = NULL,
     deleted_at = sqlc.arg(deleted_at),
     updated_at = sqlc.arg(deleted_at)
+WHERE id = sqlc.arg(id) AND deleted_at IS NULL;
+
+-- name: SetRoutineGraduateDeclined :execrows
+-- SetRoutineGraduateDeclined records when the user said Not now to putting a routine on
+-- Autopilot.
+UPDATE autopilot_routines SET
+    graduate_declined_at = sqlc.arg(declined_at),
+    updated_at = sqlc.arg(declined_at)
 WHERE id = sqlc.arg(id) AND deleted_at IS NULL;

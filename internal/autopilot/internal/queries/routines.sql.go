@@ -49,7 +49,7 @@ func (q *Queries) DeleteRoutine(ctx context.Context, arg DeleteRoutineParams) (i
 
 const getRoutine = `-- name: GetRoutine :one
 SELECT id, account_login, name, name_key, description, enabled, mode, spec, spec_version, template_key, sort_order,
-       enabled_at, last_error, broken_reason, created_at, updated_at, deleted_at
+       enabled_at, last_error, broken_reason, created_at, updated_at, deleted_at, graduate_declined_at
 FROM autopilot_routines
 WHERE id = ?1 AND deleted_at IS NULL
 `
@@ -76,6 +76,7 @@ func (q *Queries) GetRoutine(ctx context.Context, id int64) (AutopilotRoutine, e
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,
+		&i.GraduateDeclinedAt,
 	)
 	return i, err
 }
@@ -134,7 +135,7 @@ func (q *Queries) InsertRoutine(ctx context.Context, arg InsertRoutineParams) (i
 
 const listRoutines = `-- name: ListRoutines :many
 SELECT id, account_login, name, name_key, description, enabled, mode, spec, spec_version, template_key, sort_order,
-       enabled_at, last_error, broken_reason, created_at, updated_at, deleted_at
+       enabled_at, last_error, broken_reason, created_at, updated_at, deleted_at, graduate_declined_at
 FROM autopilot_routines
 WHERE deleted_at IS NULL
 ORDER BY sort_order, id
@@ -168,6 +169,7 @@ func (q *Queries) ListRoutines(ctx context.Context) ([]AutopilotRoutine, error) 
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.DeletedAt,
+			&i.GraduateDeclinedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -225,6 +227,28 @@ func (q *Queries) SetRoutineEnabled(ctx context.Context, arg SetRoutineEnabledPa
 		arg.UpdatedAt,
 		arg.ID,
 	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
+const setRoutineGraduateDeclined = `-- name: SetRoutineGraduateDeclined :execrows
+UPDATE autopilot_routines SET
+    graduate_declined_at = ?1,
+    updated_at = ?1
+WHERE id = ?2 AND deleted_at IS NULL
+`
+
+type SetRoutineGraduateDeclinedParams struct {
+	DeclinedAt *time.Time
+	ID         int64
+}
+
+// SetRoutineGraduateDeclined records when the user said Not now to putting a routine on
+// Autopilot.
+func (q *Queries) SetRoutineGraduateDeclined(ctx context.Context, arg SetRoutineGraduateDeclinedParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, setRoutineGraduateDeclined, arg.DeclinedAt, arg.ID)
 	if err != nil {
 		return 0, err
 	}

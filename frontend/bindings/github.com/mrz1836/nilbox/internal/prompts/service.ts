@@ -19,6 +19,18 @@ import * as item$0 from "../item/models.js";
 import * as $models from "./models.js";
 
 /**
+ * AddStarter adds the starter key names to the library again, as the build ships it,
+ * when the library holds no copy of it, and returns the copy: the one it added, or the
+ * one already there. Seed never adds back a starter the user deleted, so this is how an
+ * Autopilot template whose prompt was deleted brings it back, on the user's word. Its
+ * nickname is the starter's, or a free one beside it, and it becomes a default only for
+ * a slot with none, as Seed adds a starter.
+ */
+export function AddStarter(key: string): $CancellablePromise<$models.Prompt> {
+    return $Call.ByID(648392297, key);
+}
+
+/**
  * Backups lists the copies of the prompt library the app keeps, newest first, with how
  * many prompts each holds and how many of those the library does not: the library file,
  * the databases the app set aside, and the backups it took before updates. A copy that

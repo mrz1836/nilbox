@@ -55,23 +55,24 @@ type AutopilotMatch struct {
 }
 
 type AutopilotRoutine struct {
-	ID           int64
-	AccountLogin string
-	Name         string
-	NameKey      string
-	Description  string
-	Enabled      bool
-	Mode         string
-	Spec         string
-	SpecVersion  int64
-	TemplateKey  string
-	SortOrder    int64
-	EnabledAt    *time.Time
-	LastError    string
-	BrokenReason string
-	CreatedAt    time.Time
-	UpdatedAt    time.Time
-	DeletedAt    *time.Time
+	ID                 int64
+	AccountLogin       string
+	Name               string
+	NameKey            string
+	Description        string
+	Enabled            bool
+	Mode               string
+	Spec               string
+	SpecVersion        int64
+	TemplateKey        string
+	SortOrder          int64
+	EnabledAt          *time.Time
+	LastError          string
+	BrokenReason       string
+	CreatedAt          time.Time
+	UpdatedAt          time.Time
+	DeletedAt          *time.Time
+	GraduateDeclinedAt *time.Time
 }
 
 type AutopilotRun struct {

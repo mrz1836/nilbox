@@ -1,0 +1,1 @@
+When a pull request in your Authored list falls behind its base branch, if it isn't a draft and the repository allows updating branches, update its branch. At most 2 tries per pull request.

@@ -64,6 +64,11 @@ type Bundle struct {
 
 	// Routines are the routines, in the user's order.
 	Routines []BundleRoutine `json:"routines"`
+
+	// Prompts are the text of the prompts the routines name by nickname, in the prompts'
+	// own file format (see docs/prompt-files.md), when the export included them; left out
+	// otherwise, and never in the copy or a backup, whose prompts travel on their own.
+	Prompts json.RawMessage `json:"prompts,omitempty"`
 }
 
 // BundleRoutine is one routine in the export format.

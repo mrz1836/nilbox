@@ -2,8 +2,6 @@ package sim_test
 
 import (
 	"errors"
-	"os"
-	"path/filepath"
 	"testing"
 	"testing/synctest"
 	"time"
@@ -25,13 +23,11 @@ var errNoNotices = errors.New("the notifications can't be written")
 func securityFailures(t *testing.T) spec.Spec {
 	t.Helper()
 
-	data, err := os.ReadFile(filepath.Join("..", "spec", "testdata", "templates", "tell-me-about-security-failures.json"))
-	require.NoError(t, err)
+	tmpl, ok := autopilot.TemplateByKey("tell-me-about-security-failures")
+	require.True(t, ok)
+	require.NoError(t, spec.Validate(tmpl.Spec))
 
-	sp, err := spec.Load(data)
-	require.NoError(t, err)
-
-	return sp
+	return tmpl.Spec
 }
 
 // securityRig is a simulation watching Dependabot's pull requests #1 to #n, their checks

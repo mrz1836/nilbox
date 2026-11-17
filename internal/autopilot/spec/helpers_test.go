@@ -71,6 +71,7 @@ func starterNames(p spec.PromptRef) string {
 		"work-on-issue":           "Work on it",
 		"resolve-conflicts":       "Resolve conflicts",
 		"rerun-failed-jobs":       "Re-run failed jobs",
+		"reply-needs-repro":       "Needs repro",
 	}[p.Starter]
 }
 

@@ -742,6 +742,27 @@ func autopilotBoundCalls(t *testing.T) map[string]boundCall {
 		"autopilot.Service.Explain": func(ctx context.Context, c *Core, ids seededItems) (any, error) {
 			return c.Autopilot.Explain(ctx, boundRoutine(ctx, t, c, "Bound explain").ID, ids.item)
 		},
+		"autopilot.Service.Templates": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
+			return c.Autopilot.Templates(ctx)
+		},
+		"autopilot.Service.FromItem": func(ctx context.Context, c *Core, ids seededItems) (any, error) {
+			return c.Autopilot.FromItem(ctx, ids.item)
+		},
+		"autopilot.Service.DraftReadiness": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
+			return c.Autopilot.DraftReadiness(ctx, autopilot.Draft{Name: "Bound readiness", Spec: boundSpec()})
+		},
+		"autopilot.Service.DeclineGraduate": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
+			return c.Autopilot.DeclineGraduate(ctx, boundRoutine(ctx, t, c, "Bound graduate").ID)
+		},
+		"autopilot.Service.PreviewImport": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
+			return c.Autopilot.PreviewImport(ctx, boundBundle(ctx, t, c, "Bound preview import"))
+		},
+		"autopilot.Service.Import": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
+			return c.Autopilot.Import(ctx, autopilot.ImportRequest{Path: boundBundle(ctx, t, c, "Bound import")})
+		},
+		"prompts.Service.AddStarter": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
+			return c.Prompts.AddStarter(ctx, prompts.StarterResolveConflicts)
+		},
 		"autopilot.Service.Engine": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
 			return c.Autopilot.Engine(ctx)
 		},
@@ -829,6 +850,19 @@ func boundRoutine(ctx context.Context, t *testing.T, c *Core, name string) autop
 	require.NoError(t, err)
 
 	return got
+}
+
+// boundBundle exports a routine named name, with its prompts, to a file, and returns where.
+func boundBundle(ctx context.Context, t *testing.T, c *Core, name string) string {
+	t.Helper()
+
+	r := boundRoutine(ctx, t, c, name)
+	path := filepath.Join(t.TempDir(), "routines.json")
+
+	_, err := c.Autopilot.Export(ctx, path, []int64{r.ID}, true)
+	require.NoError(t, err)
+
+	return path
 }
 
 // unreachedBound are the bound methods with a list or a map in their result that

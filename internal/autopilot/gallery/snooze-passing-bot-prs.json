@@ -1,0 +1,44 @@
+{
+    "version": 1,
+    "watch": {
+        "sources": [
+            {
+                "lists": [
+                    "reviewRequested",
+                    "assigned"
+                ]
+            }
+        ]
+    },
+    "trigger": {
+        "event": "checks_passed"
+    },
+    "conditions": {
+        "match": "all",
+        "of": [
+            {
+                "field": "item.trust",
+                "op": "oneOf",
+                "values": [
+                    "bot"
+                ]
+            },
+            {
+                "field": "dep.updateType",
+                "op": "oneOf",
+                "values": [
+                    "patch",
+                    "minor"
+                ]
+            }
+        ]
+    },
+    "steps": [
+        {
+            "snooze": {
+                "days": 3
+            }
+        }
+    ],
+    "limits": {}
+}

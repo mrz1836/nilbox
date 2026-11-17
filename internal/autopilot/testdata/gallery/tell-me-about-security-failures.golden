@@ -1,0 +1,1 @@
+When checks fail on pull requests by Dependabot in your account and acme-org, once every check has settled, if a failed check's name contains codeql, gitleaks, govulncheck, nancy, osv, or security, notify me.

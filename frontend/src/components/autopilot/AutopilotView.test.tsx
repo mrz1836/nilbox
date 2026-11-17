@@ -4,7 +4,7 @@ import { Activity, useState } from 'react'
 import { beforeAll, describe, expect, it, vi } from 'vitest'
 
 import { brand } from '../../generated/brand'
-import type { AutopilotRequest } from '../../lib/autopilot'
+import { activityTarget, type AutopilotRequest } from '../../lib/autopilot'
 import { useIssueDrafts } from '../../lib/issueDrafts'
 import { useReviewDrafts } from '../../lib/reviewDrafts'
 import { useAutopilot } from '../../lib/useAutopilot'
@@ -21,6 +21,7 @@ import {
   claudeMissing,
   cloneTarget,
   dryRunMatch,
+  galleryTemplate,
   githubStep,
   issue,
   item,
@@ -34,6 +35,7 @@ import {
   routineFigures,
   routineReady,
   settings as settingsOf,
+  snoozeTemplate,
 } from '../../test/fixtures'
 import { emit, platform } from '../../test/platform'
 import type { LaunchOptions } from '../ItemRow'
@@ -154,13 +156,31 @@ async function routineList() {
 }
 
 describe('the Autopilot tab', () => {
-  it('explains Autopilot in its two sentences while there is no routine, and nothing more', async () => {
+  it('explains Autopilot in its two sentences while there is no routine, then offers templates and the ways to start', async () => {
+    platform.listTemplates.mockResolvedValue([
+      snoozeTemplate(),
+      galleryTemplate({ suggested: '3 of your clones run go-fortress’s security checks.' }),
+    ])
     renderTab()
 
     expect(await screen.findByText(/Autopilot watches your pull requests and issues/)).toBeInTheDocument()
     expect(screen.getByText(/Its routines can tell you, tidy your inbox, or start a coding agent/)).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: /routine/i })).not.toBeInTheDocument()
+
+    const suggested = within(await screen.findByRole('list', { name: 'Suggested templates' }))
+    expect(suggested.getByRole('button', { name: /Fix Dependabot security failures/ })).toBeInTheDocument()
+    expect(suggested.getByText('3 of your clones run go-fortress’s security checks.')).toBeInTheDocument()
+    expect(
+      within(screen.getByRole('list', { name: 'Templates' })).getByRole('button', { name: /Snooze passing bot PRs/ }),
+    ).toBeInTheDocument()
+
+    for (const name of ['Start from scratch', 'Start from an item', 'Every template', 'Import routines…']) {
+      expect(screen.getByRole('button', { name })).toBeInTheDocument()
+    }
+
     expect(screen.queryByRole('switch')).not.toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Start from an item' }))
+    expect(screen.getByText(/choose Autopilot ▸ Make a routine from this…/)).toBeInTheDocument()
   })
 
   it('lists the routines with their status lines and switches, greying another account’s and saying why one is broken', async () => {
@@ -1518,5 +1538,196 @@ describe('Needs you', () => {
     })
 
     expect(await screen.findByRole('region', { name: 'Needs you' })).toBeInTheDocument()
+  })
+})
+
+describe('Easy mode', () => {
+  it('sets a template up through quick setup, asking only its blanks, in the mode new routines start in', async () => {
+    const user = userEvent.setup()
+    platform.listRoutines.mockResolvedValue(routines())
+    platform.listTemplates.mockResolvedValue([galleryTemplate({ needs: [], needsWords: '', suggests: 'auto' })])
+    platform.saveRoutine.mockImplementation((d) =>
+      Promise.resolve(
+        routine({ id: 9, name: d.name, mode: d.mode ?? 'ask', enabled: false, templateKey: 'fix-dependabot-security' }),
+      ),
+    )
+    renderTab({ stored: settingsOf({ autopilot: { ...settingsOf().autopilot, defaultMode: 'dryRun' } }) })
+
+    await routineList()
+    await user.click(screen.getByRole('button', { name: 'Templates' }))
+    await user.click(await screen.findByRole('button', { name: /Fix Dependabot security failures/ }))
+
+    const setup = within(await screen.findByRole('region', { name: 'Fix Dependabot security failures' }))
+
+    expect(setup.getAllByRole('combobox')).toHaveLength(1)
+    expect(setup.getByRole('combobox', { name: 'Where' })).toBeInTheDocument()
+    expect(setup.getByText('Your account')).toBeInTheDocument()
+    expect(
+      within(setup.getByRole('radiogroup', { name: 'Mode' })).getByRole('radio', { name: 'Dry run' }),
+    ).toBeChecked()
+    expect(setup.getByText(/This template suggests Autopilot\. It starts in Dry run/)).toBeInTheDocument()
+    expect(await setup.findByText('Ready to run here.')).toBeInTheDocument()
+
+    const save = setup.getByRole('button', { name: 'Save' })
+
+    await waitFor(() => {
+      expect(save).toBeEnabled()
+    })
+    await user.click(save)
+
+    await waitFor(() => {
+      expect(platform.saveRoutine).toHaveBeenCalledOnce()
+    })
+    expect(platform.saveRoutine.mock.lastCall?.[0]).toMatchObject({
+      id: 0,
+      name: 'Fix Dependabot security failures',
+      mode: 'dryRun',
+      templateKey: 'fix-dependabot-security',
+      spec: { watch: { sources: [{ search: { where: ['@me'] } }] } },
+    })
+    expect(await screen.findByText(/Made “Fix Dependabot security failures”, switched off/)).toBeInTheDocument()
+  })
+
+  it('says plainly what a template needs that this build can’t run yet, and opens it in the builder all the same', async () => {
+    const user = userEvent.setup()
+    platform.listRoutines.mockResolvedValue(routines())
+    renderTab()
+
+    await routineList()
+    await user.click(screen.getByRole('button', { name: 'Templates' }))
+    expect(await screen.findByText('Needs agents in the background')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: /Fix Dependabot security failures/ }))
+
+    const setup = within(await screen.findByRole('region', { name: 'Fix Dependabot security failures' }))
+
+    expect(setup.getByRole('alert')).toHaveTextContent('It needs agents in the background')
+    expect(setup.getByRole('button', { name: 'Save' })).toBeDisabled()
+
+    await user.click(setup.getByRole('button', { name: 'Customize' }))
+
+    expect(screen.getByRole('heading', { name: 'New routine' })).toBeInTheDocument()
+    expect(screen.getByRole('textbox', { name: 'Name' })).toHaveValue('Fix Dependabot security failures')
+  })
+
+  it('offers a starter the library lost back, and reads the gallery again once it’s added', async () => {
+    const user = userEvent.setup()
+    platform.listRoutines.mockResolvedValue(routines())
+    platform.listTemplates.mockResolvedValue([
+      galleryTemplate({
+        prompts: [{ starter: 'fix-dependency-security', name: 'Fix dep security', inLibrary: false }],
+      }),
+    ])
+    renderTab()
+
+    await routineList()
+    await user.click(screen.getByRole('button', { name: 'Templates' }))
+    await user.click(await screen.findByRole('button', { name: /Fix Dependabot security failures/ }))
+    await user.click(await screen.findByRole('button', { name: 'Add it again' }))
+
+    expect(platform.addStarterPrompt).toHaveBeenCalledWith('fix-dependency-security')
+    await waitFor(() => {
+      expect(platform.listTemplates).toHaveBeenCalledTimes(2)
+    })
+  })
+
+  it('opens the quick setup the first-run setup suggested', async () => {
+    renderTab({ request: { seq: 1, target: activityTarget, template: 'snooze-passing-bot-prs' } })
+
+    expect(await screen.findByRole('region', { name: 'Snooze passing bot PRs' })).toBeInTheDocument()
+  })
+
+  it('makes a routine from an item: the builder filled in, its suggestions a click away, the item at the top of Test', async () => {
+    const user = userEvent.setup()
+    platform.listRoutines.mockResolvedValue(routines())
+    renderTab({ request: { seq: 1, target: activityTarget, fromItem: 7 } })
+
+    expect(await screen.findByRole('heading', { name: 'New routine' })).toBeInTheDocument()
+    expect(platform.routineFromItem).toHaveBeenCalledExactlyOnceWith(7)
+    expect(screen.getByRole('textbox', { name: 'Name' })).toHaveValue('Dependabot’s pull requests in acme-org')
+
+    const test = within(screen.getByRole('region', { name: 'Test' }))
+
+    expect(test.getByRole('list', { name: 'The item it was made from' })).toHaveTextContent('acme-org/example-repo #7')
+    expect(test.getByText('matches now, from what is stored')).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: /\+ .*minor/ }))
+
+    expect(screen.queryByRole('button', { name: /\+ .*minor/ })).not.toBeInTheDocument()
+  })
+
+  it('offers to put a routine on Autopilot after clean approvals, and never changes its mode by itself', async () => {
+    const user = userEvent.setup()
+    const asking = routine({ mode: 'ask', figures: routineFigures({ graduate: true }) })
+    platform.listRoutines.mockResolvedValue([asking])
+    platform.setRoutineMode.mockResolvedValue(routine({ mode: 'auto' }))
+    renderTab()
+
+    const list = await routineList()
+
+    expect(list.getByText('Put it on Autopilot?')).toBeInTheDocument()
+    expect(platform.setRoutineMode).not.toHaveBeenCalled()
+
+    await user.click(list.getByRole('button', { name: /^Snooze passing bot PRs/ }))
+    await user.click(await screen.findByRole('button', { name: 'Not now' }))
+
+    expect(platform.declineGraduate).toHaveBeenCalledExactlyOnceWith(3)
+    expect(platform.setRoutineMode).not.toHaveBeenCalled()
+
+    await user.click(screen.getByRole('button', { name: 'Put it on Autopilot' }))
+
+    await waitFor(() => {
+      expect(platform.setRoutineMode).toHaveBeenCalledWith(3, 'auto', expect.anything())
+    })
+  })
+
+  it('imports routines after a preview that maps what this Mac lacks', async () => {
+    const user = userEvent.setup()
+    platform.listRoutines.mockResolvedValue(routines())
+    platform.chooseFileToOpen.mockResolvedValue('/exports/routines.json')
+    renderTab()
+
+    await routineList()
+    await user.click(screen.getByRole('button', { name: 'Import routines…' }))
+
+    const dialog = within(await screen.findByRole('dialog', { name: 'Import routines?' }))
+
+    expect(platform.previewRoutineImport).toHaveBeenCalledWith('/exports/routines.json')
+    expect(dialog.getByText('Triage bugs')).toBeInTheDocument()
+    expect(dialog.getByText(/added to your prompts/)).toBeInTheDocument()
+
+    await user.selectOptions(dialog.getByRole('combobox', { name: /claude’s profile “work”/ }), 'personal')
+    await user.click(dialog.getByRole('button', { name: 'Import 1 routine' }))
+
+    await waitFor(() => {
+      expect(platform.importRoutines).toHaveBeenCalledOnce()
+    })
+    expect(platform.importRoutines.mock.lastCall?.[0]).toEqual({
+      path: '/exports/routines.json',
+      sha256: 'a1b2c3',
+      map: [{ kind: 'profile', agent: 'claude', name: 'work', starter: '', to: 'personal' }],
+    })
+    expect(await screen.findByText(/Imported 1 routine, switched off\. Added 1 prompt: Triage\./)).toBeInTheDocument()
+  })
+
+  it('exports a routine with the text of its prompts, where the user chose', async () => {
+    const user = userEvent.setup()
+    platform.listRoutines.mockResolvedValue([routine()])
+    platform.chooseFileToSave.mockResolvedValue('/exports/snooze.json')
+    renderTab()
+
+    const list = await routineList()
+
+    await user.click(list.getByRole('button', { name: 'More for Snooze passing bot PRs' }))
+    await user.click(await screen.findByRole('menuitem', { name: 'Export…' }))
+
+    const dialog = within(await screen.findByRole('dialog', { name: 'Export “Snooze passing bot PRs”?' }))
+
+    expect(dialog.getByRole('checkbox', { name: 'Include the text of the prompts they run' })).toBeChecked()
+    await user.click(dialog.getByRole('button', { name: 'Choose where…' }))
+
+    await waitFor(() => {
+      expect(platform.exportRoutines).toHaveBeenCalledExactlyOnceWith('/exports/snooze.json', [3], true)
+    })
+    expect(await screen.findByText('Exported 1 routine.')).toBeInTheDocument()
   })
 })

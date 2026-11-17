@@ -3,9 +3,12 @@
     "watch": {
         "sources": [
             {
-                "lists": [
-                    "assigned"
-                ]
+                "search": {
+                    "kind": "issue",
+                    "involving": [
+                        "assigned"
+                    ]
+                }
             }
         ]
     },
@@ -16,13 +19,6 @@
     "conditions": {
         "match": "all",
         "of": [
-            {
-                "field": "item.kind",
-                "op": "oneOf",
-                "values": [
-                    "issue"
-                ]
-            },
             {
                 "field": "item.labels",
                 "op": "hasAny",
@@ -45,7 +41,7 @@
                 {
                     "reply": {
                         "prompt": {
-                            "nickname": "Question"
+                            "starter": "reply-needs-repro"
                         }
                     }
                 },

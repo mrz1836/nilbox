@@ -45,6 +45,13 @@ type autopilotDeps struct {
 	ready      *readyChecks
 	agents     agentDeps
 	background *backgroundAgents
+
+	// signals suggest the gallery's templates, transfer carries an export's prompts, and
+	// profiles lists what an import maps a routine's profiles to; core fills each in once
+	// what it reads is built.
+	signals  *templateSignals
+	transfer *routinePromptTransfer
+	profiles *routineProfiles
 }
 
 // newAutopilot builds Autopilot's service over pool and deps.
@@ -63,6 +70,20 @@ func newAutopilot(pool *sql.DB, opts Options, deps autopilotDeps, logger *slog.L
 	if deps.agents.launch != nil {
 		cfg.Previews = runPreviews{deps: deps.agents, background: deps.background}
 	}
+
+	if deps.signals != nil {
+		cfg.Signals = deps.signals
+	}
+
+	if deps.transfer != nil {
+		cfg.Transfer = deps.transfer
+	}
+
+	if deps.profiles != nil {
+		cfg.Profiles = deps.profiles
+	}
+
+	cfg.App = opts.Version
 
 	return autopilot.NewService(cfg)
 }

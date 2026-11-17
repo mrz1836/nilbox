@@ -1,0 +1,1 @@
+When checks fail on pull requests in your Authored list, or by Dependabot in your account and acme-org, once every check has settled, if the failed checks' names include "e2e / browser", run "Re-run failed jobs" in the background, GitHub tasks only. Once per commit, at most 1 try per pull request.

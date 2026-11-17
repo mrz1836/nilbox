@@ -31,10 +31,13 @@ func TestEachSheetFillsInTheRepliesForItsKind(t *testing.T) {
 
 	offered, err := c.Issues.Replies(ctx)
 	require.NoError(t, err)
+
+	repro := libraryByNickname(t, c)["Needs repro"]
 	assert.Equal(t, []issues.Reply{
 		{ID: looking.ID, Name: "Looking into it", Nickname: "Looking"},
+		{ID: repro.ID, Name: "Ask for steps to reproduce", Nickname: "Needs repro"},
 		{ID: both.ID, Name: "Thanks", Nickname: "Thanks"},
-	}, offered, "the comment replies for issues, the starters' being for pull requests")
+	}, offered, "the comment replies for issues, the starter for issues among them, the review starters being for pull requests")
 
 	comments, err := c.Review.Replies(ctx, review.ReplyComment)
 	require.NoError(t, err)

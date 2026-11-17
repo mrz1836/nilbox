@@ -353,3 +353,13 @@ WHERE routine_id IN (SELECT id FROM autopilot_routines WHERE deleted_at IS NOT N
 -- ListRoutineNames returns every routine's name, the deleted ones included, for the
 -- history that names them.
 SELECT id, name, deleted_at FROM autopilot_routines;
+
+-- name: ListRoutineAsked :many
+-- ListRoutineAsked returns a routine's real matches the user answered, approved or skipped,
+-- that closed after since, newest first: what graduating counts its clean approvals in a
+-- row from.
+SELECT id, state, reason, approved, steps, closed_at FROM autopilot_matches
+WHERE routine_id = sqlc.arg(routine_id) AND dry_run = 0 AND manual = 0 AND closed_at IS NOT NULL
+    AND closed_at > sqlc.arg(since) AND (approved = 1 OR state = 'dismissed')
+ORDER BY closed_at DESC, id DESC
+LIMIT sqlc.arg(row_limit);

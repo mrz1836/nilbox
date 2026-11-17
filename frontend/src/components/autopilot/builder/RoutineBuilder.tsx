@@ -20,6 +20,7 @@ import {
   describeRoutine,
   testRoutine,
   type AutopilotCatalog,
+  type AutopilotClause,
   type AutopilotDraft,
   type AutopilotMode,
   type AutopilotStepKind,
@@ -31,7 +32,7 @@ import type { AgentKit } from './AgentStepBlock'
 import { IfBlock } from './IfBlock'
 import { LimitsBlock } from './LimitsBlock'
 import { Notes, type BuilderKit } from './parts'
-import { TestPanel } from './TestPanel'
+import { TestPanel, type Pinned } from './TestPanel'
 import { ThenBlock } from './ThenBlock'
 import { WatchBlock } from './WatchBlock'
 import { WhenBlock } from './WhenBlock'
@@ -61,6 +62,19 @@ export interface RoutineBuilderProps {
   // describeDelay is how long the draft rests, in milliseconds, before Describe, which asks
   // GitHub nothing, reads it again.
   describeDelay?: number
+  // suggested are conditions the item a routine is made from suggests, left for the user to
+  // add, and pinned that item, which Test shows at the top.
+  suggested?: readonly AutopilotClause[]
+  pinned?: Pinned | undefined
+}
+
+// clauseWords say a suggested condition: "the labels has any of bug".
+function clauseWords(catalog: AutopilotCatalog, c: AutopilotClause): string {
+  const field = catalog.fields.find((f) => f.id === c.field)?.label ?? c.field
+  const op = catalog.ops.find((o) => o.id === c.op)?.label ?? c.op
+  const values = c.values ?? (c.value === undefined ? [] : [c.value])
+
+  return [field, op, values.join(', ')].filter((w) => w !== '').join(' ')
 }
 
 // RoutineBuilder is the routine itself, laid out top to bottom in the order it runs: its
@@ -86,6 +100,8 @@ export function RoutineBuilder({
   onSave,
   onDiscard,
   describeDelay = 300,
+  suggested = [],
+  pinned,
 }: RoutineBuilderProps) {
   const id = useId()
   const spec = draft.spec
@@ -128,6 +144,8 @@ export function RoutineBuilder({
   const searchesTested = tested !== null && tested.watch === keys.watch
   const searchNotes = tested !== null && searchesTested ? tested.result.searches : []
   const kinds = actsOn(catalog, spec)
+  // The item's suggestions not added yet, each one click away.
+  const unused = suggested.filter((c) => !spec.conditions.of.some((have) => canonical(have) === canonical(c)))
   const kit: BuilderKit = {
     catalog,
     suggestions,
@@ -269,6 +287,23 @@ export function RoutineBuilder({
           set({ conditions })
         }}
       />
+      {unused.length > 0 && (
+        <div className="-mt-1 flex flex-wrap items-center gap-2 pb-3">
+          <span className="text-xs text-muted">Suggested by the item:</span>
+          {unused.map((c) => (
+            <button
+              key={canonical(c)}
+              type="button"
+              onClick={() => {
+                set({ conditions: { ...spec.conditions, of: [...spec.conditions.of, structuredClone(c)] } })
+              }}
+              className={buttonClass}
+            >
+              {`+ ${clauseWords(catalog, c)}`}
+            </button>
+          ))}
+        </div>
+      )}
       <ThenBlock
         kit={kit}
         agentKit={agentKit}
@@ -299,6 +334,7 @@ export function RoutineBuilder({
           void test()
         }}
         preview={ready && sendsToGitHub(spec) ? draft : undefined}
+        pinned={pinned}
       />
       <footer className="sticky bottom-0 flex items-center justify-end gap-2 border-t border-border bg-background py-3">
         <p

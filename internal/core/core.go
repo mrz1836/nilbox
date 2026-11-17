@@ -776,10 +776,16 @@ func assemble(ctx context.Context, pool *sql.DB, info startup, opts Options, log
 	background.requests = func(ctx context.Context, run autopilot.RunRequest) (launcher.LaunchRequest, error) {
 		return routineRequest(ctx, agents, run)
 	}
+	// The gallery's suggestions, an export's prompts, and an import's profiles read
+	// services built after this one, which core fills in below.
+	signals := &templateSignals{inbox: inboxStore}
+	transfer := &routinePromptTransfer{}
+	routineAgents := &routineProfiles{}
 	routines := newAutopilot(pool, opts, autopilotDeps{
 		inbox: inboxStore, service: inboxRoutines, prompts: promptStore, file: info.kept.routinesFile,
 		costs: watchCosts{inbox: inboxRoutines, every: refreshEvery(prefs, settings.RefreshInbox, logger), budget: budgetSvc},
-		ready: readiness, agents: agents, background: background,
+		ready: readiness, agents: agents, background: background, signals: signals, transfer: transfer,
+		profiles: routineAgents,
 		github: githubSteps{
 			review: reviewSheet, issues: issueSheet, threads: ghThreads, prompts: promptStore,
 			replies: replyFiller{store: promptStore, source: previews},
@@ -887,6 +893,11 @@ func assemble(ctx context.Context, pool *sql.DB, info startup, opts Options, log
 	}, logger)
 	// Check again asks GitHub how the sign-in stands as the setup's own check does.
 	readiness.deps.github = c.Setup.GitHub
+	// The gallery's suggestions read the setup's look at the clones; an export carries the
+	// library's prompts, and an import maps profiles to this Mac's.
+	signals.setup = c.Setup
+	transfer.prompts = prompts.NewRoutinePrompts(c.Prompts)
+	routineAgents.profiles = c.Profiles
 	c.ShellSettings = newShellSettings(prefs, c.Setup, pool, opts.Clock)
 
 	return c

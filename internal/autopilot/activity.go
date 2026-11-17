@@ -245,6 +245,18 @@ type Explanation struct {
 
 	// Record is the match for the occurrence now, nil when there is none.
 	Record *Match `json:"record"`
+
+	// Routine says, in sentences, what of the routine itself holds it back here: switched
+	// off, Pause Autopilot, Dry run, another account's, not ready on this Mac.
+	Routine []string `json:"routine"`
+
+	// Watch says why the item isn't in the routine's watch, a sentence a source, when it
+	// isn't: "Its author isn't dependabot."
+	Watch []string `json:"watch"`
+
+	// Records are every match the routine recorded on the item, newest first: the
+	// ledger's full view of the two.
+	Records []Match `json:"records"`
 }
 
 // Engine returns what the engine last did, and whether this copy runs it.
@@ -624,12 +636,17 @@ func runView(r queries.AutopilotRun) Run {
 // Explain says why the routine id did or didn't act on the item: what it decides now, from
 // what is stored, and what the ledger knows of the two.
 func (s *Service) Explain(ctx context.Context, id, itemID int64) (Explanation, error) {
-	out := Explanation{RoutineID: id, ItemID: itemID, Trace: []eval.Trace{}, Needs: []facts.Need{}, Ledger: []string{}}
+	out := Explanation{
+		RoutineID: id, ItemID: itemID, Trace: []eval.Trace{}, Needs: []facts.Need{}, Ledger: []string{},
+		Routine: []string{}, Watch: []string{}, Records: []Match{},
+	}
 
 	r, err := s.Get(ctx, id)
 	if err != nil {
 		return out, err
 	}
+
+	out.Routine = s.routineLines(ctx, r)
 
 	if r.BrokenReason != "" {
 		out.Ledger = append(out.Ledger, r.Broken)
@@ -675,6 +692,10 @@ func (s *Service) explainLedger(ctx context.Context, r Routine, out Explanation)
 		return out, nil
 	}
 
+	if !out.InWatch {
+		out.Watch = watchMisses(r.Spec, all[0], s.viewer(ctx))
+	}
+
 	l := s.ledger()
 
 	h, records, err := s.itemLedger(ctx, l, r.ID, out.ItemID)
@@ -698,15 +719,26 @@ func (s *Service) explainLedger(ctx context.Context, r Routine, out Explanation)
 		out.Ledger = append(out.Ledger, fmt.Sprintf("%d of %d tries used.", h.Tries, r.Spec.Limits.Tries()))
 	}
 
+	return withRecords(out, records, r.Name, d.FireKey), nil
+}
+
+// withRecords adds to out the ledger's full view of the routine named name on the item,
+// records, newest first, and its record for the occurrence fireKey names now.
+func withRecords(out Explanation, records []*match, name, fireKey string) Explanation {
 	for _, rec := range records {
-		if rec.FireKey == d.FireKey && !rec.DryRun {
-			view := matchView(rec, r.Name)
+		view := matchView(rec, name)
+
+		if len(out.Records) < maxExplainRecords {
+			out.Records = append(out.Records, view)
+		}
+
+		if rec.FireKey == fireKey && !rec.DryRun {
 			out.Record = &view
 			out.Ledger = append(out.Ledger, "Its record for this: "+view.Words)
 		}
 	}
 
-	return out, nil
+	return out
 }
 
 // itemLedger reads what the ledger knows of a routine and an item: its history for the

@@ -1,0 +1,59 @@
+{
+    "version": 1,
+    "watch": {
+        "sources": [
+            {
+                "search": {
+                    "kind": "issue",
+                    "involving": [
+                        "assigned"
+                    ]
+                }
+            }
+        ]
+    },
+    "trigger": {
+        "event": "goes_quiet",
+        "days": 14
+    },
+    "conditions": {
+        "match": "all",
+        "of": [
+            {
+                "field": "item.labels",
+                "op": "hasAny",
+                "values": [
+                    "bug"
+                ]
+            },
+            {
+                "field": "item.labels",
+                "op": "hasNone",
+                "values": [
+                    "needs-repro"
+                ]
+            }
+        ]
+    },
+    "steps": [
+        {
+            "github": [
+                {
+                    "reply": {
+                        "prompt": {
+                            "starter": "reply-needs-repro"
+                        }
+                    }
+                },
+                {
+                    "labels": {
+                        "add": [
+                            "needs-repro"
+                        ]
+                    }
+                }
+            ]
+        }
+    ],
+    "limits": {}
+}

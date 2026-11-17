@@ -503,9 +503,30 @@ export type AutopilotRunWorktree = NonNullLists<autopilot.RunWorktree>
 
 // Why a routine did or didn't act on an item: its decision now, each condition with its
 // value, and what the ledger knows, with the match for the occurrence now, if any.
-export type AutopilotExplanation = Omit<NonNullLists<autopilot.Explanation>, 'record'> & {
+export type AutopilotExplanation = Omit<NonNullLists<autopilot.Explanation>, 'record' | 'records'> & {
   record: AutopilotMatch | null
+  records: AutopilotMatch[]
 }
+
+// Easy mode: the template gallery, each template as this Mac sees it (its blanks, what this
+// build can't run of it yet, the starters it runs, and why it is suggested); a routine
+// filled in from an item; what an unsaved draft needs on this Mac; and a bundle of routines
+// on its way in, with what its routines name that this Mac lacks and the choices that map
+// each.
+export type AutopilotTemplate = NonNullLists<autopilot.Template>
+export type AutopilotBlank = NonNullLists<autopilot.Blank>
+export type AutopilotBlankKind = autopilot.BlankKind
+export type AutopilotTemplatePrompt = NonNullLists<autopilot.TemplatePrompt>
+export type AutopilotItemDraft = NonNullLists<autopilot.ItemDraft>
+export type AutopilotExported = NonNullLists<autopilot.Exported>
+export type AutopilotImportPreview = NonNullLists<autopilot.ImportPreview>
+export type AutopilotImportRoutine = NonNullLists<autopilot.ImportRoutine>
+export type AutopilotPromptArrival = NonNullLists<autopilot.PromptArrival>
+export type AutopilotMissingRef = NonNullLists<autopilot.MissingRef>
+export type AutopilotRefChoice = NonNullLists<autopilot.RefChoice>
+export type AutopilotRefKind = autopilot.RefKind
+export type AutopilotImportRequest = NonNullLists<autopilot.ImportRequest>
+export type AutopilotImported = NonNullLists<autopilot.Imported>
 
 export type Profile = NonNullLists<profiles.Profile>
 
@@ -1230,6 +1251,28 @@ export const previewAutopilotActions = autopilotService.PreviewActions as (
   d: AutopilotDraft,
   itemID: number,
 ) => CancellablePromise<AutopilotActionPreview[]>
+
+// Easy mode. Templates lists the gallery, the suggested first, reading only what this Mac
+// has; FromItem fills a new routine in from a stored item, saving nothing; DraftReadiness
+// checks what an unsaved draft needs on this Mac, never asking GitHub; DeclineGraduate is
+// Not now to putting a routine on Autopilot, which changes no mode. Export writes routines,
+// and the prompts they run by nickname when asked, to a file the user chose; PreviewImport
+// reads one and says what importing it would do, and Import brings it in, its routines off,
+// after the prompts no prompt here has the nickname of, refusing a file that changed since
+// its preview. AddStarter adds a starter prompt the user deleted to the library again, as a
+// template that runs it offers.
+export const {
+  Templates: listTemplates,
+  FromItem: routineFromItem,
+  Export: exportRoutines,
+  PreviewImport: previewRoutineImport,
+  Import: importRoutines,
+} = autopilotService
+export const draftReadiness = autopilotService.DraftReadiness as (
+  d: AutopilotDraft,
+) => CancellablePromise<AutopilotRoutineReady>
+export const declineGraduate = autopilotService.DeclineGraduate as (id: number) => CancellablePromise<AutopilotRoutine>
+export const { AddStarter: addStarterPrompt } = narrow(prompts.Service)
 
 // The notification history. MarkAllRead marks every entry read (Mark all done), and
 // MarkRead and MarkUnread the entries with the ids given; opening the history marks
