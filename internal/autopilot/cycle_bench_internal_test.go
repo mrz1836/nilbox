@@ -31,11 +31,12 @@ import (
 // occurrence recorded.
 
 // benchItems is the inbox as the benchmark's engine reads it: every routine watches every
-// item, each open and listed, every search answered now.
+// item, each open and listed but those closed names, every search answered now.
 type benchItems struct {
-	now   time.Time
-	ids   []int64
-	facts map[int64]facts.Facts
+	now    time.Time
+	ids    []int64
+	facts  map[int64]facts.Facts
+	closed map[int64]bool
 }
 
 func (b *benchItems) WatchedItems(context.Context, []string, []catalog.ListSource) ([]int64, error) {
@@ -57,6 +58,10 @@ func (b *benchItems) ItemStates(_ context.Context, ids []int64) (map[int64]ItemS
 	out := make(map[int64]ItemState, len(ids))
 	for _, id := range ids {
 		out[id] = ItemState{State: "OPEN", FetchedAt: b.now, Listed: true, Watched: true}
+
+		if b.closed[id] {
+			out[id] = ItemState{State: "CLOSED", FetchedAt: b.now}
+		}
 	}
 
 	return out, nil
@@ -124,6 +129,21 @@ func benchPull(n int, now time.Time) facts.Facts {
 func benchEngine(b testing.TB, first bool) *Engine {
 	b.Helper()
 
+	e, _ := cycleEngine(b, 20, 500)
+
+	if first {
+		e.cycle(b.Context())
+		e.work.Wait()
+	}
+
+	return e
+}
+
+// cycleEngine is an engine over a fresh database holding routines of the gallery's
+// routines, in Dry run, switched on, over n pull requests, with the inbox it reads.
+func cycleEngine(b testing.TB, routines, n int) (*Engine, *benchItems) {
+	b.Helper()
+
 	now := time.Date(2026, time.November, 16, 10, 0, 0, 0, time.UTC)
 	db := testutil.DB(b)
 	svc := NewService(Config{
@@ -132,7 +152,7 @@ func benchEngine(b testing.TB, first bool) *Engine {
 	})
 
 	// The matches name their items, which the inbox stores: one account, one repository,
-	// and 500 pull requests.
+	// and n pull requests.
 	stamp := "'2026-11-16 10:00:00+00:00'"
 	seed := []string{
 		`INSERT INTO accounts (id, login, created_at, updated_at) VALUES (1, 'octo-user', ` + stamp + `, ` + stamp + `)`,
@@ -140,12 +160,12 @@ func benchEngine(b testing.TB, first bool) *Engine {
 			`, ` + stamp + `)`,
 	}
 
-	items := &benchItems{now: now, facts: map[int64]facts.Facts{}}
-	for n := 1; n <= 500; n++ {
-		items.ids = append(items.ids, int64(n))
-		items.facts[int64(n)] = benchPull(n, now)
+	items := &benchItems{now: now, facts: map[int64]facts.Facts{}, closed: map[int64]bool{}}
+	for i := 1; i <= n; i++ {
+		items.ids = append(items.ids, int64(i))
+		items.facts[int64(i)] = benchPull(i, now)
 		seed = append(seed, `INSERT INTO items (id, account_id, repo_id, kind, number, item_created_at, item_updated_at,
-			fetched_at) VALUES (`+strconv.Itoa(n)+`, 1, 1, 'pr', `+strconv.Itoa(n)+`, `+stamp+`, `+stamp+`, `+stamp+`)`)
+			fetched_at) VALUES (`+strconv.Itoa(i)+`, 1, 1, 'pr', `+strconv.Itoa(i)+`, `+stamp+`, `+stamp+`, `+stamp+`)`)
 	}
 
 	for _, stmt := range seed {
@@ -153,7 +173,7 @@ func benchEngine(b testing.TB, first bool) *Engine {
 		require.NoError(b, err)
 	}
 
-	for i, sp := range benchRoutines(b) {
+	for i, sp := range benchRoutines(b, routines) {
 		data, err := spec.Encode(sp)
 		require.NoError(b, err)
 
@@ -171,12 +191,7 @@ func benchEngine(b testing.TB, first bool) *Engine {
 	e.takeLock(b.Context())
 	e.primed = true
 
-	if first {
-		e.cycle(b.Context())
-		e.work.Wait()
-	}
-
-	return e
+	return e, items
 }
 
 // allSteps is every kind of step.
@@ -191,8 +206,8 @@ func allSteps() []catalog.StepKind {
 	return out
 }
 
-// benchRoutines are the gallery's templates, repeated to 20.
-func benchRoutines(b testing.TB) []spec.Spec {
+// benchRoutines are the gallery's templates, repeated to n.
+func benchRoutines(b testing.TB, n int) []spec.Spec {
 	b.Helper()
 
 	dir := filepath.Join("spec", "testdata", "templates")
@@ -202,7 +217,7 @@ func benchRoutines(b testing.TB) []spec.Spec {
 
 	var out []spec.Spec
 
-	for len(out) < 20 {
+	for len(out) < n {
 		for _, e := range entries {
 			data, readErr := os.ReadFile(filepath.Join(dir, e.Name())) //nolint:gosec // a fixture
 			require.NoError(b, readErr)
@@ -210,7 +225,7 @@ func benchRoutines(b testing.TB) []spec.Spec {
 			sp, loadErr := spec.Load(data)
 			require.NoError(b, loadErr, e.Name())
 
-			if out = append(out, sp); len(out) == 20 {
+			if out = append(out, sp); len(out) == n {
 				break
 			}
 		}
@@ -238,6 +253,8 @@ func BenchmarkEngineCycle(b *testing.B) {
 	require.Equal(b, 20, c.Routines)
 	require.Equal(b, 500, c.Items)
 	require.Zero(b, c.Matches, "a steady cycle records nothing new")
+	require.Equal(b, 1, e.ledger.index.builds, "a steady cycle reads none of the ledger's keys from the database")
+	require.NoError(b, e.ledger.index.diff(b.Context(), e.ledger.q))
 }
 
 // BenchmarkEngineFirstCycle runs the first cycle of 20 routines over 500 pull requests,
@@ -256,4 +273,28 @@ func BenchmarkEngineFirstCycle(b *testing.B) {
 		require.Positive(b, e.state.LastCycle.Matches)
 		b.StartTimer()
 	}
+}
+
+// BenchmarkLedgerKeysBuild builds the ledger's keys in memory from the database, as the
+// engine does when it takes the lock, over what the first cycle of 20 routines on 500 pull
+// requests records: 3,500 matches and 10,000 baselines.
+func BenchmarkLedgerKeysBuild(b *testing.B) {
+	e := benchEngine(b, true)
+
+	for b.Loop() {
+		require.NoError(b, newLedgerIndex().build(b.Context(), e.ledger.q))
+	}
+}
+
+// BenchmarkLedgerKeysCheck is the one read a steady cycle makes of the ledger's keys: the
+// counts of the rows, which find them current.
+func BenchmarkLedgerKeysCheck(b *testing.B) {
+	e := benchEngine(b, true)
+
+	for b.Loop() {
+		require.NoError(b, e.ledger.index.ensure(b.Context(), e.ledger.q))
+	}
+
+	b.StopTimer()
+	require.Equal(b, 1, e.ledger.index.builds)
 }

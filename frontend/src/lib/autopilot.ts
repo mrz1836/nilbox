@@ -915,6 +915,22 @@ export function backlogText(b: Backlog): string {
   return ahead === '' ? `${text}.` : `${text}: ${ahead}, for each.`
 }
 
+// skippedBacklogText says what Skip them did, of the backlog its card showed: skipped of its
+// matches, the rest let go or closed before the skip reached them.
+export function skippedBacklogText(b: Backlog, skipped: number): string {
+  const left = b.matches.length - skipped
+
+  if (skipped === 0) {
+    return 'There was nothing left to skip: they had all moved on.'
+  }
+
+  if (left <= 0) {
+    return `Skipped them. ${b.routine} waits for the next time each fires.`
+  }
+
+  return `Skipped ${counted(skipped, 'item', 'items')}; ${counted(left, 'other', 'others')} had moved on already.`
+}
+
 // shortHead is a commit as the window names it: its first seven characters.
 export function shortHead(sha: string): string {
   return sha.slice(0, 7)

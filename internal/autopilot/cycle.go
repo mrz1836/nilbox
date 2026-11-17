@@ -59,19 +59,18 @@ type routineRun struct {
 	inWatch map[int64]bool
 	decided map[int64]eval.Decision
 
-	// matches are its matches by occurrence, handsOff the items it leaves alone, reset
-	// when Try again last reset each item's tries, and seen what it first saw of each.
-	matches  map[matchKey]queries.ListRoutineMatchKeysRow
+	// matches are its matches by occurrence, and seen what it first saw of each item, the
+	// ledger's keys the engine keeps (ledgerindex.go), which change as the engine writes
+	// them; handsOff are the items it leaves alone, and reset when Try again last reset each
+	// item's tries.
+	matches  map[matchKey]keyRow
+	seen     map[int64]baseline
 	handsOff map[int64]bool
+	reset    map[int64]time.Time
 
-	// lastClosed is, by item, the last of its matches that closed, as they were read.
-	lastClosed map[int64]queries.ListRoutineMatchKeysRow
-
-	// read reports what the ledger keeps of it read already, with the cycle's other
-	// routines' (readRoutines).
-	read  bool
-	reset map[int64]time.Time
-	seen  map[int64]baseline
+	// lastClosed is, by item, the last of its matches that closed, as they were when the
+	// cycle began.
+	lastClosed map[int64]keyRow
 
 	// fresh reports that its searches were each read since it last changed, and
 	// firstPass a first pass after it changed, which caps what it queues.
@@ -571,78 +570,37 @@ func (p *pass) readWatched(ctx context.Context) ([]int64, error) {
 	return all, nil
 }
 
-// readRoutine reads what the ledger keeps of r: its matches, the items it leaves alone,
-// its resets of the tries, and what it first saw of each item; nothing again when the
-// cycle read it with the others (readRoutines).
-func (p *pass) readRoutine(ctx context.Context, r *routineRun) error {
-	if r.read {
-		return nil
-	}
-
-	var err error
-
-	if r.matches, err = p.e.ledger.keys(ctx, r.id()); err != nil {
-		return err
-	}
-
-	r.lastClosed = lastClosed(r.matches)
-
-	if r.handsOff, err = p.e.ledger.handsOff(ctx, r.id()); err != nil {
-		return err
-	}
-
-	if r.reset, err = p.e.ledger.tries(ctx, r.id()); err != nil {
-		return err
-	}
-
-	r.seen, err = p.e.ledger.baselines(ctx, r.id())
-
-	return err
-}
-
-// readRoutines reads what the ledger keeps of every routine the cycle runs in four reads,
-// rather than four for each routine: every read of SQLite takes and lets go of its locks,
-// which a cycle of many routines would otherwise do many times over.
+// readRoutines reads what the ledger keeps of every routine the cycle runs (readLedger).
 func (p *pass) readRoutines(ctx context.Context) error {
-	if len(p.routines) == 0 {
+	return p.readLedger(ctx, p.routines)
+}
+
+// readLedger reads what the ledger keeps of each of routines: its matches and what it first
+// saw of each item from the keys the engine keeps in memory (ledgerindex.go), which one
+// count of the rows tells are current, and the items each leaves alone and its resets of
+// the tries in two reads, rather than two for each routine, since another copy of the app
+// records the items a routine leaves alone too.
+func (p *pass) readLedger(ctx context.Context, routines []*routineRun) error {
+	if len(routines) == 0 {
 		return nil
 	}
 
-	ids := make([]int64, 0, len(p.routines))
-	for _, r := range p.routines {
-		ids = append(ids, r.id())
-		r.matches, r.handsOff = map[matchKey]queries.ListRoutineMatchKeysRow{}, map[int64]bool{}
-		r.reset, r.seen = map[int64]time.Time{}, map[int64]baseline{}
-	}
-
-	q := p.e.ledger.q
-
-	keys, err := q.ListRoutinesMatchKeys(ctx, ids)
-	if err != nil {
-		return fmt.Errorf("read the routines' matches: %w", err)
-	}
-
-	for _, k := range keys {
-		p.byID[k.RoutineID].matches[matchKey{item: store.Deref(k.ItemID), fire: k.FireKey, dryRun: k.DryRun}] = queries.ListRoutineMatchKeysRow{
-			ID: k.ID, ItemID: k.ItemID, FireKey: k.FireKey, DryRun: k.DryRun, State: k.State, Reason: k.Reason,
-			Attempt: k.Attempt, Step: k.Step, Steps: k.Steps,
-		}
-	}
-
-	if err = p.readRoutineRest(ctx, ids); err != nil {
+	x := p.e.ledger.index
+	if err := x.ensure(ctx, p.e.ledger.q); err != nil {
 		return err
 	}
 
-	for _, r := range p.routines {
-		r.lastClosed, r.read = lastClosed(r.matches), true
+	byID := make(map[int64]*routineRun, len(routines))
+	ids := make([]int64, 0, len(routines))
+
+	for _, r := range routines {
+		byID[r.id()] = r
+		ids = append(ids, r.id())
+		r.matches, r.seen = x.matchesOf(r.id()), x.seenOf(r.id())
+		r.lastClosed = lastClosed(r.matches)
+		r.handsOff, r.reset = map[int64]bool{}, map[int64]time.Time{}
 	}
 
-	return nil
-}
-
-// readRoutineRest reads the rest of what the ledger keeps of the routines among ids: the
-// items each leaves alone, its resets of the tries, and what it first saw of each item.
-func (p *pass) readRoutineRest(ctx context.Context, ids []int64) error {
 	q := p.e.ledger.q
 
 	off, err := q.ListRoutinesHandsOff(ctx, ids)
@@ -651,7 +609,7 @@ func (p *pass) readRoutineRest(ctx context.Context, ids []int64) error {
 	}
 
 	for _, h := range off {
-		p.byID[h.RoutineID].handsOff[h.ItemID] = true
+		byID[h.RoutineID].handsOff[h.ItemID] = true
 	}
 
 	tries, err := q.ListRoutinesTries(ctx, ids)
@@ -660,18 +618,7 @@ func (p *pass) readRoutineRest(ctx context.Context, ids []int64) error {
 	}
 
 	for _, t := range tries {
-		p.byID[t.RoutineID].reset[t.ItemID] = t.ResetAt
-	}
-
-	seen, err := q.ListRoutinesBaselines(ctx, ids)
-	if err != nil {
-		return fmt.Errorf("read what the routines saw first: %w", err)
-	}
-
-	for _, b := range seen {
-		if got, decodeErr := store.DecodeJSON[baseline](b.State); decodeErr == nil {
-			p.byID[b.RoutineID].seen[b.ItemID] = got
-		}
+		byID[t.RoutineID].reset[t.ItemID] = t.ResetAt
 	}
 
 	return nil
@@ -680,10 +627,6 @@ func (p *pass) readRoutineRest(ctx context.Context, ids []int64) error {
 // evaluate decides the routine r on each item it watches, recording what it first sees
 // of each, and records each new match.
 func (p *pass) evaluate(ctx context.Context, r *routineRun) error {
-	if err := p.readRoutine(ctx, r); err != nil {
-		return err
-	}
-
 	_, fromNowAsked := p.e.state.FromNow[r.id()]
 	if p.waitsForSearches(ctx, r) {
 		return nil
@@ -806,17 +749,17 @@ func (p *pass) lastOutcome(r *routineRun, id int64) string {
 		return ""
 	}
 
-	return outcomeWord(State(last.State), Reason(last.Reason))
+	return outcomeWord(last.State, last.Reason)
 }
 
 // lastClosed returns, by item, the last of matches that closed, a Dry run's and a
 // baseline's apart: what a routine's history says it last did there, found in one pass
 // rather than once per item.
-func lastClosed(matches map[matchKey]queries.ListRoutineMatchKeysRow) map[int64]queries.ListRoutineMatchKeysRow {
-	out := map[int64]queries.ListRoutineMatchKeysRow{}
+func lastClosed(matches map[matchKey]keyRow) map[int64]keyRow {
+	out := map[int64]keyRow{}
 
 	for k, row := range matches {
-		if k.dryRun || State(row.State).Open() || State(row.State) == StateBaseline {
+		if k.dryRun || row.State.Open() || row.State == StateBaseline {
 			continue
 		}
 
@@ -858,8 +801,7 @@ func (p *pass) see(ctx context.Context, r *routineRun, f facts.Facts, d eval.Dec
 		return nil
 	}
 
-	r.seen[f.Item.ID] = next
-
+	// The ledger notes what it wrote in the keys, r.seen among them.
 	return p.e.ledger.saveBaseline(ctx, r.id(), f.Item.ID, next, !seen)
 }
 
@@ -912,13 +854,10 @@ func (p *pass) record(ctx context.Context, r *routineRun, f facts.Facts, d eval.
 		m.close(StateBaseline, ReasonFromNow, "It already matched when you chose only what changes from now on.", p.now)
 	}
 
+	// The ledger notes what it inserted in the keys, r.matches among them.
 	inserted, err := p.e.ledger.insert(ctx, m)
 	if err != nil || !inserted {
 		return nil, err
-	}
-
-	r.matches[key] = queries.ListRoutineMatchKeysRow{
-		ID: m.ID, ItemID: m.ItemID, FireKey: m.FireKey, DryRun: m.DryRun, State: m.State, Reason: m.Reason,
 	}
 
 	if m.state().Open() {
@@ -1000,7 +939,6 @@ func (p *pass) reopen(ctx context.Context, r *routineRun, id int64, d eval.Decis
 		return nil, err
 	}
 
-	r.matches[matchKey{item: store.Deref(m.ItemID), fire: m.FireKey, dryRun: m.DryRun}] = queries.ListRoutineMatchKeysRow{ID: m.ID, ItemID: m.ItemID, FireKey: m.FireKey, State: m.State}
 	p.cycle.Matches++
 
 	return m, nil

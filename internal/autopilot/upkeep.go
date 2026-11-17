@@ -201,6 +201,10 @@ func (e *Engine) clear(ctx context.Context, closedBefore, goneBefore time.Time, 
 			return deleteErr
 		}
 
+		// What deleted routines kept of their items, which forgetDeleted deletes, the keys
+		// in memory learn from the counts of the rows, on their next use.
+		e.ledger.index.deletedMatches(q, e.ledger.q, remove)
+
 		if scrub {
 			if clearErr := scrubMatches(ctx, q, keep); clearErr != nil {
 				return clearErr
@@ -285,17 +289,25 @@ func scrubMatches(ctx context.Context, q *queries.Queries, ids []int64) error {
 }
 
 // forgetDeleted forgets what deleted routines kept of their items, and removes a deleted
-// routine nothing of the history refers to.
+// routine nothing of the history refers to. Baselines it forgot have the ledger's keys in
+// memory built again, once the transaction commits.
 func (e *Engine) forgetDeleted(ctx context.Context, q *queries.Queries) error {
-	for _, del := range []func(context.Context) error{
-		q.DeleteDeletedRoutinesState, q.DeleteDeletedRoutinesTries, q.DeleteDeletedRoutinesHandsOff,
-	} {
-		if err := del(ctx); err != nil {
+	n, err := q.DeleteDeletedRoutinesState(ctx)
+	if err != nil {
+		return err
+	}
+
+	if n > 0 {
+		e.ledger.index.apply(q, e.ledger.q, (*ledgerIndex).invalidate)
+	}
+
+	for _, del := range []func(context.Context) error{q.DeleteDeletedRoutinesTries, q.DeleteDeletedRoutinesHandsOff} {
+		if err = del(ctx); err != nil {
 			return err
 		}
 	}
 
-	_, err := q.DeleteGoneRoutines(ctx, new(e.clock.Now()))
+	_, err = q.DeleteGoneRoutines(ctx, new(e.clock.Now()))
 
 	return err
 }

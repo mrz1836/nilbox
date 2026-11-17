@@ -7,7 +7,6 @@ import (
 
 	"github.com/mrz1836/nilbox/internal/autopilot/eval"
 	"github.com/mrz1836/nilbox/internal/autopilot/facts"
-	"github.com/mrz1836/nilbox/internal/autopilot/internal/queries"
 	"github.com/mrz1836/nilbox/internal/autopilotprefs"
 	"github.com/mrz1836/nilbox/internal/textutil"
 	"github.com/mrz1836/nilbox/internal/uierr"
@@ -150,7 +149,7 @@ func (e *Engine) runOnRoutine(ctx context.Context, id int64) (*pass, *routineRun
 	p := &pass{e: e, now: e.clock.Now(), cycle: &Cycle{}}
 	p.inbox.Viewer = viewer
 
-	if err = p.readRoutine(ctx, r); err != nil {
+	if err = p.readLedger(ctx, []*routineRun{r}); err != nil {
 		return nil, nil, uierr.New("The routine's history couldn't be read.", err)
 	}
 
@@ -200,8 +199,8 @@ func (p *pass) runOn(ctx context.Context, r *routineRun, f facts.Facts) (int64, 
 // runsNow reports a record of an occurrence Run on the matches now runs on: one that closed
 // before it ever ran, and one recorded as already matching when the user chose only what
 // changes from now on.
-func runsNow(row queries.ListRoutineMatchKeysRow) bool {
-	return reopensRow(row) || State(row.State) == StateBaseline
+func runsNow(row keyRow) bool {
+	return reopensRow(row) || row.State == StateBaseline
 }
 
 // ranOnWords says what Run on the matches now did, for a toast: "Running on 3. 1 no

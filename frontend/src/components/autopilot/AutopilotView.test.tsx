@@ -1643,9 +1643,31 @@ describe('Needs you', () => {
     expect(await screen.findByText('Snooze passing bot PRs runs on 7 items, at Autopilot’s pace.')).toBeInTheDocument()
 
     await userEvent.click(card.getByRole('button', { name: 'Skip them' }))
-    await waitFor(() => {
-      expect(platform.skipMatch).toHaveBeenCalledTimes(7)
-    })
+    expect(platform.skipAutopilotBacklog).toHaveBeenCalledExactlyOnceWith(3, [21, 22, 23, 24, 25, 26, 27])
+    expect(platform.skipMatch).not.toHaveBeenCalled()
+    expect(
+      await screen.findByText('Skipped them. Snooze passing bot PRs waits for the next time each fires.'),
+    ).toBeInTheDocument()
+  })
+
+  it('says when Skip them found some of the backlog it showed moved on already', async () => {
+    platform.listRoutines.mockResolvedValue(routines())
+    const backlog = [21, 22, 23].map((id) =>
+      open(id, 'waiting', 'backlog', '3 matched at once: run on them from Activity.', {
+        item: itemRef({ id, number: id }),
+      }),
+    )
+    platform.autopilotNeedsYou.mockResolvedValue(backlog)
+    platform.skipAutopilotBacklog.mockResolvedValue(backlog.slice(0, 2))
+    renderTab()
+
+    const card = within(
+      (await needsYouSection()).getByRole('listitem', { name: 'Snooze passing bot PRs: 3 items matched at once' }),
+    )
+
+    await userEvent.click(card.getByRole('button', { name: 'Skip them' }))
+    expect(platform.skipAutopilotBacklog).toHaveBeenCalledExactlyOnceWith(3, [21, 22, 23])
+    expect(await screen.findByText('Skipped 2 items; 1 other had moved on already.')).toBeInTheDocument()
   })
 
   it('says across the top how many routines this Mac can’t run, and what one lacks in the list', async () => {

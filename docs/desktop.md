@@ -3128,7 +3128,8 @@ Activity's **Needs you**, above the history, holds what a routine can't do witho
   start your own review.
 - **Matched at once:** a routine's first pass that matched more than it takes on by itself, as
   one card naming the first few items, with **Run on them**, which lets every one go at
-  Autopilot's pace, and **Skip them**.
+  Autopilot's pace, and **Skip them**, which skips every match the card shows at once: one
+  that came since the card was read still waits, and the toast says when some had moved on.
 - **Can't start yet:** something this Mac lacks, a tool the repository needs, or a prompt gone
   from your library, naming the fix, with **Check again**. Once fixed, an Autopilot routine's
   runs start by themselves, and an Ask first routine's after your OK, as they would have anyway.

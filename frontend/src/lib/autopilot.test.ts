@@ -52,6 +52,7 @@ import {
   sheetLine,
   shortHead,
   skipLabel,
+  skippedBacklogText,
   troubled,
 } from './autopilot'
 
@@ -205,6 +206,18 @@ describe('needs you', () => {
     expect(backlogText({ routineId: 7, routine: 'Label', matches: [other] })).toBe(
       '1 item matched at once, more than Label takes on by itself.',
     )
+  })
+
+  it('says what Skip them skipped of the backlog its card showed', () => {
+    const shown = [1, 2, 3].map((id) =>
+      autopilotMatch({ id, routineId: 6, routine: 'Rebase', state: 'waiting', blockedBy: 'backlog' }),
+    )
+    const b = { routineId: 6, routine: 'Rebase', matches: shown }
+
+    expect(skippedBacklogText(b, 3)).toBe('Skipped them. Rebase waits for the next time each fires.')
+    expect(skippedBacklogText(b, 2)).toBe('Skipped 2 items; 1 other had moved on already.')
+    expect(skippedBacklogText(b, 1)).toBe('Skipped 1 item; 2 others had moved on already.')
+    expect(skippedBacklogText(b, 0)).toBe('There was nothing left to skip: they had all moved on.')
   })
 
   it('words Run by the hold it confirms, and Skip by the occurrence', () => {

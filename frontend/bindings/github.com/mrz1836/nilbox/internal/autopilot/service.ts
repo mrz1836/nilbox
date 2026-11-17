@@ -446,6 +446,18 @@ export function Skip(id: number): $CancellablePromise<$models.Match> {
 }
 
 /**
+ * SkipBacklog closes as skipped by the user the matches among ids, those the routine id's
+ * backlog card showed (Skip them), that still wait as its backlog, and returns them as they
+ * are now. It is one command and one transaction, each match's close a compare-and-set on
+ * what the card showed: a match the card didn't show, recorded since, still waits, and one
+ * let go or closed meanwhile is left as it is. Nothing is skipped when one of them can't
+ * be.
+ */
+export function SkipBacklog(id: number, ids: number[] | null): $CancellablePromise<$models.Match[] | null> {
+    return $Call.ByID(1902366707, id, ids);
+}
+
+/**
  * Stats returns what the routine id's runs did over the last seven days, for its This week.
  * It reads the database alone.
  */

@@ -213,8 +213,8 @@ func (r Reason) reopens() bool {
 // again: one closed for a reason that reopens, none of whose steps ever started. A match
 // that started a step, a local one included, is a record of the occurrence, which only Try
 // again opens again; so a routine switched off and on never runs on it twice.
-func reopensRow(row queries.ListRoutineMatchKeysRow) bool {
-	return State(row.State) == StateClosed && Reason(row.Reason).reopens() && !startedAny(row.Attempt, row.Step, row.Steps)
+func reopensRow(row keyRow) bool {
+	return row.State == StateClosed && row.Reason.reopens() && !row.Started
 }
 
 // startedAny reports a match that started a step: a run, a step it moved past, or a step
@@ -343,11 +343,13 @@ type matchKey struct {
 }
 
 // ledger reads and writes the matches, the runs, and what the routines keep of each item.
-// The engine is its only writer.
+// The engine is its only writer, whose ledger keeps their keys in memory (index, see
+// ledgerindex.go), which every write of a match or a baseline notes; nil keeps none.
 type ledger struct {
 	db    *sql.DB
 	q     *queries.Queries
 	clock clock.Clock
+	index *ledgerIndex
 }
 
 // newLedger returns the ledger over db.
@@ -408,16 +410,18 @@ func (l *ledger) getIn(ctx context.Context, q *queries.Queries, id int64) (*matc
 	return readMatch(row)
 }
 
-// keys returns each of a routine's matches by the occurrence it is for.
-func (l *ledger) keys(ctx context.Context, routineID int64) (map[matchKey]queries.ListRoutineMatchKeysRow, error) {
+// keys returns each of a routine's matches by the occurrence it is for, read from the
+// database, as a test of a routine reads them off the engine's loop.
+func (l *ledger) keys(ctx context.Context, routineID int64) (map[matchKey]keyRow, error) {
 	rows, err := l.q.ListRoutineMatchKeys(ctx, routineID)
 	if err != nil {
 		return nil, fmt.Errorf("read the matches of routine %d: %w", routineID, err)
 	}
 
-	out := make(map[matchKey]queries.ListRoutineMatchKeysRow, len(rows))
+	out := make(map[matchKey]keyRow, len(rows))
 	for _, r := range rows {
-		out[matchKey{item: store.Deref(r.ItemID), fire: r.FireKey, dryRun: r.DryRun}] = r
+		out[matchKey{item: store.Deref(r.ItemID), fire: r.FireKey, dryRun: r.DryRun}] = keyRowOf(r.ID, r.State, r.Reason,
+			r.Attempt, r.Step, r.Steps)
 	}
 
 	return out, nil
@@ -448,6 +452,7 @@ func (l *ledger) insert(ctx context.Context, m *match) (bool, error) {
 
 	m.ID = id
 	m.stored()
+	l.index.wroteMatch(l.q, l.q, m, steps)
 
 	return true, nil
 }
@@ -493,15 +498,29 @@ func (l *ledger) update(ctx context.Context, q *queries.Queries, m *match) error
 	}
 
 	m.stored()
+	l.index.wroteMatch(q, l.q, m, steps)
 
 	return nil
 }
 
-// inTx runs fn in one transaction over the ledger's queries.
+// inTx runs fn in one transaction over the ledger's queries; what it writes of the
+// matches and the baselines reaches the keys in memory once it commits.
 func (l *ledger) inTx(ctx context.Context, fn func(q *queries.Queries) error) error {
-	return store.InTx(ctx, l.db, func(tx *sql.Tx) error {
-		return fn(l.q.WithTx(tx))
+	var txq *queries.Queries
+
+	committed := false
+
+	defer func() { l.index.end(txq, committed) }()
+
+	err := store.InTx(ctx, l.db, func(tx *sql.Tx) error {
+		txq = l.q.WithTx(tx)
+		l.index.begin(txq)
+
+		return fn(txq)
 	})
+	committed = err == nil
+
+	return err
 }
 
 // specHash names a routine's spec as stored, so a match can tell the routine changed.
@@ -614,18 +633,26 @@ func (l *ledger) saveBaseline(ctx context.Context, routineID, itemID int64, b ba
 
 	now := l.clock.Now()
 
+	var n int64
+
 	if first {
-		err = l.q.InsertBaseline(ctx, queries.InsertBaselineParams{
+		n, err = l.q.InsertBaseline(ctx, queries.InsertBaselineParams{
 			RoutineID: routineID, ItemID: itemID, State: raw, FirstSeenAt: now,
 		})
 	} else {
-		err = l.q.UpdateBaseline(ctx, queries.UpdateBaselineParams{
+		n, err = l.q.UpdateBaseline(ctx, queries.UpdateBaselineParams{
 			State: raw, UpdatedAt: now, RoutineID: routineID, ItemID: itemID,
 		})
 	}
 
 	if err != nil {
 		return fmt.Errorf("record what routine %d saw of item %d: %w", routineID, itemID, err)
+	}
+
+	// The keys note only what was written: a first sight recorded already, or a row gone
+	// since, writes nothing, which the counts of the rows then tell.
+	if n > 0 {
+		l.index.wroteBaseline(l.q, l.q, routineID, itemID, b, first)
 	}
 
 	return nil

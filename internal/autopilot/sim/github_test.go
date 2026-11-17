@@ -320,6 +320,72 @@ func TestABacklogsRunOnThemSendsItAtThePace(t *testing.T) {
 	})
 }
 
+func TestABacklogsSkipThemSkipsWhatItsCardShowedAtOnce(t *testing.T) {
+	t.Parallel()
+
+	synctest.Test(t, func(t *testing.T) {
+		const n = autopilot.FirstCap + 3
+
+		s := sim.New(t)
+		for i := 1; i <= n; i++ {
+			s.World.Add(sim.Item{Number: i, Watched: true})
+		}
+
+		s.Begin()
+		s.Refresh()
+
+		r := s.Save("Rebase", manyRebases(), autopilotprefs.ModeAuto)
+		s.Enable(r.ID, autopilot.CurrentRun)
+		s.Refresh()
+		s.Refresh()
+
+		backlog := backlogOf(s, r.ID)
+		require.Len(t, backlog, n, "over the first pass's cap every match waits as a backlog")
+
+		// The card showed all but the last two, as one read before they were recorded does,
+		// and a match that isn't the backlog's rides along.
+		shown := backlog[:n-2]
+		got, err := s.Service.SkipBacklog(t.Context(), r.ID, append([]int64{999_999}, shown...))
+		require.NoError(t, err)
+		require.Len(t, got, len(shown), "Skip them skips each match the card showed")
+
+		for _, m := range got {
+			assert.Equal(t, autopilot.StateDismissed, m.State)
+			assert.Equal(t, autopilot.ReasonYouSkipped, m.Reason)
+		}
+
+		assert.Equal(t, backlog[n-2:], backlogOf(s, r.ID), "what the card didn't show still waits")
+
+		again, err := s.Service.SkipBacklog(t.Context(), r.ID, shown)
+		require.NoError(t, err)
+		assert.Empty(t, again, "a second Skip them skips nothing more")
+
+		s.Refresh()
+		assert.Empty(t, s.GitHub.Jobs(), "nothing skipped, or left waiting, is sent")
+
+		left, err := s.Service.ApproveBacklog(t.Context(), r.ID)
+		require.NoError(t, err)
+		assert.Len(t, left, 2, "Run on them lets go of what is left")
+
+		s.Refresh()
+		assert.Len(t, s.GitHub.Jobs(), 2)
+		assert.Positive(t, s.Compared(), "the engine's keys were held to the ledger throughout")
+	})
+}
+
+// backlogOf returns the matches of the routine id waiting as its backlog, oldest first.
+func backlogOf(s *sim.Sim, id int64) []int64 {
+	var out []int64
+
+	for _, m := range s.Matches() {
+		if m.RoutineID == id && m.State == autopilot.StateWaiting && m.BlockedBy == autopilot.BlockBacklog {
+			out = append(out, m.ID)
+		}
+	}
+
+	return out
+}
+
 // manyRebases is Rebases with the routine's own runs a day at their most, so only the pace
 // holds its actions back.
 func manyRebases() spec.Spec {

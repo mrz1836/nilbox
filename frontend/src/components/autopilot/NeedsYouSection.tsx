@@ -11,6 +11,7 @@ import {
   reviewVerdictLabels,
   runLabel,
   skipLabel,
+  skippedBacklogText,
   type Backlog,
 } from '../../lib/autopilot'
 import { attempt } from '../../lib/call'
@@ -23,6 +24,7 @@ import {
   cloneRepo,
   cloneTarget,
   postReviewAsComment,
+  skipAutopilotBacklog,
   skipMatch,
   type AutopilotItemRef,
   type AutopilotMatch,
@@ -340,13 +342,12 @@ function BacklogCard({ backlog: b, highlighted, onToast, onChanged }: BacklogCar
           type="button"
           disabled={act.pending}
           onClick={() => {
-            run(async () => {
-              for (const m of b.matches) {
-                await skipMatch(m.id)
-              }
-
-              return `Skipped them. ${b.routine} waits for the next time each fires.`
-            })
+            run(() =>
+              skipAutopilotBacklog(
+                b.routineId,
+                b.matches.map((m) => m.id),
+              ).then((got) => skippedBacklogText(b, got.length)),
+            )
           }}
           className={quietButtonClass}
         >

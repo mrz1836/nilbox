@@ -35,11 +35,20 @@ ORDER BY id;
 SELECT id, item_id, fire_key, dry_run, state, reason, attempt, step, steps FROM autopilot_matches
 WHERE routine_id = sqlc.arg(routine_id) AND item_id IS NOT NULL;
 
--- name: ListRoutinesMatchKeys :many
--- ListRoutinesMatchKeys is ListRoutineMatchKeys for each of the routines among ids, in one
--- read, as a cycle reads every routine it runs.
+-- name: ListMatchKeys :many
+-- ListMatchKeys is ListRoutineMatchKeys for every routine, in one read: the ledger's keys the
+-- engine keeps in memory between its cycles, built again from here when it takes the lock.
 SELECT routine_id, id, item_id, fire_key, dry_run, state, reason, attempt, step, steps FROM autopilot_matches
-WHERE routine_id IN (sqlc.slice(ids)) AND item_id IS NOT NULL;
+WHERE item_id IS NOT NULL;
+
+-- name: CountLedgerKeys :one
+-- CountLedgerKeys counts the matches with an item and the baselines, which the engine's keys
+-- in memory hold one each of: counts that differ say something besides the engine deleted
+-- rows, as the inbox's prune of an old item takes its baselines with it and leaves its
+-- matches without it.
+SELECT
+    CAST((SELECT COUNT(*) FROM autopilot_matches WHERE item_id IS NOT NULL) AS INTEGER) AS matches,
+    CAST((SELECT COUNT(*) FROM autopilot_baselines) AS INTEGER) AS baselines;
 
 -- name: ListItemMatches :many
 -- ListItemMatches returns an item's matches, newest first.
@@ -357,18 +366,19 @@ ON CONFLICT (routine_id, item_id) DO UPDATE SET reset_at = excluded.reset_at;
 -- ListBaselines returns what a routine saw of each item when it first saw it, and since.
 SELECT item_id, state, first_seen_at FROM autopilot_baselines WHERE routine_id = sqlc.arg(routine_id);
 
--- name: ListRoutinesBaselines :many
--- ListRoutinesBaselines is ListBaselines for each of the routines among ids, in one read.
-SELECT routine_id, item_id, state, first_seen_at FROM autopilot_baselines WHERE routine_id IN (sqlc.slice(ids));
+-- name: ListAllBaselines :many
+-- ListAllBaselines is ListBaselines for every routine, in one read, as ListMatchKeys is.
+SELECT routine_id, item_id, state FROM autopilot_baselines;
 
--- name: InsertBaseline :exec
--- InsertBaseline records what a routine first saw of an item, unless it saw it before.
+-- name: InsertBaseline :execrows
+-- InsertBaseline records what a routine first saw of an item, unless it saw it before, and
+-- says whether it did.
 INSERT INTO autopilot_baselines (routine_id, item_id, state, first_seen_at, updated_at)
 VALUES (sqlc.arg(routine_id), sqlc.arg(item_id), sqlc.arg(state), sqlc.arg(first_seen_at), sqlc.arg(first_seen_at))
 ON CONFLICT (routine_id, item_id) DO NOTHING;
 
--- name: UpdateBaseline :exec
--- UpdateBaseline records what a routine last counted of an item.
+-- name: UpdateBaseline :execrows
+-- UpdateBaseline records what a routine last counted of an item, and says whether it did.
 UPDATE autopilot_baselines SET state = sqlc.arg(state), updated_at = sqlc.arg(updated_at)
 WHERE routine_id = sqlc.arg(routine_id) AND item_id = sqlc.arg(item_id);
 
@@ -398,9 +408,10 @@ WHERE deleted_at IS NOT NULL AND deleted_at < sqlc.arg(cutoff)
   AND NOT EXISTS (SELECT 1 FROM autopilot_matches m WHERE m.routine_id = autopilot_routines.id)
   AND NOT EXISTS (SELECT 1 FROM autopilot_runs r WHERE r.routine_id = autopilot_routines.id);
 
--- name: DeleteDeletedRoutinesState :exec
--- DeleteDeletedRoutinesState forgets what deleted routines kept of their items: their
--- baselines, their tries, and the items they left alone.
+-- name: DeleteDeletedRoutinesState :execrows
+-- DeleteDeletedRoutinesState forgets what deleted routines first saw of their items, their
+-- baselines, and says how many it forgot; DeleteDeletedRoutinesTries and
+-- DeleteDeletedRoutinesHandsOff forget the rest of what they kept.
 DELETE FROM autopilot_baselines
 WHERE routine_id IN (SELECT id FROM autopilot_routines WHERE deleted_at IS NOT NULL);
 

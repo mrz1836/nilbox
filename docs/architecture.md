@@ -2288,7 +2288,11 @@ and `Held` holds every GitHub action until the gate said the next may go (`holdW
 `writes_held`). `Approve` of a match waiting on warnings records them on its step
 (`stepRun.Accepted`), which the next send hands the sheet (`Job.Accept`), so a different
 warning waits again; the routine's own Ask first OK accepts none. `ApproveBacklog` is Run on
-them: the OK for every match of a routine waiting as a backlog.
+them: the OK for every match of a routine waiting as a backlog. `SkipBacklog` is Skip them:
+one command and one transaction that closes as `dismissed` (`you_skipped`) each of the matches
+the card showed (its IDs) that still waits as the routine's backlog, a compare-and-set on what
+the card showed, so a match recorded since still waits and one let go or closed meanwhile is
+left as it is; when one can't be closed, none is.
 
 **Limits.** A match is one try and one of its routine's runs a day however many runs it starts
 (`history` and `dayCounts` count distinct matches; `limits` holds only a match's first run to
@@ -2593,11 +2597,36 @@ run's session reads its run's instead: `Usage` asks its `RunTokens` (core's
 index `0016` adds on `script_run_id`), which the runner keeps current (`Engine.RunUsage`),
 never the transcript, and marks them `FromRun`.
 
-**The cycle's reads.** A cycle reads what the ledger keeps of every routine it runs in four
-reads (`readRoutines`: matches, items left alone, resets of the tries, baselines), indexes each
-routine's last closed match by item once (`lastClosed`, which the evaluator's history reads),
-and keeps its own state only when it changed beyond the last cycle (`keepCycle`).
-`BenchmarkEngineCycle` measures it ([performance.md](performance.md#the-engines-cycle)).
+**The cycle's reads.** A cycle takes each routine's matches by occurrence and what it first saw
+of each item from the ledger's keys the engine keeps in memory, reads the items each leaves
+alone and its resets of the tries in two reads (`readLedger`, which Run on the matches now
+shares), indexes each routine's last closed match by item once (`lastClosed`, which the
+evaluator's history reads), and keeps its own state only when it changed beyond the last cycle
+(`keepCycle`). `BenchmarkEngineCycle` measures it
+([performance.md](performance.md#the-engines-cycle)).
+
+**The ledger's keys in memory** (`ledgerindex.go`, `ledgerIndex`, the engine's ledger's `index`,
+which only the loop reads or changes) hold every match with an item, by routine and occurrence
+(`keyRow`: its ID, state, reason, and whether it started a step, `startedAny`, which is all
+`record`, `reopensRow`, `runsNow`, and `lastClosed` read), and every baseline, by routine and
+item. The engine is the ledger's only writer, so each of its writes notes what it wrote where
+it writes it: the ledger's `insert` and `update` the match's key, `saveBaseline` the baseline
+once its `:execrows` query says it wrote one, and the prune's `clear` the matches it deletes. A
+write through `ledger.inTx` notes into that transaction's list (`begin`, keyed by its
+`*queries.Queries`), applied once it commits and dropped when it rolls back (`end`), and a
+write through a transaction the ledger didn't open has the keys built again. They are built
+from the database (`ListMatchKeys`, `ListAllBaselines`) on their first use, whenever the
+engine takes the lock (`takeLock`, since another copy of the app may have written the ledger
+while it held it), and whenever one count of the rows (`CountLedgerKeys`), the only read a
+steady cycle makes of them, differs from theirs: what changes these rows besides the engine
+only deletes (the inbox's prune of an old item takes its baselines with it and sets its
+matches' `item_id` NULL; the hourly prune's forgetting of deleted routines' baselines), so a
+count tells it. The items a routine leaves alone are read every cycle, since the user's
+reversal records them in whichever copy of the app it happens. `TestOnlyTheLedgerWritesWhatItsKeysHold`
+holds every query that writes these rows to the one function that notes it, and
+`EngineConfig.CheckLedger` has the engine compare the keys with the database (`diff`) after
+every cycle, command, tick, and worker's result while it holds the lock: the simulator sets it
+for every scenario and fails on any difference (`sim.drift`).
 
 ### The Autopilot tab
 
@@ -2753,7 +2782,8 @@ The window side lives in `frontend/src/components/autopilot/` (the tab itself,
   (`githubGoLabel`: Send it, Send anyway, which accepts exactly the warnings its words show,
   Send it again), still `Approve`; each routine's first-pass backlog is one card
   (`needsYou`'s `backlogs`, **Matched at once**), with **Run on them** (`ApproveBacklog`) and
-  **Skip them**; a card per match that can't start yet, with **Check again**
+  **Skip them** (`SkipBacklog`, with the IDs the card shows, its toast `skippedBacklogText`); a
+  card per match that can't start yet, with **Check again**
   (`CheckReadiness`), Skip, and Open; the matches queued; and, while this Mac can't run some routines, a banner that opens Settings →
   Autopilot. The routine list and a routine's header say *Not ready on this Mac* with what
   is missing, from `Readiness`, and a waiting match's chip reads *Needs you*.
