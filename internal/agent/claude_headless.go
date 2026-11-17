@@ -25,7 +25,8 @@ const (
 // every flag a background run passes.
 func (claude) headless() Headless {
 	return Headless{
-		Background: true, Budget: true, Cost: true, Usage: true, Structured: true, Resume: true,
+		Background: true, Budget: true, Cost: true, Usage: true, UsageLive: true, Structured: true, Resume: true,
+		ReadsTrust: true,
 		MinVersion: claudeFenceFloor,
 	}
 }
@@ -67,6 +68,12 @@ func (claude) headlessArgs(o HeadlessOptions) []string {
 
 	return append(args, o.Extra...)
 }
+
+// keptEnv keeps none of them.
+func (claude) keptEnv() []string { return nil }
+
+// schemaFile: Claude Code takes the schema on its command line (--json-schema).
+func (claude) schemaFile() bool { return false }
 
 // dropEnv names Claude Code's own variables, which a session it runs inside sets for its
 // children: a background run started from such a shell would otherwise take them on.

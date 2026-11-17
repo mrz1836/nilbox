@@ -277,9 +277,20 @@ func Sandboxed(p Policy, fs FS) SandboxState {
 	}
 }
 
+// SandboxWords says what a sandboxed run's sandbox lets its commands do, as AgentNote tells
+// the agent, for a sandbox that keeps to Sandbox's folders and hosts (Claude Code's).
+const SandboxWords = "Commands run in a sandbox that writes only in this worktree and the build caches, and " +
+	"reaches only GitHub and the package registries."
+
 // AgentNote is what the agent is told of its fence, for the unattended note: its preset, and
-// for a sandboxed run, the check to run before any other command.
+// for a sandboxed run, what its sandbox lets commands do (SandboxWords) and the check to
+// run before any other command.
 func (f Fence) AgentNote() string {
+	return f.NoteWith(SandboxWords)
+}
+
+// NoteWith is AgentNote with sandbox saying what the agent's own sandbox lets commands do.
+func (f Fence) NoteWith(sandbox string) string {
 	var b strings.Builder
 
 	b.WriteString("Your tools are fenced: " + f.Policy.Preset.Label() + ".")
@@ -291,8 +302,7 @@ func (f Fence) AgentNote() string {
 	}
 
 	if f.Policy.Canary != nil {
-		b.WriteString(" Commands run in a sandbox that writes only in this worktree and the build caches, and reaches " +
-			"only GitHub and the package registries. Before any other command, run `" + f.Policy.Canary.Command() +
+		b.WriteString(" " + sandbox + " Before any other command, run `" + f.Policy.Canary.Command() +
 			"` on its own: it checks the sandbox, and its second file is meant to fail with \"Operation not permitted\".")
 	}
 

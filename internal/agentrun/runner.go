@@ -18,6 +18,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/appdata"
 	"github.com/mrz1836/nilbox/internal/clock"
 	"github.com/mrz1836/nilbox/internal/execpath"
+	"github.com/mrz1836/nilbox/internal/fence"
 	"github.com/mrz1836/nilbox/internal/gitread"
 	"github.com/mrz1836/nilbox/internal/logging"
 	"github.com/mrz1836/nilbox/internal/scriptrun"
@@ -60,6 +61,11 @@ type StartedSession struct {
 	ID    string
 	RunID int64
 
+	// AgentSessionID is the agent's own ID of the conversation: the session's ID for an
+	// agent that takes the app's (Claude Code), the one its stream named for an agent that
+	// picks its own (Codex's thread), or "" until that comes (SessionUpdate).
+	AgentSessionID string
+
 	// Dir is the worktree it runs in, PromptHead the start of its prompt, and LaunchedAt
 	// when it started.
 	Dir        string
@@ -67,10 +73,13 @@ type StartedSession struct {
 	LaunchedAt time.Time
 }
 
-// SessionUpdate is what a run says of its session.
+// SessionUpdate is what a run says of its session. AgentSessionID links it to the agent's
+// own ID of the conversation once the agent's stream names it, "" to keep the one stored;
+// a session is linked once, and Take over resumes that conversation.
 type SessionUpdate struct {
-	State       SessionState
-	LastMessage string
+	State          SessionState
+	LastMessage    string
+	AgentSessionID string
 }
 
 // Sessions records each run as a session, which the item's row follows (core adapts the
@@ -84,6 +93,15 @@ type Sessions interface {
 // agent's background shell leaves the group, and SIGKILL leaves it alive.
 type Sweeper interface {
 	Sweep(ctx context.Context, dir string)
+}
+
+// LimitReader reads the provider's usage limit from an agent's own record of a run, for an
+// agent whose stream says it was refused for usage but not which limit, or when it resets
+// (Codex's rollout of the thread): the agent, the profile's config folder ("" for the
+// default profile's), and the agent's ID of the conversation. It reports the limit the
+// record last holds, its Status "rejected" when the record says it was reached.
+type LimitReader interface {
+	Limit(ctx context.Context, id agent.ID, configDir, agentSessionID string) (Limit, bool)
 }
 
 // End is how a run ended, once its record holds it.
@@ -137,6 +155,10 @@ type Config struct {
 	// Sweeper ends what a run left in its worktree after SIGKILL. Optional.
 	Sweeper Sweeper
 
+	// Limits reads which usage limit refused a run, and when it resets, from the agent's
+	// own record of it, as the run ends in error. Optional.
+	Limits LimitReader
+
 	Clock  clock.Clock
 	Logger *slog.Logger
 }
@@ -154,6 +176,7 @@ type Runner struct {
 	keepAwake  func(context.Context) bool
 	caffeinate string
 	sweeper    Sweeper
+	limits     LimitReader
 	clock      clock.Clock
 	logger     *slog.Logger
 
@@ -168,7 +191,7 @@ func New(cfg Config) *Runner {
 	r := &Runner{
 		engine: cfg.Engine, runs: cfg.Runs, git: cfg.Git, sessions: cfg.Sessions, ended: cfg.Ended,
 		changed: cfg.Changed, usage: cfg.Usage, keepAwake: cfg.KeepAwake, caffeinate: cfg.Caffeinate,
-		sweeper: cfg.Sweeper, clock: clock.Or(cfg.Clock), logger: logging.Or(cfg.Logger),
+		sweeper: cfg.Sweeper, limits: cfg.Limits, clock: clock.Or(cfg.Clock), logger: logging.Or(cfg.Logger),
 		byLedger: map[int64]*run{}, byScript: map[int64]*run{}, starting: map[int64]*run{},
 	}
 
@@ -189,6 +212,7 @@ type run struct {
 	scriptID  int64
 	recorded  bool
 	pending   *SessionUpdate
+	linked    string
 	delivered bool
 	lastUsage time.Time
 	awake     *execpath.Proc
@@ -436,8 +460,17 @@ func (r *Runner) recordSession(ctx context.Context, plan Plan, rn *run, id int64
 		return
 	}
 
+	agentSession := rn.parser.AgentSessionID()
+	if a, err := agent.Lookup(plan.Agent); err == nil && a.SessionIDs {
+		agentSession = plan.SessionID
+	}
+
+	rn.mu.Lock()
+	rn.linked = agentSession
+	rn.mu.Unlock()
+
 	err := r.sessions.Started(ctx, StartedSession{
-		Session: plan.Session, ID: plan.SessionID, RunID: id, Dir: plan.Dir,
+		Session: plan.Session, ID: plan.SessionID, RunID: id, AgentSessionID: agentSession, Dir: plan.Dir,
 		PromptHead: textutil.Clip(plan.Prompt, promptHeadRunes), LaunchedAt: r.clock.Now(),
 	})
 	if err != nil {
@@ -455,10 +488,15 @@ func (r *Runner) recordSession(ctx context.Context, plan Plan, rn *run, id int64
 	}
 }
 
-// setSession tells the run's session what it does now, once the session is recorded.
+// setSession tells the run's session what it does now, once the session is recorded, with
+// the agent's own ID of the conversation once its stream named it.
 func (r *Runner) setSession(ctx context.Context, rn *run, u SessionUpdate) {
 	if r.sessions == nil {
 		return
+	}
+
+	if u.AgentSessionID == "" {
+		u.AgentSessionID = rn.parser.AgentSessionID()
 	}
 
 	rn.mu.Lock()
@@ -467,6 +505,10 @@ func (r *Runner) setSession(ctx context.Context, rn *run, u SessionUpdate) {
 		rn.mu.Unlock()
 
 		return
+	}
+
+	if u.AgentSessionID != "" {
+		rn.linked = u.AgentSessionID
 	}
 	rn.mu.Unlock()
 
@@ -549,7 +591,12 @@ func (r *Runner) finish(ctx context.Context, rn *run, end scriptrun.Ending) scri
 		j.result = &result
 	}
 
+	if r.limits != nil && hasResult && result.IsError {
+		j.limit = r.limitOf(ctx, rn, j.limit)
+	}
+
 	out := sandboxed(judge(j), sandboxOf(rn.intent.Folder))
+	out.Refused, out.Refusals = fence.ReadDenials(rn.intent.Folder)
 
 	if out.Result == nil {
 		out.TokensIn, out.TokensOut, out.CacheRead = progress.TokensIn, progress.TokensOut, progress.CacheRead
@@ -566,6 +613,34 @@ func (r *Runner) finish(ctx context.Context, rn *run, end scriptrun.Ending) scri
 	}
 
 	return scriptrun.Outcome{Status: scriptStatus(out.Status), Summary: out.Summary, Detail: out}
+}
+
+// limitOf fills in the usage limit a run ended on from the agent's own record of it: which
+// limit, and when it resets, when its stream said only that it was refused, or nothing.
+func (r *Runner) limitOf(ctx context.Context, rn *run, seen *Limit) *Limit {
+	read, ok := r.limits.Limit(ctx, rn.intent.Agent, rn.intent.ConfigDir, rn.parser.AgentSessionID())
+	if !ok {
+		return seen
+	}
+
+	if seen == nil || seen.Status != limitRejected {
+		if read.Status != limitRejected {
+			return seen
+		}
+
+		return &read
+	}
+
+	out := *seen
+	if out.Type == "" {
+		out.Type = read.Type
+	}
+
+	if out.ResetsAt == 0 {
+		out.ResetsAt = read.ResetsAt
+	}
+
+	return &out
 }
 
 // worktree reads the worktree's commit as the run ended, and the files its commits changed
@@ -698,9 +773,20 @@ type feed struct {
 
 var _ io.Writer = feed{}
 
-// Write feeds the run's parser.
+// Write feeds the run's parser, and links the run's session to the agent's own ID of the
+// conversation as soon as its stream names it, so Take over finds it while the run works.
 func (f feed) Write(p []byte) (int, error) {
 	n, err := f.rn.parser.Write(p)
+
+	if id := f.rn.parser.AgentSessionID(); id != "" {
+		f.rn.mu.Lock()
+		tell := f.rn.recorded && f.rn.linked != id && !f.rn.delivered
+		f.rn.mu.Unlock()
+
+		if tell {
+			f.runner.setSession(context.Background(), f.rn, SessionUpdate{State: SessionWorking, AgentSessionID: id})
+		}
+	}
 
 	f.rn.mu.Lock()
 	due := f.runner.usage != nil && f.runner.clock.Now().Sub(f.rn.lastUsage) >= UsageEvery
@@ -750,8 +836,13 @@ func intentIn(raw any) Intent {
 	return in
 }
 
-// parserFor returns the stream parser of the agent with id, for a run in dir.
-func parserFor(_ agent.ID, dir string) *stream {
+// parserFor returns the stream parser of the agent with id, for a run in dir: Codex's, or
+// Claude Code's for any other.
+func parserFor(id agent.ID, dir string) *stream {
+	if id == agent.Codex {
+		return newCodexParser(dir)
+	}
+
 	return newClaudeParser(dir)
 }
 

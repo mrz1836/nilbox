@@ -120,7 +120,8 @@ func (s *Service) loadDraft(ctx context.Context, sp spec.Spec) (spec.Spec, []spe
 		return normal, nil, uierr.New("The routine can't be read: "+textutil.Sentence(err.Error()), err)
 	}
 
-	problems := append(s.offers.placeProblems(loaded), s.promptProblems(ctx, loaded)...)
+	problems := append(s.offers.placeProblems(loaded), fenceProblems(loaded)...)
+	problems = append(problems, s.promptProblems(ctx, loaded)...)
 
 	return loaded, append(problems, s.scriptProblems(ctx, loaded)...), nil
 }
@@ -290,7 +291,7 @@ func triageSteps() []catalog.StepKind {
 // in the terminal or with the profile's own permissions on Autopilot. A draft held in Dry
 // run (dryRunOnly) runs nothing on its own, so the mode's warnings wait until it can.
 func draftWarnings(sp spec.Spec, mode autopilotprefs.Mode, dryRunOnly bool) []spec.Problem {
-	out := triageWarnings(sp)
+	out := append(triageWarnings(sp), fenceWarnings(sp)...)
 
 	if mode != autopilotprefs.ModeAuto || dryRunOnly {
 		return out

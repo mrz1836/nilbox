@@ -113,7 +113,9 @@ func (codex) commands() []string {
 
 // args returns Codex's flags. Codex takes no session ID of its own, so SessionID is
 // ignored. A resumed session runs the resume command with the session's ID right after
-// it, then every flag, and "--" last, with nothing after it. The command reads the first
+// it, then every flag, and "--" last, with nothing after it but, for a background run
+// taken over (TakeOver), the first message telling it someone answers now
+// (codexTakeOverNote), which the command reads as its prompt. The command reads the first
 // word that is neither a flag nor a flag's value as the session to resume, so with the
 // ID after the extra arguments, a stray word among them would pick the session instead.
 // The ID is a UUID (see ValidSessionID), which is never read as a flag.
@@ -135,7 +137,13 @@ func (codex) args(o Options) []string {
 		args = append(args, codexAddDirPrefix+dir)
 	}
 
-	return append(append(args, o.Extra...), endOfFlags)
+	args = append(append(args, o.Extra...), endOfFlags)
+
+	if o.ResumeID != "" && o.TakeOver {
+		args = append(args, codexTakeOverNote)
+	}
+
+	return args
 }
 
 // codexOverrides returns the config overrides a launch passes: the effort level and Fast
@@ -166,8 +174,9 @@ func codexAccess(a Access) []string {
 		// Codex has no plan mode: a read-only sandbox that asks before anything else is the
 		// nearest, and it cannot switch to full access later.
 		return []string{codexSandbox, codexReadOnly, codexApproval, codexApproveOnAsk}
-	case AccessDefault, AccessFence:
-		// Codex keeps no tools preset yet, so Args refuses AccessFence for it.
+	case AccessFence:
+		return codexFenceArgs(a.Fence)
+	case AccessDefault:
 		return nil
 	default:
 		return nil

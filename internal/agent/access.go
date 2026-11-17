@@ -76,6 +76,12 @@ type Options struct {
 	// Fast starts the session in the agent's Fast mode. An agent without FastMode
 	// ignores it.
 	Fast bool
+
+	// TakeOver resumes a background run's conversation in the user's terminal: an agent
+	// whose resume keeps the run's unattended note (Codex's developer instructions persist
+	// in the thread) is first told that someone answers now. It applies only with
+	// ResumeID.
+	TakeOver bool
 }
 
 // Args returns the flags a launch passes the agent with id, in order: model, effort,

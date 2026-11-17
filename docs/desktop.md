@@ -2910,8 +2910,10 @@ nothing. The launch itself then holds back what a click's would, and a little mo
 
 A routine's **Run a coding agent** step, **In the background**, runs the agent headless in the
 item's own worktree, with no terminal opened, held in by the step's fence: its tools preset
-([Fences](#fences-what-a-background-agent-may-do)), its budget, and its time limit. An agent
-that can't keep the preset (Codex, in this version) leaves the routine not ready.
+([Fences](#fences-what-a-background-agent-may-do)), its budget, and its time limit. Claude Code
+and Codex both run there. A preset the step's agent can't keep (Codex's GitHub tasks only) isn't
+offered for it, and the builder says why; one an inherited agent can't keep, for the item's
+repository, leaves the start not ready.
 
 - **Planned as a click's launch.** The same agent, profile, model, effort, and prompt as a
   terminal run, and the same checks right before the start ([above](#agents-in-your-terminal)),
@@ -2927,8 +2929,15 @@ that can't keep the preset (Codex, in this version) leaves the routine not ready
   worktree as the run starts and kept in the run's own folder, and its line in the note the
   agent is given (what it may do, and for a sandboxed preset, the check to run first); the budget in dollars,
   which the agent keeps to itself, or in tokens, which Nilbox stops it at; and the time limit,
-  30 minutes unless the step says. Claude Code 2.1.319 or later is needed; an older one leaves
-  the routine not ready, saying so.
+  30 minutes unless the step says. Claude Code 2.1.319 or later is needed, and Codex 0.163.0 or
+  later; an older one leaves the routine not ready, saying so.
+- **Codex** runs as `codex exec`, reading none of your Codex config (its MCP servers, plugins,
+  notify program, and the folders it trusts), so a branch's own `.codex` config and hooks never
+  load, and none of its rules files; its sign-in is the profile's. It keeps no budget of its own
+  and reports tokens, never a cost: the builder says *Budget: not available for Codex in
+  dollars*, a budget in tokens is checked as its run ends, the time limit always holds, a daily
+  cap in dollars can't count it, and its runs stop when the app quits. Out of usage, it says so
+  as Claude Code does, with when the limit resets from its own record of the thread.
 - **How it ended** is the agent's own last word, never its exit status: *Finished:* with its
   notes, *Out of budget ($3.00).*, *Stopped after 30 minutes.*, *Out of usage: its plan's
   five-hour limit is reached. It resets Mon 15:04.*, or its error. What it cost is what the
@@ -2972,7 +2981,12 @@ that can't keep the preset (Codex, in this version) leaves the routine not ready
   resumed session is yours: no *in the background* mark, followed as any session is, and it
   holds a click on the item, and the routine's next start there, while it runs. The run's match
   closes as **Taken over**, counting as no try, and nothing says it stopped. A run whose fence is
-  no longer kept (its history cleared) is taken over only with the profile's permissions.
+  no longer kept (its history cleared) is taken over only with the profile's permissions. A
+  Codex run is taken over as `codex resume <thread>`, under the run's sandbox again, asking you
+  about whatever it refuses, with the network off, so a push asks first; its fence's hook
+  doesn't follow it into the terminal, nor is its worktree trusted for it, so Codex asks you
+  whether to trust the folder. Its first message tells it you've taken over, since its
+  unattended note stays in the conversation.
 - **Where it shows.** The item's session pill and panel follow the run, with **Watch**,
   **Stop**, and **Take over** in place of Show in terminal and Resume, and its launch button
   says **Watch**. The Worktrees view marks its worktree *made by ⚡ <routine>* and *in use ·
@@ -2992,8 +3006,9 @@ that can't keep the preset (Codex, in this version) leaves the routine not ready
   limit doesn't say), and the step starts again on the next profile of its chain, its own
   profile first and then each of its **Fallbacks** in order, another agent's included. A
   fallback of the same agent keeps the step's model and effort; another agent's takes that
-  agent's launch defaults. A fallback this Mac can't run in the background (Codex, in this
-  version) is passed over, and only warns in [This Mac](#this-mac). With every profile resting,
+  agent's launch defaults, so a Claude Code profile out of usage can fall back to Codex. A
+  fallback this Mac can't run in the background (one whose agent isn't installed, or can't keep
+  the step's preset) is passed over, and only warns in [This Mac](#this-mac) and the builder. With every profile resting,
   the start waits, *Queued: the default profile is out of usage until Mon 15:04*, asking GitHub
   nothing, and starts once the soonest rest ends; a restart remembers which profiles rest.
 
@@ -3259,6 +3274,18 @@ mode doesn't break it. Two things hold it, beside the rules:
   call from then on.
 
 Attribution is off in every fenced run, so a commit carries no AI co-author trailer.
+
+**How Codex keeps them.** Every preset but **GitHub tasks only**, which it doesn't keep (its
+sandbox cuts `gh` off from GitHub and its sign-in). It reads none of your Codex config or rules,
+so neither yours nor a branch's MCP servers, hooks, or notify program run, and asks no one.
+**Read only** runs in Codex's read-only sandbox, reading through its shell; the edit presets
+in its workspace sandbox, which writes only in the worktree, its git folders (so it can commit,
+never their hooks or config), and the temporary folder. **Edit and test, no push** has no
+network; **Edit, test, and push** turns the network on for its one push, and since Codex's
+sandbox can't keep that to GitHub, a command it runs may reach any host (the fence still refuses
+the network tools themselves). The same fence hook decides every call, Codex's patches by each
+file they write, so `AGENTS.md`, which its sandbox would let through, is refused; and since
+Codex never shows a refused call, the run's outcome counts those the hook refused.
 
 **When a push can't be fenced.** A pull request whose branch is in a fork waits as *Can't start
 yet: its branch is in a fork, which a run can't push to*: the exact push goes to the

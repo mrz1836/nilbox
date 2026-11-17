@@ -134,6 +134,10 @@ type Request struct {
 	// session resumed takes no prompt, and keeps the name it was started with.
 	ResumeID string
 
+	// TakeOver resumes a background run's conversation in the terminal (agent.Options):
+	// an agent whose resume keeps the run's unattended note is first told someone answers.
+	TakeOver bool
+
 	// Fast starts the session in the agent's Fast mode. An agent without one ignores it.
 	Fast bool
 
@@ -285,7 +289,8 @@ func BuildPlan(req Request) (Plan, error) {
 func agentOptions(a agent.Agent, req Request, perm permission, dirs []string) agent.Options {
 	opts := agent.Options{
 		Model: req.Profile.Model, Effort: req.Profile.Effort, Access: perm.access, AddDirs: dirs,
-		Extra: req.Profile.ExtraArgs, ResumeID: req.ResumeID, Fast: req.Fast && a.FastMode,
+		Extra: req.Profile.ExtraArgs, ResumeID: req.ResumeID, TakeOver: req.TakeOver && req.ResumeID != "",
+		Fast: req.Fast && a.FastMode,
 	}
 
 	if a.SessionNames {

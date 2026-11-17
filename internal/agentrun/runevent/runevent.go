@@ -184,6 +184,10 @@ type Ending struct {
 
 	// Todos are its todo list as it last wrote it.
 	Todos []Todo `json:"todos"`
+
+	// Refused counts the calls its fence's hook refused, which an agent's own stream may
+	// never show.
+	Refused int `json:"refused"`
 }
 
 // Diff is a run's worktree's changes since the head it started on, committed or not, as

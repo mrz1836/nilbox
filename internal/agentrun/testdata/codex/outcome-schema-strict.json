@@ -1,0 +1,48 @@
+{
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+        "outcome",
+        "summary",
+        "pushed",
+        "pushedCommit",
+        "needsPerson",
+        "reason"
+    ],
+    "properties": {
+        "outcome": {
+            "type": "string",
+            "enum": [
+                "fixed",
+                "nothing_to_do",
+                "partial",
+                "blocked",
+                "failed"
+            ]
+        },
+        "summary": {
+            "type": "string",
+            "maxLength": 2000
+        },
+        "pushed": {
+            "type": "boolean"
+        },
+        "pushedCommit": {
+            "type": [
+                "string",
+                "null"
+            ],
+            "pattern": "^[0-9a-f]{40}$"
+        },
+        "needsPerson": {
+            "type": "boolean"
+        },
+        "reason": {
+            "type": [
+                "string",
+                "null"
+            ],
+            "maxLength": 500
+        }
+    }
+}

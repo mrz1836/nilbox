@@ -460,6 +460,7 @@ describe('RunView', () => {
           durationMs: 0,
           commit: '',
           changed: [],
+          refused: 2,
         }),
       }),
     )
@@ -467,6 +468,7 @@ describe('RunView', () => {
     const ended = await screen.findByRole('region', { name: 'How it ended' })
     expect(ended).toHaveTextContent('The agent didn’t report. It last said:It was stopped before it reported.')
     expect(ended).toHaveTextContent('It needs a person: The fix needs a major version.')
+    expect(ended).toHaveTextContent('its fence refused 2 calls')
   })
 
   it('names your terminal before the settings load, and a run not started yet or a preset it doesn’t know', async () => {

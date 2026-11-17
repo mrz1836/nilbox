@@ -224,9 +224,12 @@ func TestFenceAccessIsChecked(t *testing.T) {
 		require.ErrorIs(t, validateAccess(Claude, tt.a), tt.err, tt.name)
 	}
 
-	require.ErrorIs(t, validateAccess(Codex, good), ErrPresetNotKept, "Codex keeps no preset yet")
+	require.NoError(t, validateAccess(Codex, good), "Codex keeps Edit and test")
 
-	ok, why := KeepsPreset(Codex, fence.ReadOnly)
+	githubTasks := FenceAccess(fence.GitHubTasks, Access{}).InRun(testRunDir)
+	require.ErrorIs(t, validateAccess(Codex, githubTasks), ErrPresetNotKept, "but not GitHub tasks only")
+
+	ok, why := KeepsPreset(Codex, fence.GitHubTasks)
 	assert.False(t, ok)
 	assert.Contains(t, why, "Codex")
 
@@ -235,8 +238,17 @@ func TestFenceAccessIsChecked(t *testing.T) {
 		assert.True(t, ok, "%s: %s", p, why)
 	}
 
+	ok, why = KeepsPreset("aider", fence.ReadOnly)
+	assert.False(t, ok)
+	assert.NotEmpty(t, why)
+
 	assert.Equal(t, claudeFenceFloor, FenceFloor(Claude))
-	assert.Empty(t, FenceFloor(Codex))
+	assert.Equal(t, codexFloor, FenceFloor(Codex))
+	assert.Empty(t, FenceFloor("aider"))
+
+	hooked := good.Worked(fence.Policy{}, "App")
+	require.ErrorIs(t, validateAccess(Claude, hooked), ErrInvalidAccess, "a hook's program is an absolute path")
+	assert.Equal(t, Access{Kind: AccessPlan}, Access{Kind: AccessPlan}.Worked(fence.Policy{}, testProgram))
 
 	_, err := FenceFiles(Claude, Access{Kind: AccessPlan}, fence.Fence{}, testProgram)
 	require.ErrorIs(t, err, ErrInvalidAccess)

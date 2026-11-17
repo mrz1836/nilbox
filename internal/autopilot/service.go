@@ -174,7 +174,9 @@ func (s *Service) save(ctx context.Context, d Draft) (Routine, error) {
 		return Routine{}, err
 	}
 
-	problems := append(s.offers.placeProblems(saving.spec), s.promptProblems(ctx, saving.spec)...)
+	problems := append(s.offers.placeProblems(saving.spec), fenceProblems(saving.spec)...)
+	problems = append(problems, s.promptProblems(ctx, saving.spec)...)
+
 	if problems = append(problems, s.scriptProblems(ctx, saving.spec)...); len(problems) > 0 {
 		v := &spec.ValidationError{Problems: problems}
 

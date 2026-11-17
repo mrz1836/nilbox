@@ -218,7 +218,7 @@ func endingOf(rec scriptrun.Run, progress runevent.Progress) (*runevent.Ending, 
 
 	e := &runevent.Ending{
 		Summary: out.Summary, NoReport: out.NoReport, Commit: out.Commit, Changed: nonNilStrings(out.Changed),
-		Todos: nonNilTodos(out.Todos), Models: []string{},
+		Todos: nonNilTodos(out.Todos), Models: []string{}, Refused: out.Refused,
 	}
 
 	if e.Summary == "" {

@@ -47,6 +47,15 @@ type Fence struct {
 	// rather than refusing it, and its rules, its hook, and its sandbox still hold. The
 	// profile's own preset starts from the click's access either way.
 	TakenOver bool
+
+	// Policy is the run's fence policy, as fence.Build worked it out for the worktree, or
+	// as read back from the run's folder for Take over; Hook is the fence hook's program,
+	// the app's own executable. An agent that names its sandbox and its hook on the
+	// command line (Codex) writes its flags from them; one that keeps them in its settings
+	// file (Claude Code) needs neither. Both are unset until the run's fence is worked out,
+	// as in a preview (Access.Worked).
+	Policy *fence.Policy
+	Hook   string
 }
 
 // TakenOver returns the access of a fenced run's conversation resumed in the user's
@@ -59,6 +68,21 @@ func (a Access) TakenOver() Access {
 
 	f := *a.Fence
 	f.TakenOver = true
+	a.Fence = &f
+
+	return a
+}
+
+// Worked returns the access with the fence worked out for its run: its policy, and the
+// fence hook's program, "" for none (a run taken over runs no hook). Any other access is
+// returned as it is.
+func (a Access) Worked(p fence.Policy, hook string) Access {
+	if a.Kind != AccessFence || a.Fence == nil {
+		return a
+	}
+
+	f := *a.Fence
+	f.Policy, f.Hook = &p, hook
 	a.Fence = &f
 
 	return a
@@ -97,6 +121,21 @@ type fenceKeeper interface {
 	// backgroundReserved lists the flags no extra argument of a background run sets: the
 	// fence's own and those that would loosen it.
 	backgroundReserved() []reservedFlag
+
+	// keeps reports whether the agent keeps a tools preset, and when it doesn't, why, as
+	// the builder says it.
+	keeps(p fence.Preset) (bool, string)
+
+	// fenceSpec is the fence's spec as the agent's tools need it (fence.Spec.ShellReads
+	// for an agent that reads through its shell).
+	fenceSpec(s fence.Spec) fence.Spec
+
+	// fenceFloor is the oldest version that takes every flag and setting its fences use.
+	fenceFloor() string
+
+	// fenceNote is what the agent is told of its fence (fence.Fence.AgentNote, in the
+	// words of its own sandbox).
+	fenceNote(built fence.Fence) string
 }
 
 // KeepsPreset reports whether the agent can keep a tools preset in a background run, and
@@ -111,11 +150,34 @@ func KeepsPreset(id ID, p fence.Preset) (bool, string) {
 		return false, fmt.Sprintf("%q isn't a tools preset.", p)
 	}
 
-	if _, ok := s.(fenceKeeper); !ok {
+	keeper, ok := s.(fenceKeeper)
+	if !ok {
 		return false, s.info().Name + " can't keep a tools preset in a background run yet."
 	}
 
-	return true, ""
+	return keeper.keeps(p)
+}
+
+// PresetKeep is whether an agent keeps one tools preset in the background, and when it
+// doesn't, why, as the builder says it.
+type PresetKeep struct {
+	Preset fence.Preset `json:"preset"`
+	Kept   bool         `json:"kept"`
+	Why    string       `json:"why"`
+}
+
+// Presets returns whether the agent with id keeps each tools preset, from the narrowest;
+// every one is refused for an agent this build doesn't know.
+func Presets(id ID) []PresetKeep {
+	all := fence.Presets()
+	out := make([]PresetKeep, 0, len(all))
+
+	for _, p := range all {
+		kept, why := KeepsPreset(id, p)
+		out = append(out, PresetKeep{Preset: p, Kept: kept, Why: why})
+	}
+
+	return out
 }
 
 // validateFence checks an AccessFence for the agent with id.
@@ -146,8 +208,17 @@ func fenceShape(f *Fence) error {
 	case f.Preset != fence.Profile && (f.Base.Kind != AccessDefault || f.Base.Mode != ""):
 		return fmt.Errorf("%w: only the profile's own preset starts from the profile's access", ErrInvalidAccess)
 	default:
-		return nil
+		return hookShape(f)
 	}
+}
+
+// hookShape checks a fence's hook: an absolute path, beside its policy, or none.
+func hookShape(f *Fence) error {
+	if f.Hook != "" && (!filepath.IsAbs(f.Hook) || f.Policy == nil) {
+		return fmt.Errorf("%w: a fence's hook is an absolute path, beside its policy", ErrInvalidAccess)
+	}
+
+	return nil
 }
 
 // FenceFiles returns the files the agent's fence needs in the run's folder, beside the
@@ -211,6 +282,15 @@ func PrepareFence(id ID, a Access, s fence.Spec, program string) (FencedRun, err
 		return FencedRun{}, fmt.Errorf("%w: the run's folder isn't the one its settings are in", ErrInvalidAccess)
 	}
 
+	agentSpec, err := specFor(id)
+	if err != nil {
+		return FencedRun{}, err
+	}
+
+	if keeper, ok := agentSpec.(fenceKeeper); ok {
+		s = keeper.fenceSpec(s)
+	}
+
 	built, err := fence.Build(s)
 	if err != nil {
 		return FencedRun{}, err
@@ -221,7 +301,9 @@ func PrepareFence(id ID, a Access, s fence.Spec, program string) (FencedRun, err
 		return FencedRun{}, err
 	}
 
-	return FencedRun{Fence: built, Files: files, Note: built.AgentNote()}, nil
+	keeper, _ := agentSpec.(fenceKeeper)
+
+	return FencedRun{Fence: built, Files: files, Note: keeper.fenceNote(built)}, nil
 }
 
 // Write writes the run's files into its folder (fence.WriteRun).

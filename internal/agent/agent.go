@@ -131,6 +131,10 @@ type Agent struct {
 	// as the service status catalog names it, such as "claude.code": while it reports a
 	// major outage, Autopilot holds new starts of the agent, if the user asks it to.
 	StatusPart string `json:"statusPart"`
+
+	// Background is what the agent can do in the background, for the routine builder: its
+	// headless capabilities, and each tools preset it keeps, or why not.
+	Background Background `json:"background"`
 }
 
 // spec is one backend: what it is, and how a launch's options become its flags.
@@ -192,10 +196,18 @@ func specFor(id ID) (spec, error) {
 func All() []Agent {
 	all := make([]Agent, 0, len(specs()))
 	for _, s := range specs() {
-		all = append(all, s.info())
+		all = append(all, describe(s))
 	}
 
 	return all
+}
+
+// describe returns a spec's Agent, with what it can do in the background.
+func describe(s spec) Agent {
+	a := s.info()
+	a.Background = backgroundOf(a.ID)
+
+	return a
 }
 
 // IDs returns every agent's ID, the default first.
@@ -224,7 +236,7 @@ func Lookup(id ID) (Agent, error) {
 		return Agent{}, err
 	}
 
-	return s.info(), nil
+	return describe(s), nil
 }
 
 // Known reports whether id names an agent; Inherit names none.

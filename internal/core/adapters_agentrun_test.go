@@ -31,6 +31,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/localrepos"
 	"github.com/mrz1836/nilbox/internal/procs"
 	"github.com/mrz1836/nilbox/internal/scriptrun"
+	"github.com/mrz1836/nilbox/internal/sessions/observe/codex"
 	"github.com/mrz1836/nilbox/internal/shellenv"
 	"github.com/mrz1836/nilbox/internal/testutil"
 	"github.com/mrz1836/nilbox/internal/worktrees"
@@ -326,6 +327,9 @@ type agentRig struct {
 	maker   *fakeAgentMaker
 	engine  *fakeRunEngine
 	changes *fakeChangeNotes
+
+	// codexHome is the home whose .codex holds the Codex runs' rollouts.
+	codexHome string
 }
 
 // newAgentRig returns the background agents over a fresh database.
@@ -372,9 +376,10 @@ func (r *agentRig) build(t *testing.T) {
 			return req, nil
 		},
 	}
+	r.codexHome = filepath.Join(filepath.Dir(r.db), "codex-home")
 	r.agents.runner = agentrun.New(agentrun.Config{
 		Engine: r.runs, Runs: r.history, Ended: r.agents.Ended,
-		Sweeper: agentrun.ProcSweeper{Lister: procs.System{}},
+		Sweeper: agentrun.ProcSweeper{Lister: procs.System{}}, Limits: runLimits{codex: codex.Limits{Home: r.codexHome}},
 	})
 	r.agents.engine = func() runEngine { return r.engine }
 
@@ -469,6 +474,9 @@ type plannedProfile struct {
 	agent   agent.ID
 	profile string
 	err     error
+
+	// bp, when set, is the plan itself, as another agent's runs its own program.
+	bp *launcher.BackgroundPlan
 }
 
 func (f *fakePlanner) Plan(_ context.Context, req launcher.BackgroundRequest) (launcher.BackgroundPlan, *launcher.Hold,
@@ -489,6 +497,10 @@ func (f *fakePlanner) Plan(_ context.Context, req launcher.BackgroundRequest) (l
 	}
 
 	bp := f.bp
+	if p.bp != nil {
+		bp = *p.bp
+	}
+
 	bp.Plan.Agent, bp.Profile = p.agent, p.profile
 
 	return bp, f.hold, nil

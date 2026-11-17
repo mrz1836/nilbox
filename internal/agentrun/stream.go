@@ -73,6 +73,16 @@ type stream struct {
 	// keySource is where the agent's init line says its API key came from, "none" for a
 	// sign-in with the user's plan.
 	keySource string
+
+	// agentSession is the agent's own ID of the conversation, when the agent picks it and
+	// its stream names it (Codex's thread), "" otherwise.
+	agentSession string
+
+	// lastMessage is the last thing the agent said, whole up to maxMessage, for an agent
+	// whose end carries no message of its own (Codex), and items the tool items whose
+	// start was shown.
+	lastMessage string
+	items       map[string]bool
 }
 
 // tokens is one message's usage.
@@ -83,7 +93,10 @@ type tokens struct {
 // newStream returns a parser that reads each line with read; dir is the run's folder, which
 // the events write paths from.
 func newStream(read lineReader, dir string) *stream {
-	return &stream{read: read, dir: dir, usage: map[string]tokens{}, progress: runevent.Progress{Todos: []runevent.Todo{}}}
+	return &stream{
+		read: read, dir: dir, usage: map[string]tokens{}, items: map[string]bool{},
+		progress: runevent.Progress{Todos: []runevent.Todo{}},
+	}
 }
 
 // Write feeds the parser more of the log. It never fails.
@@ -166,6 +179,15 @@ func (s *stream) Limit() *Limit {
 	l := *s.limit
 
 	return &l
+}
+
+// AgentSessionID returns the agent's own ID of the conversation, once its stream names it
+// (Codex's thread.started), or "".
+func (s *stream) AgentSessionID() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	return s.agentSession
 }
 
 // Over reports that the agent's result line came: the run is done, whatever of it is left

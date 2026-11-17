@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"slices"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -171,7 +173,7 @@ func TestOtherArgumentsAreNoHookCall(t *testing.T) {
 	assert.True(t, fence.IsHookCall([]string{"--fence-hook-v2=/x"}), "every version is the hook mode, refused or not")
 }
 
-func TestTheHookModeWritesNothing(t *testing.T) {
+func TestTheHookModeWritesNothingButItsRefusals(t *testing.T) {
 	t.Parallel()
 
 	r := newHookRun(t, fence.EditTestPush)
@@ -182,14 +184,82 @@ func TestTheHookModeWritesNothing(t *testing.T) {
 		input map[string]any
 	}{
 		{"Bash", map[string]any{"command": "go test ./..."}},
-		{"Bash", map[string]any{"command": "git push -f"}},
 		{"Edit", map[string]any{"file_path": filepath.Join(r.wt, "x.go")}},
 		{"Read", map[string]any{"file_path": "/etc/hosts"}},
 	} {
 		r.call(t, []string{fence.HookArg(r.dir)}, c.tool, c.input)
 	}
 
-	assert.Equal(t, before, listTree(t, filepath.Dir(r.dir)), "the hook mode creates nothing")
+	assert.Equal(t, before, listTree(t, filepath.Dir(r.dir)), "a call let through writes nothing")
+
+	count, last := fence.ReadDenials(r.dir)
+	assert.Zero(t, count)
+	assert.Empty(t, last)
+
+	code, _ := r.call(t, []string{fence.HookArg(r.dir)}, "Bash", map[string]any{"command": "git push -f"})
+	require.Equal(t, 2, code)
+
+	code, _ = r.call(t, []string{fence.HookArg(r.dir)}, "apply_patch",
+		map[string]any{"command": "*** Begin Patch\n*** Update File: AGENTS.md\n@@\n+x\n*** End Patch"})
+	require.Equal(t, 2, code)
+
+	after := listTree(t, filepath.Dir(r.dir))
+	assert.Equal(t, sortedCopy(append(slices.Clone(before), filepath.Join(r.dir, fence.DenialsFile))), sortedCopy(after),
+		"a refusal writes only its line in the run's own log, which an agent's stream may never show")
+
+	count, last = fence.ReadDenials(r.dir)
+	require.Equal(t, 2, count)
+	assert.Equal(t, "Bash", last[0].Tool)
+	assert.Equal(t, "git push -f", last[0].What)
+	assert.Contains(t, last[0].Reason, "one push")
+	assert.Equal(t, "apply_patch", last[1].Tool)
+	assert.Contains(t, last[1].Reason, "AGENTS.md")
+
+	info, err := os.Stat(filepath.Join(r.dir, fence.DenialsFile))
+	require.NoError(t, err)
+	assert.Equal(t, os.FileMode(0o600), info.Mode().Perm(), "the log is the user's alone")
+
+	missing := filepath.Join(filepath.Dir(r.dir), "missing")
+	code, _ = r.call(t, []string{fence.HookArg(missing)}, "Bash", map[string]any{"command": "ls"})
+	assert.Equal(t, 2, code)
+	assert.NoDirExists(t, missing, "a run's folder is never made by its hook")
+}
+
+// sortedCopy returns list sorted, as listTree's walk orders a folder's names.
+func sortedCopy(list []string) []string {
+	out := slices.Clone(list)
+	slices.Sort(out)
+
+	return out
+}
+
+func TestTheRefusalsLogIsBounded(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+
+	for i := range fence.KeepDenials + 5 {
+		fence.LogDenial(dir, fence.Call{Tool: "Bash", Command: "curl " + strconv.Itoa(i)}, "no network tools")
+	}
+
+	count, last := fence.ReadDenials(dir)
+	assert.Equal(t, fence.KeepDenials+5, count)
+	require.Len(t, last, fence.KeepDenials, "the last ones are kept")
+	assert.Equal(t, "curl 5", last[0].What)
+
+	link := filepath.Join(t.TempDir(), "run")
+	require.NoError(t, os.MkdirAll(link, 0o700))
+	target := filepath.Join(t.TempDir(), "elsewhere")
+	require.NoError(t, os.Symlink(target, filepath.Join(link, fence.DenialsFile)))
+	fence.LogDenial(link, fence.Call{Tool: "Bash", Command: "curl"}, "no")
+	assert.NoFileExists(t, target, "never through a link")
+
+	fence.LogDenial("relative", fence.Call{Tool: "Bash"}, "no")
+	assert.NoFileExists(t, filepath.Join("relative", fence.DenialsFile))
+
+	count, last = fence.ReadDenials(t.TempDir())
+	assert.Zero(t, count)
+	assert.NotNil(t, last)
 }
 
 // listTree lists every path under root.

@@ -1765,8 +1765,8 @@ What the user sees is in `docs/desktop.md`'s *Closing the loop: Wait for the che
   order (the step itself, then each fallback, `fallbackStep`: that agent's profile for every
   repository, the step's model and effort only for a fallback of the agent the step resolved
   to) and starts the first that isn't resting. A fallback whose plan says its agent can't run
-  in the background here (`cantRunHere`: a preset it can't keep, no background half yet, as
-  Codex's until its spec has one, or no program) is passed over; the step's own profile never
+  in the background here (`cantRunHere`: a preset it can't keep, as Codex can't keep GitHub
+  tasks only, no background half, or no program) is passed over; the step's own profile never
   is. With nothing left it answers `Wait` (`out_of_usage`, queued, or `not_ready` when it
   passed a fallback over) with `RetryAt`, the soonest rest's end, and the engine holds the
   match until then (`heldBack.until`) without reading the item. Readiness marks what only a
@@ -1990,7 +1990,7 @@ takes a step in the background itself and hands one in the terminal to `agentRun
    `Dispatch` returns `Running` with what it started (`Launched`, `ScriptRunID` included), and
    the run's tokens reach the ledger every 30 seconds (`Engine.RunUsage`).
 
-**The stream** (`agentrun/stream.go`, `claude.go`) splits the log into lines itself (one is
+**The stream** (`agentrun/stream.go`, `claude.go`, and Codex's `codex.go`) splits the log into lines itself (one is
 read up to 64 MB, a longer one counted and skipped), keeps the last 2,000 events (each text cut
 to 8 KB, `runevent.MaxText`) and the progress (the latest step, the todo list, tokens counted
 once per message), and counts a message it doesn't know (`Progress.Unknown`). Each event
@@ -2076,12 +2076,84 @@ the restart fails after it), and its question says which carry on (`update.Run.O
 With **Keep the Mac awake while agents work** on, `caffeinate -i -w <pid>` holds the Mac awake
 for each run's program.
 
-**Seams.** The fallback to another profile when one is out of usage is the next phase's:
-the outcome keeps the limit's type and reset (`Outcome.Limit`). Take over for another agent
-needs its spec's `Resume` capability, its headless resume in `agent.Args` (Codex's `codex
-resume <id>`, with the thread ID its stream names), and a fence it keeps in an interactive
-session (`fenceKeeper`, `Fence.TakenOver`); the run view needs its stream parser
-(`parserFor`), which every page and the memory share.
+**Seams.** The outcome keeps the limit's type and reset (`Outcome.Limit`), which the profile
+fallback rests a profile by. Another agent claims Take over with its spec's `Resume`
+capability, its headless resume in `agent.Args`, and a fence it keeps in an interactive
+session (`fenceKeeper`, `Fence.TakenOver`); the run view reads it through its stream parser
+(`parserFor`), which every page and the memory share. Codex has all of them (below).
+
+### Codex in the background
+
+Codex runs in the background through the same planner, fence, runner, run view, and Take over
+as Claude Code: everything it does differently is its spec's (`internal/agent/codex_headless.go`,
+`codex_fence.go`) and its parser's (`internal/agentrun/codex.go`), as S6 measured them on
+codex-cli 0.163.0, its version floor (`codexFloor`, `Headless.MinVersion`).
+
+- **The run.** `codex exec --json --ignore-user-config --ignore-rules`, the model and
+  `model_reasoning_effort`, the fence's flags, `--output-schema <run folder>/report-schema.json`,
+  the unattended note as `developer_instructions`, the extra arguments, and `-- -`, the prompt
+  on stdin. `--ignore-user-config` leaves the profile's `config.toml` unread (its MCP servers,
+  plugins, `notify` program, and the projects it trusts; the sign-in still comes from
+  `CODEX_HOME`), so a branch's own `.codex/config.toml` and `.codex/hooks.json`, which Codex
+  loads only in a folder that config trusts, never load: checked locally, a trusted branch's MCP
+  command and its `hooks.json` hook ran, the latter under the hook bypass the fence needs, and
+  with the flag neither did (`TestABranchsCodexConfigCantRunACommandInABackgroundRun` replays
+  it). `--ignore-rules` leaves every execpolicy file unread. A Codex run reads no trust
+  (`Headless.ReadsTrust` false), so `Backgrounds.Trust` grants none, and a Take over under the
+  fence grants none either: Codex asks the user. Never `--approve-for-me` (it refuses
+  `--sandbox` and lets a model approve escalations) or `--ephemeral` (the thread must be kept to
+  be taken over). The report is the strict form of the schema (`agent.StrictSchema`:
+  `additionalProperties` false, every property required, the optional ones nullable), written
+  by `agent.HeadlessFiles`, which `Backgrounds.Fenced` adds to the run's files. The
+  environment drops every `CODEX_*` variable but `CODEX_HOME`, which the plan sets per profile,
+  and `CODEX_CA_CERTIFICATE`.
+- **The fence.** Codex keeps every preset but GitHub tasks only (its sandbox cuts gh off from
+  GitHub and its sign-in, and outside one only the hook would hold the run in): `KeepsPreset`
+  says so, and the builder offers it off with that reason (`agent.Agent.Background.Presets`).
+  Read only is `--sandbox read-only`, and since Codex reads through its shell, the policy lets
+  its reading commands run (`fence.Spec.ShellReads`, set by its spec). The edit presets are
+  `--sandbox workspace-write`, with `sandbox_workspace_write.writable_roots` naming the
+  worktree's own git folder and the clone's `objects`, `refs`, and `logs` (so it can commit,
+  never touching the clone's hooks or config) and the sandbox check's proof folder; Edit, test,
+  and push turns the sandbox's network on for its one push (`network_access`), which reaches
+  any host: the hook refuses the network tools, but a test program isn't held to GitHub and the
+  registries as Claude Code's sandbox holds it. The profile's own is a click's access. Every
+  preset passes `approval_policy="never"`, `web_search="disabled"`, and the fence hook as
+  `-c hooks.PreToolUse=[{hooks=[{type="command",command=...}]}]` with
+  `--dangerously-bypass-hook-trust`, without which a `-c` hook silently doesn't run; a hook
+  with no matcher runs on every call. The hook's protocol is Claude Code's (`--fence-hook-v1`),
+  and the policy knows Codex's tools: `Bash`, `apply_patch` (its patch's files decided as
+  writes, `fence.PatchFiles`, so `AGENTS.md`, which the sandbox lets through, is refused), and
+  `view_image`. Codex's `--json` never shows a call its hook refused, so the hook logs each in
+  the run's folder (`fence.LogDenial`, `denials.jsonl`), which the run's outcome counts
+  (`Outcome.Refused`, `Refusals`). The fence's own record of its flags is the run folder's
+  `settings.json` (`codexFence`), which Take over finds the fence by, as for Claude Code. The
+  argv needs the fence worked out for the worktree, so `agent.Fence` carries its `Policy` and
+  `Hook` once `Backgrounds.Fenced` has them (`Access.Worked`, `launcher.Fence.Policy`), and Take
+  over reads the policy back from the run's folder.
+- **The stream** (`agentrun/codex.go`): `thread.started` names the thread, which Codex picks,
+  so the runner links the run's session to it as soon as it comes
+  (`SessionUpdate.AgentSessionID`, `sessions.RunUpdate.AgentSessionID`); items' starts and ends
+  are the tools and their results (a command shown without the login shell Codex wraps it in);
+  the last `agent_message` is the final message and, as JSON, the report; `turn.completed` is
+  the end, with its tokens (no cost: a dollar budget or cap can't count it), `turn.failed` an
+  error, and one with `usage_limit_reached`, `quota_exceeded`, a workspace's credits depleted,
+  or "usage limit" is out of usage. Which limit and when it resets come from the thread's
+  rollout (`agentrun.LimitReader`, core's `runLimits` over `observe/codex.Limits`: the last
+  token count's `rate_limit_reached_type` and its window), so the profile fallback rests the
+  profile until then. A stream with neither end was cut off: stopped, interrupted, or failed
+  without a word. Its tokens come only as the turn ends (`Headless.UsageLive` false), so a
+  token budget is checked then, and the builder says so; a dollar budget has no flag
+  (`Headless.Budget` false), so its runs never outlive the quit and the builder says *Budget:
+  not available*. After a SIGKILL, the processes it left in the worktree are swept, as Claude
+  Code's.
+- **Take over** is `codex resume <thread>` in the worktree, under the run's sandbox and
+  writable folders again (a resume keeps no sandbox of its own), `--ask-for-approval on-request`
+  so whatever the sandbox refuses is asked, the network off so a push asks first, and no hook,
+  whose bypass would also run a trusted branch's hooks unreviewed in the interactive session,
+  which can't leave the user's config unread. Its `developer_instructions` persist in the
+  thread, so the resume's first message tells it someone answers now (`Options.TakeOver`,
+  `codexTakeOverNote`), with the fence or the profile's permissions alike.
 
 ### Local actions: by a routine, Undo, and hands off
 
@@ -2774,7 +2846,14 @@ depends on no agent. It is a leaf: it imports only `sensitive`, `paths`, and `te
   workflows, and tooling, from `internal/sensitive`'s own patterns, matched ignoring case,
   whatever the user turned off); a read tool reads nothing private. Web tools, MCP tools, and
   the tools that start work elsewhere or later are refused. The routine's own denies refuse a
-  command by its first words.
+  command by its first words. An agent's patch (Codex's `apply_patch`, as its own tool or a
+  command) is decided as the writes of every file it adds, updates, deletes, or moves to
+  (`PatchFiles`; a patch whose files it can't tell, as in a here-document, is refused), Codex's
+  `view_image` as a read, and its `web_search` as a web tool. Under Read only, an agent that
+  reads through its shell (`Policy.ShellReads`, which its spec sets: Codex) runs the commands
+  that only read (the readers and `shellReaders`, git's reads, gh's reads, `find` without an
+  action, `sed` without `-i`, no writing redirection), held besides by its own read-only
+  sandbox.
 - **The sandbox check.** A sandboxed run's policy holds a `Canary`: `touch <proof> <probe>`, whose
   proof is in the run folder's `ProofDir`, which the sandbox lets commands write, and whose probe
   is beside it, which it must refuse. Until the proof exists, every command but the check is
@@ -2801,7 +2880,12 @@ depends on no agent. It is a leaf: it imports only `sensitive`, `paths`, and `te
   Claude Code's PreToolUse hook: the call's JSON on stdin (at most 32 MiB), the run folder's
   `PolicyFile` (`fence.json`, at most 1 MiB, a regular file, strict JSON of `PolicyVersion`), and
   a refusal as exit status 2 with its reason on stderr; a call let through says nothing and goes
-  on to the agent's own rules. A call, or a policy, it can't read is refused. It writes nothing.
+  on to the agent's own rules. Codex's PreToolUse hook speaks the same protocol (codex-cli
+  0.163.0: `tool_name`, `tool_input.command`, `cwd`). A call, or a policy, it can't read is
+  refused. It writes nothing but each refusal, appended to the run folder's `DenialsFile`
+  (`denials.jsonl`, `LogDenial`: only in a folder that is there, never through a link, at most
+  1 MiB), since an agent's stream may never show a refused call (Codex's doesn't);
+  `ReadDenials` counts them and keeps the last 20 for the run's outcome.
   `WriteRun` writes a run's folder: the policy and the agent's own files, 0600 and never through
   a link, in a 0700 folder, with the sandbox check's proof folder for a sandboxed run.
 - **What a run changed.** `CheckChanged(head, files, cfg)` checks the files a run's commits
@@ -2834,7 +2918,8 @@ settings keys change without `claudeFenceReviewed` and `claudeFenceFloor` (2.1.3
 `FenceFloor`) reviewed. `agent.Args` refuses a fenced run extra directories (`ErrFencedDirs`) and
 every extra flag `CheckFenced` refuses (the fence's own, the headless run's, and those that would
 loosen it, such as `--add-dir`, `--plugin-url`, and `--mcp-config`); `PrepareFence` builds a
-run's fence and its files together, and `KeepsPreset` says which presets an agent keeps (Codex
-none yet). The launcher's `resolvePermission` chooses a background run's access from its
+run's fence and its files together, and `KeepsPreset` says which presets an agent keeps (each
+spec's own `keeps`: Claude Code every one, Codex every one but GitHub tasks only, whose fence
+is in [Codex in the background](#codex-in-the-background)). The launcher's `resolvePermission` chooses a background run's access from its
 `Request.Fence`, below the trust rule: an untrusted item without the override runs Read only,
 whatever the fence says, and a fenced plan takes none of the profile's extra directories.

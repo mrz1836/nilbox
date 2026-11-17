@@ -13,8 +13,11 @@ import (
 
 // The hook mode's flag. The protocol is versioned in the flag's name, so a run that
 // outlives an update calls the new build's hook in the protocol the run was started with.
-// Version 1 is Claude Code's PreToolUse hook: the tool call as JSON on stdin, and a call
-// refused with exit status 2 and its reason on stderr.
+// Version 1 is Claude Code's PreToolUse hook, which Codex's speaks too (codex-cli 0.163.0):
+// the tool call as JSON on stdin (hook_event_name, tool_name, tool_input, cwd), and a call
+// refused with exit status 2 and its reason on stderr. Each agent names its tools its own
+// way (Codex's shell is Bash, its edits apply_patch with the patch as tool_input.command,
+// its image reads view_image), and Decide knows both.
 const (
 	// HookFlag asks for the hook mode, protocol version 1, with the run's folder as its
 	// value: --fence-hook-v1=<run folder>.
@@ -70,44 +73,53 @@ type toolInput struct {
 // It reads the tool call from stdin and the policy from the run's folder, and lets the
 // call through with status 0 and no output, or refuses it with status 2 and the reason on
 // stderr. It refuses every call it can't read, and every call under a policy it can't
-// read, so a fence never fails open. It reads nothing else and writes nothing.
+// read, so a fence never fails open. It reads nothing else, and writes nothing but each
+// refusal, appended to the run folder's DenialsFile (LogDenial): an agent that never shows
+// a refused call in its stream (Codex) leaves the run no other trace of it.
 func RunHook(args []string, stdin io.Reader, stderr io.Writer) (int, bool) {
 	if !IsHookCall(args) {
 		return 0, false
 	}
 
-	v := hookVerdict(args, stdin)
+	v, runDir, c := hookVerdict(args, stdin)
 	if !v.Deny {
 		return 0, true
 	}
 
 	_, _ = fmt.Fprintln(stderr, v.Reason)
 
+	if runDir != "" {
+		LogDenial(runDir, c, v.Reason)
+	}
+
 	return hookDenied, true
 }
 
-// hookVerdict decides the hook mode's call.
-func hookVerdict(args []string, stdin io.Reader) Verdict {
+// hookVerdict decides the hook mode's call, and returns the run's folder once its policy
+// was read, with the call as the policy saw it.
+func hookVerdict(args []string, stdin io.Reader) (Verdict, string, Call) {
 	runDir, err := hookRunDir(args)
 	if err != nil {
-		return deny("The fence refused this call: %v.", err)
+		return deny("The fence refused this call: %v.", err), "", Call{}
 	}
 
 	in, err := readHookInput(stdin)
 	if err != nil {
-		return deny("The fence refused this call: %v.", err)
+		return deny("The fence refused this call: %v.", err), "", Call{}
 	}
 
 	if in.Event != "" && in.Event != "PreToolUse" {
-		return Verdict{}
+		return Verdict{}, "", Call{}
 	}
 
 	p, err := ReadPolicy(runDir)
 	if err != nil {
-		return deny("The fence refused this call: %v.", err)
+		return deny("The fence refused this call: %v.", err), "", Call{}
 	}
 
-	return Decide(p, in.call(), OSFS{})
+	c := in.call()
+
+	return Decide(p, c, OSFS{}), runDir, c
 }
 
 // errHookCall is a hook call the fence can't read: its arguments or its tool call.

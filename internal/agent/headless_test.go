@@ -30,15 +30,15 @@ func TestClaudeRunsInTheBackground(t *testing.T) {
 	h, err := agent.HeadlessOf(agent.Claude)
 	require.NoError(t, err)
 	assert.Equal(t, agent.Headless{
-		Background: true, Budget: true, Cost: true, Usage: true, Structured: true, Resume: true, MinVersion: "2.1.319",
+		Background: true, Budget: true, Cost: true, Usage: true, UsageLive: true, Structured: true, Resume: true,
+		ReadsTrust: true, MinVersion: "2.1.319",
 	}, h)
 
 	codex, err := agent.HeadlessOf(agent.Codex)
 	require.NoError(t, err)
-	assert.False(t, codex.Background, "Codex has no headless half yet")
-
-	_, err = agent.HeadlessArgs(agent.Codex, agent.HeadlessOptions{SessionID: sessionID, Access: readOnly()})
-	require.ErrorIs(t, err, agent.ErrNoBackground)
+	assert.Equal(t, agent.Headless{
+		Background: true, Usage: true, Structured: true, Resume: true, MinVersion: "0.163.0",
+	}, codex, "Codex runs in the background, with no budget or cost of its own (S6)")
 
 	_, err = agent.HeadlessOf("aider")
 	require.ErrorIs(t, err, agent.ErrUnknownAgent)
@@ -140,6 +140,7 @@ func TestABackgroundRunDropsTheAgentsOwnVariables(t *testing.T) {
 	assert.Equal(t, []string{
 		"PATH=/usr/bin", "CLAUDE_CONFIG_DIR=/srv/.claude_work", "CLAUDECODE_ALSO=kept", "HOME=/srv",
 	}, agent.HeadlessEnv(agent.Claude, env))
-	assert.Equal(t, env, agent.HeadlessEnv(agent.Codex, env), "an agent with no headless half drops nothing")
+	assert.Equal(t, env, agent.HeadlessEnv(agent.Codex, env), "another agent's variables are its own")
+	assert.Equal(t, env, agent.HeadlessEnv("aider", env), "an agent this build doesn't know drops nothing")
 	assert.NotNil(t, agent.HeadlessEnv(agent.Claude, nil))
 }

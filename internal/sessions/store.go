@@ -370,6 +370,11 @@ type RunUpdate struct {
 
 	// PID is the agent's process, 0 to keep the one stored.
 	PID int
+
+	// AgentSessionID is the agent's own ID of the conversation, once the run's stream names
+	// it (Codex picks its thread's), "" to keep the one stored. It links a session not yet
+	// linked, as an observation does.
+	AgentSessionID string
 }
 
 // ByRun returns the session of the background run runID, or ErrNotFound.
@@ -426,7 +431,7 @@ func setRunState(ctx context.Context, q *queries.Queries, id string, u RunUpdate
 	}
 
 	after, moved := merge(before, Observation{
-		ID: id, PID: u.PID, State: u.State, Detail: u.Detail, LastMessage: u.LastMessage,
+		ID: id, AgentSessionID: u.AgentSessionID, PID: u.PID, State: u.State, Detail: u.Detail, LastMessage: u.LastMessage,
 	}, now)
 	if !moved {
 		return Change{}, false, nil

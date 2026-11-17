@@ -30,11 +30,17 @@ var ErrFenceNotKept = errors.New("the routine's fence can't be kept")
 // Fence is a background run's fence, as its request carries it: the routine's tools
 // preset, and the run's own folder, where its settings and policy go. TakenOver marks the
 // run's conversation resumed in the user's terminal (TakeOver), under the same fence,
-// asking about whatever it doesn't allow rather than refusing it.
+// asking about whatever it doesn't allow rather than refusing it. Policy is the fence's
+// policy once worked out for the run's worktree (Backgrounds.Fenced), or read back from its
+// folder for Take over, and Hook the fence hook's program, the app's own executable, ""
+// for none: an agent that names its sandbox and its hook on the command line (Codex)
+// writes its flags from them.
 type Fence struct {
 	Preset    fence.Preset
 	RunDir    string
 	TakenOver bool
+	Policy    *fence.Policy
+	Hook      string
 }
 
 // permission is the outcome of resolvePermission: the access to start with and a short
@@ -113,6 +119,10 @@ func fencedPermission(preset fence.Preset, click permission, outside bool, f *Fe
 	}
 
 	access := agent.FenceAccess(preset, click.access).InRun(f.RunDir)
+
+	if f.Policy != nil && f.Policy.Preset == preset {
+		access = access.Worked(*f.Policy, f.Hook)
+	}
 
 	if f.TakenOver {
 		access = access.TakenOver()

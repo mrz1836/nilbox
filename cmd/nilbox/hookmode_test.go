@@ -123,6 +123,20 @@ func TestTheHookModeDecidesAndOpensNothing(t *testing.T) {
 	assert.Contains(t, stderr, "fence refused")
 
 	assert.Equal(t, []string{home}, listFiles(t, home), "the hook mode creates nothing in home: no data, no logs")
-	assert.Equal(t, before, listFiles(t, root), "nor in the run's folder or the worktree")
+
+	denials := filepath.Join(runDir, fence.DenialsFile)
+	assert.Equal(t, sortedFiles(append(slices.Clone(before), denials)), sortedFiles(listFiles(t, root)),
+		"nor in the run's folder or the worktree, but its own log of the calls it refused")
+
+	count, _ := fence.ReadDenials(runDir)
+	assert.Equal(t, 2, count, "the forced push and the agent file")
 	assert.False(t, slices.ContainsFunc(listFiles(t, root), func(p string) bool { return strings.HasSuffix(p, ".log") }))
+}
+
+// sortedFiles returns paths sorted, as a walk orders a folder's names.
+func sortedFiles(paths []string) []string {
+	out := slices.Clone(paths)
+	slices.Sort(out)
+
+	return out
 }

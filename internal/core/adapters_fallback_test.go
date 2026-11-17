@@ -13,6 +13,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/agentrun"
 	"github.com/mrz1836/nilbox/internal/autopilot"
 	"github.com/mrz1836/nilbox/internal/autopilot/spec"
+	"github.com/mrz1836/nilbox/internal/execpath"
 	"github.com/mrz1836/nilbox/internal/testutil"
 )
 
@@ -38,7 +39,7 @@ func chainRig(t *testing.T) (*agentRig, autopilot.Job) {
 	r.planner.profiles = map[string]plannedProfile{
 		"/":                             {agent: agent.Claude, profile: defaultProfile},
 		claudeID + "/" + workProfile:    {agent: agent.Claude, profile: workProfile},
-		"codex/" + defaultProfile:       {err: fmt.Errorf("%w: Codex can't keep a tools preset in a background run yet.", agent.ErrPresetNotKept)},
+		"codex/" + defaultProfile:       {err: fmt.Errorf("%w: Codex isn't installed.", execpath.ErrNotFound)},
 		claudeID + "/spare":             {agent: agent.Claude, profile: "spare"},
 		claudeID + "/" + defaultProfile: {agent: agent.Claude, profile: defaultProfile},
 	}
@@ -125,9 +126,9 @@ func TestAStartWhoseOnlyFallbackCantRunHereWaitsAsNotReady(t *testing.T) {
 
 	res, err := r.agents.Dispatch(t.Context(), job)
 	require.NoError(t, err)
-	assert.Equal(t, autopilot.BlockNotReady, res.Wait, "Codex in the background waits as not ready until it can run there")
+	assert.Equal(t, autopilot.BlockNotReady, res.Wait, "a fallback this Mac can't run waits as not ready")
 	assert.Equal(t, soon, res.RetryAt)
-	assert.Contains(t, res.WaitWords, "Codex can't keep a tools preset in a background run yet.")
+	assert.Contains(t, res.WaitWords, "Codex isn't installed.")
 	assert.Contains(t, res.WaitWords, "the default profile is out of usage until")
 }
 

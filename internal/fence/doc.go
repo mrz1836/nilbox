@@ -17,9 +17,10 @@
 //     and, for a sandboxed run, no command before the sandbox has been seen to hold.
 //   - RunHook is the hook mode: the app's own executable, started by the agent before each
 //     tool call with HookFlag, reads the call on stdin, decides it against the run folder's
-//     PolicyFile, and answers in the agent's hook protocol. It reads nothing else, writes
-//     nothing, and opens nothing of the app's, so cmd/nilbox runs it before anything reads a
-//     setting or opens the data.
+//     PolicyFile, and answers in the agent's hook protocol, Claude Code's and Codex's alike.
+//     It reads nothing else, writes nothing but each refusal into the run folder's
+//     DenialsFile (an agent's stream may never show a refused call), and opens nothing of
+//     the app's, so cmd/nilbox runs it before anything reads a setting or opens the data.
 //   - Changed checks the files a run's commits changed against the sensitive categories,
 //     so a run that touched agent files holds the next click on its item at that head.
 //

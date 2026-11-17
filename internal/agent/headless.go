@@ -4,7 +4,10 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"slices"
 	"strings"
+
+	"github.com/mrz1836/nilbox/internal/fence"
 )
 
 // Each agent's headless half: what it can do when Autopilot runs it in the background, and
@@ -26,11 +29,22 @@ type Headless struct {
 	Cost   bool `json:"cost"`
 	Usage  bool `json:"usage"`
 
+	// UsageLive reports an agent whose stream reports its tokens as the run goes, so the
+	// runner stops it once it passes a budget in tokens; one that reports them only as the
+	// run ends (Codex) has its budget checked then, its time limit bounding the run.
+	UsageLive bool `json:"usageLive"`
+
 	// Structured reports an agent that returns the run's report in the shape asked.
 	Structured bool `json:"structured"`
 
 	// Resume reports an agent whose background run the user can take over in the terminal.
 	Resume bool `json:"resume"`
+
+	// ReadsTrust reports an agent whose background run stops at its workspace trust
+	// question unless its folder is trusted, so the launcher trusts the worktree first;
+	// one that reads no trust (Codex, which leaves the user's config unread) is never
+	// trusted there.
+	ReadsTrust bool `json:"readsTrust"`
 
 	// MinVersion is the oldest version whose flags every background run uses, "" for an
 	// agent with no background runs.
@@ -80,6 +94,13 @@ type headlessSpec interface {
 	// dropEnv names the variables that steer the agent itself, which a background run's
 	// environment leaves out; one ending in "*" names every variable with that prefix.
 	dropEnv() []string
+
+	// keptEnv names the variables dropEnv names that a background run keeps.
+	keptEnv() []string
+
+	// schemaFile reports an agent that reads the report's schema from a file in the run's
+	// folder (HeadlessFiles), in its strict form.
+	schemaFile() bool
 }
 
 var (
@@ -197,16 +218,38 @@ func HeadlessEnv(id ID, env []string) []string {
 		return append(out, env...)
 	}
 
-	drop := h.dropEnv()
+	drop, keep := h.dropEnv(), h.keptEnv()
 
 	for _, e := range env {
 		name, _, _ := strings.Cut(e, "=")
-		if !dropped(name, drop) {
+		if !dropped(name, drop) || slices.Contains(keep, name) {
 			out = append(out, e)
 		}
 	}
 
 	return out
+}
+
+// HeadlessFiles returns the files a background run of the agent with id reads from its
+// own folder beside its fence's, for the report's schema: for an agent that reads its
+// schema from a file (Codex), the schema in its strict form (StrictSchema), named
+// ReportSchemaName; none for one that takes it on the command line, or with no schema.
+func HeadlessFiles(id ID, schema string) ([]fence.File, error) {
+	h, err := headlessFor(id)
+	if err != nil {
+		return nil, err
+	}
+
+	if schema == "" || !h.schemaFile() {
+		return []fence.File{}, nil
+	}
+
+	strict, err := StrictSchema(schema)
+	if err != nil {
+		return nil, err
+	}
+
+	return []fence.File{{Name: ReportSchemaName, Data: append([]byte(strict), '\n')}}, nil
 }
 
 // dropped reports whether the variable name is among drop: by its whole name, or by a

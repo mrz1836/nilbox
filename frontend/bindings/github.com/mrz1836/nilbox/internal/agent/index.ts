@@ -7,7 +7,9 @@ export {
 
 export type {
     Agent,
+    Background,
     Choice,
     FieldError,
-    Marker
+    Marker,
+    PresetKeep
 } from "./models.js";

@@ -48,6 +48,13 @@ func readers() []string {
 	}
 }
 
+// shellReaders are the commands an agent that reads through its shell runs under Read only
+// (Policy.ShellReads): the readers, and the everyday commands that only read or print.
+func shellReaders() []string {
+	return append(slices.Clone(readers()), "find", "sort", "uniq", "cut", "tr", "pwd", "echo", "printf", "which", "true",
+		"false", "sed", "awk", "xxd", "date", "tac", "column", "fold", "expand", "paste", "join", "comm", "look")
+}
+
 // utilities are the everyday commands an edit preset's agent may run beside the
 // repository's tools, which its sandbox holds to the worktree.
 func utilities() []string {
