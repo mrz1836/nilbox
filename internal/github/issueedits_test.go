@@ -124,6 +124,26 @@ func TestAddLabelsSendsOneGatedEdit(t *testing.T) {
 	assert.Equal(t, []string{ResourceCore}, gate.allowed, "the gate counted it")
 }
 
+func TestAPullRequestsLabelsGoToTheIssuesEndpoint(t *testing.T) {
+	t.Parallel()
+
+	client, got := editServer(t, http.StatusOK, `[{"name":"needs-repro","color":"d73a4a"}]`, nil)
+	pull := issueRef()
+	pull.Kind = item.KindPR
+
+	_, err := client.AddLabels(t.Context(), NewToken(fakeToken), pull, []string{"needs-repro"})
+	require.NoError(t, err)
+
+	_, err = client.RemoveLabel(t.Context(), NewToken(fakeToken), pull, "bug")
+	require.NoError(t, err)
+
+	path := "/repos/" + filesOwner + "/" + exampleRepo + "/issues/12/labels"
+	assert.Equal(t, []editRequest{
+		{method: http.MethodPost, path: path, body: map[string][]string{"labels": {"needs-repro"}}},
+		{method: http.MethodDelete, path: path + "/bug"},
+	}, *got)
+}
+
 func TestAddLabelsSeesAnEditGitHubIgnored(t *testing.T) {
 	t.Parallel()
 
@@ -150,8 +170,8 @@ func TestLabelEditsRefuseWhatNoLabelCanBe(t *testing.T) {
 	t.Parallel()
 
 	client, got := editServer(t, http.StatusOK, `[]`, nil)
-	pull := issueRef()
-	pull.Kind = item.KindPR
+	unknown := issueRef()
+	unknown.Kind = "discussion"
 
 	for name, names := range map[string][]string{
 		"none":         nil,
@@ -163,8 +183,8 @@ func TestLabelEditsRefuseWhatNoLabelCanBe(t *testing.T) {
 		require.ErrorIs(t, err, ErrInvalidLabel, name)
 	}
 
-	_, err := client.AddLabels(t.Context(), NewToken(fakeToken), pull, []string{bugLabel})
-	require.ErrorIs(t, err, ErrInvalidItemRef, "a pull request's labels aren't the issue sheet's to change")
+	_, err := client.AddLabels(t.Context(), NewToken(fakeToken), unknown, []string{bugLabel})
+	require.ErrorIs(t, err, ErrInvalidItemRef, "only an issue or a pull request has labels")
 
 	_, err = client.RemoveLabel(t.Context(), NewToken(fakeToken), issueRef(), "")
 	require.ErrorIs(t, err, ErrInvalidLabel)

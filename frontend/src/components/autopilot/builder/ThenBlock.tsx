@@ -17,6 +17,7 @@ import { fieldClass, quietButtonClass } from '../../controls'
 import { PlusIcon, TrashIcon } from '../../icons'
 import { MenuButton, type MenuItem } from '../../Menu'
 import { AgentStepBlock, type AgentKit } from './AgentStepBlock'
+import { GitHubStepBlock } from './GitHubStepBlock'
 import { Block, Notes, NumberField, type BuilderKit } from './parts'
 
 export interface ThenBlockProps {
@@ -109,10 +110,12 @@ function StepRow({ kit, agentKit, steps, index, kinds, step, onChange, onMove, o
   // problem with it shows where it is.
   const only: AutopilotOutcome[] = onlyIfChoices(kit.catalog, steps, index).map((o) => o.id)
   const shownOnly = onlyIf !== '' && !only.includes(onlyIf) ? [...only, onlyIf] : only
-  // The agent step's block shows what is wrong inside it.
-  const inside = `${path}.agent`
+  // The agent step's block, and the GitHub step's, show what is wrong inside them.
+  const inside = [`${path}.agent`, `${path}.github`]
   const own = (list: readonly AutopilotProblem[]) =>
-    problemsAt(list, 'steps', path).filter((p) => p.field !== inside && !p.field.startsWith(`${inside}.`))
+    problemsAt(list, 'steps', path).filter(
+      (p) => !inside.some((at) => p.field === at || p.field.startsWith(`${at}.`) || p.field.startsWith(`${at}[`)),
+    )
   const problems = own(kit.problems)
   const warnings = own(kit.warnings)
 
@@ -185,6 +188,20 @@ function StepRow({ kit, agentKit, steps, index, kinds, step, onChange, onMove, o
           </button>
         </span>
       </div>
+      {step.github !== undefined && step.github !== null && (
+        <div className="pl-6">
+          <GitHubStepBlock
+            kit={kit}
+            prompts={agentKit.prompts}
+            path={path}
+            kinds={kinds}
+            actions={step.github}
+            onChange={(github) => {
+              onChange({ ...step, github })
+            }}
+          />
+        </div>
+      )}
       {step.agent !== undefined && step.agent !== null && (
         <div className="pl-6">
           <AgentStepBlock

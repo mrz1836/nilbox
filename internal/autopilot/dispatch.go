@@ -38,13 +38,20 @@ type Job struct {
 	RoutineName string
 
 	// Item is the item the match is about, and Head the head commit the match was decided
-	// on, which a write is pinned to; "" for an issue.
+	// on, which a write is pinned to; "" for an issue. A GitHub action's is the head the
+	// engine read right before it started, on which the cycle decided the match again.
 	Item ItemRef
 	Head string
 
 	// Step is the step to run, and Index where it is among the match's steps.
 	Step  spec.Step
 	Index int
+
+	// Action is which of a GitHub step's actions to send: each is its own run, recorded
+	// before it is sent, so a quit never sends one twice. Accept is the warnings the user
+	// accepted for it, as the sheet worded them (Result.Warning), "" for none.
+	Action int
+	Accept string
 
 	// Attempt is how many runs the match started before this one.
 	Attempt int
@@ -139,6 +146,17 @@ type Result struct {
 	NotOffered string
 	Warning    string
 
+	// PushedSince reports a GitHub action that sent nothing because the pull request was
+	// pushed to since the head it was pinned to, or its sheet couldn't read it right before:
+	// no try, and it is read and decided again.
+	PushedSince bool
+
+	// Held says why the write gate refused a GitHub action before anything was sent (the
+	// app's own pace, the budget's reserve, or GitHub asking it to wait), and RetryIn when
+	// the next may go: no try, and GitHub actions wait until then.
+	Held    string
+	RetryIn time.Duration
+
 	// Summary is a line of what happened, for the run's record.
 	Summary string
 
@@ -157,6 +175,12 @@ type Result struct {
 
 	// Launched is what an agent's launch started, for the run's record.
 	Launched *Launched
+}
+
+// unsent reports a GitHub action its sheet or the write gate kept from being sent: no
+// longer offered, offered with warnings, pushed since, or held.
+func (r *Result) unsent() bool {
+	return r.NotOffered != "" || r.Warning != "" || r.PushedSince || r.Held != ""
 }
 
 // Hold is a start held back for the user to confirm, as the launcher holds a click's

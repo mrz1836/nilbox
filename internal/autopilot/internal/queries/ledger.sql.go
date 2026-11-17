@@ -725,8 +725,8 @@ func (q *Queries) ListItemMatches(ctx context.Context, arg ListItemMatchesParams
 }
 
 const listItemRuns = `-- name: ListItemRuns :many
-SELECT id, routine_id, item_id, runner, status, outcome, manual, counted, run_commit, head_after, queued_at,
-       finished_at
+SELECT id, match_id, routine_id, item_id, runner, status, outcome, manual, counted, run_commit, head_after,
+       queued_at, finished_at
 FROM autopilot_runs
 WHERE item_id IN (/*SLICE:ids*/?)
 ORDER BY id
@@ -734,6 +734,7 @@ ORDER BY id
 
 type ListItemRunsRow struct {
 	ID         int64
+	MatchID    int64
 	RoutineID  int64
 	ItemID     *int64
 	Runner     string
@@ -770,6 +771,7 @@ func (q *Queries) ListItemRuns(ctx context.Context, ids []*int64) ([]ListItemRun
 		var i ListItemRunsRow
 		if err := rows.Scan(
 			&i.ID,
+			&i.MatchID,
 			&i.RoutineID,
 			&i.ItemID,
 			&i.Runner,
@@ -1445,14 +1447,15 @@ func (q *Queries) ListRoutineNames(ctx context.Context) ([]ListRoutineNamesRow, 
 }
 
 const listRunsSince = `-- name: ListRunsSince :many
-SELECT id, routine_id, item_id, runner, status, outcome, manual, budget_reserved, budget_unit, cost, tokens_in,
-       tokens_out, cache_read_tokens, queued_at
+SELECT id, match_id, routine_id, item_id, runner, status, outcome, manual, budget_reserved, budget_unit, cost,
+       tokens_in, tokens_out, cache_read_tokens, queued_at, started_at
 FROM autopilot_runs
 WHERE queued_at >= ?1 OR status IN ('starting', 'running', 'stopping')
 `
 
 type ListRunsSinceRow struct {
 	ID              int64
+	MatchID         int64
 	RoutineID       int64
 	ItemID          *int64
 	Runner          string
@@ -1466,10 +1469,11 @@ type ListRunsSinceRow struct {
 	TokensOut       int64
 	CacheReadTokens int64
 	QueuedAt        time.Time
+	StartedAt       *time.Time
 }
 
 // ListRunsSince returns the runs queued since a moment, or still active, for the daily
-// counts and the daily cap.
+// counts, the daily cap, and the pace of the GitHub actions.
 func (q *Queries) ListRunsSince(ctx context.Context, since time.Time) ([]ListRunsSinceRow, error) {
 	rows, err := q.db.QueryContext(ctx, listRunsSince, since)
 	if err != nil {
@@ -1481,6 +1485,7 @@ func (q *Queries) ListRunsSince(ctx context.Context, since time.Time) ([]ListRun
 		var i ListRunsSinceRow
 		if err := rows.Scan(
 			&i.ID,
+			&i.MatchID,
 			&i.RoutineID,
 			&i.ItemID,
 			&i.Runner,
@@ -1494,6 +1499,7 @@ func (q *Queries) ListRunsSince(ctx context.Context, since time.Time) ([]ListRun
 			&i.TokensOut,
 			&i.CacheReadTokens,
 			&i.QueuedAt,
+			&i.StartedAt,
 		); err != nil {
 			return nil, err
 		}

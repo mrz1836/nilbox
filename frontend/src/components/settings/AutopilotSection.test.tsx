@@ -195,16 +195,13 @@ describe('AutopilotSection', () => {
     )
   })
 
-  it('says the limits hold the agents now and the GitHub actions once routines send them', () => {
+  it('says the limits hold the agents and the GitHub actions', () => {
     renderSection()
 
     expect(
-      screen.getByText(
-        'These hold every routine’s coding agents, and its GitHub actions once routines can send them.',
-        {
-          exact: false,
-        },
-      ),
+      screen.getByText('These hold every routine’s coding agents and GitHub actions.', {
+        exact: false,
+      }),
     ).toBeInTheDocument()
     expect(
       screen.getByText(/Keeping the Mac awake is for agents in the background, which come later/),

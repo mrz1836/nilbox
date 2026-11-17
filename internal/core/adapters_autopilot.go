@@ -30,13 +30,15 @@ import (
 // autopilotDeps are what Autopilot's service is built over: the inbox's store, whose last
 // refresh says the account signed in, and the inbox service, which the builder reads
 // through; the prompt library, which names the starters; the copy of the routines kept
-// beside the database; and what a refresh's searches cost, for a test's estimate.
+// beside the database; what a refresh's searches cost, for a test's estimate; and the
+// sheets' services the GitHub step goes through.
 type autopilotDeps struct {
 	inbox   *inbox.Store
 	service *inbox.Routines
 	prompts *prompts.Store
 	file    *autopilot.File
 	costs   autopilot.Costs
+	github  autopilot.GitHubActions
 
 	// ready checks what the routines need on this Mac, and agents previews their agent
 	// steps through the launcher.
@@ -50,7 +52,7 @@ func newAutopilot(pool *sql.DB, opts Options, deps autopilotDeps, logger *slog.L
 		Pool: pool, Prefs: autopilotPrefs{prefs: prefsstore.New(pool, opts.Clock)}, Accounts: deps.inbox,
 		Names: starterNames{prompts: deps.prompts}, Library: promptLibrary{prompts: deps.prompts}, File: deps.file,
 		Clock: opts.Clock, Logger: logger,
-		Items: autopilotItems{store: deps.inbox, inbox: deps.service}, Costs: deps.costs,
+		Items: autopilotItems{store: deps.inbox, inbox: deps.service}, Costs: deps.costs, GitHub: deps.github,
 	}
 
 	if deps.ready != nil {
@@ -329,7 +331,8 @@ func (l promptLibrary) Prompts(ctx context.Context) ([]autopilot.LibraryPrompt, 
 		}
 
 		out = append(out, autopilot.LibraryPrompt{
-			Starter: p.StarterKey, Nickname: p.Nickname, Reply: p.Purpose == prompts.PurposeReply, Kinds: kinds,
+			Starter: p.StarterKey, Nickname: p.Nickname, Reply: p.Purpose == prompts.PurposeReply,
+			ReplyFor: autopilot.ReplyFor(p.ReplyAction), Kinds: kinds,
 		})
 	}
 
@@ -364,10 +367,11 @@ type autopilotEngine struct {
 // dispatcher as it is built: the inbox's triage runs the triage steps (Triage, which the
 // engine registers as the triage dispatcher), the notices run Notify me and Tell me
 // through the notifications, which also tell each problem once and each match that comes
-// to wait for the user, and the agent runner launches an agent step in the user's
-// terminal through the launcher, exactly as a click, once the holds on this Mac let it;
-// until a part's is, the Service keeps a routine with one of its steps in Dry run, so the
-// engine records what would run.
+// to wait for the user, the agent runner launches an agent step in the user's terminal
+// through the launcher, exactly as a click, once the holds on this Mac let it, and the
+// GitHub step goes through the sheets' own services (githubSteps, which the Service holds
+// and the engine registers as the GitHub dispatcher); until a part's is, the Service keeps
+// a routine with one of its steps in Dry run, so the engine records what would run.
 func newAutopilotEngine(deps autopilotEngine) *autopilot.Engine {
 	cfg := autopilot.EngineConfig{
 		Items: engineItems{

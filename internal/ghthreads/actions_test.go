@@ -125,6 +125,22 @@ func TestClearItemClearsOnlyThatItem(t *testing.T) {
 	assert.Empty(t, snap.Queued, "an item with no thread clears nothing")
 }
 
+func TestClearItemThreadsSaysHowManyItQueued(t *testing.T) {
+	t.Parallel()
+
+	r := newRig(t)
+	r.gh.set([]fakeThread{prThread(firstID, 1, start), prThread(firstID+1, 2, start.Add(-time.Minute))})
+	r.mustPass()
+
+	n, err := r.svc.ClearItemThreads(t.Context(), owner, exampleRepo, 1)
+	require.NoError(t, err)
+	assert.Equal(t, 1, n)
+
+	n, err = r.svc.ClearItemThreads(t.Context(), owner, exampleRepo, 404)
+	require.NoError(t, err)
+	assert.Zero(t, n, "an item with no thread queues none")
+}
+
 func TestClearNeverTouchesNonItemThreads(t *testing.T) {
 	t.Parallel()
 

@@ -187,6 +187,8 @@ type GitHub interface {
 	AddComment(ctx context.Context, tok github.Token, ref item.Ref, body string) (*github.Comment, error)
 	ClosePull(ctx context.Context, tok github.Token, ref item.Ref) error
 	ApproveWorkflowRun(ctx context.Context, tok github.Token, name repo.Name, runID int64) error
+	AddLabels(ctx context.Context, tok github.Token, ref item.Ref, names []string) ([]github.Label, error)
+	RemoveLabel(ctx context.Context, tok github.Token, ref item.Ref, name string) ([]github.Label, error)
 }
 
 // Settings reads the settings the sheet follows: how to merge, and which files are

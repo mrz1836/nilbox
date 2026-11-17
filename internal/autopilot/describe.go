@@ -36,9 +36,24 @@ type LibraryPrompt struct {
 	// agent runs.
 	Reply bool
 
+	// ReplyFor is the review a reply is written for: an approval, a request for changes,
+	// or a comment. A GitHub step only comments (D5), so it posts a comment's reply alone,
+	// never an approving one such as LGTM, whose words would read as an approval.
+	ReplyFor ReplyFor
+
 	// Kinds are the kinds of item it applies to.
 	Kinds []item.Kind
 }
+
+// ReplyFor is the review a library reply is written for, as the prompt library names it.
+type ReplyFor string
+
+// The reviews a reply can be written for.
+const (
+	ReplyForApproval       ReplyFor = "approve"
+	ReplyForRequestChanges ReplyFor = "request_changes"
+	ReplyForComment        ReplyFor = "comment"
+)
 
 // Described is a draft as the builder shows it before it is saved.
 type Described struct {
@@ -109,12 +124,14 @@ func (s *Service) loadDraft(ctx context.Context, sp spec.Spec) (spec.Spec, []spe
 }
 
 // promptProblems returns the problems of the prompts sp's steps name: one the library
-// doesn't have, a reply named where an agent's prompt goes or the other way about, and
-// one that doesn't apply to every kind of item the routine acts on. Without a library,
-// or one that can't be read (logged), it finds none here; the engine checks a step's
-// prompt again right before each start (promptHold), so a prompt deleted, changed, or
-// renamed beyond what the routine follows after the save, as after SetEnabled, Duplicate,
-// a restore, or an import, keeps the run from starting and says why.
+// doesn't have, a reply named where an agent's prompt goes or the other way about, a
+// GitHub step's reply that isn't a comment's (an approving one, LGTM, or a request for
+// changes), and one that doesn't apply to every kind of item the routine acts on.
+// Without a library, or one that can't be read (logged), it finds none here; the engine
+// checks a step's prompt, and a GitHub step's replies, again right before each start
+// (promptHold), so a prompt deleted, changed, or renamed beyond what the routine follows
+// after the save, as after SetEnabled, Duplicate, a restore, or an import, keeps the run or
+// the action from starting and says why.
 func (s *Service) promptProblems(ctx context.Context, sp spec.Spec) []spec.Problem {
 	if s.library == nil {
 		return nil
@@ -180,11 +197,31 @@ func promptProblem(library []LibraryPrompt, ref spec.PromptRef, reply bool, kind
 		return at(fmt.Sprintf("%q is a prompt for an agent: a GitHub step comments a reply", p.Nickname))
 	}
 
+	if msg := commentProblem(p, reply); msg != "" {
+		return at(msg)
+	}
+
 	if msg := kindsProblem(p, kinds); msg != "" {
 		return at(msg)
 	}
 
 	return nil
+}
+
+// commentProblem says what is wrong with the reply p for a GitHub step, or "": a GitHub
+// step only comments (D5), so it posts a comment's reply alone, never an approval's, whose
+// words would read as one, nor a request for changes'.
+func commentProblem(p LibraryPrompt, reply bool) string {
+	switch {
+	case !reply || p.ReplyFor == ReplyForComment:
+		return ""
+	case p.ReplyFor == ReplyForApproval:
+		return fmt.Sprintf("%q is a reply that approves: a GitHub step only comments, so it never posts an "+
+			"approval's words; pick a comment reply", p.Nickname)
+	default:
+		return fmt.Sprintf("%q is a reply that requests changes: a GitHub step only comments; pick a comment reply",
+			p.Nickname)
+	}
 }
 
 // kindsProblem says what is wrong with p for a routine that acts on kinds, or "": a prompt

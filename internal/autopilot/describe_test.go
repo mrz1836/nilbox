@@ -20,7 +20,8 @@ import (
 )
 
 // library is a fake prompt library: Fix checks, a starter for pull requests, a prompt of
-// the user's own for any item, and a reply.
+// the user's own for any item, and the replies: an approval's, a request for changes', and
+// a comment's for any item.
 type library struct {
 	err error
 }
@@ -29,8 +30,56 @@ func (l library) Prompts(context.Context) ([]autopilot.LibraryPrompt, error) {
 	return []autopilot.LibraryPrompt{
 		{Starter: "fix-checks", Nickname: "Fix checks", Kinds: []item.Kind{item.KindPR}},
 		{Nickname: "Triage", Kinds: item.Kinds()},
-		{Starter: "reply-lgtm", Nickname: "LGTM", Reply: true, Kinds: []item.Kind{item.KindPR}},
+		{
+			Starter: "reply-lgtm", Nickname: "LGTM", Reply: true, ReplyFor: autopilot.ReplyForApproval,
+			Kinds: []item.Kind{item.KindPR},
+		},
+		{
+			Starter: "reply-needs-changes", Nickname: "Needs changes", Reply: true,
+			ReplyFor: autopilot.ReplyForRequestChanges, Kinds: []item.Kind{item.KindPR},
+		},
+		{
+			Starter: "reply-question", Nickname: "Question", Reply: true, ReplyFor: autopilot.ReplyForComment,
+			Kinds: item.Kinds(),
+		},
 	}, l.err
+}
+
+func TestAGitHubReplyStepTakesACommentsReplyAlone(t *testing.T) {
+	t.Parallel()
+
+	r := libraryRig(t, library{}, nil)
+
+	reply := func(nickname string) spec.Spec {
+		s := searchSpec(catalog.EventAppears, orgSearch)
+		s.Steps = []spec.Step{{GitHub: []spec.GitHubAction{{Reply: &spec.ReplyAction{
+			Prompt: spec.PromptRef{Nickname: nickname},
+		}}}}}
+
+		return s
+	}
+
+	for nickname, want := range map[string]string{
+		"LGTM":          `"LGTM" is a reply that approves: a GitHub step only comments`,
+		"Needs changes": `"Needs changes" is a reply that requests changes: a GitHub step only comments`,
+		"Triage":        "is a prompt for an agent",
+	} {
+		got, err := r.svc.Describe(t.Context(), draft(nickname, reply(nickname)))
+		require.NoError(t, err)
+		require.Len(t, got.Problems, 1, nickname)
+		assert.Equal(t, "steps[0].github[0].reply.prompt", got.Problems[0].Path())
+		assert.Contains(t, got.Problems[0].Message, want)
+
+		_, err = r.svc.Save(t.Context(), draft(nickname, reply(nickname)))
+
+		var problems *autopilot.ProblemsError
+
+		require.ErrorAs(t, err, &problems, "Save refuses %s as Describe does", nickname)
+	}
+
+	got, err := r.svc.Describe(t.Context(), draft("Question", reply("question")))
+	require.NoError(t, err)
+	assert.Empty(t, got.Problems, "a comment's reply is what a GitHub step posts")
 }
 
 // libraryRig is a rig whose Service checks prompts against lib, and runs the steps

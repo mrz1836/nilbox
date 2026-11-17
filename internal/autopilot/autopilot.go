@@ -151,6 +151,13 @@ type Config struct {
 	// builder's Preview (PreviewRun); nil previews nothing.
 	Previews Previewer
 
+	// GitHub sends the GitHub step's actions and marks notifications done, through the
+	// review and issue sheets' own services and the Notifications page's: the engine's
+	// GitHub dispatcher runs over it, and Preview says through it what an action would
+	// send. Nil sends nothing, and the engine has no GitHub dispatcher unless its
+	// Dispatchers name one.
+	GitHub GitHubActions
+
 	// Clock stamps the routines. Nil is the system clock.
 	Clock clock.Clock
 
@@ -169,6 +176,7 @@ type Service struct {
 	file     *File
 	items    Items
 	costs    Costs
+	github   GitHubActions
 	clock    clock.Clock
 	logger   *slog.Logger
 
@@ -199,7 +207,8 @@ func NewService(cfg Config) *Service {
 
 	return &Service{
 		store: newRoutineStore(cfg.Pool, clk), prefs: cfg.Prefs, accounts: cfg.Accounts, names: cfg.Names,
-		library: cfg.Library, file: cfg.File, items: cfg.Items, costs: cfg.Costs, clock: clk, logger: logging.Or(cfg.Logger),
+		library: cfg.Library, file: cfg.File, items: cfg.Items, costs: cfg.Costs, github: cfg.GitHub, clock: clk,
+		logger:  logging.Or(cfg.Logger),
 		watches: watchSet{build: make(chan struct{}, 1)}, tests: testCache{read: map[string]cachedSearch{}},
 		offers: offers, ready: newReadiness(cfg.Readiness, offers), previews: cfg.Previews,
 	}

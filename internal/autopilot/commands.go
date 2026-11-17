@@ -102,6 +102,7 @@ func (e *Engine) approve(ctx context.Context, id int64) error {
 	switch {
 	case m.state() == StateWaiting:
 		confirmHold(m)
+		acceptWarnings(m)
 		m.set(StateQueued, "", "")
 	case m.Approved || m.state() != StateQueued && m.state() != StateBlocked:
 		return nil
@@ -128,6 +129,15 @@ func confirmHold(m *match) {
 
 	if b := Blocker(m.BlockedBy); b == BlockHold || b == BlockDirty {
 		sr.Confirmed = append(sr.Confirmed, sr.Hold.Key)
+	}
+}
+
+// acceptWarnings records, on a match waiting on the warnings its GitHub action's sheet
+// offers it with, that the user accepted them: the action then goes with those warnings,
+// and waits again for any other.
+func acceptWarnings(m *match) {
+	if Blocker(m.BlockedBy) == BlockWarning && int(m.Step) < len(m.steps) {
+		m.steps[m.Step].Accepted = m.Detail
 	}
 }
 

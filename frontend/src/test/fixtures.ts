@@ -613,6 +613,8 @@ export function autopilotMatch(overrides: Partial<AutopilotMatch> = {}): Autopil
         outcome: 'done',
         note: 'Snoozed it for 3 days.',
         runId: 0,
+        actions: [],
+        sent: 0,
         startedAt: '2026-06-15T11:30:00Z',
         endedAt: '2026-06-15T11:30:00Z',
       },
@@ -630,6 +632,75 @@ export function autopilotMatch(overrides: Partial<AutopilotMatch> = {}): Autopil
     closedAt: '2026-06-15T11:30:00Z',
     ...overrides,
   }
+}
+
+// githubRun is a GitHub action routine 3's match 12 sent item 1 at 11:30: Dependabot asked
+// to rebase, at the head it read.
+export function githubRun(overrides: Partial<AutopilotMatch['runs'][number]> = {}): AutopilotMatch['runs'][number] {
+  return {
+    id: 70,
+    matchId: 12,
+    step: 0,
+    runner: 'github',
+    agent: '',
+    action: 'rebase',
+    status: 'ended',
+    outcome: 'done',
+    verdict: '',
+    headBefore: 'a1b2c3d',
+    commit: '',
+    headAfter: '',
+    budget: 0,
+    unit: '',
+    cost: null,
+    tokensIn: 0,
+    tokensOut: 0,
+    cacheRead: 0,
+    turns: 0,
+    summary: 'Asked Dependabot to rebase acme-org/example-repo#7',
+    error: '',
+    manual: false,
+    queuedAt: '2026-06-15T11:30:00Z',
+    startedAt: '2026-06-15T11:30:00Z',
+    finishedAt: '2026-06-15T11:30:00Z',
+    ...overrides,
+  }
+}
+
+// githubStep is a GitHub step of a match, as Activity shows it: its actions, none sent yet.
+export function githubStep(overrides: Partial<AutopilotMatch['steps'][number]> = {}): AutopilotMatch['steps'][number] {
+  return {
+    kind: 'github',
+    label: 'GitHub actions',
+    status: '',
+    outcome: '',
+    note: '',
+    runId: 0,
+    startedAt: null,
+    endedAt: null,
+    actions: ['rebase'],
+    sent: 0,
+    ...overrides,
+  }
+}
+
+// githubMatch is routine 6's match 30 on item 1, at its GitHub step, waiting as wait says.
+export function githubMatch(overrides: Partial<AutopilotMatch> = {}): AutopilotMatch {
+  return autopilotMatch({
+    id: 30,
+    routineId: 6,
+    routine: 'Ask Dependabot to rebase what conflicts',
+    fireKey: 'merge_conflicts:commit:a1b2c3d',
+    state: 'waiting',
+    blockedBy: 'ask',
+    reason: '',
+    words: 'Waiting for your OK.',
+    steps: [githubStep()],
+    step: 0,
+    effects: [],
+    closedAt: null,
+    ...overrides,
+  })
 }
 
 // dryRunMatch is routine 4's Dry run record on item 2 at 11:40: it would have run.

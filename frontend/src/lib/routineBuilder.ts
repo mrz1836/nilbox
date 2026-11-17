@@ -382,6 +382,12 @@ export function placeWhy(place: Pick<AutopilotPlace, 'label'>): string {
   return `This version of ${brand.name} can’t run an agent ${place.label.toLowerCase()} yet.`
 }
 
+// sendsToGitHub reports a routine that sends GitHub anything of its own: a GitHub step, or
+// Mark the GitHub notification done, which Test's Preview shows for a match.
+export function sendsToGitHub(spec: Pick<AutopilotSpec, 'steps'>): boolean {
+  return spec.steps.some((s) => (s.github !== undefined && s.github !== null) || (s.markDone ?? null) !== null)
+}
+
 // newStep is a step of kind as + Add a step adds it, at the end of steps: each setting left
 // to its default, an agent step where this build runs agents (places, the catalog's), Wait
 // for the checks only if the agent pushed, Merge it only if they passed, and Tell me saying

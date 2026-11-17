@@ -42,9 +42,8 @@ import { rowMatchClass, useSetting } from './match'
 import { ChoiceRow, Group, Note, rowDescribedBy, SectionIntro, SettingRow, SwitchRow } from './rows'
 import type { SectionProps } from './types'
 
-// limitsHold says what the limits hold in this build: the agents, in the user's terminal,
-// and the GitHub actions once routines can send them.
-const limitsHold = 'These hold every routine’s coding agents, and its GitHub actions once routines can send them.'
+// limitsHold says what the limits hold: every routine's coding agents and GitHub actions.
+const limitsHold = 'These hold every routine’s coding agents and GitHub actions.'
 
 // whileItRuns says what the settings below hold: every agent start, while keeping the Mac
 // awake waits for agents in the background, since one in the terminal is the user's own

@@ -61,6 +61,9 @@ type Item struct {
 	Labels   []string
 	Comments int
 
+	// Conflicts has a pull request conflict with its base branch.
+	Conflicts bool
+
 	// Watched puts it in the routines' search, Listed in the user's Authored list, and
 	// ReviewRequested and Assigned in those lists.
 	Watched         bool
@@ -179,6 +182,11 @@ func (w *World) FailNamed(number int, names ...string) {
 // Pass has a pull request's checks pass.
 func (w *World) Pass(number int) {
 	w.Change(number, func(it *Item) { it.Checks, it.Failed, it.Passed, it.Pending = "SUCCESS", 0, 4, 0 })
+}
+
+// Conflict has a pull request conflict with its base branch, or no longer.
+func (w *World) Conflict(number int, on bool) {
+	w.Change(number, func(it *Item) { it.Conflicts = on })
 }
 
 // Merge merges a pull request.
@@ -645,6 +653,10 @@ func (w *World) details(it *Item, repo bool) github.ItemDetails {
 	if !it.Issue {
 		d.HeadOID, d.BaseRef, d.Mergeable, d.MergeState = it.Head, "main", "MERGEABLE", github.MergeStateClean
 		d.Checks = github.Checks{State: it.Checks, Passed: it.Passed, Failed: it.Failed, Pending: it.Pending}
+
+		if it.Conflicts {
+			d.Mergeable, d.MergeState = "CONFLICTING", github.MergeStateDirty
+		}
 	}
 
 	if repo {

@@ -3,6 +3,7 @@ import { useId, useState } from 'react'
 import { canonical, testedLabel, testHeadline } from '../../../lib/routineBuilder'
 import { useQuery } from '../../../lib/useQuery'
 import {
+  previewAutopilotActions,
   previewRoutineRun,
   type AutopilotDraft,
   type AutopilotMode,
@@ -33,6 +34,9 @@ export interface TestPanelProps {
   // draft is the routine as edited, whose agent step Preview plans on an item it tried.
   draft: AutopilotDraft
   onTest: () => void
+  // preview is the draft, when it sends GitHub anything: a matching item's Preview says what
+  // it would send it, built and not sent.
+  preview?: AutopilotDraft | undefined
 }
 
 // previewed is the item a test tried that Preview plans the agent step on: the first that
@@ -134,9 +138,22 @@ function rowState(it: AutopilotTestItem, mode: AutopilotMode): string {
 
 // TestPanel is the draft tried on its items now, before it is saved: "3 of 7 open pull
 // requests match now", each item with whether it matches, where it stands with the routine,
-// and Why ▸, every step of its decision with the value it compared; and ↻ Test, which runs
-// it only when asked, since its searches cost points, and says what the last test spent.
-export function TestPanel({ result, stale, testing, error, ready, kinds, mode, draft, onTest }: TestPanelProps) {
+// and Why ▸, every step of its decision with the value it compared, and, on a match of a
+// draft that sends GitHub anything, Preview ▸, what it would send; ↻ Test, which runs it
+// only when asked, since its searches cost points, and says what the last test spent; and
+// the agent step's Preview of the run it would start.
+export function TestPanel({
+  result,
+  stale,
+  testing,
+  error,
+  ready,
+  kinds,
+  mode,
+  draft,
+  onTest,
+  preview,
+}: TestPanelProps) {
   const agent = draft.spec.steps.some((st) => st.agent != null)
   const sample = previewed(result)
   const headline = (() => {
@@ -195,7 +212,7 @@ export function TestPanel({ result, stale, testing, error, ready, kinds, mode, d
       {result !== undefined && result.items.length > 0 && (
         <ul aria-label="Items it watches" className="flex flex-col">
           {result.items.map((it) => (
-            <TestRow key={it.id} item={it} mode={mode} />
+            <TestRow key={it.id} item={it} mode={mode} preview={it.match === 'yes' ? preview : undefined} />
           ))}
         </ul>
       )}
@@ -204,9 +221,18 @@ export function TestPanel({ result, stale, testing, error, ready, kinds, mode, d
   )
 }
 
-// TestRow is one item a test tried: ✓ or ✗, the item, where it stands, and Why ▸.
-function TestRow({ item: it, mode }: { item: AutopilotTestItem; mode: AutopilotMode }) {
+interface TestRowProps {
+  item: AutopilotTestItem
+  mode: AutopilotMode
+  // preview is the draft whose GitHub actions Preview ▸ shows for the item, when it matches.
+  preview: AutopilotDraft | undefined
+}
+
+// TestRow is one item a test tried: ✓ or ✗, the item, where it stands, Why ▸, and, for a
+// match of a draft that sends GitHub anything, Preview ▸.
+function TestRow({ item: it, mode, preview }: TestRowProps) {
   const [open, setOpen] = useState(false)
+  const [previewing, setPreviewing] = useState(false)
   const name = `${it.repo} #${String(it.number)}`
 
   return (
@@ -234,8 +260,65 @@ function TestRow({ item: it, mode }: { item: AutopilotTestItem; mode: AutopilotM
           {open ? <ChevronDownIcon className="size-3" /> : <ChevronRightIcon className="size-3" />}
           Why
         </button>
+        {preview !== undefined && (
+          <button
+            type="button"
+            aria-expanded={previewing}
+            aria-label={`Preview, for ${name}`}
+            onClick={() => {
+              setPreviewing(!previewing)
+            }}
+            className={quietButtonClass}
+          >
+            {previewing ? <ChevronDownIcon className="size-3" /> : <ChevronRightIcon className="size-3" />}
+            Preview
+          </button>
+        )}
       </div>
+      {previewing && preview !== undefined && <ActionPreviews draft={preview} itemId={it.id} name={name} />}
       {open && <TraceList label={`Why, for ${name}`} trace={it.trace} className="ml-6 py-1" />}
     </li>
+  )
+}
+
+interface ActionPreviewsProps {
+  draft: AutopilotDraft
+  itemId: number
+  name: string
+}
+
+// ActionPreviews shows what the draft's GitHub actions would send the item, built and not
+// sent: each action with the exact comment or what it does to the labels, or why it can't
+// be built for the item.
+function ActionPreviews({ draft, itemId, name }: ActionPreviewsProps) {
+  const previews = useQuery(() => previewAutopilotActions(draft, itemId), [canonical(draft), itemId])
+
+  if (previews.data === undefined) {
+    return previews.error === '' ? (
+      <p role="status" className="ml-6 py-1 text-xs text-muted">
+        Building what it would send…
+      </p>
+    ) : (
+      <p role="alert" className="ml-6 py-1 text-xs text-danger">
+        {previews.error}
+      </p>
+    )
+  }
+
+  return (
+    <ul aria-label={`What it would send ${name}`} className="ml-6 flex flex-col gap-1 py-1">
+      {previews.data.map((p) => (
+        <li key={`${String(p.step)}:${p.action}`} className="flex flex-col gap-0.5 text-xs">
+          <span className="font-medium text-text">{p.label}</span>
+          {p.problem === '' ? (
+            <span className="rounded border border-border bg-raised px-2 py-1 font-mono whitespace-pre-wrap text-text">
+              {p.sends}
+            </span>
+          ) : (
+            <span className="text-danger">{p.problem}</span>
+          )}
+        </li>
+      ))}
+    </ul>
   )
 }

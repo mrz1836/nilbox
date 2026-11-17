@@ -271,6 +271,29 @@ export const IssueState = {
 } as const;
 
 /**
+ * LabelsRequest asks to change the labels of the pull request with ItemID, by name: those
+ * to add and those to take off, at Head, the head commit the asker saw.
+ */
+export interface LabelsRequest {
+    "itemId": number;
+    "head": string;
+    "add": string[] | null;
+    "remove": string[] | null;
+}
+
+/**
+ * LabelsResult is what a label edit made of a pull request on GitHub: Sent counts the
+ * requests GitHub made, and Failed says why the one after them failed, or "" when every
+ * one went. PushedSince reports an edit that sent nothing, because the pull request was
+ * pushed to since Head.
+ */
+export interface LabelsResult {
+    "sent": number;
+    "failed": string;
+    "pushedSince": boolean;
+}
+
+/**
  * LineComment is one comment on a pull request's diff, as the window sends it.
  */
 export interface LineComment {

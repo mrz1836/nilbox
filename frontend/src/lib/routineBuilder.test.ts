@@ -134,7 +134,8 @@ describe('the steps', () => {
     expect(first).not.toContain('waitForChecks')
     expect(first).not.toContain('merge')
     expect(first).not.toContain('postReview')
-    expect(first).not.toContain('github')
+    expect(first).toContain('github')
+    expect(first).toContain('markDone')
 
     const afterAgent = kinds(withSteps(agentStep()))
 

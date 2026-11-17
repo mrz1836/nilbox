@@ -194,7 +194,7 @@ func previewThread(r *decideRow, trigger threadrules.Trigger) PreviewThread {
 // one already read while clearing marks one read, and any while reading is off are left
 // alone. It returns the Snapshot, whose Queued lists them until they are sent.
 func (s *Service) Clear(ctx context.Context, threadIDs []int64) (Snapshot, error) {
-	if err := s.clearByHand(ctx, threadIDs); err != nil {
+	if _, err := s.clearByHand(ctx, threadIDs); err != nil {
 		return Snapshot{}, err
 	}
 
@@ -205,16 +205,25 @@ func (s *Service) Clear(ctx context.Context, threadIDs []int64) (Snapshot, error
 // owner/name#number that the mirror lists for the account the last pass read, as Clear
 // does: the card's menu action.
 func (s *Service) ClearItem(ctx context.Context, owner, name string, number int) (Snapshot, error) {
-	ids, err := s.itemThreads(ctx, item.Ref{Repo: repo.Name{Owner: owner, Repo: name}, Number: number})
-	if err != nil {
-		return Snapshot{}, err
-	}
-
-	if err = s.clearByHand(ctx, ids); err != nil {
+	if _, err := s.ClearItemThreads(ctx, owner, name, number); err != nil {
 		return Snapshot{}, err
 	}
 
 	return s.Snapshot(ctx)
+}
+
+// ClearItemThreads clears the threads about the pull request or issue owner/name#number as
+// ClearItem does, and returns how many clears it queued: none while reading is off, before
+// a pass read the account, or when the mirror lists no thread about it that the rules don't
+// leave alone. Autopilot's Mark the GitHub notification done runs it, as the card's menu
+// runs ClearItem.
+func (s *Service) ClearItemThreads(ctx context.Context, owner, name string, number int) (int, error) {
+	ids, err := s.itemThreads(ctx, item.Ref{Repo: repo.Name{Owner: owner, Repo: name}, Number: number})
+	if err != nil {
+		return 0, err
+	}
+
+	return s.clearByHand(ctx, ids)
 }
 
 // itemThreads returns the IDs of the threads about ref that the mirror lists for the account
@@ -242,20 +251,20 @@ func (s *Service) itemThreads(ctx context.Context, ref item.Ref) ([]int64, error
 }
 
 // clearByHand queues the clears of the threads with ids, by the user's hand, as Clear
-// says, and wakes the Syncer to send them.
-func (s *Service) clearByHand(ctx context.Context, ids []int64) error {
+// says, wakes the Syncer to send them, and returns how many it queued.
+func (s *Service) clearByHand(ctx context.Context, ids []int64) (int, error) {
 	if len(ids) == 0 {
-		return nil
+		return 0, nil
 	}
 
 	rules, err := s.rules.ThreadRules(ctx)
 	if err != nil {
-		return fmt.Errorf("read the rules for GitHub notifications: %w", err)
+		return 0, fmt.Errorf("read the rules for GitHub notifications: %w", err)
 	}
 
 	st, err := s.loadState(ctx)
 	if err != nil || !rules.Read || st.Account == "" {
-		return err
+		return 0, err
 	}
 
 	now := s.clock.Now()
@@ -272,7 +281,7 @@ func (s *Service) clearByHand(ctx context.Context, ids []int64) error {
 		return queueErr
 	})
 	if err != nil {
-		return fmt.Errorf("clear GitHub notifications: %w", err)
+		return 0, fmt.Errorf("clear GitHub notifications: %w", err)
 	}
 
 	if queued > 0 {
@@ -281,7 +290,7 @@ func (s *Service) clearByHand(ctx context.Context, ids []int64) error {
 		s.nudges.signal()
 	}
 
-	return nil
+	return queued, nil
 }
 
 // queueAllByHand queues the clears of account's threads with ids, each once, by the user's

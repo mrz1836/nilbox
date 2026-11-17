@@ -101,6 +101,11 @@ type MatchStep struct {
 	RunID     int64            `json:"runId"`
 	StartedAt *time.Time       `json:"startedAt"`
 	EndedAt   *time.Time       `json:"endedAt"`
+
+	// Actions are a GitHub step's actions in order, and Sent how many of them went, so
+	// the next to send is Actions[Sent]; none for any other step.
+	Actions []catalog.GitHubActionKind `json:"actions"`
+	Sent    int                        `json:"sent"`
 }
 
 // Run is one run a match started: an agent's, or a GitHub action the app sent.
@@ -528,13 +533,8 @@ func matchView(m *match, routine string) Match {
 		v.Words = defaultWords(v.State, v.BlockedBy)
 	}
 
-	for _, sr := range m.steps {
-		kind := sr.Step.Kind()
-		info, _ := catalog.StepByKind(kind)
-		v.Steps = append(v.Steps, MatchStep{
-			Kind: kind, Label: info.Label, Status: sr.Status, Outcome: sr.Outcome, Note: sr.Note, RunID: sr.RunID,
-			StartedAt: sr.Started, EndedAt: sr.Ended,
-		})
+	for i := range m.steps {
+		v.Steps = append(v.Steps, stepView(&m.steps[i]))
 	}
 
 	if b := Blocker(m.BlockedBy); (b == BlockHold || b == BlockDirty) && int(m.Step) < len(m.steps) {
@@ -546,6 +546,28 @@ func matchView(m *match, routine string) Match {
 	}
 
 	return v
+}
+
+// stepView builds the window's step from a match's stored step: a GitHub step's actions,
+// with how many went (all of them once the step is done).
+func stepView(sr *stepRun) MatchStep {
+	kind := sr.Step.Kind()
+	info, _ := catalog.StepByKind(kind)
+
+	actions := make([]catalog.GitHubActionKind, 0, len(sr.Step.GitHub))
+	for _, a := range sr.Step.GitHub {
+		actions = append(actions, a.Kind())
+	}
+
+	sent := sr.Action
+	if sr.Status == stepDone {
+		sent = len(actions)
+	}
+
+	return MatchStep{
+		Kind: kind, Label: info.Label, Status: sr.Status, Outcome: sr.Outcome, Note: sr.Note, RunID: sr.RunID,
+		StartedAt: sr.Started, EndedAt: sr.Ended, Actions: actions, Sent: sent,
+	}
 }
 
 // defaultWords says where a match is when nothing more was said.

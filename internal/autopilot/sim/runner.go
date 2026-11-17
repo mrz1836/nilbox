@@ -363,67 +363,6 @@ func ended(runID int64, end autopilot.RunEnd) autopilot.RunEnd {
 	return end
 }
 
-// Dispatcher is a fake part's dispatcher: it records each job, which for a GitHub
-// action is the write sent, and answers it at once, as Answer says (done, with nothing
-// said, by default), or once Release lets the answers through.
-type Dispatcher struct {
-	mu   sync.Mutex
-	jobs []autopilot.Job
-	gate chan struct{}
-
-	// Answer, when set, says how a job went.
-	Answer func(job autopilot.Job) (autopilot.Result, error)
-}
-
-// Hold holds every answer until Release: the job is done, its answer not yet back.
-func (d *Dispatcher) Hold() {
-	d.mu.Lock()
-	defer d.mu.Unlock()
-
-	d.gate = make(chan struct{})
-}
-
-// Release lets the answers through.
-func (d *Dispatcher) Release() {
-	d.mu.Lock()
-	defer d.mu.Unlock()
-
-	if d.gate != nil {
-		close(d.gate)
-		d.gate = nil
-	}
-}
-
-// Dispatch records job and answers it.
-func (d *Dispatcher) Dispatch(ctx context.Context, job autopilot.Job) (autopilot.Result, error) {
-	d.mu.Lock()
-	d.jobs = append(d.jobs, job)
-	answer, gate := d.Answer, d.gate
-	d.mu.Unlock()
-
-	if gate != nil {
-		select {
-		case <-gate:
-		case <-ctx.Done():
-			return autopilot.Result{}, ctx.Err()
-		}
-	}
-
-	if answer != nil {
-		return answer(job)
-	}
-
-	return autopilot.Result{Sent: true}, nil
-}
-
-// Jobs returns the jobs dispatched, in order.
-func (d *Dispatcher) Jobs() []autopilot.Job {
-	d.mu.Lock()
-	defer d.mu.Unlock()
-
-	return slices.Clone(d.jobs)
-}
-
 // Notices is a fake of the notifications the notices tell (autopilot.NoticeSink): it
 // records each notice handed over, keeps one of each key as the notifications do (a key
 // told already is told by no one, and no error), fails while Fail says so, as a database

@@ -91,20 +91,21 @@ func (c *Client) FetchAssignable(ctx context.Context, tok Token, id, query strin
 	return people, Redact(err, tok)
 }
 
-// AddLabels adds the labels named names to the issue ref, with one REST request (POST
-// /repos/{owner}/{repo}/issues/{number}/labels), and returns its labels after the edit. A
-// name missing from them is one GitHub didn't add, as it does for an account without
-// triage access instead of refusing, and ErrEditIgnored is returned naming it.
+// AddLabels adds the labels named names to the issue or pull request ref, with one REST
+// request (POST /repos/{owner}/{repo}/issues/{number}/labels, where GitHub keeps a pull
+// request's labels too), and returns its labels after the edit. A name missing from them
+// is one GitHub didn't add, as it does for an account without triage access instead of
+// refusing, and ErrEditIgnored is returned naming it.
 func (c *Client) AddLabels(ctx context.Context, tok Token, ref item.Ref, names []string) ([]Label, error) {
 	labels, err := c.addLabels(ctx, tok, ref, names)
 
 	return labels, Redact(err, tok)
 }
 
-// RemoveLabel takes the label named name off the issue ref, with one REST request (DELETE
-// /repos/{owner}/{repo}/issues/{number}/labels/{name}), and returns the labels left, or
-// none for a label the issue no longer has, which GitHub answers as not found. A name
-// still among them is ErrEditIgnored.
+// RemoveLabel takes the label named name off the issue or pull request ref, with one REST
+// request (DELETE /repos/{owner}/{repo}/issues/{number}/labels/{name}), and returns the
+// labels left, or none for a label it no longer has, which GitHub answers as not found. A
+// name still among them is ErrEditIgnored.
 func (c *Client) RemoveLabel(ctx context.Context, tok Token, ref item.Ref, name string) ([]Label, error) {
 	labels, err := c.removeLabel(ctx, tok, ref, name)
 
@@ -408,15 +409,16 @@ func quotedList(names []string) string {
 	return strings.Join(quoted, ", ")
 }
 
-// validateLabels checks an edit's issue and label names before anything is sent: an issue,
-// and at least one name, each one a label could have.
+// validateLabels checks an edit's item and label names before anything is sent: an issue,
+// or a pull request, whose labels GitHub keeps at the same issues endpoint, and at least
+// one name, each one a label could have.
 func validateLabels(ref item.Ref, names []string) error {
 	if err := validateRef(ref); err != nil {
 		return err
 	}
 
-	if ref.Kind != item.KindIssue {
-		return fmt.Errorf("%w: %s is not an issue", ErrInvalidItemRef, ref)
+	if ref.Kind != item.KindIssue && ref.Kind != item.KindPR {
+		return fmt.Errorf("%w: %s is neither an issue nor a pull request", ErrInvalidItemRef, ref)
 	}
 
 	if len(names) == 0 {

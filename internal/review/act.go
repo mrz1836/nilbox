@@ -17,8 +17,9 @@ import (
 	"github.com/mrz1836/nilbox/internal/uierr"
 )
 
-// dependabotRebase is the comment that asks Dependabot to rebase its pull request.
-const dependabotRebase = "@dependabot rebase"
+// DependabotRebase is the comment that asks Dependabot to rebase its pull request, which
+// Autopilot's Preview shows as what the action sends.
+const DependabotRebase = "@dependabot rebase"
 
 var (
 	// ErrNotOffered is returned for an action the sheet does not offer for the pull request
@@ -628,7 +629,7 @@ func (a *action) approveRuns(ctx context.Context, s *Service, tok github.Token) 
 func (a *action) askBot(ctx context.Context, s *Service, tok github.Token) error {
 	a.step(s, "Asking Dependabot to rebase")
 
-	if _, err := s.github.AddComment(ctx, tok, a.ref, dependabotRebase); err != nil {
+	if _, err := s.github.AddComment(ctx, tok, a.ref, DependabotRebase); err != nil {
 		return err
 	}
 

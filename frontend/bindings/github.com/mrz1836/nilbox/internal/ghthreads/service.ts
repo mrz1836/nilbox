@@ -49,6 +49,17 @@ export function ClearItem(owner: string, name: string, $number: number): $Cancel
 }
 
 /**
+ * ClearItemThreads clears the threads about the pull request or issue owner/name#number as
+ * ClearItem does, and returns how many clears it queued: none while reading is off, before
+ * a pass read the account, or when the mirror lists no thread about it that the rules don't
+ * leave alone. Autopilot's Mark the GitHub notification done runs it, as the card's menu
+ * runs ClearItem.
+ */
+export function ClearItemThreads(owner: string, name: string, $number: number): $CancellablePromise<number> {
+    return $Call.ByID(2531590337, owner, name, $number);
+}
+
+/**
  * Keep takes back the queued clears with clearIDs, the toast's Undo: each one still queued
  * is kept, and never sent. A clear kept stays kept: its thread isn't queued again on its
  * own until it changes on GitHub. It returns the Snapshot.

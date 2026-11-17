@@ -17,6 +17,7 @@ export {
 } from "./models.js";
 
 export type {
+    ActionPreview,
     ActivityDay,
     ActivityGroup,
     ActivityPage,

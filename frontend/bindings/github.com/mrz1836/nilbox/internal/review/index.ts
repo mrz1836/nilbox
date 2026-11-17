@@ -26,6 +26,8 @@ export type {
     Closing,
     File,
     FilePatch,
+    LabelsRequest,
+    LabelsResult,
     LineComment,
     Offer,
     Readiness,

@@ -580,7 +580,9 @@ changing the package, and keep the section and its summary in step.
   (`fitContext`); only `Open` moves `review_diffs.seen_at`; `Earlier` (`PeekPull`) stores
   nothing. Each step is an `event.ReviewProgress`; a merge or a close takes the pull request out
   of every list (`Acted.Merged`, `Acted.Closed`), and a merge tells its `Merges` (the Release
-  `Refresher`). Nothing here lets an agent approve, merge, or close.
+  `Refresher`). `EditLabels` changes a pull request's labels as the issue sheet's edit changes
+  an issue's, at the same issues endpoint, pinned to the head, through the `Actor`, each step
+  sent once. Nothing here lets an agent approve, merge, or close.
   Full design: [docs/architecture.md](docs/architecture.md#internalreview)
 - `internal/issues/` is the issue sheet's service, beside the review sheet's: neither imports
   the other (the repoguard boundary test), and they share only the building blocks, the
@@ -687,7 +689,8 @@ changing the package, and keep the section and its summary in step.
   sends one at a time through the client's chore lane, each checked again first (`sendOne`).
   Clearing turned off skips every queued clear but the user's own, and reading turned off skips
   them all. `Clear` and `ClearItem` clear by hand, never a thread that isn't a pull request's or
-  an issue's; `Preview` and `Keep` are bound too. It never imports the inbox, settings, core,
+  an issue's (`ClearItemThreads`, which says how many it queued, is Autopilot's Mark the GitHub
+  notification done); `Preview` and `Keep` are bound too. It never imports the inbox, settings, core,
   notify, the sheets, or the desktop shell, and the inbox never imports it (the repoguard
   boundary test).
   Full design: [docs/architecture.md](docs/architecture.md#internalghthreads)
@@ -851,8 +854,20 @@ changing the package, and keep the section and its summary in step.
   worker the step's prompt checked again (`promptHold`) and `Holds` (core's `agentHolds`: the
   item's own agent and profile, the provider's outage while Settings holds for one, the clone,
   the repository's tools), and only then the fresh read; a hold the launch reports waits for
-  the user (`Result.Wait`, `Hold`), and only `Approve` of exactly that hold confirms it. A
-  routine with any other step still runs in Dry run. Its `PromptFollower`, never bound, tells
+  the user (`Result.Wait`, `Hold`), and only `Approve` of exactly that hold confirms it. The
+  GitHub step (Ask Dependabot to rebase, Update branch, a comment reply, labels) and Mark the
+  GitHub notification done run through `NewGitHub` over the Service's `GitHubActions`, which
+  core's `githubSteps` (`adapters_githubsteps.go`) adapts over the review and issue sheets'
+  own services and the mirror's `ClearItemThreads`, never the client: each action its own
+  run, recorded before it is sent, read through its sheet right before it (one point, the
+  fresh read), pinned to that read's head, sent only while the sheet's `Decide` offers it
+  with no warning the user didn't accept (an offer withdrawn closes the match, one with
+  warnings waits `warning` until `Approve` accepts exactly those, a push since sends nothing
+  and is no try), paced at `ActionsPerMinute` and `ActionsPerHour` under the write gate, a
+  match one try however many runs it starts; a reply is a comment's alone, never an
+  approval's (`LibraryPrompt.ReplyFor`, checked in `Describe`, `Save`, and before each start,
+  `promptHold`); a guard test fails if the adapter names any other sheet action. A routine
+  with any other step still runs in Dry run. Its `PromptFollower`, never bound, tells
   the prompt library which routines name each prompt and follows a renamed one. The user's
   own reversal of what a routine did (told through the outcomes, `Outcome.Reversed`), and an Undo, leave the routine
   hands off the item until Let it act again. The bound Service's ledger actions (`Approve`,
