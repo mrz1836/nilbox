@@ -295,6 +295,14 @@ UPDATE items SET reason_assigned = 0, assign_left_at = ?, assigned_at = NULL WHE
 UPDATE items SET reason_review_requested = 0, reason_pushed = 0, review_left_at = ?, review_requested_at = NULL
 WHERE id = ?;
 
+-- name: RejoinReview :exec
+-- RejoinReview puts the item with id back in the review-requested list after the user asked
+-- GitHub for their own review again, as a request that arrived at review_requested_at, and
+-- clears the stamp of their leaving it, so the next search is believed. reason_pushed stays
+-- as it is: a request made after a push still reads as pushed since the user's review.
+UPDATE items SET reason_review_requested = 1, review_left_at = NULL, review_requested_at = ?
+WHERE id = ?;
+
 -- name: NoteViewerReview :exec
 -- NoteViewerReview records the user's own verdict on the item with id, as a review they
 -- just left from the inbox: state (APPROVED or CHANGES_REQUESTED) at commit, so its card

@@ -38,6 +38,7 @@ func reasonFlagDecisions() map[string]string {
 		"LeaveAssigned":       "none",
 		"LeaveReview":         "none: a review from the inbox takes a pushed one out too",
 		"LeaveAnsweredReview": "none: only a read's answered request; a pushed one waits for the whole refresh",
+		"RejoinReview":        "none: the user's own re-request puts it in Review requested, as GitHub asks; pushed stays",
 
 		// What else reads them.
 		"PruneFiles":          "keeps the file checks of watched items, and of pushed ones",

@@ -157,6 +157,93 @@ func TestRemoveReviewRequestSeesAnEditGitHubIgnored(t *testing.T) {
 	require.ErrorIs(t, err, ErrEditIgnored)
 }
 
+func TestRequestReviewSendsOnePost(t *testing.T) {
+	t.Parallel()
+
+	client, got := editServer(t, http.StatusCreated, `{
+  "updated_at": "2026-01-10T12:30:00Z",
+  "requested_reviewers": [{"login": "someone"}, {"login": "Octo-User"}, {"login": ""}],
+  "requested_teams": [{"slug": "backend"}]
+}`, nil)
+	gate := &fakeGate{}
+	rates := &recordRates{}
+	client.Writes, client.Rates = gate, rates
+
+	edited, err := client.RequestReview(t.Context(), NewToken(fakeToken), editRef(), octoUser)
+	require.NoError(t, err)
+
+	assert.Equal(t, &Edited{
+		UpdatedAt:      time.Date(2026, 1, 10, 12, 30, 0, 0, time.UTC),
+		ReviewRequests: ReviewRequests{Users: []string{"someone", "Octo-User"}, Teams: []string{"backend"}},
+	}, edited, "who GitHub asks now, the user among them")
+	assert.Equal(t, []editRequest{{
+		method: http.MethodPost, path: "/repos/acme-org/example-repo/pulls/42/requested_reviewers",
+		body: map[string][]string{"reviewers": {octoUser}},
+	}}, *got, "one request, naming only the user")
+	assert.Equal(t, []string{ResourceCore}, gate.allowed, "the gate counted it")
+
+	spent := rates.all()
+	require.Len(t, spent, 1)
+	assert.Equal(t, 1, spent[0].spent, "an edit spends one REST point")
+}
+
+func TestRequestReviewSeesARequestGitHubIgnored(t *testing.T) {
+	t.Parallel()
+
+	client, _ := editServer(t, http.StatusCreated,
+		`{"updated_at":"2026-01-10T12:30:00Z","requested_reviewers":[{"login":"someone"}],"requested_teams":[]}`, nil)
+
+	_, err := client.RequestReview(t.Context(), NewToken(fakeToken), editRef(), octoUser)
+	require.ErrorIs(t, err, ErrEditIgnored)
+	assert.Equal(t, "GitHub didn't ask you to review acme-org/example-repo#42 again. "+
+		"Your account may need write access to the repository.", uierr.Message(err))
+}
+
+func TestRequestReviewWordsARefusal(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name   string
+		status int
+		body   string
+		want   string
+	}{
+		{
+			name: "not a collaborator", status: http.StatusUnprocessableEntity,
+			body: `{"message":"Reviews may only be requested from collaborators. One or more of the users or teams ` +
+				`you specified is not a collaborator of the acme-org/example-repo repository."}`,
+			want: "GitHub didn't ask you to review acme-org/example-repo#42 again: Reviews may only be requested from " +
+				"collaborators. One or more of the users or teams you specified is not a collaborator of the " +
+				"acme-org/example-repo repository.",
+		},
+		{
+			name: "unprocessable, without words", status: http.StatusUnprocessableEntity, body: `{}`,
+			want: "GitHub didn't ask you to review acme-org/example-repo#42 again. " +
+				"Your account may need write access to the repository.",
+		},
+		{
+			name: "a pull request GitHub can't find", status: http.StatusNotFound, body: `{"message":"Not Found"}`,
+			want: "GitHub could not find acme-org/example-repo#42, or your account cannot see it.",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			client, got := editServer(t, tt.status, tt.body, nil)
+
+			_, err := client.RequestReview(t.Context(), NewToken(fakeToken), editRef(), octoUser)
+			require.Error(t, err)
+
+			var status *StatusError
+			require.ErrorAs(t, err, &status, "the refusal stays in the chain")
+			assert.Equal(t, tt.want, uierr.Message(err))
+			assert.Len(t, *got, 1, "sent once, never again on its own")
+		})
+	}
+}
+
 func TestEditsWaitForTheGate(t *testing.T) {
 	t.Parallel()
 
@@ -167,6 +254,9 @@ func TestEditsWaitForTheGate(t *testing.T) {
 	require.ErrorIs(t, err, errGateClosed)
 
 	_, err = client.RemoveReviewRequest(t.Context(), NewToken(fakeToken), editRef(), "octo-user")
+	require.ErrorIs(t, err, errGateClosed)
+
+	_, err = client.RequestReview(t.Context(), NewToken(fakeToken), editRef(), octoUser)
 	require.ErrorIs(t, err, errGateClosed)
 
 	assert.Empty(t, *got, "nothing was sent")
@@ -185,7 +275,13 @@ func TestEditsRefuseABadItemOrLogin(t *testing.T) {
 	for _, login := range []string{"", "acme-org/octo", "-octo", "octo user"} {
 		_, err = client.RemoveReviewRequest(t.Context(), NewToken(fakeToken), editRef(), login)
 		require.ErrorIs(t, err, ErrInvalidLogin, login)
+
+		_, err = client.RequestReview(t.Context(), NewToken(fakeToken), editRef(), login)
+		require.ErrorIs(t, err, ErrInvalidLogin, login)
 	}
+
+	_, err = client.RequestReview(t.Context(), NewToken(fakeToken), item.Ref{Number: 1}, octoUser)
+	require.ErrorIs(t, err, ErrInvalidItemRef)
 
 	assert.Empty(t, *got)
 	assert.Empty(t, gate.allowed, "nothing was counted")

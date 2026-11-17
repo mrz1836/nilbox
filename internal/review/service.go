@@ -1,7 +1,8 @@
 // Package review is the review sheet: it shows one pull request (what it changes, its
-// description, checks, reviewers, its conversation, and what it still needs to merge) and
-// acts on it at the user's click: approve, request changes, comment, merge, turn on
-// auto-merge, update the branch, ask Dependabot to rebase, or close it.
+// description, checks, reviewers, its conversation, how far behind its base it is, and
+// what it still needs to merge) and acts on it at the user's click: approve, request
+// changes, comment, merge, turn on auto-merge, update the branch, ask Dependabot to rebase,
+// ask for the user's own review again, or close it.
 //
 // Open shows what the sheet read before, from its own cache, with no request, and starts a
 // visit, which tells what is new; Refresh reads the pull request again with one GraphQL
@@ -146,13 +147,18 @@ type Target struct {
 
 // Acted is what an action made happen on GitHub. Its fields match inbox.Acted's.
 // ReviewEvent is the review's event, as the action sent it (github.ReviewApprove,
-// github.ReviewRequestChanges, or github.ReviewComment).
+// github.ReviewRequestChanges, or github.ReviewComment). Rerequested reports the user's
+// review requested again, with who the pull request asks now (ReviewRequests), as of
+// GitHub's time of the edit (RerequestedAt).
 type Acted struct {
-	Reviewed    bool
-	ReviewedAt  time.Time
-	ReviewEvent string
-	Merged      bool
-	Closed      bool
+	Reviewed       bool
+	ReviewedAt     time.Time
+	ReviewEvent    string
+	Merged         bool
+	Closed         bool
+	Rerequested    bool
+	ReviewRequests github.ReviewRequests
+	RerequestedAt  time.Time
 }
 
 // PullRead is what a read found. Its fields match inbox.PullRead's.
@@ -174,7 +180,7 @@ type Inbox interface {
 // GitHub is the GitHub client's reads and writes the sheet uses. *github.Client
 // implements it.
 type GitHub interface {
-	FetchPullReview(ctx context.Context, tok github.Token, id string) (*github.PullReview, error)
+	FetchPullReview(ctx context.Context, tok github.Token, id, compareHead string) (*github.PullReview, error)
 	FetchPullDiff(ctx context.Context, tok github.Token, ref item.Ref, head string) (*github.PullDiff, error)
 	FetchMergeState(ctx context.Context, tok github.Token, id string) (*github.MergeState, error)
 	FetchTimeline(ctx context.Context, tok github.Token, kind item.Kind, id, before string) (*github.TimelinePage, error)
@@ -189,6 +195,7 @@ type GitHub interface {
 	ApproveWorkflowRun(ctx context.Context, tok github.Token, name repo.Name, runID int64) error
 	AddLabels(ctx context.Context, tok github.Token, ref item.Ref, names []string) ([]github.Label, error)
 	RemoveLabel(ctx context.Context, tok github.Token, ref item.Ref, name string) ([]github.Label, error)
+	RequestReview(ctx context.Context, tok github.Token, ref item.Ref, login string) (*github.Edited, error)
 }
 
 // Settings reads the settings the sheet follows: how to merge, and which files are
@@ -535,13 +542,15 @@ func stamp(t time.Time) string {
 	return clock.Format(t)
 }
 
-// fetch reads the pull request's context and, unless c holds its files at the head the
-// context names, its files. When it was pushed to between the two reads, the context is
-// read again for the new head.
+// fetch reads the pull request's context, with how far its branch is behind its base, and,
+// unless c holds its files at the head the context names, its files. When it was pushed to
+// between the two reads, the context is read again for the new head.
 func (s *Service) fetch(
 	ctx context.Context, tok github.Token, t Target, c *cached,
 ) (*github.PullReview, *github.PullDiff, error) {
-	review, err := s.github.FetchPullReview(ctx, tok, t.NodeID)
+	compareHead := github.PullHeadRef(t.Ref.Number)
+
+	review, err := s.github.FetchPullReview(ctx, tok, t.NodeID, compareHead)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -558,7 +567,7 @@ func (s *Service) fetch(
 	}
 
 	if !strings.EqualFold(diff.Head, head) {
-		if review, err = s.github.FetchPullReview(ctx, tok, t.NodeID); err != nil {
+		if review, err = s.github.FetchPullReview(ctx, tok, t.NodeID, compareHead); err != nil {
 			return nil, nil, err
 		}
 	}
@@ -664,6 +673,8 @@ func (r *Review) fill(c *cached, matcher *sensitive.Matcher) {
 	r.CommitList = commitsOf(pc.Commits, r.URL)
 	r.EarlierCommits = max(pc.CommitTotal-len(pc.Commits), 0)
 	r.YourReview = yourReview(pc.Opinion, pc.Commits, pc.CommitTotal, pc.Timeline)
+	r.BehindBy = pc.BehindBy
+	r.Behind = pc.behind()
 
 	if pc.CommitTotal > 0 {
 		r.Commits = pc.CommitTotal
@@ -774,6 +785,8 @@ func factsOf(pull StoredPull, c *cached, r Review) Facts {
 		ReviewRequired: pull.ReviewDecision == "REVIEW_REQUIRED", ChangesRequested: pull.ReviewDecision == "CHANGES_REQUESTED",
 		Base: r.BaseRef, Methods: methodsOf(pull), ViewerMethod: MergeMethod(pull.ViewerMergeMethod),
 		AutoMergeOn: r.AutoMerge != "", Closed: r.State != github.StateOpen, Sensitive: []string{},
+		AskedAgain:            github.ReviewRequests{Users: pull.ReviewUsers}.Asks(pull.Viewer),
+		ChangesRequestedSince: r.YourReview.changesRequestedSince(),
 	}
 
 	workflows := workflowsCategory()
@@ -793,7 +806,7 @@ func factsOf(pull StoredPull, c *cached, r Review) Facts {
 	pc := c.context
 	f.PendingReview, f.MergeState, f.MergeQueue = pc.PendingReviews > 0, pc.MergeState, pc.MergeQueue
 	f.CanUpdateBranch, f.CanAutoMerge = pc.CanUpdateBranch, pc.CanAutoMerge && pull.AutoMergeAllowed
-	f.CanBypass, f.CanClose = pc.CanBypass, pc.CanClose
+	f.CanBypass, f.CanClose, f.BehindBy = pc.CanBypass, pc.CanClose, pc.BehindBy
 	f.ApprovedAtHead = pc.ViewerReview == "APPROVED" && strings.EqualFold(pc.ViewerReviewAt, c.head)
 	f.countChecks(pc.Checks)
 	f.countUnrun(pc.Unrun)

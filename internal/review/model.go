@@ -56,6 +56,11 @@ const (
 	// maintainer's approval, as it does a fork's. It sends no text, and is never the sheet's
 	// button.
 	ActionApproveRuns Action = "approve_runs"
+
+	// ActionRerequestReview asks GitHub to request the user's own review again, once the
+	// author pushed since the user requested changes. It dismisses nothing (the user's next
+	// review replaces the standing one), sends no text, and is never the sheet's button.
+	ActionRerequestReview Action = "rerequest_review"
 )
 
 // merges reports an action that merges the pull request, now or once it can: every one
@@ -166,6 +171,10 @@ const (
 	// OutcomePushedSince is an action refused, or never sent, because the pull request was
 	// pushed to since the sheet read it.
 	OutcomePushedSince Outcome = "pushed_since"
+
+	// OutcomeReviewRerequested is the user's review requested again: the pull request asks
+	// them by name, and is back in the Review requested list.
+	OutcomeReviewRerequested Outcome = "review_rerequested"
 )
 
 // PatchState says whether a file's diff came with it, and why not.
@@ -315,6 +324,13 @@ type Review struct {
 	// Unrun are the head commit's workflow runs that ended without a check and without
 	// passing (Unrun), which the checks list names beneath it.
 	Unrun []Unrun `json:"unrun"`
+
+	// Behind reports an open pull request whose branch is behind its base, as the sheet last
+	// read it: GitHub lets the user update the branch (which it does only for one behind),
+	// the rules hold it back for being behind, or the compare counted commits it lacks; and
+	// BehindBy is how many commits, 0 when the read couldn't tell.
+	Behind   bool `json:"behind"`
+	BehindBy int  `json:"behindBy"`
 
 	// Closes are the issues it closes once it merges, the first ten, and MoreCloses how many
 	// others.

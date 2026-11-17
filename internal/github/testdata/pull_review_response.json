@@ -174,6 +174,11 @@
             },
             "body": "Bumps the github-actions group with 1 update: [github/codeql-action](https://github.com/github/codeql-action).\n\nUpdates `github/codeql-action` from 4.39.1 to 4.39.3\n<details>\n<summary>Release notes</summary>\n<p><em>Sourced from <a href=\"https://github.com/github/codeql-action/releases\">github/codeql-action's releases</a>.</em></p>\n<blockquote>\n<h2>v4.39.3</h2>\n<ul>\n<li>Fixed diff-informed alert filtering incorrectly removing alerts in changed files whose paths contain spaces, special characters, or non-ASCII characters. <a href=\"https://redirect.github.com/github/codeql-action/pull/4283\">#4283</a></li>\n</ul>\n<h2>v4.39.2</h2>\n<ul>\n<li>Update default CodeQL bundle version to <a href=\"https://github.com/github/codeql-action/releases/tag/codeql-bundle-v2.27.4\">2.27.4</a>. <a href=\"https://redirect.github.com/github/codeql-action/pull/4284\">#4284</a></li>\n<li><em>Upcoming breaking change</em>: CodeQL version 2.22.3 and earlier were discontinued on 16 October 2026 alongside GitHub Enterprise Server 3.18, and will be unsupported by the next minor release of the CodeQL Action. Added a deprecation warning for customers using these versions of CodeQL. <a href=\"https://redirect.github.com/git",
             "baseRefName": "master",
+            "baseCompare": {
+                "compare": {
+                    "behindBy": 12
+                }
+            },
             "mergeStateStatus": "BLOCKED",
             "isMergeQueueEnabled": false,
             "viewerDidAuthor": false,

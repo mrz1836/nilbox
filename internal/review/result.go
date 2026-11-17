@@ -42,6 +42,8 @@ func (a *action) message() string {
 		return a.notMergedMessage(ref)
 	case a.outcome == OutcomeBranchUpdating:
 		return "Updating the branch of " + ref
+	case a.outcome == OutcomeReviewRerequested:
+		return "Re-requested your review of " + ref
 	case a.kind == ActionApproveRuns:
 		return a.runsMessage(ref)
 	default:

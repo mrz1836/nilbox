@@ -470,21 +470,23 @@ func TestChooseMethod(t *testing.T) {
 // its own; an offer with warnings asks first; and a close is offered only to whoever may
 // close the pull request, while it is open, asks first, and is never the button.
 func FuzzDecide(f *testing.F) {
-	f.Add(uint16(0), uint8(0), uint8(0), uint8(0))
-	f.Add(uint16(0xffff), uint8(1), uint8(2), uint8(3))
+	f.Add(uint32(0), uint8(0), uint8(0), uint8(0))
+	f.Add(uint32(0xffff), uint8(1), uint8(2), uint8(3))
+	f.Add(uint32(0x7ffff), uint8(4), uint8(1), uint8(2))
 
 	states := []string{
 		github.MergeStateClean, github.MergeStateHasHooks, github.MergeStateUnstable, github.MergeStateBlocked,
 		github.MergeStateBehind, github.MergeStateDirty, github.MergeStateUnknown, "",
 	}
 
-	f.Fuzz(func(t *testing.T, bits uint16, state, failing, pending uint8) {
+	f.Fuzz(func(t *testing.T, bits uint32, state, failing, pending uint8) {
 		fa := Facts{
 			Mine: bits&1 != 0, Draft: bits&2 != 0, PendingReview: bits&4 != 0, MergeQueue: bits&8 != 0,
 			CanWrite: bits&16 != 0, CanUpdateBranch: bits&32 != 0, CanAutoMerge: bits&64 != 0, AutoMergeOn: bits&128 != 0,
 			Dependabot: bits&256 != 0, ApprovedAtHead: bits&512 != 0, ReviewRequired: bits&1024 != 0,
 			ChangesRequested: bits&2048 != 0, Closed: bits&4096 != 0, CanBypass: bits&8192 != 0,
-			CanClose:        bits&16384 != 0,
+			CanClose: bits&16384 != 0, ChangesRequestedSince: bits&32768 != 0, AskedAgain: bits&65536 != 0,
+			BehindBy:        int(bits>>17) % 3,
 			MergeState:      states[int(state)%len(states)],
 			RequiredFailing: int(failing % 3), Failing: int(failing % 5), RequiredPending: int(pending % 3),
 			Pending: int(pending % 5), Methods: []MergeMethod{MethodSquash},
@@ -517,6 +519,28 @@ func checkPlan(t *testing.T, fa Facts, p Plan) {
 	checkAsksFirst(t, p)
 	checkKeepingUp(t, fa, p, on)
 	checkClose(t, fa, p)
+	checkRerequest(t, fa, p)
+}
+
+// checkRerequest checks that asking for the user's review again is offered only on someone
+// else's open pull request whose author pushed since the user requested changes, runs only
+// for a user with write access while GitHub doesn't ask them already, and is never the
+// button.
+func checkRerequest(t *testing.T, fa Facts, p Plan) {
+	t.Helper()
+
+	assert.NotEqual(t, ActionRerequestReview, p.Primary, "asking for the review again is never the button")
+
+	o, ok := p.offer(ActionRerequestReview)
+	assert.Equal(t, !fa.Closed && !fa.Mine && fa.ChangesRequestedSince, ok,
+		"offered only after the user requested changes and the author pushed since")
+
+	if ok {
+		assert.Equal(t, fa.CanWrite && !fa.AskedAgain, o.Enabled, o.Reason)
+		assert.Equal(t, o.Enabled, o.Reason == "", "a reason exactly when it can't run")
+		assert.False(t, o.Confirm || o.Reviews || o.CommentsFirst, "one click, with no text")
+		assert.Empty(t, o.Warnings)
+	}
 }
 
 // checkClose checks that a close is offered while the pull request is open, held back
@@ -558,7 +582,7 @@ func checkPrimary(t *testing.T, p Plan, on []Action) {
 	// and a close, which only ever run on purpose, and the two that write to the branch,
 	// which are the button only while the pull request is behind (or, for the rebase, has
 	// conflicts).
-	neverDefault := []Action{ActionMergeBypass, ActionClose, ActionRebaseBot, ActionUpdateBranch}
+	neverDefault := []Action{ActionMergeBypass, ActionClose, ActionRebaseBot, ActionUpdateBranch, ActionRerequestReview}
 
 	for _, a := range on {
 		assert.Contains(t, neverDefault, a, "with no primary, %s is enabled", a)
@@ -596,6 +620,10 @@ func checkKeepingUp(t *testing.T, fa Facts, p Plan, on []Action) {
 
 	behind := fa.MergeState == github.MergeStateBehind
 
+	_, offered := p.offer(ActionUpdateBranch)
+	assert.Equal(t, fa.CanUpdateBranch || ((behind || fa.BehindBy > 0) && !fa.Dependabot), offered,
+		"offered whenever GitHub lets the user, or, but on Dependabot's, while it is behind")
+
 	if p.Primary == ActionRebaseBot {
 		assert.True(t, behind || fa.MergeState == github.MergeStateDirty,
 			"the rebase is the button only while it is behind or has conflicts")
@@ -622,7 +650,8 @@ func checkRebase(t *testing.T, fa Facts, p Plan) {
 
 	require.True(t, ok, "Dependabot's pull request, in any merge state")
 
-	behind := fa.MergeState == github.MergeStateBehind || fa.MergeState == github.MergeStateDirty || fa.CanUpdateBranch
+	behind := fa.MergeState == github.MergeStateBehind || fa.MergeState == github.MergeStateDirty || fa.CanUpdateBranch ||
+		fa.BehindBy > 0
 	assert.Equal(t, fa.MergeState != "" && fa.CanWrite && behind, rebase.Enabled, rebase.Reason)
 	assert.Equal(t, rebase.Enabled, rebase.Reason == "", "a reason exactly when it can't run")
 }
@@ -911,6 +940,123 @@ func TestDecideOffersUpdateBranchWheneverGitHubLets(t *testing.T) {
 	// hold back for being behind, which says why.
 	_, ok = Decide(facts(github.MergeStateBlocked), PrefRepo).offer(ActionUpdateBranch)
 	assert.False(t, ok)
+}
+
+func TestDecideOffersUpdateBranchWhileTheCompareSaysItIsBehind(t *testing.T) {
+	t.Parallel()
+
+	// Behind its base by three commits, which the rules don't mind, and GitHub doesn't let
+	// the user update it: offered, with why not, so the sheet's strip says so.
+	f := facts(github.MergeStateClean)
+	f.BehindBy = 3
+
+	p := Decide(f, PrefRepo)
+
+	update, ok := p.offer(ActionUpdateBranch)
+	require.True(t, ok)
+	assert.False(t, update.Enabled)
+	assert.Equal(t, "Your account can't update this branch.", update.Reason)
+	assert.Equal(t, ActionApproveMerge, p.Primary, "being behind holds nothing back here")
+	assert.Equal(t, ReadyMerge, p.Readiness.State, "nor changes how close it is to merging")
+
+	// GitHub lets the user: one click, never the button.
+	f.CanUpdateBranch = true
+
+	p = Decide(f, PrefRepo)
+	update, _ = p.offer(ActionUpdateBranch)
+	assert.True(t, update.Enabled)
+	assert.NotEqual(t, ActionUpdateBranch, p.Primary)
+
+	// Dependabot's: the rebase keeps it up to date, and runs though the merge state reads
+	// clean.
+	g := dependabot(github.MergeStateClean)
+	g.BehindBy = 3
+
+	p = Decide(g, PrefRepo)
+	_, ok = p.offer(ActionUpdateBranch)
+	assert.False(t, ok, "only the rebase on Dependabot's branch GitHub doesn't let the user update")
+
+	rebase, ok := p.offer(ActionRebaseBot)
+	require.True(t, ok)
+	assert.True(t, rebase.Enabled, rebase.Reason)
+	assert.NotEqual(t, ActionRebaseBot, p.Primary, "the button only while the rules want it up to date")
+}
+
+func TestDecideOffersToAskForYourReviewAgain(t *testing.T) {
+	t.Parallel()
+
+	// changes is someone else's pull request whose author pushed since the user requested
+	// changes, which GitHub no longer asks the user to review.
+	changes := func() Facts {
+		f := facts(github.MergeStateBlocked)
+		f.ChangesRequested, f.ChangesRequestedSince = true, true
+
+		return f
+	}
+
+	tests := []struct {
+		name    string
+		facts   func(*Facts)
+		offered bool
+		reason  string
+	}{
+		{name: "pushed since the user requested changes", facts: func(*Facts) {}, offered: true},
+		{
+			name: "GitHub asks the user already", offered: true, reason: "GitHub already asks you to review it again.",
+			facts: func(f *Facts) { f.AskedAgain = true },
+		},
+		{
+			name: "without write access", offered: true,
+			reason: "Only people with write access to the repository can be asked to review it.",
+			facts:  func(f *Facts) { f.CanWrite = false },
+		},
+		{
+			name: "a pending review holds back only the reviews", offered: true,
+			facts: func(f *Facts) { f.PendingReview = true },
+		},
+		{name: "nothing since, or an approval", facts: func(f *Facts) { f.ChangesRequestedSince = false }},
+		{name: "the user's own", facts: func(f *Facts) { f.Mine = true }},
+		{name: "merged or closed", facts: func(f *Facts) { f.Closed = true }},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			f := changes()
+			tt.facts(&f)
+
+			p := Decide(f, PrefRepo)
+
+			o, ok := p.offer(ActionRerequestReview)
+			require.Equal(t, tt.offered, ok)
+			assert.NotEqual(t, ActionRerequestReview, p.Primary, "never the button")
+
+			if !ok {
+				return
+			}
+
+			assert.Equal(t, "Re-request my review", o.Label)
+			assert.Equal(t, tt.reason == "", o.Enabled)
+			assert.Equal(t, tt.reason, o.Reason)
+			assert.False(t, o.Confirm, "one click: it asks GitHub for nothing it can't take back")
+			assert.False(t, o.Reviews || o.CommentsFirst, "it sends no text")
+		})
+	}
+}
+
+func TestAskingForYourReviewAgainIsNeverTheButton(t *testing.T) {
+	t.Parallel()
+
+	// A review of the user's started on GitHub holds back every review, and a required check
+	// failing every merge: asking again is all that runs, and only from the menu.
+	f := facts(github.MergeStateBlocked)
+	f.ChangesRequested, f.ChangesRequestedSince, f.PendingReview = true, true, true
+	f.RequiredFailing, f.Failing, f.CanAutoMerge = 1, 1, false
+
+	p := Decide(f, PrefRepo)
+	assert.Equal(t, []Action{ActionRerequestReview}, enabled(p))
+	assert.Equal(t, ActionNone, p.Primary)
 }
 
 func TestDecideOffersBothOnDependabotsBranchAndWarnsBeforeTheUpdate(t *testing.T) {

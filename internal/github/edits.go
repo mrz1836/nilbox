@@ -19,7 +19,8 @@ import (
 // The app reads GitHub, and edits it only when the user asks, one item at a time: it takes
 // the user off an item's assignees, or off a pull request's requested reviewers; from the
 // review sheet, it reviews, merges, turns on auto-merge, updates a branch, asks Dependabot
-// to rebase, or closes a pull request (see review.go); and from the issue sheet, it
+// to rebase, asks for the user's own review again, or closes a pull request (see
+// review.go); and from the issue sheet, it
 // comments on an issue or closes it as completed or as not planned (issuewrites.go). Each
 // edit is one request: a REST edit spends one point of the REST budget, a GraphQL mutation
 // one point of the GraphQL budget. Every edit goes through the client's WriteGate first
@@ -168,8 +169,8 @@ type Edited struct {
 	// UpdatedAt is the item's last update on GitHub, the edit included.
 	UpdatedAt time.Time
 
-	// ReviewRequests is who a pull request still asks to review, after
-	// RemoveReviewRequest. It is zero after RemoveAssignee.
+	// ReviewRequests is who a pull request asks to review after RemoveReviewRequest or
+	// RequestReview. It is zero after RemoveAssignee.
 	ReviewRequests ReviewRequests
 }
 
@@ -190,6 +191,18 @@ func (c *Client) RemoveAssignee(ctx context.Context, tok Token, ref item.Ref, lo
 // GitHub takes a team's request off for every member or for none.
 func (c *Client) RemoveReviewRequest(ctx context.Context, tok Token, ref item.Ref, login string) (*Edited, error) {
 	edited, err := c.removeReviewRequest(ctx, tok, ref, login)
+
+	return edited, Redact(err, tok)
+}
+
+// RequestReview asks login to review a pull request, with one REST request (POST
+// /repos/{owner}/{repo}/pulls/{number}/requested_reviewers): the review sheet's Re-request
+// my review, which asks the user again once the author pushed since they requested
+// changes. GitHub answers with who the pull request asks now: when that isn't login by
+// name, GitHub ignored the request, and ErrEditIgnored is returned. Nothing is dismissed:
+// the user's standing review stays until their next one replaces it.
+func (c *Client) RequestReview(ctx context.Context, tok Token, ref item.Ref, login string) (*Edited, error) {
+	edited, err := c.requestReview(ctx, tok, ref, login)
 
 	return edited, Redact(err, tok)
 }
@@ -323,6 +336,56 @@ func (c *Client) removeReviewRequest(ctx context.Context, tok Token, ref item.Re
 	}
 
 	return &Edited{UpdatedAt: answer.UpdatedAt.UTC(), ReviewRequests: still}, nil
+}
+
+// requestReview sends the request and checks GitHub's answer.
+func (c *Client) requestReview(ctx context.Context, tok Token, ref item.Ref, login string) (*Edited, error) {
+	if err := validateEdit(ref, login); err != nil {
+		return nil, err
+	}
+
+	body, err := json.Marshal(map[string][]string{"reviewers": {login}})
+	if err != nil {
+		return nil, fmt.Errorf("encode the edit: %w", err)
+	}
+
+	raw, err := c.edit(ctx, tok, http.MethodPost, pullPath(ref)+"/requested_reviewers", body)
+	if err != nil {
+		return nil, requestError(ref, fmt.Errorf("ask %s to review %s: %w", login, ref, err))
+	}
+
+	var answer restReviewAnswer
+	if err = json.Unmarshal(raw, &answer); err != nil {
+		return nil, fmt.Errorf("%w: decode %s: %w", ErrMalformedResponse, ref, err)
+	}
+
+	asks := answer.requests()
+	if !asks.Asks(login) {
+		return nil, uierr.New(
+			fmt.Sprintf("GitHub didn't ask you to review %s again. Your account may need write access to the repository.", ref),
+			fmt.Errorf("ask %s to review %s: %w", login, ref, ErrEditIgnored),
+		)
+	}
+
+	return &Edited{UpdatedAt: answer.UpdatedAt.UTC(), ReviewRequests: asks}, nil
+}
+
+// requestError gives a refused review request of ref a message the user can act on,
+// keeping err's chain: GitHub refuses one it can't make as unprocessable (422), as for an
+// account that isn't a collaborator on the repository, in its own words when it gives
+// some. Any other refusal is worded by editError.
+func requestError(ref item.Ref, err error) error {
+	status, ok := errors.AsType[*StatusError](err)
+	if !ok || status.StatusCode != http.StatusUnprocessableEntity {
+		return editError(ref, err)
+	}
+
+	if status.Message == "" {
+		return uierr.New(fmt.Sprintf("GitHub didn't ask you to review %s again. "+
+			"Your account may need write access to the repository.", ref), err)
+	}
+
+	return uierr.New(fmt.Sprintf("GitHub didn't ask you to review %s again: %s", ref, sentence(status.Message)), err)
 }
 
 // restReviewAnswer is GitHub's answer to an edit of a pull request's review requests: the

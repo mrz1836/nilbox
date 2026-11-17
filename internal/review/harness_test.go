@@ -147,7 +147,7 @@ func (f *fakeInbox) Act(
 		tries++
 	}
 
-	if f.recordErr != nil && (acted.Reviewed || acted.Merged || acted.Closed) {
+	if f.recordErr != nil && (acted.Reviewed || acted.Merged || acted.Closed || acted.Rerequested) {
 		err = errors.Join(err, uierr.New(
 			"GitHub made the change, but the inbox could not record it. The next refresh catches it up.", f.recordErr,
 		))
@@ -193,6 +193,7 @@ const (
 	callEarlier = "earlier"
 	callLabel   = "label"
 	callUnlabel = "unlabel"
+	callRequest = "request"
 )
 
 // fakeGitHub answers the sheet's requests and counts them.
@@ -247,13 +248,24 @@ type fakeGitHub struct {
 	earlier    *github.TimelinePage
 	earlierErr error
 	befores    []string
+
+	// compared names the head each read of the pull request compared with its base.
+	compared []string
+
+	// asked names the login each review request asked, in order; asks is who GitHub answers
+	// the pull request asks after one, the login asked added, and requestErr fails the next
+	// request once.
+	asked      []string
+	asks       []string
+	requestErr error
 }
 
-func (g *fakeGitHub) FetchPullReview(context.Context, github.Token, string) (*github.PullReview, error) {
+func (g *fakeGitHub) FetchPullReview(_ context.Context, _ github.Token, _, compareHead string) (*github.PullReview, error) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 
 	g.count(callReview)
+	g.compared = append(g.compared, compareHead)
 
 	if len(g.reviews) > 0 {
 		r := g.reviews[0]
@@ -476,6 +488,26 @@ func (g *fakeGitHub) RemoveLabel(_ context.Context, _ github.Token, _ item.Ref, 
 	g.labeled = append(g.labeled, "-"+name)
 
 	return []github.Label{}, nil
+}
+
+func (g *fakeGitHub) RequestReview(_ context.Context, _ github.Token, _ item.Ref, login string) (*github.Edited, error) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+
+	g.count(callRequest)
+
+	if g.requestErr != nil {
+		err := g.requestErr
+		g.requestErr = nil
+
+		return nil, err
+	}
+
+	g.asked = append(g.asked, login)
+
+	return &github.Edited{
+		UpdatedAt: testNow, ReviewRequests: github.ReviewRequests{Users: append(slices.Clone(g.asks), login), Teams: []string{}},
+	}, nil
 }
 
 func (g *fakeGitHub) FetchTimeline(

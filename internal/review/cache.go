@@ -123,6 +123,21 @@ type pullContext struct {
 	// request or requested changes, nil when there is none, and in a context an older
 	// build cached, until the sheet reads it again.
 	Opinion *contextReview `json:"opinion"`
+
+	// BehindBy is how many commits the base branch has that the head doesn't; 0 when GitHub
+	// couldn't compare them, and in a context an older build cached, until the sheet reads
+	// it again.
+	BehindBy int `json:"behindBy,omitempty"`
+}
+
+// behind reports an open pull request whose branch is behind its base, as the read found
+// it: GitHub lets the viewer update it (which it does only for a branch behind), the rules
+// hold it back for being behind, or the compare counted commits it lacks. A context with no
+// state is open, as the sheet reads it.
+func (c pullContext) behind() bool {
+	open := c.State == "" || c.State == github.StateOpen
+
+	return open && (c.CanUpdateBranch || c.MergeState == github.MergeStateBehind || c.BehindBy > 0)
 }
 
 // headlineRunes is the most of a commit's headline the cache keeps.
@@ -156,7 +171,7 @@ func contextOf(r *github.PullReview, viewer string) pullContext {
 		MergeState: r.MergeState, MergeQueue: r.MergeQueue, Mine: r.ViewerDidAuthor,
 		CanUpdateBranch: r.ViewerCanUpdateBranch, CanAutoMerge: r.ViewerCanEnableAutoMerge, CanBypass: r.ViewerCanBypass,
 		ViewerReview: r.ViewerReview.State, ViewerReviewAt: r.ViewerReview.Commit, PendingReviews: r.PendingReviews,
-		AutoMerge: r.AutoMerge.Method, CanClose: r.ViewerCanClose,
+		AutoMerge: r.AutoMerge.Method, CanClose: r.ViewerCanClose, BehindBy: r.BehindBy,
 		Reviews: make([]contextReview, 0, len(r.Reviews)), Checks: make([]Check, 0, len(r.Checks)),
 		Unrun: make([]Unrun, 0, len(r.Unrun)), Closes: make([]Closing, 0, len(r.Closes)), CloseCount: r.CloseCount,
 		Timeline: timeline.Entries(r.Timeline.Items, viewer), Total: r.Timeline.Total, Before: r.Timeline.Before,
