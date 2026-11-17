@@ -1,10 +1,11 @@
 // Package snooze decides how long a snooze lasts and what new activity ends one early.
 //
 // A snooze sets an inbox item aside until a time. When it starts, the item's activity is
-// recorded as a State (its head commit, commit and comment counts, and reviews). Each
-// refresh compares the item's State then with its State now under the user's Rules, and
-// Wake reports what new activity, if any, should bring the item back before its time:
-// new commits or a force-push, a review, or new comments, each past its threshold.
+// recorded as a State (its head commit, commit and comment counts, reviews, and whether it
+// is a draft). Each refresh compares the item's State then with its State now under the
+// user's Rules, and Wake reports what new activity, if any, should bring the item back
+// before its time: new commits or a force-push, a review, new comments, each past its
+// threshold, or a draft marked ready for review.
 //
 // The rules are kept in the prefs table under the snooze.* keys, which the settings
 // service writes and the inbox reads on every refresh. A missing or unreadable value
@@ -12,9 +13,12 @@
 package snooze
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strconv"
+
+	"github.com/mrz1836/nilbox/internal/prefs/prefval"
 )
 
 // Bounds on a snooze's length, in days.
@@ -40,6 +44,9 @@ const (
 
 	// PrefWakeComments is how many new comments wake a snooze (0 for never).
 	PrefWakeComments = "snooze.wake_comments"
+
+	// PrefWakeReady is whether a draft marked ready for review wakes a snooze.
+	PrefWakeReady = "snooze.wake_ready"
 )
 
 // ReviewRule is which reviews wake a snooze.
@@ -77,13 +84,15 @@ const (
 	decisionChangesRequested = "CHANGES_REQUESTED"
 )
 
-// Defaults for a fresh database: three days, waking on any push or a review decision,
-// and not on comments, which bots post as often as people do.
+// Defaults for a fresh database: three days, waking on any push, a review decision, or
+// a draft marked ready for review, and not on comments, which bots post as often as
+// people do.
 const (
 	DefaultDays         = 3
 	DefaultWakeCommits  = 1
 	DefaultWakeReviews  = ReviewsDecisions
 	DefaultWakeComments = 0
+	DefaultWakeReady    = true
 )
 
 var (
@@ -107,11 +116,33 @@ type Rules struct {
 	// Comments is how many new comments wake a snooze; 0 is never. Review comments
 	// count, and so do bots'.
 	Comments int `json:"comments"`
+
+	// Ready wakes a snooze when a draft pull request is marked ready for review. A pull
+	// request turned into a draft never wakes one.
+	Ready bool `json:"ready"`
 }
 
 // DefaultRules are the wake rules of a fresh database.
 func DefaultRules() Rules {
-	return Rules{Commits: DefaultWakeCommits, Reviews: DefaultWakeReviews, Comments: DefaultWakeComments}
+	return Rules{
+		Commits: DefaultWakeCommits, Reviews: DefaultWakeReviews, Comments: DefaultWakeComments,
+		Ready: DefaultWakeReady,
+	}
+}
+
+// UnmarshalJSON reads rules, taking the ready rule's default when they lack it, as an
+// older build's backup does.
+func (r *Rules) UnmarshalJSON(data []byte) error {
+	type plain Rules
+
+	v := plain{Ready: DefaultWakeReady}
+	if err := json.Unmarshal(data, &v); err != nil {
+		return err
+	}
+
+	*r = Rules(v)
+
+	return nil
 }
 
 // Validate reports whether every rule is in range.
@@ -160,6 +191,8 @@ func DecodeRules(prefs map[string]string) Rules {
 		rules.Comments = v
 	}
 
+	rules.Ready = prefval.Bool(prefs[PrefWakeReady], DefaultWakeReady)
+
 	return rules
 }
 
@@ -169,7 +202,13 @@ func (r Rules) Encode() map[string]string {
 		PrefWakeCommits:  strconv.Itoa(r.Commits),
 		PrefWakeReviews:  string(r.Reviews),
 		PrefWakeComments: strconv.Itoa(r.Comments),
+		PrefWakeReady:    prefval.EncodeBool(r.Ready),
 	}
+}
+
+// Keys are the prefs keys that store the wake rules, as Encode writes them.
+func Keys() []string {
+	return []string{PrefWakeCommits, PrefWakeReviews, PrefWakeComments, PrefWakeReady}
 }
 
 // validReviews reports whether v is one of the review rules.
@@ -192,6 +231,9 @@ type State struct {
 	Reviewed         int `json:"reviewed"`
 	Approvals        int `json:"approvals"`
 	ChangesRequested int `json:"changesRequested"`
+
+	// Draft is set while a pull request is a draft.
+	Draft bool `json:"draft"`
 }
 
 // Valid reports whether o is one of the outcomes a wake reports, or ReviewNone.
@@ -217,38 +259,55 @@ type Reasons struct {
 
 	// Comments is how many comments were added since the snooze began.
 	Comments int `json:"comments"`
+
+	// Ready is set when a draft was marked ready for review since the snooze began.
+	Ready bool `json:"ready"`
 }
 
 // Woke reports whether any reason is set.
 func (r Reasons) Woke() bool {
-	return r.Commits > 0 || r.ForcePushed || r.Review != ReviewNone || r.Comments > 0
+	return r.Commits > 0 || r.ForcePushed || r.Review != ReviewNone || r.Comments > 0 || r.Ready
 }
 
 // Wake compares an item's State when it was snoozed with its State now, under rules,
 // and returns the new activity that should end the snooze. Only activity past a rule's
-// threshold is reported; empty Reasons mean the snooze goes on. botAuthor is set for a
+// threshold is reported, and a draft marked ready for review only under Rules.Ready;
+// empty Reasons mean the snooze goes on. botAuthor is set for a
 // bot's pull request, whose force-pushes are rebases and do not count.
 func Wake(rules Rules, then, now State, botAuthor bool) Reasons {
 	var out Reasons
 
-	if rules.Commits > 0 {
-		added := now.Commits - then.Commits
-
-		switch {
-		case added >= rules.Commits:
-			out.Commits = added
-		case rules.Commits == 1 && !botAuthor && then.Head != "" && now.Head != "" && now.Head != then.Head:
-			out.ForcePushed = true
-		}
-	}
-
+	out.Commits, out.ForcePushed = pushWake(rules.Commits, then, now, botAuthor)
 	out.Review = reviewWake(rules.Reviews, then, now)
 
 	if added := now.Comments - then.Comments; rules.Comments > 0 && added >= rules.Comments {
 		out.Comments = added
 	}
 
+	if rules.Ready && then.Draft && !now.Draft {
+		out.Ready = true
+	}
+
 	return out
+}
+
+// pushWake returns how many new commits, or whether a force-push, should end a snooze
+// under a threshold of threshold new commits (0 for never).
+func pushWake(threshold int, then, now State, botAuthor bool) (commits int, forcePushed bool) {
+	if threshold <= 0 {
+		return 0, false
+	}
+
+	added := now.Commits - then.Commits
+
+	switch {
+	case added >= threshold:
+		return added, false
+	case threshold == 1 && !botAuthor && then.Head != "" && now.Head != "" && now.Head != then.Head:
+		return 0, true
+	default:
+		return 0, false
+	}
 }
 
 // reviewWake returns the review outcome that should end a snooze under rule, or

@@ -1,6 +1,9 @@
 package snooze
 
 import (
+	"encoding/json"
+	"maps"
+	"slices"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -23,7 +26,7 @@ func all() Rules {
 func TestDefaults(t *testing.T) {
 	t.Parallel()
 
-	assert.Equal(t, Rules{Commits: 1, Reviews: ReviewsDecisions, Comments: 0}, DefaultRules())
+	assert.Equal(t, Rules{Commits: 1, Reviews: ReviewsDecisions, Comments: 0, Ready: true}, DefaultRules())
 	require.NoError(t, DefaultRules().Validate())
 	assert.Equal(t, 3, DecodeDays(nil))
 	assert.Equal(t, DefaultRules(), DecodeRules(nil))
@@ -35,6 +38,11 @@ func TestDecodeRoundTrips(t *testing.T) {
 	rules := Rules{Commits: 5, Reviews: ReviewsNever, Comments: 10}
 
 	assert.Equal(t, rules, DecodeRules(rules.Encode()))
+	assert.Equal(t, "false", rules.Encode()[PrefWakeReady], "the ready rule turned off is stored")
+
+	rules.Ready = true
+	assert.Equal(t, rules, DecodeRules(rules.Encode()))
+	assert.ElementsMatch(t, Keys(), slices.Collect(maps.Keys(rules.Encode())), "Keys names every pref Encode writes")
 	assert.Equal(t, 14, DecodeDays(map[string]string{PrefDays: "14"}))
 }
 
@@ -46,9 +54,9 @@ func TestDecodeFallsBackPerRule(t *testing.T) {
 		PrefWakeReviews:  "sometimes",
 		PrefWakeComments: "3",
 	})
-	assert.Equal(t, Rules{Commits: 1, Reviews: ReviewsDecisions, Comments: 3}, got)
+	assert.Equal(t, Rules{Commits: 1, Reviews: ReviewsDecisions, Comments: 3, Ready: true}, got)
 
-	got = DecodeRules(map[string]string{PrefWakeCommits: "100", PrefWakeComments: "lots"})
+	got = DecodeRules(map[string]string{PrefWakeCommits: "100", PrefWakeComments: "lots", PrefWakeReady: "maybe"})
 	assert.Equal(t, DefaultRules(), got)
 
 	for _, bad := range []string{"0", "366", "soon", ""} {
@@ -219,4 +227,54 @@ func TestEveryReasonAtOnce(t *testing.T) {
 	now.Comments = 6
 
 	assert.Equal(t, Reasons{Commits: 1, Review: ReviewApproved, Comments: 2}, Wake(all(), before(), now, false))
+}
+
+func TestReadyForReview(t *testing.T) {
+	t.Parallel()
+
+	draft := before()
+	draft.Draft = true
+
+	ready := before()
+
+	got := Wake(Rules{Reviews: ReviewsNever, Ready: true}, draft, ready, false)
+	assert.Equal(t, Reasons{Ready: true}, got)
+	assert.True(t, got.Woke())
+
+	assert.True(t, Wake(Rules{Reviews: ReviewsNever, Ready: true}, draft, ready, true).Ready,
+		"a bot's pull request marked ready wakes too")
+	assert.False(t, Wake(Rules{Reviews: ReviewsNever}, draft, ready, false).Woke(), "the ready rule is off")
+	assert.False(t, Wake(Rules{Reviews: ReviewsNever, Ready: true}, ready, draft, false).Woke(),
+		"a pull request turned into a draft never wakes")
+	assert.False(t, Wake(Rules{Reviews: ReviewsNever, Ready: true}, draft, draft, false).Woke(),
+		"a draft still a draft is not new")
+	assert.False(t, Wake(Rules{Reviews: ReviewsNever, Ready: true}, ready, ready, false).Woke(),
+		"a pull request ready all along is not new")
+
+	pushed := before()
+	pushed.Commits = 4
+	assert.Equal(t, Reasons{Commits: 1, Ready: true}, Wake(Rules{Commits: 1, Reviews: ReviewsNever, Ready: true}, draft, pushed, false),
+		"a push and the ready mark are both told")
+}
+
+func TestRulesReadAnOlderBuildsJSON(t *testing.T) {
+	t.Parallel()
+
+	var older Rules
+	require.NoError(t, json.Unmarshal([]byte(`{"commits":2,"reviews":"any","comments":4}`), &older))
+	assert.Equal(t, Rules{Commits: 2, Reviews: ReviewsAny, Comments: 4, Ready: true}, older,
+		"rules without the ready rule take its default")
+
+	var off Rules
+	require.NoError(t, json.Unmarshal([]byte(`{"commits":2,"reviews":"any","comments":4,"ready":false}`), &off))
+	assert.False(t, off.Ready, "a ready rule turned off stays off")
+
+	encoded, err := json.Marshal(off)
+	require.NoError(t, err)
+
+	var back Rules
+	require.NoError(t, json.Unmarshal(encoded, &back))
+	assert.Equal(t, off, back)
+
+	require.Error(t, json.Unmarshal([]byte(`{"commits":"many"}`), &back))
 }

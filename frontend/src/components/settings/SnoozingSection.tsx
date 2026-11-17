@@ -33,6 +33,11 @@ const commentOptions = commentThresholds.map((n) =>
   thresholdOption(n, 'Any new comment', (k) => `${String(k)} or more new comments`),
 )
 
+const readyOptions = [
+  { value: 'off', label: 'Never', title: 'A draft marked ready never wakes a snooze' },
+  { value: 'on', label: 'Any', title: 'A draft marked ready for review wakes a snooze' },
+] as const
+
 const reviewOptions: readonly { value: (typeof reviewWakes)[number]; label: string; title: string }[] = [
   { value: 'never', label: 'Never', title: 'Reviews never wake a snooze' },
   { value: 'decisions', label: 'Decisions', title: 'An approval or a request for changes' },
@@ -125,6 +130,20 @@ export function SnoozingSection({ settings: stored, onSaved }: SectionProps) {
               describedBy={describedBy}
               onChange={(v) => {
                 chooseWake({ comments: Number(v) })
+              }}
+            />
+          </ChoiceRow>
+          <ChoiceRow
+            label="Marked ready for review"
+            description="A draft pull request taken out of draft. One turned into a draft never wakes a snooze."
+          >
+            <Segmented
+              label="Wake when marked ready for review"
+              value={wake.ready ? 'on' : 'off'}
+              options={readyOptions}
+              describedBy={describedBy}
+              onChange={(v) => {
+                chooseWake({ ready: v === 'on' })
               }}
             />
           </ChoiceRow>

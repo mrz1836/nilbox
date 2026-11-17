@@ -1109,7 +1109,7 @@ describe('InboxView triage', () => {
           {
             ...fresh,
             snoozedUntil: '2026-06-15T11:00:00Z',
-            wokeBy: { commits: 2, forcePushed: false, review: 'approved', comments: 0 },
+            wokeBy: { commits: 2, forcePushed: false, review: 'approved', comments: 0, ready: false },
           },
         ]),
       }),

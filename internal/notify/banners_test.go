@@ -208,6 +208,8 @@ func TestWakeDetail(t *testing.T) {
 		{snooze.Reasons{Review: snooze.ReviewNew, Comments: 3}, "new review, 3 new comments"},
 		{snooze.Reasons{ForcePushed: true, Comments: 1}, "force-pushed, 1 new comment"},
 		{snooze.Reasons{Commits: 2, ForcePushed: true}, "2 new commits"},
+		{snooze.Reasons{Ready: true}, "marked ready for review"},
+		{snooze.Reasons{Commits: 1, Ready: true}, "1 new commit, marked ready for review"},
 	}
 
 	for _, tt := range tests {

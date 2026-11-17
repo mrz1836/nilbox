@@ -234,7 +234,7 @@ Updates…** checks at once ([how updates work](docs/desktop.md#updates)).
 To build Nilbox yourself, you need:
 
 - **macOS 13+** with the Xcode Command Line Tools (`xcode-select --install`)
-- **[Go](https://go.dev/dl/) 1.26+**, **Node 26**, and **pnpm** at the pinned version (`npm install -g pnpm@12.16.1`)
+- **[Go](https://go.dev/dl/) 1.26+**, **Node 26**, and **pnpm** at the pinned version (`npm install -g pnpm@12.19.0`)
 - **[MAGE-X](https://github.com/mrz1836/mage-x)**: `go install github.com/mrz1836/mage-x/cmd/magex@latest`
 - The **GitHub CLI** and a coding agent, as above
 
@@ -508,7 +508,8 @@ More in [Issue projects](docs/desktop.md#issue-projects).
 - **Undo** is in the toast that confirms each snooze, dismissal, pin, and mute.
 - **Wake rules** end a snooze early when new commits (any push, by default), reviews (an approval
   or a request for changes, by default), or comments reach your thresholds in **Settings →
-  Snoozing**, and the card says why, as in **Back early: approved, 2 new commits**.
+  Snoozing**, or when a draft is marked ready for review, and the card says why, as in **Back
+  early: approved, 2 new commits**.
 - **Inbox nil:** empty every list and the inbox throws a party, with confetti, a terminal that
   checks off each list, and **Achievement unlocked** when you get there while you watch. With
   Reduce motion on, it holds still.
@@ -1283,7 +1284,7 @@ Install the [MAGE-X](https://github.com/mrz1836/mage-x) build tool and the
 ```bash
 go install github.com/mrz1836/mage-x/cmd/magex@latest   # build tool
 go-pre-commit install                                   # git hooks, run from the repo root
-npm install -g pnpm@12.16.1                             # once, at the version frontend/package.json pins
+npm install -g pnpm@12.19.0                             # once, at the version frontend/package.json pins
 magex frontend:install                                  # frontend dependencies, exactly as the lockfile pins them
 ```
 

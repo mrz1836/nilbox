@@ -102,9 +102,9 @@ ORDER BY i.id;
 -- name: ListRunningSnoozes :many
 -- ListRunningSnoozes returns the snoozes of the items of the account with account_id
 -- that still run after now, on items whose details are known, each with its baseline,
--- the author's type, and the activity the details hold.
-SELECT ls.item_id, ls.snooze_baseline, i.author_type, d.head_oid, d.commits, d.comments, d.review_decision,
-    d.reviewed, d.approvals, d.changes_requested
+-- the author's type, whether it is a draft, and the activity the details hold.
+SELECT ls.item_id, ls.snooze_baseline, i.author_type, i.is_draft, d.head_oid, d.commits, d.comments,
+    d.review_decision, d.reviewed, d.approvals, d.changes_requested
 FROM item_local_state ls
 JOIN items i ON i.id = ls.item_id
 JOIN item_details d ON d.item_id = ls.item_id

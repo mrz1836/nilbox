@@ -324,7 +324,7 @@ func TestSnoozeRecordsTheItemsActivity(t *testing.T) {
 	baseline := h.baseline(t, id)
 	require.NotNil(t, baseline)
 	assert.JSONEq(t, `{"head":"1111111111111111111111111111111111111111","commits":3,"comments":4,
-		"decision":"REVIEW_REQUIRED","reviewed":0,"approvals":0,"changesRequested":0}`, *baseline)
+		"decision":"REVIEW_REQUIRED","reviewed":0,"approvals":0,"changesRequested":0,"draft":false}`, *baseline)
 	assert.Equal(t, 3, details.Commits)
 }
 
@@ -430,6 +430,131 @@ func TestABotsForcePushDoesNotWakeASnooze(t *testing.T) {
 	it = h.later(t, details)
 	require.NotNil(t, it.WokeBy, "a new commit still counts")
 	assert.Equal(t, snooze.Reasons{Commits: 1}, *it.WokeBy)
+}
+
+// draftHarness refreshes an inbox holding #1 as a draft, snoozes it, and returns the
+// harness with its ID and details.
+func draftHarness(t *testing.T) (h *harness, id int64, details github.ItemDetails) {
+	t.Helper()
+
+	h = newHarness(t)
+	details = prDetails()
+	details.HeadOID = "1111111111111111111111111111111111111111"
+
+	draft := pr(1, "OWNER", false)
+	draft.IsDraft = true
+	h.client.inbox = fetched([]github.Item{draft}, nil, nil)
+	h.client.details = map[string]github.ItemDetails{nodeID(1): details}
+	id = itemByNumber(t, h.refresh(t).ReviewRequested, 1).ID
+
+	_, err := h.svc.Snooze(t.Context(), id, 3)
+	require.NoError(t, err)
+
+	return h, id, details
+}
+
+// markReady has GitHub list #1 as no longer a draft from the next refresh on.
+func (h *harness) markReady() {
+	h.client.inbox = fetched([]github.Item{pr(1, "OWNER", false)}, nil, nil)
+}
+
+func TestADraftMarkedReadyWakesASnooze(t *testing.T) {
+	t.Parallel()
+
+	h, id, details := draftHarness(t)
+
+	baseline := h.baseline(t, id)
+	require.NotNil(t, baseline)
+	assert.Contains(t, *baseline, `"draft":true`)
+
+	it := h.later(t, details)
+	assert.Nil(t, it.WokeBy, "still a draft")
+
+	h.markReady()
+	it = h.later(t, details)
+	require.NotNil(t, it.WokeBy, "marked ready for review")
+	assert.Equal(t, snooze.Reasons{Ready: true}, *it.WokeBy)
+	assert.Equal(t, "2026-01-10T14:00:00Z", it.SnoozedUntil, "the snooze ends at the refresh that saw it")
+}
+
+func TestTheReadyRuleTurnedOffKeepsTheSnooze(t *testing.T) {
+	t.Parallel()
+
+	h, _, details := draftHarness(t)
+	h.setPrefs(t, map[string]string{snooze.PrefWakeReady: "false"})
+
+	h.markReady()
+	it := h.later(t, details)
+	assert.Nil(t, it.WokeBy)
+}
+
+func TestAPullRequestTurnedIntoADraftKeepsTheSnooze(t *testing.T) {
+	t.Parallel()
+
+	h, id, details := wakeHarness(t)
+
+	_, err := h.svc.Snooze(t.Context(), id, 3)
+	require.NoError(t, err)
+
+	draft := pr(1, "OWNER", false)
+	draft.IsDraft = true
+	h.client.inbox = fetched([]github.Item{draft}, nil, nil)
+	it := h.later(t, details)
+	assert.Nil(t, it.WokeBy)
+}
+
+func TestADraftSnoozedByAnEarlierBuildWakesWhenMarkedReady(t *testing.T) {
+	t.Parallel()
+
+	h, id, details := draftHarness(t)
+
+	recorded := h.baseline(t, id)
+	require.NotNil(t, recorded)
+	h.forgetDraft(t, id)
+
+	details.Comments++
+	it := h.later(t, details)
+	assert.Nil(t, it.WokeBy, "still a draft, and comments don't wake by default")
+
+	baseline := h.baseline(t, id)
+	require.NotNil(t, baseline)
+	assert.JSONEq(t, *recorded, *baseline, "the draft flag is recorded, the rest kept as it was")
+
+	h.markReady()
+	it = h.later(t, details)
+	require.NotNil(t, it.WokeBy)
+	assert.Equal(t, snooze.Reasons{Ready: true}, *it.WokeBy)
+}
+
+func TestAReadyPullRequestSnoozedByAnEarlierBuildIsLeftAlone(t *testing.T) {
+	t.Parallel()
+
+	h, id, details := wakeHarness(t)
+
+	_, err := h.svc.Snooze(t.Context(), id, 3)
+	require.NoError(t, err)
+
+	h.forgetDraft(t, id)
+	old := h.baseline(t, id)
+	require.NotNil(t, old)
+	assert.NotContains(t, *old, "draft")
+
+	it := h.later(t, details)
+	assert.Nil(t, it.WokeBy)
+
+	baseline := h.baseline(t, id)
+	require.NotNil(t, baseline)
+	assert.JSONEq(t, *old, *baseline, "a pull request that isn't a draft needs no flag")
+}
+
+// forgetDraft takes the draft flag out of an item's snooze baseline, as an earlier build
+// recorded it.
+func (h *harness) forgetDraft(t *testing.T, id int64) {
+	t.Helper()
+
+	_, err := h.pool.ExecContext(t.Context(),
+		`UPDATE item_local_state SET snooze_baseline = json_remove(snooze_baseline, '$.draft') WHERE item_id = ?`, id)
+	require.NoError(t, err)
 }
 
 func TestASnoozeBeforeTheDetailsTakesItsBaselineLater(t *testing.T) {

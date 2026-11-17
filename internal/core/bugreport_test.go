@@ -51,7 +51,7 @@ func privateSettings() settings.Settings {
 		TrustedBots:        []string{"dependabot[bot]", "private-bot[bot]"},
 		DefaultTrustedBots: []string{"dependabot[bot]"},
 		SnoozeDays:         3,
-		SnoozeWake:         snooze.Rules{Commits: 1, Reviews: "decisions", Comments: 1},
+		SnoozeWake:         snooze.Rules{Commits: 1, Reviews: "decisions", Comments: 1, Ready: true},
 		WindowSize:         settings.WindowSize{Width: 1280, Height: 800},
 		SensitiveFiles: sensitive.Config{
 			Scope: "collaborators", Off: []string{"docs"}, Patterns: []string{"secret-dir/**"},
@@ -130,7 +130,7 @@ func TestABugReportStatesTheSettingsAndIntegrationsWithNothingPersonal(t *testin
 		"Default agent: claude · profiles: claude the user's own, codex default",
 		"Start in a worktree: on · automatic cleanup: on · follow sessions: on",
 		"Clone root: the user's own · other locations: 2",
-		"Snooze: 3 days · wake on commits: 1, reviews: decisions, comments: 1",
+		"Snooze: 3 days · wake on commits: 1, reviews: decisions, comments: 1, ready for review: on",
 		"Sensitive files: collaborators · categories off: docs · own patterns: 1",
 		"Branch rules: own on, pull request on, merged off · protected branches: the user's own (2)",
 		"Trusted bots: the user's own (2)",

@@ -216,29 +216,40 @@ describe('snooze lengths', () => {
 
 describe('wake reasons', () => {
   it('names what ended a snooze early, most decisive first', () => {
-    expect(wakeParts({ commits: 2, forcePushed: false, review: 'approved', comments: 3 })).toEqual([
+    expect(wakeParts({ commits: 2, forcePushed: false, review: 'approved', comments: 3, ready: false })).toEqual([
       'approved',
       '2 new commits',
       '3 new comments',
     ])
-    expect(wakeSummary({ commits: 1, forcePushed: false, review: 'changes_requested', comments: 1 })).toBe(
-      'changes requested, 1 new commit, 1 new comment',
-    )
-    expect(wakeSummary({ commits: 0, forcePushed: true, review: 'reviewed', comments: 0 })).toBe(
+    expect(
+      wakeSummary({ commits: 1, forcePushed: false, review: 'changes_requested', comments: 1, ready: false }),
+    ).toBe('changes requested, 1 new commit, 1 new comment')
+    expect(wakeSummary({ commits: 0, forcePushed: true, review: 'reviewed', comments: 0, ready: false })).toBe(
       'new review, force-pushed',
+    )
+  })
+
+  it('names a draft marked ready for review last', () => {
+    expect(wakeSummary({ commits: 0, forcePushed: false, review: '', comments: 0, ready: true })).toBe(
+      'marked ready for review',
+    )
+    expect(wakeSummary({ commits: 1, forcePushed: false, review: 'approved', comments: 2, ready: true })).toBe(
+      'approved, 1 new commit, 2 new comments, marked ready for review',
     )
   })
 
   it('says nothing when nothing woke it', () => {
     expect(wakeSummary(null)).toBe('')
-    expect(wakeSummary({ commits: 0, forcePushed: false, review: '', comments: 0 })).toBe('')
+    expect(wakeSummary({ commits: 0, forcePushed: false, review: '', comments: 0, ready: false })).toBe('')
   })
 
   it('names nothing for a review it does not know', () => {
     // A review another build stored, outside the ones this build knows.
     const praised = 'praised' as unknown as WakeReview
 
-    expect(wakeSummary({ commits: 2, forcePushed: false, review: praised, comments: 0 })).toBe('2 new commits')
+    expect(wakeSummary({ commits: 2, forcePushed: false, review: praised, comments: 0, ready: false })).toBe(
+      '2 new commits',
+    )
   })
 })
 

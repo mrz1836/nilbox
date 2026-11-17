@@ -85,7 +85,7 @@ func TestPrefDefaults(t *testing.T) {
 		TrustedBots:         []string{"dependabot", "github-actions", "renovate"},
 		DefaultTrustedBots:  []string{"dependabot", "github-actions", "renovate"},
 		SnoozeDays:          3,
-		SnoozeWake:          snooze.Rules{Commits: 1, Reviews: "decisions", Comments: 0},
+		SnoozeWake:          snooze.Rules{Commits: 1, Reviews: "decisions", Comments: 0, Ready: true},
 		WindowSize:          WindowSize{Width: 1440, Height: 900},
 		DefaultWindowSize:   WindowSize{Width: 1440, Height: 900},
 		SensitiveFiles:      sensitive.Config{Scope: "collaborators", Off: []string{}, Patterns: []string{}},
