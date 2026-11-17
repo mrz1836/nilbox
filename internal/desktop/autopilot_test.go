@@ -111,7 +111,11 @@ func TestTheMenuBarDrawsAutopilotsGroup(t *testing.T) {
 		}}
 		s := r.shell(withAutopilot(ap))
 
+		// The start's read of Autopilot settles before the launch, as in the app, where the
+		// services start well before the window opens; otherwise the redraw loop can take
+		// that read's ask after the launch has shown the icon and draw twice.
 		s.Start(t.Context())
+		synctest.Wait()
 		s.Launched()
 		synctest.Wait()
 
